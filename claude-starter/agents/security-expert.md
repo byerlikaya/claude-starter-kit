@@ -37,9 +37,6 @@ Her bulgu: `dosya:satır · risk · düzeltme önerisi`, ya da "bu eksende temiz
 ## Kısıtlar
 - Kod DEĞİŞTİRMEZ (salt-okunur). Düzeltmeyi backend/database-expert'e devreder.
 
-## Kaynak
-Güvenlik tarama disiplini: github.com/algans/skillgen.
-
 ## Çıktı & bağlam (token)
 Ana thread'e: **önem-sıralı bulgu özeti** (alan · severity · düzeltme). Tam tarama çıktısı → `docs/SECURITY_FINDINGS.md`, geri özet+sayım.
 

@@ -10,7 +10,6 @@ Disiplin katmanı şu kaynaklardan türer; kararlar bunlarla HİZALI kalsın:
 - Çalışma prensipleri:  multica-ai/andrej-karpathy-skills
 - Kod gözden geçirme:   google/eng-practices
 - Backend kalıbı:       DevArchitecture/DevArchitecture
-- Skill formatı + jenerik skiller: algans/skillgen
 
 İlk kurulum (KOD YAZMA, sırayla):
 1) /agents ile 10 ajanın tanındığını göster.

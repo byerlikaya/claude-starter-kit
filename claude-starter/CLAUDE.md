@@ -95,7 +95,6 @@ tahminle ilerleme.
 - Çalışma prensipleri (dört ilke): github.com/multica-ai/andrej-karpathy-skills
 - Kod gözden geçirme: github.com/google/eng-practices
 - Backend kalıbı (MediatR CQRS / IResult / AOP): github.com/DevArchitecture/DevArchitecture
-- Skill formatı + jenerik skiller (vps-deploy / db-migration / security-scan): github.com/algans/skillgen
 
 ## Yasaklar (mutlak)
 

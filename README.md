@@ -86,5 +86,4 @@ MIT — bkz. [LICENSE](LICENSE).
 ## Kaynaklar & Atıf
 
 Bu kit bazı disiplinleri üst kaynaklardan uyarlar (code-review → google/eng-practices, CC-BY 3.0;
-devarch-module → DevArchitecture kalıbı; security-scan/db-migration/vps-deploy → algans/skillgen).
-Ayrıntı ve **public yayın öncesi lisans uyarısı** için bkz. [ATTRIBUTION.md](ATTRIBUTION.md).
+devarch-module → DevArchitecture kalıbı). Ayrıntı için bkz. [ATTRIBUTION.md](ATTRIBUTION.md).

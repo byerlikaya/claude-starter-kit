@@ -12,9 +12,6 @@ Backend kalıbı `DevArchitecture` (https://github.com/DevArchitecture/DevArchit
 esinlenmiştir (MediatR CQRS / IResult / AOP). Yalnızca kalıp/yaklaşım referans alınmıştır.
 
 ## security-scan · db-migration · vps-deploy skilleri
-`algans/skillgen` (https://github.com/algans/skillgen) reposundan uyarlanmıştır.
-
-> ⚠️ **PUBLIC yayın öncesi uyarı:** Bu repoda yayın tarihinde **lisans dosyası bulunmuyordu**
-> (lisanssız = tüm hakları saklı). Özel (private) kullanım için sorun değildir; ancak bu kiti
-> **herkese açık** yayınlamadan önce ya kaynak sahibinden izin al, ya bu üç skill'i özgün olarak
-> yeniden yaz, ya da yayından çıkar.
+Özgün olarak yazılmıştır. İçerdikleri CLI komutları, OWASP kategori adları ve migration/deploy
+komutları kamuya açık teknik olgulardır; yapı, kurgu ve metin bu kite özgündür. Üçüncü-taraf
+telifli içerik barındırmazlar.

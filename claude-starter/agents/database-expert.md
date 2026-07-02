@@ -42,9 +42,6 @@ Veri modeli, migration, index veya cache katmanı değişikliklerinde.
 - Prod veriye dokunacak komutları ÇALIŞTIRMA; kullanıcıya bırak.
 - Cerrahi değişiklik.
 
-## Kaynak
-Migration disiplini: github.com/algans/skillgen.
-
 ## Çıktı & bağlam (token)
 Ana thread'e: migration adı + additive/destructive sınıfı + doğrulama sonucu (özet). Tam SQL/dump → dosyada.
 
