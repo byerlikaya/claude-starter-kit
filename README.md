@@ -16,6 +16,13 @@ Yığın-bağımsızdır; hangi projeye kurulursa kurulsun aynı disiplin geçer
 bash start.sh
 ```
 
+> **Amaç & sınır:** Bu kit, **sıfırdan** bir projeyi DevArchitecture backend temeli üzerine kurmak
+> için tasarlandı. `start.sh` ilk adımda bunu bir **onay kapısıyla** ele alır: temel projede yoksa
+> ve onay verirseniz DevArchitecture'ı depodan çekip projeye birebir dahil eder. Temel zaten varsa
+> bu adımı atlar. **Mevcut** bir projede temel yoksa, eklemenin yapıyı bozabileceğine dair ciddi bir
+> uyarı verir ve yalnız açık onayla ilerler. (Disiplin katmanı + frontend yığın-bağımsızdır; yalnız
+> backend opinionated'dır.)
+
 `./.claude/` (agents · skills · commands · hooks · eval · settings.json) ve kök `./CLAUDE.md` kurulur;
 `.gitignore`'a `docs/ · .claude/ · CLAUDE.md` eklenir; git deposu varsa `core.hooksPath` ayarlanır;
 kurulum artıkları (`claude-starter/` + `start.sh`) temizlenir. Sonra Claude Code'u repo kökünde açıp
