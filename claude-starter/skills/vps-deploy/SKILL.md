@@ -1,378 +1,209 @@
 ---
 name: vps-deploy
 description: |
-  Uygulamaları VPS sunuculara dağıt: otomatik runtime tespiti, reverse proxy kurulumu,
-  SSL ve rollback desteği.
+  Uygulamayı VPS'e güvenle dağıt: runtime/yöntem tespiti, reverse proxy + SSL, atomik takas,
+  eski sürümü saklama, deploy-sonrası sağlık kapısı ve başarısızlıkta otomatik geri dönüş.
   Trigger phrases: "deploy", "sunucuya gönder", "VPS'e kur", "sunucuya at", "production'a çık"
 ---
 
 # VPS Deploy
 
-Herhangi bir uygulamayı Docker veya bare-metal ile VPS'e dağıt: reverse proxy, SSL, health-check ve rollback dahil.
+Sağlam bir deploy'un tek fikri var: **çalışan sürümü, yenisiyle geri-alınabilir biçimde takas et.**
+Yani yeni sürümü koyarken eskisini atma — kenarda tut. Yeni sürüm sağlık kapısından geçemezse
+takası geri al, kimse fark etmesin. Bu skill deploy'u bu takas etrafında kurar; Docker veya
+bare-metal, tek bir uygulama ya da farklı runtime'lar fark etmez.
 
-> **Kit uyarlaması (lokal, .claude/):** Varsayılan backend **.NET (Docker önerilir)**. **Deploy açık onay ister (§4.4)**;
-> her deploy öncesi yedek + sonrası health-check zorunlu. `.deploy.yml` sunucu kimliği taşırsa `.gitignore`'a alınır.
-> §4 Yasaklar geçerli.
+> **Kit uyarlaması (lokal, .claude/):** Varsayılan backend **.NET (Docker önerilir)**. **Deploy açık
+> onay ister (§4.4)**; her takastan önce yedek, sonra sağlık kapısı zorunlu. `.deploy.yml` sunucu
+> kimliği taşırsa `.gitignore`'a alınır. §4 Yasaklar geçerlidir.
 
-## Genel bakış
-Tam deploy yaşam döngüsü:
-1. Projeyi analiz et — runtime tespit, deploy yöntemi seç
-2. Deploy yapılandırmasını oku/oluştur
-3. Reverse proxy kur (Nginx veya Caddy)
-4. SSL sertifikası
-5. Uygulamayı dağıt (Docker veya bare-metal)
-6. Health-check ile doğrula
-7. Sorun olursa rollback
-8. Tek-komut gelecek deploy için `deploy.sh` ve `update.sh` üret
-
-## Deploy öncesi kontrol listesi
-- [ ] Proje analiz edildi — runtime ve yöntem belirlendi
-- [ ] Config `.deploy.yml`'den okundu veya kullanıcıdan alındı
-- [ ] SSH bağlantısı doğrulandı
-- [ ] Mevcut sürüm `releases/`'e yedeklendi
-- [ ] Reverse proxy yapılandırıldı
-- [ ] SSL sertifikası yerinde
-- [ ] Kullanıcı deploy'u onayladı
-- [ ] Deploy scriptleri (`deploy.sh`, `update.sh`) kullanıcıya sunuldu
+## Kontrol listesi
+- [ ] Runtime + deploy yöntemi belirlendi
+- [ ] Config `.deploy.yml`'den/kullanıcıdan alındı, SSH doğrulandı
+- [ ] Reverse proxy + (domain varsa) SSL yerinde
+- [ ] Çalışan sürüm `releases/`'e yedeklendi
+- [ ] Kullanıcı deploy'u onayladı, yeni sürüm dağıtıldı
+- [ ] Sağlık kapısı geçti (yoksa otomatik geri dönüş yapıldı)
+- [ ] İstenirse tek-komut scriptler (`deploy.sh` / `update.sh`) üretildi
 
 ---
 
-## Adım 1: Proje analizi
+## Faz 1 — Yüzey: yöntem ve runtime
+
 ```bash
-# Dockerfile var mı
-if [ -f Dockerfile ] || [ -f docker-compose.yml ]; then
-  METHOD="docker"
-elif [ -f package.json ]; then
-  METHOD="bare"; RUNTIME="node"
-elif [ -f requirements.txt ] || [ -f pyproject.toml ] || [ -f Pipfile ]; then
-  METHOD="bare"; RUNTIME="python"
-elif [ -f go.mod ]; then
-  METHOD="bare"; RUNTIME="go"
-else
-  METHOD="unknown"
-fi
+if   [ -f Dockerfile ] || [ -f docker-compose.yml ]; then METHOD=docker
+elif [ -f package.json ];                                then METHOD=bare RUNTIME=node
+elif [ -f requirements.txt ] || [ -f pyproject.toml ];   then METHOD=bare RUNTIME=python
+elif [ -f go.mod ];                                      then METHOD=bare RUNTIME=go
+else METHOD=unknown; fi
 ```
-**Kurallar:** `method: auto` ise yukarıdaki mantık. `method: docker` → Dockerfile yoksa oluştur. `method: bare` → runtime'a uygun process manager. Runtime tespit edilemez ve auto ise kullanıcıya sor.
+`method: docker` ve Dockerfile yoksa üret. `method: bare` → runtime'a uygun process manager. Tespit belirsizse kullanıcıya sor. **.NET:** Docker önerilir; bare gerekirse `dotnet publish -c Release` çıktısını systemd ile çalıştır.
 
 ---
 
-## Adım 2: Yapılandırma
-Proje kökünden `.deploy.yml` oku; yoksa her değeri kullanıcıya sor.
+## Faz 2 — Hazırlık: config, SSH, proxy, SSL
+
+**Config** — kökten `.deploy.yml` oku, yoksa her alanı sor:
 ```yaml
-host: 192.168.1.100
-user: deploy
-ssh_key: ~/.ssh/id_rsa
-app_port: 3000
-health_check: /api/health
-deploy_path: /var/www/myapp
-method: auto  # auto | docker | bare
-domain: myapp.example.com
-ssl: true
-reverse_proxy: auto  # auto | nginx | caddy
+host: 192.168.1.100        # VPS IP/hostname (zorunlu)
+user: deploy               # SSH kullanıcısı (zorunlu)
+ssh_key: ~/.ssh/id_rsa     # özel anahtar
+app_port: 3000             # uygulama portu (zorunlu)
+health_check: /api/health  # HTTP yolu (varsayılan /)
+deploy_path: /var/www/app  # sunucu yolu (zorunlu)
+method: auto               # auto | docker | bare
+domain: app.example.com    # proxy/SSL için (ops.)
+ssl: true                  # domain varsa varsayılan true
+reverse_proxy: auto        # auto | nginx | caddy
 ```
-**Alanlar:** `host` VPS IP/hostname (zorunlu) · `user` SSH kullanıcı (zorunlu) · `ssh_key` özel anahtar (varsayılan `~/.ssh/id_rsa`) · `app_port` uygulama portu (zorunlu) · `health_check` HTTP yolu (varsayılan `/`) · `deploy_path` sunucu yolu (zorunlu) · `method` deploy yöntemi · `domain` proxy/SSL için (ops.) · `ssl` (domain varsa varsayılan `true`) · `reverse_proxy` auto/nginx/caddy.
-
-**SSH doğrula:**
+**SSH'ı önce doğrula** — kurulamıyorsa hemen dur:
 ```bash
-ssh -i $SSH_KEY -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new $USER@$HOST "echo 'SSH connection OK'"
+ssh -i $SSH_KEY -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new $USER@$HOST "echo OK"
 ```
 
----
+**Reverse proxy** — sunucuda kurulu olanı tespit et (`auto` → Caddy varsa Caddy, yoksa Nginx). Uygulama yalnız `127.0.0.1`'e bağlanır; dışarı **sadece** proxy üzerinden açılır.
 
-## Adım 3: Reverse proxy
-Sunucuda hangi proxy kurulu, tespit et; uygun config'i üret.
-```bash
-ssh -i $SSH_KEY $USER@$HOST "command -v caddy && echo 'CADDY' || (command -v nginx && echo 'NGINX' || echo 'NONE')"
-```
-**Kurallar:** `auto` → kuruluysa Caddy, değilse Nginx (yoksa Nginx kur). `nginx`/`caddy` → belirtileni kullan, yoksa kur.
+<details><summary>Nginx site config</summary>
 
-### Nginx şablonu
-```bash
-ssh -i $SSH_KEY $USER@$HOST "cat > /etc/nginx/sites-available/$APP_NAME" << 'NGINX_CONF'
+```nginx
 server {
-    listen 80;
-    server_name DOMAIN_PLACEHOLDER;
-    location / {
-        proxy_pass http://127.0.0.1:APP_PORT_PLACEHOLDER;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
-    }
+  listen 80;
+  server_name DOMAIN;
+  location / {
+    proxy_pass http://127.0.0.1:APP_PORT;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection 'upgrade';
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+  }
 }
-NGINX_CONF
-ssh -i $SSH_KEY $USER@$HOST "ln -sf /etc/nginx/sites-available/$APP_NAME /etc/nginx/sites-enabled/$APP_NAME"
-ssh -i $SSH_KEY $USER@$HOST "nginx -t && systemctl reload nginx"
 ```
-### Caddy şablonu
-```bash
-ssh -i $SSH_KEY $USER@$HOST "cat >> /etc/caddy/Caddyfile" << 'CADDY_CONF'
-DOMAIN_PLACEHOLDER {
-    reverse_proxy 127.0.0.1:APP_PORT_PLACEHOLDER
+`ln -s` ile `sites-enabled`'a bağla, `nginx -t && systemctl reload nginx`.
+</details>
+
+<details><summary>Caddyfile (SSL dahil, otomatik)</summary>
+
+```
+DOMAIN {
+  reverse_proxy 127.0.0.1:APP_PORT
 }
-CADDY_CONF
-ssh -i $SSH_KEY $USER@$HOST "systemctl reload caddy"
 ```
-`DOMAIN_PLACEHOLDER` → `domain`, `APP_PORT_PLACEHOLDER` → `app_port`.
+`systemctl reload caddy`. Caddy sertifikayı kendi alır/yeniler — ek adım yok.
+</details>
 
----
-
-## Adım 4: SSL sertifikaları
-### Caddy (otomatik)
-Caddy SSL'i kendi yönetir; ekstra adım yok — Caddyfile'da domain tanımlıysa Let's Encrypt sertifikasını alır ve yeniler.
-
-### Nginx (Certbot)
+**SSL (Nginx yolu)** — `ssl: false` veya domain yoksa atla; çıplak IP'ye SSL yapma. Önce DNS'in host'a çözdüğünü doğrula (`dig +short $DOMAIN` = `$HOST`), sonra Certbot:
 ```bash
-ssh -i $SSH_KEY $USER@$HOST "command -v certbot || (apt-get update && apt-get install -y certbot python3-certbot-nginx)"
-ssh -i $SSH_KEY $USER@$HOST "certbot --nginx -d $DOMAIN --non-interactive --agree-tos -m admin@$DOMAIN"
-ssh -i $SSH_KEY $USER@$HOST "systemctl enable certbot.timer && systemctl start certbot.timer"
-ssh -i $SSH_KEY $USER@$HOST "certbot renew --dry-run"
-```
-**Kurallar:** `ssl: false` veya domain yoksa atla. Çıplak IP için SSL yapma. Sertifikadan önce DNS'in sunucu IP'sine çözdüğünü doğrula:
-```bash
-RESOLVED_IP=$(dig +short $DOMAIN)
-if [ "$RESOLVED_IP" != "$HOST" ]; then
-  echo "UYARI: $DOMAIN -> $RESOLVED_IP (beklenen $HOST). SSL başarısız olur."
-fi
+certbot --nginx -d $DOMAIN --non-interactive --agree-tos -m admin@$DOMAIN
+systemctl enable certbot.timer   # otomatik yenileme
 ```
 
 ---
 
-## Adım 5: Deploy
+## Faz 3 — Takas: eskiyi sakla, yeniyi koy
 
-### 5a. Mevcut sürümü yedekle
+**Önce çalışan sürümü yedekle** (zaman damgalı `releases/`, son 3 tutulur):
 ```bash
-ssh -i $SSH_KEY $USER@$HOST "mkdir -p $DEPLOY_PATH/releases"
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 ssh -i $SSH_KEY $USER@$HOST "
-  if [ -d $DEPLOY_PATH/current ]; then
-    cp -a $DEPLOY_PATH/current $DEPLOY_PATH/releases/$TIMESTAMP
-    echo 'Yedek: releases/$TIMESTAMP'
-  else
-    echo 'Yedeklenecek mevcut sürüm yok (ilk deploy)'
-  fi
+  mkdir -p $DEPLOY_PATH/releases
+  [ -d $DEPLOY_PATH/current ] && cp -a $DEPLOY_PATH/current $DEPLOY_PATH/releases/$(date +%Y%m%d_%H%M%S)
+  cd $DEPLOY_PATH/releases && ls -dt */ | tail -n +4 | xargs -r rm -rf
 "
-# Eski release'leri buda — son 3'ü tut
-ssh -i $SSH_KEY $USER@$HOST "cd $DEPLOY_PATH/releases && ls -dt */ | tail -n +4 | xargs -r rm -rf"
 ```
 
-### 5b. Docker deploy
+**Docker** — imajı yerelde derle, taşı, konteyneri değiştir:
 ```bash
-docker build -t $APP_NAME:latest .
-docker save $APP_NAME:latest | gzip > /tmp/$APP_NAME.tar.gz
-scp -i $SSH_KEY /tmp/$APP_NAME.tar.gz $USER@$HOST:/tmp/
+docker build -t $APP:latest .
+docker save $APP:latest | gzip | ssh -i $SSH_KEY $USER@$HOST "gunzip | docker load"
 ssh -i $SSH_KEY $USER@$HOST "
-  docker load < /tmp/$APP_NAME.tar.gz
-  docker stop $APP_NAME 2>/dev/null || true
-  docker rm $APP_NAME 2>/dev/null || true
-  docker run -d --name $APP_NAME --restart unless-stopped \
-    -p 127.0.0.1:$APP_PORT:$APP_PORT $APP_NAME:latest
-  rm /tmp/$APP_NAME.tar.gz
+  docker rm -f $APP 2>/dev/null || true
+  docker run -d --name $APP --restart unless-stopped -p 127.0.0.1:$APP_PORT:$APP_PORT $APP:latest
 "
-rm /tmp/$APP_NAME.tar.gz
 ```
 
-### 5c. Bare-metal — Node.js + PM2
+**Bare-metal** — kaynağı `rsync`'le, bağımlılığı kur, process manager'la başlat:
 ```bash
-rsync -avz --delete --exclude node_modules --exclude .git --exclude .env.local \
+rsync -avz --delete --exclude .git --exclude node_modules --exclude .venv \
   -e "ssh -i $SSH_KEY" ./ $USER@$HOST:$DEPLOY_PATH/current/
-ssh -i $SSH_KEY $USER@$HOST "
-  cd $DEPLOY_PATH/current
-  npm ci --production
-  command -v pm2 || npm install -g pm2
-  pm2 stop $APP_NAME 2>/dev/null || true
-  pm2 delete $APP_NAME 2>/dev/null || true
-  pm2 start ecosystem.config.js --name $APP_NAME 2>/dev/null || pm2 start npm --name $APP_NAME -- start
-  pm2 save
-  pm2 startup systemd -u $USER --hp /home/$USER 2>/dev/null || true
-"
 ```
 
-### 5d. Bare-metal — Python + systemd
-```bash
-rsync -avz --delete --exclude __pycache__ --exclude .git --exclude .venv --exclude .env.local \
-  -e "ssh -i $SSH_KEY" ./ $USER@$HOST:$DEPLOY_PATH/current/
-ssh -i $SSH_KEY $USER@$HOST "
-  cd $DEPLOY_PATH/current
-  python3 -m venv venv
-  ./venv/bin/pip install -r requirements.txt 2>/dev/null || ./venv/bin/pip install -e . 2>/dev/null
-  if [ -f manage.py ]; then
-    EXEC_CMD='$DEPLOY_PATH/current/venv/bin/gunicorn --bind 127.0.0.1:$APP_PORT --workers 3 config.wsgi:application'
-  elif [ -f app.py ] || [ -f main.py ]; then
-    ENTRY=\$([ -f app.py ] && echo app.py || echo main.py)
-    EXEC_CMD='$DEPLOY_PATH/current/venv/bin/python \$ENTRY'
-  fi
-  sudo tee /etc/systemd/system/$APP_NAME.service > /dev/null << SERVICE
+| Runtime | Bağımlılık + başlatma |
+|---|---|
+| Node | `npm ci --production` → PM2: `pm2 start ecosystem.config.js --name $APP || pm2 start npm --name $APP -- start` → `pm2 save` |
+| Python | `python3 -m venv venv && venv/bin/pip install -r requirements.txt` → systemd (gunicorn/uvicorn ya da `python main.py`) |
+| Go | yerelde `GOOS=linux GOARCH=amd64 go build -o $APP` → `scp` → systemd |
+
+systemd birimi (Python/Go için ExecStart'ı runtime'a göre doldur):
+```ini
 [Unit]
-Description=$APP_NAME
 After=network.target
 [Service]
 Type=simple
 User=$USER
 WorkingDirectory=$DEPLOY_PATH/current
-ExecStart=\$EXEC_CMD
+ExecStart=<runtime komutu>
 Restart=always
-RestartSec=5
 Environment=PORT=$APP_PORT
 [Install]
 WantedBy=multi-user.target
-SERVICE
-  sudo systemctl daemon-reload
-  sudo systemctl enable $APP_NAME
-  sudo systemctl restart $APP_NAME
-"
 ```
-
-### 5e. Bare-metal — Go + systemd
-```bash
-GOOS=linux GOARCH=amd64 go build -o /tmp/$APP_NAME .
-scp -i $SSH_KEY /tmp/$APP_NAME $USER@$HOST:$DEPLOY_PATH/current/$APP_NAME
-ssh -i $SSH_KEY $USER@$HOST "
-  chmod +x $DEPLOY_PATH/current/$APP_NAME
-  sudo tee /etc/systemd/system/$APP_NAME.service > /dev/null << SERVICE
-[Unit]
-Description=$APP_NAME
-After=network.target
-[Service]
-Type=simple
-User=$USER
-WorkingDirectory=$DEPLOY_PATH/current
-ExecStart=$DEPLOY_PATH/current/$APP_NAME
-Restart=always
-RestartSec=5
-Environment=PORT=$APP_PORT
-[Install]
-WantedBy=multi-user.target
-SERVICE
-  sudo systemctl daemon-reload
-  sudo systemctl enable $APP_NAME
-  sudo systemctl restart $APP_NAME
-"
-```
-
-> **Not (.NET / varsayılan stack):** Docker önerilir (5b). Bare-metal gerekirse `dotnet publish -c Release`
-> çıktısını rsync'le ve yukarıdaki systemd şablonunu `ExecStart=/usr/bin/dotnet $DEPLOY_PATH/current/App.dll` ile uyarla.
+`systemctl daemon-reload && systemctl enable --now $APP`.
 
 ---
 
-## Adım 6: Health-check
-Deploy'dan hemen sonra; servis sağlıklı olana dek 30 sn'ye kadar bekle.
+## Faz 4 — Sağlık kapısı
+
+Takastan hemen sonra; 200 gelene dek ~30 sn dene. **Geçmezse Faz 5'i otomatik tetikle.**
 ```bash
-HEALTH_URL="http://127.0.0.1:$APP_PORT$HEALTH_CHECK"
-MAX_RETRIES=6
-RETRY_DELAY=5
-ssh -i $SSH_KEY $USER@$HOST "
-  for i in \$(seq 1 $MAX_RETRIES); do
-    STATUS=\$(curl -s -o /dev/null -w '%{http_code}' $HEALTH_URL 2>/dev/null)
-    if [ \"\$STATUS\" = '200' ]; then echo 'Health check GEÇTİ (HTTP 200)'; exit 0; fi
-    echo \"Deneme \$i/$MAX_RETRIES: HTTP \$STATUS — ${RETRY_DELAY}s sonra tekrar...\"
-    sleep $RETRY_DELAY
+ssh -i $SSH_KEY $USER@$HOST '
+  for i in $(seq 1 6); do
+    [ "$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:'"$APP_PORT$HEALTH_CHECK"')" = 200 ] \
+      && { echo "Sağlık kapısı GEÇTİ"; exit 0; }
+    sleep 5
   done
-  echo 'Health check BAŞARISIZ ($MAX_RETRIES deneme)'
-  exit 1
-"
+  echo "Sağlık kapısı BAŞARISIZ"; exit 1
+'
 ```
-**Process doğrulama:**
+Ayrıca process ayakta mı doğrula: Docker'da `docker ps`, aksi halde `systemctl is-active $APP` / `pm2 show $APP`.
+
+---
+
+## Faz 5 — Geri dönüş
+
+Takası geri al: `releases/`'teki en son sürümü `current`'a koy, servisi yeniden başlat, sağlık kapısını (Faz 4) tekrarla.
 ```bash
+LATEST=$(ssh -i $SSH_KEY $USER@$HOST "ls -dt $DEPLOY_PATH/releases/*/ 2>/dev/null | head -1")
+[ -z "$LATEST" ] && { echo "HATA: yedek yok — geri dönüş yapılamaz"; exit 1; }
 ssh -i $SSH_KEY $USER@$HOST "
-  if [ '$METHOD' = 'docker' ]; then
-    docker ps --filter name=$APP_NAME --format '{{.Status}}'
-  else
-    systemctl is-active $APP_NAME 2>/dev/null || pm2 show $APP_NAME 2>/dev/null | grep status
-  fi
+  rm -rf $DEPLOY_PATH/current && cp -a $LATEST $DEPLOY_PATH/current
+  { docker rm -f $APP 2>/dev/null && docker run -d --name $APP --restart unless-stopped \
+      -p 127.0.0.1:$APP_PORT:$APP_PORT $APP:previous; } \
+    || systemctl restart $APP || pm2 restart $APP
 "
 ```
-**Health-check başarısızsa otomatik rollback tetikle.**
 
 ---
 
-## Adım 7: Rollback
-`releases/`'teki en son yedeği geri yükle ve servisi yeniden başlat.
-```bash
-LATEST_RELEASE=$(ssh -i $SSH_KEY $USER@$HOST "ls -dt $DEPLOY_PATH/releases/*/ 2>/dev/null | head -1")
-if [ -z "$LATEST_RELEASE" ]; then echo "HATA: Yedek yok. Rollback yapılamaz."; exit 1; fi
-echo "Rollback: $LATEST_RELEASE"
-ssh -i $SSH_KEY $USER@$HOST "
-  rm -rf $DEPLOY_PATH/current
-  cp -a $LATEST_RELEASE $DEPLOY_PATH/current
-  if [ '$METHOD' = 'docker' ]; then
-    docker stop $APP_NAME 2>/dev/null || true
-    docker rm $APP_NAME 2>/dev/null || true
-    docker run -d --name $APP_NAME --restart unless-stopped \
-      -p 127.0.0.1:$APP_PORT:$APP_PORT $APP_NAME:previous
-  else
-    sudo systemctl restart $APP_NAME 2>/dev/null || pm2 restart $APP_NAME 2>/dev/null
-  fi
-  echo 'Rollback tamam.'
-"
-# Rollback sonrası health-check (Adım 6 tekrar)
-```
+## Tek-komut scriptler (opsiyonel)
+
+Başarılı deploy sonrası **sor:** "Gelecekte tek komutla deploy/update için `deploy.sh` ve `update.sh` üreteyim mi?"
+
+Üretirsen **jenerik şablon kullanma** — gerçek projeyi analiz et (package.json scripts / Dockerfile / Makefile / docker-compose / `.env.example`) ve tam build+start adımlarını çıkar. İki script:
+- **`deploy.sh`** — ilk kurulum + deploy: config yükle · SSH doğrula · proxy + SSL · `releases/`'e yedek · projeye özel build · transfer · bağımlılık · start · retry'li sağlık kapısı · başarısızlıkta geri dönüş.
+- **`update.sh`** — hızlı güncelleme: config · yedek · kod senkronu · (gerekirse) build/bağımlılık · restart · sağlık kapısı · başarısızlıkta geri dönüş.
+
+Kurallar: `chmod +x`; `.deploy.yml` kimlik taşırsa `.gitignore` sor; mevcut scripti onaysız ezme (diff göster); kimlik sabitleme yok — hep `.deploy.yml`'den oku; projeye-özel her kararı yorumla açıkla.
 
 ---
 
-## Adım 8: Deploy scriptleri üret
-Başarılı deploy sonrası, **projeye özel** `deploy.sh` ve `update.sh` üret ki gelecekte tek komutla deploy/update yapılsın.
-
-**Her zaman sor:** "Deploy başarılı. Gelecekte tek komutla deploy/update için `deploy.sh` ve `update.sh` scriptlerini oluşturmamı ister misiniz?"
-
-### Neden projeye özel?
-Jenerik script her durumu kapsayamaz. Her projenin farklı build adımı (npm build, go build, pip install, docker compose, Makefile), runtime config'i (env, .env), process manager'ı (PM2/systemd/Docker), bağımlılık kurulumu, dosya hariç-tutmaları ve pre/post hook'ları (migration, cache temizleme) vardır. **Jenerik şablon KULLANMA** — gerçek projeyi analiz et.
-
-### Nasıl üretilir
-1. Projeyi analiz et — package.json scripts, Dockerfile, Makefile, CI/CD, docker-compose.yml, .env.example
-2. Bu projenin tam build/start komutlarını belirle
-3. Projeye özel ihtiyaçları kontrol et: build adımı? migration? env? özel start? docker-compose? pre/post hook?
-4. Bu projeye uyarlanmış iki script üret
-
-### deploy.sh — ilk kurulum + deploy
-Şunları içermeli (projeye uyarlanmış): `.deploy.yml` config yükleme · SSH doğrulama · reverse proxy kurulumu (Adım 3) · SSL (Adım 4) · `releases/`'e yedek · projeye özel build · transfer+deploy (Adım 1) · bağımlılık kurulumu · process start/restart · retry'li health-check · başarısızlıkta otomatik rollback · release budama (son 3).
-
-### update.sh — hızlı kod güncelleme
-Şunları içermeli: config yükleme · yedek · kod senkronu (rsync veya docker build+transfer) · gereğinde bağımlılık kurulumu · gereğinde build · process restart · retry'li health-check · başarısızlıkta otomatik rollback.
-
-### Script iskelet şablonu
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-# ============================================
-# [deploy.sh | update.sh] — [İlk kurulum | Hızlı güncelleme]
-# Üretildiği proje: [proje-adı]
-# Proje tipi: [Node.js/Python/Go/Docker/...]
-# Deploy yöntemi: [docker | pm2 | systemd]
-# ============================================
-# --- Config (.deploy.yml'den) ---
-# --- SSH doğrulama ---
-# --- Mevcut sürüm yedeği ---
-# --- [PROJE-ÖZEL: Build] ---
-# --- [PROJE-ÖZEL: Transfer] ---
-# --- [PROJE-ÖZEL: Bağımlılık kurulumu] ---
-# --- [PROJE-ÖZEL: Migration (gerekirse)] ---
-# --- [PROJE-ÖZEL: Start/restart] ---
-# --- Health-check ---
-# --- Başarısızlıkta rollback ---
-```
-
-### Script üretim kuralları
-- Çalıştırma izni ver: `chmod +x deploy.sh update.sh`
-- `.deploy.yml` sunucu kimliği taşıyabilir → `.gitignore`'a alınsın mı diye sor
-- Mevcut scriptleri onaysız üzerine yazma; varsa diff göster ve sor
-- Scriptler config'i `.deploy.yml`'den okur — sabit kimlik yok
-- Her projeye-özel kararı yorumla açıkla (kullanıcı sonra değiştirebilsin)
-- Scriptleri zihinsel test et — her komutu bu projeye göre izle
-
----
-
-## Adım 9: Güvenlik kuralları
-Zorunlu, asla atlanmaz:
-1. **Onaysız deploy yok** — deploy planını (yöntem, host, domain, port) göster ve açık onay bekle.
-2. **Deploy öncesi hep yedek** — `releases/`'e zaman damgalı; yedek başarısızsa iptal.
-3. **Deploy sonrası hep health-check** — HTTP + process; başarısızsa otomatik rollback.
-4. **Son 3 release'i tut** — başarılı deploy sonrası buda; hepsini silme.
-5. **Hedefi bilmeden prod'a deploy etme** — host/deploy_path/domain'i onayla.
-6. **Önce SSH doğrula** — bağlantı kurulamıyorsa hızlı başarısız ol.
-7. **Portları doğrudan açma** — uygulama `127.0.0.1`'e bağlanır, yalnız proxy üzerinden erişilir.
-8. **Domain varsa SSL zorunlu** — `domain` set ve `ssl` açıkça `false` değilse hep SSL kur.
+## Değişmez kurallar
+1. **Onaysız deploy yok** — yöntem/host/domain/port planını göster, onay bekle.
+2. **Takastan önce hep yedek** — `releases/`'e zaman damgalı; yedek başarısızsa iptal.
+3. **Takastan sonra hep sağlık kapısı** — HTTP + process; geçmezse otomatik geri dönüş.
+4. **Son 3 sürümü tut** — hepsini silme.
+5. **Hedefi bilmeden prod'a deploy etme** — host/deploy_path/domain onaylı olmalı.
+6. **Önce SSH doğrula** — bağlanamıyorsan hızlı başarısız ol.
+7. **Portu doğrudan açma** — uygulama `127.0.0.1`'e bağlanır, dışarı yalnız proxy'den.
+8. **Domain varsa SSL zorunlu** — `ssl` açıkça `false` değilse hep kur.
