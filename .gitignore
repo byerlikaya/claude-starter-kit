@@ -1,0 +1,7 @@
+# macOS
+.DS_Store
+
+# Kit gelistirme dokumanlari — lokal kalir, yayina gitmez.
+# (Bu iki kural yalniz kitin KENDI deposuna aittir; claude-starter/ payload'i ETKILENMEZ.)
+/CLAUDE.md
+/docs/
