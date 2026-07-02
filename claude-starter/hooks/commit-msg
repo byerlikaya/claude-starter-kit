@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# §4.1 iz-denetcisi (commit-msg): commit mesajinda AI-izi / vendor adi / co-author yakalar.
+set -euo pipefail
+HERE="$(cd "$(dirname "$0")" && pwd)"
+BL="$HERE/trace-blocklist.txt"
+MSG_FILE="${1:-}"
+[ -f "$BL" ] || exit 0
+[ -n "$MSG_FILE" ] && [ -f "$MSG_FILE" ] || exit 0
+
+HIT=0
+while IFS= read -r pat || [ -n "$pat" ]; do
+  case "$pat" in ''|\#*) continue;; esac
+  if grep -iqE -- "$pat" "$MSG_FILE"; then
+    echo "IZ-DENETCISI (mesaj): yasakli ifade -> '$pat' (§4.1)"
+    HIT=1
+  fi
+done < "$BL"
+
+if [ "$HIT" -ne 0 ]; then
+  echo "Commit mesaji reddedildi. Insansi, teknik Turkce yaz; iz/marka birakma."
+  exit 1
+fi
+exit 0

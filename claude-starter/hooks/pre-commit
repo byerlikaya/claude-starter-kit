@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# §4.1/§4.2 iz-denetcisi (pre-commit): staged EKLENEN satirlarda AI-izi / vendor adi yakalar.
+# Atlamak §4.5 geregi acik talep ister (git commit --no-verify).
+set -euo pipefail
+HERE="$(cd "$(dirname "$0")" && pwd)"
+BL="$HERE/trace-blocklist.txt"
+[ -f "$BL" ] || exit 0
+
+# Yalniz eklenen icerik satirlari (+ ile baslar, dosya-basligi +++ haric).
+ADDED="$(git diff --cached --unified=0 -- . | grep -E '^\+' | grep -Ev '^\+\+\+' || true)"
+[ -z "$ADDED" ] && exit 0
+
+HIT=0
+while IFS= read -r pat || [ -n "$pat" ]; do
+  case "$pat" in ''|\#*) continue;; esac
+  if printf '%s\n' "$ADDED" | grep -iqE -- "$pat"; then
+    echo "IZ-DENETCISI: eklenen kodda yasakli ifade -> '$pat' (§4.1/§4.2)"
+    HIT=1
+  fi
+done < "$BL"
+
+if [ "$HIT" -ne 0 ]; then
+  echo "-----------------------------------------------------------"
+  echo "Commit durduruldu. Ifadeyi kaldir (yapay zeka izi / vendor adi sizmaz)."
+  echo "Bilincli istisna: 'git commit --no-verify' — yalniz ACIK taleple (§4.5)."
+  exit 1
+fi
+exit 0
