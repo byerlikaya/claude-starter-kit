@@ -23,7 +23,7 @@ if [ -z "$TR" ]; then
     [ -n "$cand" ] && { TR="$cand"; break; }
   done
 fi
-[ -n "$TR" ] && [ -f "$TR" ] || { echo "context-usage: transcript bulunamadi (arg ver ya da hook stdin kullan)"; exit 1; }
+[ -n "$TR" ] && [ -f "$TR" ] || { echo "context-usage: transcript bulunamadi (arg ver ya da hook stdin kullan)" >&2; exit 1; }
 
 # Son ana-context turunun (sidechain degil, cache_read'i olan) usage toplami.
 if command -v jq >/dev/null 2>&1; then
@@ -36,7 +36,7 @@ else
   # jq yoksa yaklasik: son cache_read (context'in buyuk kismi).
   TOTAL="$(grep -o '"cache_read_input_tokens":[0-9]*' "$TR" | tail -1 | grep -o '[0-9]*')"
 fi
-[ -n "${TOTAL:-}" ] || { echo "context-usage: usage okunamadi"; exit 1; }
+[ -n "${TOTAL:-}" ] || { echo "context-usage: usage okunamadi" >&2; exit 1; }
 
 PCT="$(awk -v t="$TOTAL" -v w="$WINDOW" 'BEGIN{printf "%.1f", (t/w)*100}')"
 LEVEL="$(awk -v p="$PCT" 'BEGIN{ if(p+0<50) print "devam"; else if(p+0<75) print "orta (ilk faz sinirinda handoff)"; else print "handoff+clear" }')"

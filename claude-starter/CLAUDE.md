@@ -70,12 +70,10 @@ Her task bitiminde oturum-sağlığı satırını yanıtın **SONUNA** ekle:
 Kullanıcı manuel ilerlemeyi tercih eder; ne zaman `/clear` veya yeni oturum
 gerektiğini **otomatik fark edip bildir** — kullanıcı kendi takip etmek zorunda kalmasın.
 
-Doluluğu **tahmin etme.** Asistan `/context`'i çalıştıramaz; gerçek doluluğu satırı vermeden önce ölç:
-```
-bash .claude/hooks/context-usage.sh
-```
-Transcript'teki son ana-context turunun API `usage`'ini (input + cache_read + cache_creation) okur =
-`/context`'in gösterdiği token; `%.. → seviye` basar. Ölçemezsen **% uydurma** — "ölçülemedi" de. Eşikler:
+Doluluğu **tahmin etme.** Asistan `/context`'i çalıştıramaz; onun yerine `UserPromptSubmit` hook'u her tur
+`context-usage.sh`'i çalıştırıp gerçek `🔋 Oturum: %.. (token) → seviye` satırını context'e otomatik enjekte
+eder (transcript'teki `input + cache_read + cache_creation` = `/context` sayısı). O değeri kullan; taze/kesin
+okuma için elle `bash .claude/hooks/context-usage.sh`. Enjekte satır yoksa **% uydurma** — "ölçülemedi" de. Eşikler:
 - < %50 → **devam**
 - %50–75 → **orta** (devam; ilk uygun faz sınırında handoff)
 - > %75 → **handoff+clear** (`handoff` skill'i + `/clear`)

@@ -28,13 +28,11 @@ Yanıtın EN SONUNA tek satır ekler:
 
 `🔋 Oturum: [düşük/orta/yüksek doluluk] · Öneri: [devam / handoff+clear / yeni oturum]`
 
-**Gerçek doluluğu ölç** (tahmin YASAK): satırı vermeden önce çalıştır:
-```
-bash .claude/hooks/context-usage.sh
-```
-Transcript'teki son ana-context turunun API `usage`'ini (input + cache_read + cache_creation) okur =
-`/context`'in gösterdiği token. `%..  →  seviye` basar. Pencere farklıysa `CONTEXT_WINDOW=... bash ...`.
-Ölçemezsen (transcript yok/erişilemez) **% uydurma** — "ölçülemedi" de, yalnız konu-değişimini bildir.
+**Gerçek doluluk ÖLÇÜLÜR, tahmin YASAK.** `UserPromptSubmit` hook'u her tur `context-usage.sh`'i
+çalıştırıp gerçek `🔋 Oturum: %.. (token) → seviye` satırını context'e otomatik enjekte eder — o değeri
+kullan. Kesin/taze okuma istersen elle çalıştır: `bash .claude/hooks/context-usage.sh`
+(transcript'teki son ana-context turunun `input + cache_read + cache_creation`'ı = `/context` sayısı).
+Enjekte satır yoksa (hook kapalı/transcript erişilemez) **% uydurma** — "ölçülemedi" de, yalnız konu-değişimini bildir.
 
 Eşikler (ölçülen % üzerinden):
 - < %50 → **devam**

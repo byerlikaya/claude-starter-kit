@@ -66,8 +66,11 @@ bash .claude/eval/routing-eval.sh    # davranışsal routing
   ci-pipeline, dependency-audit, adr, release, i18n-integrity, handoff, testing, frontend,
   frontend-rn-expo, trace-scan, token-budget.
 - **5 slash komut** (`.claude/commands/`): `/plan` · `/review` · `/ship` · `/handoff` · `/simplify`.
-- **Hook'lar** (`.claude/hooks/`): `pre-commit` + `commit-msg` (iz-denetçisi), `guard-bash.sh` (destrüktif blok), `trace-blocklist.txt`.
-- **settings.json**: Claude Code izin (ask/deny) + PreToolUse guard yapılandırması.
+- **Hook'lar** (`.claude/hooks/`): `pre-commit` + `commit-msg` (iz-denetçisi), `guard-bash.sh` (destrüktif blok), `trace-blocklist.txt`, **`context-usage.sh`** (gerçek context ölçümü — aşağı).
+- **settings.json**: izin (ask/deny) + PreToolUse guard + **UserPromptSubmit** (her tur gerçek context enjekte eder).
+
+### Gerçek context ölçümü (özellik)
+Asistan `/context` komutunu çalıştıramaz — bu yüzden çoğu setup oturum doluluğunu **tahmin eder**. Bu kit etmez: `context-usage.sh`, transcript'teki son turun API `usage`'ından (`input + cache_read + cache_creation`) **gerçek** token sayısını okur (= `/context`'in gösterdiği). `UserPromptSubmit` hook'u bunu her tur otomatik context'e enjekte eder, böylece oturum-sağlığı satırı (`🔋 %.. → devam/handoff`) **ölçüme** dayanır, tahmine değil. Elle: `bash .claude/hooks/context-usage.sh` (pencere farklıysa `CONTEXT_WINDOW=...`).
 - **CLAUDE.md** (kök): davranış · dört ilke · iş akışı · DoD · token disiplini · güvenilmeyen içerik · §4 yasaklar.
 - **AGENT_TEMPLATE.md**: yeni ajan/skill açma kontratı.
 
