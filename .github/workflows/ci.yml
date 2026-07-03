@@ -1,0 +1,34 @@
+name: kit-ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  dogrula:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sozdizimi - start.sh
+        run: bash -n start.sh
+
+      - name: Smoke-test - kaynak (budanmamis, 10 ajan)
+        run: bash claude-starter/eval/smoke-test.sh
+
+      - name: 4 profil e2e prova
+        run: |
+          set -euo pipefail
+          for pf in backend frontend mobile fullstack; do
+            P="$RUNNER_TEMP/proj-$pf"
+            rm -rf "$P"; mkdir -p "$P"
+            cp start.sh "$P/"
+            cp -R claude-starter "$P/"
+            # Profil bayrakla; DevArchitecture onayini 'hayir' ile gec (klon denemesin)
+            ( cd "$P" && printf 'hayir\n' | bash start.sh --"$pf" >/dev/null )
+            ( cd "$P" && bash .claude/eval/smoke-test.sh >/dev/null )
+            A=$(ls "$P"/.claude/agents/*.md | wc -l | tr -d ' ')
+            S=$(ls -d "$P"/.claude/skills/*/ | wc -l | tr -d ' ')
+            echo "[$pf] ajan=$A skill=$S smoke=OK"
+          done
