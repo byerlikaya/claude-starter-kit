@@ -7,9 +7,15 @@ MSG_FILE="${1:-}"
 [ -f "$BL" ] || exit 0
 [ -n "$MSG_FILE" ] && [ -f "$MSG_FILE" ] || exit 0
 
+# Repo-koku istisna listesi (opsiyonel): TAM-satir gecen blocklist deseni ATLANIR (payload'a dahil degil).
+AL=""
+GITROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+[ -n "$GITROOT" ] && [ -f "$GITROOT/.trace-allowlist.txt" ] && AL="$GITROOT/.trace-allowlist.txt"
+
 HIT=0
 while IFS= read -r pat || [ -n "$pat" ]; do
   case "$pat" in ''|\#*) continue;; esac
+  if [ -n "$AL" ] && grep -qxF -- "$pat" "$AL"; then continue; fi
   if grep -iqE -- "$pat" "$MSG_FILE"; then
     echo "IZ-DENETCISI (mesaj): yasakli ifade -> '$pat' (§4.1)"
     HIT=1

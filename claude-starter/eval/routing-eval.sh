@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Davranissal eval: golden prompt -> beklenen hedefe trigger ile yonleniyor mu (deterministik).
-# Modeli/asistani CALISTIRMAZ; trigger tasariminin routing dogrulugunu statik proxy'ler:
+# Claude Code CALISTIRMAZ; trigger tasariminin routing dogrulugunu statik proxy'ler:
 #   1) Golden routing  — her ornek prompt, beklenen hedefin bir trigger'ini (substring) icermeli.
 #   2) Ajan cakismasi  — iki FARKLI ajan ayni trigger phrase'ini paylasmamali (routing belirsizligi).
 # Turkce diyakritik iki tarafta da normalize edilir (guvenlik == güvenlik); diyakritiksiz yazan

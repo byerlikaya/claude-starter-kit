@@ -1,0 +1,10 @@
+# Iz-denetcisi istisna listesi — YALNIZ bu repoya ozel (kitin kendi kaynagi).
+# Buraya yazilan TAM-satir bir blocklist deseni, iz-denetcisi tarafindan ATLANIR.
+# Bu dosya claude-starter/ payload'ina DAHIL DEGIL; start.sh onu kurulan projeye tasimaz,
+# yani tuketici projelerde blocklist tam siki kalir (§4.1).
+# Not: gercek iz imzalari (co-author satiri, '...ile uretildi' footer'lari, robot emoji,
+# imza etiketleri) burada YER ALMAZ; onlar hala bloklanir. Yalnizca urun-adi muaf tutulur.
+#
+# Gerekce: bu kit bir Claude Code kitidir; kendi kaynaginda urunun adini anmasi mesrudur.
+# Tuketici projede ayni ad bir iz oldugu icin orada muaf DEGILdir.
+Claude Code

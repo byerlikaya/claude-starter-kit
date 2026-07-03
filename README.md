@@ -54,7 +54,7 @@ bash .claude/eval/routing-eval.sh    # davranışsal routing
 ```
 
 - **smoke-test:** frontmatter, trigger phrase, ajan sayısı, sahipsiz-skill referansı, stub kalıntısı, hook/settings hazırlığı.
-- **routing-eval:** örnek prompt'lar beklenen ajan/skill'e trigger ile yönleniyor mu (golden routing) + iki ajan aynı trigger'ı paylaşıyor mu (çakışma). Türkçe diyakritiği normalize eder; budanmış kurulumda eksik hedefi atlar. Modeli çalıştırmaz, statiktir.
+- **routing-eval:** örnek prompt'lar beklenen ajan/skill'e trigger ile yönleniyor mu (golden routing) + iki ajan aynı trigger'ı paylaşıyor mu (çakışma). Türkçe diyakritiği normalize eder; budanmış kurulumda eksik hedefi atlar. Claude Code çalıştırmaz.
 
 ## İçindekiler
 

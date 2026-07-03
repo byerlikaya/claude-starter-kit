@@ -2,6 +2,8 @@
 # Yuksek-isabet varsayilanlar: gundelik kodda yanlis-pozitif yapmayacak ifadeler.
 # "model", "asistan" gibi tek basina cok gecen sozcukler KASITLI yok (yanlis-pozitif riski).
 # Kendi vendor/sablon adini asagiya EKLE (§4.2) — commit oncesi yakalansin.
+# Bir desen belirli bir repoda mesruysa: o reponun kokune .trace-allowlist.txt koy ve
+# deseni (TAM satir) oraya yaz -> yalniz o repoda muaf. (Payload'a dahil degildir.)
 
 Co-Authored-By
 Generated with

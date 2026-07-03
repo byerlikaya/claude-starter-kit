@@ -6,6 +6,12 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 BL="$HERE/trace-blocklist.txt"
 [ -f "$BL" ] || exit 0
 
+# Repo-koku istisna listesi (opsiyonel): burada TAM-satir gecen blocklist deseni ATLANIR.
+# Bu dosya payload'a dahil DEGIL; yalniz bulundugu repoya ozeldir (kit kendi adini anabilsin).
+AL=""
+GITROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+[ -n "$GITROOT" ] && [ -f "$GITROOT/.trace-allowlist.txt" ] && AL="$GITROOT/.trace-allowlist.txt"
+
 # Yalniz eklenen icerik satirlari (+ ile baslar, dosya-basligi +++ haric).
 ADDED="$(git diff --cached --unified=0 -- . | grep -E '^\+' | grep -Ev '^\+\+\+' || true)"
 [ -z "$ADDED" ] && exit 0
@@ -13,6 +19,7 @@ ADDED="$(git diff --cached --unified=0 -- . | grep -E '^\+' | grep -Ev '^\+\+\+'
 HIT=0
 while IFS= read -r pat || [ -n "$pat" ]; do
   case "$pat" in ''|\#*) continue;; esac
+  if [ -n "$AL" ] && grep -qxF -- "$pat" "$AL"; then continue; fi
   if printf '%s\n' "$ADDED" | grep -iqE -- "$pat"; then
     echo "IZ-DENETCISI: eklenen kodda yasakli ifade -> '$pat' (§4.1/§4.2)"
     HIT=1
