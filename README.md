@@ -13,8 +13,19 @@ Yığın-bağımsızdır; hangi projeye kurulursa kurulsun aynı disiplin geçer
 ## Kurulum
 
 ```bash
-bash start.sh
+bash start.sh [--backend | --frontend | --fullstack | --mobile]
 ```
+
+Profil, kurulacak **ajan + skill** setini belirler (bayrak verilmezse betik interaktif sorar; varsayılan `fullstack`). Core ajan/skiller her profilde kurulur; yalnız stack-özel olanlar profile göre eklenir/çıkarılır:
+
+| Profil | Ekstra ajan | Ekstra skiller | Backend temeli (DevArchitecture) |
+|---|---|---|---|
+| `--backend` | backend-expert · database-expert | db-migration · devarch-module · sonarqube-check | ✅ onay kapısı |
+| `--frontend` | frontend-expert | frontend · i18n-integrity | — atlanır |
+| `--mobile` | frontend-expert | frontend · frontend-rn-expo · i18n-integrity | — atlanır |
+| `--fullstack` | üçü birden | hepsi | ✅ onay kapısı |
+
+> **Mobil için ayrı ajan yoktur** — mobil, `frontend-expert` ajanı üzerine `frontend-rn-expo` **skill katmanı** olarak gelir (ajan = tetik, skill = nasıl). Frontend ile mobil aynı ajanı paylaşır; fark yalnız RN/Expo skill'idir.
 
 > **Amaç & sınır:** Bu kit, **sıfırdan** bir projeyi DevArchitecture backend temeli üzerine kurmak
 > için tasarlandı. `start.sh` ilk adımda bunu bir **onay kapısıyla** ele alır: temel projede yoksa

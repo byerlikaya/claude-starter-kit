@@ -18,7 +18,12 @@ for f in "$AGENTS"/*.md; do
   grep -qE '^model:' "$f" || true   # model yoksa inherit (gecerli)
   grep -q 'Trigger phrases:' "$f" || fail "$n: Trigger phrases yok"
 done
-[ "$AC" -eq 10 ] && pass "10 ajan bulundu" || fail "ajan sayisi 10 degil: $AC"
+# Core ajanlar profil ne olursa olsun bulunmali; stack-ozel ajanlar (backend/database/
+# frontend-expert) kurulum profiline gore degisir, o yuzden sabit sayi beklenmez.
+for c in planner security-expert privacy-agent test-expert review-agent commit-agent session-manager; do
+  [ -f "$AGENTS/$c.md" ] || fail "core ajan eksik: $c"
+done
+[ "$AC" -ge 7 ] && pass "$AC ajan bulundu (core 7 tam)" || fail "ajan sayisi 7 core'un altinda: $AC"
 
 echo "== 2) Skill frontmatter & trigger =="
 for d in "$SKILLS"/*/; do

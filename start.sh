@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Kurucu: yanindaki claude-starter/ klasorunu ./.claude ve ./CLAUDE.md'ye kurar.
-# ONCE backend temelini (DevArchitecture) onay kapisiyla projeye dahil eder,
-# SONRA kiti kurar; en son claude-starter/'i ve kendini siler.
-# start.sh + claude-starter/ AYNI dizinde olmali. Proje kokunde:  bash start.sh
+# Profile gore (backend/frontend/fullstack/mobile) ajan+skill setini secer;
+# backend iceren profillerde backend temelini (DevArchitecture) onay kapisiyla dahil eder;
+# sonra kiti kurar; en son claude-starter/'i ve kendini siler.
+# start.sh + claude-starter/ AYNI dizinde olmali. Proje kokunde:  bash start.sh [--profil]
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SRC="$HERE/claude-starter"
@@ -14,25 +15,81 @@ if [ ! -d "$SRC" ]; then
   exit 1
 fi
 
-# ---------------------------------------------------------------------------
-# Adim 0: Backend temeli — DevArchitecture (ONAY KAPISI)
-# ---------------------------------------------------------------------------
-# Bu kit, SIFIRDAN bir .NET projesini DevArchitecture backend kalibi uzerine
-# kurmak icin tasarlandi. Onun icin, kurulumdan ONCE backend temelini ele alir.
-# Sinir: temel mevcut projeye zorla eklenmez; once var mi diye bakilir, yoksa
-# kullanici acik onay verirse dahil edilir.
+usage() {
+  cat <<'USAGE'
+Kullanim: bash start.sh [PROFIL]
+  --backend     backend-expert + database-expert (+ backend skiller, DevArchitecture)
+  --frontend    frontend-expert (+ web frontend skiller)
+  --mobile      frontend-expert (+ web + RN/Expo skiller)
+  --fullstack   hepsi (varsayilan)
+Profil verilmezse betik interaktif sorar. Core ajan/skiller her profilde kurulur.
+USAGE
+}
 
-ask_yes() {  # $1 = soru metni; kullanici 'evet' derse 0 doner
+# ---------------------------------------------------------------------------
+# Profil secimi: once bayrak, yoksa interaktif (varsayilan fullstack)
+# ---------------------------------------------------------------------------
+PROFILE=""
+for a in "$@"; do
+  case "$a" in
+    --backend)   PROFILE="backend" ;;
+    --frontend)  PROFILE="frontend" ;;
+    --mobile)    PROFILE="mobile" ;;
+    --fullstack) PROFILE="fullstack" ;;
+    -h|--help)   usage; exit 0 ;;
+    *) echo "Bilinmeyen parametre: $a"; echo; usage; exit 1 ;;
+  esac
+done
+
+if [ -z "$PROFILE" ]; then
+  echo "Proje profili? Kurulacak ajan/skill setini belirler:"
+  echo "  1) backend   2) frontend   3) fullstack (varsayilan)   4) mobile"
+  printf 'Secim [1-4, bos=3]: '
+  read -r sel || sel=""
+  case "$sel" in
+    1) PROFILE="backend" ;;
+    2) PROFILE="frontend" ;;
+    4) PROFILE="mobile" ;;
+    *) PROFILE="fullstack" ;;
+  esac
+fi
+
+# Profil -> backend istegi + budanacak (kurulmayacak) ajan/skiller.
+# Core ajanlar (planner, security-expert, privacy-agent, test-expert, review-agent,
+# commit-agent, session-manager) ve core skiller her profilde kalir.
+case "$PROFILE" in
+  backend)
+    WANT_BACKEND=1
+    EXCL_AGENTS="frontend-expert.md"
+    EXCL_SKILLS="frontend frontend-rn-expo i18n-integrity" ;;
+  frontend)
+    WANT_BACKEND=0
+    EXCL_AGENTS="backend-expert.md database-expert.md"
+    EXCL_SKILLS="db-migration devarch-module sonarqube-check frontend-rn-expo" ;;
+  mobile)
+    WANT_BACKEND=0
+    EXCL_AGENTS="backend-expert.md database-expert.md"
+    EXCL_SKILLS="db-migration devarch-module sonarqube-check" ;;
+  fullstack)
+    WANT_BACKEND=1
+    EXCL_AGENTS=""
+    EXCL_SKILLS="" ;;
+esac
+echo "Profil: $PROFILE"
+echo
+
+# ---------------------------------------------------------------------------
+# Adim 0: Backend temeli — DevArchitecture (yalniz backend iceren profillerde, ONAY KAPISI)
+# ---------------------------------------------------------------------------
+ask_yes() {  # $1 = soru; kullanici 'evet' derse 0 doner
   local a
   printf '%s [evet/hayir]: ' "$1"
   read -r a || a=""
   case "$a" in [eE][vV][eE][tT]|[eE]|[yY]) return 0 ;; *) return 1 ;; esac
 }
-
 has_devarch() {  # projede DevArchitecture kanonik yapisi var mi
   [ -d ./Business ] && [ -d ./Core ] && { [ -d ./DataAccess ] || [ -d ./Entities ] || [ -d ./WebAPI ]; }
 }
-
 project_has_source() {  # kit disinda gercek kaynak/proje dosyasi var mi
   ls ./*.sln ./*.csproj >/dev/null 2>&1 && return 0
   for m in package.json go.mod pom.xml build.gradle Cargo.toml requirements.txt pyproject.toml src; do
@@ -40,7 +97,6 @@ project_has_source() {  # kit disinda gercek kaynak/proje dosyasi var mi
   done
   return 1
 }
-
 clone_devarch() {  # birebir dahil et: klonla, nested .git'i sil, koke kopyala
   command -v git >/dev/null 2>&1 || { echo "  HATA: git yok; DevArchitecture dahil edilemiyor."; return 1; }
   local tmp; tmp="$(mktemp -d)"
@@ -58,7 +114,9 @@ clone_devarch() {  # birebir dahil et: klonla, nested .git'i sil, koke kopyala
 }
 
 echo "== Adim 0: Backend temeli (DevArchitecture) =="
-if has_devarch; then
+if [ "$WANT_BACKEND" != 1 ]; then
+  echo "  '$PROFILE' profili backend icermez — backend temeli atlaniyor."
+elif has_devarch; then
   echo "  DevArchitecture tespit edildi — temel zaten var, kopyalama atlaniyor."
 elif project_has_source; then
   echo "  !!! DIKKAT: Mevcut bir proje var ve DevArchitecture backend temeli YOK."
@@ -81,7 +139,7 @@ fi
 echo
 
 # ---------------------------------------------------------------------------
-# Adim 1: Kit kurulumu (./.claude + ./CLAUDE.md)
+# Adim 1: Kit kurulumu (./.claude + ./CLAUDE.md) — profile gore budanmis
 # ---------------------------------------------------------------------------
 echo "== Adim 1: Kuruluyor: ./.claude + ./CLAUDE.md =="
 mkdir -p .claude/agents .claude/skills .claude/commands .claude/hooks .claude/eval
@@ -90,6 +148,10 @@ cp -R "$SRC/skills/."   .claude/skills/
 cp -R "$SRC/commands/." .claude/commands/
 cp -R "$SRC/hooks/."    .claude/hooks/ 2>/dev/null || true
 cp -R "$SRC/eval/."     .claude/eval/ 2>/dev/null || true
+# Profile disi ajan/skilleri cikar (core her zaman kalir).
+for f in $EXCL_AGENTS; do rm -f  ".claude/agents/$f"; done
+for d in $EXCL_SKILLS; do rm -rf ".claude/skills/$d"; done
+echo "  Profil '$PROFILE': $(ls .claude/agents/*.md 2>/dev/null | wc -l | tr -d ' ') ajan, $(ls -d .claude/skills/*/ 2>/dev/null | wc -l | tr -d ' ') skill kuruldu."
 [ -f "$SRC/settings.json" ] && cp "$SRC/settings.json" .claude/settings.json
 chmod +x .claude/hooks/pre-commit .claude/hooks/commit-msg .claude/hooks/guard-bash.sh .claude/eval/smoke-test.sh 2>/dev/null || true
 cp "$SRC/AGENT_TEMPLATE.md" .claude/ 2>/dev/null || true
@@ -111,6 +173,6 @@ else
 fi
 rm -rf "$SRC"
 echo
-echo "== Tamam. ./.claude + ./CLAUDE.md hazir; claude-starter/ silindi. =="
+echo "== Tamam. ./.claude + ./CLAUDE.md hazir ($PROFILE profili); claude-starter/ silindi. =="
 echo "Sira: 1) CLAUDE.md proje kismini duzenle  2) Claude Code ac  3) /agents"
 rm -f -- "$0"
