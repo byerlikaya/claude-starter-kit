@@ -49,11 +49,12 @@ kurulum artıkları (`claude-starter/` + `start.sh`) temizlenir. Sonra Claude Co
 ## Doğrulama
 
 ```bash
-bash .claude/eval/smoke-test.sh
+bash .claude/eval/smoke-test.sh      # statik yapı
+bash .claude/eval/routing-eval.sh    # davranışsal routing
 ```
 
-Frontmatter, trigger phrase, ajan sayısı, sahipsiz-skill referansı, stub kalıntısı, hook/settings
-hazırlığını statik doğrular.
+- **smoke-test:** frontmatter, trigger phrase, ajan sayısı, sahipsiz-skill referansı, stub kalıntısı, hook/settings hazırlığı.
+- **routing-eval:** örnek prompt'lar beklenen ajan/skill'e trigger ile yönleniyor mu (golden routing) + iki ajan aynı trigger'ı paylaşıyor mu (çakışma). Türkçe diyakritiği normalize eder; budanmış kurulumda eksik hedefi atlar. Modeli çalıştırmaz, statiktir.
 
 ## İçindekiler
 

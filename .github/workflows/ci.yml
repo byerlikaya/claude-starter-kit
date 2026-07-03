@@ -11,11 +11,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Sozdizimi - start.sh
-        run: bash -n start.sh
+      - name: Sozdizimi - kabuk scriptleri
+        run: |
+          set -euo pipefail
+          bash -n start.sh
+          for s in claude-starter/hooks/*.sh claude-starter/eval/*.sh; do
+            [ -f "$s" ] && bash -n "$s" && echo "ok: $s"
+          done
 
       - name: Smoke-test - kaynak (budanmamis, 10 ajan)
         run: bash claude-starter/eval/smoke-test.sh
+
+      - name: Routing-eval - davranissal (golden routing + ajan cakismasi)
+        run: bash claude-starter/eval/routing-eval.sh
 
       - name: 6 kombinasyon e2e prova (profil x backend-yigini)
         run: |
