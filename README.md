@@ -13,19 +13,26 @@ Yığın-bağımsızdır; hangi projeye kurulursa kurulsun aynı disiplin geçer
 ## Kurulum
 
 ```bash
-bash start.sh [--backend | --frontend | --fullstack | --mobile]
+bash start.sh [--backend|--frontend|--mobile|--fullstack] [--dotnet|--generic]
 ```
 
-Profil, kurulacak **ajan + skill** setini belirler (bayrak verilmezse betik interaktif sorar; varsayılan `fullstack`). Core ajan/skiller her profilde kurulur; yalnız stack-özel olanlar profile göre eklenir/çıkarılır:
+`start.sh` bir **kurulum sihirbazıdır**: bayrak vermezsen adımları interaktif sorar (profil → backend yığını → özet + onay). Bayraklar sessiz/CI modu içindir. Core ajan/skiller her profilde kurulur; yalnız stack-özel olanlar profile göre eklenir/çıkarılır:
 
-| Profil | Ekstra ajan | Ekstra skiller | Backend temeli (DevArchitecture) |
+| Profil | Ekstra ajan | Ekstra skiller | Backend temeli |
 |---|---|---|---|
-| `--backend` | backend-expert · database-expert | db-migration · devarch-module · sonarqube-check | ✅ onay kapısı |
+| `--backend` | backend-expert · database-expert | db-migration (+ yığına göre) | yığın seçimine bağlı |
 | `--frontend` | frontend-expert | frontend · i18n-integrity | — atlanır |
 | `--mobile` | frontend-expert | frontend · frontend-rn-expo · i18n-integrity | — atlanır |
-| `--fullstack` | üçü birden | hepsi | ✅ onay kapısı |
+| `--fullstack` | üçü birden | hepsi (+ yığına göre) | yığın seçimine bağlı |
 
-> **Mobil için ayrı ajan yoktur** — mobil, `frontend-expert` ajanı üzerine `frontend-rn-expo` **skill katmanı** olarak gelir (ajan = tetik, skill = nasıl). Frontend ile mobil aynı ajanı paylaşır; fark yalnız RN/Expo skill'idir.
+**Backend yığını** (yalnız `--backend`/`--fullstack`; varsayılan `--dotnet`):
+
+| Yığın | Backend ajanı | Ekstra backend skilleri | DevArchitecture |
+|---|---|---|---|
+| `--dotnet` | backend-expert (.NET/DevArchitecture) | devarch-module · sonarqube-check | ✅ onay kapısı |
+| `--generic` | backend-expert (yığın-bağımsız varyant) | — (yalnız db-migration) | — kurulmaz |
+
+> **Mobil için ayrı ajan yoktur** — mobil, `frontend-expert` üzerine `frontend-rn-expo` **skill katmanı** olarak gelir (ajan = tetik, skill = nasıl). **Jenerik backend** de ayrı ajan değil: `backend-expert`'in DevArchitecture'sız, yığın-bağımsız varyantı kurulur (Node/Go/Python için); derin backend skilleri (`db-migration` hariç) .NET'e özel olduğundan gelmez.
 
 > **Amaç & sınır:** Bu kit, **sıfırdan** bir projeyi DevArchitecture backend temeli üzerine kurmak
 > için tasarlandı. `start.sh` ilk adımda bunu bir **onay kapısıyla** ele alır: temel projede yoksa

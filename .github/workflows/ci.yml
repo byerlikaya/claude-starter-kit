@@ -17,18 +17,22 @@ jobs:
       - name: Smoke-test - kaynak (budanmamis, 10 ajan)
         run: bash claude-starter/eval/smoke-test.sh
 
-      - name: 4 profil e2e prova
+      - name: 6 kombinasyon e2e prova (profil x backend-yigini)
         run: |
           set -euo pipefail
-          for pf in backend frontend mobile fullstack; do
-            P="$RUNNER_TEMP/proj-$pf"
+          # girdi: ozet-onayi (evet) [+ DevArch onayi (hayir) yalniz dotnet'te]
+          combo() {
+            local lbl="$1" inp="$2"; shift 2
+            local P="$RUNNER_TEMP/proj-$lbl"
             rm -rf "$P"; mkdir -p "$P"
-            cp start.sh "$P/"
-            cp -R claude-starter "$P/"
-            # Profil bayrakla; DevArchitecture onayini 'hayir' ile gec (klon denemesin)
-            ( cd "$P" && printf 'hayir\n' | bash start.sh --"$pf" >/dev/null )
+            cp start.sh "$P/"; cp -R claude-starter "$P/"
+            ( cd "$P" && printf "$inp" | bash start.sh "$@" >/dev/null )
             ( cd "$P" && bash .claude/eval/smoke-test.sh >/dev/null )
-            A=$(ls "$P"/.claude/agents/*.md | wc -l | tr -d ' ')
-            S=$(ls -d "$P"/.claude/skills/*/ | wc -l | tr -d ' ')
-            echo "[$pf] ajan=$A skill=$S smoke=OK"
-          done
+            echo "[$lbl] ajan=$(ls "$P"/.claude/agents/*.md | wc -l | tr -d ' ') skill=$(ls -d "$P"/.claude/skills/*/ | wc -l | tr -d ' ') smoke=OK"
+          }
+          combo frontend         'evet\n'        --frontend
+          combo mobile           'evet\n'        --mobile
+          combo backend-dotnet   'evet\nhayir\n' --backend --dotnet
+          combo backend-generic  'evet\n'        --backend --generic
+          combo fullstack-dotnet 'evet\nhayir\n' --fullstack --dotnet
+          combo fullstack-generic 'evet\n'       --fullstack --generic
