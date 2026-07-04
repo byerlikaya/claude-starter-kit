@@ -4,6 +4,8 @@ Herhangi bir projede aynı disiplinle ilerleten, yeniden kullanılabilir bir Cla
 **planla → üret → denetle → commit'le**, her adımda kalite ve iz-temizliği kapılarıyla.
 Yığın-bağımsızdır; hangi projeye kurulursa kurulsun aynı disiplin geçerlidir.
 
+**Sürüm:** 1.0.0 · Lisans: MIT · [Değişiklik günlüğü](CHANGELOG.md)
+
 ## Felsefe (üç ilke)
 
 1. **Ajan = ince tetikleyici** ("kim / ne zaman"). Kısa; hangi işte devreye gireceğini ve dayandığı skill'i söyler.
