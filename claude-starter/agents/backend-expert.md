@@ -27,6 +27,7 @@ Backend'de yeni özellik, handler, validator, controller veya business kuralı g
 - Yerleşim `Business/Handlers/{Entity}/Commands|Queries|ValidationRules`; dönüş `IResult`/`IDataResult<T>` (çıplak tip yok).
 - AOP sırası `[SecuredOperation]` → `[ValidationAspect]` → `[CacheAspect]`/`[CacheRemoveAspect]`; anonim uç → `[SecuredOperation]` KALDIRILIR.
 - Domain-özel sözleşmeler (varsa) projenin ilgili skill'inde (örn. ödeme/credential akışı, raporlama/rollup) — onları izle.
+- **Ayrıca uygula:** `api-design` (sözleşme/versiyonlama) · `observability` (log/trace/metrik) · `performance` (darboğaz) · `dependency-audit` (paket ekle/güncelle) · `i18n-integrity` (kullanıcıya görünen metin: hata/e-posta/bildirim).
 
 ## Koordinasyon (cross-agent)
 - Güvenlik-kritik iş (auth/secret/IDOR/injection) → **security-expert** ZORUNLU (bulgu üretir).

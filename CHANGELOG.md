@@ -8,6 +8,12 @@ sürümleme [SemVer](https://semver.org/lang/tr/).
 ### Değişti
 - `privacy-agent` ve `privacy-compliance`: KVKK (kvkk.gov.tr) ve GDPR (gdpr-info.eu) resmi kaynakları
   otoriter referans olarak eklendi; kural yorumu her zaman bu kanallara göre, dayanılan madde bulguda belirtilir.
+- **Skill sahipliği netleştirildi:** domain skilleri owning uzman ajanlara açıkça bağlandı (backend-expert →
+  api-design/observability/performance/dependency-audit/i18n-integrity; frontend-expert → a11y/i18n/observability/
+  performance/dependency-audit; security-expert → red-team; review-agent → docs-writer; planner → adr;
+  commit-agent → release; session-manager → token-budget). `i18n-integrity` **core** yapıldı (backend de
+  kullanıcıya görünen metin üretir). Yalnız hook/ops skilleri (trace-scan, ci-pipeline, vps-deploy,
+  incident-runbook) bilinçli olarak orkestrasyon-sahipli kaldı.
 
 ## [1.0.0] - 2026-07-03
 

@@ -106,7 +106,7 @@ case "$PROFILE" in
     EXCL_SKILLS="db-migration devarch-module sonarqube-check api-design" ;;
   backend)
     EXCL_AGENTS="frontend-expert.md"
-    EXCL_SKILLS="frontend frontend-rn-expo i18n-integrity a11y" ;;
+    EXCL_SKILLS="frontend frontend-rn-expo a11y" ;;
   fullstack)
     EXCL_AGENTS=""
     EXCL_SKILLS="" ;;

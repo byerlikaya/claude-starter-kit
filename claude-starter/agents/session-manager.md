@@ -18,6 +18,7 @@ Proaktif arka-plan uyarısı mümkün olmadığından, tetikleyici **her task bi
 - **Ölç, tahmin ETME**: asistan `/context`'i çalıştıramaz; gerçek doluluk `context-usage.sh` ile transcript'ten okunur (aşağı).
 - **Faz sınırında** öner; işin ortasında akışı kesme.
 - Devir önerisi **eyleme dönük**: neden + tek net sonraki adım.
+- **Token disiplini:** delege / özet / dosya-offload kararında `token-budget` skill'ini uygula.
 
 ## Ne zaman
 - Her iş/alt-görev kapanışında (DoD zincirinin en sonunda).

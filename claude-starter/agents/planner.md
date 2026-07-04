@@ -26,6 +26,7 @@ Yeni özellik, sprint veya belirsiz kapsamlı iş başlamadan önce.
 - Görevleri atomik adımlara böl; bağımlılık sırasını çıkar.
 - Her adım için kabul kriteri (nasıl "bitti" sayılacak) yaz.
 - Riskleri ve açık kararları işaretle; kararları kullanıcıya SEÇMELİ sor.
+- **Mimari/kalıcı karar** çıkarsa → `adr` ile kaydet (bağlam · karar · alternatifler · sonuç).
 
 ## Kısıtlar
 - Kod/dosya yazmaz (salt-okunur); plan üretir, uygulamayı uzmanlara bırakır.

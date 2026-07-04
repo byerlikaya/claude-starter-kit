@@ -28,6 +28,7 @@ Bu profilde tek bir "nasıl" skill'i yoktur; kaynak repodaki kalıp esastır:
 - Önce komşu kodu oku — katman sınırı, dönüş tipi/hata sözleşmesi, adlandırma nasılsa **aynen** sürdür.
 - Girdi doğrulama ve yetki kontrolünü uçta uygula; iş kuralını sunum katmanına sızdırma.
 - Şema/sorgu tarafı **database-expert** + `db-migration` skill'i ile koordine edilir.
+- **Ayrıca uygula:** `api-design` · `observability` · `performance` · `dependency-audit` · `i18n-integrity`.
 
 ## Koordinasyon (cross-agent)
 - Güvenlik-kritik iş (auth/secret/IDOR/injection) → **security-expert** ZORUNLU.

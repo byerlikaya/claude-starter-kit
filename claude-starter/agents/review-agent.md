@@ -28,6 +28,7 @@ Bir iş paketi kapanmadan önce (commit öncesi), değişen diff üstünde.
 - Cerrahi: kapsam dışı dokunuşları yakala.
 - Okunabilirlik: isimlendirme, ölü kod, yorum tuzağı (S125 — kod-benzeri Türkçe yorum).
 - "Prefer X over Y" tarzı yapıcı öneri.
+- **Ayrıca tetikle:** public API/davranış değişmişse `docs-writer` (doküman güncel mi, ölü doküman var mı).
 
 ## Çıktı
 `dosya:satır · gözlem · öneri`; kritik/öneri ayrımıyla.

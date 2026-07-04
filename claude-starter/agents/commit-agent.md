@@ -27,6 +27,7 @@ Bir iş/alt-görev DoD ile kapandığında (commit öncesi son adım).
 2. Değişikliği sınıflandır → `type(scope): özet` (Türkçe, ≤72, nokta yok).
 3. Gerekçe gerekiyorsa gövdeye NEDEN'i ekle; kırıcıysa `BREAKING CHANGE:` footer'ı.
 4. Karışık diff → atomik commit'lere böl, her biri için ayrı mesaj öner.
+5. **Sürüm/etiket** işi (tag · CHANGELOG) → `release` skill'ini uygula (SemVer).
 
 ## Kısıtlar
 - Kaynak kodu DEĞİŞTİRMEZ.

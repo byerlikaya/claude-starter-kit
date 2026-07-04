@@ -30,6 +30,7 @@ UI, component/sayfa, navigation/routing, state, i18n arayüzü, responsive veya
 1. **Jenerik disiplin:** her yığında **`frontend`** skill'i geçerli — mimari, state, durum-tam UI, i18n, a11y, performans.
 2. **Yığını tespit et:** `package.json` + repo yapısı → web (React/Next/Vue/Svelte/Angular), mobil (React Native/Flutter), masaüstü.
 3. **Stack-özel katman:** o yığının frontend skill'ini uygula. Kitte hazır örnek: mobil RN+Expo için **`frontend-rn-expo`** (opsiyonel). Web/masaüstü projede projenin kendi frontend skill'i / CLAUDE.md'si.
+4. **Ayrıca uygula:** `a11y` (erişilebilirlik kapısı) · `i18n-integrity` (çeviri bütünlüğü) · `observability` (client log/hata) · `performance` (render/bundle) · `dependency-audit` (paket).
 
 ## DoD
 - `/simplify` + testler yeşil + `review-agent` temiz.
