@@ -62,8 +62,8 @@ bash .claude/eval/routing-eval.sh    # davranışsal routing
 
 ## İçindekiler
 
-- **10 ajan** (`.claude/agents/`): planner · backend-expert · database-expert · security-expert ·
-  privacy-agent · test-expert · frontend-expert · review-agent · commit-agent · session-manager.
+- **11 ajan** (`.claude/agents/`): planner · backend-expert · database-expert · security-expert ·
+  privacy-agent · test-expert · frontend-expert · devops-expert · review-agent · commit-agent · session-manager.
   Her ajan: uzmanlık duruşu · koordinasyon · çıktı sözleşmesi · hata/eskalasyon · örnek delegasyon.
 - **27 skill** (`.claude/skills/`): disiplin katmanı — code-review, security-scan, db-migration,
   vps-deploy, devarch-module, sonarqube-check, commit-message, spec-planning, privacy-compliance,

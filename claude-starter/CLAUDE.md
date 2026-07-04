@@ -25,6 +25,7 @@ Ana thread ajanları şu sırayla seçip zincirler (gürültülü/ağır iş sub
 
 1. **Anla / planla** — belirsiz kapsam → **planner** (`/plan`); net/küçük iş doğrudan uzmana.
 2. **Üret** — işe göre **backend-expert · database-expert · frontend-expert** (paralel/sıralı). Şema→db, mesaj→i18n.
+   Dağıtım / CI hattı / üretim olayı → **devops-expert**.
 3. **Denetle** — **security-expert** (güvenlik-kritikse ZORUNLU) · **privacy-agent** (kişisel veri) · **test-expert** (`/review`).
 4. **Kapat** — DoD kapısı (`/simplify` + testler + sonarqube) → **review-agent** temiz → **commit-agent** önerir, **onay bekler** (`/ship`).
 5. **Devret** — context dolunca / faz sonunda **session-manager** → `handoff` → `/clear` (`/handoff`).

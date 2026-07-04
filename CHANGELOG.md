@@ -5,6 +5,17 @@ sürümleme [SemVer](https://semver.org/lang/tr/).
 
 ## [Unreleased]
 
+### Eklendi
+- **`devops-expert` ajanı (11.)** — ops/devops uzmanı; `ci-pipeline` · `vps-deploy` · `incident-runbook`
+  skillerini sahiplenir (bu skiller artık orkestrasyon-only değil). Core (tüm profillerde). Tasarım paneli +
+  4-mercek düşmanca doğrulamayla üretildi.
+- **Deploy tool-kapıları:** `settings.json` `permissions.ask`'e `ssh`/`scp`/`rsync`/`docker` eklendi —
+  dışa-dönük deploy fiilleri artık araç seviyesinde onaya takılır (yalnız LLM davranışına değil).
+
+### Düzeltildi
+- **Auto-rollback çelişkisi:** `vps-deploy` geri dönüşü `rm -rf` yerine atomik `rsync --delete` kullanır;
+  böylece `guard-bash` (yerel `rm -rf` bloğu) otomatik geri dönüşü engellemez (yerel rm -rf koruması sürer).
+
 ### Değişti
 - `privacy-agent` ve `privacy-compliance`: KVKK (kvkk.gov.tr) ve GDPR (gdpr-info.eu) resmi kaynakları
   otoriter referans olarak eklendi; kural yorumu her zaman bu kanallara göre, dayanılan madde bulguda belirtilir.

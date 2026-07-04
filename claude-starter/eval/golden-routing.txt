@@ -26,3 +26,5 @@ api sozlesmesi versiyonlama, openapi|api-design
 sayfa yavas, performans optimizasyonu|performance
 olay mudahale runbook'u yaz, postmortem|incident-runbook
 prompt injection savunmasini sina, red team|red-team
+prod'a cik ve rollback yap|devops-expert
+reverse proxy ve ssl kur|devops-expert

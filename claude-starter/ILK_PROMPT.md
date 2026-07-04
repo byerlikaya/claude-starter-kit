@@ -12,7 +12,7 @@ Disiplin katmanı şu kaynaklardan türer; kararlar bunlarla HİZALI kalsın:
 - Backend kalıbı:       DevArchitecture/DevArchitecture
 
 İlk kurulum (KOD YAZMA, sırayla):
-1) /agents ile 10 ajanın tanındığını göster.
+1) /agents ile kurulu ajanların (profile göre sayı değişir) tanındığını göster.
 2) Skiller DOLU gelir (code-review, security-scan, db-migration, vps-deploy, devarch-module dahil).
    Yalnız gerekiyorsa projenin stack'ine ince-ayar yap; kaynak/şablon ADI repoya giden hiçbir
    artefakta (kod, namespace, yorum, config) SIZMASIN (§4.2). Domain-özel "nasıl"lar (varsa)
