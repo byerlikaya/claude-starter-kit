@@ -63,10 +63,11 @@ bash .claude/eval/routing-eval.sh    # davranışsal routing
 - **10 ajan** (`.claude/agents/`): planner · backend-expert · database-expert · security-expert ·
   privacy-agent · test-expert · frontend-expert · review-agent · commit-agent · session-manager.
   Her ajan: uzmanlık duruşu · koordinasyon · çıktı sözleşmesi · hata/eskalasyon · örnek delegasyon.
-- **24 skill** (`.claude/skills/`): disiplin katmanı — code-review, security-scan, db-migration,
+- **27 skill** (`.claude/skills/`): disiplin katmanı — code-review, security-scan, db-migration,
   vps-deploy, devarch-module, sonarqube-check, commit-message, spec-planning, privacy-compliance,
   ci-pipeline, dependency-audit, adr, release, i18n-integrity, handoff, testing, frontend,
-  frontend-rn-expo, trace-scan, token-budget, observability, docs-writer, a11y, api-design.
+  frontend-rn-expo, trace-scan, token-budget, observability, docs-writer, a11y, api-design,
+  performance, incident-runbook, red-team.
 - **5 slash komut** (`.claude/commands/`): `/plan` · `/review` · `/ship` · `/handoff` · `/simplify`.
 - **Hook'lar** (`.claude/hooks/`): `pre-commit` + `commit-msg` (iz-denetçisi), `guard-bash.sh` (destrüktif blok), `trace-blocklist.txt`, **`context-usage.sh`** (gerçek context ölçümü — aşağı).
 - **settings.json**: izin (ask/deny) + PreToolUse guard + **UserPromptSubmit** (her tur gerçek context enjekte eder).

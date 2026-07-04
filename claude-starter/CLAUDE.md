@@ -57,6 +57,9 @@ Ajanı olmayan skiller "aklına gelirse" değil, tetiği gelince **zorunlu** ça
 | Public API / README / davranış değişimi | `docs-writer` |
 | UI / bileşen / arayüz işi | `a11y` |
 | Yeni veya değişen API sözleşmesi | `api-design` |
+| Yavaşlık / performans darboğazı | `performance` |
+| Üretim olayı / postmortem / runbook | `incident-runbook` |
+| Prompt-injection savunmasını sınama | `red-team` |
 
 ## Token & bağlam disiplini (token-budget skill)
 Subagent kendi context penceresinde çalışır, ana thread'e **yalnız özet** döner — ara gürültü ana bağlama girmez.

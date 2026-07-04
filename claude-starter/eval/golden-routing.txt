@@ -23,3 +23,6 @@ yapilandirilmis log ekle, korelasyon id|observability
 readme guncelle ve api dokumani yaz|docs-writer
 erisilebilirlik denetimi, wcag kontrol|a11y
 api sozlesmesi versiyonlama, openapi|api-design
+sayfa yavas, performans optimizasyonu|performance
+olay mudahale runbook'u yaz, postmortem|incident-runbook
+prompt injection savunmasini sina, red team|red-team
