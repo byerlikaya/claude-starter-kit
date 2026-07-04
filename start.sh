@@ -179,7 +179,7 @@ if [ "$HAS_BACKEND" = 1 ] && [ "$STACK" = "generic" ] && [ -f "$SRC/agents-optio
 fi
 echo "  Profil '$PROFILE' (yigin: $STACK): $(ls .claude/agents/*.md 2>/dev/null | wc -l | tr -d ' ') ajan, $(ls -d .claude/skills/*/ 2>/dev/null | wc -l | tr -d ' ') skill kuruldu."
 [ -f "$SRC/settings.json" ] && cp "$SRC/settings.json" .claude/settings.json
-chmod +x .claude/hooks/pre-commit .claude/hooks/commit-msg .claude/hooks/guard-bash.sh .claude/hooks/context-usage.sh .claude/eval/smoke-test.sh .claude/eval/routing-eval.sh 2>/dev/null || true
+chmod +x .claude/hooks/pre-commit .claude/hooks/commit-msg .claude/hooks/guard-bash.sh .claude/hooks/context-usage.sh .claude/hooks/session-guard.sh .claude/eval/smoke-test.sh .claude/eval/routing-eval.sh 2>/dev/null || true
 cp "$SRC/AGENT_TEMPLATE.md" .claude/ 2>/dev/null || true
 cp "$SRC/ILK_PROMPT.md"     .claude/ 2>/dev/null || true
 cp "$SRC/README.md"         .claude/ 2>/dev/null || true

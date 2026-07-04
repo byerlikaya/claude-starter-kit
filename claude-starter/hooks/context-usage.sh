@@ -41,3 +41,7 @@ fi
 PCT="$(awk -v t="$TOTAL" -v w="$WINDOW" 'BEGIN{printf "%.1f", (t/w)*100}')"
 LEVEL="$(awk -v p="$PCT" 'BEGIN{ if(p+0<50) print "devam"; else if(p+0<75) print "orta (ilk faz sinirinda handoff)"; else print "handoff+clear" }')"
 echo "🔋 Oturum: %$PCT ($TOTAL/$WINDOW token) → $LEVEL"
+# >=%75: gorunur, israrci uyari (Stop hook session-guard.sh da ayni esikte devreye girer).
+if awk -v p="$PCT" 'BEGIN{exit !(p+0>=75)}'; then
+  echo "   ⚠️  >%75 handoff esigi — uygun ilk noktada: handoff skill'i + /clear. Otomatik degil; karar senin."
+fi

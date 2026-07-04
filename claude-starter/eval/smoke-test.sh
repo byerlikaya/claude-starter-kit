@@ -35,13 +35,20 @@ done
 pass "$(ls -d "$SKILLS"/*/ | wc -l | tr -d ' ') skill tarandi"
 
 echo "== 3) Sahipsiz skill referansi (agent -> var olmayan skill) =="
-# Agent govdesinde "X skill'ini izle" gecen X'ler mevcut mu?
+# (a) Agent govdesinde "X skill'ini izle" gecen X'ler mevcut mu?
 for f in "$AGENTS"/*.md; do
   for ref in $(grep -oE "[a-z0-9-]+ skill'ini izle" "$f" | awk '{print $1}'); do
     [ -f "$SKILLS/$ref/SKILL.md" ] || fail "$(basename $f): '$ref' skill'i yok"
   done
 done
-pass "agent->skill referanslari kontrol edildi"
+# (b) "Ayrica uygula: `x` · `y` ..." satirlarindaki backtickli skill adlari da mevcut mu?
+for f in "$AGENTS"/*.md; do
+  al="$(grep -F 'Ayrıca uygula' "$f" || true)"
+  for ref in $(printf '%s' "$al" | grep -oE '`[a-z0-9-]+`' | tr -d '`'); do
+    [ -f "$SKILLS/$ref/SKILL.md" ] || fail "$(basename $f): 'Ayrıca uygula' skill'i yok: $ref"
+  done
+done
+pass "agent->skill referanslari (izle + Ayrıca uygula) kontrol edildi"
 
 echo "== 4) Stub / doldurulmamis skill kalinti =="
 if grep -rlq "doldurulacak\|kaynaktan üretilir/uyarlanır" "$SKILLS" 2>/dev/null; then
@@ -52,6 +59,19 @@ echo "== 5) Iz-denetcisi (trace) hazir mi =="
 [ -x "$HOOKS/pre-commit" ] && pass "pre-commit hook +x" || fail "pre-commit yok/executable degil"
 [ -f "$HOOKS/trace-blocklist.txt" ] && pass "blocklist var" || fail "trace-blocklist.txt yok"
 
+
+echo "== 6) Context-usage esik mantigi (fixture) + hook butunlugu =="
+FX="$(mktemp)"
+printf '%s\n' '{"isSidechain":false,"message":{"usage":{"input_tokens":1000,"cache_read_input_tokens":800000,"cache_creation_input_tokens":0}}}' > "$FX"
+o1="$(CONTEXT_WINDOW=1000000 bash "$HOOKS/context-usage.sh" "$FX" 2>/dev/null)"
+case "$o1" in *"handoff+clear"*) pass "esik: ~%80 → handoff+clear" ;; *) fail "esik(yuksek) 'handoff+clear' degil: $o1" ;; esac
+o2="$(CONTEXT_WINDOW=2000000 bash "$HOOKS/context-usage.sh" "$FX" 2>/dev/null)"
+case "$o2" in *"devam"*) pass "esik: CONTEXT_WINDOW=2M → devam" ;; *) fail "esik(pencere) 'devam' degil: $o2" ;; esac
+if bash "$HOOKS/context-usage.sh" "/yok/olmayan.jsonl" >/dev/null 2>&1; then fail "hatali transcript exit 0 dondu"; else pass "hatali transcript exit!=0"; fi
+rm -f "$FX"
+[ -x "$HOOKS/commit-msg" ]       && pass "commit-msg hook +x"           || fail "commit-msg yok/executable degil"
+[ -x "$HOOKS/context-usage.sh" ] && pass "context-usage.sh +x"          || fail "context-usage.sh yok/executable degil"
+[ -x "$HOOKS/session-guard.sh" ] && pass "session-guard.sh +x (Stop)"   || fail "session-guard.sh yok/executable degil"
 
 echo "== 7) settings.json & guard (§4.4/§4.5) =="
 if [ -f "$ROOT/settings.json" ]; then

@@ -5,7 +5,7 @@ backend'e yeni handler ekle|backend-expert
 bu tabloya migration yaz|database-expert
 login ekrani icin responsive component|frontend-expert
 expo router ile yeni rn ekran|frontend-rn-expo
-OWASP check ve guvenlik taramasi yap|security-scan
+OWASP check ve guvenlik taramasi yap|security-expert
 kvkk gizlilik denetimi lazim|privacy-agent
 degisiklikleri commit'le|commit-agent
 testleri calistir, coverage raporu|test-expert

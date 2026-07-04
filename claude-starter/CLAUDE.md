@@ -30,7 +30,7 @@ Ana thread ajanları şu sırayla seçip zincirler (gürültülü/ağır iş sub
 4. **Kapat** — DoD kapısı (`/simplify` + testler + sonarqube) → **review-agent** temiz → **commit-agent** önerir, **onay bekler** (`/ship`).
 5. **Devret** — context dolunca / faz sonunda **session-manager** → `handoff` → `/clear` (`/handoff`).
 
-Kurallar: her subagent ana thread'e **özet** döner (token-budget); tıkanınca **dur-raporla**; commit/push/destrüktif **onay/guard** kapılı (§4.4/§4.5, settings.json + hook).
+Kurallar: her subagent ana thread'e **özet** döner (token-budget — model disiplini, araç-kapısı değil); tıkanınca **dur-raporla**; commit/push/destrüktif ise **araç seviyesinde** onay/guard kapılı (§4.4/§4.5, settings.json + hook).
 
 ## Definition of Done (her iş kapanışı)
 - Belirsiz kapsamlı iş **önce planner** ile planlanır (kabul kriteri belli olsun), sonra koda geçilir.
@@ -69,6 +69,12 @@ Ama subagent-yoğun akış ~7x token yer; **izolasyon için** delege et, her şe
 - **Dosyaya taşı:** ağır çıktı `docs/*.md`'ye (lokal); geri özet + işaretçi.
 - **Delege eşiği:** gürültülü/ağır iş → subagent; tek tool-call/küçük iş → ana thread.
 - **Hedefli okuma:** tüm dosya yerine Grep/Glob; yalın SKILL.md.
+
+> **Ne garanti, ne disiplin (dürüst sınır):** Context doluluğunun **ölçümü kapıdır** — `context-usage.sh`
+> her tur (`UserPromptSubmit`) gerçek %'yi enjekte eder, `session-guard.sh` (`Stop` hook) >%75'te handoff
+> önerisini zorunlu yüzeye çıkarır. Üstteki dört madde (özet/dosya/eşik/okuma) ise **model disiplinidir**:
+> araç zorlaması yok, akıl yürütmeye bağlı. `trace-scan`/`guard-bash`/`permissions` gibi sert kapılar
+> token-budget'e dokunmaz — bu bilinçlidir (delege/özet kararı exit-code'la ölçülemez).
 
 ## Oturum yönetimi (session-manager)
 Her task bitiminde oturum-sağlığı satırını yanıtın **SONUNA** ekle:

@@ -5,6 +5,7 @@ description: |
   bağımlılık sırası üretir. Kod yazmaz; plan çıkarır. spec-planning skill'ini uygular.
   Trigger phrases: "planla", "spec çıkar", "görev kırılımı", "kabul kriteri", "sprint planı", "önce plan"
 tools: Read, Grep, Glob
+model: sonnet
 ---
 
 # Planlama Uzmanı
