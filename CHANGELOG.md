@@ -3,6 +3,12 @@
 Bu projenin önemli değişiklikleri burada tutulur. Biçim [Keep a Changelog](https://keepachangelog.com/tr/),
 sürümleme [SemVer](https://semver.org/lang/tr/).
 
+## [Unreleased]
+
+### Değişti
+- `privacy-agent` ve `privacy-compliance`: KVKK (kvkk.gov.tr) ve GDPR (gdpr-info.eu) resmi kaynakları
+  otoriter referans olarak eklendi; kural yorumu her zaman bu kanallara göre, dayanılan madde bulguda belirtilir.
+
 ## [1.0.0] - 2026-07-03
 
 İlk kararlı sürüm. Türkçe, opinionated-ama-backend'i-seçmeli agent/skill iskeleti.
