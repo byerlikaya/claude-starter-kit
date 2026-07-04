@@ -100,13 +100,13 @@ DEVARCH_ON=0
 case "$PROFILE" in
   frontend)
     EXCL_AGENTS="backend-expert.md database-expert.md"
-    EXCL_SKILLS="db-migration devarch-module sonarqube-check frontend-rn-expo" ;;
+    EXCL_SKILLS="db-migration devarch-module sonarqube-check frontend-rn-expo api-design" ;;
   mobile)
     EXCL_AGENTS="backend-expert.md database-expert.md"
-    EXCL_SKILLS="db-migration devarch-module sonarqube-check" ;;
+    EXCL_SKILLS="db-migration devarch-module sonarqube-check api-design" ;;
   backend)
     EXCL_AGENTS="frontend-expert.md"
-    EXCL_SKILLS="frontend frontend-rn-expo i18n-integrity" ;;
+    EXCL_SKILLS="frontend frontend-rn-expo i18n-integrity a11y" ;;
   fullstack)
     EXCL_AGENTS=""
     EXCL_SKILLS="" ;;

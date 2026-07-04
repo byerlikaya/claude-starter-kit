@@ -20,10 +20,12 @@ bash start.sh [--backend|--frontend|--mobile|--fullstack] [--dotnet|--generic]
 
 | Profil | Ekstra ajan | Ekstra skiller | Backend temeli |
 |---|---|---|---|
-| `--backend` | backend-expert · database-expert | db-migration (+ yığına göre) | yığın seçimine bağlı |
-| `--frontend` | frontend-expert | frontend · i18n-integrity | — atlanır |
-| `--mobile` | frontend-expert | frontend · frontend-rn-expo · i18n-integrity | — atlanır |
+| `--backend` | backend-expert · database-expert | db-migration · api-design (+ yığına göre) | yığın seçimine bağlı |
+| `--frontend` | frontend-expert | frontend · i18n-integrity · a11y | — atlanır |
+| `--mobile` | frontend-expert | frontend · frontend-rn-expo · i18n-integrity · a11y | — atlanır |
 | `--fullstack` | üçü birden | hepsi (+ yığına göre) | yığın seçimine bağlı |
+
+*(Core skiller — observability · docs-writer dahil — her profilde kurulur; tablo yalnız stack-özel farkları gösterir.)*
 
 **Backend yığını** (yalnız `--backend`/`--fullstack`; varsayılan `--dotnet`):
 
@@ -61,10 +63,10 @@ bash .claude/eval/routing-eval.sh    # davranışsal routing
 - **10 ajan** (`.claude/agents/`): planner · backend-expert · database-expert · security-expert ·
   privacy-agent · test-expert · frontend-expert · review-agent · commit-agent · session-manager.
   Her ajan: uzmanlık duruşu · koordinasyon · çıktı sözleşmesi · hata/eskalasyon · örnek delegasyon.
-- **20 skill** (`.claude/skills/`): disiplin katmanı — code-review, security-scan, db-migration,
+- **24 skill** (`.claude/skills/`): disiplin katmanı — code-review, security-scan, db-migration,
   vps-deploy, devarch-module, sonarqube-check, commit-message, spec-planning, privacy-compliance,
   ci-pipeline, dependency-audit, adr, release, i18n-integrity, handoff, testing, frontend,
-  frontend-rn-expo, trace-scan, token-budget.
+  frontend-rn-expo, trace-scan, token-budget, observability, docs-writer, a11y, api-design.
 - **5 slash komut** (`.claude/commands/`): `/plan` · `/review` · `/ship` · `/handoff` · `/simplify`.
 - **Hook'lar** (`.claude/hooks/`): `pre-commit` + `commit-msg` (iz-denetçisi), `guard-bash.sh` (destrüktif blok), `trace-blocklist.txt`, **`context-usage.sh`** (gerçek context ölçümü — aşağı).
 - **settings.json**: izin (ask/deny) + PreToolUse guard + **UserPromptSubmit** (her tur gerçek context enjekte eder).

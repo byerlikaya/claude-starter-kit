@@ -19,3 +19,7 @@ npm audit ile bagimlilik denetimi|dependency-audit
 eksik ceviri var mi, i18n kontrol|i18n-integrity
 sonarqube kalite kapisi calistir|sonarqube-check
 handoff hazirla, devir notu|handoff
+yapilandirilmis log ekle, korelasyon id|observability
+readme guncelle ve api dokumani yaz|docs-writer
+erisilebilirlik denetimi, wcag kontrol|a11y
+api sozlesmesi versiyonlama, openapi|api-design

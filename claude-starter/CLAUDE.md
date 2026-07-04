@@ -53,6 +53,10 @@ Ajanı olmayan skiller "aklına gelirse" değil, tetiği gelince **zorunlu** ça
 | Sunucuya dağıtım | `vps-deploy` |
 | Faz kapanışı / `/clear` öncesi | `handoff` |
 | Bağlam şişince / delege kararında | `token-budget` |
+| Yeni log / hata yolu / üretim izlenebilirliği | `observability` |
+| Public API / README / davranış değişimi | `docs-writer` |
+| UI / bileşen / arayüz işi | `a11y` |
+| Yeni veya değişen API sözleşmesi | `api-design` |
 
 ## Token & bağlam disiplini (token-budget skill)
 Subagent kendi context penceresinde çalışır, ana thread'e **yalnız özet** döner — ara gürültü ana bağlama girmez.
