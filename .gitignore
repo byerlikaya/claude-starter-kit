@@ -5,3 +5,6 @@
 # (Bu iki kural yalniz kitin KENDI deposuna aittir; claude-starter/ payload'i ETKILENMEZ.)
 /CLAUDE.md
 /docs/
+
+# Release artefaktlari (make-release.sh ciktisi) — build ciktisi, repoya gitmez.
+/dist/
