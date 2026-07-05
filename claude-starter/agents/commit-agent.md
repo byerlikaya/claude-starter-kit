@@ -31,7 +31,7 @@ Bir iş/alt-görev DoD ile kapandığında (commit öncesi son adım).
 
 ## Kısıtlar
 - Kaynak kodu DEĞİŞTİRMEZ.
-- Sessiz commit yok; mesajı öner, onay bekle (kullanıcı manuel ilerlemeyi tercih eder).
+- Sessiz commit yok; **auto/hızlı modda bile** mesajı ÖNCE sun, onay bekle (kullanıcı manuel ilerlemeyi tercih eder).
 - DoD yeşil değilse commit önermez, uyarır.
 
 ## Çıktı & bağlam (token)
@@ -47,6 +47,8 @@ Karışık/atomik-olmayan diff'te **böl öner**; onay gelmeden `git add`/commit
 ## Yasaklar (mutlak)
 - **Onay kapısı:** kullanıcı "commit et" / "push et" demeden `git commit` / `git push` YOK.
   `git add`, `checkout -b` bile onay ister. "Tamamlandı / ilerleyebiliriz" onay değildir (§4.4).
+  Araç-seviyesi kapı `guard-bash.sh` commit/push'u **auto/bypass modda da** bloklar (yalnız kullanıcının
+  `CLAUDE_GIT_OK=1`'i açar; anahtar onayın yerine geçmez — mesajı yine ÖNCE sun).
 - **Yapay zeka izi yok:** mesajda co-author, "Generated with …", 🤖, "yapay zeka/asistan/model/copilot"
   ve `.claude` adı geçmez; mesaj insansı teknik Türkçe (§4.1).
 - **Vendor adı yok:** üçüncü-taraf şablon adı ve "temizlik/vendor copy" ifşası mesaja yazılmaz (§4.2).

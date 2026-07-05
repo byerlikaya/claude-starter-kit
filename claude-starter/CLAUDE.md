@@ -136,6 +136,12 @@ tahminle ilerleme.
 - Kullanıcı "commit et" / "push et" demedikçe `git commit` / `git push` çağrılmaz.
 - Branch oluşturma (`checkout -b`) ve staging (`git add`) bile onay alır.
 - "Tamamlandı / ilerleyebiliriz" yumuşak ifadeleri onay sayılmaz.
+- **Mesajı her zaman ÖNCE sun** — auto/hızlı modda bile: önerilen commit mesajını göster; kullanıcı görüp onaylamadan commit YOK.
+- **Araç-seviyesi kapı (auto/bypass izin modunda da tutar):** `guard-bash.sh` (PreToolUse) `git commit`/`git push`'u
+  varsayılan bloklar. `permissions.ask` bypass modda atlanır ama bu kapı `deny` ile HER modda tutar. Yalnız kullanıcının
+  oturum başında set ettiği `CLAUDE_GIT_OK=1` açar (model bunu taklit edemez — hook ayrı süreçte). Anahtar açık olsa bile
+  mesaj-sun + onay disiplini geçerli; anahtar **onayın yerine geçmez**, yalnız aracı çalıştırılabilir kılar. `push --force`,
+  `--amend` gibi destrüktifler anahtarla bile bloklu (§4.5).
 
 ### 4.5 Destrüktif işlemler onayla
 - `git reset --hard`, `push --force`, `clean -f`, `--no-verify`, `--no-gpg-sign`, lockfile silme, paket downgrade — açık talep olmadan yapılmaz.

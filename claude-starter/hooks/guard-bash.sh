@@ -31,4 +31,29 @@ echo "$CMD" | grep -qE 'git +commit +.*--amend'            && block "git commit 
 echo "$CMD" | grep -qE 'rm +-[A-Za-z]*r[A-Za-z]* +.*(/|\*|~)' && block "yıkıcı rm -rf" "4.5"
 echo "$CMD" | grep -qE '(^|[^a-zA-Z])(mkfs|dd +if=)'       && block "disk düzeyi yıkıcı komut" "4.5"
 
+# --- §4.4 commit/push onay kapisi (auto/bypass izin modunda DA tutar) ---
+# Neden hook: permissions.ask bypass modda ATLANIR; PreToolUse "deny" ise HER modda tutar. Hook mod-kordur
+# (permission_mode gormez), o yuzden git commit/push VARSAYILAN kapali; yalniz kullanici oturum baslamadan
+# CLAUDE_GIT_OK=1 set ederse acilir. Model bunu hook ortamina yazamaz (hook ayri surecte; Bash-tool env'i
+# turler-arasi kalici degil). Amac degismez: commit MESAJINI once kullaniciya sun, ACIK onay al.
+is_git_write() {
+  printf '%s' "$1" | grep -qiE '(^|[;&|(]|[[:space:]])git[[:space:]]+([^;&|[:space:]]+[[:space:]]+)*(commit|push)([[:space:]]|$|;|&|\|)'
+}
+if is_git_write "$CMD"; then
+  if printf '%s' "$CMD" | grep -q 'CLAUDE_GIT_OK'; then
+    echo "GUARD (§4.4): onay anahtarini (CLAUDE_GIT_OK) komut icinde set etme girisimi reddedildi." >&2
+    echo "Anahtar yalniz kullanici tarafindan, oturum baslamadan once set edilir." >&2
+    exit 2
+  fi
+  case "${CLAUDE_GIT_OK:-}" in
+    1|yes|true|on|YES|TRUE|ON) : ;;   # kullanici bu oturumda ACIKCA izin verdi -> gecir
+    *)
+      echo "GUARD (§4.4): 'git commit/push' ARAC SEVIYESINDE onaya bagli (auto/bypass modda da)." >&2
+      echo "Once commit MESAJINI kullaniciya sun ve ACIK onay al. Onaylandiginda:" >&2
+      echo "  (a) kullanici komutu kendi terminalinde calistirir, VEYA" >&2
+      echo "  (b) oturumu 'CLAUDE_GIT_OK=1' ile baslatip Claude'a birakir (normal modda permissions.ask yine sorar)." >&2
+      exit 2 ;;
+  esac
+fi
+
 exit 0

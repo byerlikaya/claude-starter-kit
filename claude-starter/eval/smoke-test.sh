@@ -80,6 +80,11 @@ if [ -f "$ROOT/settings.json" ]; then
   else pass "settings.json var (jq yok, JSON doğrulaması atlandı)"; fi
 else fail "settings.json yok"; fi
 [ -x "$HOOKS/guard-bash.sh" ] && pass "guard-bash.sh +x" || fail "guard-bash.sh yok/executable degil"
+# §4.4 git onay kapisi (davranissal): anahtarsiz commit/push BLOK, CLAUDE_GIT_OK=1 ile GEC, destruktif hep BLOK
+GJC='{"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}'
+printf '%s' "$GJC" | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && fail "git commit anahtarsiz GECTI (§4.4 kapi yok)" || pass "git commit anahtarsiz BLOK (§4.4)"
+printf '%s' "$GJC" | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && pass "git commit CLAUDE_GIT_OK=1 ile GEC" || fail "anahtarli commit bloklandi (kapi fazla siki)"
+printf '%s' '{"tool_name":"Bash","tool_input":{"command":"git push --force"}}' | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && fail "push --force anahtarla GECTI (§4.5 delik)" || pass "push --force anahtarla bile BLOK (§4.5)"
 
 echo "== 8) Slash komutları =="
 for c in simplify plan review ship handoff; do
