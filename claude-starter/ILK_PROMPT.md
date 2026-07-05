@@ -9,11 +9,11 @@ Yeni proje. Önce bağlamı yükle: ./CLAUDE.md (davranış + proje + stack tek 
 Disiplin katmanı şu kaynaklardan türer; kararlar bunlarla HİZALI kalsın:
 - Çalışma prensipleri:  multica-ai/andrej-karpathy-skills
 - Kod gözden geçirme:   google/eng-practices
-- Backend kalıbı:       DevArchitecture/DevArchitecture
+- Backend kalıbı:       <profile göre — jenerik: mevcut repo kalıbı; .NET/DevArch profili: DevArchitecture/DevArchitecture>
 
 İlk kurulum (KOD YAZMA, sırayla):
 1) /agents ile kurulu ajanların (profile göre sayı değişir) tanındığını göster.
-2) Skiller DOLU gelir (code-review, security-scan, db-migration, vps-deploy, devarch-module dahil).
+2) Skiller DOLU gelir (kurulu set profile göre değişir; ör. code-review · security-scan · observability · performance).
    Yalnız gerekiyorsa projenin stack'ine ince-ayar yap; kaynak/şablon ADI repoya giden hiçbir
    artefakta (kod, namespace, yorum, config) SIZMASIN (§4.2). Domain-özel "nasıl"lar (varsa)
    .claude/skills/ altına AYRICA yazılır.

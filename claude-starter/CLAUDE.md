@@ -35,7 +35,7 @@ Kurallar: her subagent ana thread'e **özet** döner (token-budget — model dis
 ## Definition of Done (her iş kapanışı)
 - Belirsiz kapsamlı iş **önce planner** ile planlanır (kabul kriteri belli olsun), sonra koda geçilir.
 - `/simplify` + testler yeşil + ilgili skill'ler tetiklenir + erteleme yok.
-- (.NET / DevArchitecture projelerinde) `sonarqube-check` kapısı:
+- (.NET projelerinde) `sonarqube-check` kapısı:
   **0 Bug · 0 Güvenlik Açığı · 0 Security Hotspot · 0 Code Smell** ve build **0 uyarı / 0 hata**.
 - İş kişisel veri / bağımlılık / çeviri içeriyorsa ilgili kapı temiz: **privacy · dependency-audit · i18n-integrity**.
 
@@ -110,7 +110,7 @@ zorunlu bir sapma varsa gerekçesini açıkça yaz. Emin olmadığın yerde kayn
 tahminle ilerleme.
 - Çalışma prensipleri (dört ilke): github.com/multica-ai/andrej-karpathy-skills
 - Kod gözden geçirme: github.com/google/eng-practices
-- Backend kalıbı (MediatR CQRS / IResult / AOP): github.com/DevArchitecture/DevArchitecture
+- Backend kalıbı — yalnız .NET/DevArch backend profilinde (MediatR CQRS / IResult / AOP): github.com/DevArchitecture/DevArchitecture
 
 ## Yasaklar (mutlak)
 

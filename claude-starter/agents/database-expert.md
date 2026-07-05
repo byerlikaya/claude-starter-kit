@@ -35,7 +35,7 @@ Veri modeli, migration, index veya cache katmanı değişikliklerinde.
 
 ## DoD
 - Migration yerelde up→down→up ile doğrulandı.
-- (.NET / DevArchitecture projelerinde) `sonarqube-check` yeşil.
+- (.NET projelerinde) `sonarqube-check` yeşil.
 - `test-expert` ile repo/handler testleri yeşil.
 
 ## Kısıtlar

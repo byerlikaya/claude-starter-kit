@@ -1,7 +1,7 @@
 ---
 name: backend-expert
 description: |
-  Yığın-bağımsız backend uzmanı (Node/Go/Python/.NET — DevArchitecture'sız). Endpoint, servis/handler,
+  Yığın-bağımsız backend uzmanı (Node/Go/Python/.NET vb.). Endpoint, servis/handler,
   doğrulama, iş kuralı ve hata sözleşmelerini projenin mevcut kalıbına uyarak yazar ve düzenler.
   Yeni backend özelliği, API ucu veya iş kuralı işlerinde devreye girer.
   Trigger phrases: "yeni handler", "servis yaz", "endpoint", "API ucu", "iş kuralı", "backend özelliği"
