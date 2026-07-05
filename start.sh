@@ -72,25 +72,74 @@ for a in "$@"; do
   esac
 done
 
-echo "=== Kit Kurulum Sihirbazi ==="
+# ===================== RENK / STIL YARDIMCILARI =====================
+# Renk YALNIZ interaktif TTY'de + TERM!=dumb + NO_COLOR bosken uretilir.
+# Aksi halde tum kodlar '' => CI/pipe/dumb'da ham \033 SIZMAZ (NO_COLOR saygi gorur).
+if [ -t 1 ] && [ "${TERM:-dumb}" != "dumb" ] && [ -z "${NO_COLOR:-}" ]; then
+  R=$'\033[0m'; B=$'\033[1m'; D=$'\033[2m'
+  CY=$'\033[36m'; GR=$'\033[32m'; YE=$'\033[33m'; MG=$'\033[35m'
+else
+  R=''; B=''; D=''; CY=''; GR=''; YE=''; MG=''
+fi
+h1()   { printf '\n%s%s%s%s\n' "$B" "$CY" "$1" "$R"; }               # bolum basligi
+sub()  { printf '%s%s%s\n' "$D" "$1" "$R"; }                         # dim aciklama
+opt()  { # $1=no $2=etiket $3=varsayilan_mi $4=sag-rozet
+  local mark=''; [ "${3:-0}" = 1 ] && mark=" ${GR}${B}(varsayilan)${R}"
+  printf '  %s%s%s)%s %s%-24s%s %s%s%s%s\n' "$B" "$YE" "$1" "$R" "$B" "$2" "$R" "$MG" "${4:-}" "$R" "$mark"
+}
+add()  { printf '     %s+%s %s\n'      "$GR" "$R" "$1"; }            # KURULUR
+skip() { printf '     %s-%s %s%s%s\n'  "$YE" "$R" "$D" "$1" "$R"; }  # KURULMAZ (tradeoff)
+gate() { printf '     %s>%s %s\n'      "$CY" "$R" "$1"; }            # silahlanacak kapi
+row()  { printf '  %s%-15s%s %s\n'     "$B" "$1" "$R" "$2"; }        # ozet satiri
+rule() { printf '  %s------------------------------------------------%s\n' "$D" "$R"; }
 
-# --- Adim 1: profil ---
+h1  "Agentik Calisma Kiti · kurulum sihirbazi"
+sub "3 adim: profil -> backend yigini -> ozet & onay."
+
+# ===================== ADIM 1 · PROFIL =====================
+# Bayrak verilmisse ($PROFILE dolu) bu blok komple ATLANIR (non-interactive yol korunur).
 if [ -z "$PROFILE" ]; then
-  echo "1) Proje profili? Kurulacak ajan/skill setini belirler:"
-  echo "   1) backend   2) frontend   3) fullstack (varsayilan)   4) mobile"
-  printf '   Secim [1-4, bos=3]: '
-  read -r s || s=""
+  h1  "[1/3] Proje profili"
+  sub "Secim, kurulacak ajan + skill setini belirler."
+  echo
+  opt 1 "backend"   0 "~10 ajan · ~24 skill"
+  add  "backend-expert · database-expert + db / api / migration skilleri"
+  skip "frontend-expert ve tum arayuz skilleri (frontend/a11y/i18n) KURULMAZ"
+  echo
+  opt 2 "frontend"  0 "~9 ajan · ~22 skill"
+  add  "frontend-expert + frontend / a11y / i18n skilleri"
+  skip "backend-expert · database-expert ve tum sunucu skilleri KURULMAZ"
+  echo
+  opt 3 "fullstack" 1 "~11 ajan · ~27 skill"
+  add  "her sey — tum ajanlar + tum skiller (on yuz + arka uc birlikte)"
+  echo
+  opt 4 "mobile"    0 "~9 ajan · ~23 skill"
+  add  "frontend-expert + React Native / Expo katmani (frontend-rn-expo)"
+  skip "backend-expert · database-expert KURULMAZ"
+  echo
+  printf '  %s->%s Secim %s[1-4, bos=3]%s: ' "$CY" "$R" "$D" "$R"
+  read -r s || s=""                 # EOF/non-TTY'de takilmaz; bos => varsayilan (fullstack)
   case "$s" in 1) PROFILE="backend" ;; 2) PROFILE="frontend" ;; 4) PROFILE="mobile" ;; *) PROFILE="fullstack" ;; esac
 fi
 
-# --- Adim 2: backend yigini (yalniz backend/fullstack) ---
+# ===================== ADIM 2 · BACKEND YIGINI =====================
+# Yalniz backend/fullstack sorulur; bayrak varsa atlanir.
 HAS_BACKEND=0
 case "$PROFILE" in backend|fullstack) HAS_BACKEND=1 ;; esac
 if [ "$HAS_BACKEND" = 1 ] && [ -z "$STACK" ]; then
-  echo "2) Backend yigini?"
-  echo "   1) .NET / DevArchitecture (tam destek)   2) Jenerik (devarch-module + sonarqube-check YOK)"
-  printf '   Secim [1-2, bos=1]: '
-  read -r s || s=""
+  h1  "[2/3] Backend yigini"
+  sub "Arka uc kalibini ve .NET'e ozel skillerin gelip gelmeyecegini belirler."
+  echo
+  opt 1 ".NET / DevArchitecture" 1 "tam destek"
+  add  "devarch-module + sonarqube-check skilleri (opinionated MediatR CQRS)"
+  gate "DevArchitecture temel projesini ONAY KAPISIYLA klonlar (sifirdan proje)"
+  echo
+  opt 2 "Jenerik" 0 "yigin-bagimsiz"
+  add  "yigin-bagimsiz backend-expert — mevcut repo kalibina uyar"
+  skip "devarch-module · sonarqube-check ve DevArchitecture temeli KURULMAZ"
+  echo
+  printf '  %s->%s Secim %s[1-2, bos=1]%s: ' "$CY" "$R" "$D" "$R"
+  read -r s || s=""                 # bos => varsayilan (dotnet)
   case "$s" in 2) STACK="generic" ;; *) STACK="dotnet" ;; esac
 fi
 [ "$HAS_BACKEND" = 1 ] || STACK="none"
@@ -119,21 +168,57 @@ if [ "$HAS_BACKEND" = 1 ]; then
   fi
 fi
 
-# --- Adim 3: ozet + son onay ---
+# ===================== ADIM 3 · OZET + ONAY =====================
+# Bu blok ESLEMELERDEN (EXCL_AGENTS/EXCL_SKILLS/DEVARCH_ON) SONRA gelir -> sayim dogru budanir.
+# Kurulacak ajan/skill adedini KAYNAKTAN canli say (gomulu sabit degil; eslemeler degisirse kendini duzeltir).
+count_installed() {   # $1=EXCL listesi  $2=glob  -> kurulacak adet
+  local excl=" $1 " n=0 base
+  for p in $2; do
+    [ -e "$p" ] || continue
+    base="$(basename "$p")"
+    case "$excl" in *" $base "*) ;; *) n=$((n+1)) ;; esac
+  done
+  printf '%s' "$n"
+}
+N_AG="$(count_installed "$EXCL_AGENTS" "$SRC/agents/*.md")"
+N_SK="$(count_installed "$EXCL_SKILLS" "$SRC/skills/*/")"
+
+case "$PROFILE" in
+  backend)   P_TXT="backend ${D}— sunucu / API / DB (frontend yok)${R}" ;;
+  frontend)  P_TXT="frontend ${D}— web arayuzu (backend yok)${R}" ;;
+  mobile)    P_TXT="mobile ${D}— React Native / Expo (backend yok)${R}" ;;
+  fullstack) P_TXT="fullstack ${D}— uctan uca (en genis)${R}" ;;
+esac
+
+h1 "[3/3] Ozet · onaylamadan once ne kurulacagini gor"
 echo
-echo "=== Ozet ==="
-echo "  Profil          : $PROFILE"
+row "Profil" "${B}${P_TXT}${R}"
+row "Gelen"  "${MG}${B}${N_AG}${R} ajan · ${MG}${B}${N_SK}${R} skill kurulacak"
 if [ "$HAS_BACKEND" = 1 ]; then
   if [ "$STACK" = "generic" ]; then
-    echo "  Backend yigini  : jenerik (devarch-module + sonarqube-check kurulmaz)"
+    row "Backend yigin" ".NET disi — jenerik ${D}(devarch-module + sonarqube-check kurulmaz)${R}"
   else
-    echo "  Backend yigini  : .NET / DevArchitecture (tam destek)"
+    row "Backend yigin" ".NET / DevArchitecture ${D}(tam destek)${R}"
   fi
 fi
-[ "$DEVARCH_ON" = 1 ] && echo "  DevArchitecture : kurulum kapisi calisacak" || echo "  DevArchitecture : kurulmaz"
+if [ "$DEVARCH_ON" = 1 ]; then
+  row "DevArch temel" "${YE}kurulum onay kapisi calisacak${R}"
+elif [ "$HAS_BACKEND" = 1 ]; then
+  row "DevArch temel" "${D}kurulmaz${R}"
+fi
 echo
-if ! ask_yes "Bu ayarlarla kurulsun mu?"; then
-  echo "Iptal edildi; hicbir sey degismedi."
+printf '  %sHer kurulumda silahlanan guvenlik kapilari:%s\n' "$B" "$R"
+gate "commit/push onay kapisi — auto/bypass modda bile (guard-bash)"
+gate "iz-denetimi — yapay-zeka izi / vendor adini git hook bloklar"
+gate "gercek context olcumu + %75'te handoff (Stop hook)"
+gate "destruktif komut guard'i (rm -rf / force-push vb.)"
+echo
+row "Yazilacak" "${D}./.claude (agents·skills·commands·hooks·eval·settings.json) + ./CLAUDE.md${R}"
+rule
+echo
+# ask_yes stdin'den okur => CI'da `printf 'evet\n' | bash start.sh` calisir; EOF'ta 'hayir' (kaza kurulumu yok).
+if ! ask_yes "  Bu ayarlarla kurulsun mu?"; then
+  printf '  %sIptal edildi — hicbir sey degismedi.%s\n' "$YE" "$R"
   exit 0
 fi
 echo
