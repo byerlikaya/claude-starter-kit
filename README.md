@@ -1,123 +1,106 @@
-# Agentik Çalışma Kiti (Claude Code)
+# Agentik Çalışma Kiti — Claude Code
 
-Herhangi bir projede aynı disiplinle ilerleten, yeniden kullanılabilir bir Claude Code iskeleti:
-**planla → üret → denetle → commit'le**, her adımda kalite ve iz-temizliği kapılarıyla.
-Yığın-bağımsızdır; hangi projeye kurulursa kurulsun aynı disiplin geçerlidir.
+Bir projeyi, hangi aşamada olursa olsun, aynı mühendislik disipliniyle ilerleten yeniden kullanılabilir bir Claude Code iskeleti. Sıfırdan bir projeye **kurulur**; hâlihazırda ilerleyen bir projeye ise onu bozmadan **devredilir**. Her iki yolda da akış aynıdır: **planla → üret → denetle → commit'le** — ve her adımdaki kalite ile güvenlik, modelin hatırlamasına değil, araç seviyesindeki kapılara dayanır.
 
-**Sürüm:** 1.0.0 · Lisans: MIT · [Değişiklik günlüğü](CHANGELOG.md)
+**Sürüm 1.0.0** · **MIT Lisansı** · [Değişiklik günlüğü](CHANGELOG.md)
 
-## Felsefe (üç ilke)
+## Neden bu kit?
 
-1. **Ajan = ince tetikleyici** ("kim / ne zaman"). Kısa; hangi işte devreye gireceğini ve dayandığı skill'i söyler.
-2. **Skill = nasıl** (tek bilgi kaynağı). Asıl yöntem/kural skill'de durur, ajana kopyalanmaz.
-3. **Kural → kapı.** Kritik kurallar modelin hatırlamasına değil, **araç seviyesinde** zorlanır (hook + permission + eval).
+Çoğu "agent kurulumu" bir öneriler yığınıdır: kurallar bir dosyada durur, onlara uyulup uyulmaması modelin insafına kalır. Bu kit farklı bir söz verir — **kritik kural bir kapıdır, hatırlatma değil.**
 
-## Kurulum
+- Commit mesajına yapay-zeka izi **sızamaz**, çünkü bir git hook bunu reddeder.
+- Onaysız `commit`/`push` **olmaz**, çünkü bir PreToolUse hook bunu — otomatik/bypass modda bile — durdurur.
+- Oturum doluluğu **tahmin edilmez**, çünkü gerçek token sayısı transcript'ten ölçülür.
+- Kurulum mevcut projeyi **ezmez**, çünkü devir ayrı bir git dalında yapılır; beğenmezseniz bir komutla silinir.
+
+## Üç ilke
+
+1. **Ajan = ince tetikleyici.** Bir ajan yalnızca "kim, ne zaman"ı söyler; kısa kalır ve işin nasılını skill'e bırakır.
+2. **Skill = tek bilgi kaynağı.** Asıl yöntem ve kural skill'de yaşar; ajana kopyalanmaz, tek yerden güncellenir.
+3. **Kural → kapı.** Önemli olan kural araç seviyesinde zorlanır (hook · permission · eval). Modelin onu anımsaması beklenmez.
+
+## İki uygulama yolu
+
+### Sıfırdan proje — `start.sh`
 
 ```bash
 bash start.sh [--backend|--frontend|--mobile|--fullstack] [--dotnet|--generic]
 ```
 
-`start.sh` bir **kurulum sihirbazıdır**: bayrak vermezsen adımları interaktif sorar (profil → backend yığını → özet + onay). Bayraklar sessiz/CI modu içindir. Core ajan/skiller her profilde kurulur; yalnız stack-özel olanlar profile göre eklenir/çıkarılır:
+`start.sh` bir kurulum sihirbazıdır. Bayrak vermezseniz adımları tek tek sorar (profil → backend yığını → özet ve onay); bayraklar ise sessiz/CI kullanımı içindir. Her seçenek ne kuracağını **kurmadan önce** gösterir: kaç ajan, kaç skill, hangi güvenlik kapıları.
 
-| Profil | Ekstra ajan | Ekstra skiller | Backend temeli |
-|---|---|---|---|
-| `--backend` | backend-expert · database-expert | db-migration · api-design (+ yığına göre) | yığın seçimine bağlı |
-| `--frontend` | frontend-expert | frontend · i18n-integrity · a11y | — atlanır |
-| `--mobile` | frontend-expert | frontend · frontend-rn-expo · i18n-integrity · a11y | — atlanır |
-| `--fullstack` | üçü birden | hepsi (+ yığına göre) | yığın seçimine bağlı |
+| Profil | Kurulan uzman ajanlar | Öne çıkan skiller |
+|---|---|---|
+| `--backend` | backend · database | db-migration · api-design · observability |
+| `--frontend` | frontend | frontend · a11y · i18n-integrity |
+| `--mobile` | frontend (+ React Native/Expo katmanı) | frontend-rn-expo · a11y |
+| `--fullstack` | hepsi | tüm skiller |
 
-*(Core skiller — observability · docs-writer dahil — her profilde kurulur; tablo yalnız stack-özel farkları gösterir.)*
+Backend yığını yalnızca `--backend`/`--fullstack` için sorulur:
 
-**Backend yığını** (yalnız `--backend`/`--fullstack`; varsayılan `--dotnet`):
+- **`--dotnet`** — .NET / DevArchitecture kalıbı (MediatR CQRS · IResult · AOP). `devarch-module` ve `sonarqube-check` skilleri gelir; DevArchitecture temeli, açık bir **onay kapısıyla** projeye dahil edilir.
+- **`--generic`** — yığın-bağımsız backend uzmanı. Mevcut repo kalıbına uyar; .NET'e özel skiller kurulmaz. Node, Go, Python ve benzeri için uygundur.
 
-| Yığın | Backend ajanı | Ekstra backend skilleri | DevArchitecture |
-|---|---|---|---|
-| `--dotnet` | backend-expert (.NET/DevArchitecture) | devarch-module · sonarqube-check | ✅ onay kapısı |
-| `--generic` | backend-expert (yığın-bağımsız varyant) | — (yalnız db-migration) | — kurulmaz |
+Kurulum tamamlanınca `./.claude/` (ajanlar · skiller · komutlar · hook'lar · eval · settings.json) ile kök `./CLAUDE.md` oluşur, git hook'ları silahlanır ve kurulum artıkları temizlenir.
 
-> **Mobil için ayrı ajan yoktur** — mobil, `frontend-expert` üzerine `frontend-rn-expo` **skill katmanı** olarak gelir (ajan = tetik, skill = nasıl). **Jenerik backend** de ayrı ajan değil: `backend-expert`'in DevArchitecture'sız, yığın-bağımsız varyantı kurulur (Node/Go/Python için); derin backend skilleri (`db-migration` hariç) .NET'e özel olduğundan gelmez.
+### Mevcut projeye devir — `update.sh`
 
-> **Amaç & sınır:** Bu kit, **sıfırdan** bir projeyi DevArchitecture backend temeli üzerine kurmak
-> için tasarlandı. `start.sh` ilk adımda bunu bir **onay kapısıyla** ele alır: temel projede yoksa
-> ve onay verirseniz DevArchitecture'ı depodan çekip projeye birebir dahil eder. Temel zaten varsa
-> bu adımı atlar. **Mevcut** bir projede temel yoksa, eklemenin yapıyı bozabileceğine dair ciddi bir
-> uyarı verir ve yalnız açık onayla ilerler. (Disiplin katmanı + frontend yığın-bağımsızdır; yalnız
-> backend opinionated'dır.)
+```bash
+bash update.sh          # hedef projenin kökünde
+```
 
-`./.claude/` (agents · skills · commands · hooks · eval · settings.json) ve kök `./CLAUDE.md` kurulur;
-`.gitignore`'a `docs/ · .claude/ · CLAUDE.md` eklenir; git deposu varsa `core.hooksPath` ayarlanır;
-kurulum artıkları (`claude-starter/` + `start.sh`) temizlenir. Sonra Claude Code'u repo kökünde açıp
-`ILK_PROMPT.md` içeriğini yapıştır.
+Zaten ilerleyen bir projeye kiti, **bir ekibin projeyi başka bir ekibe devretmesi** gibi uygular. Amaç üç şeyi aynı anda korumaktır: proje bozulmaz, projede alınmış kararlar kaybolmaz, kit de pasif kalmaz. Araç sırasıyla şunları yapar:
+
+1. **Tespit eder** — mevcut ajanları, kuralları, husky/lefthook zincirini, izlenen dosyaları okur; hiçbir şeyi değiştirmez.
+2. **Önerir** — yedi devir kararına projeye özgü akıllı bir öneri üretir; interaktif modda hepsini gözden geçirip değiştirebilirsiniz.
+3. **Bir devir dalı açar** — tüm değişiklik ayrı bir git dalında yapılır. `main` el değmez; sonucu bir diff olarak inceler, `git` ile kabul veya iptal edersiniz.
+4. **Yan yana yaşatır** — kit ajanları `-cck` ekiyle kurulur ve projenin kendi ajanlarıyla asla çakışmaz. Projenin ajanlarına dokunulmaz.
+5. **Disiplini bağlar** — kit kuralları `DISCIPLINE.md`'ye yazılır ve projenin `CLAUDE.md`'sine tek satır `@import` ile eklenir; projenin içeriği değişmez.
+6. **Ayarları birleştirir** — `settings.json` şema-farkında biçimde birleştirilir; projenin kendi hook ve izinleri korunur, kitinkiler eklenir.
+7. **Kapıları kanıtlar** — kurulumdan sonra kapıların gerçekten çalıştığı test edilir (iddia değil, kanıt). Mevcut bir husky zinciri varsa, kit hook'ları onunla bir köprü üzerinden birlikte çalışır.
+8. **Devri belgeler** — kalıcı bir `docs/HANDOVER.md` ile `docs/adr/` altında bir karar kaydı bırakır. Böylece kararlar sohbette değil, versiyon kontrolünde yaşar.
+
+## İçindekiler
+
+- **11 ajan** — planner · backend · database · security · privacy · test · frontend · devops · review · commit · session-manager. Ajan adları `-cck` ekiyle isimlenir (Claude Code Kit); böylece kurulduğu her projenin kendi ajanlarıyla çakışmaz.
+- **27 skill** — kod gözden geçirme, güvenlik taraması, migration, dağıtım, gözlemlenebilirlik, performans, erişilebilirlik, çeviri bütünlüğü, sürümleme, olay müdahalesi ve daha fazlası.
+- **5 slash komut** — `/plan` · `/review` · `/ship` · `/handoff` · `/simplify`.
+- **Hook'lar** — `guard-bash.sh` (araç seviyesi kapı), `pre-commit` + `commit-msg` (iz-denetimi), `context-usage.sh` ve `session-guard.sh` (oturum ölçümü), `trace-blocklist.txt`.
+- **CLAUDE.md** — davranış, üç ilke, iş akışı, tamamlanma tanımı (DoD), token disiplini ve yasaklar.
+
+## Oturum ve token yönetimi
+
+Bir asistan `/context` komutunu kendisi çalıştıramaz; bu yüzden çoğu kurulum oturum doluluğunu **tahmin eder**. Bu kit ölçer. `context-usage.sh`, transcript'teki son turun API kullanımından gerçek token sayısını okur — `/context`'in gösterdiği değerin aynısı. `UserPromptSubmit` hook'u bunu her tur otomatik olarak bağlama enjekte eder; `Stop` hook'u (`session-guard.sh`) ise doluluk **%75'i aştığında** devir önerisini garantiyle yüzeye çıkarır. Böylece oturum-sağlığı satırı bir ölçüme dayanır, bir tahmine değil.
+
+## Kural → kapı
+
+| Kural | Zorlayan mekanizma |
+|---|---|
+| Commit/push yalnızca onayla — otomatik/bypass modda bile | `guard-bash.sh` (PreToolUse); `CLAUDE_GIT_OK` ile açılır |
+| Destrüktif işlem (reset --hard · force push · rm -rf · --no-verify) | `guard-bash.sh` (araç seviyesinde blok) |
+| Commit'te yapay-zeka izi ve dış şablon/vendor adı bulunmaz | `pre-commit` + `commit-msg` git hook (iz-denetimi) |
+| Oturum eşiği | `context-usage.sh` (ölçüm) + `session-guard.sh` (Stop hook) |
+| Kalite kapısı (.NET) | `sonarqube-check` + `/ship` |
+
+Bu kapılar `settings.json` ve git `core.hooksPath` üzerinden silahlanır; `smoke-test.sh` her değişiklikten sonra hazır olduklarını doğrular.
 
 ## Doğrulama
 
 ```bash
-bash .claude/eval/smoke-test.sh      # statik yapı
-bash .claude/eval/routing-eval.sh    # davranışsal routing
+bash .claude/eval/smoke-test.sh      # yapı, frontmatter, kapı bütünlüğü
+bash .claude/eval/routing-eval.sh    # örnek prompt doğru ajan/skill'e mi gidiyor
 ```
 
-- **smoke-test:** frontmatter, trigger phrase, ajan sayısı, sahipsiz-skill referansı, stub kalıntısı, hook/settings hazırlığı.
-- **routing-eval:** örnek prompt'lar beklenen ajan/skill'e trigger ile yönleniyor mu (golden routing) + iki ajan aynı trigger'ı paylaşıyor mu (çakışma). Türkçe diyakritiği normalize eder; budanmış kurulumda eksik hedefi atlar. Claude Code çalıştırmaz.
+`smoke-test`, ajan/skill frontmatter'ını, sahipsiz skill referanslarını, hook'ların +x ve silahlı oluşunu ve context ölçüm eşiklerini denetler. `routing-eval`, golden bir prompt kümesinin beklenen hedefe yönlendiğini ve iki ajanın aynı tetiği paylaşmadığını doğrular; Türkçe diyakritiği normalize eder ve Claude Code'u çalıştırmaz.
 
-## İçindekiler
+## İş akışı
 
-- **11 ajan** (`.claude/agents/`): planner · backend-expert · database-expert · security-expert ·
-  privacy-agent · test-expert · frontend-expert · devops-expert · review-agent · commit-agent · session-manager.
-  Her ajan: uzmanlık duruşu · koordinasyon · çıktı sözleşmesi · hata/eskalasyon · örnek delegasyon.
-- **27 skill** (`.claude/skills/`): disiplin katmanı — code-review, security-scan, db-migration,
-  vps-deploy, devarch-module, sonarqube-check, commit-message, spec-planning, privacy-compliance,
-  ci-pipeline, dependency-audit, adr, release, i18n-integrity, handoff, testing, frontend,
-  frontend-rn-expo, trace-scan, token-budget, observability, docs-writer, a11y, api-design,
-  performance, incident-runbook, red-team.
-- **5 slash komut** (`.claude/commands/`): `/plan` · `/review` · `/ship` · `/handoff` · `/simplify`.
-- **Hook'lar** (`.claude/hooks/`): `pre-commit` + `commit-msg` (iz-denetçisi), `guard-bash.sh` (destrüktif blok), `trace-blocklist.txt`, **`context-usage.sh`** (gerçek context ölçümü — aşağı).
-- **settings.json**: izin (ask/deny) + PreToolUse guard + **UserPromptSubmit** (her tur gerçek context enjekte eder).
-
-### Gerçek context ölçümü (özellik)
-Asistan `/context` komutunu çalıştıramaz — bu yüzden çoğu setup oturum doluluğunu **tahmin eder**. Bu kit etmez: `context-usage.sh`, transcript'teki son turun API `usage`'ından (`input + cache_read + cache_creation`) **gerçek** token sayısını okur (= `/context`'in gösterdiği). `UserPromptSubmit` hook'u bunu her tur otomatik context'e enjekte eder, böylece oturum-sağlığı satırı (`🔋 %.. → devam/handoff`) **ölçüme** dayanır, tahmine değil. Elle: `bash .claude/hooks/context-usage.sh` (pencere farklıysa `CONTEXT_WINDOW=...`).
-- **CLAUDE.md** (kök): davranış · dört ilke · iş akışı · DoD · token disiplini · güvenilmeyen içerik · §4 yasaklar.
-- **AGENT_TEMPLATE.md**: yeni ajan/skill açma kontratı.
-
-## Kullanım (iş akışı)
-
-`/plan` (belirsiz kapsam) → uzman ajanlar üretir → `/review` (güvenlik + kalite + test) →
-`/ship` (DoD kapısı + commit önerisi, onay bekler) → context dolunca `/handoff` → `/clear`.
-
-## Zorlama katmanları (kural → kapı)
-
-| Kural | Mekanizma |
-|---|---|
-| §4.1 yapay zeka izi yok · §4.2 vendor adı yok | git `pre-commit` + `commit-msg` hook (`trace-scan`) |
-| §4.4 commit/push yalnız onayla | `settings.json` `permissions.ask` |
-| §4.5 destrüktif işlem (reset --hard, force push, --no-verify, rm -rf…) | `guard-bash.sh` PreToolUse hook (exit 2 blok) |
-| DoD (test/kalite) | `sonarqube-check` + `/ship` kapısı |
-
-## §4 Yasaklar (özet)
-
-- **4.1** Commit/kod/config'te yapay zeka izi yok (co-author, "Generated with", 🤖, "yapay zeka/asistan/model/copilot").
-- **4.2** Üçüncü-taraf şablon/vendor adı hiçbir artefakta geçmez.
-- **4.3** `docs/` ve `.claude/` gitignore'da; adları artefakta geçmez.
-- **4.4** Commit/push yalnız açık onayla ("tamamlandı" onay değildir).
-- **4.5** Destrüktif işlem (reset --hard / force push / clean -f / --no-verify / amend) açık talep ister.
+`/plan` (belirsiz kapsam) → uzman ajanlar üretir → `/review` (güvenlik · kalite · test) → `/ship` (DoD kapısı; commit'i önerir, onay bekler) → bağlam dolunca `/handoff` → `/clear`.
 
 ## Genişletme
 
-Yeni ajan/skill için `AGENT_TEMPLATE.md` kontratını izle: frontmatter (name · description +
-Trigger phrases · tools en-az-yetki · model tier alias/inherit) → gövde (Ne zaman → Uzmanlık duruşu →
-Nasıl/skill → Koordinasyon → DoD → Çıktı & bağlam → Hata/eskalasyon → Örnek → Kısıtlar).
+Yeni bir ajan veya skill eklerken `AGENT_TEMPLATE.md` sözleşmesini izleyin: frontmatter (name · description + Trigger phrases · en-az-yetki tools · model kademesi) ve gövde (Ne zaman → Uzmanlık duruşu → Nasıl/skill → Koordinasyon → DoD → Çıktı & bağlam → Hata/eskalasyon → Örnek → Kısıtlar).
 
-## Notlar
+## Lisans ve atıf
 
-- Her şey **proje-local** (`./.claude`), home'a bağımlılık yok.
-- `.claude` ve `CLAUDE.md` gitignore'da — lokal kalır, repoya gitmez.
-- Varsayılan backend `.NET + DevArchitecture` opinionated'dır; frontend yığın-bağımsızdır (RN+Expo bir seçenek).
-
-## Lisans
-
-MIT — bkz. [LICENSE](LICENSE).
-
-## Kaynaklar & Atıf
-
-Bu kit bazı disiplinleri üst kaynaklardan uyarlar (code-review → google/eng-practices, CC-BY 3.0;
-devarch-module → DevArchitecture kalıbı). Ayrıntı için bkz. [ATTRIBUTION.md](ATTRIBUTION.md).
+MIT — bkz. [LICENSE](LICENSE). Disiplin katmanının bir kısmı üst kaynaklardan uyarlanmıştır: `code-review` skill'i `google/eng-practices` (CC-BY 3.0) çalışmasından, `devarch-module` skill'i ise DevArchitecture kalıbından (yazarının açık izniyle). Ayrıntılar için [ATTRIBUTION.md](ATTRIBUTION.md).

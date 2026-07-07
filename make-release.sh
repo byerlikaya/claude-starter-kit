@@ -32,7 +32,7 @@ if [ -n "$bad" ]; then
 fi
 
 echo "Uretildi: $OUT ($(du -h "$OUT" | cut -f1)) · $(tar tzf "$OUT" | wc -l | tr -d ' ') giris"
-echo "Whitelist dogrulandi: yalniz start.sh + claude-starter/ + VERSION"
+echo "Whitelist dogrulandi: yalniz start.sh + update.sh + claude-starter/ + VERSION"
 echo
 echo "Yayinlamak icin (AYRI onay — §4.4):"
 echo "  gh release create v$VER \"$OUT\" -R byerlikaya/claude-starter-kit --title \"v$VER\" --notes-file CHANGELOG.md"

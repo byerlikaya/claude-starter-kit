@@ -9,7 +9,9 @@ yeniden ifade edilmiştir; atıf bu lisans gereğidir.
 
 ## devarch-module skill'i
 Backend kalıbı `DevArchitecture` (https://github.com/DevArchitecture/DevArchitecture) mimarisinden
-esinlenmiştir (MediatR CQRS / IResult / AOP). Yalnızca kalıp/yaklaşım referans alınmıştır.
+esinlenmiştir (MediatR CQRS / IResult / AOP). Yalnızca kalıp/yaklaşım referans alınmıştır; bu depo
+DevArchitecture'a ait kaynak kodu barındırmaz. Referans ve kullanım için DevArchitecture yazarından
+açık izin alınmıştır.
 
 ## security-scan · db-migration · vps-deploy skilleri
 Özgün olarak yazılmıştır. İçerdikleri CLI komutları, OWASP kategori adları ve migration/deploy
