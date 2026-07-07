@@ -80,7 +80,7 @@ Bir asistan `/context` komutunu kendisi çalıştıramaz; bu yüzden çoğu kuru
 | Destrüktif işlem (reset --hard · force push · rm -rf · --no-verify) | `guard-bash.sh` (araç seviyesinde blok) |
 | Commit'te yapay-zeka izi ve dış şablon/vendor adı bulunmaz | `pre-commit` + `commit-msg` git hook (iz-denetimi) |
 | Oturum eşiği | `context-usage.sh` (ölçüm) + `session-guard.sh` (Stop hook) |
-| Kalite kapısı (.NET) | `sonarqube-check` + `/ship` |
+| Kalite kapısı (SonarQube kullanan projeler — dil-bağımsız: JS/TS · Python · Go · Java · C# …) | `sonarqube-check` + `/ship` |
 
 Bu kapılar `settings.json` ve git `core.hooksPath` üzerinden silahlanır; `smoke-test.sh` her değişiklikten sonra hazır olduklarını doğrular.
 

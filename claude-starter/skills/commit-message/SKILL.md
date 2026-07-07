@@ -60,7 +60,7 @@ Her commit tek konuya odaklı; "feat + fix + refactor" tek commit'te olmaz.
 
 ## Kurallar
 - **Atomik:** tek mantıksal değişiklik = tek commit.
-- **DoD'siz commit yok:** `/simplify` + testler yeşil + (.NET'te) `sonarqube-check` 0/0/0/0 geçmeden mesaj önerme.
+- **DoD'siz commit yok:** `/simplify` + testler yeşil + (SonarQube kullanılıyorsa) `sonarqube-check` 0/0/0/0 geçmeden mesaj önerme.
 - Staged diff yoksa uyar; `git add` kapsamını kullanıcıya SEÇMELİ sor.
 - Sessiz `git commit` çalıştırma; mesajı öner, **onay bekle**.
 

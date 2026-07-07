@@ -47,7 +47,7 @@ dayanır, bir tahmine değil.
 | Destrüktif işlem (reset --hard · force push · rm -rf · --no-verify) | `guard-bash.sh` (araç seviyesinde blok) |
 | Commit'te yapay-zeka izi ve dış şablon/vendor adı bulunmaz | `pre-commit` + `commit-msg` git hook |
 | Oturum eşiği | `context-usage.sh` (ölçüm) + `session-guard.sh` (Stop hook) |
-| Kalite kapısı (.NET) | `sonarqube-check` + `/ship` |
+| Kalite kapısı (SonarQube kullanan projeler — dil-bağımsız) | `sonarqube-check` + `/ship` |
 
 ## Doğrulama
 

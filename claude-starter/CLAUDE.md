@@ -35,7 +35,7 @@ Kurallar: her subagent ana thread'e **özet** döner (token-budget — model dis
 ## Definition of Done (her iş kapanışı)
 - Belirsiz kapsamlı iş **önce planner-cck** ile planlanır (kabul kriteri belli olsun), sonra koda geçilir.
 - `/simplify` + testler yeşil + ilgili skill'ler tetiklenir + erteleme yok.
-- (.NET projelerinde) `sonarqube-check` kapısı:
+- (SonarQube kullanan projelerde — dil-bağımsız) `sonarqube-check` kapısı:
   **0 Bug · 0 Güvenlik Açığı · 0 Security Hotspot · 0 Code Smell** ve build **0 uyarı / 0 hata**.
 - İş kişisel veri / bağımlılık / çeviri içeriyorsa ilgili kapı temiz: **privacy · dependency-audit · i18n-integrity**.
 
@@ -45,7 +45,7 @@ Ajanı olmayan skiller "aklına gelirse" değil, tetiği gelince **zorunlu** ça
 | Tetik | Zorunlu skill |
 |---|---|
 | Her commit öncesi | `trace-scan` (§4.1/§4.2 — hook otomatik uygular) |
-| .NET build / PR | `sonarqube-check` (0/0/0/0) |
+| SonarQube'lu proje build / PR | `sonarqube-check` (0/0/0/0) |
 | Yeni/güncellenen çeviri metni | `i18n-integrity` |
 | Paket ekleme / güncelleme / lockfile değişimi | `dependency-audit` |
 | Mimari/kalıcı karar | `adr` |

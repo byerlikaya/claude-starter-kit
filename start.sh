@@ -20,8 +20,9 @@ Kullanim: bash start.sh [PROFIL] [BACKEND-YIGINI]
   Profil:   --backend | --frontend | --mobile | --fullstack   (varsayilan: fullstack)
   Yigin:    --dotnet  | --generic   (yalniz backend/fullstack; varsayilan: dotnet)
 Bayrak verilmezse betik ilgili adimi interaktif sorar (sihirbaz).
-  --dotnet   .NET/DevArchitecture tam destek (devarch-module + sonarqube-check + DevArch kapisi)
-  --generic  jenerik backend (backend/database-expert-cck + db-migration; devarch/sonarqube YOK)
+  --dotnet   .NET/DevArchitecture tam destek (devarch-module + DevArch kapisi)
+  --generic  jenerik backend (backend/database-expert-cck + db-migration; devarch YOK)
+             (sonarqube-check dil-bagimsizdir; her profilde kurulur, .NET'e ozel degildir)
 USAGE
 }
 
@@ -131,12 +132,12 @@ if [ "$HAS_BACKEND" = 1 ] && [ -z "$STACK" ]; then
   sub "Arka uc kalibini ve .NET'e ozel skillerin gelip gelmeyecegini belirler."
   echo
   opt 1 ".NET / DevArchitecture" 1 "tam destek"
-  add  "devarch-module + sonarqube-check skilleri (opinionated MediatR CQRS)"
+  add  "devarch-module skili (opinionated MediatR CQRS)"
   gate "DevArchitecture temel projesini ONAY KAPISIYLA klonlar (sifirdan proje)"
   echo
   opt 2 "Jenerik" 0 "yigin-bagimsiz"
   add  "yigin-bagimsiz backend-expert-cck — mevcut repo kalibina uyar"
-  skip "devarch-module · sonarqube-check ve DevArchitecture temeli KURULMAZ"
+  skip "devarch-module ve DevArchitecture temeli KURULMAZ (sonarqube-check yine kurulur)"
   echo
   printf '  %s->%s Secim %s[1-2, bos=1]%s: ' "$CY" "$R" "$D" "$R"
   read -r s || s=""                 # bos => varsayilan (dotnet)
@@ -149,10 +150,10 @@ DEVARCH_ON=0
 case "$PROFILE" in
   frontend)
     EXCL_AGENTS="backend-expert-cck.md database-expert-cck.md"
-    EXCL_SKILLS="db-migration devarch-module sonarqube-check frontend-rn-expo api-design" ;;
+    EXCL_SKILLS="db-migration devarch-module frontend-rn-expo api-design" ;;
   mobile)
     EXCL_AGENTS="backend-expert-cck.md database-expert-cck.md"
-    EXCL_SKILLS="db-migration devarch-module sonarqube-check api-design" ;;
+    EXCL_SKILLS="db-migration devarch-module api-design" ;;
   backend)
     EXCL_AGENTS="frontend-expert-cck.md"
     EXCL_SKILLS="frontend frontend-rn-expo a11y" ;;
@@ -164,7 +165,7 @@ if [ "$HAS_BACKEND" = 1 ]; then
   if [ "$STACK" = "dotnet" ]; then
     DEVARCH_ON=1
   else
-    EXCL_SKILLS="$EXCL_SKILLS devarch-module sonarqube-check"   # jenerik: .NET'e ozel skiller gelmez
+    EXCL_SKILLS="$EXCL_SKILLS devarch-module"   # jenerik: devarch-module .NET-ozel; sonarqube-check dil-bagimsiz, kalir
   fi
 fi
 
@@ -196,7 +197,7 @@ row "Profil" "${B}${P_TXT}${R}"
 row "Gelen"  "${MG}${B}${N_AG}${R} ajan · ${MG}${B}${N_SK}${R} skill kurulacak"
 if [ "$HAS_BACKEND" = 1 ]; then
   if [ "$STACK" = "generic" ]; then
-    row "Backend yigin" ".NET disi — jenerik ${D}(devarch-module + sonarqube-check kurulmaz)${R}"
+    row "Backend yigin" ".NET disi — jenerik ${D}(devarch-module kurulmaz; sonarqube-check kurulur)${R}"
   else
     row "Backend yigin" ".NET / DevArchitecture ${D}(tam destek)${R}"
   fi
