@@ -71,7 +71,7 @@ On bir ajan; her biri bir **ince tetikleyici** — yalnızca *kim* ve *ne zaman*
 
 ```bash
 # npx — kurulum gerektirmez
-npx claude-starter-kit          # sıfırdan proje     ·   npx claude-starter-kit adopt   # mevcut
+npx claude-code-starter-kit          # sıfırdan proje     ·   npx claude-code-starter-kit adopt   # mevcut
 
 # Homebrew
 brew install byerlikaya/tap/claude-kit

@@ -14,13 +14,13 @@ npm publish --access public
 Users then need nothing but Node:
 
 ```bash
-npx claude-starter-kit            # fresh project (start.sh wizard)
-npx claude-starter-kit adopt      # existing project (update.sh handover)
+npx claude-code-starter-kit            # fresh project (start.sh wizard)
+npx claude-code-starter-kit adopt      # existing project (update.sh handover)
 ```
 
 `bin/cli.js` stages the payload in a temp dir and runs it with the user's project as the CWD, so `start.sh`'s self-cleanup never touches the package or the project.
 
-> If the name `claude-starter-kit` is taken on npm, scope it (`@byerlikaya/claude-starter-kit`) in `package.json` — the `bin` names stay the same.
+> Published as `claude-code-starter-kit` (the bare `claude-starter-kit` was already taken on npm). To rename, edit `name` (and the matching `bin` key) in `package.json`.
 
 ## Homebrew (tap)
 

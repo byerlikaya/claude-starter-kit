@@ -71,7 +71,7 @@ Install via **npx** (nothing to clone), **Homebrew**, or the **release tarball**
 
 ```bash
 # npx — nothing to install
-npx claude-starter-kit          # fresh project      ·   npx claude-starter-kit adopt   # existing
+npx claude-code-starter-kit          # fresh project      ·   npx claude-code-starter-kit adopt   # existing
 
 # Homebrew
 brew install byerlikaya/tap/claude-kit
