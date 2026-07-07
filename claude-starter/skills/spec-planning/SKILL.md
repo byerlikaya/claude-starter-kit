@@ -2,7 +2,7 @@
 name: spec-planning
 description: |
   Spec-first planlama yöntemi: görev kırılımı, ölçülebilir kabul kriteri, bağımlılık sırası,
-  risk-önceliklendirme. planner bunu uygular; plan docs/PLAN.md'ye yazılır.
+  risk-önceliklendirme. planner-cck bunu uygular; plan docs/PLAN.md'ye yazılır.
   Trigger phrases: "planla", "spec", "görev kırılımı", "kabul kriteri", "yol haritası", "nasıl bölelim"
 ---
 

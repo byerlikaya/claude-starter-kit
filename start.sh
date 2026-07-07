@@ -21,7 +21,7 @@ Kullanim: bash start.sh [PROFIL] [BACKEND-YIGINI]
   Yigin:    --dotnet  | --generic   (yalniz backend/fullstack; varsayilan: dotnet)
 Bayrak verilmezse betik ilgili adimi interaktif sorar (sihirbaz).
   --dotnet   .NET/DevArchitecture tam destek (devarch-module + sonarqube-check + DevArch kapisi)
-  --generic  jenerik backend (backend/database-expert + db-migration; devarch/sonarqube YOK)
+  --generic  jenerik backend (backend/database-expert-cck + db-migration; devarch/sonarqube YOK)
 USAGE
 }
 
@@ -103,19 +103,19 @@ if [ -z "$PROFILE" ]; then
   sub "Secim, kurulacak ajan + skill setini belirler."
   echo
   opt 1 "backend"   0 "~10 ajan · ~24 skill"
-  add  "backend-expert · database-expert + db / api / migration skilleri"
-  skip "frontend-expert ve tum arayuz skilleri (frontend/a11y/i18n) KURULMAZ"
+  add  "backend-expert-cck · database-expert-cck + db / api / migration skilleri"
+  skip "frontend-expert-cck ve tum arayuz skilleri (frontend/a11y/i18n) KURULMAZ"
   echo
   opt 2 "frontend"  0 "~9 ajan · ~22 skill"
-  add  "frontend-expert + frontend / a11y / i18n skilleri"
-  skip "backend-expert · database-expert ve tum sunucu skilleri KURULMAZ"
+  add  "frontend-expert-cck + frontend / a11y / i18n skilleri"
+  skip "backend-expert-cck · database-expert-cck ve tum sunucu skilleri KURULMAZ"
   echo
   opt 3 "fullstack" 1 "~11 ajan · ~27 skill"
   add  "her sey — tum ajanlar + tum skiller (on yuz + arka uc birlikte)"
   echo
   opt 4 "mobile"    0 "~9 ajan · ~23 skill"
-  add  "frontend-expert + React Native / Expo katmani (frontend-rn-expo)"
-  skip "backend-expert · database-expert KURULMAZ"
+  add  "frontend-expert-cck + React Native / Expo katmani (frontend-rn-expo)"
+  skip "backend-expert-cck · database-expert-cck KURULMAZ"
   echo
   printf '  %s->%s Secim %s[1-4, bos=3]%s: ' "$CY" "$R" "$D" "$R"
   read -r s || s=""                 # EOF/non-TTY'de takilmaz; bos => varsayilan (fullstack)
@@ -135,7 +135,7 @@ if [ "$HAS_BACKEND" = 1 ] && [ -z "$STACK" ]; then
   gate "DevArchitecture temel projesini ONAY KAPISIYLA klonlar (sifirdan proje)"
   echo
   opt 2 "Jenerik" 0 "yigin-bagimsiz"
-  add  "yigin-bagimsiz backend-expert — mevcut repo kalibina uyar"
+  add  "yigin-bagimsiz backend-expert-cck — mevcut repo kalibina uyar"
   skip "devarch-module · sonarqube-check ve DevArchitecture temeli KURULMAZ"
   echo
   printf '  %s->%s Secim %s[1-2, bos=1]%s: ' "$CY" "$R" "$D" "$R"
@@ -148,13 +148,13 @@ fi
 DEVARCH_ON=0
 case "$PROFILE" in
   frontend)
-    EXCL_AGENTS="backend-expert.md database-expert.md"
+    EXCL_AGENTS="backend-expert-cck.md database-expert-cck.md"
     EXCL_SKILLS="db-migration devarch-module sonarqube-check frontend-rn-expo api-design" ;;
   mobile)
-    EXCL_AGENTS="backend-expert.md database-expert.md"
+    EXCL_AGENTS="backend-expert-cck.md database-expert-cck.md"
     EXCL_SKILLS="db-migration devarch-module sonarqube-check api-design" ;;
   backend)
-    EXCL_AGENTS="frontend-expert.md"
+    EXCL_AGENTS="frontend-expert-cck.md"
     EXCL_SKILLS="frontend frontend-rn-expo a11y" ;;
   fullstack)
     EXCL_AGENTS=""
@@ -258,9 +258,9 @@ cp -R "$SRC/hooks/."    .claude/hooks/ 2>/dev/null || true
 cp -R "$SRC/eval/."     .claude/eval/ 2>/dev/null || true
 for f in $EXCL_AGENTS; do rm -f  ".claude/agents/$f"; done
 for d in $EXCL_SKILLS; do rm -rf ".claude/skills/$d"; done
-# Jenerik backend: DevArchitecture'a bagli backend-expert yerine yigin-bagimsiz varyanti kur.
+# Jenerik backend: DevArchitecture'a bagli backend-expert-cck yerine yigin-bagimsiz varyanti kur.
 if [ "$HAS_BACKEND" = 1 ] && [ "$STACK" = "generic" ] && [ -f "$SRC/agents-optional/backend-expert-generic.md" ]; then
-  cp "$SRC/agents-optional/backend-expert-generic.md" .claude/agents/backend-expert.md
+  cp "$SRC/agents-optional/backend-expert-generic.md" .claude/agents/backend-expert-cck.md
 fi
 echo "  Profil '$PROFILE' (yigin: $STACK): $(ls .claude/agents/*.md 2>/dev/null | wc -l | tr -d ' ') ajan, $(ls -d .claude/skills/*/ 2>/dev/null | wc -l | tr -d ' ') skill kuruldu."
 [ -f "$SRC/settings.json" ] && cp "$SRC/settings.json" .claude/settings.json

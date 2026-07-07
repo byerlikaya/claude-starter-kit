@@ -13,9 +13,9 @@ pahalı ya da imkânsızdır. Bu yüzden akışın kalbi komut çalıştırmak d
 geçmeden önce risk sınıfına ayırmak** — güvenli olanı akıcı geçir, yıkıcı olanı durdur ve onaylat,
 her ihtimalde geri dönüş yolunu hazır tut. Skill tüm yaygın ORM/migration araçlarıyla çalışır.
 
-> **Kit uyarlaması (lokal, .claude/):** Varsayılan stack **EF Core + PostgreSQL**. `database-expert`
+> **Kit uyarlaması (lokal, .claude/):** Varsayılan stack **EF Core + PostgreSQL**. `database-expert-cck`
 > uygular; **yıkıcı migration açık onay ister (§4.5)**, commit/push açık onayla (§4.4). Yetki/IDOR
-> etkisi → **security-expert**; kişisel veri saklama → **privacy-agent**. §4 Yasaklar geçerlidir.
+> etkisi → **security-expert-cck**; kişisel veri saklama → **privacy-agent-cck**. §4 Yasaklar geçerlidir.
 
 ## Kontrol listesi
 - [ ] Araç tespit edildi, bekleyen migration'lar listelendi

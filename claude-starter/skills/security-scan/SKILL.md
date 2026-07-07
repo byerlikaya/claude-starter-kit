@@ -14,8 +14,8 @@ girdinin nereden geldiğini, sonra nereye aktığını, arada hangi kapının ol
 Yığından bağımsızdır: dil/framework ne olursa olsun aynı mantık işler; güncel araç ve kalıp
 gerektiğinde web araması yapılır.
 
-> **Kit uyarlaması (lokal, .claude/):** `security-expert` bunu uygular; bulgular önem sırasına
-> göre **review-agent**'a taşınır. Varsayılan stack'te (.NET/PostgreSQL) de geçerlidir. Otomatik
+> **Kit uyarlaması (lokal, .claude/):** `security-expert-cck` bunu uygular; bulgular önem sırasına
+> göre **review-agent-cck**'a taşınır. Varsayılan stack'te (.NET/PostgreSQL) de geçerlidir. Otomatik
 > düzeltme yalnız açık onayla (§4.4); `.claude` repoya gitmez (§4.3). §4 Yasaklar geçerlidir.
 
 ## Ne yapar, ne yapmaz

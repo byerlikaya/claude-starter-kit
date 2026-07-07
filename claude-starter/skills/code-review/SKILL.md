@@ -2,13 +2,13 @@
 name: code-review
 description: |
   Kod gözden geçirme disiplini: değişikliğin genel kod-sağlığını iyileştirip iyileştirmediğine
-  odaklı, önem-sıralı, gerekçeli geri bildirim. review-agent bunu uygular.
+  odaklı, önem-sıralı, gerekçeli geri bildirim. review-agent-cck bunu uygular.
   Trigger phrases: "code-review", "kod incele", "PR incele", "gözden geçir", "review yap"
 ---
 
 # Kod Gözden Geçirme
 
-> **Kit uyarlaması (lokal, .claude/):** `review-agent` (salt-okunur) uygular. Kaynak (hizalama):
+> **Kit uyarlaması (lokal, .claude/):** `review-agent-cck` (salt-okunur) uygular. Kaynak (hizalama):
 > google/eng-practices — adı repoya giden artefakta geçmez (§4.2). Yorumlar önem-sıralı; §4 geçerli.
 
 ## Temel standart (kıdemli ilke)

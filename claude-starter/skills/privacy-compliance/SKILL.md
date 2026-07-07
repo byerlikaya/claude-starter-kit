@@ -2,7 +2,7 @@
 name: privacy-compliance
 description: |
   KVKK/GDPR uyum denetimi yöntemi: veri envanteri, amaç/dayanak/saklama, minimizasyon,
-  rıza, şeffaflık, veri sahibi hakları, sınır-aşan aktarım. privacy-agent bunu uygular.
+  rıza, şeffaflık, veri sahibi hakları, sınır-aşan aktarım. privacy-agent-cck bunu uygular.
   Trigger phrases: "kvkk", "gdpr", "gizlilik", "rıza", "veri saklama", "minimizasyon"
 ---
 

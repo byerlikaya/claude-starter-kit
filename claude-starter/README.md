@@ -32,8 +32,8 @@ hazırlığını statik doğrular.
 
 ## İçindekiler
 
-- **10 ajan** (`.claude/agents/`): planner · backend-expert · database-expert · security-expert ·
-  privacy-agent · test-expert · frontend-expert · review-agent · commit-agent · session-manager.
+- **10 ajan** (`.claude/agents/`): planner-cck · backend-expert-cck · database-expert-cck · security-expert-cck ·
+  privacy-agent-cck · test-expert-cck · frontend-expert-cck · review-agent-cck · commit-agent-cck · session-manager-cck.
   Her ajan: uzmanlık duruşu · koordinasyon · çıktı sözleşmesi · hata/eskalasyon · örnek delegasyon.
 - **20 skill** (`.claude/skills/`): disiplin katmanı — code-review, security-scan, db-migration,
   vps-deploy, devarch-module, sonarqube-check, commit-message, spec-planning, privacy-compliance,

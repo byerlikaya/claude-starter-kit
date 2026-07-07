@@ -2,7 +2,7 @@
 name: testing
 description: |
   Test "nasıl"ı: piramit, AAA, izolasyon, risk-kapsamı, deterministiklik; "testler yeşil"
-  garantisini sağlar. test-expert bunu uygular.
+  garantisini sağlar. test-expert-cck bunu uygular.
   Trigger phrases: "test yaz", "test çalıştır", "coverage", "testler yeşil mi", "unit test", "integration test"
 ---
 

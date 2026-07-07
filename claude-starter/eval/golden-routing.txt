@@ -1,16 +1,16 @@
 # Golden routing: <ornek kullanici prompt>|<beklenen hedef ajan/skill>
 # routing-eval.sh bunu okur: beklenen hedefin trigger phrase'i prompt'ta gecmeli (substring).
 # Hedef bu profilde kurulu degilse satir ATLANIR (budanmis kurulumda patlamaz).
-backend'e yeni handler ekle|backend-expert
-bu tabloya migration yaz|database-expert
-login ekrani icin responsive component|frontend-expert
+backend'e yeni handler ekle|backend-expert-cck
+bu tabloya migration yaz|database-expert-cck
+login ekrani icin responsive component|frontend-expert-cck
 expo router ile yeni rn ekran|frontend-rn-expo
-OWASP check ve guvenlik taramasi yap|security-expert
-kvkk gizlilik denetimi lazim|privacy-agent
-degisiklikleri commit'le|commit-agent
-testleri calistir, coverage raporu|test-expert
-PR'i gozden gecir, diff bak|review-agent
-once planla, gorev kirilimi cikar|planner
+OWASP check ve guvenlik taramasi yap|security-expert-cck
+kvkk gizlilik denetimi lazim|privacy-agent-cck
+degisiklikleri commit'le|commit-agent-cck
+testleri calistir, coverage raporu|test-expert-cck
+PR'i gozden gecir, diff bak|review-agent-cck
+once planla, gorev kirilimi cikar|planner-cck
 sunucuya deploy et, production'a cik|vps-deploy
 changelog hazirla ve tag at|release
 github actions ile ci pipeline|ci-pipeline
@@ -26,5 +26,5 @@ api sozlesmesi versiyonlama, openapi|api-design
 sayfa yavas, performans optimizasyonu|performance
 olay mudahale runbook'u yaz, postmortem|incident-runbook
 prompt injection savunmasini sina, red team|red-team
-prod'a cik ve rollback yap|devops-expert
-reverse proxy ve ssl kur|devops-expert
+prod'a cik ve rollback yap|devops-expert-cck
+reverse proxy ve ssl kur|devops-expert-cck

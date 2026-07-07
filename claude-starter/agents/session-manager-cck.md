@@ -1,5 +1,5 @@
 ---
-name: session-manager
+name: session-manager-cck
 description: |
   Oturum/context sağlığı denetçisi. Her task veya alt-görev kapanışında devreye girer;
   context doluluğunu değerlendirip yanıtın SONUNA tek satırlık durum + öneri ekler.
@@ -42,7 +42,7 @@ Eşikler (ölçülen % üzerinden):
 - Konu kökten değişti (doluluktan bağımsız) → **yeni oturum**
 
 Not: ölçüm ana oturumundur; subagent kendi penceresinde olduğu için değer ana oturumda okunur,
-session-manager eşikleri uygular.
+session-manager-cck eşikleri uygular.
 
 ## Kısıtlar
 - Kod yazmaz, dosya değiştirmez (salt-okunur).

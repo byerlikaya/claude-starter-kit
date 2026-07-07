@@ -3,7 +3,7 @@ name: trace-scan
 description: |
   Iz-denetimi disiplini (§4.1/§4.2): commit oncesi staged degisiklik ve commit mesajinda
   yapay zeka izi (co-author, "Generated with", 🤖, arac adlari) ve ucuncu-taraf sablon/vendor
-  adi arar. commit-agent iş kapanisinda tetikler; git hook'lari ayni denetimi otomatik uygular.
+  adi arar. commit-agent-cck iş kapanisinda tetikler; git hook'lari ayni denetimi otomatik uygular.
   Trigger phrases: "iz tara", "trace scan", "AI izi", "vendor adi kontrol", "commit oncesi denetim"
 ---
 
@@ -14,7 +14,7 @@ er ya da gec iz sizar; bu skill + hook'lar sizmayi commit aninda durdurur.
 
 ## Ne zaman
 - Her commit oncesi (otomatik: `pre-commit` + `commit-msg` hook'lari).
-- commit-agent mesaj onermeden once (manuel dogrulama).
+- commit-agent-cck mesaj onermeden once (manuel dogrulama).
 
 ## Nasil
 Desen listesi: `./.claude/hooks/trace-blocklist.txt` (grep -iE, satir basi bir desen).

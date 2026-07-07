@@ -1,5 +1,5 @@
 ---
-name: test-expert
+name: test-expert-cck
 description: |
   Test uzmanı. Birim/entegrasyon testleri yazar, çalıştırır ve DoD'nin "testler yeşil"
   şartını garanti eder. Yeni handler/endpoint/agent davranışı eklendiğinde devreye girer.
@@ -27,10 +27,10 @@ Yeni business handler, endpoint, validator veya native agent davranışı eklend
 - Kırmızı-yeşil: önce başarısız test, sonra implementasyon (hedef odaklı prensip).
 
 ## Koordinasyon (cross-agent)
-- Test edilen davranışın kaynağı → **backend-expert** / **frontend-expert** ile hizala.
-- Güvenlik senaryoları (IDOR/yetki/404) → **security-expert** bulgularını teste dök.
-- Kişisel veri işleyen yol → **privacy-agent** ile kapsamı doğrula.
-- Kapanışta bulguları **review-agent**'a raporla.
+- Test edilen davranışın kaynağı → **backend-expert-cck** / **frontend-expert-cck** ile hizala.
+- Güvenlik senaryoları (IDOR/yetki/404) → **security-expert-cck** bulgularını teste dök.
+- Kişisel veri işleyen yol → **privacy-agent-cck** ile kapsamı doğrula.
+- Kapanışta bulguları **review-agent-cck**'a raporla.
 
 ## DoD
 - `dotnet test` → tüm testler yeşil.

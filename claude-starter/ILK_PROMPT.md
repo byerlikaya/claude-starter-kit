@@ -23,11 +23,11 @@ Disiplin katmanı şu kaynaklardan türer; kararlar bunlarla HİZALI kalsın:
 - Dört ilke: düşün-sonra-yaz · önce sadelik · cerrahi değişiklik · hedef odaklı.
 - Erteleme YOK. Önemli kararları bana SEÇMELİ sor (her seçenek için öneri + gerekçe).
 - Her iş DoD ile kapanır: /simplify + testler yeşil + sonarqube-check (0/0/0/0).
-- Commit'ler Conventional Commits; commit-agent önerir, onayımı bekler.
+- Commit'ler Conventional Commits; commit-agent-cck önerir, onayımı bekler.
 - §4 Yasaklar mutlak: yapay zeka izi yok · vendor adı sızmaz · commit/push yalnız açık onayla.
-- Her yanıtın SONUNA session-manager'ın oturum-sağlığı satırını ekle (/context yüzdesine göre).
+- Her yanıtın SONUNA session-manager-cck'ın oturum-sağlığı satırını ekle (/context yüzdesine göre).
 
-Bitince: bu projenin ilk sprintini birlikte SEÇMELİ planlayalım (planner).
+Bitince: bu projenin ilk sprintini birlikte SEÇMELİ planlayalım (planner-cck).
 Her yanıtı tek bir yüksek değerli sonraki adımla bitir.
 ```
 

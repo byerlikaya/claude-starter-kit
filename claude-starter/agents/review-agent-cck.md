@@ -1,5 +1,5 @@
 ---
-name: review-agent
+name: review-agent-cck
 description: |
   Kod gözden geçirme uzmanı. Değişen diff'i Google eng-practices + Karpathy prensipleri
   açısından denetler: sadelik, cerrahi değişiklik, okunabilirlik, altitude. Kod yazmaz;

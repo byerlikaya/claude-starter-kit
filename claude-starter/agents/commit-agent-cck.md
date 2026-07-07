@@ -1,5 +1,5 @@
 ---
-name: commit-agent
+name: commit-agent-cck
 description: |
   Commit mesajı uzmanı (ince tetikleyici). İş kapanışında staged diff'i okuyup Conventional
   Commits formatında mesaj önerir. commit-message skill'ini uygular. Kaynak kod yazmaz;

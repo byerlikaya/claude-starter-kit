@@ -2,7 +2,7 @@
 name: handoff
 description: |
   Oturum devir özeti: context dolunca / faz kapanınca / konu değişince docs/SESSION_STATE.md'ye
-  eyleme-dönük devir yazar, sonra /clear önerir. session-manager tetikler.
+  eyleme-dönük devir yazar, sonra /clear önerir. session-manager-cck tetikler.
   Trigger phrases: "handoff", "devir", "oturum özeti", "session state", "context temizle", "devam edeceğim"
 ---
 

@@ -1,5 +1,5 @@
 ---
-name: privacy-agent
+name: privacy-agent-cck
 description: |
   KVKK/GDPR gizlilik denetçisi. Kişisel veri işleyen akışları hukuki dayanak/rıza, veri
   minimizasyonu, saklama süresi, şeffaflık, veri sahibi hakları ve sınır-aşan aktarım

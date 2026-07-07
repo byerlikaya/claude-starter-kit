@@ -3,7 +3,7 @@ name: frontend
 description: |
   Yığın-bağımsız frontend disiplini (web · mobil · masaüstü): component/view yapısı, state,
   veri çekme, durum-tam UI (loading/empty/error), i18n, erişilebilirlik, performans.
-  frontend-expert bunu HER yığında uygular; stack-özel ayrıntı ilgili proje skill'inde.
+  frontend-expert-cck bunu HER yığında uygular; stack-özel ayrıntı ilgili proje skill'inde.
   Trigger phrases: "frontend", "ekran", "component", "sayfa", "UI", "state yönetimi", "arayüz"
 ---
 
@@ -36,7 +36,7 @@ Sadece "dolu"yu kodlama; boş/hata/yükleniyor deneyimin parçası.
 ## DoD (bu skill'in katkısı)
 - `/simplify`; ölü stil/kullanılmayan prop yok.
 - Dört durum karşılanmış; `i18n-integrity` temiz; erişilebilirlik temel matriste geçer.
-- `review-agent` temiz.
+- `review-agent-cck` temiz.
 
 ## Kısıtlar
 - Cerrahi değişiklik; mevcut konvansiyona uy, yığın/tercih dayatma.

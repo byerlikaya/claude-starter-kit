@@ -2,7 +2,7 @@
 name: token-budget
 description: |
   Bağlam/token yönetimi disiplini: subagent izolasyonu, çıktı=özet sözleşmesi, dosyaya-taşıma,
-  delege eşiği, yalın skill. session-manager ve tüm ajanlar buna uyar.
+  delege eşiği, yalın skill. session-manager-cck ve tüm ajanlar buna uyar.
   Trigger phrases: "token", "context", "bağlam yönetimi", "context doldu", "context temizle"
 ---
 
@@ -19,4 +19,4 @@ Subagent'ın amacı context yönetimi: subagent kendi penceresinde çalışır, 
 4. **En-az-araç.** Ajan yalnız gerekli araca sahip; fazlası kazara context kirletir + limit tüketir.
 5. **Yalın SKILL.md.** Skiller ana context'e yüklenir; ağır referans ayrı dosyaya, yalnız gerekince.
 6. **Hedefli okuma.** Tüm dosyayı okumak yerine Grep/Glob ile nokta atışı.
-7. **/context ile yönet.** session-manager gerçek yüzdeye göre devam/handoff+clear önerir; faz sınırında `/clear`.
+7. **/context ile yönet.** session-manager-cck gerçek yüzdeye göre devam/handoff+clear önerir; faz sınırında `/clear`.

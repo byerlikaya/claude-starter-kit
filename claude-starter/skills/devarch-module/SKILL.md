@@ -2,13 +2,13 @@
 name: devarch-module
 description: |
   Backend kalıbı: MediatR CQRS handler/command/query, IResult/IDataResult sonuç sözleşmesi,
-  Autofac AOP aspect zinciri, FluentValidation, Languages/i18n deseni. backend-expert bunu uygular.
+  Autofac AOP aspect zinciri, FluentValidation, Languages/i18n deseni. backend-expert-cck bunu uygular.
   Trigger phrases: "devarch-module", "yeni handler", "command yaz", "query ekle", "validator", "aspect"
 ---
 
 # Backend Kalıbı (MediatR CQRS / IResult / AOP)
 
-> **Kit uyarlaması (lokal, .claude/):** `backend-expert` uygular. Kaynak (hizalama):
+> **Kit uyarlaması (lokal, .claude/):** `backend-expert-cck` uygular. Kaynak (hizalama):
 > DevArchitecture kalıbı — **adı üretilen koda / namespace / dosya / yorum / csproj / Swagger / JWT'ye
 > SIZMAZ (§4.2).** Kalıp burada; üretilen artefakt projeye özgü isimlerle yazılır.
 
@@ -77,4 +77,4 @@ public class CreateOrderCommand : IRequest<IResult>
 ```
 
 ## DoD (bu skill'in katkısı)
-- `sonarqube-check` 0/0/0/0, build 0 uyarı/0 hata; `test-expert` yeşil; `/simplify` uygulanmış.
+- `sonarqube-check` 0/0/0/0, build 0 uyarı/0 hata; `test-expert-cck` yeşil; `/simplify` uygulanmış.

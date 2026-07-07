@@ -2,7 +2,7 @@
 name: sonarqube-check
 description: |
   SonarQube kalite kapısı: 0 Bug · 0 Vulnerability · 0 Security Hotspot · 0 Code Smell,
-  build 0 uyarı/0 hata. (.NET/DevArchitecture projelerinde) security-expert/test sonrası çalışır.
+  build 0 uyarı/0 hata. (.NET/DevArchitecture projelerinde) security-expert-cck/test sonrası çalışır.
   Trigger phrases: "sonarqube", "kalite kapısı", "quality gate", "code smell", "sonar tara"
 ---
 

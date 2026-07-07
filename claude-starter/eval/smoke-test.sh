@@ -19,8 +19,8 @@ for f in "$AGENTS"/*.md; do
   grep -q 'Trigger phrases:' "$f" || fail "$n: Trigger phrases yok"
 done
 # Core ajanlar profil ne olursa olsun bulunmali; stack-ozel ajanlar (backend/database/
-# frontend-expert) kurulum profiline gore degisir, o yuzden sabit sayi beklenmez.
-for c in planner security-expert privacy-agent test-expert review-agent commit-agent session-manager; do
+# frontend-expert-cck) kurulum profiline gore degisir, o yuzden sabit sayi beklenmez.
+for c in planner-cck security-expert-cck privacy-agent-cck test-expert-cck review-agent-cck commit-agent-cck session-manager-cck; do
   [ -f "$AGENTS/$c.md" ] || fail "core ajan eksik: $c"
 done
 [ "$AC" -ge 7 ] && pass "$AC ajan bulundu (core 7 tam)" || fail "ajan sayisi 7 core'un altinda: $AC"

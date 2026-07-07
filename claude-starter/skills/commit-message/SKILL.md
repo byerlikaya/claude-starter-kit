@@ -2,7 +2,7 @@
 name: commit-message
 description: |
   Conventional Commits kurallarıyla commit mesajı üretir/denetler. Staged diff'i okuyup
-  type(scope): özet formatında, gerektiğinde gövde + footer'lı mesaj önerir. commit-agent
+  type(scope): özet formatında, gerektiğinde gövde + footer'lı mesaj önerir. commit-agent-cck
   bu skill'i uygular. Özet Türkçe; tek mantıksal değişiklik = tek commit.
   Trigger phrases: "commit mesajı", "commit at", "conventional commit", "commit yaz", "git commit"
 ---

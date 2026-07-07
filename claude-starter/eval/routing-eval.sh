@@ -52,8 +52,8 @@ done < "$GOLD"
 
 echo "== 2) Ajan-ajan trigger cakismasi =="
 # NOT: Yalniz AJAN-AJAN cakismasina bakilir (routing belirsizligi buradadir). Ajan ile KENDI
-# sahiplendigi skill'in trigger paylasmasi (backend-expert<->devarch-module, security-expert<->
-# security-scan, devops-expert<->incident-runbook ...) BEKLENENDIR: skill, ajanin ic "nasil"
+# sahiplendigi skill'in trigger paylasmasi (backend-expert-cck<->devarch-module, security-expert-cck<->
+# security-scan, devops-expert-cck<->incident-runbook ...) BEKLENENDIR: skill, ajanin ic "nasil"
 # kaynagidir, ayri bir dispatch degil — router ajani secer, ajan skill'i tek subagent icinde okur.
 # Bu yuzden ajan<->kendi-skill'i ortusmesi kasitlidir ve burada FAIL degildir.
 # Her ajanin benzersiz (normalize) trigger'larini topla; iki+ ajanda gecen = cakisma.

@@ -1,5 +1,5 @@
 ---
-name: backend-expert
+name: backend-expert-cck
 description: |
   .NET 10 + DevArchitecture backend uzmanı. MediatR CQRS handler/command/query,
   IResult/IDataResult, Autofac AOP (SecuredOperation/Validation/Cache) yazar ve düzenler.
@@ -30,15 +30,15 @@ Backend'de yeni özellik, handler, validator, controller veya business kuralı g
 - **Ayrıca uygula:** `api-design` (sözleşme/versiyonlama) · `observability` (log/trace/metrik) · `performance` (darboğaz) · `dependency-audit` (paket ekle/güncelle) · `i18n-integrity` (kullanıcıya görünen metin: hata/e-posta/bildirim).
 
 ## Koordinasyon (cross-agent)
-- Güvenlik-kritik iş (auth/secret/IDOR/injection) → **security-expert** ZORUNLU (bulgu üretir).
-- Şema / migration / index → **database-expert** ile koordine (db-migration skill).
-- Test → **test-expert** (test-önce: kırmızı-yeşil).
+- Güvenlik-kritik iş (auth/secret/IDOR/injection) → **security-expert-cck** ZORUNLU (bulgu üretir).
+- Şema / migration / index → **database-expert-cck** ile koordine (db-migration skill).
+- Test → **test-expert-cck** (test-önce: kırmızı-yeşil).
 - Kullanıcıya görünen mesaj → **i18n** (proje dilleri, varsayılan TR/EN/DE/RU); erteleme yok.
-- Kişisel veri dokunuşu → **privacy-agent** (KVKK/GDPR).
-- Kapanışta bulguları **review-agent**'a raporla.
+- Kişisel veri dokunuşu → **privacy-agent-cck** (KVKK/GDPR).
+- Kapanışta bulguları **review-agent-cck**'a raporla.
 
 ## DoD (bu agent'ın sorumluluğu)
-- `test-expert` ile testler yeşil.
+- `test-expert-cck` ile testler yeşil.
 - `sonarqube-check`: 0 Bug · 0 Güvenlik Açığı · 0 Code Smell · build 0 uyarı/0 hata.
 - `/simplify` uygulanmış.
 - Kararlar kullanıcıya SEÇMELİ sorulmuş (her seçenek için öneri + gerekçe).
@@ -59,7 +59,7 @@ Güvenlik-kritik karar, şema riski veya belirsiz sözleşme → ilgili uzmana d
 
 ## Örnek delegasyon
 - ✅ Business/Handlers altında yeni Command/Query/Handler
-- ❌ DB şeması/migration (database-expert'e gider)
+- ❌ DB şeması/migration (database-expert-cck'e gider)
 
 ## Yasaklar (mutlak)
 CLAUDE.md §4 geçerli: yapay zeka izi yok · vendor şablon adı koda sızmaz · iç doküman gizli ·

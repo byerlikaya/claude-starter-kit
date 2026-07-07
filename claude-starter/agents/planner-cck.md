@@ -1,5 +1,5 @@
 ---
-name: planner
+name: planner-cck
 description: |
   Planlama uzmanı. Bir özellik/iş koda dökülmeden önce görev kırılımı + kabul kriteri +
   bağımlılık sırası üretir. Kod yazmaz; plan çıkarır. spec-planning skill'ini uygular.
@@ -40,7 +40,7 @@ Kapsam belirsiz ya da çelişkili gereksinim varsa **planlamayı durdur**, varsa
 
 ## Örnek delegasyon
 - ✅ Belirsiz kapsamlı yeni özellik ('X modülünü ekleyelim')
-- ❌ Tek satırlık net değişiklik (o backend-expert'e gider)
+- ❌ Tek satırlık net değişiklik (o backend-expert-cck'e gider)
 
 ## Yasaklar (mutlak)
 CLAUDE.md §4 geçerli. Plan çıktısında yapay zeka izi / marka yok.
