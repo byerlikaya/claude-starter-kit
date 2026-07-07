@@ -1,0 +1,35 @@
+{
+  "name": "claude-starter-kit",
+  "version": "1.0.0",
+  "description": "Agentic working kit for Claude Code — disciplined project scaffolding with agents, skills, and tool-level gates.",
+  "bin": {
+    "claude-starter-kit": "bin/cli.js",
+    "claude-kit": "bin/cli.js"
+  },
+  "files": [
+    "bin/",
+    "start.sh",
+    "update.sh",
+    "claude-starter/",
+    "VERSION",
+    "LICENSE",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=16.7"
+  },
+  "license": "MIT",
+  "keywords": [
+    "claude-code",
+    "agents",
+    "skills",
+    "scaffold",
+    "cli",
+    "project-setup"
+  ],
+  "author": "Barış Yerlikaya",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/byerlikaya/claude-starter-kit.git"
+  }
+}

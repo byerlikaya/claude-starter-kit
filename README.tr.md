@@ -67,6 +67,21 @@ On bir ajan; her biri bir **ince tetikleyici** — yalnızca *kim* ve *ne zaman*
 
 ## İki uygulama yolu
 
+**npx** (klonlama yok), **Homebrew** ya da **release tarball** ile kur — sonra sıfırdan projede (`start.sh`) ya da mevcut projede (`update.sh`) çalıştır:
+
+```bash
+# npx — kurulum gerektirmez
+npx claude-starter-kit          # sıfırdan proje     ·   npx claude-starter-kit adopt   # mevcut
+
+# Homebrew
+brew install byerlikaya/tap/claude-kit
+claude-kit                      # sıfırdan proje     ·   claude-kit adopt               # mevcut
+
+# release tarball — paket yöneticisi yok
+gh release download --repo byerlikaya/claude-starter-kit -p '*.tgz' && tar xzf claude-starter-kit-*.tgz
+bash start.sh                   # sıfırdan proje     ·   bash update.sh                 # mevcut
+```
+
 ### 🌱 Sıfırdan proje — `start.sh`
 
 ```bash
