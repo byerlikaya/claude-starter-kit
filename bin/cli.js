@@ -18,9 +18,9 @@ if (sub === '--help' || sub === '-h' || sub === 'help') {
   console.log(`Agentic Working Kit
 
 Usage:
-  npx claude-code-starter-kit [init] [--backend|--frontend|--mobile|--fullstack] [--dotnet|--generic]
+  npx @byerlikaya/claude-starter-kit [init] [--backend|--frontend|--mobile|--fullstack] [--dotnet|--generic]
       Set up the kit in a fresh project (start.sh wizard).
-  npx claude-code-starter-kit adopt
+  npx @byerlikaya/claude-starter-kit adopt
       Hand the kit over onto an existing project (update.sh).
 
 Run either at the root of your target project.`);

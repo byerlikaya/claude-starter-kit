@@ -1,9 +1,9 @@
 {
-  "name": "claude-code-starter-kit",
+  "name": "@byerlikaya/claude-starter-kit",
   "version": "1.0.0",
   "description": "Agentic working kit for Claude Code — disciplined project scaffolding with agents, skills, and tool-level gates.",
   "bin": {
-    "claude-code-starter-kit": "bin/cli.js",
+    "claude-starter-kit": "bin/cli.js",
     "claude-kit": "bin/cli.js"
   },
   "files": [
