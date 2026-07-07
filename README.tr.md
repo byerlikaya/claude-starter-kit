@@ -70,10 +70,10 @@ On bir ajan; her biri bir **ince tetikleyici** — yalnızca *kim* ve *ne zaman*
 ### 🌱 Sıfırdan proje — `start.sh`
 
 ```bash
-bash start.sh [--backend|--frontend|--mobile|--fullstack] [--dotnet|--generic]
+bash start.sh [--backend|--frontend|--mobile|--fullstack] [--dotnet|--generic] [-h]
 ```
 
-Bir kurulum sihirbazı. Bayrak vermezseniz adımları tek tek sorar (profil → backend yığını → özet ve onay); bayraklar sessiz/CI kullanımı içindir. Her seçenek ne kuracağını **kurmadan önce** gösterir.
+Bir kurulum sihirbazı. Bayrak vermezseniz adımları tek tek sorar (profil → backend yığını → özet ve onay); bayraklar sessiz/CI kullanımı içindir ve `-h` / `--help` kullanımı basar. Her seçenek ne kuracağını **kurmadan önce** gösterir.
 
 | Profil | Uzman ajanlar | Öne çıkan skiller |
 |---|---|---|

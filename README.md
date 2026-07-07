@@ -70,10 +70,10 @@ Eleven agents, each a **thin trigger** — it says only *who* and *when*, and de
 ### 🌱 Fresh project — `start.sh`
 
 ```bash
-bash start.sh [--backend|--frontend|--mobile|--fullstack] [--dotnet|--generic]
+bash start.sh [--backend|--frontend|--mobile|--fullstack] [--dotnet|--generic] [-h]
 ```
 
-An install wizard. With no flags it walks each step (profile → backend stack → summary and approval); the flags are for silent/CI use. Every choice shows what it will install **before** installing it.
+An install wizard. With no flags it walks each step (profile → backend stack → summary and approval); the flags are for silent/CI use, and `-h` / `--help` prints usage. Every choice shows what it will install **before** installing it.
 
 | Profile | Expert agents | Highlighted skills |
 |---|---|---|
