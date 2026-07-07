@@ -107,14 +107,14 @@ if [ -z "$PROFILE" ]; then
   add  "backend-expert-cck · database-expert-cck + db / api / migration skills"
   skip "frontend-expert-cck and all UI skills (frontend/a11y/i18n) NOT INSTALLED"
   echo
-  opt 2 "frontend"  0 "~9 agents · ~22 skills"
+  opt 2 "frontend"  0 "~9 agents · ~23 skills"
   add  "frontend-expert-cck + frontend / a11y / i18n skills"
   skip "backend-expert-cck · database-expert-cck and all server skills NOT INSTALLED"
   echo
   opt 3 "fullstack" 1 "~11 agents · ~27 skills"
   add  "everything — all agents + all skills (frontend + backend together)"
   echo
-  opt 4 "mobile"    0 "~9 agents · ~23 skills"
+  opt 4 "mobile"    0 "~9 agents · ~24 skills"
   add  "frontend-expert-cck + React Native / Expo layer (frontend-rn-expo)"
   skip "backend-expert-cck · database-expert-cck NOT INSTALLED"
   echo
