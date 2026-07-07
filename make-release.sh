@@ -21,10 +21,10 @@ OUT="dist/claude-starter-kit-$VER.tgz"
 mkdir -p dist
 
 # Yalniz izlenen whitelist yollari (HEAD'den) — calisma agaci kirli olsa bile sizinti olmaz.
-git archive --format=tar.gz -o "$OUT" HEAD start.sh claude-starter VERSION
+git archive --format=tar.gz -o "$OUT" HEAD start.sh update.sh claude-starter VERSION
 
 # KAPI: whitelist disi hicbir giris olmamali.
-bad="$(tar tzf "$OUT" | grep -vE '^(start\.sh$|claude-starter($|/)|VERSION$)' || true)"
+bad="$(tar tzf "$OUT" | grep -vE '^(start\.sh$|update\.sh$|claude-starter($|/)|VERSION$)' || true)"
 if [ -n "$bad" ]; then
   echo "HATA: whitelist disi dosya artefakta sizdi (§4.3):" >&2
   printf '  %s\n' $bad >&2
