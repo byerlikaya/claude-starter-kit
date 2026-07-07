@@ -121,6 +121,34 @@ else
   prop "7 Off-repo" "yerel + sor" "kararlarin bir kismi dosyada; yine de sohbet-ici olabilir (asamada sorulur)"
 fi
 
+# ============ KARARLARI DERLE + OVERRIDE (Asama B) ============
+DEC1="$([ "$N_PAGENTS" != 0 ] && echo koru || echo yok)"
+DEC2="proje"
+DEC3="$([ "$COAUTHOR" = 1 ] && echo gevset || echo koru)"
+DEC4="$([ "$TRACKED" = 1 ] && echo paylas || echo kit-varsayilani)"
+DEC6="baseline"
+DEC7="$([ "$OFFREPO" = 1 ] && echo aktar || echo yerel)"
+if [ -t 0 ]; then
+  h1 "Kararlari gozden gecir (override)"
+  sub "Akilli-oneriler yukarida. Degistirecegin karar no'sunu gir; BOS=hepsini kabul. (#5 SHIM sabit.)"
+  while :; do
+    printf '  %sDegistir? [1-4,6,7 / bos=kabul]:%s ' "$B" "$R"; read -r pick || pick=""
+    [ -z "$pick" ] && break
+    case "$pick" in
+      1) printf '   #1 [koru/birlestir]: ';  read -r v||v=""; case "$v" in b*) DEC1=birlestir;; k*) DEC1=koru;; esac ;;
+      2) printf '   #2 [proje/kit]: ';       read -r v||v=""; case "$v" in ki*) DEC2=kit;; pr*) DEC2=proje;; esac ;;
+      3) printf '   #3 [gevset/koru]: ';     read -r v||v=""; case "$v" in g*) DEC3=gevset;; k*) DEC3=koru;; esac ;;
+      4) printf '   #4 [paylas/gizle]: ';    read -r v||v=""; case "$v" in gi*) DEC4=gizle;; pa*) DEC4=paylas;; esac ;;
+      6) printf '   #6 [baseline/mutlak]: '; read -r v||v=""; case "$v" in m*) DEC6=mutlak;; b*) DEC6=baseline;; esac ;;
+      7) printf '   #7 [aktar/eksik]: ';     read -r v||v=""; case "$v" in e*) DEC7=eksik;; a*) DEC7=aktar;; esac ;;
+      *) echo "   (1-4, 6 veya 7)";;
+    esac
+  done
+  echo "  Nihai: #1=$DEC1 #2=$DEC2 #3=$DEC3 #4=$DEC4 #6=$DEC6 #7=$DEC7"
+else
+  sub "(non-interactive: akilli-varsayilanlar kabul edildi)"
+fi
+
 # ================= [ASAMA 2] DEVIR DALI + COEXIST =================
 h1 "Asama 2 — devir dali + coexist"
 sub "Kit'i AYRI bir git dalinda kurar; proje dosyalarina DOKUNMAZ (never-overwrite). Diff'i gozden gecir, git'le geri al."
@@ -262,18 +290,47 @@ if [ "${NCCK:-0}" -ge 1 ]; then echo "  OK · KANIT-3: $NCCK kit ajani (-cck) ku
 if [ -s .claude/DISCIPLINE.md ] && grep -qF '@.claude/DISCIPLINE.md' CLAUDE.md; then echo "  OK · KANIT-4: DISCIPLINE.md yuklu + CLAUDE.md'den @import ediliyor"; else warn "KANIT-4: disiplin baglanmadi"; PROOF_OK=0; fi
 [ "$PROOF_OK" = 1 ] && h1 "KANIT: kit %100 AKTIF — kapilar silahli, ajanlar + disiplin yuklu" || warn "KANIT: bazi kapilar dogrulanamadi (yukari bak)"
 
+# ============ [ASAMA B] KARARLARI UYGULA ============
+h1 "Asama B — kararlari uygula"
+# #3 iz-kapisi gevset -> repo koku .trace-allowlist.txt (co-author/sign-off iz-denetiminden muaf)
+if [ "$DEC3" = gevset ]; then
+  { [ -f .trace-allowlist.txt ] && cat .trace-allowlist.txt; printf 'Co-Authored%s\n' '-By'; printf 'Signed-off-by\n'; } | sort -u > .trace-allowlist.txt.t && mv .trace-allowlist.txt.t .trace-allowlist.txt
+  echo "  #3 gevset -> .trace-allowlist.txt (co-author/sign-off muaf)"
+else echo "  #3 koru -> iz-denetimi tam"; fi
+# #4 paylas/gizle
+if [ "$DEC4" = gizle ]; then
+  touch .gitignore; for e in '.claude/' 'CLAUDE.md'; do grep -qxF "$e" .gitignore || echo "$e" >> .gitignore; done
+  echo "  #4 gizle -> .claude/ + CLAUDE.md gitignore'a eklendi"
+else echo "  #4 paylas -> gitignore'a dokunulmadi"; fi
+# #1 birlestir: dokumante (otomatik risky merge YOK — red-team; birlestirme insan-onayli follow-up)
+[ "$DEC1" = birlestir ] && MERGE_NOTE="birlestir: ortusan proje ajanlari kit ajanina DEVREDILECEK (gozden gecir; adr/skill ile yap)" || MERGE_NOTE="koru: proje + kit ajani yan yana"
+# #7 off-repo aktar: kullanicidan yapistir (interaktif; non-TTY'de atlanir)
+OFFREPO_TEXT=""
+if [ "$DEC7" = aktar ] && [ -t 0 ]; then
+  h1 "#7 off-repo kararlar — buraya yapistir"
+  sub "Sohbette/web'de alinmis ama repoda OLMAYAN kararlari yaz. Bitince BOS satir (Enter)."
+  while IFS= read -r line; do [ -z "$line" ] && break; OFFREPO_TEXT="$OFFREPO_TEXT
+- $line"; done
+  [ -n "$OFFREPO_TEXT" ] && echo "  #7 -> $(printf '%s' "$OFFREPO_TEXT" | grep -c .) satir HANDOVER'a girecek" || echo "  #7 -> bos"
+fi
+
 # ============ [ASAMA 5] HANDOVER.md + ADR (kararlar kalici) ============
 h1 "Asama 5 — HANDOVER.md + ADR (devir kalici; kararlar kaybolmaz)"
 mkdir -p docs docs/adr
 DATE_H="$(date +%Y-%m-%d)"
 # karar degerlerini once hesapla (heredoc'ta ic-tirnak/komut-sub karmasasindan kacin)
-D1="$([ "$N_PAGENTS" != 0 ] && echo 'koru (coexist)' || echo 'yok')"
-D3="$([ "$COAUTHOR" = 1 ] && echo 'gevset (.trace-allowlist)' || echo 'koru')"
-D4="$([ "$TRACKED" = 1 ] && echo 'paylasimi koru' || echo 'kit varsayilani')"
+case "$DEC1" in birlestir) D1='birlestir (ortusenler devredilecek)';; yok) D1='yok';; *) D1='koru (coexist)';; esac
+D2="$([ "$DEC2" = kit ] && echo 'kit kazanir' || echo 'proje kazanir')"
+D3="$([ "$DEC3" = gevset ] && echo 'gevset (.trace-allowlist yazildi)' || echo 'koru (tam)')"
+D4="$([ "$DEC4" = gizle ] && echo 'gizle (gitignore)' || echo 'paylasimi koru')"
 D5="$([ -n "$ORIG_HOOKS" ] && echo "SHIM ($ORIG_HOOKS)" || echo 'dogrudan')"
-D7="$([ "$OFFREPO" = 1 ] && echo 'AKTAR (asagida doldur)' || echo 'yerel + sor')"
+D6="$([ "$DEC6" = mutlak ] && echo 'mutlak 0/0/0/0' || echo 'baseline+regresyon')"
+case "$DEC7" in aktar) D7='aktarildi (asagida)';; eksik) D7='bilinerek eksik';; *) D7='yerel + sor';; esac
 HOOKDESC="$([ -n "$ORIG_HOOKS" ] && echo "SHIM (kit + $ORIG_HOOKS birlikte)" || echo '.claude/hooks dogrudan')"
-OFFWARN="$([ "$OFFREPO" = 1 ] && echo 'UYARI: yerel .claude/CLAUDE.md yoktu -> kararlar sohbette/web de olabilir; arac GOREMEDI.' || echo 'Kararlarin bir kismi sohbet gecmisinde olabilir (arac yalniz dosyalari gordu).')"
+if [ -n "${OFFREPO_TEXT:-}" ]; then OFFSEC="$OFFREPO_TEXT"
+elif [ "$OFFREPO" = 1 ]; then OFFSEC="> UYARI: yerel .claude/CLAUDE.md yoktu -> kararlar sohbette/web de olabilir; arac GOREMEDI.
+<!-- Buraya off-repo kararlari yaz; onemlileri docs/adr/ altina tasi. -->"
+else OFFSEC="<!-- Sohbet-ici olabilecek kararlari buraya yaz; onemlileri docs/adr/ altina tasi. -->"; fi
 
 # 5a) HANDOVER.md — mekanik gercek (dogrulanabilir) + insan bolumu (LLM imzasi YOK)
 cat > docs/HANDOVER.md <<HAND
@@ -288,17 +345,18 @@ cat > docs/HANDOVER.md <<HAND
 - Disiplin: .claude/DISCIPLINE.md + proje CLAUDE.md'sine @import (icerik el degmedi).
 - settings.json: sema-farkinda merge (proje hook/permission KORUNDU + kit eklendi).
 - Git kapilari: $HOOKDESC.
+- Ortusen roller: $MERGE_NOTE.
 - Devir dali: $BR  (main el degmemis; incele: git diff main..$BR).
 
 ## Alinan kararlar (akilli-oneri; Asama B'de gozden gecir/override)
 | # | Karar | Deger |
 |---|---|---|
 | 1 | Rol cakismasi | $D1 |
-| 2 | Precedence | proje kazanir (eksen-eksen) |
+| 2 | Precedence | $D2 (eksen-eksen) |
 | 3 | Iz-kapisi | $D3 |
 | 4 | Paylas/gizle | $D4 |
 | 5 | Git hook | $D5 |
-| 6 | Brownfield DoD | baseline+regresyon |
+| 6 | Brownfield DoD | $D6 |
 | 7 | Off-repo | $D7 |
 
 ## TEYIT ET (arac dogrulayamaz — sen bak)
@@ -306,10 +364,8 @@ cat > docs/HANDOVER.md <<HAND
 - [ ] Ortusan roller (proje + kit ayni is): hangisi kullanilacak / birlestirilecek?
 - [ ] Devir dali diff'i gozden gecirildi mi?  git diff main..$BR
 
-## SEN DOLDUR — off-repo / sohbet-ici kararlar
-> $OFFWARN
-<!-- Buraya: sohbette/claude.ai web projesinde alinmis ama repoda OLMAYAN kararlari yaz.
-     Onemlileri docs/adr/ altina ADR olarak tasi (adr skill'i yardim eder). -->
+## Off-repo / sohbet-ici kararlar
+$OFFSEC
 
 ---
 Uretildi: kit adopt · $DATE_H · dal $BR  (bu satir disinda arac IMZASI yoktur)
@@ -345,11 +401,10 @@ else
   echo "  $ADR1 zaten var — dokunulmadi (never-overwrite)"
 fi
 
-h1 "ERTELENEN (son parca)"
-sub "Asama B: akilli-oneri -> gozden gecir/override/uygula (7 karar interaktif; ozellikle #1 birlestir + off-repo aktarim)"
-
 git add .claude CLAUDE.md docs >/dev/null 2>&1
-git commit --no-verify -q -m "kit adopt (WIP · asama 2-5): coexist + disiplin + settings + shim + kanit + HANDOVER/ADR; proje korundu" 2>/dev/null || true
+[ -e .gitignore ] && git add .gitignore >/dev/null 2>&1
+[ -e .trace-allowlist.txt ] && git add .trace-allowlist.txt >/dev/null 2>&1
+git commit --no-verify -q -m "kit adopt: coexist + disiplin + settings merge + git-shim + kanit + kararlar + HANDOVER/ADR; proje korundu" 2>/dev/null || true
 # --no-verify: adopt'un KENDI wip commit'i; projenin husky/lint'ini tetiklemesin (yalniz kit dosyasi yerlestirmesi).
 
 h1 "Gozden gecir / geri al (git-native)"
