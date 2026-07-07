@@ -35,46 +35,9 @@
 
 On bir ajan; her biri bir **ince tetikleyici** — yalnızca *kim* ve *ne zaman*'ı söyler, *nasıl*'ı bir skill'e bırakır. Ana thread onları beş aşamada seçip zincirler ve commit'ten önce kaliteyi kademe kademe yükseltir:
 
-```mermaid
-flowchart TD
-    U([Kullanıcı isteği]) --> P["planner-cck<br/>1 · anla + planla"]
-    P --> BUILD
-
-    subgraph BUILD ["2 · Üret"]
-        direction LR
-        B[backend-expert-cck]
-        D[database-expert-cck]
-        F[frontend-expert-cck]
-        O[devops-expert-cck]
-    end
-
-    BUILD --> AUDIT
-    subgraph AUDIT ["3 · Denetle"]
-        direction LR
-        SE[security-expert-cck]
-        PR[privacy-agent-cck]
-        TE[test-expert-cck]
-    end
-
-    AUDIT --> R["review-agent-cck<br/>4 · DoD kapısı"]
-    R --> C["commit-agent-cck<br/>önerir · onay bekler"]
-    C --> SM["session-manager-cck<br/>5 · bağlam dolunca devret"]
-
-    classDef start fill:#111827,stroke:#111827,color:#ffffff
-    classDef plan fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#1e3a8a
-    classDef build fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#14532d
-    classDef audit fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f
-    classDef gate fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#4c1d95
-    classDef hand fill:#f1f5f9,stroke:#475569,stroke-width:2px,color:#1e293b
-    class U start
-    class P plan
-    class B,D,F,O build
-    class SE,PR,TE audit
-    class R,C gate
-    class SM hand
-    style BUILD fill:#f0fdf4,stroke:#16a34a,color:#14532d
-    style AUDIT fill:#fffbeb,stroke:#d97706,color:#78350f
-```
+<div align="center">
+  <img src="assets/orchestration-tr.svg" alt="Bes asamada ajan orkestrasyonu" width="740">
+</div>
 
 | Ajan | Aşama | Ne zaman devreye girer | Model |
 |---|---|---|---|
@@ -129,19 +92,9 @@ bash update.sh          # hedef projenin kökünde
 
 Kiti, zaten ilerleyen bir projeye **bir ekibin projeyi başka bir ekibe devretmesi** gibi uygular — proje bozulmaz, alınmış kararlar kaybolmaz, kit de pasif kalmaz.
 
-```mermaid
-flowchart LR
-    A["Tespit"] --> B["Öner<br/>7 karar"] --> C["Devir<br/>dalı"] --> D["Yan yana<br/>-cck ajanlar"] --> E["Disiplin<br/>+ ayar merge"] --> F["Kapıları<br/>kanıtla"] --> G["HANDOVER.md<br/>+ ADR"]
-
-    classDef s1 fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#1e3a8a
-    classDef s2 fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#14532d
-    classDef s3 fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f
-    classDef s4 fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#4c1d95
-    class A,B s1
-    class C,D s2
-    class E,F s3
-    class G s4
-```
+<div align="center">
+  <img src="assets/handover-tr.svg" alt="update.sh devir akisi" width="900">
+</div>
 
 Tüm değişiklik ayrı bir git dalında olur — `main` el değmez; sonucu bir diff olarak inceler, `git` ile kabul veya iptal edersiniz. Kit ajanları yan yana kurulur (çakışmadan), disiplin tek `@import` ile bağlanır, `settings.json` şema-farkında birleştirilir ve mevcut husky/lefthook zincirleri kitle bir köprü üzerinden birlikte çalışır. Kapanışta kalıcı bir `docs/HANDOVER.md` ve bir ADR bırakır — kararlar sohbette değil, versiyon kontrolünde yaşar.
 
