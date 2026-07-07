@@ -1,34 +1,34 @@
 ---
 name: vps-deploy
 description: |
-  Uygulamayı VPS'e güvenle dağıt: runtime/yöntem tespiti, reverse proxy + SSL, atomik takas,
-  eski sürümü saklama, deploy-sonrası sağlık kapısı ve başarısızlıkta otomatik geri dönüş.
-  Trigger phrases: "deploy", "sunucuya gönder", "VPS'e kur", "sunucuya at", "production'a çık"
+  Deploy the app to a VPS safely: runtime/method detection, reverse proxy + SSL, atomic swap,
+  keeping the old version, a post-deploy health gate, and automatic rollback on failure.
+  Trigger phrases: "deploy", "push to the server", "install on the VPS", "ship it to the server", "go to production"
 ---
 
 # VPS Deploy
 
-Sağlam bir deploy'un tek fikri var: **çalışan sürümü, yenisiyle geri-alınabilir biçimde takas et.**
-Yani yeni sürümü koyarken eskisini atma — kenarda tut. Yeni sürüm sağlık kapısından geçemezse
-takası geri al, kimse fark etmesin. Bu skill deploy'u bu takas etrafında kurar; Docker veya
-bare-metal, tek bir uygulama ya da farklı runtime'lar fark etmez.
+A solid deploy has a single idea: **swap the running version with the new one in a reversible way.**
+That is, when you put the new version in place, don't throw the old one away — keep it aside. If the new version
+can't pass the health gate, undo the swap and no one notices. This skill builds the deploy around this swap;
+Docker or bare-metal, a single app or different runtimes, it makes no difference.
 
-> **Kit uyarlaması (lokal, .claude/):** Varsayılan backend **.NET (Docker önerilir)**. **Deploy açık
-> onay ister (§4.4)**; her takastan önce yedek, sonra sağlık kapısı zorunlu. `.deploy.yml` sunucu
-> kimliği taşırsa `.gitignore`'a alınır. §4 Yasaklar geçerlidir.
+> **Kit adaptation (local, .claude/):** Default backend is **.NET (Docker recommended)**. **Deploy requires explicit
+> approval (§4.4)**; a backup before every swap and a health gate after are mandatory. If `.deploy.yml` carries server
+> credentials it goes into `.gitignore`. §4 Prohibitions apply.
 
-## Kontrol listesi
-- [ ] Runtime + deploy yöntemi belirlendi
-- [ ] Config `.deploy.yml`'den/kullanıcıdan alındı, SSH doğrulandı
-- [ ] Reverse proxy + (domain varsa) SSL yerinde
-- [ ] Çalışan sürüm `releases/`'e yedeklendi
-- [ ] Kullanıcı deploy'u onayladı, yeni sürüm dağıtıldı
-- [ ] Sağlık kapısı geçti (yoksa otomatik geri dönüş yapıldı)
-- [ ] İstenirse tek-komut scriptler (`deploy.sh` / `update.sh`) üretildi
+## Checklist
+- [ ] Runtime + deploy method determined
+- [ ] Config taken from `.deploy.yml`/the user, SSH verified
+- [ ] Reverse proxy + (if there is a domain) SSL in place
+- [ ] Running version backed up to `releases/`
+- [ ] User approved the deploy, new version deployed
+- [ ] Health gate passed (otherwise automatic rollback performed)
+- [ ] If requested, single-command scripts (`deploy.sh` / `update.sh`) generated
 
 ---
 
-## Faz 1 — Yüzey: yöntem ve runtime
+## Phase 1 — Surface: method and runtime
 
 ```bash
 if   [ -f Dockerfile ] || [ -f docker-compose.yml ]; then METHOD=docker
@@ -37,31 +37,31 @@ elif [ -f requirements.txt ] || [ -f pyproject.toml ];   then METHOD=bare RUNTIM
 elif [ -f go.mod ];                                      then METHOD=bare RUNTIME=go
 else METHOD=unknown; fi
 ```
-`method: docker` ve Dockerfile yoksa üret. `method: bare` → runtime'a uygun process manager. Tespit belirsizse kullanıcıya sor. **.NET:** Docker önerilir; bare gerekirse `dotnet publish -c Release` çıktısını systemd ile çalıştır.
+If `method: docker` and there's no Dockerfile, generate one. `method: bare` → a process manager suited to the runtime. If detection is ambiguous, ask the user. **.NET:** Docker recommended; if bare is required, run the `dotnet publish -c Release` output with systemd.
 
 ---
 
-## Faz 2 — Hazırlık: config, SSH, proxy, SSL
+## Phase 2 — Preparation: config, SSH, proxy, SSL
 
-**Config** — kökten `.deploy.yml` oku, yoksa her alanı sor:
+**Config** — read `.deploy.yml` from the root, and if it's missing ask for each field:
 ```yaml
-host: 192.168.1.100        # VPS IP/hostname (zorunlu)
-user: deploy               # SSH kullanıcısı (zorunlu)
-ssh_key: ~/.ssh/id_rsa     # özel anahtar
-app_port: 3000             # uygulama portu (zorunlu)
-health_check: /api/health  # HTTP yolu (varsayılan /)
-deploy_path: /var/www/app  # sunucu yolu (zorunlu)
+host: 192.168.1.100        # VPS IP/hostname (required)
+user: deploy               # SSH user (required)
+ssh_key: ~/.ssh/id_rsa     # private key
+app_port: 3000             # application port (required)
+health_check: /api/health  # HTTP path (default /)
+deploy_path: /var/www/app  # server path (required)
 method: auto               # auto | docker | bare
-domain: app.example.com    # proxy/SSL için (ops.)
-ssl: true                  # domain varsa varsayılan true
+domain: app.example.com    # for proxy/SSL (optional)
+ssl: true                  # default true if there is a domain
 reverse_proxy: auto        # auto | nginx | caddy
 ```
-**SSH'ı önce doğrula** — kurulamıyorsa hemen dur:
+**Verify SSH first** — if you can't connect, stop immediately:
 ```bash
 ssh -i $SSH_KEY -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new $USER@$HOST "echo OK"
 ```
 
-**Reverse proxy** — sunucuda kurulu olanı tespit et (`auto` → Caddy varsa Caddy, yoksa Nginx). Uygulama yalnız `127.0.0.1`'e bağlanır; dışarı **sadece** proxy üzerinden açılır.
+**Reverse proxy** — detect the one installed on the server (`auto` → Caddy if present, otherwise Nginx). The application binds only to `127.0.0.1`; it is exposed outward **only** through the proxy.
 
 <details><summary>Nginx site config</summary>
 
@@ -81,30 +81,30 @@ server {
   }
 }
 ```
-`ln -s` ile `sites-enabled`'a bağla, `nginx -t && systemctl reload nginx`.
+Link it into `sites-enabled` with `ln -s`, then `nginx -t && systemctl reload nginx`.
 </details>
 
-<details><summary>Caddyfile (SSL dahil, otomatik)</summary>
+<details><summary>Caddyfile (SSL included, automatic)</summary>
 
 ```
 DOMAIN {
   reverse_proxy 127.0.0.1:APP_PORT
 }
 ```
-`systemctl reload caddy`. Caddy sertifikayı kendi alır/yeniler — ek adım yok.
+`systemctl reload caddy`. Caddy obtains/renews the certificate on its own — no extra step.
 </details>
 
-**SSL (Nginx yolu)** — `ssl: false` veya domain yoksa atla; çıplak IP'ye SSL yapma. Önce DNS'in host'a çözdüğünü doğrula (`dig +short $DOMAIN` = `$HOST`), sonra Certbot:
+**SSL (Nginx path)** — skip if `ssl: false` or there's no domain; don't do SSL on a bare IP. First verify that DNS resolves to the host (`dig +short $DOMAIN` = `$HOST`), then Certbot:
 ```bash
 certbot --nginx -d $DOMAIN --non-interactive --agree-tos -m admin@$DOMAIN
-systemctl enable certbot.timer   # otomatik yenileme
+systemctl enable certbot.timer   # automatic renewal
 ```
 
 ---
 
-## Faz 3 — Takas: eskiyi sakla, yeniyi koy
+## Phase 3 — Swap: keep the old, put the new
 
-**Önce çalışan sürümü yedekle** (zaman damgalı `releases/`, son 3 tutulur):
+**First back up the running version** (timestamped `releases/`, last 3 kept):
 ```bash
 ssh -i $SSH_KEY $USER@$HOST "
   mkdir -p $DEPLOY_PATH/releases
@@ -113,7 +113,7 @@ ssh -i $SSH_KEY $USER@$HOST "
 "
 ```
 
-**Docker** — imajı yerelde derle, taşı, konteyneri değiştir:
+**Docker** — build the image locally, transfer it, replace the container:
 ```bash
 docker build -t $APP:latest .
 docker save $APP:latest | gzip | ssh -i $SSH_KEY $USER@$HOST "gunzip | docker load"
@@ -123,19 +123,19 @@ ssh -i $SSH_KEY $USER@$HOST "
 "
 ```
 
-**Bare-metal** — kaynağı `rsync`'le, bağımlılığı kur, process manager'la başlat:
+**Bare-metal** — `rsync` the source, install dependencies, start with the process manager:
 ```bash
 rsync -avz --delete --exclude .git --exclude node_modules --exclude .venv \
   -e "ssh -i $SSH_KEY" ./ $USER@$HOST:$DEPLOY_PATH/current/
 ```
 
-| Runtime | Bağımlılık + başlatma |
+| Runtime | Dependencies + startup |
 |---|---|
 | Node | `npm ci --production` → PM2: `pm2 start ecosystem.config.js --name $APP || pm2 start npm --name $APP -- start` → `pm2 save` |
-| Python | `python3 -m venv venv && venv/bin/pip install -r requirements.txt` → systemd (gunicorn/uvicorn ya da `python main.py`) |
-| Go | yerelde `GOOS=linux GOARCH=amd64 go build -o $APP` → `scp` → systemd |
+| Python | `python3 -m venv venv && venv/bin/pip install -r requirements.txt` → systemd (gunicorn/uvicorn or `python main.py`) |
+| Go | build locally `GOOS=linux GOARCH=amd64 go build -o $APP` → `scp` → systemd |
 
-systemd birimi (Python/Go için ExecStart'ı runtime'a göre doldur):
+systemd unit (for Python/Go, fill in ExecStart per the runtime):
 ```ini
 [Unit]
 After=network.target
@@ -143,7 +143,7 @@ After=network.target
 Type=simple
 User=$USER
 WorkingDirectory=$DEPLOY_PATH/current
-ExecStart=<runtime komutu>
+ExecStart=<runtime command>
 Restart=always
 Environment=PORT=$APP_PORT
 [Install]
@@ -153,61 +153,61 @@ WantedBy=multi-user.target
 
 ---
 
-## Faz 4 — Sağlık kapısı
+## Phase 4 — Health gate
 
-Takastan hemen sonra; 200 gelene dek ~30 sn dene. **Geçmezse Faz 5'i otomatik tetikle.**
+Right after the swap; retry for ~30 s until a 200 comes back. **If it doesn't pass, trigger Phase 5 automatically.**
 ```bash
 ssh -i $SSH_KEY $USER@$HOST '
   for i in $(seq 1 6); do
     [ "$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:'"$APP_PORT$HEALTH_CHECK"')" = 200 ] \
-      && { echo "Sağlık kapısı GEÇTİ"; exit 0; }
+      && { echo "Health gate PASSED"; exit 0; }
     sleep 5
   done
-  echo "Sağlık kapısı BAŞARISIZ"; exit 1
+  echo "Health gate FAILED"; exit 1
 '
 ```
-Ayrıca process ayakta mı doğrula: Docker'da `docker ps`, aksi halde `systemctl is-active $APP` / `pm2 show $APP`.
+Also verify the process is up: `docker ps` on Docker, otherwise `systemctl is-active $APP` / `pm2 show $APP`.
 
 ---
 
-## Faz 5 — Geri dönüş
+## Phase 5 — Rollback
 
-Takası geri al: `releases/`'teki en son sürümü `current`'a koy, servisi yeniden başlat, sağlık kapısını (Faz 4) tekrarla.
+Undo the swap: put the most recent version in `releases/` back into `current`, restart the service, repeat the health gate (Phase 4).
 ```bash
 LATEST=$(ssh -i $SSH_KEY $USER@$HOST "ls -dt $DEPLOY_PATH/releases/*/ 2>/dev/null | head -1")
-[ -z "$LATEST" ] && { echo "HATA: yedek yok — geri dönüş yapılamaz"; exit 1; }
+[ -z "$LATEST" ] && { echo "ERROR: no backup — rollback impossible"; exit 1; }
 ssh -i $SSH_KEY $USER@$HOST "
   mkdir -p $DEPLOY_PATH/current
-  rsync -a --delete ${LATEST%/}/ $DEPLOY_PATH/current/   # atomik takas — 'rm -rf' yok (guard-safe)
+  rsync -a --delete ${LATEST%/}/ $DEPLOY_PATH/current/   # atomic swap — no 'rm -rf' (guard-safe)
   { docker rm -f $APP 2>/dev/null && docker run -d --name $APP --restart unless-stopped \
       -p 127.0.0.1:$APP_PORT:$APP_PORT $APP:previous; } \
     || systemctl restart $APP || pm2 restart $APP
 "
 ```
-> **Not:** Geri dönüş `rm -rf` yerine `rsync --delete` ile yapılır; böylece `guard-bash` (yerel `rm -rf` bloğu)
-> otomatik geri dönüşü engellemez. Deploy fiilleri (`ssh`/`rsync`/`docker`) `settings.json` `permissions.ask`
-> ile onay kapısından geçer — sessizce değil, onaylı çalışır.
+> **Note:** Rollback is done with `rsync --delete` instead of `rm -rf`; that way `guard-bash` (the local `rm -rf` block)
+> doesn't block the automatic rollback. The deploy verbs (`ssh`/`rsync`/`docker`) pass through the approval gate via
+> `settings.json` `permissions.ask` — they run with approval, not silently.
 
 ---
 
-## Tek-komut scriptler (opsiyonel)
+## Single-command scripts (optional)
 
-Başarılı deploy sonrası **sor:** "Gelecekte tek komutla deploy/update için `deploy.sh` ve `update.sh` üreteyim mi?"
+After a successful deploy, **ask:** "Shall I generate `deploy.sh` and `update.sh` so you can deploy/update with a single command in the future?"
 
-Üretirsen **jenerik şablon kullanma** — gerçek projeyi analiz et (package.json scripts / Dockerfile / Makefile / docker-compose / `.env.example`) ve tam build+start adımlarını çıkar. İki script:
-- **`deploy.sh`** — ilk kurulum + deploy: config yükle · SSH doğrula · proxy + SSL · `releases/`'e yedek · projeye özel build · transfer · bağımlılık · start · retry'li sağlık kapısı · başarısızlıkta geri dönüş.
-- **`update.sh`** — hızlı güncelleme: config · yedek · kod senkronu · (gerekirse) build/bağımlılık · restart · sağlık kapısı · başarısızlıkta geri dönüş.
+If you generate them, **don't use a generic template** — analyze the actual project (package.json scripts / Dockerfile / Makefile / docker-compose / `.env.example`) and derive the exact build+start steps. Two scripts:
+- **`deploy.sh`** — first-time setup + deploy: load config · verify SSH · proxy + SSL · back up to `releases/` · project-specific build · transfer · dependencies · start · health gate with retries · rollback on failure.
+- **`update.sh`** — quick update: config · backup · code sync · (if needed) build/dependencies · restart · health gate · rollback on failure.
 
-Kurallar: `chmod +x`; `.deploy.yml` kimlik taşırsa `.gitignore` sor; mevcut scripti onaysız ezme (diff göster); kimlik sabitleme yok — hep `.deploy.yml`'den oku; projeye-özel her kararı yorumla açıkla.
+Rules: `chmod +x`; if `.deploy.yml` carries credentials, ask about `.gitignore`; don't overwrite an existing script without approval (show a diff); no hardcoded credentials — always read from `.deploy.yml`; comment and explain every project-specific decision.
 
 ---
 
-## Değişmez kurallar
-1. **Onaysız deploy yok** — yöntem/host/domain/port planını göster, onay bekle.
-2. **Takastan önce hep yedek** — `releases/`'e zaman damgalı; yedek başarısızsa iptal.
-3. **Takastan sonra hep sağlık kapısı** — HTTP + process; geçmezse otomatik geri dönüş.
-4. **Son 3 sürümü tut** — hepsini silme.
-5. **Hedefi bilmeden prod'a deploy etme** — host/deploy_path/domain onaylı olmalı.
-6. **Önce SSH doğrula** — bağlanamıyorsan hızlı başarısız ol.
-7. **Portu doğrudan açma** — uygulama `127.0.0.1`'e bağlanır, dışarı yalnız proxy'den.
-8. **Domain varsa SSL zorunlu** — `ssl` açıkça `false` değilse hep kur.
+## Invariant rules
+1. **No deploy without approval** — show the method/host/domain/port plan, wait for approval.
+2. **Always back up before the swap** — timestamped into `releases/`; if the backup fails, abort.
+3. **Always a health gate after the swap** — HTTP + process; if it doesn't pass, automatic rollback.
+4. **Keep the last 3 versions** — don't delete them all.
+5. **Don't deploy to prod without knowing the target** — host/deploy_path/domain must be approved.
+6. **Verify SSH first** — if you can't connect, fail fast.
+7. **Don't expose the port directly** — the app binds to `127.0.0.1`, outward only through the proxy.
+8. **SSL is mandatory when there's a domain** — always set it up unless `ssl` is explicitly `false`.

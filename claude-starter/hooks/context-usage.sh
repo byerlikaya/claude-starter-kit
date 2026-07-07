@@ -1,31 +1,31 @@
 #!/usr/bin/env bash
-# Oturum context dolulugunu GERCEK olcer (tahmin DEGIL): transcript JSONL'deki son ana-context
-# turunun API usage'ini okur -> input + cache_read + cache_creation = context penceresindeki token.
-# Bu, /context'in gosterdigi sayidir; asistan /context'i calistiramadigi icin dogrudan buradan okur.
+# Measures session context fill for REAL (NOT a guess): reads the API usage of the last main-context
+# turn in the transcript JSONL -> input + cache_read + cache_creation = tokens in the context window.
+# This is the number /context shows; since the assistant cannot run /context, it reads directly from here.
 #
-# Kullanim:
-#   bash context-usage.sh [transcript.jsonl]            # arg verilmezse pwd'den otomatik bulur
-#   echo '{"transcript_path":"..."}' | bash context-usage.sh   # hook stdin JSON'unu da kabul eder
-# Pencere boyutu: CONTEXT_WINDOW env (varsayilan 1000000).
+# Usage:
+#   bash context-usage.sh [transcript.jsonl]            # if no arg is given, auto-finds from pwd
+#   echo '{"transcript_path":"..."}' | bash context-usage.sh   # also accepts hook stdin JSON
+# Window size: CONTEXT_WINDOW env (default 1000000).
 set -uo pipefail
 WINDOW="${CONTEXT_WINDOW:-1000000}"
 TR="${1:-}"
 
-# 1) hook stdin'inden transcript_path (varsa)
+# 1) transcript_path from hook stdin (if present)
 if [ -z "$TR" ] && [ ! -t 0 ]; then
   IN="$(cat 2>/dev/null || true)"
   [ -n "$IN" ] && TR="$(printf '%s' "$IN" | sed -n 's/.*"transcript_path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
 fi
-# 2) hala yoksa: pwd'den proje transcript dizinini bul (istemci: / ve . -> -)
+# 2) still missing: find the project transcript dir from pwd (client: / and . -> -)
 if [ -z "$TR" ]; then
   for esc in "$(pwd | sed 's#[/.]#-#g')" "$(pwd | sed 's#/#-#g')"; do
     cand="$(ls -t "$HOME/.claude/projects/$esc"/*.jsonl 2>/dev/null | head -1)"
     [ -n "$cand" ] && { TR="$cand"; break; }
   done
 fi
-[ -n "$TR" ] && [ -f "$TR" ] || { echo "context-usage: transcript bulunamadi (arg ver ya da hook stdin kullan)" >&2; exit 1; }
+[ -n "$TR" ] && [ -f "$TR" ] || { echo "context-usage: transcript not found (pass an arg or use hook stdin)" >&2; exit 1; }
 
-# Son ana-context turunun (sidechain degil, cache_read'i olan) usage toplami.
+# Sum of usage for the last main-context turn (not a sidechain, one that has cache_read).
 if command -v jq >/dev/null 2>&1; then
   TOTAL="$(jq -r 'select((.isSidechain // false) == false)
     | select(.message.usage.cache_read_input_tokens != null)
@@ -33,15 +33,15 @@ if command -v jq >/dev/null 2>&1; then
        + (.message.usage.cache_read_input_tokens // 0)
        + (.message.usage.cache_creation_input_tokens // 0))' "$TR" 2>/dev/null | tail -1)"
 else
-  # jq yoksa yaklasik: son cache_read (context'in buyuk kismi).
+  # without jq, approximate: the last cache_read (most of the context).
   TOTAL="$(grep -o '"cache_read_input_tokens":[0-9]*' "$TR" | tail -1 | grep -o '[0-9]*')"
 fi
-[ -n "${TOTAL:-}" ] || { echo "context-usage: usage okunamadi" >&2; exit 1; }
+[ -n "${TOTAL:-}" ] || { echo "context-usage: could not read usage" >&2; exit 1; }
 
 PCT="$(awk -v t="$TOTAL" -v w="$WINDOW" 'BEGIN{printf "%.1f", (t/w)*100}')"
-LEVEL="$(awk -v p="$PCT" 'BEGIN{ if(p+0<50) print "devam"; else if(p+0<75) print "orta (ilk faz sinirinda handoff)"; else print "handoff+clear" }')"
-echo "🔋 Oturum: %$PCT ($TOTAL/$WINDOW token) → $LEVEL"
-# >=%75: gorunur, israrci uyari (Stop hook session-guard.sh da ayni esikte devreye girer).
+LEVEL="$(awk -v p="$PCT" 'BEGIN{ if(p+0<50) print "continue"; else if(p+0<75) print "medium (hand off at the first phase boundary)"; else print "handoff+clear" }')"
+echo "🔋 Session: %$PCT ($TOTAL/$WINDOW token) → $LEVEL"
+# >=75%: visible, insistent warning (the Stop hook session-guard.sh triggers at the same threshold).
 if awk -v p="$PCT" 'BEGIN{exit !(p+0>=75)}'; then
-  echo "   ⚠️  >%75 handoff esigi — uygun ilk noktada: handoff skill'i + /clear. Otomatik degil; karar senin."
+  echo "   ⚠️  >75% handoff threshold — at the first suitable point: the handoff skill + /clear. Not automatic; the call is yours."
 fi

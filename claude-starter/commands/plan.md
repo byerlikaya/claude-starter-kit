@@ -1,16 +1,16 @@
 ---
 name: plan
-description: Spec-first planlama — belirsiz kapsamlı işi planner-cck ile kır.
-argument-hint: "[iş/özellik açıklaması]"
+description: Spec-first planning — break down ambiguously scoped work with planner-cck.
+argument-hint: "[task/feature description]"
 ---
 # /plan
-Argüman: $ARGUMENTS
+Argument: $ARGUMENTS
 
-**planner-cck** ajanına delege et (spec-planning skill). Belirsiz kapsamlı işi:
-1. Amaç + kapsam-dışını netleştir.
-2. Dikey dilimlere böl; her göreve ölçülebilir kabul kriteri.
-3. Bağımlılık sırası + en riskliyi öne al.
-4. Belirsizlikleri **SEÇMELİ** sor; varsayımları yaz.
+Delegate to the **planner-cck** agent (spec-planning skill). For ambiguously scoped work:
+1. Clarify the goal + what's out of scope.
+2. Split into vertical slices; give each task a measurable acceptance criterion.
+3. Order by dependency + put the riskiest first.
+4. Ask about ambiguities with **explicit options**; write down the assumptions.
 
-Çıktıyı `docs/PLAN.md`'ye yaz, ana thread'e özet + işaretçi dön (token-budget).
-Kod YAZMA — bu bir planlama adımı.
+Write the output to `docs/PLAN.md`, return a summary + pointer to the main thread (token-budget).
+Do NOT write code — this is a planning step.

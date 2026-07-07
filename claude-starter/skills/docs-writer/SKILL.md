@@ -1,46 +1,46 @@
 ---
 name: docs-writer
 description: |
-  Dokümantasyonu koda eşzamanlı tutar: public API/davranış değişince README, kullanım ve
-  ilgili dokümanı günceller. Doğru, minimal, güncel belge; ölü/yanıltıcı doküman bırakmaz.
-  Trigger phrases: "dokümantasyon", "docs", "README güncelle", "API dokümanı", "belge yaz", "dokümante et", "kullanım yaz"
+  Keeps documentation in sync with the code: updates the README, usage, and related docs when a public
+  API/behavior changes. Accurate, minimal, up-to-date docs; leaves no dead/misleading documentation behind.
+  Trigger phrases: "documentation", "docs", "update README", "API docs", "write docs", "document it", "write usage"
 ---
 
-# Dokümantasyon
+# Documentation
 
-Amaç: dokümanın **koda uyması**. Yanlış/eski doküman, dokümansızlıktan kötüdür (güven verir, yanıltır).
-Tetik: public bir API, komut, yapılandırma veya kullanıcıya görünen davranış değiştiğinde.
+Goal: the docs must **match the code**. Wrong/stale docs are worse than no docs (they inspire trust and mislead).
+Trigger: when a public API, command, configuration, or user-visible behavior changes.
 
-## Ne zaman zorunlu
-- Public fonksiyon/endpoint/CLI imzası veya davranışı değişti.
-- Yeni özellik, yapılandırma anahtarı veya ortam değişkeni eklendi.
-- Kurulum/çalıştırma adımları değişti.
-- Kırıcı değişiklik yapıldı (ayrıca `release`/CHANGELOG ile koordine).
+## When it is mandatory
+- A public function/endpoint/CLI signature or behavior changed.
+- A new feature, configuration key, or environment variable was added.
+- The install/run steps changed.
+- A breaking change was made (also coordinate via `release`/CHANGELOG).
 
-## Kontrol listesi
-- [ ] Değişen public yüzey için doküman güncel
-- [ ] Örnekler **çalışır** (kopyala-yapıştır test edildi/zihinsel izlendi)
-- [ ] Ölü/yanıltıcı ifade kaldırıldı (eski isim/parametre kalmadı)
-- [ ] Yeni yapılandırma/env belgelendi (varsayılan + zorunluluk)
-- [ ] Kapsam minimal — kodun tekrarı değil, "neden/nasıl kullanılır"
-- [ ] Dokümanda secret/gerçek kimlik yok (placeholder)
+## Checklist
+- [ ] Docs are up to date for the changed public surface
+- [ ] Examples **work** (copy-paste tested / mentally traced)
+- [ ] Dead/misleading wording removed (no leftover old name/parameter)
+- [ ] New configuration/env documented (default + whether required)
+- [ ] Scope minimal — not a repetition of the code, but "why/how to use it"
+- [ ] No secret/real credential in the docs (use a placeholder)
 
-## Nasıl
-1. **Değişen yüzeyi belirle** — diff'ten public imza/davranış farkını çıkar.
-2. **Doğru dokümanı bul** — README, `docs/`, docstring, OpenAPI, komut `--help`. Birden çoksa hepsini güncelle.
-3. **Yaz**: ne yapar · nasıl çağrılır (örnek) · girdi/çıktı · sınır/hata durumu. Kısa ve doğru.
-4. **Örnekleri doğrula** — komut/kod örneği gerçekten çalışır mı.
-5. **Eskiyi temizle** — kaldırılan API/parametre referanslarını sil.
-6. **Çeviri**: kullanıcıya görünen doküman çok dilliyse `i18n-integrity` ile koordine.
+## How
+1. **Identify the changed surface** — extract the public signature/behavior diff from the diff.
+2. **Find the right doc** — README, `docs/`, docstring, OpenAPI, command `--help`. If there is more than one, update them all.
+3. **Write**: what it does · how it is called (example) · input/output · limits/error cases. Short and correct.
+4. **Verify the examples** — does the command/code example actually run.
+5. **Clean up the old** — delete references to removed APIs/parameters.
+6. **Translation**: if the user-visible doc is multilingual, coordinate with `i18n-integrity`.
 
-## İlkeler
-- **Kaynak tek** — davranış kodda; doküman onu *açıklar*, kopyalamaz (kopyalanan doküman eskir).
-- **Örnek > paragraf** — çalışan bir örnek, üç paragraftan iyi.
-- **Minimal** — bakılmayacak devasa doküman yazma; en çok sorulan soruyu yanıtla.
+## Principles
+- **Single source** — behavior lives in the code; the doc *explains* it, does not copy it (a copied doc goes stale).
+- **Example > paragraph** — a working example beats three paragraphs.
+- **Minimal** — don't write a giant doc no one will maintain; answer the most-asked question.
 
-## Değişmez kurallar
-1. **Doğruluk > eksiksizlik** — yanlış doküman yazma; emin değilsen işaretle/sor.
-2. **Örnekler çalışır olmalı.**
-3. **Eski/ölü doküman bırakma.**
-4. **Secret/gerçek kimlik yok** — placeholder kullan (§4 ile uyumlu).
-5. **Kod tekrarı yapma** — imzayı kopyalayıp durma; kullanımı anlat.
+## Invariant rules
+1. **Correctness > completeness** — don't write a wrong doc; if unsure, flag it/ask.
+2. **Examples must work.**
+3. **Leave no stale/dead docs.**
+4. **No secret/real credential** — use a placeholder (aligned with §4).
+5. **Don't repeat the code** — don't just copy the signature; explain the usage.

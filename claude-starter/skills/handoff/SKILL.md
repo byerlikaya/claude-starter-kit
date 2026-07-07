@@ -1,37 +1,37 @@
 ---
 name: handoff
 description: |
-  Oturum devir özeti: context dolunca / faz kapanınca / konu değişince docs/SESSION_STATE.md'ye
-  eyleme-dönük devir yazar, sonra /clear önerir. session-manager-cck tetikler.
-  Trigger phrases: "handoff", "devir", "oturum özeti", "session state", "context temizle", "devam edeceğim"
+  Session handover summary: when context fills up / a phase closes / the topic changes, write an
+  action-oriented handover to docs/SESSION_STATE.md, then recommend /clear. Triggered by session-manager-cck.
+  Trigger phrases: "handoff", "hand off", "session summary", "session state", "clear context", "I'll continue"
 ---
 
-# Oturum Devri (Handoff)
+# Session Handover (Handoff)
 
-## Ne zaman
-`/context` > %75 · faz kapanışı · konu değişimi. Amaç: sonraki oturum **sıfırdan başlamasın**.
+## When
+`/context` > 75% · phase closure · topic change. Goal: the next session should **not start from scratch**.
 
-## Çıktı (docs/SESSION_STATE.md, lokal)
+## Output (docs/SESSION_STATE.md, local)
 ```
-# Oturum Devri — <tarih>
-## Yapıldı
-- <tamamlanan iş + hangi dosyalar>
-## Devam eden
-- <yarım kalan + tam olarak nerede kalındı>
-## Sıradaki adım
-- <net, tek yüksek-değerli adım>
-## Açık kararlar
-- <bekleyen karar + seçenekler>
-## Dosya işaretçileri
-- docs/PLAN.md, ilgili modüller...
-## Bloklar / riskler
-- <varsa>
+# Session Handover — <date>
+## Done
+- <completed work + which files>
+## In progress
+- <what's half-finished + exactly where it was left off>
+## Next step
+- <a clear, single high-value step>
+## Open decisions
+- <pending decision + options>
+## File pointers
+- docs/PLAN.md, relevant modules...
+## Blockers / risks
+- <if any>
 ```
 
-## İlkeler
-- **Eyleme dönük:** "ne yapıldı" değil "şimdi tam olarak nereden devam" odaklı.
-- Karar gerekçelerini koru (neden bu yol seçildi) — bağlam kaybolmasın.
-- Yazıldıktan sonra `/clear` ile taze oturum.
+## Principles
+- **Action-oriented:** focused not on "what was done" but on "exactly where to resume now."
+- Preserve the rationale behind decisions (why this path was chosen) — so context isn't lost.
+- Once written, start a fresh session with `/clear`.
 
 ## DoD
-- Devir dosyası; yeni oturum yalnız bu dosyayı okuyup kaldığı yerden devam edebilir.
+- A handover file; a new session can resume where it left off by reading only this file.

@@ -1,12 +1,12 @@
 ---
 name: review
-description: Denetim geçişi — review + güvenlik + kalite kapıları.
+description: Review pass — review + security + quality gates.
 ---
 # /review
-Değişiklik setini denetim üçlüsünden geçir (salt-okunur):
-1. **review-agent-cck** (code-review) — "genel kod-sağlığını iyileştiriyor mu"; önem-sıralı yorum.
-2. **security-expert-cck** (security-scan) — auth/IDOR/injection/secret; severity'li bulgu.
-3. (SonarQube kullanılıyorsa) **sonarqube-check** — 0/0/0/0 kapısı (dil-bağımsız).
+Run the change set through the review trio (read-only):
+1. **review-agent-cck** (code-review) — "does it improve overall code health"; severity-ranked comments.
+2. **security-expert-cck** (security-scan) — auth/IDOR/injection/secret; findings with severity.
+3. (if SonarQube is in use) **sonarqube-check** — 0/0/0/0 gate (language-agnostic).
 
-Her ajan ana thread'e **kısa özet** döner; ham çıktı gerekiyorsa `docs/`'a. Kod DEĞİŞTİRME;
-bulguları önem sırasıyla topla, düzeltmeyi ilgili uzmana bırak.
+Each agent returns a **short summary** to the main thread; raw output goes to `docs/` if needed. Do NOT modify code;
+collect findings in severity order, and leave the fix to the relevant expert.

@@ -1,10 +1,10 @@
 ---
 name: handoff
-description: Oturum devri — SESSION_STATE.md + /clear önerisi.
+description: Session handover — SESSION_STATE.md + /clear suggestion.
 ---
 # /handoff
-**handoff** skill'ini uygula:
-1. `/context` gerçek doluluğunu oku.
-2. `docs/SESSION_STATE.md`'ye eyleme-dönük devir yaz: Yapıldı · Devam eden (tam nerede) · Sıradaki adım · Açık kararlar · Dosya işaretçileri · Bloklar.
-3. Karar gerekçelerini koru; sonraki oturum sıfırdan başlamasın.
-4. Yazınca `/clear` öner.
+applies the `handoff` skill:
+1. Read the real `/context` fill.
+2. Write an actionable handover to `docs/SESSION_STATE.md`: Done · In progress (exactly where) · Next step · Open decisions · File pointers · Blockers.
+3. Preserve decision rationale; the next session should not start from scratch.
+4. Once written, suggest `/clear`.

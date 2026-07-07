@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# §4.1 iz-denetcisi (commit-msg): commit mesajinda AI-izi / vendor adi / co-author yakalar.
+# §4.1 trace scanner (commit-msg): catches AI-authorship traces / vendor names / co-author in the commit message.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 BL="$HERE/trace-blocklist.txt"
@@ -7,7 +7,7 @@ MSG_FILE="${1:-}"
 [ -f "$BL" ] || exit 0
 [ -n "$MSG_FILE" ] && [ -f "$MSG_FILE" ] || exit 0
 
-# Repo-koku istisna listesi (opsiyonel): TAM-satir gecen blocklist deseni ATLANIR (payload'a dahil degil).
+# Repo-root exception list (optional): a FULL-line blocklist pattern is SKIPPED (not part of the payload).
 AL=""
 GITROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 [ -n "$GITROOT" ] && [ -f "$GITROOT/.trace-allowlist.txt" ] && AL="$GITROOT/.trace-allowlist.txt"
@@ -17,13 +17,13 @@ while IFS= read -r pat || [ -n "$pat" ]; do
   case "$pat" in ''|\#*) continue;; esac
   if [ -n "$AL" ] && grep -qxF -- "$pat" "$AL"; then continue; fi
   if grep -iqE -- "$pat" "$MSG_FILE"; then
-    echo "IZ-DENETCISI (mesaj): yasakli ifade -> '$pat' (§4.1)"
+    echo "TRACE-SCANNER (message): forbidden expression -> '$pat' (§4.1)"
     HIT=1
   fi
 done < "$BL"
 
 if [ "$HIT" -ne 0 ]; then
-  echo "Commit mesaji reddedildi. Insansi, teknik Turkce yaz; iz/marka birakma."
+  echo "Commit message rejected. Write a human, technical message; leave no trace/brand."
   exit 1
 fi
 exit 0

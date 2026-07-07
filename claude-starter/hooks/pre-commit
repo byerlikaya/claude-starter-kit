@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# §4.1/§4.2 iz-denetcisi (pre-commit): staged EKLENEN satirlarda AI-izi / vendor adi yakalar.
-# Atlamak §4.5 geregi acik talep ister (git commit --no-verify).
+# §4.1/§4.2 trace scanner (pre-commit): catches AI-authorship traces / vendor names in staged ADDED lines.
+# Skipping requires an explicit request per §4.5 (git commit --no-verify).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 BL="$HERE/trace-blocklist.txt"
 [ -f "$BL" ] || exit 0
 
-# Repo-koku istisna listesi (opsiyonel): burada TAM-satir gecen blocklist deseni ATLANIR.
-# Bu dosya payload'a dahil DEGIL; yalniz bulundugu repoya ozeldir (kit kendi adini anabilsin).
+# Repo-root exception list (optional): a blocklist pattern appearing here as a FULL line is SKIPPED.
+# This file is NOT part of the payload; it is specific to its own repo (so the kit may name itself).
 AL=""
 GITROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 [ -n "$GITROOT" ] && [ -f "$GITROOT/.trace-allowlist.txt" ] && AL="$GITROOT/.trace-allowlist.txt"
 
-# Yalniz eklenen icerik satirlari (+ ile baslar, dosya-basligi +++ haric).
+# Only added content lines (start with +, excluding the +++ file header).
 ADDED="$(git diff --cached --unified=0 -- . | grep -E '^\+' | grep -Ev '^\+\+\+' || true)"
 [ -z "$ADDED" ] && exit 0
 
@@ -21,15 +21,15 @@ while IFS= read -r pat || [ -n "$pat" ]; do
   case "$pat" in ''|\#*) continue;; esac
   if [ -n "$AL" ] && grep -qxF -- "$pat" "$AL"; then continue; fi
   if printf '%s\n' "$ADDED" | grep -iqE -- "$pat"; then
-    echo "IZ-DENETCISI: eklenen kodda yasakli ifade -> '$pat' (§4.1/§4.2)"
+    echo "TRACE-SCANNER: forbidden expression in added code -> '$pat' (§4.1/§4.2)"
     HIT=1
   fi
 done < "$BL"
 
 if [ "$HIT" -ne 0 ]; then
   echo "-----------------------------------------------------------"
-  echo "Commit durduruldu. Ifadeyi kaldir (yapay zeka izi / vendor adi sizmaz)."
-  echo "Bilincli istisna: 'git commit --no-verify' — yalniz ACIK taleple (§4.5)."
+  echo "Commit stopped. Remove the expression (no AI-authorship trace / vendor name)."
+  echo "Deliberate exception: 'git commit --no-verify' — only on an EXPLICIT request (§4.5)."
   exit 1
 fi
 exit 0

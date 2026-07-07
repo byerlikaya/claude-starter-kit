@@ -1,29 +1,29 @@
 ---
 name: i18n-integrity
 description: |
-  Çeviri bütünlüğü denetimi: her metin anahtarı tüm proje dillerinde var mı, sabit-kodlu string
-  var mı, placeholder/çoğul tutarlı mı. Kullanıcıya görünen metin değişince çalışır.
-  Trigger phrases: "i18n", "çeviri", "dil dosyası", "eksik çeviri", "yerelleştirme", "translate"
+  Translation integrity audit: is every text key present in all project languages, are there
+  hardcoded strings, are placeholders/plurals consistent. Runs when user-facing text changes.
+  Trigger phrases: "i18n", "translation", "language file", "missing translation", "localization", "translate"
 ---
 
-# Çeviri Bütünlüğü (i18n)
+# Translation Integrity (i18n)
 
-Amaç: hiçbir dilde eksik/kırık metin kalmasın. Varsayılan diller: **TR / EN / DE / RU** (proje ayarlar).
+Goal: no missing/broken text in any language. Default languages: **TR / EN / DE / RU** (the project sets these).
 
-## Denetim eksenleri
-- **Anahtar eşitliği:** her anahtarın TÜM dillerde karşılığı var; eksik/fazla anahtar = bulgu.
-- **Sabit-kodlu string yok:** kullanıcıya görünen metin koda gömülmez, dil dosyasından gelir.
-- **Placeholder tutarlılığı:** `{name}`, `%s`, ICU `{count, plural, ...}` her dilde birebir aynı.
-- **Çoğul kuralları:** dile özgü çoğul formları (özellikle RU) doğru.
-- **Boş/aynı değer:** çevrilmemiş (kaynakla birebir aynı) placeholder değer işaretlenir.
+## Audit dimensions
+- **Key parity:** every key has a counterpart in ALL languages; a missing/extra key = a finding.
+- **No hardcoded strings:** user-facing text is not embedded in code, it comes from the language file.
+- **Placeholder consistency:** `{name}`, `%s`, ICU `{count, plural, ...}` are identical in every language.
+- **Plural rules:** language-specific plural forms (especially RU) are correct.
+- **Empty/identical value:** an untranslated (identical to the source) placeholder value is flagged.
 
-## Kontrol (anahtar seti karşılaştırma)
+## Check (key-set comparison)
 ```bash
-# Örnek: JSON dil dosyalarının anahtar setlerini karşılaştır
+# Example: compare the key sets of JSON language files
 for f in locales/*.json; do echo "== $f =="; jq -r 'keys[]' "$f" | sort > "/tmp/$(basename $f).keys"; done
-diff /tmp/tr.json.keys /tmp/en.json.keys   # farklar = eksik/fazla anahtar
+diff /tmp/tr.json.keys /tmp/en.json.keys   # differences = missing/extra keys
 ```
 
 ## DoD
-- Tüm dillerde anahtar setleri eşit; sabit-kodlu kullanıcı metni yok; placeholder'lar tutarlı.
-- **Eksik çeviri = kırmızı** (erteleme yok).
+- Key sets are equal across all languages; no hardcoded user text; placeholders are consistent.
+- **Missing translation = red** (no deferral).

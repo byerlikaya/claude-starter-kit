@@ -1,44 +1,44 @@
 ---
 name: frontend
 description: |
-  Yığın-bağımsız frontend disiplini (web · mobil · masaüstü): component/view yapısı, state,
-  veri çekme, durum-tam UI (loading/empty/error), i18n, erişilebilirlik, performans.
-  frontend-expert-cck bunu HER yığında uygular; stack-özel ayrıntı ilgili proje skill'inde.
-  Trigger phrases: "frontend", "ekran", "component", "sayfa", "UI", "state yönetimi", "arayüz"
+  Stack-agnostic frontend discipline (web · mobile · desktop): component/view structure, state,
+  data fetching, state-complete UI (loading/empty/error), i18n, accessibility, performance.
+  frontend-expert-cck applies this on EVERY stack; stack-specific detail lives in the relevant project skill.
+  Trigger phrases: "frontend", "screen", "component", "page", "UI", "state management", "interface"
 ---
 
-# Frontend Disiplini (yığın-bağımsız)
+# Frontend Discipline (stack-agnostic)
 
-Web (React/Next/Vue/Svelte/Angular), mobil (React Native/Flutter) veya masaüstü — ortak ilkeler.
-Yığına özgü "nasıl" (native köprü, router seçimi vb.) ilgili proje skill'inde; bu skill hepsinde geçerli.
+Web (React/Next/Vue/Svelte/Angular), mobile (React Native/Flutter) or desktop — shared principles.
+The stack-specific "how" (native bridge, router choice, etc.) lives in the relevant project skill; this skill applies to all of them.
 
-## Mimari
-- **Sunum / mantık ayrımı:** component/view saf ve ince; iş mantığı hook/composable/service katmanında.
-- **Yeniden kullanılabilirlik:** tekrar eden UI parçalanır; prop sözleşmesi net ve tiplenmiş.
-- **Klasör:** özellik-bazlı (`features/<ad>/`) — view, mantık, test bir arada.
+## Architecture
+- **Presentation / logic separation:** component/view is pure and thin; business logic lives in the hook/composable/service layer.
+- **Reusability:** repeated UI is factored out; the prop contract is clear and typed.
+- **Folder:** feature-based (`features/<name>/`) — view, logic, and test together.
 
-## State & veri
-- **Yerel state önce** (`useState`/signal); global gerekirse projenin seçimi (store/context) — dayatma yok.
-- **Veri çekme:** cache + hata + yükleniyor durumları düşünülür; yarış/iptal (race/abort) gözetilir.
+## State & data
+- **Local state first** (`useState`/signal); if global is needed, the project's choice (store/context) — nothing imposed.
+- **Data fetching:** cache + error + loading states are considered; race/abort are handled.
 
-## Durum-tam UI (baştan tasarla)
-Her veri-bağlı görünüm **dört durumu** karşılar: **loading · empty · error · dolu**.
-Sadece "dolu"yu kodlama; boş/hata/yükleniyor deneyimin parçası.
+## State-complete UI (design it from the start)
+Every data-bound view covers **four states**: **loading · empty · error · full**.
+Don't code only the "full" case; empty/error/loading are part of the experience.
 
-## i18n & erişilebilirlik (varsayılan, süs değil)
-- Kullanıcıya görünen metin dil dosyasından (proje dilleri); sabit-kodlu string yok (`i18n-integrity`).
-- Anlamlı etiket/rol, yeterli kontrast, klavye/ekran-okuyucu erişimi, uygun dokunma/tıklama hedefi.
+## i18n & accessibility (default, not decoration)
+- User-visible text comes from the language file (project languages); no hard-coded strings (`i18n-integrity`).
+- Meaningful labels/roles, sufficient contrast, keyboard/screen-reader access, appropriate touch/click target.
 
-## Responsive & performans
-- Hedef ekran/cihaz matrisinde çalışır (responsive/uyarlanabilir).
-- Gereksiz render (memo/callback), bundle boyutu, lazy yükleme, uzun listelerde sanallaştırma.
+## Responsive & performance
+- Works across the target screen/device matrix (responsive/adaptive).
+- Unnecessary renders (memo/callback), bundle size, lazy loading, virtualization for long lists.
 
-## DoD (bu skill'in katkısı)
-- `/simplify`; ölü stil/kullanılmayan prop yok.
-- Dört durum karşılanmış; `i18n-integrity` temiz; erişilebilirlik temel matriste geçer.
-- `review-agent-cck` temiz.
+## DoD (this skill's contribution)
+- `/simplify`; no dead styles/unused props.
+- The four states are covered; `i18n-integrity` clean; accessibility passes the baseline matrix.
+- `review-agent-cck` clean.
 
-## Kısıtlar
-- Cerrahi değişiklik; mevcut konvansiyona uy, yığın/tercih dayatma.
-- Platformun vermediği veriyi varmış gibi gösterme; olmayan yeteneği vaat etme.
-- §4 geçerli: kod/yorum/string'de yapay zeka izi ve vendor şablon adı yok.
+## Constraints
+- Surgical change; follow existing conventions, do not impose a stack/preference.
+- Do not present data the platform does not provide as if it existed; do not promise a capability that isn't there.
+- §4 applies: no AI trace or vendor template name in code/comments/strings.

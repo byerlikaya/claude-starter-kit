@@ -1,26 +1,26 @@
 ---
 name: testing
 description: |
-  Test "nasıl"ı: piramit, AAA, izolasyon, risk-kapsamı, deterministiklik; "testler yeşil"
-  garantisini sağlar. test-expert-cck bunu uygular.
-  Trigger phrases: "test yaz", "test çalıştır", "coverage", "testler yeşil mi", "unit test", "integration test"
+  The "how" of testing: pyramid, AAA, isolation, risk-coverage, determinism; guarantees the
+  "tests are green" promise. test-expert-cck applies this.
+  Trigger phrases: "write a test", "run the tests", "coverage", "are the tests green", "unit test", "integration test"
 ---
 
-# Test Disiplini
+# Testing Discipline
 
-Amaç: **davranış doğruluğu** — testi geçirmek için ürün kodunu bozmadan, gerçek davranışı test et.
+Goal: **behavior correctness** — test real behavior without breaking product code just to make a test pass.
 
-## İlkeler
-- **Piramit:** çok birim, orta entegrasyon, az uçtan-uca (e2e). e2e'yi kritik akışla sınırla.
-- **AAA:** Arrange-Act-Assert; **tek test = tek davranış**.
-- **İzolasyon & deterministiklik:** harici bağımlılık mock/fake; zaman ve rastgelelik sabitlenir; test sırası bağımsız.
-- **Risk-kapsamı:** metrik değil risk. Kritik yol + **sınır** + **negatif** + **yetki (IDOR/404)** senaryoları.
-- **İsimlendirme:** `neyi_test_ediyor_hangi_durumda_ne_bekliyor` — hata anında ne kırıldığı açık.
-- **Kırmızı-yeşil:** önce başarısız test, sonra implementasyon.
+## Principles
+- **Pyramid:** many unit, fewer integration, few end-to-end (e2e). Limit e2e to critical flows.
+- **AAA:** Arrange-Act-Assert; **one test = one behavior**.
+- **Isolation & determinism:** external dependencies are mocked/faked; time and randomness are fixed; test order is independent.
+- **Risk-coverage:** risk, not metrics. Critical path + **boundary** + **negative** + **authorization (IDOR/404)** scenarios.
+- **Naming:** `what_it_tests_under_which_condition_what_it_expects` — on failure it is clear what broke.
+- **Red-green:** first a failing test, then the implementation.
 
-## Dikkat
-- **Flaky = bug:** ara sıra kırılan test tolere edilmez, kökten çözülür.
-- Snapshot/altın-dosya testinde gereksiz kırılganlıktan kaçın (yalnız anlamlı çıktıyı doğrula).
+## Watch out
+- **Flaky = bug:** an occasionally failing test is not tolerated; it is fixed at the root.
+- In snapshot/golden-file tests, avoid needless brittleness (assert only the meaningful output).
 
-## DoD (bu skill'in katkısı)
-- İlgili test komutu yeşil (örn. `dotnet test`); kritik yollar kapsandı; boş/anlamsız test yok.
+## DoD (this skill's contribution)
+- The relevant test command is green (e.g. `dotnet test`); critical paths are covered; no empty/meaningless tests.

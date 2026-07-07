@@ -1,72 +1,72 @@
-# Agentik Çalışma Kiti — kurulu kit
+# Agentic Working Kit — installed kit
 
-Bu proje bir Claude Code çalışma kiti ile donatıldı. Kit, işi her aşamada aynı disiplinle yürütür:
-**planla → üret → denetle → commit'le** — ve her adımdaki kalite ile güvenlik, modelin hatırlamasına
-değil, araç seviyesindeki kapılara dayanır. Kitin tüm davranış kuralları kök `CLAUDE.md`'dedir; bu dosya
-`.claude/` altında ne olduğunu ve nasıl çalıştığını özetler.
+This project has been equipped with a Claude Code working kit. The kit runs the work with the same discipline at every stage:
+**plan → generate → audit → commit** — and the quality and security at each step rely not on the model remembering,
+but on gates at the tool level. All of the kit's behavior rules live in the root `CLAUDE.md`; this file
+summarizes what lives under `.claude/` and how it works.
 
-## Üç ilke
+## Three principles
 
-1. **Ajan = ince tetikleyici.** Bir ajan yalnızca "kim, ne zaman"ı söyler; kısa kalır ve işin nasılını skill'e bırakır.
-2. **Skill = tek bilgi kaynağı.** Asıl yöntem ve kural skill'de yaşar; ajana kopyalanmaz.
-3. **Kural → kapı.** Önemli kural araç seviyesinde zorlanır (hook · permission · eval); anımsanması beklenmez.
+1. **Agent = thin trigger.** An agent only states "who, when"; it stays short and leaves the how of the work to the skill.
+2. **Skill = single source of truth.** The actual method and rules live in the skill; they are not copied into the agent.
+3. **Rule → gate.** An important rule is enforced at the tool level (hook · permission · eval); it is not expected to be remembered.
 
-## `.claude/` içinde ne var
+## What's inside `.claude/`
 
-- **Ajanlar** (`agents/`) — rol başına bir ince tetikleyici: planlama, backend, veritabanı, güvenlik,
-  gizlilik, test, frontend, devops, gözden geçirme, commit ve oturum yönetimi. Adlar `-cck` ekiyle
-  isimlenir; böylece bu kitin ajanları projenin kendi ajanlarıyla çakışmaz.
-- **Skiller** (`skills/`) — "nasıl" bilgisinin tek kaynağı: kod gözden geçirme, güvenlik taraması,
-  migration, dağıtım, gözlemlenebilirlik, performans, erişilebilirlik, çeviri bütünlüğü, sürümleme,
-  olay müdahalesi ve daha fazlası. (Kurulu set, seçilen profile göre budanmış olabilir.)
-- **Komutlar** (`commands/`) — `/plan` · `/review` · `/ship` · `/handoff` · `/simplify`.
-- **Hook'lar** (`hooks/`) — `guard-bash.sh` (araç seviyesi kapı), `pre-commit` + `commit-msg`
-  (iz-denetimi), `context-usage.sh` ve `session-guard.sh` (oturum ölçümü), `trace-blocklist.txt`.
-- **settings.json** — izinler ve hook zinciri (PreToolUse · UserPromptSubmit · Stop).
-- **Kök `CLAUDE.md`** — davranış, üç ilke, iş akışı, tamamlanma tanımı, token disiplini ve yasaklar.
-- **AGENT_TEMPLATE.md** — yeni ajan/skill açma sözleşmesi.
+- **Agents** (`agents/`) — one thin trigger per role: planning, backend, database, security,
+  privacy, testing, frontend, devops, review, commit, and session management. Names carry a `-cck`
+  suffix so that this kit's agents do not clash with the project's own agents.
+- **Skills** (`skills/`) — the single source of the "how" knowledge: code review, security scan,
+  migration, deployment, observability, performance, accessibility, translation integrity, versioning,
+  incident response, and more. (The installed set may be pruned according to the chosen profile.)
+- **Commands** (`commands/`) — `/plan` · `/review` · `/ship` · `/handoff` · `/simplify`.
+- **Hooks** (`hooks/`) — `guard-bash.sh` (tool-level gate), `pre-commit` + `commit-msg`
+  (trace scan), `context-usage.sh` and `session-guard.sh` (session measurement), `trace-blocklist.txt`.
+- **settings.json** — permissions and the hook chain (PreToolUse · UserPromptSubmit · Stop).
+- **Root `CLAUDE.md`** — behavior, three principles, workflow, definition of done, token discipline, and prohibitions.
+- **AGENT_TEMPLATE.md** — the contract for opening a new agent/skill.
 
-## İş akışı
+## Workflow
 
-`/plan` (belirsiz kapsam) → uzman ajanlar üretir → `/review` (güvenlik · kalite · test) →
-`/ship` (DoD kapısı; commit'i önerir, onay bekler) → bağlam dolunca `/handoff` → `/clear`.
+`/plan` (ambiguous scope) → expert agents generate → `/review` (security · quality · testing) →
+`/ship` (DoD gate; proposes the commit, waits for approval) → when context fills up, `/handoff` → `/clear`.
 
-## Oturum ve token yönetimi
+## Session and token management
 
-Bir asistan `/context` komutunu kendisi çalıştıramaz; bu yüzden çoğu kurulum oturum doluluğunu tahmin
-eder. Bu kit ölçer. `context-usage.sh`, transcript'teki son turun gerçek token sayısını okur;
-`UserPromptSubmit` hook'u bunu her tur bağlama enjekte eder; `Stop` hook'u (`session-guard.sh`) doluluk
-**%75'i aştığında** devir önerisini garantiyle yüzeye çıkarır. Böylece oturum-sağlığı satırı bir ölçüme
-dayanır, bir tahmine değil.
+An assistant cannot run the `/context` command itself; that is why most setups guess the context fill.
+This kit measures it. `context-usage.sh` reads the real token count of the last turn in the transcript;
+the `UserPromptSubmit` hook injects this into the context every turn; the `Stop` hook (`session-guard.sh`) reliably
+surfaces the handover suggestion when the fill **exceeds 75%**. This way the session-health line rests on a measurement,
+not on a guess.
 
-## Kural → kapı
+## Rule → gate
 
-| Kural | Zorlayan mekanizma |
+| Rule | Enforcing mechanism |
 |---|---|
-| Commit/push yalnızca onayla — otomatik/bypass modda bile | `guard-bash.sh` (PreToolUse); `CLAUDE_GIT_OK` ile açılır |
-| Destrüktif işlem (reset --hard · force push · rm -rf · --no-verify) | `guard-bash.sh` (araç seviyesinde blok) |
-| Commit'te yapay-zeka izi ve dış şablon/vendor adı bulunmaz | `pre-commit` + `commit-msg` git hook |
-| Oturum eşiği | `context-usage.sh` (ölçüm) + `session-guard.sh` (Stop hook) |
-| Kalite kapısı (SonarQube kullanan projeler — dil-bağımsız) | `sonarqube-check` + `/ship` |
+| Commit/push only with approval — even in auto/bypass mode | `guard-bash.sh` (PreToolUse); opened with `CLAUDE_GIT_OK` |
+| Destructive operation (reset --hard · force push · rm -rf · --no-verify) | `guard-bash.sh` (block at the tool level) |
+| No AI trace and no external template/vendor name in a commit | `pre-commit` + `commit-msg` git hook |
+| Session threshold | `context-usage.sh` (measurement) + `session-guard.sh` (Stop hook) |
+| Quality gate (projects using SonarQube — language-agnostic) | `sonarqube-check` + `/ship` |
 
-## Doğrulama
+## Verification
 
 ```bash
-bash .claude/eval/smoke-test.sh      # yapı, frontmatter, kapı bütünlüğü
-bash .claude/eval/routing-eval.sh    # örnek prompt doğru ajan/skill'e mi gidiyor
+bash .claude/eval/smoke-test.sh      # structure, frontmatter, gate integrity
+bash .claude/eval/routing-eval.sh    # does a sample prompt reach the right agent/skill
 ```
 
-`smoke-test` yapıyı, hook'ların +x ve silahlı oluşunu ve context ölçüm eşiklerini denetler;
-`routing-eval` golden prompt kümesinin doğru hedefe yönlendiğini ve trigger çakışması olmadığını
-doğrular. İkisi de Claude Code'u çalıştırmaz.
+`smoke-test` checks the structure, that the hooks are +x and armed, and the context measurement thresholds;
+`routing-eval` verifies that the golden prompt set routes to the right target and that there is no trigger collision.
+Neither one runs Claude Code.
 
-## Genişletme
+## Extending
 
-Yeni bir ajan veya skill eklerken `AGENT_TEMPLATE.md` sözleşmesini izleyin: frontmatter (name ·
-description + Trigger phrases · en-az-yetki tools · model kademesi) ve gövde (Ne zaman → Uzmanlık
-duruşu → Nasıl/skill → Koordinasyon → DoD → Çıktı & bağlam → Hata/eskalasyon → Örnek → Kısıtlar).
+When adding a new agent or skill, follow the `AGENT_TEMPLATE.md` contract: frontmatter (name ·
+description + Trigger phrases · least-privilege tools · model tier) and body (When → Expertise
+stance → How/skill → Coordination → DoD → Output & context → Errors/escalation → Example → Constraints).
 
-## Not
+## Note
 
-Her şey proje-yereldir (`./.claude`); ev dizinine (`~/.claude`) bağımlılık yoktur. `.claude/` ve
-`CLAUDE.md`'nin yerel mi tutulacağı yoksa ekiple paylaşılacağı mı, kurulumda verilen karara bağlıdır.
+Everything is project-local (`./.claude`); there is no dependency on the home directory (`~/.claude`). Whether `.claude/` and
+`CLAUDE.md` are kept local or shared with the team depends on the decision given at install time.

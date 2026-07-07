@@ -1,30 +1,30 @@
-# Golden routing: <ornek kullanici prompt>|<beklenen hedef ajan/skill>
-# routing-eval.sh bunu okur: beklenen hedefin trigger phrase'i prompt'ta gecmeli (substring).
-# Hedef bu profilde kurulu degilse satir ATLANIR (budanmis kurulumda patlamaz).
-backend'e yeni handler ekle|backend-expert-cck
-bu tabloya migration yaz|database-expert-cck
-login ekrani icin responsive component|frontend-expert-cck
-expo router ile yeni rn ekran|frontend-rn-expo
-OWASP check ve guvenlik taramasi yap|security-expert-cck
-kvkk gizlilik denetimi lazim|privacy-agent-cck
-degisiklikleri commit'le|commit-agent-cck
-testleri calistir, coverage raporu|test-expert-cck
-PR'i gozden gecir, diff bak|review-agent-cck
-once planla, gorev kirilimi cikar|planner-cck
-sunucuya deploy et, production'a cik|vps-deploy
-changelog hazirla ve tag at|release
-github actions ile ci pipeline|ci-pipeline
-adr yaz: mimari karar kaydi|adr
-npm audit ile bagimlilik denetimi|dependency-audit
-eksik ceviri var mi, i18n kontrol|i18n-integrity
-sonarqube kalite kapisi calistir|sonarqube-check
-handoff hazirla, devir notu|handoff
-yapilandirilmis log ekle, korelasyon id|observability
-readme guncelle ve api dokumani yaz|docs-writer
-erisilebilirlik denetimi, wcag kontrol|a11y
-api sozlesmesi versiyonlama, openapi|api-design
-sayfa yavas, performans optimizasyonu|performance
-olay mudahale runbook'u yaz, postmortem|incident-runbook
-prompt injection savunmasini sina, red team|red-team
-prod'a cik ve rollback yap|devops-expert-cck
-reverse proxy ve ssl kur|devops-expert-cck
+# Golden routing: <example user prompt>|<expected target agent/skill>
+# routing-eval.sh reads this: the expected target's trigger phrase must appear in the prompt (substring).
+# If the target isn't installed in this profile, the line is SKIPPED (won't fail a pruned install).
+add a new handler for the order endpoint|backend-expert-cck
+write a migration for this table|database-expert-cck
+build a responsive component for the login screen|frontend-expert-cck
+add a new rn screen with expo router|frontend-rn-expo
+run an OWASP check and a full security scan|security-expert-cck
+we need a kvkk privacy audit|privacy-agent-cck
+commit the changes|commit-agent-cck
+run tests and give me a coverage report|test-expert-cck
+do a PR review and look at the diff|review-agent-cck
+plan first and produce a task breakdown|planner-cck
+deploy this and go to production on the VPS|vps-deploy
+prepare the changelog and cut a tag|release
+set up a ci pipeline with github actions|ci-pipeline
+write an adr for this architecture decision|adr
+run npm audit for a dependency audit|dependency-audit
+check i18n for any missing translation|i18n-integrity
+run the sonarqube quality gate|sonarqube-check
+prepare a handoff with the current session state|handoff
+add a structured log with a correlation id|observability
+update the README and write the API docs|docs-writer
+run an accessibility audit and check WCAG|a11y
+handle api versioning with an openapi contract|api-design
+the page is slow, do a performance optimization|performance
+write an incident runbook and a postmortem|incident-runbook
+red team the prompt injection defenses|red-team
+ship to prod and be ready to rollback|devops-expert-cck
+set up a reverse proxy and ssl|devops-expert-cck

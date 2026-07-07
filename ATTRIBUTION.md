@@ -1,19 +1,19 @@
-# Kaynaklar & Atıf
+# Sources & Attribution
 
-Bu kit, disiplin katmanını aşağıdaki üst kaynaklarla hizalar.
+This kit aligns its discipline layer with the upstream sources below.
 
-## code-review skill'i
-`google/eng-practices` (https://github.com/google/eng-practices) çalışmasından uyarlanmıştır.
-Lisans: **CC-BY 3.0** (https://creativecommons.org/licenses/by/3.0/). İçerik Türkçe damıtılarak
-yeniden ifade edilmiştir; atıf bu lisans gereğidir.
+## code-review skill
+Adapted from `google/eng-practices` (https://github.com/google/eng-practices).
+License: **CC-BY 3.0** (https://creativecommons.org/licenses/by/3.0/). The content has been
+distilled and restated; attribution is required under this license.
 
-## devarch-module skill'i
-Backend kalıbı `DevArchitecture` (https://github.com/DevArchitecture/DevArchitecture) mimarisinden
-esinlenmiştir (MediatR CQRS / IResult / AOP). Yalnızca kalıp/yaklaşım referans alınmıştır; bu depo
-DevArchitecture'a ait kaynak kodu barındırmaz. Referans ve kullanım için DevArchitecture yazarından
-açık izin alınmıştır.
+## devarch-module skill
+The backend pattern draws on the `DevArchitecture` (https://github.com/DevArchitecture/DevArchitecture)
+architecture (MediatR CQRS / IResult / AOP). Only the pattern and approach are referenced; this repository
+does not host any DevArchitecture source code. Explicit permission for reference and use was obtained from
+the DevArchitecture author.
 
-## security-scan · db-migration · vps-deploy skilleri
-Özgün olarak yazılmıştır. İçerdikleri CLI komutları, OWASP kategori adları ve migration/deploy
-komutları kamuya açık teknik olgulardır; yapı, kurgu ve metin bu kite özgündür. Üçüncü-taraf
-telifli içerik barındırmazlar.
+## security-scan · db-migration · vps-deploy skills
+Written originally. The CLI commands, OWASP category names, and migration/deploy commands they contain
+are publicly available technical facts; the structure, framing, and text are original to this kit. They
+contain no third-party copyrighted content.

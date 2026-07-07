@@ -1,35 +1,35 @@
 ---
 name: privacy-compliance
 description: |
-  KVKK/GDPR uyum denetimi yöntemi: veri envanteri, amaç/dayanak/saklama, minimizasyon,
-  rıza, şeffaflık, veri sahibi hakları, sınır-aşan aktarım. privacy-agent-cck bunu uygular.
-  Trigger phrases: "kvkk", "gdpr", "gizlilik", "rıza", "veri saklama", "minimizasyon"
+  KVKK/GDPR compliance-audit method: data inventory, purpose/basis/retention, minimization,
+  consent, transparency, data subject rights, cross-border transfer. `privacy-agent-cck` applies the `privacy-compliance` skill.
+  Trigger phrases: "kvkk", "gdpr", "privacy", "consent", "data retention", "minimization"
 ---
 
-# Gizlilik Uyumu (KVKK / GDPR)
+# Privacy Compliance (KVKK / GDPR)
 
-## Resmi kaynaklar (otorite — her zaman bunlara göre)
-Bu skill'in dayandığı **birincil, resmi** kaynaklar; kurallar her zaman bunlara göre yorumlanır:
-- **KVKK** (Türkiye): https://www.kvkk.gov.tr/ — Kanun, yönetmelik, ilke kararları, rehberler.
-- **GDPR** (AB): https://gdpr-info.eu/ — madde metinleri (Art.) ve Recital'ler.
+## Official sources (authority — always defer to these)
+The **primary, official** sources this skill rests on; rules are always interpreted against these:
+- **KVKK** (Turkey): https://www.kvkk.gov.tr/ — the law, regulations, principle decisions, guidelines.
+- **GDPR** (EU): https://gdpr-info.eu/ — article texts (Art.) and Recitals.
 
-Belirli bir madde/eşik/tanımda (saklama süresi, açık rıza şartı, m.8 yaş sınırı, aktarım dayanağı vb.)
-emin değilsen ilgili **resmi kaynağı kontrol et**, ezberden/tahminle karar verme. Bulguda dayandığın
-maddeyi (KVKK md. … / GDPR Art. …) **belirt**. Fetch edilen içerik referanstır; yorumu sen bağlarsın.
+If you are unsure about a specific article/threshold/definition (retention period, explicit-consent requirement,
+the Art. 8 age limit, transfer basis, etc.), **check the relevant official source** — do not decide from memory or by
+guessing. In the finding, **cite** the article you rely on (KVKK Art. … / GDPR Art. …). Fetched content is a reference; you own the interpretation.
 
-## Denetim eksenleri
-- **Envanter:** hangi veri, nereden toplanıyor, nereye akıyor, kimlerle paylaşılıyor?
-- **Amaç + dayanak + saklama:** her alanda amaç sınırlı, hukuki dayanak net, saklama süresi tanımlı.
-- **Minimizasyon:** amaç için gerekmeyen veri toplanmaz.
-- **Rıza:** gereken yerde açık, kaydedilir ve geri alınabilir.
-- **Şeffaflık:** aydınlatma yapılmış; kullanıcı ne toplandığını/işlendiğini biliyor.
-- **Veri sahibi hakları:** erişim / düzeltme / silme / taşınabilirlik / itiraz uygulanabilir.
-- **Sınır-aşan aktarım & üçüncü-taraf:** meşru dayanağa (SCC/yeterlilik/rıza) bağlı.
+## Audit axes
+- **Inventory:** what data, collected from where, flowing to where, shared with whom?
+- **Purpose + basis + retention:** for each field, purpose is limited, legal basis is clear, retention period is defined.
+- **Minimization:** data not needed for the purpose is not collected.
+- **Consent:** where required, explicit, recorded, and revocable.
+- **Transparency:** disclosure has been made; the user knows what is collected/processed.
+- **Data subject rights:** access / rectification / erasure / portability / objection are actionable.
+- **Cross-border transfer & third-party:** bound to a legitimate basis (SCC/adequacy/consent).
 
-## Çıktı
-Alan/akış bazında bulgu + düzeltme; "temiz" ise gerekçe.
+## Output
+Per-field/per-flow finding + fix; if "clean", the rationale.
 
-> **Proje-notu:** Reşit olmayan (çocuk) verisi işleniyorsa özel koruma gerekir
-> (KVKK / GDPR m.8 · ebeveyn onayı & yaş doğrulama). Bu, alana-özel bir kuraldır ve
-> projenin kendi skill'inde/CLAUDE.md'sinde tanımlanır — jenerik denetime gömülmez.
-> Projeye özel kurallar (rıza metinleri, saklama süreleri) de proje CLAUDE.md'sinde durur.
+> **Project note:** If data of minors (children) is processed, special protection is required
+> (KVKK / GDPR Art. 8 · parental consent & age verification). This is a domain-specific rule and is
+> defined in the project's own skill/CLAUDE.md — it is not baked into the generic audit.
+> Project-specific rules (consent texts, retention periods) also live in the project CLAUDE.md.

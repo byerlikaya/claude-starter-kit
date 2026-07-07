@@ -1,51 +1,48 @@
-# Agent Şablon Kontratı (Claude Code)
+# Agent Template Contract (Claude Code)
 
-Tüm uzman agent'lar bu iskelete uyar. Kanonik referans: **`backend-expert-cck`**.
-İlke: **agent = ince tetikleyici** ("kim / ne zaman"), **skill = "nasıl"**. Bilgi skill'de, tetik agent'ta.
+All expert agents conform to this skeleton. Canonical reference: **`backend-expert-cck`**.
+Principle: **agent = thin trigger** ("who / when"), **skill = "how"**. Knowledge lives in the skill, the trigger in the agent.
 
-## Frontmatter (zorunlu alanlar)
-- `name`: kebab-case, dosya adıyla birebir aynı.
-- `description`: Claude Code delegasyon kararını **buna bakarak** verir. Üçünü içer:
-  (1) ne yaptığı, (2) **NE ZAMAN** devreye gireceği, (3) `Trigger phrases:` satırı (TR anahtar ifadeler).
-- `tools`: en az yetki ilkesi. Salt-okunur denetçi → `Read, Grep, Glob (+Bash)`; yazan uzman → `+ Edit, Write`.
-- `model`: maliyet yönlendirmesi (aşağıdaki tablo). Alan yoksa ana oturum modeli miras alınır (inherit).
+## Frontmatter (required fields)
+- `name`: kebab-case, exactly matching the file name.
+- `description`: Claude Code makes its delegation decision **by looking at this**. It must contain three things:
+  (1) what it does, (2) **WHEN** it kicks in, (3) a `Trigger phrases:` line (English key phrases).
+- `tools`: least-privilege principle. Read-only auditor → `Read, Grep, Glob (+Bash)`; writing expert → `+ Edit, Write`.
+- `model`: cost routing (table below). If the field is absent, the main session model is inherited (inherit).
 
-## Gövde bölümleri (sabit sıra)
-1. **Ne zaman** — tetikleyici bağlam.
-2. **Uzmanlık duruşu — önerilir.** O rolün en iyisinin farklı yaptığı 3-5 **role-özel** somut davranış (jenerik "uzman ol" değil). Kararı/tavrı yükseltir; mekanik "nasıl" skill'de kalır.
-3. **Nasıl (skill'ini izle)** — hangi skill + o skill'in bu agent'a özel çıkış noktaları. Skill **tek bilgi kaynağıdır**; ajana "nasıl"ı kopyalama — en fazla hızlı-hatırlatma, çelişkide skill kazanır (§2 "tekrar yok").
-4. **Koordinasyon (cross-agent) — yazan uzmanlar için önerilir.** Bu iş kime devredilir: güvenlik→security-expert-cck, şema→database-expert-cck, test→test-expert-cck, mesaj→i18n, kişisel veri→privacy-agent-cck, kapanışta bulgu→review-agent-cck. Ajanı orkestratöre çevirir; salt-okunur denetçilerde çoğu zaman gereksiz.
-5. **DoD** — kapanış sorumluluğu: `/simplify` + testler yeşil + `sonarqube-check` (0/0/0/0, build 0/0).
-6. **Çıktı & bağlam (token)** — ana thread'e ne döner: **kısa özet**, ham log/döküm değil; ağır çıktı `docs/*.md`'ye (token-budget skill).
-7. **Hata/eskalasyon** — tıkanınca/emin olmayınca **dur-raporla** veya ilgili uzmana devret; tahminle ilerleme.
-8. **Örnek delegasyon** — 1 ✅ tetikler / 1 ❌ tetiklemez satırı (delegasyon isabeti).
-9. **Kısıtlar** — salt-okunur mu, neyi yapmaz, platform/politika sınırları.
+## Body sections (fixed order)
+1. **When** — triggering context.
+2. **Expertise stance — recommended.** 3-5 **role-specific** concrete behaviors that the best in that role does differently (not a generic "be an expert"). It raises the decision/stance; the mechanical "how" stays in the skill.
+3. **How (follow its skill)** — which skill + that skill's exit points specific to this agent. The skill is the **single source of truth**; do not copy the "how" into the agent — at most a quick reminder, and on conflict the skill wins (§2 "no repetition").
+4. **Coordination (cross-agent) — recommended for writing experts.** Whom this work is delegated to: security→security-expert-cck, schema→database-expert-cck, tests→test-expert-cck, messages→i18n, personal data→privacy-agent-cck, findings at closure→review-agent-cck. It turns the agent into an orchestrator; usually unnecessary for read-only auditors.
+5. **DoD** — closure responsibility: `/simplify` + tests green + `sonarqube-check` (0/0/0/0, build 0/0).
+6. **Output & context (token)** — what returns to the main thread: a **short summary**, not raw logs/dumps; heavy output goes to `docs/*.md` (token-budget skill).
+7. **Errors/escalation** — when stuck/unsure, **stop and report** or hand off to the relevant expert; do not proceed on a guess.
+8. **Example delegation** — 1 ✅ triggers / 1 ❌ does-not-trigger line (delegation accuracy).
+9. **Constraints** — read-only or not, what it does not do, platform/policy limits.
 
-## Model yönlendirmesi (maliyet kalibrasyonu)
-**Tarihli model ID değil, tier ALIAS kullan** (`haiku`/`sonnet`/`opus`/`inherit`). Alias güncel
-tier'a otomatik çözülür; model rename/deprecate olunca ajanlar sessizce kırılmaz. Tam ID
-(`claude-sonnet-…`) yalnız belirli bir sürüme pinlemek şartsa.
+## Model routing (cost calibration)
+**Use a tier ALIAS, not a dated model ID** (`haiku`/`sonnet`/`opus`/`inherit`). An alias resolves automatically to the current tier; when a model is renamed/deprecated, agents do not silently break. Use a full ID (`claude-sonnet-…`) only if pinning to a specific version is required.
 
-| Agent | Rol | model | Neden |
+| Agent | Role | model | Why |
 |---|---|---|---|
-| session-manager-cck | değerlendirme | `haiku` | hafif, kod yazmaz |
-| security-expert-cck | denetim | `sonnet` | karar-yoğun (auth/IDOR) |
-| review-agent-cck | denetim | `haiku` | salt-okunur bulgu |
-| commit-agent-cck | mesaj üretimi | `haiku` | hafif, kod yazmaz |
-| privacy-agent-cck | denetim | `sonnet` | karar-yoğun (KVKK) |
-| planner-cck | planlama | `inherit` | kararlı akıl yürütme ister |
-| backend-expert-cck | yazım | `inherit` | karmaşık kod, ana model |
-| database-expert-cck | yazım | `inherit` | migration/şema riski |
-| test-expert-cck | yazım | `inherit` | davranış doğruluğu |
-| frontend-expert-cck | yazım | `inherit` | UI + native köprü |
+| session-manager-cck | assessment | `haiku` | lightweight, writes no code |
+| security-expert-cck | audit | `sonnet` | decision-heavy (auth/IDOR) |
+| review-agent-cck | audit | `haiku` | read-only findings |
+| commit-agent-cck | message generation | `haiku` | lightweight, writes no code |
+| privacy-agent-cck | audit | `sonnet` | decision-heavy (KVKK/GDPR) |
+| planner-cck | planning | `inherit` | wants stable reasoning |
+| backend-expert-cck | writing | `inherit` | complex code, main model |
+| database-expert-cck | writing | `inherit` | migration/schema risk |
+| test-expert-cck | writing | `inherit` | behavioral correctness |
+| frontend-expert-cck | writing | `inherit` | UI + native bridge |
 
-Salt-okunur üçlüyü Haiku'ya çekmek token/maliyet düşürür; yazan uzmanlar tam güçte kalır.
-(Alias'lar Claude Code frontmatter'ında geçerlidir; alan boşsa `inherit` varsayılır.)
+Pulling the read-only trio down to Haiku lowers token/cost; the writing experts stay at full power.
+(Aliases are valid in Claude Code frontmatter; if the field is empty, `inherit` is assumed.)
 
-## Yerleşim
-- Proje-local (10): `./.claude/agents/` — session-manager-cck, backend/database/security/test/frontend-expert-cck, review-agent-cck, commit-agent-cck, planner-cck, privacy-agent-cck. Her şey repo içinde durur; home'a (`~/.claude`) bağımlılık yok (devir §3).
-- Ekstra agent gerekmez; stack-özel "nasıl"lar `./.claude/skills/` altında (frontend'in "nasıl"ı projenin frontend skill'inde / CLAUDE.md'sinde).
+## Placement
+- Project-local (10): `./.claude/agents/` — session-manager-cck, backend/database/security/test/frontend-expert-cck, review-agent-cck, commit-agent-cck, planner-cck, privacy-agent-cck. Everything stays inside the repo; no dependency on home (`~/.claude`) (handover §3).
+- No extra agent is needed; stack-specific "hows" live under `./.claude/skills/` (the frontend's "how" is in the project's frontend skill / CLAUDE.md).
 
-## Referans örnek
-`backend-expert-cck.md` bu kontratın birebir uygulanmış hali; yeni agent açarken onu kopyala, doldur.
-
+## Reference example
+`backend-expert-cck.md` is this contract applied verbatim; when creating a new agent, copy it and fill it in.

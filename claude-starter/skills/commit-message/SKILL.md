@@ -1,73 +1,73 @@
 ---
 name: commit-message
 description: |
-  Conventional Commits kurallarıyla commit mesajı üretir/denetler. Staged diff'i okuyup
-  type(scope): özet formatında, gerektiğinde gövde + footer'lı mesaj önerir. commit-agent-cck
-  bu skill'i uygular. Özet Türkçe; tek mantıksal değişiklik = tek commit.
-  Trigger phrases: "commit mesajı", "commit at", "conventional commit", "commit yaz", "git commit"
+  Produces/checks a commit message following Conventional Commits. Reads the staged diff and
+  proposes a message in type(scope): summary format, with a body + footer when needed. commit-agent-cck
+  applies the `commit-message` skill. Summary in the project's established language (English by default for open source); one logical change = one commit.
+  Trigger phrases: "commit message", "make a commit", "conventional commit", "write a commit", "git commit"
 ---
 
-# Commit Mesajı (Conventional Commits v1.0.0)
+# Commit Message (Conventional Commits v1.0.0)
 
-Format: `type(scope): özet` + (opsiyonel boş satır + gövde) + (opsiyonel footer).
+Format: `type(scope): summary` + (optional blank line + body) + (optional footer).
 
-## Type (zorunlu)
-- `feat` — yeni özellik            · `fix` — hata düzeltme
-- `docs` — sadece döküman          · `refactor` — davranış değişmeden yeniden yapı
-- `perf` — performans              · `test` — test ekleme/düzeltme
-- `build` — derleme/bağımlılık     · `ci` — CI yapılandırma
-- `chore` — bakım/oto işler        · `revert` — önceki commit'i geri alma
-- `style` — biçim (mantık yok)
+## Type (required)
+- `feat` — new feature             · `fix` — bug fix
+- `docs` — docs only               · `refactor` — restructure with no behavior change
+- `perf` — performance             · `test` — add/fix tests
+- `build` — build/dependency       · `ci` — CI configuration
+- `chore` — maintenance/automated  · `revert` — revert a previous commit
+- `style` — formatting (no logic)
 
-### Hangi type? (belirsizde karar)
-- Kullanıcıya yeni yetenek mi? → `feat`. Var olan yanlışı mı düzeltiyor? → `fix`.
-- Davranış aynı, yapı mı değişti? → `refactor` (davranış değiştiyse `feat`/`fix`, refactor değil).
-- Yalnız test/döküman/biçim dokundu? → `test`/`docs`/`style` (kod mantığına dokunma).
+### Which type? (deciding when ambiguous)
+- A new capability for the user? → `feat`. Fixing an existing wrong behavior? → `fix`.
+- Behavior the same, only the structure changed? → `refactor` (if behavior changed it's `feat`/`fix`, not refactor).
+- Touched only tests/docs/formatting? → `test`/`docs`/`style` (don't touch code logic).
 
-## Scope (opsiyonel, tercih edilir)
-Etkilenen alan/modül: `auth`, `api`, `backend`, `db`, `frontend`, `session`, `agent` vb.
-Tek kelime, projenin modül adıyla tutarlı.
+## Scope (optional, preferred)
+The affected area/module: `auth`, `api`, `backend`, `db`, `frontend`, `session`, `agent`, etc.
+One word, consistent with the project's module name.
 
-## Özet satırı
-- **Türkçe**, emir/özet kip, küçük harfle başla, sonunda nokta YOK, ≤ ~72 karakter.
-- **Ne yaptığını** söyle, nasıl yaptığını değil; belirsiz kelimelerden kaçın ("düzeltme", "güncelleme", "wip").
-  ✅ `feat(auth): tek-kullanımlık kod TTL + brute-force limiti`
-  ❌ `fix: bug` · ❌ `update` · ❌ `değişiklikler`
+## Summary line
+- **In the project's established language** (English by default for open source), imperative/summary mood, start lowercase, NO period at the end, ≤ ~72 characters.
+- Say **what it does**, not how; avoid vague words ("fix", "update", "wip").
+  ✅ `feat(auth): one-time code TTL + brute-force limit`
+  ❌ `fix: bug` · ❌ `update` · ❌ `changes`
 
-## Gövde (opsiyonel — anlamlı değişiklikte önerilir)
-Boş satırdan sonra: **NEDEN** (motivasyon) + belirgin sonuçlar/tradeoff'lar. ~72 karakterde sar.
-git-blame'i açan gelecekteki okuyucu için bağlam bırak — "ne"yi diff zaten gösterir, sen "neden"i yaz.
+## Body (optional — recommended for meaningful changes)
+After a blank line: the **WHY** (motivation) + notable consequences/tradeoffs. Wrap at ~72 characters.
+Leave context for the future reader who opens git-blame — the diff already shows the "what"; you write the "why".
 
-## Footer (opsiyonel)
-- `BREAKING CHANGE: <açıklama>` — geriye dönük kırıcı değişiklik (SemVer MAJOR tetikler, `release` skill).
+## Footer (optional)
+- `BREAKING CHANGE: <description>` — a backward-incompatible breaking change (triggers SemVer MAJOR, `release` skill).
 - `Refs: #<issue>` / `Closes #<issue>`.
 
-## Atomik commit — karışık diff'i bölme
-Bir diff birden çok mantıksal değişiklik içeriyorsa **böl**, tek commit'e tıkma:
+## Atomic commit — splitting a mixed diff
+If a diff contains several logical changes, **split it**; don't cram it into one commit:
 ```bash
-git add -p            # hunk hunk seç; ilgili değişiklikleri ayrı stage'le
-git add <belirli/dosya>
+git add -p            # pick hunk by hunk; stage related changes separately
+git add <specific/file>
 ```
-Her commit tek konuya odaklı; "feat + fix + refactor" tek commit'te olmaz.
+Each commit focused on a single topic; "feat + fix + refactor" doesn't belong in one commit.
 
-## İyi / kötü
-| ✅ İyi | ❌ Kötü |
+## Good / bad
+| ✅ Good | ❌ Bad |
 |---|---|
-| `fix(db): IDOR'da 403 yerine 404 dön (varlık sızıntısını engelle)` | `fix: db sorunu` |
-| `refactor(api): sorgu handler'larını tek sözleşmeye topla` | `refactor stuff` |
-| `feat(session): oturum-sağlığı satırı + eşik kuralı` | `feat: yeni şeyler eklendi` |
-| `revert: "feat(auth): kod TTL"` (sha) | `geri aldım` |
+| `fix(db): return 404 instead of 403 on IDOR (prevent entity leak)` | `fix: db issue` |
+| `refactor(api): consolidate query handlers into one contract` | `refactor stuff` |
+| `feat(session): session-health line + threshold rule` | `feat: added new stuff` |
+| `revert: "feat(auth): code TTL"` (sha) | `reverted it` |
 
-## Kurallar
-- **Atomik:** tek mantıksal değişiklik = tek commit.
-- **DoD'siz commit yok:** `/simplify` + testler yeşil + (SonarQube kullanılıyorsa) `sonarqube-check` 0/0/0/0 geçmeden mesaj önerme.
-- Staged diff yoksa uyar; `git add` kapsamını kullanıcıya SEÇMELİ sor.
-- Sessiz `git commit` çalıştırma; mesajı öner, **onay bekle**.
+## Rules
+- **Atomic:** one logical change = one commit.
+- **No commit without DoD:** don't propose a message until `/simplify` + tests green + (if SonarQube is used) `sonarqube-check` 0/0/0/0 pass.
+- If there is no staged diff, warn; ask the user about the `git add` scope with explicit options.
+- Don't run `git commit` silently; propose the message, **wait for approval**.
 
-## Yasaklar (mutlak — bkz. CLAUDE.md §4)
-- **Yapay zeka izi yok:** subject/body'de `Co-Authored-By: …`, "Generated with …", 🤖 yok;
-  "yapay zeka / asistan / model / copilot" ve `.claude` adı mesajda geçmez.
-- **Vendor adı yok:** üçüncü-taraf şablon/iskelet adı ve "vendor copy / temizlik" ifşası mesaja yazılmaz (§4.2).
-- **İnsansı Türkçe:** mesaj doğal, teknik, Türkçe.
-- **Onay:** commit yalnız kullanıcı "commit et" dediğinde; "tamamlandı" onay değildir (§4.4).
-- **Destrüktif:** amend / reset / force / `--no-verify` yalnız açık taleple; hook atlanmaz (§4.5).
+## Prohibitions (absolute — see CLAUDE.md §4)
+- **No AI trace:** no co-author trailer, auto-generation footer, or robot emoji in the subject/body;
+  words naming an AI assistant, model, or coding tool, and the `.claude` name, do not appear in the message.
+- **No vendor name:** the third-party template/skeleton name and any "vendor copy / cleanup" disclosure are not written in the message (§4.2).
+- **Human, natural language:** the message is natural, technical, and in the project's established language (English by default for open source).
+- **Approval:** commit only when the user says "commit"; "done" is not approval (§4.4).
+- **Destructive:** amend / reset / force / `--no-verify` only on an explicit request; the hook is not skipped (§4.5).

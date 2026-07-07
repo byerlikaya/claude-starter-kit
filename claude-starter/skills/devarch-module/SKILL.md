@@ -1,58 +1,58 @@
 ---
 name: devarch-module
 description: |
-  Backend kalıbı: MediatR CQRS handler/command/query, IResult/IDataResult sonuç sözleşmesi,
-  Autofac AOP aspect zinciri, FluentValidation, Languages/i18n deseni. backend-expert-cck bunu uygular.
-  Trigger phrases: "devarch-module", "yeni handler", "command yaz", "query ekle", "validator", "aspect"
+  Backend pattern: MediatR CQRS handler/command/query, IResult/IDataResult result contract,
+  Autofac AOP aspect chain, FluentValidation, Languages/i18n pattern. backend-expert-cck applies the `devarch-module` skill.
+  Trigger phrases: "devarch-module", "new handler", "write a command", "add a query", "validator", "aspect"
 ---
 
-# Backend Kalıbı (MediatR CQRS / IResult / AOP)
+# Backend Pattern (MediatR CQRS / IResult / AOP)
 
-> **Kit uyarlaması (lokal, .claude/):** `backend-expert-cck` uygular. Kaynak (hizalama):
-> DevArchitecture kalıbı — **adı üretilen koda / namespace / dosya / yorum / csproj / Swagger / JWT'ye
-> SIZMAZ (§4.2).** Kalıp burada; üretilen artefakt projeye özgü isimlerle yazılır.
+> **Kit adaptation (local, .claude/):** `backend-expert-cck` applies the `devarch-module` skill. Sources (alignment):
+> the DevArchitecture pattern — **its name does NOT leak into generated code / namespace / file / comment / csproj / Swagger /
+> JWT (§4.2).** The pattern lives here; the generated artifact is written with project-specific names.
 
-## Yerleşim
-`Business/Handlers/{Entity}/` altında üç klasör: `Commands/` · `Queries/` · `ValidationRules/`.
-Her istek + handler'ı **tek dosyada, nested** durur.
+## Layout
+Three folders under `Business/Handlers/{Entity}/`: `Commands/` · `Queries/` · `ValidationRules/`.
+Each request + its handler lives **in a single file, nested**.
 
-## Command kalıbı (yazma)
-- İstek sınıfı: `IRequest<IResult>` (veya döndüreceği veri varsa `IRequest<IDataResult<T>>`).
-- Handler: dış sınıfın içinde `IRequestHandler<TRequest, IResult>`; bağımlılıklar ctor'dan (repository, cache, mediator).
-- Gövde: repository ile yaz → `SaveChangesAsync()` → ilgili cache anahtarını temizle → `return new SuccessResult(Messages.Added)`.
+## Command pattern (write)
+- Request class: `IRequest<IResult>` (or `IRequest<IDataResult<T>>` if it returns data).
+- Handler: `IRequestHandler<TRequest, IResult>` inside the outer class; dependencies via the ctor (repository, cache, mediator).
+- Body: write via the repository → `SaveChangesAsync()` → clear the relevant cache key → `return new SuccessResult(Messages.Added)`.
 
-## Query kalıbı (okuma)
-- İstek: `IRequest<IDataResult<IEnumerable<TDto>>>` / `IDataResult<TDto>`.
-- Handler veriyi repository/DTO ile çeker → `return new SuccessDataResult<...>(data)`.
+## Query pattern (read)
+- Request: `IRequest<IDataResult<IEnumerable<TDto>>>` / `IDataResult<TDto>`.
+- The handler fetches the data via the repository/DTO → `return new SuccessDataResult<...>(data)`.
 
-## Sonuç sözleşmesi (çıplak tip YOK)
-- Başarı: `SuccessResult(mesaj)` / `SuccessDataResult<T>(data, mesaj?)`.
-- Hata: `ErrorResult(mesaj)` / `ErrorDataResult<T>(mesaj)`.
-- Handler asla ham `T` / `void` döndürmez; her zaman `IResult`/`IDataResult<T>`.
+## Result contract (NO bare types)
+- Success: `SuccessResult(message)` / `SuccessDataResult<T>(data, message?)`.
+- Error: `ErrorResult(message)` / `ErrorDataResult<T>(message)`.
+- The handler never returns a raw `T` / `void`; always `IResult`/`IDataResult<T>`.
 
-## AOP aspect zinciri (attribute sırası = Priority)
+## AOP aspect chain (attribute order = Priority)
 ```
-[SecuredOperation(Priority = 1)]                       // yetki
+[SecuredOperation(Priority = 1)]                       // authorization
 [ValidationAspect(typeof(XValidator), Priority = 2)]   // FluentValidation
-[CacheAspect]            // query'de: sonucu cache'le
-[CacheRemoveAspect]      // command'de: ilgili cache'i düşür
-[LogAspect(typeof(FileLogger))]                        // loglama
+[CacheAspect]            // on a query: cache the result
+[CacheRemoveAspect]      // on a command: drop the relevant cache
+[LogAspect(typeof(FileLogger))]                        // logging
 ```
-- **Anonim/kimliksiz uç** (register, herkese açık webhook, health-check) → `[SecuredOperation]` **KALDIRILIR**.
-- Cache anahtarları anlamlı ve tekilleştirilebilir; command sonrası ilgili anahtar temizlenir.
+- **Anonymous/identity-less endpoint** (register, public webhook, health-check) → `[SecuredOperation]` is **REMOVED**.
+- Cache keys are meaningful and de-duplicable; after a command the relevant key is cleared.
 
 ## Validation (FluentValidation)
-`ValidationRules/` altında `AbstractValidator<TCommand>`; `RuleFor(x => x.Alan).NotEmpty()...`.
-Handler'a `[ValidationAspect(typeof(TValidator))]` ile bağlanır — handler içinde manuel doğrulama yok.
+`AbstractValidator<TCommand>` under `ValidationRules/`; `RuleFor(x => x.Field).NotEmpty()...`.
+Bound to the handler via `[ValidationAspect(typeof(TValidator))]` — no manual validation inside the handler.
 
-## Handler'lar arası çağrı (MediatR)
-Bağımlılık olarak `IMediator` alınır; tek-kayıt/iç komutlar `_mediator.Send(...)` ile çağrılır (döngüsel bağımlılık yaratmadan).
+## Calls between handlers (MediatR)
+`IMediator` is taken as a dependency; single-record/internal commands are called via `_mediator.Send(...)` (without creating a circular dependency).
 
-## Mesaj & i18n
-Kullanıcıya dönen metinler `Messages` sabitlerinden; **yeni mesaj → proje dillerinin hepsi**
-(varsayılan TR/EN/DE/RU), Languages/Translates deseni. Eksik çeviri bırakma (erteleme yok).
+## Messages & i18n
+User-facing texts come from the `Messages` constants; **a new message → all project languages**
+(default TR/EN/DE/RU), the Languages/Translates pattern. Leave no missing translation (no deferral).
 
-## İskelet örnek (projeye özgü isimlerle yaz; vendor adı yok)
+## Skeleton example (write with project-specific names; no vendor name)
 ```csharp
 public class CreateOrderCommand : IRequest<IResult>
 {
@@ -76,5 +76,5 @@ public class CreateOrderCommand : IRequest<IResult>
 }
 ```
 
-## DoD (bu skill'in katkısı)
-- `sonarqube-check` 0/0/0/0, build 0 uyarı/0 hata; `test-expert-cck` yeşil; `/simplify` uygulanmış.
+## DoD (this skill's contribution)
+- `sonarqube-check` 0/0/0/0, build 0 warnings/0 errors; `test-expert-cck` green; `/simplify` applied.

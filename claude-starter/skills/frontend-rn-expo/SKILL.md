@@ -1,23 +1,23 @@
 ---
 name: frontend-rn-expo
 description: |
-  OPSİYONEL, stack-özel: React Native + Expo (prebuild) ayrıntıları. Yalnız mobil RN projelerinde
-  kullanılır; jenerik ilkeler `frontend` skill'inde. Web/masaüstü projede bu skill devre dışıdır.
-  Trigger phrases: "expo", "react native", "native köprü", "expo router", "rn ekran", "prebuild"
+  OPTIONAL, stack-specific: React Native + Expo (prebuild) details. Used only in mobile RN
+  projects; generic principles live in the `frontend` skill. Disabled in web/desktop projects.
+  Trigger phrases: "expo", "react native", "native bridge", "expo router", "rn screen", "prebuild"
 ---
 
-# React Native + Expo (stack-özel katman)
+# React Native + Expo (stack-specific layer)
 
-Jenerik frontend disiplini için **`frontend`** skill'ini izle; bu dosya yalnız RN+Expo'ya özgü ekler.
-Web/masaüstü projede kullanılmaz (gerekirse sil).
+For generic frontend discipline, applies the `frontend` skill; this file only covers the RN+Expo-specific additions.
+Not used in web/desktop projects (delete it if needed).
 
-## RN + Expo'ya özgü
-- **Navigation:** expo-router (dosya-bazlı) veya react-navigation — projede hangisi varsa onu izle.
-- **Liste:** `FlatList`/`FlashList` + `keyExtractor`; ağır listede sanallaştırma.
-- **Native köprü:** yalnız gerektiğinde; JS tarafı **tiplenmiş**, hata yolları açık (native reddederse UI ne yapar).
-  Expo prebuild / config plugin ile; platform farkını (iOS/Android) gözet.
-- **Capability'ye göre render:** cihazda olmayan yeteneği UI'da **vaat etme**; koşullu göster.
-- **Varlıklar:** görsel boyut/çözünürlük, `expo-image` cache, splash/icon prebuild uyumu.
+## RN + Expo specifics
+- **Navigation:** expo-router (file-based) or react-navigation — follow whichever the project uses.
+- **Lists:** `FlatList`/`FlashList` + `keyExtractor`; virtualization for heavy lists.
+- **Native bridge:** only when needed; the JS side is **typed**, error paths are explicit (what the UI does if native rejects).
+  Via Expo prebuild / config plugin; mind the platform difference (iOS/Android).
+- **Render by capability:** do **not** promise in the UI a capability the device lacks; show it conditionally.
+- **Assets:** image size/resolution, `expo-image` cache, splash/icon prebuild compatibility.
 
-## DoD (jenerik `frontend` DoD'una ek)
-- Hedef iOS/Android sürüm matrisinde çalışır; native köprü hata yolları test edilmiş.
+## DoD (in addition to the generic `frontend` DoD)
+- Works across the target iOS/Android version matrix; native bridge error paths are tested.

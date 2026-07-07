@@ -1,38 +1,39 @@
 ---
 name: db-migration
 description: |
-  Şema migration'larını güvenle uygula: aracı otomatik tespit et, değişikliği risk sınıfına ayır,
-  yıkıcı olanı onay kapısına al, prod'da yedek zorla, önizle-uygula-doğrula ve gerektiğinde geri dön.
-  Trigger phrases: "migration", "şema değişikliği", "veritabanı güncelle", "kolon ekle", "tablo oluştur", "alter table"
+  Apply schema migrations safely: auto-detect the tool, classify the change by risk class,
+  gate destructive ones behind approval, force a backup in prod, preview-apply-verify and roll back when needed.
+  Trigger phrases: "migration", "schema change", "update database", "add column", "create table", "alter table"
 ---
 
-# Veritabanı Migration
+# Database Migration
 
-Bir migration çoğu zaman **tek yönlü bir kapıdır**: uygulandıktan sonra geri dönmek, planlanmadıysa
-pahalı ya da imkânsızdır. Bu yüzden akışın kalbi komut çalıştırmak değil, **değişikliği kapıdan
-geçmeden önce risk sınıfına ayırmak** — güvenli olanı akıcı geçir, yıkıcı olanı durdur ve onaylat,
-her ihtimalde geri dönüş yolunu hazır tut. Skill tüm yaygın ORM/migration araçlarıyla çalışır.
+A migration is very often a **one-way gate**: once applied, going back is expensive or impossible
+unless it was planned for. That is why the heart of the flow is not running a command, but **classifying
+the change by risk class before it passes through the gate** — let the safe one flow through, stop and
+get approval for the destructive one, and keep a rollback path ready in every case. The skill works with
+all common ORM/migration tools.
 
-> **Kit uyarlaması (lokal, .claude/):** Varsayılan stack **EF Core + PostgreSQL**. `database-expert-cck`
-> uygular; **yıkıcı migration açık onay ister (§4.5)**, commit/push açık onayla (§4.4). Yetki/IDOR
-> etkisi → **security-expert-cck**; kişisel veri saklama → **privacy-agent-cck**. §4 Yasaklar geçerlidir.
+> **Kit adaptation (local, .claude/):** Default stack is **EF Core + PostgreSQL**. `database-expert-cck`
+> applies it; **a destructive migration requires explicit approval (§4.5)**, commit/push with explicit approval (§4.4). Authorization/IDOR
+> impact → **security-expert-cck**; personal-data retention → **privacy-agent-cck**. §4 Prohibitions apply.
 
-## Kontrol listesi
-- [ ] Araç tespit edildi, bekleyen migration'lar listelendi
-- [ ] Her değişiklik sınıflandırıldı (additive / destructive / belirsiz)
-- [ ] Yıkıcı/belirsiz değişiklikler kullanıcıca onaylandı
-- [ ] Yedek alındı (prod'da zorunlu, doğrulandı)
-- [ ] Önizleme (dry-run) gösterildi ve onaylandı
-- [ ] Uygulandı, şema uygulama-sonrası doğrulandı
-- [ ] Geri dönüş yolu (araç veya yedek) hazır
+## Checklist
+- [ ] Tool detected, pending migrations listed
+- [ ] Every change classified (additive / destructive / ambiguous)
+- [ ] Destructive/ambiguous changes approved by the user
+- [ ] Backup taken (mandatory in prod, verified)
+- [ ] Preview (dry-run) shown and approved
+- [ ] Applied, schema verified post-apply
+- [ ] Rollback path (tool or backup) ready
 
 ---
 
-## 1. Aracı tespit et
+## 1. Detect the tool
 
-Dosya izinden aracı belirle; bulunamazsa **ham SQL moduna** düş (aşağı), birden çok bulunursa kullanıcıya sor.
+Determine the tool from the file trace; if none is found, fall back to **raw SQL mode** (below); if several are found, ask the user.
 
-| İz | Araç |
+| Trace | Tool |
 |---|---|
 | `prisma/schema.prisma` | Prisma |
 | `knexfile.{js,ts}` | Knex |
@@ -40,73 +41,73 @@ Dosya izinden aracı belirle; bulunamazsa **ham SQL moduna** düş (aşağı), b
 | `data-source.ts` (typeorm) / `ormconfig.ts` | TypeORM |
 | `drizzle.config.ts` | Drizzle |
 | `alembic.ini` / `alembic/` | Alembic |
-| `manage.py` + `django` bağımlılığı | Django |
-| `db/migrate/` + Gemfile'da `rails` | Rails |
-| `*.csproj`'ta `Microsoft.EntityFrameworkCore` + `Migrations/` | EF Core |
+| `manage.py` + `django` dependency | Django |
+| `db/migrate/` + `rails` in Gemfile | Rails |
+| `Microsoft.EntityFrameworkCore` in `*.csproj` + `Migrations/` | EF Core |
 
 ---
 
-## 2. Değişikliği sınıflandır — akışın kalbi
+## 2. Classify the change — the heart of the flow
 
-Uygulanacak SQL'i çıkar (aşağıdaki matriste "Önizle" sütunu) ve üç sınıftan birine koy:
+Extract the SQL to be applied (the "Preview" column in the matrix below) and place it into one of three classes:
 
-| Sınıf | Örnek işlemler | Nasıl ele alınır |
+| Class | Example operations | How it is handled |
 |---|---|---|
-| **Additive** (güvenli) | `CREATE TABLE`, nullable/default'lu `ADD COLUMN`, `CREATE INDEX`, yıkıcı-olmayan `ADD CONSTRAINT`, seed `INSERT` | Normal akışta ilerle |
-| **Destructive** (tehlikeli) | `DROP TABLE/COLUMN/INDEX/CONSTRAINT`, `ALTER COLUMN … TYPE`, `TRUNCATE`, WHERE'siz `DELETE`, `RENAME` (referans kırar) | **Her zaman onay kapısı** (aşağı) |
-| **Belirsiz** (insan yargısı) | `ALTER COLUMN`, default'suz `ADD COLUMN NOT NULL` (dolu tabloda patlar), `UPDATE`, karışık migration | **Yıkıcı gibi ele al**, uyar ve sor |
+| **Additive** (safe) | `CREATE TABLE`, nullable/defaulted `ADD COLUMN`, `CREATE INDEX`, non-destructive `ADD CONSTRAINT`, seed `INSERT` | Proceed in the normal flow |
+| **Destructive** (dangerous) | `DROP TABLE/COLUMN/INDEX/CONSTRAINT`, `ALTER COLUMN … TYPE`, `TRUNCATE`, `DELETE` without WHERE, `RENAME` (breaks references) | **Always the approval gate** (below) |
+| **Ambiguous** (human judgment) | `ALTER COLUMN`, `ADD COLUMN NOT NULL` without a default (blows up on a populated table), `UPDATE`, mixed migration | **Treat as destructive**, warn and ask |
 
-**Onay kapısı (yıkıcı/belirsiz):** işlemleri tek tek listele, ortamı ve hedefi göster, açık onay bekle. Genel akışta "çalıştır" denmiş olsa bile bu kapı ayrı onay ister.
+**Approval gate (destructive/ambiguous):** list the operations one by one, show the environment and the target, wait for explicit approval. Even if "run" was said in the general flow, this gate requires separate approval.
 ```
-UYARI — bu migration yıkıcı işlem içeriyor:
-  · DROP COLUMN "legacy_email" (tablo: users)
-  · ALTER COLUMN "status" TYPE integer (tablo: orders)
-Yedek olmadan GERİ ALINAMAZ.  Hedef: production (myapp_db @ db.example.com)
-Devam? (evet / hayır)
+WARNING — this migration contains a destructive operation:
+  · DROP COLUMN "legacy_email" (table: users)
+  · ALTER COLUMN "status" TYPE integer (table: orders)
+CANNOT BE UNDONE without a backup.  Target: production (myapp_db @ db.example.com)
+Continue? (yes / no)
 ```
-Reddedilirse hemen dur ve daha güvenli bir yol öner (ör. tip değiştirmek yerine yeni kolon + arka planda kopyalama).
+If rejected, stop immediately and propose a safer path (e.g. a new column + background copy instead of changing the type).
 
 ---
 
-## 3. Yedek (prod'da zorunlu)
+## 3. Backup (mandatory in prod)
 
-Herhangi bir migration'dan önce yedekle; prod'da atlanamaz, dev'de onayla atlanabilir.
+Back up before any migration; it cannot be skipped in prod, and can be skipped in dev with approval.
 ```bash
-# PostgreSQL — sıkıştırılmış tam yedek
+# PostgreSQL — compressed full backup
 pg_dump -h $DB_HOST -U $DB_USER -d $DB_NAME -F c -f backup_$(date +%Y%m%d_%H%M%S).dump
 # MySQL
 mysqldump -h $DB_HOST -u $DB_USER -p$DB_PASS $DB_NAME > backup_$(date +%Y%m%d_%H%M%S).sql
 # SQLite
 sqlite3 $DB_PATH ".backup 'backup_$(date +%Y%m%d_%H%M%S).db'"
 ```
-İlerlemeden **yedeğin oluştuğunu ve boş olmadığını** doğrula — aksi halde iptal:
+Before proceeding, verify **that the backup was created and is not empty** — otherwise abort:
 ```bash
-[ -s "$BACKUP_FILE" ] || { echo "HATA: Yedek boş/oluşmadı — migration iptal."; exit 1; }
+[ -s "$BACKUP_FILE" ] || { echo "ERROR: Backup empty/not created — migration aborted."; exit 1; }
 ```
 
 ---
 
-## 4. Araç × yaşam-döngüsü matrisi
+## 4. Tool × life-cycle matrix
 
-Sınıflandırma ve yedek tamamsa: **Önizle → (onay) → Uygula → Doğrula**. Tek referans:
+Once classification and backup are complete: **Preview → (approval) → Apply → Verify**. A single reference:
 
-| Araç | Durum | Önizle (dry-run) | Uygula | Doğrula | Geri al |
+| Tool | Status | Preview (dry-run) | Apply | Verify | Roll back |
 |---|---|---|---|---|---|
-| Prisma | `migrate status` | `migrate diff … --script` | `migrate deploy` | `migrate status` | `migrate resolve --rolled-back` + yedek |
+| Prisma | `migrate status` | `migrate diff … --script` | `migrate deploy` | `migrate status` | `migrate resolve --rolled-back` + backup |
 | Knex | `migrate:status` | `migrate:latest --dry-run` | `migrate:latest` | `migrate:status` | `migrate:rollback` |
-| Sequelize | `db:migrate:status` | migration dosyasını oku | `db:migrate` | `db:migrate:status` | `db:migrate:undo` |
-| TypeORM | `migration:show` | bekleyen dosyayı oku | `migration:run` | `migration:show` | `migration:revert` |
-| Drizzle | `drizzle-kit status` | `generate` → SQL incele | `drizzle-kit push` | `drizzle-kit status` | `drizzle-kit drop` (yedek tercih et) |
+| Sequelize | `db:migrate:status` | read the migration file | `db:migrate` | `db:migrate:status` | `db:migrate:undo` |
+| TypeORM | `migration:show` | read the pending file | `migration:run` | `migration:show` | `migration:revert` |
+| Drizzle | `drizzle-kit status` | `generate` → inspect SQL | `drizzle-kit push` | `drizzle-kit status` | `drizzle-kit drop` (prefer backup) |
 | Alembic | `current` + `history` | `upgrade head --sql` | `upgrade head` | `current` (=head) | `downgrade -1` |
-| Django | `showmigrations` | `sqlmigrate <app> <ad>` | `migrate` | `showmigrations` ([X]) | `migrate <app> <önceki>` |
-| Rails | `db:migrate:status` | migration dosyasını oku | `db:migrate` | `db:migrate:status` (up) | `db:rollback STEP=1` |
-| EF Core | `migrations list` | `migrations script` | `database update` | `migrations list` | `database update <önceki>` |
+| Django | `showmigrations` | `sqlmigrate <app> <name>` | `migrate` | `showmigrations` ([X]) | `migrate <app> <previous>` |
+| Rails | `db:migrate:status` | read the migration file | `db:migrate` | `db:migrate:status` (up) | `db:rollback STEP=1` |
+| EF Core | `migrations list` | `migrations script` | `database update` | `migrations list` | `database update <previous>` |
 
-*(Node araçlarında `npx …`, Python'da uygun kabuk, .NET'te `dotnet ef …` öneki.)*
+*(For Node tools prefix `npx …`, for Python the appropriate shell, for .NET `dotnet ef …`.)*
 
-**Kurallar:** Önizlemeyi **her zaman** uygulamadan önce göster ve onaylat (araç desteklemiyorsa dosyayı önizleme say). Yıkıcı migration onay kapısını (§2) geçmeden uygulanmaz. Uygulama çıktısının tamamını göster; hata olursa geri dön.
+**Rules:** **Always** show the preview before applying and get it approved (if the tool does not support it, treat the file as the preview). A destructive migration is not applied without passing the approval gate (§2). Show the full apply output; if there is an error, roll back.
 
-**Uygulama-sonrası ek doğrulama** — beklenen şemayla karşılaştır:
+**Additional post-apply verification** — compare against the expected schema:
 ```bash
 psql -h $DB_HOST -U $DB_USER -d $DB_NAME -c "\d $TABLE"      # PostgreSQL
 mysql -h $DB_HOST -u $DB_USER -p$DB_PASS $DB_NAME -e "DESCRIBE $TABLE;"   # MySQL
@@ -114,11 +115,11 @@ mysql -h $DB_HOST -u $DB_USER -p$DB_PASS $DB_NAME -e "DESCRIBE $TABLE;"   # MySQ
 
 ---
 
-## 5. Geri dönüş
+## 5. Rollback
 
-Önce araca-özel geri alma (matris son sütun); başarısızsa yedekten yükle; ardından yeniden doğrula. İkisi de olmazsa kullanıcıyı tam hata detayıyla uyar.
+First the tool-specific rollback (last column of the matrix); if that fails, restore from the backup; then re-verify. If neither works, warn the user with the full error detail.
 ```bash
-# PostgreSQL — yedekten
+# PostgreSQL — from backup
 pg_restore -h $DB_HOST -U $DB_USER -d $DB_NAME --clean --if-exists $BACKUP_FILE
 # MySQL
 mysql -h $DB_HOST -u $DB_USER -p$DB_PASS $DB_NAME < $BACKUP_FILE
@@ -128,9 +129,9 @@ cp $BACKUP_FILE $DB_PATH
 
 ---
 
-## Araçsız — ham SQL modu
+## No tool — raw SQL mode
 
-Hiçbir araç tespit edilmezse numaralı up/down dosyalarını yönet; her `up`'ın bir `down`'ı olur, her SQL `BEGIN`/`COMMIT` içinde çalışır.
+If no tool is detected, manage numbered up/down files; every `up` has a `down`, and every SQL runs inside `BEGIN`/`COMMIT`.
 ```
 migrations/001_create_users.up.sql   +   001_create_users.down.sql
 ```
@@ -148,7 +149,7 @@ BEGIN;
 DROP TABLE IF EXISTS users;
 COMMIT;
 ```
-Uygulanmışları bir izleme tablosunda tut; yalnız kaydı olmayanları çalıştır:
+Keep the applied ones in a tracking table; run only those with no record:
 ```bash
 psql … -c "CREATE TABLE IF NOT EXISTS _migrations(id SERIAL PRIMARY KEY, name TEXT UNIQUE, applied_at TIMESTAMP DEFAULT NOW())"
 for f in migrations/*.up.sql; do
@@ -160,11 +161,11 @@ done
 
 ---
 
-## Değişmez kurallar
-1. **Önce sınıflandır** — additive/destructive/belirsiz; belirsizi yıkıcı say.
-2. **Yıkıcı = insan onayı** — otomatik akışta bile ayrı kapı.
-3. **Prod yedeği zorunlu** — doğrulanmış yedek olmadan uygulama.
-4. **Önizleme varsayılan açık** — opt-out açık talep ister.
-5. **Uygulamadan sonra hep doğrula.**
-6. **Geri dönüş yolu her zaman hazır** — araç veya yedek.
-7. **Hedefi göster** — DB adı/host/ortam, uygulamadan önce.
+## Invariant rules
+1. **Classify first** — additive/destructive/ambiguous; treat the ambiguous as destructive.
+2. **Destructive = human approval** — a separate gate even in an automated flow.
+3. **Prod backup mandatory** — no apply without a verified backup.
+4. **Preview on by default** — opting out requires an explicit request.
+5. **Always verify after applying.**
+6. **Rollback path always ready** — tool or backup.
+7. **Show the target** — DB name/host/environment, before applying.

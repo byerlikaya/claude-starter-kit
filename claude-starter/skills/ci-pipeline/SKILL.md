@@ -1,26 +1,26 @@
 ---
 name: ci-pipeline
 description: |
-  CI ardışık düzeni disiplini: lint→build→test→kalite→güvenlik aşamaları, fail-fast,
-  deterministik build, sır yönetimi, PR kapıları. CI yapılandırması değişince çalışır.
-  Trigger phrases: "ci", "pipeline", "github actions", "build hattı", "pr kapısı", "workflow"
+  CI pipeline discipline: lint→build→test→quality→security stages, fail-fast,
+  deterministic build, secret management, PR gates. Runs when the CI configuration changes.
+  Trigger phrases: "ci", "pipeline", "github actions", "build pipeline", "pr gate", "workflow"
 ---
 
-# CI Ardışık Düzeni
+# CI Pipeline
 
-## Aşamalar (fail-fast — erken patlarsa dur)
-1. **Lint / format** — stil ve statik analiz
-2. **Build** — 0 uyarı/0 hata
-3. **Test** — birim + entegrasyon, coverage toplanır
-4. **Kalite** — `sonarqube-check` Quality Gate
-5. **Güvenlik** — `dependency-audit` + `security-scan` (uygunsa)
-6. **Artefakt / paketleme** — (deploy ayrı, `vps-deploy`)
+## Stages (fail-fast — stop if it breaks early)
+1. **Lint / format** — style and static analysis
+2. **Build** — 0 warnings / 0 errors
+3. **Test** — unit + integration, coverage collected
+4. **Quality** — `sonarqube-check` quality gate
+5. **Security** — `dependency-audit` + `security-scan` (where applicable)
+6. **Artifact / packaging** — (deployment is separate, `vps-deploy`)
 
-## İlkeler
-- **Deterministik:** bağımlılıklar pinli, cache doğru anahtarlanmış; "bende çalışıyordu" yok.
-- **Sır yönetimi:** CI secret store; repoda/loglarda düz metin sır YOK (trace-scan ile örtüşür).
-- **PR kapısı:** quality gate + testler zorunlu geçer; kırmızı merge edilmez.
-- **Branch koruması:** doğrudan main'e push kapalı; PR + review zorunlu.
+## Principles
+- **Deterministic:** dependencies pinned, cache keyed correctly; no "it worked on my machine".
+- **Secret management:** CI secret store; NO plaintext secrets in the repo/logs (overlaps with trace scan).
+- **PR gate:** quality gate + tests must pass; a red build is not merged.
+- **Branch protection:** direct push to main is disabled; PR + review required.
 
 ## DoD
-- Tüm aşamalar yeşil; PR kapıları zorunlu; sır sızıntısı yok; build tekrarlanabilir.
+- All stages green; PR gates enforced; no secret leakage; build reproducible.

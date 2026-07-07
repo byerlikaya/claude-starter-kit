@@ -1,9 +1,9 @@
-# Iz-denetcisi kelime/desen listesi (grep -iE ile taranir, satir basi = bir desen).
-# Yuksek-isabet varsayilanlar: gundelik kodda yanlis-pozitif yapmayacak ifadeler.
-# "model", "asistan" gibi tek basina cok gecen sozcukler KASITLI yok (yanlis-pozitif riski).
-# Kendi vendor/sablon adini asagiya EKLE (§4.2) — commit oncesi yakalansin.
-# Bir desen belirli bir repoda mesruysa: o reponun kokune .trace-allowlist.txt koy ve
-# deseni (TAM satir) oraya yaz -> yalniz o repoda muaf. (Payload'a dahil degildir.)
+# Trace-scanner word/pattern list (scanned with grep -iE, one pattern per line).
+# High-precision defaults: expressions that won't false-positive on everyday code.
+# Single high-frequency words like "model", "assistant" are DELIBERATELY absent (false-positive risk).
+# Add your own vendor/template name below (§4.2) so it is caught before commit.
+# If a pattern is legitimate in a specific repo: put a .trace-allowlist.txt at that repo's root and
+# write the pattern (FULL line) there -> exempt only in that repo. (Not included in the payload.)
 
 Co-Authored-By
 Generated with
@@ -18,6 +18,6 @@ AI generated
 yapay zeka tarafindan
 asistan tarafindan
 
-# --- §4.2 vendor / ucuncu-taraf sablon adlari (projeye gore doldur) ---
+# --- §4.2 vendor / third-party template names (fill in per project) ---
 # DevArchitecture
-# <vendor-sablon-adi>
+# <vendor-template-name>

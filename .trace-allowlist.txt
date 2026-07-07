@@ -1,10 +1,10 @@
-# Iz-denetcisi istisna listesi — YALNIZ bu repoya ozel (kitin kendi kaynagi).
-# Buraya yazilan TAM-satir bir blocklist deseni, iz-denetcisi tarafindan ATLANIR.
-# Bu dosya claude-starter/ payload'ina DAHIL DEGIL; start.sh onu kurulan projeye tasimaz,
-# yani tuketici projelerde blocklist tam siki kalir (§4.1).
-# Not: gercek iz imzalari (co-author satiri, '...ile uretildi' footer'lari, robot emoji,
-# imza etiketleri) burada YER ALMAZ; onlar hala bloklanir. Yalnizca urun-adi muaf tutulur.
+# Trace-scanner exception list — SPECIFIC to this repo only (the kit's own source).
+# A FULL-line blocklist pattern written here is SKIPPED by the trace scanner.
+# This file is NOT part of the claude-starter/ payload; start.sh does not carry it to the installed
+# project, so in consumer projects the blocklist stays fully strict (§4.1).
+# Note: real trace signatures (an authorship trailer, auto-generation footers, a robot emoji,
+# signature tags) do NOT belong here; they are still blocked. Only the product name is exempted.
 #
-# Gerekce: bu kit bir Claude Code kitidir; kendi kaynaginda urunun adini anmasi mesrudur.
-# Tuketici projede ayni ad bir iz oldugu icin orada muaf DEGILdir.
+# Rationale: this is a Claude Code kit; naming the product in its own source is legitimate.
+# In a consumer project the same name is a trace, so it is NOT exempt there.
 Claude Code

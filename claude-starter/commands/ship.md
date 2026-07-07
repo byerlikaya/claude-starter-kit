@@ -1,12 +1,12 @@
 ---
 name: ship
-description: DoD kapısı + commit önerisi (onay bekler).
+description: DoD gate + commit proposal (waits for approval).
 ---
 # /ship
-Kapanış akışı — sırayla:
-1. **DoD kapısı:** `/simplify` uygulandı mı · testler yeşil mi (test-expert-cck) · (SonarQube kullanılıyorsa) `sonarqube-check` 0/0/0/0.
-   Biri kırmızıysa **DUR**, neyin eksik olduğunu bildir; erteleme yok.
-2. Temizse **commit-agent-cck** (commit-message) staged diff'ten atomik Conventional Commit **önerir**.
-3. Commit YALNIZ kullanıcı "commit et" derse çalışır (§4.4). "Tamamlandı" onay değildir.
+Closure flow — in order:
+1. **DoD gate:** was `/simplify` applied · are tests green (test-expert-cck) · (if SonarQube is used) `sonarqube-check` 0/0/0/0.
+   If any one is red, **STOP**, report what is missing; no deferral.
+2. If clean, **commit-agent-cck** (commit-message) **proposes** an atomic Conventional Commit from the staged diff.
+3. Commit runs ONLY if the user says "commit" (§4.4). "Done" is not approval.
 
-Destrüktif işlem yok (§4.5). Mesajda yapay zeka izi / vendor adı yok (§4.1/§4.2 — hook zaten tarar).
+No destructive operations (§4.5). No AI trace / vendor name in the message (§4.1/§4.2 — the hook already scans).

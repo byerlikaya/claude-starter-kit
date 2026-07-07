@@ -1,38 +1,39 @@
 #!/usr/bin/env bash
-# Private release artefakti uretir: SADECE dagitim payload'unu (start.sh + claude-starter/ + VERSION)
-# tar.gz'ler. `git archive HEAD` kullanir -> commit'lenmemis/gizli dosya sizmaz; WHITELIST ile kok
-# CLAUDE.md / docs/ / .github / make-release.sh / CHANGELOG / README ASLA girmez (§4.3 gizlilik +
-# §4.1/§4.2 iz-denetimi -> "kural=kapi": whitelist disi tek dosya cikarsa uretim DURUR).
+# Produces a private release artifact: tar.gz's ONLY the distribution payload (start.sh +
+# claude-starter/ + VERSION). Uses `git archive HEAD` -> no uncommitted/secret file leaks; via the
+# WHITELIST, root CLAUDE.md / docs/ / .github / make-release.sh / CHANGELOG / README NEVER get in
+# (§4.3 privacy + §4.1/§4.2 trace scan -> "rule=gate": if a single file outside the whitelist
+# appears, production STOPS).
 #
-# Kullanim:  bash make-release.sh          -> dist/claude-starter-kit-<VERSION>.tgz
-# Yayinla (AYRI + ACIK onay; surum bumlamaz, mevcut tag'i indirilebilir yapar):
+# Usage:  bash make-release.sh          -> dist/claude-starter-kit-<VERSION>.tgz
+# Publish (SEPARATE + EXPLICIT approval; does not bump the version, makes the existing tag downloadable):
 #   gh release create v<VER> dist/claude-starter-kit-<VER>.tgz -R <owner>/<repo> \
 #     --title "v<VER>" --notes-file CHANGELOG.md
-# Tuketici (private erisimle):
+# Consumer (with private access):
 #   gh release download v<VER> -p '*.tgz' && tar xzf claude-starter-kit-*.tgz && bash start.sh
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 cd "$HERE"
 
-[ -f VERSION ] || { echo "HATA: kök VERSION dosyasi yok." >&2; exit 1; }
+[ -f VERSION ] || { echo "ERROR: root VERSION file is missing." >&2; exit 1; }
 VER="$(tr -d ' \n\r' < VERSION)"
-[ -n "$VER" ] || { echo "HATA: VERSION bos." >&2; exit 1; }
+[ -n "$VER" ] || { echo "ERROR: VERSION is empty." >&2; exit 1; }
 OUT="dist/claude-starter-kit-$VER.tgz"
 mkdir -p dist
 
-# Yalniz izlenen whitelist yollari (HEAD'den) — calisma agaci kirli olsa bile sizinti olmaz.
+# Only tracked whitelist paths (from HEAD) — no leak even if the working tree is dirty.
 git archive --format=tar.gz -o "$OUT" HEAD start.sh update.sh claude-starter VERSION
 
-# KAPI: whitelist disi hicbir giris olmamali.
+# GATE: there must be no entry outside the whitelist.
 bad="$(tar tzf "$OUT" | grep -vE '^(start\.sh$|update\.sh$|claude-starter($|/)|VERSION$)' || true)"
 if [ -n "$bad" ]; then
-  echo "HATA: whitelist disi dosya artefakta sizdi (§4.3):" >&2
+  echo "ERROR: a file outside the whitelist leaked into the artifact (§4.3):" >&2
   printf '  %s\n' $bad >&2
   rm -f "$OUT"; exit 1
 fi
 
-echo "Uretildi: $OUT ($(du -h "$OUT" | cut -f1)) · $(tar tzf "$OUT" | wc -l | tr -d ' ') giris"
-echo "Whitelist dogrulandi: yalniz start.sh + update.sh + claude-starter/ + VERSION"
+echo "Produced: $OUT ($(du -h "$OUT" | cut -f1)) · $(tar tzf "$OUT" | wc -l | tr -d ' ') entries"
+echo "Whitelist verified: only start.sh + update.sh + claude-starter/ + VERSION"
 echo
-echo "Yayinlamak icin (AYRI onay — §4.4):"
+echo "To publish (SEPARATE approval — §4.4):"
 echo "  gh release create v$VER \"$OUT\" -R byerlikaya/claude-starter-kit --title \"v$VER\" --notes-file CHANGELOG.md"

@@ -1,42 +1,42 @@
 ---
 name: trace-scan
 description: |
-  Iz-denetimi disiplini (§4.1/§4.2): commit oncesi staged degisiklik ve commit mesajinda
-  yapay zeka izi (co-author, "Generated with", 🤖, arac adlari) ve ucuncu-taraf sablon/vendor
-  adi arar. commit-agent-cck iş kapanisinda tetikler; git hook'lari ayni denetimi otomatik uygular.
-  Trigger phrases: "iz tara", "trace scan", "AI izi", "vendor adi kontrol", "commit oncesi denetim"
+  Trace scan discipline (§4.1/§4.2): before a commit, scans the staged changes and the commit
+  message for AI traces (co-author trailers, auto-generation footers, robot emoji, tool names) and third-party template/vendor
+  names. commit-agent-cck triggers it at work closure; the git hooks apply the same scan automatically.
+  Trigger phrases: "scan traces", "trace scan", "AI trace", "check vendor name", "pre-commit audit"
 ---
 
-# Iz-Denetimi (trace-scan)
+# Trace Scan (trace-scan)
 
-Amac: §4.1/§4.2'yi *hatirlamaya* degil *kapiya* baglamak. Kural sadece metinde kalirsa
-er ya da gec iz sizar; bu skill + hook'lar sizmayi commit aninda durdurur.
+Purpose: to bind §4.1/§4.2 to a *gate* rather than to *memory*. If the rule lives only in text,
+a trace leaks sooner or later; this skill + the hooks stop the leak at commit time.
 
-## Ne zaman
-- Her commit oncesi (otomatik: `pre-commit` + `commit-msg` hook'lari).
-- commit-agent-cck mesaj onermeden once (manuel dogrulama).
+## When
+- Before every commit (automatic: `pre-commit` + `commit-msg` hooks).
+- Before commit-agent-cck proposes a message (manual verification).
 
-## Nasil
-Desen listesi: `./.claude/hooks/trace-blocklist.txt` (grep -iE, satir basi bir desen).
-- **Varsayilanlar yuksek-isabet:** co-author, "Generated with/by", 🤖, arac adlari (Claude Code,
-  Copilot, ChatGPT), "AI-generated". Tek basina cok gecen sozcukler (model/asistan) KASITLI yok.
-- **Vendor adi projeye ozel:** kullanilan ucuncu-taraf sablon adini listeye EKLE (§4.2).
+## How
+Pattern list: `./.claude/hooks/trace-blocklist.txt` (grep -iE, one pattern per line).
+- **Defaults are high-hit:** co-author trailers, auto-generation footers, robot emoji, and AI-assistant/tool
+  brand names. Standalone words that occur too often (model/assistant) are DELIBERATELY excluded. See trace-blocklist.txt for the exact list.
+- **Vendor name is project-specific:** ADD the name of the third-party template in use to the list (§4.2).
 
-Manuel tarama (hook'suz hizli bakis):
+Manual scan (a quick look without the hook):
 ```bash
 git diff --cached --unified=0 | grep -E '^\+' | grep -Ev '^\+\+\+' \
   | grep -iEf .claude/hooks/trace-blocklist.txt
 ```
 
-## Hook kurulumu
-`start.sh` `git config core.hooksPath .claude/hooks` ayarlar (git deposu varsa). Hook'lar
-`.claude` altinda → gitignore'da, lokal kalir (§4.3). Sonradan repo icin:
+## Hook setup
+`start.sh` sets `git config core.hooksPath .claude/hooks` (if there is a git repo). The hooks live
+under `.claude` → they are in gitignore and stay local (§4.3). To do it later for a repo:
 ```bash
 git config core.hooksPath .claude/hooks
 chmod +x .claude/hooks/pre-commit .claude/hooks/commit-msg
 ```
 
-## Kurallar
-- Bulgu varsa commit DURUR; ifade kaldirilir, gercek gerekce insansi Turkce yazilir.
-- `--no-verify` ile atlamak yalniz ACIK taleple (§4.5); hook sessizce atlanmaz.
-- Yanlis-pozitif olursa deseni daralt/kaldir — listeyi proje sahibi kurar.
+## Rules
+- If there is a finding, the commit STOPS; the phrase is removed and the real rationale is written in human Turkish.
+- Skipping with `--no-verify` only on an EXPLICIT request (§4.5); the hook is not skipped silently.
+- On a false positive, narrow/remove the pattern — the list is set up by the project owner.

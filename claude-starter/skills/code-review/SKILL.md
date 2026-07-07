@@ -1,44 +1,44 @@
 ---
 name: code-review
 description: |
-  Kod gözden geçirme disiplini: değişikliğin genel kod-sağlığını iyileştirip iyileştirmediğine
-  odaklı, önem-sıralı, gerekçeli geri bildirim. review-agent-cck bunu uygular.
-  Trigger phrases: "code-review", "kod incele", "PR incele", "gözden geçir", "review yap"
+  Code review discipline: severity-ranked, reasoned feedback focused on whether a change
+  improves the overall code health of the system. review-agent-cck applies the `code-review` skill.
+  Trigger phrases: "code-review", "review the code", "review the PR", "review", "do a review"
 ---
 
-# Kod Gözden Geçirme
+# Code Review
 
-> **Kit uyarlaması (lokal, .claude/):** `review-agent-cck` (salt-okunur) uygular. Kaynak (hizalama):
-> google/eng-practices — adı repoya giden artefakta geçmez (§4.2). Yorumlar önem-sıralı; §4 geçerli.
+> **Kit adaptation (local, .claude/):** applied by `review-agent-cck` (read-only). Sources (alignment):
+> google/eng-practices — its name does not appear in the artifact that goes to the repo (§4.2). Comments are severity-ranked; §4 applies.
 
-## Temel standart (kıdemli ilke)
-Bir değişiklik, sistemin **genel kod-sağlığını iyileştirdiği** noktaya geldiğinde onaylanır —
-**mükemmel olması gerekmez.** İki hatadan kaçın:
-- **Bloklama:** ilerlemeyi durduran, mükemmeliyetçi, öznel takıntı. İlerleme olmazsa kod hiç iyileşmez.
-- **Gevşeklik:** her seferinde küçük ödünler kod-sağlığını zamanla aşındırır.
-Onay ölçütü "daha iyi mi", "kusursuz mu" değil. İstenmeyen bir özellik ise tasarım iyi olsa da reddedilebilir.
+## Core standard (senior principle)
+A change is approved once it reaches the point of **improving the overall code health** of the system —
+**it does not have to be perfect.** Avoid two mistakes:
+- **Blocking:** a perfectionist, subjective fixation that halts progress. If there is no progress, the code never improves.
+- **Laxity:** small concessions each time erode code health over time.
+The approval criterion is "is it better", not "is it flawless". If it is an unwanted feature, it can be rejected even when the design is good.
 
-## Neye bakılır (öncelik sırası)
-1. **Tasarım:** parçalar birbirine oturuyor mu; bu değişiklik buraya mı ait; şimdi mi eklenmeli.
-2. **İşlevsellik:** amaçlananı yapıyor mu; kullanıcı/geliştirici için doğru mu; sınır durumları, eşzamanlılık.
-3. **Karmaşıklık:** gereğinden karmaşık mı; over-engineering / gelecekteki-varsayıma göre tasarım (YAGNI) var mı.
-4. **Testler:** doğru, anlamlı, yeterli test var mı; test-için-test değil gerçek davranış.
-5. **İsimlendirme:** niyeti taşıyan, ne çok uzun ne kriptik adlar.
-6. **Yorumlar:** "ne"yi değil **"neden"i** açıklıyor mu; ölü/gereksiz yorum yok.
-7. **Stil & tutarlılık:** proje kılavuzuna uygun; mevcut konvansiyonla tutarlı.
-8. **Dokümantasyon:** davranış değiştiyse ilgili doküman güncellendi mi.
-9. **Her satır:** insan-yazımı her satıra bak; anlamadığın kodu "muhtemelen doğrudur" diye geçme.
+## What to review (priority order)
+1. **Design:** do the pieces fit together; does this change belong here; should it be added now.
+2. **Functionality:** does it do what is intended; is it right for the user/developer; edge cases, concurrency.
+3. **Complexity:** is it more complex than necessary; is there over-engineering / design for a future assumption (YAGNI).
+4. **Tests:** are there correct, meaningful, sufficient tests; real behavior, not tests for tests' sake.
+5. **Naming:** names that carry intent, neither too long nor cryptic.
+6. **Comments:** do they explain the **"why"** rather than the "what"; no dead/unnecessary comments.
+7. **Style & consistency:** conforms to the project guide; consistent with the existing conventions.
+8. **Documentation:** if behavior changed, was the relevant document updated.
+9. **Every line:** look at every human-written line; do not skip code you do not understand as "it's probably correct".
 
-## Yorum yazma
-- **Nazik ve gerekçeli:** ne değişmeli + **neden**. Emir değil, öneri diliyle.
-- **"Nit:"** etiketiyle küçük/zorunlu-olmayan notları ayır — bunlar bloklamaz.
-- Koda değil koda yorum yap; kişiyi değil kodu değerlendir.
-- İyi olanı da belirt; sadece kusur avlama.
+## Writing comments
+- **Kind and reasoned:** what should change + **why**. In the language of suggestion, not command.
+- Separate small/non-mandatory notes with a **"Nit:"** label — these do not block.
+- Comment on the code, not the person; judge the code, not the individual.
+- Note what is good, too; do not just hunt for flaws.
 
-## Hız & anlaşmazlık
-- **Hızlı dön:** bekleyen review üretkenliği düşürür; ilk fırsatta bak.
-- Anlaşmazlıkta **teknik gerçek + veri** konuşur, kişisel tercih değil. Uzlaşılamazsa yüz yüze / üst mercie taşı — pasif bloklama değil.
+## Speed & disagreement
+- **Turn it around fast:** a pending review lowers productivity; look at it at the first opportunity.
+- In a disagreement, **technical fact + data** speak, not personal preference. If no agreement is reached, take it face-to-face / escalate to a higher authority — not passive blocking.
 
-## DoD (bu skill'in katkısı)
-- Bulgular önem-sıralı (blocker / öneri / nit) ve **gerekçeli**.
-- Kapsam kayması ve gizli karmaşıklık işaretlendi.
+## DoD (this skill's contribution)
+- Findings are severity-ranked (blocker / suggestion / nit) and **reasoned**.
+- Scope creep and hidden complexity are flagged.

@@ -1,65 +1,65 @@
 ---
 name: security-scan
 description: |
-  Yığın-bağımsız güvenlik denetimi. Saldırı yüzeyini haritalar, güvenilmeyen girdiyi tehlikeli
-  çağrılara kadar izler, bağımlılık ve yapılandırma açıklarını çıkarır; önem-sıralı, düzeltmeli rapor verir.
-  Trigger phrases: "security scan", "güvenlik taraması", "OWASP check", "zafiyet tara", "güvenlik açığı bul", "güvenlik denetimi"
+  Stack-agnostic security audit. Maps the attack surface, traces untrusted input all the way to dangerous
+  calls, and surfaces dependency and configuration flaws; returns a severity-ranked report with fixes.
+  Trigger phrases: "security scan", "run a security scan", "OWASP check", "scan for vulnerabilities", "find security vulnerabilities", "security audit"
 ---
 
-# Güvenlik Taraması
+# Security Scan
 
-Bir güvenlik açığının çekirdeği tek cümlede toplanır: **güvenilmeyen bir girdi, yeterince
-denetlenmeden tehlikeli bir işleme ulaşıyor.** Bu skill de o cümlenin peşine düşer — önce
-girdinin nereden geldiğini, sonra nereye aktığını, arada hangi kapının olması gerektiğini arar.
-Yığından bağımsızdır: dil/framework ne olursa olsun aynı mantık işler; güncel araç ve kalıp
-gerektiğinde web araması yapılır.
+The core of a security vulnerability fits in a single sentence: **an untrusted input reaches a
+dangerous operation without being adequately checked.** This skill chases exactly that sentence — it first
+looks for where the input comes from, then where it flows, and what gate should sit in between.
+It is stack-agnostic: whatever the language/framework, the same logic applies; when current tooling and
+patterns are needed, it runs a web search.
 
-> **Kit uyarlaması (lokal, .claude/):** `security-expert-cck` bunu uygular; bulgular önem sırasına
-> göre **review-agent-cck**'a taşınır. Varsayılan stack'te (.NET/PostgreSQL) de geçerlidir. Otomatik
-> düzeltme yalnız açık onayla (§4.4); `.claude` repoya gitmez (§4.3). §4 Yasaklar geçerlidir.
+> **Kit adaptation (local, .claude/):** `security-expert-cck` applies this; findings are carried to
+> **review-agent-cck** in severity order. It also holds for the default stack (.NET/PostgreSQL). Automatic
+> fixes only with explicit approval (§4.4); `.claude` does not go to the repo (§4.3). §4 Prohibitions apply.
 
-## Ne yapar, ne yapmaz
-- **Yapar:** yaygın açık sınıflarını, bilinen zafiyetli bağımlılıkları ve riskli yapılandırmayı yüzeye çıkarır; her bulguya somut düzeltme bağlar.
-- **Yapmaz:** profesyonel pentest / SAST / DAST yerine geçmez. Rapor **yol gösterir**, tam güvence vermez — bunu raporun sonunda belirt.
-- **Sınır:** analiz yereldedir; kod/veri dış servise gönderilmez, proje dizini dışına çıkılmaz.
+## What it does, what it doesn't
+- **Does:** surfaces common vulnerability classes, known vulnerable dependencies, and risky configuration; ties each finding to a concrete fix.
+- **Doesn't:** does not replace a professional pentest / SAST / DAST. The report **guides**, it does not give full assurance — state this at the end of the report.
+- **Boundary:** analysis is local; code/data is not sent to an external service, and the project directory is not left.
 
-## Zihinsel model — kaynak → kapı → sink
-Her kontrolü üç soruya indirge:
-1. **Kaynak** — girdi nereden giriyor? (route, API ucu, form, CLI argümanı, dosya yükleme, WebSocket, kuyruk mesajı, dış API yanıtı)
-2. **Sink** — bu girdi hangi tehlikeli işleme varıyor? (SQL çalıştırma, shell, dosya yolu, HTML render, deserializasyon, template)
-3. **Kapı** — arada doğrulama / parametreleme / kaçırma / yetki kontrolü **var mı**? Yoksa bulgu bu.
+## Mental model — source → gate → sink
+Reduce every check to three questions:
+1. **Source** — where does the input enter? (route, API endpoint, form, CLI argument, file upload, WebSocket, queue message, external API response)
+2. **Sink** — which dangerous operation does this input reach? (SQL execution, shell, file path, HTML render, deserialization, template)
+3. **Gate** — is there validation / parameterization / escaping / authorization in between? If not, that's the finding.
 
-Tarama bu modeli dört cephede uygular: **bağımlılık · kod · yapılandırma · yetki**. Sonuç önem sırasına dizilir, düzeltme kullanıcı seçimine sunulur.
+The scan applies this model on four fronts: **dependency · code · configuration · authorization**. The result is ranked by severity, and the fix is presented for the user to choose.
 
-## Kontrol listesi
-- [ ] Yığın ve paket ekosistem(ler)i tespit edildi, saldırı yüzeyi çıkarıldı
-- [ ] Her ekosistem için bağımlılık denetimi çalıştırıldı
-- [ ] Kaynak→sink yolları dört açık sınıfında izlendi
-- [ ] Yapılandırma ve sır (secret) sızıntısı tarandı
-- [ ] Yetki matrisi çıkarıldı, korunmayan hassas uçlar arandı
-- [ ] Bulgular önem sırasıyla raporlandı, hiçbir sır ifşa edilmedi
-- [ ] Düzeltme seçenekleri kullanıcıya sunuldu
-
----
-
-## Cephe 0 — Keşif (yüzeyi haritala)
-
-Denetimin geri kalanı buradaki haritaya dayanır.
-
-1. Kökte ve alt dizinlerde manifest/build dosyalarını tara: `package.json`, `requirements.txt`, `pyproject.toml`, `go.mod`, `Cargo.toml`, `Gemfile`, `pom.xml`, `build.gradle`, `composer.json`, `*.csproj`, `*.sln`, `mix.exs`. Monorepo ise her ekosistemi ayrı not et.
-2. Manifest'ten framework'ü ve çalışma zamanını çıkar.
-3. **Saldırı yüzeyini listele:** kullanıcı girdisinin sisteme girdiği tüm noktalar (üstteki "Kaynak" listesi). Bunlar sonraki cephelerin başlangıç noktalarıdır.
-4. Tespit edilen framework için **web araması** yap — araç ve kalıplar sık değişir: `"[framework] security best practices"`, `"[framework] common vulnerabilities"`, güncel `"OWASP Top 10"` listesi.
+## Checklist
+- [ ] Stack and package ecosystem(s) detected, attack surface mapped
+- [ ] Dependency audit run for each ecosystem
+- [ ] Source→sink paths traced across the four vulnerability classes
+- [ ] Configuration and secret leakage scanned
+- [ ] Authorization matrix produced, unprotected sensitive endpoints searched for
+- [ ] Findings reported in severity order, no secret disclosed
+- [ ] Fix options presented to the user
 
 ---
 
-## Cephe 1 — Bağımlılıklar
+## Front 0 — Discovery (map the surface)
 
-Üçüncü-taraf paketlerdeki bilinen zafiyetler çoğu ihlalin en ucuz yoludur.
+The rest of the audit rests on the map produced here.
 
-1. Ekosisteme uygun denetim komutunu çalıştır (kurulu değilse kur önerisi ver, kendin kurma):
+1. Scan for manifest/build files at the root and in subdirectories: `package.json`, `requirements.txt`, `pyproject.toml`, `go.mod`, `Cargo.toml`, `Gemfile`, `pom.xml`, `build.gradle`, `composer.json`, `*.csproj`, `*.sln`, `mix.exs`. In a monorepo, note each ecosystem separately.
+2. Derive the framework and runtime from the manifest.
+3. **List the attack surface:** all the points where user input enters the system (the "Source" list above). These are the starting points for the following fronts.
+4. Run a **web search** for the detected framework — tooling and patterns change often: `"[framework] security best practices"`, `"[framework] common vulnerabilities"`, the current `"OWASP Top 10"` list.
 
-   | Ekosistem | Komut |
+---
+
+## Front 1 — Dependencies
+
+Known vulnerabilities in third-party packages are the cheapest path to most breaches.
+
+1. Run the audit command that suits the ecosystem (if it is not installed, suggest installing it, do not install it yourself):
+
+   | Ecosystem | Command |
    |---|---|
    | Node | `npm audit` · `pnpm audit` · `yarn npm audit` |
    | Python | `pip-audit` |
@@ -69,110 +69,110 @@ Denetimin geri kalanı buradaki haritaya dayanır.
    | Ruby | `bundle audit` |
    | Java | OWASP Dependency-Check |
 
-2. Doğru/güncel komuttan emin değilsen web'de doğrula; mümkünse `--json` ile makine-okunur çıktı al.
-3. Her bulgudan çıkar: paket · yüklü sürüm · zafiyet kimliği (CVE/GHSA) · önem · düzeltilmiş sürüm.
-4. Monorepo'da her alt-projeyi ayrı denetle. Sonuçlar rapora (aşağı) girer.
+2. If you are unsure of the correct/current command, verify it on the web; where possible, get machine-readable output with `--json`.
+3. Extract from each finding: package · installed version · vulnerability id (CVE/GHSA) · severity · fixed version.
+4. In a monorepo, audit each sub-project separately. The results go into the report (below).
 
 ---
 
-## Cephe 2 — Kod (kaynak→sink izleme)
+## Front 2 — Code (source→sink tracing)
 
-Saldırı yüzeyindeki her giriş noktasından başla, girdiyi kullanıldığı yere kadar izle, arada kapı olup olmadığına bak. Aşağıdaki tablo **asgari** kapsamdır — tarama sırasında başka sink görürsen ekle.
+Start from every entry point on the attack surface, trace the input to where it is used, and check whether there is a gate in between. The table below is the **minimum** coverage — if you see another sink during the scan, add it.
 
-| Sink sınıfı | Aç​ık | "Kapı" ne olmalı |
+| Sink class | Vulnerability | What the "gate" should be |
 |---|---|---|
-| **Sorgu** | SQL / NoSQL / LDAP / ORM ham sorgu enjeksiyonu | Parametreli sorgu; string birleştirme yok |
-| **Komut** | Shell/OS komut enjeksiyonu | Argüman dizisi; shell'e string geçme yok |
-| **Render** | XSS (girdi HTML'de kaçırılmadan), SSTI (girdi template kodu olarak) | Bağlama uygun kaçırma; girdi veri olarak, kod değil |
-| **Yol** | Path traversal, kısıtsız dosya yükleme | Yol allowlist/normalizasyon; tür-boyut-içerik doğrulama |
-| **Nesne** | Güvensiz deserializasyon, mass assignment | Güvenli format; alan allowlist'i |
-| **İfade** | Expression/eval enjeksiyonu, `eval`/`exec` | Girdiyi asla kod olarak değerlendirme |
+| **Query** | SQL / NoSQL / LDAP / ORM raw query injection | Parameterized query; no string concatenation |
+| **Command** | Shell/OS command injection | Argument array; no passing a string to the shell |
+| **Render** | XSS (input in HTML without escaping), SSTI (input as template code) | Context-appropriate escaping; input as data, not code |
+| **Path** | Path traversal, unrestricted file upload | Path allowlist/normalization; type-size-content validation |
+| **Object** | Insecure deserialization, mass assignment | Safe format; field allowlist |
+| **Expression** | Expression/eval injection, `eval`/`exec` | Never evaluate input as code |
 
-**Durumu değiştiren + tarayıcı kaynaklı uçlarda ayrıca:**
-- **CSRF** — durum değiştiren uçta token koruması var mı?
-- **CORS** — kimlik bilgisiyle wildcard origin ya da doğrulanmadan yansıtılan origin var mı?
+**On state-changing + browser-originating endpoints, additionally:**
+- **CSRF** — does the state-changing endpoint have token protection?
+- **CORS** — is there a wildcard origin with credentials, or an origin reflected without validation?
 
-**Sır (secret) sızıntısı — kaynakta sabit-kodlu kimlik:** şu kalıpları ara, `.env.example` ve test fixture'larını hariç tut:
+**Secret leakage — hardcoded credentials in the source:** search for these patterns, excluding `.env.example` and test fixtures:
 ```
 (password|api[_-]?key|secret|token)\s*[:=]\s*["'][^"']+["']
 -----BEGIN (RSA |EC |DSA )?PRIVATE KEY-----
 ```
-Ayrıca: loglarda maskelenmemiş parola/token/PII; kullanıcıya sızan stack trace veya iç yol.
+Also: unmasked password/token/PII in logs; a stack trace or internal path leaked to the user.
 
-**İzleme yöntemi:** route/controller dosyalarını oku (girdi buradan girer) → tehlikeli çağrıları grep'le (`eval`, `exec`, string-SQL) → middleware/interceptor'da auth·CSRF·rate-limit var mı bak → veri modelinde mass-assignment koruması var mı bak. Dile özel tehlikeli fonksiyonlar için web araması yap.
+**Tracing method:** read the route/controller files (input enters here) → grep for dangerous calls (`eval`, `exec`, string-SQL) → check whether the middleware/interceptor has auth·CSRF·rate-limit → check whether the data model has mass-assignment protection. Run a web search for language-specific dangerous functions.
 
-**Her bulgu için kaydet:** dosya:satır · açık · saldırganın yapabileceği (etki) · bu koda özel düzeltme.
+**Record for each finding:** file:line · vulnerability · what an attacker could do (impact) · fix specific to this code.
 
 ---
 
-## Cephe 3 — Yapılandırma
+## Front 3 — Configuration
 
-**Sır repoda mı:**
+**Is a secret in the repo:**
 ```bash
-git ls-files --error-unmatch .env 2>/dev/null && echo "UYARI: .env izleniyor"
+git ls-files --error-unmatch .env 2>/dev/null && echo "WARNING: .env is tracked"
 ```
-Bulguysa CRITICAL: `git rm --cached .env` → `.gitignore`'a ekle → **ifşa olmuş sırları döndür**.
+If it's a finding, CRITICAL: `git rm --cached .env` → add to `.gitignore` → **rotate the exposed secrets**.
 
-**Prod'da debug açık:** framework'e özel bayrak için `"[framework] debug mode production"` ara. Belirtiler: açık debug bayrağı, stack trace gösteren hata sayfası, yayımlanmış source map, erişilebilir geliştirme uçları.
+**Debug on in prod:** search for the framework-specific flag with `"[framework] debug mode production"`. Signs: an open debug flag, an error page showing a stack trace, a published source map, accessible development endpoints.
 
-**Güvensiz taşıma:** `https` olması gereken sabit `http://` adresleri (API, webhook, OAuth redirect, CDN) ve `Secure`'suz cookie. `localhost`/`127.0.0.1`/`0.0.0.0` hariç.
+**Insecure transport:** hardcoded `http://` addresses (API, webhook, OAuth redirect, CDN) that should be `https`, and cookies without `Secure`. Exclude `localhost`/`127.0.0.1`/`0.0.0.0`.
 
-**Eksik güvenlik başlıkları:** CSP, HSTS, X-Frame-Options, X-Content-Type-Options.
-
----
-
-## Cephe 4 — Yetki (auth-z)
-
-Erişim kontrolü açıkları taramada en çok kaçırılan sınıftır çünkü kod "çalışıyor" görünür. Proje admin/dashboard veya rol-tabanlı erişim içeriyorsa zorunlu:
-
-1. Tüm rolleri/seviyeleri çıkar (admin, moderatör, kullanıcı, misafir…).
-2. Tüm route/uçları ve **gereken** izin seviyesini bir matrise yaz.
-3. Her korumalı route'un gerçekten kontrol ettiğini doğrula — "giriş yapmış olmak" yetki değildir.
-4. Korunması gerekirken korunmayan uçları ara; URL tahminiyle erişilebilen admin ucu var mı dene.
-5. Yetkinin hem controller **hem** veri-erişim katmanında uygulandığını doğrula (IDOR: sahiplik doğrulaması olmadan nesne referansı).
-6. Ayrıcalık yükseltme: kullanıcı kendi rolünü/iznini değiştirebiliyor mu? Hassas admin eylemi ek koruma (re-auth/2FA) istiyor mu?
-7. **JWT:** `alg: none` / algoritma karışıklığı, koda gömülü secret, eksik expiration.
+**Missing security headers:** CSP, HSTS, X-Frame-Options, X-Content-Type-Options.
 
 ---
 
-## Rapor
+## Front 4 — Authorization (auth-z)
 
-**Önem ölçeği:**
+Access-control flaws are the class most often missed in a scan, because the code appears to "work." Mandatory if the project includes admin/dashboard or role-based access:
 
-| Seviye | Anlam |
+1. Enumerate all roles/levels (admin, moderator, user, guest…).
+2. Write all routes/endpoints and the **required** permission level into a matrix.
+3. Verify that each protected route actually checks — "being logged in" is not authorization.
+4. Look for endpoints that should be protected but aren't; try whether there is an admin endpoint reachable by guessing the URL.
+5. Verify that authorization is enforced both at the controller **and** at the data-access layer (IDOR: object reference without ownership validation).
+6. Privilege escalation: can a user change their own role/permission? Does a sensitive admin action require extra protection (re-auth/2FA)?
+7. **JWT:** `alg: none` / algorithm confusion, secret embedded in code, missing expiration.
+
+---
+
+## Report
+
+**Severity scale:**
+
+| Level | Meaning |
 |---|---|
-| CRITICAL | Doğrudan sömürülebilir — acil (SQL injection, prod'da sabit sır) |
-| HIGH | Ciddi — deploy öncesi kapat (XSS, command injection, bilinen CVE) |
-| MEDIUM | Savunma boşluğu — yakında (eksik CSRF, gevşek CORS) |
-| LOW | En-iyi-pratik ihlali — uygun olunca (debug modu, eksik başlık) |
-| INFO | Gözlem — acil risk yok |
+| CRITICAL | Directly exploitable — urgent (SQL injection, hardcoded secret in prod) |
+| HIGH | Serious — close before deploy (XSS, command injection, known CVE) |
+| MEDIUM | Defense gap — soon (missing CSRF, loose CORS) |
+| LOW | Best-practice violation — when convenient (debug mode, missing header) |
+| INFO | Observation — no immediate risk |
 
-**Bulgu formatı** (önem sırasına dizili):
+**Finding format** (ranked by severity):
 ```
 [CRITICAL] SQL Injection — src/api/users.ts:42
-  Açık : Girdi doğrudan SQL sorgusuna birleştirilmiş
-  Etki : DB okunabilir / değiştirilebilir / silinebilir
-  Çözüm: Parametreli sorgu kullan
+  Vuln  : Input concatenated directly into the SQL query
+  Impact: DB can be read / modified / deleted
+  Fix   : Use a parameterized query
 ```
 
-**Özet satırı:**
+**Summary line:**
 ```
-=== Güvenlik Taraması Özeti ===
-  CRITICAL: X · HIGH: X · MEDIUM: X · LOW: X · INFO: X · Toplam: X
+=== Security Scan Summary ===
+  CRITICAL: X · HIGH: X · MEDIUM: X · LOW: X · INFO: X · Total: X
 ```
 
-## Düzeltme sunumu
+## Fix presentation
 ```
-Nasıl ilerleyelim?
-  1. Tümünü düzelt        2. Yalnız CRITICAL+HIGH
-  3. Tek tek onayla       4. Manuel (değişiklik yok)
+How shall we proceed?
+  1. Fix everything        2. CRITICAL+HIGH only
+  3. Approve one by one    4. Manual (no changes)
 ```
-Her düzeltmede: diff önizle → onay bekle → (bağımlılıksa) yükseltme komutu + kırıcı-değişiklik notu → ilgili kontrolü yeniden çalıştır.
+For each fix: preview the diff → wait for approval → (if a dependency) upgrade command + breaking-change note → re-run the relevant check.
 
-## Değişmez kurallar
-1. **Yol gösterir, güvence vermez** — profesyonel denetimin yerini tutmaz; raporda söyle.
-2. **Sırları maskele** — yalnız ilk 4 + son 4 karakter (`sk-p…i789`); tam sırrı asla yazma.
-3. **Onaysız otomatik düzeltme yok** — "Tümünü düzelt" seçilse bile önce ne değişeceğini göster.
-4. **Sormadan araç kurma.**
-5. **Davranışı koruma** — düzeltme, açığı kapatmak dışında işlevi değiştirmemeli.
-6. **Yerelde kal** — kodu/veriyi dış servise gönderme, proje sınırını aşma.
+## Invariant rules
+1. **Guides, does not assure** — it does not replace a professional audit; say so in the report.
+2. **Mask secrets** — only the first 4 + last 4 characters (`sk-p…i789`); never write the full secret.
+3. **No automatic fix without approval** — even if "Fix everything" is chosen, first show what will change.
+4. **Do not install tools without asking.**
+5. **Preserve behavior** — a fix must not change functionality beyond closing the vulnerability.
+6. **Stay local** — do not send code/data to an external service, do not cross the project boundary.

@@ -1,34 +1,34 @@
 ---
 name: adr
 description: |
-  Mimari Karar Kaydı (ADR): geri-alması pahalı/kalıcı kararları bağlam-karar-sonuç formatında
-  belgeler. Kalıcı mimari kararda çalışır; docs/adr/ altına yazılır.
-  Trigger phrases: "adr", "mimari karar", "karar kaydı", "neden bu yaklaşım", "architecture decision"
+  Architecture Decision Record (ADR): documents decisions that are expensive to reverse or permanent,
+  in context-decision-consequences format. Runs on a permanent architectural decision; written under docs/adr/.
+  Trigger phrases: "adr", "architecture decision", "decision record", "why this approach", "architecture decision"
 ---
 
-# Mimari Karar Kaydı (ADR)
+# Architecture Decision Record (ADR)
 
-## Ne zaman
-Geri dönüşü pahalı, uzun ömürlü ya da tartışmalı bir mimari/teknoloji seçiminde
-(veritabanı seçimi, auth stratejisi, kritik kalıp). Küçük/geri-alınabilir kararlar ADR gerektirmez.
+## When
+On an architecture/technology choice that is expensive to reverse, long-lived, or contested
+(database selection, auth strategy, critical pattern). Small/reversible decisions do not require an ADR.
 
-## Format (docs/adr/NNNN-kisa-baslik.md, ~1 sayfa)
+## Format (docs/adr/NNNN-short-title.md, ~1 page)
 ```
-# NNNN. <Karar başlığı>
-Durum: öneri | kabul edildi | reddedildi | değiştirildi (NNNN yerine)
-## Bağlam
-Hangi problem/kısıt bu kararı gerektiriyor?
-## Karar
-Ne yapmaya karar verildi (net, tek cümle + gerekçe)?
-## Sonuçlar
-Artılar / eksiler / kabul edilen ödünler.
-## Değerlendirilen alternatifler
-Neden seçilmediler?
+# NNNN. <Decision title>
+Status: proposed | accepted | rejected | superseded (by NNNN)
+## Context
+Which problem/constraint requires this decision?
+## Decision
+What was decided (clear, one sentence + rationale)?
+## Consequences
+Pros / cons / accepted trade-offs.
+## Alternatives considered
+Why were they not chosen?
 ```
 
-## İlkeler
-- **Değişmez:** yeni karar eski ADR'yi `superseded` yapar; ADR **silinmez** (karar tarihçesi korunur).
-- Numaralı ve tarihli; kısa tut.
+## Principles
+- **Invariant:** a new decision marks the old ADR as `superseded`; an ADR is **never deleted** (decision history is preserved).
+- Numbered and dated; keep it short.
 
 ## DoD
-- Karar + gerekçe + reddedilen alternatifler kayıtlı; durum güncel.
+- Decision + rationale + rejected alternatives recorded; status current.
