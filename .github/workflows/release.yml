@@ -1,0 +1,72 @@
+name: release
+
+# Cut a release by bumping VERSION + package.json, committing, then:
+#   git tag vX.Y.Z && git push origin main --tags
+# This workflow then: builds the tarball + GitHub release, publishes to npm,
+# and bumps the Homebrew formula in byerlikaya/homebrew-tap — all automatically.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write   # create the GitHub release with GITHUB_TOKEN
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version (VERSION file must match the tag)
+        id: v
+        run: |
+          FILE_VERSION="$(cat VERSION)"
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          if [ "$FILE_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::VERSION ($FILE_VERSION) != tag ($TAG_VERSION). Bump VERSION and package.json before tagging."
+            exit 1
+          fi
+          echo "version=$FILE_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Build tarball
+        run: bash make-release.sh
+
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TGZ="dist/claude-starter-kit-${{ steps.v.outputs.version }}.tgz"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "$TGZ" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "$TGZ" --title "$GITHUB_REF_NAME" --generate-notes
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Publish to npm
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Bump Homebrew formula
+        env:
+          TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
+        run: |
+          V="${{ steps.v.outputs.version }}"
+          SHA="$(sha256sum "dist/claude-starter-kit-${V}.tgz" | awk '{print $1}')"
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/byerlikaya/homebrew-tap.git" tap
+          F="tap/Formula/claude-starter-kit.rb"
+          sed -i -E "s#/releases/download/v[0-9.]+/claude-starter-kit-[0-9.]+\.tgz#/releases/download/v${V}/claude-starter-kit-${V}.tgz#" "$F"
+          sed -i -E "s#sha256 \"[0-9a-f]{64}\"#sha256 \"${SHA}\"#" "$F"
+          sed -i -E "s#version \"[0-9.]+\"#version \"${V}\"#" "$F"
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "claude-starter-kit ${V}"
+          git push

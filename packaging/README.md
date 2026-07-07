@@ -44,6 +44,25 @@ gh release download --repo byerlikaya/claude-starter-kit -p '*.tgz' && tar xzf c
 bash start.sh         # fresh    ·    bash update.sh    # existing
 ```
 
+## Release automation (CI)
+
+`.github/workflows/release.yml` publishes everything on a version tag — no manual publish.
+
+**Cut a release:**
+
+```bash
+# bump VERSION + package.json version (+ CHANGELOG), commit, then:
+git tag v1.1.0
+git push origin main --tags
+```
+
+On the tag, the workflow builds the tarball, creates the GitHub release, runs `npm publish`, and bumps the Homebrew formula in `byerlikaya/homebrew-tap` — all automatically. It first checks that `VERSION` matches the tag.
+
+**One-time secrets** (repo → Settings → Secrets and variables → Actions → New repository secret):
+
+- `NPM_TOKEN` — an npm **Automation** access token (npmjs.com → Access Tokens → Generate New Token → *Automation*). Automation tokens bypass 2FA, which an interactive `--otp` cannot do in CI.
+- `TAP_TOKEN` — a GitHub token with write access to `byerlikaya/homebrew-tap` (a classic PAT with `repo` scope, or a fine-grained token with *Contents: read and write* on that repo). Used to push the formula bump.
+
 ## Claude Code plugin — planned (lighter channel)
 
 Claude Code has a native plugin/marketplace system (`/plugin marketplace add …` → `/plugin install …`), including an Anthropic-curated official marketplace and support for non-GitHub hosts (any git URL or a plain HTTPS `marketplace.json`).
