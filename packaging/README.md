@@ -24,15 +24,15 @@ npx @byerlikaya/claude-starter-kit adopt      # existing project (update.sh hand
 
 ## Homebrew (tap)
 
-`homebrew/claude-kit.rb` is the formula.
+`homebrew/claude-starter-kit.rb` is the formula.
 
 1. Create a repo named `homebrew-tap` (e.g. `github.com/byerlikaya/homebrew-tap`).
-2. Add the formula at `Formula/claude-kit.rb`.
+2. Add the formula at `Formula/claude-starter-kit.rb`.
 3. Users install:
 
 ```bash
-brew install byerlikaya/tap/claude-kit
-claude-kit            # fresh project    ·    claude-kit adopt    # existing project
+brew install byerlikaya/tap/claude-starter-kit
+claude-starter-kit            # fresh project    ·    claude-starter-kit adopt    # existing project
 ```
 
 The formula's `sha256` is pinned to the **v1.0.0** release tarball. If that tarball ever changes, recompute it (`shasum -a 256 claude-starter-kit-1.0.0.tgz`) and update both the `url`/`version` and the `sha256`. To host the tarball off GitHub, point `url` at your own CDN.

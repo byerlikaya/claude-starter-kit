@@ -74,8 +74,8 @@ Install via **npx** (nothing to clone), **Homebrew**, or the **release tarball**
 npx @byerlikaya/claude-starter-kit          # fresh project      ·   npx @byerlikaya/claude-starter-kit adopt   # existing
 
 # Homebrew
-brew install byerlikaya/tap/claude-kit
-claude-kit                      # fresh project      ·   claude-kit adopt               # existing
+brew install byerlikaya/tap/claude-starter-kit
+claude-starter-kit              # fresh project   ·   claude-starter-kit adopt   # existing
 
 # release tarball — no package manager
 gh release download --repo byerlikaya/claude-starter-kit -p '*.tgz' && tar xzf claude-starter-kit-*.tgz

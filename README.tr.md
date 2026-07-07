@@ -74,8 +74,8 @@ On bir ajan; her biri bir **ince tetikleyici** — yalnızca *kim* ve *ne zaman*
 npx @byerlikaya/claude-starter-kit          # sıfırdan proje     ·   npx @byerlikaya/claude-starter-kit adopt   # mevcut
 
 # Homebrew
-brew install byerlikaya/tap/claude-kit
-claude-kit                      # sıfırdan proje     ·   claude-kit adopt               # mevcut
+brew install byerlikaya/tap/claude-starter-kit
+claude-starter-kit              # sıfırdan proje   ·   claude-starter-kit adopt   # mevcut
 
 # release tarball — paket yöneticisi yok
 gh release download --repo byerlikaya/claude-starter-kit -p '*.tgz' && tar xzf claude-starter-kit-*.tgz

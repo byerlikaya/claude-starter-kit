@@ -1,4 +1,4 @@
-class ClaudeKit < Formula
+class ClaudeStarterKit < Formula
   desc "Agentic working kit for Claude Code — disciplined project scaffolding"
   homepage "https://github.com/byerlikaya/claude-starter-kit"
   url "https://github.com/byerlikaya/claude-starter-kit/releases/download/v1.0.0/claude-starter-kit-1.0.0.tgz"
@@ -8,7 +8,7 @@ class ClaudeKit < Formula
 
   def install
     libexec.install "start.sh", "update.sh", "claude-starter", "VERSION"
-    (bin/"claude-kit").write <<~SH
+    (bin/"claude-starter-kit").write <<~SH
       #!/bin/bash
       # Stage the bundled payload in a temp dir so start.sh's self-cleanup is harmless.
       stage="$(mktemp -d)"
@@ -25,6 +25,6 @@ class ClaudeKit < Formula
   end
 
   test do
-    assert_match "Usage", shell_output("#{bin}/claude-kit --help 2>&1")
+    assert_match "Usage", shell_output("#{bin}/claude-starter-kit --help 2>&1")
   end
 end
