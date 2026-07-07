@@ -59,6 +59,21 @@ flowchart TD
     AUDIT --> R["review-agent-cck<br/>4 · DoD gate"]
     R --> C["commit-agent-cck<br/>proposes · waits for approval"]
     C --> SM["session-manager-cck<br/>5 · handoff when context fills"]
+
+    classDef start fill:#111827,stroke:#111827,color:#ffffff
+    classDef plan fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#1e3a8a
+    classDef build fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#14532d
+    classDef audit fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f
+    classDef gate fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#4c1d95
+    classDef hand fill:#f1f5f9,stroke:#475569,stroke-width:2px,color:#1e293b
+    class U start
+    class P plan
+    class B,D,F,O build
+    class SE,PR,TE audit
+    class R,C gate
+    class SM hand
+    style BUILD fill:#f0fdf4,stroke:#16a34a,color:#14532d
+    style AUDIT fill:#fffbeb,stroke:#d97706,color:#78350f
 ```
 
 | Agent | Stage | Fires when | Model |
@@ -117,6 +132,15 @@ Applies the kit to a project already in motion, like **one team handing a projec
 ```mermaid
 flowchart LR
     A["Detect"] --> B["Propose<br/>7 decisions"] --> C["Handover<br/>branch"] --> D["Coexist<br/>-cck agents"] --> E["Bind discipline<br/>+ merge settings"] --> F["Prove the<br/>gates"] --> G["HANDOVER.md<br/>+ ADR"]
+
+    classDef s1 fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#1e3a8a
+    classDef s2 fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#14532d
+    classDef s3 fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f
+    classDef s4 fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#4c1d95
+    class A,B s1
+    class C,D s2
+    class E,F s3
+    class G s4
 ```
 
 All changes happen on a separate git branch — `main` is untouched; you review the result as a diff and accept or discard it with `git`. Kit agents install side-by-side (never colliding), the discipline is bound via a single `@import`, `settings.json` is merged schema-aware, and existing husky/lefthook chains run alongside the kit via a shim. It closes with a durable `docs/HANDOVER.md` and an ADR, so decisions live in version control, not in a chat.
