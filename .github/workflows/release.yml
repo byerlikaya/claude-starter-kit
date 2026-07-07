@@ -31,6 +31,15 @@ jobs:
           fi
           echo "version=$FILE_VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: Verify the plugin edition is in sync
+        run: |
+          bash packaging/build-plugin.sh
+          if ! git diff --quiet -- plugin; then
+            echo "::error::plugin/ is out of sync with claude-starter/. Run packaging/build-plugin.sh and commit."
+            git --no-pager diff --stat -- plugin
+            exit 1
+          fi
+
       - name: Build tarball
         run: bash make-release.sh
 

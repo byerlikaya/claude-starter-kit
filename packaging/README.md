@@ -63,8 +63,15 @@ On the tag, the workflow builds the tarball, creates the GitHub release, runs `n
 - `NPM_TOKEN` — an npm **Automation** access token (npmjs.com → Access Tokens → Generate New Token → *Automation*). Automation tokens bypass 2FA, which an interactive `--otp` cannot do in CI.
 - `TAP_TOKEN` — a GitHub token with write access to `byerlikaya/homebrew-tap` (a classic PAT with `repo` scope, or a fine-grained token with *Contents: read and write* on that repo). Used to push the formula bump.
 
-## Claude Code plugin — planned (lighter channel)
+## Claude Code plugin (lite channel)
 
-Claude Code has a native plugin/marketplace system (`/plugin marketplace add …` → `/plugin install …`), including an Anthropic-curated official marketplace and support for non-GitHub hosts (any git URL or a plain HTTPS `marketplace.json`).
+Users can install the kit's agents, skills, and commands directly in Claude Code:
 
-A plugin **registers** its bundled agents/skills/commands/hooks but **cannot run a setup script** — so a plugin edition would deliver the agents/skills for direct use in Claude Code, *without* the scaffolding (no profile pruning, no DevArchitecture base, no git-hook trace scan). It is a genuinely lighter product than the `start.sh`/`update.sh` installer, best offered as a secondary discovery channel.
+```
+/plugin marketplace add byerlikaya/claude-starter-kit
+/plugin install claude-starter-kit@byerlikaya
+```
+
+This is the **lite** edition — it registers the agents/skills/commands only, *without* the scaffolding (no profile pruning, no DevArchitecture base, no git-hook gates). For the full kit use `start.sh` / `update.sh`.
+
+`plugin/` (and its `.claude-plugin/plugin.json`) is generated from `claude-starter/` by **`packaging/build-plugin.sh`** — rerun it after changing agents/skills/commands so the plugin stays in sync. The release workflow verifies this on every tag. The marketplace manifest is `.claude-plugin/marketplace.json` at the repo root.

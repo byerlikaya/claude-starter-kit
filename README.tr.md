@@ -82,6 +82,8 @@ gh release download --repo byerlikaya/claude-starter-kit -p '*.tgz' && tar xzf c
 bash start.sh                   # sıfırdan proje     ·   bash update.sh                 # mevcut
 ```
 
+> Sadece ajan & skill'leri mevcut Claude Code'una istiyorsan (scaffold yok)? `/plugin marketplace add byerlikaya/claude-starter-kit` sonra `/plugin install claude-starter-kit@byerlikaya`.
+
 ### 🌱 Sıfırdan proje — `start.sh`
 
 ```bash

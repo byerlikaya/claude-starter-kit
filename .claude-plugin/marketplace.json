@@ -1,0 +1,14 @@
+{
+  "name": "byerlikaya",
+  "description": "Barış Yerlikaya's Claude Code plugins — starting with the Agentic Working Kit.",
+  "owner": {
+    "name": "Barış Yerlikaya"
+  },
+  "plugins": [
+    {
+      "name": "claude-starter-kit",
+      "source": "./plugin",
+      "description": "Agentic Working Kit — disciplined agents, skills, and slash commands for Claude Code (lite edition; for the full scaffolding use start.sh / update.sh)."
+    }
+  ]
+}

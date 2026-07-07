@@ -1,0 +1,44 @@
+---
+name: frontend
+description: |
+  Stack-agnostic frontend discipline (web · mobile · desktop): component/view structure, state,
+  data fetching, state-complete UI (loading/empty/error), i18n, accessibility, performance.
+  frontend-expert-cck applies this on EVERY stack; stack-specific detail lives in the relevant project skill.
+  Trigger phrases: "frontend", "screen", "component", "page", "UI", "state management", "interface"
+---
+
+# Frontend Discipline (stack-agnostic)
+
+Web (React/Next/Vue/Svelte/Angular), mobile (React Native/Flutter) or desktop — shared principles.
+The stack-specific "how" (native bridge, router choice, etc.) lives in the relevant project skill; this skill applies to all of them.
+
+## Architecture
+- **Presentation / logic separation:** component/view is pure and thin; business logic lives in the hook/composable/service layer.
+- **Reusability:** repeated UI is factored out; the prop contract is clear and typed.
+- **Folder:** feature-based (`features/<name>/`) — view, logic, and test together.
+
+## State & data
+- **Local state first** (`useState`/signal); if global is needed, the project's choice (store/context) — nothing imposed.
+- **Data fetching:** cache + error + loading states are considered; race/abort are handled.
+
+## State-complete UI (design it from the start)
+Every data-bound view covers **four states**: **loading · empty · error · full**.
+Don't code only the "full" case; empty/error/loading are part of the experience.
+
+## i18n & accessibility (default, not decoration)
+- User-visible text comes from the language file (project languages); no hard-coded strings (`i18n-integrity`).
+- Meaningful labels/roles, sufficient contrast, keyboard/screen-reader access, appropriate touch/click target.
+
+## Responsive & performance
+- Works across the target screen/device matrix (responsive/adaptive).
+- Unnecessary renders (memo/callback), bundle size, lazy loading, virtualization for long lists.
+
+## DoD (this skill's contribution)
+- `/simplify`; no dead styles/unused props.
+- The four states are covered; `i18n-integrity` clean; accessibility passes the baseline matrix.
+- `review-agent-cck` clean.
+
+## Constraints
+- Surgical change; follow existing conventions, do not impose a stack/preference.
+- Do not present data the platform does not provide as if it existed; do not promise a capability that isn't there.
+- §4 applies: no AI trace or vendor template name in code/comments/strings.

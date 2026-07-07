@@ -1,0 +1,9 @@
+{
+  "name": "claude-starter-kit",
+  "description": "Agentic Working Kit — disciplined agents, skills, and slash commands for Claude Code. Lite edition: loads the agents/skills only; for the full scaffolding + gates use start.sh / update.sh.",
+  "version": "1.0.0",
+  "author": { "name": "Barış Yerlikaya" },
+  "homepage": "https://github.com/byerlikaya/claude-starter-kit",
+  "license": "MIT",
+  "keywords": ["claude-code", "agents", "skills", "workflow"]
+}
