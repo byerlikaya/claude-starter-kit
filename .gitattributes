@@ -1,0 +1,5 @@
+# Shell scripts must stay LF so they run under bash on any platform — a Windows checkout must not
+# flip them to CRLF (which would break the script under WSL with `$'\r': command not found`).
+*.sh text eol=lf
+claude-starter/hooks/pre-commit text eol=lf
+claude-starter/hooks/commit-msg text eol=lf

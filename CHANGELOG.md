@@ -3,6 +3,16 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [1.0.8] - 2026-07-08
+
+### Fixed
+- **Windows launch made robust (Git Bash + WSL):** the `npx` runner now (a) prefers **Git Bash** if installed —
+  it accepts `C:/…` paths natively and avoids WSL's `/mnt/c` and 8.3-name pitfalls; (b) expands 8.3 short paths
+  (`…\BB358~1.YER\…`) before staging; and (c) under WSL translates the Windows path to `/mnt/c/…` inside bash,
+  dispatched by shell flavour. If the staged script still can't be read it now fails with an actionable message
+  instead of a cryptic "No such file or directory". macOS/Linux run unchanged (no path rewriting).
+- Shell scripts pinned to LF via `.gitattributes` so a Windows checkout can't flip them to CRLF.
+
 ## [1.0.7] - 2026-07-08
 
 ### Fixed
@@ -121,6 +131,7 @@ First stable release. A Turkish, opinionated-but-backend-optional agent/skill sc
 - The discipline layer and the frontend are stack-agnostic; the backend is opinionated (.NET/DevArchitecture) or generic.
 - Language is Turkish. No AI trace / third-party template name leaks into the artifacts (§4).
 
+[1.0.8]: https://github.com/byerlikaya/claude-starter-kit/releases/tag/v1.0.8
 [1.0.7]: https://github.com/byerlikaya/claude-starter-kit/releases/tag/v1.0.7
 [1.0.6]: https://github.com/byerlikaya/claude-starter-kit/releases/tag/v1.0.6
 [1.0.5]: https://github.com/byerlikaya/claude-starter-kit/releases/tag/v1.0.5
