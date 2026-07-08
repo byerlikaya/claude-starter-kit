@@ -25,7 +25,7 @@ mkdir -p dist
 git archive --format=tar.gz -o "$OUT" HEAD start.sh adopt.sh claude-starter VERSION
 
 # GATE: there must be no entry outside the whitelist.
-bad="$(tar tzf "$OUT" | grep -vE '^(start\.sh$|update\.sh$|claude-starter($|/)|VERSION$)' || true)"
+bad="$(tar tzf "$OUT" | grep -vE '^(start\.sh$|adopt\.sh$|claude-starter($|/)|VERSION$)' || true)"
 if [ -n "$bad" ]; then
   echo "ERROR: a file outside the whitelist leaked into the artifact (§4.3):" >&2
   printf '  %s\n' $bad >&2

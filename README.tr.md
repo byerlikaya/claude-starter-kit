@@ -44,17 +44,17 @@
 
 | Ajan | Aşama | Ne zaman devreye girer | Model |
 |:--|:--|:--|:--:|
-| **`planner-csk`** | 🧭 Anla | kapsam belirsizse | `inherit` |
-| **`backend-expert-csk`** | 🔨 Üret | sunucu / API / iş mantığı | `inherit` |
-| **`database-expert-csk`** | 🔨 Üret | şema, migration, index, cache | `inherit` |
-| **`frontend-expert-csk`** | 🔨 Üret | UI, bileşen, istemci işi | `inherit` |
-| **`devops-expert-csk`** | 🔨 Üret | dağıtım, CI hattı, olay | `inherit` |
-| **`security-expert-csk`** | 🔍 Denetle | auth / IDOR / injection / secret · **güvenlik-kritikse zorunlu** | `sonnet` |
-| **`privacy-agent-csk`** | 🔍 Denetle | kişisel veri (KVKK / GDPR) | `sonnet` |
-| **`test-expert-csk`** | 🔍 Denetle | test, kapsam, regresyon | `inherit` |
-| **`review-agent-csk`** | ✅ Kapat | commit öncesi kod-sağlığı denetimi | `haiku` |
-| **`commit-agent-csk`** | ✅ Kapat | commit'i önerir, onay bekler | `haiku` |
-| **`session-manager-csk`** | 🤝 Devret | bağlam dolunca / faz sınırında | `haiku` |
+| **planner-csk** | 🧭 Anla | kapsam belirsizse | `inherit` |
+| **backend-expert-csk** | 🔨 Üret | sunucu / API / iş mantığı | `inherit` |
+| **database-expert-csk** | 🔨 Üret | şema, migration, index, cache | `inherit` |
+| **frontend-expert-csk** | 🔨 Üret | UI, bileşen, istemci işi | `inherit` |
+| **devops-expert-csk** | 🔨 Üret | dağıtım, CI hattı, olay | `inherit` |
+| **security-expert-csk** | 🔍 Denetle | auth / IDOR / injection / secret · **güvenlik-kritikse zorunlu** | `sonnet` |
+| **privacy-agent-csk** | 🔍 Denetle | kişisel veri (KVKK / GDPR) | `sonnet` |
+| **test-expert-csk** | 🔍 Denetle | test, kapsam, regresyon | `inherit` |
+| **review-agent-csk** | ✅ Kapat | commit öncesi kod-sağlığı denetimi | `haiku` |
+| **commit-agent-csk** | ✅ Kapat | commit'i önerir, onay bekler | `haiku` |
+| **session-manager-csk** | 🤝 Devret | bağlam dolunca / faz sınırında | `haiku` |
 
 > Ajan adları `-csk` ekiyle isimlenir (Claude Starter Kit); böylece kurulduğu projenin kendi ajanlarıyla asla çakışmaz. Her ajan incedir; asıl yöntem bir **skill**'de yaşar — tek bilgi kaynağı.
 

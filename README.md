@@ -44,17 +44,17 @@ Most "agent setups" are a pile of suggestions — the rules sit in a file, and w
 
 | Agent | Stage | Fires when | Model |
 |:--|:--|:--|:--:|
-| **`planner-csk`** | 🧭 Understand | scope is ambiguous | `inherit` |
-| **`backend-expert-csk`** | 🔨 Produce | server / API / business logic | `inherit` |
-| **`database-expert-csk`** | 🔨 Produce | schema, migration, index, cache | `inherit` |
-| **`frontend-expert-csk`** | 🔨 Produce | UI, component, client work | `inherit` |
-| **`devops-expert-csk`** | 🔨 Produce | deployment, CI pipeline, incident | `inherit` |
-| **`security-expert-csk`** | 🔍 Audit | auth / IDOR / injection / secret · **mandatory if security-critical** | `sonnet` |
-| **`privacy-agent-csk`** | 🔍 Audit | personal data (KVKK / GDPR) | `sonnet` |
-| **`test-expert-csk`** | 🔍 Audit | tests, coverage, regression | `inherit` |
-| **`review-agent-csk`** | ✅ Close | pre-commit code-health review | `haiku` |
-| **`commit-agent-csk`** | ✅ Close | proposes the commit, waits for approval | `haiku` |
-| **`session-manager-csk`** | 🤝 Hand off | context fills / phase boundary | `haiku` |
+| **planner-csk** | 🧭 Understand | scope is ambiguous | `inherit` |
+| **backend-expert-csk** | 🔨 Produce | server / API / business logic | `inherit` |
+| **database-expert-csk** | 🔨 Produce | schema, migration, index, cache | `inherit` |
+| **frontend-expert-csk** | 🔨 Produce | UI, component, client work | `inherit` |
+| **devops-expert-csk** | 🔨 Produce | deployment, CI pipeline, incident | `inherit` |
+| **security-expert-csk** | 🔍 Audit | auth / IDOR / injection / secret · **mandatory if security-critical** | `sonnet` |
+| **privacy-agent-csk** | 🔍 Audit | personal data (KVKK / GDPR) | `sonnet` |
+| **test-expert-csk** | 🔍 Audit | tests, coverage, regression | `inherit` |
+| **review-agent-csk** | ✅ Close | pre-commit code-health review | `haiku` |
+| **commit-agent-csk** | ✅ Close | proposes the commit, waits for approval | `haiku` |
+| **session-manager-csk** | 🤝 Hand off | context fills / phase boundary | `haiku` |
 
 > Agent names carry a `-csk` suffix (Claude Starter Kit) so they never collide with the host project's own agents. Each agent is thin; the real method lives in a **skill** — the single source of truth.
 
