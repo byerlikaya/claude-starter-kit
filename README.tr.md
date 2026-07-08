@@ -173,8 +173,10 @@ Yeni bir ajan veya skill eklerken `AGENT_TEMPLATE.md` sözleşmesini izleyin: fr
 
 ## Lisans & atıf
 
-MIT — bkz. [LICENSE](LICENSE). Disiplin katmanı aşağıdaki üst kaynaklara dayanır; tüm ayrıntılar ve lisanslar **[ATTRIBUTION.md](ATTRIBUTION.md)**'de:
+MIT — bkz. [LICENSE](LICENSE). Disiplin katmanı şu üst kaynaklara dayanır:
 
-- **[multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills)** — disiplinin çekirdeğindeki dört çalışma ilkesi
-- **[google/eng-practices](https://github.com/google/eng-practices)** — `code-review` skill'i (CC-BY 3.0)
-- **[DevArchitecture](https://github.com/DevArchitecture/DevArchitecture)** — backend kalıbı (yazarının açık izniyle)
+- **[multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills)** — disiplinin çekirdeğindeki dört çalışma ilkesi; kitin en temel referansı.
+- **[google/eng-practices](https://github.com/google/eng-practices)** — `code-review` skill'i, damıtılıp yeniden ifade edildi. **CC-BY 3.0** lisanslı; atıf zorunludur.
+- **[DevArchitecture](https://github.com/DevArchitecture/DevArchitecture)** — backend kalıbı (MediatR CQRS / IResult / AOP). Yalnız kalıp referans alınır — burada DevArchitecture kaynak kodu barındırılmaz — yazarının açık izniyle.
+
+`security-scan`, `db-migration` ve `vps-deploy` skill'leri özgündür; içerdikleri CLI komutları ve OWASP kategori adları kamuya açık teknik bilgilerdir.

@@ -173,8 +173,10 @@ When you add an agent or skill, follow the `AGENT_TEMPLATE.md` contract: frontma
 
 ## License & attribution
 
-MIT — see [LICENSE](LICENSE). The discipline layer builds on the upstream sources below; full details and licenses in **[ATTRIBUTION.md](ATTRIBUTION.md)**:
+MIT — see [LICENSE](LICENSE). The discipline layer builds on these upstream sources:
 
-- **[multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills)** — the four working principles at the core of the discipline
-- **[google/eng-practices](https://github.com/google/eng-practices)** — the `code-review` skill (CC-BY 3.0)
-- **[DevArchitecture](https://github.com/DevArchitecture/DevArchitecture)** — the backend pattern (used with the author's explicit permission)
+- **[multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills)** — the four working principles at the core of the discipline; the kit's most foundational reference.
+- **[google/eng-practices](https://github.com/google/eng-practices)** — the `code-review` skill, distilled and restated. Licensed **CC-BY 3.0**; attribution is required.
+- **[DevArchitecture](https://github.com/DevArchitecture/DevArchitecture)** — the backend pattern (MediatR CQRS / IResult / AOP). Only the pattern is referenced — no DevArchitecture source is hosted here — used with the author's explicit permission.
+
+The `security-scan`, `db-migration`, and `vps-deploy` skills are original; the CLI commands and OWASP category names they contain are publicly available technical facts.
