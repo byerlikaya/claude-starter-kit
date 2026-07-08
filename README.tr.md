@@ -6,7 +6,7 @@
 
 *planla → üret → denetle → commit'le; her kritik kural bir **hatırlatma değil, kapı**.*
 
-![Sürüm](https://img.shields.io/badge/s%C3%BCr%C3%BCm-1.0.3-2563eb?style=flat-square)
+![Sürüm](https://img.shields.io/badge/s%C3%BCr%C3%BCm-1.0.4-2563eb?style=flat-square)
 ![Lisans](https://img.shields.io/badge/lisans-MIT-16a34a?style=flat-square)
 ![Ajanlar](https://img.shields.io/badge/ajanlar-11-f59e0b?style=flat-square)
 ![Skiller](https://img.shields.io/badge/skiller-27-f59e0b?style=flat-square)
@@ -115,7 +115,7 @@ Kiti, zaten ilerleyen bir projeye **bir ekibin projeyi başka bir ekibe devretme
   <img src="assets/handover-tr.svg" alt="update.sh devir akisi" width="900">
 </div>
 
-Tüm değişiklik ayrı bir git dalında olur — `main` el değmez; sonucu bir diff olarak inceler, `git` ile kabul veya iptal edersiniz. Kit ajanları yan yana kurulur (çakışmadan), disiplin tek `@import` ile bağlanır, `settings.json` şema-farkında birleştirilir ve mevcut husky/lefthook zincirleri kitle bir köprü üzerinden birlikte çalışır. Kapanışta kalıcı bir `docs/HANDOVER.md` ve bir ADR bırakır — kararlar sohbette değil, versiyon kontrolünde yaşar.
+Tüm değişiklik ayrı bir git dalına **staged (commit'siz)** düşer — böylece eklenen/değişen her dosya editörünün Source Control / Changes panelinde görünür; oradan inceler, sonra `git commit` ile kabul (ya da reset ile iptal) edersiniz. `main` el değmez. Kit ajanları yan yana kurulur (çakışmadan), disiplin tek `@import` ile bağlanır, `settings.json` şema-farkında birleştirilir ve mevcut husky/lefthook zincirleri kitle bir köprü üzerinden birlikte çalışır. Kapanışta kalıcı bir `docs/HANDOVER.md` ve bir ADR bırakır — kararlar sohbette değil, versiyon kontrolünde yaşar.
 
 ---
 

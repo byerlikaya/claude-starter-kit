@@ -13,7 +13,9 @@ GITROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 [ -n "$GITROOT" ] && [ -f "$GITROOT/.trace-allowlist.txt" ] && AL="$GITROOT/.trace-allowlist.txt"
 
 # Only added content lines (start with +, excluding the +++ file header).
-ADDED="$(git diff --cached --unified=0 -- . | grep -E '^\+' | grep -Ev '^\+\+\+' || true)"
+# Exclude the kit's OWN blocklist file — it definitionally contains every pattern, so scanning it is circular
+# (this lets a shared/tracked .claude be committed without the scanner tripping over its own pattern list).
+ADDED="$(git diff --cached --unified=0 -- . ':(top,exclude).claude/hooks/trace-blocklist.txt' | grep -E '^\+' | grep -Ev '^\+\+\+' || true)"
 [ -z "$ADDED" ] && exit 0
 
 HIT=0

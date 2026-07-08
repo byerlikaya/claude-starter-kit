@@ -383,7 +383,7 @@ cat > docs/HANDOVER.md <<HAND
 - settings.json: schema-aware merge (project hooks/permissions PRESERVED + kit added).
 - Git gates: $HOOKDESC.
 - Overlapping roles: $MERGE_NOTE.
-- Handover branch: $BR  ($BASE untouched; inspect: git diff $BASE..$BR).
+- Handover branch: $BR  ($BASE untouched; the change set is STAGED-not-committed — review in your editor / 'git status', then commit).
 
 ## Decisions made (smart suggestion; review/override in Stage B)
 | # | Decision | Value |
@@ -399,7 +399,7 @@ cat > docs/HANDOVER.md <<HAND
 ## CONFIRM (the tool cannot verify — you check)
 - [ ] Are the inherited project rules/agents UP TO DATE? (stale rule = regression)
 - [ ] Overlapping roles (project + kit same job): which one to use / merge?
-- [ ] Has the handover branch diff been reviewed?  git diff $BASE..$BR
+- [ ] Has the staged change set been reviewed (editor's Changes panel / git status) before committing?
 ${HIDE_NOTE:+- [ ] HIDE chosen — after merge run:  $HIDE_NOTE}
 
 ## Off-repo / in-chat decisions
@@ -442,11 +442,12 @@ fi
 git add .claude CLAUDE.md docs >/dev/null 2>&1
 [ -e .gitignore ] && git add .gitignore >/dev/null 2>&1
 [ -e .trace-allowlist.txt ] && git add .trace-allowlist.txt >/dev/null 2>&1
-git commit --no-verify -q -m "kit adopt: coexist + discipline + settings merge + git-shim + proof + decisions + HANDOVER/ADR; project preserved" 2>/dev/null || true
-# --no-verify: adopt's OWN wip commit; don't trigger the project's husky/lint (only kit file placement).
+# NO auto-commit: the change set stays STAGED-but-uncommitted on branch $BR, so every added/changed file shows up
+# in your editor's Source Control / Changes panel for review. HEAD is untouched until you commit yourself.
 
-h1 "Review / roll back (git-native)"
-row "changed" "$(git diff "$BASE".."$BR" --stat 2>/dev/null | tail -1 || echo '(no base)')"
-sub "inspect:     git diff $BASE..$BR"
-sub "if you like it: git checkout $BASE && git merge $BR"
-sub "roll back:   git checkout $BASE && git branch -D $BR   (project untouched)"
+h1 "Review in your editor — nothing committed yet"
+row "staged" "$(git diff --cached --stat 2>/dev/null | tail -1 || echo '(none)')"
+sub "You are on branch $BR with everything STAGED but NOT committed."
+sub "see it:   open the Source Control / Changes panel (every added + changed file is listed)  ·  or: git status"
+sub "accept:   git commit -m 'adopt agentic kit'   then:  git checkout $BASE && git merge $BR"
+sub "discard:  git reset --hard $BASE && git checkout $BASE && git branch -D $BR"

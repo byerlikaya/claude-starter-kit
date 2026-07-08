@@ -3,6 +3,19 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [1.0.4] - 2026-07-08
+
+### Changed
+- **`update.sh` (adopt) leaves the change set STAGED, not committed:** the kit files land on the handover branch
+  staged-but-uncommitted, so every added/changed file is visible in your editor's Source Control / Changes panel
+  for review. You commit to accept (`git commit`) or discard with one reset — nothing is buried in an auto-commit.
+  (Previously everything was auto-committed on the branch, so a developer saw nothing in the Changes view.)
+
+### Fixed
+- **Trace scanner no longer trips over its own pattern list:** `pre-commit` excludes `.claude/hooks/trace-blocklist.txt`
+  from the scan (it definitionally contains every pattern), so a shared/tracked `.claude` can be committed without
+  the scanner blocking on its own blocklist. Real AI traces in project files are still caught.
+
 ## [1.0.3] - 2026-07-08
 
 ### Fixed
@@ -83,6 +96,7 @@ First stable release. A Turkish, opinionated-but-backend-optional agent/skill sc
 - The discipline layer and the frontend are stack-agnostic; the backend is opinionated (.NET/DevArchitecture) or generic.
 - Language is Turkish. No AI trace / third-party template name leaks into the artifacts (§4).
 
+[1.0.4]: https://github.com/byerlikaya/claude-starter-kit/releases/tag/v1.0.4
 [1.0.3]: https://github.com/byerlikaya/claude-starter-kit/releases/tag/v1.0.3
 [1.0.2]: https://github.com/byerlikaya/claude-starter-kit/releases/tag/v1.0.2
 [1.0.1]: https://github.com/byerlikaya/claude-starter-kit/releases/tag/v1.0.1

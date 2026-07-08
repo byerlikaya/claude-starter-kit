@@ -6,7 +6,7 @@
 
 *plan → build → review → commit, where every critical rule is a **gate**, not a reminder.*
 
-![Version](https://img.shields.io/badge/version-1.0.3-2563eb?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.0.4-2563eb?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)
 ![Agents](https://img.shields.io/badge/agents-11-f59e0b?style=flat-square)
 ![Skills](https://img.shields.io/badge/skills-27-f59e0b?style=flat-square)
@@ -115,7 +115,7 @@ Applies the kit to a project already in motion, like **one team handing a projec
   <img src="assets/handover-en.svg" alt="update.sh handover flow" width="900">
 </div>
 
-All changes happen on a separate git branch — `main` is untouched; you review the result as a diff and accept or discard it with `git`. Kit agents install side-by-side (never colliding), the discipline is bound via a single `@import`, `settings.json` is merged schema-aware, and existing husky/lefthook chains run alongside the kit via a shim. It closes with a durable `docs/HANDOVER.md` and an ADR, so decisions live in version control, not in a chat.
+All changes land on a separate git branch **staged, not committed** — so every added and changed file shows up in your editor's Source Control / Changes panel; you review it there, then `git commit` to accept (or reset to discard). `main` stays untouched. Kit agents install side-by-side (never colliding), the discipline is bound via a single `@import`, `settings.json` is merged schema-aware, and existing husky/lefthook chains run alongside the kit via a shim. It closes with a durable `docs/HANDOVER.md` and an ADR, so decisions live in version control, not in a chat.
 
 ---
 
