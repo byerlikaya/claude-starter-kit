@@ -1,4 +1,4 @@
-name: kit-ci
+name: ci
 
 on:
   push:
@@ -6,29 +6,30 @@ on:
   pull_request:
 
 jobs:
-  dogrula:
+  verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Sozdizimi - kabuk scriptleri
+      - name: Syntax — shell scripts
         run: |
           set -euo pipefail
           bash -n start.sh
+          bash -n update.sh
           for s in claude-starter/hooks/*.sh claude-starter/eval/*.sh; do
             [ -f "$s" ] && bash -n "$s" && echo "ok: $s"
           done
 
-      - name: Smoke-test - kaynak (budanmamis, 10 ajan)
+      - name: Smoke test — source (unpruned, 11 agents)
         run: bash claude-starter/eval/smoke-test.sh
 
-      - name: Routing-eval - davranissal (golden routing + ajan cakismasi)
+      - name: Routing eval — behavioral (golden routing + agent conflicts)
         run: bash claude-starter/eval/routing-eval.sh
 
-      - name: 6 kombinasyon e2e prova (profil x backend-yigini)
+      - name: 6-combination e2e rehearsal (profile × backend stack)
         run: |
           set -euo pipefail
-          # girdi: ozet-onayi (evet) [+ DevArch onayi (hayir) yalniz dotnet'te]
+          # input: summary confirm (yes) [+ DevArch confirm (no) only on dotnet]
           combo() {
             local lbl="$1" inp="$2"; shift 2
             local P="$RUNNER_TEMP/proj-$lbl"
@@ -36,11 +37,11 @@ jobs:
             cp start.sh "$P/"; cp -R claude-starter "$P/"
             ( cd "$P" && printf "$inp" | bash start.sh "$@" >/dev/null )
             ( cd "$P" && bash .claude/eval/smoke-test.sh >/dev/null )
-            echo "[$lbl] ajan=$(ls "$P"/.claude/agents/*.md | wc -l | tr -d ' ') skill=$(ls -d "$P"/.claude/skills/*/ | wc -l | tr -d ' ') smoke=OK"
+            echo "[$lbl] agents=$(ls "$P"/.claude/agents/*.md | wc -l | tr -d ' ') skills=$(ls -d "$P"/.claude/skills/*/ | wc -l | tr -d ' ') smoke=OK"
           }
-          combo frontend         'evet\n'        --frontend
-          combo mobile           'evet\n'        --mobile
-          combo backend-dotnet   'evet\nhayir\n' --backend --dotnet
-          combo backend-generic  'evet\n'        --backend --generic
-          combo fullstack-dotnet 'evet\nhayir\n' --fullstack --dotnet
-          combo fullstack-generic 'evet\n'       --fullstack --generic
+          combo frontend          'yes\n'      --frontend
+          combo mobile            'yes\n'      --mobile
+          combo backend-dotnet    'yes\nno\n'  --backend --dotnet
+          combo backend-generic   'yes\n'      --backend --generic
+          combo fullstack-dotnet  'yes\nno\n'  --fullstack --dotnet
+          combo fullstack-generic 'yes\n'      --fullstack --generic
