@@ -20,7 +20,7 @@
 
 ## Neden bu kit?
 
-Çoğu "agent kurulumu" bir öneriler yığınıdır — kurallar bir dosyada durur, uyulup uyulmaması modele kalır. Bu kit farklı: Claude Code'a **disiplinli bir mühendislik ekibi** yerleştirir; burada **önemli kurallar hatırlatma değil, kapıdır.**
+Çoğu "agent kurulumu" bir öneriler yığınıdır — kurallar bir dosyada durur, uyulup uyulmaması modele kalır. Bu kit farklı: Claude Code'a **disiplinli bir mühendislik ekibi** yerleştirir; burada **önemli kurallar hatırlatma değil, kapıdır** — ajana kuralları söylemekle kalmaz, kritik olanları çiğnemeyi imkânsız kılar ve zaten sahip olduğun repo'ya güvenle kurulur.
 
 | | |
 |---|---|
