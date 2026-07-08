@@ -3,6 +3,13 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [1.0.7] - 2026-07-08
+
+### Fixed
+- **Windows (Git Bash) launch:** `npx` passed a native Windows path (`C:\Users\…\start.sh`) to bash, which treats
+  `\` as an escape — so the path separators were lost and the script wasn't found ("No such file or directory").
+  The runner now hands bash a forward-slash path (`C:/Users/…/start.sh`), which Git Bash resolves. macOS/Linux unaffected.
+
 ## [1.0.6] - 2026-07-08
 
 ### Added
@@ -114,6 +121,7 @@ First stable release. A Turkish, opinionated-but-backend-optional agent/skill sc
 - The discipline layer and the frontend are stack-agnostic; the backend is opinionated (.NET/DevArchitecture) or generic.
 - Language is Turkish. No AI trace / third-party template name leaks into the artifacts (§4).
 
+[1.0.7]: https://github.com/byerlikaya/claude-starter-kit/releases/tag/v1.0.7
 [1.0.6]: https://github.com/byerlikaya/claude-starter-kit/releases/tag/v1.0.6
 [1.0.5]: https://github.com/byerlikaya/claude-starter-kit/releases/tag/v1.0.5
 [1.0.4]: https://github.com/byerlikaya/claude-starter-kit/releases/tag/v1.0.4
