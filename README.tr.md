@@ -2,15 +2,15 @@
 
 # 🛠️ Claude Starter Kit
 
-**Claude Code için agentik çalışma kiti** — bir projeyi, hangi aşamada olursa olsun, aynı mühendislik disipliniyle ilerleten yeniden kullanılabilir bir iskelet.
+**Claude Code için agentic çalışma kiti** — bir projeyi, hangi aşamada olursa olsun aynı mühendislik disipliniyle ilerleten, yeniden kullanılabilir bir iskelet.
 
-*planla → üret → denetle → commit'le; her kritik kural bir **hatırlatma değil, kapı**.*
+*planla → üret → denetle → commit; her kritik kural bir hatırlatma değil, bir **kapı**.*
 
 ![Sürüm](https://img.shields.io/badge/s%C3%BCr%C3%BCm-1.0.6-2563eb?style=flat-square)
 ![Lisans](https://img.shields.io/badge/lisans-MIT-16a34a?style=flat-square)
 ![Ajanlar](https://img.shields.io/badge/ajanlar-11-f59e0b?style=flat-square)
 ![Skiller](https://img.shields.io/badge/skiller-27-f59e0b?style=flat-square)
-![Claude Code](https://img.shields.io/badge/Claude_Code-agentik_kit-8b5cf6?style=flat-square)
+![Claude Code](https://img.shields.io/badge/Claude_Code-agentic_kit-8b5cf6?style=flat-square)
 
 [🇬🇧 English](README.md) · 🇹🇷 Türkçe
 
@@ -20,20 +20,20 @@
 
 ## Neden bu kit?
 
-Çoğu "agent kurulumu" bir öneriler yığınıdır — kurallar bir dosyada durur, uyulup uyulmaması modele kalır. Bu kit farklı: Claude Code'a **disiplinli bir mühendislik ekibi** yerleştirir; burada **önemli kurallar hatırlatma değil, kapıdır** — ajana kuralları söylemekle kalmaz, kritik olanları çiğnemeyi imkânsız kılar ve zaten sahip olduğun repo'ya güvenle kurulur.
+Çoğu "agent kurulumu" aslında bir öneri yığınıdır — kurallar bir dosyada durur, uyulup uyulmayacağı modele kalır. Bu kit farklı çalışır: Claude Code'un içine **disiplinli bir mühendislik ekibi** yerleştirir ve burada **önemli kurallar hatırlatma değil, kapıdır** — ajana kuralları söylemekle yetinmez, kritik olanları çiğnemeyi baştan imkânsız kılar; üstelik zaten elindeki repo'ya güvenle kurulur.
 
 | | |
 |---|---|
-| 👥 | **Bir prompt değil, bir ekip** — 11 uzman ajan planla → üret → denetle → gönder boyunca kendiliğinden zincirlenir; sen bağlamazsın, ana thread yapar. |
-| 🛡️ | **Güvenlik & gizlilik seçenek değil, kapı** — risk-kritik değişiklikler kapanmadan önce güvenlik/gizlilik denetiminden geçmek zorundadır. |
-| 🚦 | **Her commit senin onayınla** — `commit`/`push` senin açık onayın olmadan çalışmaz; otomatik/bypass modda bile araç seviyesinde zorlanır. |
-| 🌿 | **Mevcut repoda güvenli** — `adopt` kiti bir dala devreder; `main`'e asla dokunulmaz, saklamadan önce incelersin. |
+| 👥 | **Bir prompt değil, bir ekip** — 11 uzman ajan, planla → üret → denetle → gönder hattı boyunca kendiliğinden zincirlenir; onları sen bağlamazsın, ana thread halleder. |
+| 🛡️ | **Güvenlik ve gizlilik bir seçenek değil, kapıdır** — risk taşıyan değişiklikler kapanmadan önce güvenlik/gizlilik denetiminden geçmek zorundadır. |
+| 🚦 | **Her commit senin onayından geçer** — `commit`/`push`, sen açıkça onaylamadan çalışmaz; otomatik/bypass modda bile bu, araç seviyesinde zorunlu tutulur. |
+| 🌿 | **Mevcut repo'da güvenli** — `adopt`, kiti ayrı bir dala devreder; `main`'e asla dokunulmaz, sen inceleyip onaylamadan hiçbir şey kalıcı olmaz. |
 
 ---
 
 ## 🧠 Ajanlar — kitin kalbi
 
-**11 ajan**; her biri bir **ince tetikleyici** — yalnızca *kim* ve *ne zaman*'ı söyler, *nasıl*'ı bir skill'e bırakır. Ana thread onları **beş aşamada** seçip zincirler ve commit'ten önce kaliteyi kademe kademe yükseltir:
+**11 ajan** var; her biri bir **ince tetikleyici** — yalnızca *kim* ve *ne zaman* sorusunu yanıtlar, *nasıl* kısmını bir skill'e devreder. Ana thread onları **beş aşamada** seçip zincirler ve commit'ten önce kaliteyi kademe kademe yükseltir:
 
 <div align="center">
   <img src="assets/orchestration-tr.svg" alt="Bes asamada ajan orkestrasyonu" width="740">
@@ -44,33 +44,33 @@
 
 | Ajan | Aşama | Ne zaman devreye girer | Model |
 |:--|:--|:--|:--:|
-| **planner-csk** | 🧭 Anla | kapsam belirsizse | `inherit` |
+| **planner-csk** | 🧭 Anla | kapsam belirsiz olduğunda | `inherit` |
 | **backend-expert-csk** | 🔨 Üret | sunucu / API / iş mantığı | `inherit` |
 | **database-expert-csk** | 🔨 Üret | şema, migration, index, cache | `inherit` |
-| **frontend-expert-csk** | 🔨 Üret | UI, bileşen, istemci işi | `inherit` |
-| **devops-expert-csk** | 🔨 Üret | dağıtım, CI hattı, olay | `inherit` |
-| **security-expert-csk** | 🔍 Denetle | auth / IDOR / injection / secret · **güvenlik-kritikse zorunlu** | `sonnet` |
+| **frontend-expert-csk** | 🔨 Üret | UI, bileşen, istemci tarafı işi | `inherit` |
+| **devops-expert-csk** | 🔨 Üret | dağıtım, CI hattı, olay müdahalesi | `inherit` |
+| **security-expert-csk** | 🔍 Denetle | auth / IDOR / injection / secret · **güvenlik açısından kritikse zorunlu** | `sonnet` |
 | **privacy-agent-csk** | 🔍 Denetle | kişisel veri (KVKK / GDPR) | `sonnet` |
 | **test-expert-csk** | 🔍 Denetle | test, kapsam, regresyon | `inherit` |
-| **review-agent-csk** | ✅ Kapat | commit öncesi kod-sağlığı denetimi | `haiku` |
+| **review-agent-csk** | ✅ Kapat | commit öncesi kod sağlığı denetimi | `haiku` |
 | **commit-agent-csk** | ✅ Kapat | commit'i önerir, onay bekler | `haiku` |
-| **session-manager-csk** | 🤝 Devret | bağlam dolunca / faz sınırında | `haiku` |
+| **session-manager-csk** | 🤝 Devret | bağlam dolduğunda / faz sınırında | `haiku` |
 
-> Ajan adları `-csk` ekiyle isimlenir (Claude Starter Kit); böylece kurulduğu projenin kendi ajanlarıyla asla çakışmaz. Her ajan incedir; asıl yöntem bir **skill**'de yaşar — tek bilgi kaynağı.
+> Ajan adları `-csk` ekiyle (Claude Starter Kit) biter; böylece kurulduğu projenin kendi ajanlarıyla asla çakışmaz. Her ajan incedir; asıl yöntem bir **skill**'de yaşar — tek bilgi kaynağı orasıdır.
 
 ---
 
 ## Üç ilke
 
-1. **Ajan = ince tetikleyici.** Bir ajan yalnızca "kim, ne zaman"ı söyler; kısa kalır ve işin nasılını skill'e bırakır.
+1. **Ajan = ince tetikleyici.** Bir ajan yalnızca "kim, ne zaman" der; kısa kalır ve işin nasıl yapılacağını skill'e bırakır.
 2. **Skill = tek bilgi kaynağı.** Asıl yöntem ve kural skill'de yaşar; ajana kopyalanmaz.
-3. **Kural → kapı.** Önemli olan kural araç seviyesinde zorlanır (hook · permission · eval). Modelin onu anımsaması beklenmez.
+3. **Kural → kapı.** Önemli olan kural araç seviyesinde zorunlu kılınır (hook · permission · eval). Modelin bunu aklında tutması beklenmez.
 
 ---
 
-## Kurulum & çalıştırma
+## Kurulum ve çalıştırma
 
-**İki giriş noktası** var: `start.sh` **sıfırdan** projeyi kurar; **`adopt`** (`adopt.sh`) kiti **mevcut** projeye devreder. Hangi kanalı seçersen seç — her biri aynı iki komutu çalıştırır.
+**İki giriş noktası var:** `start.sh` **sıfırdan** bir projeyi kurar; **`adopt`** (`adopt.sh`) ise kiti **mevcut** bir projeye devreder. Hangi kanalı seçersen seç, hepsi aynı iki komutu çalıştırır.
 
 **npx** — kurulum gerektirmez:
 ```bash
@@ -85,14 +85,14 @@ claude-starter-kit          # sıfırdan proje
 claude-starter-kit adopt    # mevcut proje
 ```
 
-**Release tarball** — paket yöneticisi yok:
+**Release tarball** — paket yöneticisi olmadan:
 ```bash
 gh release download --repo byerlikaya/claude-starter-kit -p '*.tgz' && tar xzf claude-starter-kit-*.tgz
 bash start.sh               # sıfırdan proje
 bash adopt.sh              # mevcut proje
 ```
 
-> Sadece ajan & skill'leri mevcut Claude Code'una istiyorsan (scaffold yok)? `/plugin marketplace add byerlikaya/claude-starter-kit` sonra `/plugin install claude-starter-kit@byerlikaya`.
+> Sadece ajan ve skill'leri mevcut Claude Code'una eklemek mi istiyorsun (iskele kurmadan)? `/plugin marketplace add byerlikaya/claude-starter-kit` ardından `/plugin install claude-starter-kit@byerlikaya`.
 
 ### 🌱 Sıfırdan proje — `start.sh`
 
@@ -100,7 +100,7 @@ bash adopt.sh              # mevcut proje
 bash start.sh [--backend|--frontend|--mobile|--fullstack] [--dotnet|--generic] [-h]
 ```
 
-Bir kurulum sihirbazı. Bayrak vermezseniz adımları tek tek sorar (profil → backend yığını → özet ve onay); bayraklar sessiz/CI kullanımı içindir ve `-h` / `--help` kullanımı basar. Her seçenek ne kuracağını **kurmadan önce** gösterir.
+Bir kurulum sihirbazıdır. Bayrak vermezsen her adımı tek tek sorar (profil → backend yığını → özet ve onay); bayraklar sessiz/CI kullanımı içindir, `-h` / `--help` ise kullanım bilgisini basar. Her seçenek, ne kuracağını **kurmadan önce** gösterir.
 
 | Profil | Uzman ajanlar | Öne çıkan skiller |
 |---|---|---|
@@ -109,11 +109,11 @@ Bir kurulum sihirbazı. Bayrak vermezseniz adımları tek tek sorar (profil → 
 | `--mobile` | frontend (+ React Native/Expo katmanı) | frontend-rn-expo · a11y |
 | `--fullstack` | hepsi | tüm skiller |
 
-Backend yığını yalnız `--backend`/`--fullstack` için sorulur: **`--dotnet`** .NET / DevArchitecture kalıbını (MediatR CQRS · IResult · AOP) bir onay kapısıyla getirir; **`--generic`** ise Node, Go, Python ve benzeri için yığın-bağımsız bir backend uzmanı kurar.
+Backend yığını yalnızca `--backend`/`--fullstack` için sorulur: **`--dotnet`**, .NET / DevArchitecture kalıbını (MediatR CQRS · IResult · AOP) bir onay kapısının ardından getirir; **`--generic`** ise Node, Go, Python ve benzeri için yığından bağımsız bir backend uzmanı kurar.
 
-> **.NET'te kanıtlanmışla başla, sıfırdan değil.** `--dotnet`, üretim-hazır **[DevArchitecture](https://github.com/DevArchitecture/DevArchitecture)** temelini (CQRS · IResult · AOP · auth) klonlar *ve* onu bilen ajanları kurar — böylece **ajanın standart mimariyi yeniden üretirken yakacağı token'ları harcamazsın**; token'lar boilerplate'e değil iş mantığına gider. Bilerek opinionated; `--generic` yığın-bağımsız kalır.
+> **.NET'te sıfırdan değil, kanıtlanmışla başla.** `--dotnet`, üretime hazır **[DevArchitecture](https://github.com/DevArchitecture/DevArchitecture)** temelini (CQRS · IResult · AOP · auth) klonlar *ve* bu temeli zaten bilen ajanları kurar — böylece **bir ajanın standart bir mimariyi yeniden üretirken yakacağı token'ları boşa harcamazsın**; o token'lar boilerplate'e değil, senin iş mantığına gider. Bilinçli olarak opinionated; `--generic` ise yığından bağımsız kalır.
 
-> **`--fullstack` + `--dotnet`** seçilince DevArchitecture backend `./backend`'e konur, `./frontend` frontend'in için ayrılır ve çözüm dosyası proje adına yeniden adlandırılır — kök, çıplak bir backend gibi görünmek yerine tertemiz kalır.
+> **`--fullstack` + `--dotnet`** seçildiğinde DevArchitecture backend'i `./backend` altına konur, `./frontend` senin frontend'ine ayrılır ve çözüm dosyası projenin adıyla yeniden adlandırılır — böylece proje kökü, çıplak bir backend gibi görünmek yerine tertemiz kalır.
 
 ### 🔄 Mevcut projeye devir — `adopt.sh`
 
@@ -121,29 +121,29 @@ Backend yığını yalnız `--backend`/`--fullstack` için sorulur: **`--dotnet`
 bash adopt.sh          # hedef projenin kökünde
 ```
 
-Kiti, zaten ilerleyen bir projeye **bir ekibin projeyi başka bir ekibe devretmesi** gibi uygular — proje bozulmaz, alınmış kararlar kaybolmaz, kit de pasif kalmaz.
+Kiti, hâlihazırda ilerleyen bir projeye, tıpkı **bir ekibin projeyi başka bir ekibe devretmesi** gibi uygular — proje bozulmaz, verilmiş kararlar kaybolmaz, kit de kenarda pasif durmaz.
 
 <div align="center">
   <img src="assets/handover-tr.svg" alt="adopt.sh devir akisi" width="900">
 </div>
 
-Tüm değişiklik ayrı bir git dalına **staged (commit'siz)** düşer — böylece eklenen/değişen her dosya editörünün Source Control / Changes panelinde görünür; oradan inceler, sonra `git commit` ile kabul (ya da reset ile iptal) edersiniz. `main` el değmez. Kit ajanları yan yana kurulur (çakışmadan), disiplin tek `@import` ile bağlanır, `settings.json` şema-farkında birleştirilir ve mevcut husky/lefthook zincirleri kitle bir köprü üzerinden birlikte çalışır. Kapanışta kalıcı bir `docs/HANDOVER.md` ve bir ADR bırakır — kararlar sohbette değil, versiyon kontrolünde yaşar.
+Tüm değişiklikler ayrı bir git dalına **staged olarak (commit'lenmeden)** düşer — yani eklenen ve değişen her dosya, editörünün Source Control / Changes panelinde görünür; oradan inceler, sonra `git commit` ile kabul edersin (ya da reset ile geri alırsın). `main` el değmeden kalır. Kit ajanları yan yana, hiç çakışmadan kurulur; disiplin tek bir `@import` ile bağlanır; `settings.json` şema farkındalığıyla birleştirilir; mevcut husky/lefthook zincirleri de bir shim üzerinden kitle birlikte çalışmaya devam eder. İşin sonunda kalıcı bir `docs/HANDOVER.md` ve bir ADR bırakır — böylece kararlar bir sohbette değil, versiyon kontrolünde yaşar.
 
 ---
 
-## İçindekiler
+## İçinde ne var?
 
-- **11 ajan** — yukarıdaki tabloya bakın.
-- **27 skill** — "nasıl"ın tek kaynağı: kod gözden geçirme, güvenlik taraması, migration, dağıtım, gözlemlenebilirlik, performans, erişilebilirlik, çeviri bütünlüğü, sürümleme, olay müdahalesi ve daha fazlası.
+- **11 ajan** — yukarıdaki tabloya bak.
+- **27 skill** — "nasıl" sorusunun tek kaynağı: kod inceleme, güvenlik taraması, migration, dağıtım, gözlemlenebilirlik, performans, erişilebilirlik, çeviri bütünlüğü, sürümleme, olay müdahalesi ve daha fazlası.
 - **5 slash komut** — `/plan` · `/review` · `/ship` · `/handoff` · `/simplify`.
 - **Hook'lar** — `guard-bash.sh` (araç seviyesi kapı), `pre-commit` + `commit-msg` (iz + secret taraması), `context-usage.sh` ve `session-guard.sh` (oturum ölçümü).
 - **CLAUDE.md** — davranış, üç ilke, iş akışı, tamamlanma tanımı (DoD), token disiplini ve yasaklar.
 
 ---
 
-## Oturum & token yönetimi
+## Oturum ve token yönetimi
 
-Bir asistan `/context` komutunu kendisi çalıştıramaz; bu yüzden çoğu kurulum oturum doluluğunu **tahmin eder**. Bu kit ölçer. `context-usage.sh`, transcript'teki son turun API kullanımından gerçek token sayısını okur — `/context`'in gösterdiği değerin aynısı. `UserPromptSubmit` hook'u bunu her tur enjekte eder; `Stop` hook'u (`session-guard.sh`) doluluk **%75'i aştığında** devir önerisini yüzeye çıkarır. Oturum-sağlığı satırı bir ölçüme dayanır, tahmine değil.
+Bir asistan `/context` komutunu kendisi çalıştıramaz; bu yüzden çoğu kurulum oturum doluluğunu **tahmin eder**. Bu kit ise ölçer. `context-usage.sh`, transcript'teki son turun API kullanımından gerçek token sayısını okur — `/context`'in gösterdiği değerin tam olarak aynısını. `UserPromptSubmit` hook'u bu değeri her tur enjekte eder; `Stop` hook'u (`session-guard.sh`) ise doluluk **%75'i aştığında** devir önerisini yüzeye çıkarmaya zorlar. Oturum sağlığı satırı bir tahmine değil, bir ölçüme dayanır.
 
 ---
 
@@ -151,14 +151,14 @@ Bir asistan `/context` komutunu kendisi çalıştıramaz; bu yüzden çoğu kuru
 
 | Kural | Zorlayan mekanizma |
 |---|---|
-| Commit/push yalnız onayla — otomatik/bypass modda bile | `guard-bash.sh` (PreToolUse); `CLAUDE_GIT_OK` ile açılır |
-| Destrüktif işlem (reset --hard · force push · rm -rf · --no-verify) | `guard-bash.sh` (araç seviyesinde blok) |
-| Commit'te yapay-zeka izi / dış vendor adı yok | `pre-commit` + `commit-msg` git hook (iz-denetimi) |
+| Commit/push yalnızca onayla — otomatik/bypass modda bile | `guard-bash.sh` (PreToolUse); `CLAUDE_GIT_OK` ile açılır |
+| Yıkıcı işlem (reset --hard · force push · rm -rf · --no-verify) | `guard-bash.sh` (araç seviyesinde bloklanır) |
+| Commit'te yapay zekâ izi ya da dış vendor adı bulunmaz | `pre-commit` + `commit-msg` git hook (iz taraması) |
 | Commit'e API key / token / private key girmez | `pre-commit` secret taraması (`secret-blocklist.txt` + `.secret-allowlist.txt`) |
 | Oturum eşiği | `context-usage.sh` + `session-guard.sh` (Stop hook) |
-| Kalite kapısı (SonarQube kullanan projeler — dil-bağımsız) | `sonarqube-check` + `/ship` |
+| Kalite kapısı (SonarQube kullanan projeler — dilden bağımsız) | `sonarqube-check` + `/ship` |
 
-Kapılar `settings.json` ve git `core.hooksPath` üzerinden silahlanır; `smoke-test.sh` her değişiklikten sonra hazır olduklarını doğrular.
+Kapılar `settings.json` ve git `core.hooksPath` üzerinden devreye alınır; `smoke-test.sh` her değişiklikten sonra hazır olduklarını doğrular.
 
 ---
 
@@ -166,21 +166,21 @@ Kapılar `settings.json` ve git `core.hooksPath` üzerinden silahlanır; `smoke-
 
 ```bash
 bash .claude/eval/smoke-test.sh      # yapı, frontmatter, kapı bütünlüğü
-bash .claude/eval/routing-eval.sh    # örnek prompt doğru ajan/skill'e mi gidiyor
+bash .claude/eval/routing-eval.sh    # örnek bir prompt doğru ajana/skill'e gidiyor mu
 ```
 
 ## İş akışı
 
-`/plan` (belirsiz kapsam) → uzman ajanlar üretir → `/review` (güvenlik · kalite · test) → `/ship` (DoD kapısı; commit'i önerir, onay bekler) → bağlam dolunca `/handoff` → `/clear`.
+`/plan` (belirsiz kapsam) → uzman ajanlar üretir → `/review` (güvenlik · kalite · test) → `/ship` (DoD kapısı; commit'i önerir, onay bekler) → bağlam dolduğunda `/handoff` → `/clear`.
 
 ## Genişletme
 
-Yeni bir ajan veya skill eklerken `AGENT_TEMPLATE.md` sözleşmesini izleyin: frontmatter (name · description + Trigger phrases · en-az-yetki tools · model kademesi) ve gövde (Ne zaman → Uzmanlık duruşu → Nasıl/skill → Koordinasyon → DoD → Çıktı & bağlam → Hata/eskalasyon → Örnek → Kısıtlar).
+Yeni bir ajan ya da skill eklerken `AGENT_TEMPLATE.md` sözleşmesini izle: frontmatter (name · description + Trigger phrases · en az yetki ilkesiyle tools · model kademesi) ve gövde (Ne zaman → Uzmanlık duruşu → Nasıl/skill → Koordinasyon → DoD → Çıktı ve bağlam → Hata/eskalasyon → Örnek → Kısıtlar).
 
-## Lisans & atıf
+## Lisans ve atıf
 
-MIT — bkz. [LICENSE](LICENSE). Disiplin katmanı şu üst kaynaklara dayanır:
+MIT — bkz. [LICENSE](LICENSE). Disiplin katmanı şu üst kaynakların üzerine kurulur:
 
-- **[DevArchitecture](https://github.com/DevArchitecture/DevArchitecture)** — backend kalıbı (MediatR CQRS / IResult / AOP). Yalnız kalıp referans alınır; burada DevArchitecture kaynak kodu barındırılmaz.
+- **[DevArchitecture](https://github.com/DevArchitecture/DevArchitecture)** — backend kalıbı (MediatR CQRS / IResult / AOP); yalnızca kalıp olarak referans alınır.
 - **[multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills)** — disiplinin çekirdeğindeki dört çalışma ilkesi.
-- **[google/eng-practices](https://github.com/google/eng-practices)** — `code-review` skill'i, damıtılıp yeniden ifade edildi. **CC-BY 3.0** lisanslı; atıf zorunludur.
+- **[google/eng-practices](https://github.com/google/eng-practices)** — `code-review` skill'i, damıtılıp yeniden ifade edildi (CC-BY 3.0).
