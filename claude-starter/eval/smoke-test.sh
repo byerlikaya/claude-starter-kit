@@ -55,9 +55,17 @@ if grep -rlq "to be filled\|generated from source" "$SKILLS" 2>/dev/null; then
   fail "stub marker still present"; else pass "no stub"
 fi
 
-echo "== 5) Trace scanner ready? =="
+echo "== 5) Trace + secret scanner ready? =="
 [ -x "$HOOKS/pre-commit" ] && pass "pre-commit hook +x" || fail "pre-commit missing/not executable"
-[ -f "$HOOKS/trace-blocklist.txt" ] && pass "blocklist present" || fail "trace-blocklist.txt missing"
+[ -f "$HOOKS/trace-blocklist.txt" ] && pass "trace-blocklist present" || fail "trace-blocklist.txt missing"
+[ -f "$HOOKS/secret-blocklist.txt" ] && pass "secret-blocklist present" || fail "secret-blocklist.txt missing"
+# secret scan (behavioral): a staged fake AWS key MUST be blocked by pre-commit (key split in source so THIS file is clean)
+SDIR="$(mktemp -d)"
+( cd "$SDIR" && git init -q && git config user.email x@x.x && git config user.name x \
+  && cp "$HOOKS/pre-commit" "$HOOKS/trace-blocklist.txt" "$HOOKS/secret-blocklist.txt" . \
+  && printf 'aws_key = AKIA%s\n' 'IOSFODNN7EXAMPLE' > leak.txt && git add leak.txt ) >/dev/null 2>&1
+if ( cd "$SDIR" && bash pre-commit ) >/dev/null 2>&1; then fail "secret scan LET a staged key through"; else pass "secret scan BLOCKED a staged AWS key"; fi
+rm -rf "$SDIR"
 
 
 echo "== 6) Context-usage threshold logic (fixture) + hook integrity =="

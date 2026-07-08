@@ -1,36 +1,52 @@
 #!/usr/bin/env bash
-# §4.1/§4.2 trace scanner (pre-commit): catches AI-authorship traces / vendor names in staged ADDED lines.
+# Pre-commit gate on staged ADDED lines:
+#  (1) §4.1/§4.2 trace scanner — AI-authorship traces / vendor names (trace-blocklist.txt)
+#  (2) secret scanner        — API keys / tokens / private keys       (secret-blocklist.txt)
 # Skipping requires an explicit request per §4.5 (git commit --no-verify).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 BL="$HERE/trace-blocklist.txt"
-[ -f "$BL" ] || exit 0
+SL="$HERE/secret-blocklist.txt"
 
-# Repo-root exception list (optional): a blocklist pattern appearing here as a FULL line is SKIPPED.
-# This file is NOT part of the payload; it is specific to its own repo (so the kit may name itself).
-AL=""
+# Repo-root exception lists (optional): a pattern appearing here as a FULL line is SKIPPED.
+# These files are NOT part of the payload; they are specific to their own repo.
 GITROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
-[ -n "$GITROOT" ] && [ -f "$GITROOT/.trace-allowlist.txt" ] && AL="$GITROOT/.trace-allowlist.txt"
+AL="";  [ -n "$GITROOT" ] && [ -f "$GITROOT/.trace-allowlist.txt" ]  && AL="$GITROOT/.trace-allowlist.txt"
+SAL=""; [ -n "$GITROOT" ] && [ -f "$GITROOT/.secret-allowlist.txt" ] && SAL="$GITROOT/.secret-allowlist.txt"
 
-# Only added content lines (start with +, excluding the +++ file header).
-# Exclude the kit's OWN blocklist file — it definitionally contains every pattern, so scanning it is circular
-# (this lets a shared/tracked .claude be committed without the scanner tripping over its own pattern list).
-ADDED="$(git diff --cached --unified=0 -- . ':(top,exclude).claude/hooks/trace-blocklist.txt' | grep -E '^\+' | grep -Ev '^\+\+\+' || true)"
+# Only added content lines (start with +, excluding the +++ file header). Exclude the kit's OWN blocklist files —
+# they definitionally contain the patterns, so scanning them would be circular.
+ADDED="$(git diff --cached --unified=0 -- . ':(top,exclude).claude/hooks/trace-blocklist.txt' ':(top,exclude).claude/hooks/secret-blocklist.txt' | grep -E '^\+' | grep -Ev '^\+\+\+' || true)"
 [ -z "$ADDED" ] && exit 0
 
 HIT=0
-while IFS= read -r pat || [ -n "$pat" ]; do
-  case "$pat" in ''|\#*) continue;; esac
-  if [ -n "$AL" ] && grep -qxF -- "$pat" "$AL"; then continue; fi
-  if printf '%s\n' "$ADDED" | grep -iqE -- "$pat"; then
-    echo "TRACE-SCANNER: forbidden expression in added code -> '$pat' (§4.1/§4.2)"
-    HIT=1
-  fi
-done < "$BL"
+# (1) trace scan — case-INsensitive (vendor / AI-authorship strings)
+if [ -f "$BL" ]; then
+  while IFS= read -r pat || [ -n "$pat" ]; do
+    case "$pat" in ''|\#*) continue;; esac
+    if [ -n "$AL" ] && grep -qxF -- "$pat" "$AL"; then continue; fi
+    if printf '%s\n' "$ADDED" | grep -iqE -- "$pat"; then
+      echo "TRACE-SCANNER: forbidden expression in added code -> '$pat' (§4.1/§4.2)"
+      HIT=1
+    fi
+  done < "$BL"
+fi
+# (2) secret scan — case-SENSITIVE (token prefixes are case-specific); prints the PATTERN, never the value
+if [ -f "$SL" ]; then
+  while IFS= read -r pat || [ -n "$pat" ]; do
+    case "$pat" in ''|\#*) continue;; esac
+    if [ -n "$SAL" ] && grep -qxF -- "$pat" "$SAL"; then continue; fi
+    if printf '%s\n' "$ADDED" | grep -qE -- "$pat"; then
+      echo "SECRET-SCANNER: a staged line matches a secret pattern -> /$pat/"
+      HIT=1
+    fi
+  done < "$SL"
+fi
 
 if [ "$HIT" -ne 0 ]; then
   echo "-----------------------------------------------------------"
-  echo "Commit stopped. Remove the expression (no AI-authorship trace / vendor name)."
+  echo "Commit stopped. Remove the AI-authorship trace / vendor name / secret from the staged changes."
+  echo "False positive? add the EXACT pattern line to .trace-allowlist.txt or .secret-allowlist.txt at the repo root."
   echo "Deliberate exception: 'git commit --no-verify' — only on an EXPLICIT request (§4.5)."
   exit 1
 fi

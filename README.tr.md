@@ -6,7 +6,7 @@
 
 *planla → üret → denetle → commit'le; her kritik kural bir **hatırlatma değil, kapı**.*
 
-![Sürüm](https://img.shields.io/badge/s%C3%BCr%C3%BCm-1.0.5-2563eb?style=flat-square)
+![Sürüm](https://img.shields.io/badge/s%C3%BCr%C3%BCm-1.0.6-2563eb?style=flat-square)
 ![Lisans](https://img.shields.io/badge/lisans-MIT-16a34a?style=flat-square)
 ![Ajanlar](https://img.shields.io/badge/ajanlar-11-f59e0b?style=flat-square)
 ![Skiller](https://img.shields.io/badge/skiller-27-f59e0b?style=flat-square)
@@ -134,7 +134,7 @@ Tüm değişiklik ayrı bir git dalına **staged (commit'siz)** düşer — böy
 - **11 ajan** — yukarıdaki tabloya bakın.
 - **27 skill** — "nasıl"ın tek kaynağı: kod gözden geçirme, güvenlik taraması, migration, dağıtım, gözlemlenebilirlik, performans, erişilebilirlik, çeviri bütünlüğü, sürümleme, olay müdahalesi ve daha fazlası.
 - **5 slash komut** — `/plan` · `/review` · `/ship` · `/handoff` · `/simplify`.
-- **Hook'lar** — `guard-bash.sh` (araç seviyesi kapı), `pre-commit` + `commit-msg` (iz-denetimi), `context-usage.sh` ve `session-guard.sh` (oturum ölçümü).
+- **Hook'lar** — `guard-bash.sh` (araç seviyesi kapı), `pre-commit` + `commit-msg` (iz + secret taraması), `context-usage.sh` ve `session-guard.sh` (oturum ölçümü).
 - **CLAUDE.md** — davranış, üç ilke, iş akışı, tamamlanma tanımı (DoD), token disiplini ve yasaklar.
 
 ---
@@ -152,6 +152,7 @@ Bir asistan `/context` komutunu kendisi çalıştıramaz; bu yüzden çoğu kuru
 | Commit/push yalnız onayla — otomatik/bypass modda bile | `guard-bash.sh` (PreToolUse); `CLAUDE_GIT_OK` ile açılır |
 | Destrüktif işlem (reset --hard · force push · rm -rf · --no-verify) | `guard-bash.sh` (araç seviyesinde blok) |
 | Commit'te yapay-zeka izi / dış vendor adı yok | `pre-commit` + `commit-msg` git hook (iz-denetimi) |
+| Commit'e API key / token / private key girmez | `pre-commit` secret taraması (`secret-blocklist.txt` + `.secret-allowlist.txt`) |
 | Oturum eşiği | `context-usage.sh` + `session-guard.sh` (Stop hook) |
 | Kalite kapısı (SonarQube kullanan projeler — dil-bağımsız) | `sonarqube-check` + `/ship` |
 

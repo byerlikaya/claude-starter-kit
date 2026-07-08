@@ -6,7 +6,7 @@
 
 *plan → build → review → commit, where every critical rule is a **gate**, not a reminder.*
 
-![Version](https://img.shields.io/badge/version-1.0.5-2563eb?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.0.6-2563eb?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)
 ![Agents](https://img.shields.io/badge/agents-11-f59e0b?style=flat-square)
 ![Skills](https://img.shields.io/badge/skills-27-f59e0b?style=flat-square)
@@ -134,7 +134,7 @@ All changes land on a separate git branch **staged, not committed** — so every
 - **11 agents** — see the table above.
 - **27 skills** — the single source of "how": code review, security scan, migration, deployment, observability, performance, accessibility, translation integrity, versioning, incident response, and more.
 - **5 slash commands** — `/plan` · `/review` · `/ship` · `/handoff` · `/simplify`.
-- **Hooks** — `guard-bash.sh` (tool-level gate), `pre-commit` + `commit-msg` (trace scan), `context-usage.sh` and `session-guard.sh` (session measurement).
+- **Hooks** — `guard-bash.sh` (tool-level gate), `pre-commit` + `commit-msg` (trace + secret scan), `context-usage.sh` and `session-guard.sh` (session measurement).
 - **CLAUDE.md** — behavior, the three principles, workflow, Definition of Done, token discipline, and prohibitions.
 
 ---
@@ -152,6 +152,7 @@ An assistant cannot run `/context` itself, so most setups **guess** the session 
 | Commit/push only with approval — even in auto/bypass mode | `guard-bash.sh` (PreToolUse); opened with `CLAUDE_GIT_OK` |
 | Destructive op (reset --hard · force push · rm -rf · --no-verify) | `guard-bash.sh` (blocked at the tool level) |
 | No AI-authorship trace or external vendor name in a commit | `pre-commit` + `commit-msg` git hook (trace scan) |
+| No API key / token / private key committed | `pre-commit` secret scan (`secret-blocklist.txt` + `.secret-allowlist.txt`) |
 | Session threshold | `context-usage.sh` + `session-guard.sh` (Stop hook) |
 | Quality gate (SonarQube projects — language-agnostic) | `sonarqube-check` + `/ship` |
 

@@ -3,6 +3,14 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [1.0.6] - 2026-07-08
+
+### Added
+- **Secret-scan gate:** `pre-commit` now also blocks staged **API keys / tokens / private keys** (AWS, GitHub,
+  Google, Slack, Stripe, OpenAI/Anthropic, npm, SendGrid, JWT, and PEM private keys) — the same
+  diff → pattern → block machinery as the trace scanner, with a repo-root `.secret-allowlist.txt` for exceptions
+  and a smoke-test proof that a staged key is blocked. Prints the matched pattern, never the secret value.
+
 ## [1.0.5] - 2026-07-08
 
 ### Changed
@@ -106,6 +114,7 @@ First stable release. A Turkish, opinionated-but-backend-optional agent/skill sc
 - The discipline layer and the frontend are stack-agnostic; the backend is opinionated (.NET/DevArchitecture) or generic.
 - Language is Turkish. No AI trace / third-party template name leaks into the artifacts (§4).
 
+[1.0.6]: https://github.com/byerlikaya/claude-starter-kit/releases/tag/v1.0.6
 [1.0.5]: https://github.com/byerlikaya/claude-starter-kit/releases/tag/v1.0.5
 [1.0.4]: https://github.com/byerlikaya/claude-starter-kit/releases/tag/v1.0.4
 [1.0.3]: https://github.com/byerlikaya/claude-starter-kit/releases/tag/v1.0.3
