@@ -47,11 +47,27 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TGZ="dist/claude-starter-kit-${{ steps.v.outputs.version }}.tgz"
+          V="${{ steps.v.outputs.version }}"
+          TGZ="dist/claude-starter-kit-${V}.tgz"
+          {
+            echo "## Install"
+            echo
+            echo "- **npx** — \`npx @byerlikaya/claude-starter-kit\` (fresh) · \`npx @byerlikaya/claude-starter-kit adopt\` (existing)"
+            echo "- **Homebrew** — \`brew install byerlikaya/tap/claude-starter-kit\`"
+            echo "- **Claude Code plugin** — \`/plugin marketplace add byerlikaya/claude-starter-kit\` -> \`/plugin install claude-starter-kit@byerlikaya\`"
+            echo "- **Tarball** — download below, then \`bash start.sh\` (fresh) or \`bash update.sh\` (existing)"
+            echo
+            echo "## What's new"
+            echo
+            awk -v v="$V" '$0 ~ "^## \\[" v "\\]" {f=1; next} /^## \[/{f=0} f' CHANGELOG.md
+            echo
+            echo "Full changelog: [CHANGELOG.md](https://github.com/byerlikaya/claude-starter-kit/blob/main/CHANGELOG.md)"
+          } > release-notes.md
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" --notes-file release-notes.md
             gh release upload "$GITHUB_REF_NAME" "$TGZ" --clobber
           else
-            gh release create "$GITHUB_REF_NAME" "$TGZ" --title "$GITHUB_REF_NAME" --generate-notes
+            gh release create "$GITHUB_REF_NAME" "$TGZ" --title "$GITHUB_REF_NAME" --notes-file release-notes.md
           fi
 
       - uses: actions/setup-node@v4
