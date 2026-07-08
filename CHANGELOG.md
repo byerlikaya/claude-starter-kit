@@ -3,7 +3,7 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [1.0.1] - 2026-07-08
 
 ### Added
 - **`devops-expert` agent (11th)** — ops/devops specialist; owns the `ci-pipeline` · `vps-deploy` · `incident-runbook`
@@ -13,10 +13,18 @@ versioning follows [SemVer](https://semver.org/).
   outward-facing deploy verbs now hit approval at the tool level (not just at the LLM behavior level).
 
 ### Fixed
+- **Confirmation prompt rejected `yes`:** `ask_yes` (`start.sh`/`update.sh`) only accepted `evet/e/y`, so typing
+  `yes` at the English `[yes/no]` prompt cancelled the install. Now accepts `yes/y/evet/e`.
+- **`update.sh` decision keys were Turkish:** the Stage-B override labels and internal keys (koru/gevset/gizle…)
+  are now English (keep/loosen/hide…), with matching input letters.
 - **Auto-rollback conflict:** `vps-deploy` rollback uses an atomic `rsync --delete` instead of `rm -rf`,
   so `guard-bash` (its local `rm -rf` block) no longer blocks automatic rollback (local rm -rf protection remains).
 
 ### Changed
+- **Distribution + English:** the kit was fully translated to English (with a `README.tr.md` mirror) and is now
+  distributed via npm (`@byerlikaya/claude-starter-kit`), Homebrew (`byerlikaya/tap/claude-starter-kit`), and a
+  Claude Code plugin; a tagged release publishes to all three automatically.
+- npm `bin` exposes only `claude-starter-kit` (dropped the `claude-kit` alias) for name consistency.
 - `privacy-agent` and `privacy-compliance`: the official KVKK (kvkk.gov.tr) and GDPR (gdpr-info.eu) sources
   were added as authoritative references; rule interpretation always follows these channels, and the article relied upon is stated in the finding.
 - **Skill ownership clarified:** domain skills were explicitly bound to their owning specialist agents (backend-expert →
@@ -48,4 +56,5 @@ First stable release. A Turkish, opinionated-but-backend-optional agent/skill sc
 - The discipline layer and the frontend are stack-agnostic; the backend is opinionated (.NET/DevArchitecture) or generic.
 - Language is Turkish. No AI trace / third-party template name leaks into the artifacts (§4).
 
+[1.0.1]: https://github.com/byerlikaya/claude-starter-kit/releases/tag/v1.0.1
 [1.0.0]: https://github.com/byerlikaya/claude-starter-kit/releases/tag/v1.0.0

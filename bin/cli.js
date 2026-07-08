@@ -40,7 +40,7 @@ if (probe.error) {
 }
 
 // Stage the bundled payload in a temp dir so the script's self-cleanup is harmless.
-const stage = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-kit-'));
+const stage = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-starter-kit-'));
 try {
   for (const item of [script, 'claude-starter', 'VERSION']) {
     const src = path.join(pkgDir, item);
