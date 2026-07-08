@@ -2,6 +2,12 @@
 
 This kit aligns its discipline layer with the upstream sources below.
 
+## Four working principles (discipline core)
+The four working principles at the top of the discipline — think-then-write · simplicity-first · surgical change ·
+goal-driven — are adapted from `multica-ai/andrej-karpathy-skills`
+(https://github.com/multica-ai/andrej-karpathy-skills). They shape the entire behavior layer, so this is the
+kit's most foundational reference.
+
 ## code-review skill
 Adapted from `google/eng-practices` (https://github.com/google/eng-practices).
 License: **CC-BY 3.0** (https://creativecommons.org/licenses/by/3.0/). The content has been

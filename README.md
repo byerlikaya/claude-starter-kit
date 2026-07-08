@@ -65,21 +65,28 @@ Eleven agents, each a **thin trigger** — it says only *who* and *when*, and de
 
 ---
 
-## Two ways to adopt
+## Install & run
 
-Install via **npx** (nothing to clone), **Homebrew**, or the **release tarball** — then run it in a fresh project (`start.sh`) or an existing one (`update.sh`):
+**Two entry points:** `start.sh` sets up a **fresh** project; **`adopt`** (`update.sh`) hands the kit over to an **existing** one. Pick any channel — each runs the same two commands.
 
+**npx** — nothing to install:
 ```bash
-# npx — nothing to install
-npx @byerlikaya/claude-starter-kit          # fresh project      ·   npx @byerlikaya/claude-starter-kit adopt   # existing
+npx @byerlikaya/claude-starter-kit          # fresh project
+npx @byerlikaya/claude-starter-kit adopt    # existing project
+```
 
-# Homebrew
+**Homebrew:**
+```bash
 brew install byerlikaya/tap/claude-starter-kit
-claude-starter-kit              # fresh project   ·   claude-starter-kit adopt   # existing
+claude-starter-kit          # fresh project
+claude-starter-kit adopt    # existing project
+```
 
-# release tarball — no package manager
+**Release tarball** — no package manager:
+```bash
 gh release download --repo byerlikaya/claude-starter-kit -p '*.tgz' && tar xzf claude-starter-kit-*.tgz
-bash start.sh                   # fresh project      ·   bash update.sh                 # existing
+bash start.sh               # fresh project
+bash update.sh              # existing project
 ```
 
 > Just want the agents & skills inside your existing Claude Code (no scaffolding)? `/plugin marketplace add byerlikaya/claude-starter-kit` then `/plugin install claude-starter-kit@byerlikaya`.
@@ -166,4 +173,8 @@ When you add an agent or skill, follow the `AGENT_TEMPLATE.md` contract: frontma
 
 ## License & attribution
 
-MIT — see [LICENSE](LICENSE). Part of the discipline layer is adapted from upstream sources: the `code-review` skill from `google/eng-practices` (CC-BY 3.0), and the `devarch-module` skill from the DevArchitecture pattern (with the author's explicit permission). Details in [ATTRIBUTION.md](ATTRIBUTION.md).
+MIT — see [LICENSE](LICENSE). The discipline layer builds on the upstream sources below; full details and licenses in **[ATTRIBUTION.md](ATTRIBUTION.md)**:
+
+- **[multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills)** — the four working principles at the core of the discipline
+- **[google/eng-practices](https://github.com/google/eng-practices)** — the `code-review` skill (CC-BY 3.0)
+- **[DevArchitecture](https://github.com/DevArchitecture/DevArchitecture)** — the backend pattern (used with the author's explicit permission)

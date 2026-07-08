@@ -65,21 +65,28 @@ On bir ajan; her biri bir **ince tetikleyici** — yalnızca *kim* ve *ne zaman*
 
 ---
 
-## İki uygulama yolu
+## Kurulum & çalıştırma
 
-**npx** (klonlama yok), **Homebrew** ya da **release tarball** ile kur — sonra sıfırdan projede (`start.sh`) ya da mevcut projede (`update.sh`) çalıştır:
+**İki giriş noktası** var: `start.sh` **sıfırdan** projeyi kurar; **`adopt`** (`update.sh`) kiti **mevcut** projeye devreder. Hangi kanalı seçersen seç — her biri aynı iki komutu çalıştırır.
 
+**npx** — kurulum gerektirmez:
 ```bash
-# npx — kurulum gerektirmez
-npx @byerlikaya/claude-starter-kit          # sıfırdan proje     ·   npx @byerlikaya/claude-starter-kit adopt   # mevcut
+npx @byerlikaya/claude-starter-kit          # sıfırdan proje
+npx @byerlikaya/claude-starter-kit adopt    # mevcut proje
+```
 
-# Homebrew
+**Homebrew:**
+```bash
 brew install byerlikaya/tap/claude-starter-kit
-claude-starter-kit              # sıfırdan proje   ·   claude-starter-kit adopt   # mevcut
+claude-starter-kit          # sıfırdan proje
+claude-starter-kit adopt    # mevcut proje
+```
 
-# release tarball — paket yöneticisi yok
+**Release tarball** — paket yöneticisi yok:
+```bash
 gh release download --repo byerlikaya/claude-starter-kit -p '*.tgz' && tar xzf claude-starter-kit-*.tgz
-bash start.sh                   # sıfırdan proje     ·   bash update.sh                 # mevcut
+bash start.sh               # sıfırdan proje
+bash update.sh              # mevcut proje
 ```
 
 > Sadece ajan & skill'leri mevcut Claude Code'una istiyorsan (scaffold yok)? `/plugin marketplace add byerlikaya/claude-starter-kit` sonra `/plugin install claude-starter-kit@byerlikaya`.
@@ -166,4 +173,8 @@ Yeni bir ajan veya skill eklerken `AGENT_TEMPLATE.md` sözleşmesini izleyin: fr
 
 ## Lisans & atıf
 
-MIT — bkz. [LICENSE](LICENSE). Disiplin katmanının bir kısmı üst kaynaklardan uyarlanmıştır: `code-review` skill'i `google/eng-practices` (CC-BY 3.0) çalışmasından, `devarch-module` skill'i ise DevArchitecture kalıbından (yazarının açık izniyle). Ayrıntılar için [ATTRIBUTION.md](ATTRIBUTION.md).
+MIT — bkz. [LICENSE](LICENSE). Disiplin katmanı aşağıdaki üst kaynaklara dayanır; tüm ayrıntılar ve lisanslar **[ATTRIBUTION.md](ATTRIBUTION.md)**'de:
+
+- **[multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills)** — disiplinin çekirdeğindeki dört çalışma ilkesi
+- **[google/eng-practices](https://github.com/google/eng-practices)** — `code-review` skill'i (CC-BY 3.0)
+- **[DevArchitecture](https://github.com/DevArchitecture/DevArchitecture)** — backend kalıbı (yazarının açık izniyle)
