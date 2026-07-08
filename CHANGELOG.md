@@ -3,6 +3,23 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [1.0.3] - 2026-07-08
+
+### Fixed
+- **`update.sh` (adopt) re-run was unsafe:** running adopt on an already-adopted project made the git-shim
+  reference itself → infinite recursion on every commit. Adopt now detects a prior install (**REFRESH mode**),
+  never shims its own hooks, refreshes kit-owned files, and excludes the kit's `-cck` agents/skills from the
+  "project" counts (the earlier "N custom agents" over-count).
+- **Confusing decision override:** the number-picker (`[1-4,6,7]`) that silently rejected lists like `1,2,3`
+  and swallowed invalid answers is replaced by "Accept all suggestions? [yes/no]" then a per-decision walk that
+  shows the current value, treats ENTER as keep, and re-asks on invalid input.
+- **`#4 hide` broke review/rollback:** it gitignored `.claude` before the branch commit, so the payload was
+  absent from the diff and survived rollback. The payload is now always committed to the review branch; hide
+  becomes a documented post-merge step in HANDOVER.
+- Precedence (`#2`) is fixed to project-wins (no longer a no-op that could write a contradictory HANDOVER);
+  the non-.NET backend swap no longer clobbers a preserved file; PROOF-1 measures the scanner (not the
+  project's allowlist) and matches the current hook output; HANDOVER/ADR use the real base branch, not literal `main`.
+
 ## [1.0.2] - 2026-07-08
 
 ### Changed
@@ -64,6 +81,7 @@ First stable release. A Turkish, opinionated-but-backend-optional agent/skill sc
 - The discipline layer and the frontend are stack-agnostic; the backend is opinionated (.NET/DevArchitecture) or generic.
 - Language is Turkish. No AI trace / third-party template name leaks into the artifacts (§4).
 
+[1.0.3]: https://github.com/byerlikaya/claude-starter-kit/releases/tag/v1.0.3
 [1.0.2]: https://github.com/byerlikaya/claude-starter-kit/releases/tag/v1.0.2
 [1.0.1]: https://github.com/byerlikaya/claude-starter-kit/releases/tag/v1.0.1
 [1.0.0]: https://github.com/byerlikaya/claude-starter-kit/releases/tag/v1.0.0

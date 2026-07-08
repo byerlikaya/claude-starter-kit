@@ -27,9 +27,9 @@ ask_yes(){ local a; printf '%s [yes/no]: ' "$1"; read -r a || a=""; case "$a" in
 # never-overwrite copy: does NOT overwrite an EXISTING target file (project file is preserved), skips+counts.
 # Result globals: ret_add / ret_skip; conflicts are added to SKIP_LIST. Do NOT call in a subshell (globals are lost).
 SKIP_LIST=""
-copy_noclobber(){ local src="$1" dst="$2" rel f; ret_add=0; ret_skip=0; [ -d "$src" ] || return; mkdir -p "$dst"
+copy_noclobber(){ local src="$1" dst="$2" force="${3:-0}" rel f; ret_add=0; ret_skip=0; [ -d "$src" ] || return; mkdir -p "$dst"
   while IFS= read -r f; do rel="${f#"$src"/}"
-    if [ -e "$dst/$rel" ]; then ret_skip=$((ret_skip+1)); SKIP_LIST="$SKIP_LIST $dst/$rel"
+    if [ -e "$dst/$rel" ] && [ "$force" != 1 ]; then ret_skip=$((ret_skip+1)); SKIP_LIST="$SKIP_LIST $dst/$rel"
     else mkdir -p "$dst/$(dirname "$rel")"; cp "$f" "$dst/$rel"; ret_add=$((ret_add+1)); fi
   done < <(find "$src" -type f 2>/dev/null); }
 
@@ -49,7 +49,11 @@ row "git" "$GITKIND"
 # existing hook system (decision #5 — single-hooksPath clash with husky/lefthook)
 HOOKSYS="none"
 CURHP="$(git config --get core.hooksPath 2>/dev/null || true)"
-[ -n "$CURHP" ] && HOOKSYS="core.hooksPath=$CURHP"
+case "$CURHP" in
+  "") : ;;
+  .claude/hooks|.claude/git-shim) HOOKSYS="kit (already armed)"; CURHP="" ;;   # kit's OWN path — not a foreign chain (re-adopt must not shim itself)
+  *) HOOKSYS="core.hooksPath=$CURHP" ;;
+esac
 [ -d .husky ] && HOOKSYS="husky (.husky/)"
 { [ -f lefthook.yml ] || [ -f .lefthook.yml ]; } && HOOKSYS="lefthook"
 [ -f .pre-commit-config.yaml ] && HOOKSYS="pre-commit framework"
@@ -66,13 +70,22 @@ row "stack hint" "$STACK"
 # ================= [2] EXISTING AGENTIC SETUP =================
 h1 "[2] Existing agentic setup (accumulated work to inherit)"
 HAS_CLAUDE=0; [ -d .claude ] && HAS_CLAUDE=1
-N_PAGENTS=0; [ -d .claude/agents ] && N_PAGENTS="$(find .claude/agents -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
-N_PSKILLS=0; [ -d .claude/skills ] && N_PSKILLS="$(find .claude/skills -name 'SKILL.md' 2>/dev/null | wc -l | tr -d ' ')"
+# count only the PROJECT's own agents/skills — exclude the kit's -cck agents and kit skills left by a prior adopt
+N_PAGENTS=0; [ -d .claude/agents ] && N_PAGENTS="$(find .claude/agents -name '*.md' ! -name '*-cck.md' 2>/dev/null | wc -l | tr -d ' ')"
+N_PSKILLS=0
+if [ -d .claude/skills ]; then
+  while IFS= read -r f; do d="$(basename "$(dirname "$f")")"; [ -d "$SRC/skills/$d" ] || N_PSKILLS=$((N_PSKILLS+1)); done < <(find .claude/skills -name 'SKILL.md' 2>/dev/null)
+fi
 HAS_MD=0; [ -f CLAUDE.md ] && HAS_MD=1
 HAS_SETTINGS=0; [ -f .claude/settings.json ] && HAS_SETTINGS=1
-row ".claude/" "$([ "$HAS_CLAUDE" = 1 ] && echo "present — $N_PAGENTS custom agents · $N_PSKILLS skills" || echo "none")"
+# already-adopted fingerprint: did a PRIOR adopt/kit install run here? -> REFRESH semantics, not a fresh handover
+KIT_PRESENT=0; KIT_VER=""
+{ [ -f .claude/DISCIPLINE.md ] || [ -d .claude/git-shim ] || ls .claude/agents/*-cck.md >/dev/null 2>&1 || [ -f .claude/VERSION ]; } && KIT_PRESENT=1
+[ -f .claude/VERSION ] && KIT_VER="$(head -1 .claude/VERSION 2>/dev/null)"
+row ".claude/" "$([ "$HAS_CLAUDE" = 1 ] && echo "present — $N_PAGENTS project agents · $N_PSKILLS project skills" || echo "none")"
 row "CLAUDE.md" "$([ "$HAS_MD" = 1 ] && echo "present" || echo "none")"
 row "settings.json" "$([ "$HAS_SETTINGS" = 1 ] && echo "present" || echo "none")"
+[ "$KIT_PRESENT" = 1 ] && row "kit status" "${YE}already adopted${KIT_VER:+ (v$KIT_VER)} — this run REFRESHES kit files, project untouched${R}"
 
 # tracked in git? (decision #4 — share/hide)
 TRACKED=0
@@ -97,16 +110,16 @@ if [ "$N_PAGENTS" != 0 ]; then
 else
   prop "1 Role clash" "none" "no custom agents found in the project"
 fi
-prop "2 Precedence" "project wins" "axis-by-axis; the project's language/pattern is superior, the kit fills gaps"
+prop "2 Precedence" "project wins (fixed)" "on conflict the project's rules always win; the kit fills gaps (not overridable)"
 if [ "$COAUTHOR" = 1 ]; then
   prop "3 Trace gate" "loosen (.trace-allowlist)" "co-author/sign-off present in git log — may be a convention"
 else
   prop "3 Trace gate" "keep" "no co-author/sign-off convention seen"
 fi
 if [ "$TRACKED" = 1 ]; then
-  prop "4 Share/hide" "keep sharing" ".claude/CLAUDE.md is tracked — NOT added to gitignore"
+  prop "4 Share/hide" "share" ".claude/CLAUDE.md is tracked — keep sharing with the team"
 else
-  prop "4 Share/hide" "kit default" "untracked; the 'hide' convention can be applied"
+  prop "4 Share/hide" "share" "untracked; kit files are shared by default — pick hide to keep them local"
 fi
 if [ "$HOOKSYS" = "none" ]; then
   prop "5 Git hooks" "install directly" "no existing hook system"
@@ -123,28 +136,39 @@ fi
 
 # ============ COMPILE DECISIONS + OVERRIDE (Stage B) ============
 DEC1="$([ "$N_PAGENTS" != 0 ] && echo keep || echo none)"
-DEC2="project"
+DEC2="project"   # precedence is FIXED to project-wins (not overridable — reflected in the @import comment)
 DEC3="$([ "$COAUTHOR" = 1 ] && echo loosen || echo keep)"
 DEC4="$([ "$TRACKED" = 1 ] && echo share || echo kit-default)"
 DEC6="baseline"
 DEC7="$([ "$OFFREPO" = 1 ] && echo transfer || echo local)"
+# normalize display defaults to a real, offered token
+[ "$DEC1" = none ] && DEC1=keep
+[ "$DEC4" = kit-default ] && DEC4=share
 if [ -t 0 ]; then
-  h1 "Review the decisions (override)"
-  sub "Smart suggestions are above. Enter the number of the decision to change; EMPTY=accept all. (#5 SHIM is fixed.)"
-  while :; do
-    printf '  %sChange? [1-4,6,7 / empty=accept]:%s ' "$B" "$R"; read -r pick || pick=""
-    [ -z "$pick" ] && break
-    case "$pick" in
-      1) printf '   #1 [keep/merge]: ';  read -r v||v=""; case "$v" in m*) DEC1=merge;; k*) DEC1=keep;; esac ;;
-      2) printf '   #2 [project/kit]: ';       read -r v||v=""; case "$v" in k*) DEC2=kit;; p*) DEC2=project;; esac ;;
-      3) printf '   #3 [loosen/keep]: ';     read -r v||v=""; case "$v" in l*) DEC3=loosen;; k*) DEC3=keep;; esac ;;
-      4) printf '   #4 [share/hide]: ';    read -r v||v=""; case "$v" in s*) DEC4=share;; h*) DEC4=hide;; esac ;;
-      6) printf '   #6 [baseline/absolute]: '; read -r v||v=""; case "$v" in a*) DEC6=absolute;; b*) DEC6=baseline;; esac ;;
-      7) printf '   #7 [transfer/skip]: ';     read -r v||v=""; case "$v" in t*) DEC7=transfer;; s*) DEC7=skip;; esac ;;
-      *) echo "   (1-4, 6 or 7)";;
-    esac
-  done
-  echo "  Final: #1=$DEC1 #2=$DEC2 #3=$DEC3 #4=$DEC4 #6=$DEC6 #7=$DEC7"
+  h1 "Review the decisions"
+  # ask_dec: echoes the chosen value to STDOUT; ALL prompts/errors go to STDERR so $(...) captures only the value
+  ask_dec(){ local label="$1" a="$2" b="$3" cur="$4" v fa fb; fa="${a:0:1}"; fb="${b:0:1}"
+    while :; do
+      printf '  %s%s%s [%s/%s] (current: %s%s%s, ENTER=keep): ' "$B" "$label" "$R" "$a" "$b" "$B" "$cur" "$R" >&2
+      read -r v || v=""
+      case "$v" in
+        "")         echo "$cur"; return ;;
+        "$a"|"$fa") echo "$a";   return ;;
+        "$b"|"$fb") echo "$b";   return ;;
+        *) printf '     %s! type "%s" or "%s" (or ENTER to keep "%s")%s\n' "$YE" "$a" "$b" "$cur" "$R" >&2 ;;
+      esac
+    done; }
+  if ask_yes "Accept all smart suggestions?"; then
+    sub "All smart suggestions accepted."
+  else
+    sub "Reviewing each decision. ENTER keeps the current value. (#2 precedence and #5 SHIM are fixed, not asked.)"
+    DEC1="$(ask_dec '#1 Role clash'     keep     merge    "$DEC1")"
+    DEC3="$(ask_dec '#3 Trace gate'     loosen   keep     "$DEC3")"
+    DEC4="$(ask_dec '#4 Share/hide'     share    hide     "$DEC4")"
+    DEC6="$(ask_dec '#6 Brownfield DoD' baseline absolute "$DEC6")"
+    DEC7="$(ask_dec '#7 Off-repo'       transfer skip     "$DEC7")"
+  fi
+  echo "  Final: #1=$DEC1 #3=$DEC3 #4=$DEC4 #6=$DEC6 #7=$DEC7  (#2 project-wins, #5 SHIM — fixed)"
 else
   sub "(non-interactive: smart defaults accepted)"
 fi
@@ -161,22 +185,27 @@ if ! ask_yes "Open the handover branch and apply coexist? (mutation; the result 
 fi
 
 BASE="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)"
+case "$BASE" in kit-adopt-*) warn "HEAD is a prior adopt branch ($BASE) — the review diff will be vs it, not your main line. Consider 'git checkout <main>' first." ;; esac
 TS="$(date +%Y%m%d-%H%M%S)"; BR="kit-adopt-$TS"
 git checkout -b "$BR" >/dev/null 2>&1 || { echo "ERROR: could not open branch '$BR'."; exit 1; }
 echo "  handover branch: ${B}$BR${R}  (${BASE} stays clean)"
 
 mkdir -p .claude
-copy_noclobber "$SRC/agents"   .claude/agents;   A_ADD=$ret_add; A_SKIP=$ret_skip
-copy_noclobber "$SRC/skills"   .claude/skills;   S_ADD=$ret_add; S_SKIP=$ret_skip
-copy_noclobber "$SRC/commands" .claude/commands; C_ADD=$ret_add; C_SKIP=$ret_skip
-copy_noclobber "$SRC/hooks"    .claude/hooks;    H_ADD=$ret_add; H_SKIP=$ret_skip
-copy_noclobber "$SRC/eval"     .claude/eval;     E_ADD=$ret_add; E_SKIP=$ret_skip
-# stack-compatible backend: on non-.NET projects use the generic backend-expert-cck (the kit's OWN file, not a project file)
+# kit-owned trees: FORCE-refresh on a re-adopt (KIT_PRESENT) so kit updates land; never-overwrite on a fresh adopt
+copy_noclobber "$SRC/agents"   .claude/agents   "$KIT_PRESENT"; A_ADD=$ret_add; A_SKIP=$ret_skip
+copy_noclobber "$SRC/skills"   .claude/skills   "$KIT_PRESENT"; S_ADD=$ret_add; S_SKIP=$ret_skip
+copy_noclobber "$SRC/commands" .claude/commands "$KIT_PRESENT"; C_ADD=$ret_add; C_SKIP=$ret_skip
+copy_noclobber "$SRC/hooks"    .claude/hooks    "$KIT_PRESENT"; H_ADD=$ret_add; H_SKIP=$ret_skip
+copy_noclobber "$SRC/eval"     .claude/eval     "$KIT_PRESENT"; E_ADD=$ret_add; E_SKIP=$ret_skip
+# stack-compatible backend: on non-.NET projects use the generic backend-expert-cck — but NEVER clobber a preserved project file
 if [ "$STACK" != ".NET" ] && [ -f "$SRC/agents-optional/backend-expert-generic.md" ]; then
-  cp "$SRC/agents-optional/backend-expert-generic.md" .claude/agents/backend-expert-cck.md
-  echo "  backend-expert-cck -> generic variant ($STACK project)"
+  case " $SKIP_LIST " in
+    *" .claude/agents/backend-expert-cck.md "*) warn "backend-expert-cck.md pre-existed (preserved) — generic variant NOT applied" ;;
+    *) cp "$SRC/agents-optional/backend-expert-generic.md" .claude/agents/backend-expert-cck.md; echo "  backend-expert-cck -> generic variant ($STACK project)" ;;
+  esac
 fi
 chmod +x .claude/hooks/*.sh .claude/hooks/pre-commit .claude/hooks/commit-msg 2>/dev/null || true
+[ -f "$HERE/VERSION" ] && cp "$HERE/VERSION" .claude/VERSION 2>/dev/null || true   # first-class marker so a future adopt detects a REFRESH
 
 h1 "Coexist summary"
 row "kit agents (-cck)" "+$A_ADD added$([ "$A_SKIP" != 0 ] && echo " · $A_SKIP skipped")"
@@ -242,6 +271,8 @@ ORIG_HOOKS=""
 if [ -n "$CURHP" ]; then ORIG_HOOKS="$CURHP"
 elif [ -d .husky ]; then ORIG_HOOKS=".husky"
 elif [ -x .git/hooks/pre-commit ] || [ -x .git/hooks/commit-msg ]; then ORIG_HOOKS=".git/hooks"; fi
+# never shim the kit onto its OWN hooks (re-adopt) — the shim would exec itself and recurse on every commit
+case "$ORIG_HOOKS" in .claude/hooks|.claude/git-shim) ORIG_HOOKS="" ;; esac
 
 if [ -z "$ORIG_HOOKS" ]; then
   git config core.hooksPath .claude/hooks
@@ -272,14 +303,17 @@ fi
 h1 "Stage 4b — PROOF"
 PROOF_OK=1; HP="$(git config --get core.hooksPath 2>/dev/null || echo .claude/hooks)"
 # 1) trace-scan git hook: a staged AI trace MUST be BLOCKED (NO real commit; run the hook directly)
+# move any allowlist aside so PROOF measures the SCANNER itself, not the project's own exemptions (else a loosened repo fails the proof)
+[ -f .trace-allowlist.txt ] && mv .trace-allowlist.txt .trace-allowlist.txt.proofbak 2>/dev/null
 printf 'Co-Authored%s: Test <x@y.z>\n' '-By' > .kit-proof.txt   # not contiguous in source (so the trace hook doesn't block itself); full at runtime
 git add .kit-proof.txt >/dev/null 2>&1
 if bash "$HP/pre-commit" >/tmp/kitproof.$$ 2>&1; then
   warn "PROOF-1 FAILED: the trace scan LET THROUGH the AI trace"; PROOF_OK=0
-elif grep -qiE 'IZ-DENETCISI|yasakli|durduruldu' /tmp/kitproof.$$; then
+elif grep -qiE 'TRACE-SCANNER|Commit stopped|forbidden' /tmp/kitproof.$$; then
   echo "  OK · PROOF-1: staged AI trace BLOCKED by the trace scan"
 else echo "  ~  PROOF-1: hook blocked ($(head -1 /tmp/kitproof.$$ 2>/dev/null))"; fi
 git reset -q .kit-proof.txt 2>/dev/null; rm -f .kit-proof.txt /tmp/kitproof.$$
+[ -f .trace-allowlist.txt.proofbak ] && mv .trace-allowlist.txt.proofbak .trace-allowlist.txt 2>/dev/null
 # 2) guard-bash git-approval gate: keyless 'git commit' -> block
 if printf '{"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}' | bash .claude/hooks/guard-bash.sh >/dev/null 2>&1; then
   warn "PROOF-2 FAILED: guard-bash LET THROUGH the keyless commit"; PROOF_OK=0
@@ -294,14 +328,17 @@ if [ -s .claude/DISCIPLINE.md ] && grep -qF '@.claude/DISCIPLINE.md' CLAUDE.md; 
 h1 "Stage B — apply the decisions"
 # #3 loosen trace gate -> repo-root .trace-allowlist.txt (co-author/sign-off exempt from the trace scan)
 if [ "$DEC3" = loosen ]; then
-  { [ -f .trace-allowlist.txt ] && cat .trace-allowlist.txt; printf 'Co-Authored%s\n' '-By'; printf 'Signed-off-by\n'; } | sort -u > .trace-allowlist.txt.t && mv .trace-allowlist.txt.t .trace-allowlist.txt
-  echo "  #3 loosen -> .trace-allowlist.txt (co-author/sign-off exempt)"
+  { [ -f .trace-allowlist.txt ] && cat .trace-allowlist.txt; printf 'Co-Authored%s\n' '-By'; } | sort -u > .trace-allowlist.txt.t && mv .trace-allowlist.txt.t .trace-allowlist.txt
+  echo "  #3 loosen -> .trace-allowlist.txt (co-author trailer exempt)"
 else echo "  #3 keep -> full trace scan"; fi
-# #4 share/hide
+# #4 share/hide — the payload is ALWAYS committed to the review branch (so the diff is real + rollback stays clean);
+# 'hide' becomes a post-merge follow-up in HANDOVER. (Gitignoring .claude BEFORE the commit would drop it from the
+# review diff and leave it untracked after a rollback -> 'project untouched' would be a lie.)
+HIDE_NOTE=""
 if [ "$DEC4" = hide ]; then
-  touch .gitignore; for e in '.claude/' 'CLAUDE.md'; do grep -qxF "$e" .gitignore || echo "$e" >> .gitignore; done
-  echo "  #4 hide -> .claude/ + CLAUDE.md added to gitignore"
-else echo "  #4 share -> gitignore untouched"; fi
+  HIDE_NOTE="Keep the kit local after merging:  git rm -r --cached .claude CLAUDE.md  &&  printf '.claude/\nCLAUDE.md\n' >> .gitignore  &&  git commit -m 'kit: keep local'"
+  echo "  #4 hide -> recorded; .claude stays TRACKED on the branch (rollback-safe). Post-merge steps in HANDOVER."
+else echo "  #4 share -> .claude tracked + shared with the team"; fi
 # #1 merge: document (NO automatic risky merge — red-team; merging is a human-approved follow-up)
 [ "$DEC1" = merge ] && MERGE_NOTE="merge: overlapping project agents WILL BE HANDED OVER to the kit agent (review; do it via adr/skill)" || MERGE_NOTE="keep: project + kit agent side by side"
 # #7 off-repo transfer: paste from the user (interactive; skipped on non-TTY)
@@ -320,7 +357,7 @@ mkdir -p docs docs/adr
 DATE_H="$(date +%Y-%m-%d)"
 # compute the decision values first (avoid inner-quote/command-sub tangle in the heredoc)
 case "$DEC1" in merge) D1='merge (overlaps will be handed over)';; none) D1='none';; *) D1='keep (coexist)';; esac
-D2="$([ "$DEC2" = kit ] && echo 'kit wins' || echo 'project wins')"
+D2='project wins'   # precedence is fixed (DEC2 not overridable) — no false 'kit wins' record
 D3="$([ "$DEC3" = loosen ] && echo 'loosen (.trace-allowlist written)' || echo 'keep (full)')"
 D4="$([ "$DEC4" = hide ] && echo 'hide (gitignore)' || echo 'keep sharing')"
 D5="$([ -n "$ORIG_HOOKS" ] && echo "SHIM ($ORIG_HOOKS)" || echo 'direct')"
@@ -346,7 +383,7 @@ cat > docs/HANDOVER.md <<HAND
 - settings.json: schema-aware merge (project hooks/permissions PRESERVED + kit added).
 - Git gates: $HOOKDESC.
 - Overlapping roles: $MERGE_NOTE.
-- Handover branch: $BR  (main untouched; inspect: git diff main..$BR).
+- Handover branch: $BR  ($BASE untouched; inspect: git diff $BASE..$BR).
 
 ## Decisions made (smart suggestion; review/override in Stage B)
 | # | Decision | Value |
@@ -362,7 +399,8 @@ cat > docs/HANDOVER.md <<HAND
 ## CONFIRM (the tool cannot verify — you check)
 - [ ] Are the inherited project rules/agents UP TO DATE? (stale rule = regression)
 - [ ] Overlapping roles (project + kit same job): which one to use / merge?
-- [ ] Has the handover branch diff been reviewed?  git diff main..$BR
+- [ ] Has the handover branch diff been reviewed?  git diff $BASE..$BR
+${HIDE_NOTE:+- [ ] HIDE chosen — after merge run:  $HIDE_NOTE}
 
 ## Off-repo / in-chat decisions
 $OFFSEC
