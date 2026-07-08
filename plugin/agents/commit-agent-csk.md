@@ -1,5 +1,5 @@
 ---
-name: commit-agent-cck
+name: commit-agent-csk
 description: |
   Commit message specialist (thin trigger). At work closure, reads the staged diff and proposes a message
   in Conventional Commits format. Applies the `commit-message` skill. Writes no source code;

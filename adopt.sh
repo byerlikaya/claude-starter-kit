@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# kit adopt (working name: update.sh) — hands the kit OVER (handover) to an EXISTING project, brownfield-safe.
+# kit adopt — hands the kit OVER (handover) to an EXISTING project, brownfield-safe.
 # Later becomes the `kit adopt` subcommand. Handover philosophy: don't break the project · don't lose decisions made ·
-# don't leave the kit passive (100% hybrid). Kit agents are namespaced with -cck -> no clash with project agents.
+# don't leave the kit passive (100% hybrid). Kit agents are namespaced with -csk -> no clash with project agents.
 #
 # >>> STAGE 1: detection + smart suggestion only. CHANGES NOTHING (read-only). <<<
 # Later stages: open git branch -> mutation (settings merge · DISCIPLINE.md · coexist) -> install proof
 # -> HANDOVER.md / ADR. The SUGGESTION produced here for each decision is applied in the next stage via review/override.
 #
-# Usage: at the target project root (same directory as claude-starter/):  bash update.sh
+# Usage: at the target project root (same directory as claude-starter/):  bash adopt.sh
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SRC="$HERE/claude-starter"
-[ -d "$SRC" ] || { echo "ERROR: claude-starter/ not found (must be in the same directory as update.sh)."; exit 1; }
+[ -d "$SRC" ] || { echo "ERROR: claude-starter/ not found (must be in the same directory as adopt.sh)."; exit 1; }
 
 # --- color: only on an interactive TTY (same guard as start.sh) ---
 if [ -t 1 ] && [ "${TERM:-dumb}" != "dumb" ] && [ -z "${NO_COLOR:-}" ]; then
@@ -70,8 +70,8 @@ row "stack hint" "$STACK"
 # ================= [2] EXISTING AGENTIC SETUP =================
 h1 "[2] Existing agentic setup (accumulated work to inherit)"
 HAS_CLAUDE=0; [ -d .claude ] && HAS_CLAUDE=1
-# count only the PROJECT's own agents/skills — exclude the kit's -cck agents and kit skills left by a prior adopt
-N_PAGENTS=0; [ -d .claude/agents ] && N_PAGENTS="$(find .claude/agents -name '*.md' ! -name '*-cck.md' 2>/dev/null | wc -l | tr -d ' ')"
+# count only the PROJECT's own agents/skills — exclude the kit's -csk agents and kit skills left by a prior adopt
+N_PAGENTS=0; [ -d .claude/agents ] && N_PAGENTS="$(find .claude/agents -name '*.md' ! -name '*-csk.md' 2>/dev/null | wc -l | tr -d ' ')"
 N_PSKILLS=0
 if [ -d .claude/skills ]; then
   while IFS= read -r f; do d="$(basename "$(dirname "$f")")"; [ -d "$SRC/skills/$d" ] || N_PSKILLS=$((N_PSKILLS+1)); done < <(find .claude/skills -name 'SKILL.md' 2>/dev/null)
@@ -80,7 +80,7 @@ HAS_MD=0; [ -f CLAUDE.md ] && HAS_MD=1
 HAS_SETTINGS=0; [ -f .claude/settings.json ] && HAS_SETTINGS=1
 # already-adopted fingerprint: did a PRIOR adopt/kit install run here? -> REFRESH semantics, not a fresh handover
 KIT_PRESENT=0; KIT_VER=""
-{ [ -f .claude/DISCIPLINE.md ] || [ -d .claude/git-shim ] || ls .claude/agents/*-cck.md >/dev/null 2>&1 || [ -f .claude/VERSION ]; } && KIT_PRESENT=1
+{ [ -f .claude/DISCIPLINE.md ] || [ -d .claude/git-shim ] || ls .claude/agents/*-csk.md >/dev/null 2>&1 || [ -f .claude/VERSION ]; } && KIT_PRESENT=1
 [ -f .claude/VERSION ] && KIT_VER="$(head -1 .claude/VERSION 2>/dev/null)"
 row ".claude/" "$([ "$HAS_CLAUDE" = 1 ] && echo "present — $N_PAGENTS project agents · $N_PSKILLS project skills" || echo "none")"
 row "CLAUDE.md" "$([ "$HAS_MD" = 1 ] && echo "present" || echo "none")"
@@ -106,7 +106,7 @@ OFFREPO=0; { [ "$HAS_CLAUDE" = 0 ] && [ "$HAS_MD" = 0 ]; } && OFFREPO=1
 h1 "[3] 7 handover decisions — SMART SUGGESTION"
 sub "format:  decision  ->  SUGGESTED  ->  rationale   (you can review and override all of them in the next stage)"
 if [ "$N_PAGENTS" != 0 ]; then
-  prop "1 Role clash" "keep (coexist)" "$N_PAGENTS project agents; thanks to -cck no clash, they live side by side"
+  prop "1 Role clash" "keep (coexist)" "$N_PAGENTS project agents; thanks to -csk no clash, they live side by side"
 else
   prop "1 Role clash" "none" "no custom agents found in the project"
 fi
@@ -197,18 +197,18 @@ copy_noclobber "$SRC/skills"   .claude/skills   "$KIT_PRESENT"; S_ADD=$ret_add; 
 copy_noclobber "$SRC/commands" .claude/commands "$KIT_PRESENT"; C_ADD=$ret_add; C_SKIP=$ret_skip
 copy_noclobber "$SRC/hooks"    .claude/hooks    "$KIT_PRESENT"; H_ADD=$ret_add; H_SKIP=$ret_skip
 copy_noclobber "$SRC/eval"     .claude/eval     "$KIT_PRESENT"; E_ADD=$ret_add; E_SKIP=$ret_skip
-# stack-compatible backend: on non-.NET projects use the generic backend-expert-cck — but NEVER clobber a preserved project file
+# stack-compatible backend: on non-.NET projects use the generic backend-expert-csk — but NEVER clobber a preserved project file
 if [ "$STACK" != ".NET" ] && [ -f "$SRC/agents-optional/backend-expert-generic.md" ]; then
   case " $SKIP_LIST " in
-    *" .claude/agents/backend-expert-cck.md "*) warn "backend-expert-cck.md pre-existed (preserved) — generic variant NOT applied" ;;
-    *) cp "$SRC/agents-optional/backend-expert-generic.md" .claude/agents/backend-expert-cck.md; echo "  backend-expert-cck -> generic variant ($STACK project)" ;;
+    *" .claude/agents/backend-expert-csk.md "*) warn "backend-expert-csk.md pre-existed (preserved) — generic variant NOT applied" ;;
+    *) cp "$SRC/agents-optional/backend-expert-generic.md" .claude/agents/backend-expert-csk.md; echo "  backend-expert-csk -> generic variant ($STACK project)" ;;
   esac
 fi
 chmod +x .claude/hooks/*.sh .claude/hooks/pre-commit .claude/hooks/commit-msg 2>/dev/null || true
 [ -f "$HERE/VERSION" ] && cp "$HERE/VERSION" .claude/VERSION 2>/dev/null || true   # first-class marker so a future adopt detects a REFRESH
 
 h1 "Coexist summary"
-row "kit agents (-cck)" "+$A_ADD added$([ "$A_SKIP" != 0 ] && echo " · $A_SKIP skipped")"
+row "kit agents (-csk)" "+$A_ADD added$([ "$A_SKIP" != 0 ] && echo " · $A_SKIP skipped")"
 row "skills"            "+$S_ADD$([ "$S_SKIP" != 0 ] && echo " · $S_SKIP skipped")"
 row "commands"           "+$C_ADD$([ "$C_SKIP" != 0 ] && echo " · $C_SKIP skipped")"
 row "hooks"           "+$H_ADD$([ "$H_SKIP" != 0 ] && echo " · $H_SKIP skipped")"
@@ -319,8 +319,8 @@ if printf '{"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}' | ba
   warn "PROOF-2 FAILED: guard-bash LET THROUGH the keyless commit"; PROOF_OK=0
 else echo "  OK · PROOF-2: guard-bash BLOCKED the keyless 'git commit' (holds in auto/bypass too)"; fi
 # 3) can the kit agents + discipline be loaded
-NCCK="$(ls .claude/agents/*-cck.md 2>/dev/null | wc -l | tr -d ' ')"
-if [ "${NCCK:-0}" -ge 1 ]; then echo "  OK · PROOF-3: $NCCK kit agents (-cck) installed + discoverable"; else warn "PROOF-3: no kit agent"; PROOF_OK=0; fi
+NCCK="$(ls .claude/agents/*-csk.md 2>/dev/null | wc -l | tr -d ' ')"
+if [ "${NCCK:-0}" -ge 1 ]; then echo "  OK · PROOF-3: $NCCK kit agents (-csk) installed + discoverable"; else warn "PROOF-3: no kit agent"; PROOF_OK=0; fi
 if [ -s .claude/DISCIPLINE.md ] && grep -qF '@.claude/DISCIPLINE.md' CLAUDE.md; then echo "  OK · PROOF-4: DISCIPLINE.md loaded + @import-ed from CLAUDE.md"; else warn "PROOF-4: discipline not linked"; PROOF_OK=0; fi
 [ "$PROOF_OK" = 1 ] && h1 "PROOF: kit 100% ACTIVE — gates armed, agents + discipline loaded" || warn "PROOF: some gates could not be verified (see above)"
 
@@ -377,7 +377,7 @@ cat > docs/HANDOVER.md <<HAND
 > sections you need to fill in. The tool does NOT SIGN off anything as "done".
 
 ## What was handed over (mechanical)
-- Kit agents: $NCCK (-cck namespace; no clash with project agents).
+- Kit agents: $NCCK (-csk namespace; no clash with project agents).
 - Project agents: $N_PAGENTS — UNTOUCHED, in place + active (recursive discovery).
 - Discipline: .claude/DISCIPLINE.md + @import into the project CLAUDE.md (content untouched).
 - settings.json: schema-aware merge (project hooks/permissions PRESERVED + kit added).
@@ -424,7 +424,7 @@ The existing project was equipped for agentic work with the standard kit under a
 Goal: don't break the project, don't lose decisions made, don't leave the kit passive (hybrid).
 
 ## Decision
-- Kit agents were installed under the -cck namespace; project agents preserved side by side, untouched.
+- Kit agents were installed under the -csk namespace; project agents preserved side by side, untouched.
 - Kit discipline active via .claude/DISCIPLINE.md + @import; the project CLAUDE.md untouched.
 - On rule conflicts the PROJECT wins (axis-by-axis).
 - Git gates: $HOOKDESC.

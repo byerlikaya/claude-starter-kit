@@ -15,7 +15,7 @@ jobs:
         run: |
           set -euo pipefail
           bash -n start.sh
-          bash -n update.sh
+          bash -n adopt.sh
           for s in claude-starter/hooks/*.sh claude-starter/eval/*.sh; do
             [ -f "$s" ] && bash -n "$s" && echo "ok: $s"
           done

@@ -1,12 +1,12 @@
 <div align="center">
 
-# 🛠️ Agentic Working Kit — Claude Code
+# 🛠️ Claude Starter Kit
 
-**A reusable Claude Code scaffold that drives any project — at any stage — with the same engineering discipline.**
+**An agentic working kit for Claude Code** — a reusable scaffold that drives any project, at any stage, with the same engineering discipline.
 
 *plan → build → review → commit, where every critical rule is a **gate**, not a reminder.*
 
-![Version](https://img.shields.io/badge/version-1.0.4-2563eb?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.0.5-2563eb?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)
 ![Agents](https://img.shields.io/badge/agents-11-f59e0b?style=flat-square)
 ![Skills](https://img.shields.io/badge/skills-27-f59e0b?style=flat-square)
@@ -20,40 +20,43 @@
 
 ## Why this kit?
 
-Most "agent setups" are a pile of suggestions: the rules live in a file, and whether they are followed is left to the model. This kit makes a different promise — **a critical rule is a gate, not a reminder.**
+Most "agent setups" are a pile of suggestions — the rules sit in a file, and whether they're honored is left to the model. This kit is different: it drops a **disciplined engineering team** into Claude Code, where **the rules that matter are gates, not reminders.**
 
 | | |
 |---|---|
-| 🚫 | An **AI-authorship trace cannot** slip into a commit — a git hook rejects it. |
-| 🔒 | An **unapproved `commit`/`push` cannot** run — a PreToolUse hook stops it, even in auto/bypass mode. |
-| 📊 | Session fill is **not guessed** — the real token count is measured from the transcript. |
-| 🌿 | An install **does not overwrite** an existing project — the handover happens on a separate git branch. |
+| 👥 | **A team, not a prompt** — 11 specialist agents auto-chain across plan → build → audit → ship; you don't wire them, the main thread does. |
+| 🛡️ | **Security & privacy are gates, not options** — risk-critical changes must clear the security/privacy audit before they can close. |
+| 🚦 | **Every commit is yours to approve** — no `commit`/`push` runs without your explicit OK, enforced at the tool level even in auto/bypass mode. |
+| 🌿 | **Safe on an existing repo** — `adopt` hands the kit over on a branch; `main` is never touched, and you review before you keep it. |
 
 ---
 
-## The agents
+## 🧠 The agents — the heart of the kit
 
-Eleven agents, each a **thin trigger** — it says only *who* and *when*, and delegates the *how* to a skill. The main thread selects and chains them across five stages, escalating quality before anything is committed:
+**11 agents**, each a **thin trigger** — it says only *who* and *when*, and delegates the *how* to a skill. The main thread selects and chains them across **five stages**, escalating quality before anything is committed:
 
 <div align="center">
   <img src="assets/orchestration-en.svg" alt="Agent orchestration across five stages" width="740">
+
+  🧭 **Understand** &nbsp;→&nbsp; 🔨 **Produce** &nbsp;→&nbsp; 🔍 **Audit** &nbsp;→&nbsp; ✅ **Close** &nbsp;→&nbsp; 🤝 **Hand off**
+
 </div>
 
 | Agent | Stage | Fires when | Model |
-|---|---|---|---|
-| **planner-cck** | Understand | scope is ambiguous | inherit |
-| **backend-expert-cck** | Produce | server / API / business logic | inherit |
-| **database-expert-cck** | Produce | schema, migration, index, cache | inherit |
-| **frontend-expert-cck** | Produce | UI, component, client work | inherit |
-| **devops-expert-cck** | Produce | deployment, CI pipeline, incident | inherit |
-| **security-expert-cck** | Audit | auth / IDOR / injection / secret (mandatory if security-critical) | `sonnet` |
-| **privacy-agent-cck** | Audit | personal data (KVKK / GDPR) | `sonnet` |
-| **test-expert-cck** | Audit | tests, coverage, regression | inherit |
-| **review-agent-cck** | Close | pre-commit code-health review | `haiku` |
-| **commit-agent-cck** | Close | proposes the commit, waits for approval | `haiku` |
-| **session-manager-cck** | Hand off | context fills / phase boundary | `haiku` |
+|:--|:--|:--|:--:|
+| **`planner-csk`** | 🧭 Understand | scope is ambiguous | `inherit` |
+| **`backend-expert-csk`** | 🔨 Produce | server / API / business logic | `inherit` |
+| **`database-expert-csk`** | 🔨 Produce | schema, migration, index, cache | `inherit` |
+| **`frontend-expert-csk`** | 🔨 Produce | UI, component, client work | `inherit` |
+| **`devops-expert-csk`** | 🔨 Produce | deployment, CI pipeline, incident | `inherit` |
+| **`security-expert-csk`** | 🔍 Audit | auth / IDOR / injection / secret · **mandatory if security-critical** | `sonnet` |
+| **`privacy-agent-csk`** | 🔍 Audit | personal data (KVKK / GDPR) | `sonnet` |
+| **`test-expert-csk`** | 🔍 Audit | tests, coverage, regression | `inherit` |
+| **`review-agent-csk`** | ✅ Close | pre-commit code-health review | `haiku` |
+| **`commit-agent-csk`** | ✅ Close | proposes the commit, waits for approval | `haiku` |
+| **`session-manager-csk`** | 🤝 Hand off | context fills / phase boundary | `haiku` |
 
-> Agent names carry a `-cck` suffix (Claude Code Kit) so they never collide with the host project's own agents. Each agent is thin; the real method lives in a **skill** — the single source of truth.
+> Agent names carry a `-csk` suffix (Claude Starter Kit) so they never collide with the host project's own agents. Each agent is thin; the real method lives in a **skill** — the single source of truth.
 
 ---
 
@@ -67,7 +70,7 @@ Eleven agents, each a **thin trigger** — it says only *who* and *when*, and de
 
 ## Install & run
 
-**Two entry points:** `start.sh` sets up a **fresh** project; **`adopt`** (`update.sh`) hands the kit over to an **existing** one. Pick any channel — each runs the same two commands.
+**Two entry points:** `start.sh` sets up a **fresh** project; **`adopt`** (`adopt.sh`) hands the kit over to an **existing** one. Pick any channel — each runs the same two commands.
 
 **npx** — nothing to install:
 ```bash
@@ -86,7 +89,7 @@ claude-starter-kit adopt    # existing project
 ```bash
 gh release download --repo byerlikaya/claude-starter-kit -p '*.tgz' && tar xzf claude-starter-kit-*.tgz
 bash start.sh               # fresh project
-bash update.sh              # existing project
+bash adopt.sh              # existing project
 ```
 
 > Just want the agents & skills inside your existing Claude Code (no scaffolding)? `/plugin marketplace add byerlikaya/claude-starter-kit` then `/plugin install claude-starter-kit@byerlikaya`.
@@ -110,16 +113,16 @@ The backend stack is asked only for `--backend`/`--fullstack`: **`--dotnet`** br
 
 > On **`--fullstack` + `--dotnet`** the DevArchitecture backend is placed in `./backend`, `./frontend` is reserved for your frontend, and the solution file is renamed to your project's name — so the project root stays clean instead of looking like a bare backend.
 
-### 🔄 Existing project — `update.sh`
+### 🔄 Existing project — `adopt.sh`
 
 ```bash
-bash update.sh          # at the root of the target project
+bash adopt.sh          # at the root of the target project
 ```
 
 Applies the kit to a project already in motion, like **one team handing a project over to another** — the project is not broken, decisions already made are not lost, and the kit does not stay passive.
 
 <div align="center">
-  <img src="assets/handover-en.svg" alt="update.sh handover flow" width="900">
+  <img src="assets/handover-en.svg" alt="adopt.sh handover flow" width="900">
 </div>
 
 All changes land on a separate git branch **staged, not committed** — so every added and changed file shows up in your editor's Source Control / Changes panel; you review it there, then `git commit` to accept (or reset to discard). `main` stays untouched. Kit agents install side-by-side (never colliding), the discipline is bound via a single `@import`, `settings.json` is merged schema-aware, and existing husky/lefthook chains run alongside the kit via a shim. It closes with a durable `docs/HANDOVER.md` and an ADR, so decisions live in version control, not in a chat.
@@ -128,7 +131,7 @@ All changes land on a separate git branch **staged, not committed** — so every
 
 ## What's inside
 
-- **11 agents** — see [the table above](#the-agents).
+- **11 agents** — see the table above.
 - **27 skills** — the single source of "how": code review, security scan, migration, deployment, observability, performance, accessibility, translation integrity, versioning, incident response, and more.
 - **5 slash commands** — `/plan` · `/review` · `/ship` · `/handoff` · `/simplify`.
 - **Hooks** — `guard-bash.sh` (tool-level gate), `pre-commit` + `commit-msg` (trace scan), `context-usage.sh` and `session-guard.sh` (session measurement).
@@ -175,8 +178,6 @@ When you add an agent or skill, follow the `AGENT_TEMPLATE.md` contract: frontma
 
 MIT — see [LICENSE](LICENSE). The discipline layer builds on these upstream sources:
 
-- **[multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills)** — the four working principles at the core of the discipline; the kit's most foundational reference.
+- **[DevArchitecture](https://github.com/DevArchitecture/DevArchitecture)** — the backend pattern (MediatR CQRS / IResult / AOP). Only the pattern is referenced; no DevArchitecture source is hosted here.
+- **[multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills)** — the four working principles at the core of the discipline.
 - **[google/eng-practices](https://github.com/google/eng-practices)** — the `code-review` skill, distilled and restated. Licensed **CC-BY 3.0**; attribution is required.
-- **[DevArchitecture](https://github.com/DevArchitecture/DevArchitecture)** — the backend pattern (MediatR CQRS / IResult / AOP). Only the pattern is referenced — no DevArchitecture source is hosted here — used with the author's explicit permission.
-
-The `security-scan`, `db-migration`, and `vps-deploy` skills are original; the CLI commands and OWASP category names they contain are publicly available technical facts.

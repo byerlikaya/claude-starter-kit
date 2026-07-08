@@ -2,7 +2,7 @@
 name: commit-message
 description: |
   Produces/checks a commit message following Conventional Commits. Reads the staged diff and
-  proposes a message in type(scope): summary format, with a body + footer when needed. commit-agent-cck
+  proposes a message in type(scope): summary format, with a body + footer when needed. commit-agent-csk
   applies the `commit-message` skill. Summary in the project's established language (English by default for open source); one logical change = one commit.
   Trigger phrases: "commit message", "make a commit", "conventional commit", "write a commit", "git commit"
 ---

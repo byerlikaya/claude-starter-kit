@@ -14,8 +14,8 @@ looks for where the input comes from, then where it flows, and what gate should 
 It is stack-agnostic: whatever the language/framework, the same logic applies; when current tooling and
 patterns are needed, it runs a web search.
 
-> **Kit adaptation (local, .claude/):** `security-expert-cck` applies this; findings are carried to
-> **review-agent-cck** in severity order. It also holds for the default stack (.NET/PostgreSQL). Automatic
+> **Kit adaptation (local, .claude/):** `security-expert-csk` applies this; findings are carried to
+> **review-agent-csk** in severity order. It also holds for the default stack (.NET/PostgreSQL). Automatic
 > fixes only with explicit approval (§4.4); `.claude` does not go to the repo (§4.3). §4 Prohibitions apply.
 
 ## What it does, what it doesn't

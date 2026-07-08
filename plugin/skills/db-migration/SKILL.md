@@ -14,9 +14,9 @@ the change by risk class before it passes through the gate** — let the safe on
 get approval for the destructive one, and keep a rollback path ready in every case. The skill works with
 all common ORM/migration tools.
 
-> **Kit adaptation (local, .claude/):** Default stack is **EF Core + PostgreSQL**. `database-expert-cck`
+> **Kit adaptation (local, .claude/):** Default stack is **EF Core + PostgreSQL**. `database-expert-csk`
 > applies it; **a destructive migration requires explicit approval (§4.5)**, commit/push with explicit approval (§4.4). Authorization/IDOR
-> impact → **security-expert-cck**; personal-data retention → **privacy-agent-cck**. §4 Prohibitions apply.
+> impact → **security-expert-csk**; personal-data retention → **privacy-agent-csk**. §4 Prohibitions apply.
 
 ## Checklist
 - [ ] Tool detected, pending migrations listed

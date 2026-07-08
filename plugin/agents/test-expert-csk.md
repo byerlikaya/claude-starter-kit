@@ -1,5 +1,5 @@
 ---
-name: test-expert-cck
+name: test-expert-csk
 description: |
   Test expert. Writes and runs unit/integration tests and guarantees the DoD's "tests are green"
   requirement. Kicks in when new handler/endpoint/agent behavior is added.
@@ -27,10 +27,10 @@ The "how" lives in the `testing` skill; this agent applies it.
 - Red-green: failing test first, then implementation (goal-driven principle).
 
 ## Coordination (cross-agent)
-- Source of the tested behavior → align with **backend-expert-cck** / **frontend-expert-cck**.
-- Security scenarios (IDOR/authorization/404) → turn **security-expert-cck** findings into tests.
-- Path that processes personal data → verify scope with **privacy-agent-cck**.
-- At closure, report findings to **review-agent-cck**.
+- Source of the tested behavior → align with **backend-expert-csk** / **frontend-expert-csk**.
+- Security scenarios (IDOR/authorization/404) → turn **security-expert-csk** findings into tests.
+- Path that processes personal data → verify scope with **privacy-agent-csk**.
+- At closure, report findings to **review-agent-csk**.
 
 ## DoD
 - `dotnet test` → all tests green.

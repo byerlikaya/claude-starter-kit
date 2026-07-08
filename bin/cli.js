@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-// Runner for the Agentic Working Kit. The kit is a set of bash scripts (start.sh / update.sh)
+// Runner for the Agentic Working Kit. The kit is a set of bash scripts (start.sh / adopt.sh)
 // plus the claude-starter/ payload, all bundled in this npm package. This wrapper stages the
 // payload in a temp dir and runs the requested script with the user's project as the CWD, so
 // start.sh's self-cleanup only ever removes the temp copies — never the package or the CWD.
@@ -21,7 +21,7 @@ Usage:
   npx @byerlikaya/claude-starter-kit [init] [--backend|--frontend|--mobile|--fullstack] [--dotnet|--generic]
       Set up the kit in a fresh project (start.sh wizard).
   npx @byerlikaya/claude-starter-kit adopt
-      Hand the kit over onto an existing project (update.sh).
+      Hand the kit over onto an existing project (adopt.sh).
 
 Run either at the root of your target project.`);
   process.exit(0);
@@ -29,7 +29,7 @@ Run either at the root of your target project.`);
 
 const isAdopt = sub === 'adopt' || sub === 'update';
 const isInit = sub === 'init';
-const script = isAdopt ? 'update.sh' : 'start.sh';
+const script = isAdopt ? 'adopt.sh' : 'start.sh';
 const passArgs = (isAdopt || isInit) ? argv.slice(1) : argv;
 
 // bash is required (macOS / Linux / WSL)

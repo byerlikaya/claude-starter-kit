@@ -8,7 +8,7 @@
     {
       "name": "claude-starter-kit",
       "source": "./plugin",
-      "description": "Agentic Working Kit — disciplined agents, skills, and slash commands for Claude Code (lite edition; for the full scaffolding use start.sh / update.sh)."
+      "description": "Agentic Working Kit — disciplined agents, skills, and slash commands for Claude Code (lite edition; for the full scaffolding use start.sh / adopt.sh)."
     }
   ]
 }

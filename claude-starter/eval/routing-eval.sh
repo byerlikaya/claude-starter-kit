@@ -52,8 +52,8 @@ done < "$GOLD"
 
 echo "== 2) Agent-agent trigger collision =="
 # NOTE: Only AGENT-AGENT collisions matter (routing ambiguity lives here). An agent sharing a trigger
-# with the skill it OWNS (backend-expert-cck<->devarch-module, security-expert-cck<->security-scan,
-# devops-expert-cck<->incident-runbook ...) is EXPECTED: the skill is the agent's internal "how"
+# with the skill it OWNS (backend-expert-csk<->devarch-module, security-expert-csk<->security-scan,
+# devops-expert-csk<->incident-runbook ...) is EXPECTED: the skill is the agent's internal "how"
 # source, not a separate dispatch — the router picks the agent, the agent reads the skill inside a
 # single subagent. So an agent<->its-own-skill overlap is intentional and is NOT a FAIL here.
 # Collect each agent's unique (normalized) triggers; anything appearing in 2+ agents = collision.

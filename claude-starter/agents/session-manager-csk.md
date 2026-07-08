@@ -1,5 +1,5 @@
 ---
-name: session-manager-cck
+name: session-manager-csk
 description: |
   Session/context health auditor. Kicks in at the close of every task or subtask;
   evaluates context fill and appends a single-line status + recommendation to the END of the response.
@@ -42,7 +42,7 @@ Thresholds (over the measured %):
 - Topic changed at the root (independent of fill) → **new session**
 
 Note: the measurement is of the main session; since a subagent runs in its own window, the value is read in the main session
-and session-manager-cck applies the thresholds.
+and session-manager-csk applies the thresholds.
 
 ## Constraints
 - Writes no code, changes no files (read-only).

@@ -22,7 +22,7 @@ OUT="dist/claude-starter-kit-$VER.tgz"
 mkdir -p dist
 
 # Only tracked whitelist paths (from HEAD) — no leak even if the working tree is dirty.
-git archive --format=tar.gz -o "$OUT" HEAD start.sh update.sh claude-starter VERSION
+git archive --format=tar.gz -o "$OUT" HEAD start.sh adopt.sh claude-starter VERSION
 
 # GATE: there must be no entry outside the whitelist.
 bad="$(tar tzf "$OUT" | grep -vE '^(start\.sh$|update\.sh$|claude-starter($|/)|VERSION$)' || true)"
@@ -33,7 +33,7 @@ if [ -n "$bad" ]; then
 fi
 
 echo "Produced: $OUT ($(du -h "$OUT" | cut -f1)) · $(tar tzf "$OUT" | wc -l | tr -d ' ') entries"
-echo "Whitelist verified: only start.sh + update.sh + claude-starter/ + VERSION"
+echo "Whitelist verified: only start.sh + adopt.sh + claude-starter/ + VERSION"
 echo
 echo "To publish (SEPARATE approval — §4.4):"
 echo "  gh release create v$VER \"$OUT\" -R byerlikaya/claude-starter-kit --title \"v$VER\" --notes-file CHANGELOG.md"

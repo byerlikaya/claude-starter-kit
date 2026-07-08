@@ -7,14 +7,14 @@ class ClaudeStarterKit < Formula
   license "MIT"
 
   def install
-    libexec.install "start.sh", "update.sh", "claude-starter", "VERSION"
+    libexec.install "start.sh", "adopt.sh", "claude-starter", "VERSION"
     (bin/"claude-starter-kit").write <<~SH
       #!/bin/bash
       # Stage the bundled payload in a temp dir so start.sh's self-cleanup is harmless.
       stage="$(mktemp -d)"
       cp -R "#{libexec}/." "$stage/"
       case "${1:-}" in
-        adopt|update) script=update.sh; shift ;;
+        adopt|update) script=adopt.sh; shift ;;
         init)         script=start.sh;  shift ;;
         *)            script=start.sh ;;
       esac

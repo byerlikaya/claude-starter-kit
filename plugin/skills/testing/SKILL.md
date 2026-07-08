@@ -2,7 +2,7 @@
 name: testing
 description: |
   The "how" of testing: pyramid, AAA, isolation, risk-coverage, determinism; guarantees the
-  "tests are green" promise. test-expert-cck applies this.
+  "tests are green" promise. test-expert-csk applies this.
   Trigger phrases: "write a test", "run the tests", "coverage", "are the tests green", "unit test", "integration test"
 ---
 

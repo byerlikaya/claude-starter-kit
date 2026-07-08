@@ -2,7 +2,7 @@
 name: token-budget
 description: |
   Context/token management discipline: subagent isolation, output=summary contract, move-to-file,
-  delegation threshold, lean skill. session-manager-cck and every agent adhere to this.
+  delegation threshold, lean skill. session-manager-csk and every agent adhere to this.
   Trigger phrases: "token", "context", "context management", "context is full", "clear context"
 ---
 
@@ -19,4 +19,4 @@ to the main thread — intermediate noise (file reads, searches, logs) never ent
 4. **Least tooling.** An agent holds only the tools it needs; extras accidentally pollute the context + burn the limit.
 5. **Lean SKILL.md.** Skills load into the main context; heavy reference goes to a separate file, only when needed.
 6. **Targeted reading.** Instead of reading a whole file, pinpoint with Grep/Glob.
-7. **Manage with /context.** session-manager-cck recommends continue/handoff+clear based on the real percentage; at a phase boundary, `/clear`.
+7. **Manage with /context.** session-manager-csk recommends continue/handoff+clear based on the real percentage; at a phase boundary, `/clear`.

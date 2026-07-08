@@ -55,7 +55,7 @@ jobs:
             echo "- **npx** — \`npx @byerlikaya/claude-starter-kit\` (fresh) · \`npx @byerlikaya/claude-starter-kit adopt\` (existing)"
             echo "- **Homebrew** — \`brew install byerlikaya/tap/claude-starter-kit\`"
             echo "- **Claude Code plugin** — \`/plugin marketplace add byerlikaya/claude-starter-kit\` -> \`/plugin install claude-starter-kit@byerlikaya\`"
-            echo "- **Tarball** — download below, then \`bash start.sh\` (fresh) or \`bash update.sh\` (existing)"
+            echo "- **Tarball** — download below, then \`bash start.sh\` (fresh) or \`bash adopt.sh\` (existing)"
             echo
             echo "## What's new"
             echo

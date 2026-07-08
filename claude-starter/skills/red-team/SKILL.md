@@ -9,7 +9,7 @@ description: |
 # Red Team (LLM / Agent Defense)
 
 Goal: verify a system's defense against prompt injection and abuse by **attempting to break it**.
-Only meaningful on systems that have a defense (the CLAUDE.md "Untrusted content" axis); report findings to `security-expert-cck`.
+Only meaningful on systems that have a defense (the CLAUDE.md "Untrusted content" axis); report findings to `security-expert-csk`.
 
 > **Ethical boundary:** Only test **your own / authorized** system. The attack scenarios generated are for
 > verifying the defense; actual harm / use against someone else's system is out of scope (§4, security policy).
@@ -37,6 +37,6 @@ Only meaningful on systems that have a defense (the CLAUDE.md "Untrusted content
 
 ## Invariant rules
 1. **Authorized system only** — test your own defense; no real attack / someone else's system.
-2. **Finding = a defense gap** — report it for the fix, not for exploitation (security-expert-cck).
+2. **Finding = a defense gap** — report it for the fix, not for exploitation (security-expert-csk).
 3. **Do not leak payloads** — masked/summarized in the finding; do not spread a live malicious command.
 4. **Strengthen the defense layer** — every break feeds back into the CLAUDE.md "Untrusted content" rule.

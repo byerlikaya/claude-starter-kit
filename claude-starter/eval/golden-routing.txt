@@ -1,16 +1,16 @@
 # Golden routing: <example user prompt>|<expected target agent/skill>
 # routing-eval.sh reads this: the expected target's trigger phrase must appear in the prompt (substring).
 # If the target isn't installed in this profile, the line is SKIPPED (won't fail a pruned install).
-add a new handler for the order endpoint|backend-expert-cck
-write a migration for this table|database-expert-cck
-build a responsive component for the login screen|frontend-expert-cck
+add a new handler for the order endpoint|backend-expert-csk
+write a migration for this table|database-expert-csk
+build a responsive component for the login screen|frontend-expert-csk
 add a new rn screen with expo router|frontend-rn-expo
-run an OWASP check and a full security scan|security-expert-cck
-we need a kvkk privacy audit|privacy-agent-cck
-commit the changes|commit-agent-cck
-run tests and give me a coverage report|test-expert-cck
-do a PR review and look at the diff|review-agent-cck
-plan first and produce a task breakdown|planner-cck
+run an OWASP check and a full security scan|security-expert-csk
+we need a kvkk privacy audit|privacy-agent-csk
+commit the changes|commit-agent-csk
+run tests and give me a coverage report|test-expert-csk
+do a PR review and look at the diff|review-agent-csk
+plan first and produce a task breakdown|planner-csk
 deploy this and go to production on the VPS|vps-deploy
 prepare the changelog and cut a tag|release
 set up a ci pipeline with github actions|ci-pipeline
@@ -26,5 +26,5 @@ handle api versioning with an openapi contract|api-design
 the page is slow, do a performance optimization|performance
 write an incident runbook and a postmortem|incident-runbook
 red team the prompt injection defenses|red-team
-ship to prod and be ready to rollback|devops-expert-cck
-set up a reverse proxy and ssl|devops-expert-cck
+ship to prod and be ready to rollback|devops-expert-csk
+set up a reverse proxy and ssl|devops-expert-csk

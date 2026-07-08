@@ -2,13 +2,13 @@
 name: devarch-module
 description: |
   Backend pattern: MediatR CQRS handler/command/query, IResult/IDataResult result contract,
-  Autofac AOP aspect chain, FluentValidation, Languages/i18n pattern. backend-expert-cck applies the `devarch-module` skill.
+  Autofac AOP aspect chain, FluentValidation, Languages/i18n pattern. backend-expert-csk applies the `devarch-module` skill.
   Trigger phrases: "devarch-module", "new handler", "write a command", "add a query", "validator", "aspect"
 ---
 
 # Backend Pattern (MediatR CQRS / IResult / AOP)
 
-> **Kit adaptation (local, .claude/):** `backend-expert-cck` applies the `devarch-module` skill. Sources (alignment):
+> **Kit adaptation (local, .claude/):** `backend-expert-csk` applies the `devarch-module` skill. Sources (alignment):
 > the DevArchitecture pattern — **its name does NOT leak into generated code / namespace / file / comment / csproj / Swagger /
 > JWT (§4.2).** The pattern lives here; the generated artifact is written with project-specific names.
 
@@ -77,4 +77,4 @@ public class CreateOrderCommand : IRequest<IResult>
 ```
 
 ## DoD (this skill's contribution)
-- `sonarqube-check` 0/0/0/0, build 0 warnings/0 errors; `test-expert-cck` green; `/simplify` applied.
+- `sonarqube-check` 0/0/0/0, build 0 warnings/0 errors; `test-expert-csk` green; `/simplify` applied.

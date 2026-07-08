@@ -3,7 +3,7 @@ name: frontend
 description: |
   Stack-agnostic frontend discipline (web · mobile · desktop): component/view structure, state,
   data fetching, state-complete UI (loading/empty/error), i18n, accessibility, performance.
-  frontend-expert-cck applies this on EVERY stack; stack-specific detail lives in the relevant project skill.
+  frontend-expert-csk applies this on EVERY stack; stack-specific detail lives in the relevant project skill.
   Trigger phrases: "frontend", "screen", "component", "page", "UI", "state management", "interface"
 ---
 
@@ -36,7 +36,7 @@ Don't code only the "full" case; empty/error/loading are part of the experience.
 ## DoD (this skill's contribution)
 - `/simplify`; no dead styles/unused props.
 - The four states are covered; `i18n-integrity` clean; accessibility passes the baseline matrix.
-- `review-agent-cck` clean.
+- `review-agent-csk` clean.
 
 ## Constraints
 - Surgical change; follow existing conventions, do not impose a stack/preference.

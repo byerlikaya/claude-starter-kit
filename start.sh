@@ -21,7 +21,7 @@ Usage: bash start.sh [PROFILE] [BACKEND-STACK]
   Stack:    --dotnet  | --generic   (backend/fullstack only; default: dotnet)
 If no flag is given, the script asks the relevant step interactively (wizard).
   --dotnet   .NET/DevArchitecture full support (devarch-module + DevArch gate)
-  --generic  generic backend (backend/database-expert-cck + db-migration; NO devarch)
+  --generic  generic backend (backend/database-expert-csk + db-migration; NO devarch)
              (sonarqube-check is language-agnostic; installed in every profile, not .NET-specific)
 USAGE
 }
@@ -111,19 +111,19 @@ if [ -z "$PROFILE" ]; then
   sub "The choice determines the set of agents + skills to install."
   echo
   opt 1 "backend"   0 "~10 agents · ~24 skills"
-  add  "backend-expert-cck · database-expert-cck + db / api / migration skills"
-  skip "frontend-expert-cck and all UI skills (frontend/a11y/i18n) NOT INSTALLED"
+  add  "backend-expert-csk · database-expert-csk + db / api / migration skills"
+  skip "frontend-expert-csk and all UI skills (frontend/a11y/i18n) NOT INSTALLED"
   echo
   opt 2 "frontend"  0 "~9 agents · ~23 skills"
-  add  "frontend-expert-cck + frontend / a11y / i18n skills"
-  skip "backend-expert-cck · database-expert-cck and all server skills NOT INSTALLED"
+  add  "frontend-expert-csk + frontend / a11y / i18n skills"
+  skip "backend-expert-csk · database-expert-csk and all server skills NOT INSTALLED"
   echo
   opt 3 "fullstack" 1 "~11 agents · ~27 skills"
   add  "everything — all agents + all skills (frontend + backend together)"
   echo
   opt 4 "mobile"    0 "~9 agents · ~24 skills"
-  add  "frontend-expert-cck + React Native / Expo layer (frontend-rn-expo)"
-  skip "backend-expert-cck · database-expert-cck NOT INSTALLED"
+  add  "frontend-expert-csk + React Native / Expo layer (frontend-rn-expo)"
+  skip "backend-expert-csk · database-expert-csk NOT INSTALLED"
   echo
   printf '  %s->%s Choice %s[1-4, empty=3]%s: ' "$CY" "$R" "$D" "$R"
   read -r s || s=""                 # does not hang on EOF/non-TTY; empty => default (fullstack)
@@ -143,7 +143,7 @@ if [ "$HAS_BACKEND" = 1 ] && [ -z "$STACK" ]; then
   gate "clones the DevArchitecture base project BEHIND AN APPROVAL GATE (greenfield project)"
   echo
   opt 2 "Generic" 0 "stack-agnostic"
-  add  "stack-agnostic backend-expert-cck — adapts to the existing repo's pattern"
+  add  "stack-agnostic backend-expert-csk — adapts to the existing repo's pattern"
   skip "devarch-module and the DevArchitecture base NOT INSTALLED (sonarqube-check still installed)"
   echo
   printf '  %s->%s Choice %s[1-2, empty=1]%s: ' "$CY" "$R" "$D" "$R"
@@ -165,13 +165,13 @@ esac
 DEVARCH_ON=0
 case "$PROFILE" in
   frontend)
-    EXCL_AGENTS="backend-expert-cck.md database-expert-cck.md"
+    EXCL_AGENTS="backend-expert-csk.md database-expert-csk.md"
     EXCL_SKILLS="db-migration devarch-module frontend-rn-expo api-design" ;;
   mobile)
-    EXCL_AGENTS="backend-expert-cck.md database-expert-cck.md"
+    EXCL_AGENTS="backend-expert-csk.md database-expert-csk.md"
     EXCL_SKILLS="db-migration devarch-module api-design" ;;
   backend)
-    EXCL_AGENTS="frontend-expert-cck.md"
+    EXCL_AGENTS="frontend-expert-csk.md"
     EXCL_SKILLS="frontend frontend-rn-expo a11y" ;;
   fullstack)
     EXCL_AGENTS=""
@@ -266,7 +266,7 @@ if [ "$DEVARCH_ON" = 1 ]; then
   # Fullstack: reserve ./frontend so the layout is explicit (build the frontend here; the backend is in ./backend).
   if [ "$PROFILE" = "fullstack" ] && [ ! -e ./frontend ]; then
     mkdir -p frontend
-    printf '# frontend\n\nBuild your frontend here (the `frontend-expert-cck` agent helps). The backend lives in `../backend`.\n' > frontend/README.md
+    printf '# frontend\n\nBuild your frontend here (the `frontend-expert-csk` agent helps). The backend lives in `../backend`.\n' > frontend/README.md
     echo "  Reserved ./frontend for your frontend."
   fi
   echo
@@ -282,9 +282,9 @@ cp -R "$SRC/hooks/."    .claude/hooks/ 2>/dev/null || true
 cp -R "$SRC/eval/."     .claude/eval/ 2>/dev/null || true
 for f in $EXCL_AGENTS; do rm -f  ".claude/agents/$f"; done
 for d in $EXCL_SKILLS; do rm -rf ".claude/skills/$d"; done
-# Generic backend: install the stack-agnostic variant instead of the DevArchitecture-bound backend-expert-cck.
+# Generic backend: install the stack-agnostic variant instead of the DevArchitecture-bound backend-expert-csk.
 if [ "$HAS_BACKEND" = 1 ] && [ "$STACK" = "generic" ] && [ -f "$SRC/agents-optional/backend-expert-generic.md" ]; then
-  cp "$SRC/agents-optional/backend-expert-generic.md" .claude/agents/backend-expert-cck.md
+  cp "$SRC/agents-optional/backend-expert-generic.md" .claude/agents/backend-expert-csk.md
 fi
 echo "  Profile '$PROFILE' (stack: $STACK): $(ls .claude/agents/*.md 2>/dev/null | wc -l | tr -d ' ') agents, $(ls -d .claude/skills/*/ 2>/dev/null | wc -l | tr -d ' ') skills installed."
 [ -f "$SRC/settings.json" ] && cp "$SRC/settings.json" .claude/settings.json

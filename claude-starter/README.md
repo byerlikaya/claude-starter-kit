@@ -14,7 +14,7 @@ summarizes what lives under `.claude/` and how it works.
 ## What's inside `.claude/`
 
 - **Agents** (`agents/`) — one thin trigger per role: planning, backend, database, security,
-  privacy, testing, frontend, devops, review, commit, and session management. Names carry a `-cck`
+  privacy, testing, frontend, devops, review, commit, and session management. Names carry a `-csk`
   suffix so that this kit's agents do not clash with the project's own agents.
 - **Skills** (`skills/`) — the single source of the "how" knowledge: code review, security scan,
   migration, deployment, observability, performance, accessibility, translation integrity, versioning,

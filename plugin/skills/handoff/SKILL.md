@@ -2,7 +2,7 @@
 name: handoff
 description: |
   Session handover summary: when context fills up / a phase closes / the topic changes, write an
-  action-oriented handover to docs/SESSION_STATE.md, then recommend /clear. Triggered by session-manager-cck.
+  action-oriented handover to docs/SESSION_STATE.md, then recommend /clear. Triggered by session-manager-csk.
   Trigger phrases: "handoff", "hand off", "session summary", "session state", "clear context", "I'll continue"
 ---
 

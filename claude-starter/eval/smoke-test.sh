@@ -19,8 +19,8 @@ for f in "$AGENTS"/*.md; do
   grep -q 'Trigger phrases:' "$f" || fail "$n: no Trigger phrases"
 done
 # Core agents must be present regardless of profile; stack-specific agents (backend/database/
-# frontend-expert-cck) vary by install profile, so no fixed count is expected.
-for c in planner-cck security-expert-cck privacy-agent-cck test-expert-cck review-agent-cck commit-agent-cck session-manager-cck; do
+# frontend-expert-csk) vary by install profile, so no fixed count is expected.
+for c in planner-csk security-expert-csk privacy-agent-csk test-expert-csk review-agent-csk commit-agent-csk session-manager-csk; do
   [ -f "$AGENTS/$c.md" ] || fail "missing core agent: $c"
 done
 [ "$AC" -ge 7 ] && pass "$AC agents found (7 core complete)" || fail "agent count below the 7 core: $AC"

@@ -1,5 +1,5 @@
 ---
-name: planner-cck
+name: planner-csk
 description: |
   Planning specialist. Before a feature/task is committed to code, produces a task breakdown +
   acceptance criteria + dependency order. Does not write code; produces a plan. applies the `spec-planning` skill.
@@ -40,7 +40,7 @@ If scope is ambiguous or requirements conflict, **stop planning**, write the ass
 
 ## Example delegation
 - ✅ New feature with ambiguous scope ('let's add module X')
-- ❌ A single-line, unambiguous change (that goes to backend-expert-cck)
+- ❌ A single-line, unambiguous change (that goes to backend-expert-csk)
 
 ## Prohibitions (absolute)
 CLAUDE.md §4 applies. No AI trace / branding in the plan output.

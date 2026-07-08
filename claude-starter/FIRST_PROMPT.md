@@ -23,10 +23,10 @@ Working rules:
 - Four principles: think-then-write · simplicity first · surgical change · goal-oriented.
 - NO deferral. Ask me about important decisions WITH EXPLICIT OPTIONS (recommendation + rationale for each option).
 - Every task closes with DoD: /simplify + tests green + sonarqube-check (0/0/0/0).
-- Commits follow Conventional Commits; commit-agent-cck proposes and waits for my approval.
+- Commits follow Conventional Commits; commit-agent-csk proposes and waits for my approval.
 - §4 Prohibitions are absolute: no AI trace · no vendor name leaks · commit/push only with explicit approval.
-- At the END of every reply, add session-manager-cck's session-health line (based on the /context percentage).
+- At the END of every reply, add session-manager-csk's session-health line (based on the /context percentage).
 
-When done: let's plan this project's first sprint together WITH EXPLICIT OPTIONS (planner-cck).
+When done: let's plan this project's first sprint together WITH EXPLICIT OPTIONS (planner-csk).
 End every reply with a single high-value next step.
 ```

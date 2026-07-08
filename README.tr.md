@@ -1,12 +1,12 @@
 <div align="center">
 
-# 🛠️ Agentik Çalışma Kiti — Claude Code
+# 🛠️ Claude Starter Kit
 
-**Bir projeyi — hangi aşamada olursa olsun — aynı mühendislik disipliniyle ilerleten, yeniden kullanılabilir bir Claude Code iskeleti.**
+**Claude Code için agentik çalışma kiti** — bir projeyi, hangi aşamada olursa olsun, aynı mühendislik disipliniyle ilerleten yeniden kullanılabilir bir iskelet.
 
 *planla → üret → denetle → commit'le; her kritik kural bir **hatırlatma değil, kapı**.*
 
-![Sürüm](https://img.shields.io/badge/s%C3%BCr%C3%BCm-1.0.4-2563eb?style=flat-square)
+![Sürüm](https://img.shields.io/badge/s%C3%BCr%C3%BCm-1.0.5-2563eb?style=flat-square)
 ![Lisans](https://img.shields.io/badge/lisans-MIT-16a34a?style=flat-square)
 ![Ajanlar](https://img.shields.io/badge/ajanlar-11-f59e0b?style=flat-square)
 ![Skiller](https://img.shields.io/badge/skiller-27-f59e0b?style=flat-square)
@@ -20,40 +20,43 @@
 
 ## Neden bu kit?
 
-Çoğu "agent kurulumu" bir öneriler yığınıdır: kurallar bir dosyada durur, onlara uyulup uyulmaması modelin insafına kalır. Bu kit farklı bir söz verir — **kritik kural bir kapıdır, hatırlatma değil.**
+Çoğu "agent kurulumu" bir öneriler yığınıdır — kurallar bir dosyada durur, uyulup uyulmaması modele kalır. Bu kit farklı: Claude Code'a **disiplinli bir mühendislik ekibi** yerleştirir; burada **önemli kurallar hatırlatma değil, kapıdır.**
 
 | | |
 |---|---|
-| 🚫 | Commit mesajına **yapay-zeka izi sızamaz** — bir git hook onu reddeder. |
-| 🔒 | **Onaysız `commit`/`push` olmaz** — bir PreToolUse hook bunu, otomatik/bypass modda bile durdurur. |
-| 📊 | Oturum doluluğu **tahmin edilmez** — gerçek token sayısı transcript'ten ölçülür. |
-| 🌿 | Kurulum mevcut projeyi **ezmez** — devir ayrı bir git dalında yapılır. |
+| 👥 | **Bir prompt değil, bir ekip** — 11 uzman ajan planla → üret → denetle → gönder boyunca kendiliğinden zincirlenir; sen bağlamazsın, ana thread yapar. |
+| 🛡️ | **Güvenlik & gizlilik seçenek değil, kapı** — risk-kritik değişiklikler kapanmadan önce güvenlik/gizlilik denetiminden geçmek zorundadır. |
+| 🚦 | **Her commit senin onayınla** — `commit`/`push` senin açık onayın olmadan çalışmaz; otomatik/bypass modda bile araç seviyesinde zorlanır. |
+| 🌿 | **Mevcut repoda güvenli** — `adopt` kiti bir dala devreder; `main`'e asla dokunulmaz, saklamadan önce incelersin. |
 
 ---
 
-## Ajanlar
+## 🧠 Ajanlar — kitin kalbi
 
-On bir ajan; her biri bir **ince tetikleyici** — yalnızca *kim* ve *ne zaman*'ı söyler, *nasıl*'ı bir skill'e bırakır. Ana thread onları beş aşamada seçip zincirler ve commit'ten önce kaliteyi kademe kademe yükseltir:
+**11 ajan**; her biri bir **ince tetikleyici** — yalnızca *kim* ve *ne zaman*'ı söyler, *nasıl*'ı bir skill'e bırakır. Ana thread onları **beş aşamada** seçip zincirler ve commit'ten önce kaliteyi kademe kademe yükseltir:
 
 <div align="center">
   <img src="assets/orchestration-tr.svg" alt="Bes asamada ajan orkestrasyonu" width="740">
+
+  🧭 **Anla** &nbsp;→&nbsp; 🔨 **Üret** &nbsp;→&nbsp; 🔍 **Denetle** &nbsp;→&nbsp; ✅ **Kapat** &nbsp;→&nbsp; 🤝 **Devret**
+
 </div>
 
 | Ajan | Aşama | Ne zaman devreye girer | Model |
-|---|---|---|---|
-| **planner-cck** | Anla | kapsam belirsizse | inherit |
-| **backend-expert-cck** | Üret | sunucu / API / iş mantığı | inherit |
-| **database-expert-cck** | Üret | şema, migration, index, cache | inherit |
-| **frontend-expert-cck** | Üret | UI, bileşen, istemci işi | inherit |
-| **devops-expert-cck** | Üret | dağıtım, CI hattı, olay | inherit |
-| **security-expert-cck** | Denetle | auth / IDOR / injection / secret (güvenlik-kritikse zorunlu) | `sonnet` |
-| **privacy-agent-cck** | Denetle | kişisel veri (KVKK / GDPR) | `sonnet` |
-| **test-expert-cck** | Denetle | test, kapsam, regresyon | inherit |
-| **review-agent-cck** | Kapat | commit öncesi kod-sağlığı denetimi | `haiku` |
-| **commit-agent-cck** | Kapat | commit'i önerir, onay bekler | `haiku` |
-| **session-manager-cck** | Devret | bağlam dolunca / faz sınırında | `haiku` |
+|:--|:--|:--|:--:|
+| **`planner-csk`** | 🧭 Anla | kapsam belirsizse | `inherit` |
+| **`backend-expert-csk`** | 🔨 Üret | sunucu / API / iş mantığı | `inherit` |
+| **`database-expert-csk`** | 🔨 Üret | şema, migration, index, cache | `inherit` |
+| **`frontend-expert-csk`** | 🔨 Üret | UI, bileşen, istemci işi | `inherit` |
+| **`devops-expert-csk`** | 🔨 Üret | dağıtım, CI hattı, olay | `inherit` |
+| **`security-expert-csk`** | 🔍 Denetle | auth / IDOR / injection / secret · **güvenlik-kritikse zorunlu** | `sonnet` |
+| **`privacy-agent-csk`** | 🔍 Denetle | kişisel veri (KVKK / GDPR) | `sonnet` |
+| **`test-expert-csk`** | 🔍 Denetle | test, kapsam, regresyon | `inherit` |
+| **`review-agent-csk`** | ✅ Kapat | commit öncesi kod-sağlığı denetimi | `haiku` |
+| **`commit-agent-csk`** | ✅ Kapat | commit'i önerir, onay bekler | `haiku` |
+| **`session-manager-csk`** | 🤝 Devret | bağlam dolunca / faz sınırında | `haiku` |
 
-> Ajan adları `-cck` ekiyle isimlenir (Claude Code Kit); böylece kurulduğu projenin kendi ajanlarıyla asla çakışmaz. Her ajan incedir; asıl yöntem bir **skill**'de yaşar — tek bilgi kaynağı.
+> Ajan adları `-csk` ekiyle isimlenir (Claude Starter Kit); böylece kurulduğu projenin kendi ajanlarıyla asla çakışmaz. Her ajan incedir; asıl yöntem bir **skill**'de yaşar — tek bilgi kaynağı.
 
 ---
 
@@ -67,7 +70,7 @@ On bir ajan; her biri bir **ince tetikleyici** — yalnızca *kim* ve *ne zaman*
 
 ## Kurulum & çalıştırma
 
-**İki giriş noktası** var: `start.sh` **sıfırdan** projeyi kurar; **`adopt`** (`update.sh`) kiti **mevcut** projeye devreder. Hangi kanalı seçersen seç — her biri aynı iki komutu çalıştırır.
+**İki giriş noktası** var: `start.sh` **sıfırdan** projeyi kurar; **`adopt`** (`adopt.sh`) kiti **mevcut** projeye devreder. Hangi kanalı seçersen seç — her biri aynı iki komutu çalıştırır.
 
 **npx** — kurulum gerektirmez:
 ```bash
@@ -86,7 +89,7 @@ claude-starter-kit adopt    # mevcut proje
 ```bash
 gh release download --repo byerlikaya/claude-starter-kit -p '*.tgz' && tar xzf claude-starter-kit-*.tgz
 bash start.sh               # sıfırdan proje
-bash update.sh              # mevcut proje
+bash adopt.sh              # mevcut proje
 ```
 
 > Sadece ajan & skill'leri mevcut Claude Code'una istiyorsan (scaffold yok)? `/plugin marketplace add byerlikaya/claude-starter-kit` sonra `/plugin install claude-starter-kit@byerlikaya`.
@@ -110,16 +113,16 @@ Backend yığını yalnız `--backend`/`--fullstack` için sorulur: **`--dotnet`
 
 > **`--fullstack` + `--dotnet`** seçilince DevArchitecture backend `./backend`'e konur, `./frontend` frontend'in için ayrılır ve çözüm dosyası proje adına yeniden adlandırılır — kök, çıplak bir backend gibi görünmek yerine tertemiz kalır.
 
-### 🔄 Mevcut projeye devir — `update.sh`
+### 🔄 Mevcut projeye devir — `adopt.sh`
 
 ```bash
-bash update.sh          # hedef projenin kökünde
+bash adopt.sh          # hedef projenin kökünde
 ```
 
 Kiti, zaten ilerleyen bir projeye **bir ekibin projeyi başka bir ekibe devretmesi** gibi uygular — proje bozulmaz, alınmış kararlar kaybolmaz, kit de pasif kalmaz.
 
 <div align="center">
-  <img src="assets/handover-tr.svg" alt="update.sh devir akisi" width="900">
+  <img src="assets/handover-tr.svg" alt="adopt.sh devir akisi" width="900">
 </div>
 
 Tüm değişiklik ayrı bir git dalına **staged (commit'siz)** düşer — böylece eklenen/değişen her dosya editörünün Source Control / Changes panelinde görünür; oradan inceler, sonra `git commit` ile kabul (ya da reset ile iptal) edersiniz. `main` el değmez. Kit ajanları yan yana kurulur (çakışmadan), disiplin tek `@import` ile bağlanır, `settings.json` şema-farkında birleştirilir ve mevcut husky/lefthook zincirleri kitle bir köprü üzerinden birlikte çalışır. Kapanışta kalıcı bir `docs/HANDOVER.md` ve bir ADR bırakır — kararlar sohbette değil, versiyon kontrolünde yaşar.
@@ -128,7 +131,7 @@ Tüm değişiklik ayrı bir git dalına **staged (commit'siz)** düşer — böy
 
 ## İçindekiler
 
-- **11 ajan** — [yukarıdaki tabloya bakın](#ajanlar).
+- **11 ajan** — yukarıdaki tabloya bakın.
 - **27 skill** — "nasıl"ın tek kaynağı: kod gözden geçirme, güvenlik taraması, migration, dağıtım, gözlemlenebilirlik, performans, erişilebilirlik, çeviri bütünlüğü, sürümleme, olay müdahalesi ve daha fazlası.
 - **5 slash komut** — `/plan` · `/review` · `/ship` · `/handoff` · `/simplify`.
 - **Hook'lar** — `guard-bash.sh` (araç seviyesi kapı), `pre-commit` + `commit-msg` (iz-denetimi), `context-usage.sh` ve `session-guard.sh` (oturum ölçümü).
@@ -175,8 +178,6 @@ Yeni bir ajan veya skill eklerken `AGENT_TEMPLATE.md` sözleşmesini izleyin: fr
 
 MIT — bkz. [LICENSE](LICENSE). Disiplin katmanı şu üst kaynaklara dayanır:
 
-- **[multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills)** — disiplinin çekirdeğindeki dört çalışma ilkesi; kitin en temel referansı.
+- **[DevArchitecture](https://github.com/DevArchitecture/DevArchitecture)** — backend kalıbı (MediatR CQRS / IResult / AOP). Yalnız kalıp referans alınır; burada DevArchitecture kaynak kodu barındırılmaz.
+- **[multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills)** — disiplinin çekirdeğindeki dört çalışma ilkesi.
 - **[google/eng-practices](https://github.com/google/eng-practices)** — `code-review` skill'i, damıtılıp yeniden ifade edildi. **CC-BY 3.0** lisanslı; atıf zorunludur.
-- **[DevArchitecture](https://github.com/DevArchitecture/DevArchitecture)** — backend kalıbı (MediatR CQRS / IResult / AOP). Yalnız kalıp referans alınır — burada DevArchitecture kaynak kodu barındırılmaz — yazarının açık izniyle.
-
-`security-scan`, `db-migration` ve `vps-deploy` skill'leri özgündür; içerdikleri CLI komutları ve OWASP kategori adları kamuya açık teknik bilgilerdir.

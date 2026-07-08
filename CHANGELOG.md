@@ -3,10 +3,20 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [1.0.5] - 2026-07-08
+
+### Changed
+- **Agent namespace `-cck` → `-csk`** (Claude Starter Kit) to match the project name — all 11 agents and every
+  reference across the kit, plugin, and diagrams.
+- **`update.sh` renamed to `adopt.sh`** so the tarball's entry point matches the `adopt` command that npx and Homebrew already use.
+- **README refresh:** the title is now "Claude Starter Kit"; "Why this kit?" leads with standout features (a team,
+  not a prompt · security & privacy gates); the agents table and the handover diagram were clarified; attribution
+  was folded into the README (the four-principles source credited) and `ATTRIBUTION.md` removed.
+
 ## [1.0.4] - 2026-07-08
 
 ### Changed
-- **`update.sh` (adopt) leaves the change set STAGED, not committed:** the kit files land on the handover branch
+- **`adopt.sh` (adopt) leaves the change set STAGED, not committed:** the kit files land on the handover branch
   staged-but-uncommitted, so every added/changed file is visible in your editor's Source Control / Changes panel
   for review. You commit to accept (`git commit`) or discard with one reset — nothing is buried in an auto-commit.
   (Previously everything was auto-committed on the branch, so a developer saw nothing in the Changes view.)
@@ -19,9 +29,9 @@ versioning follows [SemVer](https://semver.org/).
 ## [1.0.3] - 2026-07-08
 
 ### Fixed
-- **`update.sh` (adopt) re-run was unsafe:** running adopt on an already-adopted project made the git-shim
+- **`adopt.sh` (adopt) re-run was unsafe:** running adopt on an already-adopted project made the git-shim
   reference itself → infinite recursion on every commit. Adopt now detects a prior install (**REFRESH mode**),
-  never shims its own hooks, refreshes kit-owned files, and excludes the kit's `-cck` agents/skills from the
+  never shims its own hooks, refreshes kit-owned files, and excludes the kit's `-csk` agents/skills from the
   "project" counts (the earlier "N custom agents" over-count).
 - **Confusing decision override:** the number-picker (`[1-4,6,7]`) that silently rejected lists like `1,2,3`
   and swallowed invalid answers is replaced by "Accept all suggestions? [yes/no]" then a per-decision walk that
@@ -53,9 +63,9 @@ versioning follows [SemVer](https://semver.org/).
   outward-facing deploy verbs now hit approval at the tool level (not just at the LLM behavior level).
 
 ### Fixed
-- **Confirmation prompt rejected `yes`:** `ask_yes` (`start.sh`/`update.sh`) only accepted `evet/e/y`, so typing
+- **Confirmation prompt rejected `yes`:** `ask_yes` (`start.sh`/`adopt.sh`) only accepted `evet/e/y`, so typing
   `yes` at the English `[yes/no]` prompt cancelled the install. Now accepts `yes/y/evet/e`.
-- **`update.sh` decision keys were Turkish:** the Stage-B override labels and internal keys (koru/gevset/gizle…)
+- **`adopt.sh` decision keys were Turkish:** the Stage-B override labels and internal keys (koru/gevset/gizle…)
   are now English (keep/loosen/hide…), with matching input letters.
 - **Auto-rollback conflict:** `vps-deploy` rollback uses an atomic `rsync --delete` instead of `rm -rf`,
   so `guard-bash` (its local `rm -rf` block) no longer blocks automatic rollback (local rm -rf protection remains).
@@ -96,6 +106,7 @@ First stable release. A Turkish, opinionated-but-backend-optional agent/skill sc
 - The discipline layer and the frontend are stack-agnostic; the backend is opinionated (.NET/DevArchitecture) or generic.
 - Language is Turkish. No AI trace / third-party template name leaks into the artifacts (§4).
 
+[1.0.5]: https://github.com/byerlikaya/claude-starter-kit/releases/tag/v1.0.5
 [1.0.4]: https://github.com/byerlikaya/claude-starter-kit/releases/tag/v1.0.4
 [1.0.3]: https://github.com/byerlikaya/claude-starter-kit/releases/tag/v1.0.3
 [1.0.2]: https://github.com/byerlikaya/claude-starter-kit/releases/tag/v1.0.2

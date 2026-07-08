@@ -1,5 +1,5 @@
 ---
-name: review-agent-cck
+name: review-agent-csk
 description: |
   Code review specialist. Audits the changed diff against Google eng-practices + Karpathy
   principles: simplicity, surgical change, readability, altitude. Writes no code;

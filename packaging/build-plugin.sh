@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Generate the Claude Code plugin edition from the payload — the "lite" channel.
 # It ships the agents, skills, and commands (loadable via /plugin install), but NOT the
-# scaffolding: no settings.json, no git-hook gates. The full kit is start.sh / update.sh.
+# scaffolding: no settings.json, no git-hook gates. The full kit is start.sh / adopt.sh.
 # Single source of truth stays claude-starter/; this regenerates plugin/ from it.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -18,7 +18,7 @@ VERSION="$(cat "$ROOT/VERSION")"
 cat > "$OUT/.claude-plugin/plugin.json" <<JSON
 {
   "name": "claude-starter-kit",
-  "description": "Agentic Working Kit — disciplined agents, skills, and slash commands for Claude Code. Lite edition: loads the agents/skills only; for the full scaffolding + gates use start.sh / update.sh.",
+  "description": "Agentic Working Kit — disciplined agents, skills, and slash commands for Claude Code. Lite edition: loads the agents/skills only; for the full scaffolding + gates use start.sh / adopt.sh.",
   "version": "${VERSION}",
   "author": { "name": "Barış Yerlikaya" },
   "homepage": "https://github.com/byerlikaya/claude-starter-kit",

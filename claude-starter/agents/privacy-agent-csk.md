@@ -1,5 +1,5 @@
 ---
-name: privacy-agent-cck
+name: privacy-agent-csk
 description: |
   KVKK/GDPR privacy auditor. Audits flows that process personal data for legal basis/consent, data
   minimization, retention period, transparency, data subject rights, and cross-border transfer.

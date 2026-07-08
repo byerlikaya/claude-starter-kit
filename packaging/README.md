@@ -1,6 +1,6 @@
 # Distribution / publishing
 
-The kit ships through several channels. These files support the ones that do **not** depend on a GitHub clone. Each channel bundles the same payload (`start.sh`, `update.sh`, `claude-starter/`, `VERSION`).
+The kit ships through several channels. These files support the ones that do **not** depend on a GitHub clone. Each channel bundles the same payload (`start.sh`, `adopt.sh`, `claude-starter/`, `VERSION`).
 
 ## npm (npx) — primary
 
@@ -15,7 +15,7 @@ Users then need nothing but Node:
 
 ```bash
 npx @byerlikaya/claude-starter-kit            # fresh project (start.sh wizard)
-npx @byerlikaya/claude-starter-kit adopt      # existing project (update.sh handover)
+npx @byerlikaya/claude-starter-kit adopt      # existing project (adopt.sh handover)
 ```
 
 `bin/cli.js` stages the payload in a temp dir and runs it with the user's project as the CWD, so `start.sh`'s self-cleanup never touches the package or the project.
@@ -41,7 +41,7 @@ The formula's `sha256` is pinned to the **v1.0.0** release tarball. If that tarb
 
 ```bash
 gh release download --repo byerlikaya/claude-starter-kit -p '*.tgz' && tar xzf claude-starter-kit-*.tgz
-bash start.sh         # fresh    ·    bash update.sh    # existing
+bash start.sh         # fresh    ·    bash adopt.sh    # existing
 ```
 
 ## Release automation (CI)
@@ -72,6 +72,6 @@ Users can install the kit's agents, skills, and commands directly in Claude Code
 /plugin install claude-starter-kit@byerlikaya
 ```
 
-This is the **lite** edition — it registers the agents/skills/commands only, *without* the scaffolding (no profile pruning, no DevArchitecture base, no git-hook gates). For the full kit use `start.sh` / `update.sh`.
+This is the **lite** edition — it registers the agents/skills/commands only, *without* the scaffolding (no profile pruning, no DevArchitecture base, no git-hook gates). For the full kit use `start.sh` / `adopt.sh`.
 
 `plugin/` (and its `.claude-plugin/plugin.json`) is generated from `claude-starter/` by **`packaging/build-plugin.sh`** — rerun it after changing agents/skills/commands so the plugin stays in sync. The release workflow verifies this on every tag. The marketplace manifest is `.claude-plugin/marketplace.json` at the repo root.
