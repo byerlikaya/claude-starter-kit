@@ -111,6 +111,8 @@ Bir kurulum sihirbazı. Bayrak vermezseniz adımları tek tek sorar (profil → 
 
 Backend yığını yalnız `--backend`/`--fullstack` için sorulur: **`--dotnet`** .NET / DevArchitecture kalıbını (MediatR CQRS · IResult · AOP) bir onay kapısıyla getirir; **`--generic`** ise Node, Go, Python ve benzeri için yığın-bağımsız bir backend uzmanı kurar.
 
+> **.NET'te sıfırdan değil.** `--dotnet`, üretim-hazır **[DevArchitecture](https://github.com/DevArchitecture/DevArchitecture)** temelini (CQRS · IResult · AOP · auth) klonlar *ve* o mimariyi bilen ajanları kurar — yani sıfırdan bir backend boş klasör değil, saat-sıfır üretken başlar. Bilerek opinionated; `--generic` yığın-bağımsız kalır.
+
 > **`--fullstack` + `--dotnet`** seçilince DevArchitecture backend `./backend`'e konur, `./frontend` frontend'in için ayrılır ve çözüm dosyası proje adına yeniden adlandırılır — kök, çıplak bir backend gibi görünmek yerine tertemiz kalır.
 
 ### 🔄 Mevcut projeye devir — `adopt.sh`
