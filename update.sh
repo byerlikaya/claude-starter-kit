@@ -23,7 +23,7 @@ row() { printf '  %s%-20s%s %s\n' "$B" "$1" "$R" "$2"; }
 warn(){ printf '  %s!%s %s%s%s\n' "$YE" "$R" "$YE" "$1" "$R"; }
 # smart suggestion line:  number+decision · SUGGESTED(green) · rationale(dim)
 prop(){ printf '  %s%-18s%s %s%-24s%s %s%s%s\n' "$B" "$1" "$R" "$GR" "$2" "$R" "$D" "$3" "$R"; }
-ask_yes(){ local a; printf '%s [yes/no]: ' "$1"; read -r a || a=""; case "$a" in [eE][vV][eE][tT]|[eE]|[yY]) return 0;; *) return 1;; esac; }
+ask_yes(){ local a; printf '%s [yes/no]: ' "$1"; read -r a || a=""; case "$a" in [yY]|[yY][eE][sS]|[eE]|[eE][vV][eE][tT]) return 0;; *) return 1;; esac; }
 # never-overwrite copy: does NOT overwrite an EXISTING target file (project file is preserved), skips+counts.
 # Result globals: ret_add / ret_skip; conflicts are added to SKIP_LIST. Do NOT call in a subshell (globals are lost).
 SKIP_LIST=""
@@ -122,12 +122,12 @@ else
 fi
 
 # ============ COMPILE DECISIONS + OVERRIDE (Stage B) ============
-DEC1="$([ "$N_PAGENTS" != 0 ] && echo koru || echo yok)"
-DEC2="proje"
-DEC3="$([ "$COAUTHOR" = 1 ] && echo gevset || echo koru)"
-DEC4="$([ "$TRACKED" = 1 ] && echo paylas || echo kit-varsayilani)"
+DEC1="$([ "$N_PAGENTS" != 0 ] && echo keep || echo none)"
+DEC2="project"
+DEC3="$([ "$COAUTHOR" = 1 ] && echo loosen || echo keep)"
+DEC4="$([ "$TRACKED" = 1 ] && echo share || echo kit-default)"
 DEC6="baseline"
-DEC7="$([ "$OFFREPO" = 1 ] && echo aktar || echo yerel)"
+DEC7="$([ "$OFFREPO" = 1 ] && echo transfer || echo local)"
 if [ -t 0 ]; then
   h1 "Review the decisions (override)"
   sub "Smart suggestions are above. Enter the number of the decision to change; EMPTY=accept all. (#5 SHIM is fixed.)"
@@ -135,12 +135,12 @@ if [ -t 0 ]; then
     printf '  %sChange? [1-4,6,7 / empty=accept]:%s ' "$B" "$R"; read -r pick || pick=""
     [ -z "$pick" ] && break
     case "$pick" in
-      1) printf '   #1 [koru/birlestir]: ';  read -r v||v=""; case "$v" in b*) DEC1=birlestir;; k*) DEC1=koru;; esac ;;
-      2) printf '   #2 [proje/kit]: ';       read -r v||v=""; case "$v" in ki*) DEC2=kit;; pr*) DEC2=proje;; esac ;;
-      3) printf '   #3 [gevset/koru]: ';     read -r v||v=""; case "$v" in g*) DEC3=gevset;; k*) DEC3=koru;; esac ;;
-      4) printf '   #4 [paylas/gizle]: ';    read -r v||v=""; case "$v" in gi*) DEC4=gizle;; pa*) DEC4=paylas;; esac ;;
-      6) printf '   #6 [baseline/mutlak]: '; read -r v||v=""; case "$v" in m*) DEC6=mutlak;; b*) DEC6=baseline;; esac ;;
-      7) printf '   #7 [aktar/eksik]: ';     read -r v||v=""; case "$v" in e*) DEC7=eksik;; a*) DEC7=aktar;; esac ;;
+      1) printf '   #1 [keep/merge]: ';  read -r v||v=""; case "$v" in m*) DEC1=merge;; k*) DEC1=keep;; esac ;;
+      2) printf '   #2 [project/kit]: ';       read -r v||v=""; case "$v" in k*) DEC2=kit;; p*) DEC2=project;; esac ;;
+      3) printf '   #3 [loosen/keep]: ';     read -r v||v=""; case "$v" in l*) DEC3=loosen;; k*) DEC3=keep;; esac ;;
+      4) printf '   #4 [share/hide]: ';    read -r v||v=""; case "$v" in s*) DEC4=share;; h*) DEC4=hide;; esac ;;
+      6) printf '   #6 [baseline/absolute]: '; read -r v||v=""; case "$v" in a*) DEC6=absolute;; b*) DEC6=baseline;; esac ;;
+      7) printf '   #7 [transfer/skip]: ';     read -r v||v=""; case "$v" in t*) DEC7=transfer;; s*) DEC7=skip;; esac ;;
       *) echo "   (1-4, 6 or 7)";;
     esac
   done
@@ -293,20 +293,20 @@ if [ -s .claude/DISCIPLINE.md ] && grep -qF '@.claude/DISCIPLINE.md' CLAUDE.md; 
 # ============ [STAGE B] APPLY THE DECISIONS ============
 h1 "Stage B — apply the decisions"
 # #3 loosen trace gate -> repo-root .trace-allowlist.txt (co-author/sign-off exempt from the trace scan)
-if [ "$DEC3" = gevset ]; then
+if [ "$DEC3" = loosen ]; then
   { [ -f .trace-allowlist.txt ] && cat .trace-allowlist.txt; printf 'Co-Authored%s\n' '-By'; printf 'Signed-off-by\n'; } | sort -u > .trace-allowlist.txt.t && mv .trace-allowlist.txt.t .trace-allowlist.txt
   echo "  #3 loosen -> .trace-allowlist.txt (co-author/sign-off exempt)"
 else echo "  #3 keep -> full trace scan"; fi
 # #4 share/hide
-if [ "$DEC4" = gizle ]; then
+if [ "$DEC4" = hide ]; then
   touch .gitignore; for e in '.claude/' 'CLAUDE.md'; do grep -qxF "$e" .gitignore || echo "$e" >> .gitignore; done
   echo "  #4 hide -> .claude/ + CLAUDE.md added to gitignore"
 else echo "  #4 share -> gitignore untouched"; fi
 # #1 merge: document (NO automatic risky merge — red-team; merging is a human-approved follow-up)
-[ "$DEC1" = birlestir ] && MERGE_NOTE="merge: overlapping project agents WILL BE HANDED OVER to the kit agent (review; do it via adr/skill)" || MERGE_NOTE="keep: project + kit agent side by side"
+[ "$DEC1" = merge ] && MERGE_NOTE="merge: overlapping project agents WILL BE HANDED OVER to the kit agent (review; do it via adr/skill)" || MERGE_NOTE="keep: project + kit agent side by side"
 # #7 off-repo transfer: paste from the user (interactive; skipped on non-TTY)
 OFFREPO_TEXT=""
-if [ "$DEC7" = aktar ] && [ -t 0 ]; then
+if [ "$DEC7" = transfer ] && [ -t 0 ]; then
   h1 "#7 off-repo decisions — paste them here"
   sub "Write the decisions made in chat/on the web but NOT in the repo. When done, an EMPTY line (Enter)."
   while IFS= read -r line; do [ -z "$line" ] && break; OFFREPO_TEXT="$OFFREPO_TEXT
@@ -319,13 +319,13 @@ h1 "Stage 5 — HANDOVER.md + ADR (handover persists; decisions are not lost)"
 mkdir -p docs docs/adr
 DATE_H="$(date +%Y-%m-%d)"
 # compute the decision values first (avoid inner-quote/command-sub tangle in the heredoc)
-case "$DEC1" in birlestir) D1='merge (overlaps will be handed over)';; yok) D1='none';; *) D1='keep (coexist)';; esac
+case "$DEC1" in merge) D1='merge (overlaps will be handed over)';; none) D1='none';; *) D1='keep (coexist)';; esac
 D2="$([ "$DEC2" = kit ] && echo 'kit wins' || echo 'project wins')"
-D3="$([ "$DEC3" = gevset ] && echo 'loosen (.trace-allowlist written)' || echo 'keep (full)')"
-D4="$([ "$DEC4" = gizle ] && echo 'hide (gitignore)' || echo 'keep sharing')"
+D3="$([ "$DEC3" = loosen ] && echo 'loosen (.trace-allowlist written)' || echo 'keep (full)')"
+D4="$([ "$DEC4" = hide ] && echo 'hide (gitignore)' || echo 'keep sharing')"
 D5="$([ -n "$ORIG_HOOKS" ] && echo "SHIM ($ORIG_HOOKS)" || echo 'direct')"
-D6="$([ "$DEC6" = mutlak ] && echo 'absolute 0/0/0/0' || echo 'baseline+regression')"
-case "$DEC7" in aktar) D7='transferred (below)';; eksik) D7='knowingly missing';; *) D7='local + ask';; esac
+D6="$([ "$DEC6" = absolute ] && echo 'absolute 0/0/0/0' || echo 'baseline+regression')"
+case "$DEC7" in transfer) D7='transferred (below)';; skip) D7='knowingly missing';; *) D7='local + ask';; esac
 HOOKDESC="$([ -n "$ORIG_HOOKS" ] && echo "SHIM (kit + $ORIG_HOOKS together)" || echo '.claude/hooks direct')"
 if [ -n "${OFFREPO_TEXT:-}" ]; then OFFSEC="$OFFREPO_TEXT"
 elif [ "$OFFREPO" = 1 ]; then OFFSEC="> WARNING: no local .claude/CLAUDE.md -> decisions may also be in chat/on the web; the tool COULD NOT SEE them.

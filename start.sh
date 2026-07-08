@@ -30,7 +30,7 @@ ask_yes() {  # $1 = question; returns 0 if the user says 'yes'
   local a
   printf '%s [yes/no]: ' "$1"
   read -r a || a=""
-  case "$a" in [eE][vV][eE][tT]|[eE]|[yY]) return 0 ;; *) return 1 ;; esac
+  case "$a" in [yY]|[yY][eE][sS]|[eE]|[eE][vV][eE][tT]) return 0 ;; *) return 1 ;; esac
 }
 has_devarch() {  # does the project have the canonical DevArchitecture structure
   [ -d ./Business ] && [ -d ./Core ] && { [ -d ./DataAccess ] || [ -d ./Entities ] || [ -d ./WebAPI ]; }
