@@ -6,7 +6,7 @@
 
 *plan → build → review → commit, where every critical rule is a **gate**, not a reminder.*
 
-![Version](https://img.shields.io/badge/version-1.0.8-2563eb?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.0.9-2563eb?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)
 ![Agents](https://img.shields.io/badge/agents-11-f59e0b?style=flat-square)
 ![Skills](https://img.shields.io/badge/skills-27-f59e0b?style=flat-square)
@@ -103,6 +103,8 @@ bash start.sh [--backend|--frontend|--mobile|--fullstack] [--dotnet|--generic] [
 ```
 
 An install wizard. With no flags it walks each step (profile → backend stack → summary and approval); the flags are for silent/CI use, and `-h` / `--help` prints usage. Every choice shows what it will install **before** installing it.
+
+> After install, paste **`.claude/FIRST_PROMPT.md`** as your first Claude Code message — an optional kickoff that verifies the agents/skills and plans the first sprint. (`CLAUDE.md` loads the discipline every session regardless, so this is a one-time convenience, not a requirement.)
 
 | Profile | Expert agents | Highlighted skills |
 |---|---|---|

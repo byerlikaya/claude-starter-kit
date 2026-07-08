@@ -3,6 +3,13 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [1.0.9] - 2026-07-08
+
+### Changed
+- **Surfaced `FIRST_PROMPT.md`:** `start.sh`'s closing message and the README now point to `.claude/FIRST_PROMPT.md`
+  — the optional first-message kickoff that verifies the agents/skills and plans the first sprint. It was installed
+  but never referenced anywhere, so it looked like an unexplained stray file.
+
 ## [1.0.8] - 2026-07-08
 
 ### Fixed
@@ -131,6 +138,7 @@ First stable release. A Turkish, opinionated-but-backend-optional agent/skill sc
 - The discipline layer and the frontend are stack-agnostic; the backend is opinionated (.NET/DevArchitecture) or generic.
 - Language is Turkish. No AI trace / third-party template name leaks into the artifacts (§4).
 
+[1.0.9]: https://github.com/byerlikaya/claude-starter-kit/releases/tag/v1.0.9
 [1.0.8]: https://github.com/byerlikaya/claude-starter-kit/releases/tag/v1.0.8
 [1.0.7]: https://github.com/byerlikaya/claude-starter-kit/releases/tag/v1.0.7
 [1.0.6]: https://github.com/byerlikaya/claude-starter-kit/releases/tag/v1.0.6
