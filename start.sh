@@ -233,7 +233,7 @@ echo
 row "Will write" "${D}./.claude (agents·skills·commands·hooks·eval·settings.json) + ./CLAUDE.md${R}"
 rule
 echo
-# ask_yes reads from stdin => in CI `printf 'evet\n' | bash start.sh` works; 'no' on EOF (no accidental install).
+# ask_yes reads from stdin => in CI `printf 'yes\n' | bash start.sh` works; 'no' on EOF (no accidental install).
 if ! ask_yes "  Install with these settings?"; then
   printf '  %sCancelled — nothing changed.%s\n' "$YE" "$R"
   exit 0

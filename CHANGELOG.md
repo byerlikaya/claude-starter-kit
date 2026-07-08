@@ -19,6 +19,8 @@ versioning follows [SemVer](https://semver.org/).
 - Precedence (`#2`) is fixed to project-wins (no longer a no-op that could write a contradictory HANDOVER);
   the non-.NET backend swap no longer clobbers a preserved file; PROOF-1 measures the scanner (not the
   project's allowlist) and matches the current hook output; HANDOVER/ADR use the real base branch, not literal `main`.
+- **Remaining Turkish removed from public surfaces:** the CI workflow's job/step names and the generated ADR
+  filename (now `docs/adr/0001-agentic-kit-adoption.md`) are English.
 
 ## [1.0.2] - 2026-07-08
 

@@ -411,7 +411,7 @@ HAND
 echo "  docs/HANDOVER.md written"
 
 # 5b) ADR-0001 — the handover itself is a persistent decision (never-overwrite)
-ADR1="docs/adr/0001-agentik-kit-devri.md"
+ADR1="docs/adr/0001-agentic-kit-adoption.md"
 if [ ! -e "$ADR1" ]; then
   cat > "$ADR1" <<ADR
 # ADR-0001: The Agentic Kit was handed over to this project
