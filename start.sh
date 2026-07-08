@@ -32,8 +32,9 @@ ask_yes() {  # $1 = question; returns 0 if the user says 'yes'
   read -r a || a=""
   case "$a" in [yY]|[yY][eE][sS]|[eE]|[eE][vV][eE][tT]) return 0 ;; *) return 1 ;; esac
 }
-has_devarch() {  # does the project have the canonical DevArchitecture structure
-  [ -d ./Business ] && [ -d ./Core ] && { [ -d ./DataAccess ] || [ -d ./Entities ] || [ -d ./WebAPI ]; }
+has_devarch() {  # $1 = dir to check (default .); does it have the canonical DevArchitecture structure
+  local d="${1:-.}"
+  [ -d "$d/Business" ] && [ -d "$d/Core" ] && { [ -d "$d/DataAccess" ] || [ -d "$d/Entities" ] || [ -d "$d/WebAPI" ]; }
 }
 project_has_source() {  # is there a real source/project file outside the kit
   ls ./*.sln ./*.csproj >/dev/null 2>&1 && return 0
@@ -42,7 +43,8 @@ project_has_source() {  # is there a real source/project file outside the kit
   done
   return 1
 }
-clone_devarch() {  # include verbatim: clone, delete nested .git, copy to root
+clone_devarch() {  # $1 = target dir; clone verbatim, drop nested .git, rename the .sln to the project name
+  local target="${1:-.}"
   command -v git >/dev/null 2>&1 || { echo "  ERROR: git missing; cannot include DevArchitecture."; return 1; }
   local tmp; tmp="$(mktemp -d)"
   echo "  Downloading: $DEVARCH_URL"
@@ -51,11 +53,16 @@ clone_devarch() {  # include verbatim: clone, delete nested .git, copy to root
     rm -rf "$tmp"; return 1
   fi
   rm -rf "$tmp/da/.git"     # not a separate repo/submodule, included as verbatim files
-  cp -R "$tmp/da/." ./
+  mkdir -p "$target"
+  cp -R "$tmp/da/." "$target/"
   rm -rf "$tmp"
-  echo "  DevArchitecture included verbatim into the project."
-  echo "  NOTE (§4.2): the template name MUST NOT REMAIN in namespace / files / csproj / appsettings —"
-  echo "  in the next step rename it to your project name (have the agents do it after setup)."
+  # Rename the solution file to the project name (safe — the .sln name is independent of the projects it references).
+  if [ -f "$target/DevArchitecture.sln" ] && [ "$PROJECT_NAME" != "DevArchitecture" ]; then
+    mv "$target/DevArchitecture.sln" "$target/${PROJECT_NAME}.sln" && echo "  Renamed the solution to ${PROJECT_NAME}.sln."
+  fi
+  echo "  DevArchitecture base placed in: $([ "$target" = "." ] && echo 'the project root' || echo "$target/")."
+  echo "  NOTE (§4.2): the template name still lives in namespaces / csproj / appsettings — as the FIRST"
+  echo "  task, ask an agent to rename DevArchitecture -> ${PROJECT_NAME} throughout."
 }
 
 # --- Flag parsing (silent/CI mode) ---
@@ -145,6 +152,15 @@ if [ "$HAS_BACKEND" = 1 ] && [ -z "$STACK" ]; then
 fi
 [ "$HAS_BACKEND" = 1 ] || STACK="none"
 
+# Project name (from the directory) + where the backend base lives.
+PROJECT_NAME="$(basename "$PWD")"
+PROJECT_NAME="$(printf '%s' "$PROJECT_NAME" | tr -cs 'A-Za-z0-9._-' '-' | sed 's/^[-._]*//; s/[-._]*$//')"
+[ -n "$PROJECT_NAME" ] || PROJECT_NAME="App"
+case "$PROFILE" in
+  fullstack) BACKEND_DIR="backend" ;;   # keep the root clean; the frontend lives under ./frontend
+  *)         BACKEND_DIR="." ;;          # backend-only: the project root IS the backend
+esac
+
 # --- Mappings: agents/skills to prune + DevArch gate ---
 DEVARCH_ON=0
 case "$PROFILE" in
@@ -203,7 +219,7 @@ if [ "$HAS_BACKEND" = 1 ]; then
   fi
 fi
 if [ "$DEVARCH_ON" = 1 ]; then
-  row "DevArch base" "${YE}install approval gate will run${R}"
+  row "DevArch base" "${YE}approval gate -> $([ "$BACKEND_DIR" = "." ] && echo 'project root' || echo "./$BACKEND_DIR")${R}"
 elif [ "$HAS_BACKEND" = 1 ]; then
   row "DevArch base" "${D}not installed${R}"
 fi
@@ -227,24 +243,31 @@ echo
 # --- Step 4: Backend base (only .NET/DevArchitecture; APPROVAL GATE) ---
 if [ "$DEVARCH_ON" = 1 ]; then
   echo "== Backend base (DevArchitecture) =="
-  if has_devarch; then
+  [ "$BACKEND_DIR" = "." ] || echo "  Target: ./$BACKEND_DIR (the frontend stays separate under ./frontend)."
+  if has_devarch "$BACKEND_DIR"; then
     echo "  DevArchitecture detected — base already present, skipping copy."
   elif project_has_source; then
     echo "  !!! WARNING: An existing project is present and the DevArchitecture backend base is MISSING."
-    echo "  Adding it to the existing project may cause file/structure conflicts and BREAK the project."
+    echo "  Adding it may cause file/structure conflicts and BREAK the project."
     echo "  This kit is meant for setting up a project FROM SCRATCH. Confirm if you still want to add it."
     if ask_yes "  Do you want to add DevArchitecture to this EXISTING project (risky)?"; then
-      clone_devarch || echo "  Continuing without the backend base."
+      clone_devarch "$BACKEND_DIR" || echo "  Continuing without the backend base."
     else
       echo "  Skipped. The backend flow assumes DevArchitecture; you will need to adapt it manually."
     fi
   else
     echo "  Greenfield project: this kit can install the DevArchitecture backend base."
     if ask_yes "  Should I include the DevArchitecture backend base in the project now?"; then
-      clone_devarch || echo "  Could not include the backend base; continuing with kit installation."
+      clone_devarch "$BACKEND_DIR" || echo "  Could not include the backend base; continuing with kit installation."
     else
       echo "  Skipped. You can add it manually later:  git clone $DEVARCH_URL"
     fi
+  fi
+  # Fullstack: reserve ./frontend so the layout is explicit (build the frontend here; the backend is in ./backend).
+  if [ "$PROFILE" = "fullstack" ] && [ ! -e ./frontend ]; then
+    mkdir -p frontend
+    printf '# frontend\n\nBuild your frontend here (the `frontend-expert-cck` agent helps). The backend lives in `../backend`.\n' > frontend/README.md
+    echo "  Reserved ./frontend for your frontend."
   fi
   echo
 fi
@@ -288,4 +311,5 @@ rm -rf "$SRC"
 echo
 echo "== Done. ./.claude + ./CLAUDE.md ready ($PROFILE/$STACK); claude-starter/ deleted. =="
 echo "Next: 1) edit the CLAUDE.md project section  2) open Claude Code  3) /agents"
+[ "$PROFILE" = "fullstack" ] && [ "$STACK" = "dotnet" ] && echo "Layout: backend in ./backend · build your frontend in ./frontend · first agent task: rename DevArchitecture -> $PROJECT_NAME."
 rm -f -- "$0"

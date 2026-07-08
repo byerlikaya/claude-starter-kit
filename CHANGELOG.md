@@ -3,6 +3,14 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [1.0.2] - 2026-07-08
+
+### Changed
+- **Fullstack layout:** on `--fullstack` + `--dotnet`, the DevArchitecture backend is now placed in `./backend`
+  (was the project root) and `./frontend` is reserved for the frontend — the root no longer looks like a bare
+  backend project. The solution file is renamed to the project's name (taken from the directory); the full
+  namespace rename stays the agent's first task (§4.2).
+
 ## [1.0.1] - 2026-07-08
 
 ### Added
@@ -56,5 +64,6 @@ First stable release. A Turkish, opinionated-but-backend-optional agent/skill sc
 - The discipline layer and the frontend are stack-agnostic; the backend is opinionated (.NET/DevArchitecture) or generic.
 - Language is Turkish. No AI trace / third-party template name leaks into the artifacts (§4).
 
+[1.0.2]: https://github.com/byerlikaya/claude-starter-kit/releases/tag/v1.0.2
 [1.0.1]: https://github.com/byerlikaya/claude-starter-kit/releases/tag/v1.0.1
 [1.0.0]: https://github.com/byerlikaya/claude-starter-kit/releases/tag/v1.0.0

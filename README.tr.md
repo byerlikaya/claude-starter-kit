@@ -6,7 +6,7 @@
 
 *planla → üret → denetle → commit'le; her kritik kural bir **hatırlatma değil, kapı**.*
 
-![Sürüm](https://img.shields.io/badge/s%C3%BCr%C3%BCm-1.0.0-2563eb?style=flat-square)
+![Sürüm](https://img.shields.io/badge/s%C3%BCr%C3%BCm-1.0.2-2563eb?style=flat-square)
 ![Lisans](https://img.shields.io/badge/lisans-MIT-16a34a?style=flat-square)
 ![Ajanlar](https://img.shields.io/badge/ajanlar-11-f59e0b?style=flat-square)
 ![Skiller](https://img.shields.io/badge/skiller-27-f59e0b?style=flat-square)
@@ -100,6 +100,8 @@ Bir kurulum sihirbazı. Bayrak vermezseniz adımları tek tek sorar (profil → 
 | `--fullstack` | hepsi | tüm skiller |
 
 Backend yığını yalnız `--backend`/`--fullstack` için sorulur: **`--dotnet`** .NET / DevArchitecture kalıbını (MediatR CQRS · IResult · AOP) bir onay kapısıyla getirir; **`--generic`** ise Node, Go, Python ve benzeri için yığın-bağımsız bir backend uzmanı kurar.
+
+> **`--fullstack` + `--dotnet`** seçilince DevArchitecture backend `./backend`'e konur, `./frontend` frontend'in için ayrılır ve çözüm dosyası proje adına yeniden adlandırılır — kök, çıplak bir backend gibi görünmek yerine tertemiz kalır.
 
 ### 🔄 Mevcut projeye devir — `update.sh`
 
