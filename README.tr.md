@@ -6,7 +6,7 @@
 
 *planla → üret → denetle → commit; her kritik kural bir hatırlatma değil, bir **kapı**.*
 
-![Sürüm](https://img.shields.io/badge/s%C3%BCr%C3%BCm-1.1.5-2563eb?style=flat-square)
+![Sürüm](https://img.shields.io/badge/s%C3%BCr%C3%BCm-1.1.6-2563eb?style=flat-square)
 ![Lisans](https://img.shields.io/badge/lisans-MIT-16a34a?style=flat-square)
 ![Ajanlar](https://img.shields.io/badge/ajanlar-11-f59e0b?style=flat-square)
 ![Skiller](https://img.shields.io/badge/skiller-28-f59e0b?style=flat-square)
@@ -161,7 +161,46 @@ Kit, kurulum anında `.claude/kit.conf` dosyasına profili, backend yığının�
 ## İçinde ne var?
 
 - **11 ajan** — yukarıdaki tabloya bak.
-- **28 skill** — "nasıl" sorusunun tek kaynağı: kod inceleme, güvenlik taraması, migration, dağıtım, gözlemlenebilirlik, performans, erişilebilirlik, çeviri bütünlüğü, sürümleme, olay müdahalesi ve daha fazlası.
+- **28 skill** — "nasıl" sorusunun tek kaynağı, her alan için bir tane. <details><summary>Tüm katalog (her skill'den otomatik üretilir)</summary>
+
+<!-- SKILLS:START -->
+
+| Skill | What it does |
+|:--|:--|
+| `a11y` | Frontend accessibility audit (WCAG): semantic HTML, keyboard access, focus management, contrast, ARIA, screen readers. |
+| `adr` | Architecture Decision Record: context-decision-consequences, for decisions that are expensive to reverse. |
+| `api-design` | API contract design: resource naming, error model, versioning, pagination, backward compatibility, OpenAPI. |
+| `ci-pipeline` | CI pipeline discipline: lint→build→test→quality→security, fail-fast, deterministic build, secret handling, PR gates. |
+| `code-review` | Code review discipline: severity-ranked, reasoned feedback on whether a change improves the system's overall code health. |
+| `commit-message` | Conventional Commits: reads the staged diff and proposes `type(scope): summary`, with body/footer when needed. |
+| `db-migration` | Apply schema migrations safely: detect the tool, classify the change by risk, gate destructive ones behind approval, back up in prod,… |
+| `dependency-audit` | Dependency audit: known CVEs, licence compliance, abandoned/outdated packages, lockfile integrity, and a justification for every new… |
+| `devarch-module` | DevArchitecture backend pattern: MediatR CQRS handler/command/query, IResult/IDataResult, Autofac AOP chain, FluentValidation, i18n. |
+| `docs-writer` | Keeps documentation in sync with the code: README, usage and related docs when a public API or behavior changes. |
+| `frontend-rn-expo` | OPTIONAL, stack-specific: React Native + Expo (prebuild). |
+| `frontend` | Stack-agnostic frontend discipline (web · mobile · desktop): component structure, state, data fetching, loading/empty/error states,… |
+| `handoff` | Session handover: when context fills, a phase closes, or the topic changes, write an action-oriented handover to docs/SESSION_STATE.md,… |
+| `i18n-integrity` | Translation integrity: every key present in every language, no hardcoded strings, consistent placeholders and plurals. |
+| `incident-runbook` | Production incident response: diagnose → mitigate → resolve, then a blameless postmortem and a repeatable runbook. |
+| `iterate` | Refine-to-Done loop: repeat until tests green + review clean + nothing deferred; bounded. |
+| `observability` | Stack-agnostic observability: structured logs, correlation ids, metrics and traces; no PII or secrets in logs. |
+| `performance` | Stack-agnostic performance: measure first, find the bottleneck, then optimise. |
+| `privacy-compliance` | KVKK/GDPR audit method: data inventory, purpose/basis/retention, minimisation, consent, transparency, data-subject rights, cross-border… |
+| `red-team` | Attacker's-eye test of LLM/agent defenses: instruction hijacking, data exfiltration and tool abuse through untrusted content; verifies… |
+| `release` | Versioning and CHANGELOG: SemVer mapped from Conventional Commits, Keep a Changelog format, tagging, pre-release gates. |
+| `security-scan` | Stack-agnostic security audit: map the attack surface, trace untrusted input to dangerous calls, surface dependency and configuration flaws. |
+| `sonarqube-check` | SonarQube quality gate (language-agnostic): 0 Bugs · 0 Vulnerabilities · 0 Security Hotspots · 0 Code Smells, build 0 warnings / 0… |
+| `spec-planning` | Spec-first planning: task breakdown, measurable acceptance criteria, dependency order, risk priority. |
+| `testing` | The how of testing: pyramid, AAA, isolation, risk coverage, determinism. |
+| `token-budget` | Context/token discipline: subagent isolation, output = summary, move-to-file, delegation threshold, lean skills. |
+| `trace-scan` | Trace scan (§4.1/§4.2): before a commit, scans the staged changes and the message for AI traces (co-author trailers, footers, robot… |
+| `vps-deploy` | Deploy to a VPS safely: runtime detection, reverse proxy + SSL, atomic swap, keep the previous version, post-deploy health gate,… |
+
+<!-- SKILLS:END -->
+
+
+
+</details>
 - **5 slash komut** — `/plan` · `/review` · `/ship` · `/handoff` · `/simplify`.
 - **Hook'lar** — `guard-bash.sh` (araç seviyesi kapı), `pre-commit` + `commit-msg` (iz + secret taraması), `context-usage.sh` ve `session-guard.sh` (oturum ölçümü).
 - **CLAUDE.md** — davranış, üç ilke, iş akışı, tamamlanma tanımı (DoD), token disiplini ve yasaklar.

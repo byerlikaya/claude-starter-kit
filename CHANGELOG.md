@@ -3,6 +3,15 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [1.1.6] - 2026-07-11
+
+### Added
+- **A skill catalogue in the README, generated from the skills themselves.** Readers can now see all 28 skills
+  with a one-line summary of each — in a collapsible *Full catalogue* block — instead of a vague "and more".
+  `packaging/build-readme-catalog.sh` builds the table from every `SKILL.md` frontmatter (the single source)
+  and its `--check` mode fails CI and the release if the README drifts from the skills, so the count can never
+  go stale again the way 27-vs-28 did. The table is English in both READMEs (skill names are English identifiers).
+
 ## [1.1.5] - 2026-07-11
 
 ### Changed

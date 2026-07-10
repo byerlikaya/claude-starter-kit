@@ -40,6 +40,9 @@ jobs:
             exit 1
           fi
 
+      - name: Verify the README skill catalogue is in sync
+        run: bash packaging/build-readme-catalog.sh --check
+
       - name: Build tarball
         run: bash make-release.sh
 

@@ -16,7 +16,7 @@ jobs:
           set -euo pipefail
           bash -n start.sh
           bash -n adopt.sh
-          for s in claude-starter/hooks/*.sh claude-starter/eval/*.sh; do
+          for s in claude-starter/hooks/*.sh claude-starter/eval/*.sh packaging/*.sh; do
             [ -f "$s" ] && bash -n "$s" && echo "ok: $s"
           done
 
@@ -25,6 +25,9 @@ jobs:
 
       - name: Routing eval — behavioral (golden routing + agent conflicts)
         run: bash claude-starter/eval/routing-eval.sh
+
+      - name: README skill catalogue in sync with the skills
+        run: bash packaging/build-readme-catalog.sh --check
 
       - name: 6-combination e2e rehearsal (profile × backend stack)
         run: |
