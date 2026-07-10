@@ -52,7 +52,7 @@ bash start.sh         # fresh    ·    bash adopt.sh    # existing
 
 ```bash
 # bump VERSION + package.json version (+ CHANGELOG), commit, then:
-git tag v1.1.0
+git tag vX.Y.Z
 git push origin main --tags
 ```
 

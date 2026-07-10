@@ -3,6 +3,30 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [1.1.1] - 2026-07-10
+
+### Fixed
+- **The `pre-commit` scanners went blind on a large staged diff.** Both scanners fed the added lines to `grep -q`
+  through a pipe. `grep -q` exits on its first match, the pipe closes, `printf` dies of `SIGPIPE` (141), and
+  `set -o pipefail` turns that into a failed `if` — so a match counted as no match. Small commits were scanned;
+  large ones were not, and an AI-authorship trace or a live secret sailed through silently. Reproduced: a JWT in a
+  20,000-line staged diff was committed with no warning. The added lines now go to a temp file and every pattern
+  greps that file, so no pipe can close early. `smoke-test.sh` locks it down.
+- **A project that shares `.claude/` could not commit it.** `adopt.sh` offers to track `.claude/` so a team shares the
+  kit, but the trace scan then found the tool's name inside the kit's own scripts and blocked the commit — the kit
+  failed its own rule. The trace scan now skips `.claude/`: that tree configures the assistant, legitimately names
+  the tool it configures, and an update overwrites it. **The secret scan still covers `.claude/`** — a token pasted
+  into `settings.json` is still a token. §4.3 no longer claims `.claude/` is always local.
+- **An update that lands while a session is running is now announced.** `CLAUDE.md` and the discipline it imports are
+  read once, at session start. Updating the kit mid-session replaced every file on disk while the rules already in the
+  model's context stayed at the previous version — so the assistant kept quoting rules that no longer existed (for
+  example, telling you to set `CLAUDE_GIT_OK=1` long after the commit gate had learned to ask you directly), and
+  nothing said otherwise. `context-usage.sh` now stamps `.claude/VERSION` on the session's first turn, compares it on
+  every later turn, and injects `⚠️ kit updated X → Y mid-session` until the session is restarted. It fails open: no
+  stdin, no `session_id` or no `VERSION` means silence, and it never fires on the `Stop` payload `session-guard.sh`
+  pipes through the same script.
+- `start.sh` and `adopt.sh` close by telling you to restart Claude Code if it is already open in the project.
+
 ## [1.1.0] - 2026-07-10
 
 ### Added

@@ -14,11 +14,13 @@
 # compounds through cache reads. The percentage carries all the signal; the raw counts are for humans, so they
 # live behind --verbose (which is what session-guard.sh uses for its once-per-threshold user warning).
 set -uo pipefail
+HERE="$(cd "$(dirname "$0")" && pwd)"
 WINDOW="${CONTEXT_WINDOW:-1000000}"
 VERBOSE=0
 case "${1:-}" in --verbose|-v) VERBOSE=1; shift ;; esac
 TR="${1:-}"
 
+IN=""
 # 1) transcript_path from hook stdin (if present)
 if [ -z "$TR" ] && [ ! -t 0 ]; then
   IN="$(cat 2>/dev/null || true)"
@@ -72,3 +74,28 @@ fi
 if LC_ALL=C awk -v p="$PCT" 'BEGIN{exit !(p+0>=75)}'; then
   echo "⚠️ >75% — hand off (handoff skill) then /clear; not automatic."
 fi
+
+# --- Stale-discipline gate ---------------------------------------------------------------------------
+# CLAUDE.md and the discipline it imports are read ONCE, when the session starts. Update the kit while a
+# session is running and every file on disk changes while the rules already in the model's context stay at
+# the old version — it keeps quoting rules that no longer exist, and nothing says so. This does.
+#
+# Only meaningful on the UserPromptSubmit call: session-guard.sh pipes a Stop payload through this same
+# script, and a by-hand run has no stdin at all. Fails open — no stdin, no session_id, no VERSION: silent.
+case "$IN" in *'"hook_event_name"'*UserPromptSubmit*) ;; *) exit 0 ;; esac
+KITVER="$HERE/../VERSION"                       # hooks live in .claude/hooks -> .claude/VERSION
+[ -f "$KITVER" ] || exit 0
+NOW="$(head -1 "$KITVER" 2>/dev/null | tr -cd '0-9A-Za-z.-')"
+[ -n "$NOW" ] || exit 0
+SID="$(printf '%s' "$IN" | sed -n 's/.*"session_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1 | tr -cd 'A-Za-z0-9._-')"
+[ -n "$SID" ] || exit 0
+MARK="${TMPDIR:-/tmp}/csk-kit-version.${SID}"
+if [ ! -e "$MARK" ]; then
+  printf '%s' "$NOW" > "$MARK" 2>/dev/null || true   # first turn: remember the version, say nothing
+else
+  WAS="$(head -1 "$MARK" 2>/dev/null)"
+  # Repeated on every turn on purpose: the loaded context stays stale until the session is restarted.
+  [ -n "$WAS" ] && [ "$WAS" != "$NOW" ] && \
+    echo "⚠️ kit updated $WAS → $NOW mid-session. The discipline in your context is the OLD one — do not act on it; ask the user to restart Claude Code."
+fi
+exit 0

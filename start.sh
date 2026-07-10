@@ -350,6 +350,7 @@ rm -rf "$SRC"
 echo
 echo "== Done. ./.claude + ./CLAUDE.md ready ($PROFILE/$STACK); claude-starter/ deleted. =="
 echo "Next: 1) fill in the CLAUDE.md project section  2) open Claude Code at the repo root"
+echo "Note: if Claude Code is ALREADY running here, restart it — CLAUDE.md and the discipline load at session start."
 echo "Tip:  paste .claude/FIRST_PROMPT.md as your first Claude Code message — an optional kickoff (verifies the agents/skills, plans the first sprint). CLAUDE.md loads the discipline every session either way."
 [ "$PROFILE" = "fullstack" ] && [ "$STACK" = "dotnet" ] && echo "Layout: backend in ./backend · build your frontend in ./frontend · first agent task: rename DevArchitecture -> $PROJECT_NAME."
 rm -f -- "$0"

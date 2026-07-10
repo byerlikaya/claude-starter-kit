@@ -14,29 +14,47 @@ GITROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 AL="";  [ -n "$GITROOT" ] && [ -f "$GITROOT/.trace-allowlist.txt" ]  && AL="$GITROOT/.trace-allowlist.txt"
 SAL=""; [ -n "$GITROOT" ] && [ -f "$GITROOT/.secret-allowlist.txt" ] && SAL="$GITROOT/.secret-allowlist.txt"
 
-# Only added content lines (start with +, excluding the +++ file header). Exclude the kit's OWN blocklist files —
-# they definitionally contain the patterns, so scanning them would be circular.
-ADDED="$(git diff --cached --unified=0 -- . ':(top,exclude).claude/hooks/trace-blocklist.txt' ':(top,exclude).claude/hooks/secret-blocklist.txt' | grep -E '^\+' | grep -Ev '^\+\+\+' || true)"
-[ -z "$ADDED" ] && exit 0
+# Only added content lines (start with +, excluding the +++ file header).
+#
+# The added lines go to FILES, and every scan greps a file. Never `printf "$ADDED" | grep -q`: grep -q exits on
+# the first match, the pipe closes, printf dies of SIGPIPE (141), and `set -o pipefail` turns that into a failed
+# `if` — so a match in a LARGE staged diff would silently count as no match. A gate that only works on small
+# commits is worse than no gate.
+TRACE_F="$(mktemp)"; SECRET_F="$(mktemp)"
+trap 'rm -f "$TRACE_F" "$SECRET_F"' EXIT INT TERM
+
+# Secrets are scanned EVERYWHERE. A token pasted into .claude/settings.json is still a token.
+# The kit's own blocklist files are excluded — they definitionally contain the patterns (circular).
+git diff --cached --unified=0 -- . \
+  ':(top,exclude).claude/hooks/trace-blocklist.txt' ':(top,exclude).claude/hooks/secret-blocklist.txt' \
+  | grep -E '^\+' | grep -Ev '^\+\+\+' > "$SECRET_F" || true
+
+# Traces (§4.1/§4.2) are scanned in the PROJECT's own files only. `.claude/` is the kit's tree: it configures the
+# assistant, it legitimately names the tool it configures, and an update overwrites it — it is not an artifact the
+# project authored. Teams that share `.claude/` would otherwise be unable to commit it at all.
+git diff --cached --unified=0 -- . ':(top,exclude).claude' \
+  | grep -E '^\+' | grep -Ev '^\+\+\+' > "$TRACE_F" || true
+
+{ [ -s "$TRACE_F" ] || [ -s "$SECRET_F" ]; } || exit 0
 
 HIT=0
-# (1) trace scan — case-INsensitive (vendor / AI-authorship strings)
-if [ -f "$BL" ]; then
+# (1) trace scan — case-INsensitive (vendor / AI-authorship strings), project files only
+if [ -f "$BL" ] && [ -s "$TRACE_F" ]; then
   while IFS= read -r pat || [ -n "$pat" ]; do
     case "$pat" in ''|\#*) continue;; esac
     if [ -n "$AL" ] && grep -qxF -- "$pat" "$AL"; then continue; fi
-    if printf '%s\n' "$ADDED" | grep -iqE -- "$pat"; then
+    if grep -iqE -- "$pat" "$TRACE_F"; then
       echo "TRACE-SCANNER: forbidden expression in added code -> '$pat' (§4.1/§4.2)"
       HIT=1
     fi
   done < "$BL"
 fi
 # (2) secret scan — case-SENSITIVE (token prefixes are case-specific); prints the PATTERN, never the value
-if [ -f "$SL" ]; then
+if [ -f "$SL" ] && [ -s "$SECRET_F" ]; then
   while IFS= read -r pat || [ -n "$pat" ]; do
     case "$pat" in ''|\#*) continue;; esac
     if [ -n "$SAL" ] && grep -qxF -- "$pat" "$SAL"; then continue; fi
-    if printf '%s\n' "$ADDED" | grep -qE -- "$pat"; then
+    if grep -qE -- "$pat" "$SECRET_F"; then
       echo "SECRET-SCANNER: a staged line matches a secret pattern -> /$pat/"
       HIT=1
     fi
