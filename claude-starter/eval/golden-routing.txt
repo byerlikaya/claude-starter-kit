@@ -28,3 +28,4 @@ write an incident runbook and a postmortem|incident-runbook
 red team the prompt injection defenses|red-team
 ship to prod and be ready to rollback|devops-expert-csk
 set up a reverse proxy and ssl|devops-expert-csk
+keep going until the tests pass and the review is clean|iterate

@@ -3,6 +3,16 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [1.1.4] - 2026-07-11
+
+### Added
+- **`iterate` skill — a bounded refine-to-Done loop.** Names the discipline the kit already leaned on:
+  don't stop at the first attempt, repeat change → verify → check until the acceptance criterion is
+  objectively met (tests green, review clean, nothing deferred), reporting the gap each round and stopping
+  after two rounds with no progress. Distinct from the harness `/loop` (which schedules a prompt on an
+  interval); it never commits, pushes, or deploys on its own — §4.4 approval still gates the commit — and it
+  keeps to the token discipline. Reaches full installs and the plugin edition (both ship `skills/`).
+
 ## [1.1.3] - 2026-07-11
 
 ### Changed
