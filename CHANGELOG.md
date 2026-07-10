@@ -3,6 +3,21 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [1.1.5] - 2026-07-11
+
+### Changed
+- **The backend expert is now pattern-neutral; DevArchitecture is the default, not the identity.**
+  `backend-expert-csk` was branded "owner of the DevArchitecture pattern" with its layout, result types, and
+  AOP order hardcoded — and the `--generic` stack shipped that same DevArch-branded agent, just without its
+  skill. The agent now applies the project's **backend-pattern skill** — `devarch-module` (MediatR CQRS /
+  IResult / AOP) by default; a project on another pattern (Clean Architecture, Vertical Slice, Minimal API,
+  plain layered) declares its own pattern skill under `.claude/skills/` and the agent follows that instead.
+  This restores the kit's own rule (agent = who/when, skill = how) and gives a coherent story for a backend
+  that is not .NET/DevArchitecture. Nothing forces DevArch.
+- `adopt.sh` infers a legacy project's stack from the presence of the `devarch-module` skill instead of
+  grepping the agent text (no longer a reliable signal). The template `CLAUDE.md`, the `devarch-module` skill,
+  and the `start.sh` generic wizard now document the pluggable-pattern story.
+
 ## [1.1.4] - 2026-07-11
 
 ### Added

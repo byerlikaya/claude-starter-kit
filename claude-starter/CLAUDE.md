@@ -152,6 +152,10 @@ Client: <e.g. web React/Next · mobile React Native/Expo · desktop — dependin
 
 ## Project skills
 Domain-specific "how"s live under `.claude/skills/` (e.g. payment-contract, notification-rules).
+**Backend pattern is one of them.** `backend-expert-csk` is pattern-neutral: it applies the project's
+backend-pattern skill — `devarch-module` (MediatR CQRS / IResult / AOP) by default. On a different pattern
+(Clean Architecture, Vertical Slice, Minimal API, plain layered), drop your own pattern skill here (see
+`AGENT_TEMPLATE.md`) and the agent follows it instead of DevArch. Nothing forces DevArch.
 For the skill format: ./.claude/AGENT_TEMPLATE.md.
 
 ## Note

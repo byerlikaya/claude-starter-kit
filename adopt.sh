@@ -74,9 +74,10 @@ kit_infer_shape() {
   elif [ "$fe" = 1 ] && [ "$rn" = 1 ]; then KIT_PROFILE=mobile
   elif [ "$fe" = 1 ];                  then KIT_PROFILE=frontend
   else                                      KIT_PROFILE=fullstack; fi   # nothing to go on -> install everything
-  # The DevArchitecture-bound backend expert names its pattern all over; the generic one never mentions it.
+  # A .NET stack is marked by the devarch-module skill being installed; the generic stack prunes it. (The
+  # backend agent itself is pattern-neutral now, so its text is no longer a reliable stack signal.)
   if [ "$be" = 1 ]; then
-    if grep -qi devarch .claude/agents/backend-expert-csk.md; then KIT_STACK=dotnet; else KIT_STACK=generic; fi
+    if [ -d .claude/skills/devarch-module ]; then KIT_STACK=dotnet; else KIT_STACK=generic; fi
   else KIT_STACK=none; fi
   KIT_INSTALLER="${KIT_INSTALLER:-pre-kit.conf}"
   INFERRED=1

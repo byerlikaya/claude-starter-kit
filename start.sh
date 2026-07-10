@@ -169,7 +169,7 @@ if [ "$HAS_BACKEND" = 1 ] && [ -z "$STACK" ]; then
   gate "clones the DevArchitecture base project BEHIND AN APPROVAL GATE (greenfield project)"
   echo
   opt 2 "Generic" 0 "stack-agnostic"
-  add  "stack-agnostic backend-expert-csk — adapts to the existing repo's pattern"
+  add  "pattern-neutral backend-expert-csk — follows your repo's pattern; declare it as a skill (.claude/skills/)"
   skip "devarch-module and the DevArchitecture base NOT INSTALLED (sonarqube-check still installed)"
   echo
   printf '  %s->%s Choice %s[1-2, empty=1]%s: ' "$CY" "$R" "$D" "$R"

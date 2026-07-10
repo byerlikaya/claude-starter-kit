@@ -8,6 +8,10 @@ description: |
 
 # Backend Pattern (MediatR CQRS / IResult / AOP)
 
+> **This is the DEFAULT backend pattern, not the only one.** `backend-expert-csk` is pattern-neutral; it applies
+> whichever backend-pattern skill the project ships. A project on Clean Architecture, Vertical Slice, Minimal API,
+> or plain layered replaces this skill with its own (same format) — the agent then follows that. Nothing forces DevArch.
+
 > **Kit adaptation (local, .claude/):** `backend-expert-csk` applies the `devarch-module` skill. Sources (alignment):
 > the DevArchitecture pattern — **its name does NOT leak into generated code / namespace / file / comment / csproj / Swagger /
 > JWT (§4.2).** The pattern lives here; the generated artifact is written with project-specific names.
