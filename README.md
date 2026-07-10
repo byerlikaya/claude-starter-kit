@@ -9,7 +9,7 @@
 ![Version](https://img.shields.io/badge/version-1.1.5-2563eb?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)
 ![Agents](https://img.shields.io/badge/agents-11-f59e0b?style=flat-square)
-![Skills](https://img.shields.io/badge/skills-27-f59e0b?style=flat-square)
+![Skills](https://img.shields.io/badge/skills-28-f59e0b?style=flat-square)
 ![Claude Code](https://img.shields.io/badge/Claude_Code-agentic_kit-8b5cf6?style=flat-square)
 
 🇬🇧 English · [🇹🇷 Türkçe](README.tr.md)
@@ -116,9 +116,9 @@ An install wizard. With no flags it walks each step (profile → backend stack �
 
 There is no separate mobile agent: `frontend-expert-csk` covers web, mobile and desktop, and the mobile *how* lives in the `frontend-rn-expo` skill. `--fullstack` installs it too, so a fullstack project is ready for mobile without picking `--mobile`.
 
-The backend stack is asked only for `--backend`/`--fullstack`: **`--dotnet`** brings the .NET / DevArchitecture pattern (MediatR CQRS · IResult · AOP) behind an approval gate; **`--generic`** installs a stack-agnostic backend expert for Node, Go, Python, and the like.
+The backend stack is asked only for `--backend`/`--fullstack`: **`--dotnet`** brings the .NET / DevArchitecture pattern (MediatR CQRS · IResult · AOP) behind an approval gate; **`--generic`** installs the same expert without it — for Node, Go, Python, or a .NET project on a different pattern.
 
-> **.NET — start proven, not from scratch.** `--dotnet` clones the production-ready **[DevArchitecture](https://github.com/DevArchitecture/DevArchitecture)** foundation (CQRS · IResult · AOP · auth) *and* installs agents that already know it — so you **skip the tokens an agent would burn regenerating a standard architecture**; they go to your business logic, not boilerplate. Opinionated by design; `--generic` stays stack-agnostic.
+> **.NET — start proven, not from scratch.** `--dotnet` clones the production-ready **[DevArchitecture](https://github.com/DevArchitecture/DevArchitecture)** foundation (CQRS · IResult · AOP · auth) *and* installs agents that already know it — so you **skip the tokens an agent would burn regenerating a standard architecture**; they go to your business logic, not boilerplate. Opinionated by *default*, not by force: the backend expert applies your project's **pattern skill** — DevArchitecture out of the box, or your own (Clean Architecture, Vertical Slice, Minimal API, plain layered) dropped into `.claude/skills/`. `--generic` stays stack-agnostic.
 
 > On **`--fullstack` + `--dotnet`** the DevArchitecture backend is placed in `./backend`, `./frontend` is reserved for your frontend, and the solution file is renamed to your project's name — so the project root stays clean instead of looking like a bare backend.
 
@@ -142,7 +142,7 @@ All changes land on a separate git branch **staged, not committed** — so every
 npx @byerlikaya/claude-starter-kit@latest update    # `update` is an alias of `adopt`; run it at the project root
 ```
 
-At install time the kit stamps `.claude/kit.conf` with the profile, the backend stack and which installer ran, plus `.claude/VERSION`. The updater reads that stamp and refreshes the project **in the shape it was installed in**: a `--backend` project does not get frontend agents grafted back on, and a `--dotnet` project keeps its DevArchitecture backend expert. Where the stamp is absent, the updater derives the shape from the installed files and writes it. Compare `cat .claude/VERSION` against `npm view @byerlikaya/claude-starter-kit version` to see whether an update is waiting.
+At install time the kit stamps `.claude/kit.conf` with the profile, the backend stack and which installer ran, plus `.claude/VERSION`. The updater reads that stamp and refreshes the project **in the shape it was installed in**: a `--backend` project does not get frontend agents grafted back on, and a `--dotnet` project keeps its `devarch-module` pattern skill. Where the stamp is absent, the updater derives the shape from the installed files and writes it. Compare `cat .claude/VERSION` against `npm view @byerlikaya/claude-starter-kit version` to see whether an update is waiting.
 
 | | On update |
 |---|---|
@@ -161,7 +161,7 @@ Like `adopt`, an update needs a git repo and lands on a `kit-adopt-<timestamp>` 
 ## What's inside
 
 - **11 agents** — see the table above.
-- **27 skills** — the single source of "how": code review, security scan, migration, deployment, observability, performance, accessibility, translation integrity, versioning, incident response, and more.
+- **28 skills** — the single source of "how": code review, security scan, migration, deployment, observability, performance, accessibility, translation integrity, versioning, incident response, and more.
 - **5 slash commands** — `/plan` · `/review` · `/ship` · `/handoff` · `/simplify`.
 - **Hooks** — `guard-bash.sh` (tool-level gate), `pre-commit` + `commit-msg` (trace + secret scan), `context-usage.sh` and `session-guard.sh` (session measurement).
 - **CLAUDE.md** — behavior, the three principles, workflow, Definition of Done, token discipline, and prohibitions.
@@ -174,11 +174,11 @@ An assistant cannot run `/context` itself, so most setups **guess** the session 
 
 ### Token cost
 
-`DISCIPLINE.md` and the agent/skill descriptions load into every session's context. That always-on material measures **9,198 tokens** on a real turn — the price of the whole discipline layer, 11 agents and 27 skills.
+`DISCIPLINE.md` and the agent/skill descriptions load into every session's context. That always-on material measures **9,198 tokens** on a real turn — the price of the whole discipline layer, 11 agents and 28 skills.
 
 `smoke-test.sh` enforces a byte budget per component (discipline · agent descriptions · skill descriptions), so the cost cannot drift upward unnoticed. A budget can be raised, but only by editing `smoke-test.sh` explicitly.
 
-> **Profile pruning does not save tokens.** A `--backend` install (10 agents, 24 skills) costs only ~640 tokens less than `--fullstack` (11 agents, 27 skills). Pick a profile to narrow the scope of the work.
+> **Profile pruning does not save tokens.** A `--backend` install (10 agents, 25 skills) costs only ~640 tokens less than `--fullstack` (11 agents, 28 skills). Pick a profile to narrow the scope of the work.
 
 ---
 
