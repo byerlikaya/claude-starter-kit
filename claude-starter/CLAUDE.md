@@ -32,7 +32,7 @@ at the tool level (§4.4/§4.5).
 
 ## Definition of Done
 - Ambiguous scope goes to **planner-csk** first, so the acceptance criterion is explicit before coding.
-- `/simplify` + tests green + the triggered skills applied + nothing deferred.
+- `/simplify` + tests green + **review-agent-csk** clean + triggered skills + nothing deferred.
 - Where SonarQube is used: **0 Bugs · 0 Vulnerabilities · 0 Security Hotspots · 0 Code Smells**; build 0 warnings / 0 errors.
 - Personal data / dependencies / translations touched → **privacy · dependency-audit · i18n-integrity** clean.
 

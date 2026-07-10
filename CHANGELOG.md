@@ -3,6 +3,15 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [1.1.3] - 2026-07-11
+
+### Changed
+- **`review-agent-csk` is now named in the Definition of Done, not only in the Close flow.** The Close phase
+  already gated a commit on a clean review, but the DoD checklist the model measures "am I done?" against did
+  not list it — so on a logic-bearing change "commit directly" could surface as a peer option to reviewing. It
+  now sits on the Done line beside tests-green and the triggered skills. (Reaches full installs via
+  `start.sh` / `adopt.sh`; the plugin-lite edition ships no discipline, so it is unaffected.)
+
 ## [1.1.2] - 2026-07-11
 
 ### Fixed
