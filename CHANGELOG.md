@@ -6,6 +6,17 @@ versioning follows [SemVer](https://semver.org/).
 ## [1.1.1] - 2026-07-10
 
 ### Fixed
+- **The `pre-commit` scanners went blind on a large staged diff.** Both scanners fed the added lines to `grep -q`
+  through a pipe. `grep -q` exits on its first match, the pipe closes, `printf` dies of `SIGPIPE` (141), and
+  `set -o pipefail` turns that into a failed `if` — so a match counted as no match. Small commits were scanned;
+  large ones were not, and an AI-authorship trace or a live secret sailed through silently. Reproduced: a JWT in a
+  20,000-line staged diff was committed with no warning. The added lines now go to a temp file and every pattern
+  greps that file, so no pipe can close early. `smoke-test.sh` locks it down.
+- **A project that shares `.claude/` could not commit it.** `adopt.sh` offers to track `.claude/` so a team shares the
+  kit, but the trace scan then found the tool's name inside the kit's own scripts and blocked the commit — the kit
+  failed its own rule. The trace scan now skips `.claude/`: that tree configures the assistant, legitimately names
+  the tool it configures, and an update overwrites it. **The secret scan still covers `.claude/`** — a token pasted
+  into `settings.json` is still a token. §4.3 no longer claims `.claude/` is always local.
 - **An update that lands while a session is running is now announced.** `CLAUDE.md` and the discipline it imports are
   read once, at session start. Updating the kit mid-session replaced every file on disk while the rules already in the
   model's context stayed at the previous version — so the assistant kept quoting rules that no longer existed (for

@@ -182,6 +182,41 @@ if [ -f "$ROOT/kit.conf" ]; then
   case "$KP" in backend|frontend|mobile|fullstack) pass "kit.conf records a known profile ($KP)" ;; *) fail "kit.conf profile invalid: '$KP'" ;; esac
 fi
 
+echo "== 6h) pre-commit scanners: must not go blind on a large diff =="
+# The scanners used to be `printf "$ADDED" | grep -q`. grep -q exits on the first match, printf dies of SIGPIPE,
+# and `set -o pipefail` turned that into "no match" — so a trace or a secret in a LARGE staged diff sailed through.
+# A gate that only works on small commits is worse than no gate. These cases lock the behaviour down.
+if command -v git >/dev/null 2>&1; then
+  PR="$(mktemp -d)"; ( cd "$PR" && git init -q && git config user.email t@t && git config user.name t \
+    && echo init > seed.txt && git add seed.txt && git commit -qm base ) >/dev/null 2>&1
+  PCLOG="$(mktemp)"
+  # Both fixtures are ASSEMBLED AT RUNTIME so this file never contains the literal it tests for. A contiguous
+  # authorship trailer would trip the kit's own trace scan, and a JWT-shaped literal would make this very file
+  # un-committable for any project that tracks .claude/ — the secret scan covers that tree, deliberately.
+  TRACEFX="$(printf 'Co-Authored%sBy: X' '-')"
+  JWTFX="$(printf 'eyJ%s.eyJ%s.%s' 'hbGciOiJIUzI1NiJ9' 'zdWIiOiIxMjM0NTY3ODkwIn0' 'SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c')"
+  pc(){ ( cd "$PR" && git add -A >/dev/null 2>&1 && bash "$HOOKS/pre-commit" ) >"$PCLOG" 2>&1; }
+  pcreset(){ ( cd "$PR" && git reset -q HEAD -- . && rm -rf big.txt src.js .claude ) >/dev/null 2>&1; }
+
+  pcreset; { printf '%s\n' "$TRACEFX"; yes filler | head -20000; } > "$PR/big.txt"
+  pc && fail "trace scanner blind on a large diff (SIGPIPE regression)" || pass "trace scanner catches a trace in a large diff"
+
+  pcreset; { printf 'k=%s\n' "$JWTFX"; yes filler | head -20000; } > "$PR/big.txt"
+  pc && fail "secret scanner blind on a large diff (SIGPIPE regression)" || pass "secret scanner catches a secret in a large diff"
+
+  # .claude/ is the kit's own tree: it names the tool it configures, and a shared install must stay committable.
+  pcreset; mkdir -p "$PR/.claude/hooks"; printf '# Claude Code hook\n' > "$PR/.claude/hooks/x.sh"
+  pc && pass "trace scan skips the kit's own .claude/ tree" || { fail "trace scan blocks the kit's own files"; sed -n 1,2p "$PCLOG"; }
+
+  # ...but a secret is a secret wherever it is staged.
+  pcreset; mkdir -p "$PR/.claude"; printf 'token=%s\n' "$JWTFX" > "$PR/.claude/settings.json"
+  pc && fail "secret scan skipped .claude/ — a token there is still a token" || pass "secret scan still covers .claude/"
+
+  pcreset; printf 'const a = 1;\n' > "$PR/src.js"
+  pc && pass "a clean staged diff commits" || { fail "clean diff blocked"; sed -n 1,2p "$PCLOG"; }
+  rm -rf "$PR" "$PCLOG"
+else pass "pre-commit scanner tests skipped (no git)"; fi
+
 echo "== 6g) stale-discipline gate: an update landing mid-session must be announced =="
 # CLAUDE.md loads once, at session start. If the kit is updated while a session runs, the model keeps quoting
 # the previous version's rules. Build a throwaway hooks/ + VERSION pair so the script resolves ../VERSION.
