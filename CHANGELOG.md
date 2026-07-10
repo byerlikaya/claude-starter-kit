@@ -3,6 +3,48 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [1.1.0] - 2026-07-10
+
+### Added
+- **In-session commit approval.** `guard-bash.sh` answers `PreToolUse` with `permissionDecision: "ask"`, so you approve
+  `git commit` / `git push` at a prompt only you can answer and the assistant then runs it — instead of the gate
+  handing you a command to paste into your own terminal. Verified honoured in `default`, `acceptEdits`, `auto` and
+  `dontAsk`; `bypassPermissions` and any unrecognised mode **fail closed**. `CLAUDE_GIT_OK` remains a headless/CI
+  pre-authorisation and never substitutes for approval. §4.5 destructive operations stay a hard block in every mode.
+- **`.claude/kit.conf`** records the profile, backend stack and installer. The updater refreshes a project in the shape
+  it was installed in, and derives that shape from the installed files when the stamp is absent.
+- **`claude-starter/profiles.conf`** — one source for the profile → pruned agents/skills map, read by both installers.
+- **`.claude/DISCIPLINE.md` + `@import`.** `start.sh` now installs the discipline as a separate kit-owned file, joined
+  to your `CLAUDE.md` by one import line, so discipline updates reach installed projects. `adopt.sh` detects an inline
+  (pre-`DISCIPLINE.md`) layout, shows which lines it occupies, and offers to migrate it after writing a backup.
+- **Second session warning at 90%**, on top of the one at 75%.
+- **Always-on token budget gate.** `smoke-test.sh` fails when the discipline or the agent/skill descriptions exceed
+  their byte budget, and asserts every agent and skill still declares its trigger phrases.
+- **`context-usage.sh --verbose`** for the long form with raw token counts.
+
+### Changed
+- The `Stop` hook no longer blocks with `exit 2`. It emits a `systemMessage` once per threshold, so it neither renders
+  as `Stop hook error` nor forces an extra assistant turn on every reply past 75%.
+- The line injected into context each turn is compact; `--verbose` keeps the long form.
+- Discipline and agent/skill descriptions trimmed from 11,205 to 9,198 tokens (measured on a real turn). Rules and
+  trigger phrases are untouched; only explanations of rules a hook already enforces were compressed.
+- §4.4 in `CLAUDE.md` corrected: the hook does receive `permission_mode`, and `settings.json` carries no `deny` rule
+  for git — the gate is the hook.
+
+### Fixed
+- `adopt.sh` split `CLAUDE.md` on `<PROJE ADI>`, a marker that stopped matching once the payload was translated to
+  English, so `DISCIPLINE.md` swallowed the whole file including the project template. The split now uses an anchored
+  `KIT:DISCIPLINE-END` sentinel and both installers abort if it is missing.
+- The `@import` check matched the path anywhere in the file, including prose, so a `CLAUDE.md` that merely mentioned
+  `.claude/DISCIPLINE.md` never got the import — and never loaded the discipline.
+- Refreshing a `--backend` project re-added the frontend agents (10/24 → 11/27), and a `--dotnet` project had its
+  DevArchitecture backend expert replaced by the generic variant.
+- `context-usage.sh`'s no-jq fallback counted sidechain (subagent) records and summed only `cache_read`, producing a
+  percentage that was both understated and polluted.
+- Every `awk` is pinned to `LC_ALL=C`; a `tr_TR` locale emitted `%77,2` into the threshold comparison.
+- The installers strip `CR`, so a CRLF checkout of `profiles.conf` or `kit.conf` can no longer silently disable
+  profile pruning.
+
 ## [1.0.9] - 2026-07-08
 
 ### Changed
