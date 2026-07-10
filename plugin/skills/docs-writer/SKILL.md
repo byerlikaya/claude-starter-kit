@@ -1,8 +1,8 @@
 ---
 name: docs-writer
 description: |
-  Keeps documentation in sync with the code: updates the README, usage, and related docs when a public
-  API/behavior changes. Accurate, minimal, up-to-date docs; leaves no dead/misleading documentation behind.
+  Keeps documentation in sync with the code: README, usage and related docs when a public API or behavior
+  changes. Leaves no dead or misleading docs behind.
   Trigger phrases: "documentation", "docs", "update README", "API docs", "write docs", "document it", "write usage"
 ---
 

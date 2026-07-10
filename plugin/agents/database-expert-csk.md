@@ -1,9 +1,8 @@
 ---
 name: database-expert-csk
 description: |
-  PostgreSQL + EF Core + Redis data-layer expert. Steps in for schema design, entity/config,
-  migration generation/review, indexing and performance, and cache keying.
-  Applies the `db-migration` skill for migration discipline.
+  PostgreSQL + EF Core + Redis data-layer expert: schema design, entity/config, migration generation and review,
+  indexing, performance, cache keying. Applies the `db-migration` skill.
   Trigger phrases: "migration", "schema change", "new table", "index", "EF config", "data model", "redis cache"
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---

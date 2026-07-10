@@ -1,8 +1,8 @@
 ---
 name: observability
 description: |
-  Stack-agnostic observability: adds structured logs, correlation ids, metrics, and traces;
-  prevents PII/secret leakage in logs. Makes a production issue traceable to "why it happened".
+  Stack-agnostic observability: structured logs, correlation ids, metrics and traces; no PII or secrets in logs.
+  Makes a production issue traceable to why it happened.
   Trigger phrases: "observability", "structured logging", "structured log", "add a trace", "add a metric", "correlation id", "add logging"
 ---
 

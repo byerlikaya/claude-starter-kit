@@ -1,8 +1,8 @@
 ---
 name: frontend-rn-expo
 description: |
-  OPTIONAL, stack-specific: React Native + Expo (prebuild) details. Used only in mobile RN
-  projects; generic principles live in the `frontend` skill. Disabled in web/desktop projects.
+  OPTIONAL, stack-specific: React Native + Expo (prebuild). Mobile RN projects only; the generic principles
+  live in the `frontend` skill.
   Trigger phrases: "expo", "react native", "native bridge", "expo router", "rn screen", "prebuild"
 ---
 

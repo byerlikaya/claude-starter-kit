@@ -1,8 +1,8 @@
 ---
 name: incident-runbook
 description: |
-  Production incident response and runbook discipline: stay calm-diagnose-mitigate-resolve, then a blameless postmortem
-  and a repeatable runbook. Stop the impact first, then the root cause; make the lesson learned permanent.
+  Production incident response: diagnose → mitigate → resolve, then a blameless postmortem and a repeatable
+  runbook. Stop the impact first, root cause second.
   Trigger phrases: "incident", "incident response", "runbook", "postmortem", "root cause", "outage", "production incident", "post-incident"
 ---
 

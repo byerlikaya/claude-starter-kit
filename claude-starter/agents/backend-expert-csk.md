@@ -1,9 +1,8 @@
 ---
 name: backend-expert-csk
 description: |
-  .NET 10 + DevArchitecture backend expert. Writes and edits MediatR CQRS handler/command/query,
-  IResult/IDataResult, Autofac AOP (SecuredOperation/Validation/Cache).
-  Steps in for new endpoint, business handler, validator, or controller work.
+  .NET 10 + DevArchitecture backend expert: MediatR CQRS handlers/commands/queries, IResult/IDataResult,
+  Autofac AOP (SecuredOperation/Validation/Cache). New endpoints, business handlers, validators, controllers.
   Trigger phrases: "new handler", "write a command", "add a query", "endpoint", "business rule", "DevArchitecture module"
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---

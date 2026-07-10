@@ -1,8 +1,8 @@
 ---
 name: code-review
 description: |
-  Code review discipline: severity-ranked, reasoned feedback focused on whether a change
-  improves the overall code health of the system. review-agent-csk applies the `code-review` skill.
+  Code review discipline: severity-ranked, reasoned feedback on whether a change improves the system's overall
+  code health. review-agent-csk applies it.
   Trigger phrases: "code-review", "review the code", "review the PR", "review", "do a review"
 ---
 

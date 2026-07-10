@@ -1,8 +1,8 @@
 ---
 name: devarch-module
 description: |
-  Backend pattern: MediatR CQRS handler/command/query, IResult/IDataResult result contract,
-  Autofac AOP aspect chain, FluentValidation, Languages/i18n pattern. backend-expert-csk applies the `devarch-module` skill.
+  DevArchitecture backend pattern: MediatR CQRS handler/command/query, IResult/IDataResult, Autofac AOP chain,
+  FluentValidation, i18n. backend-expert-csk applies it.
   Trigger phrases: "devarch-module", "new handler", "write a command", "add a query", "validator", "aspect"
 ---
 

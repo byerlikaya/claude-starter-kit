@@ -1,9 +1,8 @@
 ---
 name: frontend
 description: |
-  Stack-agnostic frontend discipline (web · mobile · desktop): component/view structure, state,
-  data fetching, state-complete UI (loading/empty/error), i18n, accessibility, performance.
-  frontend-expert-csk applies this on EVERY stack; stack-specific detail lives in the relevant project skill.
+  Stack-agnostic frontend discipline (web · mobile · desktop): component structure, state, data fetching,
+  loading/empty/error states, i18n, accessibility, performance. frontend-expert-csk applies it on every stack.
   Trigger phrases: "frontend", "screen", "component", "page", "UI", "state management", "interface"
 ---
 

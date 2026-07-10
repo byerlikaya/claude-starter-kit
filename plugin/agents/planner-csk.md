@@ -1,8 +1,8 @@
 ---
 name: planner-csk
 description: |
-  Planning specialist. Before a feature/task is committed to code, produces a task breakdown +
-  acceptance criteria + dependency order. Does not write code; produces a plan. applies the `spec-planning` skill.
+  Planning specialist. Before code: task breakdown + acceptance criteria + dependency order, via the
+  `spec-planning` skill. Plans; does not write code.
   Trigger phrases: "plan", "produce a spec", "task breakdown", "acceptance criteria", "sprint plan", "plan first"
 tools: Read, Grep, Glob
 model: sonnet

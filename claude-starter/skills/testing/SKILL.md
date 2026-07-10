@@ -1,8 +1,8 @@
 ---
 name: testing
 description: |
-  The "how" of testing: pyramid, AAA, isolation, risk-coverage, determinism; guarantees the
-  "tests are green" promise. test-expert-csk applies this.
+  The how of testing: pyramid, AAA, isolation, risk coverage, determinism. Guarantees the DoD's "tests are
+  green". test-expert-csk applies it.
   Trigger phrases: "write a test", "run the tests", "coverage", "are the tests green", "unit test", "integration test"
 ---
 

@@ -1,8 +1,8 @@
 ---
 name: test-expert-csk
 description: |
-  Test expert. Writes and runs unit/integration tests and guarantees the DoD's "tests are green"
-  requirement. Kicks in when new handler/endpoint/agent behavior is added.
+  Test expert. Writes and runs unit/integration tests; guarantees the DoD's "tests are green". Kicks in when new
+  handler/endpoint/agent behavior is added.
   Trigger phrases: "write tests", "run tests", "coverage", "are the tests green", "unit test", "integration test"
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---

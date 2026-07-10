@@ -1,9 +1,8 @@
 ---
 name: security-expert-csk
 description: |
-  Security review expert. Audits auth/authz, anonymous/token flows, secret leakage,
-  injection, weak crypto, IDOR, rate-limit, and the tampering surface. Writes no code;
-  proposes findings + fixes. Applies the security dimension of `security-scan` (in projects using SonarQube, also `sonarqube-check`).
+  Security review expert: auth/authz, anonymous/token flows, secret leakage, injection, weak crypto, IDOR,
+  rate limits, tampering surface. Findings + fixes via `security-scan` (plus `sonarqube-check` where used); writes no code.
   Trigger phrases: "security audit", "security scan", "OWASP check", "security review", "secret scan", "auth check", "token security", "tampering"
 tools: Read, Grep, Glob, Bash
 model: sonnet

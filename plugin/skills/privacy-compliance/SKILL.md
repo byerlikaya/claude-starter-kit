@@ -1,8 +1,8 @@
 ---
 name: privacy-compliance
 description: |
-  KVKK/GDPR compliance-audit method: data inventory, purpose/basis/retention, minimization,
-  consent, transparency, data subject rights, cross-border transfer. `privacy-agent-csk` applies the `privacy-compliance` skill.
+  KVKK/GDPR audit method: data inventory, purpose/basis/retention, minimisation, consent, transparency,
+  data-subject rights, cross-border transfer. privacy-agent-csk applies it.
   Trigger phrases: "kvkk", "gdpr", "privacy", "consent", "data retention", "minimization"
 ---
 

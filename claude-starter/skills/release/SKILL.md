@@ -1,8 +1,8 @@
 ---
 name: release
 description: |
-  Versioning and CHANGELOG: SemVer mapping (from Conventional Commits), Keep a Changelog format,
-  tagging, pre-release gates. Runs at version release.
+  Versioning and CHANGELOG: SemVer mapped from Conventional Commits, Keep a Changelog format, tagging,
+  pre-release gates.
   Trigger phrases: "release", "version", "changelog", "version bump", "tag", "semver"
 ---
 

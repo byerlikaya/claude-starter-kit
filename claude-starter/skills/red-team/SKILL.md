@@ -1,8 +1,8 @@
 ---
 name: red-team
 description: |
-  Tests LLM/agent defenses against prompt injection from an attacker's viewpoint: generates instruction-hijacking,
-  data-exfiltration, and tool-abuse scenarios using untrusted content; verifies whether the defense holds.
+  Attacker's-eye test of LLM/agent defenses: instruction hijacking, data exfiltration and tool abuse through
+  untrusted content; verifies whether the defense actually holds.
   Trigger phrases: "red team", "red-team", "test prompt injection", "jailbreak", "defense test", "adversarial test", "injection scenario"
 ---
 
