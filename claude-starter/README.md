@@ -66,6 +66,7 @@ Run `npx @byerlikaya/claude-starter-kit@latest update` at the project root. `.cl
 | No AI trace and no external template/vendor name in a commit | `pre-commit` + `commit-msg` git hook |
 | Session threshold (75% · 90%) | `context-usage.sh` (measurement) + `session-guard.sh` (Stop hook, warns once per threshold) |
 | Always-on context stays lean | `smoke-test.sh` byte budgets: discipline · agent descriptions · skill descriptions |
+| A running session never follows stale rules | `context-usage.sh` compares `.claude/VERSION` with the session's starting version |
 | Quality gate (projects using SonarQube — language-agnostic) | `sonarqube-check` + `/ship` |
 
 ## Verification

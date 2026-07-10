@@ -3,6 +3,19 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [1.1.1] - 2026-07-10
+
+### Fixed
+- **An update that lands while a session is running is now announced.** `CLAUDE.md` and the discipline it imports are
+  read once, at session start. Updating the kit mid-session replaced every file on disk while the rules already in the
+  model's context stayed at the previous version — so the assistant kept quoting rules that no longer existed (for
+  example, telling you to set `CLAUDE_GIT_OK=1` long after the commit gate had learned to ask you directly), and
+  nothing said otherwise. `context-usage.sh` now stamps `.claude/VERSION` on the session's first turn, compares it on
+  every later turn, and injects `⚠️ kit updated X → Y mid-session` until the session is restarted. It fails open: no
+  stdin, no `session_id` or no `VERSION` means silence, and it never fires on the `Stop` payload `session-guard.sh`
+  pipes through the same script.
+- `start.sh` and `adopt.sh` close by telling you to restart Claude Code if it is already open in the project.
+
 ## [1.1.0] - 2026-07-10
 
 ### Added
