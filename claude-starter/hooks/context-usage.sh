@@ -35,28 +35,52 @@ if [ -z "$TR" ]; then
 fi
 [ -n "$TR" ] && [ -f "$TR" ] || { echo "context-usage: transcript not found (pass an arg or use hook stdin)" >&2; exit 1; }
 
-# Sum of usage for the last main-context turn (not a sidechain, one that has cache_read).
-if command -v jq >/dev/null 2>&1; then
-  TOTAL="$(jq -r 'select((.isSidechain // false) == false)
-    | select(.message.usage.cache_read_input_tokens != null)
-    | (.message.usage.input_tokens
-       + (.message.usage.cache_read_input_tokens // 0)
-       + (.message.usage.cache_creation_input_tokens // 0))' "$TR" 2>/dev/null | tail -1)"
-else
-  # No jq: parse the JSONL line-by-line. Skip sidechains; for the LAST main-context record that has a
-  # cache_read, sum input + cache_read + cache_creation (mirrors the jq path above — same number).
-  TOTAL="$(awk '
-    /"isSidechain": *true/ { next }
-    /"cache_read_input_tokens"/ {
-      i=0; r=0; c=0
-      if (match($0, /"input_tokens": *[0-9]+/))                 { s=substr($0,RSTART,RLENGTH); gsub(/[^0-9]/,"",s); i=s }
-      if (match($0, /"cache_read_input_tokens": *[0-9]+/))      { s=substr($0,RSTART,RLENGTH); gsub(/[^0-9]/,"",s); r=s }
-      if (match($0, /"cache_creation_input_tokens": *[0-9]+/))  { s=substr($0,RSTART,RLENGTH); gsub(/[^0-9]/,"",s); c=s }
-      total=i+r+c
-    }
-    END { if (total!="") print total }
-  ' "$TR")"
-fi
+# Sum of usage for the last main-context turn: a non-sidechain ASSISTANT record that has a cache_read.
+#
+# Both engines require `"type":"assistant"`. When a subagent returns, its tool_result lands in the MAIN context
+# (`isSidechain:false`) as a `type:"user"` record whose `toolUseResult.usage` is raw, unescaped JSON. jq is
+# anchored at `.message.usage` and never saw it, but awk only sees text: it read the SUBAGENT's tokens as the
+# session's. A 92.2%-full context reported 0.9% — "continue" — so the handoff gate stayed silent exactly when it
+# was needed. Reachable by interrupting a subagent, which leaves that record last. The same predicate now guards
+# both engines so they cannot drift; if a record ever lacks `.type` both go quiet, and a hook that says nothing
+# is recoverable in a way that a hook confidently reporting 0.9% is not.
+HAVE_JQ=0; command -v jq >/dev/null 2>&1 && HAVE_JQ=1
+scan() {                                             # reads JSONL on stdin, prints the total (or nothing)
+  if [ "$HAVE_JQ" = 1 ]; then
+    jq -r 'select((.isSidechain // false) == false)
+      | select(.type == "assistant")
+      | select(.message.usage.cache_read_input_tokens != null)
+      | (.message.usage.input_tokens
+         + (.message.usage.cache_read_input_tokens // 0)
+         + (.message.usage.cache_creation_input_tokens // 0))' 2>/dev/null | tail -1
+  else
+    # No jq: parse the JSONL line-by-line — same predicate, same number.
+    awk '
+      /"isSidechain": *true/  { next }
+      !/"type": *"assistant"/ { next }
+      /"cache_read_input_tokens"/ {
+        i=0; r=0; c=0
+        if (match($0, /"input_tokens": *[0-9]+/))                 { s=substr($0,RSTART,RLENGTH); gsub(/[^0-9]/,"",s); i=s }
+        if (match($0, /"cache_read_input_tokens": *[0-9]+/))      { s=substr($0,RSTART,RLENGTH); gsub(/[^0-9]/,"",s); r=s }
+        if (match($0, /"cache_creation_input_tokens": *[0-9]+/))  { s=substr($0,RSTART,RLENGTH); gsub(/[^0-9]/,"",s); c=s }
+        total=i+r+c
+      }
+      END { if (total!="") print total }'
+  fi
+}
+
+# Read the TAIL, not the file. We want the LAST match, and `tail -n W` hands back exactly the W lines closest to
+# EOF — so a match inside the window IS the last match, and a window that is too small can only come back empty,
+# never stale. Widen once, then fall back to the whole file. Measured across 71 transcripts the record sits 1-3
+# lines from EOF (worst case 43); the second rung absorbs a large subagent fan-out. This runs on EVERY turn, and
+# the whole-file scan cost 4.7s on a 180MB transcript under the awk path — past the hook's timeout on Windows,
+# where jq is absent and every fork is dear. Tailing it: ~40ms.
+TOTAL=""
+for W in 200 2000; do
+  TOTAL="$(tail -n "$W" "$TR" | scan)"
+  [ -n "$TOTAL" ] && break
+done
+[ -n "$TOTAL" ] || TOTAL="$(scan < "$TR")"
 [ -n "${TOTAL:-}" ] || { echo "context-usage: could not read usage" >&2; exit 1; }
 
 # LC_ALL=C: force a '.' decimal separator regardless of locale (tr_TR etc. would emit '77,2' and could

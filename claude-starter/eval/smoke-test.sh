@@ -70,7 +70,7 @@ rm -rf "$SDIR"
 
 echo "== 6) Context-usage threshold logic (fixture) + hook integrity =="
 FX="$(mktemp)"
-printf '%s\n' '{"isSidechain":false,"message":{"usage":{"input_tokens":1000,"cache_read_input_tokens":800000,"cache_creation_input_tokens":0}}}' > "$FX"
+printf '%s\n' '{"type":"assistant","isSidechain":false,"message":{"usage":{"input_tokens":1000,"cache_read_input_tokens":800000,"cache_creation_input_tokens":0}}}' > "$FX"
 o1="$(CONTEXT_WINDOW=1000000 bash "$HOOKS/context-usage.sh" "$FX" 2>/dev/null)"
 case "$o1" in *"handoff+clear"*) pass "threshold: ~80% → handoff+clear" ;; *) fail "threshold(high) not 'handoff+clear': $o1" ;; esac
 o2="$(CONTEXT_WINDOW=2000000 bash "$HOOKS/context-usage.sh" "$FX" 2>/dev/null)"
@@ -85,7 +85,7 @@ echo "== 6b) Stop-hook gate: once per THRESHOLD · never blocks · systemMessage
 SGFX="$(mktemp)"
 SGPFX="smoketest-$$-${RANDOM:-0}"
 mkjson(){ printf '{"session_id":"%s","transcript_path":"%s","hook_event_name":"Stop","stop_hook_active":%s}' "$1" "$2" "$3"; }
-fill(){ printf '%s\n' "{\"isSidechain\":false,\"message\":{\"usage\":{\"input_tokens\":0,\"cache_read_input_tokens\":$1,\"cache_creation_input_tokens\":0}}}" > "$SGFX"; }
+fill(){ printf '%s\n' "{\"type\":\"assistant\",\"isSidechain\":false,\"message\":{\"usage\":{\"input_tokens\":0,\"cache_read_input_tokens\":$1,\"cache_creation_input_tokens\":0}}}" > "$SGFX"; }
 sg(){ mkjson "$1" "$SGFX" "${2:-false}" | CONTEXT_WINDOW=1000000 bash "$HOOKS/session-guard.sh" 2>/dev/null; }
 # (1) below the threshold: completely silent
 fill 600000
@@ -129,8 +129,8 @@ for t in awk sed grep head tail cat ls tr; do
 done
 if [ "$JXOK" = 1 ] && ! PATH="$JXBIN" command -v jq >/dev/null 2>&1; then
   SX="$(mktemp)"
-  printf '%s\n' '{"isSidechain":false,"message":{"usage":{"input_tokens":20,"cache_read_input_tokens":760000,"cache_creation_input_tokens":11936}}}' >  "$SX"
-  printf '%s\n' '{"isSidechain":true,"message":{"usage":{"input_tokens":5,"cache_read_input_tokens":30000,"cache_creation_input_tokens":0}}}'        >> "$SX"
+  printf '%s\n' '{"type":"assistant","isSidechain":false,"message":{"usage":{"input_tokens":20,"cache_read_input_tokens":760000,"cache_creation_input_tokens":11936}}}' >  "$SX"
+  printf '%s\n' '{"type":"assistant","isSidechain":true,"message":{"usage":{"input_tokens":5,"cache_read_input_tokens":30000,"cache_creation_input_tokens":0}}}'        >> "$SX"
   ox="$(PATH="$JXBIN" CONTEXT_WINDOW=1000000 "$BASHBIN" "$HOOKS/context-usage.sh" --verbose "$SX" 2>/dev/null)"
   case "$ox" in
     *"771956/1000000"*handoff+clear*) pass "no-jq: skips sidechain + sums input+cache_read+cache_creation (771956)" ;;
@@ -144,10 +144,65 @@ rm -rf "$JXBIN"
 
 echo "== 6d) locale: percentage keeps '.' under a comma locale =="
 FXL="$(mktemp)"
-printf '%s\n' '{"isSidechain":false,"message":{"usage":{"input_tokens":1000,"cache_read_input_tokens":800000,"cache_creation_input_tokens":0}}}' > "$FXL"
+printf '%s\n' '{"type":"assistant","isSidechain":false,"message":{"usage":{"input_tokens":1000,"cache_read_input_tokens":800000,"cache_creation_input_tokens":0}}}' > "$FXL"
 ol="$(LANG=tr_TR.UTF-8 LC_NUMERIC=tr_TR.UTF-8 CONTEXT_WINDOW=1000000 bash "$HOOKS/context-usage.sh" "$FXL" 2>/dev/null | head -1)"
 case "$ol" in *,*) fail "locale: percentage emitted a comma under tr_TR: $ol" ;; *) pass "locale: decimal stays '.' under tr_TR ($ol)" ;; esac
 rm -f "$FXL"
+
+echo "== 6i) context-usage: bounded tail read + assistant anchor =="
+# Two defects this locks down, both fatal on the no-jq path (stock Git Bash on Windows):
+#   1. The scan read the whole transcript on EVERY turn though the record it wants is the LAST match.
+#      4.7s on a 180MB transcript -> past the hook's timeout -> the fill line never reached the model.
+#   2. A returning subagent's tool_result is a MAIN-context (isSidechain:false) `type:"user"` record whose
+#      `toolUseResult.usage` is raw, unescaped JSON. awk sees only text, so it read the SUBAGENT's tokens as the
+#      session's: a 92.2%-full context reported 0.9%, silencing the handoff gate exactly when it mattered.
+# Note the window ladder itself CANNOT be tested behaviourally — a tail scan and a full scan return the same
+# number by construction (that is the invariant). Only the clock tells them apart, so the read bound is asserted
+# structurally below; the rungs are tested for the correctness they must preserve.
+CUD="$(mktemp -d)"
+A_REC='{"type":"assistant","isSidechain":false,"message":{"usage":{"input_tokens":1000,"cache_creation_input_tokens":0,"cache_read_input_tokens":800000,"output_tokens":5}}}'
+SIDE_REC='{"type":"assistant","isSidechain":true,"message":{"usage":{"input_tokens":5,"cache_creation_input_tokens":0,"cache_read_input_tokens":30000,"output_tokens":1}}}'
+POISON_REC='{"type":"user","isSidechain":false,"message":{"role":"user","content":"x"},"toolUseResult":{"usage":{"input_tokens":25,"cache_creation_input_tokens":1344,"cache_read_input_tokens":8000,"output_tokens":9}}}'
+noise(){ awk -v n="$1" -v l="$2" 'BEGIN{for(i=0;i<n;i++) print l}'; }
+# a jq-less PATH, so the awk branch is what actually runs (this is the Windows path)
+CUJX="$(mktemp -d)"; CUJXOK=1; CUBASH="$(command -v bash 2>/dev/null || echo bash)"
+for t in awk sed grep head tail cat ls tr dirname; do
+  tp="$(command -v "$t" 2>/dev/null)" && ln -s "$tp" "$CUJX/$t" 2>/dev/null || CUJXOK=0
+done
+cu(){    CONTEXT_WINDOW=1000000 bash "$HOOKS/context-usage.sh" --verbose "$1" 2>/dev/null; }
+cu_nojq(){ PATH="$CUJX" CONTEXT_WINDOW=1000000 "$CUBASH" "$HOOKS/context-usage.sh" --verbose "$1" 2>/dev/null; }
+# assert the SAME expected total on both engines — they must never drift apart
+both(){ # $1=fixture $2=expected-total $3=label
+  o="$(cu "$1")"
+  case "$o" in *"$2/1000000"*) pass "jq: $3" ;; *) fail "jq: $3 — got: $o" ;; esac
+  if [ "$CUJXOK" = 1 ] && ! PATH="$CUJX" command -v jq >/dev/null 2>&1; then
+    o="$(cu_nojq "$1")"
+    case "$o" in *"$2/1000000"*) pass "no-jq: $3" ;; *) fail "no-jq: $3 — got: $o" ;; esac
+  else pass "no-jq: $3 (skipped — no jq-less PATH buildable here)"; fi
+}
+# (1) the record sits at EOF, behind a long history: the common case
+{ noise 500 "$SIDE_REC"; printf '%s\n' "$A_REC"; } > "$CUD/eof.jsonl"
+both "$CUD/eof.jsonl" 801000 "record at EOF behind 500 lines"
+# (2) past the first rung (200) but inside the second (2000): the ladder must widen, not give up
+{ printf '%s\n' "$A_REC"; noise 300 "$SIDE_REC"; } > "$CUD/rung2.jsonl"
+both "$CUD/rung2.jsonl" 801000 "record 300 lines from EOF — ladder widens to 2000"
+# (3) past every rung: the whole-file fallback must still find it (a short window returns EMPTY, never stale)
+{ printf '%s\n' "$A_REC"; noise 2500 "$SIDE_REC"; } > "$CUD/full.jsonl"
+both "$CUD/full.jsonl" 801000 "record 2500 lines from EOF — whole-file fallback"
+# (4) THE POISON: a subagent returned, so the last line is a main-context user record carrying the SUBAGENT's
+#     usage as raw JSON. Reading it reports 0.9% for a 92%-full session. Reachable by interrupting a subagent.
+{ printf '%s\n' "$A_REC"; printf '%s\n' "$POISON_REC"; } > "$CUD/poison.jsonl"
+both "$CUD/poison.jsonl" 801000 "a returning subagent's toolUseResult.usage is NOT the session's fill"
+# (5) a sidechain record at EOF must not be read either (the pre-existing guarantee, re-asserted at the boundary)
+{ printf '%s\n' "$A_REC"; printf '%s\n' "$SIDE_REC"; } > "$CUD/side.jsonl"
+both "$CUD/side.jsonl" 801000 "a trailing sidechain record is skipped"
+# (6) nothing to measure -> exit non-zero, so the hook stays silent rather than inventing a number
+noise 50 "$SIDE_REC" > "$CUD/none.jsonl"
+if bash "$HOOKS/context-usage.sh" "$CUD/none.jsonl" >/dev/null 2>&1; then fail "no main-context record returned exit 0"; else pass "no main-context record -> exit!=0 (silent, never invents a fill)"; fi
+# (7) structural: the read must be BOUNDED. A revert to `scan "$TR"` is invisible to every test above.
+grep -q 'tail -n' "$HOOKS/context-usage.sh" && pass "transcript is read through a bounded 'tail -n' window" \
+  || fail "context-usage.sh no longer bounds its read — the whole transcript is scanned every turn"
+rm -rf "$CUD" "$CUJX"
 
 echo "== 6e) CLAUDE.md split: sentinel · discipline/project boundary · profiles.conf =="
 # In the kit repo ROOT is claude-starter/ (payload). In an installed project it is .claude/, which has no
@@ -221,7 +276,7 @@ echo "== 6g) stale-discipline gate: an update landing mid-session must be announ
 # CLAUDE.md loads once, at session start. If the kit is updated while a session runs, the model keeps quoting
 # the previous version's rules. Build a throwaway hooks/ + VERSION pair so the script resolves ../VERSION.
 SD="$(mktemp -d)"; mkdir -p "$SD/hooks"; cp "$HOOKS/context-usage.sh" "$SD/hooks/"
-SDFX="$(mktemp)"; printf '%s\n' '{"isSidechain":false,"message":{"usage":{"input_tokens":0,"cache_read_input_tokens":300000,"cache_creation_input_tokens":0}}}' > "$SDFX"
+SDFX="$(mktemp)"; printf '%s\n' '{"type":"assistant","isSidechain":false,"message":{"usage":{"input_tokens":0,"cache_read_input_tokens":300000,"cache_creation_input_tokens":0}}}' > "$SDFX"
 SDSID="smoketest-stale-$$-${RANDOM:-0}"
 ups(){ printf '{"session_id":"%s","hook_event_name":"UserPromptSubmit","transcript_path":"%s"}' "$SDSID" "$SDFX"; }
 run_cu(){ ups | CONTEXT_WINDOW=1000000 bash "$SD/hooks/context-usage.sh" 2>/dev/null; }

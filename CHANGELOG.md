@@ -3,6 +3,29 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [1.1.2] - 2026-07-11
+
+### Fixed
+- **The session-fill hook timed out on Windows, so the measured `🔋 Session` line never reached the model.**
+  `context-usage.sh` scanned the whole transcript on every turn, though the only record it needs — the last
+  main-context turn's usage — sits 1–3 lines from the end of the file (43 at worst across 71 real transcripts).
+  Stock Git Bash on Windows ships no `jq`, so the slower `awk` path runs: on a 180 MB transcript it took ~4.7 s,
+  and with MSYS fork cost and a cold Defender scan it blew the hook's 10 s ceiling. The hook was killed and its
+  output discarded, so context fill could not be measured. It now reads the tail (`tail -n 200`, widening to
+  `2000`, then the whole file only as a fallback); a window too small to contain the record can only come back
+  empty, never stale. Same number as before — measured byte-identical across 71 transcripts on both engines — at
+  ~40 ms instead of 4.7 s.
+- **On the `jq`-less path a returning subagent's usage was read as the session's own fill.** When a subagent
+  returns, its result lands in the main context as a `type:"user"` record whose `toolUseResult.usage` is raw,
+  unescaped JSON. The `awk` text-scan matched it and reported the *subagent's* tokens: a 92%-full context showed
+  0.9% → "continue", so the 75%/90% handoff gate stayed silent exactly when it mattered — reachable by
+  interrupting a subagent. Both engines now require `"type":"assistant"`, which the raw sub-record cannot satisfy;
+  `jq` was already anchored at `.message.usage` and unaffected. Verified against a reproduction of the exact bug.
+- **The three hook timeouts move from 10 s to 30 s** — Claude Code's own documented default for a
+  `UserPromptSubmit` hook, which the kit had set *below*. On the success path the tailed script returns in well
+  under 100 ms; the raised ceiling only absorbs a cold-disk worst case, and a timeout never blocks the prompt
+  itself. `smoke-test.sh` §6i locks down the tail ladder, the anchor, and the poison case on both engines.
+
 ## [1.1.1] - 2026-07-10
 
 ### Fixed
