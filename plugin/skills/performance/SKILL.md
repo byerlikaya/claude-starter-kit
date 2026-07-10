@@ -1,9 +1,9 @@
 ---
 name: performance
 description: |
-  Stack-agnostic performance discipline: measure first, find the bottleneck, then optimize. N+1, needless
-  allocation, wrong async boundary, missing index/cache, heavy payload. Avoids premature optimization.
-  Trigger phrases: "performance", "performance", "slow", "optimization", "profiling", "N+1", "latency", "memory leak", "load test"
+  Stack-agnostic performance: measure first, find the bottleneck, then optimise. N+1, needless allocation, wrong
+  async boundary, missing index/cache, heavy payload. No premature optimisation.
+  Trigger phrases: "performance", "slow", "optimization", "profiling", "N+1", "latency", "memory leak", "load test"
 ---
 
 # Performance

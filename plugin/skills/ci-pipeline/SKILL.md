@@ -1,8 +1,7 @@
 ---
 name: ci-pipeline
 description: |
-  CI pipeline discipline: lint→build→test→quality→security stages, fail-fast,
-  deterministic build, secret management, PR gates. Runs when the CI configuration changes.
+  CI pipeline discipline: lint→build→test→quality→security, fail-fast, deterministic build, secret handling, PR gates.
   Trigger phrases: "ci", "pipeline", "github actions", "build pipeline", "pr gate", "workflow"
 ---
 

@@ -1,8 +1,8 @@
 ---
 name: i18n-integrity
 description: |
-  Translation integrity audit: is every text key present in all project languages, are there
-  hardcoded strings, are placeholders/plurals consistent. Runs when user-facing text changes.
+  Translation integrity: every key present in every language, no hardcoded strings, consistent placeholders
+  and plurals. Runs when user-facing text changes.
   Trigger phrases: "i18n", "translation", "language file", "missing translation", "localization", "translate"
 ---
 

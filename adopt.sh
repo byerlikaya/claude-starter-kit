@@ -27,11 +27,67 @@ ask_yes(){ local a; printf '%s [yes/no]: ' "$1"; read -r a || a=""; case "$a" in
 # never-overwrite copy: does NOT overwrite an EXISTING target file (project file is preserved), skips+counts.
 # Result globals: ret_add / ret_skip; conflicts are added to SKIP_LIST. Do NOT call in a subshell (globals are lost).
 SKIP_LIST=""
-copy_noclobber(){ local src="$1" dst="$2" force="${3:-0}" rel f; ret_add=0; ret_skip=0; [ -d "$src" ] || return; mkdir -p "$dst"
-  while IFS= read -r f; do rel="${f#"$src"/}"
+# $4 = space-separated names to SKIP entirely, matched against the first path component of each source file
+# ('frontend-expert-csk.md' for agents/, 'a11y' for skills/). We skip rather than copy-then-delete: a project
+# may own a directory of the same name, and a refresh must never remove the project's own files.
+copy_noclobber(){ local src="$1" dst="$2" force="${3:-0}" excl=" ${4:-} " rel top f; ret_add=0; ret_skip=0; [ -d "$src" ] || return; mkdir -p "$dst"
+  while IFS= read -r f; do rel="${f#"$src"/}"; top="${rel%%/*}"
+    case "$excl" in *" $top "*) continue ;; esac
     if [ -e "$dst/$rel" ] && [ "$force" != 1 ]; then ret_skip=$((ret_skip+1)); SKIP_LIST="$SKIP_LIST $dst/$rel"
     else mkdir -p "$dst/$(dirname "$rel")"; cp "$f" "$dst/$rel"; ret_add=$((ret_add+1)); fi
   done < <(find "$src" -type f 2>/dev/null); }
+
+# --- CLAUDE.md split (shared contract with start.sh; keep the two in lockstep) ---
+IMPORT_LINE='@.claude/DISCIPLINE.md'
+# Sentinel matched ANCHORED to line start, so prose that merely names the token is never mistaken for the split
+# point. Abort loudly if it is gone: a silent miss ships the ENTIRE template as "discipline" — which is exactly
+# what the previous '<PROJE ADI>' marker did once the payload was translated to English.
+kit_require_sentinel() { grep -qE '^<!-- KIT:DISCIPLINE-END' "$1" || { echo "ERROR: the '<!-- KIT:DISCIPLINE-END' sentinel line is missing from $1 — refusing to guess the discipline/project split."; exit 1; }; }
+kit_discipline_of()    { awk '/^<!-- KIT:DISCIPLINE-END/{exit} {print}' "$1"; }
+kit_project_of()       { awk 'f{print} /^<!-- KIT:DISCIPLINE-END/{f=1}' "$1"; }
+# Anchored: the import must BE the line, not merely be mentioned in prose (the discipline text names the path).
+kit_has_import()       { grep -qE '^[[:space:]]*@\.claude/DISCIPLINE\.md[[:space:]]*$' "$1" 2>/dev/null; }
+# A pre-1.1 install pasted the whole discipline inline into CLAUDE.md; adding the @import would load it twice.
+# Both markers are required: a project that happens to write its own "Four working principles" heading is NOT a
+# legacy kit install, and treating it as one would leave it without the discipline forever.
+kit_claude_md_is_legacy() {
+  grep -q '^## Four working principles' "$1" 2>/dev/null && grep -qE '^### 4\.[45] ' "$1" 2>/dev/null
+}
+# Where does the project section of a legacy CLAUDE.md begin? Line 1 is the discipline's own '# CLAUDE.md — Working
+# rules' heading, so look from line 2 on. Fallback: the first '# ' heading after the §4.5 block (covers a renamed
+# heading). Capture the output — `awk … && return` would return on awk's exit status even when it printed nothing.
+kit_legacy_boundary() {
+  local n
+  n="$(awk 'NR>1 && /^# CLAUDE\.md/{print NR; exit}' "$1" 2>/dev/null)"
+  [ -n "$n" ] || n="$(awk '/^### 4\.5 /{f=1;next} f && /^# /{print NR; exit}' "$1" 2>/dev/null)"
+  printf '%s' "$n"
+}
+# A project installed before kit.conf existed carries its shape only in what is on disk. Read it back, so an
+# update reshapes it the way it was installed instead of silently re-adding what the profile pruned.
+kit_infer_shape() {
+  local fe=0 be=0 rn=0
+  [ -f .claude/agents/frontend-expert-csk.md ] && fe=1
+  [ -f .claude/agents/backend-expert-csk.md ]  && be=1
+  [ -d .claude/skills/frontend-rn-expo ]       && rn=1
+  if   [ "$be" = 1 ] && [ "$fe" = 1 ]; then KIT_PROFILE=fullstack
+  elif [ "$be" = 1 ];                  then KIT_PROFILE=backend
+  elif [ "$fe" = 1 ] && [ "$rn" = 1 ]; then KIT_PROFILE=mobile
+  elif [ "$fe" = 1 ];                  then KIT_PROFILE=frontend
+  else                                      KIT_PROFILE=fullstack; fi   # nothing to go on -> install everything
+  # The DevArchitecture-bound backend expert names its pattern all over; the generic one never mentions it.
+  if [ "$be" = 1 ]; then
+    if grep -qi devarch .claude/agents/backend-expert-csk.md; then KIT_STACK=dotnet; else KIT_STACK=generic; fi
+  else KIT_STACK=none; fi
+  KIT_INSTALLER="${KIT_INSTALLER:-pre-kit.conf}"
+  INFERRED=1
+}
+# tr -d '\r' on both readers: a CRLF file (Windows checkout, or kit.conf reopened in Notepad) would otherwise
+# glue '\r' to every value — 'backend\r' matches no profile row, and the refresh would silently prune nothing.
+kit_conf_get()         { [ -f .claude/kit.conf ] && sed -n "s/^$1=//p" .claude/kit.conf | head -1 | tr -d '\r'; }
+# Profile -> pruned agents/skills. Same profiles.conf start.sh installs from: the two cannot drift.
+kit_profile_field()    { sed -n "s/^$1://p" "$SRC/profiles.conf" 2>/dev/null | head -1 | tr -d '\r' | cut -d: -f"$2"; }
+kit_excl_agents_for()  { kit_profile_field "$1" 1; }
+kit_excl_skills_for()  { kit_profile_field "$1" 2; }
 
 h1 "kit adopt · Stage 1 — DETECTION (read-only; nothing changes)"
 sub "Reads the existing project, produces a smart suggestion for the 7 handover decisions. Approval + mutation in the next stage."
@@ -82,10 +138,20 @@ HAS_SETTINGS=0; [ -f .claude/settings.json ] && HAS_SETTINGS=1
 KIT_PRESENT=0; KIT_VER=""
 { [ -f .claude/DISCIPLINE.md ] || [ -d .claude/git-shim ] || ls .claude/agents/*-csk.md >/dev/null 2>&1 || [ -f .claude/VERSION ]; } && KIT_PRESENT=1
 [ -f .claude/VERSION ] && KIT_VER="$(head -1 .claude/VERSION 2>/dev/null)"
+# Shape of the existing install, remembered by whichever installer put it here. An update must refresh the
+# project in the SAME shape: a backend-only install must not have frontend agents grafted back on, and a
+# .NET install must not have its DevArch backend agent swapped for the generic one.
+KIT_PROFILE="$(kit_conf_get profile)"; KIT_STACK="$(kit_conf_get stack)"; KIT_INSTALLER="$(kit_conf_get installer)"
+# No kit.conf means the project predates it (v1.0.x). Recover the shape from the files themselves, or the
+# refresh would hand a backend-only project the frontend agents and swap its .NET expert for the generic one.
+INFERRED=0
+{ [ "$KIT_PRESENT" = 1 ] && [ -z "$KIT_PROFILE" ]; } && kit_infer_shape
 row ".claude/" "$([ "$HAS_CLAUDE" = 1 ] && echo "present — $N_PAGENTS project agents · $N_PSKILLS project skills" || echo "none")"
 row "CLAUDE.md" "$([ "$HAS_MD" = 1 ] && echo "present" || echo "none")"
 row "settings.json" "$([ "$HAS_SETTINGS" = 1 ] && echo "present" || echo "none")"
 [ "$KIT_PRESENT" = 1 ] && row "kit status" "${YE}already adopted${KIT_VER:+ (v$KIT_VER)} — this run REFRESHES kit files, project untouched${R}"
+[ -n "$KIT_PROFILE" ] && row "$([ "$INFERRED" = 1 ] && echo 'inferred shape' || echo 'recorded shape')" \
+  "profile=${KIT_PROFILE} · stack=${KIT_STACK:-?}$([ "$INFERRED" = 1 ] && echo " ${YE}(no kit.conf — read back from the installed files)${R}" || echo " · via ${KIT_INSTALLER:-?}") — the refresh keeps it"
 
 # tracked in git? (decision #4 — share/hide)
 TRACKED=0
@@ -191,21 +257,45 @@ git checkout -b "$BR" >/dev/null 2>&1 || { echo "ERROR: could not open branch '$
 echo "  handover branch: ${B}$BR${R}  (${BASE} stays clean)"
 
 mkdir -p .claude
+# Honour the shape recorded at install time. A fresh adopt has no kit.conf and installs the full payload
+# (adopt = fullstack by definition); a refresh of a start.sh install prunes exactly what that profile pruned,
+# so new kit files still land while frontend agents never reappear in a backend-only project.
+EXCL_A=""; EXCL_S=""
+if [ -n "$KIT_PROFILE" ] && grep -qE "^$KIT_PROFILE:" "$SRC/profiles.conf" 2>/dev/null; then
+  EXCL_A="$(kit_excl_agents_for "$KIT_PROFILE")"
+  EXCL_S="$(kit_excl_skills_for "$KIT_PROFILE")"
+  [ "$KIT_STACK" = "generic" ] && EXCL_S="$EXCL_S devarch-module"
+  echo "  refreshing as profile '${KIT_PROFILE}' (stack: ${KIT_STACK:-?}) — pruned agents/skills stay pruned"
+fi
 # kit-owned trees: FORCE-refresh on a re-adopt (KIT_PRESENT) so kit updates land; never-overwrite on a fresh adopt
-copy_noclobber "$SRC/agents"   .claude/agents   "$KIT_PRESENT"; A_ADD=$ret_add; A_SKIP=$ret_skip
-copy_noclobber "$SRC/skills"   .claude/skills   "$KIT_PRESENT"; S_ADD=$ret_add; S_SKIP=$ret_skip
+copy_noclobber "$SRC/agents"   .claude/agents   "$KIT_PRESENT" "$EXCL_A"; A_ADD=$ret_add; A_SKIP=$ret_skip
+copy_noclobber "$SRC/skills"   .claude/skills   "$KIT_PRESENT" "$EXCL_S"; S_ADD=$ret_add; S_SKIP=$ret_skip
 copy_noclobber "$SRC/commands" .claude/commands "$KIT_PRESENT"; C_ADD=$ret_add; C_SKIP=$ret_skip
 copy_noclobber "$SRC/hooks"    .claude/hooks    "$KIT_PRESENT"; H_ADD=$ret_add; H_SKIP=$ret_skip
 copy_noclobber "$SRC/eval"     .claude/eval     "$KIT_PRESENT"; E_ADD=$ret_add; E_SKIP=$ret_skip
-# stack-compatible backend: on non-.NET projects use the generic backend-expert-csk — but NEVER clobber a preserved project file
-if [ "$STACK" != ".NET" ] && [ -f "$SRC/agents-optional/backend-expert-generic.md" ]; then
+# Stack-compatible backend: non-.NET projects get the generic backend-expert-csk. A RECORDED stack always beats
+# repo sniffing — a refresh of a 'dotnet' install must keep the DevArch-bound agent even when the .sln lives in
+# ./backend and the sniffer reports "unknown". And never clobber a preserved project file.
+WANT_GENERIC=0
+if [ -n "$KIT_STACK" ]; then [ "$KIT_STACK" = "generic" ] && WANT_GENERIC=1
+elif [ "$STACK" != ".NET" ]; then WANT_GENERIC=1; fi
+if [ "$WANT_GENERIC" = 1 ] && [ -f "$SRC/agents-optional/backend-expert-generic.md" ] && [ -e .claude/agents/backend-expert-csk.md ]; then
   case " $SKIP_LIST " in
     *" .claude/agents/backend-expert-csk.md "*) warn "backend-expert-csk.md pre-existed (preserved) — generic variant NOT applied" ;;
-    *) cp "$SRC/agents-optional/backend-expert-generic.md" .claude/agents/backend-expert-csk.md; echo "  backend-expert-csk -> generic variant ($STACK project)" ;;
+    *) cp "$SRC/agents-optional/backend-expert-generic.md" .claude/agents/backend-expert-csk.md; echo "  backend-expert-csk -> generic variant (${KIT_STACK:-$STACK})" ;;
   esac
+elif [ "$KIT_STACK" = "dotnet" ] && [ -e .claude/agents/backend-expert-csk.md ]; then
+  echo "  backend-expert-csk kept on the .NET/DevArchitecture variant (recorded stack: dotnet)"
 fi
 chmod +x .claude/hooks/*.sh .claude/hooks/pre-commit .claude/hooks/commit-msg 2>/dev/null || true
 [ -f "$HERE/VERSION" ] && cp "$HERE/VERSION" .claude/VERSION 2>/dev/null || true   # first-class marker so a future adopt detects a REFRESH
+# Record (or re-record) the shape so the NEXT update refreshes this project the same way.
+{ echo "# Written by the kit installer. The updater reads this to refresh the project in its original shape."
+  echo "profile=${KIT_PROFILE:-fullstack}"
+  echo "stack=${KIT_STACK:-$([ "$WANT_GENERIC" = 1 ] && echo generic || echo dotnet)}"
+  echo "installer=${KIT_INSTALLER:-adopt.sh}"
+  echo "version=$( [ -f "$HERE/VERSION" ] && head -1 "$HERE/VERSION" || echo unknown )"
+} > .claude/kit.conf
 
 h1 "Coexist summary"
 row "kit agents (-csk)" "+$A_ADD added$([ "$A_SKIP" != 0 ] && echo " · $A_SKIP skipped")"
@@ -219,17 +309,38 @@ row "project agents"     "$N_PAGENTS — UNTOUCHED (in place, active via recursi
 # ============ [STAGE 3] DISCIPLINE ACTIVE + SETTINGS MERGE ============
 h1 "Stage 3 — activate the kit discipline (without touching the project CLAUDE.md) + settings merge"
 
-# 3a) DISCIPLINE.md: install the top (discipline) block of the payload CLAUDE.md as a separate, FLAT file.
-#     everything before the '<PROJE ADI>' line = discipline; contains NO @import (leaf) -> no 4-hop trap.
+# 3a) DISCIPLINE.md: install the discipline half of the payload CLAUDE.md as a separate, FLAT file —
+#     everything above the sentinel line. Contains NO @import (leaf) -> no 4-hop trap.
 if [ -f "$SRC/CLAUDE.md" ]; then
-  awk '/<PROJE ADI>/{exit} {print}' "$SRC/CLAUDE.md" > .claude/DISCIPLINE.md
-  echo "  DISCIPLINE.md written (kit discipline; flat, self-contained)"
+  kit_require_sentinel "$SRC/CLAUDE.md"
+  kit_discipline_of "$SRC/CLAUDE.md" > .claude/DISCIPLINE.md
+  echo "  DISCIPLINE.md written (kit discipline only; the project template stays out of it)"
 fi
 
 # 3b) single-line @import into the project CLAUDE.md (if present DON'T touch content, only prepend; if absent create).
-IMPORT_LINE='@.claude/DISCIPLINE.md'
 if [ -f CLAUDE.md ]; then
-  if grep -qF "$IMPORT_LINE" CLAUDE.md; then echo "  CLAUDE.md: @import already present (idempotent)"
+  if kit_has_import CLAUDE.md; then echo "  CLAUDE.md: @import already present (idempotent)"
+  elif kit_claude_md_is_legacy CLAUDE.md; then
+    # Pre-1.1: the whole discipline sits inline. Blindly prepending the @import would load it TWICE, and leaving
+    # it alone means discipline updates never reach this project. Offer the exact swap, with a backup.
+    warn "CLAUDE.md carries the discipline INLINE (pre-1.1 layout) — discipline updates cannot reach it."
+    BND="$(kit_legacy_boundary CLAUDE.md | head -1)"
+    if [ -n "$BND" ] && [ "$BND" -gt 1 ] 2>/dev/null \
+       && head -n "$((BND-1))" CLAUDE.md | grep -q '^## Four working principles' \
+       && head -n "$((BND-1))" CLAUDE.md | grep -q '^### 4\.5 '; then
+      printf '     %sthe inline block is lines 1-%s; your project section starts at line %s%s\n' "$D" "$((BND-1))" "$BND" "$R"
+      if ask_yes "  Replace that inline block with the single @import line? (a backup is written; this branch is reviewable)"; then
+        BK=".claude/CLAUDE.md.pre-kit-$TS"
+        cp CLAUDE.md "$BK"
+        { printf '<!-- kit discipline · on conflict the project rules BELOW win -->\n%s\n\n' "$IMPORT_LINE"
+          tail -n +"$BND" CLAUDE.md; } > CLAUDE.md.kit-tmp && mv CLAUDE.md.kit-tmp CLAUDE.md
+        echo "  CLAUDE.md migrated -> @import + your project section (backup: $BK)"
+      else
+        printf '     %sSkipped. Discipline updates will NOT reach this project until you migrate.%s\n' "$D" "$R"
+      fi
+    else
+      printf '     %sProject heading not found — migrate by hand: delete everything above it, leave only:  %s%s\n' "$D" "$IMPORT_LINE" "$R"
+    fi
   else
     { printf '<!-- kit discipline · on conflict the project rules BELOW win -->\n%s\n\n' "$IMPORT_LINE"; cat CLAUDE.md; } > CLAUDE.md.kit-tmp && mv CLAUDE.md.kit-tmp CLAUDE.md
     echo "  CLAUDE.md: single-line @import prepended (project content untouched)"

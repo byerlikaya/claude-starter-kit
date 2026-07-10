@@ -23,7 +23,11 @@ summarizes what lives under `.claude/` and how it works.
 - **Hooks** (`hooks/`) — `guard-bash.sh` (tool-level gate), `pre-commit` + `commit-msg`
   (trace scan), `context-usage.sh` and `session-guard.sh` (session measurement), `trace-blocklist.txt`.
 - **settings.json** — permissions and the hook chain (PreToolUse · UserPromptSubmit · Stop).
-- **Root `CLAUDE.md`** — behavior, three principles, workflow, definition of done, token discipline, and prohibitions.
+- **`DISCIPLINE.md`** — behavior, four principles, workflow, definition of done, token discipline, and prohibitions.
+  Kit-owned: an update **overwrites** it, so keep nothing of your own here. Your `./CLAUDE.md` pulls it in with a
+  single `@.claude/DISCIPLINE.md` line and holds your project rules, which win on conflict.
+- **`kit.conf`** — the profile and backend stack this project was installed with. The updater reads it so a refresh
+  reshapes the project the way it was installed, instead of re-adding what the profile pruned.
 - **AGENT_TEMPLATE.md** — the contract for opening a new agent/skill.
 
 ## Workflow
@@ -35,18 +39,33 @@ summarizes what lives under `.claude/` and how it works.
 
 An assistant cannot run the `/context` command itself; that is why most setups guess the context fill.
 This kit measures it. `context-usage.sh` reads the real token count of the last turn in the transcript;
-the `UserPromptSubmit` hook injects this into the context every turn; the `Stop` hook (`session-guard.sh`) reliably
-surfaces the handover suggestion when the fill **exceeds 75%**. This way the session-health line rests on a measurement,
-not on a guess.
+the `UserPromptSubmit` hook injects this into the context every turn; the `Stop` hook (`session-guard.sh`) surfaces
+the handover suggestion to you the first time the fill **crosses 75%**, and again at **90%** — one warning per
+threshold, and it warns rather than blocks, so it costs no extra model turn. This way the session-health line rests
+on a measurement, not on a guess.
+
+## Token cost
+
+`DISCIPLINE.md` plus the agent and skill descriptions load into every session's context — **9,198 tokens** measured on
+a real turn. `smoke-test.sh` fails when a component exceeds its byte budget, so keep them lean. Trigger phrases are the
+routing signal and must never be trimmed away; the prose around them can be. The per-turn `🔋` line is compact for the
+same reason — `--verbose` gives the long form on demand.
+
+## Updating
+
+Run `npx @byerlikaya/claude-starter-kit@latest update` at the project root. `.claude/` is refreshed (including
+`DISCIPLINE.md`), `./CLAUDE.md` and your own agents/skills are left alone, and everything lands staged on a
+`kit-adopt-<timestamp>` branch for review. `cat .claude/VERSION` tells you which version you are on.
 
 ## Rule → gate
 
 | Rule | Enforcing mechanism |
 |---|---|
-| Commit/push only with approval — even in auto/bypass mode | `guard-bash.sh` (PreToolUse); opened with `CLAUDE_GIT_OK` |
+| Commit/push only with approval — in every permission mode | `guard-bash.sh` (PreToolUse) raises an approval prompt only you can answer; approve once and Claude runs the commit. Fails closed under `bypassPermissions`; `CLAUDE_GIT_OK=1` pre-authorises headless runs |
 | Destructive operation (reset --hard · force push · rm -rf · --no-verify) | `guard-bash.sh` (block at the tool level) |
 | No AI trace and no external template/vendor name in a commit | `pre-commit` + `commit-msg` git hook |
-| Session threshold | `context-usage.sh` (measurement) + `session-guard.sh` (Stop hook) |
+| Session threshold (75% · 90%) | `context-usage.sh` (measurement) + `session-guard.sh` (Stop hook, warns once per threshold) |
+| Always-on context stays lean | `smoke-test.sh` byte budgets: discipline · agent descriptions · skill descriptions |
 | Quality gate (projects using SonarQube — language-agnostic) | `sonarqube-check` + `/ship` |
 
 ## Verification

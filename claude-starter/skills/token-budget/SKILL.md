@@ -1,8 +1,7 @@
 ---
 name: token-budget
 description: |
-  Context/token management discipline: subagent isolation, output=summary contract, move-to-file,
-  delegation threshold, lean skill. session-manager-csk and every agent adhere to this.
+  Context/token discipline: subagent isolation, output = summary, move-to-file, delegation threshold, lean skills.
   Trigger phrases: "token", "context", "context management", "context is full", "clear context"
 ---
 

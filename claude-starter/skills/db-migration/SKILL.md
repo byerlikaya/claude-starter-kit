@@ -1,8 +1,8 @@
 ---
 name: db-migration
 description: |
-  Apply schema migrations safely: auto-detect the tool, classify the change by risk class,
-  gate destructive ones behind approval, force a backup in prod, preview-apply-verify and roll back when needed.
+  Apply schema migrations safely: detect the tool, classify the change by risk, gate destructive ones behind
+  approval, back up in prod, preview-apply-verify, roll back on failure.
   Trigger phrases: "migration", "schema change", "update database", "add column", "create table", "alter table"
 ---
 

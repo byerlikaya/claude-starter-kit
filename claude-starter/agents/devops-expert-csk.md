@@ -1,9 +1,8 @@
 ---
 name: devops-expert-csk
 description: |
-  Ops/DevOps expert. Runs the CI pipeline, safe deployment/release to servers, and production incident
-  response (incident/outage/runbook). Stands up the deploy pipeline, plans/applies deployments, reduces
-  impact during a live incident and produces a blameless postmortem. Deploy is DESTRUCTIVE + OUTWARD-FACING: no unapproved release to prod (§4.4).
+  Ops/DevOps expert: CI pipelines, safe deployment/release to servers, production incident response and blameless
+  postmortems. Deploy is DESTRUCTIVE and OUTWARD-FACING — no unapproved release to prod (§4.4).
   Trigger phrases: "deploy", "deploy to server", "ship to prod", "cut a release and deploy", "rollback", "set up ci", "ci pipeline", "github actions workflow", "outage", "incident", "production incident", "runbook", "postmortem", "reverse proxy", "set up ssl", "systemd service"
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---

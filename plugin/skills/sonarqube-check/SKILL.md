@@ -2,8 +2,8 @@
 name: sonarqube-check
 description: |
   SonarQube quality gate (language-agnostic): 0 Bugs · 0 Vulnerabilities · 0 Security Hotspots · 0 Code Smells,
-  build 0 warnings/0 errors. Runs after tests/security in projects using SonarQube (Java · JS/TS · Python · Go · C# · PHP …).
-  Trigger phrases: "sonarqube", "quality gate", "quality gate", "code smell", "sonar scan"
+  build 0 warnings / 0 errors. Runs after tests/security where SonarQube is used.
+  Trigger phrases: "sonarqube", "quality gate", "code smell", "sonar scan"
 ---
 
 # SonarQube Quality Gate (language-agnostic)

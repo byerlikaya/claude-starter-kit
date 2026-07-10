@@ -1,18 +1,37 @@
 #!/usr/bin/env bash
-# Claude Code PreToolUse (Bash) guard: blocks §4.5 destructive operations AT THE TOOL LEVEL.
-# PreToolUse runs even under --dangerously-skip-permissions; exit 2 = block (stderr is returned to Claude).
-# stdin JSON: {"tool_name":"Bash","tool_input":{"command":"..."}}
+# Claude Code PreToolUse (Bash) guard. PreToolUse runs in EVERY permission mode, including bypass.
+# stdin JSON: {"tool_name":"Bash","tool_input":{"command":"..."},"permission_mode":"default|acceptEdits|auto|dontAsk|plan|bypassPermissions"}
+#
+# §4.5 destructive operations -> HARD BLOCK (exit 2). No key, no mode, no escape.
+#
+# §4.4 git commit / git push -> ASK THE USER, IN SESSION. The hook answers with
+#   {"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask", ...}}
+# and Claude Code escalates to a permission prompt that ONLY the human can answer. Approve once and Claude
+# runs the commit itself — you never have to paste commands into your own terminal. The model cannot
+# self-approve (it never sees the keypress) and cannot forge the decision (this hook is a separate process).
+#
+# Verified on Claude Code 2.1.205: a hook "ask" is honoured — the tool does not run until the user says yes —
+# in permission_mode default, acceptEdits, auto and dontAsk. It is NOT verified under bypassPermissions, so
+# there (and for any mode this hook does not recognise, i.e. anything added in a future release) we FAIL
+# CLOSED and hard-block instead of trusting a prompt that may never reach the user.
+#
+# CLAUDE_GIT_OK=1, exported by the user before the session starts, pre-authorises the session. It exists for
+# headless/CI runs where no one is at the keyboard. It does NOT replace approval: present the message first.
 set -uo pipefail
 INPUT="$(cat)"
 
-# Extract the command safely (jq > python3 > raw text fallback)
+# Extract the command + the permission mode (jq > python3 > raw text fallback).
 if command -v jq >/dev/null 2>&1; then
   CMD="$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)"
+  PERM_MODE="$(printf '%s' "$INPUT" | jq -r '.permission_mode // empty' 2>/dev/null)"
 elif command -v python3 >/dev/null 2>&1; then
   CMD="$(printf '%s' "$INPUT" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("tool_input",{}).get("command",""))' 2>/dev/null)"
+  PERM_MODE="$(printf '%s' "$INPUT" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("permission_mode",""))' 2>/dev/null)"
 else
   CMD="$INPUT"
+  PERM_MODE="$(printf '%s' "$INPUT" | sed -n 's/.*"permission_mode"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
 fi
+PERM_MODE="${PERM_MODE:-}"
 [ -z "$CMD" ] && exit 0
 
 block(){
@@ -31,27 +50,57 @@ echo "$CMD" | grep -qE 'git +commit +.*--amend'            && block "git commit 
 echo "$CMD" | grep -qE 'rm +-[A-Za-z]*r[A-Za-z]* +.*(/|\*|~)' && block "destructive rm -rf" "4.5"
 echo "$CMD" | grep -qE '(^|[^a-zA-Z])(mkfs|dd +if=)'       && block "disk-level destructive command" "4.5"
 
-# --- §4.4 commit/push approval gate (holds ALSO in auto/bypass permission mode) ---
-# Why a hook: permissions.ask is SKIPPED in bypass mode; PreToolUse "deny" holds in EVERY mode. The hook is mode-blind
-# (does not see permission_mode), so git commit/push is DISABLED by default; it only opens if the user sets
-# CLAUDE_GIT_OK=1 before the session starts. The model cannot write this into the hook environment (the hook is a separate process; the Bash-tool env
-# is not persistent across turns). The intent is unchanged: present the commit MESSAGE to the user first, get EXPLICIT approval.
+# --- §4.4 commit/push approval gate ---
+# Escape a shell string into a JSON string body. A raw control character inside a JSON string is a parse
+# error, and the reason text is attacker-adjacent (it is the model's own command line), so:
+#   - delete every control char except tab and newline (this also removes CR, which a CRLF here-doc leaks);
+#   - fold a surviving tab to a space (display-only text; the command Claude runs is untouched);
+#   - escape backslash and double quote;
+#   - fold newlines to the two-character \n escape.
+json_escape(){
+  printf '%s' "$1" \
+    | tr -d '\000-\010\013-\037\177' \
+    | tr '\011' ' ' \
+    | sed 's/\\/\\\\/g; s/"/\\"/g' \
+    | awk 'NR>1{printf "\\n"} {printf "%s", $0}'
+}
+# Escalate to a permission prompt only the user can answer, then let Claude run the command itself.
+ask_user(){
+  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"%s"}}\n' "$(json_escape "$1")"
+  exit 0
+}
 is_git_write() {
   printf '%s' "$1" | grep -qiE '(^|[;&|(]|[[:space:]])git[[:space:]]+([^;&|[:space:]]+[[:space:]]+)*(commit|push)([[:space:]]|$|;|&|\|)'
 }
 if is_git_write "$CMD"; then
+  # The key is granted by the user's environment, never by the command line the model composes.
   if printf '%s' "$CMD" | grep -q 'CLAUDE_GIT_OK'; then
     echo "GUARD (§4.4): the attempt to set the approval key (CLAUDE_GIT_OK) inside the command was rejected." >&2
     echo "The key is set only by the user, before the session starts." >&2
     exit 2
   fi
   case "${CLAUDE_GIT_OK:-}" in
-    1|yes|true|on|YES|TRUE|ON) : ;;   # the user EXPLICITLY granted permission in this session -> pass
+    1|yes|true|on|YES|TRUE|ON) exit 0 ;;   # pre-authorised session (headless/CI) -> pass
+  esac
+  case "$PERM_MODE" in
+    default|acceptEdits|auto|dontAsk)
+      # A prompt provably reaches the user in these modes: ask, and let them approve in one keypress.
+      SHORT="$CMD"
+      [ "${#SHORT}" -gt 300 ] && SHORT="$(printf '%s' "$SHORT" | cut -c1-300)…"
+      ask_user "§4.4 commit/push approval gate. Claude wants to run:
+
+$SHORT
+
+Approve only if the commit message above was shown to you and you agree with it. Approving lets Claude run the command itself."
+      ;;
     *)
-      echo "GUARD (§4.4): 'git commit/push' is gated by approval AT THE TOOL LEVEL (also in auto/bypass mode)." >&2
-      echo "First present the commit MESSAGE to the user and get EXPLICIT approval. When approved:" >&2
-      echo "  (a) the user runs the command in their own terminal, OR" >&2
-      echo "  (b) starts the session with 'CLAUDE_GIT_OK=1' and leaves it to Claude (in normal mode permissions.ask still asks)." >&2
+      # bypassPermissions, plan, or an unrecognised/absent mode: we cannot prove the prompt would reach a
+      # human, so we fail closed rather than let the gate silently evaporate.
+      echo "GUARD (§4.4): 'git commit/push' is gated by approval AT THE TOOL LEVEL, and this session's permission mode ('${PERM_MODE:-unknown}') cannot show you an approval prompt." >&2
+      echo "Present the commit MESSAGE to the user and get EXPLICIT approval. Then either:" >&2
+      echo "  (a) the user re-runs Claude in a normal permission mode, where this gate asks them directly and Claude commits, OR" >&2
+      echo "  (b) the user starts the session with 'CLAUDE_GIT_OK=1' (headless/CI), OR" >&2
+      echo "  (c) the user runs the command in their own terminal." >&2
       exit 2 ;;
   esac
 fi

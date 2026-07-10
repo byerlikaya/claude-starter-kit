@@ -22,8 +22,11 @@ Usage:
       Set up the kit in a fresh project (start.sh wizard).
   npx @byerlikaya/claude-starter-kit adopt
       Hand the kit over onto an existing project (adopt.sh).
+  npx @byerlikaya/claude-starter-kit@latest update
+      Refresh a project that already has the kit. Alias of 'adopt': it reads .claude/kit.conf and
+      refreshes the project in the shape it was installed in. Your CLAUDE.md is never touched.
 
-Run either at the root of your target project.
+Run any of them at the root of your target project.
 On Windows, run inside Git Bash for the smoothest experience (WSL works as a fallback).`);
   process.exit(0);
 }

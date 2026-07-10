@@ -1,9 +1,9 @@
 ---
 name: api-design
 description: |
-  API contract design: consistent resources/naming, error model, versioning, pagination,
-  backward compatibility, and OpenAPI. Produces a predictable interface that evolves without breaking consumers.
-  Trigger phrases: "api design", "api design", "api contract", "api versioning", "openapi", "swagger", "rest contract", "breaking api change"
+  API contract design: resource naming, error model, versioning, pagination, backward compatibility, OpenAPI.
+  A predictable interface that evolves without breaking consumers.
+  Trigger phrases: "api design", "api contract", "api versioning", "openapi", "swagger", "rest contract", "breaking api change"
 ---
 
 # API Design

@@ -1,8 +1,8 @@
 ---
 name: vps-deploy
 description: |
-  Deploy the app to a VPS safely: runtime/method detection, reverse proxy + SSL, atomic swap,
-  keeping the old version, a post-deploy health gate, and automatic rollback on failure.
+  Deploy to a VPS safely: runtime detection, reverse proxy + SSL, atomic swap, keep the previous version,
+  post-deploy health gate, automatic rollback on failure.
   Trigger phrases: "deploy", "push to the server", "install on the VPS", "ship it to the server", "go to production"
 ---
 

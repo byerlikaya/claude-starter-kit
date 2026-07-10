@@ -1,9 +1,9 @@
 ---
 name: adr
 description: |
-  Architecture Decision Record (ADR): documents decisions that are expensive to reverse or permanent,
-  in context-decision-consequences format. Runs on a permanent architectural decision; written under docs/adr/.
-  Trigger phrases: "adr", "architecture decision", "decision record", "why this approach", "architecture decision"
+  Architecture Decision Record: context-decision-consequences, for decisions that are expensive to reverse.
+  Written under docs/adr/.
+  Trigger phrases: "adr", "architecture decision", "decision record", "why this approach"
 ---
 
 # Architecture Decision Record (ADR)

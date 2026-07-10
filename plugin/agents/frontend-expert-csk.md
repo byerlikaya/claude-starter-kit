@@ -1,10 +1,9 @@
 ---
 name: frontend-expert-csk
 description: |
-  General frontend expert (stack-agnostic). Adapts to the project's frontend stack: web
-  (React/Next/Vue/Svelte/Angular), mobile (React Native/Flutter), or desktop. Engages on UI, component/page,
-  navigation/routing, state, i18n, accessibility, responsive, and (on mobile) native bridge work.
-  The generic "how" lives in the `frontend` skill; stack-specific detail lives in the project's frontend skill.
+  Stack-agnostic frontend expert — web (React/Next/Vue/Svelte/Angular), mobile (React Native/Flutter), desktop.
+  UI, components/pages, navigation, state, i18n, accessibility, responsive, native bridge. The "how" lives in the
+  `frontend` skill (mobile: `frontend-rn-expo`).
   Trigger phrases: "screen", "component", "page", "navigation", "routing", "UI", "responsive", "i18n interface", "state management"
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---

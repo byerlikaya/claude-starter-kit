@@ -3,3 +3,8 @@
 *.sh text eol=lf
 claude-starter/hooks/pre-commit text eol=lf
 claude-starter/hooks/commit-msg text eol=lf
+# Config the installers parse line-by-line: a CRLF checkout would leave '\r' on every parsed value, so a
+# profile lookup would silently miss and the install would fall back to "prune nothing". The scripts also
+# strip '\r' defensively, but keeping these LF means the parsers never see one.
+claude-starter/profiles.conf text eol=lf
+*.conf text eol=lf

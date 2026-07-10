@@ -1,8 +1,8 @@
 ---
 name: spec-planning
 description: |
-  Spec-first planning method: task breakdown, measurable acceptance criteria, dependency ordering,
-  risk prioritization. planner-csk applies this; the plan is written to docs/PLAN.md.
+  Spec-first planning: task breakdown, measurable acceptance criteria, dependency order, risk priority.
+  planner-csk applies it; the plan goes to docs/PLAN.md.
   Trigger phrases: "plan", "spec", "task breakdown", "acceptance criteria", "roadmap", "how do we split this"
 ---
 

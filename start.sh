@@ -32,6 +32,32 @@ ask_yes() {  # $1 = question; returns 0 if the user says 'yes'
   read -r a || a=""
   case "$a" in [yY]|[yY][eE][sS]|[eE]|[eE][vV][eE][tT]) return 0 ;; *) return 1 ;; esac
 }
+# --- CLAUDE.md split (shared contract with adopt.sh) ---
+# The payload CLAUDE.md carries the kit discipline, then a one-line sentinel, then the project template.
+# The discipline half is installed as .claude/DISCIPLINE.md (kit-owned, overwritten on every update) and
+# the project half becomes ./CLAUDE.md (yours, written once). A single @import line joins them.
+IMPORT_LINE='@.claude/DISCIPLINE.md'
+# The sentinel is matched ANCHORED to the start of the line, so prose that merely mentions the token
+# (in this comment, in the docs, in the discipline text itself) can never be mistaken for the split point.
+# Abort loudly if it is gone: a silent miss would ship the ENTIRE template as "discipline" — exactly how the
+# old '<PROJE ADI>' marker failed once the payload was translated to English.
+kit_require_sentinel() { grep -qE '^<!-- KIT:DISCIPLINE-END' "$1" || { echo "ERROR: the '<!-- KIT:DISCIPLINE-END' sentinel line is missing from $1 — refusing to guess the discipline/project split."; exit 1; }; }
+kit_discipline_of()    { awk '/^<!-- KIT:DISCIPLINE-END/{exit} {print}' "$1"; }
+kit_project_of()       { awk 'f{print} /^<!-- KIT:DISCIPLINE-END/{f=1}' "$1"; }
+# Anchored: the import must BE the line, not merely be mentioned in prose (the discipline text names the path).
+kit_has_import()       { grep -qE '^[[:space:]]*@\.claude/DISCIPLINE\.md[[:space:]]*$' "$1" 2>/dev/null; }
+# Profile -> pruned agents/skills. Read from claude-starter/profiles.conf so start.sh and adopt.sh cannot drift.
+# tr -d '\r': a CRLF checkout (Windows/Git Bash) would otherwise leave '\r' glued to the last field, and the
+# exclusion match — which compares whole names — would silently stop excluding it.
+kit_profile_field()    { sed -n "s/^$1://p" "$SRC/profiles.conf" 2>/dev/null | head -1 | tr -d '\r' | cut -d: -f"$2"; }
+kit_excl_agents_for()  { kit_profile_field "$1" 1; }
+kit_excl_skills_for()  { kit_profile_field "$1" 2; }
+# A pre-1.1 install pasted the whole discipline inline into CLAUDE.md; adding the @import would load it twice.
+# Both markers are required: a project that happens to write its own "Four working principles" heading is NOT a
+# legacy kit install, and treating it as one would leave it without the discipline forever.
+kit_claude_md_is_legacy() {
+  grep -q '^## Four working principles' "$1" 2>/dev/null && grep -qE '^### 4\.[45] ' "$1" 2>/dev/null
+}
 has_devarch() {  # $1 = dir to check (default .); does it have the canonical DevArchitecture structure
   local d="${1:-.}"
   [ -d "$d/Business" ] && [ -d "$d/Core" ] && { [ -d "$d/DataAccess" ] || [ -d "$d/Entities" ] || [ -d "$d/WebAPI" ]; }
@@ -119,7 +145,7 @@ if [ -z "$PROFILE" ]; then
   skip "backend-expert-csk · database-expert-csk and all server skills NOT INSTALLED"
   echo
   opt 3 "fullstack" 1 "~11 agents · ~27 skills"
-  add  "everything — all agents + all skills (frontend + backend together)"
+  add  "everything — all agents + all skills: backend + web + mobile (RN/Expo) together"
   echo
   opt 4 "mobile"    0 "~9 agents · ~24 skills"
   add  "frontend-expert-csk + React Native / Expo layer (frontend-rn-expo)"
@@ -161,22 +187,11 @@ case "$PROFILE" in
   *)         BACKEND_DIR="." ;;          # backend-only: the project root IS the backend
 esac
 
-# --- Mappings: agents/skills to prune + DevArch gate ---
+# --- Mappings: agents/skills to prune + DevArch gate (profiles.conf = single source of truth) ---
 DEVARCH_ON=0
-case "$PROFILE" in
-  frontend)
-    EXCL_AGENTS="backend-expert-csk.md database-expert-csk.md"
-    EXCL_SKILLS="db-migration devarch-module frontend-rn-expo api-design" ;;
-  mobile)
-    EXCL_AGENTS="backend-expert-csk.md database-expert-csk.md"
-    EXCL_SKILLS="db-migration devarch-module api-design" ;;
-  backend)
-    EXCL_AGENTS="frontend-expert-csk.md"
-    EXCL_SKILLS="frontend frontend-rn-expo a11y" ;;
-  fullstack)
-    EXCL_AGENTS=""
-    EXCL_SKILLS="" ;;
-esac
+grep -qE "^$PROFILE:" "$SRC/profiles.conf" 2>/dev/null || { echo "ERROR: profile '$PROFILE' not found in $SRC/profiles.conf"; exit 1; }
+EXCL_AGENTS="$(kit_excl_agents_for "$PROFILE")"
+EXCL_SKILLS="$(kit_excl_skills_for "$PROFILE")"
 if [ "$HAS_BACKEND" = 1 ]; then
   if [ "$STACK" = "dotnet" ]; then
     DEVARCH_ON=1
@@ -293,11 +308,35 @@ chmod +x .claude/hooks/pre-commit .claude/hooks/commit-msg .claude/hooks/guard-b
 cp "$SRC/AGENT_TEMPLATE.md" .claude/ 2>/dev/null || true
 cp "$SRC/FIRST_PROMPT.md"   .claude/ 2>/dev/null || true
 cp "$SRC/README.md"         .claude/ 2>/dev/null || true
-if [ -f ./CLAUDE.md ]; then
-  echo "  ./CLAUDE.md exists — merge manually (left untouched)."
-else
-  cp "$SRC/CLAUDE.md" ./CLAUDE.md
+
+# Remember how this project was installed, so a later update refreshes it in the SAME shape
+# (same profile, same backend stack) instead of re-adding what the profile deliberately pruned.
+{ echo "# Written by start.sh. The updater reads this to refresh the project in its original shape."
+  echo "profile=$PROFILE"
+  echo "stack=$STACK"
+  echo "installer=start.sh"
+  echo "version=$( [ -f "$HERE/VERSION" ] && head -1 "$HERE/VERSION" || echo unknown )"
+} > .claude/kit.conf
+
+# Discipline (kit-owned, refreshed on every update) vs project section (yours, written once), joined by @import.
+kit_require_sentinel "$SRC/CLAUDE.md"
+kit_discipline_of "$SRC/CLAUDE.md" > .claude/DISCIPLINE.md
+echo "  .claude/DISCIPLINE.md written — kit-owned; an update overwrites it, so keep your own rules out of it."
+if [ ! -f ./CLAUDE.md ]; then
+  { printf '<!-- kit discipline · on conflict the project rules BELOW win -->\n%s\n' "$IMPORT_LINE"
+    kit_project_of "$SRC/CLAUDE.md"; } > ./CLAUDE.md
   echo "  ./CLAUDE.md created — EDIT the project section."
+elif kit_has_import ./CLAUDE.md; then
+  echo "  ./CLAUDE.md kept as-is (already imports the discipline) — the refresh landed in DISCIPLINE.md."
+elif kit_claude_md_is_legacy ./CLAUDE.md; then
+  echo "  ! ./CLAUDE.md carries the discipline INLINE (pre-1.1 layout) — left untouched."
+  echo "    Discipline updates will NOT reach it. To migrate: delete everything above your"
+  echo "    '# CLAUDE.md — <project>' heading and leave this single line in its place:"
+  echo "        $IMPORT_LINE"
+else
+  { printf '<!-- kit discipline · on conflict the project rules BELOW win -->\n%s\n\n' "$IMPORT_LINE"; cat ./CLAUDE.md; } > ./CLAUDE.md.kit-tmp \
+    && mv ./CLAUDE.md.kit-tmp ./CLAUDE.md
+  echo "  ./CLAUDE.md existed — prepended the discipline @import; your content is untouched."
 fi
 touch .gitignore
 for e in 'docs/' '.claude/' 'CLAUDE.md'; do grep -qxF "$e" .gitignore || echo "$e" >> .gitignore; done

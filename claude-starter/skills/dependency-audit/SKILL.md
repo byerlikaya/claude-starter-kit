@@ -1,8 +1,8 @@
 ---
 name: dependency-audit
 description: |
-  Dependency audit: known vulnerabilities (CVE), license compliance, abandoned/outdated packages, lockfile
-  integrity, justification for new dependencies. Runs when a package is added/updated or a lockfile changes.
+  Dependency audit: known CVEs, licence compliance, abandoned/outdated packages, lockfile integrity, and a
+  justification for every new dependency.
   Trigger phrases: "dependency", "dependency audit", "npm audit", "package security", "CVE", "license"
 ---
 

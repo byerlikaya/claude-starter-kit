@@ -1,9 +1,8 @@
 ---
 name: session-manager-csk
 description: |
-  Session/context health auditor. Kicks in at the close of every task or subtask;
-  evaluates context fill and appends a single-line status + recommendation to the END of the response.
-  Writes no code, only evaluates. The core of this setup's "context control" layer.
+  Session/context health auditor. At every task close, evaluates context fill and appends the one-line status +
+  recommendation to the END of the reply. Evaluates only; writes no code.
   Trigger phrases: "session status", "session health", "context status", "is a handover needed", "is it time to clear"
 tools: Read, Grep, Glob, Bash
 model: haiku

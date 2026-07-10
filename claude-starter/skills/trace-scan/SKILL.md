@@ -1,9 +1,8 @@
 ---
 name: trace-scan
 description: |
-  Trace scan discipline (§4.1/§4.2): before a commit, scans the staged changes and the commit
-  message for AI traces (co-author trailers, auto-generation footers, robot emoji, tool names) and third-party template/vendor
-  names. commit-agent-csk triggers it at work closure; the git hooks apply the same scan automatically.
+  Trace scan (§4.1/§4.2): before a commit, scans the staged changes and the message for AI traces (co-author
+  trailers, footers, robot emoji, tool names) and vendor template names. The git hooks apply it automatically.
   Trigger phrases: "scan traces", "trace scan", "AI trace", "check vendor name", "pre-commit audit"
 ---
 

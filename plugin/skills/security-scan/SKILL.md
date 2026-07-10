@@ -1,8 +1,8 @@
 ---
 name: security-scan
 description: |
-  Stack-agnostic security audit. Maps the attack surface, traces untrusted input all the way to dangerous
-  calls, and surfaces dependency and configuration flaws; returns a severity-ranked report with fixes.
+  Stack-agnostic security audit: map the attack surface, trace untrusted input to dangerous calls, surface
+  dependency and configuration flaws. Severity-ranked report with fixes.
   Trigger phrases: "security scan", "run a security scan", "OWASP check", "scan for vulnerabilities", "find security vulnerabilities", "security audit"
 ---
 
