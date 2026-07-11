@@ -3,6 +3,16 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [1.1.8] - 2026-07-11
+
+### Fixed
+- **`adopt` can correct a stale `generic` stack on refresh.** A project adopted before the deeper stack detection
+  (1.1.7) may carry `stack=generic` in `kit.conf` even though it is clearly DevArchitecture. A refresh trusts the
+  recorded stack by design, so that stale value used to stick — keeping `devarch-module` pruned and the generic
+  backend agent in place. adopt now notices the mismatch (recorded `generic` + a `Business/Handlers` + `.sln`
+  layout), surfaces it, and offers to correct it to `dotnet`, which restores `devarch-module` and the .NET backend
+  agent. It never flips silently; a CI e2e covers the correction.
+
 ## [1.1.7] - 2026-07-11
 
 ### Fixed

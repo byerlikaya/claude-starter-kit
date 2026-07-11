@@ -275,6 +275,22 @@ if [ -z "${KIT_STACK:-}" ] && [ "$KIT_PRESENT" != 1 ]; then
   echo "  backend stack -> ${KIT_STACK}$([ "$IS_DEVARCH" = 1 ] && [ "$KIT_STACK" = dotnet ] && echo ' (DevArchitecture)')"
 fi
 
+# --- Refresh: correct a stale/wrong recorded stack -------------------------------------------------------
+# Normally a REFRESH trusts the recorded stack over a sniff, so a sniff miss can't flip a dotnet install to
+# generic. But a recorded 'generic' on a project that is CLEARLY DevArchitecture (Business/Handlers + a .sln)
+# is a stale record from the old root-only sniff — keeping it would prune devarch-module and hold the generic
+# backend agent on a .NET/DevArch project. Surface the mismatch and offer to correct it; never flip silently.
+if [ "$KIT_PRESENT" = 1 ] && [ "$KIT_STACK" = generic ] && [ "$IS_DEVARCH" = 1 ]; then
+  h1 "Recorded backend stack looks wrong"
+  warn "kit.conf records stack=generic, but this project has a DevArchitecture layout (Business/Handlers + a .sln)."
+  sub "Left as-is, the refresh keeps pruning devarch-module and holds the generic backend agent."
+  if [ ! -t 0 ] || ask_yes "Correct it to dotnet? (install the DevArchitecture pattern skill + the .NET backend agent)"; then
+    KIT_STACK=dotnet; echo "  stack corrected -> dotnet (DevArchitecture)"
+  else
+    echo "  kept stack=generic (your choice)"
+  fi
+fi
+
 # --- Role overlap (#1): resolve same-domain agent collisions ---------------------------------------------
 # When a project agent and a kit -csk agent cover the same job, "coexist" leaves routing ambiguous. Offer to
 # resolve it. takeover = kit wins (your agent preserved, moved out of the routing pool); keepmine = your agent
