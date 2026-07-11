@@ -334,6 +334,10 @@ fi
 BASE="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)"
 case "$BASE" in kit-adopt-*) warn "HEAD is a prior adopt branch ($BASE) — the review diff will be vs it, not your main line. Consider 'git checkout <main>' first." ;; esac
 TS="$(date +%Y%m%d-%H%M%S)"; BR="kit-adopt-$TS"
+# The timestamp is only second-resolution, so two adopts in the same repo within one second would collide on the
+# branch name and the second `checkout -b` would fail. Append a counter until the name is free (also covers a
+# re-run after a discarded attempt left the branch behind).
+n=2; while git rev-parse --verify -q "refs/heads/$BR" >/dev/null 2>&1; do BR="kit-adopt-$TS-$n"; n=$((n+1)); done
 git checkout -b "$BR" >/dev/null 2>&1 || { echo "ERROR: could not open branch '$BR'."; exit 1; }
 echo "  handover branch: ${B}$BR${R}  (${BASE} stays clean)"
 

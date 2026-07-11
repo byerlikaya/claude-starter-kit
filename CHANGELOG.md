@@ -3,6 +3,14 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [1.1.10] - 2026-07-11
+
+### Fixed
+- **`adopt` could fail to open its handover branch when run twice in the same repo within one second.** The branch
+  is named `kit-adopt-<timestamp>` at one-second resolution, so a second adopt in the same second collided with the
+  first and `git checkout -b` failed. It now appends a counter until the name is free. This also surfaced as a flaky
+  CI adopt e2e (the refresh scenario runs adopt twice); the fix makes it deterministic.
+
 ## [1.1.9] - 2026-07-11
 
 ### Changed
