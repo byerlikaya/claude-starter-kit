@@ -43,6 +43,17 @@ jobs:
       - name: Verify the README skill catalogue is in sync
         run: bash packaging/build-readme-catalog.sh --check
 
+      # The full verify suite runs BEFORE anything is published, so a release can never ship on top of a red
+      # check. (This is the gate that was missing: release used to skip smoke/routing/e2e, so a green publish
+      # could sit on a red CI.)
+      - name: Verify — smoke test + routing eval
+        run: |
+          bash claude-starter/eval/smoke-test.sh
+          bash claude-starter/eval/routing-eval.sh
+
+      - name: Verify — installer e2e (start.sh combos + adopt.sh)
+        run: bash packaging/e2e.sh
+
       - name: Build tarball
         run: bash make-release.sh
 
