@@ -3,6 +3,20 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [1.1.11] - 2026-07-11
+
+### Changed
+- **On takeover, `adopt` imports a taken-over agent's domain into an active project skill instead of only
+  archiving it.** Before, the overlapping project agent was moved to `.claude/superseded/agents/` (inert), so its
+  domain knowledge dropped out of the working setup. Now each taken-over agent is converted to a draft skill
+  `skills/<name>-local` — its description and body carried over, a Trigger-phrases line added — which the kit's
+  `-csk` agent applies (agent = who/when, skill = the how). The raw original is still backed up under
+  `superseded/agents/`. The generated skill is a draft to refine.
+- **The always-on byte budget now gates only the kit's payload, not an installed project.** In a project your own
+  agents/skills (including the ones adopt imports) legitimately add to the always-on cost, so `smoke-test.sh`
+  reports the numbers there instead of failing; it still fails in the kit repo. A CI e2e now runs the adopted
+  project's own smoke-test to catch a malformed import.
+
 ## [1.1.10] - 2026-07-11
 
 ### Fixed

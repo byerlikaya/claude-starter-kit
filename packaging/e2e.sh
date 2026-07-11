@@ -34,8 +34,10 @@ printf -- '---\nname: backend-expert\ndescription: legacy\n---\n' > "$P/.claude/
 grep -q '^stack=dotnet' "$P/.claude/kit.conf"           || { echo "FAIL: .sln under ./backend not detected as dotnet"; exit 1; }
 [ -d "$P/.claude/skills/devarch-module" ]               || { echo "FAIL: devarch-module missing on a dotnet adopt"; exit 1; }
 [ ! -f "$P/.claude/agents/backend-expert.md" ]          || { echo "FAIL: overlapping project agent was not taken over"; exit 1; }
-[ -f "$P/.claude/superseded/agents/backend-expert.md" ] || { echo "FAIL: taken-over agent was not preserved"; exit 1; }
-echo "[adopt-dotnet] stack=dotnet · devarch-module kept · overlap taken over + preserved"
+[ -f "$P/.claude/superseded/agents/backend-expert.md" ] || { echo "FAIL: taken-over agent's original was not backed up"; exit 1; }
+[ -f "$P/.claude/skills/backend-expert-local/SKILL.md" ]|| { echo "FAIL: taken-over agent's domain was not imported to a project skill"; exit 1; }
+( cd "$P" && bash .claude/eval/smoke-test.sh >/dev/null )|| { echo "FAIL: the adopted project's own smoke-test did not pass"; exit 1; }
+echo "[adopt-dotnet] stack=dotnet · devarch-module kept · overlap imported to skill + backed up · smoke OK"
 
 # A generic (Node) project: no .sln -> generic, devarch-module pruned.
 G="$WORK/adopt-generic"; rm -rf "$G"; mkdir -p "$G"

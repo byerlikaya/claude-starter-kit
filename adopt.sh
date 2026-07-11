@@ -90,6 +90,26 @@ kit_profile_field()    { sed -n "s/^$1://p" "$SRC/profiles.conf" 2>/dev/null | h
 kit_excl_agents_for()  { kit_profile_field "$1" 1; }
 kit_excl_skills_for()  { kit_profile_field "$1" 2; }
 
+# Turn a project agent into a DRAFT project skill (prints the SKILL.md to stdout). On takeover the kit's -csk
+# agent owns routing (who/when); this carries the OLD agent's domain (its "how") into an active skill the kit
+# agent can apply, so nothing is lost from the working setup. It keeps the agent's description (domain keywords)
+# and body, guarantees a Trigger-phrases line for discovery, and marks it as a carried-over draft to refine.
+kit_agent_to_skill() {   # $1 = agent .md file, $2 = base name
+  local f="$1" b="$2" desc trig body
+  desc="$(awk '/^---[ \t]*$/{c++; next} c==1 && /^description:/{sub(/^description:[ \t]*\|?[ \t]*/,""); if($0!="")print; exit}' "$f")"
+  [ -n "$desc" ] || desc="Project-specific $b knowledge carried over when the kit took over the role."
+  trig="$(awk '/[Tt]rigger phrases:/{sub(/.*[Tt]rigger phrases:[ \t]*/,""); print; exit}' "$f")"
+  [ -n "$trig" ] || trig="\"$b\""
+  body="$(awk 'c>=2{print} /^---[ \t]*$/{c++}' "$f")"
+  printf '%s\n' '---' "name: ${b}-local"
+  printf 'description: |\n  %s\n' "$desc"
+  printf '  Carried over from the project'"'"'s own %s agent when %s-csk took over the role — trim to the domain worth keeping.\n' "$b" "$b"
+  printf '  Trigger phrases: %s\n---\n\n' "$trig"
+  printf '# %s — project knowledge (carried over on kit adoption)\n\n' "$b"
+  printf '> Draft generated from your original `%s` agent; the kit'"'"'s `%s-csk` applies this skill. Refine it to the domain "how" worth keeping.\n\n' "$b" "$b"
+  printf '%s\n' "$body"
+}
+
 h1 "kit adopt · Stage 1 — DETECTION (read-only; nothing changes)"
 sub "Reads the existing project, produces a smart suggestion for the 7 handover decisions. Approval + mutation in the next stage."
 
@@ -300,7 +320,7 @@ COLLIDE_MODE=coexist
 if [ "$N_COLLIDE" != 0 ]; then
   h1 "Role overlap — project & kit both cover: $COLLIDE"
   sub "Two agents for one job = the router picks one, usually your older agent — so the kit's would sit idle."
-  sub "  takeover  kit's -csk agents win; your versions are preserved under .claude/superseded/agents/"
+  sub "  takeover  kit's -csk agents win; each old agent's domain is imported to a draft skill (skills/<name>-local), original backed up"
   sub "  keepmine  your agents win; the kit's overlapping -csk agents are not installed"
   sub "  coexist   keep both (routing stays ambiguous; only documented in HANDOVER)"
   COLLIDE_MODE=takeover
@@ -362,15 +382,24 @@ copy_noclobber "$SRC/skills"   .claude/skills   "$KIT_PRESENT" "$EXCL_S"; S_ADD=
 copy_noclobber "$SRC/commands" .claude/commands "$KIT_PRESENT"; C_ADD=$ret_add; C_SKIP=$ret_skip
 copy_noclobber "$SRC/hooks"    .claude/hooks    "$KIT_PRESENT"; H_ADD=$ret_add; H_SKIP=$ret_skip
 copy_noclobber "$SRC/eval"     .claude/eval     "$KIT_PRESENT"; E_ADD=$ret_add; E_SKIP=$ret_skip
-# #1 takeover: move each overlapping PROJECT agent OUT of the routing pool (Claude Code discovers .claude/agents/*.md,
-# not subdirs), so the kit's -csk owns the role and the router is no longer ambiguous. Moved, never deleted: your
-# agent's domain knowledge is preserved under .claude/superseded/agents/ for you to fold into a project skill.
+# #1 takeover: the kit's -csk owns the role, and the OLD agent's domain is IMPORTED into an active project skill
+# (skills/<base>-local) that the kit agent applies — so nothing is lost from the working setup. The agent is then
+# removed from the routing pool (Claude Code discovers .claude/agents/*.md, not subdirs) so routing is no longer
+# ambiguous, and the raw original is kept under .claude/superseded/agents/ as a backup. The skill is a DRAFT to refine.
 N_TAKEN=0
 if [ "$COLLIDE_MODE" = takeover ] && [ -n "$COLLIDE" ]; then
   mkdir -p .claude/superseded/agents
   for b in $COLLIDE; do
-    [ -f ".claude/agents/$b.md" ] && mv ".claude/agents/$b.md" ".claude/superseded/agents/$b.md" 2>/dev/null \
-      && { N_TAKEN=$((N_TAKEN+1)); echo "  overlap: $b -> .claude/superseded/agents/ (kit's $b-csk now owns the role)"; }
+    af=".claude/agents/$b.md"; [ -f "$af" ] || continue
+    if [ -e ".claude/skills/$b-local/SKILL.md" ]; then       # idempotent: a prior takeover already imported it
+      echo "  overlap: $b -> skill '$b-local' already present (kept); original re-backed up"
+    else
+      mkdir -p ".claude/skills/$b-local"
+      kit_agent_to_skill "$af" "$b" > ".claude/skills/$b-local/SKILL.md"
+      echo "  overlap: $b -> imported to skill '$b-local' (draft); kit's $b-csk owns routing"
+    fi
+    cp "$af" ".claude/superseded/agents/$b.md"; rm -f "$af"
+    N_TAKEN=$((N_TAKEN+1))
   done
 fi
 # Stack-compatible backend: non-.NET projects get the generic backend-expert-csk. A RECORDED stack always beats
@@ -403,7 +432,7 @@ row "skills"            "+$S_ADD$([ "$S_SKIP" != 0 ] && echo " · $S_SKIP skippe
 row "commands"           "+$C_ADD$([ "$C_SKIP" != 0 ] && echo " · $C_SKIP skipped")"
 row "hooks"           "+$H_ADD$([ "$H_SKIP" != 0 ] && echo " · $H_SKIP skipped")"
 row "eval"               "+$E_ADD"
-row "project agents"     "$N_PAGENTS$([ "${N_TAKEN:-0}" != 0 ] && echo " ($N_TAKEN handed to the kit, preserved under .claude/superseded/agents/)") — the rest UNTOUCHED"
+row "project agents"     "$N_PAGENTS$([ "${N_TAKEN:-0}" != 0 ] && echo " ($N_TAKEN imported to skills/<name>-local drafts; originals backed up in superseded/)") — the rest UNTOUCHED"
 case "$COLLIDE_MODE" in
   keepmine) [ "$N_COLLIDE" != 0 ] && row "overlap" "keepmine — your agents own: $COLLIDE (kit's -csk for these NOT installed)" ;;
   coexist)  [ "$N_COLLIDE" != 0 ] && warn "overlap: $COLLIDE — BOTH kept; routing between your agent and the kit's -csk stays ambiguous" ;;
@@ -556,7 +585,7 @@ if [ "$DEC4" = hide ]; then
 else echo "  #4 share -> .claude tracked + shared with the team"; fi
 # #1 merge: document (NO automatic risky merge — red-team; merging is a human-approved follow-up)
 case "$DEC1" in
-  takeover) MERGE_NOTE="takeover: overlapping roles ($COLLIDE) handed to the kit's -csk agents; your versions preserved under .claude/superseded/agents/ (fold their domain into a project skill)" ;;
+  takeover) MERGE_NOTE="takeover: the kit's -csk agents own the overlapping roles ($COLLIDE); each old agent's domain was imported to a draft skill (skills/<name>-local) the kit agent applies, and the original backed up under superseded/agents/ — refine the drafts" ;;
   keepmine) MERGE_NOTE="keepmine: your agents own the overlapping roles ($COLLIDE); the kit's matching -csk agents were not installed" ;;
   *)        MERGE_NOTE="keep: project + kit agents side by side (no overlaps, or overlaps left to coexist)" ;;
 esac
@@ -575,7 +604,7 @@ h1 "Stage 5 — HANDOVER.md + ADR (handover persists; decisions are not lost)"
 mkdir -p docs docs/adr
 DATE_H="$(date +%Y-%m-%d)"
 # compute the decision values first (avoid inner-quote/command-sub tangle in the heredoc)
-case "$DEC1" in takeover) D1='takeover (kit -csk owns overlaps; yours preserved)';; keepmine) D1='keepmine (your agents own overlaps)';; none) D1='none';; *) D1='keep (coexist)';; esac
+case "$DEC1" in takeover) D1='takeover (kit -csk owns overlaps; your agents imported to <name>-local skills, originals in superseded/)';; keepmine) D1='keepmine (your agents own overlaps)';; none) D1='none';; *) D1='keep (coexist)';; esac
 D2='project wins'   # precedence is fixed (DEC2 not overridable) — no false 'kit wins' record
 D3="$([ "$DEC3" = loosen ] && echo 'loosen (.trace-allowlist written)' || echo 'keep (full)')"
 D4="$([ "$DEC4" = hide ] && echo 'hide (gitignore)' || echo 'keep sharing')"

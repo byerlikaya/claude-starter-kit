@@ -314,9 +314,16 @@ if [ -f "$ROOT/CLAUDE.md" ]; then
 elif [ -f "$ROOT/DISCIPLINE.md" ]; then DB="$(wc -c < "$ROOT/DISCIPLINE.md" | tr -d ' ')"; else DB=0; fi
 AB=0; for f in "$AGENTS"/*.md;      do [ -e "$f" ] && AB=$((AB + $(fm_bytes "$f"))); done
 SB=0; for f in "$SKILLS"/*/SKILL.md; do [ -e "$f" ] && SB=$((SB + $(fm_bytes "$f"))); done
-[ "$DB" -le "$BUDGET_DISC" ]   && pass "discipline within budget ($DB ≤ $BUDGET_DISC bytes)"        || fail "discipline over budget: $DB > $BUDGET_DISC bytes"
-[ "$AB" -le "$BUDGET_AGENTS" ] && pass "agent descriptions within budget ($AB ≤ $BUDGET_AGENTS)"    || fail "agent descriptions over budget: $AB > $BUDGET_AGENTS bytes"
-[ "$SB" -le "$BUDGET_SKILLS" ] && pass "skill descriptions within budget ($SB ≤ $BUDGET_SKILLS)"    || fail "skill descriptions over budget: $SB > $BUDGET_SKILLS bytes"
+# The budget GATES the kit's payload (this repo). In an INSTALLED project the user's own agents/skills — including
+# the ones adopt imports from a taken-over agent — legitimately add to the always-on cost (their choice), so there
+# we REPORT the numbers instead of failing the suite. Kit repo has $ROOT/CLAUDE.md; an install has DISCIPLINE.md.
+IS_KIT=0; [ -f "$ROOT/CLAUDE.md" ] && IS_KIT=1
+bud(){ if [ "$2" -le "$3" ]; then pass "$1 within budget ($2 ≤ $3 bytes)"
+       elif [ "$IS_KIT" = 1 ]; then fail "$1 over budget: $2 > $3 bytes"
+       else pass "$1 $2 bytes (over the kit's $3 baseline — your project's own additions, not gated in an install)"; fi; }
+bud "discipline"         "$DB" "$BUDGET_DISC"
+bud "agent descriptions" "$AB" "$BUDGET_AGENTS"
+bud "skill descriptions" "$SB" "$BUDGET_SKILLS"
 echo "   always-on total: $((DB+AB+SB)) bytes (budget $((BUDGET_DISC+BUDGET_AGENTS+BUDGET_SKILLS)))"
 # Every agent/skill must still declare its trigger phrases — that is what routes work to it. Trimming prose
 # is the point; trimming triggers would silently break routing, and routing-eval only checks the golden set.
