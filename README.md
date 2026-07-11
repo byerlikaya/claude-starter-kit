@@ -198,8 +198,6 @@ Like `adopt`, an update needs a git repo and lands on a `kit-adopt-<timestamp>` 
 
 <!-- SKILLS:END -->
 
-
-
 </details>
 - **5 slash commands** — `/plan` · `/review` · `/ship` · `/handoff` · `/simplify`.
 - **Hooks** — `guard-bash.sh` (tool-level gate), `pre-commit` + `commit-msg` (trace + secret scan), `context-usage.sh` and `session-guard.sh` (session measurement).

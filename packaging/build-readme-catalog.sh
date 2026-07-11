@@ -11,6 +11,11 @@
 #   bash packaging/build-readme-catalog.sh          # rewrite the block in both READMEs
 #   bash packaging/build-readme-catalog.sh --check   # exit 1 if either README's block is stale (smoke-test gate)
 set -euo pipefail
+# Force byte semantics everywhere. macOS ships BWK awk (byte-based length/substr); Ubuntu CI ships gawk, which
+# in a UTF-8 locale counts CHARACTERS — so a summary truncated near a multibyte char (`·`, `→`, `…`) would cut
+# at a different point on the two, and the README generated on one would fail --check on the other. LC_ALL=C
+# makes gawk byte-based too, so the output is identical on both. (This is why the first v1.1.6 release failed.)
+export LC_ALL=C
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 SKILLS="$ROOT/claude-starter/skills"
@@ -60,8 +65,11 @@ apply() {  # $1 = README path
   # Rewrite as: everything before the start marker + the fresh block + everything after the end marker.
   # (Building the block via string concat, not `awk -v`, since a multi-line -v value breaks BWK awk.)
   local before after
+  # Strip the blank lines adjacent to the block on both sides (command substitution already trims `before`'s
+  # trailing blanks; `awk 'NF{f=1} f'` trims `after`'s leading blanks) so the single blanks re-added by printf
+  # below don't accumulate on every run — the rewrite must be idempotent.
   before="$(awk -v s="$start" 'index($0,s){exit} {print}' "$file")"
-  after="$(awk -v e="$end" 'f{print} index($0,e){f=1}' "$file")"
+  after="$(awk -v e="$end" 'f{print} index($0,e){f=1}' "$file" | awk 'NF{f=1} f')"
   # Blank lines around the block: GitHub only renders a markdown table inside <details> when a blank line
   # separates </summary> from the content (command substitution ate the one that was there).
   printf '%s\n\n%s\n\n%s\n' "$before" "$new" "$after" > "$file.tmp" && mv "$file.tmp" "$file"
