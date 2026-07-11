@@ -3,6 +3,16 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [1.1.9] - 2026-07-11
+
+### Changed
+- **The "ask with options at a decision point" rule now demands a structured form.** The discipline already asked
+  for options with a recommendation, but the wording ("present explicit options") let a model satisfy it with a
+  prose "X, or Y?" question. It now reads "ask with numbered options (never an open-ended either/or), each with a
+  recommendation" — so a decision is put as a clear multiple choice, not an open question. This is model discipline,
+  not a tool-level gate (asking a question is plain text with no call to intercept), so it raises adherence rather
+  than enforcing it.
+
 ## [1.1.8] - 2026-07-11
 
 ### Fixed
