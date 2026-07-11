@@ -48,3 +48,28 @@ jobs:
           combo backend-generic   'yes\n'      --backend --generic
           combo fullstack-dotnet  'yes\nno\n'  --fullstack --dotnet
           combo fullstack-generic 'yes\n'      --fullstack --generic
+
+      - name: adopt e2e — stack detection (.sln under ./backend) + agent-overlap takeover
+        run: |
+          set -euo pipefail
+          # A brownfield DevArch project: solution under ./backend (NOT root), Business/Handlers layout, and a
+          # pre-existing backend-expert.md that collides with the kit's backend-expert-csk.
+          P="$RUNNER_TEMP/adopt-dotnet"; rm -rf "$P"; mkdir -p "$P/backend/Business/Handlers" "$P/.claude/agents"
+          cp adopt.sh "$P/"; cp -R claude-starter "$P/"; cp VERSION "$P/"
+          : > "$P/backend/DevArchitecture.sln"
+          printf -- '---\nname: backend-expert\ndescription: legacy\n---\n' > "$P/.claude/agents/backend-expert.md"
+          ( cd "$P" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
+          ( cd "$P" && printf 'yes\n' | bash adopt.sh >/dev/null 2>&1 )
+          grep -q '^stack=dotnet' "$P/.claude/kit.conf"                 || { echo "FAIL: .sln under ./backend not detected as dotnet"; exit 1; }
+          [ -d "$P/.claude/skills/devarch-module" ]                     || { echo "FAIL: devarch-module missing on a dotnet adopt"; exit 1; }
+          [ ! -f "$P/.claude/agents/backend-expert.md" ]                || { echo "FAIL: overlapping project agent was not taken over"; exit 1; }
+          [ -f "$P/.claude/superseded/agents/backend-expert.md" ]       || { echo "FAIL: taken-over agent was not preserved"; exit 1; }
+          echo "[adopt-dotnet] stack=dotnet · devarch-module kept · overlap taken over + preserved"
+          # A generic (Node) project: no .sln -> generic, devarch-module pruned.
+          G="$RUNNER_TEMP/adopt-generic"; rm -rf "$G"; mkdir -p "$G"
+          cp adopt.sh "$G/"; cp -R claude-starter "$G/"; cp VERSION "$G/"; printf '{"name":"x"}' > "$G/package.json"
+          ( cd "$G" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
+          ( cd "$G" && printf 'yes\n' | bash adopt.sh >/dev/null 2>&1 )
+          grep -q '^stack=generic' "$G/.claude/kit.conf"               || { echo "FAIL: Node project not recorded as generic"; exit 1; }
+          [ ! -d "$G/.claude/skills/devarch-module" ]                  || { echo "FAIL: devarch-module not pruned on a generic adopt"; exit 1; }
+          echo "[adopt-generic] stack=generic · devarch-module pruned"

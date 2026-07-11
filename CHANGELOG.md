@@ -3,6 +3,25 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [1.1.7] - 2026-07-11
+
+### Fixed
+- **`adopt` misread a .NET project as generic when the solution lived under `./backend`.** The stack sniff only
+  looked at the repo root (`ls ./*.sln`), so a DevArchitecture project with its `.sln` under `./backend` fell back
+  to the generic backend and dropped the `devarch-module` pattern skill. It now searches a few levels deep, detects
+  the DevArchitecture `Business/Handlers` layout, and on an interactive fresh adopt confirms the choice. The generic
+  prune of `devarch-module` also applies to a fresh adopt now, so a generic project no longer carries a .NET pattern
+  skill it never uses.
+
+### Added
+- **`adopt` resolves same-domain agent overlaps instead of only noting them.** When a project already has an agent
+  covering the same job as a kit agent (e.g. `backend-expert` vs `backend-expert-csk`), the router had two candidates
+  and usually picked the project's older one — so the kit's agent sat idle. adopt now detects the overlap and offers
+  **takeover** (the kit's `-csk` wins; your agent is moved to `.claude/superseded/agents/`, preserved so you can fold
+  its domain into a project skill), **keepmine** (your agent wins; the kit's overlapping `-csk` is not installed), or
+  **coexist** (keep both, documented). A non-interactive adopt defaults to takeover. A CI e2e test locks down both the
+  deeper stack detection and the overlap takeover.
+
 ## [1.1.6] - 2026-07-11
 
 ### Added

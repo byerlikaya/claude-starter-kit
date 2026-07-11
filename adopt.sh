@@ -116,13 +116,20 @@ esac
 [ -f .pre-commit-config.yaml ] && HOOKSYS="pre-commit framework"
 row "git hook system" "$HOOKSYS"
 
-# stack hint (context)
-STACK="unknown"
-if ls ./*.sln ./*.csproj >/dev/null 2>&1; then STACK=".NET"
+# stack hint (context). Look PAST the root: a .NET solution commonly lives in ./backend, ./src, ./server — the
+# old root-only `ls ./*.sln` reported "unknown" for exactly those layouts and the install silently fell back to
+# generic (dropping the DevArch pattern skill). Search a few levels deep, skipping build/vendor dirs.
+STACK="unknown"; IS_DOTNET=0; IS_DEVARCH=0
+DOTNET_HIT="$(find . -maxdepth 3 \( -name '*.sln' -o -name '*.csproj' \) 2>/dev/null | grep -vE '/(bin|obj|node_modules|\.git)/' | head -1)"
+if [ -n "$DOTNET_HIT" ]; then
+  STACK=".NET"; IS_DOTNET=1
+  # DevArchitecture signature: the canonical Business/Handlers CQRS layout, or a solution literally named DevArchitecture.
+  { find . -maxdepth 4 -type d -path '*/Business/Handlers' 2>/dev/null | grep -q . \
+    || find . -maxdepth 3 -iname 'devarchitecture.sln' 2>/dev/null | grep -q .; } && IS_DEVARCH=1
 elif [ -f package.json ]; then STACK="Node/JS"
 elif [ -f go.mod ]; then STACK="Go"
 elif [ -f pyproject.toml ] || [ -f requirements.txt ]; then STACK="Python"; fi
-row "stack hint" "$STACK"
+row "stack hint" "$STACK$([ "$IS_DEVARCH" = 1 ] && echo " · DevArchitecture layout detected")"
 
 # ================= [2] EXISTING AGENTIC SETUP =================
 h1 "[2] Existing agentic setup (accumulated work to inherit)"
@@ -133,6 +140,15 @@ N_PSKILLS=0
 if [ -d .claude/skills ]; then
   while IFS= read -r f; do d="$(basename "$(dirname "$f")")"; [ -d "$SRC/skills/$d" ] || N_PSKILLS=$((N_PSKILLS+1)); done < <(find .claude/skills -name 'SKILL.md' 2>/dev/null)
 fi
+# Same-domain agent overlap: a PROJECT agent whose base name matches a kit -csk agent (e.g. backend-expert vs
+# backend-expert-csk). The two describe the same job, so the router has to pick between them — plain coexist
+# leaves that ambiguous and the project's older agent tends to win, which defeats installing the kit. Collect
+# the overlaps so the handover can RESOLVE them, not merely note them.
+COLLIDE=""
+if [ -d .claude/agents ]; then
+  for kf in "$SRC"/agents/*-csk.md; do b="$(basename "$kf" -csk.md)"; [ -f ".claude/agents/$b.md" ] && COLLIDE="$COLLIDE $b"; done
+fi
+COLLIDE="${COLLIDE# }"; N_COLLIDE=0; [ -n "$COLLIDE" ] && N_COLLIDE="$(printf '%s\n' $COLLIDE | wc -l | tr -d ' ')"
 HAS_MD=0; [ -f CLAUDE.md ] && HAS_MD=1
 HAS_SETTINGS=0; [ -f .claude/settings.json ] && HAS_SETTINGS=1
 # already-adopted fingerprint: did a PRIOR adopt/kit install run here? -> REFRESH semantics, not a fresh handover
@@ -172,8 +188,10 @@ OFFREPO=0; { [ "$HAS_CLAUDE" = 0 ] && [ "$HAS_MD" = 0 ]; } && OFFREPO=1
 # ===================== [3] SMART SUGGESTION ======================
 h1 "[3] 7 handover decisions — SMART SUGGESTION"
 sub "format:  decision  ->  SUGGESTED  ->  rationale   (you can review and override all of them in the next stage)"
-if [ "$N_PAGENTS" != 0 ]; then
-  prop "1 Role clash" "keep (coexist)" "$N_PAGENTS project agents; thanks to -csk no clash, they live side by side"
+if [ "$N_COLLIDE" != 0 ]; then
+  prop "1 Role overlap" "kit takes over" "$N_COLLIDE project agent(s) cover the SAME job as a kit agent ($COLLIDE) — routing is ambiguous; kit wins, yours preserved"
+elif [ "$N_PAGENTS" != 0 ]; then
+  prop "1 Role clash" "keep (coexist)" "$N_PAGENTS project agents, none overlap a kit role; thanks to -csk they live side by side"
 else
   prop "1 Role clash" "none" "no custom agents found in the project"
 fi
@@ -228,17 +246,63 @@ if [ -t 0 ]; then
   if ask_yes "Accept all smart suggestions?"; then
     sub "All smart suggestions accepted."
   else
-    sub "Reviewing each decision. ENTER keeps the current value. (#2 precedence and #5 SHIM are fixed, not asked.)"
-    DEC1="$(ask_dec '#1 Role clash'     keep     merge    "$DEC1")"
+    sub "Reviewing each decision. ENTER keeps the current value. (#1 overlap and #2/#5 are handled separately below.)"
     DEC3="$(ask_dec '#3 Trace gate'     loosen   keep     "$DEC3")"
     DEC4="$(ask_dec '#4 Share/hide'     share    hide     "$DEC4")"
     DEC6="$(ask_dec '#6 Brownfield DoD' baseline absolute "$DEC6")"
     DEC7="$(ask_dec '#7 Off-repo'       transfer skip     "$DEC7")"
   fi
-  echo "  Final: #1=$DEC1 #3=$DEC3 #4=$DEC4 #6=$DEC6 #7=$DEC7  (#2 project-wins, #5 SHIM — fixed)"
+  echo "  Final: #3=$DEC3 #4=$DEC4 #6=$DEC6 #7=$DEC7  (#2 project-wins, #5 SHIM — fixed)"
 else
   sub "(non-interactive: smart defaults accepted)"
 fi
+
+# --- Backend stack (fresh adopt only) --------------------------------------------------------------------
+# A REFRESH keeps the recorded stack (kit.conf / inferred). A FRESH adopt used to fall back to generic whenever
+# the root had no .sln — wrong for a solution under ./backend. Decide it from the deeper detection, and confirm
+# when a TTY is present. Setting KIT_STACK here feeds the existing prune/kit.conf logic below.
+if [ -z "${KIT_STACK:-}" ] && [ "$KIT_PRESENT" != 1 ]; then
+  if [ "$IS_DOTNET" = 1 ]; then
+    KIT_STACK=dotnet
+    if [ -t 0 ]; then
+      h1 "Backend stack"
+      sub "Detected a .NET project$([ "$IS_DEVARCH" = 1 ] && echo ' with a DevArchitecture (Business/Handlers CQRS) layout')."
+      ask_yes "Install the .NET/DevArchitecture backend pattern (devarch-module)? (no = stack-agnostic generic)" || KIT_STACK=generic
+    fi
+  else
+    KIT_STACK=generic
+  fi
+  echo "  backend stack -> ${KIT_STACK}$([ "$IS_DEVARCH" = 1 ] && [ "$KIT_STACK" = dotnet ] && echo ' (DevArchitecture)')"
+fi
+
+# --- Role overlap (#1): resolve same-domain agent collisions ---------------------------------------------
+# When a project agent and a kit -csk agent cover the same job, "coexist" leaves routing ambiguous. Offer to
+# resolve it. takeover = kit wins (your agent preserved, moved out of the routing pool); keepmine = your agent
+# wins (the kit's overlapping -csk is not installed); coexist = keep both (documented). Non-interactive -> takeover
+# (you ran adopt to get the kit's agents). The chosen mode is APPLIED on the handover branch in Stage 2.
+COLLIDE_MODE=coexist
+if [ "$N_COLLIDE" != 0 ]; then
+  h1 "Role overlap — project & kit both cover: $COLLIDE"
+  sub "Two agents for one job = the router picks one, usually your older agent — so the kit's would sit idle."
+  sub "  takeover  kit's -csk agents win; your versions are preserved under .claude/superseded/agents/"
+  sub "  keepmine  your agents win; the kit's overlapping -csk agents are not installed"
+  sub "  coexist   keep both (routing stays ambiguous; only documented in HANDOVER)"
+  COLLIDE_MODE=takeover
+  if [ -t 0 ]; then
+    while :; do
+      printf '  %sowner%s [takeover/keepmine/coexist] (ENTER=takeover): ' "$B" "$R"
+      read -r _v || _v=""
+      case "$_v" in ""|t|takeover) COLLIDE_MODE=takeover; break ;; k|keepmine) COLLIDE_MODE=keepmine; break ;; c|coexist) COLLIDE_MODE=coexist; break ;;
+        *) printf '     %s! type takeover, keepmine or coexist%s\n' "$YE" "$R" >&2 ;; esac
+    done
+  fi
+  echo "  overlap -> $COLLIDE_MODE"
+fi
+# #1 display/HANDOVER value reflects what actually happens.
+case "$COLLIDE_MODE" in
+  takeover) DEC1=takeover ;; keepmine) DEC1=keepmine ;;
+  *) DEC1="$([ "$N_PAGENTS" != 0 ] && echo keep || echo none)" ;;
+esac
 
 # ================= [STAGE 2] HANDOVER BRANCH + COEXIST =================
 h1 "Stage 2 — handover branch + coexist"
@@ -265,15 +329,30 @@ EXCL_A=""; EXCL_S=""
 if [ -n "$KIT_PROFILE" ] && grep -qE "^$KIT_PROFILE:" "$SRC/profiles.conf" 2>/dev/null; then
   EXCL_A="$(kit_excl_agents_for "$KIT_PROFILE")"
   EXCL_S="$(kit_excl_skills_for "$KIT_PROFILE")"
-  [ "$KIT_STACK" = "generic" ] && EXCL_S="$EXCL_S devarch-module"
   echo "  refreshing as profile '${KIT_PROFILE}' (stack: ${KIT_STACK:-?}) — pruned agents/skills stay pruned"
 fi
+# The .NET pattern skill ships only for a dotnet backend. Prune it for generic on a FRESH adopt too (not only a
+# recorded refresh) — otherwise a generic project silently carries a DevArch pattern skill it never uses.
+[ "$KIT_STACK" = "generic" ] && EXCL_S="$EXCL_S devarch-module"
+# #1 keepmine: your overlapping agents own those roles, so the kit's matching -csk agents are NOT installed.
+[ "$COLLIDE_MODE" = keepmine ] && for b in $COLLIDE; do EXCL_A="$EXCL_A $b-csk.md"; done
 # kit-owned trees: FORCE-refresh on a re-adopt (KIT_PRESENT) so kit updates land; never-overwrite on a fresh adopt
 copy_noclobber "$SRC/agents"   .claude/agents   "$KIT_PRESENT" "$EXCL_A"; A_ADD=$ret_add; A_SKIP=$ret_skip
 copy_noclobber "$SRC/skills"   .claude/skills   "$KIT_PRESENT" "$EXCL_S"; S_ADD=$ret_add; S_SKIP=$ret_skip
 copy_noclobber "$SRC/commands" .claude/commands "$KIT_PRESENT"; C_ADD=$ret_add; C_SKIP=$ret_skip
 copy_noclobber "$SRC/hooks"    .claude/hooks    "$KIT_PRESENT"; H_ADD=$ret_add; H_SKIP=$ret_skip
 copy_noclobber "$SRC/eval"     .claude/eval     "$KIT_PRESENT"; E_ADD=$ret_add; E_SKIP=$ret_skip
+# #1 takeover: move each overlapping PROJECT agent OUT of the routing pool (Claude Code discovers .claude/agents/*.md,
+# not subdirs), so the kit's -csk owns the role and the router is no longer ambiguous. Moved, never deleted: your
+# agent's domain knowledge is preserved under .claude/superseded/agents/ for you to fold into a project skill.
+N_TAKEN=0
+if [ "$COLLIDE_MODE" = takeover ] && [ -n "$COLLIDE" ]; then
+  mkdir -p .claude/superseded/agents
+  for b in $COLLIDE; do
+    [ -f ".claude/agents/$b.md" ] && mv ".claude/agents/$b.md" ".claude/superseded/agents/$b.md" 2>/dev/null \
+      && { N_TAKEN=$((N_TAKEN+1)); echo "  overlap: $b -> .claude/superseded/agents/ (kit's $b-csk now owns the role)"; }
+  done
+fi
 # Stack-compatible backend: non-.NET projects get the generic backend-expert-csk. A RECORDED stack always beats
 # repo sniffing — a refresh of a 'dotnet' install must keep the DevArch-bound agent even when the .sln lives in
 # ./backend and the sniffer reports "unknown". And never clobber a preserved project file.
@@ -304,7 +383,11 @@ row "skills"            "+$S_ADD$([ "$S_SKIP" != 0 ] && echo " · $S_SKIP skippe
 row "commands"           "+$C_ADD$([ "$C_SKIP" != 0 ] && echo " · $C_SKIP skipped")"
 row "hooks"           "+$H_ADD$([ "$H_SKIP" != 0 ] && echo " · $H_SKIP skipped")"
 row "eval"               "+$E_ADD"
-row "project agents"     "$N_PAGENTS — UNTOUCHED (in place, active via recursive discovery)"
+row "project agents"     "$N_PAGENTS$([ "${N_TAKEN:-0}" != 0 ] && echo " ($N_TAKEN handed to the kit, preserved under .claude/superseded/agents/)") — the rest UNTOUCHED"
+case "$COLLIDE_MODE" in
+  keepmine) [ "$N_COLLIDE" != 0 ] && row "overlap" "keepmine — your agents own: $COLLIDE (kit's -csk for these NOT installed)" ;;
+  coexist)  [ "$N_COLLIDE" != 0 ] && warn "overlap: $COLLIDE — BOTH kept; routing between your agent and the kit's -csk stays ambiguous" ;;
+esac
 [ -n "$SKIP_LIST" ] && { warn "conflicting files (the project's was PRESERVED, the kit's skipped):"; for s in $SKIP_LIST; do printf '     %s- %s%s\n' "$D" "$s" "$R"; done; }
 
 # ============ [STAGE 3] DISCIPLINE ACTIVE + SETTINGS MERGE ============
@@ -452,7 +535,11 @@ if [ "$DEC4" = hide ]; then
   echo "  #4 hide -> recorded; .claude stays TRACKED on the branch (rollback-safe). Post-merge steps in HANDOVER."
 else echo "  #4 share -> .claude tracked + shared with the team"; fi
 # #1 merge: document (NO automatic risky merge — red-team; merging is a human-approved follow-up)
-[ "$DEC1" = merge ] && MERGE_NOTE="merge: overlapping project agents WILL BE HANDED OVER to the kit agent (review; do it via adr/skill)" || MERGE_NOTE="keep: project + kit agent side by side"
+case "$DEC1" in
+  takeover) MERGE_NOTE="takeover: overlapping roles ($COLLIDE) handed to the kit's -csk agents; your versions preserved under .claude/superseded/agents/ (fold their domain into a project skill)" ;;
+  keepmine) MERGE_NOTE="keepmine: your agents own the overlapping roles ($COLLIDE); the kit's matching -csk agents were not installed" ;;
+  *)        MERGE_NOTE="keep: project + kit agents side by side (no overlaps, or overlaps left to coexist)" ;;
+esac
 # #7 off-repo transfer: paste from the user (interactive; skipped on non-TTY)
 OFFREPO_TEXT=""
 if [ "$DEC7" = transfer ] && [ -t 0 ]; then
@@ -468,7 +555,7 @@ h1 "Stage 5 — HANDOVER.md + ADR (handover persists; decisions are not lost)"
 mkdir -p docs docs/adr
 DATE_H="$(date +%Y-%m-%d)"
 # compute the decision values first (avoid inner-quote/command-sub tangle in the heredoc)
-case "$DEC1" in merge) D1='merge (overlaps will be handed over)';; none) D1='none';; *) D1='keep (coexist)';; esac
+case "$DEC1" in takeover) D1='takeover (kit -csk owns overlaps; yours preserved)';; keepmine) D1='keepmine (your agents own overlaps)';; none) D1='none';; *) D1='keep (coexist)';; esac
 D2='project wins'   # precedence is fixed (DEC2 not overridable) — no false 'kit wins' record
 D3="$([ "$DEC3" = loosen ] && echo 'loosen (.trace-allowlist written)' || echo 'keep (full)')"
 D4="$([ "$DEC4" = hide ] && echo 'hide (gitignore)' || echo 'keep sharing')"
