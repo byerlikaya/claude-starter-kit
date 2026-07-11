@@ -3,6 +3,15 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [1.1.12] - 2026-07-11
+
+### Fixed
+- **`smoke-test.sh` no longer fails an installed project for the user's OWN skills.** The "every skill declares
+  Trigger phrases" check — like the byte budget — is a KIT convention; run inside a project it failed the user's
+  own trigger-less skills, a pre-existing quirk that surfaced once adopt began importing taken-over agents. Both
+  checks now GATE only in the kit repo and REPORT (a note, not a failure) in an installed project. Your project's
+  own agents and skills are your call.
+
 ## [1.1.11] - 2026-07-11
 
 ### Changed

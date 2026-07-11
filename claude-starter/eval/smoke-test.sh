@@ -8,6 +8,14 @@ AGENTS="$ROOT/agents"; SKILLS="$ROOT/skills"; HOOKS="$ROOT/hooks"
 FAIL=0
 pass(){ echo "  ✅ $1"; }
 fail(){ echo "  ❌ $1"; FAIL=$((FAIL+1)); }
+# Kit repo (payload) vs an INSTALLED project. Kit conventions (Trigger phrases, byte budget) are GATES on the
+# payload but must not fail a user's project for their OWN agents/skills — including the ones adopt imports from a
+# taken-over agent. In an install those become a report (note), not a failure. Kit repo has CLAUDE.md next to the
+# discipline; an install has DISCIPLINE.md instead.
+IS_KIT=0; [ -f "$ROOT/CLAUDE.md" ] && IS_KIT=1
+note(){ echo "  ·  $1"; }   # informational; never counts as a failure
+# Trigger-phrases requirement: a GATE in the kit repo, a note in an installed project (your skills, your call).
+need_trigger(){ if [ "$IS_KIT" = 1 ]; then fail "$1"; else note "$1 (your own skill/agent; not gated in an install)"; fi; }
 
 echo "== 1) Agent frontmatter & trigger =="
 AC=0
@@ -16,7 +24,7 @@ for f in "$AGENTS"/*.md; do
   grep -q '^name:' "$f"        || fail "$n: no name"
   grep -q '^tools:' "$f"       || fail "$n: no tools"
   grep -qE '^model:' "$f" || true   # no model means inherit (valid)
-  grep -q 'Trigger phrases:' "$f" || fail "$n: no Trigger phrases"
+  grep -q 'Trigger phrases:' "$f" || need_trigger "$n: no Trigger phrases"
 done
 # Core agents must be present regardless of profile; stack-specific agents (backend/database/
 # frontend-expert-csk) vary by install profile, so no fixed count is expected.
@@ -30,7 +38,7 @@ for d in "$SKILLS"/*/; do
   n=$(basename "$d"); f="$d/SKILL.md"
   [ -f "$f" ] || { fail "$n: no SKILL.md"; continue; }
   grep -q '^name:' "$f"           || fail "$n: no name"
-  grep -q 'Trigger phrases:' "$f" || fail "$n: no Trigger phrases"
+  grep -q 'Trigger phrases:' "$f" || need_trigger "$n: no Trigger phrases"
 done
 pass "$(ls -d "$SKILLS"/*/ | wc -l | tr -d ' ') skills scanned"
 
@@ -314,10 +322,9 @@ if [ -f "$ROOT/CLAUDE.md" ]; then
 elif [ -f "$ROOT/DISCIPLINE.md" ]; then DB="$(wc -c < "$ROOT/DISCIPLINE.md" | tr -d ' ')"; else DB=0; fi
 AB=0; for f in "$AGENTS"/*.md;      do [ -e "$f" ] && AB=$((AB + $(fm_bytes "$f"))); done
 SB=0; for f in "$SKILLS"/*/SKILL.md; do [ -e "$f" ] && SB=$((SB + $(fm_bytes "$f"))); done
-# The budget GATES the kit's payload (this repo). In an INSTALLED project the user's own agents/skills — including
-# the ones adopt imports from a taken-over agent — legitimately add to the always-on cost (their choice), so there
-# we REPORT the numbers instead of failing the suite. Kit repo has $ROOT/CLAUDE.md; an install has DISCIPLINE.md.
-IS_KIT=0; [ -f "$ROOT/CLAUDE.md" ] && IS_KIT=1
+# The budget GATES the kit's payload (kit repo, IS_KIT). In an INSTALLED project the user's own agents/skills —
+# including the ones adopt imports from a taken-over agent — legitimately add to the always-on cost (their choice),
+# so there we REPORT the numbers instead of failing the suite.
 bud(){ if [ "$2" -le "$3" ]; then pass "$1 within budget ($2 ≤ $3 bytes)"
        elif [ "$IS_KIT" = 1 ]; then fail "$1 over budget: $2 > $3 bytes"
        else pass "$1 $2 bytes (over the kit's $3 baseline — your project's own additions, not gated in an install)"; fi; }
@@ -332,7 +339,7 @@ for f in "$AGENTS"/*.md "$SKILLS"/*/SKILL.md; do
   [ -e "$f" ] || continue
   awk '/^---$/{c++; next} c==1' "$f" | grep -qi 'trigger' || MISSING="$MISSING $(basename "$(dirname "$f")")/$(basename "$f")"
 done
-[ -z "$MISSING" ] && pass "every agent/skill still declares Trigger phrases" || fail "no trigger phrases in:$MISSING"
+[ -z "$MISSING" ] && pass "every agent/skill still declares Trigger phrases" || need_trigger "no trigger phrases in:$MISSING"
 
 echo "== 7) settings.json & guard (§4.4/§4.5) =="
 if [ -f "$ROOT/settings.json" ]; then
