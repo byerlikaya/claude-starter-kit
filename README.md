@@ -161,7 +161,13 @@ Like `adopt`, an update needs a git repo and lands on a `kit-adopt-<timestamp>` 
 ## What's inside
 
 - **11 agents** — see the table above.
-- **28 skills** — the single source of "how", one per area. <details><summary>Full catalogue (auto-generated from each skill)</summary>
+- **28 skills** — the single source of "how", one per area (full catalogue below).
+- **5 slash commands** — `/plan` · `/review` · `/ship` · `/handoff` · `/simplify`.
+- **Hooks** — `guard-bash.sh` (tool-level gate), `pre-commit` + `commit-msg` (trace + secret scan), `context-usage.sh` and `session-guard.sh` (session measurement).
+- **CLAUDE.md** — behavior, the three principles, workflow, Definition of Done, token discipline, and prohibitions.
+
+<details>
+<summary><b>Full skill catalogue</b> — all 28, generated from each skill</summary>
 
 <!-- SKILLS:START -->
 
@@ -199,9 +205,6 @@ Like `adopt`, an update needs a git repo and lands on a `kit-adopt-<timestamp>` 
 <!-- SKILLS:END -->
 
 </details>
-- **5 slash commands** — `/plan` · `/review` · `/ship` · `/handoff` · `/simplify`.
-- **Hooks** — `guard-bash.sh` (tool-level gate), `pre-commit` + `commit-msg` (trace + secret scan), `context-usage.sh` and `session-guard.sh` (session measurement).
-- **CLAUDE.md** — behavior, the three principles, workflow, Definition of Done, token discipline, and prohibitions.
 
 ---
 
