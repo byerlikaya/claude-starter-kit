@@ -5,7 +5,6 @@ description: |
   `spec-planning` skill. Plans; does not write code.
   Trigger phrases: "plan", "produce a spec", "task breakdown", "acceptance criteria", "sprint plan", "plan first"
 tools: Read, Grep, Glob
-model: sonnet
 ---
 
 # Planning Specialist
