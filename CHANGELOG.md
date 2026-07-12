@@ -3,6 +3,20 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [1.2.1] - 2026-07-12
+
+### Changed
+- **`iterate` and `code-review` now prefer an external, machine-grounded verifier over LLM self-grading.** An exit
+  test / acceptance check should rest on an objective signal (a test exit code, a schema match, a quality gate),
+  not the model's own "looks done" or a lone "review clean" — a model grading its own output inflates. `iterate`
+  says so at the exit-test step; `code-review` now flags any change that makes a check pass by *weakening the
+  check* (loosening an assertion, lowering a threshold, editing the test instead of the code).
+- **`token-budget` replaces the guessed "7×" figure with a measured subagent context cost.** Measured in a real
+  transcript: a subagent's first turn is `cache_read=0` — context is built 100% fresh, nothing shared with the
+  main thread (~10k tokens with restricted tools, ~16k with full tool access). Only the skill listing (~2.5–3k)
+  is inherited by a subagent; the discipline (`DISCIPLINE.md`) and agent descriptions are not. The delegation
+  threshold is reframed around that fresh-context floor: delegate for isolation, not to shave a few reads.
+
 ## [1.2.0] - 2026-07-12
 
 ### Added
