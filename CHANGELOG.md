@@ -3,6 +3,16 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [1.2.2] - 2026-07-12
+
+### Fixed
+- **`planner-csk` inherits the session model instead of being pinned to `sonnet`.** The agent had drifted to
+  `model: sonnet` while both READMEs documented `inherit`. Planning is the highest-leverage, read-only,
+  once-per-feature step — its output steers every downstream producer agent — so it should run on the strongest
+  model the user runs (`inherit` → Opus when Opus is the session model), not be capped below it. Cheap pins stay
+  on the mechanical, high-frequency agents (`review`/`commit`/`session` on `haiku`). The READMEs were already
+  correct; only the agent file changed.
+
 ## [1.2.1] - 2026-07-12
 
 ### Changed
