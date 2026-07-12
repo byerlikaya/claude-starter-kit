@@ -21,6 +21,8 @@ The stop before diving into code. The "how" lives in the spec-planning skill.
 
 ## When
 Before starting a new feature, sprint, or work of ambiguous scope.
+**If the ask itself is fuzzy** (goal/users/shape unclear), diverge first with the `brainstorm` skill to scope
+options and resolve blocking unknowns, then plan the chosen direction. If scope is already clear, plan directly.
 
 ## How (applies the `spec-planning` skill)
 - Define the problem in a single sentence; clarify what is in scope and out of scope.
