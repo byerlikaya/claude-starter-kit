@@ -28,6 +28,8 @@ Before a work package closes (pre-commit), on the changed diff.
 - Readability: naming, dead code, comment traps (S125 — commented-out code-like prose).
 - Constructive "Prefer X over Y"-style suggestions.
 - **Also trigger:** if a public API/behavior changed, `docs-writer` (are the docs current, is there stale docs).
+- **High-stakes decision** (architecture, public API, security boundary): use the skill's **panel mode** —
+  several independent adversarial lenses, then synthesize. Reserve it for hard-to-reverse calls, not routine diffs.
 
 ## Output
 `file:line · observation · suggestion`; with a blocker/suggestion split.

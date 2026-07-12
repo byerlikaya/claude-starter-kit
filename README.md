@@ -9,7 +9,7 @@
 ![Version](https://img.shields.io/badge/version-1.1.12-2563eb?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)
 ![Agents](https://img.shields.io/badge/agents-11-f59e0b?style=flat-square)
-![Skills](https://img.shields.io/badge/skills-28-f59e0b?style=flat-square)
+![Skills](https://img.shields.io/badge/skills-30-f59e0b?style=flat-square)
 ![Claude Code](https://img.shields.io/badge/Claude_Code-agentic_kit-8b5cf6?style=flat-square)
 
 🇬🇧 English · [🇹🇷 Türkçe](README.tr.md)
@@ -161,13 +161,13 @@ Like `adopt`, an update needs a git repo and lands on a `kit-adopt-<timestamp>` 
 ## What's inside
 
 - **11 agents** — see the table above.
-- **28 skills** — the single source of "how", one per area (full catalogue below).
-- **5 slash commands** — `/plan` · `/review` · `/ship` · `/handoff` · `/simplify`.
+- **30 skills** — the single source of "how", one per area (full catalogue below).
+- **6 slash commands** — `/brainstorm` · `/plan` · `/review` · `/ship` · `/handoff` · `/simplify`.
 - **Hooks** — `guard-bash.sh` (tool-level gate), `pre-commit` + `commit-msg` (trace + secret scan), `context-usage.sh` and `session-guard.sh` (session measurement).
 - **CLAUDE.md** — behavior, the three principles, workflow, Definition of Done, token discipline, and prohibitions.
 
 <details>
-<summary><b>Full skill catalogue</b> — all 28, generated from each skill</summary>
+<summary><b>Full skill catalogue</b> — all 30, generated from each skill</summary>
 
 <!-- SKILLS:START -->
 
@@ -176,6 +176,7 @@ Like `adopt`, an update needs a git repo and lands on a `kit-adopt-<timestamp>` 
 | `a11y` | Frontend accessibility audit (WCAG): semantic HTML, keyboard access, focus management, contrast, ARIA, screen readers. |
 | `adr` | Architecture Decision Record: context-decision-consequences, for decisions that are expensive to reverse. |
 | `api-design` | API contract design: resource naming, error model, versioning, pagination, backward compatibility, OpenAPI. |
+| `brainstorm` | Divergent discovery BEFORE planning: turn a fuzzy ask into 2–4 scoped options + named unknowns, pick a direction, hand to spec-planning. |
 | `ci-pipeline` | CI pipeline discipline: lint→build→test→quality→security, fail-fast, deterministic build, secret handling, PR gates. |
 | `code-review` | Code review discipline: severity-ranked, reasoned feedback on whether a change improves the system's overall code health. |
 | `commit-message` | Conventional Commits: reads the staged diff and proposes `type(scope): summary`, with body/footer when needed. |
@@ -193,6 +194,7 @@ Like `adopt`, an update needs a git repo and lands on a `kit-adopt-<timestamp>` 
 | `performance` | Stack-agnostic performance: measure first, find the bottleneck, then optimise. |
 | `privacy-compliance` | KVKK/GDPR audit method: data inventory, purpose/basis/retention, minimisation, consent, transparency, data-subject rights, cross-border… |
 | `red-team` | Attacker's-eye test of LLM/agent defenses: instruction hijacking, data exfiltration and tool abuse through untrusted content; verifies… |
+| `reflect` | Retrospective self-audit after nontrivial work: unverified assumptions, skipped items, is-this-the-right- approach — findings, not code. |
 | `release` | Versioning and CHANGELOG: SemVer mapped from Conventional Commits, Keep a Changelog format, tagging, pre-release gates. |
 | `security-scan` | Stack-agnostic security audit: map the attack surface, trace untrusted input to dangerous calls, surface dependency and configuration flaws. |
 | `sonarqube-check` | SonarQube quality gate (language-agnostic): 0 Bugs · 0 Vulnerabilities · 0 Security Hotspots · 0 Code Smells, build 0 warnings / 0… |
@@ -214,11 +216,11 @@ An assistant cannot run `/context` itself, so most setups **guess** the session 
 
 ### Token cost
 
-`DISCIPLINE.md` and the agent/skill descriptions load into every session's context. That always-on material measures **9,198 tokens** on a real turn — the price of the whole discipline layer, 11 agents and 28 skills.
+`DISCIPLINE.md` and the agent/skill descriptions load into every session's context. That always-on material measured **9,198 tokens** on a real turn for 11 agents and 28 skills; `brainstorm` and `reflect` add ~660 bytes (≈ 280 tokens) on top — the price of the whole discipline layer.
 
 `smoke-test.sh` enforces a byte budget per component (discipline · agent descriptions · skill descriptions), so the cost cannot drift upward unnoticed. A budget can be raised, but only by editing `smoke-test.sh` explicitly.
 
-> **Profile pruning does not save tokens.** A `--backend` install (10 agents, 25 skills) costs only ~640 tokens less than `--fullstack` (11 agents, 28 skills). Pick a profile to narrow the scope of the work.
+> **Profile pruning does not save tokens.** A `--backend` install (10 agents, 27 skills) costs only ~640 tokens less than `--fullstack` (11 agents, 30 skills). Pick a profile to narrow the scope of the work.
 
 ---
 

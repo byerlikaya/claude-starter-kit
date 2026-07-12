@@ -315,7 +315,7 @@ echo "== 6f) always-on token budget =="
 # only as a deliberate edit here.
 BUDGET_DISC=9400     # DISCIPLINE.md (the discipline half of CLAUDE.md); currently 9184
 BUDGET_AGENTS=4700   # sum of agent frontmatter; currently 4551
-BUDGET_SKILLS=8500   # sum of skill frontmatter; currently 8284
+BUDGET_SKILLS=9250   # sum of skill frontmatter; currently 9163 (brainstorm + reflect added ~660B always-on)
 fm_bytes(){ awk '/^---$/{c++; next} c==1' "$1" 2>/dev/null | wc -c | tr -d ' '; }
 if [ -f "$ROOT/CLAUDE.md" ]; then
   DB="$(awk '/^<!-- KIT:DISCIPLINE-END/{exit} {print}' "$ROOT/CLAUDE.md" | wc -c | tr -d ' ')"
