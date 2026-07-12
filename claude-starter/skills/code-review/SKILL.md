@@ -23,6 +23,9 @@ The approval criterion is "is it better", not "is it flawless". If it is an unwa
 2. **Functionality:** does it do what is intended; is it right for the user/developer; edge cases, concurrency.
 3. **Complexity:** is it more complex than necessary; is there over-engineering / design for a future assumption (YAGNI).
 4. **Tests:** are there correct, meaningful, sufficient tests; real behavior, not tests for tests' sake.
+   **Verifier integrity:** flag any change that makes a check pass by *weakening the check* — deleting or loosening
+   an assertion, lowering a threshold, skipping a test, editing the test instead of the code — rather than fixing
+   the behavior. A test or gate that grades itself lax is worse than none; a verifier must stay external and grounded.
 5. **Naming:** names that carry intent, neither too long nor cryptic.
 6. **Comments:** do they explain the **"why"** rather than the "what"; no dead/unnecessary comments.
 7. **Style & consistency:** conforms to the project guide; consistent with the existing conventions.

@@ -16,6 +16,10 @@ interval. Open-ended exploration with no checkable target does not belong here.
 1. **Name the exit test first** — the concrete, checkable condition that means "done": tests green,
    `review-agent-csk` clean, the spec's acceptance criterion met, zero SonarQube findings. No exit test →
    go to spec-planning first; a loop without a target never terminates.
+   **Prefer an external, machine-grounded verifier** — a test exit code, a schema match, a lint/quality gate —
+   over an LLM's self-assessment. A model grading its own output inflates; an "it looks done" or even a single
+   "review clean" with no objective check is a weak verifier. When the only available check is a judgment call,
+   ground it (a second agent with a distinct lens, an explicit rubric) rather than trusting the loop's own say-so.
 2. **Run one round**: change → verify (drive the real flow, not only tests) → check the exit test.
 3. **Report the gap** every round — state what still fails and why. Never loop silently.
 4. **Repeat** until the exit test passes. Stop early and surface it if: two rounds pass with no new
