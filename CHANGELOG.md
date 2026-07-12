@@ -3,6 +3,36 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [1.2.0] - 2026-07-12
+
+### Added
+- **`brainstorm` skill — divergent discovery before planning.** Turns a fuzzy, under-defined ask into 2–4
+  distinct scoped options (including a deliberately minimal one) plus named blocking unknowns, converges to an
+  explicit user choice, then hands the chosen direction to `spec-planning`. Wired as the pre-planning front-end
+  of `planner-csk` and reachable via the new `/brainstorm` command. Bounded and gate-compatible — it asks with
+  explicit options and never fills ambiguity by guessing.
+- **`reflect` skill — retrospective self-audit.** After nontrivial work, a single bounded pass over unverified
+  assumptions, silently-skipped items, whether the approach was right, and which "done/works" claims rest on
+  observed evidence vs. inference. The step-back counterpart to `iterate`'s refine-to-done loop; produces
+  findings, not code.
+- **Panel mode in the `code-review` skill.** For high-stakes, hard-to-reverse decisions (architecture, a public
+  API contract, a security boundary), evaluate the change from several independent adversarial lenses in
+  parallel and synthesize their objections rather than averaging them. Reserved for high stakes; routine diffs
+  keep the single-lens review.
+- **A Turkish skill catalogue in `README.tr.md`.** The table's summaries are now Turkish, sourced from
+  `packaging/skill-summaries.tr.tsv` — build-time data that is NOT part of the always-on payload, so the Turkish
+  text spends no `SKILL.md` frontmatter byte budget.
+
+### Changed
+- **`build-readme-catalog.sh` generates each README in its own language.** English summaries still come from each
+  `SKILL.md`; Turkish summaries come from the new TSV. The skill NAME set (the directory listing) drives both, so
+  the two tables always hold the same rows in the same order. `--check` now also fails if any skill lacks a
+  Turkish summary — a drift gate, already run in `ci.yml` and `release.yml`.
+- **The skill-description byte budget in `smoke-test.sh` is raised 8500 → 9250.** The two new skills add ~660
+  bytes of always-on frontmatter; the bump is deliberate and explicit, as the budget mechanism requires.
+- Both READMEs (counts 28 → 30 skills, 5 → 6 commands, version and skill badges), the `CLAUDE.md` structure
+  line, and the orchestration SVGs (`brainstorm → plan` in stage 1) reflect the additions.
+
 ## [1.1.12] - 2026-07-11
 
 ### Fixed
