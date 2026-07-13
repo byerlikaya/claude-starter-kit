@@ -373,6 +373,18 @@ bud "discipline"         "$DB" "$BUDGET_DISC"
 bud "agent descriptions" "$AB" "$BUDGET_AGENTS"
 bud "skill descriptions" "$SB" "$BUDGET_SKILLS"
 echo "   always-on total: $((DB+AB+SB)) bytes (budget $((BUDGET_DISC+BUDGET_AGENTS+BUDGET_SKILLS)))"
+# Per-skill ratchet: the total budget grows with the catalogue, so also cap EACH skill's frontmatter — one bloated
+# description can't hide inside the total. Max today is 390 B (systematic-debugging); the cap sits just above it.
+MAX_SKILL_FM=420; SKILL_FAT=""
+for f in "$SKILLS"/*/SKILL.md; do [ -e "$f" ] || continue; fb="$(fm_bytes "$f")"; [ "$fb" -le "$MAX_SKILL_FM" ] || SKILL_FAT="$SKILL_FAT $(basename "$(dirname "$f")")(${fb}B)"; done
+if   [ -z "$SKILL_FAT" ]; then pass "each skill's frontmatter ≤ ${MAX_SKILL_FM} B (per-skill ratchet)"
+elif [ "$IS_KIT" = 1 ]; then fail "skill frontmatter over the per-skill cap:$SKILL_FAT (>${MAX_SKILL_FM} B — tighten the description, keep the triggers)"
+else pass "some skill frontmatter over ${MAX_SKILL_FM} B:$SKILL_FAT (your project's own skills, not gated)"; fi
+# CACHE-STABLE ORDERING (maintainer note): the discipline + agent + skill descriptions above form a large, byte-stable
+# prompt PREFIX that prompt-caching rewards at 0.1× on reads. Keep it stable and never inject volatile content (a
+# timestamp, a per-turn counter) AHEAD of it — a change busts that cache level and everything after it. The kit's
+# volatile per-turn output (the 🔋 line, the stale-discipline warning) is emitted by the hooks in the MESSAGE stream,
+# i.e. AFTER the cached prefix, so it doesn't invalidate the cache. Preserve that split when editing the payload.
 # Every agent/skill must still declare its trigger phrases — that is what routes work to it. Trimming prose
 # is the point; trimming triggers would silently break routing, and routing-eval only checks the golden set.
 MISSING=""
