@@ -442,6 +442,29 @@ gj auto 'git add -f dist/bundle.js' | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&
 gj auto 'git add -A'                | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && pass "git add -A NOT over-blocked" || fail "git add -A wrongly blocked (gate too strict)"
 gj auto 'rm package-lock.json'      | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && fail "lockfile deletion PASSED (§4.5 hole)" || pass "lockfile deletion BLOCKED (§4.5)"
 
+echo "== 7b) guard-bash matcher — audit bypass regressions (unified git_has) =="
+# An adversarial audit found these git-invocation forms slipped the old 'git +subcmd' rules. Each must now be caught.
+gj auto 'git -C . reset --hard' | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && fail "git -C reset --hard PASSED (H2)" || pass "git -C reset --hard BLOCKED (H2)"
+gj auto 'git\treset --hard'     | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && fail "TAB-separated reset --hard PASSED (H2)" || pass "TAB-separated reset --hard BLOCKED (H2)"
+gj auto 'git -C . push --force' | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && fail "git -C push --force PASSED (H2)" || pass "git -C push --force BLOCKED (H2)"
+gj auto 'git push --force-with-lease' | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && fail "--force-with-lease PASSED (H3)" || pass "push --force-with-lease BLOCKED (H3)"
+gj auto 'git -c core.hooksPath=/dev/null commit -m x' | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && fail "-c core.hooksPath PASSED (C1)" || pass "git -c core.hooksPath BLOCKED (C1)"
+# H1: a quote/backtick-wrapped commit must still reach the §4.4 approval gate (not slip through unprompted).
+o="$(gj auto 'eval \"git commit -m x\"' | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"; echo "$o" | grep -q '"permissionDecision":"ask"' && pass "eval-wrapped commit still ASKs (H1)" || fail "eval-wrapped commit slipped §4.4 (H1): $o"
+# Precision: a commit whose MESSAGE contains 'reset --hard' (no git-before-reset) ASKs as a commit, is not blocked.
+o="$(gj auto 'git commit -m \"reset --hard bug\"' | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"; echo "$o" | grep -q '"permissionDecision":"ask"' && pass "commit msg with 'reset --hard' NOT over-blocked" || fail "commit msg 'reset --hard' wrongly blocked: $o"
+# Fallback (no jq AND no python3 — stock Git Bash on Windows): the matchers must still fire on the raw JSON blob (M1).
+GBX="$(mktemp -d)"; GBOK=1; GBBASH="$(command -v bash 2>/dev/null || echo bash)"
+for t in awk sed grep head cat tr git cut; do tp="$(command -v "$t" 2>/dev/null)" && ln -s "$tp" "$GBX/$t" 2>/dev/null || GBOK=0; done
+if [ "$GBOK" = 1 ] && ! PATH="$GBX" command -v jq >/dev/null 2>&1 && ! PATH="$GBX" command -v python3 >/dev/null 2>&1; then
+  o="$(gj auto 'git commit -m x' | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" 2>/dev/null)"
+  echo "$o" | grep -q '"permissionDecision":"ask"' && pass "no-jq/py: commit still ASKs (M1 fallback closed)" || fail "no-jq/py: commit gate FAILS OPEN (M1): $o"
+  gj auto 'git reset --hard' | PATH="$GBX" CLAUDE_GIT_OK=1 "$GBBASH" "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && fail "no-jq/py: reset --hard PASSED (§4.5 fallback hole)" || pass "no-jq/py: reset --hard still BLOCKED"
+else
+  pass "no-jq/py fallback test skipped (jq/python3-less PATH not buildable here)"
+fi
+rm -rf "$GBX"
+
 echo "== 7c) session rehydration (SessionStart, C1) =="
 [ -x "$HOOKS/session-rehydrate.sh" ] && pass "session-rehydrate.sh +x" || fail "session-rehydrate.sh missing/not executable"
 # Fails open + silent when there is no handover; injects additionalContext when docs/SESSION_STATE.md exists.

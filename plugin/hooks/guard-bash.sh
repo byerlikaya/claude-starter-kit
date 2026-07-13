@@ -40,13 +40,31 @@ block(){
   exit 2
 }
 
-echo "$CMD" | grep -qE 'git +reset +.*--hard'              && block "git reset --hard" "4.5"
-echo "$CMD" | grep -qE 'git +push +.*(--force([^-]|$)|-f([^a-z]|$)|\+[A-Za-z])' && block "git push --force" "4.5"
-echo "$CMD" | grep -qE 'git +clean +-[A-Za-z]*f'           && block "git clean -f" "4.5"
-echo "$CMD" | grep -qE -- '--no-verify'                    && block "hook skip (--no-verify)" "4.5"
-echo "$CMD" | grep -qE 'git +rebase'                       && block "git rebase" "4.5"
-echo "$CMD" | grep -qE 'git +(filter-branch|filter-repo)'  && block "git filter-branch" "4.5"
-echo "$CMD" | grep -qE 'git +commit +.*--amend'            && block "git commit --amend" "4.5"
+# One matcher for "git invoked with subcommand X", tolerant of the forms that used to slip past the old
+# 'git +subcmd' rules: interposed options (git -C <path> …, git -c k=v …), TAB separators, and a
+# quote/backtick/paren/pipe right before `git` (eval "git …", bash -c 'git …', `git …`, and the raw-JSON
+# fallback where CMD is the whole blob and git is preceded by the `"` of "command":"). The boundary
+# [^A-Za-z0-9_-] before git = any non-word char (so mygit / gitk / digit never match); the token run
+# [^;&|[:space:]]+ skips -C/-c and their values up to the subcommand. Used by BOTH the §4.5 blocks and the
+# §4.4 approval gate, so the destructive ops no longer have a weaker matcher than commit/push.
+git_has() {  # $1 = command text, $2 = subcommand alternation (e.g. 'commit|push')
+  # The subcommand is the first NON-option token after `git`. We skip only git GLOBAL OPTIONS — the value-taking
+  # ones (-C <path>, -c <kv>, --git-dir/--work-tree/--namespace/--config-env/--super-prefix/--exec-path <v>) consume
+  # their next token, plain flags don't. Skipping *arbitrary* tokens (the old behaviour) would false-match a commit
+  # whose MESSAGE contains a subcommand word, e.g. git commit -m "reset --hard".
+  # Trailing boundary allows quote/backtick/backslash too, so an argless subcommand that ends the string works in
+  # the raw-JSON fallback (CMD is the whole blob; `git push` appears as …"git push" — push is followed by `"`).
+  printf '%s' "$1" | grep -qiE "(^|[^A-Za-z0-9_-])git[[:space:]]+((-[Cc][[:space:]]+[^[:space:];&|]+|--(git-dir|work-tree|namespace|config-env|super-prefix|exec-path)[[:space:]=]+[^[:space:];&|]+|-[^[:space:];&|]+)[[:space:]]+)*($2)([[:space:]]|[;&|\"'\`\\\\]|\$)"
+}
+has() { printf '%s' "$CMD" | grep -qiE -- "$1"; }   # flag/substring test on the command (-- so a -flag pattern is safe)
+
+{ git_has "$CMD" 'reset'  && has '--hard'; }                                                && block "git reset --hard" "4.5"
+{ git_has "$CMD" 'push'   && has '(--force(-with-lease|-if-includes)?|-f([^a-z]|$)|[[:space:]]\+[A-Za-z])'; } && block "git push --force" "4.5"
+{ git_has "$CMD" 'clean'  && has '-[A-Za-z]*f'; }                                           && block "git clean -f" "4.5"
+has '--no-verify'                                          && block "hook skip (--no-verify)" "4.5"
+git_has "$CMD" 'rebase'                                    && block "git rebase" "4.5"
+git_has "$CMD" 'filter-branch|filter-repo'                && block "git filter-branch/filter-repo" "4.5"
+{ git_has "$CMD" 'commit' && has '--amend'; }                                              && block "git commit --amend" "4.5"
 echo "$CMD" | grep -qE 'rm +-[A-Za-z]*r[A-Za-z]* +.*(/|\*|~)' && block "destructive rm -rf" "4.5"
 echo "$CMD" | grep -qE '(^|[^a-zA-Z])(mkfs|dd +if=)'       && block "disk-level destructive command" "4.5"
 
@@ -59,6 +77,9 @@ echo "$CMD" | grep -qE '(^|[^a-zA-Z])chmod[[:space:]]+(-[A-Za-z]*[[:space:]]+)*(
 # §4.5 gate-tampering -> HARD BLOCK. A gate you can silently remove is not a gate: redirecting core.hooksPath,
 # or deleting/overwriting/patching the hook scripts, would disarm the trace/secret/approval gates in one line.
 echo "$CMD" | grep -qE 'git[[:space:]]+config\b[^|]*core\.hooksPath'                       && block "git config core.hooksPath (disarms the git hooks)" "4.5"
+# Inline config override: `git -c core.hooksPath=…` / `git --config-env core.hooksPath=…` turns the hooks off for
+# that one command WITHOUT the word `config` (so the rule above misses it) — the exact equivalent of --no-verify.
+echo "$CMD" | grep -qiE 'git[[:space:]]+([^;&|]*[[:space:]])?(-c|--config-env)[[:space:]=]+core\.hooksPath' && block "git -c core.hooksPath (disarms the git hooks)" "4.5"
 echo "$CMD" | grep -qE '(rm|mv|cp|truncate|tee|install|ln)\b[^|]*\.claude/(hooks|settings\.json)' && block "tampering with a .claude gate file" "4.5"
 echo "$CMD" | grep -qE 'sed[[:space:]]+-i[^|]*\.claude/(hooks|settings\.json)'             && block "in-place edit of a .claude gate file" "4.5"
 echo "$CMD" | grep -qE '(rm|mv|cp|truncate|tee|chmod|sed[[:space:]]+-i)\b[^|]*\.git/hooks/' && block "tampering with .git/hooks" "4.5"
@@ -66,7 +87,7 @@ echo "$CMD" | grep -qE '>[[:space:]]*[^|]*\.claude/(hooks|settings\.json)'      
 
 # §4.5 force-add bypasses .gitignore (sneaks build output / secrets past the bloat & ignore rules); deleting a
 # lockfile is a §4.5 op the discipline already names. Both are only done on an explicit request.
-echo "$CMD" | grep -qE 'git[[:space:]]+add[[:space:]]+([^;&|]*[[:space:]])?(-[A-Za-z]*f[A-Za-z]*|--force)([[:space:]]|$)' && block "git add -f (bypasses .gitignore)" "4.5"
+{ git_has "$CMD" 'add' && has '(-[A-Za-z]*f[A-Za-z]*|--force)([[:space:]]|$)'; } && block "git add -f (bypasses .gitignore)" "4.5"
 echo "$CMD" | grep -qE '(rm|git[[:space:]]+rm)\b[^|]*(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|npm-shrinkwrap\.json|Gemfile\.lock|poetry\.lock|Pipfile\.lock|Cargo\.lock|composer\.lock|go\.sum|packages\.lock\.json)' && block "lockfile deletion" "4.5"
 
 # --- §4.4 commit/push approval gate ---
@@ -88,10 +109,7 @@ ask_user(){
   printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"%s"}}\n' "$(json_escape "$1")"
   exit 0
 }
-is_git_write() {
-  printf '%s' "$1" | grep -qiE '(^|[;&|(]|[[:space:]])git[[:space:]]+([^;&|[:space:]]+[[:space:]]+)*(commit|push)([[:space:]]|$|;|&|\|)'
-}
-if is_git_write "$CMD"; then
+if git_has "$CMD" 'commit|push'; then
   # The key is granted by the user's environment, never by the command line the model composes.
   if printf '%s' "$CMD" | grep -q 'CLAUDE_GIT_OK'; then
     echo "GUARD (§4.4): the attempt to set the approval key (CLAUDE_GIT_OK) inside the command was rejected." >&2
