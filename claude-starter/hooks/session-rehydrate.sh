@@ -29,6 +29,11 @@ STATE="$ROOT/docs/SESSION_STATE.md"
 MSG="A session handover from before this context boundary exists at docs/SESSION_STATE.md. Read it before continuing — it holds the in-progress task state, open decisions, and the intended next step. Do not restart the work from scratch."
 
 # hookSpecificOutput.additionalContext is the documented channel that injects text into the model's context.
-printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":%s}}\n' \
-  "\"$MSG\""
+# Prefer jq to build the JSON (it escapes the string correctly); the printf fallback stays valid only because
+# MSG is a fixed constant with no quote/backslash/newline — keep it that way if you edit it.
+if command -v jq >/dev/null 2>&1; then
+  jq -cn --arg m "$MSG" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}'
+else
+  printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":%s}}\n' "\"$MSG\""
+fi
 exit 0
