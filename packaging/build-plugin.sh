@@ -17,11 +17,14 @@ cp -R "$SRC/commands" "$OUT/commands"
 VERSION="$(cat "$ROOT/VERSION")"
 cat > "$OUT/.claude-plugin/plugin.json" <<JSON
 {
+  "\$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "claude-starter-kit",
+  "displayName": "Claude Starter Kit",
   "description": "Agentic Working Kit — disciplined agents, skills, and slash commands for Claude Code. Lite edition: loads the agents/skills only; for the full scaffolding + gates use start.sh / adopt.sh.",
   "version": "${VERSION}",
   "author": { "name": "Barış Yerlikaya" },
   "homepage": "https://github.com/byerlikaya/claude-starter-kit",
+  "repository": "https://github.com/byerlikaya/claude-starter-kit",
   "license": "MIT",
   "keywords": ["claude-code", "agents", "skills", "workflow"]
 }

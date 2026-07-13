@@ -1,5 +1,6 @@
 ---
 name: privacy-agent-csk
+color: pink
 description: |
   KVKK/GDPR privacy auditor: legal basis/consent, data minimisation, retention, transparency, data-subject rights,
   cross-border transfer. Findings + fixes via `privacy-compliance`; writes no code.

@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: release   # publish waits for manual approval (see repo → Environments → release)
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Resolve version (VERSION file must match the tag)
         id: v
@@ -84,7 +84,7 @@ jobs:
             gh release create "$GITHUB_REF_NAME" "$TGZ" --title "$GITHUB_REF_NAME" --notes-file release-notes.md
           fi
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'

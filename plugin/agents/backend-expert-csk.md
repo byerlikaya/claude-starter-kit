@@ -1,5 +1,6 @@
 ---
 name: backend-expert-csk
+color: green
 description: |
   Senior .NET backend expert. Applies the project's backend-pattern skill (devarch-module = MediatR CQRS /
   IResult / AOP by default; a project may declare its own). New endpoints, handlers, validators, controllers.

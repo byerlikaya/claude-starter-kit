@@ -132,6 +132,6 @@ else
   WAS="$(head -1 "$MARK" 2>/dev/null)"
   # Repeated on every turn on purpose: the loaded context stays stale until the session is restarted.
   [ -n "$WAS" ] && [ "$WAS" != "$NOW" ] && \
-    echo "⚠️ kit updated $WAS → $NOW mid-session. The discipline in your context is the OLD one — do not act on it; ask the user to restart Claude Code."
+    echo "⚠️ kit updated $WAS → $NOW mid-session. The discipline in your context is the OLD one — do not act on it; ask the user to run /compact (or /clear) to reload it from disk — no restart needed."
 fi
 exit 0

@@ -52,7 +52,7 @@ Most "agent setups" are a pile of suggestions — the rules sit in a file, and w
 | **security-expert-csk** | 🔍 Audit | auth / IDOR / injection / secret · **mandatory if security-critical** | `sonnet` |
 | **privacy-agent-csk** | 🔍 Audit | personal data (KVKK / GDPR) | `sonnet` |
 | **test-expert-csk** | 🔍 Audit | tests, coverage, regression | `inherit` |
-| **review-agent-csk** | ✅ Close | pre-commit code-health review | `haiku` |
+| **review-agent-csk** | ✅ Close | pre-commit code-health review | `inherit` |
 | **commit-agent-csk** | ✅ Close | proposes the commit, waits for approval | `haiku` |
 | **session-manager-csk** | 🤝 Hand off | context fills / phase boundary | `haiku` |
 

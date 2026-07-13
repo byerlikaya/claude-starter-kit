@@ -1,5 +1,6 @@
 ---
 name: frontend-expert-csk
+color: purple
 description: |
   Stack-agnostic frontend expert — web (React/Next/Vue/Svelte/Angular), mobile (React Native/Flutter), desktop.
   UI, components/pages, navigation, state, i18n, accessibility, responsive, native bridge. The "how" lives in the

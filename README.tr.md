@@ -52,7 +52,7 @@
 | **security-expert-csk** | 🔍 Denetle | auth / IDOR / injection / secret · **güvenlik açısından kritikse zorunlu** | `sonnet` |
 | **privacy-agent-csk** | 🔍 Denetle | kişisel veri (KVKK / GDPR) | `sonnet` |
 | **test-expert-csk** | 🔍 Denetle | test, kapsam, regresyon | `inherit` |
-| **review-agent-csk** | ✅ Kapat | commit öncesi kod sağlığı denetimi | `haiku` |
+| **review-agent-csk** | ✅ Kapat | commit öncesi kod sağlığı denetimi | `inherit` |
 | **commit-agent-csk** | ✅ Kapat | commit'i önerir, onay bekler | `haiku` |
 | **session-manager-csk** | 🤝 Devret | bağlam dolduğunda / faz sınırında | `haiku` |
 

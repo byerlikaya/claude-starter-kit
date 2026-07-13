@@ -1,5 +1,6 @@
 ---
 name: security-expert-csk
+color: red
 description: |
   Security review expert: auth/authz, anonymous/token flows, secret leakage, injection, weak crypto, IDOR,
   rate limits, tampering surface. Findings + fixes via `security-scan` (plus `sonarqube-check` where used); writes no code.

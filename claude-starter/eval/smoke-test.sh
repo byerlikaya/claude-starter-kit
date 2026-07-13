@@ -339,8 +339,8 @@ echo "== 6f) always-on token budget =="
 # for that cost, and a gate rather than a reminder — a verbose new description fails the suite instead of
 # quietly taxing every future session. Budgets sit just above the current sizes: raising one is allowed, but
 # only as a deliberate edit here.
-BUDGET_DISC=9400     # DISCIPLINE.md (the discipline half of CLAUDE.md); currently 9184
-BUDGET_AGENTS=4700   # sum of agent frontmatter; currently 4551
+BUDGET_DISC=9550     # DISCIPLINE.md (the discipline half of CLAUDE.md); currently 9505 (1.4.0: §4.5 now names the RCE / gate-tampering / force-add categories the 1.3.0 gates enforce)
+BUDGET_AGENTS=4700   # sum of agent frontmatter; currently 4665 (1.4.0: color: field added to all 11 agents)
 BUDGET_SKILLS=9250   # sum of skill frontmatter; currently 9163 (brainstorm + reflect added ~660B always-on)
 fm_bytes(){ awk '/^---$/{c++; next} c==1' "$1" 2>/dev/null | wc -c | tr -d ' '; }
 if [ -f "$ROOT/CLAUDE.md" ]; then

@@ -1,5 +1,6 @@
 ---
 name: planner-csk
+color: cyan
 description: |
   Planning specialist. Before code: task breakdown + acceptance criteria + dependency order, via the
   `spec-planning` skill. Plans; does not write code.
