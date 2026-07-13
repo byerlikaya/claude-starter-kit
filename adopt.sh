@@ -207,6 +207,20 @@ if [ "$IS_GIT" = 1 ]; then
 fi
 row ".claude/CLAUDE.md in git" "$([ "$TRACKED" = 1 ] && echo "YES — shared with the team" || echo "no/untracked")"
 
+# Supply-chain scan (advisory, read-only): the project's OWN (non-csk) skills/agents may have been pulled from an
+# untrusted source. Scan them for red flags (curl|bash, prompt-injection directives, credential exfil) before the
+# kit starts coexisting with them. Heuristic; it NEVER blocks — it surfaces, the user judges.
+if { [ "$N_PAGENTS" != 0 ] || [ "$N_PSKILLS" != 0 ]; } && [ -f "$SRC/eval/scan-skill.sh" ]; then
+  SCANOUT="$(bash "$SRC/eval/scan-skill.sh" .claude 2>/dev/null)"
+  if printf '%s' "$SCANOUT" | grep -qE 'DANGER|REVIEW'; then
+    warn "supply-chain scan flagged existing project skills/agents (advisory — review before trusting them):"
+    printf '%s\n' "$SCANOUT" | grep -E 'DANGER|REVIEW' | sed 's/^/    /'
+    sub "    full report after install: bash .claude/eval/scan-skill.sh .claude  (heuristic; a security skill can score low by design)"
+  else
+    row "supply-chain scan" "existing project skills/agents look clean (no red flags)"
+  fi
+fi
+
 # co-author/sign-off convention (decision #3)
 COAUTHOR=0
 [ "$IS_GIT" = 1 ] && git log -80 --format='%b' 2>/dev/null | grep -qiE 'Co-Authored[-]By|Signed-off-by' && COAUTHOR=1  # [-] : not a contiguous literal in source (trace hook)
