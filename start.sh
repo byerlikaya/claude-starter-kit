@@ -144,7 +144,7 @@ if [ -z "$PROFILE" ]; then
   add  "frontend-expert-csk + frontend / frontend-design / a11y skills"
   skip "backend-expert-csk · database-expert-csk and all server skills NOT INSTALLED"
   echo
-  opt 3 "fullstack" 1 "~11 agents · 34 skills"
+  opt 3 "fullstack" 1 "~11 agents · ~34 skills"
   add  "everything — all agents + all skills: backend + web + mobile (RN/Expo) together"
   echo
   opt 4 "mobile"    0 "~9 agents · ~31 skills"
