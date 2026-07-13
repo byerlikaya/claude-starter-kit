@@ -31,6 +31,17 @@
 
 ---
 
+## 🚀 Hızlı başlangıç
+
+```bash
+npx @byerlikaya/claude-starter-kit          # sıfırdan proje — kurulum sihirbazı
+npx @byerlikaya/claude-starter-kit adopt    # mevcut proje — bir dalda güvenli devir
+```
+
+Ardından ilk Claude Code mesajın olarak **`.claude/FIRST_PROMPT.md`**'i yapıştır. Homebrew, release tarball ve plugin edisyonu aşağıdaki **Kurulum ve çalıştırma** bölümünde.
+
+---
+
 ## 🧠 Ajanlar — kitin kalbi
 
 **11 ajan** var; her biri bir **ince tetikleyici** — yalnızca *kim* ve *ne zaman* sorusunu yanıtlar, *nasıl* kısmını bir skill'e devreder. Ana thread onları **beş aşamada** seçip zincirler ve commit'ten önce kaliteyi kademe kademe yükseltir:
@@ -41,6 +52,9 @@
   🧭 **Anla** &nbsp;→&nbsp; 🔨 **Üret** &nbsp;→&nbsp; 🔍 **Denetle** &nbsp;→&nbsp; ✅ **Kapat** &nbsp;→&nbsp; 🤝 **Devret**
 
 </div>
+
+<details>
+<summary><b>11 ajan ve her birinin ne zaman devreye girdiği</b></summary>
 
 | Ajan | Aşama | Ne zaman devreye girer | Model |
 |:--|:--|:--|:--:|
@@ -55,6 +69,8 @@
 | **review-agent-csk** | ✅ Kapat | commit öncesi kod sağlığı denetimi | `inherit` |
 | **commit-agent-csk** | ✅ Kapat | commit'i önerir, onay bekler | `haiku` |
 | **session-manager-csk** | 🤝 Devret | bağlam dolduğunda / faz sınırında | `haiku` |
+
+</details>
 
 > Ajan adları `-csk` ekiyle (Claude Starter Kit) biter; böylece kurulduğu projenin kendi ajanlarıyla asla çakışmaz. Her ajan incedir; asıl yöntem bir **skill**'de yaşar — tek bilgi kaynağı orasıdır.
 

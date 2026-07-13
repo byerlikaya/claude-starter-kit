@@ -31,6 +31,17 @@ Most "agent setups" are a pile of suggestions — the rules sit in a file, and w
 
 ---
 
+## 🚀 Quick start
+
+```bash
+npx @byerlikaya/claude-starter-kit          # fresh project — setup wizard
+npx @byerlikaya/claude-starter-kit adopt    # existing project — safe handover on a branch
+```
+
+Then paste **`.claude/FIRST_PROMPT.md`** as your first Claude Code message. Homebrew, a release tarball, and the plugin edition are covered in **Install & run** below.
+
+---
+
 ## 🧠 The agents — the heart of the kit
 
 **11 agents**, each a **thin trigger** — it says only *who* and *when*, and delegates the *how* to a skill. The main thread selects and chains them across **five stages**, escalating quality before anything is committed:
@@ -41,6 +52,9 @@ Most "agent setups" are a pile of suggestions — the rules sit in a file, and w
   🧭 **Understand** &nbsp;→&nbsp; 🔨 **Produce** &nbsp;→&nbsp; 🔍 **Audit** &nbsp;→&nbsp; ✅ **Close** &nbsp;→&nbsp; 🤝 **Hand off**
 
 </div>
+
+<details>
+<summary><b>The 11 agents & when each fires</b></summary>
 
 | Agent | Stage | Fires when | Model |
 |:--|:--|:--|:--:|
@@ -55,6 +69,8 @@ Most "agent setups" are a pile of suggestions — the rules sit in a file, and w
 | **review-agent-csk** | ✅ Close | pre-commit code-health review | `inherit` |
 | **commit-agent-csk** | ✅ Close | proposes the commit, waits for approval | `haiku` |
 | **session-manager-csk** | 🤝 Hand off | context fills / phase boundary | `haiku` |
+
+</details>
 
 > Agent names carry a `-csk` suffix (Claude Starter Kit) so they never collide with the host project's own agents. Each agent is thin; the real method lives in a **skill** — the single source of truth.
 
