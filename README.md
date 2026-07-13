@@ -68,6 +68,23 @@ Most "agent setups" are a pile of suggestions — the rules sit in a file, and w
 
 ---
 
+## How this kit is different
+
+Most "agent setups" for Claude Code fall into two buckets: a **big prompt file** with rules, or a **collection of agents/skills** you wire together yourself. Both leave the hard part — *actually enforcing discipline* — to the model's goodwill. This kit doesn't.
+
+| What matters | Typical agent kit / prompt collection | Claude Starter Kit |
+|---|---|---|
+| **Critical rules** | Live in a `.md` file; honored only if the model remembers | **Enforced as gates** at the tool level — git hook (`trace-scan`), `settings.json` permissions, `guard-bash.sh` PreToolUse. Breaking them is *impossible*, not *discouraged* |
+| **Structure** | A single dev prompt, or a loose list of agents you orchestrate | **A team of 11 specialist agents** that auto-chain across 5 stages (Understand → Produce → Audit → Close → Hand off) — the main thread wires them, not you |
+| **Security & privacy** | Optional advice, easy to skip | **Mandatory audit gate** — risk-critical changes can't close before the security/privacy review clears |
+| **Commits** | Model may commit on its own | **Every commit is yours to approve** — enforced at the tool level even in auto/bypass mode |
+| **Adopting an existing repo** | "Start fresh" assumption; manual porting | **`adopt` hands the kit over on a branch** — `main` is never touched; you review before you keep it |
+| **Where the "how" lives** | Rules + method copied into each agent prompt → drift & duplication | **Agent = thin trigger** (who/when); the method lives once in a **skill** (single source of truth), reused across 30 skills |
+
+**In one line:** similar projects hand you *a pile of suggestions*; this kit drops a *disciplined engineering team* into Claude Code — where the rules that matter are **gates, not reminders**.
+
+---
+
 ## Install & run
 
 **Two entry points:** `start.sh` sets up a **fresh** project; **`adopt`** (`adopt.sh`) hands the kit over to an **existing** one. Pick any channel — each runs the same two commands.
@@ -230,6 +247,12 @@ An assistant cannot run `/context` itself, so most setups **guess** the session 
 |---|---|
 | Commit/push only with approval — in every permission mode | `guard-bash.sh` (PreToolUse) raises an approval prompt only you can answer; approve once and Claude runs the commit. Fails closed under `bypassPermissions`; `CLAUDE_GIT_OK=1` pre-authorises headless runs |
 | Destructive op (reset --hard · force push · rm -rf · --no-verify) | `guard-bash.sh` (blocked at the tool level) |
+| Remote-code-exec / permission-nuke (`curl…\|bash` · `chmod 777` · `dd of=`) | `guard-bash.sh` (hard-blocked in every mode) |
+| Disarming the gates (redirect `core.hooksPath`, or edit/delete a hook script) | `guard-bash.sh` (shell side) + `guard-write.sh` (Write/Edit side) — a gate you can silently remove is not a gate |
+| Committing straight onto the default branch | `guard-bash.sh` surfaces it in the approval prompt (a warning, not a block — a fresh project legitimately lives on `main`) |
+| Build/vendored artifact or oversized blob staged | `pre-commit` repo-bloat scan (`node_modules/`, `dist/`, `>5 MiB`, …; override via `CSK_MAX_FILE_BYTES`) |
+| Secret **file** staged (whole-file secret the content scan can miss) | `pre-commit` secret-file gate (`.env`, `id_rsa`, `*.pem/.key/.p12`, `.npmrc`, …; `.env.example`/`.sample`/`.template` stay committable) |
+| Force-add past `.gitignore` (`git add -f`) · deleting a lockfile | `guard-bash.sh` (blocked at the tool level) |
 | No AI-authorship trace or external vendor name in a commit | `pre-commit` + `commit-msg` git hook — scans your project's files; the kit's own `.claude/` tree is exempt (it names the tool it configures), secrets never are |
 | No API key / token / private key committed | `pre-commit` secret scan (`secret-blocklist.txt` + `.secret-allowlist.txt`) |
 | Session threshold | `context-usage.sh` + `session-guard.sh` (Stop hook) |

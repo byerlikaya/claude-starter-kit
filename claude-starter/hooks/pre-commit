@@ -35,9 +35,42 @@ git diff --cached --unified=0 -- . \
 git diff --cached --unified=0 -- . ':(top,exclude).claude' \
   | grep -E '^\+' | grep -Ev '^\+\+\+' > "$TRACE_F" || true
 
-{ [ -s "$TRACE_F" ] || [ -s "$SECRET_F" ]; } || exit 0
-
 HIT=0
+# (0) repo-bloat gate — scans the staged FILE LIST, not added lines: a binary produces no '^+' line, so this
+#     must run BEFORE the added-text early-exit below or it would never fire on the very files it targets.
+MAXBYTES="${CSK_MAX_FILE_BYTES:-5242880}"   # 5 MiB; override per-repo via env
+BLOAT_DIRS='(^|/)(node_modules|bower_components|dist|build|out|\.next|\.nuxt|\.svelte-kit|target|bin|obj|vendor|__pycache__|\.venv|venv|coverage|\.gradle)/'
+while IFS= read -r f; do
+  [ -z "$f" ] && continue
+  base="${f##*/}"
+  # (F) secret-FILE gate — a file that is a secret by its very NAME. The content scan (2) can miss it: a private
+  #     key is high-entropy, not a known prefix. .env.example/.sample/.template/.dist are committable templates.
+  is_secret_file=0
+  if printf '%s' "$base" | grep -qE '^\.env($|\.)' && ! printf '%s' "$base" | grep -qiE '\.(example|sample|template|dist|schema|md)$'; then
+    is_secret_file=1
+  fi
+  if printf '%s' "$f" | grep -qE '(^|/)(id_rsa|id_dsa|id_ecdsa|id_ed25519|\.npmrc|\.pypirc|\.htpasswd|credentials\.json)$|\.(pem|pfx|p12|ppk|key|keystore|jks)$'; then
+    is_secret_file=1
+  fi
+  if [ "$is_secret_file" = 1 ] && ! { [ -n "$SAL" ] && grep -qxF -- "$f" "$SAL"; }; then
+    echo "SECRET-FILE: '$f' is a secrets / credentials / private-key file — never commit it (gitignore it; ship a .env.example instead)."
+    HIT=1; continue
+  fi
+  if printf '%s\n' "$f" | grep -qE "$BLOAT_DIRS"; then
+    echo "REPO-BLOAT: '$f' is a build/vendored artifact — gitignore it, don't commit it."
+    HIT=1; continue
+  fi
+  sz="$(git cat-file -s ":$f" 2>/dev/null || echo 0)"
+  case "$sz" in ''|*[!0-9]*) sz=0;; esac
+  if [ "$sz" -gt "$MAXBYTES" ]; then
+    echo "REPO-BLOAT: '$f' is $((sz/1024)) KiB (> $((MAXBYTES/1024)) KiB) — large blobs bloat history; use Git LFS or gitignore."
+    HIT=1
+  fi
+done < <(git diff --cached --name-only --diff-filter=AM -- . 2>/dev/null)
+
+# Nothing staged for the text scans AND the bloat gate is clean -> done.
+{ [ -s "$TRACE_F" ] || [ -s "$SECRET_F" ] || [ "$HIT" -ne 0 ]; } || exit 0
+
 # (1) trace scan — case-INsensitive (vendor / AI-authorship strings), project files only
 if [ -f "$BL" ] && [ -s "$TRACE_F" ]; then
   while IFS= read -r pat || [ -n "$pat" ]; do
@@ -63,8 +96,9 @@ fi
 
 if [ "$HIT" -ne 0 ]; then
   echo "-----------------------------------------------------------"
-  echo "Commit stopped. Remove the AI-authorship trace / vendor name / secret from the staged changes."
-  echo "False positive? add the EXACT pattern line to .trace-allowlist.txt or .secret-allowlist.txt at the repo root."
+  echo "Commit stopped. Remove the AI-authorship trace / vendor name / secret / bloated file from the staged changes."
+  echo "False positive (trace/secret)? add the EXACT pattern line to .trace-allowlist.txt or .secret-allowlist.txt at the repo root."
+  echo "Large file is intentional? raise CSK_MAX_FILE_BYTES, use Git LFS, or gitignore the build/vendored path."
   echo "Deliberate exception: 'git commit --no-verify' — only on an EXPLICIT request (§4.5)."
   exit 1
 fi

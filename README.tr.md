@@ -68,6 +68,23 @@
 
 ---
 
+## Bu kit nasıl farklı?
+
+Claude Code için çıkan çoğu "agent kurulumu" iki gruba düşer: kuralların yazılı olduğu **büyük bir prompt dosyası**, ya da kendin birleştirdiğin bir **agent/skill koleksiyonu**. İkisi de asıl zor kısmı — *disiplini gerçekten uygulatmayı* — modelin iyi niyetine bırakır. Bu kit bırakmaz.
+
+| Önemli olan | Tipik agent kiti / prompt koleksiyonu | Claude Starter Kit |
+|---|---|---|
+| **Kritik kurallar** | Bir `.md` dosyasında durur; yalnız model hatırlarsa uygulanır | **Kapı olarak zorlanır** — araç seviyesinde: git hook (`trace-scan`), `settings.json` izinleri, `guard-bash.sh` PreToolUse. Kırmak *imkânsız*, "tavsiye edilmez" değil |
+| **Yapı** | Tek bir dev prompt ya da senin yönettiğin gevşek bir agent listesi | **11 uzman agent'lık bir ekip**, 5 aşamada kendiliğinden zincirlenir (Anla → Üret → Denetle → Kapat → Devret) — sen bağlamazsın, ana thread bağlar |
+| **Güvenlik & gizlilik** | İsteğe bağlı tavsiye, atlaması kolay | **Zorunlu audit kapısı** — risk-kritik değişiklik, güvenlik/gizlilik denetimi geçmeden kapanamaz |
+| **Commit'ler** | Model kendi başına commit atabilir | **Her commit senin onayına bağlı** — auto/bypass modda bile araç seviyesinde zorlanır |
+| **Mevcut repoya uyarlama** | "Sıfırdan başla" varsayımı; elle taşıma | **`adopt` kiti bir branch'te devreder** — `main`'e dokunulmaz; sen inceleyip tutmaya karar verirsin |
+| **"Nasıl" bilgisi nerede** | Kural + yöntem her agent prompt'una kopyalanır → çoğalma & tutarsızlık | **Agent = ince tetik** (kim/ne zaman); yöntem tek yerde, bir **skill**'te yaşar (tek doğruluk kaynağı), 30 skill'e yayılır |
+
+**Tek cümlede:** benzer projeler sana *bir öneri yığını* verir; bu kit Claude Code'a *disiplinli bir mühendislik ekibi* yerleştirir — önemli kuralların **hatırlatma değil, kapı** olduğu yerde.
+
+---
+
 ## Kurulum ve çalıştırma
 
 **İki giriş noktası var:** `start.sh` **sıfırdan** bir projeyi kurar; **`adopt`** (`adopt.sh`) ise kiti **mevcut** bir projeye devreder. Hangi kanalı seçersen seç, hepsi aynı iki komutu çalıştırır.
@@ -230,6 +247,12 @@ Bir asistan `/context` komutunu kendisi çalıştıramaz; bu yüzden çoğu kuru
 |---|---|
 | Commit/push yalnızca onayla — her izin modunda | `guard-bash.sh` (PreToolUse), yalnız senin cevaplayabileceğin bir onay istemi çıkarır; bir kez onayla, commit'i Claude atar. `bypassPermissions`'ta kapalı tarafa düşer; `CLAUDE_GIT_OK=1` headless koşuları önceden yetkilendirir |
 | Yıkıcı işlem (reset --hard · force push · rm -rf · --no-verify) | `guard-bash.sh` (araç seviyesinde bloklanır) |
+| Uzaktan-kod-çalıştırma / izin-yıkımı (`curl…\|bash` · `chmod 777` · `dd of=`) | `guard-bash.sh` (her modda sert blok) |
+| Kapıları sökme (`core.hooksPath` yönlendirme ya da bir hook script'ini düzenleme/silme) | `guard-bash.sh` (shell tarafı) + `guard-write.sh` (Write/Edit tarafı) — sökülebilen kapı, kapı değildir |
+| Doğrudan varsayılan branch'e commit | `guard-bash.sh` bunu onay istemine yazar (blok değil, uyarı — sıfırdan proje meşru olarak `main`'de yaşar) |
+| Build/vendored çıktı ya da aşırı büyük dosya stage'lenmiş | `pre-commit` repo-şişme taraması (`node_modules/`, `dist/`, `>5 MiB`, …; `CSK_MAX_FILE_BYTES` ile ayarlanır) |
+| Sır **dosyası** stage'lenmiş (içerik taramasının kaçırabileceği tüm-dosya sırrı) | `pre-commit` sır-dosyası kapısı (`.env`, `id_rsa`, `*.pem/.key/.p12`, `.npmrc`, …; `.env.example`/`.sample`/`.template` commit'lenebilir kalır) |
+| `.gitignore`'u atlayan zorla-ekleme (`git add -f`) · lockfile silme | `guard-bash.sh` (araç seviyesinde bloklanır) |
 | Commit'te yapay zekâ izi ya da dış vendor adı bulunmaz | `pre-commit` + `commit-msg` git hook — senin proje dosyalarını tarar; kitin kendi `.claude/` ağacı muaftır (yapılandırdığı aracın adını taşır), sırlar asla muaf değildir |
 | Commit'e API key / token / private key girmez | `pre-commit` secret taraması (`secret-blocklist.txt` + `.secret-allowlist.txt`) |
 | Oturum eşiği | `context-usage.sh` + `session-guard.sh` (Stop hook) |

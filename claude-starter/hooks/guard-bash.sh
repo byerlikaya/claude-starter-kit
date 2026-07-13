@@ -50,6 +50,25 @@ echo "$CMD" | grep -qE 'git +commit +.*--amend'            && block "git commit 
 echo "$CMD" | grep -qE 'rm +-[A-Za-z]*r[A-Za-z]* +.*(/|\*|~)' && block "destructive rm -rf" "4.5"
 echo "$CMD" | grep -qE '(^|[^a-zA-Z])(mkfs|dd +if=)'       && block "disk-level destructive command" "4.5"
 
+# §4.5 remote-code-execution & permission-nuke -> HARD BLOCK. A downloaded script piped straight into a shell
+# runs code no one has read; a world-writable chmod or a disk-overwriting dd is irreversible.
+echo "$CMD" | grep -qE '(curl|wget|fetch)([^|]|\|\|)*\|[[:space:]]*(sudo[[:space:]]+)?(bash|sh|zsh|python[0-9.]*|node|perl|ruby)([[:space:]]|$)' && block "pipe-to-shell (curl|bash RCE)" "4.5"
+echo "$CMD" | grep -qE '(^|[^a-zA-Z])dd[[:space:]]+([^|]*[[:space:]])?of='  && block "dd of= (disk overwrite)" "4.5"
+echo "$CMD" | grep -qE '(^|[^a-zA-Z])chmod[[:space:]]+(-[A-Za-z]*[[:space:]]+)*(0?777|a=?\+?rwx|\+rwx)([[:space:]]|$)' && block "chmod 777 (world-writable)" "4.5"
+
+# §4.5 gate-tampering -> HARD BLOCK. A gate you can silently remove is not a gate: redirecting core.hooksPath,
+# or deleting/overwriting/patching the hook scripts, would disarm the trace/secret/approval gates in one line.
+echo "$CMD" | grep -qE 'git[[:space:]]+config\b[^|]*core\.hooksPath'                       && block "git config core.hooksPath (disarms the git hooks)" "4.5"
+echo "$CMD" | grep -qE '(rm|mv|cp|truncate|tee|install|ln)\b[^|]*\.claude/(hooks|settings\.json)' && block "tampering with a .claude gate file" "4.5"
+echo "$CMD" | grep -qE 'sed[[:space:]]+-i[^|]*\.claude/(hooks|settings\.json)'             && block "in-place edit of a .claude gate file" "4.5"
+echo "$CMD" | grep -qE '(rm|mv|cp|truncate|tee|chmod|sed[[:space:]]+-i)\b[^|]*\.git/hooks/' && block "tampering with .git/hooks" "4.5"
+echo "$CMD" | grep -qE '>[[:space:]]*[^|]*\.claude/(hooks|settings\.json)'                 && block "redirect over a .claude gate file" "4.5"
+
+# §4.5 force-add bypasses .gitignore (sneaks build output / secrets past the bloat & ignore rules); deleting a
+# lockfile is a §4.5 op the discipline already names. Both are only done on an explicit request.
+echo "$CMD" | grep -qE 'git[[:space:]]+add[[:space:]]+([^;&|]*[[:space:]])?(-[A-Za-z]*f[A-Za-z]*|--force)([[:space:]]|$)' && block "git add -f (bypasses .gitignore)" "4.5"
+echo "$CMD" | grep -qE '(rm|git[[:space:]]+rm)\b[^|]*(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|npm-shrinkwrap\.json|Gemfile\.lock|poetry\.lock|Pipfile\.lock|Cargo\.lock|composer\.lock|go\.sum|packages\.lock\.json)' && block "lockfile deletion" "4.5"
+
 # --- §4.4 commit/push approval gate ---
 # Escape a shell string into a JSON string body. A raw control character inside a JSON string is a parse
 # error, and the reason text is attacker-adjacent (it is the model's own command line), so:
@@ -87,11 +106,19 @@ if is_git_write "$CMD"; then
       # A prompt provably reaches the user in these modes: ask, and let them approve in one keypress.
       SHORT="$CMD"
       [ "${#SHORT}" -gt 300 ] && SHORT="$(printf '%s' "$SHORT" | cut -c1-300)…"
+      # §4.4 branch guard: committing straight onto main/master is not blocked (a fresh project legitimately
+      # lives on main), but it is surfaced in the approval prompt so the user can send it to a branch instead.
+      BRANCH_WARN=""
+      case "$(git rev-parse --abbrev-ref HEAD 2>/dev/null)" in
+        main|master) BRANCH_WARN="⚠️  This commits DIRECTLY to the default branch. Prefer a feature branch unless you meant to.
+
+" ;;
+      esac
       ask_user "§4.4 commit/push approval gate. Claude wants to run:
 
 $SHORT
 
-Approve only if the commit message above was shown to you and you agree with it. Approving lets Claude run the command itself."
+${BRANCH_WARN}Approve only if the commit message above was shown to you and you agree with it. Approving lets Claude run the command itself."
       ;;
     *)
       # bypassPermissions, plan, or an unrecognised/absent mode: we cannot prove the prompt would reach a
