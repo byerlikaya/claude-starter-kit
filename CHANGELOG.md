@@ -3,6 +3,50 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [1.4.0] - 2026-07-13
+
+### Added
+- **Four new skills.** `systematic-debugging` (root-cause a bug before touching a fix), `frontend-design` (visual/UX
+  quality above architecture and a11y), `mcp-builder` (build a Model Context Protocol server), and `worktree`
+  (isolate risky or parallel file-mutating work in a git worktree so uncommitted changes are never clobbered). 34 skills total.
+- **Two slash commands.** `/update-csk` (version-check → update → verify with the doctor → prompt `/compact` to
+  reload) and `/doctor-csk` (health-check a live install — hooks executable, `core.hooksPath` set, gates wired),
+  backed by `eval/doctor.sh`.
+- **The plugin edition now ships the tool-level gate hooks** (`guard-bash`, `guard-write`, `context-usage`,
+  `session-guard`, `session-rehydrate`) via an auto-discovered `hooks/hooks.json` resolved through
+  `${CLAUDE_PLUGIN_ROOT}`. The git-commit trace/secret/bloat scan still needs the full install.
+- **Session rehydration.** A `SessionStart` hook re-surfaces `docs/SESSION_STATE.md` across a `/compact` or
+  `/clear` boundary, completing the handoff → clear → resume loop.
+- **adopt branch choice.** `--here` / `--new-branch` flags plus a smart default (first adopt → a review branch; a
+  routine update whose `.claude/` is gitignored → the current branch; a tracked `.claude/` → ask).
+- **Install-time supply-chain scan.** `eval/scan-skill.sh` scores a skill/agent file for red flags (pipe-to-shell,
+  known exfil hosts, prompt-injection directives, credential-file reads); `adopt` runs it read-only over the
+  project's existing (non-csk) skills/agents and surfaces any finding — advisory, never blocking.
+
+### Changed
+- **Progressive-disclosure retrofit** of eight skills — depth moved into `references/`, loaded on demand, to lower
+  the on-invoke cost without touching the always-on budget.
+- **Review rigor.** `code-review` gained a two-stage verdict (verify a finding before reporting it) and a named
+  lens panel; `routing-eval` gained negative routing tests; `AGENT_TEMPLATE` documents a test-first workflow.
+- **README** front-loads a Quick Start and collapses the agent table so install is visible in the first screen;
+  counts refreshed to 34 skills.
+- **Token hygiene.** A per-skill frontmatter ratchet and a cache-stable-ordering note. (Description trimming was
+  deliberately not done — it would trade routing reliability for a marginal always-on saving.)
+- `review-agent-csk` inherits the session model; every agent carries a `color`; CI uses `actions/*@v5` and
+  validates the plugin manifest.
+
+### Fixed
+- **Security — tool-level gate bypasses (from an adversarial audit).** `guard-bash.sh` now uses one git matcher that
+  catches `git -C …` / TAB separators, quote/backtick-wrapped `git commit`/`push`, `--force-with-lease`,
+  `git -c core.hooksPath=…`, and the no-jq/no-python3 fallback — without over-blocking a commit whose message merely
+  contains a subcommand word. Gate-tamper is matched by target path (interpreters, variable-indirected redirects,
+  `.git/hooks`), so a guard hook cannot be silently rewritten. Reading a `.env` through the Bash tool is blocked.
+- **`doctor.sh`** no longer reports "healthy" on a disarmed install — a missing git hook, an empty hook array, or a
+  hook neutered to `exit 0` (caught by a behaviour probe) all fail.
+- **`profiles.conf`** — a `--backend` install could ship `frontend-design` (a UI-only skill); it is now pruned.
+- **Installer hygiene** — `start.sh` makes hooks executable via a glob so a hook added later is covered; kit-only
+  smoke-test checks are guarded so an installed project (and the `e2e` rehearsal) pass.
+
 ## [1.3.0] - 2026-07-13
 
 ### Added
