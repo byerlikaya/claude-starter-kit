@@ -304,7 +304,9 @@ fi
 echo "  Profile '$PROFILE' (stack: $STACK): $(ls .claude/agents/*.md 2>/dev/null | wc -l | tr -d ' ') agents, $(ls -d .claude/skills/*/ 2>/dev/null | wc -l | tr -d ' ') skills installed."
 [ -f "$SRC/settings.json" ] && cp "$SRC/settings.json" .claude/settings.json
 [ -f "$HERE/VERSION" ] && cp "$HERE/VERSION" .claude/VERSION   # make the kit version trackable in the installed project
-chmod +x .claude/hooks/pre-commit .claude/hooks/commit-msg .claude/hooks/guard-bash.sh .claude/hooks/context-usage.sh .claude/hooks/session-guard.sh .claude/eval/smoke-test.sh .claude/eval/routing-eval.sh 2>/dev/null || true
+# Glob form so every shipped hook/eval is made executable — including ones added later (guard-write.sh,
+# session-rehydrate.sh, …). An explicit list silently missed new hooks and left them non-executable.
+chmod +x .claude/hooks/*.sh .claude/hooks/pre-commit .claude/hooks/commit-msg .claude/eval/*.sh 2>/dev/null || true
 cp "$SRC/AGENT_TEMPLATE.md" .claude/ 2>/dev/null || true
 cp "$SRC/FIRST_PROMPT.md"   .claude/ 2>/dev/null || true
 cp "$SRC/README.md"         .claude/ 2>/dev/null || true

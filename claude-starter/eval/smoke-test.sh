@@ -476,6 +476,25 @@ else
   fail "plugin/hooks/hooks.json missing — run packaging/build-plugin.sh"
 fi
 
+echo "== 7e) install doctor + installer hygiene (P7) =="
+[ -x "$ROOT/eval/doctor.sh" ] && pass "doctor.sh +x" || fail "doctor.sh missing/not executable"
+# doctor must PASS a healthy install and FAIL a broken one (a non-executable hook = a silently-skipped gate).
+DOC="$(mktemp -d)"
+( cd "$DOC"; git init -q >/dev/null 2>&1; git config user.email t@t; git config user.name t; mkdir -p .claude/hooks
+  cp "$HOOKS"/*.sh .claude/hooks/ 2>/dev/null; cp "$HOOKS/pre-commit" "$HOOKS/commit-msg" .claude/hooks/ 2>/dev/null
+  cp "$ROOT/settings.json" .claude/ 2>/dev/null; echo "0.0.0" > .claude/VERSION
+  chmod +x .claude/hooks/*.sh .claude/hooks/pre-commit .claude/hooks/commit-msg
+  git config core.hooksPath .claude/hooks )
+bash "$ROOT/eval/doctor.sh" "$DOC" >/dev/null 2>&1 && pass "doctor: healthy install -> exit 0" || fail "doctor flagged a healthy install"
+chmod -x "$DOC/.claude/hooks/guard-write.sh" 2>/dev/null
+bash "$ROOT/eval/doctor.sh" "$DOC" >/dev/null 2>&1 && fail "doctor PASSED a broken install (non-exec hook)" || pass "doctor: broken install -> exit != 0"
+rm -rf "$DOC"
+# start.sh must chmod hooks via a glob, so a hook added later is still made executable (an explicit list missed some).
+grep -qE 'chmod \+x .*\.claude/hooks/\*\.sh' "$(cd "$ROOT/.." && pwd)/start.sh" \
+  && pass "start.sh chmods hooks via glob (future hooks covered)" \
+  || fail "start.sh chmod is not glob-based — a new hook can ship non-executable"
+for c in update-csk doctor-csk; do [ -f "$ROOT/commands/$c.md" ] && pass "/$c present" || fail "/$c command missing"; done
+
 echo "== 8) Slash commands =="
 for c in simplify plan review ship handoff; do
   [ -f "$ROOT/commands/$c.md" ] && pass "/$c present" || fail "/$c command missing"

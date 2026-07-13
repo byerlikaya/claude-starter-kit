@@ -13,6 +13,15 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 SRC="$HERE/claude-starter"
 [ -d "$SRC" ] || { echo "ERROR: claude-starter/ not found (must be in the same directory as adopt.sh)."; exit 1; }
 
+# --- flags (B5 — where a refresh lands) ---  --here: the current branch · --new-branch: a fresh review branch.
+# Left empty, Stage 2 picks a smart default (first adopt -> new; update + untracked .claude -> here; update +
+# tracked -> ask). Unknown flags are ignored here (start.sh owns --backend/--dotnet/… ; adopt auto-detects shape).
+BRANCH_MODE=""
+for _a in "$@"; do case "$_a" in
+  --here)       BRANCH_MODE=here ;;
+  --new-branch) BRANCH_MODE=new  ;;
+esac; done
+
 # --- color: only on an interactive TTY (same guard as start.sh) ---
 if [ -t 1 ] && [ "${TERM:-dumb}" != "dumb" ] && [ -z "${NO_COLOR:-}" ]; then
   R=$'\033[0m'; B=$'\033[1m'; D=$'\033[2m'; CY=$'\033[36m'; GR=$'\033[32m'; YE=$'\033[33m'; MG=$'\033[35m'
@@ -341,25 +350,55 @@ case "$COLLIDE_MODE" in
 esac
 
 # ================= [STAGE 2] HANDOVER BRANCH + COEXIST =================
-h1 "Stage 2 — handover branch + coexist"
-sub "Installs the kit on a SEPARATE git branch; does NOT touch project files (never-overwrite). Review the diff, roll back with git."
+h1 "Stage 2 — apply the kit (coexist)"
 if [ "$IS_GIT" != 1 ]; then
-  warn "no git repo — cannot open a handover branch. First:  git init && git add -A && git commit -m init  (then run again)."
+  warn "no git repo — cannot apply safely. First:  git init && git add -A && git commit -m init  (then run again)."
   exit 0
 fi
-if ! ask_yes "Open the handover branch and apply coexist? (mutation; the result can be rolled back with git)"; then
+
+# --- Branch decision (B5): where does this land? A flag wins; otherwise a smart default. ---
+# A new branch isolates a big first change so the main line stays clean until you review. But on a routine UPDATE
+# of a project whose .claude/ is gitignored, a forced new branch is empty and pointless — the refresh lands on disk
+# with no tracked diff to review, so a branch is pure noise on top of your working branch.
+BASE="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)"
+DEC_BR="$BRANCH_MODE"
+if [ -z "$DEC_BR" ]; then
+  if   [ "$KIT_PRESENT" != 1 ]; then DEC_BR=new     # first adopt: isolate the change, keep the main line clean
+  elif [ "$TRACKED" != 1 ];     then DEC_BR=here    # update + untracked .claude: no tracked diff -> a branch is noise
+  elif [ -t 0 ]; then                               # update + tracked: a real diff exists -> prefer new, but ask
+    ask_yes "Apply on a NEW review branch? (no = apply on the current branch '$BASE')" && DEC_BR=new || DEC_BR=here
+  else DEC_BR=new; fi                               # non-interactive + tracked: the safe default is a new branch
+fi
+
+if [ "$DEC_BR" = here ]; then WHERE="the current branch '$BASE'"; else WHERE="a new review branch (off '$BASE')"; fi
+if ! ask_yes "Apply the kit onto $WHERE now? (mutation; staged-not-committed, reversible with git)"; then
   h1 "Stopped"; sub "Stayed at Stage 1 — NOTHING CHANGED (read-only)."; exit 0
 fi
 
-BASE="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)"
-case "$BASE" in kit-adopt-*) warn "HEAD is a prior adopt branch ($BASE) — the review diff will be vs it, not your main line. Consider 'git checkout <main>' first." ;; esac
-TS="$(date +%Y%m%d-%H%M%S)"; BR="kit-adopt-$TS"
-# The timestamp is only second-resolution, so two adopts in the same repo within one second would collide on the
-# branch name and the second `checkout -b` would fail. Append a counter until the name is free (also covers a
-# re-run after a discarded attempt left the branch behind).
-n=2; while git rev-parse --verify -q "refs/heads/$BR" >/dev/null 2>&1; do BR="kit-adopt-$TS-$n"; n=$((n+1)); done
-git checkout -b "$BR" >/dev/null 2>&1 || { echo "ERROR: could not open branch '$BR'."; exit 1; }
-echo "  handover branch: ${B}$BR${R}  (${BASE} stays clean)"
+if [ "$DEC_BR" = here ]; then
+  BR="$BASE"                                          # $BR is referenced downstream; on 'here' it IS the current branch
+  echo "  applying on the current branch: ${B}$BASE${R}  (no separate branch; staged, HEAD untouched until you commit)"
+  BR_HANDOVER_LINE="Applied on the current branch: $BASE (the change set is STAGED-not-committed — review in 'git status' / your editor, then commit; HEAD untouched until you do)."
+  GEN_WHERE="current branch $BASE"
+  ADR_BR_STATUS="accepted (applied on current branch: $BASE — staged, not committed)"
+  ONBRANCH_LINE="You are on your current branch $BASE with everything STAGED but NOT committed."
+  ACCEPT_LINE="accept:   git commit -m 'adopt agentic kit'"
+  DISCARD_LINE="discard:  git reset --hard HEAD   (un-stages everything; nothing was committed)"
+else
+  case "$BASE" in kit-adopt-*) warn "HEAD is a prior adopt branch ($BASE) — the review diff will be vs it, not your main line. Consider 'git checkout <main>' first." ;; esac
+  TS="$(date +%Y%m%d-%H%M%S)"; BR="kit-adopt-$TS"
+  # Second-resolution timestamp: two adopts within one second would collide and the second checkout would fail.
+  # Bump a counter until the name is free (also covers a re-run after a discarded attempt left the branch behind).
+  n=2; while git rev-parse --verify -q "refs/heads/$BR" >/dev/null 2>&1; do BR="kit-adopt-$TS-$n"; n=$((n+1)); done
+  git checkout -b "$BR" >/dev/null 2>&1 || { echo "ERROR: could not open branch '$BR'."; exit 1; }
+  echo "  handover branch: ${B}$BR${R}  (${BASE} stays clean)"
+  BR_HANDOVER_LINE="Handover branch: $BR  ($BASE untouched; the change set is STAGED-not-committed — review in your editor / 'git status', then commit)."
+  GEN_WHERE="branch $BR"
+  ADR_BR_STATUS="accepted (handover branch: $BR)"
+  ONBRANCH_LINE="You are on branch $BR with everything STAGED but NOT committed."
+  ACCEPT_LINE="accept:   git commit -m 'adopt agentic kit'   then:  git checkout $BASE && git merge $BR"
+  DISCARD_LINE="discard:  git reset --hard $BASE && git checkout $BASE && git branch -D $BR"
+fi
 
 mkdir -p .claude
 # Honour the shape recorded at install time. A fresh adopt has no kit.conf and installs the full payload
@@ -631,7 +670,7 @@ cat > docs/HANDOVER.md <<HAND
 - settings.json: schema-aware merge (project hooks/permissions PRESERVED + kit added).
 - Git gates: $HOOKDESC.
 - Overlapping roles: $MERGE_NOTE.
-- Handover branch: $BR  ($BASE untouched; the change set is STAGED-not-committed — review in your editor / 'git status', then commit).
+- $BR_HANDOVER_LINE
 
 ## Decisions made (smart suggestion; review/override in Stage B)
 | # | Decision | Value |
@@ -654,7 +693,7 @@ ${HIDE_NOTE:+- [ ] HIDE chosen — after merge run:  $HIDE_NOTE}
 $OFFSEC
 
 ---
-Generated: kit adopt · $DATE_H · branch $BR  (apart from this line there is NO tool SIGNATURE)
+Generated: kit adopt · $DATE_H · $GEN_WHERE  (apart from this line there is NO tool SIGNATURE)
 HAND
 echo "  docs/HANDOVER.md written"
 
@@ -665,7 +704,7 @@ if [ ! -e "$ADR1" ]; then
 # ADR-0001: The Agentic Kit was handed over to this project
 
 - Date: $DATE_H
-- Status: accepted (handover branch: $BR)
+- Status: $ADR_BR_STATUS
 
 ## Context
 The existing project was equipped for agentic work with the standard kit under a "team-to-team handover" logic.
@@ -695,9 +734,9 @@ git add .claude CLAUDE.md docs >/dev/null 2>&1
 
 h1 "Review in your editor — nothing committed yet"
 row "staged" "$(git diff --cached --stat 2>/dev/null | tail -1 || echo '(none)')"
-sub "You are on branch $BR with everything STAGED but NOT committed."
+sub "$ONBRANCH_LINE"
 sub "see it:   open the Source Control / Changes panel (every added + changed file is listed)  ·  or: git status"
-sub "accept:   git commit -m 'adopt agentic kit'   then:  git checkout $BASE && git merge $BR"
-sub "discard:  git reset --hard $BASE && git checkout $BASE && git branch -D $BR"
-warn "If Claude Code is running in this project, RESTART it — CLAUDE.md and the discipline load at session start,"
-printf '     %sso a session opened before this run keeps quoting the previous version'"'"'s rules.%s\n' "$D" "$R"
+sub "$ACCEPT_LINE"
+sub "$DISCARD_LINE"
+warn "If Claude Code is running in this project, run /compact (or /clear) — CLAUDE.md and the discipline reload"
+printf '     %son /compact and /clear in the same process, so a session opened before this run stops quoting the old rules (no restart needed).%s\n' "$D" "$R"
