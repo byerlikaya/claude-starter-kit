@@ -56,29 +56,9 @@ Bound to the handler via `[ValidationAspect(typeof(TValidator))]` — no manual 
 User-facing texts come from the `Messages` constants; **a new message → all project languages**
 (default TR/EN/DE/RU), the Languages/Translates pattern. Leave no missing translation (no deferral).
 
-## Skeleton example (write with project-specific names; no vendor name)
-```csharp
-public class CreateOrderCommand : IRequest<IResult>
-{
-    public int CustomerId { get; set; }
+## Skeleton example
 
-    public class CreateOrderCommandHandler : IRequestHandler<CreateOrderCommand, IResult>
-    {
-        private readonly IOrderRepository _orders;
-        public CreateOrderCommandHandler(IOrderRepository orders) => _orders = orders;
-
-        [SecuredOperation(Priority = 1)]
-        [ValidationAspect(typeof(CreateOrderValidator), Priority = 2)]
-        [CacheRemoveAspect]
-        public async Task<IResult> Handle(CreateOrderCommand request, CancellationToken ct)
-        {
-            _orders.Add(new Order { CustomerId = request.CustomerId });
-            await _orders.SaveChangesAsync();
-            return new SuccessResult(Messages.Added);
-        }
-    }
-}
-```
+A full command/handler/validator skeleton (write with project-specific names; no vendor name): **`references/skeleton.md`**.
 
 ## DoD (this skill's contribution)
 - `sonarqube-check` 0/0/0/0, build 0 warnings/0 errors; `test-expert-csk` green; `/simplify` applied.

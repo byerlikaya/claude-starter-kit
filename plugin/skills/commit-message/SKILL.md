@@ -50,12 +50,8 @@ git add <specific/file>
 Each commit focused on a single topic; "feat + fix + refactor" doesn't belong in one commit.
 
 ## Good / bad
-| ✅ Good | ❌ Bad |
-|---|---|
-| `fix(db): return 404 instead of 403 on IDOR (prevent entity leak)` | `fix: db issue` |
-| `refactor(api): consolidate query handlers into one contract` | `refactor stuff` |
-| `feat(session): session-health line + threshold rule` | `feat: added new stuff` |
-| `revert: "feat(auth): code TTL"` (sha) | `reverted it` |
+
+Worked good-vs-bad commit examples: **`references/examples.md`**.
 
 ## Rules
 - **Atomic:** one logical change = one commit.
