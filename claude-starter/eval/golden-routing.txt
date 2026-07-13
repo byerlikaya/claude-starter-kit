@@ -39,3 +39,4 @@ build an MCP server to expose these tools to Claude|mcp-builder
 design the database schema|!frontend-design
 read the model context and summarize it|!mcp-builder
 optimize the slow sql query performance|!systematic-debugging
+isolate this work in a git worktree before the parallel agents run|worktree
