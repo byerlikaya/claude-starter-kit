@@ -38,6 +38,11 @@ Trigger: when a public API, command, configuration, or user-visible behavior cha
 - **Example > paragraph** — a working example beats three paragraphs.
 - **Minimal** — don't write a giant doc no one will maintain; answer the most-asked question.
 
+## Co-authoring a longer doc (guide, tutorial, README rewrite)
+For a substantial doc the content lives in the author's head, not the diff — don't guess it. Interview for intent
+and audience, draft in passes, and let the user steer before you polish. The collaborative workflow (audience/intent
+questions, outline-first, section-by-section drafting, revision loop): **`references/coauthoring.md`**.
+
 ## Invariant rules
 1. **Correctness > completeness** — don't write a wrong doc; if unsure, flag it/ask.
 2. **Examples must work.**

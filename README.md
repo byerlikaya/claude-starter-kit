@@ -9,7 +9,7 @@
 ![Version](https://img.shields.io/badge/version-1.3.0-2563eb?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)
 ![Agents](https://img.shields.io/badge/agents-11-f59e0b?style=flat-square)
-![Skills](https://img.shields.io/badge/skills-30-f59e0b?style=flat-square)
+![Skills](https://img.shields.io/badge/skills-34-f59e0b?style=flat-square)
 ![Claude Code](https://img.shields.io/badge/Claude_Code-agentic_kit-8b5cf6?style=flat-square)
 
 🇬🇧 English · [🇹🇷 Türkçe](README.tr.md)
@@ -31,6 +31,17 @@ Most "agent setups" are a pile of suggestions — the rules sit in a file, and w
 
 ---
 
+## 🚀 Quick start
+
+```bash
+npx @byerlikaya/claude-starter-kit          # fresh project — setup wizard
+npx @byerlikaya/claude-starter-kit adopt    # existing project — safe handover on a branch
+```
+
+Then paste **`.claude/FIRST_PROMPT.md`** as your first Claude Code message. Homebrew, a release tarball, and the plugin edition are covered in **Install & run** below.
+
+---
+
 ## 🧠 The agents — the heart of the kit
 
 **11 agents**, each a **thin trigger** — it says only *who* and *when*, and delegates the *how* to a skill. The main thread selects and chains them across **five stages**, escalating quality before anything is committed:
@@ -42,6 +53,9 @@ Most "agent setups" are a pile of suggestions — the rules sit in a file, and w
 
 </div>
 
+<details>
+<summary><b>The 11 agents & when each fires</b></summary>
+
 | Agent | Stage | Fires when | Model |
 |:--|:--|:--|:--:|
 | **planner-csk** | 🧭 Understand | scope is ambiguous | `inherit` |
@@ -52,9 +66,11 @@ Most "agent setups" are a pile of suggestions — the rules sit in a file, and w
 | **security-expert-csk** | 🔍 Audit | auth / IDOR / injection / secret · **mandatory if security-critical** | `sonnet` |
 | **privacy-agent-csk** | 🔍 Audit | personal data (KVKK / GDPR) | `sonnet` |
 | **test-expert-csk** | 🔍 Audit | tests, coverage, regression | `inherit` |
-| **review-agent-csk** | ✅ Close | pre-commit code-health review | `haiku` |
+| **review-agent-csk** | ✅ Close | pre-commit code-health review | `inherit` |
 | **commit-agent-csk** | ✅ Close | proposes the commit, waits for approval | `haiku` |
 | **session-manager-csk** | 🤝 Hand off | context fills / phase boundary | `haiku` |
+
+</details>
 
 > Agent names carry a `-csk` suffix (Claude Starter Kit) so they never collide with the host project's own agents. Each agent is thin; the real method lives in a **skill** — the single source of truth.
 
@@ -79,7 +95,7 @@ Most "agent setups" for Claude Code fall into two buckets: a **big prompt file**
 | **Security & privacy** | Optional advice, easy to skip | **Mandatory audit gate** — risk-critical changes can't close before the security/privacy review clears |
 | **Commits** | Model may commit on its own | **Every commit is yours to approve** — enforced at the tool level even in auto/bypass mode |
 | **Adopting an existing repo** | "Start fresh" assumption; manual porting | **`adopt` hands the kit over on a branch** — `main` is never touched; you review before you keep it |
-| **Where the "how" lives** | Rules + method copied into each agent prompt → drift & duplication | **Agent = thin trigger** (who/when); the method lives once in a **skill** (single source of truth), reused across 30 skills |
+| **Where the "how" lives** | Rules + method copied into each agent prompt → drift & duplication | **Agent = thin trigger** (who/when); the method lives once in a **skill** (single source of truth), reused across 34 skills |
 
 **In one line:** similar projects hand you *a pile of suggestions*; this kit drops a *disciplined engineering team* into Claude Code — where the rules that matter are **gates, not reminders**.
 
@@ -166,6 +182,8 @@ gh release download --repo byerlikaya/claude-starter-kit -p '*.tgz' && tar xzf c
 
 At install time the kit stamps `.claude/kit.conf` with the profile, the backend stack and which installer ran, plus `.claude/VERSION`. The updater reads that stamp and refreshes the project **in the shape it was installed in**: a `--backend` project does not get frontend agents grafted back on, and a `--dotnet` project keeps its `devarch-module` pattern skill. Where the stamp is absent, the updater derives the shape from the installed files and writes it. Compare `cat .claude/VERSION` against `npm view @byerlikaya/claude-starter-kit version` to see whether an update is waiting.
 
+Inside a running Claude Code session you can also run **`/update-csk`** — it does the version check, runs the updater if a newer version exists, verifies the result with `/doctor-csk`, and then prompts `/compact` to reload the refreshed discipline in the same session. To check a live install's health at any time, run **`/doctor-csk`** (hooks executable · `core.hooksPath` set · gates wired).
+
 | | On update |
 |---|---|
 | `.claude/` agents · skills · commands · hooks · eval | refreshed from the new version |
@@ -174,7 +192,7 @@ At install time the kit stamps `.claude/kit.conf` with the profile, the backend 
 | `.claude/settings.json` | merged schema-aware; your own hooks and permissions survive |
 | your own agents and skills (no `-csk` suffix) | untouched |
 
-Like `adopt`, an update needs a git repo and lands on a `kit-adopt-<timestamp>` branch, staged and uncommitted — review the diff, then commit to accept or reset to discard.
+Like `adopt`, an update needs a git repo. Where the change lands is now a choice: a first adopt opens a `kit-adopt-<timestamp>` review branch (keeps your main line clean); a routine update whose `.claude/` is gitignored applies on your **current** branch (a separate branch would just be empty); an update with a **tracked** `.claude/` asks. Force it with `--here` or `--new-branch`. Either way the change is staged and uncommitted — review the diff, then commit to accept or reset to discard.
 
 > If a project's `CLAUDE.md` carries the discipline **inline** instead of importing it, discipline updates cannot reach that project. The updater detects this, shows which lines hold the inline block, and offers to replace them with the single `@.claude/DISCIPLINE.md` import — writing a backup first, on a branch you review. Decline and nothing is touched; your project section and your own rules survive either way.
 
@@ -183,13 +201,13 @@ Like `adopt`, an update needs a git repo and lands on a `kit-adopt-<timestamp>` 
 ## What's inside
 
 - **11 agents** — see the table above.
-- **30 skills** — the single source of "how", one per area (full catalogue below).
-- **6 slash commands** — `/brainstorm` · `/plan` · `/review` · `/ship` · `/handoff` · `/simplify`.
-- **Hooks** — `guard-bash.sh` (tool-level gate), `pre-commit` + `commit-msg` (trace + secret scan), `context-usage.sh` and `session-guard.sh` (session measurement).
+- **34 skills** — the single source of "how", one per area (full catalogue below).
+- **8 slash commands** — `/brainstorm` · `/plan` · `/review` · `/ship` · `/handoff` · `/simplify` · `/update-csk` (update the installed kit) · `/doctor-csk` (health-check the install).
+- **Hooks** — `guard-bash.sh` + `guard-write.sh` (tool-level command/write gates), `pre-commit` + `commit-msg` (trace + secret + bloat scan), `context-usage.sh` and `session-guard.sh` (session measurement), `session-rehydrate.sh` (re-surface the handover after /compact or /clear). The plugin edition ships these gate hooks too.
 - **CLAUDE.md** — behavior, the three principles, workflow, Definition of Done, token discipline, and prohibitions.
 
 <details>
-<summary><b>Full skill catalogue</b> — all 30, generated from each skill</summary>
+<summary><b>Full skill catalogue</b> — all 34, generated from each skill</summary>
 
 <!-- SKILLS:START -->
 
@@ -206,12 +224,14 @@ Like `adopt`, an update needs a git repo and lands on a `kit-adopt-<timestamp>` 
 | `dependency-audit` | Dependency audit: known CVEs, licence compliance, abandoned/outdated packages, lockfile integrity, and a justification for every new… |
 | `devarch-module` | DevArchitecture backend pattern: MediatR CQRS handler/command/query, IResult/IDataResult, Autofac AOP chain, FluentValidation, i18n. |
 | `docs-writer` | Keeps documentation in sync with the code: README, usage and related docs when a public API or behavior changes. |
+| `frontend-design` | Visual and UX design quality for interfaces: hierarchy, spacing rhythm, typographic scale, a restrained color system, layout composition,… |
 | `frontend-rn-expo` | OPTIONAL, stack-specific: React Native + Expo (prebuild). |
 | `frontend` | Stack-agnostic frontend discipline (web · mobile · desktop): component structure, state, data fetching, loading/empty/error states,… |
 | `handoff` | Session handover: when context fills, a phase closes, or the topic changes, write an action-oriented handover to docs/SESSION_STATE.md,… |
 | `i18n-integrity` | Translation integrity: every key present in every language, no hardcoded strings, consistent placeholders and plurals. |
 | `incident-runbook` | Production incident response: diagnose → mitigate → resolve, then a blameless postmortem and a repeatable runbook. |
 | `iterate` | Refine-to-Done loop: repeat until tests green + review clean + nothing deferred; bounded. |
+| `mcp-builder` | Build a Model Context Protocol (MCP) server so an AI client can call your tools/resources: design tool schemas, pick a transport, handle… |
 | `observability` | Stack-agnostic observability: structured logs, correlation ids, metrics and traces; no PII or secrets in logs. |
 | `performance` | Stack-agnostic performance: measure first, find the bottleneck, then optimise. |
 | `privacy-compliance` | KVKK/GDPR audit method: data inventory, purpose/basis/retention, minimisation, consent, transparency, data-subject rights, cross-border… |
@@ -221,10 +241,12 @@ Like `adopt`, an update needs a git repo and lands on a `kit-adopt-<timestamp>` 
 | `security-scan` | Stack-agnostic security audit: map the attack surface, trace untrusted input to dangerous calls, surface dependency and configuration flaws. |
 | `sonarqube-check` | SonarQube quality gate (language-agnostic): 0 Bugs · 0 Vulnerabilities · 0 Security Hotspots · 0 Code Smells, build 0 warnings / 0… |
 | `spec-planning` | Spec-first planning: task breakdown, measurable acceptance criteria, dependency order, risk priority. |
+| `systematic-debugging` | Root-cause a bug before touching a fix: reproduce, isolate, form and test a hypothesis, confirm the cause, then fix and verify. |
 | `testing` | The how of testing: pyramid, AAA, isolation, risk coverage, determinism. |
 | `token-budget` | Context/token discipline: subagent isolation, output = summary, move-to-file, delegation threshold, lean skills. |
 | `trace-scan` | Trace scan (§4.1/§4.2): before a commit, scans the staged changes and the message for AI traces (co-author trailers, footers, robot… |
 | `vps-deploy` | Deploy to a VPS safely: runtime detection, reverse proxy + SSL, atomic swap, keep the previous version, post-deploy health gate,… |
+| `worktree` | Isolate risky or parallel file-mutating work in a git worktree so the main tree's uncommitted changes are never clobbered. |
 
 <!-- SKILLS:END -->
 
@@ -238,11 +260,11 @@ An assistant cannot run `/context` itself, so most setups **guess** the session 
 
 ### Token cost
 
-`DISCIPLINE.md` and the agent/skill descriptions load into every session's context. That always-on material measured **9,198 tokens** on a real turn for 11 agents and 28 skills; `brainstorm` and `reflect` add ~660 bytes (≈ 280 tokens) on top — the price of the whole discipline layer.
+`DISCIPLINE.md` and the agent/skill descriptions load into every session's context. That always-on material is **~24 KB** today (`DISCIPLINE.md` + 11 agent + 34 skill descriptions) — on the order of **9k tokens** on a real turn. Every skill added is a permanent ~100-token tax on all sessions, which is why the byte budget below is a gate, not a guideline.
 
 `smoke-test.sh` enforces a byte budget per component (discipline · agent descriptions · skill descriptions), so the cost cannot drift upward unnoticed. A budget can be raised, but only by editing `smoke-test.sh` explicitly.
 
-> **Profile pruning does not save tokens.** A `--backend` install (10 agents, 27 skills) costs only ~640 tokens less than `--fullstack` (11 agents, 30 skills). Pick a profile to narrow the scope of the work.
+> **Profile pruning does not save tokens.** A `--backend` install (10 agents, 30 skills) costs only a few hundred tokens less than `--fullstack` (11 agents, 34 skills). Pick a profile to narrow the scope of the work.
 
 ---
 

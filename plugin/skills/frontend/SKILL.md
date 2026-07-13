@@ -28,6 +28,11 @@ Don't code only the "full" case; empty/error/loading are part of the experience.
 - User-visible text comes from the language file (project languages); no hard-coded strings (`i18n-integrity`).
 - Meaningful labels/roles, sufficient contrast, keyboard/screen-reader access, appropriate touch/click target.
 
+## Visual & UX quality
+This skill covers *structure*; the **visual/UX design layer** — hierarchy, spacing rhythm, typographic scale, a
+restrained color system, and polished states — lives in **`frontend-design`**. Apply it when the work is about how the
+interface *looks and feels*, not just how it's wired.
+
 ## Responsive & performance
 - Works across the target screen/device matrix (responsive/adaptive).
 - Unnecessary renders (memo/callback), bundle size, lazy loading, virtualization for long lists.

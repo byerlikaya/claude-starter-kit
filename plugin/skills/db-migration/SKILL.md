@@ -71,19 +71,13 @@ If rejected, stop immediately and propose a safer path (e.g. a new column + back
 
 ## 3. Backup (mandatory in prod)
 
-Back up before any migration; it cannot be skipped in prod, and can be skipped in dev with approval.
-```bash
-# PostgreSQL — compressed full backup
-pg_dump -h $DB_HOST -U $DB_USER -d $DB_NAME -F c -f backup_$(date +%Y%m%d_%H%M%S).dump
-# MySQL
-mysqldump -h $DB_HOST -u $DB_USER -p$DB_PASS $DB_NAME > backup_$(date +%Y%m%d_%H%M%S).sql
-# SQLite
-sqlite3 $DB_PATH ".backup 'backup_$(date +%Y%m%d_%H%M%S).db'"
-```
-Before proceeding, verify **that the backup was created and is not empty** — otherwise abort:
+Back up before any migration; it cannot be skipped in prod, and can be skipped in dev with approval. Then verify
+**the backup was created and is not empty** — otherwise abort:
 ```bash
 [ -s "$BACKUP_FILE" ] || { echo "ERROR: Backup empty/not created — migration aborted."; exit 1; }
 ```
+Backup + restore + post-apply verify commands **per engine** (PostgreSQL · MySQL · SQLite):
+**`references/backup-restore.md`** — read the one for your database, not all three.
 
 ---
 
@@ -107,57 +101,21 @@ Once classification and backup are complete: **Preview → (approval) → Apply 
 
 **Rules:** **Always** show the preview before applying and get it approved (if the tool does not support it, treat the file as the preview). A destructive migration is not applied without passing the approval gate (§2). Show the full apply output; if there is an error, roll back.
 
-**Additional post-apply verification** — compare against the expected schema:
-```bash
-psql -h $DB_HOST -U $DB_USER -d $DB_NAME -c "\d $TABLE"      # PostgreSQL
-mysql -h $DB_HOST -u $DB_USER -p$DB_PASS $DB_NAME -e "DESCRIBE $TABLE;"   # MySQL
-```
+**Additional post-apply verification** — compare against the expected schema using your engine's inspect command (`references/backup-restore.md`).
 
 ---
 
 ## 5. Rollback
 
-First the tool-specific rollback (last column of the matrix); if that fails, restore from the backup; then re-verify. If neither works, warn the user with the full error detail.
-```bash
-# PostgreSQL — from backup
-pg_restore -h $DB_HOST -U $DB_USER -d $DB_NAME --clean --if-exists $BACKUP_FILE
-# MySQL
-mysql -h $DB_HOST -u $DB_USER -p$DB_PASS $DB_NAME < $BACKUP_FILE
-# SQLite
-cp $BACKUP_FILE $DB_PATH
-```
+First the tool-specific rollback (last column of the matrix); if that fails, restore from the backup (per-engine
+restore command in **`references/backup-restore.md`**); then re-verify. If neither works, warn the user with the full error detail.
 
 ---
 
 ## No tool — raw SQL mode
 
-If no tool is detected, manage numbered up/down files; every `up` has a `down`, and every SQL runs inside `BEGIN`/`COMMIT`.
-```
-migrations/001_create_users.up.sql   +   001_create_users.down.sql
-```
-```sql
--- 001_create_users.up.sql
-BEGIN;
-CREATE TABLE IF NOT EXISTS users (
-  id SERIAL PRIMARY KEY,
-  email VARCHAR(255) NOT NULL UNIQUE,
-  created_at TIMESTAMP NOT NULL DEFAULT NOW()
-);
-COMMIT;
--- 001_create_users.down.sql
-BEGIN;
-DROP TABLE IF EXISTS users;
-COMMIT;
-```
-Keep the applied ones in a tracking table; run only those with no record:
-```bash
-psql … -c "CREATE TABLE IF NOT EXISTS _migrations(id SERIAL PRIMARY KEY, name TEXT UNIQUE, applied_at TIMESTAMP DEFAULT NOW())"
-for f in migrations/*.up.sql; do
-  n=$(basename "$f" .up.sql)
-  [ "$(psql … -tAc "SELECT count(*) FROM _migrations WHERE name='$n'")" = 0 ] || continue
-  psql … -f "$f" && psql … -c "INSERT INTO _migrations(name) VALUES('$n')"
-done
-```
+If no tool is detected, manage numbered up/down files (every `up` has a `down`, each SQL inside `BEGIN`/`COMMIT`)
+with a `_migrations` tracking table. Full pattern + example + the apply loop: **`references/raw-sql.md`**.
 
 ---
 

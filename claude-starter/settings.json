@@ -14,7 +14,8 @@
     "deny": [
       "Read(.env)",
       "Read(.env.*)",
-      "Read(**/.env)"
+      "Read(**/.env)",
+      "Read(**/.env.*)"
     ]
   },
   "hooks": {
@@ -57,6 +58,18 @@
           {
             "type": "command",
             "command": "bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/session-guard.sh\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "compact|clear|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/session-rehydrate.sh\"",
             "timeout": 30
           }
         ]

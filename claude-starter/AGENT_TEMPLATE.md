@@ -44,5 +44,18 @@ Pulling the read-only trio down to Haiku lowers token/cost; the writing experts 
 - Project-local (10): `./.claude/agents/` — session-manager-csk, backend/database/security/test/frontend-expert-csk, review-agent-csk, commit-agent-csk, planner-csk, privacy-agent-csk. Everything stays inside the repo; no dependency on home (`~/.claude`) (handover §3).
 - No extra agent is needed; stack-specific "hows" live under `./.claude/skills/` (the frontend's "how" is in the project's frontend skill / CLAUDE.md).
 
+## Test-first (add the eval before the skill/agent)
+Treat a new skill/agent like code under TDD: write the checkable expectation **first**, watch it fail, then build
+until it passes. The kit's evals ARE those tests.
+1. **Golden routing** — add a line to `eval/golden-routing.txt` (`<a realistic prompt>|<this target>`) *before* writing
+   the skill. Run `routing-eval.sh`: it FAILS (target missing / no trigger). That failure defines the trigger phrases
+   you must choose — you're designing the description against a concrete prompt, not guessing.
+2. **Negative guard** — if a trigger risks over-firing (a generic word like "design", "review", "model"), add a
+   `<prompt>|!<target>` line so an over-broad trigger fails the eval. This is how a trim stays trimmed.
+3. **Budget & spec** — `smoke-test.sh` gates name==dir, description ≤1024, and the always-on byte budget; a verbose
+   description fails the suite rather than quietly taxing every session. Register the TR summary + regenerate the
+   catalogue (`build-readme-catalog.sh`) so `--check` stays green.
+4. **Only then** write `SKILL.md` (+ `references/` for depth) until all three go green. Red → green, never green-by-assertion-weakening (that's the Verifier-integrity anti-pattern the review skill itself flags).
+
 ## Reference example
 `backend-expert-csk.md` is this contract applied verbatim; when creating a new agent, copy it and fill it in.

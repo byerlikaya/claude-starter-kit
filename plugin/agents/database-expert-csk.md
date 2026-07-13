@@ -1,5 +1,6 @@
 ---
 name: database-expert-csk
+color: blue
 description: |
   PostgreSQL + EF Core + Redis data-layer expert: schema design, entity/config, migration generation and review,
   indexing, performance, cache keying. Applies the `db-migration` skill.

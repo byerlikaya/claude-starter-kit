@@ -136,18 +136,18 @@ if [ -z "$PROFILE" ]; then
   h1  "[1/3] Project profile"
   sub "The choice determines the set of agents + skills to install."
   echo
-  opt 1 "backend"   0 "~10 agents · ~24 skills"
+  opt 1 "backend"   0 "~10 agents · ~30 skills"
   add  "backend-expert-csk · database-expert-csk + db / api / migration skills"
-  skip "frontend-expert-csk and all UI skills (frontend/a11y/i18n) NOT INSTALLED"
+  skip "frontend-expert-csk and all UI skills (frontend/frontend-design/a11y) NOT INSTALLED"
   echo
-  opt 2 "frontend"  0 "~9 agents · ~23 skills"
-  add  "frontend-expert-csk + frontend / a11y / i18n skills"
+  opt 2 "frontend"  0 "~9 agents · ~31 skills"
+  add  "frontend-expert-csk + frontend / frontend-design / a11y skills"
   skip "backend-expert-csk · database-expert-csk and all server skills NOT INSTALLED"
   echo
-  opt 3 "fullstack" 1 "~11 agents · ~27 skills"
+  opt 3 "fullstack" 1 "~11 agents · ~34 skills"
   add  "everything — all agents + all skills: backend + web + mobile (RN/Expo) together"
   echo
-  opt 4 "mobile"    0 "~9 agents · ~24 skills"
+  opt 4 "mobile"    0 "~9 agents · ~31 skills"
   add  "frontend-expert-csk + React Native / Expo layer (frontend-rn-expo)"
   skip "backend-expert-csk · database-expert-csk NOT INSTALLED"
   echo
@@ -304,7 +304,9 @@ fi
 echo "  Profile '$PROFILE' (stack: $STACK): $(ls .claude/agents/*.md 2>/dev/null | wc -l | tr -d ' ') agents, $(ls -d .claude/skills/*/ 2>/dev/null | wc -l | tr -d ' ') skills installed."
 [ -f "$SRC/settings.json" ] && cp "$SRC/settings.json" .claude/settings.json
 [ -f "$HERE/VERSION" ] && cp "$HERE/VERSION" .claude/VERSION   # make the kit version trackable in the installed project
-chmod +x .claude/hooks/pre-commit .claude/hooks/commit-msg .claude/hooks/guard-bash.sh .claude/hooks/context-usage.sh .claude/hooks/session-guard.sh .claude/eval/smoke-test.sh .claude/eval/routing-eval.sh 2>/dev/null || true
+# Glob form so every shipped hook/eval is made executable — including ones added later (guard-write.sh,
+# session-rehydrate.sh, …). An explicit list silently missed new hooks and left them non-executable.
+chmod +x .claude/hooks/*.sh .claude/hooks/pre-commit .claude/hooks/commit-msg .claude/eval/*.sh 2>/dev/null || true
 cp "$SRC/AGENT_TEMPLATE.md" .claude/ 2>/dev/null || true
 cp "$SRC/FIRST_PROMPT.md"   .claude/ 2>/dev/null || true
 cp "$SRC/README.md"         .claude/ 2>/dev/null || true

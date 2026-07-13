@@ -25,17 +25,9 @@ user impact > finding the root cause. No panic, one ordered step at a time.
 - After a destructive migration → restore from backup (db-migration).
 - Dependency/service down → circuit breaker / graceful degradation.
 
-## Postmortem (blameless)
-Once the incident is resolved, within 24-72 hours:
-- **Timeline**: detection → response → resolution (actual times).
-- **Impact**: who, for how long, what was lost.
-- **Root cause**: "5 whys"; the system/process is questioned, not the person (**blameless**).
-- **Actions**: concrete, owned, dated items that prevent a recurrence (no deferral).
-- If a lasting decision came out of it → `adr`.
+## After the incident
 
-## Produce a runbook
-For repeatable incidents, a step-by-step runbook: symptom → diagnostic commands → mitigation → verification → escalation.
-The runbook must be **project-specific** and **executable** (not generic); coordinate with `docs-writer`.
+Blameless postmortem + producing a durable runbook: **`references/postmortem.md`**.
 
 ## Invariant rules
 1. **Stop the impact, then understand** — the root cause does not hold up the resolution.

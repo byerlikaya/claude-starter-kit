@@ -9,7 +9,7 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Syntax — shell scripts
         run: |
@@ -28,6 +28,14 @@ jobs:
 
       - name: README skill catalogue in sync with the skills
         run: bash packaging/build-readme-catalog.sh --check
+
+      - name: Plugin & marketplace manifests valid (strict)
+        # Offline manifest validation via the official CLI; --strict fails on unrecognized fields / missing
+        # metadata. No API auth needed (this does not call the model). CI=true keeps it non-interactive.
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          claude plugin validate plugin --strict
+          claude plugin validate .claude-plugin/marketplace.json --strict
 
       - name: e2e rehearsal — start.sh (6 combos) + adopt.sh (stack detection · overlap · refresh)
         run: bash packaging/e2e.sh

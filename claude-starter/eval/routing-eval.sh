@@ -36,6 +36,7 @@ while IFS='|' read -r prompt expected; do
   case "$prompt" in ''|\#*) continue ;; esac
   expected="$(printf '%s' "$expected" | tr -d '[:space:]')"
   [ -n "$expected" ] || continue
+  neg=0; case "$expected" in '!'*) neg=1; expected="${expected#!}" ;; esac   # !target = must NOT route here
   trs="$(triggers_of "$expected")" || { skip "\"$prompt\" -> $expected (target not in this profile)"; continue; }
   np="$(norm "$prompt")"
   hit=0
@@ -46,8 +47,13 @@ while IFS='|' read -r prompt expected; do
   done <<EOF
 $trs
 EOF
-  if [ "$hit" = 1 ]; then pass "\"$prompt\" -> $expected"
-  else fail "\"$prompt\" -> $expected (no trigger matched — routing gap)"; fi
+  if [ "$neg" = 1 ]; then
+    if [ "$hit" = 0 ]; then pass "\"$prompt\" -/-> $expected (correctly not matched)"
+    else fail "\"$prompt\" -/-> $expected (over-broad trigger — matched a prompt it should not route)"; fi
+  else
+    if [ "$hit" = 1 ]; then pass "\"$prompt\" -> $expected"
+    else fail "\"$prompt\" -> $expected (no trigger matched — routing gap)"; fi
+  fi
 done < "$GOLD"
 
 echo "== 2) Agent-agent trigger collision =="

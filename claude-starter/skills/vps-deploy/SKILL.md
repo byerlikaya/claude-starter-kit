@@ -172,33 +172,17 @@ Also verify the process is up: `docker ps` on Docker, otherwise `systemctl is-ac
 
 ## Phase 5 — Rollback
 
-Undo the swap: put the most recent version in `releases/` back into `current`, restart the service, repeat the health gate (Phase 4).
-```bash
-LATEST=$(ssh -i $SSH_KEY $USER@$HOST "ls -dt $DEPLOY_PATH/releases/*/ 2>/dev/null | head -1")
-[ -z "$LATEST" ] && { echo "ERROR: no backup — rollback impossible"; exit 1; }
-ssh -i $SSH_KEY $USER@$HOST "
-  mkdir -p $DEPLOY_PATH/current
-  rsync -a --delete ${LATEST%/}/ $DEPLOY_PATH/current/   # atomic swap — no 'rm -rf' (guard-safe)
-  { docker rm -f $APP 2>/dev/null && docker run -d --name $APP --restart unless-stopped \
-      -p 127.0.0.1:$APP_PORT:$APP_PORT $APP:previous; } \
-    || systemctl restart $APP || pm2 restart $APP
-"
-```
-> **Note:** Rollback is done with `rsync --delete` instead of `rm -rf`; that way `guard-bash` (the local `rm -rf` block)
-> doesn't block the automatic rollback. The deploy verbs (`ssh`/`rsync`/`docker`) pass through the approval gate via
-> `settings.json` `permissions.ask` — they run with approval, not silently.
+On health-gate failure: put the most recent `releases/` version back into `current`, restart the service, and
+re-run the health gate (Phase 4). Guard-safe rollback script (uses `rsync --delete`, not `rm -rf`) + the
+approval-gate note: **`references/rollback.md`**.
 
 ---
 
 ## Single-command scripts (optional)
 
-After a successful deploy, **ask:** "Shall I generate `deploy.sh` and `adopt.sh` so you can deploy/update with a single command in the future?"
-
-If you generate them, **don't use a generic template** — analyze the actual project (package.json scripts / Dockerfile / Makefile / docker-compose / `.env.example`) and derive the exact build+start steps. Two scripts:
-- **`deploy.sh`** — first-time setup + deploy: load config · verify SSH · proxy + SSL · back up to `releases/` · project-specific build · transfer · dependencies · start · health gate with retries · rollback on failure.
-- **`adopt.sh`** — quick update: config · backup · code sync · (if needed) build/dependencies · restart · health gate · rollback on failure.
-
-Rules: `chmod +x`; if `.deploy.yml` carries credentials, ask about `.gitignore`; don't overwrite an existing script without approval (show a diff); no hardcoded credentials — always read from `.deploy.yml`; comment and explain every project-specific decision.
+After a successful deploy, **ask** whether to generate project-specific `deploy.sh` / `adopt.sh` (single-command
+deploy/update). Derive the steps from the real project (package.json / Dockerfile / Makefile / compose), never a
+generic template. Full guidance + what each script contains: **`references/scripts.md`**.
 
 ---
 
