@@ -69,19 +69,31 @@ scan() {                                             # reads JSONL on stdin, pri
   fi
 }
 
-# Read the TAIL, not the file. We want the LAST match, and `tail -n W` hands back exactly the W lines closest to
-# EOF — so a match inside the window IS the last match, and a window that is too small can only come back empty,
-# never stale. Widen once, then fall back to the whole file. Measured across 71 transcripts the record sits 1-3
-# lines from EOF (worst case 43); the second rung absorbs a large subagent fan-out. This runs on EVERY turn, and
-# the whole-file scan cost 4.7s on a 180MB transcript under the awk path — past the hook's timeout on Windows,
-# where jq is absent and every fork is dear. Tailing it: ~40ms.
+# Read the TAIL, not the file, and bound it by BYTES not lines. We want the LAST match; a tail hands back the
+# bytes closest to EOF, so a match inside the window IS the last match, and too small a window can only come back
+# empty, never stale. Bytes beat lines because one pasted payload can make a SINGLE JSONL record tens of MB: a
+# line-based `tail -n 200` then drags that whole blob through the scanner (measured: 1.4s for a 60MB paste on a
+# fast box; multiply by a slow Windows fork with no jq and it crosses the 10s hook timeout). A byte tail caps the
+# work no matter how fat the lines are — the same 60MB case scans in ~12ms. A front-truncated partial first line
+# simply fails to match, and since we keep the LAST match that is harmless. Widen once (256 KiB covers even a
+# large subagent fan-out of small usage records), then a SIZE-GUARDED whole-file last resort.
 TOTAL=""
-for W in 200 2000; do
-  TOTAL="$(tail -n "$W" "$TR" | scan)"
+for B in 262144 4194304; do                         # 256 KiB, then 4 MiB
+  TOTAL="$(tail -c "$B" "$TR" | scan)"
   [ -n "$TOTAL" ] && break
 done
-[ -n "$TOTAL" ] || TOTAL="$(scan < "$TR")"
-[ -n "${TOTAL:-}" ] || { echo "context-usage: could not read usage" >&2; exit 1; }
+if [ -z "$TOTAL" ]; then
+  # The record is further from EOF than 4 MiB — almost always because the CURRENT turn pasted a huge payload that
+  # now sits between EOF and the last assistant record. The whole file WOULD find it, but on a pathologically
+  # large transcript that scan is exactly what blows the hook timeout. So bound it: scan the whole file only when
+  # it is small enough to finish well inside the timeout (180MB ~= 4.7s under awk, so 200MB is safe under 30s);
+  # past the cap, fail OPEN. A missing 🔋 line is recoverable — the model answers "could not measure" — whereas a
+  # timed-out hook is just discarded noise.
+  SZ="$(wc -c < "$TR" 2>/dev/null | tr -cd '0-9')"; SZ="${SZ:-0}"
+  CAP="${CSK_CONTEXT_MAX_BYTES:-209715200}"         # 200 MiB; override per-repo
+  [ "${SZ:-0}" -le "$CAP" ] && TOTAL="$(scan < "$TR")"
+fi
+[ -n "${TOTAL:-}" ] || { echo "context-usage: usage not found in the byte-bounded window (transcript too large to scan within the hook timeout)" >&2; exit 1; }
 
 # LC_ALL=C: force a '.' decimal separator regardless of locale (tr_TR etc. would emit '77,2' and could
 # mis-parse the percentage). Generation AND every comparison below run under C so they stay consistent.
