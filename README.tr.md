@@ -6,7 +6,7 @@
 
 *planla → üret → denetle → commit; her kritik kural bir hatırlatma değil, bir **kapı**.*
 
-![Sürüm](https://img.shields.io/badge/s%C3%BCr%C3%BCm-1.2.2-2563eb?style=flat-square)
+![Sürüm](https://img.shields.io/badge/s%C3%BCr%C3%BCm-1.3.0-2563eb?style=flat-square)
 ![Lisans](https://img.shields.io/badge/lisans-MIT-16a34a?style=flat-square)
 ![Ajanlar](https://img.shields.io/badge/ajanlar-11-f59e0b?style=flat-square)
 ![Skiller](https://img.shields.io/badge/skiller-30-f59e0b?style=flat-square)
@@ -101,13 +101,14 @@ npx @byerlikaya/claude-starter-kit@latest update   # kit'in kurulu olduğu proje
 brew install byerlikaya/tap/claude-starter-kit
 claude-starter-kit          # sıfırdan proje
 claude-starter-kit adopt    # mevcut proje
+brew upgrade byerlikaya/tap/claude-starter-kit && claude-starter-kit update   # kit'in kurulu olduğu projeyi tazele
 ```
 
 **Release tarball** — paket yöneticisi olmadan:
 ```bash
 gh release download --repo byerlikaya/claude-starter-kit -p '*.tgz' && tar xzf claude-starter-kit-*.tgz
 bash start.sh               # sıfırdan proje
-bash adopt.sh              # mevcut proje
+bash adopt.sh               # mevcut proje — kurulu bir projeyi tazelemek için tekrar çalıştır (update)
 ```
 
 > Sadece ajan ve skill'leri mevcut Claude Code'una eklemek mi istiyorsun (iskele kurmadan)? `/plugin marketplace add byerlikaya/claude-starter-kit` ardından `/plugin install claude-starter-kit@byerlikaya`.
@@ -155,8 +156,12 @@ Tüm değişiklikler ayrı bir git dalına **staged olarak (commit'lenmeden)** d
 
 ### 🔁 Kurulu bir projeyi güncelleme
 
+Projenin kökünde çalıştır — her kanalda aynı iş; `update`, `adopt`'ın takma adıdır.
+
 ```bash
-npx @byerlikaya/claude-starter-kit@latest update    # `update`, `adopt`'ın takma adıdır; projenin kökünde çalıştır
+npx @byerlikaya/claude-starter-kit@latest update                              # npx
+brew upgrade byerlikaya/tap/claude-starter-kit && claude-starter-kit update   # Homebrew
+gh release download --repo byerlikaya/claude-starter-kit -p '*.tgz' && tar xzf claude-starter-kit-*.tgz && bash adopt.sh   # tarball
 ```
 
 Kit, kurulum anında `.claude/kit.conf` dosyasına profili, backend yığınını ve hangi kurucunun çalıştığını damgalar; yanına da `.claude/VERSION` düşer. Güncelleyici bu damgayı okur ve projeyi **kurulduğu biçimde** tazeler: `--backend` bir projeye frontend ajanları geri yapıştırılmaz, `--dotnet` bir proje `devarch-module` kalıp skill'ini korur. Damga yoksa güncelleyici şekli kurulu dosyalardan çıkarsar ve yazar. Güncelleme var mı diye bakmak için `cat .claude/VERSION` çıktısını `npm view @byerlikaya/claude-starter-kit version` ile karşılaştır.

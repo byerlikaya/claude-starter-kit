@@ -6,7 +6,7 @@
 
 *plan → build → review → commit, where every critical rule is a **gate**, not a reminder.*
 
-![Version](https://img.shields.io/badge/version-1.2.2-2563eb?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.3.0-2563eb?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)
 ![Agents](https://img.shields.io/badge/agents-11-f59e0b?style=flat-square)
 ![Skills](https://img.shields.io/badge/skills-30-f59e0b?style=flat-square)
@@ -101,13 +101,14 @@ npx @byerlikaya/claude-starter-kit@latest update   # refresh a project that alre
 brew install byerlikaya/tap/claude-starter-kit
 claude-starter-kit          # fresh project
 claude-starter-kit adopt    # existing project
+brew upgrade byerlikaya/tap/claude-starter-kit && claude-starter-kit update   # refresh a project that already has the kit
 ```
 
 **Release tarball** — no package manager:
 ```bash
 gh release download --repo byerlikaya/claude-starter-kit -p '*.tgz' && tar xzf claude-starter-kit-*.tgz
 bash start.sh               # fresh project
-bash adopt.sh              # existing project
+bash adopt.sh               # existing project — re-run it to refresh a project that already has the kit (update)
 ```
 
 > Just want the agents & skills inside your existing Claude Code (no scaffolding)? `/plugin marketplace add byerlikaya/claude-starter-kit` then `/plugin install claude-starter-kit@byerlikaya`.
@@ -155,8 +156,12 @@ All changes land on a separate git branch **staged, not committed** — so every
 
 ### 🔁 Update an installed project
 
+Run it at the project root — same command on every channel; `update` is an alias of `adopt`.
+
 ```bash
-npx @byerlikaya/claude-starter-kit@latest update    # `update` is an alias of `adopt`; run it at the project root
+npx @byerlikaya/claude-starter-kit@latest update                              # npx
+brew upgrade byerlikaya/tap/claude-starter-kit && claude-starter-kit update   # Homebrew
+gh release download --repo byerlikaya/claude-starter-kit -p '*.tgz' && tar xzf claude-starter-kit-*.tgz && bash adopt.sh   # tarball
 ```
 
 At install time the kit stamps `.claude/kit.conf` with the profile, the backend stack and which installer ran, plus `.claude/VERSION`. The updater reads that stamp and refreshes the project **in the shape it was installed in**: a `--backend` project does not get frontend agents grafted back on, and a `--dotnet` project keeps its `devarch-module` pattern skill. Where the stamp is absent, the updater derives the shape from the installed files and writes it. Compare `cat .claude/VERSION` against `npm view @byerlikaya/claude-starter-kit version` to see whether an update is waiting.

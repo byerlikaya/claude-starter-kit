@@ -3,6 +3,45 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [1.3.0] - 2026-07-13
+
+### Added
+- **Six new tool-level gates.** The gate layer now covers more than commit/push approval and the existing
+  destructive-op block:
+  - **RCE / permission-nuke** — pipe-to-shell (`curl…|bash`), `chmod 777` and `dd of=` are hard-blocked in every
+    permission mode (`guard-bash.sh`).
+  - **Gate-tampering** — redirecting `core.hooksPath`, or editing/deleting a hook script, is blocked both from the
+    shell (`guard-bash.sh`) and from the file tools (new `guard-write.sh` + a `Write|Edit` PreToolUse matcher). A
+    gate you can silently remove is not a gate. `settings.json` stays editable so the `update-config` skill works.
+  - **Repo-bloat** — build/vendored artifacts and blobs over 5 MiB are blocked at `pre-commit` (override via
+    `CSK_MAX_FILE_BYTES`).
+  - **Secret-file** — a file that is a secret by name (`.env`, `id_rsa`, `*.pem/.key/.p12`, `.npmrc`, …) is blocked
+    at `pre-commit`; `.env.example`/`.sample`/`.template` stay committable.
+  - **Force-add / lockfile deletion** — `git add -f` (bypasses `.gitignore`) and deleting a lockfile are blocked
+    (`guard-bash.sh`).
+  - **Default-branch warning** — committing straight onto `main`/`master` is surfaced in the approval prompt (a
+    warning, not a block: a fresh project legitimately lives on `main`).
+- **README "How this kit is different" section (EN + TR)** — a comparison against a typical prompt collection /
+  agent kit, with the new gates added to the Rule → gate table.
+
+### Changed
+- **The update command is now documented for every channel (EN + TR).** Homebrew
+  (`brew upgrade … && claude-starter-kit update`) and the release tarball (re-run `bash adopt.sh`) previously
+  showed only fresh-install and adopt; the refresh path was spelled out for npx only.
+
+### Fixed
+- **`context-usage.sh` can no longer time out on a huge transcript.** A single pasted payload becomes one
+  multi-MB JSONL record; the line-based `tail -n` then dragged the whole blob through the scanner (~1.4s for a
+  60MB paste — over the 10s hook timeout on a slow Windows box with no `jq`). The tail is now bounded by bytes
+  (256 KiB → 4 MiB), so the same case scans in ~12ms; when the record sits past the window the whole-file
+  fallback runs only while the transcript is small enough to finish in time, and past a 200 MiB cap
+  (`CSK_CONTEXT_MAX_BYTES`) it fails open — a missing measurement line is recoverable, a timed-out hook is not.
+
+### Note
+- The new `pre-commit` gates (repo-bloat, secret-file) can block operations that previously passed — committing
+  `node_modules/`, a `.env`, or a large binary. That is intended; a genuine exception is escapable via
+  `.secret-allowlist.txt`, `CSK_MAX_FILE_BYTES`, or an explicit `--no-verify` (§4.5).
+
 ## [1.2.2] - 2026-07-12
 
 ### Fixed
