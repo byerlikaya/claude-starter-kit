@@ -64,6 +64,14 @@ for f in "$AGENTS"/*.md; do
   done
 done
 pass "agent->skill references (applies + Also apply) checked"
+# (c) progressive disclosure: a `references/X.md` pointer in a SKILL.md body must resolve to a real file
+for d in "$SKILLS"/*/; do
+  f="$d/SKILL.md"; [ -f "$f" ] || continue
+  for ref in $(grep -oE 'references/[A-Za-z0-9_-]+\.md' "$f" | sort -u); do
+    [ -f "$d/$ref" ] || fail "$(basename "$d"): SKILL.md points to missing $ref"
+  done
+done
+pass "skill references/*.md pointers resolve"
 
 echo "== 4) Stub / unfilled skill leftover =="
 if grep -rlq "to be filled\|generated from source" "$SKILLS" 2>/dev/null; then
