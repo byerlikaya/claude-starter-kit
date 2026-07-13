@@ -442,6 +442,40 @@ gj auto 'git add -f dist/bundle.js' | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&
 gj auto 'git add -A'                | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && pass "git add -A NOT over-blocked" || fail "git add -A wrongly blocked (gate too strict)"
 gj auto 'rm package-lock.json'      | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && fail "lockfile deletion PASSED (§4.5 hole)" || pass "lockfile deletion BLOCKED (§4.5)"
 
+echo "== 7c) session rehydration (SessionStart, C1) =="
+[ -x "$HOOKS/session-rehydrate.sh" ] && pass "session-rehydrate.sh +x" || fail "session-rehydrate.sh missing/not executable"
+# Fails open + silent when there is no handover; injects additionalContext when docs/SESSION_STATE.md exists.
+RHD="$(mktemp -d)"
+o="$(printf '{"hook_event_name":"SessionStart","cwd":"%s"}' "$RHD" | CLAUDE_PROJECT_DIR= bash "$HOOKS/session-rehydrate.sh" 2>/dev/null)"
+[ -z "$o" ] && pass "no SESSION_STATE -> silent (fails open)" || fail "session-rehydrate emitted output with no handover"
+mkdir -p "$RHD/docs"; printf '# Session Handover\n' > "$RHD/docs/SESSION_STATE.md"
+o="$(printf '{"hook_event_name":"SessionStart","cwd":"%s"}' "$RHD" | CLAUDE_PROJECT_DIR= bash "$HOOKS/session-rehydrate.sh" 2>/dev/null)"
+case "$o" in *'"additionalContext"'*SESSION_STATE*) pass "handover present -> injects additionalContext pointer" ;;
+  *) fail "session-rehydrate did not inject a pointer when SESSION_STATE.md exists" ;; esac
+if command -v jq >/dev/null 2>&1; then printf '%s' "$o" | jq empty 2>/dev/null && pass "rehydrate output is valid JSON" || fail "rehydrate output is not valid JSON"; fi
+rm -rf "$RHD"
+grep -q 'SessionStart' "$ROOT/settings.json" && grep -q 'session-rehydrate.sh' "$ROOT/settings.json" \
+  && pass "settings.json wires SessionStart -> session-rehydrate.sh" || fail "settings.json missing SessionStart -> session-rehydrate wiring"
+
+echo "== 7d) plugin gate hooks shipped (P1) =="
+PLUGIN="$(cd "$ROOT/.." && pwd)/plugin"
+PHJ="$PLUGIN/hooks/hooks.json"
+if [ -f "$PHJ" ]; then
+  if command -v jq >/dev/null 2>&1; then jq empty "$PHJ" 2>/dev/null && pass "plugin hooks.json valid JSON" || fail "plugin hooks.json invalid JSON"; else pass "plugin hooks.json present (no jq)"; fi
+  grep -q 'CLAUDE_PLUGIN_ROOT' "$PHJ" && pass "plugin hooks.json resolves via \${CLAUDE_PLUGIN_ROOT}" || fail "plugin hooks.json does not use \${CLAUDE_PLUGIN_ROOT}"
+  grep -q 'CLAUDE_PROJECT_DIR' "$PHJ" && fail "plugin hooks.json leaks \${CLAUDE_PROJECT_DIR} (wrong for a plugin)" || pass "plugin hooks.json has no \${CLAUDE_PROJECT_DIR}"
+  for h in guard-bash.sh guard-write.sh context-usage.sh session-guard.sh session-rehydrate.sh; do
+    [ -x "$PLUGIN/hooks/$h" ] && grep -q "$h" "$PHJ" || { fail "plugin hook $h missing or not wired"; break; }
+  done
+  pass "5 Claude Code hooks shipped + wired in plugin"
+  # The git hooks must NOT leak into the plugin (they need core.hooksPath, which a plugin can't set).
+  { [ -e "$PLUGIN/hooks/pre-commit" ] || [ -e "$PLUGIN/hooks/commit-msg" ]; } \
+    && fail "git hook leaked into plugin (pre-commit/commit-msg — cannot work there)" \
+    || pass "git hooks correctly NOT shipped in plugin"
+else
+  fail "plugin/hooks/hooks.json missing — run packaging/build-plugin.sh"
+fi
+
 echo "== 8) Slash commands =="
 for c in simplify plan review ship handoff; do
   [ -f "$ROOT/commands/$c.md" ] && pass "/$c present" || fail "/$c command missing"
