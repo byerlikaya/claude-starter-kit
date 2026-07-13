@@ -80,10 +80,17 @@ echo "$CMD" | grep -qE 'git[[:space:]]+config\b[^|]*core\.hooksPath'            
 # Inline config override: `git -c core.hooksPath=…` / `git --config-env core.hooksPath=…` turns the hooks off for
 # that one command WITHOUT the word `config` (so the rule above misses it) — the exact equivalent of --no-verify.
 echo "$CMD" | grep -qiE 'git[[:space:]]+([^;&|]*[[:space:]])?(-c|--config-env)[[:space:]=]+core\.hooksPath' && block "git -c core.hooksPath (disarms the git hooks)" "4.5"
-echo "$CMD" | grep -qE '(rm|mv|cp|truncate|tee|install|ln)\b[^|]*\.claude/(hooks|settings\.json)' && block "tampering with a .claude gate file" "4.5"
-echo "$CMD" | grep -qE 'sed[[:space:]]+-i[^|]*\.claude/(hooks|settings\.json)'             && block "in-place edit of a .claude gate file" "4.5"
-echo "$CMD" | grep -qE '(rm|mv|cp|truncate|tee|chmod|sed[[:space:]]+-i)\b[^|]*\.git/hooks/' && block "tampering with .git/hooks" "4.5"
-echo "$CMD" | grep -qE '>[[:space:]]*[^|]*\.claude/(hooks|settings\.json)'                 && block "redirect over a .claude gate file" "4.5"
+# A write to a gate path (hook script, settings.json, or .git/hooks) via ANY common mechanism — writer verbs, the
+# in-place editors, and the interpreters an evasion reaches for (perl/python/ruby/node/ed) — plus the variable-
+# indirected redirect (VAR=.claude/hooks; … > $VAR). Reading a gate file stays allowed, and `chmod +x` is NOT
+# blocked so doctor's re-arm fix still works (a chmod -x disable is caught by doctor, not here). Honest scope:
+# the shell is Turing-complete, so this is defence-in-depth — guard-write.sh covers the Write/Edit tools (the
+# model's natural path to a file), and install-time read-only hook files would be the airtight layer.
+GATE='\.(claude/(hooks|settings\.json)|git/hooks)'
+echo "$CMD" | grep -qiE "(rm|mv|cp|truncate|tee|install|ln|perl|python[0-9.]*|ruby|node|ex|ed)\b[^|]*$GATE" && block "write/tamper of a gate file (hook/settings/.git-hooks)" "4.5"
+echo "$CMD" | grep -qiE "(sed|perl|awk|ruby)[[:space:]]+(-[^[:space:]]+[[:space:]]+)*-i[^|]*$GATE"          && block "in-place edit of a gate file" "4.5"
+echo "$CMD" | grep -qiE ">[[:space:]]*[^|]*$GATE"                                                            && block "redirect over a gate file" "4.5"
+{ has "=[^;&|]*$GATE" && has '>>?[[:space:]]*\$'; }                                                          && block "indirected write to a gate path (variable + redirect)" "4.5"
 
 # §4.5 force-add bypasses .gitignore (sneaks build output / secrets past the bloat & ignore rules); deleting a
 # lockfile is a §4.5 op the discipline already names. Both are only done on an explicit request.

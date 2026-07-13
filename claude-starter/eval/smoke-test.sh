@@ -464,6 +464,15 @@ else
   pass "no-jq/py fallback test skipped (jq/python3-less PATH not buildable here)"
 fi
 rm -rf "$GBX"
+# C2 / M5: gate-tamper by an interpreter, a variable-indirected redirect, or .git/hooks — the "rewrite the guard"
+# class the audit flagged. Blocked by target path (verb-agnostic); reading + chmod +x re-arm must stay allowed.
+gj auto 'perl -i -pe s/2/0/ .claude/hooks/guard-bash.sh' | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && fail "perl -i on a hook PASSED (C2)" || pass "perl -i on a gate file BLOCKED (C2)"
+gj auto 'ruby -i -pe 0 .claude/settings.json'           | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && fail "ruby -i on settings PASSED (C2)" || pass "ruby -i on a gate file BLOCKED (C2)"
+gj auto 'node -e writeFileSync(.claude/hooks/x)'         | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && fail "node write PASSED (C2)" || pass "node write to a gate file BLOCKED (C2)"
+gj auto 'd=.claude/hooks; echo x > $d/guard-bash.sh'     | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && fail "variable-indirect redirect PASSED (C2)" || pass "variable-indirect redirect to a gate path BLOCKED (C2)"
+gj auto 'echo exit 0 > .git/hooks/pre-commit'            | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && fail "redirect over .git/hooks PASSED (M5)" || pass "redirect over .git/hooks BLOCKED (M5)"
+gj auto 'chmod +x .claude/hooks/guard-bash.sh'           | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && pass "chmod +x re-arm NOT over-blocked (doctor fix works)" || fail "chmod +x re-arm wrongly blocked"
+gj auto 'grep block .claude/hooks/guard-bash.sh'         | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && pass "grep read of a gate file NOT over-blocked" || fail "grep read of a gate file wrongly blocked"
 
 echo "== 7c) session rehydration (SessionStart, C1) =="
 [ -x "$HOOKS/session-rehydrate.sh" ] && pass "session-rehydrate.sh +x" || fail "session-rehydrate.sh missing/not executable"
