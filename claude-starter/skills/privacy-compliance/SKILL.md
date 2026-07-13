@@ -29,6 +29,11 @@ guessing. In the finding, **cite** the article you rely on (KVKK Art. … / GDPR
 ## Output
 Per-field/per-flow finding + fix; if "clean", the rationale.
 
+**Evidence redaction (`<private>` marker):** an audit report is a shared artifact — it must not itself leak the
+personal data it audits. When a finding has to reference a real value as evidence, wrap it in
+**`<private>…</private>`**: the raw value is stripped and shown as `[redacted]` in the report, while the finding still
+names the field, flow, and article. Never paste live PII (national ID, email, phone, health data) into the report body.
+
 > **Project note:** If data of minors (children) is processed, special protection is required
 > (KVKK / GDPR Art. 8 · parental consent & age verification). This is a domain-specific rule and is
 > defined in the project's own skill/CLAUDE.md — it is not baked into the generic audit.

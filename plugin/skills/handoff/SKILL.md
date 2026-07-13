@@ -33,5 +33,11 @@ description: |
 - Preserve the rationale behind decisions (why this path was chosen) — so context isn't lost.
 - Once written, start a fresh session with `/clear`.
 
+## Redaction (`<private>` marker)
+`docs/SESSION_STATE.md` is a **shared, often committed** artifact — never persist a secret, token, credential, or
+personal note into it. Any content wrapped in **`<private>…</private>`** is a redaction marker: strip it from the
+written handover and leave a `[redacted]` placeholder in its place. If a resume genuinely needs a sensitive value,
+point to *where it lives* (env var, secret manager, the person to ask) — never the value itself.
+
 ## DoD
 - A handover file; a new session can resume where it left off by reading only this file.
