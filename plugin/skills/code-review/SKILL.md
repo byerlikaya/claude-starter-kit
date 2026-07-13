@@ -42,6 +42,19 @@ The approval criterion is "is it better", not "is it flawless". If it is an unwa
 - **Turn it around fast:** a pending review lowers productivity; look at it at the first opportunity.
 - In a disagreement, **technical fact + data** speak, not personal preference. If no agreement is reached, take it face-to-face / escalate to a higher authority — not passive blocking.
 
+## Two-stage verdict (verify before you report)
+Finding a problem and confirming it are two acts. A first-pass "this looks wrong" is a **candidate**, not a verdict.
+Before a finding is reported — especially a **blocker** — run a second, independent pass that tries to *disprove* it:
+- Does it actually hold on the real code, or did the first read miss context (a guard upstream, a caller that never
+  reaches this path, a framework default)? Re-read the surrounding code, don't rank on the snippet alone.
+- Is the severity honest, or is it a nit dressed as a blocker?
+- For any **"fixed" / "passes" claim**: the *real* check ran and passed — test exit code, build, lint/quality gate —
+  not "I re-read it and it looks fixed". A verifier that is the model's own say-so is not a verifier (see §4 Tests,
+  Verifier integrity). Cite the evidence (which check, what result).
+
+A finding that survives the disprove pass is a verdict; one that doesn't is dropped or downgraded. This is what kills
+false-positive blockers that stall progress while keeping the review's authority.
+
 ## Panel mode (high-stakes decisions only)
 
 For hard-to-reverse calls (architecture, public API, security boundary), run several independent adversarial lenses then synthesize. Full method: **`references/panel-mode.md`**.
@@ -49,4 +62,6 @@ For hard-to-reverse calls (architecture, public API, security boundary), run sev
 ## DoD (this skill's contribution)
 - Findings are severity-ranked (blocker / suggestion / nit) and **reasoned**.
 - Scope creep and hidden complexity are flagged.
+- Each reported blocker survived an independent disprove pass; any "fixed"/"passes" claim is backed by the real check
+  having actually run, not self-assessment.
 - For a high-stakes decision, multiple independent lenses were applied and their objections synthesized, not averaged.
