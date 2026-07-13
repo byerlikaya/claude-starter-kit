@@ -39,8 +39,15 @@ for d in "$SKILLS"/*/; do
   [ -f "$f" ] || { fail "$n: no SKILL.md"; continue; }
   grep -q '^name:' "$f"           || fail "$n: no name"
   grep -q 'Trigger phrases:' "$f" || need_trigger "$n: no Trigger phrases"
+  # Agent-Skills spec limits (agentskills.io/specification) — keep skills portable to any compliant host:
+  #   name == parent dir, name ≤ 64 chars, description ≤ 1024 chars.
+  nm="$(awk -F':' '/^name:/{sub(/^name:[[:space:]]*/,"",$0); print; exit}' "$f" | tr -d ' \r')"
+  [ "$nm" = "$n" ]     || fail "$n: name '$nm' must equal the parent directory (spec)"
+  [ "${#nm}" -le 64 ]  || fail "$n: name is ${#nm} chars (>64 spec limit)"
+  dl="$(awk 'BEGIN{c=0} /^---$/{c++; next} c==1 && /^description:/{p=1} c==1 && p{print}' "$f" | wc -c | tr -d ' ')"
+  [ "${dl:-0}" -le 1024 ] || fail "$n: description ~$dl bytes (>1024 spec limit)"
 done
-pass "$(ls -d "$SKILLS"/*/ | wc -l | tr -d ' ') skills scanned"
+pass "$(ls -d "$SKILLS"/*/ | wc -l | tr -d ' ') skills scanned (name==dir · name≤64 · description≤1024)"
 
 echo "== 3) Orphan skill reference (agent -> nonexistent skill) =="
 # (a) Do the X's in "applies the \`X\` skill" in an agent body exist?
