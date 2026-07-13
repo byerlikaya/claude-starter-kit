@@ -5,9 +5,11 @@ description: Health-check the installed kit — hooks executable, core.hooksPath
 # /doctor-csk
 Verify the kit is actually *active* in this project (not just present on disk):
 1. Run `bash .claude/eval/doctor.sh`.
-2. Read its report. It checks: VERSION present · every hook executable · `core.hooksPath` points at `.claude/hooks`
-   (else the §4.1/§4.2 commit trace + secret/bloat scan never runs) · `settings.json` valid and wiring the
-   PreToolUse / UserPromptSubmit / Stop gates.
+2. Read its report. It checks: VERSION present · every hook executable · the required git hooks (pre-commit,
+   commit-msg) present · **guard-bash actually blocks a force-push** (catches a hook that is present but neutered) ·
+   `core.hooksPath` points at `.claude/hooks` (else the §4.1/§4.2 commit trace + secret/bloat scan never runs) ·
+   `settings.json` valid and wiring the PreToolUse / UserPromptSubmit / Stop gates to **non-empty** hook arrays
+   (an empty `[]` wires nothing); SessionStart (rehydration) is reported as a warning if absent.
 3. For each ❌, apply the printed fix. Anything that changes git config or file permissions needs approval first —
    show the exact command and wait.
 4. Summarise: **healthy**, or the precise fixes applied/needed. If it's not a git repo, note that the commit-time

@@ -473,6 +473,13 @@ gj auto 'd=.claude/hooks; echo x > $d/guard-bash.sh'     | bash "$HOOKS/guard-ba
 gj auto 'echo exit 0 > .git/hooks/pre-commit'            | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && fail "redirect over .git/hooks PASSED (M5)" || pass "redirect over .git/hooks BLOCKED (M5)"
 gj auto 'chmod +x .claude/hooks/guard-bash.sh'           | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && pass "chmod +x re-arm NOT over-blocked (doctor fix works)" || fail "chmod +x re-arm wrongly blocked"
 gj auto 'grep block .claude/hooks/guard-bash.sh'         | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && pass "grep read of a gate file NOT over-blocked" || fail "grep read of a gate file wrongly blocked"
+# H4: a .env holds secrets; the Read-tool deny doesn't cover Bash, so a direct read/copy of .env is blocked here,
+# while templates (.env.example) and non-dotenv files stay readable.
+gj auto 'cat .env'              | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && fail "cat .env PASSED (H4)" || pass "cat .env BLOCKED (H4)"
+gj auto 'cat config/.env.production' | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && fail "read nested .env PASSED (H4)" || pass "read nested .env.production BLOCKED (H4)"
+gj auto 'cp .env /tmp/x'        | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && fail "cp .env exfil PASSED (H4)" || pass "cp .env out BLOCKED (H4)"
+gj auto 'cat .env.example'      | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && pass "cat .env.example (template) NOT over-blocked" || fail ".env.example wrongly blocked"
+gj auto 'sort data.env'         | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && pass "non-dotenv data.env NOT over-blocked" || fail "data.env wrongly blocked"
 
 echo "== 7c) session rehydration (SessionStart, C1) =="
 [ -x "$HOOKS/session-rehydrate.sh" ] && pass "session-rehydrate.sh +x" || fail "session-rehydrate.sh missing/not executable"
@@ -520,6 +527,16 @@ DOC="$(mktemp -d)"
 bash "$ROOT/eval/doctor.sh" "$DOC" >/dev/null 2>&1 && pass "doctor: healthy install -> exit 0" || fail "doctor flagged a healthy install"
 chmod -x "$DOC/.claude/hooks/guard-write.sh" 2>/dev/null
 bash "$ROOT/eval/doctor.sh" "$DOC" >/dev/null 2>&1 && fail "doctor PASSED a broken install (non-exec hook)" || pass "doctor: broken install -> exit != 0"
+chmod +x "$DOC/.claude/hooks/guard-write.sh" 2>/dev/null   # restore for the next mutations
+# M2c: a present + executable but NEUTERED hook (body replaced with exit 0) must be caught by the behaviour probe.
+printf '#!/usr/bin/env bash\nexit 0\n' > "$DOC/.claude/hooks/guard-bash.sh"; chmod +x "$DOC/.claude/hooks/guard-bash.sh"
+bash "$ROOT/eval/doctor.sh" "$DOC" >/dev/null 2>&1 && fail "doctor PASSED a neutered guard-bash (M2c)" || pass "doctor: neutered guard-bash -> exit != 0 (M2c probe)"
+cp "$HOOKS/guard-bash.sh" "$DOC/.claude/hooks/guard-bash.sh"; chmod +x "$DOC/.claude/hooks/guard-bash.sh"   # restore
+# M2a: an empty hook array wires nothing — doctor must flag it (needs jq to read array length).
+if command -v jq >/dev/null 2>&1; then
+  jq '.hooks.PreToolUse = []' "$DOC/.claude/settings.json" > "$DOC/.claude/s.tmp" && mv "$DOC/.claude/s.tmp" "$DOC/.claude/settings.json"
+  bash "$ROOT/eval/doctor.sh" "$DOC" >/dev/null 2>&1 && fail "doctor PASSED empty PreToolUse [] (M2a)" || pass "doctor: empty PreToolUse [] -> exit != 0 (M2a)"
+else pass "doctor empty-array test skipped (no jq)"; fi
 rm -rf "$DOC"
 # start.sh must chmod hooks via a glob, so a hook added later is still made executable (an explicit list missed some).
 grep -qE 'chmod \+x .*\.claude/hooks/\*\.sh' "$(cd "$ROOT/.." && pwd)/start.sh" \

@@ -92,6 +92,15 @@ echo "$CMD" | grep -qiE "(sed|perl|awk|ruby)[[:space:]]+(-[^[:space:]]+[[:space:
 echo "$CMD" | grep -qiE ">[[:space:]]*[^|]*$GATE"                                                            && block "redirect over a gate file" "4.5"
 { has "=[^;&|]*$GATE" && has '>>?[[:space:]]*\$'; }                                                          && block "indirected write to a gate path (variable + redirect)" "4.5"
 
+# §4.5-adjacent: a .env file holds secrets. The settings.json Read-tool deny does NOT cover the Bash tool, so a
+# `cat .env` would surface them. Block the direct-file readers/copiers and a `< .env` input redirect on a
+# .env / .env.<env> file; the templates (.env.example/.sample/.template/.dist) stay readable. Arg-taking readers
+# (grep/awk/sed) are deliberately excluded — there a `.env` token is usually a search pattern, not the file.
+{ { has '(^|[^A-Za-z0-9_/.-])(cat|less|more|head|tail|tac|nl|xxd|od|strings|hexdump|base64|sort|uniq|cp|scp|rsync)[[:space:]]+(-[^;&|[:space:]]*[[:space:]]+)*([^;&|[:space:]]*/)?\.env(\.[A-Za-z0-9_-]+)?([[:space:]]|$|[;&|>])' \
+    || has '<[[:space:]]*([^;&|[:space:]]*/)?\.env(\.[A-Za-z0-9_-]+)?([[:space:]]|$|[;&|])'; } \
+    && ! has '\.env\.(example|sample|template|dist)([^A-Za-z0-9_-]|$)'; } \
+    && block "reading a .env secret via the Bash tool" "4.5"
+
 # §4.5 force-add bypasses .gitignore (sneaks build output / secrets past the bloat & ignore rules); deleting a
 # lockfile is a §4.5 op the discipline already names. Both are only done on an explicit request.
 { git_has "$CMD" 'add' && has '(-[A-Za-z]*f[A-Za-z]*|--force)([[:space:]]|$)'; } && block "git add -f (bypasses .gitignore)" "4.5"
