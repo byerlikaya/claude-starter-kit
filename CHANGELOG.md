@@ -3,6 +3,20 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [1.4.1] - 2026-07-14
+
+### Fixed
+- **Updates now refresh the kit's own hooks.** The `settings.json` merge concatenated hook arrays, so on update a
+  stale kit hook entry (e.g. an old `context-usage` hook with a short timeout) survived next to the refreshed one —
+  the outdated one then timed out — and a genuinely new hook event (`SessionStart`) could be missed. The merge is now
+  hook-aware: kit-owned hooks (any command referencing `.claude/hooks/`) are treated as authoritative, so current
+  entries land, stale ones drop, and new events wire up, while the project's own custom hooks and permissions are
+  preserved.
+- **Settings merge no longer needs jq.** On machines without `jq` (common on Windows Git-Bash) the merge was skipped
+  entirely, so updates never applied new hooks or corrected timeouts. A `python3` fallback with identical semantics
+  now runs when `jq` is absent; if neither is present the kit's reference settings are written alongside for a manual
+  reconcile instead of a silent skip. A smoke-test regression guard locks the hook-aware behaviour in.
+
 ## [1.4.0] - 2026-07-13
 
 ### Added
