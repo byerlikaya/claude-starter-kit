@@ -536,7 +536,10 @@ else
   echo "  CLAUDE.md was missing -> @import + project template created"
 fi
 
-# 3c) settings.json SCHEMA-AWARE merge: project setting is NOT deleted; arrays concat+dedup; ABORT on invalid JSON.
+# 3c) settings.json HOOK-AWARE merge: the kit OWNS its hooks (any command referencing .claude/hooks/), so on update
+# kit hook entries are REFRESHED (new events + current timeouts land; stale kit entries drop) while the project's OWN
+# custom hooks and permissions are PRESERVED. Non-hook keys deep-merge (project scalar wins, arrays concat+dedup).
+# Blind concat would leave a stale duplicate (e.g. an old timeout-10 context-usage hook that then times out).
 KSET="$SRC/settings.json"; PSET=".claude/settings.json"
 JQ_MERGE='
 def ddedup: reduce .[] as $x ([]; if any(.[]; .==$x) then . else .+[$x] end);
@@ -544,20 +547,55 @@ def dm(a;b): reduce (b|keys_unsorted[]) as $k (a;
   if (.[$k]|type)=="object" and (b[$k]|type)=="object" then .[$k]=dm(.[$k];b[$k])
   elif (.[$k]|type)=="array" and (b[$k]|type)=="array" then .[$k]=((.[$k]+b[$k])|ddedup)
   else .[$k]=b[$k] end);
-dm($k[0]; $p[0])'   # base=kit, overlay=project -> project scalars win, arrays merge
+def is_kit: ((.hooks // []) | map((.command // "") | contains(".claude/hooks/")) | any);
+def merge_hooks(kh;ph):
+  (((kh|keys_unsorted)+(ph|keys_unsorted))|unique) as $e
+  | reduce $e[] as $k ({}; .[$k]=((kh[$k] // [])+((ph[$k] // [])|map(select(is_kit|not)))));
+(dm($k[0]; $p[0])) | .hooks=merge_hooks(($k[0].hooks // {}); ($p[0].hooks // {}))'
 if [ ! -f "$PSET" ]; then
   [ -f "$KSET" ] && { cp "$KSET" "$PSET"; echo "  settings.json: was missing in the project -> the kit's was installed"; }
-elif ! command -v jq >/dev/null 2>&1; then
-  warn "settings.json: no jq -> safe merge not possible. Project setting PRESERVED; add the kit gates by hand."
-elif ! jq -e . "$PSET" >/dev/null 2>&1; then
-  warn "settings.json: existing file is INVALID JSON -> merge ABORT (no silent overwrite). Fix it by hand first."
-else
-  MERGED="$(jq -n --slurpfile p "$PSET" --slurpfile k "$KSET" "$JQ_MERGE" 2>/dev/null || true)"
-  if [ -n "$MERGED" ] && printf '%s' "$MERGED" | jq -e . >/dev/null 2>&1; then
-    printf '%s\n' "$MERGED" > "$PSET"; echo "  settings.json: schema-aware MERGE (project hooks/permissions PRESERVED + kit added)"
+elif command -v jq >/dev/null 2>&1; then
+  if ! jq -e . "$PSET" >/dev/null 2>&1; then
+    warn "settings.json: existing file is INVALID JSON -> merge ABORT (no silent overwrite). Fix it by hand first."
   else
-    warn "settings.json: merge failed -> project setting PRESERVED (not overwritten)."
+    MERGED="$(jq -n --slurpfile p "$PSET" --slurpfile k "$KSET" "$JQ_MERGE" 2>/dev/null || true)"
+    if [ -n "$MERGED" ] && printf '%s' "$MERGED" | jq -e . >/dev/null 2>&1; then
+      printf '%s\n' "$MERGED" > "$PSET"; echo "  settings.json: hook-aware MERGE via jq (kit hooks refreshed - custom hooks/permissions PRESERVED)"
+    else
+      warn "settings.json: jq merge failed -> project setting PRESERVED (not overwritten)."
+    fi
   fi
+elif command -v python3 >/dev/null 2>&1; then   # Windows Git-Bash rarely ships jq; python3 is far more common
+  if python3 - "$KSET" "$PSET" "$PSET.tmp" 2>/dev/null <<'PYEOF' && [ -s "$PSET.tmp" ]; then
+import json,sys
+kit=json.load(open(sys.argv[1])); proj=json.load(open(sys.argv[2]))
+def ddedup(a):
+  out=[]
+  for x in a:
+    if x not in out: out.append(x)
+  return out
+def dm(a,b):
+  r=dict(a)
+  for k,v in b.items():
+    if isinstance(r.get(k),dict) and isinstance(v,dict): r[k]=dm(r[k],v)
+    elif isinstance(r.get(k),list) and isinstance(v,list): r[k]=ddedup(r[k]+v)
+    else: r[k]=v
+  return r
+def is_kit(e): return any(".claude/hooks/" in (h.get("command") or "") for h in (e.get("hooks") or []))
+def merge_hooks(kh,ph):
+  evs=list(dict.fromkeys(list(kh)+list(ph))); o={}
+  for e in evs: o[e]=list(kh.get(e,[]))+[x for x in ph.get(e,[]) if not is_kit(x)]
+  return o
+m=dm(kit,proj); m["hooks"]=merge_hooks(kit.get("hooks",{}),proj.get("hooks",{}))
+open(sys.argv[3],"w").write(json.dumps(m,indent=2)+"\n")
+PYEOF
+    mv "$PSET.tmp" "$PSET"; echo "  settings.json: hook-aware MERGE via python3 (kit hooks refreshed - custom hooks/permissions PRESERVED)"
+  else
+    rm -f "$PSET.tmp"; warn "settings.json: python3 merge failed -> project setting PRESERVED (not overwritten)."
+  fi
+else
+  cp "$KSET" "$PSET.kit" 2>/dev/null || true
+  warn "settings.json: no jq/python3 -> cannot merge safely. Kit reference written to .claude/settings.json.kit -> reconcile by hand (esp. SessionStart hook + hook timeouts)."
 fi
 
 # ============ [STAGE 4] GIT-HOOK ARMING (SHIM) + PROOF ============
@@ -681,7 +719,7 @@ cat > docs/HANDOVER.md <<HAND
 - Kit agents: $NCCK (-csk namespace; no clash with project agents).
 - Project agents: $N_PAGENTS — UNTOUCHED, in place + active (recursive discovery).
 - Discipline: .claude/DISCIPLINE.md + @import into the project CLAUDE.md (content untouched).
-- settings.json: schema-aware merge (project hooks/permissions PRESERVED + kit added).
+- settings.json: hook-aware merge (kit hooks REFRESHED to current — new events + timeouts land; your own custom hooks/permissions PRESERVED).
 - Git gates: $HOOKDESC.
 - Overlapping roles: $MERGE_NOTE.
 - $BR_HANDOVER_LINE
