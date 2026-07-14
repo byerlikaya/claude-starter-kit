@@ -544,18 +544,16 @@ DOC="$(mktemp -d)"
   chmod +x .claude/hooks/*.sh .claude/hooks/pre-commit .claude/hooks/commit-msg
   git config core.hooksPath .claude/hooks )
 bash "$ROOT/eval/doctor.sh" "$DOC" >/dev/null 2>&1 && pass "doctor: healthy install -> exit 0" || fail "doctor flagged a healthy install"
-# The "non-executable hook" probe only means something where the FS enforces the exec bit. Windows (NTFS via
-# Git-Bash) does not — `chmod -x` is a no-op and the file stays executable to `[ -x ]` — so the broken state can't
-# even be created there; skip the probe rather than assert a condition the platform can't represent.
-EXECPROBE="$DOC/.execprobe"; : > "$EXECPROBE"; chmod +x "$EXECPROBE" 2>/dev/null; chmod -x "$EXECPROBE" 2>/dev/null
-if [ ! -x "$EXECPROBE" ]; then
-  chmod -x "$DOC/.claude/hooks/guard-write.sh" 2>/dev/null
+# The "non-executable hook" probe only means something where `chmod -x` actually takes effect. On Windows via
+# Git-Bash/MSYS a file with a `#!` shebang is reported executable regardless of the bit, so the broken state can't
+# be created — probe the REAL hook: only assert when chmod -x actually cleared its executability.
+chmod -x "$DOC/.claude/hooks/guard-write.sh" 2>/dev/null
+if [ ! -x "$DOC/.claude/hooks/guard-write.sh" ]; then
   bash "$ROOT/eval/doctor.sh" "$DOC" >/dev/null 2>&1 && fail "doctor PASSED a broken install (non-exec hook)" || pass "doctor: broken install -> exit != 0"
-  chmod +x "$DOC/.claude/hooks/guard-write.sh" 2>/dev/null   # restore for the next mutations
 else
-  pass "doctor: non-exec-hook probe skipped (this filesystem does not enforce the exec bit)"
+  pass "doctor: non-exec-hook probe skipped (Git-Bash keeps shebang scripts executable regardless of the bit)"
 fi
-rm -f "$EXECPROBE"
+chmod +x "$DOC/.claude/hooks/guard-write.sh" 2>/dev/null   # restore for the next mutations
 # M2c: a present + executable but NEUTERED hook (body replaced with exit 0) must be caught by the behaviour probe.
 printf '#!/usr/bin/env bash\nexit 0\n' > "$DOC/.claude/hooks/guard-bash.sh"; chmod +x "$DOC/.claude/hooks/guard-bash.sh"
 bash "$ROOT/eval/doctor.sh" "$DOC" >/dev/null 2>&1 && fail "doctor PASSED a neutered guard-bash (M2c)" || pass "doctor: neutered guard-bash -> exit != 0 (M2c probe)"
