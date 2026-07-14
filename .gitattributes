@@ -8,3 +8,7 @@ claude-starter/hooks/commit-msg text eol=lf
 # strip '\r' defensively, but keeping these LF means the parsers never see one.
 claude-starter/profiles.conf text eol=lf
 *.conf text eol=lf
+# Blocklists/allowlists and other data files the hooks read line-by-line as patterns: a CRLF checkout leaves a '\r'
+# on every pattern, which then never matches the LF diff — silently blinding the trace/secret gate on Windows. The
+# pre-commit also strips a trailing '\r' defensively, but keeping these LF means it never sees one.
+*.txt text eol=lf

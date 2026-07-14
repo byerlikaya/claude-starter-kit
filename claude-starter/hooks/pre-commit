@@ -74,7 +74,8 @@ done < <(git diff --cached --name-only --diff-filter=AM -- . 2>/dev/null)
 # (1) trace scan — case-INsensitive (vendor / AI-authorship strings), project files only
 if [ -f "$BL" ] && [ -s "$TRACE_F" ]; then
   while IFS= read -r pat || [ -n "$pat" ]; do
-    case "$pat" in ''|\#*) continue;; esac
+    pat="${pat%$'\r'}"                       # tolerate a CRLF blocklist (Windows/autocrlf checkout) — a trailing \r
+    case "$pat" in ''|\#*) continue;; esac   # in the pattern never matches the LF-normalised diff, blinding the gate
     if [ -n "$AL" ] && grep -qxF -- "$pat" "$AL"; then continue; fi
     if grep -iqE -- "$pat" "$TRACE_F"; then
       echo "TRACE-SCANNER: forbidden expression in added code -> '$pat' (§4.1/§4.2)"
@@ -85,6 +86,7 @@ fi
 # (2) secret scan — case-SENSITIVE (token prefixes are case-specific); prints the PATTERN, never the value
 if [ -f "$SL" ] && [ -s "$SECRET_F" ]; then
   while IFS= read -r pat || [ -n "$pat" ]; do
+    pat="${pat%$'\r'}"                       # tolerate a CRLF blocklist (Windows/autocrlf checkout)
     case "$pat" in ''|\#*) continue;; esac
     if [ -n "$SAL" ] && grep -qxF -- "$pat" "$SAL"; then continue; fi
     if grep -qE -- "$pat" "$SECRET_F"; then
