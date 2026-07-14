@@ -579,6 +579,26 @@ bash "$ROOT/eval/scan-skill.sh" "$SCX/skills/evil/SKILL.md" >/dev/null 2>&1 && f
 bash "$ROOT/eval/scan-skill.sh" "$SCX/skills/ok/SKILL.md"   >/dev/null 2>&1 && pass "scan-skill: a clean skill scores SAFE (exit 0)" || fail "scan-skill flagged a clean skill (false positive)"
 rm -rf "$SCX"
 
+echo "== 7g) adopt.sh settings merge is HOOK-AWARE (updates refresh kit hooks, preserve custom) =="
+# Regression guard for the jq-less/stale-settings bug: on update the kit OWNS its hooks, so a new event
+# (SessionStart) must get wired and a stale kit entry (old timeout) refreshed, WITHOUT duplicating hooks or
+# dropping the project's own custom hooks. Extract the merge program from adopt.sh (single source of truth).
+if [ "$IS_KIT" = 1 ] && command -v jq >/dev/null 2>&1; then
+  ADOPT="$(cd "$ROOT/.." && pwd)/adopt.sh"; KSET="$ROOT/settings.json"
+  if [ -f "$ADOPT" ] && [ -f "$KSET" ]; then
+    JQM="$(awk '/^JQ_MERGE=./{f=1} f{print} f&&/\)\)'"'"'$/{exit}' "$ADOPT" | sed "1s/^JQ_MERGE='//; \$s/'\$//")"
+    MTMP="$(mktemp -d)"
+    printf '%s' '{ "hooks": { "UserPromptSubmit": [ { "hooks": [ { "type":"command","command":"bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/context-usage.sh\" 2>/dev/null || true","timeout":10 } ] } ], "PostToolUse":[{"hooks":[{"type":"command","command":"bash ./custom.sh"}]}] } }' > "$MTMP/old.json"
+    if jq -n --slurpfile p "$MTMP/old.json" --slurpfile k "$KSET" "$JQM" > "$MTMP/out.json" 2>/dev/null; then
+      [ "$(jq -r '.hooks.SessionStart|length' "$MTMP/out.json")" = 1 ] && pass "merge: new event (SessionStart) gets wired on update" || fail "merge: SessionStart not wired on update"
+      [ "$(jq -r '.hooks.UserPromptSubmit|length' "$MTMP/out.json")" = 1 ] && pass "merge: no duplicate hook after update (stale kit entry dropped)" || fail "merge: duplicate UserPromptSubmit hook survived"
+      [ "$(jq -r '.hooks.UserPromptSubmit[0].hooks[0].timeout' "$MTMP/out.json")" = 30 ] && pass "merge: stale hook timeout refreshed to kit's" || fail "merge: stale timeout not refreshed"
+      [ "$(jq -r '.hooks.PostToolUse[0].hooks[0].command' "$MTMP/out.json")" = "bash ./custom.sh" ] && pass "merge: project's OWN custom hook preserved" || fail "merge: custom hook lost"
+    else fail "merge: extracted JQ_MERGE failed to run (extraction drift?)"; fi
+    rm -rf "$MTMP"
+  else note "merge test skipped (adopt.sh or settings.json not found)"; fi
+else note "merge test skipped (installed project or no jq)"; fi
+
 echo "== 8) Slash commands =="
 for c in simplify plan review ship handoff; do
   [ -f "$ROOT/commands/$c.md" ] && pass "/$c present" || fail "/$c command missing"
