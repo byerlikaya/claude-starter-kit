@@ -3,6 +3,24 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [1.4.3] - 2026-07-14
+
+### Fixed
+- **The secret/trace commit gate was blind on Windows.** On an autocrlf (CRLF) checkout the pre-commit scanner read
+  its blocklists with a trailing carriage return, so every pattern carried a `\r` and never matched the LF diff — a
+  Windows user's commits weren't actually protected. The blocklist loops now strip a trailing `\r`, and
+  `.gitattributes` pins the data files to LF. Verified on a Windows CI runner.
+- **`/update-csk` now self-heals with no jq/python and no flags.** The settings merge previously required `jq` or
+  `python3`; with neither (typical Windows Git-Bash) an update silently skipped it and left the hooks stale. A
+  no-parser bash path now safely replaces a kit-only `settings.json` (a timestamped backup is kept), and a
+  non-interactive update of an existing install applies by default — so a plain `/update-csk` refreshes the install
+  end to end.
+
+### Added
+- **`--yes` flag on the updater** for non-interactive / CI runs, and a cross-platform CI matrix (Linux · macOS ·
+  Windows) plus an e2e self-heal rehearsal, so the installer is proven on all three platforms.
+- **Leaner npm README + broader keywords** for the package page (the rich README stays on GitHub).
+
 ## [1.4.2] - 2026-07-14
 
 ### Fixed
