@@ -102,6 +102,18 @@ if [ -L "$SYMPROBE" ]; then
     ls "$N"/.claude/settings.json.bak-* >/dev/null 2>&1   || { echo "FAIL: no-jq/python replace did not keep a backup"; exit 1; }
     head -1 "$N/CLAUDE.md" | grep -q 'project rules'      || { echo "FAIL: no-jq/python update clobbered CLAUDE.md"; exit 1; }
     NOJQ_NOTE="with + WITHOUT jq/python"
+    # (D) Python exposed ONLY as `py` (the Windows Python Launcher) — no jq, no python3/python. The merge must run
+    #     via py and heal, NOT fall through to the .kit reference (the exact case a Git-Bash Windows user hit).
+    REALPY="$(command -v python3 2>/dev/null || command -v python 2>/dev/null)"
+    if [ -n "$REALPY" ]; then
+      P="$WORK/selfheal-py"; mk_stale_install "$P"
+      printf '#!/bin/sh\nexec "%s" "$@"\n' "$REALPY" > "$NODEPS/py"; chmod +x "$NODEPS/py"
+      ( cd "$P" && PATH="$NODEPS" bash adopt.sh --here </dev/null >/dev/null 2>&1 )
+      grep -q 'SessionStart' "$P/.claude/settings.json"   || { echo "FAIL: py-launcher update did not self-heal (SessionStart)"; exit 1; }
+      grep -q '"timeout": 30' "$P/.claude/settings.json"  || { echo "FAIL: py-launcher update did not refresh the timeout"; exit 1; }
+      [ ! -e "$P/.claude/settings.json.kit" ]             || { echo "FAIL: py present but the merge fell back to .kit"; exit 1; }
+      rm -f "$NODEPS/py"
+    fi
   else NOJQ_NOTE="with jq/python (couldn't build a jq-less PATH here)"; fi
 else
   NOJQ_NOTE="with jq/python (no-jq PATH-strip needs POSIX symlinks — that leg runs on Linux/macOS)"
