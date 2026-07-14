@@ -83,25 +83,30 @@ head -1 "$U/CLAUDE.md" | grep -q 'project rules'        || { echo "FAIL: update 
 # (B) SAME, but with NO jq and NO python3 on PATH (the real Windows Git-Bash case) -> kit-only settings safely
 # REPLACED + backup kept. The strip needs a symlink farm; Git-Bash on Windows can't make one, so there we skip this
 # sub-test (with a note) and rely on (A) + the portable-bash fallback proven on the POSIX runners.
-N="$WORK/selfheal-nojq"; mk_stale_install "$N"
-NODEPS="$WORK/nodeps-bin"; rm -rf "$NODEPS"; mkdir -p "$NODEPS"    # mirror every tool on PATH, then drop jq + python*
-oldIFS="$IFS"; IFS=:
-for d in $PATH; do [ -d "$d" ] || continue
-  for f in "$d"/*; do b="$(basename "$f" 2>/dev/null)"; [ -n "$b" ] && [ -x "$f" ] && [ ! -e "$NODEPS/$b" ] && ln -s "$f" "$NODEPS/$b" 2>/dev/null; done
-done; IFS="$oldIFS"
-rm -f "$NODEPS"/jq "$NODEPS"/jq.* "$NODEPS"/python "$NODEPS"/python3 "$NODEPS"/python.* "$NODEPS"/python3.* 2>/dev/null
-if PATH="$NODEPS" bash -c 'command -v grep >/dev/null 2>&1 && command -v cp >/dev/null 2>&1' \
-   && ! PATH="$NODEPS" bash -c 'command -v jq >/dev/null 2>&1' \
-   && ! PATH="$NODEPS" bash -c 'command -v python3 >/dev/null 2>&1'; then
-  ( cd "$N" && PATH="$NODEPS" bash adopt.sh --here </dev/null >/dev/null 2>&1 )
-  grep -q 'SessionStart' "$N/.claude/settings.json"     || { echo "FAIL: no-jq/python update did not self-heal the settings"; exit 1; }
-  grep -q '"timeout": 30' "$N/.claude/settings.json"    || { echo "FAIL: no-jq/python update did not refresh the timeout"; exit 1; }
-  ls "$N"/.claude/settings.json.bak-* >/dev/null 2>&1   || { echo "FAIL: no-jq/python replace did not keep a backup"; exit 1; }
-  head -1 "$N/CLAUDE.md" | grep -q 'project rules'      || { echo "FAIL: no-jq/python update clobbered CLAUDE.md"; exit 1; }
-  NOJQ_NOTE="with + WITHOUT jq/python"
+# Probe ONCE whether this filesystem makes real symlinks. Git-Bash on Windows copies instead — a copied .exe is
+# DLL-fragile and can't run, so a mirror-farm PATH there is both broken and slow (thousands of copies). Only build
+# the jq-less strip where symlinks are real; elsewhere skip this leg (the no-jq code is proven on the POSIX runners).
+SYMPROBE="$WORK/.symprobe"; rm -f "$SYMPROBE"; ln -s "$(command -v bash 2>/dev/null)" "$SYMPROBE" 2>/dev/null
+if [ -L "$SYMPROBE" ]; then
+  N="$WORK/selfheal-nojq"; mk_stale_install "$N"
+  NODEPS="$WORK/nodeps-bin"; rm -rf "$NODEPS"; mkdir -p "$NODEPS"    # mirror every tool on PATH, then drop jq + python*
+  oldIFS="$IFS"; IFS=:
+  for d in $PATH; do [ -d "$d" ] || continue
+    for f in "$d"/*; do b="$(basename "$f" 2>/dev/null)"; [ -n "$b" ] && [ -x "$f" ] && [ ! -e "$NODEPS/$b" ] && ln -s "$f" "$NODEPS/$b" 2>/dev/null; done
+  done; IFS="$oldIFS"
+  rm -f "$NODEPS"/jq "$NODEPS"/jq.* "$NODEPS"/python "$NODEPS"/python3 "$NODEPS"/python.* "$NODEPS"/python3.* 2>/dev/null
+  if ! PATH="$NODEPS" bash -c 'command -v jq >/dev/null 2>&1' && ! PATH="$NODEPS" bash -c 'command -v python3 >/dev/null 2>&1'; then
+    ( cd "$N" && PATH="$NODEPS" bash adopt.sh --here </dev/null >/dev/null 2>&1 )
+    grep -q 'SessionStart' "$N/.claude/settings.json"     || { echo "FAIL: no-jq/python update did not self-heal the settings"; exit 1; }
+    grep -q '"timeout": 30' "$N/.claude/settings.json"    || { echo "FAIL: no-jq/python update did not refresh the timeout"; exit 1; }
+    ls "$N"/.claude/settings.json.bak-* >/dev/null 2>&1   || { echo "FAIL: no-jq/python replace did not keep a backup"; exit 1; }
+    head -1 "$N/CLAUDE.md" | grep -q 'project rules'      || { echo "FAIL: no-jq/python update clobbered CLAUDE.md"; exit 1; }
+    NOJQ_NOTE="with + WITHOUT jq/python"
+  else NOJQ_NOTE="with jq/python (couldn't build a jq-less PATH here)"; fi
 else
   NOJQ_NOTE="with jq/python (no-jq PATH-strip needs POSIX symlinks — that leg runs on Linux/macOS)"
 fi
+rm -f "$SYMPROBE"
 # (C) FIRST adopt (no kit present) · non-interactive · NO --yes -> declines (a brownfield change still needs consent)
 F="$WORK/firstadopt"; rm -rf "$F"; mkdir -p "$F"
 cp adopt.sh "$F/"; cp -R claude-starter "$F/"; cp VERSION "$F/"; printf '{"name":"x"}' > "$F/package.json"
