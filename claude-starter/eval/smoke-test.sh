@@ -160,6 +160,9 @@ BASHBIN="$(command -v bash 2>/dev/null || echo bash)"   # absolute -> the stripp
 for t in awk sed grep head tail cat ls tr; do
   tp="$(command -v "$t" 2>/dev/null)" && ln -s "$tp" "$JXBIN/$t" 2>/dev/null || JXOK=0
 done
+# Git-Bash on Windows can't make real symlinks — `ln -s` silently COPIES, so JXOK stays 1 but the PATH is not a
+# faithful jq-less POSIX env. Require a real symlink; otherwise skip (the no-jq path is exercised on the POSIX runners).
+[ "$JXOK" = 1 ] && [ ! -L "$JXBIN/awk" ] && JXOK=0
 if [ "$JXOK" = 1 ] && ! PATH="$JXBIN" command -v jq >/dev/null 2>&1; then
   SX="$(mktemp)"
   printf '%s\n' '{"type":"assistant","isSidechain":false,"message":{"usage":{"input_tokens":20,"cache_read_input_tokens":760000,"cache_creation_input_tokens":11936}}}' >  "$SX"
@@ -202,6 +205,7 @@ CUJX="$(mktemp -d)"; CUJXOK=1; CUBASH="$(command -v bash 2>/dev/null || echo bas
 for t in awk sed grep head tail cat ls tr dirname; do
   tp="$(command -v "$t" 2>/dev/null)" && ln -s "$tp" "$CUJX/$t" 2>/dev/null || CUJXOK=0
 done
+[ "$CUJXOK" = 1 ] && [ ! -L "$CUJX/awk" ] && CUJXOK=0   # Windows Git-Bash copies instead of symlinking -> not a faithful jq-less PATH; skip
 cu(){    CONTEXT_WINDOW=1000000 bash "$HOOKS/context-usage.sh" --verbose "$1" 2>/dev/null; }
 cu_nojq(){ PATH="$CUJX" CONTEXT_WINDOW=1000000 "$CUBASH" "$HOOKS/context-usage.sh" --verbose "$1" 2>/dev/null; }
 # assert the SAME expected total on both engines — they must never drift apart
@@ -468,6 +472,7 @@ o="$(gj auto 'git commit -m \"reset --hard bug\"' | bash "$HOOKS/guard-bash.sh" 
 # Fallback (no jq AND no python3 — stock Git Bash on Windows): the matchers must still fire on the raw JSON blob (M1).
 GBX="$(mktemp -d)"; GBOK=1; GBBASH="$(command -v bash 2>/dev/null || echo bash)"
 for t in awk sed grep head cat tr git cut; do tp="$(command -v "$t" 2>/dev/null)" && ln -s "$tp" "$GBX/$t" 2>/dev/null || GBOK=0; done
+[ "$GBOK" = 1 ] && [ ! -L "$GBX/awk" ] && GBOK=0   # Windows Git-Bash copies instead of symlinking -> not a faithful jq-less PATH; skip
 if [ "$GBOK" = 1 ] && ! PATH="$GBX" command -v jq >/dev/null 2>&1 && ! PATH="$GBX" command -v python3 >/dev/null 2>&1; then
   o="$(gj auto 'git commit -m x' | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" 2>/dev/null)"
   echo "$o" | grep -q '"permissionDecision":"ask"' && pass "no-jq/py: commit still ASKs (M1 fallback closed)" || fail "no-jq/py: commit gate FAILS OPEN (M1): $o"
@@ -539,8 +544,15 @@ DOC="$(mktemp -d)"
   chmod +x .claude/hooks/*.sh .claude/hooks/pre-commit .claude/hooks/commit-msg
   git config core.hooksPath .claude/hooks )
 bash "$ROOT/eval/doctor.sh" "$DOC" >/dev/null 2>&1 && pass "doctor: healthy install -> exit 0" || fail "doctor flagged a healthy install"
+# The "non-executable hook" probe only means something where `chmod -x` actually takes effect. On Windows via
+# Git-Bash/MSYS a file with a `#!` shebang is reported executable regardless of the bit, so the broken state can't
+# be created — probe the REAL hook: only assert when chmod -x actually cleared its executability.
 chmod -x "$DOC/.claude/hooks/guard-write.sh" 2>/dev/null
-bash "$ROOT/eval/doctor.sh" "$DOC" >/dev/null 2>&1 && fail "doctor PASSED a broken install (non-exec hook)" || pass "doctor: broken install -> exit != 0"
+if [ ! -x "$DOC/.claude/hooks/guard-write.sh" ]; then
+  bash "$ROOT/eval/doctor.sh" "$DOC" >/dev/null 2>&1 && fail "doctor PASSED a broken install (non-exec hook)" || pass "doctor: broken install -> exit != 0"
+else
+  pass "doctor: non-exec-hook probe skipped (Git-Bash keeps shebang scripts executable regardless of the bit)"
+fi
 chmod +x "$DOC/.claude/hooks/guard-write.sh" 2>/dev/null   # restore for the next mutations
 # M2c: a present + executable but NEUTERED hook (body replaced with exit 0) must be caught by the behaviour probe.
 printf '#!/usr/bin/env bash\nexit 0\n' > "$DOC/.claude/hooks/guard-bash.sh"; chmod +x "$DOC/.claude/hooks/guard-bash.sh"
