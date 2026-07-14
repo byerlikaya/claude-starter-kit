@@ -192,7 +192,7 @@ Inside a running Claude Code session you can also run **`/update-csk`** — it d
 | `.claude/settings.json` | merged schema-aware; your own hooks and permissions survive |
 | your own agents and skills (no `-csk` suffix) | untouched |
 
-Like `adopt`, an update needs a git repo. Where the change lands is now a choice: a first adopt opens a `kit-adopt-<timestamp>` review branch (keeps your main line clean); a routine update whose `.claude/` is gitignored applies on your **current** branch (a separate branch would just be empty); an update with a **tracked** `.claude/` asks. Force it with `--here` or `--new-branch`. Either way the change is staged and uncommitted — review the diff, then commit to accept or reset to discard.
+Like `adopt`, an update needs a git repo. Where the change lands is now a choice: a first adopt opens a `kit-adopt-<timestamp>` review branch (keeps your main line clean); a routine update whose `.claude/` is gitignored applies on your **current** branch (a separate branch would just be empty); an update with a **tracked** `.claude/` asks. Force where it lands with `--here` or `--new-branch`, and run it without prompts — as the in-session `/update-csk` and CI do — with `--yes`. Either way the change is staged and uncommitted — review the diff, then commit to accept or reset to discard.
 
 > If a project's `CLAUDE.md` carries the discipline **inline** instead of importing it, discipline updates cannot reach that project. The updater detects this, shows which lines hold the inline block, and offers to replace them with the single `@.claude/DISCIPLINE.md` import — writing a backup first, on a branch you review. Decline and nothing is touched; your project section and your own rules survive either way.
 

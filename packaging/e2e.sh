@@ -30,7 +30,7 @@ cp adopt.sh "$P/"; cp -R claude-starter "$P/"; cp VERSION "$P/"
 : > "$P/backend/DevArchitecture.sln"
 printf -- '---\nname: backend-expert\ndescription: legacy\n---\n' > "$P/.claude/agents/backend-expert.md"
 ( cd "$P" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
-( cd "$P" && printf 'yes\n' | bash adopt.sh >/dev/null 2>&1 )
+( cd "$P" && bash adopt.sh --yes >/dev/null 2>&1 )
 grep -q '^stack=dotnet' "$P/.claude/kit.conf"           || { echo "FAIL: .sln under ./backend not detected as dotnet"; exit 1; }
 [ -d "$P/.claude/skills/devarch-module" ]               || { echo "FAIL: devarch-module missing on a dotnet adopt"; exit 1; }
 [ ! -f "$P/.claude/agents/backend-expert.md" ]          || { echo "FAIL: overlapping project agent was not taken over"; exit 1; }
@@ -43,7 +43,7 @@ echo "[adopt-dotnet] stack=dotnet · devarch-module kept · overlap imported to 
 G="$WORK/adopt-generic"; rm -rf "$G"; mkdir -p "$G"
 cp adopt.sh "$G/"; cp -R claude-starter "$G/"; cp VERSION "$G/"; printf '{"name":"x"}' > "$G/package.json"
 ( cd "$G" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
-( cd "$G" && printf 'yes\n' | bash adopt.sh >/dev/null 2>&1 )
+( cd "$G" && bash adopt.sh --yes >/dev/null 2>&1 )
 grep -q '^stack=generic' "$G/.claude/kit.conf"          || { echo "FAIL: Node project not recorded as generic"; exit 1; }
 [ ! -d "$G/.claude/skills/devarch-module" ]             || { echo "FAIL: devarch-module not pruned on a generic adopt"; exit 1; }
 echo "[adopt-generic] stack=generic · devarch-module pruned"
@@ -52,13 +52,33 @@ echo "[adopt-generic] stack=generic · devarch-module pruned"
 R="$WORK/adopt-refresh"; rm -rf "$R"; mkdir -p "$R"
 cp adopt.sh "$R/"; cp -R claude-starter "$R/"; cp VERSION "$R/"; printf '{"name":"x"}' > "$R/package.json"
 ( cd "$R" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
-( cd "$R" && printf 'yes\n' | bash adopt.sh >/dev/null 2>&1 && git add -A && git commit -qm adopt1 )
+( cd "$R" && bash adopt.sh --yes >/dev/null 2>&1 && git add -A && git commit -qm adopt1 )
 grep -q '^stack=generic' "$R/.claude/kit.conf"          || { echo "FAIL: first adopt of a Node project should record generic"; exit 1; }
 mkdir -p "$R/backend/Business/Handlers"; : > "$R/backend/DevArchitecture.sln"
 ( cd "$R" && git add -A && git commit -qm 'add devarch structure' )
-( cd "$R" && printf 'yes\n' | bash adopt.sh >/dev/null 2>&1 )
+( cd "$R" && bash adopt.sh --yes >/dev/null 2>&1 )
 grep -q '^stack=dotnet' "$R/.claude/kit.conf"           || { echo "FAIL: refresh did not correct a stale generic stack to dotnet"; exit 1; }
 [ -d "$R/.claude/skills/devarch-module" ]               || { echo "FAIL: devarch-module not restored after the stack correction"; exit 1; }
 echo "[adopt-refresh] stale generic corrected -> dotnet · devarch-module restored"
+
+# A non-interactive update must never HANG on a consent prompt (an agent's shell has no TTY to answer it). Without
+# --yes it declines cleanly (nothing changes); with --yes it applies and the hook-aware settings merge refreshes a
+# stale hook (old timeout, no SessionStart). Both run against a closed stdin so the test itself can never block.
+U="$WORK/adopt-noninteractive"; rm -rf "$U"; mkdir -p "$U/.claude"
+cp adopt.sh "$U/"; cp -R claude-starter "$U/"; cp VERSION "$U/"
+cp -R "$U/claude-starter/." "$U/.claude/" 2>/dev/null; cp VERSION "$U/.claude/VERSION"
+printf 'profile=fullstack\nstack=generic\ninstaller=start.sh\n' > "$U/.claude/kit.conf"
+printf '%s\n' '{ "hooks": { "UserPromptSubmit": [ { "hooks": [ { "type":"command","command":"bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/context-usage.sh\" 2>/dev/null || true","timeout":10 } ] } ] } }' > "$U/.claude/settings.json"
+printf '# project rules\n@.claude/DISCIPLINE.md\n' > "$U/CLAUDE.md"
+( cd "$U" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
+# (1) no --yes, closed stdin: clean decline, NOTHING changed (would previously hang on an open pipe)
+( cd "$U" && bash adopt.sh --here </dev/null >/dev/null 2>&1 )
+grep -q 'SessionStart' "$U/.claude/settings.json" && { echo "FAIL: non-interactive without --yes must NOT mutate settings"; exit 1; }
+# (2) --yes: applies; the stale hook is refreshed (SessionStart wired, timeout corrected) and CLAUDE.md preserved
+( cd "$U" && bash adopt.sh --here --yes </dev/null >/dev/null 2>&1 )
+grep -q 'SessionStart' "$U/.claude/settings.json"       || { echo "FAIL: non-interactive --yes update did not wire the new SessionStart hook"; exit 1; }
+grep -q '"timeout": 30' "$U/.claude/settings.json"      || { echo "FAIL: --yes update did not refresh the stale hook timeout"; exit 1; }
+head -1 "$U/CLAUDE.md" | grep -q 'project rules'        || { echo "FAIL: --yes update clobbered the project's own CLAUDE.md"; exit 1; }
+echo "[adopt-noninteractive] no-hang · --yes applies · stale hooks refreshed · CLAUDE.md preserved"
 
 echo "e2e: all installer rehearsals passed"
