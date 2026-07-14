@@ -577,8 +577,10 @@ elif command -v jq >/dev/null 2>&1; then
       warn "settings.json: jq merge failed -> project setting PRESERVED (not overwritten)."
     fi
   fi
-elif command -v python3 >/dev/null 2>&1; then   # Windows Git-Bash rarely ships jq; python3 is far more common
-  if python3 - "$KSET" "$PSET" "$PSET.tmp" 2>/dev/null <<'PYEOF' && [ -s "$PSET.tmp" ]; then
+elif PYBIN="$(command -v python3 2>/dev/null || command -v python 2>/dev/null || command -v py 2>/dev/null)"; [ -n "$PYBIN" ]; then
+  # Windows Git-Bash rarely ships jq; Python is far more common but is exposed as python3, python, OR `py` (the
+  # Windows Python Launcher) depending on the install — check all three, not just python3.
+  if "$PYBIN" - "$KSET" "$PSET" "$PSET.tmp" 2>/dev/null <<'PYEOF' && [ -s "$PSET.tmp" ]; then
 import json,sys
 kit=json.load(open(sys.argv[1])); proj=json.load(open(sys.argv[2]))
 def ddedup(a):
@@ -601,9 +603,9 @@ def merge_hooks(kh,ph):
 m=dm(kit,proj); m["hooks"]=merge_hooks(kit.get("hooks",{}),proj.get("hooks",{}))
 open(sys.argv[3],"w").write(json.dumps(m,indent=2)+"\n")
 PYEOF
-    mv "$PSET.tmp" "$PSET"; echo "  settings.json: hook-aware MERGE via python3 (kit hooks refreshed - custom hooks/permissions PRESERVED)"
+    mv "$PSET.tmp" "$PSET"; echo "  settings.json: hook-aware MERGE via ${PYBIN##*/} (kit hooks refreshed - custom hooks/permissions PRESERVED)"
   else
-    rm -f "$PSET.tmp"; warn "settings.json: python3 merge failed -> project setting PRESERVED (not overwritten)."
+    rm -f "$PSET.tmp"; warn "settings.json: ${PYBIN##*/} merge failed -> project setting PRESERVED (not overwritten)."
   fi
 else
   # No jq AND no python3 (common on Windows Git-Bash) — we can't parse JSON to merge. But if the project's
