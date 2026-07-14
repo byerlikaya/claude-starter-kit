@@ -16,10 +16,11 @@ SRC="$HERE/claude-starter"
 # --- flags (B5 — where a refresh lands) ---  --here: the current branch · --new-branch: a fresh review branch.
 # Left empty, Stage 2 picks a smart default (first adopt -> new; update + untracked .claude -> here; update +
 # tracked -> ask). Unknown flags are ignored here (start.sh owns --backend/--dotnet/… ; adopt auto-detects shape).
-BRANCH_MODE=""
+BRANCH_MODE=""; ASSUME_YES=0
 for _a in "$@"; do case "$_a" in
   --here)       BRANCH_MODE=here ;;
   --new-branch) BRANCH_MODE=new  ;;
+  --yes|-y)     ASSUME_YES=1     ;;   # assume "yes" at every gate — for agent-driven / CI updates (no TTY to prompt)
 esac; done
 
 # --- color: only on an interactive TTY (same guard as start.sh) ---
@@ -32,7 +33,13 @@ row() { printf '  %s%-20s%s %s\n' "$B" "$1" "$R" "$2"; }
 warn(){ printf '  %s!%s %s%s%s\n' "$YE" "$R" "$YE" "$1" "$R"; }
 # smart suggestion line:  number+decision · SUGGESTED(green) · rationale(dim)
 prop(){ printf '  %s%-18s%s %s%-24s%s %s%s%s\n' "$B" "$1" "$R" "$GR" "$2" "$R" "$D" "$3" "$R"; }
-ask_yes(){ local a; printf '%s [yes/no]: ' "$1"; read -r a || a=""; case "$a" in [yY]|[yY][eE][sS]|[eE]|[eE][vV][eE][tT]) return 0;; *) return 1;; esac; }
+# Prompt only on a real TTY. With no TTY a `read` would block forever on an open-but-empty stdin (an agent's
+# non-interactive shell hung exactly here), so resolve WITHOUT reading: --yes proceeds, otherwise decline cleanly.
+ask_yes(){ local a
+  if [ -t 0 ]; then printf '%s [yes/no]: ' "$1"; read -r a || a=""
+  elif [ "${ASSUME_YES:-0}" = 1 ]; then printf '%s yes %s(--yes)%s\n' "$1" "$D" "$R"; a=yes
+  else printf '%s no %s(non-interactive — pass --yes to apply)%s\n' "$1" "$D" "$R"; a=no; fi
+  case "$a" in [yY]|[yY][eE][sS]|[eE]|[eE][vV][eE][tT]) return 0;; *) return 1;; esac; }
 # never-overwrite copy: does NOT overwrite an EXISTING target file (project file is preserved), skips+counts.
 # Result globals: ret_add / ret_skip; conflicts are added to SKIP_LIST. Do NOT call in a subshell (globals are lost).
 SKIP_LIST=""

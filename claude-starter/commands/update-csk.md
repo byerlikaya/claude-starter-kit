@@ -12,7 +12,11 @@ Bring the installed kit up to the latest published version:
    say so and stop — don't guess.
 4. **Compare.** Already on the latest → report "up to date (vX)" and stop. Otherwise show **old → new**.
 5. **Update** — this rewrites the kit-owned files under `.claude/` (your `./CLAUDE.md` and project skills are
-   preserved). **Show this plan first, then run:** `npx @byerlikaya/claude-starter-kit@latest update`.
+   preserved). **Show this plan first, then run:** `npx @byerlikaya/claude-starter-kit@latest update --here --yes`.
+   The `--here --yes` pair makes the refresh non-interactive (`--here` = apply on the current branch, `--yes` =
+   accept the smart defaults) so it runs to completion instead of blocking on a prompt your shell can't answer.
+   If you'd rather review each handover decision yourself, tell the user to run `npx @byerlikaya/claude-starter-kit@latest update`
+   (no flags) in **their own terminal**, where the interactive prompts work.
 6. **Verify:** run `/doctor-csk` (or `bash .claude/eval/doctor.sh`) so a bad/partial update surfaces immediately.
 7. **Report** old → new + the headline changes (from the release notes / CHANGELOG).
 8. **Reload (manual — a command can't do it itself):** the discipline in the running session is still the OLD one.

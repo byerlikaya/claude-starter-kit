@@ -3,6 +3,21 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [1.4.2] - 2026-07-14
+
+### Fixed
+- **`/update-csk` no longer hangs.** The updater's final apply gate always read stdin, so off a controlling terminal
+  — an agent's non-interactive shell — it blocked forever on an open, empty stdin instead of resolving. `/update-csk`,
+  which runs the updater on the user's behalf, therefore hung mid-run. The prompt helper is now TTY-aware: it asks
+  only on a real terminal, and off one it resolves without reading — `--yes` proceeds, otherwise it declines cleanly
+  (nothing changes) rather than blocking.
+
+### Added
+- **`--yes` flag on the updater** (`adopt.sh` / `npx … update`) for non-interactive, agent-driven, or CI runs.
+  `/update-csk` now invokes `npx @byerlikaya/claude-starter-kit@latest update --here --yes`, so an in-session update
+  runs to completion; a user who wants to review each handover decision still runs the plain command in their own
+  terminal. Covered by an e2e regression (no-hang · `--yes` applies · stale hooks refreshed · `CLAUDE.md` preserved).
+
 ## [1.4.1] - 2026-07-14
 
 ### Fixed
