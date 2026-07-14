@@ -3,6 +3,16 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [1.4.4] - 2026-07-14
+
+### Fixed
+- **The settings self-heal now finds Python on Windows.** The merge looked only for `python3`, but a Git-Bash
+  install commonly exposes Python only as `py` (the Windows Python Launcher) or `python` — so on those machines the
+  updater fell through to the no-parser fallback and, for a project it misjudged, left a `settings.json.kit`
+  reference instead of healing `settings.json`. The merge now probes `python3`, then `python`, then `py`, and uses
+  whichever exists, so `/update-csk` heals cleanly via Python where jq is absent. Covered by an e2e leg that runs the
+  merge with Python reachable only as `py`.
+
 ## [1.4.3] - 2026-07-14
 
 ### Fixed
