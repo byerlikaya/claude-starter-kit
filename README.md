@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🛠️ Claude Starter Kit
+<img src="assets/logo.svg" alt="Claude Starter Kit" width="460">
 
 **An agentic working kit for Claude Code** — a reusable scaffold that drives any project, at any stage, with the same engineering discipline.
 

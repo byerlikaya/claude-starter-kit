@@ -1,0 +1,6 @@
+<svg width="780" height="200" viewBox="0 0 780 200" xmlns="http://www.w3.org/2000/svg" fill="none" role="img" aria-label="Claude Starter Kit">
+<rect width="780" height="200" rx="40" fill="#0B1020"/>
+<g transform="translate(52,40) scale(0.6)"><g transform="rotate(20 100 100)">
+<rect x="58" y="38" width="22" height="124" rx="11" fill="#E5E7FB"/><rect x="88" y="38" width="22" height="124" rx="11" fill="#B9BEF9"/><rect x="118" y="32" width="26" height="136" rx="13" fill="#A78BFA"/></g></g>
+<text x="208" y="120" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="56" font-weight="800" letter-spacing="-1.5"><tspan fill="#FFFFFF">Claude</tspan><tspan dx="20" fill="#A78BFA">Starter Kit</tspan></text>
+</svg>

@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🛠️ Claude Starter Kit
+<img src="assets/logo.svg" alt="Claude Starter Kit" width="460">
 
 **Claude Code için agentic çalışma kiti** — bir projeyi, hangi aşamada olursa olsun aynı mühendislik disipliniyle ilerleten, yeniden kullanılabilir bir iskelet.
 
