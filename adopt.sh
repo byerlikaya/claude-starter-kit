@@ -370,6 +370,11 @@ case "$COLLIDE_MODE" in
   *) DEC1="$([ "$N_PAGENTS" != 0 ] && echo keep || echo none)" ;;
 esac
 
+# A non-interactive REFRESH of an existing kit install is low-risk — it rewrites only kit-owned files and the change
+# is staged/reversible — so it applies by default; this is what lets /update-csk self-heal without any flag. A first
+# adopt (KIT_PRESENT=0, a larger brownfield change) still requires an explicit --yes when there is no TTY to ask.
+if [ ! -t 0 ] && [ "$KIT_PRESENT" = 1 ]; then ASSUME_YES=1; fi
+
 # ================= [STAGE 2] HANDOVER BRANCH + COEXIST =================
 h1 "Stage 2 — apply the kit (coexist)"
 if [ "$IS_GIT" != 1 ]; then
@@ -601,8 +606,19 @@ PYEOF
     rm -f "$PSET.tmp"; warn "settings.json: python3 merge failed -> project setting PRESERVED (not overwritten)."
   fi
 else
-  cp "$KSET" "$PSET.kit" 2>/dev/null || true
-  warn "settings.json: no jq/python3 -> cannot merge safely. Kit reference written to .claude/settings.json.kit -> reconcile by hand (esp. SessionStart hook + hook timeouts)."
+  # No jq AND no python3 (common on Windows Git-Bash) — we can't parse JSON to merge. But if the project's
+  # settings.json carries ONLY kit-owned hooks (every "command" points at .claude/hooks/ — no hook the user added),
+  # it is safe to REPLACE it wholesale with the kit's current settings: stale hooks/timeouts refresh and new events
+  # (SessionStart) wire up, with zero dependencies. A timestamped backup is kept so nothing is lost (re-add any
+  # custom permissions from it). If a FOREIGN hook is present we do NOT guess — leave the file, drop a kit reference.
+  if grep '"command"' "$PSET" | grep -qv '\.claude/hooks/'; then
+    cp "$KSET" "$PSET.kit" 2>/dev/null || true
+    warn "settings.json: no jq/python3 and a non-kit hook is present -> cannot merge safely. Kit reference at .claude/settings.json.kit -> reconcile by hand."
+  else
+    BAK="$PSET.bak-$(date +%Y%m%d-%H%M%S)"; cp "$PSET" "$BAK" 2>/dev/null || true
+    cp "$KSET" "$PSET"
+    echo "  settings.json: no jq/python3 -> kit-only settings REPLACED with the current kit's (backup: $BAK — re-add any custom permissions from it)"
+  fi
 fi
 
 # ============ [STAGE 4] GIT-HOOK ARMING (SHIM) + PROOF ============

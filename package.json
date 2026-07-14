@@ -20,11 +20,23 @@
   "license": "MIT",
   "keywords": [
     "claude-code",
+    "claude",
+    "anthropic",
     "agents",
     "skills",
+    "agentic",
+    "agentic-workflow",
+    "ai-agents",
+    "llm",
     "scaffold",
+    "boilerplate",
+    "starter-kit",
+    "project-setup",
     "cli",
-    "project-setup"
+    "developer-tools",
+    "workflow",
+    "code-review",
+    "git-hooks"
   ],
   "author": "Barış Yerlikaya",
   "repository": {

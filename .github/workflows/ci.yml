@@ -39,3 +39,33 @@ jobs:
 
       - name: e2e rehearsal — start.sh (6 combos) + adopt.sh (stack detection · overlap · refresh)
         run: bash packaging/e2e.sh
+
+  # Cross-platform proof: the installer and the non-interactive settings SELF-HEAL must behave the same on Windows
+  # (Git-Bash) and macOS, not only Linux — Windows especially, since that is where the update was failing. Runs the
+  # OS-sensitive checks (syntax · smoke · e2e); the Linux job above owns the manifest/catalogue checks.
+  verify-cross:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Syntax — shell scripts
+        run: |
+          set -euo pipefail
+          bash -n start.sh
+          bash -n adopt.sh
+          for s in claude-starter/hooks/*.sh claude-starter/eval/*.sh packaging/*.sh; do
+            [ -f "$s" ] && bash -n "$s" && echo "ok: $s"
+          done
+
+      - name: Smoke test
+        run: bash claude-starter/eval/smoke-test.sh
+
+      - name: e2e rehearsal — installer + non-interactive self-heal (with/without jq·python)
+        run: bash packaging/e2e.sh

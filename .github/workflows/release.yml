@@ -89,6 +89,12 @@ jobs:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
 
+      # The repo README is rich (diagrams, collapsible sections, all install channels) — right for GitHub, noisy on
+      # the npm page. Swap in the lean, npm-focused README for the published tarball ONLY (the commit is untouched).
+      - name: Use the npm-flavoured README for the package
+        run: |
+          if [ -f README.npm.md ]; then cp README.npm.md README.md && echo "npm README staged for publish"; fi
+
       - name: Publish to npm
         run: npm publish --access public
         env:

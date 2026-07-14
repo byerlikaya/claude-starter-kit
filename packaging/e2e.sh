@@ -61,24 +61,53 @@ grep -q '^stack=dotnet' "$R/.claude/kit.conf"           || { echo "FAIL: refresh
 [ -d "$R/.claude/skills/devarch-module" ]               || { echo "FAIL: devarch-module not restored after the stack correction"; exit 1; }
 echo "[adopt-refresh] stale generic corrected -> dotnet · devarch-module restored"
 
-# A non-interactive update must never HANG on a consent prompt (an agent's shell has no TTY to answer it). Without
-# --yes it declines cleanly (nothing changes); with --yes it applies and the hook-aware settings merge refreshes a
-# stale hook (old timeout, no SessionStart). Both run against a closed stdin so the test itself can never block.
-U="$WORK/adopt-noninteractive"; rm -rf "$U"; mkdir -p "$U/.claude"
-cp adopt.sh "$U/"; cp -R claude-starter "$U/"; cp VERSION "$U/"
-cp -R "$U/claude-starter/." "$U/.claude/" 2>/dev/null; cp VERSION "$U/.claude/VERSION"
-printf 'profile=fullstack\nstack=generic\ninstaller=start.sh\n' > "$U/.claude/kit.conf"
-printf '%s\n' '{ "hooks": { "UserPromptSubmit": [ { "hooks": [ { "type":"command","command":"bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/context-usage.sh\" 2>/dev/null || true","timeout":10 } ] } ] } }' > "$U/.claude/settings.json"
-printf '# project rules\n@.claude/DISCIPLINE.md\n' > "$U/CLAUDE.md"
-( cd "$U" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
-# (1) no --yes, closed stdin: clean decline, NOTHING changed (would previously hang on an open pipe)
+# Non-interactive SELF-HEAL — the /update-csk path. An UPDATE of an existing install must fix a stale settings.json
+# off a TTY with NO flag and NO manual edit (this is what /update-csk drives), and the settings refresh must work
+# even with NO jq and NO python3 (typical Windows Git-Bash). A FIRST adopt (brownfield) still needs --yes. Every run
+# uses a closed stdin so the test can never hang.
+mk_stale_install(){                       # $1 = dir : a healthy 1.4.x install whose settings.json is STALE
+  local d="$1"; rm -rf "$d"; mkdir -p "$d/.claude"
+  cp adopt.sh "$d/"; cp -R claude-starter "$d/"; cp VERSION "$d/"
+  cp -R "$d/claude-starter/." "$d/.claude/" 2>/dev/null; cp VERSION "$d/.claude/VERSION"
+  printf 'profile=fullstack\nstack=generic\ninstaller=start.sh\n' > "$d/.claude/kit.conf"
+  printf '%s\n' '{ "hooks": { "UserPromptSubmit": [ { "hooks": [ { "type":"command","command":"bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/context-usage.sh\" 2>/dev/null || true","timeout":10 } ] } ] } }' > "$d/.claude/settings.json"
+  printf '# project rules\n@.claude/DISCIPLINE.md\n' > "$d/CLAUDE.md"
+  ( cd "$d" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
+}
+# (A) update · non-interactive · NO --yes -> APPLIES (self-heal): stale hook refreshed, SessionStart wired, CLAUDE.md kept
+U="$WORK/selfheal"; mk_stale_install "$U"
 ( cd "$U" && bash adopt.sh --here </dev/null >/dev/null 2>&1 )
-grep -q 'SessionStart' "$U/.claude/settings.json" && { echo "FAIL: non-interactive without --yes must NOT mutate settings"; exit 1; }
-# (2) --yes: applies; the stale hook is refreshed (SessionStart wired, timeout corrected) and CLAUDE.md preserved
-( cd "$U" && bash adopt.sh --here --yes </dev/null >/dev/null 2>&1 )
-grep -q 'SessionStart' "$U/.claude/settings.json"       || { echo "FAIL: non-interactive --yes update did not wire the new SessionStart hook"; exit 1; }
-grep -q '"timeout": 30' "$U/.claude/settings.json"      || { echo "FAIL: --yes update did not refresh the stale hook timeout"; exit 1; }
-head -1 "$U/CLAUDE.md" | grep -q 'project rules'        || { echo "FAIL: --yes update clobbered the project's own CLAUDE.md"; exit 1; }
-echo "[adopt-noninteractive] no-hang · --yes applies · stale hooks refreshed · CLAUDE.md preserved"
+grep -q 'SessionStart' "$U/.claude/settings.json"       || { echo "FAIL: non-interactive update did not self-heal (SessionStart missing)"; exit 1; }
+grep -q '"timeout": 30' "$U/.claude/settings.json"      || { echo "FAIL: non-interactive update did not refresh the stale timeout"; exit 1; }
+head -1 "$U/CLAUDE.md" | grep -q 'project rules'        || { echo "FAIL: update clobbered the project's own CLAUDE.md"; exit 1; }
+# (B) SAME, but with NO jq and NO python3 on PATH (the real Windows Git-Bash case) -> kit-only settings safely
+# REPLACED + backup kept. The strip needs a symlink farm; Git-Bash on Windows can't make one, so there we skip this
+# sub-test (with a note) and rely on (A) + the portable-bash fallback proven on the POSIX runners.
+N="$WORK/selfheal-nojq"; mk_stale_install "$N"
+NODEPS="$WORK/nodeps-bin"; rm -rf "$NODEPS"; mkdir -p "$NODEPS"    # mirror every tool on PATH, then drop jq + python*
+oldIFS="$IFS"; IFS=:
+for d in $PATH; do [ -d "$d" ] || continue
+  for f in "$d"/*; do b="$(basename "$f" 2>/dev/null)"; [ -n "$b" ] && [ -x "$f" ] && [ ! -e "$NODEPS/$b" ] && ln -s "$f" "$NODEPS/$b" 2>/dev/null; done
+done; IFS="$oldIFS"
+rm -f "$NODEPS"/jq "$NODEPS"/jq.* "$NODEPS"/python "$NODEPS"/python3 "$NODEPS"/python.* "$NODEPS"/python3.* 2>/dev/null
+if PATH="$NODEPS" bash -c 'command -v grep >/dev/null 2>&1 && command -v cp >/dev/null 2>&1' \
+   && ! PATH="$NODEPS" bash -c 'command -v jq >/dev/null 2>&1' \
+   && ! PATH="$NODEPS" bash -c 'command -v python3 >/dev/null 2>&1'; then
+  ( cd "$N" && PATH="$NODEPS" bash adopt.sh --here </dev/null >/dev/null 2>&1 )
+  grep -q 'SessionStart' "$N/.claude/settings.json"     || { echo "FAIL: no-jq/python update did not self-heal the settings"; exit 1; }
+  grep -q '"timeout": 30' "$N/.claude/settings.json"    || { echo "FAIL: no-jq/python update did not refresh the timeout"; exit 1; }
+  ls "$N"/.claude/settings.json.bak-* >/dev/null 2>&1   || { echo "FAIL: no-jq/python replace did not keep a backup"; exit 1; }
+  head -1 "$N/CLAUDE.md" | grep -q 'project rules'      || { echo "FAIL: no-jq/python update clobbered CLAUDE.md"; exit 1; }
+  NOJQ_NOTE="with + WITHOUT jq/python"
+else
+  NOJQ_NOTE="with jq/python (no-jq PATH-strip needs POSIX symlinks — that leg runs on Linux/macOS)"
+fi
+# (C) FIRST adopt (no kit present) · non-interactive · NO --yes -> declines (a brownfield change still needs consent)
+F="$WORK/firstadopt"; rm -rf "$F"; mkdir -p "$F"
+cp adopt.sh "$F/"; cp -R claude-starter "$F/"; cp VERSION "$F/"; printf '{"name":"x"}' > "$F/package.json"
+( cd "$F" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
+( cd "$F" && bash adopt.sh --here </dev/null >/dev/null 2>&1 )
+[ ! -f "$F/.claude/DISCIPLINE.md" ]                     || { echo "FAIL: first adopt must NOT apply non-interactively without --yes"; exit 1; }
+echo "[adopt-selfheal] update self-heals off a TTY ($NOJQ_NOTE) · backup kept · CLAUDE.md preserved · first adopt still needs --yes"
 
 echo "e2e: all installer rehearsals passed"
