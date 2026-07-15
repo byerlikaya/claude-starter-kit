@@ -3,6 +3,29 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [1.5.0] - 2026-07-15
+
+### Added
+- **Diagnose-first routing.** The orchestration workflow now opens with a diagnosis step: a cross-domain bug whose
+  root cause is unknown routes to `general-purpose` applying the `systematic-debugging` skill *before* planning —
+  unclear scope is not the same as an unknown cause, and you cannot sequence a fix you cannot locate.
+- **A one-line route trace on every task.** Each task opens with `🔧 <agent>` (delegating) or `🔧 inline · <skill>`
+  (main thread) plus a reason, so the kit's delegate-or-inline work is always visible instead of silent.
+- **`doctor` + adopt detect stale agent names.** A brownfield takeover renames the project's agents to `-csk` ids,
+  but the project `CLAUDE.md` may still name the old bare agent — a reference that matches no installed agent, so
+  delegation to it silently fails. `doctor.sh` and adopt's install-proof stage now report each such reference with
+  its `CLAUDE.md` line and the correct id (auto-delegated agents as a failure, pull-only agents as a consistency
+  note). Detection only; hand-authored prose is never auto-rewritten.
+- **A smoke-test gate for auto-delegation cues.** Every non-pull agent description must carry an action cue
+  (`use proactively` / `immediately after`), so a passive rewrite can't silently stop the specialists from firing.
+
+### Changed
+- **The specialist agents now auto-delegate.** Claude Code routes to a subagent on its `description` field and only
+  fires reliably when that description carries an action cue. The nine producing/auditing agents were rewritten to
+  lead with "use proactively …" (with an inline carve-out for trivial edits); `commit-agent-csk` and
+  `session-manager-csk` stay pull-only. The passive descriptions before this rarely auto-invoked, so the specialists
+  stayed dormant and the kit read as inert.
+
 ## [1.4.4] - 2026-07-14
 
 ### Fixed
