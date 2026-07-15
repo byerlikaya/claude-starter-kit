@@ -2,8 +2,8 @@
 name: planner-csk
 color: cyan
 description: |
-  Planning specialist. Before code: task breakdown + acceptance criteria + dependency order, via the
-  `spec-planning` skill. Plans; does not write code.
+  Planning specialist. Use proactively before implementing a feature whose scope or acceptance criteria are
+  unclear: task breakdown + acceptance criteria + dependency order, via the `spec-planning` skill. Plans; does not write code.
   Trigger phrases: "plan", "produce a spec", "task breakdown", "acceptance criteria", "sprint plan", "plan first"
 tools: Read, Grep, Glob
 ---

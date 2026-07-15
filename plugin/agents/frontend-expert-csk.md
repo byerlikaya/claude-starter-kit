@@ -3,8 +3,8 @@ name: frontend-expert-csk
 color: purple
 description: |
   Stack-agnostic frontend expert — web (React/Next/Vue/Svelte/Angular), mobile (React Native/Flutter), desktop.
-  UI, components/pages, navigation, state, i18n, accessibility, responsive, native bridge. The "how" lives in the
-  `frontend` skill (mobile: `frontend-rn-expo`).
+  The "how" lives in the `frontend` skill (mobile: `frontend-rn-expo`). Use proactively for new screens,
+  components/pages, navigation, state, i18n, accessibility, responsive, and native-bridge work; small tweaks stay inline.
   Trigger phrases: "screen", "component", "page", "navigation", "routing", "UI", "responsive", "i18n interface", "state management"
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
