@@ -682,6 +682,21 @@ else echo "  OK · PROOF-2: guard-bash BLOCKED the keyless 'git commit' (holds i
 NCCK="$(ls .claude/agents/*-csk.md 2>/dev/null | wc -l | tr -d ' ')"
 if [ "${NCCK:-0}" -ge 1 ]; then echo "  OK · PROOF-3: $NCCK kit agents (-csk) installed + discoverable"; else warn "PROOF-3: no kit agent"; PROOF_OK=0; fi
 if [ -s .claude/DISCIPLINE.md ] && grep -qF '@.claude/DISCIPLINE.md' CLAUDE.md; then echo "  OK · PROOF-4: DISCIPLINE.md loaded + @import-ed from CLAUDE.md"; else warn "PROOF-4: discipline not linked"; PROOF_OK=0; fi
+# PROOF-5: a takeover renamed the project's agents to `-csk`, but CLAUDE.md may still name the OLD bare agent
+# ("→ backend-expert"), which now matches no installed agent — so delegation to it silently fails and the
+# specialist never fires. The migration cannot safely rewrite hand-authored prose, so we TELL, precisely.
+if [ -f CLAUDE.md ] && ls .claude/agents/*-csk.md >/dev/null 2>&1; then
+  STALE=""
+  for f in .claude/agents/*-csk.md; do
+    [ -e "$f" ] || continue
+    aname="$(sed -n 's/^name:[[:space:]]*//p' "$f" | head -1 | tr -cd 'a-zA-Z0-9-')"; [ -n "$aname" ] || aname="$(basename "$f" .md)"
+    base="${aname%-csk}"
+    lines="$(grep -nE "(^|[^a-zA-Z-])$base([^a-zA-Z-]|$)" CLAUDE.md 2>/dev/null | cut -d: -f1 | tr '\n' ',' | sed 's/,$//')"
+    [ -n "$lines" ] && STALE="$STALE
+     ↳ \"$base\" → \"$aname\"  (CLAUDE.md line(s): $lines)"
+  done
+  [ -n "$STALE" ] && warn "PROOF-5: CLAUDE.md still names old bare agent(s) — rename each to its -csk id, else delegation to them silently fails:$STALE"
+fi
 [ "$PROOF_OK" = 1 ] && h1 "PROOF: kit 100% ACTIVE — gates armed, agents + discipline loaded" || warn "PROOF: some gates could not be verified (see above)"
 
 # ============ [STAGE B] APPLY THE DECISIONS ============
