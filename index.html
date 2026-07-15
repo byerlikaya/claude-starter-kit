@@ -137,9 +137,7 @@
   @media (prefers-reduced-motion:reduce){.prow,.panel .foot{opacity:1!important;transform:none!important;transition:none!important}}
 
   /* pipeline */
-  .pipe{display:grid;grid-template-columns:repeat(5,1fr);gap:.6rem}
-  @media (max-width:860px){.pipe{grid-template-columns:repeat(2,1fr)}}
-  @media (max-width:460px){.pipe{grid-template-columns:1fr}}
+  .pipe{display:grid;grid-template-columns:repeat(5,minmax(8.5rem,1fr));gap:.6rem;overflow-x:auto;padding-bottom:.35rem}
   .stage{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:1.05rem .95rem}
   .stage .s{font-family:var(--mono);font-size:.7rem;color:var(--brand-ink);letter-spacing:.1em}
   .stage h4{margin:.5rem 0 .35rem;font-size:1rem;letter-spacing:-.01em}
@@ -288,7 +286,7 @@
       <p><span class="en">Each agent is a thin trigger: it says only <i>who</i> and <i>when</i>, and delegates the <i>how</i> to a skill.</span><span class="tr">Her agent ince bir tetikleyicidir: yalnız <i>kim</i> ve <i>ne zaman</i> der, <i>nasıl</i>'ı bir skill'e devreder.</span></p>
     </div>
     <div class="pipe">
-      <div class="stage"><div class="s">01</div><h4><span class="en">Understand</span><span class="tr">Anla</span></h4><p><span class="en">Unknown cause → diagnose; unclear scope → plan.</span><span class="tr">Bilinmeyen neden → teşhis; belirsiz kapsam → planla.</span></p><div class="who">planner-csk</div></div>
+      <div class="stage"><div class="s">01</div><h4><span class="en">Understand</span><span class="tr">Anla</span></h4><p><span class="en">Unknown cause → diagnose; unclear scope → plan.</span><span class="tr">Bilinmeyen neden → teşhis; belirsiz kapsam → planla.</span></p><div class="who">planner</div></div>
       <div class="stage"><div class="s">02</div><h4><span class="en">Produce</span><span class="tr">Üret</span></h4><p><span class="en">Backend, data, frontend, devops: code by domain.</span><span class="tr">Backend, veri, frontend, devops: alanına göre kod.</span></p><div class="who">backend · database · frontend</div></div>
       <div class="stage"><div class="s">03</div><h4><span class="en">Audit</span><span class="tr">Denetle</span></h4><p><span class="en">Security, privacy, tests: before anything closes.</span><span class="tr">Güvenlik, gizlilik, test: hiçbir şey kapanmadan.</span></p><div class="who">security · privacy · test</div></div>
       <div class="stage"><div class="s">04</div><h4><span class="en">Close</span><span class="tr">Kapat</span></h4><p><span class="en">DoD gate → clean review → you approve the commit.</span><span class="tr">DoD kapısı → temiz review → commit'i sen onaylarsın.</span></p><div class="who">review · commit</div></div>
