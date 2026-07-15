@@ -358,7 +358,7 @@ echo "== 6f) always-on token budget =="
 # for that cost, and a gate rather than a reminder — a verbose new description fails the suite instead of
 # quietly taxing every future session. Budgets sit just above the current sizes: raising one is allowed, but
 # only as a deliberate edit here.
-BUDGET_DISC=9550     # DISCIPLINE.md (the discipline half of CLAUDE.md); currently 9505 (1.4.0: §4.5 now names the RCE / gate-tampering / force-add categories the 1.3.0 gates enforce)
+BUDGET_DISC=9800     # DISCIPLINE.md (the discipline half of CLAUDE.md); currently 9761 (1.5.0: workflow step 1 routes unknown root cause → general-purpose + systematic-debugging before planning — "unclear scope ≠ unknown cause")
 BUDGET_AGENTS=4700   # sum of agent frontmatter; currently 4665 (1.4.0: color: field added to all 11 agents)
 BUDGET_SKILLS=10750  # sum of skill frontmatter; currently 10682 (1.4.0: +3 phase-4 skills, +worktree isolation skill ~376B)
 fm_bytes(){ awk '/^---$/{c++; next} c==1' "$1" 2>/dev/null | wc -c | tr -d ' '; }
