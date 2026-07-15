@@ -3,6 +3,20 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [1.5.1] - 2026-07-15
+
+### Changed
+- **The stale agent-name check now follows CLAUDE.md's reference chain.** `doctor` and adopt's install-proof stage
+  no longer scan only `CLAUDE.md`; they also scan every local doc it points to (its `@import`s and `docs/…md` paths),
+  so an orchestration doc like `docs/AGENTS.md` that a takeover left naming the old bare agents is caught too.
+  Unreferenced design/audit docs and code comments are ignored, so it stays complete without false positives.
+
+### Fixed
+- **A takeover now completes its own migration.** When `adopt` renames the project's agents to their `-csk` ids, it
+  rewrites every bare reference to them across CLAUDE.md's reference chain (boundary-safe: `-csk`/`-local` suffixes and
+  longer words are left intact), so delegation to a renamed agent no longer silently fails. The edit lands on the adopt
+  review branch, visible and revertible; hand-authored prose outside the chain is never touched.
+
 ## [1.5.0] - 2026-07-15
 
 ### Added
