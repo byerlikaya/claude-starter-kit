@@ -21,14 +21,16 @@ recommend, with the rationale.**
 
 ## Workflow (orchestration)
 Noisy or heavy work goes to a subagent; small work stays on the main thread.
-1. **Plan** — ambiguous scope → **planner-csk** (`/plan`); clear work goes straight to the expert.
+1. **Diagnose, then plan** — root cause *unknown* (cross-domain bug, "where does it break?") → **general-purpose** + the `systematic-debugging` skill, *before* planning: **unclear scope ≠ unknown cause** (native-only → inline + skill). Then ambiguous *scope* → **planner-csk** (`/plan`); clear work goes straight to the expert.
 2. **Produce** — **backend-expert-csk · database-expert-csk · frontend-expert-csk**; deploy / CI / incident → **devops-expert-csk**.
 3. **Audit** — **security-expert-csk** (mandatory when security-critical) · **privacy-agent-csk** (personal data) · **test-expert-csk** (`/review`).
 4. **Close** — DoD gate → **review-agent-csk** clean → **commit-agent-csk** proposes, waits for approval (`/ship`).
 5. **Hand off** — phase boundary or full context → **session-manager-csk** → `handoff` → `/clear` (`/handoff`).
 
-Subagents return a **summary**, not raw logs. Stuck → stop and report. Commit/push and destructive commands are gated
-at the tool level (§4.4/§4.5).
+**Open every task with a one-line route trace** so the kit's work is always visible — `🔧 <agent> (why)` when
+delegating, `🔧 inline · <skill> · (why)` when staying on the main thread. Delegate a real unit of work (a handler,
+screen, migration, audit); keep only trivial one-line edits inline. Stuck → stop and report. Commit/push and
+destructive commands are gated at the tool level (§4.4/§4.5).
 
 ## Definition of Done
 - Ambiguous scope goes to **planner-csk** first, so the acceptance criterion is explicit before coding.
@@ -39,6 +41,7 @@ at the tool level (§4.4/§4.5).
 ### Skill triggering map — a skill fires on its trigger, not when you happen to remember it
 | Trigger | Mandatory skill |
 |---|---|
+| Unknown root cause / cross-domain bug | `systematic-debugging` |
 | Before every commit | `trace-scan` (the hook applies it) |
 | SonarQube build / PR | `sonarqube-check` (0/0/0/0) |
 | New or changed translation | `i18n-integrity` |

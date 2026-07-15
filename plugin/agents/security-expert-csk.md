@@ -2,8 +2,9 @@
 name: security-expert-csk
 color: red
 description: |
-  Security review expert: auth/authz, anonymous/token flows, secret leakage, injection, weak crypto, IDOR,
-  rate limits, tampering surface. Findings + fixes via `security-scan` (plus `sonarqube-check` where used); writes no code.
+  Security review expert. Use proactively whenever auth/authz, anonymous/token flows, secret leakage, injection,
+  weak crypto, IDOR, rate limits, or tamper surface are touched. Findings + fixes via `security-scan` (plus
+  `sonarqube-check` where used); writes no code.
   Trigger phrases: "security audit", "security scan", "OWASP check", "security review", "secret scan", "auth check", "token security", "tampering"
 tools: Read, Grep, Glob, Bash
 model: sonnet

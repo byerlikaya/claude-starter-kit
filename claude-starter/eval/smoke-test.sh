@@ -358,8 +358,8 @@ echo "== 6f) always-on token budget =="
 # for that cost, and a gate rather than a reminder — a verbose new description fails the suite instead of
 # quietly taxing every future session. Budgets sit just above the current sizes: raising one is allowed, but
 # only as a deliberate edit here.
-BUDGET_DISC=9550     # DISCIPLINE.md (the discipline half of CLAUDE.md); currently 9505 (1.4.0: §4.5 now names the RCE / gate-tampering / force-add categories the 1.3.0 gates enforce)
-BUDGET_AGENTS=4700   # sum of agent frontmatter; currently 4665 (1.4.0: color: field added to all 11 agents)
+BUDGET_DISC=10100    # DISCIPLINE.md (the discipline half of CLAUDE.md); currently 10063 (1.5.0: diagnose-first workflow step + a one-line route-trace rule so the kit's delegate-or-inline work is visible every task)
+BUDGET_AGENTS=5150   # sum of agent frontmatter; currently 5121 (1.5.0: 9 agents rewritten to action-oriented "use proactively" descriptions so Claude Code auto-delegation actually fires)
 BUDGET_SKILLS=10750  # sum of skill frontmatter; currently 10682 (1.4.0: +3 phase-4 skills, +worktree isolation skill ~376B)
 fm_bytes(){ awk '/^---$/{c++; next} c==1' "$1" 2>/dev/null | wc -c | tr -d ' '; }
 if [ -f "$ROOT/CLAUDE.md" ]; then
@@ -397,6 +397,24 @@ for f in "$AGENTS"/*.md "$SKILLS"/*/SKILL.md; do
   awk '/^---$/{c++; next} c==1' "$f" | grep -qi 'trigger' || MISSING="$MISSING $(basename "$(dirname "$f")")/$(basename "$f")"
 done
 [ -z "$MISSING" ] && pass "every agent/skill still declares Trigger phrases" || need_trigger "no trigger phrases in:$MISSING"
+
+# PROACTIVE-CUE GATE: Claude Code auto-delegates on the description field, and only fires reliably when it carries
+# an action cue ("use proactively" / "immediately after" / "use ... when"). A passive role description ("Senior X
+# expert. Handlers, endpoints.") rarely auto-invokes — the specialist stays dormant and the kit reads as inert.
+# Every agent EXCEPT the two deliberately pull-only ones (invoked explicitly: a commit needs approval; session
+# health is emitted by a hook) must carry a cue, or a future passive rewrite silently regresses delegation.
+PULL_AGENTS=" commit-agent-csk session-manager-csk "
+NO_CUE=""
+for f in "$AGENTS"/*.md; do
+  [ -e "$f" ] || continue
+  a="$(basename "$f" .md)"
+  case "$PULL_AGENTS" in *" $a "*) continue ;; esac
+  awk '/^---$/{c++; next} c==1' "$f" | grep -qiE "use proactively|immediately after|use [a-z ]*when" \
+    || NO_CUE="$NO_CUE $a"
+done
+if   [ -z "$NO_CUE" ]; then pass "every non-pull agent carries an auto-delegation cue (proactive/immediately-after)"
+elif [ "$IS_KIT" = 1 ]; then fail "agent(s) with a passive description — auto-delegation will rarely fire:$NO_CUE (add 'use proactively …', or add to PULL_AGENTS if pull-only)"
+else pass "some agents lack a proactive cue:$NO_CUE (your project's own agents, not gated)"; fi
 
 echo "== 7) settings.json & guard (§4.4/§4.5) =="
 if [ -f "$ROOT/settings.json" ]; then
