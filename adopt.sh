@@ -686,16 +686,20 @@ if [ -s .claude/DISCIPLINE.md ] && grep -qF '@.claude/DISCIPLINE.md' CLAUDE.md; 
 # ("→ backend-expert"), which now matches no installed agent — so delegation to it silently fails and the
 # specialist never fires. The migration cannot safely rewrite hand-authored prose, so we TELL, precisely.
 if [ -f CLAUDE.md ] && ls .claude/agents/*-csk.md >/dev/null 2>&1; then
-  STALE=""
+  PULL_AGENTS=" commit-agent-csk session-manager-csk "   # invoked explicitly, not auto-delegated
+  STALE=""; STALE_PULL=""
   for f in .claude/agents/*-csk.md; do
     [ -e "$f" ] || continue
     aname="$(sed -n 's/^name:[[:space:]]*//p' "$f" | head -1 | tr -cd 'a-zA-Z0-9-')"; [ -n "$aname" ] || aname="$(basename "$f" .md)"
     base="${aname%-csk}"
     lines="$(grep -nE "(^|[^a-zA-Z-])$base([^a-zA-Z-]|$)" CLAUDE.md 2>/dev/null | cut -d: -f1 | tr '\n' ',' | sed 's/,$//')"
-    [ -n "$lines" ] && STALE="$STALE
+    [ -n "$lines" ] || continue
+    entry="
      ↳ \"$base\" → \"$aname\"  (CLAUDE.md line(s): $lines)"
+    case "$PULL_AGENTS" in *" $aname "*) STALE_PULL="$STALE_PULL$entry" ;; *) STALE="$STALE$entry" ;; esac
   done
-  [ -n "$STALE" ] && warn "PROOF-5: CLAUDE.md still names old bare agent(s) — rename each to its -csk id, else delegation to them silently fails:$STALE"
+  [ -n "$STALE" ] && warn "PROOF-5: CLAUDE.md names auto-delegated agent(s) by an old bare id — rename each to its -csk id, else delegation to them silently fails:$STALE"
+  [ -n "$STALE_PULL" ] && warn "PROOF-5: CLAUDE.md names pull-only agent(s) by an old bare id (still work; rename for consistency):$STALE_PULL"
 fi
 [ "$PROOF_OK" = 1 ] && h1 "PROOF: kit 100% ACTIVE — gates armed, agents + discipline loaded" || warn "PROOF: some gates could not be verified (see above)"
 
