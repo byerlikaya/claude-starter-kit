@@ -27,7 +27,10 @@ Noisy or heavy work goes to a subagent; small work stays on the main thread.
 4. **Close** — DoD gate → **review-agent-csk** clean → **commit-agent-csk** proposes, waits for approval (`/ship`).
 5. **Hand off** — phase boundary or full context → **session-manager-csk** → `handoff` → `/clear` (`/handoff`).
 
-Stuck → stop and report. Commit/push and destructive commands are gated at the tool level (§4.4/§4.5).
+**Open every task with a one-line route trace** so the kit's work is always visible — `🔧 <agent> (why)` when
+delegating, `🔧 inline · <skill> · (why)` when staying on the main thread. Delegate a real unit of work (a handler,
+screen, migration, audit); keep only trivial one-line edits inline. Stuck → stop and report. Commit/push and
+destructive commands are gated at the tool level (§4.4/§4.5).
 
 ## Definition of Done
 - Ambiguous scope goes to **planner-csk** first, so the acceptance criterion is explicit before coding.

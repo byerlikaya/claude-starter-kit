@@ -2,8 +2,9 @@
 name: privacy-agent-csk
 color: pink
 description: |
-  KVKK/GDPR privacy auditor: legal basis/consent, data minimisation, retention, transparency, data-subject rights,
-  cross-border transfer. Findings + fixes via `privacy-compliance`; writes no code.
+  KVKK/GDPR privacy auditor. Use proactively when personal data, legal basis/consent, data minimisation,
+  retention, transparency, data-subject rights, or cross-border transfer are touched. Findings + fixes via
+  `privacy-compliance`; writes no code.
   Trigger phrases: "kvkk", "gdpr", "privacy audit", "data minimization", "consent flow", "data retention"
 tools: Read, Grep, Glob
 model: sonnet

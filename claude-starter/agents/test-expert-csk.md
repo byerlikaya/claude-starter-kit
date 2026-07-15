@@ -2,8 +2,8 @@
 name: test-expert-csk
 color: yellow
 description: |
-  Test expert. Writes and runs unit/integration tests; guarantees the DoD's "tests are green". Kicks in when new
-  handler/endpoint/agent behavior is added.
+  Test expert. Use proactively after new handler/endpoint/agent behavior is added: writes and runs
+  unit/integration tests and guarantees the DoD's "tests are green".
   Trigger phrases: "write tests", "run tests", "coverage", "are the tests green", "unit test", "integration test"
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
