@@ -83,33 +83,42 @@ else
   bad "settings.json missing — the tool-level gates (commit approval, guards, context) are INACTIVE" "reinstall the kit"
 fi
 
-# 5) Agent-name references in CLAUDE.md resolve to an installed agent. A brownfield adopt renames the project's
-#    own agents to the kit's `-csk` ids (and carries their knowledge into `-local` skills), but the project's
-#    CLAUDE.md may still name the OLD bare agent ("→ backend-expert"). That bare name matches no installed agent,
-#    so delegation to it silently fails and the specialist never fires — invisible to every other check here.
+# 5) Agent-name references resolve to an installed agent — checked across CLAUDE.md AND every local doc it points to
+#    (its @imports and docs/*.md references). A brownfield takeover renames the project's agents to `-csk` ids, but
+#    CLAUDE.md — or an orchestration doc it delegates to, e.g. "detail: docs/AGENTS.md" — may still name the OLD bare
+#    agent. That name matches no installed agent, so delegation to it silently fails. Following CLAUDE.md's reference
+#    chain catches the pointed-to docs too, while unreferenced prose (design/audit docs, code comments) is ignored —
+#    so it stays complete without the false positives a blanket repo scan would raise.
 if [ -f CLAUDE.md ] && ls .claude/agents/*.md >/dev/null 2>&1; then
   # Two pull-only agents are invoked explicitly (a commit needs approval; session health is emitted by a hook),
   # NOT auto-delegated — so a bare reference to them does not break delegation; it is only a naming inconsistency.
   PULL_AGENTS=" commit-agent-csk session-manager-csk "
+  # Scan set = CLAUDE.md + the local .md files it references (one level: its @imports and any `docs/…md` path).
+  SCAN="CLAUDE.md"
+  for r in $(grep -oE '@?[A-Za-z0-9_./-]+\.md' CLAUDE.md 2>/dev/null | sed 's/^@//' | sort -u); do
+    [ -f "$r" ] && [ "$r" != "CLAUDE.md" ] && SCAN="$SCAN $r"
+  done
   STALE=""; STALE_PULL=""
-  for f in .claude/agents/*.md; do
-    [ -e "$f" ] || continue
-    name="$(sed -n 's/^name:[[:space:]]*//p' "$f" | head -1 | tr -cd 'a-zA-Z0-9-')"
-    [ -n "$name" ] || name="$(basename "$f" .md)"
+  for af in .claude/agents/*.md; do
+    [ -e "$af" ] || continue
+    name="$(sed -n 's/^name:[[:space:]]*//p' "$af" | head -1 | tr -cd 'a-zA-Z0-9-')"
+    [ -n "$name" ] || name="$(basename "$af" .md)"
     case "$name" in *-csk) base="${name%-csk}" ;; *) continue ;; esac
-    # bare `base` NOT followed by `-` (so not base-csk) and not glued into a longer word
-    lines="$(grep -nE "(^|[^a-zA-Z-])$base([^a-zA-Z-]|$)" CLAUDE.md 2>/dev/null | cut -d: -f1 | tr '\n' ',' | sed 's/,$//')"
-    [ -n "$lines" ] || continue
-    entry="
-     ↳ \"$base\" → \"$name\"   (CLAUDE.md line(s): $lines)"
-    case "$PULL_AGENTS" in *" $name "*) STALE_PULL="$STALE_PULL$entry" ;; *) STALE="$STALE$entry" ;; esac
+    for f in $SCAN; do
+      # bare `base` NOT followed by `-` (so not base-csk) and not glued into a longer word
+      lines="$(grep -nE "(^|[^a-zA-Z-])$base([^a-zA-Z-]|$)" "$f" 2>/dev/null | cut -d: -f1 | tr '\n' ',' | sed 's/,$//')"
+      [ -n "$lines" ] || continue
+      entry="
+     ↳ \"$base\" → \"$name\"   ($f line(s): $lines)"
+      case "$PULL_AGENTS" in *" $name "*) STALE_PULL="$STALE_PULL$entry" ;; *) STALE="$STALE$entry" ;; esac
+    done
   done
   if [ -n "$STALE" ]; then
-    bad "CLAUDE.md names auto-delegated agent(s) that no installed agent matches — delegation to them silently fails" \
-        "rename each bare reference to its \`-csk\` id in CLAUDE.md:$STALE"
+    bad "CLAUDE.md (or a doc it references) names auto-delegated agent(s) that no installed agent matches — delegation to them silently fails" \
+        "rename each bare reference to its \`-csk\` id:$STALE"
   fi
-  [ -n "$STALE_PULL" ] && warn "CLAUDE.md names pull-only agent(s) by their old bare id — invoked explicitly, so delegation still works; rename for consistency:$STALE_PULL"
-  [ -z "$STALE$STALE_PULL" ] && ok "CLAUDE.md agent references resolve to installed agents"
+  [ -n "$STALE_PULL" ] && warn "CLAUDE.md (or a referenced doc) names pull-only agent(s) by their old bare id — invoked explicitly, so delegation still works; rename for consistency:$STALE_PULL"
+  [ -z "$STALE$STALE_PULL" ] && ok "agent references resolve to installed agents (CLAUDE.md + referenced docs)"
 fi
 
 echo "---"

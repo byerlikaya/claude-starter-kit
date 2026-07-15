@@ -467,6 +467,32 @@ if [ "$COLLIDE_MODE" = takeover ] && [ -n "$COLLIDE" ]; then
     N_TAKEN=$((N_TAKEN+1))
   done
 fi
+# #1b takeover reference sweep — the rename above orphaned every project reference to the taken-over agents
+# ($COLLIDE): "→ backend-expert" in CLAUDE.md, the "detail: docs/AGENTS.md" orchestration doc, etc. This is the ONE
+# moment the kit knows the exact old→new map, so it COMPLETES the migration instead of leaving the user to chase
+# dangling names. It rewrites each bare old name to its -csk id across CLAUDE.md's reference chain (its @imports +
+# docs/…md paths), boundary-safe: `backend-expert` → `backend-expert-csk`, but `backend-expert-csk`/`-local` and
+# `backend-expertise` are left intact (no double-suffix). Unreferenced design/audit docs and code comments are NOT
+# touched (precise, no false positives). The edit lands on the adopt review branch — visible in the diff, revertible.
+if [ "$N_TAKEN" -gt 0 ] && [ -f CLAUDE.md ]; then
+  SWEEP="CLAUDE.md"
+  for r in $(grep -oE '@?[A-Za-z0-9_./-]+\.md' CLAUDE.md 2>/dev/null | sed 's/^@//' | sort -u); do
+    [ -f "$r" ] && [ "$r" != "CLAUDE.md" ] && SWEEP="$SWEEP $r"
+  done
+  SWEPT=0
+  for b in $COLLIDE; do
+    for f in $SWEEP; do
+      i=0
+      while grep -qE "(^|[^A-Za-z-])$b([^A-Za-z-]|$)" "$f" 2>/dev/null && [ "$i" -lt 5 ]; do
+        sed -E "s/(^|[^A-Za-z-])$b([^A-Za-z-]|\$)/\1$b-csk\2/g" "$f" > "$f.kit-sweep" && mv "$f.kit-sweep" "$f"
+        i=$((i+1)); SWEPT=$((SWEPT+1))
+      done
+      [ "$i" -gt 0 ] && echo "  ref-sweep: $b → $b-csk in $f"
+    done
+  done
+  [ "$SWEPT" -gt 0 ] && h1 "Reference sweep: rewrote taken-over agent names to their -csk id across CLAUDE.md + referenced docs" \
+                     || echo "  ref-sweep: no stale references in CLAUDE.md's chain"
+fi
 # Stack-compatible backend: non-.NET projects get the generic backend-expert-csk. A RECORDED stack always beats
 # repo sniffing — a refresh of a 'dotnet' install must keep the DevArch-bound agent even when the .sln lives in
 # ./backend and the sniffer reports "unknown". And never clobber a preserved project file.
@@ -682,24 +708,31 @@ else echo "  OK · PROOF-2: guard-bash BLOCKED the keyless 'git commit' (holds i
 NCCK="$(ls .claude/agents/*-csk.md 2>/dev/null | wc -l | tr -d ' ')"
 if [ "${NCCK:-0}" -ge 1 ]; then echo "  OK · PROOF-3: $NCCK kit agents (-csk) installed + discoverable"; else warn "PROOF-3: no kit agent"; PROOF_OK=0; fi
 if [ -s .claude/DISCIPLINE.md ] && grep -qF '@.claude/DISCIPLINE.md' CLAUDE.md; then echo "  OK · PROOF-4: DISCIPLINE.md loaded + @import-ed from CLAUDE.md"; else warn "PROOF-4: discipline not linked"; PROOF_OK=0; fi
-# PROOF-5: a takeover renamed the project's agents to `-csk`, but CLAUDE.md may still name the OLD bare agent
-# ("→ backend-expert"), which now matches no installed agent — so delegation to it silently fails and the
-# specialist never fires. The migration cannot safely rewrite hand-authored prose, so we TELL, precisely.
+# PROOF-5: a takeover renamed the project's agents to `-csk`, but CLAUDE.md — or an orchestration doc it points to
+# (e.g. "detail: docs/AGENTS.md") — may still name the OLD bare agent, which now matches no installed agent, so
+# delegation to it silently fails. We follow CLAUDE.md's reference chain (its @imports + docs/…md paths) so the
+# pointed-to docs are checked too; the migration cannot safely rewrite hand-authored prose, so we TELL, precisely.
 if [ -f CLAUDE.md ] && ls .claude/agents/*-csk.md >/dev/null 2>&1; then
   PULL_AGENTS=" commit-agent-csk session-manager-csk "   # invoked explicitly, not auto-delegated
-  STALE=""; STALE_PULL=""
-  for f in .claude/agents/*-csk.md; do
-    [ -e "$f" ] || continue
-    aname="$(sed -n 's/^name:[[:space:]]*//p' "$f" | head -1 | tr -cd 'a-zA-Z0-9-')"; [ -n "$aname" ] || aname="$(basename "$f" .md)"
-    base="${aname%-csk}"
-    lines="$(grep -nE "(^|[^a-zA-Z-])$base([^a-zA-Z-]|$)" CLAUDE.md 2>/dev/null | cut -d: -f1 | tr '\n' ',' | sed 's/,$//')"
-    [ -n "$lines" ] || continue
-    entry="
-     ↳ \"$base\" → \"$aname\"  (CLAUDE.md line(s): $lines)"
-    case "$PULL_AGENTS" in *" $aname "*) STALE_PULL="$STALE_PULL$entry" ;; *) STALE="$STALE$entry" ;; esac
+  SCAN="CLAUDE.md"
+  for r in $(grep -oE '@?[A-Za-z0-9_./-]+\.md' CLAUDE.md 2>/dev/null | sed 's/^@//' | sort -u); do
+    [ -f "$r" ] && [ "$r" != "CLAUDE.md" ] && SCAN="$SCAN $r"
   done
-  [ -n "$STALE" ] && warn "PROOF-5: CLAUDE.md names auto-delegated agent(s) by an old bare id — rename each to its -csk id, else delegation to them silently fails:$STALE"
-  [ -n "$STALE_PULL" ] && warn "PROOF-5: CLAUDE.md names pull-only agent(s) by an old bare id (still work; rename for consistency):$STALE_PULL"
+  STALE=""; STALE_PULL=""
+  for af in .claude/agents/*-csk.md; do
+    [ -e "$af" ] || continue
+    aname="$(sed -n 's/^name:[[:space:]]*//p' "$af" | head -1 | tr -cd 'a-zA-Z0-9-')"; [ -n "$aname" ] || aname="$(basename "$af" .md)"
+    base="${aname%-csk}"
+    for f in $SCAN; do
+      lines="$(grep -nE "(^|[^a-zA-Z-])$base([^a-zA-Z-]|$)" "$f" 2>/dev/null | cut -d: -f1 | tr '\n' ',' | sed 's/,$//')"
+      [ -n "$lines" ] || continue
+      entry="
+     ↳ \"$base\" → \"$aname\"  ($f line(s): $lines)"
+      case "$PULL_AGENTS" in *" $aname "*) STALE_PULL="$STALE_PULL$entry" ;; *) STALE="$STALE$entry" ;; esac
+    done
+  done
+  [ -n "$STALE" ] && warn "PROOF-5: CLAUDE.md (or a doc it references) names auto-delegated agent(s) by an old bare id — rename each to its -csk id, else delegation to them silently fails:$STALE"
+  [ -n "$STALE_PULL" ] && warn "PROOF-5: CLAUDE.md (or a referenced doc) names pull-only agent(s) by an old bare id (still work; rename for consistency):$STALE_PULL"
 fi
 [ "$PROOF_OK" = 1 ] && h1 "PROOF: kit 100% ACTIVE — gates armed, agents + discipline loaded" || warn "PROOF: some gates could not be verified (see above)"
 
