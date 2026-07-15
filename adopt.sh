@@ -467,6 +467,32 @@ if [ "$COLLIDE_MODE" = takeover ] && [ -n "$COLLIDE" ]; then
     N_TAKEN=$((N_TAKEN+1))
   done
 fi
+# #1b takeover reference sweep — the rename above orphaned every project reference to the taken-over agents
+# ($COLLIDE): "→ backend-expert" in CLAUDE.md, the "detail: docs/AGENTS.md" orchestration doc, etc. This is the ONE
+# moment the kit knows the exact old→new map, so it COMPLETES the migration instead of leaving the user to chase
+# dangling names. It rewrites each bare old name to its -csk id across CLAUDE.md's reference chain (its @imports +
+# docs/…md paths), boundary-safe: `backend-expert` → `backend-expert-csk`, but `backend-expert-csk`/`-local` and
+# `backend-expertise` are left intact (no double-suffix). Unreferenced design/audit docs and code comments are NOT
+# touched (precise, no false positives). The edit lands on the adopt review branch — visible in the diff, revertible.
+if [ "$N_TAKEN" -gt 0 ] && [ -f CLAUDE.md ]; then
+  SWEEP="CLAUDE.md"
+  for r in $(grep -oE '@?[A-Za-z0-9_./-]+\.md' CLAUDE.md 2>/dev/null | sed 's/^@//' | sort -u); do
+    [ -f "$r" ] && [ "$r" != "CLAUDE.md" ] && SWEEP="$SWEEP $r"
+  done
+  SWEPT=0
+  for b in $COLLIDE; do
+    for f in $SWEEP; do
+      i=0
+      while grep -qE "(^|[^A-Za-z-])$b([^A-Za-z-]|$)" "$f" 2>/dev/null && [ "$i" -lt 5 ]; do
+        sed -E "s/(^|[^A-Za-z-])$b([^A-Za-z-]|\$)/\1$b-csk\2/g" "$f" > "$f.kit-sweep" && mv "$f.kit-sweep" "$f"
+        i=$((i+1)); SWEPT=$((SWEPT+1))
+      done
+      [ "$i" -gt 0 ] && echo "  ref-sweep: $b → $b-csk in $f"
+    done
+  done
+  [ "$SWEPT" -gt 0 ] && h1 "Reference sweep: rewrote taken-over agent names to their -csk id across CLAUDE.md + referenced docs" \
+                     || echo "  ref-sweep: no stale references in CLAUDE.md's chain"
+fi
 # Stack-compatible backend: non-.NET projects get the generic backend-expert-csk. A RECORDED stack always beats
 # repo sniffing — a refresh of a 'dotnet' install must keep the DevArch-bound agent even when the .sln lives in
 # ./backend and the sniffer reports "unknown". And never clobber a preserved project file.
