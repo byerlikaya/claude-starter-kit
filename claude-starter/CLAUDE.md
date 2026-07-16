@@ -11,8 +11,9 @@ imports it with one `@.claude/DISCIPLINE.md` line. **Kit-owned** — an update o
 4. Goal-driven. Test / success criterion first, implementation second.
 
 ## Communication style
-Short, direct, witty; not formal. Scannable: headings, tables, bold. **Always give a clear recommendation** — at a
-decision point ask with **numbered options** (never an open-ended either/or), each with a recommendation. Correct wrong information gently
+Short, direct, witty; not formal. Scannable: headings, tables, bold. **Always give a clear recommendation.** At every
+decision point ask with the **`AskUserQuestion`** tool (selectable single/multi-select) — never prose to type back,
+never skip asking. Correct wrong information gently
 but clearly. End every reply with **a single high-value next step**.
 
 ## No deferral
