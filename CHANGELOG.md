@@ -3,6 +3,19 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [1.6.2] - 2026-07-17
+
+### Changed
+- **A fresh install auto-runs ordinary commands; only commit/push and destructive ops interrupt you.** `settings.json`
+  now ships `permissions.allow: ["Bash"]`, so everyday commands (build, test, `ls`, `git status` …) run without a
+  prompt in the `default` and `acceptEdits` modes. `git add/commit/push/checkout -b` and `ssh/scp/rsync/docker` still
+  prompt — an `ask` rule always wins over `allow` — and destructive / RCE / gate-tamper commands stay hard-blocked by
+  `guard-bash.sh` (its `exit 2` overrides `allow`). Note: the classifier-based `auto` mode intentionally drops a
+  blanket `Bash` allow, so there it defers to the classifier.
+- **Decision points ask with the `AskUserQuestion` tool.** The discipline now directs the model to ask with structured
+  single/multi-select options at every decision point — never prose the user must type back, and never skipping the
+  question — instead of the old "numbered options" prose. (This is model discipline, not a hook-enforced gate.)
+
 ## [1.6.1] - 2026-07-16
 
 ### Fixed
