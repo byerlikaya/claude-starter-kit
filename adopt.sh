@@ -33,11 +33,13 @@ row() { printf '  %s%-20s%s %s\n' "$B" "$1" "$R" "$2"; }
 warn(){ printf '  %s!%s %s%s%s\n' "$YE" "$R" "$YE" "$1" "$R"; }
 # smart suggestion line:  number+decision · SUGGESTED(green) · rationale(dim)
 prop(){ printf '  %s%-18s%s %s%-24s%s %s%s%s\n' "$B" "$1" "$R" "$GR" "$2" "$R" "$D" "$3" "$R"; }
-# Prompt only on a real TTY. With no TTY a `read` would block forever on an open-but-empty stdin (an agent's
-# non-interactive shell hung exactly here), so resolve WITHOUT reading: --yes proceeds, otherwise decline cleanly.
+# --yes ALWAYS wins — check it BEFORE the TTY test. A `read` on a TTY blocks on human input, so if we tested
+# `-t 0` first, an agent/CI run that DID pass --yes but happens to inherit a TTY (Claude Code on Windows runs
+# under a pty) would hang at the prompt, ignoring --yes. Only when --yes is absent do we prompt (TTY) or decline
+# cleanly (no TTY — a bare `read` would otherwise block forever on an open-but-empty stdin).
 ask_yes(){ local a
-  if [ -t 0 ]; then printf '%s [yes/no]: ' "$1"; read -r a || a=""
-  elif [ "${ASSUME_YES:-0}" = 1 ]; then printf '%s yes %s(--yes)%s\n' "$1" "$D" "$R"; a=yes
+  if [ "${ASSUME_YES:-0}" = 1 ]; then printf '%s yes %s(--yes)%s\n' "$1" "$D" "$R"; a=yes
+  elif [ -t 0 ]; then printf '%s [yes/no]: ' "$1"; read -r a || a=""
   else printf '%s no %s(non-interactive — pass --yes to apply)%s\n' "$1" "$D" "$R"; a=no; fi
   case "$a" in [yY]|[yY][eE][sS]|[eE]|[eE][vV][eE][tT]) return 0;; *) return 1;; esac; }
 # never-overwrite copy: does NOT overwrite an EXISTING target file (project file is preserved), skips+counts.
@@ -354,7 +356,7 @@ if [ "$N_COLLIDE" != 0 ]; then
   sub "  keepmine  your agents win; the kit's overlapping -csk agents are not installed"
   sub "  coexist   keep both (routing stays ambiguous; only documented in HANDOVER)"
   COLLIDE_MODE=takeover
-  if [ -t 0 ]; then
+  if [ -t 0 ] && [ "${ASSUME_YES:-0}" != 1 ]; then   # --yes keeps the documented non-interactive default (takeover)
     while :; do
       printf '  %sowner%s [takeover/keepmine/coexist] (ENTER=takeover): ' "$B" "$R"
       read -r _v || _v=""
@@ -757,9 +759,9 @@ case "$DEC1" in
   keepmine) MERGE_NOTE="keepmine: your agents own the overlapping roles ($COLLIDE); the kit's matching -csk agents were not installed" ;;
   *)        MERGE_NOTE="keep: project + kit agents side by side (no overlaps, or overlaps left to coexist)" ;;
 esac
-# #7 off-repo transfer: paste from the user (interactive; skipped on non-TTY)
+# #7 off-repo transfer: paste from the user (interactive; skipped on non-TTY and under --yes)
 OFFREPO_TEXT=""
-if [ "$DEC7" = transfer ] && [ -t 0 ]; then
+if [ "$DEC7" = transfer ] && [ -t 0 ] && [ "${ASSUME_YES:-0}" != 1 ]; then
   h1 "#7 off-repo decisions — paste them here"
   sub "Write the decisions made in chat/on the web but NOT in the repo. When done, an EMPTY line (Enter)."
   while IFS= read -r line; do [ -z "$line" ] && break; OFFREPO_TEXT="$OFFREPO_TEXT

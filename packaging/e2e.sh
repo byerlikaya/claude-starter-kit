@@ -127,4 +127,31 @@ cp adopt.sh "$F/"; cp -R claude-starter "$F/"; cp VERSION "$F/"; printf '{"name"
 [ ! -f "$F/.claude/DISCIPLINE.md" ]                     || { echo "FAIL: first adopt must NOT apply non-interactively without --yes"; exit 1; }
 echo "[adopt-selfheal] update self-heals off a TTY ($NOJQ_NOTE) · backup kept · CLAUDE.md preserved · first adopt still needs --yes"
 
+# (D) TTY + --yes must NOT hang — the /update-csk regression. adopt.sh once tested `-t 0` BEFORE --yes, so an
+# --yes run that inherited a TTY (Claude Code drives commands under a pty on Windows) blocked on a prompt. Every
+# test above misses it by construction — they close stdin, so `-t 0` is false. Here we allocate a REAL pty and
+# assert the refresh completes under --yes. Needs a pty-capable `script`; skipped where none exists (Git-Bash).
+T="$WORK/pty-yes"; rm -rf "$T"; mkdir -p "$T"
+cp start.sh adopt.sh VERSION "$T/"; cp -R claude-starter "$T/"
+# empty baseline commit BEFORE install (no hooksPath yet), then install; the refresh below STAGES only (like
+# /update-csk) so no pre-commit trace hook runs — the point here is the prompt behaviour, not a commit.
+( cd "$T" && git init -q && git config user.email t@t.t && git config user.name t && git commit -q --allow-empty -m base \
+    && printf 'yes\n' | bash start.sh --backend --dotnet >/dev/null 2>&1 )
+cp adopt.sh "$T/adopt.sh"; cp -R claude-starter "$T/claude-starter"   # a refresh reads the payload beside adopt.sh
+if script --version >/dev/null 2>&1; then PTY_FLAVOR=linux            # util-linux: script -q -e -c CMD FILE
+elif command -v script >/dev/null 2>&1;  then PTY_FLAVOR=bsd          # BSD/macOS: script -q FILE CMD…
+else PTY_FLAVOR=none; fi
+if [ "$PTY_FLAVOR" = none ]; then
+  echo "[adopt-pty-yes] SKIPPED (no pty-capable 'script' here — e.g. stock Windows Git-Bash)"
+else
+  ( cd "$T"
+    if [ "$PTY_FLAVOR" = linux ]; then script -q -e -c "bash adopt.sh --here --yes" /dev/null >pty.log 2>&1
+    else script -q /dev/null bash adopt.sh --here --yes >pty.log 2>&1; fi ) &
+  PP=$!; G=0
+  while kill -0 $PP 2>/dev/null; do G=$((G+1)); [ "$G" -ge 60 ] && { kill -9 $PP 2>/dev/null; break; }; sleep 1; done
+  wait $PP 2>/dev/null || true
+  [ "$G" -ge 60 ] && { echo "FAIL: 'adopt --here --yes' HUNG under a TTY (--yes must never block on input)"; exit 1; }
+  echo "[adopt-pty-yes] update --here --yes completes under a real TTY (no hang)"
+fi
+
 echo "e2e: all installer rehearsals passed"

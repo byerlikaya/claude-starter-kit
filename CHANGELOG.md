@@ -3,6 +3,16 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [1.6.1] - 2026-07-16
+
+### Fixed
+- **`update` / `adopt --yes` no longer hangs under a TTY.** The confirmation prompts tested for a TTY *before*
+  honoring `--yes`, so an unattended run that inherited a pseudo-terminal (Claude Code drives shell commands under a
+  pty on Windows) blocked waiting for input that never came — `/update-csk` timed out with nothing changed. `--yes`
+  is now checked first at every gate, including the agent-overlap (`owner`) and off-repo prompts that did not route
+  through the shared helper. A pty-based regression test (`e2e.sh` `[adopt-pty-yes]`) allocates a real terminal and
+  asserts an unattended refresh completes, so this class of hang cannot return.
+
 ## [1.6.0] - 2026-07-16
 
 ### Added
