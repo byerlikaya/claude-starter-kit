@@ -343,7 +343,7 @@
     <div class="fb">
       <svg class="chip" viewBox="0 0 200 200" aria-hidden="true"><rect width="200" height="200" rx="46" fill="#0B1020"/><g transform="rotate(20 100 100)"><rect x="58" y="38" width="22" height="124" rx="11" fill="#E5E7FB"/><rect x="88" y="38" width="22" height="124" rx="11" fill="#B9BEF9"/><rect x="118" y="32" width="26" height="136" rx="13" fill="#A78BFA"/></g></svg>
       <div>
-        <span class="mono">claude-starter-kit · v1.5.1 · MIT</span><br>
+        <span class="mono">claude-starter-kit · <span id="ver">v1.6.0</span> · MIT</span><br>
         <span class="en">Built by <a href="https://github.com/byerlikaya" target="_blank" rel="noopener">Barış Yerlikaya</a>. Opinionated on the backend, stack-agnostic on the frontend.</span>
         <span class="tr"><a href="https://github.com/byerlikaya" target="_blank" rel="noopener">Barış Yerlikaya</a> tarafından. Backend'de görüşlü, frontend'de stack-bağımsız.</span>
       </div>
@@ -372,6 +372,10 @@
   var p=document.getElementById('panel');
   if('IntersectionObserver' in window){var io=new IntersectionObserver(function(e){e.forEach(function(x){if(x.isIntersecting){p.classList.add('revealed');io.disconnect()}})},{threshold:.3});io.observe(p);}
   else p.classList.add('revealed');
+  // Footer version tracks the latest npm publish; the hard-coded span is the offline fallback.
+  if(window.fetch){fetch('https://registry.npmjs.org/@byerlikaya%2Fclaude-starter-kit/latest',{cache:'no-store'})
+    .then(function(r){return r.ok?r.json():null}).then(function(d){var v=document.getElementById('ver');
+      if(d&&d.version&&v)v.textContent='v'+d.version}).catch(function(){});}
 })();
 </script>
 </body>
