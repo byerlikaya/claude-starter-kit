@@ -73,6 +73,32 @@ for d in "$SKILLS"/*/; do
 done
 pass "skill references/*.md pointers resolve"
 
+echo "== 3b) Orphan component: every skill & agent must be ROUTED (kit invariant, no idle components) =="
+# Rule: nothing idle. A skill/agent that only auto-triggers on its own description is "dark" — the orchestrator is
+# never told to reach it. It is ROUTED when its name appears in an agent body, a command, or the discipline (the
+# trigger map): CLAUDE.md in the kit repo, DISCIPLINE.md in an install. A cross-link from ANOTHER skill's body does
+# NOT count (skills/ is not searched). In an install, a user's own un-routed skill is a note, not a failure.
+CMDS="$ROOT/commands"
+ROUTE_DOC="$ROOT/CLAUDE.md"; [ -f "$ROUTE_DOC" ] || ROUTE_DOC="$ROOT/DISCIPLINE.md"
+# match NAME delimited by a non-[a-z0-9-] char on both sides, so `frontend` does not match inside frontend-design.
+# Names always appear inside backticks / table cells / prose (never bare at line start/end), so the two delimiters
+# always exist — which lets us avoid the `(^|…)`/`(…|$)` line-anchor alternation that ugrep matches unreliably.
+routed(){ local nm="$1"; shift; grep -rqE "[^a-z0-9-]$nm[^a-z0-9-]" "$@" 2>/dev/null; }
+for d in "$SKILLS"/*/; do
+  n=$(basename "$d")
+  routed "$n" "$AGENTS" "$CMDS" "$ROUTE_DOC" && continue
+  if [ "$IS_KIT" = 1 ]; then fail "orphan skill '$n': no agent/command/discipline routes to it"
+  else note "skill '$n' not routed by the kit discipline (your own skill? route it from ./CLAUDE.md)"; fi
+done
+# agents route from a command or the discipline (exclude the agent's own file: don't search $AGENTS)
+for f in "$AGENTS"/*.md; do
+  a=$(basename "$f" .md)
+  routed "$a" "$CMDS" "$ROUTE_DOC" && continue
+  if [ "$IS_KIT" = 1 ]; then fail "orphan agent '$a': no command/discipline routes to it"
+  else note "agent '$a' not routed by the kit discipline"; fi
+done
+pass "every skill & agent is routed (no idle components)"
+
 echo "== 4) Stub / unfilled skill leftover =="
 if grep -rlq "to be filled\|generated from source" "$SKILLS" 2>/dev/null; then
   fail "stub marker still present"; else pass "no stub"
@@ -358,7 +384,7 @@ echo "== 6f) always-on token budget =="
 # for that cost, and a gate rather than a reminder — a verbose new description fails the suite instead of
 # quietly taxing every future session. Budgets sit just above the current sizes: raising one is allowed, but
 # only as a deliberate edit here.
-BUDGET_DISC=10100    # DISCIPLINE.md (the discipline half of CLAUDE.md); currently 10063 (1.5.0: diagnose-first workflow step + a one-line route-trace rule so the kit's delegate-or-inline work is visible every task)
+BUDGET_DISC=10300    # DISCIPLINE.md (the discipline half of CLAUDE.md); currently 10271 (1.6.0: 4 trigger-map rows routing the last main-thread skills — iterate/reflect/worktree/mcp-builder — so no component is idle, enforced by §3b)
 BUDGET_AGENTS=5150   # sum of agent frontmatter; currently 5121 (1.5.0: 9 agents rewritten to action-oriented "use proactively" descriptions so Claude Code auto-delegation actually fires)
 BUDGET_SKILLS=10750  # sum of skill frontmatter; currently 10682 (1.4.0: +3 phase-4 skills, +worktree isolation skill ~376B)
 fm_bytes(){ awk '/^---$/{c++; next} c==1' "$1" 2>/dev/null | wc -c | tr -d ' '; }

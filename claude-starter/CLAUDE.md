@@ -35,7 +35,7 @@ destructive commands are gated at the tool level (§4.4/§4.5).
 ## Definition of Done
 - Ambiguous scope goes to **planner-csk** first, so the acceptance criterion is explicit before coding.
 - `/simplify` + tests green + **review-agent-csk** clean + triggered skills + nothing deferred.
-- Where SonarQube is used: **0 Bugs · 0 Vulnerabilities · 0 Security Hotspots · 0 Code Smells**; build 0 warnings / 0 errors.
+- Quality gate: a **local** analyzer (installed per language if absent) is **0/0/0/0**; build 0 warnings / 0 errors.
 - Personal data / dependencies / translations touched → **privacy · dependency-audit · i18n-integrity** clean.
 
 ### Skill triggering map — a skill fires on its trigger, not when you happen to remember it
@@ -59,6 +59,10 @@ destructive commands are gated at the tool level (§4.4/§4.5).
 | Slowness / bottleneck | `performance` |
 | Incident / postmortem / runbook | `incident-runbook` |
 | Testing prompt injection defenses | `red-team` |
+| Self-correction loop (refine to done) | `iterate` |
+| Step back before commit / moving on | `reflect` |
+| Parallel / file-mutating subagents | `worktree` |
+| Building an MCP server / tool | `mcp-builder` |
 
 ## Token & context discipline (token-budget skill)
 A subagent works in its own context window and returns only a summary — but a subagent-heavy flow costs several times
