@@ -26,7 +26,7 @@ red-team	LLM/ajan savunmalarına saldırgan gözüyle test: talimat ele geçirme
 reflect	Önemli işten sonra retrospektif öz-denetim: doğrulanmamış varsayımlar, atlanan maddeler, doğru-yaklaşım-mı — kod değil, bulgular.
 release	Sürümleme ve CHANGELOG: Conventional Commits'ten türetilen SemVer, Keep a Changelog biçimi, etiketleme, ön-sürüm kapıları.
 security-scan	Yığından bağımsız güvenlik denetimi: saldırı yüzeyini haritala, güvenilmez girdiyi tehlikeli çağrılara kadar izle, bağımlılık ve yapılandırma açıklarını çıkar.
-sonarqube-check	SonarQube kalite kapısı (dilden bağımsız): 0 Bug · 0 Zafiyet · 0 Güvenlik Hotspot · 0 Code Smell, 0 uyarı / 0 hata ile derleme.
+sonarqube-check	SonarQube kalite kapısı (dilden bağımsız, yerel-öncelikli): 0 Bug/Zafiyet/Hotspot/Code Smell, 0 derleme uyarısı. Analyzer yoksa dile göre yerel/sunucusuz kurulup çalıştırılır.
 spec-planning	Spec-öncelikli planlama: görev ayrıştırma, ölçülebilir kabul kriterleri, bağımlılık sırası, risk önceliği.
 testing	Testin nasıl'ı: piramit, AAA, izolasyon, risk kapsamı, determinizm.
 token-budget	Bağlam/token disiplini: subagent izolasyonu, çıktı = özet, dosyaya-taşı, delege eşiği, yalın skill'ler.

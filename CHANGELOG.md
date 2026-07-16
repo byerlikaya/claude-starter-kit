@@ -3,6 +3,26 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [1.6.0] - 2026-07-16
+
+### Added
+- **No idle components — a routing invariant, now enforced.** Every skill and agent must be *routed*: named by an
+  agent, a command, or the discipline's trigger map. `smoke-test.sh` (§3b) fails if any component is reachable only
+  by its own description. Four previously-unrouted main-thread skills — `iterate`, `reflect`, `worktree`,
+  `mcp-builder` — are wired into the trigger map, so nothing ships dark.
+
+### Changed
+- **`sonarqube-check` is local-first and self-bootstrapping.** Instead of pointing at a shared or remote SonarQube
+  server, the gate installs the project language's local, server-less analyzer when none exists and runs it in place
+  — .NET → `SonarAnalyzer.CSharp` Roslyn NuGet at build time (`TreatWarningsAsErrors`); JS/TS → `eslint-plugin-sonarjs`;
+  and the language-native equivalents elsewhere. A full SonarQube dashboard becomes optional, only when a project runs
+  its own instance. The Definition-of-Done gate follows the same wording.
+
+### Fixed
+- **The orphan-routing check is grep-portable.** The §3b matcher drops the `^`/`$` line-anchor alternation that ugrep
+  matches unreliably and no longer folds the search term into its own file-argument list, so the gate is correct under
+  GNU grep, BSD grep, and ugrep alike.
+
 ## [1.5.1] - 2026-07-15
 
 ### Changed

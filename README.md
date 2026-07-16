@@ -6,7 +6,7 @@
 
 *plan → build → review → commit, where every critical rule is a **gate**, not a reminder.*
 
-![Version](https://img.shields.io/badge/version-1.5.1-2563eb?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.6.0-2563eb?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)
 ![Agents](https://img.shields.io/badge/agents-11-f59e0b?style=flat-square)
 ![Skills](https://img.shields.io/badge/skills-34-f59e0b?style=flat-square)
@@ -239,7 +239,7 @@ Like `adopt`, an update needs a git repo. Where the change lands is now a choice
 | `reflect` | Retrospective self-audit after nontrivial work: unverified assumptions, skipped items, is-this-the-right- approach — findings, not code. |
 | `release` | Versioning and CHANGELOG: SemVer mapped from Conventional Commits, Keep a Changelog format, tagging, pre-release gates. |
 | `security-scan` | Stack-agnostic security audit: map the attack surface, trace untrusted input to dangerous calls, surface dependency and configuration flaws. |
-| `sonarqube-check` | SonarQube quality gate (language-agnostic): 0 Bugs · 0 Vulnerabilities · 0 Security Hotspots · 0 Code Smells, build 0 warnings / 0… |
+| `sonarqube-check` | SonarQube quality gate (language-agnostic, local-first): 0 Bugs/Vulns/Hotspots/Code Smells, 0 build warnings. |
 | `spec-planning` | Spec-first planning: task breakdown, measurable acceptance criteria, dependency order, risk priority. |
 | `systematic-debugging` | Root-cause a bug before touching a fix: reproduce, isolate, form and test a hypothesis, confirm the cause, then fix and verify. |
 | `testing` | The how of testing: pyramid, AAA, isolation, risk coverage, determinism. |
