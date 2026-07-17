@@ -6,7 +6,7 @@
 
 *planla → üret → denetle → commit; her kritik kural bir hatırlatma değil, bir **kapı**.*
 
-![Sürüm](https://img.shields.io/badge/s%C3%BCr%C3%BCm-1.6.2-2563eb?style=flat-square)
+![Sürüm](https://img.shields.io/badge/s%C3%BCr%C3%BCm-1.6.3-2563eb?style=flat-square)
 ![Lisans](https://img.shields.io/badge/lisans-MIT-16a34a?style=flat-square)
 ![Ajanlar](https://img.shields.io/badge/ajanlar-11-f59e0b?style=flat-square)
 ![Skiller](https://img.shields.io/badge/skiller-34-f59e0b?style=flat-square)
