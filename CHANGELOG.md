@@ -3,6 +3,16 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [1.6.3] - 2026-07-17
+
+### Fixed
+- **`/update-csk` no longer hangs at npx's own install prompt.** The command ran `npx @…@latest update --here --yes`
+  — the trailing `--yes` reaches the updater, but `npx` *itself* prints `Ok to proceed?` when it first installs the
+  package, a prompt that reads the real TTY and ignores piped input, so an agent-driven / non-interactive run blocked
+  before the kit even started (the update silently never happened). The command now runs `npx --yes @…` so npx's own
+  `--yes` auto-confirms the install and `/update-csk` completes unattended. (1.6.1 fixed the updater's own prompts;
+  this fixes the npx layer above them — both are needed for a clean unattended refresh.)
+
 ## [1.6.2] - 2026-07-17
 
 ### Changed
