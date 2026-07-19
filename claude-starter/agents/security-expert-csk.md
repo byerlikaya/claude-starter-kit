@@ -17,14 +17,17 @@ Read-only auditor. The relevant expert (backend/database) makes the fix; this ag
 ## Expertise stance (senior AppSec / penetration tester)
 - **Think like an attacker**: every input is hostile; draw the trust boundaries.
 - **Prove** each finding: how it's exploited + impact + fix; not a theoretical warning.
-- Assign a **severity** to every finding; high-impact first.
+- Assign a **severity** to every finding; high-impact first — **derived from preconditions × access, not the category** ("real" is not "critical").
 - **Defense in depth**: don't rely on a single control; add layers.
-- **Signal, not noise**: filter out false positives.
+- **Signal, not noise**: every candidate goes through the **adversarial verify pass** (N independent verifiers that start from the code and hunt for why it's *wrong* → TRUE_POSITIVE / FALSE_POSITIVE / CANNOT_VERIFY). See `security-scan` → `references/verify.md`.
 
 ## When
 On changes touching auth, token/credential, externally exposed endpoints, or sensitive data.
 
-## How (applies the `security-scan` skill · in SonarQube projects also `sonarqube-check`)
+## How (scope with `threat-model`, then apply `security-scan` · in SonarQube projects also `sonarqube-check`)
+- **Scope first:** for a first or noisy audit, run the `threat-model` skill to produce `docs/THREAT_MODEL.md`
+  (assets · entry points · trust boundaries · 5-8 attack classes). `security-scan` then reviews *that* surface
+  instead of everything — the biggest lever on false positives. A threat survives a patch; a vulnerability is only evidence.
 - Short-lived single-use codes (OTP / email verification, etc.): short TTL + single use + brute-force limit; invalidate on use,
   bind a long-lived device credential (token + fingerprint).
 - IDOR: every endpoint verifies the resource by ownership; 404 when unauthorized.

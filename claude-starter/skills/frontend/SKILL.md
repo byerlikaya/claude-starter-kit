@@ -37,6 +37,12 @@ interface *looks and feels*, not just how it's wired.
 - Works across the target screen/device matrix (responsive/adaptive).
 - Unnecessary renders (memo/callback), bundle size, lazy loading, virtualization for long lists.
 
+## Verify at runtime (contract)
+Prove a change works by **observing the running UI**, structured — not by interpreting a screenshot. Have components
+emit `data-verify-*` state attributes, register verifiable units with fixtures + invariants (≥1 adversarial `probe`
+each), expose `window.__verify`, and adopt the `PASS/FAIL/BLOCKED/SKIP` taxonomy (when in doubt, FAIL). Then drive
+the browser to check it. The full convention: **`references/verify-contract.md`**.
+
 ## DoD (this skill's contribution)
 - `/simplify`; no dead styles/unused props.
 - The four states are covered; `i18n-integrity` clean; accessibility passes the baseline matrix.

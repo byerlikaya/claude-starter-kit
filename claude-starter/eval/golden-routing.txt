@@ -34,6 +34,8 @@ keep going until the tests pass and the review is clean|iterate
 debug this and find the root cause of the intermittent bug|systematic-debugging
 improve the visual design — the spacing and typography look off|frontend-design
 build an MCP server to expose these tools to Claude|mcp-builder
+build a threat model and map the attack surface before we scan|threat-model
+set up an eval to measure output quality against a baseline|eval-grader
 
 # --- Negative: prompt must NOT route to target (over-broad-trigger guard) ---
 design the database schema|!frontend-design

@@ -9,7 +9,7 @@
 ![Version](https://img.shields.io/badge/version-1.6.3-2563eb?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)
 ![Agents](https://img.shields.io/badge/agents-11-f59e0b?style=flat-square)
-![Skills](https://img.shields.io/badge/skills-34-f59e0b?style=flat-square)
+![Skills](https://img.shields.io/badge/skills-36-f59e0b?style=flat-square)
 ![Claude Code](https://img.shields.io/badge/Claude_Code-agentic_kit-8b5cf6?style=flat-square)
 
 🇬🇧 English · [🇹🇷 Türkçe](README.tr.md)
@@ -95,7 +95,7 @@ Most "agent setups" for Claude Code fall into two buckets: a **big prompt file**
 | **Security & privacy** | Optional advice, easy to skip | **Mandatory audit gate** — risk-critical changes can't close before the security/privacy review clears |
 | **Commits** | Model may commit on its own | **Every commit is yours to approve** — enforced at the tool level even in auto/bypass mode |
 | **Adopting an existing repo** | "Start fresh" assumption; manual porting | **`adopt` hands the kit over on a branch** — `main` is never touched; you review before you keep it |
-| **Where the "how" lives** | Rules + method copied into each agent prompt → drift & duplication | **Agent = thin trigger** (who/when); the method lives once in a **skill** (single source of truth), reused across 34 skills |
+| **Where the "how" lives** | Rules + method copied into each agent prompt → drift & duplication | **Agent = thin trigger** (who/when); the method lives once in a **skill** (single source of truth), reused across 36 skills |
 
 **In one line:** similar projects hand you *a pile of suggestions*; this kit drops a *disciplined engineering team* into Claude Code — where the rules that matter are **gates, not reminders**.
 
@@ -200,14 +200,19 @@ Like `adopt`, an update needs a git repo. Where the change lands is now a choice
 
 ## What's inside
 
+<div align="center">
+  <img src="assets/network-en.svg" alt="The kit's network — 11 agents and 36 skills connected by their real applies relationships" width="820">
+  <br><sub>Every agent, every skill, and the real <code>applies</code> relationships — grouped by stage, each agent its own hue; the center is the main thread that orchestrates them all.</sub>
+</div>
+
 - **11 agents** — see the table above.
-- **34 skills** — the single source of "how", one per area (full catalogue below).
+- **36 skills** — the single source of "how", one per area (full catalogue below).
 - **8 slash commands** — `/brainstorm` · `/plan` · `/review` · `/ship` · `/handoff` · `/simplify` · `/update-csk` (update the installed kit) · `/doctor-csk` (health-check the install).
 - **Hooks** — `guard-bash.sh` + `guard-write.sh` (tool-level command/write gates), `pre-commit` + `commit-msg` (trace + secret + bloat scan), `context-usage.sh` and `session-guard.sh` (session measurement), `session-rehydrate.sh` (re-surface the handover after /compact or /clear). The plugin edition ships these gate hooks too.
 - **CLAUDE.md** — behavior, the three principles, workflow, Definition of Done, token discipline, and prohibitions.
 
 <details>
-<summary><b>Full skill catalogue</b> — all 34, generated from each skill</summary>
+<summary><b>Full skill catalogue</b> — all 36, generated from each skill</summary>
 
 <!-- SKILLS:START -->
 
@@ -224,6 +229,7 @@ Like `adopt`, an update needs a git repo. Where the change lands is now a choice
 | `dependency-audit` | Dependency audit: known CVEs, licence compliance, abandoned/outdated packages, lockfile integrity, and a justification for every new… |
 | `devarch-module` | DevArchitecture backend pattern: MediatR CQRS handler/command/query, IResult/IDataResult, Autofac AOP chain, FluentValidation, i18n. |
 | `docs-writer` | Keeps documentation in sync with the code: README, usage and related docs when a public API or behavior changes. |
+| `eval-grader` | Measure output quality, don't vibe it: score a generative task with a two-layer grader — deterministic code metrics + per-dimension… |
 | `frontend-design` | Visual and UX design quality for interfaces: hierarchy, spacing rhythm, typographic scale, a restrained color system, layout composition,… |
 | `frontend-rn-expo` | OPTIONAL, stack-specific: React Native + Expo (prebuild). |
 | `frontend` | Stack-agnostic frontend discipline (web · mobile · desktop): component structure, state, data fetching, loading/empty/error states,… |
@@ -243,6 +249,7 @@ Like `adopt`, an update needs a git repo. Where the change lands is now a choice
 | `spec-planning` | Spec-first planning: task breakdown, measurable acceptance criteria, dependency order, risk priority. |
 | `systematic-debugging` | Root-cause a bug before touching a fix: reproduce, isolate, form and test a hypothesis, confirm the cause, then fix and verify. |
 | `testing` | The how of testing: pyramid, AAA, isolation, risk coverage, determinism. |
+| `threat-model` | Scope a security audit BEFORE scanning, to cut false positives: map assets, entry points, trust boundaries and 5-8 domain-specific attack… |
 | `token-budget` | Context/token discipline: subagent isolation, output = summary, move-to-file, delegation threshold, lean skills. |
 | `trace-scan` | Trace scan (§4.1/§4.2): before a commit, scans the staged changes and the message for AI traces (co-author trailers, footers, robot… |
 | `vps-deploy` | Deploy to a VPS safely: runtime detection, reverse proxy + SSL, atomic swap, keep the previous version, post-deploy health gate,… |
@@ -260,11 +267,11 @@ An assistant cannot run `/context` itself, so most setups **guess** the session 
 
 ### Token cost
 
-`DISCIPLINE.md` and the agent/skill descriptions load into every session's context. That always-on material is **~26 KB** today (`DISCIPLINE.md` + 11 agent + 34 skill descriptions) — on the order of **10k tokens** on a real turn. Every skill added is a permanent ~100-token tax on all sessions, which is why the byte budget below is a gate, not a guideline.
+`DISCIPLINE.md` and the agent/skill descriptions load into every session's context. That always-on material is **~26 KB** today (`DISCIPLINE.md` + 11 agent + 36 skill descriptions) — on the order of **10k tokens** on a real turn. Every skill added is a permanent ~100-token tax on all sessions, which is why the byte budget below is a gate, not a guideline.
 
 `smoke-test.sh` enforces a byte budget per component (discipline · agent descriptions · skill descriptions), so the cost cannot drift upward unnoticed. A budget can be raised, but only by editing `smoke-test.sh` explicitly.
 
-> **Profile pruning does not save tokens.** A `--backend` install (10 agents, 30 skills) costs only a few hundred tokens less than `--fullstack` (11 agents, 34 skills). Pick a profile to narrow the scope of the work.
+> **Profile pruning does not save tokens.** A `--backend` install (10 agents, 32 skills) costs only a few hundred tokens less than `--fullstack` (11 agents, 36 skills). Pick a profile to narrow the scope of the work.
 
 ---
 

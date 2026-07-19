@@ -384,9 +384,9 @@ echo "== 6f) always-on token budget =="
 # for that cost, and a gate rather than a reminder — a verbose new description fails the suite instead of
 # quietly taxing every future session. Budgets sit just above the current sizes: raising one is allowed, but
 # only as a deliberate edit here.
-BUDGET_DISC=10300    # DISCIPLINE.md (the discipline half of CLAUDE.md); currently 10271 (1.6.0: 4 trigger-map rows routing the last main-thread skills — iterate/reflect/worktree/mcp-builder — so no component is idle, enforced by §3b)
+BUDGET_DISC=10390    # DISCIPLINE.md (the discipline half of CLAUDE.md); currently 10350 (1.7.0: +trigger-map row routing the eval-grader main-thread skill)
 BUDGET_AGENTS=5150   # sum of agent frontmatter; currently 5121 (1.5.0: 9 agents rewritten to action-oriented "use proactively" descriptions so Claude Code auto-delegation actually fires)
-BUDGET_SKILLS=10750  # sum of skill frontmatter; currently 10682 (1.4.0: +3 phase-4 skills, +worktree isolation skill ~376B)
+BUDGET_SKILLS=11550  # sum of skill frontmatter; currently 11512 (1.7.0: +threat-model (~399B) + eval-grader (~397B) skills)
 fm_bytes(){ awk '/^---$/{c++; next} c==1' "$1" 2>/dev/null | wc -c | tr -d ' '; }
 if [ -f "$ROOT/CLAUDE.md" ]; then
   DB="$(awk '/^<!-- KIT:DISCIPLINE-END/{exit} {print}' "$ROOT/CLAUDE.md" | wc -c | tr -d ' ')"

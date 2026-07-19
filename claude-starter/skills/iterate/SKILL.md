@@ -20,6 +20,8 @@ interval. Open-ended exploration with no checkable target does not belong here.
    over an LLM's self-assessment. A model grading its own output inflates; an "it looks done" or even a single
    "review clean" with no objective check is a weak verifier. When the only available check is a judgment call,
    ground it (a second agent with a distinct lens, an explicit rubric) rather than trusting the loop's own say-so.
+   For a generative task with no exit code, the `eval-grader` skill *is* that external verifier — a two-layer
+   scorecard (code metrics + LLM-judge) over a fixed set, read as signed deltas vs a pinned baseline.
 2. **Run one round**: change → verify (drive the real flow, not only tests) → check the exit test.
 3. **Report the gap** every round — state what still fails and why. Never loop silently.
 4. **Repeat** until the exit test passes. Stop early and surface it if: two rounds pass with no new

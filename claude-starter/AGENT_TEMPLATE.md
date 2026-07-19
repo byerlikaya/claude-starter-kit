@@ -44,6 +44,26 @@ Pulling the read-only trio down to Haiku lowers token/cost; the writing experts 
 - Project-local (10): `./.claude/agents/` — session-manager-csk, backend/database/security/test/frontend-expert-csk, review-agent-csk, commit-agent-csk, planner-csk, privacy-agent-csk. Everything stays inside the repo; no dependency on home (`~/.claude`) (handover §3).
 - No extra agent is needed; stack-specific "hows" live under `./.claude/skills/` (the frontend's "how" is in the project's frontend skill / CLAUDE.md).
 
+## Decompose along the cost axis (tool < skill < subagent)
+A monolithic prompt is a smell. Move each responsibility to the **cheapest primitive that suffices**:
+
+```
+cheaper, weaker  ◀──────────────────────────────▶  more power, more cost
+ TOOL / code-exec         SKILL                  SUBAGENT
+ one call, stateless,     instructions read      its own context window
+ deterministic            on demand              & its own goal
+```
+
+Smell tests:
+- A tool that dumps **>2k tokens** into context → replace it with **code execution** over the data (compute over context, not a data dump).
+- Writing **"always do X before Y"** into an agent prompt → that belongs in a **skill**, not copied prose.
+- A **subagent whose output is one number/line** → it shouldn't be a subagent; inline it. Delegate for *isolation*, not by default (see `token-budget`).
+
+**Typed contract between stages.** A prose handoff drops data — a confidence number gets lost when the orchestrator
+re-parses a paragraph. Require a **typed contract** at every stage boundary (e.g. `{value, confidence, method,
+flags}`) and **validate-and-clamp** it before trusting it (known fields only, enums constrained, list lengths
+capped). *Anchor the number, not just the narrative.*
+
 ## Test-first (add the eval before the skill/agent)
 Treat a new skill/agent like code under TDD: write the checkable expectation **first**, watch it fail, then build
 until it passes. The kit's evals ARE those tests.
