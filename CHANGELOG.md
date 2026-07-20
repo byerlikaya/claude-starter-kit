@@ -3,6 +3,30 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [1.7.0] - 2026-07-20
+
+### Added
+- **`threat-model` skill** — scope a security audit *before* scanning, to cut false positives. It maps assets,
+  entry points, trust boundaries and 5-8 domain-specific attack classes into a parseable `docs/THREAT_MODEL.md`;
+  `security-expert-csk` runs it first and `security-scan` then reviews that surface. A threat survives a patch; a
+  vulnerability is only evidence for one.
+- **`eval-grader` skill** — measure the quality of a generative task instead of vibing it: a two-layer grader
+  (deterministic code metrics + per-dimension LLM-as-judge), signed deltas against a pinned baseline, and a
+  `pass-slow` verdict that grades cost alongside correctness — the external, machine-grounded verifier `iterate` asks for.
+- **An agent/skill network diagram** in the README — a data-driven map (`assets/network-*.svg`, built from the repo by `packaging/gen-network.py`) of all 11 agents, 36 skills, and their real `applies` relationships.
+
+### Changed
+- **`security-scan` gained an adversarial verification pass** — N independent verifiers that start from the code
+  and hunt for why a finding is *wrong*, a false-positive exclusion taxonomy, a `CANNOT_VERIFY` verdict, and
+  severity derived from **preconditions × access** rather than the vulnerability category (`references/verify.md`),
+  plus defensive-security prompting rules (`references/prompting.md`).
+- **`AGENT_TEMPLATE.md`** now covers decomposing along the tool < skill < subagent cost axis and requiring a typed
+  contract between stages.
+- **`frontend`** documents a verify-by-contract runtime convention — `data-verify-*` attributes, a `window.__verify`
+  handle, and the `PASS/FAIL/BLOCKED/SKIP` taxonomy (`references/verify-contract.md`).
+- **README restructured for reading order** — the feature inventory and network diagram surface *before* the install
+  reference; the two differentiation tables are merged into one; the update mechanics collapse into a details block.
+
 ## [1.6.3] - 2026-07-17
 
 ### Fixed

@@ -31,13 +31,20 @@ Reduce every check to three questions:
 
 The scan applies this model on four fronts: **dependency · code · configuration · authorization**. The result is ranked by severity, and the fix is presented for the user to choose.
 
+## Scope
+Prefer **`docs/THREAT_MODEL.md`** if present (from the `threat-model` skill): its entry points and attack classes
+are the focus areas, and its impact/likelihood bias which findings count as high severity — the biggest lever on
+false positives. No threat model → map the surface yourself first (Front 0 · Discovery).
+
 ## Checklist
 - [ ] Stack and package ecosystem(s) detected, attack surface mapped
 - [ ] Dependency audit run for each ecosystem
 - [ ] Source→sink paths traced across the four vulnerability classes
 - [ ] Configuration and secret leakage scanned
 - [ ] Authorization matrix produced, unprotected sensitive endpoints searched for
-- [ ] Findings reported in severity order, no secret disclosed
+- [ ] Each candidate adversarially **verified** (N-verifier disprove pass); FALSE_POSITIVE / CANNOT_VERIFY separated out
+- [ ] Severity **derived from preconditions × access** (not the scanner's category); verification ≠ severity
+- [ ] Findings reported in severity order, no secret disclosed; ruled-out findings recorded too
 - [ ] Fix options presented to the user
 
 ---
@@ -46,7 +53,19 @@ The scan applies this model on four fronts: **dependency · code · configuratio
 
 Five review fronts — Discovery · Dependencies · Code (source→sink) · Configuration · Authorization: **`references/fronts.md`** (read the fronts you're scanning).
 
+When you fan out a sub-agent per front, how you prompt it decides recall — describe vulnerability **shapes** not a
+checklist, scope each agent, and state that vulnerabilities exist: **`references/prompting.md`**.
+
 ---
+
+## Verify before you report
+
+Discovery is deliberately noisy (recall-biased); a **separate adversarial pass** disproves each candidate before it
+reaches the report — the biggest lever on false positives. Run **N independent verifiers** per finding (each starts
+from the code, not the summary; each hunts for why it's *wrong*), classify **TRUE_POSITIVE / FALSE_POSITIVE /
+CANNOT_VERIFY**, then derive **severity from preconditions × access** (independently — "real" is not "critical").
+The verifier procedure, the false-positive exclusion rules, the parseable verdict block, and the severity matrix
+live in **`references/verify.md`**. Ruled-out findings are recorded, not silently dropped.
 
 ## Report
 

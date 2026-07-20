@@ -62,6 +62,7 @@ destructive commands are gated at the tool level (§4.4/§4.5).
 | Testing prompt injection defenses | `red-team` |
 | Self-correction loop (refine to done) | `iterate` |
 | Step back before commit / moving on | `reflect` |
+| Measure output quality / eval a change | `eval-grader` |
 | Parallel / file-mutating subagents | `worktree` |
 | Building an MCP server / tool | `mcp-builder` |
 

@@ -6,10 +6,10 @@
 
 *plan → build → review → commit, where every critical rule is a **gate**, not a reminder.*
 
-![Version](https://img.shields.io/badge/version-1.6.3-2563eb?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.7.0-2563eb?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)
 ![Agents](https://img.shields.io/badge/agents-11-f59e0b?style=flat-square)
-![Skills](https://img.shields.io/badge/skills-34-f59e0b?style=flat-square)
+![Skills](https://img.shields.io/badge/skills-36-f59e0b?style=flat-square)
 ![Claude Code](https://img.shields.io/badge/Claude_Code-agentic_kit-8b5cf6?style=flat-square)
 
 🇬🇧 English · [🇹🇷 Türkçe](README.tr.md)
@@ -22,12 +22,16 @@
 
 Most "agent setups" are a pile of suggestions — the rules sit in a file, and whether they're honored is left to the model. This kit is different: it drops a **disciplined engineering team** into Claude Code, where **the rules that matter are gates, not reminders** — it doesn't just tell the agent the rules, it makes breaking the critical ones impossible, and it installs safely onto the repo you already have.
 
-| | |
-|---|---|
-| 👥 | **A team, not a prompt** — 11 specialist agents auto-chain across plan → build → audit → ship; you don't wire them, the main thread does. |
-| 🛡️ | **Security & privacy are gates, not options** — risk-critical changes must clear the security/privacy audit before they can close. |
-| 🚦 | **Every commit is yours to approve** — no `commit`/`push` runs without your explicit OK, enforced at the tool level even in auto/bypass mode. |
-| 🌿 | **Safe on an existing repo** — `adopt` hands the kit over on a branch; `main` is never touched, and you review before you keep it. |
+| What matters | Typical agent kit / prompt collection | Claude Starter Kit |
+|---|---|---|
+| **Critical rules** | Live in a `.md` file; honored only if the model remembers | **Enforced as gates** at the tool level — git hook (`trace-scan`), `settings.json` permissions, `guard-bash.sh` PreToolUse. Breaking them is *impossible*, not *discouraged* |
+| **Structure** | A single dev prompt, or a loose list of agents you orchestrate | **A team of 11 specialist agents** that auto-chain across 5 stages (Understand → Produce → Audit → Close → Hand off) — the main thread wires them, not you |
+| **Security & privacy** | Optional advice, easy to skip | **Mandatory audit gate** — risk-critical changes can't close before the security/privacy review clears |
+| **Commits** | Model may commit on its own | **Every commit is yours to approve** — enforced at the tool level even in auto/bypass mode |
+| **Adopting an existing repo** | "Start fresh" assumption; manual porting | **`adopt` hands the kit over on a branch** — `main` is never touched; you review before you keep it |
+| **Where the "how" lives** | Rules + method copied into each agent prompt → drift & duplication | **Agent = thin trigger** (who/when); the method lives once in a **skill** (single source of truth), reused across 36 skills |
+
+**In one line:** similar projects hand you *a pile of suggestions*; this kit drops a *disciplined engineering team* into Claude Code — where the rules that matter are **gates, not reminders**.
 
 ---
 
@@ -47,7 +51,6 @@ Then paste **`.claude/FIRST_PROMPT.md`** as your first Claude Code message. Home
 **11 agents**, each a **thin trigger** — it says only *who* and *when*, and delegates the *how* to a skill. The main thread selects and chains them across **five stages**, escalating quality before anything is committed:
 
 <div align="center">
-  <img src="assets/orchestration-en.svg" alt="Agent orchestration across five stages" width="740">
 
   🧭 **Understand** &nbsp;→&nbsp; 🔨 **Produce** &nbsp;→&nbsp; 🔍 **Audit** &nbsp;→&nbsp; ✅ **Close** &nbsp;→&nbsp; 🤝 **Hand off**
 
@@ -76,6 +79,69 @@ Then paste **`.claude/FIRST_PROMPT.md`** as your first Claude Code message. Home
 
 ---
 
+## What's inside
+
+<div align="center">
+  <img src="assets/network-en.svg" alt="The kit's network — 11 agents and 36 skills connected by their real applies relationships" width="820">
+  <br><sub>Every agent, every skill, and the real <code>applies</code> relationships — grouped by stage, each agent its own hue; the center is the main thread that orchestrates them all.</sub>
+</div>
+
+- **11 agents** — see the table above.
+- **36 skills** — the single source of "how", one per area (full catalogue below).
+- **8 slash commands** — `/brainstorm` · `/plan` · `/review` · `/ship` · `/handoff` · `/simplify` · `/update-csk` (update the installed kit) · `/doctor-csk` (health-check the install).
+- **Hooks** — `guard-bash.sh` + `guard-write.sh` (tool-level command/write gates), `pre-commit` + `commit-msg` (trace + secret + bloat scan), `context-usage.sh` and `session-guard.sh` (session measurement), `session-rehydrate.sh` (re-surface the handover after /compact or /clear). The plugin edition ships these gate hooks too.
+- **CLAUDE.md** — behavior, the three principles, workflow, Definition of Done, token discipline, and prohibitions.
+
+<details>
+<summary><b>Full skill catalogue</b> — all 36, generated from each skill</summary>
+
+<!-- SKILLS:START -->
+
+| Skill | What it does |
+|:--|:--|
+| `a11y` | Frontend accessibility audit (WCAG): semantic HTML, keyboard access, focus management, contrast, ARIA, screen readers. |
+| `adr` | Architecture Decision Record: context-decision-consequences, for decisions that are expensive to reverse. |
+| `api-design` | API contract design: resource naming, error model, versioning, pagination, backward compatibility, OpenAPI. |
+| `brainstorm` | Divergent discovery BEFORE planning: turn a fuzzy ask into 2–4 scoped options + named unknowns, pick a direction, hand to spec-planning. |
+| `ci-pipeline` | CI pipeline discipline: lint→build→test→quality→security, fail-fast, deterministic build, secret handling, PR gates. |
+| `code-review` | Code review discipline: severity-ranked, reasoned feedback on whether a change improves the system's overall code health. |
+| `commit-message` | Conventional Commits: reads the staged diff and proposes `type(scope): summary`, with body/footer when needed. |
+| `db-migration` | Apply schema migrations safely: detect the tool, classify the change by risk, gate destructive ones behind approval, back up in prod,… |
+| `dependency-audit` | Dependency audit: known CVEs, licence compliance, abandoned/outdated packages, lockfile integrity, and a justification for every new… |
+| `devarch-module` | DevArchitecture backend pattern: MediatR CQRS handler/command/query, IResult/IDataResult, Autofac AOP chain, FluentValidation, i18n. |
+| `docs-writer` | Keeps documentation in sync with the code: README, usage and related docs when a public API or behavior changes. |
+| `eval-grader` | Measure output quality, don't vibe it: score a generative task with a two-layer grader — deterministic code metrics + per-dimension… |
+| `frontend-design` | Visual and UX design quality for interfaces: hierarchy, spacing rhythm, typographic scale, a restrained color system, layout composition,… |
+| `frontend-rn-expo` | OPTIONAL, stack-specific: React Native + Expo (prebuild). |
+| `frontend` | Stack-agnostic frontend discipline (web · mobile · desktop): component structure, state, data fetching, loading/empty/error states,… |
+| `handoff` | Session handover: when context fills, a phase closes, or the topic changes, write an action-oriented handover to docs/SESSION_STATE.md,… |
+| `i18n-integrity` | Translation integrity: every key present in every language, no hardcoded strings, consistent placeholders and plurals. |
+| `incident-runbook` | Production incident response: diagnose → mitigate → resolve, then a blameless postmortem and a repeatable runbook. |
+| `iterate` | Refine-to-Done loop: repeat until tests green + review clean + nothing deferred; bounded. |
+| `mcp-builder` | Build a Model Context Protocol (MCP) server so an AI client can call your tools/resources: design tool schemas, pick a transport, handle… |
+| `observability` | Stack-agnostic observability: structured logs, correlation ids, metrics and traces; no PII or secrets in logs. |
+| `performance` | Stack-agnostic performance: measure first, find the bottleneck, then optimise. |
+| `privacy-compliance` | KVKK/GDPR audit method: data inventory, purpose/basis/retention, minimisation, consent, transparency, data-subject rights, cross-border… |
+| `red-team` | Attacker's-eye test of LLM/agent defenses: instruction hijacking, data exfiltration and tool abuse through untrusted content; verifies… |
+| `reflect` | Retrospective self-audit after nontrivial work: unverified assumptions, skipped items, is-this-the-right- approach — findings, not code. |
+| `release` | Versioning and CHANGELOG: SemVer mapped from Conventional Commits, Keep a Changelog format, tagging, pre-release gates. |
+| `security-scan` | Stack-agnostic security audit: map the attack surface, trace untrusted input to dangerous calls, surface dependency and configuration flaws. |
+| `sonarqube-check` | SonarQube quality gate (language-agnostic, local-first): 0 Bugs/Vulns/Hotspots/Code Smells, 0 build warnings. |
+| `spec-planning` | Spec-first planning: task breakdown, measurable acceptance criteria, dependency order, risk priority. |
+| `systematic-debugging` | Root-cause a bug before touching a fix: reproduce, isolate, form and test a hypothesis, confirm the cause, then fix and verify. |
+| `testing` | The how of testing: pyramid, AAA, isolation, risk coverage, determinism. |
+| `threat-model` | Scope a security audit BEFORE scanning, to cut false positives: map assets, entry points, trust boundaries and 5-8 domain-specific attack… |
+| `token-budget` | Context/token discipline: subagent isolation, output = summary, move-to-file, delegation threshold, lean skills. |
+| `trace-scan` | Trace scan (§4.1/§4.2): before a commit, scans the staged changes and the message for AI traces (co-author trailers, footers, robot… |
+| `vps-deploy` | Deploy to a VPS safely: runtime detection, reverse proxy + SSL, atomic swap, keep the previous version, post-deploy health gate,… |
+| `worktree` | Isolate risky or parallel file-mutating work in a git worktree so the main tree's uncommitted changes are never clobbered. |
+
+<!-- SKILLS:END -->
+
+</details>
+
+---
+
 ## Three principles
 
 1. **Agent = thin trigger.** An agent only says "who, when"; it stays short and leaves the "how" to a skill.
@@ -84,20 +150,40 @@ Then paste **`.claude/FIRST_PROMPT.md`** as your first Claude Code message. Home
 
 ---
 
-## How this kit is different
+## Session & token management
 
-Most "agent setups" for Claude Code fall into two buckets: a **big prompt file** with rules, or a **collection of agents/skills** you wire together yourself. Both leave the hard part — *actually enforcing discipline* — to the model's goodwill. This kit doesn't.
+An assistant cannot run `/context` itself, so most setups **guess** the session fill. This kit measures it. `context-usage.sh` reads the real token count from the last turn's API usage in the transcript — the same figure `/context` shows. The `UserPromptSubmit` hook injects it every turn; the `Stop` hook (`session-guard.sh`) warns you the first time fill crosses **75%**, and once more at **90%** — one warning per threshold, and it never blocks your turn. The session-health line rests on a measurement, not a guess.
 
-| What matters | Typical agent kit / prompt collection | Claude Starter Kit |
-|---|---|---|
-| **Critical rules** | Live in a `.md` file; honored only if the model remembers | **Enforced as gates** at the tool level — git hook (`trace-scan`), `settings.json` permissions, `guard-bash.sh` PreToolUse. Breaking them is *impossible*, not *discouraged* |
-| **Structure** | A single dev prompt, or a loose list of agents you orchestrate | **A team of 11 specialist agents** that auto-chain across 5 stages (Understand → Produce → Audit → Close → Hand off) — the main thread wires them, not you |
-| **Security & privacy** | Optional advice, easy to skip | **Mandatory audit gate** — risk-critical changes can't close before the security/privacy review clears |
-| **Commits** | Model may commit on its own | **Every commit is yours to approve** — enforced at the tool level even in auto/bypass mode |
-| **Adopting an existing repo** | "Start fresh" assumption; manual porting | **`adopt` hands the kit over on a branch** — `main` is never touched; you review before you keep it |
-| **Where the "how" lives** | Rules + method copied into each agent prompt → drift & duplication | **Agent = thin trigger** (who/when); the method lives once in a **skill** (single source of truth), reused across 34 skills |
+### Token cost
 
-**In one line:** similar projects hand you *a pile of suggestions*; this kit drops a *disciplined engineering team* into Claude Code — where the rules that matter are **gates, not reminders**.
+`DISCIPLINE.md` and the agent/skill descriptions load into every session's context. That always-on material is **~26 KB** today (`DISCIPLINE.md` + 11 agent + 36 skill descriptions) — on the order of **10k tokens** on a real turn. Every skill added is a permanent ~100-token tax on all sessions, which is why the byte budget below is a gate, not a guideline.
+
+`smoke-test.sh` enforces a byte budget per component (discipline · agent descriptions · skill descriptions), so the cost cannot drift upward unnoticed. A budget can be raised, but only by editing `smoke-test.sh` explicitly.
+
+> **Profile pruning does not save tokens.** A `--backend` install (10 agents, 32 skills) costs only a few hundred tokens less than `--fullstack` (11 agents, 36 skills). Pick a profile to narrow the scope of the work.
+
+---
+
+## Rule → gate
+
+| Rule | Enforcing mechanism |
+|---|---|
+| Commit/push only with approval — in every permission mode | `guard-bash.sh` (PreToolUse) raises an approval prompt only you can answer; approve once and Claude runs the commit. Fails closed under `bypassPermissions`; `CLAUDE_GIT_OK=1` pre-authorises headless runs |
+| Destructive op (reset --hard · force push · rm -rf · --no-verify) | `guard-bash.sh` (blocked at the tool level) |
+| Remote-code-exec / permission-nuke (`curl…\|bash` · `chmod 777` · `dd of=`) | `guard-bash.sh` (hard-blocked in every mode) |
+| Disarming the gates (redirect `core.hooksPath`, or edit/delete a hook script) | `guard-bash.sh` (shell side) + `guard-write.sh` (Write/Edit side) — a gate you can silently remove is not a gate |
+| Committing straight onto the default branch | `guard-bash.sh` surfaces it in the approval prompt (a warning, not a block — a fresh project legitimately lives on `main`) |
+| Build/vendored artifact or oversized blob staged | `pre-commit` repo-bloat scan (`node_modules/`, `dist/`, `>5 MiB`, …; override via `CSK_MAX_FILE_BYTES`) |
+| Secret **file** staged (whole-file secret the content scan can miss) | `pre-commit` secret-file gate (`.env`, `id_rsa`, `*.pem/.key/.p12`, `.npmrc`, …; `.env.example`/`.sample`/`.template` stay committable) |
+| Force-add past `.gitignore` (`git add -f`) · deleting a lockfile | `guard-bash.sh` (blocked at the tool level) |
+| No AI-authorship trace or external vendor name in a commit | `pre-commit` + `commit-msg` git hook — scans your project's files; the kit's own `.claude/` tree is exempt (it names the tool it configures), secrets never are |
+| No API key / token / private key committed | `pre-commit` secret scan (`secret-blocklist.txt` + `.secret-allowlist.txt`) |
+| Session threshold | `context-usage.sh` + `session-guard.sh` (Stop hook) |
+| Always-on context stays lean | `smoke-test.sh` byte budgets per component (discipline · agent descriptions · skill descriptions) |
+| A running session never follows stale rules | `context-usage.sh` compares `.claude/VERSION` against the version the session started with, and says so |
+| Quality gate (SonarQube projects — language-agnostic) | `sonarqube-check` + `/ship` |
+
+The gates are armed via `settings.json` and git `core.hooksPath`; `smoke-test.sh` verifies they are ready after every change.
 
 ---
 
@@ -180,6 +266,9 @@ brew upgrade byerlikaya/tap/claude-starter-kit && claude-starter-kit update   # 
 gh release download --repo byerlikaya/claude-starter-kit -p '*.tgz' && tar xzf claude-starter-kit-*.tgz && bash adopt.sh   # tarball
 ```
 
+<details>
+<summary><b>Update mechanics</b> — what's refreshed, kit.conf, and where the change lands</summary>
+
 At install time the kit stamps `.claude/kit.conf` with the profile, the backend stack and which installer ran, plus `.claude/VERSION`. The updater reads that stamp and refreshes the project **in the shape it was installed in**: a `--backend` project does not get frontend agents grafted back on, and a `--dotnet` project keeps its `devarch-module` pattern skill. Where the stamp is absent, the updater derives the shape from the installed files and writes it. Compare `cat .claude/VERSION` against `npm view @byerlikaya/claude-starter-kit version` to see whether an update is waiting.
 
 Inside a running Claude Code session you can also run **`/update-csk`** — it does the version check, runs the updater if a newer version exists, verifies the result with `/doctor-csk`, and then prompts `/compact` to reload the refreshed discipline in the same session. To check a live install's health at any time, run **`/doctor-csk`** (hooks executable · `core.hooksPath` set · gates wired).
@@ -196,98 +285,7 @@ Like `adopt`, an update needs a git repo. Where the change lands is now a choice
 
 > If a project's `CLAUDE.md` carries the discipline **inline** instead of importing it, discipline updates cannot reach that project. The updater detects this, shows which lines hold the inline block, and offers to replace them with the single `@.claude/DISCIPLINE.md` import — writing a backup first, on a branch you review. Decline and nothing is touched; your project section and your own rules survive either way.
 
----
-
-## What's inside
-
-- **11 agents** — see the table above.
-- **34 skills** — the single source of "how", one per area (full catalogue below).
-- **8 slash commands** — `/brainstorm` · `/plan` · `/review` · `/ship` · `/handoff` · `/simplify` · `/update-csk` (update the installed kit) · `/doctor-csk` (health-check the install).
-- **Hooks** — `guard-bash.sh` + `guard-write.sh` (tool-level command/write gates), `pre-commit` + `commit-msg` (trace + secret + bloat scan), `context-usage.sh` and `session-guard.sh` (session measurement), `session-rehydrate.sh` (re-surface the handover after /compact or /clear). The plugin edition ships these gate hooks too.
-- **CLAUDE.md** — behavior, the three principles, workflow, Definition of Done, token discipline, and prohibitions.
-
-<details>
-<summary><b>Full skill catalogue</b> — all 34, generated from each skill</summary>
-
-<!-- SKILLS:START -->
-
-| Skill | What it does |
-|:--|:--|
-| `a11y` | Frontend accessibility audit (WCAG): semantic HTML, keyboard access, focus management, contrast, ARIA, screen readers. |
-| `adr` | Architecture Decision Record: context-decision-consequences, for decisions that are expensive to reverse. |
-| `api-design` | API contract design: resource naming, error model, versioning, pagination, backward compatibility, OpenAPI. |
-| `brainstorm` | Divergent discovery BEFORE planning: turn a fuzzy ask into 2–4 scoped options + named unknowns, pick a direction, hand to spec-planning. |
-| `ci-pipeline` | CI pipeline discipline: lint→build→test→quality→security, fail-fast, deterministic build, secret handling, PR gates. |
-| `code-review` | Code review discipline: severity-ranked, reasoned feedback on whether a change improves the system's overall code health. |
-| `commit-message` | Conventional Commits: reads the staged diff and proposes `type(scope): summary`, with body/footer when needed. |
-| `db-migration` | Apply schema migrations safely: detect the tool, classify the change by risk, gate destructive ones behind approval, back up in prod,… |
-| `dependency-audit` | Dependency audit: known CVEs, licence compliance, abandoned/outdated packages, lockfile integrity, and a justification for every new… |
-| `devarch-module` | DevArchitecture backend pattern: MediatR CQRS handler/command/query, IResult/IDataResult, Autofac AOP chain, FluentValidation, i18n. |
-| `docs-writer` | Keeps documentation in sync with the code: README, usage and related docs when a public API or behavior changes. |
-| `frontend-design` | Visual and UX design quality for interfaces: hierarchy, spacing rhythm, typographic scale, a restrained color system, layout composition,… |
-| `frontend-rn-expo` | OPTIONAL, stack-specific: React Native + Expo (prebuild). |
-| `frontend` | Stack-agnostic frontend discipline (web · mobile · desktop): component structure, state, data fetching, loading/empty/error states,… |
-| `handoff` | Session handover: when context fills, a phase closes, or the topic changes, write an action-oriented handover to docs/SESSION_STATE.md,… |
-| `i18n-integrity` | Translation integrity: every key present in every language, no hardcoded strings, consistent placeholders and plurals. |
-| `incident-runbook` | Production incident response: diagnose → mitigate → resolve, then a blameless postmortem and a repeatable runbook. |
-| `iterate` | Refine-to-Done loop: repeat until tests green + review clean + nothing deferred; bounded. |
-| `mcp-builder` | Build a Model Context Protocol (MCP) server so an AI client can call your tools/resources: design tool schemas, pick a transport, handle… |
-| `observability` | Stack-agnostic observability: structured logs, correlation ids, metrics and traces; no PII or secrets in logs. |
-| `performance` | Stack-agnostic performance: measure first, find the bottleneck, then optimise. |
-| `privacy-compliance` | KVKK/GDPR audit method: data inventory, purpose/basis/retention, minimisation, consent, transparency, data-subject rights, cross-border… |
-| `red-team` | Attacker's-eye test of LLM/agent defenses: instruction hijacking, data exfiltration and tool abuse through untrusted content; verifies… |
-| `reflect` | Retrospective self-audit after nontrivial work: unverified assumptions, skipped items, is-this-the-right- approach — findings, not code. |
-| `release` | Versioning and CHANGELOG: SemVer mapped from Conventional Commits, Keep a Changelog format, tagging, pre-release gates. |
-| `security-scan` | Stack-agnostic security audit: map the attack surface, trace untrusted input to dangerous calls, surface dependency and configuration flaws. |
-| `sonarqube-check` | SonarQube quality gate (language-agnostic, local-first): 0 Bugs/Vulns/Hotspots/Code Smells, 0 build warnings. |
-| `spec-planning` | Spec-first planning: task breakdown, measurable acceptance criteria, dependency order, risk priority. |
-| `systematic-debugging` | Root-cause a bug before touching a fix: reproduce, isolate, form and test a hypothesis, confirm the cause, then fix and verify. |
-| `testing` | The how of testing: pyramid, AAA, isolation, risk coverage, determinism. |
-| `token-budget` | Context/token discipline: subagent isolation, output = summary, move-to-file, delegation threshold, lean skills. |
-| `trace-scan` | Trace scan (§4.1/§4.2): before a commit, scans the staged changes and the message for AI traces (co-author trailers, footers, robot… |
-| `vps-deploy` | Deploy to a VPS safely: runtime detection, reverse proxy + SSL, atomic swap, keep the previous version, post-deploy health gate,… |
-| `worktree` | Isolate risky or parallel file-mutating work in a git worktree so the main tree's uncommitted changes are never clobbered. |
-
-<!-- SKILLS:END -->
-
 </details>
-
----
-
-## Session & token management
-
-An assistant cannot run `/context` itself, so most setups **guess** the session fill. This kit measures it. `context-usage.sh` reads the real token count from the last turn's API usage in the transcript — the same figure `/context` shows. The `UserPromptSubmit` hook injects it every turn; the `Stop` hook (`session-guard.sh`) warns you the first time fill crosses **75%**, and once more at **90%** — one warning per threshold, and it never blocks your turn. The session-health line rests on a measurement, not a guess.
-
-### Token cost
-
-`DISCIPLINE.md` and the agent/skill descriptions load into every session's context. That always-on material is **~26 KB** today (`DISCIPLINE.md` + 11 agent + 34 skill descriptions) — on the order of **10k tokens** on a real turn. Every skill added is a permanent ~100-token tax on all sessions, which is why the byte budget below is a gate, not a guideline.
-
-`smoke-test.sh` enforces a byte budget per component (discipline · agent descriptions · skill descriptions), so the cost cannot drift upward unnoticed. A budget can be raised, but only by editing `smoke-test.sh` explicitly.
-
-> **Profile pruning does not save tokens.** A `--backend` install (10 agents, 30 skills) costs only a few hundred tokens less than `--fullstack` (11 agents, 34 skills). Pick a profile to narrow the scope of the work.
-
----
-
-## Rule → gate
-
-| Rule | Enforcing mechanism |
-|---|---|
-| Commit/push only with approval — in every permission mode | `guard-bash.sh` (PreToolUse) raises an approval prompt only you can answer; approve once and Claude runs the commit. Fails closed under `bypassPermissions`; `CLAUDE_GIT_OK=1` pre-authorises headless runs |
-| Destructive op (reset --hard · force push · rm -rf · --no-verify) | `guard-bash.sh` (blocked at the tool level) |
-| Remote-code-exec / permission-nuke (`curl…\|bash` · `chmod 777` · `dd of=`) | `guard-bash.sh` (hard-blocked in every mode) |
-| Disarming the gates (redirect `core.hooksPath`, or edit/delete a hook script) | `guard-bash.sh` (shell side) + `guard-write.sh` (Write/Edit side) — a gate you can silently remove is not a gate |
-| Committing straight onto the default branch | `guard-bash.sh` surfaces it in the approval prompt (a warning, not a block — a fresh project legitimately lives on `main`) |
-| Build/vendored artifact or oversized blob staged | `pre-commit` repo-bloat scan (`node_modules/`, `dist/`, `>5 MiB`, …; override via `CSK_MAX_FILE_BYTES`) |
-| Secret **file** staged (whole-file secret the content scan can miss) | `pre-commit` secret-file gate (`.env`, `id_rsa`, `*.pem/.key/.p12`, `.npmrc`, …; `.env.example`/`.sample`/`.template` stay committable) |
-| Force-add past `.gitignore` (`git add -f`) · deleting a lockfile | `guard-bash.sh` (blocked at the tool level) |
-| No AI-authorship trace or external vendor name in a commit | `pre-commit` + `commit-msg` git hook — scans your project's files; the kit's own `.claude/` tree is exempt (it names the tool it configures), secrets never are |
-| No API key / token / private key committed | `pre-commit` secret scan (`secret-blocklist.txt` + `.secret-allowlist.txt`) |
-| Session threshold | `context-usage.sh` + `session-guard.sh` (Stop hook) |
-| Always-on context stays lean | `smoke-test.sh` byte budgets per component (discipline · agent descriptions · skill descriptions) |
-| A running session never follows stale rules | `context-usage.sh` compares `.claude/VERSION` against the version the session started with, and says so |
-| Quality gate (SonarQube projects — language-agnostic) | `sonarqube-check` + `/ship` |
-
-The gates are armed via `settings.json` and git `core.hooksPath`; `smoke-test.sh` verifies they are ready after every change.
 
 ---
 
