@@ -101,6 +101,17 @@ echo "$CMD" | grep -qiE ">[[:space:]]*[^|]*$GATE"                               
     && ! has '\.env\.(example|sample|template|dist)([^A-Za-z0-9_-]|$)'; } \
     && block "reading a .env secret via the Bash tool" "4.5"
 
+# The same reasoning, one scope wider. `.env` was the only credential file either gate covered, which left the
+# ones that actually unlock other systems wide open: an SSH private key, AWS credentials, a kubeconfig, a .netrc.
+# Read them and they are in the context, one summary or one web call away from leaving the machine — and unlike a
+# commit, nothing downstream scans for that. Reader verbs only (grep/awk/sed still take these as patterns), and
+# a PUBLIC key or a .pub/.example path stays readable because neither is a secret.
+CRED='(\.ssh/(id_[A-Za-z0-9_]+|identity)|(^|/)id_(rsa|dsa|ecdsa|ed25519)|\.aws/credentials|\.netrc|\.git-credentials|\.docker/config\.json|\.npmrc|\.pypirc|kube/config|kubeconfig|\.(pem|p12|pfx|keystore|jks)|service-account.*\.json)'
+{ { has "(^|[^A-Za-z0-9_/.-])(cat|less|more|head|tail|tac|nl|xxd|od|strings|hexdump|base64|cp|scp|rsync|curl|wget)[[:space:]]+(-[^;&|[:space:]]*[[:space:]]+)*[^;&|[:space:]]*$CRED" \
+    || has "<[[:space:]]*[^;&|[:space:]]*$CRED"; } \
+    && ! has '(\.pub|\.example|\.sample|\.template)([^A-Za-z0-9_-]|$)'; } \
+    && block "reading a private key / credential file via the Bash tool" "4.5"
+
 # §4.5 force-add bypasses .gitignore (sneaks build output / secrets past the bloat & ignore rules); deleting a
 # lockfile is a §4.5 op the discipline already names. Both are only done on an explicit request.
 { git_has "$CMD" 'add' && has '(-[A-Za-z]*f[A-Za-z]*|--force)([[:space:]]|$)'; } && block "git add -f (bypasses .gitignore)" "4.5"

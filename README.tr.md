@@ -177,7 +177,9 @@ Bir asistan `/context` komutunu kendisi çalıştıramaz; bu yüzden çoğu kuru
 | Sır **dosyası** stage'lenmiş (içerik taramasının kaçırabileceği tüm-dosya sırrı) | `pre-commit` sır-dosyası kapısı (`.env`, `id_rsa`, `*.pem/.key/.p12`, `.npmrc`, …; `.env.example`/`.sample`/`.template` commit'lenebilir kalır) |
 | `.gitignore`'u atlayan zorla-ekleme (`git add -f`) · lockfile silme | `guard-bash.sh` (araç seviyesinde bloklanır) |
 | Commit'te yapay zekâ izi ya da dış vendor adı bulunmaz | `pre-commit` + `commit-msg` git hook — senin proje dosyalarını tarar; kitin kendi `.claude/` ağacı muaftır (yapılandırdığı aracın adını taşır), sırlar asla muaf değildir |
-| Commit'e API key / token / private key girmez | `pre-commit` secret taraması (`secret-blocklist.txt` + `.secret-allowlist.txt`) |
+| Commit'e API key / token / private key girmez | `pre-commit` secret taraması (`secret-blocklist.txt` + `.secret-allowlist.txt`); bu listelerdeki her desen kendi test vakasını taşır ve `smoke-test.sh` onları gerçek hook'tan geçirir |
+| Bağlama kimlik dosyası **okunmaz** (`~/.ssh/id_rsa`, `~/.aws/credentials`, `*.pem`, `.netrc`, kubeconfig) | `settings.json` Read-deny + kabuk tarafı için `guard-bash.sh`. Commit taraması sırrı *çıkarken* yakalar; yalnızca okunan sırrı hiçbir şey yakalamaz, ve okunmuş bir sır tek bir özetle makineden çıkabilir. Açık anahtarlar ve `.example` yolları okunabilir kalır |
+| `.claude/` içine kimsenin incelemediği skill/agent düşmez | `skill-trust.sh` (SessionStart) onu tedarik-zinciri tarayıcısının hükmüyle birlikte adlandırır; kabul bilinçlidir ve özet (digest) olarak kaydedilir, kabulden sonraki bir düzenleme yeniden bildirilir |
 | Oturum eşiği | `context-usage.sh` + `session-guard.sh` (Stop hook) |
 | Sabit bağlam yükü şişmesin | `smoke-test.sh` bileşen başına byte bütçesi (disiplin · ajan tarifleri · skill tarifleri) |
 | Çalışan oturum bayat kurala uymasın | `context-usage.sh`, `.claude/VERSION`'ı oturumun başladığı sürümle karşılaştırır ve söyler |

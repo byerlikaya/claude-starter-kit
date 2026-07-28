@@ -177,7 +177,9 @@ An assistant cannot run `/context` itself, so most setups **guess** the session 
 | Secret **file** staged (whole-file secret the content scan can miss) | `pre-commit` secret-file gate (`.env`, `id_rsa`, `*.pem/.key/.p12`, `.npmrc`, …; `.env.example`/`.sample`/`.template` stay committable) |
 | Force-add past `.gitignore` (`git add -f`) · deleting a lockfile | `guard-bash.sh` (blocked at the tool level) |
 | No AI-authorship trace or external vendor name in a commit | `pre-commit` + `commit-msg` git hook — scans your project's files; the kit's own `.claude/` tree is exempt (it names the tool it configures), secrets never are |
-| No API key / token / private key committed | `pre-commit` secret scan (`secret-blocklist.txt` + `.secret-allowlist.txt`) |
+| No API key / token / private key committed | `pre-commit` secret scan (`secret-blocklist.txt` + `.secret-allowlist.txt`), and every pattern in those lists carries its own case, run through the real hook by `smoke-test.sh` |
+| A credential **read** into the context (`~/.ssh/id_rsa`, `~/.aws/credentials`, `*.pem`, `.netrc`, kubeconfig) | `settings.json` Read-deny + `guard-bash.sh` for the shell side. The commit scan catches a secret on its way *out*; nothing downstream catches one that is merely read, and a read secret is one summary away from leaving. Public keys and `.example` paths stay readable |
+| A skill or agent nobody vetted appearing in `.claude/` | `skill-trust.sh` (SessionStart) names it with the supply-chain scanner's verdict; acceptance is deliberate and digest-recorded, so an edit after acceptance comes back |
 | Session threshold | `context-usage.sh` + `session-guard.sh` (Stop hook) |
 | Always-on context stays lean | `smoke-test.sh` byte budgets per component (discipline · agent descriptions · skill descriptions) |
 | A running session never follows stale rules | `context-usage.sh` compares `.claude/VERSION` against the version the session started with, and says so |
