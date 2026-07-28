@@ -14,6 +14,19 @@ step back **before** committing or moving on. This is the meta-cognitive counter
 drives a change *to* its exit test; reflect asks whether the exit test — and the approach behind it — was even
 the right one. Skip it for a one-line, unambiguous change; there's nothing to reflect on.
 
+## Measure first, then remember
+Run **`bash .claude/hooks/session-stats.sh`** before answering anything below, and open the pass with what it
+reports. A retro built only on recall is an interview with the least reliable witness in the room: the model
+reconstructs a tidy story from a context that has already been summarised, and the stretches where it span on a
+failing approach are exactly the ones it remembers least. The script counts what actually happened — prompts,
+tool calls, failing loops, near-duplicate prompts, interrupts, auto-compactions.
+
+Treat each ⚠️ as a **question to answer in the pass**, not a verdict: a runaway loop asks *what assumption kept
+failing*; a repeated prompt asks *what context never landed*; an interrupt asks *where intent diverged*; an auto
+compaction asks *what state was silently dropped*. If the numbers and your recollection disagree, the numbers are
+the record. If the script is missing (a plugin install has no `.claude/hooks/`), say the retro is recall-based —
+do not present recall as measurement.
+
 ## The pass
 Ask each question honestly and write the answer, not a reassurance:
 1. **Unverified assumptions** — what did I take for granted that I never checked? Name each one and whether it
@@ -35,6 +48,7 @@ Ask each question honestly and write the answer, not a reassurance:
 - **Token discipline** ([[token-budget]]): a short ranked findings list to the main thread; detail to a file.
 
 ## DoD (this skill's contribution)
+- `session-stats.sh` was run and every ⚠️ it raised is answered — or its absence is stated.
 - Assumptions are labeled verified vs. assumed; unverified ones are flagged, not buried.
 - Skipped items and any scope creep are named explicitly.
 - Every "done/works" claim is traced to observed evidence or marked as inference.

@@ -267,6 +267,47 @@ grep -q 'tail -n' "$HOOKS/context-usage.sh" && pass "transcript is read through 
   || fail "context-usage.sh no longer bounds its read — the whole transcript is scanned every turn"
 rm -rf "$CUD" "$CUJX"
 
+echo "== 6j) session-stats: evidence signals read off the transcript =="
+[ -x "$HOOKS/session-stats.sh" ] && pass "session-stats.sh +x" || fail "session-stats.sh missing/not executable"
+SSD="$(mktemp -d)"; SSF="$SSD/t.jsonl"
+{
+  # two identical real prompts -> one near-duplicate
+  printf '%s\n' '{"type":"user","isSidechain":false,"message":{"role":"user","content":"please fix the failing migration test for orders"}}'
+  printf '%s\n' '{"type":"assistant","isSidechain":false,"message":{"content":[{"type":"tool_use"},{"type":"tool_use"}]}}'
+  printf '%s\n' '{"type":"user","isSidechain":false,"message":{"content":[{"type":"tool_result","is_error":true}]}}'
+  printf '%s\n' '{"type":"user","isSidechain":false,"message":{"role":"user","content":"please fix the failing migration test for orders"}}'
+  # a user-role record that is machinery, not a person: must count as neither prompt nor duplicate
+  printf '%s\n' '{"type":"user","isSidechain":false,"message":{"content":"<command-name>/compact</command-name>"}}'
+  printf '%s\n' '{"type":"user","isSidechain":false,"message":{"content":"<command-name>/compact</command-name>"}}'
+  # an interrupt, an auto-compaction, and a subagent turn whose tools are NOT the main thread's
+  printf '%s\n' '{"type":"user","isSidechain":false,"message":{"content":[{"type":"text","text":"[Request interrupted by user]"}]}}'
+  printf '%s\n' '{"type":"system","subtype":"compact_boundary","compactMetadata":{"trigger":"auto","preTokens":900000,"postTokens":12000}}'
+  printf '%s\n' '{"type":"assistant","isSidechain":true,"message":{"content":[{"type":"tool_use"},{"type":"tool_use"},{"type":"tool_use"}]}}'
+} > "$SSF"
+SS="$(bash "$HOOKS/session-stats.sh" --raw "$SSF" 2>/dev/null)"
+ss(){ printf '%s\n' "$SS" | sed -n "s/^$1=//p" | head -1; }
+[ "$(ss cycles)" = 2 ]       && pass "counts real prompts only (2) — slash-command records are not prompts" || fail "cycles=$(ss cycles), expected 2 (machinery records leaked into the prompt count)"
+[ "$(ss tools)" = 2 ]        && pass "a subagent's tool calls are not counted as the main thread's"        || fail "tools=$(ss tools), expected 2 (sidechain leaked in)"
+[ "$(ss dup_extra)" = 1 ]    && pass "near-duplicate prompt detected (1)"                                  || fail "dup_extra=$(ss dup_extra), expected 1"
+[ "$(ss errors)" = 1 ]       && pass "tool error counted (1)"                                              || fail "errors=$(ss errors), expected 1"
+[ "$(ss interrupts)" = 1 ]   && pass "interrupt counted from the content block (1)"                        || fail "interrupts=$(ss interrupts), expected 1"
+[ "$(ss auto_compactions)" = 1 ] && pass "auto-compaction distinguished from manual"                       || fail "auto_compactions=$(ss auto_compactions), expected 1"
+[ "$(ss pre_tokens)" = 900000 ]  && pass "compaction token loss reported (900000 -> 12000)"                || fail "pre_tokens=$(ss pre_tokens), expected 900000"
+# The phrase inside a tool INPUT (a grep for it, a script that mentions it) is not a user interrupt. Matching
+# raw text would score the session's own tooling as user frustration.
+printf '%s\n' '{"type":"assistant","isSidechain":false,"message":{"content":[{"type":"tool_use","input":{"command":"grep -c \"Request interrupted by user\" f.jsonl"}}]}}' > "$SSD/fp.jsonl"
+[ "$(bash "$HOOKS/session-stats.sh" --raw "$SSD/fp.jsonl" 2>/dev/null | sed -n 's/^interrupts=//p')" = 0 ] \
+  && pass "the interrupt phrase inside a tool input is not counted" || fail "a tool input mentioning the interrupt phrase was counted as a real interrupt"
+# UTF-8 must not kill the scan: BSD awk aborts on a multi-byte char inside a character class unless LC_ALL=C.
+printf '%s\n' '{"type":"user","isSidechain":false,"message":{"role":"user","content":"şu değişikliği gözden geçirir misin — İıĞğŞşÇçÖöÜü"}}' > "$SSD/utf8.jsonl"
+bash "$HOOKS/session-stats.sh" --raw "$SSD/utf8.jsonl" >/dev/null 2>&1 \
+  && pass "a non-ASCII transcript scans without an 'illegal byte sequence'" || fail "session-stats died on a UTF-8 transcript (LC_ALL=C missing?)"
+# Both consumers must actually call it, or the measurement ships and nothing reads it.
+for s in reflect handoff; do
+  grep -q 'session-stats\.sh' "$SKILLS/$s/SKILL.md" && pass "$s skill runs session-stats.sh" || fail "$s skill does not run session-stats.sh (idle component)"
+done
+rm -rf "$SSD"
+
 echo "== 6e) CLAUDE.md split: sentinel · discipline/project boundary · profiles.conf =="
 # In the kit repo ROOT is claude-starter/ (payload). In an installed project it is .claude/, which has no
 # CLAUDE.md but does have the already-split DISCIPLINE.md. Assert whichever is present.

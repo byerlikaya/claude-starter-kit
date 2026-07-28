@@ -28,6 +28,12 @@ description: |
 - <if any>
 ```
 
+## Measure the session before summarising it
+Run **`bash .claude/hooks/session-stats.sh`** first. What it reports belongs in the handover as fact, not
+impression — an auto-compaction means state was already dropped before you started writing (say what was lost),
+a runaway loop marks an approach the next session should not walk back into, and repeated prompts mark context
+that never landed and has to be written down explicitly this time. Missing script (plugin install) → say so.
+
 ## Principles
 - **Action-oriented:** focused not on "what was done" but on "exactly where to resume now."
 - Preserve the rationale behind decisions (why this path was chosen) — so context isn't lost.

@@ -22,6 +22,9 @@ summarizes what lives under `.claude/` and how it works.
 - **Commands** (`commands/`) — `/plan` · `/review` · `/ship` · `/handoff` · `/simplify`.
 - **Hooks** (`hooks/`) — `guard-bash.sh` (tool-level gate), `pre-commit` + `commit-msg`
   (trace scan), `context-usage.sh` and `session-guard.sh` (session measurement), `trace-blocklist.txt`.
+  `session-stats.sh` sits alongside them but is wired to no event: the `reflect` and `handoff` skills run it on
+  demand to read what the session actually did — failing tool loops, repeated prompts, interrupts, compactions —
+  so a retrospective rests on the record instead of the model's recollection of its own work.
 - **settings.json** — permissions and the hook chain (PreToolUse · UserPromptSubmit · Stop).
 - **`DISCIPLINE.md`** — behavior, four principles, workflow, definition of done, token discipline, and prohibitions.
   Kit-owned: an update **overwrites** it, so keep nothing of your own here. Your `./CLAUDE.md` pulls it in with a

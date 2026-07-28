@@ -19,7 +19,7 @@ cp -R "$SRC/commands" "$OUT/commands"
 
 # The Claude Code hooks that work standalone (self-locate via $0, read stdin) — NOT the git hooks
 # (pre-commit / commit-msg) and NOT their blocklist data files, which only apply under core.hooksPath.
-for h in guard-bash.sh guard-write.sh context-usage.sh session-guard.sh session-rehydrate.sh; do
+for h in guard-bash.sh guard-write.sh context-usage.sh session-guard.sh session-rehydrate.sh session-stats.sh; do
   cp "$SRC/hooks/$h" "$OUT/hooks/$h"
   chmod +x "$OUT/hooks/$h"
 done
