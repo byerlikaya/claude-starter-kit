@@ -24,15 +24,22 @@ TRACE_F="$(mktemp)"; SECRET_F="$(mktemp)"
 trap 'rm -f "$TRACE_F" "$SECRET_F"' EXIT INT TERM
 
 # Secrets are scanned EVERYWHERE. A token pasted into .claude/settings.json is still a token.
-# The kit's own blocklist files are excluded — they definitionally contain the patterns (circular).
+# The kit's own blocklist files are excluded — they definitionally contain the patterns (circular), and since
+# 1.8.0 they also carry their own `#test:` cases. Matched by NAME rather than by the installed path: the same
+# files live at .claude/hooks/ in a project, claude-starter/hooks/ in the kit's own repo and hooks/ in the
+# plugin build, and a path-anchored exclusion silently stopped applying in every layout but the first.
 git diff --cached --unified=0 -- . \
-  ':(top,exclude).claude/hooks/trace-blocklist.txt' ':(top,exclude).claude/hooks/secret-blocklist.txt' \
+  ':(top,exclude,glob)**/trace-blocklist.txt' ':(top,exclude,glob)**/secret-blocklist.txt' \
+  ':(top,exclude)trace-blocklist.txt' ':(top,exclude)secret-blocklist.txt' \
   | grep -E '^\+' | grep -Ev '^\+\+\+' > "$SECRET_F" || true
 
 # Traces (§4.1/§4.2) are scanned in the PROJECT's own files only. `.claude/` is the kit's tree: it configures the
 # assistant, it legitimately names the tool it configures, and an update overwrites it — it is not an artifact the
 # project authored. Teams that share `.claude/` would otherwise be unable to commit it at all.
+# The blocklist is excluded by name for the same circularity reason as above: in an installed project it already
+# falls under .claude/, but in the kit's own repo it sits at claude-starter/hooks/ where that exclusion misses it.
 git diff --cached --unified=0 -- . ':(top,exclude).claude' \
+  ':(top,exclude,glob)**/trace-blocklist.txt' ':(top,exclude)trace-blocklist.txt' \
   | grep -E '^\+' | grep -Ev '^\+\+\+' > "$TRACE_F" || true
 
 HIT=0

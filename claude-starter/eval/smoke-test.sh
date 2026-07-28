@@ -742,6 +742,76 @@ if [ "$IS_KIT" = 1 ] && command -v jq >/dev/null 2>&1; then
   else note "merge test skipped (adopt.sh or settings.json not found)"; fi
 else note "merge test skipped (installed project or no jq)"; fi
 
+echo "== 7h) blocklist rules carry their own cases, and every case drives the REAL hook =="
+# A pattern list is the kit's most edit-prone surface — every project adds its own vendor name — and a typo in a
+# regex produces a gate that matches nothing while still looking armed. So each pattern carries its case on the
+# line below it (`#test:` must be caught, `#test-clean:` must not) and the suite runs them THROUGH pre-commit
+# rather than re-implementing the match: a second matcher here would pass while the real one was broken.
+# Cases run ONE AT A TIME on purpose — batched, a single working pattern would mask every dead one beside it.
+if command -v git >/dev/null 2>&1; then
+  BLR="$(mktemp -d)"
+  ( cd "$BLR" && git init -q && git config user.email t@t && git config user.name t \
+    && echo seed > seed.txt && git add seed.txt && git commit -qm base ) >/dev/null 2>&1
+  # {{A<n>}} -> n literal 'A's. The secret cases are stored this way so the pattern file never carries a
+  # contiguous secret-shaped string: it ships into every project's .claude/, where their scanners would flag it,
+  # and GitHub push protection rejects such a literal on sight however low its entropy is (measured, on Stripe).
+  # The sample the hook actually sees is the expanded one, so the gate is still driven by a real-shaped value.
+  expand(){ LC_ALL=C awk '{ while (match($0, /\{\{A[0-9]+\}\}/)) {
+      n=substr($0, RSTART+3, RLENGTH-5); s=""; for(i=0;i<n+0;i++) s=s "A"
+      $0 = substr($0,1,RSTART-1) s substr($0, RSTART+RLENGTH) } print }' <<<"$1"; }
+  blcase(){ # $1 = sample line, $2 = "block"|"clean", $3 = label
+    printf '%s\n' "$(expand "$1")" > "$BLR/sample.txt"
+    ( cd "$BLR" && git add sample.txt >/dev/null 2>&1 && bash "$HOOKS/pre-commit" ) >/dev/null 2>&1
+    rc=$?
+    ( cd "$BLR" && git reset -q HEAD -- . >/dev/null 2>&1; rm -f sample.txt )
+    if [ "$2" = block ]; then [ "$rc" -ne 0 ]; else [ "$rc" -eq 0 ]; fi
+  }
+  for bl in trace-blocklist secret-blocklist; do
+    F="$HOOKS/$bl.txt"; [ -f "$F" ] || { fail "$bl.txt missing"; continue; }
+    # (a) coverage: a pattern with no case at all is an untested gate
+    UNCOV="$(awk '
+      /^#test:/       { if (last != "") cov[last]=1; next }
+      /^#test-clean:/ { next }
+      /^#/            { next }
+      /^[[:space:]]*$/{ next }
+      { last=$0; order[++n]=$0 }
+      END { for (i=1;i<=n;i++) if (!(order[i] in cov)) print order[i] }' "$F")"
+    [ -z "$UNCOV" ] && pass "$bl: every pattern carries at least one case" \
+                    || { fail "$bl: pattern(s) with no #test: case — an untested gate"; printf '     ↳ %s\n' "$UNCOV"; }
+    # (b) every `#test:` sample must actually be stopped by the hook
+    BAD=""; NB=0
+    while IFS= read -r s; do
+      [ -n "$s" ] || continue; NB=$((NB+1))
+      blcase "$s" block || BAD="$BAD
+     ↳ NOT caught: $s"
+    done <<EOF
+$(sed -n 's/^#test:[[:space:]]*//p' "$F")
+EOF
+    [ -z "$BAD" ] && pass "$bl: all $NB blocking case(s) stopped by the real pre-commit" \
+                  || { fail "$bl: a pattern did not catch its own case"; printf '%s\n' "$BAD"; }
+    # (c) and nothing in the list may fire on ordinary text
+    BADC=""; NC=0
+    while IFS= read -r s; do
+      [ -n "$s" ] || continue; NC=$((NC+1))
+      blcase "$s" clean || BADC="$BADC
+     ↳ false positive on: $s"
+    done <<EOF
+$(sed -n 's/^#test-clean:[[:space:]]*//p' "$F")
+EOF
+    [ -z "$BADC" ] && pass "$bl: all $NC clean case(s) stay committable (no false positive)" \
+                   || { fail "$bl: a pattern fires on ordinary text"; printf '%s\n' "$BADC"; }
+  done
+  # The self-exclusion must follow the FILE, not one installed path: the same list lives at .claude/hooks/ in a
+  # project, claude-starter/hooks/ in this repo and hooks/ in the plugin build. Anchored to the first, the kit's
+  # own repo scanned its own pattern list and the cases above could never have been committed.
+  grep -q 'glob)\*\*/secret-blocklist.txt' "$HOOKS/pre-commit" \
+    && pass "pre-commit excludes the blocklists by name, not by installed path" \
+    || fail "pre-commit's blocklist exclusion is path-anchored — it stops applying outside .claude/hooks/"
+  rm -rf "$BLR"
+else
+  pass "blocklist case run skipped (no git)"
+fi
+
 echo "== 8) Slash commands =="
 for c in simplify plan review ship handoff; do
   [ -f "$ROOT/commands/$c.md" ] && pass "/$c present" || fail "/$c command missing"
