@@ -294,6 +294,7 @@ SSD="$(mktemp -d)"; SSF="$SSD/t.jsonl"
   # two identical real prompts -> one near-duplicate
   printf '%s\n' '{"type":"user","isSidechain":false,"message":{"role":"user","content":"please fix the failing migration test for orders"}}'
   printf '%s\n' '{"type":"assistant","isSidechain":false,"message":{"content":[{"type":"tool_use"},{"type":"tool_use"}]}}'
+  printf '%s\n' '{"type":"assistant","isSidechain":false,"message":{"content":[{"type":"tool_use","name":"Agent"}]}}'
   printf '%s\n' '{"type":"user","isSidechain":false,"message":{"content":[{"type":"tool_result","is_error":true}]}}'
   printf '%s\n' '{"type":"user","isSidechain":false,"message":{"role":"user","content":"please fix the failing migration test for orders"}}'
   # a user-role record that is machinery, not a person: must count as neither prompt nor duplicate
@@ -307,7 +308,10 @@ SSD="$(mktemp -d)"; SSF="$SSD/t.jsonl"
 SS="$(bash "$HOOKS/session-stats.sh" --raw "$SSF" 2>/dev/null)"
 ss(){ printf '%s\n' "$SS" | sed -n "s/^$1=//p" | head -1; }
 [ "$(ss cycles)" = 2 ]       && pass "counts real prompts only (2) — slash-command records are not prompts" || fail "cycles=$(ss cycles), expected 2 (machinery records leaked into the prompt count)"
-[ "$(ss tools)" = 2 ]        && pass "a subagent's tool calls are not counted as the main thread's"        || fail "tools=$(ss tools), expected 2 (sidechain leaked in)"
+[ "$(ss tools)" = 3 ]        && pass "a subagent's tool calls are not counted as the main thread's"        || fail "tools=$(ss tools), expected 3 (sidechain leaked in)"
+# Delegation is a rule nothing enforces; counting it is the only way it becomes visible in a retro.
+[ "$(ss delegations)" = 1 ]  && pass "delegation to a subagent is counted (1)"                             || fail "delegations=$(ss delegations), expected 1"
+[ "$(ss turns)" = 2 ]        && pass "assistant turns counted excluding sidechains (2)"                    || fail "turns=$(ss turns), expected 2"
 [ "$(ss dup_extra)" = 1 ]    && pass "near-duplicate prompt detected (1)"                                  || fail "dup_extra=$(ss dup_extra), expected 1"
 [ "$(ss errors)" = 1 ]       && pass "tool error counted (1)"                                              || fail "errors=$(ss errors), expected 1"
 [ "$(ss interrupts)" = 1 ]   && pass "interrupt counted from the content block (1)"                        || fail "interrupts=$(ss interrupts), expected 1"

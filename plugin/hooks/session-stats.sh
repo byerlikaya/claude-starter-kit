@@ -64,8 +64,10 @@ STATS="$(LC_ALL=C awk '
 
   # --- assistant turns: tool calls belong to the user cycle that is currently open ------------------------
   /"type": *"assistant"/ {
+    turns++
     c=$0; cur += gsub(/"type": *"tool_use"/, "", c)
     c=$0; e=gsub(/"is_error": *true/, "", c); errs+=e; curerr+=e
+    c=$0; deleg += gsub(/"name": *"Agent"/, "", c)
     next
   }
 
@@ -117,8 +119,8 @@ STATS="$(LC_ALL=C awk '
   END {
     if (started) close_cycle()
     for (k in seen) if (seen[k] > 1) { dupdistinct++; dupextra += seen[k]-1 }
-    printf "cycles=%d\ntools=%d\nmaxtools=%d\nrunaway=%d\nrunaway_errors=%d\nerrors=%d\ninterrupts=%d\ndup_extra=%d\ndup_distinct=%d\ncompactions=%d\nauto_compactions=%d\npre_tokens=%d\npost_tokens=%d\n",
-      cycles+0, tools+0, maxtools+0, runaway+0, runworst+0, errs+0, ints+0, dupextra+0, dupdistinct+0, comp+0, autocomp+0, pre+0, post+0
+    printf "cycles=%d\nturns=%d\ntools=%d\nmaxtools=%d\nrunaway=%d\nrunaway_errors=%d\nerrors=%d\ninterrupts=%d\ndup_extra=%d\ndup_distinct=%d\ncompactions=%d\nauto_compactions=%d\npre_tokens=%d\npost_tokens=%d\ndelegations=%d\n",
+      cycles+0, turns+0, tools+0, maxtools+0, runaway+0, runworst+0, errs+0, ints+0, dupextra+0, dupdistinct+0, comp+0, autocomp+0, pre+0, post+0, deleg+0
   }
 ' RUNAWAY="${CSK_RUNAWAY_TOOLS:-25}" RUNERR="${CSK_RUNAWAY_ERRORS:-3}" "$TR")"
 
@@ -160,6 +162,21 @@ if [ "${EPCT:-0}" -ge "$ERR_PCT" ] && [ "${S_tools:-0}" -gt 10 ]; then
   echo "   ⚠️  tool error rate ${EPCT}% ($S_errors/$S_tools) — above the ${ERR_PCT}% line."
   echo "       → repeated failing calls are usually a wrong assumption about the environment, not bad luck."
   FOUND=1
+fi
+# Delegation. The routing map in the discipline is a RULE, and nothing enforces it — no exit code can judge a
+# delegate-or-not call, so over a long session it decays quietly and the work all ends up on the main thread.
+# This is the only place it becomes visible. Measured across 44 real sessions the rate varies ~9x BETWEEN
+# projects while staying roughly flat within a session, so the number worth reporting is this project's own.
+# Only meaningful where agents are actually installed: in a repo with none, zero is the correct answer.
+if ls .claude/agents/*.md >/dev/null 2>&1 && [ "${S_turns:-0}" -ge "${CSK_DELEG_MIN_TURNS:-30}" ]; then
+  DRATE="$(LC_ALL=C awk -v d="$S_delegations" -v t="$S_turns" 'BEGIN{ printf "%.1f", (d/t)*100 }')"
+  if [ "${S_delegations:-0}" = 0 ]; then
+    echo "   ⚠️  no delegation in $S_turns turns — every task ran on the main thread."
+    echo "       → check the routing map: work that should have gone to an agent (audit, migration, screen) stayed inline."
+    FOUND=1
+  else
+    echo "   ·  $S_delegations delegation(s) across $S_turns turns (${DRATE} per 100)."
+  fi
 fi
 if [ "${S_compactions:-0}" -gt 0 ]; then
   if [ "${S_auto_compactions:-0}" -gt 0 ]; then
