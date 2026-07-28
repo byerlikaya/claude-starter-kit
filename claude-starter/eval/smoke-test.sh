@@ -449,7 +449,11 @@ echo "== 6f) always-on token budget =="
 # for that cost, and a gate rather than a reminder — a verbose new description fails the suite instead of
 # quietly taxing every future session. Budgets sit just above the current sizes: raising one is allowed, but
 # only as a deliberate edit here.
-BUDGET_DISC=10390    # DISCIPLINE.md (the discipline half of CLAUDE.md); currently 10350 (1.7.0: +trigger-map row routing the eval-grader main-thread skill)
+BUDGET_DISC=10700    # DISCIPLINE.md (the discipline half of CLAUDE.md); currently 10691 (1.8.0: +the precedence
+                     # order for colliding rules. ~130 tokens per session, paid because the alternative is the
+                     # model improvising an order every time §4, an explicit instruction and scope disagree —
+                     # and the wrong one winning silently. The only rule in this file that is about the OTHER
+                     # rules, so it cannot live in the README the way the compaction note does.)
 BUDGET_AGENTS=5150   # sum of agent frontmatter; currently 5121 (1.5.0: 9 agents rewritten to action-oriented "use proactively" descriptions so Claude Code auto-delegation actually fires)
 BUDGET_SKILLS=11550  # sum of skill frontmatter; currently 11512 (1.7.0: +threat-model (~399B) + eval-grader (~397B) skills)
 fm_bytes(){ awk '/^---$/{c++; next} c==1' "$1" 2>/dev/null | wc -c | tr -d ' '; }

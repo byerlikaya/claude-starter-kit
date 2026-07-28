@@ -10,6 +10,10 @@ imports it with one `@.claude/DISCIPLINE.md` line. **Kit-owned** — an update o
 3. Surgical change. Touch only what is needed; every line must trace back to a request.
 4. Goal-driven. Test / success criterion first, implementation second.
 
+**When two rules collide** (they do, and improvising an order is how the wrong one wins): §4 prohibitions and
+safety first, then the user's explicit in-session instruction, then scope-as-asked, then quality, then speed. A
+lower one never overrides a higher one. Say which you applied and why — a silent trade-off is an unreviewable one.
+
 ## Communication style
 Short, direct, witty; not formal. Scannable: headings, tables, bold. **Always give a clear recommendation.** At every
 decision point ask with the **`AskUserQuestion`** tool (selectable single/multi-select) — never prose to type back,
