@@ -23,4 +23,5 @@ Goal: **behavior correctness** — test real behavior without breaking product c
 - In snapshot/golden-file tests, avoid needless brittleness (assert only the meaningful output).
 
 ## DoD (this skill's contribution)
-- The relevant test command is green (e.g. `dotnet test`); critical paths are covered; no empty/meaningless tests.
+- The project's own test command is green — read it off the manifest/CI (`dotnet test` · `npm test` · `pytest` ·
+  `go test ./...`), don't assume one; critical paths are covered; no empty/meaningless tests.

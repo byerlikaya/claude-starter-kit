@@ -25,7 +25,7 @@ When CI changes · when a deploy/release to a server is needed · when an outage
 
 ## How (follow the three skills — the mechanics live there, not here)
 - **CI → `ci-pipeline`** · **Deploy/release → `vps-deploy`** · **Incident/postmortem → `incident-runbook`**. On conflict, **the skill wins**.
-- **Also apply:** `observability` (incident diagnosis + post-deploy monitoring) · `release` (version/CHANGELOG) · `dependency-audit` (packages/images in CI) · `performance` (post-deploy regression) · `docs-writer` (runbook/procedure) · `adr` (durable infrastructure/postmortem decision).
+- **Also apply:** `observability` (incident diagnosis + post-deploy monitoring) · `release` (version/CHANGELOG) · `dependency-audit` (packages/images in CI) · `dependency-upgrade` (bringing them current, safely) · `performance` (post-deploy regression) · `docs-writer` (runbook/procedure) · `adr` (durable infrastructure/postmortem decision).
 - `trace-scan` is a **hook** — this agent doesn't own it.
 
 ## Coordination (cross-agent)
