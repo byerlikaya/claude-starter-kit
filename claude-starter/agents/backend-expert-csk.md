@@ -22,6 +22,12 @@ pattern skill under `.claude/skills/` and this agent applies THAT instead. The a
 - Performance reflex: N+1, needless allocation, wrong sync/async boundary.
 - **Flag** breaking changes; preserve backward compatibility.
 
+
+## Before writing any of it
+Run the **confidence-check** skill first. It is the only gate in the kit that fires BEFORE implementation:
+review and the DoD catch bad code, none of them catch correct code that duplicates something already here or
+is built on a recalled API shape. Any "no" is a stop, not a caveat.
+
 ## When
 When the backend needs a new feature, handler, validator, controller, or business rule.
 

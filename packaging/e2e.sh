@@ -13,7 +13,10 @@ combo() {
   cp start.sh "$P/"; cp -R claude-starter "$P/"
   ( cd "$P" && printf "$inp" | bash start.sh "$@" >/dev/null )
   ( cd "$P" && bash .claude/eval/smoke-test.sh >/dev/null )
-  echo "[$lbl] agents=$(ls "$P"/.claude/agents/*.md | wc -l | tr -d ' ') skills=$(ls -d "$P"/.claude/skills/*/ | wc -l | tr -d ' ') smoke=OK"
+  # The install manifest is what separates kit-owned from project-owned downstream (doctor readiness, trust gate).
+  [ -s "$P/.claude/kit-manifest.txt" ] || { echo "FAIL [$lbl]: .claude/kit-manifest.txt missing or empty"; exit 1; }
+  grep -q '^skills/handoff$' "$P/.claude/kit-manifest.txt" || { echo "FAIL [$lbl]: manifest does not list the shipped skills"; exit 1; }
+  echo "[$lbl] agents=$(ls "$P"/.claude/agents/*.md | wc -l | tr -d ' ') skills=$(ls -d "$P"/.claude/skills/*/ | wc -l | tr -d ' ') smoke=OK manifest=$(wc -l < "$P/.claude/kit-manifest.txt" | tr -d ' ')"
 }
 combo frontend          'yes\n'      --frontend
 combo mobile            'yes\n'      --mobile
@@ -36,6 +39,14 @@ grep -q '^stack=dotnet' "$P/.claude/kit.conf"           || { echo "FAIL: .sln un
 [ ! -f "$P/.claude/agents/backend-expert.md" ]          || { echo "FAIL: overlapping project agent was not taken over"; exit 1; }
 [ -f "$P/.claude/superseded/agents/backend-expert.md" ] || { echo "FAIL: taken-over agent's original was not backed up"; exit 1; }
 [ -f "$P/.claude/skills/backend-expert-local/SKILL.md" ]|| { echo "FAIL: taken-over agent's domain was not imported to a project skill"; exit 1; }
+# The manifest lists what the KIT ships, so the skill this adopt imported from the project must NOT appear in it
+# — that is exactly the distinction the readiness check and the trust gate are built on.
+grep -q '^skills/devarch-module$' "$P/.claude/kit-manifest.txt"     || { echo "FAIL: manifest missing a kit skill"; exit 1; }
+grep -q '^skills/backend-expert-local$' "$P/.claude/kit-manifest.txt" && { echo "FAIL: manifest claims a project-imported skill as kit-owned"; exit 1; }
+# Captured, not piped: `grep -q` closes the pipe on its first match, doctor takes a SIGPIPE, and `pipefail`
+# would then report a passing assertion as a failure.
+DOUT="$( cd "$P" && bash .claude/eval/doctor.sh 2>&1 || true )"
+case "$DOUT" in *"project-specific skill(s)"*) ;; *) echo "FAIL: doctor readiness did not detect the project's own skill"; exit 1 ;; esac
 ( cd "$P" && bash .claude/eval/smoke-test.sh >/dev/null )|| { echo "FAIL: the adopted project's own smoke-test did not pass"; exit 1; }
 echo "[adopt-dotnet] stack=dotnet · devarch-module kept · overlap imported to skill + backed up · smoke OK"
 

@@ -6,10 +6,10 @@
 
 *planla → üret → denetle → commit; her kritik kural bir hatırlatma değil, bir **kapı**.*
 
-![Sürüm](https://img.shields.io/badge/s%C3%BCr%C3%BCm-1.7.0-2563eb?style=flat-square)
+![Sürüm](https://img.shields.io/badge/s%C3%BCr%C3%BCm-1.8.0-2563eb?style=flat-square)
 ![Lisans](https://img.shields.io/badge/lisans-MIT-16a34a?style=flat-square)
-![Ajanlar](https://img.shields.io/badge/ajanlar-11-f59e0b?style=flat-square)
-![Skiller](https://img.shields.io/badge/skiller-36-f59e0b?style=flat-square)
+![Ajanlar](https://img.shields.io/badge/ajanlar-12-f59e0b?style=flat-square)
+![Skiller](https://img.shields.io/badge/skiller-38-f59e0b?style=flat-square)
 ![Claude Code](https://img.shields.io/badge/Claude_Code-agentic_kit-8b5cf6?style=flat-square)
 
 [🇬🇧 English](README.md) · 🇹🇷 Türkçe
@@ -29,7 +29,7 @@
 | **Güvenlik & gizlilik** | İsteğe bağlı tavsiye, atlaması kolay | **Zorunlu audit kapısı** — risk-kritik değişiklik, güvenlik/gizlilik denetimi geçmeden kapanamaz |
 | **Commit'ler** | Model kendi başına commit atabilir | **Her commit senin onayına bağlı** — auto/bypass modda bile araç seviyesinde zorlanır |
 | **Mevcut repoya uyarlama** | "Sıfırdan başla" varsayımı; elle taşıma | **`adopt` kiti bir branch'te devreder** — `main`'e dokunulmaz; sen inceleyip tutmaya karar verirsin |
-| **"Nasıl" bilgisi nerede** | Kural + yöntem her agent prompt'una kopyalanır → çoğalma & tutarsızlık | **Agent = ince tetik** (kim/ne zaman); yöntem tek yerde, bir **skill**'te yaşar (tek doğruluk kaynağı), 36 skill'e yayılır |
+| **"Nasıl" bilgisi nerede** | Kural + yöntem her agent prompt'una kopyalanır → çoğalma & tutarsızlık | **Agent = ince tetik** (kim/ne zaman); yöntem tek yerde, bir **skill**'te yaşar (tek doğruluk kaynağı), 38 skill'e yayılır |
 
 **Tek cümlede:** benzer projeler sana *bir öneri yığını* verir; bu kit Claude Code'a *disiplinli bir mühendislik ekibi* yerleştirir — önemli kuralların **hatırlatma değil, kapı** olduğu yerde.
 
@@ -48,7 +48,7 @@ Ardından ilk Claude Code mesajın olarak **`.claude/FIRST_PROMPT.md`**'i yapı�
 
 ## 🧠 Ajanlar — kitin kalbi
 
-**11 ajan** var; her biri bir **ince tetikleyici** — yalnızca *kim* ve *ne zaman* sorusunu yanıtlar, *nasıl* kısmını bir skill'e devreder. Ana thread onları **beş aşamada** seçip zincirler ve commit'ten önce kaliteyi kademe kademe yükseltir:
+**12 ajan** var; her biri bir **ince tetikleyici** — yalnızca *kim* ve *ne zaman* sorusunu yanıtlar, *nasıl* kısmını bir skill'e devreder. Ana thread onları **beş aşamada** seçip zincirler ve commit'ten önce kaliteyi kademe kademe yükseltir:
 
 <div align="center">
 
@@ -57,7 +57,7 @@ Ardından ilk Claude Code mesajın olarak **`.claude/FIRST_PROMPT.md`**'i yapı�
 </div>
 
 <details>
-<summary><b>11 ajan ve her birinin ne zaman devreye girdiği</b></summary>
+<summary><b>12 ajan ve her birinin ne zaman devreye girdiği</b></summary>
 
 | Ajan | Aşama | Ne zaman devreye girer | Model |
 |:--|:--|:--|:--:|
@@ -69,6 +69,7 @@ Ardından ilk Claude Code mesajın olarak **`.claude/FIRST_PROMPT.md`**'i yapı�
 | **security-expert-csk** | 🔍 Denetle | auth / IDOR / injection / secret · **güvenlik açısından kritikse zorunlu** | `sonnet` |
 | **privacy-agent-csk** | 🔍 Denetle | kişisel veri (KVKK / GDPR) | `sonnet` |
 | **test-expert-csk** | 🔍 Denetle | test, kapsam, regresyon | `inherit` |
+| **performance-expert-csk** | 🔍 Denetle | sıcak yol, sorgu/döngü, render, payload · ölçülmüş bulgu üretir | `inherit` |
 | **review-agent-csk** | ✅ Kapat | commit öncesi kod sağlığı denetimi | `inherit` |
 | **commit-agent-csk** | ✅ Kapat | commit'i önerir, onay bekler | `haiku` |
 | **session-manager-csk** | 🤝 Devret | bağlam dolduğunda / faz sınırında | `haiku` |
@@ -82,18 +83,18 @@ Ardından ilk Claude Code mesajın olarak **`.claude/FIRST_PROMPT.md`**'i yapı�
 ## İçinde ne var?
 
 <div align="center">
-  <img src="assets/network-tr.svg" alt="Kitin ağı — 11 ajan ve 36 skill, her çizgi gerçek bir applies ilişkisi" width="820">
+  <img src="assets/network-tr.svg" alt="Kitin ağı — 12 ajan ve 38 skill, her çizgi gerçek bir applies ilişkisi" width="820">
   <br><sub>Her ajan, her skill ve gerçek <code>applies</code> bağları — aşamaya göre gruplu, her ajan kendi renginde; merkez, hepsini orkestralayan ana thread.</sub>
 </div>
 
-- **11 ajan** — yukarıdaki tabloya bak.
-- **36 skill** — "nasıl" sorusunun tek kaynağı, her alan için bir tane (tüm katalog aşağıda).
+- **12 ajan** — yukarıdaki tabloya bak.
+- **38 skill** — "nasıl" sorusunun tek kaynağı, her alan için bir tane (tüm katalog aşağıda).
 - **8 slash komut** — `/brainstorm` · `/plan` · `/review` · `/ship` · `/handoff` · `/simplify` · `/update-csk` (kurulu kiti güncelle) · `/doctor-csk` (kurulumu sağlık-kontrolü).
-- **Hook'lar** — `guard-bash.sh` + `guard-write.sh` (araç seviyesi komut/yazma kapıları), `pre-commit` + `commit-msg` (iz + secret + bloat taraması), `context-usage.sh` ve `session-guard.sh` (oturum ölçümü), `session-rehydrate.sh` (/compact ya da /clear sonrası devir-notunu yeniden yüzeye çıkarır). Plugin edisyonu bu kapı hook'larını da taşır.
+- **Hook'lar** — `guard-bash.sh` + `guard-write.sh` (araç seviyesi komut/yazma kapıları), `pre-commit` + `commit-msg` (iz + secret + bloat taraması), `context-usage.sh` ve `session-guard.sh` (oturum ölçümü), `session-rehydrate.sh` (/compact ya da /clear sonrası devir-notunu yeniden yüzeye çıkarır), `session-stats.sh` (oturumun gerçekte ne yaptığı — başarısız tool döngüleri, tekrarlanan promptlar, kesintiler, compaction'lar; `reflect` ve `handoff` bunu okur, böylece retro hatıraya değil kayda dayanır), `skill-trust.sh` (kitin göndermediği ve senin kabul etmediğin skill/agent'ı adlandırır). Plugin edisyonu bu kapı hook'larını da taşır.
 - **CLAUDE.md** — davranış, üç ilke, iş akışı, tamamlanma tanımı (DoD), token disiplini ve yasaklar.
 
 <details>
-<summary><b>Tüm skill kataloğu</b> — 36 skill, her birinden üretilir</summary>
+<summary><b>Tüm skill kataloğu</b> — 38 skill, her birinden üretilir</summary>
 
 <!-- SKILLS:START -->
 
@@ -106,8 +107,10 @@ Ardından ilk Claude Code mesajın olarak **`.claude/FIRST_PROMPT.md`**'i yapı�
 | `ci-pipeline` | CI hattı disiplini: lint→build→test→kalite→güvenlik, hızlı-başarısızlık, deterministik derleme, secret yönetimi, PR kapıları. |
 | `code-review` | Kod inceleme disiplini: önem sırasına dizili, gerekçeli geri bildirim — değişiklik sistemin genel kod sağlığını iyileştiriyor mu. |
 | `commit-message` | Conventional Commits: staged diff'i okur, `type(scope): özet` önerir; gerektiğinde gövde/footer ekler. |
+| `confidence-check` | Uygulamaya BAŞLAMADAN önce hazırlık kapısı: bu iş zaten var mı, mimariye uyuyor mu, dış API iddiası doğrulandı mı, çalışan bir referans var mı, kök neden biliniyor mu. Herhangi bir "hayır" durdurur. |
 | `db-migration` | Şema göçlerini güvenle uygula: aracı sapta, değişikliği riske göre sınıfla, yıkıcı olanları onaya bağla, prod'da yedekle, önizle-uygula-doğrula, hatada geri al. |
 | `dependency-audit` | Bağımlılık denetimi: bilinen CVE'ler, lisans uyumu, terk edilmiş/eski paketler, lockfile bütünlüğü ve her yeni bağımlılık için gerekçe. |
+| `dependency-upgrade` | Bağımlılıkları build'i kırmadan güncele taşı: neyin açığı var, neyi deprecated, neyi geride belirle; her hedef sürümü riske göre sınıfla (patch/minor/major), güvenli olanı uygula, doğrula, kırmızıda geri al. |
 | `devarch-module` | DevArchitecture backend deseni: MediatR CQRS handler/command/query, IResult/IDataResult, Autofac AOP zinciri, FluentValidation, i18n. |
 | `docs-writer` | Dokümantasyonu kodla eşzamanlı tutar: public API veya davranış değişince README, kullanım ve ilgili dokümanlar. |
 | `eval-grader` | Çıktı kalitesini ölç, sezgiye bırakma: bir üretken görevi iki katmanlı grader ile puanla — ucuz deterministik kod metrikleri + boyut-boyut LLM-yargıç — sabit görev kümesine karşı, sabitlenmiş baz çizgisine göre işaretli deltalarla. Doğruluğun yanında maliyeti de puanlar (pass-slow). |
@@ -156,11 +159,11 @@ Bir asistan `/context` komutunu kendisi çalıştıramaz; bu yüzden çoğu kuru
 
 ### Token maliyeti
 
-`DISCIPLINE.md` ile ajan ve skill tarifleri her oturumun bağlamına yüklenir. Bu sabit yük bugün **~26 KB** (`DISCIPLINE.md` + 11 ajan + 36 skill tarifi) — gerçek bir turda **~10 bin token** mertebesinde. Eklenen her skill tüm oturumlara kalıcı ~100 token vergisidir; bu yüzden aşağıdaki bayt bütçesi bir kılavuz değil, kapıdır.
+`DISCIPLINE.md` ile ajan ve skill tarifleri her oturumun bağlamına yüklenir. Bu sabit yük bugün **~26 KB** (`DISCIPLINE.md` + 12 ajan + 38 skill tarifi) — gerçek bir turda **~10 bin token** mertebesinde. Eklenen her skill tüm oturumlara kalıcı ~100 token vergisidir; bu yüzden aşağıdaki bayt bütçesi bir kılavuz değil, kapıdır.
 
 `smoke-test.sh` bileşen başına byte bütçesi uygular (disiplin · ajan tarifleri · skill tarifleri); maliyet fark edilmeden yukarı kaymaz. Bütçe yükseltilebilir, ama `smoke-test.sh` içinde açıkça düzenlenerek.
 
-> **Profil budaması token kazandırmaz.** `--backend` (10 ajan, 32 skill), `--fullstack`'ten (11 ajan, 36 skill) yalnızca birkaç yüz token ucuz. Profili işin kapsamını daraltmak için seç.
+> **Profil budaması token kazandırmaz.** `--backend` (11 ajan, 35 skill), `--fullstack`'ten (12 ajan, 38 skill) yalnızca birkaç yüz token ucuz. Profili işin kapsamını daraltmak için seç.
 
 ---
 
@@ -177,7 +180,9 @@ Bir asistan `/context` komutunu kendisi çalıştıramaz; bu yüzden çoğu kuru
 | Sır **dosyası** stage'lenmiş (içerik taramasının kaçırabileceği tüm-dosya sırrı) | `pre-commit` sır-dosyası kapısı (`.env`, `id_rsa`, `*.pem/.key/.p12`, `.npmrc`, …; `.env.example`/`.sample`/`.template` commit'lenebilir kalır) |
 | `.gitignore`'u atlayan zorla-ekleme (`git add -f`) · lockfile silme | `guard-bash.sh` (araç seviyesinde bloklanır) |
 | Commit'te yapay zekâ izi ya da dış vendor adı bulunmaz | `pre-commit` + `commit-msg` git hook — senin proje dosyalarını tarar; kitin kendi `.claude/` ağacı muaftır (yapılandırdığı aracın adını taşır), sırlar asla muaf değildir |
-| Commit'e API key / token / private key girmez | `pre-commit` secret taraması (`secret-blocklist.txt` + `.secret-allowlist.txt`) |
+| Commit'e API key / token / private key girmez | `pre-commit` secret taraması (`secret-blocklist.txt` + `.secret-allowlist.txt`); bu listelerdeki her desen kendi test vakasını taşır ve `smoke-test.sh` onları gerçek hook'tan geçirir |
+| Bağlama kimlik dosyası **okunmaz** (`~/.ssh/id_rsa`, `~/.aws/credentials`, `*.pem`, `.netrc`, kubeconfig) | `settings.json` Read-deny + kabuk tarafı için `guard-bash.sh`. Commit taraması sırrı *çıkarken* yakalar; yalnızca okunan sırrı hiçbir şey yakalamaz, ve okunmuş bir sır tek bir özetle makineden çıkabilir. Açık anahtarlar ve `.example` yolları okunabilir kalır |
+| `.claude/` içine kimsenin incelemediği skill/agent düşmez | `skill-trust.sh` (SessionStart) onu tedarik-zinciri tarayıcısının hükmüyle birlikte adlandırır; kabul bilinçlidir ve özet (digest) olarak kaydedilir, kabulden sonraki bir düzenleme yeniden bildirilir |
 | Oturum eşiği | `context-usage.sh` + `session-guard.sh` (Stop hook) |
 | Sabit bağlam yükü şişmesin | `smoke-test.sh` bileşen başına byte bütçesi (disiplin · ajan tarifleri · skill tarifleri) |
 | Çalışan oturum bayat kurala uymasın | `context-usage.sh`, `.claude/VERSION`'ı oturumun başladığı sürümle karşılaştırır ve söyler |
@@ -271,7 +276,7 @@ gh release download --repo byerlikaya/claude-starter-kit -p '*.tgz' && tar xzf c
 
 Kit, kurulum anında `.claude/kit.conf` dosyasına profili, backend yığınını ve hangi kurucunun çalıştığını damgalar; yanına da `.claude/VERSION` düşer. Güncelleyici bu damgayı okur ve projeyi **kurulduğu biçimde** tazeler: `--backend` bir projeye frontend ajanları geri yapıştırılmaz, `--dotnet` bir proje `devarch-module` kalıp skill'ini korur. Damga yoksa güncelleyici şekli kurulu dosyalardan çıkarsar ve yazar. Güncelleme var mı diye bakmak için `cat .claude/VERSION` çıktısını `npm view @byerlikaya/claude-starter-kit version` ile karşılaştır.
 
-Çalışan bir Claude Code oturumunun içinde **`/update-csk`** de çalıştırabilirsin — sürüm kontrolünü yapar, yeni sürüm varsa güncelleyiciyi koşar, sonucu `/doctor-csk` ile doğrular ve tazelenmiş disiplini aynı oturumda yeniden yüklemen için `/compact` önerir. Canlı bir kurulumun sağlığını dilediğin an **`/doctor-csk`** ile bak (hook'lar çalıştırılabilir mi · `core.hooksPath` kurulu mu · kapılar bağlı mı).
+Çalışan bir Claude Code oturumunun içinde **`/update-csk`** de çalıştırabilirsin — sürüm kontrolünü yapar, yeni sürüm varsa güncelleyiciyi koşar, sonucu `/doctor-csk` ile doğrular ve tazelenmiş disiplini aynı oturumda yeniden yüklemen için `/compact` önerir. Canlı bir kurulumun sağlığını dilediğin an **`/doctor-csk`** ile bak (hook'lar çalıştırılabilir mi · `core.hooksPath` kurulu mu · kapılar bağlı mı · `CLAUDE.md` disiplini gerçekten import ediyor mu). Ayrıca projenin kendisi için tavsiye niteliğinde bir **hazırlık** skoru basar: proje bölümü doldurulmuş mu, kitin geneline ek bir proje skill'i var mı, ajan komutlarını kumlayacak bir devcontainer ve bir MCP sunucusu var mı, `CLAUDE.md` kodun gerisinde kalmış mı.
 
 | | Güncellemede |
 |---|---|

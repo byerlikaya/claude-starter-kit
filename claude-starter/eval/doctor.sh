@@ -121,6 +121,99 @@ if [ -f CLAUDE.md ] && ls .claude/agents/*.md >/dev/null 2>&1; then
   [ -z "$STALE$STALE_PULL" ] && ok "agent references resolve to installed agents (CLAUDE.md + referenced docs)"
 fi
 
+# 6) Does the discipline actually REACH the model? `.claude/DISCIPLINE.md` sitting on disk is inert unless
+#    `./CLAUDE.md` pulls it in — Claude Code reads CLAUDE.md, not the kit's own files. This is the one failure
+#    every check above is blind to: the hooks fire, the gates are live, and yet §1–§3 (routing, DoD, session
+#    management) never enter the context, so the model works without any of the discipline it is measured on.
+#    Two shapes load it: the `@import` line, or the pre-1.1 layout that pasted the discipline inline (stale,
+#    but loaded). Neither present -> absent, and that is a failure, not a style note.
+if [ -f .claude/DISCIPLINE.md ]; then
+  if [ ! -f CLAUDE.md ]; then
+    bad "CLAUDE.md missing — .claude/DISCIPLINE.md is never loaded (routing / DoD / session rules absent)" \
+        "create CLAUDE.md with this as its own line: @.claude/DISCIPLINE.md"
+  elif grep -qE '^[[:space:]]*@\.claude/DISCIPLINE\.md[[:space:]]*$' CLAUDE.md; then
+    ok "CLAUDE.md imports .claude/DISCIPLINE.md (the discipline reaches the model)"
+  elif grep -q '^## Four working principles' CLAUDE.md && grep -qE '^### 4\.[45] ' CLAUDE.md; then
+    warn "CLAUDE.md carries the discipline INLINE (pre-1.1 layout) — it loads, but kit updates never reach it; migrate to the '@.claude/DISCIPLINE.md' import line"
+  else
+    bad "CLAUDE.md does not import .claude/DISCIPLINE.md — the discipline is on disk but never loaded" \
+        "add this as its own line at the top of CLAUDE.md: @.claude/DISCIPLINE.md"
+  fi
+fi
+
 echo "---"
-if [ "$FAIL" -eq 0 ]; then echo "DOCTOR: healthy ✅"; exit 0
-else echo "DOCTOR: $FAIL issue(s) ❌ — apply the fixes above"; exit 1; fi
+if [ "$FAIL" -eq 0 ]; then echo "DOCTOR: healthy ✅"
+else echo "DOCTOR: $FAIL issue(s) ❌ — apply the fixes above"; fi
+
+# --- Agentic readiness (ADVISORY) -------------------------------------------------------------------------
+# Everything above answers "are the kit's gates live?". This answers a different question the gates cannot see:
+# "is this PROJECT set up so an agent can actually work well in it?" A flawless install still starves its
+# agents when the CLAUDE.md project section is left as the template, there is no sandbox to run in, and no
+# project-specific skill carries the domain. These are project maturity, not install health, so they NEVER
+# change the exit code — doctor's verdict stays a statement about the install.
+echo
+echo "Readiness (advisory — does not affect the verdict above):"
+RDY=0; RTOT=0
+rdy(){ RTOT=$((RTOT+1)); RDY=$((RDY+1)); echo "  ✅ $1"; }
+gap(){ RTOT=$((RTOT+1)); echo "  ➖ $1"; echo "     ↳ $2"; }
+skip(){ echo "  ·  $1"; }
+
+# R1) Is the CLAUDE.md project section filled in, or still the shipped template? An unfilled section means every
+#     agent works stack-blind — it is the single most common way a correct install still underperforms.
+if [ -f CLAUDE.md ]; then
+  if grep -qE '<PROJECT NAME>|<One sentence:|<Fill in per the project' CLAUDE.md; then
+    gap "CLAUDE.md project section is still the template (placeholders left in)" \
+        "fill in Project / Stack / Project skills — agents read the stack from there"
+  else rdy "CLAUDE.md project section is filled in"; fi
+fi
+
+# R2) A project-specific skill — the kit ships the generic 'how's; the domain ones (payment-contract,
+#     notification-rules, a backend-pattern skill) are the project's to add. Needs the install manifest to tell
+#     kit-shipped from project-owned; without it (pre-1.8 install) the signal is unknowable, so it is skipped
+#     rather than guessed — a wrong "you have no project skills" is worse than no line at all.
+MAN=.claude/kit-manifest.txt
+if [ -f "$MAN" ]; then
+  OWN=0
+  for d in .claude/skills/*/; do
+    [ -d "$d" ] || continue
+    grep -qxF "skills/$(basename "$d")" "$MAN" || OWN=$((OWN+1))
+  done
+  [ "$OWN" -gt 0 ] && rdy "$OWN project-specific skill(s) alongside the kit's" \
+                   || gap "no project-specific skill — only the kit's generic ones are installed" \
+                          "put the domain 'how's in .claude/skills/ (format: .claude/AGENT_TEMPLATE.md)"
+else
+  skip "project-skill signal skipped (no .claude/kit-manifest.txt — install predates it; run the updater)"
+fi
+
+# R3) A sandbox to run in. Agentic work executes commands; a devcontainer is what makes that bounded rather
+#     than trusting every command against the host.
+if [ -f .devcontainer/devcontainer.json ]; then rdy "devcontainer present (agentic execution is sandboxed)"
+else gap "no .devcontainer/devcontainer.json — agent commands run directly against your machine" \
+         "add a devcontainer, or keep approval-mode gates on for anything destructive (§4.5)"; fi
+
+# R4) MCP servers — the project's own tools/data reaching the model. Either the project-level .mcp.json or an
+#     mcpServers block in the kit's settings counts.
+if [ -f .mcp.json ] || grep -q '"mcpServers"' .claude/settings.json 2>/dev/null; then
+  rdy "MCP servers configured (project tools/data reach the model)"
+else gap "no MCP server configured — the model has no project-specific tool access" \
+         "add .mcp.json when a tool/data source would help (the mcp-builder skill covers writing one)"; fi
+
+# R5) Context freshness. CLAUDE.md is read once per session and is the only project-wide instruction the model
+#     gets; if the code moved a long way since it was last touched, it is describing a project that no longer
+#     exists. Counted as commits (not days) that changed something OUTSIDE .claude since CLAUDE.md's mtime —
+#     mtime, not git history, because a default install gitignores CLAUDE.md and it has no history to read.
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1 && [ -f CLAUDE.md ]; then
+  MT="$(stat -c %Y CLAUDE.md 2>/dev/null || stat -f %m CLAUDE.md 2>/dev/null)"
+  MT="$(printf '%s' "${MT:-}" | tr -cd '0-9')"
+  MAXC="${CSK_FRESHNESS_MAX:-40}"
+  if [ -n "$MT" ]; then
+    CH="$(git rev-list --count HEAD --since="@$MT" -- . ':(exclude).claude' 2>/dev/null | tr -cd '0-9')"
+    CH="${CH:-0}"
+    [ "$CH" -le "$MAXC" ] && rdy "CLAUDE.md is current ($CH commit(s) of drift since it was last touched)" \
+                          || gap "CLAUDE.md is stale — $CH commits changed the project since it was last touched (limit $MAXC)" \
+                                 "re-read it against the code and update Stack / Project skills (the claude-md-improver flow)"
+  else skip "freshness signal skipped (cannot read CLAUDE.md mtime on this platform)"; fi
+fi
+
+[ "$RTOT" -gt 0 ] && echo "  → readiness $RDY/$RTOT"
+[ "$FAIL" -eq 0 ] && exit 0 || exit 1

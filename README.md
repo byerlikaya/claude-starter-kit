@@ -6,10 +6,10 @@
 
 *plan → build → review → commit, where every critical rule is a **gate**, not a reminder.*
 
-![Version](https://img.shields.io/badge/version-1.7.0-2563eb?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.8.0-2563eb?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)
-![Agents](https://img.shields.io/badge/agents-11-f59e0b?style=flat-square)
-![Skills](https://img.shields.io/badge/skills-36-f59e0b?style=flat-square)
+![Agents](https://img.shields.io/badge/agents-12-f59e0b?style=flat-square)
+![Skills](https://img.shields.io/badge/skills-38-f59e0b?style=flat-square)
 ![Claude Code](https://img.shields.io/badge/Claude_Code-agentic_kit-8b5cf6?style=flat-square)
 
 🇬🇧 English · [🇹🇷 Türkçe](README.tr.md)
@@ -29,7 +29,7 @@ Most "agent setups" are a pile of suggestions — the rules sit in a file, and w
 | **Security & privacy** | Optional advice, easy to skip | **Mandatory audit gate** — risk-critical changes can't close before the security/privacy review clears |
 | **Commits** | Model may commit on its own | **Every commit is yours to approve** — enforced at the tool level even in auto/bypass mode |
 | **Adopting an existing repo** | "Start fresh" assumption; manual porting | **`adopt` hands the kit over on a branch** — `main` is never touched; you review before you keep it |
-| **Where the "how" lives** | Rules + method copied into each agent prompt → drift & duplication | **Agent = thin trigger** (who/when); the method lives once in a **skill** (single source of truth), reused across 36 skills |
+| **Where the "how" lives** | Rules + method copied into each agent prompt → drift & duplication | **Agent = thin trigger** (who/when); the method lives once in a **skill** (single source of truth), reused across 38 skills |
 
 **In one line:** similar projects hand you *a pile of suggestions*; this kit drops a *disciplined engineering team* into Claude Code — where the rules that matter are **gates, not reminders**.
 
@@ -48,7 +48,7 @@ Then paste **`.claude/FIRST_PROMPT.md`** as your first Claude Code message. Home
 
 ## 🧠 The agents — the heart of the kit
 
-**11 agents**, each a **thin trigger** — it says only *who* and *when*, and delegates the *how* to a skill. The main thread selects and chains them across **five stages**, escalating quality before anything is committed:
+**12 agents**, each a **thin trigger** — it says only *who* and *when*, and delegates the *how* to a skill. The main thread selects and chains them across **five stages**, escalating quality before anything is committed:
 
 <div align="center">
 
@@ -57,7 +57,7 @@ Then paste **`.claude/FIRST_PROMPT.md`** as your first Claude Code message. Home
 </div>
 
 <details>
-<summary><b>The 11 agents & when each fires</b></summary>
+<summary><b>The 12 agents & when each fires</b></summary>
 
 | Agent | Stage | Fires when | Model |
 |:--|:--|:--|:--:|
@@ -69,6 +69,7 @@ Then paste **`.claude/FIRST_PROMPT.md`** as your first Claude Code message. Home
 | **security-expert-csk** | 🔍 Audit | auth / IDOR / injection / secret · **mandatory if security-critical** | `sonnet` |
 | **privacy-agent-csk** | 🔍 Audit | personal data (KVKK / GDPR) | `sonnet` |
 | **test-expert-csk** | 🔍 Audit | tests, coverage, regression | `inherit` |
+| **performance-expert-csk** | 🔍 Audit | hot path, query/loop, render, payload · reports measured findings | `inherit` |
 | **review-agent-csk** | ✅ Close | pre-commit code-health review | `inherit` |
 | **commit-agent-csk** | ✅ Close | proposes the commit, waits for approval | `haiku` |
 | **session-manager-csk** | 🤝 Hand off | context fills / phase boundary | `haiku` |
@@ -82,18 +83,18 @@ Then paste **`.claude/FIRST_PROMPT.md`** as your first Claude Code message. Home
 ## What's inside
 
 <div align="center">
-  <img src="assets/network-en.svg" alt="The kit's network — 11 agents and 36 skills connected by their real applies relationships" width="820">
+  <img src="assets/network-en.svg" alt="The kit's network — 12 agents and 38 skills connected by their real applies relationships" width="820">
   <br><sub>Every agent, every skill, and the real <code>applies</code> relationships — grouped by stage, each agent its own hue; the center is the main thread that orchestrates them all.</sub>
 </div>
 
-- **11 agents** — see the table above.
-- **36 skills** — the single source of "how", one per area (full catalogue below).
+- **12 agents** — see the table above.
+- **38 skills** — the single source of "how", one per area (full catalogue below).
 - **8 slash commands** — `/brainstorm` · `/plan` · `/review` · `/ship` · `/handoff` · `/simplify` · `/update-csk` (update the installed kit) · `/doctor-csk` (health-check the install).
-- **Hooks** — `guard-bash.sh` + `guard-write.sh` (tool-level command/write gates), `pre-commit` + `commit-msg` (trace + secret + bloat scan), `context-usage.sh` and `session-guard.sh` (session measurement), `session-rehydrate.sh` (re-surface the handover after /compact or /clear). The plugin edition ships these gate hooks too.
+- **Hooks** — `guard-bash.sh` + `guard-write.sh` (tool-level command/write gates), `pre-commit` + `commit-msg` (trace + secret + bloat scan), `context-usage.sh` and `session-guard.sh` (session measurement), `session-rehydrate.sh` (re-surface the handover after /compact or /clear), `session-stats.sh` (what the session actually did — failing tool loops, repeated prompts, interrupts, compactions — read by `reflect` and `handoff` so a retrospective rests on the record, not on recollection), `skill-trust.sh` (names a skill or agent the kit never shipped and you never accepted). The plugin edition ships these gate hooks too.
 - **CLAUDE.md** — behavior, the three principles, workflow, Definition of Done, token discipline, and prohibitions.
 
 <details>
-<summary><b>Full skill catalogue</b> — all 36, generated from each skill</summary>
+<summary><b>Full skill catalogue</b> — all 38, generated from each skill</summary>
 
 <!-- SKILLS:START -->
 
@@ -106,8 +107,10 @@ Then paste **`.claude/FIRST_PROMPT.md`** as your first Claude Code message. Home
 | `ci-pipeline` | CI pipeline discipline: lint→build→test→quality→security, fail-fast, deterministic build, secret handling, PR gates. |
 | `code-review` | Code review discipline: severity-ranked, reasoned feedback on whether a change improves the system's overall code health. |
 | `commit-message` | Conventional Commits: reads the staged diff and proposes `type(scope): summary`, with body/footer when needed. |
+| `confidence-check` | Readiness gate BEFORE writing implementation code: does this already exist, does it fit the project's architecture, is the API claim… |
 | `db-migration` | Apply schema migrations safely: detect the tool, classify the change by risk, gate destructive ones behind approval, back up in prod,… |
-| `dependency-audit` | Dependency audit: known CVEs, licence compliance, abandoned/outdated packages, lockfile integrity, and a justification for every new… |
+| `dependency-audit` | Dependency risk assessment, read-only: known CVEs, deprecated packages, licence compliance, maintenance status, lockfile integrity, and a… |
+| `dependency-upgrade` | Bring dependencies current without breaking the build: find what is vulnerable, deprecated or behind, classify each target version by… |
 | `devarch-module` | DevArchitecture backend pattern: MediatR CQRS handler/command/query, IResult/IDataResult, Autofac AOP chain, FluentValidation, i18n. |
 | `docs-writer` | Keeps documentation in sync with the code: README, usage and related docs when a public API or behavior changes. |
 | `eval-grader` | Measure output quality, don't vibe it: score a generative task with a two-layer grader — deterministic code metrics + per-dimension… |
@@ -156,11 +159,11 @@ An assistant cannot run `/context` itself, so most setups **guess** the session 
 
 ### Token cost
 
-`DISCIPLINE.md` and the agent/skill descriptions load into every session's context. That always-on material is **~26 KB** today (`DISCIPLINE.md` + 11 agent + 36 skill descriptions) — on the order of **10k tokens** on a real turn. Every skill added is a permanent ~100-token tax on all sessions, which is why the byte budget below is a gate, not a guideline.
+`DISCIPLINE.md` and the agent/skill descriptions load into every session's context. That always-on material is **~26 KB** today (`DISCIPLINE.md` + 12 agent + 38 skill descriptions) — on the order of **10k tokens** on a real turn. Every skill added is a permanent ~100-token tax on all sessions, which is why the byte budget below is a gate, not a guideline.
 
 `smoke-test.sh` enforces a byte budget per component (discipline · agent descriptions · skill descriptions), so the cost cannot drift upward unnoticed. A budget can be raised, but only by editing `smoke-test.sh` explicitly.
 
-> **Profile pruning does not save tokens.** A `--backend` install (10 agents, 32 skills) costs only a few hundred tokens less than `--fullstack` (11 agents, 36 skills). Pick a profile to narrow the scope of the work.
+> **Profile pruning does not save tokens.** A `--backend` install (11 agents, 35 skills) costs only a few hundred tokens less than `--fullstack` (12 agents, 38 skills). Pick a profile to narrow the scope of the work.
 
 ---
 
@@ -177,7 +180,9 @@ An assistant cannot run `/context` itself, so most setups **guess** the session 
 | Secret **file** staged (whole-file secret the content scan can miss) | `pre-commit` secret-file gate (`.env`, `id_rsa`, `*.pem/.key/.p12`, `.npmrc`, …; `.env.example`/`.sample`/`.template` stay committable) |
 | Force-add past `.gitignore` (`git add -f`) · deleting a lockfile | `guard-bash.sh` (blocked at the tool level) |
 | No AI-authorship trace or external vendor name in a commit | `pre-commit` + `commit-msg` git hook — scans your project's files; the kit's own `.claude/` tree is exempt (it names the tool it configures), secrets never are |
-| No API key / token / private key committed | `pre-commit` secret scan (`secret-blocklist.txt` + `.secret-allowlist.txt`) |
+| No API key / token / private key committed | `pre-commit` secret scan (`secret-blocklist.txt` + `.secret-allowlist.txt`), and every pattern in those lists carries its own case, run through the real hook by `smoke-test.sh` |
+| A credential **read** into the context (`~/.ssh/id_rsa`, `~/.aws/credentials`, `*.pem`, `.netrc`, kubeconfig) | `settings.json` Read-deny + `guard-bash.sh` for the shell side. The commit scan catches a secret on its way *out*; nothing downstream catches one that is merely read, and a read secret is one summary away from leaving. Public keys and `.example` paths stay readable |
+| A skill or agent nobody vetted appearing in `.claude/` | `skill-trust.sh` (SessionStart) names it with the supply-chain scanner's verdict; acceptance is deliberate and digest-recorded, so an edit after acceptance comes back |
 | Session threshold | `context-usage.sh` + `session-guard.sh` (Stop hook) |
 | Always-on context stays lean | `smoke-test.sh` byte budgets per component (discipline · agent descriptions · skill descriptions) |
 | A running session never follows stale rules | `context-usage.sh` compares `.claude/VERSION` against the version the session started with, and says so |
@@ -271,7 +276,7 @@ gh release download --repo byerlikaya/claude-starter-kit -p '*.tgz' && tar xzf c
 
 At install time the kit stamps `.claude/kit.conf` with the profile, the backend stack and which installer ran, plus `.claude/VERSION`. The updater reads that stamp and refreshes the project **in the shape it was installed in**: a `--backend` project does not get frontend agents grafted back on, and a `--dotnet` project keeps its `devarch-module` pattern skill. Where the stamp is absent, the updater derives the shape from the installed files and writes it. Compare `cat .claude/VERSION` against `npm view @byerlikaya/claude-starter-kit version` to see whether an update is waiting.
 
-Inside a running Claude Code session you can also run **`/update-csk`** — it does the version check, runs the updater if a newer version exists, verifies the result with `/doctor-csk`, and then prompts `/compact` to reload the refreshed discipline in the same session. To check a live install's health at any time, run **`/doctor-csk`** (hooks executable · `core.hooksPath` set · gates wired).
+Inside a running Claude Code session you can also run **`/update-csk`** — it does the version check, runs the updater if a newer version exists, verifies the result with `/doctor-csk`, and then prompts `/compact` to reload the refreshed discipline in the same session. To check a live install's health at any time, run **`/doctor-csk`** (hooks executable · `core.hooksPath` set · gates wired · `CLAUDE.md` actually importing the discipline). It also prints an advisory **readiness** score for the project itself — filled-in project section, a project-specific skill, a devcontainer to sandbox agent commands, an MCP server, and whether `CLAUDE.md` has drifted behind the code.
 
 | | On update |
 |---|---|

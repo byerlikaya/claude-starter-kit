@@ -43,6 +43,14 @@ jobs:
       - name: Verify the README skill catalogue is in sync
         run: bash packaging/build-readme-catalog.sh --check
 
+      # The published site is the one artifact with no source here and no build step, so nothing but this
+      # stops it shipping a stale version line — which is exactly what happened through all of 1.7.0.
+      # Release-time only: mid-development the payload is legitimately ahead of what is published.
+      - name: Verify the published site matches this release
+        run: |
+          git fetch --no-tags --depth=1 origin gh-pages:refs/remotes/origin/gh-pages
+          bash packaging/check-gh-pages.sh
+
       # The full verify suite runs BEFORE anything is published, so a release can never ship on top of a red
       # check. (This is the gate that was missing: release used to skip smoke/routing/e2e, so a green publish
       # could sit on a red CI.)

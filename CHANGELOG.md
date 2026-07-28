@@ -3,6 +3,67 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [1.8.0] - 2026-07-28
+
+### Added
+- **`confidence-check` skill** — the kit's only gate that fires *before* implementation. Review, the DoD and the
+  commit approval all catch bad code; none of them catch correct code that duplicates something already in the
+  tree or is built on a recalled API shape, because what reaches a reviewer is a clean diff. Five checks answered
+  with evidence rather than recollection, and any "no" is a stop. Deliberately not a weighted score: with five
+  checks and any sane bar a single failure sinks it anyway, so weights would only decorate a binary decision.
+- **`dependency-upgrade` skill** — the acting half of dependency work, split from `dependency-audit`, which had
+  promised "outdated packages" in its description and never taught it. Asks vulnerable, deprecated and behind as
+  three separate questions, classes every target version patch/minor/major, lands security fixes first and alone,
+  never applies a major automatically, moves manifest and lockfile together, and treats a green build plus a green
+  suite as the only evidence an upgrade worked.
+- **`performance-expert-csk` agent** — security, privacy and tests each had an independent reviewer; performance
+  was the one quality axis where the author of a change audited their own hot path. Read-only, like the security
+  auditor. Built around the tension that makes such an agent risky: the `performance` skill says measure before
+  optimising, so anything read off a diff is reported as a *candidate* with the measurement that would settle it,
+  and only a number promotes it to a *finding*.
+- **`session-stats.sh`** — reads what a session actually did off the transcript (failing tool loops, repeated
+  prompts, interrupts, compactions, delegation rate) so `reflect` and `handoff` rest on the record instead of the
+  model's recollection of its own work. Wired to no hook event; run on demand.
+- **`skill-trust.sh`** — a skill file is executable instruction, and they arrive by routes nobody reviews. At
+  session start, any component the kit never shipped and the user never accepted is named, with the supply-chain
+  scanner's verdict. Acceptance is deliberate and recorded as a digest, so an edit after acceptance comes back.
+- **Project-readiness block in `doctor.sh`** — advisory, never changes the verdict: is the CLAUDE.md project
+  section filled in, is there a project-specific skill, a devcontainer, an MCP server, and has CLAUDE.md drifted
+  behind the code.
+- **`.claude/kit-manifest.txt`** — written by both installers from the payload, so kit-owned and project-owned
+  components can finally be told apart.
+- **Rule precedence in the discipline** — what wins when two rules collide: prohibitions and safety, then the
+  user's explicit instruction, then scope as asked, then quality, then speed.
+
+### Fixed
+- **The discipline could sit on disk and never load.** `.claude/DISCIPLINE.md` is inert unless `./CLAUDE.md`
+  imports it, and every existing check was blind to that: hooks fire, gates look live, and routing, the DoD and
+  session management never enter the context. `doctor.sh` now fails on it.
+- **A compaction disarmed the session gate.** `/compact` keeps the same session id, so the once-per-threshold
+  markers survived it: a session warned at 90% could compact, fill right back up and never be warned again.
+  Markers are keyed by compaction generation now, and an automatic compaction is reported once at any fill.
+- **A credential could be read even though it could not be committed.** `.env` was the only credential file
+  either gate covered, leaving SSH private keys, AWS credentials, kubeconfigs and `.netrc` open. The commit scan
+  catches a secret leaving the repo; nothing caught one merely read into the context.
+- **A `--generic` install lost routing.** The generic backend variant did not route `confidence-check` or
+  `sonarqube-check`. The orphan check could not see it — both are routed by *some* agent, so nothing is orphaned;
+  they were simply unreachable on that stack. A parity gate now covers it.
+- **One high-severity hit scored as safe.** A single finding cost 10 points and landed on exactly 90, the SAFE
+  line, so one credential-exfil line or one injection directive passed on arithmetic. Severity now floors the
+  verdict, and the exfil pattern matches both phrase orders instead of only reader-then-path.
+- **The test runner was pinned to one stack.** The test agent and the `testing` skill named `dotnet test` as
+  their definition of done in components that ship to every profile, including frontend- and mobile-only ones.
+- **The published site had no gate.** It is hand-written with no source in the repo and no build step, and it
+  drifted the obvious way — 1.7.0 updated its counters and forgot the version marker. The release workflow now
+  compares the site's version and counters with the payload before publishing.
+
+### Changed
+- Every pattern in `trace-blocklist.txt` and `secret-blocklist.txt` carries its own case on the line below it,
+  and the suite runs all of them through the real `pre-commit` rather than re-implementing the match — a second
+  matcher would pass while the real one was broken. A pattern with no case fails the suite.
+- The blocklists' self-exclusion is matched by file name instead of one installed path; anchored to
+  `.claude/hooks/`, it stopped applying in the kit's own repo, which scanned its own pattern list.
+
 ## [1.7.0] - 2026-07-20
 
 ### Added

@@ -22,6 +22,12 @@ do not impose your own preferences.
 - **Follow** the platform convention; don't impose personal preference.
 - Test with real/edge data; don't **promise** a nonexistent capability in the UI.
 
+
+## Before writing any of it
+Run the **confidence-check** skill first. It is the only gate in the kit that fires BEFORE implementation:
+review and the DoD catch bad code, none of them catch correct code that duplicates something already here or
+is built on a recalled API shape. Any "no" is a stop, not a caveat.
+
 ## When
 On UI, component/page, navigation/routing, state, i18n interface, responsive, or
 (on mobile) native bridge changes.

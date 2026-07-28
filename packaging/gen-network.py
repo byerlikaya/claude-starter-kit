@@ -15,7 +15,7 @@ AGENT_COLOR = {
  "planner-csk":"#5b8cff",                                                     # plan · blue
  "backend-expert-csk":"#35c874","frontend-expert-csk":"#84e6b0","database-expert-csk":"#1e9b57",  # build · green shades
  "devops-expert-csk":"#26c6e6",                                               # ops · cyan
- "security-expert-csk":"#ff8a4d","privacy-agent-csk":"#ffbc8a","test-expert-csk":"#db5f1c",       # audit · orange shades
+ "security-expert-csk":"#ff8a4d","privacy-agent-csk":"#ffbc8a","test-expert-csk":"#db5f1c","performance-expert-csk":"#f2a65a",       # audit · orange shades
  "review-agent-csk":"#b07cf6","commit-agent-csk":"#8659ee",                   # close · violet shades
  "session-manager-csk":"#9aa7cc"}                                             # session · slate
 STAGE_NAME = {"plan":"PLAN","build":"BUILD","ops":"OPS","audit":"AUDIT","close":"CLOSE","session":"SESSION","core":"MAIN-THREAD"}
@@ -23,24 +23,25 @@ ORDER = ["plan","build","ops","audit","close","session","core"]
 
 AGENTS = [("planner-csk","plan"),("backend-expert-csk","build"),("frontend-expert-csk","build"),
     ("database-expert-csk","build"),("devops-expert-csk","ops"),("security-expert-csk","audit"),
-    ("privacy-agent-csk","audit"),("test-expert-csk","audit"),("review-agent-csk","close"),
+    ("privacy-agent-csk","audit"),("test-expert-csk","audit"),("performance-expert-csk","audit"),("review-agent-csk","close"),
     ("commit-agent-csk","close"),("session-manager-csk","session")]
 SHORT = {"planner-csk":"planner","backend-expert-csk":"backend","frontend-expert-csk":"frontend",
     "database-expert-csk":"database","devops-expert-csk":"devops","security-expert-csk":"security",
-    "privacy-agent-csk":"privacy","test-expert-csk":"test","review-agent-csk":"review",
+    "privacy-agent-csk":"privacy","performance-expert-csk":"perf","test-expert-csk":"test","review-agent-csk":"review",
     "commit-agent-csk":"commit","session-manager-csk":"session"}
 EDGES = {
- "backend-expert-csk":"api-design dependency-audit devarch-module i18n-integrity observability performance sonarqube-check",
+ "backend-expert-csk":"api-design confidence-check dependency-audit devarch-module i18n-integrity observability performance sonarqube-check",
  "commit-agent-csk":"commit-message release",
- "database-expert-csk":"db-migration sonarqube-check",
- "devops-expert-csk":"adr ci-pipeline dependency-audit docs-writer incident-runbook observability performance release trace-scan vps-deploy",
- "frontend-expert-csk":"a11y dependency-audit frontend frontend-design frontend-rn-expo i18n-integrity observability performance",
+ "database-expert-csk":"confidence-check db-migration sonarqube-check",
+ "devops-expert-csk":"adr ci-pipeline dependency-audit dependency-upgrade docs-writer incident-runbook observability performance release trace-scan vps-deploy",
+ "frontend-expert-csk":"a11y confidence-check dependency-audit frontend frontend-design frontend-rn-expo i18n-integrity observability performance",
  "planner-csk":"adr brainstorm spec-planning",
  "privacy-agent-csk":"privacy-compliance",
  "review-agent-csk":"code-review docs-writer",
  "security-expert-csk":"red-team security-scan sonarqube-check threat-model",
  "session-manager-csk":"handoff token-budget",
- "test-expert-csk":"testing"}
+ "test-expert-csk":"testing",
+ "performance-expert-csk":"performance"}
 CORE_SKILLS = ["systematic-debugging","iterate","reflect","worktree","mcp-builder","eval-grader"]
 ST_OF = dict(AGENTS)
 
@@ -48,9 +49,9 @@ ST_OF = dict(AGENTS)
 SKILL_HOME = {
  "api-design":"build","devarch-module":"build","db-migration":"build","frontend":"build",
  "frontend-design":"build","frontend-rn-expo":"build","a11y":"build","i18n-integrity":"build",
- "dependency-audit":"build","observability":"build","performance":"build",
+ "dependency-audit":"build","dependency-upgrade":"build","observability":"build","performance":"build",
  "ci-pipeline":"ops","vps-deploy":"ops","incident-runbook":"ops","trace-scan":"ops","docs-writer":"ops",
- "adr":"plan","brainstorm":"plan","spec-planning":"plan",
+ "adr":"plan","brainstorm":"plan","spec-planning":"plan","confidence-check":"plan",
  "security-scan":"audit","red-team":"audit","sonarqube-check":"audit","privacy-compliance":"audit","testing":"audit","threat-model":"audit",
  "code-review":"close","commit-message":"close","release":"close",
  "handoff":"session","token-budget":"session"}

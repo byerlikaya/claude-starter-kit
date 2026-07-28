@@ -34,7 +34,9 @@ The "how" lives in the `testing` skill; this agent applies it.
 - At closure, report findings to **review-agent-csk**.
 
 ## DoD
-- `dotnet test` → all tests green.
+- The project's own test command is green — the one its manifest/CI already uses (`dotnet test`, `npm test`,
+  `pytest`, `go test ./...`, …). Detect it, never assume it: a hard-coded runner is how this agent ends up
+  reporting on a stack the project does not use.
 - Critical paths covered; no empty/meaningless tests.
 
 ## Constraints

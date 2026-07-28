@@ -42,3 +42,6 @@ design the database schema|!frontend-design
 read the model context and summarize it|!mcp-builder
 optimize the slow sql query performance|!systematic-debugging
 isolate this work in a git worktree before the parallel agents run|worktree
+before I start, am I sure enough to implement this|confidence-check
+upgrade dependencies to current versions|dependency-upgrade
+is this endpoint fast enough on the hot path|performance-expert-csk
