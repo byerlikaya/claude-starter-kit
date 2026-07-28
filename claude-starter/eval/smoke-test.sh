@@ -455,7 +455,9 @@ BUDGET_DISC=10700    # DISCIPLINE.md (the discipline half of CLAUDE.md); current
                      # and the wrong one winning silently. The only rule in this file that is about the OTHER
                      # rules, so it cannot live in the README the way the compaction note does.)
 BUDGET_AGENTS=5150   # sum of agent frontmatter; currently 5121 (1.5.0: 9 agents rewritten to action-oriented "use proactively" descriptions so Claude Code auto-delegation actually fires)
-BUDGET_SKILLS=11550  # sum of skill frontmatter; currently 11512 (1.7.0: +threat-model (~399B) + eval-grader (~397B) skills)
+BUDGET_SKILLS=11900  # sum of skill frontmatter; currently 11871 (1.8.0: +confidence-check (~359B) — the kit's
+                     # only gate that fires BEFORE implementation; every other one reviews code that already
+                     # exists, and none of them catch correct code that never should have been written)
 fm_bytes(){ awk '/^---$/{c++; next} c==1' "$1" 2>/dev/null | wc -c | tr -d ' '; }
 if [ -f "$ROOT/CLAUDE.md" ]; then
   DB="$(awk '/^<!-- KIT:DISCIPLINE-END/{exit} {print}' "$ROOT/CLAUDE.md" | wc -c | tr -d ' ')"

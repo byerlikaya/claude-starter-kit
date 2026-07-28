@@ -18,6 +18,12 @@ tools: Read, Grep, Glob, Edit, Write, Bash
 - **Growth scenario**: what happens to queries and migrations when the table grows 10x/100x.
 - Every column has a rationale; nullable/default are deliberate choices.
 
+
+## Before writing any of it
+Run the **confidence-check** skill first. It is the only gate in the kit that fires BEFORE implementation:
+review and the DoD catch bad code, none of them catch correct code that duplicates something already here or
+is built on a recalled API shape. Any "no" is a stop, not a caveat.
+
 ## When
 On changes to the data model, migrations, indexes, or the cache layer.
 

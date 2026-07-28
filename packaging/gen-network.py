@@ -30,11 +30,11 @@ SHORT = {"planner-csk":"planner","backend-expert-csk":"backend","frontend-expert
     "privacy-agent-csk":"privacy","test-expert-csk":"test","review-agent-csk":"review",
     "commit-agent-csk":"commit","session-manager-csk":"session"}
 EDGES = {
- "backend-expert-csk":"api-design dependency-audit devarch-module i18n-integrity observability performance sonarqube-check",
+ "backend-expert-csk":"api-design confidence-check dependency-audit devarch-module i18n-integrity observability performance sonarqube-check",
  "commit-agent-csk":"commit-message release",
- "database-expert-csk":"db-migration sonarqube-check",
+ "database-expert-csk":"confidence-check db-migration sonarqube-check",
  "devops-expert-csk":"adr ci-pipeline dependency-audit docs-writer incident-runbook observability performance release trace-scan vps-deploy",
- "frontend-expert-csk":"a11y dependency-audit frontend frontend-design frontend-rn-expo i18n-integrity observability performance",
+ "frontend-expert-csk":"a11y confidence-check dependency-audit frontend frontend-design frontend-rn-expo i18n-integrity observability performance",
  "planner-csk":"adr brainstorm spec-planning",
  "privacy-agent-csk":"privacy-compliance",
  "review-agent-csk":"code-review docs-writer",
@@ -50,7 +50,7 @@ SKILL_HOME = {
  "frontend-design":"build","frontend-rn-expo":"build","a11y":"build","i18n-integrity":"build",
  "dependency-audit":"build","observability":"build","performance":"build",
  "ci-pipeline":"ops","vps-deploy":"ops","incident-runbook":"ops","trace-scan":"ops","docs-writer":"ops",
- "adr":"plan","brainstorm":"plan","spec-planning":"plan",
+ "adr":"plan","brainstorm":"plan","spec-planning":"plan","confidence-check":"plan",
  "security-scan":"audit","red-team":"audit","sonarqube-check":"audit","privacy-compliance":"audit","testing":"audit","threat-model":"audit",
  "code-review":"close","commit-message":"close","release":"close",
  "handoff":"session","token-budget":"session"}
