@@ -602,6 +602,21 @@ chmod +x "$DOC/.claude/hooks/guard-write.sh" 2>/dev/null   # restore for the nex
 printf '#!/usr/bin/env bash\nexit 0\n' > "$DOC/.claude/hooks/guard-bash.sh"; chmod +x "$DOC/.claude/hooks/guard-bash.sh"
 bash "$ROOT/eval/doctor.sh" "$DOC" >/dev/null 2>&1 && fail "doctor PASSED a neutered guard-bash (M2c)" || pass "doctor: neutered guard-bash -> exit != 0 (M2c probe)"
 cp "$HOOKS/guard-bash.sh" "$DOC/.claude/hooks/guard-bash.sh"; chmod +x "$DOC/.claude/hooks/guard-bash.sh"   # restore
+# The discipline on disk is inert unless CLAUDE.md pulls it in — every gate can be live while §1–§3 never load.
+printf 'discipline\n' > "$DOC/.claude/DISCIPLINE.md"; printf '# My project\n' > "$DOC/CLAUDE.md"
+bash "$ROOT/eval/doctor.sh" "$DOC" >/dev/null 2>&1 \
+  && fail "doctor PASSED a CLAUDE.md that never imports DISCIPLINE.md (the discipline never loads)" \
+  || pass "doctor: CLAUDE.md without the @import -> exit != 0"
+printf '@.claude/DISCIPLINE.md\n\n# My project\n' > "$DOC/CLAUDE.md"
+bash "$ROOT/eval/doctor.sh" "$DOC" >/dev/null 2>&1 \
+  && pass "doctor: CLAUDE.md with the @import -> exit 0" \
+  || fail "doctor flagged a CLAUDE.md that DOES import the discipline"
+# Readiness is ADVISORY: a bare project trips every readiness signal, and the verdict must stay exit 0.
+DOUT="$(bash "$ROOT/eval/doctor.sh" "$DOC" 2>&1)"; DRC=$?
+[ "$DRC" -eq 0 ] && pass "doctor: readiness gaps do NOT change the verdict (advisory)" || fail "readiness gaps changed doctor's exit code — it must stay a statement about the install"
+case "$DOUT" in *"Readiness (advisory"*) pass "doctor prints the readiness block" ;; *) fail "doctor readiness block missing" ;; esac
+case "$DOUT" in *"➖"*) pass "readiness flags gaps on a bare project (devcontainer/MCP/manifest absent)" ;; *) fail "readiness found no gap on a bare project — the signals are not firing" ;; esac
+rm -f "$DOC/CLAUDE.md" "$DOC/.claude/DISCIPLINE.md"
 # M2a: an empty hook array wires nothing — doctor must flag it (needs jq to read array length).
 if command -v jq >/dev/null 2>&1; then
   jq '.hooks.PreToolUse = []' "$DOC/.claude/settings.json" > "$DOC/.claude/s.tmp" && mv "$DOC/.claude/s.tmp" "$DOC/.claude/settings.json"
@@ -614,6 +629,13 @@ if [ "$IS_KIT" = 1 ]; then
   grep -qE 'chmod \+x .*\.claude/hooks/\*\.sh' "$(cd "$ROOT/.." && pwd)/start.sh" \
     && pass "start.sh chmods hooks via glob (future hooks covered)" \
     || fail "start.sh chmod is not glob-based — a new hook can ship non-executable"
+  # Both installers must write the install manifest. Without it the readiness check and the trust gate cannot
+  # tell kit-owned from project-owned, and both silently degrade to "unknowable" — a gap that reads as clean.
+  for s in start.sh adopt.sh; do
+    grep -q 'kit-manifest\.txt' "$(cd "$ROOT/.." && pwd)/$s" \
+      && pass "$s writes .claude/kit-manifest.txt" \
+      || fail "$s does not write the install manifest — kit-owned vs project-owned becomes unknowable"
+  done
 else
   pass "start.sh glob check skipped (installed project — start.sh is removed post-install)"
 fi

@@ -311,6 +311,17 @@ cp "$SRC/AGENT_TEMPLATE.md" .claude/ 2>/dev/null || true
 cp "$SRC/FIRST_PROMPT.md"   .claude/ 2>/dev/null || true
 cp "$SRC/README.md"         .claude/ 2>/dev/null || true
 
+# Install manifest — the names the KIT ships. It is the only way to tell kit-owned from project-owned later:
+# the readiness check reads it to find the project's own skills, and the trust gate reads it to spot a skill
+# the kit never shipped. Generated from the PAYLOAD, not from disk: a brownfield adopt preserves a pre-existing
+# project file under a kit name, and reading disk would then brand that project file "kit-owned". Erring this
+# way under-reports project ownership and can never raise a false alarm on a kit file — the safe direction for
+# a gate. Rewritten on every install/update, so a component the kit drops stops counting as kit-owned.
+{ for d in "$SRC"/skills/*/;     do [ -d "$d" ] && echo "skills/$(basename "$d")"; done
+  for f in "$SRC"/agents/*.md;   do [ -e "$f" ] && echo "agents/$(basename "$f")"; done
+  for f in "$SRC"/commands/*.md; do [ -e "$f" ] && echo "commands/$(basename "$f")"; done
+} > .claude/kit-manifest.txt 2>/dev/null || true
+
 # Remember how this project was installed, so a later update refreshes it in the SAME shape
 # (same profile, same backend stack) instead of re-adding what the profile deliberately pruned.
 { echo "# Written by start.sh. The updater reads this to refresh the project in its original shape."

@@ -28,6 +28,9 @@ summarizes what lives under `.claude/` and how it works.
   single `@.claude/DISCIPLINE.md` line and holds your project rules, which win on conflict.
 - **`kit.conf`** — the profile and backend stack this project was installed with. The updater reads it so a refresh
   reshapes the project the way it was installed, instead of re-adding what the profile pruned.
+- **`kit-manifest.txt`** — the component names the kit ships, one per line. It is what separates kit-owned from
+  project-owned: `doctor.sh` reads it to find your own skills, and the trust gate reads it to spot a skill the kit
+  never shipped. Rewritten on every install/update — don't edit it by hand.
 - **AGENT_TEMPLATE.md** — the contract for opening a new agent/skill.
 
 ## Workflow

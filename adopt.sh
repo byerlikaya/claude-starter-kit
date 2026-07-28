@@ -511,6 +511,15 @@ elif [ "$KIT_STACK" = "dotnet" ] && [ -e .claude/agents/backend-expert-csk.md ];
 fi
 chmod +x .claude/hooks/*.sh .claude/hooks/pre-commit .claude/hooks/commit-msg 2>/dev/null || true
 [ -f "$HERE/VERSION" ] && cp "$HERE/VERSION" .claude/VERSION 2>/dev/null || true   # first-class marker so a future adopt detects a REFRESH
+# Install manifest — the names the KIT ships (see start.sh for the full rationale). Generated from the PAYLOAD,
+# never from disk: this installer deliberately PRESERVES a pre-existing project file under a kit name, and a
+# disk-read manifest would brand that project file "kit-owned". Consumers: the doctor readiness check and the
+# skill trust gate.
+{ for d in "$SRC"/skills/*/;     do [ -d "$d" ] && echo "skills/$(basename "$d")"; done
+  for f in "$SRC"/agents/*.md;   do [ -e "$f" ] && echo "agents/$(basename "$f")"; done
+  for f in "$SRC"/commands/*.md; do [ -e "$f" ] && echo "commands/$(basename "$f")"; done
+} > .claude/kit-manifest.txt 2>/dev/null || true
+
 # Record (or re-record) the shape so the NEXT update refreshes this project the same way.
 { echo "# Written by the kit installer. The updater reads this to refresh the project in its original shape."
   echo "profile=${KIT_PROFILE:-fullstack}"
