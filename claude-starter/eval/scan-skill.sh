@@ -2,7 +2,7 @@
 # Install-time skill/agent security scanner — zero-dep bash + regex. Scans a directory or file (meant for a
 # project's EXISTING third-party .claude skills/agents that adopt.sh will coexist with) for supply-chain red flags
 # and scores each file:  score = 100 − CRIT×20 − HIGH×10 − MED×3 − LOW×1  (floored at 0).
-#   SAFE  ≥ 90   ·   REVIEW  70–89   ·   DANGER  < 70
+#   SAFE  ≥ 90 AND no CRIT/HIGH   ·   REVIEW  70–89, or any HIGH   ·   DANGER  < 70, or any CRIT
 #
 # ADVISORY + HEURISTIC. It substring-matches, so a *security-education* skill (a red-team guide, an exfil example)
 # can legitimately score low — REVIEW the flagged file, don't trust the number blindly. Its job is to SURFACE
@@ -18,14 +18,22 @@ TARGET="${1:-.claude}"
 CRIT='(curl|wget|fetch)[^|]*\|[[:space:]]*(sudo[[:space:]]+)?(bash|sh|zsh|python[0-9.]*|node|perl|ruby)|(bash|sh)[[:space:]]+<\(|(webhook\.site|requestbin|pipedream\.net|ngrok\.io|burpcollaborator|oastify|interactsh|dnslog\.|\.oast\.)|rm[[:space:]]+-[A-Za-z]*r[A-Za-z]*[[:space:]]+(~|/|\$HOME)([[:space:]]|$|/)'
 # HIGH: prompt-injection directives; a credential file READ/exfil (a reader verb + the path — a bare `~/.ssh/id_rsa`
 # config value is NOT flagged); base64-decode piped to a shell.
-HIGH='ignore[[:space:]]+(all[[:space:]]+)?(the[[:space:]]+)?(previous|prior|above)[[:space:]]+(instruction|prompt)|disregard[[:space:]]+(the[[:space:]]+|all[[:space:]]+)?(previous|above|prior)|ignore[[:space:]]+your[[:space:]]+(system[[:space:]]+)?(prompt|instruction)|(cat|less|more|tail|head|base64|xxd|od|strings|curl|wget|scp|cp|rsync)[^|]*(~/\.ssh|id_rsa|/etc/(passwd|shadow)|\.aws/credentials|\.netrc|\.git-credentials)|base64[[:space:]]+-[A-Za-z]*d[^|]*\|'
+HIGH='ignore[[:space:]]+(all[[:space:]]+)?(the[[:space:]]+)?(previous|prior|above)[[:space:]]+(instruction|prompt)|disregard[[:space:]]+(the[[:space:]]+|all[[:space:]]+)?(previous|above|prior)|ignore[[:space:]]+your[[:space:]]+(system[[:space:]]+)?(prompt|instruction)|(cat|less|more|tail|head|base64|xxd|od|strings|curl|wget|scp|cp|rsync)[^|]*(~/\.ssh|id_rsa|/etc/(passwd|shadow)|\.aws/credentials|\.netrc|\.git-credentials)|(~/\.ssh|id_rsa|/etc/(passwd|shadow)|\.aws/credentials|\.netrc|\.git-credentials)[^|]{0,80}(curl|wget|scp|nc |netcat|base64|exfiltrat)|base64[[:space:]]+-[A-Za-z]*d[^|]*\|'
 # MED: named cloud/CI secret env vars, process.env secret access, chmod 777, code eval/exec.
 MED='(GITHUB_TOKEN|AWS_SECRET|AWS_ACCESS_KEY|NPM_TOKEN|OPENAI_API_KEY|ANTHROPIC_API_KEY|SLACK_TOKEN)|process\.env\.[A-Za-z_]*(TOKEN|SECRET|KEY|PASSWORD)|chmod[[:space:]]+(-R[[:space:]]+)?0?777|[^a-zA-Z](eval|exec)[[:space:]]*\('
 # LOW: an outbound URL fetch or a raw socket — common in benign deploy/example prose, hence low weight.
 LOW='(^|[^a-zA-Z])(curl|wget)[[:space:]]+[^|]*https?://|/dev/tcp/|[^a-zA-Z]nc[[:space:]]+-[A-Za-z]*e'
 
 FAIL=0; N=0
-verdict(){ if [ "$1" -ge 90 ]; then echo SAFE; elif [ "$1" -ge 70 ]; then echo REVIEW; else echo DANGER; fi; }
+# The score ranks; the SEVERITY decides. A single HIGH costs 10 points and lands on exactly 90 — the SAFE line —
+# so one credential-exfil line or one prompt-injection directive used to pass as safe on arithmetic alone. That
+# is the wrong way round: the score exists to order a review queue, not to let a high-severity hit through it.
+# So severity floors the verdict — any CRIT is DANGER, any HIGH is never SAFE — and the number still ranks what
+# is left. (Measured: the kit's own 59 payload files carry no CRIT or HIGH at all, lowest score 99.)
+verdict(){   # $1 = score, $2 = crit count, $3 = high count
+  if [ "${2:-0}" -gt 0 ]; then echo DANGER; return; fi
+  if [ "${3:-0}" -gt 0 ]; then [ "$1" -ge 70 ] && echo REVIEW || echo DANGER; return; fi
+  if [ "$1" -ge 90 ]; then echo SAFE; elif [ "$1" -ge 70 ]; then echo REVIEW; else echo DANGER; fi; }
 
 scan_file(){
   local f="$1"
@@ -36,7 +44,7 @@ scan_file(){
   m=$(grep -icE "$MED"  "$f" 2>/dev/null); l=$(grep -icE "$LOW"  "$f" 2>/dev/null)
   c=${c:-0}; h=${h:-0}; m=${m:-0}; l=${l:-0}
   local score=$((100 - c*20 - h*10 - m*3 - l*1)); [ "$score" -lt 0 ] && score=0
-  local v; v="$(verdict "$score")"
+  local v; v="$(verdict "$score" "$c" "$h")"
   N=$((N+1))
   case "$v" in
     SAFE)   printf '  ✅ %-3s %s\n' "$score" "$f" ;;

@@ -23,12 +23,17 @@ and **conforms to it**. Never imposes its own patterns.
 ## When
 When the backend needs a new feature, service/handler, validation, controller, or business rule.
 
+## Before writing any of it
+Run the **confidence-check** skill first. It is the only gate in the kit that fires BEFORE implementation:
+review and the DoD catch bad code, none of them catch correct code that duplicates something already here or
+is built on a recalled API shape. Any "no" is a stop, not a caveat.
+
 ## How (follow the project's existing patterns)
 This profile has no single "how" skill; the pattern in the source repo is authoritative:
 - Read neighboring code first — carry over the layer boundary, return type/error contract, and naming **exactly** as they are.
 - Apply input validation and authorization at the endpoint; don't leak business rules into the presentation layer.
 - The schema/query side is coordinated with **database-expert-csk** + the `db-migration` skill.
-- **Also apply** `api-design` · `observability` · `performance` · `dependency-audit` · `i18n-integrity`.
+- **Also apply** `api-design` · `observability` · `performance` · `dependency-audit` · `dependency-upgrade` (bringing packages current) · `sonarqube-check` (if SonarQube is in use — the 0/0/0/0 gate is language-agnostic) · `i18n-integrity`.
 
 ## Coordination (cross-agent)
 - Security-critical work (auth/secret/IDOR/injection) → **security-expert-csk** MANDATORY.
