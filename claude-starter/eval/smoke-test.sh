@@ -449,15 +449,23 @@ echo "== 6f) always-on token budget =="
 # for that cost, and a gate rather than a reminder — a verbose new description fails the suite instead of
 # quietly taxing every future session. Budgets sit just above the current sizes: raising one is allowed, but
 # only as a deliberate edit here.
-BUDGET_DISC=10700    # DISCIPLINE.md (the discipline half of CLAUDE.md); currently 10691 (1.8.0: +the precedence
+BUDGET_DISC=10780    # DISCIPLINE.md (the discipline half of CLAUDE.md); currently 10743 (1.8.0: +the precedence
                      # order for colliding rules. ~130 tokens per session, paid because the alternative is the
                      # model improvising an order every time §4, an explicit instruction and scope disagree —
                      # and the wrong one winning silently. The only rule in this file that is about the OTHER
-                     # rules, so it cannot live in the README the way the compaction note does.)
-BUDGET_AGENTS=5150   # sum of agent frontmatter; currently 5121 (1.5.0: 9 agents rewritten to action-oriented "use proactively" descriptions so Claude Code auto-delegation actually fires)
-BUDGET_SKILLS=11900  # sum of skill frontmatter; currently 11871 (1.8.0: +confidence-check (~359B) — the kit's
-                     # only gate that fires BEFORE implementation; every other one reviews code that already
-                     # exists, and none of them catch correct code that never should have been written)
+                     # rules, so it cannot live in the README the way the compaction note does. Plus the Audit
+                     # row naming performance-expert-csk — an agent nothing routes to is an idle component.)
+BUDGET_AGENTS=5580   # sum of agent frontmatter; currently 5547 (1.5.0: 9 agents rewritten to action-oriented
+                     # "use proactively" descriptions so Claude Code auto-delegation actually fires. 1.8.0:
+                     # +performance-expert-csk (~426B) — security, privacy and tests each had an independent
+                     # reviewer and performance was the one quality axis where the author audited their own
+                     # work. Bought at ~110 tokens per session; the alternative was leaving that gap open.)
+BUDGET_SKILLS=12350  # sum of skill frontmatter; currently 12315 (1.8.0: +confidence-check (~359B), the kit's
+                     # only gate that fires BEFORE implementation — every other one reviews code that already
+                     # exists, and none catch correct code that should never have been written; and
+                     # +dependency-upgrade (~444B), split from dependency-audit because one reports and the
+                     # other rewrites lockfiles: different risk, different DoD, and an audit you can run on any
+                     # branch stops being safe the moment it can also apply things)
 fm_bytes(){ awk '/^---$/{c++; next} c==1' "$1" 2>/dev/null | wc -c | tr -d ' '; }
 if [ -f "$ROOT/CLAUDE.md" ]; then
   DB="$(awk '/^<!-- KIT:DISCIPLINE-END/{exit} {print}' "$ROOT/CLAUDE.md" | wc -c | tr -d ' ')"

@@ -8,8 +8,8 @@
 
 [![npm](https://img.shields.io/npm/v/@byerlikaya/claude-starter-kit?style=flat-square&color=2563eb)](https://www.npmjs.com/package/@byerlikaya/claude-starter-kit)
 ![License](https://img.shields.io/npm/l/@byerlikaya/claude-starter-kit?style=flat-square&color=16a34a)
-![Agents](https://img.shields.io/badge/agents-11-f59e0b?style=flat-square)
-![Skills](https://img.shields.io/badge/skills-37-f59e0b?style=flat-square)
+![Agents](https://img.shields.io/badge/agents-12-f59e0b?style=flat-square)
+![Skills](https://img.shields.io/badge/skills-38-f59e0b?style=flat-square)
 
 </div>
 
@@ -27,7 +27,7 @@ No global install needed. Runs on macOS, Linux, and Windows (Git Bash).
 
 ## What you get
 
-- **11 namespaced agents + 37 skills**, wired to a `plan → build → review → ship` workflow so the right expert and the right check fire at the right moment.
+- **11 namespaced agents + 38 skills**, wired to a `plan → build → review → ship` workflow so the right expert and the right check fire at the right moment.
 - **Tool-level gates, not reminders** — a git-commit trace/secret scan, Bash and Write guards, and session/context hooks enforce the rules instead of hoping you remember them.
 - **In-session commands** — `/plan` · `/review` · `/ship` · `/handoff` · `/update-csk` (update the install) · `/doctor-csk` (health-check it).
 - **Stack-aware** — a `.NET`/DevArchitecture backend pattern when detected, stack-agnostic otherwise; the frontend stays framework-neutral.

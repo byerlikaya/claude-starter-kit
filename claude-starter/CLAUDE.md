@@ -28,7 +28,7 @@ recommend, with the rationale.**
 Noisy or heavy work goes to a subagent; small work stays on the main thread.
 1. **Diagnose, then plan** — root cause *unknown* (cross-domain bug, "where does it break?") → **general-purpose** + the `systematic-debugging` skill, *before* planning: **unclear scope ≠ unknown cause** (native-only → inline + skill). Then ambiguous *scope* → **planner-csk** (`/plan`); clear work goes straight to the expert.
 2. **Produce** — **backend-expert-csk · database-expert-csk · frontend-expert-csk**; deploy / CI / incident → **devops-expert-csk**.
-3. **Audit** — **security-expert-csk** (mandatory when security-critical) · **privacy-agent-csk** (personal data) · **test-expert-csk** (`/review`).
+3. **Audit** — **security-expert-csk** (mandatory when security-critical) · **privacy-agent-csk** (personal data) · **test-expert-csk** · **performance-expert-csk** (hot path / slowness) (`/review`).
 4. **Close** — DoD gate → **review-agent-csk** clean → **commit-agent-csk** proposes, waits for approval (`/ship`).
 5. **Hand off** — phase boundary or full context → **session-manager-csk** → `handoff` → `/clear` (`/handoff`).
 
