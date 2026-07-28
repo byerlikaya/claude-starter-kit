@@ -22,13 +22,37 @@ esac
 # Per-session dedup key: session_id from the Stop stdin JSON (documented field), else the transcript
 # filename. Sanitized to a safe filename fragment. Without any key we fall back to a shared marker
 # (that degenerate case coincides with a measurement failure, which exits silently below anyway).
+TP="$(printf '%s' "$IN" | sed -n 's/.*"transcript_path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
 KEY="$(printf '%s' "$IN" | sed -n 's/.*"session_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1 | tr -cd 'A-Za-z0-9._-')"
-if [ -z "$KEY" ]; then
-  TP="$(printf '%s' "$IN" | sed -n 's/.*"transcript_path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
-  KEY="$(basename "$TP" 2>/dev/null | tr -cd 'A-Za-z0-9._-')"
-fi
+[ -n "$KEY" ] || KEY="$(basename "$TP" 2>/dev/null | tr -cd 'A-Za-z0-9._-')"
 [ -n "$KEY" ] || KEY="unknown"
-marker(){ printf '%s/csk-session-guard.%s.%s' "${TMPDIR:-/tmp}" "$KEY" "$1"; }
+
+# Compaction generation. A `/compact` does NOT mint a new session_id — only a new session or `/clear` does —
+# so the per-tier markers below survive it, and that silently disarms this gate exactly where it matters most:
+# a session warned at 90% compacts down to ~5%, climbs all the way back, and the user is never told a second
+# time. Keying the markers by compaction COUNT gives every generation its own pair of thresholds.
+# The boundary record is `"subtype":"compact_boundary"` with `compactMetadata.trigger` (verified against real
+# transcripts). grep, not awk: this runs inside a hook timeout on every Stop, and the same size guard
+# context-usage.sh uses applies — past the cap we skip the count and fall back to the old single-generation
+# behaviour rather than risk the timeout.
+COMP=0; AUTOC=0
+if [ -n "$TP" ] && [ -f "$TP" ]; then
+  SZ="$(wc -c < "$TP" 2>/dev/null | tr -cd '0-9')"; SZ="${SZ:-0}"
+  if [ "$SZ" -le "${CSK_CONTEXT_MAX_BYTES:-209715200}" ]; then
+    COMP="$(grep -c '"subtype": *"compact_boundary"' "$TP" 2>/dev/null | tr -cd '0-9')";  COMP="${COMP:-0}"
+    AUTOC="$(grep -c '"compact_boundary".*"trigger": *"auto"' "$TP" 2>/dev/null | tr -cd '0-9')"; AUTOC="${AUTOC:-0}"
+  fi
+fi
+marker(){ printf '%s/csk-session-guard.%s.c%s.%s' "${TMPDIR:-/tmp}" "$KEY" "$COMP" "$1"; }
+
+# An AUTO compaction is not a milestone, it is a loss: state nobody chose to drop is already gone, and the fill
+# reading right after it is reassuringly low precisely because the context was thrown away. Announce it once per
+# generation, independently of the fill tier — waiting for 75% would report the loss long after it happened.
+if [ "${AUTOC:-0}" -gt 0 ] && [ ! -e "$(marker autocompact)" ]; then
+  : > "$(marker autocompact)" 2>/dev/null || true
+  printf '{"systemMessage":"⚠️ Auto-compaction has fired %s time(s) this session — context was dropped that nobody chose to drop. Check that docs/SESSION_STATE.md still matches reality, and hand off at the next phase boundary instead of riding the fill up to another one."}\n' "$AUTOC"
+  exit 0
+fi
 
 # Real context% — context-usage.sh reads transcript_path from the same stdin JSON. Fail-open on any error.
 # --verbose here: this line reaches the USER at most twice per session, so the raw token counts are free.

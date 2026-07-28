@@ -178,6 +178,26 @@ o="$(mkjson "${SGPFX}-f" "/no/such.jsonl" false | bash "$HOOKS/session-guard.sh"
 # (8) loop guard: stop_hook_active -> silent no-op
 fill 920000
 [ -z "$(sg "${SGPFX}-g" true)" ] && pass "stop-hook: stop_hook_active loop-guard is a silent no-op" || fail "stop-hook ignored stop_hook_active"
+# fillc: the same usage record, followed by N compaction boundaries of a given trigger.
+fillc(){ fill "$1"; i=0; while [ "$i" -lt "${3:-0}" ]; do
+  printf '%s\n' "{\"type\":\"system\",\"subtype\":\"compact_boundary\",\"compactMetadata\":{\"trigger\":\"$2\",\"preTokens\":900000,\"postTokens\":9000}}" >> "$SGFX"
+  i=$((i+1)); done; }
+# (9) A COMPACTION RE-ARMS THE TIERS. /compact keeps the same session_id, so without a generation key the
+#     markers survive it: a session warned at 90% compacts, climbs all the way back, and is never warned
+#     again — the gate goes quiet precisely on the sessions that need it twice.
+fillc 920000 "" 0; sg "${SGPFX}-h" >/dev/null            # generation 0: warned at 90, both tiers stamped
+fillc 930000 manual 1                                     # a compaction happened -> generation 1
+o="$(sg "${SGPFX}-h")"
+case "$o" in *CRITICAL*) pass "stop-hook: a compaction re-arms the thresholds (warns again next generation)" ;; *) fail "stop-hook stayed silent after a compaction — the gate is disarmed for the rest of the session: $o" ;; esac
+# (10) an AUTO compaction is announced once per generation at ANY fill: the loss already happened, and the
+#      reading right after it is low precisely because the context was thrown away.
+fillc 100000 auto 1
+o="$(sg "${SGPFX}-i")"
+case "$o" in *'"systemMessage"'*Auto-compaction*) pass "stop-hook: an auto-compaction is reported even at a low fill" ;; *) fail "stop-hook did not report an auto-compaction: $o" ;; esac
+[ -z "$(sg "${SGPFX}-i")" ] && pass "stop-hook: the auto-compaction notice fires once, not per turn" || fail "stop-hook repeated the auto-compaction notice"
+# (11) a MANUAL compaction is a deliberate act — never announced as an unchosen loss.
+fillc 100000 manual 1
+[ -z "$(sg "${SGPFX}-j")" ] && pass "stop-hook: a manual compaction is not reported as a loss" || fail "stop-hook reported a deliberate /compact as an unchosen loss"
 rm -f "$SGFX"; rm -f "${TMPDIR:-/tmp}"/csk-session-guard.${SGPFX}-*.* 2>/dev/null
 
 echo "== 6c) no-jq fallback: sidechain-safe + full token sum =="

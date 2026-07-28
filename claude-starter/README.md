@@ -25,6 +25,10 @@ summarizes what lives under `.claude/` and how it works.
   `session-stats.sh` sits alongside them but is wired to no event: the `reflect` and `handoff` skills run it on
   demand to read what the session actually did — failing tool loops, repeated prompts, interrupts, compactions —
   so a retrospective rests on the record instead of the model's recollection of its own work.
+  `session-guard.sh` keys its once-per-threshold markers by **compaction generation**: a `/compact` keeps the same
+  session id, so without that a session warned at 90% would compact, fill right back up, and never be warned again.
+  An **auto**-compaction is reported separately and once, at whatever the fill happens to be — the reading right
+  after one is low precisely because context was thrown away.
 - **settings.json** — permissions and the hook chain (PreToolUse · UserPromptSubmit · Stop).
 - **`DISCIPLINE.md`** — behavior, four principles, workflow, definition of done, token discipline, and prohibitions.
   Kit-owned: an update **overwrites** it, so keep nothing of your own here. Your `./CLAUDE.md` pulls it in with a
