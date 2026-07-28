@@ -29,7 +29,12 @@ summarizes what lives under `.claude/` and how it works.
   session id, so without that a session warned at 90% would compact, fill right back up, and never be warned again.
   An **auto**-compaction is reported separately and once, at whatever the fill happens to be — the reading right
   after one is low precisely because context was thrown away.
-- **settings.json** — permissions and the hook chain (PreToolUse · UserPromptSubmit · Stop).
+  `skill-trust.sh` runs at session start and names any skill or agent the kit never shipped and you never accepted,
+  with the supply-chain scanner's verdict on it. A skill file is executable instruction, and they arrive by routes
+  nobody reviews — a gist, a teammate's PR, another tool. Accept them deliberately with
+  `bash .claude/hooks/skill-trust.sh --trust`; what gets recorded is a digest, so one that is edited afterwards
+  comes back. Silent when nothing is new, and silent without a `kit-manifest.txt` rather than guessing.
+- **settings.json** — permissions and the hook chain (PreToolUse · UserPromptSubmit · Stop · SessionStart).
 - **`DISCIPLINE.md`** — behavior, four principles, workflow, definition of done, token discipline, and prohibitions.
   Kit-owned: an update **overwrites** it, so keep nothing of your own here. Your `./CLAUDE.md` pulls it in with a
   single `@.claude/DISCIPLINE.md` line and holds your project rules, which win on conflict.

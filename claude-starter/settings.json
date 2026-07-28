@@ -76,6 +76,16 @@
             "timeout": 30
           }
         ]
+      },
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/skill-trust.sh\" 2>/dev/null || true",
+            "timeout": 30
+          }
+        ]
       }
     ]
   }

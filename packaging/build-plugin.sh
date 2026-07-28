@@ -19,6 +19,8 @@ cp -R "$SRC/commands" "$OUT/commands"
 
 # The Claude Code hooks that work standalone (self-locate via $0, read stdin) — NOT the git hooks
 # (pre-commit / commit-msg) and NOT their blocklist data files, which only apply under core.hooksPath.
+# skill-trust.sh is also left out: it decides kit-owned vs project-owned from .claude/kit-manifest.txt, which
+# only a start.sh/adopt.sh install writes. Shipped here it could only ever exit silently — an idle component.
 for h in guard-bash.sh guard-write.sh context-usage.sh session-guard.sh session-rehydrate.sh session-stats.sh; do
   cp "$SRC/hooks/$h" "$OUT/hooks/$h"
   chmod +x "$OUT/hooks/$h"
