@@ -73,8 +73,11 @@ The severity scale, finding format, summary line, and the fix-presentation forma
 
 ## Invariant rules
 1. **Guides, does not assure** — it does not replace a professional audit; say so in the report.
-2. **Mask secrets** — only the first 4 + last 4 characters (`sk-p…i789`); never write the full secret.
-3. **No automatic fix without approval** — even if "Fix everything" is chosen, first show what will change.
-4. **Do not install tools without asking.**
-5. **Preserve behavior** — a fix must not change functionality beyond closing the vulnerability.
-6. **Stay local** — do not send code/data to an external service, do not cross the project boundary.
+2. **State coverage, not just findings** — every report ends with a `complete / partial / unknown` ledger over the
+   threat model's surfaces, each non-complete row carrying its reason. Without it, "no findings" and "never
+   looked" read identically to whoever acts on the report (`references/reporting.md`).
+3. **Mask secrets** — only the first 4 + last 4 characters (`sk-p…i789`); never write the full secret.
+4. **No automatic fix without approval** — even if "Fix everything" is chosen, first show what will change.
+5. **Do not install tools without asking.**
+6. **Preserve behavior** — a fix must not change functionality beyond closing the vulnerability.
+7. **Stay local** — do not send code/data to an external service, do not cross the project boundary.

@@ -44,7 +44,30 @@ turn/token budget** to `pass-slow` — so "correct but too expensive" is visible
 State it. At n=20 tasks, one task ≈ 5 points — deltas smaller than that are not meaningful. If the cheapest option
 already hits the ceiling, say so plainly instead of chasing a fractional gain.
 
+## Micro-test before you commit to a wording
+Changing an instruction — a skill's phrasing, a rule in the discipline, an agent's trigger — is a change to
+behaviour, and the temptation is to reason about whether it reads better. Reading better and working better are
+different properties. Test it cheaply first:
+
+1. **Sample it a handful of times**, not once. Same prompt, same conditions.
+2. **Against a no-guidance control** — the identical task with the instruction absent. Without the control you
+   learn what the model does, not what your wording adds.
+3. **Read every result by hand.** At this size there is no statistic to hide behind; a score computed over four
+   runs is a number pretending to be evidence.
+4. **Treat run-to-run variance as a warning, not noise to average away.** If the same arm swings across runs,
+   the wording is not doing reliable work — and any delta you measure is smaller than the variance you have not
+   controlled.
+
+The failure this prevents, seen in this repo: a case scored 7/9 against 9/9 — the guidance apparently making
+things *worse* — and an identical second round came back 9/9 to 9/9. Two checks of variance inverted the
+finding. Had the first round been reported, a good rule would have been removed on noise.
+
+Corollary: a delta smaller than the observed spread between identical runs is not a result. Say "below the
+noise floor" and either raise n or accept that the change is unmeasurable at this scale — both are honest;
+quoting the number is not.
+
 The grader architecture, a starter grader catalogue, and the judge-bias checklist live in **`references/method.md`**.
 
 ## DoD
 - A fixed task set + a two-layer grader; a pinned baseline; every change reported as a signed delta with the noise floor stated.
+- Any wording change was micro-tested against a no-guidance control, with every run read rather than averaged.

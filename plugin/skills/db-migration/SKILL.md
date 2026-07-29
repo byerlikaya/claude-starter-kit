@@ -83,23 +83,11 @@ Backup + restore + post-apply verify commands **per engine** (PostgreSQL · MySQ
 
 ## 4. Tool × life-cycle matrix
 
-Once classification and backup are complete: **Preview → (approval) → Apply → Verify**. A single reference:
+Once classification and backup are complete: **Preview → (approval) → Apply → Verify**.
 
-| Tool | Status | Preview (dry-run) | Apply | Verify | Roll back |
-|---|---|---|---|---|---|
-| Prisma | `migrate status` | `migrate diff … --script` | `migrate deploy` | `migrate status` | `migrate resolve --rolled-back` + backup |
-| Knex | `migrate:status` | `migrate:latest --dry-run` | `migrate:latest` | `migrate:status` | `migrate:rollback` |
-| Sequelize | `db:migrate:status` | read the migration file | `db:migrate` | `db:migrate:status` | `db:migrate:undo` |
-| TypeORM | `migration:show` | read the pending file | `migration:run` | `migration:show` | `migration:revert` |
-| Drizzle | `drizzle-kit status` | `generate` → inspect SQL | `drizzle-kit push` | `drizzle-kit status` | `drizzle-kit drop` (prefer backup) |
-| Alembic | `current` + `history` | `upgrade head --sql` | `upgrade head` | `current` (=head) | `downgrade -1` |
-| Django | `showmigrations` | `sqlmigrate <app> <name>` | `migrate` | `showmigrations` ([X]) | `migrate <app> <previous>` |
-| Rails | `db:migrate:status` | read the migration file | `db:migrate` | `db:migrate:status` (up) | `db:rollback STEP=1` |
-| EF Core | `migrations list` | `migrations script` | `database update` | `migrations list` | `database update <previous>` |
+Per-tool commands for those four steps and for rollback — Prisma, Knex, Sequelize, TypeORM, Drizzle, Alembic, Django, Rails, EF Core: **`references/tool-matrix.md`**. Look up the one the project uses.
 
-*(For Node tools prefix `npx …`, for Python the appropriate shell, for .NET `dotnet ef …`.)*
-
-**Rules:** **Always** show the preview before applying and get it approved (if the tool does not support it, treat the file as the preview). A destructive migration is not applied without passing the approval gate (§2). Show the full apply output; if there is an error, roll back.
+**Rules:** **Always** show the preview before applying and get it approved (if the tool does not support a dry-run, treat the migration file itself as the preview). A destructive migration is not applied without passing the approval gate (§2). Show the full apply output; if there is an error, roll back.
 
 **Additional post-apply verification** — compare against the expected schema using your engine's inspect command (`references/backup-restore.md`).
 

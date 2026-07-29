@@ -89,6 +89,17 @@ clone_devarch() {  # $1 = target dir; clone verbatim, drop nested .git, rename t
   echo "  DevArchitecture base placed in: $([ "$target" = "." ] && echo 'the project root' || echo "$target/")."
   echo "  NOTE (§4.2): the template name still lives in namespaces / csproj / appsettings — as the FIRST"
   echo "  task, ask an agent to rename DevArchitecture -> ${PROJECT_NAME} throughout."
+  # The base ships ~8 MB of third-party front-end assets under wwwroot/lib/**/dist/, and the repo-bloat gate
+  # stops the first commit over them. That is the gate doing its job — whether to commit vendored assets is a
+  # real decision — but discovering it at `git commit` time, on a project you have not written a line of yet,
+  # reads as the kit being broken. Say it here, while the context is obvious.
+  VLIB="$(find "$target" -type d -path '*wwwroot/lib' 2>/dev/null | head -1)"
+  if [ -n "$VLIB" ]; then
+    VN="$(find "$VLIB" -type f 2>/dev/null | wc -l | tr -d ' ')"
+    echo "  HEADS-UP: the base carries $VN vendored front-end files under ${VLIB#./}/ (bootstrap et al)."
+    echo "  The repo-bloat gate will stop your first commit over them. Decide once: gitignore that path, or"
+    echo "  commit them deliberately with 'git commit --no-verify' (§4.5: an explicit, one-off exception)."
+  fi
 }
 
 # --- Flag parsing (silent/CI mode) ---

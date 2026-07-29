@@ -587,8 +587,13 @@ else fail "settings.json missing"; fi
 # §4.4 git approval gate (behavioral). Contract:
 #   normal modes  -> exit 0 + permissionDecision:"ask"  (the USER approves in-session; Claude then commits)
 #   bypass/unknown-> exit 2 (fail closed; no prompt can be proven to reach the user)
-#   CLAUDE_GIT_OK -> exit 0, silent (pre-authorised headless/CI)
+#   CLAUDE_GIT_OK -> exit 0 + permissionDecision:"allow" (pre-authorised headless/CI)
 #   §4.5 ops      -> exit 2 in every mode, even with the key
+#
+# That "allow" is load-bearing and used to be a silent exit 0. settings.json ALSO asks for `git add` and
+# `git checkout -b`, and an exit-0 hook says "no opinion", which leaves those rules in force — so a keyed
+# headless session could not stage, let alone commit, and the key achieved nothing it was documented to do.
+# Asserting the exit code alone is what let that ship: the code was always right, the decision was missing.
 gj(){ printf '{"tool_name":"Bash","permission_mode":"%s","tool_input":{"command":"%s"}}' "$1" "$2"; }
 gdec(){ printf '%s' "$1" | sed -n 's/.*"permissionDecision"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1; }
 for m in default acceptEdits auto dontAsk; do
@@ -613,6 +618,21 @@ printf '%s' '{"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}' | 
 gj auto 'CLAUDE_GIT_OK=1 git commit -m x' | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && fail "inline CLAUDE_GIT_OK PASSED (§4.4 hole)" || pass "inline CLAUDE_GIT_OK injection rejected (§4.4)"
 # pre-authorised session
 gj bypassPermissions 'git commit -m x' | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && pass "git commit PASSES with CLAUDE_GIT_OK=1" || fail "keyed commit blocked (gate too strict)"
+# The whole approval-gated set must clear BOTH gates on a keyed session, and only an explicit allow does.
+for c in 'git commit -m x' 'git add .' 'git add src/a.js' 'git push' 'git checkout -b feat/x'; do
+  o="$(gj auto "$c" | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" 2>/dev/null)"; r=$?
+  { [ "$r" = 0 ] && [ "$(gdec "$o")" = "allow" ]; } \
+    && pass "keyed session ALLOWS '$c' (overrides the settings.json ask)" \
+    || fail "keyed '$c' did not return allow (rc=$r out=$o) — settings.json would still block it headless"
+done
+# The key opens the approval gate, never the destructive one: `git add -f` is §4.5 and stays blocked.
+gj auto 'git add -f secrets.env' | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 \
+  && fail "git add -f PASSED with the key (§4.5 hole)" || pass "git add -f BLOCKED even with the key (§4.5)"
+# Without the key the hook must stay OUT of the way on `git add`: settings.json owns that prompt, and a hook
+# that answered here would quietly take over a rule the user can see and edit.
+o="$(gj auto 'git add .' | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"
+[ -z "$(gdec "$o")" ] && pass "unkeyed 'git add' left to settings.json (hook offers no decision)" \
+                      || fail "hook decided 'git add' without the key (out=$o)"
 # §4.5 always wins, key or no key, mode or no mode
 gj auto 'git push --force' | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && fail "push --force PASSED with key (§4.5 hole)" || pass "push --force BLOCKED even with key (§4.5)"
 gj bypassPermissions 'git reset --hard' | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && fail "reset --hard PASSED (§4.5 hole)" || pass "reset --hard BLOCKED in bypass + key (§4.5)"
@@ -721,10 +741,20 @@ elif [ -f "$PHJ" ]; then
     [ -x "$PLUGIN/hooks/$h" ] && grep -q "$h" "$PHJ" || { fail "plugin hook $h missing or not wired"; break; }
   done
   pass "5 Claude Code hooks shipped + wired in plugin"
-  # The git hooks must NOT leak into the plugin (they need core.hooksPath, which a plugin can't set).
-  { [ -e "$PLUGIN/hooks/pre-commit" ] || [ -e "$PLUGIN/hooks/commit-msg" ]; } \
-    && fail "git hook leaked into plugin (pre-commit/commit-msg — cannot work there)" \
-    || pass "git hooks correctly NOT shipped in plugin"
+  # The git hooks now DO ship, and must: guard-commit-scan.sh runs them from PreToolUse, which is the only way
+  # the plugin edition gets the commit CONTENT gates at all (a plugin cannot set core.hooksPath). They ship as
+  # data for that hook, never wired as git hooks. Shipping them WITHOUT the caller would be worse than not
+  # shipping them — two dead files and a channel that still silently lacks the gate — so assert the pair.
+  for h in pre-commit commit-msg trace-blocklist.txt secret-blocklist.txt; do
+    [ -e "$PLUGIN/hooks/$h" ] || { fail "plugin missing $h — guard-commit-scan.sh has nothing to run"; break; }
+  done
+  { [ -x "$PLUGIN/hooks/guard-commit-scan.sh" ] && grep -q 'guard-commit-scan' "$PHJ"; } \
+    && pass "commit content gate shipped AND wired in the plugin (git hooks reused, not re-implemented)" \
+    || fail "plugin ships the scanners but nothing invokes them — the content gate is dead there"
+  # Whatever else changes, they must never be wired as git hooks in the plugin: nothing sets core.hooksPath.
+  grep -q 'core.hooksPath' "$PHJ" \
+    && fail "plugin hooks.json references core.hooksPath (a plugin cannot set it)" \
+    || pass "plugin never wires git hooks through core.hooksPath"
 else
   fail "plugin/hooks/hooks.json missing — run packaging/build-plugin.sh"
 fi
@@ -942,6 +972,67 @@ EOF
   rm -rf "$BLR"
 else
   pass "blocklist case run skipped (no git)"
+fi
+
+echo "== 7j) commit CONTENT gate reachable without core.hooksPath (plugin edition parity) =="
+# The plugin edition ships Claude Code hooks, not git hooks, so it had the commit APPROVAL gate and none of the
+# commit CONTENT gates: a credential or an authorship trailer could land there while the other three channels
+# stopped it. guard-commit-scan.sh runs the REAL scanners from PreToolUse instead of re-implementing them.
+if [ -x "$HOOKS/guard-commit-scan.sh" ]; then
+  pass "guard-commit-scan.sh present +x"
+  CS="$(mktemp -d "${TMPDIR:-/tmp}/csk-cs.XXXXXX")"
+  ( cd "$CS" && git init -q && git config user.email t@t && git config user.name t
+    mkdir -p .claude/hooks
+    cp "$HOOKS/guard-commit-scan.sh" "$HOOKS/pre-commit" "$HOOKS/commit-msg" \
+       "$HOOKS/trace-blocklist.txt" "$HOOKS/secret-blocklist.txt" .claude/hooks/ 2>/dev/null
+    chmod +x .claude/hooks/* 2>/dev/null
+    echo ok > a.txt && git add a.txt && git commit -qm base --no-verify ) >/dev/null 2>&1
+  csj(){ if command -v jq >/dev/null 2>&1; then jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}'
+         else printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' "$1"; fi; }
+  csrun(){ ( cd "$CS" && printf '%s' "$(csj "$1")" | bash .claude/hooks/guard-commit-scan.sh ) >/dev/null 2>&1; }
+  ( cd "$CS" && echo clean > b.txt && git add b.txt ) >/dev/null 2>&1
+  csrun 'git commit -m "feat: add b"' && pass "clean commit passes (no false positive)" \
+                                      || fail "clean commit blocked by the content gate"
+  csrun 'git status' && pass "non-commit command untouched" || fail "guard-commit-scan blocked a non-commit command"
+  # The message is where a co-author trailer lives, and it is MULTI-LINE — a line-oriented extraction found the
+  # subject, stopped, and let the trailer through. That blind spot is what this case exists to keep closed.
+  # Assembled at run time: this file ships as .claude/eval/smoke-test.sh, and a whole trailer literal here is
+  # exactly what the §4.1 scanner stops — the fixture would make the payload uncommittable. Same reason §7h
+  # drives its cases from the blocklist instead of restating them.
+  TRFX="Co-""Authored-By: Claude <x@y>"
+  if csrun "git commit -m \"feat: x
+
+$TRFX\""; then fail "multi-line AI trace in the message PASSED (§4.1 hole)"
+  else pass "multi-line AI trace in the commit message BLOCKED (§4.1)"; fi
+  # `git commit -a` stages at commit time: ahead of the commit the content is still unstaged, so a --cached-only
+  # scan would wave it through. This is the gap the git-hook path never had.
+  # Assembled at RUN time, never written here as one literal. This file ships as .claude/eval/smoke-test.sh, the
+  # secret scan (unlike the trace scan) does NOT skip .claude/, and a whole-key literal would make every project
+  # that commits its .claude/ uncommittable — the fixture would become the outage.
+  SKFX="sk""_live_ABCDEFGHIJKLMNOPQRSTUVWX"
+  ( cd "$CS" && printf 'k = "%s"\n' "$SKFX" >> a.txt ) >/dev/null 2>&1
+  if csrun 'git commit -am "feat: y"'; then fail "unstaged secret via 'commit -a' PASSED (secret hole)"
+  else pass "'git commit -a' scans tracked-but-unstaged content (secret BLOCKED)"; fi
+  ( cd "$CS" && git checkout -- a.txt ) >/dev/null 2>&1
+  # An editor-composed message does not exist yet at PreToolUse. With no commit-msg git hook to read it
+  # afterwards — a plugin-only install, where nothing can set core.hooksPath — the message would ship
+  # unscanned, and the message is exactly where a co-authorship trailer lives. Fail closed there, and stay out
+  # of the way where the git hook does cover it.
+  if csrun 'git commit'; then fail "editor-composed message unscanned and allowed (plugin-only §4.1 hole)"
+  else pass "editor message refused where nothing can scan it (plugin-only)"; fi
+  MFX="$(mktemp "${TMPDIR:-/tmp}/csk-mfx.XXXXXX")"; printf 'feat: from a file\n' > "$MFX"
+  csrun "git commit -F $MFX" && pass "-F <file> message is read and scanned (clean passes)" \
+                             || fail "-F <file> with a clean message was blocked"
+  printf 'feat: x\n\n%s: Claude\n' "Co-""Authored-By" > "$MFX"
+  if csrun "git commit -F $MFX"; then fail "-F <file> carrying an AI trace PASSED (§4.1 hole)"
+  else pass "-F <file> carrying an AI trace BLOCKED (§4.1)"; fi
+  rm -f "$MFX"
+  ( cd "$CS" && git config core.hooksPath .claude/hooks ) >/dev/null 2>&1
+  csrun 'git commit' && pass "editor message allowed once a commit-msg git hook can scan it (full install)" \
+                     || fail "full install over-blocks an editor-composed message"
+  rm -rf "$CS"
+else
+  fail "guard-commit-scan.sh missing or not executable — the plugin edition has no commit content gate"
 fi
 
 echo "== 8) Slash commands =="

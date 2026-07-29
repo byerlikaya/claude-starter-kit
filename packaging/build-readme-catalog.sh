@@ -112,6 +112,27 @@ rc=0
 apply "$ROOT/README.md"    "$TABLE_EN" || rc=$?
 apply "$ROOT/README.tr.md" "$TABLE_TR" || rc=$?
 N="$(printf '%s' "$TABLE_EN" | grep -c '^| `')"
+
+# The network diagram embedded in both READMEs states its own counts in a subtitle, and that line drifted: the
+# picture was regenerated with 12 agents and 38 skills while the caption above it still said 11 and 36. It is
+# the one claim a reader accepts without checking, because nobody counts 38 nodes. gen-network.py derives the
+# line from its data now, but a stale SVG on disk is still possible — the generator only runs when someone
+# remembers to run it. So the checked-in file is compared here, in the gate that already exists for exactly
+# this class of drift (the README is a VIEW of the payload, never a hand-maintained copy).
+AG="$(ls "$ROOT/claude-starter/agents"/*.md 2>/dev/null | wc -l | tr -d ' ')"
+for svg in network-en network-tr; do
+  f="$ROOT/assets/$svg.svg"
+  [ -f "$f" ] || { echo "ERROR: assets/$svg.svg is missing — the README embeds it." >&2; rc=1; continue; }
+  # Read the digits sitting next to each label, never the separator between them: this file is scanned under
+  # LC_ALL=C (see the header), where the subtitle's `×` is two bytes and a one-char wildcard would never match.
+  # `|| true` because a no-match grep would otherwise take the whole script down silently under `set -e`.
+  said="$(grep -oE '[0-9]+ (AGENTS|AJAN)|[0-9]+ SKILLS?' "$f" | grep -oE '[0-9]+' | head -2 | tr '\n' ' ' | sed 's/ $//' || true)"
+  if [ -z "$said" ]; then
+    echo "ERROR: assets/$svg.svg has no readable count subtitle — the markup changed; fix this check, don't drop it." >&2; rc=1
+  elif [ "$said" != "$AG $N" ]; then
+    echo "ERROR: assets/$svg.svg says '$said' but the payload is '$AG $N' — rerun: python3 packaging/gen-network.py assets" >&2; rc=1
+  fi
+done
 [ "$CHECK" = 1 ] && [ "$rc" = 0 ] && echo "skill catalogue in sync — EN + TR ($N skills)"
 [ "$CHECK" = 0 ] && [ "$rc" = 0 ] && echo "skill catalogue written — EN → README.md, TR → README.tr.md ($N skills)"
 exit $rc

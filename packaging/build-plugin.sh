@@ -17,14 +17,24 @@ cp -R "$SRC/agents"   "$OUT/agents"
 cp -R "$SRC/skills"   "$OUT/skills"
 cp -R "$SRC/commands" "$OUT/commands"
 
-# The Claude Code hooks that work standalone (self-locate via $0, read stdin) — NOT the git hooks
-# (pre-commit / commit-msg) and NOT their blocklist data files, which only apply under core.hooksPath.
-# skill-trust.sh is also left out: it decides kit-owned vs project-owned from .claude/kit-manifest.txt, which
-# only a start.sh/adopt.sh install writes. Shipped here it could only ever exit silently — an idle component.
-for h in guard-bash.sh guard-write.sh context-usage.sh session-guard.sh session-rehydrate.sh session-stats.sh; do
+# The Claude Code hooks that work standalone (self-locate via $0, read stdin).
+# skill-trust.sh is left out: it decides kit-owned vs project-owned from .claude/kit-manifest.txt, which only a
+# start.sh/adopt.sh install writes. Shipped here it could only ever exit silently — an idle component.
+for h in guard-bash.sh guard-write.sh context-usage.sh session-guard.sh session-rehydrate.sh session-stats.sh \
+         guard-commit-scan.sh; do
   cp "$SRC/hooks/$h" "$OUT/hooks/$h"
   chmod +x "$OUT/hooks/$h"
 done
+
+# The git hooks and their pattern files now DO ship — not to be wired through core.hooksPath (a plugin cannot
+# set that), but because guard-commit-scan.sh runs them from PreToolUse. Without them the plugin edition had
+# the commit APPROVAL gate and none of the commit CONTENT gates: a credential or an authorship trailer could
+# land, and of four distribution channels one was quietly weaker than the rest.
+for h in pre-commit commit-msg; do
+  cp "$SRC/hooks/$h" "$OUT/hooks/$h"
+  chmod +x "$OUT/hooks/$h"
+done
+cp "$SRC/hooks/trace-blocklist.txt" "$SRC/hooks/secret-blocklist.txt" "$OUT/hooks/"
 
 # hooks/hooks.json — auto-discovered by Claude Code when the plugin is enabled (no plugin.json field needed).
 # Same structure as settings.json's "hooks", but paths resolve through ${CLAUDE_PLUGIN_ROOT} (the plugin's install
@@ -36,7 +46,8 @@ cat > "$OUT/hooks/hooks.json" <<'HOOKS'
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/guard-bash.sh\"", "timeout": 30 }
+          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/guard-bash.sh\"", "timeout": 30 },
+          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/guard-commit-scan.sh\"", "timeout": 60 }
         ]
       },
       {
