@@ -27,10 +27,15 @@ fi
 
 # 3. The part that makes it an ADR rather than a note: the REJECTED option. A document naming only what was
 #    chosen loses exactly the information a future maintainer needs before reversing it.
-if [ -n "$DOC" ]; then
-  if grep -rliE 'redis' $DOC >/dev/null 2>&1 && grep -rliE 'postgres|postgresql' $DOC >/dev/null 2>&1; then
-    say PASS "both options appear — the alternative was considered, not just the winner"
-  else
-    say FAIL "the document names the choice but not the alternative it beat"
-  fi
+#
+#    This check emits UNCONDITIONALLY. It used to be skipped when check 2 found no document, which judged an
+#    arm that wrote nothing over 2 checks while an arm that wrote a document was judged over 3 — the two arms
+#    then have different denominators and their scores are not comparable. It never bit, because both arms
+#    wrote documents on every run, but a latent scoring bias is not a passing one.
+if [ -z "$DOC" ]; then
+  say FAIL "no document exists, so the rejected alternative is not recorded either"
+elif grep -rliE 'redis' $DOC >/dev/null 2>&1 && grep -rliE 'postgres|postgresql' $DOC >/dev/null 2>&1; then
+  say PASS "both options appear — the alternative was considered, not just the winner"
+else
+  say FAIL "the document names the choice but not the alternative it beat"
 fi
