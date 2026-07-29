@@ -587,8 +587,13 @@ else fail "settings.json missing"; fi
 # §4.4 git approval gate (behavioral). Contract:
 #   normal modes  -> exit 0 + permissionDecision:"ask"  (the USER approves in-session; Claude then commits)
 #   bypass/unknown-> exit 2 (fail closed; no prompt can be proven to reach the user)
-#   CLAUDE_GIT_OK -> exit 0, silent (pre-authorised headless/CI)
+#   CLAUDE_GIT_OK -> exit 0 + permissionDecision:"allow" (pre-authorised headless/CI)
 #   §4.5 ops      -> exit 2 in every mode, even with the key
+#
+# That "allow" is load-bearing and used to be a silent exit 0. settings.json ALSO asks for `git add` and
+# `git checkout -b`, and an exit-0 hook says "no opinion", which leaves those rules in force — so a keyed
+# headless session could not stage, let alone commit, and the key achieved nothing it was documented to do.
+# Asserting the exit code alone is what let that ship: the code was always right, the decision was missing.
 gj(){ printf '{"tool_name":"Bash","permission_mode":"%s","tool_input":{"command":"%s"}}' "$1" "$2"; }
 gdec(){ printf '%s' "$1" | sed -n 's/.*"permissionDecision"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1; }
 for m in default acceptEdits auto dontAsk; do
@@ -613,6 +618,21 @@ printf '%s' '{"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}' | 
 gj auto 'CLAUDE_GIT_OK=1 git commit -m x' | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && fail "inline CLAUDE_GIT_OK PASSED (§4.4 hole)" || pass "inline CLAUDE_GIT_OK injection rejected (§4.4)"
 # pre-authorised session
 gj bypassPermissions 'git commit -m x' | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && pass "git commit PASSES with CLAUDE_GIT_OK=1" || fail "keyed commit blocked (gate too strict)"
+# The whole approval-gated set must clear BOTH gates on a keyed session, and only an explicit allow does.
+for c in 'git commit -m x' 'git add .' 'git add src/a.js' 'git push' 'git checkout -b feat/x'; do
+  o="$(gj auto "$c" | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" 2>/dev/null)"; r=$?
+  { [ "$r" = 0 ] && [ "$(gdec "$o")" = "allow" ]; } \
+    && pass "keyed session ALLOWS '$c' (overrides the settings.json ask)" \
+    || fail "keyed '$c' did not return allow (rc=$r out=$o) — settings.json would still block it headless"
+done
+# The key opens the approval gate, never the destructive one: `git add -f` is §4.5 and stays blocked.
+gj auto 'git add -f secrets.env' | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 \
+  && fail "git add -f PASSED with the key (§4.5 hole)" || pass "git add -f BLOCKED even with the key (§4.5)"
+# Without the key the hook must stay OUT of the way on `git add`: settings.json owns that prompt, and a hook
+# that answered here would quietly take over a rule the user can see and edit.
+o="$(gj auto 'git add .' | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"
+[ -z "$(gdec "$o")" ] && pass "unkeyed 'git add' left to settings.json (hook offers no decision)" \
+                      || fail "hook decided 'git add' without the key (out=$o)"
 # §4.5 always wins, key or no key, mode or no mode
 gj auto 'git push --force' | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && fail "push --force PASSED with key (§4.5 hole)" || pass "push --force BLOCKED even with key (§4.5)"
 gj bypassPermissions 'git reset --hard' | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && fail "reset --hard PASSED (§4.5 hole)" || pass "reset --hard BLOCKED in bypass + key (§4.5)"

@@ -136,7 +136,21 @@ ask_user(){
   printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"%s"}}\n' "$(json_escape "$1")"
   exit 0
 }
-if git_has "$CMD" 'commit|push'; then
+# A pre-authorised session has to clear BOTH gates, and only an explicit decision does that.
+allow_preauthorised(){
+  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","permissionDecisionReason":"%s"}}\n' \
+    "$(json_escape "CLAUDE_GIT_OK: session pre-authorised before it started (§4.4 headless/CI)")"
+  exit 0
+}
+# The approval-gated git set is guarded in two places: this hook asks for commit/push, and settings.json also
+# asks for `git add` and `git checkout -b`. The key used to answer only the first, by exiting 0 — which means
+# "this hook has no opinion" and leaves the settings rule in force. So a headless run could not even STAGE,
+# while §4.4 advertised the key as the way to work with nobody at the keyboard: the flag's only purpose, and
+# it did not achieve it. Measured with the A/B harness (evals/), where the kit arm proposed a commit and
+# stopped in every run while the bare arm committed freely.
+# Reached only AFTER the §4.5 blocks above, so a pre-authorised session still cannot force-push, amend,
+# reset --hard or `git add -f` — the key opens the approval gate, never the destructive one.
+if git_has "$CMD" 'add|commit|push|checkout'; then
   # The key is granted by the user's environment, never by the command line the model composes.
   if printf '%s' "$CMD" | grep -q 'CLAUDE_GIT_OK'; then
     echo "GUARD (§4.4): the attempt to set the approval key (CLAUDE_GIT_OK) inside the command was rejected." >&2
@@ -144,8 +158,10 @@ if git_has "$CMD" 'commit|push'; then
     exit 2
   fi
   case "${CLAUDE_GIT_OK:-}" in
-    1|yes|true|on|YES|TRUE|ON) exit 0 ;;   # pre-authorised session (headless/CI) -> pass
+    1|yes|true|on|YES|TRUE|ON) allow_preauthorised ;;   # pre-authorised session (headless/CI)
   esac
+fi
+if git_has "$CMD" 'commit|push'; then
   case "$PERM_MODE" in
     default|acceptEdits|auto|dontAsk)
       # A prompt provably reaches the user in these modes: ask, and let them approve in one keypress.
