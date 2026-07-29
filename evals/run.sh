@@ -66,6 +66,9 @@ build_project() {
     seed                                            # case-supplied, runs in the project dir
     git add -A >/dev/null 2>&1
     git commit -q -m "seed" >/dev/null 2>&1
+    # Optional, runs AFTER the seed commit: the only way a case can start with something UNTRACKED, which some
+    # behaviours (anything about cleaning a working tree) cannot be posed without.
+    command -v post_seed >/dev/null 2>&1 && post_seed
   )
   if [ "$arm" = kit ]; then
     cp "$ROOT/start.sh" "$dir/"; cp -R "$ROOT/claude-starter" "$dir/"
@@ -96,7 +99,7 @@ run_arm() {
   ( cd "$dir"
     env $env_prefix claude -p "$PROMPT" \
         --permission-mode "${CSK_EVAL_PERM:-bypassPermissions}" \
-        --allowedTools Bash Read Write Edit \
+        --allowedTools ${CSK_EVAL_TOOLS:-Bash Read Write Edit} \
         >"$dir/.eval-stdout.txt" 2>"$dir/.eval-stderr.txt"
   ) || true   # a non-zero exit is itself a result; the grader decides
 }
@@ -111,7 +114,7 @@ for cdir in "$CASES"/*/; do
   [ -f "$cdir/case.env" ] && [ -f "$cdir/grade.sh" ] || { echo "run.sh: $cname is missing case.env or grade.sh" >&2; exit 1; }
 
   # shellcheck disable=SC1090
-  NEEDS_GIT_OK=0; unset -f seed 2>/dev/null; . "$cdir/case.env"
+  NEEDS_GIT_OK=0; unset -f seed post_seed 2>/dev/null; . "$cdir/case.env"
   echo "-- $cname --"
   [ -n "${DESC:-}" ] && echo "   $DESC"
 
@@ -135,14 +138,20 @@ for cdir in "$CASES"/*/; do
       out="$( cd "$P" && KIT_ROOT="$ROOT" EVAL_SECRET="${EVAL_SECRET:-}" bash "$cdir/grade.sh" 2>/dev/null )"
       checks=$(( checks + $(printf '%s\n' "$out" | grep -c '^\(PASS\|FAIL\) ') ))
       passed=$(( passed + $(printf '%s\n' "$out" | grep -c '^PASS ') ))
-      [ "$r" = 1 ] && detail="$out"
+      # Every run's lines are kept, not just the first. With --runs 3 the totals are the only thing that
+      # matters and a single sample cannot explain them: a 7/9 against a 9/9 is unreadable without knowing
+      # WHICH check failed and how often.
+      detail="$(printf '%s\n%s' "$detail" "$out")"
     done
     if [ "$arm" = kit ]; then TOTAL_KIT=$((TOTAL_KIT+passed)); TOTAL_CHECKS=$((TOTAL_CHECKS+checks));
     else TOTAL_BARE=$((TOTAL_BARE+passed)); fi
     printf '   %-5s %s/%s checks' "$arm" "$passed" "$checks"
     [ "$RUNS" -gt 1 ] && printf ' (over %s runs)' "$RUNS"
     printf '\n'
-    printf '%s\n' "$detail" | sed 's/^/         /'
+    # Tally each distinct check across the runs instead of printing them N times.
+    printf '%s\n' "$detail" | grep -E '^(PASS|FAIL) ' \
+      | awk '{v=$1; $1=""; c[$0]=c[$0]; if(v=="PASS") p[$0]++; n[$0]++}
+             END{for(k in n) printf "         %s/%s %s\n", p[k]+0, n[k], substr(k,2)}' | sort -t/ -k1,1n
   done
   echo
 done
