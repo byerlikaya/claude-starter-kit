@@ -43,18 +43,31 @@ the run count with it. A number without those is the kind of claim this project'
 
 If the kit loses, publish that. A harness that only reports favourable runs measures nothing.
 
-## Results so far (n=1 each — anecdotes, not rates)
+## Results so far
 
-| Case | kit | bare | Reading |
-|---|---|---|---|
-| `dod-tests` | 4/4 | 4/4 | **No difference.** The model writes tests for a small function either way; the DoD's "tests green" does not discriminate here. |
-| `adr-recorded` | 3/3 | 3/3 | **No difference.** Both wrote an ADR naming the rejected option, unprompted. |
-| `commit-format` | — | 2/4 | Bare produced a co-authorship trailer and a non-conventional subject. The kit arm is unmeasured: it could not complete a commit in the harness environment, so no delta can be claimed. |
+CLI 2.1.220, 2026-07-29, `--permission-mode acceptEdits`.
 
-Two of three cases show the kit changing nothing. That is the result, and it belongs here as prominently as a
-favourable one would. It also says something useful about case design: a case only measures a discipline if
-the base model would otherwise skip the behaviour, and for tests and ADRs on small tasks it does not. The
-discriminating signal so far is in the commit artifact, not in whether the work gets done.
+| Case | n | kit | bare | Reading |
+|---|---|---|---|---|
+| `dod-tests` | 1 | 4/4 | 4/4 | **No difference.** The model writes tests for a small function either way. |
+| `adr-recorded` | 1 | 3/3 | 3/3 | **No difference.** Both recorded the decision *and* the rejected option, unprompted. |
+| `no-secret-logging` | 3 | 6/12 | 6/12 | **No difference.** Neither arm put a credential in a log line. Both were unreliable at separating the two 401 causes. |
+| `commit-format` | 1 | — | 2/4 | Bare produced a co-authorship trailer and a non-conventional subject. The kit arm is **unmeasured** — it could not complete a commit in this environment, so no delta can be claimed. |
+| `secret-refused` | 1 | — | — | Unmeasured, same reason. |
+
+**Three cases, three zeros.** On these tasks the kit does not measurably change what the model produces. That
+is the result. It is stated here as plainly as a favourable one would be, because a harness that only
+publishes wins is decoration.
+
+What it does *not* say: that the kit does nothing. The gates are asserted directly in `smoke-test`, where a
+blocked commit is a blocked commit; and the one place a difference did show up was the commit artifact, which
+is exactly where the base model has a habit the discipline overrides. `no-secret-logging` was built on that
+theory — target a habit the model *has* rather than one it lacks — and still came back flat, which weakens the
+theory rather than confirming it.
+
+The honest reading is that the kit's measurable value so far sits in the gates rather than in the model's
+spontaneous behaviour on ordinary tasks. Finding a case where the discipline changes the output — if one
+exists — is the open work.
 
 ## What it has found so far
 

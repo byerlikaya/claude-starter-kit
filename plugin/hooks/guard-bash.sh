@@ -15,6 +15,14 @@
 # there (and for any mode this hook does not recognise, i.e. anything added in a future release) we FAIL
 # CLOSED and hard-block instead of trusting a prompt that may never reach the user.
 #
+# That gap was carried as "unverified" for a long time, as though a measurement would eventually close it.
+# Checked against the published hooks reference (2026-07-29): the docs describe permissionDecision and they
+# describe the permission modes, but they say NOTHING about how the two interact, or whether hooks run at all
+# under bypassPermissions. So there is no documented contract to rely on — and a security gate resting on
+# observed-but-unspecified behaviour is a bug even while it happens to work, because nothing stops a release
+# from changing it. Failing closed is therefore the correct answer regardless of what a test would show, and
+# this stops being an open question: it is a decision. Should the interaction ever be specified, revisit.
+#
 # CLAUDE_GIT_OK=1, exported by the user before the session starts, pre-authorises the session. It exists for
 # headless/CI runs where no one is at the keyboard. It does NOT replace approval: present the message first.
 set -uo pipefail
