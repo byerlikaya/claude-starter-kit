@@ -37,6 +37,26 @@ make explicitly, and it gets written down as an assumption, not swallowed.
 Checks 3–5 do not apply to every task (a pure refactor has no external claim and no bug). Mark those **n/a**
 with a reason — n/a is a judgement you are stating, not a check you are skipping.
 
+An ambiguity you cannot resolve is not a failed check — it is a `[NEEDS CLARIFICATION: …]` marker
+([[spec-planning]]) carried into the plan. Guessing it and passing check 2 is the failure mode this gate exists
+to catch.
+
+## A bypassed gate leaves a record
+Gates get bypassed, legitimately: the user accepts a known gap, a DoD item is deferred, scope is trimmed under
+time pressure. What must not happen is the bypass being *spoken and forgotten* — three weeks later nobody can
+say whether a rule was weighed and overridden or simply missed, and those two are indistinguishable from the
+code. That gap is the missing half of "rule → gate": the kit enforces the rule at the tool level, and until now
+recorded nothing when a human deliberately stepped past it.
+
+So when a gate is knowingly bypassed, write one line where the decision lives — the ADR for anything lasting
+([[adr]]), otherwise the plan's assumptions section:
+
+`BYPASSED <gate> — <why> — asked by <who> — revisit: <condition or date>`
+
+The `revisit` field is what separates a decision from a leak: a bypass with no condition attached is permanent
+by default, and nobody chose that. Never write this on the model's own authority — a bypass is the user's call,
+so the line records *their* decision, and its absence means the gate was not bypassed at all.
+
 ## Output
 Five lines, one per check: `✅ <what was run/read>` or `❌ <what is missing>` or `n/a — <why>`. Then either
 "starting" or the single action that unblocks it. Keep it to the main thread; it is a handful of lines, not a

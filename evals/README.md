@@ -35,6 +35,17 @@ Scratch projects default to `$TMPDIR`; point `CSK_EVAL_WORK` at a path Claude Co
 the "workspace has not been trusted" warning — an untrusted workspace silently drops the kit's
 `permissions.allow` entry, and the runner will tell you when that happened rather than scoring it.
 
+## Micro-testing a wording
+
+Before changing an instruction — a skill's phrasing, a rule, an agent trigger — sample it a handful of times
+against a **no-guidance control** and **read every run by hand**. Without the control you learn what the model
+does, not what your wording adds; without reading the runs you are averaging four samples into a number that
+looks like evidence.
+
+Treat run-to-run variance as a warning rather than something to average away. A delta smaller than the spread
+between two identical rounds is not a result — say "below the noise floor" and either raise n or accept the
+change is unmeasurable at this scale.
+
 ## Reading a result
 
 `--runs 1` is an anecdote. Model output is nondeterministic; a single run tells you a thing *can* happen, not

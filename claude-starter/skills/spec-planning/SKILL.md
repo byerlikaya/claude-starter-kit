@@ -28,5 +28,24 @@ Before writing code: what will be done, how it counts as "done", and in what ord
 - ...
 ```
 
+## Mark what you do not know — do not fill it in
+Where a requirement admits more than one reading, write the marker **`[NEEDS CLARIFICATION: <the question>]`** at
+that exact spot in the plan. Do not resolve it with the likeliest interpretation and move on.
+
+This is the difference between a discipline and a hope. "Stop and ask when unsure" (§1) depends on noticing the
+uncertainty in the moment; a marker survives into the artifact, where the user, a reviewer and a later session
+can all see it. A plausible assumption silently written into a spec is indistinguishable from a decision, and
+that is exactly how the wrong feature gets built correctly.
+
+Rules that keep it honest:
+- The marker carries the **question**, not the label. `[NEEDS CLARIFICATION: does an expired invite count as
+  used, or can it be re-sent?]` is actionable; `[NEEDS CLARIFICATION: invites]` is noise.
+- A plan may ship with markers — that is the point. It may **not** ship with a marker inside an acceptance
+  criterion: a criterion nobody can evaluate is not a criterion.
+- Resolve by asking, never by choosing. When the user answers, replace the marker with the answer *and* record
+  which reading was rejected — the alternative is what a future reader needs.
+- Zero markers on a genuinely ambiguous brief is a smell, not a win.
+
 ## DoD (this skill's contribution)
 - Every task's "done" is testable; ordering and dependencies are visible; the riskiest work has been brought to the front.
+- Every unresolved ambiguity carries a `[NEEDS CLARIFICATION: …]` marker; no acceptance criterion contains one.
