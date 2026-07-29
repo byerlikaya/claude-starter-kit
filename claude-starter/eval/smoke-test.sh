@@ -1013,6 +1013,23 @@ $TRFX\""; then fail "multi-line AI trace in the message PASSED (§4.1 hole)"
   ( cd "$CS" && printf 'k = "%s"\n' "$SKFX" >> a.txt ) >/dev/null 2>&1
   if csrun 'git commit -am "feat: y"'; then fail "unstaged secret via 'commit -a' PASSED (secret hole)"
   else pass "'git commit -a' scans tracked-but-unstaged content (secret BLOCKED)"; fi
+  ( cd "$CS" && git checkout -- a.txt ) >/dev/null 2>&1
+  # An editor-composed message does not exist yet at PreToolUse. With no commit-msg git hook to read it
+  # afterwards — a plugin-only install, where nothing can set core.hooksPath — the message would ship
+  # unscanned, and the message is exactly where a co-authorship trailer lives. Fail closed there, and stay out
+  # of the way where the git hook does cover it.
+  if csrun 'git commit'; then fail "editor-composed message unscanned and allowed (plugin-only §4.1 hole)"
+  else pass "editor message refused where nothing can scan it (plugin-only)"; fi
+  MFX="$(mktemp "${TMPDIR:-/tmp}/csk-mfx.XXXXXX")"; printf 'feat: from a file\n' > "$MFX"
+  csrun "git commit -F $MFX" && pass "-F <file> message is read and scanned (clean passes)" \
+                             || fail "-F <file> with a clean message was blocked"
+  printf 'feat: x\n\n%s: Claude\n' "Co-""Authored-By" > "$MFX"
+  if csrun "git commit -F $MFX"; then fail "-F <file> carrying an AI trace PASSED (§4.1 hole)"
+  else pass "-F <file> carrying an AI trace BLOCKED (§4.1)"; fi
+  rm -f "$MFX"
+  ( cd "$CS" && git config core.hooksPath .claude/hooks ) >/dev/null 2>&1
+  csrun 'git commit' && pass "editor message allowed once a commit-msg git hook can scan it (full install)" \
+                     || fail "full install over-blocks an editor-composed message"
   rm -rf "$CS"
 else
   fail "guard-commit-scan.sh missing or not executable — the plugin edition has no commit content gate"

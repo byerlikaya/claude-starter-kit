@@ -81,6 +81,40 @@ print("\n".join(out))
     OUT="$OUT
 $(bash "$DIR/commit-msg" "$MF" 2>&1)" || FAILED=1
     rm -f "$MF"
+  else
+    # No -m: either the message comes from a file (-F/--file, which we CAN read) or from an editor, which does
+    # not exist yet at this point. In a full install the commit-msg git hook reads it afterwards and the gap
+    # closes itself. In a plugin-only install nothing does — and a co-authorship trailer lives in the message,
+    # not the diff, so that is precisely where §4.1 would be lost. Fail closed rather than wave it through:
+    # a gate that silently skips the case it was built for is worse than no gate, because it reads as covered.
+    MFILE=""
+    if command -v python3 >/dev/null 2>&1; then
+      MFILE="$(CSK_CMD="$CMD" python3 -c '
+import os, shlex
+try: parts = shlex.split(os.environ["CSK_CMD"])
+except ValueError: parts = []
+for i, p in enumerate(parts):
+    if p in ("-F", "--file") and i + 1 < len(parts): print(parts[i + 1]); break
+    if p.startswith("--file="): print(p.split("=", 1)[1]); break
+' 2>/dev/null)"
+    fi
+    if [ -n "$MFILE" ] && [ -f "$MFILE" ]; then
+      OUT="$OUT
+$(bash "$DIR/commit-msg" "$MFILE" 2>&1)" || FAILED=1
+    else
+      HP="$(git config core.hooksPath 2>/dev/null || true)"
+      GITMSG_HOOK=""
+      [ -n "$HP" ] && [ -x "$HP/commit-msg" ] && GITMSG_HOOK="$HP/commit-msg"
+      [ -z "$GITMSG_HOOK" ] && [ -x "$(git rev-parse --git-path hooks/commit-msg 2>/dev/null)" ] \
+        && GITMSG_HOOK="git-default"
+      if [ -z "$GITMSG_HOOK" ]; then
+        echo "GUARD (§4.1): this commit's message would go unscanned." >&2
+        echo "No -m/-F was given, so the message is composed in an editor after this point, and no commit-msg" >&2
+        echo "git hook is wired here to read it afterwards (plugin-only install: a plugin cannot set" >&2
+        echo "core.hooksPath). Pass the message with -m so it can be scanned, or install the kit fully." >&2
+        exit 2
+      fi
+    fi
   fi
 fi
 

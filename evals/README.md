@@ -43,6 +43,19 @@ the run count with it. A number without those is the kind of claim this project'
 
 If the kit loses, publish that. A harness that only reports favourable runs measures nothing.
 
+## Results so far (n=1 each — anecdotes, not rates)
+
+| Case | kit | bare | Reading |
+|---|---|---|---|
+| `dod-tests` | 4/4 | 4/4 | **No difference.** The model writes tests for a small function either way; the DoD's "tests green" does not discriminate here. |
+| `adr-recorded` | 3/3 | 3/3 | **No difference.** Both wrote an ADR naming the rejected option, unprompted. |
+| `commit-format` | — | 2/4 | Bare produced a co-authorship trailer and a non-conventional subject. The kit arm is unmeasured: it could not complete a commit in the harness environment, so no delta can be claimed. |
+
+Two of three cases show the kit changing nothing. That is the result, and it belongs here as prominently as a
+favourable one would. It also says something useful about case design: a case only measures a discipline if
+the base model would otherwise skip the behaviour, and for tests and ADRs on small tasks it does not. The
+discriminating signal so far is in the commit artifact, not in whether the work gets done.
+
 ## What it has found so far
 
 - A bare-project commit landed with a co-authorship trailer and a non-conventional subject — caught by the
