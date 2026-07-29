@@ -25,7 +25,7 @@
 | Önemli olan | Tipik agent kiti / prompt koleksiyonu | Claude Starter Kit |
 |---|---|---|
 | **Kritik kurallar** | Bir `.md` dosyasında durur; yalnız model hatırlarsa uygulanır | **Kapı olarak zorlanır** — araç seviyesinde: git hook (`trace-scan`), `settings.json` izinleri, `guard-bash.sh` PreToolUse. Kırmak *imkânsız*, "tavsiye edilmez" değil |
-| **Yapı** | Tek bir dev prompt ya da senin yönettiğin gevşek bir agent listesi | **11 uzman agent'lık bir ekip**, 5 aşamada kendiliğinden zincirlenir (Anla → Üret → Denetle → Kapat → Devret) — sen bağlamazsın, ana thread bağlar |
+| **Yapı** | Tek bir dev prompt ya da senin yönettiğin gevşek bir agent listesi | **12 uzman agent'lık bir ekip**, 5 aşamada kendiliğinden zincirlenir (Anla → Üret → Denetle → Kapat → Devret) — sen bağlamazsın, ana thread bağlar |
 | **Güvenlik & gizlilik** | İsteğe bağlı tavsiye, atlaması kolay | **Zorunlu audit kapısı** — risk-kritik değişiklik, güvenlik/gizlilik denetimi geçmeden kapanamaz |
 | **Commit'ler** | Model kendi başına commit atabilir | **Her commit senin onayına bağlı** — auto/bypass modda bile araç seviyesinde zorlanır |
 | **Mevcut repoya uyarlama** | "Sıfırdan başla" varsayımı; elle taşıma | **`adopt` kiti bir branch'te devreder** — `main`'e dokunulmaz; sen inceleyip tutmaya karar verirsin |
@@ -163,7 +163,7 @@ Bir asistan `/context` komutunu kendisi çalıştıramaz; bu yüzden çoğu kuru
 
 `smoke-test.sh` bileşen başına byte bütçesi uygular (disiplin · ajan tarifleri · skill tarifleri); maliyet fark edilmeden yukarı kaymaz. Bütçe yükseltilebilir, ama `smoke-test.sh` içinde açıkça düzenlenerek.
 
-> **Profil budaması token kazandırmaz.** `--backend` (11 ajan, 35 skill), `--fullstack`'ten (12 ajan, 38 skill) yalnızca birkaç yüz token ucuz. Profili işin kapsamını daraltmak için seç.
+> **Profil budaması token kazandırmaz.** `--backend` (11 ajan, 34 skill), `--fullstack`'ten (12 ajan, 38 skill) yalnızca birkaç yüz token ucuz. Profili işin kapsamını daraltmak için seç.
 
 ---
 

@@ -386,6 +386,41 @@ if [ -f "$ROOT/kit.conf" ]; then
   case "$KP" in backend|frontend|mobile|fullstack) pass "kit.conf records a known profile ($KP)" ;; *) fail "kit.conf profile invalid: '$KP'" ;; esac
 fi
 
+# The counts the installer and the READMEs advertise are DERIVED — profiles.conf prunes a known set from what is
+# on disk — but nothing recomputed them, so they drifted the way every ungated number in this project has: the
+# wizard offered "~11 agents · ~34 skills" for fullstack while shipping 12 and 38, and every one of its four rows
+# was wrong at once. The catalogue, the plugin edition and the published site each earned a gate after drifting;
+# this is the same class and had none. Kit-repo only (start.sh removes itself post-install).
+if [ "$IS_KIT" = 1 ] && [ -f "$ROOT/profiles.conf" ]; then
+  KR="$(cd "$ROOT/.." && pwd)"
+  TA=0; for f in "$AGENTS"/*.md;       do [ -e "$f" ] && TA=$((TA+1)); done
+  TS=0; for f in "$SKILLS"/*/SKILL.md; do [ -e "$f" ] && TS=$((TS+1)); done
+  while IFS=: read -r prof exa exs; do
+    case "$prof" in \#*|"") continue ;; esac
+    # shellcheck disable=SC2086  # word splitting is the count here
+    set -- $exa; PA=$((TA-$#)); set -- $exs; PS=$((TS-$#))
+    # The wizard writes "~N agents · ~M skills" per profile; the tilde is presentation, the numbers are claims.
+    LINE="$(grep -E "^[[:space:]]*opt [0-9]+ \"$prof\"" "$KR/start.sh" 2>/dev/null || true)"
+    if [ -z "$LINE" ]; then fail "start.sh has no wizard row for profile '$prof'"; continue; fi
+    GA="$(printf '%s' "$LINE" | sed -n 's/.*~\([0-9]\{1,\}\) agents.*/\1/p')"
+    GS="$(printf '%s' "$LINE" | sed -n 's/.*~\([0-9]\{1,\}\) skills.*/\1/p')"
+    if [ "$GA" = "$PA" ] && [ "$GS" = "$PS" ]; then
+      pass "start.sh wizard: $prof advertises $PA agents · $PS skills (matches profiles.conf)"
+    else
+      fail "start.sh wizard: $prof advertises ${GA:-?} agents · ${GS:-?} skills — profiles.conf yields $PA · $PS"
+    fi
+  done < "$ROOT/profiles.conf"
+  # The READMEs state the full (fullstack) agent count in prose. A stale one there is the first thing a reader sees.
+  for r in README.md README.tr.md README.npm.md; do
+    [ -f "$KR/$r" ] || continue
+    if grep -qE "(^|[^0-9])$TA (specialist agents|uzman agent|namespaced agents)" "$KR/$r"; then
+      pass "$r states the real agent count ($TA)"
+    else
+      fail "$r does not state $TA agents — the prose count drifted from the payload"
+    fi
+  done
+fi
+
 echo "== 6h) pre-commit scanners: must not go blind on a large diff =="
 # The scanners used to be `printf "$ADDED" | grep -q`. grep -q exits on the first match, printf dies of SIGPIPE,
 # and `set -o pipefail` turned that into "no match" — so a trace or a secret in a LARGE staged diff sailed through.

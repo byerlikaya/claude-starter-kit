@@ -136,18 +136,18 @@ if [ -z "$PROFILE" ]; then
   h1  "[1/3] Project profile"
   sub "The choice determines the set of agents + skills to install."
   echo
-  opt 1 "backend"   0 "~10 agents · ~30 skills"
+  opt 1 "backend"   0 "~11 agents · ~34 skills"
   add  "backend-expert-csk · database-expert-csk + db / api / migration skills"
   skip "frontend-expert-csk and all UI skills (frontend/frontend-design/a11y) NOT INSTALLED"
   echo
-  opt 2 "frontend"  0 "~9 agents · ~31 skills"
+  opt 2 "frontend"  0 "~10 agents · ~34 skills"
   add  "frontend-expert-csk + frontend / frontend-design / a11y skills"
   skip "backend-expert-csk · database-expert-csk and all server skills NOT INSTALLED"
   echo
-  opt 3 "fullstack" 1 "~11 agents · ~34 skills"
+  opt 3 "fullstack" 1 "~12 agents · ~38 skills"
   add  "everything — all agents + all skills: backend + web + mobile (RN/Expo) together"
   echo
-  opt 4 "mobile"    0 "~9 agents · ~31 skills"
+  opt 4 "mobile"    0 "~10 agents · ~35 skills"
   add  "frontend-expert-csk + React Native / Expo layer (frontend-rn-expo)"
   skip "backend-expert-csk · database-expert-csk NOT INSTALLED"
   echo

@@ -25,7 +25,7 @@ Most "agent setups" are a pile of suggestions — the rules sit in a file, and w
 | What matters | Typical agent kit / prompt collection | Claude Starter Kit |
 |---|---|---|
 | **Critical rules** | Live in a `.md` file; honored only if the model remembers | **Enforced as gates** at the tool level — git hook (`trace-scan`), `settings.json` permissions, `guard-bash.sh` PreToolUse. Breaking them is *impossible*, not *discouraged* |
-| **Structure** | A single dev prompt, or a loose list of agents you orchestrate | **A team of 11 specialist agents** that auto-chain across 5 stages (Understand → Produce → Audit → Close → Hand off) — the main thread wires them, not you |
+| **Structure** | A single dev prompt, or a loose list of agents you orchestrate | **A team of 12 specialist agents** that auto-chain across 5 stages (Understand → Produce → Audit → Close → Hand off) — the main thread wires them, not you |
 | **Security & privacy** | Optional advice, easy to skip | **Mandatory audit gate** — risk-critical changes can't close before the security/privacy review clears |
 | **Commits** | Model may commit on its own | **Every commit is yours to approve** — enforced at the tool level even in auto/bypass mode |
 | **Adopting an existing repo** | "Start fresh" assumption; manual porting | **`adopt` hands the kit over on a branch** — `main` is never touched; you review before you keep it |
@@ -163,7 +163,7 @@ An assistant cannot run `/context` itself, so most setups **guess** the session 
 
 `smoke-test.sh` enforces a byte budget per component (discipline · agent descriptions · skill descriptions), so the cost cannot drift upward unnoticed. A budget can be raised, but only by editing `smoke-test.sh` explicitly.
 
-> **Profile pruning does not save tokens.** A `--backend` install (11 agents, 35 skills) costs only a few hundred tokens less than `--fullstack` (12 agents, 38 skills). Pick a profile to narrow the scope of the work.
+> **Profile pruning does not save tokens.** A `--backend` install (11 agents, 34 skills) costs only a few hundred tokens less than `--fullstack` (12 agents, 38 skills). Pick a profile to narrow the scope of the work.
 
 ---
 

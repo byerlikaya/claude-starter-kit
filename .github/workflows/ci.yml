@@ -20,7 +20,7 @@ jobs:
             [ -f "$s" ] && bash -n "$s" && echo "ok: $s"
           done
 
-      - name: Smoke test — source (unpruned, 11 agents)
+      - name: Smoke test — source (unpruned, 12 agents)
         run: bash claude-starter/eval/smoke-test.sh
 
       - name: Routing eval — behavioral (golden routing + agent conflicts)
