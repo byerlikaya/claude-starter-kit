@@ -1,0 +1,99 @@
+name: stats
+
+# Weekly capture of distribution reach into an append-only ledger on the `stats` branch.
+#
+# GitHub's traffic API keeps fourteen days. Nothing here was recording it, so every clone count older than two
+# weeks is already unrecoverable — this workflow exists to stop that loss going forward, not to recover it.
+#
+# The ledger lives on its own ROOT-HISTORY branch (`stats`, one file: stats.jsonl) rather than on main: a
+# weekly bot commit on main would bury the release history this project keeps deliberately readable. The branch
+# is written with git plumbing (hash-object / mktree / commit-tree), so nothing is ever checked out over the
+# working tree and the branch bootstraps itself on the first run.
+#
+# Traffic needs a fine-grained PAT with `Administration: read` in the STATS_TOKEN secret — `administration` is
+# not a permission the automatic GITHUB_TOKEN can be granted. Without it the run still records npm and release
+# numbers, and annotates itself so the gap is visible rather than silently logged as zero reach.
+
+on:
+  schedule:
+    - cron: '17 6 * * 1'   # Mondays, 06:17 UTC. Off the hour on purpose: GitHub's scheduler is most congested
+                           # at :00 and delays (or drops) runs there. Weekly beats the 14-day window twice over.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: stats-ledger      # two appends racing would each build a tree from the same parent and one would lose
+  cancel-in-progress: false
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Collect the week's numbers
+        env:
+          STATS_TOKEN: ${{ secrets.STATS_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          bash packaging/collect-stats.sh > row.json
+          # A row with no traffic is still worth keeping, but it must not pass as a complete one.
+          if [ "$(jq -r '.github.traffic == null' row.json)" = true ]; then
+            echo "::warning title=Traffic not captured::$(jq -r '.github.traffic_error' row.json)"
+          fi
+          jq -r '"npm last-week: \(.npm.total // "n/a") · traffic clones: \(.github.traffic.clones.count // "n/a")"' row.json
+
+      - name: Append to the ledger
+        run: |
+          set -euo pipefail
+          git fetch --depth=1 origin stats 2>/dev/null || true
+
+          PARENT="$(git rev-parse --verify -q origin/stats || true)"
+          if [ -n "$PARENT" ]; then
+            git cat-file -p "origin/stats:stats.jsonl" > ledger.jsonl 2>/dev/null || : > ledger.jsonl
+          else
+            : > ledger.jsonl
+            echo "no stats branch yet — bootstrapping it"
+          fi
+          cat row.json >> ledger.jsonl
+
+          cat > ledger-readme.md <<'EOF'
+          # stats
+
+          Append-only ledger of this project's distribution reach, one JSON object per line in `stats.jsonl`,
+          written weekly by `.github/workflows/stats.yml`.
+
+          It exists because GitHub's traffic API keeps only a **fourteen day** window: clone and view counts
+          older than that are deleted and cannot be recovered. npm and release-asset totals are permanent and
+          are recorded alongside so the numbers can be read against each other.
+
+          Reading the rows:
+
+          - `npm.by_version` — most of every version's weekly downloads are **mirror traffic**, a similar
+            baseline on versions nobody installs. The signal is the spike on the current version above it.
+          - `npm.current_version_downloads` lags a release by a few days: npm's window closes before a
+            just-published version has been out a full week.
+          - `github.traffic` is `null` when the run had no `Administration: read` token. Null means *not
+            measured* — it is deliberately not written as zero.
+          - Runs overlap (weekly capture, fourteen-day window), so `daily` arrays repeat days. Deduplicate by
+            date when aggregating.
+
+          This branch has its own root history and shares no commits with `main`.
+          EOF
+
+          BLOB_LEDGER="$(git hash-object -w ledger.jsonl)"
+          BLOB_README="$(git hash-object -w ledger-readme.md)"
+          TREE="$(printf '100644 blob %s\tREADME.md\n100644 blob %s\tstats.jsonl\n' \
+                    "$BLOB_README" "$BLOB_LEDGER" | git mktree)"
+
+          export GIT_AUTHOR_NAME="github-actions[bot]" GIT_COMMITTER_NAME="github-actions[bot]"
+          export GIT_AUTHOR_EMAIL="41898282+github-actions[bot]@users.noreply.github.com"
+          export GIT_COMMITTER_EMAIL="$GIT_AUTHOR_EMAIL"
+          MSG="chore(stats): weekly snapshot $(date -u +%Y-%m-%d)"
+          COMMIT="$(git commit-tree "$TREE" ${PARENT:+-p "$PARENT"} -m "$MSG")"
+
+          git push origin "$COMMIT:refs/heads/stats"
+          echo "ledger now has $(wc -l < ledger.jsonl | tr -d ' ') row(s)"
