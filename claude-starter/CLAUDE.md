@@ -141,8 +141,8 @@ gate fails closed (switch mode, or export `CLAUDE_GIT_OK=1` for headless/CI — 
 replaces approval**).
 
 ### 4.5 Destructive operations require approval
-`git reset --hard`, `push --force`, `clean -f`, `--no-verify`, `--no-gpg-sign`, `git add -f`, deleting a lockfile,
-downgrading a package, a pipe-to-shell (`curl|bash`), `chmod 777`, `dd of=`, or tampering with a hook script /
+`git reset --hard`, `git checkout -- .`, `push --force`, `clean -f`, `--no-verify`, `--no-gpg-sign`, `git add -f`, deleting a lockfile,
+downgrading a package, a pipe-to-shell (`curl|bash`), a world-writable `chmod`, `dd of=`, or tampering with a hook /
 `core.hooksPath` (shell or file tools): only on an explicit request. `commit --amend` only on a commit that has not
 been pushed, and only when explicitly asked. A failing hook is never bypassed — resolve its cause. All of these stay
 blocked even when `CLAUDE_GIT_OK` is set.

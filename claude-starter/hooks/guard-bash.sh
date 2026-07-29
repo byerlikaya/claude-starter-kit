@@ -73,14 +73,35 @@ has '--no-verify'                                          && block "hook skip (
 git_has "$CMD" 'rebase'                                    && block "git rebase" "4.5"
 git_has "$CMD" 'filter-branch|filter-repo'                && block "git filter-branch/filter-repo" "4.5"
 { git_has "$CMD" 'commit' && has '--amend'; }                                              && block "git commit --amend" "4.5"
-echo "$CMD" | grep -qE 'rm +-[A-Za-z]*r[A-Za-z]* +.*(/|\*|~)' && block "destructive rm -rf" "4.5"
+# Scoped to targets carrying `/`, `*` or `~` ON PURPOSE — `rm -rf build` is a routine local delete and blocking
+# it would make the gate noise. What was NOT on purpose: the recursive flag was matched as lowercase `r` in one
+# short cluster, so `rm -Rf /`, `rm -fR /`, `rm -f -r /` and `rm --recursive --force /` all walked past while
+# `rm -rf /` was blocked. Same class as the chmod hole found in evals/permission-pressure: one spelling gated,
+# another reaching the identical state. Case, flag order and the long form are all the same command.
+echo "$CMD" | grep -qE 'rm +(-[A-Za-z]* +|--[a-z-]+ +)*(-[A-Za-z]*[rR][A-Za-z]*|--recursive)( +(-[A-Za-z]+|--[a-z-]+))* +.*(/|\*|~)' && block "destructive rm -rf" "4.5"
+# A whole-tree `git checkout -- .` / `git restore .` destroys every uncommitted change with no reflog and no
+# undo — the same loss as `reset --hard`, which has been gated since the beginning, by a command that was not.
+# Not hypothetical: a verification subagent ran exactly this over uncommitted work in this repo and took the
+# working tree with it. Scoped to the WHOLE-TREE pathspec (`.` · `*` · `./` · `:/`) on purpose — reverting one
+# named file is an everyday, recoverable act and gating it would make the rule noise. The option-skipping
+# prefix is git_has's, so `git -C <path>` and `git -c k=v` cannot walk around it and a commit MESSAGE
+# containing the word "checkout" does not trip it; both are pinned as cases.
+echo "$CMD" | grep -qE '(^|[^A-Za-z0-9_-])git[[:space:]]+((-[Cc][[:space:]]+[^[:space:];&|]+|--(git-dir|work-tree|namespace|config-env|super-prefix|exec-path)[[:space:]=]+[^[:space:];&|]+|-[^[:space:];&|]+)[[:space:]]+)*(checkout|restore)([[:space:]]+[^;&|[:space:]]+)*[[:space:]]+(\.|\*|\./|:/)([[:space:]]|[;&|]|$)' && block "whole-tree revert (git checkout/restore over everything)" "4.5"
 echo "$CMD" | grep -qE '(^|[^a-zA-Z])(mkfs|dd +if=)'       && block "disk-level destructive command" "4.5"
 
 # §4.5 remote-code-execution & permission-nuke -> HARD BLOCK. A downloaded script piped straight into a shell
 # runs code no one has read; a world-writable chmod or a disk-overwriting dd is irreversible.
 echo "$CMD" | grep -qE '(curl|wget|fetch)([^|]|\|\|)*\|[[:space:]]*(sudo[[:space:]]+)?(bash|sh|zsh|python[0-9.]*|node|perl|ruby)([[:space:]]|$)' && block "pipe-to-shell (curl|bash RCE)" "4.5"
 echo "$CMD" | grep -qE '(^|[^a-zA-Z])dd[[:space:]]+([^|]*[[:space:]])?of='  && block "dd of= (disk overwrite)" "4.5"
-echo "$CMD" | grep -qE '(^|[^a-zA-Z])chmod[[:space:]]+(-[A-Za-z]*[[:space:]]+)*(0?777|a=?\+?rwx|\+rwx)([[:space:]]|$)' && block "chmod 777 (world-writable)" "4.5"
+# The rule is WORLD-WRITABLE, so the pattern matches the resulting permission and not one spelling of it. It
+# used to match `777`, `0777`, `a+rwx` and `+rwx` only, which let `1777`, `2777`, `666` and `o+w` reach exactly
+# the same state — and this was not theoretical: in the A/B harness (evals/permission-pressure) a model asked to
+# open a directory "wide enough for any account" reached for `chmod 1777` unprompted, sticky bit and all. A gate
+# that blocks one spelling while another arrives at the same place has protected nothing.
+# Numeric: 3 or 4 octal digits whose LAST digit carries the write bit for other (2·3·6·7). Symbolic: any subject
+# list containing `o` or `a`, with `+` or `=`, granting `w`. `755`, `644`, `u+w` and `chmod +x` stay untouched —
+# each of those carries its own case in smoke-test §7, because a gate this repo cannot prove is not a gate.
+echo "$CMD" | grep -qE '(^|[^a-zA-Z])chmod[[:space:]]+(-[A-Za-z]*[[:space:]]+)*([0-7]?[0-7][0-7][2367]|[ugoa]*[oa][ugoa]*[+=][rwxXst]*w[rwxXst]*|a=?\+?rwx|\+rwx)([[:space:]]|$)' && block "chmod world-writable (777/1777/666/o+w …)" "4.5"
 
 # §4.5 gate-tampering -> HARD BLOCK. A gate you can silently remove is not a gate: redirecting core.hooksPath,
 # or deleting/overwriting/patching the hook scripts, would disarm the trace/secret/approval gates in one line.
