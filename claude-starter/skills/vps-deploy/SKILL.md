@@ -63,42 +63,9 @@ ssh -i $SSH_KEY -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new $USER@$H
 
 **Reverse proxy** — detect the one installed on the server (`auto` → Caddy if present, otherwise Nginx). The application binds only to `127.0.0.1`; it is exposed outward **only** through the proxy.
 
-<details><summary>Nginx site config</summary>
+**SSL** — skip if `ssl: false` or there's no domain, and never on a bare IP. On the Nginx path, verify DNS resolves to the host (`dig +short $DOMAIN` = `$HOST`) *before* running Certbot; on the Caddy path the certificate and its renewal are automatic and there is no separate step.
 
-```nginx
-server {
-  listen 80;
-  server_name DOMAIN;
-  location / {
-    proxy_pass http://127.0.0.1:APP_PORT;
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection 'upgrade';
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-  }
-}
-```
-Link it into `sites-enabled` with `ln -s`, then `nginx -t && systemctl reload nginx`.
-</details>
-
-<details><summary>Caddyfile (SSL included, automatic)</summary>
-
-```
-DOMAIN {
-  reverse_proxy 127.0.0.1:APP_PORT
-}
-```
-`systemctl reload caddy`. Caddy obtains/renews the certificate on its own — no extra step.
-</details>
-
-**SSL (Nginx path)** — skip if `ssl: false` or there's no domain; don't do SSL on a bare IP. First verify that DNS resolves to the host (`dig +short $DOMAIN` = `$HOST`), then Certbot:
-```bash
-certbot --nginx -d $DOMAIN --non-interactive --agree-tos -m admin@$DOMAIN
-systemctl enable certbot.timer   # automatic renewal
-```
+Config file contents for both proxies, the Certbot commands and the renewal timer: **`references/proxy-ssl.md`** — read the half for the proxy you found, not both.
 
 ---
 

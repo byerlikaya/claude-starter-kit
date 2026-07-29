@@ -741,10 +741,20 @@ elif [ -f "$PHJ" ]; then
     [ -x "$PLUGIN/hooks/$h" ] && grep -q "$h" "$PHJ" || { fail "plugin hook $h missing or not wired"; break; }
   done
   pass "5 Claude Code hooks shipped + wired in plugin"
-  # The git hooks must NOT leak into the plugin (they need core.hooksPath, which a plugin can't set).
-  { [ -e "$PLUGIN/hooks/pre-commit" ] || [ -e "$PLUGIN/hooks/commit-msg" ]; } \
-    && fail "git hook leaked into plugin (pre-commit/commit-msg — cannot work there)" \
-    || pass "git hooks correctly NOT shipped in plugin"
+  # The git hooks now DO ship, and must: guard-commit-scan.sh runs them from PreToolUse, which is the only way
+  # the plugin edition gets the commit CONTENT gates at all (a plugin cannot set core.hooksPath). They ship as
+  # data for that hook, never wired as git hooks. Shipping them WITHOUT the caller would be worse than not
+  # shipping them — two dead files and a channel that still silently lacks the gate — so assert the pair.
+  for h in pre-commit commit-msg trace-blocklist.txt secret-blocklist.txt; do
+    [ -e "$PLUGIN/hooks/$h" ] || { fail "plugin missing $h — guard-commit-scan.sh has nothing to run"; break; }
+  done
+  { [ -x "$PLUGIN/hooks/guard-commit-scan.sh" ] && grep -q 'guard-commit-scan' "$PHJ"; } \
+    && pass "commit content gate shipped AND wired in the plugin (git hooks reused, not re-implemented)" \
+    || fail "plugin ships the scanners but nothing invokes them — the content gate is dead there"
+  # Whatever else changes, they must never be wired as git hooks in the plugin: nothing sets core.hooksPath.
+  grep -q 'core.hooksPath' "$PHJ" \
+    && fail "plugin hooks.json references core.hooksPath (a plugin cannot set it)" \
+    || pass "plugin never wires git hooks through core.hooksPath"
 else
   fail "plugin/hooks/hooks.json missing — run packaging/build-plugin.sh"
 fi
@@ -962,6 +972,50 @@ EOF
   rm -rf "$BLR"
 else
   pass "blocklist case run skipped (no git)"
+fi
+
+echo "== 7j) commit CONTENT gate reachable without core.hooksPath (plugin edition parity) =="
+# The plugin edition ships Claude Code hooks, not git hooks, so it had the commit APPROVAL gate and none of the
+# commit CONTENT gates: a credential or an authorship trailer could land there while the other three channels
+# stopped it. guard-commit-scan.sh runs the REAL scanners from PreToolUse instead of re-implementing them.
+if [ -x "$HOOKS/guard-commit-scan.sh" ]; then
+  pass "guard-commit-scan.sh present +x"
+  CS="$(mktemp -d "${TMPDIR:-/tmp}/csk-cs.XXXXXX")"
+  ( cd "$CS" && git init -q && git config user.email t@t && git config user.name t
+    mkdir -p .claude/hooks
+    cp "$HOOKS/guard-commit-scan.sh" "$HOOKS/pre-commit" "$HOOKS/commit-msg" \
+       "$HOOKS/trace-blocklist.txt" "$HOOKS/secret-blocklist.txt" .claude/hooks/ 2>/dev/null
+    chmod +x .claude/hooks/* 2>/dev/null
+    echo ok > a.txt && git add a.txt && git commit -qm base --no-verify ) >/dev/null 2>&1
+  csj(){ if command -v jq >/dev/null 2>&1; then jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}'
+         else printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' "$1"; fi; }
+  csrun(){ ( cd "$CS" && printf '%s' "$(csj "$1")" | bash .claude/hooks/guard-commit-scan.sh ) >/dev/null 2>&1; }
+  ( cd "$CS" && echo clean > b.txt && git add b.txt ) >/dev/null 2>&1
+  csrun 'git commit -m "feat: add b"' && pass "clean commit passes (no false positive)" \
+                                      || fail "clean commit blocked by the content gate"
+  csrun 'git status' && pass "non-commit command untouched" || fail "guard-commit-scan blocked a non-commit command"
+  # The message is where a co-author trailer lives, and it is MULTI-LINE — a line-oriented extraction found the
+  # subject, stopped, and let the trailer through. That blind spot is what this case exists to keep closed.
+  # Assembled at run time: this file ships as .claude/eval/smoke-test.sh, and a whole trailer literal here is
+  # exactly what the §4.1 scanner stops — the fixture would make the payload uncommittable. Same reason §7h
+  # drives its cases from the blocklist instead of restating them.
+  TRFX="Co-""Authored-By: Claude <x@y>"
+  if csrun "git commit -m \"feat: x
+
+$TRFX\""; then fail "multi-line AI trace in the message PASSED (§4.1 hole)"
+  else pass "multi-line AI trace in the commit message BLOCKED (§4.1)"; fi
+  # `git commit -a` stages at commit time: ahead of the commit the content is still unstaged, so a --cached-only
+  # scan would wave it through. This is the gap the git-hook path never had.
+  # Assembled at RUN time, never written here as one literal. This file ships as .claude/eval/smoke-test.sh, the
+  # secret scan (unlike the trace scan) does NOT skip .claude/, and a whole-key literal would make every project
+  # that commits its .claude/ uncommittable — the fixture would become the outage.
+  SKFX="sk""_live_ABCDEFGHIJKLMNOPQRSTUVWX"
+  ( cd "$CS" && printf 'k = "%s"\n' "$SKFX" >> a.txt ) >/dev/null 2>&1
+  if csrun 'git commit -am "feat: y"'; then fail "unstaged secret via 'commit -a' PASSED (secret hole)"
+  else pass "'git commit -a' scans tracked-but-unstaged content (secret BLOCKED)"; fi
+  rm -rf "$CS"
+else
+  fail "guard-commit-scan.sh missing or not executable — the plugin edition has no commit content gate"
 fi
 
 echo "== 8) Slash commands =="
