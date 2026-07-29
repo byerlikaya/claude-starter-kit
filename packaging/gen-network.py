@@ -173,10 +173,13 @@ def build(subtitle):
 
 import sys
 ASSETS=sys.argv[1] if len(sys.argv)>1 else "."
-SUB_EN='11 AGENTS × 36 SKILLS · GROUPED BY STAGE · EVERY LINE A REAL "applies"'
-SUB_TR='11 AJAN × 36 SKILL · AŞAMAYA GÖRE GRUPLU · HER ÇİZGİ GERÇEK BİR "applies"'
+# The subtitle is DERIVED, never typed. It was hand-written once and then drifted the way every hand-written
+# count in this repo has drifted: the diagram itself was regenerated with 12 agents and 38 skills while the line
+# above it still announced 11 and 36 — the one part of the picture a reader takes at face value, because nobody
+# counts 38 nodes to check. Anything the picture claims about itself now comes from the data that drew it.
+NAG, NSK = len(AGENTS), len(skill_pos)
+SUB_EN=f'{NAG} AGENTS × {NSK} SKILLS · GROUPED BY STAGE · EVERY LINE A REAL "applies"'
+SUB_TR=f'{NAG} AJAN × {NSK} SKILL · AŞAMAYA GÖRE GRUPLU · HER ÇİZGİ GERÇEK BİR "applies"'
 open(ASSETS+"/network-en.svg","w").write(build(SUB_EN))
 open(ASSETS+"/network-tr.svg","w").write(build(SUB_TR))
-# also a local preview copy (TR) for the artifact
-open("/private/tmp/claude-501/-Users-barisyerlikaya-Projects-claude-starter-kit/afb28ea5-1f6d-40d9-92a4-6c78911f8ab8/scratchpad/network.svg","w").write(build(SUB_TR))
-print("wrote network-en.svg + network-tr.svg to",ASSETS,"| agents",len(AGENTS),"skills",len(skill_pos))
+print("wrote network-en.svg + network-tr.svg to",ASSETS,"| agents",NAG,"skills",NSK)
