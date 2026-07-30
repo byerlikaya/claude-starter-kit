@@ -511,6 +511,29 @@ elif [ "$KIT_STACK" = "dotnet" ] && [ -e .claude/agents/backend-expert-csk.md ];
 fi
 chmod +x .claude/hooks/*.sh .claude/hooks/pre-commit .claude/hooks/commit-msg 2>/dev/null || true
 [ -f "$HERE/VERSION" ] && cp "$HERE/VERSION" .claude/VERSION 2>/dev/null || true   # first-class marker so a future adopt detects a REFRESH
+# Stale kit files: names the kit USED to ship and no longer does. `copy_noclobber` only ever adds, so a component
+# removed or renamed upstream lives on in the project forever — and for a COMMAND that is not cosmetic, because the
+# filename is the invocation: after 1.11.0 renamed the commands, an un-pruned `review.md` sits beside `review-csk.md`
+# and the picker shows both. They are REPORTED, never deleted: this installer deliberately preserves a pre-existing
+# project file that happens to sit under a kit name, so a name in the old manifest is not proof the file is ours.
+# Deleting on that assumption would destroy the user's own work; naming it costs them one command.
+if [ -f .claude/kit-manifest.txt ]; then
+  STALE=""
+  while IFS= read -r entry; do
+    case "$entry" in commands/*|agents/*) ;; *) continue ;; esac
+    [ -e "$SRC/${entry#*/}" ] && continue                       # still shipped under the same folder? keep
+    [ -e "$SRC/$entry" ] && continue
+    [ -e ".claude/$entry" ] && STALE="$STALE $entry"
+  done < .claude/kit-manifest.txt
+  if [ -n "$STALE" ]; then
+    echo
+    echo "  ⚠️  installed by an older kit and no longer shipped:$STALE"
+    echo "     A leftover COMMAND still shows up in the / picker, so /review can list two entries."
+    echo "     Nothing is deleted for you — one of these may be a file you customised. To drop them all:"
+    printf '       rm'; for e in $STALE; do printf ' .claude/%s' "$e"; done; echo
+  fi
+fi
+
 # Install manifest — the names the KIT ships (see start.sh for the full rationale). Generated from the PAYLOAD,
 # never from disk: this installer deliberately PRESERVES a pre-existing project file under a kit name, and a
 # disk-read manifest would brand that project file "kit-owned". Consumers: the doctor readiness check and the

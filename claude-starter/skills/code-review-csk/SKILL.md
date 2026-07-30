@@ -1,12 +1,16 @@
 ---
-name: code-review
+name: code-review-csk
 description: |
   Code review discipline: severity-ranked, reasoned feedback on whether a change improves the system's overall
   code health. review-agent-csk applies it.
-  Trigger phrases: "code-review", "review the code", "review the PR", "review", "do a review"
 ---
 
 # Code Review
+
+<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
+     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
+     truncated or dropped, which strips the very keywords a match depends on. -->
+Trigger phrases: "code-review", "review the code", "review the PR", "review", "do a review"
 
 > **Kit adaptation (local, .claude/):** applied by `review-agent-csk` (read-only). Sources (alignment):
 > google/eng-practices — its name does not appear in the artifact that goes to the repo (§4.2). Comments are severity-ranked; §4 applies.

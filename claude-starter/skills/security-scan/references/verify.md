@@ -3,7 +3,7 @@
 Discovery and verification want opposite things. **Discovery is recall-biased** — when unsure whether something is
 real, surface it (a low-confidence finding beats a missed bug). **Verification is precision-biased** — a separate,
 adversarial pass that tries to *disprove* each finding. Keeping them separate is the single biggest lever on false
-positives. (This is the same two-stage-verdict discipline `code-review` uses — reused here for security findings.)
+positives. (This is the same two-stage-verdict discipline `code-review-csk` uses — reused here for security findings.)
 
 Run this pass on every candidate before it reaches the report.
 

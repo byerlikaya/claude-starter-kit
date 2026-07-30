@@ -3,10 +3,14 @@ name: reflect
 description: |
   Retrospective self-audit after nontrivial work: unverified assumptions, skipped items, is-this-the-right-
   approach — findings, not code. The step-back counterpart to iterate's refine-to-done loop.
-  Trigger phrases: "reflect", "retro", "retrospective", "what did we miss", "step back", "introspect"
 ---
 
 # Reflect — step back and audit the work, not just the code
+
+<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
+     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
+     truncated or dropped, which strips the very keywords a match depends on. -->
+Trigger phrases: "reflect", "retro", "retrospective", "what did we miss", "step back", "introspect"
 
 ## When
 A nontrivial chunk of work just finished (a feature, a plan, a debugging session) and it's worth a deliberate

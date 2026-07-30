@@ -19,7 +19,7 @@ summarizes what lives under `.claude/` and how it works.
 - **Skills** (`skills/`) — the single source of the "how" knowledge: code review, security scan,
   migration, deployment, observability, performance, accessibility, translation integrity, versioning,
   incident response, and more. (The installed set may be pruned according to the chosen profile.)
-- **Commands** (`commands/`) — `/plan` · `/review` · `/ship` · `/handoff` · `/simplify`.
+- **Commands** (`commands/`) — `/plan-csk` · `/review-csk` · `/ship-csk` · `/handoff-csk` · `/simplify`.
 - **Hooks** (`hooks/`) — `guard-bash.sh` (tool-level gate), `pre-commit` + `commit-msg`
   (trace scan), `context-usage.sh` and `session-guard.sh` (session measurement), `trace-blocklist.txt`.
   `session-stats.sh` sits alongside them but is wired to no event: the `reflect` and `handoff` skills run it on
@@ -47,8 +47,8 @@ summarizes what lives under `.claude/` and how it works.
 
 ## Workflow
 
-`/plan` (ambiguous scope) → expert agents generate → `/review` (security · quality · testing) →
-`/ship` (DoD gate; proposes the commit, waits for approval) → when context fills up, `/handoff` → `/clear`.
+`/plan-csk` (ambiguous scope) → expert agents generate → `/review-csk` (security · quality · testing) →
+`/ship-csk` (DoD gate; proposes the commit, waits for approval) → when context fills up, `/handoff-csk` → `/clear`.
 
 ## Session and token management
 
@@ -82,7 +82,7 @@ Run `npx @byerlikaya/claude-starter-kit@latest update` at the project root. `.cl
 | Session threshold (75% · 90%) | `context-usage.sh` (measurement) + `session-guard.sh` (Stop hook, warns once per threshold) |
 | Always-on context stays lean | `smoke-test.sh` byte budgets: discipline · agent descriptions · skill descriptions |
 | A running session never follows stale rules | `context-usage.sh` compares `.claude/VERSION` with the session's starting version |
-| Quality gate (projects using SonarQube — language-agnostic) | `sonarqube-check` + `/ship` |
+| Quality gate (projects using SonarQube — language-agnostic) | `sonarqube-check` + `/ship-csk` |
 
 ## Verification
 

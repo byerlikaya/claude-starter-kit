@@ -1,8 +1,8 @@
 ---
-name: review
+name: review-csk
 description: Review pass — review + security + quality gates.
 ---
-# /review
+# /review-csk
 Run the change set through the review trio (read-only):
 1. @agent-review-agent-csk (code-review) — "does it improve overall code health"; severity-ranked comments.
 2. @agent-security-expert-csk (security-scan) — auth/IDOR/injection/secret; findings with severity.

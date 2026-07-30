@@ -25,7 +25,7 @@ Most "agent setups" are a pile of suggestions — the rules sit in a file, and w
 | What matters | Typical agent kit / prompt collection | Claude Starter Kit |
 |---|---|---|
 | **Critical rules** | Live in a `.md` file; honored only if the model remembers | **Enforced as gates** at the tool level — git hook (`trace-scan`), `settings.json` permissions, `guard-bash.sh` PreToolUse. Breaking them is *impossible*, not *discouraged* |
-| **Structure** | A single dev prompt, or a loose list of agents you orchestrate | **A team of 12 specialist agents** across 5 stages (Understand → Produce → Audit → Close → Hand off). The commands chain them **by @-mention, so the agents actually run** — measured 3 of 3 on `/review`. Automatic delegation is a model judgement in any kit, ours included; where it must happen, we do not leave it to chance |
+| **Structure** | A single dev prompt, or a loose list of agents you orchestrate | **A team of 12 specialist agents** across 5 stages (Understand → Produce → Audit → Close → Hand off). The commands chain them **by @-mention, so the agents actually run** — measured 3 of 3 on `/review-csk`. Automatic delegation is a model judgement in any kit, ours included; where it must happen, we do not leave it to chance |
 | **Security & privacy** | Optional advice, easy to skip | **Mandatory audit gate** — risk-critical changes can't close before the security/privacy review clears |
 | **Commits** | Model may commit on its own | **Every commit is yours to approve** — enforced at the tool level even in auto/bypass mode |
 | **Adopting an existing repo** | "Start fresh" assumption; manual porting | **`adopt` hands the kit over on a branch** — `main` is never touched; you review before you keep it |
@@ -96,7 +96,7 @@ Then paste **`.claude/FIRST_PROMPT.md`** as your first Claude Code message. Home
 
 - **12 agents** — see the table above.
 - **38 skills** — the single source of "how", one per area (full catalogue below).
-- **8 slash commands** — `/brainstorm` · `/plan` · `/review` · `/ship` · `/handoff` · `/simplify` · `/update-csk` (update the installed kit) · `/doctor-csk` (health-check the install).
+- **7 slash commands** — `/brainstorm-csk` · `/plan-csk` · `/review-csk` · `/ship-csk` · `/handoff-csk` · `/update-csk` (update the installed kit) · `/doctor-csk` (health-check the install). Every one carries the `-csk` suffix so none of them shadows a Claude Code built-in; simplification uses the built-in `/simplify`.
 - **Hooks** — `guard-bash.sh` + `guard-write.sh` (tool-level command/write gates), `pre-commit` + `commit-msg` (trace + secret + bloat scan), `context-usage.sh` and `session-guard.sh` (session measurement), `session-rehydrate.sh` (re-surface the handover after /compact or /clear), `session-stats.sh` (what the session actually did — failing tool loops, repeated prompts, interrupts, compactions — read by `reflect` and `handoff` so a retrospective rests on the record, not on recollection), `skill-trust.sh` (names a skill or agent the kit never shipped and you never accepted). The plugin edition ships these gate hooks too.
 - **CLAUDE.md** — behavior, the three principles, workflow, Definition of Done, token discipline, and prohibitions.
 
@@ -112,7 +112,7 @@ Then paste **`.claude/FIRST_PROMPT.md`** as your first Claude Code message. Home
 | `api-design` | API contract design: resource naming, error model, versioning, pagination, backward compatibility, OpenAPI. |
 | `brainstorm` | Divergent discovery BEFORE planning: turn a fuzzy ask into 2–4 scoped options + named unknowns, pick a direction, hand to spec-planning. |
 | `ci-pipeline` | CI pipeline discipline: lint→build→test→quality→security, fail-fast, deterministic build, secret handling, PR gates. |
-| `code-review` | Code review discipline: severity-ranked, reasoned feedback on whether a change improves the system's overall code health. |
+| `code-review-csk` | Code review discipline: severity-ranked, reasoned feedback on whether a change improves the system's overall code health. |
 | `commit-message` | Conventional Commits: reads the staged diff and proposes `type(scope): summary`, with body/footer when needed. |
 | `confidence-check` | Readiness gate BEFORE writing implementation code: does this already exist, does it fit the project's architecture, is the API claim… |
 | `db-migration` | Apply schema migrations safely: detect the tool, classify the change by risk, gate destructive ones behind approval, back up in prod,… |
@@ -193,7 +193,7 @@ An assistant cannot run `/context` itself, so most setups **guess** the session 
 | Session threshold | `context-usage.sh` + `session-guard.sh` (Stop hook) |
 | Always-on context stays lean | `smoke-test.sh` byte budgets per component (discipline · agent descriptions · skill descriptions) |
 | A running session never follows stale rules | `context-usage.sh` compares `.claude/VERSION` against the version the session started with, and says so |
-| Quality gate (SonarQube projects — language-agnostic) | `sonarqube-check` + `/ship` |
+| Quality gate (SonarQube projects — language-agnostic) | `sonarqube-check` + `/ship-csk` |
 
 The gates are armed via `settings.json` and git `core.hooksPath`; `smoke-test.sh` verifies they are ready after every change.
 
@@ -321,7 +321,7 @@ bash .claude/eval/routing-eval.sh    # does an example prompt route to the right
 
 ## Workflow
 
-`/plan` (ambiguous scope) → expert agents build → `/review` (security · quality · test) → `/ship` (DoD gate; proposes the commit, waits for approval) → when context fills up, `/handoff` → `/clear`.
+`/plan-csk` (ambiguous scope) → expert agents build → `/review-csk` (security · quality · test) → `/ship-csk` (DoD gate; proposes the commit, waits for approval) → when context fills up, `/handoff-csk` → `/clear`.
 
 ## Extending
 
@@ -331,4 +331,4 @@ When you add an agent or skill, follow the `AGENT_TEMPLATE.md` contract: frontma
 
 MIT — see [LICENSE](LICENSE).
 
-- **[google/eng-practices](https://github.com/google/eng-practices)** — the `code-review` skill, distilled and restated (CC-BY 3.0).
+- **[google/eng-practices](https://github.com/google/eng-practices)** — the `code-review-csk` skill, distilled and restated (CC-BY 3.0).

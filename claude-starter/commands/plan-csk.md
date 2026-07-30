@@ -1,9 +1,9 @@
 ---
-name: plan
+name: plan-csk
 description: Spec-first planning — break down ambiguously scoped work with planner-csk.
 argument-hint: "[task/feature description]"
 ---
-# /plan
+# /plan-csk
 Argument: $ARGUMENTS
 
 Delegate to the @agent-planner-csk agent (spec-planning skill). For ambiguously scoped work:

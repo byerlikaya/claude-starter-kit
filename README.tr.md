@@ -25,7 +25,7 @@
 | Önemli olan | Tipik agent kiti / prompt koleksiyonu | Claude Starter Kit |
 |---|---|---|
 | **Kritik kurallar** | Bir `.md` dosyasında durur; yalnız model hatırlarsa uygulanır | **Kapı olarak zorlanır** — araç seviyesinde: git hook (`trace-scan`), `settings.json` izinleri, `guard-bash.sh` PreToolUse. Kırmak *imkânsız*, "tavsiye edilmez" değil |
-| **Yapı** | Tek bir dev prompt ya da senin yönettiğin gevşek bir agent listesi | **12 uzman agent'lık bir ekip**, 5 aşamada (Anla → Üret → Denetle → Kapat → Devret). Komutlar onları **@-mention ile zincirler, yani ajanlar gerçekten çalışır** — `/review`'de 3/3 ölçüldü. Otomatik delegasyon her kitte olduğu gibi bizde de modelin takdiridir; olması gereken yerde şansa bırakmıyoruz |
+| **Yapı** | Tek bir dev prompt ya da senin yönettiğin gevşek bir agent listesi | **12 uzman agent'lık bir ekip**, 5 aşamada (Anla → Üret → Denetle → Kapat → Devret). Komutlar onları **@-mention ile zincirler, yani ajanlar gerçekten çalışır** — `/review-csk`'de 3/3 ölçüldü. Otomatik delegasyon her kitte olduğu gibi bizde de modelin takdiridir; olması gereken yerde şansa bırakmıyoruz |
 | **Güvenlik & gizlilik** | İsteğe bağlı tavsiye, atlaması kolay | **Zorunlu audit kapısı** — risk-kritik değişiklik, güvenlik/gizlilik denetimi geçmeden kapanamaz |
 | **Commit'ler** | Model kendi başına commit atabilir | **Her commit senin onayına bağlı** — auto/bypass modda bile araç seviyesinde zorlanır |
 | **Mevcut repoya uyarlama** | "Sıfırdan başla" varsayımı; elle taşıma | **`adopt` kiti bir branch'te devreder** — `main`'e dokunulmaz; sen inceleyip tutmaya karar verirsin |
@@ -96,7 +96,7 @@ Ardından ilk Claude Code mesajın olarak **`.claude/FIRST_PROMPT.md`**'i yapı�
 
 - **12 ajan** — yukarıdaki tabloya bak.
 - **38 skill** — "nasıl" sorusunun tek kaynağı, her alan için bir tane (tüm katalog aşağıda).
-- **8 slash komut** — `/brainstorm` · `/plan` · `/review` · `/ship` · `/handoff` · `/simplify` · `/update-csk` (kurulu kiti güncelle) · `/doctor-csk` (kurulumu sağlık-kontrolü).
+- **7 slash komut** — `/brainstorm-csk` · `/plan-csk` · `/review-csk` · `/ship-csk` · `/handoff-csk` · `/update-csk` (kurulu kiti güncelle) · `/doctor-csk` (kurulumu sağlık-kontrolü). Hepsi `-csk` ekli, böylece hiçbiri yerleşik bir Claude Code komutunu gölgelemiyor; sadeleştirme için yerleşik `/simplify` kullanılır.
 - **Hook'lar** — `guard-bash.sh` + `guard-write.sh` (araç seviyesi komut/yazma kapıları), `pre-commit` + `commit-msg` (iz + secret + bloat taraması), `context-usage.sh` ve `session-guard.sh` (oturum ölçümü), `session-rehydrate.sh` (/compact ya da /clear sonrası devir-notunu yeniden yüzeye çıkarır), `session-stats.sh` (oturumun gerçekte ne yaptığı — başarısız tool döngüleri, tekrarlanan promptlar, kesintiler, compaction'lar; `reflect` ve `handoff` bunu okur, böylece retro hatıraya değil kayda dayanır), `skill-trust.sh` (kitin göndermediği ve senin kabul etmediğin skill/agent'ı adlandırır). Plugin edisyonu bu kapı hook'larını da taşır.
 - **CLAUDE.md** — davranış, üç ilke, iş akışı, tamamlanma tanımı (DoD), token disiplini ve yasaklar.
 
@@ -112,7 +112,7 @@ Ardından ilk Claude Code mesajın olarak **`.claude/FIRST_PROMPT.md`**'i yapı�
 | `api-design` | API sözleşme tasarımı: kaynak adlandırma, hata modeli, sürümleme, sayfalama, geriye dönük uyumluluk, OpenAPI. |
 | `brainstorm` | Planlamadan ÖNCE ıraksak keşif: bulanık isteği 2–4 kapsamlı seçenek + adlandırılmış bilinmezlere çevir, bir yön seç, spec-planning'e devret. |
 | `ci-pipeline` | CI hattı disiplini: lint→build→test→kalite→güvenlik, hızlı-başarısızlık, deterministik derleme, secret yönetimi, PR kapıları. |
-| `code-review` | Kod inceleme disiplini: önem sırasına dizili, gerekçeli geri bildirim — değişiklik sistemin genel kod sağlığını iyileştiriyor mu. |
+| `code-review-csk` | Kod inceleme disiplini: önem sırasına dizili, gerekçeli geri bildirim — değişiklik sistemin genel kod sağlığını iyileştiriyor mu. |
 | `commit-message` | Conventional Commits: staged diff'i okur, `type(scope): özet` önerir; gerektiğinde gövde/footer ekler. |
 | `confidence-check` | Uygulamaya BAŞLAMADAN önce hazırlık kapısı: bu iş zaten var mı, mimariye uyuyor mu, dış API iddiası doğrulandı mı, çalışan bir referans var mı, kök neden biliniyor mu. Herhangi bir "hayır" durdurur. |
 | `db-migration` | Şema göçlerini güvenle uygula: aracı sapta, değişikliği riske göre sınıfla, yıkıcı olanları onaya bağla, prod'da yedekle, önizle-uygula-doğrula, hatada geri al. |
@@ -193,7 +193,7 @@ Bir asistan `/context` komutunu kendisi çalıştıramaz; bu yüzden çoğu kuru
 | Oturum eşiği | `context-usage.sh` + `session-guard.sh` (Stop hook) |
 | Sabit bağlam yükü şişmesin | `smoke-test.sh` bileşen başına byte bütçesi (disiplin · ajan tarifleri · skill tarifleri) |
 | Çalışan oturum bayat kurala uymasın | `context-usage.sh`, `.claude/VERSION`'ı oturumun başladığı sürümle karşılaştırır ve söyler |
-| Kalite kapısı (SonarQube kullanan projeler — dilden bağımsız) | `sonarqube-check` + `/ship` |
+| Kalite kapısı (SonarQube kullanan projeler — dilden bağımsız) | `sonarqube-check` + `/ship-csk` |
 
 Kapılar `settings.json` ve git `core.hooksPath` üzerinden devreye alınır; `smoke-test.sh` her değişiklikten sonra hazır olduklarını doğrular.
 
@@ -321,7 +321,7 @@ bash .claude/eval/routing-eval.sh    # örnek bir prompt doğru ajana/skill'e gi
 
 ## İş akışı
 
-`/plan` (belirsiz kapsam) → uzman ajanlar üretir → `/review` (güvenlik · kalite · test) → `/ship` (DoD kapısı; commit'i önerir, onay bekler) → bağlam dolduğunda `/handoff` → `/clear`.
+`/plan-csk` (belirsiz kapsam) → uzman ajanlar üretir → `/review-csk` (güvenlik · kalite · test) → `/ship-csk` (DoD kapısı; commit'i önerir, onay bekler) → bağlam dolduğunda `/handoff-csk` → `/clear`.
 
 ## Genişletme
 
@@ -331,4 +331,4 @@ Yeni bir ajan ya da skill eklerken `AGENT_TEMPLATE.md` sözleşmesini izle: fron
 
 MIT — bkz. [LICENSE](LICENSE).
 
-- **[google/eng-practices](https://github.com/google/eng-practices)** — `code-review` skill'i, damıtılıp yeniden ifade edildi (CC-BY 3.0).
+- **[google/eng-practices](https://github.com/google/eng-practices)** — `code-review-csk` skill'i, damıtılıp yeniden ifade edildi (CC-BY 3.0).
