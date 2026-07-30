@@ -51,14 +51,26 @@ MODEL="$(claude --version 2>/dev/null | head -1)"
 # Where the scratch projects live matters more than it looks: Claude Code trusts a workspace per path, and an
 # untrusted one silently drops the `permissions.allow` entry the kit ships. Override with CSK_EVAL_WORK to run
 # somewhere already trusted.
-WORK="$(mktemp -d "${CSK_EVAL_WORK:-${TMPDIR:-/tmp}}/csk-eval.XXXXXX")"
+# A failed mktemp used to leave WORK EMPTY and the run carried on regardless, so every path became "/<case>-kit-1"
+# and the runner started creating scratch projects at the FILESYSTEM ROOT. It only looked harmless because macOS
+# mounts / read-only; anywhere else it would have scattered directories across the root and then `rm -rf` them on
+# exit. A missing CSK_EVAL_WORK is a typo, not a reason to write to /.
+WORKBASE="${CSK_EVAL_WORK:-${TMPDIR:-/tmp}}"
+[ -d "$WORKBASE" ] || { echo "run.sh: work dir '$WORKBASE' does not exist (CSK_EVAL_WORK) — create it or unset the variable" >&2; exit 2; }
+WORK="$(mktemp -d "$WORKBASE/csk-eval.XXXXXX")" || { echo "run.sh: could not create a scratch dir under '$WORKBASE'" >&2; exit 2; }
+[ -n "$WORK" ] && [ -d "$WORK" ] || { echo "run.sh: scratch dir is empty/missing — refusing to run" >&2; exit 2; }
 trap '[ "$KEEP" = 1 ] && echo "scratch kept: $WORK" || rm -rf "$WORK"' EXIT
 
 # build_project <dir> <arm>  — identical seed in both arms; the kit is the only variable.
 build_project() {
   local dir="$1" arm="$2"
-  mkdir -p "$dir"
-  ( cd "$dir"
+  mkdir -p "$dir" || { echo "run.sh: cannot create '$dir'" >&2; return 1; }
+  # `cd` MUST be fatal here. It used to sit on its own line, so a failed cd printed an error and the subshell
+  # carried straight on IN THE CALLER'S DIRECTORY — which is the kit repo. That is not theoretical: an unset
+  # scratch path made this run `git init`, `git config user.email eval@example.invalid`, the case's `seed`
+  # (which overwrites README.md) and finally `git add -A && git commit` against the repo itself, committing a
+  # working tree of real work under the message "seed". Nothing here may run outside the scratch project.
+  ( cd "$dir" || exit 1
     git init -q
     git config user.email eval@example.invalid
     git config user.name  "Eval Runner"
@@ -100,7 +112,7 @@ run_arm() {
 # layer switched off — while the kit's central claim is the agent layer. Both arms get them (a bare project has no
 # agents, so it simply never uses them, and the arms stay identical in tool access).
 # Override with CSK_EVAL_PERM if your environment refuses the default.
-  ( cd "$dir"
+  ( cd "$dir" || exit 1
     env $env_prefix claude -p "$PROMPT" \
         --permission-mode "${CSK_EVAL_PERM:-bypassPermissions}" \
         --allowedTools ${CSK_EVAL_TOOLS:-Bash Read Write Edit Task Agent} \
