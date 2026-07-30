@@ -40,7 +40,7 @@ The "how" lives in the pattern skill, not here. Default is `devarch-module`; the
 a project on another pattern follows its own skill instead, and these DevArch specifics do not apply:
 - **`devarch-module` (default):** layout `Business/Handlers/{Entity}/Commands|Queries|ValidationRules`; return `IResult`/`IDataResult<T>` (no bare types); AOP order `[SecuredOperation]` → `[ValidationAspect]` → `[CacheAspect]`/`[CacheRemoveAspect]`; an anonymous endpoint drops `[SecuredOperation]`.
 - Domain-specific contracts (if any) live in the project's relevant skill (e.g. payment/credential flow, reporting/rollup) — follow those.
-- **Also apply** `api-design` (contract/versioning) · `observability` (log/trace/metric) · `performance` (bottleneck) · `dependency-audit` (add/update package) · `i18n-integrity` (user-facing text: error/email/notification).
+- **Also apply** `api-design` (contract/versioning) · `observability` (log/trace/metric) · `performance` (bottleneck) · `dependency-audit` (add/update package) · `i18n-integrity` (user-facing text: error/email/notification) · `mcp-builder` (building an MCP server or tool — implementation work, so it belongs to an owner rather than the main thread).
 
 ## Coordination (cross-agent)
 - Security-critical work (auth/secret/IDOR/injection) → **security-expert-csk** MANDATORY (produces findings).

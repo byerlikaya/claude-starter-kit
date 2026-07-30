@@ -36,7 +36,7 @@ This profile has no single "how" skill; the pattern in the source repo is author
 - Read neighboring code first — carry over the layer boundary, return type/error contract, and naming **exactly** as they are.
 - Apply input validation and authorization at the endpoint; don't leak business rules into the presentation layer.
 - The schema/query side is coordinated with **database-expert-csk** + the `db-migration` skill.
-- **Also apply** `api-design` · `observability` · `performance` · `dependency-audit` · `dependency-upgrade` (bringing packages current) · `sonarqube-check` (if SonarQube is in use — the 0/0/0/0 gate is language-agnostic) · `i18n-integrity`.
+- **Also apply** `api-design` · `observability` · `performance` · `dependency-audit` · `dependency-upgrade` (bringing packages current) · `sonarqube-check` (if SonarQube is in use — the 0/0/0/0 gate is language-agnostic) · `i18n-integrity` · `mcp-builder` (building an MCP server or tool).
 
 ## Coordination (cross-agent)
 - Security-critical work (auth/secret/IDOR/injection) → **security-expert-csk** MANDATORY.

@@ -54,6 +54,25 @@ the login is broken and I do not know why|systematic-debugging
 # unreachable component. token-budget had NO positive case at all before this line.
 the context is full, check the token budget before we continue|token-budget
 
+# --- Core components that had NO positive case until 1.11.0 ---
+# An audit found 12 skills and one agent that the routing gate never checked — including security-scan,
+# code-review, testing and spec-planning, i.e. most of what the kit advertises. A component with no case is a
+# component whose reachability is assumed, which is exactly how frontend-expert-csk went unreachable for a whole
+# class of request while every gate stayed green.
+i am not sure what we want here yet, help me scope it|brainstorm
+review the code I just wrote before I push|code-review-csk
+write a commit message for the staged changes|commit-message
+add column last_login to the users table|db-migration
+add a query handler with a validator for this module|devarch-module
+the settings screen needs a state management fix|frontend
+we need a consent flow before we store any of this|privacy-compliance
+let us step back and see what we missed this week|reflect
+scan for vulnerabilities in the auth flow|security-scan
+how do we split this into tasks with acceptance criteria|spec-planning
+are the tests green after that change|testing
+check for AI trace before the commit|trace-scan
+is a handover needed, the context status looks high|session-manager-csk
+
 # --- Negative: prompt must NOT route to target (over-broad-trigger guard) ---
 design the database schema|!frontend-design
 read the model context and summarize it|!mcp-builder

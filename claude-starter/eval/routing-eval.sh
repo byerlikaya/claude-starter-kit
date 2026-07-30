@@ -61,6 +61,21 @@ EOF
   fi
 done < "$GOLD"
 
+echo "== 1b) Routing COVERAGE — every installed component has at least one positive case =="
+# The golden set proves that the cases in it route. It never proved that every component HAS a case, and an audit
+# found 12 skills and one agent with none — including security-scan, code-review, testing and spec-planning. A
+# component with no case is a component whose reachability is nobody's job to check, which is exactly how
+# frontend-expert-csk stayed unreachable for a whole class of request while every gate reported green. Adding a
+# component now means adding the sentence that must reach it.
+MISSING_CASE=""
+for f in "$AGENTS"/*.md "$SKILLS"/*/SKILL.md; do
+  [ -e "$f" ] || continue
+  case "$f" in */SKILL.md) n="$(basename "$(dirname "$f")")" ;; *) n="$(basename "$f" .md)" ;; esac
+  grep -qE "^[^#]*\|$n\$" "$GOLD" || MISSING_CASE="$MISSING_CASE $n"
+done
+[ -z "$MISSING_CASE" ] && pass "every installed agent/skill has a positive routing case" \
+  || fail "no positive golden case for:$MISSING_CASE — add the sentence a user would type to reach it"
+
 echo "== 2) Agent-agent trigger collision =="
 # NOTE: Only AGENT-AGENT collisions matter (routing ambiguity lives here). An agent sharing a trigger
 # with the skill it OWNS (backend-expert-csk<->devarch-module, security-expert-csk<->security-scan,
