@@ -6,10 +6,8 @@ After running `start.sh`, open Claude Code at the repo root and paste this:
 New project. First load the context: ./CLAUDE.md (behavior + project + stack in one file)
 + read any spec/plan under docs/ if present.
 
-The discipline layer derives from these sources; keep decisions ALIGNED with them:
-- Working principles:  multica-ai/andrej-karpathy-skills
-- Code review:         google/eng-practices
-- Backend pattern:     <by profile — generic: existing repo pattern; .NET/DevArch profile: DevArchitecture/DevArchitecture>
+Code review is aligned with google/eng-practices (CC-BY 3.0). The backend pattern comes from the profile —
+generic: the existing repo pattern; .NET/DevArch profile: the project's declared pattern skill.
 
 Initial setup (DO NOT WRITE CODE, in order):
 1) With /agents, show that the installed agents (count varies by profile) are recognized.
