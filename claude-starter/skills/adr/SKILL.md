@@ -3,10 +3,14 @@ name: adr
 description: |
   Architecture Decision Record: context-decision-consequences, for decisions that are expensive to reverse.
   Written under docs/adr/.
-  Trigger phrases: "adr", "architecture decision", "decision record", "why this approach"
 ---
 
 # Architecture Decision Record (ADR)
+
+<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
+     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
+     truncated or dropped, which strips the very keywords a match depends on. -->
+Trigger phrases: "adr", "architecture decision", "decision record", "why this approach"
 
 ## When
 On an architecture/technology choice that is expensive to reverse, long-lived, or contested

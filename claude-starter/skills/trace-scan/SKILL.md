@@ -3,10 +3,14 @@ name: trace-scan
 description: |
   Trace scan (§4.1/§4.2): before a commit, scans the staged changes and the message for AI traces (co-author
   trailers, footers, robot emoji, tool names) and vendor template names. The git hooks apply it automatically.
-  Trigger phrases: "scan traces", "trace scan", "AI trace", "check vendor name", "pre-commit audit"
 ---
 
 # Trace Scan (trace-scan)
+
+<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
+     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
+     truncated or dropped, which strips the very keywords a match depends on. -->
+Trigger phrases: "scan traces", "trace scan", "AI trace", "check vendor name", "pre-commit audit"
 
 Purpose: to bind §4.1/§4.2 to a *gate* rather than to *memory*. If the rule lives only in text,
 a trace leaks sooner or later; this skill + the hooks stop the leak at commit time.

@@ -3,10 +3,14 @@ name: systematic-debugging
 description: |
   Root-cause a bug before touching a fix: reproduce, isolate, form and test a hypothesis, confirm the cause,
   then fix and verify. Stops guess-driven patching. For persistent, intermittent, or "already tried a few things" bugs.
-  Trigger phrases: "debug", "root cause", "why is this failing", "intermittent bug", "can't reproduce", "is broken", "crashes"
 ---
 
 # Systematic Debugging
+
+<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
+     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
+     truncated or dropped, which strips the very keywords a match depends on. -->
+Trigger phrases: "debug", "root cause", "why is this failing", "intermittent bug", "can't reproduce", "is broken", "crashes"
 
 One rule holds the whole skill together: **no fix without a confirmed root cause.** A patch that makes the symptom
 disappear without a proven cause is not a fix — it's a coin flip that hides the bug until it returns somewhere worse.

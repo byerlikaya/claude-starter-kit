@@ -3,10 +3,14 @@ name: release
 description: |
   Versioning and CHANGELOG: SemVer mapped from Conventional Commits, Keep a Changelog format, tagging,
   pre-release gates.
-  Trigger phrases: "release", "version", "changelog", "version bump", "tag", "semver"
 ---
 
 # Release & CHANGELOG
+
+<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
+     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
+     truncated or dropped, which strips the very keywords a match depends on. -->
+Trigger phrases: "release", "version", "changelog", "version bump", "tag", "semver"
 
 ## SemVer mapping (derive from Conventional Commits)
 - `fix:` → **PATCH** (x.y.Z)

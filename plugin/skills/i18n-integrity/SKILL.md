@@ -3,10 +3,14 @@ name: i18n-integrity
 description: |
   Translation integrity: every key present in every language, no hardcoded strings, consistent placeholders
   and plurals. Runs when user-facing text changes.
-  Trigger phrases: "i18n", "translation", "language file", "missing translation", "localization", "translate"
 ---
 
 # Translation Integrity (i18n)
+
+<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
+     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
+     truncated or dropped, which strips the very keywords a match depends on. -->
+Trigger phrases: "i18n", "translation", "language file", "missing translation", "localization", "translate"
 
 Goal: no missing/broken text in any language. Default languages: **TR / EN / DE / RU** (the project sets these).
 

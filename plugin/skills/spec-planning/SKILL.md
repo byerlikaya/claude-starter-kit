@@ -3,10 +3,14 @@ name: spec-planning
 description: |
   Spec-first planning: task breakdown, measurable acceptance criteria, dependency order, risk priority.
   planner-csk applies it; the plan goes to docs/PLAN.md.
-  Trigger phrases: "plan", "spec", "task breakdown", "acceptance criteria", "roadmap", "how do we split this"
 ---
 
 # Spec-First Planning
+
+<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
+     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
+     truncated or dropped, which strips the very keywords a match depends on. -->
+Trigger phrases: "plan", "spec", "task breakdown", "acceptance criteria", "roadmap", "how do we split this"
 
 Before writing code: what will be done, how it counts as "done", and in what order to proceed become clear.
 

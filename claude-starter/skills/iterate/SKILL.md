@@ -2,10 +2,14 @@
 name: iterate
 description: |
   Refine-to-Done loop: repeat until tests green + review clean + nothing deferred; bounded. Not the harness /loop.
-  Trigger phrases: "iterate", "loop until done", "keep going until"
 ---
 
 # Iterate — refine to Done, don't stop at the first attempt
+
+<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
+     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
+     truncated or dropped, which strips the very keywords a match depends on. -->
+Trigger phrases: "iterate", "loop until done", "keep going until"
 
 ## When
 A task has an objective acceptance criterion (tests, a review gate, a spec) and the first attempt may not

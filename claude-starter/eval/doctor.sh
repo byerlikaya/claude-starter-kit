@@ -8,6 +8,12 @@ set -uo pipefail
 ROOT="${1:-.}"
 cd "$ROOT" 2>/dev/null || { echo "doctor: cannot enter '$ROOT'"; exit 2; }
 
+# Nothing here needs input, and everything here spawns subprocesses that INHERIT this script's stdin. A hook
+# reads its payload with `cat`, so one invocation without a pipe would sit waiting for a terminal that is never
+# going to type — which is exactly what a "ran 120s and produced nothing" report looks like. Detaching stdin once
+# makes that class of hang impossible instead of relying on every call site remembering to redirect.
+exec </dev/null
+
 FAIL=0
 ok(){  echo "  ✅ $1"; }
 bad(){ echo "  ❌ $1"; echo "     ↳ fix: $2"; FAIL=$((FAIL+1)); }
@@ -83,6 +89,28 @@ else
   bad "settings.json missing — the tool-level gates (commit approval, guards, context) are INACTIVE" "reinstall the kit"
 fi
 
+# 4a) Skill listing budget. Claude Code loads a listing of every skill's name + description into context each
+#     session; the budget is 1% of the context window, and over it descriptions get truncated or dropped
+#     "which can strip the keywords Claude needs to match your request" (skills docs). The failure is invisible:
+#     the skills are all still installed and still listed BY NAME, they just stop matching. Reported, never
+#     enforced — a project is free to ship many skills, it just needs to know the trade and the two documented
+#     ways out (raise skillListingBudgetFraction, or set low-priority skills to "name-only" in skillOverrides).
+if [ -d .claude/skills ]; then
+  LISTING=$(for f in .claude/skills/*/SKILL.md; do
+      [ -e "$f" ] || continue
+      awk '/^---$/{c++; next} c==1' "$f" | awk '/^(name|description):/,0'
+    done | wc -c | tr -d ' ')
+  CW="${CONTEXT_WINDOW:-1000000}"; BUDGET=$((CW/100))
+  if [ "$LISTING" -le "$BUDGET" ]; then
+    ok "skill listing fits the budget (${LISTING} <= ${BUDGET} chars at 1% of a ${CW}-token window)"
+  else
+    warn "skill listing ${LISTING} chars EXCEEDS the ~${BUDGET} budget for a ${CW}-token window — Claude Code will"
+    warn "  truncate or drop descriptions, and a skill whose description is gone stops matching requests."
+    warn "  Fixes: raise \"skillListingBudgetFraction\" in settings, or set rarely-used skills to \"name-only\""
+    warn "  in \"skillOverrides\". Re-check with a smaller CONTEXT_WINDOW=200000 to see your real model's budget."
+  fi
+fi
+
 # 4b) Is delegation itself switched off? The documented way to stop Claude using ANY subagent is to deny the `Agent`
 #     tool in permissions.deny. A project that does that keeps twelve agents on disk that can never run, and the only
 #     symptom is that every task quietly happens on the main thread — which reads as "the kit does nothing" rather
@@ -92,6 +120,11 @@ DENYSRC=""
 for f in .claude/settings.json .claude/settings.local.json "$HOME/.claude/settings.json"; do
   [ -f "$f" ] || continue
   # A deny entry for the delegation tool, in any of its spellings, with or without an argument pattern.
+  # `python3` is guarded: on Windows it is often a Microsoft Store execution alias that BLOCKS instead of
+  # failing, so calling it unconditionally can hang the whole doctor run on the machines least able to debug it.
+  # Absent python3 does NOT silently skip the check — a skipped check that reports nothing is indistinguishable
+  # from a check that passed, which is the failure this whole file exists to prevent.
+  if ! command -v python3 >/dev/null 2>&1; then NOPY=1; continue; fi
   grep -qE '"(Agent|Task)(\([^"]*\))?"' "$f" 2>/dev/null \
     && grep -q '"deny"' "$f" 2>/dev/null \
     && python3 - "$f" <<'PY' 2>/dev/null && DENYSRC="$DENYSRC $f"
@@ -102,7 +135,11 @@ deny=(d.get('permissions') or {}).get('deny') or []
 sys.exit(0 if any(re.match(r'^(Agent|Task)\b', str(x)) for x in deny) else 1)
 PY
 done
-[ -z "$DENYSRC" ] && ok "delegation is enabled (the Agent tool is not denied)" \
+if [ "${NOPY:-0}" = 1 ]; then
+  warn "delegation check skipped — no python3 to parse settings JSON precisely. Check by hand that \"Agent\" is"
+  warn "  absent from permissions.deny in .claude/settings.json, .claude/settings.local.json and ~/.claude/settings.json."
+fi
+[ -z "$DENYSRC" ] && [ "${NOPY:-0}" != 1 ] && ok "delegation is enabled (the Agent tool is not denied)" \
   || bad "the Agent tool is DENIED in:$DENYSRC — no subagent can ever run, so every agent on disk is dead weight" \
          "remove the Agent/Task entry from permissions.deny, or accept that this project runs main-thread-only"
 

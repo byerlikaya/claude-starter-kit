@@ -3,10 +3,14 @@ name: sonarqube-check
 description: |
   SonarQube quality gate (language-agnostic, local-first): 0 Bugs/Vulns/Hotspots/Code Smells, 0 build warnings.
   If no analyzer exists, install the language's local server-less Sonar analyzer and run it — never a remote server.
-  Trigger phrases: "sonarqube", "quality gate", "code smell", "sonar scan"
 ---
 
 # SonarQube Quality Gate (language-agnostic, local-first)
+
+<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
+     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
+     truncated or dropped, which strips the very keywords a match depends on. -->
+Trigger phrases: "sonarqube", "quality gate", "code smell", "sonar scan"
 
 Zero-tolerance gate: a job does not close until the metrics below are clean. The analysis runs **locally** — it never
 depends on a shared or remote SonarQube server. If the project has no analyzer wired, this gate **installs the

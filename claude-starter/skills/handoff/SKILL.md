@@ -3,10 +3,14 @@ name: handoff
 description: |
   Session handover: when context fills, a phase closes, or the topic changes, write an action-oriented handover
   to docs/SESSION_STATE.md, then recommend /clear.
-  Trigger phrases: "handoff", "hand off", "session summary", "session state", "clear context", "I'll continue"
 ---
 
 # Session Handover (Handoff)
+
+<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
+     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
+     truncated or dropped, which strips the very keywords a match depends on. -->
+Trigger phrases: "handoff", "hand off", "session summary", "session state", "clear context", "I'll continue"
 
 ## When
 `/context` > 75% · phase closure · topic change. Goal: the next session should **not start from scratch**.

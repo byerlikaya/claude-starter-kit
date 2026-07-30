@@ -4,10 +4,14 @@ description: |
   Scope a security audit BEFORE scanning, to cut false positives: map assets, entry points, trust boundaries
   and 5-8 domain-specific attack classes into a parseable THREAT_MODEL.md. A threat survives a patch; a
   vulnerability is only evidence for one. Feeds security-scan.
-  Trigger phrases: "threat model", "attack surface", "scope the audit", "trust boundary"
 ---
 
 # Threat Model
+
+<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
+     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
+     truncated or dropped, which strips the very keywords a match depends on. -->
+Trigger phrases: "threat model", "attack surface", "scope the audit", "trust boundary"
 
 Scope first, scan second. A security scan with no map produces noise; a threat model tells the scanner (and
 `security-scan`) **where to look and what matters** — the single biggest lever on false positives.

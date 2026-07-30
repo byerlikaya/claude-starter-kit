@@ -3,10 +3,14 @@ name: commit-message
 description: |
   Conventional Commits: reads the staged diff and proposes `type(scope): summary`, with body/footer when needed.
   One logical change = one commit. commit-agent-csk applies it.
-  Trigger phrases: "commit message", "make a commit", "conventional commit", "write a commit", "git commit"
 ---
 
 # Commit Message (Conventional Commits v1.0.0)
+
+<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
+     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
+     truncated or dropped, which strips the very keywords a match depends on. -->
+Trigger phrases: "commit message", "make a commit", "conventional commit", "write a commit", "git commit"
 
 Format: `type(scope): summary` + (optional blank line + body) + (optional footer).
 

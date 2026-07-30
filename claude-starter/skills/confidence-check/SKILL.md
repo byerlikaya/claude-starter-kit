@@ -3,10 +3,14 @@ name: confidence-check
 description: |
   Readiness gate BEFORE writing implementation code: does this already exist, does it fit the project's
   architecture, is the API claim actually checked, is there a working reference, is the root cause known.
-  Trigger phrases: "confidence check", "ready to implement", "before I start", "am I sure enough", "readiness"
 ---
 
 # Confidence Check — earn the right to start
+
+<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
+     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
+     truncated or dropped, which strips the very keywords a match depends on. -->
+Trigger phrases: "confidence check", "ready to implement", "before I start", "am I sure enough", "readiness"
 
 ## When
 Right before implementation code gets written for anything beyond a one-line change, and *after* the scope is

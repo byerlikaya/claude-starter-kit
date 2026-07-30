@@ -4,10 +4,14 @@ description: |
   Measure output quality, don't vibe it: score a generative task with a two-layer grader — deterministic code
   metrics + per-dimension LLM-as-judge — over a fixed task set, as signed deltas vs a pinned baseline. Grades
   cost alongside correctness (pass-slow).
-  Trigger phrases: "eval", "grader", "measure output quality", "LLM-as-judge", "score the output"
 ---
 
 # Eval Grader
+
+<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
+     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
+     truncated or dropped, which strips the very keywords a match depends on. -->
+Trigger phrases: "eval", "grader", "measure output quality", "LLM-as-judge", "score the output"
 
 **Measure every change; don't vibe it.** When you iterate on a prompt, an agent, or any generative output (docs,
 slides, UI, a summary, an extraction), a two-layer grader over a fixed task set turns "feels better" into a signed

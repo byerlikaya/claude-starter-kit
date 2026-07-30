@@ -538,7 +538,15 @@ BUDGET_AGENTS=5800   # sum of agent frontmatter; currently 5765 (1.11.0: +218 B 
                      # +performance-expert-csk (~426B) — security, privacy and tests each had an independent
                      # reviewer and performance was the one quality axis where the author audited their own
                      # work. Bought at ~110 tokens per session; the alternative was leaving that gap open.)
-BUDGET_SKILLS=12350  # sum of skill frontmatter; currently 12315 (1.8.0: +confidence-check (~359B), the kit's
+BUDGET_SKILLS=8250  # sum of skill frontmatter; currently 8184. RATCHETED DOWN in 1.11.0 from 12,350: the
+                     # `Trigger phrases:` lines moved out of every skill's `description` into the body. This is not
+                     # cosmetic. Claude Code loads a LISTING of skill names+descriptions every session and the
+                     # budget is 1% of the context window; over it, descriptions are truncated or dropped outright,
+                     # "which can strip the keywords Claude needs to match your request" (official skills docs). The
+                     # kit's listing was 11,372 chars against a 10,000 budget on a 1M window — overflowing on every
+                     # model, and 5.7x over on a 200k one. Now 7,208. A kit whose own skills push its descriptions
+                     # out of the listing is a kit that stops matching, which is exactly the symptom users report.
+                     # (1.8.0: +confidence-check (~359B), the kit's
                      # only gate that fires BEFORE implementation — every other one reviews code that already
                      # exists, and none catch correct code that should never have been written; and
                      # +dependency-upgrade (~444B), split from dependency-audit because one reports and the
@@ -1131,10 +1139,34 @@ else
   fail "guard-commit-scan.sh missing or not executable — the plugin edition has no commit content gate"
 fi
 
+echo "== 7z) No kit name shadows a Claude Code bundled skill/command =="
+# Skills and commands share one namespace: a SKILL.md and a commands/*.md both create `/name`, and per the
+# official docs a project skill "also overrides a bundled skill with the same name" — silently. The kit shipped a
+# `code-review` skill for months, which means every project that installed it lost the bundled `/code-review` and
+# nobody was told. Plugin skills are namespaced `plugin:skill` and cannot collide, so this only bites the
+# .claude/ install. The list is pinned rather than discovered: the CLI has no machine-readable inventory, so a new
+# bundled name means updating this line — which is the point, because the alternative is finding out from a user.
+BUNDLED="batch claude-api code-review debug doctor loop run-skill-generator run status verify help compact"
+SHADOW=""
+for b in $BUNDLED; do
+  [ -d "$ROOT/skills/$b" ]      && SHADOW="$SHADOW skills/$b"
+  [ -f "$ROOT/commands/$b.md" ] && SHADOW="$SHADOW commands/$b.md"
+done
+[ -z "$SHADOW" ] && pass "no kit skill/command shadows a bundled name" \
+  || fail "these shadow a Claude Code bundled name (it becomes unreachable for the user):$SHADOW — add the -csk suffix"
+
 echo "== 8) Slash commands =="
-for c in simplify plan review ship handoff; do
+# Every command carries the -csk suffix, for the same reason the agents do: `/review` and `/simplify` collide with
+# Claude Code's built-ins, and a user facing two identically-named entries in the picker cannot tell which is the
+# kit's. Suffixing all eight keeps one rule instead of a list of exceptions, and leaves room for built-ins the CLI
+# adds later. The filename IS the invocation, so a missing suffix is a silent collision, not a cosmetic slip.
+for c in brainstorm-csk plan-csk review-csk ship-csk handoff-csk doctor-csk update-csk; do
   [ -f "$ROOT/commands/$c.md" ] && pass "/$c present" || fail "/$c command missing"
 done
+for c in brainstorm plan review ship handoff; do
+  [ -f "$ROOT/commands/$c.md" ] && fail "/$c present without the -csk suffix — collides with a built-in"
+done
+pass "no unsuffixed command shadows a built-in"
 
 echo "---"
 if [ "$FAIL" -eq 0 ]; then echo "SMOKE-TEST: PASSED ✅"; exit 0

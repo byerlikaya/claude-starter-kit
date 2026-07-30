@@ -3,10 +3,14 @@ name: frontend
 description: |
   Stack-agnostic frontend discipline (web · mobile · desktop): component structure, state, data fetching,
   loading/empty/error states, i18n, accessibility, performance. frontend-expert-csk applies it on every stack.
-  Trigger phrases: "frontend", "screen", "component", "page", "UI", "state management", "interface"
 ---
 
 # Frontend Discipline (stack-agnostic)
+
+<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
+     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
+     truncated or dropped, which strips the very keywords a match depends on. -->
+Trigger phrases: "frontend", "screen", "component", "page", "UI", "state management", "interface"
 
 Web (React/Next/Vue/Svelte/Angular), mobile (React Native/Flutter) or desktop — shared principles.
 The stack-specific "how" (native bridge, router choice, etc.) lives in the relevant project skill; this skill applies to all of them.

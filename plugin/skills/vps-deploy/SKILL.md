@@ -3,10 +3,14 @@ name: vps-deploy
 description: |
   Deploy to a VPS safely: runtime detection, reverse proxy + SSL, atomic swap, keep the previous version,
   post-deploy health gate, automatic rollback on failure.
-  Trigger phrases: "deploy", "push to the server", "install on the VPS", "ship it to the server", "go to production"
 ---
 
 # VPS Deploy
+
+<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
+     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
+     truncated or dropped, which strips the very keywords a match depends on. -->
+Trigger phrases: "deploy", "push to the server", "install on the VPS", "ship it to the server", "go to production"
 
 A solid deploy has a single idea: **swap the running version with the new one in a reversible way.**
 That is, when you put the new version in place, don't throw the old one away — keep it aside. If the new version

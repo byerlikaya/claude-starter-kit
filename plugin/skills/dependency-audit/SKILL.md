@@ -3,10 +3,14 @@ name: dependency-audit
 description: |
   Dependency risk assessment, read-only: known CVEs, deprecated packages, licence compliance, maintenance
   status, lockfile integrity, and a justification for every new dependency. Acting on it is dependency-upgrade.
-  Trigger phrases: "dependency audit", "npm audit", "package security", "CVE", "license", "deprecated package"
 ---
 
 # Dependency Audit
+
+<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
+     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
+     truncated or dropped, which strips the very keywords a match depends on. -->
+Trigger phrases: "dependency audit", "npm audit", "package security", "CVE", "license", "deprecated package"
 
 **This skill only reports.** It changes no manifest and no lockfile — bringing dependencies current is
 [[dependency-upgrade]], which classifies each move by risk and verifies the build. Keeping the two apart keeps

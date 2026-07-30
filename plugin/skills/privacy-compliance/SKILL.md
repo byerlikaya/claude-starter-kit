@@ -3,10 +3,14 @@ name: privacy-compliance
 description: |
   KVKK/GDPR audit method: data inventory, purpose/basis/retention, minimisation, consent, transparency,
   data-subject rights, cross-border transfer. privacy-agent-csk applies it.
-  Trigger phrases: "kvkk", "gdpr", "privacy", "consent", "data retention", "minimization"
 ---
 
 # Privacy Compliance (KVKK / GDPR)
+
+<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
+     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
+     truncated or dropped, which strips the very keywords a match depends on. -->
+Trigger phrases: "kvkk", "gdpr", "privacy", "consent", "data retention", "minimization"
 
 ## Official sources (authority — always defer to these)
 The **primary, official** sources this skill rests on; rules are always interpreted against these:
