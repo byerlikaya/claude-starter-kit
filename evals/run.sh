@@ -95,11 +95,15 @@ run_arm() {
   # arm simply stopped every run with "denied at the permission layer", which grades the absence of a human,
   # not the presence of a discipline. The git-hook gates (trace, secret) are unaffected by permission mode and
   # still run — those ARE part of what is being measured.
-  # Override with CSK_EVAL_PERM if your environment refuses the default.
+  # `Task`/`Agent` are in the default tool list DELIBERATELY, and their absence was a real defect: without them the
+# kit arm cannot delegate at all, so every result this harness produced measured the discipline TEXT with the agent
+# layer switched off — while the kit's central claim is the agent layer. Both arms get them (a bare project has no
+# agents, so it simply never uses them, and the arms stay identical in tool access).
+# Override with CSK_EVAL_PERM if your environment refuses the default.
   ( cd "$dir"
     env $env_prefix claude -p "$PROMPT" \
         --permission-mode "${CSK_EVAL_PERM:-bypassPermissions}" \
-        --allowedTools ${CSK_EVAL_TOOLS:-Bash Read Write Edit} \
+        --allowedTools ${CSK_EVAL_TOOLS:-Bash Read Write Edit Task Agent} \
         >"$dir/.eval-stdout.txt" 2>"$dir/.eval-stderr.txt"
   ) || true   # a non-zero exit is itself a result; the grader decides
 }

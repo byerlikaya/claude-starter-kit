@@ -5,12 +5,15 @@ description: |
   Security review expert. Use proactively whenever auth/authz, anonymous/token flows, secret leakage, injection,
   weak crypto, IDOR, rate limits, or tamper surface are touched. Findings + fixes via `security-scan` (plus
   `sonarqube-check` where used); writes no code.
-  Trigger phrases: "security audit", "security scan", "OWASP check", "security review", "secret scan", "auth check", "token security", "tampering"
 tools: Read, Grep, Glob, Bash
 model: sonnet
 ---
 
 # Security Expert
+
+<!-- routing-eval reads this line; it lives in the BODY so the always-on `description` stays
+     focused on WHEN to delegate, which is the field Claude actually reads. -->
+Trigger phrases: "security audit", "security scan", "OWASP check", "security review", "secret scan", "auth check", "token security", "tampering"
 
 Read-only auditor. The relevant expert (backend/database) makes the fix; this agent produces the findings.
 

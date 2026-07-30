@@ -6,7 +6,7 @@ argument-hint: "[task/feature description]"
 # /plan
 Argument: $ARGUMENTS
 
-Delegate to the **planner-csk** agent (spec-planning skill). For ambiguously scoped work:
+Delegate to the @agent-planner-csk agent (spec-planning skill). For ambiguously scoped work:
 1. Clarify the goal + what's out of scope.
 2. Split into vertical slices; give each task a measurable acceptance criterion.
 3. Order by dependency + put the riskiest first.

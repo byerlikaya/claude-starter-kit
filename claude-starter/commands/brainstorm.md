@@ -6,7 +6,7 @@ argument-hint: "[fuzzy idea / problem to explore]"
 # /brainstorm
 Argument: $ARGUMENTS
 
-Delegate to the **planner-csk** agent applying the **brainstorm** skill. For an under-defined ask:
+Delegate to the @agent-planner-csk agent applying the **brainstorm** skill. For an under-defined ask:
 1. Restate the real goal separately from the requested solution.
 2. Generate **2–4 genuinely different** directions (include a cheap/minimal one); give each its trade-off.
 3. Surface assumptions + open questions; mark which are blocking.

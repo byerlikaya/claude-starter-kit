@@ -6,7 +6,7 @@
 
 *planla → üret → denetle → commit; her kritik kural bir hatırlatma değil, bir **kapı**.*
 
-![Sürüm](https://img.shields.io/badge/s%C3%BCr%C3%BCm-1.10.0-2563eb?style=flat-square)
+![Sürüm](https://img.shields.io/badge/s%C3%BCr%C3%BCm-1.10.1-2563eb?style=flat-square)
 ![Lisans](https://img.shields.io/badge/lisans-MIT-16a34a?style=flat-square)
 ![Ajanlar](https://img.shields.io/badge/ajanlar-12-f59e0b?style=flat-square)
 ![Skiller](https://img.shields.io/badge/skiller-38-f59e0b?style=flat-square)
@@ -25,7 +25,7 @@
 | Önemli olan | Tipik agent kiti / prompt koleksiyonu | Claude Starter Kit |
 |---|---|---|
 | **Kritik kurallar** | Bir `.md` dosyasında durur; yalnız model hatırlarsa uygulanır | **Kapı olarak zorlanır** — araç seviyesinde: git hook (`trace-scan`), `settings.json` izinleri, `guard-bash.sh` PreToolUse. Kırmak *imkânsız*, "tavsiye edilmez" değil |
-| **Yapı** | Tek bir dev prompt ya da senin yönettiğin gevşek bir agent listesi | **12 uzman agent'lık bir ekip**, 5 aşamada kendiliğinden zincirlenir (Anla → Üret → Denetle → Kapat → Devret) — sen bağlamazsın, ana thread bağlar |
+| **Yapı** | Tek bir dev prompt ya da senin yönettiğin gevşek bir agent listesi | **12 uzman agent'lık bir ekip**, 5 aşamada (Anla → Üret → Denetle → Kapat → Devret). Komutlar onları **@-mention ile zincirler, yani ajanlar gerçekten çalışır** — `/review`'de 3/3 ölçüldü. Otomatik delegasyon her kitte olduğu gibi bizde de modelin takdiridir; olması gereken yerde şansa bırakmıyoruz |
 | **Güvenlik & gizlilik** | İsteğe bağlı tavsiye, atlaması kolay | **Zorunlu audit kapısı** — risk-kritik değişiklik, güvenlik/gizlilik denetimi geçmeden kapanamaz |
 | **Commit'ler** | Model kendi başına commit atabilir | **Her commit senin onayına bağlı** — auto/bypass modda bile araç seviyesinde zorlanır |
 | **Mevcut repoya uyarlama** | "Sıfırdan başla" varsayımı; elle taşıma | **`adopt` kiti bir branch'te devreder** — `main`'e dokunulmaz; sen inceleyip tutmaya karar verirsin |
@@ -77,6 +77,13 @@ Ardından ilk Claude Code mesajın olarak **`.claude/FIRST_PROMPT.md`**'i yapı�
 </details>
 
 > Ajan adları `-csk` ekiyle (Claude Starter Kit) biter; böylece kurulduğu projenin kendi ajanlarıyla asla çakışmaz. Her ajan incedir; asıl yöntem bir **skill**'de yaşar — tek bilgi kaynağı orasıdır.
+
+> **Ajan devreye girmiyorsa garantiye alabilirsin.** Claude delegasyona göreve, ajanın `description` alanına ve
+> mevcut bağlama bakarak karar verir — bu bir kural değil, bir yargıdır; bazen işi ana thread'de tutar. İki
+> yükseltme yolu ([subagents dokümanı](https://code.claude.com/docs/en/sub-agents)): istekte ajanın adını yaz
+> ("bunu frontend-expert-csk yapsın") ya da **`@agent-frontend-expert-csk`** — bu, o ajanın o görev için
+> çalışmasını **garanti eder**. Hiçbir yerde delegasyon olmuyorsa `Agent` aracının `permissions.deny` içinde
+> olmadığını kontrol et; `/doctor-csk` bunu raporlar.
 
 ---
 

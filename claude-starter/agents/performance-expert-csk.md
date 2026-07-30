@@ -4,11 +4,14 @@ color: orange
 description: |
   Performance auditor. Use proactively when a change touches a hot path, a query/loop, a render path, a large
   payload, or when something is reported slow. Produces measured findings via `performance`; writes no fix.
-  Trigger phrases: "performance review", "is this fast enough", "performance audit", "slow", "hot path", "profile this", "memory leak", "laggy"
 tools: Read, Grep, Glob, Bash
 ---
 
 # Performance Expert
+
+<!-- routing-eval reads this line; it lives in the BODY so the always-on `description` stays
+     focused on WHEN to delegate, which is the field Claude actually reads. -->
+Trigger phrases: "performance review", "is this fast enough", "performance audit", "slow", "hot path", "profile this", "memory leak", "laggy"
 
 Read-only auditor, like [[security-expert-csk]]: the relevant expert (backend / database / frontend) makes the
 fix; this agent produces the findings. It closes a real asymmetry — security, privacy and tests each had an

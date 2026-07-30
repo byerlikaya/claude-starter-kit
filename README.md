@@ -6,7 +6,7 @@
 
 *plan → build → review → commit, where every critical rule is a **gate**, not a reminder.*
 
-![Version](https://img.shields.io/badge/version-1.10.0-2563eb?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.10.1-2563eb?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)
 ![Agents](https://img.shields.io/badge/agents-12-f59e0b?style=flat-square)
 ![Skills](https://img.shields.io/badge/skills-38-f59e0b?style=flat-square)
@@ -25,7 +25,7 @@ Most "agent setups" are a pile of suggestions — the rules sit in a file, and w
 | What matters | Typical agent kit / prompt collection | Claude Starter Kit |
 |---|---|---|
 | **Critical rules** | Live in a `.md` file; honored only if the model remembers | **Enforced as gates** at the tool level — git hook (`trace-scan`), `settings.json` permissions, `guard-bash.sh` PreToolUse. Breaking them is *impossible*, not *discouraged* |
-| **Structure** | A single dev prompt, or a loose list of agents you orchestrate | **A team of 12 specialist agents** that auto-chain across 5 stages (Understand → Produce → Audit → Close → Hand off) — the main thread wires them, not you |
+| **Structure** | A single dev prompt, or a loose list of agents you orchestrate | **A team of 12 specialist agents** across 5 stages (Understand → Produce → Audit → Close → Hand off). The commands chain them **by @-mention, so the agents actually run** — measured 3 of 3 on `/review`. Automatic delegation is a model judgement in any kit, ours included; where it must happen, we do not leave it to chance |
 | **Security & privacy** | Optional advice, easy to skip | **Mandatory audit gate** — risk-critical changes can't close before the security/privacy review clears |
 | **Commits** | Model may commit on its own | **Every commit is yours to approve** — enforced at the tool level even in auto/bypass mode |
 | **Adopting an existing repo** | "Start fresh" assumption; manual porting | **`adopt` hands the kit over on a branch** — `main` is never touched; you review before you keep it |
@@ -77,6 +77,13 @@ Then paste **`.claude/FIRST_PROMPT.md`** as your first Claude Code message. Home
 </details>
 
 > Agent names carry a `-csk` suffix (Claude Starter Kit) so they never collide with the host project's own agents. Each agent is thin; the real method lives in a **skill** — the single source of truth.
+
+> **If an agent doesn't fire, you can guarantee it.** Claude decides delegation from the task, the agent's
+> `description` and the current context — it is a judgement, not a rule, so it will sometimes keep work on the main
+> thread. Two escalations, from the [subagents docs](https://code.claude.com/docs/en/sub-agents): name the agent in
+> your prompt ("have frontend-expert-csk do this"), or **`@agent-frontend-expert-csk`**, which *guarantees* that
+> agent runs for that task. If delegation never happens anywhere, check that the `Agent` tool is not in
+> `permissions.deny` — `/doctor-csk` reports it.
 
 ---
 

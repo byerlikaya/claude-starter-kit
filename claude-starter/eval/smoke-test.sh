@@ -505,7 +505,15 @@ echo "== 6f) always-on token budget =="
 # for that cost, and a gate rather than a reminder — a verbose new description fails the suite instead of
 # quietly taxing every future session. Budgets sit just above the current sizes: raising one is allowed, but
 # only as a deliberate edit here.
-BUDGET_DISC=10810    # DISCIPLINE.md (the discipline half of CLAUDE.md); currently 10770 (1.10.0: +21 B naming
+BUDGET_DISC=11600    # DISCIPLINE.md (the discipline half of CLAUDE.md); currently 10770 (1.10.0: +21 B naming
+                     # (1.10.1: +797 B for the Step-0 domain->owner routing map, the `@agent-` guarantee (measured
+                     # 0/3 delegations when an agent is only described vs 3/3 when the command body @-mentions it),
+                     # the burden-of-proof clause on
+                     # staying inline, and the rule that the session line is omitted rather than reporting failure
+                     # every turn. Bought with a NET SAVING: the same release moved the agents' trigger-phrase
+                     # lists out of `description:` into the body, and always-on TOTAL fell 28,858 -> 27,995. The
+                     # official contract says `description` is "when Claude should delegate", and that is the field
+                     # Claude reads to decide — so bytes moved from keyword lists into an explicit routing rule.
                      # `git checkout -- .` in the §4.5 list, and +6 B widening "chmod 777" to "a world-writable
                      # chmod". Both are the rule TEXT catching up with what the gate enforces: a user told a
                      # narrower rule than the one that fires reads the block as a bug and works around it. The
@@ -564,12 +572,17 @@ else pass "some skill frontmatter over ${MAX_SKILL_FM} B:$SKILL_FAT (your projec
 # timestamp, a per-turn counter) AHEAD of it — a change busts that cache level and everything after it. The kit's
 # volatile per-turn output (the 🔋 line, the stale-discipline warning) is emitted by the hooks in the MESSAGE stream,
 # i.e. AFTER the cached prefix, so it doesn't invalidate the cache. Preserve that split when editing the payload.
-# Every agent/skill must still declare its trigger phrases — that is what routes work to it. Trimming prose
-# is the point; trimming triggers would silently break routing, and routing-eval only checks the golden set.
+# Every agent/skill must still DECLARE its trigger phrases — that is what routes work to it. Trimming prose is the
+# point; trimming triggers would silently break routing, and routing-eval only checks the golden set.
+# The line is looked for ANYWHERE in the file, not just in the frontmatter. Agents keep it in the BODY on purpose:
+# the official contract says `description` is "when Claude should delegate to this subagent", and Claude reads that
+# field to make the call — so a list of fifteen quoted keywords sitting in it competes with the sentence that
+# actually states WHEN. routing-eval greps the whole file, and moving the lines out of the agents' frontmatter cut
+# 1.7 KB off the always-on cost with the routing set unchanged. What must never happen is the line disappearing.
 MISSING=""
 for f in "$AGENTS"/*.md "$SKILLS"/*/SKILL.md; do
   [ -e "$f" ] || continue
-  awk '/^---$/{c++; next} c==1' "$f" | grep -qi 'trigger' || MISSING="$MISSING $(basename "$(dirname "$f")")/$(basename "$f")"
+  grep -qi 'trigger phrases:' "$f" || MISSING="$MISSING $(basename "$(dirname "$f")")/$(basename "$f")"
 done
 [ -z "$MISSING" ] && pass "every agent/skill still declares Trigger phrases" || need_trigger "no trigger phrases in:$MISSING"
 

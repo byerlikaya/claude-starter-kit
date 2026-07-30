@@ -56,6 +56,17 @@ If the kit loses, publish that. A harness that only reports favourable runs meas
 
 ## Results so far
 
+> **Read every row below with this caveat.** Until 1.10.1 the runner passed
+> `--allowedTools Bash Read Write Edit` — **`Task`/`Agent` were not in the list, so the kit arm could not delegate
+> at all.** Every result here was therefore measured with the agent layer switched off, against a kit whose central
+> claim *is* the agent layer. What they compare is the discipline TEXT, not the kit. The flag is fixed; the numbers
+> below are not re-run and should be treated as answering a narrower question than the one they appear to answer.
+>
+> Measured separately while finding that bug, in a clean install with the tools available: a task squarely inside
+> `frontend-expert-csk`'s domain produced **0 delegations** on its own — with the old agent description and with a
+> rewritten one — while `/review`, whose body @-mentions its agents, produced **3 of 3**. Naming an agent in prose
+> is a hope; `@agent-<name>` is the mechanism.
+
 CLI 2.1.220, 2026-07-29, `--permission-mode acceptEdits`.
 
 | Case | n | kit | bare | Reading |

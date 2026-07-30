@@ -4,12 +4,15 @@ color: cyan
 description: |
   Commit message specialist (thin trigger). Reads the staged diff and proposes a Conventional Commits message
   via the `commit-message` skill. Writes no source; commits only with user approval.
-  Trigger phrases: "commit message", "make a commit", "write a commit", "git commit", "commit the changes"
 tools: Read, Grep, Glob, Bash
 model: haiku
 ---
 
 # Commit Agent
+
+<!-- routing-eval reads this line; it lives in the BODY so the always-on `description` stays
+     focused on WHEN to delegate, which is the field Claude actually reads. -->
+Trigger phrases: "commit message", "make a commit", "write a commit", "git commit", "commit the changes"
 
 Read-only + git. The "how" lives in the `commit-message` skill; this agent triggers it at work closure.
 

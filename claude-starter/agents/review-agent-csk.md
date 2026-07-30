@@ -5,11 +5,14 @@ description: |
   Code review specialist. Use immediately after writing or modifying a nontrivial diff: audits it against Google
   eng-practices + the four principles (simplicity, surgical change, readability, altitude). Findings via
   `code-review`; writes no code.
-  Trigger phrases: "review", "review code", "look at the diff", "PR review", "go over it", "simplify"
 tools: Read, Grep, Glob, Bash
 ---
 
 # Review Agent
+
+<!-- routing-eval reads this line; it lives in the BODY so the always-on `description` stays
+     focused on WHEN to delegate, which is the field Claude actually reads. -->
+Trigger phrases: "review", "review code", "look at the diff", "PR review", "go over it", "simplify"
 
 Read-only; the trigger for the `code-review` skill.
 

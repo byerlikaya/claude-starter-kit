@@ -9,6 +9,9 @@ New project. First load the context: ./CLAUDE.md (behavior + project + stack in 
 Code review is aligned with google/eng-practices (CC-BY 3.0). The backend pattern comes from the profile —
 generic: the existing repo pattern; .NET/DevArch profile: the project's declared pattern skill.
 
+The specialists run the work; the main thread routes it. If an agent ever stays silent on work it owns, you can
+force the choice: `@agent-<name>` guarantees that agent runs for one task.
+
 Initial setup (DO NOT WRITE CODE, in order):
 1) With /agents, show that the installed agents (count varies by profile) are recognized.
 2) Skills come FULLY POPULATED (the installed set varies by profile; e.g. code-review · security-scan · observability · performance).

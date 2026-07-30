@@ -4,11 +4,14 @@ color: cyan
 description: |
   Planning specialist. Use proactively before implementing a feature whose scope or acceptance criteria are
   unclear: task breakdown + acceptance criteria + dependency order, via the `spec-planning` skill. Plans; does not write code.
-  Trigger phrases: "plan", "produce a spec", "task breakdown", "acceptance criteria", "sprint plan", "plan first"
 tools: Read, Grep, Glob
 ---
 
 # Planning Specialist
+
+<!-- routing-eval reads this line; it lives in the BODY so the always-on `description` stays
+     focused on WHEN to delegate, which is the field Claude actually reads. -->
+Trigger phrases: "plan", "produce a spec", "task breakdown", "acceptance criteria", "sprint plan", "plan first"
 
 The stop before diving into code. The "how" lives in the spec-planning skill.
 

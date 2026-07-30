@@ -25,17 +25,31 @@ Nothing is left for later ("we'll do it in v2" is not acceptable). At a blocker:
 recommend, with the rationale.**
 
 ## Workflow (orchestration)
-Noisy or heavy work goes to a subagent; small work stays on the main thread.
-1. **Diagnose, then plan** — root cause *unknown* (cross-domain bug, "where does it break?") → **general-purpose** + the `systematic-debugging` skill, *before* planning: **unclear scope ≠ unknown cause** (native-only → inline + skill). Then ambiguous *scope* → **planner-csk** (`/plan`); clear work goes straight to the expert.
-2. **Produce** — **backend-expert-csk · database-expert-csk · frontend-expert-csk**; deploy / CI / incident → **devops-expert-csk**.
-3. **Audit** — **security-expert-csk** (mandatory when security-critical) · **privacy-agent-csk** (personal data) · **test-expert-csk** · **performance-expert-csk** (hot path / slowness) (`/review`).
-4. **Close** — DoD gate → **review-agent-csk** clean → **commit-agent-csk** proposes, waits for approval (`/ship`).
+**The specialists run the work; you route it.** Delegation is the DEFAULT for anything that writes or changes
+code — if an installed agent owns the domain, the work is that agent's, whatever its size. You orchestrate.
+
+**Classify before the first tool call:** name the DOMAIN in your own words, then read its owner from
+`.claude/agents/`. Classify *intent*, never wording — the request arrives in any language.
+What the user sees → **frontend-expert-csk** · server behaviour → **backend-expert-csk** · stored data →
+**database-expert-csk** · run/deploy/CI → **devops-expert-csk** · **security-expert-csk** ·
+**privacy-agent-csk** (personal data) · **test-expert-csk** · **performance-expert-csk** · what to build →
+**planner-csk** · unknown cause → **general-purpose** + `systematic-debugging`. Two domains → delegate in
+sequence. No owner installed (pruned profile) → inline is correct.
+
+1. **Diagnose, then plan** — unknown cause → `systematic-debugging` first; unclear scope → **planner-csk** (`/plan`).
+2. **Produce** — the domain owner above.
+3. **Audit** — security (mandatory when security-critical) · privacy · test · performance (`/review`).
+4. **Close** — DoD → **review-agent-csk** clean → **commit-agent-csk** proposes, waits for approval (`/ship`).
 5. **Hand off** — phase boundary or full context → **session-manager-csk** → `handoff` → `/clear` (`/handoff`).
 
-**Open every task with a one-line route trace** so the kit's work is always visible — `🔧 <agent> (why)` when
-delegating, `🔧 inline · <skill> · (why)` when staying on the main thread. Delegate a real unit of work (a handler,
-screen, migration, audit); keep only trivial one-line edits inline. Stuck → stop and report. Commit/push and
-destructive commands are gated at the tool level (§4.4/§4.5).
+**Naming an agent in prose is a hope; `@agent-<name>` is a guarantee** — measured here: 0/3 vs 3/3. Use that form
+whenever an agent must run, and tell the user they can too.
+
+**Route trace on every task** — `🔧 <agent> (why)` delegating, `🔧 inline · <skill> · (why)` not. **Inline carries
+the burden of proof:** name the agent you considered and why it does not own the work. "Small job" and "faster
+inline" are not reasons; only *no owner installed*, *not code work*, or *the user asked for inline*. If that
+clause is a strain to write, delegate. **Idle agents are the failure this kit exists to prevent.** Stuck → stop
+and report. Commit/push and destructive commands are gated (§4.4/§4.5).
 
 ## Definition of Done
 - Ambiguous scope goes to **planner-csk** first, so the acceptance criterion is explicit before coding.
@@ -82,11 +96,14 @@ more tokens, because each one re-pays for its own context. Delegate for **isolat
 > are **model discipline** — no exit code can judge a delegate-or-not call, so they rest on your reasoning.
 
 ## Session management (session-manager-csk)
-End every reply with: `🔋 Session: [low/medium/high fill] · Recommendation: [continue / handoff+clear / new session]`
+End every reply with `🔋 Session: [low/medium/high fill] · Recommendation: [continue / handoff+clear / new session]`
+— **only when you have a reading**; with none there is nothing to report, so omit the line.
 
 **Never guess the fill.** You cannot run `/context`; the `UserPromptSubmit` hook injects the measured line
 `🔋 Session %NN.N → level` every turn (`input + cache_read + cache_creation` = the `/context` figure). Use it. Exact
-reading: `bash .claude/hooks/context-usage.sh --verbose`. No injected line → say "could not measure", never invent one.
+reading: `bash .claude/hooks/context-usage.sh --verbose`. Never invent a number. **No line → run that command
+once; if it also fails, say so ONCE and drop the 🔋 line for the rest of the session.** Repeating "could not
+measure" every turn is noise that reads as a broken kit.
 
 - `<50%` continue · `50–75%` medium (hand off at the next phase boundary) · `>75%` handoff+clear · `>90%` hand off NOW
 - Topic changed fundamentally, whatever the fill → new session

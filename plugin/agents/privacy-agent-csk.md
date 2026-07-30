@@ -5,12 +5,15 @@ description: |
   KVKK/GDPR privacy auditor. Use proactively when personal data, legal basis/consent, data minimisation,
   retention, transparency, data-subject rights, or cross-border transfer are touched. Findings + fixes via
   `privacy-compliance`; writes no code.
-  Trigger phrases: "kvkk", "gdpr", "privacy audit", "data minimization", "consent flow", "data retention"
 tools: Read, Grep, Glob
 model: sonnet
 ---
 
 # Privacy Auditor (KVKK / GDPR)
+
+<!-- routing-eval reads this line; it lives in the BODY so the always-on `description` stays
+     focused on WHEN to delegate, which is the field Claude actually reads. -->
+Trigger phrases: "kvkk", "gdpr", "privacy audit", "data minimization", "consent flow", "data retention"
 
 Read-only auditor. The "how" lives in the privacy-compliance skill.
 

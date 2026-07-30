@@ -83,6 +83,29 @@ else
   bad "settings.json missing — the tool-level gates (commit approval, guards, context) are INACTIVE" "reinstall the kit"
 fi
 
+# 4b) Is delegation itself switched off? The documented way to stop Claude using ANY subagent is to deny the `Agent`
+#     tool in permissions.deny. A project that does that keeps twelve agents on disk that can never run, and the only
+#     symptom is that every task quietly happens on the main thread — which reads as "the kit does nothing" rather
+#     than as a setting. Checked at every scope the CLI merges, because one line in ~/.claude/settings.json disables
+#     delegation for every project on the machine. Denying it may be deliberate; this names it, it does not judge.
+DENYSRC=""
+for f in .claude/settings.json .claude/settings.local.json "$HOME/.claude/settings.json"; do
+  [ -f "$f" ] || continue
+  # A deny entry for the delegation tool, in any of its spellings, with or without an argument pattern.
+  grep -qE '"(Agent|Task)(\([^"]*\))?"' "$f" 2>/dev/null \
+    && grep -q '"deny"' "$f" 2>/dev/null \
+    && python3 - "$f" <<'PY' 2>/dev/null && DENYSRC="$DENYSRC $f"
+import json,sys,re
+try: d=json.load(open(sys.argv[1]))
+except Exception: sys.exit(1)
+deny=(d.get('permissions') or {}).get('deny') or []
+sys.exit(0 if any(re.match(r'^(Agent|Task)\b', str(x)) for x in deny) else 1)
+PY
+done
+[ -z "$DENYSRC" ] && ok "delegation is enabled (the Agent tool is not denied)" \
+  || bad "the Agent tool is DENIED in:$DENYSRC — no subagent can ever run, so every agent on disk is dead weight" \
+         "remove the Agent/Task entry from permissions.deny, or accept that this project runs main-thread-only"
+
 # 5) Agent-name references resolve to an installed agent — checked across CLAUDE.md AND every local doc it points to
 #    (its @imports and docs/*.md references). A brownfield takeover renames the project's agents to `-csk` ids, but
 #    CLAUDE.md — or an orchestration doc it delegates to, e.g. "detail: docs/AGENTS.md" — may still name the OLD bare
