@@ -37,10 +37,35 @@ build an MCP server to expose these tools to Claude|mcp-builder
 build a threat model and map the attack surface before we scan|threat-model
 set up an eval to measure output quality against a baseline|eval-grader
 
+# --- How a user actually phrases it -> the AGENT that must own the work ---
+# Added after a real install where a design request produced good analysis and no delegation. Every case here
+# asserts an AGENT, deliberately: the skills already carried this vocabulary ("visual design", "typography",
+# "memory leak") so the skill fired and the gate stayed green, while the agent that OWNS the work was
+# unreachable by the words anyone actually types. Testing the skill proved the mapping existed; it never proved
+# a real sentence reached the delegation layer.
+the app does not look premium, improve the visual design|frontend-expert-csk
+add a dark mode and a design token layer|frontend-expert-csk
+the icons are inconsistent, we need a design system|frontend-expert-csk
+we have a memory leak in production|performance-expert-csk
+the app feels laggy after the last release|performance-expert-csk
+users report the app crashes on startup|systematic-debugging
+the login is broken and I do not know why|systematic-debugging
+# Narrowing a trigger has to be paid for with a positive case, or the fix for a false route quietly creates an
+# unreachable component. token-budget had NO positive case at all before this line.
+the context is full, check the token budget before we continue|token-budget
+
 # --- Negative: prompt must NOT route to target (over-broad-trigger guard) ---
 design the database schema|!frontend-design
 read the model context and summarize it|!mcp-builder
 optimize the slow sql query performance|!systematic-debugging
+# `build` contains `ui`, and `UI` used to be a trigger, so a CI failure routed to the frontend expert. A wrong
+# route is worse than none: it looks like the kit worked. Fixed by word-bounded matching AND by retiring the
+# bare `UI` trigger for `UI polish`; this line fails if either regresses.
+the build fails on CI|!frontend-expert-csk
+the docker build is broken in the pipeline|!frontend-expert-csk
+# Same class, found while verifying the fix above: a bare `token` trigger sent "design token layer" to the
+# session-context skill. A one-word trigger for a word that lives in two vocabularies is not a trigger.
+add a dark mode and a design token layer|!token-budget
 isolate this work in a git worktree before the parallel agents run|worktree
 before I start, am I sure enough to implement this|confidence-check
 upgrade dependencies to current versions|dependency-upgrade

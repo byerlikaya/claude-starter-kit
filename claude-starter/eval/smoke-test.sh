@@ -516,7 +516,16 @@ BUDGET_DISC=10810    # DISCIPLINE.md (the discipline half of CLAUDE.md); current
                      # and the wrong one winning silently. The only rule in this file that is about the OTHER
                      # rules, so it cannot live in the README the way the compaction note does. Plus the Audit
                      # row naming performance-expert-csk — an agent nothing routes to is an idle component.)
-BUDGET_AGENTS=5580   # sum of agent frontmatter; currently 5547 (1.5.0: 9 agents rewritten to action-oriented
+BUDGET_AGENTS=5800   # sum of agent frontmatter; currently 5765 (1.11.0: +218 B of USER vocabulary on two agents.
+                     # Found in a real install: a design request produced a good analysis and no delegation. The
+                     # SKILLS already carried that vocabulary ("visual design", "typography", "memory leak") so
+                     # the skill fired and every gate stayed green, while the AGENT that owns the work was
+                     # unreachable by the words anyone actually types — agent triggers had been written from a
+                     # structural view of the work (screen · component · navigation) and never caught up with
+                     # the skills shipped beside them. Delegation is the layer this cost buys; a skill firing on
+                     # the main thread is not the Produce stage. Most of the 218 B is the "use proactively"
+                     # clause rather than the trigger list, because that clause is what the harness reads when
+                     # it decides to delegate at all. (1.5.0: 9 agents rewritten to action-oriented
                      # "use proactively" descriptions so Claude Code auto-delegation actually fires. 1.8.0:
                      # +performance-expert-csk (~426B) — security, privacy and tests each had an independent
                      # reviewer and performance was the one quality axis where the author audited their own

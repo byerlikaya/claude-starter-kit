@@ -15,11 +15,16 @@ pass(){ echo "  ✅ $1"; }
 fail(){ echo "  ❌ $1"; FAIL=$((FAIL+1)); }
 skip(){ echo "  ⏭  $1"; SKIP=$((SKIP+1)); }
 
-norm() {  # Turkish diacritics -> ascii, then lowercase
+# Turkish diacritics -> ascii, lowercase, then every run of non-alphanumerics becomes ONE space and the whole
+# string is space-padded. That padding is what makes the match word-bounded: a bare substring test routed "the
+# build fails on CI" to the frontend expert, because `build` contains `ui` and `UI` is one of its triggers.
+# Every short trigger has that failure mode (ui · api · e2e), and it points the wrong way — a CI failure sent to
+# the frontend agent is worse than no routing at all, because it looks like the kit worked.
+norm() {
   printf '%s' "$1" | sed \
     -e 's/Ç/c/g' -e 's/ç/c/g' -e 's/Ğ/g/g' -e 's/ğ/g/g' -e 's/İ/i/g' -e 's/ı/i/g' \
     -e 's/Ö/o/g' -e 's/ö/o/g' -e 's/Ş/s/g' -e 's/ş/s/g' -e 's/Ü/u/g' -e 's/ü/u/g' \
-    | tr '[:upper:]' '[:lower:]'
+    | tr '[:upper:]' '[:lower:]' | sed -e 's/[^a-z0-9]\{1,\}/ /g' -e 's/^/ /' -e 's/$/ /'
 }
 
 triggers_of() {  # $1 = target name; prints its trigger phrases line by line (exit 1 if none)

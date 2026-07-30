@@ -3,7 +3,7 @@ name: systematic-debugging
 description: |
   Root-cause a bug before touching a fix: reproduce, isolate, form and test a hypothesis, confirm the cause,
   then fix and verify. Stops guess-driven patching. For persistent, intermittent, or "already tried a few things" bugs.
-  Trigger phrases: "debug", "root cause", "why is this failing", "intermittent bug", "can't reproduce", "still broken"
+  Trigger phrases: "debug", "root cause", "why is this failing", "intermittent bug", "can't reproduce", "is broken", "crashes"
 ---
 
 # Systematic Debugging

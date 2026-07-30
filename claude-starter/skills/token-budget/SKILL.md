@@ -2,7 +2,7 @@
 name: token-budget
 description: |
   Context/token discipline: subagent isolation, output = summary, move-to-file, delegation threshold, lean skills.
-  Trigger phrases: "token", "context", "context management", "context is full", "clear context"
+  Trigger phrases: "token budget", "token cost", "context", "context management", "context is full", "clear context"
 ---
 
 # Token & Context Discipline
