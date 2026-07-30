@@ -3,6 +3,80 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [1.10.1] - 2026-07-30
+
+Reported from a real install: a design request produced a good analysis and no delegation. Nothing here is new
+functionality — it is the routing layer catching up with what the kit already claimed to do.
+
+### Fixed
+- **The agents were not running, and widening their vocabulary was not the fix.** This started as a report that a
+  design request produced a good analysis and no delegation. Two rounds of trigger-phrase work later, the question
+  was finally *measured* instead of theorised, in a clean install with the delegation tool available: a task
+  squarely inside `frontend-expert-csk`'s domain produced **0 delegations on its own** — with the old description
+  and with a rewritten "owns everything the user sees" one — while `/review`, whose body @-mentions its agents,
+  produced **3 of 3**. The official docs say Claude decides delegation from the request, the `description` field
+  and the context, and offer no way to force it; `@agent-<name>` is the one form that guarantees a subagent runs.
+  So **the commands now @-mention their agents** (`/plan`, `/brainstorm`, `/review`, `/ship`), the discipline
+  states that naming an agent in prose is a hope and `@agent-` is a guarantee, and both READMEs teach the escape
+  hatch. Verified live, not assumed: `/review` on a clean install invoked `review-agent-csk`,
+  `security-expert-csk` and `performance-expert-csk`.
+- **The A/B harness could not delegate at all.** `evals/run.sh` passed `--allowedTools Bash Read Write Edit` —
+  `Task`/`Agent` were absent, so every result it has ever produced was measured with the agent layer switched off,
+  against a kit whose central claim is the agent layer. The flag is fixed and `evals/README.md` now carries the
+  caveat above its results table rather than quietly leaving six "no difference" rows to be misread.
+- **`doctor.sh` now reports whether delegation is switched off.** Denying the `Agent` tool in `permissions.deny`
+  is the documented way to stop every subagent, and the only symptom is that all work quietly happens on the main
+  thread — which reads as a broken kit rather than a setting. Checked at project, local and user scope.
+- **The session line stopped announcing its own failure every turn.** `🔋 Session: could not measure` on every
+  reply is noise that reads as a broken kit. The rule now: no reading → run the command once; if that also fails,
+  say so once and drop the line.
+- **Agent descriptions were inviting the model to stay inline.** `backend`, `database` and `frontend` each ended
+  with a clause like "small tweaks stay inline" — the model could take its excuse from the agent's own
+  description. Replaced with ownership: "Use proactively — owns everything the user sees or interacts with… any
+  request about it is yours whatever its size, wording or language."
+- **Agents were unreachable by the words users actually type.** The skills carried the user's vocabulary —
+  `frontend-design` triggers on "visual design", "typography", "spacing" — so the skill fired, the route trace
+  printed, and every gate stayed green while the *agent* that owns the work carried only structural vocabulary:
+  screen, component, page, navigation, state management. "The app doesn't look premium, the icons are
+  inconsistent" matched no agent at all, so a token layer across fifteen screens stayed on the main thread.
+  `frontend-expert-csk` gains visual design · design system · design token · dark mode · look premium, and its
+  "use proactively" clause now names visual work — that clause, not the trigger list, is what the harness reads
+  when it decides whether to delegate. `performance-expert-csk` gains memory leak and laggy;
+  `systematic-debugging` gains "is broken" and "crashes", which is how an unknown cause actually gets reported.
+- **A short trigger matched inside a longer word.** `UI` matched `build`, so "the build fails on CI" routed to
+  the frontend expert — a wrong route is worse than none, because it looks like the kit worked. The trigger is
+  now `UI polish` and the matcher is word-bounded. Found while verifying that: a bare `token` trigger sent
+  "design token layer" to the session-context skill; now `token budget` / `token cost`.
+- **`token-budget` had no positive routing case at all.** Narrowing a trigger has to be paid for with one, or
+  the fix for a wrong route quietly creates an unreachable component.
+
+### Added
+- **Ten golden routing cases, seven of which assert an AGENT** for a sentence a person would really type. The
+  old design case asserted the *skill*, which is why the gate proved a mapping existed and never proved a real
+  sentence reached the delegation layer — the same shape as the gate holes fixed in 1.10.0.
+- **How to GET a release, per channel.** The plugin channel documented `/plugin marketplace add` and stopped.
+  An installed plugin stays on the version it was installed at until someone asks for a newer one, and
+  `claude plugin update` needs a restart, so nothing about it is automatic. Both READMEs and the npm README now
+  carry `claude plugin marketplace update` + `claude plugin update`, verified against `claude plugin --help`
+  rather than recalled. This had teeth: 1.10.0 closed three §4.5 holes, and a plugin user with no upgrade path
+  keeps all three. The `release` skill gets the standing check — every channel must have a documented way to
+  receive the version, because publishing and reaching users are different events.
+
+### Changed
+- **The `Trigger phrases:` lists moved out of the agents' `description` field into the body.** The official
+  contract calls `description` "when Claude should delegate to this subagent", and that is the field Claude reads
+  to decide — fifteen quoted keywords sitting in it compete with the sentence that states *when*. `routing-eval`
+  greps the whole file, so the routing set is unchanged, and agent frontmatter fell 5,936 → 4,261 bytes.
+- **The README no longer claims the agents "auto-chain".** They chain because the commands @-mention them.
+  Automatic delegation is a model judgement in any kit; where it must happen, the kit no longer leaves it to
+  chance, and the README says which is which.
+- **The upstream attribution list is gone**, except the one a licence requires. `google/eng-practices` stays in
+  one line: it is CC-BY 3.0 and `code-review` is an adaptation, so attribution is an obligation, not a
+  courtesy. Two DevArchitecture mentions are deliberately kept and are not attributions — `--dotnet` genuinely
+  clones that repository, so the sentence describing the installer would become false without it.
+- The discipline shrank 182 bytes as a result; always-on went 28,858 → 28,697 even after everything added
+  above. The attribution list was carried into every session and taught the model nothing.
+
 ## [1.10.0] - 2026-07-29
 
 Three §4.5 rules that could be walked around, and the measurement that found the first one. All of it comes
