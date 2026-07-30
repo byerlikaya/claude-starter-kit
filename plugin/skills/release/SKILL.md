@@ -22,6 +22,12 @@ Every version is dated; the `Unreleased` section can be auto-populated from comm
 - [ ] `dependency-audit` clean (0 HIGH/CRITICAL)
 - [ ] CHANGELOG up to date
 - [ ] Version number conforms to SemVer
+- [ ] **Every distribution channel has a documented way to GET this version.** Publishing and reaching users are
+      different events. A channel whose consumers pin at install time — an editor extension, a plugin, a vendored
+      copy — leaves them on the version they installed until they ask for a new one, so a security fix ships and
+      does not arrive. For each channel name the upgrade command in the README, and say plainly where it is not
+      automatic. This was a real gap: three channels documented `npm i -g` / `brew upgrade` / a refresh command
+      while the plugin channel documented only how to install.
 
 ## Tagging
 ```bash

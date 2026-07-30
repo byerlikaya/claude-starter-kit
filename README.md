@@ -219,6 +219,17 @@ bash adopt.sh               # existing project — re-run it to refresh a projec
 ```
 
 > Just want the agents & skills inside your existing Claude Code (no scaffolding)? `/plugin marketplace add byerlikaya/claude-starter-kit` then `/plugin install claude-starter-kit@byerlikaya`.
+>
+> **Updating the plugin is not automatic.** An installed plugin stays on the version you installed until you ask
+> for a new one, so a gate fix does not reach you on its own. Two steps, and the second needs a restart:
+>
+> ```bash
+> claude plugin marketplace update byerlikaya   # refresh the catalogue from GitHub
+> claude plugin update claude-starter-kit       # then install the newer version (restart to apply)
+> ```
+>
+> `claude plugin list` shows what you are on. The other three channels have their own path — `npm i -g
+> @byerlikaya/claude-starter-kit`, `brew upgrade claude-starter-kit`, or `/update-csk` for a scaffolded project.
 
 > **Windows:** the kit is bash-based — run it inside **Git Bash** (from [git-scm.com](https://git-scm.com)) for the smoothest experience; WSL works as a fallback.
 
@@ -311,8 +322,6 @@ When you add an agent or skill, follow the `AGENT_TEMPLATE.md` contract: frontma
 
 ## License & attribution
 
-MIT — see [LICENSE](LICENSE). The discipline layer builds on these upstream sources:
+MIT — see [LICENSE](LICENSE).
 
-- **[DevArchitecture](https://github.com/DevArchitecture/DevArchitecture)** — the backend pattern (MediatR CQRS / IResult / AOP), referenced as a pattern only.
-- **[multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills)** — the four working principles at the core of the discipline.
 - **[google/eng-practices](https://github.com/google/eng-practices)** — the `code-review` skill, distilled and restated (CC-BY 3.0).

@@ -40,4 +40,4 @@ Full docs, the architecture, other install methods (**Homebrew** · **Claude Cod
 
 ## License & attribution
 
-MIT © Barış Yerlikaya. Built on [google/eng-practices](https://github.com/google/eng-practices) (code review, CC-BY 3.0), the [Karpathy working principles](https://github.com/multica-ai/andrej-karpathy-skills), and the [DevArchitecture](https://github.com/DevArchitecture/DevArchitecture) backend pattern — full credits in the [repository README](https://github.com/byerlikaya/claude-starter-kit#license--attribution).
+MIT © Barış Yerlikaya. The `code-review` skill is distilled and restated from [google/eng-practices](https://github.com/google/eng-practices) (CC-BY 3.0).

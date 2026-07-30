@@ -219,6 +219,17 @@ bash adopt.sh               # mevcut proje — kurulu bir projeyi tazelemek içi
 ```
 
 > Sadece ajan ve skill'leri mevcut Claude Code'una eklemek mi istiyorsun (iskele kurmadan)? `/plugin marketplace add byerlikaya/claude-starter-kit` ardından `/plugin install claude-starter-kit@byerlikaya`.
+>
+> **Plugin güncellemesi otomatik değil.** Kurulu bir plugin, sen yenisini istemedikçe kurduğun sürümde kalır;
+> yani bir kapı düzeltmesi kendiliğinden sana ulaşmaz. İki adım, ikincisi yeniden başlatma gerektirir:
+>
+> ```bash
+> claude plugin marketplace update byerlikaya   # kataloğu GitHub'dan yenile
+> claude plugin update claude-starter-kit       # sonra yeni sürümü kur (uygulamak için yeniden başlat)
+> ```
+>
+> Hangi sürümde olduğunu `claude plugin list` gösterir. Diğer üç kanalın kendi yolu var — `npm i -g
+> @byerlikaya/claude-starter-kit`, `brew upgrade claude-starter-kit`, ya da iskeleli bir projede `/update-csk`.
 
 > **Windows:** kit bash tabanlıdır — en sorunsuz deneyim için **Git Bash** ([git-scm.com](https://git-scm.com)) içinde çalıştır; WSL de yedek olarak çalışır.
 
@@ -311,8 +322,6 @@ Yeni bir ajan ya da skill eklerken `AGENT_TEMPLATE.md` sözleşmesini izle: fron
 
 ## Lisans ve atıf
 
-MIT — bkz. [LICENSE](LICENSE). Disiplin katmanı şu üst kaynakların üzerine kurulur:
+MIT — bkz. [LICENSE](LICENSE).
 
-- **[DevArchitecture](https://github.com/DevArchitecture/DevArchitecture)** — backend kalıbı (MediatR CQRS / IResult / AOP); yalnızca kalıp olarak referans alınır.
-- **[multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills)** — disiplinin çekirdeğindeki dört çalışma ilkesi.
 - **[google/eng-practices](https://github.com/google/eng-practices)** — `code-review` skill'i, damıtılıp yeniden ifade edildi (CC-BY 3.0).
