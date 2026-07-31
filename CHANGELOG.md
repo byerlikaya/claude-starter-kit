@@ -6,6 +6,41 @@ versioning follows [SemVer](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- **A `--generic` install shipped a backend owner that never woke up — and two gates were looking the other
+  way.** On a non-.NET stack the installer swaps in `agents-optional/backend-expert-generic.md`, whose
+  description read "Writes and edits … *Kicks in for* new backend features" against the .NET variant's
+  "**Use proactively — owns server behaviour** … whatever its size or wording". That missing cue is precisely
+  the defect 1.5.0 diagnosed as agents sleeping, still live on the generic path.
+  It survived because the suite answered two questions by DIRECTORY rather than by fact:
+  - `agents-optional/` was reached by exactly one of nine agent checks (routing parity). The other eight —
+    frontmatter, skill references, Trigger phrases, the delegation cue — iterate `agents/` only, so a file the
+    installer *moves into* `agents/` was ungated in the repo it ships from.
+  - In an install the file IS scanned, and the escape hatch meant for a project's own components excused it:
+    `✅ some agents lack a proactive cue: backend-expert-csk (your project's own agents, not gated)`. It is a
+    kit agent. `.claude/kit-manifest.txt` has recorded exactly that distinction since 1.8.0 and none of the
+    four hatches consulted it.
+
+  Both are fixed at the root. `agent_quality_files()` widens the five checks that judge a file's own quality,
+  and deliberately not the three that reason about the installed set (agent count, always-on byte budget,
+  orphan routing) — a swap-in replaces its counterpart rather than adding to it. `kit_owned()` makes the four
+  hatches ask the manifest instead of the context; with no manifest they stay lenient, because absence of
+  evidence is not ownership. Verified on a live `--generic` install in three directions: a kit-owned component
+  that regresses now fails, a user's own agent is still only noted, and the generic variant passes once its
+  description carries the cue.
+- **Nothing compared the two READMEs, so an edit reached one language and shipped.** `README.md` received a
+  corrected claim and a whole "Honest scope" blockquote that never reached `README.tr.md`, and every gate
+  stayed green — only the skill catalogue and the agent count had ever been compared. `smoke-test` now checks
+  structural parity: the heading-level sequence, table rows, code fences, and blockquote **blocks** (blocks,
+  not lines — Turkish wraps longer). It reproduces the real divergence as `14` blocks against `13`.
+- **`vps-deploy` runtime detection covered four runtimes and singled one out in prose.** The heuristic knew
+  docker/node/python/go; .NET was absent from it but got a bespoke sentence, and Java, Rust, Ruby and PHP got
+  neither. Detection now covers eight, the release-artefact step names each runtime's own command, and no
+  runtime is privileged in prose.
+- **The README claimed breaking a critical rule was "impossible" — the guard script says "defence-in-depth".**
+  The kit's own source contradicted its front page, and for a security-adjacent audience an overclaim that is
+  found is worse than a modest one. Both languages now state the real scope: the gate answers before the
+  command runs and removes the *accident*, the shell is Turing-complete so a determined rewrite can reach
+  around any pattern, and a hard boundary means a devcontainer or a VM — which `/doctor-csk` already reports on.
 - **The mandatory security and privacy audits ran on a weaker model than the code they were reviewing.** Both
   were pinned `model: sonnet`, set in the July 8 rename commit and never revisited across 156 commits. An
   omitted `model` field means `inherit` — the model the user picked for the session — so on an Opus session the

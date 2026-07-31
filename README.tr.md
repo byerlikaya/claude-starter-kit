@@ -20,11 +20,11 @@
 
 ## Neden bu kit?
 
-Çoğu "agent kurulumu" aslında bir öneri yığınıdır — kurallar bir dosyada durur, uyulup uyulmayacağı modele kalır. Bu kit farklı çalışır: Claude Code'un içine **disiplinli bir mühendislik ekibi** yerleştirir ve burada **önemli kurallar hatırlatma değil, kapıdır** — ajana kuralları söylemekle yetinmez, kritik olanları çiğnemeyi baştan imkânsız kılar; üstelik zaten elindeki repo'ya güvenle kurulur.
+Çoğu "agent kurulumu" aslında bir öneri yığınıdır — kurallar bir dosyada durur, uyulup uyulmayacağı modele kalır. Bu kit farklı çalışır: Claude Code'un içine **disiplinli bir mühendislik ekibi** yerleştirir ve burada **önemli kurallar hatırlatma değil, kapıdır** — ajana kuralları söylemekle yetinmez, kritik olanları komut çalışmadan **önce** cevap veren bir araç-seviyesi kapının arkasına koyar; üstelik zaten elindeki repo'ya güvenle kurulur.
 
 | Önemli olan | Tipik agent kiti / prompt koleksiyonu | Claude Starter Kit |
 |---|---|---|
-| **Kritik kurallar** | Bir `.md` dosyasında durur; yalnız model hatırlarsa uygulanır | **Kapı olarak zorlanır** — araç seviyesinde: git hook (`trace-scan`), `settings.json` izinleri, `guard-bash.sh` PreToolUse. Kırmak *imkânsız*, "tavsiye edilmez" değil |
+| **Kritik kurallar** | Bir `.md` dosyasında durur; yalnız model hatırlarsa uygulanır | **Kapı olarak zorlanır** — araç seviyesinde: git hook (`trace-scan`), `settings.json` izinleri, `guard-bash.sh` PreToolUse. Kapı komut çalışmadan önce cevap verir; kural modelin hatırlamasına bağlı değildir |
 | **Yapı** | Tek bir dev prompt ya da senin yönettiğin gevşek bir agent listesi | **12 uzman agent'lık bir ekip**, 5 aşamada (Anla → Üret → Denetle → Kapat → Devret) ve **düz promptta gerçekten çalışıyorlar** — `UserPromptSubmit` hook'u isteğinin yanına sahibini yazıyor; dört turda **39/48** ölçüldü, hooksuz taban **0/24**. Fazladan bir şey yazmıyorsun; sabit bir sıra istediğinde komutlar (`/review-csk`) birden çok ajanı @-mention ile zincirler |
 | **Güvenlik & gizlilik** | İsteğe bağlı tavsiye, atlaması kolay | **Zorunlu audit kapısı** — risk-kritik değişiklik, güvenlik/gizlilik denetimi geçmeden kapanamaz |
 | **Commit'ler** | Model kendi başına commit atabilir | **Her commit senin onayına bağlı** — auto/bypass modda bile araç seviyesinde zorlanır |
@@ -202,7 +202,13 @@ Bir asistan `/context` komutunu kendisi çalıştıramaz; bu yüzden çoğu kuru
 | Çalışan oturum bayat kurala uymasın | `context-usage.sh`, `.claude/VERSION`'ı oturumun başladığı sürümle karşılaştırır ve söyler |
 | Kalite kapısı (SonarQube kullanan projeler — dilden bağımsız) | `sonarqube-check` + `/ship-csk` |
 
-Kapılar `settings.json` ve git `core.hooksPath` üzerinden devreye alınır; `smoke-test.sh` her değişiklikten sonra hazır olduklarını doğrular.
+Kapılar `settings.json` ve git `core.hooksPath` üzerinden devreye alınır; `smoke-test.sh` her değişiklikten sonra hazır olduklarını doğrular — ve her kural **iki** yarısıyla vakalanır: bloklaması gerekeni blokluyor mu, ve komşularını rahat bırakıyor mu (`chmod 755`, `rm -rf build`, `git checkout -- src/app.js`). Kanıtlanmamış bir kapı kapı değildir; rutin işte ateşleyen bir kapının ise etrafından dolanılır.
+
+> **Dürüst kapsam.** Bunlar derinlemesine savunmadır, bir kum havuzu değil — guard script'inin kendi kullandığı
+> ifade bu. Shell Turing-tamdır; kararlı bir yeniden yazım her deseni dolanabilir. Kapıların kaldırdığı şey
+> **kazadır**: teslim tarihi baskısıyla uzanılan kaba alet, rutin temizlik gibi okunan yıkıcı komut. Sert bir
+> sınır istiyorsan Claude Code'u devcontainer ya da VM içinde çalıştır — `/doctor-csk` böyle bir şeyin olup
+> olmadığını raporluyor.
 
 ---
 

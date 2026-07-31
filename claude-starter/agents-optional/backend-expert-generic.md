@@ -1,9 +1,10 @@
 ---
 name: backend-expert-csk
 description: |
-  Stack-agnostic backend expert (Node/Go/Python/.NET, etc.). Writes and edits endpoints, services/handlers,
-  validation, business rules, and error contracts by following the project's existing patterns.
-  Kicks in for new backend features, API endpoints, or business-rule work.
+  Stack-agnostic backend expert (Node/Go/Python/.NET, etc.). Applies the project's own backend pattern, read
+  from the repo rather than assumed. **Use proactively — owns server behaviour:** endpoints, services/handlers,
+  validation, business rules, error contracts, integrations. Any request about it is yours whatever its size
+  or wording.
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 

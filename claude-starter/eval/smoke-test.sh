@@ -15,12 +15,41 @@ fail(){ echo "  ❌ $1"; FAIL=$((FAIL+1)); }
 IS_KIT=0; [ -f "$ROOT/CLAUDE.md" ] && IS_KIT=1
 note(){ echo "  ·  $1"; }   # informational; never counts as a failure
 # Trigger-phrases requirement: a GATE in the kit repo, a note in an installed project (your skills, your call).
-need_trigger(){ if [ "$IS_KIT" = 1 ]; then fail "$1"; else note "$1 (your own skill/agent; not gated in an install)"; fi; }
+need_trigger(){ if kit_owned "${2:-}"; then fail "$1"; else note "$1 (your own skill/agent; not gated in an install)"; fi; }
+
+
+# ---- what the gates are allowed to see, and whose fault a failure is -----------------------------------------
+# Two questions the suite had been answering by DIRECTORY, which is why a real defect walked through both.
+#
+# 1) Which agent files get their own quality gated? Everything in agents/, PLUS the swap-in variants in
+#    agents-optional/ that the installer moves INTO agents/ on some profile. backend-expert-generic.md is as
+#    much a kit agent as any other, and it was reached by exactly one of nine checks because it sits one
+#    directory over — which is how it came to ship with no auto-delegation cue, the very defect the cue check
+#    exists to catch. NOT used by the checks that reason about the INSTALLED SET (agent count, always-on byte
+#    budget, orphan routing): a swap-in replaces its counterpart rather than adding to it, and it is routed
+#    under the name it takes once installed.
+agent_quality_files() {
+  ls "$AGENTS"/*.md 2>/dev/null
+  [ "$IS_KIT" = 1 ] && ls "$ROOT/agents-optional"/*.md 2>/dev/null
+  return 0
+}
+# 2) Is a component one the KIT shipped? .claude/kit-manifest.txt records exactly that (written by start.sh and
+#    adopt.sh since 1.8.0). The "not gated in an install" escapes exist so a project's OWN agents and skills are
+#    never failed by kit conventions — but with no ownership test they also excused the kit's own, and the suite
+#    printed a green line saying so: "some agents lack a proactive cue: backend-expert-csk (your project's own
+#    agents, not gated)". No manifest -> stay lenient; absence of evidence is not ownership.
+kit_owned() {  # $1 = manifest entry, e.g. agents/backend-expert-csk.md or skills/a11y
+  [ "$IS_KIT" = 1 ] && return 0
+  [ -n "${1:-}" ] || return 1                      # no id to check -> lenient; never let "" match a blank line
+  [ -f "$ROOT/kit-manifest.txt" ] || return 1      # no manifest -> lenient; absence of evidence is not ownership
+  grep -qxF "$1" "$ROOT/kit-manifest.txt"
+}
 
 echo "== 1) Agent frontmatter & trigger =="
 AC=0
-for f in "$AGENTS"/*.md; do
-  AC=$((AC+1)); n=$(basename "$f")
+for f in $(agent_quality_files); do
+  n=$(basename "$f")
+  case "$f" in "$AGENTS"/*) AC=$((AC+1)) ;; esac   # count the installed set only; a swap-in is not an addition
   grep -q '^name:' "$f"        || fail "$n: no name"
   grep -q '^tools:' "$f"       || fail "$n: no tools"
   # `model:` is OPTIONAL and omitting it is the good default — the docs say an omitted field means `inherit`,
@@ -40,7 +69,7 @@ for f in "$AGENTS"/*.md; do
       *) fail "$n: effort '$EV' is not a documented level (low·medium·high·xhigh·max)" ;;
     esac
   fi
-  grep -q 'Trigger phrases:' "$f" || need_trigger "$n: no Trigger phrases"
+  grep -q 'Trigger phrases:' "$f" || need_trigger "$n: no Trigger phrases" "agents/$n"
 done
 # The mandatory audit agents must NOT be pinned to a model. Omitted means inherit, so a pin can only make the
 # gate that CLEARS a change run on a different tier from the agent that wrote it — and for 156 commits both of
@@ -50,7 +79,7 @@ done
 for a in security-expert-csk privacy-agent-csk; do
   [ -f "$AGENTS/$a.md" ] || continue
   if grep -qE '^model:' "$AGENTS/$a.md"; then
-    if [ "$IS_KIT" = 1 ]; then fail "$a pins a model — a mandatory audit must inherit the session's model, never a fixed tier"
+    if kit_owned "agents/$a.md"; then fail "$a pins a model — a mandatory audit must inherit the session's model, never a fixed tier"
     else note "$a pins a model (your install, your call — the kit ships it unpinned so the audit is never weaker than the session)"; fi
   else
     pass "$a inherits the session model (the mandatory audit is never weaker than what wrote the code)"
@@ -68,7 +97,7 @@ for d in "$SKILLS"/*/; do
   n=$(basename "$d"); f="$d/SKILL.md"
   [ -f "$f" ] || { fail "$n: no SKILL.md"; continue; }
   grep -q '^name:' "$f"           || fail "$n: no name"
-  grep -q 'Trigger phrases:' "$f" || need_trigger "$n: no Trigger phrases"
+  grep -q 'Trigger phrases:' "$f" || need_trigger "$n: no Trigger phrases" "skills/$n"
   # Agent-Skills spec limits (agentskills.io/specification) — keep skills portable to any compliant host:
   #   name == parent dir, name ≤ 64 chars, description ≤ 1024 chars.
   nm="$(awk -F':' '/^name:/{sub(/^name:[[:space:]]*/,"",$0); print; exit}' "$f" | tr -d ' \r')"
@@ -81,13 +110,13 @@ pass "$(ls -d "$SKILLS"/*/ | wc -l | tr -d ' ') skills scanned (name==dir · nam
 
 echo "== 3) Orphan skill reference (agent -> nonexistent skill) =="
 # (a) Do the X's in "applies the \`X\` skill" in an agent body exist?
-for f in "$AGENTS"/*.md; do
+for f in $(agent_quality_files); do
   for ref in $(grep -oE 'applies the `[a-z0-9-]+` skill' "$f" | grep -oE '`[a-z0-9-]+`' | tr -d '`'); do
     [ -f "$SKILLS/$ref/SKILL.md" ] || fail "$(basename $f): skill '$ref' does not exist"
   done
 done
 # (b) Do the backticked skill names on "Also apply: \`x\` · \`y\` ..." lines also exist?
-for f in "$AGENTS"/*.md; do
+for f in $(agent_quality_files); do
   al="$(grep -F 'Also apply' "$f" || true)"
   for ref in $(printf '%s' "$al" | grep -oE '`[a-z0-9-]+`' | tr -d '`'); do
     [ -f "$SKILLS/$ref/SKILL.md" ] || fail "$(basename $f): 'Also apply' skill does not exist: $ref"
@@ -117,14 +146,14 @@ routed(){ local nm="$1"; shift; grep -rqE "[^a-z0-9-]$nm[^a-z0-9-]" "$@" 2>/dev/
 for d in "$SKILLS"/*/; do
   n=$(basename "$d")
   routed "$n" "$AGENTS" "$CMDS" "$ROUTE_DOC" && continue
-  if [ "$IS_KIT" = 1 ]; then fail "orphan skill '$n': no agent/command/discipline routes to it"
+  if kit_owned "skills/$n"; then fail "orphan skill '$n': no agent/command/discipline routes to it"
   else note "skill '$n' not routed by the kit discipline (your own skill? route it from ./CLAUDE.md)"; fi
 done
 # agents route from a command or the discipline (exclude the agent's own file: don't search $AGENTS)
 for f in "$AGENTS"/*.md; do
   a=$(basename "$f" .md)
   routed "$a" "$CMDS" "$ROUTE_DOC" && continue
-  if [ "$IS_KIT" = 1 ]; then fail "orphan agent '$a': no command/discipline routes to it"
+  if kit_owned "agents/$a.md"; then fail "orphan agent '$a': no command/discipline routes to it"
   else note "agent '$a' not routed by the kit discipline"; fi
 done
 pass "every skill & agent is routed (no idle components)"
@@ -449,6 +478,31 @@ if [ "$IS_KIT" = 1 ] && [ -f "$ROOT/profiles.conf" ]; then
       fail "$r does not state $TA agents — the prose count drifted from the payload"
     fi
   done
+  # EN <-> TR STRUCTURAL PARITY. The two READMEs are maintained by hand as translations of each other, and
+  # nothing compared them beyond the skill catalogue and the agent count — so an edit that lands in one and not
+  # the other ships silently. That is not hypothetical: a whole "Honest scope" blockquote and two corrected
+  # sentences went into README.md and never reached README.tr.md, and every gate stayed green.
+  # Compared on STRUCTURE, never on text: headings are in different languages and Turkish wraps longer, so the
+  # signature is the heading-level sequence, the table-row count, the fenced-code count, and the number of
+  # blockquote BLOCKS (runs of `> ` lines, not lines — wrapping changes lines, not blocks).
+  sig() {  # $1 = file -> "levels|tables|fences|quoteblocks"
+    awk '
+      /^#{2,6} /   { n=index($0," "); printf "%d", n-1 }
+      /^\|/        { t++ }
+      /^```/       { c++ }
+      /^> /        { if (!inq) { q++; inq=1 } next }
+                   { inq=0 }
+      END          { printf "|%d|%d|%d\n", t+0, c+0, q+0 }
+    ' "$1"
+  }
+  EN_SIG="$(sig "$KR/README.md")"; TR_SIG="$(sig "$KR/README.tr.md")"
+  if [ "$EN_SIG" = "$TR_SIG" ]; then
+    pass "README.md and README.tr.md are structurally in sync"
+  else
+    fail "README EN/TR structure diverged — an edit reached one language only
+         EN: $EN_SIG
+         TR: $TR_SIG   (format: heading-level sequence | table rows | code fences | blockquote blocks)"
+  fi
 fi
 
 echo "== 6h) pre-commit scanners: must not go blind on a large diff =="
@@ -618,7 +672,7 @@ else pass "some skill frontmatter over ${MAX_SKILL_FM} B:$SKILL_FAT (your projec
 # actually states WHEN. routing-eval greps the whole file, and moving the lines out of the agents' frontmatter cut
 # 1.7 KB off the always-on cost with the routing set unchanged. What must never happen is the line disappearing.
 MISSING=""
-for f in "$AGENTS"/*.md "$SKILLS"/*/SKILL.md; do
+for f in $(agent_quality_files) "$SKILLS"/*/SKILL.md; do
   [ -e "$f" ] || continue
   grep -qi 'trigger phrases:' "$f" || MISSING="$MISSING $(basename "$(dirname "$f")")/$(basename "$f")"
 done
@@ -631,7 +685,7 @@ done
 # health is emitted by a hook) must carry a cue, or a future passive rewrite silently regresses delegation.
 PULL_AGENTS=" commit-agent-csk session-manager-csk "
 NO_CUE=""
-for f in "$AGENTS"/*.md; do
+for f in $(agent_quality_files); do
   [ -e "$f" ] || continue
   a="$(basename "$f" .md)"
   case "$PULL_AGENTS" in *" $a "*) continue ;; esac
