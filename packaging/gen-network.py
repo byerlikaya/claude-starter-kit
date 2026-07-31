@@ -160,7 +160,10 @@ def build(subtitle):
         P.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="35" fill="{col}" filter="url(#glow)"/>')
         P.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="35" fill="none" stroke="#ffffff" stroke-opacity="0.85" stroke-width="2"/>')
         P.append(f'<text x="{x:.1f}" y="{y+4.5:.1f}" text-anchor="middle" font-size="12.5" font-weight="700" fill="#0b1220">{SHORT[nm]}</text>')
-    # center: real logo
+    # center: real logo. SOURCE OF TRUTH IS assets/icon.svg — the three rects below are a hand-copy of it, and
+    # the gh-pages favicon (an inline data: URI in index.html) is a second hand-copy of the same artwork. None
+    # of the three can see the others, so `packaging/check-gh-pages.sh` compares them; if you change the mark,
+    # change assets/icon.svg first and let that gate tell you what else drifted.
     P.append(f'<circle cx="{CX}" cy="{CY}" r="64" fill="#0B1020" filter="url(#corehalo)"/>')
     P.append(f'<circle cx="{CX}" cy="{CY}" r="64" fill="none" stroke="#7C3AED" stroke-opacity="0.75" stroke-width="2"/>')
     P.append(f'<g transform="translate({CX-48},{CY-48}) scale(0.48)">')
