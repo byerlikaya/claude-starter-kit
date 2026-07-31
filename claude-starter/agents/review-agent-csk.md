@@ -12,7 +12,7 @@ tools: Read, Grep, Glob, Bash
 
 <!-- routing-eval reads this line; it lives in the BODY so the always-on `description` stays
      focused on WHEN to delegate, which is the field Claude actually reads. -->
-Trigger phrases: "review", "review code", "look at the diff", "PR review", "go over it", "simplify"
+Trigger phrases: "review", "review code", "look at the diff", "PR review", "go over it", "simplify", "code health", "improve or hurt", "go over the changes", "refactor"
 
 Read-only; the trigger for the `code-review-csk` skill.
 

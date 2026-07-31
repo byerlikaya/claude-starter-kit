@@ -21,7 +21,7 @@ cp -R "$SRC/commands" "$OUT/commands"
 # skill-trust.sh is left out: it decides kit-owned vs project-owned from .claude/kit-manifest.txt, which only a
 # start.sh/adopt.sh install writes. Shipped here it could only ever exit silently — an idle component.
 for h in guard-bash.sh guard-write.sh context-usage.sh session-guard.sh session-rehydrate.sh session-stats.sh \
-         guard-commit-scan.sh; do
+         guard-commit-scan.sh route-hint.sh; do
   cp "$SRC/hooks/$h" "$OUT/hooks/$h"
   chmod +x "$OUT/hooks/$h"
 done
@@ -60,7 +60,8 @@ cat > "$OUT/hooks/hooks.json" <<'HOOKS'
     "UserPromptSubmit": [
       {
         "hooks": [
-          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/context-usage.sh\" 2>/dev/null || true", "timeout": 30 }
+          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/context-usage.sh\" 2>/dev/null || true", "timeout": 30 },
+          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/route-hint.sh\" 2>/dev/null || true", "timeout": 10 }
         ]
       }
     ],

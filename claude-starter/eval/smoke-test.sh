@@ -1139,6 +1139,40 @@ else
   fail "guard-commit-scan.sh missing or not executable — the plugin edition has no commit content gate"
 fi
 
+echo "== 7y) route-hint: names the owner next to the request =="
+# The kit's own thesis is "rule -> gate, not reminder", and delegation was the one core rule left as a reminder.
+# Measured: on 12 focused domain tasks the main thread delegated 0 times; with this hook injecting a DIRECT
+# instruction it delegated 19 times out of 24 across two rounds. The wording is why — an earlier version that
+# hedged ("unless it is a one-line edit", "if it is genuinely not that agent's work") scored 4 of 12, because
+# a written escape hatch gets used. These cases pin BOTH halves: the right owner is named, and nothing is said
+# when there is no clear match, since a wrong route is worse than none.
+RH="$ROOT/hooks/route-hint.sh"
+if [ -x "$RH" ]; then
+  rh(){ printf '{"hook_event_name":"UserPromptSubmit","prompt":"%s"}' "$1" | CLAUDE_PROJECT_DIR="$RHDIR" bash "$RH" 2>/dev/null; }
+  RHDIR="$(mktemp -d)"; mkdir -p "$RHDIR/.claude"; cp -R "$ROOT/agents" "$RHDIR/.claude/" 2>/dev/null
+  cp -R "$ROOT/skills" "$RHDIR/.claude/" 2>/dev/null
+  while IFS='|' read -r want prompt; do
+    [ -n "$want" ] || continue
+    got="$(rh "$prompt" | sed -n 's/.*Use the \([a-z][a-z-]*\) subagent.*/\1/p')"
+    [ -z "$got" ] && got="$(rh "$prompt" | sed -n 's/.*Use the .\([a-z][a-z-]*\). skill.*/\1/p')"
+    if [ "$want" = SILENT ]; then
+      [ -z "$(rh "$prompt")" ] && pass "route-hint silent: \"$prompt\"" || fail "route-hint spoke on \"$prompt\" -> $got (a wrong route reads as the kit working)"
+    else
+      [ "$got" = "$want" ] && pass "route-hint -> $want" || fail "route-hint on \"$prompt\" gave '\''$got'\'', wanted $want"
+    fi
+  done <<'RHCASES'
+frontend-expert-csk|the three components in src/components all style themselves differently
+backend-expert-csk|add an endpoint that returns unpaid invoices
+database-expert-csk|write a migration and an index for the invoices table
+devops-expert-csk|set up a ci pipeline with github actions
+SILENT|what is the capital of France
+SILENT|the build fails on CI
+RHCASES
+  rm -rf "$RHDIR"
+else
+  fail "route-hint.sh missing or not executable — plain prompts get no routing"
+fi
+
 echo "== 7z) No kit name shadows a Claude Code bundled skill/command =="
 # Skills and commands share one namespace: a SKILL.md and a commands/*.md both create `/name`, and per the
 # official docs a project skill "also overrides a bundled skill with the same name" — silently. The kit shipped a

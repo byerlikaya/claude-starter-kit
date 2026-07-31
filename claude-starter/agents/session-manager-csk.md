@@ -12,7 +12,7 @@ model: haiku
 
 <!-- routing-eval reads this line; it lives in the BODY so the always-on `description` stays
      focused on WHEN to delegate, which is the field Claude actually reads. -->
-Trigger phrases: "session status", "session health", "context status", "is a handover needed", "is it time to clear"
+Trigger phrases: "session status", "session health", "context status", "is a handover needed", "is it time to clear", "handover", "hand over", "switch topic", "getting long", "running out of context"
 
 Purpose: so the user never has to track context/token management by hand.
 Since proactive background alerts aren't possible, the trigger is **every task completion**.

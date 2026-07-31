@@ -73,6 +73,11 @@
             "type": "command",
             "command": "bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/context-usage.sh\" 2>/dev/null || true",
             "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/route-hint.sh\" 2>/dev/null || true",
+            "timeout": 10
           }
         ]
       }
