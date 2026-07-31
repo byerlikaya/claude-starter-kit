@@ -112,8 +112,13 @@ run_arm() {
 # layer switched off — while the kit's central claim is the agent layer. Both arms get them (a bare project has no
 # agents, so it simply never uses them, and the arms stay identical in tool access).
 # Override with CSK_EVAL_PERM if your environment refuses the default.
+  # CSK_GATE_LOG turns on the hooks' write-only observability channel (see claude-starter/hooks/guard-bash.sh).
+  # It exists because "the model never reached for the command" and "the gate stopped it" leave behind IDENTICAL
+  # artifacts: permission-pressure had to report "guard-bash never fired" as an inference, and that inference is
+  # the difference between evidence for the always-on discipline TEXT and evidence for the GATE. Set in both arms
+  # so they stay identical in environment; the bare arm has no hooks, so its log simply never appears.
   ( cd "$dir" || exit 1
-    env $env_prefix claude -p "$PROMPT" \
+    env $env_prefix CSK_GATE_LOG="$dir/.eval-gates.log" claude -p "$PROMPT" \
         --permission-mode "${CSK_EVAL_PERM:-bypassPermissions}" \
         --allowedTools ${CSK_EVAL_TOOLS:-Bash Read Write Edit Task Agent} \
         >"$dir/.eval-stdout.txt" 2>"$dir/.eval-stderr.txt"
@@ -135,7 +140,7 @@ for cdir in "$CASES"/*/; do
   [ -n "${DESC:-}" ] && echo "   $DESC"
 
   for arm in kit bare; do
-    passed=0; checks=0; detail=""
+    passed=0; checks=0; detail=""; gates=""
     for r in $(seq 1 "$RUNS"); do
       P="$WORK/$cname-$arm-$r"
       # A failed install must never degrade into "the kit arm behaved like the bare one" — that is the single
@@ -144,9 +149,16 @@ for cdir in "$CASES"/*/; do
       run_arm "$P" "$arm"
       # An arm that could not use its tools produces the same shape of result as an arm that chose not to act,
       # and the second reads like a finding. Surface the environment instead of scoring it.
+      # SCOPE, MEASURED (2026-07-31), because the earlier wording was broad enough to make every result under it
+      # look doubtful. An untrusted workspace drops `permissions.allow` entries AND NOTHING ELSE: a probe project
+      # carrying both an allow entry and a PreToolUse hook produced this exact warning, and the hook still ran and
+      # still returned exit 2 (the tool did not execute). So the GATES are armed in an untrusted scratch project
+      # and a gate result measured there is valid. What is genuinely lost is any case that depends on a
+      # pre-approved permission — see evals/README.md on commit-format and secret-refused.
       if [ "$arm" = kit ] && grep -q "has not been trusted" "$P/.eval-stderr.txt" 2>/dev/null; then
-        echo "   ! workspace untrusted: the kit's permissions.allow was dropped for this run." >&2
-        echo "     Re-run with CSK_EVAL_WORK=<a trusted path>, or trust $P once interactively." >&2
+        echo "   ! workspace untrusted: permissions.allow was dropped for this run (hooks/gates are NOT affected)." >&2
+        echo "     Only matters for cases needing a pre-approved permission. Re-run with CSK_EVAL_WORK=<a trusted path>," >&2
+        echo "     or trust $P once interactively." >&2
       fi
       # KIT_ROOT lets a grader reuse the kit's own pattern files. It must come from the RUNNER, not be
       # discovered inside the project: the bare arm has no .claude/, so a grader that looked there would score
@@ -158,6 +170,12 @@ for cdir in "$CASES"/*/; do
       # matters and a single sample cannot explain them: a 7/9 against a 9/9 is unreadable without knowing
       # WHICH check failed and how often.
       detail="$(printf '%s\n%s' "$detail" "$out")"
+      # REPORTED, NEVER SCORED. A channel only the kit arm can produce cannot enter the denominator without
+      # handing the kit points the control is structurally unable to earn — the same bias that had to be fixed
+      # in adr-recorded and no-secret-logging. It answers a different question from the grade: WHO produced the
+      # outcome. A case the kit wins with an empty gate log is evidence for the discipline text; the same win
+      # with a BLOCK line in it is the first direct evidence for "rule -> gate".
+      [ -s "$P/.eval-gates.log" ] && gates="$(printf '%s\n%s' "$gates" "$(cut -f1,2,3 "$P/.eval-gates.log")")"
     done
     if [ "$arm" = kit ]; then TOTAL_KIT=$((TOTAL_KIT+passed)); TOTAL_CHECKS=$((TOTAL_CHECKS+checks));
     else TOTAL_BARE=$((TOTAL_BARE+passed)); fi
@@ -168,6 +186,18 @@ for cdir in "$CASES"/*/; do
     printf '%s\n' "$detail" | grep -E '^(PASS|FAIL) ' \
       | awk '{v=$1; $1=""; c[$0]=c[$0]; if(v=="PASS") p[$0]++; n[$0]++}
              END{for(k in n) printf "         %s/%s %s\n", p[k]+0, n[k], substr(k,2)}' | sort -t/ -k1,1n
+    # Diagnosis line, printed outside the score. "none" in the kit arm means the model never attempted a gated
+    # command — which is a result about the discipline text, not about the gate, and must not be read as either
+    # one working. The bare arm has no hooks and prints nothing at all; its silence is the absence of a gate.
+    if [ "$arm" = kit ]; then
+      if [ -n "$gates" ]; then
+        printf '         gates fired:\n'
+        printf '%s\n' "$gates" | grep -E '^(BLOCK|ASK|ALLOW)' | sort | uniq -c \
+          | awk '{c=$1; $1=""; printf "           %sx%s\n", c, $0}'
+      else
+        printf '         gates fired: none — no gated command was attempted in any run\n'
+      fi
+    fi
   done
   echo
 done
