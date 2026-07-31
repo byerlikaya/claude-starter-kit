@@ -3,6 +3,32 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **The specialists now run on a plain prompt.** The kit's premise is that a task lands with the agent that owns
+  it, and measurement said that never happened: across the eval suite, two A/B pairs and a twelve-agent domain
+  sweep, a focused single-domain request produced **0 delegations in 24 sessions**. Three fixes were tried and
+  all three scored zero — rewriting every agent `description` into ownership language, adding a concrete "call
+  the Agent tool with subagent_type" paragraph to the discipline, and putting `Task`/`Agent` in the harness tool
+  list. The subagents docs name three inputs to the delegation decision — the request, the `description` field,
+  and current context — and the kit had only ever touched the last two.
+  `route-hint.sh` is the first: a `UserPromptSubmit` hook that classifies the request against the installed
+  agents' trigger phrases and returns `additionalContext`, which the docs place "alongside the submitted
+  prompt". **Measured 39 of 48 across four rounds, against a 0-of-24 baseline.** Every one of the nine misses
+  is accounted for and none of them is a refusal to delegate: five were a fixture that asked for work the
+  project did not contain, two were the sandbox's untrusted-workspace permission problem, one was a reasoned
+  inline decision that named the agent it considered, and one was an invented "operator config" that exists
+  nowhere on the machine.
+  The wording is the whole mechanism. A first version hedged — "unless it is a one-line edit", "if it is
+  genuinely not that agent's work, say so" — and scored **4 of 12**, because a written escape hatch gets used.
+  The docs give the phrasing that works verbatim ("Use the test-runner subagent to fix failing tests"), and that
+  is what ships. An agent always outranks a skill when both match: the agent applies its own skills anyway, so
+  naming it delivers the method plus the isolation and the audit path.
+  It stays silent when no match is clear, ships in both editions, and carries six smoke-test cases — four owners
+  and two silences, one of which pins the `build`/`ui` false positive that used to send CI failures to the
+  frontend expert.
+
 ## [1.10.1] - 2026-07-30
 
 Reported from a real install: a design request produced a good analysis and no delegation. Nothing here is new
