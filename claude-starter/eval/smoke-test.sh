@@ -23,8 +23,38 @@ for f in "$AGENTS"/*.md; do
   AC=$((AC+1)); n=$(basename "$f")
   grep -q '^name:' "$f"        || fail "$n: no name"
   grep -q '^tools:' "$f"       || fail "$n: no tools"
-  grep -qE '^model:' "$f" || true   # no model means inherit (valid)
+  # `model:` is OPTIONAL and omitting it is the good default — the docs say an omitted field means `inherit`,
+  # i.e. the model the user picked for the session. What was never checked is the VALUE, and an unrecognised
+  # one does not error: Claude Code skips it and runs the inherited model, so a typo looks like it worked.
+  MV="$(sed -n 's/^model:[[:space:]]*//p' "$f" | head -1 | tr -d ' \r')"
+  if [ -n "$MV" ]; then
+    case "$MV" in
+      sonnet|opus|haiku|fable|inherit|claude-*) : ;;
+      *) fail "$n: model '$MV' is not a documented value (sonnet·opus·haiku·fable·inherit·claude-*) — it will silently fall back to inherit" ;;
+    esac
+  fi
+  EV="$(sed -n 's/^effort:[[:space:]]*//p' "$f" | head -1 | tr -d ' \r')"
+  if [ -n "$EV" ]; then
+    case "$EV" in
+      low|medium|high|xhigh|max) : ;;
+      *) fail "$n: effort '$EV' is not a documented level (low·medium·high·xhigh·max)" ;;
+    esac
+  fi
   grep -q 'Trigger phrases:' "$f" || need_trigger "$n: no Trigger phrases"
+done
+# The mandatory audit agents must NOT be pinned to a model. Omitted means inherit, so a pin can only make the
+# gate that CLEARS a change run on a different tier from the agent that wrote it — and for 156 commits both of
+# these said `sonnet`, so an Opus session reviewed Opus-written code on Sonnet. That is backwards for the one
+# review the kit calls mandatory, and Claude Code's own built-in Explore states the opposite rule: inherit,
+# capped upward, never forced down. Buy rigour with `effort:`, which raises thinking on the user's own model.
+for a in security-expert-csk privacy-agent-csk; do
+  [ -f "$AGENTS/$a.md" ] || continue
+  if grep -qE '^model:' "$AGENTS/$a.md"; then
+    if [ "$IS_KIT" = 1 ]; then fail "$a pins a model — a mandatory audit must inherit the session's model, never a fixed tier"
+    else note "$a pins a model (your install, your call — the kit ships it unpinned so the audit is never weaker than the session)"; fi
+  else
+    pass "$a inherits the session model (the mandatory audit is never weaker than what wrote the code)"
+  fi
 done
 # Core agents must be present regardless of profile; stack-specific agents (backend/database/
 # frontend-expert-csk) vary by install profile, so no fixed count is expected.

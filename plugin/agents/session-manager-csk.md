@@ -5,7 +5,9 @@ description: |
   Session/context health auditor. At every task close, evaluates context fill and appends the one-line status +
   recommendation to the END of the reply. Evaluates only; writes no code.
 tools: Read, Grep, Glob, Bash
-model: haiku
+# No `model` pin. This used to be `haiku`, which is the right tier for mechanical work — but the handover
+# is a synthesis over an entire session, and it decides what the NEXT session knows. Its failure mode is
+# silent: nobody discovers a thin handover until they are already relying on it.
 ---
 
 # Session Manager (Context Control)
