@@ -31,8 +31,6 @@
 | **Mevcut repoya uyarlama** | "Sıfırdan başla" varsayımı; elle taşıma | **`adopt` kiti bir branch'te devreder** — `main`'e dokunulmaz; sen inceleyip tutmaya karar verirsin |
 | **"Nasıl" bilgisi nerede** | Kural + yöntem her agent prompt'una kopyalanır → çoğalma & tutarsızlık | **Agent = ince tetik** (kim/ne zaman); yöntem tek yerde, bir **skill**'te yaşar (tek doğruluk kaynağı), 38 skill'e yayılır |
 
-**Tek cümlede:** benzer projeler sana *bir öneri yığını* verir; bu kit Claude Code'a *disiplinli bir mühendislik ekibi* yerleştirir — önemli kuralların **hatırlatma değil, kapı** olduğu yerde.
-
 ---
 
 ## 🚀 Hızlı başlangıç
@@ -48,7 +46,7 @@ Ardından ilk Claude Code mesajın olarak **`.claude/FIRST_PROMPT.md`**'i yapı�
 
 ## 🧠 Ajanlar — kitin kalbi
 
-**12 ajan** var; her biri bir **ince tetikleyici** — yalnızca *kim* ve *ne zaman* sorusunu yanıtlar, *nasıl* kısmını bir skill'e devreder. Ana thread onları **beş aşamada** seçip zincirler ve commit'ten önce kaliteyi kademe kademe yükseltir:
+**12 ajan** var; her biri bir **ince tetikleyici** — yalnızca *kim* ve *ne zaman* sorusunu yanıtlar, *nasıl* kısmını bir skill'e devreder. **Beş aşamaya** ayrılmışlardır; böylece commit'ten önce kalite kademe kademe yükselir:
 
 <div align="center">
 
@@ -66,17 +64,26 @@ Ardından ilk Claude Code mesajın olarak **`.claude/FIRST_PROMPT.md`**'i yapı�
 | **database-expert-csk** | 🔨 Üret | şema, migration, index, cache | `inherit` |
 | **frontend-expert-csk** | 🔨 Üret | UI, bileşen, istemci tarafı işi | `inherit` |
 | **devops-expert-csk** | 🔨 Üret | dağıtım, CI hattı, olay müdahalesi | `inherit` |
-| **security-expert-csk** | 🔍 Denetle | auth / IDOR / injection / secret · **güvenlik açısından kritikse zorunlu** | `sonnet` |
-| **privacy-agent-csk** | 🔍 Denetle | kişisel veri (KVKK / GDPR) | `sonnet` |
+| **security-expert-csk** | 🔍 Denetle | auth / IDOR / injection / secret · **güvenlik açısından kritikse zorunlu** | `inherit` · `effort: high` |
+| **privacy-agent-csk** | 🔍 Denetle | kişisel veri (KVKK / GDPR) | `inherit` |
 | **test-expert-csk** | 🔍 Denetle | test, kapsam, regresyon | `inherit` |
 | **performance-expert-csk** | 🔍 Denetle | sıcak yol, sorgu/döngü, render, payload · ölçülmüş bulgu üretir | `inherit` |
 | **review-agent-csk** | ✅ Kapat | commit öncesi kod sağlığı denetimi | `inherit` |
 | **commit-agent-csk** | ✅ Kapat | commit'i önerir, onay bekler | `haiku` |
-| **session-manager-csk** | 🤝 Devret | bağlam dolduğunda / faz sınırında | `haiku` |
+| **session-manager-csk** | 🤝 Devret | bağlam dolduğunda / faz sınırında | `inherit` |
 
 </details>
 
-> Ajan adları `-csk` ekiyle (Claude Starter Kit) biter; böylece kurulduğu projenin kendi ajanlarıyla asla çakışmaz. Her ajan incedir; asıl yöntem bir **skill**'de yaşar — tek bilgi kaynağı orasıdır.
+> **Neden neredeyse her ajanda `inherit` yazıyor.** `model:` yazılmaması ya da `inherit` demek, alt-ajanın
+> oturum için senin seçtiğin modelde koşması demek — ve bu bilinçli: bir pin, ajanı yalnızca etrafındaki işten
+> *farklı* bir kademeye taşıyabilir. İki zorunlu denetim tam bu yüzden miras alıyor: bir değişikliği onaylayan
+> inceleme, onu yazandan zayıf olmamalı. `security-expert-csk` ek titizliği farklı bir modelden değil,
+> `effort: high` ile **senin** modelinde daha çok düşünerek alıyor. `commit-agent-csk`'de `haiku` kalıyor;
+> staged diff'ten Conventional Commit üretmek mekanik bir iş ve §4.1/§4.4 zaten kapılı. `smoke-test.sh` iki
+> yarıyı da zorluyor: `model:`/`effort:` değeri dokümanın tanımladığı kümeden olmalı, ve denetim ajanları
+> pin'siz kalmalı.
+
+> Her ajan, skill ve komut `-csk` ekiyle (Claude Starter Kit) biter; böylece hiçbiri kurulduğu projenin kendi bileşenleriyle çakışmaz ve yerleşik bir Claude Code komutunu gölgelemez. Her ajan incedir; asıl yöntem bir **skill**'de yaşar — tek bilgi kaynağı orasıdır.
 
 > **Ajan devreye girmiyorsa garantiye alabilirsin.** Claude delegasyona göreve, ajanın `description` alanına ve
 > mevcut bağlama bakarak karar verir — bu bir kural değil, bir yargıdır; bazen işi ana thread'de tutar. İki
@@ -96,8 +103,8 @@ Ardından ilk Claude Code mesajın olarak **`.claude/FIRST_PROMPT.md`**'i yapı�
 
 - **12 ajan** — yukarıdaki tabloya bak.
 - **38 skill** — "nasıl" sorusunun tek kaynağı, her alan için bir tane (tüm katalog aşağıda).
-- **7 slash komut** — `/brainstorm-csk` · `/plan-csk` · `/review-csk` · `/ship-csk` · `/handoff-csk` · `/update-csk` (kurulu kiti güncelle) · `/doctor-csk` (kurulumu sağlık-kontrolü). Hepsi `-csk` ekli, böylece hiçbiri yerleşik bir Claude Code komutunu gölgelemiyor; sadeleştirme için yerleşik `/simplify` kullanılır.
-- **Hook'lar** — `route-hint.sh` (her isteğin yanına sahibi ajanı yazar; uzmanlar sen istemeden devreye girer), `guard-bash.sh` + `guard-write.sh` (araç seviyesi komut/yazma kapıları), `pre-commit` + `commit-msg` (iz + secret + bloat taraması), `context-usage.sh` ve `session-guard.sh` (oturum ölçümü), `session-rehydrate.sh` (/compact ya da /clear sonrası devir-notunu yeniden yüzeye çıkarır), `session-stats.sh` (oturumun gerçekte ne yaptığı — başarısız tool döngüleri, tekrarlanan promptlar, kesintiler, compaction'lar; `reflect` ve `handoff` bunu okur, böylece retro hatıraya değil kayda dayanır), `skill-trust.sh` (kitin göndermediği ve senin kabul etmediğin skill/agent'ı adlandırır). Plugin edisyonu bu kapı hook'larını da taşır.
+- **7 slash komut** — `/brainstorm-csk` · `/plan-csk` · `/review-csk` · `/ship-csk` · `/handoff-csk` · `/update-csk` (kurulu kiti güncelle) · `/doctor-csk` (kurulumu sağlık-kontrolü). Sadeleştirme için yerleşik `/simplify` kullanılır.
+- **Hook'lar** — `route-hint.sh` (her isteğin yanına sahibi ajanı yazar; uzmanlar sen istemeden devreye girer), `guard-bash.sh` + `guard-write.sh` (araç seviyesi komut/yazma kapıları), `pre-commit` + `commit-msg` (iz + secret + bloat taraması), `context-usage.sh` ve `session-guard.sh` (oturum ölçümü), `session-rehydrate.sh` (/compact ya da /clear sonrası devir-notunu yeniden yüzeye çıkarır), `session-stats.sh` (oturumun gerçekte ne yaptığı — başarısız tool döngüleri, tekrarlanan promptlar, kesintiler, compaction'lar; `reflect` ve `handoff` bunu okur, böylece retro hatıraya değil kayda dayanır), `skill-trust.sh` (kitin göndermediği ve senin kabul etmediğin skill/agent'ı adlandırır), `guard-commit-scan.sh` (gerçek iz/sır tarayıcılarını `PreToolUse`'dan koşturur; böylece commit içerik kapısı `core.hooksPath` kurulamayan yerlerde de çalışır). Plugin edisyonu bu kapı hook'larını da taşır.
 - **CLAUDE.md** — davranış, üç ilke, iş akışı, tamamlanma tanımı (DoD), token disiplini ve yasaklar.
 
 <details>
@@ -166,7 +173,7 @@ Bir asistan `/context` komutunu kendisi çalıştıramaz; bu yüzden çoğu kuru
 
 ### Token maliyeti
 
-`DISCIPLINE.md` ile ajan ve skill tarifleri her oturumun bağlamına yüklenir. Bu sabit yük bugün **~28 KB** (`DISCIPLINE.md` + 12 ajan + 38 skill tarifi) — gerçek bir turda **~12 bin token** mertebesinde. Eklenen her skill tüm oturumlara kalıcı ~100 token vergisidir; bu yüzden aşağıdaki bayt bütçesi bir kılavuz değil, kapıdır.
+`DISCIPLINE.md` ile ajan ve skill tarifleri her oturumun bağlamına yüklenir. Bu sabit yük bugün **~24 KB** (`DISCIPLINE.md` + 12 ajan + 38 skill tarifi) — gerçek bir turda **~10 bin token** mertebesinde; tahmin değil, gerçek bir `claude -p` turuyla kalibre edildi. Eklenen her skill tüm oturumlara kalıcı ~100 token vergisidir; bu yüzden aşağıdaki bayt bütçesi bir kılavuz değil, kapıdır.
 
 `smoke-test.sh` bileşen başına byte bütçesi uygular (disiplin · ajan tarifleri · skill tarifleri); maliyet fark edilmeden yukarı kaymaz. Bütçe yükseltilebilir, ama `smoke-test.sh` içinde açıkça düzenlenerek.
 
@@ -179,8 +186,8 @@ Bir asistan `/context` komutunu kendisi çalıştıramaz; bu yüzden çoğu kuru
 | Kural | Zorlayan mekanizma |
 |---|---|
 | Commit/push yalnızca onayla — her izin modunda | `guard-bash.sh` (PreToolUse), yalnız senin cevaplayabileceğin bir onay istemi çıkarır; bir kez onayla, commit'i Claude atar. `bypassPermissions`'ta kapalı tarafa düşer; `CLAUDE_GIT_OK=1` headless koşuları önceden yetkilendirir |
-| Yıkıcı işlem (reset --hard · force push · rm -rf · --no-verify) | `guard-bash.sh` (araç seviyesinde bloklanır) |
-| Uzaktan-kod-çalıştırma / izin-yıkımı (`curl…\|bash` · `chmod 777` · `dd of=`) | `guard-bash.sh` (her modda sert blok) |
+| Yıkıcı işlem (`reset --hard` · `checkout -- .` / `restore .` · force push · `rm -rf` · `clean -f` · `--no-verify` · rebase · amend) | `guard-bash.sh` (araç seviyesinde bloklanır). Ağaç-geneli geri alma listede, çünkü commit'lenmemiş her değişikliği reflog bırakmadan siler — `reset --hard` ile aynı kayıp, ama rutin bir temizlik gibi okunan bir komutla |
+| Uzaktan-kod-çalıştırma / izin-yıkımı (`curl…\|bash` · dünyaya-yazılabilir `chmod` · `dd of=`) | `guard-bash.sh` (her modda sert blok). `chmod` kuralı bir yazımı değil ortaya çıkan **izni** eşler — `777`, `1777`, `666`, `o+w` ve `a+w` aynı yere varır; birini bloklayıp diğerinin aynı duruma ulaşmasına izin veren bir kapı hiçbir şeyi korumamıştır |
 | Kapıları sökme (`core.hooksPath` yönlendirme ya da bir hook script'ini düzenleme/silme) | `guard-bash.sh` (shell tarafı) + `guard-write.sh` (Write/Edit tarafı) — sökülebilen kapı, kapı değildir |
 | Doğrudan varsayılan branch'e commit | `guard-bash.sh` bunu onay istemine yazar (blok değil, uyarı — sıfırdan proje meşru olarak `main`'de yaşar) |
 | Build/vendored çıktı ya da aşırı büyük dosya stage'lenmiş | `pre-commit` repo-şişme taraması (`node_modules/`, `dist/`, `>5 MiB`, …; `CSK_MAX_FILE_BYTES` ile ayarlanır) |
@@ -318,6 +325,11 @@ Kit, kurulum anında `.claude/kit.conf` dosyasına profili, backend yığının�
 bash .claude/eval/smoke-test.sh      # yapı, frontmatter, kapı bütünlüğü
 bash .claude/eval/routing-eval.sh    # örnek bir prompt doğru ajana/skill'e gidiyor mu
 ```
+
+**Kapıların ateşlendiğini görmek.** `CSK_GATE_LOG=<yol>` verirsen guard hook'ları her karar için bir satır
+yazar — `BLOCK`/`ASK`/`ALLOW`, kural ve kapıyı tetikleyen komut. Sen ayarlamadıkça yoktur, yalnız yazar ve
+kararı verdikten SONRA kaydeder; yani kararı etkileyemez. Bir kapının gerçekten bir şeyi durdurup durdurmadığını
+merak ettiğinde işe yarar: "kapı durdurdu" ile "model oraya hiç gitmedi" geriye birebir aynı izi bırakır.
 
 ## İş akışı
 

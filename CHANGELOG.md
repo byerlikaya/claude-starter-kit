@@ -6,6 +6,22 @@ versioning follows [SemVer](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- **The mandatory security and privacy audits ran on a weaker model than the code they were reviewing.** Both
+  were pinned `model: sonnet`, set in the July 8 rename commit and never revisited across 156 commits. An
+  omitted `model` field means `inherit` — the model the user picked for the session — so on an Opus session the
+  experts wrote code on Opus and the gate that clears them ran on Sonnet. That is backwards for the one review
+  this kit calls mandatory, and it is the opposite of what Claude Code does with its own built-in Explore
+  agent, which inherits the session model *capped* upward so it "never runs on a more expensive model than the
+  one you already chose" — inherit, cap up, never force down.
+  Both pins are gone. `security-expert-csk` buys its extra rigour with **`effort: high`** instead: more
+  thinking on the user's own model rather than a different tier. `session-manager-csk` also loses its `haiku`
+  pin — the handover is a synthesis over an entire session that decides what the next one knows, and its
+  failure mode is silent. `commit-agent-csk` keeps `haiku` deliberately: turning a staged diff into a
+  Conventional Commit is mechanical, and §4.1/§4.4 are gated, so a slip is caught rather than shipped.
+  Two new gates so this cannot come back quietly: a `model:`/`effort:` value must be one the docs define (an
+  unrecognised one does not error — Claude Code skips it and silently runs the inherited model, so a typo
+  looks like it worked), and the mandatory audit agents must stay unpinned. Verified by injecting each
+  deviation and confirming the matching case goes red.
 - **Nothing in the suite ran a hook the way Claude Code runs it.** All 300-odd gate cases pipe into
   `bash "$HOOKS/<hook>.sh"`, which supplies the interpreter and ignores the shebang — so a lost execute bit or
   a CRLF line ending, the two failures an installer can actually introduce on Windows, survived every single

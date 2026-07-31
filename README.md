@@ -20,18 +20,16 @@
 
 ## Why this kit?
 
-Most "agent setups" are a pile of suggestions — the rules sit in a file, and whether they're honored is left to the model. This kit is different: it drops a **disciplined engineering team** into Claude Code, where **the rules that matter are gates, not reminders** — it doesn't just tell the agent the rules, it makes breaking the critical ones impossible, and it installs safely onto the repo you already have.
+Most "agent setups" are a pile of suggestions — the rules sit in a file, and whether they're honored is left to the model. This kit is different: it drops a **disciplined engineering team** into Claude Code, where **the rules that matter are gates, not reminders** — it doesn't just tell the agent the rules, it puts the critical ones behind a tool-level gate that answers *before* the command runs — and it installs safely onto the repo you already have.
 
 | What matters | Typical agent kit / prompt collection | Claude Starter Kit |
 |---|---|---|
-| **Critical rules** | Live in a `.md` file; honored only if the model remembers | **Enforced as gates** at the tool level — git hook (`trace-scan`), `settings.json` permissions, `guard-bash.sh` PreToolUse. Breaking them is *impossible*, not *discouraged* |
+| **Critical rules** | Live in a `.md` file; honored only if the model remembers | **Enforced as gates** at the tool level — git hook (`trace-scan`), `settings.json` permissions, `guard-bash.sh` PreToolUse. The gate answers before the command runs, so the rule does not depend on the model remembering it |
 | **Structure** | A single dev prompt, or a loose list of agents you orchestrate | **A team of 12 specialist agents** across 5 stages (Understand → Produce → Audit → Close → Hand off) that **actually run on a plain prompt** — a `UserPromptSubmit` hook names the owning agent next to your request, measured **39 of 48** across four rounds against a **0 of 24** baseline without it. You type nothing extra; commands (`/review-csk`) chain several agents by @-mention when you want a fixed sequence |
 | **Security & privacy** | Optional advice, easy to skip | **Mandatory audit gate** — risk-critical changes can't close before the security/privacy review clears |
 | **Commits** | Model may commit on its own | **Every commit is yours to approve** — enforced at the tool level even in auto/bypass mode |
 | **Adopting an existing repo** | "Start fresh" assumption; manual porting | **`adopt` hands the kit over on a branch** — `main` is never touched; you review before you keep it |
 | **Where the "how" lives** | Rules + method copied into each agent prompt → drift & duplication | **Agent = thin trigger** (who/when); the method lives once in a **skill** (single source of truth), reused across 38 skills |
-
-**In one line:** similar projects hand you *a pile of suggestions*; this kit drops a *disciplined engineering team* into Claude Code — where the rules that matter are **gates, not reminders**.
 
 ---
 
@@ -48,7 +46,7 @@ Then paste **`.claude/FIRST_PROMPT.md`** as your first Claude Code message. Home
 
 ## 🧠 The agents — the heart of the kit
 
-**12 agents**, each a **thin trigger** — it says only *who* and *when*, and delegates the *how* to a skill. The main thread selects and chains them across **five stages**, escalating quality before anything is committed:
+**12 agents**, each a **thin trigger** — it says only *who* and *when*, and delegates the *how* to a skill. They are grouped into **five stages**, so quality escalates before anything is committed:
 
 <div align="center">
 
@@ -66,17 +64,26 @@ Then paste **`.claude/FIRST_PROMPT.md`** as your first Claude Code message. Home
 | **database-expert-csk** | 🔨 Produce | schema, migration, index, cache | `inherit` |
 | **frontend-expert-csk** | 🔨 Produce | UI, component, client work | `inherit` |
 | **devops-expert-csk** | 🔨 Produce | deployment, CI pipeline, incident | `inherit` |
-| **security-expert-csk** | 🔍 Audit | auth / IDOR / injection / secret · **mandatory if security-critical** | `sonnet` |
-| **privacy-agent-csk** | 🔍 Audit | personal data (KVKK / GDPR) | `sonnet` |
+| **security-expert-csk** | 🔍 Audit | auth / IDOR / injection / secret · **mandatory if security-critical** | `inherit` · `effort: high` |
+| **privacy-agent-csk** | 🔍 Audit | personal data (KVKK / GDPR) | `inherit` |
 | **test-expert-csk** | 🔍 Audit | tests, coverage, regression | `inherit` |
 | **performance-expert-csk** | 🔍 Audit | hot path, query/loop, render, payload · reports measured findings | `inherit` |
 | **review-agent-csk** | ✅ Close | pre-commit code-health review | `inherit` |
 | **commit-agent-csk** | ✅ Close | proposes the commit, waits for approval | `haiku` |
-| **session-manager-csk** | 🤝 Hand off | context fills / phase boundary | `haiku` |
+| **session-manager-csk** | 🤝 Hand off | context fills / phase boundary | `inherit` |
 
 </details>
 
-> Agent names carry a `-csk` suffix (Claude Starter Kit) so they never collide with the host project's own agents. Each agent is thin; the real method lives in a **skill** — the single source of truth.
+> **Why almost every agent says `inherit`.** An omitted or `inherit` model means the subagent runs on the model
+> you chose for the session, and that is deliberate: a pin can only make an agent run on a *different* tier from
+> the work around it. The two mandatory audits inherit for exactly that reason — a review that clears a change
+> must never be weaker than whatever wrote it — and `security-expert-csk` buys its extra rigour with
+> `effort: high`, more thinking on *your* model rather than a different one. `commit-agent-csk` keeps `haiku`
+> because reading a staged diff into a Conventional Commit is mechanical, and §4.1/§4.4 are gated anyway.
+> `smoke-test.sh` enforces both halves: a `model:`/`effort:` value must be one the docs define, and the audit
+> agents must stay unpinned.
+
+> Every agent, skill and command carries a `-csk` suffix (Claude Starter Kit), so nothing collides with the host project's own components or shadows a Claude Code built-in. Each agent is thin; the real method lives in a **skill** — the single source of truth.
 
 > **If an agent doesn't fire, you can guarantee it.** Claude decides delegation from the task, the agent's
 > `description` and the current context — it is a judgement, not a rule, so it will sometimes keep work on the main
@@ -96,8 +103,8 @@ Then paste **`.claude/FIRST_PROMPT.md`** as your first Claude Code message. Home
 
 - **12 agents** — see the table above.
 - **38 skills** — the single source of "how", one per area (full catalogue below).
-- **7 slash commands** — `/brainstorm-csk` · `/plan-csk` · `/review-csk` · `/ship-csk` · `/handoff-csk` · `/update-csk` (update the installed kit) · `/doctor-csk` (health-check the install). Every one carries the `-csk` suffix so none of them shadows a Claude Code built-in; simplification uses the built-in `/simplify`.
-- **Hooks** — `route-hint.sh` (names the owning agent alongside every prompt, so the specialists run without you asking), `guard-bash.sh` + `guard-write.sh` (tool-level command/write gates), `pre-commit` + `commit-msg` (trace + secret + bloat scan), `context-usage.sh` and `session-guard.sh` (session measurement), `session-rehydrate.sh` (re-surface the handover after /compact or /clear), `session-stats.sh` (what the session actually did — failing tool loops, repeated prompts, interrupts, compactions — read by `reflect` and `handoff` so a retrospective rests on the record, not on recollection), `skill-trust.sh` (names a skill or agent the kit never shipped and you never accepted). The plugin edition ships these gate hooks too.
+- **7 slash commands** — `/brainstorm-csk` · `/plan-csk` · `/review-csk` · `/ship-csk` · `/handoff-csk` · `/update-csk` (update the installed kit) · `/doctor-csk` (health-check the install). Simplification uses the built-in `/simplify`.
+- **Hooks** — `route-hint.sh` (names the owning agent alongside every prompt, so the specialists run without you asking), `guard-bash.sh` + `guard-write.sh` (tool-level command/write gates), `pre-commit` + `commit-msg` (trace + secret + bloat scan), `context-usage.sh` and `session-guard.sh` (session measurement), `session-rehydrate.sh` (re-surface the handover after /compact or /clear), `session-stats.sh` (what the session actually did — failing tool loops, repeated prompts, interrupts, compactions — read by `reflect` and `handoff` so a retrospective rests on the record, not on recollection), `skill-trust.sh` (names a skill or agent the kit never shipped and you never accepted), `guard-commit-scan.sh` (runs the real trace/secret scanners from `PreToolUse`, so the commit content gate works even where `core.hooksPath` cannot be set). The plugin edition ships these gate hooks too.
 - **CLAUDE.md** — behavior, the three principles, workflow, Definition of Done, token discipline, and prohibitions.
 
 <details>
@@ -166,7 +173,7 @@ An assistant cannot run `/context` itself, so most setups **guess** the session 
 
 ### Token cost
 
-`DISCIPLINE.md` and the agent/skill descriptions load into every session's context. That always-on material is **~28 KB** today (`DISCIPLINE.md` + 12 agent + 38 skill descriptions) — on the order of **12k tokens** on a real turn. Every skill added is a permanent ~100-token tax on all sessions, which is why the byte budget below is a gate, not a guideline.
+`DISCIPLINE.md` and the agent/skill descriptions load into every session's context. That always-on material is **~24 KB** today (`DISCIPLINE.md` + 12 agent + 38 skill descriptions) — on the order of **10k tokens** on a real turn, calibrated against an actual `claude -p` turn rather than estimated. Every skill added is a permanent ~100-token tax on all sessions, which is why the byte budget below is a gate, not a guideline.
 
 `smoke-test.sh` enforces a byte budget per component (discipline · agent descriptions · skill descriptions), so the cost cannot drift upward unnoticed. A budget can be raised, but only by editing `smoke-test.sh` explicitly.
 
@@ -179,8 +186,8 @@ An assistant cannot run `/context` itself, so most setups **guess** the session 
 | Rule | Enforcing mechanism |
 |---|---|
 | Commit/push only with approval — in every permission mode | `guard-bash.sh` (PreToolUse) raises an approval prompt only you can answer; approve once and Claude runs the commit. Fails closed under `bypassPermissions`; `CLAUDE_GIT_OK=1` pre-authorises headless runs |
-| Destructive op (reset --hard · force push · rm -rf · --no-verify) | `guard-bash.sh` (blocked at the tool level) |
-| Remote-code-exec / permission-nuke (`curl…\|bash` · `chmod 777` · `dd of=`) | `guard-bash.sh` (hard-blocked in every mode) |
+| Destructive op (`reset --hard` · `checkout -- .` / `restore .` · force push · `rm -rf` · `clean -f` · `--no-verify` · rebase · amend) | `guard-bash.sh` (blocked at the tool level). The whole-tree revert is there because it destroys every uncommitted change with no reflog — the same loss as `reset --hard`, by a command that reads like routine hygiene |
+| Remote-code-exec / permission-nuke (`curl…\|bash` · a world-writable `chmod` · `dd of=`) | `guard-bash.sh` (hard-blocked in every mode). The `chmod` rule matches the resulting **permission**, not one spelling of it — `777`, `1777`, `666`, `o+w` and `a+w` all land in the same place, and a gate that blocks one while another reaches the same state has protected nothing |
 | Disarming the gates (redirect `core.hooksPath`, or edit/delete a hook script) | `guard-bash.sh` (shell side) + `guard-write.sh` (Write/Edit side) — a gate you can silently remove is not a gate |
 | Committing straight onto the default branch | `guard-bash.sh` surfaces it in the approval prompt (a warning, not a block — a fresh project legitimately lives on `main`) |
 | Build/vendored artifact or oversized blob staged | `pre-commit` repo-bloat scan (`node_modules/`, `dist/`, `>5 MiB`, …; override via `CSK_MAX_FILE_BYTES`) |
@@ -195,7 +202,12 @@ An assistant cannot run `/context` itself, so most setups **guess** the session 
 | A running session never follows stale rules | `context-usage.sh` compares `.claude/VERSION` against the version the session started with, and says so |
 | Quality gate (SonarQube projects — language-agnostic) | `sonarqube-check` + `/ship-csk` |
 
-The gates are armed via `settings.json` and git `core.hooksPath`; `smoke-test.sh` verifies they are ready after every change.
+The gates are armed via `settings.json` and git `core.hooksPath`; `smoke-test.sh` verifies they are ready after every change — and every rule carries cases for **both** halves: that it blocks what it must, and that it does not block its neighbours (`chmod 755`, `rm -rf build`, `git checkout -- src/app.js`). A gate nobody proved is not a gate, and one that fires on routine work gets worked around.
+
+> **Honest scope.** These are defence-in-depth, not a sandbox. The shell is Turing-complete, so a determined
+> rewrite can reach around any pattern; what the gates remove is the *accident* — the blunt instrument taken
+> under deadline pressure, the destructive command that reads like routine hygiene. For a hard boundary, run
+> Claude Code in a devcontainer or a VM; `/doctor-csk` reports whether you have one.
 
 ---
 
@@ -318,6 +330,11 @@ Like `adopt`, an update needs a git repo. Where the change lands is now a choice
 bash .claude/eval/smoke-test.sh      # structure, frontmatter, gate integrity
 bash .claude/eval/routing-eval.sh    # does an example prompt route to the right agent/skill
 ```
+
+**Watching the gates fire.** Export `CSK_GATE_LOG=<path>` and the guard hooks append one line per decision —
+`BLOCK`/`ASK`/`ALLOW`, the rule, and the command that tripped it. It is absent unless you set it, write-only,
+and recorded after the verdict, so it cannot change one. Useful when you want to know whether a gate actually
+stopped something or the model simply never went there: those two leave identical artifacts behind.
 
 ## Workflow
 
