@@ -20,16 +20,26 @@
 
 ## Neden bu kit?
 
-Çoğu "agent kurulumu" aslında bir öneri yığınıdır — kurallar bir dosyada durur, uyulup uyulmayacağı modele kalır. Bu kit farklı çalışır: Claude Code'un içine **disiplinli bir mühendislik ekibi** yerleştirir ve burada **önemli kurallar hatırlatma değil, kapıdır** — ajana kuralları söylemekle yetinmez, kritik olanları komut çalışmadan **önce** cevap veren bir araç-seviyesi kapının arkasına koyar; üstelik zaten elindeki repo'ya güvenle kurulur.
+Üç iddia, her birinin arkasında bir sayı var.
 
-| Önemli olan | Tipik agent kiti / prompt koleksiyonu | Claude Starter Kit |
+**1. Uzmanlar gerçekten çalışıyor.** Bu, düzeltilmeden önce ölçüldü ve sonuç kötüydü: odaklı, tek-alanlı bir promptta ana thread **24 oturumda 0 kez** devretti — bütün ajanlar kurulu, delegasyon aracı açık, iş tam olarak bir ajanın alanında. Artık bir `UserPromptSubmit` hook'u sahibi ajanı isteğinin yanına yazıyor ve aynı ölçüm **dört turda 39/48** dönüyor. Fazladan bir şey yazmıyorsun.
+
+**2. Önemli kurallar hatırlatma değil, kapı.** Kritik bir kural, komut çalışmadan **önce** araç seviyesinde cevaplanır — bir git hook'u, bir `settings.json` izni, bir `PreToolUse` guard'ı — yani hiçbir zaman modelin hatırlamasına kalmaz. Her kural iki yarısıyla vakalanır: bloklaması gerekeni blokluyor mu, ve komşularını rahat bırakıyor mu.
+
+**3. Neyi kanıtlaya*madığını* da söylüyor.** Bir A/B iskeleti aynı promptu hem kit kurulu bir projede hem çıplak bir projede koşturup diskte kalanı derecelendiriyor. Şimdiye kadar yedi vaka, **altısı berabere döndü** ve altısı da gerekçesiyle [`evals/README.md`](evals/README.md) içinde yayında — en can sıkıcısı dahil: kolların ayrıldığı tek vakada işi *disiplin metni* yaptı, araç kapısı hiç ateşlenmedi. Bu sayfadaki hiçbir iddia, deponun sana ölçümünü gösteremeyeceği bir iddia değil.
+
+Ve zaten elindeki repoya kuruluyor: **`adopt` kiti bir dalda, staged ve commit'siz devrediyor** — yani değişikliğin tamamı, hiçbiri senin olmadan önce editörünün diff'inde duruyor. `main`'e dokunulmuyor.
+
+Aşağıdaki karşılaştırma **Claude Code + bir `CLAUDE.md`** ile yapılıyor — uydurma bir rakiple değil, A/B iskeletinin kontrol kolu olarak ölçtüğü tam o tabanla.
+
+| Önemli olan | Claude Code + bir `CLAUDE.md` | Claude Starter Kit |
 |---|---|---|
 | **Kritik kurallar** | Bir `.md` dosyasında durur; yalnız model hatırlarsa uygulanır | **Kapı olarak zorlanır** — araç seviyesinde: git hook (`trace-scan`), `settings.json` izinleri, `guard-bash.sh` PreToolUse. Kapı komut çalışmadan önce cevap verir; kural modelin hatırlamasına bağlı değildir |
-| **Yapı** | Tek bir dev prompt ya da senin yönettiğin gevşek bir agent listesi | **12 uzman agent'lık bir ekip**, 5 aşamada (Anla → Üret → Denetle → Kapat → Devret) ve **düz promptta gerçekten çalışıyorlar** — `UserPromptSubmit` hook'u isteğinin yanına sahibini yazıyor; dört turda **39/48** ölçüldü, hooksuz taban **0/24**. Fazladan bir şey yazmıyorsun; sabit bir sıra istediğinde komutlar (`/review-csk`) birden çok ajanı @-mention ile zincirler |
-| **Güvenlik & gizlilik** | İsteğe bağlı tavsiye, atlaması kolay | **Zorunlu audit kapısı** — risk-kritik değişiklik, güvenlik/gizlilik denetimi geçmeden kapanamaz |
+| **Yapı** | Her işi tek thread yapar; hiçbir alanın sahibi yok | **12 uzman agent'lık bir ekip**, 5 aşamada (Anla → Üret → Denetle → Kapat → Devret) ve **düz promptta gerçekten çalışıyorlar** — `UserPromptSubmit` hook'u isteğinin yanına sahibini yazıyor; dört turda **39/48** ölçüldü, hooksuz taban **0/24**. Fazladan bir şey yazmıyorsun; sabit bir sıra istediğinde komutlar (`/review-csk`) birden çok ajanı @-mention ile zincirler |
+| **Güvenlik & gizlilik** | Yazmayı akıl ettiysen dosyanda bir satır | **Zorunlu audit kapısı** — risk-kritik değişiklik, güvenlik/gizlilik denetimi geçmeden kapanamaz |
 | **Commit'ler** | Model kendi başına commit atabilir | **Her commit senin onayına bağlı** — auto/bypass modda bile araç seviyesinde zorlanır |
-| **Mevcut repoya uyarlama** | "Sıfırdan başla" varsayımı; elle taşıma | **`adopt` kiti bir branch'te devreder** — `main`'e dokunulmaz; sen inceleyip tutmaya karar verirsin |
-| **"Nasıl" bilgisi nerede** | Kural + yöntem her agent prompt'una kopyalanır → çoğalma & tutarsızlık | **Agent = ince tetik** (kim/ne zaman); yöntem tek yerde, bir **skill**'te yaşar (tek doğruluk kaynağı), 38 skill'e yayılır |
+| **Mevcut repoya uyarlama** | Uyarlanacak bir şey yok — dosyayı sen yazar, sen bakarsın | **`adopt` kiti bir branch'te devreder** — `main`'e dokunulmaz; sen inceleyip tutmaya karar verirsin |
+| **"Nasıl" bilgisi nerede** | Hepsi tek dosyada; büyür ve zamanla kayar | **Agent = ince tetik** (kim/ne zaman); yöntem tek yerde, bir **skill**'te yaşar (tek doğruluk kaynağı), 38 skill'e yayılır |
 
 ---
 

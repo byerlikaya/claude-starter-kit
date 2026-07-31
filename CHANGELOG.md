@@ -80,7 +80,18 @@ versioning follows [SemVer](https://semver.org/).
   logo the READMEs do use.
 
 ### Changed
-- **The Windows CI job was 1h28m40s; the gate units were being re-run in every pruned profile.** The step
+- **The README led with the half of the kit that has the least evidence behind it.** The old opening sold
+  "gates, not reminders" — and the measurement says the opposite of what that implies: across the A/B suite the
+  only case where the two arms separated was won by the always-on *discipline text*, with `guard-bash` never
+  firing. Meanwhile the strongest, most falsifiable number the project owns — delegation going from **0 of 24**
+  to **39 of 48** — sat in a single table cell, and `evals` appeared **zero times** in either README, so the
+  one thing hardest for anyone else to copy (an A/B harness whose negative results are published) was invisible.
+  The opening is now three claims with a number behind each: the specialists run, the rules are gates, and
+  **it says what it has not proven** — linking straight to the six level results and to the awkward attribution
+  above. The comparison table's left column was a strawman ("typical agent kit / prompt collection"); it is now
+  **Claude Code with a `CLAUDE.md`**, which is not a competitor at all but the exact control arm the harness
+  measures, so the table can be checked rather than taken on faith. `adopt` moved up out of a table row: it is
+  the situation most readers are actually in. the gate units were being re-run in every pruned profile.** The step
   breakdown put 77m29s of it in the e2e rehearsal, which runs the installed smoke-test seven times — and one
   run spawns 136 hook processes, each spawning `jq`, which is what Windows charges for. Those cases drive hook
   binaries the installer copies unchanged, so six profiles re-verified identical bytes six times.

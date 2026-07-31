@@ -20,16 +20,26 @@
 
 ## Why this kit?
 
-Most "agent setups" are a pile of suggestions — the rules sit in a file, and whether they're honored is left to the model. This kit is different: it drops a **disciplined engineering team** into Claude Code, where **the rules that matter are gates, not reminders** — it doesn't just tell the agent the rules, it puts the critical ones behind a tool-level gate that answers *before* the command runs — and it installs safely onto the repo you already have.
+Three claims, each with a number behind it.
 
-| What matters | Typical agent kit / prompt collection | Claude Starter Kit |
+**1. The specialists actually run.** This was measured before it was fixed, and the answer was bad: on a focused, single-domain prompt the main thread delegated **0 times in 24 sessions** — every agent installed, the delegation tool available, the work squarely inside one agent's domain. A `UserPromptSubmit` hook now names the owning agent beside your request, and the same measurement returns **39 of 48 across four rounds**. You type nothing extra.
+
+**2. The rules that matter are gates, not reminders.** A critical rule is answered at the tool level *before* the command runs — a git hook, a `settings.json` permission, a `PreToolUse` guard — so it never rests on the model remembering it. Every rule carries cases for both halves: that it blocks what it must, and that it leaves the neighbours alone.
+
+**3. It tells you what it has *not* proven.** An A/B harness runs the same prompt in a kit project and a bare one and grades what is left on disk. Seven cases so far, **six came back level**, and all six are published with the reasoning in [`evals/README.md`](evals/README.md) — including the awkward one: in the single case where the arms separated, the *discipline text* did the work and the tool gate never fired. Nothing on this page is a claim the repo cannot show you the measurement for.
+
+And it goes onto the repo you already have: **`adopt` hands the kit over on a branch, staged and uncommitted**, so the whole change sits in your editor's diff before any of it is yours to keep. `main` is never touched.
+
+The comparison below is against **Claude Code with a `CLAUDE.md`** — not a strawman competitor, but the exact baseline the A/B harness measures as its control arm.
+
+| What matters | Claude Code + a `CLAUDE.md` | Claude Starter Kit |
 |---|---|---|
 | **Critical rules** | Live in a `.md` file; honored only if the model remembers | **Enforced as gates** at the tool level — git hook (`trace-scan`), `settings.json` permissions, `guard-bash.sh` PreToolUse. The gate answers before the command runs, so the rule does not depend on the model remembering it |
-| **Structure** | A single dev prompt, or a loose list of agents you orchestrate | **A team of 12 specialist agents** across 5 stages (Understand → Produce → Audit → Close → Hand off) that **actually run on a plain prompt** — a `UserPromptSubmit` hook names the owning agent next to your request, measured **39 of 48** across four rounds against a **0 of 24** baseline without it. You type nothing extra; commands (`/review-csk`) chain several agents by @-mention when you want a fixed sequence |
-| **Security & privacy** | Optional advice, easy to skip | **Mandatory audit gate** — risk-critical changes can't close before the security/privacy review clears |
+| **Structure** | One thread does everything; no specialist owns a domain | **A team of 12 specialist agents** across 5 stages (Understand → Produce → Audit → Close → Hand off) that **actually run on a plain prompt** — a `UserPromptSubmit` hook names the owning agent next to your request, measured **39 of 48** across four rounds against a **0 of 24** baseline without it. You type nothing extra; commands (`/review-csk`) chain several agents by @-mention when you want a fixed sequence |
+| **Security & privacy** | A line in your file, if you thought to write one | **Mandatory audit gate** — risk-critical changes can't close before the security/privacy review clears |
 | **Commits** | Model may commit on its own | **Every commit is yours to approve** — enforced at the tool level even in auto/bypass mode |
-| **Adopting an existing repo** | "Start fresh" assumption; manual porting | **`adopt` hands the kit over on a branch** — `main` is never touched; you review before you keep it |
-| **Where the "how" lives** | Rules + method copied into each agent prompt → drift & duplication | **Agent = thin trigger** (who/when); the method lives once in a **skill** (single source of truth), reused across 38 skills |
+| **Adopting an existing repo** | Nothing to adopt — you write and maintain the file yourself | **`adopt` hands the kit over on a branch** — `main` is never touched; you review before you keep it |
+| **Where the "how" lives** | All of it in one file, which grows and drifts | **Agent = thin trigger** (who/when); the method lives once in a **skill** (single source of truth), reused across 38 skills |
 
 ---
 
