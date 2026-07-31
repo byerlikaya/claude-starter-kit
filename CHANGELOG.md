@@ -6,6 +6,38 @@ versioning follows [SemVer](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- **Nothing in the suite ran a hook the way Claude Code runs it.** All 300-odd gate cases pipe into
+  `bash "$HOOKS/<hook>.sh"`, which supplies the interpreter and ignores the shebang — so a lost execute bit or
+  a CRLF line ending, the two failures an installer can actually introduce on Windows, survived every single
+  case and would have died in a real session. One case now executes the hook **as an executable**, the way
+  `settings.json` invokes it. Verified on a real install in three states: intact passes, `chmod -x` gives 2
+  errors, a CRLF shebang gives 1.
+- **The route-hint cases failed on every pruned profile.** §7y asserts that the hook names
+  `backend-expert-csk` for a backend request, but a `--frontend` install prunes that agent, so the hook
+  correctly said nothing and the case failed it for obeying its own rule — naming an agent that is not
+  installed is exactly the wrong route those cases exist to prevent. A case now skips, visibly, when its owner
+  is absent. This reached CI because `e2e.sh` runs the INSTALLED suite inside six pruned profiles while only
+  the source tree had been checked locally; it failed with `rc=1` and no output, the same `set -euo pipefail`
+  signature this repo has been bitten by before.
+- **The brand mark had three hand-kept copies and no gate.** Four SVGs were down as orphans to delete on the
+  strength of a grep that could not see them being used — because two of the uses are not file references (the
+  published site inlines the mark as a `data:` URI favicon, `gen-network.py` hand-copies the same rects into
+  the diagram core), and because the grep ran over the working tree while `gh-pages` is a separate branch.
+  `assets/favicon.svg` was byte-identical to `assets/icon.svg` and is gone; `icon.svg` is now the single
+  source, `gen-network.py` says so at the copy site, and `check-gh-pages.sh` compares all three on shape
+  rather than bytes. `logo-light.svg` and `mark.svg` stay — light-background and transparent variants of a
+  logo the READMEs do use.
+
+### Changed
+- **The Windows CI job was 1h28m40s; the gate units were being re-run in every pruned profile.** The step
+  breakdown put 77m29s of it in the e2e rehearsal, which runs the installed smoke-test seven times — and one
+  run spawns 136 hook processes, each spawning `jq`, which is what Windows charges for. Those cases drive hook
+  binaries the installer copies unchanged, so six profiles re-verified identical bytes six times.
+  `CSK_SMOKE_SCOPE=install` skips them: **136 hook processes drop to 9, 304 cases to 165**, and everything
+  profile-dependent still runs in both scopes — counts, frontmatter, routing, §7y, commands, settings, plugin,
+  doctor, adopt. The skip prints a note so a short run is not mistaken for full coverage, and install scope
+  adds the executable-invocation canary above. Full scope stays the default and is what CI's standalone
+  smoke-test step runs.
 - **A gate that returned the wrong exit code was scored as a working gate.** A PreToolUse hook has exactly two
   answers: `0` allows, `2` blocks. Anything else — a syntax error, a missing interpreter, an unbound variable
   under `set -u` — means the hook *died*, and Claude Code runs the tool anyway. Thirty-five assertions in
