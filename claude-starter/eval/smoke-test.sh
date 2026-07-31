@@ -612,6 +612,17 @@ if   [ -z "$NO_CUE" ]; then pass "every non-pull agent carries an auto-delegatio
 elif [ "$IS_KIT" = 1 ]; then fail "agent(s) with a passive description — auto-delegation will rarely fire:$NO_CUE (add 'use proactively …', or add to PULL_AGENTS if pull-only)"
 else pass "some agents lack a proactive cue:$NO_CUE (your project's own agents, not gated)"; fi
 
+
+# ---- gate UNIT cases: skipped under CSK_SMOKE_SCOPE=install ------------------------------------------------
+# These drive the hook binaries against fixture commands, and the installer copies those files unchanged — so
+# running them again inside each of e2e's six pruned profiles re-verifies identical bytes six times. Measured:
+# one smoke-test run spawns 136 hook processes; e2e runs the suite seven times, and on Windows that step alone
+# was 77 of the job's 89 minutes. Everything PROFILE-dependent (counts, frontmatter, routing, §7y, commands,
+# settings/plugin/doctor/adopt) keeps running in both scopes, and install scope still runs the canary below —
+# because what an installer can actually break is the hook not executing at all (lost +x, CRLF, bad shebang),
+# not the matcher regexes. Full scope remains the default and is what the standalone CI step runs.
+UNITS=1; [ "${CSK_SMOKE_SCOPE:-full}" = install ] && UNITS=0
+[ "$UNITS" = 0 ] && note "scope=install: gate UNIT cases skipped (they test payload bytes, not this install) — canary below"
 echo "== 7) settings.json & guard (§4.4/§4.5) =="
 if [ -f "$ROOT/settings.json" ]; then
   if command -v jq >/dev/null 2>&1; then
@@ -619,6 +630,7 @@ if [ -f "$ROOT/settings.json" ]; then
   else pass "settings.json present (no jq, JSON validation skipped)"; fi
 else fail "settings.json missing"; fi
 [ -x "$HOOKS/guard-bash.sh" ] && pass "guard-bash.sh +x" || fail "guard-bash.sh missing/not executable"
+if [ "$UNITS" = 1 ]; then
 # §4.4 git approval gate (behavioral). Contract:
 #   normal modes  -> exit 0 + permissionDecision:"ask"  (the USER approves in-session; Claude then commits)
 #   bypass/unknown-> exit 2 (fail closed; no prompt can be proven to reach the user)
@@ -817,6 +829,26 @@ gok  'cat config/app.pem.example'
 gok  'grep -r id_rsa .'
 gok  'cat README.md'
 
+else
+  # Install scope: three cases, one process each, covering the three answers a PreToolUse hook can give. Any
+  # one of them fails if the installed hook does not run at all, which is the failure mode that belongs to the
+  # INSTALLER. The exhaustive matcher cases ran in full scope against the same bytes.
+  gj(){ printf '{"tool_name":"Bash","permission_mode":"%s","tool_input":{"command":"%s"}}' "$1" "$2"; }
+  # Invoked DIRECTLY, not as `bash <file>` — that is how settings.json runs it, and it is the only form that
+  # exercises the execute bit and the shebang. Everything else in this suite pipes into `bash "$HOOKS/..."`,
+  # which silently supplies both; a chmod -x or a CRLF shebang survives every one of those cases and dies in
+  # a real session. Verified by breaking each one on a real install and watching only this line go red.
+  gj auto 'git reset --hard' | "$HOOKS/guard-bash.sh" >/dev/null 2>&1
+  [ "$?" = 2 ] && pass "canary: the installed guard-bash BLOCKS a §4.5 op when run as an executable (rc=2)" \
+                || fail "canary: the installed guard-bash did not block with rc=2 when executed directly — check +x, shebang, CRLF"
+  gj auto 'ls -la' | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1
+  [ "$?" = 0 ] && pass "canary: the installed guard-bash ALLOWS an ordinary command" \
+                || fail "canary: the installed guard-bash blocked 'ls -la' (gate too strict, or the hook is broken)"
+  o="$(gj auto 'git commit -m x' | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"
+  printf '%s' "$o" | grep -q '"permissionDecision":"ask"' \
+    && pass "canary: the installed guard-bash ASKS for §4.4" \
+    || fail "canary: no §4.4 ask from the installed hook (out=$o)"
+fi
 echo "== 7c) session rehydration (SessionStart, C1) =="
 [ -x "$HOOKS/session-rehydrate.sh" ] && pass "session-rehydrate.sh +x" || fail "session-rehydrate.sh missing/not executable"
 # Fails open + silent when there is no handover; injects additionalContext when docs/SESSION_STATE.md exists.
@@ -1008,6 +1040,7 @@ else
   grep -q 'skill-trust' "$ROOT/settings.json" && pass "settings.json wires skill-trust.sh (no jq: name check)" || fail "skill-trust.sh is not wired"
 fi
 
+if [ "$UNITS" = 1 ]; then
 echo "== 7h) blocklist rules carry their own cases, and every case drives the REAL hook =="
 # A pattern list is the kit's most edit-prone surface — every project adds its own vendor name — and a typo in a
 # regex produces a gate that matches nothing while still looking armed. So each pattern carries its case on the
@@ -1190,6 +1223,7 @@ grep -q '^BLOCK	§4.5	gate-file edit' "$GLOG" 2>/dev/null && pass "log set: guar
   || fail "log set: guard-write did not record its block"
 rm -rf "$GLD"
 
+fi
 echo "== 7y) route-hint: names the owner next to the request =="
 # The kit's own thesis is "rule -> gate, not reminder", and delegation was the one core rule left as a reminder.
 # Measured: on 12 focused domain tasks the main thread delegated 0 times; with this hook injecting a DIRECT

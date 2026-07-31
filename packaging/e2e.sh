@@ -12,7 +12,11 @@ combo() {
   local P="$WORK/proj-$lbl"; rm -rf "$P"; mkdir -p "$P"
   cp start.sh "$P/"; cp -R claude-starter "$P/"
   ( cd "$P" && printf "$inp" | bash start.sh "$@" >/dev/null )
-  ( cd "$P" && bash .claude/eval/smoke-test.sh >/dev/null )
+  # scope=install: the gate UNIT cases drive hook binaries the installer copies UNCHANGED, so running all of
+  # them in each of six pruned profiles re-checks identical bytes six times — 77 of the 89 minutes of the
+  # Windows CI job. Install scope keeps everything profile-dependent plus a canary that proves the installed
+  # hook actually executes; the exhaustive cases run once, in CI's standalone full-scope smoke-test step.
+  ( cd "$P" && CSK_SMOKE_SCOPE=install bash .claude/eval/smoke-test.sh >/dev/null )
   # The install manifest is what separates kit-owned from project-owned downstream (doctor readiness, trust gate).
   [ -s "$P/.claude/kit-manifest.txt" ] || { echo "FAIL [$lbl]: .claude/kit-manifest.txt missing or empty"; exit 1; }
   grep -q '^skills/handoff$' "$P/.claude/kit-manifest.txt" || { echo "FAIL [$lbl]: manifest does not list the shipped skills"; exit 1; }
@@ -47,7 +51,7 @@ grep -q '^skills/backend-expert-local$' "$P/.claude/kit-manifest.txt" && { echo 
 # would then report a passing assertion as a failure.
 DOUT="$( cd "$P" && bash .claude/eval/doctor.sh 2>&1 || true )"
 case "$DOUT" in *"project-specific skill(s)"*) ;; *) echo "FAIL: doctor readiness did not detect the project's own skill"; exit 1 ;; esac
-( cd "$P" && bash .claude/eval/smoke-test.sh >/dev/null )|| { echo "FAIL: the adopted project's own smoke-test did not pass"; exit 1; }
+( cd "$P" && CSK_SMOKE_SCOPE=install bash .claude/eval/smoke-test.sh >/dev/null )|| { echo "FAIL: the adopted project's own smoke-test did not pass"; exit 1; }
 echo "[adopt-dotnet] stack=dotnet · devarch-module kept · overlap imported to skill + backed up · smoke OK"
 
 # A generic (Node) project: no .sln -> generic, devarch-module pruned.
