@@ -23,6 +23,10 @@ fi
 [ -z "$FP" ] && exit 0
 
 block(){
+  # Same write-only observability channel as guard-bash.sh, and absent for the same reason unless the operator
+  # exports CSK_GATE_LOG. Logged after the verdict; it cannot change it.
+  [ -n "${CSK_GATE_LOG:-}" ] && printf 'BLOCK\t§4.5\t%s\t%s\n' "gate-file edit (Write/Edit tools)" \
+    "$(printf '%s' "$FP" | tr -d '\000-\037' | cut -c1-200)" >> "$CSK_GATE_LOG" 2>/dev/null
   echo "GUARD (§4.5): editing '$FP' is blocked AT THE TOOL LEVEL." >&2
   echo "This file is a gate script — rewriting it would disarm the trace/secret/approval gates. Kit updates go through the installer/update script, not the assistant's file tools. If the user explicitly wants it changed, they edit it in their own editor." >&2
   exit 2

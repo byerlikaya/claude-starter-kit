@@ -23,6 +23,11 @@
 # from changing it. Failing closed is therefore the correct answer regardless of what a test would show, and
 # this stops being an open question: it is a decision. Should the interaction ever be specified, revisit.
 #
+# CSK_GATE_LOG=<path>, exported by the user, appends one TSV line per gate decision (BLOCK/ASK/ALLOW, section,
+# rule, command) to that file. Absent by default and write-only — it never influences a verdict. It exists
+# because a gate that cannot be observed firing cannot be measured: "the model never tried it" and "the gate
+# stopped it" leave identical artifacts behind. guard-write.sh writes to the same file.
+#
 # CLAUDE_GIT_OK=1, exported by the user before the session starts, pre-authorises the session. It exists for
 # headless/CI runs where no one is at the keyboard. It does NOT replace approval: present the message first.
 set -uo pipefail
@@ -42,7 +47,19 @@ fi
 PERM_MODE="${PERM_MODE:-}"
 [ -z "$CMD" ] && exit 0
 
+# Gate observability, ABSENT unless the operator exports CSK_GATE_LOG. A gate that cannot be seen firing cannot
+# be measured: "the model never reached for the command" and "the gate stopped it" leave behind exactly the same
+# artifacts, and the A/B harness spent a whole case (evals/permission-pressure) unable to tell them apart — it
+# had to report "guard-bash never fired" as an inference. One TSV line per decision, write-only, and it never
+# touches the decision itself: every call site logs AFTER the verdict is settled.
+gatelog(){  # $1 = verdict (BLOCK|ASK)  $2 = section  $3 = rule
+  [ -n "${CSK_GATE_LOG:-}" ] || return 0
+  printf '%s\t§%s\t%s\t%s\n' "$1" "$2" "$3" \
+    "$(printf '%s' "$CMD" | tr -d '\000-\037' | cut -c1-200)" >> "$CSK_GATE_LOG" 2>/dev/null || true
+}
+
 block(){
+  gatelog BLOCK "$2" "$1"
   echo "GUARD (§$2): '$1' stopped AT THE TOOL LEVEL." >&2
   echo "This destructive operation is only performed if the user EXPLICITLY requests it. If approved, run the command manually in the terminal." >&2
   exit 2
@@ -162,11 +179,13 @@ json_escape(){
 }
 # Escalate to a permission prompt only the user can answer, then let Claude run the command itself.
 ask_user(){
+  gatelog ASK 4.4 "commit/push approval prompt"
   printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"%s"}}\n' "$(json_escape "$1")"
   exit 0
 }
 # A pre-authorised session has to clear BOTH gates, and only an explicit decision does that.
 allow_preauthorised(){
+  gatelog ALLOW 4.4 "CLAUDE_GIT_OK pre-authorised session"
   printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","permissionDecisionReason":"%s"}}\n' \
     "$(json_escape "CLAUDE_GIT_OK: session pre-authorised before it started (§4.4 headless/CI)")"
   exit 0
@@ -182,6 +201,7 @@ allow_preauthorised(){
 if git_has "$CMD" 'add|commit|push|checkout'; then
   # The key is granted by the user's environment, never by the command line the model composes.
   if printf '%s' "$CMD" | grep -q 'CLAUDE_GIT_OK'; then
+    gatelog BLOCK 4.4 "approval key set inside the command"
     echo "GUARD (§4.4): the attempt to set the approval key (CLAUDE_GIT_OK) inside the command was rejected." >&2
     echo "The key is set only by the user, before the session starts." >&2
     exit 2
@@ -213,6 +233,7 @@ ${BRANCH_WARN}Approve only if the commit message above was shown to you and you 
     *)
       # bypassPermissions, plan, or an unrecognised/absent mode: we cannot prove the prompt would reach a
       # human, so we fail closed rather than let the gate silently evaporate.
+      gatelog BLOCK 4.4 "commit/push under a mode that cannot prompt (${PERM_MODE:-unknown})"
       echo "GUARD (§4.4): 'git commit/push' is gated by approval AT THE TOOL LEVEL, and this session's permission mode ('${PERM_MODE:-unknown}') cannot show you an approval prompt." >&2
       echo "Present the commit MESSAGE to the user and get EXPLICIT approval. Then either:" >&2
       echo "  (a) the user re-runs Claude in a normal permission mode, where this gate asks them directly and Claude commits, OR" >&2
