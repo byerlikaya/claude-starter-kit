@@ -1208,6 +1208,13 @@ if [ -x "$RH" ]; then
     [ -z "$got" ] && got="$(rh "$prompt" | sed -n 's/.*Use the .\([a-z][a-z-]*\). skill.*/\1/p')"
     if [ "$want" = SILENT ]; then
       [ -z "$(rh "$prompt")" ] && pass "route-hint silent: \"$prompt\"" || fail "route-hint spoke on \"$prompt\" -> $got (a wrong route reads as the kit working)"
+    elif [ ! -f "$ROOT/agents/$want.md" ]; then
+      # The stack agents (backend/database/frontend) are PRUNED by profile, and the fixture project is built
+      # from whatever agents this install actually has — so on a --frontend install the hook is right to say
+      # nothing about a backend request, and asserting the owner here would fail the hook for obeying its own
+      # rule. This is not a silent skip: the line is printed, so a case that vanishes because an agent went
+      # missing for the wrong reason is still visible.
+      note "route-hint case skipped: $want is not installed in this profile"
     else
       [ "$got" = "$want" ] && pass "route-hint -> $want" || fail "route-hint on \"$prompt\" gave '\''$got'\'', wanted $want"
     fi
