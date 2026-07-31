@@ -39,9 +39,14 @@ if   [ -f Dockerfile ] || [ -f docker-compose.yml ]; then METHOD=docker
 elif [ -f package.json ];                                then METHOD=bare RUNTIME=node
 elif [ -f requirements.txt ] || [ -f pyproject.toml ];   then METHOD=bare RUNTIME=python
 elif [ -f go.mod ];                                      then METHOD=bare RUNTIME=go
+elif ls ./*.csproj ./*.sln >/dev/null 2>&1;              then METHOD=bare RUNTIME=dotnet
+elif [ -f pom.xml ] || [ -f build.gradle ];              then METHOD=bare RUNTIME=java
+elif [ -f Cargo.toml ];                                  then METHOD=bare RUNTIME=rust
+elif [ -f Gemfile ];                                     then METHOD=bare RUNTIME=ruby
+elif [ -f composer.json ];                               then METHOD=bare RUNTIME=php
 else METHOD=unknown; fi
 ```
-If `method: docker` and there's no Dockerfile, generate one. `method: bare` → a process manager suited to the runtime. If detection is ambiguous, ask the user. **.NET:** Docker recommended; if bare is required, run the `dotnet publish -c Release` output with systemd.
+If `method: docker` and there's no Dockerfile, generate one. `method: bare` → a process manager suited to the runtime; build the release artefact with the runtime's own command (`dotnet publish -c Release`, `mvn package`, `cargo build --release`, …) and run it under systemd. Prefer Docker for any runtime whose bare setup needs a toolchain on the box. If detection is ambiguous, ask the user — never guess a runtime.
 
 ---
 
