@@ -42,6 +42,34 @@ grep -q 'no effect' "$WORK/proj-legacy-flags/.claude/kit.conf" && { echo "FAIL: 
 [ -f "$WORK/proj-legacy-flags/.claude/agents/backend-expert-csk.md" ] || { echo "FAIL: --frontend still pruned the backend agent"; exit 1; }
 echo "[legacy-flags] --frontend accepted and ignored; full set installed"
 
+# Every adopt assertion below used to depend on a run sent to /dev/null, then print one line and exit. A red CI
+# therefore arrived with no evidence at all: the recorded stack, what the detector saw, and whether adopt even
+# finished were all unknowable from the log, so a real defect and a flake looked identical. `run_adopt` keeps the
+# output and the exit code; `evidence` prints the state the assertion actually ran against. Nothing is retried —
+# a flake that is hidden is worse than one that is loud, and this is here to make the next failure readable.
+ADOPT_OUT=""; ADOPT_RC=0
+run_adopt() {   # $1 = project dir, rest = adopt.sh args
+  local d="$1"; shift
+  ADOPT_RC=0
+  ADOPT_OUT="$( cd "$d" && bash adopt.sh "$@" 2>&1 )" || ADOPT_RC=$?
+  return 0
+}
+evidence() {    # $1 = label, $2 = project dir
+  echo "---- evidence · $1 (adopt exit=$ADOPT_RC) ----"
+  echo "  kit.conf:";        sed 's/^/    /' "$2/.claude/kit.conf" 2>/dev/null || echo "    (absent)"
+  echo "  components:       agents=$(ls "$2"/.claude/agents/*.md 2>/dev/null | wc -l | tr -d ' ') skills=$(ls -d "$2"/.claude/skills/*/ 2>/dev/null | wc -l | tr -d ' ')"
+  echo "  devarch-module:   $([ -d "$2/.claude/skills/devarch-module" ] && echo present || echo absent)"
+  # The two signals the stack detector reads, evaluated here the same way adopt.sh evaluates them.
+  echo "  .sln/.csproj:     $( (cd "$2" && find . -maxdepth 3 \( -name '*.sln' -o -name '*.csproj' \) 2>/dev/null | head -3 | tr '\n' ' ') )"
+  echo "  Business/Handlers: $( (cd "$2" && find . -maxdepth 4 -type d -path '*/Business/Handlers' 2>/dev/null | head -1) )"
+  echo "  branch:           $(git -C "$2" rev-parse --abbrev-ref HEAD 2>/dev/null)"
+  echo "  adopt output (tail):"; printf '%s\n' "$ADOPT_OUT" | tail -45 | sed 's/^/    /'
+  echo "---- end evidence ----"
+}
+die() {         # $1 = message, $2 = label, $3 = project dir
+  echo "FAIL: $1"; evidence "$2" "$3"; exit 1
+}
+
 # ---- adopt.sh: stack detection (.sln under ./backend) + agent-overlap takeover ----
 # A brownfield DevArch project: solution under ./backend (NOT root), Business/Handlers layout, and a
 # pre-existing backend-expert.md that collides with the kit's backend-expert-csk.
@@ -50,12 +78,12 @@ cp adopt.sh "$P/"; cp -R claude-starter "$P/"; cp VERSION "$P/"
 : > "$P/backend/DevArchitecture.sln"
 printf -- '---\nname: backend-expert\ndescription: legacy\n---\n' > "$P/.claude/agents/backend-expert.md"
 ( cd "$P" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
-( cd "$P" && bash adopt.sh --yes >/dev/null 2>&1 )
-grep -q '^stack=dotnet' "$P/.claude/kit.conf"           || { echo "FAIL: .sln under ./backend not detected as dotnet"; exit 1; }
-[ -d "$P/.claude/skills/devarch-module" ]               || { echo "FAIL: devarch-module missing on a dotnet adopt"; exit 1; }
-[ ! -f "$P/.claude/agents/backend-expert.md" ]          || { echo "FAIL: overlapping project agent was not taken over"; exit 1; }
-[ -f "$P/.claude/superseded/agents/backend-expert.md" ] || { echo "FAIL: taken-over agent's original was not backed up"; exit 1; }
-[ -f "$P/.claude/skills/backend-expert-local/SKILL.md" ]|| { echo "FAIL: taken-over agent's domain was not imported to a project skill"; exit 1; }
+run_adopt "$P" --yes
+grep -q '^stack=dotnet' "$P/.claude/kit.conf"           || die ".sln under ./backend not detected as dotnet" adopt-dotnet "$P"
+[ -d "$P/.claude/skills/devarch-module" ]               || die "devarch-module missing on a dotnet adopt" adopt-dotnet "$P"
+[ ! -f "$P/.claude/agents/backend-expert.md" ]          || die "overlapping project agent was not taken over" adopt-dotnet "$P"
+[ -f "$P/.claude/superseded/agents/backend-expert.md" ] || die "taken-over agent's original was not backed up" adopt-dotnet "$P"
+[ -f "$P/.claude/skills/backend-expert-local/SKILL.md" ]|| die "taken-over agent's domain was not imported to a project skill" adopt-dotnet "$P"
 # The manifest lists what the KIT ships, so the skill this adopt imported from the project must NOT appear in it
 # — that is exactly the distinction the readiness check and the trust gate are built on.
 grep -q '^skills/devarch-module$' "$P/.claude/kit-manifest.txt"     || { echo "FAIL: manifest missing a kit skill"; exit 1; }
@@ -71,22 +99,23 @@ echo "[adopt-dotnet] stack=dotnet · devarch-module kept · overlap imported to 
 G="$WORK/adopt-generic"; rm -rf "$G"; mkdir -p "$G"
 cp adopt.sh "$G/"; cp -R claude-starter "$G/"; cp VERSION "$G/"; printf '{"name":"x"}' > "$G/package.json"
 ( cd "$G" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
-( cd "$G" && bash adopt.sh --yes >/dev/null 2>&1 )
-grep -q '^stack=generic' "$G/.claude/kit.conf"          || { echo "FAIL: Node project not recorded as generic"; exit 1; }
-[ ! -d "$G/.claude/skills/devarch-module" ]             || { echo "FAIL: devarch-module not pruned on a generic adopt"; exit 1; }
+run_adopt "$G" --yes
+grep -q '^stack=generic' "$G/.claude/kit.conf"          || die "Node project not recorded as generic" adopt-generic "$G"
+[ ! -d "$G/.claude/skills/devarch-module" ]             || die "devarch-module not pruned on a generic adopt" adopt-generic "$G"
 echo "[adopt-generic] stack=generic · devarch-module pruned"
 
 # A REFRESH whose recorded stack is a stale 'generic' but the project is clearly DevArch -> corrected to dotnet.
 R="$WORK/adopt-refresh"; rm -rf "$R"; mkdir -p "$R"
 cp adopt.sh "$R/"; cp -R claude-starter "$R/"; cp VERSION "$R/"; printf '{"name":"x"}' > "$R/package.json"
 ( cd "$R" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
-( cd "$R" && bash adopt.sh --yes >/dev/null 2>&1 && git add -A && git commit -qm adopt1 )
-grep -q '^stack=generic' "$R/.claude/kit.conf"          || { echo "FAIL: first adopt of a Node project should record generic"; exit 1; }
+run_adopt "$R" --yes
+( cd "$R" && git add -A && git commit -qm adopt1 ) >/dev/null 2>&1
+grep -q '^stack=generic' "$R/.claude/kit.conf"          || die "first adopt of a Node project should record generic" adopt-refresh/1st "$R"
 mkdir -p "$R/backend/Business/Handlers"; : > "$R/backend/DevArchitecture.sln"
 ( cd "$R" && git add -A && git commit -qm 'add devarch structure' )
-( cd "$R" && bash adopt.sh --yes >/dev/null 2>&1 )
-grep -q '^stack=dotnet' "$R/.claude/kit.conf"           || { echo "FAIL: refresh did not correct a stale generic stack to dotnet"; exit 1; }
-[ -d "$R/.claude/skills/devarch-module" ]               || { echo "FAIL: devarch-module not restored after the stack correction"; exit 1; }
+run_adopt "$R" --yes
+grep -q '^stack=dotnet' "$R/.claude/kit.conf"           || die "refresh did not correct a stale generic stack to dotnet" adopt-refresh/2nd "$R"
+[ -d "$R/.claude/skills/devarch-module" ]               || die "devarch-module not restored after the stack correction" adopt-refresh/2nd "$R"
 echo "[adopt-refresh] stale generic corrected -> dotnet · devarch-module restored"
 
 # ---- adopt.sh: pre-2.0 profile MIGRATION ----
