@@ -93,7 +93,7 @@ Being clear about the ceiling is part of the claim.
 </div>
 
 <details>
-<summary>🧭&nbsp; <b>All 12 agents — what each one owns, and when it fires</b> &nbsp;<sub>click to expand</sub></summary>
+<summary>🧭&nbsp; <b>All 12 agents — what each one owns, and when it fires</b></summary>
 
 | Agent | Stage | Fires when | Model |
 |:--|:--|:--|:--:|
@@ -132,7 +132,7 @@ Every agent, skill and command carries a `-csk` suffix, so nothing collides with
 | **Discipline** | 1 | Principles, workflow, Definition of Done, prohibitions — imported by your `CLAUDE.md` |
 
 <details>
-<summary>🪝&nbsp; <b>All 8 hooks — which gate holds what</b> &nbsp;<sub>click to expand</sub></summary>
+<summary>🪝&nbsp; <b>All 8 hooks — which gate holds what</b></summary>
 
 | Hook | Role |
 |:--|:--|
@@ -150,7 +150,7 @@ Two git hooks — `pre-commit` and `commit-msg` — run the trace, secret and re
 </details>
 
 <details>
-<summary>📚&nbsp; <b>All 38 skills — the full catalogue, generated from each skill</b> &nbsp;<sub>click to expand</sub></summary>
+<summary>📚&nbsp; <b>All 38 skills — the full catalogue, generated from each skill</b></summary>
 
 <!-- SKILLS:START -->
 
@@ -313,7 +313,7 @@ npx @byerlikaya/claude-starter-kit@latest update    # or /update-csk inside a se
 ```
 
 <details>
-<summary>🔁&nbsp; <b>Update mechanics — what is refreshed, and where the change lands</b> &nbsp;<sub>click to expand</sub></summary>
+<summary>🔁&nbsp; <b>Update mechanics — what is refreshed, and where the change lands</b></summary>
 
 At install time Claude Starter Kit stamps `.claude/kit.conf` with the backend pattern and which installer ran, plus `.claude/VERSION`. A refresh **keeps the pattern**: a `--dotnet` project keeps `devarch-module`, and a Node repo is never handed one. Where the stamp is missing, the updater reads the pattern back from the installed files. Any missing component is restored, and every one it adds is **named in the output** rather than appearing silently.
 
@@ -337,11 +337,11 @@ If a project's `CLAUDE.md` carries the discipline **inline** instead of importin
 
 ## Session and token cost
 
-Claude cannot run `/context` on itself, so most setups **guess** how full a session is. Claude Starter Kit measures it. `context-usage.sh` reads the real token count from the last turn's API usage in the transcript — the same figure `/context` reports — and injects it every turn. At 75% fill you get one warning, at 90% one more. Neither blocks your turn.
+How full a session is gets **measured, not estimated** — the real token count, read every turn, the same figure `/context` reports. One warning at **75%**, one more at **90%**, and neither interrupts your turn.
 
-The discipline and the agent/skill descriptions load into every session. That always-on material is **~24 KB** today — on the order of **10k tokens** on a real turn, calibrated against an actual `claude -p` run rather than estimated. Every skill added is a permanent ~100-token tax on all sessions, which is why `smoke-test.sh` enforces a byte budget per component. A budget can be raised, but only by editing the test explicitly.
+The standing cost is published, not hidden. The discipline plus every agent and skill description load into each session: **~24 KB**, on the order of **~10k tokens** on a real turn — calibrated against an actual run, never estimated. Each skill you add is a permanent **~100-token** tax on every session, so a byte budget per component is enforced as a gate. Raising it takes an explicit edit to the test.
 
-**Why not install fewer components?** Because it buys almost nothing. The whole set costs ~3.3k tokens of description; leaving out the four UI skills and the frontend agent saves ~400 tokens — about 0.2% of a 200k window. The cost is worth controlling per component, which the byte budget does, rather than per project.
+**Why not install fewer components?** Because it buys almost nothing. The whole set costs **~3.3k tokens** of description; leaving out the four UI skills and the frontend agent saves **~400 tokens** — about **0.2%** of a 200k window. That is worth controlling per component, which the byte budget does, rather than per project.
 
 ## Verification
 

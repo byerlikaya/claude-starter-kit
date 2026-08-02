@@ -4,7 +4,7 @@
 
 **Claude Code için eksiksiz bir mühendislik düzeni.**
 
-12 uzman agent, 38 skill ve bir `CLAUDE.md`'nin yalnızca rica edebildiği kuralları *zorunlu kılan* araç seviyesinde kapılar.
+12 uzman agent, 38 skill ve bir `CLAUDE.md`'nin yalnızca rica edebildiği kuralları *gerçekten uygulatan* denetimler — komut çalışmadan önce devreye girer, gerekirse izin vermez.
 
 ![Sürüm](https://img.shields.io/badge/version-1.10.1-2563eb?style=flat-square)
 ![Lisans](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)
@@ -28,7 +28,7 @@ Eksik olan bilgi değil, yaptırım.
 
 Önemli kuralları dosyadan alıp araçların içine koyuyor, çevresine de bir ekip kuruyor.
 
-**Kurallar kapıya dönüşüyor.** Yıkıcı bir komutu, kabuk görmeden önce bir `PreToolUse` hook'u reddediyor. Commit, `bypassPermissions` modunda bile onayınız için duruyor. Sızmış bir API anahtarını ya da yapay zekâ imzasını bir git hook'u yakalıyor. Hiçbiri modelin hatırlamasına bırakılmıyor.
+**Kurallar denetime dönüşüyor.** Bu belgede bunlara **kapı** deniyor: bir komut çalışmadan önce araya giren, gerektiğinde çalışmasına izin vermeyen kontroller. Yıkıcı bir komut çalıştırılmadan reddedilir. Commit, hangi izin modunda olursanız olun onayınızı bekler. Depoya girmek üzere olan bir API anahtarı ya da yapay zekâ imzası yakalanır. Hiçbiri modelin hatırlamasına bağlı değil.
 
 **İşi uzmanlar yapıyor.** 12 agent'ın her biri tek bir alanın sahibi ve beş aşamada çalışıyorlar: planla, üret, denetle, kapat, devret. Riskli bir değişiklik, güvenlik incelemesi temize çıkmadan kapanamıyor. Her agent ince kalıyor: yalnızca *kim* ve *ne zaman* diyor, yöntemin kendisi bir skill'de bir kez yazılıyor.
 
@@ -77,7 +77,7 @@ Birincisi bir cümleyi hak ediyor, çünkü Claude Starter Kit'in var olma sebeb
 
 Sınırı açıkça söylemek de iddianın bir parçası.
 
-- **Kum havuzu değildir.** Kapılar katmanlı savunmadır. Kabuk Turing-tamdır; yeterince kararlı bir yeniden yazım her kalıbın etrafından dolaşabilir. Kapıların önlediği şey **kazadır** — teslim baskısı altında seçilen kaba komut. Sert bir sınır istiyorsanız Claude Code'u bir devcontainer ya da sanal makinede çalıştırın; `/doctor-csk` bunun olup olmadığını söyler.
+- **Yalıtılmış bir çalışma ortamı (sandbox) değildir.** Kapılar katmanlı bir savunmadır: komut satırı sınırsız esnektir, yeterince ısrarcı bir kullanım her kalıbın etrafından dolaşabilir. Kapıların önlediği şey **kazadır** — teslim baskısı altında seçilen kaba komut. Sert bir sınır istiyorsanız Claude Code'u devcontainer ya da sanal makinede çalıştırın; `/doctor-csk` bunun olup olmadığını söyler.
 - **Devir garantisi değildir.** Claude devri; işe, agent'ın tarifine ve o anki bağlama bakarak karar verir. Bu bir kural değil, bir yargı. Bir agent'ın kesinlikle çalışması gerektiğinde `@agent-<ad>` bunu garantiler.
 - **Ölçülmüş bir verimlilik kazancı değildir.** Yedi A/B vakasının altısı başa baş bitti. Claude Starter Kit'in kanıtı *kuralların tutması* ve *uzmanların devreye girmesi* üzerine; daha hızlı teslim üzerine değil.
 - **Tek bir teknolojiye bağlı değildir.** Backend uzmanı, projenizin hangi kalıbı beyan ettiyse onu uygular. .NET/DevArchitecture varsayılandır, zorunluluk değil.
@@ -93,7 +93,7 @@ Sınırı açıkça söylemek de iddianın bir parçası.
 </div>
 
 <details>
-<summary>🧭&nbsp; <b>12 agent'ın tamamı — hangisi neyin sahibi, ne zaman devreye girer</b> &nbsp;<sub>açmak için tıklayın</sub></summary>
+<summary>🧭&nbsp; <b>12 agent'ın tamamı — hangisi neyin sahibi, ne zaman devreye girer</b></summary>
 
 | Agent | Aşama | Ne zaman | Model |
 |:--|:--|:--|:--:|
@@ -132,7 +132,7 @@ Her agent, skill ve komut `-csk` ekiyle gelir; böylece ne projenizin kendi bile
 | **Disiplin** | 1 | İlkeler, akış, Bitti Tanımı, yasaklar — `CLAUDE.md`'nizin içe aktardığı dosya |
 
 <details>
-<summary>🪝&nbsp; <b>8 hook'un tamamı — hangi kapı neyi tutuyor</b> &nbsp;<sub>açmak için tıklayın</sub></summary>
+<summary>🪝&nbsp; <b>8 hook'un tamamı — hangi kapı neyi tutuyor</b></summary>
 
 | Hook | Görevi |
 |:--|:--|
@@ -150,7 +150,7 @@ Her agent, skill ve komut `-csk` ekiyle gelir; böylece ne projenizin kendi bile
 </details>
 
 <details>
-<summary>📚&nbsp; <b>38 skill'in tamamı — katalog, her skill'in kendi dosyasından üretilir</b> &nbsp;<sub>açmak için tıklayın</sub></summary>
+<summary>📚&nbsp; <b>38 skill'in tamamı — katalog, her skill'in kendi dosyasından üretilir</b></summary>
 
 <!-- SKILLS:START -->
 
@@ -227,7 +227,7 @@ Tek bir tablo okuyacaksanız bu olsun. Solda kural, sağda o kuralın esnemesine
 | Commit ve push her izin modunda onayınızı ister | `guard-bash.sh` yalnızca sizin cevaplayabileceğiniz bir onay sorar. `bypassPermissions` altında kapalı tarafa düşer |
 | Yıkıcı işlemler: `reset --hard`, `checkout -- .`, force push, `rm -rf`, `clean -f`, `--no-verify`, amend | `guard-bash.sh`, araç seviyesinde engeller |
 | Uzaktan kod çalıştırma ve izin patlatma: `curl…\|bash`, herkese yazılabilir `chmod`, `dd of=` | `guard-bash.sh`, her modda kesin engel |
-| Kapıyı etkisizleştirme — `core.hooksPath` yönlendirme, hook düzenleme ya da silme | `guard-bash.sh` (kabuk) + `guard-write.sh` (dosya düzenleme) |
+| Kapıyı etkisizleştirme — `core.hooksPath` yönlendirme, hook düzenleme ya da silme | `guard-bash.sh` (komut tarafı) + `guard-write.sh` (dosya düzenleme tarafı) |
 | Hiçbir API anahtarı, token ya da özel anahtar commit'e girmez | `pre-commit` sır taraması; her kalıbın kendi test vakası var |
 | Hiçbir kimlik bilgisi bağlama *okunmaz* — `~/.ssh/id_rsa`, `~/.aws/credentials`, `*.pem`, kubeconfig | `settings.json` okuma reddi + `guard-bash.sh` |
 | Commit'te yapay zekâ imzası ya da satıcı şablonu adı bulunmaz | `pre-commit` + `commit-msg` git hook'ları |
@@ -314,7 +314,7 @@ npx @byerlikaya/claude-starter-kit@latest update    # ya da oturum içinde /upda
 ```
 
 <details>
-<summary>🔁&nbsp; <b>Güncelleme mekaniği — ne tazelenir, değişiklik nereye düşer</b> &nbsp;<sub>açmak için tıklayın</sub></summary>
+<summary>🔁&nbsp; <b>Güncelleme mekaniği — ne tazelenir, değişiklik nereye düşer</b></summary>
 
 Claude Starter Kit, kurulum anında `.claude/kit.conf` dosyasına backend kalıbını ve hangi kurucunun çalıştığını damgalar; yanına `.claude/VERSION` düşer. Tazeleme **kalıbı korur**: `--dotnet` bir proje `devarch-module` skill'ini korur, bir Node reposuna ise asla verilmez. Damga yoksa güncelleyici kalıbı kurulu dosyalardan geri okur. Eksik kalan her bileşen tamamlanır ve eklenen her şey sessizce belirmek yerine **adıyla listelenir**.
 
@@ -338,11 +338,11 @@ Bir projenin `CLAUDE.md` dosyası disiplini içe aktarmak yerine **satır içind
 
 ## Oturum ve token maliyeti
 
-Claude kendi üzerinde `/context` çalıştıramaz; bu yüzden çoğu kurulum oturumun ne kadar dolduğunu **tahmin eder**. Claude Starter Kit ölçer. `context-usage.sh`, son turun API kullanımından gerçek token sayısını transcript'ten okur — `/context`'in verdiği sayının aynısını — ve her turda bağlama enjekte eder. Doluluk %75'i geçince bir uyarı, %90'da bir uyarı daha alırsınız. İkisi de turunuzu bloklamaz.
+Oturumun ne kadar dolduğu **ölçülür, tahmin edilmez** — gerçek token sayısı her turda okunur, `/context`'in verdiği değerin aynısı. **%75**'te bir uyarı, **%90**'da bir uyarı daha; ikisi de turunuzu kesmez.
 
-Disiplin ile agent ve skill tarifleri her oturuma yüklenir. Bu sabit yük bugün **~24 KB** — gerçek bir turda **~10 bin token** mertebesinde; tahmin değil, gerçek bir `claude -p` çalıştırmasıyla kalibre edildi. Eklenen her skill bütün oturumlara kalıcı ~100 token'lık bir vergidir; `smoke-test.sh` bu yüzden bileşen başına bayt bütçesi uygular. Bütçe yükseltilebilir, ama yalnızca testi açıkça düzenleyerek.
+Sabit maliyet gizlenmiyor, yazıyor. Disiplin ve her agent ile skill tarifi her oturuma yüklenir: **~24 KB**, gerçek bir turda **~10 bin token** mertebesinde — tahmin değil, gerçek bir çalıştırmayla ölçüldü. Eklediğiniz her skill bütün oturumlara **~100 token**'lık kalıcı bir vergi bindirir; bu yüzden bileşen başına bayt bütçesi bir kapı olarak uygulanır. Bütçeyi yükseltmek testte açık bir düzenleme gerektirir.
 
-**Neden daha az bileşen kurulmuyor?** Çünkü kazancı yok denecek kadar az. Kümenin tamamı tarif olarak ~3,3k token tutar; dört UI skill'ini ve frontend agent'ını dışarıda bırakmak ~400 token kazandırır — 200k'lık bir pencerenin yaklaşık %0,2'si. Maliyeti proje başına değil, bayt bütçesinin yaptığı gibi bileşen başına denetlemek anlamlıdır.
+**Neden daha az bileşen kurulmuyor?** Çünkü kazancı yok denecek kadar az. Kümenin tamamı tarif olarak **~3,3k token** tutar; dört UI skill'ini ve frontend agent'ını dışarıda bırakmak **~400 token** kazandırır — 200k'lık bir pencerenin yaklaşık **%0,2**'si. Bunu proje başına değil, bayt bütçesinin yaptığı gibi bileşen başına denetlemek anlamlıdır.
 
 ## Doğrulama
 
