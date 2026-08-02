@@ -6,15 +6,15 @@ After running `start.sh`, open Claude Code at the repo root and paste this:
 New project. First load the context: ./CLAUDE.md (behavior + project + stack in one file)
 + read any spec/plan under docs/ if present.
 
-Code review is aligned with google/eng-practices (CC-BY 3.0). The backend pattern comes from the profile —
-generic: the existing repo pattern; .NET/DevArch profile: the project's declared pattern skill.
+Code review carries its own sources and licences in the code-review-csk skill. The backend pattern comes from the install —
+generic: the existing repo pattern; .NET/DevArch: the project's declared pattern skill.
 
 The specialists run the work; the main thread routes it. If an agent ever stays silent on work it owns, you can
 force the choice: `@agent-<name>` guarantees that agent runs for one task.
 
 Initial setup (DO NOT WRITE CODE, in order):
-1) With /agents, show that the installed agents (count varies by profile) are recognized.
-2) Skills come FULLY POPULATED (the installed set varies by profile; e.g. code-review · security-scan · observability · performance).
+1) With /agents, show that every installed agent is recognized.
+2) Skills come FULLY POPULATED (e.g. code-review · security-scan · observability · performance).
    Fine-tune to the project's stack ONLY if needed; the source/template NAME must NOT LEAK into any
    artifact that goes to the repo (code, namespace, comment, config) (§4.2). Domain-specific "how"s (if any)
    are written SEPARATELY under .claude/skills/.

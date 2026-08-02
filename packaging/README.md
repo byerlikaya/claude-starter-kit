@@ -72,6 +72,6 @@ Users can install the kit's agents, skills, and commands directly in Claude Code
 /plugin install claude-starter-kit@byerlikaya
 ```
 
-This is the **lite** edition — it registers the agents/skills/commands only, *without* the scaffolding (no profile pruning, no DevArchitecture base, no git-hook gates). For the full kit use `start.sh` / `adopt.sh`.
+This is the **lite** edition — it registers the agents/skills/commands only, *without* the scaffolding (no backend-pattern choice, no DevArchitecture base, no git-hook gates). The component set is identical to a `start.sh` install, and `e2e.sh` asserts that parity. For the full kit use `start.sh` / `adopt.sh`.
 
 `plugin/` (and its `.claude-plugin/plugin.json`) is generated from `claude-starter/` by **`packaging/build-plugin.sh`** — rerun it after changing agents/skills/commands so the plugin stays in sync. The release workflow verifies this on every tag. The marketplace manifest is `.claude-plugin/marketplace.json` at the repo root.

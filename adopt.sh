@@ -80,33 +80,18 @@ kit_legacy_boundary() {
   [ -n "$n" ] || n="$(awk '/^### 4\.5 /{f=1;next} f && /^# /{print NR; exit}' "$1" 2>/dev/null)"
   printf '%s' "$n"
 }
-# A project installed before kit.conf existed carries its shape only in what is on disk. Read it back, so an
-# update reshapes it the way it was installed instead of silently re-adding what the profile pruned.
+# A project installed before kit.conf existed carries its backend pattern only in what is on disk. Read it
+# back, so a refresh does not graft devarch-module onto a repo that deliberately runs without it.
 kit_infer_shape() {
-  local fe=0 be=0 rn=0
-  [ -f .claude/agents/frontend-expert-csk.md ] && fe=1
-  [ -f .claude/agents/backend-expert-csk.md ]  && be=1
-  [ -d .claude/skills/frontend-rn-expo ]       && rn=1
-  if   [ "$be" = 1 ] && [ "$fe" = 1 ]; then KIT_PROFILE=fullstack
-  elif [ "$be" = 1 ];                  then KIT_PROFILE=backend
-  elif [ "$fe" = 1 ] && [ "$rn" = 1 ]; then KIT_PROFILE=mobile
-  elif [ "$fe" = 1 ];                  then KIT_PROFILE=frontend
-  else                                      KIT_PROFILE=fullstack; fi   # nothing to go on -> install everything
   # A .NET stack is marked by the devarch-module skill being installed; the generic stack prunes it. (The
   # backend agent itself is pattern-neutral now, so its text is no longer a reliable stack signal.)
-  if [ "$be" = 1 ]; then
-    if [ -d .claude/skills/devarch-module ]; then KIT_STACK=dotnet; else KIT_STACK=generic; fi
-  else KIT_STACK=none; fi
+  if [ -d .claude/skills/devarch-module ]; then KIT_STACK=dotnet; else KIT_STACK=generic; fi
   KIT_INSTALLER="${KIT_INSTALLER:-pre-kit.conf}"
   INFERRED=1
 }
 # tr -d '\r' on both readers: a CRLF file (Windows checkout, or kit.conf reopened in Notepad) would otherwise
-# glue '\r' to every value — 'backend\r' matches no profile row, and the refresh would silently prune nothing.
+# glue '\r' to every value — 'generic\r' matches no branch, and the refresh would pick the wrong pattern.
 kit_conf_get()         { [ -f .claude/kit.conf ] && sed -n "s/^$1=//p" .claude/kit.conf | head -1 | tr -d '\r'; }
-# Profile -> pruned agents/skills. Same profiles.conf start.sh installs from: the two cannot drift.
-kit_profile_field()    { sed -n "s/^$1://p" "$SRC/profiles.conf" 2>/dev/null | head -1 | tr -d '\r' | cut -d: -f"$2"; }
-kit_excl_agents_for()  { kit_profile_field "$1" 1; }
-kit_excl_skills_for()  { kit_profile_field "$1" 2; }
 
 # Turn a project agent into a DRAFT project skill (prints the SKILL.md to stdout). On takeover the kit's -csk
 # agent owns routing (who/when); this carries the OLD agent's domain (its "how") into an active skill the kit
@@ -193,20 +178,23 @@ HAS_SETTINGS=0; [ -f .claude/settings.json ] && HAS_SETTINGS=1
 KIT_PRESENT=0; KIT_VER=""
 { [ -f .claude/DISCIPLINE.md ] || [ -d .claude/git-shim ] || ls .claude/agents/*-csk.md >/dev/null 2>&1 || [ -f .claude/VERSION ]; } && KIT_PRESENT=1
 [ -f .claude/VERSION ] && KIT_VER="$(head -1 .claude/VERSION 2>/dev/null)"
-# Shape of the existing install, remembered by whichever installer put it here. An update must refresh the
-# project in the SAME shape: a backend-only install must not have frontend agents grafted back on, and a
-# .NET install must not have its DevArch backend agent swapped for the generic one.
-KIT_PROFILE="$(kit_conf_get profile)"; KIT_STACK="$(kit_conf_get stack)"; KIT_INSTALLER="$(kit_conf_get installer)"
-# No kit.conf means the project predates it (v1.0.x). Recover the shape from the files themselves, or the
-# refresh would hand a backend-only project the frontend agents and swap its .NET expert for the generic one.
+# Backend pattern of the existing install. A .NET install must not have its DevArch expert swapped for the
+# generic one, and a Node repo must not be handed devarch-module. LEGACY_PROFILE is a pre-2.0 leftover: back
+# then the component set varied, so it recorded which parts were pruned. It no longer selects anything — it
+# only tells the migration notice below that this project was installed under the old, narrower shape.
+LEGACY_PROFILE="$(kit_conf_get profile)"; KIT_STACK="$(kit_conf_get stack)"; KIT_INSTALLER="$(kit_conf_get installer)"
+# No kit.conf means the project predates it (v1.0.x). Recover the pattern from the files themselves, or the
+# refresh would swap a .NET project's expert for the generic one.
 INFERRED=0
-{ [ "$KIT_PRESENT" = 1 ] && [ -z "$KIT_PROFILE" ]; } && kit_infer_shape
+{ [ "$KIT_PRESENT" = 1 ] && [ -z "$KIT_STACK" ]; } && kit_infer_shape
 row ".claude/" "$([ "$HAS_CLAUDE" = 1 ] && echo "present — $N_PAGENTS project agents · $N_PSKILLS project skills" || echo "none")"
 row "CLAUDE.md" "$([ "$HAS_MD" = 1 ] && echo "present" || echo "none")"
 row "settings.json" "$([ "$HAS_SETTINGS" = 1 ] && echo "present" || echo "none")"
 [ "$KIT_PRESENT" = 1 ] && row "kit status" "${YE}already adopted${KIT_VER:+ (v$KIT_VER)} — this run REFRESHES kit files, project untouched${R}"
-[ -n "$KIT_PROFILE" ] && row "$([ "$INFERRED" = 1 ] && echo 'inferred shape' || echo 'recorded shape')" \
-  "profile=${KIT_PROFILE} · stack=${KIT_STACK:-?}$([ "$INFERRED" = 1 ] && echo " ${YE}(no kit.conf — read back from the installed files)${R}" || echo " · via ${KIT_INSTALLER:-?}") — the refresh keeps it"
+[ -n "$KIT_STACK" ] && row "$([ "$INFERRED" = 1 ] && echo 'inferred pattern' || echo 'recorded pattern')" \
+  "stack=${KIT_STACK}$([ "$INFERRED" = 1 ] && echo " ${YE}(no kit.conf — read back from the installed files)${R}" || echo " · via ${KIT_INSTALLER:-?}") — the refresh keeps it"
+[ -n "$LEGACY_PROFILE" ] && row "pre-2.0 profile" \
+  "${YE}profile=${LEGACY_PROFILE}${R} ${D}— profile pruning was removed in 2.0; this refresh completes the install${R}"
 
 # tracked in git? (decision #4 — share/hide)
 TRACKED=0
@@ -429,14 +417,16 @@ else
 fi
 
 mkdir -p .claude
-# Honour the shape recorded at install time. A fresh adopt has no kit.conf and installs the full payload
-# (adopt = fullstack by definition); a refresh of a start.sh install prunes exactly what that profile pruned,
-# so new kit files still land while frontend agents never reappear in a backend-only project.
+# Every adopt installs the full payload; the only thing that varies is the .NET pattern skill below.
 EXCL_A=""; EXCL_S=""
-if [ -n "$KIT_PROFILE" ] && grep -qE "^$KIT_PROFILE:" "$SRC/profiles.conf" 2>/dev/null; then
-  EXCL_A="$(kit_excl_agents_for "$KIT_PROFILE")"
-  EXCL_S="$(kit_excl_skills_for "$KIT_PROFILE")"
-  echo "  refreshing as profile '${KIT_PROFILE}' (stack: ${KIT_STACK:-?}) — pruned agents/skills stay pruned"
+# Pre-2.0 migration: that install pruned by profile, so components are MISSING and this refresh restores them.
+# The list is derived from a before/after disk diff rather than from a profile→pruned map, because the map
+# (profiles.conf) no longer exists — and a diff also reports components added by the version bump itself,
+# which is the honest thing to show: it names what actually appeared, not what a table predicts.
+MIGRATE_MISSING=""
+if [ -n "$LEGACY_PROFILE" ]; then
+  for f in "$SRC"/agents/*.md;  do [ -e "$f" ] && [ ! -e ".claude/agents/$(basename "$f")" ] && MIGRATE_MISSING="$MIGRATE_MISSING agents/$(basename "$f")"; done
+  for d in "$SRC"/skills/*/;    do [ -d "$d" ] && [ ! -d ".claude/skills/$(basename "$d")" ] && MIGRATE_MISSING="$MIGRATE_MISSING skills/$(basename "$d")"; done
 fi
 # The .NET pattern skill ships only for a dotnet backend. Prune it for generic on a FRESH adopt too (not only a
 # recorded refresh) — otherwise a generic project silently carries a DevArch pattern skill it never uses.
@@ -449,6 +439,18 @@ copy_noclobber "$SRC/skills"   .claude/skills   "$KIT_PRESENT" "$EXCL_S"; S_ADD=
 copy_noclobber "$SRC/commands" .claude/commands "$KIT_PRESENT"; C_ADD=$ret_add; C_SKIP=$ret_skip
 copy_noclobber "$SRC/hooks"    .claude/hooks    "$KIT_PRESENT"; H_ADD=$ret_add; H_SKIP=$ret_skip
 copy_noclobber "$SRC/eval"     .claude/eval     "$KIT_PRESENT"; E_ADD=$ret_add; E_SKIP=$ret_skip
+# Report the migration by what LANDED, not by what was missing: devarch-module is on the missing list of every
+# generic project and must not be announced as restored when EXCL_S kept it out.
+if [ -n "$MIGRATE_MISSING" ]; then
+  MIGRATED=""
+  for c in $MIGRATE_MISSING; do [ -e ".claude/$c" ] && MIGRATED="$MIGRATED $c"; done
+  if [ -n "$MIGRATED" ]; then
+    warn "pre-2.0 install (profile=$LEGACY_PROFILE): profile pruning was removed — completing the install"
+    for c in $MIGRATED; do echo "      ${GR}+${R} $c"; done
+  else
+    echo "  pre-2.0 install (profile=$LEGACY_PROFILE): nothing was missing — the full set was already present"
+  fi
+fi
 # #1 takeover: the kit's -csk owns the role, and the OLD agent's domain is IMPORTED into an active project skill
 # (skills/<base>-local) that the kit agent applies — so nothing is lost from the working setup. The agent is then
 # removed from the routing pool (Claude Code discovers .claude/agents/*.md, not subdirs) so routing is no longer
@@ -543,9 +545,9 @@ fi
   for f in "$SRC"/commands/*.md; do [ -e "$f" ] && echo "commands/$(basename "$f")"; done
 } > .claude/kit-manifest.txt 2>/dev/null || true
 
-# Record (or re-record) the shape so the NEXT update refreshes this project the same way.
-{ echo "# Written by the kit installer. The updater reads this to refresh the project in its original shape."
-  echo "profile=${KIT_PROFILE:-fullstack}"
+# Record (or re-record) the backend pattern so the NEXT update keeps it. Rewritten WITHOUT the pre-2.0
+# 'profile=' key: dropping it is what retires the migration notice, so a second refresh stays quiet.
+{ echo "# Written by the kit installer. The updater reads this to keep the project's backend pattern."
   echo "stack=${KIT_STACK:-$([ "$WANT_GENERIC" = 1 ] && echo generic || echo dotnet)}"
   echo "installer=${KIT_INSTALLER:-adopt.sh}"
   echo "version=$( [ -f "$HERE/VERSION" ] && head -1 "$HERE/VERSION" || echo unknown )"

@@ -187,7 +187,7 @@ An assistant cannot run `/context` itself, so most setups **guess** the session 
 
 `smoke-test.sh` enforces a byte budget per component (discipline · agent descriptions · skill descriptions), so the cost cannot drift upward unnoticed. A budget can be raised, but only by editing `smoke-test.sh` explicitly.
 
-> **Profile pruning does not save tokens.** A `--backend` install (11 agents, 34 skills) costs only a few hundred tokens less than `--fullstack` (12 agents, 38 skills). Pick a profile to narrow the scope of the work.
+> **Leaving components out is not how you make this cheaper.** The whole set — 12 agents and 38 skills — costs **~3.3k tokens** of description; dropping the four UI skills and the frontend agent would save **~400 tokens**, about 0.2% of a 200k window. That is why every install is the full install and the byte budget above is a gate: the cost is controlled per component, not per project.
 
 ---
 
@@ -265,27 +265,27 @@ bash adopt.sh               # existing project — re-run it to refresh a projec
 ### 🌱 Fresh project — `start.sh`
 
 ```bash
-bash start.sh [--backend|--frontend|--mobile|--fullstack] [--dotnet|--generic] [-h]
+bash start.sh [--dotnet|--generic] [-h]
 ```
 
-An install wizard. With no flags it walks each step (profile → backend stack → summary and approval); the flags are for silent/CI use, and `-h` / `--help` prints usage. Every choice shows what it will install **before** installing it.
+An install wizard, two steps: backend pattern → summary and approval. The flags are for silent/CI use, and `-h` / `--help` prints usage. It shows what it will install **before** installing it.
 
 > After install, paste **`.claude/FIRST_PROMPT.md`** as your first Claude Code message — an optional kickoff that verifies the agents/skills and plans the first sprint. (`CLAUDE.md` loads the discipline every session regardless, so this is a one-time convenience, not a requirement.)
 
-| Profile | Expert agents | Highlighted skills |
+**Every install is the same install:** all 12 agents and all 38 skills — backend, web and mobile (React Native/Expo) together. There is no frontend/backend/mobile choice to get wrong, and a project that grows a second half needs no reinstall.
+
+| Asked at install | Options | What actually changes |
 |---|---|---|
-| `--backend` | backend · database | db-migration · api-design · observability |
-| `--frontend` | frontend | frontend · a11y · i18n-integrity |
-| `--mobile` | frontend (+ React Native/Expo layer) | frontend-rn-expo · a11y |
-| `--fullstack` | all of them | all skills — backend **and** web **and** mobile (RN/Expo) |
+| Backend pattern | `--dotnet` · `--generic` | `devarch-module` and the DevArchitecture base |
+| DevArch base (only on `--dotnet`) | approve · skip | whether `./backend` is scaffolded |
 
-There is no separate mobile agent: `frontend-expert-csk` covers web, mobile and desktop, and the mobile *how* lives in the `frontend-rn-expo` skill. `--fullstack` installs it too, so a fullstack project is ready for mobile without picking `--mobile`.
+There is no separate mobile agent: `frontend-expert-csk` covers web, mobile and desktop, and the mobile *how* lives in the `frontend-rn-expo` skill — installed everywhere, so any project is ready for mobile.
 
-The backend stack is asked only for `--backend`/`--fullstack`: **`--dotnet`** brings the .NET / DevArchitecture pattern (MediatR CQRS · IResult · AOP) behind an approval gate; **`--generic`** installs the same expert without it — for Node, Go, Python, or a .NET project on a different pattern.
+The one real question is the backend pattern: **`--dotnet`** brings the .NET / DevArchitecture pattern (MediatR CQRS · IResult · AOP) behind an approval gate; **`--generic`** installs the same expert without it — for Node, Go, Python, or a .NET project on a different pattern.
 
 > **.NET — start proven, not from scratch.** `--dotnet` clones the production-ready **[DevArchitecture](https://github.com/DevArchitecture/DevArchitecture)** foundation (CQRS · IResult · AOP · auth) *and* installs agents that already know it — so you **skip the tokens an agent would burn regenerating a standard architecture**; they go to your business logic, not boilerplate. Opinionated by *default*, not by force: the backend expert applies your project's **pattern skill** — DevArchitecture out of the box, or your own (Clean Architecture, Vertical Slice, Minimal API, plain layered) dropped into `.claude/skills/`. `--generic` stays stack-agnostic.
 
-> On **`--fullstack` + `--dotnet`** the DevArchitecture backend is placed in `./backend`, `./frontend` is reserved for your frontend, and the solution file is renamed to your project's name — so the project root stays clean instead of looking like a bare backend.
+> On **`--dotnet`** the DevArchitecture backend is placed in `./backend`, `./frontend` is reserved for your frontend, and the solution file is renamed to your project's name — so the project root stays clean instead of looking like a bare backend.
 
 ### 🔄 Existing project — `adopt.sh`
 
@@ -314,7 +314,7 @@ gh release download --repo byerlikaya/claude-starter-kit -p '*.tgz' && tar xzf c
 <details>
 <summary><b>Update mechanics</b> — what's refreshed, kit.conf, and where the change lands</summary>
 
-At install time the kit stamps `.claude/kit.conf` with the profile, the backend stack and which installer ran, plus `.claude/VERSION`. The updater reads that stamp and refreshes the project **in the shape it was installed in**: a `--backend` project does not get frontend agents grafted back on, and a `--dotnet` project keeps its `devarch-module` pattern skill. Where the stamp is absent, the updater derives the shape from the installed files and writes it. Compare `cat .claude/VERSION` against `npm view @byerlikaya/claude-starter-kit version` to see whether an update is waiting.
+At install time the kit stamps `.claude/kit.conf` with the backend pattern and which installer ran, plus `.claude/VERSION`. The updater reads that stamp so a refresh **keeps the pattern**: a `--dotnet` project keeps its `devarch-module` skill, and a Node repo is never handed one. Where the stamp is absent, the updater derives the pattern from the installed files and writes it. Any component missing from `.claude/` is restored, and every one it adds is **listed by name** rather than appearing silently. Compare `cat .claude/VERSION` against `npm view @byerlikaya/claude-starter-kit version` to see whether an update is waiting.
 
 Inside a running Claude Code session you can also run **`/update-csk`** — it does the version check, runs the updater if a newer version exists, verifies the result with `/doctor-csk`, and then prompts `/compact` to reload the refreshed discipline in the same session. To check a live install's health at any time, run **`/doctor-csk`** (hooks executable · `core.hooksPath` set · gates wired · `CLAUDE.md` actually importing the discipline). It also prints an advisory **readiness** score for the project itself — filled-in project section, a project-specific skill, a devcontainer to sandbox agent commands, an MCP server, and whether `CLAUDE.md` has drifted behind the code.
 
@@ -358,4 +358,6 @@ When you add an agent or skill, follow the `AGENT_TEMPLATE.md` contract: frontma
 
 MIT — see [LICENSE](LICENSE).
 
-- **[google/eng-practices](https://github.com/google/eng-practices)** — the `code-review-csk` skill, distilled and restated (CC-BY 3.0).
+- **[NIST SP 800-218 (SSDF)](https://csrc.nist.gov/pubs/sp/800/218/final)** PW.7 and the **[OpenSSF Scorecard](https://github.com/ossf/scorecard)** `Code-Review` check — the governance layer of `code-review-csk`: that review happens, and that findings are recorded and triaged.
+- **[Conventional Comments](https://conventionalcomments.org/)** — the comment label vocabulary `code-review-csk` writes in (CC BY 3.0).
+- **[google/eng-practices](https://github.com/google/eng-practices)** — the review priority order and the "code health" bar in `code-review-csk`, distilled and restated (CC-BY 3.0).

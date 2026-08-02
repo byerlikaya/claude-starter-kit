@@ -6,28 +6,41 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"; cd "$ROOT"
 WORK="${RUNNER_TEMP:-$(mktemp -d)}"
 
-# ---- start.sh: 6 combinations (profile × backend stack) ----
+# ---- start.sh: 2 combinations (backend pattern) ----
+# 2.0 removed the profile split, and with it four of the six combinations: they differed only in which
+# components were deleted after an identical install. The backend pattern is the one axis that still changes
+# what lands on disk (devarch-module + the backend agent variant), so it is the one axis still rehearsed.
+# The legacy-flag case is here rather than in the smoke-test because only an end-to-end run proves an old
+# command line still installs — the thing that would break a CI step someone wrote a year ago.
 combo() {
-  local lbl="$1" inp="$2"; shift 2
+  local lbl="$1" inp="$2" exp_ag="$3" exp_sk="$4"; shift 4
   local P="$WORK/proj-$lbl"; rm -rf "$P"; mkdir -p "$P"
   cp start.sh "$P/"; cp -R claude-starter "$P/"
   ( cd "$P" && printf "$inp" | bash start.sh "$@" >/dev/null )
   # scope=install: the gate UNIT cases drive hook binaries the installer copies UNCHANGED, so running all of
-  # them in each of six pruned profiles re-checks identical bytes six times — 77 of the 89 minutes of the
-  # Windows CI job. Install scope keeps everything profile-dependent plus a canary that proves the installed
-  # hook actually executes; the exhaustive cases run once, in CI's standalone full-scope smoke-test step.
+  # them in every combination re-checks identical bytes. Install scope keeps the install-dependent assertions
+  # plus a canary that proves the installed hook actually executes; the exhaustive cases run once, in CI's
+  # standalone full-scope smoke-test step.
   ( cd "$P" && CSK_SMOKE_SCOPE=install bash .claude/eval/smoke-test.sh >/dev/null )
   # The install manifest is what separates kit-owned from project-owned downstream (doctor readiness, trust gate).
   [ -s "$P/.claude/kit-manifest.txt" ] || { echo "FAIL [$lbl]: .claude/kit-manifest.txt missing or empty"; exit 1; }
   grep -q '^skills/handoff$' "$P/.claude/kit-manifest.txt" || { echo "FAIL [$lbl]: manifest does not list the shipped skills"; exit 1; }
-  echo "[$lbl] agents=$(ls "$P"/.claude/agents/*.md | wc -l | tr -d ' ') skills=$(ls -d "$P"/.claude/skills/*/ | wc -l | tr -d ' ') smoke=OK manifest=$(wc -l < "$P/.claude/kit-manifest.txt" | tr -d ' ')"
+  # Component count is an ASSERTION now, not a printed number: the whole point of 2.0 is that the set no longer
+  # varies, and a silent drop would otherwise read as a normal install.
+  local ag sk; ag=$(ls "$P"/.claude/agents/*.md | wc -l | tr -d ' '); sk=$(ls -d "$P"/.claude/skills/*/ | wc -l | tr -d ' ')
+  [ "$ag" = "$exp_ag" ] || { echo "FAIL [$lbl]: expected $exp_ag agents, got $ag"; exit 1; }
+  [ "$sk" = "$exp_sk" ] || { echo "FAIL [$lbl]: expected $exp_sk skills, got $sk"; exit 1; }
+  grep -q '^profile=' "$P/.claude/kit.conf" && { echo "FAIL [$lbl]: kit.conf still records a profile"; exit 1; }
+  echo "[$lbl] agents=$ag skills=$sk smoke=OK manifest=$(wc -l < "$P/.claude/kit-manifest.txt" | tr -d ' ')"
 }
-combo frontend          'yes\n'      --frontend
-combo mobile            'yes\n'      --mobile
-combo backend-dotnet    'yes\nno\n'  --backend --dotnet
-combo backend-generic   'yes\n'      --backend --generic
-combo fullstack-dotnet  'yes\nno\n'  --fullstack --dotnet
-combo fullstack-generic 'yes\n'      --fullstack --generic
+# The kit ships 12 agents and 38 skills; --generic drops exactly one skill (devarch-module).
+combo dotnet        'yes\nno\n'  12 38 --dotnet
+combo generic       'yes\n'      12 37 --generic
+# An old command line must still install, and must install the FULL set — the flag is accepted, not obeyed.
+combo legacy-flags  'yes\n'      12 37 --frontend --generic
+grep -q 'no effect' "$WORK/proj-legacy-flags/.claude/kit.conf" && { echo "FAIL: notice leaked into kit.conf"; exit 1; }
+[ -f "$WORK/proj-legacy-flags/.claude/agents/backend-expert-csk.md" ] || { echo "FAIL: --frontend still pruned the backend agent"; exit 1; }
+echo "[legacy-flags] --frontend accepted and ignored; full set installed"
 
 # ---- adopt.sh: stack detection (.sln under ./backend) + agent-overlap takeover ----
 # A brownfield DevArch project: solution under ./backend (NOT root), Business/Handlers layout, and a
@@ -75,6 +88,43 @@ mkdir -p "$R/backend/Business/Handlers"; : > "$R/backend/DevArchitecture.sln"
 grep -q '^stack=dotnet' "$R/.claude/kit.conf"           || { echo "FAIL: refresh did not correct a stale generic stack to dotnet"; exit 1; }
 [ -d "$R/.claude/skills/devarch-module" ]               || { echo "FAIL: devarch-module not restored after the stack correction"; exit 1; }
 echo "[adopt-refresh] stale generic corrected -> dotnet · devarch-module restored"
+
+# ---- adopt.sh: pre-2.0 profile MIGRATION ----
+# A project installed by 1.x with `--backend` is missing the frontend agent and four UI skills. 2.0 completes
+# it. Built by hand rather than by running the old start.sh, because the old installer no longer exists — the
+# fixture IS the contract: kit.conf carrying profile=, and the exact set that profile pruned.
+M="$WORK/adopt-migrate"; rm -rf "$M"; mkdir -p "$M/.claude/agents" "$M/.claude/skills"
+cp adopt.sh "$M/"; cp -R claude-starter "$M/"; cp VERSION "$M/"
+cp claude-starter/agents/*.md "$M/.claude/agents/"; rm -f "$M/.claude/agents/frontend-expert-csk.md"
+cp -R claude-starter/skills/. "$M/.claude/skills/"
+for s in frontend frontend-rn-expo frontend-design a11y; do rm -rf "$M/.claude/skills/$s"; done
+printf 'profile=backend\nstack=dotnet\ninstaller=start.sh\n' > "$M/.claude/kit.conf"
+printf '1.10.1' > "$M/.claude/VERSION"
+( cd "$M" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
+MOUT="$( cd "$M" && bash adopt.sh --yes 2>&1 || true )"
+case "$MOUT" in *"profile pruning was removed"*) ;; *) echo "FAIL: migration was silent — the user is never told the shape changed"; exit 1 ;; esac
+[ -f "$M/.claude/agents/frontend-expert-csk.md" ] || { echo "FAIL: migration did not restore the pruned agent"; exit 1; }
+for s in frontend frontend-rn-expo frontend-design a11y; do
+  [ -d "$M/.claude/skills/$s" ] || { echo "FAIL: migration did not restore skills/$s"; exit 1; }
+done
+grep -q '^profile=' "$M/.claude/kit.conf" && { echo "FAIL: migration left the profile= key behind — the notice would repeat forever"; exit 1; }
+grep -q '^stack=dotnet' "$M/.claude/kit.conf" || { echo "FAIL: migration lost the recorded backend pattern"; exit 1; }
+# Second run must be QUIET: the notice is retired by removing the key, not by a flag.
+MOUT2="$( cd "$M" && bash adopt.sh --yes 2>&1 || true )"
+case "$MOUT2" in *"profile pruning was removed"*) echo "FAIL: migration notice repeats on every refresh"; exit 1 ;; esac
+echo "[adopt-migrate] pre-2.0 backend install completed (+1 agent, +4 skills) · pattern kept · notice retired"
+
+# ---- Channel parity: start.sh and the plugin edition must ship the SAME components ----
+# The two channels drifting is not hypothetical — it is what shipped a sleeping agent and broke the route-hint
+# cases on pruned profiles. With the split gone they are identical by construction, so assert it.
+if [ -d plugin/agents ] && [ -d plugin/skills ]; then
+  PA_="$WORK/proj-dotnet/.claude"
+  diff <(ls "$PA_"/agents/*.md | xargs -n1 basename | sort) <(ls plugin/agents/*.md | xargs -n1 basename | sort) >/dev/null \
+    || { echo "FAIL: installed agents differ from the plugin edition"; exit 1; }
+  diff <(ls -d "$PA_"/skills/*/ | xargs -n1 basename | sort) <(ls -d plugin/skills/*/ | xargs -n1 basename | sort) >/dev/null \
+    || { echo "FAIL: installed skills differ from the plugin edition"; exit 1; }
+  echo "[channel-parity] a --dotnet install and the plugin edition ship the same agents and skills"
+fi
 
 # Non-interactive SELF-HEAL — the /update-csk path. An UPDATE of an existing install must fix a stale settings.json
 # off a TTY with NO flag and NO manual edit (this is what /update-csk drives), and the settings refresh must work
@@ -151,7 +201,7 @@ cp start.sh adopt.sh VERSION "$T/"; cp -R claude-starter "$T/"
 # empty baseline commit BEFORE install (no hooksPath yet), then install; the refresh below STAGES only (like
 # /update-csk) so no pre-commit trace hook runs — the point here is the prompt behaviour, not a commit.
 ( cd "$T" && git init -q && git config user.email t@t.t && git config user.name t && git commit -q --allow-empty -m base \
-    && printf 'yes\n' | bash start.sh --backend --dotnet >/dev/null 2>&1 )
+    && printf 'yes\nno\n' | bash start.sh --dotnet >/dev/null 2>&1 )
 cp adopt.sh "$T/adopt.sh"; cp -R claude-starter "$T/claude-starter"   # a refresh reads the payload beside adopt.sh
 if script --version >/dev/null 2>&1; then PTY_FLAVOR=linux            # util-linux: script -q -e -c CMD FILE
 elif command -v script >/dev/null 2>&1;  then PTY_FLAVOR=bsd          # BSD/macOS: script -q FILE CMD…

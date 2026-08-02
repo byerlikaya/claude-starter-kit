@@ -22,7 +22,7 @@ need_trigger(){ if kit_owned "${2:-}"; then fail "$1"; else note "$1 (your own s
 # Two questions the suite had been answering by DIRECTORY, which is why a real defect walked through both.
 #
 # 1) Which agent files get their own quality gated? Everything in agents/, PLUS the swap-in variants in
-#    agents-optional/ that the installer moves INTO agents/ on some profile. backend-expert-generic.md is as
+#    agents-optional/ that the installer moves INTO agents/ on a generic backend. backend-expert-generic.md is as
 #    much a kit agent as any other, and it was reached by exactly one of nine checks because it sits one
 #    directory over — which is how it came to ship with no auto-delegation cue, the very defect the cue check
 #    exists to catch. NOT used by the checks that reason about the INSTALLED SET (agent count, always-on byte
@@ -85,8 +85,10 @@ for a in security-expert-csk privacy-agent-csk; do
     pass "$a inherits the session model (the mandatory audit is never weaker than what wrote the code)"
   fi
 done
-# Core agents must be present regardless of profile; stack-specific agents (backend/database/
-# frontend-expert-csk) vary by install profile, so no fixed count is expected.
+# Since 2.0 every install ships every agent, so the count no longer varies by install shape. It is still not
+# asserted as a fixed number: adopt.sh's `keepmine` mode legitimately leaves a kit agent out when the project
+# already owns that role, and a brownfield adopt is exactly the case this suite must not fail. The floor is the
+# core seven, which no mode may drop.
 for c in planner-csk security-expert-csk privacy-agent-csk test-expert-csk review-agent-csk commit-agent-csk session-manager-csk; do
   [ -f "$AGENTS/$c.md" ] || fail "missing core agent: $c"
 done
@@ -412,7 +414,7 @@ for s in reflect handoff; do
 done
 rm -rf "$SSD"
 
-echo "== 6e) CLAUDE.md split: sentinel · discipline/project boundary · profiles.conf =="
+echo "== 6e) CLAUDE.md split: sentinel · discipline/project boundary · no profile split =="
 # In the kit repo ROOT is claude-starter/ (payload). In an installed project it is .claude/, which has no
 # CLAUDE.md but does have the already-split DISCIPLINE.md. Assert whichever is present.
 if [ -f "$ROOT/CLAUDE.md" ]; then
@@ -433,42 +435,51 @@ if [ -f "$ROOT/DISCIPLINE.md" ]; then
   esac
   grep -qE '^<!-- KIT:DISCIPLINE-END' "$ROOT/DISCIPLINE.md" && fail "sentinel leaked into DISCIPLINE.md" || pass "no sentinel leak in DISCIPLINE.md"
 fi
-if [ -f "$ROOT/profiles.conf" ]; then
-  for p in backend frontend mobile fullstack; do
-    grep -qE "^$p:" "$ROOT/profiles.conf" || fail "profiles.conf: missing profile row '$p'"
+# 2.0 removed the profile split: every install ships the whole kit. These are INVERSE gates — they fail if the
+# split creeps back — and they are deliberately UNCONDITIONAL. The previous version wrapped the whole section in
+# `if [ -f profiles.conf ]`, so deleting that file turned the section OFF instead of red, taking the README count
+# gate and the EN/TR parity gate down with it. A gate whose subject is a file must never be conditioned on it.
+[ -e "$ROOT/profiles.conf" ] && fail "profiles.conf is back — profile pruning was removed in 2.0" \
+  || pass "no profiles.conf (the profile split stays removed)"
+if [ "$IS_KIT" = 1 ]; then
+  KR0="$(cd "$ROOT/.." && pwd)"
+  for inst in start.sh adopt.sh; do
+    [ -f "$KR0/$inst" ] || continue
+    if grep -qE 'kit_excl_(agents|skills)_for|kit_profile_field|EXCL_AGENTS|profiles\.conf"' "$KR0/$inst"; then
+      fail "$inst still carries profile-prune code — the split must not come back"
+    else
+      pass "$inst carries no profile-prune code"
+    fi
   done
-  pass "profiles.conf lists all four profiles (single source of truth for start.sh + adopt.sh)"
-  grep -qE '^fullstack::$' "$ROOT/profiles.conf" && pass "fullstack prunes nothing (mobile RN/Expo included)" || fail "fullstack row must prune nothing"
 fi
 if [ -f "$ROOT/kit.conf" ]; then
-  KP="$(sed -n 's/^profile=//p' "$ROOT/kit.conf" | head -1)"
-  case "$KP" in backend|frontend|mobile|fullstack) pass "kit.conf records a known profile ($KP)" ;; *) fail "kit.conf profile invalid: '$KP'" ;; esac
+  # A pre-2.0 'profile=' key surviving a refresh means the migration notice never retired and adopt.sh would
+  # announce it forever. The installers must rewrite kit.conf without it.
+  grep -q '^profile=' "$ROOT/kit.conf" && fail "kit.conf still records profile= — a 2.0 installer must drop that key" \
+    || pass "kit.conf carries no profile= key"
+  KS="$(sed -n 's/^stack=//p' "$ROOT/kit.conf" | head -1)"
+  case "$KS" in dotnet|generic) pass "kit.conf records a known backend pattern ($KS)" ;; *) fail "kit.conf stack invalid: '$KS'" ;; esac
 fi
 
-# The counts the installer and the READMEs advertise are DERIVED — profiles.conf prunes a known set from what is
-# on disk — but nothing recomputed them, so they drifted the way every ungated number in this project has: the
-# wizard offered "~11 agents · ~34 skills" for fullstack while shipping 12 and 38, and every one of its four rows
-# was wrong at once. The catalogue, the plugin edition and the published site each earned a gate after drifting;
-# this is the same class and had none. Kit-repo only (start.sh removes itself post-install).
-if [ "$IS_KIT" = 1 ] && [ -f "$ROOT/profiles.conf" ]; then
+# Counts the installer and the READMEs advertise are DERIVED from the payload, but nothing recomputed them, so
+# they drifted the way every ungated number in this project has: the wizard once offered "~11 agents · ~34 skills"
+# for fullstack while shipping 12 and 38, and every one of its four rows was wrong at once. 2.0 removes the class
+# at the source — start.sh COUNTS the payload at run time instead of printing a literal — so the gate now asserts
+# that no literal came back, and keeps checking the prose the READMEs still state by hand.
+# Kit-repo only (start.sh removes itself post-install).
+if [ "$IS_KIT" = 1 ]; then
   KR="$(cd "$ROOT/.." && pwd)"
   TA=0; for f in "$AGENTS"/*.md;       do [ -e "$f" ] && TA=$((TA+1)); done
   TS=0; for f in "$SKILLS"/*/SKILL.md; do [ -e "$f" ] && TS=$((TS+1)); done
-  while IFS=: read -r prof exa exs; do
-    case "$prof" in \#*|"") continue ;; esac
-    # shellcheck disable=SC2086  # word splitting is the count here
-    set -- $exa; PA=$((TA-$#)); set -- $exs; PS=$((TS-$#))
-    # The wizard writes "~N agents · ~M skills" per profile; the tilde is presentation, the numbers are claims.
-    LINE="$(grep -E "^[[:space:]]*opt [0-9]+ \"$prof\"" "$KR/start.sh" 2>/dev/null || true)"
-    if [ -z "$LINE" ]; then fail "start.sh has no wizard row for profile '$prof'"; continue; fi
-    GA="$(printf '%s' "$LINE" | sed -n 's/.*~\([0-9]\{1,\}\) agents.*/\1/p')"
-    GS="$(printf '%s' "$LINE" | sed -n 's/.*~\([0-9]\{1,\}\) skills.*/\1/p')"
-    if [ "$GA" = "$PA" ] && [ "$GS" = "$PS" ]; then
-      pass "start.sh wizard: $prof advertises $PA agents · $PS skills (matches profiles.conf)"
-    else
-      fail "start.sh wizard: $prof advertises ${GA:-?} agents · ${GS:-?} skills — profiles.conf yields $PA · $PS"
-    fi
-  done < "$ROOT/profiles.conf"
+  if grep -qE '~[0-9]+ (agents|skills)' "$KR/start.sh" 2>/dev/null; then
+    fail "start.sh advertises a hardcoded '~N agents/skills' again — it must count the payload at run time"
+  else
+    pass "start.sh advertises no hardcoded component count (counted live from the payload)"
+  fi
+  # The count it prints comes from count_installed over the payload; prove the helper is still wired in.
+  grep -q 'N_AG="$(count_installed' "$KR/start.sh" 2>/dev/null \
+    && pass "start.sh derives its summary counts from the payload" \
+    || fail "start.sh no longer derives its summary counts from the payload"
   # The READMEs state the full (fullstack) agent count in prose. A stale one there is the first thing a reader sees.
   for r in README.md README.tr.md README.npm.md; do
     [ -f "$KR/$r" ] || continue
@@ -699,9 +710,9 @@ else pass "some agents lack a proactive cue:$NO_CUE (your project's own agents, 
 
 # ---- gate UNIT cases: skipped under CSK_SMOKE_SCOPE=install ------------------------------------------------
 # These drive the hook binaries against fixture commands, and the installer copies those files unchanged — so
-# running them again inside each of e2e's six pruned profiles re-verifies identical bytes six times. Measured:
-# one smoke-test run spawns 136 hook processes; e2e runs the suite seven times, and on Windows that step alone
-# was 77 of the job's 89 minutes. Everything PROFILE-dependent (counts, frontmatter, routing, §7y, commands,
+# running them again inside every e2e install re-verifies identical bytes. Measured while e2e still rehearsed
+# six profiles: one smoke-test run spawns 136 hook processes; e2e ran the suite seven times, and on Windows that
+# step alone was 77 of the job's 89 minutes. Everything INSTALL-dependent (counts, frontmatter, routing, §7y, commands,
 # settings/plugin/doctor/adopt) keeps running in both scopes, and install scope still runs the canary below —
 # because what an installer can actually break is the hook not executing at all (lost +x, CRLF, bad shebang),
 # not the matcher regexes. Full scope remains the default and is what the standalone CI step runs.
@@ -1327,12 +1338,12 @@ if [ -x "$RH" ]; then
     if [ "$want" = SILENT ]; then
       [ -z "$(rh "$prompt")" ] && pass "route-hint silent: \"$prompt\"" || fail "route-hint spoke on \"$prompt\" -> $got (a wrong route reads as the kit working)"
     elif [ ! -f "$ROOT/agents/$want.md" ]; then
-      # The stack agents (backend/database/frontend) are PRUNED by profile, and the fixture project is built
-      # from whatever agents this install actually has — so on a --frontend install the hook is right to say
-      # nothing about a backend request, and asserting the owner here would fail the hook for obeying its own
-      # rule. This is not a silent skip: the line is printed, so a case that vanishes because an agent went
-      # missing for the wrong reason is still visible.
-      note "route-hint case skipped: $want is not installed in this profile"
+      # Until 2.0 this was a `note` and the case was skipped: profiles pruned the stack agents, so on a
+      # --frontend install the hook was right to stay silent about a backend request. There is no profile any
+      # more — every install ships every agent — so a missing owner is now a genuine payload defect, and the
+      # branch that used to absorb it fails instead. Keeping the skip would have left the kit's widest routing
+      # cases unenforced for the sake of a shape that no longer exists.
+      fail "route-hint case: $want.md is missing from the payload — every install ships every agent in 2.0"
     else
       [ "$got" = "$want" ] && pass "route-hint -> $want" || fail "route-hint on \"$prompt\" gave '\''$got'\'', wanted $want"
     fi

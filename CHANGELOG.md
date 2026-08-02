@@ -5,7 +5,68 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- **BREAKING — one install shape.** `start.sh` no longer asks for a project profile. Every install ships all 12
+  agents and all 38 skills; the wizard is two steps (backend pattern → summary), and `claude-starter/profiles.conf`
+  is gone. The `--backend` / `--frontend` / `--mobile` / `--fullstack` flags are accepted and ignored, with a
+  notice, so an existing command line still installs — it just installs everything.
+
+  The split was sold as a way to spend less context. Measured against the payload: the widest pruning saves
+  **1,467 bytes ≈ 367 tokens** (`--backend`), 1,615 ≈ 404 (`--frontend`), 1,437 ≈ 359 (`--mobile`) — against a
+  13,267-byte total, and ~0.2% of a 200k window. The one argument that could have justified it, Claude Code's
+  1%-of-context skill **listing budget**, was already answered by `skillListingBudgetFraction: 0.04` shipped in
+  1.10.0; pruning four skills never brought a 7,208-character listing under a 2,000-character budget. The ledger
+  on the other side is concrete and in this changelog: a sleeping agent on `--generic`, route-hint cases that
+  failed on every pruned profile, and an e2e matrix that took 77 of a 89-minute Windows job. `adopt.sh` never
+  pruned by profile and the plugin edition never had profiles at all — so two of three channels already shipped
+  the full set, and the third's difference was the bug surface.
+
+  Consequences kept deliberate: **`.NET/DevArchitecture ↔ generic` is still asked on every install** — that skill
+  is genuinely wrong in a Node repo, and it remains the only component the installer removes. The DevArch layout
+  (`./backend` + a reserved `./frontend`) applies to every `--dotnet` install rather than one profile.
+- **`code-review-csk` stands on three layers instead of one archived repository.** google/eng-practices was
+  archived read-only on 2025-11-21 and has no successor; the skill was resting its whole spine on it. The layers
+  are now separated by the question each one answers. **Judgement** is the kit's own — the two-stage verdict and
+  verifier integrity, which exist because the code under review is increasingly agent-written and no external
+  standard covers that. **Governance** is NIST SP 800-218 **PW.7** and the OpenSSF Scorecard **Code-Review**
+  check. **Comment vocabulary** is Conventional Comments. eng-practices stays attributed for what is genuinely
+  adapted from it — the nine-item priority order and the "improves overall code health" bar — because CC-BY 3.0
+  obliges that whether or not the repository is archived, and dropping the credit while keeping the derivation
+  would be a licence violation, not a cleanup.
+
+  Deliberately **not** adopted: the claim circulating that PW.7/PW.8 "become mandatory when AI is the author".
+  That is a vendor's June 2026 proposal *to* NIST, not published NIST policy, and citing it as a standard would
+  be exactly the kind of unverified claim the review skill exists to catch.
+
+  Two capabilities came out of the re-grounding rather than the rename. **Comments carry a label**
+  (`issue` · `suggestion` · `nitpick` · `question` · `todo` · `praise`, with `(blocking)`/`(non-blocking)`
+  decorations) mapped onto the existing blocker/suggestion/nit split — an agent writes these and something has to
+  sort them without reading each one. And **every finding now leaves the review with a disposition** — fixed,
+  tracked, accepted or dropped — which PW.7.2 requires ("record and triage all discovered issues") and the skill
+  had no notion of: findings were reported and then nothing. Blockers may only be fixed or tracked, and the agent
+  cannot grant itself "accepted".
+- **The updater completes a narrower install instead of preserving it.** A project whose `kit.conf` carries a
+  pre-2.0 `profile=` key gets the missing components installed, **each one named** in the output, and the key
+  removed so the notice retires after one run. The list is derived from a before/after disk diff, not from a
+  profile→pruned table, because that table is what was deleted. `stack=` is untouched: a `generic` project does
+  not acquire `devarch-module` on the way through.
+
 ### Fixed
+- **A gate that took three other gates down with it when its subject was deleted.** Every assertion in
+  `smoke-test §6e` — including the README agent-count check and the EN/TR structural parity check added earlier
+  in this release — sat inside `if [ -f profiles.conf ]`. Removing that file did not turn the section red; it
+  turned the section **off**, and the suite reported PASSED. The replacements are inverse and unconditional
+  (`profiles.conf` must not exist; neither installer may carry prune code; `kit.conf` must not carry `profile=`),
+  and the count check now asserts that `start.sh` derives its numbers from the payload rather than printing a
+  literal. Proved by injection in six directions, each one red before the fix and green after.
+- **Two routing suites absorbed a missing component instead of reporting it.** `routing-eval` skipped any target
+  it could not find and `§7y` printed a note for an uninstalled agent — correct while profiles pruned them, and a
+  blindfold once every install ships everything. Both now fail; `devarch-module` on a generic backend is the one
+  remaining legitimate skip. `routing-eval` reports **0 skipped** on a full payload.
+- **The two channels could ship different component sets with nothing comparing them.** `e2e.sh` now diffs an
+  installed `.claude/` against the plugin edition and fails on any divergence — the class that produced the
+  sleeping generic agent above. The rehearsal drops from six profile combinations to two backend patterns plus a
+  legacy-flag case, and asserts the component counts instead of printing them.
 - **A `--generic` install shipped a backend owner that never woke up — and two gates were looking the other
   way.** On a non-.NET stack the installer swaps in `agents-optional/backend-expert-generic.md`, whose
   description read "Writes and edits … *Kicks in for* new backend features" against the .NET variant's

@@ -40,4 +40,4 @@ Full docs, the architecture, other install methods (**Homebrew** · **Claude Cod
 
 ## License & attribution
 
-MIT © Barış Yerlikaya. The `code-review` skill is distilled and restated from [google/eng-practices](https://github.com/google/eng-practices) (CC-BY 3.0).
+MIT © Barış Yerlikaya. The `code-review-csk` skill aligns with NIST SP 800-218 (SSDF) PW.7 and the OpenSSF Scorecard `Code-Review` check, writes comments in the [Conventional Comments](https://conventionalcomments.org/) vocabulary (CC BY 3.0), and its review priority order is distilled and restated from [google/eng-practices](https://github.com/google/eng-practices) (CC-BY 3.0).

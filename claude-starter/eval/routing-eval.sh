@@ -42,7 +42,16 @@ while IFS='|' read -r prompt expected; do
   expected="$(printf '%s' "$expected" | tr -d '[:space:]')"
   [ -n "$expected" ] || continue
   neg=0; case "$expected" in '!'*) neg=1; expected="${expected#!}" ;; esac   # !target = must NOT route here
-  trs="$(triggers_of "$expected")" || { skip "\"$prompt\" -> $expected (target not in this profile)"; continue; }
+  # Pre-2.0 this skipped when the target was pruned by profile. Profiles are gone: every install carries every
+  # agent and skill, so an absent target is a missing component or a stale golden row — both real failures. The
+  # exception is the .NET pattern skill, the one component a --generic install legitimately does not have.
+  if ! trs="$(triggers_of "$expected")"; then
+    case "$expected" in
+      devarch-module) skip "\"$prompt\" -> $expected (generic backend: the .NET pattern skill is not installed)" ;;
+      *)              fail "\"$prompt\" -> $expected: target not installed — 2.0 ships every component" ;;
+    esac
+    continue
+  fi
   np="$(norm "$prompt")"
   hit=0
   while IFS= read -r ph; do

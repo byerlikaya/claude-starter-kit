@@ -187,7 +187,7 @@ Bir asistan `/context` komutunu kendisi çalıştıramaz; bu yüzden çoğu kuru
 
 `smoke-test.sh` bileşen başına byte bütçesi uygular (disiplin · ajan tarifleri · skill tarifleri); maliyet fark edilmeden yukarı kaymaz. Bütçe yükseltilebilir, ama `smoke-test.sh` içinde açıkça düzenlenerek.
 
-> **Profil budaması token kazandırmaz.** `--backend` (11 ajan, 34 skill), `--fullstack`'ten (12 ajan, 38 skill) yalnızca birkaç yüz token ucuz. Profili işin kapsamını daraltmak için seç.
+> **Bileşen eksiltmek bunu ucuzlatmanın yolu değil.** Kümenin tamamı — 12 ajan ve 38 skill — açıklama olarak **~3,3k token** tutar; dört UI skill'i ile frontend ajanını dışarıda bırakmak **~400 token** kazandırır, yani 200k pencerenin yaklaşık %0,2'si. Her kurulumun tam kurulum olmasının ve yukarıdaki bayt bütçesinin bir kapı olmasının sebebi bu: maliyet proje başına değil, bileşen başına denetlenir.
 
 ---
 
@@ -266,27 +266,27 @@ bash adopt.sh               # mevcut proje — kurulu bir projeyi tazelemek içi
 ### 🌱 Sıfırdan proje — `start.sh`
 
 ```bash
-bash start.sh [--backend|--frontend|--mobile|--fullstack] [--dotnet|--generic] [-h]
+bash start.sh [--dotnet|--generic] [-h]
 ```
 
-Bir kurulum sihirbazıdır. Bayrak vermezsen her adımı tek tek sorar (profil → backend yığını → özet ve onay); bayraklar sessiz/CI kullanımı içindir, `-h` / `--help` ise kullanım bilgisini basar. Her seçenek, ne kuracağını **kurmadan önce** gösterir.
+İki adımlık bir kurulum sihirbazı: backend kalıbı → özet ve onay. Bayraklar sessiz/CI kullanımı içindir, `-h` / `--help` ise kullanım bilgisini basar. Ne kuracağını **kurmadan önce** gösterir.
 
 > Kurulumdan sonra ilk Claude Code mesajın olarak **`.claude/FIRST_PROMPT.md`**'yi yapıştır — ajanları/skilleri doğrulayan ve ilk sprint'i planlayan opsiyonel bir başlatıcı. (`CLAUDE.md` her oturumda zaten yüklendiği için bu tek seferlik bir kolaylık, zorunluluk değil.)
 
-| Profil | Uzman ajanlar | Öne çıkan skiller |
+**Her kurulum aynı kurulumdur:** 12 ajanın tamamı ve 38 skill'in tamamı — backend, web ve mobil (React Native/Expo) bir arada. Yanlış seçilecek bir frontend/backend/mobil tercihi yok; sonradan ikinci yarısını kazanan bir proje yeniden kurulum istemez.
+
+| Kurulumda sorulan | Seçenekler | Gerçekten değişen |
 |---|---|---|
-| `--backend` | backend · database | db-migration · api-design · observability |
-| `--frontend` | frontend | frontend · a11y · i18n-integrity |
-| `--mobile` | frontend (+ React Native/Expo katmanı) | frontend-rn-expo · a11y |
-| `--fullstack` | hepsi | tüm skiller — backend **ve** web **ve** mobil (RN/Expo) |
+| Backend kalıbı | `--dotnet` · `--generic` | `devarch-module` ve DevArchitecture tabanı |
+| DevArch tabanı (yalnız `--dotnet`) | onayla · atla | `./backend` iskelesinin kurulup kurulmayacağı |
 
-Ayrı bir mobil ajanı yok: web'i de mobili de masaüstünü de `frontend-expert-csk` üstlenir, mobilin "nasıl"ı ise `frontend-rn-expo` skill'inde durur. `--fullstack` bu skill'i de kurar; yani `--mobile` seçmene gerek kalmadan fullstack bir proje mobile hazırdır.
+Ayrı bir mobil ajanı yok: web'i de mobili de masaüstünü de `frontend-expert-csk` üstlenir, mobilin "nasıl"ı ise `frontend-rn-expo` skill'inde durur — her kurulumda geldiği için her proje mobile hazırdır.
 
-Backend yığını yalnızca `--backend`/`--fullstack` için sorulur: **`--dotnet`**, .NET / DevArchitecture kalıbını (MediatR CQRS · IResult · AOP) bir onay kapısının ardından getirir; **`--generic`** ise aynı uzmanı onsuz kurar — Node, Go, Python ya da farklı bir kalıp kullanan bir .NET projesi için.
+Tek gerçek soru backend kalıbıdır: **`--dotnet`**, .NET / DevArchitecture kalıbını (MediatR CQRS · IResult · AOP) bir onay kapısının ardından getirir; **`--generic`** ise aynı uzmanı onsuz kurar — Node, Go, Python ya da farklı bir kalıp kullanan bir .NET projesi için.
 
 > **.NET'te sıfırdan değil, kanıtlanmışla başla.** `--dotnet`, üretime hazır **[DevArchitecture](https://github.com/DevArchitecture/DevArchitecture)** temelini (CQRS · IResult · AOP · auth) klonlar *ve* bu temeli zaten bilen ajanları kurar — böylece **bir ajanın standart bir mimariyi yeniden üretirken yakacağı token'ları boşa harcamazsın**; o token'lar boilerplate'e değil, senin iş mantığına gider. Varsayılan olarak opinionated, zorla değil: backend uzmanı projenin **kalıp skill'ini** uygular — kutudan DevArchitecture, ya da kendi kalıbın (Clean Architecture, Vertical Slice, Minimal API, düz katmanlı) `.claude/skills/`'e bırakılır. `--generic` yığından bağımsız kalır.
 
-> **`--fullstack` + `--dotnet`** seçildiğinde DevArchitecture backend'i `./backend` altına konur, `./frontend` senin frontend'ine ayrılır ve çözüm dosyası projenin adıyla yeniden adlandırılır — böylece proje kökü, çıplak bir backend gibi görünmek yerine tertemiz kalır.
+> **`--dotnet`** seçildiğinde DevArchitecture backend'i `./backend` altına konur, `./frontend` senin frontend'ine ayrılır ve çözüm dosyası projenin adıyla yeniden adlandırılır — böylece proje kökü, çıplak bir backend gibi görünmek yerine tertemiz kalır.
 
 ### 🔄 Mevcut projeye devir — `adopt.sh`
 
@@ -315,7 +315,7 @@ gh release download --repo byerlikaya/claude-starter-kit -p '*.tgz' && tar xzf c
 <details>
 <summary><b>Güncelleme mekaniği</b> — ne tazelenir, kit.conf, değişiklik nereye iner</summary>
 
-Kit, kurulum anında `.claude/kit.conf` dosyasına profili, backend yığınını ve hangi kurucunun çalıştığını damgalar; yanına da `.claude/VERSION` düşer. Güncelleyici bu damgayı okur ve projeyi **kurulduğu biçimde** tazeler: `--backend` bir projeye frontend ajanları geri yapıştırılmaz, `--dotnet` bir proje `devarch-module` kalıp skill'ini korur. Damga yoksa güncelleyici şekli kurulu dosyalardan çıkarsar ve yazar. Güncelleme var mı diye bakmak için `cat .claude/VERSION` çıktısını `npm view @byerlikaya/claude-starter-kit version` ile karşılaştır.
+Kit, kurulum anında `.claude/kit.conf` dosyasına backend kalıbını ve hangi kurucunun çalıştığını damgalar; yanına da `.claude/VERSION` düşer. Güncelleyici bu damgayı okur ve tazeleme **kalıbı korur**: `--dotnet` bir proje `devarch-module` skill'ini korur, bir Node reposuna ise asla verilmez. Damga yoksa güncelleyici kalıbı kurulu dosyalardan çıkarsar ve yazar. `.claude/` içinde eksik kalan her bileşen tamamlanır ve eklenen her şey sessizce belirmek yerine **adıyla listelenir**. Güncelleme var mı diye bakmak için `cat .claude/VERSION` çıktısını `npm view @byerlikaya/claude-starter-kit version` ile karşılaştır.
 
 Çalışan bir Claude Code oturumunun içinde **`/update-csk`** de çalıştırabilirsin — sürüm kontrolünü yapar, yeni sürüm varsa güncelleyiciyi koşar, sonucu `/doctor-csk` ile doğrular ve tazelenmiş disiplini aynı oturumda yeniden yüklemen için `/compact` önerir. Canlı bir kurulumun sağlığını dilediğin an **`/doctor-csk`** ile bak (hook'lar çalıştırılabilir mi · `core.hooksPath` kurulu mu · kapılar bağlı mı · `CLAUDE.md` disiplini gerçekten import ediyor mu). Ayrıca projenin kendisi için tavsiye niteliğinde bir **hazırlık** skoru basar: proje bölümü doldurulmuş mu, kitin geneline ek bir proje skill'i var mı, ajan komutlarını kumlayacak bir devcontainer ve bir MCP sunucusu var mı, `CLAUDE.md` kodun gerisinde kalmış mı.
 
@@ -359,4 +359,6 @@ Yeni bir ajan ya da skill eklerken `AGENT_TEMPLATE.md` sözleşmesini izle: fron
 
 MIT — bkz. [LICENSE](LICENSE).
 
-- **[google/eng-practices](https://github.com/google/eng-practices)** — `code-review-csk` skill'i, damıtılıp yeniden ifade edildi (CC-BY 3.0).
+- **[NIST SP 800-218 (SSDF)](https://csrc.nist.gov/pubs/sp/800/218/final)** PW.7 ve **[OpenSSF Scorecard](https://github.com/ossf/scorecard)** `Code-Review` denetimi — `code-review-csk`'nin yönetişim katmanı: incelemenin yapılması ve bulguların kaydedilip triyaj edilmesi.
+- **[Conventional Comments](https://conventionalcomments.org/)** — `code-review-csk`'nin yorumlarını yazdığı etiket sözlüğü (CC BY 3.0).
+- **[google/eng-practices](https://github.com/google/eng-practices)** — `code-review-csk`'deki inceleme öncelik sırası ve "kod sağlığı" ölçütü, damıtılıp yeniden ifade edildi (CC-BY 3.0).
