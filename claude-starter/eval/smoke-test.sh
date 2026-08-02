@@ -480,6 +480,26 @@ if [ "$IS_KIT" = 1 ]; then
   grep -q 'N_AG="$(count_installed' "$KR/start.sh" 2>/dev/null \
     && pass "start.sh derives its summary counts from the payload" \
     || fail "start.sh no longer derives its summary counts from the payload"
+  # The DIAGRAMS make a claim too, and it is the one a reader takes at face value because nobody counts nodes in
+  # a picture. The hand-drawn pipeline shipped with eleven of twelve agents — performance-expert-csk was simply
+  # never drawn — and every gate stayed green because none of them looked at an SVG. Both diagrams are generated
+  # from the payload now; this asserts the generated output actually contains every agent, so a generator that
+  # silently drops one fails here instead of on the front page.
+  for svg in network-en network-tr orchestration-en orchestration-tr; do
+    F="$KR/assets/$svg.svg"
+    [ -f "$F" ] || { fail "assets/$svg.svg missing — the README embeds it"; continue; }
+    MISSING=""
+    for a in "$AGENTS"/*.md; do
+      [ -e "$a" ] || continue
+      n="$(basename "$a" .md)"
+      grep -q "$n" "$F" || MISSING="$MISSING $n"
+    done
+    if [ -n "$MISSING" ]; then
+      fail "assets/$svg.svg does not draw every agent — missing:$MISSING (regenerate: python3 packaging/gen-network.py assets)"
+    else
+      pass "assets/$svg.svg draws all $TA agents"
+    fi
+  done
   # The READMEs state the full (fullstack) agent count in prose. A stale one there is the first thing a reader sees.
   for r in README.md README.tr.md README.npm.md; do
     [ -f "$KR/$r" ] || continue

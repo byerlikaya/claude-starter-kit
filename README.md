@@ -2,9 +2,9 @@
 
 <img src="assets/logo.svg" alt="Claude Starter Kit" width="460">
 
-**An agentic working kit for Claude Code** — a reusable scaffold that drives any project, at any stage, with the same engineering discipline.
+**A complete engineering setup for Claude Code.**
 
-*plan → build → review → commit, where every critical rule is a **gate**, not a reminder.*
+12 specialist agents, 38 skills, and tool-level gates that *enforce* the rules a `CLAUDE.md` can only ask for.
 
 ![Version](https://img.shields.io/badge/version-1.10.1-2563eb?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)
@@ -18,54 +18,82 @@
 
 ---
 
-## Why this kit?
+## The problem
 
-Three claims, each with a number behind it.
+A `CLAUDE.md` is a request. You write down how you want the work done, the model reads it, and it complies — when it remembers to. Nothing checks. The file gets longer, the compliance gets thinner, and the failure is silent: you find out at review time, or after the commit.
 
-**1. The specialists actually run.** This was measured before it was fixed, and the answer was bad: on a focused, single-domain prompt the main thread delegated **0 times in 24 sessions** — every agent installed, the delegation tool available, the work squarely inside one agent's domain. A `UserPromptSubmit` hook now names the owning agent beside your request, and the same measurement returns **39 of 48 across four rounds**. You type nothing extra.
+The gap is not knowledge. It is enforcement.
 
-**2. The rules that matter are gates, not reminders.** A critical rule is answered at the tool level *before* the command runs — a git hook, a `settings.json` permission, a `PreToolUse` guard — so it never rests on the model remembering it. Every rule carries cases for both halves: that it blocks what it must, and that it leaves the neighbours alone.
+## What Claude Starter Kit does
 
-**3. It tells you what it has *not* proven.** An A/B harness runs the same prompt in a kit project and a bare one and grades what is left on disk. Seven cases so far, **six came back level**, and all six are published with the reasoning in [`evals/README.md`](evals/README.md) — including the awkward one: in the single case where the arms separated, the *discipline text* did the work and the tool gate never fired. Nothing on this page is a claim the repo cannot show you the measurement for.
+It moves the rules that matter out of the file and into the tools, then puts a team around them.
 
-And it goes onto the repo you already have: **`adopt` hands the kit over on a branch, staged and uncommitted**, so the whole change sits in your editor's diff before any of it is yours to keep. `main` is never touched.
+**Rules become gates.** A destructive command is refused by a `PreToolUse` hook before the shell sees it. A commit stops for your approval even under `bypassPermissions`. A leaked API key or an AI-authorship trace is caught by a git hook. None of it depends on the model remembering.
 
-The comparison below is against **Claude Code with a `CLAUDE.md`** — not a strawman competitor, but the exact baseline the A/B harness measures as its control arm.
+**Work gets specialists.** 12 agents own one domain each and run across five stages — plan, build, audit, close, hand off. A security review is mandatory before a risk-critical change can close. Each agent stays thin: it says *who* and *when*, and the method lives once in a skill.
 
-| What matters | Claude Code + a `CLAUDE.md` | Claude Starter Kit |
-|---|---|---|
-| **Critical rules** | Live in a `.md` file; honored only if the model remembers | **Enforced as gates** at the tool level — git hook (`trace-scan`), `settings.json` permissions, `guard-bash.sh` PreToolUse. The gate answers before the command runs, so the rule does not depend on the model remembering it |
-| **Structure** | One thread does everything; no specialist owns a domain | **A team of 12 specialist agents** across 5 stages (Understand → Produce → Audit → Close → Hand off) that **actually run on a plain prompt** — a `UserPromptSubmit` hook names the owning agent next to your request, measured **39 of 48** across four rounds against a **0 of 24** baseline without it. You type nothing extra; commands (`/review-csk`) chain several agents by @-mention when you want a fixed sequence |
-| **Security & privacy** | A line in your file, if you thought to write one | **Mandatory audit gate** — risk-critical changes can't close before the security/privacy review clears |
-| **Commits** | Model may commit on its own | **Every commit is yours to approve** — enforced at the tool level even in auto/bypass mode |
-| **Adopting an existing repo** | Nothing to adopt — you write and maintain the file yourself | **`adopt` hands the kit over on a branch** — `main` is never touched; you review before you keep it |
-| **Where the "how" lives** | All of it in one file, which grows and drifts | **Agent = thin trigger** (who/when); the method lives once in a **skill** (single source of truth), reused across 38 skills |
+**It goes on the repo you already have.** `adopt` hands Claude Starter Kit over on a branch, staged and uncommitted, so the whole change sits in your editor's diff before any of it is yours to keep. Your `main` is never touched.
 
----
-
-## 🚀 Quick start
+## Quick start
 
 ```bash
-npx @byerlikaya/claude-starter-kit          # fresh project — setup wizard
-npx @byerlikaya/claude-starter-kit adopt    # existing project — safe handover on a branch
+npx @byerlikaya/claude-starter-kit          # new project — setup wizard
+npx @byerlikaya/claude-starter-kit adopt    # existing project — handover on a branch
 ```
 
-Then paste **`.claude/FIRST_PROMPT.md`** as your first Claude Code message. Homebrew, a release tarball, and the plugin edition are covered in **Install & run** below.
+Then paste `.claude/FIRST_PROMPT.md` as your first Claude Code message. Homebrew, a release tarball and a plugin edition are in [Install](#install).
+
+## Contents
+
+- [The claims — and the evidence](#the-claims--and-the-evidence)
+- [What it is not](#what-it-is-not)
+- [The agents](#the-agents)
+- [What's inside](#whats-inside)
+- [How it works](#how-it-works)
+- [Rule → gate](#rule--gate)
+- [Install](#install)
+- [Session and token cost](#session-and-token-cost)
+- [Verification](#verification)
+- [Extending](#extending)
+- [Licence and attribution](#licence-and-attribution)
 
 ---
 
-## 🧠 The agents — the heart of the kit
+## The claims — and the evidence
 
-**12 agents**, each a **thin trigger** — it says only *who* and *when*, and delegates the *how* to a skill. They are grouped into **five stages**, so quality escalates before anything is committed:
+Three claims are made on this page. Each one has a number behind it and a file you can open.
+
+| Claim | Measured | Where to check |
+|:--|:--|:--|
+| **The specialists actually run** | Without a routing hook: **0** delegations in 24 sessions. With Claude Starter Kit's: **39 of 48** across four rounds | [`evals/`](evals/) · `route-hint.sh` |
+| **Critical rules hold at the tool level** | Every gate carries cases for *both* halves — that it blocks what it must, and that it leaves neighbours alone | `smoke-test.sh` |
+| **Claude Starter Kit publishes its null results** | 7 A/B cases run so far; **6 came back level** — all published, including the one where the discipline text worked and the gate never fired | [`evals/README.md`](evals/README.md) |
+
+The first one is worth a sentence, because it is the reason Claude Starter Kit exists. Installing agents does not make them run. Measured on a focused, single-domain prompt — every agent installed, the delegation tool available, the work squarely inside one agent's domain — Claude Code keeps the work on the main thread and delegates **zero times in 24 sessions**. Claude Starter Kit's `UserPromptSubmit` hook names the owning agent beside your request, and the same measurement returns **39 of 48**. You type nothing extra.
+
+The third one is the one that should earn your trust. An A/B harness runs the same prompt in a kit project and a bare one, then grades what is left on disk. Most cases came back **level** — no advantage. They are published anyway, with the reasoning.
+
+## What it is not
+
+Being clear about the ceiling is part of the claim.
+
+- **Not a sandbox.** The gates are defence-in-depth. The shell is Turing-complete, so a determined rewrite reaches around any pattern. What the gates remove is the *accident* — the blunt command taken under deadline pressure. For a hard boundary, run Claude Code in a devcontainer or a VM; `/doctor-csk` tells you whether you have one.
+- **Not a guarantee of delegation.** Claude decides delegation from the task, the agent's description and the context. It is a judgement, not a rule. When an agent *must* run, `@agent-<name>` guarantees it.
+- **Not a measured productivity win.** Six of seven A/B cases came back level. Claude Starter Kit's evidence is about *rules holding* and *specialists firing*, not about shipping faster.
+- **Not locked to a stack.** The backend expert applies whatever pattern your project declares. .NET/DevArchitecture is the default, not a requirement.
+
+---
+
+## The agents
+
+**12 specialist agents** across five stages, so quality escalates before anything is committed.
 
 <div align="center">
-
-  🧭 **Understand** &nbsp;→&nbsp; 🔨 **Produce** &nbsp;→&nbsp; 🔍 **Audit** &nbsp;→&nbsp; ✅ **Close** &nbsp;→&nbsp; 🤝 **Hand off**
-
+  <img src="assets/orchestration-en.svg" alt="The five stages: Understand, Produce, Audit, Close, Hand off" width="820">
 </div>
 
 <details>
-<summary><b>The 12 agents & when each fires</b></summary>
+<summary>🧭&nbsp; <b>All 12 agents — what each one owns, and when it fires</b> &nbsp;<sub>click to expand</sub></summary>
 
 | Agent | Stage | Fires when | Model |
 |:--|:--|:--|:--:|
@@ -77,48 +105,52 @@ Then paste **`.claude/FIRST_PROMPT.md`** as your first Claude Code message. Home
 | **security-expert-csk** | 🔍 Audit | auth / IDOR / injection / secret · **mandatory if security-critical** | `inherit` · `effort: high` |
 | **privacy-agent-csk** | 🔍 Audit | personal data (KVKK / GDPR) | `inherit` |
 | **test-expert-csk** | 🔍 Audit | tests, coverage, regression | `inherit` |
-| **performance-expert-csk** | 🔍 Audit | hot path, query/loop, render, payload · reports measured findings | `inherit` |
+| **performance-expert-csk** | 🔍 Audit | hot path, query/loop, render, payload | `inherit` |
 | **review-agent-csk** | ✅ Close | pre-commit code-health review | `inherit` |
 | **commit-agent-csk** | ✅ Close | proposes the commit, waits for approval | `haiku` |
 | **session-manager-csk** | 🤝 Hand off | context fills / phase boundary | `inherit` |
 
 </details>
 
-> **Why almost every agent says `inherit`.** An omitted or `inherit` model means the subagent runs on the model
-> you chose for the session, and that is deliberate: a pin can only make an agent run on a *different* tier from
-> the work around it. The two mandatory audits inherit for exactly that reason — a review that clears a change
-> must never be weaker than whatever wrote it — and `security-expert-csk` buys its extra rigour with
-> `effort: high`, more thinking on *your* model rather than a different one. `commit-agent-csk` keeps `haiku`
-> because reading a staged diff into a Conventional Commit is mechanical, and §4.1/§4.4 are gated anyway.
-> `smoke-test.sh` enforces both halves: a `model:`/`effort:` value must be one the docs define, and the audit
-> agents must stay unpinned.
+**Why almost every agent says `inherit`.** A subagent with no model pin runs on the model you chose for the session. That is deliberate: a pin can only make an agent run on a *different* tier from the work around it, and a review that clears a change must never be weaker than whatever wrote it. `security-expert-csk` buys extra rigour with `effort: high` — more thinking on *your* model, not a different one. `commit-agent-csk` keeps `haiku` because turning a staged diff into a Conventional Commit is mechanical, and the commit rules are gated anyway.
 
-> Every agent, skill and command carries a `-csk` suffix (Claude Starter Kit), so nothing collides with the host project's own components or shadows a Claude Code built-in. Each agent is thin; the real method lives in a **skill** — the single source of truth.
-
-> **If an agent doesn't fire, you can guarantee it.** Claude decides delegation from the task, the agent's
-> `description` and the current context — it is a judgement, not a rule, so it will sometimes keep work on the main
-> thread. Two escalations, from the [subagents docs](https://code.claude.com/docs/en/sub-agents): name the agent in
-> your prompt ("have frontend-expert-csk do this"), or **`@agent-frontend-expert-csk`**, which *guarantees* that
-> agent runs for that task. If delegation never happens anywhere, check that the `Agent` tool is not in
-> `permissions.deny` — `/doctor-csk` reports it.
-
----
+Every agent, skill and command carries a `-csk` suffix, so nothing collides with your project's own components or shadows a Claude Code built-in.
 
 ## What's inside
 
 <div align="center">
-  <img src="assets/network-en.svg" alt="The kit's network — 12 agents and 38 skills connected by their real applies relationships" width="820">
-  <br><sub>Every agent, every skill, and the real <code>applies</code> relationships — grouped by stage, each agent its own hue; the center is the main thread that orchestrates them all.</sub>
+  <img src="assets/network-en.svg" alt="12 agents and 38 skills, connected by their real applies relationships" width="820">
+  <br><sub>Every agent, every skill, and the real <code>applies</code> relationships — grouped by stage, each agent its own hue; the centre is the main thread that orchestrates them.</sub>
 </div>
 
-- **12 agents** — see the table above.
-- **38 skills** — the single source of "how", one per area (full catalogue below).
-- **7 slash commands** — `/brainstorm-csk` · `/plan-csk` · `/review-csk` · `/ship-csk` · `/handoff-csk` · `/update-csk` (update the installed kit) · `/doctor-csk` (health-check the install). Simplification uses the built-in `/simplify`.
-- **Hooks** — `route-hint.sh` (names the owning agent alongside every prompt, so the specialists run without you asking), `guard-bash.sh` + `guard-write.sh` (tool-level command/write gates), `pre-commit` + `commit-msg` (trace + secret + bloat scan), `context-usage.sh` and `session-guard.sh` (session measurement), `session-rehydrate.sh` (re-surface the handover after /compact or /clear), `session-stats.sh` (what the session actually did — failing tool loops, repeated prompts, interrupts, compactions — read by `reflect` and `handoff` so a retrospective rests on the record, not on recollection), `skill-trust.sh` (names a skill or agent the kit never shipped and you never accepted), `guard-commit-scan.sh` (runs the real trace/secret scanners from `PreToolUse`, so the commit content gate works even where `core.hooksPath` cannot be set). The plugin edition ships these gate hooks too.
-- **CLAUDE.md** — behavior, the three principles, workflow, Definition of Done, token discipline, and prohibitions.
+| Component | Count | What it is |
+|:--|:--:|:--|
+| **Agents** | 12 | Thin triggers — *who* owns a domain and *when* they fire |
+| **Skills** | 38 | The method, written once, applied by whoever needs it |
+| **Slash commands** | 7 | `/brainstorm-csk` · `/plan-csk` · `/review-csk` · `/ship-csk` · `/handoff-csk` · `/update-csk` · `/doctor-csk` |
+| **Hooks** | 8 | The gates, plus session measurement and routing |
+| **Discipline** | 1 | Principles, workflow, Definition of Done, prohibitions — imported by your `CLAUDE.md` |
 
 <details>
-<summary><b>Full skill catalogue</b> — all 38, generated from each skill</summary>
+<summary>🪝&nbsp; <b>All 8 hooks — which gate holds what</b> &nbsp;<sub>click to expand</sub></summary>
+
+| Hook | Role |
+|:--|:--|
+| `route-hint.sh` | Names the owning agent alongside every prompt, so specialists run without you asking |
+| `guard-bash.sh` | Tool-level command gate: commit/push approval, destructive ops, remote-code-exec, hook tampering |
+| `guard-write.sh` | The same protection on the Write/Edit side — a gate you can silently delete is not a gate |
+| `guard-commit-scan.sh` | Runs the real trace and secret scanners from `PreToolUse`, so the commit gate works where `core.hooksPath` cannot be set |
+| `context-usage.sh` | Reads the real token count from the transcript and injects it every turn |
+| `session-guard.sh` | Warns once at 75% context fill and once at 90% — never blocks a turn |
+| `session-rehydrate.sh` | Re-surfaces the handover after `/compact` or `/clear` |
+| `skill-trust.sh` | Names any skill or agent Claude Starter Kit never shipped and you never accepted |
+
+Two git hooks — `pre-commit` and `commit-msg` — run the trace, secret and repo-bloat scans. The plugin edition ships the gate hooks too.
+
+</details>
+
+<details>
+<summary>📚&nbsp; <b>All 38 skills — the full catalogue, generated from each skill</b> &nbsp;<sub>click to expand</sub></summary>
 
 <!-- SKILLS:START -->
 
@@ -169,192 +201,161 @@ Then paste **`.claude/FIRST_PROMPT.md`** as your first Claude Code message. Home
 
 ---
 
-## Three principles
+## How it works
 
-1. **Agent = thin trigger.** An agent only says "who, when"; it stays short and leaves the "how" to a skill.
-2. **Skill = single source of truth.** The actual method and rule live in the skill; they are not copied into the agent.
-3. **Rule → gate.** The rule that matters is enforced at the tool level (hook · permission · eval). The model is not expected to remember it.
+Three rules hold the design together.
 
----
+1. **An agent is a thin trigger.** It says *who* and *when*, nothing more. It stays short, because its description is loaded into every session.
+2. **A skill is the single source of truth.** The actual method lives there once, and is never copied into an agent.
+3. **A rule that matters becomes a gate.** Enforcement sits at the tool level — a hook, a permission, a test case. The model is not asked to remember it.
 
-## Session & token management
+The everyday shape of it:
 
-An assistant cannot run `/context` itself, so most setups **guess** the session fill. This kit measures it. `context-usage.sh` reads the real token count from the last turn's API usage in the transcript — the same figure `/context` shows. The `UserPromptSubmit` hook injects it every turn; the `Stop` hook (`session-guard.sh`) warns you the first time fill crosses **75%**, and once more at **90%** — one warning per threshold, and it never blocks your turn. The session-health line rests on a measurement, not a guess.
-
-### Token cost
-
-`DISCIPLINE.md` and the agent/skill descriptions load into every session's context. That always-on material is **~24 KB** today (`DISCIPLINE.md` + 12 agent + 38 skill descriptions) — on the order of **10k tokens** on a real turn, calibrated against an actual `claude -p` turn rather than estimated. Every skill added is a permanent ~100-token tax on all sessions, which is why the byte budget below is a gate, not a guideline.
-
-`smoke-test.sh` enforces a byte budget per component (discipline · agent descriptions · skill descriptions), so the cost cannot drift upward unnoticed. A budget can be raised, but only by editing `smoke-test.sh` explicitly.
-
-> **Leaving components out is not how you make this cheaper.** The whole set — 12 agents and 38 skills — costs **~3.3k tokens** of description; dropping the four UI skills and the frontend agent would save **~400 tokens**, about 0.2% of a 200k window. That is why every install is the full install and the byte budget above is a gate: the cost is controlled per component, not per project.
-
----
+```
+/plan-csk        →  expert agents build  →  /review-csk       →  /ship-csk         →  /handoff-csk
+ambiguous scope     the domain owner        security · quality    DoD gate; proposes   context is full;
+goes to planning    does the work           · test audit          the commit, waits    hand off, then /clear
+```
 
 ## Rule → gate
 
-| Rule | Enforcing mechanism |
-|---|---|
-| Commit/push only with approval — in every permission mode | `guard-bash.sh` (PreToolUse) raises an approval prompt only you can answer; approve once and Claude runs the commit. Fails closed under `bypassPermissions`; `CLAUDE_GIT_OK=1` pre-authorises headless runs |
-| Destructive op (`reset --hard` · `checkout -- .` / `restore .` · force push · `rm -rf` · `clean -f` · `--no-verify` · rebase · amend) | `guard-bash.sh` (blocked at the tool level). The whole-tree revert is there because it destroys every uncommitted change with no reflog — the same loss as `reset --hard`, by a command that reads like routine hygiene |
-| Remote-code-exec / permission-nuke (`curl…\|bash` · a world-writable `chmod` · `dd of=`) | `guard-bash.sh` (hard-blocked in every mode). The `chmod` rule matches the resulting **permission**, not one spelling of it — `777`, `1777`, `666`, `o+w` and `a+w` all land in the same place, and a gate that blocks one while another reaches the same state has protected nothing |
-| Disarming the gates (redirect `core.hooksPath`, or edit/delete a hook script) | `guard-bash.sh` (shell side) + `guard-write.sh` (Write/Edit side) — a gate you can silently remove is not a gate |
-| Committing straight onto the default branch | `guard-bash.sh` surfaces it in the approval prompt (a warning, not a block — a fresh project legitimately lives on `main`) |
-| Build/vendored artifact or oversized blob staged | `pre-commit` repo-bloat scan (`node_modules/`, `dist/`, `>5 MiB`, …; override via `CSK_MAX_FILE_BYTES`) |
-| Secret **file** staged (whole-file secret the content scan can miss) | `pre-commit` secret-file gate (`.env`, `id_rsa`, `*.pem/.key/.p12`, `.npmrc`, …; `.env.example`/`.sample`/`.template` stay committable) |
-| Force-add past `.gitignore` (`git add -f`) · deleting a lockfile | `guard-bash.sh` (blocked at the tool level) |
-| No AI-authorship trace or external vendor name in a commit | `pre-commit` + `commit-msg` git hook — scans your project's files; the kit's own `.claude/` tree is exempt (it names the tool it configures), secrets never are |
-| No API key / token / private key committed | `pre-commit` secret scan (`secret-blocklist.txt` + `.secret-allowlist.txt`), and every pattern in those lists carries its own case, run through the real hook by `smoke-test.sh` |
-| A credential **read** into the context (`~/.ssh/id_rsa`, `~/.aws/credentials`, `*.pem`, `.netrc`, kubeconfig) | `settings.json` Read-deny + `guard-bash.sh` for the shell side. The commit scan catches a secret on its way *out*; nothing downstream catches one that is merely read, and a read secret is one summary away from leaving. Public keys and `.example` paths stay readable |
-| A skill or agent nobody vetted appearing in `.claude/` | `skill-trust.sh` (SessionStart) names it with the supply-chain scanner's verdict; acceptance is deliberate and digest-recorded, so an edit after acceptance comes back |
-| Session threshold | `context-usage.sh` + `session-guard.sh` (Stop hook) |
-| Always-on context stays lean | `smoke-test.sh` byte budgets per component (discipline · agent descriptions · skill descriptions) |
-| A running session never follows stale rules | `context-usage.sh` compares `.claude/VERSION` against the version the session started with, and says so |
-| Quality gate (SonarQube projects — language-agnostic) | `sonarqube-check` + `/ship-csk` |
+This is the table to read if you read only one. Left is the rule; right is the thing that refuses to let it slide.
 
-The gates are armed via `settings.json` and git `core.hooksPath`; `smoke-test.sh` verifies they are ready after every change — and every rule carries cases for **both** halves: that it blocks what it must, and that it does not block its neighbours (`chmod 755`, `rm -rf build`, `git checkout -- src/app.js`). A gate nobody proved is not a gate, and one that fires on routine work gets worked around.
+| Rule | Enforced by |
+|:--|:--|
+| Commit and push need your approval, in every permission mode | `guard-bash.sh` raises a prompt only you can answer. Fails closed under `bypassPermissions` |
+| Destructive ops: `reset --hard`, `checkout -- .`, force push, `rm -rf`, `clean -f`, `--no-verify`, amend | `guard-bash.sh`, blocked at the tool level |
+| Remote code execution and permission nukes: `curl…\|bash`, world-writable `chmod`, `dd of=` | `guard-bash.sh`, hard-blocked in every mode |
+| Disarming a gate — redirecting `core.hooksPath`, editing or deleting a hook | `guard-bash.sh` (shell) + `guard-write.sh` (file edits) |
+| No API key, token or private key reaches a commit | `pre-commit` secret scan; every pattern carries its own test case |
+| No credential is *read* into the context — `~/.ssh/id_rsa`, `~/.aws/credentials`, `*.pem`, kubeconfig | `settings.json` read-deny + `guard-bash.sh` |
+| No AI-authorship trace or vendor template name in a commit | `pre-commit` + `commit-msg` git hooks |
+| No build artifact, vendored tree or oversized blob gets staged | `pre-commit` repo-bloat scan |
+| An unvetted skill or agent appearing in `.claude/` is named, with a scanner verdict | `skill-trust.sh` at session start |
+| Always-on context stays lean | `smoke-test.sh` byte budget per component |
+| A running session never follows stale rules after an update | `context-usage.sh` version comparison |
 
-> **Honest scope.** These are defence-in-depth, not a sandbox. The shell is Turing-complete, so a determined
-> rewrite can reach around any pattern; what the gates remove is the *accident* — the blunt instrument taken
-> under deadline pressure, the destructive command that reads like routine hygiene. For a hard boundary, run
-> Claude Code in a devcontainer or a VM; `/doctor-csk` reports whether you have one.
+Every rule carries cases for **both** halves: that it blocks what it must, and that it does not block its neighbours — `chmod 755`, `rm -rf build`, `git checkout -- src/app.js`. A gate nobody proved is not a gate, and a gate that fires on routine work gets worked around.
+
+**Watching a gate fire.** Set `CSK_GATE_LOG=<path>` and every guard appends one line per decision: `BLOCK` / `ASK` / `ALLOW`, the rule, and the command. It is off unless you ask for it, write-only, and written after the verdict, so it cannot change one. Useful when you need to know whether a gate stopped something or the model simply never went there — those two leave identical traces.
 
 ---
 
-## Install & run
+## Install
 
-**Two entry points:** `start.sh` sets up a **fresh** project; **`adopt`** (`adopt.sh`) hands the kit over to an **existing** one. Pick any channel — each runs the same two commands.
+Two entry points: **`start.sh`** for a new project, **`adopt.sh`** for one already in motion. Every channel runs the same two commands.
 
-**npx** — nothing to install:
 ```bash
-npx @byerlikaya/claude-starter-kit          # fresh project
-npx @byerlikaya/claude-starter-kit adopt    # existing project
-npx @byerlikaya/claude-starter-kit@latest update   # refresh a project that already has the kit
-```
+# npx — nothing to install
+npx @byerlikaya/claude-starter-kit                  # new project
+npx @byerlikaya/claude-starter-kit adopt            # existing project
+npx @byerlikaya/claude-starter-kit@latest update    # refresh an installed kit
 
-**Homebrew:**
-```bash
+# Homebrew
 brew install byerlikaya/tap/claude-starter-kit
-claude-starter-kit          # fresh project
+claude-starter-kit          # new project
 claude-starter-kit adopt    # existing project
-brew upgrade byerlikaya/tap/claude-starter-kit && claude-starter-kit update   # refresh a project that already has the kit
-```
 
-**Release tarball** — no package manager:
-```bash
+# Release tarball — no package manager
 gh release download --repo byerlikaya/claude-starter-kit -p '*.tgz' && tar xzf claude-starter-kit-*.tgz
-bash start.sh               # fresh project
-bash adopt.sh               # existing project — re-run it to refresh a project that already has the kit (update)
+bash start.sh               # new project
+bash adopt.sh               # existing project (re-run it to update)
 ```
 
-> Just want the agents & skills inside your existing Claude Code (no scaffolding)? `/plugin marketplace add byerlikaya/claude-starter-kit` then `/plugin install claude-starter-kit@byerlikaya`.
->
-> **Updating the plugin is not automatic.** An installed plugin stays on the version you installed until you ask
-> for a new one, so a gate fix does not reach you on its own. Two steps, and the second needs a restart:
->
-> ```bash
-> claude plugin marketplace update byerlikaya   # refresh the catalogue from GitHub
-> claude plugin update claude-starter-kit       # then install the newer version (restart to apply)
-> ```
->
-> `claude plugin list` shows what you are on. The other three channels have their own path — `npm i -g
-> @byerlikaya/claude-starter-kit`, `brew upgrade claude-starter-kit`, or `/update-csk` for a scaffolded project.
+**Windows:** Claude Starter Kit is bash-based. Run it in **Git Bash** ([git-scm.com](https://git-scm.com)); WSL works as a fallback.
 
-> **Windows:** the kit is bash-based — run it inside **Git Bash** (from [git-scm.com](https://git-scm.com)) for the smoothest experience; WSL works as a fallback.
+**Plugin edition** — just the agents, skills and gate hooks inside your existing Claude Code, no scaffolding:
 
-### 🌱 Fresh project — `start.sh`
+```bash
+/plugin marketplace add byerlikaya/claude-starter-kit
+/plugin install claude-starter-kit@byerlikaya
+```
+
+An installed plugin stays on the version you installed until you ask for a newer one, so run `claude plugin marketplace update byerlikaya` then `claude plugin update claude-starter-kit`, and restart to apply.
+
+### New project
 
 ```bash
 bash start.sh [--dotnet|--generic] [-h]
 ```
 
-An install wizard, two steps: backend pattern → summary and approval. The flags are for silent/CI use, and `-h` / `--help` prints usage. It shows what it will install **before** installing it.
+Two steps: backend pattern, then a summary you approve before anything is written.
 
-> After install, paste **`.claude/FIRST_PROMPT.md`** as your first Claude Code message — an optional kickoff that verifies the agents/skills and plans the first sprint. (`CLAUDE.md` loads the discipline every session regardless, so this is a one-time convenience, not a requirement.)
+**Every install is the same install** — all 12 agents and all 38 skills, backend and web and mobile (React Native/Expo) together. A project that starts as an API and grows a web client is already equipped for both.
 
-**Every install is the same install:** all 12 agents and all 38 skills — backend, web and mobile (React Native/Expo) together. There is no frontend/backend/mobile choice to get wrong, and a project that grows a second half needs no reinstall.
+| Asked at install | Options | What it changes |
+|:--|:--|:--|
+| Backend pattern | `--dotnet` · `--generic` | the `devarch-module` skill and the DevArchitecture base |
+| DevArch base — only on `--dotnet` | approve · skip | whether `./backend` is scaffolded |
 
-| Asked at install | Options | What actually changes |
-|---|---|---|
-| Backend pattern | `--dotnet` · `--generic` | `devarch-module` and the DevArchitecture base |
-| DevArch base (only on `--dotnet`) | approve · skip | whether `./backend` is scaffolded |
+**`--dotnet`** clones the production-ready [DevArchitecture](https://github.com/DevArchitecture/DevArchitecture) foundation (CQRS · IResult · AOP · auth) behind an approval gate, and installs agents that already know it — so tokens go to your business logic instead of regenerating a standard architecture. The backend goes in `./backend`, `./frontend` is reserved next to it, and the solution file is renamed to your project.
 
-There is no separate mobile agent: `frontend-expert-csk` covers web, mobile and desktop, and the mobile *how* lives in the `frontend-rn-expo` skill — installed everywhere, so any project is ready for mobile.
+**`--generic`** installs the same expert without that pattern — for Node, Go, Python, or a .NET project on a different pattern. Nothing forces DevArchitecture: the backend expert applies whichever pattern skill your project declares.
 
-The one real question is the backend pattern: **`--dotnet`** brings the .NET / DevArchitecture pattern (MediatR CQRS · IResult · AOP) behind an approval gate; **`--generic`** installs the same expert without it — for Node, Go, Python, or a .NET project on a different pattern.
-
-> **.NET — start proven, not from scratch.** `--dotnet` clones the production-ready **[DevArchitecture](https://github.com/DevArchitecture/DevArchitecture)** foundation (CQRS · IResult · AOP · auth) *and* installs agents that already know it — so you **skip the tokens an agent would burn regenerating a standard architecture**; they go to your business logic, not boilerplate. Opinionated by *default*, not by force: the backend expert applies your project's **pattern skill** — DevArchitecture out of the box, or your own (Clean Architecture, Vertical Slice, Minimal API, plain layered) dropped into `.claude/skills/`. `--generic` stays stack-agnostic.
-
-> On **`--dotnet`** the DevArchitecture backend is placed in `./backend`, `./frontend` is reserved for your frontend, and the solution file is renamed to your project's name — so the project root stays clean instead of looking like a bare backend.
-
-### 🔄 Existing project — `adopt.sh`
+### Existing project
 
 ```bash
-bash adopt.sh          # at the root of the target project
+bash adopt.sh    # at the root of the target project
 ```
 
-Applies the kit to a project already in motion, like **one team handing a project over to another** — the project is not broken, decisions already made are not lost, and the kit does not stay passive.
-
 <div align="center">
-  <img src="assets/handover-en.svg" alt="adopt.sh handover flow" width="900">
+  <img src="assets/handover-en.svg" alt="How adopt.sh hands the kit over" width="900">
 </div>
 
-All changes land on a separate git branch **staged, not committed** — so every added and changed file shows up in your editor's Source Control / Changes panel; you review it there, then `git commit` to accept (or reset to discard). `main` stays untouched. Kit agents install side-by-side (never colliding), the discipline is bound via a single `@import`, `settings.json` is merged schema-aware, and existing husky/lefthook chains run alongside the kit via a shim. It closes with a durable `docs/HANDOVER.md` and an ADR, so decisions live in version control, not in a chat.
+Claude Starter Kit arrives the way one team hands a project to another: nothing is broken, decisions already made are not lost, and it does not sit there passively.
 
-### 🔁 Update an installed project
+Every change lands on a separate branch, **staged and not committed** — so each added and changed file appears in your editor's Source Control panel. You review it there, then `git commit` to accept or `reset` to discard. `main` stays untouched. Its agents install side by side without colliding, the discipline binds through one `@import`, `settings.json` is merged schema-aware, and existing husky or lefthook chains keep running through a shim. It closes with a durable `docs/HANDOVER.md` and an ADR, so the decisions live in version control rather than in a chat log.
 
-Run it at the project root — same command on every channel; `update` is an alias of `adopt`.
+### Updating
 
 ```bash
-npx @byerlikaya/claude-starter-kit@latest update                              # npx
-brew upgrade byerlikaya/tap/claude-starter-kit && claude-starter-kit update   # Homebrew
-gh release download --repo byerlikaya/claude-starter-kit -p '*.tgz' && tar xzf claude-starter-kit-*.tgz && bash adopt.sh   # tarball
+npx @byerlikaya/claude-starter-kit@latest update    # or /update-csk inside a session
 ```
 
 <details>
-<summary><b>Update mechanics</b> — what's refreshed, kit.conf, and where the change lands</summary>
+<summary>🔁&nbsp; <b>Update mechanics — what is refreshed, and where the change lands</b> &nbsp;<sub>click to expand</sub></summary>
 
-At install time the kit stamps `.claude/kit.conf` with the backend pattern and which installer ran, plus `.claude/VERSION`. The updater reads that stamp so a refresh **keeps the pattern**: a `--dotnet` project keeps its `devarch-module` skill, and a Node repo is never handed one. Where the stamp is absent, the updater derives the pattern from the installed files and writes it. Any component missing from `.claude/` is restored, and every one it adds is **listed by name** rather than appearing silently. Compare `cat .claude/VERSION` against `npm view @byerlikaya/claude-starter-kit version` to see whether an update is waiting.
-
-Inside a running Claude Code session you can also run **`/update-csk`** — it does the version check, runs the updater if a newer version exists, verifies the result with `/doctor-csk`, and then prompts `/compact` to reload the refreshed discipline in the same session. To check a live install's health at any time, run **`/doctor-csk`** (hooks executable · `core.hooksPath` set · gates wired · `CLAUDE.md` actually importing the discipline). It also prints an advisory **readiness** score for the project itself — filled-in project section, a project-specific skill, a devcontainer to sandbox agent commands, an MCP server, and whether `CLAUDE.md` has drifted behind the code.
+At install time Claude Starter Kit stamps `.claude/kit.conf` with the backend pattern and which installer ran, plus `.claude/VERSION`. A refresh **keeps the pattern**: a `--dotnet` project keeps `devarch-module`, and a Node repo is never handed one. Where the stamp is missing, the updater reads the pattern back from the installed files. Any missing component is restored, and every one it adds is **named in the output** rather than appearing silently.
 
 | | On update |
-|---|---|
+|:--|:--|
 | `.claude/` agents · skills · commands · hooks · eval | refreshed from the new version |
 | `.claude/DISCIPLINE.md` | **overwritten** — it is kit-owned, so keep nothing of your own in it |
-| `./CLAUDE.md` | never touched — your project rules stay exactly as you wrote them |
+| `./CLAUDE.md` | never touched — your project rules stay exactly as written |
 | `.claude/settings.json` | merged schema-aware; your own hooks and permissions survive |
 | your own agents and skills (no `-csk` suffix) | untouched |
 
-Like `adopt`, an update needs a git repo. Where the change lands is now a choice: a first adopt opens a `kit-adopt-<timestamp>` review branch (keeps your main line clean); a routine update whose `.claude/` is gitignored applies on your **current** branch (a separate branch would just be empty); an update with a **tracked** `.claude/` asks. Force where it lands with `--here` or `--new-branch`, and run it without prompts — as the in-session `/update-csk` and CI do — with `--yes`. Either way the change is staged and uncommitted — review the diff, then commit to accept or reset to discard.
+Where the change lands is a choice. A first adopt opens a `kit-adopt-<timestamp>` review branch. A routine update whose `.claude/` is gitignored applies on your current branch. An update with a **tracked** `.claude/` asks. Force it with `--here` or `--new-branch`, and skip the prompts with `--yes`. Either way the change is staged and uncommitted.
 
-> If a project's `CLAUDE.md` carries the discipline **inline** instead of importing it, discipline updates cannot reach that project. The updater detects this, shows which lines hold the inline block, and offers to replace them with the single `@.claude/DISCIPLINE.md` import — writing a backup first, on a branch you review. Decline and nothing is touched; your project section and your own rules survive either way.
+Inside a session, **`/update-csk`** does the version check, runs the updater, verifies with `/doctor-csk`, then prompts `/compact` so the refreshed discipline loads in the same session. **`/doctor-csk`** checks a live install at any time — hooks executable, `core.hooksPath` set, gates wired, the discipline actually imported — and prints an advisory readiness score for the project itself.
+
+If a project's `CLAUDE.md` carries the discipline **inline** instead of importing it, updates cannot reach it. The updater detects this, shows the affected lines, and offers to replace them with the single `@.claude/DISCIPLINE.md` import — writing a backup first, on a branch you review. Decline and nothing is touched.
 
 </details>
 
 ---
 
+## Session and token cost
+
+Claude cannot run `/context` on itself, so most setups **guess** how full a session is. Claude Starter Kit measures it. `context-usage.sh` reads the real token count from the last turn's API usage in the transcript — the same figure `/context` reports — and injects it every turn. At 75% fill you get one warning, at 90% one more. Neither blocks your turn.
+
+The discipline and the agent/skill descriptions load into every session. That always-on material is **~24 KB** today — on the order of **10k tokens** on a real turn, calibrated against an actual `claude -p` run rather than estimated. Every skill added is a permanent ~100-token tax on all sessions, which is why `smoke-test.sh` enforces a byte budget per component. A budget can be raised, but only by editing the test explicitly.
+
+**Why not install fewer components?** Because it buys almost nothing. The whole set costs ~3.3k tokens of description; leaving out the four UI skills and the frontend agent saves ~400 tokens — about 0.2% of a 200k window. The cost is worth controlling per component, which the byte budget does, rather than per project.
+
 ## Verification
 
 ```bash
 bash .claude/eval/smoke-test.sh      # structure, frontmatter, gate integrity
-bash .claude/eval/routing-eval.sh    # does an example prompt route to the right agent/skill
+bash .claude/eval/routing-eval.sh    # does an example prompt reach the right agent or skill
+bash .claude/eval/doctor.sh          # is this install healthy, and is the project ready
 ```
-
-**Watching the gates fire.** Export `CSK_GATE_LOG=<path>` and the guard hooks append one line per decision —
-`BLOCK`/`ASK`/`ALLOW`, the rule, and the command that tripped it. It is absent unless you set it, write-only,
-and recorded after the verdict, so it cannot change one. Useful when you want to know whether a gate actually
-stopped something or the model simply never went there: those two leave identical artifacts behind.
-
-## Workflow
-
-`/plan-csk` (ambiguous scope) → expert agents build → `/review-csk` (security · quality · test) → `/ship-csk` (DoD gate; proposes the commit, waits for approval) → when context fills up, `/handoff-csk` → `/clear`.
 
 ## Extending
 
-When you add an agent or skill, follow the `AGENT_TEMPLATE.md` contract: frontmatter (name · description + Trigger phrases · least-privilege tools · model tier) and body (When → Expertise stance → How/skill → Coordination → DoD → Output & context → Errors/escalation → Example → Constraints).
+When you add an agent or a skill, follow the `AGENT_TEMPLATE.md` contract: frontmatter (name · description with trigger phrases · least-privilege tools · model tier) and body (When → Expertise stance → How → Coordination → Definition of Done → Output → Escalation → Example → Constraints). `smoke-test.sh` refuses a component that nothing routes to, so nothing ships asleep.
 
-## License & attribution
+## Licence and attribution
 
 MIT — see [LICENSE](LICENSE).
 

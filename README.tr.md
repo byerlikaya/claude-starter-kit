@@ -2,14 +2,14 @@
 
 <img src="assets/logo.svg" alt="Claude Starter Kit" width="460">
 
-**Claude Code için agentic çalışma kiti** — bir projeyi, hangi aşamada olursa olsun aynı mühendislik disipliniyle ilerleten, yeniden kullanılabilir bir iskelet.
+**Claude Code için eksiksiz bir mühendislik düzeni.**
 
-*planla → üret → denetle → commit; her kritik kural bir hatırlatma değil, bir **kapı**.*
+12 uzman agent, 38 skill ve bir `CLAUDE.md`'nin yalnızca rica edebildiği kuralları *zorunlu kılan* araç seviyesinde kapılar.
 
-![Sürüm](https://img.shields.io/badge/s%C3%BCr%C3%BCm-1.10.1-2563eb?style=flat-square)
-![Lisans](https://img.shields.io/badge/lisans-MIT-16a34a?style=flat-square)
-![Ajanlar](https://img.shields.io/badge/ajanlar-12-f59e0b?style=flat-square)
-![Skiller](https://img.shields.io/badge/skiller-38-f59e0b?style=flat-square)
+![Sürüm](https://img.shields.io/badge/version-1.10.1-2563eb?style=flat-square)
+![Lisans](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)
+![Ajanlar](https://img.shields.io/badge/agents-12-f59e0b?style=flat-square)
+![Skiller](https://img.shields.io/badge/skills-38-f59e0b?style=flat-square)
 ![Claude Code](https://img.shields.io/badge/Claude_Code-agentic_kit-8b5cf6?style=flat-square)
 
 [🇬🇧 English](README.md) · 🇹🇷 Türkçe
@@ -18,107 +18,139 @@
 
 ---
 
-## Neden bu kit?
+## Sorun
 
-Üç iddia, her birinin arkasında bir sayı var.
+`CLAUDE.md` bir ricadır. İşin nasıl yapılmasını istediğinizi yazarsınız, model okur ve aklında tuttuğu sürece uyar. Denetleyen bir şey yoktur. Dosya uzadıkça uyum zayıflar, üstelik bunu size kimse söylemez: ya inceleme sırasında fark edersiniz, ya commit'ten sonra.
 
-**1. Uzmanlar gerçekten çalışıyor.** Bu, düzeltilmeden önce ölçüldü ve sonuç kötüydü: odaklı, tek-alanlı bir promptta ana thread **24 oturumda 0 kez** devretti — bütün ajanlar kurulu, delegasyon aracı açık, iş tam olarak bir ajanın alanında. Artık bir `UserPromptSubmit` hook'u sahibi ajanı isteğinin yanına yazıyor ve aynı ölçüm **dört turda 39/48** dönüyor. Fazladan bir şey yazmıyorsun.
+Eksik olan bilgi değil, yaptırım.
 
-**2. Önemli kurallar hatırlatma değil, kapı.** Kritik bir kural, komut çalışmadan **önce** araç seviyesinde cevaplanır — bir git hook'u, bir `settings.json` izni, bir `PreToolUse` guard'ı — yani hiçbir zaman modelin hatırlamasına kalmaz. Her kural iki yarısıyla vakalanır: bloklaması gerekeni blokluyor mu, ve komşularını rahat bırakıyor mu.
+## Claude Starter Kit ne yapıyor
 
-**3. Neyi kanıtlaya*madığını* da söylüyor.** Bir A/B iskeleti aynı promptu hem kit kurulu bir projede hem çıplak bir projede koşturup diskte kalanı derecelendiriyor. Şimdiye kadar yedi vaka, **altısı berabere döndü** ve altısı da gerekçesiyle [`evals/README.md`](evals/README.md) içinde yayında — en can sıkıcısı dahil: kolların ayrıldığı tek vakada işi *disiplin metni* yaptı, araç kapısı hiç ateşlenmedi. Bu sayfadaki hiçbir iddia, deponun sana ölçümünü gösteremeyeceği bir iddia değil.
+Önemli kuralları dosyadan alıp araçların içine koyuyor, çevresine de bir ekip kuruyor.
 
-Ve zaten elindeki repoya kuruluyor: **`adopt` kiti bir dalda, staged ve commit'siz devrediyor** — yani değişikliğin tamamı, hiçbiri senin olmadan önce editörünün diff'inde duruyor. `main`'e dokunulmuyor.
+**Kurallar kapıya dönüşüyor.** Yıkıcı bir komutu, kabuk görmeden önce bir `PreToolUse` hook'u reddediyor. Commit, `bypassPermissions` modunda bile onayınız için duruyor. Sızmış bir API anahtarını ya da yapay zekâ imzasını bir git hook'u yakalıyor. Hiçbiri modelin hatırlamasına bırakılmıyor.
 
-Aşağıdaki karşılaştırma **Claude Code + bir `CLAUDE.md`** ile yapılıyor — uydurma bir rakiple değil, A/B iskeletinin kontrol kolu olarak ölçtüğü tam o tabanla.
+**İşi uzmanlar yapıyor.** 12 agent'ın her biri tek bir alanın sahibi ve beş aşamada çalışıyorlar: planla, üret, denetle, kapat, devret. Riskli bir değişiklik, güvenlik incelemesi temize çıkmadan kapanamıyor. Her agent ince kalıyor: yalnızca *kim* ve *ne zaman* diyor, yöntemin kendisi bir skill'de bir kez yazılıyor.
 
-| Önemli olan | Claude Code + bir `CLAUDE.md` | Claude Starter Kit |
-|---|---|---|
-| **Kritik kurallar** | Bir `.md` dosyasında durur; yalnız model hatırlarsa uygulanır | **Kapı olarak zorlanır** — araç seviyesinde: git hook (`trace-scan`), `settings.json` izinleri, `guard-bash.sh` PreToolUse. Kapı komut çalışmadan önce cevap verir; kural modelin hatırlamasına bağlı değildir |
-| **Yapı** | Her işi tek thread yapar; hiçbir alanın sahibi yok | **12 uzman agent'lık bir ekip**, 5 aşamada (Anla → Üret → Denetle → Kapat → Devret) ve **düz promptta gerçekten çalışıyorlar** — `UserPromptSubmit` hook'u isteğinin yanına sahibini yazıyor; dört turda **39/48** ölçüldü, hooksuz taban **0/24**. Fazladan bir şey yazmıyorsun; sabit bir sıra istediğinde komutlar (`/review-csk`) birden çok ajanı @-mention ile zincirler |
-| **Güvenlik & gizlilik** | Yazmayı akıl ettiysen dosyanda bir satır | **Zorunlu audit kapısı** — risk-kritik değişiklik, güvenlik/gizlilik denetimi geçmeden kapanamaz |
-| **Commit'ler** | Model kendi başına commit atabilir | **Her commit senin onayına bağlı** — auto/bypass modda bile araç seviyesinde zorlanır |
-| **Mevcut repoya uyarlama** | Uyarlanacak bir şey yok — dosyayı sen yazar, sen bakarsın | **`adopt` kiti bir branch'te devreder** — `main`'e dokunulmaz; sen inceleyip tutmaya karar verirsin |
-| **"Nasıl" bilgisi nerede** | Hepsi tek dosyada; büyür ve zamanla kayar | **Agent = ince tetik** (kim/ne zaman); yöntem tek yerde, bir **skill**'te yaşar (tek doğruluk kaynağı), 38 skill'e yayılır |
+**Elinizdeki repoya da kuruluyor.** `adopt`, Claude Starter Kit'i ayrı bir dala commit'lenmemiş hâlde bırakıyor; yani değişikliğin tamamı, hiçbiri kalıcı olmadan önce editörünüzün diff ekranında duruyor. `main` dalına hiç dokunulmuyor.
 
----
-
-## 🚀 Hızlı başlangıç
+## Hızlı başlangıç
 
 ```bash
-npx @byerlikaya/claude-starter-kit          # sıfırdan proje — kurulum sihirbazı
-npx @byerlikaya/claude-starter-kit adopt    # mevcut proje — bir dalda güvenli devir
+npx @byerlikaya/claude-starter-kit          # yeni proje — kurulum sihirbazı
+npx @byerlikaya/claude-starter-kit adopt    # mevcut proje — ayrı bir dalda devir
 ```
 
-Ardından ilk Claude Code mesajın olarak **`.claude/FIRST_PROMPT.md`**'i yapıştır. Homebrew, release tarball ve plugin edisyonu aşağıdaki **Kurulum ve çalıştırma** bölümünde.
+Ardından ilk Claude Code mesajınız olarak `.claude/FIRST_PROMPT.md` dosyasını yapıştırın. Homebrew, sürüm arşivi ve plugin sürümü [Kurulum](#kurulum) başlığında.
+
+## İçindekiler
+
+- [İddialar ve dayanakları](#i̇ddialar-ve-dayanakları)
+- [Ne değildir](#ne-değildir)
+- [Ajanlar](#ajanlar)
+- [İçerik](#i̇çerik)
+- [Nasıl çalışıyor](#nasıl-çalışıyor)
+- [Kural → kapı](#kural--kapı)
+- [Kurulum](#kurulum)
+- [Oturum ve token maliyeti](#oturum-ve-token-maliyeti)
+- [Doğrulama](#doğrulama)
+- [Genişletme](#genişletme)
+- [Lisans ve kaynaklar](#lisans-ve-kaynaklar)
 
 ---
 
-## 🧠 Ajanlar — kitin kalbi
+## İddialar ve dayanakları
 
-**12 ajan** var; her biri bir **ince tetikleyici** — yalnızca *kim* ve *ne zaman* sorusunu yanıtlar, *nasıl* kısmını bir skill'e devreder. **Beş aşamaya** ayrılmışlardır; böylece commit'ten önce kalite kademe kademe yükselir:
+Bu sayfada üç iddia var. Her birinin arkasında bir sayı ve açıp bakabileceğiniz bir dosya duruyor.
+
+| İddia | Ölçüm | Nereden bakılır |
+|:--|:--|:--|
+| **Uzmanlar gerçekten devreye giriyor** | Yönlendirme hook'u olmadan 24 oturumda **0** devir. Claude Starter Kit'in hook'uyla dört turda **48'de 39** | [`evals/`](evals/) · `route-hint.sh` |
+| **Kritik kurallar araç seviyesinde tutuyor** | Her kapı iki yönlü test ediliyor: engellemesi gerekeni engelliyor mu, komşusuna dokunmuyor mu | `smoke-test.sh` |
+| **Claude Starter Kit fark çıkmayan ölçümleri de yayımlıyor** | Bugüne kadar 7 A/B vakası; **6'sı başa baş bitti** — hepsi yayında, disiplin metninin işi yaptığı ve kapının hiç ateşlenmediği vaka dahil | [`evals/README.md`](evals/README.md) |
+
+Birincisi bir cümleyi hak ediyor, çünkü Claude Starter Kit'in var olma sebebi. Agent kurmuş olmanız onların çalışacağı anlamına gelmiyor. Tek alana odaklı bir istekte — bütün ajanlar kurulu, devir aracı açık, iş tam olarak bir agent'ın alanında — Claude Code işi ana akışta tutuyor ve **24 oturum boyunca hiç devretmiyor**. Claude Starter Kit'in `UserPromptSubmit` hook'u ise isteğinizin yanına o işin sahibi olan agent'ın adını yazıyor ve aynı ölçüm **48'de 39** veriyor. Sizin fazladan bir şey yazmanız gerekmiyor.
+
+Üçüncüsü ise güveni asıl hak eden madde. Bir A/B düzeneği aynı isteği hem kit kurulu bir projede hem de çıplak bir projede çalıştırıp diskte ne kaldığına puan veriyor. Vakaların çoğu **başa baş** bitti; yani kit bir üstünlük göstermedi. Yine de gerekçesiyle birlikte yayımlandılar.
+
+## Ne değildir
+
+Sınırı açıkça söylemek de iddianın bir parçası.
+
+- **Kum havuzu değildir.** Kapılar katmanlı savunmadır. Kabuk Turing-tamdır; yeterince kararlı bir yeniden yazım her kalıbın etrafından dolaşabilir. Kapıların önlediği şey **kazadır** — teslim baskısı altında seçilen kaba komut. Sert bir sınır istiyorsanız Claude Code'u bir devcontainer ya da sanal makinede çalıştırın; `/doctor-csk` bunun olup olmadığını söyler.
+- **Devir garantisi değildir.** Claude devri; işe, agent'ın tarifine ve o anki bağlama bakarak karar verir. Bu bir kural değil, bir yargı. Bir agent'ın kesinlikle çalışması gerektiğinde `@agent-<ad>` bunu garantiler.
+- **Ölçülmüş bir verimlilik kazancı değildir.** Yedi A/B vakasının altısı başa baş bitti. Claude Starter Kit'in kanıtı *kuralların tutması* ve *uzmanların devreye girmesi* üzerine; daha hızlı teslim üzerine değil.
+- **Tek bir teknolojiye bağlı değildir.** Backend uzmanı, projenizin hangi kalıbı beyan ettiyse onu uygular. .NET/DevArchitecture varsayılandır, zorunluluk değil.
+
+---
+
+## Ajanlar
+
+**12 uzman agent**, beş aşamaya dağılmış; böylece hiçbir şey commit'lenmeden önce kalite kademe kademe yükseliyor.
 
 <div align="center">
-
-  🧭 **Anla** &nbsp;→&nbsp; 🔨 **Üret** &nbsp;→&nbsp; 🔍 **Denetle** &nbsp;→&nbsp; ✅ **Kapat** &nbsp;→&nbsp; 🤝 **Devret**
-
+  <img src="assets/orchestration-tr.svg" alt="Beş aşama: Anla, Üret, Denetle, Kapat, Devret" width="820">
 </div>
 
 <details>
-<summary><b>12 ajan ve her birinin ne zaman devreye girdiği</b></summary>
+<summary>🧭&nbsp; <b>12 agent'ın tamamı — hangisi neyin sahibi, ne zaman devreye girer</b> &nbsp;<sub>açmak için tıklayın</sub></summary>
 
-| Ajan | Aşama | Ne zaman devreye girer | Model |
+| Agent | Aşama | Ne zaman | Model |
 |:--|:--|:--|:--:|
-| **planner-csk** | 🧭 Anla | kapsam belirsiz olduğunda | `inherit` |
-| **backend-expert-csk** | 🔨 Üret | sunucu / API / iş mantığı | `inherit` |
+| **planner-csk** | 🧭 Anla | kapsam belirsizse | `inherit` |
+| **backend-expert-csk** | 🔨 Üret | sunucu / API / iş kuralı | `inherit` |
 | **database-expert-csk** | 🔨 Üret | şema, migration, index, cache | `inherit` |
-| **frontend-expert-csk** | 🔨 Üret | UI, bileşen, istemci tarafı işi | `inherit` |
-| **devops-expert-csk** | 🔨 Üret | dağıtım, CI hattı, olay müdahalesi | `inherit` |
-| **security-expert-csk** | 🔍 Denetle | auth / IDOR / injection / secret · **güvenlik açısından kritikse zorunlu** | `inherit` · `effort: high` |
+| **frontend-expert-csk** | 🔨 Üret | arayüz, bileşen, istemci işi | `inherit` |
+| **devops-expert-csk** | 🔨 Üret | dağıtım, CI hattı, olay | `inherit` |
+| **security-expert-csk** | 🔍 Denetle | auth / IDOR / injection / sır · **güvenlik kritikse zorunlu** | `inherit` · `effort: high` |
 | **privacy-agent-csk** | 🔍 Denetle | kişisel veri (KVKK / GDPR) | `inherit` |
 | **test-expert-csk** | 🔍 Denetle | test, kapsam, regresyon | `inherit` |
-| **performance-expert-csk** | 🔍 Denetle | sıcak yol, sorgu/döngü, render, payload · ölçülmüş bulgu üretir | `inherit` |
-| **review-agent-csk** | ✅ Kapat | commit öncesi kod sağlığı denetimi | `inherit` |
-| **commit-agent-csk** | ✅ Kapat | commit'i önerir, onay bekler | `haiku` |
-| **session-manager-csk** | 🤝 Devret | bağlam dolduğunda / faz sınırında | `inherit` |
+| **performance-expert-csk** | 🔍 Denetle | sıcak yol, sorgu/döngü, render, payload | `inherit` |
+| **review-agent-csk** | ✅ Kapat | commit öncesi kod sağlığı incelemesi | `inherit` |
+| **commit-agent-csk** | ✅ Kapat | commit'i önerir, onayı bekler | `haiku` |
+| **session-manager-csk** | 🤝 Devret | bağlam dolduğunda / faz bittiğinde | `inherit` |
 
 </details>
 
-> **Neden neredeyse her ajanda `inherit` yazıyor.** `model:` yazılmaması ya da `inherit` demek, alt-ajanın
-> oturum için senin seçtiğin modelde koşması demek — ve bu bilinçli: bir pin, ajanı yalnızca etrafındaki işten
-> *farklı* bir kademeye taşıyabilir. İki zorunlu denetim tam bu yüzden miras alıyor: bir değişikliği onaylayan
-> inceleme, onu yazandan zayıf olmamalı. `security-expert-csk` ek titizliği farklı bir modelden değil,
-> `effort: high` ile **senin** modelinde daha çok düşünerek alıyor. `commit-agent-csk`'de `haiku` kalıyor;
-> staged diff'ten Conventional Commit üretmek mekanik bir iş ve §4.1/§4.4 zaten kapılı. `smoke-test.sh` iki
-> yarıyı da zorluyor: `model:`/`effort:` değeri dokümanın tanımladığı kümeden olmalı, ve denetim ajanları
-> pin'siz kalmalı.
+**Neredeyse her agent neden `inherit` diyor?** Modeli sabitlenmemiş bir alt agent, oturum için seçtiğiniz modelde çalışır. Bu bilinçli bir tercih: bir sabitleme yalnızca agent'ı çevresindeki işten *farklı* bir seviyeye çekebilir, oysa bir değişikliği temize çıkaran inceleme, o değişikliği yazan şeyden asla zayıf olmamalı. `security-expert-csk` fazladan titizliği `effort: high` ile satın alır — başka bir modelle değil, *sizin* modelinizde daha çok düşünerek. `commit-agent-csk` ise `haiku` kalır; çünkü hazırlanmış bir diff'i Conventional Commit'e çevirmek mekanik bir iştir ve commit kuralları zaten kapılıdır.
 
-> Her ajan, skill ve komut `-csk` ekiyle (Claude Starter Kit) biter; böylece hiçbiri kurulduğu projenin kendi bileşenleriyle çakışmaz ve yerleşik bir Claude Code komutunu gölgelemez. Her ajan incedir; asıl yöntem bir **skill**'de yaşar — tek bilgi kaynağı orasıdır.
+Her agent, skill ve komut `-csk` ekiyle gelir; böylece ne projenizin kendi bileşenleriyle çakışır ne de bir Claude Code yerleşiğinin üstünü örter.
 
-> **Ajan devreye girmiyorsa garantiye alabilirsin.** Claude delegasyona göreve, ajanın `description` alanına ve
-> mevcut bağlama bakarak karar verir — bu bir kural değil, bir yargıdır; bazen işi ana thread'de tutar. İki
-> yükseltme yolu ([subagents dokümanı](https://code.claude.com/docs/en/sub-agents)): istekte ajanın adını yaz
-> ("bunu frontend-expert-csk yapsın") ya da **`@agent-frontend-expert-csk`** — bu, o ajanın o görev için
-> çalışmasını **garanti eder**. Hiçbir yerde delegasyon olmuyorsa `Agent` aracının `permissions.deny` içinde
-> olmadığını kontrol et; `/doctor-csk` bunu raporlar.
-
----
-
-## İçinde ne var?
+## İçerik
 
 <div align="center">
-  <img src="assets/network-tr.svg" alt="Kitin ağı — 12 ajan ve 38 skill, her çizgi gerçek bir applies ilişkisi" width="820">
-  <br><sub>Her ajan, her skill ve gerçek <code>applies</code> bağları — aşamaya göre gruplu, her ajan kendi renginde; merkez, hepsini orkestralayan ana thread.</sub>
+  <img src="assets/network-tr.svg" alt="12 agent ve 38 skill, gerçek uygular ilişkileriyle" width="820">
+  <br><sub>Her agent, her skill ve aralarındaki gerçek <code>uygular</code> ilişkileri — aşamalara göre gruplanmış, her agent kendi renginde; merkezde hepsini yöneten ana akış.</sub>
 </div>
 
-- **12 ajan** — yukarıdaki tabloya bak.
-- **38 skill** — "nasıl" sorusunun tek kaynağı, her alan için bir tane (tüm katalog aşağıda).
-- **7 slash komut** — `/brainstorm-csk` · `/plan-csk` · `/review-csk` · `/ship-csk` · `/handoff-csk` · `/update-csk` (kurulu kiti güncelle) · `/doctor-csk` (kurulumu sağlık-kontrolü). Sadeleştirme için yerleşik `/simplify` kullanılır.
-- **Hook'lar** — `route-hint.sh` (her isteğin yanına sahibi ajanı yazar; uzmanlar sen istemeden devreye girer), `guard-bash.sh` + `guard-write.sh` (araç seviyesi komut/yazma kapıları), `pre-commit` + `commit-msg` (iz + secret + bloat taraması), `context-usage.sh` ve `session-guard.sh` (oturum ölçümü), `session-rehydrate.sh` (/compact ya da /clear sonrası devir-notunu yeniden yüzeye çıkarır), `session-stats.sh` (oturumun gerçekte ne yaptığı — başarısız tool döngüleri, tekrarlanan promptlar, kesintiler, compaction'lar; `reflect` ve `handoff` bunu okur, böylece retro hatıraya değil kayda dayanır), `skill-trust.sh` (kitin göndermediği ve senin kabul etmediğin skill/agent'ı adlandırır), `guard-commit-scan.sh` (gerçek iz/sır tarayıcılarını `PreToolUse`'dan koşturur; böylece commit içerik kapısı `core.hooksPath` kurulamayan yerlerde de çalışır). Plugin edisyonu bu kapı hook'larını da taşır.
-- **CLAUDE.md** — davranış, üç ilke, iş akışı, tamamlanma tanımı (DoD), token disiplini ve yasaklar.
+| Bileşen | Adet | Nedir |
+|:--|:--:|:--|
+| **Ajanlar** | 12 | İnce tetikleyiciler — bir alanın *sahibi kim* ve *ne zaman* devreye girer |
+| **Skiller** | 38 | Yöntemin kendisi; bir kez yazılır, ihtiyacı olan uygular |
+| **Slash komutları** | 7 | `/brainstorm-csk` · `/plan-csk` · `/review-csk` · `/ship-csk` · `/handoff-csk` · `/update-csk` · `/doctor-csk` |
+| **Hook'lar** | 8 | Kapılar, ayrıca oturum ölçümü ve yönlendirme |
+| **Disiplin** | 1 | İlkeler, akış, Bitti Tanımı, yasaklar — `CLAUDE.md`'nizin içe aktardığı dosya |
 
 <details>
-<summary><b>Tüm skill kataloğu</b> — 38 skill, her birinden üretilir</summary>
+<summary>🪝&nbsp; <b>8 hook'un tamamı — hangi kapı neyi tutuyor</b> &nbsp;<sub>açmak için tıklayın</sub></summary>
+
+| Hook | Görevi |
+|:--|:--|
+| `route-hint.sh` | Her isteğin yanına o işin sahibi agent'ın adını yazar; uzmanlar siz istemeden devreye girer |
+| `guard-bash.sh` | Araç seviyesinde komut kapısı: commit/push onayı, yıkıcı işlemler, uzaktan kod çalıştırma, hook kurcalama |
+| `guard-write.sh` | Aynı korumanın Write/Edit tarafı — sessizce silinebilen bir kapı, kapı değildir |
+| `guard-commit-scan.sh` | Gerçek iz ve sır tarayıcılarını `PreToolUse`'dan çalıştırır; `core.hooksPath` kurulamayan yerde bile commit kapısı çalışır |
+| `context-usage.sh` | Gerçek token sayısını transcript'ten okur ve her turda bağlama enjekte eder |
+| `session-guard.sh` | Bağlam %75 dolunca bir, %90'da bir daha uyarır — turu asla bloklamaz |
+| `session-rehydrate.sh` | `/compact` ya da `/clear` sonrası devir notunu yeniden yüzeye çıkarır |
+| `skill-trust.sh` | Claude Starter Kit'in göndermediği ve sizin kabul etmediğiniz her skill ya da agent'ı adıyla bildirir |
+
+İki git hook'u — `pre-commit` ve `commit-msg` — iz, sır ve depo şişkinliği taramalarını çalıştırır. Plugin sürümü de kapı hook'larını taşır.
+
+</details>
+
+<details>
+<summary>📚&nbsp; <b>38 skill'in tamamı — katalog, her skill'in kendi dosyasından üretilir</b> &nbsp;<sub>açmak için tıklayın</sub></summary>
 
 <!-- SKILLS:START -->
 
@@ -169,195 +201,164 @@ Ardından ilk Claude Code mesajın olarak **`.claude/FIRST_PROMPT.md`**'i yapı�
 
 ---
 
-## Üç ilke
+## Nasıl çalışıyor
 
-1. **Ajan = ince tetikleyici.** Bir ajan yalnızca "kim, ne zaman" der; kısa kalır ve işin nasıl yapılacağını skill'e bırakır.
-2. **Skill = tek bilgi kaynağı.** Asıl yöntem ve kural skill'de yaşar; ajana kopyalanmaz.
-3. **Kural → kapı.** Önemli olan kural araç seviyesinde zorunlu kılınır (hook · permission · eval). Modelin bunu aklında tutması beklenmez.
+Tasarımı ayakta tutan üç kural var.
 
----
+1. **Agent ince bir tetikleyicidir.** Yalnızca *kim* ve *ne zaman* der, fazlası yok. Kısa kalır, çünkü tarifi her oturumun bağlamına yüklenir.
+2. **Skill tek doğruluk kaynağıdır.** Yöntemin kendisi orada bir kez yazılır ve asla agent'a kopyalanmaz.
+3. **Önemli kural kapıya dönüşür.** Yaptırım araç seviyesinde durur — bir hook, bir izin, bir test vakası. Modelden hatırlaması istenmez.
 
-## Oturum ve token yönetimi
+Günlük hâli şöyle görünür:
 
-Bir asistan `/context` komutunu kendisi çalıştıramaz; bu yüzden çoğu kurulum oturum doluluğunu **tahmin eder**. Bu kit ise ölçer. `context-usage.sh`, transcript'teki son turun API kullanımından gerçek token sayısını okur — `/context`'in gösterdiği değerin tam olarak aynısını. `UserPromptSubmit` hook'u bu değeri her tur enjekte eder; `Stop` hook'u (`session-guard.sh`) ise doluluk **%75'i ilk aştığında**, bir kez daha da **%90'da** seni uyarır — eşik başına tek uyarı, ve turunu asla bloklamaz. Oturum sağlığı satırı bir tahmine değil, bir ölçüme dayanır.
-
-### Token maliyeti
-
-`DISCIPLINE.md` ile ajan ve skill tarifleri her oturumun bağlamına yüklenir. Bu sabit yük bugün **~24 KB** (`DISCIPLINE.md` + 12 ajan + 38 skill tarifi) — gerçek bir turda **~10 bin token** mertebesinde; tahmin değil, gerçek bir `claude -p` turuyla kalibre edildi. Eklenen her skill tüm oturumlara kalıcı ~100 token vergisidir; bu yüzden aşağıdaki bayt bütçesi bir kılavuz değil, kapıdır.
-
-`smoke-test.sh` bileşen başına byte bütçesi uygular (disiplin · ajan tarifleri · skill tarifleri); maliyet fark edilmeden yukarı kaymaz. Bütçe yükseltilebilir, ama `smoke-test.sh` içinde açıkça düzenlenerek.
-
-> **Bileşen eksiltmek bunu ucuzlatmanın yolu değil.** Kümenin tamamı — 12 ajan ve 38 skill — açıklama olarak **~3,3k token** tutar; dört UI skill'i ile frontend ajanını dışarıda bırakmak **~400 token** kazandırır, yani 200k pencerenin yaklaşık %0,2'si. Her kurulumun tam kurulum olmasının ve yukarıdaki bayt bütçesinin bir kapı olmasının sebebi bu: maliyet proje başına değil, bileşen başına denetlenir.
-
----
+```
+/plan-csk        →  uzman ajanlar üretir  →  /review-csk       →  /ship-csk          →  /handoff-csk
+belirsiz kapsam     alanın sahibi işi        güvenlik · kalite    Bitti Tanımı kapısı;  bağlam doldu;
+planlamaya gider    yapar                    · test denetimi      commit'i önerir,      devret, sonra
+                                                                  onayı bekler          /clear
+```
 
 ## Kural → kapı
 
-| Kural | Zorlayan mekanizma |
-|---|---|
-| Commit/push yalnızca onayla — her izin modunda | `guard-bash.sh` (PreToolUse), yalnız senin cevaplayabileceğin bir onay istemi çıkarır; bir kez onayla, commit'i Claude atar. `bypassPermissions`'ta kapalı tarafa düşer; `CLAUDE_GIT_OK=1` headless koşuları önceden yetkilendirir |
-| Yıkıcı işlem (`reset --hard` · `checkout -- .` / `restore .` · force push · `rm -rf` · `clean -f` · `--no-verify` · rebase · amend) | `guard-bash.sh` (araç seviyesinde bloklanır). Ağaç-geneli geri alma listede, çünkü commit'lenmemiş her değişikliği reflog bırakmadan siler — `reset --hard` ile aynı kayıp, ama rutin bir temizlik gibi okunan bir komutla |
-| Uzaktan-kod-çalıştırma / izin-yıkımı (`curl…\|bash` · dünyaya-yazılabilir `chmod` · `dd of=`) | `guard-bash.sh` (her modda sert blok). `chmod` kuralı bir yazımı değil ortaya çıkan **izni** eşler — `777`, `1777`, `666`, `o+w` ve `a+w` aynı yere varır; birini bloklayıp diğerinin aynı duruma ulaşmasına izin veren bir kapı hiçbir şeyi korumamıştır |
-| Kapıları sökme (`core.hooksPath` yönlendirme ya da bir hook script'ini düzenleme/silme) | `guard-bash.sh` (shell tarafı) + `guard-write.sh` (Write/Edit tarafı) — sökülebilen kapı, kapı değildir |
-| Doğrudan varsayılan branch'e commit | `guard-bash.sh` bunu onay istemine yazar (blok değil, uyarı — sıfırdan proje meşru olarak `main`'de yaşar) |
-| Build/vendored çıktı ya da aşırı büyük dosya stage'lenmiş | `pre-commit` repo-şişme taraması (`node_modules/`, `dist/`, `>5 MiB`, …; `CSK_MAX_FILE_BYTES` ile ayarlanır) |
-| Sır **dosyası** stage'lenmiş (içerik taramasının kaçırabileceği tüm-dosya sırrı) | `pre-commit` sır-dosyası kapısı (`.env`, `id_rsa`, `*.pem/.key/.p12`, `.npmrc`, …; `.env.example`/`.sample`/`.template` commit'lenebilir kalır) |
-| `.gitignore`'u atlayan zorla-ekleme (`git add -f`) · lockfile silme | `guard-bash.sh` (araç seviyesinde bloklanır) |
-| Commit'te yapay zekâ izi ya da dış vendor adı bulunmaz | `pre-commit` + `commit-msg` git hook — senin proje dosyalarını tarar; kitin kendi `.claude/` ağacı muaftır (yapılandırdığı aracın adını taşır), sırlar asla muaf değildir |
-| Commit'e API key / token / private key girmez | `pre-commit` secret taraması (`secret-blocklist.txt` + `.secret-allowlist.txt`); bu listelerdeki her desen kendi test vakasını taşır ve `smoke-test.sh` onları gerçek hook'tan geçirir |
-| Bağlama kimlik dosyası **okunmaz** (`~/.ssh/id_rsa`, `~/.aws/credentials`, `*.pem`, `.netrc`, kubeconfig) | `settings.json` Read-deny + kabuk tarafı için `guard-bash.sh`. Commit taraması sırrı *çıkarken* yakalar; yalnızca okunan sırrı hiçbir şey yakalamaz, ve okunmuş bir sır tek bir özetle makineden çıkabilir. Açık anahtarlar ve `.example` yolları okunabilir kalır |
-| `.claude/` içine kimsenin incelemediği skill/agent düşmez | `skill-trust.sh` (SessionStart) onu tedarik-zinciri tarayıcısının hükmüyle birlikte adlandırır; kabul bilinçlidir ve özet (digest) olarak kaydedilir, kabulden sonraki bir düzenleme yeniden bildirilir |
-| Oturum eşiği | `context-usage.sh` + `session-guard.sh` (Stop hook) |
-| Sabit bağlam yükü şişmesin | `smoke-test.sh` bileşen başına byte bütçesi (disiplin · ajan tarifleri · skill tarifleri) |
-| Çalışan oturum bayat kurala uymasın | `context-usage.sh`, `.claude/VERSION`'ı oturumun başladığı sürümle karşılaştırır ve söyler |
-| Kalite kapısı (SonarQube kullanan projeler — dilden bağımsız) | `sonarqube-check` + `/ship-csk` |
+Tek bir tablo okuyacaksanız bu olsun. Solda kural, sağda o kuralın esnemesine izin vermeyen şey.
 
-Kapılar `settings.json` ve git `core.hooksPath` üzerinden devreye alınır; `smoke-test.sh` her değişiklikten sonra hazır olduklarını doğrular — ve her kural **iki** yarısıyla vakalanır: bloklaması gerekeni blokluyor mu, ve komşularını rahat bırakıyor mu (`chmod 755`, `rm -rf build`, `git checkout -- src/app.js`). Kanıtlanmamış bir kapı kapı değildir; rutin işte ateşleyen bir kapının ise etrafından dolanılır.
+| Kural | Neyle zorlanıyor |
+|:--|:--|
+| Commit ve push her izin modunda onayınızı ister | `guard-bash.sh` yalnızca sizin cevaplayabileceğiniz bir onay sorar. `bypassPermissions` altında kapalı tarafa düşer |
+| Yıkıcı işlemler: `reset --hard`, `checkout -- .`, force push, `rm -rf`, `clean -f`, `--no-verify`, amend | `guard-bash.sh`, araç seviyesinde engeller |
+| Uzaktan kod çalıştırma ve izin patlatma: `curl…\|bash`, herkese yazılabilir `chmod`, `dd of=` | `guard-bash.sh`, her modda kesin engel |
+| Kapıyı etkisizleştirme — `core.hooksPath` yönlendirme, hook düzenleme ya da silme | `guard-bash.sh` (kabuk) + `guard-write.sh` (dosya düzenleme) |
+| Hiçbir API anahtarı, token ya da özel anahtar commit'e girmez | `pre-commit` sır taraması; her kalıbın kendi test vakası var |
+| Hiçbir kimlik bilgisi bağlama *okunmaz* — `~/.ssh/id_rsa`, `~/.aws/credentials`, `*.pem`, kubeconfig | `settings.json` okuma reddi + `guard-bash.sh` |
+| Commit'te yapay zekâ imzası ya da satıcı şablonu adı bulunmaz | `pre-commit` + `commit-msg` git hook'ları |
+| Build çıktısı, vendor ağacı ya da aşırı büyük dosya hazırlanmaz | `pre-commit` depo şişkinliği taraması |
+| `.claude/` içinde beliren doğrulanmamış skill ya da agent, tarayıcı kararıyla bildirilir | Oturum başında `skill-trust.sh` |
+| Sabit yüklenen bağlam yalın kalır | `smoke-test.sh` bileşen başına bayt bütçesi |
+| Çalışan bir oturum, güncellemeden sonra eski kuralları izlemez | `context-usage.sh` sürüm karşılaştırması |
 
-> **Dürüst kapsam.** Bunlar derinlemesine savunmadır, bir kum havuzu değil — guard script'inin kendi kullandığı
-> ifade bu. Shell Turing-tamdır; kararlı bir yeniden yazım her deseni dolanabilir. Kapıların kaldırdığı şey
-> **kazadır**: teslim tarihi baskısıyla uzanılan kaba alet, rutin temizlik gibi okunan yıkıcı komut. Sert bir
-> sınır istiyorsan Claude Code'u devcontainer ya da VM içinde çalıştır — `/doctor-csk` böyle bir şeyin olup
-> olmadığını raporluyor.
+Her kural **iki yönlü** test edilir: engellemesi gerekeni engelliyor mu, ve komşusuna dokunuyor mu — `chmod 755`, `rm -rf build`, `git checkout -- src/app.js`. Kanıtlanmamış kapı kapı değildir; rutin işte ateşlenen kapının ise etrafından dolanılır.
+
+**Kapıyı ateşlerken görmek.** `CSK_GATE_LOG=<yol>` verirseniz her guard, her karar için tek satır yazar: `BLOCK` / `ASK` / `ALLOW`, kural ve komut. İstemedikçe kapalıdır, yalnızca yazar ve kararı verdikten *sonra* yazar; yani kararı etkileyemez. "Kapı mı durdurdu, yoksa model oraya hiç uzanmadı mı?" sorusunda işe yarar — bu iki durum geriye birebir aynı izi bırakır.
 
 ---
 
-## Kurulum ve çalıştırma
+## Kurulum
 
-**İki giriş noktası var:** `start.sh` **sıfırdan** bir projeyi kurar; **`adopt`** (`adopt.sh`) ise kiti **mevcut** bir projeye devreder. Hangi kanalı seçersen seç, hepsi aynı iki komutu çalıştırır.
+İki giriş noktası: yeni proje için **`start.sh`**, hâlihazırda ilerleyen proje için **`adopt.sh`**. Hangi kanaldan giderseniz gidin aynı iki komut çalışır.
 
-**npx** — kurulum gerektirmez:
 ```bash
-npx @byerlikaya/claude-starter-kit          # sıfırdan proje
-npx @byerlikaya/claude-starter-kit adopt    # mevcut proje
-npx @byerlikaya/claude-starter-kit@latest update   # kit'in kurulu olduğu projeyi tazele
-```
+# npx — kurulum gerektirmez
+npx @byerlikaya/claude-starter-kit                  # yeni proje
+npx @byerlikaya/claude-starter-kit adopt            # mevcut proje
+npx @byerlikaya/claude-starter-kit@latest update    # kurulu kiti tazele
 
-**Homebrew:**
-```bash
+# Homebrew
 brew install byerlikaya/tap/claude-starter-kit
-claude-starter-kit          # sıfırdan proje
+claude-starter-kit          # yeni proje
 claude-starter-kit adopt    # mevcut proje
-brew upgrade byerlikaya/tap/claude-starter-kit && claude-starter-kit update   # kit'in kurulu olduğu projeyi tazele
-```
 
-**Release tarball** — paket yöneticisi olmadan:
-```bash
+# Sürüm arşivi — paket yöneticisi olmadan
 gh release download --repo byerlikaya/claude-starter-kit -p '*.tgz' && tar xzf claude-starter-kit-*.tgz
-bash start.sh               # sıfırdan proje
-bash adopt.sh               # mevcut proje — kurulu bir projeyi tazelemek için tekrar çalıştır (update)
+bash start.sh               # yeni proje
+bash adopt.sh               # mevcut proje (tazelemek için tekrar çalıştırın)
 ```
 
-> Sadece ajan ve skill'leri mevcut Claude Code'una eklemek mi istiyorsun (iskele kurmadan)? `/plugin marketplace add byerlikaya/claude-starter-kit` ardından `/plugin install claude-starter-kit@byerlikaya`.
->
-> **Plugin güncellemesi otomatik değil.** Kurulu bir plugin, sen yenisini istemedikçe kurduğun sürümde kalır;
-> yani bir kapı düzeltmesi kendiliğinden sana ulaşmaz. İki adım, ikincisi yeniden başlatma gerektirir:
->
-> ```bash
-> claude plugin marketplace update byerlikaya   # kataloğu GitHub'dan yenile
-> claude plugin update claude-starter-kit       # sonra yeni sürümü kur (uygulamak için yeniden başlat)
-> ```
->
-> Hangi sürümde olduğunu `claude plugin list` gösterir. Diğer üç kanalın kendi yolu var — `npm i -g
-> @byerlikaya/claude-starter-kit`, `brew upgrade claude-starter-kit`, ya da iskeleli bir projede `/update-csk`.
+**Windows:** Claude Starter Kit bash tabanlıdır. **Git Bash** içinde çalıştırın ([git-scm.com](https://git-scm.com)); WSL de alternatif olarak çalışır.
 
-> **Windows:** kit bash tabanlıdır — en sorunsuz deneyim için **Git Bash** ([git-scm.com](https://git-scm.com)) içinde çalıştır; WSL de yedek olarak çalışır.
+**Plugin sürümü** — iskele kurmadan, yalnızca ajanlar, skiller ve kapı hook'ları mevcut Claude Code'unuzun içinde:
 
-### 🌱 Sıfırdan proje — `start.sh`
+```bash
+/plugin marketplace add byerlikaya/claude-starter-kit
+/plugin install claude-starter-kit@byerlikaya
+```
+
+Kurulu bir plugin, siz yenisini istemedikçe kurduğunuz sürümde kalır; bu yüzden `claude plugin marketplace update byerlikaya` ve ardından `claude plugin update claude-starter-kit` çalıştırın, uygulanması için de Claude Code'u yeniden başlatın.
+
+### Yeni proje
 
 ```bash
 bash start.sh [--dotnet|--generic] [-h]
 ```
 
-İki adımlık bir kurulum sihirbazı: backend kalıbı → özet ve onay. Bayraklar sessiz/CI kullanımı içindir, `-h` / `--help` ise kullanım bilgisini basar. Ne kuracağını **kurmadan önce** gösterir.
+İki adım: backend kalıbı, sonra hiçbir şey yazılmadan önce onayladığınız bir özet.
 
-> Kurulumdan sonra ilk Claude Code mesajın olarak **`.claude/FIRST_PROMPT.md`**'yi yapıştır — ajanları/skilleri doğrulayan ve ilk sprint'i planlayan opsiyonel bir başlatıcı. (`CLAUDE.md` her oturumda zaten yüklendiği için bu tek seferlik bir kolaylık, zorunluluk değil.)
+**Her kurulum aynı kurulumdur** — 12 ajanın ve 38 skill'in tamamı; backend, web ve mobil (React Native/Expo) bir arada. API olarak başlayıp sonradan web istemcisi kazanan bir proje, ikisi için de baştan donanımlıdır.
 
-**Her kurulum aynı kurulumdur:** 12 ajanın tamamı ve 38 skill'in tamamı — backend, web ve mobil (React Native/Expo) bir arada. Yanlış seçilecek bir frontend/backend/mobil tercihi yok; sonradan ikinci yarısını kazanan bir proje yeniden kurulum istemez.
+| Kurulumda sorulan | Seçenekler | Neyi değiştirir |
+|:--|:--|:--|
+| Backend kalıbı | `--dotnet` · `--generic` | `devarch-module` skill'i ve DevArchitecture tabanı |
+| DevArch tabanı — yalnız `--dotnet` | onayla · atla | `./backend` iskelesinin kurulup kurulmayacağı |
 
-| Kurulumda sorulan | Seçenekler | Gerçekten değişen |
-|---|---|---|
-| Backend kalıbı | `--dotnet` · `--generic` | `devarch-module` ve DevArchitecture tabanı |
-| DevArch tabanı (yalnız `--dotnet`) | onayla · atla | `./backend` iskelesinin kurulup kurulmayacağı |
+**`--dotnet`**, üretime hazır [DevArchitecture](https://github.com/DevArchitecture/DevArchitecture) temelini (CQRS · IResult · AOP · kimlik doğrulama) bir onay kapısının ardından klonlar ve onu zaten bilen ajanları kurar; böylece token'lar standart bir mimariyi yeniden üretmeye değil, sizin iş mantığınıza gider. Backend `./backend` altına yerleşir, yanına `./frontend` ayrılır ve çözüm dosyası projenizin adıyla yeniden adlandırılır.
 
-Ayrı bir mobil ajanı yok: web'i de mobili de masaüstünü de `frontend-expert-csk` üstlenir, mobilin "nasıl"ı ise `frontend-rn-expo` skill'inde durur — her kurulumda geldiği için her proje mobile hazırdır.
+**`--generic`** ise aynı uzmanı o kalıp olmadan kurar — Node, Go, Python ya da farklı bir kalıp kullanan bir .NET projesi için. Hiçbir şey DevArchitecture'ı dayatmaz: backend uzmanı, projenizin beyan ettiği kalıp skill'ini uygular.
 
-Tek gerçek soru backend kalıbıdır: **`--dotnet`**, .NET / DevArchitecture kalıbını (MediatR CQRS · IResult · AOP) bir onay kapısının ardından getirir; **`--generic`** ise aynı uzmanı onsuz kurar — Node, Go, Python ya da farklı bir kalıp kullanan bir .NET projesi için.
-
-> **.NET'te sıfırdan değil, kanıtlanmışla başla.** `--dotnet`, üretime hazır **[DevArchitecture](https://github.com/DevArchitecture/DevArchitecture)** temelini (CQRS · IResult · AOP · auth) klonlar *ve* bu temeli zaten bilen ajanları kurar — böylece **bir ajanın standart bir mimariyi yeniden üretirken yakacağı token'ları boşa harcamazsın**; o token'lar boilerplate'e değil, senin iş mantığına gider. Varsayılan olarak opinionated, zorla değil: backend uzmanı projenin **kalıp skill'ini** uygular — kutudan DevArchitecture, ya da kendi kalıbın (Clean Architecture, Vertical Slice, Minimal API, düz katmanlı) `.claude/skills/`'e bırakılır. `--generic` yığından bağımsız kalır.
-
-> **`--dotnet`** seçildiğinde DevArchitecture backend'i `./backend` altına konur, `./frontend` senin frontend'ine ayrılır ve çözüm dosyası projenin adıyla yeniden adlandırılır — böylece proje kökü, çıplak bir backend gibi görünmek yerine tertemiz kalır.
-
-### 🔄 Mevcut projeye devir — `adopt.sh`
+### Mevcut proje
 
 ```bash
-bash adopt.sh          # hedef projenin kökünde
+bash adopt.sh    # hedef projenin kökünde
 ```
 
-Kiti, hâlihazırda ilerleyen bir projeye, tıpkı **bir ekibin projeyi başka bir ekibe devretmesi** gibi uygular — proje bozulmaz, verilmiş kararlar kaybolmaz, kit de kenarda pasif durmaz.
-
 <div align="center">
-  <img src="assets/handover-tr.svg" alt="adopt.sh devir akisi" width="900">
+  <img src="assets/handover-tr.svg" alt="adopt.sh kiti nasıl devrediyor" width="900">
 </div>
 
-Tüm değişiklikler ayrı bir git dalına **staged olarak (commit'lenmeden)** düşer — yani eklenen ve değişen her dosya, editörünün Source Control / Changes panelinde görünür; oradan inceler, sonra `git commit` ile kabul edersin (ya da reset ile geri alırsın). `main` el değmeden kalır. Kit ajanları yan yana, hiç çakışmadan kurulur; disiplin tek bir `@import` ile bağlanır; `settings.json` şema farkındalığıyla birleştirilir; mevcut husky/lefthook zincirleri de bir shim üzerinden kitle birlikte çalışmaya devam eder. İşin sonunda kalıcı bir `docs/HANDOVER.md` ve bir ADR bırakır — böylece kararlar bir sohbette değil, versiyon kontrolünde yaşar.
+Claude Starter Kit, bir ekibin projeyi başka bir ekibe devretmesi gibi gelir: hiçbir şey bozulmaz, verilmiş kararlar kaybolmaz ve kit kenarda pasif durmaz.
 
-### 🔁 Kurulu bir projeyi güncelleme
+Bütün değişiklikler ayrı bir dala, **commit'lenmeden** düşer; yani eklenen ve değişen her dosya editörünüzün Source Control panelinde görünür. Oradan inceler, `git commit` ile kabul eder ya da `reset` ile atarsınız. `main` el değmeden kalır. Ajanları çakışmadan yan yana kurulur, disiplin tek bir `@import` ile bağlanır, `settings.json` şema farkındalığıyla birleştirilir ve mevcut husky ya da lefthook zincirleri bir shim üzerinden çalışmaya devam eder. İş, kalıcı bir `docs/HANDOVER.md` ve bir ADR ile kapanır; böylece kararlar bir sohbet kaydında değil, versiyon kontrolünde yaşar.
 
-Projenin kökünde çalıştır — her kanalda aynı iş; `update`, `adopt`'ın takma adıdır.
+### Güncelleme
 
 ```bash
-npx @byerlikaya/claude-starter-kit@latest update                              # npx
-brew upgrade byerlikaya/tap/claude-starter-kit && claude-starter-kit update   # Homebrew
-gh release download --repo byerlikaya/claude-starter-kit -p '*.tgz' && tar xzf claude-starter-kit-*.tgz && bash adopt.sh   # tarball
+npx @byerlikaya/claude-starter-kit@latest update    # ya da oturum içinde /update-csk
 ```
 
 <details>
-<summary><b>Güncelleme mekaniği</b> — ne tazelenir, kit.conf, değişiklik nereye iner</summary>
+<summary>🔁&nbsp; <b>Güncelleme mekaniği — ne tazelenir, değişiklik nereye düşer</b> &nbsp;<sub>açmak için tıklayın</sub></summary>
 
-Kit, kurulum anında `.claude/kit.conf` dosyasına backend kalıbını ve hangi kurucunun çalıştığını damgalar; yanına da `.claude/VERSION` düşer. Güncelleyici bu damgayı okur ve tazeleme **kalıbı korur**: `--dotnet` bir proje `devarch-module` skill'ini korur, bir Node reposuna ise asla verilmez. Damga yoksa güncelleyici kalıbı kurulu dosyalardan çıkarsar ve yazar. `.claude/` içinde eksik kalan her bileşen tamamlanır ve eklenen her şey sessizce belirmek yerine **adıyla listelenir**. Güncelleme var mı diye bakmak için `cat .claude/VERSION` çıktısını `npm view @byerlikaya/claude-starter-kit version` ile karşılaştır.
-
-Çalışan bir Claude Code oturumunun içinde **`/update-csk`** de çalıştırabilirsin — sürüm kontrolünü yapar, yeni sürüm varsa güncelleyiciyi koşar, sonucu `/doctor-csk` ile doğrular ve tazelenmiş disiplini aynı oturumda yeniden yüklemen için `/compact` önerir. Canlı bir kurulumun sağlığını dilediğin an **`/doctor-csk`** ile bak (hook'lar çalıştırılabilir mi · `core.hooksPath` kurulu mu · kapılar bağlı mı · `CLAUDE.md` disiplini gerçekten import ediyor mu). Ayrıca projenin kendisi için tavsiye niteliğinde bir **hazırlık** skoru basar: proje bölümü doldurulmuş mu, kitin geneline ek bir proje skill'i var mı, ajan komutlarını kumlayacak bir devcontainer ve bir MCP sunucusu var mı, `CLAUDE.md` kodun gerisinde kalmış mı.
+Claude Starter Kit, kurulum anında `.claude/kit.conf` dosyasına backend kalıbını ve hangi kurucunun çalıştığını damgalar; yanına `.claude/VERSION` düşer. Tazeleme **kalıbı korur**: `--dotnet` bir proje `devarch-module` skill'ini korur, bir Node reposuna ise asla verilmez. Damga yoksa güncelleyici kalıbı kurulu dosyalardan geri okur. Eksik kalan her bileşen tamamlanır ve eklenen her şey sessizce belirmek yerine **adıyla listelenir**.
 
 | | Güncellemede |
-|---|---|
+|:--|:--|
 | `.claude/` ajanlar · skiller · komutlar · hook'lar · eval | yeni sürümden tazelenir |
-| `.claude/DISCIPLINE.md` | **üzerine yazılır** — kite ait bir dosyadır, kendi kurallarını buraya koyma |
-| `./CLAUDE.md` | hiç dokunulmaz — proje kuralların yazdığın gibi kalır |
-| `.claude/settings.json` | şema farkındalığıyla birleştirilir; kendi hook ve izinlerin korunur |
-| kendi ajan ve skill'lerin (`-csk` eki olmayanlar) | el değmeden kalır |
+| `.claude/DISCIPLINE.md` | **üzerine yazılır** — kite aittir, kendinize ait hiçbir şeyi burada tutmayın |
+| `./CLAUDE.md` | hiç dokunulmaz — proje kurallarınız yazdığınız gibi kalır |
+| `.claude/settings.json` | şema farkındalığıyla birleştirilir; kendi hook'larınız ve izinleriniz korunur |
+| kendi ajanlarınız ve skilleriniz (`-csk` eki olmayanlar) | dokunulmaz |
 
-`adopt` gibi güncelleme de bir git deposu ister. Değişikliğin nereye ineceği artık bir seçim: ilk devir `kit-adopt-<zaman damgası>` inceleme dalı açar (ana hattın temiz kalır); `.claude/` gitignore'lu rutin bir güncelleme **mevcut** dalına uygulanır (ayrı dal boş olurdu); `.claude/` **izlenen** bir güncelleme sorar. Nereye ineceğini `--here` ya da `--new-branch` ile zorla; oturum-içi `/update-csk` ve CI'nin yaptığı gibi `--yes` ile de sormadan koştur. Her hâlükârda değişiklik staged ve commit'siz — diff'i incele, sonra commit'le ya da reset'le.
+Değişikliğin nereye düşeceği bir tercihtir. İlk devir `kit-adopt-<zaman>` adında bir inceleme dalı açar. `.claude/` dizini gitignore'lu rutin bir güncelleme mevcut dalınızda uygulanır. `.claude/` dizini **takip ediliyorsa** güncelleme size sorar. `--here` ya da `--new-branch` ile zorlayabilir, `--yes` ile soruları atlayabilirsiniz. Her hâlükârda değişiklik commit'lenmeden bırakılır.
 
-> Bir projenin `CLAUDE.md`'si disiplini import etmek yerine **içinde taşıyorsa**, disiplin güncellemeleri o projeye ulaşamaz. Güncelleyici bunu tespit eder, gömülü bloğun hangi satırlar olduğunu gösterir ve onu tek satırlık `@.claude/DISCIPLINE.md` import'uyla değiştirmeyi teklif eder — önce yedek alarak, incelediğin bir dalın üzerinde. Reddedersen hiçbir şeye dokunulmaz; her iki durumda da proje bölümün ve kendi kuralların yerinde kalır.
+Oturum içinde **`/update-csk`** sürüm kontrolünü yapar, güncelleyiciyi çalıştırır, sonucu `/doctor-csk` ile doğrular ve tazelenmiş disiplinin aynı oturumda yüklenmesi için `/compact` önerir. **`/doctor-csk`** kurulu bir kiti istediğiniz an denetler — hook'lar çalıştırılabilir mi, `core.hooksPath` ayarlı mı, kapılar bağlı mı, disiplin gerçekten içe aktarılmış mı — ve projenin kendisi için tavsiye niteliğinde bir hazırlık puanı basar.
+
+Bir projenin `CLAUDE.md` dosyası disiplini içe aktarmak yerine **satır içinde** taşıyorsa güncellemeler oraya ulaşamaz. Güncelleyici bunu saptar, hangi satırların etkilendiğini gösterir ve onları tek bir `@.claude/DISCIPLINE.md` satırıyla değiştirmeyi önerir — önce yedek alarak, incelediğiniz bir dalda. Reddederseniz hiçbir şeye dokunulmaz.
 
 </details>
 
 ---
 
+## Oturum ve token maliyeti
+
+Claude kendi üzerinde `/context` çalıştıramaz; bu yüzden çoğu kurulum oturumun ne kadar dolduğunu **tahmin eder**. Claude Starter Kit ölçer. `context-usage.sh`, son turun API kullanımından gerçek token sayısını transcript'ten okur — `/context`'in verdiği sayının aynısını — ve her turda bağlama enjekte eder. Doluluk %75'i geçince bir uyarı, %90'da bir uyarı daha alırsınız. İkisi de turunuzu bloklamaz.
+
+Disiplin ile agent ve skill tarifleri her oturuma yüklenir. Bu sabit yük bugün **~24 KB** — gerçek bir turda **~10 bin token** mertebesinde; tahmin değil, gerçek bir `claude -p` çalıştırmasıyla kalibre edildi. Eklenen her skill bütün oturumlara kalıcı ~100 token'lık bir vergidir; `smoke-test.sh` bu yüzden bileşen başına bayt bütçesi uygular. Bütçe yükseltilebilir, ama yalnızca testi açıkça düzenleyerek.
+
+**Neden daha az bileşen kurulmuyor?** Çünkü kazancı yok denecek kadar az. Kümenin tamamı tarif olarak ~3,3k token tutar; dört UI skill'ini ve frontend agent'ını dışarıda bırakmak ~400 token kazandırır — 200k'lık bir pencerenin yaklaşık %0,2'si. Maliyeti proje başına değil, bayt bütçesinin yaptığı gibi bileşen başına denetlemek anlamlıdır.
+
 ## Doğrulama
 
 ```bash
 bash .claude/eval/smoke-test.sh      # yapı, frontmatter, kapı bütünlüğü
-bash .claude/eval/routing-eval.sh    # örnek bir prompt doğru ajana/skill'e gidiyor mu
+bash .claude/eval/routing-eval.sh    # örnek bir istek doğru agent ya da skill'e gidiyor mu
+bash .claude/eval/doctor.sh          # bu kurulum sağlıklı mı, proje hazır mı
 ```
-
-**Kapıların ateşlendiğini görmek.** `CSK_GATE_LOG=<yol>` verirsen guard hook'ları her karar için bir satır
-yazar — `BLOCK`/`ASK`/`ALLOW`, kural ve kapıyı tetikleyen komut. Sen ayarlamadıkça yoktur, yalnız yazar ve
-kararı verdikten SONRA kaydeder; yani kararı etkileyemez. Bir kapının gerçekten bir şeyi durdurup durdurmadığını
-merak ettiğinde işe yarar: "kapı durdurdu" ile "model oraya hiç gitmedi" geriye birebir aynı izi bırakır.
-
-## İş akışı
-
-`/plan-csk` (belirsiz kapsam) → uzman ajanlar üretir → `/review-csk` (güvenlik · kalite · test) → `/ship-csk` (DoD kapısı; commit'i önerir, onay bekler) → bağlam dolduğunda `/handoff-csk` → `/clear`.
 
 ## Genişletme
 
-Yeni bir ajan ya da skill eklerken `AGENT_TEMPLATE.md` sözleşmesini izle: frontmatter (name · description + Trigger phrases · en az yetki ilkesiyle tools · model kademesi) ve gövde (Ne zaman → Uzmanlık duruşu → Nasıl/skill → Koordinasyon → DoD → Çıktı ve bağlam → Hata/eskalasyon → Örnek → Kısıtlar).
+Bir agent ya da skill eklerken `AGENT_TEMPLATE.md` sözleşmesine uyun: frontmatter (ad · tetikleyici ifadeleri içeren tarif · en az yetkili araç listesi · model seviyesi) ve gövde (Ne zaman → Uzmanlık duruşu → Nasıl → Koordinasyon → Bitti Tanımı → Çıktı → Yükseltme → Örnek → Kısıtlar). `smoke-test.sh`, hiçbir şeyin yönlendirmediği bir bileşeni kabul etmez; yani uyuyan bir bileşen yayımlanamaz.
 
-## Lisans ve atıf
+## Lisans ve kaynaklar
 
-MIT — bkz. [LICENSE](LICENSE).
+MIT — [LICENSE](LICENSE) dosyasına bakın.
 
 - **[NIST SP 800-218 (SSDF)](https://csrc.nist.gov/pubs/sp/800/218/final)** PW.7 ve **[OpenSSF Scorecard](https://github.com/ossf/scorecard)** `Code-Review` denetimi — `code-review-csk`'nin yönetişim katmanı: incelemenin yapılması ve bulguların kaydedilip triyaj edilmesi.
 - **[Conventional Comments](https://conventionalcomments.org/)** — `code-review-csk`'nin yorumlarını yazdığı etiket sözlüğü (CC BY 3.0).
