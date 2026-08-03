@@ -113,8 +113,9 @@ Then paste `.claude/FIRST_PROMPT.md` as your first Claude Code message. Homebrew
 | `session-guard.sh` | Warns once at 75% context fill and once at 90% — never blocks a turn |
 | `session-rehydrate.sh` | Re-surfaces the handover after `/compact` or `/clear` |
 | `skill-trust.sh` | Names any skill or agent Claude Starter Kit never shipped and you never accepted |
+| `session-stats.sh` | Reports what the session actually did — failing tool loops, repeated prompts, interrupts. `reflect` and `handoff` read it, so a retrospective rests on the record rather than on recollection |
 
-Two git hooks — `pre-commit` and `commit-msg` — run the trace, secret and repo-bloat scans. The plugin edition ships the gate hooks too.
+Two git hooks — `pre-commit` and `commit-msg` — run the trace, secret and repo-bloat scans. The plugin edition ships all of these except `skill-trust.sh`, which decides what is kit-owned from the `kit-manifest.txt` an installer writes and the plugin never creates.
 
 </details>
 

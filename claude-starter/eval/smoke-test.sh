@@ -480,6 +480,58 @@ if [ "$IS_KIT" = 1 ]; then
   grep -q 'N_AG="$(count_installed' "$KR/start.sh" 2>/dev/null \
     && pass "start.sh derives its summary counts from the payload" \
     || fail "start.sh no longer derives its summary counts from the payload"
+  # The Homebrew formula names the files it installs, and make-release.sh restricts what the tarball may
+  # contain. Those two lists drifted apart and stayed apart: the published formula installed `update.sh` for
+  # releases after that script became adopt.sh, so `brew install` could not succeed. Nothing compared them.
+  FRM="$KR/packaging/homebrew/claude-starter-kit.rb"
+  if [ -f "$FRM" ] && [ -f "$KR/make-release.sh" ]; then
+    BAD=""
+    for f in $(sed -n 's/.*libexec\.install \(.*\)/\1/p' "$FRM" | tr -d '"' | tr ',' ' '); do
+      [ -e "$KR/$f" ] || BAD="$BAD $f"
+    done
+    if [ -n "$BAD" ]; then
+      fail "Homebrew formula installs file(s) the release tarball cannot contain:$BAD"
+    else
+      pass "Homebrew formula installs only files that ship in the tarball"
+    fi
+    grep -q 'cp packaging/homebrew/claude-starter-kit.rb' "$KR/.github/workflows/release.yml" 2>/dev/null \
+      && pass "release publishes this repo's formula (not a patch of the tap's copy)" \
+      || fail "release.yml patches the tap formula instead of publishing this repo's — install logic cannot reach users"
+  fi
+  # The npm wrapper prints its own usage, and it advertised --backend/--frontend/--mobile/--fullstack as the
+  # primary form for a release that no longer has profiles. A user reads `--help` before the README.
+  if [ -f "$KR/bin/cli.js" ]; then
+    if grep -qE '\-\-backend\|--frontend' "$KR/bin/cli.js"; then
+      fail "bin/cli.js --help still advertises the profile flags as the usage form"
+    else
+      pass "bin/cli.js --help matches the current install shape"
+    fi
+  fi
+  # The hook TABLE is hand-written and nothing tied it to the directory it describes. session-stats.sh was on
+  # disk, wired into two skills, and absent from the README — the same class as the picture that drew eleven of
+  # twelve agents and the site that advertised eight commands. Every shipped hook must be documented somewhere
+  # a reader can find it.
+  for h in "$ROOT"/hooks/*.sh; do
+    [ -e "$h" ] || continue
+    hn="$(basename "$h")"
+    if grep -q "$hn" "$KR/README.md" && grep -q "$hn" "$KR/README.tr.md"; then
+      pass "hooks/$hn is documented in both READMEs"
+    else
+      fail "hooks/$hn ships but is not documented in both READMEs"
+    fi
+  done
+  # The plugin channel wires a SUBSET on purpose (skill-trust.sh needs a manifest only an installer writes).
+  # Assert the subset is exactly that one, so a hook silently dropped from the plugin fails here.
+  if [ -f "$KR/plugin/hooks/hooks.json" ] && [ -f "$ROOT/settings.json" ]; then
+    SET_H="$(grep -oE '[a-z-]+\.sh' "$ROOT/settings.json" | sort -u)"
+    PLG_H="$(grep -oE '[a-z-]+\.sh' "$KR/plugin/hooks/hooks.json" | sort -u)"
+    ONLY_SET="$(comm -23 <(printf '%s\n' "$SET_H") <(printf '%s\n' "$PLG_H") | tr '\n' ' ' | sed 's/ *$//')"
+    if [ "$ONLY_SET" = "skill-trust.sh" ]; then
+      pass "plugin wires every settings.json hook except skill-trust.sh (documented exclusion)"
+    else
+      fail "plugin/settings hook sets diverged — only in settings: '${ONLY_SET:-none}' (expected exactly skill-trust.sh)"
+    fi
+  fi
   # The DIAGRAMS make a claim too, and it is the one a reader takes at face value because nobody counts nodes in
   # a picture. The hand-drawn pipeline shipped with eleven of twelve agents — performance-expert-csk was simply
   # never drawn — and every gate stayed green because none of them looked at an SVG. Both diagrams are generated
@@ -576,6 +628,19 @@ if command -v git >/dev/null 2>&1; then
   pcreset; yes a | head -c 4096 | tr -d '\n' > "$PR/big.bin"
   ( cd "$PR" && git add -A >/dev/null 2>&1 && CSK_MAX_FILE_BYTES=1024 bash "$HOOKS/pre-commit" ) >"$PCLOG" 2>&1 \
     && fail "repo-bloat let an oversized blob through" || pass "repo-bloat blocks an oversized blob"
+
+  # The pattern half must judge NEW paths only. A file already in HEAD under such a path is one the project
+  # decided to keep — `bin/` is build output in .NET/Java and the home of a CLI entry point in Node — and
+  # blocking its edits makes it uneditable without --no-verify. This repo's own bin/cli.js hit exactly that.
+  pcreset; mkdir -p "$PR/bin"; printf 'console.log(1)\n' > "$PR/bin/cli.js"
+  pc && fail "repo-bloat let a NEW bin/ file through" || pass "repo-bloat blocks a new build-path file"
+  ( cd "$PR" && git add -A >/dev/null 2>&1 && git -c core.hooksPath=/dev/null commit -qm "seed bin/cli.js" ) >/dev/null 2>&1
+  pcreset; printf 'console.log(2)\n' > "$PR/bin/cli.js"
+  pc && pass "repo-bloat allows editing a TRACKED build-path file" || { fail "repo-bloat blocks an edit to a tracked bin/ file"; sed -n 1,2p "$PCLOG"; }
+  # …and the SIZE half still applies to that tracked file, so it cannot quietly grow.
+  pcreset; yes a | head -c 4096 | tr -d '\n' > "$PR/bin/cli.js"
+  ( cd "$PR" && git add -A >/dev/null 2>&1 && CSK_MAX_FILE_BYTES=1024 bash "$HOOKS/pre-commit" ) >"$PCLOG" 2>&1 \
+    && fail "size check skipped a tracked build-path file" || pass "repo-bloat still sizes a tracked build-path file"
 
   # (F) secret-FILE gate — a file that is a secret by NAME is blocked; a committable .env.example is not
   pcreset; printf 'AWS_SECRET=live\n' > "$PR/.env"

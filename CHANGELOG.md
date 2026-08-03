@@ -45,6 +45,16 @@ versioning follows [SemVer](https://semver.org/).
   tracked, accepted or dropped — which PW.7.2 requires ("record and triage all discovered issues") and the skill
   had no notion of: findings were reported and then nothing. Blockers may only be fixed or tracked, and the agent
   cannot grant itself "accepted".
+- **The front page was rebuilt for someone who has not used the kit.** It had grown by accretion: three dense
+  paragraphs before the reader learned what the thing does, no table of contents at 364 lines, and two sections
+  that explained the document instead of the product — a "claims" table followed by the same claims re-explained
+  at length, and four "what it is not" negations answering objections a newcomer has not formed yet. Both are
+  gone; their two real caveats moved next to what they qualify. The Turkish page was rewritten as Turkish rather
+  than translated: 51 em dashes (not Turkish punctuation), "gate" as *kapı* (a door), "sandbox" as a literal
+  sandpit, "slip" as skiing. One claim was dropped rather than reworded — the hero cited "0 of 24 sessions,
+  39 of 48" behind a passive "Measured:", and those figures appear nowhere but this changelog. `evals/` has no
+  case for them, so a reader following the claim finds nothing. The pressure-test figure, which does have a
+  published table, stays.
 - **The updater completes a narrower install instead of preserving it.** A project whose `kit.conf` carries a
   pre-2.0 `profile=` key gets the missing components installed, **each one named** in the output, and the key
   removed so the notice retires after one run. The list is derived from a before/after disk diff, not from a
@@ -52,6 +62,31 @@ versioning follows [SemVer](https://semver.org/).
   not acquire `devarch-module` on the way through.
 
 ### Fixed
+- **`brew install` could not have worked, and no gate could see it.** The published Homebrew formula installs
+  `update.sh`. That script was renamed to `adopt.sh`, and `make-release.sh` restricts the tarball to
+  `start.sh`, `adopt.sh`, `claude-starter/` and `VERSION` — so the formula has been naming a file the release
+  archive cannot contain. It survived because the release step rewrote only `url`, `sha256` and `version` in
+  the tap's copy and never touched its install logic, while the correct formula sitting in
+  `packaging/homebrew/` was read by nothing: zero references anywhere in the repo. The release now publishes
+  this repo's formula and fills the three release-specific fields into it, so install logic reaches users.
+  Two gates: the formula may only install files that exist here, and the release must copy rather than patch.
+  The already-published tap stays broken until the next release rewrites it.
+- **The npm wrapper's `--help` advertised flags the installer no longer has.** `bin/cli.js` printed
+  `[--backend|--frontend|--mobile|--fullstack]` as the primary usage form, and described an update as
+  refreshing "the shape it was installed in". A user reads `--help` before the README. Both corrected, and a
+  gate fails if the profile flags reappear as the documented form.
+- **A shipped hook was documented nowhere.** `session-stats.sh` is on disk and two skills call it, but the
+  rewritten README dropped it, and the claim that the plugin edition ships "these gate hooks too" was wrong —
+  `skill-trust.sh` is deliberately excluded there, because it decides kit-owned from a manifest only an
+  installer writes. Both corrected. Two gates: every hook must be documented in both READMEs, and the plugin's
+  wired set may differ from `settings.json` by exactly that one documented exclusion. This is the fourth
+  hand-maintained list in this release found to have drifted from what it describes.
+- **An installer assertion in `e2e.sh` failed with nothing to read.** The adopt run it depended on went to
+  `/dev/null`, so a red CI could not distinguish a defect from a flake. Adopt-dependent assertions now keep the
+  output and exit code and print the state they ran against — `kit.conf`, component counts, the branch, and the
+  two signals the stack detector reads. Verified by breaking a fixture deliberately. No retry was added: the
+  failure did not reproduce in eight local runs, passed on the neighbouring commits and on the other two
+  runners, and burying an intermittent failure is worse than leaving it loud. Its cause is still unknown.
 - **A gate that took three other gates down with it when its subject was deleted.** Every assertion in
   `smoke-test §6e` — including the README agent-count check and the EN/TR structural parity check added earlier
   in this release — sat inside `if [ -f profiles.conf ]`. Removing that file did not turn the section red; it
