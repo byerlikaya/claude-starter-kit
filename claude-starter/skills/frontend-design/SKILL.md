@@ -3,10 +3,14 @@ name: frontend-design
 description: |
   Visual and UX design quality for interfaces: hierarchy, spacing rhythm, typographic scale, a restrained color
   system, layout composition, and polished states. The taste layer above frontend architecture and a11y.
-  Trigger phrases: "visual design", "design system", "make it look good", "UI polish", "layout", "spacing", "typography"
 ---
 
 # Frontend Design (visual & UX quality)
+
+<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
+     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
+     truncated or dropped, which strips the very keywords a match depends on. -->
+Trigger phrases: "visual design", "design system", "make it look good", "UI polish", "layout", "spacing", "typography"
 
 `frontend` decides how the code is structured; `a11y` decides whether everyone can use it; **this skill decides
 whether it looks considered and feels right.** The through-line: **a few consistent decisions, applied everywhere,

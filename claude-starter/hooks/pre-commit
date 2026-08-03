@@ -78,7 +78,12 @@ while IFS= read -r f; do
     echo "SECRET-FILE: '$f' is a secrets / credentials / private-key file — never commit it (gitignore it; ship a .env.example instead)."
     HIT=1; continue
   fi
-  if printf '%s\n' "$f" | grep -qE "$BLOAT_DIRS"; then
+  # The PATTERN half only judges files that are NEW to the repository. A path already in HEAD is one the project
+  # decided to keep, and refusing it means that file can never be edited again without --no-verify — the exact
+  # shape of a gate that gets worked around. This repo hit it on its own `bin/cli.js`: `bin/` is build output in
+  # .NET and Java, and the conventional home of a CLI entry point in Node, where package.json's `bin` field
+  # points at it. The SIZE check below still applies to tracked files, so a tracked path cannot quietly grow.
+  if printf '%s\n' "$f" | grep -qE "$BLOAT_DIRS" && ! git cat-file -e "HEAD:$f" 2>/dev/null; then
     echo "REPO-BLOAT: '$f' is a build/vendored artifact — gitignore it, don't commit it."
     HIT=1; continue
   fi

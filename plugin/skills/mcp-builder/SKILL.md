@@ -3,10 +3,14 @@ name: mcp-builder
 description: |
   Build a Model Context Protocol (MCP) server so an AI client can call your tools/resources: design tool schemas,
   pick a transport, handle errors, and test it. For exposing an API, database, or service to Claude and other clients.
-  Trigger phrases: "MCP server", "build an MCP", "model context protocol", "expose tools to Claude", "MCP tool"
 ---
 
 # MCP Builder
+
+<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
+     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
+     truncated or dropped, which strips the very keywords a match depends on. -->
+Trigger phrases: "MCP server", "build an MCP", "model context protocol", "expose tools to Claude", "MCP tool"
 
 An MCP server exposes **tools** (actions the model can call), **resources** (data it can read), and **prompts**
 (reusable templates) to any MCP client over a standard protocol. The whole job is: **design a small set of clear,

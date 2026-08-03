@@ -60,6 +60,31 @@ def pol(cx,cy,r,deg):
     a=math.radians(deg); return (cx+r*math.cos(a), cy+r*math.sin(a))
 def pt(p): return f"{p[0]:.1f},{p[1]:.1f}"
 
+# The brand mark — ONE copy in this file, drawn wherever it is needed. assets/icon.svg is the source of truth;
+# packaging/check-gh-pages.sh reads the rect literals below and compares them against it and against the site's
+# inlined favicon. Three hand-kept copies already drift, which is why this is a function and not a second paste:
+# every place the mark appears in a generated diagram renders these exact rects.
+MARK_BOX = 200                                   # the mark's own coordinate system
+def mark(tx, ty, scale):
+    P=[f'<g transform="translate({tx:.1f},{ty:.1f}) scale({scale})" aria-hidden="true">']
+    P.append('<rect width="200" height="200" rx="46" fill="#0B1020"/><g transform="rotate(20 100 100)">')
+    P.append('<rect x="58" y="38" width="22" height="124" rx="11" fill="#E5E7FB"/>')
+    P.append('<rect x="88" y="38" width="22" height="124" rx="11" fill="#B9BEF9"/>')
+    P.append('<rect x="118" y="32" width="26" height="136" rx="13" fill="#A78BFA"/></g></g>')
+    return "".join(P)
+
+# Wordmark: the icon sits to the LEFT of the title, and the pair is centred as one block. The text width is
+# estimated from the glyph count because there is no font metric available here; a few pixels of asymmetry in a
+# title is invisible, whereas a hard-coded x would break the moment the font size changes.
+TITLE = "Claude Starter Kit"
+def wordmark(cx, y, fs, icon=42, gap=16):
+    tw = len(TITLE.replace(" ","")) * fs*0.555 + TITLE.count(" ") * fs*0.28 - len(TITLE)*0.6
+    dx = (icon+gap)/2.0
+    out = mark(cx+dx-tw/2-gap-icon, y-fs*0.36-icon/2.0, icon/float(MARK_BOX))
+    out += (f'<text x="{cx+dx:.1f}" y="{y}" text-anchor="middle" font-size="{fs}" font-weight="800" '
+            f'fill="#f3f5ff" letter-spacing="-0.6">{TITLE}</text>')
+    return out
+
 skill_agents={}
 for ag,sk in EDGES.items():
     for s in sk.split(): skill_agents.setdefault(s,[]).append(ag)
@@ -127,7 +152,7 @@ def build(subtitle):
     P.append('<filter id="corehalo" x="-90%" y="-90%" width="280%" height="280%"><feGaussianBlur stdDeviation="13" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>')
     P.append('</defs>')
     P.append(f'<rect width="{W}" height="{H}" fill="url(#bg)"/>')
-    P.append(f'<text x="{CX}" y="62" text-anchor="middle" font-size="36" font-weight="800" fill="#f3f5ff" letter-spacing="-0.6">Claude Starter Kit</text>')
+    P.append(wordmark(CX, 62, 36))
     P.append(f'<text x="{CX}" y="92" text-anchor="middle" font-size="13" fill="#8b96c6" font-family="ui-monospace,Menlo,monospace" letter-spacing="2">{subtitle}</text>')
     for st in ORDER:
         a0,a1=spans[st]; col=STAGE[st]
@@ -155,19 +180,169 @@ def build(subtitle):
         P.append(f'<rect x="{x-w/2:.1f}" y="{y-h/2:.1f}" width="{w:.1f}" height="{h}" rx="13.5" fill="#0f1830" stroke="{col}" stroke-width="1.6" filter="url(#glow)"/>')
         P.append(f'<text x="{x:.1f}" y="{y+4.2:.1f}" text-anchor="middle" font-size="12.5" font-weight="600" fill="#eaf0ff">{html.escape(s)}</text>')
     # agent nodes
+    # The node LABEL is the short name — twelve full "-csk" names would not fit inside a 35px circle. The full
+    # name goes in a <title>, which a screen reader announces on the node and a gate can grep for. Without it the
+    # picture never contains the string it is a picture of, so nothing downstream can check it is complete.
     for nm,st in AGENTS:
         x,y=pol(CX,CY,R_AGENT,agent_ang[nm]); col=AGENT_COLOR[nm]
+        P.append(f'<g><title>{html.escape(nm)}</title>')
         P.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="35" fill="{col}" filter="url(#glow)"/>')
         P.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="35" fill="none" stroke="#ffffff" stroke-opacity="0.85" stroke-width="2"/>')
         P.append(f'<text x="{x:.1f}" y="{y+4.5:.1f}" text-anchor="middle" font-size="12.5" font-weight="700" fill="#0b1220">{SHORT[nm]}</text>')
-    # center: real logo
+        P.append('</g>')
+    # center: real logo. SOURCE OF TRUTH IS assets/icon.svg — the three rects below are a hand-copy of it, and
+    # the gh-pages favicon (an inline data: URI in index.html) is a second hand-copy of the same artwork. None
+    # of the three can see the others, so `packaging/check-gh-pages.sh` compares them; if you change the mark,
+    # change assets/icon.svg first and let that gate tell you what else drifted.
     P.append(f'<circle cx="{CX}" cy="{CY}" r="64" fill="#0B1020" filter="url(#corehalo)"/>')
     P.append(f'<circle cx="{CX}" cy="{CY}" r="64" fill="none" stroke="#7C3AED" stroke-opacity="0.75" stroke-width="2"/>')
-    P.append(f'<g transform="translate({CX-48},{CY-48}) scale(0.48)">')
-    P.append('<rect width="200" height="200" rx="46" fill="#0B1020"/><g transform="rotate(20 100 100)">')
-    P.append('<rect x="58" y="38" width="22" height="124" rx="11" fill="#E5E7FB"/>')
-    P.append('<rect x="88" y="38" width="22" height="124" rx="11" fill="#B9BEF9"/>')
-    P.append('<rect x="118" y="32" width="26" height="136" rx="13" fill="#A78BFA"/></g></g>')
+    P.append(mark(CX-48, CY-48, 0.48))
+    P.append('</svg>')
+    return "".join(P)
+
+# ---------------------------------------------------------------------------------------------------------
+# Pipeline diagram (orchestration-*.svg) — the SEQUENCE the network diagram cannot show at a glance.
+# It lives in this file, not its own, because both pictures must draw from ONE agent list and ONE colour map:
+# an agent that is green in the network and orange in the pipeline is two pictures of two different kits. The
+# hand-drawn version this replaces had eleven agents in it — performance-expert-csk was simply never added, and
+# nothing compared the picture to the payload. Now the columns ARE the agent list.
+PIPE = [
+ ("1","UNDERSTAND","ANLA",    "#5b8cff", ["planner-csk"],
+  "ambiguous scope → a plan", "belirsiz kapsam → plan"),
+ ("2","PRODUCE","ÜRET",       "#34d17f", ["backend-expert-csk","database-expert-csk","frontend-expert-csk","devops-expert-csk"],
+  "the domain owner builds", "alanın sahibi üretir"),
+ ("3","AUDIT","DENETLE",      "#ff9040", ["security-expert-csk","privacy-agent-csk","test-expert-csk","performance-expert-csk"],
+  "security review is mandatory", "güvenlik incelemesi zorunlu"),
+ ("4","CLOSE","KAPAT",        "#a874f5", ["review-agent-csk","commit-agent-csk"],
+  "DoD gate · waits for your approval", "Bitti kapısı · onayınızı bekler"),
+ ("5","HAND OFF","DEVRET",    "#94a3c8", ["session-manager-csk"],
+  "context fills → hand off, /clear", "bağlam doldu → devret, /clear"),
+]
+# Fail loudly rather than draw a wrong picture: a new agent must be placed in a stage, not silently dropped.
+_pipe_agents = [a for _,_,_,_,ags,_,_ in PIPE for a in ags]
+_known = [a for a,_ in AGENTS]
+assert sorted(_pipe_agents) == sorted(_known), \
+    "PIPE does not cover every agent: missing %s, unknown %s" % (
+        sorted(set(_known)-set(_pipe_agents)), sorted(set(_pipe_agents)-set(_known)))
+
+# Canvas sized for how it is actually VIEWED. The README embeds this at width="820"; a 1300-wide canvas is then
+# scaled to 63% and 12.5px label text lands at 7.9px on screen — legible in the file, unreadable on the page.
+# At 900 the same embed scales to 91%, so the sizes below are close to what the reader gets. Labels use the SHORT
+# agent name for the same reason the network diagram does — the full name goes in <title>, where a screen reader
+# announces it and the smoke-test gate greps for it.
+PW, PH = 900, 424
+def build_pipeline(subtitle, tr=False):
+    cols=len(PIPE); m=40; usable=PW-2*m; cw=usable/cols
+    P=[]
+    P.append(f'<svg viewBox="0 0 {PW} {PH}" xmlns="http://www.w3.org/2000/svg" font-family="\'Segoe UI\',system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="Claude Starter Kit — five stages">')
+    P.append('<defs>')
+    P.append('<radialGradient id="bg" cx="50%" cy="42%" r="78%"><stop offset="0" stop-color="#101a34"/><stop offset="1" stop-color="#05070f"/></radialGradient>')
+    P.append('<filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="3.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>')
+    P.append('</defs>')
+    P.append(f'<rect width="{PW}" height="{PH}" fill="url(#bg)"/>')
+    P.append(wordmark(PW/2, 54, 30, icon=36, gap=13))
+    P.append(f'<text x="{PW/2}" y="80" text-anchor="middle" font-size="12" fill="#8b96c6" font-family="ui-monospace,Menlo,monospace" letter-spacing="1.4">{subtitle}</text>')
+    HEAD_Y, FIRST_Y, CHIP_H, GAP = 126, 186, 42, 11
+    for i,(num,en,trn,col,ags,cap_en,cap_tr) in enumerate(PIPE):
+        cx=m+cw*i+cw/2; name=trn if tr else en; cap=cap_tr if tr else cap_en
+        # stage column: a tinted band so the group reads as one unit, exactly as the network's sectors do
+        P.append(f'<rect x="{cx-cw/2+6:.1f}" y="{HEAD_Y-26}" width="{cw-12:.1f}" height="{PH-HEAD_Y-2}" rx="14" fill="{col}" fill-opacity="0.06" stroke="{col}" stroke-opacity="0.22" stroke-width="1"/>')
+        P.append(f'<text x="{cx:.1f}" y="{HEAD_Y}" text-anchor="middle" font-size="14.5" font-weight="800" fill="{col}" font-family="ui-monospace,Menlo,monospace" letter-spacing="1.2">{num} · {html.escape(name)}</text>')
+        P.append(f'<text x="{cx:.1f}" y="{HEAD_Y+21}" text-anchor="middle" font-size="11.5" fill="#94a0cc">{html.escape(cap)}</text>')
+        for j,ag in enumerate(ags):
+            y=FIRST_Y+j*(CHIP_H+GAP); acol=AGENT_COLOR[ag]; w=cw-24
+            P.append(f'<g><title>{html.escape(ag)}</title>')
+            P.append(f'<rect x="{cx-w/2:.1f}" y="{y:.1f}" width="{w:.1f}" height="{CHIP_H}" rx="11" fill="#0f1830" stroke="{acol}" stroke-width="1.8" filter="url(#glow)"/>')
+            P.append(f'<circle cx="{cx-w/2+16:.1f}" cy="{y+CHIP_H/2:.1f}" r="5.5" fill="{acol}"/>')
+            P.append(f'<text x="{cx+8:.1f}" y="{y+CHIP_H/2+5:.1f}" text-anchor="middle" font-size="14.5" font-weight="600" fill="#eaf0ff">{html.escape(SHORT[ag])}</text>')
+            P.append('</g>')
+        if i < cols-1:                                   # chevron into the next stage
+            ax=m+cw*(i+1); ay=FIRST_Y+CHIP_H/2
+            P.append(f'<path d="M{ax-8:.1f},{ay-7:.1f} L{ax+1:.1f},{ay:.1f} L{ax-8:.1f},{ay+7:.1f}" fill="none" stroke="#94a0cc" stroke-opacity="0.8" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>')
+    P.append('</svg>')
+    return "".join(P)
+
+# ---------------------------------------------------------------------------------------------------------
+# Handover strip (handover-*.svg) — what `adopt.sh` does, in order. Generated here for the same two reasons the
+# pipeline is: one visual language across every diagram in the README, and no hand-kept copy to drift. The stage
+# hues are reused from STAGE so a reader who has learned the colours on one picture keeps reading them here.
+HANDOVER = [
+ ("Detect",     "Tespit",   "",              "",             "#5b8cff"),
+ ("Propose",    "Öneri",    "7 decisions",   "7 karar",      "#5b8cff"),
+ ("Handover",   "Dal aç",   "branch",        "devir",        "#a874f5"),
+ ("Coexist",    "Birlikte", "-csk agents",   "-csk ajan",    "#34d17f"),
+ ("Discipline", "Disiplin", "+ settings",    "+ ayarlar",    "#34d17f"),
+ ("Proof",      "Kanıt",    "gates ready",   "kapılar hazır","#ff9040"),
+ ("HANDOVER.md","HANDOVER.md","+ ADR",       "+ ADR",        "#26c6e6"),
+]
+# Same sizing rule as the pipeline: the README embeds this at width="900", so a 1000-wide canvas renders at 90%
+# and the type below is close to what the reader actually sees.
+HW, HH = 1000, 132
+def build_handover(tr=False):
+    n=len(HANDOVER); m=20; gap=12
+    bw=(HW-2*m-gap*(n-1))/n
+    P=[]
+    P.append(f'<svg viewBox="0 0 {HW} {HH}" xmlns="http://www.w3.org/2000/svg" font-family="\'Segoe UI\',system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="Claude Starter Kit — handover steps">')
+    P.append('<defs>')
+    P.append('<linearGradient id="hbg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#101a34"/><stop offset="1" stop-color="#070b18"/></linearGradient>')
+    P.append('<filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>')
+    P.append('</defs>')
+    P.append(f'<rect width="{HW}" height="{HH}" fill="url(#hbg)"/>')
+    BY, BH = 30, 72
+    for i,(en,trn,sen,strn,col) in enumerate(HANDOVER):
+        x=m+i*(bw+gap); title=trn if tr else en; sub=strn if tr else sen
+        P.append(f'<rect x="{x:.1f}" y="{BY}" width="{bw:.1f}" height="{BH}" rx="13" fill="#0f1830" stroke="{col}" stroke-width="1.8" filter="url(#glow)"/>')
+        P.append(f'<circle cx="{x+16:.1f}" cy="{BY+15:.1f}" r="8.5" fill="{col}" fill-opacity="0.18" stroke="{col}" stroke-width="1.4"/>')
+        P.append(f'<text x="{x+16:.1f}" y="{BY+18.6:.1f}" text-anchor="middle" font-size="9.5" font-weight="800" fill="{col}" font-family="ui-monospace,Menlo,monospace">{i+1}</text>')
+        ty=BY+42 if sub else BY+42
+        P.append(f'<text x="{x+bw/2:.1f}" y="{ty}" text-anchor="middle" font-size="15" font-weight="700" fill="#eaf0ff">{html.escape(title)}</text>')
+        if sub:
+            P.append(f'<text x="{x+bw/2:.1f}" y="{ty+19}" text-anchor="middle" font-size="11.5" fill="#94a0cc" font-family="ui-monospace,Menlo,monospace">{html.escape(sub)}</text>')
+        if i < n-1:
+            ax=x+bw+gap/2
+            P.append(f'<path d="M{ax-4:.1f},{BY+BH/2-6:.1f} L{ax+4:.1f},{BY+BH/2:.1f} L{ax-4:.1f},{BY+BH/2+6:.1f}" fill="none" stroke="#94a0cc" stroke-opacity="0.8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>')
+    foot_en="every change lands on a branch, staged and uncommitted — main is never touched"
+    foot_tr="her değişiklik ayrı bir dala commit'lenmeden düşer — main'e hiç dokunulmaz"
+    P.append(f'<text x="{HW/2}" y="{BY+BH+26}" text-anchor="middle" font-size="12" fill="#8b96c6">{html.escape(foot_tr if tr else foot_en)}</text>')
+    P.append('</svg>')
+    return "".join(P)
+
+# ---------------------------------------------------------------------------------------------------------
+# Command flow (workflow-*.svg) — the same five stages, but named by the slash command you actually type. It
+# replaces an ASCII block that could not be aligned in both languages at once: Turkish wraps longer, so the
+# columns drifted apart in one README while looking right in the other.
+FLOW = [
+ # (tr_cmd, en_cmd, colour, tr_line1, en_line1, tr_line2, en_line2)
+ # Both the command label AND both body lines are per-language: an earlier version shared one label field, and
+ # the English diagram shipped reading "uzman ajanlar". Lines are kept short enough to fit the box at the width
+ # below — a label that overflows its box is worse than no label, because it renders on top of the border.
+ ("/plan-csk",     "/plan-csk",     "#5b8cff", "belirsiz kapsam", "ambiguous scope",   "planlamaya gider",  "goes to planning"),
+ ("uzman ajanlar", "expert agents", "#34d17f", "alanın sahibi",   "the domain owner",  "işi yapar",         "does the work"),
+ ("/review-csk",   "/review-csk",   "#ff9040", "güvenlik · kalite","security · quality","· test denetimi",  "· test audit"),
+ ("/ship-csk",     "/ship-csk",     "#a874f5", "Bitti Tanımı",    "Definition of Done","onayınızı bekler",  "waits for approval"),
+ ("/handoff-csk",  "/handoff-csk",  "#94a3c8", "bağlam doldu",    "context is full",   "devret, /clear",    "hand off, /clear"),
+]
+FW, FH = 960, 232
+def build_flow(tr=False):
+    n=len(FLOW); m=26; gap=10; bw=(FW-2*m-gap*(n-1))/n
+    P=[f'<svg viewBox="0 0 {FW} {FH}" xmlns="http://www.w3.org/2000/svg" font-family="\'Segoe UI\',system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="Claude Starter Kit — command flow">']
+    P.append('<defs><linearGradient id="fbg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#101a34"/><stop offset="1" stop-color="#070b18"/></linearGradient>')
+    P.append('<filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>')
+    P.append(f'<rect width="{FW}" height="{FH}" fill="url(#fbg)"/>')
+    BY,BH = 40, 112
+    for i,(cmd_tr,cmd_en,col,t1,e1,t2,e2) in enumerate(FLOW):
+        x=m+i*(bw+gap); cmd=cmd_tr if tr else cmd_en; l1=t1 if tr else e1; l2=t2 if tr else e2
+        # No accent bar across the top: a full-width r=2 strip on an r=13 box pokes out past the rounded corners
+        # and reads as a rendering fault. The coloured stroke already identifies the stage.
+        P.append(f'<rect x="{x:.1f}" y="{BY}" width="{bw:.1f}" height="{BH}" rx="13" fill="#0f1830" stroke="{col}" stroke-width="1.8" filter="url(#glow)"/>')
+        P.append(f'<text x="{x+bw/2:.1f}" y="{BY+34:.1f}" text-anchor="middle" font-size="13.5" font-weight="700" fill="{col}" font-family="ui-monospace,Menlo,monospace">{html.escape(cmd)}</text>')
+        P.append(f'<text x="{x+bw/2:.1f}" y="{BY+66:.1f}" text-anchor="middle" font-size="12.5" fill="#eaf0ff">{html.escape(l1)}</text>')
+        P.append(f'<text x="{x+bw/2:.1f}" y="{BY+87:.1f}" text-anchor="middle" font-size="12.5" fill="#94a0cc">{html.escape(l2)}</text>')
+        if i<n-1:
+            ax=x+bw+gap/2
+            P.append(f'<path d="M{ax-4:.1f},{BY+BH/2-7:.1f} L{ax+4:.1f},{BY+BH/2:.1f} L{ax-4:.1f},{BY+BH/2+7:.1f}" fill="none" stroke="#94a0cc" stroke-opacity="0.85" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>')
+    foot = "her adım bir öncekini doğrular; commit en sonda, onayınızla" if tr else "each step verifies the one before it; the commit comes last, with your approval"
+    P.append(f'<text x="{FW/2}" y="{BY+BH+40}" text-anchor="middle" font-size="12.5" fill="#8b96c6">{html.escape(foot)}</text>')
     P.append('</svg>')
     return "".join(P)
 
@@ -182,4 +357,12 @@ SUB_EN=f'{NAG} AGENTS × {NSK} SKILLS · GROUPED BY STAGE · EVERY LINE A REAL "
 SUB_TR=f'{NAG} AJAN × {NSK} SKILL · AŞAMAYA GÖRE GRUPLU · HER ÇİZGİ GERÇEK BİR "applies"'
 open(ASSETS+"/network-en.svg","w").write(build(SUB_EN))
 open(ASSETS+"/network-tr.svg","w").write(build(SUB_TR))
-print("wrote network-en.svg + network-tr.svg to",ASSETS,"| agents",NAG,"skills",NSK)
+PSUB_EN=f'{NAG} AGENTS · FIVE STAGES · QUALITY ESCALATES BEFORE ANYTHING IS COMMITTED'
+PSUB_TR=f'{NAG} AJAN · BEŞ AŞAMA · HİÇBİR ŞEY COMMIT EDİLMEDEN KALİTE YÜKSELİR'
+open(ASSETS+"/orchestration-en.svg","w").write(build_pipeline(PSUB_EN))
+open(ASSETS+"/orchestration-tr.svg","w").write(build_pipeline(PSUB_TR, tr=True))
+open(ASSETS+"/handover-en.svg","w").write(build_handover())
+open(ASSETS+"/handover-tr.svg","w").write(build_handover(tr=True))
+open(ASSETS+"/workflow-en.svg","w").write(build_flow())
+open(ASSETS+"/workflow-tr.svg","w").write(build_flow(tr=True))
+print("wrote network-{en,tr} + orchestration-{en,tr} + handover-{en,tr}.svg to",ASSETS,"| agents",NAG,"skills",NSK)

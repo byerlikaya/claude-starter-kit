@@ -2,10 +2,14 @@
 name: a11y
 description: |
   Frontend accessibility audit (WCAG): semantic HTML, keyboard access, focus management, contrast, ARIA, screen readers.
-  Trigger phrases: "a11y", "accessibility", "WCAG", "screen reader", "keyboard navigation", "contrast", "ARIA"
 ---
 
 # Accessibility (a11y)
+
+<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
+     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
+     truncated or dropped, which strips the very keywords a match depends on. -->
+Trigger phrases: "a11y", "accessibility", "WCAG", "screen reader", "keyboard navigation", "contrast", "ARIA"
 
 Goal: make the interface usable by **everyone**, including keyboard, screen reader, and low vision. Baseline target: **WCAG 2.1 AA**.
 Stack-agnostic (web/React/RN); do a web search when needed for framework-specific APIs.

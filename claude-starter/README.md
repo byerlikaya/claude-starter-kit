@@ -18,8 +18,8 @@ summarizes what lives under `.claude/` and how it works.
   suffix so that this kit's agents do not clash with the project's own agents.
 - **Skills** (`skills/`) — the single source of the "how" knowledge: code review, security scan,
   migration, deployment, observability, performance, accessibility, translation integrity, versioning,
-  incident response, and more. (The installed set may be pruned according to the chosen profile.)
-- **Commands** (`commands/`) — `/plan` · `/review` · `/ship` · `/handoff` · `/simplify`.
+  incident response, and more. (Every install carries all of them; a generic backend drops only `devarch-module`.)
+- **Commands** (`commands/`) — `/plan-csk` · `/review-csk` · `/ship-csk` · `/handoff-csk` · `/simplify`.
 - **Hooks** (`hooks/`) — `guard-bash.sh` (tool-level gate), `pre-commit` + `commit-msg`
   (trace scan), `context-usage.sh` and `session-guard.sh` (session measurement), `trace-blocklist.txt`.
   `session-stats.sh` sits alongside them but is wired to no event: the `reflect` and `handoff` skills run it on
@@ -38,8 +38,8 @@ summarizes what lives under `.claude/` and how it works.
 - **`DISCIPLINE.md`** — behavior, four principles, workflow, definition of done, token discipline, and prohibitions.
   Kit-owned: an update **overwrites** it, so keep nothing of your own here. Your `./CLAUDE.md` pulls it in with a
   single `@.claude/DISCIPLINE.md` line and holds your project rules, which win on conflict.
-- **`kit.conf`** — the profile and backend stack this project was installed with. The updater reads it so a refresh
-  reshapes the project the way it was installed, instead of re-adding what the profile pruned.
+- **`kit.conf`** — the backend pattern this project was installed with. The updater reads it so a refresh keeps
+  that pattern instead of grafting the .NET one onto a Node repo.
 - **`kit-manifest.txt`** — the component names the kit ships, one per line. It is what separates kit-owned from
   project-owned: `doctor.sh` reads it to find your own skills, and the trust gate reads it to spot a skill the kit
   never shipped. Rewritten on every install/update — don't edit it by hand.
@@ -47,8 +47,8 @@ summarizes what lives under `.claude/` and how it works.
 
 ## Workflow
 
-`/plan` (ambiguous scope) → expert agents generate → `/review` (security · quality · testing) →
-`/ship` (DoD gate; proposes the commit, waits for approval) → when context fills up, `/handoff` → `/clear`.
+`/plan-csk` (ambiguous scope) → expert agents generate → `/review-csk` (security · quality · testing) →
+`/ship-csk` (DoD gate; proposes the commit, waits for approval) → when context fills up, `/handoff-csk` → `/clear`.
 
 ## Session and token management
 
@@ -82,7 +82,7 @@ Run `npx @byerlikaya/claude-starter-kit@latest update` at the project root. `.cl
 | Session threshold (75% · 90%) | `context-usage.sh` (measurement) + `session-guard.sh` (Stop hook, warns once per threshold) |
 | Always-on context stays lean | `smoke-test.sh` byte budgets: discipline · agent descriptions · skill descriptions |
 | A running session never follows stale rules | `context-usage.sh` compares `.claude/VERSION` with the session's starting version |
-| Quality gate (projects using SonarQube — language-agnostic) | `sonarqube-check` + `/ship` |
+| Quality gate (projects using SonarQube — language-agnostic) | `sonarqube-check` + `/ship-csk` |
 
 ## Verification
 

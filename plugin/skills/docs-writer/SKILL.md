@@ -3,10 +3,14 @@ name: docs-writer
 description: |
   Keeps documentation in sync with the code: README, usage and related docs when a public API or behavior
   changes. Leaves no dead or misleading docs behind.
-  Trigger phrases: "documentation", "docs", "update README", "API docs", "write docs", "document it", "write usage"
 ---
 
 # Documentation
+
+<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
+     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
+     truncated or dropped, which strips the very keywords a match depends on. -->
+Trigger phrases: "documentation", "docs", "update README", "API docs", "write docs", "document it", "write usage"
 
 Goal: the docs must **match the code**. Wrong/stale docs are worse than no docs (they inspire trust and mislead).
 Trigger: when a public API, command, configuration, or user-visible behavior changes.

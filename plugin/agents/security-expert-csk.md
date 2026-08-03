@@ -6,14 +6,18 @@ description: |
   weak crypto, IDOR, rate limits, or tamper surface are touched. Findings + fixes via `security-scan` (plus
   `sonarqube-check` where used); writes no code.
 tools: Read, Grep, Glob, Bash
-model: sonnet
+# No `model` pin: omitted means inherit, so the mandatory audit runs on whatever model the user chose
+# for the session. A pin here can only make it WEAKER than the code it is reviewing — this said `sonnet`
+# for 156 commits, so an Opus session had its experts on Opus and the gate that clears them on Sonnet.
+# More rigour is bought with thinking, not with a different tier.
+effort: high
 ---
 
 # Security Expert
 
 <!-- routing-eval reads this line; it lives in the BODY so the always-on `description` stays
      focused on WHEN to delegate, which is the field Claude actually reads. -->
-Trigger phrases: "security audit", "security scan", "OWASP check", "security review", "secret scan", "auth check", "token security", "tampering"
+Trigger phrases: "security audit", "security scan", "OWASP check", "security review", "secret scan", "auth check", "token security", "tampering", "another user", "another customer", "unauthorized", "idor", "data leak", "who can access", "leak data"
 
 Read-only auditor. The relevant expert (backend/database) makes the fix; this agent produces the findings.
 

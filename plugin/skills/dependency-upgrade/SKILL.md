@@ -3,10 +3,14 @@ name: dependency-upgrade
 description: |
   Bring dependencies current without breaking the build: find what is vulnerable, deprecated or behind,
   classify each target version by risk, apply what is safe, verify, and roll back what is not.
-  Trigger phrases: "upgrade dependencies", "outdated packages", "bump versions", "update packages", "keep dependencies current"
 ---
 
 # Dependency Upgrade
+
+<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
+     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
+     truncated or dropped, which strips the very keywords a match depends on. -->
+Trigger phrases: "upgrade dependencies", "outdated packages", "bump versions", "update packages", "keep dependencies current"
 
 ## When
 Staying on current versions as an ongoing practice, or reacting to a CVE. [[dependency-audit]] tells you what is

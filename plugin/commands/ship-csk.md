@@ -1,8 +1,8 @@
 ---
-name: ship
+name: ship-csk
 description: DoD gate + commit proposal (waits for approval).
 ---
-# /ship
+# /ship-csk
 Closure flow — in order:
 1. **DoD gate:** was `/simplify` applied · are tests green (@agent-test-expert-csk) · (if SonarQube is used) `sonarqube-check` 0/0/0/0.
    If any one is red, **STOP**, report what is missing; no deferral.

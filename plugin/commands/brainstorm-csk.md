@@ -1,9 +1,9 @@
 ---
-name: brainstorm
+name: brainstorm-csk
 description: Diverge before planning — turn a fuzzy ask into scoped options and a chosen direction.
 argument-hint: "[fuzzy idea / problem to explore]"
 ---
-# /brainstorm
+# /brainstorm-csk
 Argument: $ARGUMENTS
 
 Delegate to the @agent-planner-csk agent applying the **brainstorm** skill. For an under-defined ask:
@@ -13,4 +13,4 @@ Delegate to the @agent-planner-csk agent applying the **brainstorm** skill. For 
 4. Ask the user to choose WITH **explicit numbered options**; log the rejected directions + why.
 
 Write a long exploration to `docs/DISCOVERY.md`; return the option headings + the chosen direction (token-budget).
-Do NOT write code — this is discovery. Once a direction is chosen, hand off to `/plan` (spec-planning).
+Do NOT write code — this is discovery. Once a direction is chosen, hand off to `/plan-csk` (spec-planning).

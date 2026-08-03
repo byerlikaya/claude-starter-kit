@@ -5,14 +5,16 @@ description: |
   Session/context health auditor. At every task close, evaluates context fill and appends the one-line status +
   recommendation to the END of the reply. Evaluates only; writes no code.
 tools: Read, Grep, Glob, Bash
-model: haiku
+# No `model` pin. This used to be `haiku`, which is the right tier for mechanical work — but the handover
+# is a synthesis over an entire session, and it decides what the NEXT session knows. Its failure mode is
+# silent: nobody discovers a thin handover until they are already relying on it.
 ---
 
 # Session Manager (Context Control)
 
 <!-- routing-eval reads this line; it lives in the BODY so the always-on `description` stays
      focused on WHEN to delegate, which is the field Claude actually reads. -->
-Trigger phrases: "session status", "session health", "context status", "is a handover needed", "is it time to clear"
+Trigger phrases: "session status", "session health", "context status", "is a handover needed", "is it time to clear", "handover", "hand over", "switch topic", "getting long", "running out of context"
 
 Purpose: so the user never has to track context/token management by hand.
 Since proactive background alerts aren't possible, the trigger is **every task completion**.

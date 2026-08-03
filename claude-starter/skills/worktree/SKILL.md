@@ -3,10 +3,14 @@ name: worktree
 description: |
   Isolate risky or parallel file-mutating work in a git worktree so the main tree's uncommitted changes are never
   clobbered. For fan-out agents that edit files, throwaway experiments, or any change you may want to discard cleanly.
-  Trigger phrases: "worktree", "git worktree", "isolate the changes", "sandbox this work", "parallel file edits"
 ---
 
 # Worktree Isolation
+
+<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
+     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
+     truncated or dropped, which strips the very keywords a match depends on. -->
+Trigger phrases: "worktree", "git worktree", "isolate the changes", "sandbox this work", "parallel file edits"
 
 One rule: **never let risky or parallel work run on top of uncommitted changes in the shared tree.** A git worktree
 gives a second working copy of the same repo on its own branch — you experiment or fan out agents there, and the main

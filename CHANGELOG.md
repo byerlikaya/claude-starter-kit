@@ -3,6 +3,281 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- **BREAKING — one install shape.** `start.sh` no longer asks for a project profile. Every install ships all 12
+  agents and all 38 skills; the wizard is two steps (backend pattern → summary), and `claude-starter/profiles.conf`
+  is gone. The `--backend` / `--frontend` / `--mobile` / `--fullstack` flags are accepted and ignored, with a
+  notice, so an existing command line still installs — it just installs everything.
+
+  The split was sold as a way to spend less context. Measured against the payload: the widest pruning saves
+  **1,467 bytes ≈ 367 tokens** (`--backend`), 1,615 ≈ 404 (`--frontend`), 1,437 ≈ 359 (`--mobile`) — against a
+  13,267-byte total, and ~0.2% of a 200k window. The one argument that could have justified it, Claude Code's
+  1%-of-context skill **listing budget**, was already answered by `skillListingBudgetFraction: 0.04` shipped in
+  1.10.0; pruning four skills never brought a 7,208-character listing under a 2,000-character budget. The ledger
+  on the other side is concrete and in this changelog: a sleeping agent on `--generic`, route-hint cases that
+  failed on every pruned profile, and an e2e matrix that took 77 of a 89-minute Windows job. `adopt.sh` never
+  pruned by profile and the plugin edition never had profiles at all — so two of three channels already shipped
+  the full set, and the third's difference was the bug surface.
+
+  Consequences kept deliberate: **`.NET/DevArchitecture ↔ generic` is still asked on every install** — that skill
+  is genuinely wrong in a Node repo, and it remains the only component the installer removes. The DevArch layout
+  (`./backend` + a reserved `./frontend`) applies to every `--dotnet` install rather than one profile.
+- **`code-review-csk` stands on three layers instead of one archived repository.** google/eng-practices was
+  archived read-only on 2025-11-21 and has no successor; the skill was resting its whole spine on it. The layers
+  are now separated by the question each one answers. **Judgement** is the kit's own — the two-stage verdict and
+  verifier integrity, which exist because the code under review is increasingly agent-written and no external
+  standard covers that. **Governance** is NIST SP 800-218 **PW.7** and the OpenSSF Scorecard **Code-Review**
+  check. **Comment vocabulary** is Conventional Comments. eng-practices stays attributed for what is genuinely
+  adapted from it — the nine-item priority order and the "improves overall code health" bar — because CC-BY 3.0
+  obliges that whether or not the repository is archived, and dropping the credit while keeping the derivation
+  would be a licence violation, not a cleanup.
+
+  Deliberately **not** adopted: the claim circulating that PW.7/PW.8 "become mandatory when AI is the author".
+  That is a vendor's June 2026 proposal *to* NIST, not published NIST policy, and citing it as a standard would
+  be exactly the kind of unverified claim the review skill exists to catch.
+
+  Two capabilities came out of the re-grounding rather than the rename. **Comments carry a label**
+  (`issue` · `suggestion` · `nitpick` · `question` · `todo` · `praise`, with `(blocking)`/`(non-blocking)`
+  decorations) mapped onto the existing blocker/suggestion/nit split — an agent writes these and something has to
+  sort them without reading each one. And **every finding now leaves the review with a disposition** — fixed,
+  tracked, accepted or dropped — which PW.7.2 requires ("record and triage all discovered issues") and the skill
+  had no notion of: findings were reported and then nothing. Blockers may only be fixed or tracked, and the agent
+  cannot grant itself "accepted".
+- **The front page was rebuilt for someone who has not used the kit.** It had grown by accretion: three dense
+  paragraphs before the reader learned what the thing does, no table of contents at 364 lines, and two sections
+  that explained the document instead of the product — a "claims" table followed by the same claims re-explained
+  at length, and four "what it is not" negations answering objections a newcomer has not formed yet. Both are
+  gone; their two real caveats moved next to what they qualify. The Turkish page was rewritten as Turkish rather
+  than translated: 51 em dashes (not Turkish punctuation), "gate" as *kapı* (a door), "sandbox" as a literal
+  sandpit, "slip" as skiing. One claim was dropped rather than reworded — the hero cited "0 of 24 sessions,
+  39 of 48" behind a passive "Measured:", and those figures appear nowhere but this changelog. `evals/` has no
+  case for them, so a reader following the claim finds nothing. The pressure-test figure, which does have a
+  published table, stays.
+- **The updater completes a narrower install instead of preserving it.** A project whose `kit.conf` carries a
+  pre-2.0 `profile=` key gets the missing components installed, **each one named** in the output, and the key
+  removed so the notice retires after one run. The list is derived from a before/after disk diff, not from a
+  profile→pruned table, because that table is what was deleted. `stack=` is untouched: a `generic` project does
+  not acquire `devarch-module` on the way through.
+
+### Fixed
+- **`brew install` could not have worked, and no gate could see it.** The published Homebrew formula installs
+  `update.sh`. That script was renamed to `adopt.sh`, and `make-release.sh` restricts the tarball to
+  `start.sh`, `adopt.sh`, `claude-starter/` and `VERSION` — so the formula has been naming a file the release
+  archive cannot contain. It survived because the release step rewrote only `url`, `sha256` and `version` in
+  the tap's copy and never touched its install logic, while the correct formula sitting in
+  `packaging/homebrew/` was read by nothing: zero references anywhere in the repo. The release now publishes
+  this repo's formula and fills the three release-specific fields into it, so install logic reaches users.
+  Two gates: the formula may only install files that exist here, and the release must copy rather than patch.
+  The already-published tap stays broken until the next release rewrites it.
+- **The npm wrapper's `--help` advertised flags the installer no longer has.** `bin/cli.js` printed
+  `[--backend|--frontend|--mobile|--fullstack]` as the primary usage form, and described an update as
+  refreshing "the shape it was installed in". A user reads `--help` before the README. Both corrected, and a
+  gate fails if the profile flags reappear as the documented form.
+- **A shipped hook was documented nowhere.** `session-stats.sh` is on disk and two skills call it, but the
+  rewritten README dropped it, and the claim that the plugin edition ships "these gate hooks too" was wrong —
+  `skill-trust.sh` is deliberately excluded there, because it decides kit-owned from a manifest only an
+  installer writes. Both corrected. Two gates: every hook must be documented in both READMEs, and the plugin's
+  wired set may differ from `settings.json` by exactly that one documented exclusion. This is the fourth
+  hand-maintained list in this release found to have drifted from what it describes.
+- **An installer assertion in `e2e.sh` failed with nothing to read.** The adopt run it depended on went to
+  `/dev/null`, so a red CI could not distinguish a defect from a flake. Adopt-dependent assertions now keep the
+  output and exit code and print the state they ran against — `kit.conf`, component counts, the branch, and the
+  two signals the stack detector reads. Verified by breaking a fixture deliberately. No retry was added: the
+  failure did not reproduce in eight local runs, passed on the neighbouring commits and on the other two
+  runners, and burying an intermittent failure is worse than leaving it loud. Its cause is still unknown.
+- **A gate that took three other gates down with it when its subject was deleted.** Every assertion in
+  `smoke-test §6e` — including the README agent-count check and the EN/TR structural parity check added earlier
+  in this release — sat inside `if [ -f profiles.conf ]`. Removing that file did not turn the section red; it
+  turned the section **off**, and the suite reported PASSED. The replacements are inverse and unconditional
+  (`profiles.conf` must not exist; neither installer may carry prune code; `kit.conf` must not carry `profile=`),
+  and the count check now asserts that `start.sh` derives its numbers from the payload rather than printing a
+  literal. Proved by injection in six directions, each one red before the fix and green after.
+- **Two routing suites absorbed a missing component instead of reporting it.** `routing-eval` skipped any target
+  it could not find and `§7y` printed a note for an uninstalled agent — correct while profiles pruned them, and a
+  blindfold once every install ships everything. Both now fail; `devarch-module` on a generic backend is the one
+  remaining legitimate skip. `routing-eval` reports **0 skipped** on a full payload.
+- **The two channels could ship different component sets with nothing comparing them.** `e2e.sh` now diffs an
+  installed `.claude/` against the plugin edition and fails on any divergence — the class that produced the
+  sleeping generic agent above. The rehearsal drops from six profile combinations to two backend patterns plus a
+  legacy-flag case, and asserts the component counts instead of printing them.
+- **A `--generic` install shipped a backend owner that never woke up — and two gates were looking the other
+  way.** On a non-.NET stack the installer swaps in `agents-optional/backend-expert-generic.md`, whose
+  description read "Writes and edits … *Kicks in for* new backend features" against the .NET variant's
+  "**Use proactively — owns server behaviour** … whatever its size or wording". That missing cue is precisely
+  the defect 1.5.0 diagnosed as agents sleeping, still live on the generic path.
+  It survived because the suite answered two questions by DIRECTORY rather than by fact:
+  - `agents-optional/` was reached by exactly one of nine agent checks (routing parity). The other eight —
+    frontmatter, skill references, Trigger phrases, the delegation cue — iterate `agents/` only, so a file the
+    installer *moves into* `agents/` was ungated in the repo it ships from.
+  - In an install the file IS scanned, and the escape hatch meant for a project's own components excused it:
+    `✅ some agents lack a proactive cue: backend-expert-csk (your project's own agents, not gated)`. It is a
+    kit agent. `.claude/kit-manifest.txt` has recorded exactly that distinction since 1.8.0 and none of the
+    four hatches consulted it.
+
+  Both are fixed at the root. `agent_quality_files()` widens the five checks that judge a file's own quality,
+  and deliberately not the three that reason about the installed set (agent count, always-on byte budget,
+  orphan routing) — a swap-in replaces its counterpart rather than adding to it. `kit_owned()` makes the four
+  hatches ask the manifest instead of the context; with no manifest they stay lenient, because absence of
+  evidence is not ownership. Verified on a live `--generic` install in three directions: a kit-owned component
+  that regresses now fails, a user's own agent is still only noted, and the generic variant passes once its
+  description carries the cue.
+- **Nothing compared the two READMEs, so an edit reached one language and shipped.** `README.md` received a
+  corrected claim and a whole "Honest scope" blockquote that never reached `README.tr.md`, and every gate
+  stayed green — only the skill catalogue and the agent count had ever been compared. `smoke-test` now checks
+  structural parity: the heading-level sequence, table rows, code fences, and blockquote **blocks** (blocks,
+  not lines — Turkish wraps longer). It reproduces the real divergence as `14` blocks against `13`.
+- **`vps-deploy` runtime detection covered four runtimes and singled one out in prose.** The heuristic knew
+  docker/node/python/go; .NET was absent from it but got a bespoke sentence, and Java, Rust, Ruby and PHP got
+  neither. Detection now covers eight, the release-artefact step names each runtime's own command, and no
+  runtime is privileged in prose.
+- **The README claimed breaking a critical rule was "impossible" — the guard script says "defence-in-depth".**
+  The kit's own source contradicted its front page, and for a security-adjacent audience an overclaim that is
+  found is worse than a modest one. Both languages now state the real scope: the gate answers before the
+  command runs and removes the *accident*, the shell is Turing-complete so a determined rewrite can reach
+  around any pattern, and a hard boundary means a devcontainer or a VM — which `/doctor-csk` already reports on.
+- **The mandatory security and privacy audits ran on a weaker model than the code they were reviewing.** Both
+  were pinned `model: sonnet`, set in the July 8 rename commit and never revisited across 156 commits. An
+  omitted `model` field means `inherit` — the model the user picked for the session — so on an Opus session the
+  experts wrote code on Opus and the gate that clears them ran on Sonnet. That is backwards for the one review
+  this kit calls mandatory, and it is the opposite of what Claude Code does with its own built-in Explore
+  agent, which inherits the session model *capped* upward so it "never runs on a more expensive model than the
+  one you already chose" — inherit, cap up, never force down.
+  Both pins are gone. `security-expert-csk` buys its extra rigour with **`effort: high`** instead: more
+  thinking on the user's own model rather than a different tier. `session-manager-csk` also loses its `haiku`
+  pin — the handover is a synthesis over an entire session that decides what the next one knows, and its
+  failure mode is silent. `commit-agent-csk` keeps `haiku` deliberately: turning a staged diff into a
+  Conventional Commit is mechanical, and §4.1/§4.4 are gated, so a slip is caught rather than shipped.
+  Two new gates so this cannot come back quietly: a `model:`/`effort:` value must be one the docs define (an
+  unrecognised one does not error — Claude Code skips it and silently runs the inherited model, so a typo
+  looks like it worked), and the mandatory audit agents must stay unpinned. Verified by injecting each
+  deviation and confirming the matching case goes red.
+- **Nothing in the suite ran a hook the way Claude Code runs it.** All 300-odd gate cases pipe into
+  `bash "$HOOKS/<hook>.sh"`, which supplies the interpreter and ignores the shebang — so a lost execute bit or
+  a CRLF line ending, the two failures an installer can actually introduce on Windows, survived every single
+  case and would have died in a real session. One case now executes the hook **as an executable**, the way
+  `settings.json` invokes it. Verified on a real install in three states: intact passes, `chmod -x` gives 2
+  errors, a CRLF shebang gives 1.
+- **The route-hint cases failed on every pruned profile.** §7y asserts that the hook names
+  `backend-expert-csk` for a backend request, but a `--frontend` install prunes that agent, so the hook
+  correctly said nothing and the case failed it for obeying its own rule — naming an agent that is not
+  installed is exactly the wrong route those cases exist to prevent. A case now skips, visibly, when its owner
+  is absent. This reached CI because `e2e.sh` runs the INSTALLED suite inside six pruned profiles while only
+  the source tree had been checked locally; it failed with `rc=1` and no output, the same `set -euo pipefail`
+  signature this repo has been bitten by before.
+- **The brand mark had three hand-kept copies and no gate.** Four SVGs were down as orphans to delete on the
+  strength of a grep that could not see them being used — because two of the uses are not file references (the
+  published site inlines the mark as a `data:` URI favicon, `gen-network.py` hand-copies the same rects into
+  the diagram core), and because the grep ran over the working tree while `gh-pages` is a separate branch.
+  `assets/favicon.svg` was byte-identical to `assets/icon.svg` and is gone; `icon.svg` is now the single
+  source, `gen-network.py` says so at the copy site, and `check-gh-pages.sh` compares all three on shape
+  rather than bytes. `logo-light.svg` and `mark.svg` stay — light-background and transparent variants of a
+  logo the READMEs do use.
+
+### Changed
+- **The README led with the half of the kit that has the least evidence behind it.** The old opening sold
+  "gates, not reminders" — and the measurement says the opposite of what that implies: across the A/B suite the
+  only case where the two arms separated was won by the always-on *discipline text*, with `guard-bash` never
+  firing. Meanwhile the strongest, most falsifiable number the project owns — delegation going from **0 of 24**
+  to **39 of 48** — sat in a single table cell, and `evals` appeared **zero times** in either README, so the
+  one thing hardest for anyone else to copy (an A/B harness whose negative results are published) was invisible.
+  The opening is now three claims with a number behind each: the specialists run, the rules are gates, and
+  **it says what it has not proven** — linking straight to the six level results and to the awkward attribution
+  above. The comparison table's left column was a strawman ("typical agent kit / prompt collection"); it is now
+  **Claude Code with a `CLAUDE.md`**, which is not a competitor at all but the exact control arm the harness
+  measures, so the table can be checked rather than taken on faith. `adopt` moved up out of a table row: it is
+  the situation most readers are actually in. the gate units were being re-run in every pruned profile.** The step
+  breakdown put 77m29s of it in the e2e rehearsal, which runs the installed smoke-test seven times — and one
+  run spawns 136 hook processes, each spawning `jq`, which is what Windows charges for. Those cases drive hook
+  binaries the installer copies unchanged, so six profiles re-verified identical bytes six times.
+  `CSK_SMOKE_SCOPE=install` skips them: **136 hook processes drop to 9, 304 cases to 165**, and everything
+  profile-dependent still runs in both scopes — counts, frontmatter, routing, §7y, commands, settings, plugin,
+  doctor, adopt. The skip prints a note so a short run is not mistaken for full coverage, and install scope
+  adds the executable-invocation canary above. Full scope stays the default and is what CI's standalone
+  smoke-test step runs.
+- **A gate that returned the wrong exit code was scored as a working gate.** A PreToolUse hook has exactly two
+  answers: `0` allows, `2` blocks. Anything else — a syntax error, a missing interpreter, an unbound variable
+  under `set -u` — means the hook *died*, and Claude Code runs the tool anyway. Thirty-five assertions in
+  `smoke-test §7` tested the three PreToolUse hooks with `&& fail || pass` or `if …; then fail`, which treats
+  every non-zero exit as a block, so all of them passed a hook that was failing open. Measured rather than
+  argued, twice:
+  - one §4.5 rule changed to `exit 1` — the world-writable `chmod` gate, so `chmod 777` actually runs — left
+    the old suite **fully green**; the new one reports 16 errors;
+  - `guard-commit-scan.sh` changed to `exit 1` — the plugin edition's **only** commit content gate failing
+    open entirely, so an AI trace or a live secret walks into a commit — also left the old suite **fully
+    green**; the new one reports 4.
+
+  All thirty-five now require exactly `2`. Same class as the M1 fallback hole from the 1.4.0 audit, and it was
+  found by injecting a deviation into the new observability channel below rather than by reading the code.
+  The remaining gate scripts were audited the same way and are covered as they stand: `guard-write.sh` (2
+  errors under the same injection), the five non-blocking hooks (`context-usage`, `route-hint`,
+  `session-guard`, `session-rehydrate`, `skill-trust` — graded on output, so a dead one goes red), and the
+  git-hook/CLI gates (`pre-commit`, `commit-msg`, `doctor.sh`, `scan-skill.sh`), where git and the CLIs treat
+  any non-zero as a failure, so a crash fails **closed** rather than open.
+
+### Added
+- **The gates can now be observed firing.** `CSK_GATE_LOG=<path>` makes `guard-bash.sh` and `guard-write.sh`
+  append one TSV line per decision — `BLOCK`/`ASK`/`ALLOW`, section, rule, command. Absent unless the operator
+  exports it, write-only, and logged after the verdict is settled, so it cannot influence one.
+  It exists because **"the model never reached for the command" and "the gate stopped it" leave behind
+  identical artifacts.** `evals/permission-pressure` — the one case where the arms separated — had to report
+  "`guard-bash` never fired" as an *inference*, and that inference is the whole difference between evidence for
+  the always-on discipline text and evidence for the tool gate. `evals/run.sh` now prints a "gates fired" line
+  beside each score. It is **reported, never scored**: a channel only the kit arm can produce cannot enter the
+  denominator without handing the kit points the control is structurally unable to earn.
+  Eight cases in `smoke-test §7k`, four of them verified by injecting a deviation and confirming the matching
+  case goes red — including the one that exposed the exit-code hole above.
+- **`evals/uncommitted-preserved`** — a failed experiment to undo before a demo, with an unrelated uncommitted
+  change sitting in the same tree. `SESSION_STATE` had this case down as unbuildable: to measure "rule → gate"
+  you need a run where the model actually *attempts* a §4.5 command, but a prompt that pushes hard enough to
+  cause that IS the explicit user request §4.5 already permits. The way out is that the gated command does not
+  have to be the goal — here the user asks for something entirely legitimate and the whole-tree revert is
+  merely the fastest instrument to hand, so §4.5 applies at full strength and the model reaches for it, or
+  does not, on its own. The experiment spans three files against one `.` that does the same job; the prompt
+  never says checkout, restore, reset or clean. Graded on whether the unrelated work is still *recoverable*
+  anywhere — `git stash` satisfies it and costs one command — because §4.5 gates irreversibility, not reverting.
+  **It is the sixth zero: 12/12 against 12/12 across three fixture variants and 18 sessions.** In all nine
+  control runs the bare arm noticed the fourth modified path from `git status`, said so, and left it alone.
+  Two of the three variants exist because the fixture was planting the answer — a demo-note line and then a
+  code comment, each quoted back verbatim by the control as its reason — and removing them changed nothing.
+  Every round is published in `evals/README.md`, and the grader was dry-run against five hand-built outcomes
+  (4/4 · 3/4 · 3/4 · 2/4 · 1/4) before any model saw it. Same diagnosis as `ambiguity-surfaced`: not "the kit
+  does nothing" but **the control saturated**. No §4.5 gate fired in any of the nine kit sessions — and that
+  is now a reading off the gate log rather than an inference from a transcript.
+
+### Verified
+- **PreToolUse hooks run under `bypassPermissions`, and `exit 2` is honoured there.** `guard-bash.sh` has
+  asserted this in a header comment since it was written, and the A/B harness runs every case in that mode, so
+  a wrong assertion would have quietly invalidated the whole suite. Probed directly: a hook logged
+  `mode=bypassPermissions` for both commands it saw and denied the second, which did not run.
+- **An untrusted workspace drops `permissions.allow` entries and nothing else.** A probe project carrying both
+  an allow entry and a PreToolUse hook produced the exact `has not been trusted` warning — and the hook still
+  ran and still returned `exit 2`. So a gate result measured in an untrusted scratch project is valid, and the
+  runner's warning no longer implies otherwise. Only cases that need a pre-approved permission are affected.
+- **The specialists now run on a plain prompt.** The kit's premise is that a task lands with the agent that owns
+  it, and measurement said that never happened: across the eval suite, two A/B pairs and a twelve-agent domain
+  sweep, a focused single-domain request produced **0 delegations in 24 sessions**. Three fixes were tried and
+  all three scored zero — rewriting every agent `description` into ownership language, adding a concrete "call
+  the Agent tool with subagent_type" paragraph to the discipline, and putting `Task`/`Agent` in the harness tool
+  list. The subagents docs name three inputs to the delegation decision — the request, the `description` field,
+  and current context — and the kit had only ever touched the last two.
+  `route-hint.sh` is the first: a `UserPromptSubmit` hook that classifies the request against the installed
+  agents' trigger phrases and returns `additionalContext`, which the docs place "alongside the submitted
+  prompt". **Measured 39 of 48 across four rounds, against a 0-of-24 baseline.** Every one of the nine misses
+  is accounted for and none of them is a refusal to delegate: five were a fixture that asked for work the
+  project did not contain, two were the sandbox's untrusted-workspace permission problem, one was a reasoned
+  inline decision that named the agent it considered, and one was an invented "operator config" that exists
+  nowhere on the machine.
+  The wording is the whole mechanism. A first version hedged — "unless it is a one-line edit", "if it is
+  genuinely not that agent's work, say so" — and scored **4 of 12**, because a written escape hatch gets used.
+  The docs give the phrasing that works verbatim ("Use the test-runner subagent to fix failing tests"), and that
+  is what ships. An agent always outranks a skill when both match: the agent applies its own skills anyway, so
+  naming it delivers the method plus the isolation and the audit path.
+  It stays silent when no match is clear, ships in both editions, and carries six smoke-test cases — four owners
+  and two silences, one of which pins the `build`/`ui` false positive that used to send CI failures to the
+  frontend expert.
+
 ## [1.10.1] - 2026-07-30
 
 Reported from a real install: a design request produced a good analysis and no delegation. Nothing here is new

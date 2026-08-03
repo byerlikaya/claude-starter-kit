@@ -42,7 +42,16 @@ while IFS='|' read -r prompt expected; do
   expected="$(printf '%s' "$expected" | tr -d '[:space:]')"
   [ -n "$expected" ] || continue
   neg=0; case "$expected" in '!'*) neg=1; expected="${expected#!}" ;; esac   # !target = must NOT route here
-  trs="$(triggers_of "$expected")" || { skip "\"$prompt\" -> $expected (target not in this profile)"; continue; }
+  # Pre-2.0 this skipped when the target was pruned by profile. Profiles are gone: every install carries every
+  # agent and skill, so an absent target is a missing component or a stale golden row — both real failures. The
+  # exception is the .NET pattern skill, the one component a --generic install legitimately does not have.
+  if ! trs="$(triggers_of "$expected")"; then
+    case "$expected" in
+      devarch-module) skip "\"$prompt\" -> $expected (generic backend: the .NET pattern skill is not installed)" ;;
+      *)              fail "\"$prompt\" -> $expected: target not installed — 2.0 ships every component" ;;
+    esac
+    continue
+  fi
   np="$(norm "$prompt")"
   hit=0
   while IFS= read -r ph; do
@@ -60,6 +69,21 @@ EOF
     else fail "\"$prompt\" -> $expected (no trigger matched — routing gap)"; fi
   fi
 done < "$GOLD"
+
+echo "== 1b) Routing COVERAGE — every installed component has at least one positive case =="
+# The golden set proves that the cases in it route. It never proved that every component HAS a case, and an audit
+# found 12 skills and one agent with none — including security-scan, code-review, testing and spec-planning. A
+# component with no case is a component whose reachability is nobody's job to check, which is exactly how
+# frontend-expert-csk stayed unreachable for a whole class of request while every gate reported green. Adding a
+# component now means adding the sentence that must reach it.
+MISSING_CASE=""
+for f in "$AGENTS"/*.md "$SKILLS"/*/SKILL.md; do
+  [ -e "$f" ] || continue
+  case "$f" in */SKILL.md) n="$(basename "$(dirname "$f")")" ;; *) n="$(basename "$f" .md)" ;; esac
+  grep -qE "^[^#]*\|$n\$" "$GOLD" || MISSING_CASE="$MISSING_CASE $n"
+done
+[ -z "$MISSING_CASE" ] && pass "every installed agent/skill has a positive routing case" \
+  || fail "no positive golden case for:$MISSING_CASE — add the sentence a user would type to reach it"
 
 echo "== 2) Agent-agent trigger collision =="
 # NOTE: Only AGENT-AGENT collisions matter (routing ambiguity lives here). An agent sharing a trigger

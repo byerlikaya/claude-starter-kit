@@ -3,10 +3,14 @@ name: brainstorm
 description: |
   Divergent discovery BEFORE planning: turn a fuzzy ask into 2–4 scoped options + named unknowns, pick a
   direction, hand to spec-planning. Bounded; converges to explicit choices, never guesses.
-  Trigger phrases: "brainstorm", "explore options", "not sure what we want", "help me scope", "ideate"
 ---
 
 # Brainstorm — diverge before you converge
+
+<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
+     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
+     truncated or dropped, which strips the very keywords a match depends on. -->
+Trigger phrases: "brainstorm", "explore options", "not sure what we want", "help me scope", "ideate"
 
 ## When
 The ask is **under-defined**: the goal, the users, or the shape of the solution aren't clear yet, so jumping

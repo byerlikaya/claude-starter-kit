@@ -3,10 +3,14 @@ name: incident-runbook
 description: |
   Production incident response: diagnose → mitigate → resolve, then a blameless postmortem and a repeatable
   runbook. Stop the impact first, root cause second.
-  Trigger phrases: "incident", "incident response", "runbook", "postmortem", "root cause", "outage", "production incident", "post-incident"
 ---
 
 # Incident Response & Runbook
+
+<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
+     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
+     truncated or dropped, which strips the very keywords a match depends on. -->
+Trigger phrases: "incident", "incident response", "runbook", "postmortem", "root cause", "outage", "production incident", "post-incident"
 
 Two modes: **live incident** (what to do right now) and **aftermath** (postmortem + runbook). Priority: stopping
 user impact > finding the root cause. No panic, one ordered step at a time.

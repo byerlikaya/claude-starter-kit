@@ -2,10 +2,14 @@
 name: ci-pipeline
 description: |
   CI pipeline discipline: lint→build→test→quality→security, fail-fast, deterministic build, secret handling, PR gates.
-  Trigger phrases: "ci", "pipeline", "github actions", "build pipeline", "pr gate", "workflow"
 ---
 
 # CI Pipeline
+
+<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
+     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
+     truncated or dropped, which strips the very keywords a match depends on. -->
+Trigger phrases: "ci", "pipeline", "github actions", "build pipeline", "pr gate", "workflow"
 
 ## Stages (fail-fast — stop if it breaks early)
 1. **Lint / format** — style and static analysis

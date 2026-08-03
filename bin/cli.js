@@ -18,13 +18,15 @@ if (sub === '--help' || sub === '-h' || sub === 'help') {
   console.log(`Claude Starter Kit
 
 Usage:
-  npx @byerlikaya/claude-starter-kit [init] [--backend|--frontend|--mobile|--fullstack] [--dotnet|--generic]
-      Set up the kit in a fresh project (start.sh wizard).
+  npx @byerlikaya/claude-starter-kit [init] [--dotnet|--generic]
+      Set up the kit in a fresh project (start.sh wizard). Every install ships the whole kit;
+      the only choice is the backend pattern.
   npx @byerlikaya/claude-starter-kit adopt
       Hand the kit over onto an existing project (adopt.sh).
   npx @byerlikaya/claude-starter-kit@latest update
-      Refresh a project that already has the kit. Alias of 'adopt': it reads .claude/kit.conf and
-      refreshes the project in the shape it was installed in. Your CLAUDE.md is never touched.
+      Refresh a project that already has the kit. Alias of 'adopt': it reads .claude/kit.conf,
+      keeps the backend pattern recorded there, and restores anything missing. Your CLAUDE.md
+      is never touched.
 
 Run any of them at the root of your target project.
 On Windows, run inside Git Bash for the smoothest experience (WSL works as a fallback).`);

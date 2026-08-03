@@ -37,7 +37,7 @@ jobs:
           claude plugin validate plugin --strict
           claude plugin validate .claude-plugin/marketplace.json --strict
 
-      - name: e2e rehearsal — start.sh (6 combos) + adopt.sh (stack detection · overlap · refresh)
+      - name: e2e rehearsal — start.sh (2 patterns + legacy flags) + adopt.sh (detection · overlap · refresh · migration)
         run: bash packaging/e2e.sh
 
   # Cross-platform proof: the installer and the non-interactive settings SELF-HEAL must behave the same on Windows

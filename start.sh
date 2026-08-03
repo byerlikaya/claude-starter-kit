@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
-# Setup wizard: picks profile + backend stack step by step, shows a summary and asks for confirmation;
-# if backend .NET is selected, includes the DevArchitecture base behind an approval gate; then installs the kit
-# (./.claude + ./CLAUDE.md) pruned by profile; finally deletes claude-starter/ and itself.
+# Setup wizard: picks the backend pattern, shows a summary and asks for confirmation; if .NET is selected,
+# includes the DevArchitecture base behind an approval gate; then installs the WHOLE kit (./.claude + ./CLAUDE.md);
+# finally deletes claude-starter/ and itself.
+# Every install is identical — there is no frontend/backend/mobile split. Measured before it was removed: the
+# widest profile pruning saved ~400 tokens of listing, while the split cost a per-profile e2e matrix, a second
+# prune path in adopt.sh, and shipped a set the plugin channel never matched. The ONE thing that legitimately
+# varies is the backend pattern, because devarch-module is .NET-specific and wrong in a Node/Go/Python repo.
 # start.sh + claude-starter/ must be in the SAME directory. At the project root:  bash start.sh [flags]
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -16,13 +20,14 @@ fi
 
 usage() {
   cat <<'USAGE'
-Usage: bash start.sh [PROFILE] [BACKEND-STACK]
-  Profile:  --backend | --frontend | --mobile | --fullstack   (default: fullstack)
-  Stack:    --dotnet  | --generic   (backend/fullstack only; default: dotnet)
-If no flag is given, the script asks the relevant step interactively (wizard).
+Usage: bash start.sh [BACKEND-STACK]
+  Stack:  --dotnet | --generic   (default: dotnet)
+If no flag is given, the script asks interactively (wizard).
   --dotnet   .NET/DevArchitecture full support (devarch-module + DevArch gate)
-  --generic  generic backend (backend/database-expert-csk + db-migration; NO devarch)
-             (sonarqube-check is language-agnostic; installed in every profile, not .NET-specific)
+  --generic  stack-agnostic backend (NO devarch-module; sonarqube-check is language-agnostic and stays)
+
+Every install ships the whole kit: all agents, all skills — backend, web and mobile (RN/Expo) together.
+  --backend | --frontend | --mobile | --fullstack   accepted, no effect (kept so older commands still run)
 USAGE
 }
 
@@ -46,12 +51,6 @@ kit_discipline_of()    { awk '/^<!-- KIT:DISCIPLINE-END/{exit} {print}' "$1"; }
 kit_project_of()       { awk 'f{print} /^<!-- KIT:DISCIPLINE-END/{f=1}' "$1"; }
 # Anchored: the import must BE the line, not merely be mentioned in prose (the discipline text names the path).
 kit_has_import()       { grep -qE '^[[:space:]]*@\.claude/DISCIPLINE\.md[[:space:]]*$' "$1" 2>/dev/null; }
-# Profile -> pruned agents/skills. Read from claude-starter/profiles.conf so start.sh and adopt.sh cannot drift.
-# tr -d '\r': a CRLF checkout (Windows/Git Bash) would otherwise leave '\r' glued to the last field, and the
-# exclusion match — which compares whole names — would silently stop excluding it.
-kit_profile_field()    { sed -n "s/^$1://p" "$SRC/profiles.conf" 2>/dev/null | head -1 | tr -d '\r' | cut -d: -f"$2"; }
-kit_excl_agents_for()  { kit_profile_field "$1" 1; }
-kit_excl_skills_for()  { kit_profile_field "$1" 2; }
 # A pre-1.1 install pasted the whole discipline inline into CLAUDE.md; adding the @import would load it twice.
 # Both markers are required: a project that happens to write its own "Four working principles" heading is NOT a
 # legacy kit install, and treating it as one would leave it without the discipline forever.
@@ -103,13 +102,14 @@ clone_devarch() {  # $1 = target dir; clone verbatim, drop nested .git, rename t
 }
 
 # --- Flag parsing (silent/CI mode) ---
-PROFILE=""; STACK=""
+# The profile flags are ACCEPTED and ignored rather than rejected: they appear in older READMEs, CI steps and
+# copy-pasted commands, and erroring out there breaks a pipeline over a flag whose absence changes nothing.
+# A one-line notice is printed after the colour helpers load, so the user learns the flag no longer selects
+# anything instead of quietly getting a different set than the one they typed.
+STACK=""; LEGACY_FLAGS=""
 for a in "$@"; do
   case "$a" in
-    --backend) PROFILE="backend" ;;
-    --frontend) PROFILE="frontend" ;;
-    --mobile) PROFILE="mobile" ;;
-    --fullstack) PROFILE="fullstack" ;;
+    --backend|--frontend|--mobile|--fullstack) LEGACY_FLAGS="$LEGACY_FLAGS $a" ;;
     --dotnet) STACK="dotnet" ;;
     --generic) STACK="generic" ;;
     -h|--help) usage; exit 0 ;;
@@ -139,40 +139,15 @@ row()  { printf '  %s%-15s%s %s\n'     "$B" "$1" "$R" "$2"; }        # summary r
 rule() { printf '  %s------------------------------------------------%s\n' "$D" "$R"; }
 
 h1  "Agentic Working Kit · setup wizard"
-sub "3 steps: profile -> backend stack -> summary & confirm."
+sub "2 steps: backend pattern -> summary & confirm."
+[ -n "$LEGACY_FLAGS" ] && printf '\n  %s!%s%s no effect:%s the kit always installs in full (all agents · all skills).\n' \
+  "$YE" "$R" "$B$LEGACY_FLAGS" "$R"
 
-# ===================== STEP 1 · PROFILE =====================
-# If a flag was given ($PROFILE non-empty) this block is SKIPPED entirely (non-interactive path preserved).
-if [ -z "$PROFILE" ]; then
-  h1  "[1/3] Project profile"
-  sub "The choice determines the set of agents + skills to install."
-  echo
-  opt 1 "backend"   0 "~11 agents · ~34 skills"
-  add  "backend-expert-csk · database-expert-csk + db / api / migration skills"
-  skip "frontend-expert-csk and all UI skills (frontend/frontend-design/a11y) NOT INSTALLED"
-  echo
-  opt 2 "frontend"  0 "~10 agents · ~34 skills"
-  add  "frontend-expert-csk + frontend / frontend-design / a11y skills"
-  skip "backend-expert-csk · database-expert-csk and all server skills NOT INSTALLED"
-  echo
-  opt 3 "fullstack" 1 "~12 agents · ~38 skills"
-  add  "everything — all agents + all skills: backend + web + mobile (RN/Expo) together"
-  echo
-  opt 4 "mobile"    0 "~10 agents · ~35 skills"
-  add  "frontend-expert-csk + React Native / Expo layer (frontend-rn-expo)"
-  skip "backend-expert-csk · database-expert-csk NOT INSTALLED"
-  echo
-  printf '  %s->%s Choice %s[1-4, empty=3]%s: ' "$CY" "$R" "$D" "$R"
-  read -r s || s=""                 # does not hang on EOF/non-TTY; empty => default (fullstack)
-  case "$s" in 1) PROFILE="backend" ;; 2) PROFILE="frontend" ;; 4) PROFILE="mobile" ;; *) PROFILE="fullstack" ;; esac
-fi
-
-# ===================== STEP 2 · BACKEND STACK =====================
-# Asked only for backend/fullstack; skipped if a flag is given.
-HAS_BACKEND=0
-case "$PROFILE" in backend|fullstack) HAS_BACKEND=1 ;; esac
-if [ "$HAS_BACKEND" = 1 ] && [ -z "$STACK" ]; then
-  h1  "[2/3] Backend stack"
+# ===================== STEP 1 · BACKEND PATTERN =====================
+# Asked on EVERY install: the pattern skill is the one thing that is genuinely wrong in the other stack, so it
+# is a real question, not a profile side effect. Skipped only when --dotnet/--generic was given.
+if [ -z "$STACK" ]; then
+  h1  "[1/2] Backend pattern"
   sub "Determines the backend template and whether the .NET-specific skills are included."
   echo
   opt 1 ".NET / DevArchitecture" 1 "full support"
@@ -187,33 +162,28 @@ if [ "$HAS_BACKEND" = 1 ] && [ -z "$STACK" ]; then
   read -r s || s=""                 # empty => default (dotnet)
   case "$s" in 2) STACK="generic" ;; *) STACK="dotnet" ;; esac
 fi
-[ "$HAS_BACKEND" = 1 ] || STACK="none"
 
 # Project name (from the directory) + where the backend base lives.
 PROJECT_NAME="$(basename "$PWD")"
 PROJECT_NAME="$(printf '%s' "$PROJECT_NAME" | tr -cs 'A-Za-z0-9._-' '-' | sed 's/^[-._]*//; s/[-._]*$//')"
 [ -n "$PROJECT_NAME" ] || PROJECT_NAME="App"
-case "$PROFILE" in
-  fullstack) BACKEND_DIR="backend" ;;   # keep the root clean; the frontend lives under ./frontend
-  *)         BACKEND_DIR="." ;;          # backend-only: the project root IS the backend
-esac
+# The base goes under ./backend and ./frontend is reserved next to it — the layout the old 'fullstack' profile
+# produced, now the only one. A repo that turns out to be backend-only loses nothing: ./frontend is an empty
+# directory with a README, and a directory is cheaper to delete than a missing one is to discover.
+BACKEND_DIR="backend"
 
-# --- Mappings: agents/skills to prune + DevArch gate (profiles.conf = single source of truth) ---
+# --- The only remaining prune: devarch-module is .NET-specific and wrong in a Node/Go/Python repo. ---
 DEVARCH_ON=0
-grep -qE "^$PROFILE:" "$SRC/profiles.conf" 2>/dev/null || { echo "ERROR: profile '$PROFILE' not found in $SRC/profiles.conf"; exit 1; }
-EXCL_AGENTS="$(kit_excl_agents_for "$PROFILE")"
-EXCL_SKILLS="$(kit_excl_skills_for "$PROFILE")"
-if [ "$HAS_BACKEND" = 1 ]; then
-  if [ "$STACK" = "dotnet" ]; then
-    DEVARCH_ON=1
-  else
-    EXCL_SKILLS="$EXCL_SKILLS devarch-module"   # generic: devarch-module is .NET-specific; sonarqube-check is language-agnostic, kept
-  fi
+EXCL_SKILLS=""
+if [ "$STACK" = "dotnet" ]; then
+  DEVARCH_ON=1
+else
+  EXCL_SKILLS="devarch-module"   # sonarqube-check is language-agnostic and stays
 fi
 
-# ===================== STEP 3 · SUMMARY + CONFIRM =====================
-# This block comes AFTER the MAPPINGS (EXCL_AGENTS/EXCL_SKILLS/DEVARCH_ON) -> the count is pruned correctly.
-# Count the agents/skills to install LIVE FROM SOURCE (not a hardcoded constant; self-corrects if the mappings change).
+# ===================== STEP 2 · SUMMARY + CONFIRM =====================
+# This block comes AFTER EXCL_SKILLS/DEVARCH_ON -> the count reflects the one prune that is left.
+# Count the agents/skills to install LIVE FROM SOURCE (not a hardcoded constant; self-corrects if the payload changes).
 count_installed() {   # $1=EXCL list  $2=glob  -> count to install
   local excl=" $1 " n=0 base
   for p in $2; do
@@ -223,30 +193,21 @@ count_installed() {   # $1=EXCL list  $2=glob  -> count to install
   done
   printf '%s' "$n"
 }
-N_AG="$(count_installed "$EXCL_AGENTS" "$SRC/agents/*.md")"
+N_AG="$(count_installed "" "$SRC/agents/*.md")"
 N_SK="$(count_installed "$EXCL_SKILLS" "$SRC/skills/*/")"
 
-case "$PROFILE" in
-  backend)   P_TXT="backend ${D}— server / API / DB (no frontend)${R}" ;;
-  frontend)  P_TXT="frontend ${D}— web UI (no backend)${R}" ;;
-  mobile)    P_TXT="mobile ${D}— React Native / Expo (no backend)${R}" ;;
-  fullstack) P_TXT="fullstack ${D}— end to end (widest)${R}" ;;
-esac
-
-h1 "[3/3] Summary · see what will be installed before you confirm"
+h1 "[2/2] Summary · see what will be installed before you confirm"
 echo
-row "Profile" "${B}${P_TXT}${R}"
+row "Scope" "${B}full kit ${D}— backend + web + mobile (RN/Expo), every agent and skill${R}"
 row "Included"  "${MG}${B}${N_AG}${R} agents · ${MG}${B}${N_SK}${R} skills will be installed"
-if [ "$HAS_BACKEND" = 1 ]; then
-  if [ "$STACK" = "generic" ]; then
-    row "Backend stack" "non-.NET — generic ${D}(devarch-module not installed; sonarqube-check installed)${R}"
-  else
-    row "Backend stack" ".NET / DevArchitecture ${D}(full support)${R}"
-  fi
+if [ "$STACK" = "generic" ]; then
+  row "Backend pattern" "non-.NET — generic ${D}(devarch-module not installed; sonarqube-check installed)${R}"
+else
+  row "Backend pattern" ".NET / DevArchitecture ${D}(full support)${R}"
 fi
 if [ "$DEVARCH_ON" = 1 ]; then
-  row "DevArch base" "${YE}approval gate -> $([ "$BACKEND_DIR" = "." ] && echo 'project root' || echo "./$BACKEND_DIR")${R}"
-elif [ "$HAS_BACKEND" = 1 ]; then
+  row "DevArch base" "${YE}approval gate -> ./$BACKEND_DIR ${D}(./frontend reserved next to it)${R}"
+else
   row "DevArch base" "${D}not installed${R}"
 fi
 echo
@@ -266,10 +227,10 @@ if ! ask_yes "  Install with these settings?"; then
 fi
 echo
 
-# --- Step 4: Backend base (only .NET/DevArchitecture; APPROVAL GATE) ---
+# --- Step 3: Backend base (only .NET/DevArchitecture; APPROVAL GATE) ---
 if [ "$DEVARCH_ON" = 1 ]; then
   echo "== Backend base (DevArchitecture) =="
-  [ "$BACKEND_DIR" = "." ] || echo "  Target: ./$BACKEND_DIR (the frontend stays separate under ./frontend)."
+  echo "  Target: ./$BACKEND_DIR (the frontend stays separate under ./frontend)."
   if has_devarch "$BACKEND_DIR"; then
     echo "  DevArchitecture detected — base already present, skipping copy."
   elif project_has_source; then
@@ -289,8 +250,8 @@ if [ "$DEVARCH_ON" = 1 ]; then
       echo "  Skipped. You can add it manually later:  git clone $DEVARCH_URL"
     fi
   fi
-  # Fullstack: reserve ./frontend so the layout is explicit (build the frontend here; the backend is in ./backend).
-  if [ "$PROFILE" = "fullstack" ] && [ ! -e ./frontend ]; then
+  # Reserve ./frontend so the layout is explicit (build the frontend here; the backend is in ./backend).
+  if [ ! -e ./frontend ]; then
     mkdir -p frontend
     printf '# frontend\n\nBuild your frontend here (the `frontend-expert-csk` agent helps). The backend lives in `../backend`.\n' > frontend/README.md
     echo "  Reserved ./frontend for your frontend."
@@ -298,7 +259,7 @@ if [ "$DEVARCH_ON" = 1 ]; then
   echo
 fi
 
-# --- Step 5: Kit installation (./.claude + ./CLAUDE.md) — pruned by profile ---
+# --- Step 4: Kit installation (./.claude + ./CLAUDE.md) — everything, minus the .NET-only pattern skill ---
 echo "== Installing: ./.claude + ./CLAUDE.md =="
 mkdir -p .claude/agents .claude/skills .claude/commands .claude/hooks .claude/eval
 cp -R "$SRC/agents/."   .claude/agents/
@@ -306,13 +267,12 @@ cp -R "$SRC/skills/."   .claude/skills/
 cp -R "$SRC/commands/." .claude/commands/
 cp -R "$SRC/hooks/."    .claude/hooks/ 2>/dev/null || true
 cp -R "$SRC/eval/."     .claude/eval/ 2>/dev/null || true
-for f in $EXCL_AGENTS; do rm -f  ".claude/agents/$f"; done
 for d in $EXCL_SKILLS; do rm -rf ".claude/skills/$d"; done
 # Generic backend: install the stack-agnostic variant instead of the DevArchitecture-bound backend-expert-csk.
-if [ "$HAS_BACKEND" = 1 ] && [ "$STACK" = "generic" ] && [ -f "$SRC/agents-optional/backend-expert-generic.md" ]; then
+if [ "$STACK" = "generic" ] && [ -f "$SRC/agents-optional/backend-expert-generic.md" ]; then
   cp "$SRC/agents-optional/backend-expert-generic.md" .claude/agents/backend-expert-csk.md
 fi
-echo "  Profile '$PROFILE' (stack: $STACK): $(ls .claude/agents/*.md 2>/dev/null | wc -l | tr -d ' ') agents, $(ls -d .claude/skills/*/ 2>/dev/null | wc -l | tr -d ' ') skills installed."
+echo "  Backend pattern '$STACK': $(ls .claude/agents/*.md 2>/dev/null | wc -l | tr -d ' ') agents, $(ls -d .claude/skills/*/ 2>/dev/null | wc -l | tr -d ' ') skills installed."
 [ -f "$SRC/settings.json" ] && cp "$SRC/settings.json" .claude/settings.json
 [ -f "$HERE/VERSION" ] && cp "$HERE/VERSION" .claude/VERSION   # make the kit version trackable in the installed project
 # Glob form so every shipped hook/eval is made executable — including ones added later (guard-write.sh,
@@ -333,10 +293,10 @@ cp "$SRC/README.md"         .claude/ 2>/dev/null || true
   for f in "$SRC"/commands/*.md; do [ -e "$f" ] && echo "commands/$(basename "$f")"; done
 } > .claude/kit-manifest.txt 2>/dev/null || true
 
-# Remember how this project was installed, so a later update refreshes it in the SAME shape
-# (same profile, same backend stack) instead of re-adding what the profile deliberately pruned.
-{ echo "# Written by start.sh. The updater reads this to refresh the project in its original shape."
-  echo "profile=$PROFILE"
+# Remember the backend pattern, so a later update refreshes the project with the same one instead of
+# grafting devarch-module onto a Node repo. No 'profile=' key any more — the component set no longer varies,
+# and adopt.sh treats a leftover 'profile=' from a pre-2.0 install as a migration signal, not as a shape.
+{ echo "# Written by start.sh. The updater reads this to keep the project's backend pattern."
   echo "stack=$STACK"
   echo "installer=start.sh"
   echo "version=$( [ -f "$HERE/VERSION" ] && head -1 "$HERE/VERSION" || echo unknown )"
@@ -372,9 +332,9 @@ else
 fi
 rm -rf "$SRC"
 echo
-echo "== Done. ./.claude + ./CLAUDE.md ready ($PROFILE/$STACK); claude-starter/ deleted. =="
+echo "== Done. ./.claude + ./CLAUDE.md ready (full kit · backend pattern: $STACK); claude-starter/ deleted. =="
 echo "Next: 1) fill in the CLAUDE.md project section  2) open Claude Code at the repo root"
 echo "Note: if Claude Code is ALREADY running here, restart it — CLAUDE.md and the discipline load at session start."
 echo "Tip:  paste .claude/FIRST_PROMPT.md as your first Claude Code message — an optional kickoff (verifies the agents/skills, plans the first sprint). CLAUDE.md loads the discipline every session either way."
-[ "$PROFILE" = "fullstack" ] && [ "$STACK" = "dotnet" ] && echo "Layout: backend in ./backend · build your frontend in ./frontend · first agent task: rename DevArchitecture -> $PROJECT_NAME."
+[ "$STACK" = "dotnet" ] && echo "Layout: backend in ./backend · build your frontend in ./frontend · first agent task: rename DevArchitecture -> $PROJECT_NAME."
 rm -f -- "$0"

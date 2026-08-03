@@ -3,10 +3,14 @@ name: vps-deploy
 description: |
   Deploy to a VPS safely: runtime detection, reverse proxy + SSL, atomic swap, keep the previous version,
   post-deploy health gate, automatic rollback on failure.
-  Trigger phrases: "deploy", "push to the server", "install on the VPS", "ship it to the server", "go to production"
 ---
 
 # VPS Deploy
+
+<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
+     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
+     truncated or dropped, which strips the very keywords a match depends on. -->
+Trigger phrases: "deploy", "push to the server", "install on the VPS", "ship it to the server", "go to production"
 
 A solid deploy has a single idea: **swap the running version with the new one in a reversible way.**
 That is, when you put the new version in place, don't throw the old one away — keep it aside. If the new version
@@ -35,9 +39,14 @@ if   [ -f Dockerfile ] || [ -f docker-compose.yml ]; then METHOD=docker
 elif [ -f package.json ];                                then METHOD=bare RUNTIME=node
 elif [ -f requirements.txt ] || [ -f pyproject.toml ];   then METHOD=bare RUNTIME=python
 elif [ -f go.mod ];                                      then METHOD=bare RUNTIME=go
+elif ls ./*.csproj ./*.sln >/dev/null 2>&1;              then METHOD=bare RUNTIME=dotnet
+elif [ -f pom.xml ] || [ -f build.gradle ];              then METHOD=bare RUNTIME=java
+elif [ -f Cargo.toml ];                                  then METHOD=bare RUNTIME=rust
+elif [ -f Gemfile ];                                     then METHOD=bare RUNTIME=ruby
+elif [ -f composer.json ];                               then METHOD=bare RUNTIME=php
 else METHOD=unknown; fi
 ```
-If `method: docker` and there's no Dockerfile, generate one. `method: bare` → a process manager suited to the runtime. If detection is ambiguous, ask the user. **.NET:** Docker recommended; if bare is required, run the `dotnet publish -c Release` output with systemd.
+If `method: docker` and there's no Dockerfile, generate one. `method: bare` → a process manager suited to the runtime; build the release artefact with the runtime's own command (`dotnet publish -c Release`, `mvn package`, `cargo build --release`, …) and run it under systemd. Prefer Docker for any runtime whose bare setup needs a toolchain on the box. If detection is ambiguous, ask the user — never guess a runtime.
 
 ---
 
