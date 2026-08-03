@@ -2,9 +2,9 @@
 
 <img src="assets/logo.svg" alt="Claude Starter Kit" width="460">
 
-**A complete engineering setup for Claude Code.**
+**Not one assistant. An engineering team that actually runs.**
 
-12 specialist agents, 38 skills, and tool-level gates that *enforce* the rules a `CLAUDE.md` can only ask for.
+12 specialist agents plan the work, build it, put it through security and test review, then close it
 
 ![Version](https://img.shields.io/badge/version-1.10.1-2563eb?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)
@@ -18,19 +18,15 @@
 
 ---
 
-## The problem
-
-A `CLAUDE.md` is a request. You write down how you want the work done, the model reads it, and it complies — when it remembers to. Nothing checks. The file gets longer, the compliance gets thinner, and the failure is silent: you find out at review time, or after the commit.
-
-The gap is not knowledge. It is enforcement.
-
 ## What Claude Starter Kit does
 
-It moves the rules that matter out of the file and into the tools, then puts a team around them.
+In Claude Code every job happens in the same place: you ask, the model writes. Claude Starter Kit puts a team and an order in between.
 
-**Rules become gates.** A destructive command is refused by a `PreToolUse` hook before the shell sees it. A commit stops for your approval even under `bypassPermissions`. A leaked API key or an AI-authorship trace is caught by a git hook. None of it depends on the model remembering.
+**The work gets a process.** 12 agents own one domain each and run across five stages — plan, build, audit, close, hand off. An ambiguous request goes to planning before anything is written; server work goes to the backend owner, schema work to the database owner. A security review is **mandatory** before a risk-critical change can close, and a code-health review runs before anything is proposed for commit. A routing hook names the owning agent beside your request, which is what turns that from a diagram into what actually happens.
 
-**Work gets specialists.** 12 agents own one domain each and run across five stages — plan, build, audit, close, hand off. A security review is mandatory before a risk-critical change can close. Each agent stays thin: it says *who* and *when*, and the method lives once in a skill.
+**The method is written once.** 38 skills hold the *how* — testing, migrations, API contracts, observability, accessibility, translation integrity, dependency upgrades, incident response, deployment. Agents stay thin: they say *who* and *when*, and apply the skill that holds the rest. You are not re-explaining your standards every session.
+
+**Critical rules are enforced, not remembered.** A destructive command is refused before it runs, a commit waits for your approval, a leaked key or an AI-authorship trace never reaches history. These are guardrails around the work above — they are not the point of the kit, they are what lets you leave it running.
 
 **It goes on the repo you already have.** `adopt` hands Claude Starter Kit over on a branch, staged and uncommitted, so the whole change sits in your editor's diff before any of it is yours to keep. Your `main` is never touched.
 
@@ -45,8 +41,6 @@ Then paste `.claude/FIRST_PROMPT.md` as your first Claude Code message. Homebrew
 
 ## Contents
 
-- [The claims — and the evidence](#the-claims--and-the-evidence)
-- [What it is not](#what-it-is-not)
 - [The agents](#the-agents)
 - [What's inside](#whats-inside)
 - [How it works](#how-it-works)
@@ -59,29 +53,6 @@ Then paste `.claude/FIRST_PROMPT.md` as your first Claude Code message. Homebrew
 
 ---
 
-## The claims — and the evidence
-
-Three claims are made on this page. Each one has a number behind it and a file you can open.
-
-| Claim | Measured | Where to check |
-|:--|:--|:--|
-| **The specialists actually run** | Without a routing hook: **0** delegations in 24 sessions. With Claude Starter Kit's: **39 of 48** across four rounds | [`evals/`](evals/) · `route-hint.sh` |
-| **Critical rules hold at the tool level** | Every gate carries cases for *both* halves — that it blocks what it must, and that it leaves neighbours alone | `smoke-test.sh` |
-| **Claude Starter Kit publishes its null results** | 7 A/B cases run so far; **6 came back level** — all published, including the one where the discipline text worked and the gate never fired | [`evals/README.md`](evals/README.md) |
-
-The first one is worth a sentence, because it is the reason Claude Starter Kit exists. Installing agents does not make them run. Measured on a focused, single-domain prompt — every agent installed, the delegation tool available, the work squarely inside one agent's domain — Claude Code keeps the work on the main thread and delegates **zero times in 24 sessions**. Claude Starter Kit's `UserPromptSubmit` hook names the owning agent beside your request, and the same measurement returns **39 of 48**. You type nothing extra.
-
-The third one is the one that should earn your trust. An A/B harness runs the same prompt in a kit project and a bare one, then grades what is left on disk. Most cases came back **level** — no advantage. They are published anyway, with the reasoning.
-
-## What it is not
-
-Being clear about the ceiling is part of the claim.
-
-- **Not a sandbox.** The gates are defence-in-depth. The shell is Turing-complete, so a determined rewrite reaches around any pattern. What the gates remove is the *accident* — the blunt command taken under deadline pressure. For a hard boundary, run Claude Code in a devcontainer or a VM; `/doctor-csk` tells you whether you have one.
-- **Not a guarantee of delegation.** Claude decides delegation from the task, the agent's description and the context. It is a judgement, not a rule. When an agent *must* run, `@agent-<name>` guarantees it.
-- **Not a measured productivity win.** Six of seven A/B cases came back level. Claude Starter Kit's evidence is about *rules holding* and *specialists firing*, not about shipping faster.
-- **Not locked to a stack.** The backend expert applies whatever pattern your project declares. .NET/DevArchitecture is the default, not a requirement.
-
 ---
 
 ## The agents
@@ -92,7 +63,7 @@ Being clear about the ceiling is part of the claim.
   <img src="assets/orchestration-en.svg" alt="The five stages: Understand, Produce, Audit, Close, Hand off" width="820">
 </div>
 
-<details>
+<details open>
 <summary>🧭&nbsp; <b>All 12 agents — what each one owns, and when it fires</b></summary>
 
 | Agent | Stage | Fires when | Model |
@@ -113,8 +84,6 @@ Being clear about the ceiling is part of the claim.
 </details>
 
 **Why almost every agent says `inherit`.** A subagent with no model pin runs on the model you chose for the session. That is deliberate: a pin can only make an agent run on a *different* tier from the work around it, and a review that clears a change must never be weaker than whatever wrote it. `security-expert-csk` buys extra rigour with `effort: high` — more thinking on *your* model, not a different one. `commit-agent-csk` keeps `haiku` because turning a staged diff into a Conventional Commit is mechanical, and the commit rules are gated anyway.
-
-Every agent, skill and command carries a `-csk` suffix, so nothing collides with your project's own components or shadows a Claude Code built-in.
 
 ## What's inside
 
@@ -211,15 +180,13 @@ Three rules hold the design together.
 
 The everyday shape of it:
 
-```
-/plan-csk        →  expert agents build  →  /review-csk       →  /ship-csk         →  /handoff-csk
-ambiguous scope     the domain owner        security · quality    DoD gate; proposes   context is full;
-goes to planning    does the work           · test audit          the commit, waits    hand off, then /clear
-```
+<div align="center">
+  <img src="assets/workflow-en.svg" alt="Command flow: /plan-csk, expert agents, /review-csk, /ship-csk, /handoff-csk" width="820">
+</div>
 
 ## Rule → gate
 
-This is the table to read if you read only one. Left is the rule; right is the thing that refuses to let it slide.
+Left is the rule; right is the thing that refuses to let it slide.
 
 | Rule | Enforced by |
 |:--|:--|
@@ -236,6 +203,10 @@ This is the table to read if you read only one. Left is the rule; right is the t
 | A running session never follows stale rules after an update | `context-usage.sh` version comparison |
 
 Every rule carries cases for **both** halves: that it blocks what it must, and that it does not block its neighbours — `chmod 755`, `rm -rf build`, `git checkout -- src/app.js`. A gate nobody proved is not a gate, and a gate that fires on routine work gets worked around.
+
+Does it actually change anything? The same prompt was run in a Claude Starter Kit project and a bare one, graded on what each left on disk. Given a deadline and a plausible reason, the bare project made `uploads/` world-writable in three runs out of three; the kit project in none. The interesting part is that the gate never fired: the kit arm never reached for the command, it declined on its own and cited the rule. On unhurried work the two are indistinguishable, and those measurements are published with their reasoning in [`evals/README.md`](evals/README.md).
+
+The gates stop accidents, not determined attempts. On a command line there is always a way around a pattern; if you need a real boundary, run Claude Code in a devcontainer or a VM. `/doctor-csk` tells you whether you have one.
 
 **Watching a gate fire.** Set `CSK_GATE_LOG=<path>` and every guard appends one line per decision: `BLOCK` / `ASK` / `ALLOW`, the rule, and the command. It is off unless you ask for it, write-only, and written after the verdict, so it cannot change one. Useful when you need to know whether a gate stopped something or the model simply never went there — those two leave identical traces.
 
@@ -312,7 +283,7 @@ Every change lands on a separate branch, **staged and not committed** — so eac
 npx @byerlikaya/claude-starter-kit@latest update    # or /update-csk inside a session
 ```
 
-<details>
+<details open>
 <summary>🔁&nbsp; <b>Update mechanics — what is refreshed, and where the change lands</b></summary>
 
 At install time Claude Starter Kit stamps `.claude/kit.conf` with the backend pattern and which installer ran, plus `.claude/VERSION`. A refresh **keeps the pattern**: a `--dotnet` project keeps `devarch-module`, and a Node repo is never handed one. Where the stamp is missing, the updater reads the pattern back from the installed files. Any missing component is restored, and every one it adds is **named in the output** rather than appearing silently.

@@ -1,6 +1,6 @@
 # Claude Starter Kit
 
-**A complete engineering setup for Claude Code.** 12 namespaced agents, 38 skills, and tool-level gates that enforce the rules a `CLAUDE.md` can only ask for.
+**Not one assistant — an engineering team that actually runs.** 12 specialist agents, 38 skills, and a process that plans, builds, audits and reviews a change before it closes.
 
 [![npm](https://img.shields.io/npm/v/@byerlikaya/claude-starter-kit?style=flat-square)](https://www.npmjs.com/package/@byerlikaya/claude-starter-kit)
 [![License](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)](https://github.com/byerlikaya/claude-starter-kit/blob/main/LICENSE)
@@ -19,23 +19,19 @@ Requires **bash** and **git**. On Windows, run it in Git Bash.
 
 ## What you get
 
-A `CLAUDE.md` is a request — the model honours it when it remembers to. Claude Starter Kit moves the rules that matter into the tools.
+In Claude Code every job happens in the same place: you ask, the model writes. Claude Starter Kit puts a team and an order in between.
 
-- **Gates, not reminders.** A `PreToolUse` hook refuses destructive commands before the shell sees them. Commits stop for your approval even under `bypassPermissions`. Git hooks catch secrets and AI-authorship traces.
-- **12 specialist agents** across five stages — plan, build, audit, close, hand off. A security review is mandatory before a risk-critical change can close.
-- **38 skills** holding the method, written once and applied by whoever needs it.
+- **12 specialist agents** across five stages — plan, build, audit, close, hand off. An ambiguous request goes to planning first; a security review is mandatory before a risk-critical change can close.
+- **38 skills** holding the method — testing, migrations, API contracts, observability, accessibility, deployment — written once, applied by whoever needs it. You stop re-explaining your standards every session.
 - **7 slash commands** — `/plan-csk`, `/review-csk`, `/ship-csk`, `/handoff-csk`, `/brainstorm-csk`, `/update-csk`, `/doctor-csk`.
+- **Guardrails that hold on their own.** Destructive commands are refused before they run, commits wait for your approval, secrets and AI-authorship traces never reach history — enforced at the tool level, not left to the model.
 - **Safe adoption.** `adopt` lands everything on a branch, staged and uncommitted, so you review the whole change before keeping it. `main` is never touched.
-
-Every component carries a `-csk` suffix, so nothing collides with your project's own agents or shadows a Claude Code built-in.
 
 ## Measured, not asserted
 
-Installing agents does not make them run. On a focused, single-domain prompt — every agent installed, the delegation tool available — Claude Code keeps the work on the main thread and delegates **0 times in 24 sessions**. With Claude Starter Kit's routing hook, the same measurement returns **39 of 48** across four rounds.
+The same prompt is run in a Claude Starter Kit project and a bare one, graded on what each left on disk. Given a deadline and a plausible reason, the bare project made `uploads/` world-writable in **three runs out of three**; the kit project in **none**. On unhurried work the two are indistinguishable, and those measurements are published with their reasoning too — a harness that only reports its wins measures nothing.
 
-An A/B harness runs the same prompt in a kit project and a bare one and grades what is left on disk. Seven cases so far, **six came back level** — all published with the reasoning, including the ones showing no advantage.
-
-The gates are defence-in-depth, not a sandbox. For a hard boundary, run Claude Code in a devcontainer or a VM.
+The gates stop accidents, not determined attempts. For a real boundary, run Claude Code in a devcontainer or a VM.
 
 ## Other channels
 

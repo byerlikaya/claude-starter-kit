@@ -307,6 +307,45 @@ def build_handover(tr=False):
     P.append('</svg>')
     return "".join(P)
 
+# ---------------------------------------------------------------------------------------------------------
+# Command flow (workflow-*.svg) — the same five stages, but named by the slash command you actually type. It
+# replaces an ASCII block that could not be aligned in both languages at once: Turkish wraps longer, so the
+# columns drifted apart in one README while looking right in the other.
+FLOW = [
+ # (tr_cmd, en_cmd, colour, tr_line1, en_line1, tr_line2, en_line2)
+ # Both the command label AND both body lines are per-language: an earlier version shared one label field, and
+ # the English diagram shipped reading "uzman ajanlar". Lines are kept short enough to fit the box at the width
+ # below — a label that overflows its box is worse than no label, because it renders on top of the border.
+ ("/plan-csk",     "/plan-csk",     "#5b8cff", "belirsiz kapsam", "ambiguous scope",   "planlamaya gider",  "goes to planning"),
+ ("uzman ajanlar", "expert agents", "#34d17f", "alanın sahibi",   "the domain owner",  "işi yapar",         "does the work"),
+ ("/review-csk",   "/review-csk",   "#ff9040", "güvenlik · kalite","security · quality","· test denetimi",  "· test audit"),
+ ("/ship-csk",     "/ship-csk",     "#a874f5", "Bitti Tanımı",    "Definition of Done","onayınızı bekler",  "waits for approval"),
+ ("/handoff-csk",  "/handoff-csk",  "#94a3c8", "bağlam doldu",    "context is full",   "devret, /clear",    "hand off, /clear"),
+]
+FW, FH = 960, 232
+def build_flow(tr=False):
+    n=len(FLOW); m=26; gap=10; bw=(FW-2*m-gap*(n-1))/n
+    P=[f'<svg viewBox="0 0 {FW} {FH}" xmlns="http://www.w3.org/2000/svg" font-family="\'Segoe UI\',system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="Claude Starter Kit — command flow">']
+    P.append('<defs><linearGradient id="fbg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#101a34"/><stop offset="1" stop-color="#070b18"/></linearGradient>')
+    P.append('<filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>')
+    P.append(f'<rect width="{FW}" height="{FH}" fill="url(#fbg)"/>')
+    BY,BH = 40, 112
+    for i,(cmd_tr,cmd_en,col,t1,e1,t2,e2) in enumerate(FLOW):
+        x=m+i*(bw+gap); cmd=cmd_tr if tr else cmd_en; l1=t1 if tr else e1; l2=t2 if tr else e2
+        # No accent bar across the top: a full-width r=2 strip on an r=13 box pokes out past the rounded corners
+        # and reads as a rendering fault. The coloured stroke already identifies the stage.
+        P.append(f'<rect x="{x:.1f}" y="{BY}" width="{bw:.1f}" height="{BH}" rx="13" fill="#0f1830" stroke="{col}" stroke-width="1.8" filter="url(#glow)"/>')
+        P.append(f'<text x="{x+bw/2:.1f}" y="{BY+34:.1f}" text-anchor="middle" font-size="13.5" font-weight="700" fill="{col}" font-family="ui-monospace,Menlo,monospace">{html.escape(cmd)}</text>')
+        P.append(f'<text x="{x+bw/2:.1f}" y="{BY+66:.1f}" text-anchor="middle" font-size="12.5" fill="#eaf0ff">{html.escape(l1)}</text>')
+        P.append(f'<text x="{x+bw/2:.1f}" y="{BY+87:.1f}" text-anchor="middle" font-size="12.5" fill="#94a0cc">{html.escape(l2)}</text>')
+        if i<n-1:
+            ax=x+bw+gap/2
+            P.append(f'<path d="M{ax-4:.1f},{BY+BH/2-7:.1f} L{ax+4:.1f},{BY+BH/2:.1f} L{ax-4:.1f},{BY+BH/2+7:.1f}" fill="none" stroke="#94a0cc" stroke-opacity="0.85" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>')
+    foot = "her adım bir öncekini doğrular; commit en sonda, onayınızla" if tr else "each step verifies the one before it; the commit comes last, with your approval"
+    P.append(f'<text x="{FW/2}" y="{BY+BH+40}" text-anchor="middle" font-size="12.5" fill="#8b96c6">{html.escape(foot)}</text>')
+    P.append('</svg>')
+    return "".join(P)
+
 import sys
 ASSETS=sys.argv[1] if len(sys.argv)>1 else "."
 # The subtitle is DERIVED, never typed. It was hand-written once and then drifted the way every hand-written
@@ -324,4 +363,6 @@ open(ASSETS+"/orchestration-en.svg","w").write(build_pipeline(PSUB_EN))
 open(ASSETS+"/orchestration-tr.svg","w").write(build_pipeline(PSUB_TR, tr=True))
 open(ASSETS+"/handover-en.svg","w").write(build_handover())
 open(ASSETS+"/handover-tr.svg","w").write(build_handover(tr=True))
+open(ASSETS+"/workflow-en.svg","w").write(build_flow())
+open(ASSETS+"/workflow-tr.svg","w").write(build_flow(tr=True))
 print("wrote network-{en,tr} + orchestration-{en,tr} + handover-{en,tr}.svg to",ASSETS,"| agents",NAG,"skills",NSK)
