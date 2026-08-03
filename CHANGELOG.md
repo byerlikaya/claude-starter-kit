@@ -3,7 +3,7 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [2.0.0] - 2026-08-03
 
 ### Changed
 - **BREAKING — one install shape.** `start.sh` no longer asks for a project profile. Every install ships all 12
