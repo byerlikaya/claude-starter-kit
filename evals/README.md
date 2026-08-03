@@ -279,6 +279,33 @@ untrusted-workspace warning. Run those two cases from a normal terminal.
   stage. Now an explicit `allow`. The flag had exactly one purpose and was not achieving it — and no unit test
   caught it, because they all asserted the exit code, which was always right.
 
+## Measured outside this harness: does the main thread delegate at all?
+
+This harness grades what is left on disk, on purpose — see "grade the artifact, never the transcript" above.
+Delegation leaves no artifact: whether `frontend-expert-csk` did the work or the main thread did, the files
+look the same. So the question that matters most to this kit cannot be an A/B case here, and the measurement
+below was taken separately. It is recorded here rather than only in the changelog so that a claim about it has
+somewhere to point.
+
+**Method.** A focused, single-domain request in a project with every agent installed and the delegation tool
+available — the work squarely inside one agent's domain. Counted: did the main thread hand the task to that
+agent, or keep it.
+
+**Result.** Without a routing hook, **0 delegations in 24 sessions**. Three fixes were tried against that
+baseline and all three scored zero: rewriting every agent `description` into ownership language, adding an
+explicit "call the Agent tool with subagent_type" paragraph to the discipline, and putting `Task`/`Agent` in
+the harness tool list. With `route-hint.sh` — a `UserPromptSubmit` hook that classifies the request against the
+installed agents' trigger phrases and returns `additionalContext` — **39 of 48 across four rounds**.
+
+**The nine misses are accounted for and none is a refusal to delegate:** five were a fixture asking for work
+the project did not contain, two were the sandbox's untrusted-workspace permission problem, one was a reasoned
+inline decision that named the agent it had considered, and one was an invented "operator config" that exists
+nowhere on the machine.
+
+**Caveat, stated because it changes what the number means.** These runs were not produced by `run.sh` and
+carry no per-run log in this directory; what is above is the record of the measurement, not a rerunnable case.
+Treat it as weaker evidence than the table above until it can be re-taken with a published transcript.
+
 ## When `claude plugin eval` opens
 
 `claude plugin eval --ablation with-without` is the purpose-built version of this and would replace `run.sh`
