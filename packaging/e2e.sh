@@ -109,7 +109,10 @@ case "$DOUT" in *"project-specific skill(s)"*) ;; *) echo "FAIL: doctor readines
 # half of the protection is the route-hint gate in smoke-test.sh §7y, where the old code took 34s on macOS too.
 [ "$DEL" -le 20 ] || { echo "FAIL: doctor.sh took ${DEL}s (>20s) — a per-pair fork loop is back; on Git Bash this reads as a hang"; exit 1; }
 ( cd "$P" && CSK_SMOKE_SCOPE=install bash .claude/eval/smoke-test.sh >/dev/null )|| { echo "FAIL: the adopted project's own smoke-test did not pass"; exit 1; }
-echo "[adopt-dotnet] stack=dotnet · devarch-module kept · overlap imported to skill + backed up · smoke OK"
+# doctor's elapsed time is printed on SUCCESS too, not only in the failure message. The bound above is loose by
+# design, so a silent pass hides the trend that matters: 2s creeping to 8s is the regression arriving, and it
+# reads as "fine" until the day it trips. The number in the log is what makes that visible in hindsight.
+echo "[adopt-dotnet] stack=dotnet · devarch-module kept · overlap imported to skill + backed up · smoke OK · doctor ${DEL}s"
 
 # A generic (Node) project: no .sln -> generic, devarch-module pruned.
 G="$WORK/adopt-generic"; rm -rf "$G"; mkdir -p "$G"
