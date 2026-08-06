@@ -29,6 +29,7 @@ IN=""
 ROOT="${CLAUDE_PROJECT_DIR:-}"
 [ -n "$ROOT" ] || ROOT="$(printf '%s' "$IN" | sed -n 's/.*"cwd"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
 [ -n "$ROOT" ] || ROOT="$PWD"
+ROOT="${ROOT//\\//}"                                  # Windows native path -> POSIX separators (no-op elsewhere)
 CL="$ROOT/.claude"
 [ -d "$CL" ] || CL="$(cd "$HERE/.." && pwd)"          # invoked from inside the install itself
 [ -d "$CL/skills" ] || [ -d "$CL/agents" ] || exit 0

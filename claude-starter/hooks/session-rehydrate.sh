@@ -22,6 +22,10 @@ if [ -z "$ROOT" ]; then
   ROOT="$(printf '%s' "$IN" | sed -n 's/.*"cwd"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
 fi
 [ -n "$ROOT" ] || ROOT="$PWD"
+# Windows hands both CLAUDE_PROJECT_DIR and the stdin `cwd` over as native paths (`C:\Repos\app`). Appending a
+# POSIX segment to one produces `C:\Repos\app/docs/...`, which Git Bash does not reliably resolve. Folding the
+# backslashes is a no-op everywhere else.
+ROOT="${ROOT//\\//}"
 
 STATE="$ROOT/docs/SESSION_STATE.md"
 [ -s "$STATE" ] || exit 0   # no (non-empty) handover → nothing to rehydrate, stay silent

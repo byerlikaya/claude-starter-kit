@@ -16,6 +16,26 @@
 #
 # It states an owner. It never decides FOR the model, never blocks, and stays silent unless a match is clear:
 # a wrong route is worse than none, because it looks like the kit worked.
+#
+# ---------------------------------------------------------------------------------------------------------
+# ONE AWK PASS, NOT A SHELL LOOP — this hook runs on EVERY prompt, so its cost is the session's floor.
+#
+# The first version scored the components with nested shell loops: for each of ~50 component files a
+# grep+head+grep+sed, and then for each of its trigger phrases a `norm()` pipeline (sed|tr|sed) plus a
+# `printf|grep -qE` with another `sed` nested inside the pattern. 348 phrases across the shipped payload put
+# that at roughly 2000 process spawns per prompt. Measured on an M-series Mac: 3.35s of pure fork overhead
+# (104% CPU, ~1.7ms per spawn) for a hook whose actual work is substring matching on a few KB of text.
+#
+# That is merely wasteful on macOS/Linux. On Windows it is fatal. Git Bash has no real fork(): every process
+# is a CreateProcess plus the MSYS2 emulation layer plus whatever the AV scanner charges, which is 20-50ms —
+# ten to thirty times the cost. The same 2000 spawns land somewhere between 40 and 100 seconds, against a
+# 10s hook timeout. Claude Code blocks on the hook until that timeout expires, on EVERY prompt, and then
+# discards the output — so the kit paid the full stall and got no routing for it. That is the "it hangs and
+# nothing works" report from Windows users, and it is not a Claude Code bug: the kit was spending the budget.
+#
+# Everything below is therefore one awk invocation over the component files, with the normalisation and the
+# matching done inside awk. Total external processes: sed, sed, head, awk. The semantics are unchanged and
+# eval/smoke-test.sh §7y pins them.
 set -uo pipefail
 IN="$(cat)"
 case "$IN" in *'"hook_event_name"'*UserPromptSubmit*) ;; *) exit 0 ;; esac
@@ -23,28 +43,34 @@ case "$IN" in *'"hook_event_name"'*UserPromptSubmit*) ;; *) exit 0 ;; esac
 # Two editions, two layouts: a full install puts the components under .claude/, the plugin ships them beside the
 # hook itself. Resolve both or the plugin channel silently loses routing — the same one-channel-weaker failure
 # the commit content gate had before 1.9.0.
-if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -d "${CLAUDE_PLUGIN_ROOT}/agents" ]; then
-  AGENTS="${CLAUDE_PLUGIN_ROOT}/agents"; SKILLS="${CLAUDE_PLUGIN_ROOT}/skills"
-else
-  AGENTS="${CLAUDE_PROJECT_DIR:-.}/.claude/agents"; SKILLS="${CLAUDE_PROJECT_DIR:-.}/.claude/skills"
+#
+# `${VAR//\\//}` folds backslashes to forward slashes. On Windows both CLAUDE_PROJECT_DIR and CLAUDE_PLUGIN_ROOT
+# arrive as native paths (`C:\Repos\app`), and a native path pasted into a POSIX one produces
+# `C:\Repos\app/.claude/agents` — a shape neither side reliably resolves. Forward slashes work on every
+# platform, including Git Bash, and the substitution is a no-op where there is nothing to fold.
+if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+  PROOT="${CLAUDE_PLUGIN_ROOT//\\//}"
+  [ -d "$PROOT/agents" ] && { AGENTS="$PROOT/agents"; SKILLS="$PROOT/skills"; }
+fi
+if [ -z "${AGENTS:-}" ]; then
+  PROJ="${CLAUDE_PROJECT_DIR:-.}"; PROJ="${PROJ//\\//}"
+  AGENTS="$PROJ/.claude/agents"; SKILLS="$PROJ/.claude/skills"
 fi
 [ -d "$AGENTS" ] || [ -d "$SKILLS" ] || exit 0
 
 # The prompt text, taken as a raw slice: no jq dependency, and a partial read is fine because matching is by
-# substring anyway. Everything after `"prompt":"` up to the closing quote that is not escaped.
-PROMPT="$(printf '%s' "$IN" | sed -n 's/.*"prompt"[[:space:]]*:[[:space:]]*"\(.*\)/\1/p' | sed 's/","[a-z_]*":.*$//' | head -c 4000)"
-[ -n "$PROMPT" ] || exit 0
+# substring anyway. Everything after `"prompt":"` up to the closing quote that is not escaped. It goes to awk
+# through the ENVIRONMENT, never through `-v`: awk expands escape sequences in a `-v` value, so a prompt
+# containing a literal backslash would be rewritten before the normaliser ever saw it.
+CSK_PROMPT="$(printf '%s' "$IN" | sed -n 's/.*"prompt"[[:space:]]*:[[:space:]]*"\(.*\)/\1/p' | sed 's/","[a-z_]*":.*$//' | head -c 4000)"
+[ -n "$CSK_PROMPT" ] || exit 0
+export CSK_PROMPT
 
-# Same normalisation the routing eval uses: Turkish diacritics folded, lowercased, every run of non-alphanumerics
-# collapsed to one space, and the whole string space-padded so a match is word-bounded. Without the padding a
-# short trigger hides inside a longer word — `UI` inside `build` once sent CI failures to the frontend expert.
-norm() {
-  printf '%s' "$1" | sed \
-    -e 's/Ç/c/g' -e 's/ç/c/g' -e 's/Ğ/g/g' -e 's/ğ/g/g' -e 's/İ/i/g' -e 's/ı/i/g' \
-    -e 's/Ö/o/g' -e 's/ö/o/g' -e 's/Ş/s/g' -e 's/ş/s/g' -e 's/Ü/u/g' -e 's/ü/u/g' \
-    | tr '[:upper:]' '[:lower:]' | sed -e 's/[^a-z0-9]\{1,\}/ /g' -e 's/^/ /' -e 's/$/ /'
-}
-NP="$(norm "$PROMPT")"
+# Glob expansion is a shell builtin — no forks. Agents FIRST, then skills: awk reads its arguments in order and
+# the tie-break below is first-wins, so the order is part of the contract, not incidental.
+FILES=()
+for f in "$AGENTS"/*.md "$SKILLS"/*/SKILL.md; do [ -e "$f" ] && FILES+=("$f"); done
+[ "${#FILES[@]}" -gt 0 ] || exit 0
 
 # Score every installed agent by how many of its trigger phrases appear. Longest phrase wins ties: "state
 # management" is a stronger signal than "state", and a two-word hit beats a one-word hit from another agent.
@@ -53,39 +79,60 @@ NP="$(norm "$PROMPT")"
 # no-op), while a skill just loads its method into the turn already in progress. Measured on a focused request,
 # neither fired on its own — 12 domain tasks produced zero delegations and a skill in only 2 of 12 — so the
 # method the kit exists to carry was simply absent from the work.
-BEST=""; BESTSCORE=0; BESTKIND=""
-for f in "$AGENTS"/*.md "$SKILLS"/*/SKILL.md; do
-  [ -e "$f" ] || continue
-  case "$f" in */SKILL.md) name="$(basename "$(dirname "$f")")"; kind=skill ;; *) name="$(basename "$f" .md)"; kind=agent ;; esac
-  score=0
-  while IFS= read -r ph; do
-    [ -n "$ph" ] || continue
-    np2="$(norm "$ph")"
+RES="$(awk '
+# Same normalisation the routing eval uses: Turkish diacritics folded, lowercased, every run of non-alphanumerics
+# collapsed to one space, and the whole string space-padded so a match is word-bounded. Without the padding a
+# short trigger hides inside a longer word — `UI` inside `build` once sent CI failures to the frontend expert.
+# Folding runs before tolower() because tolower() is ASCII-only in a byte-oriented awk; the gsub pairs cover
+# both cases explicitly so the result does not depend on which awk Git Bash happens to ship.
+function norm(s) {
+  gsub(/Ç/,"c",s); gsub(/ç/,"c",s); gsub(/Ğ/,"g",s); gsub(/ğ/,"g",s)
+  gsub(/İ/,"i",s); gsub(/ı/,"i",s); gsub(/Ö/,"o",s); gsub(/ö/,"o",s)
+  gsub(/Ş/,"s",s); gsub(/ş/,"s",s); gsub(/Ü/,"u",s); gsub(/ü/,"u",s)
+  s = tolower(s)
+  gsub(/[^a-z0-9]+/," ",s)          # also sweeps up any multi-byte leftovers, one space per run
+  sub(/^ +/,"",s); sub(/ +$/,"",s)
+  return s
+}
+BEGIN { np = " " norm(ENVIRON["CSK_PROMPT"]) " "; best=""; bestscore=0; bestkind="" }
+seen[FILENAME] { next }                                    # one Trigger-phrases line per component, the first
+{
+  if (tolower($0) !~ /trigger phrases:/) next
+  seen[FILENAME] = 1
+  if (FILENAME ~ /\/SKILL\.md$/) { kind="skill"; name=FILENAME; sub(/\/SKILL\.md$/,"",name) }
+  else                          { kind="agent"; name=FILENAME; sub(/\.md$/,"",name) }
+  sub(/.*\//,"",name)
+  score = 0; rest = $0
+  while (match(rest, /"[^"]+"/)) {
+    ph   = substr(rest, RSTART+1, RLENGTH-2)
+    rest = substr(rest, RSTART+RLENGTH)
+    p = norm(ph)
+    if (p == "") continue
     # Suffix-tolerant, prefix-anchored: the trigger must START at a word boundary, but may carry up to three
     # trailing letters. Word-bounded matching alone silently lost every inflection — `component` did not match
     # "components", `test` did not match "tests" — which is how a hook that looked correct stayed quiet on two
     # thirds of real prompts. The boundary that matters is the LEADING one: it is what keeps `ui` out of `build`.
-    if printf '%s' "$NP" | grep -qE "(^| )$(printf '%s' "$np2" | sed -e 's/^ //' -e 's/ $//' -e 's/[][\.*^$(){}?+|/]/\\&/g')[a-z]{0,3}( |$)"; then
-      w=${#ph}; score=$((score + w))
-    fi
-  done <<EOF
-$(grep -i "Trigger phrases:" "$f" | head -1 | grep -oE '"[^"]+"' | sed 's/"//g')
-EOF
+    # Written as three optional letters rather than {0,3} because interval expressions are not universal in awk.
+    # No escaping needed: norm() has already reduced the phrase to [a-z0-9 ], so it carries no metacharacter.
+    if (np ~ ("(^| )" p "[a-z]?[a-z]?[a-z]?( |$)")) score += length(ph)
+  }
+  if (score <= 0) next
   # An AGENT outranks a SKILL whenever both match, regardless of score. The architecture is agent = who,
   # skill = how, and the agent applies its own skills anyway — so naming the agent delivers the method PLUS the
   # isolation and the audit path, while naming the skill delivers only the method. A skill is named only when no
-  # agent owns the domain at all (iterate, reflect, worktree, eval-grader — the orchestrator's own work).
-  if [ "$score" -gt 0 ]; then
-    if [ "$kind" = agent ] && [ "$BESTKIND" != agent ]; then
-      BESTSCORE=$score; BEST="$name"; BESTKIND=agent
-    elif [ "$kind" = "$BESTKIND" ] || [ -z "$BESTKIND" ]; then
-      [ "$score" -gt "$BESTSCORE" ] && { BESTSCORE=$score; BEST="$name"; BESTKIND="$kind"; }
-    fi
-  fi
-done
-
+  # agent owns the domain at all (iterate, reflect, worktree, eval-grader — the orchestrator'\''s own work).
+  if (kind == "agent" && bestkind != "agent") { bestscore=score; best=name; bestkind="agent" }
+  else if (kind == bestkind || bestkind == "") {
+    if (score > bestscore) { bestscore=score; best=name; bestkind=kind }
+  }
+}
 # Silence is the default. No match, or a match too weak to be sure, means the main thread decides as before.
-[ -n "$BEST" ] && [ "$BESTSCORE" -ge 6 ] || exit 0
+END { if (best != "" && bestscore >= 6) print bestkind "\t" best }
+' "${FILES[@]}" 2>/dev/null)"
+
+[ -n "$RES" ] || exit 0
+BESTKIND="${RES%%	*}"; BEST="${RES#*	}"
+[ -n "$BEST" ] && [ "$BEST" != "$RES" ] || exit 0
 
 # The wording is an INSTRUCTION, not a suggestion, and that distinction is the whole experiment. The first
 # version hedged — "unless it is a one-line edit", "if it is genuinely not that agent's work, say so" — which

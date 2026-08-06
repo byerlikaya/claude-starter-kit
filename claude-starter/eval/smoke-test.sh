@@ -1183,7 +1183,12 @@ if [ "$IS_KIT" = 1 ] && command -v jq >/dev/null 2>&1; then
       MSS="$(jq -c '[.hooks.SessionStart[].hooks[].command]|sort' "$MTMP/out.json")"
       [ "$KSS" = "$MSS" ] && pass "merge: new event (SessionStart) gets wired on update, with every kit hook on it" || fail "merge: SessionStart wiring differs from the kit's — expected $KSS, got $MSS"
       [ "$(jq -r '.hooks.UserPromptSubmit|length' "$MTMP/out.json")" = 1 ] && pass "merge: no duplicate hook after update (stale kit entry dropped)" || fail "merge: duplicate UserPromptSubmit hook survived"
-      [ "$(jq -r '.hooks.UserPromptSubmit[0].hooks[0].timeout' "$MTMP/out.json")" = 30 ] && pass "merge: stale hook timeout refreshed to kit's" || fail "merge: stale timeout not refreshed"
+      # Read the expected timeout from the kit rather than pinning a literal — for the same reason the
+      # SessionStart assert above is derived: a hard-coded number reports a working merge as broken the day
+      # the kit retunes its timeouts. The fixture carries 10, so this still proves the stale value was replaced.
+      KTO="$(jq -r '.hooks.UserPromptSubmit[0].hooks[0].timeout' "$KSET")"
+      MTO="$(jq -r '.hooks.UserPromptSubmit[0].hooks[0].timeout' "$MTMP/out.json")"
+      [ "$MTO" = "$KTO" ] && [ "$MTO" != 10 ] && pass "merge: stale hook timeout refreshed to kit's ($KTO)" || fail "merge: stale timeout not refreshed — expected $KTO, got $MTO"
       [ "$(jq -r '.hooks.PostToolUse[0].hooks[0].command' "$MTMP/out.json")" = "bash ./custom.sh" ] && pass "merge: project's OWN custom hook preserved" || fail "merge: custom hook lost"
     else fail "merge: extracted JQ_MERGE failed to run (extraction drift?)"; fi
     rm -rf "$MTMP"
@@ -1440,6 +1445,24 @@ devops-expert-csk|set up a ci pipeline with github actions
 SILENT|what is the capital of France
 SILENT|the build fails on CI
 RHCASES
+
+  # --- cost gate: this hook runs on EVERY prompt, so its cost is the session's floor ------------------
+  # The first implementation scored the payload with nested shell loops — a `sed|tr|sed` normalisation plus a
+  # `printf|grep` per trigger phrase, ~2000 process spawns for the shipped component set. 3.35s per prompt on
+  # an M-series Mac; on Windows, where Git Bash pays 20-50ms per spawn instead of 1.7ms, that lands at 40-100s
+  # against a 10s hook timeout. Claude Code blocks for the whole timeout and then throws the output away, so
+  # the session stalled on every prompt AND lost routing. Users reported it as "the kit freezes Claude Code".
+  #
+  # Correctness tests cannot see that: the hook answered correctly, just far too slowly. So the budget is a
+  # gate of its own. Wall-clock with integer SECONDS is coarse on purpose — the bound is an order of magnitude
+  # above the one-awk-pass implementation (~0.03s x 10 = 0.3s) and an order of magnitude below the shell-loop
+  # one (~33s), so it catches a fork explosion without ever tripping on a slow CI box.
+  RHT0=$SECONDS
+  for _i in 1 2 3 4 5 6 7 8 9 10; do rh "add an endpoint that returns unpaid invoices" >/dev/null; done
+  RHEL=$((SECONDS - RHT0))
+  [ "$RHEL" -le 5 ] && pass "route-hint cost: 10 prompts in ${RHEL}s (budget 5s — no per-phrase fork loop)" \
+    || fail "route-hint cost: 10 prompts took ${RHEL}s (>5s). A per-prompt hook this expensive stalls every turn on Windows, where a process spawn costs 20-50ms."
+
   rm -rf "$RHDIR"
 else
   fail "route-hint.sh missing or not executable — plain prompts get no routing"
