@@ -1183,7 +1183,12 @@ if [ "$IS_KIT" = 1 ] && command -v jq >/dev/null 2>&1; then
       MSS="$(jq -c '[.hooks.SessionStart[].hooks[].command]|sort' "$MTMP/out.json")"
       [ "$KSS" = "$MSS" ] && pass "merge: new event (SessionStart) gets wired on update, with every kit hook on it" || fail "merge: SessionStart wiring differs from the kit's — expected $KSS, got $MSS"
       [ "$(jq -r '.hooks.UserPromptSubmit|length' "$MTMP/out.json")" = 1 ] && pass "merge: no duplicate hook after update (stale kit entry dropped)" || fail "merge: duplicate UserPromptSubmit hook survived"
-      [ "$(jq -r '.hooks.UserPromptSubmit[0].hooks[0].timeout' "$MTMP/out.json")" = 30 ] && pass "merge: stale hook timeout refreshed to kit's" || fail "merge: stale timeout not refreshed"
+      # Read the expected timeout from the kit rather than pinning a literal — for the same reason the
+      # SessionStart assert above is derived: a hard-coded number reports a working merge as broken the day
+      # the kit retunes its timeouts. The fixture carries 10, so this still proves the stale value was replaced.
+      KTO="$(jq -r '.hooks.UserPromptSubmit[0].hooks[0].timeout' "$KSET")"
+      MTO="$(jq -r '.hooks.UserPromptSubmit[0].hooks[0].timeout' "$MTMP/out.json")"
+      [ "$MTO" = "$KTO" ] && [ "$MTO" != 10 ] && pass "merge: stale hook timeout refreshed to kit's ($KTO)" || fail "merge: stale timeout not refreshed — expected $KTO, got $MTO"
       [ "$(jq -r '.hooks.PostToolUse[0].hooks[0].command' "$MTMP/out.json")" = "bash ./custom.sh" ] && pass "merge: project's OWN custom hook preserved" || fail "merge: custom hook lost"
     else fail "merge: extracted JQ_MERGE failed to run (extraction drift?)"; fi
     rm -rf "$MTMP"
@@ -1208,6 +1213,19 @@ case "$O" in *"REVIEW/DANGER"*) pass "runs the supply-chain scanner and reports 
 [ -z "$(st)" ] && pass "accepted components stay silent on later sessions" || fail "still reporting after --trust"
 printf 'and now it also reads ~/.ssh/id_rsa\n' >> "$STD/.claude/skills/mine/SKILL.md"
 case "$(st)" in *skills/mine*) pass "an accepted component edited afterwards is flagged again (digest, not a name)" ;; *) fail "an edited accepted component was not re-flagged" ;; esac
+# A manifest with CRLF line endings still identifies kit components. `grep -qxF "skills/handoff"` does NOT match
+# the line "skills/handoff\r", so on Windows every kit component read as unshipped and the session opened by
+# declaring the entire payload unvetted — a wall of warnings about the kit's own files, which teaches the reader
+# to ignore the one warning that will eventually matter. CRLF gets in whenever `.claude/` is committed and checked
+# out with `core.autocrlf=true`, which is exactly the shared-kit setup the trust gate is written for.
+#
+# NO `--trust` before this case, deliberately. Accepting first is what makes the assertion vacuous: under the old
+# code CRLF put the kit's own components into the unvetted set, `--trust` then recorded their digests, and the
+# next run went quiet — so the test passed while the bug was fully present. The trust file left over from the
+# cases above holds only the project's own components, which is exactly the state a real session opens in.
+printf 'skills/handoff\r\n' > "$STD/.claude/kit-manifest.txt"
+case "$(st)" in *skills/handoff*) fail "CRLF manifest: a kit skill was reported as unvetted (line endings not tolerated)" ;; *) pass "CRLF manifest still identifies kit components" ;; esac
+printf 'skills/handoff\n' > "$STD/.claude/kit-manifest.txt"
 # Fail open: without a manifest, kit-owned vs project-owned is unknowable and guessing would flag everything.
 rm -f "$STD/.claude/kit-manifest.txt"
 [ -z "$(st)" ] && pass "no manifest -> silent (never guesses which components are the kit's)" || fail "spoke without a manifest"
@@ -1440,6 +1458,24 @@ devops-expert-csk|set up a ci pipeline with github actions
 SILENT|what is the capital of France
 SILENT|the build fails on CI
 RHCASES
+
+  # --- cost gate: this hook runs on EVERY prompt, so its cost is the session's floor ------------------
+  # The first implementation scored the payload with nested shell loops — a `sed|tr|sed` normalisation plus a
+  # `printf|grep` per trigger phrase, ~2000 process spawns for the shipped component set. 3.35s per prompt on
+  # an M-series Mac; on Windows, where Git Bash pays 20-50ms per spawn instead of 1.7ms, that lands at 40-100s
+  # against a 10s hook timeout. Claude Code blocks for the whole timeout and then throws the output away, so
+  # the session stalled on every prompt AND lost routing. Users reported it as "the kit freezes Claude Code".
+  #
+  # Correctness tests cannot see that: the hook answered correctly, just far too slowly. So the budget is a
+  # gate of its own. Wall-clock with integer SECONDS is coarse on purpose — the bound is an order of magnitude
+  # above the one-awk-pass implementation (~0.03s x 10 = 0.3s) and an order of magnitude below the shell-loop
+  # one (~33s), so it catches a fork explosion without ever tripping on a slow CI box.
+  RHT0=$SECONDS
+  for _i in 1 2 3 4 5 6 7 8 9 10; do rh "add an endpoint that returns unpaid invoices" >/dev/null; done
+  RHEL=$((SECONDS - RHT0))
+  [ "$RHEL" -le 5 ] && pass "route-hint cost: 10 prompts in ${RHEL}s (budget 5s — no per-phrase fork loop)" \
+    || fail "route-hint cost: 10 prompts took ${RHEL}s (>5s). A per-prompt hook this expensive stalls every turn on Windows, where a process spawn costs 20-50ms."
+
   rm -rf "$RHDIR"
 else
   fail "route-hint.sh missing or not executable — plain prompts get no routing"

@@ -90,10 +90,29 @@ grep -q '^skills/devarch-module$' "$P/.claude/kit-manifest.txt"     || { echo "F
 grep -q '^skills/backend-expert-local$' "$P/.claude/kit-manifest.txt" && { echo "FAIL: manifest claims a project-imported skill as kit-owned"; exit 1; }
 # Captured, not piped: `grep -q` closes the pipe on its first match, doctor takes a SIGPIPE, and `pipefail`
 # would then report a passing assertion as a failure.
+DT0=$SECONDS
 DOUT="$( cd "$P" && bash .claude/eval/doctor.sh 2>&1 || true )"
+DEL=$((SECONDS - DT0))
 case "$DOUT" in *"project-specific skill(s)"*) ;; *) echo "FAIL: doctor readiness did not detect the project's own skill"; exit 1 ;; esac
+# COST GATE, and it belongs here rather than in the smoke-test because this job also runs on windows-latest —
+# the only place in CI where a process spawn costs what it costs a real user of Git Bash (20-50ms against
+# ~1.7ms on the POSIX runners). Doctor's agent-reference check used to run a `grep|cut|tr|sed` for every
+# (agent x scanned doc) pair, ~250 spawns; on Windows that stopped dead mid-run and a user reported doctor
+# itself as hung. Correctness assertions cannot see this — doctor printed the right answers, eventually.
+# The bound is deliberately loose: a healthy run is ~2-4s on a Windows runner, a spawn-per-pair regression is
+# 10s+, so 20s separates them with room for a slow shared runner and no room for the bug coming back.
+#
+# Be clear about what this does NOT do: on the POSIX runners both the fixed and the broken version finish in
+# well under a second (measured: 0s either way on an M-series Mac), so this assertion cannot fire there. It is a
+# Windows gate that happens to also run elsewhere, not a portable one — a wall-clock bound low enough to catch
+# the regression on macOS would sit below a healthy Windows run and fail the job for being slow. The portable
+# half of the protection is the route-hint gate in smoke-test.sh §7y, where the old code took 34s on macOS too.
+[ "$DEL" -le 20 ] || { echo "FAIL: doctor.sh took ${DEL}s (>20s) — a per-pair fork loop is back; on Git Bash this reads as a hang"; exit 1; }
 ( cd "$P" && CSK_SMOKE_SCOPE=install bash .claude/eval/smoke-test.sh >/dev/null )|| { echo "FAIL: the adopted project's own smoke-test did not pass"; exit 1; }
-echo "[adopt-dotnet] stack=dotnet · devarch-module kept · overlap imported to skill + backed up · smoke OK"
+# doctor's elapsed time is printed on SUCCESS too, not only in the failure message. The bound above is loose by
+# design, so a silent pass hides the trend that matters: 2s creeping to 8s is the regression arriving, and it
+# reads as "fine" until the day it trips. The number in the log is what makes that visible in hindsight.
+echo "[adopt-dotnet] stack=dotnet · devarch-module kept · overlap imported to skill + backed up · smoke OK · doctor ${DEL}s"
 
 # A generic (Node) project: no .sln -> generic, devarch-module pruned.
 G="$WORK/adopt-generic"; rm -rf "$G"; mkdir -p "$G"
@@ -168,11 +187,17 @@ mk_stale_install(){                       # $1 = dir : a healthy 1.4.x install w
   printf '# project rules\n@.claude/DISCIPLINE.md\n' > "$d/CLAUDE.md"
   ( cd "$d" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
 }
+# The refreshed value is read from the kit, not pinned to a literal. A hard-coded number turns every future
+# timeout retune into a red e2e that blames the merge — which is exactly what happened when the hook timeouts
+# moved to 60: the merge was correct and the assertion was stale. The fixture above deliberately carries 10, and
+# the guard below keeps the test honest by refusing to run if the kit ever ships that same value.
+KIT_TO="$(grep -A1 'context-usage\.sh' claude-starter/settings.json | sed -n 's/.*"timeout":[[:space:]]*\([0-9][0-9]*\).*/\1/p' | head -1)"
+[ -n "$KIT_TO" ] && [ "$KIT_TO" != 10 ] || { echo "FAIL: could not read the kit's UserPromptSubmit timeout (got '${KIT_TO:-}') — the stale-vs-refreshed assertions below would prove nothing"; exit 1; }
 # (A) update · non-interactive · NO --yes -> APPLIES (self-heal): stale hook refreshed, SessionStart wired, CLAUDE.md kept
 U="$WORK/selfheal"; mk_stale_install "$U"
 ( cd "$U" && bash adopt.sh --here </dev/null >/dev/null 2>&1 )
 grep -q 'SessionStart' "$U/.claude/settings.json"       || { echo "FAIL: non-interactive update did not self-heal (SessionStart missing)"; exit 1; }
-grep -q '"timeout": 30' "$U/.claude/settings.json"      || { echo "FAIL: non-interactive update did not refresh the stale timeout"; exit 1; }
+grep -q "\"timeout\": $KIT_TO" "$U/.claude/settings.json"      || { echo "FAIL: non-interactive update did not refresh the stale timeout"; exit 1; }
 head -1 "$U/CLAUDE.md" | grep -q 'project rules'        || { echo "FAIL: update clobbered the project's own CLAUDE.md"; exit 1; }
 # (B) SAME, but with NO jq and NO python3 on PATH (the real Windows Git-Bash case) -> kit-only settings safely
 # REPLACED + backup kept. The strip needs a symlink farm; Git-Bash on Windows can't make one, so there we skip this
@@ -192,7 +217,7 @@ if [ -L "$SYMPROBE" ]; then
   if ! PATH="$NODEPS" bash -c 'command -v jq >/dev/null 2>&1' && ! PATH="$NODEPS" bash -c 'command -v python3 >/dev/null 2>&1'; then
     ( cd "$N" && PATH="$NODEPS" bash adopt.sh --here </dev/null >/dev/null 2>&1 )
     grep -q 'SessionStart' "$N/.claude/settings.json"     || { echo "FAIL: no-jq/python update did not self-heal the settings"; exit 1; }
-    grep -q '"timeout": 30' "$N/.claude/settings.json"    || { echo "FAIL: no-jq/python update did not refresh the timeout"; exit 1; }
+    grep -q "\"timeout\": $KIT_TO" "$N/.claude/settings.json"    || { echo "FAIL: no-jq/python update did not refresh the timeout"; exit 1; }
     ls "$N"/.claude/settings.json.bak-* >/dev/null 2>&1   || { echo "FAIL: no-jq/python replace did not keep a backup"; exit 1; }
     head -1 "$N/CLAUDE.md" | grep -q 'project rules'      || { echo "FAIL: no-jq/python update clobbered CLAUDE.md"; exit 1; }
     NOJQ_NOTE="with + WITHOUT jq/python"
@@ -204,7 +229,7 @@ if [ -L "$SYMPROBE" ]; then
       printf '#!/bin/sh\nexec "%s" "$@"\n' "$REALPY" > "$NODEPS/py"; chmod +x "$NODEPS/py"
       ( cd "$P" && PATH="$NODEPS" bash adopt.sh --here </dev/null >/dev/null 2>&1 )
       grep -q 'SessionStart' "$P/.claude/settings.json"   || { echo "FAIL: py-launcher update did not self-heal (SessionStart)"; exit 1; }
-      grep -q '"timeout": 30' "$P/.claude/settings.json"  || { echo "FAIL: py-launcher update did not refresh the timeout"; exit 1; }
+      grep -q "\"timeout\": $KIT_TO" "$P/.claude/settings.json"  || { echo "FAIL: py-launcher update did not refresh the timeout"; exit 1; }
       [ ! -e "$P/.claude/settings.json.kit" ]             || { echo "FAIL: py present but the merge fell back to .kit"; exit 1; }
       rm -f "$NODEPS/py"
     fi

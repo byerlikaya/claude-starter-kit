@@ -3,6 +3,78 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [2.0.1] - 2026-08-06
+
+### Fixed
+- **The kit froze Claude Code on Windows, once per prompt.** `route-hint.sh` runs on every `UserPromptSubmit`,
+  and it scored the payload with nested shell loops: for each of the ~50 component files a `grep`+`head`+`sed`,
+  and for each of their 348 trigger phrases a `sed|tr|sed` normalisation plus a `printf|grep` with another `sed`
+  nested inside the pattern. That is roughly **2,000 process spawns per prompt** for work that is substring
+  matching over a few KB of text — measured at **3.35s on an M-series Mac**, 104% CPU, essentially all of it fork
+  overhead.
+
+  On macOS and Linux that is merely wasteful. On Windows it is fatal: Git Bash has no real `fork()`, so every
+  process is a `CreateProcess` plus the MSYS2 emulation layer plus whatever the AV scanner charges — 20-50ms
+  instead of 1.7ms. The same 2,000 spawns land at **40-100 seconds** against a 10s hook timeout. Claude Code
+  blocks on a hook until its timeout expires and then discards the output, so the session paid the full stall on
+  every single prompt **and** lost the routing it was stalling for. Reported as "the kit hangs Claude Code and no
+  command works"; it was never a Claude Code bug, the kit was spending the budget.
+
+  Matching is now one `awk` pass with the normalisation done inside awk. External processes per prompt: ~2,000 →
+  **4**. Cost per prompt: 3.35s → **0.027s**. A differential run over 24 prompts (Turkish and English, every
+  domain, plus the silence cases) shows **zero behavioural difference**, and `smoke-test.sh` §7y pins the
+  semantics as before.
+- **`doctor.sh` looked hung on Windows.** Its agent-reference check ran a `sed|head|tr` per installed agent and
+  then a `grep|cut|tr|sed` for every (agent × scanned document) pair — ~250 process spawns for a check that reads
+  a handful of markdown files. On Git Bash that stopped dead partway through the report, and the user running it
+  reasonably read that as a hang. Now two `awk` passes, whatever the component count; the report is byte-identical,
+  including line numbers and ordering.
+
+- **`skill-trust.sh` declared the entire payload unvetted when the manifest had CRLF line endings.** It matched
+  components with `grep -qxF "skills/handoff"`, which does not match the line `skills/handoff\r` — so on Windows
+  every kit component read as unshipped and the session opened with a wall of warnings about the kit's own files.
+  That is worse than noise: it teaches the reader to skip the one warning that will eventually matter. CRLF gets
+  in whenever `.claude/` is committed and checked out under `core.autocrlf=true`, which is precisely the shared-kit
+  setup this gate exists for. Found while cutting the same function's spawn count — the per-component
+  `basename` + `grep` pair (50 components, **100 spawns**, every session start, normally to report nothing) is now
+  a single builtin read and a shell pattern match: **0 spawns**.
+
+  Measured spawn counts per invocation after this release, for the paths that run on a timer users feel:
+  `route-hint.sh` **3,043 → 4** (per prompt), `doctor.sh` ~250 → ~40, `skill-trust.sh` **100 → 0** (per session),
+  `context-usage.sh` 9 (per prompt), `guard-bash.sh` 29 (per Bash tool call), `session-guard.sh` 9 (per turn).
+- **Hook paths did not resolve on Windows.** `${CLAUDE_PROJECT_DIR}` and `${CLAUDE_PLUGIN_ROOT}` arrive as native
+  paths there (`C:\Repos\app`), and every hook invocation pasted a POSIX segment onto one — producing
+  `C:\Repos\app/.claude/hooks/guard-bash.sh`, a shape Git Bash does not reliably resolve, so the gate reported a
+  path it could not find. All 15 invocations in `settings.json` and the plugin's `hooks.json`, plus the `ROOT`
+  resolution inside `session-rehydrate.sh` and `skill-trust.sh`, now fold backslashes to forward slashes. Verified
+  as a no-op on POSIX paths (including paths carrying spaces and dots) down to bash 3.2.
+
+### Changed
+- **Hook timeouts are 60s across the board** (were 10-60s). A timeout is a ceiling, not a cost: it does not slow
+  anything down, it stops a hook being killed mid-work on a slow machine — which on Windows is the normal case,
+  not the edge case.
+- **The settings-merge assertions read the expected timeout from the kit instead of pinning `30`.** Four of them
+  (one in `smoke-test.sh`, three in `e2e.sh`) hard-coded the number, so retuning the timeouts turned a correct
+  merge red and blamed the merge for it — the same stale-literal failure the SessionStart assertion next door was
+  already written to avoid. The stale fixture still carries `10`, and a guard now refuses to run the assertions at
+  all if the kit ever ships that same value, so the test cannot quietly stop proving anything.
+
+### Added
+- **A cost gate for `doctor.sh`** (`e2e.sh`, 20s bound). It lives in the e2e rather than the smoke-test because
+  that job also runs on `windows-latest` — the only place in CI where a process spawn costs a real Git Bash user
+  what it actually costs. A healthy run is ~2-4s there; a per-pair fork loop is 10s+.
+- **A cost gate for `route-hint.sh`** (`smoke-test.sh` §7y): ten prompts through the hook must finish within 5s.
+  Correctness tests could not see this class of bug — the hook answered correctly, just far too slowly — so the
+  budget needed a gate of its own. The bound sits an order of magnitude above the current implementation (~0.3s)
+  and an order of magnitude below the one it replaced (34s), so it catches a fork explosion without tripping on a
+  slow CI box. Verified failing on the old implementation before being relied on.
+
+### Note
+- Both fixes are reasoned from the mechanism and measured on macOS; the Windows leg is **not** verified on
+  Windows hardware by this project. The freeze fix is arithmetic and holds on any platform. The path fix is a
+  strict improvement — forward slashes work everywhere — but if a hook path error survives it, the exact error
+  text is what will close it.
+
 ## [2.0.0] - 2026-08-03
 
 ### Changed
