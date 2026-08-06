@@ -29,7 +29,10 @@ IN=""
 ROOT="${CLAUDE_PROJECT_DIR:-}"
 [ -n "$ROOT" ] || ROOT="$(printf '%s' "$IN" | sed -n 's/.*"cwd"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
 [ -n "$ROOT" ] || ROOT="$PWD"
-ROOT="${ROOT//\\//}"                                  # Windows native path -> POSIX separators (no-op elsewhere)
+# The stdin `cwd` is JSON-encoded, so a Windows path arrives as `C:\\Repos\\app`. Undo the escaping, then fold
+# the separators; both are no-ops on POSIX. Without this the trust gate resolved a directory that cannot exist,
+# found no components, and exited silently — a security notice that had quietly stopped noticing.
+ROOT="${ROOT//\\\\//}"; ROOT="${ROOT//\\//}"
 CL="$ROOT/.claude"
 [ -d "$CL" ] || CL="$(cd "$HERE/.." && pwd)"          # invoked from inside the install itself
 [ -d "$CL/skills" ] || [ -d "$CL/agents" ] || exit 0

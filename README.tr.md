@@ -321,7 +321,13 @@ Sabit maliyet gizlenmiyor, yazıyor. Disiplin ve her agent ile skill tarifi her 
 bash .claude/eval/smoke-test.sh      # yapı, frontmatter, yaptırım bütünlüğü
 bash .claude/eval/routing-eval.sh    # örnek bir istek doğru agent ya da skill'e gidiyor mu
 bash .claude/eval/doctor.sh          # bu kurulum sağlıklı mı, proje hazır mı
+bash .claude/eval/preflight.sh       # bu makinede hangi araçlar var, eksik olan neyi bozar
 ```
+
+`preflight.sh` ayrıca `start.sh`, `adopt.sh` ve `doctor.sh` içinde de çalışır. Bir araç yoksa kit kırılmaz, geriler:
+`jq` yoksa `python`, o da yoksa saf bash; `sha256sum` yoksa `cksum`. Tasarım böyle doğru, ama eksiğin kendini hiç
+belli etmemesinin sebebi de bu. Preflight eksiği ve bedelini adıyla söyler. Yalnız rapor eder — makinenize hiçbir şey
+kurmaz, hiçbir çalışmayı durdurmaz.
 
 ## Genişletme
 

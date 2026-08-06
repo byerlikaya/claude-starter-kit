@@ -3,6 +3,35 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- **Every path the kit read out of a hook payload was broken on Windows.** Hook stdin is JSON, and JSON encodes a
+  backslash as two — so the real path `C:\Users\me\.claude\projects\p\a.jsonl` arrives as
+  `C:\\Users\\me\\...`. The kit sliced that value out with `sed` and used it verbatim, which names no file on any
+  platform. `context-usage.sh` therefore reported `transcript not found` on **every turn**, on Windows CLI and in
+  Claude Desktop alike, and it read like the hook was being invoked without stdin. It was being invoked correctly
+  and then discarding the answer. Paths coming out of the payload are now JSON-decoded before use.
+
+  Scope, honestly: only `context-usage.sh` was actually broken. `session-rehydrate.sh` and `skill-trust.sh` folded
+  lone backslashes in 2.0.1, and folding both halves of a `\\` yields `//`, which the OS collapses — they survived
+  the encoded form by accident. Both now decode explicitly, and all three are pinned by a suite case that feeds
+  the real hooks a Windows-shaped payload.
+- **`context-usage.sh` no longer exits non-zero when it cannot measure — as a hook.** Nothing downstream reads the
+  status (`session-guard.sh` parses the line and falls open without it), while a non-zero hook exit is a visible
+  error in the user's session once per turn, for a condition the discipline already handles. Called by hand with a
+  bad path it still complains and exits 1, because that is a person's mistake and worth saying out loud.
+
+### Added
+- **`eval/preflight.sh` — the toolchain gaps get named before they become symptoms.** Runs inside `start.sh` and
+  `adopt.sh` (before the confirm prompt) and inside `doctor.sh` (because the machine changes after install day).
+  The kit is written to degrade rather than break — no `jq` falls back to `python`, then to plain bash; no
+  `sha256sum` falls back to `cksum` — which is correct design and exactly why a missing tool never announces
+  itself. Every surprise in this project came from that silence. Preflight names the gap and what it costs.
+
+  It **reports and never installs**. A scaffolding tool that puts software on someone's workstation unasked is a
+  worse problem than the one it solves, and on a managed corporate machine it just fails in a new way.
+
 ## [2.0.1] - 2026-08-06
 
 ### Fixed

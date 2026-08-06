@@ -387,6 +387,11 @@ if [ -z "$DEC_BR" ]; then
 fi
 
 if [ "$DEC_BR" = here ]; then WHERE="the current branch '$BASE'"; else WHERE="a new review branch (off '$BASE')"; fi
+# Missing tools named before the mutation prompt, not after. It matters more here than on a fresh install: the
+# settings MERGE is the step that needs jq/python, and without them an update replaces settings.json (backup
+# kept) instead of merging — so a project's own hooks are dropped. Better to say that while it is still a
+# choice. Report-only; never blocks.
+[ -f "$SRC/eval/preflight.sh" ] && bash "$SRC/eval/preflight.sh"
 if ! ask_yes "Apply the kit onto $WHERE now? (mutation; staged-not-committed, reversible with git)"; then
   h1 "Stopped"; sub "Stayed at Stage 1 — NOTHING CHANGED (read-only)."; exit 0
 fi

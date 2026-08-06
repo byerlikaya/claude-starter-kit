@@ -22,10 +22,11 @@ if [ -z "$ROOT" ]; then
   ROOT="$(printf '%s' "$IN" | sed -n 's/.*"cwd"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
 fi
 [ -n "$ROOT" ] || ROOT="$PWD"
-# Windows hands both CLAUDE_PROJECT_DIR and the stdin `cwd` over as native paths (`C:\Repos\app`). Appending a
-# POSIX segment to one produces `C:\Repos\app/docs/...`, which Git Bash does not reliably resolve. Folding the
-# backslashes is a no-op everywhere else.
-ROOT="${ROOT//\\//}"
+# Windows hands both CLAUDE_PROJECT_DIR and the stdin `cwd` over as native paths (`C:\Repos\app`), and the stdin
+# one arrives JSON-ENCODED on top of that — `C:\\Repos\\app`. Slicing it out with sed keeps the doubled
+# backslashes, so ROOT pointed at a directory that cannot exist and the hook silently rehydrated nothing.
+# Undo the JSON escaping first (`\\`), then fold any lone separator. Both are no-ops on a POSIX path.
+ROOT="${ROOT//\\\\//}"; ROOT="${ROOT//\\//}"
 
 STATE="$ROOT/docs/SESSION_STATE.md"
 [ -s "$STATE" ] || exit 0   # no (non-empty) handover → nothing to rehydrate, stay silent

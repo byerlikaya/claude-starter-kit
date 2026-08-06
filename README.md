@@ -321,7 +321,13 @@ The standing cost is published, not hidden. The discipline plus every agent and 
 bash .claude/eval/smoke-test.sh      # structure, frontmatter, gate integrity
 bash .claude/eval/routing-eval.sh    # does an example prompt reach the right agent or skill
 bash .claude/eval/doctor.sh          # is this install healthy, and is the project ready
+bash .claude/eval/preflight.sh       # which tools this machine has, and what degrades without them
 ```
+
+`preflight.sh` also runs inside `start.sh`, `adopt.sh` and `doctor.sh`. The kit degrades rather than breaks when a
+tool is absent — no `jq` falls back to `python`, then to plain bash; no `sha256sum` falls back to `cksum` — which is
+the right design and also the reason a gap never announces itself. Preflight names the gap and what it costs. It
+reports; it never installs anything on your machine and never blocks a run.
 
 ## Extending
 

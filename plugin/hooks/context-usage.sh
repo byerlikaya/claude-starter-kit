@@ -20,12 +20,24 @@ VERBOSE=0
 case "${1:-}" in --verbose|-v) VERBOSE=1; shift ;; esac
 TR="${1:-}"
 
+# A path that arrived inside the hook's stdin JSON is JSON-ENCODED, and on Windows that matters: the real value
+# `C:\Users\me\.claude\projects\p\a.jsonl` is transmitted as `C:\\Users\\me\\...`. Slicing it out with sed hands
+# back the doubled backslashes verbatim, so every `[ -f "$TR" ]` failed and the hook reported "transcript not
+# found" on every single turn — on Windows CLI and on Claude Desktop alike. It read like the hook was being
+# called without stdin; it was being called correctly and then throwing the answer away.
+#
+# So: undo the JSON escaping, then fold the separators. `\\` -> `/` first (the encoded form), then any lone `\`
+# (a value that was never encoded, e.g. an argument typed by hand). Forward slashes resolve on every platform
+# including Git Bash. A POSIX path contains neither, so this is a no-op there.
+unjson_path(){ p="${1//\\\\//}"; p="${p//\\//}"; printf '%s' "$p"; }
+
 IN=""
 # 1) transcript_path from hook stdin (if present)
 if [ -z "$TR" ] && [ ! -t 0 ]; then
   IN="$(cat 2>/dev/null || true)"
   [ -n "$IN" ] && TR="$(printf '%s' "$IN" | sed -n 's/.*"transcript_path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
 fi
+[ -n "$TR" ] && TR="$(unjson_path "$TR")"
 # 2) still missing: find the project transcript dir from pwd (client: / and . -> -)
 if [ -z "$TR" ]; then
   for esc in "$(pwd | sed 's#[/.]#-#g')" "$(pwd | sed 's#/#-#g')"; do
@@ -33,7 +45,21 @@ if [ -z "$TR" ]; then
     [ -n "$cand" ] && { TR="$cand"; break; }
   done
 fi
-[ -n "$TR" ] && [ -f "$TR" ] || { echo "context-usage: transcript not found (pass an arg or use hook stdin)" >&2; exit 1; }
+# Cannot measure. The two call sites want opposite things here, so they get opposite answers.
+#
+# Called BY HAND (a transcript passed as an argument): complain on stderr and exit non-zero. A person who typed a
+# path wants to know it was wrong, and the suite asserts this — "never invent a fill" is checked by watching for
+# a non-zero exit rather than by trusting the absence of output.
+#
+# Called AS A HOOK (payload on stdin, no argument): stay silent and exit 0. Nothing downstream reads the status —
+# session-guard.sh parses the line and falls open without it — while a non-zero exit is a visible error in the
+# user's session, once per turn, for a condition the discipline already handles (no 🔋 line, say so once, drop
+# it). It also stops depending on the `|| true` in the hook command to hide it, which exec-form hooks cannot use.
+if [ -z "$TR" ] || [ ! -f "$TR" ]; then
+  [ -n "$IN" ] && exit 0                          # hook payload on stdin -> quiet
+  echo "context-usage: transcript not found (pass an arg or use hook stdin)" >&2
+  exit 1
+fi
 
 # Sum of usage for the last main-context turn: a non-sidechain ASSISTANT record that has a cache_read.
 #

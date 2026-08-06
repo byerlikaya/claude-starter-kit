@@ -245,6 +245,15 @@ else echo "DOCTOR: $FAIL issue(s) ❌ — apply the fixes above"; fi
 # project-specific skill carries the domain. These are project maturity, not install health, so they NEVER
 # change the exit code — doctor's verdict stays a statement about the install.
 echo
+# The toolchain the install actually landed on. It runs here as well as in the installers because the machine
+# changes after install day — a wiped PATH, a new laptop, a corporate image that removed jq — and the kit's
+# fallbacks mean none of that announces itself. Advisory: it never changes the verdict above.
+# doctor has already cd'd into the project, so the installed copy is the one to run; fall back to the copy
+# sitting beside this script for the case where doctor is run straight out of the kit source.
+PREFLIGHT=".claude/eval/preflight.sh"
+[ -f "$PREFLIGHT" ] || PREFLIGHT="$(dirname "$0")/preflight.sh"
+[ -f "$PREFLIGHT" ] && bash "$PREFLIGHT"
+
 echo "Readiness (advisory — does not affect the verdict above):"
 RDY=0; RTOT=0
 rdy(){ RTOT=$((RTOT+1)); RDY=$((RDY+1)); echo "  ✅ $1"; }
