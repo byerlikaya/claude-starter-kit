@@ -3,6 +3,52 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [2.0.1] - 2026-08-06
+
+### Fixed
+- **The kit froze Claude Code on Windows, once per prompt.** `route-hint.sh` runs on every `UserPromptSubmit`,
+  and it scored the payload with nested shell loops: for each of the ~50 component files a `grep`+`head`+`sed`,
+  and for each of their 348 trigger phrases a `sed|tr|sed` normalisation plus a `printf|grep` with another `sed`
+  nested inside the pattern. That is roughly **2,000 process spawns per prompt** for work that is substring
+  matching over a few KB of text — measured at **3.35s on an M-series Mac**, 104% CPU, essentially all of it fork
+  overhead.
+
+  On macOS and Linux that is merely wasteful. On Windows it is fatal: Git Bash has no real `fork()`, so every
+  process is a `CreateProcess` plus the MSYS2 emulation layer plus whatever the AV scanner charges — 20-50ms
+  instead of 1.7ms. The same 2,000 spawns land at **40-100 seconds** against a 10s hook timeout. Claude Code
+  blocks on a hook until its timeout expires and then discards the output, so the session paid the full stall on
+  every single prompt **and** lost the routing it was stalling for. Reported as "the kit hangs Claude Code and no
+  command works"; it was never a Claude Code bug, the kit was spending the budget.
+
+  Matching is now one `awk` pass with the normalisation done inside awk. External processes per prompt: ~2,000 →
+  **4**. Cost per prompt: 3.35s → **0.027s**. A differential run over 24 prompts (Turkish and English, every
+  domain, plus the silence cases) shows **zero behavioural difference**, and `smoke-test.sh` §7y pins the
+  semantics as before.
+- **Hook paths did not resolve on Windows.** `${CLAUDE_PROJECT_DIR}` and `${CLAUDE_PLUGIN_ROOT}` arrive as native
+  paths there (`C:\Repos\app`), and every hook invocation pasted a POSIX segment onto one — producing
+  `C:\Repos\app/.claude/hooks/guard-bash.sh`, a shape Git Bash does not reliably resolve, so the gate reported a
+  path it could not find. All 15 invocations in `settings.json` and the plugin's `hooks.json`, plus the `ROOT`
+  resolution inside `session-rehydrate.sh` and `skill-trust.sh`, now fold backslashes to forward slashes. Verified
+  as a no-op on POSIX paths (including paths carrying spaces and dots) down to bash 3.2.
+
+### Changed
+- **Hook timeouts are 60s across the board** (were 10-60s). A timeout is a ceiling, not a cost: it does not slow
+  anything down, it stops a hook being killed mid-work on a slow machine — which on Windows is the normal case,
+  not the edge case.
+
+### Added
+- **A cost gate for `route-hint.sh`** (`smoke-test.sh` §7y): ten prompts through the hook must finish within 5s.
+  Correctness tests could not see this class of bug — the hook answered correctly, just far too slowly — so the
+  budget needed a gate of its own. The bound sits an order of magnitude above the current implementation (~0.3s)
+  and an order of magnitude below the one it replaced (34s), so it catches a fork explosion without tripping on a
+  slow CI box. Verified failing on the old implementation before being relied on.
+
+### Note
+- Both fixes are reasoned from the mechanism and measured on macOS; the Windows leg is **not** verified on
+  Windows hardware by this project. The freeze fix is arithmetic and holds on any platform. The path fix is a
+  strict improvement — forward slashes work everywhere — but if a hook path error survives it, the exact error
+  text is what will close it.
+
 ## [2.0.0] - 2026-08-03
 
 ### Changed
