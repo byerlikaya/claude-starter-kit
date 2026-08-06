@@ -35,6 +35,11 @@ versioning follows [SemVer](https://semver.org/).
 - **Hook timeouts are 60s across the board** (were 10-60s). A timeout is a ceiling, not a cost: it does not slow
   anything down, it stops a hook being killed mid-work on a slow machine — which on Windows is the normal case,
   not the edge case.
+- **The settings-merge assertions read the expected timeout from the kit instead of pinning `30`.** Four of them
+  (one in `smoke-test.sh`, three in `e2e.sh`) hard-coded the number, so retuning the timeouts turned a correct
+  merge red and blamed the merge for it — the same stale-literal failure the SessionStart assertion next door was
+  already written to avoid. The stale fixture still carries `10`, and a guard now refuses to run the assertions at
+  all if the kit ever ships that same value, so the test cannot quietly stop proving anything.
 
 ### Added
 - **A cost gate for `route-hint.sh`** (`smoke-test.sh` §7y): ten prompts through the hook must finish within 5s.
