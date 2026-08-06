@@ -158,21 +158,54 @@ if [ -f CLAUDE.md ] && ls .claude/agents/*.md >/dev/null 2>&1; then
   for r in $(grep -oE '@?[A-Za-z0-9_./-]+\.md' CLAUDE.md 2>/dev/null | sed 's/^@//' | sort -u); do
     [ -f "$r" ] && [ "$r" != "CLAUDE.md" ] && SCAN="$SCAN $r"
   done
+  # TWO awk passes, not a nested shell loop. This check used to run `sed|head|tr` per agent and then a
+  # `grep|cut|tr|sed` for every (agent × scanned file) pair — 12 agents against a handful of docs is already
+  # ~250 process spawns. On Linux/macOS that is invisible; on Windows, where Git Bash pays 20-50ms per spawn
+  # instead of ~1.7ms, doctor stopped dead right here and looked hung to the user who ran it. Same disease the
+  # route-hint hook had, same cure: let awk do the looping. Two spawns, whatever the component count.
+  CSK_AGENT_BASES="$(awk '
+    FNR==1 { files[++nf]=FILENAME }
+    !got[FILENAME] && /^name:[[:space:]]*/ {
+      n=$0; sub(/^name:[[:space:]]*/,"",n); gsub(/[^a-zA-Z0-9-]/,"",n)       # same charset tr -cd kept
+      if (n != "") { nm[FILENAME]=n; got[FILENAME]=1 }
+    }
+    END {
+      for (i=1;i<=nf;i++) {
+        f=files[i]; n=(f in nm) ? nm[f] : ""
+        if (n=="") { n=f; sub(/\.md$/,"",n); sub(/.*\//,"",n) }              # fallback: the file name
+        if (n ~ /-csk$/) { b=n; sub(/-csk$/,"",b); print b "\t" n }
+      }
+    }' .claude/agents/*.md)"
+  export CSK_AGENT_BASES
   STALE=""; STALE_PULL=""
-  for af in .claude/agents/*.md; do
-    [ -e "$af" ] || continue
-    name="$(sed -n 's/^name:[[:space:]]*//p' "$af" | head -1 | tr -cd 'a-zA-Z0-9-')"
-    [ -n "$name" ] || name="$(basename "$af" .md)"
-    case "$name" in *-csk) base="${name%-csk}" ;; *) continue ;; esac
-    for f in $SCAN; do
-      # bare `base` NOT followed by `-` (so not base-csk) and not glued into a longer word
-      lines="$(grep -nE "(^|[^a-zA-Z-])$base([^a-zA-Z-]|$)" "$f" 2>/dev/null | cut -d: -f1 | tr '\n' ',' | sed 's/,$//')"
-      [ -n "$lines" ] || continue
-      entry="
+  while IFS="$(printf '\t')" read -r base name f lines; do
+    [ -n "$base" ] || continue
+    entry="
      ↳ \"$base\" → \"$name\"   ($f line(s): $lines)"
-      case "$PULL_AGENTS" in *" $name "*) STALE_PULL="$STALE_PULL$entry" ;; *) STALE="$STALE$entry" ;; esac
-    done
-  done
+    case "$PULL_AGENTS" in *" $name "*) STALE_PULL="$STALE_PULL$entry" ;; *) STALE="$STALE$entry" ;; esac
+  done <<EOF
+$(awk '
+  BEGIN {
+    n = split(ENVIRON["CSK_AGENT_BASES"], rows, "\n"); k=0
+    for (i=1;i<=n;i++) { if (rows[i]=="") continue; split(rows[i], a, "\t"); k++; base[k]=a[1]; full[k]=a[2] }
+    nb=k
+  }
+  FNR==1 { order[++nf]=FILENAME }
+  {
+    # bare `base` NOT followed by `-` (so not base-csk) and not glued into a longer word — the identical
+    # boundary the grep used. Agent ids are [a-z-] only, so nothing here needs regex escaping.
+    for (i=1;i<=nb;i++)
+      if ($0 ~ ("(^|[^a-zA-Z-])" base[i] "([^a-zA-Z-]|$)"))
+        hit[i, FILENAME] = (hit[i, FILENAME]=="" ? FNR : hit[i, FILENAME] "," FNR)
+  }
+  # Emitted in agent order, then scanned-file order, so the report reads the same as it always did rather
+  # than in awk hash order.
+  END {
+    for (i=1;i<=nb;i++)
+      for (j=1;j<=nf;j++)
+        if ((i, order[j]) in hit) print base[i] "\t" full[i] "\t" order[j] "\t" hit[i, order[j]]
+  }' $SCAN)
+EOF
   if [ -n "$STALE" ]; then
     bad "CLAUDE.md (or a doc it references) names auto-delegated agent(s) that no installed agent matches — delegation to them silently fails" \
         "rename each bare reference to its \`-csk\` id:$STALE"

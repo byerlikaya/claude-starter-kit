@@ -48,18 +48,34 @@ digest(){
 # The component list: a skill is its SKILL.md, an agent is its file. Only those the kit does NOT ship —
 # without a manifest we cannot tell kit-owned from project-owned, so we stay silent rather than guess.
 [ -f "$MAN" ] || exit 0
+
+# The manifest is read ONCE and matched with shell builtins. It used to be a `basename` plus a `grep -qxF` per
+# component — 50 shipped components, 100 process spawns, every session start, to discover that (normally) not a
+# single component is foreign. On Git Bash, where a spawn costs 20-50ms rather than ~1.7ms, that is 2-5s of a
+# user's session opening spent proving there is nothing to report. `$(<file)` is a builtin read: no `cat`.
+#
+# The `\r` strip is not cosmetic. A manifest written on Windows carries CRLF, and `grep -qxF "skills/foo"` does
+# not match the line "skills/foo\r" — so every kit component read as FOREIGN and the session opened by declaring
+# the whole payload unvetted. That was a live Windows bug hiding behind the loop this replaces.
+MANTXT="$(<"$MAN")"
+MANTXT="${MANTXT//$'\r'/}"
+NL='
+'
+MANTXT="$NL$MANTXT$NL"
+is_kit(){ case "$MANTXT" in *"$NL$1$NL"*) return 0 ;; *) return 1 ;; esac; }
+
 FOREIGN=""
 for d in "$CL"/skills/*/; do
   [ -d "$d" ] || continue
-  n="$(basename "$d")"
-  grep -qxF "skills/$n" "$MAN" 2>/dev/null && continue
+  n="${d%/}"; n="${n##*/}"
+  is_kit "skills/$n" && continue
   [ -f "$d/SKILL.md" ] && FOREIGN="$FOREIGN
 skills/$n|$d/SKILL.md"
 done
 for f in "$CL"/agents/*.md; do
   [ -e "$f" ] || continue
-  n="$(basename "$f")"
-  grep -qxF "agents/$n" "$MAN" 2>/dev/null && continue
+  n="${f##*/}"
+  is_kit "agents/$n" && continue
   FOREIGN="$FOREIGN
 agents/$n|$f"
 done

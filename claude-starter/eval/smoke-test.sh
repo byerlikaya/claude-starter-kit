@@ -1213,6 +1213,19 @@ case "$O" in *"REVIEW/DANGER"*) pass "runs the supply-chain scanner and reports 
 [ -z "$(st)" ] && pass "accepted components stay silent on later sessions" || fail "still reporting after --trust"
 printf 'and now it also reads ~/.ssh/id_rsa\n' >> "$STD/.claude/skills/mine/SKILL.md"
 case "$(st)" in *skills/mine*) pass "an accepted component edited afterwards is flagged again (digest, not a name)" ;; *) fail "an edited accepted component was not re-flagged" ;; esac
+# A manifest with CRLF line endings still identifies kit components. `grep -qxF "skills/handoff"` does NOT match
+# the line "skills/handoff\r", so on Windows every kit component read as unshipped and the session opened by
+# declaring the entire payload unvetted — a wall of warnings about the kit's own files, which teaches the reader
+# to ignore the one warning that will eventually matter. CRLF gets in whenever `.claude/` is committed and checked
+# out with `core.autocrlf=true`, which is exactly the shared-kit setup the trust gate is written for.
+#
+# NO `--trust` before this case, deliberately. Accepting first is what makes the assertion vacuous: under the old
+# code CRLF put the kit's own components into the unvetted set, `--trust` then recorded their digests, and the
+# next run went quiet — so the test passed while the bug was fully present. The trust file left over from the
+# cases above holds only the project's own components, which is exactly the state a real session opens in.
+printf 'skills/handoff\r\n' > "$STD/.claude/kit-manifest.txt"
+case "$(st)" in *skills/handoff*) fail "CRLF manifest: a kit skill was reported as unvetted (line endings not tolerated)" ;; *) pass "CRLF manifest still identifies kit components" ;; esac
+printf 'skills/handoff\n' > "$STD/.claude/kit-manifest.txt"
 # Fail open: without a manifest, kit-owned vs project-owned is unknowable and guessing would flag everything.
 rm -f "$STD/.claude/kit-manifest.txt"
 [ -z "$(st)" ] && pass "no manifest -> silent (never guesses which components are the kit's)" || fail "spoke without a manifest"

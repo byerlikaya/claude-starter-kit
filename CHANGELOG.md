@@ -24,6 +24,24 @@ versioning follows [SemVer](https://semver.org/).
   **4**. Cost per prompt: 3.35s → **0.027s**. A differential run over 24 prompts (Turkish and English, every
   domain, plus the silence cases) shows **zero behavioural difference**, and `smoke-test.sh` §7y pins the
   semantics as before.
+- **`doctor.sh` looked hung on Windows.** Its agent-reference check ran a `sed|head|tr` per installed agent and
+  then a `grep|cut|tr|sed` for every (agent × scanned document) pair — ~250 process spawns for a check that reads
+  a handful of markdown files. On Git Bash that stopped dead partway through the report, and the user running it
+  reasonably read that as a hang. Now two `awk` passes, whatever the component count; the report is byte-identical,
+  including line numbers and ordering.
+
+- **`skill-trust.sh` declared the entire payload unvetted when the manifest had CRLF line endings.** It matched
+  components with `grep -qxF "skills/handoff"`, which does not match the line `skills/handoff\r` — so on Windows
+  every kit component read as unshipped and the session opened with a wall of warnings about the kit's own files.
+  That is worse than noise: it teaches the reader to skip the one warning that will eventually matter. CRLF gets
+  in whenever `.claude/` is committed and checked out under `core.autocrlf=true`, which is precisely the shared-kit
+  setup this gate exists for. Found while cutting the same function's spawn count — the per-component
+  `basename` + `grep` pair (50 components, **100 spawns**, every session start, normally to report nothing) is now
+  a single builtin read and a shell pattern match: **0 spawns**.
+
+  Measured spawn counts per invocation after this release, for the paths that run on a timer users feel:
+  `route-hint.sh` **3,043 → 4** (per prompt), `doctor.sh` ~250 → ~40, `skill-trust.sh` **100 → 0** (per session),
+  `context-usage.sh` 9 (per prompt), `guard-bash.sh` 29 (per Bash tool call), `session-guard.sh` 9 (per turn).
 - **Hook paths did not resolve on Windows.** `${CLAUDE_PROJECT_DIR}` and `${CLAUDE_PLUGIN_ROOT}` arrive as native
   paths there (`C:\Repos\app`), and every hook invocation pasted a POSIX segment onto one — producing
   `C:\Repos\app/.claude/hooks/guard-bash.sh`, a shape Git Bash does not reliably resolve, so the gate reported a
@@ -42,6 +60,9 @@ versioning follows [SemVer](https://semver.org/).
   all if the kit ever ships that same value, so the test cannot quietly stop proving anything.
 
 ### Added
+- **A cost gate for `doctor.sh`** (`e2e.sh`, 20s bound). It lives in the e2e rather than the smoke-test because
+  that job also runs on `windows-latest` — the only place in CI where a process spawn costs a real Git Bash user
+  what it actually costs. A healthy run is ~2-4s there; a per-pair fork loop is 10s+.
 - **A cost gate for `route-hint.sh`** (`smoke-test.sh` §7y): ten prompts through the hook must finish within 5s.
   Correctness tests could not see this class of bug — the hook answered correctly, just far too slowly — so the
   budget needed a gate of its own. The bound sits an order of magnitude above the current implementation (~0.3s)
