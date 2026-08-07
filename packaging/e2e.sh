@@ -191,7 +191,11 @@ mk_stale_install(){                       # $1 = dir : a healthy 1.4.x install w
 # timeout retune into a red e2e that blames the merge — which is exactly what happened when the hook timeouts
 # moved to 60: the merge was correct and the assertion was stale. The fixture above deliberately carries 10, and
 # the guard below keeps the test honest by refusing to run if the kit ever ships that same value.
-KIT_TO="$(grep -A1 'context-usage\.sh' claude-starter/settings.json | sed -n 's/.*"timeout":[[:space:]]*\([0-9][0-9]*\).*/\1/p' | head -1)"
+# Layout-independent: find the line naming the script, then take the FIRST "timeout" after it. A fixed `grep -A1`
+# was tied to the shell-form shape and went blank the moment hooks moved to exec form, where the path sits inside
+# an `args` array and the timeout is several lines further down. The guard below caught that rather than letting
+# the assertions quietly pass on an empty value — which is the whole reason it is there.
+KIT_TO="$(awk '/context-usage\.sh/{f=1} f && /"timeout"/{gsub(/[^0-9]/,""); print; exit}' claude-starter/settings.json)"
 [ -n "$KIT_TO" ] && [ "$KIT_TO" != 10 ] || { echo "FAIL: could not read the kit's UserPromptSubmit timeout (got '${KIT_TO:-}') — the stale-vs-refreshed assertions below would prove nothing"; exit 1; }
 # (A) update · non-interactive · NO --yes -> APPLIES (self-heal): stale hook refreshed, SessionStart wired, CLAUDE.md kept
 U="$WORK/selfheal"; mk_stale_install "$U"

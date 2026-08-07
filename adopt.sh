@@ -387,6 +387,11 @@ if [ -z "$DEC_BR" ]; then
 fi
 
 if [ "$DEC_BR" = here ]; then WHERE="the current branch '$BASE'"; else WHERE="a new review branch (off '$BASE')"; fi
+# Missing tools named before the mutation prompt, not after. It matters more here than on a fresh install: the
+# settings MERGE is the step that needs jq/python, and without them an update replaces settings.json (backup
+# kept) instead of merging — so a project's own hooks are dropped. Better to say that while it is still a
+# choice. Report-only; never blocks.
+[ -f "$SRC/eval/preflight.sh" ] && bash "$SRC/eval/preflight.sh"
 if ! ask_yes "Apply the kit onto $WHERE now? (mutation; staged-not-committed, reversible with git)"; then
   h1 "Stopped"; sub "Stayed at Stage 1 — NOTHING CHANGED (read-only)."; exit 0
 fi
@@ -621,7 +626,7 @@ def dm(a;b): reduce (b|keys_unsorted[]) as $k (a;
   if (.[$k]|type)=="object" and (b[$k]|type)=="object" then .[$k]=dm(.[$k];b[$k])
   elif (.[$k]|type)=="array" and (b[$k]|type)=="array" then .[$k]=((.[$k]+b[$k])|ddedup)
   else .[$k]=b[$k] end);
-def is_kit: ((.hooks // []) | map((.command // "") | contains(".claude/hooks/")) | any);
+def is_kit: ((.hooks // []) | map((((.command // "") + " " + ((.args // []) | join(" "))) | contains(".claude/hooks/"))) | any);   # command AND args: tolerates either wiring shape
 def merge_hooks(kh;ph):
   (((kh|keys_unsorted)+(ph|keys_unsorted))|unique) as $e
   | reduce $e[] as $k ({}; .[$k]=((kh[$k] // [])+((ph[$k] // [])|map(select(is_kit|not)))));

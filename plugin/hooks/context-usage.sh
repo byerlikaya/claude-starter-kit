@@ -20,12 +20,24 @@ VERBOSE=0
 case "${1:-}" in --verbose|-v) VERBOSE=1; shift ;; esac
 TR="${1:-}"
 
+# A path that arrived inside the hook's stdin JSON is JSON-ENCODED, and on Windows that matters: the real value
+# `C:\Users\me\.claude\projects\p\a.jsonl` is transmitted as `C:\\Users\\me\\...`. Slicing it out with sed hands
+# back the doubled backslashes verbatim, so every `[ -f "$TR" ]` failed and the hook reported "transcript not
+# found" on every single turn — on Windows CLI and on Claude Desktop alike. It read like the hook was being
+# called without stdin; it was being called correctly and then throwing the answer away.
+#
+# So: undo the JSON escaping, then fold the separators. `\\` -> `/` first (the encoded form), then any lone `\`
+# (a value that was never encoded, e.g. an argument typed by hand). Forward slashes resolve on every platform
+# including Git Bash. A POSIX path contains neither, so this is a no-op there.
+unjson_path(){ p="${1//\\\\//}"; p="${p//\\//}"; printf '%s' "$p"; }
+
 IN=""
 # 1) transcript_path from hook stdin (if present)
 if [ -z "$TR" ] && [ ! -t 0 ]; then
   IN="$(cat 2>/dev/null || true)"
   [ -n "$IN" ] && TR="$(printf '%s' "$IN" | sed -n 's/.*"transcript_path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
 fi
+[ -n "$TR" ] && TR="$(unjson_path "$TR")"
 # 2) still missing: find the project transcript dir from pwd (client: / and . -> -)
 if [ -z "$TR" ]; then
   for esc in "$(pwd | sed 's#[/.]#-#g')" "$(pwd | sed 's#/#-#g')"; do
@@ -33,7 +45,21 @@ if [ -z "$TR" ]; then
     [ -n "$cand" ] && { TR="$cand"; break; }
   done
 fi
-[ -n "$TR" ] && [ -f "$TR" ] || { echo "context-usage: transcript not found (pass an arg or use hook stdin)" >&2; exit 1; }
+# Cannot measure. The two call sites want opposite things here, so they get opposite answers.
+#
+# Called BY HAND (a transcript passed as an argument): complain on stderr and exit non-zero. A person who typed a
+# path wants to know it was wrong, and the suite asserts this — "never invent a fill" is checked by watching for
+# a non-zero exit rather than by trusting the absence of output.
+#
+# Called AS A HOOK (payload on stdin, no argument): stay silent and exit 0. Nothing downstream reads the status —
+# session-guard.sh parses the line and falls open without it — while a non-zero exit is a visible error in the
+# user's session, once per turn, for a condition the discipline already handles (no 🔋 line, say so once, drop
+# it). It also stops depending on the `|| true` in the hook command to hide it, which exec-form hooks cannot use.
+if [ -z "$TR" ] || [ ! -f "$TR" ]; then
+  [ -n "$IN" ] && exit 0                          # hook payload on stdin -> quiet
+  echo "context-usage: transcript not found (pass an arg or use hook stdin)" >&2
+  exit 1
+fi
 
 # Sum of usage for the last main-context turn: a non-sidechain ASSISTANT record that has a cache_read.
 #
@@ -93,7 +119,14 @@ if [ -z "$TOTAL" ]; then
   CAP="${CSK_CONTEXT_MAX_BYTES:-209715200}"         # 200 MiB; override per-repo
   [ "${SZ:-0}" -le "$CAP" ] && TOTAL="$(scan < "$TR")"
 fi
-[ -n "${TOTAL:-}" ] || { echo "context-usage: usage not found in the byte-bounded window (transcript too large to scan within the hook timeout)" >&2; exit 1; }
+# Same split as the missing-transcript case above: a hook stays quiet and exits 0, a by-hand call explains
+# itself and exits non-zero. Exec-form hook commands carry no `|| true` to swallow a status, so anything that
+# exits non-zero here becomes an error banner in the user's session once per turn.
+if [ -z "${TOTAL:-}" ]; then
+  [ -n "$IN" ] && exit 0
+  echo "context-usage: usage not found in the byte-bounded window (transcript too large to scan within the hook timeout)" >&2
+  exit 1
+fi
 
 # LC_ALL=C: force a '.' decimal separator regardless of locale (tr_TR etc. would emit '77,2' and could
 # mis-parse the percentage). Generation AND every comparison below run under C so they stay consistent.
@@ -119,6 +152,30 @@ fi
 # Only meaningful on the UserPromptSubmit call: session-guard.sh pipes a Stop payload through this same
 # script, and a by-hand run has no stdin at all. Fails open — no stdin, no session_id, no VERSION: silent.
 case "$IN" in *'"hook_event_name"'*UserPromptSubmit*) ;; *) exit 0 ;; esac
+
+# --- Stale-WIRING gate -------------------------------------------------------------------------------
+# A resumed session keeps the hook wiring it was started with. Measured on Windows: settings.json on disk had
+# already been corrected, and `--resume` still produced the error naming the OLD, mangled path — while the same
+# event under a fresh session was clean. So after a kit update, `--resume` carries the previous wiring, and on
+# the release that fixed the Windows path that means the gates are still the broken ones.
+#
+# The obvious gate cannot work: a hook cannot report its own absence, and under the old wiring on Windows NO
+# hook launched at all. What this catches is the other half — a session where the hooks DO run, but not the way
+# the file on disk says they should. `$0` is the evidence: the kit wires `bash .claude/hooks/<name>.sh`, so a
+# correctly-launched hook sees a relative `$0`. Anything else means this session was launched from a different
+# settings.json than the one now on disk.
+#
+# Silent unless settings.json actually carries the kit's current shape — a project that rewired its hooks by
+# hand is not wrong, and warning it every turn would be noise it cannot fix.
+CSKSET="$HERE/../settings.json"
+if [ -f "$CSKSET" ] && grep -q 'bash \.claude/hooks/context-usage\.sh' "$CSKSET" 2>/dev/null; then
+  case "$0" in
+    .claude/hooks/*) ;;                         # launched exactly as the file on disk wires it
+    *) echo "⚠️ this session is running OLDER hook wiring than .claude/settings.json on disk (resumed across a kit update). The gates in force are the previous ones — ask the user to quit the CLI and start a NEW session; --resume will not pick up the change." ;;
+  esac
+fi
+
+# --- Stale-discipline gate ---------------------------------------------------------------------------
 KITVER="$HERE/../VERSION"                       # hooks live in .claude/hooks -> .claude/VERSION
 [ -f "$KITVER" ] || exit 0
 NOW="$(head -1 "$KITVER" 2>/dev/null | tr -cd '0-9A-Za-z.-')"

@@ -3,6 +3,82 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- **No hook launched at all on Windows, and every gate was silently absent.** Reported as
+  `bash: C:RuntimeHostExecLayerskqr_backend/.claude/hooks/session-rehydrate.sh: No such file or directory` —
+  note the separators are **deleted**, not converted. The installed `settings.json` was correct, and no local
+  reproduction could produce that string, which is what finally located the cause: hooks were wired in **shell
+  form** with the project path interpolated into the command, and Claude Code substitutes the placeholder into
+  that string *before* a shell ever sees it. On Windows the value is `C:\Repos\app`, and the backslashes are
+  consumed on the way. 2.0.1's `${VAR//\\//}` fold could never have run — bash was not the one doing the
+  expanding.
+
+  Hook commands now carry **no placeholder at all**:
+
+  ```
+  cd "$CLAUDE_PROJECT_DIR" 2>/dev/null; bash .claude/hooks/<name>.sh
+  ```
+
+  Hooks run in the project directory, so the relative path is the load-bearing part and there is nothing left for
+  the substitution to mangle. The `cd` is a belt for a session started in a subdirectory; it uses the **bare**
+  `$CLAUDE_PROJECT_DIR`, which is not the placeholder syntax and therefore survives to the shell, and if it fails
+  the relative path still carries.
+
+  **The documented fix was tried first and rejected on evidence.** The hooks reference recommends *exec form*
+  (`"command": "bash", "args": [...]`) for anything referencing a path placeholder, and it was implemented —
+  then checked on the affected Windows machine before shipping. `where bash` there answered
+  `C:\Windows\System32\bash.exe`: not Git Bash, but the **WSL launcher**, whose filesystem namespace has no
+  `C:\Repos\app` at all. Exec form spawns `command` off the PATH with no shell, so it would have run that — or
+  failed outright on a machine without WSL — and taken every gate with it, with an error pointing nowhere near
+  the cause. It would have been a worse bug than the one being fixed, shipped as the recommended solution.
+  `smoke-test.sh` now refuses exec-form wiring outright, with that reasoning attached.
+
+  `doctor.sh` reports `${CLAUDE_PROJECT_DIR}` in a hook command as a failure on every platform — a repo is shared
+  across machines, and the wiring is wrong on all of them the moment one teammate is on Windows.
+
+  Handled alongside: every non-gate hook was checked to exit 0 on its hook path (`context-usage.sh` had a second
+  non-zero exit that would surface as a per-turn error banner), and `adopt.sh`'s merge now recognises kit hooks
+  from `command` *and* `args`, so it tolerates either wiring shape on an update.
+- **Every path the kit read out of a hook payload was broken on Windows.** Hook stdin is JSON, and JSON encodes a
+  backslash as two — so the real path `C:\Users\me\.claude\projects\p\a.jsonl` arrives as
+  `C:\\Users\\me\\...`. The kit sliced that value out with `sed` and used it verbatim, which names no file on any
+  platform. `context-usage.sh` therefore reported `transcript not found` on **every turn**, on Windows CLI and in
+  Claude Desktop alike, and it read like the hook was being invoked without stdin. It was being invoked correctly
+  and then discarding the answer. Paths coming out of the payload are now JSON-decoded before use.
+
+  Scope, honestly: only `context-usage.sh` was actually broken. `session-rehydrate.sh` and `skill-trust.sh` folded
+  lone backslashes in 2.0.1, and folding both halves of a `\\` yields `//`, which the OS collapses — they survived
+  the encoded form by accident. Both now decode explicitly, and all three are pinned by a suite case that feeds
+  the real hooks a Windows-shaped payload.
+- **`context-usage.sh` no longer exits non-zero when it cannot measure — as a hook.** Nothing downstream reads the
+  status (`session-guard.sh` parses the line and falls open without it), while a non-zero hook exit is a visible
+  error in the user's session once per turn, for a condition the discipline already handles. Called by hand with a
+  bad path it still complains and exits 1, because that is a person's mistake and worth saying out loud.
+
+### Added
+- **A stale-WIRING gate: a session resumed across a kit update runs the previous hooks.** Found while verifying
+  the path fix on the affected machine — `settings.json` on disk had already been corrected and `--resume` still
+  produced the error naming the old, mangled path, while the same event in a fresh session was clean. So
+  `--resume` carries the wiring the session started with, and on the very release that repairs the Windows path
+  that means the gates in force are still the broken ones.
+
+  The obvious gate is impossible: a hook cannot report its own absence, and under the old wiring on Windows no
+  hook launched at all. This catches the other half — hooks that *do* run, but not the way the file on disk says
+  they should. `$0` is the evidence: the kit wires `bash .claude/hooks/<name>.sh`, so a correctly-launched hook
+  sees a relative `$0`, and anything else came from a different `settings.json`. It stays silent when
+  `settings.json` is absent or hand-rewired: a project that wired its own hooks is not wrong, and warning it every
+  turn about something it chose is noise it cannot act on.
+- **`eval/preflight.sh` — the toolchain gaps get named before they become symptoms.** Runs inside `start.sh` and
+  `adopt.sh` (before the confirm prompt) and inside `doctor.sh` (because the machine changes after install day).
+  The kit is written to degrade rather than break — no `jq` falls back to `python`, then to plain bash; no
+  `sha256sum` falls back to `cksum` — which is correct design and exactly why a missing tool never announces
+  itself. Every surprise in this project came from that silence. Preflight names the gap and what it costs.
+
+  It **reports and never installs**. A scaffolding tool that puts software on someone's workstation unasked is a
+  worse problem than the one it solves, and on a managed corporate machine it just fails in a new way.
+
 ## [2.0.1] - 2026-08-06
 
 ### Fixed

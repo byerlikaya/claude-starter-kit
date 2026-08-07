@@ -85,6 +85,22 @@ if [ -f "$S" ]; then
       || bad "settings.json missing hook events or wiring:$MISS" "restore settings.json from the kit"
     grep -q '"SessionStart"' "$S" || warn "SessionStart not wired — session rehydration inactive (update the kit)"
   fi
+  # `${CLAUDE_PROJECT_DIR}` inside a hook command is the shape that breaks on Windows, and it breaks invisibly.
+  # Claude Code substitutes that placeholder into the command STRING before any shell sees it; on Windows the
+  # value is `C:\Repos\app` and the separators are gone by the time bash reads it. The reported path was
+  # `C:ReposApp/.claude/hooks/...` — every hook failed to launch and every gate was absent, while settings.json
+  # looked perfectly correct on inspection. The kit now uses a RELATIVE path (hooks run in the project
+  # directory), with a `cd` off the bare `$CLAUDE_PROJECT_DIR` as a belt for a session started in a subdirectory.
+  # Bare `$VAR` is not the placeholder syntax, so Claude Code leaves it for the shell to expand.
+  #
+  # Reported on every platform, not only Windows: a repo is shared across machines, and the wiring is wrong on
+  # all of them the moment one teammate is on Windows.
+  if grep -q '\${CLAUDE_PROJECT_DIR' "$S" 2>/dev/null; then
+    bad "settings.json wires hooks through the \${CLAUDE_PROJECT_DIR} placeholder — on Windows its separators are stripped before bash runs, so NO hook launches and every gate is silently absent" \
+        "update the kit (npx @byerlikaya/claude-starter-kit adopt) — hook commands become: cd \"\$CLAUDE_PROJECT_DIR\" 2>/dev/null; bash .claude/hooks/<name>.sh"
+  else
+    ok "hook wiring carries no path placeholder (nothing for Windows to mangle)"
+  fi
 else
   bad "settings.json missing — the tool-level gates (commit approval, guards, context) are INACTIVE" "reinstall the kit"
 fi
@@ -245,6 +261,15 @@ else echo "DOCTOR: $FAIL issue(s) ❌ — apply the fixes above"; fi
 # project-specific skill carries the domain. These are project maturity, not install health, so they NEVER
 # change the exit code — doctor's verdict stays a statement about the install.
 echo
+# The toolchain the install actually landed on. It runs here as well as in the installers because the machine
+# changes after install day — a wiped PATH, a new laptop, a corporate image that removed jq — and the kit's
+# fallbacks mean none of that announces itself. Advisory: it never changes the verdict above.
+# doctor has already cd'd into the project, so the installed copy is the one to run; fall back to the copy
+# sitting beside this script for the case where doctor is run straight out of the kit source.
+PREFLIGHT=".claude/eval/preflight.sh"
+[ -f "$PREFLIGHT" ] || PREFLIGHT="$(dirname "$0")/preflight.sh"
+[ -f "$PREFLIGHT" ] && bash "$PREFLIGHT"
+
 echo "Readiness (advisory — does not affect the verdict above):"
 RDY=0; RTOT=0
 rdy(){ RTOT=$((RTOT+1)); RDY=$((RDY+1)); echo "  ✅ $1"; }

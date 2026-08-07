@@ -218,6 +218,10 @@ gate "real context measurement + handoff at 75% (Stop hook)"
 gate "destructive command guard (rm -rf / force-push, etc.)"
 echo
 row "Will write" "${D}./.claude (agents·skills·commands·hooks·eval·settings.json) + ./CLAUDE.md${R}"
+# What this machine is missing, BEFORE the confirm prompt — not after, when it becomes a symptom pointing
+# somewhere else. Report-only and never blocking: the kit degrades rather than breaks, and that is exactly why
+# a gap is otherwise invisible. See claude-starter/eval/preflight.sh for the reasoning per tool.
+[ -f "$SRC/eval/preflight.sh" ] && bash "$SRC/eval/preflight.sh"
 rule
 echo
 # ask_yes reads from stdin => in CI `printf 'yes\n' | bash start.sh` works; 'no' on EOF (no accidental install).
