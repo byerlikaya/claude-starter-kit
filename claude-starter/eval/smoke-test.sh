@@ -1403,14 +1403,29 @@ S0=$SECONDS; o="$(uc http://10.255.255.1/blackhole)"; EL=$((SECONDS - S0))
 
 # 5) The fetch half, exercised for real over file:// — response parsed, version validated, cache written whole.
 #    Hermetic: no registry, no network, but the SAME code path a live check runs.
+#
+#    The URL has to be one CURL understands, and on Git Bash that is NOT the MSYS path this script works in:
+#    `curl` there is the Windows binary and `file:///tmp/xxx` names nothing it can open. cygpath -m produces
+#    `C:/Users/...`, which both builds accept. Without it this case failed on windows-latest while the hook under
+#    test was fine — a fixture bug wearing a product bug's clothes, which is the failure this suite has hit three
+#    times. So the URL is proven fetchable FIRST: if curl cannot read the fixture at all, that is this environment's
+#    curl, not the kit, and the case says so instead of reporting a defect it did not find.
 printf '{"latest":"9.9.9","beta":"9.9.9-rc1"}' > "$UPD/dist-tags.json"
-CSK_UPDATE_URL="file://$UPD/dist-tags.json" bash "$UH" --refresh "$UPD/.claude/.state" </dev/null >/dev/null 2>&1
-case "$(cat "$UPD/.claude/.state/update-check" 2>/dev/null)" in
-  9.9.9\ [0-9]*) pass "--refresh parses a dist-tags response and caches version+timestamp" ;;
-  *) fail "--refresh did not cache a usable result (got: $(cat "$UPD/.claude/.state/update-check" 2>/dev/null || echo '<no file>'))" ;;
-esac
-ustate; case "$(uc)" in *9.9.9*) pass "the cached fetch result is what the next startup announces" ;;
-                        *) fail "a freshly cached version was not announced on the next startup" ;; esac
+if command -v cygpath >/dev/null 2>&1; then FURL="file:///$(cygpath -m "$UPD/dist-tags.json")"
+else FURL="file://$UPD/dist-tags.json"; fi
+if ! command -v curl >/dev/null 2>&1; then
+  pass "--refresh fetch case skipped (no curl here — the hook also stays silent without one)"
+elif ! curl -fsS "$FURL" >/dev/null 2>&1; then
+  pass "--refresh fetch case skipped (this curl cannot read $FURL — file:// support, not the kit)"
+else
+  CSK_UPDATE_URL="$FURL" bash "$UH" --refresh "$UPD/.claude/.state" </dev/null >/dev/null 2>&1
+  case "$(cat "$UPD/.claude/.state/update-check" 2>/dev/null)" in
+    9.9.9\ [0-9]*) pass "--refresh parses a dist-tags response and caches version+timestamp" ;;
+    *) fail "--refresh did not cache a usable result from $FURL (got: $(cat "$UPD/.claude/.state/update-check" 2>/dev/null || echo '<no file>'))" ;;
+  esac
+  ustate; case "$(uc)" in *9.9.9*) pass "the cached fetch result is what the next startup announces" ;;
+                          *) fail "a freshly cached version was not announced on the next startup" ;; esac
+fi
 
 # 6) The version comes off the network, and whatever it says lands in a MODEL's context. Anything that is not a
 #    release number must produce silence — not an echo of itself.
