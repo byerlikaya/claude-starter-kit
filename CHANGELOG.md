@@ -3,6 +3,39 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **`session-update-check.sh` — a published release now finds the project, instead of waiting to be remembered.**
+  Until now a fix reached an install only when somebody thought to run `/update-csk`, so shipped fixes sat unused in
+  the projects that wanted them. At session start the hook says, once, that a newer version is out and points at
+  `/update-csk`.
+
+  The design constraint is the whole feature: **no network I/O in the foreground.** A `SessionStart` hook blocks the
+  session until it returns and its timeout is 60s, so a version lookup behind a corporate proxy or on an offline
+  machine would turn session opening into a hang — the 2.0.1 failure again, from a different cause. The foreground
+  reads one cache file and exits; when that cache is older than a day it starts a **detached** refresher whose
+  result is used by the *next* session. A version notice is not urgent, so being one session late costs nothing
+  and blocking would cost everything. If the refresher is killed the next startup simply retries: the worst case
+  is a late notice, never a hang and never a wrong version.
+
+  Wired on `startup` alone — on resume/clear/compact it would re-announce inside one session, on the same channel
+  that carries the rehydrate and trust notices. Announced once per released version, so declining an update is not
+  re-litigated every morning. `CSK_NO_UPDATE_CHECK=1` turns it off; an outbound request nobody asked for needs a
+  switch, not a justification. `/doctor-csk` reports the same cached answer, so a missed notice is still findable —
+  and it makes no network call of its own either.
+
+  Installer editions only. The plugin edition has no `.claude/VERSION` to compare against and updates through
+  `claude plugin update`; it is now the second documented hook exclusion beside `skill-trust.sh`, and the
+  plugin/settings parity gate asserts the set is exactly those two.
+
+  The published version is treated as untrusted input on its way into a model's context: digits and dots, exactly
+  three fields, or it is discarded unread. **That check was measured, not assumed** — the first version of its test
+  used `not-a-version` as the fixture and stayed green with the sanitiser deleted, because the numeric comparison
+  rejected it first. The fixture is now `9.9.9-<text>`, which *wins* the comparison, so only the shape check can
+  stop it. All four sabotages (foreground lookup · undetached refresher · no shape check · no once-per-version
+  suppression) were run against the gate and each one fails it.
+
 ## [2.0.2] - 2026-08-07
 
 ### Fixed

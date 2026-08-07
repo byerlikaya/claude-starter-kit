@@ -18,8 +18,14 @@ cp -R "$SRC/skills"   "$OUT/skills"
 cp -R "$SRC/commands" "$OUT/commands"
 
 # The Claude Code hooks that work standalone (self-locate via $0, read stdin).
-# skill-trust.sh is left out: it decides kit-owned vs project-owned from .claude/kit-manifest.txt, which only a
-# start.sh/adopt.sh install writes. Shipped here it could only ever exit silently — an idle component.
+# Two are left out, both because they read state only an installer produces, and would therefore be idle here:
+#   - skill-trust.sh decides kit-owned vs project-owned from .claude/kit-manifest.txt, which only a
+#     start.sh/adopt.sh install writes.
+#   - session-update-check.sh compares the installed .claude/VERSION against the published one and caches the
+#     answer beside it. A plugin has no VERSION file, and it updates through `claude plugin update` — the version
+#     it should track is the marketplace's, not npm's, and writing cache into a Claude-Code-managed plugin
+#     directory is not the kit's call to make.
+# Shipped here either one could only ever exit silently.
 for h in guard-bash.sh guard-write.sh context-usage.sh session-guard.sh session-rehydrate.sh session-stats.sh \
          guard-commit-scan.sh route-hint.sh; do
   cp "$SRC/hooks/$h" "$OUT/hooks/$h"

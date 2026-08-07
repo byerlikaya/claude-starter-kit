@@ -114,8 +114,9 @@ Ardından ilk Claude Code mesajınız olarak `.claude/FIRST_PROMPT.md` dosyasın
 | `session-rehydrate.sh` | `/compact` ya da `/clear` sonrası devir notunu yeniden yüzeye çıkarır |
 | `skill-trust.sh` | Claude Starter Kit'in göndermediği ve sizin kabul etmediğiniz her skill ya da agent'ı adıyla bildirir |
 | `session-stats.sh` | Oturumda gerçekte ne olduğunu raporlar: başarısız araç döngüleri, tekrarlanan istekler, kesintiler. `reflect` ve `handoff` bunu okur, böylece geri dönük değerlendirme hatırlamaya değil kayda dayanır |
+| `session-update-check.sh` | Oturum açılırken, yeni bir kit sürümü yayınlandığını bir kez söyler. Sorgu ayrık bir süreçte ve en fazla günde bir çalışır; çevrimdışı ya da proxy arkasındaki makinede oturum açılışı hiç beklemez. `CSK_NO_UPDATE_CHECK=1` ile kapanır |
 
-İki git hook'u (`pre-commit` ve `commit-msg`) iz, sır ve depo şişkinliği taramalarını çalıştırır. Plugin sürümü `skill-trust.sh` dışında hepsini taşır; o hook kararını kurucunun yazdığı `kit-manifest.txt` dosyasına göre verir ve plugin o dosyayı oluşturmaz.
+İki git hook'u (`pre-commit` ve `commit-msg`) iz, sır ve depo şişkinliği taramalarını çalıştırır. Plugin sürümü, kurucunun yazdığı dosyalara bağlı iki hook dışında hepsini taşır: `skill-trust.sh` kararını `kit-manifest.txt` dosyasına, `session-update-check.sh` ise `.claude/VERSION` dosyasına göre verir — plugin'de ikisi de yoktur, o zaten `claude plugin update` ile güncellenir.
 
 </details>
 
