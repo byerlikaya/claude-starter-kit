@@ -54,7 +54,8 @@ and report. Commit/push and destructive commands are gated (§4.4/§4.5).
 ## Definition of Done
 - Ambiguous scope goes to **planner-csk** first, so the acceptance criterion is explicit before coding.
 - `/simplify` + tests green + **review-agent-csk** clean + triggered skills + nothing deferred.
-- Quality gate: a **local** analyzer (installed per language if absent) is **0/0/0/0**; build 0 warnings / 0 errors.
+- Quality gate: 0 build warnings/errors + a real analysis clean (`sonarqube-check`). A green linter is a
+  pre-check, not a verdict — no analysis, no rating.
 - Personal data / dependencies / translations touched → **privacy · dependency-audit · i18n-integrity** clean.
 
 ### Skill triggering map — a skill fires on its trigger, not when you happen to remember it
@@ -62,7 +63,7 @@ and report. Commit/push and destructive commands are gated (§4.4/§4.5).
 |---|---|
 | Unknown root cause / cross-domain bug | `systematic-debugging` |
 | Before every commit | `trace-scan` (the hook applies it) |
-| SonarQube build / PR | `sonarqube-check` (0/0/0/0) |
+| SonarQube / quality gate | `sonarqube-check` |
 | New or changed translation | `i18n-integrity` |
 | Package or lockfile change | `dependency-audit` |
 | Lasting architectural decision | `adr` |
