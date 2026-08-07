@@ -35,6 +35,54 @@ verdict(){   # $1 = score, $2 = crit count, $3 = high count
   if [ "${3:-0}" -gt 0 ]; then [ "$1" -ge 70 ] && echo REVIEW || echo DANGER; return; fi
   if [ "$1" -ge 90 ]; then echo SAFE; elif [ "$1" -ge 70 ]; then echo REVIEW; else echo DANGER; fi; }
 
+# One grep PER SEVERITY over ALL files, not four greps per file.
+#
+# Measured on a user's Windows machine: scanning 64 files took 8m07s — user 12.6s, sys 2m46s. The regex work is
+# not the cost; process creation is. Git Bash has no real fork, so every spawn is a CreateProcess plus MSYS
+# emulation plus an antivirus scan of the binary, and 64 files × 4 greps = 256 of them. adopt.sh calls this on
+# every refresh, which is where most of a "the update is hung" report actually went.
+#
+# grep accepts many files at once and `-cH` prints `path:count` for each, including zeros — so the same regex
+# engine, the same `-i` semantics and the same per-file line counts come back in 4 processes instead of 256.
+# Deliberately NOT rewritten in awk: these patterns carry intervals and alternations whose behaviour would have
+# to be re-proved against a different engine, and the win here is process count, not matching speed.
+counts_of(){   # $1 = pattern, $2 = output file. `path:count` per input file, in the order given.
+  grep -cHiE "$1" -- "${FILES[@]}" > "$2" 2>/dev/null
+  return 0     # grep exits 1 when nothing matched anywhere; that is a normal result, not an error
+}
+
+# Sets the named array AND the global RC_N. Deliberately not "$(read_counts …)": command substitution runs in a
+# SUBSHELL, so the array assignments would be discarded and every file would score a spotless 100. That is exactly
+# what the first version did — and the output diff against the old implementation is what caught it.
+read_counts(){ # $1 = grep -cH output file, $2 = array name
+  local line i=0
+  while IFS= read -r line; do
+    # split from the RIGHT: a path may contain ':' (a Windows drive letter), a count never does
+    eval "$2[$i]=\"\${line##*:}\""
+    i=$((i+1))
+  done < "$1"
+  RC_N=$i
+}
+
+emit(){        # prints one line per file, in FILES order, from the four count arrays
+  local f c h m l score v i=0
+  while [ "$i" -lt "${#FILES[@]}" ]; do
+    f="${FILES[$i]}"
+    c="${CNT_C[$i]:-0}"; h="${CNT_H[$i]:-0}"; m="${CNT_M[$i]:-0}"; l="${CNT_L[$i]:-0}"
+    i=$((i+1))
+    score=$((100 - c*20 - h*10 - m*3 - l*1)); [ "$score" -lt 0 ] && score=0
+    v="$(verdict "$score" "$c" "$h")"
+    N=$((N+1))
+    case "$v" in
+      SAFE)   printf '  ✅ %-3s %s\n' "$score" "$f" ;;
+      REVIEW) printf '  ⚠️  %-3s %s  (crit:%s high:%s med:%s low:%s) — REVIEW\n' "$score" "$f" "$c" "$h" "$m" "$l"; FAIL=1 ;;
+      DANGER) printf '  ❌ %-3s %s  (crit:%s high:%s med:%s low:%s) — DANGER\n' "$score" "$f" "$c" "$h" "$m" "$l"; FAIL=1 ;;
+    esac
+  done
+}
+
+# A single file keeps the old path: grep prints a bare count with one argument, so the batch parser would have to
+# special-case it anyway, and one file means one process either way.
 scan_file(){
   local f="$1"
   local c h m l
@@ -58,10 +106,28 @@ if [ -f "$TARGET" ]; then
   scan_file "$TARGET"
 elif [ -d "$TARGET" ]; then
   # Skill/agent definition files only (markdown). Skip the kit's own -csk agents (trusted, not third-party).
+  FILES=()
   while IFS= read -r f; do
     case "$f" in *-csk.md) continue ;; esac
-    scan_file "$f"
+    FILES+=("$f")
   done < <(find "$TARGET" \( -name 'SKILL.md' -o -name '*.md' \) -path '*/skills/*' -o -path '*/agents/*' -name '*.md' 2>/dev/null | sort -u)
+  if [ "${#FILES[@]}" -le 1 ]; then
+    [ "${#FILES[@]}" -eq 1 ] && scan_file "${FILES[0]}"
+  else
+    ST="$(mktemp -d)"
+    counts_of "$CRIT" "$ST/c"; counts_of "$HIGH" "$ST/h"
+    counts_of "$MED"  "$ST/m"; counts_of "$LOW"  "$ST/l"
+    read_counts "$ST/c" CNT_C; NC=$RC_N;  read_counts "$ST/h" CNT_H; NH=$RC_N
+    read_counts "$ST/m" CNT_M; NM=$RC_N;  read_counts "$ST/l" CNT_L; NL=$RC_N
+    rm -rf "$ST"
+    # If grep skipped a file (unreadable, vanished mid-run) the rows no longer line up with FILES, and a silently
+    # misaligned count would score the wrong file. Fall back to the per-file path rather than report a guess.
+    if [ "$NC" = "${#FILES[@]}" ] && [ "$NH" = "$NC" ] && [ "$NM" = "$NC" ] && [ "$NL" = "$NC" ]; then
+      emit
+    else
+      for f in "${FILES[@]}"; do scan_file "$f"; done
+    fi
+  fi
 else
   echo "  (nothing to scan at '$TARGET')"; exit 0
 fi

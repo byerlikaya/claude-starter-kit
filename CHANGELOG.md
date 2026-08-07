@@ -3,6 +3,30 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [2.2.1] - 2026-08-07
+
+### Fixed
+- **The real reason an update looked hung: the supply-chain scanner, 8m07s for 64 files.** 2.2.0 cut adopt.sh's own
+  spawns from 631 to 78 and the update was still minutes long, because the cost was never in adopt.sh's own trace:
+  `scan-skill.sh` runs as a child `bash`, and it spawned **four greps per file**. Measured on the reporting
+  machine: `git status` 3.0s · the detection `find` 0.5s · copying the whole payload 2.3s · **`scan-skill.sh`
+  8m07s**, of which 12.6s is user time and 2m46s kernel — process creation, not regex work.
+
+  grep takes many files at once and `-cH` reports a count for each, so the same engine, the same `-i` semantics and
+  the same per-file line counts now come back in **4 processes instead of 244**. Output was diffed against the old
+  implementation on a fixture covering all three verdicts (SAFE / REVIEW / DANGER): byte-identical, exit code
+  included. Deliberately not rewritten in awk — the patterns carry intervals whose behaviour would have to be
+  re-proved against another engine, and the win here is process count, not matching speed.
+
+  That diff earned its keep: the first batched draft filled its count arrays inside a command substitution — a
+  subshell — so every file scored a spotless 100 and the scanner passed everything. Caught before shipping.
+
+- **New gate `smoke-test §7w`, and it asserts BOTH halves.** Budget 12 greps (the old code scores 124 on the same
+  fixture and fails), plus a planted `curl|bash` file that must still come back DANGER with exit 1 — because a
+  scanner can also get fast by no longer looking, which is exactly what the subshell bug did. Proven in both
+  regression states. `§7x` could not have caught any of this: it traces adopt.sh, and the scanner's spawns are in
+  a child process, which is how 244 of them hid behind a tidy 78.
+
 ## [2.2.0] - 2026-08-07
 
 ### Changed
