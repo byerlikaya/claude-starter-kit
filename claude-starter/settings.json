@@ -113,6 +113,16 @@
             "timeout": 60
           }
         ]
+      },
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" 2>/dev/null; bash .claude/hooks/session-update-check.sh",
+            "timeout": 60
+          }
+        ]
       }
     ]
   }

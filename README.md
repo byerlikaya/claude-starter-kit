@@ -6,7 +6,7 @@
 
 12 specialist agents plan the work, build it, put it through security and test review, then close it
 
-![Version](https://img.shields.io/badge/version-2.0.2-2563eb?style=flat-square)
+![Version](https://img.shields.io/badge/version-2.1.0-2563eb?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)
 ![Agents](https://img.shields.io/badge/agents-12-f59e0b?style=flat-square)
 ![Skills](https://img.shields.io/badge/skills-38-f59e0b?style=flat-square)
@@ -97,11 +97,11 @@ Then paste `.claude/FIRST_PROMPT.md` as your first Claude Code message. Homebrew
 | **Agents** | 12 | Thin triggers — *who* owns a domain and *when* they fire |
 | **Skills** | 38 | The method, written once, applied by whoever needs it |
 | **Slash commands** | 7 | `/brainstorm-csk` · `/plan-csk` · `/review-csk` · `/ship-csk` · `/handoff-csk` · `/update-csk` · `/doctor-csk` |
-| **Hooks** | 8 | The gates, plus session measurement and routing |
+| **Hooks** | 10 | The gates, plus session measurement and routing |
 | **Discipline** | 1 | Principles, workflow, Definition of Done, prohibitions — imported by your `CLAUDE.md` |
 
 <details>
-<summary>🪝&nbsp; <b>All 8 hooks — which gate holds what</b></summary>
+<summary>🪝&nbsp; <b>All 10 hooks — which gate holds what</b></summary>
 
 | Hook | Role |
 |:--|:--|
@@ -114,6 +114,7 @@ Then paste `.claude/FIRST_PROMPT.md` as your first Claude Code message. Homebrew
 | `session-rehydrate.sh` | Re-surfaces the handover after `/compact` or `/clear` |
 | `skill-trust.sh` | Names any skill or agent Claude Starter Kit never shipped and you never accepted |
 | `session-stats.sh` | Reports what the session actually did — failing tool loops, repeated prompts, interrupts. `reflect` and `handoff` read it, so a retrospective rests on the record rather than on recollection |
+| `session-update-check.sh` | Says once, when a session opens, that a newer kit version is published — each edition compared against the channel that will deliver it. The lookup runs detached and at most daily, so an offline or proxied machine costs the session opening nothing; `CSK_NO_UPDATE_CHECK=1` turns it off |
 
 Two git hooks — `pre-commit` and `commit-msg` — run the trace, secret and repo-bloat scans. The plugin edition ships all of these except `skill-trust.sh`, which decides what is kit-owned from the `kit-manifest.txt` an installer writes and the plugin never creates.
 

@@ -20,8 +20,10 @@ cp -R "$SRC/commands" "$OUT/commands"
 # The Claude Code hooks that work standalone (self-locate via $0, read stdin).
 # skill-trust.sh is left out: it decides kit-owned vs project-owned from .claude/kit-manifest.txt, which only a
 # start.sh/adopt.sh install writes. Shipped here it could only ever exit silently — an idle component.
+# session-update-check.sh IS shipped: it reads the plugin's own .claude-plugin/plugin.json and compares it against
+# the marketplace repo's copy, so a plugin user hears about a release on the channel that delivers it.
 for h in guard-bash.sh guard-write.sh context-usage.sh session-guard.sh session-rehydrate.sh session-stats.sh \
-         guard-commit-scan.sh route-hint.sh; do
+         guard-commit-scan.sh route-hint.sh session-update-check.sh; do
   cp "$SRC/hooks/$h" "$OUT/hooks/$h"
   chmod +x "$OUT/hooks/$h"
 done
@@ -77,6 +79,12 @@ cat > "$OUT/hooks/hooks.json" <<'HOOKS'
         "matcher": "compact|clear|resume",
         "hooks": [
           { "type": "command", "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/session-rehydrate.sh\"", "timeout": 60 }
+        ]
+      },
+      {
+        "matcher": "startup",
+        "hooks": [
+          { "type": "command", "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/session-update-check.sh\"", "timeout": 60 }
         ]
       }
     ]

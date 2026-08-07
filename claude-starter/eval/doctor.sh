@@ -28,6 +28,19 @@ echo "== Claude Starter Kit — install doctor =="
 if [ -f .claude/VERSION ]; then ok "VERSION present ($(head -1 .claude/VERSION | tr -cd '0-9A-Za-z.-'))"
 else bad "VERSION missing" "reinstall or update the kit (npx @byerlikaya/claude-starter-kit update)"; fi
 
+# 1b) Is that version the current one? Read-only, from the cache session-update-check.sh maintains — doctor makes
+#     no network call of its own, so this stays honest offline (no cache -> nothing said) and instant everywhere.
+#     The session notice fires once per release; this is the surface that still answers when it was missed.
+if [ -f .claude/VERSION ] && [ -f .claude/.state/update-check ]; then
+  read -r DLATEST _ < .claude/.state/update-check 2>/dev/null || DLATEST=""
+  DLATEST="$(printf '%s' "${DLATEST:-}" | tr -cd '0-9A-Za-z.-')"
+  DCUR="$(head -1 .claude/VERSION 2>/dev/null | tr -cd '0-9A-Za-z.-')"
+  if [ -n "$DLATEST" ] && awk -v a="$DLATEST" -v b="$DCUR" 'BEGIN{split(a,x,".");split(b,y,".");
+       for(i=1;i<=3;i++){if(x[i]+0>y[i]+0)exit 0; if(x[i]+0<y[i]+0)exit 1} exit 1}'; then
+    warn "kit v$DCUR installed, v$DLATEST published — update with /update-csk"
+  fi
+fi
+
 # 2) Hooks present + executable. The .sh set is a glob (extras ok); pre-commit + commit-msg are REQUIRED — they
 #    ARE the §4.1/§4.2 trace/secret gate, so a MISSING one is a failure, not a silent skip.
 NX=""; GONE=""

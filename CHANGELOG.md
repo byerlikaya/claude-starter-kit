@@ -3,6 +3,53 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [2.1.0] - 2026-08-07
+
+### Added
+- **`session-update-check.sh` — a published release now finds the project, instead of waiting to be remembered.**
+  Until now a fix reached an install only when somebody thought to run `/update-csk`, so shipped fixes sat unused in
+  the projects that wanted them. At session start the hook says, once, that a newer version is out and points at
+  `/update-csk`.
+
+  The design constraint is the whole feature: **no network I/O in the foreground.** A `SessionStart` hook blocks the
+  session until it returns and its timeout is 60s, so a version lookup behind a corporate proxy or on an offline
+  machine would turn session opening into a hang — the 2.0.1 failure again, from a different cause. The foreground
+  reads one cache file and exits; when that cache is older than a day it starts a **detached** refresher whose
+  result is used by the *next* session. A version notice is not urgent, so being one session late costs nothing
+  and blocking would cost everything. If the refresher is killed the next startup simply retries: the worst case
+  is a late notice, never a hang and never a wrong version.
+
+  Wired on `startup` alone — on resume/clear/compact it would re-announce inside one session, on the same channel
+  that carries the rehydrate and trust notices. Announced once per released version, so declining an update is not
+  re-litigated every morning. `CSK_NO_UPDATE_CHECK=1` turns it off; an outbound request nobody asked for needs a
+  switch, not a justification. `/doctor-csk` reports the same cached answer, so a missed notice is still findable —
+  and it makes no network call of its own either.
+
+  **Both editions, each told by the channel that will deliver the release.** A project install compares
+  `.claude/VERSION` against the npm dist-tag and points at `/update-csk`; a plugin install compares its own
+  `.claude-plugin/plugin.json` against the marketplace repo's copy — the number `claude plugin update` will
+  actually bring — and points at that command. The plugin's cache is user-level (`$XDG_CACHE_HOME`), the one
+  place the kit's "everything stays inside the repo" rule cannot apply, because a plugin install is not inside
+  one. With both present the project install wins, so one release is never announced twice.
+
+  This nearly shipped as installer-only, on the assumption that a plugin has no version to compare against. It
+  has one — its own manifest — and the assumption would have left an entire distribution channel out of the
+  feature. Four cases now hold that shut, including the precedence rule.
+
+  The published version is treated as untrusted input on its way into a model's context: digits and dots, exactly
+  three fields, or it is discarded unread. **That check was measured, not assumed** — the first version of its test
+  used `not-a-version` as the fixture and stayed green with the sanitiser deleted, because the numeric comparison
+  rejected it first. The fixture is now `9.9.9-<text>`, which *wins* the comparison, so only the shape check can
+  stop it. All four sabotages (foreground lookup · undetached refresher · no shape check · no once-per-version
+  suppression) were run against the gate and each one fails it.
+
+### Fixed
+- **Both READMEs said "8 hooks" while the directory held nine and their own table listed nine.** Every hook was
+  individually documented — that gate has existed since the table was written — but the *number* beside it was a
+  separate claim nobody checked, and a reader takes "All 8 hooks" as the total without counting rows. Same class as
+  the diagram that drew eleven of twelve agents and the site stuck on an old version. Corrected to ten and gated:
+  the count is derived from `hooks/*.sh` and asserted in both places, in both languages.
+
 ## [2.0.2] - 2026-08-07
 
 ### Fixed
