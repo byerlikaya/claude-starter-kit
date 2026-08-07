@@ -48,11 +48,26 @@ SKIP_LIST=""
 # $4 = space-separated names to SKIP entirely, matched against the first path component of each source file
 # ('frontend-expert-csk.md' for agents/, 'a11y' for skills/). We skip rather than copy-then-delete: a project
 # may own a directory of the same name, and a refresh must never remove the project's own files.
-copy_noclobber(){ local src="$1" dst="$2" force="${3:-0}" excl=" ${4:-} " rel top f; ret_add=0; ret_skip=0; [ -d "$src" ] || return; mkdir -p "$dst"
+# Per-FILE process spawns are what make this hurt on Windows: Git Bash pays 20-50ms per process where Linux pays
+# ~1.7ms, so `dirname`+`mkdir`+`cp` for each of ~100 payload files is minutes, not milliseconds. Measured on a
+# user's machine: a refresh took 6m43s wall with 66s of it in the kernel — the fork signature, not file I/O.
+#   - the refresh case (force=1, nothing excluded) is ONE `cp -R`, not one `cp` per file;
+#   - the selective case keeps per-file decisions but drops `dirname` for parameter expansion, and only calls
+#     `mkdir` when the directory actually changes (find walks a directory at a time, so that is nearly always).
+copy_noclobber(){ local src="$1" dst="$2" force="${3:-0}" exclraw="${4:-}" excl=" ${4:-} " rel top f d lastd=""; ret_add=0; ret_skip=0; [ -d "$src" ] || return; mkdir -p "$dst"
+  if [ "$force" = 1 ] && [ -z "$exclraw" ]; then
+    ret_add="$(find "$src" -type f 2>/dev/null | wc -l | tr -d ' ')"
+    cp -R "$src/." "$dst/" 2>/dev/null
+    return
+  fi
   while IFS= read -r f; do rel="${f#"$src"/}"; top="${rel%%/*}"
     case "$excl" in *" $top "*) continue ;; esac
     if [ -e "$dst/$rel" ] && [ "$force" != 1 ]; then ret_skip=$((ret_skip+1)); SKIP_LIST="$SKIP_LIST $dst/$rel"
-    else mkdir -p "$dst/$(dirname "$rel")"; cp "$f" "$dst/$rel"; ret_add=$((ret_add+1)); fi
+    else
+      case "$rel" in */*) d="$dst/${rel%/*}" ;; *) d="$dst" ;; esac
+      [ "$d" = "$lastd" ] || { mkdir -p "$d"; lastd="$d"; }
+      cp "$f" "$dst/$rel"; ret_add=$((ret_add+1))
+    fi
   done < <(find "$src" -type f 2>/dev/null); }
 
 # --- CLAUDE.md split (shared contract with start.sh; keep the two in lockstep) ---
@@ -143,12 +158,18 @@ row "git hook system" "$HOOKSYS"
 # old root-only `ls ./*.sln` reported "unknown" for exactly those layouts and the install silently fell back to
 # generic (dropping the DevArch pattern skill). Search a few levels deep, skipping build/vendor dirs.
 STACK="unknown"; IS_DOTNET=0; IS_DEVARCH=0
-DOTNET_HIT="$(find . -maxdepth 3 \( -name '*.sln' -o -name '*.csproj' \) 2>/dev/null | grep -vE '/(bin|obj|node_modules|\.git)/' | head -1)"
+# PRUNE, don't filter. The old form walked bin/obj/node_modules in full and threw the results away afterwards —
+# on a real .NET repo that is tens of thousands of directory entries, and on Windows every one of them is a
+# Defender-scanned syscall. Pruning stops the descent instead of discarding its output.
+PRUNE_DIRS=' ( -name bin -o -name obj -o -name node_modules -o -name .git -o -name .vs -o -name packages ) -prune -o '
+# shellcheck disable=SC2086
+DOTNET_HIT="$(find . -maxdepth 3 $PRUNE_DIRS \( -name '*.sln' -o -name '*.csproj' \) -print 2>/dev/null | head -1)"
 if [ -n "$DOTNET_HIT" ]; then
   STACK=".NET"; IS_DOTNET=1
   # DevArchitecture signature: the canonical Business/Handlers CQRS layout, or a solution literally named DevArchitecture.
-  { find . -maxdepth 4 -type d -path '*/Business/Handlers' 2>/dev/null | grep -q . \
-    || find . -maxdepth 3 -iname 'devarchitecture.sln' 2>/dev/null | grep -q .; } && IS_DEVARCH=1
+  # shellcheck disable=SC2086
+  { find . -maxdepth 4 $PRUNE_DIRS -type d -path '*/Business/Handlers' -print 2>/dev/null | grep -q . \
+    || find . -maxdepth 3 $PRUNE_DIRS -iname 'devarchitecture.sln' -print 2>/dev/null | grep -q .; } && IS_DEVARCH=1
 elif [ -f package.json ]; then STACK="Node/JS"
 elif [ -f go.mod ]; then STACK="Go"
 elif [ -f pyproject.toml ] || [ -f requirements.txt ]; then STACK="Python"; fi
@@ -161,7 +182,9 @@ HAS_CLAUDE=0; [ -d .claude ] && HAS_CLAUDE=1
 N_PAGENTS=0; [ -d .claude/agents ] && N_PAGENTS="$(find .claude/agents -name '*.md' ! -name '*-csk.md' 2>/dev/null | wc -l | tr -d ' ')"
 N_PSKILLS=0
 if [ -d .claude/skills ]; then
-  while IFS= read -r f; do d="$(basename "$(dirname "$f")")"; [ -d "$SRC/skills/$d" ] || N_PSKILLS=$((N_PSKILLS+1)); done < <(find .claude/skills -name 'SKILL.md' 2>/dev/null)
+  # `basename $(dirname …)` per skill is two spawns × every installed skill, for a number printed once. Parameter
+  # expansion does the same slicing with none.
+  while IFS= read -r f; do d="${f%/SKILL.md}"; d="${d##*/}"; [ -d "$SRC/skills/$d" ] || N_PSKILLS=$((N_PSKILLS+1)); done < <(find .claude/skills -name 'SKILL.md' 2>/dev/null)
 fi
 # Same-domain agent overlap: a PROJECT agent whose base name matches a kit -csk agent (e.g. backend-expert vs
 # backend-expert-csk). The two describe the same job, so the router has to pick between them — plain coexist
@@ -759,19 +782,49 @@ if [ -f CLAUDE.md ] && ls .claude/agents/*-csk.md >/dev/null 2>&1; then
   for r in $(grep -oE '@?[A-Za-z0-9_./-]+\.md' CLAUDE.md 2>/dev/null | sed 's/^@//' | sort -u); do
     [ -f "$r" ] && [ "$r" != "CLAUDE.md" ] && SCAN="$SCAN $r"
   done
+  # This was agent × document with `sed|head|tr` per agent and `grep|cut|tr|sed` per PAIR — 12 agents × 7 docs ×
+  # 4 spawns is ~340 processes to discover, almost always, that nothing is stale. doctor.sh carried the identical
+  # loop and was converted to two awk passes in 2.0.1; adopt.sh kept it, which is why an update still crawled on
+  # Git Bash. Same conversion, same output (agent order, then file order, comma-joined line numbers).
   STALE=""; STALE_PULL=""
-  for af in .claude/agents/*-csk.md; do
-    [ -e "$af" ] || continue
-    aname="$(sed -n 's/^name:[[:space:]]*//p' "$af" | head -1 | tr -cd 'a-zA-Z0-9-')"; [ -n "$aname" ] || aname="$(basename "$af" .md)"
-    base="${aname%-csk}"
-    for f in $SCAN; do
-      lines="$(grep -nE "(^|[^a-zA-Z-])$base([^a-zA-Z-]|$)" "$f" 2>/dev/null | cut -d: -f1 | tr '\n' ',' | sed 's/,$//')"
-      [ -n "$lines" ] || continue
-      entry="
+  CSK_AGENT_BASES="$(awk '
+    FNR==1 { files[++nf]=FILENAME }
+    !got[FILENAME] && /^name:[[:space:]]*/ {
+      n=$0; sub(/^name:[[:space:]]*/,"",n); gsub(/[^a-zA-Z0-9-]/,"",n)
+      if (n != "") { nm[FILENAME]=n; got[FILENAME]=1 }
+    }
+    END {
+      for (i=1;i<=nf;i++) {
+        f=files[i]; n=(f in nm) ? nm[f] : ""
+        if (n=="") { n=f; sub(/\.md$/,"",n); sub(/.*\//,"",n) }
+        if (n ~ /-csk$/) { b=n; sub(/-csk$/,"",b); print b "\t" n }
+      }
+    }' .claude/agents/*-csk.md 2>/dev/null)"
+  export CSK_AGENT_BASES
+  while IFS="$(printf '\t')" read -r base aname f lines; do
+    [ -n "$base" ] || continue
+    entry="
      ↳ \"$base\" → \"$aname\"  ($f line(s): $lines)"
-      case "$PULL_AGENTS" in *" $aname "*) STALE_PULL="$STALE_PULL$entry" ;; *) STALE="$STALE$entry" ;; esac
-    done
-  done
+    case "$PULL_AGENTS" in *" $aname "*) STALE_PULL="$STALE_PULL$entry" ;; *) STALE="$STALE$entry" ;; esac
+  done <<EOF
+$(awk '
+  BEGIN {
+    n = split(ENVIRON["CSK_AGENT_BASES"], rows, "\n"); k=0
+    for (i=1;i<=n;i++) { if (rows[i]=="") continue; split(rows[i], a, "\t"); k++; base[k]=a[1]; full[k]=a[2] }
+    nb=k
+  }
+  FNR==1 { order[++nf]=FILENAME }
+  {
+    for (i=1;i<=nb;i++)
+      if ($0 ~ ("(^|[^a-zA-Z-])" base[i] "([^a-zA-Z-]|\$)"))
+        hit[i, FILENAME] = (hit[i, FILENAME]=="" ? FNR : hit[i, FILENAME] "," FNR)
+  }
+  END {
+    for (i=1;i<=nb;i++)
+      for (j=1;j<=nf;j++)
+        if ((i, order[j]) in hit) print base[i] "\t" full[i] "\t" order[j] "\t" hit[i, order[j]]
+  }' $SCAN 2>/dev/null)
+EOF
   [ -n "$STALE" ] && warn "PROOF-5: CLAUDE.md (or a doc it references) names auto-delegated agent(s) by an old bare id — rename each to its -csk id, else delegation to them silently fails:$STALE"
   [ -n "$STALE_PULL" ] && warn "PROOF-5: CLAUDE.md (or a referenced doc) names pull-only agent(s) by an old bare id (still work; rename for consistency):$STALE_PULL"
 fi

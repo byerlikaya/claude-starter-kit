@@ -52,7 +52,8 @@ a project on another pattern follows its own skill instead, and these DevArch sp
 
 ## DoD (this agent's responsibility)
 - Tests green with `test-expert-csk`.
-- `sonarqube-check`: 0 Bugs · 0 Vulnerabilities · 0 Code Smells · build with 0 warnings/0 errors.
+- Build 0 warnings / 0 errors, and `sonarqube-check` applied — the skill defines what counts as clean (a green
+  build is a pre-check, not a verdict). Restating a number here is how the two drifted apart.
 - `/simplify` applied.
 - Decisions asked of the user WITH EXPLICIT OPTIONS (a recommendation + rationale for each option).
 

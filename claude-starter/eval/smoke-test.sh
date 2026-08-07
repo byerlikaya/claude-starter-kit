@@ -1675,6 +1675,55 @@ grep -q '^BLOCK	§4.5	gate-file edit' "$GLOG" 2>/dev/null && pass "log set: guar
 rm -rf "$GLD"
 
 fi
+if [ "$IS_KIT" = 1 ] && [ -f "$(cd "$ROOT/.." && pwd)/adopt.sh" ] && command -v git >/dev/null 2>&1; then
+echo "== 7x) update COST: a refresh must not be a fork storm =="
+# A user's Windows machine took 6m43s for one `update --here --yes` (npx itself: 6.7s — the kit's own work was the
+# rest). The cause is the shape this project keeps hitting: per-item shell loops. adopt.sh spawned `dirname` +
+# `mkdir` + `cp` per payload file, `basename`+`dirname` per installed skill, and — the same loop already fixed in
+# doctor.sh in 2.0.1 — `grep|cut|tr|sed` per (agent × document) pair, ~340 processes to usually find nothing.
+# Git Bash pays 20-50ms per process where Linux pays ~1.7ms, so this is invisible here and minutes there.
+#
+# Measured on this fixture: BEFORE 631 external commands, AFTER 78. The budget is 200 — well above the fix, well
+# below the regression, so it fails on a return to per-item loops and not on ordinary growth. Counting processes,
+# not wall-clock: macOS finishes either version in ~1s, so a timing assertion here would prove nothing.
+#
+# The installer is COPIED into the fixture before it runs. start.sh deletes the payload sitting next to ITSELF
+# once it is done, so invoking "$KITREPO/start.sh" from elsewhere wipes claude-starter/ out of the kit repo —
+# which is exactly what an earlier version of this case did. e2e.sh has always copied first; so does this now.
+UPC="$(mktemp -d)"; UST="$(mktemp -d)"; UKR="$(cd "$ROOT/.." && pwd)"
+# The project and the STAGED payload live in separate directories — the shape npx actually produces (adopt.sh
+# and claude-starter/ unpacked in a temp stage, cwd = the user's project). Staging inside the project would put
+# a second copy of the payload where the detection walk can see it.
+cp "$UKR/start.sh" "$UKR/adopt.sh" "$UKR/VERSION" "$UST/" 2>/dev/null
+cp -R "$UKR/claude-starter" "$UST/" 2>/dev/null
+( cd "$UPC" && git init -q . && printf 'yes\nno\n' | bash "$UST/start.sh" --dotnet >/dev/null 2>&1 ) 2>/dev/null
+# start.sh removes the payload next to itself when it finishes, so the stage is refilled before the update runs.
+cp "$UKR/adopt.sh" "$UKR/VERSION" "$UST/" 2>/dev/null; cp -R "$UKR/claude-starter" "$UST/" 2>/dev/null
+if [ -f "$UPC/.claude/VERSION" ] && [ -d "$UST/claude-starter" ] && [ -f "$UKR/claude-starter/CLAUDE.md" ]; then
+  ( cd "$UPC" && bash -x "$UST/adopt.sh" --here --yes </dev/null >/dev/null 2>"$UPC/trace" ) 2>/dev/null
+  SPAWN="$(grep -cE '^\++ (dirname|basename|mkdir|cp|sed|grep|cut|tr|head|find|awk|wc|ls|chmod|rm|mv|cat|date)( |$)' "$UPC/trace" 2>/dev/null | tr -cd '0-9')"
+  SPAWN="${SPAWN:-0}"
+  # A LOWER bound too. The first version of this case reported "1 external command" and passed: the fixture had
+  # left adopt.sh without its payload, so it exited immediately and the trace measured nothing. A cost gate that
+  # cannot tell "cheap" from "did not run" is worse than no gate — a real refresh copies ~100 files and never
+  # comes near 20.
+  if [ "$SPAWN" -ge 20 ] && [ "$SPAWN" -le 200 ]; then
+    pass "update spawns $SPAWN external commands (budget 200 — was 631 before the per-item loops were removed)"
+  elif [ "$SPAWN" -lt 20 ]; then
+    fail "update cost reads $SPAWN external commands — that is not a cheap update, it is a fixture that never ran the work"
+  else
+    fail "update spawns $SPAWN external commands (> 200): a per-item shell loop is back — on Git Bash that is minutes, not milliseconds"
+  fi
+  # Self-check: the fixture must not have eaten the kit's own payload on its way through.
+  [ -d "$UKR/claude-starter/skills" ] && [ -f "$UKR/start.sh" ] \
+    && pass "cost fixture left the kit repo intact (installer ran from the copy, not from the repo)" \
+    || fail "the cost fixture damaged the kit repo — start.sh was run in place instead of from a copy"
+else
+  pass "update cost case skipped (the fixture install did not complete here)"
+fi
+rm -rf "$UPC" "$UST"
+fi
+
 echo "== 7y) route-hint: names the owner next to the request =="
 # The kit's own thesis is "rule -> gate, not reminder", and delegation was the one core rule left as a reminder.
 # Measured: on 12 focused domain tasks the main thread delegated 0 times; with this hook injecting a DIRECT

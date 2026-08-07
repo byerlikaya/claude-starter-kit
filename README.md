@@ -6,7 +6,7 @@
 
 12 specialist agents plan the work, build it, put it through security and test review, then close it
 
-![Version](https://img.shields.io/badge/version-2.1.0-2563eb?style=flat-square)
+![Version](https://img.shields.io/badge/version-2.2.0-2563eb?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)
 ![Agents](https://img.shields.io/badge/agents-12-f59e0b?style=flat-square)
 ![Skills](https://img.shields.io/badge/skills-38-f59e0b?style=flat-square)
@@ -156,7 +156,7 @@ Two git hooks — `pre-commit` and `commit-msg` — run the trace, secret and re
 | `reflect` | Retrospective self-audit after nontrivial work: unverified assumptions, skipped items, is-this-the-right- approach — findings, not code. |
 | `release` | Versioning and CHANGELOG: SemVer mapped from Conventional Commits, Keep a Changelog format, tagging, pre-release gates. |
 | `security-scan` | Stack-agnostic security audit: map the attack surface, trace untrusted input to dangerous calls, surface dependency and configuration flaws. |
-| `sonarqube-check` | SonarQube quality gate (language-agnostic, local-first): 0 Bugs/Vulns/Hotspots/Code Smells, 0 build warnings. |
+| `sonarqube-check` | SonarQube quality gate, any language, no company server needed: run SonarQube Community Build locally (Docker), read the real gate +… |
 | `spec-planning` | Spec-first planning: task breakdown, measurable acceptance criteria, dependency order, risk priority. |
 | `systematic-debugging` | Root-cause a bug before touching a fix: reproduce, isolate, form and test a hypothesis, confirm the cause, then fix and verify. |
 | `testing` | The how of testing: pyramid, AAA, isolation, risk coverage, determinism. |
