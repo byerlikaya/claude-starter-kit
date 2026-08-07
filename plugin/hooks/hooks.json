@@ -36,6 +36,12 @@
         "hooks": [
           { "type": "command", "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/session-rehydrate.sh\"", "timeout": 60 }
         ]
+      },
+      {
+        "matcher": "startup",
+        "hooks": [
+          { "type": "command", "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/session-update-check.sh\"", "timeout": 60 }
+        ]
       }
     ]
   }

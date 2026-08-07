@@ -114,9 +114,9 @@ Then paste `.claude/FIRST_PROMPT.md` as your first Claude Code message. Homebrew
 | `session-rehydrate.sh` | Re-surfaces the handover after `/compact` or `/clear` |
 | `skill-trust.sh` | Names any skill or agent Claude Starter Kit never shipped and you never accepted |
 | `session-stats.sh` | Reports what the session actually did — failing tool loops, repeated prompts, interrupts. `reflect` and `handoff` read it, so a retrospective rests on the record rather than on recollection |
-| `session-update-check.sh` | Says once, when a session opens, that a newer kit version is published. The lookup runs detached and at most daily, so an offline or proxied machine costs the session opening nothing; `CSK_NO_UPDATE_CHECK=1` turns it off |
+| `session-update-check.sh` | Says once, when a session opens, that a newer kit version is published — each edition compared against the channel that will deliver it. The lookup runs detached and at most daily, so an offline or proxied machine costs the session opening nothing; `CSK_NO_UPDATE_CHECK=1` turns it off |
 
-Two git hooks — `pre-commit` and `commit-msg` — run the trace, secret and repo-bloat scans. The plugin edition ships all of these except two that depend on what an installer writes: `skill-trust.sh` decides what is kit-owned from `kit-manifest.txt`, and `session-update-check.sh` compares against `.claude/VERSION` — a plugin has neither, and it updates through `claude plugin update` instead.
+Two git hooks — `pre-commit` and `commit-msg` — run the trace, secret and repo-bloat scans. The plugin edition ships all of these except `skill-trust.sh`, which decides what is kit-owned from the `kit-manifest.txt` an installer writes and the plugin never creates.
 
 </details>
 

@@ -591,18 +591,16 @@ if [ "$IS_KIT" = 1 ]; then
     [ "${HC:-0}" -ge 2 ] && pass "$r states the real hook count ($TH) in both the summary table and the section header" \
       || fail "$r does not state $TH hooks in both places — the count drifted from hooks/ (found $HC of 2)"
   done
-  # The plugin channel wires a SUBSET on purpose. Two hooks are installer-only, each for a reason that is about
-  # state the plugin edition does not have: skill-trust.sh decides kit-owned from the kit-manifest.txt an installer
-  # writes, and session-update-check.sh compares against .claude/VERSION and caches beside it. Assert the subset is
-  # exactly those two, so a hook silently dropped from the plugin fails here.
+  # The plugin channel wires a SUBSET on purpose (skill-trust.sh needs a manifest only an installer writes).
+  # Assert the subset is exactly that one, so a hook silently dropped from the plugin fails here.
   if [ -f "$KR/plugin/hooks/hooks.json" ] && [ -f "$ROOT/settings.json" ]; then
     SET_H="$(grep -oE '[a-z-]+\.sh' "$ROOT/settings.json" | sort -u)"
     PLG_H="$(grep -oE '[a-z-]+\.sh' "$KR/plugin/hooks/hooks.json" | sort -u)"
     ONLY_SET="$(comm -23 <(printf '%s\n' "$SET_H") <(printf '%s\n' "$PLG_H") | tr '\n' ' ' | sed 's/ *$//')"
-    if [ "$ONLY_SET" = "session-update-check.sh skill-trust.sh" ]; then
-      pass "plugin wires every settings.json hook except the two installer-only ones (documented exclusions)"
+    if [ "$ONLY_SET" = "skill-trust.sh" ]; then
+      pass "plugin wires every settings.json hook except skill-trust.sh (documented exclusion)"
     else
-      fail "plugin/settings hook sets diverged — only in settings: '${ONLY_SET:-none}' (expected exactly 'session-update-check.sh skill-trust.sh')"
+      fail "plugin/settings hook sets diverged — only in settings: '${ONLY_SET:-none}' (expected exactly skill-trust.sh)"
     fi
   fi
   # The DIAGRAMS make a claim too, and it is the one a reader takes at face value because nobody counts nodes in
@@ -1440,13 +1438,45 @@ case "$o" in *IGNORE-PREVIOUS*) fail "a non-version cache value reached the mode
 printf 'not-a-version 9999999999\n' > "$UPD/.claude/.state/update-check"; ustate
 [ -z "$(uc)" ] && pass "outright garbage in the cache -> silent" || fail "spoke on a garbage cache value"
 
-# 7) The two ways a user or an edition opts out of it entirely.
+# 7) The opt-out, and the case where there is nothing to compare against at all.
 printf '2.1.0 %s\n' "$(date +%s)" > "$UPD/.claude/.state/update-check"; ustate
 [ -z "$( printf '{"cwd":"%s"}' "$UPD" | CLAUDE_PROJECT_DIR="$UPD" CSK_NO_UPDATE_CHECK=1 bash "$UH" 2>/dev/null )" ] \
   && pass "CSK_NO_UPDATE_CHECK=1 silences the check completely" || fail "the opt-out switch does not silence the check"
 mv "$UPD/.claude/VERSION" "$UPD/.claude/VERSION.bak"
-[ -z "$(uc)" ] && pass "no .claude/VERSION (plugin edition) -> silent" || fail "announced an update with no VERSION to compare against"
+[ -z "$(uc)" ] && pass "neither edition present (no VERSION, no plugin root) -> silent" \
+               || fail "announced an update with nothing to compare against"
+
+# 8) THE PLUGIN EDITION, which was very nearly left out of this feature entirely. It has a version of its own — its
+#    manifest — and the release that will actually reach it is the marketplace repo's copy, not npm's. So it gets
+#    the same notice pointing at ITS update path, cached at user level because a plugin serves every project and
+#    has no repo to write into. These cases exist because "the plugin has nothing to compare against" was an
+#    assumption, and it was wrong.
+PLG="$UPD/plugin"; mkdir -p "$PLG/.claude-plugin"
+printf '{"name":"claude-starter-kit","version":"2.0.0"}\n' > "$PLG/.claude-plugin/plugin.json"
+XDG="$UPD/xdg"; mkdir -p "$XDG/claude-starter-kit"
+printf '2.1.0 %s\n' "$(date +%s)" > "$XDG/claude-starter-kit/update-check"
+pc(){ ( printf '{"hook_event_name":"SessionStart","source":"startup","cwd":"%s"}' "$UPD" \
+        | CLAUDE_PROJECT_DIR="$UPD" CLAUDE_PLUGIN_ROOT="$PLG" XDG_CACHE_HOME="$XDG" \
+          CSK_UPDATE_URL="http://10.255.255.1/blackhole" bash "$UH" 2>/dev/null ); }
+o="$(pc)"
+case "$o" in *2.0.0*2.1.0*) pass "plugin edition: reads its own plugin.json and announces (v2.0.0 -> v2.1.0)" ;;
+             *) fail "plugin edition announced nothing — it is idle in the channel it ships to (got: ${o:-<silence>})" ;; esac
+case "$o" in *"claude plugin update"*) pass "plugin edition names ITS update path, not /update-csk" ;;
+             *) fail "plugin edition points at the wrong update path: $o" ;; esac
+case "$o" in *update-csk*) fail "plugin edition told the user to run /update-csk, which it does not have" ;; esac
+[ -f "$XDG/claude-starter-kit/update-notified" ] && pass "plugin edition remembers the announcement at user level" \
+  || fail "plugin edition wrote no once-per-version marker — it will re-announce every session"
+# A project install WINS: with both present the same release must not be announced twice from two directions.
+# BOTH once-per-version markers are cleared first. Leaving the plugin's in place made a broken precedence rule look
+# like silence instead of like the plugin talking over the project — the case failed either way, but it would have
+# named the wrong cause, and a gate that misreports why is a gate you debug twice.
 mv "$UPD/.claude/VERSION.bak" "$UPD/.claude/VERSION"
+rm -f "$XDG/claude-starter-kit/update-notified"
+printf '2.1.0 %s\n' "$(date +%s)" > "$UPD/.claude/.state/update-check"; ustate
+o="$(pc)"
+case "$o" in *"/update-csk"*) pass "both editions present: the project install owns the notice (one message, not two)" ;;
+             *"claude plugin update"*) fail "the plugin copy spoke over the project install — one release, two notices" ;;
+             *) fail "both editions present but nothing was announced: ${o:-<silence>}" ;; esac
 rm -rf "$UPD"
 
 # Wired, or it is an idle component — and wired on `startup` ALONE: resume/clear/compact re-open the same session,

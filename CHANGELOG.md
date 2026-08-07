@@ -25,9 +25,16 @@ versioning follows [SemVer](https://semver.org/).
   switch, not a justification. `/doctor-csk` reports the same cached answer, so a missed notice is still findable —
   and it makes no network call of its own either.
 
-  Installer editions only. The plugin edition has no `.claude/VERSION` to compare against and updates through
-  `claude plugin update`; it is now the second documented hook exclusion beside `skill-trust.sh`, and the
-  plugin/settings parity gate asserts the set is exactly those two.
+  **Both editions, each told by the channel that will deliver the release.** A project install compares
+  `.claude/VERSION` against the npm dist-tag and points at `/update-csk`; a plugin install compares its own
+  `.claude-plugin/plugin.json` against the marketplace repo's copy — the number `claude plugin update` will
+  actually bring — and points at that command. The plugin's cache is user-level (`$XDG_CACHE_HOME`), the one
+  place the kit's "everything stays inside the repo" rule cannot apply, because a plugin install is not inside
+  one. With both present the project install wins, so one release is never announced twice.
+
+  This nearly shipped as installer-only, on the assumption that a plugin has no version to compare against. It
+  has one — its own manifest — and the assumption would have left an entire distribution channel out of the
+  feature. Four cases now hold that shut, including the precedence rule.
 
   The published version is treated as untrusted input on its way into a model's context: digits and dots, exactly
   three fields, or it is discarded unread. **That check was measured, not assumed** — the first version of its test
