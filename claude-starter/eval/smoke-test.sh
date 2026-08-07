@@ -388,14 +388,23 @@ printf '%s\n' '{"type":"assistant","isSidechain":false,"message":{"usage":{"inpu
 # The fixture was wrong, not necessarily the hooks; a case that only holds on the platform it was not written
 # for proves nothing about the platform it was.
 WPD_FWD="${WPD//\\//}"
-# Build the JSON exactly as a Windows client would: every separator doubled inside the string value.
+# ONE encoder, used by the payload builder AND by the round-trip check below. They were separate at first and
+# promptly drifted: the builder emitted FOUR backslashes per separator instead of two, the checker emitted two,
+# so the checker passed while the payload was malformed. macOS hid it — decoding `\\\\` leaves `//`, which POSIX
+# collapses — and windows-latest did not, because a leading `//` there is a UNC network path. Two implementations
+# of the same rule is one too many.
+wenc(){ printf '%s' "$1" | sed 's#/#\\\\#g'; }     # one separator -> the two backslashes JSON puts in the wire
 wjson(){ printf '{"hook_event_name":"%s","session_id":"wintest","transcript_path":"%s","cwd":"%s"}' \
-  "$1" "$(printf '%s' "$WPD_FWD/t.jsonl" | sed 's#/#\\\\\\\\#g')" "$(printf '%s' "$WPD_FWD" | sed 's#/#\\\\\\\\#g')"; }
-# Sanity: the fixture really is escaped, or these cases prove nothing.
-case "$(wjson UserPromptSubmit)" in *'\\\\'*) pass "windows fixture carries JSON-escaped separators" ;; *) fail "windows fixture is not escaped — the cases below are vacuous" ;; esac
+  "$1" "$(wenc "$WPD_FWD/t.jsonl")" "$(wenc "$WPD_FWD")"; }
+# Sanity: exactly the doubled form, not more. `\\\\` in the payload is the bug this fixture kept reintroducing.
+case "$(wjson UserPromptSubmit)" in
+  *'\\\\'*) fail "windows fixture over-escapes (four backslashes per separator) — it decodes to // and only POSIX forgives that" ;;
+  *'\\'*)   pass "windows fixture carries JSON-escaped separators" ;;
+  *)        fail "windows fixture is not escaped — the cases below are vacuous" ;;
+esac
 # ...and it must decode back to a file that exists, or a failure below says nothing about the decoder. This
 # check is why the next CI failure will be readable instead of a silent `<silence>`.
-WDEC="$(printf '%s' "$WPD_FWD/t.jsonl" | sed 's#/#\\\\#g')"; WDEC="${WDEC//\\\\//}"
+WDEC="$(wenc "$WPD_FWD/t.jsonl")"; WDEC="${WDEC//\\\\//}"
 [ -f "$WDEC" ] && pass "windows fixture decodes back to the real file" \
   || fail "windows fixture does not round-trip: raw='$WPD' fwd='$WPD_FWD' decoded='$WDEC' — fix the fixture before reading the cases below"
 # Honest scope: of the three hooks below only context-usage was actually broken. session-rehydrate and
