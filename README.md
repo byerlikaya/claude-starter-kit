@@ -6,7 +6,7 @@
 
 12 specialist agents plan the work, build it, put it through security and test review, then close it
 
-![Version](https://img.shields.io/badge/version-2.0.2-2563eb?style=flat-square)
+![Version](https://img.shields.io/badge/version-2.1.0-2563eb?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)
 ![Agents](https://img.shields.io/badge/agents-12-f59e0b?style=flat-square)
 ![Skills](https://img.shields.io/badge/skills-38-f59e0b?style=flat-square)
@@ -97,11 +97,11 @@ Then paste `.claude/FIRST_PROMPT.md` as your first Claude Code message. Homebrew
 | **Agents** | 12 | Thin triggers — *who* owns a domain and *when* they fire |
 | **Skills** | 38 | The method, written once, applied by whoever needs it |
 | **Slash commands** | 7 | `/brainstorm-csk` · `/plan-csk` · `/review-csk` · `/ship-csk` · `/handoff-csk` · `/update-csk` · `/doctor-csk` |
-| **Hooks** | 8 | The gates, plus session measurement and routing |
+| **Hooks** | 10 | The gates, plus session measurement and routing |
 | **Discipline** | 1 | Principles, workflow, Definition of Done, prohibitions — imported by your `CLAUDE.md` |
 
 <details>
-<summary>🪝&nbsp; <b>All 8 hooks — which gate holds what</b></summary>
+<summary>🪝&nbsp; <b>All 10 hooks — which gate holds what</b></summary>
 
 | Hook | Role |
 |:--|:--|

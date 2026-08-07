@@ -6,7 +6,7 @@
 
 12 uzman agent işi planlar, üretir, güvenlik ve test denetiminden geçirir, sonra kapatır.
 
-![Sürüm](https://img.shields.io/badge/version-2.0.2-2563eb?style=flat-square)
+![Sürüm](https://img.shields.io/badge/version-2.1.0-2563eb?style=flat-square)
 ![Lisans](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)
 ![Ajanlar](https://img.shields.io/badge/agents-12-f59e0b?style=flat-square)
 ![Skiller](https://img.shields.io/badge/skills-38-f59e0b?style=flat-square)
@@ -97,11 +97,11 @@ Ardından ilk Claude Code mesajınız olarak `.claude/FIRST_PROMPT.md` dosyasın
 | **Ajanlar** | 12 | Yalın tetikleyiciler: bir alanın *sahibi kim*, *ne zaman* devreye girer |
 | **Skiller** | 38 | Yöntemin kendisi; bir kez yazılır, ihtiyacı olan uygular |
 | **Slash komutları** | 7 | `/brainstorm-csk` · `/plan-csk` · `/review-csk` · `/ship-csk` · `/handoff-csk` · `/update-csk` · `/doctor-csk` |
-| **Hook'lar** | 8 | Kapılar, ayrıca oturum ölçümü ve yönlendirme |
+| **Hook'lar** | 10 | Kapılar, ayrıca oturum ölçümü ve yönlendirme |
 | **Disiplin** | 1 | İlkeler, akış, Bitti Tanımı, yasaklar; `CLAUDE.md`'nizin içe aktardığı dosya |
 
 <details>
-<summary>🪝&nbsp; <b>8 hook'un tamamı: hangisi neyi engelliyor</b></summary>
+<summary>🪝&nbsp; <b>10 hook'un tamamı: hangisi neyi engelliyor</b></summary>
 
 | Hook | Görevi |
 |:--|:--|

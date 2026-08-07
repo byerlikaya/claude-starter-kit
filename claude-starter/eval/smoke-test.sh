@@ -581,6 +581,16 @@ if [ "$IS_KIT" = 1 ]; then
       fail "hooks/$hn ships but is not documented in both READMEs"
     fi
   done
+  # ...and the COUNT beside that table, which is a separate claim and drifted on its own: the READMEs said 8 while
+  # the table listed 9 and the directory held 9. Documenting each hook does not keep the number honest — a reader
+  # takes "All 8 hooks" as the total without counting rows, exactly like the agent count and the site version.
+  TH="$(ls "$ROOT"/hooks/*.sh 2>/dev/null | wc -l | tr -d ' ')"
+  for r in README.md README.tr.md; do
+    [ -f "$KR/$r" ] || continue
+    HC="$(grep -cE "(\*\*Hooks\*\*|\*\*Hook'lar\*\*) \| $TH \||All $TH hooks|$TH hook'un tamamı" "$KR/$r" 2>/dev/null | tr -d ' ')"
+    [ "${HC:-0}" -ge 2 ] && pass "$r states the real hook count ($TH) in both the summary table and the section header" \
+      || fail "$r does not state $TH hooks in both places — the count drifted from hooks/ (found $HC of 2)"
+  done
   # The plugin channel wires a SUBSET on purpose. Two hooks are installer-only, each for a reason that is about
   # state the plugin edition does not have: skill-trust.sh decides kit-owned from the kit-manifest.txt an installer
   # writes, and session-update-check.sh compares against .claude/VERSION and caches beside it. Assert the subset is

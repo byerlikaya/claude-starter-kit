@@ -3,7 +3,7 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [2.1.0] - 2026-08-07
 
 ### Added
 - **`session-update-check.sh` — a published release now finds the project, instead of waiting to be remembered.**
@@ -35,6 +35,13 @@ versioning follows [SemVer](https://semver.org/).
   rejected it first. The fixture is now `9.9.9-<text>`, which *wins* the comparison, so only the shape check can
   stop it. All four sabotages (foreground lookup · undetached refresher · no shape check · no once-per-version
   suppression) were run against the gate and each one fails it.
+
+### Fixed
+- **Both READMEs said "8 hooks" while the directory held nine and their own table listed nine.** Every hook was
+  individually documented — that gate has existed since the table was written — but the *number* beside it was a
+  separate claim nobody checked, and a reader takes "All 8 hooks" as the total without counting rows. Same class as
+  the diagram that drew eleven of twelve agents and the site stuck on an old version. Corrected to ten and gated:
+  the count is derived from `hooks/*.sh` and asserted in both places, in both languages.
 
 ## [2.0.2] - 2026-08-07
 
