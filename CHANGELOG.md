@@ -3,6 +3,67 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [2.2.0] - 2026-08-07
+
+### Changed
+- **`sonarqube-check` stopped claiming a verdict it never produced.** The skill told you to install a local
+  analyzer and read a clean build as **0 Bugs / 0 Vulnerabilities / 0 Hotspots / 0 Code Smells**. Those are not the
+  same measurement, and the gap is structural, not incidental: security-injection (taint) rules run only on
+  SonarQube Server/Cloud commercial editions; Security Hotspot *review state* is a server-side status; coverage and
+  duplication are not computed by a build at all; a compiler-bound analyzer never sees the JS/TS, HTML, CSS, XML,
+  YAML, Dockerfile or SQL in the same repo; and it applies its own default rules, not the project's Quality
+  Profile. So the kit reported "clean" while the real report carried findings — repeatedly, to a user who had
+  been recommending the feature on the strength of that claim.
+
+  It now works the other way round: **an analysis is produced, then read.** A project's own SonarQube is used if it
+  has one; otherwise the skill stands one up locally — Docker (`sonarqube:community`) **or**, with no Docker, the
+  plain server zip on Java 17/21 with the embedded database. Free, no licence key, no company server, and the
+  token is generated locally. Findings are pulled by `ruleId + file + line`, fixed one rule at a time by the domain
+  owner, and then **re-scanned**: the deliverable is the before → after diff, not "it should be clean now". That
+  missing loop is why fixes appeared to be applied and the next report still had findings.
+
+  Where nothing can be run at all, the skill says so in words instead of a rating, and lists what stays unverified.
+  Its own blind spot is stated too: Community Build has no taint analysis, so injection risk is reported separately
+  via `security-scan` / `threat-model`, never folded into a green gate.
+
+  Also language-agnostic now, as the kit requires of anything shipped to every profile: the old text said "For
+  .NET — the case here" and put a C# snippet in the middle of the method. SonarQube covers 20+ languages; the
+  scanner table now carries one row per stack and assumes none.
+
+- **The discipline made the same substitution, in one line, in every project.** `Definition of Done` read "a local
+  analyzer is 0/0/0/0". It now reads: build clean **and** a real analysis clean — a green linter is a pre-check,
+  not a verdict; no analysis, no rating.
+
+### Fixed
+- **An update took 6m43s on Windows and was repeatedly mistaken for a hang.** Reported as "`/update-csk` never
+  works": an agent ran the documented command, saw nothing move for 240s, declared it stuck and killed it — while
+  the process was in fact still working (it had already completed once, unnoticed, which is why the version was
+  found to be current later). Measured on the user's machine: `npx` itself accounts for **6.7s**; `adopt.sh` for
+  **6m43s**, of which 66s is kernel time — the signature of process spawns, not file I/O.
+
+  The cause is the shape this project has hit before: per-item shell loops. `copy_noclobber` ran
+  `dirname` + `mkdir` + `cp` for every payload file; project-skill detection ran `basename $(dirname …)` per skill;
+  and the PROOF-5 stale-reference check ran `grep|cut|tr|sed` per (agent × document) pair — **the identical loop
+  already converted to awk in `doctor.sh` in 2.0.1, left behind in `adopt.sh`**. Git Bash pays 20-50ms per process
+  where Linux pays ~1.7ms, so none of it shows up on a maintainer's machine.
+
+  A refresh is now one `cp -R` instead of one `cp` per file, the detection loops use parameter expansion, and
+  PROOF-5 is two awk passes whose output was diffed against the old implementation on a fixture carrying both
+  stale categories across two documents: **byte-identical**, line numbers and ordering included. External commands
+  per update: **631 → 78**.
+
+  The two detection `find`s also **prune** `bin`/`obj`/`node_modules`/`.git`/`.vs`/`packages` instead of walking
+  them and discarding the results afterwards — on a real .NET repo that is tens of thousands of Defender-scanned
+  directory entries per run.
+
+- **New gate: `smoke-test §7x` measures the cost of an update.** Budget 200 external commands; the pre-fix code
+  scores 618 and fails it. Proven in three states — regression fails, the current code passes at 78, and a fixture
+  that fails to run the work fails too rather than reporting a suspiciously cheap number. That third case is not
+  hypothetical: the first version of this gate reported "1 external command" and **passed**, because the fixture
+  had left `adopt.sh` without its payload. It also asserts the kit repo survived the run: an earlier version
+  invoked `start.sh` in place, and start.sh removes the payload next to itself — which deleted `claude-starter/`
+  out of this repository mid-session. The installer is copied to a stage first now, exactly as `e2e.sh` does.
+
 ## [2.1.0] - 2026-08-07
 
 ### Added
