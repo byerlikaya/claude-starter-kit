@@ -382,18 +382,29 @@ echo "== 6i2) hook paths survive a WINDOWS stdin payload (JSON-escaped backslash
 # `\\` as part of a directory name.
 WPD="$(mktemp -d)"; mkdir -p "$WPD/docs" "$WPD/.claude/skills/mine" "$WPD/.claude/agents"
 printf '%s\n' '{"type":"assistant","isSidechain":false,"message":{"usage":{"input_tokens":1000,"cache_read_input_tokens":300000,"cache_creation_input_tokens":0}}}' > "$WPD/t.jsonl"
+# The encoder assumes forward separators, so normalise FIRST. On a Windows runner TMPDIR is a native path, so
+# `mktemp -d` already answers with backslashes — encoding that produced a mixed string that was neither the
+# POSIX nor the JSON shape, and all three cases below failed on windows-latest while passing everywhere else.
+# The fixture was wrong, not necessarily the hooks; a case that only holds on the platform it was not written
+# for proves nothing about the platform it was.
+WPD_FWD="${WPD//\\//}"
 # Build the JSON exactly as a Windows client would: every separator doubled inside the string value.
 wjson(){ printf '{"hook_event_name":"%s","session_id":"wintest","transcript_path":"%s","cwd":"%s"}' \
-  "$1" "$(printf '%s' "$WPD/t.jsonl" | sed 's#/#\\\\\\\\#g')" "$(printf '%s' "$WPD" | sed 's#/#\\\\\\\\#g')"; }
+  "$1" "$(printf '%s' "$WPD_FWD/t.jsonl" | sed 's#/#\\\\\\\\#g')" "$(printf '%s' "$WPD_FWD" | sed 's#/#\\\\\\\\#g')"; }
 # Sanity: the fixture really is escaped, or these cases prove nothing.
 case "$(wjson UserPromptSubmit)" in *'\\\\'*) pass "windows fixture carries JSON-escaped separators" ;; *) fail "windows fixture is not escaped — the cases below are vacuous" ;; esac
+# ...and it must decode back to a file that exists, or a failure below says nothing about the decoder. This
+# check is why the next CI failure will be readable instead of a silent `<silence>`.
+WDEC="$(printf '%s' "$WPD_FWD/t.jsonl" | sed 's#/#\\\\#g')"; WDEC="${WDEC//\\\\//}"
+[ -f "$WDEC" ] && pass "windows fixture decodes back to the real file" \
+  || fail "windows fixture does not round-trip: raw='$WPD' fwd='$WPD_FWD' decoded='$WDEC' — fix the fixture before reading the cases below"
 # Honest scope: of the three hooks below only context-usage was actually broken. session-rehydrate and
 # skill-trust already folded lone backslashes (2.0.1), and folding each half of a doubled `\\` yields `//`,
 # which the OS collapses — so they survived the encoded form by accident rather than by design. Their cases
 # here are regression guards, not bug reproductions; the discriminating case is context-usage, which did no
 # folding at all and therefore compared a literal `\\`-bearing string against the filesystem on every turn.
 o="$(wjson UserPromptSubmit | CONTEXT_WINDOW=1000000 bash "$HOOKS/context-usage.sh" 2>/dev/null)"
-case "$o" in *"🔋"*) pass "context-usage decodes a JSON-escaped transcript_path" ;; *) fail "context-usage could not read a Windows-shaped transcript_path (got: ${o:-<silence>})" ;; esac
+case "$o" in *"🔋"*) pass "context-usage decodes a JSON-escaped transcript_path" ;; *) fail "context-usage could not read a Windows-shaped transcript_path (got: ${o:-<silence>}) · payload was: $(wjson UserPromptSubmit)" ;; esac
 # No transcript at all, delivered as a hook payload: silent AND exit 0, because a non-zero status here is an
 # error banner in the user's session once per turn, for a condition the discipline already handles.
 o="$(printf '{"hook_event_name":"UserPromptSubmit","session_id":"wintest2","transcript_path":"/no/such/x.jsonl"}' | bash "$HOOKS/context-usage.sh" 2>&1)"; rc=$?
@@ -403,11 +414,11 @@ o="$(printf '{"hook_event_name":"UserPromptSubmit","session_id":"wintest2","tran
 if bash "$HOOKS/context-usage.sh" "/no/such/x.jsonl" >/dev/null 2>&1; then fail "by-hand bad path returned exit 0"; else pass "by-hand bad path still exits non-zero"; fi
 printf 'HANDOVER\n\n## Next\n- keep going\n' > "$WPD/docs/SESSION_STATE.md"
 o="$(wjson SessionStart | CLAUDE_PROJECT_DIR= bash "$HOOKS/session-rehydrate.sh" 2>/dev/null)"
-case "$o" in *SESSION_STATE*) pass "session-rehydrate decodes a JSON-escaped cwd" ;; *) fail "session-rehydrate could not resolve a Windows-shaped cwd (got: ${o:-<silence>})" ;; esac
+case "$o" in *SESSION_STATE*) pass "session-rehydrate decodes a JSON-escaped cwd" ;; *) fail "session-rehydrate could not resolve a Windows-shaped cwd (got: ${o:-<silence>}) · payload was: $(wjson SessionStart)" ;; esac
 printf 'skills/handoff\n' > "$WPD/.claude/kit-manifest.txt"
 printf -- '---\nname: mine\n---\nProject rules.\n' > "$WPD/.claude/skills/mine/SKILL.md"
 o="$(wjson SessionStart | CLAUDE_PROJECT_DIR= bash "$HOOKS/skill-trust.sh" 2>/dev/null)"
-case "$o" in *skills/mine*) pass "skill-trust decodes a JSON-escaped cwd (the notice still notices)" ;; *) fail "skill-trust could not resolve a Windows-shaped cwd — the gate is inert there" ;; esac
+case "$o" in *skills/mine*) pass "skill-trust decodes a JSON-escaped cwd (the notice still notices)" ;; *) fail "skill-trust could not resolve a Windows-shaped cwd — the gate is inert there · payload was: $(wjson SessionStart)" ;; esac
 rm -rf "$WPD"
 
 echo "== 6j) session-stats: evidence signals read off the transcript =="
