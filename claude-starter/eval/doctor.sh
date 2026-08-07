@@ -85,6 +85,22 @@ if [ -f "$S" ]; then
       || bad "settings.json missing hook events or wiring:$MISS" "restore settings.json from the kit"
     grep -q '"SessionStart"' "$S" || warn "SessionStart not wired — session rehydration inactive (update the kit)"
   fi
+  # `${CLAUDE_PROJECT_DIR}` inside a hook command is the shape that breaks on Windows, and it breaks invisibly.
+  # Claude Code substitutes that placeholder into the command STRING before any shell sees it; on Windows the
+  # value is `C:\Repos\app` and the separators are gone by the time bash reads it. The reported path was
+  # `C:ReposApp/.claude/hooks/...` — every hook failed to launch and every gate was absent, while settings.json
+  # looked perfectly correct on inspection. The kit now uses a RELATIVE path (hooks run in the project
+  # directory), with a `cd` off the bare `$CLAUDE_PROJECT_DIR` as a belt for a session started in a subdirectory.
+  # Bare `$VAR` is not the placeholder syntax, so Claude Code leaves it for the shell to expand.
+  #
+  # Reported on every platform, not only Windows: a repo is shared across machines, and the wiring is wrong on
+  # all of them the moment one teammate is on Windows.
+  if grep -q '\${CLAUDE_PROJECT_DIR' "$S" 2>/dev/null; then
+    bad "settings.json wires hooks through the \${CLAUDE_PROJECT_DIR} placeholder — on Windows its separators are stripped before bash runs, so NO hook launches and every gate is silently absent" \
+        "update the kit (npx @byerlikaya/claude-starter-kit adopt) — hook commands become: cd \"\$CLAUDE_PROJECT_DIR\" 2>/dev/null; bash .claude/hooks/<name>.sh"
+  else
+    ok "hook wiring carries no path placeholder (nothing for Windows to mangle)"
+  fi
 else
   bad "settings.json missing — the tool-level gates (commit approval, guards, context) are INACTIVE" "reinstall the kit"
 fi

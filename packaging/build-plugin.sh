@@ -46,29 +46,29 @@ cat > "$OUT/hooks/hooks.json" <<'HOOKS'
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT//\\\\//}/hooks/guard-bash.sh\"", "timeout": 60 },
-          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT//\\\\//}/hooks/guard-commit-scan.sh\"", "timeout": 60 }
+          { "type": "command", "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/guard-bash.sh\"", "timeout": 60 },
+          { "type": "command", "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/guard-commit-scan.sh\"", "timeout": 60 }
         ]
       },
       {
         "matcher": "Write|Edit|MultiEdit|NotebookEdit",
         "hooks": [
-          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT//\\\\//}/hooks/guard-write.sh\"", "timeout": 60 }
+          { "type": "command", "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/guard-write.sh\"", "timeout": 60 }
         ]
       }
     ],
     "UserPromptSubmit": [
       {
         "hooks": [
-          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT//\\\\//}/hooks/context-usage.sh\" 2>/dev/null || true", "timeout": 60 },
-          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT//\\\\//}/hooks/route-hint.sh\" 2>/dev/null || true", "timeout": 60 }
+          { "type": "command", "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/context-usage.sh\"", "timeout": 60 },
+          { "type": "command", "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/route-hint.sh\"", "timeout": 60 }
         ]
       }
     ],
     "Stop": [
       {
         "hooks": [
-          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT//\\\\//}/hooks/session-guard.sh\"", "timeout": 60 }
+          { "type": "command", "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/session-guard.sh\"", "timeout": 60 }
         ]
       }
     ],
@@ -76,7 +76,7 @@ cat > "$OUT/hooks/hooks.json" <<'HOOKS'
       {
         "matcher": "compact|clear|resume",
         "hooks": [
-          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT//\\\\//}/hooks/session-rehydrate.sh\"", "timeout": 60 }
+          { "type": "command", "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/session-rehydrate.sh\"", "timeout": 60 }
         ]
       }
     ]

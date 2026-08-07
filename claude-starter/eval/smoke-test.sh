@@ -720,6 +720,28 @@ case "$o" in *"kit updated"*) fail "stale gate leaked into the Stop payload" ;; 
 rm -f "$SD/VERSION"; run_cu >/dev/null 2>&1 && pass "stale gate: fails open when VERSION is absent" || fail "stale gate exited non-zero without VERSION"
 rm -rf "$SD"; rm -f "$SDFX" "${TMPDIR:-/tmp}/csk-kit-version.$SDSID"
 
+echo "== 6g2) stale-WIRING gate: a session resumed across a kit update runs the old hooks =="
+# Measured on Windows: settings.json on disk had already been corrected and `--resume` still produced the error
+# naming the OLD, mangled hook path, while the same event in a fresh session was clean. So a resumed session
+# keeps the wiring it started with — and on the release that fixed that path, "the wiring it started with" means
+# the broken one. A hook cannot report its own absence, so this catches the other half: hooks that DO run, but
+# not the way the file on disk says they should. `$0` is the evidence — the kit wires `bash .claude/hooks/<n>.sh`,
+# so a correctly-launched hook sees a relative `$0` and anything else came from a different settings.json.
+SWD="$(mktemp -d)"; mkdir -p "$SWD/.claude/hooks"
+cp "$HOOKS/context-usage.sh" "$SWD/.claude/hooks/"; cp "$ROOT/settings.json" "$SWD/.claude/"
+printf '%s\n' '{"type":"assistant","isSidechain":false,"message":{"usage":{"input_tokens":0,"cache_read_input_tokens":300000,"cache_creation_input_tokens":0}}}' > "$SWD/t.jsonl"
+swp(){ printf '{"hook_event_name":"UserPromptSubmit","session_id":"sw-%s","transcript_path":"%s/t.jsonl"}' "$$" "$SWD"; }
+o="$( cd "$SWD" && swp | CONTEXT_WINDOW=1000000 bash .claude/hooks/context-usage.sh 2>/dev/null )"
+case "$o" in *"OLDER hook wiring"*) fail "stale-wiring gate warned on a correctly-launched hook (relative \$0)" ;; *) pass "stale-wiring: silent when \$0 matches the wiring on disk" ;; esac
+rm -f "${TMPDIR:-/tmp}/csk-kit-version.sw-$$"
+o="$( cd "$SWD" && swp | CONTEXT_WINDOW=1000000 bash "$SWD/.claude/hooks/context-usage.sh" 2>/dev/null )"
+case "$o" in *"OLDER hook wiring"*) pass "stale-wiring: warns when the hook was launched some other way (resumed session)" ;; *) fail "stale-wiring gate stayed silent on a hook launched outside the wiring on disk" ;; esac
+# Fails open where the project rewired its hooks by hand — warning every turn about something it chose is noise.
+rm -f "${TMPDIR:-/tmp}/csk-kit-version.sw-$$"; mv "$SWD/.claude/settings.json" "$SWD/.claude/settings.off"
+o="$( cd "$SWD" && swp | CONTEXT_WINDOW=1000000 bash "$SWD/.claude/hooks/context-usage.sh" 2>/dev/null )"
+case "$o" in *"OLDER hook wiring"*) fail "stale-wiring gate fired without a kit settings.json to compare against" ;; *) pass "stale-wiring: silent when settings.json is absent or hand-rewired" ;; esac
+rm -rf "$SWD"; rm -f "${TMPDIR:-/tmp}/csk-kit-version.sw-$$"
+
 echo "== 6f) always-on token budget =="
 # Everything below is loaded into EVERY session's context (and, when Claude spawns one, into a subagent's).
 # Measured with a real `claude -p` turn: 21804 bytes of always-on material cost 9198 tokens. Bytes are a proxy
@@ -1084,6 +1106,33 @@ if command -v jq >/dev/null 2>&1; then printf '%s' "$o" | jq empty 2>/dev/null &
 rm -rf "$RHD"
 grep -q 'SessionStart' "$ROOT/settings.json" && grep -q 'session-rehydrate.sh' "$ROOT/settings.json" \
   && pass "settings.json wires SessionStart -> session-rehydrate.sh" || fail "settings.json missing SessionStart -> session-rehydrate wiring"
+
+# No `${CLAUDE_PROJECT_DIR}` anywhere in the wiring. Claude Code substitutes that placeholder into the command
+# string before a shell sees it, and on Windows the separators do not survive the trip: the value `C:\Repos\app`
+# reached bash as `C:ReposApp`, so NO hook launched and every gate was silently absent while the file looked
+# right. The kit uses a relative path (hooks run in the project directory) with a `cd` off the BARE
+# `$CLAUDE_PROJECT_DIR` as a belt for a session started in a subdirectory — bare `$VAR` is not the placeholder
+# syntax, so it survives to the shell. This case is the regression guard for the whole class.
+if grep -q '\${CLAUDE_PROJECT_DIR' "$ROOT/settings.json"; then
+  fail "settings.json wires hooks through the \${CLAUDE_PROJECT_DIR} placeholder — Windows strips its separators before bash runs and every hook silently fails to launch"
+else
+  pass "hook wiring carries no path placeholder (nothing for Windows to mangle)"
+fi
+# ...and the belt is actually there: a relative path alone breaks if the session started in a subdirectory.
+# Matched on the raw file, where JSON has escaped the quotes as \" — hence the loose pattern rather than the
+# literal command text.
+grep -q 'cd .*\$CLAUDE_PROJECT_DIR' "$ROOT/settings.json" \
+  && pass "hook wiring cd's to the project dir first (bare \$VAR, expanded by the shell)" \
+  || fail "hook wiring lost the 'cd \"\$CLAUDE_PROJECT_DIR\"' belt — a session started in a subdirectory finds no hooks"
+# The exec-form trap, recorded so it is not walked into again: exec form spawns `command` off the PATH with no
+# shell, and on a Windows box checked during this work `where bash` answered C:\Windows\System32\bash.exe — the
+# WSL launcher, not Git Bash, in a namespace where C:\Repos\app does not exist. Wiring `"command": "bash"` would
+# have run that (or failed where WSL is absent), taking every gate with it.
+if command -v jq >/dev/null 2>&1; then
+  jq -e '[.hooks[][].hooks[]? | select((.args // []) | length > 0)] | length == 0' "$ROOT/settings.json" >/dev/null 2>&1 \
+    && pass "no exec-form hook (bare 'bash' on Windows PATH resolves to WSL, not Git Bash)" \
+    || fail "a hook uses exec form — on Windows 'bash' off the PATH is System32/bash.exe (WSL), so every gate dies"
+fi
 
 echo "== 7d) plugin gate hooks shipped (P1) =="
 PLUGIN="$(cd "$ROOT/.." && pwd)/plugin"

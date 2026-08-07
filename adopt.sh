@@ -626,7 +626,7 @@ def dm(a;b): reduce (b|keys_unsorted[]) as $k (a;
   if (.[$k]|type)=="object" and (b[$k]|type)=="object" then .[$k]=dm(.[$k];b[$k])
   elif (.[$k]|type)=="array" and (b[$k]|type)=="array" then .[$k]=((.[$k]+b[$k])|ddedup)
   else .[$k]=b[$k] end);
-def is_kit: ((.hooks // []) | map((.command // "") | contains(".claude/hooks/")) | any);
+def is_kit: ((.hooks // []) | map((((.command // "") + " " + ((.args // []) | join(" "))) | contains(".claude/hooks/"))) | any);   # command AND args: tolerates either wiring shape
 def merge_hooks(kh;ph):
   (((kh|keys_unsorted)+(ph|keys_unsorted))|unique) as $e
   | reduce $e[] as $k ({}; .[$k]=((kh[$k] // [])+((ph[$k] // [])|map(select(is_kit|not)))));

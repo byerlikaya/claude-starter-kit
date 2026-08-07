@@ -45,12 +45,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PROJECT_DIR//\\\\//}/.claude/hooks/guard-bash.sh\"",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" 2>/dev/null; bash .claude/hooks/guard-bash.sh",
             "timeout": 60
           },
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PROJECT_DIR//\\\\//}/.claude/hooks/guard-commit-scan.sh\"",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" 2>/dev/null; bash .claude/hooks/guard-commit-scan.sh",
             "timeout": 60
           }
         ]
@@ -60,7 +60,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PROJECT_DIR//\\\\//}/.claude/hooks/guard-write.sh\"",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" 2>/dev/null; bash .claude/hooks/guard-write.sh",
             "timeout": 60
           }
         ]
@@ -71,12 +71,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PROJECT_DIR//\\\\//}/.claude/hooks/context-usage.sh\" 2>/dev/null || true",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" 2>/dev/null; bash .claude/hooks/context-usage.sh",
             "timeout": 60
           },
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PROJECT_DIR//\\\\//}/.claude/hooks/route-hint.sh\" 2>/dev/null || true",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" 2>/dev/null; bash .claude/hooks/route-hint.sh",
             "timeout": 60
           }
         ]
@@ -87,7 +87,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PROJECT_DIR//\\\\//}/.claude/hooks/session-guard.sh\"",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" 2>/dev/null; bash .claude/hooks/session-guard.sh",
             "timeout": 60
           }
         ]
@@ -99,7 +99,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PROJECT_DIR//\\\\//}/.claude/hooks/session-rehydrate.sh\"",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" 2>/dev/null; bash .claude/hooks/session-rehydrate.sh",
             "timeout": 60
           }
         ]
@@ -109,7 +109,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PROJECT_DIR//\\\\//}/.claude/hooks/skill-trust.sh\" 2>/dev/null || true",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" 2>/dev/null; bash .claude/hooks/skill-trust.sh",
             "timeout": 60
           }
         ]

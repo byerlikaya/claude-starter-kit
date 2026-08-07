@@ -42,8 +42,14 @@ any_of(){
 [ "$QUIET" = 1 ] || printf '\n  %sPreflight — what this machine has%s\n' "$B" "$R"
 
 # --- REQUIRED: without these the kit does not work at all -------------------------------------------------
+# Hooks are wired in SHELL form on purpose, and `bash` is resolved by the shell Claude Code already runs them
+# in — not off the Windows PATH. That distinction is not academic. On a Windows box checked during this work,
+# `where bash` answered `C:\Windows\System32\bash.exe`, which is not Git Bash at all: it is the WSL launcher,
+# living in a filesystem namespace where `C:\Repos\app` does not exist (`/mnt/c/Repos/app` does). A wiring that
+# spawns `bash` by PATH name would have run THAT, or failed outright where WSL is not installed — every gate
+# gone, with an error pointing nowhere near the cause. Hence shell form, and hence this note.
 any_of "bash" "the whole kit is bash" \
-  "Windows: install Git for Windows (git-scm.com) and run from Git Bash" bash || MISSING_REQ="$MISSING_REQ bash"
+  "Windows: install Git for Windows (git-scm.com) and run Claude Code from Git Bash" bash || MISSING_REQ="$MISSING_REQ bash"
 any_of "awk" "context measurement, routing, doctor" \
   "Windows: ships with Git Bash · macOS: preinstalled · Linux: apt install gawk" awk gawk mawk || MISSING_REQ="$MISSING_REQ awk"
 any_of "git" "the commit-time trace/secret gates are git hooks" \
