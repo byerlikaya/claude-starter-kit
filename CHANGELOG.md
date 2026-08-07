@@ -3,7 +3,7 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [2.0.2] - 2026-08-07
 
 ### Fixed
 - **No hook launched at all on Windows, and every gate was silently absent.** Reported as
@@ -78,6 +78,26 @@ versioning follows [SemVer](https://semver.org/).
 
   It **reports and never installs**. A scaffolding tool that puts software on someone's workstation unasked is a
   worse problem than the one it solves, and on a managed corporate machine it just fails in a new way.
+
+### Note
+- **What is verified, and by what.** The script layer is covered on real Git Bash by the `windows-latest` CI leg:
+  JSON-escaped payload paths decode, the wiring carries no placeholder, exec form is refused, the CRLF manifest
+  resolves, `route-hint` costs 2s for ten prompts. The wiring fix itself was confirmed on the affected machine by
+  the reporting user — same machine, same `SessionStart:clear` event, old wiring errored and the new wiring was
+  clean.
+
+  What no CI can show is whether Claude Code launches the hooks across a **full install**, because the suite runs
+  the scripts directly rather than through the hook mechanism. That end-to-end pass is outstanding at release
+  time. It is written down rather than glossed: the previous release shipped on the assumption that a green suite
+  meant a working install, and the user's machine said otherwise.
+
+- **Three gates in this release were wrong before they were right**, each caught by the platform it was written
+  for. The CRLF case passed against the broken code because it called `--trust` first, which accepted the
+  falsely-flagged components and silenced the very output it asserted on. The Windows-payload fixture then failed
+  on `windows-latest` twice: first because it assumed POSIX separators where `TMPDIR` is native, then because its
+  encoder emitted four backslashes per separator instead of two — which decodes to `//`, collapsed by POSIX and
+  read as a UNC path by Windows. In all three the measurement was broken, not the code under it. New cases now
+  carry a check on their own fixture, and the encoder exists once rather than twice.
 
 ## [2.0.1] - 2026-08-06
 
