@@ -298,6 +298,22 @@ else
     pass "claiming leaves the worktree and branch untouched (dirty file and branch survive)"
   else fail "claiming disturbed the worktree/branch (status='$ST' branch='$BR')"; fi
 
+  # 5b-ii. THE CLOCK MUST NOT RESTART. Re-claiming an item you already hold used to rewrite `since`, so an item
+  # held all morning read as freshly started — which destroys the two things age is for: telling a teammate how
+  # long it has been held, and letting an abandoned claim go stale. Found by reading a real session where the
+  # timestamp jumped between two views of the same claim.
+  S1="$(cd "$BD/ali" && bash ../board.sh show 004 2>/dev/null | grep -m1 '^since: ')"
+  ( cd "$BD/ali" && bash ../board.sh claim 004 ) >/dev/null 2>&1
+  S2="$(cd "$BD/ali" && bash ../board.sh show 004 2>/dev/null | grep -m1 '^since: ')"
+  [ -n "$S1" ] && [ "$S1" = "$S2" ] && pass "re-claiming an item you hold preserves how long you have held it" \
+                                    || fail "re-claim restarted the clock ('$S1' -> '$S2') — age and staleness both become fiction"
+  # And the age has to be VISIBLE: "who holds it" without "for how long" is not the question a teammate asks.
+  AGEV="$(cd "$BD/ali" && bash ../board.sh status 2>/dev/null | grep -m1 '^#004 ')"
+  case "$AGEV" in
+    *[0-9]m*|*[0-9]h*|*[0-9]d*) pass "status shows how long a held item has been held" ;;
+    *) fail "status prints no claim age for a held item: $AGEV" ;;
+  esac
+
   # 5c. CONNECTED WORK. Storing a note is not delivering it: nobody picking up #003 has a reason to go and read
   # #001. Claiming must hand over what the dependency actually did, at the moment the work starts.
   ( cd "$BD/ali" && bash ../board.sh add 010 "Downstream" 001 ) >/dev/null 2>&1
@@ -1309,6 +1325,15 @@ gj auto 'chmod +x build.sh'              | bash "$HOOKS/guard-bash.sh" >/dev/nul
 gj auto 'git config core.hooksPath /tmp/x' | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "core.hooksPath redirect BLOCKED (§4.5)" || fail "core.hooksPath redirect PASSED (§4.5 hole)"
 gj auto 'rm .claude/hooks/pre-commit'      | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "rm of a .claude gate file BLOCKED (§4.5)" || fail "rm of a gate file PASSED (§4.5 hole)"
 gj auto 'cat .claude/hooks/guard-bash.sh'  | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && pass "reading a gate file NOT over-blocked" || fail "reading a gate file wrongly blocked"
+# The tamper patterns are scoped to ONE command segment. They used to span the whole line, so a writer verb in
+# one command and a gate path in ANOTHER was refused as tampering — found in a real session, where the board
+# put `.claude/hooks/board.sh` into everyday commands and ordinary chaining started coming back blocked.
+# Both halves are asserted, because the fix could equally have opened a hole.
+gj auto 'echo --- > /tmp/x; bash .claude/hooks/board.sh status' | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && pass "redirect to /tmp + a later hook-path ARG not confused for tampering" || fail "harmless chaining blocked: verb and gate path in different commands"
+gj auto 'cp a b && bash .claude/hooks/board.sh status'          | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && pass "a writer verb in one command does not poison a hook path in the next" || fail "cp in one command + hook path in the next wrongly blocked"
+gj auto 'bash .claude/hooks/board.sh status > /tmp/out'         | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && pass "running a hook script and redirecting elsewhere NOT over-blocked" || fail "redirecting a hook script's OUTPUT wrongly blocked"
+gj auto 'echo x > .claude/hooks/guard-bash.sh'                  | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "redirect ONTO a gate file still BLOCKED (§4.5)" || fail "redirect over a gate file PASSED — the scoping fix opened a hole"
+gj auto 'ls && rm .claude/hooks/board.sh'                       | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "a tamper verb in a LATER segment is still BLOCKED (§4.5)" || fail "rm of a gate file in a second command PASSED — scoping went too far"
 # §4.5 gate-tampering (Write/Edit side) — the file tools can rewrite a gate script too; guard-write.sh covers that
 [ -x "$HOOKS/guard-write.sh" ] && pass "guard-write.sh +x" || fail "guard-write.sh missing/not executable"
 wj(){ printf '{"tool_name":"%s","tool_input":{"file_path":"%s"}}' "$1" "$2"; }

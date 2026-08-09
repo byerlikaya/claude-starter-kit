@@ -86,6 +86,16 @@ _item_paths(){ git ls-tree --name-only "$(_ref)" items/ 2>/dev/null; }
 _now_iso(){ date -u +%Y-%m-%dT%H:%M:%SZ; }
 _now_epoch(){ date -u +%s; }
 
+_age(){ # _age <epoch> -> "3h" / "12m" / "2d" / "-"   (how long a claim has been held)
+  local e="${1:-0}" now d
+  case "$e" in ''|*[!0-9]*) printf '%s' '-'; return 0 ;; esac
+  [ "$e" -gt 0 ] || { printf '%s' '-'; return 0; }
+  now="$(_now_epoch)"; d=$(( now - e )); [ "$d" -lt 0 ] && d=0
+  if   [ "$d" -lt 3600 ];  then printf '%dm' $(( d / 60 ))
+  elif [ "$d" -lt 172800 ];then printf '%dh' $(( d / 3600 ))
+  else                          printf '%dd' $(( d / 86400 )); fi
+}
+
 # ---------------------------------------------------------------- item format
 #
 #   id: 001
@@ -221,7 +231,15 @@ _apply_once(){ # -> 0 ok · 1 refused · 2 race · 3 unshared
         printf 'board: #%s is blocked by #%s (not done). Free: %s\n' "$id" "$blocked" "$(_free_ids)" >&2
         return 1
       fi
-      status=in_progress; owner="$me"; since="$(_now_iso)"; since_ep="$(_now_epoch)"; beat="$since_ep"
+      if [ "$owner" = "$me" ] && [ "$status" = in_progress ]; then
+        # Re-claiming what you already hold must NOT restart the clock. It used to rewrite `since`, so an item
+        # held since morning read as freshly started — which breaks the two things that age is for: telling a
+        # teammate how long it has been held, and letting a claim go stale when its owner has walked away.
+        # Only the heartbeat moves: re-claiming is evidence you are still on it, not that you just began.
+        beat="$(_now_epoch)"
+      else
+        status=in_progress; owner="$me"; since="$(_now_iso)"; since_ep="$(_now_epoch)"; beat="$since_ep"
+      fi
       ;;
     done)
       if [ "$owner" != "$me" ]; then printf 'board: #%s is not yours (%s)\n' "$id" "${owner:--}" >&2; return 1; fi
@@ -353,7 +371,9 @@ cmd_status(){
   _have_board || { echo "No board in this repo yet (and none on '$(_remote)'). Create one: /board-csk init"; return 0; }
   local me p c id st ow ti dep bl now stale_h
   me="$(_me)"; now="$(_now_epoch)"; stale_h="$(_conf stale_hours 8)"
-  echo "ITEM  STATUS         OWNER                 TITLE"
+  # HELD is not decoration: "who holds it" without "for how long" is the question a teammate actually asks, and
+  # without it the only age signal was the STALE marker — i.e. nothing at all until 8 hours had passed.
+  echo "ITEM  STATUS         OWNER                 HELD  TITLE"
   for p in $(_item_paths); do
     c="$(_cat "$p")"; id="$(_field "$c" id)"; st="$(_field "$c" status)"; ow="$(_field "$c" owner)"; ti="$(_field "$c" title)"
     # Blockedness is DERIVED from the dependency graph, never read from the stored field: an item added with a
@@ -371,7 +391,9 @@ cmd_status(){
       local b; b="$(_field "$c" beat_epoch)"; case "$b" in ''|*[!0-9]*) b=0;; esac
       [ "$b" -gt 0 ] && [ $(( (now - b) / 3600 )) -ge "$stale_h" ] && bl="$bl [STALE $(( (now-b)/3600 ))h]"
     fi
-    printf '#%-4s %-14s %-21s %s%s\n' "$id" "$st" "${ow:--}" "$ti" "$bl"
+    local age='-'
+    { [ -n "$ow" ] && [ "$ow" != "-" ]; } && age="$(_age "$(_field "$c" since_epoch)")"
+    printf '#%-4s %-14s %-21s %-5s %s%s\n' "$id" "$st" "${ow:--}" "$age" "$ti" "$bl"
   done
   echo
   echo "Claimable now: $(_free_ids)"
@@ -400,7 +422,7 @@ cmd_cache(){ # rebuild the local cache; NEVER called on the foreground path with
     [ "$st" = done ] && continue
     if [ "$ow" = "$me" ]; then mine="${mine:+$mine; }#$id $ti"
     elif [ -n "$ow" ] && [ "$ow" != "-" ]; then
-      others="${others:+$others; }#$id $ow"
+      others="${others:+$others; }#$id $ow ($(_age "$(_field "$c" since_epoch)"))"
       b="$(_field "$c" beat_epoch)"; case "$b" in ''|*[!0-9]*) b=0;; esac
       [ "$b" -gt 0 ] && [ $(( (now - b) / 3600 )) -ge "$stale_h" ] && stale="${stale:+$stale, }#$id ($ow, $(( (now-b)/3600 ))h)"
     fi
