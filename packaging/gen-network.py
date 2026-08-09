@@ -42,7 +42,9 @@ EDGES = {
  "session-manager-csk":"handoff token-budget",
  "test-expert-csk":"testing",
  "performance-expert-csk":"performance"}
-CORE_SKILLS = ["systematic-debugging","iterate","reflect","worktree","mcp-builder","eval-grader"]
+# Skills no single agent owns: routed from a command and the discipline's trigger map rather than from an
+# agent body, so they have no `applies` edge to draw and sit in the centre instead.
+CORE_SKILLS = ["systematic-debugging","iterate","reflect","worktree","mcp-builder","eval-grader","teamboard"]
 ST_OF = dict(AGENTS)
 
 # deliberate home-stage for each skill (so groups read clean); default = first agent's stage

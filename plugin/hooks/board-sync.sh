@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# SessionStart hook — put the TEAM's state into a session that would otherwise only know its own.
+#
+# The problem it closes: every teammate runs the kit locally, so "Ali took item #1 two hours ago" exists
+# nowhere this session can see. This hook injects the board summary at the start of every session, which is the
+# one moment the answer changes what happens next: which item to pick up, which one is blocked, which claim has
+# gone quiet.
+#
+# Deliberate scope:
+#   - Same event and channel as session-rehydrate.sh: SessionStart + hookSpecificOutput.additionalContext is the
+#     documented way to put text into the model's context.
+#   - Matched on startup|resume|clear|compact. Unlike the handover hook this DOES include `startup`: a stale
+#     handover nags, but "who holds what right now" is exactly what a fresh session is missing.
+#   - NO NETWORK IN THE FOREGROUND. The visible half reads one cache file and exits. When that cache is older
+#     than CSK_BOARD_MAX_AGE the hook starts a DETACHED refresher (fetch + heartbeat) whose result is used by the
+#     NEXT session. On an unreachable remote the session-start cost stays at zero.
+#   - Fails OPEN and SILENT: no repo, no board, no cache -> no output, exit 0. It never blocks a session.
+set -uo pipefail
+
+MAX_AGE="${CSK_BOARD_MAX_AGE:-900}"   # 15 minutes; below that the cached view is fresh enough to act on
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+SELF="$HERE/$(basename "$0")"
+
+# ---- detached half: the only place this hook is allowed to touch the network -----------------------------------
+if [ "${1:-}" = "--refresh" ]; then
+  cd "${2:-.}" 2>/dev/null || exit 0
+  bash "$HERE/board.sh" sync >/dev/null 2>&1 || exit 0
+  bash "$HERE/board.sh" beat >/dev/null 2>&1 || true
+  exit 0
+fi
+
+# ---- foreground half: one file read, then a decision -----------------------------------------------------------
+[ -n "${CSK_NO_BOARD:-}" ] && exit 0
+
+IN=""
+[ ! -t 0 ] && IN="$(cat 2>/dev/null || true)"
+ROOT="${CLAUDE_PROJECT_DIR:-}"
+[ -n "$ROOT" ] || ROOT="$(printf '%s' "$IN" | sed -n 's/.*"cwd"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+[ -n "$ROOT" ] || ROOT="$PWD"
+# Windows hands this over as a native path and the stdin copy arrives JSON-encoded on top (`C:\\Repos\\app`).
+# Undo the escaping, then fold the separators; both are no-ops on POSIX.
+ROOT="${ROOT//\\\\//}"; ROOT="${ROOT//\\//}"
+
+cd "$ROOT" 2>/dev/null || exit 0
+GITDIR="$(git rev-parse --git-common-dir 2>/dev/null)" || exit 0
+[ -n "$GITDIR" ] || exit 0
+
+CACHE="$GITDIR/csk-board-cache"
+STAMP=0
+[ -f "$CACHE.at" ] && STAMP="$(tr -cd '0-9' < "$CACHE.at" 2>/dev/null)"
+[ -n "$STAMP" ] || STAMP=0
+
+NOW="$(date -u +%s 2>/dev/null || echo 0)"
+if [ "$NOW" -gt 0 ] && [ "$((NOW - STAMP))" -gt "$MAX_AGE" ]; then
+  # stdin/stdout/stderr all detached: an inherited stdout keeps the hook's pipe open after it exits, and the
+  # caller then waits to EOF on a fetch that has nothing to do with it.
+  bash "$SELF" --refresh "$ROOT" </dev/null >/dev/null 2>&1 &
+fi
+
+# Never invent a board state. No cache (no board here, or every refresh so far failed) -> stay silent.
+[ -s "$CACHE" ] || exit 0
+
+MSG="$(cat "$CACHE")
+Board state above is a cached snapshot; /board-csk sync refreshes it."
+
+if command -v jq >/dev/null 2>&1; then
+  jq -cn --arg m "$MSG" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}'
+else
+  # No jq on Windows Git Bash. The cache is machine-written (emails, ids, titles), so escape the two characters
+  # that can break the JSON rather than trusting the content: a quote or a backslash in an item title would
+  # otherwise produce a payload the CLI silently drops.
+  ESC="$(printf '%s' "$MSG" | sed 's/\\/\\\\/g; s/"/\\"/g' | awk 'BEGIN{ORS=""} NR>1{print "\\n"} {print}')"
+  printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$ESC"
+fi
+exit 0

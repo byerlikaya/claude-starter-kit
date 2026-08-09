@@ -36,4 +36,27 @@ case "$FP" in
   */.claude/hooks/*|.claude/hooks/*) block ;;
   */.git/hooks/*|.git/hooks/*)       block ;;
 esac
+
+# ---- team board: you may not start work nobody knows you started -----------------------------------------------
+# The claim lock already makes it impossible for two people to HOLD the same item — a losing claim is refused in
+# under a second, before any code exists. The hole this closes is the other one: somebody who never claims at all.
+# Caught only at commit time, that is hours of work discovered as duplicated at the end, which is exactly the
+# wasted effort the board exists to prevent. So the first file edit is where it is caught instead.
+#
+# Cost: this runs before EVERY Write/Edit, so it must not shell out. board.sh maintains a one-bit flag file
+# (present == a board exists, it requires a claim, and this user holds none); everything here is a file test.
+[ -n "${CSK_NO_BOARD:-}" ] && exit 0
+GD=".git"
+[ -d "$GD" ] || GD="$(git rev-parse --git-common-dir 2>/dev/null)"   # worktree/submodule: .git is a file
+if [ -n "$GD" ] && [ -f "$GD/csk-board-guard" ]; then
+  case "$FP" in
+    */docs/*|docs/*|*/.claude/*|.claude/*) ;;   # planning notes and kit config are not the work being claimed
+    *)
+      echo "BOARD GATE: you hold no work item, so nobody else can see what you are starting." >&2
+      echo "Claim one first: /board-csk  (lists what is free, what is blocked, and who holds the rest)." >&2
+      echo "Work that belongs to no item: set CSK_NO_BOARD=1 for this session, and commit it with [chore]." >&2
+      echo "Just claimed one elsewhere? The board view is cached — /board-csk sync refreshes it." >&2
+      exit 2 ;;
+  esac
+fi
 exit 0

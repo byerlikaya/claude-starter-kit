@@ -6,10 +6,12 @@
 
 12 specialist agents plan the work, build it, put it through security and test review, then close it
 
+On a shared repo, taking a work item is an atomic git claim — two people cannot start the same one
+
 ![Version](https://img.shields.io/badge/version-2.2.1-2563eb?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)
 ![Agents](https://img.shields.io/badge/agents-12-f59e0b?style=flat-square)
-![Skills](https://img.shields.io/badge/skills-38-f59e0b?style=flat-square)
+![Skills](https://img.shields.io/badge/skills-39-f59e0b?style=flat-square)
 ![Claude Code](https://img.shields.io/badge/Claude_Code-agentic_kit-8b5cf6?style=flat-square)
 
 🇬🇧 English · [🇹🇷 Türkçe](README.tr.md)
@@ -24,9 +26,11 @@ In Claude Code every job happens in the same place: you ask, the model writes. C
 
 **The work gets a process.** 12 agents own one domain each and run across five stages — plan, build, audit, close, hand off. An ambiguous request goes to planning before anything is written; server work goes to the backend owner, schema work to the database owner. A security review is **mandatory** before a risk-critical change can close, and a code-health review runs before anything is proposed for commit. A routing hook names the owning agent beside your request, which is what turns that from a diagram into what actually happens.
 
-**The method is written once.** 38 skills hold the *how* — testing, migrations, API contracts, observability, accessibility, translation integrity, dependency upgrades, incident response, deployment. Agents stay thin: they say *who* and *when*, and apply the skill that holds the rest. You are not re-explaining your standards every session.
+**The method is written once.** 39 skills hold the *how* — testing, migrations, API contracts, observability, accessibility, translation integrity, dependency upgrades, incident response, deployment. Agents stay thin: they say *who* and *when*, and apply the skill that holds the rest. You are not re-explaining your standards every session.
 
 **Critical rules are enforced, not remembered.** A destructive command is refused before it runs, a commit waits for your approval, a leaked key or an AI-authorship trace never reaches history. These are guardrails around the work above — they are not the point of the kit, they are what lets you leave it running.
+
+**Your teammates' work stops being invisible.** Every kit runs on one machine, so when three people share a repo, "Ali started item 1 an hour ago" exists nowhere the other two can see — and two of them build it twice. The board fixes that where it breaks: **taking** an item, not merging it. A claim is a push to a git ref, and `git push` is fast-forward-only, so of two simultaneous claims exactly one lands and the other is refused in under a second, naming who holds it and what is free — before a line is written. Not an advisory lock file, not a merge conflict to resolve afterwards: the atomicity is git's own, and there is no server, token or service anywhere in it. Taking an item also hands you what its dependencies actually delivered, and names who is waiting on you. Off until you run `/board-csk init`; solo work never sees it.
 
 **It goes on the repo you already have.** `adopt` hands Claude Starter Kit over on a branch, staged and uncommitted, so the whole change sits in your editor's diff before any of it is yours to keep. Your `main` is never touched.
 
@@ -88,26 +92,26 @@ Then paste `.claude/FIRST_PROMPT.md` as your first Claude Code message. Homebrew
 ## What's inside
 
 <div align="center">
-  <img src="assets/network-en.svg" alt="12 agents and 38 skills, connected by their real applies relationships" width="820">
+  <img src="assets/network-en.svg" alt="12 agents and 39 skills, connected by their real applies relationships" width="820">
   <br><sub>Every agent, every skill, and the real <code>applies</code> relationships — grouped by stage, each agent its own hue; the centre is the main thread that orchestrates them.</sub>
 </div>
 
 | Component | Count | What it is |
 |:--|:--:|:--|
 | **Agents** | 12 | Thin triggers — *who* owns a domain and *when* they fire |
-| **Skills** | 38 | The method, written once, applied by whoever needs it |
-| **Slash commands** | 7 | `/brainstorm-csk` · `/plan-csk` · `/review-csk` · `/ship-csk` · `/handoff-csk` · `/update-csk` · `/doctor-csk` |
-| **Hooks** | 10 | The gates, plus session measurement and routing |
+| **Skills** | 39 | The method, written once, applied by whoever needs it |
+| **Slash commands** | 8 | `/brainstorm-csk` · `/plan-csk` · `/review-csk` · `/ship-csk` · `/handoff-csk` · `/update-csk` · `/doctor-csk` · `/board-csk` |
+| **Hooks** | 12 | The gates, plus session measurement and routing |
 | **Discipline** | 1 | Principles, workflow, Definition of Done, prohibitions — imported by your `CLAUDE.md` |
 
 <details>
-<summary>🪝&nbsp; <b>All 10 hooks — which gate holds what</b></summary>
+<summary>🪝&nbsp; <b>All 12 hooks — which gate holds what</b></summary>
 
 | Hook | Role |
 |:--|:--|
 | `route-hint.sh` | Names the owning agent alongside every prompt, so specialists run without you asking |
 | `guard-bash.sh` | Tool-level command gate: commit/push approval, destructive ops, remote-code-exec, hook tampering |
-| `guard-write.sh` | The same protection on the Write/Edit side — a gate you can silently delete is not a gate |
+| `guard-write.sh` | The same protection on the Write/Edit side — a gate you can silently delete is not a gate. It also holds the board claim gate: on a team repo, the FIRST file edit is refused while you hold no work item, so unclaimed work is caught at minute one rather than at commit time |
 | `guard-commit-scan.sh` | Runs the real trace and secret scanners from `PreToolUse`, so the commit gate works where `core.hooksPath` cannot be set |
 | `context-usage.sh` | Reads the real token count from the transcript and injects it every turn |
 | `session-guard.sh` | Warns once at 75% context fill and once at 90% — never blocks a turn |
@@ -115,13 +119,19 @@ Then paste `.claude/FIRST_PROMPT.md` as your first Claude Code message. Homebrew
 | `skill-trust.sh` | Names any skill or agent Claude Starter Kit never shipped and you never accepted |
 | `session-stats.sh` | Reports what the session actually did — failing tool loops, repeated prompts, interrupts. `reflect` and `handoff` read it, so a retrospective rests on the record rather than on recollection |
 | `session-update-check.sh` | Says once, when a session opens, that a newer kit version is published — each edition compared against the channel that will deliver it. The lookup runs detached and at most daily, so an offline or proxied machine costs the session opening nothing; `CSK_NO_UPDATE_CHECK=1` turns it off |
+| `board.sh` | The team board engine: claims a work item, hands it over, completes it. Claiming IS the push — a commit to a git ref, fast-forward-only — so two people taking the same item is settled at take time, in under a second: one claim lands, the other is refused with who holds it and what is free instead. Commits are built with git plumbing, so a claim never touches your working tree, index or branch |
+| `board-sync.sh` | Puts the team's state into a session that would otherwise only see this machine: who holds which item, what is claimable, what is blocked, which claim has gone quiet. Reads a local cache at session start and refreshes it detached, so an unreachable remote costs the session opening nothing; `CSK_NO_BOARD=1` turns it off |
 
-Two git hooks — `pre-commit` and `commit-msg` — run the trace, secret and repo-bloat scans. The plugin edition ships all of these except `skill-trust.sh`, which decides what is kit-owned from the `kit-manifest.txt` an installer writes and the plugin never creates.
+Two git hooks — `pre-commit` and `commit-msg` — run the trace, secret and repo-bloat scans. `commit-msg` also holds the board claim gate: on a repo with a board, a commit must name an item you hold (`[#3]`) or declare itself item-less (`[chore]`). The plugin edition ships all of these except `skill-trust.sh`, which decides what is kit-owned from the `kit-manifest.txt` an installer writes and the plugin never creates.
 
 </details>
 
+**Working as a team.** Each teammate's kit runs on their own machine, and `docs/` is gitignored — a plan, a handover and an in-progress item are all private by default, which is how two people end up building the same thing. The board is the shared half: **one person** runs `/board-csk init` (or `--remote <url>` to keep the board in a separate repository) and adds the items; **everyone else configures nothing** — their session fetches the board on its own and opens with who holds what, what is claimable, and what is blocked by which item. Taking an item prints what its dependencies actually delivered and names the items waiting on it, so the next person starts with the context the last one had. No account, no token, no service: the board is a git ref, and claiming it is a push.
+
+**And it stays off until you ask for it.** A repo that never runs `/board-csk init` has no board and no board gates — solo work, and every project that installed the kit earlier, behaves exactly as before. Where a board does exist, `/board-csk off` (or `--global`) releases all three gates and leaves the board intact, `CSK_NO_BOARD=1` does the same for one session, and setting `require_item: referenced` in the board's config keeps the claims and the shared memory while dropping the enforcement. A board works without a remote too — you keep the item list, the dependency order and the gates; only the sharing is gone.
+
 <details>
-<summary>📚&nbsp; <b>All 38 skills — the full catalogue, generated from each skill</b></summary>
+<summary>📚&nbsp; <b>All 39 skills — the full catalogue, generated from each skill</b></summary>
 
 <!-- SKILLS:START -->
 
@@ -159,6 +169,7 @@ Two git hooks — `pre-commit` and `commit-msg` — run the trace, secret and re
 | `sonarqube-check` | SonarQube quality gate, any language, no company server needed: run SonarQube Community Build locally (Docker), read the real gate +… |
 | `spec-planning` | Spec-first planning: task breakdown, measurable acceptance criteria, dependency order, risk priority. |
 | `systematic-debugging` | Root-cause a bug before touching a fix: reproduce, isolate, form and test a hypothesis, confirm the cause, then fix and verify. |
+| `teamboard` | Shared team board: claim a work item before starting, hand it over, finish it. |
 | `testing` | The how of testing: pyramid, AAA, isolation, risk coverage, determinism. |
 | `threat-model` | Scope a security audit BEFORE scanning, to cut false positives: map assets, entry points, trust boundaries and 5-8 domain-specific attack… |
 | `token-budget` | Context/token discipline: subagent isolation, output = summary, move-to-file, delegation threshold, lean skills. |
@@ -201,6 +212,8 @@ Left is the rule; right is the thing that refuses to let it slide.
 | No AI-authorship trace or vendor template name in a commit | `pre-commit` + `commit-msg` git hooks |
 | No build artifact, vendored tree or oversized blob gets staged | `pre-commit` repo-bloat scan |
 | An unvetted skill or agent appearing in `.claude/` is named, with a scanner verdict | `skill-trust.sh` at session start |
+| Two people cannot start the same work item — the second one is refused **when they try to take it**, in under a second, before any code is written | `board.sh claim` (the claim itself is a push to a git ref; fast-forward-only, so of two simultaneous claims exactly one lands). Measured: three clones racing on the same item, ten rounds, one winner every time |
+| You cannot start work nobody knows you started | `guard-write.sh` blocks the first file edit while you hold no item; `commit-msg` blocks a commit that names an item you do not hold |
 | Always-on context stays lean | `smoke-test.sh` byte budget per component |
 | A running session never follows stale rules after an update | `context-usage.sh` version comparison |
 
@@ -254,7 +267,7 @@ bash start.sh [--dotnet|--generic] [-h]
 
 Two steps: backend pattern, then a summary you approve before anything is written.
 
-**Every install is the same install** — all 12 agents and all 38 skills, backend and web and mobile (React Native/Expo) together. A project that starts as an API and grows a web client is already equipped for both.
+**Every install is the same install** — all 12 agents and all 39 skills, backend and web and mobile (React Native/Expo) together. A project that starts as an API and grows a web client is already equipped for both.
 
 | Asked at install | Options | What it changes |
 |:--|:--|:--|

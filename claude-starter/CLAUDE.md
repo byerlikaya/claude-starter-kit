@@ -83,6 +83,7 @@ and report. Commit/push and destructive commands are gated (§4.4/§4.5).
 | Step back before commit / moving on | `reflect` |
 | Measure output quality / eval a change | `eval-grader` |
 | Parallel / file-mutating subagents | `worktree` |
+| Shared repo: start / leave / finish a work item | `teamboard` |
 | Building an MCP server / tool | `mcp-builder` |
 
 ## Token & context discipline (token-budget skill)

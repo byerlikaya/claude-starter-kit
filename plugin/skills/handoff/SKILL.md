@@ -43,6 +43,12 @@ that never landed and has to be written down explicitly this time. Missing scrip
 - Preserve the rationale behind decisions (why this path was chosen) — so context isn't lost.
 - Once written, start a fresh session with `/clear`.
 
+## Holding a board item? The handover is owed to the TEAM, not just to the next session
+`docs/SESSION_STATE.md` is gitignored — it survives your `/clear`, and nobody else can read it. If a
+`teamboard` claim is open, the same "exactly where it stands, and why" also goes to the item
+(`/board-csk note <id>`, or `drop <id> "<note>"` when you are releasing it). A teammate inheriting the work
+reads the board, never your local file.
+
 ## Redaction (`<private>` marker)
 `docs/SESSION_STATE.md` is a **shared, often committed** artifact — never persist a secret, token, credential, or
 personal note into it. Any content wrapped in **`<private>…</private>`** is a redaction marker: strip it from the
