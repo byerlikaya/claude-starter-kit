@@ -156,7 +156,19 @@ case "$IN" in *'"hook_event_name"'*UserPromptSubmit*) ;; *) exit 0 ;; esac
 # The session id is used twice below; computing it once is not a tidiness question. Measured on a corporate
 # Windows machine: a process costs ~290ms there against ~2ms on Linux, so every spawn removed from a hook that
 # runs on EVERY turn is a third of a second the user waits before the model has even started.
-SID="$(printf '%s' "$IN" | sed -n 's/.*"session_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1 | tr -cd 'A-Za-z0-9._-')"
+SID=""
+case "$IN" in *'"session_id"'*)
+  # Extracted with parameter expansion, not `printf | sed | head | tr`. Four spawns, on every turn, to lift a
+  # UUID out of a string the shell already holds. It reads worse and costs ~1.2s a turn on a machine where a
+  # process is 290ms. Handles both `"session_id":"x"` and `"session_id": "x"` — the cut is at the next quote
+  # after the colon either way.
+  SID="${IN#*\"session_id\"}"; SID="${SID#*:}"; SID="${SID#*\"}"; SID="${SID%%\"*}"
+  # It becomes a filename, so it is VALIDATED rather than trusted. Anything unexpected falls back to the old
+  # scrub — correctness first, and the fallback costs nothing in the normal case because it never runs.
+  case "$SID" in
+    ''|*[!A-Za-z0-9._-]*) SID="$(printf '%s' "$IN" | sed -n 's/.*"session_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1 | tr -cd 'A-Za-z0-9._-')" ;;
+  esac ;;
+esac
 
 # --- Publish the measurement so the Stop hook does not have to repeat it ------------------------------
 # session-guard.sh needs the same number, and it used to get it by running THIS script again as a nested
