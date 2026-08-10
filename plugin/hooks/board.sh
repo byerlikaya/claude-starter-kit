@@ -336,6 +336,36 @@ ${body:+$(printf '%s' "$body" | sed 's/^/      /')}"
   #$(_field "$pc" id) \"$(_field "$pc" title)\" [$(_field "$pc" status)$([ "$(_field "$pc" owner)" != "-" ] && printf ', %s' "$(_field "$pc" owner)")] — waits on this one" ;;
     esac
   done
+  # What everyone ELSE is mid-flight on, with whatever they last said about it. The dependency graph only knows
+  # the edges somebody declared; two items can collide without one. "What is Ali doing right now" is a question
+  # people ask out loud, so it is answered here without being asked, at the one moment it changes what you do.
+  local me ow st note
+  me="$(_me)"
+  for p in $(_item_paths); do
+    pc="$(_cat "$p")"; ow="$(_field "$pc" owner)"; st="$(_field "$pc" status)"
+    [ "$st" = in_progress ] && [ -n "$ow" ] && [ "$ow" != "-" ] && [ "$ow" != "$me" ] || continue
+    [ "$(_field "$pc" id)" = "$id" ] && continue
+    note="$(_section "$pc" Handover | head -2)"
+    out="$out
+  #$(_field "$pc" id) \"$(_field "$pc" title)\" — $ow is on this now ($(_age "$(_field "$pc" since_epoch)"))${note:+
+$(printf '%s' "$note" | sed 's/^/      /')}"
+  done
+
+  # Decisions this user has not read. Announcing them only at session start meant an item claimed later in the
+  # same session could be started against a constraint the team had already settled — which is the failure the
+  # decision was recorded to prevent. Starting work is the last honest moment to say it.
+  local dtotal dseen dnew
+  dtotal="$(_decision_paths | wc -l | tr -d ' ')"; dseen="$(_seen_count)"
+  dnew=$(( dtotal - dseen )); [ "$dnew" -lt 0 ] && dnew=0
+  if [ "$dnew" -gt 0 ]; then
+    for p in $(_decision_paths | tail -"$dnew"); do
+      c="$(_cat "$p")"
+      out="$out
+  DECISION $(_field "$c" id) \"$(_field "$c" title)\" — $(_field "$c" author), unread by you
+$(_body "$c" | head -4 | sed 's/^/      /')"
+    done
+  fi
+
   [ -n "$out" ] && printf 'Connected work — read this before you start, and update it when you finish:%s\n' "$out"
   return 0
 }

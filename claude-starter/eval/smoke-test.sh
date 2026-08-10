@@ -332,6 +332,31 @@ else
     *) fail "claiming #011 did not name its dependent #012: $REL2" ;;
   esac
 
+  # 5c-ii. STARTING WORK ASKS WHAT EVERYONE ELSE IS DOING. The dependency graph only knows the edges somebody
+  # declared, and decisions were announced only at session start — so an item claimed later in the same session
+  # could be started against a constraint the team had already settled, and against work already in flight that
+  # nobody had linked. Both are surfaced at claim time, on an item with NO declared dependency at all.
+  ( cd "$BD/ali" && bash ../board.sh add 020 "Unrelated" ) >/dev/null 2>&1
+  ( cd "$BD/ali" && bash ../board.sh claim 020 ) >/dev/null 2>&1
+  ( cd "$BD/ali" && bash ../board.sh note 020 "half-done, parked at lib/x.ts:12" ) >/dev/null 2>&1
+  ( cd "$BD/ali" && bash ../board.sh decide "Errors return problem+json" "Any endpoint returning a bare string is a bug." "-" ) >/dev/null 2>&1
+  ( cd "$BD/ayse" && bash ../board.sh sync ) >/dev/null 2>&1
+  rm -f "$BD/ayse/.git/csk-board-seen"
+  ( cd "$BD/ali" && bash ../board.sh add 021 "Also unrelated" ) >/dev/null 2>&1
+  ( cd "$BD/ayse" && bash ../board.sh sync ) >/dev/null 2>&1
+  START="$( cd "$BD/ayse" && bash ../board.sh claim 021 2>&1 )"
+  case "$START" in
+    *"#020"*"is on this now"*) pass "starting an unrelated item still says what teammates are mid-flight on" ;;
+    *) fail "claiming #021 said nothing about work already in flight: $START" ;;
+  esac
+  case "$START" in
+    *DECISION*"problem+json"*) pass "starting work surfaces decisions you have not read yet" ;;
+    *) fail "an unread decision did not reach the moment work started — it can only arrive too late: $START" ;;
+  esac
+  # Hand it back: the write-gate assertions below need this user holding nothing, and a test that leaves state
+  # behind for the next one is how a suite starts passing for the wrong reason.
+  ( cd "$BD/ayse" && bash ../board.sh drop 021 "released by the claim-time awareness assertions" ) >/dev/null 2>&1
+
   # 5d. THE VIEW MUST NOT CONTRADICT ITSELF. `blocked` is stored at add time and never rewritten, so reading it
   # back printed items as blocked while the same view listed them as claimable. Blockedness is derived now, and
   # this asserts the invariant rather than the implementation: nothing listed as claimable may read as blocked.
