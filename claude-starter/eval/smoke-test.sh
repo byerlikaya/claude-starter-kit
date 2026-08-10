@@ -253,6 +253,40 @@ fill 760000
 # (6) emitted payload is valid JSON carrying systemMessage
 if command -v jq >/dev/null 2>&1; then
   fill 800000; sg "${SGPFX}-e" | jq -e '.systemMessage' >/dev/null 2>&1 && pass "stop-hook: stdout is valid JSON with .systemMessage" || fail "stop-hook stdout is not valid systemMessage JSON"
+
+  # --- the fast path -------------------------------------------------------------------------------------
+  # Every assertion above exercises the SLOW path, where this hook measures for itself. It now prefers the
+  # reading context-usage.sh published at the start of the turn, because re-deriving it cost a second shell
+  # startup and a second transcript scan at the end of EVERY turn — ~29 processes down to 14, which on a
+  # corporate Windows machine (measured: ~290ms per process) is about four seconds a turn. A faster path that
+  # reaches a different verdict would be worse than the cost it saves, so both halves are asserted: it must
+  # agree with the slow path, and it must survive a cache it cannot trust.
+  SGC="${TMPDIR:-/tmp}/csk-context.${SGPFX}-fast"
+  fill 800000
+  SLOWOUT="$(sg "${SGPFX}-slow")"                       # no cache for this key -> measures for itself
+  printf '80.0 800000 1000000 handoff+clear\n' > "$SGC"
+  FASTOUT="$(sg "${SGPFX}-fast")"                       # same fill, published reading
+  case "$FASTOUT" in
+    *'"systemMessage"'*'>75%'*) pass "stop-hook fast path: a published reading produces the same 75% verdict" ;;
+    *) fail "stop-hook fast path reached a different verdict from the measured one: $FASTOUT" ;;
+  esac
+  [ -n "$SLOWOUT" ] && [ -n "$FASTOUT" ] \
+    && pass "stop-hook: both paths speak at the same fill (the shortcut did not silence the gate)" \
+    || fail "one path spoke and the other did not (slow='$SLOWOUT' fast='$FASTOUT')"
+  # A truncated or garbled cache must not be believed, and must not silence the warning either: it falls back.
+  printf 'not-a-number junk\n' > "$SGC"
+  case "$(sg "${SGPFX}-fast2")" in
+    *'"systemMessage"'*) pass "stop-hook: an unreadable published reading falls back to measuring, not to silence" ;;
+    *) fail "a corrupt cache silenced the threshold warning — fail-open became fail-quiet" ;;
+  esac
+  rm -f "$SGC"
+  # And the shortcut must actually be taken: no nested shell at the end of a turn is the whole point.
+  printf '80.0 800000 1000000 handoff+clear\n' > "${TMPDIR:-/tmp}/csk-context.${SGPFX}-cnt"
+  mkjson "${SGPFX}-cnt" "$SGFX" false | CONTEXT_WINDOW=1000000 bash -x "$HOOKS/session-guard.sh" >/dev/null 2>"$SGFX.trace"
+  NB="$(grep -cE '^\++ bash ' "$SGFX.trace" 2>/dev/null | tr -cd '0-9')"; NB="${NB:-0}"
+  [ "$NB" -eq 0 ] && pass "stop-hook fast path spawns no nested shell (the cost this removes)" \
+                  || fail "stop-hook still starts $NB nested shell(s) with a published reading available"
+  rm -f "${TMPDIR:-/tmp}/csk-context.${SGPFX}-cnt" "$SGFX.trace"
 else pass "stop-hook JSON check skipped (no jq)"; fi
 # (7) fail-open: unreadable transcript -> exit 0 and silent (never blocks on measurement failure)
 o="$(mkjson "${SGPFX}-f" "/no/such.jsonl" false | bash "$HOOKS/session-guard.sh" 2>/dev/null)"; r=$?
