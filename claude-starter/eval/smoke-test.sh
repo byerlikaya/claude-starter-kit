@@ -973,11 +973,28 @@ if [ "$IS_KIT" = 1 ]; then
   # is far too late: it caught it on a tag that was already pushed, after the site had already been updated to
   # the new number. The full sync check needs a build and belongs there; THIS one is the specific drift that
   # actually happens, it costs one grep, and it fails on the laptop where it can still be fixed cheaply.
-  if [ -f "$KR/VERSION" ] && [ -f "$KR/plugin/.claude-plugin/plugin.json" ]; then
+  # The version does not live in one place, it lives in four, and a release stops at whichever one was missed —
+  # one at a time, after a tag has been pushed. 2.2.2 proved it twice in a row: the plugin manifest still said
+  # 2.2.1 and the workflow stopped before publishing; that was fixed, re-tagged, and it stopped AGAIN at npm,
+  # because npm publishes package.json's version and nothing had compared it to anything. Both failures are the
+  # same failure. So every carrier is checked together, here, where the fix costs nothing.
+  if [ -f "$KR/VERSION" ]; then
     KV="$(tr -d ' \n\r' < "$KR/VERSION")"
-    PV="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$KR/plugin/.claude-plugin/plugin.json" | head -1)"
-    [ "$KV" = "$PV" ] && pass "plugin manifest version matches VERSION ($KV)" \
-      || fail "plugin manifest says '$PV' but VERSION is '$KV' — run packaging/build-plugin.sh and commit plugin/"
+    verfile(){ # verfile <label> <file> <extractor-output>
+      local label="$1" got="$3"
+      [ -n "$got" ] || return 0                      # carrier absent in this checkout -> nothing to compare
+      [ "$got" = "$KV" ] && pass "$label version matches VERSION ($KV)" \
+        || fail "$label says '$got' but VERSION is '$KV' — every carrier moves together or the release stops at the one that did not"
+    }
+    jsonver(){ sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$1" 2>/dev/null | head -1; }
+    verfile "plugin manifest" "" "$(jsonver "$KR/plugin/.claude-plugin/plugin.json")"
+    # npm publishes THIS number, not VERSION. Nothing else in the pipeline reads it, which is exactly why it
+    # went unnoticed until the registry refused the upload.
+    verfile "package.json"    "" "$(jsonver "$KR/package.json")"
+    for rf in README.md README.tr.md; do
+      [ -f "$KR/$rf" ] || continue
+      verfile "$rf badge" "" "$(sed -n 's|.*badge/version-\([0-9][0-9.]*\)-.*|\1|p' "$KR/$rf" | head -1)"
+    done
   fi
   # The DIAGRAMS make a claim too, and it is the one a reader takes at face value because nobody counts nodes in
   # a picture. The hand-drawn pipeline shipped with eleven of twelve agents — performance-expert-csk was simply

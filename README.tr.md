@@ -8,7 +8,7 @@
 
 Paylaşılan bir depoda bir işi üstlenmek atomik bir git claim'idir — aynı işi iki kişi başlatamaz
 
-![Sürüm](https://img.shields.io/badge/version-2.2.1-2563eb?style=flat-square)
+![Sürüm](https://img.shields.io/badge/version-2.2.2-2563eb?style=flat-square)
 ![Lisans](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)
 ![Ajanlar](https://img.shields.io/badge/agents-12-f59e0b?style=flat-square)
 ![Skiller](https://img.shields.io/badge/skills-39-f59e0b?style=flat-square)
