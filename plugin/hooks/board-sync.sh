@@ -17,7 +17,12 @@
 #   - Fails OPEN and SILENT: no repo, no board, no cache -> no output, exit 0. It never blocks a session.
 set -uo pipefail
 
-MAX_AGE="${CSK_BOARD_MAX_AGE:-900}"   # 15 minutes; below that the cached view is fresh enough to act on
+# Two intervals, because two very different repos run this hook. Where a board exists, 15 minutes keeps the view
+# worth acting on. Where none does — every solo project, and every install that upgraded into this feature — the
+# only thing a refresh can do is ask the remote for a ref nobody has created, so it backs off to once a day.
+# Without that split, a repo that will never have a board opened a background fetch at every session start.
+MAX_AGE="${CSK_BOARD_MAX_AGE:-900}"
+MAX_AGE_NOBOARD="${CSK_BOARD_MAX_AGE_NOBOARD:-86400}"
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SELF="$HERE/$(basename "$0")"
@@ -50,6 +55,10 @@ CACHE="$GITDIR/csk-board-cache"
 STAMP=0
 [ -f "$CACHE.at" ] && STAMP="$(tr -cd '0-9' < "$CACHE.at" 2>/dev/null)"
 [ -n "$STAMP" ] || STAMP=0
+
+# A non-empty cache means a board was found here; an absent or empty one means there is nothing to keep fresh.
+# Costs no extra process: the same test decides, below, whether there is anything to say.
+[ -s "$CACHE" ] || MAX_AGE="$MAX_AGE_NOBOARD"
 
 NOW="$(date -u +%s 2>/dev/null || echo 0)"
 if [ "$NOW" -gt 0 ] && [ "$((NOW - STAMP))" -gt "$MAX_AGE" ]; then

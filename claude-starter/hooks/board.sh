@@ -412,8 +412,12 @@ cmd_cache(){ # rebuild the local cache; NEVER called on the foreground path with
   # Switched off -> leave nothing behind for the other two gates to read. The write guard tests for the flag
   # file and the session hook prints the cache file; removing both is what makes "off" cost exactly zero
   # instead of merely suppressing the output of work still being done.
-  if ! _enabled; then rm -f "$(_git_dir)/csk-board-guard" "$(_git_dir)/csk-board-cache" "$(_git_dir)/csk-board-cache.at"; return 0; fi
-  _have_board || return 0
+  # The timestamp is written on EVERY path, including the two that produce no cache. It is what the session-start
+  # hook throttles on, and without it a repo that has no board (every solo project, and every install that
+  # upgraded into this feature) re-spawned a background fetch at every single session opening — looking, forever,
+  # for a ref nobody is ever going to create.
+  if ! _enabled; then rm -f "$(_git_dir)/csk-board-guard" "$(_git_dir)/csk-board-cache"; _now_epoch > "$(_git_dir)/csk-board-cache.at" 2>/dev/null; return 0; fi
+  _have_board || { _now_epoch > "$(_git_dir)/csk-board-cache.at" 2>/dev/null; return 0; }
   local out me p c id st ow ti now stale_h b
   me="$(_me)"; now="$(_now_epoch)"; stale_h="$(_conf stale_hours 8)"
   local mine="" others="" free="" stale=""

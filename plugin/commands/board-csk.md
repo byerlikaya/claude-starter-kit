@@ -32,9 +32,16 @@ options, not an instruction to go and type something.
 - **`drop <id>`** → write the handover note FIRST — exactly where it stands, which files, and why the discarded
   approach was discarded — then `board.sh drop <id> "<note>"`. The engine refuses an empty note.
 - **`add <id> <title> [deps]`** → add items. From `docs/PLAN.md`, carry each task's dependency edges across.
-- **`init`** → create the board (probes the server's ref support first), then add the items. `init --remote <url>`
-  puts it in a separate repository instead. Run by ONE person, once — everyone else configures nothing and the
-  board reaches them on its own. If a board already exists this fetches it rather than creating a second.
+- **no board in this repo yet** → do not tell the user to run `init`; that is the syntax they should never have to
+  learn. Say plainly what a board is for (a teammate's in-progress work is invisible without one) and **ask, with
+  options**: set one up on this repo's own remote · set one up in a separate repository (they give the URL — for a
+  board shared across repos, or people who cannot push to the code) · not now, this is solo work. On "not now",
+  drop it and do not raise it again unprompted. On a yes, run `init` yourself, then offer to fill it from
+  `docs/PLAN.md` if one exists, or ask for the items. Report what the server accepted (custom ref namespace or the
+  orphan-branch fallback) in one line — the user should know where their board lives without having to ask.
+- **`init`** → the same thing when asked for directly. `init --remote <url>` puts the board in a separate
+  repository. Run by ONE person, once — everyone else configures nothing and the board reaches them on its own.
+  If a board already exists this fetches it rather than creating a second.
 - **`sync`** → fetch and re-read; use it when the board looks stale or a gate message disagrees with reality.
 - **`off` / `on`** → release every board gate for this repo (`off --global` for all of them) and put them back.
   The board is untouched either way. A repo that never ran `init` has no gates to begin with — never imply the
