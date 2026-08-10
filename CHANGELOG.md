@@ -3,6 +3,47 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [2.2.2] - 2026-08-10
+
+### Performance
+- **A corporate Windows machine spent seconds of every turn re-measuring something it had just measured.**
+  Reported as "clean session, first command, minutes of silence", and measured on the machine that reported it
+  rather than guessed — on macOS a wasteful hook and a lean one both read 0s. There: an empty `bash` startup
+  costs **263 ms** and an empty external command **298 ms**, against ~5 ms and ~2 ms on Linux. Process creation
+  is 60-100x slower, an enterprise scanner inspecting every spawn, and no amount of shell tuning undoes that.
+  What is ours is how many processes we ask for.
+
+  `session-guard.sh` ran `bash context-usage.sh --verbose` as a child at the end of **every turn** — a second
+  shell startup and a second full transcript scan, to recompute a figure the same script had produced one hook
+  earlier in the same turn. `context-usage.sh` now publishes its reading to a session-keyed file and the Stop
+  hook reads it with `$(<file)` and word splitting: no `cat`, no `sed`, no nested shell. Its two threshold `awk`
+  calls became shell arithmetic on the integer part — exactly equivalent for whole-number thresholds, and it
+  drops the locale hazard those calls existed to pin down. The session id is lifted out of the payload with
+  parameter expansion instead of `printf | sed | head | tr`, validated rather than trusted because it becomes a
+  filename.
+
+  | | before | after |
+  |:--|--:|--:|
+  | `session-guard` per turn end | ~29 processes | **14** |
+  | `context-usage` per prompt (installed) | 17 | **14** |
+  | `context-usage` per prompt (plugin edition) | 12 | **12** |
+
+  About **18 processes a turn** on an install — roughly five seconds a turn on the reporting machine.
+
+  The honest cost: the published reading is taken at the *start* of the turn, so it excludes that turn's own
+  output and can cross a threshold one turn later than a fresh measurement. For a warning that never blocks that
+  is a good trade, and it is not silent — a missing or unreadable file falls back to measuring properly.
+
+  Gated: the seventeen existing stop-hook assertions all exercise the slow path and still pass; four new ones
+  cover the fast path — same verdict as the measured path, both paths speak at the same fill, a corrupt cache
+  falls back to measuring rather than to silence, and no nested shell starts when a reading is available. The
+  session id parse is checked on three payload shapes, because a mis-parsed id would not crash: it would write
+  the cache under one name, read it under another, and the only symptom would be a hook that quietly stayed slow.
+
+  Not fixed here, and larger: session start still runs three separate hooks, the prompt two, and each Bash tool
+  call two more — one shell startup each. On a machine like the one above, the biggest single lever is not ours
+  at all: an antivirus exclusion for the Git install, the project directory and `~/.claude`.
+
 ## [2.2.1] - 2026-08-07
 
 ### Fixed
