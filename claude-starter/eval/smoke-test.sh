@@ -637,6 +637,17 @@ if [ "$IS_KIT" = 1 ]; then
       fail "plugin/settings hook sets diverged — only in settings: '${ONLY_SET:-none}' (expected exactly skill-trust.sh)"
     fi
   fi
+  # The plugin manifest carries the version, and build-plugin.sh is what writes it — so bumping VERSION without
+  # re-running the build leaves the plugin edition claiming the previous release. release.yml catches that, which
+  # is far too late: it caught it on a tag that was already pushed, after the site had already been updated to
+  # the new number. The full sync check needs a build and belongs there; THIS one is the specific drift that
+  # actually happens, it costs one grep, and it fails on the laptop where it can still be fixed cheaply.
+  if [ -f "$KR/VERSION" ] && [ -f "$KR/plugin/.claude-plugin/plugin.json" ]; then
+    KV="$(tr -d ' \n\r' < "$KR/VERSION")"
+    PV="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$KR/plugin/.claude-plugin/plugin.json" | head -1)"
+    [ "$KV" = "$PV" ] && pass "plugin manifest version matches VERSION ($KV)" \
+      || fail "plugin manifest says '$PV' but VERSION is '$KV' — run packaging/build-plugin.sh and commit plugin/"
+  fi
   # The DIAGRAMS make a claim too, and it is the one a reader takes at face value because nobody counts nodes in
   # a picture. The hand-drawn pipeline shipped with eleven of twelve agents — performance-expert-csk was simply
   # never drawn — and every gate stayed green because none of them looked at an SVG. Both diagrams are generated
