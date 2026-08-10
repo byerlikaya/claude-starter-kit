@@ -54,21 +54,45 @@ if [ "${AUTOC:-0}" -gt 0 ] && [ ! -e "$(marker autocompact)" ]; then
   exit 0
 fi
 
-# Real context% — context-usage.sh reads transcript_path from the same stdin JSON. Fail-open on any error.
-# --verbose here: this line reaches the USER at most twice per session, so the raw token counts are free.
-# (The per-turn UserPromptSubmit injection uses the compact form; that one is paid for on every single turn.)
-LINE="$(printf '%s' "$IN" | bash "$HERE/context-usage.sh" --verbose 2>/dev/null | head -1 || true)"
-[ -n "$LINE" ] || exit 0
+# Real context%, from context-usage.sh's measurement. Fail-open on any error.
+#
+# FAST PATH — read the figure context-usage.sh already published this turn. That hook runs on UserPromptSubmit,
+# measures exactly this, and now writes it to a session-keyed file. Re-deriving it here meant a second shell
+# startup plus a second full transcript scan at the end of EVERY turn: measured at ~31 processes per Stop, and
+# on a corporate Windows machine a process costs ~290ms, so the turn ended with seconds of silence.
+#
+# Read with `$(<file)` — a builtin, no `cat`. Parsed by word splitting, no `sed`. What it costs: the reading is
+# from the start of the turn, so it excludes this turn's own output and can cross a threshold one turn late.
+# For a warning that never blocks, one turn of lag is worth seconds a turn, and it is not silent: without the
+# file we measure properly below, so the accurate path is always there when the fast one is not.
+PCT=""; TOTAL=""; WINDOW=""; LEVEL=""; LINE=""
+CACHE="${TMPDIR:-/tmp}/csk-context.${KEY}"
+if [ -f "$CACHE" ]; then
+  read -r PCT TOTAL WINDOW LEVEL < "$CACHE" 2>/dev/null || true
+  case "$PCT" in ''|*[!0-9.]*) PCT="" ;; esac      # anything unexpected -> fall through and measure
+  [ -n "$PCT" ] && LINE="🔋 Session: %$PCT ($TOTAL/$WINDOW token) → $LEVEL"
+fi
 
-# Pull the percentage back out of the "🔋 Session: %77.2 (...)" line. context-usage.sh pins LC_ALL=C, so the
-# decimal separator is always '.' whatever the locale. No number -> cannot classify -> stay silent (fail open).
-PCT="$(printf '%s' "$LINE" | sed -n 's/.*%\([0-9][0-9]*\(\.[0-9][0-9]*\)*\).*/\1/p' | head -1)"
-[ -n "$PCT" ] || exit 0
+if [ -z "$PCT" ]; then
+  # SLOW PATH — no published reading (first turn, a by-hand run, or context-usage silent). Measure for real.
+  # --verbose here: this line reaches the USER at most twice per session, so the raw token counts are free.
+  LINE="$(printf '%s' "$IN" | bash "$HERE/context-usage.sh" --verbose 2>/dev/null | head -1 || true)"
+  [ -n "$LINE" ] || exit 0
+  # Pull the percentage back out of the "🔋 Session: %77.2 (...)" line. context-usage.sh pins LC_ALL=C, so the
+  # decimal separator is always '.' whatever the locale. No number -> cannot classify -> stay silent (fail open).
+  PCT="$(printf '%s' "$LINE" | sed -n 's/.*%\([0-9][0-9]*\(\.[0-9][0-9]*\)*\).*/\1/p' | head -1)"
+  [ -n "$PCT" ] || exit 0
+fi
 
 # Highest threshold crossed. Compared under LC_ALL=C so '77.2' parses identically everywhere.
+# Compared on the integer part with shell arithmetic rather than two `awk` calls. Two spawns at the end of every
+# turn bought nothing here: the thresholds are whole numbers, so truncating is exactly equivalent — 89.9 is below
+# 90 either way — and dropping the decimal also drops the locale hazard the awk calls existed to pin down.
+INT="${PCT%%.*}"; INT="${INT:-0}"
+case "$INT" in ''|*[!0-9]*) exit 0 ;; esac
 TIER=""
-LC_ALL=C awk -v p="$PCT" 'BEGIN{exit !(p+0>=90)}' && TIER=90
-[ -n "$TIER" ] || { LC_ALL=C awk -v p="$PCT" 'BEGIN{exit !(p+0>=75)}' && TIER=75; }
+[ "$INT" -ge 90 ] && TIER=90
+[ -n "$TIER" ] || { [ "$INT" -ge 75 ] && TIER=75; }
 [ -n "$TIER" ] || exit 0
 
 # Already warned at this tier this session? Stay silent — one alert per threshold, not one per turn.

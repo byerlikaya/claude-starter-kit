@@ -153,6 +153,25 @@ fi
 # script, and a by-hand run has no stdin at all. Fails open — no stdin, no session_id, no VERSION: silent.
 case "$IN" in *'"hook_event_name"'*UserPromptSubmit*) ;; *) exit 0 ;; esac
 
+# The session id is used twice below; computing it once is not a tidiness question. Measured on a corporate
+# Windows machine: a process costs ~290ms there against ~2ms on Linux, so every spawn removed from a hook that
+# runs on EVERY turn is a third of a second the user waits before the model has even started.
+SID="$(printf '%s' "$IN" | sed -n 's/.*"session_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1 | tr -cd 'A-Za-z0-9._-')"
+
+# --- Publish the measurement so the Stop hook does not have to repeat it ------------------------------
+# session-guard.sh needs the same number, and it used to get it by running THIS script again as a nested
+# `bash context-usage.sh --verbose` — a second shell startup plus a second full transcript scan, at the end of
+# every single turn. On the machine above that pair costs seconds per turn, to recompute a figure that was
+# already sitting in memory one hook earlier.
+#
+# The honest cost of sharing it: this reading is taken at the START of the turn, so the Stop hook sees a fill
+# that does not include the turn's own output. It can therefore cross a threshold one turn later than a fresh
+# measurement would. That is acceptable for an advisory warning and is NOT acceptable silently — session-guard
+# falls back to measuring for itself whenever this file is missing, so the accurate path always exists.
+if [ -n "$SID" ]; then
+  printf '%s %s %s %s\n' "$PCT" "$TOTAL" "$WINDOW" "$LEVEL" > "${TMPDIR:-/tmp}/csk-context.${SID}" 2>/dev/null || true
+fi
+
 # --- Stale-WIRING gate -------------------------------------------------------------------------------
 # A resumed session keeps the hook wiring it was started with. Measured on Windows: settings.json on disk had
 # already been corrected, and `--resume` still produced the error naming the OLD, mangled path — while the same
@@ -180,8 +199,7 @@ KITVER="$HERE/../VERSION"                       # hooks live in .claude/hooks ->
 [ -f "$KITVER" ] || exit 0
 NOW="$(head -1 "$KITVER" 2>/dev/null | tr -cd '0-9A-Za-z.-')"
 [ -n "$NOW" ] || exit 0
-SID="$(printf '%s' "$IN" | sed -n 's/.*"session_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1 | tr -cd 'A-Za-z0-9._-')"
-[ -n "$SID" ] || exit 0
+[ -n "$SID" ] || exit 0                         # computed once, above
 MARK="${TMPDIR:-/tmp}/csk-kit-version.${SID}"
 if [ ! -e "$MARK" ]; then
   printf '%s' "$NOW" > "$MARK" 2>/dev/null || true   # first turn: remember the version, say nothing
