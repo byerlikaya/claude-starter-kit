@@ -32,6 +32,10 @@ Claude Code'da her iş aynı yerde yapılır: siz istersiniz, model yazar. Claud
 
 **Ekip arkadaşlarınızın işi görünmez olmaktan çıkıyor.** Her kit tek bir makinede koşar; üç kişi aynı depoyu paylaştığında "Ali 1. maddeye bir saat önce başladı" bilgisi diğer ikisinin görebileceği hiçbir yerde yoktur ve iş iki kez yapılır. Pano bunu kırıldığı yerde onarır: birleştirme anında değil, **maddeyi alma** anında. Üstlenme bir git ref'ine push'tur ve `git push` yalnız ileri-sarımdır; dolayısıyla eş zamanlı iki üstlenmeden tam olarak biri yerleşir, diğeri saniyenin altında, kimin tuttuğu ve neyin boş olduğu bilgisiyle reddedilir — tek satır yazılmadan. Tavsiye niteliğinde bir kilit dosyası değil, sonradan çözülecek bir merge conflict değil: atomiklik git'in kendisinden gelir ve içinde sunucu, token ya da servis yoktur. Bir maddeyi almak ayrıca bağımlılıklarının gerçekte ne teslim ettiğini önünüze getirir ve sizi kimin beklediğini adlandırır. `/board-csk init` çalıştırılana kadar kapalıdır; solo çalışma onu hiç görmez.
 
+<div align="center">
+  <img src="assets/board-tr.svg" alt="İki geliştirici aynı saniyede aynı işi üstlenmeye çalışır; biri yerleşir, diğeri tek satır kod yazılmadan reddedilir" width="900">
+</div>
+
 **Elinizdeki repoya da kuruluyor.** `adopt`, Claude Starter Kit'i ayrı bir dala commit'lenmemiş hâlde bırakıyor; yani değişikliğin tamamı, hiçbiri kalıcı olmadan önce editörünüzün diff ekranında duruyor. `main` dalına hiç dokunulmuyor.
 
 ## Hızlı başlangıç

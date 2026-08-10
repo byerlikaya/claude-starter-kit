@@ -32,6 +32,10 @@ In Claude Code every job happens in the same place: you ask, the model writes. C
 
 **Your teammates' work stops being invisible.** Every kit runs on one machine, so when three people share a repo, "Ali started item 1 an hour ago" exists nowhere the other two can see — and two of them build it twice. The board fixes that where it breaks: **taking** an item, not merging it. A claim is a push to a git ref, and `git push` is fast-forward-only, so of two simultaneous claims exactly one lands and the other is refused in under a second, naming who holds it and what is free — before a line is written. Not an advisory lock file, not a merge conflict to resolve afterwards: the atomicity is git's own, and there is no server, token or service anywhere in it. Taking an item also hands you what its dependencies actually delivered, and names who is waiting on you. Off until you run `/board-csk init`; solo work never sees it.
 
+<div align="center">
+  <img src="assets/board-en.svg" alt="Two developers claim the same item in the same second; one claim lands, the other is refused before any code is written" width="900">
+</div>
+
 **It goes on the repo you already have.** `adopt` hands Claude Starter Kit over on a branch, staged and uncommitted, so the whole change sits in your editor's diff before any of it is yours to keep. Your `main` is never touched.
 
 ## Quick start
