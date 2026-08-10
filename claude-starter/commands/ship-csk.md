@@ -8,5 +8,10 @@ Closure flow — in order:
    If any one is red, **STOP**, report what is missing; no deferral.
 2. If clean, @agent-commit-agent-csk (commit-message) **proposes** an atomic Conventional Commit from the staged diff.
 3. Commit runs ONLY if the user says "commit" (§4.4). "Done" is not approval.
+4. **Close the board item too** (`teamboard`), when one is held. Closing work is one movement: ask what shipped,
+   run `board.sh done <id> "<note>"`, name the items it unblocked, and offer the next one as options. Do not
+   leave this to the user to remember — a claim nobody closes reads to the whole team as still in progress, and
+   the items behind it stay unclaimable. If a decision came out of this work that changes how other items must
+   be done, record it with `board.sh decide` in the same breath; it is worthless in a session nobody else reads.
 
 No destructive operations (§4.5). No AI trace / vendor name in the message (§4.1/§4.2 — the hook already scans).

@@ -8,14 +8,27 @@ Argument: $ARGUMENTS
 
 Apply the `teamboard` skill. The engine is `bash .claude/hooks/board.sh`; never hand-edit the board.
 
-- **no argument** → `board.sh status`. Report it as: who holds what (and for how long), what is claimable now,
-  what is blocked and by which item, and any STALE claim. End with a concrete recommendation of which item to take.
+**Never make the user learn the syntax.** They should be able to run `/board-csk` and answer questions from
+there; `claim 3` and `done 3` are yours to type, not theirs. Every step below ends in a question with explicit
+options, not an instruction to go and type something.
+
+- **no argument** → `board.sh status`, plus `board.sh decisions` when the session-start line says decisions are
+  unread. Report: who holds what and for how long, what is claimable, what is blocked by which item, any STALE
+  claim, and any unread team decision. Then **ask which item to take, as options** (the claimable ones, each
+  labelled with its title and why it is a sensible next pick, plus "just looking"). On their answer, claim it —
+  do not tell them to run a claim command. If nothing is claimable, say what would unblock what, and stop.
 - **`claim <id>`** → `board.sh claim <id>`. A refusal is an answer, not an error: name who holds it and offer the
   claimable alternatives. Never work around a refusal. On success it prints the **connected work** — what each
   dependency actually delivered, and which items are waiting on this one. Read that back to the user before
   writing anything; it is the context the previous person had and you do not.
-- **`done <id>`** → ask for what shipped (commit/PR), then `board.sh done <id> "<note>"`, and tell the user which
-  items this unblocked.
+- **`done <id>`** → ask for what shipped (commit/PR), then `board.sh done <id> "<note>"`, tell the user which
+  items this unblocked, and **immediately offer the next item as options** — closing one and picking the next is
+  one movement, not two commands to remember.
+- **`decide "<what>"`** → `board.sh decide`. Anything that changes how OTHER work must be done — a contract, a
+  rejected approach, a constraint discovered the hard way — goes here the moment it is settled, while the reason
+  is still in the session. It reaches every teammate's next session opening; a decision that stays in this chat
+  reaches nobody. Write what was decided, why, and what it means for other items; name the items it affects.
+- **`decisions`** → list them, or read one. Read these before planning anything.
 - **`drop <id>`** → write the handover note FIRST — exactly where it stands, which files, and why the discarded
   approach was discarded — then `board.sh drop <id> "<note>"`. The engine refuses an empty note.
 - **`add <id> <title> [deps]`** → add items. From `docs/PLAN.md`, carry each task's dependency edges across.

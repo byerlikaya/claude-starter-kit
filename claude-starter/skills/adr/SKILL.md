@@ -16,6 +16,14 @@ Trigger phrases: "adr", "architecture decision", "decision record", "why this ap
 On an architecture/technology choice that is expensive to reverse, long-lived, or contested
 (database selection, auth strategy, critical pattern). Small/reversible decisions do not require an ADR.
 
+## On a team, the record ALSO goes on the board
+`docs/` is gitignored in an install, so an ADR written there reaches the machine that wrote it and nobody else —
+which is the opposite of what a decision record is for. When a `teamboard` exists, record it with
+`board.sh decide "<title>" "<context + decision + consequences>"` as well: the board is shared, so it arrives at
+every teammate's next session opening, and it travels even when the board lives in its own repository. The local
+file stays the long form; the board entry is the part that has to reach people, so it must be readable on its
+own — a title nobody can act on ("auth decided") is not a record.
+
 ## Format (docs/adr/NNNN-short-title.md, ~1 page)
 ```
 # NNNN. <Decision title>

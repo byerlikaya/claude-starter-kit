@@ -39,7 +39,7 @@ sequence. Every agent above is installed; "no owner" is an `ls`, not a default.
 1. **Diagnose, then plan** — unknown cause → `systematic-debugging` first; unclear scope → **planner-csk** (`/plan-csk`).
 2. **Produce** — the domain owner above.
 3. **Audit** — security (mandatory when security-critical) · privacy · test · performance (`/review-csk`).
-4. **Close** — DoD → **review-agent-csk** clean → **commit-agent-csk** proposes, waits for approval (`/ship-csk`).
+4. **Close** — DoD → **review-agent-csk** clean → **commit-agent-csk** proposes, waits for approval (`/ship-csk`); held items close here.
 5. **Hand off** — phase boundary or full context → **session-manager-csk** → `handoff` → `/clear` (`/handoff-csk`).
 
 **Naming an agent in prose is a hope; `@agent-<name>` is a guarantee** — measured here: 0/3 vs 3/3. Use that form
@@ -83,7 +83,7 @@ and report. Commit/push and destructive commands are gated (§4.4/§4.5).
 | Step back before commit / moving on | `reflect` |
 | Measure output quality / eval a change | `eval-grader` |
 | Parallel / file-mutating subagents | `worktree` |
-| Shared repo: start / leave / finish a work item | `teamboard` |
+| Shared repo: start / leave / finish an item | `teamboard` |
 | Building an MCP server / tool | `mcp-builder` |
 
 ## Token & context discipline (token-budget skill)

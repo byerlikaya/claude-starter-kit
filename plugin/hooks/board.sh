@@ -429,6 +429,35 @@ cmd_cache(){ # rebuild the local cache; NEVER called on the foreground path with
   done
   free="$(_free_ids)"
   out="Team board — held by others: ${others:-none} · yours: ${mine:-none} · claimable: ${free}"
+
+  # Decisions the user has not looked at yet. A decision nobody reads is the same as one nobody wrote, and
+  # session start is the only moment it can arrive before the work it would have changed.
+  local dtotal dseen dnew p c
+  dtotal="$(_decision_paths | wc -l | tr -d ' ')"; dseen="$(_seen_count)"
+  dnew=$(( dtotal - dseen )); [ "$dnew" -lt 0 ] && dnew=0
+  if [ "$dnew" -gt 0 ]; then
+    out="$out
+$dnew team decision(s) recorded since you last looked — read them before planning: /board-csk decisions"
+    for p in $(_decision_paths | tail -"$dnew"); do
+      c="$(_cat "$p")"
+      out="$out
+  · $(_field "$c" id) $(_field "$c" title) — $(_field "$c" author)"
+    done
+  fi
+
+  # An open claim you have stopped feeding. Not a block — the damage from a forgotten claim is that the team
+  # reads the item as actively held, so it has to be said out loud rather than enforced.
+  local om ob
+  for p in $(_item_paths); do
+    c="$(_cat "$p")"; [ "$(_field "$c" owner)" = "$me" ] || continue
+    [ "$(_field "$c" status)" = in_progress ] || continue
+    ob="$(_field "$c" since_epoch)"; case "$ob" in ''|*[!0-9]*) ob=0;; esac
+    [ "$ob" -gt 0 ] && [ $(( (now - ob) / 3600 )) -ge 8 ] || continue
+    om="$(_section "$c" Handover)"
+    [ -n "$om" ] && continue
+    out="$out
+You have held #$(_field "$c" id) for $(_age "$ob") with an empty handover note. If you are still on it, say where it stands (/board-csk note); if not, release it (/board-csk drop)."
+  done
   [ -n "$stale" ] && out="$out
 Stale claims (no activity for ${stale_h}h+): $stale — ask the owner before taking one over; never steal silently."
   out="$out
@@ -449,6 +478,76 @@ Claim before you start: /board-csk claim <id>. Commits are gated on a live claim
 }
 
 cmd_sync(){ _fetch && rm -f "$(_git_dir)/csk-board-lasterror" || echo "board: remote unreachable — showing the last known state"; cmd_cache; }
+
+# ---------------------------------------------------------------- decisions
+#
+# The board carried per-item memory and nothing else, so a decision that shaped the whole project — "refresh
+# tokens travel in a header, mobile drops cookies" — reached the person who made it and nobody else. The `adr`
+# skill wrote to docs/adr/, and installs gitignore docs/, so those records never left the machine that made
+# them. That is the exact failure this board exists to close, one level up from an item.
+#
+# They live on the same ref as the items, so they travel with the board — including when the board is a
+# separate repository. A decision is append-only: superseding one writes a new record that names it.
+
+_decision_paths(){ git ls-tree --name-only "$(_ref)" decisions/ 2>/dev/null; }
+
+_next_decision_id(){
+  local last; last="$(_decision_paths | sed -n 's#decisions/\([0-9][0-9]*\)-.*#\1#p' | sort -n | tail -1)"
+  printf '%04d' $(( 10#${last:-0} + 1 ))
+}
+
+cmd_decide(){ # decide <title> [body] [items]
+  local title="${1:-}" body="${2:-}" items="${3:--}" attempt=1 rc
+  [ -n "$title" ] || _die 'decide needs a title: board.sh decide "<what was decided>" "<why + what it means for other work>"'
+  _enabled || _die "the board is off in this repo (/board-csk on)"
+  while [ "$attempt" -le 3 ]; do
+    _fetch || true
+    _have_board || _die "no board here yet (/board-csk init)"
+    local id slug blob tree
+    id="$(_next_decision_id)"
+    slug="$(printf '%s' "$title" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/^-//;s/-$//' | cut -c1-48)"
+    blob="$(printf 'id: %s\ntitle: %s\nauthor: %s\ndate: %s\nepoch: %s\nitems: %s\n--\n%s\n' \
+             "$id" "$title" "$(_me)" "$(_now_iso)" "$(_now_epoch)" "$items" "$body" | _blob)"
+    tree="$(_tree_with "decisions/$id-$slug.md" "$blob")" || _die "could not build the board tree"
+    _commit_push "$tree" "board: decision $id by $(_me)"; rc=$?
+    case $rc in
+      0) printf 'Decision %s recorded and shared: %s\n' "$id" "$title"; cmd_cache >/dev/null; return 0 ;;
+      3) printf 'Decision %s recorded LOCALLY ONLY (remote unreachable) — the team cannot see it yet.\n' "$id"; return 0 ;;
+    esac
+    attempt=$((attempt+1))   # somebody else recorded one first: re-read so the ids do not collide
+  done
+  _die "the board kept changing; retry"
+}
+
+cmd_decisions(){ # decisions [id]
+  _have_board || { echo "No board here (/board-csk init)."; return 0; }
+  local p c
+  if [ -n "${1:-}" ]; then
+    p="$(_decision_paths | grep -m1 "^decisions/$1-")" || true
+    [ -n "$p" ] || _die "no decision $1"
+    _cat "$p"; _seen_now; return 0
+  fi
+  local n=0
+  for p in $(_decision_paths); do
+    c="$(_cat "$p")"
+    printf '%s  %s\n    %s · %s\n' "$(_field "$c" id)" "$(_field "$c" title)" "$(_field "$c" author)" "$(_field "$c" date)"
+    n=$((n+1))
+  done
+  [ "$n" = 0 ] && echo "No decisions recorded yet. Record one: /board-csk decide \"<what was decided>\""
+  _seen_now
+  return 0
+}
+
+# "New" means "recorded since you last looked at the board" — the marker moves when the user actually views
+# them, not when the cache is rebuilt, or a decision would be announced once to a session nobody was reading.
+_seen_now(){ local d; d="$(_git_dir)"; [ -n "$d" ] || return 0
+  _decision_paths | wc -l | tr -d ' ' > "$d/csk-board-seen" 2>/dev/null || true; }
+# Tested with [ -f ] rather than a redirect plus 2>/dev/null: bash applies redirections left to right, so an
+# input redirect from a missing file fails BEFORE stderr is silenced and the complaint reaches the terminal —
+# which is how a first-run read leaked an error line into a session-start hook.
+_seen_count(){ local d s=""; d="$(_git_dir)"
+  [ -n "$d" ] && [ -f "$d/csk-board-seen" ] && s="$(tr -cd '0-9' < "$d/csk-board-seen" 2>/dev/null)"
+  printf '%s' "${s:-0}"; }
 
 cmd_off(){ # off [--global]
   git config ${1:+--global} csk.board off
@@ -614,6 +713,9 @@ board.sh <command>
   probe                     ask the server whether it accepts the custom ref namespace
   off [--global] / on       switch every board gate off (or back on) for this repo, or for every repo.
                             A repo that never ran `init` has no gates in the first place.
+  decide "<what>" "<why + what it means for other work>" [items]
+                            record a team decision on the board so it reaches everyone, not just this machine
+  decisions [id]            list them, or read one
   sync                      fetch the board and refresh the local cache
   cache                     rebuild the local cache (no network)
   gate <msgfile>            commit-msg claim gate
@@ -632,6 +734,8 @@ case "$CMD" in
   add)    cmd_add "$@" ;;
   init)   cmd_init "$@" ;;
   probe)  cmd_probe ;;
+  decide) cmd_decide "$@" ;;
+  decisions) cmd_decisions "$@" ;;
   sync)   cmd_sync ;;
   cache)  cmd_cache ;;
   beat)   cmd_beat ;;

@@ -344,6 +344,31 @@ else
   done
   [ "$CONTRA" = 0 ] && pass "the status view never marks a claimable item as blocked (state is derived, not stored)" \
                     || fail "status contradicts itself: an item is listed claimable AND shown blocked"
+  # 5e. DECISIONS REACH PEOPLE. The board carried per-item memory only, so a decision that shapes the whole
+  # project reached the person who made it and nobody else: `adr` writes to docs/adr/ and installs gitignore
+  # docs/. Recording one has to (a) travel to another clone, (b) announce itself at the next session opening of
+  # someone who has not read it, and (c) go quiet once they have — an alert that repeats forever is ignored,
+  # which is the same as not sending it.
+  ( cd "$BD/ali" && bash ../board.sh decide "Refresh tokens travel in a header" "Mobile drops cookies; every client sends X-Tenant on refresh." "001" ) >/dev/null 2>&1
+  ( cd "$BD/ayse" && bash ../board.sh sync ) >/dev/null 2>&1
+  ( cd "$BD/ayse" && bash ../board.sh decisions 2>/dev/null | grep -q "Refresh tokens travel in a header" ) \
+    && pass "a decision recorded by one teammate arrives in another's clone" \
+    || fail "the decision never reached the second clone — decisions stay as local as the ADRs they replace"
+  rm -f "$BD/ayse/.git/csk-board-seen"
+  ( cd "$BD/ayse" && bash ../board.sh cache 2>/dev/null | grep -q "recorded since you last looked" ) \
+    && pass "an unread decision announces itself at session start" \
+    || fail "an unread decision is silent at session start — it arrives after the work it should have changed"
+  ( cd "$BD/ayse" && bash ../board.sh decisions ) >/dev/null 2>&1
+  ( cd "$BD/ayse" && bash ../board.sh cache 2>/dev/null | grep -q "recorded since you last looked" ) \
+    && fail "the decision keeps announcing itself after being read — a permanent alert is an ignored one" \
+    || pass "once read, the decision stops being announced"
+  # First read must not leak a shell error: the marker file does not exist yet, and an input redirect from a
+  # missing file complains BEFORE 2>/dev/null takes effect. That error landed in a session-start hook once.
+  rm -f "$BD/ali/.git/csk-board-seen"
+  ERRTXT="$( cd "$BD/ali" && bash ../board.sh cache 2>&1 >/dev/null )"
+  [ -z "$ERRTXT" ] && pass "reading the board with no seen-marker yet writes nothing to stderr" \
+                   || fail "stderr leak on first read: $ERRTXT"
+
   # 6b. THE EARLY GATE. The claim lock settles a contested item in under a second, but it can say nothing about
   # someone who never claims at all — and catching that at commit time means the duplicated work already exists.
   # So the FIRST file edit is where it is caught. Asserted in the three states that distinguish a gate from a
