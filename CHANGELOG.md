@@ -3,6 +3,56 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [2.3.0] - 2026-08-11
+
+### Added
+- **A team board whose claim is an atomic lock, so two people cannot start the same work item.** Every install
+  runs on one machine and `docs/` is gitignored, so a plan, a handover and an in-progress item are all private
+  by default — which is how three people on one repo end up building the same thing twice and finding out at
+  merge time. The board is the shared half: the item list, the claims, the per-item handover notes and the
+  team's decisions live on a git ref the whole team pushes to.
+
+  **The claim IS the push.** Pushing to a ref is fast-forward-only, so of two simultaneous claims exactly one
+  lands and the loser re-reads the board and refuses — naming who holds it and what is free — in under a second,
+  before a line of code exists. No server, no token, no daemon: the atomicity is git's own. Measured with three
+  clones racing the same item over ten rounds (exactly one winner every round, refusal in 691 ms) and again
+  end to end against a real GitHub remote. Commits are built with plumbing against a private index, so claiming
+  never touches the working tree, index, branch or stash — you can claim mid-feature with dirty files.
+
+  `init` probes whether the server accepts a custom ref namespace (github.com: accepted) and falls back to an
+  orphan branch when one refuses; a teammate who never ran the probe resolves that fallback themselves.
+
+  **Two gates, both no-ops in a repo that never ran `init`.** The first file edit is refused while you hold no
+  item — catching unclaimed work at commit time means the duplicate already exists. A commit then names an item
+  you hold (`[#3]`) or declares itself item-less (`[chore]`). `/board-csk off` releases all three for a repo,
+  `--global` for every repo, `CSK_NO_BOARD=1` for one session; a switch that released two gates of three would
+  be a trap.
+
+  **Decisions travel too.** `adr` writes to `docs/adr/`, which installs gitignore, so an architectural record
+  reached the machine that made it and nobody else — the thing this board exists for, one level above an item.
+  Decisions now live beside the items and travel with them, including when the board is a separate repository.
+  An unread one announces itself at the next session opening, names itself, and goes quiet once read.
+
+  **Starting work asks what everyone else is doing.** Claiming an item prints what each dependency actually
+  delivered, names who is waiting on it, lists what teammates are mid-flight on right now, and surfaces
+  decisions you have not read — because the dependency graph only knows the edges somebody declared, and a
+  decision announced only at session start arrives too late for an item claimed an hour in.
+
+  Setup is one command for one person (`/board-csk init`, or `--remote <url>` for a separate board repository);
+  everybody else configures nothing and the board reaches them on their own.
+
+  Gated by 30+ behavioural assertions in `smoke-test` — the multi-clone race, dependency block and unblock, a
+  drop that refuses an empty note, the commit gate in four states, the write gate in five, a server that denies
+  custom refs, a board in a separate repository, decisions reaching a second clone and going quiet once read, a
+  status view that cannot contradict itself or serve a stale answer, and the no-board regression path that keeps
+  every existing project exactly as it was.
+
+### Fixed
+- `guard-bash.sh`'s gate-tamper patterns spanned the whole command line, so a writer verb in one command and a
+  gate path in another was refused as tampering — `cp a b && bash .claude/hooks/board.sh status`, blocked. That
+  fault predates this release and was harmless while nobody typed a hook path; the board made one an everyday
+  argument. Scoped to a single command segment: nine attack shapes still refused, five false positives released.
+
 ## [2.2.2] - 2026-08-10
 
 ### Performance
