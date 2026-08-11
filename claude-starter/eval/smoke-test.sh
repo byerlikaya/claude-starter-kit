@@ -369,6 +369,22 @@ else
   done
   [ "$CONTRA" = 0 ] && pass "the status view never marks a claimable item as blocked (state is derived, not stored)" \
                     || fail "status contradicts itself: an item is listed claimable AND shown blocked"
+
+  # ...and it must not be stale either. Caught in a real session: the view showed an item as blocked while its
+  # dependency had already landed, and only the claim that followed corrected it — the reader had already been
+  # told there was nothing to pick up. "No network in the foreground" is a rule about hooks that run on every
+  # turn, not about a view somebody asked for by name; a board that lies about who has what is worse than a slow
+  # one. Asserted from the OTHER clone, without an explicit sync, which is exactly how the session hit it.
+  ( cd "$BD/ali" && bash ../board.sh add 030 "Upstream" ) >/dev/null 2>&1
+  ( cd "$BD/ali" && bash ../board.sh add 031 "Downstream" 030 ) >/dev/null 2>&1
+  ( cd "$BD/ayse" && bash ../board.sh sync ) >/dev/null 2>&1     # ayse takes a snapshot: #031 is blocked
+  ( cd "$BD/ali" && bash ../board.sh claim 030 ) >/dev/null 2>&1
+  ( cd "$BD/ali" && bash ../board.sh done 030 "shipped" ) >/dev/null 2>&1
+  FRESH="$( cd "$BD/ayse" && bash ../board.sh status 2>/dev/null | grep -E '^#031 ' )"
+  case "$FRESH" in
+    *blocked*) fail "status served a stale view: #031 still reads blocked after its dependency completed elsewhere" ;;
+    *) pass "status reflects what another clone just did, without an explicit sync" ;;
+  esac
   # 5e. DECISIONS REACH PEOPLE. The board carried per-item memory only, so a decision that shapes the whole
   # project reached the person who made it and nobody else: `adr` writes to docs/adr/ and installs gitignore
   # docs/. Recording one has to (a) travel to another clone, (b) announce itself at the next session opening of

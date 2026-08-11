@@ -393,11 +393,15 @@ cmd_drop(){ _mutate drop "$1" "${2:-}" || return $?; printf '#%s released with a
 cmd_note(){ _mutate note "$1" "${2:-}" || return $?; printf '#%s handover note updated.\n' "$1"; }
 
 cmd_status(){
-  # A fresh clone has no board ref: `git clone` does not fetch a custom namespace, and the session-start
-  # refresher runs detached, so the first `/board-csk` of a new teammate's first session can land before it.
-  # Telling them "no board yet" there would be false — and would invite them to create a second one. This is
-  # the one place a foreground fetch is right: there is nothing to show without it.
-  _have_board || _fetch >/dev/null 2>&1
+  # This view fetches before it prints, and that is a deliberate reversal. It used to fetch only when there was
+  # no board at all, to keep the network off the foreground — and the result was a board that lied: caught in a
+  # real session, it showed an item as blocked while its dependency had already landed, and only the claim that
+  # followed corrected it. The "no network in the foreground" rule is about hooks that run on EVERY turn, not
+  # about a view a person asked for by name. A stale answer to "who has what" is worse than a slow one, because
+  # the next thing the reader does is decide what to work on.
+  #
+  # Fails open: an unreachable remote falls through to whatever is local, so the view still appears offline.
+  _fetch >/dev/null 2>&1 || true
   _have_board || { echo "No board in this repo yet (and none on '$(_remote)'). Create one: /board-csk init"; return 0; }
   local me p c id st ow ti dep bl now stale_h
   me="$(_me)"; now="$(_now_epoch)"; stale_h="$(_conf stale_hours 8)"
