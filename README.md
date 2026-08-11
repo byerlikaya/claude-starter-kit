@@ -82,7 +82,7 @@ Then paste `.claude/FIRST_PROMPT.md` as your first Claude Code message. Homebrew
 | **frontend-expert-csk** | 🔨 Produce | UI, component, client work | `inherit` |
 | **devops-expert-csk** | 🔨 Produce | deployment, CI pipeline, incident | `inherit` |
 | **security-expert-csk** | 🔍 Audit | auth / IDOR / injection / secret · **mandatory if security-critical** | `inherit` · `effort: high` |
-| **privacy-agent-csk** | 🔍 Audit | personal data (KVKK / GDPR) | `inherit` |
+| **privacy-agent-csk** | 🔍 Audit | personal data — KVKK/GDPR, plus any regime the project declares | `inherit` |
 | **test-expert-csk** | 🔍 Audit | tests, coverage, regression | `inherit` |
 | **performance-expert-csk** | 🔍 Audit | hot path, query/loop, render, payload | `inherit` |
 | **review-agent-csk** | ✅ Close | pre-commit code-health review | `inherit` |
