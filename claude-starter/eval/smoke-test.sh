@@ -160,6 +160,33 @@ for f in "$AGENTS"/*.md; do
 done
 pass "every skill & agent is routed (no idle components)"
 
+echo "== 3b2) Capability: a skill cannot demand a tool its agent does not have =="
+# A rule an agent physically cannot obey is worse than no rule: it does not fail, it degrades quietly into the
+# thing it forbids. `privacy-compliance` told its agent to CHECK THE OFFICIAL SOURCE rather than decide from
+# memory, and privacy-agent-csk shipped with Read/Grep/Glob — no WebFetch. Nothing flagged it. It surfaced in a
+# real regulatory audit, where the routing had to split the work by hand to get around a gap in the kit.
+#
+# So the requirement is declared in the skill (`<!-- Requires-tool: X -->`) and checked here against every agent
+# that applies it. Declaration rather than guesswork: inferring "this skill probably needs the web" from prose
+# would be a heuristic, and a gate built on a heuristic is a gate nobody trusts when it fires.
+CAPFAIL=""
+for d in "$SKILLS"/*/; do
+  sname="$(basename "$d")"
+  req="$(sed -n 's/.*Requires-tool:[[:space:]]*\([A-Za-z]*\).*/\1/p' "$d/SKILL.md" 2>/dev/null | head -1)"
+  [ -n "$req" ] || continue
+  found=0
+  for af in "$AGENTS"/*.md; do
+    [ -e "$af" ] || continue
+    grep -qE "[^a-z0-9-]$sname([^a-z0-9-]|$)" "$af" 2>/dev/null || continue   # this agent applies the skill
+    found=1
+    grep -m1 '^tools:' "$af" | grep -q "$req" \
+      || CAPFAIL="$CAPFAIL $(basename "$af" .md)(needs $req for $sname)"
+  done
+  [ "$found" = 1 ] || note "skill '$sname' declares Requires-tool: $req but no agent applies it"
+done
+[ -z "$CAPFAIL" ] && pass "every skill's declared tool requirement is met by the agents that apply it" \
+                  || fail "an agent applies a skill it cannot obey:$CAPFAIL"
+
 echo "== 3c) Backend variant parity: a --generic install must not lose routing =="
 # On a non-.NET stack the installer REPLACES backend-expert-csk with agents-optional/backend-expert-generic.
 # Every skill routed only from the .NET variant then silently stops being reached on that stack — §3b cannot see
