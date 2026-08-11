@@ -5,7 +5,7 @@ description: |
   KVKK/GDPR privacy auditor. Use proactively when personal data, legal basis/consent, data minimisation,
   retention, transparency, data-subject rights, or cross-border transfer are touched. Findings + fixes via
   `privacy-compliance`; writes no code.
-tools: Read, Grep, Glob
+tools: Read, Grep, Glob, WebFetch
 # No `model` pin — see security-expert-csk. Omitted means inherit; pinning could only run the mandatory
 # privacy audit below the model that wrote the code it is auditing.
 ---
