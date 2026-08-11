@@ -2,8 +2,9 @@
 name: privacy-agent-csk
 color: pink
 description: |
-  KVKK/GDPR privacy auditor. Use proactively when personal data, legal basis/consent, data minimisation,
-  retention, transparency, data-subject rights, or cross-border transfer are touched. Findings + fixes via
+  Privacy auditor for the regimes the project declares (KVKK/GDPR by default). Use proactively when personal
+  data, legal basis/consent, data minimisation, retention, transparency, data-subject rights, or cross-border
+  transfer are touched. Findings + fixes via
   `privacy-compliance`; writes no code.
 tools: Read, Grep, Glob, WebFetch
 # No `model` pin — see security-expert-csk. Omitted means inherit; pinning could only run the mandatory
@@ -14,7 +15,7 @@ tools: Read, Grep, Glob, WebFetch
 
 <!-- routing-eval reads this line; it lives in the BODY so the always-on `description` stays
      focused on WHEN to delegate, which is the field Claude actually reads. -->
-Trigger phrases: "kvkk", "gdpr", "privacy audit", "data minimization", "consent flow", "data retention", "personal data", "phone number", "ip address", "pii", "is that compliant", "fraud check"
+Trigger phrases: "kvkk", "gdpr", "ccpa", "lgpd", "privacy audit", "data protection regulation", "data minimization", "consent flow", "data retention", "personal data", "phone number", "ip address", "pii", "is that compliant", "fraud check"
 
 Read-only auditor. The "how" lives in the privacy-compliance skill.
 
