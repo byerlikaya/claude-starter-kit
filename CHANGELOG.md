@@ -3,6 +3,55 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [2.3.1] - 2026-08-11
+
+### Fixed
+- **A skill told its agent to check the official source, and the agent had no way to.** `privacy-compliance`
+  instructs its agent to read the official KVKK/GDPR text rather than decide from memory, and gives the URLs.
+  `privacy-agent-csk` shipped with `Read, Grep, Glob` — no `WebFetch`. A rule an agent cannot obey does not fail
+  loudly; it degrades into the thing the rule forbids. Found during a real regulatory audit, where the routing
+  had to split the work by hand — code review to the specialist, legislation to `general-purpose` — and a human
+  noticed the split and asked why. That is the kit compensating for its own defect, and it does not generalise.
+
+  The agent gets `WebFetch`. Scoped by evidence rather than symmetry: the security skills were checked too and do
+  not need it, because their authority is a tool they can already run (`npm audit`, `pip-audit` via Bash), not a
+  document to retrieve — a capability no skill asks for would be an idle component.
+
+  The class is gated now. A skill declares what it needs (`<!-- Requires-tool: X -->`) and `smoke-test` checks it
+  against every agent that applies that skill. Declared rather than inferred: guessing "this skill probably needs
+  the web" from prose would make the gate a heuristic, and a heuristic gate is one nobody believes when it fires.
+  Asserted both ways — green as shipped, red naming the agent, the tool and the skill when `WebFetch` is removed.
+
+### Added
+- **The project declares which privacy regimes apply; the kit stops guessing.** KVKK and GDPR were hardcoded —
+  right for the two regimes this author's projects live under, wrong as a general claim: a product sold in
+  California is under CCPA, one in Brazil under LGPD. Shipping a global list would have been worse than the gap,
+  because the kit would be claiming knowledge it does not have — the same mistake as rating code without running
+  the analyser.
+
+  A project declares its own in `.claude/regulations.conf` (`name | official source | axis`, one per line) and the
+  authority is whatever source it names. No installer writes that file and no update rewrites it; its absence
+  means the defaults apply, so nothing has to be created for the common case and neither installer changed.
+
+  | declared | result |
+  |:--|:--|
+  | with a source | audited; every finding cites that regime's article, checked against the source |
+  | without a source | **not ruled on** — reported as "declared, no source given" |
+  | axis other than `personal-data` (BDDK, PCI-DSS, HIPAA) | **said out loud as out of scope** |
+  | no file | KVKK + GDPR, exactly as before |
+
+  The third row is the point of the file, not an edge case: somebody who writes `BDDK` into it and gets a clean
+  report would reasonably conclude the kit checked it. It did not, and silence would be the lie. Sector regulation
+  stays outside this skill deliberately — the method is identical but the kit has no authority there.
+
+  The agent keeps its name; its description and triggers widen instead (`ccpa`, `lgpd`, `data protection
+  regulation`), with a golden-routing case that fails if that stops matching. Where the explanation lives was a
+  budget decision, not a style one: skill descriptions had 9 bytes of headroom and the discipline had 1, so it
+  went in the skill body, which loads only when the skill fires.
+
+  Honest boundary, stated in the skill itself: this half is instruction, not a gate. Whether a citation is correct
+  cannot be settled by an exit code.
+
 ## [2.3.0] - 2026-08-11
 
 ### Added
