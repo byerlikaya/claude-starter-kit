@@ -42,7 +42,9 @@ EDGES = {
  "session-manager-csk":"handoff token-budget",
  "test-expert-csk":"testing",
  "performance-expert-csk":"performance"}
-CORE_SKILLS = ["systematic-debugging","iterate","reflect","worktree","mcp-builder","eval-grader"]
+# Skills no single agent owns: routed from a command and the discipline's trigger map rather than from an
+# agent body, so they have no `applies` edge to draw and sit in the centre instead.
+CORE_SKILLS = ["systematic-debugging","iterate","reflect","worktree","mcp-builder","eval-grader","teamboard"]
 ST_OF = dict(AGENTS)
 
 # deliberate home-stage for each skill (so groups read clean); default = first agent's stage
@@ -308,6 +310,75 @@ def build_handover(tr=False):
     return "".join(P)
 
 # ---------------------------------------------------------------------------------------------------------
+# Board race (board-*.svg) — the one thing about this feature that a sentence keeps getting wrong. Readers hear
+# "the push is rejected" and picture the END of the work: two people build the same thing and collide at merge
+# time. The picture has to show the opposite — the collision happens at the moment of TAKING, before any code
+# exists — so it puts both claims in the same second and both answers side by side.
+BW_, BH_ = 1000, 276
+def build_board(tr=False):
+    P=[f'<svg viewBox="0 0 {BW_} {BH_}" xmlns="http://www.w3.org/2000/svg" font-family="\'Segoe UI\',system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="Claude Starter Kit — the board claim race">']
+    P.append('<defs>')
+    P.append('<linearGradient id="bbg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#101a34"/><stop offset="1" stop-color="#070b18"/></linearGradient>')
+    P.append('<filter id="bglow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>')
+    P.append('</defs>')
+    P.append(f'<rect width="{BW_}" height="{BH_}" fill="url(#bbg)"/>')
+
+    head = "aynı iş · iki kişi · aynı saniye" if tr else "one item · two people · the same second"
+    P.append(f'<text x="{BW_/2}" y="30" text-anchor="middle" font-size="13" font-weight="700" fill="#8b96c6" letter-spacing="1.6">{html.escape(head.upper())}</text>')
+
+    def card(x,y,w,h,col,title,sub,mono=True,tick=None):
+        P.append(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="13" fill="#0f1830" stroke="{col}" stroke-width="1.8" filter="url(#bglow)"/>')
+        P.append(f'<text x="{x+16}" y="{y+27}" font-size="14.5" font-weight="700" fill="#eaf0ff">{html.escape(title)}</text>')
+        fam=' font-family="ui-monospace,Menlo,monospace"' if mono else ''
+        for i,line in enumerate(sub):
+            P.append(f'<text x="{x+16}" y="{y+48+i*17}" font-size="11.5" fill="#94a0cc"{fam}>{html.escape(line)}</text>')
+        if tick:
+            P.append(f'<text x="{x+w-16}" y="{y+27}" text-anchor="end" font-size="16" font-weight="800" fill="{col}">{tick}</text>')
+
+    def arrow(x1,y,x2,label,col="#94a0cc"):
+        P.append(f'<path d="M{x1},{y} L{x2-8},{y}" stroke="{col}" stroke-opacity="0.85" stroke-width="2.2" stroke-linecap="round"/>')
+        P.append(f'<path d="M{x2-11},{y-5} L{x2-3},{y} L{x2-11},{y+5}" fill="none" stroke="{col}" stroke-opacity="0.85" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>')
+        P.append(f'<text x="{(x1+x2)/2}" y="{y-9}" text-anchor="middle" font-size="10.5" fill="#8b96c6" font-family="ui-monospace,Menlo,monospace">{html.escape(label)}</text>')
+
+    LX, LW = 24, 168
+    CX, CW = 300, 214
+    RX, RW = 596, 380
+    Y1, Y2, CH_ = 52, 152, 78
+
+    card(LX, Y1, LW, CH_, "#5b8cff", "ali",  ["/board-csk", "claim #1"])
+    card(LX, Y2, LW, CH_, "#a874f5", "ayşe" if tr else "ayse", ["/board-csk", "claim #1"])
+
+    lab = "push" if not tr else "push"
+    arrow(LX+LW, Y1+CH_/2, CX, lab, "#5b8cff")
+    arrow(LX+LW, Y2+CH_/2, CX, lab, "#a874f5")
+
+    P.append(f'<rect x="{CX}" y="{Y1}" width="{CW}" height="{Y2+CH_-Y1}" rx="15" fill="#0d1526" stroke="#26c6e6" stroke-width="2" filter="url(#bglow)"/>')
+    P.append(f'<text x="{CX+CW/2}" y="{Y1+40}" text-anchor="middle" font-size="14" font-weight="800" fill="#eaf0ff" font-family="ui-monospace,Menlo,monospace">refs/csk/board</text>')
+    t1 = "yalnız ileri sarım" if tr else "fast-forward only"
+    t2 = "sunucu yok · token yok" if tr else "no server · no token"
+    t3 = "git'in kendi kuralı" if tr else "git's own rule decides"
+    P.append(f'<text x="{CX+CW/2}" y="{Y1+68}" text-anchor="middle" font-size="12" fill="#26c6e6">{html.escape(t1)}</text>')
+    P.append(f'<text x="{CX+CW/2}" y="{Y1+96}" text-anchor="middle" font-size="11" fill="#8b96c6">{html.escape(t3)}</text>')
+    P.append(f'<text x="{CX+CW/2}" y="{Y1+116}" text-anchor="middle" font-size="11" fill="#8b96c6">{html.escape(t2)}</text>')
+
+    arrow(CX+CW, Y1+CH_/2, RX, "", "#34d17f")
+    arrow(CX+CW, Y2+CH_/2, RX, "", "#ff9040")
+
+    if tr:
+        card(RX, Y1, RW, CH_, "#34d17f", "#1 senin", ["üstlenme yerleşti"], tick="✓")
+        card(RX, Y2, RW, CH_, "#ff9040", "reddedildi", ["#1 ali'de (4dk) · boş: #2 #5",
+                                                        "691 ms — tek satır kod yazılmadan"], tick="✗")
+        foot = "çakışma birleştirmede değil, İŞİ ALIRKEN çözülür · ölçüldü: 3 klon, 10 tur, her turda tek kazanan"
+    else:
+        card(RX, Y1, RW, CH_, "#34d17f", "#1 is yours", ["the claim landed"], tick="✓")
+        card(RX, Y2, RW, CH_, "#ff9040", "refused", ["#1 is ali's (4m) · free: #2 #5",
+                                                      "691 ms — before a line of code exists"], tick="✗")
+        foot = "settled when the work is TAKEN, not when it is merged · measured: 3 clones, 10 rounds, one winner every time"
+    P.append(f'<text x="{BW_/2}" y="{BH_-16}" text-anchor="middle" font-size="12" fill="#8b96c6">{html.escape(foot)}</text>')
+    P.append('</svg>')
+    return "".join(P)
+
+# ---------------------------------------------------------------------------------------------------------
 # Command flow (workflow-*.svg) — the same five stages, but named by the slash command you actually type. It
 # replaces an ASCII block that could not be aligned in both languages at once: Turkish wraps longer, so the
 # columns drifted apart in one README while looking right in the other.
@@ -361,8 +432,10 @@ PSUB_EN=f'{NAG} AGENTS · FIVE STAGES · QUALITY ESCALATES BEFORE ANYTHING IS CO
 PSUB_TR=f'{NAG} AJAN · BEŞ AŞAMA · HİÇBİR ŞEY COMMIT EDİLMEDEN KALİTE YÜKSELİR'
 open(ASSETS+"/orchestration-en.svg","w").write(build_pipeline(PSUB_EN))
 open(ASSETS+"/orchestration-tr.svg","w").write(build_pipeline(PSUB_TR, tr=True))
+open(ASSETS+"/board-en.svg","w").write(build_board())
+open(ASSETS+"/board-tr.svg","w").write(build_board(tr=True))
 open(ASSETS+"/handover-en.svg","w").write(build_handover())
 open(ASSETS+"/handover-tr.svg","w").write(build_handover(tr=True))
 open(ASSETS+"/workflow-en.svg","w").write(build_flow())
 open(ASSETS+"/workflow-tr.svg","w").write(build_flow(tr=True))
-print("wrote network-{en,tr} + orchestration-{en,tr} + handover-{en,tr}.svg to",ASSETS,"| agents",NAG,"skills",NSK)
+print("wrote network-{en,tr} + orchestration-{en,tr} + board-{en,tr} + handover-{en,tr}.svg to",ASSETS,"| agents",NAG,"skills",NSK)

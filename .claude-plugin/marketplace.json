@@ -8,7 +8,7 @@
     {
       "name": "claude-starter-kit",
       "source": "./plugin",
-      "description": "Agentic Working Kit — disciplined agents, skills, and slash commands for Claude Code (lite edition; for the full scaffolding use start.sh / adopt.sh)."
+      "description": "Agentic Working Kit — disciplined agents, skills, slash commands, and a team board whose claim is an atomic git-ref lock, so two people cannot start the same work item (lite edition; for the full scaffolding use start.sh / adopt.sh)."
     }
   ]
 }

@@ -33,11 +33,11 @@ combo() {
   grep -q '^profile=' "$P/.claude/kit.conf" && { echo "FAIL [$lbl]: kit.conf still records a profile"; exit 1; }
   echo "[$lbl] agents=$ag skills=$sk smoke=OK manifest=$(wc -l < "$P/.claude/kit-manifest.txt" | tr -d ' ')"
 }
-# The kit ships 12 agents and 38 skills; --generic drops exactly one skill (devarch-module).
-combo dotnet        'yes\nno\n'  12 38 --dotnet
-combo generic       'yes\n'      12 37 --generic
+# The kit ships 12 agents and 39 skills; --generic drops exactly one skill (devarch-module).
+combo dotnet        'yes\nno\n'  12 39 --dotnet
+combo generic       'yes\n'      12 38 --generic
 # An old command line must still install, and must install the FULL set — the flag is accepted, not obeyed.
-combo legacy-flags  'yes\n'      12 37 --frontend --generic
+combo legacy-flags  'yes\n'      12 38 --frontend --generic
 grep -q 'no effect' "$WORK/proj-legacy-flags/.claude/kit.conf" && { echo "FAIL: notice leaked into kit.conf"; exit 1; }
 [ -f "$WORK/proj-legacy-flags/.claude/agents/backend-expert-csk.md" ] || { echo "FAIL: --frontend still pruned the backend agent"; exit 1; }
 echo "[legacy-flags] --frontend accepted and ignored; full set installed"

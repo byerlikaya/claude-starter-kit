@@ -111,6 +111,11 @@
             "type": "command",
             "command": "cd \"$CLAUDE_PROJECT_DIR\" 2>/dev/null; bash .claude/hooks/skill-trust.sh",
             "timeout": 60
+          },
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" 2>/dev/null; bash .claude/hooks/board-sync.sh",
+            "timeout": 60
           }
         ]
       },

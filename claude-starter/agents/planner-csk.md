@@ -40,6 +40,11 @@ options and resolve blocking unknowns, then plan the chosen direction. If scope 
 ## Output & context (token)
 To the main thread: task breakdown + acceptance criteria + dependency order — a **summary**. Write the long plan to `docs/PLAN.md`, and return only the heading list + a file pointer.
 
+**More than one person will work this plan → say so.** `docs/PLAN.md` is gitignored and therefore private to
+this machine; a plan several people execute has to reach the shared board or the first two of them will start the
+same task. Recommend `/board-csk` (`teamboard`) and carry every dependency edge across — those edges are what let
+a claim refuse blocked work.
+
 ## Errors/escalation
 If scope is ambiguous or requirements conflict, **stop planning**, write the assumption, and ask WITH EXPLICIT OPTIONS. Do not produce a plan by guessing.
 

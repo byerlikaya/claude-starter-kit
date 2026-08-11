@@ -199,6 +199,353 @@ if ( cd "$SDIR" && bash pre-commit ) >/dev/null 2>&1; then fail "secret scan LET
 rm -rf "$SDIR"
 
 
+echo "== 5b) Team board: is the claim a real lock, or only a convention? =="
+# BEHAVIOURAL, not structural. The board's entire value rests on one claim: two people cannot take the same
+# item. That claim is about what git does under a race, so asserting it any way other than by racing two real
+# clones would be testing the fiction rather than the gate. Every assertion below states what it proves.
+#
+# Three states per gate, deliberately: a gate tested only in the state where it should pass is indistinguishable
+# from a gate that always passes.
+if [ -x "$HOOKS/board.sh" ]; then
+BD="$(mktemp -d)"
+BOARD_OK=1
+(
+  set -e
+  cd "$BD"
+  git init -q --bare origin.git
+  for u in ali ayse; do
+    git clone -q origin.git "$u" 2>/dev/null
+    # A seed commit is not decoration: without it HEAD is unborn, `git rev-parse --abbrev-ref HEAD` answers
+    # "HEAD" for every branch, and the worktree-isolation assertion below would fail for a reason that has
+    # nothing to do with the board.
+    ( cd "$u" && git config user.email "$u@x" && git config user.name "$u" \
+        && git commit -q --allow-empty -m seed )
+  done
+  cp "$HOOKS/board.sh" "$HOOKS/commit-msg" "$HOOKS/trace-blocklist.txt" .
+  ( cd ali && bash ../board.sh init >/dev/null \
+      && bash ../board.sh add 001 "First" >/dev/null \
+      && bash ../board.sh add 003 "Third" 001 >/dev/null )
+  ( cd ayse && bash ../board.sh sync >/dev/null )
+) >/dev/null 2>&1 || BOARD_OK=0
+
+if [ "$BOARD_OK" = 0 ]; then
+  fail "board fixture could not be built (init/add/sync failed)"
+else
+  # 1. THE RACE. Ali claims, then Ayse claims the same item from her own clone. Exactly one must own it.
+  ( cd "$BD/ali"  && bash ../board.sh claim 001 ) >/dev/null 2>&1; A_RC=$?
+  ( cd "$BD/ayse" && bash ../board.sh claim 001 ) >/dev/null 2>&1; B_RC=$?
+  if [ "$A_RC" = 0 ] && [ "$B_RC" != 0 ]; then pass "claim race: first wins, second is REFUSED (rc $A_RC/$B_RC)"
+  else fail "claim race broken: both sessions think they own #001 (rc $A_RC/$B_RC) — the lock does not hold"; fi
+  OWNER="$(cd "$BD/ayse" && bash ../board.sh sync >/dev/null 2>&1; cd "$BD/ayse" && bash ../board.sh show 001 2>/dev/null | grep -m1 '^owner: ' | cut -d' ' -f2-)"
+  [ "$OWNER" = "ali@x" ] && pass "the remote records exactly one owner (ali@x)" \
+                         || fail "remote owner is '$OWNER', expected ali@x"
+
+  # 2. DEPENDENCY. #003 depends on #001, which is in_progress -> claiming it must be refused...
+  if ( cd "$BD/ayse" && bash ../board.sh claim 003 ) >/dev/null 2>&1
+  then fail "blocked item #003 was claimable while its dependency was unfinished"
+  else pass "blocked item refused while its dependency is unfinished"; fi
+  # ...and must become claimable the moment the dependency completes. A refusal that never lifts is a deadlock,
+  # not a gate, so both directions are asserted.
+  ( cd "$BD/ali" && bash ../board.sh done 001 "shipped" ) >/dev/null 2>&1
+  ( cd "$BD/ayse" && bash ../board.sh sync ) >/dev/null 2>&1
+  if ( cd "$BD/ayse" && bash ../board.sh claim 003 ) >/dev/null 2>&1
+  then pass "completing the dependency UNBLOCKS the dependent item"
+  else fail "#003 stayed blocked after #001 was completed — dependents never unblock"; fi
+
+  # 3. HANDOVER IS NOT OPTIONAL. An item released with no note is the failure the board exists to prevent.
+  if ( cd "$BD/ayse" && bash ../board.sh drop 003 ) >/dev/null 2>&1
+  then fail "drop accepted an EMPTY handover note"
+  else pass "drop refuses an empty handover note"; fi
+  # ...and a drop WITH a note must succeed, put the item back in circulation, and leave the note where the next
+  # person will find it. Without this the refusal above would also pass if drop were simply broken — and ayse
+  # has to end up holding nothing for the write-gate assertions below to mean anything.
+  ( cd "$BD/ayse" && bash ../board.sh drop 003 "stopped at auth/jwt.ts:88; cookie route rejected, mobile drops them" ) >/dev/null 2>&1
+  HN="$(cd "$BD/ayse" && bash ../board.sh show 003 2>/dev/null | grep -c 'auth/jwt.ts:88')"
+  OW3="$(cd "$BD/ayse" && bash ../board.sh show 003 2>/dev/null | grep -m1 '^owner: ' | cut -d' ' -f2-)"
+  { [ "$HN" -ge 1 ] && [ "$OW3" = "-" ]; } \
+    && pass "drop with a note releases the item AND stores the handover for whoever picks it up" \
+    || fail "drop with a note did not release/record correctly (owner='$OW3' note-hits=$HN)"
+  # Re-claimed so the commit-gate block below has an item ayse genuinely holds; the write-gate block releases
+  # it again when it needs the opposite state. Each assertion sets up the state it claims to test.
+  ( cd "$BD/ayse" && bash ../board.sh claim 003 ) >/dev/null 2>&1
+
+  # 4. THE COMMIT GATE, in four states. ali holds nothing now (#001 done); ayse holds #003.
+  ( cd "$BD/ayse" && git config core.hooksPath "$BD" ) >/dev/null 2>&1
+  gate_says(){ printf '%s\n' "$2" > "$BD/msg"; ( cd "$BD/ayse" && bash "$BD/commit-msg" "$BD/msg" ) >/dev/null 2>&1; }
+  gate_says x "feat: work [#003]"  && pass "gate ALLOWS a commit naming an item you hold" \
+                                   || fail "gate blocked a commit for an item the committer holds"
+  gate_says x "feat: work [#001]"  && fail "gate ALLOWED a commit against an item you do not hold" \
+                                   || pass "gate BLOCKS a commit naming an item you do not hold"
+  gate_says x "feat: unattributed" && fail "gate ALLOWED a commit naming no item at all" \
+                                   || pass "gate BLOCKS a commit naming no item"
+  gate_says x "chore: tidy [chore]" && pass "gate ALLOWS the explicit item-less escape hatch [chore]" \
+                                    || fail "gate blocked the documented [chore] escape hatch"
+
+  # 5. REGRESSION: a repo that never ran init must behave EXACTLY as before this feature existed. A gate that
+  # switches itself on in every repo would break every solo user on upgrade.
+  ( cd "$BD" && git init -q plain && cd plain && git config user.email p@x && git config user.name p ) >/dev/null 2>&1
+  printf 'feat: no board in this repo, no item id\n' > "$BD/msg"
+  if ( cd "$BD/plain" && bash "$BD/commit-msg" "$BD/msg" ) >/dev/null 2>&1
+  then pass "no board in the repo -> the claim gate does not exist (no regression for solo users)"
+  else fail "the claim gate fired in a repo with NO board — every existing project would break on upgrade"; fi
+
+  # 6. The claim must not touch the user's work. Claiming mid-feature with a dirty tree is the normal case.
+  ( cd "$BD/ali" && printf 'dirty\n' > wip.txt && git checkout -q -b feature 2>/dev/null
+    bash ../board.sh add 004 "Fourth" >/dev/null 2>&1; bash ../board.sh claim 004 >/dev/null 2>&1 )
+  ST="$(cd "$BD/ali" && git status --porcelain 2>/dev/null)"
+  BR="$(cd "$BD/ali" && git rev-parse --abbrev-ref HEAD 2>/dev/null)"
+  if [ "$ST" = "?? wip.txt" ] && [ "$BR" = feature ]; then
+    pass "claiming leaves the worktree and branch untouched (dirty file and branch survive)"
+  else fail "claiming disturbed the worktree/branch (status='$ST' branch='$BR')"; fi
+
+  # 5b-ii. THE CLOCK MUST NOT RESTART. Re-claiming an item you already hold used to rewrite `since`, so an item
+  # held all morning read as freshly started — which destroys the two things age is for: telling a teammate how
+  # long it has been held, and letting an abandoned claim go stale. Found by reading a real session where the
+  # timestamp jumped between two views of the same claim.
+  S1="$(cd "$BD/ali" && bash ../board.sh show 004 2>/dev/null | grep -m1 '^since: ')"
+  ( cd "$BD/ali" && bash ../board.sh claim 004 ) >/dev/null 2>&1
+  S2="$(cd "$BD/ali" && bash ../board.sh show 004 2>/dev/null | grep -m1 '^since: ')"
+  [ -n "$S1" ] && [ "$S1" = "$S2" ] && pass "re-claiming an item you hold preserves how long you have held it" \
+                                    || fail "re-claim restarted the clock ('$S1' -> '$S2') — age and staleness both become fiction"
+  # And the age has to be VISIBLE: "who holds it" without "for how long" is not the question a teammate asks.
+  AGEV="$(cd "$BD/ali" && bash ../board.sh status 2>/dev/null | grep -m1 '^#004 ')"
+  case "$AGEV" in
+    *[0-9]m*|*[0-9]h*|*[0-9]d*) pass "status shows how long a held item has been held" ;;
+    *) fail "status prints no claim age for a held item: $AGEV" ;;
+  esac
+
+  # 5c. CONNECTED WORK. Storing a note is not delivering it: nobody picking up #003 has a reason to go and read
+  # #001. Claiming must hand over what the dependency actually did, at the moment the work starts.
+  ( cd "$BD/ali" && bash ../board.sh add 010 "Downstream" 001 ) >/dev/null 2>&1
+  REL="$(cd "$BD/ali" && bash ../board.sh claim 010 2>&1)"
+  case "$REL" in
+    *"Connected work"*"#001"*) pass "claiming an item delivers its dependency's completion note unprompted" ;;
+    *) fail "claiming #010 did not surface #001's outcome — connected work stays invisible: $REL" ;;
+  esac
+  # ...and the reverse direction: taking an item must name who is waiting on it, so the outcome gets written
+  # down for them rather than only lived through by its author.
+  ( cd "$BD/ali" && bash ../board.sh add 011 "Upstream" ) >/dev/null 2>&1
+  ( cd "$BD/ali" && bash ../board.sh add 012 "Waiter" 011 ) >/dev/null 2>&1
+  REL2="$(cd "$BD/ali" && bash ../board.sh claim 011 2>&1)"
+  case "$REL2" in
+    *"#012"*"waits on this one"*) pass "claiming names the items waiting on it (who your outcome affects)" ;;
+    *) fail "claiming #011 did not name its dependent #012: $REL2" ;;
+  esac
+
+  # 5c-ii. STARTING WORK ASKS WHAT EVERYONE ELSE IS DOING. The dependency graph only knows the edges somebody
+  # declared, and decisions were announced only at session start — so an item claimed later in the same session
+  # could be started against a constraint the team had already settled, and against work already in flight that
+  # nobody had linked. Both are surfaced at claim time, on an item with NO declared dependency at all.
+  ( cd "$BD/ali" && bash ../board.sh add 020 "Unrelated" ) >/dev/null 2>&1
+  ( cd "$BD/ali" && bash ../board.sh claim 020 ) >/dev/null 2>&1
+  ( cd "$BD/ali" && bash ../board.sh note 020 "half-done, parked at lib/x.ts:12" ) >/dev/null 2>&1
+  ( cd "$BD/ali" && bash ../board.sh decide "Errors return problem+json" "Any endpoint returning a bare string is a bug." "-" ) >/dev/null 2>&1
+  ( cd "$BD/ayse" && bash ../board.sh sync ) >/dev/null 2>&1
+  rm -f "$BD/ayse/.git/csk-board-seen"
+  ( cd "$BD/ali" && bash ../board.sh add 021 "Also unrelated" ) >/dev/null 2>&1
+  ( cd "$BD/ayse" && bash ../board.sh sync ) >/dev/null 2>&1
+  START="$( cd "$BD/ayse" && bash ../board.sh claim 021 2>&1 )"
+  case "$START" in
+    *"#020"*"is on this now"*) pass "starting an unrelated item still says what teammates are mid-flight on" ;;
+    *) fail "claiming #021 said nothing about work already in flight: $START" ;;
+  esac
+  case "$START" in
+    *DECISION*"problem+json"*) pass "starting work surfaces decisions you have not read yet" ;;
+    *) fail "an unread decision did not reach the moment work started — it can only arrive too late: $START" ;;
+  esac
+  # Hand it back: the write-gate assertions below need this user holding nothing, and a test that leaves state
+  # behind for the next one is how a suite starts passing for the wrong reason.
+  ( cd "$BD/ayse" && bash ../board.sh drop 021 "released by the claim-time awareness assertions" ) >/dev/null 2>&1
+
+  # 5d. THE VIEW MUST NOT CONTRADICT ITSELF. `blocked` is stored at add time and never rewritten, so reading it
+  # back printed items as blocked while the same view listed them as claimable. Blockedness is derived now, and
+  # this asserts the invariant rather than the implementation: nothing listed as claimable may read as blocked.
+  SV="$(cd "$BD/ali" && bash ../board.sh status 2>/dev/null)"
+  CLAIMABLE="$(printf '%s' "$SV" | sed -n 's/^Claimable now: //p' | tr -d '#')"
+  CONTRA=0
+  for cid in $CLAIMABLE; do
+    [ "$cid" = none ] && continue
+    printf '%s' "$SV" | grep -qE "^#$cid +blocked" && CONTRA=1
+  done
+  [ "$CONTRA" = 0 ] && pass "the status view never marks a claimable item as blocked (state is derived, not stored)" \
+                    || fail "status contradicts itself: an item is listed claimable AND shown blocked"
+
+  # ...and it must not be stale either. Caught in a real session: the view showed an item as blocked while its
+  # dependency had already landed, and only the claim that followed corrected it — the reader had already been
+  # told there was nothing to pick up. "No network in the foreground" is a rule about hooks that run on every
+  # turn, not about a view somebody asked for by name; a board that lies about who has what is worse than a slow
+  # one. Asserted from the OTHER clone, without an explicit sync, which is exactly how the session hit it.
+  ( cd "$BD/ali" && bash ../board.sh add 030 "Upstream" ) >/dev/null 2>&1
+  ( cd "$BD/ali" && bash ../board.sh add 031 "Downstream" 030 ) >/dev/null 2>&1
+  ( cd "$BD/ayse" && bash ../board.sh sync ) >/dev/null 2>&1     # ayse takes a snapshot: #031 is blocked
+  ( cd "$BD/ali" && bash ../board.sh claim 030 ) >/dev/null 2>&1
+  ( cd "$BD/ali" && bash ../board.sh done 030 "shipped" ) >/dev/null 2>&1
+  FRESH="$( cd "$BD/ayse" && bash ../board.sh status 2>/dev/null | grep -E '^#031 ' )"
+  case "$FRESH" in
+    *blocked*) fail "status served a stale view: #031 still reads blocked after its dependency completed elsewhere" ;;
+    *) pass "status reflects what another clone just did, without an explicit sync" ;;
+  esac
+  # 5e. DECISIONS REACH PEOPLE. The board carried per-item memory only, so a decision that shapes the whole
+  # project reached the person who made it and nobody else: `adr` writes to docs/adr/ and installs gitignore
+  # docs/. Recording one has to (a) travel to another clone, (b) announce itself at the next session opening of
+  # someone who has not read it, and (c) go quiet once they have — an alert that repeats forever is ignored,
+  # which is the same as not sending it.
+  ( cd "$BD/ali" && bash ../board.sh decide "Refresh tokens travel in a header" "Mobile drops cookies; every client sends X-Tenant on refresh." "001" ) >/dev/null 2>&1
+  ( cd "$BD/ayse" && bash ../board.sh sync ) >/dev/null 2>&1
+  ( cd "$BD/ayse" && bash ../board.sh decisions 2>/dev/null | grep -q "Refresh tokens travel in a header" ) \
+    && pass "a decision recorded by one teammate arrives in another's clone" \
+    || fail "the decision never reached the second clone — decisions stay as local as the ADRs they replace"
+  rm -f "$BD/ayse/.git/csk-board-seen"
+  ( cd "$BD/ayse" && bash ../board.sh cache 2>/dev/null | grep -q "recorded since you last looked" ) \
+    && pass "an unread decision announces itself at session start" \
+    || fail "an unread decision is silent at session start — it arrives after the work it should have changed"
+  ( cd "$BD/ayse" && bash ../board.sh decisions ) >/dev/null 2>&1
+  ( cd "$BD/ayse" && bash ../board.sh cache 2>/dev/null | grep -q "recorded since you last looked" ) \
+    && fail "the decision keeps announcing itself after being read — a permanent alert is an ignored one" \
+    || pass "once read, the decision stops being announced"
+  # First read must not leak a shell error: the marker file does not exist yet, and an input redirect from a
+  # missing file complains BEFORE 2>/dev/null takes effect. That error landed in a session-start hook once.
+  rm -f "$BD/ali/.git/csk-board-seen"
+  ERRTXT="$( cd "$BD/ali" && bash ../board.sh cache 2>&1 >/dev/null )"
+  [ -z "$ERRTXT" ] && pass "reading the board with no seen-marker yet writes nothing to stderr" \
+                   || fail "stderr leak on first read: $ERRTXT"
+
+  # 6b. THE EARLY GATE. The claim lock settles a contested item in under a second, but it can say nothing about
+  # someone who never claims at all — and catching that at commit time means the duplicated work already exists.
+  # So the FIRST file edit is where it is caught. Asserted in the three states that distinguish a gate from a
+  # blanket block: holding nothing blocks, holding something allows, and no board at all allows.
+  WG='{"tool_name":"Edit","tool_input":{"file_path":"src/app.ts"}}'
+  wg(){ printf '%s' "$WG" | ( cd "$1" && bash "$HOOKS/guard-write.sh" ) >/dev/null 2>&1; }
+  # ali holds #004; ayse is put back to holding nothing, which is the state the block gate is about.
+  ( cd "$BD/ayse" && bash ../board.sh drop 003 "released for the write-gate assertions" ) >/dev/null 2>&1
+  ( cd "$BD/ayse" && bash ../board.sh cache ) >/dev/null 2>&1
+  ( cd "$BD/ali"  && bash ../board.sh cache ) >/dev/null 2>&1
+  wg "$BD/ayse" && fail "write gate ALLOWED a first edit while the user held no item" \
+                || pass "write gate BLOCKS the first edit while you hold no item"
+  wg "$BD/ali"  && pass "write gate allows edits once you hold an item" \
+                || fail "write gate blocked a user who does hold an item"
+  wg "$BD/plain" && pass "no board -> the write gate does not exist either" \
+                 || fail "the write gate fired in a repo with no board"
+  printf '%s' "$WG" | ( cd "$BD/ayse" && CSK_NO_BOARD=1 bash "$HOOKS/guard-write.sh" ) >/dev/null 2>&1 \
+    && pass "CSK_NO_BOARD=1 is a working escape hatch for item-less work" \
+    || fail "CSK_NO_BOARD=1 did not release the write gate"
+  # The gate it was bolted onto must still hold: a claim must never become a way to edit the gate scripts.
+  printf '%s' '{"tool_name":"Edit","tool_input":{"file_path":".claude/hooks/guard-bash.sh"}}' \
+    | ( cd "$BD/ali" && bash "$HOOKS/guard-write.sh" ) >/dev/null 2>&1 \
+    && fail "holding a board item let the model edit a gate script" \
+    || pass "the gate-script block still holds for a user who holds an item"
+
+  # 7. THE FALLBACK PATH. Servers reserve their own ref namespaces and may refuse anything outside
+  # refs/heads|refs/tags. `init` probes for that and falls back to an orphan branch — but only the clone that
+  # ran init learns the answer, so the teammate who merely clones and syncs must resolve it on their own or the
+  # board is invisible to everyone but its author. Simulated with a pre-receive hook that denies hidden refs.
+  FB="$(mktemp -d)"
+  FB_OK=1
+  (
+    set -e
+    cd "$FB"
+    git init -q --bare origin.git
+    printf '#!/bin/sh\nwhile read -r o n r; do case "$r" in refs/heads/*|refs/tags/*) ;; *) echo "deny updating a hidden ref" >&2; exit 1;; esac; done\nexit 0\n' > origin.git/hooks/pre-receive
+    chmod +x origin.git/hooks/pre-receive
+    for u in one two; do
+      git clone -q origin.git "$u" 2>/dev/null
+      ( cd "$u" && git config user.email "$u@x" && git config user.name "$u" \
+          && git commit -q --allow-empty -m seed && git push -q origin HEAD:refs/heads/main )
+    done
+    cp "$HOOKS/board.sh" .
+    ( cd one && bash ../board.sh init && bash ../board.sh add 001 "First" && bash ../board.sh claim 001 )
+  ) >/dev/null 2>&1 || FB_OK=0
+  if [ "$FB_OK" = 0 ]; then fail "board could not be created against a server that refuses custom refs"
+  else
+    RREF="$(cd "$FB/one" && git config --get csk.boardRef 2>/dev/null)"
+    [ "$RREF" = "refs/heads/csk-board" ] && pass "server refuses refs/csk/* -> init falls back to the orphan branch" \
+                                         || fail "fallback did not engage (ref recorded: '$RREF')"
+    ( cd "$FB/two" && bash ../board.sh sync ) >/dev/null 2>&1
+    TREF="$(cd "$FB/two" && git config --get csk.boardRef 2>/dev/null)"
+    [ "$TREF" = "refs/heads/csk-board" ] && pass "a teammate that never ran the probe resolves the fallback ref itself" \
+                                         || fail "teammate did not find the fallback board (ref: '$TREF') — the board would be invisible to everyone but its author"
+    if ( cd "$FB/two" && bash ../board.sh claim 001 ) >/dev/null 2>&1
+    then fail "the lock does not hold on the fallback ref: a claimed item was claimed again"
+    else pass "the lock holds on the fallback ref too (second claim refused)"; fi
+  fi
+  rm -rf "$FB"
+
+  # 7b. OPT-IN, AND REVERSIBLE. Not every project is a team project, and a team project is not a team project
+  # every day. Two separate claims are asserted here: a repo that never created a board has no gates at all
+  # (covered above), and a repo that HAS one can switch every gate off — including the commit gate. A switch
+  # that silences two gates out of three is worse than no switch, because the third one then looks like a bug.
+  SW="$(mktemp -d)"
+  SW_OK=1
+  (
+    set -e
+    cd "$SW"
+    git init -q solo && cd solo && git config user.email s@x && git config user.name s
+    cp "$HOOKS/commit-msg" "$HOOKS/board.sh" "$HOOKS/trace-blocklist.txt" .git/
+    git config core.hooksPath .git
+    git commit -q --allow-empty -m seed
+    bash "$HOOKS/board.sh" init          # no remote at all: a local board, which is a legitimate solo setup
+    bash "$HOOKS/board.sh" add 001 "Task"
+  ) >/dev/null 2>&1 || SW_OK=0
+  if [ "$SW_OK" = 0 ]; then fail "board init failed in a repo with NO remote (solo, local-only board)"
+  else
+    pass "a repo with no remote gets a local board instead of a push failure"
+    sw_commit(){ # -> 0 if the commit actually landed
+      local b a; b="$(cd "$SW/solo" && git rev-list --count HEAD)"
+      ( cd "$SW/solo" && date -u +%s%N > f.txt 2>/dev/null || date -u +%s > f.txt; git add -A; git commit -q -m "$1" ) >/dev/null 2>&1
+      a="$(cd "$SW/solo" && git rev-list --count HEAD)"; [ "$a" -gt "$b" ]; }
+    sw_write(){ printf '%s' '{"tool_name":"Edit","tool_input":{"file_path":"x.ts"}}' | ( cd "$SW/solo" && bash "$HOOKS/guard-write.sh" ) >/dev/null 2>&1; }
+    ( cd "$SW/solo" && bash "$HOOKS/board.sh" cache ) >/dev/null 2>&1
+    sw_commit "feat: unattributed" && fail "board ON: an unattributed commit landed" \
+                                   || pass "board ON: the gates are active (unattributed commit refused)"
+    ( cd "$SW/solo" && bash "$HOOKS/board.sh" off ) >/dev/null 2>&1
+    sw_commit "feat: unattributed"  && pass "/board-csk off releases the COMMIT gate" \
+                                    || fail "/board-csk off left the commit gate armed — a partial switch is a trap"
+    sw_write && pass "/board-csk off releases the EDIT gate" || fail "/board-csk off left the edit gate armed"
+    [ -f "$SW/solo/.git/csk-board-cache" ] && fail "/board-csk off left the session-start cache behind" \
+                                           || pass "/board-csk off leaves nothing for the session hook to announce"
+    ( cd "$SW/solo" && bash "$HOOKS/board.sh" on ) >/dev/null 2>&1
+    sw_commit "feat: unattributed" && fail "/board-csk on did not re-arm the commit gate" \
+                                   || pass "/board-csk on puts every gate back"
+    # The env switch has to reach all three too — it is the "just for this session" form of the same decision.
+    B0="$(cd "$SW/solo" && git rev-list --count HEAD)"
+    ( cd "$SW/solo" && date -u +%s > g.txt; git add -A; CSK_NO_BOARD=1 git commit -q -m "feat: env switch" ) >/dev/null 2>&1
+    [ "$(cd "$SW/solo" && git rev-list --count HEAD)" -gt "$B0" ] \
+      && pass "CSK_NO_BOARD=1 releases the commit gate too (session-scoped opt-out)" \
+      || fail "CSK_NO_BOARD=1 released the edit gate but not the commit gate"
+  fi
+  rm -rf "$SW"
+
+  # 8. SETUP. One person runs init; everybody else must configure NOTHING. And a team whose board belongs in a
+  # separate repository (shared across repos, or members without push rights to the code) must not have to know
+  # that the setting is a git config key.
+  SR="$(mktemp -d)"
+  SR_OK=1
+  (
+    set -e
+    cd "$SR"
+    git init -q --bare boardonly.git
+    git init -q app && cd app && git config user.email s@x && git config user.name s && git commit -q --allow-empty -m seed
+    bash "$HOOKS/board.sh" init --remote ../boardonly.git
+    bash "$HOOKS/board.sh" add 001 "Task"
+    bash "$HOOKS/board.sh" claim 001
+  ) >/dev/null 2>&1 || SR_OK=0
+  if [ "$SR_OK" = 0 ]; then fail "init --remote could not put the board in a separate repository"
+  else
+    ( cd "$SR/boardonly.git" && git for-each-ref --format='%(refname)' ) 2>/dev/null | grep -q csk \
+      && pass "init --remote puts the board in a separate repository (no git config knowledge needed)" \
+      || fail "init --remote recorded the remote but the board did not land in it"
+    ( cd "$SR/app" && git remote get-url origin ) >/dev/null 2>&1 \
+      && fail "init --remote hijacked origin" \
+      || pass "init --remote uses its own remote and leaves the code repo's remotes alone"
+  fi
+  rm -rf "$SR"
+fi
+rm -rf "$BD"
+else
+  fail "hooks/board.sh missing or not executable"
+fi
+
+
 echo "== 6) Context-usage threshold logic (fixture) + hook integrity =="
 FX="$(mktemp)"
 printf '%s\n' '{"type":"assistant","isSidechain":false,"message":{"usage":{"input_tokens":1000,"cache_read_input_tokens":800000,"cache_creation_input_tokens":0}}}' > "$FX"
@@ -840,7 +1187,12 @@ echo "== 6f) always-on token budget =="
 # for that cost, and a gate rather than a reminder — a verbose new description fails the suite instead of
 # quietly taxing every future session. Budgets sit just above the current sizes: raising one is allowed, but
 # only as a deliberate edit here.
-BUDGET_DISC=11600    # DISCIPLINE.md (the discipline half of CLAUDE.md); currently 10770 (1.10.0: +21 B naming
+BUDGET_DISC=11680    # DISCIPLINE.md (the discipline half of CLAUDE.md); currently 10770 (2.3.0: +62 B for the
+                     # `teamboard` trigger row. A multi-person repo has no other always-on place to learn that a
+                     # teammate's in-progress item exists: docs/ is gitignored, so without this row the model
+                     # plans work somebody else already started. Bought as ONE trigger-map row and nothing else —
+                     # the rule itself ("claim before you produce", the refusal semantics, redaction) lives in the
+                     # skill body, which is loaded only when the row fires. (1.10.0: +21 B naming
                      # (1.10.1: +797 B for the Step-0 domain->owner routing map, the `@agent-` guarantee (measured
                      # 0/3 delegations when an agent is only described vs 3/3 when the command body @-mentions it),
                      # the burden-of-proof clause on
@@ -873,7 +1225,12 @@ BUDGET_AGENTS=5800   # sum of agent frontmatter; currently 5765 (1.11.0: +218 B 
                      # +performance-expert-csk (~426B) — security, privacy and tests each had an independent
                      # reviewer and performance was the one quality axis where the author audited their own
                      # work. Bought at ~110 tokens per session; the alternative was leaving that gap open.)
-BUDGET_SKILLS=8250  # sum of skill frontmatter; currently 8184. RATCHETED DOWN in 1.11.0 from 12,350: the
+BUDGET_SKILLS=8380  # sum of skill frontmatter; currently 8184. (2.3.0: +187 B for `teamboard`. It is the only
+                     # skill whose absence from the LISTING is silently unsafe rather than merely unhelpful: a
+                     # skill that fails to match usually means the model does the work itself, but this one
+                     # failing to match means two people do the SAME work, on separate machines, discovering it
+                     # at merge time. Trimmed to one sentence and the words people actually type — claim, item,
+                     # team board.) RATCHETED DOWN in 1.11.0 from 12,350: the
                      # `Trigger phrases:` lines moved out of every skill's `description` into the body. This is not
                      # cosmetic. Claude Code loads a LISTING of skill names+descriptions every session and the
                      # budget is 1% of the context window; over it, descriptions are truncated or dropped outright,
@@ -1096,6 +1453,15 @@ gj auto 'chmod +x build.sh'              | bash "$HOOKS/guard-bash.sh" >/dev/nul
 gj auto 'git config core.hooksPath /tmp/x' | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "core.hooksPath redirect BLOCKED (§4.5)" || fail "core.hooksPath redirect PASSED (§4.5 hole)"
 gj auto 'rm .claude/hooks/pre-commit'      | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "rm of a .claude gate file BLOCKED (§4.5)" || fail "rm of a gate file PASSED (§4.5 hole)"
 gj auto 'cat .claude/hooks/guard-bash.sh'  | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && pass "reading a gate file NOT over-blocked" || fail "reading a gate file wrongly blocked"
+# The tamper patterns are scoped to ONE command segment. They used to span the whole line, so a writer verb in
+# one command and a gate path in ANOTHER was refused as tampering — found in a real session, where the board
+# put `.claude/hooks/board.sh` into everyday commands and ordinary chaining started coming back blocked.
+# Both halves are asserted, because the fix could equally have opened a hole.
+gj auto 'echo --- > /tmp/x; bash .claude/hooks/board.sh status' | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && pass "redirect to /tmp + a later hook-path ARG not confused for tampering" || fail "harmless chaining blocked: verb and gate path in different commands"
+gj auto 'cp a b && bash .claude/hooks/board.sh status'          | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && pass "a writer verb in one command does not poison a hook path in the next" || fail "cp in one command + hook path in the next wrongly blocked"
+gj auto 'bash .claude/hooks/board.sh status > /tmp/out'         | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && pass "running a hook script and redirecting elsewhere NOT over-blocked" || fail "redirecting a hook script's OUTPUT wrongly blocked"
+gj auto 'echo x > .claude/hooks/guard-bash.sh'                  | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "redirect ONTO a gate file still BLOCKED (§4.5)" || fail "redirect over a gate file PASSED — the scoping fix opened a hole"
+gj auto 'ls && rm .claude/hooks/board.sh'                       | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "a tamper verb in a LATER segment is still BLOCKED (§4.5)" || fail "rm of a gate file in a second command PASSED — scoping went too far"
 # §4.5 gate-tampering (Write/Edit side) — the file tools can rewrite a gate script too; guard-write.sh covers that
 [ -x "$HOOKS/guard-write.sh" ] && pass "guard-write.sh +x" || fail "guard-write.sh missing/not executable"
 wj(){ printf '{"tool_name":"%s","tool_input":{"file_path":"%s"}}' "$1" "$2"; }

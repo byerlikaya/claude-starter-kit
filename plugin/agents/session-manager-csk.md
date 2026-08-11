@@ -49,6 +49,12 @@ Thresholds (over the measured %):
 Note: the measurement is of the main session; since a subagent runs in its own window, the value is read in the main session
 and session-manager-csk applies the thresholds.
 
+## Open board claim at a handover
+A handover recommendation while a `teamboard` item is claimed is incomplete: `docs/SESSION_STATE.md` is
+gitignored, so the team still sees the item as actively held by someone who has stopped. Name the open claim in
+the recommendation — the note belongs on the item too (`/board-csk`), and an item being abandoned rather than
+paused should be released with its handover note.
+
 ## Constraints
 - Writes no code, changes no files (read-only).
 - The line is SHORT and doesn't repeat the report.

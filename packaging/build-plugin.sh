@@ -22,8 +22,12 @@ cp -R "$SRC/commands" "$OUT/commands"
 # start.sh/adopt.sh install writes. Shipped here it could only ever exit silently — an idle component.
 # session-update-check.sh IS shipped: it reads the plugin's own .claude-plugin/plugin.json and compares it against
 # the marketplace repo's copy, so a plugin user hears about a release on the channel that delivers it.
+# board.sh is not itself a hook: it is the engine board-sync.sh and commit-msg both call by path. It ships in the
+# same directory because both of those callers resolve it as "$HERE/board.sh", and a plugin edition without it
+# would carry the board's session-start awareness and none of its claim gate — the exact one-channel-is-weaker
+# asymmetry the git hooks below were added to close.
 for h in guard-bash.sh guard-write.sh context-usage.sh session-guard.sh session-rehydrate.sh session-stats.sh \
-         guard-commit-scan.sh route-hint.sh session-update-check.sh; do
+         guard-commit-scan.sh route-hint.sh session-update-check.sh board.sh board-sync.sh; do
   cp "$SRC/hooks/$h" "$OUT/hooks/$h"
   chmod +x "$OUT/hooks/$h"
 done
@@ -79,6 +83,12 @@ cat > "$OUT/hooks/hooks.json" <<'HOOKS'
         "matcher": "compact|clear|resume",
         "hooks": [
           { "type": "command", "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/session-rehydrate.sh\"", "timeout": 60 }
+        ]
+      },
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          { "type": "command", "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/board-sync.sh\"", "timeout": 60 }
         ]
       },
       {

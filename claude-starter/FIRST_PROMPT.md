@@ -29,5 +29,7 @@ Working rules:
 - At the END of every reply, add session-manager-csk's session-health line (based on the /context percentage).
 
 When done: let's plan this project's first sprint together WITH EXPLICIT OPTIONS (planner-csk).
+If more than one person works this repo, ask me whether that sprint should go on the shared board (`/board-csk`):
+docs/ is gitignored, so a plan that stays local is invisible to everyone else and two of us start the same item.
 End every reply with a single high-value next step.
 ```

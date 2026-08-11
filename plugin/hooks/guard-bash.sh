@@ -133,9 +133,18 @@ echo "$CMD" | grep -qiE 'git[[:space:]]+([^;&|]*[[:space:]])?(-c|--config-env)[[
 # the shell is Turing-complete, so this is defence-in-depth — guard-write.sh covers the Write/Edit tools (the
 # model's natural path to a file), and install-time read-only hook files would be the airtight layer.
 GATE='\.(claude/(hooks|settings\.json)|git/hooks)'
-echo "$CMD" | grep -qiE "(rm|mv|cp|truncate|tee|install|ln|perl|python[0-9.]*|ruby|node|ex|ed)\b[^|]*$GATE" && block "write/tamper of a gate file (hook/settings/.git-hooks)" "4.5"
-echo "$CMD" | grep -qiE "(sed|perl|awk|ruby)[[:space:]]+(-[^[:space:]]+[[:space:]]+)*-i[^|]*$GATE"          && block "in-place edit of a gate file" "4.5"
-echo "$CMD" | grep -qiE ">[[:space:]]*[^|]*$GATE"                                                            && block "redirect over a gate file" "4.5"
+# Scoped to ONE command segment. These used to span `[^|]*`, which crosses `;` and `&&`, so the writer verb and
+# the gate path only had to appear somewhere in the same line — `cp a b && bash .claude/hooks/board.sh status`
+# was refused as tampering. That was harmless while nobody typed a hook path; the team board made
+# `.claude/hooks/board.sh` an everyday argument, and a gate that fires on ordinary work is the one people learn
+# to route around. A verb in one command and a path in another was never evidence of anything: the two forms
+# that matter — `rm .claude/hooks/x` and `x > .claude/hooks/y` — both put them in the SAME segment, and both
+# are still blocked (asserted in smoke-test, in both directions).
+echo "$CMD" | grep -qiE "(rm|mv|cp|truncate|tee|install|ln|perl|python[0-9.]*|ruby|node|ex|ed)\b[^;&|]*$GATE" && block "write/tamper of a gate file (hook/settings/.git-hooks)" "4.5"
+echo "$CMD" | grep -qiE "(sed|perl|awk|ruby)[[:space:]]+(-[^[:space:]]+[[:space:]]+)*-i[^;&|]*$GATE"          && block "in-place edit of a gate file" "4.5"
+# The redirect TARGET must be the gate path, not merely something later on the line: a target is one token, so
+# it cannot contain whitespace or a command separator.
+echo "$CMD" | grep -qiE ">[[:space:]]*['\"]?[^[:space:];&|<>]*$GATE"                                          && block "redirect over a gate file" "4.5"
 { has "=[^;&|]*$GATE" && has '>>?[[:space:]]*\$'; }                                                          && block "indirected write to a gate path (variable + redirect)" "4.5"
 
 # §4.5-adjacent: a .env file holds secrets. The settings.json Read-tool deny does NOT cover the Bash tool, so a

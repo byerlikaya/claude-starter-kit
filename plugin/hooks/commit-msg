@@ -1,11 +1,22 @@
 #!/usr/bin/env bash
-# §4.1 trace scanner (commit-msg): catches AI-authorship traces / vendor names / co-author in the commit message.
+# commit-msg gate, two independent checks:
+#  (1) §4.1 trace scanner — AI-authorship traces / vendor names / co-author in the commit message.
+#  (2) team board claim gate — a commit that names an item must be backed by a live claim held by YOU.
+# Skipping either requires an explicit request per §4.5 (git commit --no-verify).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 BL="$HERE/trace-blocklist.txt"
 MSG_FILE="${1:-}"
-[ -f "$BL" ] || exit 0
 [ -n "$MSG_FILE" ] && [ -f "$MSG_FILE" ] || exit 0
+
+# (2) Board claim gate. It is a no-op in every repo that never ran `/board-csk init` — board.sh returns 0 when
+# the board ref does not exist, so solo projects and the kit's own repo behave exactly as before. It reads the
+# LOCAL ref only: committing must never require the network.
+if [ -f "$HERE/board.sh" ]; then
+  bash "$HERE/board.sh" gate "$MSG_FILE" || exit 1
+fi
+
+[ -f "$BL" ] || exit 0
 
 # Repo-root exception list (optional): a FULL-line blocklist pattern is SKIPPED (not part of the payload).
 AL=""
