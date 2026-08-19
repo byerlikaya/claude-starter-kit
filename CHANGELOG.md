@@ -3,6 +3,68 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [2.3.2] - 2026-08-19
+
+### Fixed
+- **The adversarial pass claimed an independence it could not deliver.** `verify.md` required N independent
+  verifiers, each "blind to the other verifiers' reasoning", and never said *where* they run. Three passes inside
+  one context window have already read the first one's reasoning: the blindness was a wish rather than a
+  property, and the unanimity it produced was one argument counted three times. Found by comparing the kit
+  against a deliberation framework — the comparison turned up a defect in our own file rather than an idea to
+  borrow.
+
+  Each verifier is now its own subagent, handed the claim and the `file:line` but not the finder's argument. When
+  isolation did not happen the verdict says so (`VERIFIERS: 1 (single pass, not isolated)`): one honest pass is
+  useful, while three entangled ones labelled independent are worse than one, because they launder confidence.
+  Isolation is not free — each subagent re-pays for its own context — so it is spent by stake: blockers at N=3
+  (5 for a release audit), medium at N=1, nits get an inline pass and are labelled as such.
+
+  Two more from the same reading. The N verifiers all ran the same four steps, so they failed in the same place
+  and called it agreement; each now takes a different attack — reachability, protection, reproduction, plus
+  exclusion rules and blast radius at N=5 — and the verdict block records which lens produced it. And unanimity
+  **for the same reason** now triggers a counterfactual pass before it is accepted, with `AGREEMENT` in the block
+  so a reader can discount a verdict without redoing the work.
+
+### Added
+- **Refusals are recorded, because they were the lock's only evidence and it left none.** A refused claim printed
+  to stderr and stopped there — nothing on the board, nothing in history. The question the team board exists to
+  answer, *how often did this actually stop two people starting the same work*, was unanswerable and would have
+  stayed so after a trial, because the data would never have been created. An instrument cannot be fitted after
+  the experiment; everything else a trial needs (decisions recorded, how long items were held, the `[chore]`
+  ratio) is computable from durable history afterwards, and this alone is not.
+
+  Each refusal appends `timestamp | item | reason | who tried | who held it` to the board — on the board rather
+  than in a local counter, since a number only its author can see says nothing about a team. Refusals are rare by
+  construction, so a push each costs little and rides the same fast-forward retry as every other write. Logging
+  failure is swallowed: a refusal that cannot be recorded is still a refusal. Nothing reads the log yet,
+  deliberately — a reader can be written from durable history after a trial, and building a dial for a machine
+  nobody has run is the wrong order.
+
+- **Four audit agents carry a calibration rule** in their own contract, which is their system prompt and so
+  present every time they run: say which precondition is unproven rather than rounding severity up; write
+  "unmeasured", never "slow", and name the measurement that would settle it; rank privacy findings by what a data
+  subject actually loses and cite the article relied on; for any "fixed"/"passes" claim name the command whose
+  exit code was checked, or downgrade the claim.
+
+  These began as blind-spot *diagnoses*, borrowed in shape from that same framework. Written out, they made
+  confident claims about how these agents behave that nobody here had observed — the assert-without-evidence this
+  repo refuses everywhere else. Worse than inconsistent: a diagnosis points a direction, and for three of the four
+  it pushed toward the more expensive error. An under-flagging security auditor misses a vulnerability, a
+  downgrading review lets a real blocker through, a quiet privacy audit has legal consequences. What survives is
+  the half that never depended on direction — instructions rather than adjectives. The diagnostic version remains
+  worth having and has to be earned: a fixture with planted defects, false positives and misses counted, and then
+  the claim has both a number and a direction.
+
+- `confidence-check` gains the smallest of these: fix the deciding rule, and the kill criterion, before the
+  options exist, since a criterion chosen afterwards is shaped by them. Its own text says plainly that this one is
+  discipline and not a gate.
+
+### Changed
+- The reference gate learned a form it had never met: a `SKILL.md` may point at **another** skill's `references/`
+  file, so the verifier contract lives in one place instead of a copy that drifts. Widened, not weakened —
+  asserted in three states: a bogus skill prefix fails, a valid skill with a missing file fails, the correct
+  pointer passes.
+
 ## [2.3.1] - 2026-08-11
 
 ### Fixed
