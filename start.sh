@@ -327,7 +327,9 @@ else
   echo "  ./CLAUDE.md existed — prepended the discipline @import; your content is untouched."
 fi
 touch .gitignore
-for e in 'docs/' '.claude/' 'CLAUDE.md'; do grep -qxF "$e" .gitignore || echo "$e" >> .gitignore; done
+# .private-terms.txt lists the strings that must never be published (internal project names, client
+# names, host names) — publishing that list would defeat its purpose, so it is ignored from the start.
+for e in 'docs/' '.claude/' 'CLAUDE.md' '.private-terms.txt'; do grep -qxF "$e" .gitignore || echo "$e" >> .gitignore; done
 if [ -d .git ]; then
   git config core.hooksPath .claude/hooks
   echo "  trace scan: core.hooksPath -> .claude/hooks (§4.1/§4.2 commit gate active)"

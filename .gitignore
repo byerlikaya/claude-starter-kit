@@ -8,3 +8,5 @@
 
 # Release artefaktlari (make-release.sh ciktisi) — build ciktisi, repoya gitmez.
 /dist/
+.private-terms.txt
+.private-allowlist.txt

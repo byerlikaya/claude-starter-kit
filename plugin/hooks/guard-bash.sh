@@ -33,7 +33,63 @@
 set -uo pipefail
 INPUT="$(cat)"
 
-# Extract the command + the permission mode (jq > python3 > raw text fallback).
+# Extract the command + the permission mode: jq > python3 > pure-bash JSON slice.
+#
+# THE THIRD TIER IS NOT A DEGRADED MODE, it is the Windows default. Git Bash ships neither jq nor python3, so
+# on a stock Windows install this is THE path every gate decision takes. It used to read `CMD="$INPUT"` — the
+# whole hook payload handed to the rules as though it were the command — and that is not a weaker gate, it is
+# a WRONG one, in both directions:
+#   * False positive, measured: session_id `...-f872-...` (any session id whose second group starts `f8`) contains `-f8`, the §4.5 force-push rule matches
+#     `-f([^a-z]|$)`, and so EVERY `git push` was hard-blocked as "push --force" no matter what was typed.
+#     A gate that blocks the innocent teaches the user to reach for --no-verify, which disarms all of §4.
+#   * Broken approval, measured: when it did not misfire, the §4.4 prompt rendered the raw JSON blob as "the
+#     command Claude wants to run". §4.4's entire purpose is to show the human what they are approving; an
+#     unreadable prompt is consent theatre.
+# CI never caught it because GitHub's windows-latest image HAS jq preinstalled — the verification ran on a path
+# no Windows user is on. smoke-test §7b pins the fallback branch itself for exactly that reason.
+#
+# The slice is pure parameter expansion: zero forks, so it is CHEAPER than the sed it replaces (Git Bash charges
+# 20-50ms per process, and this hook runs on every Bash call). `${INPUT#*"command"}` is shortest-match, so it
+# takes the FIRST occurrence — greedy matching would let a command containing the literal text `"command":"`
+# relocate the parse and walk a payload straight past the rules.
+_json_slice(){  # $1 = whole payload, $2 = key -> the raw (still JSON-escaped) string value, "" if absent
+  local rest="${1#*\"$2\"}" seg tail out bs
+  [ "$rest" != "$1" ] || return 0          # key absent: emit nothing
+  rest="${rest#*\"}"                       # skip `: "` up to the value's opening quote
+  out=""; tail="$rest"
+  # Walk to the closing quote that is NOT escaped. A `"` preceded by an odd number of backslashes is content.
+  while :; do
+    seg="${tail%%\"*}"
+    [ "$seg" != "$tail" ] || { out="$out$seg"; break; }   # no closing quote at all: take the rest
+    out="$out$seg"
+    bs="${seg##*[!\\]}"                    # trailing backslash run ("" when the last char is not a backslash)
+    case "$seg" in *[!\\]*) ;; *) bs="$seg" ;; esac       # all-backslash segment: the run is the whole segment
+    if [ $(( ${#bs} % 2 )) -eq 1 ]; then out="$out\""; tail="${tail#"$seg"\"}"; else break; fi
+  done
+  printf '%s' "$out"
+}
+_json_unescape(){  # single left-to-right pass; a two-pass sed would corrupt `\\"` (escaped backslash + quote)
+  local s="$1" out="" c
+  case "$s" in *\\*) ;; *) printf '%s' "$s"; return 0 ;; esac   # no escapes: the common case pays nothing
+  while [ -n "$s" ]; do
+    c="${s%"${s#?}"}"; s="${s#?}"
+    if [ "$c" = "\\" ] && [ -n "$s" ]; then
+      c="${s%"${s#?}"}"; s="${s#?}"
+      case "$c" in
+        n) out="$out
+" ;;
+        t) out="$out	" ;;
+        r) ;;
+        b|f) out="$out " ;;
+        u) s="${s#????}"; out="$out?" ;;
+        *) out="$out$c" ;;
+      esac
+    else
+      out="$out$c"
+    fi
+  done
+  printf '%s' "$out"
+}
 if command -v jq >/dev/null 2>&1; then
   CMD="$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)"
   PERM_MODE="$(printf '%s' "$INPUT" | jq -r '.permission_mode // empty' 2>/dev/null)"
@@ -41,8 +97,8 @@ elif command -v python3 >/dev/null 2>&1; then
   CMD="$(printf '%s' "$INPUT" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("tool_input",{}).get("command",""))' 2>/dev/null)"
   PERM_MODE="$(printf '%s' "$INPUT" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("permission_mode",""))' 2>/dev/null)"
 else
-  CMD="$INPUT"
-  PERM_MODE="$(printf '%s' "$INPUT" | sed -n 's/.*"permission_mode"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+  CMD="$(_json_unescape "$(_json_slice "$INPUT" command)")"
+  PERM_MODE="$(_json_slice "$INPUT" permission_mode)"
 fi
 PERM_MODE="${PERM_MODE:-}"
 [ -z "$CMD" ] && exit 0

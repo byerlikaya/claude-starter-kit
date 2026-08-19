@@ -2,6 +2,7 @@
 # Pre-commit gate on staged ADDED lines:
 #  (1) §4.1/§4.2 trace scanner — AI-authorship traces / vendor names (trace-blocklist.txt)
 #  (2) secret scanner        — API keys / tokens / private keys       (secret-blocklist.txt)
+#  (3) private-path scanner  — this machine's $HOME + .private-terms.txt (§4.3)
 # Skipping requires an explicit request per §4.5 (git commit --no-verify).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -123,10 +124,60 @@ if [ -f "$SL" ] && [ -s "$SECRET_F" ]; then
   done < "$SL"
 fi
 
+# (3) private-path scan — a path that only exists on THIS machine has no business in a shared artifact.
+#
+# Why this is not a blocklist regex: "is this path private?" cannot be answered by a pattern. `/Users/me` is a
+# placeholder every README wants, `/Users/ada` is a real person's home, and no ERE separates them (and ERE has
+# no negative lookahead to spell "not a placeholder"). So the terms are derived from the machine doing the
+# commit — where the answer is knowable exactly — plus whatever the repo owner adds by hand.
+#
+# It exists because this failure is not hypothetical: a work project's absolute path, pasted from a terminal
+# into a CHANGELOG entry, shipped in eight consecutive releases before anyone noticed. The paste is the vector,
+# so the gate has to sit where pasted text becomes a commit.
+#
+#   automatic  : $HOME, in the three spellings the same directory gets written as on Windows
+#                (/c/Users/x · C:/Users/x · C:\Users\x) — case-insensitively, since that filesystem is.
+#   by hand    : .private-terms.txt at the repo root, one literal term per line ('#' comments). Put internal
+#                project names, client names, and host names there. GITIGNORE IT — it is a list of the very
+#                strings you do not want published.
+#   escape     : .private-allowlist.txt, a term per full line, for the rare case a term is legitimately public.
+PRIV_F="$(mktemp)"; PTERM_F="$(mktemp)"
+trap 'rm -f "$TRACE_F" "$SECRET_F" "$PRIV_F" "$PTERM_F"' EXIT INT TERM
+PTF="";  [ -n "$GITROOT" ] && [ -f "$GITROOT/.private-terms.txt" ]     && PTF="$GITROOT/.private-terms.txt"
+PAL="";  [ -n "$GITROOT" ] && [ -f "$GITROOT/.private-allowlist.txt" ] && PAL="$GITROOT/.private-allowlist.txt"
+{
+  # A home path shorter than this cannot be distinguishing (`/root`, `/`), and matching it would flag everything.
+  if [ -n "${HOME:-}" ] && [ "${#HOME}" -ge 8 ]; then
+    printf '%s\n' "$HOME"
+    # Git Bash reports /c/Users/x for what Windows itself calls C:\Users\x — both spellings reach a file.
+    case "$HOME" in
+      /[a-zA-Z]/?*)
+        d="$(printf '%s' "${HOME:1:1}" | tr 'a-z' 'A-Z')"; r="${HOME:3}"
+        printf '%s\n' "$d:/$r" "$d:\\${r//\//\\}" ;;
+    esac
+  fi
+  [ -n "$PTF" ] && sed -e 's/[[:space:]]*$//' -e '/^#/d' -e '/^$/d' "$PTF"
+} > "$PTERM_F" 2>/dev/null || true
+if [ -s "$PTERM_F" ] && [ -s "$SECRET_F" ]; then
+  while IFS= read -r term || [ -n "$term" ]; do
+    term="${term%$'\r'}"
+    [ -n "$term" ] || continue
+    if [ -n "$PAL" ] && grep -qxF -- "$term" "$PAL"; then continue; fi
+    if grep -qiF -- "$term" "$SECRET_F"; then
+      # The term is echoed back deliberately: unlike a secret, the author has to see WHICH private string to
+      # replace, and it is already sitting in their own working tree.
+      echo "PRIVATE-PATH SCANNER: a staged line contains a machine-private string -> '$term' (§4.3)"
+      HIT=1
+    fi
+  done < "$PTERM_F"
+fi
+rm -f "$PRIV_F"
+
 if [ "$HIT" -ne 0 ]; then
   echo "-----------------------------------------------------------"
   echo "Commit stopped. Remove the AI-authorship trace / vendor name / secret / bloated file from the staged changes."
   echo "False positive (trace/secret)? add the EXACT pattern line to .trace-allowlist.txt or .secret-allowlist.txt at the repo root."
+  echo "Private path flagged but genuinely public? add that exact term to .private-allowlist.txt at the repo root."
   echo "Large file is intentional? raise CSK_MAX_FILE_BYTES, use Git LFS, or gitignore the build/vendored path."
   echo "Deliberate exception: 'git commit --no-verify' — only on an EXPLICIT request (§4.5)."
   exit 1

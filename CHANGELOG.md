@@ -341,7 +341,7 @@ versioning follows [SemVer](https://semver.org/).
 
 ### Fixed
 - **No hook launched at all on Windows, and every gate was silently absent.** Reported as
-  `bash: C:RuntimeHostExecLayerskqr_backend/.claude/hooks/session-rehydrate.sh: No such file or directory` —
+  `bash: C:Reposapp/.claude/hooks/session-rehydrate.sh: No such file or directory` —
   note the separators are **deleted**, not converted. The installed `settings.json` was correct, and no local
   reproduction could produce that string, which is what finally located the cause: hooks were wired in **shell
   form** with the project path interpolated into the command, and Claude Code substitutes the placeholder into
@@ -1538,7 +1538,7 @@ from a single observation: **a gate that matches one spelling of a command has p
 ### Fixed
 - **Windows launch made robust (Git Bash + WSL):** the `npx` runner now (a) prefers **Git Bash** if installed —
   it accepts `C:/…` paths natively and avoids WSL's `/mnt/c` and 8.3-name pitfalls; (b) expands 8.3 short paths
-  (`…\BB358~1.YER\…`) before staging; and (c) under WSL translates the Windows path to `/mnt/c/…` inside bash,
+  (`…\LONGNA~1.DEV\…`) before staging; and (c) under WSL translates the Windows path to `/mnt/c/…` inside bash,
   dispatched by shell flavour. If the staged script still can't be read it now fails with an actionable message
   instead of a cryptic "No such file or directory". macOS/Linux run unchanged (no path rewriting).
 - Shell scripts pinned to LF via `.gitattributes` so a Windows checkout can't flip them to CRLF.

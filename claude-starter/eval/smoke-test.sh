@@ -597,6 +597,32 @@ else
 fi
 
 
+echo "== 5e) executable bit on every shipped script =="
+# A hook that loses +x does not fail loudly: Claude Code invokes it through `bash <path>`, so it keeps working
+# in the installed tree while the repo carries a broken mode, and start.sh chmods on install which hides it
+# again. The only place it is visible is the git index — so that is where it is checked. This gate exists
+# because the very commit that added it dropped 755 to 644 on this file, twice in one session, with nothing
+# noticing: rewriting a file in place creates a NEW file, and a new file does not inherit the old one's mode.
+csk_exec_check(){    # $1 = human label, $2.. = paths that must be executable on disk
+  local lbl="$1"; shift; local p bad=""
+  for p in "$@"; do [ -e "$p" ] || continue; [ -x "$p" ] || bad="$bad $(basename "$p")"; done
+  [ -z "$bad" ] && pass "on disk, every $lbl is executable" || fail "not executable ($lbl):$bad"
+}
+csk_exec_check "hook" "$HOOKS"/*.sh "$HOOKS/pre-commit" "$HOOKS/commit-msg"
+csk_exec_check "eval script" "$HERE"/*.sh
+# The index is the half that actually regresses, and it only exists where these files are tracked — in an
+# installed project .claude/ is usually gitignored, so a miss there is silence, not a failure.
+if command -v git >/dev/null 2>&1 && git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  IDX="$(git -C "$ROOT" ls-files -s -- "$HOOKS" "$HERE" 2>/dev/null \
+         | awk '$1=="100644" && ($4 ~ /\.sh$/ || $4 ~ /\/(pre-commit|commit-msg)$/) {print $4}')"
+  if [ -z "$(git -C "$ROOT" ls-files -- "$HOOKS" "$HERE" 2>/dev/null)" ]; then
+    note "index mode check skipped (these files are not tracked in this layout)"
+  elif [ -z "$IDX" ]; then
+    pass "in the git index, every shipped script is mode 100755"
+  else
+    fail "tracked with mode 100644 (the +x bit was lost in a commit): $(printf '%s ' $IDX)"
+  fi
+fi
 echo "== 6) Context-usage threshold logic (fixture) + hook integrity =="
 FX="$(mktemp)"
 printf '%s\n' '{"type":"assistant","isSidechain":false,"message":{"usage":{"input_tokens":1000,"cache_read_input_tokens":800000,"cache_creation_input_tokens":0}}}' > "$FX"
@@ -861,6 +887,44 @@ printf -- '---\nname: mine\n---\nProject rules.\n' > "$WPD/.claude/skills/mine/S
 o="$(wjson SessionStart | CLAUDE_PROJECT_DIR= bash "$HOOKS/skill-trust.sh" 2>/dev/null)"
 case "$o" in *skills/mine*) pass "skill-trust decodes a JSON-escaped cwd (the notice still notices)" ;; *) fail "skill-trust could not resolve a Windows-shaped cwd — the gate is inert there · payload was: $(wjson SessionStart)" ;; esac
 rm -rf "$WPD"
+
+echo "== 6i3) transcript directory encoding (the BY-HAND call, no hook payload) =="
+# With a hook payload on stdin the transcript path is handed over; called by hand there is none, so the hook has
+# to reproduce how Claude Code encodes a cwd into $HOME/.claude/projects/<name>. Getting that wrong is not
+# cosmetic: `context-usage.sh --verbose` and `session-stats.sh` then find nothing, the 🔋 line disappears, and
+# the session reports "could not measure" — which is exactly what one Windows machine reported three times.
+# Ground truth, observed on a Windows install: a cwd of the shape `C:\Repos\team\report_api` is stored as
+# `C--Repos-team-report-api`, i.e. : \ / . and _ all fold to '-'.
+# The expression is READ OUT OF THE HOOK, never restated here. A copy in the test asserts what the test author
+# believed, not what ships: the hook could quietly lose the underscore again and every case below would still
+# pass. This is the same failure the no-jq section carried for months, so it does not get repeated.
+CSK_ENC_SED="$(grep -o "s#\[[^]]*\]#-#g" "$HOOKS/context-usage.sh" | head -1)"
+[ -n "$CSK_ENC_SED" ] && pass "the cwd encoder expression was found in context-usage.sh" \
+                      || fail "no cwd-encoder expression in context-usage.sh (the resolver was rewritten or removed)"
+enc_csk(){ printf '%s' "$1" | sed "${CSK_ENC_SED:-s#x#x#}"; }
+[ "$(enc_csk '/Users/x/Projects/claude-starter-kit')" = '-Users-x-Projects-claude-starter-kit' ] \
+  && pass "encode: POSIX path" || fail "encode: POSIX path -> $(enc_csk '/Users/x/Projects/claude-starter-kit')"
+[ "$(enc_csk 'C:\Repos\team\report_api')" = 'C--Repos-team-report-api' ] \
+  && pass "encode: Windows native path (drive letter + backslashes)" \
+  || fail "encode: Windows native -> $(enc_csk 'C:\Repos\team\report_api')"
+[ "$(enc_csk '/Users/x/my_app')" = '-Users-x-my-app' ] \
+  && pass "encode: underscore folds to '-' (misses every such project otherwise)" \
+  || fail "encode: underscore NOT folded -> $(enc_csk '/Users/x/my_app')"
+# The encoder is written out twice, once per hook, because a shared file would have to be added to
+# build-plugin.sh's explicit copy list and a miss there breaks the plugin channel silently. Two copies are only
+# safe while they cannot drift, so that is enforced here rather than trusted.
+cu_blk="$(sed -n '/---- CSK-TRANSCRIPT-DIR/,/---- \/CSK-TRANSCRIPT-DIR/p' "$HOOKS/context-usage.sh")"
+ss_blk="$(sed -n '/---- CSK-TRANSCRIPT-DIR/,/---- \/CSK-TRANSCRIPT-DIR/p' "$HOOKS/session-stats.sh")"
+[ -n "$cu_blk" ] && [ "$cu_blk" = "$ss_blk" ] \
+  && pass "the duplicated resolver is byte-identical in both hooks" \
+  || fail "context-usage.sh and session-stats.sh resolvers have DRIFTED (or the markers are missing)"
+# End to end: called by hand from this repo, the hook must produce a reading rather than "transcript not found".
+cu_hand="$(cd "$ROOT/.." && bash "$HOOKS/context-usage.sh" 2>&1)"
+case "$cu_hand" in
+  *"transcript not found"*) note "by-hand reading unavailable here (no transcript for this cwd) — encoding still pinned above" ;;
+  *%*)                      pass "by-hand call resolves its own transcript and reports a fill" ;;
+  *)                        note "by-hand call produced no reading (out=${cu_hand:-empty})" ;;
+esac
 
 echo "== 6j) session-stats: evidence signals read off the transcript =="
 [ -x "$HOOKS/session-stats.sh" ] && pass "session-stats.sh +x" || fail "session-stats.sh missing/not executable"
@@ -1151,6 +1215,22 @@ if command -v git >/dev/null 2>&1; then
 
   pcreset; printf 'const a = 1;\n' > "$PR/src.js"
   pc && pass "a clean staged diff commits" || { fail "clean diff blocked"; sed -n 1,2p "$PCLOG"; }
+
+  # (C2) private-path gate — a path that exists only on the committing machine must not reach a shared artifact.
+  # This is not a hypothetical class: a work project's absolute path, pasted from a terminal into a CHANGELOG
+  # entry, shipped in eight consecutive releases of THIS repo before anyone read it back. The gate therefore
+  # has to hold in three directions at once — catch the real thing, leave placeholders alone, and stay
+  # overridable — because a gate that flags `/Users/me` in a README gets switched off within a week.
+  pcreset; printf 'see %s/Projects/x\n' "$HOME" > "$PR/src.js"
+  pc && fail "private-path scan let this machine's \$HOME through (§4.3)" || pass "private-path scan blocks the machine's own \$HOME"
+  pcreset; printf 'see /Users/me/Projects/x and C:\\Users\\me\\x\n' > "$PR/src.js"
+  pc && pass "private-path scan leaves documentation placeholders alone" || { fail "private-path scan flagged a placeholder"; sed -n 1,2p "$PCLOG"; }
+  # A term the repo owner adds by hand: the kit cannot know an internal project's code name, only its owner can.
+  pcreset; printf 'AcmeCore\n' > "$PR/.private-terms.txt"; printf 'fix the AcmeCore import\n' > "$PR/src.js"
+  pc && fail "private-path scan ignored .private-terms.txt" || pass "private-path scan honours .private-terms.txt"
+  printf 'AcmeCore\n' > "$PR/.private-allowlist.txt"
+  pc && pass "private-path scan is overridable via .private-allowlist.txt" || { fail "no escape from a private-term false positive"; sed -n 1,2p "$PCLOG"; }
+  rm -f "$PR/.private-terms.txt" "$PR/.private-allowlist.txt"
 
   # (D) repo-bloat gate — vendored/build path blocked; oversized blob blocked (binaries emit no '+' line, so this
   # must fire off the file list, not the added-text scan).
@@ -1537,15 +1617,92 @@ o="$(gj auto 'eval \"git commit -m x\"' | bash "$HOOKS/guard-bash.sh" 2>/dev/nul
 # Precision: a commit whose MESSAGE contains 'reset --hard' (no git-before-reset) ASKs as a commit, is not blocked.
 o="$(gj auto 'git commit -m \"reset --hard bug\"' | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"; echo "$o" | grep -q '"permissionDecision":"ask"' && pass "commit msg with 'reset --hard' NOT over-blocked" || fail "commit msg 'reset --hard' wrongly blocked: $o"
 # Fallback (no jq AND no python3 — stock Git Bash on Windows): the matchers must still fire on the raw JSON blob (M1).
-GBX="$(mktemp -d)"; GBOK=1; GBBASH="$(command -v bash 2>/dev/null || echo bash)"
-for t in awk sed grep head cat tr git cut; do tp="$(command -v "$t" 2>/dev/null)" && ln -s "$tp" "$GBX/$t" 2>/dev/null || GBOK=0; done
-[ "$GBOK" = 1 ] && [ ! -L "$GBX/awk" ] && GBOK=0   # Windows Git-Bash copies instead of symlinking -> not a faithful jq-less PATH; skip
-if [ "$GBOK" = 1 ] && ! PATH="$GBX" command -v jq >/dev/null 2>&1 && ! PATH="$GBX" command -v python3 >/dev/null 2>&1; then
+GBBASH="$(type -P bash 2>/dev/null || echo bash)"
+# Build a jq/python3-free PATH. `type -P` NOT `command -v`: command -v answers with the bare NAME when a shell
+# function or alias shadows the tool, and `ln -s grep "$GBX/grep"` then creates a symlink pointing at ITSELF.
+# That is not a hypothetical — it is what this harness did on a developer Mac whose profile defines a `grep`
+# function, so every hook invocation inside the "sandbox" died with `grep: command not found` and the section
+# reported a skip. The gate looked measured for months and was not. `type -P` resolves the real PATH binary.
+GB_WHYF="$(mktemp)"
+# The reason a sandbox could not be built has to travel OUT of a command substitution, which is a subshell —
+# a plain variable assignment inside it is discarded, so the caller would only ever see "unknown".
+gb_why(){ printf '%s' "$1" > "$GB_WHYF"; }
+gb_sandbox(){   # echoes a working sandbox dir, or nothing when one cannot be built here; $GB_WHYF says why not
+  local d t tp; : > "$GB_WHYF"; d="$(mktemp -d)" || { gb_why "mktemp failed"; return 1; }
+  for t in awk sed grep head cat tr git cut; do
+    tp="$(type -P "$t" 2>/dev/null)"
+    [ -n "$tp" ] || { gb_why "no PATH binary for '$t'"; rm -rf "$d"; return 1; }
+    ln -s "$tp" "$d/$t" 2>/dev/null || { gb_why "ln -s failed for '$t'"; rm -rf "$d"; return 1; }
+  done
+  # Windows Git-Bash copies instead of symlinking -> not a faithful jq-less PATH.
+  [ -L "$d/awk" ] || { gb_why "symlinks unsupported (Git-Bash copies)"; rm -rf "$d"; return 1; }
+  # jq/python3 must really be invisible, or the branch under test is not the branch that runs.
+  # Checked in a FRESH bash, not with `command -v` in this one. A shell caches resolved binaries in its hash
+  # table and consults it BEFORE PATH, so once any earlier section of this suite has run jq, `PATH="$d" command
+  # -v jq` keeps answering with the cached absolute path and the sandbox is rejected as "jq still visible" —
+  # which is exactly why this whole section silently skipped in a full run while passing in isolation. The hook
+  # under test is a fresh process with an empty hash table, so the check must be one too.
+  PATH="$d" "$GBBASH" -c 'command -v jq'      >/dev/null 2>&1 && { gb_why "jq still visible inside the sandbox"; rm -rf "$d"; return 1; }
+  PATH="$d" "$GBBASH" -c 'command -v python3' >/dev/null 2>&1 && { gb_why "python3 still visible inside the sandbox"; rm -rf "$d"; return 1; }
+  # CANARY: prove the sandbox can actually run the tools the hook needs. Without this a broken sandbox is
+  # indistinguishable from a broken gate, and every assertion below becomes noise pointing at the wrong file.
+  PATH="$d" "$GBBASH" -c 'printf x | grep -q x && printf y | sed -n "s/y/z/p" >/dev/null' 2>/dev/null \
+    || { gb_why "canary failed: grep/sed unusable inside the sandbox"; rm -rf "$d"; return 1; }
+  printf '%s' "$d"
+}
+GBX="$(gb_sandbox)"
+
+
+if [ -n "$GBX" ]; then
   o="$(gj auto 'git commit -m x' | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" 2>/dev/null)"
   echo "$o" | grep -q '"permissionDecision":"ask"' && pass "no-jq/py: commit still ASKs (M1 fallback closed)" || fail "no-jq/py: commit gate FAILS OPEN (M1): $o"
   gj auto 'git reset --hard' | PATH="$GBX" CLAUDE_GIT_OK=1 "$GBBASH" "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "no-jq/py: reset --hard still BLOCKED" || fail "no-jq/py: reset --hard PASSED (§4.5 fallback hole)"
 else
-  pass "no-jq/py fallback test skipped (jq/python3-less PATH not buildable here)"
+  fail "no-jq/py fallback tests DID NOT RUN — the Windows branch is unmeasured here ($(cat "$GB_WHYF" 2>/dev/null || echo unknown))"
+fi
+rm -rf "$GBX"
+
+# --- The fallback assertions above are NOT sufficient, and that is the lesson, not a footnote. -------------
+# `git commit` ASKing and `git reset --hard` BLOCKing were BOTH true while the fallback was `CMD="$INPUT"` —
+# the raw hook payload fed to the matchers — because the payload contains the command as a substring, so a
+# blob match and a real parse produce the identical verdict. The gate was measured, the measurement was blind,
+# and a stock Windows install (Git Bash ships neither jq nor python3) ran the broken branch for months.
+# What the blob CANNOT survive is the payload's own metadata leaking into the rules, so that is what is pinned
+# here: a session_id containing `-f8` made every innocent `git push` hard-block as "push --force", and the §4.4
+# prompt rendered the whole JSON instead of the command the human was being asked to approve.
+GBX="$(gb_sandbox)"
+
+
+# session_id chosen deliberately: `-f872` is the exact shape that matched the §4.5 `-f([^a-z]|$)` force rule.
+gjs(){ printf '{"session_id":"5d3e9c10-f872-4a21-9b07-2c6ea4d1b3f5","tool_name":"Bash","permission_mode":"%s","tool_input":{"command":"%s","description":"d"}}' "$1" "$2"; }
+if [ -n "$GBX" ]; then
+  # 1) FALSE POSITIVE: an ordinary push must not inherit `-f` from the session id.
+  o="$(gjs default 'git push origin feature/x' | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" 2>/dev/null)"; r=$?
+  { [ "$r" != 2 ] && printf '%s' "$o" | grep -q '"permissionDecision":"ask"'; } \
+    && pass "no-jq/py: plain push ASKs, not force-blocked by the session id" \
+    || fail "no-jq/py: plain push mis-blocked as force (rc=$r) — the fallback is matching the payload, not the command"
+  # 2) APPROVAL INTEGRITY: §4.4 must show the command. A prompt quoting the payload is consent theatre.
+  o="$(gjs default 'git push origin feature/x' | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" 2>/dev/null)"
+  { printf '%s' "$o" | grep -q 'git push origin feature/x' && ! printf '%s' "$o" | grep -q 'session_id'; } \
+    && pass "no-jq/py: the §4.4 prompt shows the command, not the raw payload" \
+    || fail "no-jq/py: the §4.4 prompt leaked the payload (the human cannot read what they approve)"
+  # 3) NO NEW HOLE: the slice takes the FIRST \"command\" key, so a decoy inside the command cannot relocate it.
+  gjs auto 'git push --force # \"command\":\"ls\"' | PATH="$GBX" CLAUDE_GIT_OK=1 "$GBBASH" "$HOOKS/guard-bash.sh" >/dev/null 2>&1
+  [ "$?" = 2 ] && pass "no-jq/py: decoy \"command\" key inside the command does NOT relocate the parse" \
+                || fail "no-jq/py: decoy \"command\" key walked a force-push past §4.5"
+  # 4) ESCAPES: JSON-escaped quotes and Windows backslash paths must decode, not derail the rules.
+  gjs auto 'git commit -m \"x\" --no-verify' | PATH="$GBX" CLAUDE_GIT_OK=1 "$GBBASH" "$HOOKS/guard-bash.sh" >/dev/null 2>&1
+  [ "$?" = 2 ] && pass "no-jq/py: --no-verify inside an escaped-quote command still BLOCKED" \
+                || fail "no-jq/py: escaped quotes hid --no-verify from §4.5"
+  o="$(gjs default 'git commit -F C:\\\\Users\\\\b\\\\msg.txt' | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" 2>/dev/null)"
+  printf '%s' "$o" | grep -q '"permissionDecision":"ask"' \
+    && pass "no-jq/py: a Windows backslash path still reaches the §4.4 ask" \
+    || fail "no-jq/py: backslash path derailed the parse (out=$o)"
+  # 5) NOT OVER-BLOCKING: an ordinary command stays allowed even with the dirty session id.
+  gjs default 'ls -la' | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" >/dev/null 2>&1
+  [ "$?" = 0 ] && pass "no-jq/py: 'ls -la' still allowed" || fail "no-jq/py: 'ls -la' blocked (fallback over-blocks)"
+else
+  fail "no-jq/py discriminating tests DID NOT RUN — the Windows branch is unmeasured here ($(cat "$GB_WHYF" 2>/dev/null || echo unknown))"
 fi
 rm -rf "$GBX"
 # C2 / M5: gate-tamper by an interpreter, a variable-indirected redirect, or .git/hooks — the "rewrite the guard"
