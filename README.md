@@ -8,7 +8,7 @@
 
 On a shared repo, taking a work item is an atomic git claim — two people cannot start the same one
 
-![Version](https://img.shields.io/badge/version-2.3.2-2563eb?style=flat-square)
+![Version](https://img.shields.io/badge/version-2.4.0-2563eb?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)
 ![Agents](https://img.shields.io/badge/agents-12-f59e0b?style=flat-square)
 ![Skills](https://img.shields.io/badge/skills-39-f59e0b?style=flat-square)
@@ -126,7 +126,7 @@ Then paste `.claude/FIRST_PROMPT.md` as your first Claude Code message. Homebrew
 | `board.sh` | The team board engine: claims a work item, hands it over, completes it. Claiming IS the push — a commit to a git ref, fast-forward-only — so two people taking the same item is settled at take time, in under a second: one claim lands, the other is refused with who holds it and what is free instead. Commits are built with git plumbing, so a claim never touches your working tree, index or branch |
 | `board-sync.sh` | Puts the team's state into a session that would otherwise only see this machine: who holds which item, what is claimable, what is blocked, which claim has gone quiet. Reads a local cache at session start and refreshes it detached, so an unreachable remote costs the session opening nothing; `CSK_NO_BOARD=1` turns it off |
 
-Two git hooks — `pre-commit` and `commit-msg` — run the trace, secret and repo-bloat scans. `commit-msg` also holds the board claim gate: on a repo with a board, a commit must name an item you hold (`[#3]`) or declare itself item-less (`[chore]`). The plugin edition ships all of these except `skill-trust.sh`, which decides what is kit-owned from the `kit-manifest.txt` an installer writes and the plugin never creates.
+Two git hooks — `pre-commit` and `commit-msg` — run the trace, secret, repo-bloat and private-path scans. The last one exists because a path that only lives on your machine reaches a shared repo by being pasted, not by being typed: it blocks your own `$HOME` automatically, and the internal project, client and host names only you can recognise come from a gitignored `.private-terms.txt` (`.private-allowlist.txt` is the escape). `commit-msg` also holds the board claim gate: on a repo with a board, a commit must name an item you hold (`[#3]`) or declare itself item-less (`[chore]`). The plugin edition ships all of these except `skill-trust.sh`, which decides what is kit-owned from the `kit-manifest.txt` an installer writes and the plugin never creates.
 
 </details>
 
@@ -212,6 +212,7 @@ Left is the rule; right is the thing that refuses to let it slide.
 | Remote code execution and permission nukes: `curl…\|bash`, world-writable `chmod`, `dd of=` | `guard-bash.sh`, hard-blocked in every mode |
 | Disarming a gate — redirecting `core.hooksPath`, editing or deleting a hook | `guard-bash.sh` (shell) + `guard-write.sh` (file edits) |
 | No API key, token or private key reaches a commit | `pre-commit` secret scan; every pattern carries its own test case |
+| No machine-private path or internal name reaches a commit | `pre-commit` private-path scan: your own `$HOME` automatically, plus a gitignored `.private-terms.txt` |
 | No credential is *read* into the context — `~/.ssh/id_rsa`, `~/.aws/credentials`, `*.pem`, kubeconfig | `settings.json` read-deny + `guard-bash.sh` |
 | No AI-authorship trace or vendor template name in a commit | `pre-commit` + `commit-msg` git hooks |
 | No build artifact, vendored tree or oversized blob gets staged | `pre-commit` repo-bloat scan |

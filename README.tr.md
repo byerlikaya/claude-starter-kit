@@ -8,7 +8,7 @@
 
 Paylaşılan bir depoda bir işi üstlenmek atomik bir git claim'idir — aynı işi iki kişi başlatamaz
 
-![Sürüm](https://img.shields.io/badge/version-2.3.2-2563eb?style=flat-square)
+![Sürüm](https://img.shields.io/badge/version-2.4.0-2563eb?style=flat-square)
 ![Lisans](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)
 ![Ajanlar](https://img.shields.io/badge/agents-12-f59e0b?style=flat-square)
 ![Skiller](https://img.shields.io/badge/skills-39-f59e0b?style=flat-square)
@@ -126,7 +126,7 @@ Ardından ilk Claude Code mesajınız olarak `.claude/FIRST_PROMPT.md` dosyasın
 | `board.sh` | Ekip panosu motoru: bir iş maddesini üstlenir, devreder, tamamlar. Üstlenmenin KENDİSİ bir push'tur — git ref'ine commit, yalnız ileri-sarım — dolayısıyla aynı maddeyi iki kişinin alması ALMA ANINDA, saniyenin altında çözülür: biri yerleşir, diğeri kimin tuttuğu ve neyin boş olduğu bilgisiyle reddedilir. Commit'ler git plumbing ile üretilir; üstlenme çalışma ağacınıza, index'e ya da branch'inize dokunmaz |
 | `board-sync.sh` | Yalnız bu makineyi gören oturuma ekibin durumunu taşır: hangi maddeyi kim tutuyor, ne üstlenilebilir, ne bloklu, hangi üstlenme sessizleşmiş. Oturum açılışında yerel önbelleği okur, tazelemeyi ayrık süreçte yapar; erişilemeyen uzak sunucu oturum açılışına hiçbir şey mal olmaz. `CSK_NO_BOARD=1` ile kapanır |
 
-İki git hook'u (`pre-commit` ve `commit-msg`) iz, sır ve depo şişkinliği taramalarını çalıştırır. `commit-msg` ayrıca pano üstlenme kapısını tutar: panosu olan bir depoda commit ya tuttuğunuz bir maddeyi adlandırır (`[#3]`) ya da maddesiz olduğunu bildirir (`[chore]`). Plugin sürümü `skill-trust.sh` dışında hepsini taşır; o hook kararını kurucunun yazdığı `kit-manifest.txt` dosyasına göre verir ve plugin o dosyayı oluşturmaz.
+İki git hook'u (`pre-commit` ve `commit-msg`) iz, sır, depo şişkinliği ve özel-yol taramalarını çalıştırır. Sonuncusu şunun için var: yalnız sizin makinenizde var olan bir yol paylaşılan bir depoya yazılarak değil, **yapıştırılarak** ulaşır. Kendi `$HOME`'unuzu kendiliğinden engeller; yalnız sizin tanıyabileceğiniz iç proje, müşteri ve sunucu adları ise gitignore'lu `.private-terms.txt` dosyasından gelir (kaçış: `.private-allowlist.txt`). `commit-msg` ayrıca pano üstlenme kapısını tutar: panosu olan bir depoda commit ya tuttuğunuz bir maddeyi adlandırır (`[#3]`) ya da maddesiz olduğunu bildirir (`[chore]`). Plugin sürümü `skill-trust.sh` dışında hepsini taşır; o hook kararını kurucunun yazdığı `kit-manifest.txt` dosyasına göre verir ve plugin o dosyayı oluşturmaz.
 
 **Ekip hâlinde çalışmak.** Her ekip üyesinin kiti kendi makinesinde koşar ve `docs/` gitignore'dadır — yani plan da, devir notu da, devam eden madde de varsayılan olarak özeldir; iki kişinin aynı şeyi inşa etmesi tam olarak buradan çıkar. Panonun kapattığı yer burası: **tek kişi** `/board-csk init` çalıştırır (panoyu ayrı bir depoda tutmak için `--remote <url>`) ve maddeleri ekler; **diğerlerinin hiçbir konfigürasyon yapması gerekmez** — oturumları panoyu kendiliğinden çeker ve kimin neyi tuttuğu, neyin alınabilir olduğu, neyin hangi maddeye bloklu olduğuyla açılır. Bir maddeyi almak, bağımlılıklarının gerçekte ne teslim ettiğini yazdırır ve o maddeyi bekleyenleri adlandırır; böylece devralan kişi, öncekinin sahip olduğu bağlamla başlar. Hesap yok, token yok, servis yok: pano bir git ref'i, üstlenme ise bir push.
 
@@ -212,6 +212,7 @@ Solda kural, sağda o kuralın esnemesine izin vermeyen şey. Hiçbiri modelin h
 | Uzaktan kod çalıştırma ve izin patlatma: `curl…\|bash`, herkese yazılabilir `chmod`, `dd of=` | `guard-bash.sh`, her modda kesin engel |
 | Kapıyı etkisizleştirme: `core.hooksPath` yönlendirme, hook düzenleme ya da silme | `guard-bash.sh` (komut tarafı) + `guard-write.sh` (dosya düzenleme tarafı) |
 | Hiçbir API anahtarı, token ya da özel anahtar commit'e girmez | `pre-commit` sır taraması; her kalıbın kendi test vakası var |
+| Makineye özel hiçbir yol ya da iç ad commit'e girmez | `pre-commit` özel-yol taraması: kendi `$HOME`'unuz kendiliğinden, artı gitignore'lu `.private-terms.txt` |
 | Hiçbir kimlik bilgisi bağlama *okunmaz*: `~/.ssh/id_rsa`, `~/.aws/credentials`, `*.pem`, kubeconfig | `settings.json` okuma reddi + `guard-bash.sh` |
 | Commit'te yapay zekâ imzası ya da satıcı şablonu adı bulunmaz | `pre-commit` + `commit-msg` git hook'ları |
 | Build çıktısı, vendor ağacı ya da aşırı büyük dosya hazırlanmaz | `pre-commit` depo şişkinliği taraması |
