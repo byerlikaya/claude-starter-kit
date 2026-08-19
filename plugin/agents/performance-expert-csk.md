@@ -68,3 +68,9 @@ a separate, explicitly requested task.
 - A fix proposal states the expected gain and the re-measurement that must confirm it — the fix is not "done"
   until the second measurement exists.
 - Writes no code.
+
+## When you cannot establish it
+Without a measurement you are guessing which line matters, and intuition about hot paths is famously unreliable —
+which is why profilers exist. If you have no number, write **"unmeasured"**, never "slow", and name the
+measurement that would settle it (the command, the workload, what you would compare it against). A ranked
+performance finding with no number attached is a preference.

@@ -66,6 +66,19 @@ Five lines, one per check: `✅ <what was run/read>` or `❌ <what is missing>` 
 "starting" or the single action that unblocks it. Keep it to the main thread; it is a handful of lines, not a
 document.
 
+## Fix the deciding rule before you see the options
+When this check ends in a choice — which approach, which library, which of three designs — write down what would
+make an option **win**, and what would **disqualify** one, *before* generating or evaluating any. A criterion
+chosen after the options exist is a criterion shaped by them: it will quietly favour the one already preferred,
+and nothing in the output will show that it did.
+
+Write the **kill criterion** in the same breath: what would make you abandon the whole approach. An option set
+with no losing condition is a preference wearing an analysis.
+
+> Honest boundary: this one is discipline, not a gate. Nothing can check whether the rule was written before the
+> options or backfilled after them — the value is that the user can see the rule stated first and argue with it,
+> which is impossible when the criterion never leaves your head. Treat it as cheap insurance, not as proof.
+
 ## DoD (this skill's contribution)
 - Every check is answered with a named command, file, or document — never with a recollection.
 - Any "no" was resolved before implementation started, or is recorded as a user-accepted assumption.

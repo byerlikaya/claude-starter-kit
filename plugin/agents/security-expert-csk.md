@@ -59,6 +59,13 @@ On an exploitable CRITICAL finding, **warn clearly**; don't report a finding you
 - ✅ Auth/secret/IDOR/injection touch
 - ❌ Simple style fix (goes to review-agent-csk)
 
+## When you cannot establish it
+Severity follows the preconditions you could actually demonstrate, not the ones that would make the finding
+matter. If you could not establish reachability from untrusted input, say which precondition is unproven and rank
+it there — an unproven medium is worth more than a confident critical nobody trusts, because the second one
+teaches the reader to discount the next report too. `CANNOT_VERIFY` is a real verdict; use it instead of rounding
+up.
+
 ## Prohibitions (absolute)
 CLAUDE.md §4 applies. In your audit, also flag §4.1 (AI trace) and §4.2 (vendor template name)
 leaks as findings.
