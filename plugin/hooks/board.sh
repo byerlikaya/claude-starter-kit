@@ -224,11 +224,13 @@ _apply_once(){ # -> 0 ok · 1 refused · 2 race · 3 unshared
       if [ "$status" = done ]; then printf 'board: #%s is already done\n' "$id" >&2; return 1; fi
       if [ -n "$owner" ] && [ "$owner" != "-" ] && [ "$owner" != "$me" ]; then
         printf 'board: #%s belongs to %s since %s. Free: %s\n' "$id" "$owner" "$since" "$(_free_ids)" >&2
+        _log_refusal "$id" held "$owner"
         return 1
       fi
       local blocked; blocked="$(_unmet_deps "$deps")"
       if [ -n "$blocked" ]; then
         printf 'board: #%s is blocked by #%s (not done). Free: %s\n' "$id" "$blocked" "$(_free_ids)" >&2
+        _log_refusal "$id" blocked "#$blocked"
         return 1
       fi
       if [ "$owner" = "$me" ] && [ "$status" = in_progress ]; then
@@ -369,6 +371,33 @@ $(_body "$c" | head -4 | sed 's/^/      /')"
   [ -n "$out" ] && printf 'Connected work — read this before you start, and update it when you finish:%s\n' "$out"
   return 0
 }
+
+# A refusal is the only proof the lock ever did anything, and it was the one event leaving no trace: the message
+# went to stderr and nowhere else. Nothing on the board, nothing in the history — so "how often did this actually
+# stop a collision?" was unanswerable, and would still be unanswerable after a trial, because the data would
+# never have existed. Measurement has to be installed BEFORE the thing it measures.
+#
+# Appended to the board so the count is the TEAM's, not one clone's. Refusals are rare by construction — they
+# happen only on real contention — so a push per refusal costs little, and it rides the same CAS retry as every
+# other write. Failure here is swallowed: a refusal that cannot be logged is still a refusal, and turning it
+# into an error would punish the user for the bookkeeping.
+_log_refusal(){ # _log_refusal <id> <reason> <holder>
+  _enabled || return 0
+  _have_board || return 0
+  local id="$1" reason="$2" holder="$3" attempt=1 prev line blob tree
+  line="$(_now_iso)|$id|$reason|$(_me)|${holder:--}"
+  while [ "$attempt" -le 3 ]; do
+    prev="$(_cat refusals.log 2>/dev/null)"
+    blob="$(printf '%s%s\n' "${prev:+$prev$NLR}" "$line" | _blob)"
+    tree="$(_tree_with refusals.log "$blob")" || return 0
+    _commit_push "$tree" "board: refusal #$id ($reason)" && return 0
+    _fetch >/dev/null 2>&1 || return 0
+    attempt=$((attempt+1))
+  done
+  return 0
+}
+NLR='
+'
 
 cmd_claim(){
   _mutate claim "$1"; local rc=$?

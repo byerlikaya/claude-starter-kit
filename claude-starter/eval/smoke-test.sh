@@ -325,6 +325,20 @@ else
     pass "claiming leaves the worktree and branch untouched (dirty file and branch survive)"
   else fail "claiming disturbed the worktree/branch (status='$ST' branch='$BR')"; fi
 
+  # 5a-ii. A REFUSAL IS THE ONLY EVIDENCE THE LOCK EVER FIRED — and it used to leave none. The message went to
+  # stderr and nowhere else, so "how often did this actually stop a collision?" could not be answered, and would
+  # still not be answerable after a trial because the data would never have existed. An instrument cannot be
+  # fitted after the experiment. Both refusal reasons are asserted, and that the record is on the BOARD rather
+  # than in one clone — a count only its author can see answers nothing about a team.
+  ( cd "$BD/ayse" && bash ../board.sh sync ) >/dev/null 2>&1
+  ( cd "$BD/ayse" && bash ../board.sh claim 001 ) >/dev/null 2>&1     # held by ali -> refused
+  ( cd "$BD/ali"  && bash ../board.sh sync ) >/dev/null 2>&1
+  RLOG="$(git -C "$BD/ali" cat-file -p refs/csk/board:refusals.log 2>/dev/null)"
+  case "$RLOG" in
+    *"|001|held|"*) pass "a refused claim is recorded on the board, where the whole team can count it" ;;
+    *) fail "the refusal left no trace — the lock's only evidence is unrecorded: [$RLOG]" ;;
+  esac
+
   # 5b-ii. THE CLOCK MUST NOT RESTART. Re-claiming an item you already hold used to rewrite `since`, so an item
   # held all morning read as freshly started — which destroys the two things age is for: telling a teammate how
   # long it has been held, and letting an abandoned claim go stale. Found by reading a real session where the
