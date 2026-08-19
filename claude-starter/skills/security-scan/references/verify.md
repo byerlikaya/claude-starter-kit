@@ -15,6 +15,43 @@ audit). Each verifier:
 - Is stanced **"find any reason this finding is wrong."** Actively hunt for why it is *not* exploitable.
 - Is **blind to the other verifiers' reasoning** — shared context propagates the same blind spot.
 
+### "Independent" means a separate context, or it means nothing
+Three passes inside one context window are not three verifiers. The second pass has already read the first one's
+reasoning; the blindness above is then a wish, not a property, and the agreement it produces is one argument
+counted three times. So:
+- **Each verifier is its own subagent** (`Agent`, one call per verifier, run in parallel). A subagent has its own
+  context window: it cannot see what the others concluded, which is the whole point. Read-only work, so no
+  `worktree` is needed — nothing is being written.
+- **Give it the finding and the file:line, never your reasoning.** Not "I think X is exploitable because Y" —
+  just "claim: X at file:line. Try to refute it."
+- **If you did not isolate, say so.** Write `verifiers: 1 (single pass, not isolated)` in the verdict block. A
+  single honest pass is useful; three passes labelled as independent when they were not is worse than one,
+  because it launders confidence.
+
+**Cost gate, because isolation is not free** — each subagent re-pays for its own context (see `token-budget`), so
+N×findings gets expensive fast. Isolate by stake, not by default:
+- **blocker / high severity, or anything heading for a release** → isolate, N=3 (N=5 for a release audit).
+- **medium** → isolate, N=1. One genuinely independent pass beats three entangled ones.
+- **low / nit** → single inline pass, labelled as such. Do not spend a subagent proving a nit.
+
+### The verifiers must not be three copies of one method
+Independent is still not uncorrelated. Three verifiers running the same four steps fail in the same place, and
+their agreement then reads as confirmation when it is only repetition. Assign each a **different attack**:
+- **Reachability** — can untrusted input actually arrive here? Quote the first call-site as evidence.
+- **Protection** — does something on every path already stop it? Try to break each guard.
+- **Reproduction** — what input, in what state, actually triggers it? If you cannot name one, that is
+  `CANNOT_VERIFY`, not agreement with the others.
+
+At N=5 add **exclusion rules** (does this match a known FALSE_POSITIVE class below?) and **blast radius** (if it
+is real, what does it actually reach?). Record which lens produced which verdict — a verdict whose lens is
+unnamed cannot be weighed.
+
+### Unanimity is a signal to check, not a verdict to trust
+If every verifier returns the same verdict **for the same reason**, that is one argument counted N times. Before
+accepting it, run one counterfactual pass: *"assume this verdict is wrong — what would have to be true, and what
+evidence would show it?"* Record the answer beside the verdict. Unanimity with N distinct reasons is strong;
+unanimity with one reason is a monoculture, and it is exactly how a whole panel misses the same guard.
+
 ## The 4-step verify procedure (each step kills a specific false-positive class)
 1. **Read the cited code yourself** — do not trust the description.
 2. **Trace reachability backward from the sink.** Can untrusted input actually reach it? **Quote the first
@@ -52,10 +89,16 @@ Add project-specific rules as you confirm them.
 ```
 VERDICT: TRUE_POSITIVE | FALSE_POSITIVE | CANNOT_VERIFY
 CONFIDENCE: 0-10
+VERIFIERS: <N, isolated | N, single pass not isolated>
+LENSES: <reachability, protection, reproduction — which ones actually ran>
+AGREEMENT: <unanimous-same-reason | unanimous-distinct-reasons | split N-M>
 REACHABILITY: <first untrusted call-site file:line, or "unreachable">
 EXCLUSION_RULE: <number, or none>
 RATIONALE: <cites concrete file:line, not prose>
 ```
+`VERIFIERS` and `AGREEMENT` exist so the reader can discount the verdict without re-doing the work. "3, single
+pass not isolated" and "unanimous-same-reason" together mean one argument wearing three hats — still worth
+reporting, not worth treating as three. Leaving these fields out is how a weak verdict passes for a strong one.
 
 ## Tally
 Verdict = majority of the N verifiers; confidence = mean of the agreeing votes. **Tie → the operator's noise

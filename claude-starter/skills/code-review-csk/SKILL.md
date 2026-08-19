@@ -85,6 +85,13 @@ Before a finding is reported — especially a **blocker** — run a second, inde
 A finding that survives the disprove pass is a verdict; one that doesn't is dropped or downgraded. This is what kills
 false-positive blockers that stall progress while keeping the review's authority.
 
+**"Independent" costs a separate context.** A second pass in the same context has already read the first one's
+reasoning, so it cannot be blind to it — and its agreement is the first pass nodding at itself. For a **blocker**,
+run the disprove pass as its own subagent, handed the claim and the `file:line` but not your argument. If you did
+not isolate it, label the verdict as a single pass rather than calling it independent. The full contract —
+isolation, one lens per verifier, and why unanimity for the same reason is a monoculture — lives in
+`security-scan/references/verify.md`; it is one discipline, not two.
+
 ## Panel mode (high-stakes decisions only)
 
 For hard-to-reverse calls (architecture, public API, security boundary), run several independent adversarial lenses then synthesize. Full method: **`references/panel-mode.md`**.

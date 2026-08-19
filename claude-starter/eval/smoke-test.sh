@@ -128,8 +128,18 @@ pass "agent->skill references (applies + Also apply) checked"
 # (c) progressive disclosure: a `references/X.md` pointer in a SKILL.md body must resolve to a real file
 for d in "$SKILLS"/*/; do
   f="$d/SKILL.md"; [ -f "$f" ] || continue
-  for ref in $(grep -oE 'references/[A-Za-z0-9_-]+\.md' "$f" | sort -u); do
-    [ -f "$d/$ref" ] || fail "$(basename "$d"): SKILL.md points to missing $ref"
+  # A pointer may be to this skill's own references/ OR, qualified with a skill name, to another skill's —
+  # `security-scan/references/verify.md`. Cross-skill is legitimate and the kit's single-source-of-truth rule
+  # depends on it: the verifier contract lives in one file and code-review-csk points at it rather than keeping a
+  # second copy to drift. The check stays strict either way — a wrong skill name or a missing file still fails.
+  for ref in $(grep -oE '([a-z0-9-]+/)?references/[A-Za-z0-9_-]+\.md' "$f" | sort -u); do
+    case "$ref" in
+      */references/*.md)
+        case "$ref" in
+          references/*) [ -f "$d/$ref" ] || fail "$(basename "$d"): SKILL.md points to missing $ref" ;;
+          *) [ -f "$SKILLS/$ref" ] || fail "$(basename "$d"): SKILL.md points to missing $ref (cross-skill)" ;;
+        esac ;;
+    esac
   done
 done
 pass "skill references/*.md pointers resolve"

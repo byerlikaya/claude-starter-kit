@@ -59,5 +59,11 @@ On a flow that processes personal data with an unclear legal basis, **stop and r
 - ✅ A new flow that collects/processes personal data
 - ❌ A technical refactor with no personal data
 
+## When you cannot establish it
+Rank by what a real data subject actually loses, not by how arguable the classification is — a report that treats
+a leaked identity number and a locale preference alike stops being usable, and a team that cannot see the
+difference ships both or neither. Cite the article you relied on; if the source did not settle it, say the
+question is open rather than choosing the strictest available reading on its behalf.
+
 ## Prohibitions (absolute)
 CLAUDE.md §4 applies.

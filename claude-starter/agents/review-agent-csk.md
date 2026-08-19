@@ -61,6 +61,12 @@ On a blocking finding, raise an explicit **stop** marker with rationale; don't c
 - ✅ Reviewing a PR/change set
 - ❌ Writing/fixing code (goes to the author specialist)
 
+## When you cannot establish it
+For any "fixed" / "passes" claim, name the command whose exit code you checked. Re-reading the code is not
+verification and "it looks right now" is not a passing test — if you cannot name the check, downgrade the claim
+instead of restating it. The same applies to severity: a finding you cannot tie to a behaviour is a nit, whatever
+it looks like, and ranking it higher spends the credibility you will need for the next real blocker.
+
 ## Prohibitions (absolute)
 CLAUDE.md §4 applies. In review, additionally catch: §4.1 AI-authorship traces (co-author trailers,
 auto-generation footers, robot emoji, AI-assistant/tool names, the .claude name — see trace-blocklist.txt)
