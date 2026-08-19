@@ -1618,6 +1618,19 @@ o="$(gj auto 'eval \"git commit -m x\"' | bash "$HOOKS/guard-bash.sh" 2>/dev/nul
 o="$(gj auto 'git commit -m \"reset --hard bug\"' | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"; echo "$o" | grep -q '"permissionDecision":"ask"' && pass "commit msg with 'reset --hard' NOT over-blocked" || fail "commit msg 'reset --hard' wrongly blocked: $o"
 # Fallback (no jq AND no python3 — stock Git Bash on Windows): the matchers must still fire on the raw JSON blob (M1).
 GBBASH="$(type -P bash 2>/dev/null || echo bash)"
+gb_unbuildable(){   # $1 = which block, for the message
+  local why; why="$(cat "$GB_WHYF" 2>/dev/null || echo unknown)"
+  case "$why" in
+    "symlinks unsupported"*)
+      # Git Bash copies rather than symlinks, so a jq-less PATH cannot be assembled ON Windows. That is a
+      # property of the platform, not a regression, and the branch it would exercise is the one Windows takes
+      # natively anyway — the POSIX runners cover it. Anything else means a sandbox that SHOULD have built did
+      # not, and a silent skip there is how this whole section stayed unmeasured for months.
+      note "$1 skipped: this platform cannot host a jq-less PATH ($why)" ;;
+    *)
+      fail "$1 DID NOT RUN — the jq-less branch is unmeasured here ($why)" ;;
+  esac
+}
 # Build a jq/python3-free PATH. `type -P` NOT `command -v`: command -v answers with the bare NAME when a shell
 # function or alias shadows the tool, and `ln -s grep "$GBX/grep"` then creates a symlink pointing at ITSELF.
 # That is not a hypothetical — it is what this harness did on a developer Mac whose profile defines a `grep`
@@ -1658,7 +1671,7 @@ if [ -n "$GBX" ]; then
   echo "$o" | grep -q '"permissionDecision":"ask"' && pass "no-jq/py: commit still ASKs (M1 fallback closed)" || fail "no-jq/py: commit gate FAILS OPEN (M1): $o"
   gj auto 'git reset --hard' | PATH="$GBX" CLAUDE_GIT_OK=1 "$GBBASH" "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "no-jq/py: reset --hard still BLOCKED" || fail "no-jq/py: reset --hard PASSED (§4.5 fallback hole)"
 else
-  fail "no-jq/py fallback tests DID NOT RUN — the Windows branch is unmeasured here ($(cat "$GB_WHYF" 2>/dev/null || echo unknown))"
+  gb_unbuildable "no-jq/py fallback tests"
 fi
 rm -rf "$GBX"
 
@@ -1702,7 +1715,7 @@ if [ -n "$GBX" ]; then
   gjs default 'ls -la' | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" >/dev/null 2>&1
   [ "$?" = 0 ] && pass "no-jq/py: 'ls -la' still allowed" || fail "no-jq/py: 'ls -la' blocked (fallback over-blocks)"
 else
-  fail "no-jq/py discriminating tests DID NOT RUN — the Windows branch is unmeasured here ($(cat "$GB_WHYF" 2>/dev/null || echo unknown))"
+  gb_unbuildable "no-jq/py discriminating tests"
 fi
 rm -rf "$GBX"
 # C2 / M5: gate-tamper by an interpreter, a variable-indirected redirect, or .git/hooks — the "rewrite the guard"
