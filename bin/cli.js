@@ -65,7 +65,7 @@ if (probe.error) {
   process.exit(1);
 }
 
-// Expand 8.3 short names (e.g. C:\Users\BB358~1.YER) to their real long form before staging — WSL's drvfs
+// Expand 8.3 short names (e.g. C:\Users\LONGNA~1.DEV) to their real long form before staging — WSL's drvfs
 // exposes only long names, so an unexpanded short path yields a "correct-looking" /mnt/c/... that still ENOENTs.
 // No-op / safe on macOS & Linux.
 const realpath = (p) => { try { return fs.realpathSync.native(p); } catch (_) { return p; } };
