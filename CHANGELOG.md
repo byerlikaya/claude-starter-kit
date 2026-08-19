@@ -3,6 +3,51 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [2.4.0] - 2026-08-19
+
+### Added
+- **A commit gate for machine-private strings.** A work project's absolute path, pasted from a terminal into a
+  CHANGELOG entry, shipped in eight consecutive releases before anyone read it back — the paste is the vector,
+  so the gate sits where pasted text becomes a commit. `pre-commit` gained a third scanner. Its terms are not a
+  pattern, because "is this path private?" is not a question a pattern can answer: `/Users/me` is a placeholder
+  every README wants and `/Users/ada` is a real person's home, and no ERE separates them. They come instead from
+  the machine doing the committing, where the answer is knowable exactly — its own `$HOME`, in the three
+  spellings Windows writes the same directory as — plus a `.private-terms.txt` the repo owner fills in with the
+  internal project, client and host names only they can recognise. `.private-allowlist.txt` is the escape.
+  New installs gitignore the term file from the start: publishing a list of things you do not want published
+  would defeat it.
+- **The executable bit is pinned, in the git index as well as on disk.** Rewriting a file in place creates a new
+  file, and a new file does not inherit the old one's mode; nothing noticed, because hooks are invoked through
+  `bash <path>` and the installer chmods on the way in, so a broken mode is visible only in git. Skipped where
+  `core.fileMode=false`, since an index that does not track the bit cannot be wrong about it.
+
+### Fixed
+- **`guard-bash.sh` judged the payload instead of the command.** With neither `jq` nor `python3` on PATH — the
+  stock Git Bash state — the fallback handed the entire hook JSON to the §4.4/§4.5 matchers. A session id whose
+  second group starts `f8` matches the force-push rule, so every ordinary `git push` was hard-blocked; when it
+  did not misfire, the §4.4 prompt quoted raw JSON instead of the command being approved, which is consent
+  theatre. Replaced by a pure parameter-expansion slice of `tool_input.command`: no forks at all, so it is
+  cheaper than the `sed` it replaces, and it takes the *first* `"command"` key so a decoy inside the command
+  cannot relocate the parse. Verified on Git Bash 5.2 against `jq`'s own verdicts across fifteen payloads.
+- **The transcript directory was derived with the wrong rule, so Windows could never measure context fill.**
+  Folding only `/` and `.` misses the drive letter and every underscore; the by-hand `context-usage.sh` /
+  `session-stats.sh` call therefore found nothing at all on Windows, and three sessions in a row reported
+  "could not measure" and dropped the 🔋 line. The client folds `:` `\` `/` `.` and `_`, and the native path
+  comes from `pwd -W` where it exists.
+- **A machine-private path in the 2.0.2 entry.** Scrubbed here; history and published tarballs are deliberately
+  left alone, since the string is a folder path rather than a credential and rewriting a public repo's history
+  costs more than it returns.
+
+### Changed
+- **The no-jq gate now discriminates, and its harness stopped lying.** The existing assertions — `commit` asks,
+  `reset --hard` blocks — were true of the broken blob as well, so they passed throughout the defect's life. The
+  sandbox they ran in was built with `command -v`, which answers with a bare name when a shell function shadows
+  the tool, producing a symlink pointing at itself; `jq` also stayed visible through the shell's hash table, so
+  the section silently skipped in a full run while passing in isolation. It now resolves with `type -P`, probes
+  from a fresh process, carries a canary, and a skip is a failure that states its reason — except where the
+  platform genuinely cannot host a jq-less PATH, which is a note, not a regression.
+- Twenty-three new behavioural assertions, each sabotage-tested: the gate must fail when the fix is reverted.
+
 ## [2.3.2] - 2026-08-19
 
 ### Fixed
