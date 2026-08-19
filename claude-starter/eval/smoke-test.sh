@@ -612,6 +612,15 @@ csk_exec_check "hook" "$HOOKS"/*.sh "$HOOKS/pre-commit" "$HOOKS/commit-msg"
 csk_exec_check "eval script" "$HERE"/*.sh
 # The index is the half that actually regresses, and it only exists where these files are tracked — in an
 # installed project .claude/ is usually gitignored, so a miss there is silence, not a failure.
+# ...and only where git TRACKS the bit at all. Windows filesystems carry no exec bit, so git sets
+# core.fileMode=false there and records 100644 for every file it has ever seen — all 19 shipped scripts at
+# once. An index check under that setting is not a strict check, it is a guaranteed false alarm, and it took
+# out the Windows job on a change that had nothing wrong with it. Where the bit is untracked the index holds
+# no information about it, so there is nothing to assert; the POSIX runners are where this gate has teeth.
+CSK_FILEMODE="$(git -C "$ROOT" config --get core.fileMode 2>/dev/null || echo true)"
+case "${CSK_FILEMODE:-true}" in
+  false|0|no) note "index mode check skipped (core.fileMode=$CSK_FILEMODE — this platform does not track the bit)" ;;
+  *)
 if command -v git >/dev/null 2>&1 && git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   IDX="$(git -C "$ROOT" ls-files -s -- "$HOOKS" "$HERE" 2>/dev/null \
          | awk '$1=="100644" && ($4 ~ /\.sh$/ || $4 ~ /\/(pre-commit|commit-msg)$/) {print $4}')"
@@ -623,6 +632,8 @@ if command -v git >/dev/null 2>&1 && git -C "$ROOT" rev-parse --is-inside-work-t
     fail "tracked with mode 100644 (the +x bit was lost in a commit): $(printf '%s ' $IDX)"
   fi
 fi
+ ;;
+esac
 echo "== 6) Context-usage threshold logic (fixture) + hook integrity =="
 FX="$(mktemp)"
 printf '%s\n' '{"type":"assistant","isSidechain":false,"message":{"usage":{"input_tokens":1000,"cache_read_input_tokens":800000,"cache_creation_input_tokens":0}}}' > "$FX"
