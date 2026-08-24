@@ -2801,6 +2801,25 @@ $PSOK
 PSEOF2
 [ -z "$PSFP" ] && pass "everyday PowerShell stays allowed ($PSM cases, no false positives)" \
                || fail "PowerShell false positive(s):$PSFP"
+echo "== 13) pre-commit cost — the gate people route around is the one that is slow =="
+# Measured on a 373-file merge: the old file loop spawned ~7 processes per file (three `printf | grep` pairs and
+# a `git cat-file`), 2,643 in total, and on Git Bash at 20-50 ms a process that is over twenty minutes. A gate
+# that costs twenty minutes is a gate that teaches people to type --no-verify. Wall clock is the wrong meter
+# here — on macOS a fork is cheap enough that a broken and a fixed version both look instant — so this counts
+# PROCESSES, the thing Windows actually charges for.
+PCT="$(mktemp -d)"; ( cd "$PCT" && git init -q . && git config user.email t@e.x && git config user.name T
+  mkdir -p .claude/hooks && cp "$ROOT/hooks/pre-commit" .claude/hooks/
+  cp "$ROOT/hooks/trace-blocklist.txt" "$ROOT/hooks/secret-blocklist.txt" .claude/hooks/ 2>/dev/null
+  printf 'seed\n' > seed.txt && git add seed.txt && git commit -qm init
+  mkdir -p src && i=1; while [ "$i" -le 120 ]; do printf 'export const V%s = %s;\n' "$i" "$i" > "src/f$i.ts"; i=$((i+1)); done
+  git add src >/dev/null 2>&1
+  bash -x .claude/hooks/pre-commit >/dev/null 2>trace.log ) 2>/dev/null
+SPAWN="$(grep -cE '^\++ (grep|git|sed|awk|paste|tr|cut|wc|cat|head|tail|sort|printf)' "$PCT/trace.log" 2>/dev/null || echo 0)"
+# 120 files. The old shape produced ~850; anything near that is the per-file loop growing back.
+if [ "${SPAWN:-9999}" -le 120 ]; then pass "pre-commit stays under one process per staged file ($SPAWN for 120 files)"
+else fail "pre-commit spawns $SPAWN processes for 120 files — the per-file loop is back (Windows pays 20-50 ms each)"; fi
+rm -rf "$PCT"
+
 echo "---"
 if [ "$FAIL" -eq 0 ]; then echo "SMOKE-TEST: PASSED ✅"; exit 0
 else echo "SMOKE-TEST: $FAIL errors ❌"; exit 1; fi
