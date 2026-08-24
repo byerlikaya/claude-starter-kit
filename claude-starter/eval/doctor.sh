@@ -276,6 +276,19 @@ echo "---"
 if [ "$FAIL" -eq 0 ]; then echo "DOCTOR: healthy ✅"
 else echo "DOCTOR: $FAIL issue(s) ❌ — apply the fixes above"; fi
 
+# 8b) The shell matcher. Claude Code's hooks reference is explicit: inspect shell commands with
+#     `Bash|PowerShell`, because wherever the PowerShell tool is enabled it IS the shell — and it is on by
+#     default for claude.ai and Console accounts on Windows. An install from before 2.5.0 watches only `Bash`,
+#     so every PowerShell command walks past the §4.5 rules with nothing firing. Nothing about the session
+#     looks wrong, which is why this is a check and not a release note.
+if [ -f .claude/settings.json ]; then
+  if grep -q '"matcher"[[:space:]]*:[[:space:]]*"[^"]*PowerShell' .claude/settings.json; then
+    ok "shell gates watch both Bash and PowerShell"
+  elif grep -q '"matcher"[[:space:]]*:[[:space:]]*"Bash"' .claude/settings.json; then
+    bad "shell gates watch only Bash — PowerShell commands bypass every §4.5 rule" \
+        "update the kit (npx @byerlikaya/claude-starter-kit update), or set the PreToolUse matcher to \"Bash|PowerShell\""
+  fi
+fi
 # 9) The auto-mode classifier. Since 2026-08-14 auto mode is the default permission mode on Pro/Max/Team, so a
 #     classifier answers permission prompts the user used to answer. Two things can be wrong and neither shows
 #     up in a session. Only ONE of them is a real gate finding: a custom autoMode block that dropped the

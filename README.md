@@ -254,7 +254,7 @@ bash start.sh               # new project
 bash adopt.sh               # existing project (re-run it to update)
 ```
 
-**Windows:** Claude Starter Kit is bash-based. Run it in **Git Bash** ([git-scm.com](https://git-scm.com)); WSL works as a fallback.
+**Windows:** Claude Starter Kit is bash-based. Run it in **Git Bash** ([git-scm.com](https://git-scm.com)); WSL works as a fallback. The gate hooks are shell scripts, so **Git Bash (or WSL) is what makes them run** — on a Windows machine with neither, Claude Code enables its PowerShell tool automatically and the hooks cannot execute, which means no gates. That configuration is not supported by the gate layer, and the installers cannot run there either. With Git Bash present the gates cover **both** shells: the PowerShell tool is on by default for claude.ai and Console accounts, and its commands go through the same rules (`Remove-Item -Recurse -Force`, `… | iex`, `Get-Content .env`, and the rest).
 
 **Plugin edition** — just the agents, skills and gate hooks inside your existing Claude Code, no scaffolding:
 

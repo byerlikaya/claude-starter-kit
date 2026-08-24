@@ -254,7 +254,7 @@ bash start.sh               # yeni proje
 bash adopt.sh               # mevcut proje (tazelemek için tekrar çalıştırın)
 ```
 
-**Windows:** Claude Starter Kit bash tabanlıdır. **Git Bash** içinde çalıştırın ([git-scm.com](https://git-scm.com)); WSL de alternatif olarak çalışır.
+**Windows:** Claude Starter Kit bash tabanlıdır. **Git Bash** içinde çalıştırın ([git-scm.com](https://git-scm.com)); WSL de alternatif olarak çalışır. Kapı hook’ları birer kabuk script’i olduğu için **onları çalıştıran şey Git Bash (ya da WSL)**: ikisi de yoksa Claude Code PowerShell aracını kendiliğinden açar, hook’lar çalışamaz ve kapı kalmaz. Bu yapılandırma kapı katmanı tarafından desteklenmiyor; kurulum script’leri de orada zaten koşamaz. Git Bash varsa kapılar **iki kabuğu da** kapsar: PowerShell aracı claude.ai ve Console hesaplarında varsayılan açıktır ve onun komutları da aynı kurallardan geçer (`Remove-Item -Recurse -Force`, `… | iex`, `Get-Content .env` ve diğerleri).
 
 **Plugin sürümü:** iskele kurmadan, yalnızca ajanlar, skiller ve yaptırım hook'ları mevcut Claude Code'unuzun içinde:
 
