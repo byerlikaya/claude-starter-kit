@@ -61,7 +61,11 @@ done
 # 2b) Behaviour probe — a hook that is present + executable can still be NEUTERED (its body replaced with `exit 0`).
 #     Drive guard-bash with a command it MUST block; if it does not exit 2, the §4.5 gate is disarmed.
 if [ -x .claude/hooks/guard-bash.sh ]; then
-  if printf '%s' '{"tool_name":"Bash","permission_mode":"auto","tool_input":{"command":"git push --force"}}' | bash .claude/hooks/guard-bash.sh >/dev/null 2>&1; then
+  # CSK_GATE_LOG=/dev/null: this probe drives the real gate, so without it every `/doctor-csk` writes a
+  # synthetic "git push --force blocked" line into the evidence log — and the gate report would then be
+  # counting the diagnostics instead of what the model reached for. A measurement tool that contaminates the
+  # thing it measures is worse than none.
+  if printf '%s' '{"tool_name":"Bash","permission_mode":"auto","tool_input":{"command":"git push --force"}}' | CSK_GATE_LOG=/dev/null bash .claude/hooks/guard-bash.sh >/dev/null 2>&1; then
     bad "guard-bash.sh did NOT block a force-push — the §4.5 gate is neutered/disarmed" "restore guard-bash.sh from the kit"
   else ok "guard-bash.sh blocks a force-push (gate live, not neutered)"; fi
 fi
@@ -289,6 +293,18 @@ if [ -x .claude/skills/automode-policy/scripts/check.sh ] || [ -f .claude/skills
   [ "$AMRC" = 2 ] && printf '%s\n' "$AMOUT" | grep 'auto-mode config' 
 else
   warn "auto-mode policy check skipped (install predates the automode-policy skill; run the updater)"
+fi
+# 10) Gate activity. The suite proves the gates CAN fire; this reports whether anything actually tripped them.
+#     Recording is on by default (rule names only, never the command), so "no log" here means no gate has
+#     fired yet — a measured zero, not a gap. Never a failure either way.
+if [ -f .claude/eval/gate-report.sh ]; then
+  GOUT="$(bash .claude/eval/gate-report.sh 2>/dev/null)"; GRC=$?
+  case "$GRC" in
+    0) GL="$(printf '%s' "$GOUT" | grep -E 'decision\(s\)|no gate has fired' | head -1 | sed 's/^ *//')"
+       [ -n "$GL" ] && ok "gate activity: $GL" || ok "gate activity recorded (see /gates-csk)" ;;
+    3) skip "gate activity NOT MEASURED — nowhere to record (see /gates-csk)" ;;
+    *) skip "gate activity unreadable (see /gates-csk)" ;;
+  esac
 fi
 # --- Agentic readiness (ADVISORY) -------------------------------------------------------------------------
 # Everything above answers "are the kit's gates live?". This answers a different question the gates cannot see:

@@ -2313,12 +2313,20 @@ blocks2(){ gj auto "$1" | env "${2:-IGNORE=1}" bash "$HOOKS/guard-bash.sh" >/dev
 ( cd "$GLD" && unset CSK_GATE_LOG && blocks2 'git reset --hard' ) \
   && pass "log unset: reset --hard still BLOCKED (rc=2)" || fail "log unset: reset --hard not blocked with rc=2 (fail-open or died)"
 [ ! -e "$GLOG" ] && pass "log unset: nothing is written (silent by default)" || fail "log unset: a log file appeared anyway"
-# 2. Set: one line, carrying verdict + section + rule + the command that tripped it.
+# 2. Set: one line, carrying verdict + section + rule. The COMMAND field is empty unless CSK_GATE_LOG_CMD=1
+#    (2.5.0): recording became the default, and the command is the one field that can carry a path or a token
+#    while /gates-csk never prints it. Both halves are cased, because "opt-in" that quietly records anyway is
+#    the failure that matters here.
 blocks2 'git reset --hard' "CSK_GATE_LOG=$GLOG" \
   && pass "log set: reset --hard still BLOCKED (rc=2, verdict unchanged)" || fail "log set: the gate stopped blocking with rc=2"
-grep -q "^BLOCK	§4.5	git reset --hard	git reset --hard$" "$GLOG" 2>/dev/null \
-  && pass "log set: BLOCK line carries verdict, section, rule and command" \
+grep -q "^BLOCK	§4.5	git reset --hard	$" "$GLOG" 2>/dev/null \
+  && pass "log set: BLOCK line carries verdict, section, rule — and no command" \
   || fail "log set: wrong or missing line ($(tr '\t' '|' < "$GLOG" 2>/dev/null | tr '\n' ' '))"
+rm -f "$GLOG"
+gj auto 'git reset --hard' | env "CSK_GATE_LOG=$GLOG" CSK_GATE_LOG_CMD=1 bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1
+grep -q "^BLOCK	§4.5	git reset --hard	git reset --hard$" "$GLOG" 2>/dev/null \
+  && pass "log set: CSK_GATE_LOG_CMD=1 adds the command back" \
+  || fail "log set: CSK_GATE_LOG_CMD=1 did not record the command ($(tr '\t' '|' < "$GLOG" 2>/dev/null | tr '\n' ' '))"
 # 3. A command the gate ALLOWS writes nothing — the log records gate decisions, not shell history. Without this
 #    a reader could not tell "the gate fired" from "the model ran something".
 : > "$GLOG"
@@ -2572,6 +2580,144 @@ PY2
 else
   fail "automode-policy skill missing from the payload"
 fi
+echo "== 10) gate report — the evidence half of the gate claim =="
+# The suite proves a gate CAN fire. This tool reports whether anything DID. Its two failure modes are both
+# silent, so both are cased here: reporting "0 firings" when logging was simply off (a measurement gap read as
+# evidence), and an inventory that drifts from the rules it claims to cover.
+GR="$ROOT/eval/gate-report.sh"
+if [ -f "$GR" ]; then
+  GTMP="$(mktemp -d)"; cp -R "$ROOT/hooks" "$GTMP/hooks"
+
+  # (a0) .claude present, no log -> exit 0: recording is on and nothing fired. That IS a measurement of zero,
+  #      and calling it "not measured" would understate a healthy install.
+  mkdir -p "$GTMP/.claude"
+  GZ="$(cd "$GTMP" && CSK_GATE_LOG= bash "$GR" 2>&1)"; GZRC=$?
+  [ "$GZRC" = 0 ] && pass "gate-report: recording on, nothing fired -> exit 0 (measured zero)" \
+                  || fail "gate-report: an empty log with .claude present returned $GZRC (expected 0)"
+  case "$GZ" in *"no gate has fired"*) pass "gate-report: names it as zero firings, not as unmeasured" ;;
+                *) fail "gate-report: did not distinguish zero firings from not measured" ;; esac
+  rmdir "$GTMP/.claude" 2>/dev/null
+
+  # (a) hooks but NOWHERE to record -> exit 3 and the words NOT MEASURED. Never a zero that reads like a count.
+  #     (Order matters and the first version of this case got it wrong: with no hooks the tool exits 4,
+  #     "cannot read the rules", which is correct behaviour and a different finding entirely.)
+  GOUT="$(cd "$GTMP" && CSK_GATE_LOG= bash "$GR" 2>&1)"; GRC=$?
+  [ "$GRC" = 3 ] && pass "gate-report: hooks present, no log -> exit 3" || fail "gate-report: no log returned $GRC (expected 3)"
+  case "$GOUT" in *"NOT MEASURED"*) pass "gate-report: says NOT MEASURED rather than reporting zeros" ;;
+                  *) fail "gate-report: a missing log must say NOT MEASURED, not print counts" ;; esac
+
+  # (a2) no hooks at all is a DIFFERENT answer: 4, cannot read the inventory — not "nothing fired".
+  GEMPTY="$(mktemp -d)"; ( cd "$GEMPTY" && CSK_GATE_LOG= bash "$GR" >/dev/null 2>&1 ); GRC2=$?
+  [ "$GRC2" = 4 ] && pass "gate-report: no hooks -> exit 4 (distinct from 'not measured')" \
+                  || fail "gate-report: missing hooks returned $GRC2 (expected 4)"
+  rm -rf "$GEMPTY"
+
+  # (b) the inventory is DERIVED: a rule added to the hook appears without anyone updating a list.
+  printf '\n{ false; } && block "smoke-probe synthetic rule" "4.5"\n' >> "$GTMP/hooks/guard-bash.sh"
+  printf 'BLOCK\t§4.5\tgit reset --hard\tgit reset --hard\n' > "$GTMP/log.tsv"
+  GOUT2="$(cd "$GTMP" && bash "$GR" --log "$GTMP/log.tsv" 2>&1)"
+  case "$GOUT2" in *"smoke-probe synthetic rule"*) pass "gate-report: inventory derived from the hooks (new rule appears)" ;;
+                   *) fail "gate-report: a rule added to guard-bash.sh did not appear — inventory is not derived" ;; esac
+
+  # (c) a rule that fired must NOT also be listed as not-observed. It did once: the label carries a trailing
+  #     parenthetical, and one of them interpolates $PERM_MODE, so source and log never compared equal.
+  printf 'BLOCK\t\302\2474.4\tcommit/push under a mode that cannot prompt (bypassPermissions)\tgit commit\n' >> "$GTMP/log.tsv"
+  GOUT3="$(cd "$GTMP" && bash "$GR" --log "$GTMP/log.tsv" 2>&1)"
+  UNSEEN_PART="$(printf '%s\n' "$GOUT3" | awk '/wired but not observed/{u=1} u')"
+  case "$UNSEEN_PART" in *"cannot prompt"*) fail "gate-report: a rule that fired is also listed as not observed" ;;
+                         *) pass "gate-report: a fired rule with a variable in its label is not double-counted" ;; esac
+  case "$GOUT3" in *"git reset --hard"*) pass "gate-report: counts a real firing" ;;
+                   *) fail "gate-report: a logged firing is missing from the report" ;; esac
+
+  # (d) routed, not idle.
+  [ -f "$ROOT/commands/gates-csk.md" ] && pass "/gates-csk command present (report is routed)" \
+                                       || fail "gate-report.sh has no command routing it — an idle component"
+
+  # (e) doctor is RUN, not grepped. Grepping doctor.sh for "gate-report.sh" passed while both new sections
+  #     were dead: they called a helper defined further down the file, so every line was a no-op and the only
+  #     evidence was `skip: command not found` on stderr. A wiring check that never executes the wiring is not
+  #     a check. This installs a fixture and reads what doctor actually prints.
+  DTMP="$(mktemp -d)"; mkdir -p "$DTMP/.claude"
+  for d in eval hooks skills commands agents; do [ -d "$ROOT/$d" ] && cp -R "$ROOT/$d" "$DTMP/.claude/$d"; done
+  cp "$ROOT/settings.json" "$DTMP/.claude/settings.json" 2>/dev/null
+  DOUT="$(cd "$DTMP" && bash .claude/eval/doctor.sh 2>"$DTMP/err")"
+  case "$DOUT" in *"gate activity"*) pass "doctor actually prints a gate-activity line" ;;
+                  *) fail "doctor never printed a gate-activity line when run" ;; esac
+  case "$DOUT" in *"auto-mode classifier"*) pass "doctor actually prints an auto-mode config line" ;;
+                  *) fail "doctor never printed an auto-mode line when run" ;; esac
+  rm -rf "$DTMP" "$GTMP"
+else
+  fail "eval/gate-report.sh missing from the payload"
+fi
+echo "== 11) gate log defaults + hooks that cannot hang =="
+# Two behaviours that only exist because they were measured, and that regress silently if nobody cases them.
+GTMP2="$(mktemp -d)"; mkdir -p "$GTMP2/.claude"
+gjson(){ printf '{"tool_name":"Bash","tool_input":{"command":"%s"},"permission_mode":"default"}' "$1"; }
+
+# (a) ON BY DEFAULT: a blocked command records a line with no env var set at all.
+( cd "$GTMP2" && gjson 'git reset --hard' | bash "$ROOT/hooks/guard-bash.sh" >/dev/null 2>&1 )
+[ -s "$GTMP2/.claude/gate-log.tsv" ] && pass "gate log records by default (no env var needed)" \
+                                     || fail "gate log did not record with defaults — the evidence channel is off"
+
+# (b) the COMMAND TEXT is not in it. This is the whole privacy argument for turning it on by default.
+if grep -q 'git reset --hard	git reset --hard' "$GTMP2/.claude/gate-log.tsv" 2>/dev/null; then
+  fail "gate log recorded the command text by default — it must be opt-in (CSK_GATE_LOG_CMD=1)"
+else pass "gate log omits the command text by default"; fi
+( cd "$GTMP2" && gjson 'git reset --hard' | CSK_GATE_LOG_CMD=1 bash "$ROOT/hooks/guard-bash.sh" >/dev/null 2>&1 )
+grep -q 'git reset --hard	git reset --hard' "$GTMP2/.claude/gate-log.tsv" 2>/dev/null \
+  && pass "CSK_GATE_LOG_CMD=1 puts the command back" || fail "CSK_GATE_LOG_CMD=1 did not record the command"
+
+# (b2) the default path is only used where it cannot surprise anyone. In a git repo where .claude/gate-log.tsv
+#      is NOT ignored, record nothing — this repo demonstrated the failure: the suite left an untracked
+#      gate-log.tsv in `git status`, one `git add -A` away from being committed. The plugin edition lands in
+#      repos no installer prepared, so this is the common case there, not the exotic one.
+GNI="$(mktemp -d)"; ( cd "$GNI" && git init -q . && mkdir -p .claude )
+( cd "$GNI" && gjson 'git reset --hard' | bash "$ROOT/hooks/guard-bash.sh" >/dev/null 2>&1 )
+[ -e "$GNI/.claude/gate-log.tsv" ] && fail "gate log wrote into a repo where the path is not gitignored" \
+                                   || pass "gate log declines a path git would track"
+( cd "$GNI" && echo '.claude/' > .gitignore && gjson 'git reset --hard' | bash "$ROOT/hooks/guard-bash.sh" >/dev/null 2>&1 )
+[ -s "$GNI/.claude/gate-log.tsv" ] && pass "gate log writes once the path is gitignored" \
+                                   || fail "gate log stayed silent even though the path is ignored"
+( cd "$GNI" && gjson 'git reset --hard' | bash "$ROOT/hooks/guard-bash.sh" >/dev/null 2>&1 ); GNIRC=$?
+[ "$GNIRC" = 2 ] && pass "the ignore check never changes the verdict (still rc=2)" \
+                 || fail "verdict became $GNIRC once the ignore check ran"
+rm -rf "$GNI"
+
+# (c) no .claude to write into: record nothing, and do NOT change the verdict. A logging path that can alter
+#     a gate decision is worse than no logging.
+GNOC="$(mktemp -d)"
+( cd "$GNOC" && gjson 'git reset --hard' | bash "$ROOT/hooks/guard-bash.sh" >/dev/null 2>&1 ); GRC3=$?
+[ "$GRC3" = 2 ] && pass "gate still blocks (rc=2) where there is nowhere to log" \
+                || fail "gate returned $GRC3 with no .claude present — logging changed the verdict"
+rm -rf "$GNOC"
+
+# (d) a UserPromptSubmit hook must not hang on an open, silent stdin. It did: `cat` waits for EOF, and "not a
+#     tty" is not "data is coming". This ran for 20 minutes twice before it was found, and it fires every turn.
+if command -v mkfifo >/dev/null 2>&1; then
+  FF="$GTMP2/fifo"; mkfifo "$FF" 2>/dev/null
+  ( sleep 25 > "$FF" ) & FW=$!
+  ( CSK_STDIN_TIMEOUT=1 bash "$ROOT/hooks/context-usage.sh" < "$FF" >/dev/null 2>&1 ) & FH=$!
+  FN=0; while kill -0 "$FH" 2>/dev/null && [ "$FN" -lt 8 ]; do sleep 1; FN=$((FN+1)); done
+  if kill -0 "$FH" 2>/dev/null; then kill "$FH" 2>/dev/null; fail "context-usage.sh still hangs on an open silent stdin"
+  else pass "context-usage.sh gives up on a silent stdin (${FN}s)"; fi
+  kill "$FW" 2>/dev/null; rm -f "$FF"
+else note "stdin-hang case skipped (no mkfifo)"; fi
+# (e) the diagnostics must not contaminate the evidence. doctor's §2b probe drives the REAL guard to check it
+#     is not neutered, so without CSK_GATE_LOG=/dev/null every `/doctor-csk` writes a synthetic force-push
+#     block and the report starts counting the diagnostics instead of what the model reached for.
+DCT="$(mktemp -d)"; mkdir -p "$DCT/.claude"
+for d in eval hooks skills commands agents; do [ -d "$ROOT/$d" ] && cp -R "$ROOT/$d" "$DCT/.claude/$d"; done
+cp "$ROOT/settings.json" "$DCT/.claude/settings.json" 2>/dev/null
+( cd "$DCT" && bash .claude/eval/doctor.sh >/dev/null 2>&1; bash .claude/eval/doctor.sh >/dev/null 2>&1 )
+if [ -s "$DCT/.claude/gate-log.tsv" ]; then
+  fail "doctor.sh writes into the gate log — the diagnostics contaminate the evidence"
+else pass "doctor.sh runs without writing into the gate log"; fi
+rm -rf "$DCT"
+
+# and the normal path still works, which is the half a timeout can quietly break
+printf '{"transcript_path":"/nonexistent.jsonl"}' | bash "$ROOT/hooks/context-usage.sh" >/dev/null 2>&1 \
+  && pass "context-usage.sh still handles real hook stdin" || fail "context-usage.sh broke on real hook stdin"
+rm -rf "$GTMP2"
 echo "---"
 if [ "$FAIL" -eq 0 ]; then echo "SMOKE-TEST: PASSED ✅"; exit 0
 else echo "SMOKE-TEST: $FAIL errors ❌"; exit 1; fi

@@ -103,15 +103,43 @@ fi
 PERM_MODE="${PERM_MODE:-}"
 [ -z "$CMD" ] && exit 0
 
-# Gate observability, ABSENT unless the operator exports CSK_GATE_LOG. A gate that cannot be seen firing cannot
-# be measured: "the model never reached for the command" and "the gate stopped it" leave behind exactly the same
-# artifacts, and the A/B harness spent a whole case (evals/permission-pressure) unable to tell them apart — it
-# had to report "guard-bash never fired" as an inference. One TSV line per decision, write-only, and it never
-# touches the decision itself: every call site logs AFTER the verdict is settled.
-gatelog(){  # $1 = verdict (BLOCK|ASK)  $2 = section  $3 = rule
-  [ -n "${CSK_GATE_LOG:-}" ] || return 0
-  printf '%s\t§%s\t%s\t%s\n' "$1" "$2" "$3" \
-    "$(printf '%s' "$CMD" | tr -d '\000-\037' | cut -c1-200)" >> "$CSK_GATE_LOG" 2>/dev/null || true
+# Gate observability. A gate that cannot be seen firing cannot be measured: "the model never reached for the
+# command" and "the gate stopped it" leave behind exactly the same artifacts, and the A/B harness spent a whole
+# case (evals/permission-pressure) unable to tell them apart — it had to report "guard-bash never fired" as an
+# inference. One TSV line per decision, write-only, and it never touches the decision itself: every call site
+# logs AFTER the verdict is settled.
+#
+# ON BY DEFAULT since 2.5.0, into .claude/gate-log.tsv — an evidence channel nobody switches on records nothing,
+# and "the gates hold" is a claim that needs a record, not a test suite alone. CSK_GATE_LOG overrides the path;
+# CSK_GATE_LOG=/dev/null (or a read-only .claude) turns it off. Only BLOCK/ASK decisions reach here, so an
+# ordinary command writes nothing.
+#
+# The COMMAND TEXT IS NOT RECORDED by default. It is the one field that can carry a path, an argument or a
+# token, and `/gates-csk` never prints it — the report is rule names and counts. Recording it by default would
+# buy nothing and add a place for a secret to sit. `CSK_GATE_LOG_CMD=1` puts it back for debugging a false
+# positive, which is the only thing it is good for.
+# Where the default log may go. An explicit CSK_GATE_LOG is the operator's call and is used as given. The
+# DEFAULT path is only used when writing there cannot surprise anyone: outside a git repo, or inside one where
+# the path is already ignored. A kit install gitignores .claude/, so this is the normal case — but the plugin
+# edition drops into repos the installer never touched, and this repo proved the failure itself: the suite left
+# a gate-log.tsv sitting in `git status` as an untracked file waiting to be committed. One `git check-ignore`
+# runs only when a gate actually fires (never on an allowed command), so the hot path is untouched.
+_gatelog_path(){
+  if [ -n "${CSK_GATE_LOG:-}" ]; then printf '%s' "$CSK_GATE_LOG"; return; fi
+  [ -d ".claude" ] || return 0
+  if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    git check-ignore -q ".claude/gate-log.tsv" 2>/dev/null || return 0
+  fi
+  printf '%s' ".claude/gate-log.tsv"
+}
+gatelog(){  # $1 = verdict (BLOCK|ASK|ALLOW)  $2 = section  $3 = rule
+  _GL="$(_gatelog_path)"; [ -n "$_GL" ] || return 0
+  if [ "${CSK_GATE_LOG_CMD:-0}" = 1 ]; then
+    printf '%s\t§%s\t%s\t%s\n' "$1" "$2" "$3" \
+      "$(printf '%s' "$CMD" | tr -d '\000-\037' | cut -c1-200)" >> "$_GL" 2>/dev/null || true
+  else
+    printf '%s\t§%s\t%s\t\n' "$1" "$2" "$3" >> "$_GL" 2>/dev/null || true
+  fi
 }
 
 block(){

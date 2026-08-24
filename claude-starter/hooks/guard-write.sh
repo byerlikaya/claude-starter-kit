@@ -23,10 +23,26 @@ fi
 [ -z "$FP" ] && exit 0
 
 block(){
-  # Same write-only observability channel as guard-bash.sh, and absent for the same reason unless the operator
-  # exports CSK_GATE_LOG. Logged after the verdict; it cannot change it.
-  [ -n "${CSK_GATE_LOG:-}" ] && printf 'BLOCK\t§4.5\t%s\t%s\n' "gate-file edit (Write/Edit tools)" \
-    "$(printf '%s' "$FP" | tr -d '\000-\037' | cut -c1-200)" >> "$CSK_GATE_LOG" 2>/dev/null
+  # Same write-only observability channel as guard-bash.sh, on by default into .claude/gate-log.tsv since 2.5.0
+  # and with the same rule about the payload: the path is NOT recorded unless CSK_GATE_LOG_CMD=1, because
+  # /gates-csk reports rule names and counts and never the argument. Logged after the verdict; it cannot
+  # change it. CSK_GATE_LOG overrides the path; point it at /dev/null to turn recording off.
+  # Same rule as guard-bash.sh: the default path is used only where writing it cannot surprise anyone —
+  # outside a git repo, or where .claude/gate-log.tsv is already ignored.
+  _GL="${CSK_GATE_LOG:-}"
+  if [ -z "$_GL" ] && [ -d ".claude" ]; then
+    if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1 || git check-ignore -q ".claude/gate-log.tsv" 2>/dev/null; then
+      _GL=".claude/gate-log.tsv"
+    fi
+  fi
+  if [ -n "$_GL" ]; then
+    if [ "${CSK_GATE_LOG_CMD:-0}" = 1 ]; then
+      printf 'BLOCK\t§4.5\t%s\t%s\n' "gate-file edit (Write/Edit tools)" \
+        "$(printf '%s' "$FP" | tr -d '\000-\037' | cut -c1-200)" >> "$_GL" 2>/dev/null
+    else
+      printf 'BLOCK\t§4.5\t%s\t\n' "gate-file edit (Write/Edit tools)" >> "$_GL" 2>/dev/null
+    fi
+  fi
   echo "GUARD (§4.5): editing '$FP' is blocked AT THE TOOL LEVEL." >&2
   echo "This file is a gate script — rewriting it would disarm the trace/secret/approval gates. Kit updates go through the installer/update script, not the assistant's file tools. If the user explicitly wants it changed, they edit it in their own editor." >&2
   exit 2
