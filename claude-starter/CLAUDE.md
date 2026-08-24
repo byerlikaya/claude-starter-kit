@@ -85,6 +85,7 @@ and report. Commit/push and destructive commands are gated (§4.4/§4.5).
 | Parallel / file-mutating subagents | `worktree` |
 | Shared repo: start / leave / finish an item | `teamboard` |
 | Building an MCP server / tool | `mcp-builder` |
+| Auditing the auto-mode classifier config | `automode-policy` |
 
 ## Token & context discipline (token-budget skill)
 A subagent works in its own context window and returns only a summary — but a subagent-heavy flow costs several times

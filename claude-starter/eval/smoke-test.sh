@@ -1329,7 +1329,9 @@ echo "== 6f) always-on token budget =="
 # for that cost, and a gate rather than a reminder — a verbose new description fails the suite instead of
 # quietly taxing every future session. Budgets sit just above the current sizes: raising one is allowed, but
 # only as a deliberate edit here.
-BUDGET_DISC=11680    # DISCIPLINE.md (the discipline half of CLAUDE.md); currently 10770 (2.3.0: +62 B for the
+BUDGET_DISC=11800    # DISCIPLINE.md (the discipline half of CLAUDE.md); currently 11755 (2.5.0: +75 B, the
+                     # automode-policy row in the trigger map — routing it is what keeps it from being idle);
+                     # was 11680 / (2.3.0: +62 B for the
                      # `teamboard` trigger row. A multi-person repo has no other always-on place to learn that a
                      # teammate's in-progress item exists: docs/ is gitignored, so without this row the model
                      # plans work somebody else already started. Bought as ONE trigger-map row and nothing else —
@@ -1367,7 +1369,11 @@ BUDGET_AGENTS=5800   # sum of agent frontmatter; currently 5765 (1.11.0: +218 B 
                      # +performance-expert-csk (~426B) — security, privacy and tests each had an independent
                      # reviewer and performance was the one quality axis where the author audited their own
                      # work. Bought at ~110 tokens per session; the alternative was leaving that gap open.)
-BUDGET_SKILLS=8380  # sum of skill frontmatter; currently 8184. (2.3.0: +187 B for `teamboard`. It is the only
+BUDGET_SKILLS=8700  # sum of skill frontmatter; currently 8678. (2.5.0: +307 B for `automode-policy` — about
+                    # half of it the allowed-tools grant that lets the skill run its own verifier without a
+                    # prompt, not prose. The listing is what every session pays for; the next skill that wants
+                    # room takes it from a description, not from another bump.) Was 8380 / 8371 — nine bytes
+                    # of headroom, so the ceiling was already the binding constraint, not this skill. (2.3.0: +187 B for `teamboard`. It is the only
                      # skill whose absence from the LISTING is silently unsafe rather than merely unhelpful: a
                      # skill that fails to match usually means the model does the work itself, but this one
                      # failing to match means two people do the SAME work, on separate machines, discovering it
@@ -2508,6 +2514,64 @@ for c in brainstorm plan review ship handoff; do
 done
 pass "no unsuffixed command shadows a built-in"
 
+echo "== 9) auto-mode classifier config — reported, never claimed as a gate =="
+# The rules live in USER settings because the classifier ignores autoMode in .claude/settings.json. They are
+# CONFIGURATION: measured 2026-08-24 (2.1.238, interactive, auto mode), a hard_deny naming `git reset --hard`
+# verbatim did not stop it, and a no-policy control behaved the same — so nothing here asserts enforcement.
+# Two invariants matter and neither needs the claude CLI, so they hold in CI too:
+#   (a) every array the kit ships keeps the literal "$defaults" — omitting it silently replaces the built-in
+#       list for that section (measured on 2.1.238: soft_deny 66 -> 2, no error);
+#   (b) the verifier fails SAFE when it cannot verify, and the installer never writes without a yes.
+AMD="$ROOT/skills/automode-policy"
+if [ -d "$AMD" ]; then
+  P="$AMD/references/policy.json"
+  [ -f "$P" ] && pass "automode-policy ships a policy file" || fail "automode-policy: policy.json missing"
+
+  # (a) the $defaults invariant — the one finding that survived the measurement, per array, on the shipped file
+  if command -v python3 >/dev/null 2>&1 && [ -f "$P" ]; then
+    BADARR="$(python3 - "$P" <<'PY2'
+import json,sys
+am=json.load(open(sys.argv[1]))["autoMode"]
+bad=[k for k,v in am.items() if isinstance(v,list) and "$defaults" not in v]
+print(" ".join(bad))
+PY2
+)"
+    [ -z "$BADARR" ] && pass "every shipped autoMode array keeps \"\$defaults\"" \
+                     || fail "autoMode array(s) without \"\$defaults\" — built-in rules would be replaced:$BADARR"
+    python3 -c 'import json,sys;json.load(open(sys.argv[1]))' "$P" >/dev/null 2>&1 \
+      && pass "policy.json is valid JSON" || fail "policy.json is not valid JSON"
+  else note "policy shape check skipped (no python3)"
+  fi
+
+  # (b1) no claude CLI -> "cannot verify" (4), never a false green
+  # PATH=/nonexistent must not also hide `bash` itself, or the case measures its own harness (rc 127).
+  RC4="$(PATH=/nonexistent /bin/bash "$AMD/scripts/check.sh" >/dev/null 2>&1; echo $?)"
+  [ "$RC4" = 4 ] && pass "check.sh reports cannot-verify (4) when the claude CLI is absent" \
+                 || fail "check.sh returned $RC4 without a claude CLI — expected 4 (fail-safe)"
+
+  # (b2) the installer writes nothing without a yes, and rejects unknown flags instead of guessing
+  # Byte equality is the WRONG invariant here and this was measured: `claude auto-mode config`, which the
+  # verifier calls, reformats the settings file it reads and normalises values (`opus` -> `opus[1m]`), so the
+  # file legitimately differs even when apply.sh wrote nothing. The invariant that matters is semantic: no
+  # autoMode block appeared without a yes.
+  TDIR="$(mktemp -d)"; printf '{"model":"opus"}\n' > "$TDIR/settings.json"
+  CLAUDE_CONFIG_DIR="$TDIR" bash "$AMD/scripts/apply.sh" </dev/null >/dev/null 2>&1
+  grep -q '"autoMode"' "$TDIR/settings.json" \
+    && fail "apply.sh installed the policy without a confirmation" \
+    || pass "apply.sh installs nothing when the answer is not yes"
+  RC64="$(bash "$AMD/scripts/apply.sh" --nope >/dev/null 2>&1; echo $?)"
+  [ "$RC64" = 64 ] && pass "apply.sh rejects an unknown flag (64)" || fail "apply.sh accepted an unknown flag (rc=$RC64)"
+  bash "$AMD/scripts/apply.sh" --print >/dev/null 2>&1 && pass "apply.sh --print works with no write path" \
+                                                       || fail "apply.sh --print failed"
+  rm -rf "$TDIR"
+
+  # (c) routed, not idle: doctor must run the checker (§ no idle components)
+  grep -q 'automode-policy/scripts/check.sh' "$ROOT/eval/doctor.sh" \
+    && pass "doctor runs the auto-mode policy check (component is routed)" \
+    || fail "automode-policy is not routed from doctor.sh — an idle component"
+else
+  fail "automode-policy skill missing from the payload"
+fi
 echo "---"
 if [ "$FAIL" -eq 0 ]; then echo "SMOKE-TEST: PASSED ✅"; exit 0
 else echo "SMOKE-TEST: $FAIL errors ❌"; exit 1; fi

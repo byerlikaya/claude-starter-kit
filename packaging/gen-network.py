@@ -44,7 +44,8 @@ EDGES = {
  "performance-expert-csk":"performance"}
 # Skills no single agent owns: routed from a command and the discipline's trigger map rather than from an
 # agent body, so they have no `applies` edge to draw and sit in the centre instead.
-CORE_SKILLS = ["systematic-debugging","iterate","reflect","worktree","mcp-builder","eval-grader","teamboard"]
+CORE_SKILLS = ["systematic-debugging","iterate","reflect","worktree","mcp-builder","eval-grader","teamboard",
+               "automode-policy"]
 ST_OF = dict(AGENTS)
 
 # deliberate home-stage for each skill (so groups read clean); default = first agent's stage

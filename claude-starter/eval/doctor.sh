@@ -18,6 +18,11 @@ FAIL=0
 ok(){  echo "  ✅ $1"; }
 bad(){ echo "  ❌ $1"; echo "     ↳ fix: $2"; FAIL=$((FAIL+1)); }
 warn(){ echo "  ⚠️  $1"; }
+# `skip` lives up here with the other reporters, not down in the readiness block where it used to be
+# defined: the health checks call it too, and a helper defined after its first caller is a silent
+# no-op — the line never prints and the run shows `skip: command not found` on stderr, where nobody
+# looks. Found by RUNNING doctor against a fixture install; grepping for the call sites said wired.
+skip(){ echo "  ·  $1"; }
 
 echo "== Claude Starter Kit — install doctor =="
 
@@ -267,6 +272,24 @@ echo "---"
 if [ "$FAIL" -eq 0 ]; then echo "DOCTOR: healthy ✅"
 else echo "DOCTOR: $FAIL issue(s) ❌ — apply the fixes above"; fi
 
+# 9) The auto-mode classifier. Since 2026-08-14 auto mode is the default permission mode on Pro/Max/Team, so a
+#     classifier answers permission prompts the user used to answer. Two things can be wrong and neither shows
+#     up in a session. Only ONE of them is a real gate finding: a custom autoMode block that dropped the
+#     built-ins by omitting "$defaults" — 66 soft blocks gone, silently. Whether the kit's own rules are present
+#     is reported but NOT treated as a failure: they were measured on 2026-08-24 not to enforce (see the skill).
+if [ -x .claude/skills/automode-policy/scripts/check.sh ] || [ -f .claude/skills/automode-policy/scripts/check.sh ]; then
+  AMOUT="$(bash .claude/skills/automode-policy/scripts/check.sh 2>&1)"; AMRC=$?
+  case "$AMRC" in
+    0) ok "auto-mode classifier config: built-ins intact, kit rules present (config, not a gate)" ;;
+    2) bad "auto-mode classifier BUILT-INS DROPPED — an autoMode array lacks \"\$defaults\"" \
+           "restore it in ~/.claude/settings.json; see .claude/skills/automode-policy/SKILL.md" ;;
+    3) skip "auto-mode classifier config: kit rules absent (measured not to enforce — see the skill)" ;;
+    *) warn "auto-mode policy check skipped (claude CLI too old, or auto mode unavailable here)" ;;
+  esac
+  [ "$AMRC" = 2 ] && printf '%s\n' "$AMOUT" | grep 'auto-mode config' 
+else
+  warn "auto-mode policy check skipped (install predates the automode-policy skill; run the updater)"
+fi
 # --- Agentic readiness (ADVISORY) -------------------------------------------------------------------------
 # Everything above answers "are the kit's gates live?". This answers a different question the gates cannot see:
 # "is this PROJECT set up so an agent can actually work well in it?" A flawless install still starves its
@@ -287,7 +310,6 @@ echo "Readiness (advisory — does not affect the verdict above):"
 RDY=0; RTOT=0
 rdy(){ RTOT=$((RTOT+1)); RDY=$((RDY+1)); echo "  ✅ $1"; }
 gap(){ RTOT=$((RTOT+1)); echo "  ➖ $1"; echo "     ↳ $2"; }
-skip(){ echo "  ·  $1"; }
 
 # R1) Is the CLAUDE.md project section filled in, or still the shipped template? An unfilled section means every
 #     agent works stack-blind — it is the single most common way a correct install still underperforms.

@@ -1,0 +1,13 @@
+{
+  "autoMode": {
+    "hard_deny": [
+      "$defaults",
+      "CSK Uncommitted Work Destruction: Discarding uncommitted work across a whole tree or directory rather than a file the user named — `git checkout -- .`, `git restore .`, `git reset --hard`, `git clean -fd`, `git stash drop/clear`, or any equivalent that resolves to the working tree, a directory, or a glob. Uncommitted work is the one artifact with no second copy, and a subagent or a cleanup step reaches for these commands while doing something the user did ask for. Blocked unconditionally: commit, stash by name, or revert the specific files instead, and ask the user which."
+    ],
+    "soft_deny": [
+      "$defaults",
+      "CSK Gate Tampering: Disabling, bypassing, or removing this project's own tool-level gates — `--no-verify` / `-n` on commit or push, unsetting or repointing `core.hooksPath`, running git with `-c core.hooksPath=`, deleting or rewriting files under `.claude/hooks/`, or removing hook entries from `.claude/settings.json`. The gates are the project's stated policy; an agent that finds them inconvenient must report the obstacle, not remove it. The user may still authorise a specific bypass in their own words.",
+      "CSK Internal Docs Publication: Staging, committing, or pushing the project's internal working documents — anything under `docs/` such as session state, roadmaps, and handover notes, including with `git add -f` against a gitignore rule. These files carry machine paths, unfinished decisions, and internal reasoning; they are deliberately local. Publishing one needs the user to say which file and where."
+    ]
+  }
+}
