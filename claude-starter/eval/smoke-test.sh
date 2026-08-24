@@ -2665,6 +2665,13 @@ if [ -f "$GR" ]; then
                   *) fail "doctor never printed a gate-activity line when run" ;; esac
   case "$DOUT" in *"auto-mode classifier"*) pass "doctor actually prints an auto-mode config line" ;;
                   *) fail "doctor never printed an auto-mode line when run" ;; esac
+  # ...and it must say so in an environment WITHOUT the claude CLI too. This case was written on a machine
+  # that has it, so it only ever exercised one of doctor's four branches; CI has no CLI, took the fourth, and
+  # failed on a wording difference. Running it both ways is what makes the assertion about doctor rather than
+  # about the machine the suite happens to run on.
+  DOUT3="$(cd "$DTMP" && PATH=/usr/bin:/bin bash .claude/eval/doctor.sh 2>/dev/null)"
+  case "$DOUT3" in *"auto-mode classifier"*) pass "doctor reports the auto-mode line with no claude CLI present" ;;
+                   *) fail "doctor went silent on auto-mode when the claude CLI is absent" ;; esac
   rm -rf "$DTMP" "$GTMP"
 else
   fail "eval/gate-report.sh missing from the payload"

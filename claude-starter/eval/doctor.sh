@@ -301,7 +301,10 @@ if [ -x .claude/skills/automode-policy/scripts/check.sh ] || [ -f .claude/skills
     2) bad "auto-mode classifier BUILT-INS DROPPED — an autoMode array lacks \"\$defaults\"" \
            "restore it in ~/.claude/settings.json; see .claude/skills/automode-policy/SKILL.md" ;;
     3) skip "auto-mode classifier config: kit rules absent (measured not to enforce — see the skill)" ;;
-    *) warn "auto-mode policy check skipped (claude CLI too old, or auto mode unavailable here)" ;;
+    # Same vocabulary as the other three branches on purpose. It used to read "auto-mode policy check
+    # skipped", and the suite's assertion — written on a machine that HAS the claude CLI — never saw this
+    # branch. CI has no CLI, so every run took it and the case failed on a wording difference, not a defect.
+    *) skip "auto-mode classifier config: not checked (no claude CLI, or auto mode unavailable here)" ;;
   esac
   [ "$AMRC" = 2 ] && printf '%s\n' "$AMOUT" | grep 'auto-mode config' 
 else
