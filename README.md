@@ -8,7 +8,7 @@
 
 On a shared repo, taking a work item is an atomic git claim — two people cannot start the same one
 
-![Version](https://img.shields.io/badge/version-2.4.0-2563eb?style=flat-square)
+![Version](https://img.shields.io/badge/version-2.5.0-2563eb?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)
 ![Agents](https://img.shields.io/badge/agents-12-f59e0b?style=flat-square)
 ![Skills](https://img.shields.io/badge/skills-39-f59e0b?style=flat-square)

