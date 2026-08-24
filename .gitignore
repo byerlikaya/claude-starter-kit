@@ -10,3 +10,6 @@
 /dist/
 .private-terms.txt
 .private-allowlist.txt
+
+# Kapi kaydi (runtime artefakti; testler bunu depo kokunde uretebiliyor).
+.claude/gate-log.tsv

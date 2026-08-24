@@ -33,11 +33,19 @@ combo() {
   grep -q '^profile=' "$P/.claude/kit.conf" && { echo "FAIL [$lbl]: kit.conf still records a profile"; exit 1; }
   echo "[$lbl] agents=$ag skills=$sk smoke=OK manifest=$(wc -l < "$P/.claude/kit-manifest.txt" | tr -d ' ')"
 }
-# The kit ships 12 agents and 39 skills; --generic drops exactly one skill (devarch-module).
-combo dotnet        'yes\nno\n'  12 39 --dotnet
-combo generic       'yes\n'      12 38 --generic
+# The expected counts come from the PAYLOAD, not from a number typed here. Written by hand they drift with the
+# first component added — the network diagram's subtitle did exactly that, announcing 11 agents and 36 skills
+# over a picture it had drawn with 12 and 38 — and the failure reads like a broken install rather than a stale
+# constant. `--generic` prunes exactly one skill (devarch-module), so that arm is the payload count minus one;
+# the assertion that matters is still "the set does not vary silently", and it survives intact.
+KIT_AG=$(ls "$ROOT"/claude-starter/agents/*.md 2>/dev/null | wc -l | tr -d ' ')
+KIT_SK=$(ls -d "$ROOT"/claude-starter/skills/*/ 2>/dev/null | wc -l | tr -d ' ')
+[ "${KIT_AG:-0}" -gt 0 ] && [ "${KIT_SK:-0}" -gt 0 ] || { echo "FAIL: cannot count the payload at $ROOT/claude-starter"; exit 1; }
+echo "payload: $KIT_AG agents, $KIT_SK skills (expectations derived, not typed)"
+combo dotnet        'yes\nno\n'  "$KIT_AG" "$KIT_SK"          --dotnet
+combo generic       'yes\n'      "$KIT_AG" "$((KIT_SK - 1))"  --generic
 # An old command line must still install, and must install the FULL set — the flag is accepted, not obeyed.
-combo legacy-flags  'yes\n'      12 38 --frontend --generic
+combo legacy-flags  'yes\n'      "$KIT_AG" "$((KIT_SK - 1))"  --frontend --generic
 grep -q 'no effect' "$WORK/proj-legacy-flags/.claude/kit.conf" && { echo "FAIL: notice leaked into kit.conf"; exit 1; }
 [ -f "$WORK/proj-legacy-flags/.claude/agents/backend-expert-csk.md" ] || { echo "FAIL: --frontend still pruned the backend agent"; exit 1; }
 echo "[legacy-flags] --frontend accepted and ignored; full set installed"

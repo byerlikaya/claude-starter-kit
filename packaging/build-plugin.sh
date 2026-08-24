@@ -50,7 +50,7 @@ cat > "$OUT/hooks/hooks.json" <<'HOOKS'
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash",
+        "matcher": "Bash|PowerShell",
         "hooks": [
           { "type": "command", "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/guard-bash.sh\"", "timeout": 60 },
           { "type": "command", "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/guard-commit-scan.sh\"", "timeout": 60 }

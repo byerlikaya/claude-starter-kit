@@ -33,8 +33,27 @@ unjson_path(){ p="${1//\\\\//}"; p="${p//\\//}"; printf '%s' "$p"; }
 
 IN=""
 # 1) transcript_path from hook stdin (if present)
+#
+# `cat` on a pipe blocks until EOF, and "not a tty" does not mean "data is coming". Claude Code always writes
+# the event JSON and closes, so this is invisible in normal use — but any wrapper that leaves stdin open and
+# silent (a background shell, a CI runner, the kit's own suite launched as a job) hangs the hook forever, and
+# it is a UserPromptSubmit hook: a hang here is a hang on every turn. Measured 2026-08-24: real JSON stdin 0s,
+# closed stdin 0s, open-and-silent pipe still running after 20 minutes.
+#
+# So bound the wait. `read -t` on the first line costs nothing when the data is already there (the common case
+# by far) and gives up otherwise; the rest is drained without a timeout because a producer that sent a first
+# line is sending the whole object. Timeout is deliberately short — this runs before every prompt.
 if [ -z "$TR" ] && [ ! -t 0 ]; then
-  IN="$(cat 2>/dev/null || true)"
+  # `read` returns NON-ZERO when it hits EOF without a trailing newline — and it still assigns what it read.
+  # Claude Code sends the event JSON with no trailing newline, so gating on the exit status alone throws the
+  # whole payload away and every measurement reports "unmeasurable". Measured the wrong way once already: the
+  # first version of this fix was timed, not checked for output, so it looked fine and was silently blind.
+  _first=""
+  IFS= read -r -t "${CSK_STDIN_TIMEOUT:-2}" _first 2>/dev/null || true
+  if [ -n "$_first" ]; then
+    IN="$_first
+$(cat 2>/dev/null || true)"
+  fi
   [ -n "$IN" ] && TR="$(printf '%s' "$IN" | sed -n 's/.*"transcript_path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
 fi
 [ -n "$TR" ] && TR="$(unjson_path "$TR")"

@@ -104,7 +104,7 @@ Then paste `.claude/FIRST_PROMPT.md` as your first Claude Code message. Homebrew
 |:--|:--:|:--|
 | **Agents** | 12 | Thin triggers — *who* owns a domain and *when* they fire |
 | **Skills** | 39 | The method, written once, applied by whoever needs it |
-| **Slash commands** | 8 | `/brainstorm-csk` · `/plan-csk` · `/review-csk` · `/ship-csk` · `/handoff-csk` · `/update-csk` · `/doctor-csk` · `/board-csk` |
+| **Slash commands** | 9 | `/brainstorm-csk` · `/plan-csk` · `/review-csk` · `/ship-csk` · `/handoff-csk` · `/update-csk` · `/doctor-csk` · `/board-csk` · `/gates-csk` |
 | **Hooks** | 12 | The gates, plus session measurement and routing |
 | **Discipline** | 1 | Principles, workflow, Definition of Done, prohibitions — imported by your `CLAUDE.md` |
 
@@ -144,6 +144,7 @@ Two git hooks — `pre-commit` and `commit-msg` — run the trace, secret, repo-
 | `a11y` | Frontend accessibility audit (WCAG): semantic HTML, keyboard access, focus management, contrast, ARIA, screen readers. |
 | `adr` | Architecture Decision Record: context-decision-consequences, for decisions that are expensive to reverse. |
 | `api-design` | API contract design: resource naming, error model, versioning, pagination, backward compatibility, OpenAPI. |
+| `automode-policy` | Auto-mode classifier config: inspect what the classifier that now answers permission prompts is configured with, and catch the silent… |
 | `brainstorm` | Divergent discovery BEFORE planning: turn a fuzzy ask into 2–4 scoped options + named unknowns, pick a direction, hand to spec-planning. |
 | `ci-pipeline` | CI pipeline discipline: lint→build→test→quality→security, fail-fast, deterministic build, secret handling, PR gates. |
 | `code-review-csk` | Code review discipline: severity-ranked, reasoned feedback on whether a change improves the system's overall code health. |
@@ -253,7 +254,7 @@ bash start.sh               # new project
 bash adopt.sh               # existing project (re-run it to update)
 ```
 
-**Windows:** Claude Starter Kit is bash-based. Run it in **Git Bash** ([git-scm.com](https://git-scm.com)); WSL works as a fallback.
+**Windows:** Claude Starter Kit is bash-based. Run it in **Git Bash** ([git-scm.com](https://git-scm.com)); WSL works as a fallback. The gate hooks are shell scripts, so **Git Bash (or WSL) is what makes them run** — on a Windows machine with neither, Claude Code enables its PowerShell tool automatically and the hooks cannot execute, which means no gates. That configuration is not supported by the gate layer, and the installers cannot run there either. With Git Bash present the gates cover **both** shells: the PowerShell tool is on by default for claude.ai and Console accounts, and its commands go through the same rules (`Remove-Item -Recurse -Force`, `… | iex`, `Get-Content .env`, and the rest).
 
 **Plugin edition** — just the agents, skills and gate hooks inside your existing Claude Code, no scaffolding:
 

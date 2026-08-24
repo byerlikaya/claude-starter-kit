@@ -104,7 +104,7 @@ Ardından ilk Claude Code mesajınız olarak `.claude/FIRST_PROMPT.md` dosyasın
 |:--|:--:|:--|
 | **Ajanlar** | 12 | Yalın tetikleyiciler: bir alanın *sahibi kim*, *ne zaman* devreye girer |
 | **Skiller** | 39 | Yöntemin kendisi; bir kez yazılır, ihtiyacı olan uygular |
-| **Slash komutları** | 8 | `/brainstorm-csk` · `/plan-csk` · `/review-csk` · `/ship-csk` · `/handoff-csk` · `/update-csk` · `/doctor-csk` · `/board-csk` |
+| **Slash komutları** | 9 | `/brainstorm-csk` · `/plan-csk` · `/review-csk` · `/ship-csk` · `/handoff-csk` · `/update-csk` · `/doctor-csk` · `/board-csk` · `/gates-csk` |
 | **Hook'lar** | 12 | Kapılar, ayrıca oturum ölçümü ve yönlendirme |
 | **Disiplin** | 1 | İlkeler, akış, Bitti Tanımı, yasaklar; `CLAUDE.md`'nizin içe aktardığı dosya |
 
@@ -144,6 +144,7 @@ Ardından ilk Claude Code mesajınız olarak `.claude/FIRST_PROMPT.md` dosyasın
 | `a11y` | Frontend erişilebilirlik denetimi (WCAG): anlamsal HTML, klavye erişimi, odak yönetimi, kontrast, ARIA, ekran okuyucular. |
 | `adr` | Mimari Karar Kaydı: bağlam-karar-sonuç; geri dönüşü pahalı kararlar için. |
 | `api-design` | API sözleşme tasarımı: kaynak adlandırma, hata modeli, sürümleme, sayfalama, geriye dönük uyumluluk, OpenAPI. |
+| `automode-policy` | Auto mod sınıflandırıcısının yapılandırmasını denetler: kitin kuralları orada mı, ve asıl sessiz arıza — özel bir autoMode bloğunun yerleşik engelleme kurallarını uyarısızca silmesi. Kapı değil, rapordur; ölçüldü ve özel kurallar uygulanmıyor (2026-08-24). |
 | `brainstorm` | Planlamadan ÖNCE ıraksak keşif: bulanık isteği 2-4 kapsamlı seçenek + adlandırılmış bilinmezlere çevir, bir yön seç, spec-planning'e devret. |
 | `ci-pipeline` | CI hattı disiplini: lint→build→test→kalite→güvenlik, hızlı-başarısızlık, deterministik derleme, secret yönetimi, PR kapıları. |
 | `code-review-csk` | Kod inceleme disiplini: önem sırasına dizili, gerekçeli geri bildirim: değişiklik sistemin genel kod sağlığını iyileştiriyor mu. |
@@ -253,7 +254,7 @@ bash start.sh               # yeni proje
 bash adopt.sh               # mevcut proje (tazelemek için tekrar çalıştırın)
 ```
 
-**Windows:** Claude Starter Kit bash tabanlıdır. **Git Bash** içinde çalıştırın ([git-scm.com](https://git-scm.com)); WSL de alternatif olarak çalışır.
+**Windows:** Claude Starter Kit bash tabanlıdır. **Git Bash** içinde çalıştırın ([git-scm.com](https://git-scm.com)); WSL de alternatif olarak çalışır. Kapı hook’ları birer kabuk script’i olduğu için **onları çalıştıran şey Git Bash (ya da WSL)**: ikisi de yoksa Claude Code PowerShell aracını kendiliğinden açar, hook’lar çalışamaz ve kapı kalmaz. Bu yapılandırma kapı katmanı tarafından desteklenmiyor; kurulum script’leri de orada zaten koşamaz. Git Bash varsa kapılar **iki kabuğu da** kapsar: PowerShell aracı claude.ai ve Console hesaplarında varsayılan açıktır ve onun komutları da aynı kurallardan geçer (`Remove-Item -Recurse -Force`, `… | iex`, `Get-Content .env` ve diğerleri).
 
 **Plugin sürümü:** iskele kurmadan, yalnızca ajanlar, skiller ve yaptırım hook'ları mevcut Claude Code'unuzun içinde:
 

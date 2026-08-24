@@ -18,6 +18,11 @@ FAIL=0
 ok(){  echo "  ✅ $1"; }
 bad(){ echo "  ❌ $1"; echo "     ↳ fix: $2"; FAIL=$((FAIL+1)); }
 warn(){ echo "  ⚠️  $1"; }
+# `skip` lives up here with the other reporters, not down in the readiness block where it used to be
+# defined: the health checks call it too, and a helper defined after its first caller is a silent
+# no-op — the line never prints and the run shows `skip: command not found` on stderr, where nobody
+# looks. Found by RUNNING doctor against a fixture install; grepping for the call sites said wired.
+skip(){ echo "  ·  $1"; }
 
 echo "== Claude Starter Kit — install doctor =="
 
@@ -56,7 +61,11 @@ done
 # 2b) Behaviour probe — a hook that is present + executable can still be NEUTERED (its body replaced with `exit 0`).
 #     Drive guard-bash with a command it MUST block; if it does not exit 2, the §4.5 gate is disarmed.
 if [ -x .claude/hooks/guard-bash.sh ]; then
-  if printf '%s' '{"tool_name":"Bash","permission_mode":"auto","tool_input":{"command":"git push --force"}}' | bash .claude/hooks/guard-bash.sh >/dev/null 2>&1; then
+  # CSK_GATE_LOG=/dev/null: this probe drives the real gate, so without it every `/doctor-csk` writes a
+  # synthetic "git push --force blocked" line into the evidence log — and the gate report would then be
+  # counting the diagnostics instead of what the model reached for. A measurement tool that contaminates the
+  # thing it measures is worse than none.
+  if printf '%s' '{"tool_name":"Bash","permission_mode":"auto","tool_input":{"command":"git push --force"}}' | CSK_GATE_LOG=/dev/null bash .claude/hooks/guard-bash.sh >/dev/null 2>&1; then
     bad "guard-bash.sh did NOT block a force-push — the §4.5 gate is neutered/disarmed" "restore guard-bash.sh from the kit"
   else ok "guard-bash.sh blocks a force-push (gate live, not neutered)"; fi
 fi
@@ -267,6 +276,52 @@ echo "---"
 if [ "$FAIL" -eq 0 ]; then echo "DOCTOR: healthy ✅"
 else echo "DOCTOR: $FAIL issue(s) ❌ — apply the fixes above"; fi
 
+# 8b) The shell matcher. Claude Code's hooks reference is explicit: inspect shell commands with
+#     `Bash|PowerShell`, because wherever the PowerShell tool is enabled it IS the shell — and it is on by
+#     default for claude.ai and Console accounts on Windows. An install from before 2.5.0 watches only `Bash`,
+#     so every PowerShell command walks past the §4.5 rules with nothing firing. Nothing about the session
+#     looks wrong, which is why this is a check and not a release note.
+if [ -f .claude/settings.json ]; then
+  if grep -q '"matcher"[[:space:]]*:[[:space:]]*"[^"]*PowerShell' .claude/settings.json; then
+    ok "shell gates watch both Bash and PowerShell"
+  elif grep -q '"matcher"[[:space:]]*:[[:space:]]*"Bash"' .claude/settings.json; then
+    bad "shell gates watch only Bash — PowerShell commands bypass every §4.5 rule" \
+        "update the kit (npx @byerlikaya/claude-starter-kit update), or set the PreToolUse matcher to \"Bash|PowerShell\""
+  fi
+fi
+# 9) The auto-mode classifier. Since 2026-08-14 auto mode is the default permission mode on Pro/Max/Team, so a
+#     classifier answers permission prompts the user used to answer. Two things can be wrong and neither shows
+#     up in a session. Only ONE of them is a real gate finding: a custom autoMode block that dropped the
+#     built-ins by omitting "$defaults" — 66 soft blocks gone, silently. Whether the kit's own rules are present
+#     is reported but NOT treated as a failure: they were measured on 2026-08-24 not to enforce (see the skill).
+if [ -x .claude/skills/automode-policy/scripts/check.sh ] || [ -f .claude/skills/automode-policy/scripts/check.sh ]; then
+  AMOUT="$(bash .claude/skills/automode-policy/scripts/check.sh 2>&1)"; AMRC=$?
+  case "$AMRC" in
+    0) ok "auto-mode classifier config: built-ins intact, kit rules present (config, not a gate)" ;;
+    2) bad "auto-mode classifier BUILT-INS DROPPED — an autoMode array lacks \"\$defaults\"" \
+           "restore it in ~/.claude/settings.json; see .claude/skills/automode-policy/SKILL.md" ;;
+    3) skip "auto-mode classifier config: kit rules absent (measured not to enforce — see the skill)" ;;
+    # Same vocabulary as the other three branches on purpose. It used to read "auto-mode policy check
+    # skipped", and the suite's assertion — written on a machine that HAS the claude CLI — never saw this
+    # branch. CI has no CLI, so every run took it and the case failed on a wording difference, not a defect.
+    *) skip "auto-mode classifier config: not checked (no claude CLI, or auto mode unavailable here)" ;;
+  esac
+  [ "$AMRC" = 2 ] && printf '%s\n' "$AMOUT" | grep 'auto-mode config' 
+else
+  warn "auto-mode policy check skipped (install predates the automode-policy skill; run the updater)"
+fi
+# 10) Gate activity. The suite proves the gates CAN fire; this reports whether anything actually tripped them.
+#     Recording is on by default (rule names only, never the command), so "no log" here means no gate has
+#     fired yet — a measured zero, not a gap. Never a failure either way.
+if [ -f .claude/eval/gate-report.sh ]; then
+  GOUT="$(bash .claude/eval/gate-report.sh 2>/dev/null)"; GRC=$?
+  case "$GRC" in
+    0) GL="$(printf '%s' "$GOUT" | grep -E 'decision\(s\)|no gate has fired' | head -1 | sed 's/^ *//')"
+       [ -n "$GL" ] && ok "gate activity: $GL" || ok "gate activity recorded (see /gates-csk)" ;;
+    3) skip "gate activity NOT MEASURED — nowhere to record (see /gates-csk)" ;;
+    *) skip "gate activity unreadable (see /gates-csk)" ;;
+  esac
+fi
 # --- Agentic readiness (ADVISORY) -------------------------------------------------------------------------
 # Everything above answers "are the kit's gates live?". This answers a different question the gates cannot see:
 # "is this PROJECT set up so an agent can actually work well in it?" A flawless install still starves its
@@ -287,7 +342,6 @@ echo "Readiness (advisory — does not affect the verdict above):"
 RDY=0; RTOT=0
 rdy(){ RTOT=$((RTOT+1)); RDY=$((RDY+1)); echo "  ✅ $1"; }
 gap(){ RTOT=$((RTOT+1)); echo "  ➖ $1"; echo "     ↳ $2"; }
-skip(){ echo "  ·  $1"; }
 
 # R1) Is the CLAUDE.md project section filled in, or still the shipped template? An unfilled section means every
 #     agent works stack-blind — it is the single most common way a correct install still underperforms.
