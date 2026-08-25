@@ -14,6 +14,9 @@ fail(){ echo "  ❌ $1"; FAIL=$((FAIL+1)); }
 # discipline; an install has DISCIPLINE.md instead.
 IS_KIT=0; [ -f "$ROOT/CLAUDE.md" ] && IS_KIT=1
 note(){ echo "  ·  $1"; }   # informational; never counts as a failure
+# Scope. Declared HERE rather than beside the block it first guards, because it now gates cases that run
+# EARLIER than that block — see §6h. Reading an env var costs nothing; the note stays where the big skip is.
+UNITS=1; [ "${CSK_SMOKE_SCOPE:-full}" = install ] && UNITS=0
 # Trigger-phrases requirement: a GATE in the kit repo, a note in an installed project (your skills, your call).
 need_trigger(){ if kit_owned "${2:-}"; then fail "$1"; else note "$1 (your own skill/agent; not gated in an install)"; fi; }
 
@@ -237,6 +240,14 @@ rm -rf "$SDIR"
 
 
 echo "== 5b) Team board: is the claim a real lock, or only a convention? =="
+# SCOPED, and this one is the whole cost. Measured on a Windows 11 desktop: this section alone is 682 s of
+# the 892 s an install-scope suite takes -- 76% of it -- and e2e runs that suite three times, so it is roughly
+# 34 of the 37 minutes the e2e step spends on windows-latest. What it drives is board.sh (12x) and
+# guard-write.sh (4x) against fixture clones; it reads no kit.conf, no manifest, no VERSION, no settings.json
+# and no agents/ or skills/ directory, so an installer cannot change its outcome -- it re-proves identical
+# bytes, which is exactly what the scope split exists to stop. Full scope still runs it, and full scope is what
+# the standalone CI step and every local run use.
+if [ "$UNITS" = 1 ]; then
 # BEHAVIOURAL, not structural. The board's entire value rests on one claim: two people cannot take the same
 # item. That claim is about what git does under a race, so asserting it any way other than by racing two real
 # clones would be testing the fiction rather than the gate. Every assertion below states what it proves.
@@ -596,6 +607,7 @@ else
   fail "hooks/board.sh missing or not executable"
 fi
 
+else note "scope=install: board race cases skipped (payload behaviour, not this install)"; fi
 
 echo "== 5e) executable bit on every shipped script =="
 # A hook that loses +x does not fail loudly: Claude Code invokes it through `bash <path>`, so it keeps working
@@ -1311,6 +1323,12 @@ if command -v git >/dev/null 2>&1; then
   # version of this block measured, and it reported the hook as over-blocking seven innocent files. Each case
   # removes its own file, so each `pc` sees one file and nothing else.
   kfcase(){ pcreset; printf '%s\n' "$2" > "$PR/$1"; pc; kfr=$?; ( cd "$PR" && git reset -q HEAD -- . && rm -f "$1" ) >/dev/null 2>&1; return $kfr; }
+  # Scoped, for the reason the §7 unit block is scoped: these 17 cases drive the pre-commit BINARY against
+  # fixture names, and an installer copies that file unchanged — so re-running them inside every e2e install
+  # re-checks identical bytes. e2e runs an install-scope suite three times on windows-latest, where one
+  # pre-commit invocation is seconds, so leaving them unscoped would have put minutes back into the job the
+  # 2.0 scope split took out. The install-dependent half (that the hook runs at all) is the canary in §7.
+  if [ "$UNITS" = 1 ]; then
   KFB=""; for kf in server.pem server.PEM Server.Pem id.KEY cert.P12 a.pfx b.ppk c.keystore d.jks ID_RSA; do
     kfcase "$kf" KEYDATA && KFB="$KFB $kf"
   done
@@ -1321,6 +1339,7 @@ if command -v git >/dev/null 2>&1; then
   done
   [ -z "$KFO" ] && pass "case-insensitive key gate does NOT block templates/docs/lookalikes (7 cases)" \
                 || fail "wrongly blocked by the widened key gate:$KFO"
+  else note "scope=install: private-key name cases skipped (payload bytes, not this install)"; fi
   rm -rf "$PR" "$PCLOG"
 else pass "pre-commit scanner tests skipped (no git)"; fi
 
@@ -1511,7 +1530,7 @@ else pass "some agents lack a proactive cue:$NO_CUE (your project's own agents, 
 # settings/plugin/doctor/adopt) keeps running in both scopes, and install scope still runs the canary below —
 # because what an installer can actually break is the hook not executing at all (lost +x, CRLF, bad shebang),
 # not the matcher regexes. Full scope remains the default and is what the standalone CI step runs.
-UNITS=1; [ "${CSK_SMOKE_SCOPE:-full}" = install ] && UNITS=0
+# (UNITS is declared at the top — it gates cases that run before this point too.)
 [ "$UNITS" = 0 ] && note "scope=install: gate UNIT cases skipped (they test payload bytes, not this install) — canary below"
 echo "== 7) settings.json & guard (§4.4/§4.5) =="
 if [ -f "$ROOT/settings.json" ]; then
