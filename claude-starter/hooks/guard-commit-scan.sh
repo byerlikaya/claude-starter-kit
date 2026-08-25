@@ -25,11 +25,17 @@ INPUT="$(cat)"
 # Same ladder as guard-bash.sh, and for the same reason: the raw-text fallback leaves JSON escapes in place,
 # so `-m \"…\"` never matches a quote-based extraction and the message silently goes unscanned. That is
 # precisely how the first version of this hook passed a commit carrying a co-author trailer.
-if command -v jq >/dev/null 2>&1; then
-  CMD="$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)"
-elif command -v python3 >/dev/null 2>&1; then
-  CMD="$(printf '%s' "$INPUT" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("tool_input",{}).get("command",""))' 2>/dev/null)"
-else
+# And the same rule as guard-bash.sh about WHICH rung is taken: a tier is chosen on whether it works, not on
+# whether it exists. Windows ships a Store redirector stub named python3 on PATH by default; `command -v` finds
+# it, it exits 49 with an empty stdout, and this hook then read CMD="" and exited 0 — the commit content scan
+# never ran. Measured on a stock Windows 11 desktop. The extraction's own exit status is the probe.
+CMD=""; _parsed=0
+if command -v jq >/dev/null 2>&1 && CMD="$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)"; then
+  _parsed=1
+elif command -v python3 >/dev/null 2>&1 && CMD="$(printf '%s' "$INPUT" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("tool_input",{}).get("command",""))' 2>/dev/null)"; then
+  _parsed=1
+fi
+if [ "$_parsed" = 0 ]; then
   CMD="$(printf '%s' "$INPUT" | sed -n 's/.*"command"[[:space:]]*:[[:space:]]*"\(.*\)".*/\1/p' | head -1 \
         | sed 's/\\n/\n/g; s/\\"/"/g; s/\\\\/\\/g')"
 fi
@@ -61,8 +67,19 @@ if [ "$FAILED" = 0 ] && [ -x "$DIR/commit-msg" ]; then
   # single most likely §4.1 violation, and the one the bare arm of the eval actually produced — went unscanned.
   # Without python3, scan the whole command text instead of guessing where the message ends: over-inclusive
   # beats a gate with a blind spot, and anything matching here belongs in neither the message nor the command.
-  if command -v python3 >/dev/null 2>&1; then
-    MSG="$(CSK_CMD="$CMD" python3 -c '
+  # `&&` on the assignment, not a bare `command -v`: a python3 that exists but cannot run (the Windows Store
+  # stub) must land in the same over-inclusive fallback as no python3 at all. Testing existence alone left
+  # MSG="" here, which reads exactly like "this commit has no -m" and skipped the message scan entirely.
+  #
+  # But WHICH branch we are in cannot be decided from MSG's emptiness either, and that is the subtler half.
+  # "there is no -m" and "there is an -m but nothing here can extract it" are different facts with opposite
+  # correct answers: the first must fall through to the fail-closed editor/-F path below, the second must
+  # scan. Reading both off one empty string is what let a first attempt at this fix skip the fail-closed path
+  # on exactly the Windows machines it was written for. So ask the question directly, with a test that needs
+  # no interpreter. Cheap: nothing below runs unless the command is already known to be a `git commit`.
+  HAS_M=0
+  printf '%s' "$CMD" | grep -qE '(^|[[:space:]])(-[A-Za-z]*m|--message)([[:space:]]|=|$)' && HAS_M=1
+  if command -v python3 >/dev/null 2>&1 && MSG="$(CSK_CMD="$CMD" python3 -c '
 import os, shlex
 try: parts = shlex.split(os.environ["CSK_CMD"])
 except ValueError: parts = []
@@ -71,11 +88,12 @@ for i, p in enumerate(parts):
     if p in ("-m", "--message") and i + 1 < len(parts): out.append(parts[i + 1])
     elif p.startswith("--message="): out.append(p.split("=", 1)[1])
 print("\n".join(out))
-' 2>/dev/null)"
+' 2>/dev/null)"; then
+    :
   else
     MSG="$CMD"
   fi
-  if [ -n "$MSG" ]; then
+  if [ "$HAS_M" = 1 ] && [ -n "$MSG" ]; then
     MF="$(mktemp "${TMPDIR:-/tmp}/csk-msg.XXXXXX")"
     printf '%s\n' "$MSG" > "$MF"
     OUT="$OUT
@@ -97,6 +115,16 @@ for i, p in enumerate(parts):
     if p in ("-F", "--file") and i + 1 < len(parts): print(parts[i + 1]); break
     if p.startswith("--file="): print(p.split("=", 1)[1]); break
 ' 2>/dev/null)"
+    fi
+    # No interpreter (or a stub that cannot run): a -F path is a single token, so a plain extraction gets it.
+    # Without this the file is never read on Windows and the branch below refuses the commit — correct as a
+    # direction, but it refuses the CLEAN -F commits too, and a gate that blocks the innocent is the one people
+    # learn to route around. shlex is still preferred where it exists: it handles a quoted path with spaces.
+    if [ -z "$MFILE" ]; then
+      MFILE="$(printf '%s' "$CMD" \
+        | sed -n 's/.*[[:space:]]--\{0,1\}[Ff]\(ile\)\{0,1\}[[:space:]=]\{1,\}\([^[:space:];&|]\{1,\}\).*/\2/p' \
+        | head -1)"
+      MFILE="${MFILE%\"}"; MFILE="${MFILE#\"}"; MFILE="${MFILE%\'}"; MFILE="${MFILE#\'}"
     fi
     if [ -n "$MFILE" ] && [ -f "$MFILE" ]; then
       OUT="$OUT

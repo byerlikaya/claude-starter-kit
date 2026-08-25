@@ -3,6 +3,13 @@
 *.sh text eol=lf
 claude-starter/hooks/pre-commit text eol=lf
 claude-starter/hooks/commit-msg text eol=lf
+# The plugin edition ships the same two hooks under a different root, and being extensionless they are not
+# covered by *.sh either. They were left out when that edition was added: measured on a Windows checkout, both
+# claude-starter copies came out LF and both plugin copies came out CRLF. Git Bash happens to tolerate that
+# (verified: the trace scan still blocks), but WSL does not — which is the exact failure the note above is
+# about — and a gate that dies with `$'\r': command not found` is a gate that is not running.
+plugin/hooks/pre-commit text eol=lf
+plugin/hooks/commit-msg text eol=lf
 # Config the installers parse line-by-line: a CRLF checkout would leave '\r' on every parsed value, so a
 # profile lookup would silently miss and the install would fall back to "prune nothing". The scripts also
 # strip '\r' defensively, but keeping these LF means the parsers never see one.

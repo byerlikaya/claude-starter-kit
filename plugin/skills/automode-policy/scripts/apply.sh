@@ -26,9 +26,13 @@ esac; done
 
 # A JSON merge into the user's own settings file is not a job for sed. Without a JSON tool we print the
 # fragment and stop: a half-merged global settings file is worse than an uninstalled policy.
+# Probed, not looked up. Windows ships a Microsoft Store redirector stub named python3 on PATH by default: it
+# passes `command -v`, exits 49 and writes nothing, so selecting it here would send this script down the merge
+# path with a tool that cannot merge — writing an empty file over the user's global settings. The "print the
+# fragment and stop" branch below is the correct answer on that machine, and this is what reaches it.
 MERGER=""
-command -v jq      >/dev/null 2>&1 && MERGER=jq
-[ -z "$MERGER" ] && command -v python3 >/dev/null 2>&1 && MERGER=python3
+printf '{}' | jq -e . >/dev/null 2>&1 && MERGER=jq
+[ -z "$MERGER" ] && printf '{}' | python3 -c 'import sys,json;json.load(sys.stdin)' >/dev/null 2>&1 && MERGER=python3
 if [ -z "$MERGER" ]; then
   echo "⚠️  neither jq nor python3 is available — not merging your settings file by hand."
   echo "   Add this block to $TARGET yourself (keep the \"\$defaults\" entries verbatim):"

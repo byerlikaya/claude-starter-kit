@@ -14,6 +14,9 @@ fail(){ echo "  ❌ $1"; FAIL=$((FAIL+1)); }
 # discipline; an install has DISCIPLINE.md instead.
 IS_KIT=0; [ -f "$ROOT/CLAUDE.md" ] && IS_KIT=1
 note(){ echo "  ·  $1"; }   # informational; never counts as a failure
+# Scope. Declared HERE rather than beside the block it first guards, because it now gates cases that run
+# EARLIER than that block — see §6h. Reading an env var costs nothing; the note stays where the big skip is.
+UNITS=1; [ "${CSK_SMOKE_SCOPE:-full}" = install ] && UNITS=0
 # Trigger-phrases requirement: a GATE in the kit repo, a note in an installed project (your skills, your call).
 need_trigger(){ if kit_owned "${2:-}"; then fail "$1"; else note "$1 (your own skill/agent; not gated in an install)"; fi; }
 
@@ -237,6 +240,14 @@ rm -rf "$SDIR"
 
 
 echo "== 5b) Team board: is the claim a real lock, or only a convention? =="
+# SCOPED, and this one is the whole cost. Measured on a Windows 11 desktop: this section alone is 682 s of
+# the 892 s an install-scope suite takes -- 76% of it -- and e2e runs that suite three times, so it is roughly
+# 34 of the 37 minutes the e2e step spends on windows-latest. What it drives is board.sh (12x) and
+# guard-write.sh (4x) against fixture clones; it reads no kit.conf, no manifest, no VERSION, no settings.json
+# and no agents/ or skills/ directory, so an installer cannot change its outcome -- it re-proves identical
+# bytes, which is exactly what the scope split exists to stop. Full scope still runs it, and full scope is what
+# the standalone CI step and every local run use.
+if [ "$UNITS" = 1 ]; then
 # BEHAVIOURAL, not structural. The board's entire value rests on one claim: two people cannot take the same
 # item. That claim is about what git does under a race, so asserting it any way other than by racing two real
 # clones would be testing the fiction rather than the gate. Every assertion below states what it proves.
@@ -596,6 +607,7 @@ else
   fail "hooks/board.sh missing or not executable"
 fi
 
+else note "scope=install: board race cases skipped (payload behaviour, not this install)"; fi
 
 echo "== 5e) executable bit on every shipped script =="
 # A hook that loses +x does not fail loudly: Claude Code invokes it through `bash <path>`, so it keeps working
@@ -1094,7 +1106,10 @@ if [ "$IS_KIT" = 1 ]; then
   TH="$(ls "$ROOT"/hooks/*.sh 2>/dev/null | wc -l | tr -d ' ')"
   for r in README.md README.tr.md; do
     [ -f "$KR/$r" ] || continue
-    HC="$(grep -cE "(\*\*Hooks\*\*|\*\*Hook'lar\*\*) \| $TH \||All $TH hooks|$TH hook'un tamamı" "$KR/$r" 2>/dev/null | tr -d ' ')"
+    # The LABEL is not the claim; the number beside it is. Pinning one spelling made this fail on a Turkish
+    # rewrite that corrected `**Hook'lar** | 12 |` to `**Hook** | 12 |` — which is the right Turkish, since a
+    # count is not followed by a plural suffix. Accept any of the spellings and keep asserting the count.
+    HC="$(grep -cE "(\*\*Hooks?\*\*|\*\*Hook'lar\*\*) \| $TH \||All $TH hooks|$TH hook'un tamamı" "$KR/$r" 2>/dev/null | tr -d ' ')"
     [ "${HC:-0}" -ge 2 ] && pass "$r states the real hook count ($TH) in both the summary table and the section header" \
       || fail "$r does not state $TH hooks in both places — the count drifted from hooks/ (found $HC of 2)"
   done
@@ -1148,6 +1163,25 @@ if [ "$IS_KIT" = 1 ]; then
       verfile "$rf badge" "" "$(sed -n 's|.*badge/version-\([0-9][0-9.]*\)-.*|\1|p' "$KR/$rf" | head -1)"
     done
   fi
+  # The COUNTS on the front page are a claim of the same kind, and they drifted the same way. Measured on
+  # 2.6.0: both READMEs said 39 skills -- in the badge, in the opening paragraph, in the diagram alt text, in
+  # the summary table, in the catalogue heading and in the install section -- over a generated catalogue that
+  # listed 40. Nobody counts rows in a table they scrolled past, which is exactly what the diagrams did when
+  # they announced 11 agents and 36 skills, and the answer is the same: derive the number, do not restate it.
+  # Only the badge is asserted, deliberately -- it is the one number a reader takes on trust without scrolling,
+  # and pinning every prose mention would fail on a sentence that legitimately says "12 agents own one domain".
+  NAG="$(ls "$AGENTS"/*.md 2>/dev/null | wc -l | tr -d ' ')"
+  NSK="$(find "$SKILLS" -maxdepth 2 -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')"
+  for rf in README.md README.tr.md; do
+    [ -f "$KR/$rf" ] || continue
+    for pair in "agents:$NAG" "skills:$NSK"; do
+      badge="${pair%%:*}"; real="${pair#*:}"
+      got="$(sed -n "s|.*badge/$badge-\([0-9][0-9]*\)-.*|\1|p" "$KR/$rf" | head -1)"
+      [ -n "$got" ] || continue
+      [ "$got" = "$real" ] && pass "$rf $badge badge says $got, and $real are installed" \
+        || fail "$rf $badge badge says $got but $real are installed — the front page is the last place to find this out"
+    done
+  done
   # The DIAGRAMS make a claim too, and it is the one a reader takes at face value because nobody counts nodes in
   # a picture. The hand-drawn pipeline shipped with eleven of twelve agents — performance-expert-csk was simply
   # never drawn — and every gate stayed green because none of them looked at an SVG. Both diagrams are generated
@@ -1281,6 +1315,31 @@ if command -v git >/dev/null 2>&1; then
   pc && fail "secret-file gate let an id_rsa through" || pass "secret-file gate blocks a private key (id_rsa)"
   pcreset; printf 'AWS_SECRET=your-value\n' > "$PR/.env.example"
   pc && pass "secret-file gate allows a committable .env.example" || { fail ".env.example wrongly blocked"; sed -n 1,2p "$PCLOG"; }
+  # CASE. The extension test used to be case-SENSITIVE, so `server.PEM` was committable while `server.pem` was
+  # blocked — on Windows and macOS those are the same file. Both directions, because widening a gate is only
+  # half the work: the second list is what stops it from blocking `key.md` or `monkey.ts`.
+  # `pcreset` clears a FIXED list of fixture files, so anything else these loops create would stay STAGED into
+  # the next iteration and every later case would be blocked by the leftover — which is exactly what the first
+  # version of this block measured, and it reported the hook as over-blocking seven innocent files. Each case
+  # removes its own file, so each `pc` sees one file and nothing else.
+  kfcase(){ pcreset; printf '%s\n' "$2" > "$PR/$1"; pc; kfr=$?; ( cd "$PR" && git reset -q HEAD -- . && rm -f "$1" ) >/dev/null 2>&1; return $kfr; }
+  # Scoped, for the reason the §7 unit block is scoped: these 17 cases drive the pre-commit BINARY against
+  # fixture names, and an installer copies that file unchanged — so re-running them inside every e2e install
+  # re-checks identical bytes. e2e runs an install-scope suite three times on windows-latest, where one
+  # pre-commit invocation is seconds, so leaving them unscoped would have put minutes back into the job the
+  # 2.0 scope split took out. The install-dependent half (that the hook runs at all) is the canary in §7.
+  if [ "$UNITS" = 1 ]; then
+  KFB=""; for kf in server.pem server.PEM Server.Pem id.KEY cert.P12 a.pfx b.ppk c.keystore d.jks ID_RSA; do
+    kfcase "$kf" KEYDATA && KFB="$KFB $kf"
+  done
+  [ -z "$KFB" ] && pass "secret-file gate blocks private-key names in ANY case (10 spellings)" \
+                || fail "private-key file(s) let through by case:$KFB"
+  KFO=""; for kf in server.pem.example cert.PEM.example key.md KEYS.md monkey.ts turkey.txt public.pub; do
+    kfcase "$kf" "not a secret" || KFO="$KFO $kf"
+  done
+  [ -z "$KFO" ] && pass "case-insensitive key gate does NOT block templates/docs/lookalikes (7 cases)" \
+                || fail "wrongly blocked by the widened key gate:$KFO"
+  else note "scope=install: private-key name cases skipped (payload bytes, not this install)"; fi
   rm -rf "$PR" "$PCLOG"
 else pass "pre-commit scanner tests skipped (no git)"; fi
 
@@ -1471,7 +1530,7 @@ else pass "some agents lack a proactive cue:$NO_CUE (your project's own agents, 
 # settings/plugin/doctor/adopt) keeps running in both scopes, and install scope still runs the canary below —
 # because what an installer can actually break is the hook not executing at all (lost +x, CRLF, bad shebang),
 # not the matcher regexes. Full scope remains the default and is what the standalone CI step runs.
-UNITS=1; [ "${CSK_SMOKE_SCOPE:-full}" = install ] && UNITS=0
+# (UNITS is declared at the top — it gates cases that run before this point too.)
 [ "$UNITS" = 0 ] && note "scope=install: gate UNIT cases skipped (they test payload bytes, not this install) — canary below"
 echo "== 7) settings.json & guard (§4.4/§4.5) =="
 if [ -f "$ROOT/settings.json" ]; then
@@ -1706,7 +1765,8 @@ rm -rf "$GBX"
 # `git commit` ASKing and `git reset --hard` BLOCKing were BOTH true while the fallback was `CMD="$INPUT"` —
 # the raw hook payload fed to the matchers — because the payload contains the command as a substring, so a
 # blob match and a real parse produce the identical verdict. The gate was measured, the measurement was blind,
-# and a stock Windows install (Git Bash ships neither jq nor python3) ran the broken branch for months.
+# and a stock Windows install ran the broken branch for months — for a reason this comment got wrong until
+# §7c measured it: not because python3 is absent there, but because the one Windows ships cannot run. 
 # What the blob CANNOT survive is the payload's own metadata leaking into the rules, so that is what is pinned
 # here: a session_id containing `-f8` made every innocent `git push` hard-block as "push --force", and the §4.4
 # prompt rendered the whole JSON instead of the command the human was being asked to approve.
@@ -1745,6 +1805,65 @@ else
   gb_unbuildable "no-jq/py discriminating tests"
 fi
 rm -rf "$GBX"
+
+echo "== 7c) broken interpreters — a tier that EXISTS but does not WORK must not fail open =="
+# §7b tests tier 3 by taking jq and python3 AWAY. That is not the shape the failure had, and it is why the
+# failure survived: on a stock Windows 11 desktop python3 is PRESENT and BROKEN. Windows puts
+# %LOCALAPPDATA%\Microsoft\WindowsApps\python3 on PATH by default — the Microsoft Store redirector stub, not an
+# interpreter. `command -v python3` succeeds, the stub writes "Python was not found" to STDERR (swallowed by the
+# guards' 2>/dev/null) and exits 49 with an EMPTY stdout, so the extraction returned "" and every guard hit its
+# `[ -z "$CMD" ] && exit 0` and ALLOWED the call. Measured 2026-08-24 on Git Bash 5.3.15 / Claude Code 2.1.241:
+# `rm -rf /`, `git push --force`, a real captured PowerShell `Remove-Item -Recurse -Force` payload and a Write
+# rewriting guard-bash.sh itself all returned rc=0.
+#
+# Note where the ladder had been measured: tier 1 on CI (windows-latest ships jq), tier 3 by §7b (which SKIPS on
+# Windows, since Git Bash copies binaries instead of symlinking them). Tier 2 — the one every Windows desktop is
+# actually on — was covered nowhere. So this shadows PATH rather than stripping it, which also means it runs ON
+# Windows, unlike §7b. jq is shadowed too: a tier is now chosen on its exit status, so a broken jq must fall
+# through the same way.
+STUBD="$(mktemp -d)"
+cat > "$STUBD/python3" <<'CSKPYSTUB'
+#!/usr/bin/env bash
+echo "Python was not found; run without arguments to install from the Microsoft Store." >&2
+exit 49
+CSKPYSTUB
+cat > "$STUBD/jq" <<'CSKJQSTUB'
+#!/usr/bin/env bash
+exit 127
+CSKJQSTUB
+chmod +x "$STUBD/python3" "$STUBD/jq" 2>/dev/null
+SPATH="$STUBD:$PATH"
+# Canary. Without it a PATH that failed to shadow would drop to tier 3, every assertion would pass, and the
+# section would read as covered while testing nothing — exactly the failure mode §7b documents about itself.
+if [ "$( (PATH="$SPATH"; command -v python3) )" = "$STUBD/python3" ] \
+   && ! (PATH="$SPATH"; printf '{}' | python3 -c 'print(1)') >/dev/null 2>&1; then
+  sg(){ printf '%s' "$2" | ( PATH="$SPATH"; bash "$HOOKS/$1" ) >/dev/null 2>&1; echo "$?"; }
+  [ "$(sg guard-bash.sh '{"tool_name":"Bash","permission_mode":"auto","tool_input":{"command":"rm -rf /"}}')" = 2 ] \
+    && pass "stub python3: §4.5 rm -rf still BLOCKED" \
+    || fail "stub python3: rm -rf FAILED OPEN — the guard trusted an interpreter that cannot run"
+  # The real payload this was found with: tool_name PowerShell, same tool_input.command shape (captured from
+  # Claude Code 2.1.241's PowerShell tool, permission_mode bypassPermissions).
+  [ "$(sg guard-bash.sh '{"tool_name":"PowerShell","permission_mode":"bypassPermissions","tool_input":{"command":"Remove-Item -Recurse -Force ./junk/*","description":"d"}}')" = 2 ] \
+    && pass "stub python3: §4.5 PowerShell recursive force delete still BLOCKED" \
+    || fail "stub python3: the PowerShell §4.5 rule never ran (payload was never parsed)"
+  [ "$(sg guard-bash.sh '{"tool_name":"Bash","permission_mode":"bypassPermissions","tool_input":{"command":"git commit -m x"}}')" = 2 ] \
+    && pass "stub python3: §4.4 commit gate still closed" \
+    || fail "stub python3: §4.4 commit gate FAILED OPEN"
+  [ "$(sg guard-write.sh '{"tool_name":"Write","tool_input":{"file_path":".claude/hooks/guard-bash.sh","content":"exit 0"}}')" = 2 ] \
+    && pass "stub python3: rewriting a gate script still BLOCKED" \
+    || fail "stub python3: the model could rewrite guard-bash.sh with its Write tool"
+  # And the other direction, which is the half a fail-open fix is most likely to break: ordinary work must run.
+  [ "$(sg guard-bash.sh '{"tool_name":"Bash","permission_mode":"default","tool_input":{"command":"ls -la"}}')" = 0 ] \
+    && pass "stub python3: 'ls -la' still allowed (no over-block)" \
+    || fail "stub python3: 'ls -la' blocked — the fallback over-blocks"
+  [ "$(sg guard-bash.sh '{"tool_name":"PowerShell","permission_mode":"default","tool_input":{"command":"Get-ChildItem"}}')" = 0 ] \
+    && pass "stub python3: 'Get-ChildItem' still allowed (no over-block)" \
+    || fail "stub python3: 'Get-ChildItem' blocked — the fallback over-blocks"
+else
+  fail "7c DID NOT RUN — PATH shadowing did not take, so the stub-interpreter branch is unmeasured here"
+fi
+rm -rf "$STUBD"
+
 # C2 / M5: gate-tamper by an interpreter, a variable-indirected redirect, or .git/hooks — the "rewrite the guard"
 # class the audit flagged. Blocked by target path (verb-agnostic); reading + chmod +x re-arm must stay allowed.
 gj auto 'perl -i -pe s/2/0/ .claude/hooks/guard-bash.sh' | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "perl -i on a gate file BLOCKED (C2)" || fail "perl -i on a hook PASSED (C2)"
@@ -2251,8 +2370,16 @@ if [ -x "$HOOKS/guard-commit-scan.sh" ]; then
        "$HOOKS/trace-blocklist.txt" "$HOOKS/secret-blocklist.txt" .claude/hooks/ 2>/dev/null
     chmod +x .claude/hooks/* 2>/dev/null
     echo ok > a.txt && git add a.txt && git commit -qm base --no-verify ) >/dev/null 2>&1
-  csj(){ if command -v jq >/dev/null 2>&1; then jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}'
-         else printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' "$1"; fi; }
+  # The no-jq arm used to interpolate the command RAW, so a multi-line message put a literal newline inside a
+  # JSON string. That is not valid JSON and it is not what Claude Code sends (it escapes as \n) — so on every
+  # stock Windows machine the three multi-line cases below were driving the hook with a payload it can never
+  # receive, and reporting the resulting non-block as a §4.1 hole. Four red lines on the platform this kit
+  # cares most about, none of them real: the suite trains you to ignore it, which is worse than not having it.
+  # Escape here the way the sender does. Backslash first, or it would re-escape the escapes.
+  csesc(){ local s="$1"; s="${s//\\/\\\\}"; s="${s//\"/\\\"}"; s="${s//$'\n'/\\n}"; s="${s//$'\t'/\\t}"; printf '%s' "$s"; }
+  csj(){ if command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then
+           jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}'
+         else printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' "$(csesc "$1")"; fi; }
   csrun(){ ( cd "$CS" && printf '%s' "$(csj "$1")" | bash .claude/hooks/guard-commit-scan.sh ) >/dev/null 2>&1; }
   # This is a PreToolUse hook, so the same exit-code contract as guard-bash applies: only `2` blocks, and any
   # other failure means the hook died and Claude Code runs the commit. The four block cases below used to test
@@ -2546,7 +2673,12 @@ if [ -d "$AMD" ]; then
   [ -f "$P" ] && pass "automode-policy ships a policy file" || fail "automode-policy: policy.json missing"
 
   # (a) the $defaults invariant — the one finding that survived the measurement, per array, on the shipped file
-  if command -v python3 >/dev/null 2>&1 && [ -f "$P" ]; then
+  # `command -v` is not the question — see §7c. On a stock Windows 11 desktop python3 is the Microsoft Store
+  # redirector stub: it passes `command -v`, exits 49 and prints nothing. This block then produced BOTH kinds
+  # of wrong answer at once: BADARR came back empty, so the $defaults invariant PASSED without ever running,
+  # and the validity check FAILED on a file that is perfectly good JSON. A green line for a check that never
+  # ran is the exact failure doctor.sh's own comments warn about; the red one just wastes an afternoon.
+  if printf '{}' | python3 -c 'import sys,json;json.load(sys.stdin)' >/dev/null 2>&1 && [ -f "$P" ]; then
     BADARR="$(python3 - "$P" <<'PY2'
 import json,sys
 am=json.load(open(sys.argv[1]))["autoMode"]
@@ -2558,7 +2690,7 @@ PY2
                      || fail "autoMode array(s) without \"\$defaults\" — built-in rules would be replaced:$BADARR"
     python3 -c 'import json,sys;json.load(open(sys.argv[1]))' "$P" >/dev/null 2>&1 \
       && pass "policy.json is valid JSON" || fail "policy.json is not valid JSON"
-  else note "policy shape check skipped (no python3)"
+  else note "policy shape check skipped (no WORKING python3 — a Store stub counts as absent)"
   fi
 
   # (b1) no claude CLI -> "cannot verify" (4), never a false green
@@ -2801,6 +2933,53 @@ $PSOK
 PSEOF2
 [ -z "$PSFP" ] && pass "everyday PowerShell stays allowed ($PSM cases, no false positives)" \
                || fail "PowerShell false positive(s):$PSFP"
+echo "== 13) pre-commit cost — the gate people route around is the one that is slow =="
+# Measured on a 373-file merge: the old file loop spawned ~7 processes per file (three `printf | grep` pairs and
+# a `git cat-file`), 2,643 in total, and on Git Bash at 20-50 ms a process that is over twenty minutes. A gate
+# that costs twenty minutes is a gate that teaches people to type --no-verify. Wall clock is the wrong meter
+# here — on macOS a fork is cheap enough that a broken and a fixed version both look instant — so this counts
+# PROCESSES, the thing Windows actually charges for.
+PCT="$(mktemp -d)"; ( cd "$PCT" && git init -q . && git config user.email t@e.x && git config user.name T
+  mkdir -p .claude/hooks && cp "$ROOT/hooks/pre-commit" .claude/hooks/
+  cp "$ROOT/hooks/trace-blocklist.txt" "$ROOT/hooks/secret-blocklist.txt" .claude/hooks/ 2>/dev/null
+  printf 'seed\n' > seed.txt && git add seed.txt && git commit -qm init
+  mkdir -p src && i=1; while [ "$i" -le 120 ]; do printf 'export const V%s = %s;\n' "$i" "$i" > "src/f$i.ts"; i=$((i+1)); done
+  git add src >/dev/null 2>&1
+  bash -x .claude/hooks/pre-commit >/dev/null 2>trace.log ) 2>/dev/null
+SPAWN="$(grep -cE '^\++ (grep|git|sed|awk|paste|tr|cut|wc|cat|head|tail|sort|printf)' "$PCT/trace.log" 2>/dev/null || echo 0)"
+# 120 files. The old shape produced ~850; anything near that is the per-file loop growing back.
+if [ "${SPAWN:-9999}" -le 120 ]; then pass "pre-commit stays under one process per staged file ($SPAWN for 120 files)"
+else fail "pre-commit spawns $SPAWN processes for 120 files — the per-file loop is back (Windows pays 20-50 ms each)"; fi
+rm -rf "$PCT"
+
+echo "== 14) shipped hooks are LF in EVERY edition — a hook that arrives CRLF is a hook that does not run =="
+# `*.sh text eol=lf` covers most of them, but pre-commit and commit-msg are extensionless, so each copy needs
+# its own .gitattributes line. claude-starter's two had one; their plugin twins did not, and it went unnoticed
+# because nothing compared the editions. Measured on a Windows checkout: both claude-starter hooks came out LF
+# and both plugin hooks came out CRLF. Git Bash tolerates that (the trace scan still blocked, verified), which
+# is exactly why it survived — WSL does not, and answers `$'\r': command not found`. A gate that dies on its
+# shebang is not a gate that failed, it is a gate nobody notices is absent.
+# Asked of git rather than of the checkout, so the answer does not depend on the platform running the suite.
+SGR="$(git -C "$ROOT" rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -n "$SGR" ] && [ -f "$SGR/.gitattributes" ]; then
+  NOEOL=""
+  for f in $(git -C "$SGR" ls-files 2>/dev/null | grep -E '(^|/)hooks/[^/.]+$'); do
+    git -C "$SGR" check-attr eol -- "$f" 2>/dev/null | grep -q ': eol: lf$' || NOEOL="$NOEOL $f"
+  done
+  [ -z "$NOEOL" ] && pass "every extensionless shipped hook is pinned to LF in .gitattributes" \
+                  || fail "not pinned to LF — a Windows/WSL checkout gets CRLF and the hook dies on its shebang:$NOEOL"
+  # The two editions ship the same hooks; a divergence means one of them was updated and the other was not.
+  SDIV=""
+  for f in $(git -C "$SGR" ls-files 2>/dev/null | grep -E '^claude-starter/hooks/'); do
+    p="plugin/hooks/${f##*/}"
+    [ -f "$SGR/$p" ] || continue
+    cmp -s "$SGR/$f" "$SGR/$p" || SDIV="$SDIV ${f##*/}"
+  done
+  [ -z "$SDIV" ] && pass "claude-starter/hooks and plugin/hooks ship byte-identical files" \
+                 || fail "the two editions have drifted apart:$SDIV — one was updated and the other was not"
+else note "line-ending check skipped (not a git checkout of the kit)"
+fi
+
 echo "---"
 if [ "$FAIL" -eq 0 ]; then echo "SMOKE-TEST: PASSED ✅"; exit 0
 else echo "SMOKE-TEST: $FAIL errors ❌"; exit 1; fi

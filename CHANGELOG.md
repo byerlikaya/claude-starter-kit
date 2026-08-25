@@ -3,6 +3,75 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [2.6.0] - 2026-08-25
+
+### Fixed
+- **The tool-level gates were failing open on Windows, and had been.** Measured on a stock Windows 11 desktop
+  with no Python installed: `rm -rf /`, `git push --force`, a real captured PowerShell
+  `Remove-Item -Recurse -Force` payload, `git commit`, and a Write that rewrites `guard-bash.sh` itself all
+  returned rc=0 — allowed, silently, in every permission mode, with nothing written to any log. Windows puts
+  `%LOCALAPPDATA%\Microsoft\WindowsApps\python3` on PATH by default; it is not an interpreter but the Microsoft
+  Store redirector stub, so `command -v python3` succeeds, the stub exits 49 with an empty stdout, and the
+  guards read an empty command and allowed the call before reaching `tool_name`. A tier is now chosen on whether
+  it WORKS, using the extraction's own exit status — which costs nothing, and on Windows is cheaper than before.
+  **If you run this kit on Windows, this is the release to take.**
+- **The same wrong question, everywhere else it was asked.** `preflight.sh` reported
+  "jq or python → python3 · Everything the kit wants is here" on a machine with no Python at all; `adopt.sh`
+  stopped at the stub and never reached `py`, the Windows Python Launcher; `guard-commit-scan.sh` left the
+  commit-message trace scan blind, so a co-author trailer in the message shipped unscanned; `smoke-test`
+  reported one FALSE GREEN (a check that passed without running) and one FALSE RED (valid JSON called invalid);
+  `doctor.sh` reported "delegation is enabled" after reading nothing.
+- **A false verdict hiding under that one.** doctor's `[ -z "$DENYSRC" ] && [ "$NOPY" != 1 ] && ok … || bad …`
+  cannot express three outcomes: with no usable interpreter the chain was false, so the `||` arm reported
+  "the Agent tool is DENIED in:" — an empty list, and a ❌ on a healthy install. Three branches now, and where
+  no parser exists doctor greps coarsely and WARNS rather than staying silent: a prompt to look, never a verdict
+  it did not earn.
+- **Private-key file names are blocked in any case.** `server.PEM`, `id.KEY` and `cert.P12` were committable
+  while their lowercase twins were blocked — and on Windows and macOS those are the SAME FILE. Left open in
+  2.5.0 on the grounds that widening a gate does not belong inside a performance change; decided here on its
+  own terms, with the must-not-block half cased too (`.pem.example`, `key.md`, `KEYS.md`, `monkey.ts`,
+  `public.pub` all stay committable).
+- **The plugin edition's `pre-commit` and `commit-msg` shipped CRLF on Windows.** `*.sh text eol=lf` does not
+  cover extensionless files, and only the `claude-starter/` copies were named in `.gitattributes`. Git Bash
+  tolerates it; WSL answers `$'\r': command not found`, which is a gate that is simply not running.
+
+### Changed
+- **The hooks that run on every tool call and every turn stopped spawning a process per rule.** `guard-bash.sh`
+  ran 31 greps per call, 13 of them asking whether a command that is plainly `ls -la` might be `git`. Each rule
+  now sits behind a zero-fork `case` on a literal its own pattern already requires; the rule regexes are
+  untouched. Measured on Windows, idle:
+
+  | hook | runs | before | after |
+  |---|---|---|---|
+  | `guard-bash.sh` | every Bash/PowerShell call | 2,855 ms | **453 ms** |
+  | `session-guard.sh` | every turn end | 1,805 ms | **871 ms** |
+  | `context-usage.sh` | every prompt | 872 ms | **569 ms** |
+  | `session-update-check.sh` | session start | 996 ms | **395 ms** |
+
+  A turn with five tool calls went from roughly 21 s of hook overhead to 7.6 s.
+
+### Measured
+- A straight translation of the guard rules to bash `[[ =~ ]]` was tried first and **rejected on measurement**:
+  bash's regex engine there does not support `\b` (so `icacls\b`, `git config\b` and the `core.hooksPath` rules
+  would have stopped matching) and `$` anchors to the end of the STRING rather than the line (so every rule
+  ending `([[:space:]]|$)` would have opened on a multi-line command). Two fail-opens for a speedup.
+- Behaviour was compared rather than assumed: all 55 commands from the suite's own guard cases, run through the
+  old and the new hook across three tool_name/permission_mode combinations — 165 comparisons, 0 differences,
+  twice.
+- The real Claude Code PowerShell tool was watched tripping §4.5 in a live session under `bypassPermissions`;
+  the same run before the fix was allowed through. PreToolUse does fire under `bypassPermissions` on Windows —
+  which does not change the decision to fail closed there, since an observed behaviour with no documented
+  contract is still not something to rest a gate on.
+- `context-usage.sh`'s bounded stdin read was verified on Git Bash with a FIFO whose writer holds the pipe open
+  and silent: `CSK_STDIN_TIMEOUT=2` → 6.3 s, `=10` → 13.0 s. The bound tracks the setting; nothing hangs.
+
+### Added
+- `smoke-test §7c` — the interpreter tiers, tested the way they actually fail. §7b takes jq and python3 AWAY;
+  that is not the shape the failure had, and it SKIPS on Windows. §7c shadows PATH with a stub that behaves
+  exactly like the real one, so it runs everywhere, and fails 4 of 6 against the pre-fix guards.
+- `smoke-test §14` — every extensionless shipped hook is pinned to LF, and the two editions ship byte-identical
+  files. A drift means one was updated and the other was not.
+
 ## [2.5.0] - 2026-08-24
 
 ### Added

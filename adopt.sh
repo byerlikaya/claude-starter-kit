@@ -667,9 +667,17 @@ elif command -v jq >/dev/null 2>&1; then
       warn "settings.json: jq merge failed -> project setting PRESERVED (not overwritten)."
     fi
   fi
-elif PYBIN="$(command -v python3 2>/dev/null || command -v python 2>/dev/null || command -v py 2>/dev/null)"; [ -n "$PYBIN" ]; then
-  # Windows Git-Bash rarely ships jq; Python is far more common but is exposed as python3, python, OR `py` (the
-  # Windows Python Launcher) depending on the install — check all three, not just python3.
+elif PYBIN=""; for _pc in python3 python py; do
+       # Pick the first that RUNS, not the first that EXISTS. Windows puts a Microsoft Store redirector stub
+       # named python3 (and python) on PATH by default; `command -v` stops there and never reaches `py`, the
+       # Windows Python Launcher, which on a machine with real Python installed is the one that works. The old
+       # order therefore selected the stub on exactly the machines this branch exists for, and the merge below
+       # fell through to "merge failed -> project setting PRESERVED" with no hint why. Args are always passed:
+       # an argless run of that stub opens the Microsoft Store instead of failing.
+       if command -v "$_pc" >/dev/null 2>&1 && printf '{}' | "$_pc" -c 'import sys,json;json.load(sys.stdin)' >/dev/null 2>&1; then
+         PYBIN="$(command -v "$_pc")"; break
+       fi
+     done; [ -n "$PYBIN" ]; then
   if "$PYBIN" - "$KSET" "$PSET" "$PSET.tmp" 2>/dev/null <<'PYEOF' && [ -s "$PSET.tmp" ]; then
 import json,sys
 kit=json.load(open(sys.argv[1])); proj=json.load(open(sys.argv[2]))

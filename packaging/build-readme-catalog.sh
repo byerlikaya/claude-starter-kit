@@ -71,7 +71,7 @@ done)"
 # --- Build one language's table from the shared row set. $1 = en|tr ---
 table() {
   local lang="$1"
-  if [ "$lang" = tr ]; then printf '| Beceri | Ne yapar |\n|:--|:--|\n'
+  if [ "$lang" = tr ]; then printf '| Skill | Ne yapar |\n|:--|:--|\n'
   else                      printf '| Skill | What it does |\n|:--|:--|\n'; fi
   printf '%s\n' "$ROWS" | while IFS="$TAB" read -r name en; do
     [ -z "$name" ] && continue

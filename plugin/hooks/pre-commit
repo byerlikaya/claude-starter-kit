@@ -63,18 +63,53 @@ HIT=0
 #     must run BEFORE the added-text early-exit below or it would never fire on the very files it targets.
 MAXBYTES="${CSK_MAX_FILE_BYTES:-5242880}"   # 5 MiB; override per-repo via env
 BLOAT_DIRS='(^|/)(node_modules|bower_components|dist|build|out|\.next|\.nuxt|\.svelte-kit|target|bin|obj|vendor|__pycache__|\.venv|venv|coverage|\.gradle)/'
+# COST NOTE, measured on a 373-file merge: the loop below used to spawn ~7 processes per file — three
+# `printf | grep` pairs plus a `git cat-file` — for 2,644 processes in total. On Git Bash a process costs
+# 20-50 ms and this hook ran for over twenty minutes on a real merge, which is how a gate turns into the thing
+# people reach for --no-verify to avoid. The pattern scanning was never the expensive part: 23 patterns are one
+# grep each. The file loop was. So the name tests are pure bash `case` now (no process at all) and the two
+# object lookups are batched into one `git cat-file --batch-check` after the loop. Same rules, same verdicts.
+BLOAT_CANDIDATES=""; BLOAT_QUERY=""
+SIZE_TARGETS=""; SIZE_QUERY=""
+NL='
+' 
 while IFS= read -r f; do
   [ -z "$f" ] && continue
   base="${f##*/}"
   # (F) secret-FILE gate — a file that is a secret by its very NAME. The content scan (2) can miss it: a private
   #     key is high-entropy, not a known prefix. .env.example/.sample/.template/.dist are committable templates.
   is_secret_file=0
-  if printf '%s' "$base" | grep -qE '^\.env($|\.)' && ! printf '%s' "$base" | grep -qiE '\.(example|sample|template|dist|schema|md)$'; then
-    is_secret_file=1
-  fi
-  if printf '%s' "$f" | grep -qE '(^|/)(id_rsa|id_dsa|id_ecdsa|id_ed25519|\.npmrc|\.pypirc|\.htpasswd|credentials\.json)$|\.(pem|pfx|p12|ppk|key|keystore|jks)$'; then
-    is_secret_file=1
-  fi
+  case "$base" in
+    .env|.env.*)
+      # Case-insensitive for THIS test only — the rule it replaces used `grep -qiE` here and plain `grep -qE`
+      # everywhere else. Turning nocasematch on for the whole loop looked harmless and quietly widened a
+      # different rule: `server.PEM` went from allowed to blocked. Arguably an improvement, but not one to make
+      # inside a performance change, and not one to make without casing the "must not block" half.
+      shopt -s nocasematch 2>/dev/null || true
+      case "$base" in
+        *.example|*.sample|*.template|*.dist|*.schema|*.md) : ;;
+        *) is_secret_file=1 ;;
+      esac
+      shopt -u nocasematch 2>/dev/null || true ;;
+  esac
+  # Case-insensitive, and that IS a widening — the rule this replaced used a case-SENSITIVE `grep -qE`, so
+  # `server.PEM`, `id.KEY` and `cert.P12` were committable while their lowercase twins were blocked. Left open
+  # once already, on the grounds that widening a gate does not belong inside a performance change. It belongs
+  # here: Windows and macOS filesystems are case-insensitive, so `server.PEM` and `server.pem` are the SAME
+  # FILE, and a rule that blocks one spelling of a private key while allowing another has protected nothing.
+  # Same class as the `chmod 777` vs `chmod 1777` hole and the `rm -rf` vs `rm -Rf` one this file already fixed.
+  #
+  # nocasematch is opened and closed around this block ALONE. Left on across the whole loop it silently changed
+  # the .env test above, which is exactly how `server.PEM` moved from allowed to blocked as an invisible side
+  # effect the first time. The must-not-block half is cased too: `.pem.example`, `key.md`, `monkey.ts`,
+  # `KEYS.md` and `public.pub` all stay committable, and smoke-test pins them in both directions.
+  shopt -s nocasematch 2>/dev/null || true
+  case "$base" in
+    *.example|*.sample|*.template|*.dist|*.md|*.pub) : ;;
+    id_rsa|id_dsa|id_ecdsa|id_ed25519|.npmrc|.pypirc|.htpasswd|credentials.json) is_secret_file=1 ;;
+    *.pem|*.pfx|*.p12|*.ppk|*.key|*.keystore|*.jks) is_secret_file=1 ;;
+  esac
+  shopt -u nocasematch 2>/dev/null || true
   if [ "$is_secret_file" = 1 ] && ! { [ -n "$SAL" ] && grep -qxF -- "$f" "$SAL"; }; then
     echo "SECRET-FILE: '$f' is a secrets / credentials / private-key file — never commit it (gitignore it; ship a .env.example instead)."
     HIT=1; continue
@@ -84,17 +119,41 @@ while IFS= read -r f; do
   # shape of a gate that gets worked around. This repo hit it on its own `bin/cli.js`: `bin/` is build output in
   # .NET and Java, and the conventional home of a CLI entry point in Node, where package.json's `bin` field
   # points at it. The SIZE check below still applies to tracked files, so a tracked path cannot quietly grow.
-  if printf '%s\n' "$f" | grep -qE "$BLOAT_DIRS" && ! git cat-file -e "HEAD:$f" 2>/dev/null; then
-    echo "REPO-BLOAT: '$f' is a build/vendored artifact — gitignore it, don't commit it."
-    HIT=1; continue
-  fi
-  sz="$(git cat-file -s ":$f" 2>/dev/null || echo 0)"
-  case "$sz" in ''|*[!0-9]*) sz=0;; esac
-  if [ "$sz" -gt "$MAXBYTES" ]; then
-    echo "REPO-BLOAT: '$f' is $((sz/1024)) KiB (> $((MAXBYTES/1024)) KiB) — large blobs bloat history; use Git LFS or gitignore."
-    HIT=1
-  fi
+  case "/$f" in
+    */node_modules/*|*/bower_components/*|*/dist/*|*/build/*|*/out/*|*/.next/*|*/.nuxt/*|*/.svelte-kit/*|*/target/*|*/bin/*|*/obj/*|*/vendor/*|*/__pycache__/*|*/.venv/*|*/venv/*|*/coverage/*|*/.gradle/*)
+      BLOAT_CANDIDATES="$BLOAT_CANDIDATES$f
+"; BLOAT_QUERY="$BLOAT_QUERY${NL}HEAD:$f" ;;
+  esac
+  SIZE_TARGETS="$SIZE_TARGETS$f
+"; SIZE_QUERY="$SIZE_QUERY${NL}:$f"
 done < <(git diff --cached --name-only --diff-filter=AM -- . 2>/dev/null)
+
+# Both object lookups, batched. `--batch-check` answers in input order, so the paths are pasted back on rather
+# than looked up again — bash 3.2 (what macOS ships) has no associative arrays, and a second lookup per file
+# would put back the cost this removes.
+if [ -n "$BLOAT_CANDIDATES" ]; then
+  while IFS='	' read -r f verdict; do
+    [ -z "$f" ] && continue
+    case "$verdict" in *missing*)
+      echo "REPO-BLOAT: '$f' is a build/vendored artifact — gitignore it, don't commit it."
+      HIT=1 ;;
+    esac
+  done < <(printf '%s\n' "${BLOAT_QUERY#$NL}" | git cat-file --batch-check 2>/dev/null \
+             | paste -d'\t' <(printf '%s' "$BLOAT_CANDIDATES") - 2>/dev/null)
+fi
+
+if [ -n "$SIZE_TARGETS" ]; then
+  while IFS='	' read -r f info; do
+    [ -z "$f" ] && continue
+    sz="${info##* }"
+    case "$sz" in ''|*[!0-9]*) sz=0;; esac
+    if [ "$sz" -gt "$MAXBYTES" ]; then
+      echo "REPO-BLOAT: '$f' is $((sz/1024)) KiB (> $((MAXBYTES/1024)) KiB) — large blobs bloat history; use Git LFS or gitignore."
+      HIT=1
+    fi
+  done < <(printf '%s\n' "${SIZE_QUERY#$NL}" | git cat-file --batch-check 2>/dev/null \
+             | paste -d'\t' <(printf '%s' "$SIZE_TARGETS") - 2>/dev/null)
+fi
 
 # Nothing staged for the text scans AND the bloat gate is clean -> done.
 { [ -s "$TRACE_F" ] || [ -s "$SECRET_F" ] || [ "$HIT" -ne 0 ]; } || exit 0

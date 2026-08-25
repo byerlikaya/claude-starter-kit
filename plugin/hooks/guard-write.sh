@@ -13,11 +13,17 @@
 set -uo pipefail
 INPUT="$(cat)"
 
-if command -v jq >/dev/null 2>&1; then
-  FP="$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // .tool_input.notebook_path // empty' 2>/dev/null)"
-elif command -v python3 >/dev/null 2>&1; then
-  FP="$(printf '%s' "$INPUT" | python3 -c 'import sys,json;d=json.load(sys.stdin).get("tool_input",{});print(d.get("file_path") or d.get("notebook_path") or "")' 2>/dev/null)"
-else
+# Tiers are selected on whether they WORK, not on whether they exist — see the long note in guard-bash.sh.
+# Short version, measured on a stock Windows 11 desktop: Windows ships a Microsoft Store redirector stub named
+# python3 on PATH by default, `command -v` finds it, it exits 49 with an empty stdout, FP came back "" and
+# `[ -z "$FP" ] && exit 0` let the model rewrite .claude/hooks/guard-bash.sh with its Write tool.
+FP=""; _parsed=0
+if command -v jq >/dev/null 2>&1 && FP="$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // .tool_input.notebook_path // empty' 2>/dev/null)"; then
+  _parsed=1
+elif command -v python3 >/dev/null 2>&1 && FP="$(printf '%s' "$INPUT" | python3 -c 'import sys,json;d=json.load(sys.stdin).get("tool_input",{});print(d.get("file_path") or d.get("notebook_path") or "")' 2>/dev/null)"; then
+  _parsed=1
+fi
+if [ "$_parsed" = 0 ]; then
   FP="$(printf '%s' "$INPUT" | sed -n 's/.*"file_path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
 fi
 [ -z "$FP" ] && exit 0
