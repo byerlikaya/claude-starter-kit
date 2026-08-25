@@ -65,6 +65,45 @@ versioning follows [SemVer](https://semver.org/).
   unguarded copy of the gates it ships. Matched by the kit's own filenames, so a project's unrelated `hooks/`
   directory is untouched.
 
+### Fixed
+- **A tool was still being chosen on whether it EXISTS in thirteen more places.** 2.6.0 taught the two shell
+  guards to pick a parser tier on whether it *works*, because Windows ships a Microsoft Store redirector named
+  `python3` that passes `command -v`, exits 49 and prints nothing. The same shape survived elsewhere; an audit
+  of every `command -v` / `type -P` / `[ -d .git ]` site in the tree found it and each instance was reproduced
+  with a stub that resolves and fails, then re-measured in three states (works / broken / absent).
+  - `hooks/skill-trust.sh` — a broken `sha256sum` returned an empty digest, the caller read that as "nothing to
+    report", and the unvetted-component notice went **completely silent** while two working fallbacks were
+    never tried. Measured: 462 bytes of notice became 0. The pipeline's exit status could not have caught it
+    (`cut` succeeds on empty input), so the value is what is tested now. Costs one process fewer than before.
+  - `hooks/session-rehydrate.sh` and `hooks/board-sync.sh` — jq's status was discarded, so a broken jq emitted
+    nothing with rc=0, which is exactly the legitimate "nothing to say" case. After `/compact` or `/clear` the
+    fresh context was never pointed at the handover file. The bash fallback below each produces byte-identical
+    output, so falling through costs nothing.
+  - `hooks/context-usage.sh` — the last hook selecting on existence: with a broken jq it reported "usage not
+    found" instead of falling back to awk, so the session fill silently stopped being measured.
+  - `eval/doctor.sh` — a broken jq made doctor call a **valid** `settings.json` corrupt and prescribe
+    overwriting it, destroying any hooks the project had added, while three real checks stopped running with no
+    trace. The same file already probed python3 by running; §4 was missed.
+  - `adopt.sh` — a broken jq aborted the settings merge and wired **zero** kit hooks, while the run still ended
+    in OK + PROOF and the handover record claimed the hooks had been refreshed.
+  - `start.sh` — `[ -d .git ]` is a proxy for the answer and it lies where it matters: in a worktree or
+    submodule `.git` is a FILE, so the commit gate was never armed and the installer reported no problem.
+    Measured: a commit carrying a forbidden expression landed in a worktree install. It now anchors on the
+    repository toplevel and lets the arming call itself decide — a relative `core.hooksPath` resolves against
+    the work-tree root, so arming from a subdirectory would report a gate active over a dead path.
+  - `bin/cli.js` — a path converter that resolved and produced nothing yielded an empty path, and the npx
+    install failed with "bash cannot read the staged script", sending the user after 8.3 names and `TEMP`
+    settings for what was a converter failure.
+
+- **The harness that exists to catch this class was breaking the rule in fourteen places.** Measured with a
+  stub jq: the suite reported **340 errors against 95 graded assertions**, most of them accusing shipped files
+  of defects they do not have. After the fix the same run is **PASSED, 572 graded, 4 skipped**, each naming
+  what it could not check — and under `CI=true` those `tool`-class skips turn CI red. Ten jq selections are now
+  probed by running; the two git fixtures are gated on whether git can actually **build a repository**, because
+  the driver short-circuits and a failed `git add` made every blocking case read as "the gate blocked" (proved
+  by replacing the scanner with `exit 0` and getting byte-identical output); and the stdin-hang case now tests
+  for the FIFO rather than for `mkfifo`, because without one the case could not fail at all.
+
 ### Added
 - **`eval/utilization.sh` — what the kit loads versus what it actually reaches.** Every installed skill spends
   its name and description in every session forever, and `doctor.sh` §4a already reported that cost against the

@@ -117,7 +117,19 @@ fi
 # was needed. Reachable by interrupting a subagent, which leaves that record last. The same predicate now guards
 # both engines so they cannot drift; if a record ever lacks `.type` both go quiet, and a hook that says nothing
 # is recoverable in a way that a hook confidently reporting 0.9% is not.
-HAVE_JQ=0; command -v jq >/dev/null 2>&1 && HAVE_JQ=1
+# A TIER IS CHOSEN ON WHETHER IT WORKS, NOT ON WHETHER IT EXISTS — the rule the guards learned in 2.6.0, and
+# the last place in the kit that still asked the other question. `command -v` alone commits this hook to the jq
+# branch, and a jq that resolves and fails then produces nothing: the awk branch below never runs and the turn
+# reports "usage not found" instead of the reading. Measured with a stub jq on PATH: correct run says
+# `🔋 Session: %80.0`, the stubbed run says `usage not found in the byte-bounded window`. Windows is where that
+# shape lives — it ships a Microsoft Store redirector named python3 that passes `command -v` and cannot run.
+#
+# The probe costs ONE process, and only where jq already exists: on a machine without it `command -v` short
+# circuits and nothing is spawned. That is the right way round for this kit, because the platform where a spawn
+# is expensive (Git Bash, ~62 ms) is the platform that usually has no jq, and the platforms that pay for the
+# probe are the ones where a process is cheap. It runs once per turn, not once per record.
+HAVE_JQ=0
+if command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then HAVE_JQ=1; fi
 scan() {                                             # reads JSONL on stdin, prints the total (or nothing)
   if [ "$HAVE_JQ" = 1 ]; then
     jq -r 'select((.isSidechain // false) == false)

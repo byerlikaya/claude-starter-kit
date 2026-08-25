@@ -724,7 +724,11 @@ fill 930000; sg "${SGPFX}-d" >/dev/null
 fill 760000
 [ -z "$(sg "${SGPFX}-d")" ] && pass "stop-hook: dipping back under 90% does not re-fire the 75% alert" || fail "stop-hook re-fired the 75% alert after a dip"
 # (6) emitted payload is valid JSON carrying systemMessage
-if command -v jq >/dev/null 2>&1; then
+# EVERY jq SELECTION BELOW IS PROBED BY RUNNING. This file tests the payload for that rule — its own
+# tier-B sandbox is built out of a jq that resolves and exits 49 — and broke it in ten places. Measured
+# with a stub jq: 51 errors instead of 21, four of them accusing shipped files of defects they do not
+# have, and zero skips, so nothing said a check had stopped running.
+if command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then
   fill 800000; sg "${SGPFX}-e" | jq -e '.systemMessage' >/dev/null 2>&1 && pass "stop-hook: stdout is valid JSON with .systemMessage" || fail "stop-hook stdout is not valid systemMessage JSON"
 
   # --- the fast path -------------------------------------------------------------------------------------
@@ -789,16 +793,62 @@ fillc 100000 manual 1
 [ -z "$(sg "${SGPFX}-j")" ] && pass "stop-hook: a manual compaction is not reported as a loss" || fail "stop-hook reported a deliberate /compact as an unchosen loss"
 rm -f "$SGFX"; rm -f "${TMPDIR:-/tmp}"/csk-session-guard.${SGPFX}-*.* 2>/dev/null
 
+# ---- CSK-NOJQ-PATH ---------------------------------------------------------------------------------------
+# ONE builder for "a PATH where the jq and python3 tiers do not deliver". It was written three times — here,
+# for context-usage's two fixtures, and for the guard sandbox — with three tool lists and three copies of the
+# same Windows caveat, and all three bailed on the same platform for the same reason.
+#
+# Tier A makes the interpreters ABSENT: a minimal PATH of symlinks to the tools the hook needs. Faithful, and
+# impossible on Windows, where Git-Bash copies instead of symlinking without Developer Mode. Measured on
+# windows-latest: six cases behind these builders never executed, and until skips were counted they were
+# indistinguishable from six passes.
+#
+# Tier B makes them PRESENT AND BROKEN: stubs at the front of PATH that resolve and exit non-zero. No symlink,
+# so it builds anywhere — and it is the shape a stock Windows install actually HAS, since Windows ships a
+# Microsoft Store redirector named python3 that resolves and cannot run. Choosing a tier on existence rather
+# than on success is the exact bug 2.6.0 fixed, so tier B tests the documented rule head-on.
+#
+# Echoes the PATH to run under (tier A: the dir alone; tier B: the dir plus the real PATH), or nothing.
+# CSK_NOJQ_MODE says which tier; CSK_NOJQ_WHY says why not, when nothing comes back. The caller cleans up
+# "${VAR%%:*}" — the sandbox directory is the first PATH element in both tiers.
+CSK_NOJQ_MODE=""; CSK_NOJQ_WHY=""
+csk_nojq_path(){   # $@ = the tools the code under test needs on PATH
+  local d t tp probe; CSK_NOJQ_MODE=""; CSK_NOJQ_WHY=""
+  probe="$(command -v bash 2>/dev/null || echo bash)"
+  d="$(mktemp -d)" || { CSK_NOJQ_WHY="mktemp failed"; return 1; }
+  for t in "$@"; do
+    tp="$(command -v "$t" 2>/dev/null)"
+    [ -n "$tp" ] || { CSK_NOJQ_WHY="no PATH binary for '$t'"; rm -rf "$d"; return 1; }
+    ln -s "$tp" "$d/$t" 2>/dev/null || break
+  done
+  # A real symlink, and the interpreters really gone. Checked in a FRESH shell: a shell caches resolved
+  # binaries in its hash table and consults it BEFORE PATH, so `PATH="$d" command -v jq` in THIS shell keeps
+  # answering with the cached absolute path once anything has run jq. The code under test is a fresh process.
+  if [ -L "$d/$1" ] \
+     && ! PATH="$d" "$probe" -c 'command -v jq'      >/dev/null 2>&1 \
+     && ! PATH="$d" "$probe" -c 'command -v python3' >/dev/null 2>&1; then
+    if PATH="$d" "$probe" -c 'printf x | grep -q x' 2>/dev/null; then
+      CSK_NOJQ_MODE="minimal"; printf '%s' "$d"; return 0
+    fi
+    CSK_NOJQ_WHY="canary failed: the minimal PATH cannot run grep"; rm -rf "$d"; return 1
+  fi
+  rm -rf "$d"; d="$(mktemp -d)" || { CSK_NOJQ_WHY="mktemp failed"; return 1; }
+  for t in jq python3 python; do
+    printf '#!/usr/bin/env bash\nexit 49\n' > "$d/$t" 2>/dev/null || { CSK_NOJQ_WHY="cannot write the '$t' stub"; rm -rf "$d"; return 1; }
+    chmod +x "$d/$t" 2>/dev/null || { CSK_NOJQ_WHY="cannot mark the '$t' stub executable"; rm -rf "$d"; return 1; }
+  done
+  # Both halves, or the tier under test is not the tier that runs: the stub must RESOLVE and must FAIL.
+  PATH="$d:$PATH" "$probe" -c 'command -v jq' >/dev/null 2>&1 || { CSK_NOJQ_WHY="the jq stub does not resolve"; rm -rf "$d"; return 1; }
+  PATH="$d:$PATH" "$probe" -c 'jq --version'  >/dev/null 2>&1 && { CSK_NOJQ_WHY="the jq stub RUNS — it would not force the fallback"; rm -rf "$d"; return 1; }
+  PATH="$d:$PATH" "$probe" -c 'printf x | grep -q x' 2>/dev/null || { CSK_NOJQ_WHY="canary failed: grep unusable behind the stubs"; rm -rf "$d"; return 1; }
+  CSK_NOJQ_MODE="stubbed"; printf '%s' "$d:$PATH"; return 0
+}
+# ---- /CSK-NOJQ-PATH --------------------------------------------------------------------------------------
+
 echo "== 6c) no-jq fallback: sidechain-safe + full token sum =="
-JXBIN="$(mktemp -d)"; JXOK=1
-BASHBIN="$(command -v bash 2>/dev/null || echo bash)"   # absolute -> the stripped PATH must not hide bash itself
-for t in awk sed grep head tail cat ls tr; do
-  tp="$(command -v "$t" 2>/dev/null)" && ln -s "$tp" "$JXBIN/$t" 2>/dev/null || JXOK=0
-done
-# Git-Bash on Windows can't make real symlinks — `ln -s` silently COPIES, so JXOK stays 1 but the PATH is not a
-# faithful jq-less POSIX env. Require a real symlink; otherwise skip (the no-jq path is exercised on the POSIX runners).
-[ "$JXOK" = 1 ] && [ ! -L "$JXBIN/awk" ] && JXOK=0
-if [ "$JXOK" = 1 ] && ! PATH="$JXBIN" command -v jq >/dev/null 2>&1; then
+BASHBIN="$(command -v bash 2>/dev/null || echo bash)"   # absolute -> a stripped PATH must not hide bash itself
+JXBIN="$(csk_nojq_path awk sed grep head tail cat ls tr)"
+if [ -n "$JXBIN" ]; then
   SX="$(mktemp)"
   printf '%s\n' '{"type":"assistant","isSidechain":false,"message":{"usage":{"input_tokens":20,"cache_read_input_tokens":760000,"cache_creation_input_tokens":11936}}}' >  "$SX"
   printf '%s\n' '{"type":"assistant","isSidechain":true,"message":{"usage":{"input_tokens":5,"cache_read_input_tokens":30000,"cache_creation_input_tokens":0}}}'        >> "$SX"
@@ -811,7 +861,7 @@ if [ "$JXOK" = 1 ] && ! PATH="$JXBIN" command -v jq >/dev/null 2>&1; then
 else
   skip tool "no-jq fallback test skipped (no symlink / jq-less PATH buildable here)"
 fi
-rm -rf "$JXBIN"
+rm -rf "${JXBIN%%:*}"
 
 echo "== 6d) locale: percentage keeps '.' under a comma locale =="
 FXL="$(mktemp)"
@@ -836,18 +886,15 @@ SIDE_REC='{"type":"assistant","isSidechain":true,"message":{"usage":{"input_toke
 POISON_REC='{"type":"user","isSidechain":false,"message":{"role":"user","content":"x"},"toolUseResult":{"usage":{"input_tokens":25,"cache_creation_input_tokens":1344,"cache_read_input_tokens":8000,"output_tokens":9}}}'
 noise(){ awk -v n="$1" -v l="$2" 'BEGIN{for(i=0;i<n;i++) print l}'; }
 # a jq-less PATH, so the awk branch is what actually runs (this is the Windows path)
-CUJX="$(mktemp -d)"; CUJXOK=1; CUBASH="$(command -v bash 2>/dev/null || echo bash)"
-for t in awk sed grep head tail cat ls tr dirname; do
-  tp="$(command -v "$t" 2>/dev/null)" && ln -s "$tp" "$CUJX/$t" 2>/dev/null || CUJXOK=0
-done
-[ "$CUJXOK" = 1 ] && [ ! -L "$CUJX/awk" ] && CUJXOK=0   # Windows Git-Bash copies instead of symlinking -> not a faithful jq-less PATH; skip
+CUBASH="$(command -v bash 2>/dev/null || echo bash)"
+CUJX="$(csk_nojq_path awk sed grep head tail cat ls tr dirname)"
 cu(){    CONTEXT_WINDOW=1000000 bash "$HOOKS/context-usage.sh" --verbose "$1" 2>/dev/null; }
 cu_nojq(){ PATH="$CUJX" CONTEXT_WINDOW=1000000 "$CUBASH" "$HOOKS/context-usage.sh" --verbose "$1" 2>/dev/null; }
 # assert the SAME expected total on both engines — they must never drift apart
 both(){ # $1=fixture $2=expected-total $3=label
   o="$(cu "$1")"
   case "$o" in *"$2/1000000"*) pass "jq: $3" ;; *) fail "jq: $3 — got: $o" ;; esac
-  if [ "$CUJXOK" = 1 ] && ! PATH="$CUJX" command -v jq >/dev/null 2>&1; then
+  if [ -n "$CUJX" ]; then
     o="$(cu_nojq "$1")"
     case "$o" in *"$2/1000000"*) pass "no-jq: $3" ;; *) fail "no-jq: $3 — got: $o" ;; esac
   else skip tool "no-jq: $3 (skipped — no jq-less PATH buildable here)"; fi
@@ -874,7 +921,7 @@ if bash "$HOOKS/context-usage.sh" "$CUD/none.jsonl" >/dev/null 2>&1; then fail "
 # (7) structural: the read must be BOUNDED. A revert to `scan "$TR"` is invisible to every test above.
 grep -q 'tail -n' "$HOOKS/context-usage.sh" && pass "transcript is read through a bounded 'tail -n' window" \
   || fail "context-usage.sh no longer bounds its read — the whole transcript is scanned every turn"
-rm -rf "$CUD" "$CUJX"
+rm -rf "$CUD" "${CUJX%%:*}"
 
 echo "== 6i2) hook paths survive a WINDOWS stdin payload (JSON-escaped backslashes) =="
 # The paths a hook receives on stdin are JSON values, and JSON escapes a backslash as two. So on Windows the
@@ -1276,9 +1323,15 @@ echo "== 6h) pre-commit scanners: must not go blind on a large diff =="
 # The scanners used to be `printf "$ADDED" | grep -q`. grep -q exits on the first match, printf dies of SIGPIPE,
 # and `set -o pipefail` turned that into "no match" — so a trace or a secret in a LARGE staged diff sailed through.
 # A gate that only works on small commits is worse than no gate. These cases lock the behaviour down.
-if command -v git >/dev/null 2>&1; then
-  PR="$(mktemp -d)"; ( cd "$PR" && git init -q && git config user.email t@t && git config user.name t \
-    && echo init > seed.txt && git add seed.txt && git commit -qm base ) >/dev/null 2>&1
+# THE FIXTURE BUILD IS THE PROBE. `command -v git` resolving says nothing about whether git can make a
+# repository, and the driver below short-circuits: `( cd "$PR" && git add -A … && bash pre-commit )`
+# returns non-zero when `git add` fails, which every blocking case reads as "the gate blocked". Measured
+# with a stub git: the same green lines, and `pre-commit` invoked ZERO times — then the hook was replaced
+# with `exit 0`, a scanner that blocks nothing, and the §6h/§7h output was byte-identical. Twenty-four
+# trace and secret patterns certified by a gate that never ran.
+PR="$(mktemp -d)"
+if command -v git >/dev/null 2>&1 && ( cd "$PR" && git init -q && git config user.email t@t && git config user.name t \
+    && echo init > seed.txt && git add seed.txt && git commit -qm base ) >/dev/null 2>&1; then
   PCLOG="$(mktemp)"
   # Both fixtures are ASSEMBLED AT RUNTIME so this file never contains the literal it tests for. A contiguous
   # authorship trailer would trip the kit's own trace scan, and a JWT-shaped literal would make this very file
@@ -1375,7 +1428,7 @@ if command -v git >/dev/null 2>&1; then
                 || fail "wrongly blocked by the widened key gate:$KFO"
   else note "scope=install: private-key name cases skipped (payload bytes, not this install)"; fi
   rm -rf "$PR" "$PCLOG"
-else skip tool "pre-commit scanner tests skipped (no git)"; fi
+else skip tool "pre-commit scanner tests skipped (no working git — it must BUILD a repo, not just resolve)"; fi
 
 echo "== 6g) stale-discipline gate: an update landing mid-session must be announced =="
 # CLAUDE.md loads once, at session start. If the kit is updated while a session runs, the model keeps quoting
@@ -1568,7 +1621,7 @@ else pass "some agents lack a proactive cue:$NO_CUE (your project's own agents, 
 [ "$UNITS" = 0 ] && note "scope=install: gate UNIT cases skipped (they test payload bytes, not this install) — canary below"
 echo "== 7) settings.json & guard (§4.4/§4.5) =="
 if [ -f "$ROOT/settings.json" ]; then
-  if command -v jq >/dev/null 2>&1; then
+  if command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then
     jq empty "$ROOT/settings.json" 2>/dev/null && pass "settings.json valid JSON" || fail "settings.json invalid JSON"
   else skip tool "settings.json present (no jq, JSON validation skipped)"; fi
 else fail "settings.json missing"; fi
@@ -1596,7 +1649,7 @@ o="$(gj auto 'git push' | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"
 [ "$(gdec "$o")" = "ask" ] && pass "git push ASKS the user (§4.4)" || fail "git push did not ask"
 # The ask payload must be parseable JSON. A tab, CR or quote from the commit message, passed through raw,
 # would make it a control-character parse error — build the fixture with jq so the INPUT is valid too.
-if command -v jq >/dev/null 2>&1; then
+if command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then
   NASTY="$(printf 'git commit -m "a\tb \\"q\\" C:\\\\p"')"
   o="$(jq -nc --arg c "$NASTY" '{tool_name:"Bash",permission_mode:"auto",tool_input:{command:$c}}' | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"
   printf '%s' "$o" | jq -e '.hookSpecificOutput.permissionDecision=="ask"' >/dev/null 2>&1 \
@@ -1934,44 +1987,13 @@ gb_why(){ printf '%s' "$1" > "$GB_WHYF"; }
 # Sets GBDIR (for cleanup) and ECHOES THE PATH TO USE — not the directory — so both tiers are consumed
 # identically by the 22 call sites below.
 GBDIR=""; GB_MODE=""
-gb_sandbox(){   # echoes the PATH string to run under, or nothing when neither tier can be built; $GB_WHYF says why
-  local d t tp; : > "$GB_WHYF"; d="$(mktemp -d)" || { gb_why "mktemp failed"; return 1; }
-  GBDIR="$d"
-  for t in awk sed grep head cat tr git cut; do
-    tp="$(type -P "$t" 2>/dev/null)"
-    [ -n "$tp" ] || { gb_why "no PATH binary for '$t'"; rm -rf "$d"; return 1; }
-    ln -s "$tp" "$d/$t" 2>/dev/null || break
-  done
-  if [ ! -L "$d/awk" ]; then
-    # Tier B. Discard whatever tier A left behind and shadow the two interpreters instead.
-    rm -rf "$d"; d="$(mktemp -d)" || { gb_why "mktemp failed"; return 1; }; GBDIR="$d"
-    for t in jq python3 python; do
-      printf '#!/usr/bin/env bash\nexit 49\n' > "$d/$t" 2>/dev/null || { gb_why "cannot write a stub for '$t'"; rm -rf "$d"; return 1; }
-      chmod +x "$d/$t" 2>/dev/null || { gb_why "cannot mark the '$t' stub executable"; rm -rf "$d"; return 1; }
-    done
-    # The stub must RESOLVE and FAIL. Both halves are checked, in a fresh shell for the same hash-table reason
-    # as tier A: if it did not resolve we would be testing "absent" by accident, and if it succeeded the tier
-    # under test would never run.
-    PATH="$d:$PATH" "$GBBASH" -c 'command -v jq' >/dev/null 2>&1 || { gb_why "the jq stub does not resolve"; rm -rf "$d"; return 1; }
-    PATH="$d:$PATH" "$GBBASH" -c 'jq --version' >/dev/null 2>&1 && { gb_why "the jq stub RUNS — it would not force the fallback"; rm -rf "$d"; return 1; }
-    PATH="$d:$PATH" "$GBBASH" -c 'printf x | grep -q x && printf y | sed -n "s/y/z/p" >/dev/null' 2>/dev/null \
-      || { gb_why "canary failed: grep/sed unusable behind the stubs"; rm -rf "$d"; return 1; }
-    GB_MODE="stubbed"; printf '%s' "$d:$PATH"; return 0
-  fi
-  GB_MODE="minimal"
-  # jq/python3 must really be invisible, or the branch under test is not the branch that runs.
-  # Checked in a FRESH bash, not with `command -v` in this one. A shell caches resolved binaries in its hash
-  # table and consults it BEFORE PATH, so once any earlier section of this suite has run jq, `PATH="$d" command
-  # -v jq` keeps answering with the cached absolute path and the sandbox is rejected as "jq still visible" —
-  # which is exactly why this whole section silently skipped in a full run while passing in isolation. The hook
-  # under test is a fresh process with an empty hash table, so the check must be one too.
-  PATH="$d" "$GBBASH" -c 'command -v jq'      >/dev/null 2>&1 && { gb_why "jq still visible inside the sandbox"; rm -rf "$d"; return 1; }
-  PATH="$d" "$GBBASH" -c 'command -v python3' >/dev/null 2>&1 && { gb_why "python3 still visible inside the sandbox"; rm -rf "$d"; return 1; }
-  # CANARY: prove the sandbox can actually run the tools the hook needs. Without this a broken sandbox is
-  # indistinguishable from a broken gate, and every assertion below becomes noise pointing at the wrong file.
-  PATH="$d" "$GBBASH" -c 'printf x | grep -q x && printf y | sed -n "s/y/z/p" >/dev/null' 2>/dev/null \
-    || { gb_why "canary failed: grep/sed unusable inside the sandbox"; rm -rf "$d"; return 1; }
-  printf '%s' "$d"
+gb_sandbox(){   # echoes the PATH to run under, or nothing; $GB_WHYF says why not
+  # Thin wrapper over csk_nojq_path: the rule for "a PATH where jq and python3 do not deliver" lives in ONE
+  # place, because it was written three times and all three failed on the same platform for the same reason.
+  local out; : > "$GB_WHYF"
+  out="$(csk_nojq_path awk sed grep head cat tr git cut)" || { gb_why "${CSK_NOJQ_WHY:-sandbox unbuildable}"; return 1; }
+  [ -n "$out" ] || { gb_why "${CSK_NOJQ_WHY:-sandbox unbuildable}"; return 1; }
+  printf '%s' "$out"
 }
 GBX="$(gb_sandbox)"
 # Derived here, not inside the function: `$( )` is a subshell, so anything the function assigns to a global is
@@ -2208,7 +2230,7 @@ mkdir -p "$RHD/docs"; printf '# Session Handover\n' > "$RHD/docs/SESSION_STATE.m
 o="$(printf '{"hook_event_name":"SessionStart","cwd":"%s"}' "$RHD" | CLAUDE_PROJECT_DIR= bash "$HOOKS/session-rehydrate.sh" 2>/dev/null)"
 case "$o" in *'"additionalContext"'*SESSION_STATE*) pass "handover present -> injects additionalContext pointer" ;;
   *) fail "session-rehydrate did not inject a pointer when SESSION_STATE.md exists" ;; esac
-if command -v jq >/dev/null 2>&1; then printf '%s' "$o" | jq empty 2>/dev/null && pass "rehydrate output is valid JSON" || fail "rehydrate output is not valid JSON"; fi
+if command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then printf '%s' "$o" | jq empty 2>/dev/null && pass "rehydrate output is valid JSON" || fail "rehydrate output is not valid JSON"; fi
 rm -rf "$RHD"
 grep -q 'SessionStart' "$ROOT/settings.json" && grep -q 'session-rehydrate.sh' "$ROOT/settings.json" \
   && pass "settings.json wires SessionStart -> session-rehydrate.sh" || fail "settings.json missing SessionStart -> session-rehydrate wiring"
@@ -2234,7 +2256,7 @@ grep -q 'cd .*\$CLAUDE_PROJECT_DIR' "$ROOT/settings.json" \
 # shell, and on a Windows box checked during this work `where bash` answered C:\Windows\System32\bash.exe — the
 # WSL launcher, not Git Bash, in a namespace where C:\Repos\app does not exist. Wiring `"command": "bash"` would
 # have run that (or failed where WSL is absent), taking every gate with it.
-if command -v jq >/dev/null 2>&1; then
+if command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then
   jq -e '[.hooks[][].hooks[]? | select((.args // []) | length > 0)] | length == 0' "$ROOT/settings.json" >/dev/null 2>&1 \
     && pass "no exec-form hook (bare 'bash' on Windows PATH resolves to WSL, not Git Bash)" \
     || fail "a hook uses exec form — on Windows 'bash' off the PATH is System32/bash.exe (WSL), so every gate dies"
@@ -2246,7 +2268,7 @@ PHJ="$PLUGIN/hooks/hooks.json"
 if [ "$IS_KIT" != 1 ]; then
   skip scope "plugin edition check skipped (installed project — plugin/ lives in the kit repo only)"
 elif [ -f "$PHJ" ]; then
-  if command -v jq >/dev/null 2>&1; then jq empty "$PHJ" 2>/dev/null && pass "plugin hooks.json valid JSON" || fail "plugin hooks.json invalid JSON"; else pass "plugin hooks.json present (no jq)"; fi
+  if command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then jq empty "$PHJ" 2>/dev/null && pass "plugin hooks.json valid JSON" || fail "plugin hooks.json invalid JSON"; else pass "plugin hooks.json present (no jq)"; fi
   grep -q 'CLAUDE_PLUGIN_ROOT' "$PHJ" && pass "plugin hooks.json resolves via \${CLAUDE_PLUGIN_ROOT}" || fail "plugin hooks.json does not use \${CLAUDE_PLUGIN_ROOT}"
   grep -q 'CLAUDE_PROJECT_DIR' "$PHJ" && fail "plugin hooks.json leaks \${CLAUDE_PROJECT_DIR} (wrong for a plugin)" || pass "plugin hooks.json has no \${CLAUDE_PROJECT_DIR}"
   for h in guard-bash.sh guard-write.sh context-usage.sh session-guard.sh session-rehydrate.sh; do
@@ -2311,7 +2333,7 @@ case "$DOUT" in *"Readiness (advisory"*) pass "doctor prints the readiness block
 case "$DOUT" in *"➖"*) pass "readiness flags gaps on a bare project (devcontainer/MCP/manifest absent)" ;; *) fail "readiness found no gap on a bare project — the signals are not firing" ;; esac
 rm -f "$DOC/CLAUDE.md" "$DOC/.claude/DISCIPLINE.md"
 # M2a: an empty hook array wires nothing — doctor must flag it (needs jq to read array length).
-if command -v jq >/dev/null 2>&1; then
+if command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then
   jq '.hooks.PreToolUse = []' "$DOC/.claude/settings.json" > "$DOC/.claude/s.tmp" && mv "$DOC/.claude/s.tmp" "$DOC/.claude/settings.json"
   bash "$ROOT/eval/doctor.sh" "$DOC" >/dev/null 2>&1 && fail "doctor PASSED empty PreToolUse [] (M2a)" || pass "doctor: empty PreToolUse [] -> exit != 0 (M2a)"
 else skip tool "doctor empty-array test skipped (no jq)"; fi
@@ -2383,7 +2405,7 @@ echo "== 7g) adopt.sh settings merge is HOOK-AWARE (updates refresh kit hooks, p
 # Regression guard for the jq-less/stale-settings bug: on update the kit OWNS its hooks, so a new event
 # (SessionStart) must get wired and a stale kit entry (old timeout) refreshed, WITHOUT duplicating hooks or
 # dropping the project's own custom hooks. Extract the merge program from adopt.sh (single source of truth).
-if [ "$IS_KIT" = 1 ] && command -v jq >/dev/null 2>&1; then
+if [ "$IS_KIT" = 1 ] && command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then
   ADOPT="$(cd "$ROOT/.." && pwd)/adopt.sh"; KSET="$ROOT/settings.json"
   if [ -f "$ADOPT" ] && [ -f "$KSET" ]; then
     JQM="$(awk '/^JQ_MERGE=./{f=1} f{print} f&&/\)\)'"'"'$/{exit}' "$ADOPT" | sed "1s/^JQ_MERGE='//; \$s/'\$//")"
@@ -2445,7 +2467,7 @@ rm -f "$STD/.claude/kit-manifest.txt"
 [ -z "$(st)" ] && pass "no manifest -> silent (never guesses which components are the kit's)" || fail "spoke without a manifest"
 rm -rf "$STD"
 # Wired, or it is an idle component: SessionStart must actually call it.
-if command -v jq >/dev/null 2>&1; then
+if command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then
   jq -e '[.hooks.SessionStart[].hooks[].command] | map(test("skill-trust")) | any' "$ROOT/settings.json" >/dev/null 2>&1 \
     && pass "settings.json wires skill-trust.sh on SessionStart" || fail "skill-trust.sh is not wired — nothing ever runs it"
 else
@@ -2575,7 +2597,7 @@ rm -rf "$UPD"
 
 # Wired, or it is an idle component — and wired on `startup` ALONE: resume/clear/compact re-open the same session,
 # where a second copy of this notice is pure noise.
-if command -v jq >/dev/null 2>&1; then
+if command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then
   jq -e '[.hooks.SessionStart[] | select(any(.hooks[]; .command | test("session-update-check"))) | .matcher] == ["startup"]' \
      "$ROOT/settings.json" >/dev/null 2>&1 \
     && pass "settings.json wires session-update-check.sh on SessionStart:startup only" \
@@ -2592,10 +2614,10 @@ echo "== 7h) blocklist rules carry their own cases, and every case drives the RE
 # line below it (`#test:` must be caught, `#test-clean:` must not) and the suite runs them THROUGH pre-commit
 # rather than re-implementing the match: a second matcher here would pass while the real one was broken.
 # Cases run ONE AT A TIME on purpose — batched, a single working pattern would mask every dead one beside it.
-if command -v git >/dev/null 2>&1; then
-  BLR="$(mktemp -d)"
-  ( cd "$BLR" && git init -q && git config user.email t@t && git config user.name t \
-    && echo seed > seed.txt && git add seed.txt && git commit -qm base ) >/dev/null 2>&1
+# Same shape, same reason: the fixture build decides, not `command -v` (see the note at the §6h block).
+BLR="$(mktemp -d)"
+if command -v git >/dev/null 2>&1 && ( cd "$BLR" && git init -q && git config user.email t@t && git config user.name t \
+    && echo seed > seed.txt && git add seed.txt && git commit -qm base ) >/dev/null 2>&1; then
   # {{A<n>}} -> n literal 'A's. The secret cases are stored this way so the pattern file never carries a
   # contiguous secret-shaped string: it ships into every project's .claude/, where their scanners would flag it,
   # and GitHub push protection rejects such a literal on sight however low its entropy is (measured, on Stripe).
@@ -2653,7 +2675,7 @@ EOF
     || fail "pre-commit's blocklist exclusion is path-anchored — it stops applying outside .claude/hooks/"
   rm -rf "$BLR"
 else
-  skip tool "blocklist case run skipped (no git)"
+  skip tool "blocklist case run skipped (git is absent or unusable here)"
 fi
 
 echo "== 7j) commit CONTENT gate reachable without core.hooksPath (plugin edition parity) =="
@@ -3169,15 +3191,19 @@ rm -rf "$GNOC"
 
 # (d) a UserPromptSubmit hook must not hang on an open, silent stdin. It did: `cat` waits for EOF, and "not a
 #     tty" is not "data is coming". This ran for 20 minutes twice before it was found, and it fires every turn.
-if command -v mkfifo >/dev/null 2>&1; then
-  FF="$GTMP2/fifo"; mkfifo "$FF" 2>/dev/null
+# The ARTIFACT is the probe, not the tool: `mkfifo` resolving says nothing about whether a FIFO exists, and
+# without one `( sleep 25 > "$FF" )` writes a plain file the hook reads to instant EOF — so this case passes no
+# matter what the hook does. Replayed against the hanging hook it exists to catch: with a real FIFO it FAILS
+# (correct), with a stubbed mkfifo it PASSED. `[ -p ]` also rejects an mkfifo that exits 0 creating nothing.
+FF="$GTMP2/fifo"
+if mkfifo "$FF" 2>/dev/null && [ -p "$FF" ]; then
   ( sleep 25 > "$FF" ) & FW=$!
   ( CSK_STDIN_TIMEOUT=1 bash "$ROOT/hooks/context-usage.sh" < "$FF" >/dev/null 2>&1 ) & FH=$!
   FN=0; while kill -0 "$FH" 2>/dev/null && [ "$FN" -lt 8 ]; do sleep 1; FN=$((FN+1)); done
   if kill -0 "$FH" 2>/dev/null; then kill "$FH" 2>/dev/null; fail "context-usage.sh still hangs on an open silent stdin"
   else pass "context-usage.sh gives up on a silent stdin (${FN}s)"; fi
   kill "$FW" 2>/dev/null; rm -f "$FF"
-else note "stdin-hang case skipped (no mkfifo)"; fi
+else note "stdin-hang case skipped (no working mkfifo)"; fi
 # (e) the diagnostics must not contaminate the evidence. doctor's §2b probe drives the REAL guard to check it
 #     is not neutered, so without CSK_GATE_LOG=/dev/null every `/doctor-csk` writes a synthetic force-push
 #     block and the report starts counting the diagnostics instead of what the model reached for.

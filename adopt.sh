@@ -656,7 +656,11 @@ def merge_hooks(kh;ph):
 (dm($k[0]; $p[0])) | .hooks=merge_hooks(($k[0].hooks // {}); ($p[0].hooks // {}))'
 if [ ! -f "$PSET" ]; then
   [ -f "$KSET" ] && { cp "$KSET" "$PSET"; echo "  settings.json: was missing in the project -> the kit's was installed"; }
-elif command -v jq >/dev/null 2>&1; then
+# Probed by RUNNING — the python3 arm below already does exactly this, with a comment about the Store
+# redirector. Selecting on `command -v` alone made a broken jq abort the merge and wire NOTHING, while the
+# run still ended in OK + PROOF and HANDOVER recorded "kit hooks REFRESHED". Measured: 10 hook entries with
+# a working jq, 10 via the python3 arm with jq absent, 0 with a jq that resolves and fails.
+elif command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then
   if ! jq -e . "$PSET" >/dev/null 2>&1; then
     warn "settings.json: existing file is INVALID JSON -> merge ABORT (no silent overwrite). Fix it by hand first."
   else

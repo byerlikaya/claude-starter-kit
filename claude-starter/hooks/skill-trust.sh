@@ -42,9 +42,19 @@ TRUST="$CL/trusted-components.txt"
 
 # sha256 where available; cksum only as a last resort. cksum detects accidental change, not a crafted collision —
 # which is the right bar here, since anyone able to forge one could also just edit the trust file next to it.
+# A TIER IS CHOSEN ON WHETHER IT WORKS. Selecting on `command -v` alone hands the whole function to a
+# sha256sum that resolves and fails: the digest comes back EMPTY, the caller reads an empty digest as
+# "nothing to report" and skips the component, and the unvetted-component notice — the only automatic
+# surfacing of a SKILL.md the kit never shipped — goes completely silent with rc=0, while two working
+# fallbacks are never tried. Measured with a stub sha256sum: 462 bytes of notice became 0.
+# Testing the PIPELINE's status would not save it either — `sha256sum x | cut -d' ' -f1` exits 0 with empty
+# output, because cut succeeds on empty input. The VALUE is what has to be tested, so `cut` moves out of the
+# substitution and each tier is accepted only if it produced something. The digest string is unchanged, so
+# existing trusted-components.txt files stay valid. Cost: one process FEWER than before.
 digest(){
-  if   command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" 2>/dev/null | cut -d' ' -f1
-  elif command -v shasum    >/dev/null 2>&1; then shasum -a 256 "$1" 2>/dev/null | cut -d' ' -f1
+  local d=""
+  if   command -v sha256sum >/dev/null 2>&1 && d="$(sha256sum "$1" 2>/dev/null)"     && [ -n "$d" ]; then printf '%s\n' "${d%% *}"
+  elif command -v shasum    >/dev/null 2>&1 && d="$(shasum -a 256 "$1" 2>/dev/null)" && [ -n "$d" ]; then printf '%s\n' "${d%% *}"
   else cksum "$1" 2>/dev/null | tr -s ' ' | cut -d' ' -f1,2 | tr ' ' '-'; fi
 }
 

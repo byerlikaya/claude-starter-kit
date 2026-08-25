@@ -330,11 +330,21 @@ touch .gitignore
 # .private-terms.txt lists the strings that must never be published (internal project names, client
 # names, host names) — publishing that list would defeat its purpose, so it is ignored from the start.
 for e in 'docs/' '.claude/' 'CLAUDE.md' '.private-terms.txt'; do grep -qxF "$e" .gitignore || echo "$e" >> .gitignore; done
-if [ -d .git ]; then
-  git config core.hooksPath .claude/hooks
+# `[ -d .git ]` is a proxy for the answer, and it lies exactly where it matters: in a worktree or a submodule
+# `.git` is a FILE, so the commit gate was never armed there and the installer said nothing was wrong. adopt.sh
+# already names this (red-team hole #6) and start.sh was never taught it. Measured: in a worktree the installer
+# printed "no git repository", core.hooksPath stayed empty, and a commit carrying a forbidden expression landed;
+# arming by hand and retrying, the trace scanner rejected it. start.sh deletes itself afterwards, so there is no
+# second chance from the installer.
+#
+# Anchored on the TOPLEVEL, not merely on being inside a work tree: a relative core.hooksPath resolves against
+# the work-tree root, so arming from a subdirectory stores the value and runs no hook at all — a gate reported
+# active over a dead path. `pwd -P` because git answers with the physical path, and the arming call itself is
+# the probe, so a git that resolves and fails falls into the NOTE instead of a false "active".
+if [ "$(git rev-parse --show-toplevel 2>/dev/null)" = "$(pwd -P)" ] && git config core.hooksPath .claude/hooks 2>/dev/null; then
   echo "  trace scan: core.hooksPath -> .claude/hooks (§4.1/§4.2 commit gate active)"
 else
-  echo "  NOTE: no git repository; after 'git init' run:  git config core.hooksPath .claude/hooks"
+  echo "  NOTE: no git repository at this level; after 'git init' run:  git config core.hooksPath .claude/hooks"
 fi
 rm -rf "$SRC"
 echo

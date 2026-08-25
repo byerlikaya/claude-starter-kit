@@ -86,7 +86,12 @@ fi
 #    nothing). PreToolUse/UserPromptSubmit/Stop are required; SessionStart (rehydration) is a warn if absent.
 S=.claude/settings.json
 if [ -f "$S" ]; then
-  if command -v jq >/dev/null 2>&1; then
+  # Probed by RUNNING, like §4b does for python3 two sections down. On `command -v` alone a jq that resolves
+  # and fails takes this branch forever: the documented grep fallback below becomes unreachable, `jq empty`
+  # failing is blamed on the USER's file, and doctor prescribes overwriting it — which would destroy any
+  # hooks the project added. Measured with a stub jq on a healthy install: "settings.json is invalid JSON",
+  # rc=1, and the three checks after it simply absent.
+  if command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then
     if jq empty "$S" 2>/dev/null; then
       ok "settings.json is valid JSON"
       EMPTY=""

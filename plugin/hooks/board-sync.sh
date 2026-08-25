@@ -73,8 +73,13 @@ fi
 MSG="$(cat "$CACHE")
 Board state above is a cached snapshot; /board-csk sync refreshes it."
 
-if command -v jq >/dev/null 2>&1; then
-  jq -cn --arg m "$MSG" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}'
+# The status of the jq call decides, not its existence. This branch ended with jq, so a jq that resolves and
+# fails left EMPTY stdout with rc=0 — indistinguishable from the legitimate "no board, nothing to say" case.
+# The escaper below produces byte-identical output, and it was written for exactly the machine where this
+# matters: board.sh is deliberately jq-free, so the cache IS populated on a Windows box with no jq.
+# Measured with a stub jq: 0 bytes before, unchanged 288 after. No extra process.
+if command -v jq >/dev/null 2>&1 && OUT="$(jq -cn --arg m "$MSG" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}' 2>/dev/null)" && [ -n "$OUT" ]; then
+  printf '%s\n' "$OUT"
 else
   # No jq on Windows Git Bash. The cache is machine-written (emails, ids, titles), so escape the two characters
   # that can break the JSON rather than trusting the content: a quote or a backslash in an item title would
