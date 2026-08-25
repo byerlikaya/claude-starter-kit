@@ -1916,15 +1916,49 @@ GB_WHYF="$(mktemp)"
 # The reason a sandbox could not be built has to travel OUT of a command substitution, which is a subshell —
 # a plain variable assignment inside it is discarded, so the caller would only ever see "unknown".
 gb_why(){ printf '%s' "$1" > "$GB_WHYF"; }
-gb_sandbox(){   # echoes a working sandbox dir, or nothing when one cannot be built here; $GB_WHYF says why not
+# TWO WAYS TO BUILD THE SAME CONDITION, because the first one is impossible on the platform that needs it most.
+#
+# The condition under test is "the jq and python3 tiers do not deliver, so the pure-bash tier runs". Tier A gets
+# there by making them ABSENT: a minimal PATH of symlinks to the tools the hook needs. That is faithful, and on
+# Windows it cannot be built at all — Git-Bash copies instead of symlinking without Developer Mode, so the
+# builder bailed and every case below reported as a green ✅ without running. Measured on windows-latest: six
+# cases, never executed, indistinguishable from six passes. The machine that most needs this branch — a stock
+# Windows box with no jq — could not run it either.
+#
+# Tier B gets to the same condition by making them PRESENT AND BROKEN: stubs on the front of PATH that pass
+# `command -v` and exit non-zero. That needs no symlink, so it builds anywhere — and it is not a weaker
+# fixture, it is the shape a stock Windows install actually HAS. Windows ships a Microsoft Store redirector
+# named python3 that resolves and cannot run; choosing a tier on existence rather than on success is the exact
+# bug 2.6.0 fixed. So tier B tests the documented rule ("a tier is chosen on whether it WORKS") head-on.
+#
+# Sets GBDIR (for cleanup) and ECHOES THE PATH TO USE — not the directory — so both tiers are consumed
+# identically by the 22 call sites below.
+GBDIR=""; GB_MODE=""
+gb_sandbox(){   # echoes the PATH string to run under, or nothing when neither tier can be built; $GB_WHYF says why
   local d t tp; : > "$GB_WHYF"; d="$(mktemp -d)" || { gb_why "mktemp failed"; return 1; }
+  GBDIR="$d"
   for t in awk sed grep head cat tr git cut; do
     tp="$(type -P "$t" 2>/dev/null)"
     [ -n "$tp" ] || { gb_why "no PATH binary for '$t'"; rm -rf "$d"; return 1; }
-    ln -s "$tp" "$d/$t" 2>/dev/null || { gb_why "ln -s failed for '$t'"; rm -rf "$d"; return 1; }
+    ln -s "$tp" "$d/$t" 2>/dev/null || break
   done
-  # Windows Git-Bash copies instead of symlinking -> not a faithful jq-less PATH.
-  [ -L "$d/awk" ] || { gb_why "symlinks unsupported (Git-Bash copies)"; rm -rf "$d"; return 1; }
+  if [ ! -L "$d/awk" ]; then
+    # Tier B. Discard whatever tier A left behind and shadow the two interpreters instead.
+    rm -rf "$d"; d="$(mktemp -d)" || { gb_why "mktemp failed"; return 1; }; GBDIR="$d"
+    for t in jq python3 python; do
+      printf '#!/usr/bin/env bash\nexit 49\n' > "$d/$t" 2>/dev/null || { gb_why "cannot write a stub for '$t'"; rm -rf "$d"; return 1; }
+      chmod +x "$d/$t" 2>/dev/null || { gb_why "cannot mark the '$t' stub executable"; rm -rf "$d"; return 1; }
+    done
+    # The stub must RESOLVE and FAIL. Both halves are checked, in a fresh shell for the same hash-table reason
+    # as tier A: if it did not resolve we would be testing "absent" by accident, and if it succeeded the tier
+    # under test would never run.
+    PATH="$d:$PATH" "$GBBASH" -c 'command -v jq' >/dev/null 2>&1 || { gb_why "the jq stub does not resolve"; rm -rf "$d"; return 1; }
+    PATH="$d:$PATH" "$GBBASH" -c 'jq --version' >/dev/null 2>&1 && { gb_why "the jq stub RUNS — it would not force the fallback"; rm -rf "$d"; return 1; }
+    PATH="$d:$PATH" "$GBBASH" -c 'printf x | grep -q x && printf y | sed -n "s/y/z/p" >/dev/null' 2>/dev/null \
+      || { gb_why "canary failed: grep/sed unusable behind the stubs"; rm -rf "$d"; return 1; }
+    GB_MODE="stubbed"; printf '%s' "$d:$PATH"; return 0
+  fi
+  GB_MODE="minimal"
   # jq/python3 must really be invisible, or the branch under test is not the branch that runs.
   # Checked in a FRESH bash, not with `command -v` in this one. A shell caches resolved binaries in its hash
   # table and consults it BEFORE PATH, so once any earlier section of this suite has run jq, `PATH="$d" command
@@ -1940,6 +1974,11 @@ gb_sandbox(){   # echoes a working sandbox dir, or nothing when one cannot be bu
   printf '%s' "$d"
 }
 GBX="$(gb_sandbox)"
+# Derived here, not inside the function: `$( )` is a subshell, so anything the function assigns to a global is
+# discarded — the same trap this suite documents for the scanner's count arrays. The sandbox directory is the
+# first PATH element either way, and a PATH carrying more than one element means the stubbed tier was used.
+GBDIR="${GBX%%:*}"; case "$GBX" in *:*) GB_MODE="stubbed" ;; ?*) GB_MODE="minimal" ;; *) GB_MODE="" ;; esac
+[ -n "$GBX" ] && note "no-jq/py sandbox built in '$GB_MODE' mode ($( [ "$GB_MODE" = stubbed ] && echo 'jq/python3 present but non-functional — the stock Windows shape' || echo 'jq/python3 absent from PATH' ))"
 
 
 if [ -n "$GBX" ]; then
@@ -1996,7 +2035,7 @@ if [ -n "$GBX" ]; then
 else
   gb_unbuildable "no-jq/py fallback tests"
 fi
-rm -rf "$GBX"
+rm -rf "$GBDIR"
 
 # --- The fallback assertions above are NOT sufficient, and that is the lesson, not a footnote. -------------
 # `git commit` ASKing and `git reset --hard` BLOCKing were BOTH true while the fallback was `CMD="$INPUT"` —
@@ -2008,6 +2047,11 @@ rm -rf "$GBX"
 # here: a session_id containing `-f8` made every innocent `git push` hard-block as "push --force", and the §4.4
 # prompt rendered the whole JSON instead of the command the human was being asked to approve.
 GBX="$(gb_sandbox)"
+# Derived here, not inside the function: `$( )` is a subshell, so anything the function assigns to a global is
+# discarded — the same trap this suite documents for the scanner's count arrays. The sandbox directory is the
+# first PATH element either way, and a PATH carrying more than one element means the stubbed tier was used.
+GBDIR="${GBX%%:*}"; case "$GBX" in *:*) GB_MODE="stubbed" ;; ?*) GB_MODE="minimal" ;; *) GB_MODE="" ;; esac
+[ -n "$GBX" ] && note "no-jq/py sandbox built in '$GB_MODE' mode ($( [ "$GB_MODE" = stubbed ] && echo 'jq/python3 present but non-functional — the stock Windows shape' || echo 'jq/python3 absent from PATH' ))"
 
 
 # session_id chosen deliberately: `-f872` is the exact shape that matched the §4.5 `-f([^a-z]|$)` force rule.
@@ -2041,7 +2085,7 @@ if [ -n "$GBX" ]; then
 else
   gb_unbuildable "no-jq/py discriminating tests"
 fi
-rm -rf "$GBX"
+rm -rf "$GBDIR"
 
 echo "== 7c) broken interpreters — a tier that EXISTS but does not WORK must not fail open =="
 # §7b tests tier 3 by taking jq and python3 AWAY. That is not the shape the failure had, and it is why the
