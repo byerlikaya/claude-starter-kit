@@ -162,7 +162,23 @@ for f in .claude/settings.json .claude/settings.local.json "$HOME/.claude/settin
   # failing, so calling it unconditionally can hang the whole doctor run on the machines least able to debug it.
   # Absent python3 does NOT silently skip the check — a skipped check that reports nothing is indistinguishable
   # from a check that passed, which is the failure this whole file exists to prevent.
-  if ! command -v python3 >/dev/null 2>&1; then NOPY=1; continue; fi
+  # Not "is python3 on PATH" — "can python3 parse JSON". Windows puts a Microsoft Store redirector stub of
+  # that name on PATH by default; it passes `command -v`, exits 49 and prints nothing. NOPY then stayed 0, the
+  # parse below failed silently, DENYSRC stayed empty, and this reported `ok delegation is enabled` on a
+  # machine where nothing had been read. That is the false green this file's own comments are about, and on
+  # Windows it was the default outcome. The probe passes arguments: an argless stub run opens the Store.
+  #
+  # With no usable interpreter this check used to say nothing at all — on Windows, which is every stock
+  # Windows machine, and "check by hand" is advice nobody acts on. A grep cannot tell a deny list from an
+  # allow list, so it cannot produce the ❌; what it CAN do is notice that both spellings are in the same
+  # file and say so as a warning. Coarse on purpose: it is allowed to be wrong in the direction of asking a
+  # human to look, never in the direction of a verdict it did not earn.
+  if ! printf '{}' | python3 -c 'import sys,json;json.load(sys.stdin)' >/dev/null 2>&1; then
+    NOPY=1
+    grep -qE '"(Agent|Task)(\([^"]*\))?"' "$f" 2>/dev/null && grep -q '"deny"' "$f" 2>/dev/null \
+      && MAYBEDENY="${MAYBEDENY:-} $f"
+    continue
+  fi
   grep -qE '"(Agent|Task)(\([^"]*\))?"' "$f" 2>/dev/null \
     && grep -q '"deny"' "$f" 2>/dev/null \
     && python3 - "$f" <<'PY' 2>/dev/null && DENYSRC="$DENYSRC $f"
@@ -174,12 +190,25 @@ sys.exit(0 if any(re.match(r'^(Agent|Task)\b', str(x)) for x in deny) else 1)
 PY
 done
 if [ "${NOPY:-0}" = 1 ]; then
-  warn "delegation check skipped — no python3 to parse settings JSON precisely. Check by hand that \"Agent\" is"
-  warn "  absent from permissions.deny in .claude/settings.json, .claude/settings.local.json and ~/.claude/settings.json."
+  if [ -n "${MAYBEDENY:-}" ]; then
+    warn "delegation MAY be denied in:${MAYBEDENY} — both \"deny\" and \"Agent\"/\"Task\" appear in that file."
+    warn "  No JSON parser here to tell whether they are in the same block, so this is a prompt, not a verdict:"
+    warn "  open it and check that Agent/Task is not under permissions.deny. If it is, no subagent can ever run."
+  else
+    warn "delegation check could not run precisely — no working python3 (a Microsoft Store stub counts as none)."
+    warn "  Nothing suspicious found by name; install python3 or jq for a real answer."
+  fi
 fi
-[ -z "$DENYSRC" ] && [ "${NOPY:-0}" != 1 ] && ok "delegation is enabled (the Agent tool is not denied)" \
-  || bad "the Agent tool is DENIED in:$DENYSRC — no subagent can ever run, so every agent on disk is dead weight" \
-         "remove the Agent/Task entry from permissions.deny, or accept that this project runs main-thread-only"
+# `A && B && ok … || bad …` cannot express three outcomes. With no usable python3 the && chain is false, so the
+# || arm fired and reported `the Agent tool is DENIED in:` — an empty list, a failure that had not been found,
+# and a verdict of ❌ on a healthy install. It stayed invisible while `command -v python3` was the test, because
+# on Windows the Store stub answered yes and NOPY was never set. Three states, three branches.
+if [ -n "$DENYSRC" ]; then
+  bad "the Agent tool is DENIED in:$DENYSRC — no subagent can ever run, so every agent on disk is dead weight" \
+      "remove the Agent/Task entry from permissions.deny, or accept that this project runs main-thread-only"
+elif [ "${NOPY:-0}" != 1 ]; then
+  ok "delegation is enabled (the Agent tool is not denied)"
+fi
 
 # 5) Agent-name references resolve to an installed agent — checked across CLAUDE.md AND every local doc it points to
 #    (its @imports and docs/*.md references). A brownfield takeover renames the project's agents to `-csk` ids, but

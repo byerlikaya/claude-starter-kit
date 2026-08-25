@@ -1745,6 +1745,65 @@ else
   gb_unbuildable "no-jq/py discriminating tests"
 fi
 rm -rf "$GBX"
+
+echo "== 7c) broken interpreters — a tier that EXISTS but does not WORK must not fail open =="
+# §7b tests tier 3 by taking jq and python3 AWAY. That is not the shape the failure had, and it is why the
+# failure survived: on a stock Windows 11 desktop python3 is PRESENT and BROKEN. Windows puts
+# %LOCALAPPDATA%\Microsoft\WindowsApps\python3 on PATH by default — the Microsoft Store redirector stub, not an
+# interpreter. `command -v python3` succeeds, the stub writes "Python was not found" to STDERR (swallowed by the
+# guards' 2>/dev/null) and exits 49 with an EMPTY stdout, so the extraction returned "" and every guard hit its
+# `[ -z "$CMD" ] && exit 0` and ALLOWED the call. Measured 2026-08-24 on Git Bash 5.3.15 / Claude Code 2.1.241:
+# `rm -rf /`, `git push --force`, a real captured PowerShell `Remove-Item -Recurse -Force` payload and a Write
+# rewriting guard-bash.sh itself all returned rc=0.
+#
+# Note where the ladder had been measured: tier 1 on CI (windows-latest ships jq), tier 3 by §7b (which SKIPS on
+# Windows, since Git Bash copies binaries instead of symlinking them). Tier 2 — the one every Windows desktop is
+# actually on — was covered nowhere. So this shadows PATH rather than stripping it, which also means it runs ON
+# Windows, unlike §7b. jq is shadowed too: a tier is now chosen on its exit status, so a broken jq must fall
+# through the same way.
+STUBD="$(mktemp -d)"
+cat > "$STUBD/python3" <<'CSKPYSTUB'
+#!/usr/bin/env bash
+echo "Python was not found; run without arguments to install from the Microsoft Store." >&2
+exit 49
+CSKPYSTUB
+cat > "$STUBD/jq" <<'CSKJQSTUB'
+#!/usr/bin/env bash
+exit 127
+CSKJQSTUB
+chmod +x "$STUBD/python3" "$STUBD/jq" 2>/dev/null
+SPATH="$STUBD:$PATH"
+# Canary. Without it a PATH that failed to shadow would drop to tier 3, every assertion would pass, and the
+# section would read as covered while testing nothing — exactly the failure mode §7b documents about itself.
+if [ "$( (PATH="$SPATH"; command -v python3) )" = "$STUBD/python3" ] \
+   && ! (PATH="$SPATH"; printf '{}' | python3 -c 'print(1)') >/dev/null 2>&1; then
+  sg(){ printf '%s' "$2" | ( PATH="$SPATH"; bash "$HOOKS/$1" ) >/dev/null 2>&1; echo "$?"; }
+  [ "$(sg guard-bash.sh '{"tool_name":"Bash","permission_mode":"auto","tool_input":{"command":"rm -rf /"}}')" = 2 ] \
+    && pass "stub python3: §4.5 rm -rf still BLOCKED" \
+    || fail "stub python3: rm -rf FAILED OPEN — the guard trusted an interpreter that cannot run"
+  # The real payload this was found with: tool_name PowerShell, same tool_input.command shape (captured from
+  # Claude Code 2.1.241's PowerShell tool, permission_mode bypassPermissions).
+  [ "$(sg guard-bash.sh '{"tool_name":"PowerShell","permission_mode":"bypassPermissions","tool_input":{"command":"Remove-Item -Recurse -Force ./junk/*","description":"d"}}')" = 2 ] \
+    && pass "stub python3: §4.5 PowerShell recursive force delete still BLOCKED" \
+    || fail "stub python3: the PowerShell §4.5 rule never ran (payload was never parsed)"
+  [ "$(sg guard-bash.sh '{"tool_name":"Bash","permission_mode":"bypassPermissions","tool_input":{"command":"git commit -m x"}}')" = 2 ] \
+    && pass "stub python3: §4.4 commit gate still closed" \
+    || fail "stub python3: §4.4 commit gate FAILED OPEN"
+  [ "$(sg guard-write.sh '{"tool_name":"Write","tool_input":{"file_path":".claude/hooks/guard-bash.sh","content":"exit 0"}}')" = 2 ] \
+    && pass "stub python3: rewriting a gate script still BLOCKED" \
+    || fail "stub python3: the model could rewrite guard-bash.sh with its Write tool"
+  # And the other direction, which is the half a fail-open fix is most likely to break: ordinary work must run.
+  [ "$(sg guard-bash.sh '{"tool_name":"Bash","permission_mode":"default","tool_input":{"command":"ls -la"}}')" = 0 ] \
+    && pass "stub python3: 'ls -la' still allowed (no over-block)" \
+    || fail "stub python3: 'ls -la' blocked — the fallback over-blocks"
+  [ "$(sg guard-bash.sh '{"tool_name":"PowerShell","permission_mode":"default","tool_input":{"command":"Get-ChildItem"}}')" = 0 ] \
+    && pass "stub python3: 'Get-ChildItem' still allowed (no over-block)" \
+    || fail "stub python3: 'Get-ChildItem' blocked — the fallback over-blocks"
+else
+  fail "7c DID NOT RUN — PATH shadowing did not take, so the stub-interpreter branch is unmeasured here"
+fi
+rm -rf "$STUBD"
+
 # C2 / M5: gate-tamper by an interpreter, a variable-indirected redirect, or .git/hooks — the "rewrite the guard"
 # class the audit flagged. Blocked by target path (verb-agnostic); reading + chmod +x re-arm must stay allowed.
 gj auto 'perl -i -pe s/2/0/ .claude/hooks/guard-bash.sh' | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "perl -i on a gate file BLOCKED (C2)" || fail "perl -i on a hook PASSED (C2)"
@@ -2251,8 +2310,16 @@ if [ -x "$HOOKS/guard-commit-scan.sh" ]; then
        "$HOOKS/trace-blocklist.txt" "$HOOKS/secret-blocklist.txt" .claude/hooks/ 2>/dev/null
     chmod +x .claude/hooks/* 2>/dev/null
     echo ok > a.txt && git add a.txt && git commit -qm base --no-verify ) >/dev/null 2>&1
-  csj(){ if command -v jq >/dev/null 2>&1; then jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}'
-         else printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' "$1"; fi; }
+  # The no-jq arm used to interpolate the command RAW, so a multi-line message put a literal newline inside a
+  # JSON string. That is not valid JSON and it is not what Claude Code sends (it escapes as \n) — so on every
+  # stock Windows machine the three multi-line cases below were driving the hook with a payload it can never
+  # receive, and reporting the resulting non-block as a §4.1 hole. Four red lines on the platform this kit
+  # cares most about, none of them real: the suite trains you to ignore it, which is worse than not having it.
+  # Escape here the way the sender does. Backslash first, or it would re-escape the escapes.
+  csesc(){ local s="$1"; s="${s//\\/\\\\}"; s="${s//\"/\\\"}"; s="${s//$'\n'/\\n}"; s="${s//$'\t'/\\t}"; printf '%s' "$s"; }
+  csj(){ if command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then
+           jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}'
+         else printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' "$(csesc "$1")"; fi; }
   csrun(){ ( cd "$CS" && printf '%s' "$(csj "$1")" | bash .claude/hooks/guard-commit-scan.sh ) >/dev/null 2>&1; }
   # This is a PreToolUse hook, so the same exit-code contract as guard-bash applies: only `2` blocks, and any
   # other failure means the hook died and Claude Code runs the commit. The four block cases below used to test
@@ -2546,7 +2613,12 @@ if [ -d "$AMD" ]; then
   [ -f "$P" ] && pass "automode-policy ships a policy file" || fail "automode-policy: policy.json missing"
 
   # (a) the $defaults invariant — the one finding that survived the measurement, per array, on the shipped file
-  if command -v python3 >/dev/null 2>&1 && [ -f "$P" ]; then
+  # `command -v` is not the question — see §7c. On a stock Windows 11 desktop python3 is the Microsoft Store
+  # redirector stub: it passes `command -v`, exits 49 and prints nothing. This block then produced BOTH kinds
+  # of wrong answer at once: BADARR came back empty, so the $defaults invariant PASSED without ever running,
+  # and the validity check FAILED on a file that is perfectly good JSON. A green line for a check that never
+  # ran is the exact failure doctor.sh's own comments warn about; the red one just wastes an afternoon.
+  if printf '{}' | python3 -c 'import sys,json;json.load(sys.stdin)' >/dev/null 2>&1 && [ -f "$P" ]; then
     BADARR="$(python3 - "$P" <<'PY2'
 import json,sys
 am=json.load(open(sys.argv[1]))["autoMode"]
@@ -2558,7 +2630,7 @@ PY2
                      || fail "autoMode array(s) without \"\$defaults\" — built-in rules would be replaced:$BADARR"
     python3 -c 'import json,sys;json.load(open(sys.argv[1]))' "$P" >/dev/null 2>&1 \
       && pass "policy.json is valid JSON" || fail "policy.json is not valid JSON"
-  else note "policy shape check skipped (no python3)"
+  else note "policy shape check skipped (no WORKING python3 — a Store stub counts as absent)"
   fi
 
   # (b1) no claude CLI -> "cannot verify" (4), never a false green

@@ -25,11 +25,28 @@ if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then B=$'\033[1m'; D=$'\033[2m'; R=$'\033
 MISSING_REQ=""; MISSING_OPT=""
 
 have(){ command -v "$1" >/dev/null 2>&1; }
+# `have` answers "is it on PATH", which is the wrong question for an interpreter on Windows. Windows puts
+# %LOCALAPPDATA%\Microsoft\WindowsApps\python3 on PATH BY DEFAULT: the Microsoft Store redirector stub, which
+# passes `command -v`, writes "Python was not found" to stderr and exits 49. Measured on a stock Windows 11
+# desktop, this preflight printed "✓ jq or python → python3 · Everything the kit wants is here" on a machine
+# with no Python at all — and the settings merge that line is about cannot run there. So for the interpreters,
+# ask whether they RUN. Everything else is a plain binary where presence is the whole question.
+#
+# The probe always passes arguments. An ARGLESS run of that stub is the one that opens the Microsoft Store,
+# which is why doctor.sh warns against calling it unconditionally; `-c …` makes it print and exit instead.
+works(){
+  have "$1" || return 1
+  case "$1" in
+    python3|python|py) printf '{}' | "$1" -c 'import sys,json;json.load(sys.stdin)' >/dev/null 2>&1 ;;
+    jq)                printf '{}' | jq -e . >/dev/null 2>&1 ;;
+    *)                 return 0 ;;
+  esac
+}
 # any_of "label" "why it matters" "fix hint" cmd...
 any_of(){
   label="$1"; why="$2"; fix="$3"; shift 3
   found=""
-  for c in "$@"; do have "$c" && { found="$c"; break; }; done
+  for c in "$@"; do works "$c" && { found="$c"; break; }; done
   if [ -n "$found" ]; then
     [ "$QUIET" = 1 ] || printf '  %s✓%s %-22s %s%s%s\n' "$GR" "$R" "$label" "$D" "$found" "$R"
     return 0

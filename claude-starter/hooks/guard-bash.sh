@@ -90,13 +90,33 @@ _json_unescape(){  # single left-to-right pass; a two-pass sed would corrupt `\\
   done
   printf '%s' "$out"
 }
-if command -v jq >/dev/null 2>&1; then
-  CMD="$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)"
-  PERM_MODE="$(printf '%s' "$INPUT" | jq -r '.permission_mode // empty' 2>/dev/null)"
-elif command -v python3 >/dev/null 2>&1; then
-  CMD="$(printf '%s' "$INPUT" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("tool_input",{}).get("command",""))' 2>/dev/null)"
-  PERM_MODE="$(printf '%s' "$INPUT" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("permission_mode",""))' 2>/dev/null)"
-else
+# A TIER IS CHOSEN ON WHETHER IT WORKS, NOT ON WHETHER IT EXISTS. `command -v` answers the wrong question, and
+# on Windows the difference disarmed every gate in this file.
+#
+# Measured on a stock Windows 11 desktop (Git Bash 5.3.15, Claude Code 2.1.241, no Python installed): Windows
+# puts %LOCALAPPDATA%\Microsoft\WindowsApps\python3 on PATH BY DEFAULT. It is not an interpreter, it is the
+# Microsoft Store redirector stub (AppInstallerPythonRedirector.exe) — so `command -v python3` succeeds, the
+# stub writes "Python was not found" to STDERR (which `2>/dev/null` swallows) and exits 49 with an EMPTY
+# stdout. CMD therefore came back "", `[ -z "$CMD" ] && exit 0` fired, and the hook allowed the call.
+# Silently, in every permission mode, with nothing written to any log. On that machine `rm -rf /`,
+# `git push --force`, the PowerShell §4.5 twins below, and a Write that rewrites THIS FILE all returned rc=0.
+#
+# This is the same bug as the jq-on-CI one described above, one layer up: the tier that runs on a real Windows
+# desktop is the tier nothing tested. §7b pins the pure-bash branch by building a jq/python3-free PATH — and
+# SKIPS on Windows, because Git Bash copies binaries instead of symlinking them. So the ladder was verified on
+# tier 1 (CI, jq present) and tier 3 (macOS/Linux, PATH stripped), and never on tier 2, which is where every
+# Windows user actually is. smoke-test §7c now shadows PATH with a stub that behaves exactly like the real one.
+#
+# The fix costs nothing: an extraction's own exit status IS the probe. A tier that cannot answer is skipped,
+# so a broken jq falls through too, and malformed JSON now lands on the slice instead of failing open. On
+# Windows this is also CHEAPER than before — one failed stub call instead of two.
+CMD=""; PERM_MODE=""; _parsed=0
+if command -v jq >/dev/null 2>&1 && CMD="$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)"; then
+  PERM_MODE="$(printf '%s' "$INPUT" | jq -r '.permission_mode // empty' 2>/dev/null)"; _parsed=1
+elif command -v python3 >/dev/null 2>&1 && CMD="$(printf '%s' "$INPUT" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("tool_input",{}).get("command",""))' 2>/dev/null)"; then
+  PERM_MODE="$(printf '%s' "$INPUT" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("permission_mode",""))' 2>/dev/null)"; _parsed=1
+fi
+if [ "$_parsed" = 0 ]; then
   CMD="$(_json_unescape "$(_json_slice "$INPUT" command)")"
   PERM_MODE="$(_json_slice "$INPUT" permission_mode)"
 fi
