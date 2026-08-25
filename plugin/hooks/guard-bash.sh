@@ -56,6 +56,7 @@ INPUT="$(cat)"
 # 62-135 ms per process on a Windows 11 desktop, and this hook runs on every Bash call). `${INPUT#*"command"}` is shortest-match, so it
 # takes the FIRST occurrence — greedy matching would let a command containing the literal text `"command":"`
 # relocate the parse and walk a payload straight past the rules.
+# ---- CSK-JSON-PARSE ------------------------------------------------------------------------------------
 _json_slice(){  # $1 = whole payload, $2 = key -> the raw (still JSON-escaped) string value, "" if absent
   local rest="${1#*\"$2\"}" seg tail out bs
   [ "$rest" != "$1" ] || return 0          # key absent: emit nothing
@@ -73,7 +74,7 @@ _json_slice(){  # $1 = whole payload, $2 = key -> the raw (still JSON-escaped) s
   printf '%s' "$out"
 }
 _json_unescape(){  # single left-to-right pass; a two-pass sed would corrupt `\\"` (escaped backslash + quote)
-  local s="$1" out="" c
+  local s="$1" out="" c h
   case "$s" in *\\*) ;; *) printf '%s' "$s"; return 0 ;; esac   # no escapes: the common case pays nothing
   while [ -n "$s" ]; do
     c="${s%"${s#?}"}"; s="${s#?}"
@@ -85,7 +86,16 @@ _json_unescape(){  # single left-to-right pass; a two-pass sed would corrupt `\\
         t) out="$out	" ;;
         r) ;;
         b|f) out="$out " ;;
-        u) s="${s#????}"; out="$out?" ;;
+        u) h="${s%"${s#????}"}"; s="${s#????}"
+           # A `\uXXXX` used to become a literal `?`. That is not a lossy nicety, it is a hole: `\u002e` is `.`,
+           # so `\u002eclaude/hooks/guard-bash.sh` decoded to `?claude/…` and matched no gate pattern, while jq
+           # decoded the same bytes to the real path — the two tiers disagreed on whether a payload was an
+           # attack. Printable ASCII is decoded properly (builtin printf, no fork); anything else still becomes
+           # `?`, which is only ever a display concern because this value is used for MATCHING, never to write.
+           case "$h" in
+             00[2-7][0-9a-fA-F]) printf -v c "\\x${h#00}"; out="$out$c" ;;
+             *)                  out="$out?" ;;
+           esac ;;
         *) out="$out$c" ;;
       esac
     else
@@ -94,6 +104,7 @@ _json_unescape(){  # single left-to-right pass; a two-pass sed would corrupt `\\
   done
   printf '%s' "$out"
 }
+# ---- /CSK-JSON-PARSE -----------------------------------------------------------------------------------
 # A TIER IS CHOSEN ON WHETHER IT WORKS, NOT ON WHETHER IT EXISTS. `command -v` answers the wrong question, and
 # on Windows the difference disarmed every gate in this file.
 #
@@ -282,7 +293,16 @@ case "$CMD" in *[Ii][Cc][Aa][Cc][Ll][Ss]*) : ;; *) false ;; esac && echo "$CMD" 
 # blocked so doctor's re-arm fix still works (a chmod -x disable is caught by doctor, not here). Honest scope:
 # the shell is Turing-complete, so this is defence-in-depth — guard-write.sh covers the Write/Edit tools (the
 # model's natural path to a file), and install-time read-only hook files would be the airtight layer.
-GATE='\.(claude/(hooks|settings\.json)|git/hooks)'
+GATE='\.(claude/(hooks|settings\.json|DISCIPLINE\.md)|git/hooks)'
+# DISCIPLINE.md joined the list because it IS the text of §4.1-§4.5: the gates enforce those rules, so a
+# writable rulebook means the rules can be emptied without touching a single gate. It needs no change to
+# the prefilter below — the file only ever lives under `.claude/`, which already carries the word `claude`.
+# The installer writes it from inside start.sh/adopt.sh, where the command string is `bash start.sh` and
+# never names the path. SCOPE, stated exactly rather than loosely: `cat`, `grep`, `wc`, `git diff` and the
+# other arg-taking readers are outside the verb list and stay allowed, but passing the file to an
+# INTERPRETER (`node lint.js .claude/DISCIPLINE.md`) or to `cp` is refused, because the rule cannot tell a
+# reader from a writer by the verb alone. That is the same trade the `.claude/hooks/*` rule has always made,
+# it is measured in both directions in smoke-test, and the narrow cost is a `cp` of the rulebook.
 # Scoped to ONE command segment. These used to span `[^|]*`, which crosses `;` and `&&`, so the writer verb and
 # the gate path only had to appear somewhere in the same line — `cp a b && bash .claude/hooks/board.sh status`
 # was refused as tampering. That was harmless while nobody typed a hook path; the team board made
@@ -296,6 +316,15 @@ case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false 
 # it cannot contain whitespace or a command separator.
 case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE ">[[:space:]]*['\"]?[^[:space:];&|<>]*$GATE"                                          && block "redirect over a gate file" "4.5"
 { case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false ;; esac && has "=[^;&|]*$GATE" && has '>>?[[:space:]]*\$'; }                                                          && block "indirected write to a gate path (variable + redirect)" "4.5"
+# A symlink whose TARGET is the config directory itself is the two-step form of editing a hook, and step one
+# names no gate path at all: `ln -sfn .claude cfg` passed every rule above, and then `cfg/hooks/guard-bash.sh`
+# is an ordinary-looking path that lands on the real gate script — measured, both steps rc=0, file overwritten.
+# guard-write.sh now resolves the link when the write happens; this closes the shell end, where a plain
+# `echo x > cfg/hooks/guard-bash.sh` would otherwise never look like tampering. The token must be the WHOLE
+# argument (`.claude`, `../.claude`, `/p/.git`), so linking to something inside the tree — `ln -s
+# .claude/skills c` — is untouched here and handled at write time instead. `.git` needs its own prefilter:
+# the one above only knows `claude` and `hooks`.
+case "$CMD" in *[Ll][Nn][[:space:]]*|*[Mm][Kk][Ll][Ii][Nn][Kk]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE '(^|[;&|[:space:]])(ln|mklink)[^;&|]*[[:space:]]([^;&|[:space:]]*/)?\.(claude|git)([[:space:]]|$)' && block "symlink pointing at the config directory (a gate path in two steps)" "4.5"
 
 # §4.5-adjacent: a .env file holds secrets. The settings.json Read-tool deny does NOT cover the Bash tool, so a
 # `cat .env` would surface them. Block the direct-file readers/copiers and a `< .env` input redirect on a

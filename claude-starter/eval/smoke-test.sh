@@ -941,6 +941,14 @@ ss_blk="$(sed -n '/---- CSK-TRANSCRIPT-DIR/,/---- \/CSK-TRANSCRIPT-DIR/p' "$HOOK
 [ -n "$cu_blk" ] && [ "$cu_blk" = "$ss_blk" ] \
   && pass "the duplicated resolver is byte-identical in both hooks" \
   || fail "context-usage.sh and session-stats.sh resolvers have DRIFTED (or the markers are missing)"
+# Same reasoning, second pair: guard-write.sh carries a copy of guard-bash.sh's JSON parser, because the tier-3
+# fallback it replaced read only `file_path` and truncated at the first escaped quote. A shared file would have
+# to be added to build-plugin.sh's explicit copy list and a miss there breaks the plugin channel silently.
+gb_blk="$(sed -n '/---- CSK-JSON-PARSE/,/---- \/CSK-JSON-PARSE/p' "$HOOKS/guard-bash.sh")"
+gw_blk="$(sed -n '/---- CSK-JSON-PARSE/,/---- \/CSK-JSON-PARSE/p' "$HOOKS/guard-write.sh")"
+[ -n "$gb_blk" ] && [ "$gb_blk" = "$gw_blk" ] \
+  && pass "the duplicated JSON parser is byte-identical in both guards" \
+  || fail "guard-bash.sh and guard-write.sh JSON parsers have DRIFTED (or the markers are missing)"
 # End to end: called by hand from this repo, the hook must produce a reading rather than "transcript not found".
 cu_hand="$(cd "$ROOT/.." && bash "$HOOKS/context-usage.sh" 2>&1)"
 case "$cu_hand" in
@@ -1669,6 +1677,22 @@ gj auto 'chmod +x build.sh'              | bash "$HOOKS/guard-bash.sh" >/dev/nul
 # §4.5 gate-tampering (shell side) — disarming the gates is itself gated
 gj auto 'git config core.hooksPath /tmp/x' | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "core.hooksPath redirect BLOCKED (§4.5)" || fail "core.hooksPath redirect PASSED (§4.5 hole)"
 gj auto 'rm .claude/hooks/pre-commit'      | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "rm of a .claude gate file BLOCKED (§4.5)" || fail "rm of a gate file PASSED (§4.5 hole)"
+# The rulebook is a gate file too — measured against 2.6.0, all three of these passed. Reading it must stay free.
+gj auto "sed -i 's/x/y/' .claude/DISCIPLINE.md" | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "in-place edit of DISCIPLINE.md BLOCKED (§4.5)" || fail "sed -i on the discipline document PASSED (§4.5 hole)"
+gj auto 'rm .claude/DISCIPLINE.md'              | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "rm of DISCIPLINE.md BLOCKED (§4.5)" || fail "rm of the discipline document PASSED (§4.5 hole)"
+gj auto 'echo x > .claude/DISCIPLINE.md'        | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "redirect over DISCIPLINE.md BLOCKED (§4.5)" || fail "redirect over the discipline document PASSED (§4.5 hole)"
+gj auto 'cat .claude/DISCIPLINE.md'             | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && pass "READING DISCIPLINE.md is not blocked" || fail "reading the discipline document wrongly blocked"
+# Two-step tampering: step one names no gate path at all. `ln -sfn .claude cfg` passed every rule here, and
+# then `echo x > cfg/hooks/guard-bash.sh` is an ordinary-looking redirect that lands on the real gate script.
+# Measured: both steps rc=0 and the file was overwritten. Linking to something INSIDE the tree stays this
+# rule's business only when it already names a gate path; the write-time resolver covers the rest.
+for _lc in 'ln -sfn .claude cfg' 'ln -s .git g' 'ln -s ../.claude c' 'ln -sf /p/.claude cfg' 'ln -s .claude/hooks tools'; do
+  gj auto "$_lc" | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1
+  [ "$?" = 2 ] && pass "symlink onto a config directory BLOCKED: $_lc" || fail "symlink onto a config directory PASSED (§4.5 two-step hole): $_lc"
+done
+for _lc in 'ln -s src/lib lib' 'ln -s dist build' 'ln -s node_modules/.bin/x y' 'npm run vuln-check'; do
+  gj auto "$_lc" | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && pass "ordinary linking NOT over-blocked: $_lc" || fail "ordinary linking wrongly blocked: $_lc"
+done
 gj auto 'cat .claude/hooks/guard-bash.sh'  | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && pass "reading a gate file NOT over-blocked" || fail "reading a gate file wrongly blocked"
 # The tamper patterns are scoped to ONE command segment. They used to span the whole line, so a writer verb in
 # one command and a gate path in ANOTHER was refused as tampering — found in a real session, where the board
@@ -1681,11 +1705,141 @@ gj auto 'echo x > .claude/hooks/guard-bash.sh'                  | bash "$HOOKS/g
 gj auto 'ls && rm .claude/hooks/board.sh'                       | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "a tamper verb in a LATER segment is still BLOCKED (§4.5)" || fail "rm of a gate file in a second command PASSED — scoping went too far"
 # §4.5 gate-tampering (Write/Edit side) — the file tools can rewrite a gate script too; guard-write.sh covers that
 [ -x "$HOOKS/guard-write.sh" ] && pass "guard-write.sh +x" || fail "guard-write.sh missing/not executable"
-wj(){ printf '{"tool_name":"%s","tool_input":{"file_path":"%s"}}' "$1" "$2"; }
+wj(){  printf '{"tool_name":"%s","tool_input":{"file_path":"%s"}}' "$1" "$2"; }
+wjn(){ printf '{"tool_name":"NotebookEdit","tool_input":{"notebook_path":"%s"}}' "$1"; }
 wj Edit '/p/.claude/hooks/guard-bash.sh'  | bash "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "Edit of .claude/hooks script BLOCKED (§4.5)" || fail "Edit of a gate script PASSED (§4.5 hole)"
 wj Write '/p/.git/hooks/pre-commit'       | bash "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "Write to .git/hooks BLOCKED (§4.5)" || fail "Write to .git/hooks PASSED (§4.5 hole)"
 wj Edit '/p/src/app.ts'                    | bash "$HOOKS/guard-write.sh" >/dev/null 2>&1 && pass "Edit of ordinary source NOT over-blocked" || fail "Edit of ordinary source wrongly blocked"
 wj Edit '/p/.claude/settings.json'         | bash "$HOOKS/guard-write.sh" >/dev/null 2>&1 && pass "Edit of settings.json allowed (update-config still works)" || fail "settings.json edit wrongly blocked"
+# THE PATH IS NORMALISED BEFORE IT IS MATCHED. Every form below was measured reaching rc=0 against the hook as
+# shipped in 2.6.0 — one Write call each, no shell, no symlink — because the gate compared the raw string and so
+# recognised exactly one spelling of each gate path. They are asserted as a group: a normaliser that handles
+# `..` but not `//` is not a fix, it is a smaller hole. The backslash row asserts a string fact and only that:
+# the matcher used to recognise `/` alone, while five other hooks in this kit already fold Windows separators.
+# What a real Windows install puts in `file_path` is verified ON Windows, not inferred here. Each row doubles
+# as the regression pin for one measured bypass.
+for _wp in '/p/.claude/skills/../hooks/guard-bash.sh' \
+           '/p/.claude//hooks/guard-bash.sh' \
+           '/p/.claude/./hooks/guard-bash.sh' \
+           '/p/.git/refs/../hooks/pre-commit' \
+           'C:\\Users\\dev\\app\\.claude\\hooks\\guard-bash.sh'; do
+  wj Write "$_wp" | bash "$HOOKS/guard-write.sh" >/dev/null 2>&1
+  [ "$?" = 2 ] && pass "non-canonical gate path BLOCKED: $_wp" || fail "non-canonical gate path PASSED (§4.5 hole): $_wp"
+done
+# WINDOWS-SHAPED ORDINARY WORK. On Windows a false positive is as bad as a hole: 124 of 124 `file_path` values
+# measured on a real install were backslash-separated, so if folding them made an everyday path look like a
+# gate path, the gate would refuse EVERY session. This corpus was taken on that machine against the previous
+# release (11 of 11 allowed) and is pinned here so the fold can never turn it red. The two rows that matter
+# most are the ones under `.claude\` itself: they are one component away from the rule that just learned to
+# fold separators.
+for _wp in 'D:\\Projects\\demo\\src\\app.ts' 'D:\\Projects\\demo\\package.json' \
+           'D:\\Projects\\demo\\.claude\\settings.json' 'D:\\Projects\\demo\\.claude\\skills\\odeme\\SKILL.md' \
+           'D:\\Projects\\demo\\docs\\HANDOVER.md' 'C:\\Users\\dev\\AppData\\Local\\Temp\\x\\not.txt'; do
+  wj Write "$_wp" | bash "$HOOKS/guard-write.sh" >/dev/null 2>&1 \
+    && pass "Windows-shaped ordinary path NOT over-blocked: $_wp" \
+    || fail "the separator fold turned everyday Windows work into a refusal: $_wp"
+done
+# ...and the gates in that same tree, in the spelling that machine actually sends.
+for _wp in 'D:\\Projects\\demo\\.claude\\hooks\\guard-bash.sh' 'D:\\Projects\\demo\\.claude\\DISCIPLINE.md' \
+           'D:\\Projects\\demo\\.git\\hooks\\pre-commit' 'D:\\Projects\\demo\\.claude\\skills\\..\\hooks\\guard-bash.sh'; do
+  wj Write "$_wp" | bash "$HOOKS/guard-write.sh" >/dev/null 2>&1
+  [ "$?" = 2 ] && pass "Windows-shaped gate path BLOCKED: $_wp" || fail "Windows-shaped gate path PASSED (§4.5 hole): $_wp"
+done
+wjn 'D:\\Projects\\demo\\.claude\\hooks\\guard-bash.sh' | bash "$HOOKS/guard-write.sh" >/dev/null 2>&1
+[ "$?" = 2 ] && pass "Windows-shaped NotebookEdit target BLOCKED" || fail "Windows-shaped notebook_path PASSED (§4.5 hole)"
+# ...and the same normalisation must not start blocking ordinary work. A `..` in a source path is routine.
+wj Write '/p/src/../src/app.ts'            | bash "$HOOKS/guard-write.sh" >/dev/null 2>&1 && pass "a '..' in an ORDINARY path NOT over-blocked" || fail "normalisation over-blocks ordinary source"
+wj Write '/p/.claude/skills/my/SKILL.md'   | bash "$HOOKS/guard-write.sh" >/dev/null 2>&1 && pass "a project's own skill under .claude/ stays writable" || fail "project skill wrongly blocked (doctor R2 flow breaks)"
+wj Write '/p/docs/hooks-guide.md'          | bash "$HOOKS/guard-write.sh" >/dev/null 2>&1 && pass "a doc merely NAMED hooks is not a gate file" || fail "a doc named hooks wrongly blocked"
+# NotebookEdit carries the path under a different key. With jq present this was already covered; the tier-3
+# fallback that a stock Windows install lands on is asserted in the no-jq section below.
+wjn '/p/.claude/hooks/guard-bash.sh'       | bash "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "NotebookEdit of a gate script BLOCKED (notebook_path)" || fail "NotebookEdit walked past §4.5 (notebook_path hole)"
+# DISCIPLINE.md is kit-owned and @imported every session: it is the TEXT of §4.1-§4.5. Leaving it writable means
+# the rules can be emptied without touching a single gate. Nothing in the kit asks the model to write it.
+wj Edit  '/p/.claude/DISCIPLINE.md'        | bash "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "Edit of DISCIPLINE.md BLOCKED (§4.5)" || fail "the discipline document is writable (§4.5 hole)"
+wj Write '/p/.claude/skills/../DISCIPLINE.md' | bash "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "DISCIPLINE.md via a traversal BLOCKED" || fail "DISCIPLINE.md reachable by traversal (§4.5 hole)"
+wj Write '/p/.claude/DISCIPLINE.md.bak'    | bash "$HOOKS/guard-write.sh" >/dev/null 2>&1 && pass "a file merely PREFIXED DISCIPLINE.md is not the gate file" || fail "DISCIPLINE.md.bak wrongly blocked"
+# Unparsed payload: exiting 0 unconditionally is what a future field rename turns into a silent bypass. The rule
+# is narrowed to "the raw text names a gate tree" so a rename costs a false block, never a free pass — and a
+# payload that names nothing still passes, which is what keeps a rename from locking the user out of all work.
+printf 'not json at all but it names .claude/hooks/guard-bash.sh' | bash "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "unparseable payload NAMING a gate path is refused (fail-closed)" || fail "unparseable payload naming a gate path failed OPEN"
+printf 'not json at all' | bash "$HOOKS/guard-write.sh" >/dev/null 2>&1 && pass "unparseable payload naming NO gate path still passes (no lockout)" || fail "unparseable payload wrongly blocks all work"
+# The gate must read the TARGET, not the payload: a file whose CONTENT quotes a gate path is ordinary work.
+printf '{"tool_name":"Write","tool_input":{"file_path":"/p/README.md","content":"see .claude/hooks/guard-bash.sh"}}' | bash "$HOOKS/guard-write.sh" >/dev/null 2>&1 && pass "content that MENTIONS a gate path does not block the write" || fail "a gate path inside content wrongly blocked the write"
+# CASE. APFS and NTFS are case-insensitive by DEFAULT, so `.CLAUDE/HOOKS/GUARD-BASH.SH` is not a lookalike of
+# the gate script, it IS the gate script — measured on this machine: identical inode, and a write through the
+# uppercase spelling landed in the real file. The shell guard already folded case (`grep -i`) while this one
+# did not, so the two halves of §4.5 disagreed about the same path.
+for _wp in '/p/.CLAUDE/hooks/guard-bash.sh' '/p/.Claude/Hooks/guard-bash.sh' '/p/.claude/HOOKS/guard-bash.sh' \
+           '/p/.GIT/hooks/pre-commit' '/p/.claude/DISCIPLINE.MD'; do
+  wj Write "$_wp" | bash "$HOOKS/guard-write.sh" >/dev/null 2>&1
+  [ "$?" = 2 ] && pass "case-spelled gate path BLOCKED: $_wp" || fail "case-spelled gate path PASSED (§4.5 hole): $_wp"
+done
+# TRAILING BYTES. Win32 strips trailing dots and spaces from a component when it OPENS the file, so those reach
+# the same inode. The DISCIPLINE.md rule is an exact tail match with no trailing wildcard, so ONE trailing byte
+# defeated it where the `/*`-terminated hooks rules would have absorbed it.
+wj Write '/p/.claude/DISCIPLINE.md '  | bash "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "a trailing space does not hide DISCIPLINE.md" || fail "trailing space defeated the DISCIPLINE.md rule"
+wj Write '/p/.claude./hooks/x.sh'     | bash "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "a trailing dot on a component does not hide a gate path" || fail "trailing dot defeated the hooks rule"
+# THE PLUGIN EDITION ships the same gate scripts at $CLAUDE_PLUGIN_ROOT/hooks/, which is not `.claude/hooks/`:
+# one of the kit's four channels was shipping an unguarded copy of its own gates. Matched by the kit's own
+# filenames, so a project's unrelated `hooks/` directory keeps working.
+wj Write '/Users/dev/.claude/plugins/claude-starter-kit/hooks/guard-write.sh' | bash "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "the plugin edition's own gate script is BLOCKED too" || fail "the plugin edition ships unguarded gate scripts (§4.5 hole)"
+wj Write '/opt/csk/hooks/session-guard.sh' | bash "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "a kit gate script is BLOCKED wherever it sits" || fail "a kit gate script outside .claude/ PASSED"
+wj Write '/p/scripts/hooks/deploy.sh'      | bash "$HOOKS/guard-write.sh" >/dev/null 2>&1 && pass "a project's OWN hooks/ directory is not the kit's" || fail "the name-based rule over-blocks an ordinary hooks/ directory"
+# OVERSIZED PATH. The tier-3 unescaper walks the value character by character, and on the tier a stock Windows
+# install runs, every separator is an escape — so cost is quadratic in the number of separators: measured 6s at
+# 1,200 and 44s at 2,400 against a 60s hook timeout. A hook killed at its timeout emits no exit 2 and the write
+# proceeds, so the parser is capped and refuses rather than grinds. The assertion is the TIME as much as the rc.
+_big="$(printf '%*s' 300 '' | tr ' ' 'x')"; _big="$_big$_big$_big$_big$_big$_big$_big$_big$_big$_big$_big$_big$_big$_big$_big$_big$_big"
+_t0=$(date +%s); wj Write "/p/$_big/x.ts" | bash "$HOOKS/guard-write.sh" >/dev/null 2>&1; _rc=$?; _t1=$(date +%s)
+[ "$_rc" = 2 ] && pass "an oversized path is refused, not parsed" || fail "an oversized path was not refused (rc=$_rc)"
+[ $((_t1-_t0)) -le 5 ] && pass "the oversized path costs under 5s (no timeout to hide behind)" || fail "oversized path took $((_t1-_t0))s — a hook that can be made to time out is a hook that can be made to allow"
+# A `\uXXXX` escape used to become a literal `?` on tier 3, so `.claude/hooks/…` matched no pattern while
+# jq decoded the same bytes to the real path: the two tiers disagreed on whether a payload was an attack.
+printf '%s' '{"tool_name":"Write","tool_input":{"file_path":".claude/hooks/guard-bash.sh"}}' | bash "$HOOKS/guard-write.sh" >/dev/null 2>&1
+[ "$?" = 2 ] && pass "a \\u-escaped gate path is decoded, not substituted" || fail "\\u002e hid a gate path from §4.5"
+# Symlinks. Two directions, and only ONE of them is dangerous: a link INTO the config tree names no gate path
+# at all, while a link ABOVE the project (a symlinked home, mount, checkout, or plain /tmp -> private/tmp on
+# macOS) is routine and must keep working. Getting that backwards is how this gate would refuse everyday work.
+GWSL="$(mktemp -d)"
+mkdir -p "$GWSL/.claude/hooks" "$GWSL/.claude/skills/real"; : > "$GWSL/.claude/hooks/guard-bash.sh"; : > "$GWSL/.claude/DISCIPLINE.md"
+if ln -s ../hooks "$GWSL/.claude/skills/link" 2>/dev/null && [ -L "$GWSL/.claude/skills/link" ] \
+   && ln -sfn .claude "$GWSL/cfg" 2>/dev/null && ln -sfn .claude/skills "$GWSL/sk" 2>/dev/null; then
+  gws(){ wj Write "$2" | ( cd "$GWSL" && CSK_GATE_LOG=/dev/null bash "$HOOKS/guard-write.sh" ) >/dev/null 2>&1; [ "$?" = "$1" ]; }
+  gws 2 '.claude/skills/link/guard-bash.sh' && pass "a link INSIDE .claude/ cannot reach a gate script" || fail "symlinked ancestor reached a gate file (§4.5 hole)"
+  gws 2 'cfg/hooks/guard-bash.sh'           && pass "a link whose target IS .claude/ cannot reach a gate script" || fail "a link pointing at .claude/ smuggled a gate write past §4.5"
+  gws 2 'cfg/DISCIPLINE.md'                 && pass "the same link cannot reach the discipline document" || fail "a link pointing at .claude/ reached DISCIPLINE.md"
+  # `..` AFTER a symlink is the case lexical resolution gets wrong on its own: `sk/../hooks/x` collapses to
+  # `hooks/x` (no gate) while the filesystem resolves `sk/..` through the link back to `.claude`. The probe
+  # therefore runs on the path BEFORE `..` is collapsed; collapsing first deletes the component to examine.
+  gws 2 'sk/../hooks/guard-bash.sh'         && pass "a '..' that climbs back through a link still lands on the gate" || fail "lexical collapse hid a gate path behind a symlink (§4.5 hole)"
+  gws 0 'sk/mine/SKILL.md'                  && pass "ordinary work through the same link is untouched" || fail "the symlink probe over-blocks ordinary work through a link"
+  gws 0 '.claude/skills/real/SKILL.md'      && pass "an ordinary (unlinked) path under .claude/ is not caught by the probe" || fail "the symlink probe over-blocks ordinary .claude/ paths"
+  # The other direction. Absolute paths, deliberately: Claude Code's file tools always send one, and the
+  # relative form of this case passed for the wrong reason while the fixture itself sat under a symlinked
+  # /var — a negative twin that cannot fail is not a test.
+  if ln -s "$GWSL" "$GWSL.link" 2>/dev/null && [ -L "$GWSL.link" ]; then
+    for _ok in '.claude/settings.json' '.claude/skills/real/SKILL.md' '.git/info/exclude' 'src/app.ts'; do
+      wj Write "$GWSL.link/$_ok" | CSK_GATE_LOG=/dev/null bash "$HOOKS/guard-write.sh" >/dev/null 2>&1 \
+        && pass "a SYMLINKED project root leaves ordinary work alone: $_ok" \
+        || fail "a symlinked project root blocks ordinary work ($_ok) — the probe answers the wrong question"
+    done
+    wj Write "$GWSL.link/.claude/hooks/guard-bash.sh" | CSK_GATE_LOG=/dev/null bash "$HOOKS/guard-write.sh" >/dev/null 2>&1
+    [ "$?" = 2 ] && pass "a gate path under a symlinked project root is still BLOCKED" || fail "a symlinked root smuggled a gate-file write past §4.5"
+    rm -f "$GWSL.link"
+  fi
+else
+  note "symlinks unavailable here — the ancestor probe was not exercised (platform)"
+fi
+rm -rf "$GWSL"
+# THE HOOK MUST RUN AS THE HARNESS RUNS IT. Every other row here invokes it as `bash <file>`, which exercises
+# neither the +x bit nor the shebang — the exact failure the canary further down exists for on the shell side.
+if [ -x "$HOOKS/guard-write.sh" ]; then
+  wj Write '/p/.claude/hooks/guard-bash.sh' | "$HOOKS/guard-write.sh" >/dev/null 2>&1
+  [ "$?" = 2 ] && pass "guard-write.sh blocks when EXECUTED directly (+x and shebang both live)" || fail "guard-write.sh does not gate when executed the way the harness executes it"
+else
+  fail "guard-write.sh is not executable — the harness would not be able to run it"
+fi
 # §4.5 force-add (bypasses .gitignore) + lockfile deletion — gated; a plain add must NOT be over-blocked
 gj auto 'git add -f dist/bundle.js' | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "git add -f BLOCKED (§4.5)" || fail "git add -f PASSED (§4.5 hole)"
 gj auto 'git add -A'                | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && pass "git add -A NOT over-blocked" || fail "git add -A wrongly blocked (gate too strict)"
@@ -1756,6 +1910,53 @@ if [ -n "$GBX" ]; then
   o="$(gj auto 'git commit -m x' | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" 2>/dev/null)"
   echo "$o" | grep -q '"permissionDecision":"ask"' && pass "no-jq/py: commit still ASKs (M1 fallback closed)" || fail "no-jq/py: commit gate FAILS OPEN (M1): $o"
   gj auto 'git reset --hard' | PATH="$GBX" CLAUDE_GIT_OK=1 "$GBBASH" "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "no-jq/py: reset --hard still BLOCKED" || fail "no-jq/py: reset --hard PASSED (§4.5 fallback hole)"
+  # The write side lands on the same tier, and this is the branch a stock Windows install actually runs. Its
+  # pre-2.6.x fallback read only `file_path`, so NotebookEdit — whose path key is `notebook_path` — walked
+  # straight past the gate on exactly the machine the gate was hardened for. Measured rc=0 before the fix.
+  wjn '/p/.claude/hooks/guard-bash.sh'      | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "no-jq/py: NotebookEdit of a gate script BLOCKED (notebook_path)" || fail "no-jq/py: notebook_path walked past §4.5 (fallback hole)"
+  wj Write '/p/.claude/hooks/guard-bash.sh' | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "no-jq/py: Write of a gate script still BLOCKED" || fail "no-jq/py: gate-script write PASSED (fallback hole)"
+  wj Write '/p/.claude/skills/../hooks/x.sh'| PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "no-jq/py: traversal to a gate path still BLOCKED" || fail "no-jq/py: traversal PASSED (fallback hole)"
+  wj Write 'C:\\U\\app\\.claude\\hooks\\x.sh' | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "no-jq/py: Windows-separator gate path still BLOCKED" || fail "no-jq/py: backslash path PASSED (fallback hole)"
+  wj Write '/p/src/app.ts'                  | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1 && pass "no-jq/py: ordinary source NOT over-blocked on the fallback tier" || fail "no-jq/py: ordinary source wrongly blocked"
+  # DISCRIMINATOR. The four rows above ALL stay green if the tier-3 parser is gutted, because the fail-closed
+  # raw-payload branch blocks the same payloads for the wrong reason. Only a payload whose TARGET is ordinary
+  # while its CONTENT names a gate path tells the two apart: the real parser allows it, a gutted one refuses it.
+  printf '%s' '{"tool_name":"Write","tool_input":{"file_path":"/p/README.md","content":"see .claude/hooks/guard-bash.sh"}}' | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1 \
+    && pass "no-jq/py: the tier-3 parser really parses (content naming a gate path does not block)" \
+    || fail "no-jq/py: tier 3 blocked on the raw payload — the parser is not doing the work"
+  # And the rule NAME, not just the rc: a row that only checks rc=2 stays green when the fix is deleted and the
+  # raw-payload branch takes over. The stderr line is what says which branch produced the verdict.
+  _o="$(wjn '/p/.claude/hooks/guard-bash.sh' | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" 2>&1 >/dev/null)"
+  case "$_o" in
+    *"unparsed payload"*) fail "no-jq/py: notebook_path blocked via the raw fallback, not via the parser — the notebook fix is not doing the work" ;;
+    *"blocked AT THE TOOL LEVEL"*) pass "no-jq/py: notebook_path is blocked BY THE PARSER (not the raw fallback)" ;;
+    *) fail "no-jq/py: notebook_path produced no gate message: ${_o:-empty}" ;;
+  esac
+  # `\u002e` is `.`. Tier 3 used to substitute `?` for any \uXXXX, so this decoded to `?claude/hooks/…` and
+  # matched nothing while jq decoded the identical bytes to a real gate path.
+  printf '%s' '{"tool_name":"Write","tool_input":{"file_path":"\u002eclaude/hooks/guard-bash.sh"}}' | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1
+  [ "$?" = 2 ] && pass "no-jq/py: a \\u-escaped gate path is decoded, not substituted" || fail "no-jq/py: \\u002e hid a gate path from §4.5 (tier-1/tier-3 divergence)"
+  # THE COST LIVES ON THIS TIER, so the timing assertion belongs here and not only above: with jq present the
+  # payload is parsed by a C program and the walk never runs. Here every separator is an escape, which is what
+  # made the parser quadratic — 6s at 1,200 separators, 44s at 2,400, against this hook's own 60s timeout.
+  _bs=""; _i=0; while [ "$_i" -lt 3000 ]; do _bs="$_bs\\\\"; _i=$((_i+1)); done
+  _t0=$(date +%s)
+  printf '{"tool_name":"Write","tool_input":{"file_path":"C:%s.claude\\\\hooks\\\\g.sh"}}' "$_bs" | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1
+  _rc=$?; _t1=$(date +%s)
+  [ "$_rc" = 2 ] && pass "no-jq/py: an oversized path is refused on the tier that pays for parsing it" || fail "no-jq/py: oversized path not refused (rc=$_rc)"
+  [ $((_t1-_t0)) -le 5 ] && pass "no-jq/py: 3,000 escapes cost under 5s (the gate cannot be timed out)" || fail "no-jq/py: 3,000 escapes took $((_t1-_t0))s — the gate can be made to miss its own timeout"
+  # And the worst case that is still ACCEPTED — a value sitting just under the cap — because that is the number
+  # an attacker actually gets to spend. Measured 3.4s here; the bound is deliberately loose for slower boxes.
+  _bs=""; _i=0; while [ "$_i" -lt 1000 ]; do _bs="$_bs\\\\"; _i=$((_i+1)); done
+  _t0=$(date +%s)
+  printf '{"tool_name":"Write","tool_input":{"file_path":"C:%s.claude\\\\hooks\\\\g.sh"}}' "$_bs" | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1
+  _rc=$?; _t1=$(date +%s)
+  [ "$_rc" = 2 ] && [ $((_t1-_t0)) -le 15 ] && pass "no-jq/py: the worst case UNDER the cap still verdicts in time ($((_t1-_t0))s)" || fail "no-jq/py: at-cap payload rc=$_rc in $((_t1-_t0))s — the cap is sized wrong"
+  # The unparsed-payload branch has three arms and only the .claude one was pinned.
+  for _u in 'garbage naming .git/hooks/pre-commit' 'garbage naming .claude/DISCIPLINE.md'; do
+    printf '%s' "$_u" | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1
+    [ "$?" = 2 ] && pass "no-jq/py: unparseable payload refused — $_u" || fail "no-jq/py: unparseable payload failed OPEN — $_u"
+  done
 else
   gb_unbuildable "no-jq/py fallback tests"
 fi

@@ -115,7 +115,7 @@ Then paste `.claude/FIRST_PROMPT.md` as your first Claude Code message. Homebrew
 |:--|:--|
 | `route-hint.sh` | Names the owning agent alongside every prompt, so specialists run without you asking |
 | `guard-bash.sh` | Tool-level command gate: commit/push approval, destructive ops, remote-code-exec, hook tampering |
-| `guard-write.sh` | The same protection on the Write/Edit side — a gate you can silently delete is not a gate. It also holds the board claim gate: on a team repo, the FIRST file edit is refused while you hold no work item, so unclaimed work is caught at minute one rather than at commit time |
+| `guard-write.sh` | The same protection on the Write/Edit side — a gate you can silently delete is not a gate. It normalises the target path before matching it, so a gate file cannot be reached under a different spelling. It also holds the board claim gate: on a team repo, the FIRST file edit is refused while you hold no work item, so unclaimed work is caught at minute one rather than at commit time |
 | `guard-commit-scan.sh` | Runs the real trace and secret scanners from `PreToolUse`, so the commit gate works where `core.hooksPath` cannot be set |
 | `context-usage.sh` | Reads the real token count from the transcript and injects it every turn |
 | `session-guard.sh` | Warns once at 75% context fill and once at 90% — never blocks a turn |
@@ -211,7 +211,7 @@ Left is the rule; right is the thing that refuses to let it slide.
 | Commit and push need your approval, in every permission mode | `guard-bash.sh` raises a prompt only you can answer. Fails closed under `bypassPermissions` |
 | Destructive ops: `reset --hard`, `checkout -- .`, force push, `rm -rf`, `clean -f`, `--no-verify`, amend | `guard-bash.sh`, blocked at the tool level |
 | Remote code execution and permission nukes: `curl…\|bash`, world-writable `chmod`, `dd of=` | `guard-bash.sh`, hard-blocked in every mode |
-| Disarming a gate — redirecting `core.hooksPath`, editing or deleting a hook | `guard-bash.sh` (shell) + `guard-write.sh` (file edits) |
+| Disarming a gate — redirecting `core.hooksPath`, editing or deleting a hook, or rewriting the discipline the gates enforce | `guard-bash.sh` (shell) + `guard-write.sh` (file edits). Both match the **resolved** path, so `..` segments, doubled slashes, Windows separators and a symlinked parent all reach the same verdict as the plain spelling |
 | No API key, token or private key reaches a commit | `pre-commit` secret scan; every pattern carries its own test case |
 | No machine-private path or internal name reaches a commit | `pre-commit` private-path scan: your own `$HOME` automatically, plus a gitignored `.private-terms.txt` |
 | No credential is *read* into the context — `~/.ssh/id_rsa`, `~/.aws/credentials`, `*.pem`, kubeconfig | `settings.json` read-deny + `guard-bash.sh` |

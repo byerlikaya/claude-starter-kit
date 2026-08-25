@@ -115,7 +115,7 @@ Beş aşamaya yayılmış **12 uzman agent** — kalite, hiçbir şey commit edi
 |:--|:--|
 | `route-hint.sh` | Her isteğin yanına o işin sahibi agent'ı yazar; uzmanlar siz istemeden devreye girer |
 | `guard-bash.sh` | Araç seviyesinde komut kapısı: commit/push onayı, yıkıcı işlemler, uzaktan kod çalıştırma, hook kurcalama |
-| `guard-write.sh` | Aynı korumanın Write/Edit tarafı — sessizce silinebilen bir kapı, kapı değildir. Pano üstlenme kapısını da o tutar: ekip deposunda, elinizde bir madde yokken **ilk dosya düzenlemesi** reddedilir, böylece üstlenilmemiş iş commit anında değil daha birinci dakikada yakalanır |
+| `guard-write.sh` | Aynı korumanın Write/Edit tarafı — sessizce silinebilen bir kapı, kapı değildir. Hedef yolu eşleştirmeden önce sadeleştirir, böylece bir kapı dosyasına farklı bir yazımla ulaşılamaz. Pano üstlenme kapısını da o tutar: ekip deposunda, elinizde bir madde yokken **ilk dosya düzenlemesi** reddedilir, böylece üstlenilmemiş iş commit anında değil daha birinci dakikada yakalanır |
 | `guard-commit-scan.sh` | Gerçek iz ve sır tarayıcılarını `PreToolUse` üzerinden koşturur; böylece `core.hooksPath` ayarlanamayan yerlerde de commit kapısı çalışır |
 | `context-usage.sh` | Transcript'ten gerçek token sayısını okur ve her tura enjekte eder |
 | `session-guard.sh` | Bağlam doluluğu %75'i ve %90'ı geçtiğinde birer kez uyarır — turu asla kesmez |
@@ -211,7 +211,7 @@ Solda kural, sağda o kuralın geçilmesine izin vermeyen şey.
 | Commit ve push her izin modunda onayınızı gerektirir | `guard-bash.sh`, yalnızca sizin cevaplayabileceğiniz bir istem açar. `bypassPermissions` altında kapalı düşer |
 | Yıkıcı işlemler: `reset --hard`, `checkout -- .`, force push, `rm -rf`, `clean -f`, `--no-verify`, amend | `guard-bash.sh`, araç seviyesinde engeller |
 | Uzaktan kod çalıştırma ve izin patlatma: `curl…\|bash`, herkese yazılabilir `chmod`, `dd of=` | `guard-bash.sh`, her modda sert engel |
-| Bir yaptırımı devre dışı bırakmak — `core.hooksPath`'i saptırmak, bir hook'u düzenlemek veya silmek | `guard-bash.sh` (kabuk) + `guard-write.sh` (dosya araçları) |
+| Bir yaptırımı devre dışı bırakmak — `core.hooksPath`'i saptırmak, bir hook'u düzenlemek veya silmek, ya da yaptırımların dayandığı disiplin metnini değiştirmek | `guard-bash.sh` (kabuk) + `guard-write.sh` (dosya araçları). İkisi de **çözülmüş** yolu eşleştirir: `..` parçaları, çift eğik çizgi, Windows ayraçları ve sembolik bağlı bir üst dizin, düz yazımla aynı sonucu verir |
 | Hiçbir API anahtarı, token veya özel anahtar commit'e girmez | `pre-commit` sır taraması; her desen kendi test vakasını taşır |
 | Hiçbir makineye özel yol veya iç ad commit'e girmez | `pre-commit` özel yol taraması: kendi `$HOME`'unuz kendiliğinden, ayrıca gitignore'lanmış `.private-terms.txt` |
 | Hiçbir kimlik dosyası bağlama *okunmaz* — `~/.ssh/id_rsa`, `~/.aws/credentials`, `*.pem`, kubeconfig | `settings.json` okuma reddi + `guard-bash.sh` |

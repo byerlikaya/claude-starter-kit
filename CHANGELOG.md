@@ -3,6 +3,83 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Security
+- **The write-side gate matched the raw path string, so a gate file could be reached under a different
+  spelling.** `guard-write.sh` compared `file_path` verbatim against `*/.claude/hooks/*` and `*/.git/hooks/*`.
+  Measured against 2.6.0, every one of these returned rc=0 — a single Write call each, no shell access, no
+  symlink, no second step: `.claude/skills/../hooks/guard-bash.sh`, `.claude//hooks/…`, `.claude/./hooks/…`,
+  `.git/refs/../hooks/pre-commit`, and any path written with Windows separators (five other hooks in the kit
+  already fold those; this one did not). **On Windows that last one was the whole gate**: measured on a real
+  Windows install, 124 of 124 `file_path` values the harness actually sent used backslashes, so the write-side
+  §4.5 gate recognised the one spelling that never arrives and passed the one that always does. The traversal
+  forms are a capability rather than an observed pattern — none of those 124 samples contained an unresolved
+  `..` — but Claude Code passes `file_path` to the hook verbatim (measured: a `..` survives into the payload)
+  while the filesystem resolves it, so the string the model writes and the file it opens are two different
+  things whenever it chooses to write one. The target is now folded and lexically resolved before it is matched, with
+  parameter expansion only: no new process on a path that runs before every Write/Edit, measured at the same
+  external-command count as before. A symlinked ancestor — the one shape lexical resolution cannot see — is
+  refused outright inside `.claude/` and `.git/`; that walk stops AT the config directory, so a symlinked
+  project root (routine on macOS, where every path through `/tmp` resolves to `private/tmp`) does not turn
+  ordinary work into a refusal.
+- **`NotebookEdit` walked past the gate wherever neither `jq` nor `python3` runs.** The pure-bash tier read
+  `file_path` only, and a notebook carries its path under `notebook_path`. Both guards now share one JSON
+  parser, marked in both files and pinned byte-identical by the suite, so the two copies cannot drift.
+- **The discipline document was writable.** `.claude/DISCIPLINE.md` is kit-owned, imported into every session,
+  and is the text of §4.1–§4.5 — the rules the gates enforce — yet no gate covered it: the rules could be
+  emptied without touching a single gate. Both guards now refuse to write it, on the shell side and the file-
+  tool side. Reading it is unchanged, and the installer still rewrites it on update.
+- **An unparseable payload no longer exits 0 unconditionally.** It is refused when the raw text names a gate
+  tree and still allowed otherwise, so a future field rename costs a false block rather than a free pass.
+- **A case-spelled gate path was a different string and the same file.** APFS and NTFS are case-insensitive by
+  default: measured on one machine, `.claude/hooks/guard-bash.sh` and `.CLAUDE/HOOKS/GUARD-BASH.SH` share an
+  inode, and a write through the uppercase spelling landed in the real gate script. The shell-side guard had
+  always folded case; the write-side guard had not, so the two halves of §4.5 disagreed about the same path.
+  Both now fold, and so does a trailing dot or space on a component — Win32 strips those when it opens a file,
+  and one trailing byte was enough to slip past the `DISCIPLINE.md` rule, which is an exact tail match.
+- **A symlink is the two-step version of editing a hook, and only one direction of it is dangerous.**
+  `ln -sfn .claude cfg` names no gate path, so it passed the shell guard; `cfg/hooks/guard-bash.sh` then names
+  no gate path either, so it passed the write guard — measured end to end, both steps allowed, the gate script
+  overwritten. The write guard now walks the target's ancestors (a builtin test, no process) and, only when one
+  really is a symlink, spends a single call to resolve it and ask the same question about the real location.
+  That walk runs before `..` is collapsed, because collapsing first deletes the component that has to be
+  examined: with `c -> .claude/skills`, `c/../hooks/x` reduces to `hooks/x` while the filesystem resolves it
+  onto the gate. The shell guard separately refuses a link whose target is `.claude` or `.git` itself.
+  The other direction — a symlinked home, mount, checkout, or plain `/tmp` on macOS — stays ordinary work.
+- **The new parser brought a cost with it, and it is capped rather than hidden.** What it replaces was a single
+  `sed` — linear, never slow — and it was replaced because it truncated the value at the first escaped quote
+  and never looked at `notebook_path`. The parser that fixes those walks the value character by character,
+  which is quadratic in bash, and on the tier a stock Windows install runs every path separator is an escape,
+  so the cheap path never fires: measured 0.09s at 512 bytes, 0.52s at 1,024, 3.7s at 2,048 and roughly 30s at
+  4,096, against this hook's own 60s timeout — and a PreToolUse hook killed at its timeout emits no exit 2, so
+  the write proceeds. The value is therefore capped at 2,048 bytes and refused above it, in both guards. Real
+  paths are nowhere near that: the `file_path` values measured on a Windows install average about 60 bytes,
+  and Windows stops at 260 without the long-path opt-in. Ordinary cost is unchanged — ten real Windows-shaped
+  calls in 0.08s total, and the same external-command count on the hot path as before.
+- **A `\uXXXX` escape became a literal `?`,** so `\u002eclaude/hooks/guard-bash.sh` decoded to something that
+  matched no rule while `jq` decoded the same bytes to the real path — the parser tiers disagreed on whether a
+  payload was an attack. Printable ASCII is now decoded properly, with no added process.
+- **The plugin edition's own gate scripts sat outside every pattern.** They live at
+  `$CLAUDE_PLUGIN_ROOT/hooks/`, which is not `.claude/hooks/`, so one of the four channels shipped an
+  unguarded copy of the gates it ships. Matched by the kit's own filenames, so a project's unrelated `hooks/`
+  directory is untouched.
+
+### Tests
+- §4.5 grows from 4 write-side cases to 65 new assertions across three tiers (`jq`, `python3`, and the
+  pure-bash fallback in the suite's existing no-`jq`/no-`python3` sandbox). Each positive case was first shown
+  to wrongly PASS against the hook as shipped in 2.6.0 — that is what makes it a regression pin rather than a
+  restatement of current behaviour — and each ships with its negative twin: a `..` in an ordinary source path,
+  a project's own skill under `.claude/`, a doc merely named `hooks`, `DISCIPLINE.md.bak`, an unparseable
+  payload naming nothing, a file whose *content* quotes a gate path, and an unlinked path under `.claude/`
+  that the symlink probe must not catch, ordinary linking (`ln -s dist build`), a project's own `hooks/`
+  directory, and — the row that took two tries to write honestly — a *symlinked project root*, which the first
+  version of the probe refused. Two of the new rows exist only to tell a working parser from a working
+  fallback: a payload whose target is ordinary while its content quotes a gate path, and an assertion on which
+  rule fired rather than on the exit code alone, because a row that checks only `rc=2` stays green when the fix
+  is deleted and the fail-closed branch answers in its place. One row executes the hook directly rather than
+  through `bash <file>`, so the `+x` bit and the shebang are exercised the way the harness exercises them.
+
 ## [2.6.0] - 2026-08-25
 
 ### Fixed
