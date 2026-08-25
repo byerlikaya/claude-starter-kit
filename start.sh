@@ -341,7 +341,16 @@ for e in 'docs/' '.claude/' 'CLAUDE.md' '.private-terms.txt'; do grep -qxF "$e" 
 # the work-tree root, so arming from a subdirectory stores the value and runs no hook at all — a gate reported
 # active over a dead path. `pwd -P` because git answers with the physical path, and the arming call itself is
 # the probe, so a git that resolves and fails falls into the NOTE instead of a false "active".
-if [ "$(git rev-parse --show-toplevel 2>/dev/null)" = "$(pwd -P)" ] && git config core.hooksPath .claude/hooks 2>/dev/null; then
+# Asked as `--show-prefix`, not by comparing two spellings of the same path. Comparing them is what the line
+# above this one used to do, and on Windows the two sides NEVER match: git answers `C:/repo/app` while
+# `pwd -P` answers `/c/repo/app`, so the arming call was never reached — in a worktree AND in an ordinary
+# repository. Measured on a Windows 11 desktop against this commit: `core.hooksPath` came back EMPTY in both,
+# the installer exited 0, and it printed "no git repository at this level" standing inside one. That is the
+# §4.1/§4.2 commit gate silently absent on every Windows install, reported as a successful one.
+# `--show-prefix` is the question itself: empty at the work-tree root, `sub/dir/` below it, non-zero exit
+# outside a repo — and it carries no path spelling to disagree about. Verified here at a normal root, a
+# worktree root, a subdirectory and a non-repo.
+if PFX="$(git rev-parse --show-prefix 2>/dev/null)" && [ -z "$PFX" ] && git config core.hooksPath .claude/hooks 2>/dev/null; then
   echo "  trace scan: core.hooksPath -> .claude/hooks (§4.1/§4.2 commit gate active)"
 else
   echo "  NOTE: no git repository at this level; after 'git init' run:  git config core.hooksPath .claude/hooks"
