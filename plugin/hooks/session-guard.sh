@@ -22,9 +22,26 @@ esac
 # Per-session dedup key: session_id from the Stop stdin JSON (documented field), else the transcript
 # filename. Sanitized to a safe filename fragment. Without any key we fall back to a shared marker
 # (that degenerate case coincides with a measurement failure, which exits silently below anyway).
-TP="$(printf '%s' "$IN" | sed -n 's/.*"transcript_path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
-KEY="$(printf '%s' "$IN" | sed -n 's/.*"session_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1 | tr -cd 'A-Za-z0-9._-')"
-[ -n "$KEY" ] || KEY="$(basename "$TP" 2>/dev/null | tr -cd 'A-Za-z0-9._-')"
+#
+# Pure parameter expansion, not `sed | head | tr`. This hook runs on EVERY Stop — once per turn — and on Git
+# Bash a process costs 60-135 ms (measured on a Windows 11 desktop: this hook was 22 processes and 1,805 ms
+# per turn end, of which these three lines were 8). Extraction is shortest-match `#*`, so it takes the FIRST
+# occurrence of the key exactly as the sed did; the `[!…]` class strips to the same safe filename fragment
+# `tr -cd` produced, and that form works on the bash 3.2 macOS ships.
+_slice(){ # $1 = payload, $2 = key -> the value up to the next unescaped-quote-free boundary, "" if absent
+  local r="${1#*\"$2\"}"
+  [ "$r" != "$1" ] || return 0
+  r="${r#*\"}"                      # past `: "` to the value's opening quote
+  printf '%s' "${r%%\"*}"
+}
+TP="$(_slice "$IN" transcript_path)"
+# The path arrives JSON-encoded, so on Windows it carries doubled backslashes. Git Bash happens to accept
+# `C:\\Users\\…` (Windows collapses repeated separators), which is why this was never noticed here — but
+# context-usage.sh already normalises for the same field and does not rely on that, and a check that depends
+# on one shell's tolerance is a check that stops running when someone uses another. Free: no process.
+TP="${TP//\\\\//}"; TP="${TP//\\//}"
+KEY="$(_slice "$IN" session_id)"; KEY="${KEY//[!A-Za-z0-9._-]/}"
+if [ -z "$KEY" ]; then KEY="${TP##*[/\\]}"; KEY="${KEY//[!A-Za-z0-9._-]/}"; fi
 [ -n "$KEY" ] || KEY="unknown"
 
 # Compaction generation. A `/compact` does NOT mint a new session_id — only a new session or `/clear` does —
@@ -37,10 +54,12 @@ KEY="$(printf '%s' "$IN" | sed -n 's/.*"session_id"[[:space:]]*:[[:space:]]*"\([
 # behaviour rather than risk the timeout.
 COMP=0; AUTOC=0
 if [ -n "$TP" ] && [ -f "$TP" ]; then
-  SZ="$(wc -c < "$TP" 2>/dev/null | tr -cd '0-9')"; SZ="${SZ:-0}"
+  # `$(( ))` instead of `| tr -cd '0-9'`: arithmetic already ignores the surrounding whitespace wc and grep
+  # emit, and it costs no process where tr costs one each — three of them, on every turn.
+  SZ="$(wc -c < "$TP" 2>/dev/null || echo 0)"; SZ=$(( ${SZ:-0} + 0 ))
   if [ "$SZ" -le "${CSK_CONTEXT_MAX_BYTES:-209715200}" ]; then
-    COMP="$(grep -c '"subtype": *"compact_boundary"' "$TP" 2>/dev/null | tr -cd '0-9')";  COMP="${COMP:-0}"
-    AUTOC="$(grep -c '"compact_boundary".*"trigger": *"auto"' "$TP" 2>/dev/null | tr -cd '0-9')"; AUTOC="${AUTOC:-0}"
+    COMP="$(grep -c '"subtype": *"compact_boundary"' "$TP" 2>/dev/null || echo 0)";  COMP=$(( ${COMP:-0} + 0 ))
+    AUTOC="$(grep -c '"compact_boundary".*"trigger": *"auto"' "$TP" 2>/dev/null || echo 0)"; AUTOC=$(( ${AUTOC:-0} + 0 ))
   fi
 fi
 marker(){ printf '%s/csk-session-guard.%s.c%s.%s' "${TMPDIR:-/tmp}" "$KEY" "$COMP" "$1"; }
@@ -76,11 +95,18 @@ fi
 if [ -z "$PCT" ]; then
   # SLOW PATH — no published reading (first turn, a by-hand run, or context-usage silent). Measure for real.
   # --verbose here: this line reaches the USER at most twice per session, so the raw token counts are free.
-  LINE="$(printf '%s' "$IN" | bash "$HERE/context-usage.sh" --verbose 2>/dev/null | head -1 || true)"
+  LINE="$(printf '%s' "$IN" | bash "$HERE/context-usage.sh" --verbose 2>/dev/null || true)"
+  LINE="${LINE%%$'\n'*}"                     # first line, without paying `head` a process for it
   [ -n "$LINE" ] || exit 0
   # Pull the percentage back out of the "🔋 Session: %77.2 (...)" line. context-usage.sh pins LC_ALL=C, so the
   # decimal separator is always '.' whatever the locale. No number -> cannot classify -> stay silent (fail open).
-  PCT="$(printf '%s' "$LINE" | sed -n 's/.*%\([0-9][0-9]*\(\.[0-9][0-9]*\)*\).*/\1/p' | head -1)"
+  # Pure expansion rather than `sed | head`: take everything after the first '%', then stop at the first
+  # character that is not a digit or a dot. Same first-match semantics as the sed, two processes cheaper, and
+  # this runs at the end of every turn.
+  PCT="${LINE#*%}"
+  [ "$PCT" != "$LINE" ] || PCT=""
+  PCT="${PCT%%[!0-9.]*}"
+  case "$PCT" in ''|*[!0-9.]*|.*) PCT="" ;; esac
   [ -n "$PCT" ] || exit 0
 fi
 

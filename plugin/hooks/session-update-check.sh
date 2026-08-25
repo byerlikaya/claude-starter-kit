@@ -43,7 +43,7 @@ MAX_AGE="${CSK_UPDATE_MAX_AGE:-86400}"      # one day between checks
 # accepting `9.9.9-<anything>` would buy nothing and hand a compromised endpoint a sentence to write. The control
 # characters go first (a newline would let one response become several lines), then the shape decides.
 sane_version(){
-  v="$(printf '%s' "${1:-}" | tr -cd '0-9A-Za-z.-')"
+  v="${1:-}"; v="${v//[!0-9A-Za-z.-]/}"   # same character class `tr -cd` kept, without the process
   case "$v" in
     *[!0-9.]*)              return 1 ;;   # letters, dashes, anything but a number
     [0-9]*.[0-9]*.[0-9]*.*) return 1 ;;   # four or more fields
@@ -82,7 +82,7 @@ SELF="$HERE/$(basename "$0")"
 IN=""
 [ ! -t 0 ] && IN="$(cat 2>/dev/null || true)"
 ROOT="${CLAUDE_PROJECT_DIR:-}"
-[ -n "$ROOT" ] || ROOT="$(printf '%s' "$IN" | sed -n 's/.*"cwd"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+[ -n "$ROOT" ] || { _r="${IN#*\"cwd\"}"; [ "$_r" != "$IN" ] && { _r="${_r#*\"}"; ROOT="${_r%%\"*}"; }; }
 [ -n "$ROOT" ] || ROOT="$PWD"
 # Windows hands this over as a native path, and the stdin copy arrives JSON-encoded on top (`C:\\Repos\\app`).
 # Undo the escaping, then fold the separators; both are no-ops on POSIX. Skipping this is how a hook resolves a
@@ -98,7 +98,7 @@ PR_ROOT="${PR_ROOT//\\\\//}"; PR_ROOT="${PR_ROOT//\\//}"
 PJSON="$PR_ROOT/.claude-plugin/plugin.json"
 
 if [ -f "$CL/VERSION" ]; then
-  CUR="$(sane_version "$(head -1 "$CL/VERSION" 2>/dev/null)")" || exit 0
+  read -r _cv < "$CL/VERSION" 2>/dev/null || _cv=""; CUR="$(sane_version "$_cv")" || exit 0
   STATE="$CL/.state"                                            # repo-local: the install lives in the repo
   FEED="${CSK_UPDATE_URL:-$URL}"; KEY=latest
   HOWTO='`/update-csk` performs the update and reports what changed'
@@ -120,8 +120,8 @@ CACHE="$STATE/update-check"
 LATEST=""; STAMP=0
 if [ -f "$CACHE" ]; then
   read -r LATEST STAMP < "$CACHE" 2>/dev/null || true
-  LATEST="$(printf '%s' "${LATEST:-}" | tr -cd '0-9A-Za-z.-')"
-  STAMP="$(printf '%s' "${STAMP:-}" | tr -cd '0-9')"
+  LATEST="${LATEST:-}"; LATEST="${LATEST//[!0-9A-Za-z.-]/}"
+  STAMP="${STAMP:-}";  STAMP="${STAMP//[!0-9]/}"
 fi
 [ -n "$STAMP" ] || STAMP=0
 
@@ -146,7 +146,7 @@ awk -v a="$LATEST" -v b="$CUR" 'BEGIN{
 
 # Once per published version. The next release re-announces itself; this one does not nag.
 SEEN="$STATE/update-notified"
-[ -f "$SEEN" ] && [ "$(head -1 "$SEEN" 2>/dev/null | tr -cd '0-9A-Za-z.-')" = "$LATEST" ] && exit 0
+if [ -f "$SEEN" ]; then read -r _sv < "$SEEN" 2>/dev/null || _sv=""; [ "${_sv//[!0-9A-Za-z.-]/}" = "$LATEST" ] && exit 0; fi
 mkdir -p "$STATE" 2>/dev/null || true
 printf '%s\n' "$LATEST" > "$SEEN" 2>/dev/null || true
 
