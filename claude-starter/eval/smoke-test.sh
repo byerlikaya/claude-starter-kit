@@ -2910,6 +2910,34 @@ if [ "${SPAWN:-9999}" -le 120 ]; then pass "pre-commit stays under one process p
 else fail "pre-commit spawns $SPAWN processes for 120 files — the per-file loop is back (Windows pays 20-50 ms each)"; fi
 rm -rf "$PCT"
 
+echo "== 14) shipped hooks are LF in EVERY edition — a hook that arrives CRLF is a hook that does not run =="
+# `*.sh text eol=lf` covers most of them, but pre-commit and commit-msg are extensionless, so each copy needs
+# its own .gitattributes line. claude-starter's two had one; their plugin twins did not, and it went unnoticed
+# because nothing compared the editions. Measured on a Windows checkout: both claude-starter hooks came out LF
+# and both plugin hooks came out CRLF. Git Bash tolerates that (the trace scan still blocked, verified), which
+# is exactly why it survived — WSL does not, and answers `$'\r': command not found`. A gate that dies on its
+# shebang is not a gate that failed, it is a gate nobody notices is absent.
+# Asked of git rather than of the checkout, so the answer does not depend on the platform running the suite.
+SGR="$(git -C "$ROOT" rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -n "$SGR" ] && [ -f "$SGR/.gitattributes" ]; then
+  NOEOL=""
+  for f in $(git -C "$SGR" ls-files 2>/dev/null | grep -E '(^|/)hooks/[^/.]+$'); do
+    git -C "$SGR" check-attr eol -- "$f" 2>/dev/null | grep -q ': eol: lf$' || NOEOL="$NOEOL $f"
+  done
+  [ -z "$NOEOL" ] && pass "every extensionless shipped hook is pinned to LF in .gitattributes" \
+                  || fail "not pinned to LF — a Windows/WSL checkout gets CRLF and the hook dies on its shebang:$NOEOL"
+  # The two editions ship the same hooks; a divergence means one of them was updated and the other was not.
+  SDIV=""
+  for f in $(git -C "$SGR" ls-files 2>/dev/null | grep -E '^claude-starter/hooks/'); do
+    p="plugin/hooks/${f##*/}"
+    [ -f "$SGR/$p" ] || continue
+    cmp -s "$SGR/$f" "$SGR/$p" || SDIV="$SDIV ${f##*/}"
+  done
+  [ -z "$SDIV" ] && pass "claude-starter/hooks and plugin/hooks ship byte-identical files" \
+                 || fail "the two editions have drifted apart:$SDIV — one was updated and the other was not"
+else note "line-ending check skipped (not a git checkout of the kit)"
+fi
+
 echo "---"
 if [ "$FAIL" -eq 0 ]; then echo "SMOKE-TEST: PASSED ✅"; exit 0
 else echo "SMOKE-TEST: $FAIL errors ❌"; exit 1; fi
