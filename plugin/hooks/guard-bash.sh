@@ -35,8 +35,12 @@ INPUT="$(cat)"
 
 # Extract the command + the permission mode: jq > python3 > pure-bash JSON slice.
 #
-# THE THIRD TIER IS NOT A DEGRADED MODE, it is the Windows default. Git Bash ships neither jq nor python3, so
-# on a stock Windows install this is THE path every gate decision takes. It used to read `CMD="$INPUT"` — the
+# THE THIRD TIER IS NOT A DEGRADED MODE, it is the Windows default — though not for the reason written here for
+# a long time. "Git Bash ships neither jq nor python3, so a stock Windows install takes this path" was WRONG in
+# its second half, and being wrong there is what disarmed every gate below: Windows ships a python3 that passes
+# `command -v` and cannot run, so a stock install took TIER 2 and failed open. See the note above the ladder.
+# The conclusion survives the correction — this is still the path a stock Windows install ends on — but it gets
+# there by the tier test failing, not by python3 being absent. It used to read `CMD="$INPUT"` — the
 # whole hook payload handed to the rules as though it were the command — and that is not a weaker gate, it is
 # a WRONG one, in both directions:
 #   * False positive, measured: session_id `...-f872-...` (any session id whose second group starts `f8`) contains `-f8`, the §4.5 force-push rule matches
@@ -49,7 +53,7 @@ INPUT="$(cat)"
 # no Windows user is on. smoke-test §7b pins the fallback branch itself for exactly that reason.
 #
 # The slice is pure parameter expansion: zero forks, so it is CHEAPER than the sed it replaces (Git Bash charges
-# 20-50ms per process, and this hook runs on every Bash call). `${INPUT#*"command"}` is shortest-match, so it
+# 62-135 ms per process on a Windows 11 desktop, and this hook runs on every Bash call). `${INPUT#*"command"}` is shortest-match, so it
 # takes the FIRST occurrence — greedy matching would let a command containing the literal text `"command":"`
 # relocate the parse and walk a payload straight past the rules.
 _json_slice(){  # $1 = whole payload, $2 = key -> the raw (still JSON-escaped) string value, "" if absent

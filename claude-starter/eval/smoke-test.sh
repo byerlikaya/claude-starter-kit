@@ -1151,6 +1151,25 @@ if [ "$IS_KIT" = 1 ]; then
       verfile "$rf badge" "" "$(sed -n 's|.*badge/version-\([0-9][0-9.]*\)-.*|\1|p' "$KR/$rf" | head -1)"
     done
   fi
+  # The COUNTS on the front page are a claim of the same kind, and they drifted the same way. Measured on
+  # 2.6.0: both READMEs said 39 skills -- in the badge, in the opening paragraph, in the diagram alt text, in
+  # the summary table, in the catalogue heading and in the install section -- over a generated catalogue that
+  # listed 40. Nobody counts rows in a table they scrolled past, which is exactly what the diagrams did when
+  # they announced 11 agents and 36 skills, and the answer is the same: derive the number, do not restate it.
+  # Only the badge is asserted, deliberately -- it is the one number a reader takes on trust without scrolling,
+  # and pinning every prose mention would fail on a sentence that legitimately says "12 agents own one domain".
+  NAG="$(ls "$AGENTS"/*.md 2>/dev/null | wc -l | tr -d ' ')"
+  NSK="$(find "$SKILLS" -maxdepth 2 -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')"
+  for rf in README.md README.tr.md; do
+    [ -f "$KR/$rf" ] || continue
+    for pair in "agents:$NAG" "skills:$NSK"; do
+      badge="${pair%%:*}"; real="${pair#*:}"
+      got="$(sed -n "s|.*badge/$badge-\([0-9][0-9]*\)-.*|\1|p" "$KR/$rf" | head -1)"
+      [ -n "$got" ] || continue
+      [ "$got" = "$real" ] && pass "$rf $badge badge says $got, and $real are installed" \
+        || fail "$rf $badge badge says $got but $real are installed — the front page is the last place to find this out"
+    done
+  done
   # The DIAGRAMS make a claim too, and it is the one a reader takes at face value because nobody counts nodes in
   # a picture. The hand-drawn pipeline shipped with eleven of twelve agents — performance-expert-csk was simply
   # never drawn — and every gate stayed green because none of them looked at an SVG. Both diagrams are generated
@@ -1727,7 +1746,8 @@ rm -rf "$GBX"
 # `git commit` ASKing and `git reset --hard` BLOCKing were BOTH true while the fallback was `CMD="$INPUT"` —
 # the raw hook payload fed to the matchers — because the payload contains the command as a substring, so a
 # blob match and a real parse produce the identical verdict. The gate was measured, the measurement was blind,
-# and a stock Windows install (Git Bash ships neither jq nor python3) ran the broken branch for months.
+# and a stock Windows install ran the broken branch for months — for a reason this comment got wrong until
+# §7c measured it: not because python3 is absent there, but because the one Windows ships cannot run. 
 # What the blob CANNOT survive is the payload's own metadata leaking into the rules, so that is what is pinned
 # here: a session_id containing `-f8` made every innocent `git push` hard-block as "push --force", and the §4.4
 # prompt rendered the whole JSON instead of the command the human was being asked to approve.

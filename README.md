@@ -11,7 +11,7 @@ On a shared repo, taking a work item is an atomic git claim — two people canno
 ![Version](https://img.shields.io/badge/version-2.6.0-2563eb?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)
 ![Agents](https://img.shields.io/badge/agents-12-f59e0b?style=flat-square)
-![Skills](https://img.shields.io/badge/skills-39-f59e0b?style=flat-square)
+![Skills](https://img.shields.io/badge/skills-40-f59e0b?style=flat-square)
 ![Claude Code](https://img.shields.io/badge/Claude_Code-agentic_kit-8b5cf6?style=flat-square)
 
 🇬🇧 English · [🇹🇷 Türkçe](README.tr.md)
@@ -26,7 +26,7 @@ In Claude Code every job happens in the same place: you ask, the model writes. C
 
 **The work gets a process.** 12 agents own one domain each and run across five stages — plan, build, audit, close, hand off. An ambiguous request goes to planning before anything is written; server work goes to the backend owner, schema work to the database owner. A security review is **mandatory** before a risk-critical change can close, and a code-health review runs before anything is proposed for commit. A routing hook names the owning agent beside your request, which is what turns that from a diagram into what actually happens.
 
-**The method is written once.** 39 skills hold the *how* — testing, migrations, API contracts, observability, accessibility, translation integrity, dependency upgrades, incident response, deployment. Agents stay thin: they say *who* and *when*, and apply the skill that holds the rest. You are not re-explaining your standards every session.
+**The method is written once.** 40 skills hold the *how* — testing, migrations, API contracts, observability, accessibility, translation integrity, dependency upgrades, incident response, deployment. Agents stay thin: they say *who* and *when*, and apply the skill that holds the rest. You are not re-explaining your standards every session.
 
 **Critical rules are enforced, not remembered.** A destructive command is refused before it runs, a commit waits for your approval, a leaked key or an AI-authorship trace never reaches history. These are guardrails around the work above — they are not the point of the kit, they are what lets you leave it running.
 
@@ -96,14 +96,14 @@ Then paste `.claude/FIRST_PROMPT.md` as your first Claude Code message. Homebrew
 ## What's inside
 
 <div align="center">
-  <img src="assets/network-en.svg" alt="12 agents and 39 skills, connected by their real applies relationships" width="820">
+  <img src="assets/network-en.svg" alt="12 agents and 40 skills, connected by their real applies relationships" width="820">
   <br><sub>Every agent, every skill, and the real <code>applies</code> relationships — grouped by stage, each agent its own hue; the centre is the main thread that orchestrates them.</sub>
 </div>
 
 | Component | Count | What it is |
 |:--|:--:|:--|
 | **Agents** | 12 | Thin triggers — *who* owns a domain and *when* they fire |
-| **Skills** | 39 | The method, written once, applied by whoever needs it |
+| **Skills** | 40 | The method, written once, applied by whoever needs it |
 | **Slash commands** | 9 | `/brainstorm-csk` · `/plan-csk` · `/review-csk` · `/ship-csk` · `/handoff-csk` · `/update-csk` · `/doctor-csk` · `/board-csk` · `/gates-csk` |
 | **Hooks** | 12 | The gates, plus session measurement and routing |
 | **Discipline** | 1 | Principles, workflow, Definition of Done, prohibitions — imported by your `CLAUDE.md` |
@@ -135,7 +135,7 @@ Two git hooks — `pre-commit` and `commit-msg` — run the trace, secret, repo-
 **And it stays off until you ask for it.** A repo that never runs `/board-csk init` has no board and no board gates — solo work, and every project that installed the kit earlier, behaves exactly as before. Where a board does exist, `/board-csk off` (or `--global`) releases all three gates and leaves the board intact, `CSK_NO_BOARD=1` does the same for one session, and setting `require_item: referenced` in the board's config keeps the claims and the shared memory while dropping the enforcement. A board works without a remote too — you keep the item list, the dependency order and the gates; only the sharing is gone.
 
 <details>
-<summary>📚&nbsp; <b>All 39 skills — the full catalogue, generated from each skill</b></summary>
+<summary>📚&nbsp; <b>All 40 skills — the full catalogue, generated from each skill</b></summary>
 
 <!-- SKILLS:START -->
 
@@ -273,7 +273,7 @@ bash start.sh [--dotnet|--generic] [-h]
 
 Two steps: backend pattern, then a summary you approve before anything is written.
 
-**Every install is the same install** — all 12 agents and all 39 skills, backend and web and mobile (React Native/Expo) together. A project that starts as an API and grows a web client is already equipped for both.
+**Every install is the same install** — all 12 agents and all 40 skills, backend and web and mobile (React Native/Expo) together. A project that starts as an API and grows a web client is already equipped for both.
 
 | Asked at install | Options | What it changes |
 |:--|:--|:--|
