@@ -1094,7 +1094,10 @@ if [ "$IS_KIT" = 1 ]; then
   TH="$(ls "$ROOT"/hooks/*.sh 2>/dev/null | wc -l | tr -d ' ')"
   for r in README.md README.tr.md; do
     [ -f "$KR/$r" ] || continue
-    HC="$(grep -cE "(\*\*Hooks\*\*|\*\*Hook'lar\*\*) \| $TH \||All $TH hooks|$TH hook'un tamamı" "$KR/$r" 2>/dev/null | tr -d ' ')"
+    # The LABEL is not the claim; the number beside it is. Pinning one spelling made this fail on a Turkish
+    # rewrite that corrected `**Hook'lar** | 12 |` to `**Hook** | 12 |` — which is the right Turkish, since a
+    # count is not followed by a plural suffix. Accept any of the spellings and keep asserting the count.
+    HC="$(grep -cE "(\*\*Hooks?\*\*|\*\*Hook'lar\*\*) \| $TH \||All $TH hooks|$TH hook'un tamamı" "$KR/$r" 2>/dev/null | tr -d ' ')"
     [ "${HC:-0}" -ge 2 ] && pass "$r states the real hook count ($TH) in both the summary table and the section header" \
       || fail "$r does not state $TH hooks in both places — the count drifted from hooks/ (found $HC of 2)"
   done
