@@ -92,10 +92,24 @@ while IFS= read -r f; do
       esac
       shopt -u nocasematch 2>/dev/null || true ;;
   esac
+  # Case-insensitive, and that IS a widening — the rule this replaced used a case-SENSITIVE `grep -qE`, so
+  # `server.PEM`, `id.KEY` and `cert.P12` were committable while their lowercase twins were blocked. Left open
+  # once already, on the grounds that widening a gate does not belong inside a performance change. It belongs
+  # here: Windows and macOS filesystems are case-insensitive, so `server.PEM` and `server.pem` are the SAME
+  # FILE, and a rule that blocks one spelling of a private key while allowing another has protected nothing.
+  # Same class as the `chmod 777` vs `chmod 1777` hole and the `rm -rf` vs `rm -Rf` one this file already fixed.
+  #
+  # nocasematch is opened and closed around this block ALONE. Left on across the whole loop it silently changed
+  # the .env test above, which is exactly how `server.PEM` moved from allowed to blocked as an invisible side
+  # effect the first time. The must-not-block half is cased too: `.pem.example`, `key.md`, `monkey.ts`,
+  # `KEYS.md` and `public.pub` all stay committable, and smoke-test pins them in both directions.
+  shopt -s nocasematch 2>/dev/null || true
   case "$base" in
+    *.example|*.sample|*.template|*.dist|*.md|*.pub) : ;;
     id_rsa|id_dsa|id_ecdsa|id_ed25519|.npmrc|.pypirc|.htpasswd|credentials.json) is_secret_file=1 ;;
     *.pem|*.pfx|*.p12|*.ppk|*.key|*.keystore|*.jks) is_secret_file=1 ;;
   esac
+  shopt -u nocasematch 2>/dev/null || true
   if [ "$is_secret_file" = 1 ] && ! { [ -n "$SAL" ] && grep -qxF -- "$f" "$SAL"; }; then
     echo "SECRET-FILE: '$f' is a secrets / credentials / private-key file — never commit it (gitignore it; ship a .env.example instead)."
     HIT=1; continue

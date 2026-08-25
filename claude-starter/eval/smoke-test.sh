@@ -1281,6 +1281,24 @@ if command -v git >/dev/null 2>&1; then
   pc && fail "secret-file gate let an id_rsa through" || pass "secret-file gate blocks a private key (id_rsa)"
   pcreset; printf 'AWS_SECRET=your-value\n' > "$PR/.env.example"
   pc && pass "secret-file gate allows a committable .env.example" || { fail ".env.example wrongly blocked"; sed -n 1,2p "$PCLOG"; }
+  # CASE. The extension test used to be case-SENSITIVE, so `server.PEM` was committable while `server.pem` was
+  # blocked — on Windows and macOS those are the same file. Both directions, because widening a gate is only
+  # half the work: the second list is what stops it from blocking `key.md` or `monkey.ts`.
+  # `pcreset` clears a FIXED list of fixture files, so anything else these loops create would stay STAGED into
+  # the next iteration and every later case would be blocked by the leftover — which is exactly what the first
+  # version of this block measured, and it reported the hook as over-blocking seven innocent files. Each case
+  # removes its own file, so each `pc` sees one file and nothing else.
+  kfcase(){ pcreset; printf '%s\n' "$2" > "$PR/$1"; pc; kfr=$?; ( cd "$PR" && git reset -q HEAD -- . && rm -f "$1" ) >/dev/null 2>&1; return $kfr; }
+  KFB=""; for kf in server.pem server.PEM Server.Pem id.KEY cert.P12 a.pfx b.ppk c.keystore d.jks ID_RSA; do
+    kfcase "$kf" KEYDATA && KFB="$KFB $kf"
+  done
+  [ -z "$KFB" ] && pass "secret-file gate blocks private-key names in ANY case (10 spellings)" \
+                || fail "private-key file(s) let through by case:$KFB"
+  KFO=""; for kf in server.pem.example cert.PEM.example key.md KEYS.md monkey.ts turkey.txt public.pub; do
+    kfcase "$kf" "not a secret" || KFO="$KFO $kf"
+  done
+  [ -z "$KFO" ] && pass "case-insensitive key gate does NOT block templates/docs/lookalikes (7 cases)" \
+                || fail "wrongly blocked by the widened key gate:$KFO"
   rm -rf "$PR" "$PCLOG"
 else pass "pre-commit scanner tests skipped (no git)"; fi
 
