@@ -106,8 +106,15 @@ while IFS='|' read -r name path; do
   if [ -f "$TRUST" ] && grep -qF "$dg $name" "$TRUST" 2>/dev/null; then continue; fi
   verdict="unscanned"
   if [ -x "$HERE/../eval/scan-skill.sh" ] || [ -f "$HERE/../eval/scan-skill.sh" ]; then
-    if bash "$HERE/../eval/scan-skill.sh" "$path" >/dev/null 2>&1; then verdict="scanner: SAFE"
-    else verdict="scanner: REVIEW/DANGER — read it before acting on it"; fi
+    # Three outcomes, not two. rc=3 means the scanner found nothing to scan — an empty directory, a vanished
+    # path, a folder with no manifest — and reporting that as SAFE told the user a file had been checked when
+    # it had not. "I found nothing wrong" and "I did not look" are different answers on a security surface.
+    bash "$HERE/../eval/scan-skill.sh" "$path" >/dev/null 2>&1
+    case "$?" in
+      0) verdict="scanner: SAFE" ;;
+      3) verdict="scanner: NOT SCANNED — nothing there to read; look at it yourself" ;;
+      *) verdict="scanner: REVIEW/DANGER — read it before acting on it" ;;
+    esac
   fi
   NEW="$NEW
   - $name ($verdict)"

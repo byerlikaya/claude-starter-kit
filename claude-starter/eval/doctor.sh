@@ -146,6 +146,7 @@ if [ -d .claude/skills ]; then
     warn "  truncate or drop descriptions, and a skill whose description is gone stops matching requests."
     warn "  Fixes: raise \"skillListingBudgetFraction\" in settings, or set rarely-used skills to \"name-only\""
     warn "  in \"skillOverrides\". Re-check with a smaller CONTEXT_WINDOW=200000 to see your real model's budget."
+    warn "  Which skills? bash .claude/eval/utilization.sh — it reports the ones nothing in this project reached."
   fi
 fi
 

@@ -65,6 +65,38 @@ versioning follows [SemVer](https://semver.org/).
   unguarded copy of the gates it ships. Matched by the kit's own filenames, so a project's unrelated `hooks/`
   directory is untouched.
 
+### Added
+- **`eval/utilization.sh` — what the kit loads versus what it actually reaches.** Every installed skill spends
+  its name and description in every session forever, and `doctor.sh` §4a already reported that cost against the
+  budget; the remedy it points at (`skillOverrides: name-only`) needs a list of WHICH skills and nothing
+  produced one. This reads the project's own transcripts and reports fired-vs-cold with the bytes the cold ones
+  cost. Two shapes count as a firing — a Read of `skills/<name>/SKILL.md`, or the `Skill` tool naming it — and
+  both are anchored, because matching a bare name anywhere in the JSON would count the kit measuring itself: a
+  single `grep -rn description:` result echoes all 40 paths on one line. It reads the whole session tree, not
+  just the top level: measured on one project, 14 transcripts sit at the top and 306 in the per-session
+  `subagents/` trees, which is where delegated work — and therefore most skill use — actually happens. An
+  absent transcript reports NOT MEASURED, never "0 fired". Current project only unless `--all-projects` is
+  asked for; names and counts only, never a path or a prompt. Run in the kit's own repository it says so, since
+  a SKILL.md opened to be edited is indistinguishable from one that fired.
+
+### Changed
+- **The suite's verdict now carries its denominator, and a skipped case is no longer green.** `SMOKE-TEST:
+  PASSED ✅` printed identically whether 584 assertions ran or 298 did (`CSK_SMOKE_SCOPE=install` drops the
+  rest), and seventeen places reported a case that did not run as a passing ✅ — so "a tool is missing here" and
+  "the gate holds" were the same output. Skips are now counted, listed, and classified: `tool` and `fixture`
+  mean the environment failed and turn CI red; `scope` and `platform` are honest answers everywhere and do not.
+  The asymmetry is asserted in four states by the suite itself rather than described in a comment.
+- **`eval/scan-skill.sh`: three answers instead of two, and one more thing to look for.** `skill-trust.sh` gates
+  on this script's exit code and prints "scanner: SAFE" when it is 0 — which is what a target with nothing to
+  read returned, so a component nobody had looked at was reported to the user as clean. Nothing-scanned now
+  exits 3 and the trust hook reports NOT SCANNED. A skill directory carrying no `SKILL.md` is named rather than
+  passed over in silence. And a runtime instruction fetch (`curl …/instructions.md`, a `WebFetch` tied to
+  instructions) is HIGH: that one is not a missing pattern but the assumption the trust model rests on — a
+  digest answers "have these bytes changed?", which is the wrong question for a file whose bytes say "fetch your
+  real instructions from this URL". Measured against the kit's own payload: 63 of 63 files still SAFE.
+- **`token-budget` gains the axis none of its rules covered** — what a single command hands back to the context,
+  as distinct from what the context holds — and routes the utilization report.
+
 ### Tests
 - §4.5 grows from 4 write-side cases to 65 new assertions across three tiers (`jq`, `python3`, and the
   pure-bash fallback in the suite's existing no-`jq`/no-`python3` sandbox). Each positive case was first shown

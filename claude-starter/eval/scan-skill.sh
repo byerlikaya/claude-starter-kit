@@ -8,7 +8,11 @@
 # can legitimately score low — REVIEW the flagged file, don't trust the number blindly. Its job is to SURFACE
 # curl|bash, prompt-injection directives, credential/exfil patterns, not to prove intent.
 #
-# Exit: 0 if every scanned file is SAFE, 1 if any is REVIEW/DANGER (so a caller like adopt.sh can gate on it).
+# Exit: 0 if every scanned file is SAFE, 1 if any is REVIEW/DANGER, 3 if NOTHING WAS SCANNED.
+# 3 exists because 0 was answering a question nobody asked. skill-trust.sh gates on this exit code and prints
+# "scanner: SAFE" when it is 0 — so a path the scanner never looked at (an empty directory, a vanished target,
+# a folder with no manifest) was reported to the user as clean. "I found nothing wrong" and "I did not look"
+# are different answers, and only one of them belongs on a security surface.
 # Usage:  bash scan-skill.sh [path]   (default: .claude)
 set -uo pipefail
 TARGET="${1:-.claude}"
@@ -17,8 +21,16 @@ TARGET="${1:-.claude}"
 # CRIT: download-and-exec, known exfil/collaborator hosts, rm -rf of home/root.
 CRIT='(curl|wget|fetch)[^|]*\|[[:space:]]*(sudo[[:space:]]+)?(bash|sh|zsh|python[0-9.]*|node|perl|ruby)|(bash|sh)[[:space:]]+<\(|(webhook\.site|requestbin|pipedream\.net|ngrok\.io|burpcollaborator|oastify|interactsh|dnslog\.|\.oast\.)|rm[[:space:]]+-[A-Za-z]*r[A-Za-z]*[[:space:]]+(~|/|\$HOME)([[:space:]]|$|/)'
 # HIGH: prompt-injection directives; a credential file READ/exfil (a reader verb + the path — a bare `~/.ssh/id_rsa`
-# config value is NOT flagged); base64-decode piped to a shell.
-HIGH='ignore[[:space:]]+(all[[:space:]]+)?(the[[:space:]]+)?(previous|prior|above)[[:space:]]+(instruction|prompt)|disregard[[:space:]]+(the[[:space:]]+|all[[:space:]]+)?(previous|above|prior)|ignore[[:space:]]+your[[:space:]]+(system[[:space:]]+)?(prompt|instruction)|(cat|less|more|tail|head|base64|xxd|od|strings|curl|wget|scp|cp|rsync)[^|]*(~/\.ssh|id_rsa|/etc/(passwd|shadow)|\.aws/credentials|\.netrc|\.git-credentials)|(~/\.ssh|id_rsa|/etc/(passwd|shadow)|\.aws/credentials|\.netrc|\.git-credentials)[^|]{0,80}(curl|wget|scp|nc |netcat|base64|exfiltrat)|base64[[:space:]]+-[A-Za-z]*d[^|]*\|'
+# config value is NOT flagged); base64-decode piped to a shell; and a RUNTIME INSTRUCTION FETCH.
+#
+# That last one is not a missing regex, it is the assumption the trust model rests on. skill-trust.sh accepts a
+# component by DIGEST, and a digest answers "have these bytes changed?" — which is the wrong question for a file
+# whose bytes say "fetch your real instructions from this URL". The digest never moves while the behaviour is
+# rewritten by whoever controls the endpoint, and the component stays on the accepted list forever. So fetching
+# an instruction-shaped file (.md/.txt/.yml/.json) and a WebFetch tied to instructions/prompts are HIGH, while
+# an ordinary outbound URL stays LOW: measured against the kit's own payload, this flags 0 of 59 files, and the
+# two places the kit itself names WebFetch (a `tools:` line and a `Requires-tool` marker) are untouched.
+HIGH='ignore[[:space:]]+(all[[:space:]]+)?(the[[:space:]]+)?(previous|prior|above)[[:space:]]+(instruction|prompt)|disregard[[:space:]]+(the[[:space:]]+|all[[:space:]]+)?(previous|above|prior)|ignore[[:space:]]+your[[:space:]]+(system[[:space:]]+)?(prompt|instruction)|(cat|less|more|tail|head|base64|xxd|od|strings|curl|wget|scp|cp|rsync)[^|]*(~/\.ssh|id_rsa|/etc/(passwd|shadow)|\.aws/credentials|\.netrc|\.git-credentials)|(~/\.ssh|id_rsa|/etc/(passwd|shadow)|\.aws/credentials|\.netrc|\.git-credentials)[^|]{0,80}(curl|wget|scp|nc |netcat|base64|exfiltrat)|base64[[:space:]]+-[A-Za-z]*d[^|]*\||(curl|wget)[[:space:]][^|]*https?://[^[:space:]]*\.(md|txt|ya?ml|json)|(WebFetch|web_fetch)[^|]{0,120}(instruction|prompt|then follow|steps to follow)'
 # MED: named cloud/CI secret env vars, process.env secret access, chmod 777, code eval/exec.
 MED='(GITHUB_TOKEN|AWS_SECRET|AWS_ACCESS_KEY|NPM_TOKEN|OPENAI_API_KEY|ANTHROPIC_API_KEY|SLACK_TOKEN)|process\.env\.[A-Za-z_]*(TOKEN|SECRET|KEY|PASSWORD)|chmod[[:space:]]+(-R[[:space:]]+)?0?777|[^a-zA-Z](eval|exec)[[:space:]]*\('
 # LOW: an outbound URL fetch or a raw socket — common in benign deploy/example prose, hence low weight.
@@ -111,6 +123,18 @@ elif [ -d "$TARGET" ]; then
     case "$f" in *-csk.md) continue ;; esac
     FILES+=("$f")
   done < <(find "$TARGET" \( -name 'SKILL.md' -o -name '*.md' \) -path '*/skills/*' -o -path '*/agents/*' -name '*.md' 2>/dev/null | sort -u)
+  # A skill directory with no SKILL.md is invisible to the scan above — the loop only ever sees files, so a
+  # folder carrying scripts and references but no manifest was scanned file by file (or not at all) and never
+  # named as odd. It is also the shape a component takes when it is trying not to look like a component.
+  # Globs, not `find`: `-depth 2` means "process contents first" to GNU find and takes no argument, so the
+  # BSD spelling that works on macOS is a syntax error on Linux and in Git Bash — i.e. on two of the three
+  # platforms this kit ships to. Globbing is also fork-free, which this scanner cares about (see the cost note).
+  for d in "$TARGET"/skills/*/ "$TARGET"/*/skills/*/; do
+    [ -d "$d" ] || continue                       # an unmatched glob expands to itself
+    [ -f "${d}SKILL.md" ] && continue
+    printf '  ⚠️  ---  %s  (no SKILL.md) — REVIEW: a skill directory without its manifest\n' "${d%/}"
+    FAIL=1; N=$((N+1))
+  done
   if [ "${#FILES[@]}" -le 1 ]; then
     [ "${#FILES[@]}" -eq 1 ] && scan_file "${FILES[0]}"
   else
@@ -129,10 +153,10 @@ elif [ -d "$TARGET" ]; then
     fi
   fi
 else
-  echo "  (nothing to scan at '$TARGET')"; exit 0
+  echo "  (nothing to scan at '$TARGET')"; exit 3
 fi
 
 echo "---"
-if [ "$N" -eq 0 ]; then echo "scan: nothing scanned"; exit 0; fi
+if [ "$N" -eq 0 ]; then echo "scan: nothing scanned"; exit 3; fi
 if [ "$FAIL" -eq 0 ]; then echo "SCAN: all $N file(s) SAFE ✅"; exit 0
 else echo "SCAN: review the flagged file(s) above ⚠️  (heuristic — security-education skills can score low by design)"; exit 1; fi
