@@ -22,7 +22,19 @@ SAL=""; [ -n "$GITROOT" ] && [ -f "$GITROOT/.secret-allowlist.txt" ] && SAL="$GI
 # `if` — so a match in a LARGE staged diff would silently count as no match. A gate that only works on small
 # commits is worse than no gate.
 TRACE_F="$(mktemp)"; SECRET_F="$(mktemp)"
-trap 'rm -f "$TRACE_F" "$SECRET_F"' EXIT INT TERM
+# Cleanup runs on EXIT; the SIGNAL handlers additionally EXIT. A bare `trap '...' EXIT INT TERM` looks like it
+# handles all three, but bash returns to the script after a signal handler that does not exit — so TERM removed
+# the temp files this hook is still reading from and then let it carry on, printing `grep: /tmp/tmp.X: No such
+# file or directory` for the rest of the run. Measured here: after a TERM the hook exited 0, not 143, which is
+# the signature — a process killed by a signal cannot exit 0.
+#
+# That is how a slow commit becomes a STUCK one. A wrapper with a two-minute timeout sends TERM, the hook
+# swallows it, git keeps running, and `.git/index.lock` stays behind holding the repository. Every later git
+# command then fails with "Another git process seems to be running", which names nothing about the real cause.
+# 143 = 128 + SIGTERM, the exit status a shell reports for a process the signal actually stopped.
+_csk_cleanup(){ rm -f "$TRACE_F" "$SECRET_F" ${PRIV_F:+"$PRIV_F"} ${PTERM_F:+"$PTERM_F"}; }
+trap _csk_cleanup EXIT
+trap '_csk_cleanup; exit 143' INT TERM
 
 # Secrets are scanned EVERYWHERE. A token pasted into .claude/settings.json is still a token.
 # The kit's own blocklist files are excluded — they definitionally contain the patterns (circular), and since
@@ -201,7 +213,6 @@ fi
 #                strings you do not want published.
 #   escape     : .private-allowlist.txt, a term per full line, for the rare case a term is legitimately public.
 PRIV_F="$(mktemp)"; PTERM_F="$(mktemp)"
-trap 'rm -f "$TRACE_F" "$SECRET_F" "$PRIV_F" "$PTERM_F"' EXIT INT TERM
 PTF="";  [ -n "$GITROOT" ] && [ -f "$GITROOT/.private-terms.txt" ]     && PTF="$GITROOT/.private-terms.txt"
 PAL="";  [ -n "$GITROOT" ] && [ -f "$GITROOT/.private-allowlist.txt" ] && PAL="$GITROOT/.private-allowlist.txt"
 {

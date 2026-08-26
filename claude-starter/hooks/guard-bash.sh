@@ -339,7 +339,12 @@ case "$CMD" in *[Ii][Cc][Aa][Cc][Ll][Ss]*) : ;; *) false ;; esac && echo "$CMD" 
 
 # §4.5 gate-tampering -> HARD BLOCK. A gate you can silently remove is not a gate: redirecting core.hooksPath,
 # or deleting/overwriting/patching the hook scripts, would disarm the trace/secret/approval gates in one line.
-[ "$HAS_GIT" = 1 ] && echo "$CMD" | grep -qE 'git[[:space:]]+config\b[^|]*core\.hooksPath'                       && block "git config core.hooksPath (disarms the git hooks)" "4.5"
+# READING the setting is not disarming it. `git config --get core.hooksPath` is how a person (or the doctor)
+# CHECKS that the gate is armed, and blocking it told them the kit was tampering-proof by refusing to let them
+# verify it. Only the write forms disarm: a bare `git config core.hooksPath <value>`, `--unset`, `--replace-all`.
+[ "$HAS_GIT" = 1 ] && echo "$CMD" | grep -qE 'git[[:space:]]+config\b[^|]*core\.hooksPath' \
+  && ! echo "$CMD" | grep -qE 'git[[:space:]]+config\b[^|]*(--get(-all|-regexp|-urlmatch)?|--list)([[:space:]]|$)' \
+  && block "git config core.hooksPath (disarms the git hooks)" "4.5"
 # Inline config override: `git -c core.hooksPath=…` / `git --config-env core.hooksPath=…` turns the hooks off for
 # that one command WITHOUT the word `config` (so the rule above misses it) — the exact equivalent of --no-verify.
 [ "$HAS_GIT" = 1 ] && echo "$CMD" | grep -qiE 'git[[:space:]]+([^;&|]*[[:space:]])?(-c|--config-env)[[:space:]=]+core\.hooksPath' && block "git -c core.hooksPath (disarms the git hooks)" "4.5"
@@ -366,7 +371,7 @@ GATE='\.(claude/(hooks|settings\.json|DISCIPLINE\.md)|git/hooks)'
 # to route around. A verb in one command and a path in another was never evidence of anything: the two forms
 # that matter — `rm .claude/hooks/x` and `x > .claude/hooks/y` — both put them in the SAME segment, and both
 # are still blocked (asserted in smoke-test, in both directions).
-case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE "(rm|mv|cp|truncate|tee|install|ln|perl|python[0-9.]*|ruby|node|ex|ed|set-content|add-content|clear-content|out-file|new-item|rename-item|copy-item|move-item|remove-item)\b[^;&|]*$GATE" && block "write/tamper of a gate file (hook/settings/.git-hooks)" "4.5"
+case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE "(^|[^A-Za-z0-9_-])(rm|mv|cp|truncate|tee|install|ln|perl|python[0-9.]*|ruby|node|ex|ed|set-content|add-content|clear-content|out-file|new-item|rename-item|copy-item|move-item|remove-item)\b[^;&|]*$GATE" && block "write/tamper of a gate file (hook/settings/.git-hooks)" "4.5"
 case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE "(sed|perl|awk|ruby)[[:space:]]+(-[^[:space:]]+[[:space:]]+)*-i[^;&|]*$GATE"          && block "in-place edit of a gate file" "4.5"
 # The redirect TARGET must be the gate path, not merely something later on the line: a target is one token, so
 # it cannot contain whitespace or a command separator.
@@ -421,7 +426,29 @@ CRED='(\.ssh/(id_[A-Za-z0-9_]+|identity)|(^|/)id_(rsa|dsa|ecdsa|ed25519)|\.aws/c
 
 # §4.5 force-add bypasses .gitignore (sneaks build output / secrets past the bloat & ignore rules); deleting a
 # lockfile is a §4.5 op the discipline already names. Both are only done on an explicit request.
-{ git_has "$CMD" 'add' && has '(-[A-Za-z]*f[A-Za-z]*|--force)([[:space:]]|$)'; } && block "git add -f (bypasses .gitignore)" "4.5"
+# §4.5 `git add -f` bypasses .gitignore. The flag must be one of THIS command's own arguments, and until now it
+# was searched across the WHOLE command string — so on a Windows machine doing ordinary work these were all
+# blocked as "git add -f" with no `git add -f` anywhere in them:
+#     git add a b && git commit -q -F -        (the -F belongs to commit; git add has no -F at all)
+#     rm -f .git/index.lock; git add x         (the -f belongs to rm, and comes first)
+#     Remove-Item -Force ...; git add x        (--force belongs to Remove-Item)
+# The first is the ordinary way to write a commit, so the gate fired on the normal path and pushed the user
+# toward splitting every commit into extra tool calls — which is the very thing that leaves index.lock behind.
+# A gate that cries wolf on correct commands is a gate people learn to route around. The scan is therefore
+# bounded to the text between `git add` and the next command separator, and is case-SENSITIVE: `-F` is a
+# commit/tag flag, never an add flag.
+if [ "$HAS_GIT" = 1 ] && git_has "$CMD" 'add'; then
+  _ADDSEG="$(printf '%s' "$CMD" | grep -oE 'git[[:space:]]+([^;&|]*[[:space:]])?add([^;&|]*)' 2>/dev/null || true)"
+  printf '%s' "$_ADDSEG" | grep -qE '(^|[[:space:]])(-[A-Za-z]*f[A-Za-z]*|--force)([[:space:]]|$)' \
+    && block "git add -f (bypasses .gitignore)" "4.5"
+fi
+  # `git update-index --add` stages a path REGARDLESS of .gitignore — the same bypass `git add -f` performs, by
+  # a different spelling. Blocking one and not the other is not a policy, it is an oversight: seen live on a
+  # Windows machine, `git update-index --add --chmod=+x deploy/rolling-update.sh` staged the file with nothing
+  # said. (Staging itself is deliberately NOT gated here — only commit and push ask — so this rule is about the
+  # gitignore bypass alone, not about stopping people from staging files.)
+  [ "$HAS_GIT" = 1 ] && echo "$CMD" | grep -qE 'git[[:space:]]+([^;&|]*[[:space:]])?update-index\b[^;&|]*(--add|--force-remove)' \
+    && block "git update-index --add (bypasses .gitignore, same as git add -f)" "4.5"
 case "$CMD" in *[Rr][Mm]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE '(rm|git[[:space:]]+rm)\b[^|]*(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|npm-shrinkwrap\.json|Gemfile\.lock|poetry\.lock|Pipfile\.lock|Cargo\.lock|composer\.lock|go\.sum|packages\.lock\.json)' && block "lockfile deletion" "4.5"
 
 # --- §4.4 commit/push approval gate ---

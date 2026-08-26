@@ -39,6 +39,29 @@ _git_dir(){ git rev-parse --git-common-dir 2>/dev/null; }
 _ref(){ git config --get csk.boardRef 2>/dev/null || echo 'refs/csk/board'; }
 _remote(){ git config --get csk.boardRemote 2>/dev/null || echo 'origin'; }
 
+# ---- network git: never block, never prompt ------------------------------------------------------------
+# Every git call that reaches a REMOTE goes through here, because a remote is where a hook stops being slow
+# and starts being infinite. Three ways that happens, all silent:
+#   * git asks for a username on the terminal. A hook has no terminal, so it waits — forever.
+#   * Git Credential Manager, the DEFAULT helper on Windows, opens a GUI dialog. In a hook nobody is looking
+#     at that window, and it waits forever too. This is the one that hurts: it looks like a frozen commit.
+#   * the remote accepts the connection and then stalls, which no prompt setting covers.
+# GIT_TERMINAL_PROMPT=0 turns the first into an immediate failure, GCM_INTERACTIVE=never disables the second,
+# and `timeout` bounds the third. Where timeout is absent the first two still apply.
+#
+# Bounding these is safe precisely because failure is ALREADY the graceful path: a non-zero _fetch means
+# "remote unreachable — showing the last known state", and a non-zero _commit_push means "kept locally, the
+# team cannot see it yet". So this converts a hang into a sentence the user can act on, and never into data
+# loss. CSK_NET_TIMEOUT overrides the bound for a slow link.
+_TMO="$(command -v timeout 2>/dev/null || true)"
+_gitnet(){
+  if [ -n "$_TMO" ]; then
+    GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never "$_TMO" "${CSK_NET_TIMEOUT:-15}" git "$@"
+  else
+    GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never git "$@"
+  fi
+}
+
 # Identity. The email is the claim owner; it is already configured in every clone that can commit.
 _me(){
   local m; m="$(git config --get user.email 2>/dev/null)"
@@ -67,13 +90,13 @@ _enabled(){
 # keeping — every mutation re-derives itself from the fetched state (see _mutate).
 _fetch(){
   local ref remote; ref="$(_ref)"; remote="$(_remote)"
-  git fetch -q "$remote" "+$ref:$ref" 2>/dev/null && return 0
+  _gitnet fetch -q "$remote" "+$ref:$ref" 2>/dev/null && return 0
   # Only the teammate who ran `init` runs `probe`, so only that clone learns the team fell back to the orphan
   # branch. Everyone else would look for refs/csk/board forever and see no board at all. When nothing is
   # recorded here and the default namespace turns up empty, try the fallback and record the answer — one extra
   # fetch, once per clone.
   if [ -z "$(git config --get csk.boardRef 2>/dev/null)" ] \
-     && git fetch -q "$remote" '+refs/heads/csk-board:refs/heads/csk-board' 2>/dev/null; then
+     && _gitnet fetch -q "$remote" '+refs/heads/csk-board:refs/heads/csk-board' 2>/dev/null; then
     git config csk.boardRef 'refs/heads/csk-board'
     return 0
   fi
@@ -168,7 +191,7 @@ _commit_push(){ # _commit_push <tree> <message> -> 0 pushed · 2 rejected (retry
   if _have_board; then sha="$(git commit-tree "$tree" -p "$(_ref)" -m "$msg")"
   else                 sha="$(git commit-tree "$tree" -m "$msg")"; fi
   [ -n "$sha" ] || return 1
-  local err; err="$(git push --quiet "$(_remote)" "$sha:$(_ref)" 2>&1)"; local rc=$?
+  local err; err="$(_gitnet push --quiet "$(_remote)" "$sha:$(_ref)" 2>&1)"; local rc=$?
   if [ $rc -eq 0 ]; then
     git update-ref "$(_ref)" "$sha"
     return 0
@@ -667,8 +690,8 @@ cmd_probe(){
   remote="$(_remote)"
   empty="$(git hash-object -w -t tree /dev/null)"
   probe="$(git commit-tree "$empty" -m 'board: capability probe')"
-  if git push --quiet "$remote" "$probe:refs/csk/probe" 2>/dev/null; then
-    git push --quiet "$remote" ":refs/csk/probe" 2>/dev/null
+  if _gitnet push --quiet "$remote" "$probe:refs/csk/probe" 2>/dev/null; then
+    _gitnet push --quiet "$remote" ":refs/csk/probe" 2>/dev/null
     git config csk.boardRef 'refs/csk/board'
     echo "probe: custom ref namespace accepted -> refs/csk/board (invisible to git branch)"
   else

@@ -97,7 +97,11 @@ clone_devarch() {  # $1 = target dir; clone verbatim, drop nested .git, rename t
   command -v git >/dev/null 2>&1 || { echo "  ERROR: git missing; cannot include DevArchitecture."; return 1; }
   local tmp; tmp="$(mktemp -d)"
   echo "  Downloading: $DEVARCH_URL"
-  if ! git clone --depth 1 "$DEVARCH_URL" "$tmp/da" >/dev/null 2>&1; then
+  # No timeout on this one, deliberately: a first clone of a real backend base legitimately takes minutes on a
+  # slow link, and cutting it off would break the feature to fix a hang it does not have. What it CAN hit is the
+  # credential prompt — if the URL ever moves behind auth, git asks for a username and the installer stops dead
+  # with no output. Suppressing the prompt turns that into the error message two lines below.
+  if ! GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never git clone --depth 1 "$DEVARCH_URL" "$tmp/da" >/dev/null 2>&1; then
     echo "  ERROR: clone failed (network/access?). Manually: git clone $DEVARCH_URL"
     rm -rf "$tmp"; return 1
   fi
