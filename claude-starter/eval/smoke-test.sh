@@ -46,6 +46,65 @@ UNITS=1; [ "${CSK_SMOKE_SCOPE:-full}" = install ] && UNITS=0
 # Trigger-phrases requirement: a GATE in the kit repo, a note in an installed project (your skills, your call).
 need_trigger(){ if kit_owned "${2:-}"; then fail "$1"; else note "$1 (your own skill/agent; not gated in an install)"; fi; }
 
+# ---- the JSON oracle: a parser chosen by whether it WORKS, not whether its name resolves ---------------------
+# Several gates below check JSON the kit ITSELF produced. Validating generated JSON with the same hand-rolled
+# bash slicing that generated it proves nothing, so those gates want an independent parser — and they asked for
+# one by name: `command -v jq`. On Windows that question has a wrong answer waiting, and this branch already
+# paid for it once. Microsoft ships a `python3` on PATH by default that is a Store redirector stub: it resolves,
+# writes to stderr and exits 49 with empty stdout. Three tool-level guards trusted `command -v` and fell open on
+# every Windows machine. The rule that came out of that fix is the rule here — PROBE the tool, never ask whether
+# the name resolves.
+#
+# So this is a LADDER, not a name: jq first (its expressions are terser), then a real python3, then python. Each
+# candidate must actually parse a document before it is accepted, which is what keeps the Store stub out. When
+# none of them parses, JSONQ stays empty and the gates that need an oracle skip as class `tool` — which arms the
+# CI failure, because a runner carrying no JSON parser at all is a broken runner, not an exemption.
+#
+# Why it matters that this is a ladder and not just jq: the runner images carry jq, a real user's Git Bash
+# usually does not. Measured on a Windows 11 desktop with no jq — 619 assertions graded against 633 on
+# windows-latest. Fourteen checks differ, and only TWO of them announce themselves as skips; the rest are
+# `if jq` blocks with no else, so they simply do not run and nothing says so.
+JSONQ=""
+for _jc in jq python3 python; do
+  command -v "$_jc" >/dev/null 2>&1 || continue
+  if [ "$_jc" = jq ]; then printf '{}' | jq -e . >/dev/null 2>&1 && { JSONQ=jq; break; }
+  else printf '{}' | "$_jc" -c 'import sys,json;json.load(sys.stdin)' >/dev/null 2>&1 && { JSONQ="$_jc"; break; }
+  fi
+done
+unset _jc
+json_ok(){    # stdin parses as JSON — the `jq empty` question. rc 2 = no oracle available at all.
+  case "$JSONQ" in
+    jq) jq empty >/dev/null 2>&1 ;;
+    "") return 2 ;;
+    *)  "$JSONQ" -c 'import sys,json;json.load(sys.stdin)' >/dev/null 2>&1 ;;
+  esac
+}
+json_get(){   # $1 = dotted path. Mimics `jq -e`: prints the value as JSON, non-zero when absent, null or false.
+  # The two branches must answer IDENTICALLY, including what they print on a miss — jq prints `null` and exits 1,
+  # so the python branch does too. An oracle whose answer depends on which tier happened to be installed is not
+  # an oracle; it is a second variable in the experiment, and this suite already spent a night on one of those.
+  case "$JSONQ" in
+    jq) jq -e ".$1" 2>/dev/null ;;
+    "") return 2 ;;
+    *)  "$JSONQ" -c 'import sys,json
+d=json.load(sys.stdin)
+for k in sys.argv[1].split("."):
+    d = d.get(k) if isinstance(d,dict) else None
+print(json.dumps(d))
+sys.exit(1 if (d is None or d is False) else 0)' "$1" 2>/dev/null ;;
+  esac
+}
+json_bash_payload(){  # $1 = command string -> a valid PreToolUse Bash payload carrying it VERBATIM.
+  # The point of building it with a real serialiser is that the fixture must be valid even when the command
+  # carries tabs, quotes and backslashes — hand-escaping it here would be testing our escaping with our escaping.
+  case "$JSONQ" in
+    jq) jq -nc --arg c "$1" '{tool_name:"Bash",permission_mode:"auto",tool_input:{command:$c}}' ;;
+    "") return 2 ;;
+    *)  "$JSONQ" -c 'import sys,json
+print(json.dumps({"tool_name":"Bash","permission_mode":"auto","tool_input":{"command":sys.argv[1]}}))' "$1" ;;
+  esac
+}
+
 
 # ---- what the gates are allowed to see, and whose fault a failure is -----------------------------------------
 # Two questions the suite had been answering by DIRECTORY, which is why a real defect walked through both.
@@ -728,8 +787,8 @@ fill 760000
 # tier-B sandbox is built out of a jq that resolves and exits 49 — and broke it in ten places. Measured
 # with a stub jq: 51 errors instead of 21, four of them accusing shipped files of defects they do not
 # have, and zero skips, so nothing said a check had stopped running.
-if command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then
-  fill 800000; sg "${SGPFX}-e" | jq -e '.systemMessage' >/dev/null 2>&1 && pass "stop-hook: stdout is valid JSON with .systemMessage" || fail "stop-hook stdout is not valid systemMessage JSON"
+if [ -n "$JSONQ" ]; then
+  fill 800000; sg "${SGPFX}-e" | json_get systemMessage >/dev/null 2>&1 && pass "stop-hook: stdout is valid JSON with .systemMessage (oracle: $JSONQ)" || fail "stop-hook stdout is not valid systemMessage JSON"
 
   # --- the fast path -------------------------------------------------------------------------------------
   # Every assertion above exercises the SLOW path, where this hook measures for itself. It now prefers the
@@ -764,7 +823,7 @@ if command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then
   [ "$NB" -eq 0 ] && pass "stop-hook fast path spawns no nested shell (the cost this removes)" \
                   || fail "stop-hook still starts $NB nested shell(s) with a published reading available"
   rm -f "${TMPDIR:-/tmp}/csk-context.${SGPFX}-cnt" "$SGFX.trace"
-else skip tool "stop-hook JSON check skipped (no jq)"; fi
+else skip tool "stop-hook JSON check skipped (no working JSON parser: jq, python3 and python all absent or non-functional)"; fi
 # (7) fail-open: unreadable transcript -> exit 0 and silent (never blocks on measurement failure)
 o="$(mkjson "${SGPFX}-f" "/no/such.jsonl" false | bash "$HOOKS/session-guard.sh" 2>/dev/null)"; r=$?
 { [ "$r" = 0 ] && [ -z "$o" ]; } && pass "stop-hook: measurement failure fails open (exit 0, silent)" || fail "stop-hook not fail-open (rc=$r out=$o)"
@@ -1694,13 +1753,14 @@ done
 o="$(gj auto 'git push' | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"
 [ "$(gdec "$o")" = "ask" ] && pass "git push ASKS the user (§4.4)" || fail "git push did not ask"
 # The ask payload must be parseable JSON. A tab, CR or quote from the commit message, passed through raw,
-# would make it a control-character parse error — build the fixture with jq so the INPUT is valid too.
-if command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then
+# would make it a control-character parse error — so the fixture is built with a REAL SERIALISER, which is
+# also why it cannot be hand-escaped here: that would be testing our escaping with our own escaping.
+if [ -n "$JSONQ" ]; then
   NASTY="$(printf 'git commit -m "a\tb \\"q\\" C:\\\\p"')"
-  o="$(jq -nc --arg c "$NASTY" '{tool_name:"Bash",permission_mode:"auto",tool_input:{command:$c}}' | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"
-  printf '%s' "$o" | jq -e '.hookSpecificOutput.permissionDecision=="ask"' >/dev/null 2>&1 \
-    && pass "ask payload stays valid JSON for a message with tabs/quotes/backslashes" || fail "ask payload is not valid JSON: $o"
-else skip tool "ask-payload JSON check skipped (no jq)"; fi
+  o="$(json_bash_payload "$NASTY" | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"
+  if [ "$(printf '%s' "$o" | json_get hookSpecificOutput.permissionDecision)" = '"ask"' ]; then
+    pass "ask payload stays valid JSON for a message with tabs/quotes/backslashes (oracle: $JSONQ)"; else fail "ask payload is not valid JSON: $o"; fi
+else skip tool "ask-payload JSON check skipped (no working JSON parser: jq, python3 and python all absent or non-functional)"; fi
 # fail closed where no prompt can reach the user
 gj bypassPermissions 'git commit -m x' | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "git commit FAILS CLOSED under bypassPermissions (§4.4)" || fail "git commit PASSED under bypassPermissions (§4.4 hole)"
 printf '%s' '{"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}' | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "git commit FAILS CLOSED when permission_mode is absent" || fail "git commit PASSED with no permission_mode (§4.4 hole)"
