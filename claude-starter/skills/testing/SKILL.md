@@ -3,6 +3,7 @@ name: testing
 description: |
   The how of testing: pyramid, AAA, isolation, risk coverage, determinism. Guarantees the DoD's "tests are
   green". test-expert-csk applies it.
+  Use when writing or changing tests, or when a suite is flaky, slow or green for the wrong reason.
 ---
 
 # Testing Discipline
@@ -25,6 +26,25 @@ Goal: **behavior correctness** — test real behavior without breaking product c
 ## Watch out
 - **Flaky = bug:** an occasionally failing test is not tolerated; it is fixed at the root.
 - In snapshot/golden-file tests, avoid needless brittleness (assert only the meaningful output).
+
+## Tests that cannot fail
+
+Green is evidence only if the test could have gone red. Shapes that check nothing:
+- **Assertion restates the code:** it recomputes the implementation's own expression, so it moves with every change.
+- **Setup guarantees the result:** arrange plants the value the assert reads back; it holds even if the act never ran.
+- **Expected value derived the way the code derives it:** same formula, query or parser — the same wrong assumption on
+  both sides still matches.
+- **A double asserted against its own stub:** the fake is told to return X and the test asserts X; only the fake runs.
+- **No assertion:** it passes because nothing threw. If *not throwing* is the behavior under test, assert that.
+
+**Prove it can fail:** break what the test covers — invert a condition, return a wrong constant — confirm it goes red,
+then restore. Still green means the test is documentation, not a gate: fix it or delete it, never count it as coverage.
+
+## Flaky triage
+An intermittent failure gets exactly one outcome, decided the day it is seen: **fix** it, **quarantine** it (out of
+the gating lane, never out of the suite, with an owner and a date), or **escalate** it as the product defect it
+signals. Infrastructure flakes may get a bounded, logged retry; product flakes never do. Classifying them, the retry
+rule, and what a quarantine entry must carry: **`references/flaky-triage.md`**.
 
 ## DoD (this skill's contribution)
 - The project's own test command is green — read it off the manifest/CI (`dotnet test` · `npm test` · `pytest` ·

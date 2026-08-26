@@ -104,7 +104,7 @@ Beş aşamaya yayılmış **12 uzman agent** — kalite, hiçbir şey commit edi
 |:--|:--:|:--|
 | **Agent** | 12 | İnce tetikleyiciler — bir alanın *kimin* olduğu ve *ne zaman* devreye gireceği |
 | **Skill** | 40 | Yöntemin kendisi; bir kez yazılır, ihtiyacı olan uygular |
-| **Slash komutu** | 9 | `/brainstorm-csk` · `/plan-csk` · `/review-csk` · `/ship-csk` · `/handoff-csk` · `/update-csk` · `/doctor-csk` · `/board-csk` · `/gates-csk` |
+| **Slash komutu** | 10 | `/brainstorm-csk` · `/plan-csk` · `/review-csk` · `/ship-csk` · `/handoff-csk` · `/update-csk` · `/doctor-csk` · `/board-csk` · `/gates-csk` · `/skill-csk` |
 | **Hook** | 12 | Yaptırımlar, ayrıca oturum ölçümü ve yönlendirme |
 | **Disiplin** | 1 | İlkeler, akış, Definition of Done, yasaklar — `CLAUDE.md`'nizin import ettiği dosya |
 

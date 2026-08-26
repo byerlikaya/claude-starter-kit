@@ -62,5 +62,12 @@ personal note into it. Any content wrapped in **`<private>…</private>`** is a 
 written handover and leave a `[redacted]` placeholder in its place. If a resume genuinely needs a sensitive value,
 point to *where it lives* (env var, secret manager, the person to ask) — never the value itself.
 
+## Check it before trusting it
+That DoD sentence is a claim about a file nobody has tested. Before closing, run the **cold-reader pass**: write
+5–8 questions from the WORK (not from the file) with their expected answers, then answer them from the handover
+alone. A question that cannot be answered is a gap in the file. Procedure, phrasing that keeps the test honest,
+and the common failure shapes: **`references/cold-reader.md`**.
+
 ## DoD
 - A handover file; a new session can resume where it left off by reading only this file.
+- The cold-reader questions were written **before** the file and every one of them is answerable from it.

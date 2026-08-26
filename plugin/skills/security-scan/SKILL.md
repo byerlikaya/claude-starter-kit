@@ -3,6 +3,7 @@ name: security-scan
 description: |
   Stack-agnostic security audit: map the attack surface, trace untrusted input to dangerous calls, surface
   dependency and configuration flaws. Severity-ranked report with fixes.
+  Use when auth, input handling, secrets or dependencies change, and before a release.
 ---
 
 # Security Scan

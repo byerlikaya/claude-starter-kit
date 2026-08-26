@@ -1525,7 +1525,18 @@ BUDGET_AGENTS=5800   # sum of agent frontmatter; currently 5765 (1.11.0: +218 B 
                      # +performance-expert-csk (~426B) — security, privacy and tests each had an independent
                      # reviewer and performance was the one quality axis where the author audited their own
                      # work. Bought at ~110 tokens per session; the alternative was leaving that gap open.)
-BUDGET_SKILLS=8700  # sum of skill frontmatter; currently 8678. (2.5.0: +307 B for `automode-policy` — about
+BUDGET_SKILLS=9600  # sum of skill frontmatter; currently 9521. (2.6.x: +843 B — ten descriptions gained a
+                    # "Use when …" sentence. The field's job is to say WHEN to reach for the skill; a description
+                    # that only says what its author knows is matched by nothing, and inside this kit that was
+                    # invisible because route-hint.sh and the trigger map do the routing. Outside the harness —
+                    # a skill copied into another project, another client, a bare session — the routing is gone
+                    # and the description is all there is. STATED HONESTLY: this bump does NOT fix the small-window
+                    # case. The listing budget is 1% of the context window, so a 200k model allows ~2,000 B and
+                    # the kit is far past that with or without these ten sentences. What changed is that the
+                    # remedy is now targetable: `eval/utilization.sh` reports which skills nothing in a project
+                    # actually reached, which is the list `skillOverrides: name-only` needs and never had. The
+                    # next skill that wants room takes it from a description, not from another bump.)
+                    # Was 8700 / 8678. (2.5.0: +307 B for `automode-policy` — about
                     # half of it the allowed-tools grant that lets the skill run its own verifier without a
                     # prompt, not prose. The listing is what every session pays for; the next skill that wants
                     # room takes it from a description, not from another bump.) Was 8380 / 8371 — nine bytes
@@ -1620,10 +1631,45 @@ else pass "some agents lack a proactive cue:$NO_CUE (your project's own agents, 
 # (UNITS is declared at the top — it gates cases that run before this point too.)
 [ "$UNITS" = 0 ] && note "scope=install: gate UNIT cases skipped (they test payload bytes, not this install) — canary below"
 echo "== 7) settings.json & guard (§4.4/§4.5) =="
+# THIS FILE IS SHIPPED, NOT GENERATED, so whether it parses has no machine-specific answer and needs no oracle.
+# Gating it on jq meant the platform where this kit's hooks are most fragile — a stock Windows box with no jq —
+# was the one platform that never checked whether the file wiring those hooks parses at all. The shell version
+# below is a WELL-FORMEDNESS check, not a JSON parser, and says so: it balances braces and brackets outside
+# string literals (tracking escapes, so a `\"` inside a value does not end the string) and then asserts the two
+# top-level keys this kit ships. jq still runs where it exists, because a real parser catches shapes a counter
+# cannot; the shell path is what makes the case RUN everywhere instead of skipping.
+json_balanced(){   # 0 = balanced outside strings. Pure parameter expansion: no process, works with no jq.
+  local s c instr=0 esc=0 br=0 sq=0
+  s="$(cat "$1")"
+  while [ -n "$s" ]; do
+    c="${s%"${s#?}"}"; s="${s#?}"
+    if [ "$esc" = 1 ]; then esc=0; continue; fi
+    # The backslash is compared, NOT matched as a case pattern: in bash a `case` pattern of '\\' does not match a
+    # single backslash, so the escape branch silently never fired and a `\"` inside a string flipped the
+    # in-string flag — every value containing an escaped quote was then counted as structure. Measured: a valid
+    # settings.json with one escaped quote came back "not well-formed", which would have failed CI everywhere.
+    if [ "$c" = "\\" ]; then [ "$instr" = 1 ] && esc=1; continue; fi
+    case "$c" in
+      '"')  instr=$((1-instr)) ;;
+      '{')  [ "$instr" = 0 ] && br=$((br+1)) ;;
+      '}')  [ "$instr" = 0 ] && { br=$((br-1)); [ "$br" -lt 0 ] && return 1; } ;;
+      '[')  [ "$instr" = 0 ] && sq=$((sq+1)) ;;
+      ']')  [ "$instr" = 0 ] && { sq=$((sq-1)); [ "$sq" -lt 0 ] && return 1; } ;;
+    esac
+  done
+  [ "$instr" = 0 ] && [ "$br" = 0 ] && [ "$sq" = 0 ]
+}
 if [ -f "$ROOT/settings.json" ]; then
+  json_balanced "$ROOT/settings.json" \
+    && pass "settings.json is well-formed (balanced outside strings — checked with no jq)" \
+    || fail "settings.json is not well-formed: unbalanced braces/brackets or an unterminated string"
+  case "$(cat "$ROOT/settings.json")" in
+    *'"hooks"'*'"permissions"'*|*'"permissions"'*'"hooks"'*) pass "settings.json carries both top-level keys the kit ships" ;;
+    *) fail "settings.json lost \"hooks\" or \"permissions\" — the wiring or the deny list is gone" ;;
+  esac
   if command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then
-    jq empty "$ROOT/settings.json" 2>/dev/null && pass "settings.json valid JSON" || fail "settings.json invalid JSON"
-  else skip tool "settings.json present (no jq, JSON validation skipped)"; fi
+    jq empty "$ROOT/settings.json" 2>/dev/null && pass "settings.json parses under a real JSON parser" || fail "settings.json invalid JSON (jq)"
+  else note "full JSON parse not run here (no jq) — the two checks above did run"; fi
 else fail "settings.json missing"; fi
 [ -x "$HOOKS/guard-bash.sh" ] && pass "guard-bash.sh +x" || fail "guard-bash.sh missing/not executable"
 if [ "$UNITS" = 1 ]; then
@@ -1752,6 +1798,37 @@ pass|git checkout main
 pass|git checkout -b feature/x
 COCASES
 gj auto 'dd if=/dev/zero of=/dev/disk0'  | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "dd of= BLOCKED (§4.5)" || fail "dd of= PASSED (§4.5 hole)"
+# §4.5 infrastructure teardown — the same shape as `rm -rf` and `git reset --hard`, one command and no undo, but
+# the blast radius is an account or a cluster. EVERY verb and alias below was taken from the tool's own source or
+# documentation, because the first version of this rule was written from memory and missed three: `pulumi down`
+# and `pulumi dn` (documented aliases for destroy), `helm del`/`helm un` (cobra aliases the generated docs page
+# does not list), and `pulumi up --yes` (Pulumi has no `-auto-approve`). Each of those emptied the same account
+# as the spelling that WAS gated. The wrapper rows are the second lesson: a verb behind `sudo -u`, `env`,
+# `xargs`, `bash -c` or `$( )` is the same command wearing a coat, and the first draft closed none of them while
+# reporting that it had.
+for _ic in 'terraform destroy' 'tofu destroy' 'pulumi destroy --yes' 'pulumi down --yes' 'pulumi dn -y' \
+           'pulumi up --yes' 'pulumi up -f' 'terraform apply -auto-approve' 'kubectl delete namespace prod' \
+           'helm uninstall api' 'helm del api' 'helm un api' 'sudo terraform destroy' \
+           'sudo -u deploy terraform destroy' 'env terraform destroy' 'xargs -I{} terraform destroy' \
+           'eval \"terraform destroy\"' 'cd infra && terraform destroy' 'make x; kubectl delete ns prod'; do
+  gj auto "$_ic" | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1
+  [ "$?" = 2 ] && pass "infra teardown BLOCKED: $_ic" || fail "infra teardown PASSED (§4.5 hole): $_ic"
+done
+# ...and the everyday half, which is where this rule earns its narrowness. `--help` asks what a verb does;
+# `--dry-run` is what helm's own docs recommend BEFORE an uninstall; `auth can-i` is a read-only RBAC question;
+# `-auto-approve=false` explicitly KEEPS the prompt. All four were refused by the first draft. The last three
+# rows are sentences ABOUT the rule rather than the rule being run — the reason the verb is anchored to a
+# command position, and the reason a bare quote is NOT in that anchor (a shell executor in front of it is).
+for _ic in 'terraform plan' 'terraform apply' 'terraform init' 'terraform state list' 'kubectl get pods' \
+           'kubectl apply -f k8s/' 'kubectl rollout undo deploy/api' 'helm list' 'helm history api' \
+           'helm upgrade api ./chart' 'helm template ./chart' 'terraform destroy --help' 'terraform -h destroy' \
+           'helm uninstall api --dry-run' 'kubectl delete pod foo --dry-run=client' 'kubectl auth can-i delete pods' \
+           'terraform apply -auto-approve=false' 'echo terraform destroy is dangerous' \
+           'echo \"terraform destroy is dangerous\"' 'grep -rn \"kubectl delete\" docs/' 'npm run destroy-cache'; do
+  gj auto "$_ic" | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 \
+    && pass "everyday infra work NOT over-blocked: $_ic" \
+    || fail "the teardown rule fires on ordinary work: $_ic"
+done
 gj auto 'chmod +x build.sh'              | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && pass "chmod +x NOT over-blocked" || fail "chmod +x wrongly blocked (gate too strict)"
 # §4.5 gate-tampering (shell side) — disarming the gates is itself gated
 gj auto 'git config core.hooksPath /tmp/x' | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "core.hooksPath redirect BLOCKED (§4.5)" || fail "core.hooksPath redirect PASSED (§4.5 hole)"
@@ -2332,11 +2409,26 @@ DOUT="$(bash "$ROOT/eval/doctor.sh" "$DOC" 2>&1)"; DRC=$?
 case "$DOUT" in *"Readiness (advisory"*) pass "doctor prints the readiness block" ;; *) fail "doctor readiness block missing" ;; esac
 case "$DOUT" in *"➖"*) pass "readiness flags gaps on a bare project (devcontainer/MCP/manifest absent)" ;; *) fail "readiness found no gap on a bare project — the signals are not firing" ;; esac
 rm -f "$DOC/CLAUDE.md" "$DOC/.claude/DISCIPLINE.md"
-# M2a: an empty hook array wires nothing — doctor must flag it (needs jq to read array length).
-if command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then
-  jq '.hooks.PreToolUse = []' "$DOC/.claude/settings.json" > "$DOC/.claude/s.tmp" && mv "$DOC/.claude/s.tmp" "$DOC/.claude/settings.json"
+# M2a: an empty hook array wires nothing — doctor must flag it. jq was not VALIDATING anything here, it was
+# BUILDING a fixture: one known mutation on a file this repo ships. Replacing a fixture builder is far cheaper
+# and safer than replacing an oracle — one produces a known string, the other judges an unknown output — and
+# gating this on jq meant the case never ran on a jq-less machine, where an unwired PreToolUse is precisely the
+# failure that has bitten this kit before. awk empties the PreToolUse array by depth, so a nested `]` does not
+# end it early, and the fixture ASSERTS ITS OWN CONSTRUCTION before it is used: a broken builder must not be
+# able to read as a passing gate.
+awk '
+  BEGIN{d=0; inarr=0}
+  {
+    if (!inarr && $0 ~ /"PreToolUse"[[:space:]]*:[[:space:]]*\[/) { print "    \"PreToolUse\": [],"; inarr=1; d=1; next }
+    if (inarr) { d += gsub(/\[/,"[") - gsub(/\]/,"]"); if (d<=0) inarr=0; next }
+    print
+  }' "$DOC/.claude/settings.json" > "$DOC/.claude/s.tmp" && mv "$DOC/.claude/s.tmp" "$DOC/.claude/settings.json"
+if json_balanced "$DOC/.claude/settings.json" && grep -q '"PreToolUse": \[\],' "$DOC/.claude/settings.json"; then
+  pass "M2a fixture built with no jq: PreToolUse emptied, file still well-formed"
   bash "$ROOT/eval/doctor.sh" "$DOC" >/dev/null 2>&1 && fail "doctor PASSED empty PreToolUse [] (M2a)" || pass "doctor: empty PreToolUse [] -> exit != 0 (M2a)"
-else skip tool "doctor empty-array test skipped (no jq)"; fi
+else
+  fail "M2a fixture is broken — the emptied settings.json is not well-formed, so any doctor verdict below would mean nothing"
+fi
 rm -rf "$DOC"
 # start.sh must chmod hooks via a glob, so a hook added later is still made executable (an explicit list missed some).
 # Kit-repo only: start.sh removes itself after install, so it does not exist in an installed project.

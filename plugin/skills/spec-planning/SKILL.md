@@ -3,6 +3,7 @@ name: spec-planning
 description: |
   Spec-first planning: task breakdown, measurable acceptance criteria, dependency order, risk priority.
   planner-csk applies it; the plan goes to docs/PLAN.md.
+  Use when the scope is unclear or the work spans more than one change.
 ---
 
 # Spec-First Planning

@@ -105,6 +105,45 @@ versioning follows [SemVer](https://semver.org/).
   for the FIFO rather than for `mkfifo`, because without one the case could not fail at all.
 
 ### Added
+- **A gate for infrastructure teardown.** `terraform`/`tofu`/`pulumi destroy`, an unattended `apply`, and
+  `kubectl delete`/`helm uninstall` have the same shape as the `rm -rf` and `git reset --hard` rules the kit has
+  always carried — one command, no undo — and were never named, although the blast radius is a cloud account or
+  a cluster rather than a disk. **Every verb and alias came from the tool's own source, not from memory, and
+  that mattered:** the first draft missed `pulumi down`/`dn` (documented aliases for `destroy`), `helm del`/`un`
+  (cobra aliases the generated docs page does not list) and `pulumi up --yes` (Pulumi has no `-auto-approve`) —
+  each of them empties exactly what the spelling that *was* gated empties. It also let every wrapper through:
+  `sudo -u`, `env`, `xargs`, `bash -c "…"`, `$(…)`. Scope is deliberately narrow in the other direction too —
+  `--help`, `--dry-run` (which helm's own docs recommend before an uninstall), `kubectl auth can-i` and
+  `-auto-approve=false` are ordinary work and are not refused. 40 cases, both directions.
+- **`/skill-csk`** routes `AGENT_TEMPLATE.md`, which ships with an install and which no gate ever checked anyone
+  reaches — §3b iterates skills and agents only, so the contract document could go stale unread. The command
+  ends in the four evals rather than in a claim.
+- **A cold-reader pass for `handoff`.** Its definition of done says a new session can resume from the file
+  alone, and nothing tested that. The questions are written from the WORK before the file exists — an answer key
+  derived from the handover only proves the handover is self-consistent — and are then answered from the file
+  alone. `references/cold-reader.md`.
+- **Missing discipline in six existing skills**: flaky-test triage with the infrastructure/product split that
+  decides whether a retry is ever allowed (`testing`, plus `references/flaky-triage.md`); tests that cannot fail
+  (`testing`); receiving a review, closing the easy exits, and asking the git history before treating a bug as
+  new (`code-review-csk`); and what to do when the pipeline is red (`ci-pipeline`).
+- **Two axes in `dependency-audit`**: install-time execution — the mechanism recent registry compromises
+  actually used, which a CVE feed and a code review both miss — and publisher concentration read from the
+  registry ACL rather than from the forge's contributor list. Every axis now resolves to assessed-clean,
+  assessed-flagged, or not-assessable-here-and-why.
+
+### Changed
+- **Ten skill descriptions now say WHEN to reach for them.** Inside this kit the routing is done by
+  `route-hint.sh` and the trigger map, which is why the gap was invisible; outside it — a skill copied into
+  another project, another client, a bare session — the description is all there is. `BUDGET_SKILLS` moves with
+  them, and the bump comment states plainly what it does *not* fix: the listing budget is 1% of the context
+  window, so a small-window model is over it either way. What changed is that the remedy is now targetable.
+- **Two suite cases stopped depending on jq.** Checking that a *shipped* `settings.json` parses has no
+  machine-specific answer, and the doctor fixture was using jq to *build* a known mutation rather than to
+  validate anything — so both were gated on a tool whose absence is precisely the platform this kit is most
+  fragile on. They now run everywhere; jq still runs where it exists, because a real parser catches shapes a
+  balance check cannot, and the check says so rather than claiming to be a parser.
+
+### Added
 - **`eval/utilization.sh` — what the kit loads versus what it actually reaches.** Every installed skill spends
   its name and description in every session forever, and `doctor.sh` §4a already reported that cost against the
   budget; the remedy it points at (`skillOverrides: name-only`) needs a list of WHICH skills and nothing

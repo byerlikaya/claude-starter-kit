@@ -30,9 +30,34 @@ this one safe to run any time, on any branch, including one you are only inspect
 4. **Transitive dependencies:** also scan vulnerabilities in indirect dependencies.
 5. **Lockfile integrity:** lockfile committed and consistent with the manifest; versions pinned.
 6. **Justification for new dependencies:** is it actually needed? Don't add a heavy package for a single small function (supply-chain surface).
+7. **Install-time execution:** does any dependency run code during installation — `preinstall`/`install`/
+   `postinstall` scripts — and `prepare`, which runs only for a git, link or folder dependency and never for a
+   registry tarball — a build hook, or a setup step that fetches at install time? This is the mechanism the recent
+   registry compromises actually used: the malicious version does not have to be imported, only installed, so a
+   CVE feed and a code review both miss it. Ask two things: which packages declare such a script, and whether
+   the project can install without them at all (`npm ci --ignore-scripts`; for Python the control is refusing source
+   distributions, `pip install --only-binary=:all:`, optionally with `--require-hashes` — a wheel has no install
+   hook, an sdist does; or a vendored, pre-built artefact). A package that cannot install without running code is not disqualified —
+   it is a package whose publisher you are trusting with arbitrary execution on every machine and every runner,
+   which is a decision, not a default.
+8. **Publisher concentration — read it from the registry, not from the repository.** "Many contributors" on a
+   forge says who can open a pull request; it does not say who can publish. The number that matters is who holds
+   the publish right on the registry (`npm owner ls <pkg>` · for PyPI the package JSON's `ownership.roles`,
+   NOT the self-reported `info.maintainer` field · the equivalent ACL for the ecosystem in use) — and whether the
+   PUBLISH PATH itself is challenged, which is not the same as "the account has 2FA": npm's `auth-only` 2FA mode
+   does not gate `npm publish`, and a granular token with bypass-2FA publishes with no second factor, while on
+   PyPI 2FA has been mandatory for every account since 2024 so the real question there is Trusted Publisher
+   versus a long-lived API token. A widely-used
+   package whose registry ACL is one unprotected account is a single compromised credential away from every
+   build that installs it, whatever the contributor graph looks like.
 
 ## Output
 Severity-sorted list: `package · version · issue (CVE/license/maintenance) · upgrade path`.
 
 ## DoD
 - 0 known HIGH/CRITICAL vulnerabilities; licenses compliant; lockfile consistent; every new package justified.
+- **Every axis resolves to one of three states, and the third is a real answer:** *assessed-clean*,
+  *assessed-flagged*, or *not assessable here — and why*. An axis that was skipped because the tool is missing,
+  the registry was unreachable, or the ecosystem has no equivalent is reported as unassessed, never folded into
+  the clean count. A report that cannot tell "nothing found" from "nobody looked" is the failure this skill
+  exists to prevent, and the sibling `security-scan` already holds the same rule.

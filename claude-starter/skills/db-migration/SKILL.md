@@ -3,6 +3,7 @@ name: db-migration
 description: |
   Apply schema migrations safely: detect the tool, classify the change by risk, gate destructive ones behind
   approval, back up in prod, preview-apply-verify, roll back on failure.
+  Use when a schema change is about to be applied to any environment.
 ---
 
 # Database Migration

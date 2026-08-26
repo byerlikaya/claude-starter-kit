@@ -3,6 +3,7 @@ name: incident-runbook
 description: |
   Production incident response: diagnose → mitigate → resolve, then a blameless postmortem and a repeatable
   runbook. Stop the impact first, root cause second.
+  Use when production is degraded or broken, and again for the postmortem afterwards.
 ---
 
 # Incident Response & Runbook

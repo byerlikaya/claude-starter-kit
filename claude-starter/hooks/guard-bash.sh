@@ -243,6 +243,55 @@ case "$CMD" in *[Mm][Kk][Ff][Ss]*|*[Dd][Dd]*) : ;; *) false ;; esac && echo "$CM
 # runs code no one has read; a world-writable chmod or a disk-overwriting dd is irreversible.
 case "$CMD" in *[Cc][Uu][Rr][Ll]*|*[Ww][Gg][Ee][Tt]*|*[Ff][Ee][Tt][Cc][Hh]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE '(curl|wget|fetch)([^|]|\|\|)*\|[[:space:]]*(sudo[[:space:]]+)?(bash|sh|zsh|python[0-9.]*|node|perl|ruby)([[:space:]]|$)' && block "pipe-to-shell (curl|bash RCE)" "4.5"
 case "$CMD" in *[Dd][Dd]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE '(^|[^a-zA-Z])dd[[:space:]]+([^|]*[[:space:]])?of='  && block "dd of= (disk overwrite)" "4.5"
+
+# §4.5 INFRASTRUCTURE TEARDOWN. Same shape as the rules above — one command, no undo — but the blast radius is a
+# cloud account or a cluster rather than a disk. `terraform destroy` and `pulumi destroy` remove every managed
+# resource; `-auto-approve` / `--yes` skip the only confirmation those tools have; `kubectl delete` and
+# `helm uninstall` take a namespace or a release with them. The kit gated `rm -rf` and `git reset --hard` from
+# the start and never named these.
+#
+# EVERY VERB AND ALIAS BELOW CAME FROM THE TOOL'S OWN SOURCE OR DOCS, not from memory — the first draft of this
+# rule was written from memory and missed three of them:
+#   pulumi destroy  → aliases `down`, `dn`     (pulumi/pulumi destroy.go: Aliases: []string{"down","dn"})
+#   helm uninstall  → aliases `del`, `un`, `delete` (cobra aliases; the generated docs page lists none of them)
+#   pulumi's auto-approve is `-y`/`--yes` on `pulumi up`, NOT `-auto-approve`, and `up` is its own apply verb.
+# An alias is not a detail here: `pulumi down --yes` empties the same account as `pulumi destroy`.
+#
+# SCOPE — the verbs that DESTROY, and three shapes deliberately let through because they do not:
+#   `--help` (asks what the verb does), `--dry-run` / `--dry-run=client` (helm's own docs recommend it before an
+#   uninstall), and `kubectl auth can-i <verb>` (a read-only RBAC question). `-auto-approve=false` explicitly
+#   KEEPS the prompt, so it is not gated either. A gate that refuses `--help` teaches people to route around it.
+#
+# ANCHOR: command position — start of line, or after `;` `&&` `||` `|` `(` or a quote — with an optional chain of
+# wrappers (`sudo`, `env`, `time`, `nice`, `nohup`, `xargs`) in front, because `sudo -u deploy terraform destroy`
+# and `bash -c "terraform destroy"` are the same command wearing a coat. KNOWN LIMIT, stated rather than hidden:
+# `^` is a LINE anchor and the payload's `\n` is already decoded here, so a heredoc that WRITES `terraform
+# destroy` into a runbook is refused. Ordinary doc-writing goes through the Write tool (guard-write.sh), not
+# here, so the cost is narrow — but it is real and it is not a bug in the regex, it is the regex's shape.
+# TWO anchors, not one, and the reason is a false positive the first draft created. Putting a quote into the
+# anchor class catches `bash -c "terraform destroy"` — and also catches `echo "terraform destroy is dangerous"`,
+# which is a sentence about the rule. The distinguishing feature is not the quote, it is what precedes it: a
+# SHELL EXECUTOR. So one anchor is command position, and the second requires eval/bash/sh/zsh/dash in front of
+# the optional quote. `$(…)` and a leading `(` are covered by the first through the `(` in its class.
+_IAC_AT="(^|[;&|(])[[:space:]]*((sudo|env|time|nice|nohup|xargs)([[:space:]]+-[^;&|[:space:]]+([[:space:]]+[^-;&|[:space:]]+)?)*[[:space:]]+)*"
+_IAC_EXEC="(^|[;&|(])[[:space:]]*(sudo[[:space:]]+)?(eval|bash|sh|zsh|dash)([[:space:]]+-[a-zA-Z]+)*[[:space:]]+[\"']?"
+_IAC_SAFE="(--help|[[:space:]]-h([[:space:]]|$)|--dry-run|-auto-approve=false|-auto-approve[[:space:]]+false|auth[[:space:]]+can-i)"
+_iac(){ # $1 = the verb pattern; true when it sits at a command position OR behind a shell executor
+  echo "$CMD" | grep -qiE "${_IAC_AT}$1" || echo "$CMD" | grep -qiE "${_IAC_EXEC}$1"
+}
+_IAC_DESTROY="(terraform|tofu|pulumi)([[:space:]]+-[^;&|]*)?[[:space:]]+(destroy|down|dn)([^a-zA-Z0-9_-]|$)"
+_IAC_UNATT_TF="(terraform|tofu)[^;&|]*[[:space:]](apply|destroy)([^;&|]*[[:space:]])?-{1,2}auto-approve([^a-zA-Z0-9_=-]|$)"
+_IAC_UNATT_PU="pulumi[^;&|]*[[:space:]]up([^;&|]*[[:space:]])?(-y|--yes|-f|--skip-preview)([^a-zA-Z0-9_-]|$)"
+_IAC_CLUSTER="(kubectl[^;&|]*[[:space:]]delete([^a-zA-Z0-9_-]|$)|helm[^;&|]*[[:space:]](uninstall|delete|del|un)([^a-zA-Z0-9_-]|$))"
+case "$CMD" in *[Tt][Ee][Rr][Rr][Aa][Ff][Oo][Rr][Mm]*|*[Tt][Oo][Ff][Uu]*|*[Pp][Uu][Ll][Uu][Mm][Ii]*) : ;; *) false ;; esac \
+  && ! echo "$CMD" | grep -qiE "$_IAC_SAFE" && _iac "$_IAC_DESTROY" \
+  && block "infrastructure destroy (removes every managed resource)" "4.5"
+case "$CMD" in *[Tt][Ee][Rr][Rr][Aa][Ff][Oo][Rr][Mm]*|*[Tt][Oo][Ff][Uu]*|*[Pp][Uu][Ll][Uu][Mm][Ii]*) : ;; *) false ;; esac \
+  && ! echo "$CMD" | grep -qiE "$_IAC_SAFE" && { _iac "$_IAC_UNATT_TF" || _iac "$_IAC_UNATT_PU"; } \
+  && block "unattended infrastructure apply (skips the tool's only confirmation)" "4.5"
+case "$CMD" in *[Kk][Uu][Bb][Ee][Cc][Tt][Ll]*|*[Hh][Ee][Ll][Mm]*) : ;; *) false ;; esac \
+  && ! echo "$CMD" | grep -qiE "$_IAC_SAFE" && _iac "$_IAC_CLUSTER" \
+  && block "cluster teardown (kubectl delete / helm uninstall)" "4.5"
 # The rule is WORLD-WRITABLE, so the pattern matches the resulting permission and not one spelling of it. It
 # used to match `777`, `0777`, `a+rwx` and `+rwx` only, which let `1777`, `2777`, `666` and `o+w` reach exactly
 # the same state — and this was not theoretical: in the A/B harness (evals/permission-pressure) a model asked to

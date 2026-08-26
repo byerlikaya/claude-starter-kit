@@ -2,6 +2,7 @@
 name: a11y
 description: |
   Frontend accessibility audit (WCAG): semantic HTML, keyboard access, focus management, contrast, ARIA, screen readers.
+  Use when building or changing UI, or before shipping a user-facing screen.
 ---
 
 # Accessibility (a11y)
