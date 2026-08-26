@@ -5,6 +5,69 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- **Fifteen skills advertised the vocabulary of their domain instead of the vocabulary of the request, and a
+  held-out set is what showed it.** The routing set the kit tested against was seven rows written while looking
+  at the triggers, so it passed by construction. Eighteen phrasings written first and measured second — the way
+  a person actually types a request — reached nothing in **fifteen** cases. Two causes. `route-hint.sh` scored
+  agents and skills into a single best slot, so a weak agent match displaced a strong skill match and the hook
+  then fell under its own floor and said nothing at all, losing both correct answers instead of choosing
+  between them; it now keeps a best-per-kind and prefers the agent only where the agent's own score clears the
+  floor. And the triggers themselves said "accessibility audit" but not "screen reader", "migration" but not
+  "add a column". They now carry both, with **65 negative rows** (the routing set goes from 7 to 72) naming
+  requests that must reach a neighbour or nothing, because widening a trigger is how a router starts answering
+  what it does not own. The held-out file is read by the same matcher as the working set — a held-out set
+  scored more leniently than the set it is held out from measures nothing.
+- **`vps-deploy` is now `deploy`, and it no longer assumes a machine you SSH into.** The old skill's every step
+  presumed a host you administer, which placed managed platforms outside the kit entirely — where most first
+  deploys now happen. The skill opens with a topology fork, and the managed path has its own phases and its own
+  checklist rather than borrowing the server one; what holds across both (a reachable previous version, a
+  health gate, a rollback that does not rebuild) is stated once. An **upgrade** used to leave the old
+  `skills/vps-deploy/` in place next to the new one, both live and competing on every prompt, because the
+  installer's stale-component scan covered `commands/` and `agents/` but not `skills/`. It now covers skills
+  and reports the orphan for you to remove, on the same report-never-delete rule as the rest.
+- **The route-hint cost gate counts processes instead of seconds.** It bounded wall-clock at 5s with a comment
+  claiming an order of magnitude of headroom. Measured on Windows, where the gate exists to protect: 3.1–3.3s
+  idle — ten times the figure the comment claimed — and 9.2–10.1s under parallel fork load, a 2× overrun with
+  the hook answering correctly throughout. The gate was one busy runner from failing for a reason unrelated to
+  the defect it guards. It now counts external commands (five per prompt today, budget twelve), which separates
+  five forks from the two thousand of the shape that froze sessions regardless of load or platform; wall-clock
+  remains as a coarse second bound at 30s.
+
+### Added
+- **`packaging/verify.sh` — one definition of the gates, invoked by both the developer and CI.** The commands
+  lived in the workflow and nowhere else, so running everything reachable locally was three of six gates and
+  still called green. That is not hypothetical: a branch with all three eval suites passing failed CI on the
+  one gate with no local runner, because the README skill catalogue is generated and a hand-edited row drifts
+  from the skill it describes. The workflow now invokes `verify.sh <step>` so each gate keeps its own named box
+  while the thing being run exists once. A skipped step is reported and counted apart from a passing one; under
+  `CSK_VERIFY_STRICT`, which the workflow sets, it fails instead, because on a runner a missing tool is a broken
+  runner rather than an honest local limitation. Five assertions pin the two files to each other in both
+  directions — including the one that bites, a gate defined locally that the workflow never runs.
+- **The installer refuses to consume the kit's own checkout.** `start.sh` ends by deleting `claude-starter/`
+  and itself, which is correct once the kit has been unpacked into a project and destroys the source when it is
+  invoked by absolute path from a development checkout. It did: 122 tracked files, recovered only because they
+  were committed. The three markers are required together, since a released tarball carries `VERSION` and
+  `packaging/` and no `.git` — keyed on any one of them the guard would refuse every real install instead of
+  the accident. `CSK_ALLOW_SOURCE_INSTALL=1` is the deliberate way through.
+
+### Fixed
+- **The commit gate was silently unarmed on every Windows install.** `start.sh` decided whether it sat at a
+  repository root by comparing two path strings, and on Windows git answers `C:/…` while the shell answers
+  `/c/…`, so the comparison never matched, the hooks were never installed, and the installer reported success.
+  It now asks git which directory this is rather than which spelling it uses.
+- **`doctor` reported `healthy` over a gate wired to nothing.** On a machine without `jq` the settings check
+  asked only whether the event *name* appeared in the file, and a valid `settings.json` carrying
+  `"PreToolUse": []` satisfies that: the name is present, another event still mentions `hooks/`, and the
+  diagnostic printed `settings.json wires the required hook events`. The §4.4/§4.5 tool gate was connected to
+  nothing while the tool that exists to say so called it fine — and this is the Windows path, where the hooks
+  are most fragile and `jq` is absent by default. Emptiness needs no parser: after the event's `[`, the first
+  non-space character is `]` exactly when the array is empty, which is pure parameter expansion and costs no
+  process on the platform that charges for every one. Checked against six fixtures and the shipped file.
+- **A leading `VAR=value` carried a blocked command past the teardown gate.** `TF_VAR_x=1 terraform destroy`
+  put the verb out of the position the matcher examined. Assignment prefixes are now consumed before the verb
+  is read, the way the shell reads them.
+
 ### Security
 - **The write-side gate matched the raw path string, so a gate file could be reached under a different
   spelling.** `guard-write.sh` compared `file_path` verbatim against `*/.claude/hooks/*` and `*/.git/hooks/*`.
