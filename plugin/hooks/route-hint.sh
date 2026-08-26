@@ -94,7 +94,7 @@ function norm(s) {
   sub(/^ +/,"",s); sub(/ +$/,"",s)
   return s
 }
-BEGIN { np = " " norm(ENVIRON["CSK_PROMPT"]) " "; best=""; bestscore=0; bestkind="" }
+BEGIN { np = " " norm(ENVIRON["CSK_PROMPT"]) " "; bestA=0; bestS=0; nameA=""; nameS="" }
 seen[FILENAME] { next }                                    # one Trigger-phrases line per component, the first
 {
   if (tolower($0) !~ /trigger phrases:/) next
@@ -117,17 +117,27 @@ seen[FILENAME] { next }                                    # one Trigger-phrases
     if (np ~ ("(^| )" p "[a-z]?[a-z]?[a-z]?( |$)")) score += length(ph)
   }
   if (score <= 0) next
-  # An AGENT outranks a SKILL whenever both match, regardless of score. The architecture is agent = who,
-  # skill = how, and the agent applies its own skills anyway — so naming the agent delivers the method PLUS the
-  # isolation and the audit path, while naming the skill delivers only the method. A skill is named only when no
-  # agent owns the domain at all (iterate, reflect, worktree, eval-grader — the orchestrator'\''s own work).
-  if (kind == "agent" && bestkind != "agent") { bestscore=score; best=name; bestkind="agent" }
-  else if (kind == bestkind || bestkind == "") {
-    if (score > bestscore) { bestscore=score; best=name; bestkind=kind }
-  }
+  # An AGENT outranks a SKILL when both match: agent = who, skill = how, and the agent applies its own skills
+  # anyway, so naming it delivers the method PLUS the isolation and the audit path. A skill is named when no
+  # agent owns the domain at all (iterate, reflect, worktree, eval-grader).
+  #
+  # THE TWO KINDS ARE SCORED SEPARATELY, and that is the fix for a measured silence. The preference used to be
+  # applied by OVERWRITING the best match the moment any agent matched, whatever its score — so a one-word
+  # agent hit discarded a far stronger skill hit, and the discarded total then fell under the floor below and
+  # the hook printed NOTHING. Measured before this change: "this needs an accessibility audit" produced the
+  # a11y hint, and "the PAGE needs an accessibility audit" produced silence, because `page` is a
+  # frontend-expert-csk trigger worth 4 which replaced the a11y score of ~30 and then failed `>= 6`. Adding a common noun
+  # to a request removed the routing entirely, which is the opposite of what a preference is for. Each kind now
+  # keeps its own best and the preference is applied at the END, among candidates that clear the floor.
+  if (kind == "agent") { if (score > bestA) { bestA=score; nameA=name } }
+  else                 { if (score > bestS) { bestS=score; nameS=name } }
 }
 # Silence is the default. No match, or a match too weak to be sure, means the main thread decides as before.
-END { if (best != "" && bestscore >= 6) print bestkind "\t" best }
+# The agent is preferred only when it is credible on its own: a weak agent match no longer buries a strong skill.
+END {
+  if      (bestA >= 6) print "agent\t" nameA
+  else if (bestS >= 6) print "skill\t" nameS
+}
 ' "${FILES[@]}" 2>/dev/null)"
 
 [ -n "$RES" ] || exit 0

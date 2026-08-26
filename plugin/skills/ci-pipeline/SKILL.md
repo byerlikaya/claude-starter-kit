@@ -9,7 +9,7 @@ description: |
 <!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
      Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
      truncated or dropped, which strips the very keywords a match depends on. -->
-Trigger phrases: "ci", "pipeline", "github actions", "build pipeline", "pr gate", "workflow"
+Trigger phrases: "ci", "pipeline", "github actions", "jenkins", "build pipeline", "pr gate", "pr check", "build fail", "build broke", "ci is failing", "workflow"
 
 ## Stages (fail-fast — stop if it breaks early)
 1. **Lint / format** — style and static analysis
@@ -17,7 +17,7 @@ Trigger phrases: "ci", "pipeline", "github actions", "build pipeline", "pr gate"
 3. **Test** — unit + integration, coverage collected
 4. **Quality** — `sonarqube-check` quality gate
 5. **Security** — `dependency-audit` + `security-scan` (where applicable)
-6. **Artifact / packaging** — (deployment is separate, `vps-deploy`)
+6. **Artifact / packaging** — (deployment is separate, `deploy`)
 
 ## Principles
 - **Deterministic:** dependencies pinned, cache keyed correctly; no "it worked on my machine".

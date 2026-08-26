@@ -11,7 +11,7 @@ description: |
 <!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
      Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
      truncated or dropped, which strips the very keywords a match depends on. -->
-Trigger phrases: "performance", "slow", "optimization", "profiling", "N+1", "latency", "memory leak", "load test"
+Trigger phrases: "performance", "slow", "optimization", "profiling", "N+1", "latency", "memory leak", "leaked memory", "load test", "seconds to open", "seconds to respond", "anything slower", "make it slower"
 
 Core rule: **measure first, optimize later.** Optimization without measurement is a guess; it usually speeds up the
 wrong place and adds complexity. Stack-agnostic; do a web search when you need the profiling tool/library.

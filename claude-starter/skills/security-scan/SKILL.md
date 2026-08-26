@@ -11,7 +11,7 @@ description: |
 <!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
      Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
      truncated or dropped, which strips the very keywords a match depends on. -->
-Trigger phrases: "security scan", "run a security scan", "OWASP check", "scan for vulnerabilities", "find security vulnerabilities", "security audit"
+Trigger phrases: "security scan", "run a security scan", "OWASP check", "scan for vulnerabilities", "find security vulnerabilities", "security audit", "api key", "secret key", "leaked credential", "credentials leaked", "hardcoded secret", "hardcoded password", "sql injection", "can an attacker"
 
 The core of a security vulnerability fits in a single sentence: **an untrusted input reaches a
 dangerous operation without being adequately checked.** This skill chases exactly that sentence — it first

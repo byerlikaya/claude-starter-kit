@@ -1,4 +1,11 @@
 # Golden routing: <example user prompt>|<expected target agent/skill>
+#
+# THIS FILE IS THE WORKING SET, and what it can and cannot prove is worth stating. AGENT_TEMPLATE.md tells the
+# author to add the line FIRST and then choose trigger phrases against it — "you're designing the description
+# against a concrete prompt" — and the matcher below is a substring test. So a row here proves the trigger was
+# chosen for this prompt; it cannot prove the trigger generalises, because the prompt is where the trigger came
+# from. `golden-holdout.txt` is the other half: prompts written for the same target WITHOUT looking at its
+# triggers. Only a holdout row can fail for the reason this eval exists.
 # routing-eval.sh reads this: the expected target's trigger phrase must appear in the prompt (substring).
 # If the target isn't installed in this profile, the line is SKIPPED (won't fail a pruned install).
 # NEGATIVE line: <prompt>|!<target> asserts the prompt must NOT route to <target> (none of its triggers match) —
@@ -13,7 +20,7 @@ commit the changes|commit-agent-csk
 run tests and give me a coverage report|test-expert-csk
 do a PR review and look at the diff|review-agent-csk
 plan first and produce a task breakdown|planner-csk
-deploy this and go to production on the VPS|vps-deploy
+deploy this and go to production on the VPS|deploy
 prepare the changelog and cut a tag|release
 set up a ci pipeline with github actions|ci-pipeline
 write an adr for this architecture decision|adr
@@ -92,3 +99,72 @@ is this endpoint fast enough on the hot path|performance-expert-csk
 who is working on which sprint item right now|teamboard
 audit this against ccpa and lgpd for data protection regulation|privacy-agent-csk
 is my auto mode classifier policy still intact|automode-policy
+
+# --- negative guards added with the trigger widening -------------------------------------------------
+# Each widening below opened a class of request; each row here is a request that belongs to a NEIGHBOUR
+# and must NOT reach the widened component. A widening without its guard is a steal nobody would notice.
+add keyboard shortcuts for power users on the dashboard|!a11y
+pick a color palette for the dark mode|!a11y
+the focus this sprint is the new checkout component|!a11y
+add a mouse hover state to the card|!a11y
+reorder the tab bar items on the profile screen|!a11y
+bump the default text size in the design system|!a11y
+add a motion blur transition between routes|!a11y
+make the empty state look more premium on the profile page|!a11y
+is the lodash version in our lockfile affected by a published CVE|!security-scan
+payments are down in production, who owns the incident right now|!security-scan
+we have a memory leak in the worker process after the release|!security-scan
+map the trust boundaries and entry points before we start the audit|!security-scan
+the goroutine leaked memory and the pod restarted|!security-scan
+the connection pool leaked connections under load|!security-scan
+trim what we store in the session cache so redis stops growing|!privacy-compliance
+someone pushed a database password to the repo, rotate the credentials|!privacy-compliance
+delete the old event rows from the analytics table to save disk|!privacy-compliance
+fix the sql injection in the search filter before release|!red-team
+you keep ignoring my instructions about the commit format|!red-team
+the importer crashes when it reads a large file|!red-team
+the ci build takes 20 minutes and blocks every pr|!performance
+the webpack build takes ninety seconds to finish in the pipeline|!performance
+add a duration metric and a correlation id to this handler|!performance
+the github actions workflow needs a build and test stage before the pr gate|!testing
+the docker build step fails in the pipeline but works on my machine|!testing
+users hit an intermittent bug on checkout that I cannot reproduce|!testing
+add a column chart to the analytics dashboard|!db-migration
+the results grid needs an extra column on the settings screen|!db-migration
+we are migrating the frontend build to vite next week|!db-migration
+the login endpoint throws a 500 for half the requests|!api-design
+add a new endpoint that returns the user profile|!api-design
+upgrading the sdk to v4 is not backward compatible|!api-design
+users get a different response from the cache than the database|!api-design
+bump versions of the outdated packages and verify the build|!dependency-audit
+wire up a new dependency injection container for the module|!dependency-audit
+we send analytics events to a third party service|!dependency-audit
+the npm ci step fails on the windows runner|!dependency-audit
+the context is full, check the token budget before we continue|!handoff
+is it time to clear, how healthy is this session|!handoff
+the disk is about to run out of space on the server tonight|!handoff
+resume the half-finished migration on the users table|!handoff
+run two agents in parallel without them touching the same files|!teamboard
+isolate this refactor in a sandbox worktree so the parallel edits do not collide|!teamboard
+break the release work down into tasks with acceptance criteria|!teamboard
+my two agents are working on the same files|!teamboard
+nobody knows why the nightly job fails every other night|!adr
+write the README section explaining how the retry queue works|!adr
+how do we split this into tasks with acceptance criteria|!adr
+explain the reasoning behind this stack trace|!adr
+the unit tests are failing after my refactor|!ci-pipeline
+cut the release, write the changelog and tag it|!ci-pipeline
+the deploy to the server failed last night|!ci-pipeline
+add a build step to the github actions workflow|!deploy
+we have an outage in production, start the incident runbook|!deploy
+bump the version and add the changelog entry|!deploy
+tail the nginx logs on the server for me|!deploy
+the cron job on the server never fires|!deploy
+the tests fail on the server but pass in my ide|!deploy
+we push to produce a release candidate every friday|!deploy
+add a link to product detail from the search results|!deploy
+build a responsive component for the login screen|!i18n-integrity
+we picked the wrong language for this service, write an adr|!i18n-integrity
+write the README in english for the public repo|!i18n-integrity
+the connection strings are missing from appsettings|!i18n-integrity
+add language support for kotlin to the parser|!i18n-integrity

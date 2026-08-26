@@ -35,6 +35,10 @@ triggers_of() {  # $1 = target name; prints its trigger phrases line by line (ex
   grep -i "Trigger phrases:" "$f" | head -1 | grep -oE '"[^"]+"' | sed 's/"//g'
 }
 
+# The working set and the held-out set are read by the SAME matcher on purpose: if the holdout were scored more
+# leniently, its failures would stop meaning anything. What differs is only where the prompts came from.
+GOLD_SETS="$GOLD"
+[ -f "$(dirname "$GOLD")/golden-holdout.txt" ] && GOLD_SETS="$GOLD $(dirname "$GOLD")/golden-holdout.txt"
 echo "== 1) Golden routing (prompt -> expected target) =="
 [ -f "$GOLD" ] || { fail "golden-routing.txt missing"; }
 while IFS='|' read -r prompt expected; do
@@ -68,7 +72,7 @@ EOF
     if [ "$hit" = 1 ]; then pass "\"$prompt\" -> $expected"
     else fail "\"$prompt\" -> $expected (no trigger matched — routing gap)"; fi
   fi
-done < "$GOLD"
+done < <(cat $GOLD_SETS)
 
 echo "== 1b) Routing COVERAGE — every installed component has at least one positive case =="
 # The golden set proves that the cases in it route. It never proved that every component HAS a case, and an audit
@@ -80,7 +84,7 @@ MISSING_CASE=""
 for f in "$AGENTS"/*.md "$SKILLS"/*/SKILL.md; do
   [ -e "$f" ] || continue
   case "$f" in */SKILL.md) n="$(basename "$(dirname "$f")")" ;; *) n="$(basename "$f" .md)" ;; esac
-  grep -qE "^[^#]*\|$n\$" "$GOLD" || MISSING_CASE="$MISSING_CASE $n"
+  grep -qE "^[^#]*\|$n\$" $GOLD_SETS || MISSING_CASE="$MISSING_CASE $n"
 done
 [ -z "$MISSING_CASE" ] && pass "every installed agent/skill has a positive routing case" \
   || fail "no positive golden case for:$MISSING_CASE — add the sentence a user would type to reach it"

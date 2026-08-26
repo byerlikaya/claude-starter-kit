@@ -11,7 +11,7 @@ description: |
 <!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
      Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
      truncated or dropped, which strips the very keywords a match depends on. -->
-Trigger phrases: "write a test", "run the tests", "coverage", "are the tests green", "unit test", "integration test"
+Trigger phrases: "write a test", "run the tests", "coverage", "are the tests green", "unit test", "integration test", "tests pass locally", "flaky test", "test is flaky"
 
 Goal: **behavior correctness** — test real behavior without breaking product code just to make a test pass.
 

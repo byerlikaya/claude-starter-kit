@@ -10,7 +10,7 @@ description: |
 <!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
      Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
      truncated or dropped, which strips the very keywords a match depends on. -->
-Trigger phrases: "red team", "red-team", "test prompt injection", "jailbreak", "defense test", "adversarial test", "injection scenario"
+Trigger phrases: "red team", "red-team", "prompt injection", "test prompt injection", "jailbreak", "defense test", "adversarial test", "injection scenario", "previous instructions", "hidden instructions", "malicious instructions", "injected instructions"
 
 Goal: verify a system's defense against prompt injection and abuse by **attempting to break it**.
 Only meaningful on systems that have a defense (the CLAUDE.md "Untrusted content" axis); report findings to `security-expert-csk`.

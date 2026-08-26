@@ -10,7 +10,7 @@ description: |
 <!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
      Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
      truncated or dropped, which strips the very keywords a match depends on. -->
-Trigger phrases: "kvkk", "gdpr", "privacy", "consent", "data retention", "minimization"
+Trigger phrases: "kvkk", "gdpr", "privacy", "consent", "data retention", "minimization", "personal information", "what we store about", "data we collect", "delete my data", "right to be forgotten"
 
 <!-- Requires-tool: WebFetch -->
 <!-- Machine-readable, and smoke-test enforces it: every agent that applies this skill must carry WebFetch.

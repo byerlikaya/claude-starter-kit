@@ -3015,6 +3015,19 @@ echo "== 7y) route-hint: names the owner next to the request =="
 # hedged ("unless it is a one-line edit", "if it is genuinely not that agent's work") scored 4 of 12, because
 # a written escape hatch gets used. These cases pin BOTH halves: the right owner is named, and nothing is said
 # when there is no clear match, since a wrong route is worse than none.
+#
+# THE SECOND a11y ROW IS THE REGRESSION PIN, and it looks redundant on purpose: it is the first row plus the
+# word "page". Before the selection was rewritten, that one word SILENCED the hook — `page` is a
+# frontend-expert-csk trigger worth 4, an agent match used to overwrite the current best whatever its score, and
+# 4 then failed the `>= 6` floor, so a strong a11y match was discarded and nothing was printed. Adding a common
+# noun to a request removed its routing. The two rows differ by that word alone so the shape cannot come back
+# unnoticed; the four agent rows above are the other half, proving the agent-over-skill preference still holds
+# where the agent match is credible on its own.
+#
+# "the build fails on CI" USED TO ASSERT SILENCE and now asserts ci-pipeline. That is a scope change, not a
+# weakened assertion: the skill gained a "When the pipeline is red" section, so the request it used to have no
+# owner for now has one. A stale expectation kept for its own sake would have taught the opposite of the rule
+# it was written to enforce — that silence is right when nothing owns the request, which is no longer true here.
 RH="$ROOT/hooks/route-hint.sh"
 if [ -x "$RH" ]; then
   rh(){ printf '{"hook_event_name":"UserPromptSubmit","prompt":"%s"}' "$1" | CLAUDE_PROJECT_DIR="$RHDIR" bash "$RH" 2>/dev/null; }
@@ -3022,17 +3035,22 @@ if [ -x "$RH" ]; then
   cp -R "$ROOT/skills" "$RHDIR/.claude/" 2>/dev/null
   while IFS='|' read -r want prompt; do
     [ -n "$want" ] || continue
-    got="$(rh "$prompt" | sed -n 's/.*Use the \([a-z][a-z-]*\) subagent.*/\1/p')"
-    [ -z "$got" ] && got="$(rh "$prompt" | sed -n 's/.*Use the .\([a-z][a-z-]*\). skill.*/\1/p')"
+    # The name class carries DIGITS: `a11y` and `i18n-integrity` are real component names, and a class of
+    # [a-z-] truncated the first at "a" and reported an empty result — a case that could never pass, and would
+    # have read as a routing bug rather than as an extractor bug.
+    got="$(rh "$prompt" | sed -n 's/.*Use the \([a-z][a-z0-9-]*\) subagent.*/\1/p')"
+    [ -z "$got" ] && got="$(rh "$prompt" | sed -n 's/.*Use the .\([a-z][a-z0-9-]*\). skill.*/\1/p')"
     if [ "$want" = SILENT ]; then
       [ -z "$(rh "$prompt")" ] && pass "route-hint silent: \"$prompt\"" || fail "route-hint spoke on \"$prompt\" -> $got (a wrong route reads as the kit working)"
-    elif [ ! -f "$ROOT/agents/$want.md" ]; then
+    elif [ ! -f "$ROOT/agents/$want.md" ] && [ ! -f "$ROOT/skills/$want/SKILL.md" ]; then
       # Until 2.0 this was a `note` and the case was skipped: profiles pruned the stack agents, so on a
       # --frontend install the hook was right to stay silent about a backend request. There is no profile any
       # more — every install ships every agent — so a missing owner is now a genuine payload defect, and the
       # branch that used to absorb it fails instead. Keeping the skip would have left the kit's widest routing
       # cases unenforced for the sake of a shape that no longer exists.
-      fail "route-hint case: $want.md is missing from the payload — every install ships every agent in 2.0"
+      # A case may name an agent OR a skill: the hook picks between the two kinds, so the cases have to be able
+      # to assert either side of that choice. Checking only agents/ made every skill row fail as "missing".
+      fail "route-hint case: $want is installed as neither an agent nor a skill — every install ships every component in 2.0"
     else
       [ "$got" = "$want" ] && pass "route-hint -> $want" || fail "route-hint on \"$prompt\" gave '\''$got'\'', wanted $want"
     fi
@@ -3042,7 +3060,11 @@ backend-expert-csk|add an endpoint that returns unpaid invoices
 database-expert-csk|write a migration and an index for the invoices table
 devops-expert-csk|set up a ci pipeline with github actions
 SILENT|what is the capital of France
-SILENT|the build fails on CI
+ci-pipeline|the build fails on CI
+a11y|this needs an accessibility audit
+a11y|the page needs an accessibility audit
+handoff|I want to hand off the session state
+worktree|isolate this in a git worktree
 RHCASES
 
   # --- cost gate: this hook runs on EVERY prompt, so its cost is the session's floor ------------------
