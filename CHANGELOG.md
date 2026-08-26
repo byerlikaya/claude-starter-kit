@@ -38,6 +38,11 @@ versioning follows [SemVer](https://semver.org/).
   sentence. `start.sh`'s clone gets the prompt suppression but no timeout, because a first clone legitimately
   takes minutes. The weekly stats collector's requests are bounded on the same knob: unattended and scheduled,
   a hung request there is not a slow run but a lost week, since the traffic API keeps only 14 days.
+  The bound looks for `timeout` and then `gtimeout`, because `timeout` is coreutils and macOS does not ship
+  it — searching for a binary is not the same as assuming one. Where neither exists the call is not bounded,
+  and that is written down rather than left to be found: measured against a black-holed remote, **15s with the
+  bound and 21s without**, the 21s being git giving up on its own. So the unbounded case is slower, not
+  infinite; the infinite case was the credential prompt, and that is closed on every platform either way.
 
 ### Fixed (routing)
 - **Seven generic English words were standalone triggers, and each one alone was enough to fire.** A single
