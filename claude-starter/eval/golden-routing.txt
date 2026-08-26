@@ -13,6 +13,12 @@
 add a new handler for the order endpoint|backend-expert-csk
 write a migration for this table|database-expert-csk
 build a responsive component for the login screen|frontend-expert-csk
+# Positive twins of the seven over-broad-word rows below: the replacement phrase must still route.
+cut a release and tag it|release
+review the code in this PR|code-review-csk
+the page layout is broken on mobile|frontend-design
+requests are timing out under load|performance-expert-csk
+add client routing to the app|frontend-expert-csk
 add a new rn screen with expo router|frontend-rn-expo
 run an OWASP check and a full security scan|security-expert-csk
 we need a kvkk privacy audit|privacy-agent-csk
@@ -81,6 +87,24 @@ check for AI trace before the commit|trace-scan
 is a handover needed, the context status looks high|session-manager-csk
 
 # --- Negative: prompt must NOT route to target (over-broad-trigger guard) ---
+#
+# The seven rows below are the ones that were REPORTED FROM LIVE USE, not invented. Each generic English word
+# was a standalone trigger, and a single trigger of six characters or more clears the score floor on its own —
+# so any sentence containing the word routed somewhere unrelated. Measured before the fix: all seven misrouted.
+#   "context"  -> token-budget            "version"  -> release             "review"  -> review-agent-csk
+#   "routing"  -> frontend-expert-csk     "timeout"  -> performance-expert  "screen"  -> frontend-expert-csk
+#   "layout"   -> frontend-design
+# None of them came from this release's widening: all seven were triggers in 2.6.0 and earlier, which the diff
+# against v2.6.0 confirms. Each was replaced by the phrase that carries the intent rather than deleted, and the
+# POSITIVE twin of every row sits in the block above — a guard that only proves silence would be satisfied by
+# a component with no triggers at all.
+give me more context on this bug|!token-budget
+review the jira ticket before I send it|!review-agent-csk
+the image version is 3.2, rebuild it|!release
+the routing table is misconfigured|!frontend-expert-csk
+the request timeout is 30 seconds|!performance-expert-csk
+the screen froze during the demo|!frontend-expert-csk
+fix the layout of this json file|!frontend-design
 design the database schema|!frontend-design
 read the model context and summarize it|!mcp-builder
 optimize the slow sql query performance|!systematic-debugging

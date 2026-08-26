@@ -14,7 +14,7 @@ tools: Read, Grep, Glob, Edit, Write, Bash
 
 <!-- routing-eval reads this line; it lives in the BODY so the always-on `description` stays
      focused on WHEN to delegate, which is the field Claude actually reads. -->
-Trigger phrases: "screen", "component", "page", "navigation", "routing", "UI polish", "responsive", "i18n interface", "state management", "visual design", "design system", "design token", "dark mode", "look premium"
+Trigger phrases: "screen size", "component", "page", "navigation", "client routing", "react router", "UI polish", "responsive", "i18n interface", "state management", "visual design", "design system", "design token", "dark mode", "look premium"
 
 The role is general; the "how" varies per project. First detect the project's frontend stack
 (package.json / repo structure / CLAUDE.md), then follow that project's conventions —

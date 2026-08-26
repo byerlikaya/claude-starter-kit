@@ -11,7 +11,7 @@ description: |
 <!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
      Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
      truncated or dropped, which strips the very keywords a match depends on. -->
-Trigger phrases: "code-review", "review the code", "review the PR", "review", "do a review"
+Trigger phrases: "code-review", "review the code", "review the PR", "review my changes", "do a review"
 
 > **Kit adaptation (local, .claude/):** applied by `review-agent-csk` (read-only). No source name appears in the
 > artifact that goes to the repo (§4.2). Comments are severity-ranked; §4 applies.

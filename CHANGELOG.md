@@ -39,6 +39,23 @@ versioning follows [SemVer](https://semver.org/).
   takes minutes. The weekly stats collector's requests are bounded on the same knob: unattended and scheduled,
   a hung request there is not a slow run but a lost week, since the traffic API keeps only 14 days.
 
+### Fixed (routing)
+- **Seven generic English words were standalone triggers, and each one alone was enough to fire.** A single
+  trigger phrase of six characters or more clears the score floor by itself, so `context`, `version`, `review`,
+  `routing`, `timeout`, `screen` and `layout` routed any sentence containing them to a component with nothing
+  to do with the request. Measured, all seven before the fix: "give me more context on this bug" reached
+  `token-budget`; "the image version is 3.2, rebuild it" reached `release`; "the routing table is
+  misconfigured" reached `frontend-expert-csk`; "fix the layout of this json file" reached `frontend-design`.
+  Three of these were reported from live work in unrelated sessions before they were reproduced here.
+
+  None came from this release's widened triggers — the diff against v2.6.0 shows all seven predate it, and
+  every short phrase added this cycle is domain-bound (`alt text`, `talkback`, `jenkins`, `backfill`, `locale`,
+  `api key`). Each word is now the phrase that carries the intent (`context window`, `new version`,
+  `review my changes`, `client routing`, `timing out`, `screen size`, `page layout`) rather than deleted, and
+  every one ships with both halves in the routing set: the sentence that must stay silent and the sentence that
+  must still route. Pruning `version` alone broke "cut a new version and tell people what changed" — the
+  held-out set caught it, which is the reason that set is scored by the same matcher as the working one.
+
 ### Added
 - **`git update-index --add` is gated.** It stages a path regardless of `.gitignore` — the bypass `git add -f`
   is blocked for, by another spelling. Seen live: `--add --chmod=+x deploy/rolling-update.sh` staged with

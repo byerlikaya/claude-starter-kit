@@ -11,7 +11,7 @@ tools: Read, Grep, Glob, Bash
 
 <!-- routing-eval reads this line; it lives in the BODY so the always-on `description` stays
      focused on WHEN to delegate, which is the field Claude actually reads. -->
-Trigger phrases: "performance review", "is this fast enough", "performance audit", "slow", "hot path", "profile this", "memory leak", "laggy", "takes too long", "seconds to load", "timeout", "where the time goes"
+Trigger phrases: "performance review", "is this fast enough", "performance audit", "slow", "hot path", "profile this", "memory leak", "laggy", "takes too long", "seconds to load", "timing out", "where the time goes"
 
 Read-only auditor, like [[security-expert-csk]]: the relevant expert (backend / database / frontend) makes the
 fix; this agent produces the findings. It closes a real asymmetry — security, privacy and tests each had an

@@ -9,7 +9,7 @@ description: |
 <!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
      Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
      truncated or dropped, which strips the very keywords a match depends on. -->
-Trigger phrases: "token budget", "token cost", "context", "context management", "context is full", "clear context"
+Trigger phrases: "token budget", "token cost", "context window", "context management", "context is full", "clear context", "running out of context"
 
 A subagent exists for context management: it runs in its own window and returns **only its summary**
 to the main thread — intermediate noise (file reads, searches, logs) never enters the main context.
