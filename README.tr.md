@@ -8,7 +8,7 @@
 
 Paylaşılan bir depoda bir işi üstlenmek atomik bir git iddiasıdır — aynı işe iki kişi başlayamaz
 
-![Sürüm](https://img.shields.io/badge/version-2.6.0-2563eb?style=flat-square)
+![Sürüm](https://img.shields.io/badge/version-2.7.0-2563eb?style=flat-square)
 ![Lisans](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)
 ![Agent](https://img.shields.io/badge/agents-12-f59e0b?style=flat-square)
 ![Skill](https://img.shields.io/badge/skills-40-f59e0b?style=flat-square)
@@ -104,7 +104,7 @@ Beş aşamaya yayılmış **12 uzman agent** — kalite, hiçbir şey commit edi
 |:--|:--:|:--|
 | **Agent** | 12 | İnce tetikleyiciler — bir alanın *kimin* olduğu ve *ne zaman* devreye gireceği |
 | **Skill** | 40 | Yöntemin kendisi; bir kez yazılır, ihtiyacı olan uygular |
-| **Slash komutu** | 9 | `/brainstorm-csk` · `/plan-csk` · `/review-csk` · `/ship-csk` · `/handoff-csk` · `/update-csk` · `/doctor-csk` · `/board-csk` · `/gates-csk` |
+| **Slash komutu** | 10 | `/brainstorm-csk` · `/plan-csk` · `/review-csk` · `/ship-csk` · `/handoff-csk` · `/update-csk` · `/doctor-csk` · `/board-csk` · `/gates-csk` · `/skill-csk` |
 | **Hook** | 12 | Yaptırımlar, ayrıca oturum ölçümü ve yönlendirme |
 | **Disiplin** | 1 | İlkeler, akış, Definition of Done, yasaklar — `CLAUDE.md`'nizin import ettiği dosya |
 
@@ -115,7 +115,7 @@ Beş aşamaya yayılmış **12 uzman agent** — kalite, hiçbir şey commit edi
 |:--|:--|
 | `route-hint.sh` | Her isteğin yanına o işin sahibi agent'ı yazar; uzmanlar siz istemeden devreye girer |
 | `guard-bash.sh` | Araç seviyesinde komut kapısı: commit/push onayı, yıkıcı işlemler, uzaktan kod çalıştırma, hook kurcalama |
-| `guard-write.sh` | Aynı korumanın Write/Edit tarafı — sessizce silinebilen bir kapı, kapı değildir. Pano üstlenme kapısını da o tutar: ekip deposunda, elinizde bir madde yokken **ilk dosya düzenlemesi** reddedilir, böylece üstlenilmemiş iş commit anında değil daha birinci dakikada yakalanır |
+| `guard-write.sh` | Aynı korumanın Write/Edit tarafı — sessizce silinebilen bir kapı, kapı değildir. Hedef yolu eşleştirmeden önce sadeleştirir, böylece bir kapı dosyasına farklı bir yazımla ulaşılamaz. Pano üstlenme kapısını da o tutar: ekip deposunda, elinizde bir madde yokken **ilk dosya düzenlemesi** reddedilir, böylece üstlenilmemiş iş commit anında değil daha birinci dakikada yakalanır |
 | `guard-commit-scan.sh` | Gerçek iz ve sır tarayıcılarını `PreToolUse` üzerinden koşturur; böylece `core.hooksPath` ayarlanamayan yerlerde de commit kapısı çalışır |
 | `context-usage.sh` | Transcript'ten gerçek token sayısını okur ve her tura enjekte eder |
 | `session-guard.sh` | Bağlam doluluğu %75'i ve %90'ı geçtiğinde birer kez uyarır — turu asla kesmez |
@@ -153,6 +153,7 @@ Beş aşamaya yayılmış **12 uzman agent** — kalite, hiçbir şey commit edi
 | `db-migration` | Şema göçlerini güvenle uygula: aracı sapta, değişikliği riske göre sınıfla, yıkıcı olanları onaya bağla, prod'da yedekle, önizle-uygula-doğrula, hatada geri al. |
 | `dependency-audit` | Bağımlılık denetimi: bilinen CVE'ler, lisans uyumu, terk edilmiş/eski paketler, lockfile bütünlüğü ve her yeni bağımlılık için gerekçe. |
 | `dependency-upgrade` | Bağımlılıkları build'i kırmadan güncele taşı: neyin açığı var, neyi deprecated, neyi geride belirle; her hedef sürümü riske göre sınıfla (patch/minor/major), güvenli olanı uygula, doğrula, kırmızıda geri al. |
+| `deploy` | Bir build'i geri alınabilir şekilde canlıya almak — kendi yönettiğin sunucuda ya da seni yöneten bir platformda: önce topolojiyi seç, önceki sürümü erişilebilir tut, sağlık kapısından geçir, yeniden derlemeden geri al. |
 | `devarch-module` | DevArchitecture backend deseni: MediatR CQRS handler/command/query, IResult/IDataResult, Autofac AOP zinciri, FluentValidation, i18n. |
 | `docs-writer` | Dokümantasyonu kodla eşzamanlı tutar: public API veya davranış değişince README, kullanım ve ilgili dokümanlar. |
 | `eval-grader` | Çıktı kalitesini ölç, sezgiye bırakma: bir üretken görevi iki katmanlı grader ile puanla (ucuz deterministik kod metrikleri + boyut-boyut LLM-yargıç), sabit görev kümesine karşı, sabitlenmiş baz çizgisine göre işaretli deltalarla. Doğruluğun yanında maliyeti de puanlar (pass-slow). |
@@ -179,7 +180,6 @@ Beş aşamaya yayılmış **12 uzman agent** — kalite, hiçbir şey commit edi
 | `threat-model` | Güvenlik denetimini taramadan ÖNCE kapsamla (false-positive kesici): varlıklar, giriş noktaları, güven sınırları ve 5-8 alana özgü saldırı sınıfını parse edilebilir THREAT_MODEL.md'ye çıkar. Tehdit patch'i aşar; zafiyet yalnızca kanıttır. security-scan'i besler. |
 | `token-budget` | Bağlam/token disiplini: subagent izolasyonu, çıktı = özet, dosyaya-taşı, delege eşiği, yalın skill'ler. |
 | `trace-scan` | İz taraması (§4.1/§4.2): commit'ten önce staged değişiklikleri ve mesajı AI izlerine (co-author trailer, footer, robot emoji, araç adları) ve vendor şablon adlarına karşı tarar. |
-| `vps-deploy` | Bir VPS'e güvenli dağıtım: runtime saptama, ters proxy + SSL, atomik geçiş, önceki sürümü koru, dağıtım sonrası sağlık kapısı, hatada otomatik geri alma. |
 | `worktree` | Riskli ya da paralel dosya-değiştiren işi bir git worktree'de izole et; ana ağacın commit'lenmemiş değişiklikleri asla ezilmez. Fan-out agent'lar, tek-kullanımlık deneyler için. |
 
 <!-- SKILLS:END -->
@@ -211,7 +211,7 @@ Solda kural, sağda o kuralın geçilmesine izin vermeyen şey.
 | Commit ve push her izin modunda onayınızı gerektirir | `guard-bash.sh`, yalnızca sizin cevaplayabileceğiniz bir istem açar. `bypassPermissions` altında kapalı düşer |
 | Yıkıcı işlemler: `reset --hard`, `checkout -- .`, force push, `rm -rf`, `clean -f`, `--no-verify`, amend | `guard-bash.sh`, araç seviyesinde engeller |
 | Uzaktan kod çalıştırma ve izin patlatma: `curl…\|bash`, herkese yazılabilir `chmod`, `dd of=` | `guard-bash.sh`, her modda sert engel |
-| Bir yaptırımı devre dışı bırakmak — `core.hooksPath`'i saptırmak, bir hook'u düzenlemek veya silmek | `guard-bash.sh` (kabuk) + `guard-write.sh` (dosya araçları) |
+| Bir yaptırımı devre dışı bırakmak — `core.hooksPath`'i saptırmak, bir hook'u düzenlemek veya silmek, ya da yaptırımların dayandığı disiplin metnini değiştirmek | `guard-bash.sh` (kabuk) + `guard-write.sh` (dosya araçları). İkisi de **çözülmüş** yolu eşleştirir: `..` parçaları, çift eğik çizgi, Windows ayraçları ve sembolik bağlı bir üst dizin, düz yazımla aynı sonucu verir |
 | Hiçbir API anahtarı, token veya özel anahtar commit'e girmez | `pre-commit` sır taraması; her desen kendi test vakasını taşır |
 | Hiçbir makineye özel yol veya iç ad commit'e girmez | `pre-commit` özel yol taraması: kendi `$HOME`'unuz kendiliğinden, ayrıca gitignore'lanmış `.private-terms.txt` |
 | Hiçbir kimlik dosyası bağlama *okunmaz* — `~/.ssh/id_rsa`, `~/.aws/credentials`, `*.pem`, kubeconfig | `settings.json` okuma reddi + `guard-bash.sh` |

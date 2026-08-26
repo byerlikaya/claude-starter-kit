@@ -48,15 +48,24 @@ if [ -z "$TOKEN" ] && command -v gh >/dev/null 2>&1; then TOKEN="$(gh auth token
 NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 VERSION="$(cat VERSION 2>/dev/null || echo unknown)"
 
+# Every request is bounded. curl waits indefinitely by default, and this script runs unattended on a weekly
+# schedule, so a hung request is not a slow run — it is a lost week: the GitHub traffic API only keeps 14 days,
+# and a snapshot that never completes cannot be taken again later. The failure path already exists and is
+# graceful (an empty body becomes `null` in the row below), so bounding the wait turns a silent stall into a
+# recorded gap. Same reasoning and the same knob as board.sh's `_gitnet`: CSK_NET_TIMEOUT, read here rather
+# than redefined, because one name for one thing is what keeps the two from drifting to different values.
+CURL_T="${CSK_NET_TIMEOUT:-15}"
+
 # gh_api <path> -> body on stdout, empty on failure (the caller decides whether that is fatal).
 gh_api() {
   [ -n "$TOKEN" ] || return 1
-  curl -sf -H "Authorization: Bearer $TOKEN" \
+  curl -sf --connect-timeout 10 --max-time "$CURL_T" \
+          -H "Authorization: Bearer $TOKEN" \
           -H "Accept: application/vnd.github+json" \
           -H "X-GitHub-Api-Version: 2022-11-28" \
           "https://api.github.com/repos/$REPO/$1" 2>/dev/null
 }
-npm_api() { curl -sf "https://api.npmjs.org/$1" 2>/dev/null; }
+npm_api() { curl -sf --connect-timeout 10 --max-time "$CURL_T" "https://api.npmjs.org/$1" 2>/dev/null; }
 
 json_or_null() { # a body is only usable if it parses AND is an object
   jq -e 'type == "object"' >/dev/null 2>&1 <<<"$1" && printf '%s' "$1" || printf 'null'

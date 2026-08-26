@@ -39,7 +39,7 @@ if [ -n "$SRC" ]; then
   [ -f "$SRC" ] || { echo "stats-report: no such file: $SRC" >&2; exit 1; }
   LEDGER="$(cat "$SRC")"
 else
-  git rev-parse --verify -q origin/stats >/dev/null 2>&1 || git fetch -q origin stats 2>/dev/null || true
+  git rev-parse --verify -q origin/stats >/dev/null 2>&1 || GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never git fetch -q origin stats 2>/dev/null || true
   LEDGER="$(git cat-file -p origin/stats:stats.jsonl 2>/dev/null || true)"
   [ -n "$LEDGER" ] || { echo "stats-report: no ledger on origin/stats (has the workflow run yet?)" >&2; exit 1; }
 fi

@@ -8,7 +8,7 @@
 
 On a shared repo, taking a work item is an atomic git claim — two people cannot start the same one
 
-![Version](https://img.shields.io/badge/version-2.6.0-2563eb?style=flat-square)
+![Version](https://img.shields.io/badge/version-2.7.0-2563eb?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)
 ![Agents](https://img.shields.io/badge/agents-12-f59e0b?style=flat-square)
 ![Skills](https://img.shields.io/badge/skills-40-f59e0b?style=flat-square)
@@ -104,7 +104,7 @@ Then paste `.claude/FIRST_PROMPT.md` as your first Claude Code message. Homebrew
 |:--|:--:|:--|
 | **Agents** | 12 | Thin triggers — *who* owns a domain and *when* they fire |
 | **Skills** | 40 | The method, written once, applied by whoever needs it |
-| **Slash commands** | 9 | `/brainstorm-csk` · `/plan-csk` · `/review-csk` · `/ship-csk` · `/handoff-csk` · `/update-csk` · `/doctor-csk` · `/board-csk` · `/gates-csk` |
+| **Slash commands** | 10 | `/brainstorm-csk` · `/plan-csk` · `/review-csk` · `/ship-csk` · `/handoff-csk` · `/update-csk` · `/doctor-csk` · `/board-csk` · `/gates-csk` · `/skill-csk`|
 | **Hooks** | 12 | The gates, plus session measurement and routing |
 | **Discipline** | 1 | Principles, workflow, Definition of Done, prohibitions — imported by your `CLAUDE.md` |
 
@@ -115,7 +115,7 @@ Then paste `.claude/FIRST_PROMPT.md` as your first Claude Code message. Homebrew
 |:--|:--|
 | `route-hint.sh` | Names the owning agent alongside every prompt, so specialists run without you asking |
 | `guard-bash.sh` | Tool-level command gate: commit/push approval, destructive ops, remote-code-exec, hook tampering |
-| `guard-write.sh` | The same protection on the Write/Edit side — a gate you can silently delete is not a gate. It also holds the board claim gate: on a team repo, the FIRST file edit is refused while you hold no work item, so unclaimed work is caught at minute one rather than at commit time |
+| `guard-write.sh` | The same protection on the Write/Edit side — a gate you can silently delete is not a gate. It normalises the target path before matching it, so a gate file cannot be reached under a different spelling. It also holds the board claim gate: on a team repo, the FIRST file edit is refused while you hold no work item, so unclaimed work is caught at minute one rather than at commit time |
 | `guard-commit-scan.sh` | Runs the real trace and secret scanners from `PreToolUse`, so the commit gate works where `core.hooksPath` cannot be set |
 | `context-usage.sh` | Reads the real token count from the transcript and injects it every turn |
 | `session-guard.sh` | Warns once at 75% context fill and once at 90% — never blocks a turn |
@@ -153,6 +153,7 @@ Two git hooks — `pre-commit` and `commit-msg` — run the trace, secret, repo-
 | `db-migration` | Apply schema migrations safely: detect the tool, classify the change by risk, gate destructive ones behind approval, back up in prod,… |
 | `dependency-audit` | Dependency risk assessment, read-only: known CVEs, deprecated packages, licence compliance, maintenance status, lockfile integrity, and a… |
 | `dependency-upgrade` | Bring dependencies current without breaking the build: find what is vulnerable, deprecated or behind, classify each target version by… |
+| `deploy` | Ship a build reversibly — to a host you manage or a platform that manages it. |
 | `devarch-module` | DevArchitecture backend pattern: MediatR CQRS handler/command/query, IResult/IDataResult, Autofac AOP chain, FluentValidation, i18n. |
 | `docs-writer` | Keeps documentation in sync with the code: README, usage and related docs when a public API or behavior changes. |
 | `eval-grader` | Measure output quality, don't vibe it: score a generative task with a two-layer grader — deterministic code metrics + per-dimension… |
@@ -179,7 +180,6 @@ Two git hooks — `pre-commit` and `commit-msg` — run the trace, secret, repo-
 | `threat-model` | Scope a security audit BEFORE scanning, to cut false positives: map assets, entry points, trust boundaries and 5-8 domain-specific attack… |
 | `token-budget` | Context/token discipline: subagent isolation, output = summary, move-to-file, delegation threshold, lean skills. |
 | `trace-scan` | Trace scan (§4.1/§4.2): before a commit, scans the staged changes and the message for AI traces (co-author trailers, footers, robot… |
-| `vps-deploy` | Deploy to a VPS safely: runtime detection, reverse proxy + SSL, atomic swap, keep the previous version, post-deploy health gate,… |
 | `worktree` | Isolate risky or parallel file-mutating work in a git worktree so the main tree's uncommitted changes are never clobbered. |
 
 <!-- SKILLS:END -->
@@ -211,7 +211,7 @@ Left is the rule; right is the thing that refuses to let it slide.
 | Commit and push need your approval, in every permission mode | `guard-bash.sh` raises a prompt only you can answer. Fails closed under `bypassPermissions` |
 | Destructive ops: `reset --hard`, `checkout -- .`, force push, `rm -rf`, `clean -f`, `--no-verify`, amend | `guard-bash.sh`, blocked at the tool level |
 | Remote code execution and permission nukes: `curl…\|bash`, world-writable `chmod`, `dd of=` | `guard-bash.sh`, hard-blocked in every mode |
-| Disarming a gate — redirecting `core.hooksPath`, editing or deleting a hook | `guard-bash.sh` (shell) + `guard-write.sh` (file edits) |
+| Disarming a gate — redirecting `core.hooksPath`, editing or deleting a hook, or rewriting the discipline the gates enforce | `guard-bash.sh` (shell) + `guard-write.sh` (file edits). Both match the **resolved** path, so `..` segments, doubled slashes, Windows separators and a symlinked parent all reach the same verdict as the plain spelling |
 | No API key, token or private key reaches a commit | `pre-commit` secret scan; every pattern carries its own test case |
 | No machine-private path or internal name reaches a commit | `pre-commit` private-path scan: your own `$HOME` automatically, plus a gitignored `.private-terms.txt` |
 | No credential is *read* into the context — `~/.ssh/id_rsa`, `~/.aws/credentials`, `*.pem`, kubeconfig | `settings.json` read-deny + `guard-bash.sh` |

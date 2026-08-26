@@ -69,7 +69,7 @@ and report. Commit/push and destructive commands are gated (§4.4/§4.5).
 | Lasting architectural decision | `adr` |
 | Version tag / CHANGELOG | `release` |
 | CI config change | `ci-pipeline` |
-| Deploy to a server | `vps-deploy` |
+| Shipping to any environment users reach | `deploy` |
 | Phase close / before `/clear` | `handoff` |
 | Context bloat / delegation call | `token-budget` |
 | New log or error path | `observability` |

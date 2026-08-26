@@ -9,7 +9,7 @@ description: |
 <!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
      Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
      truncated or dropped, which strips the very keywords a match depends on. -->
-Trigger phrases: "token budget", "token cost", "context", "context management", "context is full", "clear context"
+Trigger phrases: "token budget", "token cost", "context window", "context management", "context is full", "clear context", "running out of context"
 
 A subagent exists for context management: it runs in its own window and returns **only its summary**
 to the main thread — intermediate noise (file reads, searches, logs) never enters the main context.
@@ -31,3 +31,14 @@ for **isolation / parallelism / a clean window**, or when the isolated work woul
 5. **Lean SKILL.md.** Skills load into the main context; heavy reference goes to a separate file, only when needed.
 6. **Targeted reading.** Instead of reading a whole file, pinpoint with Grep/Glob.
 7. **Manage with /context.** session-manager-csk recommends continue/handoff+clear based on the real percentage; at a phase boundary, `/clear`.
+8. **Bound what a command hands back.** All of the rules above govern the context's own footprint; none of them
+   govern what a single `Bash` call dumps into it. A `find` over a monorepo, an unfiltered log, a full test run —
+   each returns everything to the main thread whether or not any of it is read. Ask for the answer, not the
+   corpus: `grep -c` over `grep`, `| tail -20` over the whole file, `--quiet`/`--porcelain` where the tool has
+   one, and a redirect to a file plus a pointer when the output is genuinely needed later (rule 2).
+9. **Cut what nothing reaches — with evidence, not a hunch.** Every installed skill spends its name and
+   description in EVERY session, forever. `bash .claude/eval/utilization.sh` reports which skills actually fired
+   in this project's transcripts and how many bytes the cold ones cost, which is the list `doctor.sh` §4a's
+   `skillOverrides: name-only` advice needs and never had. Read it as evidence, not a verdict: a skill that only
+   fires during an incident is doing its job by existing. `--all-projects` widens the scope; by default it reads
+   this project only and prints names and counts, never paths or content.

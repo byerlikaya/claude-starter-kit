@@ -10,7 +10,7 @@ description: |
 <!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
      Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
      truncated or dropped, which strips the very keywords a match depends on. -->
-Trigger phrases: "adr", "architecture decision", "decision record", "why this approach"
+Trigger phrases: "adr", "architecture decision", "decision record", "why this approach", "why we chose", "why we went with", "nobody remembers why", "why we picked"
 
 ## When
 On an architecture/technology choice that is expensive to reverse, long-lived, or contested

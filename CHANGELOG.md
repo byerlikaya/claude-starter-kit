@@ -3,6 +3,330 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [2.7.0] - 2026-08-26
+
+### Fixed
+- **A commit could freeze and leave the repository locked, and the gate was the reason.** `pre-commit` used
+  `trap '<cleanup>' EXIT INT TERM`, which looks like it handles all three. It does not: bash **returns to the
+  script** after a signal handler that does not itself exit, so a `TERM` deleted the temporary files the hook
+  was still reading and let it carry on, printing `grep: /tmp/tmp.X: No such file or directory` for the rest of
+  the run. Measured: after a `TERM` the hook exited **0**, and a process a signal actually stopped cannot exit 0.
+  That is the whole freeze — a wrapper times out and sends `TERM`, the hook ignores it, git keeps running,
+  `.git/index.lock` stays behind, and every later git command fails with "Another git process seems to be
+  running", a message that names nothing about the cause. One session hit that loop three times. Signals now
+  exit 143; `EXIT` still cleans up.
+- **`git add -f` was matched across the whole command string**, so `git add a b && git commit -q -F -` — the
+  ordinary way to write a commit — was refused, along with `rm -f .git/index.lock; git add x`. The scan is now
+  bounded to the text between `git add` and the next command separator, and is case-sensitive: `-F` is a
+  commit/tag flag and never an add flag.
+- **Reading a setting was treated as tampering.** `git config --get core.hooksPath` is how a person checks the
+  gate is armed; only the write forms disarm it.
+- **The gate-file tamper rule matched mid-word.** Its verb list contains `ex` and carried no leading word
+  boundary, so `grep -c update-index .claude/hooks/guard-bash.sh` matched the `ex` inside `index` and a
+  read-only grep was refused — the same defect as the `git add` one: a pattern never anchored to a command
+  position.
+- **`.env.example` and its siblings were unreadable while being committable.** `.env.example`, `.sample`,
+  `.template` and `.dist` are templates that already go into git, and `pre-commit` has always treated them as
+  committable, while the permission layer called the same file an unreadable secret. Three sessions reported it
+  independently and one showed the cost: a documentation edit could not be applied, was handed to the user as
+  text, and landed in the wrong place because the writer could not see the target. `.env`, `.env.local` and
+  `.env.*.local` stay denied.
+- **No network git call suppressed credential prompts.** `board.sh` had five unbounded `fetch`/`push` calls,
+  and on Windows the default credential helper opens a GUI dialog no hook is watching — the process waits
+  forever. All of them now go through one wrapper: prompts off, and a timeout where the tool exists. Failure
+  was already the graceful path there ("remote unreachable", "kept locally"), so this turns a hang into a
+  sentence. `start.sh`'s clone gets the prompt suppression but no timeout, because a first clone legitimately
+  takes minutes. The weekly stats collector's requests are bounded on the same knob: unattended and scheduled,
+  a hung request there is not a slow run but a lost week, since the traffic API keeps only 14 days.
+
+### Fixed (routing)
+- **Seven generic English words were standalone triggers, and each one alone was enough to fire.** A single
+  trigger phrase of six characters or more clears the score floor by itself, so `context`, `version`, `review`,
+  `routing`, `timeout`, `screen` and `layout` routed any sentence containing them to a component with nothing
+  to do with the request. Measured, all seven before the fix: "give me more context on this bug" reached
+  `token-budget`; "the image version is 3.2, rebuild it" reached `release`; "the routing table is
+  misconfigured" reached `frontend-expert-csk`; "fix the layout of this json file" reached `frontend-design`.
+  Three of these were reported from live work in unrelated sessions before they were reproduced here.
+
+  None came from this release's widened triggers — the diff against v2.6.0 shows all seven predate it, and
+  every short phrase added this cycle is domain-bound (`alt text`, `talkback`, `jenkins`, `backfill`, `locale`,
+  `api key`). Each word is now the phrase that carries the intent (`context window`, `new version`,
+  `review my changes`, `client routing`, `timing out`, `screen size`, `page layout`) rather than deleted, and
+  every one ships with both halves in the routing set: the sentence that must stay silent and the sentence that
+  must still route. Pruning `version` alone broke "cut a new version and tell people what changed" — the
+  held-out set caught it, which is the reason that set is scored by the same matcher as the working one.
+
+### Added
+- **`git update-index --add` is gated.** It stages a path regardless of `.gitignore` — the bypass `git add -f`
+  is blocked for, by another spelling. Seen live: `--add --chmod=+x deploy/rolling-update.sh` staged with
+  nothing said. Staging itself stays ungated on purpose; this rule is about the gitignore bypass alone.
+
+### Not changed — the measurement said otherwise
+- **The reported hook slowness is not the kit.** On two machines a bare `/usr/bin/true` costs **880–1483 ms**
+  against 3–5 ms on a healthy one, shell builtins run at normal speed, and one session traced it to corporate
+  endpoint software inspecting every process creation. 51 external processes for a commit is a sane budget; the
+  environment is charging 20–300× per process. The related "the gate measures twice per turn" report is the
+  same tax seen through a cache that is in fact working: `session-guard` already reads what `context-usage`
+  published rather than re-deriving it — 596 ms against 1203 ms on the same machine.
+
+### Changed
+- **Fifteen skills advertised the vocabulary of their domain instead of the vocabulary of the request, and a
+  held-out set is what showed it.** The routing set the kit tested against was seven rows written while looking
+  at the triggers, so it passed by construction. Eighteen phrasings written first and measured second — the way
+  a person actually types a request — reached nothing in **fifteen** cases. Two causes. `route-hint.sh` scored
+  agents and skills into a single best slot, so a weak agent match displaced a strong skill match and the hook
+  then fell under its own floor and said nothing at all, losing both correct answers instead of choosing
+  between them; it now keeps a best-per-kind and prefers the agent only where the agent's own score clears the
+  floor. And the triggers themselves said "accessibility audit" but not "screen reader", "migration" but not
+  "add a column". They now carry both, with **65 negative rows** (the routing set goes from 7 to 72) naming
+  requests that must reach a neighbour or nothing, because widening a trigger is how a router starts answering
+  what it does not own. The held-out file is read by the same matcher as the working set — a held-out set
+  scored more leniently than the set it is held out from measures nothing.
+- **`vps-deploy` is now `deploy`, and it no longer assumes a machine you SSH into.** The old skill's every step
+  presumed a host you administer, which placed managed platforms outside the kit entirely — where most first
+  deploys now happen. The skill opens with a topology fork, and the managed path has its own phases and its own
+  checklist rather than borrowing the server one; what holds across both (a reachable previous version, a
+  health gate, a rollback that does not rebuild) is stated once. An **upgrade** used to leave the old
+  `skills/vps-deploy/` in place next to the new one, both live and competing on every prompt, because the
+  installer's stale-component scan covered `commands/` and `agents/` but not `skills/`. It now covers skills
+  and reports the orphan for you to remove, on the same report-never-delete rule as the rest.
+- **A Windows fork cost that nobody had measured justified sixteen optimisations.** "Git Bash pays 20-50ms per
+  process" appeared in sixteen comments and CHANGELOG entries as the reason for a rewrite. Measured on a
+  Windows 11 desktop it is **62-135 ms idle and up to ~400 ms under load** — the figure one hook already
+  carried alone. The numbers *derived* from it moved too: `skill-trust`'s 100 spawns go from "2-5s" to 6-14s,
+  and the 2,000-spawn route-hint regression from "40-100 seconds" to two to four minutes. One claim was not
+  merely low but internally inconsistent — 2,643 spawns "at 20-50 ms" was written as "over twenty minutes",
+  though that product is 2.2 minutes. The twenty minutes came from a field report on a 373-file merge where
+  most of the time is each `grep`'s own scan of the staged content, not the fork: two separate facts welded
+  into one sentence, and the weld hid a tenfold gap. They are now stated apart, with the old arithmetic noted
+  so it does not get re-fused. The two remaining "20-50 ms" strings quote the claim being corrected.
+- **The route-hint cost gate counts processes instead of seconds.** It bounded wall-clock at 5s with a comment
+  claiming an order of magnitude of headroom. Measured on Windows, where the gate exists to protect: 3.1–3.3s
+  idle — ten times the figure the comment claimed — and 9.2–10.1s under parallel fork load, a 2× overrun with
+  the hook answering correctly throughout. The gate was one busy runner from failing for a reason unrelated to
+  the defect it guards. It now counts external commands (five per prompt today, budget twelve), which separates
+  five forks from the two thousand of the shape that froze sessions regardless of load or platform; wall-clock
+  remains as a coarse second bound at 30s.
+
+### Added
+- **`packaging/verify.sh` — one definition of the gates, invoked by both the developer and CI.** The commands
+  lived in the workflow and nowhere else, so running everything reachable locally was three of six gates and
+  still called green. That is not hypothetical: a branch with all three eval suites passing failed CI on the
+  one gate with no local runner, because the README skill catalogue is generated and a hand-edited row drifts
+  from the skill it describes. The workflow now invokes `verify.sh <step>` so each gate keeps its own named box
+  while the thing being run exists once. A skipped step is reported and counted apart from a passing one; under
+  `CSK_VERIFY_STRICT`, which the workflow sets, it fails instead, because on a runner a missing tool is a broken
+  runner rather than an honest local limitation. Five assertions pin the two files to each other in both
+  directions — including the one that bites, a gate defined locally that the workflow never runs.
+- **The installer refuses to consume the kit's own checkout.** `start.sh` ends by deleting `claude-starter/`
+  and itself, which is correct once the kit has been unpacked into a project and destroys the source when it is
+  invoked by absolute path from a development checkout. It did: 122 tracked files, recovered only because they
+  were committed. The three markers are required together, since a released tarball carries `VERSION` and
+  `packaging/` and no `.git` — keyed on any one of them the guard would refuse every real install instead of
+  the accident. `CSK_ALLOW_SOURCE_INSTALL=1` is the deliberate way through.
+
+### Fixed
+- **The commit gate was silently unarmed on every Windows install.** `start.sh` decided whether it sat at a
+  repository root by comparing two path strings, and on Windows git answers `C:/…` while the shell answers
+  `/c/…`, so the comparison never matched, the hooks were never installed, and the installer reported success.
+  It now asks git which directory this is rather than which spelling it uses.
+- **`doctor` reported `healthy` over a gate wired to nothing.** On a machine without `jq` the settings check
+  asked only whether the event *name* appeared in the file, and a valid `settings.json` carrying
+  `"PreToolUse": []` satisfies that: the name is present, another event still mentions `hooks/`, and the
+  diagnostic printed `settings.json wires the required hook events`. The §4.4/§4.5 tool gate was connected to
+  nothing while the tool that exists to say so called it fine — and this is the Windows path, where the hooks
+  are most fragile and `jq` is absent by default. Emptiness needs no parser: after the event's `[`, the first
+  non-space character is `]` exactly when the array is empty, which is pure parameter expansion and costs no
+  process on the platform that charges for every one. Checked against six fixtures and the shipped file.
+- **A leading `VAR=value` carried a blocked command past the teardown gate.** `TF_VAR_x=1 terraform destroy`
+  put the verb out of the position the matcher examined. Assignment prefixes are now consumed before the verb
+  is read, the way the shell reads them.
+
+### Security
+- **The write-side gate matched the raw path string, so a gate file could be reached under a different
+  spelling.** `guard-write.sh` compared `file_path` verbatim against `*/.claude/hooks/*` and `*/.git/hooks/*`.
+  Measured against 2.6.0, every one of these returned rc=0 — a single Write call each, no shell access, no
+  symlink, no second step: `.claude/skills/../hooks/guard-bash.sh`, `.claude//hooks/…`, `.claude/./hooks/…`,
+  `.git/refs/../hooks/pre-commit`, and any path written with Windows separators (five other hooks in the kit
+  already fold those; this one did not). **On Windows that last one was the whole gate**: measured on a real
+  Windows install, 124 of 124 `file_path` values the harness actually sent used backslashes, so the write-side
+  §4.5 gate recognised the one spelling that never arrives and passed the one that always does. The traversal
+  forms are a capability rather than an observed pattern — none of those 124 samples contained an unresolved
+  `..` — but Claude Code passes `file_path` to the hook verbatim (measured: a `..` survives into the payload)
+  while the filesystem resolves it, so the string the model writes and the file it opens are two different
+  things whenever it chooses to write one. The target is now folded and lexically resolved before it is matched, with
+  parameter expansion only: no new process on a path that runs before every Write/Edit, measured at the same
+  external-command count as before. A symlinked ancestor — the one shape lexical resolution cannot see — is
+  refused outright inside `.claude/` and `.git/`; that walk stops AT the config directory, so a symlinked
+  project root (routine on macOS, where every path through `/tmp` resolves to `private/tmp`) does not turn
+  ordinary work into a refusal.
+- **`NotebookEdit` walked past the gate wherever neither `jq` nor `python3` runs.** The pure-bash tier read
+  `file_path` only, and a notebook carries its path under `notebook_path`. Both guards now share one JSON
+  parser, marked in both files and pinned byte-identical by the suite, so the two copies cannot drift.
+- **The discipline document was writable.** `.claude/DISCIPLINE.md` is kit-owned, imported into every session,
+  and is the text of §4.1–§4.5 — the rules the gates enforce — yet no gate covered it: the rules could be
+  emptied without touching a single gate. Both guards now refuse to write it, on the shell side and the file-
+  tool side. Reading it is unchanged, and the installer still rewrites it on update.
+- **An unparseable payload no longer exits 0 unconditionally.** It is refused when the raw text names a gate
+  tree and still allowed otherwise, so a future field rename costs a false block rather than a free pass.
+- **A case-spelled gate path was a different string and the same file.** APFS and NTFS are case-insensitive by
+  default: measured on one machine, `.claude/hooks/guard-bash.sh` and `.CLAUDE/HOOKS/GUARD-BASH.SH` share an
+  inode, and a write through the uppercase spelling landed in the real gate script. The shell-side guard had
+  always folded case; the write-side guard had not, so the two halves of §4.5 disagreed about the same path.
+  Both now fold, and so does a trailing dot or space on a component — Win32 strips those when it opens a file,
+  and one trailing byte was enough to slip past the `DISCIPLINE.md` rule, which is an exact tail match.
+- **A symlink is the two-step version of editing a hook, and only one direction of it is dangerous.**
+  `ln -sfn .claude cfg` names no gate path, so it passed the shell guard; `cfg/hooks/guard-bash.sh` then names
+  no gate path either, so it passed the write guard — measured end to end, both steps allowed, the gate script
+  overwritten. The write guard now walks the target's ancestors (a builtin test, no process) and, only when one
+  really is a symlink, spends a single call to resolve it and ask the same question about the real location.
+  That walk runs before `..` is collapsed, because collapsing first deletes the component that has to be
+  examined: with `c -> .claude/skills`, `c/../hooks/x` reduces to `hooks/x` while the filesystem resolves it
+  onto the gate. The shell guard separately refuses a link whose target is `.claude` or `.git` itself.
+  The other direction — a symlinked home, mount, checkout, or plain `/tmp` on macOS — stays ordinary work.
+- **The new parser brought a cost with it, and it is capped rather than hidden.** What it replaces was a single
+  `sed` — linear, never slow — and it was replaced because it truncated the value at the first escaped quote
+  and never looked at `notebook_path`. The parser that fixes those walks the value character by character,
+  which is quadratic in bash, and on the tier a stock Windows install runs every path separator is an escape,
+  so the cheap path never fires: measured 0.09s at 512 bytes, 0.52s at 1,024, 3.7s at 2,048 and roughly 30s at
+  4,096, against this hook's own 60s timeout — and a PreToolUse hook killed at its timeout emits no exit 2, so
+  the write proceeds. The value is therefore capped at 2,048 bytes and refused above it, in both guards. Real
+  paths are nowhere near that: the `file_path` values measured on a Windows install average about 60 bytes,
+  and Windows stops at 260 without the long-path opt-in. Ordinary cost is unchanged — ten real Windows-shaped
+  calls in 0.08s total, and the same external-command count on the hot path as before.
+- **A `\uXXXX` escape became a literal `?`,** so `\u002eclaude/hooks/guard-bash.sh` decoded to something that
+  matched no rule while `jq` decoded the same bytes to the real path — the parser tiers disagreed on whether a
+  payload was an attack. Printable ASCII is now decoded properly, with no added process.
+- **The plugin edition's own gate scripts sat outside every pattern.** They live at
+  `$CLAUDE_PLUGIN_ROOT/hooks/`, which is not `.claude/hooks/`, so one of the four channels shipped an
+  unguarded copy of the gates it ships. Matched by the kit's own filenames, so a project's unrelated `hooks/`
+  directory is untouched.
+
+### Fixed
+- **A tool was still being chosen on whether it EXISTS in thirteen more places.** 2.6.0 taught the two shell
+  guards to pick a parser tier on whether it *works*, because Windows ships a Microsoft Store redirector named
+  `python3` that passes `command -v`, exits 49 and prints nothing. The same shape survived elsewhere; an audit
+  of every `command -v` / `type -P` / `[ -d .git ]` site in the tree found it and each instance was reproduced
+  with a stub that resolves and fails, then re-measured in three states (works / broken / absent).
+  - `hooks/skill-trust.sh` — a broken `sha256sum` returned an empty digest, the caller read that as "nothing to
+    report", and the unvetted-component notice went **completely silent** while two working fallbacks were
+    never tried. Measured: 462 bytes of notice became 0. The pipeline's exit status could not have caught it
+    (`cut` succeeds on empty input), so the value is what is tested now. Costs one process fewer than before.
+  - `hooks/session-rehydrate.sh` and `hooks/board-sync.sh` — jq's status was discarded, so a broken jq emitted
+    nothing with rc=0, which is exactly the legitimate "nothing to say" case. After `/compact` or `/clear` the
+    fresh context was never pointed at the handover file. The bash fallback below each produces byte-identical
+    output, so falling through costs nothing.
+  - `hooks/context-usage.sh` — the last hook selecting on existence: with a broken jq it reported "usage not
+    found" instead of falling back to awk, so the session fill silently stopped being measured.
+  - `eval/doctor.sh` — a broken jq made doctor call a **valid** `settings.json` corrupt and prescribe
+    overwriting it, destroying any hooks the project had added, while three real checks stopped running with no
+    trace. The same file already probed python3 by running; §4 was missed.
+  - `adopt.sh` — a broken jq aborted the settings merge and wired **zero** kit hooks, while the run still ended
+    in OK + PROOF and the handover record claimed the hooks had been refreshed.
+  - `start.sh` — `[ -d .git ]` is a proxy for the answer and it lies where it matters: in a worktree or
+    submodule `.git` is a FILE, so the commit gate was never armed and the installer reported no problem.
+    Measured: a commit carrying a forbidden expression landed in a worktree install. It now anchors on the
+    repository toplevel and lets the arming call itself decide — a relative `core.hooksPath` resolves against
+    the work-tree root, so arming from a subdirectory would report a gate active over a dead path.
+  - `bin/cli.js` — a path converter that resolved and produced nothing yielded an empty path, and the npx
+    install failed with "bash cannot read the staged script", sending the user after 8.3 names and `TEMP`
+    settings for what was a converter failure.
+
+- **The harness that exists to catch this class was breaking the rule in fourteen places.** Measured with a
+  stub jq: the suite reported **340 errors against 95 graded assertions**, most of them accusing shipped files
+  of defects they do not have. After the fix the same run is **PASSED, 572 graded, 4 skipped**, each naming
+  what it could not check — and under `CI=true` those `tool`-class skips turn CI red. Ten jq selections are now
+  probed by running; the two git fixtures are gated on whether git can actually **build a repository**, because
+  the driver short-circuits and a failed `git add` made every blocking case read as "the gate blocked" (proved
+  by replacing the scanner with `exit 0` and getting byte-identical output); and the stdin-hang case now tests
+  for the FIFO rather than for `mkfifo`, because without one the case could not fail at all.
+
+### Added
+- **A gate for infrastructure teardown.** `terraform`/`tofu`/`pulumi destroy`, an unattended `apply`, and
+  `kubectl delete`/`helm uninstall` have the same shape as the `rm -rf` and `git reset --hard` rules the kit has
+  always carried — one command, no undo — and were never named, although the blast radius is a cloud account or
+  a cluster rather than a disk. **Every verb and alias came from the tool's own source, not from memory, and
+  that mattered:** the first draft missed `pulumi down`/`dn` (documented aliases for `destroy`), `helm del`/`un`
+  (cobra aliases the generated docs page does not list) and `pulumi up --yes` (Pulumi has no `-auto-approve`) —
+  each of them empties exactly what the spelling that *was* gated empties. It also let every wrapper through:
+  `sudo -u`, `env`, `xargs`, `bash -c "…"`, `$(…)`. Scope is deliberately narrow in the other direction too —
+  `--help`, `--dry-run` (which helm's own docs recommend before an uninstall), `kubectl auth can-i` and
+  `-auto-approve=false` are ordinary work and are not refused. 40 cases, both directions.
+- **`/skill-csk`** routes `AGENT_TEMPLATE.md`, which ships with an install and which no gate ever checked anyone
+  reaches — §3b iterates skills and agents only, so the contract document could go stale unread. The command
+  ends in the four evals rather than in a claim.
+- **A cold-reader pass for `handoff`.** Its definition of done says a new session can resume from the file
+  alone, and nothing tested that. The questions are written from the WORK before the file exists — an answer key
+  derived from the handover only proves the handover is self-consistent — and are then answered from the file
+  alone. `references/cold-reader.md`.
+- **Missing discipline in six existing skills**: flaky-test triage with the infrastructure/product split that
+  decides whether a retry is ever allowed (`testing`, plus `references/flaky-triage.md`); tests that cannot fail
+  (`testing`); receiving a review, closing the easy exits, and asking the git history before treating a bug as
+  new (`code-review-csk`); and what to do when the pipeline is red (`ci-pipeline`).
+- **Two axes in `dependency-audit`**: install-time execution — the mechanism recent registry compromises
+  actually used, which a CVE feed and a code review both miss — and publisher concentration read from the
+  registry ACL rather than from the forge's contributor list. Every axis now resolves to assessed-clean,
+  assessed-flagged, or not-assessable-here-and-why.
+
+### Changed
+- **Ten skill descriptions now say WHEN to reach for them.** Inside this kit the routing is done by
+  `route-hint.sh` and the trigger map, which is why the gap was invisible; outside it — a skill copied into
+  another project, another client, a bare session — the description is all there is. `BUDGET_SKILLS` moves with
+  them, and the bump comment states plainly what it does *not* fix: the listing budget is 1% of the context
+  window, so a small-window model is over it either way. What changed is that the remedy is now targetable.
+- **Two suite cases stopped depending on jq.** Checking that a *shipped* `settings.json` parses has no
+  machine-specific answer, and the doctor fixture was using jq to *build* a known mutation rather than to
+  validate anything — so both were gated on a tool whose absence is precisely the platform this kit is most
+  fragile on. They now run everywhere; jq still runs where it exists, because a real parser catches shapes a
+  balance check cannot, and the check says so rather than claiming to be a parser.
+
+### Added
+- **`eval/utilization.sh` — what the kit loads versus what it actually reaches.** Every installed skill spends
+  its name and description in every session forever, and `doctor.sh` §4a already reported that cost against the
+  budget; the remedy it points at (`skillOverrides: name-only`) needs a list of WHICH skills and nothing
+  produced one. This reads the project's own transcripts and reports fired-vs-cold with the bytes the cold ones
+  cost. Two shapes count as a firing — a Read of `skills/<name>/SKILL.md`, or the `Skill` tool naming it — and
+  both are anchored, because matching a bare name anywhere in the JSON would count the kit measuring itself: a
+  single `grep -rn description:` result echoes all 40 paths on one line. It reads the whole session tree, not
+  just the top level: measured on one project, 14 transcripts sit at the top and 306 in the per-session
+  `subagents/` trees, which is where delegated work — and therefore most skill use — actually happens. An
+  absent transcript reports NOT MEASURED, never "0 fired". Current project only unless `--all-projects` is
+  asked for; names and counts only, never a path or a prompt. Run in the kit's own repository it says so, since
+  a SKILL.md opened to be edited is indistinguishable from one that fired.
+
+### Changed
+- **The suite's verdict now carries its denominator, and a skipped case is no longer green.** `SMOKE-TEST:
+  PASSED ✅` printed identically whether 584 assertions ran or 298 did (`CSK_SMOKE_SCOPE=install` drops the
+  rest), and seventeen places reported a case that did not run as a passing ✅ — so "a tool is missing here" and
+  "the gate holds" were the same output. Skips are now counted, listed, and classified: `tool` and `fixture`
+  mean the environment failed and turn CI red; `scope` and `platform` are honest answers everywhere and do not.
+  The asymmetry is asserted in four states by the suite itself rather than described in a comment.
+- **`eval/scan-skill.sh`: three answers instead of two, and one more thing to look for.** `skill-trust.sh` gates
+  on this script's exit code and prints "scanner: SAFE" when it is 0 — which is what a target with nothing to
+  read returned, so a component nobody had looked at was reported to the user as clean. Nothing-scanned now
+  exits 3 and the trust hook reports NOT SCANNED. A skill directory carrying no `SKILL.md` is named rather than
+  passed over in silence. And a runtime instruction fetch (`curl …/instructions.md`, a `WebFetch` tied to
+  instructions) is HIGH: that one is not a missing pattern but the assumption the trust model rests on — a
+  digest answers "have these bytes changed?", which is the wrong question for a file whose bytes say "fetch your
+  real instructions from this URL". Measured against the kit's own payload: 63 of 63 files still SAFE.
+- **`token-budget` gains the axis none of its rules covered** — what a single command hands back to the context,
+  as distinct from what the context holds — and routes the utilization report.
+
+### Tests
+- §4.5 grows from 4 write-side cases to 65 new assertions across three tiers (`jq`, `python3`, and the
+  pure-bash fallback in the suite's existing no-`jq`/no-`python3` sandbox). Each positive case was first shown
+  to wrongly PASS against the hook as shipped in 2.6.0 — that is what makes it a regression pin rather than a
+  restatement of current behaviour — and each ships with its negative twin: a `..` in an ordinary source path,
+  a project's own skill under `.claude/`, a doc merely named `hooks`, `DISCIPLINE.md.bak`, an unparseable
+  payload naming nothing, a file whose *content* quotes a gate path, and an unlinked path under `.claude/`
+  that the symlink probe must not catch, ordinary linking (`ln -s dist build`), a project's own `hooks/`
+  directory, and — the row that took two tries to write honestly — a *symlinked project root*, which the first
+  version of the probe refused. Two of the new rows exist only to tell a working parser from a working
+  fallback: a payload whose target is ordinary while its content quotes a gate path, and an assertion on which
+  rule fired rather than on the exit code alone, because a row that checks only `rc=2` stays green when the fix
+  is deleted and the fail-closed branch answers in its place. One row executes the hook directly rather than
+  through `bash <file>`, so the `+x` bit and the shebang are exercised the way the harness exercises them.
+
 ## [2.6.0] - 2026-08-25
 
 ### Fixed
@@ -450,7 +774,7 @@ versioning follows [SemVer](https://semver.org/).
   The cause is the shape this project has hit before: per-item shell loops. `copy_noclobber` ran
   `dirname` + `mkdir` + `cp` for every payload file; project-skill detection ran `basename $(dirname …)` per skill;
   and the PROOF-5 stale-reference check ran `grep|cut|tr|sed` per (agent × document) pair — **the identical loop
-  already converted to awk in `doctor.sh` in 2.0.1, left behind in `adopt.sh`**. Git Bash pays 20-50ms per process
+  already converted to awk in `doctor.sh` in 2.0.1, left behind in `adopt.sh`**. Git Bash pays 62-135ms per process
   where Linux pays ~1.7ms, so none of it shows up on a maintainer's machine.
 
   A refresh is now one `cp -R` instead of one `cp` per file, the detection loops use parameter expansion, and
@@ -624,8 +948,8 @@ versioning follows [SemVer](https://semver.org/).
   overhead.
 
   On macOS and Linux that is merely wasteful. On Windows it is fatal: Git Bash has no real `fork()`, so every
-  process is a `CreateProcess` plus the MSYS2 emulation layer plus whatever the AV scanner charges — 20-50ms
-  instead of 1.7ms. The same 2,000 spawns land at **40-100 seconds** against a 10s hook timeout. Claude Code
+  process is a `CreateProcess` plus the MSYS2 emulation layer plus whatever the AV scanner charges — 62-135ms
+  instead of 1.7ms. The same 2,000 spawns land at **two to four minutes** against a 10s hook timeout. Claude Code
   blocks on a hook until its timeout expires and then discards the output, so the session paid the full stall on
   every single prompt **and** lost the routing it was stalling for. Reported as "the kit hangs Claude Code and no
   command works"; it was never a Claude Code bug, the kit was spending the budget.

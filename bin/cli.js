@@ -96,9 +96,14 @@ try {
     const projFwd = fwd(realpath(process.cwd()));
     const runner = [
       'conv(){',
+      // The `return` used to fire whether or not the converter WORKED, so a cygpath/wslpath that resolves and
+      // produces nothing yielded an empty path and the pass-through below — which the comment promises works —
+      // was never reached. The user then got "bash cannot read the staged script at /adopt.sh" and went hunting
+      // for 8.3 names and TEMP settings, for what was a path-converter failure.
+      '  _o=""',
       '  case "$(uname -s)" in',
-      '    MINGW*|MSYS*|CYGWIN*) command -v cygpath >/dev/null 2>&1 && { cygpath -u "$1"; return; } ;;',
-      '    *)                    command -v wslpath >/dev/null 2>&1 && { wslpath -u "$1"; return; } ;;',
+      '    MINGW*|MSYS*|CYGWIN*) command -v cygpath >/dev/null 2>&1 && _o="$(cygpath -u \"$1\" 2>/dev/null)" && [ -n "$_o" ] && { printf %s "$_o"; return; } ;;',
+      '    *)                    command -v wslpath >/dev/null 2>&1 && _o="$(wslpath -u \"$1\" 2>/dev/null)" && [ -n "$_o" ] && { printf %s "$_o"; return; } ;;',
       '  esac',
       '  printf %s "$1"',
       '}',

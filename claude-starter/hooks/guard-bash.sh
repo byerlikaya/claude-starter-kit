@@ -56,6 +56,7 @@ INPUT="$(cat)"
 # 62-135 ms per process on a Windows 11 desktop, and this hook runs on every Bash call). `${INPUT#*"command"}` is shortest-match, so it
 # takes the FIRST occurrence — greedy matching would let a command containing the literal text `"command":"`
 # relocate the parse and walk a payload straight past the rules.
+# ---- CSK-JSON-PARSE ------------------------------------------------------------------------------------
 _json_slice(){  # $1 = whole payload, $2 = key -> the raw (still JSON-escaped) string value, "" if absent
   local rest="${1#*\"$2\"}" seg tail out bs
   [ "$rest" != "$1" ] || return 0          # key absent: emit nothing
@@ -73,7 +74,7 @@ _json_slice(){  # $1 = whole payload, $2 = key -> the raw (still JSON-escaped) s
   printf '%s' "$out"
 }
 _json_unescape(){  # single left-to-right pass; a two-pass sed would corrupt `\\"` (escaped backslash + quote)
-  local s="$1" out="" c
+  local s="$1" out="" c h
   case "$s" in *\\*) ;; *) printf '%s' "$s"; return 0 ;; esac   # no escapes: the common case pays nothing
   while [ -n "$s" ]; do
     c="${s%"${s#?}"}"; s="${s#?}"
@@ -85,7 +86,16 @@ _json_unescape(){  # single left-to-right pass; a two-pass sed would corrupt `\\
         t) out="$out	" ;;
         r) ;;
         b|f) out="$out " ;;
-        u) s="${s#????}"; out="$out?" ;;
+        u) h="${s%"${s#????}"}"; s="${s#????}"
+           # A `\uXXXX` used to become a literal `?`. That is not a lossy nicety, it is a hole: `\u002e` is `.`,
+           # so `\u002eclaude/hooks/guard-bash.sh` decoded to `?claude/…` and matched no gate pattern, while jq
+           # decoded the same bytes to the real path — the two tiers disagreed on whether a payload was an
+           # attack. Printable ASCII is decoded properly (builtin printf, no fork); anything else still becomes
+           # `?`, which is only ever a display concern because this value is used for MATCHING, never to write.
+           case "$h" in
+             00[2-7][0-9a-fA-F]) printf -v c "\\x${h#00}"; out="$out$c" ;;
+             *)                  out="$out?" ;;
+           esac ;;
         *) out="$out$c" ;;
       esac
     else
@@ -94,6 +104,7 @@ _json_unescape(){  # single left-to-right pass; a two-pass sed would corrupt `\\
   done
   printf '%s' "$out"
 }
+# ---- /CSK-JSON-PARSE -----------------------------------------------------------------------------------
 # A TIER IS CHOSEN ON WHETHER IT WORKS, NOT ON WHETHER IT EXISTS. `command -v` answers the wrong question, and
 # on Windows the difference disarmed every gate in this file.
 #
@@ -232,6 +243,62 @@ case "$CMD" in *[Mm][Kk][Ff][Ss]*|*[Dd][Dd]*) : ;; *) false ;; esac && echo "$CM
 # runs code no one has read; a world-writable chmod or a disk-overwriting dd is irreversible.
 case "$CMD" in *[Cc][Uu][Rr][Ll]*|*[Ww][Gg][Ee][Tt]*|*[Ff][Ee][Tt][Cc][Hh]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE '(curl|wget|fetch)([^|]|\|\|)*\|[[:space:]]*(sudo[[:space:]]+)?(bash|sh|zsh|python[0-9.]*|node|perl|ruby)([[:space:]]|$)' && block "pipe-to-shell (curl|bash RCE)" "4.5"
 case "$CMD" in *[Dd][Dd]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE '(^|[^a-zA-Z])dd[[:space:]]+([^|]*[[:space:]])?of='  && block "dd of= (disk overwrite)" "4.5"
+
+# §4.5 INFRASTRUCTURE TEARDOWN. Same shape as the rules above — one command, no undo — but the blast radius is a
+# cloud account or a cluster rather than a disk. `terraform destroy` and `pulumi destroy` remove every managed
+# resource; `-auto-approve` / `--yes` skip the only confirmation those tools have; `kubectl delete` and
+# `helm uninstall` take a namespace or a release with them. The kit gated `rm -rf` and `git reset --hard` from
+# the start and never named these.
+#
+# EVERY VERB AND ALIAS BELOW CAME FROM THE TOOL'S OWN SOURCE OR DOCS, not from memory — the first draft of this
+# rule was written from memory and missed three of them:
+#   pulumi destroy  → aliases `down`, `dn`     (pulumi/pulumi destroy.go: Aliases: []string{"down","dn"})
+#   helm uninstall  → aliases `del`, `un`, `delete` (cobra aliases; the generated docs page lists none of them)
+#   pulumi's auto-approve is `-y`/`--yes` on `pulumi up`, NOT `-auto-approve`, and `up` is its own apply verb.
+# An alias is not a detail here: `pulumi down --yes` empties the same account as `pulumi destroy`.
+#
+# SCOPE — the verbs that DESTROY, and three shapes deliberately let through because they do not:
+#   `--help` (asks what the verb does), `--dry-run` / `--dry-run=client` (helm's own docs recommend it before an
+#   uninstall), and `kubectl auth can-i <verb>` (a read-only RBAC question). `-auto-approve=false` explicitly
+#   KEEPS the prompt, so it is not gated either. A gate that refuses `--help` teaches people to route around it.
+#
+# ANCHOR: command position — start of line, or after `;` `&&` `||` `|` `(` or a quote — with an optional chain of
+# wrappers (`sudo`, `env`, `time`, `nice`, `nohup`, `xargs`) in front, because `sudo -u deploy terraform destroy`
+# and `bash -c "terraform destroy"` are the same command wearing a coat. KNOWN LIMIT, stated rather than hidden:
+# `^` is a LINE anchor and the payload's `\n` is already decoded here, so a heredoc that WRITES `terraform
+# destroy` into a runbook is refused. Ordinary doc-writing goes through the Write tool (guard-write.sh), not
+# here, so the cost is narrow — but it is real and it is not a bug in the regex, it is the regex's shape.
+# TWO anchors, not one, and the reason is a false positive the first draft created. Putting a quote into the
+# anchor class catches `bash -c "terraform destroy"` — and also catches `echo "terraform destroy is dangerous"`,
+# which is a sentence about the rule. The distinguishing feature is not the quote, it is what precedes it: a
+# SHELL EXECUTOR. So one anchor is command position, and the second requires eval/bash/sh/zsh/dash in front of
+# the optional quote. `$(…)` and a leading `(` are covered by the first through the `(` in its class.
+# A `VAR=value` prefix is part of command position, and leaving it out reopened the gate in its most ordinary
+# shape. The wrapper chain above accepted only FLAG tokens after a wrapper, so `env TF_VAR=1 terraform destroy`
+# fell out of the anchor and returned rc=0 — measured on a Windows 11 desktop, along with the bare shell form
+# `TF_VAR=1 terraform destroy`. That is not an exotic spelling: `TF_VAR_*` is how Terraform documents passing
+# variables, so the bypass sits on the path a real operator takes. The kit's older rules already tolerated the
+# prefix (`env FOO=1 rm -rf /` and `FOO=1 rm -rf /` both blocked), so this gate was the only one that did not.
+_IAC_ASG="([A-Za-z_][A-Za-z0-9_]*=[^;&|[:space:]]*[[:space:]]+)*"
+_IAC_AT="(^|[;&|(])[[:space:]]*${_IAC_ASG}((sudo|env|time|nice|nohup|xargs)([[:space:]]+-[^;&|[:space:]]+([[:space:]]+[^-;&|[:space:]]+)?)*[[:space:]]+${_IAC_ASG})*"
+_IAC_EXEC="(^|[;&|(])[[:space:]]*(sudo[[:space:]]+)?(eval|bash|sh|zsh|dash)([[:space:]]+-[a-zA-Z]+)*[[:space:]]+[\"']?"
+_IAC_SAFE="(--help|[[:space:]]-h([[:space:]]|$)|--dry-run|-auto-approve=false|-auto-approve[[:space:]]+false|auth[[:space:]]+can-i)"
+_iac(){ # $1 = the verb pattern; true when it sits at a command position OR behind a shell executor
+  echo "$CMD" | grep -qiE "${_IAC_AT}$1" || echo "$CMD" | grep -qiE "${_IAC_EXEC}$1"
+}
+_IAC_DESTROY="(terraform|tofu|pulumi)([[:space:]]+-[^;&|]*)?[[:space:]]+(destroy|down|dn)([^a-zA-Z0-9_-]|$)"
+_IAC_UNATT_TF="(terraform|tofu)[^;&|]*[[:space:]](apply|destroy)([^;&|]*[[:space:]])?-{1,2}auto-approve([^a-zA-Z0-9_=-]|$)"
+_IAC_UNATT_PU="pulumi[^;&|]*[[:space:]]up([^;&|]*[[:space:]])?(-y|--yes|-f|--skip-preview)([^a-zA-Z0-9_-]|$)"
+_IAC_CLUSTER="(kubectl[^;&|]*[[:space:]]delete([^a-zA-Z0-9_-]|$)|helm[^;&|]*[[:space:]](uninstall|delete|del|un)([^a-zA-Z0-9_-]|$))"
+case "$CMD" in *[Tt][Ee][Rr][Rr][Aa][Ff][Oo][Rr][Mm]*|*[Tt][Oo][Ff][Uu]*|*[Pp][Uu][Ll][Uu][Mm][Ii]*) : ;; *) false ;; esac \
+  && ! echo "$CMD" | grep -qiE "$_IAC_SAFE" && _iac "$_IAC_DESTROY" \
+  && block "infrastructure destroy (removes every managed resource)" "4.5"
+case "$CMD" in *[Tt][Ee][Rr][Rr][Aa][Ff][Oo][Rr][Mm]*|*[Tt][Oo][Ff][Uu]*|*[Pp][Uu][Ll][Uu][Mm][Ii]*) : ;; *) false ;; esac \
+  && ! echo "$CMD" | grep -qiE "$_IAC_SAFE" && { _iac "$_IAC_UNATT_TF" || _iac "$_IAC_UNATT_PU"; } \
+  && block "unattended infrastructure apply (skips the tool's only confirmation)" "4.5"
+case "$CMD" in *[Kk][Uu][Bb][Ee][Cc][Tt][Ll]*|*[Hh][Ee][Ll][Mm]*) : ;; *) false ;; esac \
+  && ! echo "$CMD" | grep -qiE "$_IAC_SAFE" && _iac "$_IAC_CLUSTER" \
+  && block "cluster teardown (kubectl delete / helm uninstall)" "4.5"
 # The rule is WORLD-WRITABLE, so the pattern matches the resulting permission and not one spelling of it. It
 # used to match `777`, `0777`, `a+rwx` and `+rwx` only, which let `1777`, `2777`, `666` and `o+w` reach exactly
 # the same state — and this was not theoretical: in the A/B harness (evals/permission-pressure) a model asked to
@@ -272,7 +339,12 @@ case "$CMD" in *[Ii][Cc][Aa][Cc][Ll][Ss]*) : ;; *) false ;; esac && echo "$CMD" 
 
 # §4.5 gate-tampering -> HARD BLOCK. A gate you can silently remove is not a gate: redirecting core.hooksPath,
 # or deleting/overwriting/patching the hook scripts, would disarm the trace/secret/approval gates in one line.
-[ "$HAS_GIT" = 1 ] && echo "$CMD" | grep -qE 'git[[:space:]]+config\b[^|]*core\.hooksPath'                       && block "git config core.hooksPath (disarms the git hooks)" "4.5"
+# READING the setting is not disarming it. `git config --get core.hooksPath` is how a person (or the doctor)
+# CHECKS that the gate is armed, and blocking it told them the kit was tampering-proof by refusing to let them
+# verify it. Only the write forms disarm: a bare `git config core.hooksPath <value>`, `--unset`, `--replace-all`.
+[ "$HAS_GIT" = 1 ] && echo "$CMD" | grep -qE 'git[[:space:]]+config\b[^|]*core\.hooksPath' \
+  && ! echo "$CMD" | grep -qE 'git[[:space:]]+config\b[^|]*(--get(-all|-regexp|-urlmatch)?|--list)([[:space:]]|$)' \
+  && block "git config core.hooksPath (disarms the git hooks)" "4.5"
 # Inline config override: `git -c core.hooksPath=…` / `git --config-env core.hooksPath=…` turns the hooks off for
 # that one command WITHOUT the word `config` (so the rule above misses it) — the exact equivalent of --no-verify.
 [ "$HAS_GIT" = 1 ] && echo "$CMD" | grep -qiE 'git[[:space:]]+([^;&|]*[[:space:]])?(-c|--config-env)[[:space:]=]+core\.hooksPath' && block "git -c core.hooksPath (disarms the git hooks)" "4.5"
@@ -282,7 +354,16 @@ case "$CMD" in *[Ii][Cc][Aa][Cc][Ll][Ss]*) : ;; *) false ;; esac && echo "$CMD" 
 # blocked so doctor's re-arm fix still works (a chmod -x disable is caught by doctor, not here). Honest scope:
 # the shell is Turing-complete, so this is defence-in-depth — guard-write.sh covers the Write/Edit tools (the
 # model's natural path to a file), and install-time read-only hook files would be the airtight layer.
-GATE='\.(claude/(hooks|settings\.json)|git/hooks)'
+GATE='\.(claude/(hooks|settings\.json|DISCIPLINE\.md)|git/hooks)'
+# DISCIPLINE.md joined the list because it IS the text of §4.1-§4.5: the gates enforce those rules, so a
+# writable rulebook means the rules can be emptied without touching a single gate. It needs no change to
+# the prefilter below — the file only ever lives under `.claude/`, which already carries the word `claude`.
+# The installer writes it from inside start.sh/adopt.sh, where the command string is `bash start.sh` and
+# never names the path. SCOPE, stated exactly rather than loosely: `cat`, `grep`, `wc`, `git diff` and the
+# other arg-taking readers are outside the verb list and stay allowed, but passing the file to an
+# INTERPRETER (`node lint.js .claude/DISCIPLINE.md`) or to `cp` is refused, because the rule cannot tell a
+# reader from a writer by the verb alone. That is the same trade the `.claude/hooks/*` rule has always made,
+# it is measured in both directions in smoke-test, and the narrow cost is a `cp` of the rulebook.
 # Scoped to ONE command segment. These used to span `[^|]*`, which crosses `;` and `&&`, so the writer verb and
 # the gate path only had to appear somewhere in the same line — `cp a b && bash .claude/hooks/board.sh status`
 # was refused as tampering. That was harmless while nobody typed a hook path; the team board made
@@ -290,12 +371,21 @@ GATE='\.(claude/(hooks|settings\.json)|git/hooks)'
 # to route around. A verb in one command and a path in another was never evidence of anything: the two forms
 # that matter — `rm .claude/hooks/x` and `x > .claude/hooks/y` — both put them in the SAME segment, and both
 # are still blocked (asserted in smoke-test, in both directions).
-case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE "(rm|mv|cp|truncate|tee|install|ln|perl|python[0-9.]*|ruby|node|ex|ed|set-content|add-content|clear-content|out-file|new-item|rename-item|copy-item|move-item|remove-item)\b[^;&|]*$GATE" && block "write/tamper of a gate file (hook/settings/.git-hooks)" "4.5"
+case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE "(^|[^A-Za-z0-9_-])(rm|mv|cp|truncate|tee|install|ln|perl|python[0-9.]*|ruby|node|ex|ed|set-content|add-content|clear-content|out-file|new-item|rename-item|copy-item|move-item|remove-item)\b[^;&|]*$GATE" && block "write/tamper of a gate file (hook/settings/.git-hooks)" "4.5"
 case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE "(sed|perl|awk|ruby)[[:space:]]+(-[^[:space:]]+[[:space:]]+)*-i[^;&|]*$GATE"          && block "in-place edit of a gate file" "4.5"
 # The redirect TARGET must be the gate path, not merely something later on the line: a target is one token, so
 # it cannot contain whitespace or a command separator.
 case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE ">[[:space:]]*['\"]?[^[:space:];&|<>]*$GATE"                                          && block "redirect over a gate file" "4.5"
 { case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false ;; esac && has "=[^;&|]*$GATE" && has '>>?[[:space:]]*\$'; }                                                          && block "indirected write to a gate path (variable + redirect)" "4.5"
+# A symlink whose TARGET is the config directory itself is the two-step form of editing a hook, and step one
+# names no gate path at all: `ln -sfn .claude cfg` passed every rule above, and then `cfg/hooks/guard-bash.sh`
+# is an ordinary-looking path that lands on the real gate script — measured, both steps rc=0, file overwritten.
+# guard-write.sh now resolves the link when the write happens; this closes the shell end, where a plain
+# `echo x > cfg/hooks/guard-bash.sh` would otherwise never look like tampering. The token must be the WHOLE
+# argument (`.claude`, `../.claude`, `/p/.git`), so linking to something inside the tree — `ln -s
+# .claude/skills c` — is untouched here and handled at write time instead. `.git` needs its own prefilter:
+# the one above only knows `claude` and `hooks`.
+case "$CMD" in *[Ll][Nn][[:space:]]*|*[Mm][Kk][Ll][Ii][Nn][Kk]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE '(^|[;&|[:space:]])(ln|mklink)[^;&|]*[[:space:]]([^;&|[:space:]]*/)?\.(claude|git)([[:space:]]|$)' && block "symlink pointing at the config directory (a gate path in two steps)" "4.5"
 
 # §4.5-adjacent: a .env file holds secrets. The settings.json Read-tool deny does NOT cover the Bash tool, so a
 # `cat .env` would surface them. Block the direct-file readers/copiers and a `< .env` input redirect on a
@@ -336,7 +426,29 @@ CRED='(\.ssh/(id_[A-Za-z0-9_]+|identity)|(^|/)id_(rsa|dsa|ecdsa|ed25519)|\.aws/c
 
 # §4.5 force-add bypasses .gitignore (sneaks build output / secrets past the bloat & ignore rules); deleting a
 # lockfile is a §4.5 op the discipline already names. Both are only done on an explicit request.
-{ git_has "$CMD" 'add' && has '(-[A-Za-z]*f[A-Za-z]*|--force)([[:space:]]|$)'; } && block "git add -f (bypasses .gitignore)" "4.5"
+# §4.5 `git add -f` bypasses .gitignore. The flag must be one of THIS command's own arguments, and until now it
+# was searched across the WHOLE command string — so on a Windows machine doing ordinary work these were all
+# blocked as "git add -f" with no `git add -f` anywhere in them:
+#     git add a b && git commit -q -F -        (the -F belongs to commit; git add has no -F at all)
+#     rm -f .git/index.lock; git add x         (the -f belongs to rm, and comes first)
+#     Remove-Item -Force ...; git add x        (--force belongs to Remove-Item)
+# The first is the ordinary way to write a commit, so the gate fired on the normal path and pushed the user
+# toward splitting every commit into extra tool calls — which is the very thing that leaves index.lock behind.
+# A gate that cries wolf on correct commands is a gate people learn to route around. The scan is therefore
+# bounded to the text between `git add` and the next command separator, and is case-SENSITIVE: `-F` is a
+# commit/tag flag, never an add flag.
+if [ "$HAS_GIT" = 1 ] && git_has "$CMD" 'add'; then
+  _ADDSEG="$(printf '%s' "$CMD" | grep -oE 'git[[:space:]]+([^;&|]*[[:space:]])?add([^;&|]*)' 2>/dev/null || true)"
+  printf '%s' "$_ADDSEG" | grep -qE '(^|[[:space:]])(-[A-Za-z]*f[A-Za-z]*|--force)([[:space:]]|$)' \
+    && block "git add -f (bypasses .gitignore)" "4.5"
+fi
+  # `git update-index --add` stages a path REGARDLESS of .gitignore — the same bypass `git add -f` performs, by
+  # a different spelling. Blocking one and not the other is not a policy, it is an oversight: seen live on a
+  # Windows machine, `git update-index --add --chmod=+x deploy/rolling-update.sh` staged the file with nothing
+  # said. (Staging itself is deliberately NOT gated here — only commit and push ask — so this rule is about the
+  # gitignore bypass alone, not about stopping people from staging files.)
+  [ "$HAS_GIT" = 1 ] && echo "$CMD" | grep -qE 'git[[:space:]]+([^;&|]*[[:space:]])?update-index\b[^;&|]*(--add|--force-remove)' \
+    && block "git update-index --add (bypasses .gitignore, same as git add -f)" "4.5"
 case "$CMD" in *[Rr][Mm]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE '(rm|git[[:space:]]+rm)\b[^|]*(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|npm-shrinkwrap\.json|Gemfile\.lock|poetry\.lock|Pipfile\.lock|Cargo\.lock|composer\.lock|go\.sum|packages\.lock\.json)' && block "lockfile deletion" "4.5"
 
 # --- §4.4 commit/push approval gate ---

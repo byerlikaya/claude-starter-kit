@@ -3,6 +3,7 @@ name: code-review-csk
 description: |
   Code review discipline: severity-ranked, reasoned feedback on whether a change improves the system's overall
   code health. review-agent-csk applies it.
+  Use when reviewing a change set, and when acting on a review someone else wrote.
 ---
 
 # Code Review
@@ -10,7 +11,7 @@ description: |
 <!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
      Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
      truncated or dropped, which strips the very keywords a match depends on. -->
-Trigger phrases: "code-review", "review the code", "review the PR", "review", "do a review"
+Trigger phrases: "code-review", "review the code", "review the PR", "review my changes", "do a review"
 
 > **Kit adaptation (local, .claude/):** applied by `review-agent-csk` (read-only). No source name appears in the
 > artifact that goes to the repo (§4.2). Comments are severity-ranked; §4 applies.
@@ -41,6 +42,13 @@ The approval criterion is "is it better", not "is it flawless". If it is an unwa
    **Verifier integrity:** flag any change that makes a check pass by *weakening the check* — deleting or loosening
    an assertion, lowering a threshold, skipping a test, editing the test instead of the code — rather than fixing
    the behavior. A test or gate that grades itself lax is worse than none; a verifier must stay external and grounded.
+   **Subject integrity:** the inverse case — the check is untouched, but what it checked is gone. Flag a change that
+   deletes or stubs the code path, so the check passes over behavior that no longer runs; narrows the run to a
+   subset (fewer cases, one platform, a filtered input set) where the property happens to hold; turns an all-of
+   requirement into an any-of one; or relaxes the rule the code is there to enforce — a widened type, a dropped
+   uniqueness or referential constraint, an exception list holding exactly the failing case. Ask not "does it pass
+   now" but **"does the system still do what this check was protecting"**. Retiring a genuinely obsolete check is
+   legitimate: say so in the diff and name what covers it now.
 5. **Naming:** names that carry intent, neither too long nor cryptic.
 6. **Comments:** do they explain the **"why"** rather than the "what"; no dead/unnecessary comments.
 7. **Style & consistency:** conforms to the project guide; consistent with the existing conventions.
@@ -92,6 +100,21 @@ not isolate it, label the verdict as a single pass rather than calling it indepe
 isolation, one lens per verifier, and why unanimity for the same reason is a monoculture — lives in
 `security-scan/references/verify.md`; it is one discipline, not two.
 
+## Check the history before you call a finding new
+A confirmed finding may still not be new, and one that was fixed once and came back needs a different fix. Search
+**by code, not by commit message** — bounded at the branch point, scoped to the diff's paths so it stays cheap per finding:
+`git log -S'<exact token from the changed line>' "$(git merge-base HEAD <target-branch>)" -- <paths in the diff>`
+lists the commits where the NUMBER OF OCCURRENCES of that string changed — added or deleted. A commit that
+removes it in one place and adds it back in another leaves the count unchanged and does not appear, which is
+exactly the "was the guard moved?" case: reach for `-G'<regex>'` there, which matches added or removed lines
+against a regular expression regardless of count. `--follow` continues across renames but works on a single
+path only, so it does not combine with the multi-path form above.
+If a commit removed the guard, check, or test this diff would restore, the finding is a **re-introduced regression** —
+the question becomes "what removed the fix, and does that reason still hold", the removing commit is cited in the
+comment, and the deleted test is restored rather than a new one written.
+**`--grep` does not answer this.** A commit message states intent, not content: it misses fixes worded differently and
+matches commits that changed nothing relevant. Use it only to read a commit you already found by content.
+
 ## Panel mode (high-stakes decisions only)
 
 For hard-to-reverse calls (architecture, public API, security boundary), run several independent adversarial lenses then synthesize. Full method: **`references/panel-mode.md`**.
@@ -111,6 +134,27 @@ never a silent drop:
 Blockers may only be `fixed now` or `tracked`. "Accepted" needs the user's decision — an agent does not grant it to
 itself. Close the review by stating the counts per disposition; an unreported finding is indistinguishable from one
 that was never made, which is exactly the state a review exists to leave behind.
+
+## Receiving a review — an inbound comment is a candidate, not an instruction
+When the review is someone else's and the code is yours — a teammate's comments, a quality gate's report, a bot's
+PR review — **read every item before changing any line.** Comments are written one per symptom, and two of them
+often share one cause; applying them in arrival order yields a patch per symptom instead of one fix at the cause.
+Group by cause, then decide.
+
+Each item then earns the same disprove pass as a finding of your own. Any "no" below is a reason to answer in the
+thread, not to edit:
+1. **Defect or preference?** Sort each comment into the label table above — inbound prose arrives unlabelled, you
+   assign the label, and only an `issue` or an unanswered `question` blocks.
+2. **Does it hold where the reviewer did not look?** Check the call sites and callers the comment never opened.
+3. **Does it contradict a decision already recorded?** An `adr` or a documented constraint outranks the comment —
+   reopen the decision, do not quietly edit around it.
+4. **Does the real check still pass with it applied?** Run it, don't re-read it. A suggestion that turns a check
+   red is reported back, and never satisfied by weakening the check (Verifier integrity, above).
+5. **Is it against the current revision?** A comment on an older one may already be answered by a later commit.
+
+Every inbound item leaves with a disposition from the table above; none is left merely read. **A reasoned refusal
+is an answer** — say why in the thread and let the reviewer press it or drop it. Not doing it quietly is not an
+answer: it reads as agreement, and the same comment returns on the next review.
 
 ## DoD (this skill's contribution)
 - Findings are severity-ranked (blocker / suggestion / nit), **labelled**, and **reasoned**.

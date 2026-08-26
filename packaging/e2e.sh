@@ -103,7 +103,7 @@ DOUT="$( cd "$P" && bash .claude/eval/doctor.sh 2>&1 || true )"
 DEL=$((SECONDS - DT0))
 case "$DOUT" in *"project-specific skill(s)"*) ;; *) echo "FAIL: doctor readiness did not detect the project's own skill"; exit 1 ;; esac
 # COST GATE, and it belongs here rather than in the smoke-test because this job also runs on windows-latest —
-# the only place in CI where a process spawn costs what it costs a real user of Git Bash (20-50ms against
+# the only place in CI where a process spawn costs what it costs a real user of Git Bash (62-135 ms against
 # ~1.7ms on the POSIX runners). Doctor's agent-reference check used to run a `grep|cut|tr|sed` for every
 # (agent x scanned doc) pair, ~250 spawns; on Windows that stopped dead mid-run and a user reported doctor
 # itself as hung. Correctness assertions cannot see this — doctor printed the right answers, eventually.

@@ -27,15 +27,18 @@
 # (104% CPU, ~1.7ms per spawn) for a hook whose actual work is substring matching on a few KB of text.
 #
 # That is merely wasteful on macOS/Linux. On Windows it is fatal. Git Bash has no real fork(): every process
-# is a CreateProcess plus the MSYS2 emulation layer plus whatever the AV scanner charges, which is 20-50ms —
-# ten to thirty times the cost. The same 2000 spawns land somewhere between 40 and 100 seconds, against a
+# is a CreateProcess plus the MSYS2 emulation layer plus whatever the AV scanner charges. Measured on a
+# Windows 11 desktop rather than assumed: 62-135 ms per spawn idle, and up to ~400 ms while the machine is
+# busy — forty to eighty times the ~1.7 ms Linux pays, not the "20-50 ms" this comment claimed before anyone
+# ran it here. The same 2000 spawns therefore land at two to four MINUTES, not 40-100 seconds, against a
 # 10s hook timeout. Claude Code blocks on the hook until that timeout expires, on EVERY prompt, and then
 # discards the output — so the kit paid the full stall and got no routing for it. That is the "it hangs and
 # nothing works" report from Windows users, and it is not a Claude Code bug: the kit was spending the budget.
 #
 # Everything below is therefore one awk invocation over the component files, with the normalisation and the
-# matching done inside awk. Total external processes: sed, sed, head, awk. The semantics are unchanged and
-# eval/smoke-test.sh §7y pins them.
+# matching done inside awk. Total external processes: FIVE — cat, sed, sed, head, awk. (The count said four
+# until it was traced with `bash -x` on Windows; the `cat` on the next line reads stdin and had been read
+# past.) Measured end to end here: 5 spawns, ~328 ms per prompt idle. eval/smoke-test.sh §7y pins the shape.
 set -uo pipefail
 IN="$(cat)"
 case "$IN" in *'"hook_event_name"'*UserPromptSubmit*) ;; *) exit 0 ;; esac
@@ -94,7 +97,7 @@ function norm(s) {
   sub(/^ +/,"",s); sub(/ +$/,"",s)
   return s
 }
-BEGIN { np = " " norm(ENVIRON["CSK_PROMPT"]) " "; best=""; bestscore=0; bestkind="" }
+BEGIN { np = " " norm(ENVIRON["CSK_PROMPT"]) " "; bestA=0; bestS=0; nameA=""; nameS="" }
 seen[FILENAME] { next }                                    # one Trigger-phrases line per component, the first
 {
   if (tolower($0) !~ /trigger phrases:/) next
@@ -117,17 +120,27 @@ seen[FILENAME] { next }                                    # one Trigger-phrases
     if (np ~ ("(^| )" p "[a-z]?[a-z]?[a-z]?( |$)")) score += length(ph)
   }
   if (score <= 0) next
-  # An AGENT outranks a SKILL whenever both match, regardless of score. The architecture is agent = who,
-  # skill = how, and the agent applies its own skills anyway — so naming the agent delivers the method PLUS the
-  # isolation and the audit path, while naming the skill delivers only the method. A skill is named only when no
-  # agent owns the domain at all (iterate, reflect, worktree, eval-grader — the orchestrator'\''s own work).
-  if (kind == "agent" && bestkind != "agent") { bestscore=score; best=name; bestkind="agent" }
-  else if (kind == bestkind || bestkind == "") {
-    if (score > bestscore) { bestscore=score; best=name; bestkind=kind }
-  }
+  # An AGENT outranks a SKILL when both match: agent = who, skill = how, and the agent applies its own skills
+  # anyway, so naming it delivers the method PLUS the isolation and the audit path. A skill is named when no
+  # agent owns the domain at all (iterate, reflect, worktree, eval-grader).
+  #
+  # THE TWO KINDS ARE SCORED SEPARATELY, and that is the fix for a measured silence. The preference used to be
+  # applied by OVERWRITING the best match the moment any agent matched, whatever its score — so a one-word
+  # agent hit discarded a far stronger skill hit, and the discarded total then fell under the floor below and
+  # the hook printed NOTHING. Measured before this change: "this needs an accessibility audit" produced the
+  # a11y hint, and "the PAGE needs an accessibility audit" produced silence, because `page` is a
+  # frontend-expert-csk trigger worth 4 which replaced the a11y score of ~30 and then failed `>= 6`. Adding a common noun
+  # to a request removed the routing entirely, which is the opposite of what a preference is for. Each kind now
+  # keeps its own best and the preference is applied at the END, among candidates that clear the floor.
+  if (kind == "agent") { if (score > bestA) { bestA=score; nameA=name } }
+  else                 { if (score > bestS) { bestS=score; nameS=name } }
 }
 # Silence is the default. No match, or a match too weak to be sure, means the main thread decides as before.
-END { if (best != "" && bestscore >= 6) print bestkind "\t" best }
+# The agent is preferred only when it is credible on its own: a weak agent match no longer buries a strong skill.
+END {
+  if      (bestA >= 6) print "agent\t" nameA
+  else if (bestS >= 6) print "skill\t" nameS
+}
 ' "${FILES[@]}" 2>/dev/null)"
 
 [ -n "$RES" ] || exit 0

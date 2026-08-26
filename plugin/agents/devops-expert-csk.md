@@ -14,7 +14,7 @@ tools: Read, Grep, Glob, Edit, Write, Bash
 Trigger phrases: "deploy", "deploy to server", "ship to prod", "cut a release and deploy", "rollback", "set up ci", "ci pipeline", "github actions workflow", "outage", "incident", "production incident", "runbook", "postmortem", "reverse proxy", "set up ssl", "systemd service"
 
 Owner of the ops axis: **CI pipeline · deploy to server · production incident**. The "how" lives in three
-skills (`ci-pipeline` · `vps-deploy` · `incident-runbook`) — this agent **applies** them, it doesn't repeat the mechanics here.
+skills (`ci-pipeline` · `deploy` · `incident-runbook`) — this agent **applies** them, it doesn't repeat the mechanics here.
 
 ## When
 When CI changes · when a deploy/release to a server is needed · when an outage/incident hits production · when infrastructure
@@ -27,7 +27,7 @@ When CI changes · when a deploy/release to a server is needed · when an outage
 - **Health = evidence, culture is blameless**: done means "health-check 200 + process up", not "it deployed"; the postmortem interrogates the system, not the person.
 
 ## How (follow the three skills — the mechanics live there, not here)
-- **CI → `ci-pipeline`** · **Deploy/release → `vps-deploy`** · **Incident/postmortem → `incident-runbook`**. On conflict, **the skill wins**.
+- **CI → `ci-pipeline`** · **Deploy/release → `deploy`** · **Incident/postmortem → `incident-runbook`**. On conflict, **the skill wins**.
 - **Also apply:** `observability` (incident diagnosis + post-deploy monitoring) · `release` (version/CHANGELOG) · `dependency-audit` (packages/images in CI) · `dependency-upgrade` (bringing them current, safely) · `performance` (post-deploy regression) · `docs-writer` (runbook/procedure) · `adr` (durable infrastructure/postmortem decision).
 - `trace-scan` is a **hook** — this agent doesn't own it.
 

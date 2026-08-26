@@ -1,0 +1,49 @@
+# HELD-OUT routing set: <example user prompt>|<expected target>
+#
+# Same format as golden-routing.txt and read by the same matcher. The difference is the method, and it is the
+# whole point: these prompts were written from the TASK a user would describe, in the words a user would use,
+# WITHOUT reading the target's trigger phrases first. In the working set the prompt is where the trigger came
+# from, so a passing row proves only that the author copied one into the other. Here the two were produced
+# independently, so a row can fail — and a failure means the trigger is too narrow to reach a request nobody
+# tuned it for, which is the only thing this eval was ever supposed to measure.
+#
+# WHEN A ROW FAILS, the fix is a decision, not a reflex:
+#   · widen the trigger — and re-run, because the negative rows in golden-routing.txt exist to catch a widening
+#     that starts stealing a neighbour's work;
+#   · or judge the prompt unreasonable for that target and say so here, in a comment, rather than deleting it
+#     quietly. A row removed without a reason is how a held-out set decays back into a working set.
+# Never "fix" a failure by editing the prompt toward the trigger. That is the thing being measured.
+
+my checkout is failing on the pipeline and I cannot tell why|ci-pipeline
+the page is unusable with a keyboard, tab order jumps everywhere|a11y
+we are adding a column to the users table next week|db-migration
+customers in Germany are asking what we store about them|privacy-compliance
+someone pasted an API key into a config file, what now|security-scan
+the app takes eight seconds to open the dashboard|performance
+I need to cut a new version and tell people what changed|release
+this endpoint returns different shapes depending on the caller|api-design
+we keep discovering the same outage twice a month|incident-runbook
+I want to know if this library is still maintained|dependency-audit
+three of us are working on the same repo and duplicating work|teamboard
+I am about to run out of room in this conversation|handoff
+nobody knows why we chose this queue over the other one|adr
+the tests pass locally and fail in the pipeline every third run|testing
+I want to be sure this change did not make anything slower|performance
+we need to put this build on the server tonight|deploy
+
+# --- REJECTED, with the reason. Not deleted: a row removed without a reason is how a held-out set decays -----
+#
+# "the German strings are missing on the checkout page" -> i18n-integrity
+#   The only phrase that could carry it is "strings are missing", which is a verbatim slice of this sentence —
+#   memorising the test, not widening the trigger — AND it steals: "the connection strings are missing from
+#   appsettings" then routes to the translation skill. Matching is contiguous, so "missing string" never
+#   reaches it either. The class is real; no phrase separates it from a config problem. Reported, not forced.
+#
+# "the model keeps ignoring my instructions when it reads a file" -> red-team
+#   The intent (indirect prompt injection) does belong here, but the only substrings that could carry it —
+#   "my instructions", "ignoring my instructions", "reads a file" — are indistinguishable from two far more
+#   common requests: a user saying the assistant is not following instructions, and a parser bug on file read.
+#   Any phrase that catches this prompt takes both of those with it.
+#
+# Both stay listed so the next person sees the class was considered and why the trigger cannot express it. If
+# route-hint ever scores on more than contiguous substrings, reopen them.

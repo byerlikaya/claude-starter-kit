@@ -3,6 +3,7 @@ name: db-migration
 description: |
   Apply schema migrations safely: detect the tool, classify the change by risk, gate destructive ones behind
   approval, back up in prod, preview-apply-verify, roll back on failure.
+  Use when a schema change is about to be applied to any environment.
 ---
 
 # Database Migration
@@ -10,7 +11,7 @@ description: |
 <!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
      Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
      truncated or dropped, which strips the very keywords a match depends on. -->
-Trigger phrases: "migration", "schema change", "update database", "add column", "create table", "alter table"
+Trigger phrases: "migration", "schema change", "update database", "add column", "create table", "alter table", "add a column to", "adding a column to", "drop a column", "rename the table", "change the column type", "backfill"
 
 A migration is very often a **one-way gate**: once applied, going back is expensive or impossible
 unless it was planned for. That is why the heart of the flow is not running a command, but **classifying

@@ -10,7 +10,7 @@ description: |
 <!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
      Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
      truncated or dropped, which strips the very keywords a match depends on. -->
-Trigger phrases: "visual design", "design system", "make it look good", "UI polish", "layout", "spacing", "typography"
+Trigger phrases: "visual design", "design system", "make it look good", "UI polish", "page layout", "the layout is", "spacing", "typography"
 
 `frontend` decides how the code is structured; `a11y` decides whether everyone can use it; **this skill decides
 whether it looks considered and feels right.** The through-line: **a few consistent decisions, applied everywhere,

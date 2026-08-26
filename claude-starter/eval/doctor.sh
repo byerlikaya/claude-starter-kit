@@ -86,7 +86,12 @@ fi
 #    nothing). PreToolUse/UserPromptSubmit/Stop are required; SessionStart (rehydration) is a warn if absent.
 S=.claude/settings.json
 if [ -f "$S" ]; then
-  if command -v jq >/dev/null 2>&1; then
+  # Probed by RUNNING, like §4b does for python3 two sections down. On `command -v` alone a jq that resolves
+  # and fails takes this branch forever: the documented grep fallback below becomes unreachable, `jq empty`
+  # failing is blamed on the USER's file, and doctor prescribes overwriting it — which would destroy any
+  # hooks the project added. Measured with a stub jq on a healthy install: "settings.json is invalid JSON",
+  # rc=1, and the three checks after it simply absent.
+  if command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then
     if jq empty "$S" 2>/dev/null; then
       ok "settings.json is valid JSON"
       EMPTY=""
@@ -100,11 +105,37 @@ if [ -f "$S" ]; then
       case "$sn" in ''|0) warn "SessionStart not wired — session rehydration after /compact or /clear is inactive (update the kit)" ;; *) ok "SessionStart wired (session rehydration active)" ;; esac
     else bad "settings.json is invalid JSON" "restore settings.json from the kit"; fi
   else
-    # no jq: best-effort — each required event name must appear, and a hook command must be wired somewhere.
-    MISS=""
-    for ev in PreToolUse UserPromptSubmit Stop; do grep -q "\"$ev\"" "$S" || MISS="$MISS $ev"; done
-    { [ -z "$MISS" ] && grep -q 'hooks/' "$S"; } && ok "settings.json wires the required hook events (no jq: name check)" \
-      || bad "settings.json missing hook events or wiring:$MISS" "restore settings.json from the kit"
+    # no jq: the NAME is not the wiring. `"PreToolUse": []` carries the name and wires nothing, and this branch
+    # passed it — so on a stock Windows box, the one platform with no jq, doctor reported `healthy` over a
+    # settings.json whose §4.4/§4.5 tool gate was empty. That is the M2 finding from the 1.4.0 audit, fixed for
+    # the jq path and never for this one; measured here against a hand-built fixture, and it is what
+    # smoke-test's M2a case caught the first time it was able to run without jq.
+    # Emptiness needs no parser: after the event's `[`, the first non-space character is `]` exactly when the
+    # array is empty. Pure parameter expansion, so it costs no process on the hook-heavy platform.
+    json_event_nonempty(){   # $1 = file, $2 = event -> 0 when that event's array holds at least one entry
+      local all s c
+      all="$(cat "$1" 2>/dev/null)"
+      s="${all#*\"$2\"}"
+      [ "$s" != "$all" ] || return 1
+      case "$s" in *"["*) ;; *) return 1 ;; esac
+      s="${s#*"["}"
+      while [ -n "$s" ]; do
+        c="${s%"${s#?}"}"; s="${s#?}"
+        case "$c" in [[:space:]]) continue ;; esac
+        [ "$c" = "]" ] && return 1
+        return 0
+      done
+      return 1
+    }
+    MISS=""; EMPTYNJ=""
+    for ev in PreToolUse UserPromptSubmit Stop; do
+      if grep -q "\"$ev\"" "$S"; then
+        json_event_nonempty "$S" "$ev" || EMPTYNJ="$EMPTYNJ $ev"
+      else MISS="$MISS $ev"; fi
+    done
+    { [ -z "$MISS" ] && [ -z "$EMPTYNJ" ] && grep -q 'hooks/' "$S"; } \
+      && ok "settings.json wires the required hook events, each non-empty (no jq: shape check)" \
+      || bad "settings.json hook events missing:$MISS empty:$EMPTYNJ — those gates won't fire" "restore settings.json from the kit"
     grep -q '"SessionStart"' "$S" || warn "SessionStart not wired — session rehydration inactive (update the kit)"
   fi
   # `${CLAUDE_PROJECT_DIR}` inside a hook command is the shape that breaks on Windows, and it breaks invisibly.
@@ -146,6 +177,7 @@ if [ -d .claude/skills ]; then
     warn "  truncate or drop descriptions, and a skill whose description is gone stops matching requests."
     warn "  Fixes: raise \"skillListingBudgetFraction\" in settings, or set rarely-used skills to \"name-only\""
     warn "  in \"skillOverrides\". Re-check with a smaller CONTEXT_WINDOW=200000 to see your real model's budget."
+    warn "  Which skills? bash .claude/eval/utilization.sh — it reports the ones nothing in this project reached."
   fi
 fi
 
@@ -227,7 +259,7 @@ if [ -f CLAUDE.md ] && ls .claude/agents/*.md >/dev/null 2>&1; then
   done
   # TWO awk passes, not a nested shell loop. This check used to run `sed|head|tr` per agent and then a
   # `grep|cut|tr|sed` for every (agent × scanned file) pair — 12 agents against a handful of docs is already
-  # ~250 process spawns. On Linux/macOS that is invisible; on Windows, where Git Bash pays 20-50ms per spawn
+  # ~250 process spawns. On Linux/macOS that is invisible; on Windows, where Git Bash pays 62-135 ms per spawn
   # instead of ~1.7ms, doctor stopped dead right here and looked hung to the user who ran it. Same disease the
   # route-hint hook had, same cure: let awk do the looping. Two spawns, whatever the component count.
   CSK_AGENT_BASES="$(awk '

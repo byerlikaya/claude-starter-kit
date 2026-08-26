@@ -10,7 +10,7 @@ description: |
 <!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
      Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
      truncated or dropped, which strips the very keywords a match depends on. -->
-Trigger phrases: "team board", "who is working on", "claim", "take this item", "pick up a task", "sprint item", "release the item", "hand the item over", "is anyone on", "board"
+Trigger phrases: "team board", "who is working on", "claim", "take this item", "pick up a task", "sprint item", "release the item", "hand the item over", "is anyone on", "board", "of us are working", "stepping on each other", "who is doing what", "who else is working"
 
 ## The problem this closes
 Every teammate runs the kit **locally**. `docs/PLAN.md` and `docs/SESSION_STATE.md` are gitignored, so the fact

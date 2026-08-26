@@ -48,7 +48,7 @@ SKIP_LIST=""
 # $4 = space-separated names to SKIP entirely, matched against the first path component of each source file
 # ('frontend-expert-csk.md' for agents/, 'a11y' for skills/). We skip rather than copy-then-delete: a project
 # may own a directory of the same name, and a refresh must never remove the project's own files.
-# Per-FILE process spawns are what make this hurt on Windows: Git Bash pays 20-50ms per process where Linux pays
+# Per-FILE process spawns are what make this hurt on Windows: Git Bash pays 62-135 ms per process where Linux pays
 # ~1.7ms, so `dirname`+`mkdir`+`cp` for each of ~100 payload files is minutes, not milliseconds. Measured on a
 # user's machine: a refresh took 6m43s wall with 66s of it in the kernel — the fork signature, not file I/O.
 #   - the refresh case (force=1, nothing excluded) is ONE `cp -R`, not one `cp` per file;
@@ -542,15 +542,22 @@ fi
 chmod +x .claude/hooks/*.sh .claude/hooks/pre-commit .claude/hooks/commit-msg 2>/dev/null || true
 [ -f "$HERE/VERSION" ] && cp "$HERE/VERSION" .claude/VERSION 2>/dev/null || true   # first-class marker so a future adopt detects a REFRESH
 # Stale kit files: names the kit USED to ship and no longer does. `copy_noclobber` only ever adds, so a component
-# removed or renamed upstream lives on in the project forever — and for a COMMAND that is not cosmetic, because the
-# filename is the invocation: after 1.11.0 renamed the commands, an un-pruned `review.md` sits beside `review-csk.md`
-# and the picker shows both. They are REPORTED, never deleted: this installer deliberately preserves a pre-existing
-# project file that happens to sit under a kit name, so a name in the old manifest is not proof the file is ours.
-# Deleting on that assumption would destroy the user's own work; naming it costs them one command.
+# removed or renamed upstream lives on in the project forever — and that is not cosmetic, because for all three
+# kinds the NAME IS THE INVOCATION. A command's filename is what the / picker lists: after 1.11.0 renamed the
+# commands, an un-pruned `review.md` sits beside `review-csk.md` and both show up. A SKILL's directory name is
+# what the router scores — `route-hint.sh` ranks `.claude/skills/*/SKILL.md` by the trigger phrases inside, so a
+# renamed skill left on disk competes with its own replacement for every prompt. Measured on this machine: a
+# 2.6.0 install upgraded in place kept `skills/vps-deploy` beside the new `skills/deploy`, both with live
+# triggers, and the installer said nothing — it had counted the leftover as one of the PROJECT's own skills.
+# That silence is the bug; skills were simply outside the scan below.
+#
+# They are REPORTED, never deleted: this installer deliberately preserves a pre-existing project file that
+# happens to sit under a kit name, so a name in the old manifest is not proof the file is ours. Deleting on that
+# assumption would destroy the user's own work; naming it costs them one command.
 if [ -f .claude/kit-manifest.txt ]; then
   STALE=""
   while IFS= read -r entry; do
-    case "$entry" in commands/*|agents/*) ;; *) continue ;; esac
+    case "$entry" in commands/*|agents/*|skills/*) ;; *) continue ;; esac
     [ -e "$SRC/${entry#*/}" ] && continue                       # still shipped under the same folder? keep
     [ -e "$SRC/$entry" ] && continue
     [ -e ".claude/$entry" ] && STALE="$STALE $entry"
@@ -558,9 +565,10 @@ if [ -f .claude/kit-manifest.txt ]; then
   if [ -n "$STALE" ]; then
     echo
     echo "  ⚠️  installed by an older kit and no longer shipped:$STALE"
-    echo "     A leftover COMMAND still shows up in the / picker, so /review can list two entries."
+    echo "     The name is the invocation: a leftover COMMAND still lists in the / picker (/review twice), and a"
+    echo "     leftover SKILL still matches prompts, so it competes with whatever replaced it."
     echo "     Nothing is deleted for you — one of these may be a file you customised. To drop them all:"
-    printf '       rm'; for e in $STALE; do printf ' .claude/%s' "$e"; done; echo
+    printf '       rm -r'; for e in $STALE; do printf ' .claude/%s' "$e"; done; echo
   fi
 fi
 
@@ -656,7 +664,11 @@ def merge_hooks(kh;ph):
 (dm($k[0]; $p[0])) | .hooks=merge_hooks(($k[0].hooks // {}); ($p[0].hooks // {}))'
 if [ ! -f "$PSET" ]; then
   [ -f "$KSET" ] && { cp "$KSET" "$PSET"; echo "  settings.json: was missing in the project -> the kit's was installed"; }
-elif command -v jq >/dev/null 2>&1; then
+# Probed by RUNNING — the python3 arm below already does exactly this, with a comment about the Store
+# redirector. Selecting on `command -v` alone made a broken jq abort the merge and wire NOTHING, while the
+# run still ended in OK + PROOF and HANDOVER recorded "kit hooks REFRESHED". Measured: 10 hook entries with
+# a working jq, 10 via the python3 arm with jq absent, 0 with a jq that resolves and fails.
+elif command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then
   if ! jq -e . "$PSET" >/dev/null 2>&1; then
     warn "settings.json: existing file is INVALID JSON -> merge ABORT (no silent overwrite). Fix it by hand first."
   else

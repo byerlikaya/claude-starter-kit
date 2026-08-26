@@ -36,8 +36,12 @@ MSG="A session handover from before this context boundary exists at docs/SESSION
 # hookSpecificOutput.additionalContext is the documented channel that injects text into the model's context.
 # Prefer jq to build the JSON (it escapes the string correctly); the printf fallback stays valid only because
 # MSG is a fixed constant with no quote/backslash/newline — keep it that way if you edit it.
-if command -v jq >/dev/null 2>&1; then
-  jq -cn --arg m "$MSG" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}'
+# The status of the jq call is what decides, not its existence: this branch used to end with jq, whose
+# failure left EMPTY stdout and rc=0 — the exact shape of the legitimate "nothing to report" case, so the
+# loss was invisible. The fallback below emits byte-identical output, which is why falling through costs
+# nothing. Measured with a stub jq: 0 bytes before, unchanged output after. No extra process.
+if command -v jq >/dev/null 2>&1 && OUT="$(jq -cn --arg m "$MSG" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}' 2>/dev/null)" && [ -n "$OUT" ]; then
+  printf '%s\n' "$OUT"
 else
   printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":%s}}\n' "\"$MSG\""
 fi

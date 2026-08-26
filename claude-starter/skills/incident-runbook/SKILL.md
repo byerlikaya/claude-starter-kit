@@ -3,6 +3,7 @@ name: incident-runbook
 description: |
   Production incident response: diagnose → mitigate → resolve, then a blameless postmortem and a repeatable
   runbook. Stop the impact first, root cause second.
+  Use when production is degraded or broken, and again for the postmortem afterwards.
 ---
 
 # Incident Response & Runbook
@@ -24,7 +25,7 @@ user impact > finding the root cause. No panic, one ordered step at a time.
 6. **Close** — confirm the impact is over; note the timeline (a postmortem input).
 
 ## Mitigation reflexes
-- Last deploy suspect → **rollback** (vps-deploy revert).
+- Last deploy suspect → **rollback** (deploy revert).
 - Suspect feature → turn off the **feature flag**.
 - After a destructive migration → restore from backup (db-migration).
 - Dependency/service down → circuit breaker / graceful degradation.

@@ -35,10 +35,20 @@ triggers_of() {  # $1 = target name; prints its trigger phrases line by line (ex
   grep -i "Trigger phrases:" "$f" | head -1 | grep -oE '"[^"]+"' | sed 's/"//g'
 }
 
+# The working set and the held-out set are read by the SAME matcher on purpose: if the holdout were scored more
+# leniently, its failures would stop meaning anything. What differs is only where the prompts came from.
+GOLD_SETS="$GOLD"
+[ -f "$(dirname "$GOLD")/golden-holdout.txt" ] && GOLD_SETS="$GOLD $(dirname "$GOLD")/golden-holdout.txt"
 echo "== 1) Golden routing (prompt -> expected target) =="
 [ -f "$GOLD" ] || { fail "golden-routing.txt missing"; }
 while IFS='|' read -r prompt expected; do
   case "$prompt" in ''|\#*) continue ;; esac
+  # `[:space:]` includes CR, and that is the ONLY thing standing between this suite and a CRLF golden file.
+  # The kit repo pins `*.txt text eol=lf` in .gitattributes, but these files are also INSTALLED into a user's
+  # project, where nothing pins them and Git for Windows sets core.autocrlf=true by default — so a Windows user
+  # who commits .claude/ and re-clones gets CRLF here. Measured on Windows with the golden files converted to
+  # CRLF byte for byte: 151 passes, 0 failures, identical to the LF run. Without this strip `expected` carries a
+  # trailing CR, matches no installed component, and every row fails as "target not installed".
   expected="$(printf '%s' "$expected" | tr -d '[:space:]')"
   [ -n "$expected" ] || continue
   neg=0; case "$expected" in '!'*) neg=1; expected="${expected#!}" ;; esac   # !target = must NOT route here
@@ -68,7 +78,7 @@ EOF
     if [ "$hit" = 1 ]; then pass "\"$prompt\" -> $expected"
     else fail "\"$prompt\" -> $expected (no trigger matched — routing gap)"; fi
   fi
-done < "$GOLD"
+done < <(cat $GOLD_SETS)
 
 echo "== 1b) Routing COVERAGE — every installed component has at least one positive case =="
 # The golden set proves that the cases in it route. It never proved that every component HAS a case, and an audit
@@ -80,7 +90,7 @@ MISSING_CASE=""
 for f in "$AGENTS"/*.md "$SKILLS"/*/SKILL.md; do
   [ -e "$f" ] || continue
   case "$f" in */SKILL.md) n="$(basename "$(dirname "$f")")" ;; *) n="$(basename "$f" .md)" ;; esac
-  grep -qE "^[^#]*\|$n\$" "$GOLD" || MISSING_CASE="$MISSING_CASE $n"
+  grep -qE "^[^#]*\|$n\$" $GOLD_SETS || MISSING_CASE="$MISSING_CASE $n"
 done
 [ -z "$MISSING_CASE" ] && pass "every installed agent/skill has a positive routing case" \
   || fail "no positive golden case for:$MISSING_CASE — add the sentence a user would type to reach it"

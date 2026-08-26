@@ -18,6 +18,30 @@ if [ ! -d "$SRC" ]; then
   exit 1
 fi
 
+# Refuse to run inside a checkout of the kit's own source repository. This script ends by deleting
+# claude-starter/ and itself, which is correct when the kit has been unpacked into a project and is being
+# consumed — and destroys the source when someone invokes it by absolute path from somewhere else while
+# developing the kit. That is not hypothetical: it removed 122 tracked files during this kit's own
+# development, recovered only because they were committed.
+#
+# The kit's developer instructions already said "do not run start.sh in this repo". A rule that only holds
+# while someone remembers it is the exact thing this kit exists to replace with a gate, so here is the gate.
+# The three markers together appear in the source repo and in no install: an installed kit has .claude/ and
+# CLAUDE.md, never packaging/ next to a claude-starter/ it has not yet consumed.
+if [ -d "$HERE/packaging" ] && [ -d "$HERE/.git" ] && [ -f "$HERE/VERSION" ]; then
+  if [ "${CSK_ALLOW_SOURCE_INSTALL:-0}" = 1 ]; then
+    echo "WARNING: CSK_ALLOW_SOURCE_INSTALL=1 — installing from the kit's own source checkout."
+    echo "  $SRC and this script will be deleted when the install finishes."
+  else
+    echo "ERROR: this is the kit's own source repository, not a project to install into."
+    echo "  Running here would delete $SRC and this script at the end — that is what the installer does."
+    echo "  To try the installer, copy the kit somewhere else first:"
+    echo "      cp -R \"$HERE\" /tmp/kit-trial && cd /tmp/kit-trial && bash start.sh"
+    echo "  Set CSK_ALLOW_SOURCE_INSTALL=1 if you really mean to consume this checkout."
+    exit 1
+  fi
+fi
+
 usage() {
   cat <<'USAGE'
 Usage: bash start.sh [BACKEND-STACK]
@@ -73,7 +97,11 @@ clone_devarch() {  # $1 = target dir; clone verbatim, drop nested .git, rename t
   command -v git >/dev/null 2>&1 || { echo "  ERROR: git missing; cannot include DevArchitecture."; return 1; }
   local tmp; tmp="$(mktemp -d)"
   echo "  Downloading: $DEVARCH_URL"
-  if ! git clone --depth 1 "$DEVARCH_URL" "$tmp/da" >/dev/null 2>&1; then
+  # No timeout on this one, deliberately: a first clone of a real backend base legitimately takes minutes on a
+  # slow link, and cutting it off would break the feature to fix a hang it does not have. What it CAN hit is the
+  # credential prompt — if the URL ever moves behind auth, git asks for a username and the installer stops dead
+  # with no output. Suppressing the prompt turns that into the error message two lines below.
+  if ! GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never git clone --depth 1 "$DEVARCH_URL" "$tmp/da" >/dev/null 2>&1; then
     echo "  ERROR: clone failed (network/access?). Manually: git clone $DEVARCH_URL"
     rm -rf "$tmp"; return 1
   fi
@@ -330,11 +358,30 @@ touch .gitignore
 # .private-terms.txt lists the strings that must never be published (internal project names, client
 # names, host names) — publishing that list would defeat its purpose, so it is ignored from the start.
 for e in 'docs/' '.claude/' 'CLAUDE.md' '.private-terms.txt'; do grep -qxF "$e" .gitignore || echo "$e" >> .gitignore; done
-if [ -d .git ]; then
-  git config core.hooksPath .claude/hooks
+# `[ -d .git ]` is a proxy for the answer, and it lies exactly where it matters: in a worktree or a submodule
+# `.git` is a FILE, so the commit gate was never armed there and the installer said nothing was wrong. adopt.sh
+# already names this (red-team hole #6) and start.sh was never taught it. Measured: in a worktree the installer
+# printed "no git repository", core.hooksPath stayed empty, and a commit carrying a forbidden expression landed;
+# arming by hand and retrying, the trace scanner rejected it. start.sh deletes itself afterwards, so there is no
+# second chance from the installer.
+#
+# Anchored on the TOPLEVEL, not merely on being inside a work tree: a relative core.hooksPath resolves against
+# the work-tree root, so arming from a subdirectory stores the value and runs no hook at all — a gate reported
+# active over a dead path. `pwd -P` because git answers with the physical path, and the arming call itself is
+# the probe, so a git that resolves and fails falls into the NOTE instead of a false "active".
+# Asked as `--show-prefix`, not by comparing two spellings of the same path. Comparing them is what the line
+# above this one used to do, and on Windows the two sides NEVER match: git answers `C:/repo/app` while
+# `pwd -P` answers `/c/repo/app`, so the arming call was never reached — in a worktree AND in an ordinary
+# repository. Measured on a Windows 11 desktop against this commit: `core.hooksPath` came back EMPTY in both,
+# the installer exited 0, and it printed "no git repository at this level" standing inside one. That is the
+# §4.1/§4.2 commit gate silently absent on every Windows install, reported as a successful one.
+# `--show-prefix` is the question itself: empty at the work-tree root, `sub/dir/` below it, non-zero exit
+# outside a repo — and it carries no path spelling to disagree about. Verified here at a normal root, a
+# worktree root, a subdirectory and a non-repo.
+if PFX="$(git rev-parse --show-prefix 2>/dev/null)" && [ -z "$PFX" ] && git config core.hooksPath .claude/hooks 2>/dev/null; then
   echo "  trace scan: core.hooksPath -> .claude/hooks (§4.1/§4.2 commit gate active)"
 else
-  echo "  NOTE: no git repository; after 'git init' run:  git config core.hooksPath .claude/hooks"
+  echo "  NOTE: no git repository at this level; after 'git init' run:  git config core.hooksPath .claude/hooks"
 fi
 rm -rf "$SRC"
 echo
