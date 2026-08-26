@@ -18,6 +18,30 @@ if [ ! -d "$SRC" ]; then
   exit 1
 fi
 
+# Refuse to run inside a checkout of the kit's own source repository. This script ends by deleting
+# claude-starter/ and itself, which is correct when the kit has been unpacked into a project and is being
+# consumed — and destroys the source when someone invokes it by absolute path from somewhere else while
+# developing the kit. That is not hypothetical: it removed 122 tracked files during this kit's own
+# development, recovered only because they were committed.
+#
+# The kit's developer instructions already said "do not run start.sh in this repo". A rule that only holds
+# while someone remembers it is the exact thing this kit exists to replace with a gate, so here is the gate.
+# The three markers together appear in the source repo and in no install: an installed kit has .claude/ and
+# CLAUDE.md, never packaging/ next to a claude-starter/ it has not yet consumed.
+if [ -d "$HERE/packaging" ] && [ -d "$HERE/.git" ] && [ -f "$HERE/VERSION" ]; then
+  if [ "${CSK_ALLOW_SOURCE_INSTALL:-0}" = 1 ]; then
+    echo "WARNING: CSK_ALLOW_SOURCE_INSTALL=1 — installing from the kit's own source checkout."
+    echo "  $SRC and this script will be deleted when the install finishes."
+  else
+    echo "ERROR: this is the kit's own source repository, not a project to install into."
+    echo "  Running here would delete $SRC and this script at the end — that is what the installer does."
+    echo "  To try the installer, copy the kit somewhere else first:"
+    echo "      cp -R \"$HERE\" /tmp/kit-trial && cd /tmp/kit-trial && bash start.sh"
+    echo "  Set CSK_ALLOW_SOURCE_INSTALL=1 if you really mean to consume this checkout."
+    exit 1
+  fi
+fi
+
 usage() {
   cat <<'USAGE'
 Usage: bash start.sh [BACKEND-STACK]

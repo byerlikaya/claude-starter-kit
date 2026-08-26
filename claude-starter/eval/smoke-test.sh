@@ -3075,14 +3075,36 @@ RHCASES
   # the session stalled on every prompt AND lost routing. Users reported it as "the kit freezes Claude Code".
   #
   # Correctness tests cannot see that: the hook answered correctly, just far too slowly. So the budget is a
-  # gate of its own. Wall-clock with integer SECONDS is coarse on purpose — the bound is an order of magnitude
-  # above the one-awk-pass implementation (~0.03s x 10 = 0.3s) and an order of magnitude below the shell-loop
-  # one (~33s), so it catches a fork explosion without ever tripping on a slow CI box.
+  # gate of its own — and it counts PROCESSES, because that is the quantity the regression changes and the only
+  # one that means the same thing on every machine.
+  #
+  # This used to be a 5 s wall-clock bound, described as an order of magnitude of headroom over "~0.03s x 10".
+  # Measured on the Windows machine this gate exists for: 3.1-3.3 s idle (65% of the budget, ten times the
+  # figure the comment claimed) and 9.2-10.1 s under four parallel fork loops — a 2x overrun with the hook
+  # working correctly. The gate was one busy runner away from failing for a reason that has nothing to do with
+  # the defect it guards, and §7y runs in both scopes, so windows-latest was live to it.
+  #
+  # A process count separates 5 forks from ~2000 regardless of load or platform. Wall-clock stays as a coarse
+  # second bound at 30 s: three times the worst measured value, and still far below the shell-loop shape it
+  # has to catch (~33 s on a Mac, minutes on Git Bash).
   RHT0=$SECONDS
-  for _i in 1 2 3 4 5 6 7 8 9 10; do rh "add an endpoint that returns unpaid invoices" >/dev/null; done
+  printf '{"hook_event_name":"UserPromptSubmit","prompt":"%s"}' "add an endpoint that returns unpaid invoices" \
+    | CLAUDE_PROJECT_DIR="$RHDIR" bash -x "$RH" >/dev/null 2>"$RHDIR/trace"
+  for _i in 2 3 4 5 6 7 8 9 10; do rh "add an endpoint that returns unpaid invoices" >/dev/null; done
   RHEL=$((SECONDS - RHT0))
-  [ "$RHEL" -le 5 ] && pass "route-hint cost: 10 prompts in ${RHEL}s (budget 5s — no per-phrase fork loop)" \
-    || fail "route-hint cost: 10 prompts took ${RHEL}s (>5s). A per-prompt hook this expensive stalls every turn on Windows, where a process spawn costs 20-50ms."
+  RHP="$(grep -cE '^\++ (grep|sed|awk|tr|cat|head|cut|sort|find|wc|mktemp|basename|dirname)' "$RHDIR/trace" 2>/dev/null | tr -cd '0-9')"; RHP="${RHP:-0}"
+  # A CONSTANT, like the scanner budget above and for the same reason: this hook's cost must not grow with the
+  # number of components it scores. Measured today: 5 per invocation (cat, sed, sed, head, awk). The regression
+  # this catches is a per-phrase or per-component loop, which turns 5 into hundreds.
+  if [ "$RHP" = 0 ]; then
+    fail "route-hint cost: the trace recorded no external commands at all — the measurement is broken, not the hook (rerun with the trace kept)"
+  elif [ "$RHP" -le 12 ]; then
+    pass "route-hint cost: $RHP external command(s) per prompt (budget 12 — no per-phrase fork loop); 10 prompts in ${RHEL}s"
+  else
+    fail "route-hint spawns $RHP processes for ONE prompt (budget 12). On Git Bash a spawn is ~62 ms idle and ~400 ms under load, so this is the shape that froze sessions."
+  fi
+  [ "$RHEL" -le 30 ] && pass "route-hint wall-clock: 10 prompts in ${RHEL}s (secondary bound 30s)" \
+    || fail "route-hint cost: 10 prompts took ${RHEL}s (>30s) even though the process count is within budget — something outside the fork count got expensive."
 
   rm -rf "$RHDIR"
 else
@@ -3504,6 +3526,42 @@ if [ -n "$SGR" ] && [ -f "$SGR/.gitattributes" ]; then
     ( bash "$SGR/packaging/verify.sh" definitely-not-a-step >/dev/null 2>&1 ); URC=$?
     [ "$URC" = 2 ] && pass "verify.sh refuses an unknown step name with rc=2" \
                    || fail "verify.sh answered rc=$URC for an unknown step — a typo'd gate name would look like a result"
+
+  # ---- start.sh refuses to consume the kit's own checkout ---------------------------------------------------
+  # The installer ends by deleting claude-starter/ and itself. That is right when the kit has been unpacked
+  # into a project; run by absolute path from a developer's checkout it deletes the source. It did: 122 tracked
+  # files, recovered only because they were committed. The developer instructions already said "do not run
+  # start.sh in this repo", which is a rule, and a rule that holds only while someone remembers it is what this
+  # kit replaces with a gate. Three states, because two would not tell the refusal apart from a broken script.
+  #
+  # The fixtures are built rather than pointed at the real checkout: the pass state must actually reach the
+  # installer, and running the real thing here is the accident being guarded against. stdin is /dev/null so
+  # every state stops at the approval prompt and writes nothing — reaching that prompt IS the pass signal.
+  if [ -f "$SGR/start.sh" ]; then
+    SGD="$(mktemp -d)"
+    mkdir -p "$SGD/src/.git" "$SGD/plain"
+    for d in src plain; do
+      cp "$SGR/start.sh" "$SGR/VERSION" "$SGD/$d/" 2>/dev/null
+      mkdir -p "$SGD/$d/packaging" "$SGD/$d/claude-starter"
+      cp -R "$SGR/claude-starter/." "$SGD/$d/claude-starter/" 2>/dev/null
+    done
+    ( cd "$SGD/src" && bash start.sh --generic </dev/null >"$SGD/o1" 2>&1 ); SG1=$?
+    ( cd "$SGD/src" && CSK_ALLOW_SOURCE_INSTALL=1 bash start.sh --generic </dev/null >"$SGD/o3" 2>&1 ); SG3=$?
+    ( cd "$SGD/plain" && bash start.sh --generic </dev/null >"$SGD/o2" 2>&1 ); SG2=$?
+
+    { [ "$SG1" = 1 ] && grep -q "own source repository" "$SGD/o1"; } \
+      && pass "start.sh refuses to install from the kit's own checkout (rc=1, named)" \
+      || fail "start.sh ran inside a source checkout (rc=$SG1) — it would delete claude-starter/ and itself, which is how 122 tracked files were lost"
+    # The three markers must be required TOGETHER. A shipped tarball carries VERSION and packaging/ and no .git,
+    # so a guard keyed on any one of them would refuse every real install instead of the developer accident.
+    { [ "$SG2" = 0 ] && ! grep -q "own source repository" "$SGD/o2" && grep -q "Install with these settings" "$SGD/o2"; } \
+      && pass "start.sh is unaffected outside a checkout: it reaches the approval prompt as before" \
+      || fail "start.sh refused an ORDINARY unpacked kit (rc=$SG2) — the guard is keyed on something a released tarball also carries"
+    { [ "$SG3" = 0 ] && grep -q "CSK_ALLOW_SOURCE_INSTALL=1" "$SGD/o3" && grep -q "Install with these settings" "$SGD/o3"; } \
+      && pass "start.sh: CSK_ALLOW_SOURCE_INSTALL=1 warns and proceeds, so the gate has a deliberate way through" \
+      || fail "start.sh did not honour CSK_ALLOW_SOURCE_INSTALL (rc=$SG3) — a gate with no override becomes one someone edits out"
+    rm -rf "$SGD"
+  fi
   else
     note "verify.sh / ci.yml cases skipped (not a source checkout of the kit)"
   fi
