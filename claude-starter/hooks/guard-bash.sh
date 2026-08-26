@@ -273,7 +273,14 @@ case "$CMD" in *[Dd][Dd]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE '(^|[
 # which is a sentence about the rule. The distinguishing feature is not the quote, it is what precedes it: a
 # SHELL EXECUTOR. So one anchor is command position, and the second requires eval/bash/sh/zsh/dash in front of
 # the optional quote. `$(…)` and a leading `(` are covered by the first through the `(` in its class.
-_IAC_AT="(^|[;&|(])[[:space:]]*((sudo|env|time|nice|nohup|xargs)([[:space:]]+-[^;&|[:space:]]+([[:space:]]+[^-;&|[:space:]]+)?)*[[:space:]]+)*"
+# A `VAR=value` prefix is part of command position, and leaving it out reopened the gate in its most ordinary
+# shape. The wrapper chain above accepted only FLAG tokens after a wrapper, so `env TF_VAR=1 terraform destroy`
+# fell out of the anchor and returned rc=0 — measured on a Windows 11 desktop, along with the bare shell form
+# `TF_VAR=1 terraform destroy`. That is not an exotic spelling: `TF_VAR_*` is how Terraform documents passing
+# variables, so the bypass sits on the path a real operator takes. The kit's older rules already tolerated the
+# prefix (`env FOO=1 rm -rf /` and `FOO=1 rm -rf /` both blocked), so this gate was the only one that did not.
+_IAC_ASG="([A-Za-z_][A-Za-z0-9_]*=[^;&|[:space:]]*[[:space:]]+)*"
+_IAC_AT="(^|[;&|(])[[:space:]]*${_IAC_ASG}((sudo|env|time|nice|nohup|xargs)([[:space:]]+-[^;&|[:space:]]+([[:space:]]+[^-;&|[:space:]]+)?)*[[:space:]]+${_IAC_ASG})*"
 _IAC_EXEC="(^|[;&|(])[[:space:]]*(sudo[[:space:]]+)?(eval|bash|sh|zsh|dash)([[:space:]]+-[a-zA-Z]+)*[[:space:]]+[\"']?"
 _IAC_SAFE="(--help|[[:space:]]-h([[:space:]]|$)|--dry-run|-auto-approve=false|-auto-approve[[:space:]]+false|auth[[:space:]]+can-i)"
 _iac(){ # $1 = the verb pattern; true when it sits at a command position OR behind a shell executor

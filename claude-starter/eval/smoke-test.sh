@@ -1810,7 +1810,13 @@ for _ic in 'terraform destroy' 'tofu destroy' 'pulumi destroy --yes' 'pulumi dow
            'pulumi up --yes' 'pulumi up -f' 'terraform apply -auto-approve' 'kubectl delete namespace prod' \
            'helm uninstall api' 'helm del api' 'helm un api' 'sudo terraform destroy' \
            'sudo -u deploy terraform destroy' 'env terraform destroy' 'xargs -I{} terraform destroy' \
-           'eval \"terraform destroy\"' 'cd infra && terraform destroy' 'make x; kubectl delete ns prod'; do
+           'eval \"terraform destroy\"' 'cd infra && terraform destroy' 'make x; kubectl delete ns prod' \
+           'env TF_VAR_env=prod terraform destroy' 'TF_VAR_env=prod terraform destroy' \
+           'FOO=1 kubectl delete namespace prod' 'env A=1 B=2 pulumi destroy'; do
+  # The four rows above are the VAR=value prefix, and they were rc=0 when this gate first shipped: the wrapper
+  # chain accepted only flag tokens, so an assignment between `env` and the verb — or in front of it with no
+  # wrapper at all — fell outside command position. Measured on Windows. `TF_VAR_*` is how Terraform documents
+  # passing variables, so this is the shape an operator actually types, not a contrived one.
   gj auto "$_ic" | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1
   [ "$?" = 2 ] && pass "infra teardown BLOCKED: $_ic" || fail "infra teardown PASSED (§4.5 hole): $_ic"
 done

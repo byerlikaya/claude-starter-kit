@@ -105,11 +105,37 @@ if [ -f "$S" ]; then
       case "$sn" in ''|0) warn "SessionStart not wired — session rehydration after /compact or /clear is inactive (update the kit)" ;; *) ok "SessionStart wired (session rehydration active)" ;; esac
     else bad "settings.json is invalid JSON" "restore settings.json from the kit"; fi
   else
-    # no jq: best-effort — each required event name must appear, and a hook command must be wired somewhere.
-    MISS=""
-    for ev in PreToolUse UserPromptSubmit Stop; do grep -q "\"$ev\"" "$S" || MISS="$MISS $ev"; done
-    { [ -z "$MISS" ] && grep -q 'hooks/' "$S"; } && ok "settings.json wires the required hook events (no jq: name check)" \
-      || bad "settings.json missing hook events or wiring:$MISS" "restore settings.json from the kit"
+    # no jq: the NAME is not the wiring. `"PreToolUse": []` carries the name and wires nothing, and this branch
+    # passed it — so on a stock Windows box, the one platform with no jq, doctor reported `healthy` over a
+    # settings.json whose §4.4/§4.5 tool gate was empty. That is the M2 finding from the 1.4.0 audit, fixed for
+    # the jq path and never for this one; measured here against a hand-built fixture, and it is what
+    # smoke-test's M2a case caught the first time it was able to run without jq.
+    # Emptiness needs no parser: after the event's `[`, the first non-space character is `]` exactly when the
+    # array is empty. Pure parameter expansion, so it costs no process on the hook-heavy platform.
+    json_event_nonempty(){   # $1 = file, $2 = event -> 0 when that event's array holds at least one entry
+      local all s c
+      all="$(cat "$1" 2>/dev/null)"
+      s="${all#*\"$2\"}"
+      [ "$s" != "$all" ] || return 1
+      case "$s" in *"["*) ;; *) return 1 ;; esac
+      s="${s#*"["}"
+      while [ -n "$s" ]; do
+        c="${s%"${s#?}"}"; s="${s#?}"
+        case "$c" in [[:space:]]) continue ;; esac
+        [ "$c" = "]" ] && return 1
+        return 0
+      done
+      return 1
+    }
+    MISS=""; EMPTYNJ=""
+    for ev in PreToolUse UserPromptSubmit Stop; do
+      if grep -q "\"$ev\"" "$S"; then
+        json_event_nonempty "$S" "$ev" || EMPTYNJ="$EMPTYNJ $ev"
+      else MISS="$MISS $ev"; fi
+    done
+    { [ -z "$MISS" ] && [ -z "$EMPTYNJ" ] && grep -q 'hooks/' "$S"; } \
+      && ok "settings.json wires the required hook events, each non-empty (no jq: shape check)" \
+      || bad "settings.json hook events missing:$MISS empty:$EMPTYNJ — those gates won't fire" "restore settings.json from the kit"
     grep -q '"SessionStart"' "$S" || warn "SessionStart not wired — session rehydration inactive (update the kit)"
   fi
   # `${CLAUDE_PROJECT_DIR}` inside a hook command is the shape that breaks on Windows, and it breaks invisibly.
