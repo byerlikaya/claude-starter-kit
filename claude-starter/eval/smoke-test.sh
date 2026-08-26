@@ -3473,7 +3473,13 @@ if [ -n "$SGR" ] && [ -f "$SGR/.gitattributes" ]; then
     # skip that quietly reads as success is exactly the failure this suite was rebuilt to stop reporting.
     # PATH is stripped to force the absent-tool branch; that proves the ROUTING of rc=3, which is a logic claim
     # and the one thing a stripped PATH legitimately proves.
-    SKOUT="$(env PATH=/usr/bin:/bin NO_COLOR=1 bash "$SGR/packaging/verify.sh" manifests 2>&1)"; SKRC=$?
+    #
+    # BOTH states set CSK_VERIFY_STRICT explicitly. The lenient case first only stripped PATH and inherited the
+    # rest, which passed locally and failed on the runner — the workflow sets CSK_VERIFY_STRICT at the JOB level,
+    # so this suite runs with it already exported and "strict off" was never actually tested there. A case that
+    # asserts one branch of a variable has to SET that variable; reading whatever the environment happens to
+    # hold means the two states are the same state wherever the environment disagrees with the developer.
+    SKOUT="$(env PATH=/usr/bin:/bin NO_COLOR=1 CSK_VERIFY_STRICT=0 bash "$SGR/packaging/verify.sh" manifests 2>&1)"; SKRC=$?
     STOUT="$(env PATH=/usr/bin:/bin NO_COLOR=1 CSK_VERIFY_STRICT=1 bash "$SGR/packaging/verify.sh" manifests 2>&1)"; STRC=$?
     if [ "$SKRC" = 0 ] && printf '%s' "$SKOUT" | grep -q '0 passed'; then
       pass "verify.sh: an absent tool is reported skipped and counted as 0 passed, not as a pass"
