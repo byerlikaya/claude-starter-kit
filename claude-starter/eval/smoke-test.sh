@@ -1758,8 +1758,15 @@ o="$(gj auto 'git push' | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"
 if [ -n "$JSONQ" ]; then
   NASTY="$(printf 'git commit -m "a\tb \\"q\\" C:\\\\p"')"
   o="$(json_bash_payload "$NASTY" | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"
+  # TWO assertions, not one. They fail for different reasons and a single message cannot name both: the
+  # payload can be valid JSON and still carry the wrong verdict, which is exactly what a deliberate mutation
+  # produced here — "not valid JSON" would have sent the next reader hunting for a parser bug that was not there.
+  if printf '%s' "$o" | json_ok; then
+    pass "ask payload stays valid JSON for a message with tabs/quotes/backslashes (oracle: $JSONQ)"
+  else fail "ask payload is not parseable JSON (oracle: $JSONQ): $o"; fi
   if [ "$(printf '%s' "$o" | json_get hookSpecificOutput.permissionDecision)" = '"ask"' ]; then
-    pass "ask payload stays valid JSON for a message with tabs/quotes/backslashes (oracle: $JSONQ)"; else fail "ask payload is not valid JSON: $o"; fi
+    pass "an escaped commit message still reaches the §4.4 ask (oracle: $JSONQ)"
+  else fail "§4.4 did not ask for a commit message carrying tabs/quotes/backslashes (oracle: $JSONQ): $o"; fi
 else skip tool "ask-payload JSON check skipped (no working JSON parser: jq, python3 and python all absent or non-functional)"; fi
 # fail closed where no prompt can reach the user
 gj bypassPermissions 'git commit -m x' | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "git commit FAILS CLOSED under bypassPermissions (§4.4)" || fail "git commit PASSED under bypassPermissions (§4.4 hole)"

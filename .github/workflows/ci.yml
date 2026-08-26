@@ -64,8 +64,33 @@ jobs:
       - name: Syntax — shell scripts
         run: bash packaging/verify.sh syntax
 
+      # On windows-latest ONLY, run this step with jq shadowed out. The runner image carries jq; a real user's
+      # Git Bash usually does not, so the leg that was meant to be the Windows evidence has been re-proving the
+      # jq path that ubuntu and macOS already cover, while the pure-bash path every Windows user actually takes
+      # went untested. Measured before this change: 619 assertions here against 633 on the runner — fourteen
+      # checks differ, and only two of them announced themselves as skips.
+      #
+      # The shadow is a stub that RESOLVES and FAILS, not a deleted binary, because that is the shape the kit
+      # keeps meeting in the wild: Microsoft's Store redirector for `python3` is on PATH by default, passes
+      # `command -v`, and exits 49 with empty stdout. Shadowing this way exercises the probe, not just absence.
+      #
+      # Only the smoke step. e2e runs its own with/without jq legs and must keep a real jq to do that.
       - name: Smoke test
-        run: bash packaging/verify.sh smoke
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then
+            mkdir -p "$RUNNER_TEMP/nojq"
+            { echo '#!/bin/sh'; echo 'exit 49'; } > "$RUNNER_TEMP/nojq/jq"
+            chmod +x "$RUNNER_TEMP/nojq/jq"
+            export PATH="$RUNNER_TEMP/nojq:$PATH"
+            hash -r
+            # The shadow is itself a gate: if it did not take, this leg would silently go back to testing the
+            # jq path and report that as Windows evidence. A measurement that can fail open is not a measurement.
+            if printf '{}' | jq -e . >/dev/null 2>&1; then
+              echo "FAIL: the jq shadow did not take — this leg would silently re-test the jq path"; exit 1
+            fi
+            echo "jq shadowed (resolves, exits 49) — the suite must now pick its next oracle tier"
+          fi
+          bash packaging/verify.sh smoke
 
       - name: e2e rehearsal — installer + non-interactive self-heal (with/without jq·python)
         run: bash packaging/verify.sh e2e
