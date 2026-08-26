@@ -26,6 +26,16 @@ versioning follows [SemVer](https://semver.org/).
   `skills/vps-deploy/` in place next to the new one, both live and competing on every prompt, because the
   installer's stale-component scan covered `commands/` and `agents/` but not `skills/`. It now covers skills
   and reports the orphan for you to remove, on the same report-never-delete rule as the rest.
+- **A Windows fork cost that nobody had measured justified sixteen optimisations.** "Git Bash pays 20-50ms per
+  process" appeared in sixteen comments and CHANGELOG entries as the reason for a rewrite. Measured on a
+  Windows 11 desktop it is **62-135 ms idle and up to ~400 ms under load** — the figure one hook already
+  carried alone. The numbers *derived* from it moved too: `skill-trust`'s 100 spawns go from "2-5s" to 6-14s,
+  and the 2,000-spawn route-hint regression from "40-100 seconds" to two to four minutes. One claim was not
+  merely low but internally inconsistent — 2,643 spawns "at 20-50 ms" was written as "over twenty minutes",
+  though that product is 2.2 minutes. The twenty minutes came from a field report on a 373-file merge where
+  most of the time is each `grep`'s own scan of the staged content, not the fork: two separate facts welded
+  into one sentence, and the weld hid a tenfold gap. They are now stated apart, with the old arithmetic noted
+  so it does not get re-fused. The two remaining "20-50 ms" strings quote the claim being corrected.
 - **The route-hint cost gate counts processes instead of seconds.** It bounded wall-clock at 5s with a comment
   claiming an order of magnitude of headroom. Measured on Windows, where the gate exists to protect: 3.1–3.3s
   idle — ten times the figure the comment claimed — and 9.2–10.1s under parallel fork load, a 2× overrun with
