@@ -3170,6 +3170,11 @@ RHCASES
   else
     fail "route-hint spawns $RHP processes for ONE prompt (budget 12). On Git Bash a spawn is ~62 ms idle and ~400 ms under load, so this is the shape that froze sessions."
   fi
+  # 30s, and the number has a source. Measured on a Windows 11 desktop: these ten prompts take 3.1-3.3s idle and
+  # 9.2-10.1s with four parallel fork loops running. The bound this replaced was 5s, chosen from the macOS figure
+  # (~0.3s), and it passed here only while the machine was quiet — a loaded CI runner would have failed a suite
+  # that was working perfectly. Secondary on purpose: the process count above is the real gate because it does
+  # not move with load, and this one only catches something expensive that is NOT a fork.
   [ "$RHEL" -le 30 ] && pass "route-hint wall-clock: 10 prompts in ${RHEL}s (secondary bound 30s)" \
     || fail "route-hint cost: 10 prompts took ${RHEL}s (>30s) even though the process count is within budget — something outside the fork count got expensive."
 

@@ -43,6 +43,12 @@ echo "== 1) Golden routing (prompt -> expected target) =="
 [ -f "$GOLD" ] || { fail "golden-routing.txt missing"; }
 while IFS='|' read -r prompt expected; do
   case "$prompt" in ''|\#*) continue ;; esac
+  # `[:space:]` includes CR, and that is the ONLY thing standing between this suite and a CRLF golden file.
+  # The kit repo pins `*.txt text eol=lf` in .gitattributes, but these files are also INSTALLED into a user's
+  # project, where nothing pins them and Git for Windows sets core.autocrlf=true by default — so a Windows user
+  # who commits .claude/ and re-clones gets CRLF here. Measured on Windows with the golden files converted to
+  # CRLF byte for byte: 151 passes, 0 failures, identical to the LF run. Without this strip `expected` carries a
+  # trailing CR, matches no installed component, and every row fails as "target not installed".
   expected="$(printf '%s' "$expected" | tr -d '[:space:]')"
   [ -n "$expected" ] || continue
   neg=0; case "$expected" in '!'*) neg=1; expected="${expected#!}" ;; esac   # !target = must NOT route here
