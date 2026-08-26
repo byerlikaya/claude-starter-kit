@@ -3,7 +3,54 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [2.7.0] - 2026-08-26
+
+### Fixed
+- **A commit could freeze and leave the repository locked, and the gate was the reason.** `pre-commit` used
+  `trap '<cleanup>' EXIT INT TERM`, which looks like it handles all three. It does not: bash **returns to the
+  script** after a signal handler that does not itself exit, so a `TERM` deleted the temporary files the hook
+  was still reading and let it carry on, printing `grep: /tmp/tmp.X: No such file or directory` for the rest of
+  the run. Measured: after a `TERM` the hook exited **0**, and a process a signal actually stopped cannot exit 0.
+  That is the whole freeze — a wrapper times out and sends `TERM`, the hook ignores it, git keeps running,
+  `.git/index.lock` stays behind, and every later git command fails with "Another git process seems to be
+  running", a message that names nothing about the cause. One session hit that loop three times. Signals now
+  exit 143; `EXIT` still cleans up.
+- **`git add -f` was matched across the whole command string**, so `git add a b && git commit -q -F -` — the
+  ordinary way to write a commit — was refused, along with `rm -f .git/index.lock; git add x`. The scan is now
+  bounded to the text between `git add` and the next command separator, and is case-sensitive: `-F` is a
+  commit/tag flag and never an add flag.
+- **Reading a setting was treated as tampering.** `git config --get core.hooksPath` is how a person checks the
+  gate is armed; only the write forms disarm it.
+- **The gate-file tamper rule matched mid-word.** Its verb list contains `ex` and carried no leading word
+  boundary, so `grep -c update-index .claude/hooks/guard-bash.sh` matched the `ex` inside `index` and a
+  read-only grep was refused — the same defect as the `git add` one: a pattern never anchored to a command
+  position.
+- **`.env.example` and its siblings were unreadable while being committable.** `.env.example`, `.sample`,
+  `.template` and `.dist` are templates that already go into git, and `pre-commit` has always treated them as
+  committable, while the permission layer called the same file an unreadable secret. Three sessions reported it
+  independently and one showed the cost: a documentation edit could not be applied, was handed to the user as
+  text, and landed in the wrong place because the writer could not see the target. `.env`, `.env.local` and
+  `.env.*.local` stay denied.
+- **No network git call suppressed credential prompts.** `board.sh` had five unbounded `fetch`/`push` calls,
+  and on Windows the default credential helper opens a GUI dialog no hook is watching — the process waits
+  forever. All of them now go through one wrapper: prompts off, and a timeout where the tool exists. Failure
+  was already the graceful path there ("remote unreachable", "kept locally"), so this turns a hang into a
+  sentence. `start.sh`'s clone gets the prompt suppression but no timeout, because a first clone legitimately
+  takes minutes. The weekly stats collector's requests are bounded on the same knob: unattended and scheduled,
+  a hung request there is not a slow run but a lost week, since the traffic API keeps only 14 days.
+
+### Added
+- **`git update-index --add` is gated.** It stages a path regardless of `.gitignore` — the bypass `git add -f`
+  is blocked for, by another spelling. Seen live: `--add --chmod=+x deploy/rolling-update.sh` staged with
+  nothing said. Staging itself stays ungated on purpose; this rule is about the gitignore bypass alone.
+
+### Not changed — the measurement said otherwise
+- **The reported hook slowness is not the kit.** On two machines a bare `/usr/bin/true` costs **880–1483 ms**
+  against 3–5 ms on a healthy one, shell builtins run at normal speed, and one session traced it to corporate
+  endpoint software inspecting every process creation. 51 external processes for a commit is a sane budget; the
+  environment is charging 20–300× per process. The related "the gate measures twice per turn" report is the
+  same tax seen through a cache that is in fact working: `session-guard` already reads what `context-usage`
+  published rather than re-deriving it — 596 ms against 1203 ms on the same machine.
 
 ### Changed
 - **Fifteen skills advertised the vocabulary of their domain instead of the vocabulary of the request, and a
