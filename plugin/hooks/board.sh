@@ -53,7 +53,13 @@ _remote(){ git config --get csk.boardRemote 2>/dev/null || echo 'origin'; }
 # "remote unreachable — showing the last known state", and a non-zero _commit_push means "kept locally, the
 # team cannot see it yet". So this converts a hang into a sentence the user can act on, and never into data
 # loss. CSK_NET_TIMEOUT overrides the bound for a slow link.
-_TMO="$(command -v timeout 2>/dev/null || true)"
+# `timeout` is coreutils and macOS does not ship it; Homebrew's coreutils installs it as `gtimeout`. Looking for
+# both is not the same as ASSUMING one — an assumed binary would fail silently, a searched one either bounds the
+# call or is honestly absent. When neither exists the prompt suppression above still applies and the call is
+# NOT time-bounded: measured against a black-holed remote, 15s with the bound and 21s without, where the 21s is
+# git giving up on its own. So the unbounded case is slower, not infinite — the infinite case is the credential
+# prompt, and that one is closed on every platform.
+_TMO="$(command -v timeout 2>/dev/null || command -v gtimeout 2>/dev/null || true)"
 _gitnet(){
   if [ -n "$_TMO" ]; then
     GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never "$_TMO" "${CSK_NET_TIMEOUT:-15}" git "$@"
