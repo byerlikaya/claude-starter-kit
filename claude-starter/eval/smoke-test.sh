@@ -3440,6 +3440,67 @@ if [ -n "$SGR" ] && [ -f "$SGR/.gitattributes" ]; then
   done
   [ -z "$SDIV" ] && pass "claude-starter/hooks and plugin/hooks ship byte-identical files" \
                  || fail "the two editions have drifted apart:$SDIV — one was updated and the other was not"
+
+  # ---- ci.yml and verify.sh must name the SAME gates -------------------------------------------------------
+  # Source-repo only: neither file is installed. This exists because the gates used to be written in ci.yml and
+  # nowhere else, so "green" locally was a strictly smaller claim than green in CI — three eval suites here,
+  # six gates there. A branch was pushed with all three suites green and CI failed on the one gate with no local
+  # runner. The commands now live once, in verify.sh, and ci.yml invokes them by name; this case is what keeps
+  # the two from drifting back apart, in BOTH directions.
+  if [ -f "$SGR/packaging/verify.sh" ] && [ -f "$SGR/.github/workflows/ci.yml" ]; then
+    VDEF="$(bash "$SGR/packaging/verify.sh" --list 2>/dev/null | tr -d '\r' | sort -u)"
+    # Every `verify.sh <step>` invocation in the workflow, whatever the surrounding step name says. Anchored to
+    # the start of a line (optionally after `run:`) so that PROSE cannot be read as an invocation — the first
+    # version of this matched the words after "verify.sh" in this file's own comments and reported the gates
+    # "because" and "must" as undefined steps.
+    VUSE="$(grep -oE '^[[:space:]]*(run:[[:space:]]*)?bash packaging/verify\.sh[[:space:]]+[a-z0-9-]+' \
+              "$SGR/.github/workflows/ci.yml" | awk '{print $NF}' | sort -u)"
+    if [ -z "$VDEF" ]; then
+      fail "verify.sh --list produced nothing — the local runner cannot enumerate its own gates"
+    else
+      UNKNOWN="$(comm -13 <(printf '%s\n' "$VDEF") <(printf '%s\n' "$VUSE") | tr '\n' ' ')"
+      UNRUN="$(comm -23 <(printf '%s\n' "$VDEF") <(printf '%s\n' "$VUSE") | tr '\n' ' ')"
+      [ -z "$UNKNOWN" ] && pass "ci.yml invokes only steps verify.sh defines" \
+                        || fail "ci.yml calls steps verify.sh does not define: $UNKNOWN — CI would fail with 'unknown step'"
+      # The other direction is the one that actually bites: a gate defined locally but never wired into CI is a
+      # gate that only runs when someone remembers to run it, which is how the catalogue check went unnoticed.
+      [ -z "$UNRUN" ] && pass "every gate verify.sh defines is wired into ci.yml" \
+                      || fail "verify.sh defines gates ci.yml never runs: $UNRUN — they hold only when run by hand"
+    fi
+
+    # A skipped step must never be counted as a pass, and under CSK_VERIFY_STRICT it must FAIL instead — on a
+    # runner a missing tool is a broken runner. Measured in three states rather than asserted once, because a
+    # skip that quietly reads as success is exactly the failure this suite was rebuilt to stop reporting.
+    # PATH is stripped to force the absent-tool branch; that proves the ROUTING of rc=3, which is a logic claim
+    # and the one thing a stripped PATH legitimately proves.
+    SKOUT="$(env PATH=/usr/bin:/bin NO_COLOR=1 bash "$SGR/packaging/verify.sh" manifests 2>&1)"; SKRC=$?
+    STOUT="$(env PATH=/usr/bin:/bin NO_COLOR=1 CSK_VERIFY_STRICT=1 bash "$SGR/packaging/verify.sh" manifests 2>&1)"; STRC=$?
+    if [ "$SKRC" = 0 ] && printf '%s' "$SKOUT" | grep -q '0 passed'; then
+      pass "verify.sh: an absent tool is reported skipped and counted as 0 passed, not as a pass"
+    else
+      fail "verify.sh counted a skipped step as a pass (rc=$SKRC) — a check that did not run read like one that succeeded: $SKOUT"
+    fi
+    if [ "$STRC" = 1 ] && printf '%s' "$STOUT" | grep -q 'FAILED'; then
+      pass "verify.sh: the same skip FAILS under CSK_VERIFY_STRICT, which is what CI sets"
+    else
+      fail "verify.sh let a skip pass under CSK_VERIFY_STRICT (rc=$STRC) — CI would report success for a gate nobody ran: $STOUT"
+    fi
+    # The ASSIGNMENT, not the word. The first version grepped for the bare name and stayed green when the env
+    # block was deleted, because the comment above it still explains what the variable does — prose read as
+    # configuration, the same mistake as the invocation pattern above. Two of these in one file is a pattern:
+    # when a check reads a config file, anchor it to the syntax that actually takes effect.
+    grep -qE '^[[:space:]]*CSK_VERIFY_STRICT:[[:space:]]*"?1"?[[:space:]]*$' "$SGR/.github/workflows/ci.yml" \
+      && pass "ci.yml sets CSK_VERIFY_STRICT=1, so a broken runner turns the job red" \
+      || fail "ci.yml does not SET CSK_VERIFY_STRICT (mentioning it in a comment is not setting it) — a missing tool on the runner would be reported as a skip and the job would stay green"
+
+    # An unknown name must be refused loudly. Without this, a step renamed in verify.sh and left stale in ci.yml
+    # would depend on the two checks above being run; this one holds even if the lists are compared wrongly.
+    ( bash "$SGR/packaging/verify.sh" definitely-not-a-step >/dev/null 2>&1 ); URC=$?
+    [ "$URC" = 2 ] && pass "verify.sh refuses an unknown step name with rc=2" \
+                   || fail "verify.sh answered rc=$URC for an unknown step — a typo'd gate name would look like a result"
+  else
+    note "verify.sh / ci.yml cases skipped (not a source checkout of the kit)"
+  fi
 else note "line-ending check skipped (not a git checkout of the kit)"
 fi
 
