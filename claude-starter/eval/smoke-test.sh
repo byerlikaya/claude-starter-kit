@@ -2911,7 +2911,7 @@ echo "== 7x) update COST: a refresh must not be a fork storm =="
 # rest). The cause is the shape this project keeps hitting: per-item shell loops. adopt.sh spawned `dirname` +
 # `mkdir` + `cp` per payload file, `basename`+`dirname` per installed skill, and — the same loop already fixed in
 # doctor.sh in 2.0.1 — `grep|cut|tr|sed` per (agent × document) pair, ~340 processes to usually find nothing.
-# Git Bash pays 20-50ms per process where Linux pays ~1.7ms, so this is invisible here and minutes there.
+# Git Bash pays 62-135 ms per process where Linux pays ~1.7ms, so this is invisible here and minutes there.
 #
 # Measured on this fixture: BEFORE 631 external commands, AFTER 78. The budget is 200 — well above the fix, well
 # below the regression, so it fails on a return to per-item loops and not on ordinary growth. Counting processes,
@@ -3070,7 +3070,7 @@ RHCASES
   # --- cost gate: this hook runs on EVERY prompt, so its cost is the session's floor ------------------
   # The first implementation scored the payload with nested shell loops — a `sed|tr|sed` normalisation plus a
   # `printf|grep` per trigger phrase, ~2000 process spawns for the shipped component set. 3.35s per prompt on
-  # an M-series Mac; on Windows, where Git Bash pays 20-50ms per spawn instead of 1.7ms, that lands at 40-100s
+  # an M-series Mac; on Windows, where Git Bash pays 62-135 ms per spawn instead of 1.7ms, that lands at 2-4 MINUTES
   # against a 10s hook timeout. Claude Code blocks for the whole timeout and then throws the output away, so
   # the session stalled on every prompt AND lost routing. Users reported it as "the kit freezes Claude Code".
   #
@@ -3420,7 +3420,11 @@ PSEOF2
                || fail "PowerShell false positive(s):$PSFP"
 echo "== 13) pre-commit cost — the gate people route around is the one that is slow =="
 # Measured on a 373-file merge: the old file loop spawned ~7 processes per file (three `printf | grep` pairs and
-# a `git cat-file`), 2,643 in total, and on Git Bash at 20-50 ms a process that is over twenty minutes. A gate
+# a `git cat-file`), 2,643 in total. At the 62-135 ms a Git Bash process was measured to cost on a Windows 11
+# desktop that is three to six minutes of SPAWN OVERHEAD ALONE, and the field report on that merge came in at
+# roughly twenty minutes once each grep's own scan of the staged content is added on top. (The older note here
+# multiplied 2,643 by "20-50 ms" and still wrote twenty minutes, which is 2.2 minutes of arithmetic — the
+# twenty came from the user, not from the fork cost, and the two had been silently welded together.) A gate
 # that costs twenty minutes is a gate that teaches people to type --no-verify. Wall clock is the wrong meter
 # here — on macOS a fork is cheap enough that a broken and a fixed version both look instant — so this counts
 # PROCESSES, the thing Windows actually charges for.
@@ -3434,7 +3438,7 @@ PCT="$(mktemp -d)"; ( cd "$PCT" && git init -q . && git config user.email t@e.x 
 SPAWN="$(grep -cE '^\++ (grep|git|sed|awk|paste|tr|cut|wc|cat|head|tail|sort|printf)' "$PCT/trace.log" 2>/dev/null || echo 0)"
 # 120 files. The old shape produced ~850; anything near that is the per-file loop growing back.
 if [ "${SPAWN:-9999}" -le 120 ]; then pass "pre-commit stays under one process per staged file ($SPAWN for 120 files)"
-else fail "pre-commit spawns $SPAWN processes for 120 files — the per-file loop is back (Windows pays 20-50 ms each)"; fi
+else fail "pre-commit spawns $SPAWN processes for 120 files — the per-file loop is back (Windows pays 62-135 ms each)"; fi
 rm -rf "$PCT"
 
 echo "== 14) shipped hooks are LF in EVERY edition — a hook that arrives CRLF is a hook that does not run =="

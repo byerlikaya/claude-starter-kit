@@ -64,7 +64,7 @@ digest(){
 
 # The manifest is read ONCE and matched with shell builtins. It used to be a `basename` plus a `grep -qxF` per
 # component — 50 shipped components, 100 process spawns, every session start, to discover that (normally) not a
-# single component is foreign. On Git Bash, where a spawn costs 20-50ms rather than ~1.7ms, that is 2-5s of a
+# single component is foreign. On Git Bash, where a spawn costs 62-135 ms rather than ~1.7ms, that is 6-14s of a
 # user's session opening spent proving there is nothing to report. `$(<file)` is a builtin read: no `cat`.
 #
 # The `\r` strip is not cosmetic. A manifest written on Windows carries CRLF, and `grep -qxF "skills/foo"` does

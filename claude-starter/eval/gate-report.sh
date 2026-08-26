@@ -36,7 +36,7 @@ TMP="${TMPDIR:-/tmp}/csk-gate-$$"; mkdir -p "$TMP"; trap 'rm -rf "$TMP"' EXIT
 # observed forever — a false negative in the one direction that matters. Both sides drop the trailing (...).
 key(){ printf '%s' "$1" | sed 's/[[:space:]]*([^()]*)[[:space:]]*$//'; }
 
-# ---- inventory: derived from the hooks, one awk pass per file (no per-rule subprocess: Windows forks cost 20-50ms)
+# ---- inventory: derived from the hooks, one awk pass per file (no per-rule subprocess: Windows forks cost 62-135 ms)
 awk '
   # 23 rules of the form:  … && block "RULE" "SECTION"
   match($0, /&& *block +"[^"]*" +"[^"]*"/) {

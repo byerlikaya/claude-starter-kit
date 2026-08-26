@@ -700,7 +700,7 @@ versioning follows [SemVer](https://semver.org/).
   The cause is the shape this project has hit before: per-item shell loops. `copy_noclobber` ran
   `dirname` + `mkdir` + `cp` for every payload file; project-skill detection ran `basename $(dirname …)` per skill;
   and the PROOF-5 stale-reference check ran `grep|cut|tr|sed` per (agent × document) pair — **the identical loop
-  already converted to awk in `doctor.sh` in 2.0.1, left behind in `adopt.sh`**. Git Bash pays 20-50ms per process
+  already converted to awk in `doctor.sh` in 2.0.1, left behind in `adopt.sh`**. Git Bash pays 62-135ms per process
   where Linux pays ~1.7ms, so none of it shows up on a maintainer's machine.
 
   A refresh is now one `cp -R` instead of one `cp` per file, the detection loops use parameter expansion, and
@@ -874,8 +874,8 @@ versioning follows [SemVer](https://semver.org/).
   overhead.
 
   On macOS and Linux that is merely wasteful. On Windows it is fatal: Git Bash has no real `fork()`, so every
-  process is a `CreateProcess` plus the MSYS2 emulation layer plus whatever the AV scanner charges — 20-50ms
-  instead of 1.7ms. The same 2,000 spawns land at **40-100 seconds** against a 10s hook timeout. Claude Code
+  process is a `CreateProcess` plus the MSYS2 emulation layer plus whatever the AV scanner charges — 62-135ms
+  instead of 1.7ms. The same 2,000 spawns land at **two to four minutes** against a 10s hook timeout. Claude Code
   blocks on a hook until its timeout expires and then discards the output, so the session paid the full stall on
   every single prompt **and** lost the routing it was stalling for. Reported as "the kit hangs Claude Code and no
   command works"; it was never a Claude Code bug, the kit was spending the budget.

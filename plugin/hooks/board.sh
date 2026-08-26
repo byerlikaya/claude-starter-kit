@@ -533,7 +533,7 @@ Claim before you start: /board-csk claim <id>. Commits are gated on a live claim
   _now_epoch > "$(_git_dir)/csk-board-cache.at"
 
   # One-bit flag for the PreToolUse write guard. The guard runs before EVERY file edit, so it must not shell out
-  # to this script — on Windows a process costs 20-50 ms and a hot-path fork loop is a freeze. It tests for this
+  # to this script — on Windows a process costs 62-135 ms and a hot-path fork loop is a freeze. It tests for this
   # file and nothing else: present means "a board exists, it requires a claim, and this user holds none", which
   # is the only state that blocks. Recomputed here, i.e. at session start and after every board command.
   if [ -z "$mine" ] && [ "$(_conf require_item all)" = all ]; then

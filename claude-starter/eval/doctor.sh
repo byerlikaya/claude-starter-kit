@@ -259,7 +259,7 @@ if [ -f CLAUDE.md ] && ls .claude/agents/*.md >/dev/null 2>&1; then
   done
   # TWO awk passes, not a nested shell loop. This check used to run `sed|head|tr` per agent and then a
   # `grep|cut|tr|sed` for every (agent × scanned file) pair — 12 agents against a handful of docs is already
-  # ~250 process spawns. On Linux/macOS that is invisible; on Windows, where Git Bash pays 20-50ms per spawn
+  # ~250 process spawns. On Linux/macOS that is invisible; on Windows, where Git Bash pays 62-135 ms per spawn
   # instead of ~1.7ms, doctor stopped dead right here and looked hung to the user who ran it. Same disease the
   # route-hint hook had, same cure: let awk do the looping. Two spawns, whatever the component count.
   CSK_AGENT_BASES="$(awk '

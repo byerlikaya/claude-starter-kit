@@ -27,15 +27,18 @@
 # (104% CPU, ~1.7ms per spawn) for a hook whose actual work is substring matching on a few KB of text.
 #
 # That is merely wasteful on macOS/Linux. On Windows it is fatal. Git Bash has no real fork(): every process
-# is a CreateProcess plus the MSYS2 emulation layer plus whatever the AV scanner charges, which is 20-50ms —
-# ten to thirty times the cost. The same 2000 spawns land somewhere between 40 and 100 seconds, against a
+# is a CreateProcess plus the MSYS2 emulation layer plus whatever the AV scanner charges. Measured on a
+# Windows 11 desktop rather than assumed: 62-135 ms per spawn idle, and up to ~400 ms while the machine is
+# busy — forty to eighty times the ~1.7 ms Linux pays, not the "20-50 ms" this comment claimed before anyone
+# ran it here. The same 2000 spawns therefore land at two to four MINUTES, not 40-100 seconds, against a
 # 10s hook timeout. Claude Code blocks on the hook until that timeout expires, on EVERY prompt, and then
 # discards the output — so the kit paid the full stall and got no routing for it. That is the "it hangs and
 # nothing works" report from Windows users, and it is not a Claude Code bug: the kit was spending the budget.
 #
 # Everything below is therefore one awk invocation over the component files, with the normalisation and the
-# matching done inside awk. Total external processes: sed, sed, head, awk. The semantics are unchanged and
-# eval/smoke-test.sh §7y pins them.
+# matching done inside awk. Total external processes: FIVE — cat, sed, sed, head, awk. (The count said four
+# until it was traced with `bash -x` on Windows; the `cat` on the next line reads stdin and had been read
+# past.) Measured end to end here: 5 spawns, ~328 ms per prompt idle. eval/smoke-test.sh §7y pins the shape.
 set -uo pipefail
 IN="$(cat)"
 case "$IN" in *'"hook_event_name"'*UserPromptSubmit*) ;; *) exit 0 ;; esac

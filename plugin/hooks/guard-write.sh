@@ -28,7 +28,7 @@
 # Claude Code passes file_path to the hook VERBATIM (measured: a `..` survives into the payload) while the
 # filesystem resolves it, so the string the model writes and the file it opens are two different things.
 # Normalise first, match second — and normalise with parameter expansion only, because this hook runs before
-# EVERY Write/Edit and a fork per call is a freeze on Windows (Git Bash charges 20-50 ms per process).
+# EVERY Write/Edit and a fork per call is a freeze on Windows (Git Bash charges 62-135 ms per process, measured).
 set -uo pipefail
 INPUT="$(cat)"
 
