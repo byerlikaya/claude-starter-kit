@@ -131,7 +131,11 @@ grep -q '^stack=generic' "$G/.claude/kit.conf"          || die "Node project not
 [ ! -d "$G/.claude/skills/devarch-module" ]             || die "devarch-module not pruned on a generic adopt" adopt-generic "$G"
 echo "[adopt-generic] stack=generic · devarch-module pruned"
 
-# A REFRESH whose recorded stack is a stale 'generic' but the project is clearly DevArch -> corrected to dotnet.
+# A REFRESH whose recorded stack is a stale 'generic' on a clearly-DevArch project. The correction is OFFERED,
+# never applied behind the user's back — so this asserts BOTH halves, and the first half is the one that was
+# missing. The old test ran `--yes` (no tty) and required stack=dotnet, i.e. it demanded that a recorded choice
+# be overruled where nobody could be asked. It passed for five releases while a user who installed --generic on
+# a .NET project that is NOT DevArchitecture got devarch-module and the .NET agent pushed onto them.
 R="$WORK/adopt-refresh"; rm -rf "$R"; mkdir -p "$R"
 cp adopt.sh "$R/"; cp -R claude-starter "$R/"; cp VERSION "$R/"; printf '{"name":"x"}' > "$R/package.json"
 ( cd "$R" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
@@ -140,10 +144,16 @@ run_adopt "$R" --yes
 grep -q '^stack=generic' "$R/.claude/kit.conf"          || die "first adopt of a Node project should record generic" adopt-refresh/1st "$R"
 mkdir -p "$R/backend/Business/Handlers"; : > "$R/backend/DevArchitecture.sln"
 ( cd "$R" && git add -A && git commit -qm 'add devarch structure' )
+# (a) nobody to ask -> the recorded choice STANDS, and the mismatch is reported rather than acted on.
 run_adopt "$R" --yes
-grep -q '^stack=dotnet' "$R/.claude/kit.conf"           || die "refresh did not correct a stale generic stack to dotnet" adopt-refresh/2nd "$R"
-[ -d "$R/.claude/skills/devarch-module" ]               || die "devarch-module not restored after the stack correction" adopt-refresh/2nd "$R"
-echo "[adopt-refresh] stale generic corrected -> dotnet · devarch-module restored"
+grep -q '^stack=generic' "$R/.claude/kit.conf"          || die "a non-interactive refresh silently overruled the recorded stack" adopt-refresh/keep "$R"
+[ ! -d "$R/.claude/skills/devarch-module" ]             || die "devarch-module installed without anyone approving the stack change" adopt-refresh/keep "$R"
+grep -qi 'stack-agnostic' "$R/.claude/agents/backend-expert-csk.md" || die "backend agent flipped to .NET without approval" adopt-refresh/keep "$R"
+# (b) asked for deliberately -> corrected, and devarch-module comes back with it.
+CSK_CORRECT_STACK=1 run_adopt "$R" --yes
+grep -q '^stack=dotnet' "$R/.claude/kit.conf"           || die "CSK_CORRECT_STACK=1 did not correct a stale generic stack" adopt-refresh/fix "$R"
+[ -d "$R/.claude/skills/devarch-module" ]               || die "devarch-module not restored after the stack correction" adopt-refresh/fix "$R"
+echo "[adopt-refresh] recorded generic KEPT without a person · CSK_CORRECT_STACK=1 corrects it -> dotnet"
 
 # ---- adopt.sh: pre-2.0 profile MIGRATION ----
 # A project installed by 1.x with `--backend` is missing the frontend agent and four UI skills. 2.0 completes

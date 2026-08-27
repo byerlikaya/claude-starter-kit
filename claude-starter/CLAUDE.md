@@ -134,7 +134,8 @@ the rationale for any deliberate deviation.
 The rules stand on their own — the gates only make them unskippable.
 
 ### 4.1 No AI trace
-No co-author trailer, auto-generation footer, or robot-emoji sign-off. The name of an AI assistant, model, or coding
+No co-author trailer, auto-generation footer, or robot-emoji sign-off (adopt.sh may loosen it, asks first)).
+The name of an AI assistant, model, or coding
 tool never appears in a commit · code comment · README · MR description — nor in the comment lines of `.gitignore`, CI
 yaml, `appsettings.*`, `Dockerfile`. The name of this behavior file and of `.claude/` stay out of repo artifacts; they
 are only listed in `.gitignore`. Commit messages are natural, human, technical Turkish.

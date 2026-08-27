@@ -338,19 +338,33 @@ if [ -z "${KIT_STACK:-}" ] && [ "$KIT_PRESENT" != 1 ]; then
   echo "  backend stack -> ${KIT_STACK}$([ "$IS_DEVARCH" = 1 ] && [ "$KIT_STACK" = dotnet ] && echo ' (DevArchitecture)')"
 fi
 
-# --- Refresh: correct a stale/wrong recorded stack -------------------------------------------------------
-# Normally a REFRESH trusts the recorded stack over a sniff, so a sniff miss can't flip a dotnet install to
-# generic. But a recorded 'generic' on a project that is CLEARLY DevArchitecture (Business/Handlers + a .sln)
-# is a stale record from the old root-only sniff — keeping it would prune devarch-module and hold the generic
-# backend agent on a .NET/DevArch project. Surface the mismatch and offer to correct it; never flip silently.
+# --- Refresh: a recorded stack is a decision, and a sniff does not get to overrule it -----------------------
+# A REFRESH trusts the recorded stack over a sniff, so a sniff miss cannot flip a dotnet install to generic.
+# The reverse needed the same protection and did not have it. A recorded 'generic' on a project that LOOKS like
+# DevArchitecture (Business/Handlers + a .sln) may be a stale record from the old root-only sniff — or it may be
+# exactly what the user chose, on a .NET project that simply is not DevArchitecture. The sniff cannot tell those
+# apart, and this one fired on a repo whose layout is WebAPI/Business/DataAccess with no DevArchitecture in it.
+#
+# The old test was `[ ! -t 0 ] || ask_yes …`, i.e. NO TTY MEANT YES. Every agent-driven or CI update runs without
+# a tty, so the branch whose own comment said "never flip silently" was the silent one. Measured: a .NET-shaped
+# repo installed with --generic, updated with `adopt.sh --yes`, came out stack=dotnet with devarch-module
+# installed and backend-expert-csk rewritten to the .NET variant — which then hands the agent a pattern the
+# project does not use. The user's report was "I installed this as generic, why does it think it is .NET".
+#
+# So: correcting a recorded choice needs a PERSON, or an explicit flag from whoever automated it. Not-asking is
+# not consent, and the fail-safe direction is to keep what is written down. The mismatch is still reported
+# loudly every run, with the one command that corrects it on purpose.
 if [ "$KIT_PRESENT" = 1 ] && [ "$KIT_STACK" = generic ] && [ "$IS_DEVARCH" = 1 ]; then
   h1 "Recorded backend stack looks wrong"
   warn "kit.conf records stack=generic, but this project has a DevArchitecture layout (Business/Handlers + a .sln)."
   sub "Left as-is, the refresh keeps pruning devarch-module and holds the generic backend agent."
-  if [ ! -t 0 ] || ask_yes "Correct it to dotnet? (install the DevArchitecture pattern skill + the .NET backend agent)"; then
+  if [ "${CSK_CORRECT_STACK:-0}" = 1 ]; then
+    KIT_STACK=dotnet; echo "  stack corrected -> dotnet (CSK_CORRECT_STACK=1)"
+  elif [ -t 0 ] && [ "${ASSUME_YES:-0}" != 1 ] && ask_yes "Correct it to dotnet? (install the DevArchitecture pattern skill + the .NET backend agent)"; then
     KIT_STACK=dotnet; echo "  stack corrected -> dotnet (DevArchitecture)"
   else
-    echo "  kept stack=generic (your choice)"
+    echo "  kept stack=generic — a recorded choice is not overruled where nobody can be asked."
+    echo "  If the record IS stale, correct it deliberately:  CSK_CORRECT_STACK=1 bash adopt.sh --yes"
   fi
 fi
 
