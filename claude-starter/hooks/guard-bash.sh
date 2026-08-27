@@ -426,21 +426,45 @@ CRED='(\.ssh/(id_[A-Za-z0-9_]+|identity)|(^|/)id_(rsa|dsa|ecdsa|ed25519)|\.aws/c
 
 # §4.5 force-add bypasses .gitignore (sneaks build output / secrets past the bloat & ignore rules); deleting a
 # lockfile is a §4.5 op the discipline already names. Both are only done on an explicit request.
-# §4.5 `git add -f` bypasses .gitignore. The flag must be one of THIS command's own arguments, and until now it
-# was searched across the WHOLE command string — so on a Windows machine doing ordinary work these were all
-# blocked as "git add -f" with no `git add -f` anywhere in them:
-#     git add a b && git commit -q -F -        (the -F belongs to commit; git add has no -F at all)
-#     rm -f .git/index.lock; git add x         (the -f belongs to rm, and comes first)
-#     Remove-Item -Force ...; git add x        (--force belongs to Remove-Item)
-# The first is the ordinary way to write a commit, so the gate fired on the normal path and pushed the user
-# toward splitting every commit into extra tool calls — which is the very thing that leaves index.lock behind.
-# A gate that cries wolf on correct commands is a gate people learn to route around. The scan is therefore
-# bounded to the text between `git add` and the next command separator, and is case-SENSITIVE: `-F` is a
-# commit/tag flag, never an add flag.
+# §4.5 `git add -f` bypasses .gitignore. Two things have to be true for the flag to be THIS command's: it has
+# to sit inside the `git add` invocation's own argument span, and it has to be at the same quoting level.
+#
+# The span alone was not enough. `[^;&|]*` stops at a command separator but not at a quote, so a command that
+# carries a SECOND, quoted copy of itself — which is exactly what a script testing this guard looks like —
+# donated its `rm -f` to the first `git add`. Measured: `dene "rm -f y.lock; git add x" 'rm -f y.lock; git add x'`
+# captured `git add x" 'rm -f y.lock` and blocked.
+#
+# The obvious repair — adding the quote characters to the excluded class — was measured and REJECTED, because
+# it trades this narrow false positive for a narrow false NEGATIVE: `git add "spaced name.txt" -f` would then
+# stop being seen, and that one really does bypass .gitignore. A gate that fails open is worse than one that
+# cries wolf.
+#
+# So the discriminator is quote BALANCE, not quote presence. Before `git add "name" -f` the double quotes are
+# even (the pair closed); before the false positive's `-f` there is one `"` and one `'`, each unclosed — that
+# flag is inside someone else's quoting. The walk below is entirely parameter expansion and `case`: no
+# subshell, no `tr`, no `wc`. This hook runs on EVERY Bash call and its per-call fork count is 0; it stays 0.
+_addf_owns(){   # $1 = one captured `git add …` span -> 0 when a -f/--force in it belongs to that git add
+  local seg="$1" pre="" tok dq sq q s og
+  q='"'; s="'"
+  case "$-" in *f*) og=1 ;; *) og=0; set -f ;; esac      # the span holds `.` and `*`; do not let them glob
+  for tok in $seg; do
+    case "$tok" in
+      --force|-[A-Za-z]*f*|-f)
+        dq="${pre//[!$q]/}"; sq="${pre//[!$s]/}"
+        if [ $(( ${#dq} % 2 )) -eq 0 ] && [ $(( ${#sq} % 2 )) -eq 0 ]; then
+          [ "$og" = 0 ] && set +f; return 0
+        fi ;;
+    esac
+    pre="$pre $tok"
+  done
+  [ "$og" = 0 ] && set +f; return 1
+}
 if [ "$HAS_GIT" = 1 ] && git_has "$CMD" 'add'; then
   _ADDSEG="$(printf '%s' "$CMD" | grep -oE 'git[[:space:]]+([^;&|]*[[:space:]])?add([^;&|]*)' 2>/dev/null || true)"
-  printf '%s' "$_ADDSEG" | grep -qE '(^|[[:space:]])(-[A-Za-z]*f[A-Za-z]*|--force)([[:space:]]|$)' \
-    && block "git add -f (bypasses .gitignore)" "4.5"
+  while IFS= read -r _seg; do
+    [ -n "$_seg" ] || continue
+    _addf_owns "$_seg" && { block "git add -f (bypasses .gitignore)" "4.5"; break; }
+  done <<< "$_ADDSEG"
 fi
   # `git update-index --add` stages a path REGARDLESS of .gitignore — the same bypass `git add -f` performs, by
   # a different spelling. Blocking one and not the other is not a policy, it is an oversight: seen live on a
