@@ -8,7 +8,7 @@
 
 Paylaşılan bir depoda bir işi üstlenmek atomik bir git iddiasıdır — aynı işe iki kişi başlayamaz
 
-![Sürüm](https://img.shields.io/badge/version-2.7.1-2563eb?style=flat-square)
+![Sürüm](https://img.shields.io/badge/version-2.7.2-2563eb?style=flat-square)
 ![Lisans](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)
 ![Agent](https://img.shields.io/badge/agents-12-f59e0b?style=flat-square)
 ![Skill](https://img.shields.io/badge/skills-40-f59e0b?style=flat-square)

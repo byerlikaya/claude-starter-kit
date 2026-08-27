@@ -3,6 +3,45 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [2.7.2] - 2026-08-27
+
+One behaviour change, taken deliberately and with a cost, plus the rule and the test that had drifted around it.
+
+### Changed — §4.4 now holds in the modes where it was only being logged
+- **A prompt answered by software is not approval.** §4.4 has said since the first release that a commit or a
+  push does not happen without the user. In `auto` and `dontAsk` it happened anyway: the hook returned `ask`,
+  the prompt was raised — and answered by the auto-mode classifier, or by nothing at all in the mode that asks
+  nothing by definition. Measured in two unrelated repositories: **14 `ASK §4.4` lines in one gate log and 20
+  in the other**, every one followed by the commit going through, and no human keypress behind any of them.
+  The gate fired, logged itself, and stopped nothing. `DISCIPLINE.md` meanwhile promised "an approval prompt
+  only the user can answer", so users were relying on a guarantee the code did not provide — one session leaned
+  on it and made 14 commits and 7 merge requests without ever being asked.
+
+  `auto` and `dontAsk` now sit in the fail-closed branch with `plan` and `bypassPermissions`. Only `default`
+  and `acceptEdits` put the prompt in front of a person, and only they get an `ask`. Everywhere else the hook
+  exits 2 and the command has to be presented for a real yes — after which you switch mode, export
+  `CLAUDE_GIT_OK=1`, or run it yourself. Verified across all seven modes, and the key still does not open §4.5:
+  a `--force` push is refused with it set.
+
+  **The cost is real and deliberate.** Auto mode is the default on Pro/Max/Team, so committing there now takes
+  an explicit step. That is the trade the rule always described: a gate whose prompt is answered by the thing
+  it is gating is not a gate.
+- **`git commit -F msg.txt; git push` was refused as a force push.** The flag scan was case-insensitive, so the
+  `-F` of a commit matched the `-f` of a push. Reproduced independently in two repositories.
+
+### Fixed
+- **The discipline document contradicted itself, and both readings were defensible.** One section said a
+  subagent's diff is reviewed "whatever its size", another said "not by default". A session applied the first
+  in eight turns and the second in three, and could have justified either. There is now one rule, and it is
+  keyed on risk: work that changes behaviour, and a subagent's diff, go to their owner.
+- **A suite case pinned the old classification where it could never report the change.** The assertion that a
+  commit message carrying a tab, an escaped quote and a Windows path survives into the §4.4 ask is a *parsing*
+  test; its mode was incidental and happened to be `auto`. Three siblings were moved to `default` when that
+  branch changed and this one was missed — because it only runs where a JSON oracle exists, and on the machine
+  where the change was made there is none (`jq` absent, `python3` the Store stub). It stayed silent there and
+  failed on the other machine. Five cases in total were **rewritten rather than deleted**: the ones testing
+  parsing moved mode, and the one testing policy became four assertions where there had been one blanket claim.
+
 ## [2.7.1] - 2026-08-27
 
 Four fixes, all found by sessions doing real work in real projects rather than by the suite. The first one
