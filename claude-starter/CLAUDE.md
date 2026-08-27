@@ -26,7 +26,7 @@ recommend, with the rationale.**
 
 ## Workflow (orchestration)
 **The specialists run the work; you route it.** Delegation is the DEFAULT for anything that writes or changes
-code — if an installed agent owns the domain, the work is that agent's, whatever its size. You orchestrate.
+code — RISK decides, not size: behaviour changes and a subagent's diff review go to the owner.
 
 **Classify before the first tool call:** name the DOMAIN in your own words, then read its owner from
 `.claude/agents/`. Classify *intent*, never wording — the request arrives in any language.
@@ -89,7 +89,7 @@ and report. Commit/push and destructive commands are gated (§4.4/§4.5).
 
 ## Token & context discipline (token-budget skill)
 A subagent works in its own context window and returns only a summary — but a subagent-heavy flow costs several times
-more tokens, because each one re-pays for its own context. Delegate for **isolation**, not by default.
+more tokens, because each one re-pays for its own context — plan for that, never skip the line above.
 - Output = summary. Never raw logs or file dumps.
 - Heavy output goes to `docs/*.md`; return a summary plus a pointer.
 - Delegate noisy/heavy work; keep single-tool-call work on the main thread.
