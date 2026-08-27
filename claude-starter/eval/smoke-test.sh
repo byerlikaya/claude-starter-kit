@@ -3413,7 +3413,17 @@ FF="$GTMP2/fifo"
 if mkfifo "$FF" 2>/dev/null && [ -p "$FF" ]; then
   ( sleep 25 > "$FF" ) & FW=$!
   ( CSK_STDIN_TIMEOUT=1 bash "$ROOT/hooks/context-usage.sh" < "$FF" >/dev/null 2>&1 ) & FH=$!
-  FN=0; while kill -0 "$FH" 2>/dev/null && [ "$FN" -lt 8 ]; do sleep 1; FN=$((FN+1)); done
+  # The ceiling is deliberately far above the measured cost, because what this case asserts is that the hook
+  # TERMINATES AT ALL — the defect it exists for ran for twenty minutes, twice. It was 8, calibrated on a warm
+  # machine, and each iteration costs a `sleep` plus a `kill` fork, so on a machine where a process is expensive
+  # the ceiling is reached before the hook has finished starting. Measured: warm, 2 iterations and ~2.06s on
+  # macOS against ~2.17s on a Windows desktop — the two platforms agree. COLD on that same Windows machine:
+  # 12.7s on the first run of a session, then 2.17s for the next four. So a working hook failed this case
+  # whenever the suite ran cold, which `verify.sh smoke` on its own does and a full run does not, because by
+  # then the machine has warmed up. Same shape as the route-hint budget: a wall-clock bound written where
+  # processes are cheap. 40 is a little over three times the worst cold reading and costs nothing in the normal
+  # path, which exits after two.
+  FN=0; while kill -0 "$FH" 2>/dev/null && [ "$FN" -lt 40 ]; do sleep 1; FN=$((FN+1)); done
   if kill -0 "$FH" 2>/dev/null; then kill "$FH" 2>/dev/null; fail "context-usage.sh still hangs on an open silent stdin"
   else pass "context-usage.sh gives up on a silent stdin (${FN}s)"; fi
   kill "$FW" 2>/dev/null; rm -f "$FF"
