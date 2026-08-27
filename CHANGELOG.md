@@ -3,6 +3,76 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [2.7.1] - 2026-08-27
+
+Four fixes, all found by sessions doing real work in real projects rather than by the suite. The first one
+reached a user's agent; the rest are gates that fired on the wrong thing, or a proof that accused a gate that
+was working.
+
+### Fixed
+- **A project installed as `--generic` could come back from a refresh as .NET.** `kit.conf` rewritten to
+  `stack=dotnet`, `devarch-module` installed, and `backend-expert-csk` replaced by the .NET variant — so the
+  agent was then holding a backend pattern the project does not use. Noticed on a repo laid out
+  `WebAPI/Business/DataAccess` with no DevArchitecture in it anywhere. The correction itself exists for a real
+  case (a stale `generic` from the old root-only sniff on a project that really is DevArchitecture); the bug
+  was the gate on it: `[ ! -t 0 ] || ask_yes …` — **no tty meant yes** — sitting directly under a comment
+  promising "never flip silently". Every agent-driven and CI update runs without a tty, so the silent branch
+  was the only one they ever took. Present since 1.1.8 — and the test that canonised it landed the SAME DAY, so both shipped green in 36 tagged releases. It fired now
+  because that repo grew a `Business/` folder and a `.sln`. Changing a recorded choice now needs a person or
+  `CSK_CORRECT_STACK=1`; not-asking is not consent, and the fail-safe direction is to keep what is written
+  down — the rule §4.4 already applies to commit approval. The mismatch is still reported on every run.
+- **The test demanded that bug.** `packaging/e2e.sh` ran the refresh with `--yes` and no tty, then asserted
+  `stack=dotnet` — requiring a recorded choice to be overruled where nobody could be asked, and staying green
+  through five releases while doing it. Its fixture even built `DevArchitecture.sln`, the shape where flipping
+  IS right, so the ambiguous shape that actually broke was never a fixture. It now asserts both halves, and
+  the missing half is the first: with nobody to ask the record stands, `devarch-module` is not installed and
+  the agent is not rewritten.
+- **A generic project could keep `devarch-module` anyway, and the wrong routing arrived by a second path.**
+  Excluding the skill from the copy is not the same as removing one already on disk, so a refresh that
+  correctly recorded `stack=generic` left the skill installed — and `kit_infer_shape` reads the stack back OUT
+  of that very directory when `kit.conf` is missing, `route-hint` scores it, and it shows in the session's
+  skill list. Measured on the affected repo: a turn opened with *"Use the `devarch-module` skill for this
+  task"* after the backend agent had already been put right. `start.sh --generic` has always deleted it; a
+  refresh now agrees, and a recorded `dotnet` still keeps it.
+- **The DevArchitecture warning described a condition the code does not use.** It said "Business/Handlers +
+  a .sln" where the detection is an OR — either signal alone sets it. The repo that hit this has no `.sln` at
+  all, so the user went looking for one, did not find it, and read the warning as a false positive.
+- **`.slnx` was invisible to the .NET detection.** `-name '*.sln'` does not match `.slnx`, the newer XML
+  solution format, and neither did the DevArchitecture branch's `-iname 'devarchitecture.sln'`. A repo carrying
+  only a `.slnx` — with its `.csproj` files below the depth the scan reaches — came out `STACK=unknown` and fell
+  to generic, which is the exact class of miss the surrounding code was written to close, in a format that did
+  not exist when it was written. Both globs now end in `sln*`, and `start.sh`'s greenfield check with them.
+- **`PROOF-1` accused a gate that was working.** The installer stages a probe file carrying an AI trace and
+  checks the trace scan blocks it — with a plain `git add`, so a project whose `.gitignore` covers that name
+  staged nothing, the scanner read an empty diff, the hook exited 0, and the installer printed *"the trace
+  scan LET THROUGH the AI trace"*. Reproduced with three identical repos differing only by one `.gitignore`
+  line. Now `-f`, and the staging is verified before anything is concluded; where it still cannot be staged
+  the proof says it measured nothing rather than reporting a result it did not obtain.
+- **A `-f` at someone else's quoting level is not this `git add`'s.** 2.7.0 bounded the scan to the span
+  between `git add` and the next command separator, which stops at `;` but not at a quote — so a command
+  carrying a second, quoted copy of itself donated its `rm -f` forward. That shape is almost exclusively a
+  script testing this guard, which is the worst thing to block: a false positive that obstructs its own
+  diagnosis. Adding the quote characters to the excluded class was measured and rejected, because it turns a
+  narrow false positive into a narrow false NEGATIVE (`git add "spaced name.txt" -f` would stop being seen).
+  The discriminator is quote BALANCE, not presence, and the walk is `case` plus parameter expansion so this
+  hook's per-call fork count stays at 0.
+- **The discipline and the installer said different things about co-author trailers.** §4.1 forbade one
+  outright while `adopt.sh` offers an exemption to a project that already signs (a DCO `Signed-off-by`, a
+  pairing convention). Both were deliberate; only one was written down. Measured on `commit-msg` in both
+  directions: with the allowlist the trailer passes, without it the same line is blocked and a clean message
+  still passes. The clause in §4.1 is short because `DISCIPLINE.md` is byte-budgeted and had 39 bytes of
+  headroom; the full explanation lives in `adopt.sh`'s output, where it is read at the moment it matters.
+- **The route-hint cost gate's stdin case had a macOS budget.** 8 s, against a measured 12.7 s cold and
+  2.17 s warm on Windows (2.06 s on macOS) — it passed only once the machine had warmed up. Raised to 40 s.
+
+### Not changed — the measurement said otherwise
+- **The installer still writes no `.gitattributes`, and that is now a decision rather than an oversight.** The
+  worry was that a team sharing `.claude/` would get CRLF hooks on a Windows checkout and every hook would die
+  with `$'\r': command not found`. Measured: with `core.autocrlf=true`, committing `.claude/` and re-cloning
+  does bring back **14 of 14 hooks as CRLF** — the premise is real — but on Git for Windows 2.55.0 they run
+  anyway: `rm -rf /`, `git push --force` and `chmod 777 /etc` all still block, and `pre-commit` still catches a
+  staged AI trace. The consequence half does not hold, so no code was written for it.
+
 ## [2.7.0] - 2026-08-26
 
 ### Fixed

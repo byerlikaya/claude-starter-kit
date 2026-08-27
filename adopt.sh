@@ -163,13 +163,13 @@ STACK="unknown"; IS_DOTNET=0; IS_DEVARCH=0
 # Defender-scanned syscall. Pruning stops the descent instead of discarding its output.
 PRUNE_DIRS=' ( -name bin -o -name obj -o -name node_modules -o -name .git -o -name .vs -o -name packages ) -prune -o '
 # shellcheck disable=SC2086
-DOTNET_HIT="$(find . -maxdepth 3 $PRUNE_DIRS \( -name '*.sln' -o -name '*.csproj' \) -print 2>/dev/null | head -1)"
+DOTNET_HIT="$(find . -maxdepth 3 $PRUNE_DIRS \( -name '*.sln*' -o -name '*.csproj' \) -print 2>/dev/null | head -1)"
 if [ -n "$DOTNET_HIT" ]; then
   STACK=".NET"; IS_DOTNET=1
   # DevArchitecture signature: the canonical Business/Handlers CQRS layout, or a solution literally named DevArchitecture.
   # shellcheck disable=SC2086
   { find . -maxdepth 4 $PRUNE_DIRS -type d -path '*/Business/Handlers' -print 2>/dev/null | grep -q . \
-    || find . -maxdepth 3 $PRUNE_DIRS -iname 'devarchitecture.sln' -print 2>/dev/null | grep -q .; } && IS_DEVARCH=1
+    || find . -maxdepth 3 $PRUNE_DIRS -iname 'devarchitecture.sln*' -print 2>/dev/null | grep -q .; } && IS_DEVARCH=1
 elif [ -f package.json ]; then STACK="Node/JS"
 elif [ -f go.mod ]; then STACK="Go"
 elif [ -f pyproject.toml ] || [ -f requirements.txt ]; then STACK="Python"; fi
@@ -341,7 +341,7 @@ fi
 # --- Refresh: a recorded stack is a decision, and a sniff does not get to overrule it -----------------------
 # A REFRESH trusts the recorded stack over a sniff, so a sniff miss cannot flip a dotnet install to generic.
 # The reverse needed the same protection and did not have it. A recorded 'generic' on a project that LOOKS like
-# DevArchitecture (Business/Handlers + a .sln) may be a stale record from the old root-only sniff — or it may be
+# DevArchitecture (a Business/Handlers tree OR a DevArchitecture.sln — either alone) may be a stale record — or it may be
 # exactly what the user chose, on a .NET project that simply is not DevArchitecture. The sniff cannot tell those
 # apart, and this one fired on a repo whose layout is WebAPI/Business/DataAccess with no DevArchitecture in it.
 #
@@ -356,7 +356,7 @@ fi
 # loudly every run, with the one command that corrects it on purpose.
 if [ "$KIT_PRESENT" = 1 ] && [ "$KIT_STACK" = generic ] && [ "$IS_DEVARCH" = 1 ]; then
   h1 "Recorded backend stack looks wrong"
-  warn "kit.conf records stack=generic, but this project has a DevArchitecture layout (Business/Handlers + a .sln)."
+  warn "kit.conf records stack=generic, but this project has a DevArchitecture layout (a Business/Handlers tree, or a DevArchitecture.sln)."
   sub "Left as-is, the refresh keeps pruning devarch-module and holds the generic backend agent."
   if [ "${CSK_CORRECT_STACK:-0}" = 1 ]; then
     KIT_STACK=dotnet; echo "  stack corrected -> dotnet (CSK_CORRECT_STACK=1)"
@@ -478,6 +478,16 @@ fi
 # kit-owned trees: FORCE-refresh on a re-adopt (KIT_PRESENT) so kit updates land; never-overwrite on a fresh adopt
 copy_noclobber "$SRC/agents"   .claude/agents   "$KIT_PRESENT" "$EXCL_A"; A_ADD=$ret_add; A_SKIP=$ret_skip
 copy_noclobber "$SRC/skills"   .claude/skills   "$KIT_PRESENT" "$EXCL_S"; S_ADD=$ret_add; S_SKIP=$ret_skip
+# EXCL_S keeps devarch-module from being COPIED, which is not the same as removing one already on disk. A
+# refresh that records stack=generic while the skill sits installed leaves the project in a state the kit
+# itself treats as impossible: kit_infer_shape reads the stack back OUT of that very directory when kit.conf
+# is missing, route-hint scores it and recommends it, and it shows in the session's skill list. Measured on a
+# real repo whose recorded stack is generic — the skill survived the refresh and a turn opened with
+# "Use the `devarch-module` skill for this task", i.e. the wrong routing arrived by a second path after the
+# backend agent had already been put right. `start.sh --generic` has always deleted it; a refresh now agrees.
+if [ "$KIT_STACK" = "generic" ] && [ -d .claude/skills/devarch-module ]; then
+  rm -rf .claude/skills/devarch-module 2>/dev/null && echo "  devarch-module removed (the recorded stack is generic)"
+fi
 copy_noclobber "$SRC/commands" .claude/commands "$KIT_PRESENT"; C_ADD=$ret_add; C_SKIP=$ret_skip
 copy_noclobber "$SRC/hooks"    .claude/hooks    "$KIT_PRESENT"; H_ADD=$ret_add; H_SKIP=$ret_skip
 copy_noclobber "$SRC/eval"     .claude/eval     "$KIT_PRESENT"; E_ADD=$ret_add; E_SKIP=$ret_skip

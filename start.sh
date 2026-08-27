@@ -86,7 +86,7 @@ has_devarch() {  # $1 = dir to check (default .); does it have the canonical Dev
   [ -d "$d/Business" ] && [ -d "$d/Core" ] && { [ -d "$d/DataAccess" ] || [ -d "$d/Entities" ] || [ -d "$d/WebAPI" ]; }
 }
 project_has_source() {  # is there a real source/project file outside the kit
-  ls ./*.sln ./*.csproj >/dev/null 2>&1 && return 0
+  ls ./*.sln* ./*.csproj >/dev/null 2>&1 && return 0
   for m in package.json go.mod pom.xml build.gradle Cargo.toml requirements.txt pyproject.toml src; do
     [ -e "./$m" ] && return 0
   done
