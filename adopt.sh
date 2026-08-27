@@ -776,8 +776,15 @@ PROOF_OK=1; HP="$(git config --get core.hooksPath 2>/dev/null || echo .claude/ho
 # move any allowlist aside so PROOF measures the SCANNER itself, not the project's own exemptions (else a loosened repo fails the proof)
 [ -f .trace-allowlist.txt ] && mv .trace-allowlist.txt .trace-allowlist.txt.proofbak 2>/dev/null
 printf 'Co-Authored%s: Test <x@y.z>\n' '-By' > .kit-proof.txt   # not contiguous in source (so the trace hook doesn't block itself); full at runtime
-git add .kit-proof.txt >/dev/null 2>&1
-if bash "$HP/pre-commit" >/tmp/kitproof.$$ 2>&1; then
+# `-f`, and the staging is CHECKED. Without both, a project whose .gitignore happens to cover this probe file
+# (`*.txt`, `.kit-*`, anything broad) stages nothing, the scanner reads an empty diff, the hook exits 0 — and
+# the proof then accuses a perfectly working gate of letting an AI trace through. Reproduced here: identical
+# repos, the only difference a .gitignore line for the probe, and PROOF-1 flipped from BLOCKED to FAILED.
+# A proof that can fail for a reason unrelated to what it proves is worse than no proof: it sends the reader
+# hunting a gate that is fine. (The allowlist is already handled above by moving it aside.)
+if ! git add -f .kit-proof.txt >/dev/null 2>&1 || [ -z "$(git diff --cached --name-only -- .kit-proof.txt 2>/dev/null)" ]; then
+  echo "  ~  PROOF-1: skipped — could not stage the probe file (nothing was measured)"
+elif bash "$HP/pre-commit" >/tmp/kitproof.$$ 2>&1; then
   warn "PROOF-1 FAILED: the trace scan LET THROUGH the AI trace"; PROOF_OK=0
 elif grep -qiE 'TRACE-SCANNER|Commit stopped|forbidden' /tmp/kitproof.$$; then
   echo "  OK · PROOF-1: staged AI trace BLOCKED by the trace scan"
