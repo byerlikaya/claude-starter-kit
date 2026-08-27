@@ -1744,13 +1744,21 @@ if [ "$UNITS" = 1 ]; then
 # Asserting the exit code alone is what let that ship: the code was always right, the decision was missing.
 gj(){ printf '{"tool_name":"Bash","permission_mode":"%s","tool_input":{"command":"%s"}}' "$1" "$2"; }
 gdec(){ printf '%s' "$1" | sed -n 's/.*"permissionDecision"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1; }
-for m in default acceptEdits auto dontAsk; do
+# WHICH MODES CAN ACTUALLY ASK. Only `default` and `acceptEdits` put the prompt in front of a person. In `auto`
+# the classifier answers it and `dontAsk` asks nothing by definition — measured in a real session as 14 `ASK`
+# lines in the gate log against zero human keypresses — so those two fail closed with plan/bypassPermissions.
+for m in default acceptEdits; do
   o="$(gj "$m" 'git commit -m x' | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"; r=$?
   { [ "$r" = 0 ] && [ "$(gdec "$o")" = "ask" ]; } \
     && pass "git commit ASKS the user in '$m' (§4.4)" \
     || fail "git commit did not ask in '$m' (rc=$r out=$o)"
 done
-o="$(gj auto 'git push' | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"
+for m in auto dontAsk plan bypassPermissions; do
+  gj "$m" 'git commit -m x' | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1
+  [ "$?" = 2 ] && pass "git commit FAILS CLOSED in '$m' — nothing there can prove a person answered (§4.4)" \
+                || fail "git commit did not fail closed in '$m' — the prompt is answered by software there"
+done
+o="$(gj default 'git push' | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"
 [ "$(gdec "$o")" = "ask" ] && pass "git push ASKS the user (§4.4)" || fail "git push did not ask"
 # The ask payload must be parseable JSON. A tab, CR or quote from the commit message, passed through raw,
 # would make it a control-character parse error — so the fixture is built with a REAL SERIALISER, which is
@@ -2092,9 +2100,9 @@ gj auto 'git -C . push --force' | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" >/
 gj auto 'git push --force-with-lease' | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "push --force-with-lease BLOCKED (H3)" || fail "--force-with-lease PASSED (H3)"
 gj auto 'git -c core.hooksPath=/dev/null commit -m x' | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "git -c core.hooksPath BLOCKED (C1)" || fail "-c core.hooksPath PASSED (C1)"
 # H1: a quote/backtick-wrapped commit must still reach the §4.4 approval gate (not slip through unprompted).
-o="$(gj auto 'eval \"git commit -m x\"' | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"; echo "$o" | grep -q '"permissionDecision":"ask"' && pass "eval-wrapped commit still ASKs (H1)" || fail "eval-wrapped commit slipped §4.4 (H1): $o"
+o="$(gj default 'eval \"git commit -m x\"' | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"; echo "$o" | grep -q '"permissionDecision":"ask"' && pass "eval-wrapped commit still ASKs (H1)" || fail "eval-wrapped commit slipped §4.4 (H1): $o"
 # Precision: a commit whose MESSAGE contains 'reset --hard' (no git-before-reset) ASKs as a commit, is not blocked.
-o="$(gj auto 'git commit -m \"reset --hard bug\"' | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"; echo "$o" | grep -q '"permissionDecision":"ask"' && pass "commit msg with 'reset --hard' NOT over-blocked" || fail "commit msg 'reset --hard' wrongly blocked: $o"
+o="$(gj default 'git commit -m \"reset --hard bug\"' | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"; echo "$o" | grep -q '"permissionDecision":"ask"' && pass "commit msg with 'reset --hard' NOT over-blocked" || fail "commit msg 'reset --hard' wrongly blocked: $o"
 # Fallback (no jq AND no python3 — stock Git Bash on Windows): the matchers must still fire on the raw JSON blob (M1).
 GBBASH="$(type -P bash 2>/dev/null || echo bash)"
 gb_unbuildable(){   # $1 = which block, for the message
@@ -2154,7 +2162,7 @@ GBDIR="${GBX%%:*}"; case "$GBX" in *:*) GB_MODE="stubbed" ;; ?*) GB_MODE="minima
 
 
 if [ -n "$GBX" ]; then
-  o="$(gj auto 'git commit -m x' | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" 2>/dev/null)"
+  o="$(gj default 'git commit -m x' | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" 2>/dev/null)"
   echo "$o" | grep -q '"permissionDecision":"ask"' && pass "no-jq/py: commit still ASKs (M1 fallback closed)" || fail "no-jq/py: commit gate FAILS OPEN (M1): $o"
   gj auto 'git reset --hard' | PATH="$GBX" CLAUDE_GIT_OK=1 "$GBBASH" "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "no-jq/py: reset --hard still BLOCKED" || fail "no-jq/py: reset --hard PASSED (§4.5 fallback hole)"
   # The write side lands on the same tier, and this is the branch a stock Windows install actually runs. Its
@@ -2365,7 +2373,7 @@ else
   gj auto 'ls -la' | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1
   [ "$?" = 0 ] && pass "canary: the installed guard-bash ALLOWS an ordinary command" \
                 || fail "canary: the installed guard-bash blocked 'ls -la' (gate too strict, or the hook is broken)"
-  o="$(gj auto 'git commit -m x' | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"
+  o="$(gj default 'git commit -m x' | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"
   printf '%s' "$o" | grep -q '"permissionDecision":"ask"' \
     && pass "canary: the installed guard-bash ASKS for §4.4" \
     || fail "canary: no §4.4 ask from the installed hook (out=$o)"
@@ -2956,7 +2964,7 @@ grep -q "^BLOCK	§4.5	git reset --hard	git reset --hard$" "$GLOG" 2>/dev/null \
 gj auto 'rm -rf build' | CSK_GATE_LOG="$GLOG" bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1
 [ ! -s "$GLOG" ] && pass "log set: an allowed command writes nothing" || fail "log set: an allowed command was logged"
 # 4. The §4.4 ask is a gate decision too, and it must be distinguishable from a hard block.
-gj auto 'git commit -m x' | CSK_GATE_LOG="$GLOG" bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1
+gj default 'git commit -m x' | CSK_GATE_LOG="$GLOG" bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1
 grep -q '^ASK	§4.4' "$GLOG" 2>/dev/null && pass "log set: §4.4 approval prompt logged as ASK, not BLOCK" \
   || fail "log set: the §4.4 ask was not recorded distinctly"
 # 5. A multi-line command cannot corrupt the TSV — the command text is attacker-adjacent (the model composes it).

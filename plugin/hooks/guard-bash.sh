@@ -217,7 +217,36 @@ case "$CMD" in *[Gg][Ii][Tt]*) HAS_GIT=1 ;; *) HAS_GIT=0 ;; esac
 has() { printf '%s' "$CMD" | grep -qiE -- "$1"; }   # flag/substring test on the command (-- so a -flag pattern is safe)
 
 { git_has "$CMD" 'reset'  && has '--hard'; }                                                && block "git reset --hard" "4.5"
-{ git_has "$CMD" 'push'   && has '(--force(-with-lease|-if-includes)?|-f([^a-z]|$)|[[:space:]]\+[A-Za-z])'; } && block "git push --force" "4.5"
+# §4.5 force-push. Same two defects the `git add -f` rule had, and the same repair: the flag has to be one of
+# THIS `git push`'s own arguments, at its own quoting level, and the test is case-SENSITIVE. `has()` greps the
+# whole command with `-i`, so `-F` matched the `-f` alternative — and `git commit -F msg.txt; git push` is the
+# ordinary way to write a commit message from a file. Measured: it was refused as "git push --force", and the
+# session that hit it had to split every commit into extra tool calls, which is the same treadmill the add rule
+# produced. `-F` is a commit/tag flag; push has no such flag at all. A `+ref` refspec is still force and is
+# still caught, because that is a real force push written another way.
+_push_forces(){   # $1 = one captured `git push …` span -> 0 when a force flag in it belongs to that push
+  local seg="$1" pre="" tok dq sq q s og
+  q='"'; s="'"
+  case "$-" in *f*) og=1 ;; *) og=0; set -f ;; esac
+  for tok in $seg; do
+    case "$tok" in
+      --force*|-[A-Za-z]*f*|-f|+[A-Za-z]*)
+        dq="${pre//[!$q]/}"; sq="${pre//[!$s]/}"
+        if [ $(( ${#dq} % 2 )) -eq 0 ] && [ $(( ${#sq} % 2 )) -eq 0 ]; then
+          [ "$og" = 0 ] && set +f; return 0
+        fi ;;
+    esac
+    pre="$pre $tok"
+  done
+  [ "$og" = 0 ] && set +f; return 1
+}
+if [ "$HAS_GIT" = 1 ] && git_has "$CMD" 'push'; then
+  _PUSHSEG="$(printf '%s' "$CMD" | grep -oE 'git[[:space:]]+([^;&|]*[[:space:]])?push([^;&|]*)' 2>/dev/null || true)"
+  while IFS= read -r _seg; do
+    [ -n "$_seg" ] || continue
+    _push_forces "$_seg" && { block "git push --force" "4.5"; break; }
+  done <<< "$_PUSHSEG"
+fi
 { git_has "$CMD" 'clean'  && has '-[A-Za-z]*f'; }                                           && block "git clean -f" "4.5"
 case "$CMD" in *[Nn][Oo]-[Vv][Ee][Rr][Ii][Ff][Yy]*) : ;; *) false ;; esac                                          && block "hook skip (--no-verify)" "4.5"
 git_has "$CMD" 'rebase'                                    && block "git rebase" "4.5"
@@ -523,8 +552,19 @@ if git_has "$CMD" 'add|commit|push|checkout'; then
   esac
 fi
 if git_has "$CMD" 'commit|push'; then
+  # WHICH MODES CAN ACTUALLY ASK A PERSON. `default` and `acceptEdits` show the prompt to the human and wait.
+  # `auto` and `dontAsk` do not: in `auto` the permission prompt is answered by the auto-mode classifier, and
+  # `dontAsk` is by definition the mode where nothing is asked. The hook still returns "ask" there, the prompt
+  # is still raised, and it is still approved — by software. Measured in a real session: 14 `ASK §4.4` lines in
+  # the gate log, 14 commits and pushes through, zero human keypresses. The gate fired, logged itself, and
+  # stopped nothing, while DISCIPLINE.md promised an approval "only the user can answer".
+  #
+  # Those two therefore belong in the fail-closed branch, with bypassPermissions and plan. The rule this kit
+  # has carried from the start is that a commit or a push does not happen without the user, and a mode where
+  # the answer comes from a classifier is a mode where it cannot be proven that it did. A gate whose prompt is
+  # answered by the thing it is gating is not a gate.
   case "$PERM_MODE" in
-    default|acceptEdits|auto|dontAsk)
+    default|acceptEdits)
       # A prompt provably reaches the user in these modes: ask, and let them approve in one keypress.
       SHORT="$CMD"
       [ "${#SHORT}" -gt 300 ] && SHORT="$(printf '%s' "$SHORT" | cut -c1-300)…"
