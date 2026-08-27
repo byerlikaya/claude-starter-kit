@@ -94,14 +94,21 @@ print(json.dumps(d))
 sys.exit(1 if (d is None or d is False) else 0)' "$1" 2>/dev/null ;;
   esac
 }
+# The mode is `default` because this case tests PARSING — whether a commit message carrying a tab, an escaped
+# quote and a Windows path survives into the §4.4 ask — not policy. It used to say `auto`, which was incidental
+# until `auto` moved to the fail-closed branch and there was no "ask" left to inspect. Three sibling cases were
+# moved for exactly this reason when that branch changed; this one was missed because it only runs where a JSON
+# oracle exists, and on the machine where the change was made there is none — jq absent, python3 a Store stub.
+# So the case that pins the parser could not report the policy change that broke it. Same shape as the rest of
+# this suite's history: the check that does not run is the check that goes wrong.
 json_bash_payload(){  # $1 = command string -> a valid PreToolUse Bash payload carrying it VERBATIM.
   # The point of building it with a real serialiser is that the fixture must be valid even when the command
   # carries tabs, quotes and backslashes — hand-escaping it here would be testing our escaping with our escaping.
   case "$JSONQ" in
-    jq) jq -nc --arg c "$1" '{tool_name:"Bash",permission_mode:"auto",tool_input:{command:$c}}' ;;
+    jq) jq -nc --arg c "$1" '{tool_name:"Bash",permission_mode:"default",tool_input:{command:$c}}' ;;
     "") return 2 ;;
     *)  "$JSONQ" -c 'import sys,json
-print(json.dumps({"tool_name":"Bash","permission_mode":"auto","tool_input":{"command":sys.argv[1]}}))' "$1" ;;
+print(json.dumps({"tool_name":"Bash","permission_mode":"default","tool_input":{"command":sys.argv[1]}}))' "$1" ;;
   esac
 }
 
