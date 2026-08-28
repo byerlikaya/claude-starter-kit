@@ -35,6 +35,7 @@ const WEB_ROOT = path.join(STUDIO, 'web');
 
 let pass = 0;
 let fail = 0;
+let skipped = 0;
 const failures = [];
 
 function check(name, ok, detail) {
@@ -45,6 +46,24 @@ function check(name, ok, detail) {
     failures.push(`${name}${detail ? ` — ${detail}` : ''}`);
   }
   process.stdout.write(`${ok ? 'PASS' : 'FAIL'} ${name}${detail ? ` — ${detail}` : ''}\n`);
+}
+
+/**
+ * A check that could not run, said out loud.
+ *
+ * `tool` means the machine is missing something the check needs. Under
+ * CSK_VERIFY_STRICT — which CI sets — that is a broken runner, not an honest
+ * boundary, so it goes red. Every other class stays a skip.
+ */
+function skip(name, kind, why) {
+  const strict = process.env.CSK_VERIFY_STRICT === '1' && kind === 'tool';
+  if (strict) {
+    fail += 1;
+    failures.push(`${name} — required ${kind} missing: ${why}`);
+  } else {
+    skipped += 1;
+  }
+  process.stdout.write(`${strict ? 'FAIL' : 'SKIP'} ${name} — ${kind}: ${why}\n`);
 }
 
 function read(p) {
@@ -440,18 +459,31 @@ check('Windows is told it cannot, rather than left to fail',
 check('the bridge is not named pty.py, which would shadow the module it imports',
   fs.existsSync(path.join(STUDIO, 'server', 'lib', 'pty-bridge.py')) &&
   !fs.existsSync(path.join(STUDIO, 'server', 'lib', 'pty.py')));
-check('the bridge compiles', (() => {
-  // The shell scripts here are covered by verify.sh's syntax step; the python
-  // one is not, so it is checked where it lives. Absent python3 is reported as
-  // unchecked rather than counted as clean.
-  try {
-    execFileSync('python3', ['-c', `import ast,sys; ast.parse(open(sys.argv[1]).read())`,
-      path.join(STUDIO, 'server', 'lib', 'pty-bridge.py')], { stdio: 'pipe' });
-    return true;
-  } catch (e) {
-    return e.code === 'ENOENT' ? true : false;      // no python3 here to ask
+// The shell scripts here are covered by verify.sh's syntax step; the python one
+// is not, so it is checked where it lives.
+//
+// A resolvable name is not a working interpreter. Windows ships a python3 stub
+// that passes `command -v`, prints "Python was not found" and exits 49 — so the
+// candidates are tried in order and the first one that actually runs is used.
+// ENOENT was the only miss handled before, which turned that stub into a loud
+// FAIL claiming the bridge does not compile, when nothing had compiled it.
+{
+  const bridgePath = path.join(STUDIO, 'server', 'lib', 'pty-bridge.py');
+  let compiled = null;
+  for (const c of ['python3', 'python']) {
+    try {
+      execFileSync(c, ['-c', 'import ast,sys; ast.parse(open(sys.argv[1]).read())', bridgePath],
+        { stdio: 'pipe', timeout: 20000 });
+      compiled = true; break;
+    } catch (e) {
+      // Only a real parse failure is an answer; a missing or stubbed
+      // interpreter means we still have not asked anyone.
+      if (e.status === 1 && String(e.stderr ?? '').includes('SyntaxError')) { compiled = false; break; }
+    }
   }
-})());
+  if (compiled === null) skip('the bridge compiles', 'tool', 'no working python found to parse it');
+  else check('the bridge compiles', compiled, 'pty-bridge.py has a syntax error');
+}
 check('the scrollback buffer holds bytes, not concatenated base64',
   /Buffer\.concat/.test(ptySrc) && !/this\.buffer \+= msg\.d/.test(ptySrc));
 
@@ -823,6 +855,50 @@ check('both widths are remembered', /csk-studio-side-w/.test(appSrc2) && /csk-st
     'private mode throws on setItem; an unguarded write kills the click handler');
 }
 
+
+/* ------------------------------------- §25 the pty bridge survives garbage */
+
+// One frame that would not base64-decode killed the whole terminal, and it
+// surfaced as an exit with no code — which reads as "the shell died on its
+// own" rather than "we sent it something bad". Assert the behaviour, because
+// the fix is an except clause and a grep for one proves nothing about reach.
+{
+  const bridge = path.join(HERE, '..', 'server', 'lib', 'pty-bridge.py');
+  let python = null;
+  for (const c of ['python3', 'python']) {
+    try {
+      execFileSync(c, ['-c', 'import pty'], { stdio: 'ignore', timeout: 10000 });
+      python = c; break;
+    } catch { /* try the next one; a resolvable name is not a working one */ }
+  }
+  if (!python) {
+    skip('the pty bridge survives an undecodable frame', 'tool', 'no python3 with the pty module');
+  } else {
+    const probe = [
+      'import json,subprocess,sys,time',
+      `p=subprocess.Popen([${JSON.stringify(python)},${JSON.stringify(bridge)},"/tmp","/bin/sh","30","100"],`,
+      ' stdin=subprocess.PIPE,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,text=True,bufsize=1)',
+      'time.sleep(0.5)',
+      'assert p.poll() is None, "bridge exited before the test began"',
+      'p.stdin.write(json.dumps({"t":"in","d":"!!!not-base64!!!"})+chr(10)); p.stdin.flush()',
+      'p.stdin.write(json.dumps({"t":"size","rows":"abc","cols":None})+chr(10)); p.stdin.flush()',
+      'time.sleep(0.8)',
+      'alive = p.poll() is None',
+      'p.terminate()',
+      'print("ALIVE" if alive else "DEAD")',
+    ].join('\n');
+    let verdict = '';
+    try {
+      verdict = execFileSync(python, ['-c', probe], { encoding: 'utf8', timeout: 30000 }).trim();
+    } catch (e) {
+      verdict = `ERROR ${e?.message ?? e}`;
+    }
+    check('the pty bridge survives an undecodable frame',
+      verdict === 'ALIVE',
+      `a bad frame took the terminal down instead of being dropped (got ${JSON.stringify(verdict)})`);
+  }
+}
+
 /* --------------------------------------------------------------- verdict */
 
 process.stdout.write('\n');
@@ -836,5 +912,6 @@ if (fail) {
   process.stdout.write(`${failures.length} failure(s):\n`);
   for (const f of failures) process.stdout.write(`  - ${f}\n`);
 }
-process.stdout.write(`${pass}/${pass + fail} assertions passed\n`);
+process.stdout.write(`${pass}/${pass + fail} assertions passed`
+  + (skipped ? `, ${skipped} skipped` : '') + '\n');
 process.exit(fail ? 1 : 0);

@@ -25,6 +25,7 @@ pty` then finds this file instead of the standard library's.
 """
 
 import base64
+import binascii
 import fcntl
 import json
 import os
@@ -106,12 +107,23 @@ def main():
                     continue
                 kind = msg.get("t")
                 if kind == "in":
+                    # A frame that will not decode is one bad frame, not the end
+                    # of the terminal. binascii.Error escaping here took the
+                    # whole session down and reported it as an exit with no
+                    # code, which reads like the shell died on its own.
                     try:
-                        os.write(fd, base64.b64decode(msg.get("d", "")))
+                        data = base64.b64decode(msg.get("d", ""), validate=False)
+                    except (binascii.Error, ValueError, TypeError):
+                        continue
+                    try:
+                        os.write(fd, data)
                     except OSError:
                         alive = False
                 elif kind == "size":
-                    set_size(fd, int(msg.get("rows", rows)), int(msg.get("cols", cols)))
+                    try:
+                        set_size(fd, int(msg.get("rows", rows)), int(msg.get("cols", cols)))
+                    except (ValueError, TypeError, OSError):
+                        continue
                 elif kind == "kill":
                     try:
                         os.kill(pid, signal.SIGHUP)
