@@ -16,6 +16,7 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 
 import { prepare, pending, watch, cleanup } from './permissions.js';
+import { getFleet } from './fleet.js';
 
 export const ALLOWED_MODES = ['plan', 'acceptEdits', 'default'];
 const DEFAULT_MODE = 'plan';
@@ -25,9 +26,12 @@ const MAX_MESSAGE_BYTES = 512 * 1024;
 const sessions = new Map();     // sessionId -> OwnedSession
 
 class OwnedSession {
-  constructor({ cwd, model, permissionMode, sessionId, resume }) {
+  constructor({ cwd, model, permissionMode, sessionId, resume, forked = false }) {
     this.id = sessionId;
     this.resumedFrom = resume ?? null;
+    // Whether this is a copy or the session itself. A copy is not a defeat but
+    // it is not the same thing either, and the UI has to be able to say which.
+    this.forked = forked;
     this.cwd = cwd;
     this.model = model ?? null;
     this.permissionMode = permissionMode;
@@ -67,14 +71,28 @@ class OwnedSession {
       // is the difference between "this happened at 13:42" and "this was in
       // the log when we looked".
       '--include-hook-events',
-      '--session-id', this.id,
       '--permission-mode', this.permissionMode,
     ];
-    // Continuing an existing conversation, never overwriting it. --fork-session
-    // gives the continuation its own id; measured, the original transcript came
-    // back byte-identical, which is the property that makes this safe to offer
-    // for a session someone may still have open elsewhere.
-    if (this.resumedFrom) args.push('--resume', this.resumedFrom, '--fork-session');
+
+    // Three shapes, and the difference matters to whoever is typing.
+    //
+    // A terminal continues a session by resuming it outright, and so can we:
+    // measured, a bare --resume kept the session_id, appended to the same
+    // transcript (13 lines became 20), opened no second file and answered from
+    // the earlier context. The panel used to fork every time, which is why
+    // continuing a session felt like being moved to a stranger.
+    //
+    // The one case that must fork is a session another process still holds.
+    // Two writers on one transcript is the corruption this guard exists for,
+    // and liveness is asked of `claude agents --json`, not assumed.
+    if (this.resumedFrom && !this.forked) {
+      // No --session-id here: it asks for a new session, which is the opposite
+      // of resuming one.
+      args.push('--resume', this.resumedFrom);
+    } else {
+      args.push('--session-id', this.id);
+      if (this.resumedFrom) args.push('--resume', this.resumedFrom, '--fork-session');
+    }
     if (this.model) args.push('--model', this.model);
     // Our own settings file in our own directory. The user's settings are never
     // read, written or merged.
@@ -204,6 +222,8 @@ class OwnedSession {
       model: this.model,
       permissionMode: this.permissionMode,
       resumedFrom: this.resumedFrom,
+      // A copy, or the session itself continued. The UI must not blur these.
+      forked: this.forked,
       state: this.state,
       startedAt: this.startedAt,
       turns: this.turns,
@@ -220,7 +240,26 @@ class OwnedSession {
   }
 }
 
-export function createSession({ cwd, model, permissionMode, resume } = {}) {
+/**
+ * Is this session still held by a running process?
+ *
+ * Answered by the fleet, never guessed. When the fleet cannot be read the
+ * answer is "yes": an unreadable fleet must not be the reason two processes
+ * end up writing one transcript.
+ */
+async function isHeldOpen(id) {
+  try {
+    const fleet = await getFleet();
+    const rows = fleet?.sessions ?? fleet ?? [];
+    if (!Array.isArray(rows)) return true;
+    if (fleet && fleet.measured === false) return true;
+    return rows.some((r) => r.sessionId === id);
+  } catch {
+    return true;
+  }
+}
+
+export async function createSession({ cwd, model, permissionMode, resume } = {}) {
   const dir = cwd || process.cwd();
   if (!fs.existsSync(dir)) return { ok: false, reason: `no such directory: ${dir}` };
 
@@ -235,9 +274,14 @@ export function createSession({ cwd, model, permissionMode, resume } = {}) {
     return { ok: false, reason: 'the session to resume is not an identifier' };
   }
 
-  const sessionId = randomUUID();
+  // Fork only when something else still has the session open.
+  const forked = resume ? await isHeldOpen(String(resume)) : false;
+  const sessionId = resume && !forked ? String(resume) : randomUUID();
+  if (sessions.has(sessionId)) {
+    return { ok: false, reason: 'the panel is already running that session' };
+  }
   const s = new OwnedSession({
-    cwd: dir, model: model || null, permissionMode: mode, sessionId, resume: resume || null,
+    cwd: dir, model: model || null, permissionMode: mode, sessionId, resume: resume || null, forked,
   });
   sessions.set(sessionId, s);
   return { ok: true, session: s };

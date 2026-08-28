@@ -1059,29 +1059,6 @@ body.vresizing { cursor: row-resize; user-select: none; }
    only frame left; it should not look like a floating bar. */
 :fullscreen .bar { border-top: none; }
 
-/* ------------------------------------------------------ group lanes --- */
-
-.cv-lanes { position: absolute; inset: 0; pointer-events: none; }
-
-/* The name of a group, sitting on the line that separates it from the one
-   before. Without it the grouping reads as an accident of spacing. */
-.cv-lane {
-  position: absolute;
-  display: flex; align-items: center; gap: 7px;
-  height: 18px;
-  padding-bottom: 4px;
-  border-bottom: 1px solid color-mix(in srgb, var(--lane-color) 30%, transparent);
-}
-.cv-lane-name {
-  font-family: var(--mono); font-size: 10px; font-weight: 600;
-  letter-spacing: 0.08em; text-transform: uppercase;
-  color: var(--lane-color);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.cv-lane-count {
-  font-family: var(--mono); font-size: 9px; color: var(--ink-faint);
-  border: 1px solid var(--line); border-radius: 999px; padding: 0 5px;
-}
 
 /* ---------------------------------------------------------- node mark --- */
 
@@ -1114,3 +1091,27 @@ body.vresizing { cursor: row-resize; user-select: none; }
 @media (max-width: 1400px) {
   .chat-head .chat-cost { display: none; }
 }
+
+/* ------------------------------------------------ foldable side sections */
+
+.twisty {
+  flex: none; width: 16px; height: 16px; padding: 0; margin-right: -2px;
+  display: grid; place-items: center;
+  background: none; border: 0; cursor: pointer; border-radius: 4px;
+  font-size: 10px; line-height: 1; color: var(--ink-faint);
+  transition: background 0.12s, color 0.12s;
+}
+.twisty:hover { background: var(--surface-2); color: var(--ink); }
+.twisty:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.side-head [data-fold-for] { cursor: pointer; user-select: none; }
+.side-head [data-fold-for]:hover { color: var(--ink); }
+
+/* Two selector classes, so this outranks the `display` these bodies get from
+   .fleet / .sessions / .side-filter. A single .is-folded would tie and lose. */
+[data-fold-body].is-folded { display: none; }
+
+/* A folded section stops competing for the leftover height: without this the
+   sidebar keeps a tall blank gap where the project tree used to be. */
+.side-block.folded { flex: none; }
+.side-block.grow.folded { border-bottom: 1px solid var(--line); }

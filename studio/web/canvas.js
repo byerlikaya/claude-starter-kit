@@ -16,7 +16,6 @@ const NODE_H = 104;
 const SIBLING_GAP = 26;   // between nodes of the same kind
 const GROUP_GAP = 64;     // between one kind and the next
 const DEPTH_GAP = 128;    // between one depth and the next
-const LANE_LABEL = 22;    // room above a group for its name
 const MAX_PER_GROUP_ROW = 4;
 // Marks, so a card says what kind of thing it is before it is read.
 //
@@ -96,7 +95,6 @@ export class Canvas {
     this.root.innerHTML = `
       <div class="cv-viewport">
         <svg class="cv-edges" aria-hidden="true"><defs></defs><g class="cv-edge-g"></g></svg>
-        <div class="cv-lanes"></div>
         <div class="cv-nodes"></div>
       </div>
       <div class="cv-hud">
@@ -113,8 +111,6 @@ export class Canvas {
     this.svg = this.root.querySelector('.cv-edges');
     this.edgeG = this.root.querySelector('.cv-edge-g');
     this.nodeLayer = this.root.querySelector('.cv-nodes');
-    this.laneLayer = this.root.querySelector('.cv-lanes');
-    this.lanes = [];
     this.zoomLabel = this.root.querySelector('.cv-zoom');
     this.emptyEl = this.root.querySelector('.cv-empty');
   }
@@ -257,7 +253,6 @@ export class Canvas {
     }
 
     const down = this.flow === 'down';
-    this.lanes = [];
     let cursor = 0;                                   // position along the depth axis
 
     for (const [, list] of [...byDepth.entries()].sort((a, b) => a[0] - b[0])) {
@@ -291,18 +286,16 @@ export class Canvas {
       const total = measured.reduce((w, g) => w + g.span, 0)
         + Math.max(0, measured.length - 1) * GROUP_GAP;
       const deepest = Math.max(...measured.map((g) => g.rows));
-      const labelled = measured.length > 1 || (measured[0] && measured[0].key !== '\u0000session');
-
       let across = -total / 2;
       for (const g of measured) {
         g.members.sort((a, b) => (a.startedAt ?? 0) - (b.startedAt ?? 0) || a.id.localeCompare(b.id));
-        const laneStart = cursor + (labelled ? LANE_LABEL : 0);
+        const rowTop = cursor;
 
         g.members.forEach((n, i) => {
           const col = i % g.cols;
           const row = Math.floor(i / g.cols);
           const a = across + col * (NODE_A + SIBLING_GAP);
-          const b = laneStart + row * (NODE_B + SIBLING_GAP);
+          const b = rowTop + row * (NODE_B + SIBLING_GAP);
           // Only a hand-placed node keeps its position. Freezing auto-placed
           // ones too was the bug: the row is re-centred as siblings arrive, so
           // nodes laid out against an older, shorter row overlapped the new
@@ -311,20 +304,10 @@ export class Canvas {
           this.pos.set(n.id, down ? { x: a, y: b } : { x: b, y: a });
         });
 
-        if (labelled && g.key !== '\u0000session') {
-          this.lanes.push({
-            key: g.key,
-            count: g.members.length,
-            x: down ? across : cursor,
-            y: down ? cursor : across,
-            span: g.span,
-            down,
-          });
-        }
         across += g.span + GROUP_GAP;
       }
 
-      cursor += (labelled ? LANE_LABEL : 0) + deepest * (NODE_B + SIBLING_GAP) - SIBLING_GAP + DEPTH_GAP;
+      cursor += deepest * (NODE_B + SIBLING_GAP) - SIBLING_GAP + DEPTH_GAP;
     }
   }
 
@@ -364,7 +347,6 @@ export class Canvas {
       if (!vis.has(id)) { el.remove(); this.els.delete(id); }
     }
     for (const n of this.visible()) this.#renderNode(n);
-    this.#renderLanes();
     this.#renderEdges();
     this.fit();
   }
@@ -426,7 +408,6 @@ export class Canvas {
       if (!vis.has(id)) { el.remove(); this.els.delete(id); }
     }
     for (const n of this.visible()) this.#renderNode(n);
-    this.#renderLanes();
     this.#renderEdges();
 
     // Fit once when a session opens, so the graph is never half off-screen.
@@ -596,23 +577,6 @@ export class Canvas {
     return bits;
   }
 
-  /** The name of each group, above it. Without these the grouping is a gap. */
-  #renderLanes() {
-    const out = [];
-    for (const lane of this.lanes ?? []) {
-      const el2 = mk('div', 'cv-lane');
-      el2.style.transform = `translate(${lane.x}px, ${lane.y}px)`;
-      el2.style.width = `${lane.span}px`;
-      const color = this.palette.map[lane.key]?.hex
-        ?? (lane.key === 'workflow' ? '#a874f5' : this.palette.unknown);
-      el2.style.setProperty('--lane-color', color);
-      el2.append(mk('span', 'cv-lane-name', lane.key === 'workflow' ? 'workflows' : lane.key));
-      el2.append(mk('span', 'cv-lane-count', String(lane.count)));
-      out.push(el2);
-    }
-    this.laneLayer.replaceChildren(...out);
-  }
-
   #renderEdges() {
     const paths = [];
     const vis = new Set(this.visible().map((n) => n.id));
@@ -663,7 +627,6 @@ export class Canvas {
     const vis = new Set(this.visible().map((x) => x.id));
     for (const [id, el] of this.els) if (!vis.has(id)) { el.remove(); this.els.delete(id); }
     for (const v of this.visible()) this.#renderNode(v);
-    this.#renderLanes();
     this.#renderEdges();
     // Unfolding 105 agents puts most of them off-screen; pull the view back to
     // what was just revealed, unless the user has arranged things by hand.

@@ -9,11 +9,31 @@ user's `./.claude/` — is untouched by it.
 
 ## Run
 
+One command, once, from anywhere:
+
 ```bash
-npm run studio                         # http://127.0.0.1:7777
-node studio/server/index.js --port 8080
-node studio/server/index.js --selftest # offline checks, no browser
+npm install -g ./studio   # one time; puts csk-studio on PATH
+csk-studio --open         # starts, then opens the browser at the tokenised URL
 ```
+
+Or without installing anything:
+
+```bash
+npm run studio                          # from this repo; starts and opens a browser
+node studio/server/index.js --port 8080
+node studio/server/index.js --selftest  # offline checks, no browser
+```
+
+**There is no per-project command, because Studio is not per-project.** It reads
+`~/.claude/projects`, which holds every session on the machine — 142 projects on
+the machine this paragraph was written on. One running panel already sees a
+kit-installed project without being started inside it; the working directory only
+decides which project the panel opens on. So `cd` somewhere and run `csk-studio`,
+or run it once and leave it up.
+
+`--open` exists so the URL is not copied by hand: the token is generated per run
+and the panel refuses requests without it. When a browser cannot be opened the
+server says so rather than looking like it worked.
 
 There is no `/studio-csk` slash command, and that is deliberate. Commands live
 in `claude-starter/commands/` and are copied into every user's `.claude/`, while

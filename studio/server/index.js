@@ -30,6 +30,7 @@ import * as pty from './lib/pty.js';
 import { gateLog, gateReport, sessionStats, board } from './lib/kit-telemetry.js';
 import { remoteRoster } from './lib/roster.js';
 import { randomUUID } from 'node:crypto';
+import { spawn } from 'node:child_process';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const WEB_ROOT = path.resolve(HERE, '..', 'web');
@@ -63,6 +64,8 @@ function parseArgs(argv) {
       if (!argv[i + 1]) throw new Error('--name needs a label');
       out.name = argv[i + 1];
       i += 1;
+    } else if (a === '--open' || a === '-o') {
+      out.open = true;
     } else if (a === '--enable-pty') {
       out.pty = true;
     } else if (a === '--selftest') {
@@ -439,7 +442,7 @@ async function handle(req, res) {
     if (!gate.ok) return sendJson(res, 403, { ok: false, reason: gate.reason });
     const body = await readBody(req);
     if (!body) return sendJson(res, 400, { ok: false, reason: 'body was not JSON' });
-    const made = createSession({
+    const made = await createSession({
       cwd: typeof body.cwd === 'string' ? body.cwd : undefined,
       model: typeof body.model === 'string' ? body.model : undefined,
       permissionMode: typeof body.permissionMode === 'string' ? body.permissionMode : undefined,
@@ -634,6 +637,33 @@ function stream(req, res, url) {
   req.on('error', stop);
 }
 
+/**
+ * Open the panel in whatever the machine calls a browser.
+ *
+ * The URL carries a generated token, so copying it by hand is the one step
+ * between starting the server and using it. Failure is reported rather than
+ * assumed: a machine with no opener should say so, not look like it worked.
+ */
+function openBrowser(url) {
+  const [cmd, args] = process.platform === 'darwin' ? ['open', [url]]
+    : process.platform === 'win32' ? ['cmd', ['/c', 'start', '', url]]
+      : ['xdg-open', [url]];
+  try {
+    const child = spawnDetached(cmd, args);
+    child.on('error', (e) => {
+      process.stdout.write(`            (could not open a browser: ${e.code ?? e.message})\n`);
+    });
+  } catch (e) {
+    process.stdout.write(`            (could not open a browser: ${e?.message ?? e})\n`);
+  }
+}
+
+function spawnDetached(cmd, args) {
+  const child = spawn(cmd, args, { detached: true, stdio: 'ignore' });
+  child.unref();
+  return child;
+}
+
 /** The conversation of one owned session, replayed then followed. */
 function ownedStream(req, res, url, session) {
   res.writeHead(200, {
@@ -730,6 +760,7 @@ async function main() {
         '  --port <n>   port to listen on (default 7777, loopback only)\n' +
         '  --peer <url> another machine running Studio (repeatable)\n' +
         '  --enable-pty allow raw shells in the panel — these BYPASS the kit gates\n' +
+        '  --open, -o   open the panel in a browser once it is listening\n' +
         '  --name <s>   label for this machine (default: hostname)\n' +
         '  --selftest   run offline checks and exit\n' +
         '  --help       this text\n\n' +
@@ -770,7 +801,8 @@ async function main() {
   SELF_NAME = args.name || os.hostname().replace(/\.local$/, '');
 
   server.listen(args.port, LOOPBACK, () => {
-    process.stdout.write(`csk-studio  http://${LOOPBACK}:${args.port}/?token=${TOKEN}\n`);
+    const url = `http://${LOOPBACK}:${args.port}/?token=${TOKEN}`;
+    process.stdout.write(`csk-studio  ${url}\n`);
     process.stdout.write(`            machine: ${SELF_NAME}\n`);
     if (args.pty) {
       process.stdout.write('            raw terminals: ENABLED — commands typed there bypass the kit gates\n');
@@ -781,8 +813,22 @@ async function main() {
       }
     }
     process.stdout.write(TOKEN_GENERATED
-      ? '            (loopback only; token generated for this run — open the URL above)\n'
+      ? '            (loopback only; token generated for this run)\n'
       : '            (loopback only; token from CSK_STUDIO_TOKEN)\n');
+
+    if (args.open) openBrowser(url);
+
+    // Say this once, to whoever is still typing the long path. Suppressed when
+    // the process already came in under its bin name, and never written to
+    // anyone's shell profile behind their back.
+    const launchedAsBin = path.basename(process.argv[1] ?? '') === 'csk-studio';
+    if (!launchedAsBin) {
+      const dir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+      process.stdout.write(
+        `\n            For a shorter command, once:  npm install -g ${dir}\n`
+        + `            then, from anywhere:          csk-studio --open\n`,
+      );
+    }
   });
 
   for (const sig of ['SIGINT', 'SIGTERM']) {
@@ -800,6 +846,22 @@ async function main() {
 // Only when this file is the program. The self-check imports writeAllowed from
 // here to exercise it rather than grep for it, and an import that silently
 // opened a listening socket would make an offline gate not offline.
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// Run only when invoked directly, never on import (the selfcheck imports this
+// file). argv[1] must be resolved first: every global install path — `npm link`,
+// `npm i -g`, Homebrew — puts a symlink on PATH, while import.meta.url is always
+// the real file. Comparing them raw makes the command exit silently with rc 0.
+function isDirectRun() {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  let real;
+  try {
+    real = fs.realpathSync(entry);
+  } catch {
+    real = entry;
+  }
+  return import.meta.url === pathToFileURL(real).href;
+}
+
+if (isDirectRun()) {
   main();
 }

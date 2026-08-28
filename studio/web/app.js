@@ -187,6 +187,57 @@ document.addEventListener('keydown', (e) => {
 el.sideHide.addEventListener('click', () => setSideHidden(true));
 el.sideShow.addEventListener('click', () => setSideHidden(false));
 
+/* ------------------------------------------------------ sidebar sections
+   Fleet, peers and Projects each fold independently, so a machine with many
+   projects can hide the fleet and vice versa. The choice is per-browser and
+   survives a reload; nothing about it reaches the server. */
+
+function setFold(key, folded) {
+  for (const body of document.querySelectorAll(`[data-fold-body="${key}"]`)) {
+    body.classList.toggle('is-folded', folded);
+  }
+  for (const t of document.querySelectorAll(`[data-fold="${key}"]`)) {
+    t.setAttribute('aria-expanded', String(!folded));
+    t.textContent = folded ? '▸' : '▾';
+    const name = t.getAttribute('aria-label')?.replace(/^(Collapse|Expand) /, '') ?? key;
+    t.setAttribute('aria-label', `${folded ? 'Expand' : 'Collapse'} ${name}`);
+  }
+  // A folded Projects list must stop claiming the leftover height, or the
+  // sidebar keeps a tall empty gap where the tree used to be.
+  const sect = document.querySelector(`.side-block[data-sect="${key}"]`);
+  if (sect) sect.classList.toggle('folded', folded);
+  try {
+    localStorage.setItem(`csk-studio-fold-${key}`, folded ? '1' : '0');
+  } catch { /* private mode: the fold still works, it just is not remembered */ }
+}
+
+function foldState(key) {
+  try {
+    return localStorage.getItem(`csk-studio-fold-${key}`) === '1';
+  } catch {
+    return false;
+  }
+}
+
+for (const t of document.querySelectorAll('[data-fold]')) {
+  const key = t.getAttribute('data-fold');
+  t.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setFold(key, t.getAttribute('aria-expanded') !== 'false');
+  });
+  setFold(key, foldState(key));
+}
+
+// The heading is the bigger target, so it toggles too — but only the heading:
+// the meta count and the pin buttons beside it keep their own behaviour.
+for (const h of document.querySelectorAll('[data-fold-for]')) {
+  h.addEventListener('click', () => {
+    const key = h.getAttribute('data-fold-for');
+    const t = document.querySelector(`[data-fold="${key}"]`);
+    setFold(key, t?.getAttribute('aria-expanded') !== 'false');
+  });
+}
+
 /* ----------------------------------------------------------------- chat
    Write endpoints need the token and a header that a cross-origin page cannot
    attach without a preflight this server never answers. */
@@ -261,11 +312,16 @@ el.continueSession.addEventListener('click', async () => {
       el.foot.textContent = `could not continue: ${r.reason}`;
     } else {
       ownedIds.add(r.session.sessionId);
-      el.foot.textContent = `continued ${from.slice(0, 8)} as a fork — the original transcript is untouched`;
+      // Two genuinely different outcomes, so say which one happened rather
+      // than printing a sentence that is true either way.
+      el.foot.textContent = r.session.forked
+        ? `${from.slice(0, 8)} is open in another process, so this is a copy — `
+          + `messages here do not reach it.`
+        : `continued ${from.slice(0, 8)} itself — same session, same transcript.`;
     }
   } finally {
     el.continueSession.disabled = false;
-    el.continueSession.textContent = '↩ continue here';
+    el.continueSession.textContent = '⑂ fork & continue';
   }
 });
 

@@ -69,8 +69,10 @@ class Pane {
         <button class="chat-send" type="submit">send</button>
       </form>
       <div class="chat-ro" hidden>
-        Read-only — this session was not started by the panel, so there is no channel to write to.
-        Use <strong>↩ continue here</strong> to carry it on, or open it in a real terminal.
+        <strong>Read-only.</strong> This session belongs to a terminal, and a Claude Code session
+        takes input from the process that owns it — the panel has no way in, and two writers on one
+        transcript would corrupt it. <strong>⑂ fork &amp; continue</strong> makes a copy the panel
+        <em>does</em> own; messages there stay there and never reach your terminal.
       </div>`;
 
     this.logEl = this.root.querySelector('.chat-log');
@@ -123,8 +125,14 @@ class Pane {
     }
     for (const m of conv.messages ?? []) frag.append(this.renderMessage(m));
     if (!this.readOnly) {
-      // A visible seam, so nobody reads the history as part of this run.
-      frag.append(el('div', 'chat-seam', `— continued here from ${from.slice(0, 8)} —`));
+      // A visible seam, so nobody reads the history as part of this run — and
+      // named for which of the two things actually happened. A fork that calls
+      // itself "continued" reads as "you are typing into that session", which
+      // is the one thing it is not; a real continuation that calls itself a
+      // fork undersells it.
+      frag.append(el('div', 'chat-seam', this.session?.forked
+        ? `— forked from ${from.slice(0, 8)} · a separate session; the original does not see this —`
+        : `— continuing ${from.slice(0, 8)} · same session, same transcript —`));
     }
     this.logEl.prepend(frag);
     this.logEl.scrollTop = this.logEl.scrollHeight;

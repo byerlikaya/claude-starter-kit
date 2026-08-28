@@ -16,6 +16,10 @@
 
 # studio: neither of these should ever exist — the entries are the alarm, not housekeeping
 studio/node_modules/
+# `npm link --prefix studio` drops these here; the supported command is
+# `npm install -g ./studio`, but the debris should never reach a commit.
+studio/bin/
+studio/lib/
 studio/recordings/
 __pycache__/
 *.pyc

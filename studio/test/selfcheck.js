@@ -583,11 +583,39 @@ const chatSrc2 = read(path.join(STUDIO, 'web', 'chat.js')) ?? '';
 check('a resumed pane loads what was said before it',
   /loadHistory/.test(chatSrc2) && /resumedFrom/.test(chatSrc2));
 check('the seam between history and this run is drawn, not implied',
-  /chat-seam/.test(chatSrc2) && /continued here from/.test(chatSrc2));
+  /chat-seam/.test(chatSrc2) && /forked from \$\{from/.test(chatSrc2));
 check('an observed session is shown but not writable',
   /openReadOnly/.test(chatSrc2) && /readOnly/.test(chatSrc2));
 check('the read-only pane says why it cannot be written to, and what to do instead',
-  /no channel to write to/.test(chatSrc2) && /continue here/.test(chatSrc2));
+  /has no way in/.test(chatSrc2) && /fork &amp; continue/.test(chatSrc2));
+// A fork reads as "I am now typing into that session" unless the UI says
+// otherwise, and the user then wonders why their terminal stays silent. Both
+// the seam and the read-only notice must say the two are separate.
+check('the panel never lets a fork pass for the session it copied',
+  /the original does not see this/.test(chatSrc2)
+  && /never reach your terminal/.test(chatSrc2),
+  'calling it "continued" made a copy look like a live channel into the terminal');
+
+// The fix that made this worth distinguishing: a terminal continues a session
+// by resuming it, and so does the panel now — but only when nothing else holds
+// it open. Forking unconditionally was the bug; forking never would be worse.
+{
+  const sess = read(path.join(HERE, '..', 'server', 'lib', 'session.js')) ?? '';
+  check('a resume is only forked when the session is still held open',
+    /const forked = resume \? await isHeldOpen/.test(sess),
+    'forking every resume moved the user to a stranger; forking none would let two processes write one transcript');
+  check('a true continuation keeps the id it is continuing',
+    /const sessionId = resume && !forked \? String\(resume\) : randomUUID\(\)/.test(sess));
+  check('--session-id is not sent alongside a bare resume',
+    /args\.push\('--resume', this\.resumedFrom\);/.test(sess)
+    && /\} else \{\s*\n\s*args\.push\('--session-id', this\.id\);/.test(sess),
+    'asking for a new id while resuming an old one is a contradiction the CLI has to resolve');
+  check('an unreadable fleet forks rather than risking two writers',
+    /if \(fleet && fleet\.measured === false\) return true;/.test(sess),
+    'treating "not measured" as "not running" is the kit\'s oldest mistake, in a new place');
+  check('the panel refuses to run one session twice',
+    /the panel is already running that session/.test(sess));
+}
 
 const graphSrc = read(path.join(STUDIO, 'server', 'lib', 'graph.js')) ?? '';
 check('a subagent exchange is left out of the conversation it was not part of',
@@ -721,6 +749,79 @@ check('the right-hand divider grows its panel when dragged left',
   /edge === 'right' \? -1 : 1/.test(appSrc2),
   'sharing one handler without inverting the delta shrank the panel being opened');
 check('both widths are remembered', /csk-studio-side-w/.test(appSrc2) && /csk-studio-chat-w/.test(appSrc2));
+
+
+/* ------------------------------------------- §23 launching from a symlink */
+
+// Every global install path puts a symlink on PATH: `npm link`, `npm i -g`,
+// Homebrew. The direct-run guard compares import.meta.url against argv[1], and
+// argv[1] is then the symlink while import.meta.url is the real file. Getting
+// this wrong is invisible — the command exits 0 having printed nothing.
+//
+// Grepping for `realpathSync` would pass on a guard wrapped in `if (false)`.
+// So run it: a symlink into a temp dir, invoked with --help, must produce the
+// usage text. A regressed guard prints nothing and still exits 0.
+{
+  const entry = path.join(HERE, '..', 'server', 'index.js');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'csk-studio-link-'));
+  const link = path.join(dir, 'csk-studio');
+  let viaLink = '';
+  let viaReal = '';
+  try {
+    fs.symlinkSync(entry, link);
+    const run = (target) => execFileSync(process.execPath, [target, '--help'], {
+      encoding: 'utf8', timeout: 20000, stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    viaLink = run(link);
+    viaReal = run(entry);
+  } catch (e) {
+    viaLink = `ERROR ${e?.message ?? e}`;
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+
+  check('the entry point runs when invoked through a symlink',
+    /--port/.test(viaLink),
+    `a symlinked bin printed nothing — comparing raw argv[1] to import.meta.url `
+    + `makes every global install a silent no-op. got: ${JSON.stringify(viaLink.slice(0, 120))}`);
+  check('the symlinked invocation matches the direct one',
+    viaLink === viaReal && viaReal.length > 0,
+    'the two paths diverged, so the guard is doing something path-dependent');
+}
+
+
+/* ------------------------------------------- §24 foldable side sections */
+
+// The kit has been bitten twice by a hide rule losing to a display rule:
+// `[hidden]` lost to `display: grid`, and a `display: none` grid child stopped
+// occupying its cell. So assert the cascade, not the intent.
+{
+  const html = read(path.join(HERE, '..', 'web', 'index.html')) ?? '';
+  const css = read(path.join(HERE, '..', 'web', 'style.css')) ?? '';
+  const app = read(path.join(HERE, '..', 'web', 'app.js')) ?? '';
+
+  for (const key of ['fleet', 'reach', 'sessions']) {
+    check(`the ${key} section has a fold control and a body to fold`,
+      html.includes(`data-fold="${key}"`) && html.includes(`data-fold-body="${key}"`),
+      'a twisty with nothing wired to it folds nothing');
+  }
+  check('every project-list body folds, filter box included',
+    (html.match(/data-fold-body="sessions"/g) ?? []).length === 2,
+    'folding the tree while leaving the search box behind looks like a rendering bug');
+
+  check('the fold rule outranks the display it has to beat',
+    /\[data-fold-body\]\.is-folded\s*\{\s*display:\s*none/.test(css),
+    'a bare .is-folded ties with .fleet/.sessions and loses on source order');
+  check('a folded section stops claiming leftover height',
+    /\.side-block\.folded\s*\{\s*flex:\s*none/.test(css),
+    'without this the sidebar keeps a tall empty gap where the tree was');
+
+  check('the fold choice is remembered per browser',
+    /csk-studio-fold-/.test(app));
+  check('a browser that refuses localStorage still folds',
+    /localStorage\.setItem\(`csk-studio-fold-[\s\S]{0,120}?\} catch/.test(app),
+    'private mode throws on setItem; an unguarded write kills the click handler');
+}
 
 /* --------------------------------------------------------------- verdict */
 
