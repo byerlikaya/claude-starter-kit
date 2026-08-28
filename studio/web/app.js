@@ -5,9 +5,9 @@
 // the CLI is missing would read as a quiet, healthy machine, which is exactly
 // the kind of lie this panel exists to stop telling.
 
-import { Canvas } from '/canvas.js';
-import { renderMarkdown } from '/md.js';
-import { Chat } from '/chat.js';
+import { Canvas } from './canvas.js';
+import { renderMarkdown } from './md.js';
+import { Chat } from './chat.js';
 
 const FLEET_POLL_MS = 2000;
 const SESSION_POLL_MS = 5000;

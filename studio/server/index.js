@@ -24,6 +24,7 @@ import { parsePeers, askAll, ask } from './lib/peers.js';
 import {
   createSession, getSession, listSessionsOwned, reap, stopAll, ALLOWED_MODES,
 } from './lib/session.js';
+import { decide, pending, alwaysList } from './lib/permissions.js';
 import { randomUUID } from 'node:crypto';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -338,6 +339,33 @@ async function handle(req, res) {
     });
     if (!made.ok) return sendJson(res, 400, made);
     return sendJson(res, 201, { ok: true, session: made.session.summary() });
+  }
+
+  // Permission decisions: read the queue, or answer one item.
+  const permMatch = url.pathname.match(/^\/api\/owned\/([^/]+)\/permissions(?:\/([^/]+))?$/);
+  if (permMatch) {
+    const s = getSession(decodeURIComponent(permMatch[1]));
+    if (!s) return sendJson(res, 404, { ok: false, reason: 'no such owned session' });
+
+    if (req.method === 'GET') {
+      return sendJson(res, 200, {
+        measured: true,
+        gated: Boolean(s.gate),
+        waitSeconds: s.gate?.waitSeconds ?? null,
+        pending: s.gate ? pending(s.id) : [],
+        always: s.gate ? alwaysList(s.id) : [],
+      });
+    }
+
+    const gate = writeAllowed(req);
+    if (!gate.ok) return sendJson(res, 403, { ok: false, reason: gate.reason });
+    if (req.method !== 'POST' || !permMatch[2]) return sendJson(res, 405, { ok: false, reason: 'POST to a request id' });
+    if (!s.gate) return sendJson(res, 409, { ok: false, reason: 'this session has no gate to answer' });
+
+    const body = await readBody(req);
+    if (!body) return sendJson(res, 400, { ok: false, reason: 'body was not JSON' });
+    const out = decide(s.id, decodeURIComponent(permMatch[2]), body.verdict);
+    return sendJson(res, out.ok ? 200 : 400, out);
   }
 
   const ownedMatch = url.pathname.match(/^\/api\/owned\/([^/]+)(?:\/(message|stop|events))?$/);

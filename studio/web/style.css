@@ -715,3 +715,52 @@ body.vresizing { cursor: row-resize; user-select: none; }
    note kept painting over a graph that had nodes. Same trap as .inspector. */
 .cv-empty[hidden] { display: none; }
 .msg-pending .msg-body { opacity: 0.55; }
+
+/* ------------------------------------------------------- permissions --- */
+
+.perm-queue { flex: none; border-top: 1px solid var(--line); padding: 10px 14px; max-height: 46vh; overflow-y: auto; }
+.perm-queue[hidden] { display: none; }
+
+.perm {
+  border: 1px solid color-mix(in srgb, var(--waiting) 45%, var(--line));
+  background: color-mix(in srgb, var(--waiting) 7%, transparent);
+  border-radius: 9px; padding: 9px 11px; margin-bottom: 8px;
+}
+.perm-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.perm-tool {
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  letter-spacing: 0.05em; text-transform: uppercase; color: var(--waiting);
+}
+.perm-clock { font-family: var(--mono); font-size: 10px; color: var(--ink-faint); }
+.perm-detail {
+  margin: 7px 0 0; padding: 7px 9px; border-radius: 6px;
+  background: var(--surface-2); font-family: var(--mono); font-size: 11.5px;
+  line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere;
+  max-height: 140px; overflow-y: auto;
+}
+.perm-acts { display: flex; gap: 7px; margin-top: 9px; flex-wrap: wrap; }
+.perm-btn {
+  background: transparent; border: 1px solid var(--line); border-radius: 7px;
+  color: var(--ink-dim); cursor: pointer; font-size: 12px; padding: 4px 11px;
+}
+.perm-btn:hover:not(:disabled) { color: var(--ink); border-color: var(--ink-faint); }
+.perm-btn:disabled { opacity: 0.4; cursor: default; }
+.perm-btn.ok  { color: var(--good); border-color: color-mix(in srgb, var(--good) 40%, transparent); }
+.perm-btn.bad { color: var(--bad);  border-color: color-mix(in srgb, var(--bad) 40%, transparent); }
+
+.chat-state.ungated { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 50%, transparent); }
+
+/* ------------------------------------------------------ quick replies --- */
+
+.quick { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
+.quick-hint {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.05em;
+  text-transform: uppercase; color: var(--ink-faint);
+}
+.quick-btn {
+  background: transparent; border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent);
+  border-radius: 999px; color: var(--accent); cursor: pointer;
+  font-size: 12px; padding: 3px 12px; max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.quick-btn:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); }

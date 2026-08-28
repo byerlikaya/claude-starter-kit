@@ -18,6 +18,10 @@ import { renderMarkdown } from '../web/md.js';
 import { ALLOWED_MODES } from '../server/lib/session.js';
 import { parsePeers } from '../server/lib/peers.js';
 import { writeAllowed } from '../server/index.js';
+import { prepare, decide, pending, cleanup, _internals as permInternals } from '../server/lib/permissions.js';
+import { execFileSync } from 'node:child_process';
+import os from 'node:os';
+import { quickReplies } from '../web/chat.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const STUDIO = path.resolve(HERE, '..');
@@ -305,6 +309,113 @@ const [p3] = parsePeers([']]not a url']);
 check('an unparseable peer is reported, not silently dropped', p3.error === 'not a URL');
 check('the server binds loopback whatever the peer list says',
   /server\.listen\(args\.port, LOOPBACK/.test(idxSrc));
+
+/* ------------------------------------------- §12 the permission gate ---
+   Measured on this machine: a PreToolUse hook killed at its configured timeout
+   emits nothing and the tool PROCEEDS — permission_denials came back 0 and the
+   command ran. So the hook must decide for itself first, and these pin the
+   invariant that makes that true. */
+
+process.stdout.write('\n== §12 permission bridge ==\n');
+
+const { HOOK, HOOK_WAIT_S, HARNESS_TIMEOUT_S } = permInternals;
+
+check('the hook exists and is executable', (() => {
+  try { fs.accessSync(HOOK, fs.constants.X_OK); return true; } catch { return false; }
+})(), HOOK);
+
+check('the hook answers well before the harness would kill it',
+  HOOK_WAIT_S < HARNESS_TIMEOUT_S,
+  `hook ${HOOK_WAIT_S}s vs harness ${HARNESS_TIMEOUT_S}s`);
+
+const probeId = `selfcheck-${process.pid}`;
+const gate = prepare(probeId);
+check('prepare writes a settings file', Boolean(gate) && fs.existsSync(gate.settingsPath));
+
+if (gate) {
+  const cfg = JSON.parse(fs.readFileSync(gate.settingsPath, 'utf8'));
+  const entry = cfg.hooks?.PreToolUse?.[0];
+  check('the gate covers every tool, not a chosen few', entry?.matcher === '*', `matcher ${entry?.matcher}`);
+  check('the settings file is ours, not the user\'s',
+    gate.settingsPath.startsWith(os.tmpdir()), gate.settingsPath);
+  check('the configured timeout leaves the hook room to answer',
+    entry?.hooks?.[0]?.timeout > HOOK_WAIT_S);
+
+  // Behaviour, not text. Each case runs the real hook.
+  const payload = JSON.stringify({
+    session_id: probeId, tool_name: 'Bash', tool_use_id: 'toolu_probe',
+    tool_input: { command: 'echo probe' },
+  });
+  const runHook = (env = {}) => {
+    try {
+      execFileSync('bash', [HOOK, gate.spool], {
+        input: payload,
+        env: { ...process.env, CSK_GATE_WAIT: '1', ...env },
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+      return 0;
+    } catch (e) {
+      return e.status ?? -1;
+    }
+  };
+
+  check('silence is a denial, not an opening', runHook() === 2);
+
+  fs.writeFileSync(path.join(gate.spool, 'ans', 'toolu_probe'), 'deny\n');
+  check('a deny blocks', runHook() === 2);
+
+  fs.writeFileSync(path.join(gate.spool, 'ans', 'toolu_probe'), 'allow\n');
+  check('an allow lets the tool through', runHook() === 0);
+
+  // The discriminating control: without the answer file the same call is
+  // refused, so the allow above measured the answer rather than the harness.
+  check('the allow was the answer, not the absence of a gate', runHook() === 2);
+
+  fs.writeFileSync(path.join(gate.spool, 'always', 'Bash'), '');
+  check('an always-allowed tool skips the round trip', runHook() === 0);
+  fs.rmSync(path.join(gate.spool, 'always', 'Bash'));
+
+  check('a request is visible to the panel while the hook waits', (() => {
+    fs.writeFileSync(path.join(gate.spool, 'req', 'toolu_seen.json'), payload);
+    const seen = pending(probeId).find((r) => r.toolUseId === 'toolu_seen');
+    // The command itself, not just the tool's name: nobody can approve what
+    // they cannot read.
+    return seen?.toolName === 'Bash' && seen?.detail === 'echo probe';
+  })());
+
+  check('an unknown verdict is refused', decide(probeId, 'toolu_probe', 'maybe').ok === false);
+  check('a tool use id that is not an identifier is refused',
+    decide(probeId, '../escape', 'allow').ok === false);
+
+  cleanup(probeId);
+  check('cleanup removes the spool', !fs.existsSync(gate.spool));
+}
+
+/* -------------------------------------------- §13 quick replies ------
+   A headless session is not given AskUserQuestion — measured: absent from the
+   78-tool list in both permission modes, present in an interactive session. So
+   options arrive as prose, and the panel only makes them clickable. The rule
+   for when prose counts as a question is what these pin: too loose and every
+   bulleted list grows buttons. */
+
+process.stdout.write('\n== §13 quick replies ==\n');
+
+const qr = [
+  ['two options under a question', 'Which do you prefer?\n\n1. **Tabs**\n2. **Spaces**', 2],
+  ['three options', 'How should I proceed?\n- Rebase\n- Merge\n- Leave it', 3],
+  ['a list that answers rather than asks', 'Here is what I found:\n- one\n- two\n- three', 0],
+  ['a single option is not a choice', 'Shall I?\n1. Yes', 0],
+  ['a long list is a report', 'Which?\n1. a\n2. b\n3. c\n4. d\n5. e\n6. f', 0],
+  ['a paragraph-length item is not a button', `Which?\n1. ${'x'.repeat(90)}\n2. short`, 0],
+  ['nothing at all', '', 0],
+  ['prose with no list', 'Do you want me to continue?', 0],
+];
+for (const [name, text, want] of qr) {
+  const got = quickReplies(text).length;
+  check(`quick replies: ${name}`, got === want, `${got} offered, expected ${want}`);
+}
+check('emphasis is stripped from the label',
+  quickReplies('Which?\n1. **Tabs**\n2. `Spaces`')[0] === 'Tabs');
 
 /* --------------------------------------------------------------- verdict */
 

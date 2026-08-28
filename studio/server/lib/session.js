@@ -15,6 +15,8 @@ import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 
+import { prepare, pending, watch, cleanup } from './permissions.js';
+
 export const ALLOWED_MODES = ['plan', 'acceptEdits', 'default'];
 const DEFAULT_MODE = 'plan';
 const MAX_EVENTS = 4000;        // ring buffer per session
@@ -39,6 +41,18 @@ class OwnedSession {
     this.turns = 0;
     this.costUsd = 0;
 
+    // The gate is prepared before the child exists, so its very first tool call
+    // is already covered. A missing hook is reported, never worked around: a
+    // panel that silently ran ungated would be worse than one that cannot run.
+    this.gate = prepare(this.id);
+    this.pendingPermissions = [];
+    this.unwatch = this.gate
+      ? watch(this.id, (reqs) => {
+        this.pendingPermissions = reqs;
+        this.#emit({ type: 'permissions', pending: reqs });
+      })
+      : null;
+
     const args = [
       '-p', '--verbose',
       '--input-format', 'stream-json',
@@ -50,6 +64,9 @@ class OwnedSession {
       '--permission-mode', this.permissionMode,
     ];
     if (this.model) args.push('--model', this.model);
+    // Our own settings file in our own directory. The user's settings are never
+    // read, written or merged.
+    if (this.gate) args.push('--settings', this.gate.settingsPath);
 
     this.child = spawn('claude', args, {
       cwd: this.cwd,
@@ -75,7 +92,11 @@ class OwnedSession {
     this.child.on('exit', (code, signal) => {
       this.state = 'exited';
       this.exit = { code, signal };
+      if (this.unwatch) { this.unwatch(); this.unwatch = null; }
       this.#emit({ type: 'exit', code, signal });
+      // A spool outliving its session would leave stale requests behind for a
+      // hook that will never run again.
+      cleanup(this.id);
     });
   }
 
@@ -159,6 +180,10 @@ class OwnedSession {
       exit: this.exit,
       lastError: this.lastError,
       events: this.seq,
+      // Stated rather than implied: a session without a gate must say so.
+      gated: Boolean(this.gate),
+      gateWaitSeconds: this.gate?.waitSeconds ?? null,
+      pendingPermissions: this.pendingPermissions,
     };
   }
 }

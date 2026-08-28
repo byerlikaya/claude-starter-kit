@@ -33,6 +33,10 @@ write to one and watch its agents appear beneath it. They are given a session id
 up front, which means their transcripts land where every other session's do and
 the graph reads them without a special case.
 
+**Asks before it acts.** Every tool call in an owned session is parked by a
+PreToolUse hook and shown in the panel — the command itself, not just the tool's
+name — until you allow it, allow that tool for the session, or deny it.
+
 **Reaches other machines.** Transcripts are local files and nothing enumerates
 another machine's sessions, so a peer is another Studio.
 
@@ -84,6 +88,31 @@ reported as unreachable, never as empty.
 
 Nothing listens on a network interface in this arrangement: both Studios stay on
 loopback and the tunnel does the crossing.
+
+## The permission gate
+
+A hook injected through `--settings` parks each tool call, writes it into a
+spool, and waits for the panel's answer. Exit 0 allows, exit 2 blocks.
+
+It answers at 45 seconds against a 90-second harness timeout, and that gap is
+the whole design. Measured here: a hook killed at its timeout emits nothing and
+**the tool proceeds** — `permission_denials` came back 0 and the command ran. A
+hook the harness never has to kill fails closed instead, so a shut panel is a
+denial rather than an opening.
+
+The waiting costs no processes. A bounded read on a fifo held open read-write
+blocks for its timeout and never sees EOF; the alternative, a `sleep` per poll,
+spends seconds of fork overhead on Git Bash. Both the fifo and the shell's
+support for fractional timeouts are probed with exactly what the loop will run —
+bash 3.2 ignores a fractional `-t` and turns the poll into a hot spin, which is
+how the first version passed while spinning 185,000 times in five seconds.
+
+Interactive prompts have a limit worth stating: `AskUserQuestion`, `ExitPlanMode`
+and `EnterPlanMode` are absent from a headless session's 78-tool list, in every
+permission mode, while an interactive session has them. So there is no
+structured choice to render. When a reply offers options in prose the panel
+makes them clickable, which sends that text — a shortcut for typing it, not a
+channel that does not exist.
 
 ## Security
 
