@@ -46,10 +46,11 @@ export function quickReplies(text) {
 /* ========================================================== one session === */
 
 class Pane {
-  constructor(session, { api, headers, onChange }) {
+  constructor(session, { api, headers, onChange, readOnly = false }) {
     this.api = api;
     this.headers = headers;
     this.onChange = onChange;
+    this.readOnly = readOnly;
     this.session = session;
     this.id = session.sessionId;
     this.source = null;
@@ -66,22 +67,68 @@ class Pane {
         <textarea class="chat-input" rows="2"
           placeholder="Message this session…  (Enter to send, Shift+Enter for a newline)"></textarea>
         <button class="chat-send" type="submit">send</button>
-      </form>`;
+      </form>
+      <div class="chat-ro" hidden>
+        Read-only — this session was not started by the panel, so there is no channel to write to.
+        Use <strong>↩ continue here</strong> to carry it on, or open it in a real terminal.
+      </div>`;
 
     this.logEl = this.root.querySelector('.chat-log');
     this.permEl = this.root.querySelector('.perm-queue');
     this.formEl = this.root.querySelector('.chat-form');
     this.inputEl = this.root.querySelector('.chat-input');
+    this.roEl = this.root.querySelector('.chat-ro');
 
     this.formEl.addEventListener('submit', (e) => { e.preventDefault(); this.send(); });
     this.inputEl.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.send(); }
     });
 
-    this.connect();
+    if (readOnly) {
+      this.formEl.hidden = true;
+      this.roEl.hidden = false;
+      this.root.classList.add('pane-readonly');
+    } else {
+      this.connect();
+    }
+    this.loadHistory();
   }
 
   get visible() { return !this.root.hidden; }
+
+  /**
+   * What was said before this pane existed.
+   *
+   * A resumed session remembers its history — it will answer questions about
+   * it — but its stream starts fresh, so continuing a conversation looked
+   * exactly like starting one. An observed session has no stream at all, and
+   * its whole conversation is history.
+   */
+  async loadHistory() {
+    const from = this.readOnly ? this.id : this.session?.resumedFrom;
+    if (!from) return;
+    let conv;
+    try {
+      conv = await fetch(this.api(`/api/session/${encodeURIComponent(from)}/conversation`), { cache: 'no-store' })
+        .then((r) => r.json());
+    } catch (e) {
+      this.note(`History not read: ${e.message}`, 'bad');
+      return;
+    }
+    if (conv?.measured === false) { this.note(`History not measured — ${conv.reason}`, 'bad'); return; }
+
+    const frag = document.createDocumentFragment();
+    if (conv.truncated) {
+      frag.append(el('div', 'chat-note', `${conv.total - conv.messages.length} earlier message(s) not shown`));
+    }
+    for (const m of conv.messages ?? []) frag.append(this.renderMessage(m));
+    if (!this.readOnly) {
+      // A visible seam, so nobody reads the history as part of this run.
+      frag.append(el('div', 'chat-seam', `— continued here from ${from.slice(0, 8)} —`));
+    }
+    this.logEl.prepend(frag);
+    this.logEl.scrollTop = this.logEl.scrollHeight;
+  }
 
   connect() {
     if (this.source) return;
@@ -413,6 +460,21 @@ export class Chat {
     return { ok: true, session: body.session };
   }
 
+  /** An observed session, shown but not driven. */
+  openReadOnly(sessionId, title) {
+    let pane = this.panes.get(sessionId);
+    if (!pane) {
+      pane = new Pane(
+        { sessionId, state: 'observed', permissionMode: 'read-only', gated: false, title },
+        { api: this.api, headers: this.headers, onChange: () => this.paintTabs(), readOnly: true },
+      );
+      this.panesEl.append(pane.root);
+      this.panes.set(sessionId, pane);
+    }
+    this.activate(sessionId);
+    return pane;
+  }
+
   open(session) {
     let pane = this.panes.get(session.sessionId);
     if (!pane) {
@@ -466,7 +528,8 @@ export class Chat {
       dot.dataset.state = p.session?.state ?? 'unknown';
       tab.append(dot);
       const label = p.kind === 'term' ? `shell ${shortId(id)}`
-        : (p.session?.resumedFrom ? `↩ ${shortId(p.session.resumedFrom)}` : shortId(id));
+        : p.readOnly ? `👁 ${p.session?.title ? String(p.session.title).slice(0, 18) : shortId(id)}`
+          : (p.session?.resumedFrom ? `↩ ${shortId(p.session.resumedFrom)}` : shortId(id));
       tab.append(el('span', 'tab-name', label));
       if (p.kind === 'term') tab.classList.add('tab-term');
       if (p.permissions?.length) tab.append(el('span', 'tab-badge warn', String(p.permissions.length)));
@@ -484,6 +547,14 @@ export class Chat {
 
     const a = this.active;
     const s = a?.session;
+    if (a?.readOnly) {
+      this.stateEl.textContent = 'observed · read-only';
+      this.stateEl.dataset.state = 'observed';
+      this.stateEl.classList.remove('ungated');
+      this.costEl.textContent = '';
+      this.stopEl.hidden = true;
+      return;
+    }
     if (a?.kind === 'term') {
       this.stateEl.textContent = `${s.state} · raw shell · NO GATE`;
       this.stateEl.dataset.state = s.state;

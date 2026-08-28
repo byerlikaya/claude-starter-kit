@@ -460,3 +460,62 @@ export function agentDetail(session, agentId) {
     malformed,
   };
 }
+
+
+/**
+ * The conversation a transcript holds, as the panel renders conversations.
+ *
+ * Needed because a resumed session starts a fresh stream: it remembers what was
+ * said — it will answer questions about it — but the panel had nothing to draw,
+ * so continuing a conversation looked exactly like starting one.
+ *
+ * Sidechains are skipped: a subagent's exchange belongs to the graph, not to
+ * the conversation the person had.
+ */
+export function conversation(session, { limit = 400 } = {}) {
+  const { records } = readAll(session.file);
+  const out = [];
+
+  for (const r of records) {
+    if (r?.isSidechain === true) continue;
+    if (r?.parent_tool_use_id) continue;
+    const at = r?.timestamp ? Date.parse(r.timestamp) : null;
+
+    if (r?.type === 'user') {
+      const c = r.message?.content;
+      const text = typeof c === 'string'
+        ? c
+        : Array.isArray(c) ? c.filter((x) => x?.type === 'text').map((x) => x.text).join('') : '';
+      // Command envelopes and tool results are machinery, not what was said.
+      if (!text.trim()) continue;
+      if (/^<(command-name|command-message|local-command|task-notification)/.test(text.trim())) continue;
+      out.push({ role: 'user', at, text });
+      continue;
+    }
+
+    if (r?.type === 'assistant' && Array.isArray(r.message?.content)) {
+      const blocks = [];
+      for (const c of r.message.content) {
+        if (c?.type === 'text' && c.text?.trim()) blocks.push({ kind: 'text', text: c.text });
+        else if (c?.type === 'tool_use') {
+          const i = c.input ?? {};
+          blocks.push({
+            kind: 'tool',
+            name: c.name ?? 'tool',
+            label: i.description ?? i.file_path ?? i.command ?? i.pattern ?? i.query ?? null,
+          });
+        }
+      }
+      if (blocks.length) out.push({ role: 'assistant', at, blocks });
+    }
+  }
+
+  // The tail: a long history is the part nearest the continuation that matters,
+  // and the count says what was left out rather than hiding it.
+  return {
+    measured: true,
+    total: out.length,
+    truncated: out.length > limit,
+    messages: out.slice(-limit),
+  };
+}

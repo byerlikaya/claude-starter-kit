@@ -670,11 +670,15 @@ function selectSession(sessionId) {
   // A new session means the cached agent reports belong to someone else.
   detailCache.clear();
 
-  // Conversation is only offered where it exists. An observed session has no
-  // channel to write to, and a disabled box would imply otherwise. Selecting an
-  // owned session brings its tab forward; selecting an observed one leaves the
-  // tabs alone rather than closing work that is still running.
-  if (ownedIds.has(sessionId) && chat.activeId !== sessionId) openOwned(sessionId);
+  // Every session gets its conversation shown; only the ones the panel started
+  // get a box to write in. Hiding the conversation of a session we can read
+  // perfectly well was the wrong half of that rule.
+  if (ownedIds.has(sessionId)) {
+    if (chat.activeId !== sessionId) openOwned(sessionId);
+  } else if (chat.activeId !== sessionId) {
+    const row = el.sessions.querySelector(`.srow[data-id="${CSS.escape(sessionId)}"] .sname`);
+    chat.openReadOnly(sessionId, row?.textContent ?? null);
+  }
   const any = chat.ids.length > 0;
   el.chat.hidden = !any;
   el.hsplit.hidden = !any;

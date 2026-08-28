@@ -41,6 +41,11 @@ write to one and watch its agents appear beneath it. They are given a session id
 up front, which means their transcripts land where every other session's do and
 the graph reads them without a special case.
 
+**Shows every conversation, drives only its own.** Selecting any session opens
+what was said in it, read from the transcript. A session the panel did not start
+has no channel to write to, so that pane says so and offers the two things that
+do work: continue it here, or open it in a real terminal.
+
 **Asks before it acts.** Every tool call in an owned session is parked by a
 PreToolUse hook and shown in the panel — the command itself, not just the tool's
 name — until you allow it, allow that tool for the session, or deny it.

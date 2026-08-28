@@ -567,6 +567,31 @@ check('records are parsed rather than grepped, because the block is JSON-escaped
   /JSON\.parse\(line\)/.test(rosterSrc),
   'a line-anchored regex over the raw tail matched nothing: the newlines in it are two characters, not one');
 
+/* ------------------------------------------------------- §19 history ---
+   A resumed session remembers what was said; the panel did not draw it, so
+   continuing a conversation looked exactly like starting one. And a session
+   the panel cannot write to is still one it can read. */
+
+process.stdout.write('\n== §19 conversation history ==\n');
+
+const chatSrc2 = read(path.join(STUDIO, 'web', 'chat.js')) ?? '';
+check('a resumed pane loads what was said before it',
+  /loadHistory/.test(chatSrc2) && /resumedFrom/.test(chatSrc2));
+check('the seam between history and this run is drawn, not implied',
+  /chat-seam/.test(chatSrc2) && /continued here from/.test(chatSrc2));
+check('an observed session is shown but not writable',
+  /openReadOnly/.test(chatSrc2) && /readOnly/.test(chatSrc2));
+check('the read-only pane says why it cannot be written to, and what to do instead',
+  /no channel to write to/.test(chatSrc2) && /continue here/.test(chatSrc2));
+
+const graphSrc = read(path.join(STUDIO, 'server', 'lib', 'graph.js')) ?? '';
+check('a subagent exchange is left out of the conversation it was not part of',
+  /isSidechain === true\) continue/.test(graphSrc) && /parent_tool_use_id\) continue/.test(graphSrc));
+check('command envelopes are not shown as things someone said',
+  /command-name\|command-message/.test(graphSrc));
+check('a truncated history says how much was left out',
+  /truncated/.test(graphSrc) && /total - conv\.messages\.length|conv\.total/.test(chatSrc2));
+
 /* --------------------------------------------------------------- verdict */
 
 process.stdout.write('\n');

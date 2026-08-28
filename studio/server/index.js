@@ -17,7 +17,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { getFleet, measureSpawnCost } from './lib/fleet.js';
 import { projectDir, listSessions, findSession, listProjects, sessionCwd } from './lib/projects.js';
-import { buildGraph, agentDetail } from './lib/graph.js';
+import { buildGraph, agentDetail, conversation } from './lib/graph.js';
 import { palette } from './lib/palette.js';
 import { latestVersion, kitStatus } from './lib/kit.js';
 import { parsePeers, askAll, ask } from './lib/peers.js';
@@ -320,6 +320,17 @@ async function handle(req, res) {
     const started = Date.now();
     const graph = buildGraph(session);
     return sendJson(res, 200, { ...graph, measured: true, buildMs: Date.now() - started });
+  }
+
+  const convMatch = url.pathname.match(/^\/api\/session\/([^/]+)\/conversation$/);
+  if (convMatch) {
+    const session = findSession(decodeURIComponent(convMatch[1]));
+    if (!session) {
+      const relayed = await relay(url.pathname);
+      if (relayed) return sendJson(res, 200, relayed);
+      return sendJson(res, 404, { measured: false, reason: 'no such session on this machine or any peer' });
+    }
+    return sendJson(res, 200, conversation(session));
   }
 
   const agentMatch = url.pathname.match(/^\/api\/session\/([^/]+)\/agent\/([^/]+)$/);
