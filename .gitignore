@@ -17,3 +17,5 @@
 # studio: neither of these should ever exist — the entries are the alarm, not housekeeping
 studio/node_modules/
 studio/recordings/
+__pycache__/
+*.pyc

@@ -37,6 +37,15 @@ the graph reads them without a special case.
 PreToolUse hook and shown in the panel — the command itself, not just the tool's
 name — until you allow it, allow that tool for the session, or deny it.
 
+**Runs several at once.** Each session the panel starts is a tab that keeps its
+own stream open whether or not it is on screen, so work continuing in the
+background is continuing, not replayed when you look back.
+
+**Hands a session to a real terminal.** The panel cannot drive a session it did
+not start, so for an observed one it offers the only thing that is true: a
+button that opens it where it can be driven. What it will run is shown before
+anything launches.
+
 **Reaches other machines.** Transcripts are local files and nothing enumerates
 another machine's sessions, so a peer is another Studio.
 
@@ -113,6 +122,31 @@ permission mode, while an interactive session has them. So there is no
 structured choice to render. When a reply offers options in prose the panel
 makes them clickable, which sends that text — a shortcut for typing it, not a
 channel that does not exist.
+
+## Raw shells
+
+Off unless asked for:
+
+```bash
+node studio/server/index.js --enable-pty
+```
+
+This is the one surface in the panel that steps outside the kit's own gates. A
+command typed in a raw shell never reaches a PreToolUse hook, because there is
+no tool call to intercept — so `guard-bash.sh` and everything beside it are
+blind to it. The panel says so on the screen, in the tab, and in the startup
+log, and everything else it offers routes shell work through a session's `Bash`
+tool where the gates do apply.
+
+The terminal itself needs nothing installed: Python's `pty` is in the standard
+library, and this repo already depends on python3. Measured: a real `/dev/ttys*`,
+`[ -t 0 ]` true inside it, and `TIOCSWINSZ` resizing. Unix only — the `pty`
+module does not exist on Windows, which is reported rather than worked around.
+
+What it renders is scrollback with colour, carriage returns, backspaces and the
+common erase sequences: `ls --color`, `git status`, a test run. It is not a
+screen, so a full-screen program (vim, htop) is out of scope by design — the
+view says as much when it sees one painting.
 
 ## Security
 

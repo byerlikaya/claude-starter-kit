@@ -764,3 +764,69 @@ body.vresizing { cursor: row-resize; user-select: none; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .quick-btn:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+
+/* --------------------------------------------------------- session tabs --- */
+
+.panes { flex: 1; min-height: 0; display: flex; }
+.pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.pane[hidden] { display: none; }
+
+.tabs { display: flex; gap: 3px; flex: 1; overflow-x: auto; align-items: center; }
+.tab {
+  display: flex; align-items: center; gap: 6px;
+  background: transparent; border: 1px solid var(--line); border-radius: 7px;
+  color: var(--ink-dim); cursor: pointer; font-family: var(--mono); font-size: 11px;
+  padding: 3px 7px; white-space: nowrap; flex: none;
+}
+.tab:hover { color: var(--ink); }
+.tab.on { color: var(--ink); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+
+.tab-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--idle); flex: none; }
+.tab-dot[data-state="working"] { background: var(--busy); animation: breathe 1.6s ease-in-out infinite; }
+.tab-dot[data-state="idle"]    { background: var(--good); }
+.tab-dot[data-state="starting"]{ background: var(--accent); }
+.tab-dot[data-state="exited"], .tab-dot[data-state="failed"] { background: var(--bad); }
+
+.tab-badge {
+  background: var(--surface-2); border-radius: 999px; padding: 0 5px;
+  font-size: 9px; color: var(--ink-faint);
+}
+.tab-badge.warn { background: color-mix(in srgb, var(--waiting) 22%, transparent); color: var(--waiting); }
+.tab-x { color: var(--ink-faint); font-size: 13px; line-height: 1; padding: 0 1px; }
+.tab-x:hover { color: var(--bad); }
+
+@media (prefers-reduced-motion: reduce) { .tab-dot[data-state="working"] { animation: none; } }
+
+/* ------------------------------------------------------- raw terminal --- */
+
+.term { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.term[hidden] { display: none; }
+
+/* Said on the screen, not only in the docs: this is the one surface the kit's
+   gates cannot see. */
+.term-warn {
+  flex: none; padding: 7px 14px; font-size: 12px; line-height: 1.45;
+  color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 10%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--bad) 40%, transparent);
+}
+.term-warn strong { color: var(--bad); }
+
+.term-screen {
+  flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 10px 14px;
+  background: var(--bg); color: var(--ink);
+  font-family: var(--mono); font-size: 12px; line-height: 1.45;
+  white-space: pre-wrap; overflow-wrap: anywhere; outline: none;
+}
+.term-screen:focus { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); }
+
+.term-foot {
+  flex: none; display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; padding: 6px 14px; border-top: 1px solid var(--line);
+}
+.term-meta { font-family: var(--mono); font-size: 10px; color: var(--ink-faint); }
+.term-meta.warn { color: var(--waiting); }
+.term-close { font-family: var(--mono); font-size: 11px; padding: 2px 9px; }
+
+.tab.tab-term { border-style: dashed; }
+.tab.tab-term.on { border-color: var(--bad); background: color-mix(in srgb, var(--bad) 10%, transparent); }

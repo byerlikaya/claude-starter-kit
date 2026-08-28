@@ -21,6 +21,7 @@ const el = {
   chat: document.getElementById('chat'),
   hsplit: document.getElementById('hsplit'),
   newSession: document.getElementById('new-session'),
+  newTerm: document.getElementById('new-term'),
   sessionsMeta: document.getElementById('sessions-meta'),
   summary: document.getElementById('graph-summary'),
   pulse: document.getElementById('pulse'),
@@ -117,14 +118,29 @@ const chat = new Chat(el.chat, { api, headers: writeHeaders });
 
 let ownedIds = new Set();
 
-chat.onSession = (session) => {
-  if (!session) return;
-  ownedIds.add(session.sessionId);
-  el.chat.hidden = false;
-  el.hsplit.hidden = false;
-  // The session it started is the one worth looking at.
-  selectSession(session.sessionId);
+// Switching tabs points the canvas at that session too: the graph and the
+// conversation are two views of one thing.
+chat.onActivate = (sessionId) => {
+  const any = chat.ids.length > 0;
+  el.chat.hidden = !any;
+  el.hsplit.hidden = !any;
+  if (sessionId) {
+    ownedIds.add(sessionId);
+    selectSession(sessionId);
+  }
 };
+
+async function openOwned(sessionId) {
+  if (chat.panes.has(sessionId)) { chat.activate(sessionId); return true; }
+  try {
+    const r = await getJson(`/api/owned/${encodeURIComponent(sessionId)}`);
+    if (!r.session) return false;
+    chat.open(r.session);
+    return true;
+  } catch {
+    return false;   // reaped, or never ours
+  }
+}
 
 el.newSession.addEventListener('click', async () => {
   const cwd = projectsData?.cwd ?? null;
@@ -133,12 +149,31 @@ el.newSession.addEventListener('click', async () => {
   try {
     // `plan` by default: a panel that can start a session must not also be the
     // reason one got write access nobody asked for.
-    await chat.start({ cwd, permissionMode: 'plan' });
+    const r = await chat.start({ cwd, permissionMode: 'plan' });
+    if (!r.ok) el.foot.textContent = `could not start a session: ${r.reason}`;
   } finally {
     el.newSession.disabled = false;
     el.newSession.textContent = '+ session';
   }
 });
+
+// The shell button only exists where a shell can exist. Offering a control
+// that always fails is worse than not offering it.
+getJson('/api/pty')
+  .then((r) => {
+    if (!r.enabled || !r.available) return;
+    el.newTerm.hidden = false;
+    el.newTerm.title = r.warning;
+    el.newTerm.addEventListener('click', async () => {
+      el.newTerm.disabled = true;
+      try {
+        const out = await chat.startTerminal({ cwd: projectsData?.cwd ?? null });
+        if (!out.ok) el.foot.textContent = `could not open a shell: ${out.reason}`;
+        else { el.chat.hidden = false; el.hsplit.hidden = false; }
+      } finally { el.newTerm.disabled = false; }
+    });
+  })
+  .catch(() => { /* older server, or pty off */ });
 
 (() => {
   const CHAT_MIN = 140;
@@ -440,15 +475,13 @@ function selectSession(sessionId) {
   detailCache.clear();
 
   // Conversation is only offered where it exists. An observed session has no
-  // channel to write to, and a disabled box would imply otherwise.
-  const owned = ownedIds.has(sessionId);
-  el.chat.hidden = !owned;
-  el.hsplit.hidden = !owned;
-  if (owned && chat.session?.sessionId !== sessionId) {
-    getJson(`/api/owned/${encodeURIComponent(sessionId)}`)
-      .then((r) => { if (r.session) chat.attach(r.session); })
-      .catch(() => { /* it may have been reaped */ });
-  }
+  // channel to write to, and a disabled box would imply otherwise. Selecting an
+  // owned session brings its tab forward; selecting an observed one leaves the
+  // tabs alone rather than closing work that is still running.
+  if (ownedIds.has(sessionId) && chat.activeId !== sessionId) openOwned(sessionId);
+  const any = chat.ids.length > 0;
+  el.chat.hidden = !any;
+  el.hsplit.hidden = !any;
 
   if (source) source.close();
   source = new EventSource(api(`/api/stream?session=${encodeURIComponent(sessionId)}`));

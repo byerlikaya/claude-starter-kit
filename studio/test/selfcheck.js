@@ -22,6 +22,8 @@ import { prepare, decide, pending, cleanup, _internals as permInternals } from '
 import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import { quickReplies } from '../web/chat.js';
+import * as pty from '../server/lib/pty.js';
+import { plan as terminalPlan } from '../server/lib/terminal.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const STUDIO = path.resolve(HERE, '..');
@@ -416,6 +418,43 @@ for (const [name, text, want] of qr) {
 }
 check('emphasis is stripped from the label',
   quickReplies('Which?\n1. **Tabs**\n2. `Spaces`')[0] === 'Tabs');
+
+/* --------------------------------------------- §14 raw terminals ------
+   The one surface here the kit's gates cannot see. A command typed in a raw
+   shell never reaches a PreToolUse hook, because there is no tool call to
+   intercept. That makes "off unless asked for" a property worth pinning. */
+
+process.stdout.write('\n== §14 raw terminals ==\n');
+
+check('a raw shell is refused until it is asked for',
+  pty.create({ cwd: process.cwd() }).ok === false && pty.isEnabled() === false);
+check('the refusal names the flag rather than failing vaguely',
+  /--enable-pty/.test(pty.create({ cwd: process.cwd() }).reason ?? ''));
+
+const ptySrc = read(path.join(STUDIO, 'server', 'lib', 'pty.js')) ?? '';
+check('Windows is told it cannot, rather than left to fail',
+  /Unix-only/.test(ptySrc) && /win32/.test(ptySrc));
+check('the bridge is not named pty.py, which would shadow the module it imports',
+  fs.existsSync(path.join(STUDIO, 'server', 'lib', 'pty-bridge.py')) &&
+  !fs.existsSync(path.join(STUDIO, 'server', 'lib', 'pty.py')));
+check('the scrollback buffer holds bytes, not concatenated base64',
+  /Buffer\.concat/.test(ptySrc) && !/this\.buffer \+= msg\.d/.test(ptySrc));
+
+const termSrc = read(path.join(STUDIO, 'web', 'term.js')) ?? '';
+check('the terminal view says on screen that nothing guards it',
+  /No gate here/.test(termSrc));
+check('keystrokes are queued so their order survives the network',
+  /outbox/.test(termSrc) && /await fetch/.test(termSrc));
+
+// Behaviour: the plan a terminal launch would run, quoted.
+process.stdout.write('\n== §15 handing a session to a real terminal ==\n');
+
+const tp = terminalPlan({ cwd: "/tmp/it's here", sessionId: 'abc-123' });
+check('a path with a quote in it cannot break out of the command',
+  tp.line.includes("/tmp/it'\\''s here") || tp.line.includes(String.raw`it'\''s here`),
+  tp.line);
+check('the session id is quoted too', tp.line.includes("'abc-123'"));
+check('the plan is inspectable before anything launches', typeof tp.line === 'string' && tp.line.length > 0);
 
 /* --------------------------------------------------------------- verdict */
 

@@ -1,11 +1,16 @@
-// The conversation half of an owned session.
+// Conversations with sessions the panel owns.
+//
+// Each session gets a pane that keeps its own stream open whether or not it is
+// on screen, so a session working in the background is still working when you
+// come back to it — its progress is not a replay, it happened.
 //
 // Two sources describe the same reply: partial `content_block_delta` events
 // while it is being written, and the complete `assistant` record once it is
 // done. Rendering both would double every message, so deltas only ever feed a
-// provisional bubble, and the authoritative record replaces it.
+// provisional bubble that the authoritative record replaces.
 
 import { renderMarkdown } from './md.js';
+import { Term } from './term.js';
 
 const el = (tag, cls, text) => {
   const n = document.createElement(tag);
@@ -30,7 +35,6 @@ export function quickReplies(text) {
   for (const raw of lines) {
     const m = raw.match(/^\s*(?:[-*+]|\d+[.)])\s+(.+?)\s*$/);
     if (!m) continue;
-    // Strip the emphasis authors put on the label itself.
     const label = m[1].replace(/\*\*(.+?)\*\*/g, '$1').replace(/`(.+?)`/g, '$1').trim();
     if (label.length >= 2 && label.length <= 80) opts.push(label);
   }
@@ -39,110 +43,78 @@ export function quickReplies(text) {
   return (opts.length >= 2 && opts.length <= 5 && /\?/.test(text)) ? opts : [];
 }
 
-export class Chat {
-  constructor(root, { api, headers }) {
-    this.root = root;
+/* ========================================================== one session === */
+
+class Pane {
+  constructor(session, { api, headers, onChange }) {
     this.api = api;
     this.headers = headers;
-    this.session = null;
+    this.onChange = onChange;
+    this.session = session;
+    this.id = session.sessionId;
     this.source = null;
-    this.lastSeq = 0;
-    this.messages = [];      // { role, blocks: [] }
-    this.streaming = null;   // provisional text while a reply is being written
-    this.onSession = () => {};
+    this.messages = [];
+    this.streaming = null;
+    this.permissions = [];
+    this.unread = 0;
 
-    this.#build();
-    // The countdown has to move on its own; nothing else re-renders it.
-    setInterval(() => { if (this.permissions?.length) this.#paintPermissions(); }, 1000);
-  }
-
-  #build() {
+    this.root = el('div', 'pane');
     this.root.innerHTML = `
-      <div class="chat-head">
-        <span class="chat-title">Conversation</span>
-        <span class="chat-state"></span>
-        <span class="chat-cost"></span>
-        <button class="ghost chat-stop" type="button" hidden>stop</button>
-      </div>
       <div class="chat-log"></div>
       <div class="perm-queue" hidden></div>
       <form class="chat-form">
-        <textarea class="chat-input" rows="2" placeholder="Message this session…  (Enter to send, Shift+Enter for a newline)"></textarea>
+        <textarea class="chat-input" rows="2"
+          placeholder="Message this session…  (Enter to send, Shift+Enter for a newline)"></textarea>
         <button class="chat-send" type="submit">send</button>
       </form>`;
 
     this.logEl = this.root.querySelector('.chat-log');
     this.permEl = this.root.querySelector('.perm-queue');
-    this.stateEl = this.root.querySelector('.chat-state');
-    this.costEl = this.root.querySelector('.chat-cost');
-    this.stopEl = this.root.querySelector('.chat-stop');
     this.formEl = this.root.querySelector('.chat-form');
     this.inputEl = this.root.querySelector('.chat-input');
 
-    this.formEl.addEventListener('submit', (e) => { e.preventDefault(); this.#send(); });
+    this.formEl.addEventListener('submit', (e) => { e.preventDefault(); this.send(); });
     this.inputEl.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.#send(); }
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.send(); }
     });
-    this.stopEl.addEventListener('click', () => this.#stop());
+
+    this.connect();
   }
 
-  /* ------------------------------------------------------------ wiring */
+  get visible() { return !this.root.hidden; }
 
-  async start({ cwd, model, permissionMode }) {
-    const res = await fetch(this.api('/api/owned'), {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', ...this.headers },
-      body: JSON.stringify({ cwd, model, permissionMode }),
-    });
-    const body = await res.json();
-    if (!body.ok) { this.#note(`Could not start: ${body.reason}`); return null; }
-    this.attach(body.session);
-    return body.session;
-  }
-
-  attach(session) {
-    this.detach();
-    this.session = session;
-    this.messages = [];
-    this.streaming = null;
-    this.lastSeq = 0;
-    this.permissions = [];
-    this.logEl.replaceChildren();
-    this.#paintPermissions();
-    this.#paintState();
-    this.onSession(session);
-
-    this.source = new EventSource(this.api(`/api/owned/${encodeURIComponent(session.sessionId)}/events`));
+  connect() {
+    if (this.source) return;
+    this.source = new EventSource(this.api(`/api/owned/${encodeURIComponent(this.id)}/events`));
     this.source.addEventListener('state', (e) => {
       try { this.session = JSON.parse(e.data); } catch { return; }
-      this.#paintState();
+      this.paintState();
+      this.onChange(this);
     });
     this.source.addEventListener('event', (e) => {
       let ev;
       try { ev = JSON.parse(e.data); } catch { return; }
-      this.lastSeq = ev.seq;
-      this.#absorb(ev.rec);
+      this.absorb(ev.rec);
     });
-    this.source.onerror = () => { this.stateEl.textContent = 'stream dropped'; };
+    this.source.onerror = () => { this.streamBroken = true; this.onChange(this); };
   }
 
-  detach() {
+  disconnect() {
     if (this.source) { this.source.close(); this.source = null; }
-    this.session = null;
   }
 
   /* --------------------------------------------------------- ingestion */
 
-  #absorb(rec) {
+  absorb(rec) {
     if (!rec) return;
 
     if (rec.type === 'stream_event') {
       const t = rec.event?.type;
-      if (t === 'message_start') { this.streaming = { text: '' }; this.#paintStreaming(); }
+      if (t === 'message_start') { this.streaming = { text: '' }; this.paintStreaming(); }
       else if (t === 'content_block_delta' && rec.event.delta?.type === 'text_delta') {
         if (!this.streaming) this.streaming = { text: '' };
         this.streaming.text += rec.event.delta.text ?? '';
-        this.#paintStreaming();
+        this.paintStreaming();
       }
       return;
     }
@@ -152,11 +124,18 @@ export class Chat {
     // saying things it never said.
     if (rec.parent_tool_use_id) return;
 
+    if (rec.type === 'permissions') {
+      this.permissions = rec.pending ?? [];
+      this.paintPermissions();
+      this.onChange(this);
+      return;
+    }
+
     if (rec.type === 'user' && rec.message?.content) {
       const text = typeof rec.message.content === 'string'
         ? rec.message.content
         : rec.message.content.filter((c) => c?.type === 'text').map((c) => c.text).join('');
-      if (text.trim()) { this.#clearPending(); this.#push({ role: 'user', text }); }
+      if (text.trim()) { this.clearPending(); this.push({ role: 'user', text }); }
       return;
     }
 
@@ -174,39 +153,28 @@ export class Chat {
           });
         }
       }
-      if (blocks.length) this.#push({ role: 'assistant', blocks });
+      if (blocks.length) {
+        this.push({ role: 'assistant', blocks });
+        if (!this.visible) { this.unread += 1; this.onChange(this); }
+      }
       return;
     }
 
-    if (rec.type === 'result') {
-      this.streaming = null;
-      this.#paintStreaming();
-      return;
-    }
-
-    if (rec.type === 'permissions') {
-      this.permissions = rec.pending ?? [];
-      this.#paintPermissions();
-      return;
-    }
-
-    if (rec.type === 'fault' || rec.type === 'stderr') {
-      this.#note(rec.reason ?? rec.text, 'bad');
-    }
+    if (rec.type === 'result') { this.streaming = null; this.paintStreaming(); return; }
+    if (rec.type === 'fault' || rec.type === 'stderr') this.note(rec.reason ?? rec.text, 'bad');
   }
 
-  #push(msg) {
-    // A question that has been answered no longer offers its options.
+  push(msg) {
     for (const q of this.logEl.querySelectorAll('.quick')) q.remove();
     this.messages.push(msg);
-    this.logEl.append(this.#renderMessage(msg));
-    this.#paintStreaming();
-    this.#scroll();
+    this.logEl.append(this.renderMessage(msg));
+    this.paintStreaming();
+    this.scroll();
   }
 
   /* --------------------------------------------------------- rendering */
 
-  #renderMessage(msg) {
+  renderMessage(msg) {
     const wrap = el('div', `msg msg-${msg.role}`);
     wrap.append(el('div', 'msg-role', msg.role === 'user' ? 'you' : 'claude'));
 
@@ -230,13 +198,23 @@ export class Chat {
     wrap.append(body);
 
     if (msg.role === 'assistant') {
-      const quick = this.#paintQuickReplies(msg);
-      if (quick) wrap.append(el('div', 'msg-spacer'), quick);
+      const last = msg.blocks?.filter((b) => b.kind === 'text').pop();
+      const opts = quickReplies(last?.text);
+      if (opts.length) {
+        const row = el('div', 'quick');
+        row.append(el('span', 'quick-hint', 'reply with'));
+        for (const o of opts) {
+          const b = el('button', 'quick-btn', o);
+          b.addEventListener('click', () => { row.remove(); this.inputEl.value = o; this.send(); });
+          row.append(b);
+        }
+        wrap.append(row);
+      }
     }
     return wrap;
   }
 
-  #paintStreaming() {
+  paintStreaming() {
     let node = this.logEl.querySelector('.msg-streaming');
     if (!this.streaming) { node?.remove(); return; }
     if (!node) {
@@ -252,66 +230,16 @@ export class Chat {
     } else {
       body.replaceChildren(el('span', 'thinking', 'thinking…'));
     }
-    this.#scroll();
+    this.scroll();
   }
 
-  // A message in flight, shown until the session echoes it back.
-  #pending(text) {
-    this.#clearPending();
-    const wrap = el('div', 'msg msg-user msg-pending');
-    wrap.append(el('div', 'msg-role', 'you'));
-    const body = el('div', 'msg-body msg-text', text);
-    wrap.append(body);
-    this.logEl.append(wrap);
-    this.#scroll();
-  }
-
-  #clearPending() {
-    this.logEl.querySelector('.msg-pending')?.remove();
-  }
-
-  /* ------------------------------------------------------ quick replies
-     Headless sessions are not given AskUserQuestion — measured: it is absent
-     from the 78-tool list in both permission modes, while an interactive
-     session has it. So there is no structured choice to render, and inventing
-     one would be dressing prose up as a protocol.
-
-     What is real: when a reply ends by offering options, those lines can be
-     made clickable. The button sends that text as the next message, which is
-     exactly what typing it would do — a shortcut, not a channel. */
-
-  #quickReplies(text) { return quickReplies(text); }
-
-  #paintQuickReplies(msg) {
-    const last = msg.blocks?.filter((b) => b.kind === 'text').pop();
-    const opts = this.#quickReplies(last?.text);
-    if (!opts.length) return null;
-
-    const wrap = el('div', 'quick');
-    wrap.append(el('span', 'quick-hint', 'reply with'));
-    for (const o of opts) {
-      const b = el('button', 'quick-btn', o);
-      b.addEventListener('click', () => {
-        // Remove the row first: these belong to a question already answered.
-        wrap.remove();
-        this.inputEl.value = o;
-        this.#send();
-      });
-      wrap.append(b);
-    }
-    return wrap;
-  }
-
-  /* ------------------------------------------------------- permissions */
-
-  #paintPermissions() {
+  paintPermissions() {
     const list = this.permissions ?? [];
     this.permEl.hidden = list.length === 0;
     if (!list.length) { this.permEl.replaceChildren(); return; }
 
     const wait = this.session?.gateWaitSeconds ?? null;
     const frag = document.createDocumentFragment();
-
     for (const r of list) {
       const card = el('div', 'perm');
       const head = el('div', 'perm-head');
@@ -323,7 +251,6 @@ export class Chat {
         head.append(el('span', 'perm-clock', `${left}s → deny`));
       }
       card.append(head);
-
       if (r.detail) card.append(el('pre', 'perm-detail', String(r.detail).slice(0, 600)));
 
       const acts = el('div', 'perm-acts');
@@ -333,7 +260,7 @@ export class Chat {
         ['deny', 'deny', 'bad'],
       ]) {
         const b = el('button', `perm-btn ${cls}`, label);
-        b.addEventListener('click', () => this.#decide(r.toolUseId, verdict, card));
+        b.addEventListener('click', () => this.decide(r.toolUseId, verdict, card));
         acts.append(b);
       }
       card.append(acts);
@@ -342,84 +269,235 @@ export class Chat {
     this.permEl.replaceChildren(frag);
   }
 
-  async #decide(toolUseId, verdict, card) {
-    for (const b of card.querySelectorAll('button')) b.disabled = true;
-    const res = await fetch(
-      this.api(`/api/owned/${encodeURIComponent(this.session.sessionId)}/permissions/${encodeURIComponent(toolUseId)}`),
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', ...this.headers },
-        body: JSON.stringify({ verdict }),
-      },
-    ).then((r) => r.json()).catch((e) => ({ ok: false, reason: e.message }));
-
-    if (!res.ok) {
-      this.#note(`Decision not recorded: ${res.reason}`, 'bad');
-      for (const b of card.querySelectorAll('button')) b.disabled = false;
-    }
-  }
-
-  #note(text, kind = '') {
-    this.logEl.append(el('div', `chat-note ${kind}`, text));
-    this.#scroll();
-  }
-
-  #paintState() {
+  paintState() {
     const s = this.session;
-    const has = Boolean(s);
-    this.formEl.hidden = !has;
-    this.stopEl.hidden = !has || s.state === 'exited' || s.state === 'failed';
-    // A session without a gate says so plainly. Showing only the permission
-    // mode would let an ungated session look like a guarded one.
-    this.stateEl.textContent = has
-      ? `${s.state} · ${s.permissionMode}${s.gated ? '' : ' · NO GATE'}`
-      : 'no session';
-    this.stateEl.classList.toggle('ungated', has && !s.gated);
-    this.stateEl.dataset.state = has ? s.state : 'none';
-    this.costEl.textContent = has && s.costUsd ? `$${s.costUsd.toFixed(4)}` : '';
-    this.inputEl.disabled = !has || s.state === 'exited' || s.state === 'failed';
+    const dead = s.state === 'exited' || s.state === 'failed';
+    this.formEl.hidden = false;
+    this.inputEl.disabled = dead;
   }
 
-  #scroll() {
+  note(text, kind = '') { this.logEl.append(el('div', `chat-note ${kind}`, text)); this.scroll(); }
+
+  scroll() {
     // Only follow the tail when the reader is already at it, so scrolling back
     // through a long reply is not yanked forward by the next token.
-    const nearBottom = this.logEl.scrollHeight - this.logEl.scrollTop - this.logEl.clientHeight < 120;
-    if (nearBottom) this.logEl.scrollTop = this.logEl.scrollHeight;
+    const near = this.logEl.scrollHeight - this.logEl.scrollTop - this.logEl.clientHeight < 120;
+    if (near) this.logEl.scrollTop = this.logEl.scrollHeight;
   }
+
+  pending(text) {
+    this.clearPending();
+    const wrap = el('div', 'msg msg-user msg-pending');
+    wrap.append(el('div', 'msg-role', 'you'));
+    wrap.append(el('div', 'msg-body msg-text', text));
+    this.logEl.append(wrap);
+    this.scroll();
+  }
+
+  clearPending() { this.logEl.querySelector('.msg-pending')?.remove(); }
 
   /* ------------------------------------------------------------ actions */
 
-  async #send() {
+  async send() {
     const text = this.inputEl.value.trim();
-    if (!text || !this.session) return;
+    if (!text) return;
     this.inputEl.value = '';
-
     // No optimistic bubble. The session is started with --replay-user-messages,
     // so it echoes what it actually received; drawing our own copy as well
-    // printed every message twice. Waiting for the echo also means the log
-    // shows what the session got, not what we hoped it got.
-    this.#pending(text);
+    // printed every message twice.
+    this.pending(text);
 
-    const res = await fetch(this.api(`/api/owned/${encodeURIComponent(this.session.sessionId)}/message`), {
+    const res = await fetch(this.api(`/api/owned/${encodeURIComponent(this.id)}/message`), {
       method: 'POST',
       headers: { 'content-type': 'application/json', ...this.headers },
       body: JSON.stringify({ text }),
     }).then((r) => r.json()).catch((e) => ({ ok: false, reason: e.message }));
 
+    if (!res.ok) { this.clearPending(); this.note(`Not sent: ${res.reason}`, 'bad'); }
+    else { this.session = res.session; this.paintState(); this.onChange(this); }
+  }
+
+  async decide(toolUseId, verdict, card) {
+    for (const b of card.querySelectorAll('button')) b.disabled = true;
+    const res = await fetch(
+      this.api(`/api/owned/${encodeURIComponent(this.id)}/permissions/${encodeURIComponent(toolUseId)}`),
+      { method: 'POST', headers: { 'content-type': 'application/json', ...this.headers }, body: JSON.stringify({ verdict }) },
+    ).then((r) => r.json()).catch((e) => ({ ok: false, reason: e.message }));
     if (!res.ok) {
-      this.#clearPending();
-      this.#note(`Not sent: ${res.reason}`, 'bad');
-    } else {
-      this.session = res.session;
-      this.#paintState();
+      this.note(`Decision not recorded: ${res.reason}`, 'bad');
+      for (const b of card.querySelectorAll('button')) b.disabled = false;
     }
   }
 
-  async #stop() {
-    if (!this.session) return;
-    await fetch(this.api(`/api/owned/${encodeURIComponent(this.session.sessionId)}/stop`), {
-      method: 'POST',
-      headers: this.headers,
+  async stop() {
+    await fetch(this.api(`/api/owned/${encodeURIComponent(this.id)}/stop`), {
+      method: 'POST', headers: this.headers,
     }).catch(() => {});
   }
 }
+
+/* ============================================================== the tabs === */
+
+export class Chat {
+  constructor(root, { api, headers }) {
+    this.root = root;
+    this.api = api;
+    this.headers = headers;
+    this.panes = new Map();
+    this.activeId = null;
+    this.onActivate = () => {};
+
+    this.root.innerHTML = `
+      <div class="chat-head">
+        <div class="tabs"></div>
+        <span class="chat-state"></span>
+        <span class="chat-cost"></span>
+        <button class="ghost chat-stop" type="button" hidden>stop</button>
+      </div>
+      <div class="panes"></div>`;
+
+    this.tabsEl = this.root.querySelector('.tabs');
+    this.panesEl = this.root.querySelector('.panes');
+    this.stateEl = this.root.querySelector('.chat-state');
+    this.costEl = this.root.querySelector('.chat-cost');
+    this.stopEl = this.root.querySelector('.chat-stop');
+    this.stopEl.addEventListener('click', () => this.active?.stop?.());
+
+    // Countdowns have to move on their own; nothing else re-renders them.
+    setInterval(() => { if (this.active?.permissions?.length) this.active.paintPermissions(); }, 1000);
+  }
+
+  get active() { return this.activeId ? this.panes.get(this.activeId) : null; }
+  get ids() { return [...this.panes.keys()]; }
+
+  /** A raw shell as a tab. Only reachable when the server was started with
+   *  --enable-pty; the view carries its own warning. */
+  async startTerminal({ cwd, rows = 30, cols = 110 }) {
+    const res = await fetch(this.api('/api/pty'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...this.headers },
+      body: JSON.stringify({ cwd, rows, cols }),
+    });
+    const body = await res.json().catch(() => ({ ok: false, reason: 'bad response' }));
+    if (!body.ok) return { ok: false, reason: body.reason };
+
+    const host = document.createElement('div');
+    const term = new Term(host, {
+      api: this.api,
+      headers: this.headers,
+      terminal: body.terminal,
+      onClose: (id) => this.close(id),
+    });
+    const pane = {
+      kind: 'term', id: term.id, root: host, term,
+      session: { state: 'running', permissionMode: 'raw shell', gated: false },
+      disconnect: () => term.disconnect(),
+      permissions: [], unread: 0,
+    };
+    host.hidden = true;
+    this.panesEl.append(host);
+    this.panes.set(term.id, pane);
+    this.activate(term.id);
+    return { ok: true, terminal: body.terminal };
+  }
+
+  async start({ cwd, model, permissionMode }) {
+    const res = await fetch(this.api('/api/owned'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...this.headers },
+      body: JSON.stringify({ cwd, model, permissionMode }),
+    });
+    const body = await res.json().catch(() => ({ ok: false, reason: 'bad response' }));
+    if (!body.ok) return { ok: false, reason: body.reason };
+    this.open(body.session);
+    return { ok: true, session: body.session };
+  }
+
+  open(session) {
+    let pane = this.panes.get(session.sessionId);
+    if (!pane) {
+      pane = new Pane(session, { api: this.api, headers: this.headers, onChange: () => this.paintTabs() });
+      this.panesEl.append(pane.root);
+      this.panes.set(session.sessionId, pane);
+    }
+    this.activate(session.sessionId);
+    return pane;
+  }
+
+  activate(id) {
+    if (!this.panes.has(id)) return;
+    this.activeId = id;
+    for (const [pid, p] of this.panes) {
+      p.root.hidden = pid !== id;
+      if (pid === id) p.unread = 0;
+    }
+    this.paintTabs();
+    const a = this.active;
+    if (a?.kind === 'term') a.term.screen.focus();
+    else a?.inputEl?.focus();
+    // A terminal is not a session, so the canvas is left where it is rather
+    // than pointed at a session id that does not exist.
+    this.onActivate(a?.kind === 'term' ? null : id);
+  }
+
+  close(id) {
+    const pane = this.panes.get(id);
+    if (!pane) return;
+    // Closing a tab closes the view, not the session: it keeps running and can
+    // be reopened from the sidebar. Stopping is a separate, explicit act.
+    pane.disconnect();
+    pane.root.remove();
+    this.panes.delete(id);
+    if (this.activeId === id) {
+      const next = this.ids[0] ?? null;
+      this.activeId = null;
+      if (next) this.activate(next); else { this.paintTabs(); this.onActivate(null); }
+    } else {
+      this.paintTabs();
+    }
+  }
+
+  paintTabs() {
+    const frag = document.createDocumentFragment();
+    for (const [id, p] of this.panes) {
+      const tab = el('button', `tab${id === this.activeId ? ' on' : ''}`);
+      tab.type = 'button';
+      const dot = el('span', 'tab-dot');
+      dot.dataset.state = p.session?.state ?? 'unknown';
+      tab.append(dot);
+      tab.append(el('span', 'tab-name', p.kind === 'term' ? `shell ${shortId(id)}` : shortId(id)));
+      if (p.kind === 'term') tab.classList.add('tab-term');
+      if (p.permissions?.length) tab.append(el('span', 'tab-badge warn', String(p.permissions.length)));
+      else if (p.unread) tab.append(el('span', 'tab-badge', String(p.unread)));
+      tab.title = `${id}\n${p.session?.state ?? ''} · ${p.session?.permissionMode ?? ''}`;
+      tab.addEventListener('click', () => this.activate(id));
+
+      const x = el('span', 'tab-x', '×');
+      x.title = 'Close this tab — the session keeps running';
+      x.addEventListener('click', (e) => { e.stopPropagation(); this.close(id); });
+      tab.append(x);
+      frag.append(tab);
+    }
+    this.tabsEl.replaceChildren(frag);
+
+    const a = this.active;
+    const s = a?.session;
+    if (a?.kind === 'term') {
+      this.stateEl.textContent = `${s.state} · raw shell · NO GATE`;
+      this.stateEl.dataset.state = s.state;
+      this.stateEl.classList.add('ungated');
+      this.costEl.textContent = '';
+      this.stopEl.hidden = true;
+      return;
+    }
+    this.stateEl.textContent = s
+      ? `${s.state} · ${s.permissionMode}${s.gated ? '' : ' · NO GATE'}`
+      : 'no session';
+    this.stateEl.dataset.state = s?.state ?? 'none';
+    this.stateEl.classList.toggle('ungated', Boolean(s) && !s.gated);
+    this.costEl.textContent = s?.costUsd ? `$${s.costUsd.toFixed(4)}` : '';
+    this.stopEl.hidden = !s || s.state === 'exited' || s.state === 'failed';
+  }
+}
+
+function shortId(id) { return id.slice(0, 8); }
