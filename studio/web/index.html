@@ -21,6 +21,7 @@
     <button id="new-session" class="ghost primary" type="button">+ session</button>
     <button id="new-term" class="ghost" type="button" hidden>+ shell</button>
     <span id="pulse" class="pulse">connecting</span>
+      <button id="side-show" class="ghost pin" type="button" title="Show the sidebar" hidden>›</button>
     <button id="theme" class="ghost" type="button" aria-label="Toggle theme">◐</button>
   </div>
 </header>
@@ -28,7 +29,11 @@
 <div class="shell">
   <aside class="side">
     <section class="side-block">
-      <div class="side-head"><h2>Fleet</h2><span id="fleet-meta" class="meta"></span></div>
+      <div class="side-head">
+        <h2>Fleet</h2><span id="fleet-meta" class="meta"></span>
+        <button id="side-wide" class="ghost pin" type="button" title="Widen the sidebar">⇥</button>
+        <button id="side-hide" class="ghost pin" type="button" title="Collapse the sidebar">‹</button>
+      </div>
       <div id="fleet" class="fleet" role="list"></div>
       <div class="side-head reach-head" hidden id="reach-head">
         <h2>Reachable elsewhere</h2><span id="reach-meta" class="meta"></span>
@@ -49,11 +54,12 @@
 
   <main class="stage">
     <div id="canvas" class="canvas"></div>
-    <div class="hsplit" id="hsplit" role="separator" aria-orientation="horizontal"
-         aria-label="Resize conversation" tabindex="0" hidden></div>
-    <section id="chat" class="chat" hidden></section>
     <aside id="inspector" class="inspector" hidden></aside>
   </main>
+
+  <div class="resizer" id="chat-split" role="separator" aria-orientation="vertical"
+       aria-label="Resize conversation" tabindex="0" hidden></div>
+  <section id="chat" class="chat" hidden></section>
 </div>
 
 <footer class="foot"><span id="foot-note">starting…</span></footer>

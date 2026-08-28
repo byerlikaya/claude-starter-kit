@@ -22,7 +22,11 @@ const el = {
   reachHead: document.getElementById('reach-head'),
   reachMeta: document.getElementById('reach-meta'),
   chat: document.getElementById('chat'),
-  hsplit: document.getElementById('hsplit'),
+  chatSplit: document.getElementById('chat-split'),
+  resizer: document.getElementById('resizer'),
+  sideWide: document.getElementById('side-wide'),
+  sideHide: document.getElementById('side-hide'),
+  sideShow: document.getElementById('side-show'),
   newSession: document.getElementById('new-session'),
   continueSession: document.getElementById('continue-session'),
   newTerm: document.getElementById('new-term'),
@@ -58,41 +62,60 @@ el.theme.addEventListener('click', () => {
   store.set('csk-studio-theme', next);
 });
 
-/* -------------------------------------------------------------- resizer
-   The sidebar width is the user's, and it survives a reload. Clamped so the
-   panel can never be dragged to nothing or made to swallow the canvas. */
+/* --------------------------------------------------------------- panels
+   Three columns and two dividers. Each width is the user's, remembered, and
+   clamped so neither side panel can be dragged to nothing by accident or made
+   to swallow the graph. Collapsing is a separate, deliberate act with its own
+   control. */
 
-const SIDE_MIN = 170;
-const SIDE_MAX = 620;
-const SIDE_DEFAULT = 260;
+const PANEL = {
+  side: { min: 170, max: 620, def: 260, wide: 460, varName: '--side-w', key: 'csk-studio-side-w' },
+  chat: { min: 280, max: 900, def: 420, wide: 720, varName: '--chat-w', key: 'csk-studio-chat-w' },
+};
 
-function setSideWidth(px, persist = true) {
-  const w = Math.round(Math.min(SIDE_MAX, Math.max(SIDE_MIN, px)));
-  document.documentElement.style.setProperty('--side-w', `${w}px`);
-  if (persist) store.set('csk-studio-side-w', String(w));
+function setPanel(which, px, persist = true) {
+  const p = PANEL[which];
+  const w = Math.round(Math.min(p.max, Math.max(p.min, px)));
+  document.documentElement.style.setProperty(p.varName, `${w}px`);
+  if (persist) store.set(p.key, String(w));
   return w;
 }
 
-setSideWidth(Number(store.get('csk-studio-side-w')) || SIDE_DEFAULT, false);
+for (const which of ['side', 'chat']) {
+  setPanel(which, Number(store.get(PANEL[which].key)) || PANEL[which].def, false);
+}
 
-(() => {
-  const handle = document.getElementById('resizer');
+const shell = document.querySelector('.shell');
+
+// `refit` is off for the first call, which restores the remembered state before
+// the canvas exists. `typeof canvas` is not a guard here: a const in its
+// temporal dead zone throws on typeof too, which is what took the whole page
+// down rather than skipping one re-fit.
+function setSideHidden(hidden, refit = true) {
+  shell.classList.toggle('no-side', hidden);
+  el.sideShow.hidden = !hidden;
+  store.set('csk-studio-side-hidden', hidden ? '1' : '0');
+  if (refit) canvas.fitIfUntouched();
+}
+setSideHidden(store.get('csk-studio-side-hidden') === '1', false);
+
+function dragPanel(handle, which, edge) {
   let drag = null;
-
   handle.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
-    const shell = document.querySelector('.shell');
-    drag = { px: e.clientX, w: handle.previousElementSibling.getBoundingClientRect().width, left: shell.getBoundingClientRect().left };
+    drag = { px: e.clientX, w: parseInt(getComputedStyle(document.documentElement).getPropertyValue(PANEL[which].varName), 10) || PANEL[which].def };
     handle.setPointerCapture(e.pointerId);
     handle.classList.add('dragging');
     document.body.classList.add('resizing');
   });
-
   handle.addEventListener('pointermove', (e) => {
     if (!drag) return;
-    setSideWidth(drag.w + (e.clientX - drag.px));
+    // The right-hand panel grows as the pointer moves left, so its delta is
+    // inverted. Sharing one handler without this made the conversation shrink
+    // when it was dragged open.
+    const delta = (e.clientX - drag.px) * (edge === 'right' ? -1 : 1);
+    setPanel(which, drag.w + delta);
   });
-
   const stop = () => {
     if (!drag) return;
     drag = null;
@@ -102,16 +125,31 @@ setSideWidth(Number(store.get('csk-studio-side-w')) || SIDE_DEFAULT, false);
   };
   handle.addEventListener('pointerup', stop);
   handle.addEventListener('pointercancel', stop);
-
-  // Double-click restores the default; keyboard nudges it for anyone not using
-  // a pointer.
-  handle.addEventListener('dblclick', () => { setSideWidth(SIDE_DEFAULT); canvas.fitIfUntouched(); });
+  handle.addEventListener('dblclick', () => { setPanel(which, PANEL[which].def); canvas.fitIfUntouched(); });
   handle.addEventListener('keydown', (e) => {
-    const cur = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--side-w'), 10) || SIDE_DEFAULT;
-    if (e.key === 'ArrowLeft') { setSideWidth(cur - 16); e.preventDefault(); }
-    if (e.key === 'ArrowRight') { setSideWidth(cur + 16); e.preventDefault(); }
+    const cur = parseInt(getComputedStyle(document.documentElement).getPropertyValue(PANEL[which].varName), 10) || PANEL[which].def;
+    const step = edge === 'right' ? -16 : 16;
+    if (e.key === 'ArrowLeft') { setPanel(which, cur + step); e.preventDefault(); }
+    if (e.key === 'ArrowRight') { setPanel(which, cur - step); e.preventDefault(); }
   });
-})();
+}
+
+dragPanel(el.resizer, 'side', 'left');
+dragPanel(el.chatSplit, 'chat', 'right');
+
+// Widen toggles between the default and a roomier width rather than growing
+// without end: a panel you have to drag back is not a convenience.
+function wideToggle(btn, which) {
+  btn.addEventListener('click', () => {
+    const cur = parseInt(getComputedStyle(document.documentElement).getPropertyValue(PANEL[which].varName), 10) || PANEL[which].def;
+    setPanel(which, Math.abs(cur - PANEL[which].wide) < 24 ? PANEL[which].def : PANEL[which].wide);
+    canvas.fitIfUntouched();
+  });
+}
+wideToggle(el.sideWide, 'side');
+
+el.sideHide.addEventListener('click', () => setSideHidden(true));
+el.sideShow.addEventListener('click', () => setSideHidden(false));
 
 /* ----------------------------------------------------------------- chat
    Write endpoints need the token and a header that a cross-origin page cannot
@@ -120,14 +158,21 @@ setSideWidth(Number(store.get('csk-studio-side-w')) || SIDE_DEFAULT, false);
 const writeHeaders = { 'x-csk-studio': '1', ...(token ? { authorization: `Bearer ${token}` } : {}) };
 const chat = new Chat(el.chat, { api, headers: writeHeaders });
 
-let ownedIds = new Set();
+const ownedIds = new Set();
 
 // Switching tabs points the canvas at that session too: the graph and the
 // conversation are two views of one thing.
+// The conversation's own widen control lives in its header, beside the tabs.
+chat.onGrow = () => {
+  const cur = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--chat-w'), 10) || PANEL.chat.def;
+  setPanel('chat', Math.abs(cur - PANEL.chat.wide) < 24 ? PANEL.chat.def : PANEL.chat.wide);
+  canvas.fitIfUntouched();
+};
+
 chat.onActivate = (sessionId) => {
   const any = chat.ids.length > 0;
   el.chat.hidden = !any;
-  el.hsplit.hidden = !any;
+  el.chatSplit.hidden = !any; shell.classList.toggle('no-chat', !any);
   if (sessionId) {
     ownedIds.add(sessionId);
     selectSession(sessionId);
@@ -191,42 +236,11 @@ getJson('/api/pty')
       try {
         const out = await chat.startTerminal({ cwd: projectsData?.cwd ?? null });
         if (!out.ok) el.foot.textContent = `could not open a shell: ${out.reason}`;
-        else { el.chat.hidden = false; el.hsplit.hidden = false; }
+        else { el.chat.hidden = false; el.chatSplit.hidden = false; shell.classList.remove('no-chat'); }
       } finally { el.newTerm.disabled = false; }
     });
   })
   .catch(() => { /* older server, or pty off */ });
-
-(() => {
-  const CHAT_MIN = 140;
-  const CHAT_MAX = 640;
-  const stored = Number(store.get('csk-studio-chat-h'));
-  if (stored) document.documentElement.style.setProperty('--chat-h', `${stored}px`);
-
-  let drag = null;
-  el.hsplit.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0) return;
-    drag = { py: e.clientY, h: el.chat.getBoundingClientRect().height };
-    el.hsplit.setPointerCapture(e.pointerId);
-    el.hsplit.classList.add('dragging');
-    document.body.classList.add('vresizing');
-  });
-  el.hsplit.addEventListener('pointermove', (e) => {
-    if (!drag) return;
-    const h = Math.round(Math.min(CHAT_MAX, Math.max(CHAT_MIN, drag.h - (e.clientY - drag.py))));
-    document.documentElement.style.setProperty('--chat-h', `${h}px`);
-    store.set('csk-studio-chat-h', String(h));
-  });
-  const stopV = () => {
-    if (!drag) return;
-    drag = null;
-    el.hsplit.classList.remove('dragging');
-    document.body.classList.remove('vresizing');
-    canvas.fitIfUntouched();
-  };
-  el.hsplit.addEventListener('pointerup', stopV);
-  el.hsplit.addEventListener('pointercancel', stopV);
-})();
 
 /* --------------------------------------------------------------- canvas */
 
@@ -633,7 +647,7 @@ function renderFleet(data) {
   sessions.sort((a, b) => (order[a.status] ?? 3) - (order[b.status] ?? 3));
 
   el.fleet.replaceChildren(...sessions.map((s) => {
-    const row = node('div', 'session');
+    const row = node('div', 'session fleet-row');
     const ring = node('span', 'ring');
     ring.dataset.status = ['busy', 'waiting', 'idle'].includes(s.status) ? s.status : 'unknown';
     ring.title = s.status;
@@ -649,6 +663,18 @@ function renderFleet(data) {
     const stat = node('div', 'stat');
     stat.append(node('span', 'status', s.status));
     row.append(ring, who, stat);
+
+    // A live session in the fleet is the one most likely to be wanted, so
+    // clicking it does what clicking it anywhere else does: opens it.
+    if (s.local !== false && s.sessionId) {
+      row.classList.add('clickable');
+      row.setAttribute('aria-current', String(s.sessionId === current));
+      row.title = `Open ${s.name ?? s.sessionId.slice(0, 8)}`;
+      row.addEventListener('click', () => selectSession(s.sessionId));
+    } else {
+      // A session on another machine has no transcript here to open.
+      row.title = `${s.name ?? ''} — on ${s.origin}. Its transcript is on that machine.`;
+    }
     return row;
   }));
 }
@@ -681,7 +707,8 @@ function selectSession(sessionId) {
   }
   const any = chat.ids.length > 0;
   el.chat.hidden = !any;
-  el.hsplit.hidden = !any;
+  el.chatSplit.hidden = !any;
+  shell.classList.toggle('no-chat', !any);
   // Offered only where it means something: a session the panel already owns is
   // already here, and there is nothing to continue.
   el.continueSession.hidden = ownedIds.has(sessionId);

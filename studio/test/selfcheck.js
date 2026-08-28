@@ -22,6 +22,7 @@ import { prepare, decide, pending, cleanup, _internals as permInternals } from '
 import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import { quickReplies } from '../web/chat.js';
+import { installDom } from './dom-stub.js';
 import * as pty from '../server/lib/pty.js';
 import { plan as terminalPlan } from '../server/lib/terminal.js';
 import { gateLog, gateReport, board, sessionStats, _internals as kitInternals } from '../server/lib/kit-telemetry.js';
@@ -591,6 +592,90 @@ check('command envelopes are not shown as things someone said',
   /command-name\|command-message/.test(graphSrc));
 check('a truncated history says how much was left out',
   /truncated/.test(graphSrc) && /total - conv\.messages\.length|conv\.total/.test(chatSrc2));
+
+/* -------------------------------------------- §20 the modules evaluate ---
+   A syntax check parses; it does not run. Both of today's page-killing bugs
+   parsed cleanly — a const read inside its temporal dead zone, and an
+   identifier whose declaration had been deleted out from under it. Each module
+   is loaded against a stub DOM so that class of failure is caught here rather
+   than by a blank page. */
+
+process.stdout.write('\n== §20 browser modules load ==\n');
+
+{
+  const cleanup = installDom();
+  for (const mod of ['md.js', 'canvas.js', 'chat.js', 'term.js', 'app.js']) {
+    let err = null;
+    try {
+      // Cache-busted so a module is really evaluated on every run.
+      await import(`../web/${mod}?t=${Date.now()}`);
+    } catch (e) {
+      err = e;
+    }
+    check(`${mod} evaluates`, err === null, err ? `${err.name}: ${err.message}` : null);
+  }
+  cleanup();
+}
+
+/* --------------------------------- §21 nothing is used undeclared ------
+   Loading a module proves what runs at load. It says nothing about a handler
+   that only runs on a click — which is where the second of today's bugs lived:
+   a Set used in three places whose declaration had been deleted, so the module
+   evaluated fine and the page broke the moment anyone clicked.
+ 
+   This looks for the shape that bug had: a name used as a collection, but
+   declared nowhere in its file. Narrow on purpose — a general scope checker is
+   a linter, and this is the failure that actually happened. */
+
+process.stdout.write('\n== §21 collections are declared ==\n');
+
+// Not preceded by a dot: `this.collapsed.has(...)` is a property, not a name
+// this file has to declare.
+const COLLECTION_USE = /(?<![.\w$])([a-z][A-Za-z0-9_]*)\.(?:has|add|delete|clear)\(/g;
+const GLOBALS = new Set(['localStorage', 'sessionStorage', 'classList', 'dataset', 'document', 'window', 'store', 'headers', 'params', 'searchParams']);
+
+for (const mod of ['app.js', 'chat.js', 'canvas.js', 'term.js']) {
+  const src = read(path.join(STUDIO, 'web', mod)) ?? '';
+  const used = new Set();
+  let m;
+  while ((m = COLLECTION_USE.exec(src)) !== null) used.add(m[1]);
+
+  const missing = [];
+  for (const name of used) {
+    if (GLOBALS.has(name)) continue;
+    // Declared here, imported here, or bound as a parameter of a function in
+    // this file. Anything else is a name nothing in the file creates.
+    const declared = new RegExp(
+      String.raw`(?:const|let|var|function|class)\s+${name}\b`
+      + String.raw`|import[^;]*\b${name}\b`
+      + String.raw`|\(\s*(?:[^)]*,\s*)?${name}\s*[,)]`
+      + String.raw`|\{[^}]*\b${name}\b[^}]*\}\s*=`,
+    ).test(src);
+    if (!declared) missing.push(name);
+  }
+  check(`${mod}: every collection it uses is declared in it`, missing.length === 0,
+    missing.length ? `used but never declared: ${missing.join(', ')}` : `${used.size} checked`);
+}
+
+/* ------------------------------------------------------ §22 the layout ---
+   Three columns, two dividers, and a conversation that reads like one. */
+
+process.stdout.write('\n== §22 layout ==\n');
+
+const cssSrc = read(path.join(STUDIO, 'web', 'style.css')) ?? '';
+check('the conversation is a column beside the graph, not a drawer under it',
+  /grid-template-columns:\s*var\(--side-w[^)]*\)\s+5px\s+1fr\s+5px\s+var\(--chat-w/.test(cssSrc));
+check('who spoke is read from which side it sits on',
+  /\.msg-user\s*\{\s*align-items:\s*flex-end/.test(cssSrc)
+  && /\.msg-assistant\s*\{\s*align-items:\s*flex-start/.test(cssSrc));
+check('either panel can be collapsed without leaving a gap where it was',
+  /\.shell\.no-side/.test(cssSrc) && /\.shell\.no-chat/.test(cssSrc));
+
+const appSrc2 = read(path.join(STUDIO, 'web', 'app.js')) ?? '';
+check('the right-hand divider grows its panel when dragged left',
+  /edge === 'right' \? -1 : 1/.test(appSrc2),
+  'sharing one handler without inverting the delta shrank the panel being opened');
+check('both widths are remembered', /csk-studio-side-w/.test(appSrc2) && /csk-studio-chat-w/.test(appSrc2));
 
 /* --------------------------------------------------------------- verdict */
 

@@ -399,6 +399,7 @@ export class Chat {
         <div class="tabs"></div>
         <span class="chat-state"></span>
         <span class="chat-cost"></span>
+        <button class="ghost pin chat-grow" type="button" title="Widen the conversation">⇤</button>
         <button class="ghost chat-stop" type="button" hidden>stop</button>
       </div>
       <div class="panes"></div>`;
@@ -409,6 +410,9 @@ export class Chat {
     this.costEl = this.root.querySelector('.chat-cost');
     this.stopEl = this.root.querySelector('.chat-stop');
     this.stopEl.addEventListener('click', () => this.active?.stop?.());
+    this.growEl = this.root.querySelector('.chat-grow');
+    this.onGrow = () => {};
+    this.growEl.addEventListener('click', () => this.onGrow());
 
     // Countdowns have to move on their own; nothing else re-renders them.
     setInterval(() => { if (this.active?.permissions?.length) this.active.paintPermissions(); }, 1000);
