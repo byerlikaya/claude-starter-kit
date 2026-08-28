@@ -46,6 +46,7 @@ class OwnedSession {
     // panel that silently ran ungated would be worse than one that cannot run.
     this.gate = prepare(this.id);
     this.pendingPermissions = [];
+    this.gateEvents = [];      // hook lifecycle, newest last
     this.unwatch = this.gate
       ? watch(this.id, (reqs) => {
         this.pendingPermissions = reqs;
@@ -60,6 +61,11 @@ class OwnedSession {
       '--include-partial-messages',
       '--replay-user-messages',
       '--forward-subagent-text',
+      // Gate decisions with the moment they happened. gate-log.tsv records the
+      // same decisions but carries no timestamp, so for a session we own this
+      // is the difference between "this happened at 13:42" and "this was in
+      // the log when we looked".
+      '--include-hook-events',
       '--session-id', this.id,
       '--permission-mode', this.permissionMode,
     ];
@@ -115,6 +121,24 @@ class OwnedSession {
 
   // State the UI needs but the raw stream only implies.
   #absorb(rec) {
+    if (rec?.type === 'system' && (rec.subtype === 'hook_started' || rec.subtype === 'hook_response')) {
+      // The bridge's own hook is noise here: the panel already shows those as
+      // permission cards, and listing them again would double every decision.
+      const ours = typeof rec.hook_name === 'string' && this.gate;
+      const ev = {
+        at: Date.now(),
+        phase: rec.subtype === 'hook_started' ? 'started' : 'finished',
+        hookId: rec.hook_id ?? null,
+        name: rec.hook_name ?? null,
+        event: rec.hook_event ?? null,
+        exitCode: rec.exit_code ?? null,
+        outcome: rec.outcome ?? null,
+        stderr: (rec.stderr ?? '').slice(0, 300) || null,
+        ours,
+      };
+      this.gateEvents.push(ev);
+      if (this.gateEvents.length > 500) this.gateEvents.shift();
+    }
     if (rec?.type === 'system' && rec.subtype === 'init') this.state = 'idle';
     else if (rec?.type === 'stream_event' && rec.event?.type === 'message_start') this.state = 'working';
     else if (rec?.type === 'result') {
@@ -184,6 +208,7 @@ class OwnedSession {
       gated: Boolean(this.gate),
       gateWaitSeconds: this.gate?.waitSeconds ?? null,
       pendingPermissions: this.pendingPermissions,
+      gateEvents: this.gateEvents.slice(-40),
     };
   }
 }

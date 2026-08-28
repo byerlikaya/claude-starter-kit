@@ -106,6 +106,30 @@ reported as unreachable, never as empty.
 Nothing listens on a network interface in this arrangement: both Studios stay on
 loopback and the tunnel does the crossing.
 
+## What the kit already measured
+
+The panel does not recompute any of it. Selecting the session node opens what
+the kit's own tools say, including when they say they cannot answer:
+
+| Tab | Source |
+|---|---|
+| gates | `gate-report.sh --json` for the rule inventory, `.claude/gate-log.tsv` for what fired |
+| stats | `session-stats.sh --raw` — fifteen metrics over this transcript |
+| board | `board.sh status` |
+
+One distinction is carried all the way to the screen. A gate event from a
+session the panel started arrives through `--include-hook-events` and carries
+the moment it happened, so it is listed under **Happened**. A line in
+`gate-log.tsv` does not — that format has no timestamp column — so those are
+listed under **Observed**, with the reason written out. Drawing the second as
+the first would be the first untrue thing in this panel.
+
+`gate-report.sh` finds the hooks relative to where it runs: `./.claude/hooks`
+in an installed project, `./hooks` otherwise. Both layouts are handed what they
+expect rather than the script being asked to guess. Where it still cannot
+answer — a directory with no kit, a project with no log — that is reported as
+not measured, never as zero.
+
 ## The permission gate
 
 A hook injected through `--settings` parks each tool call, writes it into a

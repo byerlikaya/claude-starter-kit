@@ -830,3 +830,28 @@ body.vresizing { cursor: row-resize; user-select: none; }
 
 .tab.tab-term { border-style: dashed; }
 .tab.tab-term.on { border-color: var(--bad); background: color-mix(in srgb, var(--bad) 10%, transparent); }
+
+/* -------------------------------------------------------- kit telemetry --- */
+
+.kit-sum { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px; }
+.kit-sum .cv-bit[data-verdict="BLOCK"] { color: var(--bad); }
+.kit-sum .cv-bit[data-verdict="ASK"]   { color: var(--waiting); }
+.kit-sum .cv-bit[data-verdict="ALLOW"] { color: var(--good); }
+
+.gate-row {
+  display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: baseline;
+  padding: 4px 0; border-bottom: 1px solid var(--line); font-size: 12px;
+}
+.gate-when { font-family: var(--mono); font-size: 10px; color: var(--ink-faint); }
+.gate-name { color: var(--ink-dim); overflow-wrap: anywhere; }
+.gate-sec { font-family: var(--mono); font-size: 10px; color: var(--ink-faint); }
+.gate-verdict {
+  font-family: var(--mono); font-size: 9px; letter-spacing: 0.05em;
+  border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; white-space: nowrap;
+}
+.gate-verdict[data-verdict="BLOCK"] { color: var(--bad);     border-color: color-mix(in srgb, var(--bad) 40%, transparent); }
+.gate-verdict[data-verdict="ASK"]   { color: var(--waiting); border-color: color-mix(in srgb, var(--waiting) 40%, transparent); }
+.gate-verdict[data-verdict="ALLOW"] { color: var(--good);    border-color: color-mix(in srgb, var(--good) 35%, transparent); }
+
+.inspector dd.bad { color: var(--bad); }
+.ihint strong { display: block; color: var(--waiting); margin-bottom: 3px; }

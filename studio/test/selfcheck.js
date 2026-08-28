@@ -24,6 +24,7 @@ import os from 'node:os';
 import { quickReplies } from '../web/chat.js';
 import * as pty from '../server/lib/pty.js';
 import { plan as terminalPlan } from '../server/lib/terminal.js';
+import { gateLog, gateReport, board, sessionStats, _internals as kitInternals } from '../server/lib/kit-telemetry.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const STUDIO = path.resolve(HERE, '..');
@@ -467,6 +468,42 @@ check('a path with a quote in it cannot break out of the command',
   tp.line);
 check('the session id is quoted too', tp.line.includes("'abc-123'"));
 check('the plan is inspectable before anything launches', typeof tp.line === 'string' && tp.line.length > 0);
+
+/* ------------------------------------------- §16 the kit's own numbers ---
+   The panel reports what the kit's tools said, including when they said they
+   could not answer. The distinction these pin is the one that would be easiest
+   to lose: a decision found in a log is not a decision seen happening. */
+
+process.stdout.write('\n== §16 kit telemetry ==\n');
+
+const own = gateLog(REPO);
+check('the gate log is read where it exists', own.measured === true, own.reason ?? `${own.total} entries`);
+check('the log is marked as carrying no timestamps',
+  own.measured && own.timestamped === false,
+  'the format has no timestamp column, and the panel must not imply one');
+check('whether commands were recorded is stated, not assumed',
+  own.measured && typeof own.commandsRecorded === 'boolean');
+check('verdicts are counted', own.measured && typeof own.counts?.BLOCK === 'number', JSON.stringify(own.counts));
+
+const noLog = gateLog(os.tmpdir());
+check('a project with no gate log says so rather than showing an empty list',
+  noLog.measured === false && /no .claude\/gate-log/.test(noLog.reason ?? ''),
+  noLog.reason);
+check('"not measured" never carries entries', (noLog.entries ?? []).length === 0);
+
+check('the kit is found in an installed layout and in this source checkout',
+  kitInternals.kitPaths(REPO)?.kind === 'source' && kitInternals.kitPaths(os.tmpdir()) === null);
+
+const rep = await gateReport(os.tmpdir());
+check('a directory without the kit is told so', rep.measured === false, rep.reason);
+
+const brd = await board(REPO);
+check('a repo with no board reports a state, not a failure',
+  brd.measured === true && brd.present === false,
+  brd.text ?? brd.reason);
+
+const st = await sessionStats(REPO, path.join(os.tmpdir(), 'definitely-not-a-transcript.jsonl'));
+check('missing transcript is reported rather than guessed at', st.measured === false, st.reason);
 
 /* --------------------------------------------------------------- verdict */
 

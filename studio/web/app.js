@@ -225,6 +225,7 @@ function showInspector(node) {
   inspectorTab = node.kind === 'session' ? 'meta' : 'report';
   paintInspector();
   if (node.kind === 'agent') loadDetail(node.id, node.status);
+  if (node.kind === 'session' && current) loadKit(current);
 }
 
 // Keyed by status as well as id: a report fetched while the agent was still
@@ -296,7 +297,9 @@ function paintInspector() {
 
   const tabs = document.createElement('div');
   tabs.className = 'itabs';
-  const available = n.kind === 'session' ? ['meta'] : ['report', 'activity', 'prompt', 'meta'];
+  const available = n.kind === 'session'
+    ? ['meta', 'gates', 'stats', 'board']
+    : ['report', 'activity', 'prompt', 'meta'];
   for (const t of available) {
     const b = node('button', `itab${inspectorTab === t ? ' on' : ''}`, t);
     b.addEventListener('click', () => { inspectorTab = t; paintInspector(); });
@@ -306,7 +309,9 @@ function paintInspector() {
   const body = document.createElement('div');
   body.className = 'ibody';
 
-  if (inspectorTab === 'meta') {
+  if (['gates', 'stats', 'board'].includes(inspectorTab)) {
+    paintKit(body, inspectorTab);
+  } else if (inspectorTab === 'meta') {
     body.append(metaRows(n));
     const tools = Object.entries(n.tools ?? {});
     if (tools.length) {
@@ -377,6 +382,122 @@ function paintInspector() {
   }
 
   el.inspector.replaceChildren(head, sub, tabs, body);
+}
+
+/* ------------------------------------------------------------------ kit
+   What the kit already measures about itself. Nothing here is recomputed —
+   each panel shows what the kit's own tool said, including when it said it
+   could not answer. */
+
+let kitData = null;
+let kitFor = null;
+
+async function loadKit(sessionId) {
+  if (kitFor === sessionId && kitData) return;
+  kitFor = sessionId;
+  kitData = null;
+  try {
+    kitData = await getJson(`/api/kit?session=${encodeURIComponent(sessionId)}`);
+  } catch (e) {
+    kitData = { measured: false, reason: e.message };
+  }
+  if (inspectorNode?.kind === 'session') paintInspector();
+}
+
+function unmeasured(reason) {
+  const d = node('div', 'ihint');
+  d.append(node('strong', null, 'Not measured'));
+  d.append(node('div', null, reason || 'no reason given'));
+  d.append(node('div', 'why', 'Which is not the same as nothing having happened.'));
+  return d;
+}
+
+function paintKit(body, tab) {
+  if (!kitData) { body.append(node('div', 'ihint', 'Reading the kit…')); return; }
+
+  if (tab === 'stats') {
+    const s = kitData.stats;
+    if (!s?.measured) { body.append(unmeasured(s?.reason)); return; }
+    const dl = document.createElement('dl');
+    for (const [k, v] of Object.entries(s.metrics)) {
+      const dt = node('dt', null, k.replace(/_/g, ' '));
+      const dd = node('dd', null, v.toLocaleString());
+      if (v > 0 && /runaway|errors|interrupts/.test(k)) dd.classList.add('bad');
+      dl.append(dt, dd);
+    }
+    body.append(dl);
+    body.append(node('div', 'ihint', 'session-stats.sh --raw, over this transcript.'));
+    return;
+  }
+
+  if (tab === 'board') {
+    const b = kitData.board;
+    if (!b?.measured) { body.append(unmeasured(b?.reason)); return; }
+    if (!b.present) {
+      body.append(node('div', 'ihint', b.text));
+      return;
+    }
+    body.append(node('pre', 'md-code', b.text));
+    return;
+  }
+
+  // gates
+  const log = kitData.log;
+  const rep = kitData.report;
+
+  if (rep?.measured) {
+    const head = node('div', 'kit-sum');
+    head.append(node('span', 'cv-bit', `${rep.rules} rules`));
+    head.append(node('span', 'cv-bit', `${(rep.decisions ?? 0).toLocaleString()} decisions`));
+    body.append(head);
+  } else {
+    body.append(unmeasured(rep?.reason));
+  }
+
+  // Owned sessions carry the moment each gate ran; the log does not.
+  const owned = chat.panes.get(current);
+  const live = owned?.session?.gateEvents ?? [];
+  if (live.length) {
+    body.append(node('h4', 'md-h', 'Happened'));
+    for (const e of live.slice(-12).reverse()) {
+      const row = node('div', 'gate-row');
+      row.append(node('span', 'gate-when', new Date(e.at).toLocaleTimeString()));
+      row.append(node('span', 'gate-name', e.name ?? e.event ?? 'hook'));
+      const v = node('span', 'gate-verdict', e.phase === 'started' ? 'ran' : (e.exitCode === 2 ? 'blocked' : e.outcome ?? 'done'));
+      v.dataset.verdict = e.exitCode === 2 ? 'BLOCK' : 'ALLOW';
+      row.append(v);
+      body.append(row);
+    }
+  }
+
+  if (!log?.measured) { body.append(unmeasured(log?.reason)); return; }
+
+  const h = node('h4', 'md-h', 'Observed');
+  body.append(h);
+  // The distinction is the point: this file has no timestamp column, so these
+  // are decisions found in the log, not decisions seen happening.
+  body.append(node('div', 'ihint',
+    `${log.total.toLocaleString()} in the tail of gate-log.tsv${log.truncated ? ' (truncated)' : ''} · `
+    + 'no timestamps in this format, so these are what the log holds, not when they ran'
+    + (log.commandsRecorded ? '' : ' · commands not recorded (CSK_GATE_LOG_CMD=1 records them)')));
+
+  const counts = node('div', 'kit-sum');
+  for (const [k, v] of Object.entries(log.counts ?? {})) {
+    const b = node('span', 'cv-bit', `${v.toLocaleString()} ${k}`);
+    b.dataset.verdict = k;
+    counts.append(b);
+  }
+  body.append(counts);
+
+  for (const e of (log.entries ?? []).slice(0, 40)) {
+    const row = node('div', 'gate-row');
+    const v = node('span', 'gate-verdict', e.verdict);
+    v.dataset.verdict = e.verdict;
+    row.append(v);
+    row.append(node('span', 'gate-name', e.rule ?? '—'));
+    if (e.section) row.append(node('span', 'gate-sec', e.section));
+    body.append(row);
+  }
 }
 
 /* ---------------------------------------------------------------- fleet */

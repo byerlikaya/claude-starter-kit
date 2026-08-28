@@ -27,6 +27,7 @@ import {
 import { decide, pending, alwaysList } from './lib/permissions.js';
 import { open as openTerminal, plan as terminalPlan } from './lib/terminal.js';
 import * as pty from './lib/pty.js';
+import { gateLog, gateReport, sessionStats, board } from './lib/kit-telemetry.js';
 import { randomUUID } from 'node:crypto';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -264,6 +265,19 @@ async function handle(req, res) {
       },
       buildMs: Date.now() - started,
     });
+  }
+
+  // What the kit already measures about itself, reported as the kit reports it.
+  if (url.pathname === '/api/kit') {
+    const cwd = url.searchParams.get('cwd') || process.cwd();
+    const sid = url.searchParams.get('session');
+    const session = sid ? findSession(sid) : null;
+    const [report, stats, brd] = await Promise.all([
+      gateReport(cwd),
+      session ? sessionStats(cwd, session.file) : Promise.resolve({ measured: false, reason: 'no session named' }),
+      board(cwd),
+    ]);
+    return sendJson(res, 200, { measured: true, cwd, log: gateLog(cwd), report, stats, board: brd });
   }
 
   if (url.pathname === '/api/palette') {
