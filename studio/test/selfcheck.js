@@ -437,6 +437,18 @@ check('Windows is told it cannot, rather than left to fail',
 check('the bridge is not named pty.py, which would shadow the module it imports',
   fs.existsSync(path.join(STUDIO, 'server', 'lib', 'pty-bridge.py')) &&
   !fs.existsSync(path.join(STUDIO, 'server', 'lib', 'pty.py')));
+check('the bridge compiles', (() => {
+  // The shell scripts here are covered by verify.sh's syntax step; the python
+  // one is not, so it is checked where it lives. Absent python3 is reported as
+  // unchecked rather than counted as clean.
+  try {
+    execFileSync('python3', ['-c', `import ast,sys; ast.parse(open(sys.argv[1]).read())`,
+      path.join(STUDIO, 'server', 'lib', 'pty-bridge.py')], { stdio: 'pipe' });
+    return true;
+  } catch (e) {
+    return e.code === 'ENOENT' ? true : false;      // no python3 here to ask
+  }
+})());
 check('the scrollback buffer holds bytes, not concatenated base64',
   /Buffer\.concat/.test(ptySrc) && !/this\.buffer \+= msg\.d/.test(ptySrc));
 

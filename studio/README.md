@@ -10,16 +10,24 @@ user's `./.claude/` — is untouched by it.
 ## Run
 
 ```bash
-node studio/server/index.js            # http://127.0.0.1:7777
+npm run studio                         # http://127.0.0.1:7777
 node studio/server/index.js --port 8080
 node studio/server/index.js --selftest # offline checks, no browser
 ```
+
+There is no `/studio-csk` slash command, and that is deliberate. Commands live
+in `claude-starter/commands/` and are copied into every user's `.claude/`, while
+Studio is not: `start.sh` installs five directories and this is not one of them,
+and the npm tarball carries 130 files of which none are Studio's. A command
+shipped to every project pointing at a directory none of them have is a broken
+promise, not a convenience.
 
 There is no install step. Studio has **zero dependencies** — `node:http` and
 `node:child_process` are the whole stack, matching the kit's own promise. If
 `studio/node_modules` ever exists, something has gone wrong.
 
-Requires Node 18+.
+Requires Node 18+. `bash packaging/verify.sh studio` runs the same checks CI
+runs; a machine without node reports a skip rather than a pass.
 
 ## What it does
 
