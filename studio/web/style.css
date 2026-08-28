@@ -1040,3 +1040,35 @@ body.vresizing { cursor: row-resize; user-select: none; }
 /* In full screen the window chrome is gone, so the panel's own top edge is the
    only frame left; it should not look like a floating bar. */
 :fullscreen .bar { border-top: none; }
+
+/* ------------------------------------------------------ group lanes --- */
+
+.cv-lanes { position: absolute; inset: 0; pointer-events: none; }
+
+/* The name of a group, sitting on the line that separates it from the one
+   before. Without it the grouping reads as an accident of spacing. */
+.cv-lane {
+  position: absolute;
+  display: flex; align-items: center; gap: 7px;
+  height: 18px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid color-mix(in srgb, var(--lane-color) 30%, transparent);
+}
+.cv-lane-name {
+  font-family: var(--mono); font-size: 10px; font-weight: 600;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--lane-color);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cv-lane-count {
+  font-family: var(--mono); font-size: 9px; color: var(--ink-faint);
+  border: 1px solid var(--line); border-radius: 999px; padding: 0 5px;
+}
+
+/* ---------------------------------------------------------- node mark --- */
+
+.cv-mark { width: 13px; height: 13px; flex: none; color: var(--node-color); }
+/* A type the palette does not know keeps a neutral mark, like its colour. */
+.cv-mark.cv-mark-unknown { color: var(--ink-faint); opacity: 0.7; }
+.cv-node[data-source="kit"] .cv-mark { opacity: 1; }
+.cv-node[data-source="builtin"] .cv-mark { opacity: 0.85; }

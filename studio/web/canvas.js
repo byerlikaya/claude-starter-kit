@@ -13,8 +13,44 @@
 // work handed downward rather than sideways.
 const NODE_W = 236;
 const NODE_H = 104;
-const SIBLING_GAP = 26;   // between nodes at the same depth
-const DEPTH_GAP = 108;    // between one depth and the next
+const SIBLING_GAP = 26;   // between nodes of the same kind
+const GROUP_GAP = 64;     // between one kind and the next
+const DEPTH_GAP = 128;    // between one depth and the next
+const LANE_LABEL = 22;    // room above a group for its name
+const MAX_PER_GROUP_ROW = 4;
+// Marks, so a card says what kind of thing it is before it is read.
+//
+// The kit's own is the three-bar mark from assets/icon.svg, redrawn here rather
+// than fetched — one <img> per node would be a request per node, and the shape
+// is four rectangles.
+//
+// Claude's built-in agents get a neutral burst, NOT Anthropic's logo. Shipping
+// a vendor's trademark inside an MIT repo, on cards the panel draws itself,
+// claims a relationship this project does not have. The shape reads as "not
+// ours" without borrowing anyone's mark.
+const MARKS = {
+  kit: '<g transform="rotate(20 8 8)">'
+    + '<rect x="3.6" y="2.4" width="2.1" height="11.2" rx="1" fill="currentColor" opacity=".55"/>'
+    + '<rect x="6.9" y="2.4" width="2.1" height="11.2" rx="1" fill="currentColor" opacity=".78"/>'
+    + '<rect x="10.2" y="2.0" width="2.4" height="12" rx="1.2" fill="currentColor"/></g>',
+  builtin: '<g fill="currentColor"><rect x="7.2" y="1.8" width="1.6" height="12.4" rx=".8"/>'
+    + '<rect x="7.2" y="1.8" width="1.6" height="12.4" rx=".8" transform="rotate(60 8 8)"/>'
+    + '<rect x="7.2" y="1.8" width="1.6" height="12.4" rx=".8" transform="rotate(120 8 8)"/></g>',
+  workflow: '<g fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">'
+    + '<path d="M3 4.5h10M3 8h10M3 11.5h10"/></g>',
+  session: '<g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">'
+    + '<path d="M3.5 4.5l3 3-3 3M8.5 11.5h4"/></g>',
+};
+
+/** Element helper. `el` is used as a local name for a node all over this file,
+ *  so the helper is named for what it does instead. */
+function mk(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text != null) n.textContent = text;
+  return n;
+}
+
 const MIN_K = 0.06;
 const MAX_K = 2.5;
 // A depth level with 105 siblings is 27,000px of one row. Past this many, the
@@ -56,6 +92,7 @@ export class Canvas {
     this.root.innerHTML = `
       <div class="cv-viewport">
         <svg class="cv-edges" aria-hidden="true"><defs></defs><g class="cv-edge-g"></g></svg>
+        <div class="cv-lanes"></div>
         <div class="cv-nodes"></div>
       </div>
       <div class="cv-hud">
@@ -72,6 +109,8 @@ export class Canvas {
     this.svg = this.root.querySelector('.cv-edges');
     this.edgeG = this.root.querySelector('.cv-edge-g');
     this.nodeLayer = this.root.querySelector('.cv-nodes');
+    this.laneLayer = this.root.querySelector('.cv-lanes');
+    this.lanes = [];
     this.zoomLabel = this.root.querySelector('.cv-zoom');
     this.emptyEl = this.root.querySelector('.cv-empty');
   }
@@ -200,9 +239,11 @@ export class Canvas {
     return n;
   }
 
-  // Rows by spawn depth, columns by arrival, wrapping into a grid once a level
-  // grows past a row. Deterministic, so the picture is stable across refreshes
-  // instead of reshuffling on every poll.
+  // Depth downward, kind across. Eight agents in one undifferentiated fan told
+  // the reader nothing about which were alike; grouped by type, with the type
+  // named above its group, the same eight read as three Explores, a Plan, and
+  // so on. Groups keep their own small grid so one large kind does not push
+  // every other kind off the screen.
   layout(force = false) {
     const byDepth = new Map();
     for (const n of this.visible()) {
@@ -212,49 +253,75 @@ export class Canvas {
     }
 
     const down = this.flow === 'down';
-    let cursor = 0;   // running position along the flow axis
+    this.lanes = [];
+    let cursor = 0;                                   // position along the depth axis
 
     for (const [, list] of [...byDepth.entries()].sort((a, b) => a[0] - b[0])) {
-      // Siblings of one parent stay together, so a workflow's children do not
-      // interleave with another's.
-      list.sort((a, b) =>
-        String(a.parentId ?? '').localeCompare(String(b.parentId ?? '')) ||
-        (a.startedAt ?? 0) - (b.startedAt ?? 0) ||
-        a.id.localeCompare(b.id));
+      // One group per kind. Workflows are their own kind; the session is alone
+      // at its depth and needs no label.
+      const groups = new Map();
+      for (const n of list) {
+        const key = n.kind === 'session' ? '\u0000session'
+          : n.kind === 'workflow' ? 'workflow'
+            : (n.agentType ?? 'unknown');
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(n);
+      }
 
-      const cols = Math.min(list.length, MAX_PER_ROW);
-      const rows = Math.ceil(list.length / cols);
-      const rowSpan = down
-        ? cols * NODE_W + (cols - 1) * SIBLING_GAP
-        : cols * NODE_H + (cols - 1) * SIBLING_GAP;
+      // Biggest kinds first, then alphabetically, so the picture is stable
+      // across refreshes rather than following arrival order.
+      const ordered = [...groups.entries()].sort(
+        (a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]),
+      );
 
-      list.forEach((n, i) => {
-        const col = i % cols;
-        const row = Math.floor(i / cols);
-        // Only a hand-placed node keeps its position. Freezing auto-placed
-        // ones too was the bug: the row is re-centred as siblings arrive, so
-        // nodes laid out against an older, shorter row overlapped the new
-        // ones by half a card.
-        if (!force && this.pinned.has(n.id)) return;
-        this.pos.set(n.id, down
-          ? {
-            x: col * (NODE_W + SIBLING_GAP) - rowSpan / 2 + NODE_W / 2,
-            y: cursor + row * (NODE_H + SIBLING_GAP),
-          }
-          : {
-            x: cursor + row * (NODE_W + SIBLING_GAP),
-            y: col * (NODE_H + SIBLING_GAP) - rowSpan / 2 + NODE_H / 2,
-          });
+      const NODE_A = down ? NODE_W : NODE_H;          // size across the row
+      const NODE_B = down ? NODE_H : NODE_W;          // size along the depth axis
+
+      // Measure first: the whole level is centred, so every group's width has
+      // to be known before any node is placed.
+      const measured = ordered.map(([key, members]) => {
+        const cols = Math.min(members.length, MAX_PER_GROUP_ROW);
+        const rows = Math.ceil(members.length / cols);
+        return { key, members, cols, rows, span: cols * NODE_A + (cols - 1) * SIBLING_GAP };
       });
+      const total = measured.reduce((w, g) => w + g.span, 0)
+        + Math.max(0, measured.length - 1) * GROUP_GAP;
+      const deepest = Math.max(...measured.map((g) => g.rows));
+      const labelled = measured.length > 1 || (measured[0] && measured[0].key !== '\u0000session');
 
-      cursor += rows * ((down ? NODE_H : NODE_W) + SIBLING_GAP) - SIBLING_GAP + DEPTH_GAP;
+      let across = -total / 2;
+      for (const g of measured) {
+        g.members.sort((a, b) => (a.startedAt ?? 0) - (b.startedAt ?? 0) || a.id.localeCompare(b.id));
+        const laneStart = cursor + (labelled ? LANE_LABEL : 0);
+
+        g.members.forEach((n, i) => {
+          const col = i % g.cols;
+          const row = Math.floor(i / g.cols);
+          const a = across + col * (NODE_A + SIBLING_GAP);
+          const b = laneStart + row * (NODE_B + SIBLING_GAP);
+          // Only a hand-placed node keeps its position. Freezing auto-placed
+          // ones too was the bug: the row is re-centred as siblings arrive, so
+          // nodes laid out against an older, shorter row overlapped the new
+          // ones by half a card.
+          if (!force && this.pinned.has(n.id)) return;
+          this.pos.set(n.id, down ? { x: a, y: b } : { x: b, y: a });
+        });
+
+        if (labelled && g.key !== '\u0000session') {
+          this.lanes.push({
+            key: g.key,
+            count: g.members.length,
+            x: down ? across : cursor,
+            y: down ? cursor : across,
+            span: g.span,
+            down,
+          });
+        }
+        across += g.span + GROUP_GAP;
+      }
+
+      cursor += (labelled ? LANE_LABEL : 0) + deepest * (NODE_B + SIBLING_GAP) - SIBLING_GAP + DEPTH_GAP;
     }
-  }
-
-  /** Re-fit only while the layout is still automatic. Once nodes have been
-   *  placed by hand, moving the view under them is not helpful. */
-  fitIfUntouched() {
-    if (!this.pinned.size) this.fit();
   }
 
   fit() {
@@ -293,6 +360,7 @@ export class Canvas {
       if (!vis.has(id)) { el.remove(); this.els.delete(id); }
     }
     for (const n of this.visible()) this.#renderNode(n);
+    this.#renderLanes();
     this.#renderEdges();
     this.fit();
   }
@@ -354,6 +422,7 @@ export class Canvas {
       if (!vis.has(id)) { el.remove(); this.els.delete(id); }
     }
     for (const n of this.visible()) this.#renderNode(n);
+    this.#renderLanes();
     this.#renderEdges();
 
     // Fit once when a session opens, so the graph is never half off-screen.
@@ -381,6 +450,7 @@ export class Canvas {
         <div class="cv-accent"></div>
         <div class="cv-head">
           <button class="cv-fold" type="button" hidden></button>
+          <svg class="cv-mark" viewBox="0 0 16 16" aria-hidden="true"></svg>
           <span class="cv-type"></span>
           <span class="cv-chip"></span>
         </div>
@@ -435,6 +505,18 @@ export class Canvas {
       n.kind === 'session' ? 'SESSION'
         : n.kind === 'workflow' ? 'WORKFLOW'
           : (n.agentType ?? 'unknown agent');
+
+    // Whose agent this is, at a glance. The palette says where a type was
+    // declared; anything it does not know is drawn as unknown rather than
+    // guessed into one camp or the other.
+    const source = n.kind === 'session' ? 'session'
+      : n.kind === 'workflow' ? 'workflow'
+        : (this.palette.map[n.agentType]?.source ?? null);
+    const markEl = el.querySelector('.cv-mark');
+    markEl.innerHTML = MARKS[source === 'kit' ? 'kit' : source === 'builtin' ? 'builtin' : source] ?? MARKS.builtin;
+    markEl.classList.toggle('cv-mark-unknown', n.kind === 'agent' && !source);
+    markEl.setAttribute('aria-label', source === 'kit' ? 'kit agent' : 'built-in agent');
+    el.dataset.source = source ?? 'unknown';
     // An agent type the kit never declared is marked, not quietly coloured in.
     el.querySelector('.cv-type').classList.toggle('cv-unknown', !known);
 
@@ -510,6 +592,23 @@ export class Canvas {
     return bits;
   }
 
+  /** The name of each group, above it. Without these the grouping is a gap. */
+  #renderLanes() {
+    const out = [];
+    for (const lane of this.lanes ?? []) {
+      const el2 = mk('div', 'cv-lane');
+      el2.style.transform = `translate(${lane.x}px, ${lane.y}px)`;
+      el2.style.width = `${lane.span}px`;
+      const color = this.palette.map[lane.key]?.hex
+        ?? (lane.key === 'workflow' ? '#a874f5' : this.palette.unknown);
+      el2.style.setProperty('--lane-color', color);
+      el2.append(mk('span', 'cv-lane-name', lane.key === 'workflow' ? 'workflows' : lane.key));
+      el2.append(mk('span', 'cv-lane-count', String(lane.count)));
+      out.push(el2);
+    }
+    this.laneLayer.replaceChildren(...out);
+  }
+
   #renderEdges() {
     const paths = [];
     const vis = new Set(this.visible().map((n) => n.id));
@@ -560,6 +659,7 @@ export class Canvas {
     const vis = new Set(this.visible().map((x) => x.id));
     for (const [id, el] of this.els) if (!vis.has(id)) { el.remove(); this.els.delete(id); }
     for (const v of this.visible()) this.#renderNode(v);
+    this.#renderLanes();
     this.#renderEdges();
     // Unfolding 105 agents puts most of them off-screen; pull the view back to
     // what was just revealed, unless the user has arranged things by hand.

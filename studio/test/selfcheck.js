@@ -618,6 +618,38 @@ process.stdout.write('\n== §20 browser modules load ==\n');
     }
     check(`${mod} evaluates`, err === null, err ? `${err.name}: ${err.message}` : null);
   }
+  // Loading a module runs what runs at load. Rendering is where the rest of it
+  // lives — and a method calling a helper this file never had threw there,
+  // silently, leaving the group labels missing with no error anyone saw.
+  {
+    let err = null;
+    try {
+      const { Canvas } = await import(`../web/canvas.js?render=${Date.now()}`);
+      const host = document.createElement('div');
+      const c = new Canvas(host, {});
+      c.setPalette({ map: { Explore: { hex: '#26c6e6', source: 'builtin' } }, unknown: '#94a3c8' });
+      c.setSession('fixture');
+      c.render({
+        nodes: [
+          { id: 'session', kind: 'session', label: 's', turns: 1, cwd: '/x' },
+          { id: 'a1', kind: 'agent', agentType: 'Explore', status: 'done', spawnDepth: 1, parentId: 'session', tools: { Bash: 2 }, toolCount: 2 },
+          { id: 'a2', kind: 'agent', agentType: 'Explore', status: 'running', spawnDepth: 1, parentId: 'session', tools: {}, toolCount: 0 },
+          { id: 'w1', kind: 'workflow', members: 3, byStatus: { done: 3 }, spawnDepth: 1, parentId: 'session' },
+        ],
+        edges: [
+          { id: 'e1', source: 'session', target: 'a1', kind: 'spawn' },
+          { id: 'e2', source: 'session', target: 'a2', kind: 'spawn' },
+          { id: 'e3', source: 'session', target: 'w1', kind: 'spawn' },
+        ],
+        stats: {},
+      });
+    } catch (e) {
+      err = e;
+    }
+    check('the canvas renders a graph without throwing', err === null,
+      err ? `${err.name}: ${err.message}` : null);
+  }
+
   cleanup();
 }
 
