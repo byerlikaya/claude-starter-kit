@@ -21,12 +21,16 @@
     <button id="new-session" class="ghost primary" type="button">+ session</button>
     <button id="new-term" class="ghost" type="button" hidden>+ shell</button>
     <span id="pulse" class="pulse">connecting</span>
-      <button id="side-show" class="ghost pin" type="button" title="Show the sidebar" hidden>›</button>
-    <button id="theme" class="ghost" type="button" aria-label="Toggle theme">◐</button>
+      <button id="theme" class="ghost" type="button" aria-label="Toggle theme">◐</button>
   </div>
 </header>
 
 <div class="shell">
+  <button id="side-show" class="side-rail" type="button"
+          title="Show the sidebar" aria-label="Show the sidebar" hidden>
+    <span class="side-rail-arrow">›</span>
+    <span class="side-rail-label">sessions</span>
+  </button>
   <aside class="side">
     <section class="side-block">
       <div class="side-head">

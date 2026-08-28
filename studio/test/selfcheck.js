@@ -670,6 +670,15 @@ check('who spoke is read from which side it sits on',
   && /\.msg-assistant\s*\{\s*align-items:\s*flex-start/.test(cssSrc));
 check('either panel can be collapsed without leaving a gap where it was',
   /\.shell\.no-side/.test(cssSrc) && /\.shell\.no-chat/.test(cssSrc));
+// A hidden grid child occupies no cell, so auto-flow slides everything after it
+// one column left: hiding the sidebar handed the graph the rail's 22px and gave
+// the conversation the rest of the window.
+check('every column is placed explicitly rather than by auto-flow',
+  /\.shell > \.stage\s*\{\s*grid-column:\s*3/.test(cssSrc)
+  && /\.shell > \.chat\s*\{\s*grid-column:\s*5/.test(cssSrc));
+check('the control that reopens the sidebar is on the edge it acts on',
+  /\.side-rail\s*\{[^}]*left:\s*0/.test(cssSrc),
+  'it started in the header, in the opposite corner from the panel it opens');
 
 const appSrc2 = read(path.join(STUDIO, 'web', 'app.js')) ?? '';
 check('the right-hand divider grows its panel when dragged left',

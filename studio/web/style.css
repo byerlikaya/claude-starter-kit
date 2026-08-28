@@ -193,6 +193,7 @@ body {
 /* ============================================================== shell === */
 
 .shell {
+  position: relative;
   flex: 1; min-height: 0;
   display: grid;
   /* Five columns: the two dividers are real columns, so dragging one moves a
@@ -201,6 +202,15 @@ body {
      it is about, not below the fold. */
   grid-template-columns: var(--side-w, 260px) 5px 1fr 5px var(--chat-w, 420px);
 }
+/* Placed explicitly, never by auto-flow. A `display: none` child occupies no
+   grid cell, so hiding the sidebar slid every remaining column one to the left:
+   the graph was handed the 22px rail slot and the conversation took the rest. */
+.shell > .side      { grid-column: 1; }
+.shell > #resizer   { grid-column: 2; }
+.shell > .stage     { grid-column: 3; }
+.shell > #chat-split { grid-column: 4; }
+.shell > .chat      { grid-column: 5; }
+
 .shell.no-chat { grid-template-columns: var(--side-w, 260px) 5px 1fr 0 0; }
 .shell.no-side { grid-template-columns: 0 0 1fr 5px var(--chat-w, 420px); }
 .shell.no-side.no-chat { grid-template-columns: 0 0 1fr 0 0; }
@@ -984,3 +994,38 @@ body.vresizing { cursor: row-resize; user-select: none; }
 /* A terminal is a wall of text; its bar can be quieter still until used. */
 .term-screen::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--line) 70%, transparent); background-clip: content-box; }
 .term-screen::-webkit-scrollbar-thumb:hover { background: var(--ink-faint); background-clip: content-box; }
+
+/* ------------------------------------------------------- sidebar rail --- */
+
+/* The control that brings the sidebar back sits where the sidebar was. It
+   started in the header beside the theme toggle — the far corner from the edge
+   it acts on — and was, fairly, hard to find. */
+.side-rail {
+  position: absolute; left: 0; top: 0; bottom: 0; z-index: 25;
+  width: 22px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 10px;
+  background: var(--surface);
+  border: none; border-right: 1px solid var(--line);
+  color: var(--ink-faint);
+  cursor: pointer;
+  padding: 0;
+}
+.side-rail[hidden] { display: none; }
+.side-rail:hover { background: var(--surface-2); color: var(--ink); border-right-color: var(--accent); }
+.side-rail:focus-visible { outline: none; border-right-color: var(--accent); color: var(--ink); }
+
+.side-rail-arrow { font-size: 15px; line-height: 1; }
+/* Turned along the rail, so the strip says what it opens rather than being an
+   unlabelled sliver. */
+.side-rail-label {
+  writing-mode: vertical-rl;
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* The rail takes the space the sidebar left, so the graph does not sit under it. */
+.shell.no-side { grid-template-columns: 22px 0 1fr 5px var(--chat-w, 420px); }
+.shell.no-side.no-chat { grid-template-columns: 22px 0 1fr 0 0; }
+
+@media (max-width: 760px) { .side-rail { display: none; } }
