@@ -173,21 +173,41 @@ chat.onActivate = (sessionId) => {
   const any = chat.ids.length > 0;
   el.chat.hidden = !any;
   el.chatSplit.hidden = !any; shell.classList.toggle('no-chat', !any);
-  if (sessionId) {
-    ownedIds.add(sessionId);
-    selectSession(sessionId);
-  }
+  // Activating a tab is not a claim of ownership. It used to add the id here,
+  // which meant opening a read-only conversation marked that session as one the
+  // panel had started — and every later attempt to open it went down the owned
+  // path, got a 404, and gave up without saying anything.
+  if (sessionId) selectSession(sessionId);
 };
+
+/** Bring a session's conversation forward, however the panel can reach it. */
+function openConversation(sessionId) {
+  if (chat.activeId === sessionId) return;
+  if (ownedIds.has(sessionId)) { openOwned(sessionId); return; }
+  openReadOnlyPane(sessionId);
+}
+
+function openReadOnlyPane(sessionId) {
+  const row = el.sessions.querySelector(`.srow[data-id="${CSS.escape(sessionId)}"] .sname`);
+  chat.openReadOnly(sessionId, row?.textContent ?? null);
+  el.chat.hidden = false;
+  el.chatSplit.hidden = false;
+  shell.classList.remove('no-chat');
+}
 
 async function openOwned(sessionId) {
   if (chat.panes.has(sessionId)) { chat.activate(sessionId); return true; }
   try {
     const r = await getJson(`/api/owned/${encodeURIComponent(sessionId)}`);
-    if (!r.session) return false;
+    if (!r.session) throw new Error('not an owned session');
     chat.open(r.session);
     return true;
   } catch {
-    return false;   // reaped, or never ours
+    // Reaped, or never ours. Either way the conversation is still readable, and
+    // falling through to that beats leaving the panel blank with no reason.
+    ownedIds.delete(sessionId);
+    openReadOnlyPane(sessionId);
+    return false;
   }
 }
 
@@ -201,8 +221,12 @@ el.continueSession.addEventListener('click', async () => {
   el.continueSession.textContent = 'continuing…';
   try {
     const r = await chat.start({ cwd: projectsData?.cwd ?? null, permissionMode: 'plan', resume: from });
-    if (!r.ok) el.foot.textContent = `could not continue: ${r.reason}`;
-    else el.foot.textContent = `continued ${from.slice(0, 8)} as a fork — the original transcript is untouched`;
+    if (!r.ok) {
+      el.foot.textContent = `could not continue: ${r.reason}`;
+    } else {
+      ownedIds.add(r.session.sessionId);
+      el.foot.textContent = `continued ${from.slice(0, 8)} as a fork — the original transcript is untouched`;
+    }
   } finally {
     el.continueSession.disabled = false;
     el.continueSession.textContent = '↩ continue here';
@@ -218,6 +242,7 @@ el.newSession.addEventListener('click', async () => {
     // reason one got write access nobody asked for.
     const r = await chat.start({ cwd, permissionMode: 'plan' });
     if (!r.ok) el.foot.textContent = `could not start a session: ${r.reason}`;
+    else ownedIds.add(r.session.sessionId);
   } finally {
     el.newSession.disabled = false;
     el.newSession.textContent = '+ session';
@@ -256,6 +281,10 @@ let detailCache = new Map();
 
 function showInspector(node) {
   inspectorNode = node;
+  // The session node IS the conversation. Clicking it opened a details panel
+  // and nothing else, which asked the reader to go and find the talking
+  // elsewhere.
+  if (node?.kind === 'session' && current) openConversation(current);
   if (!node) { el.inspector.hidden = true; el.inspector.classList.remove('wide'); return; }
   el.inspector.hidden = false;
   inspectorTab = node.kind === 'session' ? 'meta' : 'report';
@@ -327,7 +356,12 @@ function paintInspector() {
   const wide = node('button', 'ghost iwide', el.inspector.classList.contains('wide') ? '›' : '‹');
   wide.title = 'Widen';
   wide.addEventListener('click', () => { el.inspector.classList.toggle('wide'); paintInspector(); });
-  head.append(h3, chip, wide);
+  // The inspector floats over the graph, so it needs a way out that is not
+  // "click the node again and hope you hit it".
+  const close = node('button', 'ghost iwide', '×');
+  close.title = 'Close';
+  close.addEventListener('click', () => { canvas.clearSelection(); showInspector(null); });
+  head.append(h3, chip, wide, close);
 
   const sub = node('div', 'isub', n.description ?? n.cwd ?? '');
 
@@ -685,7 +719,9 @@ let current = null;
 let source = null;
 
 function selectSession(sessionId) {
-  if (current === sessionId) return;
+  // Selecting the session already selected is not a no-op: its conversation may
+  // have been closed since, and clicking it is how someone asks for it back.
+  if (current === sessionId) { openConversation(sessionId); return; }
   current = sessionId;
   canvas.setSession(sessionId);
   showInspector(null);
@@ -699,12 +735,7 @@ function selectSession(sessionId) {
   // Every session gets its conversation shown; only the ones the panel started
   // get a box to write in. Hiding the conversation of a session we can read
   // perfectly well was the wrong half of that rule.
-  if (ownedIds.has(sessionId)) {
-    if (chat.activeId !== sessionId) openOwned(sessionId);
-  } else if (chat.activeId !== sessionId) {
-    const row = el.sessions.querySelector(`.srow[data-id="${CSS.escape(sessionId)}"] .sname`);
-    chat.openReadOnly(sessionId, row?.textContent ?? null);
-  }
+  openConversation(sessionId);
   const any = chat.ids.length > 0;
   el.chat.hidden = !any;
   el.chatSplit.hidden = !any;

@@ -516,6 +516,10 @@ const canvasSrc = read(path.join(STUDIO, 'web', 'canvas.js')) ?? '';
 check('a node that hides others opens when the card is clicked, not only its 20px control',
   /hiddenCount\(n\.id\) > 0/.test(canvasSrc) && /cv-container/.test(canvasSrc));
 check('the card says what a click will do', /Click to show/.test(canvasSrc));
+// The session node has children too, so treating every parent as a container
+// made a click on it fold the entire graph instead of opening its conversation.
+check('the session node opens rather than folds when its card is clicked',
+  /node\.kind !== 'session' && this\.hiddenCount/.test(canvasSrc));
 
 const sessSrc2 = read(path.join(STUDIO, 'server', 'lib', 'session.js')) ?? '';
 check('an existing conversation can be continued rather than started over',

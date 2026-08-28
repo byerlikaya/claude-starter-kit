@@ -398,12 +398,16 @@ export class Canvas {
       // reposition also toggled selection and fired a report fetch.
       el.addEventListener('click', () => {
         if (el.dataset.suppressClick === '1') { el.dataset.suppressClick = '0'; return; }
-        // A node holding others open on click. The fold control is a 20px
-        // target and the card is the obvious one; making only the small button
-        // work meant a folded workflow looked like a dead end with the agents
-        // nowhere to be found.
+        // A container opens on click — the fold control is a 20px target and
+        // the card is the obvious one, so a folded workflow used to look like a
+        // dead end with its agents nowhere to be found.
+        //
+        // The session node is NOT one of those, even though it has children.
+        // It is the conversation, and clicking it should open that; folding it
+        // is what its caret is for. Treating every parent alike meant a click
+        // on the session hid the whole graph.
         const node = this.nodes.get(n.id);
-        if (node && this.hiddenCount(n.id) > 0) {
+        if (node && node.kind !== 'session' && this.hiddenCount(n.id) > 0) {
           if (this.collapsed.has(n.id)) this.collapsed.delete(n.id); else this.collapsed.add(n.id);
           this.#redraw();
           return;
@@ -445,8 +449,13 @@ export class Canvas {
       fold.title = folded ? `Show ${hidden} hidden node(s)` : `Fold ${kids} child node(s)`;
       el.classList.toggle('cv-folded', folded);
       // Say what a click does, since for these nodes it is not selection.
-      el.title = folded ? `Click to show ${hidden} node(s) inside` : 'Click to fold';
-      el.classList.add('cv-container');
+      if (n.kind === 'session') {
+        el.title = 'Click to open this conversation';
+        el.classList.remove('cv-container');
+      } else {
+        el.title = folded ? `Click to show ${hidden} node(s) inside` : 'Click to fold';
+        el.classList.add('cv-container');
+      }
     } else {
       fold.hidden = true;
       el.classList.remove('cv-folded', 'cv-container');
@@ -555,6 +564,12 @@ export class Canvas {
     // Unfolding 105 agents puts most of them off-screen; pull the view back to
     // what was just revealed, unless the user has arranged things by hand.
     this.fitIfUntouched();
+  }
+
+  /** Drop the selection without pretending a node was clicked. */
+  clearSelection() {
+    this.selected = null;
+    for (const el of this.els.values()) el.classList.remove('cv-selected');
   }
 
   #select(id) {
