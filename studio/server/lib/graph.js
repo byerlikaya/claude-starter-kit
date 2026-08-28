@@ -1,0 +1,462 @@
+// The orchestration graph: one node per agent, one edge per spawn.
+//
+// Nothing here is documented by Claude Code, so every field was read off real
+// transcripts and every one of them is optional. A record shape that changes
+// should cost this file a field, never a crash — unknown values are carried,
+// not coerced.
+//
+// The chain that makes the graph possible, measured:
+//   main transcript  assistant → content[].tool_use{ name:"Agent", id, input }
+//   main transcript  user      → toolUseResult{ agentId, status, resolvedModel }
+//   on disk          subagents/agent-<agentId>.meta.json{ agentType, toolUseId, spawnDepth }
+//   main transcript  text      → <task-id>…</task-id> + <status>completed</status>
+//
+// `toolUseId` is the join. Whoever emitted that tool_use is the parent: the
+// session itself for depth 1, another agent for anything deeper.
+
+import fs from 'node:fs';
+import path from 'node:path';
+
+import { readAll, contextFill } from './transcript.js';
+import { agentMetaFiles } from './projects.js';
+
+const SESSION_NODE = 'session';
+
+function textOf(content) {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  let s = '';
+  for (const c of content) if (c?.type === 'text' && typeof c.text === 'string') s += c.text;
+  return s;
+}
+
+/**
+ * Completion notices arrive as prose, so they are read as prose.
+ *
+ * Claude Code sometimes batches several ids under one status. A regex that
+ * pairs the first id with the status swallows the rest; measured on this
+ * machine, one notice carried six ids and five were being dropped. Every id
+ * seen since the previous status takes that status.
+ */
+function harvestCompletions(text, into) {
+  if (!text || !text.includes('<task-id>')) return;
+  const token = /<task-id>([^<]+)<\/task-id>|<status>([^<]+)<\/status>/g;
+  let pending = [];
+  let m;
+  while ((m = token.exec(text)) !== null) {
+    if (m[1] !== undefined) {
+      pending.push(m[1].trim());
+    } else {
+      const status = m[2].trim();
+      for (const id of pending) into.set(id, status);
+      pending = [];
+    }
+  }
+}
+
+function scanMain(records) {
+  const out = {
+    cwd: null, gitBranch: null, version: null, model: null,
+    startedAt: null, updatedAt: null,
+    agentCalls: new Map(),   // toolUseId -> { subagentType, description }
+    links: new Map(),        // toolUseId -> { agentId, status, model }
+    completions: new Map(),  // agentId  -> status
+    owners: new Map(),       // toolUseId -> owner node id
+    userTurns: 0,
+  };
+
+  for (const r of records) {
+    if (r?.isSidechain === true) continue;
+
+    if (r?.cwd && !out.cwd) out.cwd = r.cwd;
+    if (r?.gitBranch && !out.gitBranch) out.gitBranch = r.gitBranch;
+    if (r?.version && !out.version) out.version = r.version;
+    if (r?.timestamp) {
+      const t = Date.parse(r.timestamp);
+      if (Number.isFinite(t)) {
+        if (out.startedAt === null || t < out.startedAt) out.startedAt = t;
+        if (out.updatedAt === null || t > out.updatedAt) out.updatedAt = t;
+      }
+    }
+
+    if (r?.type === 'assistant') {
+      if (r.message?.model && !out.model) out.model = r.message.model;
+      const content = r.message?.content;
+      if (Array.isArray(content)) {
+        for (const c of content) {
+          if (c?.type === 'tool_use' && c.id) {
+            out.owners.set(c.id, SESSION_NODE);
+            if (c.name === 'Agent') {
+              out.agentCalls.set(c.id, {
+                subagentType: c.input?.subagent_type ?? null,
+                description: c.input?.description ?? null,
+              });
+            }
+          }
+        }
+      }
+      harvestCompletions(textOf(content), out.completions);
+    }
+
+    if (r?.type === 'user') {
+      out.userTurns += 1;
+      harvestCompletions(textOf(r.message?.content), out.completions);
+    }
+
+    // Present on the record that carries a subagent's result, whatever its type.
+    const tur = r?.toolUseResult;
+    if (tur && typeof tur === 'object' && tur.agentId) {
+      const id = r.message?.content?.find?.((c) => c?.type === 'tool_result')?.tool_use_id
+        ?? r.toolUseID ?? null;
+      const entry = { agentId: tur.agentId, status: tur.status ?? null, model: tur.resolvedModel ?? null };
+      if (id) out.links.set(id, entry);
+      else out.links.set(`agent:${tur.agentId}`, entry);
+    }
+    if (r?.type === 'attachment') harvestCompletions(JSON.stringify(r.attachment ?? ''), out.completions);
+  }
+
+  return out;
+}
+
+/** Roll one agent's own transcript into the numbers its node shows. */
+function scanAgent(file) {
+  const { records } = readAll(file);
+  const stats = {
+    tools: {}, toolCount: 0, lastTool: null, errors: 0,
+    tokens: null, startedAt: null, endedAt: null, turns: 0,
+    owns: [], // tool_use ids this agent emitted — how nesting is resolved
+  };
+
+  for (const r of records) {
+    if (r?.timestamp) {
+      const t = Date.parse(r.timestamp);
+      if (Number.isFinite(t)) {
+        if (stats.startedAt === null || t < stats.startedAt) stats.startedAt = t;
+        if (stats.endedAt === null || t > stats.endedAt) stats.endedAt = t;
+      }
+    }
+    if (r?.type === 'assistant') {
+      stats.turns += 1;
+      const u = r.message?.usage;
+      if (u && u.cache_read_input_tokens != null) {
+        stats.tokens = (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0);
+      }
+      const content = r.message?.content;
+      if (Array.isArray(content)) {
+        for (const c of content) {
+          if (c?.type !== 'tool_use') continue;
+          const n = c.name ?? 'unknown';
+          stats.tools[n] = (stats.tools[n] ?? 0) + 1;
+          stats.toolCount += 1;
+          stats.lastTool = n;
+          if (c.id) stats.owns.push(c.id);
+        }
+      }
+    }
+    if (r?.type === 'user') {
+      const content = r.message?.content;
+      if (Array.isArray(content)) {
+        for (const c of content) if (c?.type === 'tool_result' && c.is_error === true) stats.errors += 1;
+      }
+    }
+  }
+
+  stats.durationMs = stats.startedAt !== null && stats.endedAt !== null
+    ? stats.endedAt - stats.startedAt
+    : null;
+  return stats;
+}
+
+function readAgentDir(subagentsDir) {
+  const out = [];
+  // Nested too: a workflow puts its agents under subagents/workflows/<id>/.
+  for (const metaPath of agentMetaFiles(subagentsDir)) {
+    const name = path.basename(metaPath);
+    const dir = path.dirname(metaPath);
+    if (!name.startsWith('agent-')) continue;
+    const agentId = name.slice('agent-'.length, -'.meta.json'.length);
+    let meta = {};
+    try { meta = JSON.parse(fs.readFileSync(metaPath, 'utf8')); } catch { /* keep going */ }
+
+    const jsonl = path.join(dir, `agent-${agentId}.jsonl`);
+    let mtime = null;
+    try { mtime = fs.statSync(jsonl).mtimeMs; } catch { /* not written yet */ }
+
+    out.push({
+      agentId,
+      agentType: meta.agentType ?? null,
+      description: meta.description ?? null,
+      toolUseId: meta.toolUseId ?? null,
+      spawnDepth: typeof meta.spawnDepth === 'number' ? meta.spawnDepth : 1,
+      jsonl,
+      mtime,
+      // A workflow agent belongs to the run that spawned it, not the session
+      // root; without this they all hang off the root as one flat fan.
+      workflow: dir === subagentsDir ? null : path.basename(dir),
+      stats: fs.existsSync(jsonl) ? scanAgent(jsonl) : null,
+    });
+  }
+  return out;
+}
+
+/**
+ * Build the graph for one session.
+ * `staleMs` decides when an agent with no completion notice is called stale
+ * rather than running — an unfinished agent whose file stopped growing is a
+ * different fact from one that is working.
+ */
+export function buildGraph(session, { staleMs = 120000 } = {}) {
+  const { records, malformed } = readAll(session.file);
+  const main = scanMain(records);
+  const agents = readAgentDir(session.subagentsDir);
+  const now = Date.now();
+
+  // Ownership: session first, then every agent's own tool_use ids, so a nested
+  // agent attaches to its real parent instead of the root.
+  const owners = new Map(main.owners);
+  for (const a of agents) {
+    for (const id of a.stats?.owns ?? []) owners.set(id, a.agentId);
+  }
+
+  // toolUseId -> agentId, from the returning result record.
+  const byToolUse = new Map();
+  for (const [k, v] of main.links) if (!k.startsWith('agent:')) byToolUse.set(k, v);
+
+  const nodes = [{
+    id: SESSION_NODE,
+    kind: 'session',
+    label: session.sessionId.slice(0, 8),
+    sessionId: session.sessionId,
+    cwd: main.cwd,
+    gitBranch: main.gitBranch,
+    model: main.model,
+    version: main.version,
+    status: 'session',
+    turns: main.userTurns,
+    tokens: contextFill(records),
+    startedAt: main.startedAt,
+    endedAt: main.updatedAt,
+  }];
+  const edges = [];
+
+  for (const a of agents) {
+    const call = a.toolUseId ? main.agentCalls.get(a.toolUseId) : null;
+    const link = a.toolUseId ? byToolUse.get(a.toolUseId) : null;
+    const completion = main.completions.get(a.agentId) ?? null;
+
+    // Order matters. A synchronous Agent call never produces a task
+    // notification — it reports through toolUseResult.status instead. Reading
+    // the notice first and falling back to file freshness labelled 87 of 272
+    // finished agents "stale" on this machine; the transcript had said
+    // "completed" all along.
+    let status;
+    if (completion === 'completed') status = 'done';
+    else if (completion) status = completion;             // failed / killed / stopped, carried as-is
+    else if (link?.status === 'completed') status = 'done';
+    else if (a.mtime === null) status = 'starting';
+    else if (now - a.mtime < staleMs) status = 'running';
+    // "Stale" only means something while the session is still being written:
+    // an agent that went quiet under a live session may be stuck. In a session
+    // that itself finished long ago, the agent simply ended and no notice was
+    // recorded — calling that stale would raise an alarm about history.
+    else if (main.updatedAt !== null && main.updatedAt - a.mtime > staleMs) status = 'ended';
+    else status = 'stale';
+
+    const parentId = a.toolUseId ? (owners.get(a.toolUseId) ?? SESSION_NODE) : SESSION_NODE;
+
+    nodes.push({
+      id: a.agentId,
+      kind: 'agent',
+      label: a.agentType ?? call?.subagentType ?? 'agent',
+      agentType: a.agentType ?? call?.subagentType ?? null,
+      description: a.description ?? call?.description ?? null,
+      status,
+      spawnDepth: a.spawnDepth,
+      workflow: a.workflow,
+      toolUseId: a.toolUseId,
+      model: link?.model ?? null,
+      launchStatus: link?.status ?? null,
+      parentId,
+      tools: a.stats?.tools ?? {},
+      toolCount: a.stats?.toolCount ?? 0,
+      lastTool: a.stats?.lastTool ?? null,
+      errors: a.stats?.errors ?? 0,
+      turns: a.stats?.turns ?? 0,
+      tokens: a.stats?.tokens ?? null,
+      startedAt: a.stats?.startedAt ?? null,
+      endedAt: a.stats?.endedAt ?? null,
+      durationMs: a.stats?.durationMs ?? null,
+      updatedAt: a.mtime,
+    });
+
+    edges.push({ id: `${parentId}->${a.agentId}`, source: parentId, target: a.agentId, kind: 'spawn' });
+  }
+
+  // A workflow run is a real container, not a rendering trick: its agents were
+  // spawned by one orchestration script, not by the session directly. Hanging
+  // 243 of them straight off the root produced a graph nobody could read, and
+  // it was also the wrong shape.
+  const wfGroups = new Map();
+  for (const n of nodes) {
+    if (n.kind !== 'agent' || !n.workflow) continue;
+    if (!wfGroups.has(n.workflow)) wfGroups.set(n.workflow, []);
+    wfGroups.get(n.workflow).push(n);
+  }
+
+  for (const [wfId, members] of wfGroups) {
+    const id = `wf:${wfId}`;
+    const byStatusIn = {};
+    let tokens = 0;
+    let tools = 0;
+    let startedAt = null;
+    let endedAt = null;
+    for (const m of members) {
+      byStatusIn[m.status] = (byStatusIn[m.status] ?? 0) + 1;
+      tokens += m.tokens ?? 0;
+      tools += m.toolCount ?? 0;
+      if (m.startedAt != null) startedAt = startedAt === null ? m.startedAt : Math.min(startedAt, m.startedAt);
+      if (m.endedAt != null) endedAt = endedAt === null ? m.endedAt : Math.max(endedAt, m.endedAt);
+      m.parentId = id;
+      m.spawnDepth = (m.spawnDepth ?? 1) + 1;
+    }
+    const running = byStatusIn.running ?? 0;
+
+    nodes.push({
+      id,
+      kind: 'workflow',
+      label: 'workflow',
+      workflowId: wfId,
+      description: `${members.length} agents`,
+      status: running ? 'running' : 'done',
+      members: members.length,
+      byStatus: byStatusIn,
+      tokens,
+      toolCount: tools,
+      startedAt,
+      endedAt,
+      durationMs: startedAt !== null && endedAt !== null ? endedAt - startedAt : null,
+      spawnDepth: 1,
+      parentId: SESSION_NODE,
+    });
+    edges.push({ id: `${SESSION_NODE}->${id}`, source: SESSION_NODE, target: id, kind: 'spawn' });
+  }
+
+  // Edges follow the reparenting.
+  for (const e of edges) {
+    const target = nodes.find((n) => n.id === e.target);
+    if (target && target.kind === 'agent' && target.parentId !== e.source) {
+      e.source = target.parentId;
+      e.id = `${e.source}->${e.target}`;
+    }
+  }
+
+  const count = (s) => nodes.filter((n) => n.kind === 'agent' && n.status === s).length;
+  // Every status is counted, so the parts always add up to the whole. A
+  // summary that quietly drops "failed" reads as a clean run.
+  const byStatus = {};
+  for (const n of nodes) if (n.kind === 'agent') byStatus[n.status] = (byStatus[n.status] ?? 0) + 1;
+
+  return {
+    sessionId: session.sessionId,
+    cwd: main.cwd,
+    gitBranch: main.gitBranch,
+    model: main.model,
+    version: main.version,
+    updatedAt: main.updatedAt,
+    contextTokens: contextFill(records),
+    nodes,
+    edges,
+    stats: {
+      agents: agents.length,
+      workflows: wfGroups.size,
+      running: count('running'),
+      done: count('done'),
+      stale: count('stale'),
+      ended: count('ended'),
+      failed: count('failed') + count('killed') + count('stopped'),
+      byStatus,
+      records: records.length,
+      malformed,          // surfaced, never swallowed
+    },
+  };
+}
+
+export const _internals = { scanMain, harvestCompletions, SESSION_NODE };
+
+/**
+ * One agent's work in full: what it was asked, what it did, what it reported.
+ *
+ * Deliberately not part of buildGraph — a finished report runs to tens of
+ * thousands of characters and the graph is pushed down an SSE stream every
+ * time a file changes. This is fetched when someone opens a node.
+ */
+export function agentDetail(session, agentId) {
+  if (!/^[A-Za-z0-9_-]+$/.test(agentId)) return null;
+
+  const file = path.join(session.subagentsDir, `agent-${agentId}.jsonl`);
+  if (!fs.existsSync(file)) return null;
+
+  const { records, malformed } = readAll(file);
+
+  let meta = {};
+  try {
+    meta = JSON.parse(fs.readFileSync(path.join(session.subagentsDir, `agent-${agentId}.meta.json`), 'utf8'));
+  } catch { /* the transcript is still the source of truth */ }
+
+  const timeline = [];
+  const texts = [];       // every text block, in order
+  let prompt = null;
+  let lastThinking = null;
+
+  for (const r of records) {
+    const at = r?.timestamp ? Date.parse(r.timestamp) : null;
+
+    if (r?.type === 'user' && prompt === null) {
+      const c = r.message?.content;
+      const t = typeof c === 'string' ? c : (Array.isArray(c) ? c.find((x) => x?.type === 'text')?.text : null);
+      if (t) prompt = t;
+    }
+
+    if (r?.type !== 'assistant') continue;
+    const content = r.message?.content;
+    if (!Array.isArray(content)) continue;
+
+    for (const c of content) {
+      if (c?.type === 'text' && typeof c.text === 'string' && c.text.trim()) {
+        texts.push({ at, text: c.text });
+      } else if (c?.type === 'thinking' && typeof c.thinking === 'string') {
+        lastThinking = c.thinking;
+      } else if (c?.type === 'tool_use') {
+        // Bash carries a written description; other tools describe themselves
+        // through their most identifying input.
+        const i = c.input ?? {};
+        const label = i.description ?? i.file_path ?? i.pattern ?? i.query ?? i.command ?? i.skill ?? null;
+        timeline.push({
+          at,
+          name: c.name ?? 'unknown',
+          label: label ? String(label).slice(0, 160) : null,
+        });
+      }
+    }
+  }
+
+  // The report is the last text block the agent produced. Earlier blocks are
+  // narration between tool calls, which is progress rather than conclusion.
+  const report = texts.length ? texts[texts.length - 1].text : null;
+
+  return {
+    agentId,
+    agentType: meta.agentType ?? null,
+    description: meta.description ?? null,
+    spawnDepth: meta.spawnDepth ?? null,
+    prompt,
+    report,
+    // Kept apart so the UI can show progress for an agent that has not
+    // reported yet, without pretending the narration is a conclusion.
+    narration: texts.slice(0, -1).map((t) => t.text),
+    thinking: lastThinking,
+    timeline,
+    records: records.length,
+    malformed,
+  };
+}

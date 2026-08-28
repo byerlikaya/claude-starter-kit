@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CSK Studio</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="bar">
+  <div class="brand">
+    <span class="dot" aria-hidden="true"></span>
+    <h1>CSK Studio</h1>
+  </div>
+  <div class="bar-mid">
+    <span id="graph-summary" class="meta"></span>
+    <span id="kitline" class="kitline"></span>
+  </div>
+  <div class="bar-right">
+    <span id="pulse" class="pulse">connecting</span>
+    <button id="theme" class="ghost" type="button" aria-label="Toggle theme">◐</button>
+  </div>
+</header>
+
+<div class="shell">
+  <aside class="side">
+    <section class="side-block">
+      <div class="side-head"><h2>Fleet</h2><span id="fleet-meta" class="meta"></span></div>
+      <div id="fleet" class="fleet" role="list"></div>
+    </section>
+    <section class="side-block grow">
+      <div class="side-head"><h2>Projects</h2><span id="sessions-meta" class="meta"></span></div>
+      <div class="side-filter">
+        <input id="filter" type="search" placeholder="filter projects…" autocomplete="off" spellcheck="false">
+      </div>
+      <div id="sessions" class="sessions" role="tree"></div>
+    </section>
+  </aside>
+
+  <div class="resizer" id="resizer" role="separator" aria-orientation="vertical"
+       aria-label="Resize sidebar" tabindex="0"></div>
+
+  <main class="stage">
+    <div id="canvas" class="canvas"></div>
+    <aside id="inspector" class="inspector" hidden></aside>
+  </main>
+</div>
+
+<footer class="foot"><span id="foot-note">starting…</span></footer>
+
+<script type="module" src="/app.js"></script>
+</body>
+</html>
