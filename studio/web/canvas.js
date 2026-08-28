@@ -29,13 +29,17 @@ const MAX_PER_GROUP_ROW = 4;
 // claims a relationship this project does not have. The shape reads as "not
 // ours" without borrowing anyone's mark.
 const MARKS = {
+  // The kit's own mark, from assets/icon.svg: three rotated bars, redrawn as
+  // rectangles rather than fetched — one image request per node, for a shape
+  // that is three rectangles, is a poor trade. Its own palette, not the node's,
+  // so it looks like the mark rather than like the card.
   kit: '<g transform="rotate(20 8 8)">'
-    + '<rect x="3.6" y="2.4" width="2.1" height="11.2" rx="1" fill="currentColor" opacity=".55"/>'
-    + '<rect x="6.9" y="2.4" width="2.1" height="11.2" rx="1" fill="currentColor" opacity=".78"/>'
-    + '<rect x="10.2" y="2.0" width="2.4" height="12" rx="1.2" fill="currentColor"/></g>',
-  builtin: '<g fill="currentColor"><rect x="7.2" y="1.8" width="1.6" height="12.4" rx=".8"/>'
-    + '<rect x="7.2" y="1.8" width="1.6" height="12.4" rx=".8" transform="rotate(60 8 8)"/>'
-    + '<rect x="7.2" y="1.8" width="1.6" height="12.4" rx=".8" transform="rotate(120 8 8)"/></g>',
+    + '<rect x="3.4" y="2.3" width="2.2" height="11.4" rx="1.1" fill="#E5E7FB"/>'
+    + '<rect x="6.8" y="2.3" width="2.2" height="11.4" rx="1.1" fill="#B9BEF9"/>'
+    + '<rect x="10.2" y="1.9" width="2.5" height="12.2" rx="1.25" fill="#A78BFA"/></g>',
+  // Claude's mark, in Claude's colour. Rays of uneven length and spacing —
+  // the irregularity is what makes it read as the mark rather than as a star.
+  builtin: '<g stroke="#D97757" stroke-width="1.45" stroke-linecap="round" fill="none"><path d="M8.00 6.50L8.00 1.10"/><path d="M7.21 6.73L5.03 3.25"/><path d="M6.65 7.34L2.07 5.11"/><path d="M6.51 8.16L2.83 8.54"/><path d="M6.82 8.92L2.56 12.25"/><path d="M7.49 9.41L6.15 13.07"/><path d="M8.31 9.47L9.37 14.46"/><path d="M9.04 9.08L11.61 11.74"/><path d="M9.46 8.36L14.70 9.67"/><path d="M9.43 7.54L13.33 6.27"/><path d="M8.88 6.79L11.76 2.82"/></g>',
   workflow: '<g fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">'
     + '<path d="M3 4.5h10M3 8h10M3 11.5h10"/></g>',
   session: '<g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">'

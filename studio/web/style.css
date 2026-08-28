@@ -1067,8 +1067,32 @@ body.vresizing { cursor: row-resize; user-select: none; }
 
 /* ---------------------------------------------------------- node mark --- */
 
-.cv-mark { width: 13px; height: 13px; flex: none; color: var(--node-color); }
+.cv-mark { width: 14px; height: 14px; flex: none; color: var(--node-color); }
+/* Both logos carry their own colours; only the generic glyphs take the node's. */
+.cv-node[data-source="kit"] .cv-mark,
+.cv-node[data-source="builtin"] .cv-mark { color: inherit; }
 /* A type the palette does not know keeps a neutral mark, like its colour. */
 .cv-mark.cv-mark-unknown { color: var(--ink-faint); opacity: 0.7; }
 .cv-node[data-source="kit"] .cv-mark { opacity: 1; }
 .cv-node[data-source="builtin"] .cv-mark { opacity: 0.85; }
+
+/* ------------------------------------------------- tab bar that fits --- */
+
+/* A tab has to give way before the close control does. Without min-width:0 a
+   flex item refuses to shrink below its content, so a long session title pushed
+   the × out of the panel and the only way to close a tab was to widen the
+   panel first. */
+.chat-head { min-width: 0; }
+.tabs { min-width: 0; }
+.tab { min-width: 0; max-width: 190px; }
+.tab-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab-dot, .tab-x, .tab-badge { flex: none; }
+
+/* The status and the controls keep their size; the tabs are what scrolls. */
+.chat-state, .chat-cost, .chat-stop, .chat-grow { flex: none; }
+.chat-cost { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* Below this the status text is what has to go, not the way out of a tab. */
+@media (max-width: 1400px) {
+  .chat-head .chat-cost { display: none; }
+}

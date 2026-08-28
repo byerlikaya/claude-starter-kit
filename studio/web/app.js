@@ -754,10 +754,13 @@ function renderFleet(data) {
 let current = null;
 let source = null;
 
+// Selecting a session points the graph at it. It does NOT open the
+// conversation: the sidebar is for choosing what to look at, and having a
+// reading panel appear on every click there made choosing expensive. The
+// conversation is opened from the session node on the canvas, which is the
+// thing that represents it.
 function selectSession(sessionId) {
-  // Selecting the session already selected is not a no-op: its conversation may
-  // have been closed since, and clicking it is how someone asks for it back.
-  if (current === sessionId) { openConversation(sessionId); return; }
+  if (current === sessionId) return;
   current = sessionId;
   canvas.setSession(sessionId);
   showInspector(null);
@@ -768,10 +771,6 @@ function selectSession(sessionId) {
   // A new session means the cached agent reports belong to someone else.
   detailCache.clear();
 
-  // Every session gets its conversation shown; only the ones the panel started
-  // get a box to write in. Hiding the conversation of a session we can read
-  // perfectly well was the wrong half of that rule.
-  openConversation(sessionId);
   const any = chat.ids.length > 0;
   el.chat.hidden = !any;
   el.chatSplit.hidden = !any;
