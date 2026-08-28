@@ -428,6 +428,7 @@ async function handle(req, res) {
       cwd: typeof body.cwd === 'string' ? body.cwd : undefined,
       model: typeof body.model === 'string' ? body.model : undefined,
       permissionMode: typeof body.permissionMode === 'string' ? body.permissionMode : undefined,
+      resume: typeof body.resume === 'string' ? body.resume : undefined,
     });
     if (!made.ok) return sendJson(res, 400, made);
     return sendJson(res, 201, { ok: true, session: made.session.summary() });

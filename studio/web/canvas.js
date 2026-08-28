@@ -398,6 +398,16 @@ export class Canvas {
       // reposition also toggled selection and fired a report fetch.
       el.addEventListener('click', () => {
         if (el.dataset.suppressClick === '1') { el.dataset.suppressClick = '0'; return; }
+        // A node holding others open on click. The fold control is a 20px
+        // target and the card is the obvious one; making only the small button
+        // work meant a folded workflow looked like a dead end with the agents
+        // nowhere to be found.
+        const node = this.nodes.get(n.id);
+        if (node && this.hiddenCount(n.id) > 0) {
+          if (this.collapsed.has(n.id)) this.collapsed.delete(n.id); else this.collapsed.add(n.id);
+          this.#redraw();
+          return;
+        }
         this.#select(n.id);
       });
       // Birth animation, only for nodes that actually just appeared.
@@ -434,9 +444,13 @@ export class Canvas {
       fold.textContent = folded ? `▸ ${hidden}` : '▾';
       fold.title = folded ? `Show ${hidden} hidden node(s)` : `Fold ${kids} child node(s)`;
       el.classList.toggle('cv-folded', folded);
+      // Say what a click does, since for these nodes it is not selection.
+      el.title = folded ? `Click to show ${hidden} node(s) inside` : 'Click to fold';
+      el.classList.add('cv-container');
     } else {
       fold.hidden = true;
-      el.classList.remove('cv-folded');
+      el.classList.remove('cv-folded', 'cv-container');
+      el.title = '';
     }
 
     const chip = el.querySelector('.cv-chip');

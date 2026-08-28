@@ -855,3 +855,12 @@ body.vresizing { cursor: row-resize; user-select: none; }
 
 .inspector dd.bad { color: var(--bad); }
 .ihint strong { display: block; color: var(--waiting); margin-bottom: 3px; }
+
+/* A node that holds others opens on click, so it says so before you try. */
+.cv-node.cv-container { cursor: zoom-in; }
+.cv-node.cv-container:not(.cv-folded) { cursor: zoom-out; }
+.cv-node.cv-folded .cv-desc::after {
+  content: ' — click to open';
+  color: var(--ink-faint);
+  font-size: 11px;
+}

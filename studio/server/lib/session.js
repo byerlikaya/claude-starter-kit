@@ -25,8 +25,9 @@ const MAX_MESSAGE_BYTES = 512 * 1024;
 const sessions = new Map();     // sessionId -> OwnedSession
 
 class OwnedSession {
-  constructor({ cwd, model, permissionMode, sessionId }) {
+  constructor({ cwd, model, permissionMode, sessionId, resume }) {
     this.id = sessionId;
+    this.resumedFrom = resume ?? null;
     this.cwd = cwd;
     this.model = model ?? null;
     this.permissionMode = permissionMode;
@@ -69,6 +70,11 @@ class OwnedSession {
       '--session-id', this.id,
       '--permission-mode', this.permissionMode,
     ];
+    // Continuing an existing conversation, never overwriting it. --fork-session
+    // gives the continuation its own id; measured, the original transcript came
+    // back byte-identical, which is the property that makes this safe to offer
+    // for a session someone may still have open elsewhere.
+    if (this.resumedFrom) args.push('--resume', this.resumedFrom, '--fork-session');
     if (this.model) args.push('--model', this.model);
     // Our own settings file in our own directory. The user's settings are never
     // read, written or merged.
@@ -197,6 +203,7 @@ class OwnedSession {
       cwd: this.cwd,
       model: this.model,
       permissionMode: this.permissionMode,
+      resumedFrom: this.resumedFrom,
       state: this.state,
       startedAt: this.startedAt,
       turns: this.turns,
@@ -213,7 +220,7 @@ class OwnedSession {
   }
 }
 
-export function createSession({ cwd, model, permissionMode } = {}) {
+export function createSession({ cwd, model, permissionMode, resume } = {}) {
   const dir = cwd || process.cwd();
   if (!fs.existsSync(dir)) return { ok: false, reason: `no such directory: ${dir}` };
 
@@ -224,8 +231,14 @@ export function createSession({ cwd, model, permissionMode } = {}) {
     return { ok: false, reason: `permission mode not offered here: ${mode}` };
   }
 
+  if (resume != null && !/^[A-Za-z0-9-]+$/.test(String(resume))) {
+    return { ok: false, reason: 'the session to resume is not an identifier' };
+  }
+
   const sessionId = randomUUID();
-  const s = new OwnedSession({ cwd: dir, model: model || null, permissionMode: mode, sessionId });
+  const s = new OwnedSession({
+    cwd: dir, model: model || null, permissionMode: mode, sessionId, resume: resume || null,
+  });
   sessions.set(sessionId, s);
   return { ok: true, session: s };
 }

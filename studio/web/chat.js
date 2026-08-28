@@ -401,11 +401,11 @@ export class Chat {
     return { ok: true, terminal: body.terminal };
   }
 
-  async start({ cwd, model, permissionMode }) {
+  async start({ cwd, model, permissionMode, resume }) {
     const res = await fetch(this.api('/api/owned'), {
       method: 'POST',
       headers: { 'content-type': 'application/json', ...this.headers },
-      body: JSON.stringify({ cwd, model, permissionMode }),
+      body: JSON.stringify({ cwd, model, permissionMode, resume }),
     });
     const body = await res.json().catch(() => ({ ok: false, reason: 'bad response' }));
     if (!body.ok) return { ok: false, reason: body.reason };
@@ -465,7 +465,9 @@ export class Chat {
       const dot = el('span', 'tab-dot');
       dot.dataset.state = p.session?.state ?? 'unknown';
       tab.append(dot);
-      tab.append(el('span', 'tab-name', p.kind === 'term' ? `shell ${shortId(id)}` : shortId(id)));
+      const label = p.kind === 'term' ? `shell ${shortId(id)}`
+        : (p.session?.resumedFrom ? `↩ ${shortId(p.session.resumedFrom)}` : shortId(id));
+      tab.append(el('span', 'tab-name', label));
       if (p.kind === 'term') tab.classList.add('tab-term');
       if (p.permissions?.length) tab.append(el('span', 'tab-badge warn', String(p.permissions.length)));
       else if (p.unread) tab.append(el('span', 'tab-badge', String(p.unread)));

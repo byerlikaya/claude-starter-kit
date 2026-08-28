@@ -505,6 +505,24 @@ check('a repo with no board reports a state, not a failure',
 const st = await sessionStats(REPO, path.join(os.tmpdir(), 'definitely-not-a-transcript.jsonl'));
 check('missing transcript is reported rather than guessed at', st.measured === false, st.reason);
 
+/* ------------------------------------------ §17 reach and continuity ---
+   Two things a reader tried and could not do. */
+
+process.stdout.write('\n== §17 opening and continuing ==\n');
+
+const canvasSrc = read(path.join(STUDIO, 'web', 'canvas.js')) ?? '';
+check('a node that hides others opens when the card is clicked, not only its 20px control',
+  /hiddenCount\(n\.id\) > 0/.test(canvasSrc) && /cv-container/.test(canvasSrc));
+check('the card says what a click will do', /Click to show/.test(canvasSrc));
+
+const sessSrc2 = read(path.join(STUDIO, 'server', 'lib', 'session.js')) ?? '';
+check('an existing conversation can be continued rather than started over',
+  /--resume/.test(sessSrc2));
+check('continuing forks, so the original transcript is never the one being written',
+  /--fork-session/.test(sessSrc2));
+check('the session to resume must be an identifier',
+  /is not an identifier/.test(sessSrc2));
+
 /* --------------------------------------------------------------- verdict */
 
 process.stdout.write('\n');

@@ -21,6 +21,7 @@ const el = {
   chat: document.getElementById('chat'),
   hsplit: document.getElementById('hsplit'),
   newSession: document.getElementById('new-session'),
+  continueSession: document.getElementById('continue-session'),
   newTerm: document.getElementById('new-term'),
   sessionsMeta: document.getElementById('sessions-meta'),
   summary: document.getElementById('graph-summary'),
@@ -141,6 +142,24 @@ async function openOwned(sessionId) {
     return false;   // reaped, or never ours
   }
 }
+
+// Continuing a conversation the panel did not start. It forks rather than
+// writing into the original transcript, so a session still open in a terminal
+// somewhere is not being written to by two things at once.
+el.continueSession.addEventListener('click', async () => {
+  const from = current;
+  if (!from) return;
+  el.continueSession.disabled = true;
+  el.continueSession.textContent = 'continuing…';
+  try {
+    const r = await chat.start({ cwd: projectsData?.cwd ?? null, permissionMode: 'plan', resume: from });
+    if (!r.ok) el.foot.textContent = `could not continue: ${r.reason}`;
+    else el.foot.textContent = `continued ${from.slice(0, 8)} as a fork — the original transcript is untouched`;
+  } finally {
+    el.continueSession.disabled = false;
+    el.continueSession.textContent = '↩ continue here';
+  }
+});
 
 el.newSession.addEventListener('click', async () => {
   const cwd = projectsData?.cwd ?? null;
@@ -603,6 +622,10 @@ function selectSession(sessionId) {
   const any = chat.ids.length > 0;
   el.chat.hidden = !any;
   el.hsplit.hidden = !any;
+  // Offered only where it means something: a session the panel already owns is
+  // already here, and there is nothing to continue.
+  el.continueSession.hidden = ownedIds.has(sessionId);
+  el.continueSession.title = `Continue ${sessionId.slice(0, 8)} in the panel — forks it, so the original transcript is not written to`;
 
   if (source) source.close();
   source = new EventSource(api(`/api/stream?session=${encodeURIComponent(sessionId)}`));
