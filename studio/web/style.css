@@ -1029,3 +1029,14 @@ body.vresizing { cursor: row-resize; user-select: none; }
 .shell.no-side.no-chat { grid-template-columns: 22px 0 1fr 0 0; }
 
 @media (max-width: 760px) { .side-rail { display: none; } }
+
+/* --------------------------------------------------------- full screen --- */
+
+#fullscreen.on {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+/* In full screen the window chrome is gone, so the panel's own top edge is the
+   only frame left; it should not look like a floating bar. */
+:fullscreen .bar { border-top: none; }

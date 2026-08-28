@@ -27,6 +27,7 @@ const el = {
   sideWide: document.getElementById('side-wide'),
   sideHide: document.getElementById('side-hide'),
   sideShow: document.getElementById('side-show'),
+  fullscreen: document.getElementById('fullscreen'),
   newSession: document.getElementById('new-session'),
   continueSession: document.getElementById('continue-session'),
   newTerm: document.getElementById('new-term'),
@@ -147,6 +148,41 @@ function wideToggle(btn, which) {
   });
 }
 wideToggle(el.sideWide, 'side');
+
+/* ------------------------------------------------------------ full screen
+   The browser's own, so it hides the browser too — a panel meant to be watched
+   while work runs should be able to take the whole display. Collapsing the side
+   panels is a separate control on purpose: the two compose, and folding one
+   into the other would make each less predictable. */
+
+async function toggleFullscreen() {
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else await document.documentElement.requestFullscreen();
+  } catch (e) {
+    // Denied by policy, or unsupported. Say so rather than appear inert.
+    el.foot.textContent = `full screen refused: ${e?.message ?? e}`;
+  }
+}
+
+el.fullscreen.addEventListener('click', toggleFullscreen);
+
+document.addEventListener('fullscreenchange', () => {
+  const on = Boolean(document.fullscreenElement);
+  el.fullscreen.textContent = on ? '⛶' : '⛶';
+  el.fullscreen.classList.toggle('on', on);
+  el.fullscreen.title = on ? 'Leave full screen (f or Esc)' : 'Full screen (f)';
+  canvas.fitIfUntouched();
+});
+
+// `f` toggles it, unless something is being typed into.
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'f' || e.metaKey || e.ctrlKey || e.altKey) return;
+  const t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+  e.preventDefault();
+  toggleFullscreen();
+});
 
 el.sideHide.addEventListener('click', () => setSideHidden(true));
 el.sideShow.addEventListener('click', () => setSideHidden(false));
