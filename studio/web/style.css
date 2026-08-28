@@ -81,12 +81,30 @@ body {
   letter-spacing: 0.01em;
 }
 
-.dot {
-  width: 10px; height: 10px;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+/* The kit's own mark, from assets/mark.svg. Two palettes: the light bars from
+   the logo read on the dark panel, the darker ones from mark.svg read on the
+   light. Same geometry either way. */
+.brand-mark { width: 19px; height: 19px; flex: none; }
+.brand-mark .bar-1 { fill: #C7CBFB; }
+.brand-mark .bar-2 { fill: #9AA3F7; }
+.brand-mark .bar-3 { fill: #7C3AED; }
+
+:root:not([data-theme="light"]) .brand-mark .bar-1 { fill: #E5E7FB; }
+:root:not([data-theme="light"]) .brand-mark .bar-2 { fill: #B9BEF9; }
+:root:not([data-theme="light"]) .brand-mark .bar-3 { fill: #A78BFA; }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .brand-mark .bar-1 { fill: #E5E7FB; }
+  :root:not([data-theme="light"]) .brand-mark .bar-2 { fill: #B9BEF9; }
+  :root:not([data-theme="light"]) .brand-mark .bar-3 { fill: #A78BFA; }
 }
+:root[data-theme="dark"] .brand-mark .bar-1 { fill: #E5E7FB; }
+:root[data-theme="dark"] .brand-mark .bar-2 { fill: #B9BEF9; }
+:root[data-theme="dark"] .brand-mark .bar-3 { fill: #A78BFA; }
+
+/* Two-tone, the way the wordmark does it. */
+.brand-accent { color: #A78BFA; }
+:root[data-theme="light"] .brand-accent { color: #7C3AED; }
 
 .bar-right { display: flex; align-items: center; gap: 12px; }
 
