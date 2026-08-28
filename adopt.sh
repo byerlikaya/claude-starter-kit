@@ -895,7 +895,20 @@ HIDE_NOTE=""
 if [ "$DEC4" = hide ]; then
   HIDE_NOTE="Keep the kit local after merging:  git rm -r --cached .claude CLAUDE.md  &&  printf '.claude/\nCLAUDE.md\n' >> .gitignore  &&  git commit -m 'kit: keep local'"
   echo "  #4 hide -> recorded; .claude stays TRACKED on the branch (rollback-safe). Post-merge steps in HANDOVER."
-else echo "  #4 share -> .claude tracked + shared with the team"; fi
+else
+  # `share` is a NO-OP by design: the installer never stages a user's files, it only declines to add a
+  # .gitignore entry. Saying "tracked + shared with the team" therefore reported an outcome it had neither
+  # produced nor checked — and it was wrong in the repo that noticed, where the project's own .gitignore
+  # already covers .claude/ and `git ls-files .claude` returns nothing. Report the state that IS true, and
+  # say plainly which part is left to the user.
+  if [ "$TRACKED" = 1 ]; then
+    echo "  #4 share -> .claude/CLAUDE.md is tracked; nothing added to .gitignore, so it stays shared"
+  elif git check-ignore -q .claude 2>/dev/null; then
+    echo "  #4 share -> nothing added to .gitignore, but this repo ALREADY ignores .claude — the stage step skips it, so it is NOT shared"
+  else
+    echo "  #4 share -> nothing added to .gitignore; the stage step below adds .claude — commit it to share it"
+  fi
+fi
 # #1 merge: document (NO automatic risky merge — red-team; merging is a human-approved follow-up)
 case "$DEC1" in
   takeover) MERGE_NOTE="takeover: the kit's -csk agents own the overlapping roles ($COLLIDE); each old agent's domain was imported to a draft skill (skills/<name>-local) the kit agent applies, and the original backed up under superseded/agents/ — refine the drafts" ;;
