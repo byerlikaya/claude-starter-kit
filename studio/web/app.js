@@ -18,6 +18,9 @@ const el = {
   sessions: document.getElementById('sessions'),
   filter: document.getElementById('filter'),
   kit: document.getElementById('kitline'),
+  reach: document.getElementById('reach'),
+  reachHead: document.getElementById('reach-head'),
+  reachMeta: document.getElementById('reach-meta'),
   chat: document.getElementById('chat'),
   hsplit: document.getElementById('hsplit'),
   newSession: document.getElementById('new-session'),
@@ -545,6 +548,59 @@ function shortPath(p, max = 34) {
   return `${s.slice(0, keep)}…${s.slice(-keep)}`;
 }
 
+// Sessions on other machines. The panel cannot reach them and does not pretend
+// to: their transcripts are on those machines' disks, so there is nothing to
+// draw but the roster itself, and even that is a snapshot rather than a feed.
+function renderReach(roster) {
+  if (!roster) { el.reachHead.hidden = true; el.reach.replaceChildren(); return; }
+
+  const remote = (roster.peers ?? []).filter((p) => p.remote);
+  if (!roster.measured || !remote.length) {
+    // A roster nobody has recorded is not "no peers". Say which it is.
+    el.reachHead.hidden = false;
+    el.reachMeta.textContent = roster.measured ? '0' : 'not measured';
+    el.reachMeta.className = 'meta warn';
+    renderNote(el.reach, {
+      kind: roster.measured ? '' : 'unmeasured',
+      title: roster.measured ? 'None reachable' : 'Not measured',
+      body: roster.measured
+        ? 'A connected session looked and found no machines besides this one.'
+        : 'No session here has recorded a peer list yet.',
+      why: roster.measured ? null : roster.reason,
+    });
+    return;
+  }
+
+  el.reachHead.hidden = false;
+  const when = new Date(roster.seenAt).toLocaleTimeString();
+  el.reachMeta.textContent = `${remote.length} · seen ${when}`;
+  el.reachMeta.className = 'meta';
+  el.reachMeta.title =
+    `Recorded by session ${String(roster.seenBy).slice(0, 8)} at ${when}. `
+    + 'Only a session connected to Remote Control can see these, so this is what one last reported — not a live feed.';
+
+  el.reach.replaceChildren(...remote.map((p) => {
+    const row = node('div', 'session reach-row');
+    const ring = node('span', 'ring');
+    ring.dataset.status = p.status === 'running' ? 'busy' : (p.status === 'offline' ? 'unknown' : 'idle');
+    ring.title = p.status ?? '';
+
+    const who = node('div', 'who');
+    const nm = node('div', 'name');
+    nm.append(document.createTextNode(p.name));
+    nm.append(node('span', 'origin', 'remote'));
+    who.append(nm);
+    who.append(node('div', 'path', p.note || p.kind || ''));
+
+    const stat = node('div', 'stat');
+    stat.append(node('span', 'status', p.status ?? '?'));
+    row.append(ring, who, stat);
+    // There is nothing to open: the transcript is on that machine.
+    row.title = `${p.name} [${p.ref}] — on another machine. Its transcript lives there, so the panel can list it but not draw it.`;
+    return row;
+  }));
+}
+
 function renderFleet(data) {
   if (!data.measured) {
     el.fleetMeta.textContent = 'not measured';
@@ -870,7 +926,9 @@ function paintProjects() {
 
 async function pollFleet() {
   try {
-    renderFleet(await getJson('/api/fleet'));
+    const fleet = await getJson('/api/fleet');
+    renderFleet(fleet);
+    renderReach(fleet.roster);
   } catch (e) {
     el.fleetMeta.textContent = 'offline';
     renderNote(el.fleet, { kind: 'unmeasured', title: 'Server unreachable', why: e.message });

@@ -88,6 +88,28 @@ status keeps a neutral ring; an unrecognised field is carried through untouched
 rather than dropped. Claude Code's event shapes are undocumented and move with
 the version, so the panel is built to notice that rather than to guess.
 
+## Sessions on other machines
+
+The fleet lists them under **Reachable elsewhere**, with the time they were
+seen. That wording is the whole of it: this is a snapshot, not a feed.
+
+Only a session connected to Remote Control can see peers on other machines.
+Measured: a headless session's `ListAgents` returns the local peers where a
+connected one returns those plus five remote, and passing `--remote-control` to
+a headless session does not change that — the flag starts an *interactive*
+session. There is no documented API or non-interactive command that enumerates
+them; `/list-agents` is an in-session tool, `--cloud` refuses without a TTY, and
+the Claude API's `/v1/sessions` belongs to Managed Agents, a different product.
+
+So the panel does not try to be that session. It reads what one already wrote:
+a connected session's `ListAgents` result lands in its transcript as structured
+text, and that is where this comes from. When no session here has ever asked,
+that is reported as not measured — which is not the same as having no peers.
+
+Listed, not opened. Those sessions' transcripts are on those machines' disks,
+so the panel can name them but cannot draw their graphs. For that, run Studio
+there too:
+
 ## Other machines
 
 ```bash

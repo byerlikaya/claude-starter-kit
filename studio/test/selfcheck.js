@@ -25,6 +25,7 @@ import { quickReplies } from '../web/chat.js';
 import * as pty from '../server/lib/pty.js';
 import { plan as terminalPlan } from '../server/lib/terminal.js';
 import { gateLog, gateReport, board, sessionStats, _internals as kitInternals } from '../server/lib/kit-telemetry.js';
+import { parseRoster, remoteRoster } from '../server/lib/roster.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const STUDIO = path.resolve(HERE, '..');
@@ -522,6 +523,49 @@ check('continuing forks, so the original transcript is never the one being writt
   /--fork-session/.test(sessSrc2));
 check('the session to resume must be an identifier',
   /is not an identifier/.test(sessSrc2));
+
+/* ---------------------------------------- §18 sessions on other machines ---
+   Only a session connected to Remote Control can see them — measured: a
+   headless session's ListAgents returns the local peers where a connected one
+   returns those plus five remote, and passing --remote-control to a headless
+   session does not change it. So the panel reads what a connected session
+   already recorded, and says when. */
+
+process.stdout.write('\n== §18 remote roster ==\n');
+
+// Synthetic throughout. Real session names are machine-private, and a fixture
+// is exactly where one would slip into the repo unnoticed.
+const sample = [
+  'This session is alpha [aaa111] — the name other sessions use to message it.',
+  '',
+  'Peer sessions (3):',
+  '  bravo [bbb222]  ·  interactive  ·  idle  ·  started 3h ago',
+  '  charlie [ccc333]  ·  Remote Control  ·  running',
+  '  delta [ddd444]  ·  Remote Control  ·  offline',
+].join('\n');
+
+const parsed = parseRoster(sample);
+check('the roster block is parsed', parsed !== null && parsed.peers.length === 3);
+check('the session names itself', parsed?.self?.name === 'alpha');
+check('a machine elsewhere is told apart from one here',
+  parsed?.peers.filter((p) => p.remote).length === 2);
+check('status survives', parsed?.peers.find((p) => p.name === 'charlie')?.status === 'running');
+check('free text after the status is carried, not parsed into a time it may not be',
+  parsed?.peers.find((p) => p.name === 'bravo')?.note === 'started 3h ago');
+check('prose without a roster yields nothing', parseRoster('there are no peers here') === null);
+check('an empty block yields nothing, not an empty roster', parseRoster('Peer sessions (0):') === null);
+
+const live = remoteRoster();
+check('the roster is either measured or says why not',
+  live.measured === true || typeof live.reason === 'string',
+  live.measured ? `${live.remotes} remote, seen ${new Date(live.seenAt).toISOString()}` : live.reason);
+check('a measured roster says when it was seen, never implying now',
+  live.measured !== true || (typeof live.seenAt === 'number' && live.live === false));
+
+const rosterSrc = read(path.join(STUDIO, 'server', 'lib', 'roster.js')) ?? '';
+check('records are parsed rather than grepped, because the block is JSON-escaped',
+  /JSON\.parse\(line\)/.test(rosterSrc),
+  'a line-anchored regex over the raw tail matched nothing: the newlines in it are two characters, not one');
 
 /* --------------------------------------------------------------- verdict */
 

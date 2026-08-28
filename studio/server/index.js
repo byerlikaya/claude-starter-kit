@@ -28,6 +28,7 @@ import { decide, pending, alwaysList } from './lib/permissions.js';
 import { open as openTerminal, plan as terminalPlan } from './lib/terminal.js';
 import * as pty from './lib/pty.js';
 import { gateLog, gateReport, sessionStats, board } from './lib/kit-telemetry.js';
+import { remoteRoster } from './lib/roster.js';
 import { randomUUID } from 'node:crypto';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -196,7 +197,10 @@ async function handle(req, res) {
     // Self is always in origins, peers or not: a machine that never names
     // itself cannot be labelled by the one reading it.
     const self = { name: SELF_NAME, local: true, ok: true, sessions: mine.length };
-    if (!PEERS.length) return sendJson(res, 200, { ...local, sessions: mine, origins: [self] });
+    // Sessions reachable on other machines. Not live and not this machine's —
+    // a snapshot of what a Remote-Control-connected session last recorded.
+    const roster = remoteRoster();
+    if (!PEERS.length) return sendJson(res, 200, { ...local, sessions: mine, origins: [self], roster });
 
     const answers = await askAll(PEERS, '/api/fleet');
     const sessions = [...mine];
@@ -215,7 +219,7 @@ async function handle(req, res) {
       origins.push({ name: label, via: a.peer.name, ok: true, sessions: rows.length, measured: a.body?.measured !== false });
       sessions.push(...rows);
     }
-    return sendJson(res, 200, { measured: local.measured, sessions, origins, at: Date.now() });
+    return sendJson(res, 200, { measured: local.measured, sessions, origins, roster, at: Date.now() });
   }
 
   if (url.pathname === '/api/projects') {

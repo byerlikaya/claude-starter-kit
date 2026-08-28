@@ -864,3 +864,12 @@ body.vresizing { cursor: row-resize; user-select: none; }
   color: var(--ink-faint);
   font-size: 11px;
 }
+
+/* --------------------------------------------------- reachable elsewhere --- */
+
+.reach-head { border-top: 1px solid var(--line); padding-top: 10px; }
+.reach-head[hidden] { display: none; }
+#reach { max-height: 24vh; }
+/* Listed, not openable: the transcript is on the other machine. */
+.reach-row { cursor: default; opacity: 0.92; }
+.reach-row .name { font-size: 13px; }
