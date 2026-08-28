@@ -7,6 +7,7 @@
 
 import { Canvas } from '/canvas.js';
 import { renderMarkdown } from '/md.js';
+import { Chat } from '/chat.js';
 
 const FLEET_POLL_MS = 2000;
 const SESSION_POLL_MS = 5000;
@@ -17,6 +18,9 @@ const el = {
   sessions: document.getElementById('sessions'),
   filter: document.getElementById('filter'),
   kit: document.getElementById('kitline'),
+  chat: document.getElementById('chat'),
+  hsplit: document.getElementById('hsplit'),
+  newSession: document.getElementById('new-session'),
   sessionsMeta: document.getElementById('sessions-meta'),
   summary: document.getElementById('graph-summary'),
   pulse: document.getElementById('pulse'),
@@ -102,6 +106,69 @@ setSideWidth(Number(store.get('csk-studio-side-w')) || SIDE_DEFAULT, false);
     if (e.key === 'ArrowLeft') { setSideWidth(cur - 16); e.preventDefault(); }
     if (e.key === 'ArrowRight') { setSideWidth(cur + 16); e.preventDefault(); }
   });
+})();
+
+/* ----------------------------------------------------------------- chat
+   Write endpoints need the token and a header that a cross-origin page cannot
+   attach without a preflight this server never answers. */
+
+const writeHeaders = { 'x-csk-studio': '1', ...(token ? { authorization: `Bearer ${token}` } : {}) };
+const chat = new Chat(el.chat, { api, headers: writeHeaders });
+
+let ownedIds = new Set();
+
+chat.onSession = (session) => {
+  if (!session) return;
+  ownedIds.add(session.sessionId);
+  el.chat.hidden = false;
+  el.hsplit.hidden = false;
+  // The session it started is the one worth looking at.
+  selectSession(session.sessionId);
+};
+
+el.newSession.addEventListener('click', async () => {
+  const cwd = projectsData?.cwd ?? null;
+  el.newSession.disabled = true;
+  el.newSession.textContent = 'starting…';
+  try {
+    // `plan` by default: a panel that can start a session must not also be the
+    // reason one got write access nobody asked for.
+    await chat.start({ cwd, permissionMode: 'plan' });
+  } finally {
+    el.newSession.disabled = false;
+    el.newSession.textContent = '+ session';
+  }
+});
+
+(() => {
+  const CHAT_MIN = 140;
+  const CHAT_MAX = 640;
+  const stored = Number(store.get('csk-studio-chat-h'));
+  if (stored) document.documentElement.style.setProperty('--chat-h', `${stored}px`);
+
+  let drag = null;
+  el.hsplit.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    drag = { py: e.clientY, h: el.chat.getBoundingClientRect().height };
+    el.hsplit.setPointerCapture(e.pointerId);
+    el.hsplit.classList.add('dragging');
+    document.body.classList.add('vresizing');
+  });
+  el.hsplit.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const h = Math.round(Math.min(CHAT_MAX, Math.max(CHAT_MIN, drag.h - (e.clientY - drag.py))));
+    document.documentElement.style.setProperty('--chat-h', `${h}px`);
+    store.set('csk-studio-chat-h', String(h));
+  });
+  const stopV = () => {
+    if (!drag) return;
+    drag = null;
+    el.hsplit.classList.remove('dragging');
+    document.body.classList.remove('vresizing');
+    canvas.fitIfUntouched();
+  };
+  el.hsplit.addEventListener('pointerup', stopV);
+  el.hsplit.addEventListener('pointercancel', stopV);
 })();
 
 /* --------------------------------------------------------------- canvas */
@@ -372,6 +439,17 @@ function selectSession(sessionId) {
   // A new session means the cached agent reports belong to someone else.
   detailCache.clear();
 
+  // Conversation is only offered where it exists. An observed session has no
+  // channel to write to, and a disabled box would imply otherwise.
+  const owned = ownedIds.has(sessionId);
+  el.chat.hidden = !owned;
+  el.hsplit.hidden = !owned;
+  if (owned && chat.session?.sessionId !== sessionId) {
+    getJson(`/api/owned/${encodeURIComponent(sessionId)}`)
+      .then((r) => { if (r.session) chat.attach(r.session); })
+      .catch(() => { /* it may have been reaped */ });
+  }
+
   if (source) source.close();
   source = new EventSource(api(`/api/stream?session=${encodeURIComponent(sessionId)}`));
 
@@ -404,6 +482,15 @@ function selectSession(sessionId) {
   });
 
   source.addEventListener('idle', () => setPulse('on', 'live'));
+
+  source.addEventListener('waiting', (e) => {
+    let reason = '';
+    try { reason = JSON.parse(e.data).reason ?? ''; } catch { /* keep default */ }
+    setPulse('on', 'waiting');
+    el.summary.textContent = 'no agents yet';
+    el.foot.textContent = reason;
+    canvas.render({ nodes: [], edges: [] });
+  });
 
   // A server-side fault and a dropped connection are different facts. They
   // used to share EventSource's 'error' event, so "no such session" was shown
@@ -567,6 +654,7 @@ function paintProjects() {
       if (sn.agentCount) right.append(node('span', 'sbadge', `${sn.agentCount} ▸`));
       right.append(node('span', 'sagents', fmtSize(sn.bytes)));
       row.append(right);
+      if (ownedIds.has(sn.sessionId)) row.classList.add('owned');
       row.title = `${sn.sessionId}\n${sn.title ?? ''}`;
       row.addEventListener('click', () => selectSession(sn.sessionId));
       frag.append(row);
@@ -619,6 +707,11 @@ async function pollSessions() {
     el.sessionsMeta.textContent = 'offline';
   }
 }
+
+// Sessions this panel owns survive a page reload as long as the server does.
+getJson('/api/owned')
+  .then((r) => { for (const sn of r.sessions ?? []) ownedIds.add(sn.sessionId); })
+  .catch(() => { /* none yet */ });
 
 pollFleet(); pollSessions();
 setInterval(pollFleet, FLEET_POLL_MS);

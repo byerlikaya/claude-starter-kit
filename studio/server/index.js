@@ -13,7 +13,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { getFleet, measureSpawnCost } from './lib/fleet.js';
 import { projectDir, listSessions, findSession, listProjects } from './lib/projects.js';
@@ -21,6 +21,10 @@ import { buildGraph, agentDetail } from './lib/graph.js';
 import { palette } from './lib/palette.js';
 import { latestVersion, kitStatus } from './lib/kit.js';
 import { parsePeers, askAll, ask } from './lib/peers.js';
+import {
+  createSession, getSession, listSessionsOwned, reap, stopAll, ALLOWED_MODES,
+} from './lib/session.js';
+import { randomUUID } from 'node:crypto';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const WEB_ROOT = path.resolve(HERE, '..', 'web');
@@ -83,7 +87,12 @@ function sendJson(res, status, value) {
 // Auth is opt-in while every endpoint is read-only and loopback-bound. It
 // becomes mandatory in the sprint that adds write endpoints; wiring it now
 // means that switch is a default change, not a retrofit.
-const TOKEN = process.env.CSK_STUDIO_TOKEN || null;
+// Once the panel can start a session, a token stops being optional: any page
+// in the user's browser can POST to loopback. One is generated when none is
+// supplied and printed with the URL, so the default is safe rather than
+// convenient-and-open.
+const TOKEN = process.env.CSK_STUDIO_TOKEN || randomUUID();
+const TOKEN_GENERATED = !process.env.CSK_STUDIO_TOKEN;
 
 // Peers are other machines running Studio, reached over a forwarded port. This
 // server still listens on loopback only; a peer never widens that.
@@ -91,10 +100,49 @@ let PEERS = [];
 let SELF_NAME = 'this machine';
 
 function authorised(req, url) {
-  if (!TOKEN) return true;
   const header = req.headers['authorization'];
   if (header === `Bearer ${TOKEN}`) return true;
   return url.searchParams.get('token') === TOKEN;
+}
+
+/**
+ * Extra gate for anything that changes state.
+ *
+ * The token alone already stops a drive-by page, since it cannot read the
+ * query string of another origin. The header requirement makes the attempt
+ * fail earlier: a cross-origin POST carrying a custom header must pass a
+ * preflight first, and this server answers none.
+ */
+export function writeAllowed(req) {
+  if (req.headers['x-csk-studio'] !== '1') {
+    return { ok: false, reason: 'missing x-csk-studio header' };
+  }
+  const origin = req.headers.origin;
+  if (origin) {
+    let host;
+    try { host = new URL(origin).hostname; } catch { return { ok: false, reason: 'bad Origin' }; }
+    if (host !== LOOPBACK && host !== 'localhost') return { ok: false, reason: `cross-origin request from ${origin}` };
+  }
+  return { ok: true };
+}
+
+const MAX_BODY_BYTES = 1024 * 1024;
+
+function readBody(req) {
+  return new Promise((resolve) => {
+    let size = 0;
+    const parts = [];
+    req.on('data', (c) => {
+      size += c.length;
+      if (size > MAX_BODY_BYTES) { req.destroy(); resolve(null); return; }
+      parts.push(c);
+    });
+    req.on('end', () => {
+      if (!parts.length) return resolve({});
+      try { resolve(JSON.parse(Buffer.concat(parts).toString('utf8'))); } catch { resolve(null); }
+    });
+    req.on('error', () => resolve(null));
+  });
 }
 
 async function serveStatic(res, urlPath) {
@@ -118,7 +166,13 @@ async function serveStatic(res, urlPath) {
 async function handle(req, res) {
   const url = new URL(req.url, `http://${LOOPBACK}`);
 
-  if (!authorised(req, url)) return send(res, 403, 'forbidden: token required');
+  // The token guards data and actions, not the app shell. A browser does not
+  // carry the page's query string into its sub-resource requests, so demanding
+  // it for /style.css served an unstyled page and protected nothing: the shell
+  // holds no secrets, and every /api/ path below is still gated.
+  if (url.pathname.startsWith('/api/') && !authorised(req, url)) {
+    return sendJson(res, 403, { ok: false, reason: 'token required' });
+  }
 
   if (url.pathname === '/api/health') {
     return sendJson(res, 200, {
@@ -262,6 +316,52 @@ async function handle(req, res) {
     return stream(req, res, url);
   }
 
+  /* ---------------------------------------------------------- owned ---
+     Sessions the panel started. Their transcripts land in the usual place,
+     so the graph endpoints already cover them; only the conversation needs
+     a channel of its own. */
+
+  if (url.pathname === '/api/owned' && req.method === 'GET') {
+    reap();
+    return sendJson(res, 200, { measured: true, modes: ALLOWED_MODES, sessions: listSessionsOwned() });
+  }
+
+  if (url.pathname === '/api/owned' && req.method === 'POST') {
+    const gate = writeAllowed(req);
+    if (!gate.ok) return sendJson(res, 403, { ok: false, reason: gate.reason });
+    const body = await readBody(req);
+    if (!body) return sendJson(res, 400, { ok: false, reason: 'body was not JSON' });
+    const made = createSession({
+      cwd: typeof body.cwd === 'string' ? body.cwd : undefined,
+      model: typeof body.model === 'string' ? body.model : undefined,
+      permissionMode: typeof body.permissionMode === 'string' ? body.permissionMode : undefined,
+    });
+    if (!made.ok) return sendJson(res, 400, made);
+    return sendJson(res, 201, { ok: true, session: made.session.summary() });
+  }
+
+  const ownedMatch = url.pathname.match(/^\/api\/owned\/([^/]+)(?:\/(message|stop|events))?$/);
+  if (ownedMatch) {
+    const s = getSession(decodeURIComponent(ownedMatch[1]));
+    if (!s) return sendJson(res, 404, { ok: false, reason: 'no such owned session' });
+    const verb = ownedMatch[2];
+
+    if (!verb) return sendJson(res, 200, { measured: true, session: s.summary() });
+
+    if (verb === 'events') return ownedStream(req, res, url, s);
+
+    const gate = writeAllowed(req);
+    if (!gate.ok) return sendJson(res, 403, { ok: false, reason: gate.reason });
+    if (req.method !== 'POST') return sendJson(res, 405, { ok: false, reason: 'POST only' });
+
+    if (verb === 'stop') return sendJson(res, 200, { ...s.stop(), session: s.summary() });
+
+    const body = await readBody(req);
+    if (!body) return sendJson(res, 400, { ok: false, reason: 'body was not JSON' });
+    const sent = s.send(body.text);
+    return sendJson(res, sent.ok ? 200 : 400, { ...sent, session: s.summary() });
+  }
+
   if (url.pathname.startsWith('/api/')) {
     return sendJson(res, 404, { error: `no such endpoint: ${url.pathname}` });
   }
@@ -307,7 +407,7 @@ function signature(session) {
 
 function stream(req, res, url) {
   const id = url.searchParams.get('session');
-  const session = id ? findSession(id) : null;
+  let session = id ? findSession(id) : null;
 
   res.writeHead(200, {
     'content-type': 'text/event-stream; charset=utf-8',
@@ -319,6 +419,42 @@ function stream(req, res, url) {
   const send = (event, data) => {
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
   };
+
+  // A session the panel just started has no transcript until its first turn
+  // lands. That is a session waiting, not a session missing, and saying "no
+  // such session" about one we are holding open would be a plain lie.
+  //
+  // The wait then has to hand over to the normal watch. Sending one graph and
+  // stopping left the canvas frozen on the first frame while the conversation
+  // carried on beside it.
+  if (!session && id && getSession(id)) {
+    send('waiting', { measured: true, sessionId: id, reason: 'no transcript yet — the first turn has not landed' });
+
+    let timer = null;
+    const stopWait = () => { if (timer) clearInterval(timer); try { res.end(); } catch { /* gone */ } };
+    req.on('close', stopWait);
+    req.on('error', stopWait);
+
+    let last = null;
+    const watch = (found) => {
+      try {
+        const sig = signature(found);
+        if (sig !== last) { last = sig; send('graph', buildGraph(found)); }
+        else send('idle', { at: Date.now() });
+      } catch (e) {
+        send('fault', { measured: false, reason: String(e?.message ?? e) });
+      }
+    };
+
+    timer = setInterval(() => {
+      const found = findSession(id);
+      if (!found) return;                       // still waiting for the first turn
+      clearInterval(timer);
+      watch(found);
+      timer = setInterval(() => watch(found), STREAM_TICK_MS);
+    }, 1000);
+    return undefined;
+  }
 
   if (!session) {
     if (!id) { send('fault', { measured: false, reason: 'no session id given' }); return res.end(); }
@@ -358,6 +494,35 @@ function stream(req, res, url) {
   tick();
   const timer = setInterval(tick, STREAM_TICK_MS);
   const stop = () => { clearInterval(timer); try { res.end(); } catch { /* gone */ } };
+  req.on('close', stop);
+  req.on('error', stop);
+}
+
+/** The conversation of one owned session, replayed then followed. */
+function ownedStream(req, res, url, session) {
+  res.writeHead(200, {
+    'content-type': 'text/event-stream; charset=utf-8',
+    'cache-control': 'no-store',
+    connection: 'keep-alive',
+    'x-accel-buffering': 'no',
+  });
+
+  const write = (event, data) => {
+    try { res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); } catch { /* client gone */ }
+  };
+
+  // `after` lets a reconnecting client resume without replaying the whole
+  // conversation, and without missing what it dropped.
+  const after = Number(url.searchParams.get('after')) || 0;
+  write('state', session.summary());
+
+  const unsubscribe = session.subscribe((ev) => {
+    write('event', ev);
+    if (ev.rec?.type === 'result' || ev.rec?.type === 'exit') write('state', session.summary());
+  }, after);
+
+  const beat = setInterval(() => write('state', session.summary()), 15000);
+  const stop = () => { clearInterval(beat); unsubscribe(); try { res.end(); } catch { /* gone */ } };
   req.on('close', stop);
   req.on('error', stop);
 }
@@ -449,23 +614,32 @@ async function main() {
   SELF_NAME = args.name || os.hostname().replace(/\.local$/, '');
 
   server.listen(args.port, LOOPBACK, () => {
-    const q = TOKEN ? `?token=${TOKEN}` : '';
-    process.stdout.write(`csk-studio  http://${LOOPBACK}:${args.port}/${q}\n`);
+    process.stdout.write(`csk-studio  http://${LOOPBACK}:${args.port}/?token=${TOKEN}\n`);
     process.stdout.write(`            machine: ${SELF_NAME}\n`);
     if (PEERS.length) {
       for (const p of PEERS) {
         process.stdout.write(`            peer: ${p.error ? `${p.spec} — ${p.error}` : p.base}\n`);
       }
     }
-    if (!TOKEN) process.stdout.write('            (loopback only, no token set)\n');
+    process.stdout.write(TOKEN_GENERATED
+      ? '            (loopback only; token generated for this run — open the URL above)\n'
+      : '            (loopback only; token from CSK_STUDIO_TOKEN)\n');
   });
 
   for (const sig of ['SIGINT', 'SIGTERM']) {
     process.on(sig, () => {
+      // Children outlive their parent unless told otherwise, and a panel that
+      // leaks running sessions is worse than one that never started them.
+      stopAll();
       server.close(() => process.exit(0));
       setTimeout(() => process.exit(0), 2000).unref();
     });
   }
 }
 
-main();
+// Only when this file is the program. The self-check imports writeAllowed from
+// here to exercise it rather than grep for it, and an import that silently
+// opened a listening socket would make an offline gate not offline.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main();
+}

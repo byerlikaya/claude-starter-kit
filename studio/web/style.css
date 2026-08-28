@@ -606,3 +606,112 @@ h5.md-h, h6.md-h { font-size: 12px; color: var(--ink-dim); text-transform: upper
 }
 .meta.warn { color: var(--waiting); }
 .ptrunc.pdown { color: var(--bad); }
+
+/* ================================================== conversation ====== */
+
+.stage {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: 1fr auto auto;
+  min-height: 0;
+}
+.canvas { grid-area: 1 / 1 / 2 / 2; }
+.hsplit { grid-area: 2 / 1 / 3 / 2; }
+.chat   { grid-area: 3 / 1 / 4 / 2; }
+/* The inspector spans every row: it describes a node, not a moment. */
+.inspector { grid-area: 1 / 2 / 4 / 3; }
+
+.hsplit { height: 5px; background: var(--line); cursor: row-resize; position: relative; }
+.hsplit::after { content: ''; position: absolute; inset: -4px 0; }
+.hsplit:hover, .hsplit:focus-visible, .hsplit.dragging { background: var(--accent); outline: none; }
+.hsplit[hidden] { display: none; }
+body.vresizing { cursor: row-resize; user-select: none; }
+
+.chat {
+  height: var(--chat-h, 300px);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+}
+.chat[hidden] { display: none; }
+
+.chat-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 14px; border-bottom: 1px solid var(--line); flex: none;
+}
+.chat-title {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--ink-faint);
+}
+.chat-state {
+  font-family: var(--mono); font-size: 10px; color: var(--ink-dim);
+  border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px;
+}
+.chat-state[data-state="working"] { color: var(--busy); border-color: color-mix(in srgb, var(--busy) 45%, transparent); }
+.chat-state[data-state="idle"]    { color: var(--good); border-color: color-mix(in srgb, var(--good) 35%, transparent); }
+.chat-state[data-state="exited"], .chat-state[data-state="failed"] { color: var(--bad); }
+.chat-cost { flex: 1; font-family: var(--mono); font-size: 10px; color: var(--ink-faint); }
+.chat-stop { font-family: var(--mono); font-size: 11px; padding: 2px 8px; }
+
+.chat-log { flex: 1; overflow-y: auto; padding: 12px 14px; min-height: 0; }
+
+.msg { display: grid; grid-template-columns: 54px 1fr; gap: 10px; margin-bottom: 12px; }
+.msg-role {
+  font-family: var(--mono); font-size: 10px; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--ink-faint); padding-top: 2px;
+}
+.msg-user .msg-role { color: var(--accent); }
+.msg-body { min-width: 0; font-size: 13px; line-height: 1.55; }
+.msg-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.msg-user .msg-body {
+  background: var(--surface-2); border-radius: 8px; padding: 7px 10px;
+}
+.msg-streaming .msg-body { color: var(--ink-dim); }
+.thinking { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); }
+.thinking::after { content: ''; animation: dots 1.2s steps(4, end) infinite; }
+@keyframes dots { 0% { content: ''; } 25% { content: '.'; } 50% { content: '..'; } 75% { content: '...'; } }
+
+.tool-card {
+  display: flex; gap: 8px; align-items: baseline;
+  background: var(--surface-2); border-radius: 6px; padding: 4px 8px; margin: 4px 0;
+}
+.tool-name { font-family: var(--mono); font-size: 10px; color: var(--accent); flex: none; }
+.tool-label { font-size: 12px; color: var(--ink-dim); overflow-wrap: anywhere; }
+
+.chat-note { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); padding: 4px 0; }
+.chat-note.bad { color: var(--bad); }
+
+.chat-form { display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--line); flex: none; }
+.chat-form[hidden] { display: none; }
+.chat-input {
+  flex: 1; resize: none; box-sizing: border-box;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+  color: var(--ink); font-family: inherit; font-size: 13px; line-height: 1.45; padding: 7px 10px;
+}
+.chat-input:focus { outline: none; border-color: var(--accent); }
+.chat-input:disabled { opacity: 0.5; }
+.chat-send {
+  background: var(--accent); border: none; border-radius: 8px; color: #fff;
+  cursor: pointer; font-size: 12px; font-weight: 600; padding: 0 16px; align-self: stretch;
+}
+.chat-send:hover { filter: brightness(1.1); }
+
+.ghost.primary {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  font-size: 12px;
+}
+.ghost.primary:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); }
+
+.srow.owned .sname::after {
+  content: 'owned'; margin-left: 6px; padding: 0 4px; border-radius: 4px;
+  font-family: var(--mono); font-size: 9px; color: var(--good);
+  border: 1px solid color-mix(in srgb, var(--good) 35%, transparent);
+}
+
+/* `display: grid` outranks the UA's `[hidden] { display: none }`, so the empty
+   note kept painting over a graph that had nodes. Same trap as .inspector. */
+.cv-empty[hidden] { display: none; }
+.msg-pending .msg-body { opacity: 0.55; }

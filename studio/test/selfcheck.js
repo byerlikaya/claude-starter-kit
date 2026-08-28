@@ -15,6 +15,9 @@ import { encodeCwd } from '../server/lib/projects.js';
 import { _internals as graphInternals } from '../server/lib/graph.js';
 import { palette } from '../server/lib/palette.js';
 import { renderMarkdown } from '../web/md.js';
+import { ALLOWED_MODES } from '../server/lib/session.js';
+import { parsePeers } from '../server/lib/peers.js';
+import { writeAllowed } from '../server/index.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const STUDIO = path.resolve(HERE, '..');
@@ -245,6 +248,63 @@ for (const a of attacks) {
 }
 check('a link never becomes an href', !/href/i.test(renderMarkdown('[x](javascript:alert(1))')));
 check('headings and tables still render', /<h\d/.test(renderMarkdown('## h')) && /<table/.test(renderMarkdown('| a |\n|---|\n| 1 |')));
+
+/* ------------------------------------------- §10 the write surface ---
+   The panel can now start a session and send it messages, which makes it
+   worth attacking. These pin the shape of that surface. */
+
+process.stdout.write('\n== §10 owned sessions ==\n');
+
+check('permission modes are an allow-list, not a deny-list',
+  Array.isArray(ALLOWED_MODES) && ALLOWED_MODES.length > 0 && ALLOWED_MODES.every((m) => typeof m === 'string'),
+  ALLOWED_MODES.join(', '));
+check('the default mode is the least permissive one offered',
+  ALLOWED_MODES[0] === 'plan',
+  `first is ${ALLOWED_MODES[0]}`);
+
+const idxSrc = read(path.join(STUDIO, 'server', 'index.js')) ?? '';
+// Exercised, not grepped. An earlier version of this pin only looked for the
+// header's name in the source, and survived the check being replaced with
+// `if (false)` — a gate that cannot fail is not a gate.
+const req = (headers) => ({ headers });
+check('a request without the header is refused',
+  writeAllowed(req({})).ok === false);
+check('a request with the wrong header value is refused',
+  writeAllowed(req({ 'x-csk-studio': '0' })).ok === false);
+check('a same-origin request with the header is allowed',
+  writeAllowed(req({ 'x-csk-studio': '1', origin: 'http://127.0.0.1:7777' })).ok === true);
+check('localhost counts as same-origin',
+  writeAllowed(req({ 'x-csk-studio': '1', origin: 'http://localhost:7777' })).ok === true);
+check('a cross-origin request is refused even with the header',
+  writeAllowed(req({ 'x-csk-studio': '1', origin: 'https://evil.example' })).ok === false);
+check('an unparseable Origin is refused rather than ignored',
+  writeAllowed(req({ 'x-csk-studio': '1', origin: 'not a url' })).ok === false);
+check('a request with no Origin at all still needs the header',
+  writeAllowed(req({ 'x-csk-studio': '1' })).ok === true &&
+  writeAllowed(req({ origin: 'http://127.0.0.1:7777' })).ok === false);
+check('a token always exists, generated when none was supplied',
+  /CSK_STUDIO_TOKEN \|\| randomUUID\(\)/.test(idxSrc));
+check('the token gate covers every /api/ path',
+  /url\.pathname\.startsWith\('\/api\/'\) && !authorised/.test(idxSrc));
+
+const sessSrc = read(path.join(STUDIO, 'server', 'lib', 'session.js')) ?? '';
+check('owned sessions are spawned with an id we chose, so the transcript lands where the graph reads it',
+  /'--session-id', this\.id/.test(sessSrc));
+check('children are stopped when the server is', /stopAll/.test(idxSrc) && /export function stopAll/.test(sessSrc));
+
+/* ------------------------------------------------------- §11 peers ---
+   A peer is another machine. Reaching one must never widen this one. */
+
+process.stdout.write('\n== §11 peers ==\n');
+
+const [p1] = parsePeers(['http://127.0.0.1:7778']);
+check('a bare peer URL parses', p1.base === 'http://127.0.0.1:7778' && !p1.token);
+const [p2] = parsePeers(['http://:tok@127.0.0.1:7780']);
+check('a peer token is taken off the URL, not left in it', p2.token === 'tok' && !p2.base.includes('tok'));
+const [p3] = parsePeers([']]not a url']);
+check('an unparseable peer is reported, not silently dropped', p3.error === 'not a URL');
+check('the server binds loopback whatever the peer list says',
+  /server\.listen\(args\.port, LOOPBACK/.test(idxSrc));
 
 /* --------------------------------------------------------------- verdict */
 
