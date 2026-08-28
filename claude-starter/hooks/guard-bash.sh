@@ -586,10 +586,11 @@ ${BRANCH_WARN}Approve only if the commit message above was shown to you and you 
       # bypassPermissions, plan, or an unrecognised/absent mode: we cannot prove the prompt would reach a
       # human, so we fail closed rather than let the gate silently evaporate.
       gatelog BLOCK 4.4 "commit/push under a mode that cannot prompt (${PERM_MODE:-unknown})"
-      echo "GUARD (§4.4): 'git commit/push' is gated by approval AT THE TOOL LEVEL, and this session's permission mode ('${PERM_MODE:-unknown}') cannot show you an approval prompt." >&2
-      echo "Present the commit MESSAGE to the user and get EXPLICIT approval. Then either:" >&2
-      echo "  (a) the user re-runs Claude in a normal permission mode, where this gate asks them directly and Claude commits, OR" >&2
-      echo "  (b) the user starts the session with 'CLAUDE_GIT_OK=1' (headless/CI), OR" >&2
+      echo "GUARD (§4.4): 'git commit/push' is gated by approval AT THE TOOL LEVEL, and this session's permission mode ('${PERM_MODE:-unknown}') cannot put that prompt in front of a person." >&2
+      echo "Present the commit MESSAGE to the user and get EXPLICIT approval. Then one of:" >&2
+      echo "  (a) the user presses Shift+Tab to switch to default/acceptEdits — IN THIS SESSION, no restart — and this gate asks them directly, OR" >&2
+      echo "  (b) the NEXT session is started with 'CLAUDE_GIT_OK=1' (headless/CI) — the key cannot be added to a session already running. It covers COMMIT AND PUSH ONLY;;" >&2
+      echo "      force-push, git add -f, hook tampering and the §4.5 destructive set all still block, OR" >&2
       echo "  (c) the user runs the command in their own terminal." >&2
       exit 2 ;;
   esac
