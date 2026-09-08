@@ -2,8 +2,9 @@
 // Studio's offline gate. No network, no CLI, no tokens spent — so it can be
 // wired into CI and run on every change.
 //
-// The live-CLI half lives in contract.js and is deliberately NOT gated: it
-// costs real tokens, the same call the repo already makes for evals/.
+// Everything here is hermetic: fixtures and temp directories only, never this
+// checkout's own state. An assertion that reads the author's machine is a gate
+// that is green for one person and red for everyone else.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -510,13 +511,35 @@ check('the plan is inspectable before anything launches', typeof tp.line === 'st
 
 process.stdout.write('\n== §16 kit telemetry ==\n');
 
-const own = gateLog(REPO);
+// A fixture, not this checkout. These read a gate log, and a gate log only
+// exists on a machine that has actually run the guard hooks — it is gitignored.
+// Pointed at REPO these four passed here and failed 4/4 on a fresh clone, which
+// is the worst kind of gate: green for the author, red for everyone else, and
+// silent about the difference.
+const logHome = fs.mkdtempSync(path.join(os.tmpdir(), 'csk-studio-gatelog-'));
+fs.mkdirSync(path.join(logHome, '.claude'), { recursive: true });
+fs.writeFileSync(path.join(logHome, '.claude', 'gate-log.tsv'),
+  ['BLOCK\t§4.1\tdestructive\tgit reset --hard',
+    'BLOCK\t§4.1\tdestructive\trm -rf /',
+    'ASK\t§2.3\tcommit-approval\tgit commit -m x',
+    'ALLOW\t§2.3\tcommit-approval\tgit status',
+    ''].join('\n'));
+
+let own;
+try {
+  own = gateLog(logHome);
+} finally {
+  fs.rmSync(logHome, { recursive: true, force: true });
+}
 check('the gate log is read where it exists', own.measured === true, own.reason ?? `${own.total} entries`);
+check('every record in the fixture is read back, and no more',
+  own.total === 4 && own.counts.BLOCK === 2 && own.counts.ASK === 1 && own.counts.ALLOW === 1,
+  `a parser that drops or invents records would still satisfy a "> 0 entries" check (got ${JSON.stringify(own.counts)})`);
 check('the log is marked as carrying no timestamps',
   own.measured && own.timestamped === false,
   'the format has no timestamp column, and the panel must not imply one');
 check('whether commands were recorded is stated, not assumed',
-  own.measured && typeof own.commandsRecorded === 'boolean');
+  own.measured && own.commandsRecorded === true);
 check('verdicts are counted', own.measured && typeof own.counts?.BLOCK === 'number', JSON.stringify(own.counts));
 
 const noLog = gateLog(os.tmpdir());
@@ -898,6 +921,1058 @@ check('both widths are remembered', /csk-studio-side-w/.test(appSrc2) && /csk-st
       `a bad frame took the terminal down instead of being dropped (got ${JSON.stringify(verdict)})`);
   }
 }
+
+/* --------------------------------- §26 delegation reads as motion ------
+   The graph was correct and inert. A viewer could see that two cards were
+   connected and could not see which way the work went or which branch was
+   alive, which is the one thing the panel exists to show.
+
+   Grepping the stylesheet for "animation" would pass on a sheet that animates
+   nothing, and grepping for a keyframe name would pass on one whose rule never
+   matches any element. So this section does two things instead. It renders
+   real fixtures through the canvas and reads what the canvas produced. And it
+   resolves the stylesheet the way a browser would — parse, match, sort by
+   specificity then source order — and asserts the values that come out. The
+   second half caught a real bug on its first run: the reduced-motion rules
+   were a hundred points of specificity short of the rules they had to beat,
+   so asking for less motion changed nothing. */
+
+process.stdout.write('\n== §26 delegation reads as motion ==\n');
+
+/* A cascade small enough to trust — enough CSS to answer "what would the
+   browser compute here", which is the only question this section asks. */
+
+function cssRules(src) {
+  const clean = src.replace(/\/\*[\s\S]*?\*\//g, '');
+  const out = [];
+  let order = 0;
+  const walk = (text, media) => {
+    let i = 0;
+    while (i < text.length) {
+      const open = text.indexOf('{', i);
+      if (open === -1) break;
+      const prelude = text.slice(i, open).trim();
+      let depth = 1;
+      let j = open + 1;
+      while (j < text.length && depth > 0) {
+        if (text[j] === '{') depth += 1;
+        else if (text[j] === '}') depth -= 1;
+        j += 1;
+      }
+      const body = text.slice(open + 1, j - 1);
+      if (/^@media\b/.test(prelude)) {
+        walk(body, media.concat(prelude.replace(/^@media\s*/, '').trim()));
+      } else if (!prelude.startsWith('@')) {
+        // Keyframe blocks are not cascade rules and drop out here with every
+        // other at-rule; they are read separately, by name, below.
+        const decls = new Map();
+        for (const part of body.split(';')) {
+          const k = part.indexOf(':');
+          if (k === -1) continue;
+          const prop = part.slice(0, k).trim();
+          if (prop) decls.set(prop, part.slice(k + 1).trim());
+        }
+        for (const sel of prelude.split(',')) {
+          const s = sel.trim();
+          if (s) out.push({ sel: s, decls, media, order: (order += 1) });
+        }
+      }
+      i = j;
+    }
+  };
+  walk(clean, []);
+  return out;
+}
+
+/** The body of a named at-rule, brace-balanced. */
+function atRule(src, name) {
+  const i = src.indexOf(name);
+  if (i === -1) return '';
+  const open = src.indexOf('{', i);
+  if (open === -1) return '';
+  let depth = 1;
+  let j = open + 1;
+  while (j < src.length && depth > 0) {
+    if (src[j] === '{') depth += 1;
+    else if (src[j] === '}') depth -= 1;
+    j += 1;
+  }
+  return src.slice(open + 1, j - 1);
+}
+
+/** Which properties a keyframe block actually animates. */
+function animates(body) {
+  return new Set([...body.matchAll(/([a-z-]+)\s*:/g)].map((m) => m[1]));
+}
+
+const CSS_TOKEN = /^[a-zA-Z][\w-]*|\.[\w-]+|#[\w-]+|\[[^\]]*\]|::?[\w-]+(?:\([^)]*\))?|\*/g;
+
+function compound(s) {
+  const out = { tag: null, id: null, classes: [], attrs: [], pseudos: [], bad: false };
+  for (const t of s.match(CSS_TOKEN) ?? []) {
+    if (t === '*') continue;
+    else if (t.startsWith(':')) out.pseudos.push(t);
+    else if (t.startsWith('.')) out.classes.push(t.slice(1));
+    else if (t.startsWith('#')) out.id = t.slice(1);
+    else if (t.startsWith('[')) {
+      const m = /^\[([\w-]+)(?:=["']?([^\]"']*)["']?)?\]$/.exec(t);
+      if (m) out.attrs.push([m[1], m[2] ?? null]); else out.bad = true;
+    } else out.tag = t.toLowerCase();
+  }
+  return out;
+}
+
+/** An element is `{ tag, classes:Set, attrs:{}, pseudo }`. A pseudo-class the
+ *  probes do not model — `:hover`, `:not(…)` — never matches, which is the
+ *  right answer here: none of these probes is hovered or is the root. */
+function hits(c, el) {
+  if (c.bad || c.id) return false;
+  if (c.tag && c.tag !== el.tag) return false;
+  for (const k of c.classes) if (!el.classes.has(k)) return false;
+  for (const [name, val] of c.attrs) {
+    const have = el.attrs[name];
+    if (have === undefined) return false;
+    if (val !== null && String(have) !== val) return false;
+  }
+  const want = c.pseudos.map((p) => (p.startsWith('::') ? p : `:${p}`));
+  if (want.length === 0) return el.pseudo == null;
+  return want.length === 1 && want[0] === el.pseudo;
+}
+
+function selMatches(sel, el, ancestors) {
+  const toks = sel.trim().split(/\s+/).filter(Boolean);
+  const last = toks.pop();
+  if (!hits(compound(last), el)) return false;
+  let ai = ancestors.length - 1;                 // ancestors run outermost first
+  for (let i = toks.length - 1; i >= 0; i -= 1) {
+    const t = toks[i];
+    if (t === '+' || t === '~') return false;    // siblings are not modelled
+    if (t === '>') {
+      i -= 1;
+      if (ai < 0 || !hits(compound(toks[i]), ancestors[ai])) return false;
+      ai -= 1;
+      continue;
+    }
+    const c = compound(t);
+    let found = false;
+    while (ai >= 0) {
+      const anc = ancestors[ai];
+      ai -= 1;
+      if (hits(c, anc)) { found = true; break; }
+    }
+    if (!found) return false;
+  }
+  return true;
+}
+
+function specificity(sel) {
+  let b = 0;
+  let c = 0;
+  for (const t of sel.split(/\s+|>|\+|~/).filter(Boolean)) {
+    const p = compound(t);
+    b += p.classes.length + p.attrs.length + p.pseudos.filter((x) => !x.startsWith('::')).length;
+    c += (p.tag ? 1 : 0) + p.pseudos.filter((x) => x.startsWith('::')).length;
+  }
+  return b * 100 + c;
+}
+
+function computed(rules, el, ancestors, media = []) {
+  const on = new Set(media);
+  const won = rules
+    .filter((r) => r.media.every((m) => on.has(m)) && selMatches(r.sel, el, ancestors))
+    .sort((x, y) => specificity(x.sel) - specificity(y.sel) || x.order - y.order);
+  const out = new Map();
+  for (const r of won) for (const [k, v] of r.decls) out.set(k, v);
+  return out;
+}
+
+{
+  const dom = installDom();
+  const cssText = read(path.join(STUDIO, 'web', 'style.css')) ?? '';
+  const rules = cssRules(cssText);
+  const REDUCE = ['(prefers-reduced-motion: reduce)'];
+
+  const { Canvas } = await import(`../web/canvas.js?motion=${Date.now()}`);
+  const PAL = {
+    map: {
+      Explore: { hex: '#26c6e6', source: 'builtin' },
+      Plan: { hex: '#a874f5', source: 'builtin' },
+      reviewer: { hex: '#35c874', source: 'kit' },
+      tester: { hex: '#f2a65a', source: 'kit' },
+    },
+    unknown: '#94a3c8',
+  };
+
+  const kid = (id, status, type = 'Explore', parentId = 'session') =>
+    ({ id, kind: 'agent', agentType: type, status, spawnDepth: 1, parentId, tools: {}, toolCount: 0 });
+  const root = (turns = 1) => ({ id: 'session', kind: 'session', status: 'session', turns, cwd: '/x' });
+
+  const FIXTURE = {
+    nodes: [
+      root(3),
+      // One status each, and all of one type on purpose: the distinguishability
+      // check below reads the whole painted signature, and if these carried
+      // different agent colours they would come out "different" on identity
+      // rather than on status. `alt` is the one that varies, for the identity
+      // check that does want two colours.
+      kid('live', 'running'),
+      kid('wake', 'starting'),
+      kid('fin', 'done'),
+      kid('bad', 'failed'),
+      kid('over', 'ended'),
+      kid('old', 'stale'),
+      kid('alt', 'done', 'reviewer'),
+      { id: 'w1', kind: 'workflow', status: 'running', members: 3, byStatus: { running: 3 }, spawnDepth: 1, parentId: 'session' },
+      kid('m1', 'running', 'Explore', 'w1'),
+      kid('m2', 'running', 'reviewer', 'w1'),
+      kid('m3', 'running', 'tester', 'w1'),
+    ],
+    edges: [
+      { source: 'session', target: 'live' }, { source: 'session', target: 'wake' },
+      { source: 'session', target: 'fin' }, { source: 'session', target: 'bad' },
+      { source: 'session', target: 'over' }, { source: 'session', target: 'old' },
+      { source: 'session', target: 'alt' },
+      { source: 'session', target: 'w1' },
+      { source: 'w1', target: 'm1' }, { source: 'w1', target: 'm2' }, { source: 'w1', target: 'm3' },
+    ],
+  };
+
+  const canvas = new Canvas(document.createElement('div'), {});
+  canvas.setPalette(PAL);
+  canvas.setSession('motion-fixture');
+  canvas.render(FIXTURE);
+  // Every edge in a first render is an arrival, so all of them are drawing
+  // themselves right now. Wait the arrival out before reading steady state —
+  // and the wait is itself the assertion below that the class comes off again.
+  await new Promise((r) => { setTimeout(r, 500); });
+
+  // The canvas keys an edge by its endpoints joined on NUL, the one character
+  // a node id cannot contain. Built here rather than pasted, so a literal
+  // control byte stays out of this file.
+  const SEP = String.fromCharCode(0);
+  const edgeIn = (cv, from, to) => cv.edgeEls.get([from, to].join(SEP));
+  const edge = (from, to) => edgeIn(canvas, from, to);
+  const dataAttrs = (el) => Object.fromEntries(
+    Object.entries(el.dataset).map(([k, v]) => [`data-${k.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)}`, v]),
+  );
+  // The stub keeps setAttribute('class') and classList apart; a browser does
+  // not, and the canvas legitimately uses both on one path.
+  const classesOf = (el) => new Set([
+    ...String(el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean),
+    ...el.classList._s,
+  ]);
+  // The chain a path really hangs in, carrying the root's own attributes — the
+  // motion budget is expressed there, so a probe that invented the chain would
+  // never see it.
+  const chainFor = (cv) => [
+    { tag: 'div', classes: new Set(['cv-root']), attrs: dataAttrs(cv.root), pseudo: null },
+    { tag: 'div', classes: new Set(['cv-viewport']), attrs: {}, pseudo: null },
+    { tag: 'svg', classes: new Set(['cv-edges']), attrs: {}, pseudo: null },
+    { tag: 'g', classes: new Set(['cv-edge-g']), attrs: {}, pseudo: null },
+  ];
+  const pathStyle = (cv, el, media) => computed(
+    rules, { tag: 'path', classes: classesOf(el), attrs: dataAttrs(el), pseudo: null }, chainFor(cv), media,
+  );
+  const styleOf = (el, media) => pathStyle(canvas, el, media);
+  const asDrawing = (state, media) => computed(rules, {
+    tag: 'path', classes: new Set(['cv-edge', 'cv-drawing']), attrs: { 'data-state': state }, pseudo: null,
+  }, chainFor(canvas), media);
+
+  const moving = (m) => {
+    const a = m.get('animation');
+    return Boolean(a) && a !== 'none' && !/(^|\s)0s(\s|$)/.test(a);
+  };
+
+  // A probe that matched nothing would make every assertion below vacuously
+  // true, so it is asked for a value that is known to be there first.
+  check('the cascade probe resolves a rule that is known to exist',
+    styleOf(edge('session', 'live')).get('fill') === 'none',
+    'the selector matcher found no .cv-edge rule at all — every result below would be empty');
+  // An arrival that never ends is a graph where every edge animates the
+  // draw-in forever and no edge ever shows its status.
+  check('the draw-in takes itself off again',
+    [...canvas.edgeEls.values()].every((p) => !p.classList.contains('cv-drawing')),
+    `${[...canvas.edgeEls.values()].filter((p) => p.classList.contains('cv-drawing')).length}`
+    + ' edges were still drawing half a second after they arrived');
+
+  /* -- 1. motion, and which way it points ------------------------------- */
+
+  const live = styleOf(edge('session', 'live'));
+  const fin = styleOf(edge('session', 'fin'));
+  check('an edge into a working agent is in motion', moving(live),
+    `resolved animation: ${JSON.stringify(live.get('animation') ?? null)}`);
+  check('an edge into a finished agent is not', !moving(fin),
+    `resolved animation: ${JSON.stringify(fin.get('animation') ?? null)}`);
+
+  // Direction is two facts together: the curve is drawn starting at the
+  // parent, and the offset animates negative, which walks the pattern toward
+  // the far end. Either one alone says nothing about which way work flows.
+  const start = /^M\s*([-\d.]+)\s+([-\d.]+)/.exec(edge('session', 'live').getAttribute('d') ?? '');
+  const parentPos = canvas.pos.get('session');
+  check('the curve starts at the parent, so "along the path" means "toward the child"',
+    Boolean(start) && Number(start[2]) > parentPos.y && Number(start[2]) <= parentPos.y + 105,
+    `d starts at ${start ? `${start[1]},${start[2]}` : '?'} and the parent sits at ${parentPos.x},${parentPos.y}`);
+  check('the dash travels parent to child rather than back up the wire',
+    /stroke-dashoffset:\s*calc\(\s*-1\s*\*/.test(atRule(cssText, '@keyframes cv-flow')),
+    `a positive offset runs the dashes the wrong way. keyframe: ${JSON.stringify(atRule(cssText, '@keyframes cv-flow').trim())}`);
+
+  // A dash pattern and a travel distance that disagree put a seam in every
+  // loop, and the two moving states do not share a pattern.
+  for (const [id, want] of [['live', '6px 7px'], ['wake', '2px 7px']]) {
+    const m = styleOf(edge('session', id));
+    const period = Number(String(m.get('--dash-period') ?? '').replace('px', ''));
+    const sum = String(m.get('stroke-dasharray') ?? '').split(/\s+/)
+      .reduce((t, v) => t + Number(String(v).replace('px', '')), 0);
+    check(`the ${id} edge advances exactly one dash period per loop`,
+      m.get('stroke-dasharray') === want && period === sum && period > 0,
+      `dasharray ${m.get('stroke-dasharray')} sums to ${sum}, period is ${period}`);
+  }
+
+  /* -- 2. the edge carries the child's identity ------------------------- */
+
+  check('an edge is stroked with the colour of the card it feeds',
+    edge('session', 'live').style.stroke === PAL.map.Explore.hex
+    && edge('session', 'alt').style.stroke === PAL.map.reviewer.hex,
+    `got ${edge('session', 'live').style.stroke} and ${edge('session', 'alt').style.stroke}`);
+  check('the edge colour comes from the same call the card colour does',
+    edge('session', 'fin').style.stroke === canvas.nodeColor(canvas.nodes.get('fin')));
+  // The old edge code read the agent palette only, so an edge into a container
+  // fell through to the unknown grey while the card itself was purple — the
+  // one branch a viewer most needs to follow was the one that did not match.
+  check('an edge into a workflow container is not painted as an unknown agent',
+    edge('session', 'w1').style.stroke === canvas.nodeColor(canvas.nodes.get('w1'))
+    && edge('session', 'w1').style.stroke !== PAL.unknown,
+    `got ${edge('session', 'w1').style.stroke}, unknown is ${PAL.unknown}`);
+
+  /* -- 3. a workflow's members read as one system ----------------------- */
+
+  const chan = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const apart = (a, b) => Math.hypot(...chan(a).map((v, i) => v - chan(b)[i]));
+  const wf = canvas.nodeColor(canvas.nodes.get('w1'));
+  const members = ['m1', 'm2', 'm3'].map((id) => ({
+    id,
+    stroke: edge('w1', id).style.stroke,
+    own: canvas.nodeColor(canvas.nodes.get(id)),
+    group: edge('w1', id).dataset.group,
+  }));
+  check('every member edge is pulled toward the container it belongs to',
+    members.every((m) => apart(m.stroke, wf) < apart(m.own, wf)),
+    members.map((m) => `${m.id} ${m.own}->${m.stroke} (${apart(m.own, wf).toFixed(0)} -> ${apart(m.stroke, wf).toFixed(0)} from ${wf})`).join('; '));
+  check('a member is still traceable back to its own card',
+    new Set(members.map((m) => m.stroke)).size === 3,
+    'blending all the way to the container would turn twelve members into one line');
+  check('member edges are marked as members and spawn edges are not',
+    members.every((m) => m.group === 'member') && edge('session', 'w1').dataset.group === 'spawn');
+  check('the member bundle is drawn at one weight',
+    new Set(members.map((m) => styleOf(edge('w1', m.id)).get('stroke-width'))).size === 1);
+
+  /* -- 4. arrival ------------------------------------------------------- */
+
+  {
+    const c2 = new Canvas(document.createElement('div'), {});
+    c2.setPalette(PAL);
+    c2.setSession('arrival');
+    c2.render({ nodes: [root(1), kid('a1', 'running')], edges: [{ source: 'session', target: 'a1' }] });
+    const first = edgeIn(c2, 'session', 'a1');
+    check('an edge to a node that just arrived draws itself',
+      first.classList.contains('cv-drawing'));
+
+    c2.render({
+      nodes: [root(2), kid('a1', 'running'), kid('a2', 'starting', 'Plan')],
+      edges: [{ source: 'session', target: 'a1' }, { source: 'session', target: 'a2' }],
+    });
+    check('only the new arrival draws; the edge that was already there does not',
+      edgeIn(c2, 'session', 'a2').classList.contains('cv-drawing')
+      && edgeIn(c2, 'session', 'a1') === first,
+      'replaying a settled edge would perform the whole graph on every poll');
+
+    // Unfolding is not arriving. An edge revealed by opening a group is new to
+    // the DOM but its node is not new to the session, and treating the two the
+    // same makes opening a 105-agent workflow perform itself.
+    {
+      const c4 = new Canvas(document.createElement('div'), {});
+      c4.setPalette(PAL);
+      c4.setSession('unfold');
+      const grouped = {
+        nodes: [
+          root(1),
+          { id: 'w', kind: 'workflow', status: 'running', members: 3, byStatus: { running: 3 }, spawnDepth: 1, parentId: 'session' },
+          kid('u1', 'running', 'Explore', 'w'), kid('u2', 'running', 'Plan', 'w'), kid('u3', 'done', 'tester', 'w'),
+        ],
+        edges: [
+          { source: 'session', target: 'w' },
+          { source: 'w', target: 'u1' }, { source: 'w', target: 'u2' }, { source: 'w', target: 'u3' },
+        ],
+      };
+      c4.render(grouped);
+      c4.collapsed.add('w');
+      c4.render(grouped);
+      const hidden = ['u1', 'u2', 'u3'].every((id) => !edgeIn(c4, 'w', id));
+      c4.collapsed.delete('w');
+      c4.render(grouped);
+      check('unfolding a group reveals its edges rather than performing them',
+        hidden && ['u1', 'u2', 'u3'].every((id) => edgeIn(c4, 'w', id)
+          && !edgeIn(c4, 'w', id).classList.contains('cv-drawing')),
+        hidden
+          ? `${['u1', 'u2', 'u3'].filter((id) => edgeIn(c4, 'w', id)?.classList.contains('cv-drawing')).length}`
+            + ' of 3 revealed edges started drawing themselves'
+          : 'folding did not take the member edges out of the layer, so the test proves nothing');
+    }
+
+    // The draw and the flow both drive stroke-dashoffset, so if the draw did
+    // not win outright the two would fight and the arrival would stutter.
+    check('the draw-in outranks the flow it briefly replaces',
+      /cv-draw/.test(String(asDrawing('live').get('animation') ?? '')),
+      `resolved to ${JSON.stringify(asDrawing('live').get('animation') ?? null)}`);
+    // With the animation gone, the pattern has to go with it — a dasharray on
+    // the class itself would survive animation:none and freeze a live edge
+    // solid, or half drawn, for as long as the class is on.
+    const drawKf = animates(atRule(cssText, '@keyframes cv-draw'));
+    const drawnStill = asDrawing('live', REDUCE);
+    check('an arriving edge with motion off shows its own status dash, not a stuck one',
+      drawKf.has('stroke-dasharray') && drawKf.has('stroke-dashoffset')
+      && drawnStill.get('animation') === 'none'
+      && drawnStill.get('stroke-dasharray') === '6px 7px',
+      `keyframe animates ${[...drawKf].join('+')}; still resolves to `
+      + `${JSON.stringify(drawnStill.get('stroke-dasharray') ?? null)}`);
+  }
+
+  /* -- 5. a live card is legibly alive ---------------------------------- */
+
+  const cardRing = (state, media) => computed(rules, {
+    tag: 'div',
+    classes: new Set(['cv-node']),
+    attrs: { 'data-kind': 'agent', 'data-state': state },
+    pseudo: '::after',
+  }, [chainFor(canvas)[0]], media);
+
+  check('a running card carries a pulse', moving(cardRing('live')),
+    `resolved animation: ${JSON.stringify(cardRing('live').get('animation') ?? null)}`);
+  check('a finished card does not', !moving(cardRing('done')));
+  const pulseKf = animates(atRule(cssText, '@keyframes cv-pulse'));
+  check('the pulse animates opacity and nothing that has to be repainted',
+    pulseKf.size === 1 && pulseKf.has('opacity'),
+    `it animates ${[...pulseKf].join(', ')} — box-shadow or filter here rasterises every live card, every frame`);
+  check('the ring the pulse fades is drawn whether or not it fades',
+    Boolean(cardRing('live').get('box-shadow')),
+    'a ring that lived only inside the keyframes would mean motion off is status gone');
+  check('a card carries its state where CSS can reach it',
+    canvas.els.get('live').dataset.state === 'live'
+    && canvas.els.get('bad').dataset.state === 'failed');
+
+  /* -- 6. motion off, status still readable ----------------------------- */
+
+  const still = (id) => styleOf(edge('session', id), REDUCE);
+
+  check('reduced motion stops the flowing edge', !moving(still('live')),
+    `resolved animation: ${JSON.stringify(still('live').get('animation') ?? null)}`
+    + ' — a media query adds no specificity, so this rule has to out-rank the one it cancels');
+  check('reduced motion stops the arriving edge',
+    asDrawing('live', REDUCE).get('animation') === 'none');
+  check('reduced motion stops the card pulse', !moving(cardRing('live', REDUCE)));
+  check('a card born under reduced motion arrives placed rather than invisible',
+    computed(rules, {
+      tag: 'div', classes: new Set(['cv-node', 'cv-born']), attrs: { 'data-state': 'live' }, pseudo: null,
+    }, [], REDUCE).get('opacity') === '1',
+    'with the transition gone, opacity:0 is a card that never appears');
+
+  // The point of the whole section. With every animation off, the states the
+  // brief names have to remain five different pictures. Ended and stale are
+  // deliberately one of those five — both mean "still and quiet" — and that is
+  // asserted rather than assumed.
+  const IDS = ['live', 'wake', 'fin', 'bad', 'over'];
+  const signature = (id) => {
+    const m = still(id);
+    return JSON.stringify([
+      m.get('stroke-width'), m.get('stroke-dasharray'), m.get('opacity'), edge('session', id).style.stroke,
+    ]);
+  };
+  const sigs = new Map(IDS.map((id) => [id, signature(id)]));
+  const clashes = [];
+  for (let i = 0; i < IDS.length; i += 1) {
+    for (let j = i + 1; j < IDS.length; j += 1) {
+      if (sigs.get(IDS[i]) === sigs.get(IDS[j])) clashes.push(`${IDS[i]}=${IDS[j]}`);
+    }
+  }
+  check('with motion off every status is still a different picture',
+    clashes.length === 0,
+    clashes.length
+      ? `indistinguishable: ${clashes.join(', ')} — motion was the only channel carrying them`
+      : [...sigs].map(([k, v]) => `${k} ${v}`).join(' | '));
+  check('ended and stale are one quiet state on purpose',
+    edge('session', 'over').dataset.state === 'quiet' && edge('session', 'old').dataset.state === 'quiet');
+
+  check('a failed branch is wrong in colour, not only in a word',
+    edge('session', 'bad').style.stroke === 'var(--cv-fail)'
+    && Object.values(PAL.map).every((p) => p.hex !== 'var(--cv-fail)'),
+    `got ${edge('session', 'bad').style.stroke}`);
+  check('killed and stopped read as the failure they are',
+    ['failed', 'killed', 'stopped'].every((s) => {
+      const c3 = new Canvas(document.createElement('div'), {});
+      c3.setPalette(PAL);
+      c3.setSession(`s-${s}`);
+      c3.render({ nodes: [root(1), kid('x', s)], edges: [{ source: 'session', target: 'x' }] });
+      return edgeIn(c3, 'session', 'x').dataset.state === 'failed';
+    }),
+    'they come off the transcript verbatim and mean the same thing to a reader');
+
+  /* -- 7. both themes --------------------------------------------------- */
+
+  const bareRoot = rules.filter((r) => r.sel === ':root' && r.media.length === 0);
+  const darkRoot = rules.filter((r) => r.sel === ':root:not([data-theme="light"])' && r.media.length === 0);
+  const lightBack = rules.filter((r) => r.sel === ':root:not([data-theme="dark"])' && r.media.length === 1);
+  const used = new Set();
+  const collect = (v) => { for (const m of String(v).matchAll(/var\((--[\w-]+)\)/g)) used.add(m[1]); };
+  for (const id of IDS) { for (const v of still(id).values()) collect(v); collect(edge('session', id).style.stroke); }
+  for (const v of cardRing('live').values()) collect(v);
+  const themed = [...used].filter((t) => t.startsWith('--cv-'));
+  check('the edge states are expressed as tokens rather than literals',
+    themed.length >= 5, `tokens in play: ${themed.join(', ') || 'none'}`);
+  const orphan = themed.filter((t) => !bareRoot.some((r) => r.decls.has(t))
+    || !darkRoot.some((r) => r.decls.has(t))
+    || !lightBack.some((r) => r.decls.has(t)));
+  check('every edge token is defined on bare :root and redefined in both theme blocks',
+    orphan.length === 0,
+    orphan.length ? `only partly defined: ${orphan.join(', ')}` : `${themed.length} tokens, three blocks each`);
+
+  /* -- 8. the cost, measured -------------------------------------------- */
+
+  // 250 nodes is a session size this project has reached. Two numbers decide
+  // whether motion is affordable there: how much of the edge layer the canvas
+  // rebuilds per poll, and how many strokes are moving at once.
+  {
+    const N = 250;
+    const TYPES = ['Explore', 'Plan', 'reviewer', 'tester'];
+    const big = { nodes: [root(1)], edges: [] };
+    for (let i = 0; i < N; i += 1) {
+      big.nodes.push(kid(`n${i}`, 'running', TYPES[i % TYPES.length]));
+      big.edges.push({ source: 'session', target: `n${i}` });
+    }
+
+    let made = 0;
+    const realNS = document.createElementNS;
+    document.createElementNS = (...a) => { made += 1; return realNS(...a); };
+
+    const cBig = new Canvas(document.createElement('div'), {});
+    cBig.setPalette(PAL);
+    cBig.setSession('big');
+    cBig.render(big);
+    const firstPass = made;
+
+    made = 0;
+    const POLLS = 20;
+    const t0 = process.hrtime.bigint();
+    for (let i = 0; i < POLLS; i += 1) cBig.render(big);
+    const perPoll = Number(process.hrtime.bigint() - t0) / 1e6 / POLLS;
+    const churn = made;
+    document.createElementNS = realNS;
+
+    // This is the fix that made CSS-only motion possible at all. An element
+    // that leaves the document restarts its animations, so rebuilding the edge
+    // layer each poll reset every travelling dash twice a second — and every
+    // frame of a drag, which calls the same code.
+    check(`re-polling ${N} nodes rebuilds no edge elements`,
+      churn === 0 && firstPass === N,
+      `first pass built ${firstPass} paths (expected ${N}); ${POLLS} further polls built ${churn} more`);
+    check(`the edge layer stays at ${N} elements across polls`,
+      cBig.edgeEls.size === N, `${cBig.edgeEls.size} paths held`);
+
+    // A dash travelling along a stroke is paint work, not compositor work, so
+    // the honest limit is on how many strokes travel at once rather than on
+    // how many exist.
+    check('past the motion budget the canvas stops moving and keeps saying the same things',
+      cBig.root.dataset.motion === 'still',
+      `${N} running agents left data-motion at ${JSON.stringify(cBig.root.dataset.motion)}`);
+    const bigEdge = edgeIn(cBig, 'session', 'n0');
+    const stillBig = pathStyle(cBig, bigEdge);
+    check('the budget actually reaches the stroke, not just the root element',
+      stillBig.get('animation') === 'none',
+      `resolved to ${JSON.stringify(stillBig.get('animation') ?? null)}`);
+    check('a live edge under the budget still moves',
+      moving(styleOf(edge('session', 'live'))) && canvas.root.dataset.motion === 'flow',
+      `the small fixture is at ${JSON.stringify(canvas.root.dataset.motion)}`);
+    check('the budget is a ceiling on motion, not on the graph',
+      stillBig.get('stroke-dasharray') === '6px 7px'
+      && stillBig.get('opacity') === 'var(--cv-edge-live)',
+      'dropping the live styling along with the animation would hide which branches are alive');
+
+    // The budget is only a real gate if it has an edge. Found by walking to it
+    // rather than by naming the constant a second time — a threshold written
+    // down twice is a threshold that drifts.
+    const motionAt = (n) => {
+      const c = new Canvas(document.createElement('div'), {});
+      c.setPalette(PAL);
+      c.setSession(`edge-${n}`);
+      c.render({
+        nodes: [root(1), ...Array.from({ length: n }, (_, i) => kid(`k${i}`, 'running'))],
+        edges: Array.from({ length: n }, (_, i) => ({ source: 'session', target: `k${i}` })),
+      });
+      return c.root.dataset.motion;
+    };
+    let last = 0;
+    for (let n = 1; n <= 200 && motionAt(n) === 'flow'; n += 1) last = n;
+    check('the budget has a sharp edge, and it is not at one or two agents',
+      last >= 20 && last <= 160 && motionAt(last) === 'flow' && motionAt(last + 1) === 'still',
+      `motion holds up to ${last} flowing edges and stops at ${last + 1}`);
+
+    process.stdout.write(`     ${N} nodes: ${cBig.edgeEls.size} paths held, ${churn} rebuilt`
+      + ` over ${POLLS} polls, ${perPoll.toFixed(1)} ms of JS per poll\n`);
+  }
+
+  /* -- 9. the method six call sites depend on --------------------------- */
+
+  // Deleted by accident in an earlier layout change while app.js kept calling
+  // it in six places and #redraw in a seventh, so every fold and every panel
+  // resize threw. Call it rather than grep for it.
+  {
+    let err = null;
+    try { canvas.fitIfUntouched(); } catch (e) { err = e; }
+    check('the canvas still answers the fit call the rest of the page makes',
+      err === null && typeof canvas.fitIfUntouched === 'function',
+      err ? `${err.name}: ${err.message}` : null);
+  }
+
+  dom();
+}
+
+
+process.stdout.write('\n== §27 the picture at 250 nodes ==\n');
+
+/* The owner's complaint was that a big graph "looks low quality and
+   meaningless". Two things answer it and both are measured here rather than
+   grepped for: a depth level now wraps into bands, so fit() stops being
+   width-bound against a ribbon; and what survives a zoom-out is redrawn at a
+   constant SCREEN size instead of shrinking into grey.
+
+   Every assertion below renders a real fixture through the DOM stub and reads
+   what came out, or resolves the stylesheet the way a browser would and reads
+   the value. Nothing here asks whether a class name appears in a file. */
+
+{
+  const dom = installDom();
+  const cssText = read(path.join(STUDIO, 'web', 'style.css')) ?? '';
+  const canvasSrc = read(path.join(STUDIO, 'web', 'canvas.js')) ?? '';
+  const rules = cssRules(cssText);
+  const REDUCE = ['(prefers-reduced-motion: reduce)'];
+  const { Canvas } = await import(`../web/canvas.js?lod=${Date.now()}`);
+
+  // Thresholds are read out of the module rather than restated here. A
+  // threshold written down twice is a threshold that drifts.
+  const constOf = (name) => Number(new RegExp(`^const ${name} = ([\\d.]+);`, 'm').exec(canvasSrc)?.[1]);
+  const LOD_NEAR = constOf('LOD_NEAR');
+  const LOD_FAR = constOf('LOD_FAR');
+  const LOD_HYST = constOf('LOD_HYST');
+  const LABEL_BUDGET = constOf('LABEL_BUDGET');
+
+  // If the constants did not parse, every threshold assertion below would be
+  // comparing against NaN and quietly passing or quietly failing.
+  check('the reading thresholds are read from canvas.js rather than restated here',
+    [LOD_NEAR, LOD_FAR, LOD_HYST, LABEL_BUDGET].every((v) => Number.isFinite(v) && v > 0)
+    && LOD_NEAR > LOD_FAR,
+    `near=${LOD_NEAR} far=${LOD_FAR} hyst=${LOD_HYST} budget=${LABEL_BUDGET}`);
+
+  const TYPES = ['Explore', 'Plan', 'reviewer', 'tester', 'planner-csk',
+    'backend-expert-csk', 'docs-agent', 'security'];
+  const PAL = {
+    map: Object.fromEntries(TYPES.map((t, i) => [t, {
+      hex: ['#26c6e6', '#a874f5', '#35c874', '#f2a65a'][i % 4],
+      source: i % 2 ? 'kit' : 'builtin',
+    }])),
+    unknown: '#94a3c8',
+  };
+
+  /** A root whose pane is a real size. The stub answers 800x600 for every
+   *  element, and the whole point of the band wrap is that it is chosen
+   *  against the pane it will be drawn in. */
+  const pane = (w, h) => {
+    const el = document.createElement('div');
+    el.getBoundingClientRect = () => ({ x: 0, y: 0, top: 0, left: 0, right: w, bottom: h, width: w, height: h });
+    return el;
+  };
+
+  // Three failures and a handful of running agents, the rest finished — the
+  // shape of a real session late in a run.
+  const statusOf = (i) => (i < 3 ? 'failed' : i < 9 ? 'running' : 'done');
+  const graph = (n) => {
+    const nodes = [{ id: 'session', kind: 'session', status: 'session', turns: 4, cwd: '/x/y' }];
+    const edges = [];
+    for (let i = 0; i < n; i += 1) {
+      nodes.push({
+        id: `n${i}`,
+        kind: 'agent',
+        agentType: TYPES[i % TYPES.length],
+        status: statusOf(i),
+        description: 'a sentence of description that fills the lower half of the card',
+        lastTool: statusOf(i) === 'running' ? 'Grep' : null,
+        spawnDepth: 1,
+        parentId: 'session',
+        tools: {},
+        toolCount: 3,
+      });
+      edges.push({ source: 'session', target: `n${i}` });
+    }
+    return { nodes, edges };
+  };
+  const made = (n, w = 1280, h = 800) => {
+    const c = new Canvas(pane(w, h), {});
+    c.setPalette(PAL);
+    c.setSession(`lod-${n}-${w}x${h}`);
+    c.render(graph(n));
+    return c;
+  };
+
+  const span = (c) => {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const p of c.pos.values()) {
+      minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x + 236); maxY = Math.max(maxY, p.y + 104);
+    }
+    return { w: maxX - minX, h: maxY - minY };
+  };
+
+  const small = made(6);
+  const dozen = made(12);
+  const mid = made(60);
+  const big = made(250);
+
+  for (const [label, c] of [['6', small], ['60', mid], ['250', big]]) {
+    const s = span(c);
+    process.stdout.write(`     ${label.padStart(3)} nodes @1280x800: world ${Math.round(s.w)}x${Math.round(s.h)}`
+      + ` (${(s.w / s.h).toFixed(2)}:1), fit ${(c.view.k * 100).toFixed(1)}%,`
+      + ` reading ${c.root.dataset.lod}, 11px type draws at ${(11 * c.view.k).toFixed(2)}px\n`);
+  }
+
+  /* -- 1. the wrap is real --------------------------------------------- */
+
+  {
+    const s = span(big);
+    check('a 250-node depth level wraps into bands instead of one row',
+      s.w / s.h < 4 && big.view.k >= LOD_FAR,
+      `world ${Math.round(s.w)}x${Math.round(s.h)} (${(s.w / s.h).toFixed(2)}:1) fits at`
+      + ` ${(big.view.k * 100).toFixed(1)}% — one unbounded row was 8624x1246 (6.92:1) at 7.9%`);
+  }
+
+  /* -- 2. the small case did not pay for it ---------------------------- */
+
+  check('a six-agent session still gets full cards, at full size',
+    small.view.k >= 1 && small.root.dataset.lod === 'near',
+    `fits at ${(small.view.k * 100).toFixed(1)}% reading ${small.root.dataset.lod}`
+    + ' — one row put the same six at 66.8%');
+  check('twelve agents get full cards too, which is the complaint that started this',
+    dozen.view.k >= LOD_NEAR && dozen.root.dataset.lod === 'near',
+    `fits at ${(dozen.view.k * 100).toFixed(1)}% reading ${dozen.root.dataset.lod}`
+    + ` — needs >= ${LOD_NEAR * 100}% to keep the description`);
+
+  /* -- 3. zoom never moves a node -------------------------------------- */
+
+  {
+    const before = JSON.stringify([...dozen.pos].sort());
+    let relaid = 0;
+    dozen.layout = () => { relaid += 1; };          // shadows the prototype
+    const startK = dozen.view.k;
+    for (const k of [1.2, 0.9, LOD_NEAR + 0.05, LOD_NEAR - 0.05, 0.4,
+      LOD_FAR + 0.05, LOD_FAR - 0.05, 0.08, 0.5, 1.0]) {
+      dozen.view.k = k;
+      dozen.applyView();
+    }
+    const after = JSON.stringify([...dozen.pos].sort());
+    delete dozen.layout;
+    dozen.view.k = startK;
+    dozen.applyView();
+    check('crossing every reading boundary moves nothing and re-lays out nothing',
+      after === before && relaid === 0,
+      `${dozen.pos.size} positions, ${after === before ? 'byte-identical' : 'CHANGED'} across ten`
+      + ` zoom steps spanning both boundaries; layout() ran ${relaid} times`);
+  }
+
+  /* -- 4. the band is hysteretic --------------------------------------- */
+
+  {
+    const sweep = (from, to, step) => {
+      const seen = [];
+      for (let i = 0; i <= Math.round(Math.abs(to - from) / Math.abs(step)); i += 1) {
+        dozen.view.k = Number((from + i * step).toFixed(4));
+        dozen.applyView();
+        const b = dozen.root.dataset.lod;
+        if (seen[seen.length - 1] !== b) seen.push(b);
+      }
+      return seen;
+    };
+    // A tremor is the case the hysteresis exists for: a finger resting on a
+    // trackpad at a boundary must not reband 250 cards twice a second.
+    const tremor = (at) => {
+      dozen.view.k = at - 0.01;
+      dozen.applyView();
+      const settled = dozen.root.dataset.lod;
+      let flips = 0;
+      for (let i = 0; i < 40; i += 1) {
+        dozen.view.k = at + (i % 2 ? 0.001 : -0.001);
+        dozen.applyView();
+        if (dozen.root.dataset.lod !== settled) flips += 1;
+      }
+      return flips;
+    };
+
+    for (const [name, at] of [['detail', LOD_NEAR], ['marks', LOD_FAR]]) {
+      const up = sweep(at - 0.06, at + 0.06, 0.001);
+      const down = sweep(at + 0.06, at - 0.06, -0.001);
+      const flips = tremor(at);
+      check(`the ${name} boundary changes the reading once per direction and never on a tremor`,
+        up.length === 2 && down.length === 2 && flips === 0,
+        `up ${up.join('->')}, down ${down.join('->')}, ${flips} flips over 40 jitters of`
+        + ` +-0.001 at k=${at} (hysteresis ${LOD_HYST})`);
+    }
+    dozen.view.k = 1;
+    dozen.applyView();
+  }
+
+  /* -- 5. the crowd forces the far reading, not only the zoom ---------- */
+
+  {
+    big.view.k = 0.5;
+    big.applyView();
+    dozen.view.k = 0.5;
+    dozen.applyView();
+    check('too many cards is the same complaint as cards too small, and gets the same remedy',
+      big.root.dataset.lod === 'far' && dozen.root.dataset.lod === 'mid',
+      `at k=0.5, ${big.drawn} nodes read as ${big.root.dataset.lod} and ${dozen.drawn} read as`
+      + ` ${dozen.root.dataset.lod} (budget ${LABEL_BUDGET}) — equal here means the rule is zoom-only`);
+    big.view.k = 0.27;
+    big.applyView();
+  }
+
+  /* -- 6. a running node is never anonymous ---------------------------- */
+
+  const classesOf = (el) => new Set([
+    ...String(el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean),
+    ...el.classList._s,
+  ]);
+  const dataAttrs = (el) => Object.fromEntries(
+    Object.entries(el.dataset).map(([k, v]) => [`data-${k.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)}`, v]),
+  );
+  const rootOf = (c) => ({ tag: 'div', classes: new Set(['cv-root']), attrs: dataAttrs(c.root), pseudo: null });
+  const cardOf = (c, id) => ({
+    tag: 'div', classes: classesOf(c.els.get(id)), attrs: dataAttrs(c.els.get(id)), pseudo: null,
+  });
+  const partStyle = (c, id, cls, pseudo, media) => computed(
+    rules, { tag: 'span', classes: new Set([cls]), attrs: {}, pseudo: pseudo ?? null },
+    [rootOf(c), cardOf(c, id)], media,
+  );
+
+  {
+    check('the canvas really is in the far reading for the assertions below',
+      big.root.dataset.lod === 'far',
+      `250 nodes at ${(big.view.k * 100).toFixed(0)}% read as ${big.root.dataset.lod}`);
+
+    const promoted = [...big.nodes.values()]
+      .filter((n) => ['failed', 'running'].includes(n.status) || n.kind === 'session');
+    const mute = promoted.filter((n) => {
+      const c = partStyle(big, n.id, 'cv-type', '::before').get('content');
+      return !c || c === 'none';
+    });
+    check('every running, failed and session node keeps a label at the far reading',
+      promoted.length >= 10 && mute.length === 0,
+      mute.length
+        ? `${mute.length} of ${promoted.length} resolved no content: ${mute.slice(0, 4).map((n) => `${n.id}/${n.status}`).join(', ')}`
+        : `${promoted.length} promoted nodes, all labelled`);
+
+    // The control. If the four promotion selectors had been written with
+    // :not(), the matcher would treat them as non-matches and the assertion
+    // above would go green on a rule the browser is running and this test
+    // never saw — so a node that must NOT be labelled is checked too.
+    const quiet = partStyle(big, 'n100', 'cv-type', '::before').get('content');
+    check('an ordinary finished node gets no label out there, which is what makes the labels mean something',
+      big.nodes.get('n100').status === 'done' && (!quiet || quiet === 'none'),
+      `a done node resolved content ${JSON.stringify(quiet ?? null)} — every card labelled is the grey wall again`);
+
+    const midType = computed(rules,
+      { tag: 'span', classes: new Set(['cv-type']), attrs: {}, pseudo: '::before' },
+      [{ tag: 'div', classes: new Set(['cv-root']), attrs: { 'data-lod': 'mid' }, pseudo: null },
+        { tag: 'div', classes: new Set(['cv-node']), attrs: { 'data-kind': 'agent', 'data-state': 'done' }, pseudo: null }]);
+    check('the middle reading draws a short type at a constant screen size',
+      midType.get('content') === 'attr(data-short)'
+      && /calc\(\s*11px\s*\/\s*var\(--k\)\s*\)/.test(String(midType.get('font-size') ?? '')),
+      `content ${JSON.stringify(midType.get('content') ?? null)},`
+      + ` font-size ${JSON.stringify(midType.get('font-size') ?? null)}`);
+
+    // The attribute the pseudo-element reads has to actually carry something,
+    // and for a running agent it has to carry what the agent is doing.
+    // Found by type rather than by index, so the fixture's type cycle can be
+    // reordered without turning this into a puzzle.
+    const byType = (t) => big.els.get([...big.nodes.values()].find((n) => n.agentType === t).id);
+    const live = byType('backend-expert-csk');
+    const done = big.els.get('n100');
+    check('the label a running node keeps says what it is doing, not just what it is',
+      big.nodes.get(live.dataset.id).status === 'running'
+      && live.parts.type.dataset.far === 'backend ▸ Grep'
+      && done.parts.type.dataset.far === done.parts.type.dataset.short,
+      `running: ${JSON.stringify(live.parts.type.dataset.far)},`
+      + ` done: ${JSON.stringify(done.parts.type.dataset.far)}`);
+    check('short names are derived the way the README diagram derives them',
+      live.parts.type.dataset.short === 'backend'
+      && byType('docs-agent').parts.type.dataset.short === 'docs'
+      && byType('Explore').parts.type.dataset.short === 'Explore',
+      `backend-expert-csk -> ${JSON.stringify(live.parts.type.dataset.short)},`
+      + ` docs-agent -> ${JSON.stringify(byType('docs-agent').parts.type.dataset.short)},`
+      + ` Explore -> ${JSON.stringify(byType('Explore').parts.type.dataset.short)}`);
+
+    // font-size:0 removes the accessible name and a pseudo-element's content
+    // is not reliably exposed, so the card has to carry it as an attribute at
+    // every reading or this ships as an accessibility regression.
+    const named = [...big.els.entries()].filter(([, el]) => {
+      const a = String(el.getAttribute('aria-label') ?? '');
+      return a.includes(',') && a.length > 6;
+    });
+    check('every card names itself for a screen reader at every reading',
+      named.length === big.els.size,
+      `${named.length} of ${big.els.size} cards carried an aria-label;`
+      + ` n3 reads ${JSON.stringify(big.els.get('n3').getAttribute('aria-label'))}`);
+  }
+
+  /* -- 7. what the middle reading gives up ----------------------------- */
+
+  {
+    const at = (lod, cls) => computed(rules,
+      { tag: 'div', classes: new Set([cls]), attrs: {}, pseudo: null },
+      [{ tag: 'div', classes: new Set(['cv-root']), attrs: { 'data-lod': lod }, pseudo: null },
+        { tag: 'div', classes: new Set(['cv-node']), attrs: { 'data-kind': 'agent', 'data-state': 'done' }, pseudo: null }]);
+    check('the middle reading drops the grey half of the card and keeps the chip',
+      at('mid', 'cv-desc').get('opacity') === '0' && at('mid', 'cv-foot').get('opacity') === '0'
+      && at('mid', 'cv-chip').get('opacity') !== '0'
+      && at('near', 'cv-desc').get('opacity') !== '0',
+      `mid desc ${at('mid', 'cv-desc').get('opacity')}, mid foot ${at('mid', 'cv-foot').get('opacity')},`
+      + ` mid chip ${at('mid', 'cv-chip').get('opacity')}, near desc ${at('near', 'cv-desc').get('opacity')}`);
+    check('the far reading stops drawing the rectangle that is the wall',
+      at('far', 'cv-node').get('background') === 'transparent'
+      && at('far', 'cv-node').get('box-shadow') === 'none'
+      && at('near', 'cv-node').get('background') !== 'transparent',
+      `far background ${at('far', 'cv-node').get('background')},`
+      + ` near background ${at('near', 'cv-node').get('background')}`);
+  }
+
+  /* -- 8. stillness reaches the substitution --------------------------- */
+
+  {
+    const under = (motion, media) => computed(rules,
+      { tag: 'svg', classes: new Set(['cv-mark']), attrs: {}, pseudo: null },
+      [{ tag: 'div', classes: new Set(['cv-root']), attrs: { 'data-lod': 'far', 'data-motion': motion }, pseudo: null },
+        { tag: 'div', classes: new Set(['cv-node']), attrs: { 'data-state': 'live' }, pseudo: null }], media);
+    const label = (motion, media) => computed(rules,
+      { tag: 'span', classes: new Set(['cv-type']), attrs: {}, pseudo: '::before' },
+      [{ tag: 'div', classes: new Set(['cv-root']), attrs: { 'data-lod': 'mid', 'data-motion': motion }, pseudo: null },
+        { tag: 'div', classes: new Set(['cv-node']), attrs: { 'data-state': 'live' }, pseudo: null }], media);
+
+    // The control: there has to be a transition here for switching it off to
+    // mean anything.
+    check('the mark travels to its new place rather than jumping there',
+      /transform/.test(String(under('flow').get('transition') ?? '')),
+      `resolved transition: ${JSON.stringify(under('flow').get('transition') ?? null)}`);
+    check('a reader who asked for stillness gets it on the new motion too',
+      under('flow', REDUCE).get('transition') === 'none'
+      && label('flow', REDUCE).get('transition') === 'none',
+      `mark ${JSON.stringify(under('flow', REDUCE).get('transition') ?? null)},`
+      + ` label ${JSON.stringify(label('flow', REDUCE).get('transition') ?? null)}`);
+    check('past the motion budget the substitution stands still as well',
+      under('still').get('transition') === 'none' && label('still').get('transition') === 'none',
+      `mark ${JSON.stringify(under('still').get('transition') ?? null)},`
+      + ` label ${JSON.stringify(label('still').get('transition') ?? null)}`);
+  }
+
+  /* -- 9. the disc survives the tightest pitch ------------------------- */
+
+  {
+    const farRoot = computed(rules,
+      { tag: 'div', classes: new Set(['cv-root']), attrs: { 'data-lod': 'far' }, pseudo: null }, []);
+    const decl = String(farRoot.get('--dot-screen') ?? '');
+    const m = /clamp\(\s*([\d.]+)px\s*,\s*calc\(\s*([\d.]+)\s*\*\s*var\(--k\)[^)]*\)\s*,\s*([\d.]+)px\s*\)/.exec(decl);
+    if (!m) {
+      skip('the disc never collides with its neighbour', 'fixture',
+        `--dot-screen did not parse as a clamp: ${JSON.stringify(decl || null)}`);
+    } else {
+      const k = big.view.k;
+      const dot = Math.min(Math.max(Number(m[1]), Number(m[2]) * k), Number(m[3]));
+      // Measured against the pitch the layout actually produced, so a later
+      // change to SIBLING_GAP or the per-group column count turns this red
+      // instead of quietly overlapping 250 dots.
+      const centres = [...big.pos.values()].map((p) => [(p.x + 118) * k, (p.y + 52) * k]);
+      let pitch = Infinity;
+      for (let i = 0; i < centres.length; i += 1) {
+        for (let j = i + 1; j < centres.length; j += 1) {
+          pitch = Math.min(pitch, Math.hypot(centres[i][0] - centres[j][0], centres[i][1] - centres[j][1]));
+        }
+      }
+      // Both bounds are expressed against the measured pitch rather than
+      // against the constants in the clamp: `dot >= floor` would be true of
+      // any clamp, since the clamp puts it there. A disc has to fill enough of
+      // its cell to read as a mark and not enough to touch the next one.
+      check('the disc fills its cell at the tightest pitch without touching its neighbour',
+        dot <= pitch && dot >= pitch * 0.2,
+        `disc is ${dot.toFixed(1)} screen px at k=${k.toFixed(3)}, closest two nodes are`
+        + ` ${pitch.toFixed(1)} px apart (floor ${m[1]}px, cap ${m[3]}px)`);
+    }
+  }
+
+  /* -- 10. the failed branches are reachable --------------------------- */
+
+  {
+    const clean = made(12);
+    // n0..n2 are the failures, so a twelve-node fixture has them too; a graph
+    // with none is built here to prove the button hides itself.
+    const none = new Canvas(pane(1280, 800), {});
+    none.setPalette(PAL);
+    none.setSession('lod-nofail');
+    none.render({
+      nodes: [{ id: 'session', kind: 'session', status: 'session', turns: 1, cwd: '/x' },
+        { id: 'ok', kind: 'agent', agentType: 'Explore', status: 'done', spawnDepth: 1, parentId: 'session' }],
+      edges: [{ source: 'session', target: 'ok' }],
+    });
+    check('the alarm is absent when nothing went wrong and counts what did',
+      none.alarmBtn.hidden === true && clean.alarmBtn.hidden === false
+      && clean.alarmBtn.textContent === '⚠ 3',
+      `no-failure canvas: hidden=${none.alarmBtn.hidden};`
+      + ` three-failure canvas: hidden=${clean.alarmBtn.hidden} label ${JSON.stringify(clean.alarmBtn.textContent)}`);
+
+    const k0 = big.view.k;
+    const visited = [];
+    for (let i = 0; i < 4; i += 1) { big.gotoFailed(); visited.push(big.selected); }
+    const r = big.root.getBoundingClientRect();
+    const p = big.pos.get(big.selected);
+    const cx = big.view.x + (p.x + 118) * big.view.k;
+    const cy = big.view.y + (p.y + 52) * big.view.k;
+    check('the alarm walks the failures in order, wraps, and does not zoom to do it',
+      visited.join(',') === 'n0,n1,n2,n0'
+      && visited.every((id) => big.nodes.get(id).status === 'failed')
+      && big.view.k === k0
+      && Math.abs(cx - r.width / 2) < 0.5 && Math.abs(cy - r.height / 2) < 0.5,
+      `visited ${visited.join(' -> ')}; k ${k0.toFixed(3)} -> ${big.view.k.toFixed(3)};`
+      + ` last node centred at ${cx.toFixed(1)},${cy.toFixed(1)} in a ${r.width}x${r.height} pane`);
+  }
+
+  /* -- 11. the HUD says which reading you are in ----------------------- */
+
+  {
+    const label = (c) => String(c.zoomLabel.textContent ?? '');
+    dozen.view.k = 1;
+    dozen.applyView();
+    const near = label(dozen);
+    dozen.view.k = 0.5;
+    dozen.applyView();
+    const midL = label(dozen);
+    dozen.view.k = 0.1;
+    dozen.applyView();
+    const farL = label(dozen);
+    check('the HUD names the reading beside the percentage, so detail reads as traded not lost',
+      /^100% . detail$/.test(near) && /^50% . titles$/.test(midL) && /^10% . marks$/.test(farL),
+      `${JSON.stringify(near)} / ${JSON.stringify(midL)} / ${JSON.stringify(farL)}`);
+    check('and says when it was the crowd rather than the zoom that traded them',
+      new RegExp(`^\\d+% . marks \\(${big.drawn}\\)$`).test(label(big))
+      && !/\(/.test(farL),
+      `250-node canvas reads ${JSON.stringify(label(big))}, zoomed-out small one reads ${JSON.stringify(farL)}`);
+  }
+
+  dom();
+}
+
 
 /* --------------------------------------------------------------- verdict */
 

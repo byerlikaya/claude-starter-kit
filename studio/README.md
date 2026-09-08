@@ -20,13 +20,16 @@ Or without installing anything:
 
 ```bash
 npm run studio                          # from this repo; starts and opens a browser
+npm run studio:pty                      # the same, plus raw shells (no gates — see below)
 node studio/server/index.js --port 8080
 node studio/server/index.js --selftest  # offline checks, no browser
 ```
 
 **There is no per-project command, because Studio is not per-project.** It reads
-`~/.claude/projects`, which holds every session on the machine — 142 projects on
-the machine this paragraph was written on. One running panel already sees a
+`~/.claude/projects`, which holds every session on the machine. The count is
+whatever that directory holds; the panel prints it rather than claiming it here,
+because a number measured on one machine describes only that machine. One
+running panel already sees a
 kit-installed project without being started inside it; the working directory only
 decides which project the panel opens on. So `cd` somewhere and run `csk-studio`,
 or run it once and leave it up.
@@ -90,11 +93,11 @@ another machine's sessions, so a peer is another Studio.
 | `<session>.jsonl` and `<session>/subagents/` | The delegation graph, nested workflow runs included |
 | `.claude/VERSION` per project | Which projects run an old kit, against the npm dist-tags feed |
 
-That call spawns a process, so it is cached rather than repeated. Measured on
-the development machine: **min 161 ms · median 164 ms · max 171 ms** over three
-runs. The browser polls every 2 s and the server caches for 1 s, which bounds
-the cost at one spawn per poll. `--selftest` re-measures it wherever it runs, so
-a slower machine reports its own number instead of inheriting this one.
+That call spawns a process, so it is cached rather than repeated. The browser
+polls every 2 s and the server caches for 1 s, which bounds the cost at one
+spawn per poll. What the spawn costs is a property of the machine, not of this
+file — two machines here measured 131 ms and 164 ms medians — so `--selftest`
+measures it wherever it runs and prints that number instead of quoting one.
 
 More sources land in later sprints: the transcript tree (per-agent live JSONL),
 the owned-session event stream, `gate-log.tsv`, and the team board.

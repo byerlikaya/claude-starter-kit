@@ -17,6 +17,42 @@ const SIBLING_GAP = 26;   // between nodes of the same kind
 const GROUP_GAP = 64;     // between one kind and the next
 const DEPTH_GAP = 128;    // between one depth and the next
 const MAX_PER_GROUP_ROW = 4;
+
+// Kinds that are not agents still need a colour, and the card and the edge into
+// it have to agree — a branch you can trace by colour stops working the moment
+// the two are computed in different places. This is that one place.
+const KIND_COLOR = { session: '#5b8cff', workflow: '#a874f5' };
+
+// Raw status strings, folded into the handful of things motion has to say.
+// `killed` and `stopped` come straight off the transcript and mean the same
+// thing to a reader as `failed`: this branch did not finish on its own terms.
+const FLOW_STATE = {
+  running: 'live',
+  starting: 'waking',
+  done: 'done',
+  failed: 'failed',
+  killed: 'failed',
+  stopped: 'failed',
+  ended: 'quiet',
+  stale: 'quiet',
+  session: 'root',
+};
+
+// How long an arriving edge takes to draw itself toward its new node. Short on
+// purpose: this is a status panel, and anything a viewer has to wait through
+// is a cost they pay on every spawn.
+const DRAW_MS = 300;
+
+// Above this many edges in motion at once the canvas stops moving them and
+// shows the same states standing still.
+//
+// Two reasons, and the second is the one that decided the number. A dash
+// travelling along a stroke is a paint-driven animation, not a composited one,
+// so its cost scales with how many strokes are in motion rather than with how
+// many exist. And 200 flowing lines carry less than 20 do — past a certain
+// density motion stops reading as direction and starts reading as noise, which
+// is the same reason the pulse is restrained rather than loud.
+const MOTION_BUDGET = 60;
 // Marks, so a card says what kind of thing it is before it is read.
 //
 // The kit's own is the three-bar mark from assets/icon.svg, redrawn here rather
@@ -56,9 +92,39 @@ function mk(tag, cls, text) {
 
 const MIN_K = 0.06;
 const MAX_K = 2.5;
-// A depth level with 105 siblings is 27,000px of one row. Past this many, the
-// level wraps into a grid instead.
-const MAX_PER_ROW = 8;
+// Padding fit() leaves around the graph, on each side. Named because the band
+// search below has to score candidates with the same arithmetic fit() uses; two
+// copies of the number is two numbers that drift.
+const FIT_PAD = 60;
+// The largest fit() will scale up to. Same reason.
+const FIT_MAX = 1.2;
+
+/* --------------------------------------------------------------- reading
+   Three readings of the same picture, chosen by how much of a card would
+   actually survive on screen.
+
+   The idea is not "hide things when zoomed out" — hiding alone still leaves an
+   unreadable title. What survives is redrawn at a constant *screen* size: its
+   world font-size grows as the canvas shrinks. That costs one custom property
+   and no per-node JS, which is why a band change is O(1) in node count. */
+
+// 13px .cv-desc clears 9px on screen at 9/13 = 0.692.
+const LOD_NEAR = 0.70;
+// A screen-constant 11px mono line stops fitting the card: the content box is
+// 204x80 world px (236-18-14, 104-12-12); six mono chars at a 6.6px advance
+// need 40 screen px, so 204*k >= 40 => k >= 0.196. The horizontal bound binds.
+const LOD_FAR = 0.20;
+// A trackpad tremor must not reband 250 cards.
+const LOD_HYST = 0.025;
+// Past this many drawn nodes, words are the noise floor. Count is the axis that
+// says "there are too many words on this canvas"; zoom is the axis that says
+// "the words are too small". Both have the same remedy, so both pick `far`.
+const LABEL_BUDGET = 40;
+// What the HUD calls each reading, so a viewer knows detail was traded rather
+// than lost and that one wheel notch brings it back.
+const LOD_WORD = { near: 'detail', mid: 'titles', far: 'marks' };
+const LOD_RANK = { far: 0, mid: 1, near: 2 };
+
 // Folding is driven by whether the graph fits, not by group size. A session
 // with one 6-agent workflow should show all six; a session with 250 should
 // arrive folded. Below this many nodes nothing is folded at all.
@@ -73,12 +139,21 @@ export class Canvas {
     this.pos = new Map();        // id -> {x, y}
     this.pinned = new Set();     // ids the user has placed by hand
     this.els = new Map();        // id -> element
+    this.edgeEls = new Map();    // edge key -> <path>
     this.edges = [];
+    // Ids that arrived on the last poll. An edge into one of these draws
+    // itself; every other edge is left alone, so unfolding a group of 105 does
+    // not set 105 animations running at once.
+    this.newborn = new Set();
     this.palette = { map: {}, unknown: '#94a3c8' };
     this.sessionKey = null;
     this.selected = null;
     this.firstRender = true;
     this.collapsed = new Set();
+    // How many nodes the last layout actually placed. The reading band is a
+    // function of this as well as of zoom, and it is cached rather than
+    // recounted because applyView() runs on every frame of a pan.
+    this.drawn = 0;
     // Which way delegation reads. Down is the default because a session
     // handing work to agents feels like work moving downward; sideways suits
     // deep chains better, so it is a preference rather than a decision.
@@ -86,6 +161,9 @@ export class Canvas {
 
     this.#build();
     this.#wire();
+    // #renderNode runs before the first fit() inside render(), so without this
+    // there is one paint with --k unset, and every calc() that reads it drops.
+    this.applyView();
     this.root.dataset.flow = this.flow;
     this.root.querySelector('[data-act="flow"]').textContent = this.flow === 'down' ? '⇅' : '⇄';
   }
@@ -100,6 +178,7 @@ export class Canvas {
       <div class="cv-hud">
         <button class="cv-btn" data-act="expand" title="Expand every group">⊞</button>
         <button class="cv-btn" data-act="collapse" title="Fold every group">⊟</button>
+        <button class="cv-btn cv-alarm" data-act="failed" title="Go to the next failed branch" hidden>⚠</button>
         <button class="cv-btn" data-act="flow"   title="Switch layout direction">⇅</button>
         <button class="cv-btn" data-act="fit"    title="Fit to view">⤢</button>
         <button class="cv-btn" data-act="relayout" title="Re-run auto layout">⟲</button>
@@ -113,6 +192,7 @@ export class Canvas {
     this.nodeLayer = this.root.querySelector('.cv-nodes');
     this.zoomLabel = this.root.querySelector('.cv-zoom');
     this.emptyEl = this.root.querySelector('.cv-empty');
+    this.alarmBtn = this.root.querySelector('.cv-alarm');
   }
 
   /* ------------------------------------------------------------ input */
@@ -132,7 +212,7 @@ export class Canvas {
       if (!panning) return;
       this.view.x = panning.x + (e.clientX - panning.px);
       this.view.y = panning.y + (e.clientY - panning.py);
-      this.#applyView();
+      this.applyView();
     });
 
     const endPan = () => { panning = null; this.root.classList.remove('cv-panning'); };
@@ -161,7 +241,7 @@ export class Canvas {
         this.view.x -= dX;
         this.view.y -= dY;
       }
-      this.#applyView();
+      this.applyView();
     }, { passive: false });
 
     this.root.querySelector('.cv-hud').addEventListener('click', (e) => {
@@ -169,6 +249,7 @@ export class Canvas {
       if (act === 'fit') this.fit();
       if (act === 'relayout') { this.pinned.clear(); this.#persist(); this.layout(true); this.fit(); }
       if (act === 'flow') this.setFlow(this.flow === 'down' ? 'right' : 'down');
+      if (act === 'failed') this.gotoFailed();
       if (act === 'expand') { this.collapsed.clear(); this.#redraw(); }
       if (act === 'collapse') {
         for (const n of this.nodes.values()) if (this.hiddenCount(n.id) > 0) this.collapsed.add(n.id);
@@ -177,10 +258,39 @@ export class Canvas {
     });
   }
 
-  #applyView() {
+  /**
+   * Turn `view` into pixels. Public because it is the single place that does
+   * so — the wheel, the pan, fit() and the constructor all come through here,
+   * and so does anything that wants to drive the view without a pointer.
+   *
+   * It publishes two things the stylesheet reads: the scale, so a surviving
+   * label can be drawn at a constant *screen* size, and the reading band. A
+   * band change never re-lays out, re-fits or re-renders a node — every card
+   * responds through the cascade, which is what keeps this O(1) in node count
+   * and makes it impossible for a band to move the world that decides it.
+   */
+  applyView() {
     const { x, y, k } = this.view;
     this.viewport.style.transform = `translate(${x}px, ${y}px) scale(${k})`;
-    this.zoomLabel.textContent = `${Math.round(k * 100)}%`;
+    this.root.style.setProperty('--k', String(k));
+    const band = this.#band(k);
+    this.root.dataset.lod = band;
+    // Say when it was the crowd rather than the zoom that traded the words
+    // away, because the remedy for that one is folding, not scrolling.
+    const crowded = band === 'far' && k >= LOD_FAR;
+    this.zoomLabel.textContent = `${Math.round(k * 100)}% · ${LOD_WORD[band]}`
+      + (crowded ? ` (${this.drawn})` : '');
+  }
+
+  /** Which reading the canvas is in. Hysteresis is applied only on the way
+   *  *up*, so a jitter sitting on a boundary cannot reband 250 cards twice a
+   *  second; dropping detail is always immediate. */
+  #band(k) {
+    if (this.drawn > LABEL_BUDGET) return 'far';
+    const now = LOD_RANK[this.root.dataset.lod] ?? LOD_RANK.near;
+    const near = LOD_NEAR + (now < LOD_RANK.near ? LOD_HYST : 0);
+    const mid = LOD_FAR + (now < LOD_RANK.mid ? LOD_HYST : 0);
+    return k >= near ? 'near' : k >= mid ? 'mid' : 'far';
   }
 
   /* ----------------------------------------------------------- layout */
@@ -244,18 +354,39 @@ export class Canvas {
   // named above its group, the same eight read as three Explores, a Plan, and
   // so on. Groups keep their own small grid so one large kind does not push
   // every other kind off the screen.
+  //
+  // A depth level then WRAPS. Laying every group of a depth in one unbounded
+  // row made the world a ribbon — 8624x1246 at 250 nodes — and fit() is
+  // width-bound at every size against a ribbon, so twelve agents already
+  // arrived at 34% and the type line was 3.7px on screen. The level is packed
+  // into bands instead, and how many groups go in a band is chosen by the same
+  // arithmetic fit() uses, so the layout optimises the number the reader
+  // actually feels.
+  //
+  // Nothing here reads this.view. Positions are never a function of zoom —
+  // that invariant is what makes the reading bands oscillation-proof.
   layout(force = false) {
     const byDepth = new Map();
+    let drawn = 0;
     for (const n of this.visible()) {
       const d = n.kind === 'session' ? 0 : (n.spawnDepth ?? 1);
       if (!byDepth.has(d)) byDepth.set(d, []);
       byDepth.get(d).push(n);
+      drawn += 1;
     }
+    this.drawn = drawn;
 
     const down = this.flow === 'down';
-    let cursor = 0;                                   // position along the depth axis
+    const NODE_A = down ? NODE_W : NODE_H;            // size across a band
+    const NODE_B = down ? NODE_H : NODE_W;            // size along the depth axis
 
-    for (const [, list] of [...byDepth.entries()].sort((a, b) => a[0] - b[0])) {
+    // Read once per call. The band search needs the pane, and asking for it per
+    // group would be one forced layout per group on a 250-node graph.
+    const r = this.root.getBoundingClientRect();
+    const paneW = Math.max(2 * FIT_PAD + NODE_A, r.width || 800);
+    const paneH = Math.max(2 * FIT_PAD + NODE_B, r.height || 600);
+
+    const levels = [...byDepth.entries()].sort((a, b) => a[0] - b[0]).map(([, list]) => {
       // One group per kind. Workflows are their own kind; the session is alone
       // at its depth and needs no label.
       const groups = new Map();
@@ -273,42 +404,95 @@ export class Canvas {
         (a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]),
       );
 
-      const NODE_A = down ? NODE_W : NODE_H;          // size across the row
-      const NODE_B = down ? NODE_H : NODE_W;          // size along the depth axis
-
-      // Measure first: the whole level is centred, so every group's width has
-      // to be known before any node is placed.
+      // Measure first: every band is centred on its own width, so each group's
+      // span has to be known before any node is placed.
       const measured = ordered.map(([key, members]) => {
-        const cols = Math.min(members.length, MAX_PER_GROUP_ROW);
+        const cols = groupCols(members.length, NODE_A, NODE_B);
         const rows = Math.ceil(members.length / cols);
         return { key, members, cols, rows, span: cols * NODE_A + (cols - 1) * SIBLING_GAP };
       });
-      const total = measured.reduce((w, g) => w + g.span, 0)
-        + Math.max(0, measured.length - 1) * GROUP_GAP;
-      const deepest = Math.max(...measured.map((g) => g.rows));
-      let across = -total / 2;
-      for (const g of measured) {
-        g.members.sort((a, b) => (a.startedAt ?? 0) - (b.startedAt ?? 0) || a.id.localeCompare(b.id));
-        const rowTop = cursor;
+      return { measured, plans: bandPlans(measured, NODE_B) };
+    });
 
-        g.members.forEach((n, i) => {
-          const col = i % g.cols;
-          const row = Math.floor(i / g.cols);
-          const a = across + col * (NODE_A + SIBLING_GAP);
-          const b = rowTop + row * (NODE_B + SIBLING_GAP);
-          // Only a hand-placed node keeps its position. Freezing auto-placed
-          // ones too was the bug: the row is re-centred as siblings arrive, so
-          // nodes laid out against an older, shorter row overlapped the new
-          // ones by half a card.
-          if (!force && this.pinned.has(n.id)) return;
-          this.pos.set(n.id, down ? { x: a, y: b } : { x: b, y: a });
-        });
-
-        across += g.span + GROUP_GAP;
+    // Pick a packing per level against the fit of the WHOLE graph, not of the
+    // level alone. Scored alone, a tall single-column level always wins — it is
+    // narrow, and it is only the other levels stacked under it that make that a
+    // bad trade. Levels are few and each has a handful of candidates, so a few
+    // rounds of coordinate descent over the real objective is cheap and lands
+    // on the same answer every time.
+    const fitOf = (choice) => {
+      let w = 0;
+      let h = 0;
+      for (let i = 0; i < levels.length; i += 1) {
+        const p = levels[i].plans[choice[i]];
+        w = Math.max(w, p.w);
+        h += p.h;
       }
-
-      cursor += deepest * (NODE_B + SIBLING_GAP) - SIBLING_GAP + DEPTH_GAP;
+      h += Math.max(0, levels.length - 1) * DEPTH_GAP;
+      return clamp(Math.min((paneW - 2 * FIT_PAD) / w, (paneH - 2 * FIT_PAD) / h, FIT_MAX), MIN_K, MAX_K);
+    };
+    const choice = levels.map((L) => {
+      let best = 0;
+      for (let i = 1; i < L.plans.length; i += 1) {
+        if (soloFit(L.plans[i], paneW, paneH) > soloFit(L.plans[best], paneW, paneH) + 1e-9) best = i;
+      }
+      return best;
+    });
+    for (let round = 0; round < 4; round += 1) {
+      let moved = false;
+      for (let i = 0; i < levels.length; i += 1) {
+        let bestJ = choice[i];
+        let bestK = fitOf(choice);
+        for (let j = 0; j < levels[i].plans.length; j += 1) {
+          if (j === choice[i]) continue;
+          const trial = choice.slice();
+          trial[i] = j;
+          const k = fitOf(trial);
+          if (k > bestK + 1e-9) { bestK = k; bestJ = j; }
+        }
+        if (bestJ !== choice[i]) { choice[i] = bestJ; moved = true; }
+      }
+      if (!moved) break;
     }
+
+    let cursor = 0;                                   // position along the depth axis
+    levels.forEach((L, li) => {
+      const { per } = L.plans[choice[li]];
+      let bandTop = cursor;
+      for (let i = 0; i < L.measured.length; i += per) {
+        const band = L.measured.slice(i, i + per);
+        // Each band is centred on its own width rather than on the widest one,
+        // so a level does not look ragged.
+        let across = -(band.reduce((t, g) => t + g.span, 0) + (band.length - 1) * GROUP_GAP) / 2;
+        let rows = 0;
+        for (const g of band) {
+          g.members.sort((a, b) => (a.startedAt ?? 0) - (b.startedAt ?? 0) || a.id.localeCompare(b.id));
+          g.members.forEach((n, idx) => {
+            const col = idx % g.cols;
+            const row = Math.floor(idx / g.cols);
+            const a = across + col * (NODE_A + SIBLING_GAP);
+            const b = bandTop + row * (NODE_B + SIBLING_GAP);
+            // Only a hand-placed node keeps its position. Freezing auto-placed
+            // ones too was the bug: the row is re-centred as siblings arrive, so
+            // nodes laid out against an older, shorter row overlapped the new
+            // ones by half a card.
+            if (!force && this.pinned.has(n.id)) return;
+            this.pos.set(n.id, down ? { x: a, y: b } : { x: b, y: a });
+          });
+          across += g.span + GROUP_GAP;
+          rows = Math.max(rows, g.rows);
+        }
+        bandTop += rows * (NODE_B + SIBLING_GAP) - SIBLING_GAP + GROUP_GAP;
+      }
+      // The next depth clears the whole stack of bands, not one row of it.
+      cursor = bandTop - GROUP_GAP + DEPTH_GAP;
+    });
+  }
+
+  /** Re-fit only while the layout is still automatic. Once nodes have been
+   *  placed by hand, moving the view under them is not helpful. */
+  fitIfUntouched() {
+    if (!this.pinned.size) this.fit();
   }
 
   fit() {
@@ -319,17 +503,25 @@ export class Canvas {
       maxX = Math.max(maxX, p.x + NODE_W); maxY = Math.max(maxY, p.y + NODE_H);
     }
     const r = this.root.getBoundingClientRect();
-    const pad = 60;
-    const k = clamp(Math.min((r.width - pad * 2) / (maxX - minX), (r.height - pad * 2) / (maxY - minY), 1.2), MIN_K, MAX_K);
+    const pad = FIT_PAD;
+    const k = clamp(Math.min((r.width - pad * 2) / (maxX - minX), (r.height - pad * 2) / (maxY - minY), FIT_MAX), MIN_K, MAX_K);
     this.view.k = k;
     this.view.x = (r.width - (maxX - minX) * k) / 2 - minX * k;
     this.view.y = (r.height - (maxY - minY) * k) / 2 - minY * k;
-    this.#applyView();
+    this.applyView();
   }
 
   /* -------------------------------------------------------- rendering */
 
   setPalette(p) { if (p?.map) this.palette = p; }
+
+  /** The one colour a node answers to. The card paints itself with it and the
+   *  edge into the card is stroked with it, which is what makes a branch
+   *  traceable by colour alone. */
+  nodeColor(n) {
+    if (!n) return this.palette.unknown;
+    return KIND_COLOR[n.kind] ?? this.palette.map[n.agentType]?.hex ?? this.palette.unknown;
+  }
 
   /** Switch between top-down and left-to-right. Hand-placed nodes are cleared:
    *  positions arranged for one direction are meaningless in the other. */
@@ -349,6 +541,7 @@ export class Canvas {
     for (const n of this.visible()) this.#renderNode(n);
     this.#renderEdges();
     this.fit();
+    this.#syncHud();
   }
 
   setSession(sessionId) {
@@ -356,6 +549,7 @@ export class Canvas {
     this.sessionKey = sessionId;
     this.nodes.clear(); this.pos.clear(); this.pinned.clear(); this.collapsed.clear();
     this.els.clear(); this.nodeLayer.replaceChildren(); this.edgeG.replaceChildren();
+    this.edgeEls.clear(); this.newborn.clear();
     this.selected = null;
     this.firstRender = true;
     this.#restore();
@@ -371,8 +565,12 @@ export class Canvas {
       // #renderNode believe they were still mounted, so nodes never returned.
       this.nodeLayer.replaceChildren(); this.edgeG.replaceChildren();
       this.nodes.clear(); this.els.clear(); this.pos.clear();
+      this.edgeEls.clear(); this.newborn.clear();
       this.selected = null;
+      this.drawn = 0;
       this.onSelect(null);
+      this.applyView();
+      this.#syncHud();
       return;
     }
     this.emptyEl.hidden = true;
@@ -384,7 +582,7 @@ export class Canvas {
       seen.add(n.id);
       const isNew = !this.nodes.has(n.id);
       this.nodes.set(n.id, n);
-      if (isNew) born = true;
+      if (isNew) { born = true; this.newborn.add(n.id); }
     }
 
     for (const id of [...this.nodes.keys()]) {
@@ -419,6 +617,10 @@ export class Canvas {
     } else if (born && !this.pinned.size) {
       this.fit();
     }
+    // Neither branch above is guaranteed to run, and both the drawn count and
+    // the failure count can have changed on any poll.
+    this.applyView();
+    this.#syncHud();
   }
 
   #renderNode(n) {
@@ -441,10 +643,21 @@ export class Canvas {
         </div>
         <div class="cv-desc"></div>
         <div class="cv-foot"></div>`;
+      // The card's children never change identity, so they are found once per
+      // element instead of six times per element per poll — at 250 nodes on a
+      // 2s poll that is 45,000 selector runs a minute for a fixed answer.
+      el.parts = {
+        fold: el.querySelector('.cv-fold'),
+        mark: el.querySelector('.cv-mark'),
+        type: el.querySelector('.cv-type'),
+        chip: el.querySelector('.cv-chip'),
+        desc: el.querySelector('.cv-desc'),
+        foot: el.querySelector('.cv-foot'),
+      };
       this.nodeLayer.append(el);
       this.els.set(n.id, el);
       this.#makeDraggable(el, n.id);
-      el.querySelector('.cv-fold').addEventListener('click', (ev) => {
+      el.parts.fold.addEventListener('click', (ev) => {
         ev.stopPropagation();
         if (this.collapsed.has(n.id)) this.collapsed.delete(n.id); else this.collapsed.add(n.id);
         this.#redraw();
@@ -481,15 +694,24 @@ export class Canvas {
     el.classList.toggle('cv-selected', this.selected === n.id);
 
     const known = n.kind !== 'agent' || Boolean(this.palette.map[n.agentType]);
-    const color = n.kind === 'session' ? '#5b8cff'
-      : n.kind === 'workflow' ? '#a874f5'
-        : (this.palette.map[n.agentType]?.hex ?? this.palette.unknown);
-    el.style.setProperty('--node-color', color);
+    el.style.setProperty('--node-color', this.nodeColor(n));
+    // What motion says about this node, separated from the raw status so that
+    // `killed` and `stopped` read like the failures they are instead of like
+    // two more words nothing has a rule for.
+    el.dataset.state = FLOW_STATE[n.status] ?? 'unknown';
 
-    el.querySelector('.cv-type').textContent =
-      n.kind === 'session' ? 'SESSION'
-        : n.kind === 'workflow' ? 'WORKFLOW'
-          : (n.agentType ?? 'unknown agent');
+    const typeText = n.kind === 'session' ? 'SESSION'
+      : n.kind === 'workflow' ? 'WORKFLOW'
+        : (n.agentType ?? 'unknown agent');
+    const typeEl = el.parts.type;
+    typeEl.textContent = typeText;
+    // Two names the stylesheet draws counter-scaled, so that what survives a
+    // zoom-out is drawn at a constant size on the reader's screen rather than
+    // shrunk into grey. The far one carries the running tool, because "what is
+    // it doing" is exactly that string.
+    typeEl.dataset.short = n.kind === 'agent' ? shortType(n.agentType ?? 'unknown') : typeText;
+    typeEl.dataset.far = typeEl.dataset.short
+      + (n.status === 'running' && n.lastTool ? ` \u25b8 ${n.lastTool}` : '');
 
     // Whose agent this is, at a glance. The palette says where a type was
     // declared; anything it does not know is drawn as unknown rather than
@@ -497,17 +719,17 @@ export class Canvas {
     const source = n.kind === 'session' ? 'session'
       : n.kind === 'workflow' ? 'workflow'
         : (this.palette.map[n.agentType]?.source ?? null);
-    const markEl = el.querySelector('.cv-mark');
+    const markEl = el.parts.mark;
     markEl.innerHTML = MARKS[source === 'kit' ? 'kit' : source === 'builtin' ? 'builtin' : source] ?? MARKS.builtin;
     markEl.classList.toggle('cv-mark-unknown', n.kind === 'agent' && !source);
     markEl.setAttribute('aria-label', source === 'kit' ? 'kit agent' : 'built-in agent');
     el.dataset.source = source ?? 'unknown';
     // An agent type the kit never declared is marked, not quietly coloured in.
-    el.querySelector('.cv-type').classList.toggle('cv-unknown', !known);
+    typeEl.classList.toggle('cv-unknown', !known);
 
     // Fold control, shown only where there is something to fold.
     const kids = [...this.nodes.values()].filter((c) => c.parentId === n.id).length;
-    const fold = el.querySelector('.cv-fold');
+    const fold = el.parts.fold;
     if (kids) {
       fold.hidden = false;
       const folded = this.collapsed.has(n.id);
@@ -529,18 +751,25 @@ export class Canvas {
       el.title = '';
     }
 
-    const chip = el.querySelector('.cv-chip');
+    const chip = el.parts.chip;
     chip.textContent = n.kind === 'session' ? `${n.turns ?? 0} turns`
       : n.kind === 'workflow' ? `${n.members ?? 0} agents`
         : (n.status ?? '?');
     chip.dataset.status = n.status ?? 'unknown';
 
-    el.querySelector('.cv-desc').textContent =
-      n.kind === 'session' ? (shortPath(n.cwd) || n.sessionId)
-        : n.kind === 'workflow' ? (n.workflowId ?? 'workflow run')
-          : (n.description ?? '—');
+    const desc = n.kind === 'session' ? (shortPath(n.cwd) || n.sessionId)
+      : n.kind === 'workflow' ? (n.workflowId ?? 'workflow run')
+        : (n.description ?? '—');
+    el.parts.desc.textContent = desc;
 
-    el.querySelector('.cv-foot').replaceChildren(...this.#footBits(n));
+    el.parts.foot.replaceChildren(...this.#footBits(n));
+
+    // The card's whole name, at every reading. The two smaller readings drop
+    // the type line to font-size:0 and redraw it from a pseudo-element, and
+    // neither of those is reliably exposed to a screen reader — so without this
+    // the far band would ship as an accessibility regression rather than as a
+    // rendering change.
+    el.setAttribute('aria-label', `${typeText}, ${n.status ?? 'unknown'}${desc ? `, ${desc}` : ''}`);
   }
 
   #footBits(n) {
@@ -577,14 +806,26 @@ export class Canvas {
     return bits;
   }
 
+  // Edges are kept and updated, never rebuilt.
+  //
+  // Replacing the whole layer each pass was the reason motion could not live
+  // here: a CSS animation restarts when its element leaves the document, so a
+  // travelling dash jumped back to its start on every 2s poll and on every
+  // frame of a drag. Reusing the path element is what lets the stylesheet own
+  // the animation and JS own nothing but geometry.
   #renderEdges() {
-    const paths = [];
     const vis = new Set(this.visible().map((n) => n.id));
+    const alive = new Set();
+    let moving = 0;
+
     for (const e of this.edges) {
       if (!vis.has(e.source) || !vis.has(e.target)) continue;
       const a = this.pos.get(e.source);
       const b = this.pos.get(e.target);
       if (!a || !b) continue;
+
+      const key = `${e.source}\u0000${e.target}`;
+      alive.add(key);
 
       // Out of the parent's outgoing port, into the child's incoming one.
       // Control points are pushed along the flow axis so siblings fan out
@@ -596,17 +837,65 @@ export class Canvas {
       const y2 = down ? b.y               : b.y + NODE_H / 2;
       const d = Math.max(46, Math.abs((down ? y2 - y1 : x2 - x1)) * 0.55);
 
-      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      let path = this.edgeEls.get(key);
+      const fresh = !path;
+      if (fresh) {
+        path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('class', 'cv-edge');
+        this.edgeEls.set(key, path);
+        this.edgeG.append(path);
+      }
+
       path.setAttribute('d', down
         ? `M ${x1} ${y1} C ${x1} ${y1 + d}, ${x2} ${y2 - d}, ${x2} ${y2}`
         : `M ${x1} ${y1} C ${x1 + d} ${y1}, ${x2 - d} ${y2}, ${x2} ${y2}`);
-      path.setAttribute('class', 'cv-edge');
+
+      // The draw-in has to cover the whole curve without measuring it —
+      // getTotalLength() forces a synchronous layout, once per edge. A cubic is
+      // never longer than its control polygon, so that bound is computed from
+      // the numbers already in hand and handed to CSS as a length.
+      path.style.setProperty('--edge-len', `${Math.ceil(Math.hypot(x2 - x1, y2 - y1) + 2 * d)}px`);
+
       const target = this.nodes.get(e.target);
+      const parent = this.nodes.get(e.source);
+      const state = FLOW_STATE[target?.status] ?? 'unknown';
       path.dataset.status = target?.status ?? 'unknown';
-      path.style.stroke = this.palette.map[target?.agentType]?.hex ?? this.palette.unknown;
-      paths.push(path);
+      path.dataset.state = state;
+
+      // A workflow's twelve members are one dispatch, not twelve unrelated
+      // decisions. Blending each member's own colour toward the container's
+      // pulls the whole bundle into one hue family while still leaving every
+      // line traceable back to the card it feeds.
+      const member = parent?.kind === 'workflow';
+      path.dataset.group = member ? 'member' : 'spawn';
+      const own = this.nodeColor(target);
+      path.style.stroke = state === 'failed' ? 'var(--cv-fail)'
+        : member ? mixHex(own, this.nodeColor(parent), 0.45)
+          : own;
+
+      if (state === 'live' || state === 'waking') moving += 1;
+
+      // Only an edge into a node that just arrived draws itself. Unfolding a
+      // group is not an arrival, so opening a 105-agent workflow reveals it
+      // rather than performing it.
+      if (fresh && this.newborn.has(e.target)) {
+        path.classList.add('cv-drawing');
+        setTimeout(() => path.classList.remove('cv-drawing'), DRAW_MS);
+      }
     }
-    this.edgeG.replaceChildren(...paths);
+
+    for (const [key, path] of this.edgeEls) {
+      if (alive.has(key)) continue;
+      path.remove();
+      this.edgeEls.delete(key);
+    }
+    this.newborn.clear();
+
+    // Only travelling strokes are counted. The card pulse rides the same flag,
+    // but it animates opacity on a pseudo-element and costs the compositor
+    // almost nothing, so charging a running agent twice — once for its edge and
+    // once for its card — would halve the budget for no reason anyone measured.
+    this.root.dataset.motion = moving > MOTION_BUDGET ? 'still' : 'flow';
 
     // The SVG plane must cover every node, including negative coordinates.
     let minX = 0, minY = 0, maxX = 0, maxY = 0;
@@ -631,6 +920,62 @@ export class Canvas {
     // Unfolding 105 agents puts most of them off-screen; pull the view back to
     // what was just revealed, unless the user has arranged things by hand.
     this.fitIfUntouched();
+    // fitIfUntouched() is a no-op once a node has been dragged, and folding is
+    // exactly the thing that changes the drawn count the reading band is a
+    // function of. Republish it either way.
+    this.applyView();
+    this.#syncHud();
+  }
+
+  /** What the HUD can say only after a render: how many branches went wrong.
+   *  With three red marks among 250 you can still be panned away from them. */
+  #syncHud() {
+    const bad = this.#failedIds();
+    this.alarmBtn.hidden = bad.length === 0;
+    this.alarmBtn.textContent = `\u26a0 ${bad.length}`;
+    this.alarmBtn.title = bad.length === 1
+      ? 'Go to the failed branch'
+      : `Go to the next of ${bad.length} failed branches`;
+  }
+
+  /** Drawn nodes that did not finish on their own terms, in a stable order so
+   *  that stepping through them twice visits them in the same sequence. */
+  #failedIds() {
+    return this.visible()
+      .filter((n) => FLOW_STATE[n.status] === 'failed')
+      .map((n) => n.id)
+      .sort((a, b) => a.localeCompare(b));
+  }
+
+  /**
+   * Step to the next failed branch, wrapping. Public for the same reason
+   * applyView() is: the HUD button is its only caller in the page, and it has
+   * to be drivable without a pointer.
+   *
+   * Selection is set rather than toggled — #select() flips a node that is
+   * already chosen, which would make the button a no-op the second time it is
+   * pressed on a lone failure.
+   */
+  gotoFailed() {
+    const bad = this.#failedIds();
+    if (!bad.length) return;
+    const at = bad.indexOf(this.selected);
+    const id = bad[(at + 1) % bad.length];
+    this.#centreOn(id);
+    this.selected = id;
+    for (const [nid, el] of this.els) el.classList.toggle('cv-selected', nid === id);
+    this.onSelect(this.nodes.get(id) ?? null);
+  }
+
+  /** Put one node in the middle of the pane without changing the zoom — the
+   *  reading band must not move because the view panned. */
+  #centreOn(id) {
+    const p = this.pos.get(id);
+    if (!p) return;
+    const r = this.root.getBoundingClientRect();
+    this.view.x = r.width / 2 - (p.x + NODE_W / 2) * this.view.k;
+    this.view.y = r.height / 2 - (p.y + NODE_H / 2) * this.view.k;
+    this.applyView();
   }
 
   /** Drop the selection without pretending a node was clicked. */
@@ -714,6 +1059,76 @@ export class Canvas {
 /* -------------------------------------------------------------- helpers */
 
 function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
+
+/**
+ * How many columns one kind's own grid gets.
+ *
+ * Four until the group is big enough that four columns would make a tower —
+ * a session that spawned 250 agents of a single type is 63 rows deep at four
+ * across, and no amount of band packing rescues one group. Past ~36 members the
+ * count goes square-ish in the flow's own aspect instead. Below that this
+ * returns exactly what MAX_PER_GROUP_ROW always returned.
+ */
+function groupCols(count, nodeA, nodeB) {
+  const square = Math.ceil(Math.sqrt(Math.max(1, count) * (nodeB / nodeA)));
+  return Math.min(count, Math.max(MAX_PER_GROUP_ROW, square));
+}
+
+/**
+ * Every way a depth level's groups can be packed into bands, and the box each
+ * packing needs. `per` is groups per band; bands stack along the depth axis.
+ */
+function bandPlans(measured, nodeB) {
+  const plans = [];
+  for (let per = 1; per <= Math.max(1, measured.length); per += 1) {
+    let w = 0;
+    let h = 0;
+    let bands = 0;
+    for (let i = 0; i < measured.length; i += per) {
+      const band = measured.slice(i, i + per);
+      w = Math.max(w, band.reduce((t, g) => t + g.span, 0) + (band.length - 1) * GROUP_GAP);
+      h += Math.max(...band.map((g) => g.rows)) * (nodeB + SIBLING_GAP) - SIBLING_GAP;
+      bands += 1;
+    }
+    plans.push({ per, w: Math.max(1, w), h: Math.max(1, h + (bands - 1) * GROUP_GAP) });
+  }
+  return plans;
+}
+
+/** What a level would fit at with the pane to itself. Only a starting guess —
+ *  the real objective is the whole graph, which layout() optimises. */
+function soloFit(plan, paneW, paneH) {
+  return clamp(
+    Math.min((paneW - 2 * FIT_PAD) / plan.w, (paneH - 2 * FIT_PAD) / plan.h, FIT_MAX),
+    MIN_K, MAX_K,
+  );
+}
+
+/** The name gen-network.py prints on the README diagram, derived the same way,
+ *  so the diagram and the live panel call an agent by the same short name. */
+function shortType(t) {
+  return String(t ?? '').replace(/-csk$/, '').replace(/-(expert|agent)$/, '');
+}
+
+/** `#rgb` and `#rrggbb` to three channels, or null for anything else — a
+ *  palette entry that is not a plain hex is left alone rather than mangled. */
+function rgb(h) {
+  const s = String(h ?? '').trim();
+  const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(s);
+  if (!m) return null;
+  const x = m[1].length === 3 ? m[1].replace(/./g, (c) => c + c) : m[1];
+  return [0, 2, 4].map((i) => parseInt(x.slice(i, i + 2), 16));
+}
+
+/** `t` of the way from `a` toward `b`. Done here rather than with color-mix()
+ *  because the result is also what the edge reports to anything reading it. */
+function mixHex(a, b, t) {
+  const pa = rgb(a);
+  const pb = rgb(b);
+  if (!pa || !pb) return a;
+  const hex = pa.map((v, i) => Math.round(v + (pb[i] - v) * t).toString(16).padStart(2, '0'));
+  return `#${hex.join('')}`;
+}
 
 function readFlow() {
   try {

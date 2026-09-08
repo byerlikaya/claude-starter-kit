@@ -16,6 +16,19 @@
   --bad: #ff8a4d;
   --accent: #5b8cff;
 
+  /* Edge tones. A branch that did not finish on its own terms is the one
+     thing on this canvas that must not be read as "some other agent colour",
+     so it gets a hue of its own rather than the node's.
+
+     The four weights are tokens and not literals because the same stroke sits
+     on white here and on near-black in the dark theme: 0.3 that reads as
+     "finished, out of the way" on #0d1017 reads as "barely drawn" on #f7f8fa. */
+  --cv-fail: #d92d3f;
+  --cv-edge-live: 1;
+  --cv-edge-wake: 0.52;
+  --cv-edge-done: 0.42;
+  --cv-edge-quiet: 0.24;
+
   --radius: 10px;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   --sans: ui-sans-serif, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -29,6 +42,12 @@
   --ink: #e6e9f0;
   --ink-dim: #9aa7cc;
   --ink-faint: #5c6472;
+
+  --cv-fail: #ff6b7a;
+  --cv-edge-live: 0.95;
+  --cv-edge-wake: 0.44;
+  --cv-edge-done: 0.3;
+  --cv-edge-quiet: 0.16;
 }
 
 @media (prefers-color-scheme: light) {
@@ -40,6 +59,12 @@
     --ink: #1a1d24;
     --ink-dim: #5c6472;
     --ink-faint: #8d95a3;
+
+    --cv-fail: #d92d3f;
+    --cv-edge-live: 1;
+    --cv-edge-wake: 0.52;
+    --cv-edge-done: 0.42;
+    --cv-edge-quiet: 0.24;
   }
 }
 
@@ -309,19 +334,86 @@ body.resizing .cv-root { pointer-events: none; }
 .cv-edges { position: absolute; overflow: visible; pointer-events: none; }
 .cv-nodes { position: absolute; inset: 0; }
 
+/* ------------------------------------------------------------- edge ---
+   Delegation drawn as motion. The dash travels out of the parent's port and
+   into the child's, because the question a glance has to answer is "where did
+   the work go", not "these two are related".
+
+   Every state is carried by at least two channels — weight, dash pattern,
+   tone — and motion is only ever the third. That is what makes the
+   reduced-motion path below a removal of speed rather than of information. */
+
 .cv-edge {
   fill: none;
-  stroke-width: 2;
-  opacity: 0.5;
+  stroke-width: 1.6;
   stroke-linecap: round;
+  stroke-dasharray: none;
+  stroke-dashoffset: 0;
+  opacity: var(--cv-edge-done);
+  /* One dash period. The flow animation travels exactly this far per
+     iteration, so a state can change its dash pattern without putting a seam
+     in the loop. */
+  --dash-period: 13px;
 }
-.cv-edge[data-status="running"] {
-  opacity: 0.95;
-  stroke-dasharray: 6 7;
+
+/* Working. The brightest, heaviest, fastest line on the canvas. */
+.cv-edge[data-state="live"] {
+  opacity: var(--cv-edge-live);
+  stroke-width: 2.2;
+  stroke-dasharray: 6px 7px;
+  --dash-period: 13px;
   animation: cv-flow 0.9s linear infinite;
 }
-.cv-edge[data-status="stale"] { opacity: 0.22; stroke-dasharray: 2 6; }
-@keyframes cv-flow { to { stroke-dashoffset: -13; } }
+
+/* Spawned, nothing back yet. Same direction, half lit, and moving slowly:
+   something is on this wire, and it has not produced anything. */
+.cv-edge[data-state="waking"] {
+  opacity: var(--cv-edge-wake);
+  stroke-width: 1.6;
+  stroke-dasharray: 2px 7px;
+  --dash-period: 9px;
+  animation: cv-flow 1.9s linear infinite;
+}
+
+/* Finished. Solid and pulled back, so live work stands out against it. */
+.cv-edge[data-state="done"] {
+  opacity: var(--cv-edge-done);
+  stroke-width: 1.6;
+  stroke-dasharray: none;
+}
+
+/* Ended, stale. Still there, saying nothing. */
+.cv-edge[data-state="quiet"] {
+  opacity: var(--cv-edge-quiet);
+  stroke-width: 1.4;
+  stroke-dasharray: 2px 6px;
+}
+
+/* Wrong, and said in colour rather than in a label somewhere else. The stroke
+   itself is set to var(--cv-fail) rather than the child's palette colour. */
+.cv-edge[data-state="failed"] {
+  opacity: 1;
+  stroke-width: 2.4;
+  stroke-dasharray: 1px 5px;
+}
+
+/* A workflow's members are one dispatch. They share a weight here and a hue
+   family in canvas.js, so twelve of them read as a bundle rather than as
+   twelve independent decisions. */
+.cv-edge[data-group="member"] { stroke-width: 1.4; }
+.cv-edge[data-group="member"][data-state="live"] { stroke-width: 1.8; }
+
+/* Arrival. The edge draws itself from the parent toward the node that just
+   appeared. Both the pattern and the offset live in the keyframes, so with
+   the animation switched off the edge simply renders in its final state
+   wearing its own status dash. */
+.cv-edge.cv-drawing { animation: cv-draw 0.3s ease-out; }
+
+@keyframes cv-flow { to { stroke-dashoffset: calc(-1 * var(--dash-period)); } }
+@keyframes cv-draw {
+  from { stroke-dasharray: var(--edge-len) var(--edge-len); stroke-dashoffset: var(--edge-len); }
+  to   { stroke-dasharray: var(--edge-len) var(--edge-len); stroke-dashoffset: 0; }
+}
 
 /* ------------------------------------------------------------- node --- */
 
@@ -350,8 +442,32 @@ body.resizing .cv-root { pointer-events: none; }
   position: absolute; left: 0; top: 12px; bottom: 12px; width: 3px;
   border-radius: 0 3px 3px 0; background: var(--node-color);
 }
-.cv-node[data-status="running"] .cv-accent { animation: cv-breathe 1.5s ease-in-out infinite; }
-@keyframes cv-breathe { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+/* A running card, legibly alive when nothing else on the canvas is moving.
+   One pulse per card and no more: the accent bar used to breathe as well, and
+   two rhythms on one card is the wall of throbbing this is trying to avoid.
+
+   The ring is drawn whether or not it breathes, so "running" survives with
+   motion off; breathing is the only part the animation adds. Only opacity is
+   animated — the shadow itself never changes, so nothing re-rasterises. */
+.cv-node[data-state="live"]::after {
+  content: '';
+  position: absolute; inset: -2px;
+  border-radius: 14px;
+  pointer-events: none;
+  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--node-color) 55%, transparent);
+  animation: cv-pulse 2.4s ease-in-out infinite;
+}
+@keyframes cv-pulse { 0%, 100% { opacity: 0.9; } 50% { opacity: 0.28; } }
+
+/* Failed, killed, stopped — one look, and not the look of a colour some agent
+   might legitimately own. */
+.cv-node[data-state="failed"] { border-color: var(--cv-fail); }
+.cv-node[data-state="failed"] .cv-accent { background: var(--cv-fail); }
+.cv-node[data-state="failed"] .cv-chip {
+  color: var(--cv-fail);
+  border-color: color-mix(in srgb, var(--cv-fail) 50%, transparent);
+}
 
 .cv-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .cv-type {
@@ -417,7 +533,14 @@ body.resizing .cv-root { pointer-events: none; }
   cursor: pointer; font-size: 14px; line-height: 1; padding: 3px 5px; border-radius: 5px;
 }
 .cv-btn:hover { color: var(--ink); background: var(--surface-2); }
-.cv-zoom { font-family: var(--mono); font-size: 10px; color: var(--ink-faint); min-width: 34px; text-align: right; }
+.cv-zoom {
+  font-family: var(--mono); font-size: 10px; color: var(--ink-faint);
+  min-width: 96px; text-align: right; white-space: nowrap;
+}
+/* Loud on purpose: it only appears when something went wrong. */
+.cv-btn.cv-alarm { color: var(--cv-fail); font-family: var(--mono); font-size: 11px; }
+.cv-btn.cv-alarm:hover { color: var(--cv-fail); background: color-mix(in srgb, var(--cv-fail) 16%, transparent); }
+.cv-btn[hidden] { display: none; }
 
 .cv-empty {
   position: absolute; inset: 0; display: grid; place-content: center;
@@ -446,9 +569,225 @@ body.resizing .cv-root { pointer-events: none; }
   .side, .resizer { display: none; }
   .inspector { display: none; }
 }
+/* =================================================== three readings ===
+   One picture, read three ways, chosen by how much of a card would actually
+   survive on screen. Nothing moves between them: the layout metrics are
+   identical in all three, so the shape of the graph is the constant and only
+   what is written inside a card changes.
+
+   The idea is not "hide things at low zoom" — hiding alone still leaves an
+   unreadable title. What survives is drawn at a constant SCREEN size: a world
+   font-size of 11px/k is 11px after the canvas transform, whatever k is.
+   canvas.js publishes k as --k and the reading as data-lod on the root, and
+   every card responds through the cascade, so a band change costs nothing per
+   node and cannot move the world that decided the band.
+
+   Registered so that a malformed write falls back to 1 rather than blanking
+   250 cards. k is clamped to MIN_K = 0.06 in canvas.js, so no divisor here is
+   ever zero. (The selfcheck's CSS parser drops at-rules, so this registration
+   is invisible to the gate — it is verified in a browser.) */
+@property --k { syntax: '<number>'; initial-value: 1; inherits: true; }
+
+/* NEAR — k >= 0.70. The card exactly as it has always been drawn, so it has
+   no rules of its own here. */
+
+/* Blocks a smaller reading gives up fade rather than vanish, so the eye reads
+   a substitution instead of a loss. */
+.cv-desc, .cv-foot, .cv-chip { transition: opacity 120ms; }
+/* The same element is the 14px source glyph up close and the hue disc far
+   out; it travels there rather than being swapped. */
+.cv-mark { transition: transform 160ms ease, width 160ms ease, height 160ms ease; }
+
+/* MID — 0.20 <= k < 0.70, under the label budget. Short type, status chip,
+   mark, fold caret. The description and the foot bits are dropped not because
+   they are small but because they are DARK: the description fills the lower
+   half of the card in unreadable grey, and forty of those lower halves is the
+   noise floor that stops the type line reading. Removing them is what creates
+   the contrast the type needs. */
+[data-lod="mid"] .cv-desc,
+[data-lod="mid"] .cv-foot { opacity: 0; }
+
+/* The chip keeps its channel and loses its words. Its text is a 10px absolute
+   glyph, so at the bottom of this band it is 2px on screen — unreadable, and
+   measured in a browser it was eating the width the type line needed: SESSION
+   was clipping to SESSI and REVIEWER to REVIEWE. As a dot it still says the
+   status in colour and gives 45 world px back to the name. */
+[data-lod="mid"] .cv-chip {
+  font-size: 0;
+  padding: 0;
+  width: calc(7px / var(--k));           /* 7 SCREEN px at any k */
+  height: calc(7px / var(--k));
+  border-radius: 50%;
+  background: currentColor;
+  border-color: currentColor;
+}
+
+/* The real type line is taken out of the flow and redrawn counter-scaled. The
+   short name is derived the way packaging/gen-network.py derives the names on
+   the README diagram, so the diagram and the panel agree. */
+[data-lod="mid"] .cv-type,
+[data-lod="far"] .cv-type { font-size: 0; letter-spacing: 0; }
+[data-lod="mid"] .cv-type::after,
+[data-lod="far"] .cv-type::after { content: none; }
+[data-lod="mid"] .cv-type::before {
+  content: attr(data-short);
+  font-size: calc(11px / var(--k));      /* 11 SCREEN px at any k */
+  letter-spacing: 0.04em;
+  transition: font-size 120ms ease;
+}
+
+/* FAR — k < 0.20, or more drawn nodes than the label budget. No text is
+   attempted for an ordinary node, because none would survive. Three things
+   still resolve at this size and each gets a channel: POSITION (which type
+   group, which depth — the layout already encodes it), HUE (--node-color, the
+   one place colour is decided) and a RING (status). */
+[data-lod="far"] {
+  /* Screen diameter of the disc: floored so it survives the tightest node
+     pitch, capped so it never outgrows its cell. Divided back out of k to get
+     the world size that draws it. */
+  --dot-screen: clamp(5px, calc(88 * var(--k) * 1px), 16px);
+  --dots: calc(var(--dot-screen) / var(--k));
+}
+
+/* The card body stops being a rectangle, because the rectangle is the wall. */
+[data-lod="far"] .cv-node {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  /* Pinned rather than left to min-height. A long description pushes the box
+     past 104px, and since the disc is centred on the box rather than on the
+     cell, cards with more text put their disc a few world px lower than their
+     neighbours — a lattice of dots that does not quite line up. Nothing
+     visible is clipped: what overflows here is already at opacity 0. */
+  height: 104px;
+}
+/* Except the one the user picked, which still has to be findable. */
+[data-lod="far"] .cv-node.cv-selected {
+  box-shadow: 0 0 0 calc(1.5px / var(--k)) var(--node-color);
+}
+[data-lod="far"] .cv-desc,
+[data-lod="far"] .cv-foot,
+[data-lod="far"] .cv-chip { opacity: 0; }
+[data-lod="far"] .cv-accent,
+[data-lod="far"] .cv-port,
+[data-lod="far"] .cv-fold { display: none; }
+/* The card ring is a 236x104 rectangle; the disc carries "running" instead. */
+[data-lod="far"] .cv-node[data-state="live"]::after { display: none; }
+
+/* .cv-mark becomes the disc, in place. */
+[data-lod="far"] .cv-mark {
+  position: absolute;
+  left: 18px;                            /* the padding it already sat behind */
+  top: 12px;
+  width: var(--dots);
+  height: var(--dots);
+  /* 93 and 33 carry a 14px mark from the head to the card's visual centre —
+     (236-14)/2 - 18 and (104-14)/2 - 12 — and the half-diameter term holds the
+     disc on that centre as it grows. */
+  transform: translate(calc(93px + 7px - var(--dots) / 2), calc(33px + 7px - var(--dots) / 2));
+  border-radius: 50%;
+  background: var(--node-color);
+  /* A screen-constant hairline, exactly as gen-network.py strokes every agent
+     circle on the README diagram. */
+  box-shadow: 0 0 0 calc(1.4px / var(--k)) color-mix(in srgb, var(--ink) 34%, transparent);
+}
+/* An 11-ray burst is mush at 7px. */
+[data-lod="far"] .cv-mark > * { display: none; }
+/* Source survives as SHAPE, which reads at 7px where a glyph does not. */
+[data-lod="far"] .cv-node[data-source="kit"] .cv-mark { border-radius: 3px; }
+/* Status survives as the ring — the chip's colour, moved. */
+[data-lod="far"] .cv-node[data-state="live"] .cv-mark {
+  box-shadow: 0 0 0 calc(2px / var(--k)) var(--busy);
+}
+[data-lod="far"] .cv-node[data-state="failed"] .cv-mark {
+  box-shadow: 0 0 0 calc(2px / var(--k)) var(--cv-fail);
+}
+
+/* Who keeps a label out here. This is what makes the far band a picture
+   rather than a field of anonymous dots, and it answers the question the panel
+   exists for — which agent is running, and what is it doing — without a click.
+   Running and failed branches keep their words whatever the budget says; the
+   session and the workflows keep theirs because they are few and they anchor
+   the picture.
+
+   POSITIVE SELECTORS ONLY. The selfcheck's matcher treats a pseudo-class it
+   does not model as a non-match, so a :not() rule here would resolve to "no
+   match" in the gate and pass green for a rule the browser is running and the
+   test never saw. */
+[data-lod="far"] .cv-node[data-state="live"] .cv-type::before,
+[data-lod="far"] .cv-node[data-state="failed"] .cv-type::before,
+[data-lod="far"] .cv-node[data-kind="session"] .cv-type::before,
+[data-lod="far"] .cv-node[data-kind="workflow"] .cv-type::before {
+  content: attr(data-far);
+  font-size: calc(11px / var(--k));
+  letter-spacing: 0.04em;
+  transition: font-size 120ms ease;
+}
+/* Centred under its own disc and allowed out of the card, because at this size
+   the card is no longer a box — the disc is the node. */
+[data-lod="far"] .cv-node[data-state="live"] .cv-type,
+[data-lod="far"] .cv-node[data-state="failed"] .cv-type,
+[data-lod="far"] .cv-node[data-kind="session"] .cv-type,
+[data-lod="far"] .cv-node[data-kind="workflow"] .cv-type {
+  position: absolute;
+  left: 50%;                             /* = 118px, the disc's centre */
+  top: calc(52px + var(--dots) * 0.62);
+  transform: translateX(-50%);
+  overflow: visible;
+  text-overflow: clip;
+}
+/* Their words ride above the field rather than under the next card. */
+[data-lod="far"] .cv-node[data-state="live"],
+[data-lod="far"] .cv-node[data-state="failed"] { z-index: 5; }
+
+/* With 250 strokes on screen the only bright ones must be the branches that
+   are alive and the branches that went wrong. */
+[data-lod="far"] .cv-edge[data-state="done"],
+[data-lod="far"] .cv-edge[data-state="quiet"] { opacity: var(--cv-edge-quiet); }
+
+/* ------------------------------------------------------- stillness ---
+   Two ways the canvas stops moving, and one set of rules for both.
+
+   The first is the motion budget: canvas.js counts what would be in motion
+   and stamps data-motion="still" on the root past MOTION_BUDGET. A dash
+   travelling along a stroke is paint work, not compositor work, so its cost
+   scales with the number of moving strokes; 250 of them is a real session.
+
+   The second is the viewer asking for it.
+
+   Both land in the same place because every state above is already carried by
+   weight, dash and tone. Nothing here has a state to lose — only a speed. */
+
+[data-motion="still"] .cv-edge,
+[data-motion="still"] .cv-edge.cv-drawing,
+[data-motion="still"] .cv-node::after { animation: none; }
+[data-motion="still"] .cv-node.cv-born { opacity: 1; scale: 1; }
+/* A reading change is motion too — the mark travels to the card's centre and
+   the label resizes. `.cv-node { transition: none }` does not reach a child;
+   that is specificity, not the media query, so each of these carries at least
+   the weight of the rule it cancels. */
+[data-motion="still"] .cv-mark,
+[data-motion="still"] .cv-type::before,
+[data-motion="still"] .cv-desc,
+[data-motion="still"] .cv-foot,
+[data-motion="still"] .cv-chip { transition: none; }
+
+/* A media query adds no specificity. `.cv-edge` alone loses to
+   `.cv-edge[data-state="live"]` and the flow keeps running, so each selector
+   here carries at least the weight of the rule it has to cancel. */
 @media (prefers-reduced-motion: reduce) {
-  .cv-edge[data-status="running"], .cv-node[data-status="running"] .cv-accent { animation: none; }
+  .cv-edge[data-state],
+  .cv-edge.cv-drawing,
+  .cv-node[data-state]::after { animation: none; }
   .cv-node { transition: none; }
+  .cv-node .cv-mark,
+  .cv-node .cv-type::before,
+  .cv-node .cv-desc,
+  .cv-node .cv-foot,
+  .cv-node .cv-chip { transition: none; }
+  /* The birth class comes off a frame later, which with no transition left is
+     a blink from invisible to placed. Land it in its final state instead. */
+  .cv-node.cv-born { opacity: 1; scale: 1; }
 }
 
 /* ==================================================== inspector detail === */
