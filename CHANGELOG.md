@@ -3,7 +3,7 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [2.8.0] - 2026-09-08
 
 ### Added — a panel, so a run is something you can watch rather than reconstruct
 
@@ -50,6 +50,9 @@ four install paths never created it: `adopt.sh` did not copy it and the plugin e
 carry it. Most of its content was the discipline that already loads every session; the one thing it
 added — confirming the install is sound — `/doctor-csk` does mechanically, on every path. The
 READMEs now point there.
+
+The updater adds and refreshes but does not prune, so an install made before this release
+keeps its copy of `.claude/FIRST_PROMPT.md`. Nothing reads it; delete it when convenient.
 
 ### Changed
 

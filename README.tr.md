@@ -6,7 +6,7 @@
 
 12 uzman agent işi planlar, yazar, güvenlik ve test incelemesinden geçirir, sonra kapatır
 
-![Sürüm](https://img.shields.io/badge/version-2.7.2-2563eb?style=flat-square)
+![Sürüm](https://img.shields.io/badge/version-2.8.0-2563eb?style=flat-square)
 ![Lisans](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)
 ![Agent](https://img.shields.io/badge/agents-12-f59e0b?style=flat-square)
 ![Skill](https://img.shields.io/badge/skills-40-f59e0b?style=flat-square)
