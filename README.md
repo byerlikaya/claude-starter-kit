@@ -6,8 +6,6 @@
 
 12 specialist agents plan the work, build it, put it through security and test review, then close it
 
-On a shared repo, taking a work item is an atomic git claim — two people cannot start the same one
-
 ![Version](https://img.shields.io/badge/version-2.7.2-2563eb?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)
 ![Agents](https://img.shields.io/badge/agents-12-f59e0b?style=flat-square)
@@ -15,6 +13,10 @@ On a shared repo, taking a work item is an atomic git claim — two people canno
 ![Claude Code](https://img.shields.io/badge/Claude_Code-agentic_kit-8b5cf6?style=flat-square)
 
 🇬🇧 English · [🇹🇷 Türkçe](README.tr.md)
+
+<img src="assets/studio-flow.gif" alt="A delegation assembling itself in the panel: agents appear as they spawn, dashes travel from the session down each live branch, a workflow run fills with its members, and one agent fails" width="880">
+
+<sub>Twelve agents on one canvas as they spawn — kit agents in their own colours, Claude's built-ins in theirs.<br>The panel is in this repository; see <a href="#seeing-it-run">Seeing it run</a>.</sub>
 
 </div>
 
@@ -30,12 +32,6 @@ In Claude Code every job happens in the same place: you ask, the model writes. C
 
 **Critical rules are enforced, not remembered.** A destructive command is refused before it runs, a commit waits for your approval, a leaked key or an AI-authorship trace never reaches history. These are guardrails around the work above — they are not the point of the kit, they are what lets you leave it running.
 
-**Your teammates' work stops being invisible.** Every kit runs on one machine, so when three people share a repo, "Ali started item 1 an hour ago" exists nowhere the other two can see — and two of them build it twice. The board fixes that where it breaks: **taking** an item, not merging it. A claim is a push to a git ref, and `git push` is fast-forward-only, so of two simultaneous claims exactly one lands and the other is refused in under a second, naming who holds it and what is free — before a line is written. Not an advisory lock file, not a merge conflict to resolve afterwards: the atomicity is git's own, and there is no server, token or service anywhere in it. Taking an item also hands you what its dependencies actually delivered, and names who is waiting on you. Off until you run `/board-csk init`; solo work never sees it.
-
-<div align="center">
-  <img src="assets/board-en.svg" alt="Two developers claim the same item in the same second; one claim lands, the other is refused before any code is written" width="900">
-</div>
-
 **It goes on the repo you already have.** `adopt` hands Claude Starter Kit over on a branch, staged and uncommitted, so the whole change sits in your editor's diff before any of it is yours to keep. Your `main` is never touched.
 
 ## Quick start
@@ -45,7 +41,7 @@ npx @byerlikaya/claude-starter-kit          # new project — setup wizard
 npx @byerlikaya/claude-starter-kit adopt    # existing project — handover on a branch
 ```
 
-Then paste `.claude/FIRST_PROMPT.md` as your first Claude Code message. Homebrew, a release tarball and a plugin edition are in [Install](#install).
+Then open Claude Code and run **`/doctor-csk`**: it confirms the install is wired and scores the project's readiness. Homebrew, a release tarball and a plugin edition are in [Install](#install).
 
 ## Contents
 
@@ -53,6 +49,7 @@ Then paste `.claude/FIRST_PROMPT.md` as your first Claude Code message. Homebrew
 - [What's inside](#whats-inside)
 - [How it works](#how-it-works)
 - [Rule → gate](#rule--gate)
+- [Seeing it run](#seeing-it-run)
 - [Install](#install)
 - [Session and token cost](#session-and-token-cost)
 - [Verification](#verification)
@@ -74,24 +71,24 @@ Then paste `.claude/FIRST_PROMPT.md` as your first Claude Code message. Homebrew
 <details open>
 <summary>🧭&nbsp; <b>All 12 agents — what each one owns, and when it fires</b></summary>
 
-| Agent | Stage | Fires when | Model |
-|:--|:--|:--|:--:|
-| **planner-csk** | 🧭 Understand | scope is ambiguous | `inherit` |
-| **backend-expert-csk** | 🔨 Produce | server / API / business logic | `inherit` |
-| **database-expert-csk** | 🔨 Produce | schema, migration, index, cache | `inherit` |
-| **frontend-expert-csk** | 🔨 Produce | UI, component, client work | `inherit` |
-| **devops-expert-csk** | 🔨 Produce | deployment, CI pipeline, incident | `inherit` |
-| **security-expert-csk** | 🔍 Audit | auth / IDOR / injection / secret · **mandatory if security-critical** | `inherit` · `effort: high` |
-| **privacy-agent-csk** | 🔍 Audit | personal data — KVKK/GDPR, plus any regime the project declares | `inherit` |
-| **test-expert-csk** | 🔍 Audit | tests, coverage, regression | `inherit` |
-| **performance-expert-csk** | 🔍 Audit | hot path, query/loop, render, payload | `inherit` |
-| **review-agent-csk** | ✅ Close | pre-commit code-health review | `inherit` |
-| **commit-agent-csk** | ✅ Close | proposes the commit, waits for approval | `haiku` |
-| **session-manager-csk** | 🤝 Hand off | context fills / phase boundary | `inherit` |
+| Agent | Stage | Fires when |
+|:--|:--|:--|
+| **planner-csk** | 🧭 Understand | scope is ambiguous |
+| **backend-expert-csk** | 🔨 Produce | server / API / business logic |
+| **database-expert-csk** | 🔨 Produce | schema, migration, index, cache |
+| **frontend-expert-csk** | 🔨 Produce | UI, component, client work |
+| **devops-expert-csk** | 🔨 Produce | deployment, CI pipeline, incident |
+| **security-expert-csk** | 🔍 Audit | auth / IDOR / injection / secret · **mandatory if security-critical** |
+| **privacy-agent-csk** | 🔍 Audit | personal data — KVKK/GDPR, plus any regime the project declares |
+| **test-expert-csk** | 🔍 Audit | tests, coverage, regression |
+| **performance-expert-csk** | 🔍 Audit | hot path, query/loop, render, payload |
+| **review-agent-csk** | ✅ Close | pre-commit code-health review |
+| **commit-agent-csk** | ✅ Close | proposes the commit, waits for approval |
+| **session-manager-csk** | 🤝 Hand off | context fills / phase boundary |
 
 </details>
 
-**Why almost every agent says `inherit`.** A subagent with no model pin runs on the model you chose for the session. That is deliberate: a pin can only make an agent run on a *different* tier from the work around it, and a review that clears a change must never be weaker than whatever wrote it. `security-expert-csk` buys extra rigour with `effort: high` — more thinking on *your* model, not a different one. `commit-agent-csk` keeps `haiku` because turning a staged diff into a Conventional Commit is mechanical, and the commit rules are gated anyway.
+**Models are not pinned.** Every agent runs on the model you chose for the session, so a review that clears a change is never weaker than whatever wrote it. Two exceptions earn their keep: `security-expert-csk` buys extra rigour with `effort: high`, and `commit-agent-csk` runs on `haiku` because turning a staged diff into a Conventional Commit is mechanical. Change any of it in the agent's frontmatter if your project wants something else.
 
 ## What's inside
 
@@ -115,7 +112,7 @@ Then paste `.claude/FIRST_PROMPT.md` as your first Claude Code message. Homebrew
 |:--|:--|
 | `route-hint.sh` | Names the owning agent alongside every prompt, so specialists run without you asking |
 | `guard-bash.sh` | Tool-level command gate: commit/push approval, destructive ops, remote-code-exec, hook tampering |
-| `guard-write.sh` | The same protection on the Write/Edit side — a gate you can silently delete is not a gate. It normalises the target path before matching it, so a gate file cannot be reached under a different spelling. It also holds the board claim gate: on a team repo, the FIRST file edit is refused while you hold no work item, so unclaimed work is caught at minute one rather than at commit time |
+| `guard-write.sh` | The same protection on the Write/Edit side — a gate you can silently delete is not a gate. It normalises the target path before matching it, so a gate file cannot be reached under a different spelling. |
 | `guard-commit-scan.sh` | Runs the real trace and secret scanners from `PreToolUse`, so the commit gate works where `core.hooksPath` cannot be set |
 | `context-usage.sh` | Reads the real token count from the transcript and injects it every turn |
 | `session-guard.sh` | Warns once at 75% context fill and once at 90% — never blocks a turn |
@@ -123,16 +120,12 @@ Then paste `.claude/FIRST_PROMPT.md` as your first Claude Code message. Homebrew
 | `skill-trust.sh` | Names any skill or agent Claude Starter Kit never shipped and you never accepted |
 | `session-stats.sh` | Reports what the session actually did — failing tool loops, repeated prompts, interrupts. `reflect` and `handoff` read it, so a retrospective rests on the record rather than on recollection |
 | `session-update-check.sh` | Says once, when a session opens, that a newer kit version is published — each edition compared against the channel that will deliver it. The lookup runs detached and at most daily, so an offline or proxied machine costs the session opening nothing; `CSK_NO_UPDATE_CHECK=1` turns it off |
-| `board.sh` | The team board engine: claims a work item, hands it over, completes it. Claiming IS the push — a commit to a git ref, fast-forward-only — so two people taking the same item is settled at take time, in under a second: one claim lands, the other is refused with who holds it and what is free instead. Commits are built with git plumbing, so a claim never touches your working tree, index or branch |
-| `board-sync.sh` | Puts the team's state into a session that would otherwise only see this machine: who holds which item, what is claimable, what is blocked, which claim has gone quiet. Reads a local cache at session start and refreshes it detached, so an unreachable remote costs the session opening nothing; `CSK_NO_BOARD=1` turns it off |
+| `board.sh` | The team board engine: claims a work item, hands it over, completes it. Off unless a repo runs `/board-csk init` |
+| `board-sync.sh` | Puts a team's board state into a session. Reads a local cache at session start and refreshes it detached, so an unreachable remote costs the session opening nothing; `CSK_NO_BOARD=1` turns it off |
 
-Two git hooks — `pre-commit` and `commit-msg` — run the trace, secret, repo-bloat and private-path scans. The last one exists because a path that only lives on your machine reaches a shared repo by being pasted, not by being typed: it blocks your own `$HOME` automatically, and the internal project, client and host names only you can recognise come from a gitignored `.private-terms.txt` (`.private-allowlist.txt` is the escape). `commit-msg` also holds the board claim gate: on a repo with a board, a commit must name an item you hold (`[#3]`) or declare itself item-less (`[chore]`). The plugin edition ships all of these except `skill-trust.sh`, which decides what is kit-owned from the `kit-manifest.txt` an installer writes and the plugin never creates.
+Two git hooks — `pre-commit` and `commit-msg` — run the trace, secret, repo-bloat and private-path scans. The last one exists because a path that only lives on your machine reaches a shared repo by being pasted, not by being typed: it blocks your own `$HOME` automatically, and the internal project, client and host names only you can recognise come from a gitignored `.private-terms.txt` (`.private-allowlist.txt` is the escape). The plugin edition ships all of these except `skill-trust.sh`, which decides what is kit-owned from the `kit-manifest.txt` an installer writes and the plugin never creates.
 
 </details>
-
-**Working as a team.** Each teammate's kit runs on their own machine, and `docs/` is gitignored — a plan, a handover and an in-progress item are all private by default, which is how two people end up building the same thing. The board is the shared half: **one person** runs `/board-csk init` (or `--remote <url>` to keep the board in a separate repository) and adds the items; **everyone else configures nothing** — their session fetches the board on its own and opens with who holds what, what is claimable, and what is blocked by which item. Taking an item prints what its dependencies actually delivered and names the items waiting on it, so the next person starts with the context the last one had. No account, no token, no service: the board is a git ref, and claiming it is a push.
-
-**And it stays off until you ask for it.** A repo that never runs `/board-csk init` has no board and no board gates — solo work, and every project that installed the kit earlier, behaves exactly as before. Where a board does exist, `/board-csk off` (or `--global`) releases all three gates and leaves the board intact, `CSK_NO_BOARD=1` does the same for one session, and setting `require_item: referenced` in the board's config keeps the claims and the shared memory while dropping the enforcement. A board works without a remote too — you keep the item list, the dependency order and the gates; only the sharing is gone.
 
 <details>
 <summary>📚&nbsp; <b>All 40 skills — the full catalogue, generated from each skill</b></summary>
@@ -218,8 +211,6 @@ Left is the rule; right is the thing that refuses to let it slide.
 | No AI-authorship trace or vendor template name in a commit | `pre-commit` + `commit-msg` git hooks |
 | No build artifact, vendored tree or oversized blob gets staged | `pre-commit` repo-bloat scan |
 | An unvetted skill or agent appearing in `.claude/` is named, with a scanner verdict | `skill-trust.sh` at session start |
-| Two people cannot start the same work item — the second one is refused **when they try to take it**, in under a second, before any code is written | `board.sh claim` (the claim itself is a push to a git ref; fast-forward-only, so of two simultaneous claims exactly one lands). Measured: three clones racing on the same item, ten rounds, one winner every time |
-| You cannot start work nobody knows you started | `guard-write.sh` blocks the first file edit while you hold no item; `commit-msg` blocks a commit that names an item you do not hold |
 | Always-on context stays lean | `smoke-test.sh` byte budget per component |
 | A running session never follows stale rules after an update | `context-usage.sh` version comparison |
 
@@ -230,6 +221,41 @@ Does it actually change anything? The same prompt was run in a Claude Starter Ki
 The gates stop accidents, not determined attempts. On a command line there is always a way around a pattern; if you need a real boundary, run Claude Code in a devcontainer or a VM. `/doctor-csk` tells you whether you have one.
 
 **Watching a gate fire.** Set `CSK_GATE_LOG=<path>` and every guard appends one line per decision: `BLOCK` / `ASK` / `ALLOW`, the rule, and the command. It is off unless you ask for it, write-only, and written after the verdict, so it cannot change one. Useful when you need to know whether a gate stopped something or the model simply never went there — those two leave identical traces.
+
+---
+
+## Seeing it run
+
+A delegation three levels deep is, in a terminal, a scrollback you have already lost. **CSK Studio** is a local panel that draws it instead: one node per agent on a canvas, appearing as they spawn, each carrying what it is doing right now, which tool it last reached for, what it has spent and what it reported back.
+
+It reads `~/.claude/projects` — where Claude Code keeps every session on this machine — so one running panel sees all of them at once, whether or not a project has the kit installed, and without being started inside any of them.
+
+```bash
+npm run studio        # http://127.0.0.1:7777, opens a browser
+npm run studio:pty    # the same, plus raw shells — those bypass every gate above
+```
+
+| In the panel | What it rests on |
+|:--|:--|
+| The delegation graph of any session, live | the transcript tree on disk, re-read on a size signature every 700 ms |
+| Sessions the panel starts, driven from a chat pane | `claude -p` in stream-json, over the child's stdin and stdout |
+| Every tool call in one of those parked until you answer | a `PreToolUse` hook injected through the panel's own settings file, matching `*`. It answers at 45 s against the harness's 90 s, and **silence is a denial** — a panel that is closed does not become permission |
+| Continuing a session rather than copying it | a bare `--resume` when no process holds that session, which keeps its id and appends to its transcript; a fork when one does, because two writers on one transcript corrupt it |
+| The kit's own gate log, session stats and board | the kit's existing scripts, read rather than recomputed — and gate-log entries are labelled as carrying no timestamp, because that format has none |
+
+<div align="center">
+  <img src="assets/studio-panels.gif" alt="Clicking through the panel: a session opens from the project list, an agent's report and its tool timeline open beside the graph, the failed agent is jumped to, and the session's conversation opens on the right" width="900">
+  <br><sub>The same panel, driven: open a session, read what an agent reported, jump to the one that failed, read the conversation behind it.</sub>
+</div>
+
+**Studio is not part of what you install.** It lives in this repository and nowhere else: `start.sh` creates five directories under `.claude/` and none of them is Studio's, and the npm tarball, the plugin edition, the Homebrew formula and the release tarball all exclude it. Clone the repo to run it. It has zero npm dependencies, wants Node 18+, binds to `127.0.0.1` only and requires a per-run token on every API path.
+
+<div align="center">
+  <img src="assets/studio-graph.png" alt="Twelve agents and a workflow container on one canvas, each card carrying its status, tool count, tokens and duration; the failed agent is outlined in red" width="900">
+  <br><sub>What each agent is doing, what it has spent, and the one that failed — reachable by the ⚠ button without hunting for it.</sub>
+</div>
+
+**Raw terminals are off unless you ask for them.** A shell typed into directly never reaches a `PreToolUse` hook, so `guard-bash.sh` never sees the command — the panel says so on screen in red rather than leaving you to discover it. Everything else in the panel goes through a tool call, and therefore through the gates.
 
 ---
 
@@ -273,7 +299,7 @@ bash start.sh [--dotnet|--generic] [-h]
 
 Two steps: backend pattern, then a summary you approve before anything is written.
 
-**Every install is the same install** — all 12 agents and all 40 skills, backend and web and mobile (React Native/Expo) together. A project that starts as an API and grows a web client is already equipped for both.
+**Both installs carry the same team** — all 12 agents, and every skill except the one that is a backend pattern: `--generic` leaves out `devarch-module`, which is .NET-specific and wrong in a Node or Go repo, and installs the other 39. Backend, web and mobile (React Native/Expo) come together either way. A project that starts as an API and grows a web client is already equipped for both.
 
 | Asked at install | Options | What it changes |
 |:--|:--|:--|
@@ -331,9 +357,9 @@ If a project's `CLAUDE.md` carries the discipline **inline** instead of importin
 
 How full a session is gets **measured, not estimated** — the real token count, read every turn, the same figure `/context` reports. One warning at **75%**, one more at **90%**, and neither interrupts your turn.
 
-The standing cost is published, not hidden. The discipline plus every agent and skill description load into each session: **~24 KB**, on the order of **~10k tokens** on a real turn — calibrated against an actual run, never estimated. Each skill you add is a permanent **~100-token** tax on every session, so a byte budget per component is enforced as a gate. Raising it takes an explicit edit to the test.
+The standing cost is published, not hidden. The discipline plus every agent and skill description load into each session: **26,540 bytes**, about **11k tokens** — the byte figure is what the suite gates, and the token figure comes from a real `claude -p` turn in which 21,804 bytes of the same material cost 9,198 tokens. Each skill you add is a permanent **~100-token** tax on every session, so a byte budget per component is enforced as a gate. Raising it takes an explicit edit to the test.
 
-**Why not install fewer components?** Because it buys almost nothing. The whole set costs **~3.3k tokens** of description; leaving out the four UI skills and the frontend agent saves **~400 tokens** — about **0.2%** of a 200k window. That is worth controlling per component, which the byte budget does, rather than per project.
+**Why not install fewer components?** Because it buys almost nothing. Every agent and skill description together is 14,756 bytes, about **6.2k tokens**; leaving out the four UI skills and the frontend agent saves 1,544 of those bytes — roughly **650 tokens**, or **0.3%** of a 200k window. That is worth controlling per component, which the byte budget does, rather than per project.
 
 ## Verification
 

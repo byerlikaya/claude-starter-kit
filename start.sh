@@ -311,7 +311,6 @@ echo "  Backend pattern '$STACK': $(ls .claude/agents/*.md 2>/dev/null | wc -l |
 # session-rehydrate.sh, …). An explicit list silently missed new hooks and left them non-executable.
 chmod +x .claude/hooks/*.sh .claude/hooks/pre-commit .claude/hooks/commit-msg .claude/eval/*.sh 2>/dev/null || true
 cp "$SRC/AGENT_TEMPLATE.md" .claude/ 2>/dev/null || true
-cp "$SRC/FIRST_PROMPT.md"   .claude/ 2>/dev/null || true
 cp "$SRC/README.md"         .claude/ 2>/dev/null || true
 
 # Install manifest — the names the KIT ships. It is the only way to tell kit-owned from project-owned later:
@@ -388,6 +387,6 @@ echo
 echo "== Done. ./.claude + ./CLAUDE.md ready (full kit · backend pattern: $STACK); claude-starter/ deleted. =="
 echo "Next: 1) fill in the CLAUDE.md project section  2) open Claude Code at the repo root"
 echo "Note: if Claude Code is ALREADY running here, restart it — CLAUDE.md and the discipline load at session start."
-echo "Tip:  paste .claude/FIRST_PROMPT.md as your first Claude Code message — an optional kickoff (verifies the agents/skills, plans the first sprint). CLAUDE.md loads the discipline every session either way."
+echo "Tip:  open Claude Code and run /doctor-csk — it checks the install is wired (hooks executable, core.hooksPath set, discipline imported) and scores the project's readiness. CLAUDE.md loads the discipline every session."
 [ "$STACK" = "dotnet" ] && echo "Layout: backend in ./backend · build your frontend in ./frontend · first agent task: rename DevArchitecture -> $PROJECT_NAME."
 rm -f -- "$0"
