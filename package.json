@@ -5,6 +5,10 @@
   "bin": {
     "claude-starter-kit": "bin/cli.js"
   },
+  "scripts": {
+    "studio": "node studio/server/index.js --open",
+    "studio:pty": "node studio/server/index.js --enable-pty --open"
+  },
   "files": [
     "bin/",
     "start.sh",

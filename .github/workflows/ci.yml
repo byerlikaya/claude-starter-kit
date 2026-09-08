@@ -35,6 +35,11 @@ jobs:
       - name: README skill catalogue in sync with the skills
         run: bash packaging/verify.sh catalogue
 
+      # The panel is not installed into anyone's project, so it is gated here rather than in the payload
+      # suites. Linux only: verify-cross carries no node, and under CSK_VERIFY_STRICT a skip is a failure.
+      - name: Studio — boundary pins, permission bridge, transcript parsing
+        run: bash packaging/verify.sh studio
+
       - name: Plugin & marketplace manifests valid (strict)
         # Offline manifest validation via the official CLI; --strict fails on unrecognized fields / missing
         # metadata. No API auth needed (this does not call the model). CI=true keeps it non-interactive.

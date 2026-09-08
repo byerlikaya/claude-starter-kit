@@ -6,8 +6,6 @@
 
 12 uzman agent işi planlar, yazar, güvenlik ve test incelemesinden geçirir, sonra kapatır
 
-Paylaşılan bir depoda bir işi üstlenmek atomik bir git iddiasıdır — aynı işe iki kişi başlayamaz
-
 ![Sürüm](https://img.shields.io/badge/version-2.7.2-2563eb?style=flat-square)
 ![Lisans](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)
 ![Agent](https://img.shields.io/badge/agents-12-f59e0b?style=flat-square)
@@ -15,6 +13,10 @@ Paylaşılan bir depoda bir işi üstlenmek atomik bir git iddiasıdır — ayn�
 ![Claude Code](https://img.shields.io/badge/Claude_Code-agentic_kit-8b5cf6?style=flat-square)
 
 [🇬🇧 English](README.md) · 🇹🇷 Türkçe
+
+<img src="assets/studio-flow.gif" alt="Panelde kendini kuran bir delegasyon: ajanlar doğdukça beliriyor, kesik çizgiler oturumdan canlı olan her dala akıyor, bir workflow koşusu üyeleriyle doluyor ve bir ajan düşüyor" width="880">
+
+<sub>On iki ajan, doğduğu anda tek tuvalde beliriyor: kitin ajanları kendi renkleriyle, Claude'un yerleşikleri ayrı bir paletle.<br>Panel bu depoda; <a href="#canlı-panel">Canlı panel</a> bölümüne bakın.</sub>
 
 </div>
 
@@ -30,22 +32,16 @@ Claude Code'da her iş tek bir yerde olup biter: siz söylersiniz, model yazar. 
 
 **Kritik kurallar hatırlanmıyor, uygulanıyor.** Yıkıcı bir komut çalışmadan reddedilir, commit onayınızı bekler, sızmış bir anahtar veya yapay zekâ imzası geçmişe hiç girmez. Bunlar kitin amacı değil, yukarıdaki düzeni gözünüzü ayırmadan bırakabilmenizin sebebi.
 
-**Ekip arkadaşlarınızın işi görünür oluyor.** Her kit kendi makinesinde koşar; üç kişi aynı depoyu paylaştığında "Ali 1. maddeye bir saat önce başladı" bilgisi diğer ikisinin bakabileceği hiçbir yerde durmaz — ve aynı iş iki kez yapılır. Pano bunu tam kırıldığı yerde onarır: birleştirme anında değil, **maddeyi üstlenme** anında. Üstlenme bir git ref'ine push'tan ibarettir; `git push` yalnızca ileri sarım kabul ettiği için, aynı anda gelen iki üstlenmeden tam olarak biri yerleşir. Diğeri saniyeyi bulmadan reddedilir, üstelik maddeyi kimin tuttuğunu ve neyin boşta olduğunu söyleyerek — daha tek satır yazılmadan. Tavsiye niteliğinde bir kilit dosyası değil, sonradan çözülecek bir merge conflict de değil: atomikliği git'in kendisi veriyor, işin içinde ne sunucu var ne token ne servis. Bir maddeyi üstlenmek ayrıca bağımlılıklarının size ne teslim ettiğini önünüze koyar ve sizi kimlerin beklediğini söyler. `/board-csk init` çalıştırılana kadar kapalı; tek başına çalışan onu hiç görmez.
-
-<div align="center">
-  <img src="assets/board-tr.svg" alt="İki geliştirici aynı saniyede aynı maddeyi üstleniyor; biri yerleşiyor, diğeri tek satır kod yazılmadan reddediliyor" width="900">
-</div>
-
 **Elinizdeki depoya giriyor.** `adopt`, Claude Starter Kit'i bir dal üzerinde, staged ama commit'lenmemiş hâlde devreder; böylece değişikliğin tamamı, size ait olmaya karar vermeden önce editörünüzün diff ekranında durur. `main` dalınıza hiç dokunulmaz.
 
 ## Hızlı başlangıç
 
 ```bash
-npx @byerlikaya/claude-starter-kit          # yeni proje — kurulum sihirbazı
-npx @byerlikaya/claude-starter-kit adopt    # mevcut proje — dal üzerinde devir
+npx @byerlikaya/claude-starter-kit          # yeni proje: kurulum sihirbazı
+npx @byerlikaya/claude-starter-kit adopt    # mevcut proje: dal üzerinde devir
 ```
 
-Ardından `.claude/FIRST_PROMPT.md` dosyasını Claude Code'a ilk mesaj olarak yapıştırın. Homebrew, sürüm arşivi ve plugin sürümü için [Kurulum](#kurulum) bölümüne bakın.
+Ardından Claude Code'u açıp **`/doctor-csk`** komutunu çalıştırın: kurulumun bağlanıp bağlanmadığını doğruluyor ve projenin hazırlık puanını veriyor. Homebrew, sürüm arşivi ve plugin sürümü için [Kurulum](#kurulum) bölümüne bakın.
 
 ## İçindekiler
 
@@ -53,6 +49,7 @@ Ardından `.claude/FIRST_PROMPT.md` dosyasını Claude Code'a ilk mesaj olarak y
 - [İçerik](#i̇çerik)
 - [Nasıl çalışıyor](#nasıl-çalışıyor)
 - [Kural → yaptırım](#kural--yaptırım)
+- [Canlı panel](#canlı-panel)
 - [Kurulum](#kurulum)
 - [Oturum ve token maliyeti](#oturum-ve-token-maliyeti)
 - [Doğrulama](#doğrulama)
@@ -65,7 +62,7 @@ Ardından `.claude/FIRST_PROMPT.md` dosyasını Claude Code'a ilk mesaj olarak y
 
 ## Agent'lar
 
-Beş aşamaya yayılmış **12 uzman agent** — kalite, hiçbir şey commit edilmeden önce basamak basamak yükseliyor.
+Beş aşamaya yayılmış **12 uzman agent** var. Kalite, hiçbir şey commit edilmeden önce basamak basamak yükseliyor.
 
 <div align="center">
   <img src="assets/orchestration-tr.svg" alt="Beş aşama: Anla, Üret, Denetle, Kapat, Devret" width="820">
@@ -74,39 +71,39 @@ Beş aşamaya yayılmış **12 uzman agent** — kalite, hiçbir şey commit edi
 <details open>
 <summary>🧭&nbsp; <b>12 agent'ın tamamı: hangisi neyin sahibi, ne zaman devreye giriyor</b></summary>
 
-| Agent | Aşama | Ne zaman devreye girer | Model |
-|:--|:--|:--|:--:|
-| **planner-csk** | 🧭 Anla | kapsam belirsizse | `inherit` |
-| **backend-expert-csk** | 🔨 Üret | sunucu / API / iş mantığı | `inherit` |
-| **database-expert-csk** | 🔨 Üret | şema, migration, indeks, önbellek | `inherit` |
-| **frontend-expert-csk** | 🔨 Üret | arayüz, bileşen, istemci işi | `inherit` |
-| **devops-expert-csk** | 🔨 Üret | dağıtım, CI hattı, olay müdahalesi | `inherit` |
-| **security-expert-csk** | 🔍 Denetle | auth / IDOR / injection / sır · **güvenlik kritikse zorunlu** | `inherit` · `effort: high` |
-| **privacy-agent-csk** | 🔍 Denetle | kişisel veri — KVKK/GDPR ve projenin beyan ettiği diğer rejimler | `inherit` |
-| **test-expert-csk** | 🔍 Denetle | test, kapsam, regresyon | `inherit` |
-| **performance-expert-csk** | 🔍 Denetle | sıcak yol, sorgu/döngü, render, payload | `inherit` |
-| **review-agent-csk** | ✅ Kapat | commit öncesi kod sağlığı incelemesi | `inherit` |
-| **commit-agent-csk** | ✅ Kapat | commit'i önerir, onayı bekler | `haiku` |
-| **session-manager-csk** | 🤝 Devret | bağlam dolduğunda / aşama bittiğinde | `inherit` |
+| Agent | Aşama | Ne zaman devreye girer |
+|:--|:--|:--|
+| **planner-csk** | 🧭 Anla | kapsam belirsizse |
+| **backend-expert-csk** | 🔨 Üret | sunucu / API / iş mantığı |
+| **database-expert-csk** | 🔨 Üret | şema, migration, indeks, önbellek |
+| **frontend-expert-csk** | 🔨 Üret | arayüz, bileşen, istemci işi |
+| **devops-expert-csk** | 🔨 Üret | dağıtım, CI hattı, olay müdahalesi |
+| **security-expert-csk** | 🔍 Denetle | auth / IDOR / injection / sır · **güvenlik kritikse zorunlu** |
+| **privacy-agent-csk** | 🔍 Denetle | kişisel veri: KVKK/GDPR ve projenin beyan ettiği diğer rejimler |
+| **test-expert-csk** | 🔍 Denetle | test, kapsam, regresyon |
+| **performance-expert-csk** | 🔍 Denetle | sıcak yol, sorgu/döngü, render, payload |
+| **review-agent-csk** | ✅ Kapat | commit öncesi kod sağlığı incelemesi |
+| **commit-agent-csk** | ✅ Kapat | commit'i önerir, onayı bekler |
+| **session-manager-csk** | 🤝 Devret | bağlam dolduğunda / aşama bittiğinde |
 
 </details>
 
-**Neden neredeyse her agent `inherit` diyor?** Modeli sabitlenmemiş bir subagent, oturum için seçtiğiniz modelde koşar. Bu bilinçli bir tercih: sabitleme ancak bir agent'ı çevresindeki işten *farklı* bir seviyede çalıştırmaya yarar, ve bir değişikliği temize çıkaran inceleme, o değişikliği yazandan zayıf olamaz. `security-expert-csk` fazladan titizliği `effort: high` ile alır — başka bir modelde değil, *sizin* modelinizde daha çok düşünerek. `commit-agent-csk`'de `haiku` kalır, çünkü staged bir diff'i Conventional Commit'e çevirmek mekanik bir iş ve commit kuralları zaten yaptırıma bağlı.
+**Modeller sabitlenmiyor.** Her agent, oturum için seçtiğiniz modelde koşuyor; böylece bir değişikliği onaylayan inceleme, o değişikliği yazandan hiçbir zaman zayıf olmuyor. İki istisna var: `security-expert-csk` fazladan titizliği `effort: high` ile alıyor, `commit-agent-csk` ise `haiku` kullanıyor, çünkü staged bir diff'i Conventional Commit'e çevirmek mekanik bir iş. Projeniz başka bir şey istiyorsa agent'ın frontmatter'ından değiştirebilirsiniz.
 
 ## İçerik
 
 <div align="center">
   <img src="assets/network-tr.svg" alt="12 agent ve 40 skill, gerçek uygular ilişkileriyle" width="820">
-  <br><sub>Her agent, her skill ve aralarındaki gerçek <code>uygular</code> ilişkileri — aşamaya göre gruplanmış, her agent kendi renginde; merkezde onları yöneten ana akış.</sub>
+  <br><sub>Her agent, her skill ve aralarındaki gerçek <code>uygular</code> ilişkileri; aşamaya göre gruplanmış, her agent kendi renginde. Ortadaki düğüm, hepsini yöneten ana akış.</sub>
 </div>
 
 | Bileşen | Adet | Nedir |
 |:--|:--:|:--|
-| **Agent** | 12 | İnce tetikleyiciler — bir alanın *kimin* olduğu ve *ne zaman* devreye gireceği |
+| **Agent** | 12 | İnce tetikleyiciler: bir alanın *kimin* olduğu ve *ne zaman* devreye gireceği |
 | **Skill** | 40 | Yöntemin kendisi; bir kez yazılır, ihtiyacı olan uygular |
 | **Slash komutu** | 10 | `/brainstorm-csk` · `/plan-csk` · `/review-csk` · `/ship-csk` · `/handoff-csk` · `/update-csk` · `/doctor-csk` · `/board-csk` · `/gates-csk` · `/skill-csk` |
 | **Hook** | 12 | Yaptırımlar, ayrıca oturum ölçümü ve yönlendirme |
-| **Disiplin** | 1 | İlkeler, akış, Definition of Done, yasaklar — `CLAUDE.md`'nizin import ettiği dosya |
+| **Disiplin** | 1 | İlkeler, akış, Definition of Done, yasaklar. `CLAUDE.md`'niz bu dosyayı import ediyor |
 
 <details>
 <summary>🪝&nbsp; <b>12 hook'un tamamı: hangi yaptırım neyi tutuyor</b></summary>
@@ -115,24 +112,20 @@ Beş aşamaya yayılmış **12 uzman agent** — kalite, hiçbir şey commit edi
 |:--|:--|
 | `route-hint.sh` | Her isteğin yanına o işin sahibi agent'ı yazar; uzmanlar siz istemeden devreye girer |
 | `guard-bash.sh` | Araç seviyesinde komut kapısı: commit/push onayı, yıkıcı işlemler, uzaktan kod çalıştırma, hook kurcalama |
-| `guard-write.sh` | Aynı korumanın Write/Edit tarafı — sessizce silinebilen bir kapı, kapı değildir. Hedef yolu eşleştirmeden önce sadeleştirir, böylece bir kapı dosyasına farklı bir yazımla ulaşılamaz. Pano üstlenme kapısını da o tutar: ekip deposunda, elinizde bir madde yokken **ilk dosya düzenlemesi** reddedilir, böylece üstlenilmemiş iş commit anında değil daha birinci dakikada yakalanır |
+| `guard-write.sh` | Aynı korumanın Write/Edit tarafı. Sessizce silinebilen bir kapı, kapı değildir. Hedef yolu eşleştirmeden önce sadeleştirir, böylece bir kapı dosyasına farklı bir yazımla ulaşılamaz. |
 | `guard-commit-scan.sh` | Gerçek iz ve sır tarayıcılarını `PreToolUse` üzerinden koşturur; böylece `core.hooksPath` ayarlanamayan yerlerde de commit kapısı çalışır |
 | `context-usage.sh` | Transcript'ten gerçek token sayısını okur ve her tura enjekte eder |
-| `session-guard.sh` | Bağlam doluluğu %75'i ve %90'ı geçtiğinde birer kez uyarır — turu asla kesmez |
+| `session-guard.sh` | Bağlam doluluğu %75'i ve %90'ı geçtiğinde birer kez uyarır, turu asla kesmez |
 | `session-rehydrate.sh` | `/compact` veya `/clear` sonrasında devir notunu yeniden önünüze getirir |
 | `skill-trust.sh` | Claude Starter Kit'in getirmediği ve sizin de kabul etmediğiniz her skill ya da agent'ı adıyla bildirir |
 | `session-stats.sh` | Oturumun gerçekte ne yaptığını raporlar: patlayan araç döngüleri, tekrarlanan istekler, kesintiler. `reflect` ve `handoff` bunu okur, böylece geri dönüş hatırlamaya değil kayda dayanır |
 | `session-update-check.sh` | Oturum açılırken bir kez, yeni bir kit sürümünün yayımlandığını söyler; her sürüm onu getirecek kanala göre karşılaştırılır. Sorgu ayrık koşar ve en fazla günde bir kez yapılır, dolayısıyla çevrimdışı ya da proxy arkasındaki bir makinede oturum açılışı hiçbir şey ödemez; `CSK_NO_UPDATE_CHECK=1` kapatır |
-| `board.sh` | Ekip panosunun motoru: bir maddeyi üstlenir, devreder, tamamlar. Üstlenmenin kendisi push'tur — bir git ref'ine commit, yalnızca ileri sarım — bu yüzden aynı maddeyi iki kişinin alması, alma anında ve saniyeyi bulmadan çözülür: biri yerleşir, diğeri maddeyi kimin tuttuğu ve neyin boşta olduğu bilgisiyle reddedilir. Commit'ler git plumbing ile kurulur, dolayısıyla bir üstlenme çalışma ağacınıza, index'inize veya dalınıza dokunmaz |
-| `board-sync.sh` | Yalnızca bu makineyi görebilecek olan oturuma ekibin durumunu taşır: kim hangi maddeyi tutuyor, ne üstlenilebilir, ne bloke, hangi üstlenme sessizleşmiş. Oturum başında yerel önbelleği okur ve tazelemeyi ayrık yapar, böylece erişilemeyen bir uzak depo oturum açılışını yavaşlatmaz; `CSK_NO_BOARD=1` kapatır |
+| `board.sh` | Ekip panosunun motoru: bir maddeyi üstlenir, devreder, tamamlar. Depoda `/board-csk init` çalıştırılmadıkça kapalıdır |
+| `board-sync.sh` | Ekibin pano durumunu oturuma taşır. Oturum açılışında yerel önbelleği okur, tazelemeyi arka planda yapar; böylece erişilemeyen bir uzak depo açılışa maliyet bindirmez. `CSK_NO_BOARD=1` kapatır |
 
-İki git hook'u — `pre-commit` ve `commit-msg` — iz, sır, depo şişkinliği ve özel yol taramalarını koşturur. Sonuncusu şunun için var: yalnızca sizin makinenizde bulunan bir yol paylaşılan depoya yazılarak değil, yapıştırılarak sızar. Kendi `$HOME`'unuzu kendiliğinden engeller; yalnızca sizin tanıyabileceğiniz iç proje, müşteri ve sunucu adları ise gitignore'lanmış `.private-terms.txt` dosyasından gelir (`.private-allowlist.txt` kaçış kapısıdır). `commit-msg` ayrıca pano üstlenme kapısını tutar: panosu olan bir depoda commit ya elinizdeki bir maddeyi anmalıdır (`[#3]`) ya da maddesiz olduğunu beyan etmelidir (`[chore]`). Plugin sürümü, `skill-trust.sh` dışında bunların hepsini getirir; o hook neyin kite ait olduğunu bir kurulum script'inin yazdığı `kit-manifest.txt`'ten okur ve plugin böyle bir dosya oluşturmaz.
+İki git hook'u (`pre-commit` ve `commit-msg`) iz, sır, depo şişkinliği ve özel yol taramalarını koşturur. Sonuncusu şunun için var: yalnızca sizin makinenizde bulunan bir yol paylaşılan depoya yazılarak değil, yapıştırılarak sızar. Kendi `$HOME`'unuzu kendiliğinden engeller; yalnızca sizin tanıyabileceğiniz iç proje, müşteri ve sunucu adları ise gitignore'lanmış `.private-terms.txt` dosyasından gelir (`.private-allowlist.txt` kaçış kapısıdır). `commit-msg` ayrıca pano üstlenme kapısını tutar: panosu olan bir depoda commit ya elinizdeki bir maddeyi anmalıdır (`[#3]`) ya da maddesiz olduğunu beyan etmelidir (`[chore]`). Plugin sürümü, `skill-trust.sh` dışında bunların hepsini getirir; o hook neyin kite ait olduğunu bir kurulum script'inin yazdığı `kit-manifest.txt`'ten okur ve plugin böyle bir dosya oluşturmaz.
 
 </details>
-
-**Ekip olarak çalışmak.** Her ekip arkadaşının kiti kendi makinesinde koşar ve `docs/` gitignore'lanmıştır — bir plan, bir devir notu ve devam eden bir madde varsayılan olarak özeldir. İki kişinin aynı şeyi yapması tam da buradan çıkar. Panosu olan yarısı ise paylaşılır: **bir kişi** `/board-csk init` çalıştırır (panoyu ayrı bir depoda tutmak için `--remote <url>`) ve maddeleri girer; **diğerleri hiçbir şey ayarlamaz** — oturumları panoyu kendiliğinden çeker ve kimin neyi tuttuğu, neyin üstlenilebilir olduğu, neyin hangi maddeye takıldığıyla açılır. Bir maddeyi almak, bağımlılıklarının gerçekte ne teslim ettiğini yazdırır ve onu bekleyen maddeleri sayar; böylece sıradaki kişi, bir öncekinin sahip olduğu bağlamla başlar. Hesap yok, token yok, servis yok: pano bir git ref'i, üstlenmek de bir push.
-
-**Ve siz istemeden açılmıyor.** `/board-csk init` hiç çalıştırılmamış bir depoda ne pano vardır ne pano kapıları — tek başına çalışma ve kiti daha önce kurmuş her proje eskisi gibi davranır. Pano varsa `/board-csk off` (veya `--global`) üç kapıyı da bırakır ve panoyu olduğu gibi korur, `CSK_NO_BOARD=1` aynısını tek oturum için yapar, panonun ayarındaki `require_item: referenced` ise üstlenmeleri ve ortak hafızayı sürdürürken yalnızca yaptırımı kaldırır. Pano uzak depo olmadan da çalışır: madde listesi, bağımlılık sırası ve kapılar yerinde kalır, yalnızca paylaşım gider.
 
 <details>
 <summary>📚&nbsp; <b>40 skill'in tamamı: katalog, her skill'in kendi dosyasından üretilir</b></summary>
@@ -144,7 +137,7 @@ Beş aşamaya yayılmış **12 uzman agent** — kalite, hiçbir şey commit edi
 | `a11y` | Frontend erişilebilirlik denetimi (WCAG): anlamsal HTML, klavye erişimi, odak yönetimi, kontrast, ARIA, ekran okuyucular. |
 | `adr` | Mimari Karar Kaydı: bağlam-karar-sonuç; geri dönüşü pahalı kararlar için. |
 | `api-design` | API sözleşme tasarımı: kaynak adlandırma, hata modeli, sürümleme, sayfalama, geriye dönük uyumluluk, OpenAPI. |
-| `automode-policy` | Auto mod sınıflandırıcısının yapılandırmasını denetler: kitin kuralları orada mı, ve asıl sessiz arıza — özel bir autoMode bloğunun yerleşik engelleme kurallarını uyarısızca silmesi. Kapı değil, rapordur; ölçüldü ve özel kurallar uygulanmıyor (2026-08-24). |
+| `automode-policy` | Auto mod sınıflandırıcısının yapılandırmasını denetler: kitin kuralları orada mı ve asıl sessiz arıza yaşanıyor mu, yani özel bir autoMode bloğu yerleşik engelleme kurallarını uyarısızca siliyor mu. Kapı değil, rapordur; ölçüldü ve özel kurallar uygulanmıyor (2026-08-24). |
 | `brainstorm` | Planlamadan ÖNCE ıraksak keşif: bulanık isteği 2-4 kapsamlı seçenek + adlandırılmış bilinmezlere çevir, bir yön seç, spec-planning'e devret. |
 | `ci-pipeline` | CI hattı disiplini: lint→build→test→kalite→güvenlik, hızlı-başarısızlık, deterministik derleme, secret yönetimi, PR kapıları. |
 | `code-review-csk` | Kod inceleme disiplini: önem sırasına dizili, gerekçeli geri bildirim: değişiklik sistemin genel kod sağlığını iyileştiriyor mu. |
@@ -153,7 +146,7 @@ Beş aşamaya yayılmış **12 uzman agent** — kalite, hiçbir şey commit edi
 | `db-migration` | Şema göçlerini güvenle uygula: aracı sapta, değişikliği riske göre sınıfla, yıkıcı olanları onaya bağla, prod'da yedekle, önizle-uygula-doğrula, hatada geri al. |
 | `dependency-audit` | Bağımlılık denetimi: bilinen CVE'ler, lisans uyumu, terk edilmiş/eski paketler, lockfile bütünlüğü ve her yeni bağımlılık için gerekçe. |
 | `dependency-upgrade` | Bağımlılıkları build'i kırmadan güncele taşı: neyin açığı var, neyi deprecated, neyi geride belirle; her hedef sürümü riske göre sınıfla (patch/minor/major), güvenli olanı uygula, doğrula, kırmızıda geri al. |
-| `deploy` | Bir build'i geri alınabilir şekilde canlıya almak — kendi yönettiğin sunucuda ya da seni yöneten bir platformda: önce topolojiyi seç, önceki sürümü erişilebilir tut, sağlık kapısından geçir, yeniden derlemeden geri al. |
+| `deploy` | Bir build'i geri alınabilir şekilde canlıya almak; ister kendi yönettiğiniz sunucuda ister sizi yöneten bir platformda: önce topolojiyi seç, önceki sürümü erişilebilir tut, sağlık kapısından geçir, yeniden derlemeden geri al. |
 | `devarch-module` | DevArchitecture backend deseni: MediatR CQRS handler/command/query, IResult/IDataResult, Autofac AOP zinciri, FluentValidation, i18n. |
 | `docs-writer` | Dokümantasyonu kodla eşzamanlı tutar: public API veya davranış değişince README, kullanım ve ilgili dokümanlar. |
 | `eval-grader` | Çıktı kalitesini ölç, sezgiye bırakma: bir üretken görevi iki katmanlı grader ile puanla (ucuz deterministik kod metrikleri + boyut-boyut LLM-yargıç), sabit görev kümesine karşı, sabitlenmiş baz çizgisine göre işaretli deltalarla. Doğruluğun yanında maliyeti de puanlar (pass-slow). |
@@ -211,25 +204,58 @@ Solda kural, sağda o kuralın geçilmesine izin vermeyen şey.
 | Commit ve push her izin modunda onayınızı gerektirir | `guard-bash.sh`, yalnızca sizin cevaplayabileceğiniz bir istem açar. `bypassPermissions` altında kapalı düşer |
 | Yıkıcı işlemler: `reset --hard`, `checkout -- .`, force push, `rm -rf`, `clean -f`, `--no-verify`, amend | `guard-bash.sh`, araç seviyesinde engeller |
 | Uzaktan kod çalıştırma ve izin patlatma: `curl…\|bash`, herkese yazılabilir `chmod`, `dd of=` | `guard-bash.sh`, her modda sert engel |
-| Bir yaptırımı devre dışı bırakmak — `core.hooksPath`'i saptırmak, bir hook'u düzenlemek veya silmek, ya da yaptırımların dayandığı disiplin metnini değiştirmek | `guard-bash.sh` (kabuk) + `guard-write.sh` (dosya araçları). İkisi de **çözülmüş** yolu eşleştirir: `..` parçaları, çift eğik çizgi, Windows ayraçları ve sembolik bağlı bir üst dizin, düz yazımla aynı sonucu verir |
+| Bir yaptırımı devre dışı bırakmak: `core.hooksPath`'i saptırmak, bir hook'u düzenlemek veya silmek, ya da yaptırımların dayandığı disiplin metnini değiştirmek | `guard-bash.sh` (kabuk) + `guard-write.sh` (dosya araçları). İkisi de **çözülmüş** yolu eşleştirir: `..` parçaları, çift eğik çizgi, Windows ayraçları ve sembolik bağlı bir üst dizin, düz yazımla aynı sonucu verir |
 | Hiçbir API anahtarı, token veya özel anahtar commit'e girmez | `pre-commit` sır taraması; her desen kendi test vakasını taşır |
 | Hiçbir makineye özel yol veya iç ad commit'e girmez | `pre-commit` özel yol taraması: kendi `$HOME`'unuz kendiliğinden, ayrıca gitignore'lanmış `.private-terms.txt` |
-| Hiçbir kimlik dosyası bağlama *okunmaz* — `~/.ssh/id_rsa`, `~/.aws/credentials`, `*.pem`, kubeconfig | `settings.json` okuma reddi + `guard-bash.sh` |
+| Hiçbir kimlik dosyası bağlama *okunmaz*: `~/.ssh/id_rsa`, `~/.aws/credentials`, `*.pem`, kubeconfig | `settings.json` okuma reddi + `guard-bash.sh` |
 | Commit'te yapay zekâ imzası veya üçüncü parti şablon adı bulunmaz | `pre-commit` + `commit-msg` git hook'ları |
 | Hiçbir derleme çıktısı, vendor ağacı veya aşırı büyük blob staged edilmez | `pre-commit` depo şişkinliği taraması |
 | `.claude/` içinde beliren, denetlenmemiş bir skill ya da agent adıyla bildirilir ve tarayıcı hükmüyle sunulur | oturum başında `skill-trust.sh` |
-| Aynı maddeye iki kişi başlayamaz — ikincisi **üstlenmeye çalıştığı anda**, saniyeyi bulmadan, tek satır yazılmadan reddedilir | `board.sh claim` (üstlenmenin kendisi bir git ref'ine push'tur; yalnız ileri sarım olduğu için eş zamanlı iki üstlenmeden tam olarak biri yerleşir). Ölçüldü: aynı madde için yarışan üç klon, on tur, her turda tek kazanan |
-| Kimsenin bilmediği bir işe başlayamazsınız | Elinizde madde yokken `guard-write.sh` ilk dosya düzenlemesini engeller; `commit-msg` ise elinizde olmayan bir maddeyi anan commit'i geri çevirir |
 | Sürekli açık bağlam yalın kalır | `smoke-test.sh` bileşen başına bayt bütçesi |
 | Koşan bir oturum, güncellemeden sonra eski kurallara uymaya devam etmez | `context-usage.sh` sürüm karşılaştırması |
 
-Her kural **iki** yönü için de vaka taşır: engellemesi gerekeni engellediği, ve komşusunu engellemediği — `chmod 755`, `rm -rf build`, `git checkout -- src/app.js`. Kanıtlanmamış bir yaptırım yaptırım değildir; rutin işte ateşleyen bir yaptırımın da etrafından dolaşılır.
+Her kural **iki** yönü için de vaka taşır: engellemesi gerekeni engellediği ve komşusunu (`chmod 755`, `rm -rf build`, `git checkout -- src/app.js`) engellemediği. Kanıtlanmamış bir yaptırım yaptırım değildir; rutin işte ateşleyen bir yaptırımın da etrafından dolaşılır.
 
 Peki gerçekten bir şey değiştiriyor mu? Aynı istek hem Claude Starter Kit'li hem de çıplak bir projede koşturuldu ve her birinin diskte bıraktığına göre puanlandı. Sıkışık bir teslim tarihi ve makul bir gerekçe verildiğinde çıplak proje `uploads/` dizinini üç denemenin üçünde de herkese yazılabilir yaptı; kitli proje hiçbirinde yapmadı. İlginç olan şu: yaptırım hiç ateşlenmedi. Kitli taraf o komuta hiç uzanmadı, kendiliğinden vazgeçip kuralı gerekçe gösterdi. Acelesi olmayan işlerde ikisi birbirinden ayırt edilemiyor; ölçümler ve gerekçeleri [`evals/README.md`](evals/README.md) içinde yayımlanıyor.
 
 Yaptırımlar kazaları durdurur, kararlı denemeleri değil. Komut satırında bir desenin etrafından dolaşmanın bir yolu her zaman bulunur; gerçek bir sınır gerekiyorsa Claude Code'u devcontainer veya sanal makine içinde koşturun. `/doctor-csk` böyle bir sınırınız olup olmadığını söyler.
 
-**Bir yaptırımın ateşlendiğini görmek.** `CSK_GATE_LOG=<yol>` verirseniz her guard, aldığı her karar için tek satır ekler: `BLOCK` / `ASK` / `ALLOW`, kural ve komut. Siz istemedikçe kapalıdır, yalnızca yazar ve karardan **sonra** yazılır, dolayısıyla kararı değiştiremez. Bir şeyi yaptırımın mı durdurduğunu yoksa modelin o yola hiç girmediğini mi bilmeniz gerektiğinde işe yarar — ikisi geriye tıpatıp aynı izi bırakır.
+**Bir yaptırımın ateşlendiğini görmek.** `CSK_GATE_LOG=<yol>` verirseniz her guard, aldığı her karar için tek satır ekler: `BLOCK` / `ASK` / `ALLOW`, kural ve komut. Siz istemedikçe kapalıdır, yalnızca yazar ve karardan **sonra** yazılır, dolayısıyla kararı değiştiremez. Bir şeyi yaptırımın mı durdurduğunu yoksa modelin o yola hiç girmediğini mi bilmeniz gerektiğinde işe yarar, çünkü ikisi geriye tıpatıp aynı izi bırakır.
+
+---
+
+## Canlı panel
+
+Üç kademe derine inen bir delegasyon, terminalde çoktan kaybettiğiniz bir kaydırma geçmişidir. **CSK Studio** onu çizen yerel bir panel: tuvalde her ajana bir düğüm düşüyor; düğüm, ajan doğduğu anda beliriyor ve o an ne yaptığını, en son hangi aracı kullandığını, ne harcadığını ve geri ne bildirdiğini üstünde taşıyor.
+
+Panel `~/.claude/projects` dizinini okuyor; Claude Code bu makinedeki bütün oturumları orada tutuyor. Dolayısıyla çalışan tek bir panel hepsini birden görüyor: projede kit kurulu olsun ya da olmasın, panelin o projenin içinde başlatılmış olması da gerekmiyor.
+
+```bash
+npm run studio        # http://127.0.0.1:7777, tarayıcıyı da açar
+npm run studio:pty    # aynısı, artı ham kabuklar: onlar yukarıdaki her kapıyı atlar
+```
+
+| Panelde ne var | Neye dayanıyor |
+|:--|:--|
+| Herhangi bir oturumun canlı delegasyon grafiği | diskteki transcript ağacı; 700 ms'de bir boyut imzası okunuyor, imza değiştiyse ağaç yeniden kuruluyor |
+| Panelin başlattığı oturumlar, sohbet penceresinden sürülüyor | stream-json biçiminde bir `claude -p`; komut da cevap da alt sürecin stdin ve stdout'undan geçiyor |
+| O oturumlardaki her araç çağrısı siz cevaplayana kadar bekletiliyor | panelin kendi ayar dosyası üzerinden enjekte edilen ve `*` ile eşleşen bir `PreToolUse` hook'u. Harness'ın 90 sn'sine karşılık 45 sn'de karar veriyor; **sessizlik ret demek**, yani kapalı bir panel izin yerine geçmiyor |
+| Oturumu kopyalamak yerine gerçekten sürdürmek | oturumu tutan bir süreç yoksa çıplak `--resume`; oturumun kimliği korunuyor, yazılanlar aynı transcript'in sonuna ekleniyor. Tutan bir süreç varsa fork ediliyor, çünkü tek bir transcript'e iki yazar onu bozar |
+| Kitin kendi kapı kaydı, oturum istatistikleri ve panosu | kitin mevcut script'leri; hiçbiri yeniden hesaplanmıyor, hepsi okunuyor. Kapı kaydı satırları "zaman damgası taşımıyor" diye etiketleniyor, çünkü o biçimde zaman damgası yok |
+
+<div align="center">
+  <img src="assets/studio-panels.gif" alt="Panelde gezinme: proje listesinden bir oturum açılıyor, bir ajanın raporu ve araç zaman çizelgesi grafiğin yanında açılıyor, düşen ajana atlanıyor ve oturumun konuşması sağda açılıyor" width="900">
+  <br><sub>Aynı panel, kullanılırken: bir oturum açılıyor, bir ajanın ne bildirdiği okunuyor, düşen ajana atlanıyor, arkasındaki konuşma açılıyor.</sub>
+</div>
+
+**Studio kurduğunuz şeyin parçası değil.** Yalnızca bu depoda duruyor, başka hiçbir yerde yok: `start.sh` `.claude/` altında beş dizin açıyor ve hiçbiri Studio'nun değil; npm arşivi, plugin sürümü, Homebrew formülü ve sürüm arşivi de onu dışarıda bırakıyor. Çalıştırmak için depoyu klonlamanız gerekiyor. Hiç npm bağımlılığı yok, Node 18+ istiyor, yalnızca `127.0.0.1`'e bağlanıyor ve her API yolunda o koşuya özel bir token arıyor.
+
+<div align="center">
+  <img src="assets/studio-graph.png" alt="Tek tuvalde on iki ajan ve bir workflow konteyneri; her kart durumunu, araç sayısını, token ve süresini taşıyor, düşen ajan kırmızıyla çerçeveli" width="900">
+  <br><sub>Hangi ajan ne yapıyor, ne harcadı, hangisi düştü. Düşeni aramak gerekmiyor; ⚠ düğmesi doğrudan ona götürüyor.</sub>
+</div>
+
+**Ham terminaller siz istemedikçe kapalı.** Doğrudan yazdığınız bir kabuk hiçbir `PreToolUse` hook'una uğramıyor, dolayısıyla `guard-bash.sh` o komutu hiç görmüyor. Panel bunu keşfetmenizi beklemiyor, ekranda kırmızıyla söylüyor. Paneldeki diğer her şey bir araç çağrısından, yani kapılardan geçiyor.
 
 ---
 
@@ -238,7 +264,7 @@ Yaptırımlar kazaları durdurur, kararlı denemeleri değil. Komut satırında 
 İki giriş noktası var: yeni proje için **`start.sh`**, hâlihazırda yürüyen bir proje için **`adopt.sh`**. Hangi kanaldan kurarsanız kurun, çalışan aynı iki komuttur.
 
 ```bash
-# npx — kurulum gerektirmez
+# npx: kurulum gerektirmez
 npx @byerlikaya/claude-starter-kit                  # yeni proje
 npx @byerlikaya/claude-starter-kit adopt            # mevcut proje
 npx @byerlikaya/claude-starter-kit@latest update    # kurulu kiti tazele
@@ -248,15 +274,15 @@ brew install byerlikaya/tap/claude-starter-kit
 claude-starter-kit          # yeni proje
 claude-starter-kit adopt    # mevcut proje
 
-# Sürüm arşivi — paket yöneticisi olmadan
+# Sürüm arşivi: paket yöneticisi olmadan
 gh release download --repo byerlikaya/claude-starter-kit -p '*.tgz' && tar xzf claude-starter-kit-*.tgz
 bash start.sh               # yeni proje
 bash adopt.sh               # mevcut proje (tazelemek için tekrar çalıştırın)
 ```
 
-**Windows:** Claude Starter Kit bash tabanlıdır. **Git Bash** içinde çalıştırın ([git-scm.com](https://git-scm.com)); WSL de alternatif olur. Yaptırım hook'ları birer kabuk script'i olduğundan **onları çalıştıran şey Git Bash'tir (ya da WSL)**. İkisi de yoksa Claude Code PowerShell aracını kendiliğinden açar, hook'lar çalışamaz ve ortada yaptırım kalmaz — bu yapılandırma yaptırım katmanınca desteklenmiyor, kurulum script'leri de orada zaten koşamaz. Git Bash varsa yaptırımlar **iki kabuğu birden** kapsar: PowerShell aracı claude.ai ve Console hesaplarında varsayılan olarak açıktır ve onun komutları da aynı kurallardan geçer (`Remove-Item -Recurse -Force`, `… | iex`, `Get-Content .env` ve diğerleri).
+**Windows:** Claude Starter Kit bash tabanlıdır. **Git Bash** içinde çalıştırın ([git-scm.com](https://git-scm.com)); WSL de alternatif olur. Yaptırım hook'ları birer kabuk script'i olduğundan **onları çalıştıran şey Git Bash'tir (ya da WSL)**. İkisi de yoksa Claude Code PowerShell aracını kendiliğinden açar, hook'lar çalışamaz ve ortada yaptırım kalmaz. Bu yapılandırma yaptırım katmanınca desteklenmiyor; kurulum script'leri de orada zaten koşamaz. Git Bash varsa yaptırımlar **iki kabuğu birden** kapsar: PowerShell aracı claude.ai ve Console hesaplarında varsayılan olarak açıktır ve onun komutları da aynı kurallardan geçer (`Remove-Item -Recurse -Force`, `… | iex`, `Get-Content .env` ve diğerleri).
 
-**Plugin sürümü** — iskele kurmadan, yalnızca agent'lar, skill'ler ve yaptırım hook'ları mevcut Claude Code'unuzun içine:
+**Plugin sürümü:** iskele kurmadan, yalnızca agent'lar, skill'ler ve yaptırım hook'ları mevcut Claude Code'unuzun içine:
 
 ```bash
 /plugin marketplace add byerlikaya/claude-starter-kit
@@ -273,16 +299,16 @@ bash start.sh [--dotnet|--generic] [-h]
 
 İki adım: önce backend deseni, sonra hiçbir şey yazılmadan önce onaylayacağınız bir özet.
 
-**Her kurulum aynı kurulumdur** — 12 agent'ın ve 40 skill'in tamamı, backend, web ve mobil (React Native/Expo) bir arada. API olarak başlayıp web istemcisi kazanan bir proje, ikisi için de baştan donanımlıdır.
+**İki kurulum da aynı ekibi getiriyor:** 12 agent'ın tamamı ve bir backend deseni olan tek skill dışında bütün skill'ler. `--generic`, Node ya da Go deposunda yanlış duracak `devarch-module`'ü kurmuyor, diğer 39'unu kuruyor. Backend, web ve mobil (React Native/Expo) her iki hâlde de bir arada geliyor. API olarak başlayıp web istemcisi kazanan bir proje, ikisi için de baştan donanımlıdır.
 
 | Kurulumda sorulan | Seçenekler | Neyi değiştirir |
 |:--|:--|:--|
 | Backend deseni | `--dotnet` · `--generic` | `devarch-module` skill'i ve DevArchitecture temeli |
-| DevArch temeli — yalnızca `--dotnet` ile | onayla · atla | `./backend` iskelesinin kurulup kurulmayacağı |
+| DevArch temeli (yalnızca `--dotnet` ile) | onayla · atla | `./backend` iskelesinin kurulup kurulmayacağı |
 
-**`--dotnet`**, üretime hazır [DevArchitecture](https://github.com/DevArchitecture/DevArchitecture) temelini (CQRS · IResult · AOP · auth) bir onay kapısının arkasından klonlar ve onu zaten bilen agent'ları kurar — böylece token'lar standart bir mimariyi yeniden üretmeye değil, sizin iş mantığınıza gider. Backend `./backend` altına yerleşir, yanında `./frontend` ayrılır ve çözüm dosyası projenizin adını alır.
+**`--dotnet`**, üretime hazır [DevArchitecture](https://github.com/DevArchitecture/DevArchitecture) temelini (CQRS · IResult · AOP · auth) bir onay kapısının arkasından klonlar ve onu zaten bilen agent'ları kurar; böylece token'lar standart bir mimariyi yeniden üretmeye değil, sizin iş mantığınıza gider. Backend `./backend` altına yerleşir, yanında `./frontend` ayrılır ve çözüm dosyası projenizin adını alır.
 
-**`--generic`** aynı uzmanı o desen olmadan kurar — Node, Go, Python ya da farklı bir desen kullanan bir .NET projesi için. Hiçbir şey DevArchitecture'ı dayatmaz: backend uzmanı, projenizin beyan ettiği desen skill'ini uygular.
+**`--generic`** aynı uzmanı o desen olmadan kurar: Node, Go, Python ya da farklı bir desen kullanan bir .NET projesi için. Hiçbir şey DevArchitecture'ı dayatmaz: backend uzmanı, projenizin beyan ettiği desen skill'ini uygular.
 
 ### Mevcut proje
 
@@ -296,7 +322,7 @@ bash adopt.sh    # hedef projenin kök dizininde
 
 Claude Starter Kit, bir ekibin bir projeyi başka bir ekibe devrettiği gibi gelir: hiçbir şey kırılmaz, alınmış kararlar kaybolmaz ve gelen şey öylece durup beklemez.
 
-Her değişiklik ayrı bir dala, **staged ama commit'lenmemiş** hâlde iner — eklenen ve değişen her dosya editörünüzün Source Control panelinde listelenir. Orada inceler, kabul için `git commit`, vazgeçmek için `reset` yaparsınız. `main` dalına dokunulmaz. Kitin agent'ları sizinkilerle çakışmadan yan yana kurulur, disiplin tek bir `@import` ile bağlanır, `settings.json` şema farkındalığıyla birleştirilir ve mevcut husky ya da lefthook zincirleri bir shim üzerinden çalışmaya devam eder. İş, kalıcı bir `docs/HANDOVER.md` ve bir ADR ile kapanır; böylece kararlar bir sohbet kaydında değil sürüm kontrolünde yaşar.
+Her değişiklik ayrı bir dala, **staged ama commit'lenmemiş** hâlde iner; eklenen ve değişen her dosya editörünüzün Source Control panelinde listelenir. Orada inceler, kabul için `git commit`, vazgeçmek için `reset` yaparsınız. `main` dalına dokunulmaz. Kitin agent'ları sizinkilerle çakışmadan yan yana kurulur, disiplin tek bir `@import` ile bağlanır, `settings.json` şema farkındalığıyla birleştirilir ve mevcut husky ya da lefthook zincirleri bir shim üzerinden çalışmaya devam eder. İş, kalıcı bir `docs/HANDOVER.md` ve bir ADR ile kapanır; böylece kararlar bir sohbet kaydında değil sürüm kontrolünde yaşar.
 
 ### Güncelleme
 
@@ -312,16 +338,16 @@ Claude Starter Kit kurulum sırasında `.claude/kit.conf` dosyasına backend des
 | | Güncellemede |
 |:--|:--|
 | `.claude/` agent · skill · komut · hook · eval | yeni sürümden tazelenir |
-| `.claude/DISCIPLINE.md` | **üzerine yazılır** — kite aittir, içinde kendinize ait hiçbir şey bırakmayın |
-| `./CLAUDE.md` | hiç dokunulmaz — proje kurallarınız yazdığınız gibi kalır |
+| `.claude/DISCIPLINE.md` | **üzerine yazılır**; kite aittir, içinde kendinize ait hiçbir şey bırakmayın |
+| `./CLAUDE.md` | hiç dokunulmaz; proje kurallarınız yazdığınız gibi kalır |
 | `.claude/settings.json` | şema farkındalığıyla birleştirilir; kendi hook'larınız ve izinleriniz korunur |
 | kendi agent ve skill'leriniz (`-csk` eki olmayanlar) | dokunulmaz |
 
 Değişikliğin nereye ineceği bir tercih. İlk devir `kit-adopt-<zaman damgası>` adlı bir inceleme dalı açar. `.claude/` dizini gitignore'lanmış rutin bir güncelleme, bulunduğunuz dala uygulanır. `.claude/` **izleniyorsa** güncelleme size sorar. `--here` veya `--new-branch` ile zorlayabilir, `--yes` ile soruları atlayabilirsiniz. Hangisi olursa olsun değişiklik staged ve commit'siz kalır.
 
-Oturum içinde **`/update-csk`** sürüm kontrolünü yapar, güncelleyiciyi koşturur, `/doctor-csk` ile doğrular ve ardından `/compact` önerir; böylece tazelenen disiplin aynı oturuma yüklenir. **`/doctor-csk`** ise canlı bir kurulumu istediğiniz an denetler — hook'lar çalıştırılabilir mi, `core.hooksPath` ayarlı mı, yaptırımlar bağlı mı, disiplin gerçekten import edilmiş mi — ve projenin kendisi için tavsiye niteliğinde bir hazırlık puanı basar.
+Oturum içinde **`/update-csk`** sürüm kontrolünü yapar, güncelleyiciyi koşturur, `/doctor-csk` ile doğrular ve ardından `/compact` önerir; böylece tazelenen disiplin aynı oturuma yüklenir. **`/doctor-csk`** ise canlı bir kurulumu istediğiniz an denetler (hook'lar çalıştırılabilir mi, `core.hooksPath` ayarlı mı, yaptırımlar bağlı mı, disiplin gerçekten import edilmiş mi) ve projenin kendisi için tavsiye niteliğinde bir hazırlık puanı basar.
 
-Bir projenin `CLAUDE.md` dosyası disiplini import etmek yerine **satır içinde** taşıyorsa güncellemeler oraya ulaşamaz. Güncelleyici bunu fark eder, etkilenen satırları gösterir ve onları tek bir `@.claude/DISCIPLINE.md` import'uyla değiştirmeyi önerir — önce yedek alarak, sizin inceleyeceğiniz bir dalda. Reddederseniz hiçbir şeye dokunulmaz.
+Bir projenin `CLAUDE.md` dosyası disiplini import etmek yerine **satır içinde** taşıyorsa güncellemeler oraya ulaşamaz. Güncelleyici bunu fark eder, etkilenen satırları gösterir ve onları tek bir `@.claude/DISCIPLINE.md` import'uyla değiştirmeyi önerir; önce yedek alır, işi de sizin inceleyeceğiniz bir dalda yapar. Reddederseniz hiçbir şeye dokunulmaz.
 
 </details>
 
@@ -329,11 +355,11 @@ Bir projenin `CLAUDE.md` dosyası disiplini import etmek yerine **satır içinde
 
 ## Oturum ve token maliyeti
 
-Oturumun ne kadar dolduğu **ölçülür, tahmin edilmez**: her turda okunan gerçek token sayısı, `/context`'in verdiği değerin aynısı. **%75**'te bir uyarı, **%90**'da bir tane daha — ikisi de turunuzu kesmez.
+Oturumun ne kadar dolduğu **ölçülür, tahmin edilmez**: her turda okunan gerçek token sayısı, `/context`'in verdiği değerin aynısı. **%75**'te bir uyarı, **%90**'da bir tane daha; ikisi de turunuzu kesmez.
 
-Sabit maliyet gizlenmiyor, yazıyor. Disiplin ile birlikte her agent ve skill tarifi her oturuma yüklenir: **~24 KB**, gerçek bir turda **~10 bin token** mertebesinde — tahmin değil, gerçek bir çalıştırmaya göre ölçülmüş. Eklediğiniz her skill, her oturuma **~100 token**'lık kalıcı bir vergi bindirir; bu yüzden bileşen başına bayt bütçesi bir yaptırım olarak uygulanır. Bütçeyi yükseltmek testte açık bir düzenleme ister.
+Sabit maliyet gizlenmiyor, yazıyor. Disiplin ile birlikte her agent ve skill tarifi her oturuma yüklenir: **26.540 bayt**, yaklaşık **11 bin token**. Bayt rakamı süitin kapı olarak tuttuğu sayı; token rakamı ise aynı malzemenin 21.804 baytının 9.198 token ettiği gerçek bir `claude -p` turundan geliyor. Eklediğiniz her skill, her oturuma **~100 token**'lık kalıcı bir vergi bindirir; bu yüzden bileşen başına bayt bütçesi bir yaptırım olarak uygulanır. Bütçeyi yükseltmek testte açık bir düzenleme ister.
 
-**Neden daha az bileşen kurulmuyor?** Çünkü kazancı yok denecek kadar az. Kümenin tamamı tarif olarak **~3,3k token** tutar; dört UI skill'i ile frontend agent'ını dışarıda bırakmak **~400 token** kazandırır — 200k'lık bir pencerenin yaklaşık **%0,2**'si. Bunu proje başına değil, bayt bütçesinin yaptığı gibi bileşen başına denetlemek anlamlı olan.
+**Neden daha az bileşen kurulmuyor?** Çünkü kazancı yok denecek kadar az. Bütün agent ve skill tarifleri toplam 14.756 bayt, yaklaşık **6,2k token** tutar; dört UI skill'i ile frontend agent'ını dışarıda bırakmak bunun 1.544 baytını, kabaca **650 token**'ı kazandırır; 200k'lık bir pencerenin **%0,3**'ü kadar. Bunu proje başına değil, bayt bütçesinin yaptığı gibi bileşen başına denetlemek anlamlı olan.
 
 ## Doğrulama
 
@@ -345,7 +371,7 @@ bash .claude/eval/preflight.sh       # bu makinede hangi araçlar var, olmayanla
 ```
 
 `preflight.sh` ayrıca `start.sh`, `adopt.sh` ve `doctor.sh` içinden de koşar. Bir araç eksik olduğunda kit kırılmaz,
-kabiliyet düşürerek devam eder — `jq` yoksa `python`'a, o da yoksa saf bash'e; `sha256sum` yoksa `cksum`'a iner.
+kabiliyet düşürerek devam eder: `jq` yoksa `python`'a, o da yoksa saf bash'e; `sha256sum` yoksa `cksum`'a iner.
 Doğru tasarım bu, ama aynı zamanda bir eksiğin kendini hiç duyurmamasının da sebebi. Preflight eksiği ve bedelini
 adıyla söyler. Yalnızca rapor eder; makinenize hiçbir şey kurmaz ve hiçbir çalıştırmayı engellemez.
 
@@ -355,8 +381,8 @@ Bir agent ya da skill eklerken `AGENT_TEMPLATE.md` sözleşmesine uyun: frontmat
 
 ## Lisans ve kaynaklar
 
-MIT — [LICENSE](LICENSE) dosyasına bakın.
+MIT. [LICENSE](LICENSE) dosyasına bakın.
 
-- **[NIST SP 800-218 (SSDF)](https://csrc.nist.gov/pubs/sp/800/218/final)** PW.7 ve **[OpenSSF Scorecard](https://github.com/ossf/scorecard)** `Code-Review` denetimi — `code-review-csk`'nin yönetişim katmanı: incelemenin yapıldığı, bulguların kaydedildiği ve ele alındığı.
-- **[Conventional Comments](https://conventionalcomments.org/)** — `code-review-csk`'nin yorum yazarken kullandığı etiket sözlüğü (CC BY 3.0).
-- **[google/eng-practices](https://github.com/google/eng-practices)** — `code-review-csk`'deki inceleme öncelik sırası ve "kod sağlığı" çıtası, damıtılarak yeniden ifade edilmiş (CC-BY 3.0).
+- **[NIST SP 800-218 (SSDF)](https://csrc.nist.gov/pubs/sp/800/218/final)** PW.7 ve **[OpenSSF Scorecard](https://github.com/ossf/scorecard)** `Code-Review` denetimi: `code-review-csk`'nin yönetişim katmanı, yani incelemenin yapıldığı, bulguların kaydedildiği ve ele alındığı yer.
+- **[Conventional Comments](https://conventionalcomments.org/)**: `code-review-csk`'nin yorum yazarken kullandığı etiket sözlüğü (CC BY 3.0).
+- **[google/eng-practices](https://github.com/google/eng-practices)**: `code-review-csk`'deki inceleme öncelik sırası ve "kod sağlığı" çıtası, damıtılarak yeniden ifade edilmiş (CC-BY 3.0).

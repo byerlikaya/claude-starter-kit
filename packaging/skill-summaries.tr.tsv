@@ -31,7 +31,7 @@ spec-planning	Spec-öncelikli planlama: görev ayrıştırma, ölçülebilir kab
 testing	Testin nasıl'ı: piramit, AAA, izolasyon, risk kapsamı, determinizm.
 token-budget	Bağlam/token disiplini: subagent izolasyonu, çıktı = özet, dosyaya-taşı, delege eşiği, yalın skill'ler.
 trace-scan	İz taraması (§4.1/§4.2): commit'ten önce staged değişiklikleri ve mesajı AI izlerine (co-author trailer, footer, robot emoji, araç adları) ve vendor şablon adlarına karşı tarar.
-deploy	Bir build'i geri alınabilir şekilde canlıya almak — kendi yönettiğin sunucuda ya da seni yöneten bir platformda: önce topolojiyi seç, önceki sürümü erişilebilir tut, sağlık kapısından geçir, yeniden derlemeden geri al.
+deploy	Bir build'i geri alınabilir şekilde canlıya almak; ister kendi yönettiğiniz sunucuda ister sizi yöneten bir platformda: önce topolojiyi seç, önceki sürümü erişilebilir tut, sağlık kapısından geçir, yeniden derlemeden geri al.
 systematic-debugging	Bir hatayı düzeltmeden önce kök nedeni bul: yeniden üret, izole et, hipotez kurup test et, nedeni doğrula, sonra düzelt ve doğrula. Tahmine dayalı yamayı durdurur.
 frontend-design	Arayüzler için görsel ve UX tasarım kalitesi: hiyerarşi, boşluk ritmi, tipografik ölçek, ölçülü renk sistemi, düzen ve cilalı durumlar. Mimari ve a11y üstündeki zevk katmanı.
 mcp-builder	Model Context Protocol (MCP) sunucusu kur: araç şemaları tasarla, taşıma seç, hataları yönet ve test et. Bir API/veritabanı/servisi Claude ve diğer istemcilere aç.
@@ -41,4 +41,4 @@ eval-grader	Çıktı kalitesini ölç, sezgiye bırakma: bir üretken görevi ik
 confidence-check	Uygulamaya BAŞLAMADAN önce hazırlık kapısı: bu iş zaten var mı, mimariye uyuyor mu, dış API iddiası doğrulandı mı, çalışan bir referans var mı, kök neden biliniyor mu. Herhangi bir "hayır" durdurur.
 dependency-upgrade	Bağımlılıkları build'i kırmadan güncele taşı: neyin açığı var, neyi deprecated, neyi geride belirle; her hedef sürümü riske göre sınıfla (patch/minor/major), güvenli olanı uygula, doğrula, kırmızıda geri al.
 teamboard	Paylaşılan ekip panosu: bir işi başlamadan önce üstlen, devret, tamamla. Üstlenme bir git ref kilidi olduğu için aynı maddeyi iki kişi alamaz; bağımlılığı bitmemiş madde alınamaz, commit kapısı canlı üstlenme ister.
-automode-policy	Auto mod sınıflandırıcısının yapılandırmasını denetler: kitin kuralları orada mı, ve asıl sessiz arıza — özel bir autoMode bloğunun yerleşik engelleme kurallarını uyarısızca silmesi. Kapı değil, rapordur; ölçüldü ve özel kurallar uygulanmıyor (2026-08-24).
+automode-policy	Auto mod sınıflandırıcısının yapılandırmasını denetler: kitin kuralları orada mı ve asıl sessiz arıza yaşanıyor mu, yani özel bir autoMode bloğu yerleşik engelleme kurallarını uyarısızca siliyor mu. Kapı değil, rapordur; ölçüldü ve özel kurallar uygulanmıyor (2026-08-24).
