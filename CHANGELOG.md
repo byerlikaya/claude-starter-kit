@@ -3,6 +3,64 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added — a panel, so a run is something you can watch rather than reconstruct
+
+- **CSK Studio (`studio/`).** A local panel that draws the delegation while it happens: one node per
+  agent, read from the transcript tree on disk and re-checked on a size signature every 700 ms.
+  Dashes travel from parent to child along every edge whose child is working, coloured from the
+  child's own card, so a branch is traceable by colour and a stalled one is visibly still.
+- **Sessions the panel drives.** `claude -p` in stream-json over the child's stdin and stdout, with
+  the conversation beside the graph. Continuing an existing session is a bare `--resume` when no
+  process holds it — same id, same transcript, measured — and a fork when one does, because two
+  writers on one transcript corrupt it.
+- **A permission bridge that fails closed.** A `PreToolUse` hook injected through the panel's own
+  settings file, matching `*`, so no tool is exempt. It answers at 45 s against the harness's 90 s
+  and treats silence as a denial: a panel that is closed does not become permission. Permission
+  modes are an allow-list, and a pin fails the suite if the word `bypassPermissions` ever appears
+  under `studio/`.
+- **Raw terminals**, off unless asked for, over python3's stdlib `pty`. They bypass every gate in
+  the kit and the panel says so on screen rather than leaving it to be discovered.
+
+Studio is **not** part of what users install. `start.sh` creates five directories under `.claude/`
+and none of them is Studio's; the npm tarball, the plugin edition, the Homebrew formula and the
+release tarball all exclude it. Zero npm dependencies, loopback only, a per-run token on every API
+path.
+
+### Added — `verify.sh studio`
+
+A seventh gate, wired into the ubuntu job only (`verify-cross` installs no node). 232 assertions,
+hermetic: an earlier version read this machine's own gitignored gate log and scored 159/163 on a
+clean checkout, which is a gate that is green for its author and red for everyone else.
+
+### Fixed — four defects the panel work uncovered in the kit's own README
+
+- Always-on size was published as ~24 KB against a measured 26,540 bytes, and its token figure as
+  ~10k against about 11k. Description cost was ~3.3k tokens against 14,756 bytes, about 6.2k. The
+  saving from dropping the four UI skills was ~400 tokens against 1,544 bytes, roughly 650.
+- "Every install is the same install — all 12 agents and all 40 skills" was **false** for
+  `--generic`, which leaves out `devarch-module` and installs 39.
+- `README.npm.md` claimed 39 skills against a payload of 40, unchecked by any gate.
+
+### Removed — `FIRST_PROMPT.md`
+
+All three READMEs told the reader to paste it as their first Claude Code message, and two of the
+four install paths never created it: `adopt.sh` did not copy it and the plugin edition does not
+carry it. Most of its content was the discipline that already loads every session; the one thing it
+added — confirming the install is sound — `/doctor-csk` does mechanically, on every path. The
+READMEs now point there.
+
+### Changed
+
+- The team board is out of both READMEs pending its own rework. The two hook rows stay, because the
+  suite requires every shipped hook to be named in both files.
+- `npm run studio` no longer turns on gate-free terminals behind the user's back; that moved to
+  `npm run studio:pty`.
+- The agent table drops its `Model` column for a sentence: models are not pinned, two exceptions
+  earn their keep, and any of it can be changed in the agent's frontmatter.
+- The Turkish README had a full editorial pass — 46 em dashes removed, sixteen passages recast.
+
 ## [2.7.2] - 2026-08-27
 
 One behaviour change, taken deliberately and with a cost, plus the rule and the test that had drifted around it.
