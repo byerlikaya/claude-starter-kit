@@ -273,7 +273,7 @@ plan() {
   # download and a 17-second failure is the wrong order, and the failure names the archive when
   # the archive is fine. Only when unzip is absent: unzip is not bound by the cap, so where it
   # exists the chain stops there and this does not apply.
-  TOO_LONG=""
+  TOO_LONG=""; TOO_LONG_PATH=""
   if [ "$PLAT" = win ] && ! command -v unzip >/dev/null 2>&1; then
     # What to measure, and against what, have to be the same thing — this is where the two
     # halves of the arithmetic were mismatched twice.
@@ -285,13 +285,21 @@ plan() {
     # $TARGET is the wrong object for a different reason: the unpack happens under .tmp.<pid>
     # and is moved afterwards, so $TARGET is shorter than what actually exists mid-install.
     #
-    # A seven-digit pid is assumed. Real ones here are four or five, so the check is a couple
-    # of characters conservative on purpose.
+    # A fixed widest tail, deliberately, and NOT the real `$$`. Using the actual pid looks
+    # more precise and is worse: measured on Windows, MSYS runs its own small pid space —
+    # three digits after a fresh boot, growing with uptime — so the accepted length would
+    # drift day to day on one machine, and `--plan` and `--install` are separate processes
+    # with different pids, so at the exact boundary they could disagree with each other about
+    # the same path. This check exists to give one definite answer before a 37 MB download.
+    # Seven digits is the widest a pid gets here; the cost is a couple of characters of
+    # conservatism, which is cheaper than a limit nobody can reproduce.
     probe="$RUNTIME/.tmp.0000000"
     if command -v cygpath >/dev/null 2>&1; then
       probe="$(cygpath -wa "$probe" 2>/dev/null || printf '%s' "$probe")"
     fi
-    [ "${#probe}" -gt "$WIN_DIR_BUDGET" ] && TOO_LONG="${#probe}"
+    # Both, because a message that names one path and reports another's length sends the
+    # reader to count the wrong thing — the same mismatch as the arithmetic, surviving in prose.
+    if [ "${#probe}" -gt "$WIN_DIR_BUDGET" ]; then TOO_LONG="${#probe}"; TOO_LONG_PATH="$probe"; fi
   fi
 }
 
@@ -353,11 +361,12 @@ case "$MODE" in
     printf '  verify    %s  (refuses to install if the hash does not match)\n' "$SUMS"
     printf '  unpack    %s\n' "$TARGET"
     if [ -n "$TOO_LONG" ]; then
-      printf '\n  %s\n' "WILL NOT WORK HERE — that path is $TOO_LONG characters."
-      printf '  %s\n' "Windows caps a full file path at $WIN_MAX_PATH, Node's deepest entry inside the zip is"
-      printf '  %s\n' "$NODE_DEEPEST_ENTRY, and this machine has no unzip — only PowerShell's Expand-Archive, which"
-      printf '  %s\n' "enforces the cap. Point CSK_STUDIO_RUNTIME at a path of $WIN_DIR_BUDGET characters or fewer,"
-      printf '  %s\n' "or install unzip, which is not bound by it."
+      printf '\n  %s\n' "WILL NOT WORK HERE. The archive is expanded here first:"
+      printf '    %s\n' "$TOO_LONG_PATH"
+      printf '  %s\n' "which is $TOO_LONG characters. Windows caps a full file path at $WIN_MAX_PATH, Node's deepest"
+      printf '  %s\n' "entry inside the zip is $NODE_DEEPEST_ENTRY, and this machine has no unzip — only PowerShell's"
+      printf '  %s\n' "Expand-Archive, which enforces the cap. Point CSK_STUDIO_RUNTIME somewhere shorter, or"
+      printf '  %s\n' "install unzip, which is not bound by it."
     fi
     printf '\nNothing outside that directory is touched: no admin rights, no package manager,\n'
     printf 'no PATH or profile edit. Delete it and this never happened.\n'
@@ -375,10 +384,11 @@ case "$MODE" in
     plan
 
     [ -z "$TOO_LONG" ] ||
-      die "ensure-node.sh: $TARGET is $TOO_LONG characters as a Windows path, and the runtime cannot be unpacked there.
-Windows caps a full file path at $WIN_MAX_PATH, Node's deepest entry inside the zip is $NODE_DEEPEST_ENTRY, and this
-machine has no unzip — only PowerShell's Expand-Archive, which enforces that cap. Nothing was downloaded.
-Point CSK_STUDIO_RUNTIME at a path of $WIN_DIR_BUDGET characters or fewer, or install unzip."
+      die "ensure-node.sh: the archive would be expanded into
+  $TOO_LONG_PATH
+which is $TOO_LONG characters. Windows caps a full file path at $WIN_MAX_PATH, Node's deepest entry inside the zip
+is $NODE_DEEPEST_ENTRY, and this machine has no unzip — only PowerShell's Expand-Archive, which enforces that cap.
+Nothing was downloaded. Point CSK_STUDIO_RUNTIME somewhere shorter, or install unzip."
 
     sha256_calibrate ||
       die "ensure-node.sh: no SHA-256 tool here that returns the right answer for a known input (tried sha256sum, shasum, openssl, certutil), so a download could not be verified. Refusing to install one unchecked. Install Node yourself: https://nodejs.org"

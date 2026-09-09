@@ -439,10 +439,24 @@ main --install --yes")"
 
 LONGDIR="$WORK/$(printf 'l%.0s' $(seq 1 150))"
 got="$(pathcase "$LONGDIR" long)"
-if [ "${got%% *}" != "rc=0" ] && has "$got" 'downloaded=no' && has "$got" 'characters as a Windows path'; then
+if [ "${got%% *}" != "rc=0" ] && has "$got" 'downloaded=no' && has "$got" 'would be expanded into'; then
   ok 'a path too long for Expand-Archive is refused before anything is downloaded'
 else
   bad 'a path too long for Expand-Archive is refused before anything is downloaded' "$got"
+fi
+
+# The number in the refusal has to be the length of the path the refusal names. It was not:
+# the message named $TARGET and reported the length of the unpack directory, so anyone who
+# counted the path they were shown got a different answer and went looking for their own
+# mistake. The same object mismatch as the arithmetic, surviving in prose.
+named="$(printf '%s\n' "$got" | sed -n 's/^  \(.*\)$/\1/p' | head -1)"
+claimed="$(printf '%s\n' "$got" | sed -n 's/^which is \([0-9]*\) characters.*/\1/p' | head -1)"
+if [ -z "$named" ] || [ -z "$claimed" ]; then
+  bad 'the refusal counts the path it names' "could not find both in the message: $got"
+elif [ "${#named}" = "$claimed" ]; then
+  ok 'the refusal counts the path it names'
+else
+  bad 'the refusal counts the path it names' "it names a path of ${#named} characters and calls it $claimed"
 fi
 
 # The should-pass twin. Without it, a check that refuses every Windows install would satisfy
@@ -479,14 +493,15 @@ else
 fi
 
 # The boundary itself, to the character. windows-csk pins the CONSTANT against a real
-# Expand-Archive on a real zip (133 works, 134 fails); this pins the ARITHMETIC against the
-# constant, so a future edit cannot quietly measure one object against another one's budget.
-# That mismatch happened twice while this check was being written, in both directions.
-BUD="$(bash "$(case_file budget 'printf "%s %s\n" "$WIN_DIR_BUDGET" "$NODE_DEEPEST_ENTRY"')" 2>/dev/null)"
-WDB="${BUD%% *}"
-PROBE_TAIL=13          # "/.tmp.0000000", the segment plan() appends to $RUNTIME
+# Expand-Archive on a real zip; this pins the ARITHMETIC against the constant, so a future
+# edit cannot quietly measure one object against another one's budget. That mismatch happened
+# twice in one round, in both directions.
+#
+# Nothing is assumed about the pid: each run reports the tail plan() actually appended, and
+# the assertion is the invariant — accepted exactly when runtime + tail fits the budget.
+BUD="$(bash "$(case_file budget 'printf "%s\n" "$WIN_DIR_BUDGET"')" 2>/dev/null)"
 
-boundary() { # boundary <runtime-length> <tag> -> "downloaded=<yes|no>"
+boundary() { # boundary <runtime-length> <tag> -> "<tail> <downloaded=yes|no>", or "skip"
   need=$(( $1 - ${#WORK} - 1 ))
   [ "$need" -lt 1 ] && { printf 'skip\n'; return; }
   d="$WORK/$(printf 'b%.0s' $(seq 1 "$need"))"
@@ -500,25 +515,67 @@ get() {
     *)          : > '$WORK/dl.$2' ; return 1 ;;
   esac
 }
+plan
+printf 'tail=%s pid=%s\n' \"\$(( \${#probe} - \${#RUNTIME} ))\" \"\$\$\"
 main --install --yes")"
   rm -f "$WORK/dl.$2"
-  PATH="$NOZIP" CSK_STUDIO_RUNTIME="$d" bash "$f" >/dev/null 2>&1
-  if [ -f "$WORK/dl.$2" ]; then printf 'downloaded=yes\n'; else printf 'downloaded=no\n'; fi
+  o="$(PATH="$NOZIP" CSK_STUDIO_RUNTIME="$d" bash "$f" 2>&1)"
+  t="$(printf '%s\n' "$o" | sed -n 's/^tail=\([0-9]*\) .*/\1/p' | head -1)"
+  q="$(printf '%s\n' "$o" | sed -n 's/^tail=[0-9]* pid=//p' | head -1)"
+  if [ -f "$WORK/dl.$2" ]; then printf '%s %s yes\n' "$t" "$q"; else printf '%s %s no\n' "$t" "$q"; fi
 }
 
-case "$WDB" in
-  ''|*[!0-9]*) broke 'the length boundary is exact' "could not read WIN_DIR_BUDGET (got '$WDB')" ;;
+case "$BUD" in
+  ''|*[!0-9]*) broke 'the length boundary is exact' "could not read WIN_DIR_BUDGET (got '$BUD')" ;;
   *)
-    at="$(boundary $((WDB - PROBE_TAIL)) at)"
-    over="$(boundary $((WDB - PROBE_TAIL + 1)) over)"
-    if [ "$at" = skip ] || [ "$over" = skip ]; then
-      broke 'the length boundary is exact' "this working directory is already longer than the budget ($WDB)"
-    elif [ "$at" = downloaded=yes ] && [ "$over" = downloaded=no ]; then
-      ok "the length boundary is exact — the longest accepted runtime is $((WDB - PROBE_TAIL)) characters"
-    else
-      bad 'the length boundary is exact' "at=$at over=$over (budget $WDB, probe tail $PROBE_TAIL)"
-    fi ;;
+    # A first run only to learn the tail this machine produces; the two that matter bracket it.
+    probe0="$(boundary $(( ${#WORK} + 20 )) probe)"
+    tail0="${probe0%% *}"
+    pid0="$(printf '%s\n' "$probe0" | awk '{print $2}')"
+    case "$tail0" in
+      ''|*[!0-9]*) broke 'the length boundary is exact' "plan() reported no tail (got '$probe0')" ;;
+      *)
+        # "/.tmp." plus seven digits. Two things at once: the object is the unpack directory
+        # rather than some other path, and the width is FIXED rather than the running pid.
+        # A real pid gives 9 to 11 here, so this also catches a regression to `$$` — which
+        # would make the accepted length drift with uptime and let --plan and --install
+        # disagree about the same path.
+        want_tail=13
+        if [ "$tail0" != "$want_tail" ]; then
+          bad 'the length boundary is exact' \
+            "plan() measures $tail0 characters past \$RUNTIME; a fixed \$RUNTIME/.tmp.0000000 is $want_tail (the running pid here is $pid0)"
+        else
+        at="$(boundary $((BUD - tail0)) at)"
+        over="$(boundary $((BUD - tail0 + 1)) over)"
+        ta="${at%% *}"; va="${at##* }"
+        to="${over%% *}"; vo="${over##* }"
+        if [ "$at" = skip ] || [ "$over" = skip ]; then
+          broke 'the length boundary is exact' "this working directory is already longer than the budget ($BUD)"
+        elif [ "$ta" != "$tail0" ] || [ "$to" != "$tail0" ]; then
+          # The pid changed width between runs; the lengths chosen no longer bracket anything.
+          broke 'the length boundary is exact' "the tail moved between runs ($tail0 -> $ta/$to)"
+        elif [ "$va" = yes ] && [ "$vo" = no ]; then
+          ok "the length boundary is exact — the longest accepted runtime is $((BUD - tail0)) characters (budget $BUD, tail $tail0)"
+        else
+          bad 'the length boundary is exact' "at=$va over=$vo (budget $BUD, tail $tail0)"
+        fi
+        fi ;;
+    esac ;;
 esac
+
+# The constant, pinned to what was measured rather than to what the arithmetic produces. The
+# case above reads WIN_DIR_BUDGET out of the script, so it moves with any edit to it and cannot
+# catch a wrong constant. These two numbers came off a real Windows 11 machine — an unpack
+# directory of 133 characters works and 134 fails, and 125 is the longest path inside
+# v24.21.0's zip counted from the archive root. Changing either should require measuring again,
+# which is what this case is for.
+CONSTS="$(bash "$(case_file consts 'printf "%s %s\n" "$WIN_DIR_BUDGET" "$NODE_DEEPEST_ENTRY"')" 2>/dev/null)"
+if [ "$CONSTS" = "133 125" ]; then
+  ok 'the budget and the deepest entry are the numbers that were measured'
+else
+  bad 'the budget and the deepest entry are the numbers that were measured' \
+    "got '$CONSTS', expected '133 125' — if a newer Node changed the archive, re-measure on Windows and update both"
+fi
 
 # ------------------------------------------------------ hash calibration ------
 
