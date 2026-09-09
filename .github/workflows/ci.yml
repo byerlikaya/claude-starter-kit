@@ -35,8 +35,9 @@ jobs:
       - name: README skill catalogue in sync with the skills
         run: bash packaging/verify.sh catalogue
 
-      # The panel is not installed into anyone's project, so it is gated here rather than in the payload
-      # suites. Linux only: verify-cross carries no node, and under CSK_VERIFY_STRICT a skip is a failure.
+      # The panel's own suite. Both statements this comment used to make are now false: the panel IS installed
+      # into every project, and verify-cross does carry node (v24 on macOS, v22 on Windows in the run that
+      # proved it). So it is no longer Linux-only — see the matching step in verify-cross.
       - name: Studio — boundary pins, permission bridge, transcript parsing
         run: bash packaging/verify.sh studio
 
@@ -96,6 +97,12 @@ jobs:
             echo "jq shadowed (resolves, exits 49) — the suite must now pick its next oracle tier"
           fi
           bash packaging/verify.sh smoke
+
+      # The panel ships to every project on every platform, so its suite runs on every platform CI covers.
+      # It was Linux-only while the panel was a repo-side tool; keeping it there now would leave the half of
+      # the payload most likely to break on Windows unmeasured. Node is present on both runners.
+      - name: Studio — boundary pins, permission bridge, transcript parsing
+        run: bash packaging/verify.sh studio
 
       - name: e2e rehearsal — installer + non-interactive self-heal (with/without jq·python)
         run: bash packaging/verify.sh e2e

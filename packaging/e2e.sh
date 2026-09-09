@@ -312,8 +312,13 @@ fi
 PN="$WORK/proj-dotnet"
 if command -v node >/dev/null 2>&1 && node --version >/dev/null 2>&1; then
   NV="$(node --version)"
-  ( cd "$PN" && node .claude/studio/server/index.js --selftest >/dev/null 2>&1 ) \
-    || { echo "FAIL: the installed panel's --selftest did not run (node $NV)"; exit 1; }
+  # Keep the output. Discarding it and naming the node version in the failure sent
+  # exactly one reader hunting a Node 24 incompatibility that did not exist: the
+  # real cause was the claude CLI being absent on this runner, which selftest was
+  # counting as a failure while calling it a skip in its own text.
+  SELFOUT="$( cd "$PN" && node .claude/studio/server/index.js --selftest 2>&1 )" \
+    || { echo "FAIL: the installed panel's --selftest exited non-zero on node $NV:"; \
+         printf '%s\n' "$SELFOUT" | sed 's/^/    /'; exit 1; }
   INST_AG="$(ls "$PN"/.claude/agents/*.md | wc -l | tr -d ' ')"
   PAL="$( cd "$PN" && node -e "import('./.claude/studio/server/lib/palette.js').then(m=>{const p=m.palette();process.stdout.write(\`\${p.measured}:\${p.kitAgents}:\${p.agentsDir}\`)})" )"
   case "$PAL" in

@@ -714,6 +714,11 @@ function ptyStream(req, res, terminal) {
 async function selftest() {
   const checks = [];
   const check = (name, ok, detail) => checks.push({ name, ok, detail });
+  // A tool this machine does not have is an honest boundary, not a defect. The
+  // spawn-cost probe needs the claude CLI, which CI installs only in the ubuntu
+  // job — so on every other runner this said "skipped honestly" in its own detail
+  // text and then counted itself a failure, taking e2e down with it.
+  const skip = (name, detail) => checks.push({ name, skipped: true, detail });
 
   check('web root exists', fs.existsSync(WEB_ROOT), WEB_ROOT);
   check('index.html present', fs.existsSync(path.join(WEB_ROOT, 'index.html')), null);
@@ -726,22 +731,23 @@ async function selftest() {
   );
 
   const cost = await measureSpawnCost(3);
-  check(
-    'spawn cost measured',
-    cost !== null,
-    cost ? `min ${cost.minMs}ms · median ${cost.medianMs}ms · max ${cost.maxMs}ms` : 'claude CLI absent — skipped honestly',
-  );
+  if (cost === null) skip('spawn cost measured', 'claude CLI absent');
+  else check('spawn cost measured', true, `min ${cost.minMs}ms · median ${cost.medianMs}ms · max ${cost.maxMs}ms`);
 
   for (const c of checks) {
-    process.stdout.write(`${c.ok ? 'PASS' : 'FAIL'} ${c.name}${c.detail ? ` — ${c.detail}` : ''}\n`);
+    const tag = c.skipped ? 'SKIP' : c.ok ? 'PASS' : 'FAIL';
+    process.stdout.write(`${tag} ${c.name}${c.detail ? ` — ${c.detail}` : ''}\n`);
   }
   // An empty run is a broken harness, not a clean bill of health.
   if (!checks.length) {
     process.stdout.write('FAIL selftest ran zero checks — the measurement is broken, not the server\n');
     return 1;
   }
-  const failed = checks.filter((c) => !c.ok).length;
-  process.stdout.write(`\n${checks.length - failed}/${checks.length} passed\n`);
+  const skipped = checks.filter((c) => c.skipped).length;
+  const graded = checks.filter((c) => !c.skipped);
+  const failed = graded.filter((c) => !c.ok).length;
+  process.stdout.write(`\n${graded.length - failed}/${graded.length} passed`
+    + (skipped ? `, ${skipped} skipped` : '') + '\n');
   return failed ? 1 : 0;
 }
 
