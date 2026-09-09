@@ -17,6 +17,18 @@ cp -R "$SRC/agents"   "$OUT/agents"
 cp -R "$SRC/skills"   "$OUT/skills"
 cp -R "$SRC/commands" "$OUT/commands"
 
+# The panel. Measured, not assumed, before this line was written:
+#   - a plugin's whole directory is copied to the user's machine on install; no manifest field opts a
+#     directory in, and `claude plugin validate --strict` accepts an extra top-level one.
+#   - the panel runs from here unchanged: palette.js's single `<panel>/../agents` rule resolves to
+#     plugin/agents, --selftest passes 4/4, and the HTTP probe passes 9/9 against a plugin-shaped root.
+#   - a plugin cannot reference anything outside its own root, so this has to be a copy, not a symlink.
+# The command resolves it through ${CLAUDE_PLUGIN_ROOT}, which IS substituted in a command body.
+cp -R "$SRC/studio"   "$OUT/studio"
+# The recursive copy carries the permission-gate hook but not its exec bit. permissions.js invokes it as
+# `bash <path>`, so the bit is not load-bearing — set anyway, so the two editions are not subtly different.
+chmod +x "$OUT/studio/ensure-node.sh" "$OUT/studio/server/hooks/"*.sh 2>/dev/null || true
+
 # The Claude Code hooks that work standalone (self-locate via $0, read stdin).
 # skill-trust.sh is left out: it decides kit-owned vs project-owned from .claude/kit-manifest.txt, which only a
 # start.sh/adopt.sh install writes. Shipped here it could only ever exit silently — an idle component.
@@ -118,4 +130,9 @@ cat > "$OUT/.claude-plugin/plugin.json" <<JSON
 }
 JSON
 
-echo "plugin/ generated (v${VERSION}): $(ls "$OUT/agents"/*.md | wc -l | tr -d ' ') agents, $(ls -d "$OUT/skills"/*/ | wc -l | tr -d ' ') skills, $(ls "$OUT/commands"/*.md | wc -l | tr -d ' ') commands, $(ls "$OUT/hooks"/*.sh | wc -l | tr -d ' ') hooks"
+# Asserted, not printed. The counts below are a summary a reader skims; this is the one component whose
+# absence would be invisible — the plugin would install cleanly and /studio-csk would send the user to a
+# path that is not there.
+[ -f "$OUT/studio/server/index.js" ] || { echo "build-plugin.sh: the panel did not land in $OUT/studio" >&2; exit 1; }
+
+echo "plugin/ generated (v${VERSION}): $(ls "$OUT/agents"/*.md | wc -l | tr -d ' ') agents, $(ls -d "$OUT/skills"/*/ | wc -l | tr -d ' ') skills, $(ls "$OUT/commands"/*.md | wc -l | tr -d ' ') commands, $(ls "$OUT/hooks"/*.sh | wc -l | tr -d ' ') hooks, studio ($(find "$OUT/studio" -type f | wc -l | tr -d ' ') files)"

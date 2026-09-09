@@ -1,0 +1,122 @@
+// Which projects run the kit, and which of them are behind.
+//
+// An installed project records its version in `.claude/VERSION` and its
+// install shape in `.claude/kit.conf`. The published version comes from the
+// same npm dist-tags feed the kit's own SessionStart hook reads, so the panel
+// and the hook can never disagree about what "latest" means.
+//
+// Read-only. Detecting that a project is behind and updating it are different
+// acts, and only the first one happens here.
+
+import fs from 'node:fs';
+import path from 'node:path';
+
+const FEED = process.env.CSK_UPDATE_URL
+  ?? 'https://registry.npmjs.org/-/package/@byerlikaya%2fclaude-starter-kit/dist-tags';
+const FEED_TTL_MS = 60 * 60 * 1000;   // the hook uses a day; a panel refreshes hourly
+const FETCH_TIMEOUT_MS = 8000;
+
+let latestCache = null;   // { at, value }
+let inflight = null;
+
+/** The published version, or a stated reason it could not be read. */
+export async function latestVersion({ force = false } = {}) {
+  if (!force && latestCache && Date.now() - latestCache.at < FEED_TTL_MS) return latestCache.value;
+  if (inflight) return inflight;
+
+  inflight = (async () => {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS);
+    try {
+      const res = await fetch(FEED, { signal: ctl.signal });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body = await res.json();
+      const v = sane(body?.latest ?? body?.version);
+      if (!v) throw new Error('feed carried no version');
+      return { measured: true, version: v, at: Date.now() };
+    } catch (e) {
+      // Offline is a legitimate answer. It is reported, never rendered as
+      // "everything is up to date".
+      return { measured: false, reason: String(e?.message ?? e), at: Date.now() };
+    } finally {
+      clearTimeout(timer);
+    }
+  })()
+    .then((value) => { latestCache = { at: Date.now(), value }; return value; })
+    .finally(() => { inflight = null; });
+
+  return inflight;
+}
+
+function sane(v) {
+  if (typeof v !== 'string') return null;
+  const m = v.trim().match(/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/);
+  return m ? m[0] : null;
+}
+
+/** Numeric-segment comparison. Returns <0, 0, >0. A pre-release sorts below its release. */
+export function compareVersions(a, b) {
+  const split = (v) => {
+    const [core, pre] = String(v).split(/[-+]/, 2);
+    return { nums: core.split('.').map((n) => parseInt(n, 10) || 0), pre: pre ?? null };
+  };
+  const x = split(a);
+  const y = split(b);
+  for (let i = 0; i < Math.max(x.nums.length, y.nums.length); i += 1) {
+    const d = (x.nums[i] ?? 0) - (y.nums[i] ?? 0);
+    if (d !== 0) return d;
+  }
+  if (x.pre && !y.pre) return -1;
+  if (!x.pre && y.pre) return 1;
+  if (x.pre && y.pre) return x.pre < y.pre ? -1 : x.pre > y.pre ? 1 : 0;
+  return 0;
+}
+
+/** What the kit looks like inside one working directory. */
+export function kitStatus(cwd, latest) {
+  if (!cwd) return { installed: false, reason: 'no working directory recorded' };
+
+  const claude = path.join(cwd, '.claude');
+  let version = null;
+  try { version = sane(fs.readFileSync(path.join(claude, 'VERSION'), 'utf8')); } catch { /* not installed */ }
+
+  if (!version) {
+    // Distinguish "no kit here" from "the directory is gone" — one is a choice,
+    // the other is a dead path.
+    const present = fs.existsSync(cwd);
+    return { installed: false, dirExists: present, reason: present ? 'kit not installed' : 'directory no longer exists' };
+  }
+
+  const conf = {};
+  try {
+    for (const line of fs.readFileSync(path.join(claude, 'kit.conf'), 'utf8').split('\n')) {
+      const m = line.match(/^\s*([A-Za-z_]+)\s*=\s*(.*)$/);
+      if (m) conf[m[1]] = m[2].trim();
+    }
+  } catch { /* older installs have no kit.conf */ }
+
+  const out = {
+    installed: true,
+    dirExists: true,
+    version,
+    stack: conf.stack ?? null,
+    installer: conf.installer ?? null,
+  };
+
+  if (!latest?.measured) {
+    // Not measured is not "current". Saying a project is up to date because
+    // the network was down is the one answer worse than saying nothing.
+    out.compared = false;
+    out.reason = latest?.reason ?? 'latest version not read';
+    return out;
+  }
+
+  const d = compareVersions(version, latest.version);
+  out.compared = true;
+  out.latest = latest.version;
+  out.outdated = d < 0;
+  out.ahead = d > 0;                 // a dev machine can legitimately run ahead of npm
+  return out;
+}
+
+export const _internals = { sane, FEED };

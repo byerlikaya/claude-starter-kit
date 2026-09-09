@@ -254,7 +254,9 @@ node .claude/studio/server/index.js --enable-pty  # plus raw shells — those by
 | Channel | Studio |
 |:--|:--|
 | `npx @byerlikaya/claude-starter-kit` · Homebrew · release tarball · git clone | installed to `.claude/studio/` |
-| Claude Code plugin | not shipped — a plugin install has no `.claude/` tree to launch it from, and `/studio-csk` says exactly that and names the installer |
+| Claude Code plugin | shipped inside the plugin, opened with `/claude-starter-kit:studio-csk` (plugin commands are namespaced) |
+
+All four channels carry it. One command file serves both editions: Claude Code substitutes the plugin's own install path into it, so the panel is found wherever it actually is. The panel behaves identically in both, with one honest gap — its kit-telemetry panes read the project you opened it from, and a plugin install writes nothing into a project, so they report "not measured" with the reason rather than a misleading zero.
 
 It reads `~/.claude/projects`, which holds **every** Claude Code session on the machine. Starting it from a project root only decides which project it opens on.
 

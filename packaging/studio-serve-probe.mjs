@@ -15,12 +15,24 @@ import { spawn } from 'node:child_process';
 import http from 'node:http';
 import net from 'node:net';
 import path from 'node:path';
+import fs from 'node:fs';
 
-const projectDir = process.argv[2];
-if (!projectDir) { console.error('usage: studio-serve-probe.mjs <installed-project-dir>'); process.exit(2); }
+// Two layouts, one probe. The panel ships in an install at <project>/.claude/studio and in the
+// plugin edition at <plugin-root>/studio, and the second one had no way to be driven from here —
+// so it was measured by hand on one machine and gated nowhere. The argument is the directory that
+// CONTAINS studio/, which is `.claude` in an install and the plugin root in a plugin.
+const root = process.argv[2];
+if (!root) {
+  console.error('usage: studio-serve-probe.mjs <dir-containing-studio | installed-project-dir>');
+  process.exit(2);
+}
 
 const TOKEN = 'probe-token-not-a-secret';
-const entry = path.join(projectDir, '.claude', 'studio', 'server', 'index.js');
+const direct = path.join(root, 'studio', 'server', 'index.js');
+const viaProject = path.join(root, '.claude', 'studio', 'server', 'index.js');
+// Absolute: the child is spawned with cwd set to the root, so a relative entry would be resolved
+// against it a second time. It cost one run to see, which is one more than the comment costs.
+const entry = path.resolve(fs.existsSync(direct) ? direct : viaProject);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 let pass = 0; let na = 0; const failures = [];
@@ -55,7 +67,7 @@ function get(port, pathname, headers = {}) {
 
 const port = await freePort();
 const child = spawn(process.execPath, [entry, '--port', String(port)], {
-  cwd: projectDir,
+  cwd: root,
   env: { ...process.env, CSK_STUDIO_TOKEN: TOKEN },
   stdio: ['ignore', 'pipe', 'pipe'],
 });

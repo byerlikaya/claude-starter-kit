@@ -34,8 +34,13 @@ jobs:
       - name: Verify the plugin edition is in sync
         run: |
           bash packaging/build-plugin.sh
-          if ! git diff --quiet -- plugin; then
+          # `git diff` compares tracked files and is blind to new ones. Measured: with a committed
+          # plugin/agents and a freshly generated, untracked plugin/studio, `git diff --quiet -- plugin`
+          # exits 0 — so a whole new subtree the build emits but nobody committed would ship as an
+          # absent directory, with this gate green. `git status --porcelain` sees both.
+          if [ -n "$(git status --porcelain -- plugin)" ]; then
             echo "::error::plugin/ is out of sync with claude-starter/. Run packaging/build-plugin.sh and commit."
+            git --no-pager status --porcelain -- plugin
             git --no-pager diff --stat -- plugin
             exit 1
           fi

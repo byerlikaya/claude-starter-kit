@@ -314,6 +314,10 @@ try {
   const shapes = {
     install: path.join(palHome, 'install', '.claude'),
     repo: path.join(palHome, 'repo', 'claude-starter'),
+    // The third layout, and the one the comment above claimed in prose while nothing measured it: a
+    // plugin root has no `.claude` or `claude-starter` segment at all — agents/ and studio/ sit
+    // directly in it. Now that the plugin edition ships the panel, this is a real deployment.
+    plugin: path.join(palHome, 'plugin', 'claude-starter-kit'),
   };
   for (const base of Object.values(shapes)) {
     fs.mkdirSync(path.join(base, 'agents'), { recursive: true });

@@ -70,6 +70,14 @@ step_studio(){
   # cases run here because they need bash, and the branches worth testing are the ones
   # a machine WITH node can never reach on its own.
   bash packaging/studio-test/ensure-node-cases.sh || return 1
+  # The plugin edition ships the panel too. It is NOT tested separately, and the entire argument for
+  # not testing it is that it is a byte copy of the payload — so that has to be asserted rather than
+  # assumed. The release-time sync gate catches drift only at release; this catches it on every run.
+  [ -f plugin/studio/server/index.js ] || {
+    echo "plugin/studio is MISSING — the plugin edition ships the panel; run packaging/build-plugin.sh"; return 1; }
+  diff -r claude-starter/studio plugin/studio >/dev/null 2>&1 || {
+    echo "plugin/studio has drifted from claude-starter/studio — run packaging/build-plugin.sh and commit the result"
+    diff -rq claude-starter/studio plugin/studio | head -10; return 1; }
 }
 
 # The only step that needs a tool the repo does not carry. CI installs the CLI; a developer machine
