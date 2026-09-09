@@ -3,7 +3,7 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [2.9.0] — 2026-09-09
 
 ### Changed — Studio ships with the kit, and `/studio-csk` launches it
 
@@ -95,6 +95,53 @@ facts as one: POSIX exits 0 because the handler ran, Windows reports `signal SIG
 process being terminated with no handler at all. Split, with Windows marked not-applicable — one process
 cannot send another a signal there, so the graceful path is not drivable from a test.
 
+
+### Added — the plugin edition carries the panel too
+
+Studio shipped in three of four channels. The fourth was left out on an assumption rather than a
+constraint: a plugin install has no `.claude/` tree, so it looked as though it had nowhere to run the
+panel from. It does not need one — `palette.js` resolves the kit's agents with a single
+`<panel>/../agents` rule, and a plugin root has `agents/` sitting right there. No panel code changed.
+
+- **`/claude-starter-kit:studio-csk`** opens it. Plugin commands are namespaced, so the bare name does
+  not resolve there; both READMEs say so.
+- **One command file serves both editions.** `${CLAUDE_PLUGIN_ROOT}` is substituted into a command
+  body — measured, and only in its braced form; the unbraced name passes through as text and the
+  variable is absent from the Bash tool's environment. The command reads its own substituted line: a
+  real path means plugin, an unsubstituted placeholder means full install.
+- **A fetched Node runtime still lands under `$HOME`.** A marketplace install resolves to a *versioned*
+  cache directory, so a runtime kept inside the plugin would be discarded and re-fetched, 36 MB at a
+  time, on every update. That is a different thing from a plugin writing kit files into `~/.claude`,
+  which was ruled out: this is a consented, self-contained cache that an update never touches.
+- **Gated rather than assumed.** The build fails if the panel did not land; `verify.sh` requires the
+  plugin copy to exist and to be byte-identical to the payload; the serve probe now takes the directory
+  *containing* `studio/`, so the same nine checks drive both layouts and `e2e` drives both on every
+  platform CI covers; `selfcheck` pins the plugin layout, which the palette rule had claimed in a
+  comment and demonstrated in no test.
+- **One gate was blind.** The release-time sync check compared `plugin/` with `git diff`, which does not
+  see new files — measured: with the panel present and untracked it exits 0. The plugin could have
+  shipped with the panel absent and the gate green. It asks `git status` now.
+
+The honest gap is stated up front rather than left to be discovered: a plugin user's kit-telemetry panes
+read the project the panel was opened from, and a plugin install writes nothing into a project, so they
+report "not measured" with the reason instead of a misleading zero.
+
+### Fixed — the Stop gate failed on every session that had not been compacted
+
+`grep -c` prints `0` **and** exits 1 when nothing matches, so `$(grep -c … || echo 0)` fired the
+fallback too and the value became `0\n0`. The arithmetic on the next line then failed, the count kept
+its broken value, and a newline reached a marker filename. The effect: the Stop hook errored on every
+transcript with no compaction in it — which is every fresh session — so the 75%/90% context warning,
+the reason the hook exists, likely never fired until the first compaction.
+
+Present in 2.8.0 and not platform-specific; it was invisible because the error goes to stderr and does
+not stop the hook. The same pattern is fixed in `gate-report.sh`, where the broken value was being
+handed to `awk` and would have corrupted the JSON output on an empty inventory.
+
+Two cases pin it, in both directions — no compaction and a compaction present — because a fix that
+silenced everything would have satisfied the first alone. Found by reading a real session transcript
+while measuring something else; no suite could have caught it, since the evidence was the thing being
+discarded.
 
 ### Changed — gates
 
