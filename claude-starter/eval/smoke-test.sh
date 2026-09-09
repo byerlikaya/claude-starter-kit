@@ -3217,15 +3217,39 @@ done
 echo "== 8) Slash commands =="
 # Every command carries the -csk suffix, for the same reason the agents do: `/review` and `/simplify` collide with
 # Claude Code's built-ins, and a user facing two identically-named entries in the picker cannot tell which is the
-# kit's. Suffixing all eight keeps one rule instead of a list of exceptions, and leaves room for built-ins the CLI
-# adds later. The filename IS the invocation, so a missing suffix is a silent collision, not a cosmetic slip.
-for c in brainstorm-csk plan-csk review-csk ship-csk handoff-csk doctor-csk update-csk; do
+# kit's. Suffixing every one of them keeps one rule instead of a list of exceptions, and leaves room for built-ins
+# the CLI adds later. The filename IS the invocation, so a missing suffix is a silent collision, not a cosmetic slip.
+for c in brainstorm-csk plan-csk review-csk ship-csk handoff-csk doctor-csk update-csk studio-csk; do
   [ -f "$ROOT/commands/$c.md" ] && pass "/$c present" || fail "/$c command missing"
 done
-for c in brainstorm plan review ship handoff; do
+for c in brainstorm plan review ship handoff studio; do
   [ -f "$ROOT/commands/$c.md" ] && fail "/$c present without the -csk suffix — collides with a built-in"
 done
 pass "no unsuffixed command shadows a built-in"
+
+# The COUNT beside the command list in both READMEs, gated for the same reason the hook count is: documenting
+# each command does not keep the number honest. This one was ungated and the class has drifted before — the
+# site once advertised eight commands over a directory holding more. Any label spelling, the number is the claim.
+if [ "$IS_KIT" = 1 ]; then
+  KR="$(cd "$ROOT/.." && pwd)"
+  TC="$(ls "$ROOT"/commands/*.md 2>/dev/null | wc -l | tr -d ' ')"
+  # README.npm.md carries the same claim in a bullet rather than a table row, and it was ALREADY stale at
+  # 8 against 10 shipped — the drift this gate exists for, sitting on the page npm renders.
+  for r in README.md README.tr.md README.npm.md; do
+    [ -f "$KR/$r" ] || continue
+    grep -qE "(\*\*Slash commands\*\*|\*\*Slash komutu\*\*) \| $TC \||\*\*$TC slash commands\*\*" "$KR/$r" \
+      && pass "$r states the real slash-command count ($TC)" \
+      || fail "$r does not state $TC slash commands — the count drifted from commands/"
+    # ...and every command must actually be listed beside that number, or the count is right and the list is stale.
+    MISSING_CMD=""
+    for f in "$ROOT"/commands/*.md; do
+      cn="$(basename "$f" .md)"
+      grep -q "/$cn" "$KR/$r" || MISSING_CMD="$MISSING_CMD /$cn"
+    done
+    [ -z "$MISSING_CMD" ] && pass "$r lists every shipped command" \
+      || fail "$r does not name:$MISSING_CMD"
+  done
+fi
 
 echo "== 9) auto-mode classifier config — reported, never claimed as a gate =="
 # The rules live in USER settings because the classifier ignores autoMode in .claude/settings.json. They are

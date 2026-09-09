@@ -31,7 +31,14 @@ combo() {
   [ "$ag" = "$exp_ag" ] || { echo "FAIL [$lbl]: expected $exp_ag agents, got $ag"; exit 1; }
   [ "$sk" = "$exp_sk" ] || { echo "FAIL [$lbl]: expected $exp_sk skills, got $sk"; exit 1; }
   grep -q '^profile=' "$P/.claude/kit.conf" && { echo "FAIL [$lbl]: kit.conf still records a profile"; exit 1; }
-  echo "[$lbl] agents=$ag skills=$sk smoke=OK manifest=$(wc -l < "$P/.claude/kit-manifest.txt" | tr -d ' ')"
+  # The panel. `/studio-csk` resolves exactly this path and nothing else, so its absence is the ENOENT
+  # this whole change exists to stop — asserted rather than assumed, in every install combination.
+  [ -f "$P/.claude/studio/server/index.js" ] || { echo "FAIL [$lbl]: .claude/studio/server/index.js missing — /studio-csk would ENOENT"; exit 1; }
+  # Silently load-bearing: every server file is ESM. Without this manifest node reads them as CommonJS
+  # and the panel installs cleanly, then dies on its first import — a failure only the user meets.
+  grep -q '"type": *"module"' "$P/.claude/studio/package.json" || { echo "FAIL [$lbl]: studio/package.json missing or not \"type\":\"module\" — the ESM server would not load"; exit 1; }
+  [ ! -d "$P/.claude/studio/test" ] || { echo "FAIL [$lbl]: studio/test shipped into the project — its pins read the REPO and would be red here"; exit 1; }
+  echo "[$lbl] agents=$ag skills=$sk smoke=OK manifest=$(wc -l < "$P/.claude/kit-manifest.txt" | tr -d ' ') studio=installed"
 }
 # The expected counts come from the PAYLOAD, not from a number typed here. Written by hand they drift with the
 # first component added — the network diagram's subtitle did exactly that, announcing 11 agents and 36 skills
@@ -294,5 +301,51 @@ else
   [ "$G" -ge 60 ] && { echo "FAIL: 'adopt --here --yes' HUNG under a TTY (--yes must never block on input)"; exit 1; }
   echo "[adopt-pty-yes] update --here --yes completes under a real TTY (no hang)"
 fi
+
+# ---- the panel actually runs, and finds the kit's colours, from an INSTALLED tree ----
+# Two claims, both of which were false before this release and neither of which any assertion above can
+# see: (a) the installed panel starts at all — the ESM/`--selftest` path, which is what catches a missed
+# package.json; (b) its palette resolves the kit's agents from `.claude/`, not only from this checkout.
+# (b) is the one that was silently wrong: the old resolver looked for `<parent>/claude-starter/agents`,
+# found nothing anywhere but here, and drew all twelve kit agents in the grey reserved for types nobody
+# declared — "not measured" rendered as a fact.
+PN="$WORK/proj-dotnet"
+if command -v node >/dev/null 2>&1 && node --version >/dev/null 2>&1; then
+  NV="$(node --version)"
+  ( cd "$PN" && node .claude/studio/server/index.js --selftest >/dev/null 2>&1 ) \
+    || { echo "FAIL: the installed panel's --selftest did not run (node $NV)"; exit 1; }
+  INST_AG="$(ls "$PN"/.claude/agents/*.md | wc -l | tr -d ' ')"
+  PAL="$( cd "$PN" && node -e "import('./.claude/studio/server/lib/palette.js').then(m=>{const p=m.palette();process.stdout.write(\`\${p.measured}:\${p.kitAgents}:\${p.agentsDir}\`)})" )"
+  case "$PAL" in
+    "true:$INST_AG:"*) echo "[studio-installed] --selftest ok on node $NV · palette measured, $INST_AG kit agents from ${PAL#true:$INST_AG:}" ;;
+    *) echo "FAIL: the installed palette did not resolve the kit's agents — expected true:$INST_AG:<dir>, got '$PAL'"; exit 1 ;;
+  esac
+else
+  echo "[studio-installed] SKIPPED (no working node here — the panel needs 18+)"
+fi
+
+# ---- UPDATE: a project that ALREADY has the kit gets the panel on its next update ----
+# This is the reported bug, end to end. The project is installed from a payload with NO studio/ — the
+# shape every 2.8.0 install has — and then updated the way /update-csk drives it. The panel must ARRIVE.
+# Asserted in both directions: absent after the old install, present after the update. Asserting only
+# the second half would pass against an installer that had shipped it all along, i.e. prove nothing.
+UP="$WORK/update-gets-panel"; rm -rf "$UP"; mkdir -p "$UP"
+cp start.sh VERSION "$UP/"; cp -R claude-starter "$UP/"; rm -rf "$UP/claude-starter/studio" "$UP/claude-starter/commands/studio-csk.md"
+( cd "$UP" && git init -q && git config user.email t@t.t && git config user.name t \
+    && git commit -q --allow-empty -m base && printf 'yes\n' | bash start.sh --generic >/dev/null 2>&1 )
+[ -f "$UP/.claude/VERSION" ] || { echo "FAIL: the pre-panel install did not complete"; exit 1; }
+# The installer that ran is THIS one, so it mkdir'd an empty .claude/studio before finding nothing to
+# copy. A real 2.8.0 install has no such directory; remove it, or the assertion below is checking that
+# an empty directory became a full one rather than that a panel arrived where there was none.
+rmdir "$UP/.claude/studio" 2>/dev/null || true
+[ ! -e "$UP/.claude/studio" ] || { echo "FAIL: the fixture is wrong — the pre-panel install already has a panel, so the update below would prove nothing"; exit 1; }
+[ ! -e "$UP/.claude/commands/studio-csk.md" ] || { echo "FAIL: the fixture is wrong — /studio-csk is already installed"; exit 1; }
+cp adopt.sh "$UP/"; cp -R claude-starter "$UP/claude-starter"; cp VERSION "$UP/"
+( cd "$UP" && bash adopt.sh --here --yes </dev/null >/dev/null 2>&1 )
+[ -f "$UP/.claude/studio/server/index.js" ] || { echo "FAIL: an existing kit install did NOT get the panel on update — this is the reported bug"; exit 1; }
+grep -q '"type": *"module"' "$UP/.claude/studio/package.json" || { echo "FAIL: the updated panel has no \"type\":\"module\" — it would die on first import"; exit 1; }
+[ ! -d "$UP/.claude/studio/test" ] || { echo "FAIL: the update shipped studio/test into the project"; exit 1; }
+[ -f "$UP/.claude/commands/studio-csk.md" ] || { echo "FAIL: the update did not deliver /studio-csk"; exit 1; }
+echo "[update-gets-panel] a 2.8.0-shaped install gained .claude/studio ($(find "$UP/.claude/studio" -type f | wc -l | tr -d ' ') files) and /studio-csk on update"
 
 echo "e2e: all installer rehearsals passed"

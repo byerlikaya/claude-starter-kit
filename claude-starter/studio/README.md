@@ -3,54 +3,67 @@
 A visual orchestration panel for Claude Code: which agent is running, what it is
 doing right now, what it has spent, and which gates fired.
 
-Studio is **not installed into your project**. It lives in this repository only,
-alongside the kit it observes. `claude-starter/` — the payload that becomes a
-user's `./.claude/` — is untouched by it.
+Studio **is installed into your project**, because it lives inside the payload:
+this directory is `claude-starter/studio/`, and `claude-starter/` is what every
+channel already ships. `start.sh` and `adopt.sh` copy it to `.claude/studio/`,
+beside `agents`, `skills`, `commands`, `hooks` and `eval` — the sixth of six.
+
+That was the other way round until a real project updated with `/update-csk`,
+ran the documented command and got ENOENT: the project had no `package.json`,
+and nothing had ever installed the panel into it. Excluding it from every
+channel was a decision; a documented command that cannot work is a defect.
 
 ## Run
 
-One command, once, from anywhere:
+From any project that has the kit:
 
 ```bash
-npm install -g ./studio   # one time; puts csk-studio on PATH
-csk-studio --open         # starts, then opens the browser at the tokenised URL
+/studio-csk                                  # the slash command; probes node, starts it, reports the URL
+node .claude/studio/server/index.js --open   # the same thing without the picker
 ```
 
-Or without installing anything:
+Other flags, same file:
 
 ```bash
-npm run studio                          # from this repo; starts and opens a browser
-npm run studio:pty                      # the same, plus raw shells (no gates — see below)
-node studio/server/index.js --port 8080
-node studio/server/index.js --selftest  # offline checks, no browser
+node .claude/studio/server/index.js --port 8080
+node .claude/studio/server/index.js --selftest     # offline checks, no browser
+node .claude/studio/server/index.js --enable-pty   # raw shells (no gates — see below)
 ```
 
-**There is no per-project command, because Studio is not per-project.** It reads
-`~/.claude/projects`, which holds every session on the machine. The count is
+**Started per project, scoped to the machine.** Studio reads
+`~/.claude/projects`, which holds every session on this machine. The count is
 whatever that directory holds; the panel prints it rather than claiming it here,
-because a number measured on one machine describes only that machine. One
-running panel already sees a
-kit-installed project without being started inside it; the working directory only
-decides which project the panel opens on. So `cd` somewhere and run `csk-studio`,
-or run it once and leave it up.
+because a number measured on one machine describes only that machine. So a
+running panel already sees a kit-installed project without being started inside
+it, and the working directory only decides which project the panel opens on.
+Run it from wherever is convenient, or run it once and leave it up.
 
 `--open` exists so the URL is not copied by hand: the token is generated per run
-and the panel refuses requests without it. When a browser cannot be opened the
-server says so rather than looking like it worked.
+and the panel refuses requests without it. When a browser cannot be opened — over
+SSH, or headless — the server says so rather than looking like it worked, and
+`/studio-csk` reports the URL either way.
 
-There is no `/studio-csk` slash command, and that is deliberate. Commands live
-in `claude-starter/commands/` and are copied into every user's `.claude/`, while
-Studio is not: `start.sh` installs five directories and this is not one of them,
-and the npm tarball carries 130 files of which none are Studio's. A command
-shipped to every project pointing at a directory none of them have is a broken
-promise, not a convenience.
+**The plugin edition does not carry the panel.** A plugin install has no
+`.claude/` tree to launch it from, and `build-plugin.sh` enumerates
+`agents skills commands hooks` — Studio is not among them. `/studio-csk` ships
+there anyway and its first step says so, with the installer command, rather than
+leaving a plugin user at an unknown command. This is the same boundary
+`/doctor-csk` already documents for `eval/`, for the same reason.
+
+**The suite is not here.** It lives in `packaging/studio-test/`, beside the
+repo's other gates, and asserts things about this *repository* — the root
+`package.json`, the payload beside it — which an installed project does not
+have. Keeping it under `claude-starter/` would also have shipped 104 KB of test
+code through all four channels only for the installer to delete it on arrival.
+The installed diagnostic is `--selftest`, which lives in `server/index.js`.
 
 There is no install step. Studio has **zero dependencies** — `node:http` and
 `node:child_process` are the whole stack, matching the kit's own promise. If
-`studio/node_modules` ever exists, something has gone wrong.
+`node_modules` ever appears here, something has gone wrong.
 
-Requires Node 18+. `bash packaging/verify.sh studio` runs the same checks CI
-runs; a machine without node reports a skip rather than a pass.
+Requires Node 18+. In the kit's own repository `bash packaging/verify.sh studio`
+runs the same checks CI runs; a machine without node reports a skip rather than a
+pass, and a missing `claude-starter/studio/` is a failure rather than a skip.
 
 ## What it does
 
@@ -142,11 +155,11 @@ there too:
 
 ```bash
 # on the other machine
-node studio/server/index.js
+node .claude/studio/server/index.js
 
 # here — forward its port, then point at the forwarded one
 ssh -N -L 7778:127.0.0.1:7777 other-machine
-node studio/server/index.js --peer http://127.0.0.1:7778 --name mac
+node .claude/studio/server/index.js --peer http://127.0.0.1:7778 --name mac
 ```
 
 Sessions, projects, graphs and agent reports from a peer appear alongside local
@@ -210,7 +223,7 @@ channel that does not exist.
 Off unless asked for:
 
 ```bash
-node studio/server/index.js --enable-pty
+node .claude/studio/server/index.js --enable-pty
 ```
 
 This is the one surface in the panel that steps outside the kit's own gates. A
@@ -239,7 +252,7 @@ A token is always required for `/api/`. Supply one, or let the server generate
 one and print it with the URL:
 
 ```bash
-CSK_STUDIO_TOKEN=$(uuidgen) node studio/server/index.js
+CSK_STUDIO_TOKEN=$(uuidgen) node .claude/studio/server/index.js
 ```
 
 Anything that changes state needs, on top of the token, a header no cross-origin

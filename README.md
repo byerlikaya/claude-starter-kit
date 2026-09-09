@@ -101,7 +101,7 @@ Then open Claude Code and run **`/doctor-csk`**: it confirms the install is wire
 |:--|:--:|:--|
 | **Agents** | 12 | Thin triggers — *who* owns a domain and *when* they fire |
 | **Skills** | 40 | The method, written once, applied by whoever needs it |
-| **Slash commands** | 10 | `/brainstorm-csk` · `/plan-csk` · `/review-csk` · `/ship-csk` · `/handoff-csk` · `/update-csk` · `/doctor-csk` · `/board-csk` · `/gates-csk` · `/skill-csk`|
+| **Slash commands** | 11 | `/brainstorm-csk` · `/plan-csk` · `/review-csk` · `/ship-csk` · `/handoff-csk` · `/update-csk` · `/doctor-csk` · `/board-csk` · `/gates-csk` · `/skill-csk` · `/studio-csk`|
 | **Hooks** | 12 | The gates, plus session measurement and routing |
 | **Discipline** | 1 | Principles, workflow, Definition of Done, prohibitions — imported by your `CLAUDE.md` |
 
@@ -231,8 +231,9 @@ A delegation three levels deep is, in a terminal, a scrollback you have already 
 It reads `~/.claude/projects` — where Claude Code keeps every session on this machine — so one running panel sees all of them at once, whether or not a project has the kit installed, and without being started inside any of them.
 
 ```bash
-npm run studio        # http://127.0.0.1:7777, opens a browser
-npm run studio:pty    # the same, plus raw shells — those bypass every gate above
+/studio-csk                                       # in any project that has the kit
+node .claude/studio/server/index.js --open        # the same, without the slash picker
+node .claude/studio/server/index.js --enable-pty  # plus raw shells — those bypass every gate above
 ```
 
 | In the panel | What it rests on |
@@ -248,7 +249,14 @@ npm run studio:pty    # the same, plus raw shells — those bypass every gate ab
   <br><sub>The same panel, driven: open a session, read what an agent reported, jump to the one that failed, read the conversation behind it.</sub>
 </div>
 
-**Studio is not part of what you install.** It lives in this repository and nowhere else: `start.sh` creates five directories under `.claude/` and none of them is Studio's, and the npm tarball, the plugin edition, the Homebrew formula and the release tarball all exclude it. Clone the repo to run it. It has zero npm dependencies, wants Node 18+, binds to `127.0.0.1` only and requires a per-run token on every API path.
+**Studio installs with the kit.** `start.sh` and `adopt.sh` create six directories under `.claude/` and Studio is the sixth, so in any project that has the kit you open it with **`/studio-csk`** — or, without the slash picker, `node .claude/studio/server/index.js --open`. It has zero npm dependencies, wants Node 18+, binds to `127.0.0.1` only and requires a per-run token on every API path.
+
+| Channel | Studio |
+|:--|:--|
+| `npx @byerlikaya/claude-starter-kit` · Homebrew · release tarball · git clone | installed to `.claude/studio/` |
+| Claude Code plugin | not shipped — a plugin install has no `.claude/` tree to launch it from, and `/studio-csk` says exactly that and names the installer |
+
+It reads `~/.claude/projects`, which holds **every** Claude Code session on the machine. Starting it from a project root only decides which project it opens on.
 
 <div align="center">
   <img src="assets/studio-graph.png" alt="Twelve agents and a workflow container on one canvas, each card carrying its status, tool count, tokens and duration; the failed agent is outlined in red" width="900">
@@ -337,7 +345,7 @@ At install time Claude Starter Kit stamps `.claude/kit.conf` with the backend pa
 
 | | On update |
 |:--|:--|
-| `.claude/` agents · skills · commands · hooks · eval | refreshed from the new version |
+| `.claude/` agents · skills · commands · hooks · eval · studio | refreshed from the new version |
 | `.claude/DISCIPLINE.md` | **overwritten** — it is kit-owned, so keep nothing of your own in it |
 | `./CLAUDE.md` | never touched — your project rules stay exactly as written |
 | `.claude/settings.json` | merged schema-aware; your own hooks and permissions survive |

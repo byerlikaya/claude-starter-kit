@@ -364,7 +364,16 @@ getJson('/api/pty')
 const canvas = new Canvas(document.getElementById('canvas'), { onSelect: showInspector });
 
 getJson('/api/palette')
-  .then((p) => canvas.setPalette(p))
+  .then((p) => {
+    canvas.setPalette(p);
+    // Twelve unrecognised agents and zero agents read as the same grey. Which
+    // one it is has to be said out loud, or the panel is drawing "not measured"
+    // as a fact about the agents.
+    if (p && p.measured === false) {
+      document.body.dataset.paletteMeasured = 'false';
+      el.foot.textContent = `agent colours Not measured — ${p.reason}`;
+    }
+  })
   .catch(() => { /* neutral colours; the canvas already defaults safely */ });
 
 let inspectorTab = 'report';
