@@ -227,6 +227,11 @@ main --install --yes")"
   else
     bad 'a Windows zip is unpacked and the node.exe inside it runs' "rc=$rc out='$out'"
   fi
+  if has "$out" 'take up to a minute'; then
+    bad 'the slow-unpack warning stays quiet when the unpack was not slow' "it warned anyway: '$out'"
+  else
+    ok 'the slow-unpack warning stays quiet when the unpack was not slow'
+  fi
 fi
 
 # Measured on Windows 11: Info-ZIP's unzip returns 1 for "extracted, with warnings" — the
@@ -329,6 +334,13 @@ main --install --yes")"
     ok 'the PowerShell fallback is handed an absolute path, not whatever it was given'
   else
     bad 'the PowerShell fallback is handed an absolute path, not whatever it was given' "rc=$rc out='$out'"
+  fi
+  # And it says so before it starts, not after: that branch takes 26 s on Node's zip where
+  # unzip takes 3 s, and it only runs where there is no unzip to fall back to.
+  if has "$out" 'take up to a minute'; then
+    ok 'the slow unpack announces itself before the wait, not after'
+  else
+    bad 'the slow unpack announces itself before the wait, not after' "output was '$out'"
   fi
 else
   broke 'the PowerShell path case runs' 'needs a zip fixture and python3; one of them is missing here'

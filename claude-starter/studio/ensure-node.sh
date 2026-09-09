@@ -218,6 +218,11 @@ extract() { # extract <archive> <into> <expected-dir-name>
           pa="$(cygpath -wa "$1" 2>/dev/null || printf '%s' "$1")"
           pb="$(cygpath -wa "$2" 2>/dev/null || printf '%s' "$2")"
         fi
+        # Said BEFORE, not after. Measured on Windows 11: Expand-Archive takes 26 s on Node's
+        # zip where unzip takes 3 s — and this branch only runs on machines with no unzip, so
+        # the person who waits is the one with no alternative. A minute of silence reads as a
+        # hang, and by the time an explanation arrives they have already decided that.
+        printf 'unpacking with PowerShell (no unzip on this machine) — this can take up to a minute\n' >&2
         powershell -NoProfile -Command "Expand-Archive -LiteralPath '$pa' -DestinationPath '$pb' -Force" >/dev/null 2>&1
         [ -d "$2/$3" ] && return 0
       fi
