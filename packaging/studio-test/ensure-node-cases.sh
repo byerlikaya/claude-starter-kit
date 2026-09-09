@@ -267,7 +267,12 @@ main --install --yes")"
   else
     bad 'a Windows zip is unpacked and the node.exe inside it runs' "rc=$rc out='$out'"
   fi
-  if has "$out" 'take up to a minute'; then
+  # Only answerable where unzip is the unpacker. Without it PowerShell runs and the warning is
+  # correct, so a failure here would be the suite calling right behaviour wrong.
+  if ! command -v unzip >/dev/null 2>&1; then
+    broke 'the slow-unpack warning stays quiet when the unpack was not slow' \
+      'no unzip here, so the fast path this case is about does not exist on this machine'
+  elif has "$out" 'take up to a minute'; then
     bad 'the slow-unpack warning stays quiet when the unpack was not slow' "it warned anyway: '$out'"
   else
     ok 'the slow-unpack warning stays quiet when the unpack was not slow'
@@ -396,12 +401,22 @@ fi
 # `command -v` walks past a non-executable file and finds the real one — so the directory is
 # built by name, and unzip is simply not among the names.
 NOZIP="$WORK/nounzipbin"; mkdir -p "$NOZIP"
+# Shell shims, not links: `ln -s` on Git Bash silently produces a COPY, and a copied bash.exe
+# needs msys-2.0.dll from /usr/bin — which this PATH deliberately excludes, so it exits 127 and
+# the product never runs at all. A shim's `#!/bin/sh` line is an absolute path and the real
+# binary stays where its libraries are.
 for t in bash sh mktemp awk sed tr sort ls rm rmdir mkdir mv cp cat uname curl wget \
          sha256sum shasum openssl tar seq grep head tail chmod dirname basename env; do
-  w="$(command -v "$t" 2>/dev/null)" && ln -sf "$w" "$NOZIP/$t"
+  w="$(command -v "$t" 2>/dev/null)" || continue
+  printf '#!/bin/sh\nexec "%s" "$@"\n' "$w" > "$NOZIP/$t"
+  chmod +x "$NOZIP/$t"
 done
-if [ ! -x "$NOZIP/bash" ]; then
-  broke 'the unzip-free PATH is buildable' 'could not link the tools the script needs'
+# Asked by RUNNING it. `-x` answers "is there a file with the bit set", which is the exact
+# substitution ensure-node.sh itself exists to refuse — the Windows Store's node stub passes
+# `command -v` and then exits 49. The suite had the bug the product defends against.
+"$NOZIP/bash" -c 'exit 7' 2>/dev/null
+if [ "$?" != 7 ]; then
+  broke 'the unzip-free PATH actually runs' 'the shimmed tools do not execute here, so the length cases below would measure nothing'
 fi
 
 pathcase() { # pathcase <runtime-dir> -> prints "rc=<n> downloaded=<yes|no> <output>"
@@ -454,11 +469,56 @@ get() {
 main --install --yes")"
 rm -f "$WORK/downloaded.withunzip"
 out="$(CSK_STUDIO_RUNTIME="$LONGDIR" bash "$f" 2>&1)"
-if [ -f "$WORK/downloaded.withunzip" ]; then
+if ! command -v unzip >/dev/null 2>&1; then
+  broke 'the length check stays out of the way when unzip is present' \
+    'there is no unzip on this machine, so the condition this case is named after cannot be set up'
+elif [ -f "$WORK/downloaded.withunzip" ]; then
   ok 'the length check stays out of the way when unzip is present'
 else
   bad 'the length check stays out of the way when unzip is present' "$out"
 fi
+
+# The boundary itself, to the character. windows-csk pins the CONSTANT against a real
+# Expand-Archive on a real zip (133 works, 134 fails); this pins the ARITHMETIC against the
+# constant, so a future edit cannot quietly measure one object against another one's budget.
+# That mismatch happened twice while this check was being written, in both directions.
+BUD="$(bash "$(case_file budget 'printf "%s %s\n" "$WIN_DIR_BUDGET" "$NODE_DEEPEST_ENTRY"')" 2>/dev/null)"
+WDB="${BUD%% *}"
+PROBE_TAIL=13          # "/.tmp.0000000", the segment plan() appends to $RUNTIME
+
+boundary() { # boundary <runtime-length> <tag> -> "downloaded=<yes|no>"
+  need=$(( $1 - ${#WORK} - 1 ))
+  [ "$need" -lt 1 ] && { printf 'skip\n'; return; }
+  d="$WORK/$(printf 'b%.0s' $(seq 1 "$need"))"
+  f="$(case_file "bound-$2" "resolve() { return 1; }
+plat_arch() { printf 'win x64\n'; }
+remote_size() { printf 'unknown\n'; }
+cygpath() { printf '%s\n' \"\$2\"; }
+get() {
+  case \"\$1\" in
+    *index.tab) cat '$TAB' ;;
+    *)          : > '$WORK/dl.$2' ; return 1 ;;
+  esac
+}
+main --install --yes")"
+  rm -f "$WORK/dl.$2"
+  PATH="$NOZIP" CSK_STUDIO_RUNTIME="$d" bash "$f" >/dev/null 2>&1
+  if [ -f "$WORK/dl.$2" ]; then printf 'downloaded=yes\n'; else printf 'downloaded=no\n'; fi
+}
+
+case "$WDB" in
+  ''|*[!0-9]*) broke 'the length boundary is exact' "could not read WIN_DIR_BUDGET (got '$WDB')" ;;
+  *)
+    at="$(boundary $((WDB - PROBE_TAIL)) at)"
+    over="$(boundary $((WDB - PROBE_TAIL + 1)) over)"
+    if [ "$at" = skip ] || [ "$over" = skip ]; then
+      broke 'the length boundary is exact' "this working directory is already longer than the budget ($WDB)"
+    elif [ "$at" = downloaded=yes ] && [ "$over" = downloaded=no ]; then
+      ok "the length boundary is exact — the longest accepted runtime is $((WDB - PROBE_TAIL)) characters"
+    else
+      bad 'the length boundary is exact' "at=$at over=$over (budget $WDB, probe tail $PROBE_TAIL)"
+    fi ;;
+esac
 
 # ------------------------------------------------------ hash calibration ------
 
