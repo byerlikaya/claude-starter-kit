@@ -639,7 +639,13 @@ row "skills"            "+$S_ADD$([ "$S_SKIP" != 0 ] && echo " · $S_SKIP skippe
 row "commands"           "+$C_ADD$([ "$C_SKIP" != 0 ] && echo " · $C_SKIP skipped")"
 row "hooks"           "+$H_ADD$([ "$H_SKIP" != 0 ] && echo " · $H_SKIP skipped")"
 row "eval"               "+$E_ADD"
-row "studio (panel)"     "+$T_ADD$([ "${T_SKIP:-0}" != 0 ] && echo " · $T_SKIP skipped") ${D}— /studio-csk${R}"
+# The component table is where someone scans for what they got, and it was
+# advertising a command that refuses on a machine without node — a row promising
+# a capability it had not checked. Qualified from the same preflight query the
+# closing line uses, so the version rule keeps one home.
+PANEL_CMD="/studio-csk"
+bash "$SRC/eval/preflight.sh" --has node 2>/dev/null || PANEL_CMD="/studio-csk (needs Node 18+)"
+row "studio (panel)"     "+$T_ADD$([ "${T_SKIP:-0}" != 0 ] && echo " · $T_SKIP skipped") ${D}— $PANEL_CMD${R}"
 row "project agents"     "$N_PAGENTS$([ "${N_TAKEN:-0}" != 0 ] && echo " ($N_TAKEN imported to skills/<name>-local drafts; originals backed up in superseded/)") — the rest UNTOUCHED"
 case "$COLLIDE_MODE" in
   keepmine) [ "$N_COLLIDE" != 0 ] && row "overlap" "keepmine — your agents own: $COLLIDE (kit's -csk for these NOT installed)" ;;
