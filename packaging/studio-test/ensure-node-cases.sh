@@ -197,12 +197,52 @@ ZFIX="$WORK/zipfix"
 ZART=node-v98.2.0-win-x64.zip
 mkdir -p "$ZFIX/node-v98.2.0-win-x64"
 shim "$ZFIX/node-v98.2.0-win-x64/node.exe" 97
+# Three ways to make a zip, because on the machine that matters most only the third exists:
+# Git Bash has neither python3's shutil nor the zip command, but PowerShell's Compress-Archive
+# is right there. Probing only the first two reported "no way to make a zip here" and skipped
+# the Windows unpack cases ON WINDOWS - the one platform they were written for.
 zipped=0
 if command -v python3 >/dev/null 2>&1 && python3 -c "
 import shutil,sys
 shutil.make_archive(sys.argv[1], 'zip', sys.argv[2], 'node-v98.2.0-win-x64')" "$ZFIX/node-v98.2.0-win-x64" "$ZFIX" 2>/dev/null \
    && [ -s "$ZFIX/$ZART" ]; then zipped=1
-elif command -v zip >/dev/null 2>&1 && ( cd "$ZFIX" && zip -qr "$ZART" node-v98.2.0-win-x64 ) 2>/dev/null; then zipped=1
+elif command -v zip >/dev/null 2>&1 && ( cd "$ZFIX" && zip -qr "$ZART" node-v98.2.0-win-x64 ) 2>/dev/null \
+   && [ -s "$ZFIX/$ZART" ]; then zipped=1
+elif command -v powershell >/dev/null 2>&1; then
+  zsrc="$ZFIX/node-v98.2.0-win-x64"; zdst="$ZFIX/$ZART"
+  if command -v cygpath >/dev/null 2>&1; then
+    zsrc="$(cygpath -wa "$zsrc" 2>/dev/null || printf '%s' "$zsrc")"
+    zdst="$(cygpath -wa "$zdst" 2>/dev/null || printf '%s' "$zdst")"
+  fi
+  powershell -NoProfile -Command "Compress-Archive -Path '$zsrc' -DestinationPath '$zdst' -Force" >/dev/null 2>&1
+  [ -s "$ZFIX/$ZART" ] && zipped=1
+fi
+
+# The stubs below have to actually unpack something, and python3 was the only way they knew
+# how — which meant the Windows unpack cases skipped on Git Bash, the one place they matter.
+# This helper prefers the machine's real unzip and keeps python3 as the fallback. It is
+# calibrated against the fixture before anything is allowed to depend on it.
+REAL_UNZIP="$(command -v unzip 2>/dev/null || true)"
+XZIP="$WORK/xzip"
+cat > "$XZIP" <<EOF
+#!/bin/sh
+z="\$1"; d="\$2"
+[ -n "$REAL_UNZIP" ] && "$REAL_UNZIP" -q -o "\$z" -d "\$d" >/dev/null 2>&1
+if [ ! -d "\$d/node-v98.2.0-win-x64" ] && command -v python3 >/dev/null 2>&1; then
+  python3 -c "import zipfile,sys
+zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" "\$z" "\$d"
+fi
+find "\$d" -type f -exec chmod 755 {} + 2>/dev/null
+[ -d "\$d/node-v98.2.0-win-x64" ]
+EOF
+chmod +x "$XZIP"
+export XZIP   # the powershell stub is a quoted heredoc, so it reads this at run time
+
+XOK=0
+if [ "$zipped" = 1 ]; then
+  rm -rf "$WORK/xzip-probe"; mkdir -p "$WORK/xzip-probe"
+  "$XZIP" "$ZFIX/$ZART" "$WORK/xzip-probe" >/dev/null 2>&1
+  [ "$("$WORK/xzip-probe/node-v98.2.0-win-x64/node.exe" -p x 2>/dev/null)" = 97 ] && XOK=1
 fi
 
 if [ "$zipped" != 1 ] || [ -z "$(sum_of "$ZFIX/$ZART" 2>/dev/null)" ]; then
@@ -238,7 +278,7 @@ fi
 # files are there and the status says failure. Trusting that status either skips a successful
 # extraction or reports one as failed, so the script judges the directory instead. Forced
 # here, because on this machine bsdtar reads the zip and unzip is never reached.
-if [ "$zipped" = 1 ] && command -v python3 >/dev/null 2>&1; then
+if [ "$zipped" = 1 ] && [ "$XOK" = 1 ]; then
   FB="$WORK/fakebin"; mkdir -p "$FB"
   printf '#!/bin/sh\nexit 1\n' > "$FB/tar"                    # GNU tar's answer to a zip
   { printf '#!/bin/sh\n'
@@ -246,7 +286,7 @@ if [ "$zipped" = 1 ] && command -v python3 >/dev/null 2>&1; then
     printf 'd=""; p=0; for a in "$@"; do [ "$p" = 1 ] && { d="$a"; p=0; }; [ "$a" = "-d" ] && p=1; done\n'
     # zipfile drops the executable bit; real Info-ZIP keeps it, and on Windows it is moot.
     # Restoring it here keeps the fixture's flaw out of the product's answer.
-    printf 'python3 -c "import zipfile,sys,os; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2]); [os.chmod(os.path.join(r,f),0o755) for r,_,fs in os.walk(sys.argv[2]) for f in fs]" "$z" "$d"\n'
+    printf '%s "$z" "$d"\n' "$XZIP"
     printf 'exit 1\n'                                          # extracted, and still says 1
   } > "$FB/unzip"
   chmod +x "$FB/tar" "$FB/unzip"
@@ -270,7 +310,7 @@ main --install --yes")"
     bad 'an extractor that succeeds and still reports failure is believed by its result, not its status' "rc=$rc out='$out'"
   fi
 else
-  broke 'the unzip warning-status case runs' 'needs a zip fixture and python3; one of them is missing here'
+  broke 'the unzip warning-status case runs' 'no way to build a zip here, or nothing on this machine that can unpack one'
 fi
 
 # Silence is the failure mode to avoid: with no terminal to ask on, the script must say so
@@ -289,7 +329,7 @@ check 'with no terminal and no --yes it refuses instead of downloading' \
 # -w does not. Measured on Windows 11 — a relative path reaches a Windows program that is not
 # running from the same directory, and it reports the file missing, which would surface here
 # as "the download is broken".
-if [ "$zipped" = 1 ] && command -v python3 >/dev/null 2>&1; then
+if [ "$zipped" = 1 ] && [ "$XOK" = 1 ]; then
   PW="$WORK/pwbin"; mkdir -p "$PW"
   printf '#!/bin/sh\nexit 1\n' > "$PW/tar"
   printf '#!/bin/sh\nexit 1\n' > "$PW/unzip"
@@ -310,10 +350,7 @@ dp=$(printf '%s' "$cmd" | sed -n "s/.*-DestinationPath '\([^']*\)'.*/\1/p")
 # A Windows program given a relative path cannot find the file. Refuse, the way it would.
 case "$lp" in /ABS/*) ;; *) exit 1 ;; esac
 case "$dp" in /ABS/*) ;; *) exit 1 ;; esac
-python3 -c "import zipfile,sys,os
-z,d = sys.argv[1], sys.argv[2]
-zipfile.ZipFile(z).extractall(d)
-[os.chmod(os.path.join(r,f),0o755) for r,_,fs in os.walk(d) for f in fs]" "${lp#/ABS}" "${dp#/ABS}"
+"$XZIP" "${lp#/ABS}" "${dp#/ABS}"
 EOF
   chmod +x "$PW/tar" "$PW/unzip" "$PW/cygpath" "$PW/powershell"
 
@@ -343,7 +380,84 @@ main --install --yes")"
     bad 'the slow unpack announces itself before the wait, not after' "output was '$out'"
   fi
 else
-  broke 'the PowerShell path case runs' 'needs a zip fixture and python3; one of them is missing here'
+  broke 'the PowerShell path case runs' 'no way to build a zip here, or nothing on this machine that can unpack one'
+fi
+
+# ------------------------------------------------------------ MAX_PATH --------
+
+# Expand-Archive enforces Windows' 260-character cap; unzip does not. Measured on Windows 11:
+# a 141-character target failed with PathTooLongException after 17 seconds and left nothing,
+# while unzip put the same archive in the same place in 3 seconds. So on a machine with no
+# unzip the length has to be asked BEFORE 37 MB is fetched, and the refusal has to name the
+# path rather than the archive — the archive's checksum passed a line earlier.
+#
+# CI cannot catch this: the Windows runner's temp is D:\a\_temp, which is short.
+# A PATH with everything the script reaches for EXCEPT unzip. Shadowing does not work here —
+# `command -v` walks past a non-executable file and finds the real one — so the directory is
+# built by name, and unzip is simply not among the names.
+NOZIP="$WORK/nounzipbin"; mkdir -p "$NOZIP"
+for t in bash sh mktemp awk sed tr sort ls rm rmdir mkdir mv cp cat uname curl wget \
+         sha256sum shasum openssl tar seq grep head tail chmod dirname basename env; do
+  w="$(command -v "$t" 2>/dev/null)" && ln -sf "$w" "$NOZIP/$t"
+done
+if [ ! -x "$NOZIP/bash" ]; then
+  broke 'the unzip-free PATH is buildable' 'could not link the tools the script needs'
+fi
+
+pathcase() { # pathcase <runtime-dir> -> prints "rc=<n> downloaded=<yes|no> <output>"
+  f="$(case_file "maxpath-$2" "resolve() { return 1; }
+plat_arch() { printf 'win x64\n'; }
+remote_size() { printf 'unknown\n'; }
+cygpath() { printf '%s\n' \"C:\\\\\$2\"; }
+get() {
+  case \"\$1\" in
+    *index.tab) cat '$TAB' ;;
+    *)          : > '$WORK/downloaded.$2' ; return 1 ;;
+  esac
+}
+main --install --yes")"
+  rm -f "$WORK/downloaded.$2"
+  out="$(PATH="$NOZIP" CSK_STUDIO_RUNTIME="$1" bash "$f" 2>&1)"; rc=$?
+  d=no; [ -f "$WORK/downloaded.$2" ] && d=yes
+  printf 'rc=%s downloaded=%s %s\n' "$rc" "$d" "$out"
+}
+
+LONGDIR="$WORK/$(printf 'l%.0s' $(seq 1 150))"
+got="$(pathcase "$LONGDIR" long)"
+if [ "${got%% *}" != "rc=0" ] && has "$got" 'downloaded=no' && has "$got" 'characters as a Windows path'; then
+  ok 'a path too long for Expand-Archive is refused before anything is downloaded'
+else
+  bad 'a path too long for Expand-Archive is refused before anything is downloaded' "$got"
+fi
+
+# The should-pass twin. Without it, a check that refuses every Windows install would satisfy
+# the case above — and the default path is well inside the budget, so refusing it would break
+# every machine this feature exists for.
+got="$(pathcase "$WORK/short" short)"
+if has "$got" 'downloaded=yes'; then
+  ok 'a path within the budget is not refused, and the download is attempted'
+else
+  bad 'a path within the budget is not refused, and the download is attempted' "$got"
+fi
+
+# And the check must not fire where unzip exists, because unzip is not bound by the cap.
+f="$(case_file maxpath-unzip "resolve() { return 1; }
+plat_arch() { printf 'win x64\n'; }
+remote_size() { printf 'unknown\n'; }
+cygpath() { printf '%s\n' \"C:\\\\\$2\"; }
+get() {
+  case \"\$1\" in
+    *index.tab) cat '$TAB' ;;
+    *)          : > '$WORK/downloaded.withunzip' ; return 1 ;;
+  esac
+}
+main --install --yes")"
+rm -f "$WORK/downloaded.withunzip"
+out="$(CSK_STUDIO_RUNTIME="$LONGDIR" bash "$f" 2>&1)"
+if [ -f "$WORK/downloaded.withunzip" ]; then
+  ok 'the length check stays out of the way when unzip is present'
+else
+  bad 'the length check stays out of the way when unzip is present' "$out"
 fi
 
 # ------------------------------------------------------ hash calibration ------

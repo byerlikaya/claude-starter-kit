@@ -28,6 +28,16 @@ DIST=https://nodejs.org/dist
 # Used only when nodejs.org cannot be reached to ask which release is current.
 FALLBACK_VERSION=v24.21.0
 
+# Windows caps a full file path at 260 characters and PowerShell's Expand-Archive enforces it.
+# Measured: a 141-character target failed with PathTooLongException at __generated__\google\api\…
+# after 17 seconds and left nothing behind, while unzip extracted the same archive to the same
+# place in 3 seconds. So the fallback is not merely slower than unzip, it is strictly weaker,
+# and the difference only shows on a long path.
+WIN_MAX_PATH=260
+NODE_DEEPEST_ENTRY=125          # measured inside v24.21.0's zip; a deeper future release makes
+                                # this under-warn rather than over-warn, which is the safe side
+WIN_DIR_BUDGET=$((WIN_MAX_PATH - NODE_DEEPEST_ENTRY - 1))
+
 RUNTIME="${CSK_STUDIO_RUNTIME:-$HOME/.claude/studio-runtime}"
 EXPLAIN=0
 YES=0
@@ -256,6 +266,19 @@ plan() {
   URL="$DIST/$VERSION/$ARTIFACT"
   SUMS="$DIST/$VERSION/SHASUMS256.txt"
   TARGET="$RUNTIME/node-$VERSION-$PLAT-$ARCH"
+
+  # Asked here, before anything is fetched. Learning that the runtime cannot fit after a 37 MB
+  # download and a 17-second failure is the wrong order, and the failure names the archive when
+  # the archive is fine. Only when unzip is absent: unzip is not bound by the cap, so where it
+  # exists the chain stops there and this does not apply.
+  TOO_LONG=""
+  if [ "$PLAT" = win ] && ! command -v unzip >/dev/null 2>&1; then
+    wt="$TARGET"
+    if command -v cygpath >/dev/null 2>&1; then
+      wt="$(cygpath -wa "$TARGET" 2>/dev/null || printf '%s' "$TARGET")"
+    fi
+    [ "${#wt}" -gt "$WIN_DIR_BUDGET" ] && TOO_LONG="${#wt}"
+  fi
 }
 
 human_size() {
@@ -315,6 +338,13 @@ case "$MODE" in
     printf '  size      %s (%s)\n' "$(human_size "$(remote_size "$URL")")" "$VERSION_SOURCE"
     printf '  verify    %s  (refuses to install if the hash does not match)\n' "$SUMS"
     printf '  unpack    %s\n' "$TARGET"
+    if [ -n "$TOO_LONG" ]; then
+      printf '\n  %s\n' "WILL NOT WORK HERE — that path is $TOO_LONG characters."
+      printf '  %s\n' "Windows caps a full file path at $WIN_MAX_PATH, Node's deepest entry inside the zip is"
+      printf '  %s\n' "$NODE_DEEPEST_ENTRY, and this machine has no unzip — only PowerShell's Expand-Archive, which"
+      printf '  %s\n' "enforces the cap. Point CSK_STUDIO_RUNTIME at a path of $WIN_DIR_BUDGET characters or fewer,"
+      printf '  %s\n' "or install unzip, which is not bound by it."
+    fi
     printf '\nNothing outside that directory is touched: no admin rights, no package manager,\n'
     printf 'no PATH or profile edit. Delete it and this never happened.\n'
     printf '\n  do it     bash %s --install\n' "$0"
@@ -329,6 +359,12 @@ case "$MODE" in
     found="$(resolve)"
     if [ -n "$found" ]; then printf '%s\n' "$found"; exit 0; fi
     plan
+
+    [ -z "$TOO_LONG" ] ||
+      die "ensure-node.sh: $TARGET is $TOO_LONG characters as a Windows path, and the runtime cannot be unpacked there.
+Windows caps a full file path at $WIN_MAX_PATH, Node's deepest entry inside the zip is $NODE_DEEPEST_ENTRY, and this
+machine has no unzip — only PowerShell's Expand-Archive, which enforces that cap. Nothing was downloaded.
+Point CSK_STUDIO_RUNTIME at a path of $WIN_DIR_BUDGET characters or fewer, or install unzip."
 
     sha256_calibrate ||
       die "ensure-node.sh: no SHA-256 tool here that returns the right answer for a known input (tried sha256sum, shasum, openssl, certutil), so a download could not be verified. Refusing to install one unchecked. Install Node yourself: https://nodejs.org"
@@ -369,7 +405,9 @@ Nothing installed."
 
     src="node-$VERSION-$PLAT-$ARCH"
     extract "$tmp/$ARTIFACT" "$tmp" "$src" ||
-      die "ensure-node.sh: unpacking $ARTIFACT did not produce $src (tried tar, unzip and powershell). Nothing installed."
+      die "ensure-node.sh: unpacking $ARTIFACT did not produce $src (tried tar, unzip and powershell).
+The archive matched its published checksum a moment ago, so this is the unpacker on this machine, not the download.
+Nothing installed."
     src="$tmp/$src"
 
     rm -rf "$TARGET"
