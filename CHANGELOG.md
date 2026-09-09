@@ -53,6 +53,49 @@ the exact lie the panel's own first honesty rule forbids.
   run instead of comparing against a constant, and the resolver is driven against three synthetic trees —
   install shape, repo shape, and neither.
 
+### Added — the kit fetches Node when the machine has none
+
+The panel is the one component that needs a runtime, and the answer on a machine without one was
+"install Node 18+, then come back" — written into `/studio-csk` as an instruction never to offer more.
+`.claude/studio/ensure-node.sh` replaces it.
+
+- **It looks where `PATH` cannot** — nvm, fnm, volta, asdf and the usual system prefixes — because a
+  version manager puts node on `PATH` from a login shell only, so "nvm is installed" and "this shell
+  sees node" are different facts. And it runs what it finds: the Windows Store's stub satisfies
+  `command -v`, prints nothing and exits 49.
+- **When there is genuinely none it fetches one**: the current LTS from nodejs.org, verified against the
+  published SHA-256, unpacked into `~/.claude/studio-runtime`. No admin rights, no package manager, no
+  `PATH` or profile edit; deleting that directory undoes everything. It asks first, and with no terminal
+  and no `--yes` it prints what it would do and stops.
+- **The release list comes from `dist/index.tab`**, not `index.json`: the machine running this is by
+  definition the one with no JSON parser to hand. `dist/latest-lts/` does not exist — 404, checked
+  rather than remembered.
+- **The tool that verifies the download is itself verified.** Each candidate hash tool is run against
+  `sha256("abc")` and the first one that gets it right is used; if all four lie, nothing is installed.
+  They print the digest in three different places, two append CR, and three echo the path they were
+  handed — so a file under a 64-hex directory had its own path read as the digest.
+- **A path too long for the fallback is refused before the download.** PowerShell's `Expand-Archive`
+  enforces Windows' 260-character cap and `unzip` does not: measured, a 141-character target failed
+  after 17 seconds with nothing extracted where `unzip` finished in 3. The default install path is well
+  inside the budget; a redirected `CSK_STUDIO_RUNTIME` or a relocated profile is what runs out.
+- Four disclosure points say so when Node is missing: `preflight.sh`, the installers' closing lines,
+  the adopt component table, and `doctor.sh`'s verdict.
+
+30 of the suite's cases cover it, fourteen pinned by mutation. Five defects it caught were in code that
+read correctly, and four of those came from measurements on a real Windows machine rather than from
+reasoning: `[ -r /dev/tty ]` is true where the process cannot open it; Info-ZIP returns 1 for
+"extracted, with warnings"; `Expand-Archive` rejects a POSIX path and `cygpath -w` can hand back a
+relative one; and the path-collision above.
+
+### Fixed — closing the console left the panel's owned sessions running
+
+`SIGHUP` was never listened for, so shutting the terminal window ended the panel and left every session
+it had spawned alive. It is handled now. The check that should have caught it accepted two different
+facts as one: POSIX exits 0 because the handler ran, Windows reports `signal SIGTERM`, which is the
+process being terminated with no handler at all. Split, with Windows marked not-applicable — one process
+cannot send another a signal there, so the graceful path is not drivable from a test.
+
+
 ### Changed — gates
 
 - `verify.sh studio` treats a missing `claude-starter/studio/` as a **failure**, not a skip. It was a skip
