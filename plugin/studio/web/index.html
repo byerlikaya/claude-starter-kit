@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CSK Studio</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="bar">
+  <div class="brand">
+    <svg class="brand-mark" viewBox="0 0 200 200" aria-hidden="true">
+      <g transform="rotate(20 100 100)">
+        <rect x="58" y="38" width="22" height="124" rx="11" class="bar-1"/>
+        <rect x="88" y="38" width="22" height="124" rx="11" class="bar-2"/>
+        <rect x="118" y="32" width="26" height="136" rx="13" class="bar-3"/>
+      </g>
+    </svg>
+    <h1>CSK <span class="brand-accent">Studio</span></h1>
+  </div>
+  <div class="bar-mid">
+    <span id="graph-summary" class="meta"></span>
+    <span id="kitline" class="kitline"></span>
+  </div>
+  <div class="bar-right">
+    <button id="continue-session" class="ghost primary" type="button" hidden
+            title="Start a new session holding a copy of this conversation. It does not write into the original.">⑂ fork &amp; continue</button>
+    <button id="new-session" class="ghost primary" type="button">+ session</button>
+    <button id="new-term" class="ghost" type="button" hidden>+ terminal</button>
+    <span id="pulse" class="pulse">connecting</span>
+      <button id="fullscreen" class="ghost" type="button" title="Full screen (f)" aria-label="Full screen">⛶</button>
+    <button id="theme" class="ghost" type="button" aria-label="Toggle theme">◐</button>
+  </div>
+</header>
+
+<div class="shell">
+  <button id="side-show" class="side-rail" type="button"
+          title="Show the sidebar" aria-label="Show the sidebar" hidden>
+    <span class="side-rail-arrow">›</span>
+    <span class="side-rail-label">sessions</span>
+  </button>
+  <aside class="side">
+    <section class="side-block" data-sect="fleet">
+      <div class="side-head">
+        <button class="twisty" type="button" data-fold="fleet" aria-expanded="true"
+                aria-label="Collapse Fleet">▾</button>
+        <h2 data-fold-for="fleet">Fleet</h2><span id="fleet-meta" class="meta"></span>
+        <button id="side-wide" class="ghost pin" type="button" title="Widen the sidebar">⇥</button>
+        <button id="side-hide" class="ghost pin" type="button" title="Collapse the sidebar">‹</button>
+      </div>
+      <div id="fleet" class="fleet" role="list" data-fold-body="fleet"></div>
+      <div class="side-head reach-head" hidden id="reach-head">
+        <button class="twisty" type="button" data-fold="reach" aria-expanded="true"
+                aria-label="Collapse Reachable elsewhere">▾</button>
+        <h2 data-fold-for="reach">Reachable elsewhere</h2><span id="reach-meta" class="meta"></span>
+      </div>
+      <div id="reach" class="fleet" role="list" data-fold-body="reach"></div>
+    </section>
+    <section class="side-block grow" data-sect="sessions">
+      <div class="side-head">
+        <button class="twisty" type="button" data-fold="sessions" aria-expanded="true"
+                aria-label="Collapse Projects">▾</button>
+        <h2 data-fold-for="sessions">Projects</h2><span id="sessions-meta" class="meta"></span>
+      </div>
+      <div class="side-filter" data-fold-body="sessions">
+        <input id="filter" type="search" placeholder="filter projects…" autocomplete="off" spellcheck="false">
+      </div>
+      <div id="sessions" class="sessions" role="tree" data-fold-body="sessions"></div>
+    </section>
+  </aside>
+
+  <div class="resizer" id="resizer" role="separator" aria-orientation="vertical"
+       aria-label="Resize sidebar" tabindex="0"></div>
+
+  <main class="stage">
+    <div id="canvas" class="canvas"></div>
+    <aside id="inspector" class="inspector" hidden></aside>
+  </main>
+
+  <div class="resizer" id="chat-split" role="separator" aria-orientation="vertical"
+       aria-label="Resize conversation" tabindex="0" hidden></div>
+  <section id="chat" class="chat" hidden></section>
+</div>
+
+<footer class="foot"><span id="foot-note">starting…</span></footer>
+
+<script type="module" src="/app.js"></script>
+</body>
+</html>

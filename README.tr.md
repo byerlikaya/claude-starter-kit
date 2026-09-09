@@ -254,7 +254,9 @@ node .claude/studio/server/index.js --enable-pty  # artı ham kabuklar: onlar yu
 | Kanal | Studio |
 |:--|:--|
 | `npx @byerlikaya/claude-starter-kit` · Homebrew · sürüm arşivi · git clone | `.claude/studio/` altına kuruluyor |
-| Claude Code plugin | gönderilmiyor; plugin kurulumunun paneli çalıştıracağı bir `.claude/` ağacı yok; `/studio-csk` bunu aynen söylüyor ve kurulum yolunu veriyor |
+| Claude Code plugin | plugin'in içinde geliyor; `/claude-starter-kit:studio-csk` ile açılıyor (plugin komutları ad alanlı) |
+
+Dört kanal da paneli taşıyor. Tek bir komut dosyası iki edisyona birden hizmet ediyor: Claude Code plugin'in kendi kurulum yolunu o metnin içine yazıyor, dolayısıyla panel gerçekte neredeyse orada bulunuyor. Davranış iki edisyonda aynı; tek dürüst boşluk şu: panelin kit telemetri panoları, açıldığı projeyi okuyor ve plugin kurulumu projeye bir şey yazmıyor. O yüzden o panolar yanıltıcı bir sıfır yerine "ölçülmedi" diyor, sebebiyle birlikte.
 
 Panel `~/.claude/projects` dizinini okuyor; orada bu makinedeki **her** Claude Code oturumu duruyor. Proje kökünden başlatmak yalnızca hangi projeyle açılacağını belirliyor.
 

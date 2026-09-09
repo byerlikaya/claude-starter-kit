@@ -1,0 +1,14 @@
+{
+  "name": "@byerlikaya/csk-studio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Visual orchestration panel for Claude Code — see which agent is running and what it is doing.",
+  "type": "module",
+  "bin": {
+    "csk-studio": "server/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}

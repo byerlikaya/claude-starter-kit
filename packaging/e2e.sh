@@ -340,6 +340,11 @@ if command -v node >/dev/null 2>&1 && node --version >/dev/null 2>&1; then
   # platform the claim was weakest on.
   echo "[studio-serves] starting the installed panel and driving it over HTTP"
   node packaging/studio-serve-probe.mjs "$PN" || { echo "FAIL: the installed panel did not serve"; exit 1; }
+  # And the plugin edition's copy, which is a second deployment of the same panel from a different
+  # root. It was measured by hand on one machine and gated nowhere; the probe takes the directory
+  # that CONTAINS studio/, so the same nine checks drive both layouts on every platform CI covers.
+  echo "[studio-serves] the plugin edition's copy, from the plugin root"
+  node packaging/studio-serve-probe.mjs "$ROOT/plugin" || { echo "FAIL: the panel did not serve from the plugin root"; exit 1; }
 else
   echo "[studio-installed] SKIPPED (no working node here — the panel needs 18+)"
 fi
