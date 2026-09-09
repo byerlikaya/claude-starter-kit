@@ -325,6 +325,17 @@ if command -v node >/dev/null 2>&1 && node --version >/dev/null 2>&1; then
     "true:$INST_AG:"*) echo "[studio-installed] --selftest ok on node $NV · palette measured, $INST_AG kit agents from ${PAL#true:$INST_AG:}" ;;
     *) echo "FAIL: the installed palette did not resolve the kit's agents — expected true:$INST_AG:<dir>, got '$PAL'"; exit 1 ;;
   esac
+
+  # Everything above this line is reachable without the server ever listening:
+  # files exist, modules parse, the palette resolves, the CLI answers. So "the
+  # panel works" had been measured on one machine, by hand, and assumed
+  # everywhere else. This starts it and drives it over HTTP.
+  #
+  # The probe is node, not shell, because the shell half is exactly where Windows
+  # differs — backgrounding, kill semantics, curl's flags — and Windows is the
+  # platform the claim was weakest on.
+  echo "[studio-serves] starting the installed panel and driving it over HTTP"
+  node packaging/studio-serve-probe.mjs "$PN" || { echo "FAIL: the installed panel did not serve"; exit 1; }
 else
   echo "[studio-installed] SKIPPED (no working node here — the panel needs 18+)"
 fi
