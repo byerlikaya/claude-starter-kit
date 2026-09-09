@@ -158,7 +158,6 @@ check(
 
 const studioFiles = walk(STUDIO).filter((f) => /\.(js|mjs|sh|py|html|css|json|md)$/.test(f));
 const bypassHits = studioFiles.filter((f) => {
-  if (f.endsWith(path.join('test', 'selfcheck.js'))) return false; // the pin names the literal it forbids
   const src = read(f) ?? '';
   return /bypassPermissions|dangerously-skip-permissions/.test(src);
 });
@@ -975,12 +974,19 @@ check('both widths are remembered', /csk-studio-side-w/.test(appSrc2) && /csk-st
 // the fix is an except clause and a grep for one proves nothing about reach.
 {
   const bridge = path.join(STUDIO, 'server', 'lib', 'pty-bridge.py');
+  // The platform question is asked FIRST, before any interpreter is probed. On
+  // Windows the answer cannot change, so probing there spends two process spawns
+  // to learn nothing — and on Git Bash a spawn is 62-135 ms, which is why this
+  // repo counts them rather than timing them. It can also hit the Store's python3
+  // stub, producing a misleading failure on the way to a foregone conclusion.
   let python = null;
-  for (const c of ['python3', 'python']) {
-    try {
-      execFileSync(c, ['-c', 'import pty'], { stdio: 'ignore', timeout: 10000 });
-      python = c; break;
-    } catch { /* try the next one; a resolvable name is not a working one */ }
+  if (process.platform !== 'win32') {
+    for (const c of ['python3', 'python']) {
+      try {
+        execFileSync(c, ['-c', 'import pty'], { stdio: 'ignore', timeout: 10000 });
+        python = c; break;
+      } catch { /* try the next one; a resolvable name is not a working one */ }
+    }
   }
   if (process.platform === 'win32') {
     // Python's `pty` is Unix-only — it imports tty, which imports termios. So this
