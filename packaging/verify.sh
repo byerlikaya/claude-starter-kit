@@ -40,7 +40,8 @@ step_syntax(){
   bash -n start.sh || return 1
   bash -n adopt.sh || return 1
   local s
-  for s in claude-starter/hooks/*.sh claude-starter/eval/*.sh packaging/*.sh studio/server/hooks/*.sh; do
+  for s in claude-starter/hooks/*.sh claude-starter/eval/*.sh packaging/*.sh packaging/studio-test/*.sh \
+           claude-starter/studio/*.sh claude-starter/studio/server/hooks/*.sh; do
     [ -f "$s" ] || continue
     bash -n "$s" || return 1
   done
@@ -52,15 +53,23 @@ step_routing(){   bash claude-starter/eval/routing-eval.sh; }
 step_catalogue(){ bash packaging/build-readme-catalog.sh --check; }
 step_e2e(){       bash packaging/e2e.sh; }
 
-# The panel is not part of the payload, so it has its own gate rather than a
-# place in the suites that check the payload. Node is the only thing it needs;
-# a machine without one must say SKIPPED rather than quietly pass, and CI —
-# which has node — turns that skip red.
+# The panel IS part of the payload now; it keeps its own step because it is a
+# NODE gate, not because it sits outside what ships. Node is the only thing it
+# needs, and a machine without one must say SKIPPED rather than quietly pass —
+# CI, which has node, turns that skip red.
+#
+# A missing directory is a FAILURE, not a skip. It was a skip while the panel
+# was optional; now that every channel ships it, a botched move would show as a
+# yellow "skipped, NOT a pass" that nobody reads as broken.
 step_studio(){
-  [ -d studio ] || { echo "SKIP: no studio/ in this checkout"; return 3; }
+  [ -d claude-starter/studio ] || { echo "claude-starter/studio is MISSING — the panel ships in the payload"; return 1; }
   command -v node >/dev/null 2>&1 || { echo "SKIP: node is not on PATH"; return 3; }
   node --version >/dev/null 2>&1 || { echo "SKIP: node is on PATH but does not run"; return 3; }
-  node studio/test/selfcheck.js || return 1
+  node packaging/studio-test/selfcheck.mjs || return 1
+  # The panel needs a runtime; ensure-node.sh is what finds or fetches one. Its own
+  # cases run here because they need bash, and the branches worth testing are the ones
+  # a machine WITH node can never reach on its own.
+  bash packaging/studio-test/ensure-node-cases.sh || return 1
 }
 
 # The only step that needs a tool the repo does not carry. CI installs the CLI; a developer machine

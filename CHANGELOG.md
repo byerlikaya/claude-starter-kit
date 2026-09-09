@@ -3,6 +3,109 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Changed — Studio ships with the kit, and `/studio-csk` launches it
+
+2.8.0 recorded the opposite decision, and it was true when it was written. A project that had adopted
+the kit then updated, ran the documented command and got ENOENT: it has no `package.json`, and nothing
+had ever installed the panel into it. A documented route that cannot work in the place it is documented
+for is a defect, so the exclusion is reversed.
+
+- **Source moved to `claude-starter/studio/`.** That directory is already the single definition of what
+  ships — `package.json` `files[]`, `make-release.sh`'s archive and whitelist, `bin/cli.js`'s staging
+  list and the Homebrew formula all name it — so the npm tarball, the release tarball, the Homebrew
+  bottle and `npx` pick the panel up with **no edit to any of the four**. At the repo root each of them
+  would have been a separate place to remember, and a forgotten one fails silently.
+- **Installed to `.claude/studio/`**, the sixth directory beside `agents`, `skills`, `commands`, `hooks`
+  and `eval`. `start.sh` copies it on a fresh install; `adopt.sh` force-refreshes it when the kit is
+  already present, which is the path that carries it into the project that hit the ENOENT.
+  `test/` is not installed: its assertions read the repository — the root `package.json` and the payload
+  beside it — which an installed project does not have. It lives in `packaging/studio-test/`. The
+  installed diagnostic is `node .claude/studio/server/index.js --selftest`.
+- **`/studio-csk`**, the eleventh slash command. It resolves the panel, probes `node --version` rather
+  than asking whether the name resolves, starts the server in the background and reports the tokenised
+  URL whether or not a browser opened. It states what the panel's scope actually is — every session in
+  `~/.claude/projects`, not this project's — and it names `--enable-pty`'s cost in one sentence: a
+  command typed into a raw shell reaches no `PreToolUse` hook, so `guard-bash.sh` is blind to it.
+- **The plugin edition still carries no panel**, and now says so instead of going quiet: a plugin
+  install has no `.claude/` tree to launch from, so `/studio-csk` ships there too and its first step
+  names the installer. Same boundary `/doctor-csk` already documents for `eval/`.
+
+Cost, measured rather than argued. The payload was 120 files / 977,845 bytes; it is now 148 files /
+1,431,108 in the repository and 146 / 1,325,061 as installed, the difference being the two test files
+that do not ship into projects. That is +35% on disk and in every tarball. Session tokens are
+unaffected — the always-on budget is `DISCIPLINE.md` plus agent and skill frontmatter, and the panel
+is neither.
+
+### Fixed — the panel drew "no kit agents" and "unrecognised agents" identically
+
+`palette.js` resolved the kit's agents through `<parent-of-studio>/claude-starter/agents`. Anywhere but
+that one checkout the read failed, the catch returned an empty map, and all twelve kit agents fell to the
+neutral grey reserved for types nobody declared — indistinguishable from twelve unknown agents, which is
+the exact lie the panel's own first honesty rule forbids.
+
+- One rule, no candidate list: `<studio>/../agents`, which is the payload directory in the repo, `.claude/`
+  in an install and the plugin root if it ever gets one. A two-candidate resolver would be a branch
+  exercised in one layout and rotting in the other.
+- `palette()` now returns `measured` and, when false, the directory it looked in; the panel labels that
+  rather than drawing neutral rings. The pin counts `*.md` in the payload agents directory in the same
+  run instead of comparing against a constant, and the resolver is driven against three synthetic trees —
+  install shape, repo shape, and neither.
+
+### Added — the kit fetches Node when the machine has none
+
+The panel is the one component that needs a runtime, and the answer on a machine without one was
+"install Node 18+, then come back" — written into `/studio-csk` as an instruction never to offer more.
+`.claude/studio/ensure-node.sh` replaces it.
+
+- **It looks where `PATH` cannot** — nvm, fnm, volta, asdf and the usual system prefixes — because a
+  version manager puts node on `PATH` from a login shell only, so "nvm is installed" and "this shell
+  sees node" are different facts. And it runs what it finds: the Windows Store's stub satisfies
+  `command -v`, prints nothing and exits 49.
+- **When there is genuinely none it fetches one**: the current LTS from nodejs.org, verified against the
+  published SHA-256, unpacked into `~/.claude/studio-runtime`. No admin rights, no package manager, no
+  `PATH` or profile edit; deleting that directory undoes everything. It asks first, and with no terminal
+  and no `--yes` it prints what it would do and stops.
+- **The release list comes from `dist/index.tab`**, not `index.json`: the machine running this is by
+  definition the one with no JSON parser to hand. `dist/latest-lts/` does not exist — 404, checked
+  rather than remembered.
+- **The tool that verifies the download is itself verified.** Each candidate hash tool is run against
+  `sha256("abc")` and the first one that gets it right is used; if all four lie, nothing is installed.
+  They print the digest in three different places, two append CR, and three echo the path they were
+  handed — so a file under a 64-hex directory had its own path read as the digest.
+- **A path too long for the fallback is refused before the download.** PowerShell's `Expand-Archive`
+  enforces Windows' 260-character cap and `unzip` does not: measured, a 141-character target failed
+  after 17 seconds with nothing extracted where `unzip` finished in 3. The default install path is well
+  inside the budget; a redirected `CSK_STUDIO_RUNTIME` or a relocated profile is what runs out.
+- Four disclosure points say so when Node is missing: `preflight.sh`, the installers' closing lines,
+  the adopt component table, and `doctor.sh`'s verdict.
+
+30 of the suite's cases cover it, fourteen pinned by mutation. Five defects it caught were in code that
+read correctly, and four of those came from measurements on a real Windows machine rather than from
+reasoning: `[ -r /dev/tty ]` is true where the process cannot open it; Info-ZIP returns 1 for
+"extracted, with warnings"; `Expand-Archive` rejects a POSIX path and `cygpath -w` can hand back a
+relative one; and the path-collision above.
+
+### Fixed — closing the console left the panel's owned sessions running
+
+`SIGHUP` was never listened for, so shutting the terminal window ended the panel and left every session
+it had spawned alive. It is handled now. The check that should have caught it accepted two different
+facts as one: POSIX exits 0 because the handler ran, Windows reports `signal SIGTERM`, which is the
+process being terminated with no handler at all. Split, with Windows marked not-applicable — one process
+cannot send another a signal there, so the graceful path is not drivable from a test.
+
+
+### Changed — gates
+
+- `verify.sh studio` treats a missing `claude-starter/studio/` as a **failure**, not a skip. It was a skip
+  while the panel was optional; a skip is yellow locally and a botched move would have gone unread.
+- The slash-command count in both READMEs is now gated the way the hook count is, and every shipped
+  command must be named beside it. That number was hand-written and this class has drifted before.
+- `selfcheck.js`'s boundary pin is inverted rather than deleted: it now fails if the panel leaves the
+  payload, if `files[]` stops shipping `claude-starter/`, or if `package.json`'s `"type": "module"` — which
+  the whole ESM server depends on — goes missing from the installed tree.
+
 ## [2.8.0] - 2026-09-08
 
 ### Added — a panel, so a run is something you can watch rather than reconstruct

@@ -25,8 +25,10 @@ Verify the kit is actually *active* in this project (not just present on disk):
 If `.claude/eval/doctor.sh` doesn't exist, this is not a full (start.sh / adopt.sh) install — the kit is likely
 running as a **plugin**, whose hooks are managed by Claude Code itself; there's nothing for the doctor to check.
 
-**The eval scripts are installer-only, by decision.** `eval/` — `doctor.sh`, `smoke-test.sh`, `routing-eval.sh`,
-`scan-skill.sh`, `utilization.sh` — ships with `start.sh` and `adopt.sh` and NOT with the plugin edition. They
-are developer instruments: they inspect an installation from outside it, and the plugin edition has no
-installation to inspect. Say this plainly when someone asks why `/doctor-csk` reports nothing on a plugin
-install, rather than treating it as a defect.
+**The eval scripts and the Studio panel are installer-only, by decision.** `eval/` — `doctor.sh`,
+`smoke-test.sh`, `routing-eval.sh`, `scan-skill.sh`, `utilization.sh` — and `studio/` ship with `start.sh` and
+`adopt.sh` and NOT with the plugin edition. The eval scripts are developer instruments: they inspect an
+installation from outside it, and the plugin edition has no installation to inspect. The panel is the same
+boundary from the other side: it needs a place on disk to be launched from, and a plugin install has no
+`.claude/studio/`. Say this plainly when someone asks why `/doctor-csk` reports nothing or why `/studio-csk`
+declines on a plugin install, rather than treating either as a defect.

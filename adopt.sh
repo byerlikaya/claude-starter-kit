@@ -491,6 +491,21 @@ fi
 copy_noclobber "$SRC/commands" .claude/commands "$KIT_PRESENT"; C_ADD=$ret_add; C_SKIP=$ret_skip
 copy_noclobber "$SRC/hooks"    .claude/hooks    "$KIT_PRESENT"; H_ADD=$ret_add; H_SKIP=$ret_skip
 copy_noclobber "$SRC/eval"     .claude/eval     "$KIT_PRESENT"; E_ADD=$ret_add; E_SKIP=$ret_skip
+# The Studio panel. This is the line that answers "I updated and `/studio-csk` says the panel
+# is missing": with KIT_PRESENT=1 it is a force-refresh, so a project that already has the kit
+# gets the panel on its next update.
+# NOT passed the $4 exclusion argument even though `test` would match it correctly — a non-empty
+# exclraw disables the force=1 fast path above and drops into the per-file loop, i.e. 25 process
+# spawns on Git Bash instead of one `cp -R` plus one `rm`. That fast path exists because a
+# per-file refresh was measured at 6m43s. On a FRESH adopt (KIT_PRESENT=0) copy_noclobber never
+# overwrites, so a project that somehow owns .claude/studio keeps its own files.
+copy_noclobber "$SRC/studio"   .claude/studio   "$KIT_PRESENT"; T_ADD=$ret_add; T_SKIP=$ret_skip
+# test/ reads the REPO (root package.json, the payload beside it); from .claude/studio those
+# resolve to a tree that has neither, so shipping it would be a gate red in every project. The
+# installed diagnostic is `node .claude/studio/server/index.js --selftest`. The suite itself
+# lives in packaging/studio-test/, outside the payload, so nothing has to be deleted here and
+# the count is simply what landed.
+chmod +x .claude/studio/server/hooks/*.sh 2>/dev/null || true
 # Report the migration by what LANDED, not by what was missing: devarch-module is on the missing list of every
 # generic project and must not be announced as restored when EXCL_S kept it out.
 if [ -n "$MIGRATE_MISSING" ]; then
@@ -578,6 +593,11 @@ chmod +x .claude/hooks/*.sh .claude/hooks/pre-commit .claude/hooks/commit-msg 2>
 # They are REPORTED, never deleted: this installer deliberately preserves a pre-existing project file that
 # happens to sit under a kit name, so a name in the old manifest is not proof the file is ours. Deleting on that
 # assumption would destroy the user's own work; naming it costs them one command.
+# .claude/studio is deliberately outside this sweep, and outside kit-manifest.txt with it. The sweep works
+# on components whose NAME is the invocation — a leftover command lists in the / picker, a leftover skill
+# competes for prompts — and the panel is neither: nothing routes to a file under studio/, so a stale copy
+# is dead weight rather than a competing answer. The cost of accepting it is stated rather than hidden: if
+# the panel is ever renamed or dropped, an old copy stays in every project until someone deletes it.
 if [ -f .claude/kit-manifest.txt ]; then
   STALE=""
   while IFS= read -r entry; do
@@ -619,6 +639,13 @@ row "skills"            "+$S_ADD$([ "$S_SKIP" != 0 ] && echo " · $S_SKIP skippe
 row "commands"           "+$C_ADD$([ "$C_SKIP" != 0 ] && echo " · $C_SKIP skipped")"
 row "hooks"           "+$H_ADD$([ "$H_SKIP" != 0 ] && echo " · $H_SKIP skipped")"
 row "eval"               "+$E_ADD"
+# The component table is where someone scans for what they got, and it was
+# advertising a command that refuses on a machine without node — a row promising
+# a capability it had not checked. Qualified from the same preflight query the
+# closing line uses, so the version rule keeps one home.
+PANEL_CMD="/studio-csk"
+bash "$SRC/eval/preflight.sh" --has node 2>/dev/null || PANEL_CMD="/studio-csk (needs Node 18+)"
+row "studio (panel)"     "+$T_ADD$([ "${T_SKIP:-0}" != 0 ] && echo " · $T_SKIP skipped") ${D}— $PANEL_CMD${R}"
 row "project agents"     "$N_PAGENTS$([ "${N_TAKEN:-0}" != 0 ] && echo " ($N_TAKEN imported to skills/<name>-local drafts; originals backed up in superseded/)") — the rest UNTOUCHED"
 case "$COLLIDE_MODE" in
   keepmine) [ "$N_COLLIDE" != 0 ] && row "overlap" "keepmine — your agents own: $COLLIDE (kit's -csk for these NOT installed)" ;;
@@ -1023,6 +1050,16 @@ h1 "Review in your editor — nothing committed yet"
 row "staged" "$(git diff --cached --stat 2>/dev/null | tail -1 || echo '(none)')"
 sub "$ONBRANCH_LINE"
 sub "see it:   open the Source Control / Changes panel (every added + changed file is listed)  ·  or: git status"
+# The refresh is how an existing project gains the panel, and until now its closing
+# summary named neither the panel nor node — so a machine without node finished
+# quietly and the user found out later, at first use. That is the report this
+# whole round came from.
+if bash "$SRC/eval/preflight.sh" --has node 2>/dev/null; then
+  sub "panel:    /studio-csk opens it from this project (or: node .claude/studio/server/index.js --open)"
+else
+  sub "panel:    needs Node 18+, absent here — the kit can fetch one: bash .claude/studio/ensure-node.sh --plan"
+  sub "          (it asks first, verifies the checksum, and touches nothing outside ~/.claude/studio-runtime)"
+fi
 sub "$ACCEPT_LINE"
 sub "$DISCARD_LINE"
 warn "If Claude Code is running in this project, run /compact (or /clear) — CLAUDE.md and the discipline reload"

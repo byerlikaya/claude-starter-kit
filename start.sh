@@ -245,7 +245,7 @@ gate "trace scan — a git hook blocks AI traces / vendor names"
 gate "real context measurement + handoff at 75% (Stop hook)"
 gate "destructive command guard (rm -rf / force-push, etc.)"
 echo
-row "Will write" "${D}./.claude (agents·skills·commands·hooks·eval·settings.json) + ./CLAUDE.md${R}"
+row "Will write" "${D}./.claude (agents·skills·commands·hooks·eval·studio·settings.json) + ./CLAUDE.md${R}"
 # What this machine is missing, BEFORE the confirm prompt — not after, when it becomes a symptom pointing
 # somewhere else. Report-only and never blocking: the kit degrades rather than breaks, and that is exactly why
 # a gap is otherwise invisible. See claude-starter/eval/preflight.sh for the reasoning per tool.
@@ -293,12 +293,19 @@ fi
 
 # --- Step 4: Kit installation (./.claude + ./CLAUDE.md) — everything, minus the .NET-only pattern skill ---
 echo "== Installing: ./.claude + ./CLAUDE.md =="
-mkdir -p .claude/agents .claude/skills .claude/commands .claude/hooks .claude/eval
+mkdir -p .claude/agents .claude/skills .claude/commands .claude/hooks .claude/eval .claude/studio
 cp -R "$SRC/agents/."   .claude/agents/
 cp -R "$SRC/skills/."   .claude/skills/
 cp -R "$SRC/commands/." .claude/commands/
 cp -R "$SRC/hooks/."    .claude/hooks/ 2>/dev/null || true
 cp -R "$SRC/eval/."     .claude/eval/ 2>/dev/null || true
+# The Studio panel — launched by /studio-csk from this project's root. One `cp -R`
+# plus one `rm`, not a selective walk: on Git Bash a per-file copy of 25 files is 25
+# process spawns at 62-135 ms each. test/ is dropped because its assertions read the
+# The panel's own suite is NOT here to delete: it lives in packaging/studio-test/,
+# outside the payload, because claude-starter/ ships whole and 104 KB of test code
+# would travel through all four channels only to be removed on arrival.
+cp -R "$SRC/studio/."   .claude/studio/ 2>/dev/null || true
 for d in $EXCL_SKILLS; do rm -rf ".claude/skills/$d"; done
 # Generic backend: install the stack-agnostic variant instead of the DevArchitecture-bound backend-expert-csk.
 if [ "$STACK" = "generic" ] && [ -f "$SRC/agents-optional/backend-expert-generic.md" ]; then
@@ -309,7 +316,9 @@ echo "  Backend pattern '$STACK': $(ls .claude/agents/*.md 2>/dev/null | wc -l |
 [ -f "$HERE/VERSION" ] && cp "$HERE/VERSION" .claude/VERSION   # make the kit version trackable in the installed project
 # Glob form so every shipped hook/eval is made executable — including ones added later (guard-write.sh,
 # session-rehydrate.sh, …). An explicit list silently missed new hooks and left them non-executable.
-chmod +x .claude/hooks/*.sh .claude/hooks/pre-commit .claude/hooks/commit-msg .claude/eval/*.sh 2>/dev/null || true
+# studio's gate hook is invoked as `bash <path>` today, so the bit is not load-bearing
+# yet; set it anyway, because a future direct exec would fail silently.
+chmod +x .claude/hooks/*.sh .claude/hooks/pre-commit .claude/hooks/commit-msg .claude/eval/*.sh .claude/studio/server/hooks/*.sh 2>/dev/null || true
 cp "$SRC/AGENT_TEMPLATE.md" .claude/ 2>/dev/null || true
 cp "$SRC/README.md"         .claude/ 2>/dev/null || true
 
@@ -319,6 +328,9 @@ cp "$SRC/README.md"         .claude/ 2>/dev/null || true
 # project file under a kit name, and reading disk would then brand that project file "kit-owned". Erring this
 # way under-reports project ownership and can never raise a false alarm on a kit file — the safe direction for
 # a gate. Rewritten on every install/update, so a component the kit drops stops counting as kit-owned.
+# studio/ is deliberately NOT listed. Both consumers walk components: skill-trust.sh iterates skills/*/ and
+# agents/*.md, and the doctor readiness check separates kit skills from the project's. A studio/ line would be
+# read by nobody, and adopt.sh's stale sweep only considers commands/, agents/ and skills/ entries anyway.
 { for d in "$SRC"/skills/*/;     do [ -d "$d" ] && echo "skills/$(basename "$d")"; done
   for f in "$SRC"/agents/*.md;   do [ -e "$f" ] && echo "agents/$(basename "$f")"; done
   for f in "$SRC"/commands/*.md; do [ -e "$f" ] && echo "commands/$(basename "$f")"; done
@@ -388,5 +400,19 @@ echo "== Done. ./.claude + ./CLAUDE.md ready (full kit · backend pattern: $STAC
 echo "Next: 1) fill in the CLAUDE.md project section  2) open Claude Code at the repo root"
 echo "Note: if Claude Code is ALREADY running here, restart it — CLAUDE.md and the discipline load at session start."
 echo "Tip:  open Claude Code and run /doctor-csk — it checks the install is wired (hooks executable, core.hooksPath set, discipline imported) and scores the project's readiness. CLAUDE.md loads the discipline every session."
+# Say what is true of THIS machine, not what is true in general. The line used to
+# print identically with or without node, so on a machine that cannot start the
+# panel it read as a footnote rather than as the reason nothing will happen. The
+# question goes to preflight so the version floor stays defined in one place, and
+# it is asked of the INSTALLED copy: $SRC is deleted at line 397, a few lines
+# above this, so asking there answered "no node" on every machine.
+if bash .claude/eval/preflight.sh --has node 2>/dev/null; then
+  echo "Panel: /studio-csk opens the Studio panel from this project (or: node .claude/studio/server/index.js --open)."
+else
+  echo "Panel: needs Node 18+, which is not on this machine — but that is no longer a dead end."
+  echo "       The kit fetches one for the panel: bash .claude/studio/ensure-node.sh --plan  (asks first;"
+  echo "       verified against the published checksum, into ~/.claude/studio-runtime, nothing else touched)."
+  echo "       Every gate still holds meanwhile; the panel is the only part that needs node."
+fi
 [ "$STACK" = "dotnet" ] && echo "Layout: backend in ./backend · build your frontend in ./frontend · first agent task: rename DevArchitecture -> $PROJECT_NAME."
 rm -f -- "$0"

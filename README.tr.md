@@ -101,7 +101,7 @@ Beş aşamaya yayılmış **12 uzman agent** var. Kalite, hiçbir şey commit ed
 |:--|:--:|:--|
 | **Agent** | 12 | İnce tetikleyiciler: bir alanın *kimin* olduğu ve *ne zaman* devreye gireceği |
 | **Skill** | 40 | Yöntemin kendisi; bir kez yazılır, ihtiyacı olan uygular |
-| **Slash komutu** | 10 | `/brainstorm-csk` · `/plan-csk` · `/review-csk` · `/ship-csk` · `/handoff-csk` · `/update-csk` · `/doctor-csk` · `/board-csk` · `/gates-csk` · `/skill-csk` |
+| **Slash komutu** | 11 | `/brainstorm-csk` · `/plan-csk` · `/review-csk` · `/ship-csk` · `/handoff-csk` · `/update-csk` · `/doctor-csk` · `/board-csk` · `/gates-csk` · `/skill-csk` · `/studio-csk` |
 | **Hook** | 12 | Yaptırımlar, ayrıca oturum ölçümü ve yönlendirme |
 | **Disiplin** | 1 | İlkeler, akış, Definition of Done, yasaklar. `CLAUDE.md`'niz bu dosyayı import ediyor |
 
@@ -231,8 +231,9 @@ Yaptırımlar kazaları durdurur, kararlı denemeleri değil. Komut satırında 
 Panel `~/.claude/projects` dizinini okuyor; Claude Code bu makinedeki bütün oturumları orada tutuyor. Dolayısıyla çalışan tek bir panel hepsini birden görüyor: projede kit kurulu olsun ya da olmasın, panelin o projenin içinde başlatılmış olması da gerekmiyor.
 
 ```bash
-npm run studio        # http://127.0.0.1:7777, tarayıcıyı da açar
-npm run studio:pty    # aynısı, artı ham kabuklar: onlar yukarıdaki her kapıyı atlar
+/studio-csk                                       # kit kurulu her projede
+node .claude/studio/server/index.js --open        # aynısı, slash seçicisi olmadan
+node .claude/studio/server/index.js --enable-pty  # artı ham kabuklar: onlar yukarıdaki her kapıyı atlar
 ```
 
 | Panelde ne var | Neye dayanıyor |
@@ -248,7 +249,14 @@ npm run studio:pty    # aynısı, artı ham kabuklar: onlar yukarıdaki her kap�
   <br><sub>Aynı panel, kullanılırken: bir oturum açılıyor, bir ajanın ne bildirdiği okunuyor, düşen ajana atlanıyor, arkasındaki konuşma açılıyor.</sub>
 </div>
 
-**Studio kurduğunuz şeyin parçası değil.** Yalnızca bu depoda duruyor, başka hiçbir yerde yok: `start.sh` `.claude/` altında beş dizin açıyor ve hiçbiri Studio'nun değil; npm arşivi, plugin sürümü, Homebrew formülü ve sürüm arşivi de onu dışarıda bırakıyor. Çalıştırmak için depoyu klonlamanız gerekiyor. Hiç npm bağımlılığı yok, Node 18+ istiyor, yalnızca `127.0.0.1`'e bağlanıyor ve her API yolunda o koşuya özel bir token arıyor.
+**Studio kitle birlikte kuruluyor.** `start.sh` ve `adopt.sh` `.claude/` altında altı dizin açıyor, Studio da altıncısı. Yani kit kurulu her projede **`/studio-csk`** ile açıyorsunuz; slash seçicisi olmadan `node .claude/studio/server/index.js --open`. Hiç npm bağımlılığı yok, Node 18+ istiyor, yalnızca `127.0.0.1`'e bağlanıyor ve her API yolunda o koşuya özel bir token arıyor. **Makinede Node yoksa kit onu kendi getiriyor.** `.claude/studio/ensure-node.sh --plan` ne indireceğini olduğu gibi gösteriyor: nodejs.org'daki güncel LTS, yayımlanmış SHA-256'ya karşı doğrulanıyor ve `~/.claude/studio-runtime` altına açılıyor. Siz evet demeden hiçbir şey kurmuyor. Yönetici hakkı istemiyor, paket yöneticisine dokunmuyor, PATH'i değiştirmiyor; o tek dizini silmek yaptığı her şeyi geri alıyor.
+
+| Kanal | Studio |
+|:--|:--|
+| `npx @byerlikaya/claude-starter-kit` · Homebrew · sürüm arşivi · git clone | `.claude/studio/` altına kuruluyor |
+| Claude Code plugin | gönderilmiyor; plugin kurulumunun paneli çalıştıracağı bir `.claude/` ağacı yok; `/studio-csk` bunu aynen söylüyor ve kurulum yolunu veriyor |
+
+Panel `~/.claude/projects` dizinini okuyor; orada bu makinedeki **her** Claude Code oturumu duruyor. Proje kökünden başlatmak yalnızca hangi projeyle açılacağını belirliyor.
 
 <div align="center">
   <img src="assets/studio-graph.png" alt="Tek tuvalde on iki ajan ve bir workflow konteyneri; her kart durumunu, araç sayısını, token ve süresini taşıyor, düşen ajan kırmızıyla çerçeveli" width="900">
@@ -337,7 +345,7 @@ Claude Starter Kit kurulum sırasında `.claude/kit.conf` dosyasına backend des
 
 | | Güncellemede |
 |:--|:--|
-| `.claude/` agent · skill · komut · hook · eval | yeni sürümden tazelenir |
+| `.claude/` agent · skill · komut · hook · eval · studio | yeni sürümden tazelenir |
 | `.claude/DISCIPLINE.md` | **üzerine yazılır**; kite aittir, içinde kendinize ait hiçbir şey bırakmayın |
 | `./CLAUDE.md` | hiç dokunulmaz; proje kurallarınız yazdığınız gibi kalır |
 | `.claude/settings.json` | şema farkındalığıyla birleştirilir; kendi hook'larınız ve izinleriniz korunur |

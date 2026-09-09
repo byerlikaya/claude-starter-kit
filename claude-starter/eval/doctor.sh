@@ -334,8 +334,21 @@ if [ -f .claude/DISCIPLINE.md ]; then
 fi
 
 echo "---"
-if [ "$FAIL" -eq 0 ]; then echo "DOCTOR: healthy ✅"
-else echo "DOCTOR: $FAIL issue(s) ❌ — apply the fixes above"; fi
+# The verdict is the line people read, and some read only it. The preflight block
+# below reports a missing node, but it prints AFTER this — so on a machine that
+# cannot start the panel the last word a reader takes away was "healthy". The
+# verdict is not wrong (every gate is wired and holds without node) so it keeps
+# its tick, and carries what it costs beside it.
+# Resolved here rather than beside the preflight report below, because the verdict
+# needs to ask it a question and the verdict prints first.
+PREFLIGHT=".claude/eval/preflight.sh"
+[ -f "$PREFLIGHT" ] || PREFLIGHT="$(dirname "$0")/preflight.sh"
+PANEL_NOTE=""
+if [ -d .claude/studio ] && ! bash "$PREFLIGHT" --has node 2>/dev/null; then
+  PANEL_NOTE=" · panel needs Node 18+ — .claude/studio/ensure-node.sh --plan fetches one"
+fi
+if [ "$FAIL" -eq 0 ]; then echo "DOCTOR: healthy ✅$PANEL_NOTE"
+else echo "DOCTOR: $FAIL issue(s) ❌ — apply the fixes above$PANEL_NOTE"; fi
 
 # 8b) The shell matcher. Claude Code's hooks reference is explicit: inspect shell commands with
 #     `Bash|PowerShell`, because wherever the PowerShell tool is enabled it IS the shell — and it is on by
@@ -395,8 +408,6 @@ echo
 # fallbacks mean none of that announces itself. Advisory: it never changes the verdict above.
 # doctor has already cd'd into the project, so the installed copy is the one to run; fall back to the copy
 # sitting beside this script for the case where doctor is run straight out of the kit source.
-PREFLIGHT=".claude/eval/preflight.sh"
-[ -f "$PREFLIGHT" ] || PREFLIGHT="$(dirname "$0")/preflight.sh"
 [ -f "$PREFLIGHT" ] && bash "$PREFLIGHT"
 
 echo "Readiness (advisory — does not affect the verdict above):"

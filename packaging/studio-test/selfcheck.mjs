@@ -10,33 +10,40 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { _internals } from '../server/lib/fleet.js';
-import { contextFill } from '../server/lib/transcript.js';
-import { encodeCwd } from '../server/lib/projects.js';
-import { _internals as graphInternals } from '../server/lib/graph.js';
-import { palette } from '../server/lib/palette.js';
-import { renderMarkdown } from '../web/md.js';
-import { ALLOWED_MODES } from '../server/lib/session.js';
-import { parsePeers } from '../server/lib/peers.js';
-import { writeAllowed } from '../server/index.js';
-import { prepare, decide, pending, cleanup, _internals as permInternals } from '../server/lib/permissions.js';
+import { _internals } from '../../claude-starter/studio/server/lib/fleet.js';
+import { contextFill } from '../../claude-starter/studio/server/lib/transcript.js';
+import { encodeCwd } from '../../claude-starter/studio/server/lib/projects.js';
+import { _internals as graphInternals } from '../../claude-starter/studio/server/lib/graph.js';
+import { palette, _internals as paletteInternals } from '../../claude-starter/studio/server/lib/palette.js';
+import { renderMarkdown } from '../../claude-starter/studio/web/md.js';
+import { ALLOWED_MODES } from '../../claude-starter/studio/server/lib/session.js';
+import { parsePeers } from '../../claude-starter/studio/server/lib/peers.js';
+import { writeAllowed } from '../../claude-starter/studio/server/index.js';
+import { prepare, decide, pending, cleanup, _internals as permInternals } from '../../claude-starter/studio/server/lib/permissions.js';
 import { execFileSync } from 'node:child_process';
 import os from 'node:os';
-import { quickReplies } from '../web/chat.js';
-import { installDom } from './dom-stub.js';
-import * as pty from '../server/lib/pty.js';
-import { plan as terminalPlan } from '../server/lib/terminal.js';
-import { gateLog, gateReport, board, sessionStats, _internals as kitInternals } from '../server/lib/kit-telemetry.js';
-import { parseRoster, remoteRoster } from '../server/lib/roster.js';
+import { quickReplies } from '../../claude-starter/studio/web/chat.js';
+import { installDom } from './dom-stub.mjs';
+import * as pty from '../../claude-starter/studio/server/lib/pty.js';
+import { plan as terminalPlan } from '../../claude-starter/studio/server/lib/terminal.js';
+import { gateLog, gateReport, board, sessionStats, _internals as kitInternals } from '../../claude-starter/studio/server/lib/kit-telemetry.js';
+import { parseRoster, remoteRoster } from '../../claude-starter/studio/server/lib/roster.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const STUDIO = path.resolve(HERE, '..');
-const REPO = path.resolve(STUDIO, '..');
+// The suite lives beside the other gates rather than inside the panel, because
+// claude-starter/ is shipped whole: a test directory under it would travel to
+// every user through all four channels only to be deleted by the installer.
+// 104 KB of it, measured. So the panel is named from the repo root, not walked
+// up to from here.
+const REPO = path.resolve(HERE, '..', '..');
+const PAYLOAD = path.join(REPO, 'claude-starter');
+const STUDIO = path.join(PAYLOAD, 'studio');
 const WEB_ROOT = path.join(STUDIO, 'web');
 
 let pass = 0;
 let fail = 0;
 let skipped = 0;
+let na = 0;
 const failures = [];
 
 function check(name, ok, detail) {
@@ -56,6 +63,23 @@ function check(name, ok, detail) {
  * CSK_VERIFY_STRICT — which CI sets — that is a broken runner, not an honest
  * boundary, so it goes red. Every other class stays a skip.
  */
+/**
+ * An assertion that does not apply on this platform, and is measured on another.
+ *
+ * Distinct from skip() on purpose. `tool` skips mean "this could have been
+ * measured and was not", so CSK_VERIFY_STRICT turns them red — a runner missing
+ * a tool is a broken runner. A capability the platform does not have is a
+ * different statement: it stays green here because it is red-or-green somewhere
+ * else, and saying so is the only way the strict rule keeps its meaning.
+ *
+ * Use it only where another assertion covers the same ground on the platform
+ * that has the feature. Never as a way to make a failing check quiet.
+ */
+function notApplicable(name, why, coveredBy) {
+  na += 1;
+  process.stdout.write(`N/A  ${name} — ${why}; covered by: ${coveredBy}\n`);
+}
+
 function skip(name, kind, why) {
   const strict = process.env.CSK_VERIFY_STRICT === '1' && kind === 'tool';
   if (strict) {
@@ -89,10 +113,31 @@ process.stdout.write('\n== §1 boundary pins ==\n');
 
 const rootPkg = JSON.parse(read(path.join(REPO, 'package.json')) ?? '{}');
 
+// Inverted, not deleted. The old pin held the panel OUT of every channel; a
+// real project then updated, ran the documented command and got ENOENT, because
+// nothing had ever installed it. The claim now runs the other way and has to
+// fail the moment the panel stops shipping: `claude-starter/` is the one string
+// every channel already carries (npm files[], make-release.sh's whitelist,
+// bin/cli.js's staging list, the Homebrew formula), so living under it is what
+// makes "installed" true rather than a fourth place to remember.
+const shipsPayload = Array.isArray(rootPkg.files) && rootPkg.files.some((f) => String(f).replace(/\/$/, '') === 'claude-starter');
+const insidePayload = path.basename(PAYLOAD) === 'claude-starter';
+const carried = ['server/index.js', 'web/index.html', 'package.json', 'ensure-node.sh']
+  .filter((f) => fs.existsSync(path.join(STUDIO, f)));
 check(
-  'pin: studio is absent from the root package files[]',
-  Array.isArray(rootPkg.files) && !rootPkg.files.some((f) => String(f).includes('studio')),
-  `files[] = ${JSON.stringify(rootPkg.files)}`,
+  'pin: studio ships inside the payload every channel installs',
+  shipsPayload && insidePayload && carried.length === 4,
+  `payload dir = ${path.basename(PAYLOAD)}, files[] = ${JSON.stringify(rootPkg.files)}, carried = ${carried.join(' ')}`,
+);
+
+// Silently load-bearing: every server file is ESM. Without this manifest beside
+// them node reads them as CommonJS and the panel installs cleanly, then dies on
+// its first import — a failure the user meets, not the build.
+const typeField = JSON.parse(read(path.join(STUDIO, 'package.json')) ?? '{}').type;
+check(
+  'pin: the installed tree declares "type": "module"',
+  typeField === 'module',
+  `type = ${JSON.stringify(typeField)}`,
 );
 
 const rootDeps = Object.keys(rootPkg.dependencies ?? {}).length;
@@ -113,7 +158,6 @@ check(
 
 const studioFiles = walk(STUDIO).filter((f) => /\.(js|mjs|sh|py|html|css|json|md)$/.test(f));
 const bypassHits = studioFiles.filter((f) => {
-  if (f.endsWith(path.join('test', 'selfcheck.js'))) return false; // the pin names the literal it forbids
   const src = read(f) ?? '';
   return /bypassPermissions|dangerously-skip-permissions/.test(src);
 });
@@ -250,10 +294,53 @@ check('prose without a notice yields nothing', none.size === 0);
 process.stdout.write('\n== §8 palette ==\n');
 
 const pal = palette();
-check('kit agent colours are read from frontmatter', pal.kitAgents >= 12, `${pal.kitAgents} kit agents`);
+// Counted off disk in this same run rather than pinned to a constant: an agent
+// added to the payload must not turn this red, and a resolver that finds the
+// wrong directory must not stay green because it happened to find twelve of
+// something. `>= 12` would have passed on a partial read.
+const agentsOnDisk = fs.readdirSync(path.join(PAYLOAD, 'agents')).filter((f) => f.endsWith('.md')).length;
+check('every kit agent in the payload is in the palette',
+  pal.measured === true && pal.kitAgents === agentsOnDisk,
+  `${pal.kitAgents} in the palette, ${agentsOnDisk} .md files in ${path.relative(REPO, path.join(PAYLOAD, 'agents'))}`);
 check('a declared colour resolves to a hex value', /^#[0-9a-f]{6}$/i.test(pal.map['security-expert-csk']?.hex ?? ''));
 check('an undeclared agent type falls back to neutral, never a borrowed colour',
   !pal.map['no-such-agent-type'] && /^#[0-9a-f]{6}$/i.test(pal.unknown));
+
+// The resolver against synthetic trees, because the claim is "one rule, every
+// layout" and this checkout can only ever demonstrate one of them. Install and
+// repo differ in depth and in the parent's name; the rule may read neither.
+const palHome = fs.mkdtempSync(path.join(os.tmpdir(), 'csk-studio-palette-'));
+try {
+  const shapes = {
+    install: path.join(palHome, 'install', '.claude'),
+    repo: path.join(palHome, 'repo', 'claude-starter'),
+  };
+  for (const base of Object.values(shapes)) {
+    fs.mkdirSync(path.join(base, 'agents'), { recursive: true });
+    fs.mkdirSync(path.join(base, 'studio', 'server', 'lib'), { recursive: true });
+  }
+  for (const [name, base] of Object.entries(shapes)) {
+    const got = paletteInternals.agentsDirFor(path.join(base, 'studio', 'server', 'lib'));
+    check(`palette resolves the agents dir in the ${name} layout`,
+      got === path.join(base, 'agents'), `got ${got}`);
+  }
+  const orphan = path.join(palHome, 'orphan', 'studio', 'server', 'lib');
+  fs.mkdirSync(orphan, { recursive: true });
+  check('palette returns null where no agents dir sits beside the panel',
+    paletteInternals.agentsDirFor(orphan) === null,
+    `got ${paletteInternals.agentsDirFor(orphan)}`);
+} finally {
+  fs.rmSync(palHome, { recursive: true, force: true });
+}
+// …and the unresolved case must be reported, not drawn. `palette()` caches, so
+// the shape is asserted on the module's own contract: measured false carries a
+// reason, and the UI reads that flag rather than an empty map.
+check('an unresolved palette is reported as not measured, with the directory it looked in',
+  pal.measured === true ? typeof pal.agentsDir === 'string' && pal.reason === null
+    : pal.reason?.includes(pal.agentsDir) === true,
+  `measured=${pal.measured} dir=${pal.agentsDir}`);
+check('ui: an unresolved palette is labelled, not drawn as neutral rings',
+  /p\.measured === false/.test(read(path.join(WEB_ROOT, 'app.js')) ?? ''));
 
 /* ---------------------------------------------- §9 report rendering ---
    Agent reports are untrusted text: an agent can quote anything it read from
@@ -655,7 +742,7 @@ check('the panel never lets a fork pass for the session it copied',
 // by resuming it, and so does the panel now — but only when nothing else holds
 // it open. Forking unconditionally was the bug; forking never would be worse.
 {
-  const sess = read(path.join(HERE, '..', 'server', 'lib', 'session.js')) ?? '';
+  const sess = read(path.join(STUDIO, 'server', 'lib', 'session.js')) ?? '';
   check('a resume is only forked when the session is still held open',
     /const forked = resume \? await isHeldOpen/.test(sess),
     'forking every resume moved the user to a stranger; forking none would let two processes write one transcript');
@@ -695,7 +782,7 @@ process.stdout.write('\n== §20 browser modules load ==\n');
     let err = null;
     try {
       // Cache-busted so a module is really evaluated on every run.
-      await import(`../web/${mod}?t=${Date.now()}`);
+      await import(`../../claude-starter/studio/web/${mod}?t=${Date.now()}`);
     } catch (e) {
       err = e;
     }
@@ -707,7 +794,7 @@ process.stdout.write('\n== §20 browser modules load ==\n');
   {
     let err = null;
     try {
-      const { Canvas } = await import(`../web/canvas.js?render=${Date.now()}`);
+      const { Canvas } = await import(`../../claude-starter/studio/web/canvas.js?render=${Date.now()}`);
       const host = document.createElement('div');
       const c = new Canvas(host, {});
       c.setPalette({ map: { Explore: { hex: '#26c6e6', source: 'builtin' } }, unknown: '#94a3c8' });
@@ -817,7 +904,7 @@ check('both widths are remembered', /csk-studio-side-w/.test(appSrc2) && /csk-st
 // So run it: a symlink into a temp dir, invoked with --help, must produce the
 // usage text. A regressed guard prints nothing and still exits 0.
 {
-  const entry = path.join(HERE, '..', 'server', 'index.js');
+  const entry = path.join(STUDIO, 'server', 'index.js');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'csk-studio-link-'));
   const link = path.join(dir, 'csk-studio');
   let viaLink = '';
@@ -851,9 +938,9 @@ check('both widths are remembered', /csk-studio-side-w/.test(appSrc2) && /csk-st
 // `[hidden]` lost to `display: grid`, and a `display: none` grid child stopped
 // occupying its cell. So assert the cascade, not the intent.
 {
-  const html = read(path.join(HERE, '..', 'web', 'index.html')) ?? '';
-  const css = read(path.join(HERE, '..', 'web', 'style.css')) ?? '';
-  const app = read(path.join(HERE, '..', 'web', 'app.js')) ?? '';
+  const html = read(path.join(STUDIO, 'web', 'index.html')) ?? '';
+  const css = read(path.join(STUDIO, 'web', 'style.css')) ?? '';
+  const app = read(path.join(STUDIO, 'web', 'app.js')) ?? '';
 
   for (const key of ['fleet', 'reach', 'sessions']) {
     check(`the ${key} section has a fold control and a body to fold`,
@@ -886,15 +973,30 @@ check('both widths are remembered', /csk-studio-side-w/.test(appSrc2) && /csk-st
 // own" rather than "we sent it something bad". Assert the behaviour, because
 // the fix is an except clause and a grep for one proves nothing about reach.
 {
-  const bridge = path.join(HERE, '..', 'server', 'lib', 'pty-bridge.py');
+  const bridge = path.join(STUDIO, 'server', 'lib', 'pty-bridge.py');
+  // The platform question is asked FIRST, before any interpreter is probed. On
+  // Windows the answer cannot change, so probing there spends two process spawns
+  // to learn nothing — and on Git Bash a spawn is 62-135 ms, which is why this
+  // repo counts them rather than timing them. It can also hit the Store's python3
+  // stub, producing a misleading failure on the way to a foregone conclusion.
   let python = null;
-  for (const c of ['python3', 'python']) {
-    try {
-      execFileSync(c, ['-c', 'import pty'], { stdio: 'ignore', timeout: 10000 });
-      python = c; break;
-    } catch { /* try the next one; a resolvable name is not a working one */ }
+  if (process.platform !== 'win32') {
+    for (const c of ['python3', 'python']) {
+      try {
+        execFileSync(c, ['-c', 'import pty'], { stdio: 'ignore', timeout: 10000 });
+        python = c; break;
+      } catch { /* try the next one; a resolvable name is not a working one */ }
+    }
   }
-  if (!python) {
+  if (process.platform === 'win32') {
+    // Python's `pty` is Unix-only — it imports tty, which imports termios. So this
+    // assertion cannot pass on Windows even with Python installed, and calling it
+    // a missing tool made it permanently red under CSK_VERIFY_STRICT. What Windows
+    // must do instead is refuse the raw shell, and §14 asserts exactly that.
+    notApplicable('the pty bridge survives an undecodable frame',
+      "python's pty module is Unix-only",
+      'the §14 pin that Windows is told it cannot, rather than left to fail');
+  } else if (!python) {
     skip('the pty bridge survives an undecodable frame', 'tool', 'no python3 with the pty module');
   } else {
     const probe = [
@@ -1092,7 +1194,7 @@ function computed(rules, el, ancestors, media = []) {
   const rules = cssRules(cssText);
   const REDUCE = ['(prefers-reduced-motion: reduce)'];
 
-  const { Canvas } = await import(`../web/canvas.js?motion=${Date.now()}`);
+  const { Canvas } = await import(`../../claude-starter/studio/web/canvas.js?motion=${Date.now()}`);
   const PAL = {
     map: {
       Explore: { hex: '#26c6e6', source: 'builtin' },
@@ -1554,7 +1656,7 @@ process.stdout.write('\n== §27 the picture at 250 nodes ==\n');
   const canvasSrc = read(path.join(STUDIO, 'web', 'canvas.js')) ?? '';
   const rules = cssRules(cssText);
   const REDUCE = ['(prefers-reduced-motion: reduce)'];
-  const { Canvas } = await import(`../web/canvas.js?lod=${Date.now()}`);
+  const { Canvas } = await import(`../../claude-starter/studio/web/canvas.js?lod=${Date.now()}`);
 
   // Thresholds are read out of the module rather than restated here. A
   // threshold written down twice is a threshold that drifts.
@@ -1988,5 +2090,6 @@ if (fail) {
   for (const f of failures) process.stdout.write(`  - ${f}\n`);
 }
 process.stdout.write(`${pass}/${pass + fail} assertions passed`
-  + (skipped ? `, ${skipped} skipped` : '') + '\n');
+  + (skipped ? `, ${skipped} skipped` : '')
+  + (na ? `, ${na} n/a on ${process.platform}` : '') + '\n');
 process.exit(fail ? 1 : 0);

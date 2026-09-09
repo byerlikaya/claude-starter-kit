@@ -18,6 +18,13 @@ set -uo pipefail
 
 QUIET=0
 case "${1:-}" in --quiet|-q) QUIET=1 ;; esac
+# A machine-readable question, so a caller can branch on one tool without parsing
+# the display output or restating the rule. `--has node` answers with an exit
+# code and prints nothing. The rule it answers with is works(), the same one the
+# report uses — the version floor and the does-it-actually-run probe live in one
+# place, and a second copy could drift from it silently.
+HAS=""
+case "${1:-}" in --has) HAS="${2:-}" ;; esac
 
 B=""; D=""; R=""; YE=""; GR=""
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then B=$'\033[1m'; D=$'\033[2m'; R=$'\033[0m'; YE=$'\033[33m'; GR=$'\033[32m'; fi
@@ -39,6 +46,12 @@ works(){
   case "$1" in
     python3|python|py) printf '{}' | "$1" -c 'import sys,json;json.load(sys.stdin)' >/dev/null 2>&1 ;;
     jq)                printf '{}' | jq -e . >/dev/null 2>&1 ;;
+      # The panel needs 18+, and a name that resolves is not an interpreter that runs: the Windows Store ships a
+      # python3 that satisfies `command -v` and then exits 49. So run node, read the major it reports, and hold
+      # the floor. A node that cannot execute fails here rather than at first use.
+      node)              v="$("$1" -p 'process.versions.node.split(".")[0]' 2>/dev/null)" || return 1
+                         case "$v" in ''|*[!0-9]*) return 1 ;; esac
+                         [ "$v" -ge 18 ] ;;
     *)                 return 0 ;;
   esac
 }
@@ -56,6 +69,10 @@ any_of(){
   return 1
 }
 
+  if [ -n "$HAS" ]; then
+    works "$HAS" && exit 0 || exit 1
+  fi
+
 [ "$QUIET" = 1 ] || printf '\n  %sPreflight — what this machine has%s\n' "$B" "$R"
 
 # --- REQUIRED: without these the kit does not work at all -------------------------------------------------
@@ -71,6 +88,13 @@ any_of "awk" "context measurement, routing, doctor" \
   "Windows: ships with Git Bash · macOS: preinstalled · Linux: apt install gawk" awk gawk mawk || MISSING_REQ="$MISSING_REQ awk"
 any_of "git" "the commit-time trace/secret gates are git hooks" \
   "git-scm.com · macOS: xcode-select --install · Linux: apt install git" git || MISSING_REQ="$MISSING_REQ git"
+  # Node is required for the panel and for nothing else: every gate in this kit is bash, and they all hold on a
+  # machine that has never seen node. It sits in REQUIRED anyway, deliberately, because the panel now installs
+  # into every project, and a component that silently does not start on some machines is worse than one that
+  # says what it needs. The reason string names which half is affected, so the REQUIRED heading stays true.
+  any_of "node 18+" "the CSK Studio panel (/studio-csk); the gates themselves are bash and do not need it" \
+    "nodejs.org · Windows: winget install OpenJS.NodeJS.LTS · macOS: brew install node · Linux: apt install nodejs" \
+    node || MISSING_REQ="$MISSING_REQ node"
 
 # --- OPTIONAL: the kit falls back, but the fallback is worse in a way worth knowing about ------------------
 # jq/python are only needed to MERGE an existing settings.json on update. The pure-bash path replaces the file
@@ -83,7 +107,15 @@ any_of "sha256 tool" "the skill-trust gate falls back to cksum (catches accident
   "Windows/Linux: coreutils (sha256sum) · macOS: shasum is preinstalled" sha256sum shasum || MISSING_OPT="$MISSING_OPT sha256"
 
 if [ -n "$MISSING_REQ" ]; then
-  printf '\n  %sMissing REQUIRED:%s%s — install these first; the kit will not work without them.\n' "$YE$B" "$R" "$MISSING_REQ"
+  printf '\n  %sMissing REQUIRED:%s%s — install these first.\n' "$YE$B" "$R" "$MISSING_REQ"
+    case "$MISSING_REQ" in
+      # Which half is gone. "The kit will not work" is false when only node is missing: every gate is bash and
+      # still holds; what is lost is the panel.
+      *node*) printf '    %snode%s is the panel only — every gate still holds without it.\n' "$B" "$R"
+              # And it is not a dead end: the kit fetches a runtime for the panel itself, into one
+              # directory under $HOME, verified against the published checksum. It asks first.
+              printf '    Or let the kit get one: %sbash .claude/studio/ensure-node.sh --plan%s\n' "$B" "$R" ;;
+    esac
 elif [ -n "$MISSING_OPT" ]; then
   [ "$QUIET" = 1 ] || printf '\n  %sAll required tools present.%s Optional gaps above are safe but worth closing.\n' "$GR" "$R"
 else
