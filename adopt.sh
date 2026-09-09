@@ -1044,6 +1044,15 @@ h1 "Review in your editor — nothing committed yet"
 row "staged" "$(git diff --cached --stat 2>/dev/null | tail -1 || echo '(none)')"
 sub "$ONBRANCH_LINE"
 sub "see it:   open the Source Control / Changes panel (every added + changed file is listed)  ·  or: git status"
+# The refresh is how an existing project gains the panel, and until now its closing
+# summary named neither the panel nor node — so a machine without node finished
+# quietly and the user found out later, at first use. That is the report this
+# whole round came from.
+if bash "$SRC/eval/preflight.sh" --has node 2>/dev/null; then
+  sub "panel:    /studio-csk opens it from this project (or: node .claude/studio/server/index.js --open)"
+else
+  sub "panel:    INSTALLED BUT WILL NOT START — Node 18+ is missing here. Every gate still holds; only the panel needs it."
+fi
 sub "$ACCEPT_LINE"
 sub "$DISCARD_LINE"
 warn "If Claude Code is running in this project, run /compact (or /clear) — CLAUDE.md and the discipline reload"

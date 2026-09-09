@@ -400,6 +400,17 @@ echo "== Done. ./.claude + ./CLAUDE.md ready (full kit · backend pattern: $STAC
 echo "Next: 1) fill in the CLAUDE.md project section  2) open Claude Code at the repo root"
 echo "Note: if Claude Code is ALREADY running here, restart it — CLAUDE.md and the discipline load at session start."
 echo "Tip:  open Claude Code and run /doctor-csk — it checks the install is wired (hooks executable, core.hooksPath set, discipline imported) and scores the project's readiness. CLAUDE.md loads the discipline every session."
-echo "Panel: /studio-csk opens the Studio panel from this project (or: node .claude/studio/server/index.js --open). Needs Node 18+."
+# Say what is true of THIS machine, not what is true in general. The line used to
+# print identically with or without node, so on a machine that cannot start the
+# panel it read as a footnote rather than as the reason nothing will happen. The
+# question goes to preflight so the version floor stays defined in one place, and
+# it is asked of the INSTALLED copy: $SRC is deleted at line 397, a few lines
+# above this, so asking there answered "no node" on every machine.
+if bash .claude/eval/preflight.sh --has node 2>/dev/null; then
+  echo "Panel: /studio-csk opens the Studio panel from this project (or: node .claude/studio/server/index.js --open)."
+else
+  echo "Panel: INSTALLED BUT WILL NOT START — Node 18+ is missing on this machine."
+  echo "       Every gate still holds; the panel is the only part that needs node. See the preflight report above."
+fi
 [ "$STACK" = "dotnet" ] && echo "Layout: backend in ./backend · build your frontend in ./frontend · first agent task: rename DevArchitecture -> $PROJECT_NAME."
 rm -f -- "$0"

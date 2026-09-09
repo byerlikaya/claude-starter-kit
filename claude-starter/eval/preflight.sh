@@ -18,6 +18,13 @@ set -uo pipefail
 
 QUIET=0
 case "${1:-}" in --quiet|-q) QUIET=1 ;; esac
+# A machine-readable question, so a caller can branch on one tool without parsing
+# the display output or restating the rule. `--has node` answers with an exit
+# code and prints nothing. The rule it answers with is works(), the same one the
+# report uses — the version floor and the does-it-actually-run probe live in one
+# place, and a second copy could drift from it silently.
+HAS=""
+case "${1:-}" in --has) HAS="${2:-}" ;; esac
 
 B=""; D=""; R=""; YE=""; GR=""
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then B=$'\033[1m'; D=$'\033[2m'; R=$'\033[0m'; YE=$'\033[33m'; GR=$'\033[32m'; fi
@@ -61,6 +68,10 @@ any_of(){
   printf '      %sfix: %s%s\n' "$D" "$fix" "$R"
   return 1
 }
+
+  if [ -n "$HAS" ]; then
+    works "$HAS" && exit 0 || exit 1
+  fi
 
 [ "$QUIET" = 1 ] || printf '\n  %sPreflight — what this machine has%s\n' "$B" "$R"
 
