@@ -843,7 +843,9 @@ async function main() {
     }
   });
 
-  for (const sig of ['SIGINT', 'SIGTERM']) {
+  // SIGHUP is the console window being closed — on both platforms the commonest way a panel
+  // ends after Ctrl-C, and unhandled it terminates with the children still running.
+  for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
     process.on(sig, () => {
       // Children outlive their parent unless told otherwise, and a panel that
       // leaks running sessions is worse than one that never started them.

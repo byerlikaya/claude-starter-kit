@@ -23,7 +23,12 @@ const TOKEN = 'probe-token-not-a-secret';
 const entry = path.join(projectDir, '.claude', 'studio', 'server', 'index.js');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-let pass = 0; const failures = [];
+let pass = 0; let na = 0; const failures = [];
+// A check the platform cannot answer is not a pass and not a failure. Windows has no way for
+// one process to send another a signal — kill() lands as TerminateProcess — so the graceful
+// path simply cannot be driven from here, and saying "ok" would be a claim about code that
+// never ran.
+const notApplicable = (name, why) => { na += 1; console.log(`  N/A  ${name} — ${why}`); };
 const check = (name, ok, detail) => {
   if (ok) { pass += 1; console.log(`  ok   ${name}${detail ? ` — ${detail}` : ''}`); }
   else { failures.push(`${name}${detail ? ` — ${detail}` : ''}`); console.log(`  FAIL ${name}${detail ? ` — ${detail}` : ''}`); }
@@ -96,9 +101,21 @@ const write = await get(port, `/api/owned?token=${TOKEN}`, { __method: 'POST' })
 check('a write without the same-origin header is refused', write.status === 403, `status ${write.status}`);
 
 stop();
-await sleep(400);
+await sleep(600);
 check('it shuts down when asked', child.exitCode !== null || child.signalCode !== null,
   `exit ${child.exitCode} signal ${child.signalCode}`);
 
-console.log(`  ${pass}/${pass + failures.length} served checks passed`);
+// Stopping and stopping *cleanly* are different facts, and one check accepting both hid the
+// difference: POSIX exits 0 because the SIGTERM handler ran and reaped the panel's children;
+// Windows reports signal SIGTERM, which is this process being terminated with no handler run.
+if (process.platform === 'win32') {
+  notApplicable('it shuts its children down on the way out',
+    'Windows cannot deliver a signal to another process, so the handler cannot be driven from a test; '
+    + 'the path users are told to use — Ctrl-C in the panel\'s own console — does raise SIGINT and does run it');
+} else {
+  check('it shuts its children down on the way out', child.exitCode === 0,
+    `exit ${child.exitCode} signal ${child.signalCode}; a handler that ran exits 0, a killed process does not`);
+}
+
+console.log(`  ${pass}/${pass + failures.length} served checks passed${na ? `, ${na} not applicable here` : ''}`);
 process.exit(failures.length ? 1 : 0);
