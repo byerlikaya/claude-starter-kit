@@ -38,6 +38,10 @@ combo() {
   # and the panel installs cleanly, then dies on its first import — a failure only the user meets.
   grep -q '"type": *"module"' "$P/.claude/studio/package.json" || { echo "FAIL [$lbl]: studio/package.json missing or not \"type\":\"module\" — the ESM server would not load"; exit 1; }
   [ ! -d "$P/.claude/studio/test" ] || { echo "FAIL [$lbl]: studio/test shipped into the project — its pins read the REPO and would be red here"; exit 1; }
+  # The runtime finder. /studio-csk runs exactly this path when node is missing, and without it a
+  # machine with no node is back to the dead end the whole feature exists to remove — silently,
+  # because everything else about the install would still look right.
+  [ -f "$P/.claude/studio/ensure-node.sh" ] || { echo "FAIL [$lbl]: .claude/studio/ensure-node.sh missing — a machine without node gets no way to get one"; exit 1; }
   echo "[$lbl] agents=$ag skills=$sk smoke=OK manifest=$(wc -l < "$P/.claude/kit-manifest.txt" | tr -d ' ') studio=installed"
 }
 # The expected counts come from the PAYLOAD, not from a number typed here. Written by hand they drift with the
@@ -361,6 +365,7 @@ cp adopt.sh "$UP/"; cp -R claude-starter "$UP/claude-starter"; cp VERSION "$UP/"
 [ -f "$UP/.claude/studio/server/index.js" ] || { echo "FAIL: an existing kit install did NOT get the panel on update — this is the reported bug"; exit 1; }
 grep -q '"type": *"module"' "$UP/.claude/studio/package.json" || { echo "FAIL: the updated panel has no \"type\":\"module\" — it would die on first import"; exit 1; }
 [ ! -d "$UP/.claude/studio/test" ] || { echo "FAIL: the update shipped studio/test into the project"; exit 1; }
+[ -f "$UP/.claude/studio/ensure-node.sh" ] || { echo "FAIL: the update brought the panel but not the runtime finder beside it"; exit 1; }
 [ -f "$UP/.claude/commands/studio-csk.md" ] || { echo "FAIL: the update did not deliver /studio-csk"; exit 1; }
 echo "[update-gets-panel] a 2.8.0-shaped install gained .claude/studio ($(find "$UP/.claude/studio" -type f | wc -l | tr -d ' ') files) and /studio-csk on update"
 
