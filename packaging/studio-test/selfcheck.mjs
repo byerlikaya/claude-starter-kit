@@ -122,11 +122,11 @@ const rootPkg = JSON.parse(read(path.join(REPO, 'package.json')) ?? '{}');
 // makes "installed" true rather than a fourth place to remember.
 const shipsPayload = Array.isArray(rootPkg.files) && rootPkg.files.some((f) => String(f).replace(/\/$/, '') === 'claude-starter');
 const insidePayload = path.basename(PAYLOAD) === 'claude-starter';
-const carried = ['server/index.js', 'web/index.html', 'package.json']
+const carried = ['server/index.js', 'web/index.html', 'package.json', 'ensure-node.sh']
   .filter((f) => fs.existsSync(path.join(STUDIO, f)));
 check(
   'pin: studio ships inside the payload every channel installs',
-  shipsPayload && insidePayload && carried.length === 3,
+  shipsPayload && insidePayload && carried.length === 4,
   `payload dir = ${path.basename(PAYLOAD)}, files[] = ${JSON.stringify(rootPkg.files)}, carried = ${carried.join(' ')}`,
 );
 

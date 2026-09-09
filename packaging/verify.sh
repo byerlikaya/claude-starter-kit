@@ -40,7 +40,8 @@ step_syntax(){
   bash -n start.sh || return 1
   bash -n adopt.sh || return 1
   local s
-  for s in claude-starter/hooks/*.sh claude-starter/eval/*.sh packaging/*.sh claude-starter/studio/server/hooks/*.sh; do
+  for s in claude-starter/hooks/*.sh claude-starter/eval/*.sh packaging/*.sh packaging/studio-test/*.sh \
+           claude-starter/studio/*.sh claude-starter/studio/server/hooks/*.sh; do
     [ -f "$s" ] || continue
     bash -n "$s" || return 1
   done
@@ -65,6 +66,10 @@ step_studio(){
   command -v node >/dev/null 2>&1 || { echo "SKIP: node is not on PATH"; return 3; }
   node --version >/dev/null 2>&1 || { echo "SKIP: node is on PATH but does not run"; return 3; }
   node packaging/studio-test/selfcheck.mjs || return 1
+  # The panel needs a runtime; ensure-node.sh is what finds or fetches one. Its own
+  # cases run here because they need bash, and the branches worth testing are the ones
+  # a machine WITH node can never reach on its own.
+  bash packaging/studio-test/ensure-node-cases.sh || return 1
 }
 
 # The only step that needs a tool the repo does not carry. CI installs the CLI; a developer machine

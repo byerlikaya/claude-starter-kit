@@ -1057,7 +1057,8 @@ sub "see it:   open the Source Control / Changes panel (every added + changed fi
 if bash "$SRC/eval/preflight.sh" --has node 2>/dev/null; then
   sub "panel:    /studio-csk opens it from this project (or: node .claude/studio/server/index.js --open)"
 else
-  sub "panel:    INSTALLED BUT WILL NOT START — Node 18+ is missing here. Every gate still holds; only the panel needs it."
+  sub "panel:    needs Node 18+, absent here — the kit can fetch one: bash .claude/studio/ensure-node.sh --plan"
+  sub "          (it asks first, verifies the checksum, and touches nothing outside ~/.claude/studio-runtime)"
 fi
 sub "$ACCEPT_LINE"
 sub "$DISCARD_LINE"

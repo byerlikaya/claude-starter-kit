@@ -249,7 +249,7 @@ node .claude/studio/server/index.js --enable-pty  # plus raw shells — those by
   <br><sub>The same panel, driven: open a session, read what an agent reported, jump to the one that failed, read the conversation behind it.</sub>
 </div>
 
-**Studio installs with the kit.** `start.sh` and `adopt.sh` create six directories under `.claude/` and Studio is the sixth, so in any project that has the kit you open it with **`/studio-csk`** — or, without the slash picker, `node .claude/studio/server/index.js --open`. It has zero npm dependencies, wants Node 18+, binds to `127.0.0.1` only and requires a per-run token on every API path.
+**Studio installs with the kit.** `start.sh` and `adopt.sh` create six directories under `.claude/` and Studio is the sixth, so in any project that has the kit you open it with **`/studio-csk`** — or, without the slash picker, `node .claude/studio/server/index.js --open`. It has zero npm dependencies, wants Node 18+, binds to `127.0.0.1` only and requires a per-run token on every API path. **No Node on the machine? The kit goes and gets one.** `.claude/studio/ensure-node.sh --plan` shows exactly what it would fetch — the current LTS from nodejs.org, checked against the published SHA-256 and unpacked into `~/.claude/studio-runtime` — and installs nothing until you say yes. No admin rights, no package manager, no PATH edit; deleting that one directory undoes it.
 
 | Channel | Studio |
 |:--|:--|

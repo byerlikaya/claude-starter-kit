@@ -111,7 +111,10 @@ if [ -n "$MISSING_REQ" ]; then
     case "$MISSING_REQ" in
       # Which half is gone. "The kit will not work" is false when only node is missing: every gate is bash and
       # still holds; what is lost is the panel.
-      *node*) printf '    %snode%s is the panel only — every gate still holds without it.\n' "$B" "$R" ;;
+      *node*) printf '    %snode%s is the panel only — every gate still holds without it.\n' "$B" "$R"
+              # And it is not a dead end: the kit fetches a runtime for the panel itself, into one
+              # directory under $HOME, verified against the published checksum. It asks first.
+              printf '    Or let the kit get one: %sbash .claude/studio/ensure-node.sh --plan%s\n' "$B" "$R" ;;
     esac
 elif [ -n "$MISSING_OPT" ]; then
   [ "$QUIET" = 1 ] || printf '\n  %sAll required tools present.%s Optional gaps above are safe but worth closing.\n' "$GR" "$R"

@@ -345,7 +345,7 @@ PREFLIGHT=".claude/eval/preflight.sh"
 [ -f "$PREFLIGHT" ] || PREFLIGHT="$(dirname "$0")/preflight.sh"
 PANEL_NOTE=""
 if [ -d .claude/studio ] && ! bash "$PREFLIGHT" --has node 2>/dev/null; then
-  PANEL_NOTE=" · panel unavailable (no Node 18+)"
+  PANEL_NOTE=" · panel needs Node 18+ — .claude/studio/ensure-node.sh --plan fetches one"
 fi
 if [ "$FAIL" -eq 0 ]; then echo "DOCTOR: healthy ✅$PANEL_NOTE"
 else echo "DOCTOR: $FAIL issue(s) ❌ — apply the fixes above$PANEL_NOTE"; fi

@@ -409,8 +409,10 @@ echo "Tip:  open Claude Code and run /doctor-csk — it checks the install is wi
 if bash .claude/eval/preflight.sh --has node 2>/dev/null; then
   echo "Panel: /studio-csk opens the Studio panel from this project (or: node .claude/studio/server/index.js --open)."
 else
-  echo "Panel: INSTALLED BUT WILL NOT START — Node 18+ is missing on this machine."
-  echo "       Every gate still holds; the panel is the only part that needs node. See the preflight report above."
+  echo "Panel: needs Node 18+, which is not on this machine — but that is no longer a dead end."
+  echo "       The kit fetches one for the panel: bash .claude/studio/ensure-node.sh --plan  (asks first;"
+  echo "       verified against the published checksum, into ~/.claude/studio-runtime, nothing else touched)."
+  echo "       Every gate still holds meanwhile; the panel is the only part that needs node."
 fi
 [ "$STACK" = "dotnet" ] && echo "Layout: backend in ./backend · build your frontend in ./frontend · first agent task: rename DevArchitecture -> $PROJECT_NAME."
 rm -f -- "$0"
