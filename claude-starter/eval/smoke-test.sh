@@ -857,6 +857,22 @@ case "$o" in *'"systemMessage"'*Auto-compaction*) pass "stop-hook: an auto-compa
 # (11) a MANUAL compaction is a deliberate act — never announced as an unchosen loss.
 fillc 100000 manual 1
 [ -z "$(sg "${SGPFX}-j")" ] && pass "stop-hook: a manual compaction is not reported as a loss" || fail "stop-hook reported a deliberate /compact as an unchosen loss"
+# (12) THE HOOK RUNS CLEAN — nothing on stderr. Every case above pipes stderr to /dev/null, which is what
+#      let a shipped defect live: `grep -c` with zero matches prints "0" AND exits 1, so a trailing
+#      `|| echo 0` appended a second line and `$(( 0\n0 + 0 ))` failed. Found by reading a real session
+#      transcript, not by this suite — the suite was discarding the only evidence. A transcript with no
+#      compaction is the ordinary case (every session before its first /compact), so this ran on almost
+#      every turn. Assert the silence directly: stdout is checked above, stderr is checked here.
+#      Both directions, because a check that only runs the failing case proves nothing about the other:
+#      zero matches is where it broke, one match is the path that always worked and must keep working.
+fill 772000
+sgerr="$(mkjson "${SGPFX}-k" "$SGFX" false | CONTEXT_WINDOW=1000000 bash "$HOOKS/session-guard.sh" 2>&1 >/dev/null)"
+[ -z "$sgerr" ] && pass "stop-hook: writes nothing to stderr on an un-compacted transcript" \
+                || fail "stop-hook wrote to stderr with no compaction: $(printf '%s' "$sgerr" | tr '\n' ' ' | cut -c1-160)"
+fillc 772000 manual 1
+sgerr="$(mkjson "${SGPFX}-l" "$SGFX" false | CONTEXT_WINDOW=1000000 bash "$HOOKS/session-guard.sh" 2>&1 >/dev/null)"
+[ -z "$sgerr" ] && pass "stop-hook: writes nothing to stderr when a compaction IS present" \
+                || fail "stop-hook wrote to stderr with a compaction: $(printf '%s' "$sgerr" | tr '\n' ' ' | cut -c1-160)"
 rm -f "$SGFX"; rm -f "${TMPDIR:-/tmp}"/csk-session-guard.${SGPFX}-*.* 2>/dev/null
 
 # ---- CSK-NOJQ-PATH ---------------------------------------------------------------------------------------

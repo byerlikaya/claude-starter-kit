@@ -56,10 +56,17 @@ COMP=0; AUTOC=0
 if [ -n "$TP" ] && [ -f "$TP" ]; then
   # `$(( ))` instead of `| tr -cd '0-9'`: arithmetic already ignores the surrounding whitespace wc and grep
   # emit, and it costs no process where tr costs one each — three of them, on every turn.
+  #
+  # NO `|| echo 0` on the greps. `grep -c` with zero matches PRINTS "0" AND EXITS 1, so the fallback
+  # fired too and the value became two lines — `0\n0` — which `$(( ))` cannot parse. Measured on a real
+  # session: "session-guard.sh: line 61: 0\n0 + 0 : arithmetic syntax error". Every transcript that has
+  # not been compacted takes that path, which is every fresh session, so the 75/90 warning this hook
+  # exists to emit was failing before it could speak. `wc -c` keeps its fallback: it prints nothing when
+  # the file cannot be read, so there the `||` supplies a value rather than appending a second one.
   SZ="$(wc -c < "$TP" 2>/dev/null || echo 0)"; SZ=$(( ${SZ:-0} + 0 ))
   if [ "$SZ" -le "${CSK_CONTEXT_MAX_BYTES:-209715200}" ]; then
-    COMP="$(grep -c '"subtype": *"compact_boundary"' "$TP" 2>/dev/null || echo 0)";  COMP=$(( ${COMP:-0} + 0 ))
-    AUTOC="$(grep -c '"compact_boundary".*"trigger": *"auto"' "$TP" 2>/dev/null || echo 0)"; AUTOC=$(( ${AUTOC:-0} + 0 ))
+    COMP="$(grep -c '"subtype": *"compact_boundary"' "$TP" 2>/dev/null)";  COMP=$(( ${COMP:-0} + 0 ))
+    AUTOC="$(grep -c '"compact_boundary".*"trigger": *"auto"' "$TP" 2>/dev/null)"; AUTOC=$(( ${AUTOC:-0} + 0 ))
   fi
 fi
 marker(){ printf '%s/csk-session-guard.%s.c%s.%s' "${TMPDIR:-/tmp}" "$KEY" "$COMP" "$1"; }

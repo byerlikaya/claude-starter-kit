@@ -62,7 +62,7 @@ awk '
   }' "$HOOKS/guard-write.sh" >> "$TMP/inv"
 
 sort -u "$TMP/inv" -o "$TMP/inv"
-NRULES=$(grep -c . "$TMP/inv" 2>/dev/null || echo 0)
+NRULES=$(grep -c . "$TMP/inv" 2>/dev/null); NRULES=$(( ${NRULES:-0} + 0 ))
 
 # ---- no log. Since 2.5.0 recording is ON by default, so the absence of a file means one of two DIFFERENT
 # things and the report must not blur them:
@@ -95,7 +95,7 @@ awk -F'\t' 'NF>=3 { k=$3; sub(/[[:space:]]*\([^()]*\)[[:space:]]*$/,"",k); c[k]+
 }' "$LOG" > "$TMP/agg"
 
 TOT=$(awk -F'\t' '$1=="TOTAL"{print $2}' "$TMP/agg"); TOT="${TOT:-0}"
-FIRST=$(head -1 "$LOG" 2>/dev/null | cut -f3); LINES=$(grep -c . "$LOG" 2>/dev/null || echo 0)
+FIRST=$(head -1 "$LOG" 2>/dev/null | cut -f3); LINES=$(grep -c . "$LOG" 2>/dev/null); LINES=$(( ${LINES:-0} + 0 ))
 
 if [ "$JSON" = 1 ]; then
   awk -F'\t' -v n="$NRULES" -v t="$TOT" '
