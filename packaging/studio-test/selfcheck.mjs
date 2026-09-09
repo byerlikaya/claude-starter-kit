@@ -23,7 +23,7 @@ import { prepare, decide, pending, cleanup, _internals as permInternals } from '
 import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import { quickReplies } from '../../claude-starter/studio/web/chat.js';
-import { installDom } from './dom-stub.js';
+import { installDom } from './dom-stub.mjs';
 import * as pty from '../../claude-starter/studio/server/lib/pty.js';
 import { plan as terminalPlan } from '../../claude-starter/studio/server/lib/terminal.js';
 import { gateLog, gateReport, board, sessionStats, _internals as kitInternals } from '../../claude-starter/studio/server/lib/kit-telemetry.js';
@@ -43,6 +43,7 @@ const WEB_ROOT = path.join(STUDIO, 'web');
 let pass = 0;
 let fail = 0;
 let skipped = 0;
+let na = 0;
 const failures = [];
 
 function check(name, ok, detail) {
@@ -62,6 +63,23 @@ function check(name, ok, detail) {
  * CSK_VERIFY_STRICT — which CI sets — that is a broken runner, not an honest
  * boundary, so it goes red. Every other class stays a skip.
  */
+/**
+ * An assertion that does not apply on this platform, and is measured on another.
+ *
+ * Distinct from skip() on purpose. `tool` skips mean "this could have been
+ * measured and was not", so CSK_VERIFY_STRICT turns them red — a runner missing
+ * a tool is a broken runner. A capability the platform does not have is a
+ * different statement: it stays green here because it is red-or-green somewhere
+ * else, and saying so is the only way the strict rule keeps its meaning.
+ *
+ * Use it only where another assertion covers the same ground on the platform
+ * that has the feature. Never as a way to make a failing check quiet.
+ */
+function notApplicable(name, why, coveredBy) {
+  na += 1;
+  process.stdout.write(`N/A  ${name} — ${why}; covered by: ${coveredBy}\n`);
+}
+
 function skip(name, kind, why) {
   const strict = process.env.CSK_VERIFY_STRICT === '1' && kind === 'tool';
   if (strict) {
@@ -964,7 +982,15 @@ check('both widths are remembered', /csk-studio-side-w/.test(appSrc2) && /csk-st
       python = c; break;
     } catch { /* try the next one; a resolvable name is not a working one */ }
   }
-  if (!python) {
+  if (process.platform === 'win32') {
+    // Python's `pty` is Unix-only — it imports tty, which imports termios. So this
+    // assertion cannot pass on Windows even with Python installed, and calling it
+    // a missing tool made it permanently red under CSK_VERIFY_STRICT. What Windows
+    // must do instead is refuse the raw shell, and §14 asserts exactly that.
+    notApplicable('the pty bridge survives an undecodable frame',
+      "python's pty module is Unix-only",
+      'the §14 pin that Windows is told it cannot, rather than left to fail');
+  } else if (!python) {
     skip('the pty bridge survives an undecodable frame', 'tool', 'no python3 with the pty module');
   } else {
     const probe = [
@@ -2058,5 +2084,6 @@ if (fail) {
   for (const f of failures) process.stdout.write(`  - ${f}\n`);
 }
 process.stdout.write(`${pass}/${pass + fail} assertions passed`
-  + (skipped ? `, ${skipped} skipped` : '') + '\n');
+  + (skipped ? `, ${skipped} skipped` : '')
+  + (na ? `, ${na} n/a on ${process.platform}` : '') + '\n');
 process.exit(fail ? 1 : 0);

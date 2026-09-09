@@ -64,7 +64,7 @@ step_studio(){
   [ -d claude-starter/studio ] || { echo "claude-starter/studio is MISSING — the panel ships in the payload"; return 1; }
   command -v node >/dev/null 2>&1 || { echo "SKIP: node is not on PATH"; return 3; }
   node --version >/dev/null 2>&1 || { echo "SKIP: node is on PATH but does not run"; return 3; }
-  node packaging/studio-test/selfcheck.js || return 1
+  node packaging/studio-test/selfcheck.mjs || return 1
 }
 
 # The only step that needs a tool the repo does not carry. CI installs the CLI; a developer machine
