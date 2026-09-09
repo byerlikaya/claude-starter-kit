@@ -36,7 +36,9 @@ FALLBACK_VERSION=v24.21.0
 WIN_MAX_PATH=260
 NODE_DEEPEST_ENTRY=125          # measured inside v24.21.0's zip; a deeper future release makes
                                 # this under-warn rather than over-warn, which is the safe side
-WIN_DIR_BUDGET=$((WIN_MAX_PATH - NODE_DEEPEST_ENTRY - 1))
+# Minus two, not one: the cap is exclusive. Measured on Windows 11 — a 133-character unpack
+# directory works and 134 fails, because 134 + 1 + 125 is exactly 260 and Windows wants less.
+WIN_DIR_BUDGET=$((WIN_MAX_PATH - NODE_DEEPEST_ENTRY - 2))
 
 RUNTIME="${CSK_STUDIO_RUNTIME:-$HOME/.claude/studio-runtime}"
 EXPLAIN=0
@@ -50,7 +52,7 @@ die() { printf '%s\n' "$*" >&2; exit 1; }
 # A name that resolves is not a working interpreter: the Windows Store ships a stub that
 # satisfies `command -v`, prints nothing and exits 49. So run it and read the major it
 # reports. The cheap tests come first so an unmatched glob never costs a process — on
-# Git Bash a fork is 20-50 ms and this list is long.
+# Git Bash a fork is 62-135 ms idle and around 400 ms on a busy machine, and this list is long.
 works() {
   [ -n "${1:-}" ] || return 1
   case "$1" in
@@ -273,11 +275,23 @@ plan() {
   # exists the chain stops there and this does not apply.
   TOO_LONG=""
   if [ "$PLAT" = win ] && ! command -v unzip >/dev/null 2>&1; then
-    wt="$TARGET"
+    # What to measure, and against what, have to be the same thing — this is where the two
+    # halves of the arithmetic were mismatched twice.
+    #
+    # NODE_DEEPEST_ENTRY is counted from the ARCHIVE ROOT, so it already contains the
+    # "node-<ver>-<plat>-<arch>/" segment. The object that pairs with it is therefore the
+    # directory the archive is expanded INTO — $RUNTIME/.tmp.<pid> — and not that directory
+    # plus the segment, which counts the same 22 characters twice and refuses paths that work.
+    # $TARGET is the wrong object for a different reason: the unpack happens under .tmp.<pid>
+    # and is moved afterwards, so $TARGET is shorter than what actually exists mid-install.
+    #
+    # A seven-digit pid is assumed. Real ones here are four or five, so the check is a couple
+    # of characters conservative on purpose.
+    probe="$RUNTIME/.tmp.0000000"
     if command -v cygpath >/dev/null 2>&1; then
-      wt="$(cygpath -wa "$TARGET" 2>/dev/null || printf '%s' "$TARGET")"
+      probe="$(cygpath -wa "$probe" 2>/dev/null || printf '%s' "$probe")"
     fi
-    [ "${#wt}" -gt "$WIN_DIR_BUDGET" ] && TOO_LONG="${#wt}"
+    [ "${#probe}" -gt "$WIN_DIR_BUDGET" ] && TOO_LONG="${#probe}"
   fi
 }
 
