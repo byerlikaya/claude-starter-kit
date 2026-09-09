@@ -738,13 +738,19 @@ async function selftest() {
     const tag = c.skipped ? 'SKIP' : c.ok ? 'PASS' : 'FAIL';
     process.stdout.write(`${tag} ${c.name}${c.detail ? ` — ${c.detail}` : ''}\n`);
   }
-  // An empty run is a broken harness, not a clean bill of health.
-  if (!checks.length) {
-    process.stdout.write('FAIL selftest ran zero checks — the measurement is broken, not the server\n');
-    return 1;
-  }
   const skipped = checks.filter((c) => c.skipped).length;
   const graded = checks.filter((c) => !c.skipped);
+  // An empty run is a broken harness, not a clean bill of health — and "empty"
+  // has to mean nothing GRADED, not nothing recorded. Counting checks.length
+  // instead would let a run where every probe skipped report "0/0 passed" and
+  // exit 0. Unreachable today, because the first two checks always grade; the
+  // guard is written for the version of this function that has more skips in it.
+  if (!graded.length) {
+    process.stdout.write(`FAIL selftest graded nothing`
+      + (skipped ? ` — all ${skipped} check(s) skipped` : ' — it ran zero checks')
+      + '; the measurement is broken, not the server\n');
+    return 1;
+  }
   const failed = graded.filter((c) => !c.ok).length;
   process.stdout.write(`\n${graded.length - failed}/${graded.length} passed`
     + (skipped ? `, ${skipped} skipped` : '') + '\n');
