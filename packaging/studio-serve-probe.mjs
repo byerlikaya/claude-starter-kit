@@ -28,6 +28,7 @@ if (!root) {
 }
 
 const TOKEN = 'probe-token-not-a-secret';
+const TIMEOUT_MS = 45000;
 const direct = path.join(root, 'studio', 'server', 'index.js');
 const viaProject = path.join(root, '.claude', 'studio', 'server', 'index.js');
 // Absolute: the child is spawned with cwd set to the root, so a relative entry would be resolved
@@ -60,15 +61,29 @@ function get(port, pathname, headers = {}) {
     const req = http.request({ host: '127.0.0.1', port, path: pathname, method: headers.__method ?? 'GET', headers },
       (res) => { let b = ''; res.on('data', (d) => { b += d; }); res.on('end', () => resolve({ status: res.statusCode, body: b })); });
     req.on('error', (e) => resolve({ status: 0, body: String(e.code ?? e.message) }));
-    req.setTimeout(15000, () => { req.destroy(); resolve({ status: 0, body: 'timeout' }); });
+    // Generous, and it says WHICH it was. Measured on a corporate Windows machine: /api/projects
+    // took 12 s, the 15 s limit was marginal, and the failure surfaced as `status 0` — which
+    // reads as a broken endpoint rather than as a slow one. A flaky gate that names the wrong
+    // cause is worse than a slow one.
+    req.setTimeout(TIMEOUT_MS, () => {
+      req.destroy();
+      resolve({ status: 0, body: `no answer within ${TIMEOUT_MS / 1000}s (timed out, not refused)` });
+    });
     req.end();
   });
 }
 
+// A registry that accepts the connection and never answers — the shape a proxy or an inspecting
+// endpoint takes, and the one an unreachable host does NOT take (a refused connection returns at
+// once and hides the defect entirely).
+const blackHole = net.createServer(() => { /* accept, then silence */ });
+await new Promise((r) => blackHole.listen(0, '127.0.0.1', r));
+const feedUrl = `http://127.0.0.1:${blackHole.address().port}/dist-tags`;
+
 const port = await freePort();
 const child = spawn(process.execPath, [entry, '--port', String(port)], {
   cwd: root,
-  env: { ...process.env, CSK_STUDIO_TOKEN: TOKEN },
+  env: { ...process.env, CSK_STUDIO_TOKEN: TOKEN, CSK_UPDATE_URL: feedUrl },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
 
@@ -76,7 +91,7 @@ let out = '';
 child.stdout.on('data', (d) => { out += d; });
 child.stderr.on('data', (d) => { out += d; });
 
-const stop = () => { try { child.kill(); } catch { /* already gone */ } };
+const stop = () => { try { child.kill(); } catch { /* already gone */ } try { blackHole.close(); } catch { /* already closed */ } };
 process.on('exit', stop);
 
 // Wait for it to answer, not for a fixed number of seconds: a slow runner is not
@@ -100,11 +115,24 @@ check('the panel page is served', shell.status === 200 && /<div id="canvas"|cv-r
 const noTok = await get(port, '/api/health');
 check('an API call without a token is refused', noTok.status === 403, `status ${noTok.status}`);
 
+// Timed, and it must be the FIRST call to this endpoint: the answer is cached, so a later one
+// measures the cache rather than the fetch. A mutation that put the network back on this path
+// passed at 22 ms when the timing sat on the second call — the check was reading warm state.
+const t0 = Date.now();
 const projects = await get(port, `/api/projects?token=${TOKEN}`);
+const waited = Date.now() - t0;
 let measured = null;
 try { measured = JSON.parse(projects.body); } catch { /* reported below */ }
 check('projects are read from disk', projects.status === 200 && measured && Array.isArray(measured.projects),
   measured ? `${measured.projects?.length} project(s)` : `status ${projects.status}`);
+
+// The list is local data. It used to await the update feed, so a hanging registry cost the full
+// 8 s fetch timeout on the first request — measured at 8.37 s, and reported from a corporate
+// network as a 12-second panel that read as hung. CSK_UPDATE_URL points at a socket that accepts
+// and never answers, which is exactly that condition; an unreachable host would NOT reproduce it,
+// because a refused connection returns at once.
+check('the project list does not wait on the update feed', waited < 3000,
+  `the first call took ${waited}ms with a feed that never answers`);
 
 const traversal = await get(port, `/../../../../etc/passwd?token=${TOKEN}`);
 check('a path outside the web root is refused', traversal.status !== 200, `status ${traversal.status}`);

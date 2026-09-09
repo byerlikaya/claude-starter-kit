@@ -19,7 +19,27 @@ const FETCH_TIMEOUT_MS = 8000;
 let latestCache = null;   // { at, value }
 let inflight = null;
 
-/** The published version, or a stated reason it could not be read. */
+/**
+ * The published version WITHOUT waiting for the network.
+ *
+ * Returns whatever is cached, and starts a refresh if the cache is cold or stale — but never
+ * awaits it. Measured on a corporate machine: with the feed hanging, /api/projects took 8.37 s
+ * because it awaited this, which is the whole FETCH_TIMEOUT_MS. The project list is local data;
+ * it has no business waiting on a registry, and a user watching a 12-second blank reads it as a
+ * hung panel rather than as a slow lookup they never asked for.
+ *
+ * The honesty rule is unchanged: an unfetched answer says so with a reason. It never renders as
+ * "up to date". The reason simply becomes "not fetched yet" until the first refresh lands, and
+ * the next request serves the real answer.
+ */
+export function latestVersionCached() {
+  const fresh = latestCache && Date.now() - latestCache.at < FEED_TTL_MS;
+  if (!fresh && !inflight) { latestVersion().catch(() => {}); }
+  if (latestCache) return latestCache.value;
+  return { measured: false, reason: 'not fetched yet', at: Date.now(), pending: true };
+}
+
+/** The published version, or a stated reason it could not be read. Awaits the network. */
 export async function latestVersion({ force = false } = {}) {
   if (!force && latestCache && Date.now() - latestCache.at < FEED_TTL_MS) return latestCache.value;
   if (inflight) return inflight;
