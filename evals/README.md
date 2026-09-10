@@ -35,6 +35,19 @@ Scratch projects default to `$TMPDIR`; point `CSK_EVAL_WORK` at a path Claude Co
 the "workspace has not been trusted" warning — an untrusted workspace silently drops the kit's
 `permissions.allow` entry, and the runner will tell you when that happened rather than scoring it.
 
+**Arms, and measuring a rule rather than the kit.** `CSK_EVAL_ARMS` picks the arms (default `kit bare`). Arm `kitb`
+is the kit install with exactly one difference: its `.claude/DISCIPLINE.md` is the discipline half of the file named
+by `CSK_EVAL_DISCIPLINE_B`, a CLAUDE.md carrying the `<!-- KIT:DISCIPLINE-END` sentinel. `CSK_EVAL_ARMS="kit kitb"`
+therefore varies one thing — the discipline text — and is how a rule change is measured. `CSK_EVAL_CASES` runs
+cases from another directory, so a draft set can be exercised before it lands here.
+
+**Delegation and cost, from the event stream.** `CSK_EVAL_TRACE=1` runs the CLI with `--output-format stream-json
+--verbose`, keeps the stream in `.eval-stream.jsonl`, re-derives the reply into `.eval-stdout.txt`, and writes one
+metrics line per run: main-thread `Agent`/`Task` calls, nested calls, `subagent_stats.spawned`, `total_cost_usd`,
+token usage and turns. Each arm then prints a `trace` line — delegated k/n, cost, tokens. A run whose stream is empty
+or carries no `result` event is flagged and **not counted**: an empty trace says nothing about delegation. Grading
+still reads only the files on disk; the trace is a second measurement beside the grade, never an input to it.
+
 **Two environment facts, measured rather than assumed** (2026-07-31, CLI 2.1.220), because both of them decide
 whether anything measured here counts:
 
@@ -58,6 +71,10 @@ looks like evidence.
 Treat run-to-run variance as a warning rather than something to average away. A delta smaller than the spread
 between two identical rounds is not a result — say "below the noise floor" and either raise n or accept the
 change is unmeasurable at this scale.
+
+`CSK_EVAL_ARMS="kit kitb"` is that procedure with the current wording as the control: same install, same cases, only
+the discipline text differs. Reading the runs by hand still applies — `--keep` retains every project and its
+`.eval-stream.jsonl`.
 
 ## Reading a result
 
@@ -287,6 +304,10 @@ look the same. So the question that matters most to this kit cannot be an A/B ca
 below was taken separately. It is recorded here rather than only in the changelog so that a claim about it has
 somewhere to point.
 
+That was true of the grader, and still is. It stopped being true of the harness: with `CSK_EVAL_TRACE=1` the runner
+records delegation from the event stream beside the grade, so this kind of measurement can now be taken here with a
+per-run record — the next section was.
+
 **Method.** A focused, single-domain request in a project with every agent installed and the delegation tool
 available — the work squarely inside one agent's domain. Counted: did the main thread hand the task to that
 agent, or keep it.
@@ -305,6 +326,57 @@ nowhere on the machine.
 **Caveat, stated because it changes what the number means.** These runs were not produced by `run.sh` and
 carry no per-run log in this directory; what is above is the record of the measurement, not a rerunnable case.
 Treat it as weaker evidence than the table above until it can be re-taken with a published transcript.
+
+## Measured with `CSK_EVAL_TRACE`: does a risk threshold change delegation?
+
+**Question.** The discipline says "small job" is never a reason to work inline. A draft replaced that with a risk
+threshold: inline only for one file, no behaviour change and no test to change; delegate at any size for a behaviour
+change, more than one file, auth/secrets/security, personal or stored data, a migration, CI/deploy or a dependency.
+Two things had to hold before it could ship. It had to cut delegation on low-risk work, and it must not open an escape
+hatch on high-risk work — an earlier wording of the routing hint that carried a written exception had scored 4 of 12,
+against the plain imperative's 39 of 48.
+
+**Setup.** CLI 2.1.267, 2026-09-10, `--permission-mode bypassPermissions`. Arms `kit` (current discipline) and `kitb`
+(the draft); six cases — `lowrisk-comment-typo`, `lowrisk-readme-wording`, `lowrisk-inline-rename`,
+`highrisk-auth-oneliner`, `highrisk-behaviour-two-files`, `highrisk-stored-data` — three runs each, 36 sessions.
+"Delegated" means at least one main-thread `Agent`/`Task` call. The criteria, the cases, the runner and the analysis
+were hashed before the first counted run. A one-session calibration found two defects in the runner — the metrics
+file tripped every grader, and the summary filed `kitb` under `bare` — and both were fixed before the full run, with
+the criteria left untouched.
+
+| class | arm | delegated | checks | cost | tokens |
+|---|---|---|---|---|---|
+| low risk | kit | 0/9 | 27/27 | $2.44 | 1.08 M |
+| low risk | kitb | 0/9 | 27/27 | $2.23 | 0.92 M |
+| high risk | kit | 9/9 | 22/24 | $14.30 | 1.34 M |
+| high risk | kitb | 9/9 | 23/24 | $12.00 | 1.37 M |
+
+**Pre-registered criteria.** Low risk: `kitb` delegates at least three fewer runs than `kit` — **failed** (0 and 0);
+checks not lower — passed. High risk: `kitb`'s delegated runs at least `kit`'s minus one — passed (9 and 9); checks not
+lower — passed. **Decision: the draft does not ship.**
+
+**What it means.** The low-risk criterion failed on a floor, not on the draft: the current discipline delegated none of
+the three low-risk tasks, so there was nothing to reduce and no wording could have passed. The premise — that the
+current rule pushes trivial single-prompt work to a subagent — did not reproduce here. The safety half held: the draft
+opened no escape hatch on high-risk work. The cost gap is recorded, not claimed; nine runs a cell cannot separate it
+from noise, and a failed criterion at this n means "no large effect", not "no effect". For the next pre-registration:
+measure the control's baseline with n ≥ 3 before writing a reduction criterion — the single calibration run had
+already shown 0 of 1.
+
+**To re-run it,** build arm B's file by replacing, in a copy of `claude-starter/CLAUDE.md`, the paragraph that begins
+"The specialists run the work; you route it." and the one that begins "Route trace on every task" with:
+
+> **The specialists run the work; you route it.** Delegation is the DEFAULT for anything that changes what code
+> DOES. RISK decides, not size — both ways: a one-line auth check goes to its owner, a typo does not.
+>
+> **Route trace on every task** — `🔧 <agent> (why)` delegating, `🔧 inline · <clause>` not. **Inline only when ALL
+> hold:** one file · no behaviour change (typo, comment, in-file rename, wording) · no test changes. **Delegate when
+> ANY holds, at any size:** behaviour change · >1 file · auth/secrets/security · personal or stored data · migration ·
+> CI/deploy · dependency. Also inline: *no owner installed*, *not code work*, *user asked for inline*. Unsure → not low
+> risk; delegate. Stuck → stop and report. Commit/push and destructive commands are gated (§4.4/§4.5).
+
+Then point `CSK_EVAL_CASES` at a directory holding only the six cases (or run each with `--case`) and use
+`CSK_EVAL_ARMS="kit kitb" CSK_EVAL_DISCIPLINE_B=<that file> CSK_EVAL_TRACE=1 bash evals/run.sh --runs 3 --keep`.
 
 ## When `claude plugin eval` opens
 
