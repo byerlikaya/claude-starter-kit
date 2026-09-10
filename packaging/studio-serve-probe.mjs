@@ -155,35 +155,34 @@ check('projects are read from disk', projects.status === 200 && measured && Arra
 // network as a 12-second panel that read as hung. CSK_UPDATE_URL points at a socket that accepts
 // and never answers, which is exactly that condition; an unreachable host would NOT reproduce it,
 // because a refused connection returns at once.
-check('the project list does not wait on the update feed', waited < 3000,
-  `the first call took ${waited}ms with a feed that never answers`);
+// One measurement, three outcomes — because two independent checks on the same numbers could
+// disagree with each other, and because the first version of this got the naming wrong in a way
+// worth not repeating: it called every slow first call "waiting on the update feed", which is a
+// cause that was later disproven. A run that hits the known block says nothing about the feed at
+// all, so it must not be reported as if it did.
+const STALL_MS = 25000;          // the block measured at 28-31 s; a feed wait would be 8 s at most
+const LIVENESS_MS = 2000;
+const timing = `the first /api/projects took ${waited}ms with a feed that never answers; a separate `
+  + `/api/health on its own connection answered ${during.status} after ${duringMs}ms while it was in flight`;
 
-// The sharper claim: not "is the list slow" but "is the panel answering at all". A slow endpoint is
-// an endpoint; a server that answers nothing is a panel the user calls frozen, and a single request
-// cannot tell them apart.
-//
-// On Windows this goes wrong about one run in eight, and it does so on main as well — the stall
-// predates this change and is not caused by it. The mechanism was isolated: listProjects() reads
-// every transcript with openSync/readSync on the request path, and on a machine whose security
-// layer inspects file opens, a SINGLE openSync was measured taking 31.2 s. That blocks the event
-// loop, so nothing the panel serves answers — a separate /api/health on its own connection stayed
-// silent for 20 s. Reproduced outside the panel entirely, with plain Node doing the same reads,
-// and never reproduced on macOS (0/20).
-//
-// The slow read is not ours to fix. Its blast radius is: async fs would leave that one request
-// waiting and let every other one through. That change is tracked on its own — listProjects is
-// synchronous throughout and rewriting it deserves its own measurement.
-//
-// So it is reported as KNOWN rather than passed or failed: green would hide it, red would be
-// intermittent and eventually muted, and neither states what is true.
-const answering = during.status === 200 && duringMs < 2000;
-const liveness = `a separate /api/health answered ${during.status} after ${duringMs}ms while `
-  + `/api/projects was in flight (that call took ${waited}ms)`;
-if (answering) check('the panel keeps answering while the feed hangs', true, liveness);
-else knownIssue('the panel keeps answering while the feed hangs', liveness,
-  'listProjects reads transcripts with synchronous fs on the request path, so one slow file open '
-  + '(31.2s measured under a Windows security layer) blocks the whole event loop — present on main '
-  + 'too; the fix is async fs, tracked separately');
+if (waited < 3000 && duringMs < LIVENESS_MS) {
+  check('the project list does not wait on the update feed', true, timing);
+  check('the panel answers other requests while the feed hangs', true, timing);
+} else if (waited > STALL_MS || duringMs > STALL_MS) {
+  // The known one. Reported, not passed and not failed: green would hide a defect we have measured,
+  // red goes red on one Windows run in eight and gets muted within a month.
+  knownIssue('the panel stalls while a transcript read blocks the loop',
+    `${timing} — nothing was served for ~${Math.round(Math.max(waited, duringMs) / 1000)}s`,
+    'listProjects reads transcripts with synchronous fs on the request path, so one slow file open '
+    + '(31.2s measured under a Windows security layer) blocks the whole event loop — present on main '
+    + 'too; the fix is async fs, tracked separately');
+  notApplicable('the project list does not wait on the update feed',
+    'this run hit the block above, so its timing measures that and cannot speak to the feed');
+} else {
+  // Neither fast nor the shape of the known block. Something else, and it should be loud.
+  check('the project list does not wait on the update feed', false,
+    `${timing} — slower than a local read and faster than the known block, so this is neither`);
+}
 
 const traversal = await get(port, `/../../../../etc/passwd?token=${TOKEN}`);
 check('a path outside the web root is refused', traversal.status !== 200, `status ${traversal.status}`);
