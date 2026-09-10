@@ -39,6 +39,11 @@ INPUT="$(cat)"
 # ---- CSK-JSON-PARSE ------------------------------------------------------------------------------------
 _json_slice(){  # $1 = whole payload, $2 = key -> the raw (still JSON-escaped) string value, "" if absent
   local rest="${1#*\"$2\"}" seg tail out bs
+  local LC_ALL=C   # Same reason, and the same platform caveat, as in _json_unescape below -- read the table
+                   # there before quoting a speedup for this. Measured here: 1.56s -> 0.31s on a 46882 B
+                   # payload on macOS with a locale set; far less on Git Bash, and nothing where LANG is
+                   # empty. Output verified identical. Safe because no UTF-8 continuation byte can be 0x5C
+                   # or 0x22, so walking bytes cannot split a character across a quote or backslash edge.
   [ "$rest" != "$1" ] || return 0          # key absent: emit nothing
   rest="${rest#*\"}"                       # skip `: "` up to the value's opening quote
   out=""; tail="$rest"
@@ -53,34 +58,70 @@ _json_slice(){  # $1 = whole payload, $2 = key -> the raw (still JSON-escaped) s
   done
   printf '%s' "$out"
 }
-_json_unescape(){  # single left-to-right pass; a two-pass sed would corrupt `\\"` (escaped backslash + quote)
-  local s="$1" out="" c h
+_json_unescape(){  # left-to-right, one whole run per escape; a two-pass sed would corrupt `\\"` (escaped backslash + quote)
+  # This is the tier-3 path below -- the one a stock Windows install actually runs on. It used to walk ONE
+  # CHARACTER at a time, which is O(n^2) twice over: `${s%"${s#?}"}` matches a pattern the length of the
+  # entire remainder just to read one character, and `out="$out$c"` recopies the output for each one.
+  #
+  # That was not a comfort question. This hook's timeout is 60s -- set in settings.json, NOT Claude Code's
+  # default, and reading the default instead is how a first pass at this got the consequence wrong. A
+  # PreToolUse hook KILLED at its timeout emits no exit 2, so every rule below is simply skipped. Measured on
+  # the tier-3 path with jq and python3 both shadowed, the old shape crossed 60s at ~4.3 KB. And 4.3 KB is
+  # not exotic: across 6791 Bash calls in 280 real transcripts, 2.49% of commands are bigger, and the largest
+  # is 46815 B, which the old shape needed roughly 39 minutes to decode. One Bash call in forty walked past
+  # §4.4 and §4.5 entirely, silently, on every stock Windows desktop.
+  #
+  # Two changes, and their wins are NOT the same shape -- writing them down as one number was the mistake
+  # this comment exists to avoid repeating:
+  #   * Taking the whole run up to the next backslash in ONE expansion, and indexing with `${s:0:1}` instead
+  #     of matching a pattern, is 47x on a 4.4 KB payload. This one holds on every machine.
+  #   * `local LC_ALL=C` makes these expansions byte-oriented instead of re-decoding the string on every
+  #     substring operation. What that is WORTH depends on the platform, and putting a single number here
+  #     would have been wrong three separate ways -- it was written as "another 5x" twice before this:
+  #         macOS / bash 3.2, a locale set .................. 5x
+  #         Git Bash 5.3.15, a locale set ................... 1.23x   (measured on the OLD shape; the new one
+  #                                                                    touches the locale once per escape
+  #                                                                    rather than once per character, so its
+  #                                                                    ratio is smaller and unmeasured)
+  #         Git Bash, LANG empty -- what Claude Code starts .. nothing at all
+  #     So speed is not what keeps this line; CORRECTNESS is, and that half holds everywhere. `[0-9a-fA-F]`
+  #     below is a collation-defined range outside the C locale: on a tr_TR desktop it is not 0-9a-f. That
+  #     alone would justify the line, and it costs nothing. `local` restores the previous locale on return
+  #     -- verified on bash 3.2 and on Git Bash 5.3.15, not assumed.
+  #
+  # Heaviest real payload (46815 B, 2813 escapes), whole hook end to end: 3.42s on macOS/bash 3.2. Windows is
+  # slower and is measured there separately -- these numbers do not travel, which is the whole reason the
+  # figures above name the machine they came from. Output is byte-identical to the old function across a
+  # 31-case battery (escaped quotes, `\\\\`, a lone trailing backslash, a truncated `\\u`, Turkish, emoji), and
+  # tier 1 and tier 3 return the same verdict on 22 gate cases. A deliberately-broken twin of the new function
+  # proves the battery can tell the two apart.
+  local s="$1" out="" pre c h
+  local LC_ALL=C
   case "$s" in *\\*) ;; *) printf '%s' "$s"; return 0 ;; esac   # no escapes: the common case pays nothing
-  while [ -n "$s" ]; do
-    c="${s%"${s#?}"}"; s="${s#?}"
-    if [ "$c" = "\\" ] && [ -n "$s" ]; then
-      c="${s%"${s#?}"}"; s="${s#?}"
-      case "$c" in
-        n) out="$out
+  while :; do
+    pre="${s%%\\*}"                                     # the whole literal run before the next backslash
+    if [ "$pre" = "$s" ]; then out="$out$s"; break; fi   # no backslash left: the remainder is literal
+    out="$out$pre"; s="${s:${#pre}+1}"
+    if [ -z "$s" ]; then out="$out\\"; break; fi         # a lone trailing backslash stays literal, as before
+    c="${s:0:1}"; s="${s:1}"
+    case "$c" in
+      n) out="$out
 " ;;
-        t) out="$out	" ;;
-        r) ;;
-        b|f) out="$out " ;;
-        u) h="${s%"${s#????}"}"; s="${s#????}"
-           # A `\uXXXX` used to become a literal `?`. That is not a lossy nicety, it is a hole: `\u002e` is `.`,
-           # so `\u002eclaude/hooks/guard-bash.sh` decoded to `?claude/…` and matched no gate pattern, while jq
-           # decoded the same bytes to the real path — the two tiers disagreed on whether a payload was an
-           # attack. Printable ASCII is decoded properly (builtin printf, no fork); anything else still becomes
-           # `?`, which is only ever a display concern because this value is used for MATCHING, never to write.
-           case "$h" in
-             00[2-7][0-9a-fA-F]) printf -v c "\\x${h#00}"; out="$out$c" ;;
-             *)                  out="$out?" ;;
-           esac ;;
-        *) out="$out$c" ;;
-      esac
-    else
-      out="$out$c"
-    fi
+      t) out="$out	" ;;
+      r) ;;
+      b|f) out="$out " ;;
+      u) if [ ${#s} -ge 4 ]; then h="${s:0:4}"; s="${s:4}"; else h=""; fi   # a short tail leaves s alone, as before
+         # A `\uXXXX` used to become a literal `?`. That is not a lossy nicety, it is a hole: `\u002e` is `.`,
+         # so `\u002eclaude/hooks/guard-bash.sh` decoded to `?claude/…` and matched no gate pattern, while jq
+         # decoded the same bytes to the real path — the two tiers disagreed on whether a payload was an
+         # attack. Printable ASCII is decoded properly (builtin printf, no fork); anything else still becomes
+         # `?`, which is only ever a display concern because this value is used for MATCHING, never to write.
+         case "$h" in
+           00[2-7][0-9a-fA-F]) printf -v c "\\x${h#00}"; out="$out$c" ;;
+           *)                  out="$out?" ;;
+         esac ;;
+      *) out="$out$c" ;;
+    esac
   done
   printf '%s' "$out"
 }
