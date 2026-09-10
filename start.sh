@@ -92,6 +92,53 @@ project_has_source() {  # is there a real source/project file outside the kit
   done
   return 1
 }
+# MAX_PATH, and why the check is here rather than after the clone.
+#
+# The install and the BUILD obey different limits, so a long install path produces a tree that copies fine and
+# cannot be compiled. Measured on Windows 11 Pro 26200, LongPathsEnabled=0 (the default):
+#
+#   MSYS `cp -R` to a 275-character path   1286 files, rc=0            <- the installer reports success
+#   PowerShell Test-Path on that file      False
+#   .NET File.ReadAllBytes on it           throws
+#   dotnet build (SDK 10.0.401) at depth   rc=1, "the fully qualified file name must be less than 260"
+#
+# MSYS prefixes its own calls with \\?\ and is not bound by MAX_PATH; MSBuild and the .NET file APIs are. So
+# `cp` is the wrong thing to ask, and asking it after the clone is the wrong time — by then the user has an
+# 8 MB tree that looks installed.
+#
+# The usable limit is 259 characters, not 260: measured file by file at 250/255/258/259 (openable) against
+# 260/261/265 (not). The skeleton's own deepest path is 156 characters, it lands under ./backend/, so the
+# budget for the project root is 259 - 156 - len("/backend/") = 94. Verified at the boundary, with the
+# prediction written down first: root 94 opens, root 95 does not.
+#
+# 94 IS AN UPPER BOUND, NOT A SAFE ONE. A build writes deeper than the sources it compiles —
+# bin/Debug/<tfm>/publish/ and obj/ sit under the project — so the real headroom is smaller by however much
+# the build adds. That figure is NOT measured here (it needs a full restore+build of the base), which is why
+# this warns rather than refuses: a number that is known to be optimistic must not be used to block someone.
+#
+# `git config core.longpaths true` is NOT the remedy and is deliberately not suggested. It lets git write
+# long paths; it does nothing for MSBuild, which is what fails. The two remedies that do work are a shorter
+# install root, or LongPathsEnabled=1 in the registry (admin, machine-wide, and a reboot for some tools).
+csk_native_len(){   # length of $1 in its NATIVE form; 0 where there is no native form (macOS/Linux)
+  local n
+  n="$(cd "$1" 2>/dev/null && pwd -W 2>/dev/null)" || { printf '0'; return; }
+  [ -n "$n" ] || { printf '0'; return; }
+  printf '%s' "${#n}"
+}
+csk_path_budget_warn(){
+  local rl; rl="$(csk_native_len .)"
+  [ "$rl" -gt 94 ] 2>/dev/null || return 0
+  echo
+  echo "  !!! WARNING: this project root is $rl characters; the .NET base needs it to be 94 or fewer."
+  echo "  The copy will SUCCEED and the build will FAIL: the base's deepest file is 156 characters, and"
+  echo "  Windows cannot open a path past 259 unless long paths are enabled. Measured here: dotnet build"
+  echo "  stops with \"the fully qualified file name must be less than 260 characters\"."
+  echo "  94 is also optimistic — a build writes bin/ and obj/ BELOW the sources, so the real room is less."
+  echo "  Two things fix it: install at a shorter root (C:\\src\\<name> rather than a deep Documents path),"
+  echo "  or set LongPathsEnabled=1 under HKLM\\SYSTEM\\CurrentControlSet\\Control\\FileSystem (admin)."
+  echo "  (core.longpaths only affects git, not the build, so it will not help here.)"
+  echo
+}
 clone_devarch() {  # $1 = target dir; clone verbatim, drop nested .git, rename the .sln to the project name
   local target="${1:-.}"
   command -v git >/dev/null 2>&1 || { echo "  ERROR: git missing; cannot include DevArchitecture."; return 1; }
@@ -262,6 +309,7 @@ echo
 # --- Step 3: Backend base (only .NET/DevArchitecture; APPROVAL GATE) ---
 if [ "$DEVARCH_ON" = 1 ]; then
   echo "== Backend base (DevArchitecture) =="
+  csk_path_budget_warn
   echo "  Target: ./$BACKEND_DIR (the frontend stays separate under ./frontend)."
   if has_devarch "$BACKEND_DIR"; then
     echo "  DevArchitecture detected — base already present, skipping copy."
