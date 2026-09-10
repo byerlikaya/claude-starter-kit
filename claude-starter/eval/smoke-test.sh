@@ -1089,21 +1089,47 @@ enc_csk(){ printf '%s' "$1" | sed "${CSK_ENC_SED:-s#x#x#}"; }
   && pass "encode: underscore folds to '-' (misses every such project otherwise)" \
   || fail "encode: underscore NOT folded -> $(enc_csk '/Users/x/my_app')"
 # The encoder is written out twice, once per hook, because a shared file would have to be added to
-# build-plugin.sh's explicit copy list and a miss there breaks the plugin channel silently. Two copies are only
-# safe while they cannot drift, so that is enforced here rather than trusted.
-cu_blk="$(sed -n '/---- CSK-TRANSCRIPT-DIR/,/---- \/CSK-TRANSCRIPT-DIR/p' "$HOOKS/context-usage.sh")"
-ss_blk="$(sed -n '/---- CSK-TRANSCRIPT-DIR/,/---- \/CSK-TRANSCRIPT-DIR/p' "$HOOKS/session-stats.sh")"
-[ -n "$cu_blk" ] && [ "$cu_blk" = "$ss_blk" ] \
-  && pass "the duplicated resolver is byte-identical in both hooks" \
-  || fail "context-usage.sh and session-stats.sh resolvers have DRIFTED (or the markers are missing)"
-# Same reasoning, second pair: guard-write.sh carries a copy of guard-bash.sh's JSON parser, because the tier-3
-# fallback it replaced read only `file_path` and truncated at the first escaped quote. A shared file would have
-# to be added to build-plugin.sh's explicit copy list and a miss there breaks the plugin channel silently.
-gb_blk="$(sed -n '/---- CSK-JSON-PARSE/,/---- \/CSK-JSON-PARSE/p' "$HOOKS/guard-bash.sh")"
-gw_blk="$(sed -n '/---- CSK-JSON-PARSE/,/---- \/CSK-JSON-PARSE/p' "$HOOKS/guard-write.sh")"
-[ -n "$gb_blk" ] && [ "$gb_blk" = "$gw_blk" ] \
-  && pass "the duplicated JSON parser is byte-identical in both guards" \
-  || fail "guard-bash.sh and guard-write.sh JSON parsers have DRIFTED (or the markers are missing)"
+# Two blocks in this kit are duplicated on purpose: CSK-TRANSCRIPT-DIR (context-usage.sh + session-stats.sh)
+# and CSK-JSON-PARSE (the guards). A shared file would have to be added to build-plugin.sh's explicit copy
+# list and a miss there breaks the plugin channel silently, so the copies stay and the equality is enforced
+# here rather than trusted.
+#
+# This used to name the two files of each pair. That is the same shape as the defect it exists to catch: a
+# THIRD copy appears — guard-commit-scan.sh took the JSON parser — and a gate that was told to compare two
+# files reports green while the third drifts. So the marker decides the file list, not the file list the
+# marker.
+#
+# Two things make it able to give a wrong answer visibly, and both were earned by running it against a broken
+# tree rather than by reasoning:
+#   * AT LEAST TWO, and the NAMES printed. Rename the marker and a "compare everything that carries it" gate
+#     compares zero files and passes forever. A count alone is not enough either: it can be right while the
+#     files are wrong.
+#   * ANCHORED matching. `---- CSK-JSON-PARSE` matches `---- CSK-JSON-PARSER` as a substring, so the first
+#     version of this gate reported green on three files after the marker had been renamed — the exact hole it
+#     exists to close. The marker must be followed by a space or end of line; both shipped markers are (one is
+#     padded with dashes, the other ends the line).
+_blk_gate(){   # $1 = marker name, $2 = what the block is, in words
+  local m="$1" what="$2" f base blk first="" firstf="" n=0 names="" drift=""
+  for f in "$HOOKS"/*; do
+    [ -f "$f" ] || continue
+    grep -qE -- "---- $m( |$)" "$f" 2>/dev/null || continue
+    base="$(basename "$f")"
+    blk="$(sed -n "/---- $m\\( \\|$\\)/,/---- \\/$m\\( \\|$\\)/p" "$f")"
+    if [ -z "$blk" ]; then drift="$drift $base(no-end-marker)"; continue; fi
+    n=$((n+1)); names="$names $base"
+    if [ -z "$first" ]; then first="$blk"; firstf="$base"
+    elif [ "$blk" != "$first" ]; then drift="$drift $base"; fi
+  done
+  if [ "$n" -lt 2 ]; then
+    fail "$what: expected at least 2 files carrying '$m', found $n (${names:-none}) — marker renamed or a copy lost"
+  elif [ -n "$drift" ]; then
+    fail "$what: DRIFTED from $firstf ->$drift  (compared $n files:$names)"
+  else
+    pass "$what is byte-identical across all $n files that carry it —$names"
+  fi
+}
+_blk_gate CSK-TRANSCRIPT-DIR "the duplicated transcript-dir resolver"
+_blk_gate CSK-JSON-PARSE     "the duplicated JSON parser"
 # End to end: called by hand from this repo, the hook must produce a reading rather than "transcript not found".
 cu_hand="$(cd "$ROOT/.." && bash "$HOOKS/context-usage.sh" 2>&1)"
 case "$cu_hand" in
@@ -1765,8 +1791,45 @@ if [ "$UNITS" = 1 ]; then
 # `git checkout -b`, and an exit-0 hook says "no opinion", which leaves those rules in force — so a keyed
 # headless session could not stage, let alone commit, and the key achieved nothing it was documented to do.
 # Asserting the exit code alone is what let that ship: the code was always right, the decision was missing.
-gj(){ printf '{"tool_name":"Bash","permission_mode":"%s","tool_input":{"command":"%s"}}' "$1" "$2"; }
+# The payload shape, captured rather than assumed. Claude Code 2.1.267 sends, in this order:
+#   session_id, transcript_path, cwd, prompt_id, permission_mode, effort, hook_event_name, tool_name,
+#   tool_input{command, description}, tool_use_id
+# — one line, no space after any colon. So `permission_mode` arrives BEFORE `tool_input`, which is what this
+# fixture has always produced. guard-bash.sh's header used to describe the opposite order; that was wrong and
+# has been corrected. The `effort` field did not exist in 2.1.246.
+#
+# The `late` variant below is NOT the real shape and must not be read as one. Key order in a JSON object is
+# not a contract, the payload has gained fields inside one minor version, and the parser's cost used to depend
+# on where the key sat — `permission_mode` behind a 100 KB command measured 7.94s on Git Bash against 0.27s in
+# front of it. That dependence has been removed; `late` is what keeps it removed. It is a guard against the
+# order changing, not a reproduction of it.
+gj(){   # $1 = permission mode, $2 = command, $3 = "late" to put permission_mode AFTER tool_input
+  case "${3:-}" in
+    late) printf '{"tool_name":"Bash","tool_input":{"command":"%s"},"permission_mode":"%s"}' "$2" "$1" ;;
+    *)    printf '{"tool_name":"Bash","permission_mode":"%s","tool_input":{"command":"%s"}}' "$1" "$2" ;;
+  esac
+}
 gdec(){ printf '%s' "$1" | sed -n 's/.*"permissionDecision"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1; }
+# KEY ORDER MUST NOT CHANGE A VERDICT. Every fixture in this suite puts `permission_mode` before `tool_input`
+# — which the capture above confirms is the real shape — so until now nothing here exercised the other order
+# at all. That is the shape of a gate verified only on the path someone happens to send: the parser's cost
+# genuinely depended on key position, and if a future payload moves the key, the suite would keep reporting
+# green while the parse it verified is no longer the parse that runs.
+#
+# So: the same commands, both orders, and the verdicts compared rather than each asserted separately. A
+# difference here means the parse is position-sensitive again.
+_ord_diff=""
+for _c in 'git commit -m x' 'git push --force' 'rm -rf /' 'ls -la' 'git reset --hard HEAD~1' \
+          'echo exit 0 > .git/hooks/pre-commit' 'cat README.md'; do
+  for _m in default bypassPermissions; do
+    _a="$(gj "$_m" "$_c" | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"; _ra=$?
+    _b="$(gj "$_m" "$_c" late | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"; _rb=$?
+    [ "$_ra" = "$_rb" ] && [ "$(gdec "$_a")" = "$(gdec "$_b")" ] || _ord_diff="$_ord_diff [$_m: $_c → rc $_ra/$_rb, dec $(gdec "$_a")/$(gdec "$_b")]"
+  done
+done
+[ -z "$_ord_diff" ] \
+  && pass "the verdict does not depend on where permission_mode sits in the payload (14 runs, both orders)" \
+  || fail "key order CHANGED a verdict — the parse is position-sensitive:$_ord_diff"
 # WHICH MODES CAN ACTUALLY ASK. Only `default` and `acceptEdits` put the prompt in front of a person. In `auto`
 # the classifier answers it and `dontAsk` asks nothing by definition — measured in a real session as 14 `ASK`
 # lines in the gate log against zero human keypresses — so those two fail closed with plan/bypassPermissions.
