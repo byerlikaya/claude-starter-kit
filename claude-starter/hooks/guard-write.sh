@@ -38,14 +38,34 @@ INPUT="$(cat)"
 # safe while they cannot drift, so smoke-test pins these markers byte-identical rather than trusting it.
 # ---- CSK-JSON-PARSE ------------------------------------------------------------------------------------
 _json_slice(){  # $1 = whole payload, $2 = key -> the raw (still JSON-escaped) string value, "" if absent
-  local rest="${1#*\"$2\"}" seg tail out bs
-  local LC_ALL=C   # Same reason, and the same platform caveat, as in _json_unescape below -- read the table
-                   # there before quoting a speedup for this. Measured here: 1.56s -> 0.31s on a 46882 B
-                   # payload on macOS with a locale set; far less on Git Bash, and nothing where LANG is
-                   # empty. Output verified identical. Safe because no UTF-8 continuation byte can be 0x5C
-                   # or 0x22, so walking bytes cannot split a character across a quote or backslash edge.
-  [ "$rest" != "$1" ] || return 0          # key absent: emit nothing
-  rest="${rest#*\"}"                       # skip `: "` up to the value's opening quote
+  local LC_ALL=C   # FIRST, so every expansion below -- the key search included -- counts and cuts in bytes.
+                   # Lengths from ${#x} are used as offsets into ${y:n}; with the locale set before any of
+                   # them, the two never disagree about a unit. Walking bytes is safe because no UTF-8
+                   # continuation byte can be 0x5C or 0x22, so a cut cannot land inside a character at a
+                   # quote or backslash edge. What this line is worth in SPEED depends on the platform --
+                   # read the table in _json_unescape below before quoting a number for it.
+  local pre rest seg tail out bs
+  # Every "step past X" here is arithmetic on a length, never `${s#"$literal"}`. That shape reads like a
+  # constant-time strip and is not one: bash retries the pattern at every prefix length, so stripping an
+  # n-byte literal costs O(n^2). It was in this function twice, and both were measured:
+  #   * `${1#*"$2"}` found the key -- cheap when the key sits near the front, quadratic in the distance to it
+  #     otherwise. `permission_mode` behind a 100 KB command took 7.94s on Git Bash, 0.27s in front of it.
+  #     Captured from Claude Code 2.1.267, the real order puts `permission_mode` BEFORE `tool_input`, so on
+  #     that version this cost was not reachable -- this file's header had shown the opposite order, and was
+  #     wrong. The parse stays order-independent regardless: the order is not a documented contract, and the
+  #     payload is still moving (`effort` is absent from the field list recorded on 2.1.246).
+  #   * `${tail#"$seg"\"}` stepped past each escaped quote: 16.8s for a single 100 KB step on Git Bash,
+  #     against 0.002s for `${tail:${#seg}+1}` doing exactly the same thing.
+  # `${1%%"$2"*}` still finds the FIRST occurrence -- the longest suffix that starts with the key starts at the
+  # earliest one -- so a command containing the literal text `"command":"` still cannot relocate the parse.
+  # Output is byte-identical to the previous shape across a 27-case battery: escaped quotes, backslash runs
+  # before a quote, the key twice, the key appearing first as a value, glob metacharacters, UTF-8, no closing
+  # quote, empty input. Two deliberately broken twins -- one byte off in each offset -- prove it can tell.
+  pre="${1%%\"$2\"*}"                          # everything before the FIRST `"key"`
+  [ "$pre" != "$1" ] || return 0               # key absent: emit nothing
+  rest="${1:${#pre}+${#2}+2}"                  # past `"key"`
+  seg="${rest%%\"*}"                           # skip `: "` up to the value's opening quote, when there is one
+  [ "$seg" = "$rest" ] || rest="${rest:${#seg}+1}"
   out=""; tail="$rest"
   # Walk to the closing quote that is NOT escaped. A `"` preceded by an odd number of backslashes is content.
   while :; do
@@ -54,7 +74,7 @@ _json_slice(){  # $1 = whole payload, $2 = key -> the raw (still JSON-escaped) s
     out="$out$seg"
     bs="${seg##*[!\\]}"                    # trailing backslash run ("" when the last char is not a backslash)
     case "$seg" in *[!\\]*) ;; *) bs="$seg" ;; esac       # all-backslash segment: the run is the whole segment
-    if [ $(( ${#bs} % 2 )) -eq 1 ]; then out="$out\""; tail="${tail#"$seg"\"}"; else break; fi
+    if [ $(( ${#bs} % 2 )) -eq 1 ]; then out="$out\""; tail="${tail:${#seg}+1}"; else break; fi
   done
   printf '%s' "$out"
 }
@@ -89,9 +109,12 @@ _json_unescape(){  # left-to-right, one whole run per escape; a two-pass sed wou
   #     alone would justify the line, and it costs nothing. `local` restores the previous locale on return
   #     -- verified on bash 3.2 and on Git Bash 5.3.15, not assumed.
   #
-  # Heaviest real payload (46815 B, 2813 escapes), whole hook end to end: 3.42s on macOS/bash 3.2. Windows is
-  # slower and is measured there separately -- these numbers do not travel, which is the whole reason the
-  # figures above name the machine they came from. Output is byte-identical to the old function across a
+  # Heaviest real payload (46815 B, 2813 escapes), whole hook end to end, with _json_slice fixed as well: 2.1s
+  # on macOS/bash 3.2. On Git Bash an escape-dense command of that shape (44080 B, 2755 escapes) takes 6.8s --
+  # 11% of the timeout, so slowness rather than a hole -- and what is left there is k*n in BOTH functions
+  # (slice 2.2s, unescape 3.1s): every escape rescans and recopies the remainder. A sparse 100 KB command is
+  # 1.6-2.1s there. These numbers do not travel, which is why each one names its machine.
+  # Output is byte-identical to the old function across a
   # 31-case battery (escaped quotes, `\\\\`, a lone trailing backslash, a truncated `\\u`, Turkish, emoji), and
   # tier 1 and tier 3 return the same verdict on 22 gate cases. A deliberately-broken twin of the new function
   # proves the battery can tell the two apart.
