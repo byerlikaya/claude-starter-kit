@@ -16,9 +16,19 @@ plugin/hooks/commit-msg text eol=lf
 claude-starter/profiles.conf text eol=lf
 *.conf text eol=lf
 # Blocklists/allowlists and other data files the hooks read line-by-line as patterns: a CRLF checkout leaves a '\r'
-# on every pattern, which then never matches the LF diff — silently blinding the trace/secret gate on Windows. The
-# pre-commit also strips a trailing '\r' defensively, but keeping these LF means it never sees one.
+# on every pattern, which then never matches the LF diff — silently blinding the trace/secret gate on Windows.
+# pre-commit AND commit-msg both strip a trailing '\r' defensively — but only since the commit that added it to
+# the second one, which had gone without it and was the single gate on the commit message. This pin covers the
+# kit's own checkout; it does NOT cover a user's project, where the same file is installed and nothing pins it.
+# That is what the strip is for, and why "defensively" is the wrong word for it: it is the real defence.
 *.txt text eol=lf
+# JSON is not parsed line-by-line by anything here, so this is not a correctness pin — it is a pin
+# against a permanent phantom diff. Measured on a Windows clone: plugin/.claude-plugin/plugin.json and
+# plugin/hooks/hooks.json show as modified forever while `git hash-object` matches the index blob
+# exactly, because core.autocrlf rewrites them on checkout and nothing here pinned them back. A commit
+# to "fix" it is empty, and the plugin sync gate reads a diff that is not one. settings.json is in the
+# same set and is the file that wires every hook.
+*.json text eol=lf
 # VERSION is read by the shell — `head -1` in start.sh:345, adopt.sh:203 and adopt.sh:633, and `read -r`
 # in session-update-check.sh. Measured on a Windows checkout: the file comes out `2.9.0\r\n`, and both of
 # those forms keep the CR (doctor.sh strips it with `tr -cd`, the others do not). Today the only visible

@@ -25,7 +25,16 @@ GITROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 
 HIT=0
 while IFS= read -r pat || [ -n "$pat" ]; do
-  case "$pat" in ''|\#*) continue;; esac
+  pat="${pat%$'\r'}"                        # tolerate a CRLF blocklist — pre-commit:176 has had this
+  case "$pat" in ''|\#*) continue;; esac    # since the gate was written; its twin here did not, and
+                                            # the message scan was the ONLY reader with no fallback:
+                                            # pre-commit never sees the message, so a co-author
+                                            # trailer had exactly one gate and it was blind. Verified
+                                            # on two machines: LF blocklist rejects (rc=1), the same
+                                            # blocklist saved CRLF accepts (rc=0). Reachable without
+                                            # trying: the kit writes no .gitattributes into a user's
+                                            # project, Git for Windows defaults core.autocrlf=true,
+                                            # and this file is meant to be edited by hand.
   if [ -n "$AL" ] && grep -qxF -- "$pat" "$AL"; then continue; fi
   if grep -iqE -- "$pat" "$MSG_FILE"; then
     echo "TRACE-SCANNER (message): forbidden expression -> '$pat' (§4.1)"

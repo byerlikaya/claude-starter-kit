@@ -130,14 +130,17 @@ fi
 # probe are the ones where a process is cheap. It runs once per turn, not once per record.
 HAVE_JQ=0
 if command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then HAVE_JQ=1; fi
-scan() {                                             # reads JSONL on stdin, prints the total (or nothing)
+# `scan` prints one number per matching record and the caller keeps the LAST — taken with `${x##*NL}`,
+# which is shell, where `| tail -1` was a process on a hook that runs before every prompt.
+last_line() { printf '%s' "${1##*$'\n'}"; }
+scan() {                                             # reads JSONL on stdin, prints one total per record
   if [ "$HAVE_JQ" = 1 ]; then
     jq -r 'select((.isSidechain // false) == false)
       | select(.type == "assistant")
       | select(.message.usage.cache_read_input_tokens != null)
       | (.message.usage.input_tokens
          + (.message.usage.cache_read_input_tokens // 0)
-         + (.message.usage.cache_creation_input_tokens // 0))' 2>/dev/null | tail -1
+         + (.message.usage.cache_creation_input_tokens // 0))' 2>/dev/null
   else
     # No jq: parse the JSONL line-by-line — same predicate, same number.
     awk '
@@ -162,9 +165,34 @@ scan() {                                             # reads JSONL on stdin, pri
 # work no matter how fat the lines are — the same 60MB case scans in ~12ms. A front-truncated partial first line
 # simply fails to match, and since we keep the LAST match that is harmless. Widen once (256 KiB covers even a
 # large subagent fan-out of small usage records), then a SIZE-GUARDED whole-file last resort.
+#
+# The partial first line has to go before the scan, and that is not a tidiness point — it is why the
+# window never worked. The comment above reasons that a front-truncated line "simply fails to match",
+# which is true of awk and FALSE of jq: measured, jq ABORTS the whole stream on a malformed first
+# record and prints nothing, while awk skips the line and carries on. So on every machine that has jq
+# — which is most of them, and every developer laptop — both windows returned empty and the hook fell
+# through to scanning the ENTIRE transcript, every single turn. On a 45 MB session that is 45 MB read
+# per prompt, and the byte bound that this block exists to enforce was never once in force.
+#
+# Dropped with `tail -n +2`, NOT with `${W#*$'\n'}`. The parameter expansion looks free and is a trap:
+# on a window with no newline in it — a malformed transcript that is one enormous line, which the
+# suite fixtures on purpose — bash walks every prefix looking for a match it will never find. Measured
+# on a 4 MiB single-line file: it had not finished after 20 seconds, and it hung the gate for 36
+# minutes before that was noticed. One streaming process is the cheap option here, not the expensive
+# one. Only correct to drop when the tail actually truncated, hence the size test.
+# The size is asked ONCE, up front, and it pays for itself: it is the only exact way to know whether
+# a tail truncated, and knowing that is what lets the window work at all. Comparing the captured
+# length against the window does NOT work — `$( )` strips the trailing newline, so the capture is
+# never quite the window size and the drop never fires.
+SZ="$(wc -c < "$TR" 2>/dev/null)"; SZ="${SZ//[!0-9]/}"; SZ="${SZ:-0}"
 TOTAL=""
 for B in 262144 4194304; do                         # 256 KiB, then 4 MiB
-  TOTAL="$(tail -c "$B" "$TR" | scan)"
+  if [ "$SZ" -gt "$B" ]; then
+    TOTAL="$(tail -c "$B" "$TR" | tail -n +2 | scan)"   # the tail cut a line in half; jq aborts on it
+  else
+    TOTAL="$(tail -c "$B" "$TR" | scan)"                # whole file: the first line is intact
+  fi
+  TOTAL="$(last_line "$TOTAL")"
   [ -n "$TOTAL" ] && break
 done
 if [ -z "$TOTAL" ]; then
@@ -174,9 +202,8 @@ if [ -z "$TOTAL" ]; then
   # it is small enough to finish well inside the timeout (180MB ~= 4.7s under awk, so 200MB is safe under 30s);
   # past the cap, fail OPEN. A missing 🔋 line is recoverable — the model answers "could not measure" — whereas a
   # timed-out hook is just discarded noise.
-  SZ="$(wc -c < "$TR" 2>/dev/null | tr -cd '0-9')"; SZ="${SZ:-0}"
   CAP="${CSK_CONTEXT_MAX_BYTES:-209715200}"         # 200 MiB; override per-repo
-  [ "${SZ:-0}" -le "$CAP" ] && TOTAL="$(scan < "$TR")"
+  [ "${SZ:-0}" -le "$CAP" ] && TOTAL="$(last_line "$(scan < "$TR")")"
 fi
 # Same split as the missing-transcript case above: a hook stays quiet and exits 0, a by-hand call explains
 # itself and exits non-zero. Exec-form hook commands carry no `|| true` to swallow a status, so anything that
@@ -189,12 +216,18 @@ fi
 
 # LC_ALL=C: force a '.' decimal separator regardless of locale (tr_TR etc. would emit '77,2' and could
 # mis-parse the percentage). Generation AND every comparison below run under C so they stay consistent.
-PCT="$(LC_ALL=C awk -v t="$TOTAL" -v w="$WINDOW" 'BEGIN{printf "%.1f", (t/w)*100}')"
-# The DISPLAYED percentage stays awk's — %.1f rounds, and shell arithmetic truncates, so replacing it would
-# quietly move the number a user reads. The COMPARISONS do not need it: the thresholds are whole numbers, so
-# the integer part decides them, exactly as session-guard.sh already argues for its own two. That removes two
-# awk spawns from a hook that runs on every single prompt, and awk is the most expensive process this kit
-# starts on Git Bash (measured: 57 ms idle, 404 ms under load, against 62 ms for a bare `true`).
+# Integer arithmetic, not awk, and it ROUNDS rather than truncates — which is the whole reason awk was
+# here. `(t*1000 + w/2) / w` is round-half-up on tenths; verified against awk's %.1f across the range
+# before the swap, not after. That removes the single most expensive process this hook starts on Git
+# Bash (measured there: 57 ms idle, 404 ms under load, against 62 ms for a bare `true`).
+PCT_T=$(( (TOTAL * 1000 + WINDOW / 2) / WINDOW ))
+PCT="$((PCT_T / 10)).$((PCT_T % 10))"
+# The COMPARISONS take the integer part: the thresholds are whole numbers, so nothing below needs the tenth,
+# exactly as session-guard.sh already argues for its own two. This paragraph used to end "the DISPLAYED
+# percentage stays awk's, because %.1f rounds and shell arithmetic truncates" — a true statement about the
+# obvious integer division, and the reason awk survived here for so long. It stopped being true one commit
+# ago: the expression above rounds. A comment that describes a tool the code no longer calls is worse than
+# no comment, because the next reader trusts it instead of the line.
 PCTI="${PCT%%.*}"; case "$PCTI" in ''|*[!0-9]*) PCTI=0 ;; esac
 if   [ "$PCTI" -lt 50 ]; then LEVEL="continue"
 elif [ "$PCTI" -lt 75 ]; then LEVEL="medium"
