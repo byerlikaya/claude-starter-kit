@@ -30,13 +30,16 @@
 #   CSK_EVAL_ARMS="kit kitb" CSK_EVAL_DISCIPLINE_B=<a CLAUDE.md with the sentinel> CSK_EVAL_TRACE=1 bash evals/run.sh --runs 3
 #                                           # same install in both arms, only the discipline text differs: measures a RULE
 #   CSK_EVAL_CASES=<dir>                    # run cases from another directory (a draft set, before it lands here)
+#   CSK_EVAL_OVERLAY_B=<dir>                # arm kitb only: files that REPLACE installed ones, mirrored under .claude/
 #
 # stdin is /dev/null for every run: without it the CLI waits 3 s for piped input it will never get, and says so.
 #   bash evals/run.sh --case secret-refused # one case
 #   bash evals/run.sh --keep                # keep the scratch projects for inspection
 #
+# A case may declare REQUIRES="tool ..." in its case.env; when one is missing the case is skipped before anything is built.
+#
 # Exit 0 the report printed · 1 a case is malformed or the CLI is unusable · 3 INCOMPLETE: a run was not measured (a usage
-# limit, or a stream that ended in an error), so the totals printed are not a result.
+# limit, a stream that ended in an error, or a case skipped for a missing tool), so the totals printed are not a result.
 set -uo pipefail
 ROOT="${CSK_EVAL_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 CASES="${CSK_EVAL_CASES:-$ROOT/evals/cases}"
@@ -47,7 +50,7 @@ while [ $# -gt 0 ]; do
     --runs) RUNS="${2:-1}"; shift 2 ;;
     --case) ONLY="${2:-}"; shift 2 ;;
     --keep) KEEP=1; shift ;;
-    -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,/^set -uo pipefail/p' "$0" | sed '$d'; exit 0 ;;   # the whole header, not a line count that drifts
     *) echo "run.sh: unknown argument: $1" >&2; exit 1 ;;
   esac
 done
@@ -103,6 +106,18 @@ build_project() {
       grep -qE '^<!-- KIT:DISCIPLINE-END' "$CSK_EVAL_DISCIPLINE_B" || { echo "run.sh: CSK_EVAL_DISCIPLINE_B has no '<!-- KIT:DISCIPLINE-END' sentinel" >&2; return 1; }
       awk '/^<!-- KIT:DISCIPLINE-END/{exit} {print}' "$CSK_EVAL_DISCIPLINE_B" > "$dir/.claude/DISCIPLINE.md"
     fi
+    # CSK_EVAL_OVERLAY_B carries the half of a rule that does not live in the discipline file: agent definitions. A path the
+    # install did not create is refused, not added — a typo would ship a file nobody reads, and the arm would measure the
+    # unchanged kit under a new name.
+    if [ "$arm" = kitb ] && [ -n "${CSK_EVAL_OVERLAY_B:-}" ]; then
+      [ -d "$CSK_EVAL_OVERLAY_B" ] || { echo "run.sh: CSK_EVAL_OVERLAY_B='$CSK_EVAL_OVERLAY_B' is not a directory" >&2; return 1; }
+      local rel applied=0
+      while IFS= read -r rel; do
+        [ -f "$dir/.claude/$rel" ] || { echo "run.sh: overlay file '$rel' replaces nothing under .claude/ — refusing to add it" >&2; return 1; }
+        cp "$CSK_EVAL_OVERLAY_B/$rel" "$dir/.claude/$rel" && applied=$((applied+1))
+      done < <(cd "$CSK_EVAL_OVERLAY_B" && find . -type f | sed 's|^\./||' | LC_ALL=C sort)
+      [ "$applied" -gt 0 ] || { echo "run.sh: CSK_EVAL_OVERLAY_B='$CSK_EVAL_OVERLAY_B' is empty" >&2; return 1; }
+    fi
   fi
 }
 
@@ -111,7 +126,7 @@ build_project() {
 # without the documented escape the kit arm would be unable to commit for reasons that have nothing to do with
 # the behaviour under test. The content gates (trace/secret pre-commit) still run — that is the point.
 # eval_trace_metrics <stream.jsonl> <stdout.txt> — one TSV line:
-#   agent_top agent_all spawned cost in out cache_read cache_create turns bad_lines has_result tests tests_nested turns_top turns_nested is_error limited
+#   agent_top agent_all spawned cost in out cache_read cache_create turns bad_lines has_result tests tests_nested turns_top turns_nested is_error limited final_tested
 # The last four were appended, not inserted, so every earlier column keeps its position. `tests` counts Bash calls that run a test
 # runner or a build/lint tool — main thread and subagents alike, since the stream carries both — deduplicated by tool_use id. The bare
 # word "test" is deliberately not a match: measured on real transcripts, the calls it caught alone were echo banners, not runs.
@@ -121,13 +136,16 @@ build_project() {
 # result event with subtype success, is_error true and api_error_status 429, preceded by a rate_limit_event whose status is
 # "rejected". Measured: a 9-session run hit the five-hour limit in its 2nd session and the next 7 returned in ~0.6 s each, with
 # a result event and no tool call. has_result alone counted all of them, and the grader scored 7 untouched projects.
+# final_tested: 1 when a test/build run comes after the last Edit/Write, in stream order across the main thread and subagents; 0 when
+# it does not; empty when nothing was edited. A change that cuts test runs must not cut this one — it is the run that says the code
+# that was left behind works. File edits made through Bash (sed -i, redirection) are not seen.
 eval_trace_metrics() {
   python3 - "$1" "$2" <<'PYM'
 import json, sys, re
 src, txt = sys.argv[1], sys.argv[2]
 RUNRX = re.compile(r'(^|[\s;&|(])(pytest|jest|vitest|mocha|make|mvn|gradle|tsc|eslint|ruff|flake8|mypy)\b|(dotnet|go|cargo)\s+(test|build)\b|(npm|pnpm|yarn)\s+(run\s+)?(test|build|lint)\b|\bnode\s+--test\b')
 top = allc = bad = limited = 0; res = None
-tests = tnest = 0; seen_tu = set(); msgs_top = set(); msgs_nest = set()
+tests = tnest = 0; seen_tu = set(); msgs_top = set(); msgs_nest = set(); k = last_edit = last_test = edits = 0
 try: lines = open(src, errors='replace').read().splitlines()
 except OSError: lines = []
 for line in lines:
@@ -140,12 +158,14 @@ for line in lines:
         if m.get('id'): (msgs_nest if nested else msgs_top).add(m.get('id'))
         for c in m.get('content') or []:
             if not (isinstance(c, dict) and c.get('type') == 'tool_use') or c.get('id') in seen_tu: continue
-            seen_tu.add(c.get('id'))
+            seen_tu.add(c.get('id')); k += 1
             if c.get('name') in ('Agent', 'Task'):
                 allc += 1
                 if not nested: top += 1
+            elif c.get('name') in ('Edit', 'Write', 'MultiEdit', 'NotebookEdit'):
+                edits += 1; last_edit = k
             elif c.get('name') == 'Bash' and RUNRX.search((c.get('input') or {}).get('command') or ''):
-                tests += 1
+                tests += 1; last_test = k
                 if nested: tnest += 1
     elif e.get('type') == 'rate_limit_event':
         if (e.get('rate_limit_info') or {}).get('status') == 'rejected': limited = 1
@@ -157,7 +177,8 @@ sp = ((res or {}).get('subagent_stats') or {}).get('spawned', '')
 print('\t'.join(str(x) for x in (top, allc, sp, (res or {}).get('total_cost_usd', ''), u.get('input_tokens', ''),
       u.get('output_tokens', ''), u.get('cache_read_input_tokens', ''), u.get('cache_creation_input_tokens', ''),
       (res or {}).get('num_turns', ''), bad, 1 if res else 0, tests, tnest, len(msgs_top), len(msgs_nest),
-      1 if (res or {}).get('is_error') else 0, 1 if limited or (res or {}).get('api_error_status') == 429 else 0)))
+      1 if (res or {}).get('is_error') else 0, 1 if limited or (res or {}).get('api_error_status') == 429 else 0,
+      '' if not edits else (1 if last_test > last_edit else 0))))
 PYM
 }
 
@@ -206,7 +227,7 @@ ARMS="${CSK_EVAL_ARMS:-kit bare}"; ARM_A="${ARMS%% *}"; ARM_B=""; [ "$ARMS" != "
 printf '== kit A/B eval ==  %s · %s runs/arm · arms: %s\n\n' "$MODEL" "$RUNS" "$ARMS"
 [ -d "$CASES" ] || { echo "run.sh: no cases under evals/cases" >&2; exit 1; }
 
-TOTAL_KIT=0; TOTAL_BARE=0; TOTAL_CHECKS=0; TOTAL_CHECKS_B=0; NOT_MEASURED=0; LIMITED=0
+TOTAL_KIT=0; TOTAL_BARE=0; TOTAL_CHECKS=0; TOTAL_CHECKS_B=0; NOT_MEASURED=0; LIMITED=0; SKIPPED=0
 for cdir in "$CASES"/*/; do
   [ "$LIMITED" = 1 ] && break
   cname="$(basename "$cdir")"
@@ -214,9 +235,16 @@ for cdir in "$CASES"/*/; do
   [ -f "$cdir/case.env" ] && [ -f "$cdir/grade.sh" ] || { echo "run.sh: $cname is missing case.env or grade.sh" >&2; exit 1; }
 
   # shellcheck disable=SC1090
-  NEEDS_GIT_OK=0; unset -f seed post_seed 2>/dev/null; . "$cdir/case.env"
+  NEEDS_GIT_OK=0; REQUIRES=""; unset -f seed post_seed 2>/dev/null; . "$cdir/case.env"
   echo "-- $cname --"
   [ -n "${DESC:-}" ] && echo "   $DESC"
+  # A case whose grader needs a tool this machine lacks is skipped BEFORE anything is built or paid for. Run anyway, it
+  # fails in every arm for a reason that has nothing to do with the kit, and a tie of failures reads like a result.
+  missing=""; for t in $REQUIRES; do command -v "$t" >/dev/null 2>&1 || missing="$missing $t"; done
+  if [ -n "$missing" ]; then
+    printf '   ! SKIPPED, NOT MEASURED — needs%s, not on PATH; nothing was built or run\n\n' "$missing"
+    SKIPPED=$((SKIPPED+1)); continue
+  fi
 
   for arm in $ARMS; do
     [ "$LIMITED" = 1 ] && break
@@ -323,7 +351,7 @@ done
 echo "== summary =="
 printf '   %-4s %s/%s\n' "$ARM_A" "$TOTAL_KIT" "$TOTAL_CHECKS"
 [ -n "$ARM_B" ] && printf '   %-4s %s/%s\n' "$ARM_B" "$TOTAL_BARE" "$TOTAL_CHECKS_B"
-if [ -n "$ARM_B" ] && [ "$TOTAL_CHECKS" -gt 0 ] && [ "$NOT_MEASURED" = 0 ] && [ "$LIMITED" = 0 ]; then
+if [ -n "$ARM_B" ] && [ "$TOTAL_CHECKS" -gt 0 ] && [ "$NOT_MEASURED" = 0 ] && [ "$LIMITED" = 0 ] && [ "$SKIPPED" = 0 ]; then
   printf '   delta %s - %s: %+d checks\n' "$ARM_A" "$ARM_B" "$((TOTAL_KIT - TOTAL_BARE))"
   [ "$ARM_B" = bare ] && [ "$TOTAL_KIT" -le "$TOTAL_BARE" ] && \
     echo "   NOTE: the kit did not come out ahead. Report that as it stands — a harness that only publishes"
@@ -331,8 +359,9 @@ if [ -n "$ARM_B" ] && [ "$TOTAL_CHECKS" -gt 0 ] && [ "$NOT_MEASURED" = 0 ] && [ 
     echo "         favourable runs measures nothing."
 fi
 [ "$RUNS" = 1 ] && echo "   n=1: one run per arm is an anecdote, not a rate. Use --runs 3+ before quoting a number."
-if [ "$NOT_MEASURED" -gt 0 ] || [ "$LIMITED" = 1 ]; then
-  printf '   INCOMPLETE: %s run(s) NOT MEASURED%s. The totals above are not a result.\n' "$NOT_MEASURED" \
+if [ "$NOT_MEASURED" -gt 0 ] || [ "$LIMITED" = 1 ] || [ "$SKIPPED" -gt 0 ]; then
+  printf '   INCOMPLETE: %s run(s) NOT MEASURED%s%s. The totals above are not a result.\n' "$NOT_MEASURED" \
+    "$([ "$SKIPPED" -gt 0 ] && echo ", $SKIPPED case(s) SKIPPED for a missing tool")" \
     "$([ "$LIMITED" = 1 ] && echo ', and the usage limit stopped every later run before it started')"
   exit 3
 fi

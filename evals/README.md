@@ -36,10 +36,15 @@ the "workspace has not been trusted" warning — an untrusted workspace silently
 `permissions.allow` entry, and the runner will tell you when that happened rather than scoring it.
 
 **Arms, and measuring a rule rather than the kit.** `CSK_EVAL_ARMS` picks the arms (default `kit bare`). Arm `kitb`
-is the kit install with exactly one difference: its `.claude/DISCIPLINE.md` is the discipline half of the file named
-by `CSK_EVAL_DISCIPLINE_B`, a CLAUDE.md carrying the `<!-- KIT:DISCIPLINE-END` sentinel. `CSK_EVAL_ARMS="kit kitb"`
-therefore varies one thing — the discipline text — and is how a rule change is measured. `CSK_EVAL_CASES` runs
-cases from another directory, so a draft set can be exercised before it lands here.
+is the same kit install with the rule under test swapped in. Its `.claude/DISCIPLINE.md` is the discipline half of the
+file named by `CSK_EVAL_DISCIPLINE_B`, a CLAUDE.md carrying the `<!-- KIT:DISCIPLINE-END` sentinel. For a rule that also
+lives in agent definitions, `CSK_EVAL_OVERLAY_B` names a directory whose files replace installed ones under `.claude/`
+(`agents/test-expert-csk.md` → `.claude/agents/test-expert-csk.md`). A path the install did not create is refused
+rather than added: a typo would ship a file nobody reads, and the arm would measure the unchanged kit under a new
+name. Take overlay files from an installed project, not from `claude-starter/` — a `--generic` install writes
+`backend-expert-csk.md` from `agents-optional/backend-expert-generic.md`. `CSK_EVAL_ARMS="kit kitb"` therefore
+varies only the rule, and is how a rule change is measured. `CSK_EVAL_CASES` runs cases from another directory, so a
+draft set can be exercised before it lands here.
 
 **Delegation and cost, from the event stream.** `CSK_EVAL_TRACE=1` runs the CLI with `--output-format stream-json
 --verbose`, keeps the stream in `.eval-stream.jsonl`, re-derives the reply into `.eval-stdout.txt`, and writes one
@@ -47,7 +52,9 @@ metrics line per run: main-thread `Agent`/`Task` calls, nested calls, `subagent_
 token usage and turns — and test and build runs: `Bash` calls that run a test runner or a build/lint tool, in the main
 thread and in subagents alike (a subagent's calls arrive in the same stream, carrying `parent_tool_use_id`),
 deduplicated by tool-use id, with main-thread and nested turns beside them. The bare word `test` does not count: on
-real transcripts the calls it caught alone were echo banners, not runs. Each arm then prints a `trace` line —
+real transcripts the calls it caught alone were echo banners, not runs. `final_tested` says whether a test or build
+run came after the last `Edit`/`Write` — the run that says the code left behind works, which a rule that cuts test
+runs must not cut; file edits made through `Bash` are not seen. Each arm then prints a `trace` line —
 delegated k/n, cost, tokens, test runs and turns, nested in brackets. Grading still reads only the files on disk;
 the trace is a second measurement beside the grade, never an input to it.
 
@@ -61,7 +68,8 @@ this rule scored them 19 of 33. The limit also stops the run — no later sessio
 
 **Test-run cases.** `tests-bugfix-failing-test`, `tests-single-file-refactor` and `tests-small-rule-change` are small
 Node projects with no dependency. Their graders run the tests themselves, so they need `node` on PATH (measured on
-22.22). The seed's test script is `node --test` with no argument: on Node 22, `node --test test/` exits 1 even when
+22.22) and declare `REQUIRES="node"`: a case whose tool is missing is skipped before anything is built or paid for,
+and the run ends INCOMPLETE. The seed's test script is `node --test` with no argument: on Node 22, `node --test test/` exits 1 even when
 every test passes.
 
 **Two environment facts, measured rather than assumed** (2026-07-31, CLI 2.1.220), because both of them decide
