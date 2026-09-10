@@ -44,9 +44,18 @@ cases from another directory, so a draft set can be exercised before it lands he
 **Delegation and cost, from the event stream.** `CSK_EVAL_TRACE=1` runs the CLI with `--output-format stream-json
 --verbose`, keeps the stream in `.eval-stream.jsonl`, re-derives the reply into `.eval-stdout.txt`, and writes one
 metrics line per run: main-thread `Agent`/`Task` calls, nested calls, `subagent_stats.spawned`, `total_cost_usd`,
-token usage and turns. Each arm then prints a `trace` line — delegated k/n, cost, tokens. A run whose stream is empty
+token usage and turns — and test and build runs: `Bash` calls that run a test runner or a build/lint tool, in the main
+thread and in subagents alike (a subagent's calls arrive in the same stream, carrying `parent_tool_use_id`),
+deduplicated by tool-use id, with main-thread and nested turns beside them. The bare word `test` does not count: on
+real transcripts the calls it caught alone were echo banners, not runs. Each arm then prints a `trace` line —
+delegated k/n, cost, tokens, test runs and turns, nested in brackets. A run whose stream is empty
 or carries no `result` event is flagged and **not counted**: an empty trace says nothing about delegation. Grading
 still reads only the files on disk; the trace is a second measurement beside the grade, never an input to it.
+
+**Test-run cases.** `tests-bugfix-failing-test`, `tests-single-file-refactor` and `tests-small-rule-change` are small
+Node projects with no dependency. Their graders run the tests themselves, so they need `node` on PATH (measured on
+22.22). The seed's test script is `node --test` with no argument: on Node 22, `node --test test/` exits 1 even when
+every test passes.
 
 **Two environment facts, measured rather than assumed** (2026-07-31, CLI 2.1.220), because both of them decide
 whether anything measured here counts:

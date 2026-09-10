@@ -110,14 +110,19 @@ build_project() {
 # without the documented escape the kit arm would be unable to commit for reasons that have nothing to do with
 # the behaviour under test. The content gates (trace/secret pre-commit) still run — that is the point.
 # eval_trace_metrics <stream.jsonl> <stdout.txt> — one TSV line:
-#   agent_top agent_all spawned cost in out cache_read cache_create turns bad_lines has_result
+#   agent_top agent_all spawned cost in out cache_read cache_create turns bad_lines has_result tests tests_nested turns_top turns_nested
+# The last four were appended, not inserted, so every earlier column keeps its position. `tests` counts Bash calls that run a test
+# runner or a build/lint tool — main thread and subagents alike, since the stream carries both — deduplicated by tool_use id. The bare
+# word "test" is deliberately not a match: measured on real transcripts, the calls it caught alone were echo banners, not runs.
 # agent_top counts Agent/Task calls made by the MAIN thread (no parent_tool_use_id); agent_all includes nested ones.
 # has_result=0 means the stream is empty or broken: that run says nothing about delegation and must not be counted.
 eval_trace_metrics() {
   python3 - "$1" "$2" <<'PYM'
-import json, sys
+import json, sys, re
 src, txt = sys.argv[1], sys.argv[2]
+RUNRX = re.compile(r'(^|[\s;&|(])(pytest|jest|vitest|mocha|make|mvn|gradle|tsc|eslint|ruff|flake8|mypy)\b|(dotnet|go|cargo)\s+(test|build)\b|(npm|pnpm|yarn)\s+(run\s+)?(test|build|lint)\b|\bnode\s+--test\b')
 top = allc = bad = 0; res = None
+tests = tnest = 0; seen_tu = set(); msgs_top = set(); msgs_nest = set()
 try: lines = open(src, errors='replace').read().splitlines()
 except OSError: lines = []
 for line in lines:
@@ -126,10 +131,17 @@ for line in lines:
     try: e = json.loads(line)
     except Exception: bad += 1; continue
     if e.get('type') == 'assistant':
-        for c in (e.get('message') or {}).get('content') or []:
-            if isinstance(c, dict) and c.get('type') == 'tool_use' and c.get('name') in ('Agent', 'Task'):
+        m = e.get('message') or {}; nested = bool(e.get('parent_tool_use_id'))
+        if m.get('id'): (msgs_nest if nested else msgs_top).add(m.get('id'))
+        for c in m.get('content') or []:
+            if not (isinstance(c, dict) and c.get('type') == 'tool_use') or c.get('id') in seen_tu: continue
+            seen_tu.add(c.get('id'))
+            if c.get('name') in ('Agent', 'Task'):
                 allc += 1
-                if not e.get('parent_tool_use_id'): top += 1
+                if not nested: top += 1
+            elif c.get('name') == 'Bash' and RUNRX.search((c.get('input') or {}).get('command') or ''):
+                tests += 1
+                if nested: tnest += 1
     elif e.get('type') == 'result':
         res = e
 open(txt, 'w').write((res or {}).get('result') or '')
@@ -137,7 +149,7 @@ u = (res or {}).get('usage') or {}
 sp = ((res or {}).get('subagent_stats') or {}).get('spawned', '')
 print('\t'.join(str(x) for x in (top, allc, sp, (res or {}).get('total_cost_usd', ''), u.get('input_tokens', ''),
       u.get('output_tokens', ''), u.get('cache_read_input_tokens', ''), u.get('cache_creation_input_tokens', ''),
-      (res or {}).get('num_turns', ''), bad, 1 if res else 0)))
+      (res or {}).get('num_turns', ''), bad, 1 if res else 0, tests, tnest, len(msgs_top), len(msgs_nest))))
 PYM
 }
 
@@ -238,10 +250,10 @@ for cdir in "$CASES"/*/; do
     done
     if [ "${CSK_EVAL_TRACE:-0}" = 1 ]; then
       LC_ALL=C awk -F'\t' -v arm="$arm" '
-        { n++; if ($11 != 1) { empty++; next } ok++; if ($1 > 0) deleg++; cost += $4; tin += $5; tout += $6; cr += $7; cc += $8 }
+        { n++; if ($11 != 1) { empty++; next } ok++; if ($1 > 0) deleg++; cost += $4; tin += $5; tout += $6; cr += $7; cc += $8; tst += $12; tsn += $13; ttop += $14; tnst += $15 }
         END {
           if (n == 0) { printf "     trace %-5s NO TRACE FILE — the runs wrote no metrics; this measured nothing\n", arm; exit }
-          printf "     trace %-5s delegated %d/%d · cost $%.3f · in %d out %d cache_read %d cache_create %d", arm, deleg, ok, cost, tin, tout, cr, cc
+          printf "     trace %-5s delegated %d/%d · cost $%.3f · in %d out %d cache_read %d cache_create %d · test runs %d (nested %d) · turns %d (nested %d)", arm, deleg, ok, cost, tin, tout, cr, cc, tst, tsn, ttop, tnst
           if (empty) printf " · %d EMPTY/BROKEN stream(s), not counted", empty
           printf "\n"
         }' "$WORK/trace-$cname-$arm.tsv" 2>/dev/null || printf '     trace %-5s NO TRACE FILE — the runs wrote no metrics; this measured nothing\n' "$arm"
