@@ -10,7 +10,15 @@
 // This is a re-implementation in another language on purpose — a fourth bash
 // copy would break that pin.
 
-import fs from 'node:fs';
+// EVERY filesystem call here is async, and that is the point rather than a style
+// choice. Measured on a Windows 11 machine whose EDR inspects file opens: reading
+// the 128 KiB tail of one transcript took 0-1 ms on fourteen runs out of fifteen
+// and 31,209 ms on the fifteenth. With `readSync` that stalled the event loop, so
+// the panel answered NOTHING for half a minute — `/api/projects` took 33,391 ms and
+// a separate `/api/health` on its own connection went unanswered for 312 of 324
+// pings. Async does not make the read faster; the same 30 s still passes. It keeps
+// the stall inside the one request that hit it while the rest of the panel stays up.
+import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -35,20 +43,19 @@ export function candidateDirs(cwd) {
 }
 
 /** The project directory for a cwd, or null when nothing was recorded yet. */
-export function projectDir(cwd) {
+export async function projectDir(cwd) {
   for (const name of candidateDirs(cwd)) {
     const p = path.join(PROJECTS_ROOT, name);
-    try { if (fs.statSync(p).isDirectory()) return p; } catch { /* next */ }
+    try { if ((await fsp.stat(p)).isDirectory()) return p; } catch { /* next */ }
   }
   return null;
 }
 
 /** Every project directory on this machine. */
-export function allProjectDirs() {
+export async function allProjectDirs() {
   try {
-    return fs.readdirSync(PROJECTS_ROOT, { withFileTypes: true })
-      .filter((e) => e.isDirectory())
-      .map((e) => path.join(PROJECTS_ROOT, e.name));
+    const entries = await fsp.readdir(PROJECTS_ROOT, { withFileTypes: true });
+    return entries.filter((e) => e.isDirectory()).map((e) => path.join(PROJECTS_ROOT, e.name));
   } catch {
     return [];
   }
@@ -62,18 +69,18 @@ export function allProjectDirs() {
 const TITLE_TAIL_BYTES = 131072;
 const titleCache = new Map(); // file -> { sig, title }
 
-export function sessionTitle(file, size, mtimeMs) {
+export async function sessionTitle(file, size, mtimeMs) {
   const sig = `${size}:${mtimeMs}`;
   const hit = titleCache.get(file);
   if (hit && hit.sig === sig) return hit.title;
 
   let title = null;
-  let fd;
+  let fh;
   try {
-    fd = fs.openSync(file, 'r');
+    fh = await fsp.open(file, 'r');
     const len = Math.min(size, TITLE_TAIL_BYTES);
     const buf = Buffer.allocUnsafe(len);
-    fs.readSync(fd, buf, 0, len, Math.max(0, size - len));
+    await fh.read(buf, 0, len, Math.max(0, size - len));
     const text = buf.toString('utf8');
 
     // Cheap prefilter: most sessions carry none of these, and parsing every
@@ -94,7 +101,7 @@ export function sessionTitle(file, size, mtimeMs) {
   } catch {
     title = null;
   } finally {
-    if (fd !== undefined) try { fs.closeSync(fd); } catch { /* already gone */ }
+    if (fh !== undefined) try { await fh.close(); } catch { /* already gone */ }
   }
 
   if (titleCache.size > 500) titleCache.clear();
@@ -107,23 +114,23 @@ export function sessionTitle(file, size, mtimeMs) {
 // which carries `cwd`. Head, not tail: the value never changes mid-session.
 const cwdCache = new Map();
 
-export function sessionCwd(file, size) {
+export async function sessionCwd(file, size) {
   const hit = cwdCache.get(file);
   if (hit && hit.size === size) return hit.cwd;
 
   let cwd = null;
-  let fd;
+  let fh;
   try {
-    fd = fs.openSync(file, 'r');
+    fh = await fsp.open(file, 'r');
     const len = Math.min(size, 8192);
     const buf = Buffer.allocUnsafe(len);
-    fs.readSync(fd, buf, 0, len, 0);
+    await fh.read(buf, 0, len, 0);
     cwd = buf.toString('utf8').match(/"cwd"\s*:\s*"((?:[^"\\]|\\.)*)"/)?.[1] ?? null;
     if (cwd) cwd = cwd.replace(/\\\\/g, '\\').replace(/\\"/g, '"');
   } catch {
     cwd = null;
   } finally {
-    if (fd !== undefined) try { fs.closeSync(fd); } catch { /* already gone */ }
+    if (fh !== undefined) try { await fh.close(); } catch { /* already gone */ }
   }
 
   if (cwdCache.size > 500) cwdCache.clear();
@@ -137,42 +144,43 @@ export function sessionCwd(file, size) {
  * beside it — counting only the top level is how you end up reporting that
  * nothing ever delegated.
  */
-export function listSessions(dir) {
+export async function listSessions(dir) {
   let entries;
-  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return []; }
+  try { entries = await fsp.readdir(dir, { withFileTypes: true }); } catch { return []; }
 
-  const out = [];
-  for (const e of entries) {
-    if (!e.isFile() || !e.name.endsWith('.jsonl')) continue;
+  // One transcript's reads do not depend on another's, so they run together.
+  // Sequential awaits cost 12 ms here where the synchronous version cost 7 —
+  // measured, 10 runs each — and that gap grows with the number of sessions.
+  // The order is irrelevant: the list is sorted by mtime below.
+  const settled = await Promise.all(entries.map(async (e) => {
+    if (!e.isFile() || !e.name.endsWith('.jsonl')) return null;
     const sessionId = e.name.slice(0, -'.jsonl'.length);
     const file = path.join(dir, e.name);
     let st;
-    try { st = fs.statSync(file); } catch { continue; }
+    try { st = await fsp.stat(file); } catch { return null; }
 
     const subagentsDir = path.join(dir, sessionId, 'subagents');
+    const [agentCount, title, cwd] = await Promise.all([
+      countAgentMetas(subagentsDir),
+      sessionTitle(file, st.size, st.mtimeMs),
+      sessionCwd(file, st.size),
+    ]);
 
-    out.push({
-      sessionId,
-      file,
-      subagentsDir,
-      bytes: st.size,
-      modifiedAt: st.mtimeMs,
-      agentCount: countAgentMetas(subagentsDir),
-      title: sessionTitle(file, st.size, st.mtimeMs),
-      cwd: sessionCwd(file, st.size),
-    });
-  }
+    return { sessionId, file, subagentsDir, bytes: st.size, modifiedAt: st.mtimeMs, agentCount, title, cwd };
+  }));
+
+  const out = settled.filter(Boolean);
   out.sort((a, b) => b.modifiedAt - a.modifiedAt);
   return out;
 }
 
 /** Find one session anywhere on this machine, by id. */
-export function findSession(sessionId) {
+export async function findSession(sessionId) {
   if (!/^[A-Za-z0-9._-]+$/.test(sessionId)) return null; // it becomes a path
-  for (const dir of allProjectDirs()) {
+  for (const dir of await allProjectDirs()) {
     const file = path.join(dir, `${sessionId}.jsonl`);
     try {
-      const st = fs.statSync(file);
+      const st = await fsp.stat(file);
       return {
         sessionId,
         file,
@@ -194,21 +202,19 @@ export function findSession(sessionId) {
  * machine, 324 of 596 metas — 54% — were in the nested form, so a flat read
  * silently reported a busy session as having delegated nothing.
  */
-export function countAgentMetas(subagentsDir) {
-  let n = 0;
-  for (const f of agentMetaFiles(subagentsDir)) { void f; n += 1; }
-  return n;
+export async function countAgentMetas(subagentsDir) {
+  return (await agentMetaFiles(subagentsDir)).length;
 }
 
 /** Every agent meta file under a subagents directory, nesting included. */
-export function agentMetaFiles(subagentsDir, depth = 0) {
+export async function agentMetaFiles(subagentsDir, depth = 0) {
   const out = [];
   if (depth > 3) return out;                    // workflows nest one level; this is slack
   let entries;
-  try { entries = fs.readdirSync(subagentsDir, { withFileTypes: true }); } catch { return out; }
+  try { entries = await fsp.readdir(subagentsDir, { withFileTypes: true }); } catch { return out; }
   for (const e of entries) {
     const p = path.join(subagentsDir, e.name);
-    if (e.isDirectory()) out.push(...agentMetaFiles(p, depth + 1));
+    if (e.isDirectory()) out.push(...await agentMetaFiles(p, depth + 1));
     else if (e.name.endsWith('.meta.json')) out.push(p);
   }
   return out;
@@ -221,11 +227,14 @@ export function agentMetaFiles(subagentsDir, depth = 0) {
  * name is a lossy fold of the path, so two different projects can share one.
  * The folder is only the fallback when no record carried a cwd.
  */
-export function listProjects({ currentCwd = null, limitPerProject = 60, kitOf = null } = {}) {
+export async function listProjects({ currentCwd = null, limitPerProject = 60, kitOf = null } = {}) {
   const groups = new Map();
 
-  for (const dir of allProjectDirs()) {
-    for (const s of listSessions(dir)) {
+  const dirs = await allProjectDirs();
+  const perDir = await Promise.all(dirs.map(async (dir) => [dir, await listSessions(dir)]));
+
+  for (const [dir, sessions] of perDir) {
+    for (const s of sessions) {
       const key = s.cwd ?? `dir:${path.basename(dir)}`;
       if (!groups.has(key)) {
         groups.set(key, { key, cwd: s.cwd, dir, label: labelFor(s.cwd, dir), sessions: [] });
@@ -234,17 +243,18 @@ export function listProjects({ currentCwd = null, limitPerProject = 60, kitOf = 
     }
   }
 
-  const out = [...groups.values()].map((g) => {
+  const out = [];
+  for (const g of groups.values()) {
     g.sessions.sort((a, b) => b.modifiedAt - a.modifiedAt);
-    const kit = kitOf ? kitOf(g.cwd) : null;
-    return {
+    const kit = kitOf ? await kitOf(g.cwd) : null;
+    out.push({
       ...g,
       kit,
       // Most transcript folders on a busy machine point at directories that no
       // longer exist — test scratch dirs, moved checkouts. They are counted,
       // not deleted: the panel says how many it is holding back rather than
       // quietly shortening the list.
-      exists: kit?.dirExists ?? (g.cwd ? existsCached(g.cwd) : false),
+      exists: kit?.dirExists ?? (g.cwd ? await existsCached(g.cwd) : false),
       total: g.sessions.length,
       agentTotal: g.sessions.reduce((n, s) => n + s.agentCount, 0),
       modifiedAt: g.sessions[0]?.modifiedAt ?? 0,
@@ -252,8 +262,8 @@ export function listProjects({ currentCwd = null, limitPerProject = 60, kitOf = 
       // Long histories are truncated rather than silently dropped, and the
       // count above still reports the whole.
       sessions: g.sessions.slice(0, limitPerProject),
-    };
-  });
+    });
+  }
 
   // Standing-in first, then live directories, then an outdated kit ahead of a
   // current one — the rows that need a decision float up.
@@ -272,10 +282,10 @@ function labelFor(cwd, dir) {
 }
 
 const existsMemo = new Map();
-function existsCached(p) {
+async function existsCached(p) {
   if (existsMemo.has(p)) return existsMemo.get(p);
   let v = false;
-  try { v = fs.existsSync(p); } catch { v = false; }
+  try { await fsp.stat(p); v = true; } catch { v = false; }
   if (existsMemo.size > 2000) existsMemo.clear();
   existsMemo.set(p, v);
   return v;

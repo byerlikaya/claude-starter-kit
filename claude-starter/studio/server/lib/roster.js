@@ -14,7 +14,7 @@
 // because a stale list drawn as a live one is the kind of lie this panel is
 // built to avoid.
 
-import fs from 'node:fs';
+import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -61,18 +61,21 @@ export function parseRoster(text) {
   return { self: self ? { name: self[1], ref: self[2] } : null, peers };
 }
 
-function readTail(file, size, limit = TAIL_BYTES) {
-  let fd;
+// Async for the reason projects.js gives: this reads the tail of a transcript, which
+// is the exact operation measured at 31.2 s on one run in fifteen, and it runs on the
+// `/api/fleet` path the panel polls every 2 s — the shortest cycle in the app.
+async function readTail(file, size, limit = TAIL_BYTES) {
+  let fh;
   try {
-    fd = fs.openSync(file, 'r');
+    fh = await fsp.open(file, 'r');
     const len = Math.min(size, limit);
     const buf = Buffer.allocUnsafe(len);
-    fs.readSync(fd, buf, 0, len, Math.max(0, size - len));
+    await fh.read(buf, 0, len, Math.max(0, size - len));
     return buf.toString('utf8');
   } catch {
     return '';
   } finally {
-    if (fd !== undefined) try { fs.closeSync(fd); } catch { /* gone */ }
+    if (fh !== undefined) try { await fh.close(); } catch { /* gone */ }
   }
 }
 
@@ -82,25 +85,26 @@ function readTail(file, size, limit = TAIL_BYTES) {
  * Returns not-measured rather than an empty list when nothing has asked yet:
  * "no session has run ListAgents" and "you have no peers" are different facts.
  */
-export function remoteRoster() {
+export async function remoteRoster() {
   const files = [];
-  for (const dir of allProjectDirs()) {
+  for (const dir of await allProjectDirs()) {
     let entries;
-    try { entries = fs.readdirSync(dir); } catch { continue; }
-    for (const e of entries) {
-      if (!e.endsWith('.jsonl')) continue;
+    try { entries = await fsp.readdir(dir); } catch { continue; }
+    const stats = await Promise.all(entries.map(async (e) => {
+      if (!e.endsWith('.jsonl')) return null;
       const p = path.join(dir, e);
       try {
-        const st = fs.statSync(p);
-        files.push({ path: p, mtime: st.mtimeMs, size: st.size, sessionId: e.slice(0, -6) });
-      } catch { /* raced */ }
-    }
+        const st = await fsp.stat(p);
+        return { path: p, mtime: st.mtimeMs, size: st.size, sessionId: e.slice(0, -6) };
+      } catch { return null; }        // raced
+    }));
+    for (const s of stats) if (s) files.push(s);
   }
   files.sort((a, b) => b.mtime - a.mtime);
 
   let best = null;
   for (const [i, f] of files.slice(0, SCAN_FILES).entries()) {
-    const text = readTail(f.path, f.size, i < DEEP_FILES ? DEEP_BYTES : TAIL_BYTES);
+    const text = await readTail(f.path, f.size, i < DEEP_FILES ? DEEP_BYTES : TAIL_BYTES);
     if (!text.includes('Peer sessions')) continue;
 
     // The block lives INSIDE a JSON string, so its line breaks are the two
@@ -137,7 +141,7 @@ export function remoteRoster() {
     }
   }
 
-  const cached = readCache();
+  const cached = await readCache();
 
   if (!best) {
     if (cached) return { ...cached, fromCache: true };
@@ -166,15 +170,15 @@ export function remoteRoster() {
     return { ...cached, fromCache: true };
   }
 
-  writeCache(found);
+  await writeCache(found);
   return found;
 }
 
 const CACHE_MAX_AGE_MS = 12 * 60 * 60 * 1000;
 
-function readCache() {
+async function readCache() {
   try {
-    const c = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
+    const c = JSON.parse(await fsp.readFile(CACHE_FILE, 'utf8'));
     if (!c?.measured || !Array.isArray(c.peers)) return null;
     if (typeof c.seenAt !== 'number' || c.seenAt < Date.now() - CACHE_MAX_AGE_MS) return null;
     return c;
@@ -183,6 +187,6 @@ function readCache() {
   }
 }
 
-function writeCache(roster) {
-  try { fs.writeFileSync(CACHE_FILE, JSON.stringify(roster)); } catch { /* best effort */ }
+async function writeCache(roster) {
+  try { await fsp.writeFile(CACHE_FILE, JSON.stringify(roster)); } catch { /* best effort */ }
 }

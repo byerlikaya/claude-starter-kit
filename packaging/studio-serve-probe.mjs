@@ -165,23 +165,39 @@ const LIVENESS_MS = 2000;
 const timing = `the first /api/projects took ${waited}ms with a feed that never answers; a separate `
   + `/api/health on its own connection answered ${during.status} after ${duringMs}ms while it was in flight`;
 
-if (waited < 3000 && duringMs < LIVENESS_MS) {
-  check('the project list does not wait on the update feed', true, timing);
-  check('the panel answers other requests while the feed hangs', true, timing);
-} else if (waited > STALL_MS || duringMs > STALL_MS) {
-  // The known one. Reported, not passed and not failed: green would hide a defect we have measured,
-  // red goes red on one Windows run in eight and gets muted within a month.
-  knownIssue('the panel stalls while a transcript read blocks the loop',
-    `${timing} — nothing was served for ~${Math.round(Math.max(waited, duringMs) / 1000)}s`,
-    'listProjects reads transcripts with synchronous fs on the request path, so one slow file open '
-    + '(31.2s measured under a Windows security layer) blocks the whole event loop — present on main '
-    + 'too; the fix is async fs, tracked separately');
-  notApplicable('the project list does not wait on the update feed',
-    'this run hit the block above, so its timing measures that and cannot speak to the feed');
+// LIVENESS is the graded claim, and the timing is not.
+//
+// It used to be the other way round, and that was wrong twice over. `waited` says nothing about the
+// update feed — a run with the feed disabled entirely still stalled, which is what disproved that
+// reading — and it says nothing about the panel either: it is how long ONE file open took, which on a
+// machine whose security layer inspects opens is a property of the disk, not of this code. What the
+// panel owes its user is that a slow read stays inside the request that hit it. That is gradeable,
+// deterministic, and it is exactly what the async conversion bought:
+//
+//   sync  (main)   /api/projects 33,391 ms · a separate /api/health went unanswered 312 pings of 324
+//   async (here)   /api/projects 38,918 ms · the same health endpoint answered 195 of 195
+//
+// The read did not get faster. Nothing else went dark.
+check('the panel answers other requests while a read stalls', duringMs < LIVENESS_MS,
+  `${timing}${duringMs < LIVENESS_MS ? '' : ' — the event loop was blocked, so nothing the panel serves responded'}`);
+
+if (waited < 3000) {
+  check('the project list is served from local data, not a network round trip', true, timing);
+} else if (waited > STALL_MS) {
+  // Reported, not graded: the file open really did take half a minute, and no amount of code here
+  // makes a scanned disk faster. Green would hide it; red would fire on one Windows run in eight and
+  // be muted within a month. The graded half is above, and it stays green through exactly this run.
+  knownIssue('one transcript read took the stall shape',
+    `${timing} — the read itself took ~${Math.round(waited / 1000)}s`,
+    'a security layer inspecting file opens: 31.2s measured for a single 128 KiB tail read on this '
+    + 'machine, 0-1 ms on fourteen of fifteen runs. Not the kit\'s to fix; the kit\'s part was keeping '
+    + 'the rest of the panel answering, which the check above grades');
+  notApplicable('the project list is served from local data, not a network round trip',
+    'this run hit the stall above, so its timing measures the disk and cannot speak to the request path');
 } else {
-  // Neither fast nor the shape of the known block. Something else, and it should be loud.
-  check('the project list does not wait on the update feed', false,
-    `${timing} — slower than a local read and faster than the known block, so this is neither`);
+  // Neither a local read nor the shape of the known stall. Something else, and it should be loud.
+  check('the project list is served from local data, not a network round trip', false,
+    `${timing} — slower than a local read and faster than the known stall, so this is neither`);
 }
 
 const traversal = await get(port, `/../../../../etc/passwd?token=${TOKEN}`);

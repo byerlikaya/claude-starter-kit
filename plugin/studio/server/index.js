@@ -202,7 +202,7 @@ async function handle(req, res) {
     const self = { name: SELF_NAME, local: true, ok: true, sessions: mine.length };
     // Sessions reachable on other machines. Not live and not this machine's —
     // a snapshot of what a Remote-Control-connected session last recorded.
-    const roster = remoteRoster();
+    const roster = await remoteRoster();
     if (!PEERS.length) return sendJson(res, 200, { ...local, sessions: mine, origins: [self], roster });
 
     const answers = await askAll(PEERS, '/api/fleet');
@@ -231,7 +231,7 @@ async function handle(req, res) {
     // Cached, not awaited. The list is local data; making it wait on a registry cost 8.37 s of
     // dead time whenever the feed hung, measured. The refresh runs behind this response.
     const latest = latestVersionCached();
-    const projects = listProjects({ currentCwd: cwd, kitOf: (c) => kitStatus(c, latest) });
+    const projects = await listProjects({ currentCwd: cwd, kitOf: (c) => kitStatus(c, latest) });
     for (const p of projects) { p.origin = SELF_NAME; p.local = true; }
 
     const origins = [{ name: SELF_NAME, local: true, ok: true, projects: projects.length }];
@@ -280,7 +280,7 @@ async function handle(req, res) {
   if (url.pathname === '/api/kit') {
     const cwd = url.searchParams.get('cwd') || process.cwd();
     const sid = url.searchParams.get('session');
-    const session = sid ? findSession(sid) : null;
+    const session = sid ? await findSession(sid) : null;
     const [report, stats, brd] = await Promise.all([
       gateReport(cwd),
       session ? sessionStats(cwd, session.file) : Promise.resolve({ measured: false, reason: 'no session named' }),
@@ -295,7 +295,7 @@ async function handle(req, res) {
 
   if (url.pathname === '/api/sessions') {
     const cwd = url.searchParams.get('cwd') || process.cwd();
-    const dir = projectDir(cwd);
+    const dir = await projectDir(cwd);
     if (!dir) {
       // Nothing was read. That is not the same as "this project never ran".
       return sendJson(res, 200, {
@@ -305,7 +305,7 @@ async function handle(req, res) {
         sessions: [],
       });
     }
-    const sessions = listSessions(dir).map((s) => ({
+    const sessions = (await listSessions(dir)).map((s) => ({
       sessionId: s.sessionId,
       bytes: s.bytes,
       modifiedAt: s.modifiedAt,
@@ -316,37 +316,37 @@ async function handle(req, res) {
 
   const graphMatch = url.pathname.match(/^\/api\/session\/([^/]+)\/graph$/);
   if (graphMatch) {
-    const session = findSession(decodeURIComponent(graphMatch[1]));
+    const session = await findSession(decodeURIComponent(graphMatch[1]));
     if (!session) {
       const relayed = await relay(url.pathname);
       if (relayed) return sendJson(res, 200, relayed);
       return sendJson(res, 404, { measured: false, reason: 'no such session on this machine or any peer' });
     }
     const started = Date.now();
-    const graph = buildGraph(session);
+    const graph = await buildGraph(session);
     return sendJson(res, 200, { ...graph, measured: true, buildMs: Date.now() - started });
   }
 
   const convMatch = url.pathname.match(/^\/api\/session\/([^/]+)\/conversation$/);
   if (convMatch) {
-    const session = findSession(decodeURIComponent(convMatch[1]));
+    const session = await findSession(decodeURIComponent(convMatch[1]));
     if (!session) {
       const relayed = await relay(url.pathname);
       if (relayed) return sendJson(res, 200, relayed);
       return sendJson(res, 404, { measured: false, reason: 'no such session on this machine or any peer' });
     }
-    return sendJson(res, 200, conversation(session));
+    return sendJson(res, 200, await conversation(session));
   }
 
   const agentMatch = url.pathname.match(/^\/api\/session\/([^/]+)\/agent\/([^/]+)$/);
   if (agentMatch) {
-    const session = findSession(decodeURIComponent(agentMatch[1]));
+    const session = await findSession(decodeURIComponent(agentMatch[1]));
     if (!session) {
       const relayed = await relay(url.pathname);
       if (relayed) return sendJson(res, 200, relayed);
       return sendJson(res, 404, { measured: false, reason: 'no such session' });
     }
-    const detail = agentDetail(session, decodeURIComponent(agentMatch[2]));
+    const detail = await agentDetail(session, decodeURIComponent(agentMatch[2]));
     if (!detail) return sendJson(res, 404, { measured: false, reason: 'no transcript for that agent' });
     return sendJson(res, 200, { ...detail, measured: true });
   }
@@ -355,8 +355,8 @@ async function handle(req, res) {
   const termMatch = url.pathname.match(/^\/api\/session\/([^/]+)\/terminal$/);
   if (termMatch) {
     const id = decodeURIComponent(termMatch[1]);
-    const session = findSession(id);
-    const cwd = url.searchParams.get('cwd') || (session ? sessionCwd(session.file, session.bytes) : null);
+    const session = await findSession(id);
+    const cwd = url.searchParams.get('cwd') || (session ? await sessionCwd(session.file, session.bytes) : null);
 
     if (req.method === 'GET') {
       // What WOULD run, so the panel can show it before anything is launched.
@@ -535,20 +535,27 @@ async function relay(pathname) {
   return null;
 }
 
-function signature(session) {
+// Async for the same reason projects.js is, and more urgently: this runs on every
+// stream tick — 700 ms, seven times more often than the project list is polled —
+// so a synchronous stat here is seven times more chances to stop the event loop on
+// a machine where one file open can take 31 s. The stall itself is not ours to fix;
+// keeping it inside the one tick that hit it is.
+async function signature(session) {
   const parts = [];
-  try { parts.push(String(fs.statSync(session.file).size)); } catch { parts.push('0'); }
+  try { parts.push(String((await fsp.stat(session.file)).size)); } catch { parts.push('0'); }
   try {
-    for (const n of fs.readdirSync(session.subagentsDir).sort()) {
-      try { parts.push(`${n}:${fs.statSync(path.join(session.subagentsDir, n)).size}`); } catch { /* raced */ }
-    }
+    const names = (await fsp.readdir(session.subagentsDir)).sort();
+    const sizes = await Promise.all(names.map(async (n) => {
+      try { return `${n}:${(await fsp.stat(path.join(session.subagentsDir, n))).size}`; } catch { return null; }
+    }));
+    for (const s of sizes) if (s !== null) parts.push(s);
   } catch { /* no subagents yet */ }
   return parts.join('|');
 }
 
-function stream(req, res, url) {
+async function stream(req, res, url) {
   const id = url.searchParams.get('session');
-  let session = id ? findSession(id) : null;
+  let session = id ? await findSession(id) : null;
 
   res.writeHead(200, {
     'content-type': 'text/event-stream; charset=utf-8',
@@ -577,18 +584,30 @@ function stream(req, res, url) {
     req.on('error', stopWait);
 
     let last = null;
-    const watch = (found) => {
+    // `setInterval` does not wait for an async callback, so a tick that outlasts the
+    // interval is joined by the next one rather than replacing it. Synchronous reads
+    // made that impossible — a blocked loop fires nothing — so this guard is repairing
+    // something the async conversion introduced, not a pre-existing bug. Measured with
+    // a 3 s read against a 700 ms tick: five callbacks in flight at once without it,
+    // one with it. A real 31 s read would stack about forty-four, each of them racing
+    // the same `last` and queueing another `1 + 1 + N` reads behind the first.
+    let busy = false;
+    const watch = async (found) => {
+      if (busy) return;
+      busy = true;
       try {
-        const sig = signature(found);
-        if (sig !== last) { last = sig; send('graph', buildGraph(found)); }
+        const sig = await signature(found);
+        if (sig !== last) { last = sig; send('graph', await buildGraph(found)); }
         else send('idle', { at: Date.now() });
       } catch (e) {
         send('fault', { measured: false, reason: String(e?.message ?? e) });
+      } finally {
+        busy = false;
       }
     };
 
-    timer = setInterval(() => {
-      const found = findSession(id);
+    timer = setInterval(async () => {
+      const found = await findSession(id);
       if (!found) return;                       // still waiting for the first turn
       clearInterval(timer);
       watch(found);
@@ -618,17 +637,22 @@ function stream(req, res, url) {
   }
 
   let last = null;
-  const tick = () => {
+  let busy = false;                             // same re-entrancy guard as the watcher above
+  const tick = async () => {
+    if (busy) return;
+    busy = true;
     try {
-      const sig = signature(session);
+      const sig = await signature(session);
       if (sig !== last) {
         last = sig;
-        send('graph', buildGraph(session));
+        send('graph', await buildGraph(session));
       } else {
         send('idle', { at: Date.now() });
       }
     } catch (e) {
       send('fault', { measured: false, reason: String(e?.message ?? e) });
+    } finally {
+      busy = false;
     }
   };
 

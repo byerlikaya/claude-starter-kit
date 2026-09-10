@@ -7,7 +7,7 @@
 // A single record can itself be enormous (a pasted payload), so lines are
 // assembled from a carry buffer rather than assumed to fit in one read.
 
-import fs from 'node:fs';
+import fsp from 'node:fs/promises';
 
 export class JsonlReader {
   constructor(file) {
@@ -17,10 +17,15 @@ export class JsonlReader {
     this.malformed = 0; // counted, never silently swallowed
   }
 
-  /** Read everything appended since the last call. Returns parsed records. */
-  read() {
+  /** Read everything appended since the last call. Returns parsed records.
+   *
+   * Async because a transcript open can take 31 s on a machine whose security
+   * layer inspects it, and this sits under the stream tick — see the note at the
+   * top of projects.js. The read is no faster; it just no longer stops the loop.
+   */
+  async read() {
     let st;
-    try { st = fs.statSync(this.file); } catch { return []; }
+    try { st = await fsp.stat(this.file); } catch { return []; }
 
     // A shrunk file means it was replaced, not appended to. Start over rather
     // than reading from a stale offset into the middle of a record.
@@ -31,18 +36,18 @@ export class JsonlReader {
     if (st.size === this.offset) return [];
 
     let chunk;
-    let fd;
+    let fh;
     try {
-      fd = fs.openSync(this.file, 'r');
+      fh = await fsp.open(this.file, 'r');
       const len = st.size - this.offset;
       const buf = Buffer.allocUnsafe(len);
-      const got = fs.readSync(fd, buf, 0, len, this.offset);
-      chunk = buf.subarray(0, got).toString('utf8');
-      this.offset += got;
+      const { bytesRead } = await fh.read(buf, 0, len, this.offset);
+      chunk = buf.subarray(0, bytesRead).toString('utf8');
+      this.offset += bytesRead;
     } catch {
       return [];
     } finally {
-      if (fd !== undefined) try { fs.closeSync(fd); } catch { /* already gone */ }
+      if (fh !== undefined) try { await fh.close(); } catch { /* already gone */ }
     }
 
     const text = this.carry + chunk;
@@ -64,9 +69,9 @@ export class JsonlReader {
 }
 
 /** One-shot full read. Used for files we do not intend to follow. */
-export function readAll(file) {
+export async function readAll(file) {
   const r = new JsonlReader(file);
-  const records = r.read();
+  const records = await r.read();
   return { records, malformed: r.malformed };
 }
 
