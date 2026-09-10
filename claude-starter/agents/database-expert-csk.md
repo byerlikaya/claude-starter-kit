@@ -46,7 +46,7 @@ On changes to the data model, migrations, indexes, or the cache layer.
 ## DoD
 - Migration verified locally with up→down→up.
 - (On projects using SonarQube) `sonarqube-check` green.
-- Repo/handler tests green with `test-expert-csk`.
+- Repo/handler tests green with `test-expert-csk`: one suite run after the last edit, reported as command + exit code + pass/fail counts.
 
 ## Constraints
 - Do NOT run commands that touch prod data; leave those to the user.

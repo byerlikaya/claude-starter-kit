@@ -54,7 +54,10 @@ and report. Commit/push and destructive commands are gated (§4.4/§4.5).
 ## Definition of Done
 - Ambiguous scope goes to **planner-csk** first, so the acceptance criterion is explicit before coding.
 - `/simplify` + tests green + **review-agent-csk** clean + triggered skills + nothing deferred.
-- Quality gate: 0 build warnings/errors + a real analysis clean (`sonarqube-check`). A green linter is a
+- **Tests green = one run of the suite on the final code.** Whoever makes the last edit runs it and reports the command,
+  the exit code and the pass/fail counts; that report is the evidence the main thread and the reviewer cite. Run the suite
+  again only after a further edit, or when a report has no exit code — a second run on code nobody touched verifies nothing new.
+- Quality gate: 0 build warnings/errors (a test run that compiles is that build) + a real analysis clean (`sonarqube-check`). A green linter is a
   pre-check, not a verdict — no analysis, no rating.
 - Personal data / dependencies / translations touched → **privacy · dependency-audit · i18n-integrity** clean.
 

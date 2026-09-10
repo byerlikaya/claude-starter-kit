@@ -51,7 +51,7 @@ a project on another pattern follows its own skill instead, and these DevArch sp
 - At closure, report findings to **review-agent-csk**.
 
 ## DoD (this agent's responsibility)
-- Tests green with `test-expert-csk`.
+- Tests green with `test-expert-csk`: one suite run after your last edit, reported as command + exit code + pass/fail counts.
 - Build 0 warnings / 0 errors, and `sonarqube-check` applied — the skill defines what counts as clean (a green
   build is a pre-check, not a verdict). Restating a number here is how the two drifted apart.
 - `/simplify` applied.

@@ -38,7 +38,9 @@ Before a work package closes (pre-commit), on the changed diff.
 - **Verify before you report (two-stage):** a first-pass finding is a *candidate*. Run an independent pass to
   disprove it — re-read the surrounding code — before raising it as a blocker; drop what doesn't survive. Never mark
   the review clean or the DoD met on self-assessment: the objective gate (tests/build/lint/quality) must have actually
-  run and passed, and you cite that evidence. "It looks fixed" is not a verifier.
+  run and passed, and you cite that evidence. "It looks fixed" is not a verifier. A run reported with its command and
+  exit code on the code under review IS that evidence — cite it; run the suite yourself only if the code changed after
+  that run, or the report has no exit code.
 
 ## Output
 `file:line · label · observation · suggestion`; with a blocker/suggestion split, and a **disposition** for each

@@ -1614,7 +1614,14 @@ echo "== 6f) always-on token budget =="
 # for that cost, and a gate rather than a reminder — a verbose new description fails the suite instead of
 # quietly taxing every future session. Budgets sit just above the current sizes: raising one is allowed, but
 # only as a deliberate edit here.
-BUDGET_DISC=11800    # DISCIPLINE.md (the discipline half of CLAUDE.md); currently 11755 (2.5.0: +75 B, the
+BUDGET_DISC=12250    # DISCIPLINE.md (the discipline half of CLAUDE.md); currently 12200 (2026-09-11: +416 B — "tests green"
+                     # is ONE run of the suite on the final code, reported as command + exit code + counts, and the main
+                     # thread and the reviewer cite that report instead of running the suite again. Measured and
+                     # pre-registered, 18 sessions on three Node cases (evals/README.md): test and build runs per session
+                     # 4.44 -> 2.22, the final code tested in 9 of 9 sessions in both arms, checks 33 of 33 in both, cost
+                     # $6.54 -> $6.77. About 175 tokens a session, paid because the runs it removes were the same
+                     # unchanged code verified again at each layer; the matching agent lines sit in agent bodies, which
+                     # carry no always-on bytes.) (2.5.0: +75 B, the
                      # automode-policy row in the trigger map — routing it is what keeps it from being idle);
                      # was 11680 / (2.3.0: +62 B for the
                      # `teamboard` trigger row. A multi-person repo has no other always-on place to learn that a
