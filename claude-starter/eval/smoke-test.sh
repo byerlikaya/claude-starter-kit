@@ -1089,21 +1089,68 @@ enc_csk(){ printf '%s' "$1" | sed "${CSK_ENC_SED:-s#x#x#}"; }
   && pass "encode: underscore folds to '-' (misses every such project otherwise)" \
   || fail "encode: underscore NOT folded -> $(enc_csk '/Users/x/my_app')"
 # The encoder is written out twice, once per hook, because a shared file would have to be added to
-# build-plugin.sh's explicit copy list and a miss there breaks the plugin channel silently. Two copies are only
-# safe while they cannot drift, so that is enforced here rather than trusted.
-cu_blk="$(sed -n '/---- CSK-TRANSCRIPT-DIR/,/---- \/CSK-TRANSCRIPT-DIR/p' "$HOOKS/context-usage.sh")"
-ss_blk="$(sed -n '/---- CSK-TRANSCRIPT-DIR/,/---- \/CSK-TRANSCRIPT-DIR/p' "$HOOKS/session-stats.sh")"
-[ -n "$cu_blk" ] && [ "$cu_blk" = "$ss_blk" ] \
-  && pass "the duplicated resolver is byte-identical in both hooks" \
-  || fail "context-usage.sh and session-stats.sh resolvers have DRIFTED (or the markers are missing)"
-# Same reasoning, second pair: guard-write.sh carries a copy of guard-bash.sh's JSON parser, because the tier-3
-# fallback it replaced read only `file_path` and truncated at the first escaped quote. A shared file would have
-# to be added to build-plugin.sh's explicit copy list and a miss there breaks the plugin channel silently.
-gb_blk="$(sed -n '/---- CSK-JSON-PARSE/,/---- \/CSK-JSON-PARSE/p' "$HOOKS/guard-bash.sh")"
-gw_blk="$(sed -n '/---- CSK-JSON-PARSE/,/---- \/CSK-JSON-PARSE/p' "$HOOKS/guard-write.sh")"
-[ -n "$gb_blk" ] && [ "$gb_blk" = "$gw_blk" ] \
-  && pass "the duplicated JSON parser is byte-identical in both guards" \
-  || fail "guard-bash.sh and guard-write.sh JSON parsers have DRIFTED (or the markers are missing)"
+# Two blocks in this kit are duplicated on purpose: CSK-TRANSCRIPT-DIR (context-usage.sh + session-stats.sh)
+# and CSK-JSON-PARSE (the guards). A shared file would have to be added to build-plugin.sh's explicit copy
+# list and a miss there breaks the plugin channel silently, so the copies stay and the equality is enforced
+# here rather than trusted.
+#
+# This used to name the two files of each pair. That is the same shape as the defect it exists to catch: a
+# THIRD copy appears — guard-commit-scan.sh took the JSON parser — and a gate that was told to compare two
+# files reports green while the third drifts. So the marker decides the file list, not the file list the
+# marker.
+#
+# Two things make it able to give a wrong answer visibly, and both were earned by running it against a broken
+# tree rather than by reasoning:
+#   * AT LEAST TWO, and the NAMES printed. Rename the marker and a "compare everything that carries it" gate
+#     compares zero files and passes forever. A count alone is not enough either: it can be right while the
+#     files are wrong.
+#   * ANCHORED matching. `---- CSK-JSON-PARSE` matches `---- CSK-JSON-PARSER` as a substring, so the first
+#     version of this gate reported green on three files after the marker had been renamed — the exact hole it
+#     exists to close. The marker must be followed by a space or end of line; both shipped markers are (one is
+#     padded with dashes, the other ends the line).
+# Each copy is read with awk's index(), not a regex. The first version used sed's `\|` alternation, a GNU extension:
+# BSD sed matches nothing with it, every copy read as empty, and the macOS runner said "found 0" while ubuntu and
+# windows (GNU sed both) were green. Measured with the system tools rather than assumed — BSD grep 2.6.0 handles
+# `( |$)` correctly (rc 0 on all five hook files, rc 1 on a `...XR` line); /usr/bin/sed returned 0 lines for all
+# five blocks. A marker counts only when a space follows it or it ends the line: `---- /CSK-TRANSCRIPT-DIR` ends the
+# line, so a fixed string with a trailing space would miss it on every platform.
+# Exit: 0 start and end found (block printed) · 1 no start marker · 3 start marker without an end marker.
+_blk_read(){   # $1 = marker name, $2 = file
+  awk -v s="---- $1" -v e="---- /$1" '
+    function at(line, mk,   i, nx) { i = index(line, mk); if (!i) return 0; nx = substr(line, i + length(mk), 1); return nx == "" || nx == " " }
+    !on && at($0, s) { on = 1 }
+    on { print }
+    on && at($0, e) { done = 1; exit }
+    END { exit done ? 0 : (on ? 3 : 1) }' "$2"
+}
+_blk_gate(){   # $1 = marker name, $2 = what the block is, in words
+  local m="$1" what="$2" f base blk rc first="" firstf="" n=0 names="" drift="" unread=""
+  for f in "$HOOKS"/*; do
+    [ -f "$f" ] || continue
+    base="$(basename "$f")"
+    blk="$(_blk_read "$m" "$f")"; rc=$?
+    case "$rc" in
+      0) ;;
+      1) continue ;;
+      3) unread="$unread $base(no-end-marker)"; continue ;;
+      *) unread="$unread $base(awk-rc=$rc)"; continue ;;
+    esac
+    n=$((n+1)); names="$names $base"
+    if [ -z "$first" ]; then first="$blk"; firstf="$base"
+    elif [ "$blk" != "$first" ]; then drift="$drift $base"; fi
+  done
+  # A copy that could not be read is named in every branch. The first version filed it under drift and then let the
+  # "fewer than two" branch print, so the one fact that explained the failure never reached the log.
+  if [ "$n" -lt 2 ]; then
+    fail "$what: expected at least 2 files carrying '$m', found $n (${names:-none})${unread:+ · UNREADABLE:$unread} — marker renamed, a copy lost, or a copy unreadable"
+  elif [ -n "$drift$unread" ]; then
+    fail "$what: DRIFTED from $firstf ->${drift:- none}${unread:+ · UNREADABLE:$unread}  (compared $n files:$names)"
+  else
+    pass "$what is byte-identical across all $n files that carry it —$names"
+  fi
+}
+_blk_gate CSK-TRANSCRIPT-DIR "the duplicated transcript-dir resolver"
+_blk_gate CSK-JSON-PARSE     "the duplicated JSON parser"
 # End to end: called by hand from this repo, the hook must produce a reading rather than "transcript not found".
 cu_hand="$(cd "$ROOT/.." && bash "$HOOKS/context-usage.sh" 2>&1)"
 case "$cu_hand" in
@@ -1765,8 +1812,45 @@ if [ "$UNITS" = 1 ]; then
 # `git checkout -b`, and an exit-0 hook says "no opinion", which leaves those rules in force — so a keyed
 # headless session could not stage, let alone commit, and the key achieved nothing it was documented to do.
 # Asserting the exit code alone is what let that ship: the code was always right, the decision was missing.
-gj(){ printf '{"tool_name":"Bash","permission_mode":"%s","tool_input":{"command":"%s"}}' "$1" "$2"; }
+# The payload shape, captured rather than assumed. Claude Code 2.1.267 sends, in this order:
+#   session_id, transcript_path, cwd, prompt_id, permission_mode, effort, hook_event_name, tool_name,
+#   tool_input{command, description}, tool_use_id
+# — one line, no space after any colon. So `permission_mode` arrives BEFORE `tool_input`, which is what this
+# fixture has always produced. guard-bash.sh's header used to describe the opposite order; that was wrong and
+# has been corrected. The `effort` field did not exist in 2.1.246.
+#
+# The `late` variant below is NOT the real shape and must not be read as one. Key order in a JSON object is
+# not a contract, the payload has gained fields inside one minor version, and the parser's cost used to depend
+# on where the key sat — `permission_mode` behind a 100 KB command measured 7.94s on Git Bash against 0.27s in
+# front of it. That dependence has been removed; `late` is what keeps it removed. It is a guard against the
+# order changing, not a reproduction of it.
+gj(){   # $1 = permission mode, $2 = command, $3 = "late" to put permission_mode AFTER tool_input
+  case "${3:-}" in
+    late) printf '{"tool_name":"Bash","tool_input":{"command":"%s"},"permission_mode":"%s"}' "$2" "$1" ;;
+    *)    printf '{"tool_name":"Bash","permission_mode":"%s","tool_input":{"command":"%s"}}' "$1" "$2" ;;
+  esac
+}
 gdec(){ printf '%s' "$1" | sed -n 's/.*"permissionDecision"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1; }
+# KEY ORDER MUST NOT CHANGE A VERDICT. Every fixture in this suite puts `permission_mode` before `tool_input`
+# — which the capture above confirms is the real shape — so until now nothing here exercised the other order
+# at all. That is the shape of a gate verified only on the path someone happens to send: the parser's cost
+# genuinely depended on key position, and if a future payload moves the key, the suite would keep reporting
+# green while the parse it verified is no longer the parse that runs.
+#
+# So: the same commands, both orders, and the verdicts compared rather than each asserted separately. A
+# difference here means the parse is position-sensitive again.
+_ord_diff=""
+for _c in 'git commit -m x' 'git push --force' 'rm -rf /' 'ls -la' 'git reset --hard HEAD~1' \
+          'echo exit 0 > .git/hooks/pre-commit' 'cat README.md'; do
+  for _m in default bypassPermissions; do
+    _a="$(gj "$_m" "$_c" | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"; _ra=$?
+    _b="$(gj "$_m" "$_c" late | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"; _rb=$?
+    [ "$_ra" = "$_rb" ] && [ "$(gdec "$_a")" = "$(gdec "$_b")" ] || _ord_diff="$_ord_diff [$_m: $_c → rc $_ra/$_rb, dec $(gdec "$_a")/$(gdec "$_b")]"
+  done
+done
+[ -z "$_ord_diff" ] \
+  && pass "the verdict does not depend on where permission_mode sits in the payload (14 runs, both orders)" \
+  || fail "key order CHANGED a verdict — the parse is position-sensitive:$_ord_diff"
 # WHICH MODES CAN ACTUALLY ASK. Only `default` and `acceptEdits` put the prompt in front of a person. In `auto`
 # the classifier answers it and `dontAsk` asks nothing by definition — measured in a real session as 14 `ASK`
 # lines in the gate log against zero human keypresses — so those two fail closed with plan/bypassPermissions.
