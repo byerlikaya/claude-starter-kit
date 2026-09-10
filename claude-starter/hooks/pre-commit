@@ -170,8 +170,49 @@ fi
 # Nothing staged for the text scans AND the bloat gate is clean -> done.
 { [ -s "$TRACE_F" ] || [ -s "$SECRET_F" ] || [ "$HIT" -ne 0 ]; } || exit 0
 
+
+# Ask "can ANY pattern match" once, before asking "which one".
+#
+# The three loops below spawn one grep PER PATTERN — 12 + 11 + 3 = 26 processes on every commit, and the
+# overwhelming majority of commits are clean, so 26 of them exist only to say "no". Measured on 205 added
+# lines: the trace loop 0.621 s -> 0.063 s, the secret loop 0.572 s -> 0.059 s. One decision, then the loop
+# ONLY when the decision says there is something to name.
+#
+# Three-way on purpose, because grep has three answers and two of them must not shortcut:
+#   rc=1  nothing matches      -> done. This is the fast path and the common one.
+#   rc=0  something matches    -> run the loop, which names the pattern. The user still reads
+#                                 "forbidden expression -> '<pattern>'" verbatim; nothing is lost but time.
+#   rc=2  grep could not decide -> run the loop. TODAY'S BEHAVIOUR, deliberately.
+#
+# That last rung is what makes this safe rather than clever, and it was earned: joining the patterns compiles
+# them TOGETHER, so ONE broken regex kills the whole alternation. Measured with a pattern file carrying a valid
+# `Co-Authored-By` and a broken `foo[`, against a message that really does carry the trailer:
+#     grep -inEf together   rc=2, ZERO matches   <- the trailer goes unreported
+#     one grep per pattern  catches it; only the broken pattern is skipped
+# A blocklist is a file users edit by hand, so a broken pattern is not exotic — and failing OPEN there would be
+# the worst possible direction. rc=2 also covers an alternation too large to compile (measured: 40 KB fine,
+# 200 KB -> "grep: Memory exhausted", rc=2 -> loop), so the ARG_MAX question answers itself.
+#
+# Verified on the blocklists' OWN #test:/#test-clean: cases — 32 of them, the payload the gate actually
+# defends: 32/32 identical verdicts. Calibrated by mutation (strip the parentheses so a group-scoped `|`
+# escapes to top level): 8 mismatches, in BOTH directions — three clean messages newly rejected and two real
+# secrets newly passed. Also checked structurally: no pattern in either shipped blocklist carries a bare
+# top-level `|` (every one is inside a group) and none uses a back-reference, so joining cannot reshape them.
+_csk_any(){   # $1 = pattern list  $2 = corpus  $3 = grep flags  $4 = 1 for newline-joined fixed strings
+  local pat alt="" sep="|"
+  [ "$4" = 1 ] && sep="
+"
+  while IFS= read -r pat || [ -n "$pat" ]; do
+    pat="${pat%$'\r'}"
+    case "$pat" in ''|\#*) continue;; esac
+    alt="${alt:+$alt$sep}$pat"
+  done < "$1"
+  [ -n "$alt" ] || return 1
+  grep -q$3 -- "$alt" "$2" 2>/dev/null
+}
 # (1) trace scan — case-INsensitive (vendor / AI-authorship strings), project files only
-if [ -f "$BL" ] && [ -s "$TRACE_F" ]; then
+if _csk_any "$BL" "$TRACE_F" iE 0; then _dec=0; else _dec=$?; fi
+if [ -f "$BL" ] && [ -s "$TRACE_F" ] && [ "$_dec" != 1 ]; then
   while IFS= read -r pat || [ -n "$pat" ]; do
     pat="${pat%$'\r'}"                       # tolerate a CRLF blocklist (Windows/autocrlf checkout) — a trailing \r
     case "$pat" in ''|\#*) continue;; esac   # in the pattern never matches the LF-normalised diff, blinding the gate
@@ -183,7 +224,8 @@ if [ -f "$BL" ] && [ -s "$TRACE_F" ]; then
   done < "$BL"
 fi
 # (2) secret scan — case-SENSITIVE (token prefixes are case-specific); prints the PATTERN, never the value
-if [ -f "$SL" ] && [ -s "$SECRET_F" ]; then
+if _csk_any "$SL" "$SECRET_F" E 0; then _dec=0; else _dec=$?; fi
+if [ -f "$SL" ] && [ -s "$SECRET_F" ] && [ "$_dec" != 1 ]; then
   while IFS= read -r pat || [ -n "$pat" ]; do
     pat="${pat%$'\r'}"                       # tolerate a CRLF blocklist (Windows/autocrlf checkout)
     case "$pat" in ''|\#*) continue;; esac
@@ -228,7 +270,8 @@ PAL="";  [ -n "$GITROOT" ] && [ -f "$GITROOT/.private-allowlist.txt" ] && PAL="$
   fi
   [ -n "$PTF" ] && sed -e 's/[[:space:]]*$//' -e '/^#/d' -e '/^$/d' "$PTF"
 } > "$PTERM_F" 2>/dev/null || true
-if [ -s "$PTERM_F" ] && [ -s "$SECRET_F" ]; then
+if _csk_any "$PTERM_F" "$SECRET_F" iF 1; then _dec=0; else _dec=$?; fi
+if [ -s "$PTERM_F" ] && [ -s "$SECRET_F" ] && [ "$_dec" != 1 ]; then
   while IFS= read -r term || [ -n "$term" ]; do
     term="${term%$'\r'}"
     [ -n "$term" ] || continue
