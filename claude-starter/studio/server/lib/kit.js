@@ -8,7 +8,7 @@
 // Read-only. Detecting that a project is behind and updating it are different
 // acts, and only the first one happens here.
 
-import fs from 'node:fs';
+import fsp from 'node:fs/promises';
 import path from 'node:path';
 
 const FEED = process.env.CSK_UPDATE_URL
@@ -107,24 +107,30 @@ export function compareVersions(a, b) {
   return 0;
 }
 
-/** What the kit looks like inside one working directory. */
-export function kitStatus(cwd, latest) {
+/** What the kit looks like inside one working directory.
+ *
+ * Async because it runs once per project on the `/api/projects` path, and a
+ * synchronous read there blocks the whole panel when one file open stalls —
+ * see the note at the top of projects.js for the measurement.
+ */
+export async function kitStatus(cwd, latest) {
   if (!cwd) return { installed: false, reason: 'no working directory recorded' };
 
   const claude = path.join(cwd, '.claude');
   let version = null;
-  try { version = sane(fs.readFileSync(path.join(claude, 'VERSION'), 'utf8')); } catch { /* not installed */ }
+  try { version = sane(await fsp.readFile(path.join(claude, 'VERSION'), 'utf8')); } catch { /* not installed */ }
 
   if (!version) {
     // Distinguish "no kit here" from "the directory is gone" — one is a choice,
     // the other is a dead path.
-    const present = fs.existsSync(cwd);
+    let present = false;
+    try { await fsp.stat(cwd); present = true; } catch { present = false; }
     return { installed: false, dirExists: present, reason: present ? 'kit not installed' : 'directory no longer exists' };
   }
 
   const conf = {};
   try {
-    for (const line of fs.readFileSync(path.join(claude, 'kit.conf'), 'utf8').split('\n')) {
+    for (const line of (await fsp.readFile(path.join(claude, 'kit.conf'), 'utf8')).split('\n')) {
       const m = line.match(/^\s*([A-Za-z_]+)\s*=\s*(.*)$/);
       if (m) conf[m[1]] = m[2].trim();
     }

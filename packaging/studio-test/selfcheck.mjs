@@ -706,7 +706,7 @@ check('free text after the status is carried, not parsed into a time it may not 
 check('prose without a roster yields nothing', parseRoster('there are no peers here') === null);
 check('an empty block yields nothing, not an empty roster', parseRoster('Peer sessions (0):') === null);
 
-const live = remoteRoster();
+const live = await remoteRoster();
 check('the roster is either measured or says why not',
   live.measured === true || typeof live.reason === 'string',
   live.measured ? `${live.remotes} remote, seen ${new Date(live.seenAt).toISOString()}` : live.reason);

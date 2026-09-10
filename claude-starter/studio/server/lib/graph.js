@@ -14,7 +14,7 @@
 // `toolUseId` is the join. Whoever emitted that tool_use is the parent: the
 // session itself for depth 1, another agent for anything deeper.
 
-import fs from 'node:fs';
+import fsp from 'node:fs/promises';
 import path from 'node:path';
 
 import { readAll, contextFill } from './transcript.js';
@@ -119,8 +119,8 @@ function scanMain(records) {
 }
 
 /** Roll one agent's own transcript into the numbers its node shows. */
-function scanAgent(file) {
-  const { records } = readAll(file);
+async function scanAgent(file) {
+  const { records } = await readAll(file);
   const stats = {
     tools: {}, toolCount: 0, lastTool: null, errors: 0,
     tokens: null, startedAt: null, endedAt: null, turns: 0,
@@ -167,20 +167,25 @@ function scanAgent(file) {
   return stats;
 }
 
-function readAgentDir(subagentsDir) {
+async function readAgentDir(subagentsDir) {
   const out = [];
   // Nested too: a workflow puts its agents under subagents/workflows/<id>/.
-  for (const metaPath of agentMetaFiles(subagentsDir)) {
+  for (const metaPath of await agentMetaFiles(subagentsDir)) {
     const name = path.basename(metaPath);
     const dir = path.dirname(metaPath);
     if (!name.startsWith('agent-')) continue;
     const agentId = name.slice('agent-'.length, -'.meta.json'.length);
     let meta = {};
-    try { meta = JSON.parse(fs.readFileSync(metaPath, 'utf8')); } catch { /* keep going */ }
+    try { meta = JSON.parse(await fsp.readFile(metaPath, 'utf8')); } catch { /* keep going */ }
 
     const jsonl = path.join(dir, `agent-${agentId}.jsonl`);
     let mtime = null;
-    try { mtime = fs.statSync(jsonl).mtimeMs; } catch { /* not written yet */ }
+    try { mtime = (await fsp.stat(jsonl)).mtimeMs; } catch { /* not written yet */ }
+
+    // `stats` needs the transcript read; a missing file is a normal state (the
+    // agent has not written yet), so absence is a null rather than a throw.
+    let stats = null;
+    if (mtime !== null) stats = await scanAgent(jsonl);
 
     out.push({
       agentId,
@@ -193,7 +198,7 @@ function readAgentDir(subagentsDir) {
       // A workflow agent belongs to the run that spawned it, not the session
       // root; without this they all hang off the root as one flat fan.
       workflow: dir === subagentsDir ? null : path.basename(dir),
-      stats: fs.existsSync(jsonl) ? scanAgent(jsonl) : null,
+      stats,
     });
   }
   return out;
@@ -205,10 +210,10 @@ function readAgentDir(subagentsDir) {
  * rather than running — an unfinished agent whose file stopped growing is a
  * different fact from one that is working.
  */
-export function buildGraph(session, { staleMs = 120000 } = {}) {
-  const { records, malformed } = readAll(session.file);
+export async function buildGraph(session, { staleMs = 120000 } = {}) {
+  const { records, malformed } = await readAll(session.file);
   const main = scanMain(records);
-  const agents = readAgentDir(session.subagentsDir);
+  const agents = await readAgentDir(session.subagentsDir);
   const now = Date.now();
 
   // Ownership: session first, then every agent's own tool_use ids, so a nested
@@ -390,17 +395,17 @@ export const _internals = { scanMain, harvestCompletions, SESSION_NODE };
  * thousands of characters and the graph is pushed down an SSE stream every
  * time a file changes. This is fetched when someone opens a node.
  */
-export function agentDetail(session, agentId) {
+export async function agentDetail(session, agentId) {
   if (!/^[A-Za-z0-9_-]+$/.test(agentId)) return null;
 
   const file = path.join(session.subagentsDir, `agent-${agentId}.jsonl`);
-  if (!fs.existsSync(file)) return null;
+  try { await fsp.stat(file); } catch { return null; }
 
-  const { records, malformed } = readAll(file);
+  const { records, malformed } = await readAll(file);
 
   let meta = {};
   try {
-    meta = JSON.parse(fs.readFileSync(path.join(session.subagentsDir, `agent-${agentId}.meta.json`), 'utf8'));
+    meta = JSON.parse(await fsp.readFile(path.join(session.subagentsDir, `agent-${agentId}.meta.json`), 'utf8'));
   } catch { /* the transcript is still the source of truth */ }
 
   const timeline = [];
@@ -472,8 +477,8 @@ export function agentDetail(session, agentId) {
  * Sidechains are skipped: a subagent's exchange belongs to the graph, not to
  * the conversation the person had.
  */
-export function conversation(session, { limit = 400 } = {}) {
-  const { records } = readAll(session.file);
+export async function conversation(session, { limit = 400 } = {}) {
+  const { records } = await readAll(session.file);
   const out = [];
 
   for (const r of records) {
