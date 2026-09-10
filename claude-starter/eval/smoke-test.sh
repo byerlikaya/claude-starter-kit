@@ -1108,22 +1108,43 @@ enc_csk(){ printf '%s' "$1" | sed "${CSK_ENC_SED:-s#x#x#}"; }
 #     version of this gate reported green on three files after the marker had been renamed — the exact hole it
 #     exists to close. The marker must be followed by a space or end of line; both shipped markers are (one is
 #     padded with dashes, the other ends the line).
+# Each copy is read with awk's index(), not a regex. The first version used sed's `\|` alternation, a GNU extension:
+# BSD sed matches nothing with it, every copy read as empty, and the macOS runner said "found 0" while ubuntu and
+# windows (GNU sed both) were green. Measured with the system tools rather than assumed — BSD grep 2.6.0 handles
+# `( |$)` correctly (rc 0 on all five hook files, rc 1 on a `...XR` line); /usr/bin/sed returned 0 lines for all
+# five blocks. A marker counts only when a space follows it or it ends the line: `---- /CSK-TRANSCRIPT-DIR` ends the
+# line, so a fixed string with a trailing space would miss it on every platform.
+# Exit: 0 start and end found (block printed) · 1 no start marker · 3 start marker without an end marker.
+_blk_read(){   # $1 = marker name, $2 = file
+  awk -v s="---- $1" -v e="---- /$1" '
+    function at(line, mk,   i, nx) { i = index(line, mk); if (!i) return 0; nx = substr(line, i + length(mk), 1); return nx == "" || nx == " " }
+    !on && at($0, s) { on = 1 }
+    on { print }
+    on && at($0, e) { done = 1; exit }
+    END { exit done ? 0 : (on ? 3 : 1) }' "$2"
+}
 _blk_gate(){   # $1 = marker name, $2 = what the block is, in words
-  local m="$1" what="$2" f base blk first="" firstf="" n=0 names="" drift=""
+  local m="$1" what="$2" f base blk rc first="" firstf="" n=0 names="" drift="" unread=""
   for f in "$HOOKS"/*; do
     [ -f "$f" ] || continue
-    grep -qE -- "---- $m( |$)" "$f" 2>/dev/null || continue
     base="$(basename "$f")"
-    blk="$(sed -n "/---- $m\\( \\|$\\)/,/---- \\/$m\\( \\|$\\)/p" "$f")"
-    if [ -z "$blk" ]; then drift="$drift $base(no-end-marker)"; continue; fi
+    blk="$(_blk_read "$m" "$f")"; rc=$?
+    case "$rc" in
+      0) ;;
+      1) continue ;;
+      3) unread="$unread $base(no-end-marker)"; continue ;;
+      *) unread="$unread $base(awk-rc=$rc)"; continue ;;
+    esac
     n=$((n+1)); names="$names $base"
     if [ -z "$first" ]; then first="$blk"; firstf="$base"
     elif [ "$blk" != "$first" ]; then drift="$drift $base"; fi
   done
+  # A copy that could not be read is named in every branch. The first version filed it under drift and then let the
+  # "fewer than two" branch print, so the one fact that explained the failure never reached the log.
   if [ "$n" -lt 2 ]; then
-    fail "$what: expected at least 2 files carrying '$m', found $n (${names:-none}) — marker renamed or a copy lost"
-  elif [ -n "$drift" ]; then
-    fail "$what: DRIFTED from $firstf ->$drift  (compared $n files:$names)"
+    fail "$what: expected at least 2 files carrying '$m', found $n (${names:-none})${unread:+ · UNREADABLE:$unread} — marker renamed, a copy lost, or a copy unreadable"
+  elif [ -n "$drift$unread" ]; then
+    fail "$what: DRIFTED from $firstf ->${drift:- none}${unread:+ · UNREADABLE:$unread}  (compared $n files:$names)"
   else
     pass "$what is byte-identical across all $n files that carry it —$names"
   fi
