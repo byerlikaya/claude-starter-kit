@@ -35,7 +35,8 @@
 #   bash evals/run.sh --case secret-refused # one case
 #   bash evals/run.sh --keep                # keep the scratch projects for inspection
 #
-# Exit 0 the report printed · 1 a case is malformed or the CLI is unusable.
+# Exit 0 the report printed · 1 a case is malformed or the CLI is unusable · 3 INCOMPLETE: a run was not measured (a usage
+# limit, or a stream that ended in an error), so the totals printed are not a result.
 set -uo pipefail
 ROOT="${CSK_EVAL_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 CASES="${CSK_EVAL_CASES:-$ROOT/evals/cases}"
@@ -110,18 +111,22 @@ build_project() {
 # without the documented escape the kit arm would be unable to commit for reasons that have nothing to do with
 # the behaviour under test. The content gates (trace/secret pre-commit) still run — that is the point.
 # eval_trace_metrics <stream.jsonl> <stdout.txt> — one TSV line:
-#   agent_top agent_all spawned cost in out cache_read cache_create turns bad_lines has_result tests tests_nested turns_top turns_nested
+#   agent_top agent_all spawned cost in out cache_read cache_create turns bad_lines has_result tests tests_nested turns_top turns_nested is_error limited
 # The last four were appended, not inserted, so every earlier column keeps its position. `tests` counts Bash calls that run a test
 # runner or a build/lint tool — main thread and subagents alike, since the stream carries both — deduplicated by tool_use id. The bare
 # word "test" is deliberately not a match: measured on real transcripts, the calls it caught alone were echo banners, not runs.
 # agent_top counts Agent/Task calls made by the MAIN thread (no parent_tool_use_id); agent_all includes nested ones.
 # has_result=0 means the stream is empty or broken: that run says nothing about delegation and must not be counted.
+# is_error=1 and limited=1 mean the same thing for a stream that DID end in a result. A usage-limit rejection is exactly that: a
+# result event with subtype success, is_error true and api_error_status 429, preceded by a rate_limit_event whose status is
+# "rejected". Measured: a 9-session run hit the five-hour limit in its 2nd session and the next 7 returned in ~0.6 s each, with
+# a result event and no tool call. has_result alone counted all of them, and the grader scored 7 untouched projects.
 eval_trace_metrics() {
   python3 - "$1" "$2" <<'PYM'
 import json, sys, re
 src, txt = sys.argv[1], sys.argv[2]
 RUNRX = re.compile(r'(^|[\s;&|(])(pytest|jest|vitest|mocha|make|mvn|gradle|tsc|eslint|ruff|flake8|mypy)\b|(dotnet|go|cargo)\s+(test|build)\b|(npm|pnpm|yarn)\s+(run\s+)?(test|build|lint)\b|\bnode\s+--test\b')
-top = allc = bad = 0; res = None
+top = allc = bad = limited = 0; res = None
 tests = tnest = 0; seen_tu = set(); msgs_top = set(); msgs_nest = set()
 try: lines = open(src, errors='replace').read().splitlines()
 except OSError: lines = []
@@ -142,6 +147,8 @@ for line in lines:
             elif c.get('name') == 'Bash' and RUNRX.search((c.get('input') or {}).get('command') or ''):
                 tests += 1
                 if nested: tnest += 1
+    elif e.get('type') == 'rate_limit_event':
+        if (e.get('rate_limit_info') or {}).get('status') == 'rejected': limited = 1
     elif e.get('type') == 'result':
         res = e
 open(txt, 'w').write((res or {}).get('result') or '')
@@ -149,7 +156,8 @@ u = (res or {}).get('usage') or {}
 sp = ((res or {}).get('subagent_stats') or {}).get('spawned', '')
 print('\t'.join(str(x) for x in (top, allc, sp, (res or {}).get('total_cost_usd', ''), u.get('input_tokens', ''),
       u.get('output_tokens', ''), u.get('cache_read_input_tokens', ''), u.get('cache_creation_input_tokens', ''),
-      (res or {}).get('num_turns', ''), bad, 1 if res else 0, tests, tnest, len(msgs_top), len(msgs_nest))))
+      (res or {}).get('num_turns', ''), bad, 1 if res else 0, tests, tnest, len(msgs_top), len(msgs_nest),
+      1 if (res or {}).get('is_error') else 0, 1 if limited or (res or {}).get('api_error_status') == 429 else 0)))
 PYM
 }
 
@@ -198,8 +206,9 @@ ARMS="${CSK_EVAL_ARMS:-kit bare}"; ARM_A="${ARMS%% *}"; ARM_B=""; [ "$ARMS" != "
 printf '== kit A/B eval ==  %s · %s runs/arm · arms: %s\n\n' "$MODEL" "$RUNS" "$ARMS"
 [ -d "$CASES" ] || { echo "run.sh: no cases under evals/cases" >&2; exit 1; }
 
-TOTAL_KIT=0; TOTAL_BARE=0; TOTAL_CHECKS=0; TOTAL_CHECKS_B=0
+TOTAL_KIT=0; TOTAL_BARE=0; TOTAL_CHECKS=0; TOTAL_CHECKS_B=0; NOT_MEASURED=0; LIMITED=0
 for cdir in "$CASES"/*/; do
+  [ "$LIMITED" = 1 ] && break
   cname="$(basename "$cdir")"
   [ -n "$ONLY" ] && [ "$ONLY" != "$cname" ] && continue
   [ -f "$cdir/case.env" ] && [ -f "$cdir/grade.sh" ] || { echo "run.sh: $cname is missing case.env or grade.sh" >&2; exit 1; }
@@ -210,8 +219,10 @@ for cdir in "$CASES"/*/; do
   [ -n "${DESC:-}" ] && echo "   $DESC"
 
   for arm in $ARMS; do
-    passed=0; checks=0; detail=""; gates=""
+    [ "$LIMITED" = 1 ] && break
+    passed=0; checks=0; detail=""; gates=""; arm_nm=0; arm_graded=0
     for r in $(seq 1 "$RUNS"); do
+      [ "$LIMITED" = 1 ] && break
       P="$WORK/$cname-$arm-$r"
       # A failed install must never degrade into "the kit arm behaved like the bare one" — that is the single
       # result this harness could produce that looks like a finding and is actually a bug in itself.
@@ -230,6 +241,31 @@ for cdir in "$CASES"/*/; do
         echo "     Only matters for cases needing a pre-approved permission. Re-run with CSK_EVAL_WORK=<a trusted path>," >&2
         echo "     or trust $P once interactively." >&2
       fi
+      # A run that never happened must not be graded. A usage-limit rejection leaves the seed project untouched, and an
+      # untouched project passes every "was not changed" check: measured, 7 rejected runs scored 2 checks each. So a run is
+      # graded only on evidence that it ran. In trace mode that is a result that is neither an error nor limited. Without the
+      # stream it is a reply that is not the limit message, in the one form seen so far, the result text of a rejected run:
+      # "You've hit your session limit · resets …".
+      nm=""
+      if [ "${CSK_EVAL_TRACE:-0}" = 1 ]; then
+        m_has=""; m_err=""; m_lim=""
+        read -r m_has m_err m_lim < <(LC_ALL=C awk -F'\t' '{print ($11==""?0:$11), ($16==""?0:$16), ($17==""?0:$17)}' "$P/.eval-metrics.tsv" 2>/dev/null)
+        if [ "${m_has:-0}" != 1 ]; then nm="the stream is empty or broken"
+        elif [ "${m_err:-0}" = 1 ] || [ "${m_lim:-0}" = 1 ]; then
+          nm="the run ended in an error or hit the usage limit: $(head -1 "$P/.eval-stdout.txt" 2>/dev/null | cut -c1-160)"
+        fi
+        [ "${m_lim:-0}" = 1 ] && LIMITED=1
+      elif head -1 "$P/.eval-stdout.txt" 2>/dev/null | grep -qiE "^you.ve hit your .*limit"; then
+        nm="$(head -1 "$P/.eval-stdout.txt" | cut -c1-160)"; LIMITED=1
+      fi
+      if [ -n "$nm" ]; then
+        NOT_MEASURED=$((NOT_MEASURED+1)); arm_nm=$((arm_nm+1))
+        printf '   ! %s run %s NOT MEASURED, not graded — %s\n' "$arm" "$r" "$nm"
+        [ -s "$P/.eval-metrics.tsv" ] && cat "$P/.eval-metrics.tsv" >> "$WORK/trace-$cname-$arm.tsv"
+        [ "$LIMITED" = 1 ] && { printf '   ! usage limit reached — no further run is started\n'; break; }
+        continue
+      fi
+      arm_graded=$((arm_graded+1))
       # KIT_ROOT lets a grader reuse the kit's own pattern files. It must come from the RUNNER, not be
       # discovered inside the project: the bare arm has no .claude/, so a grader that looked there would score
       # "cannot grade" as a failure and quietly penalise the arm for being the control.
@@ -250,18 +286,19 @@ for cdir in "$CASES"/*/; do
     done
     if [ "${CSK_EVAL_TRACE:-0}" = 1 ]; then
       LC_ALL=C awk -F'\t' -v arm="$arm" '
-        { n++; if ($11 != 1) { empty++; next } ok++; if ($1 > 0) deleg++; cost += $4; tin += $5; tout += $6; cr += $7; cc += $8; tst += $12; tsn += $13; ttop += $14; tnst += $15 }
+        { n++; if ($11 != 1 || $16 == 1 || $17 == 1) { empty++; next } ok++; if ($1 > 0) deleg++; cost += $4; tin += $5; tout += $6; cr += $7; cc += $8; tst += $12; tsn += $13; ttop += $14; tnst += $15 }
         END {
           if (n == 0) { printf "     trace %-5s NO TRACE FILE — the runs wrote no metrics; this measured nothing\n", arm; exit }
           printf "     trace %-5s delegated %d/%d · cost $%.3f · in %d out %d cache_read %d cache_create %d · test runs %d (nested %d) · turns %d (nested %d)", arm, deleg, ok, cost, tin, tout, cr, cc, tst, tsn, ttop, tnst
-          if (empty) printf " · %d EMPTY/BROKEN stream(s), not counted", empty
+          if (empty) printf " · %d EMPTY/BROKEN/ERROR stream(s), not counted", empty
           printf "\n"
         }' "$WORK/trace-$cname-$arm.tsv" 2>/dev/null || printf '     trace %-5s NO TRACE FILE — the runs wrote no metrics; this measured nothing\n' "$arm"
     fi
     if [ "$arm" = "$ARM_A" ]; then TOTAL_KIT=$((TOTAL_KIT+passed)); TOTAL_CHECKS=$((TOTAL_CHECKS+checks));
     elif [ "$arm" = "$ARM_B" ]; then TOTAL_BARE=$((TOTAL_BARE+passed)); TOTAL_CHECKS_B=$((TOTAL_CHECKS_B+checks)); fi
     printf '   %-5s %s/%s checks' "$arm" "$passed" "$checks"
-    [ "$RUNS" -gt 1 ] && printf ' (over %s runs)' "$RUNS"
+    if [ "$arm_graded" -lt "$RUNS" ]; then printf ' (%s of %s runs graded · %s NOT MEASURED)' "$arm_graded" "$RUNS" "$arm_nm"
+    elif [ "$RUNS" -gt 1 ]; then printf ' (over %s runs)' "$RUNS"; fi
     printf '\n'
     # Tally each distinct check across the runs instead of printing them N times.
     printf '%s\n' "$detail" | grep -E '^(PASS|FAIL) ' \
@@ -286,7 +323,7 @@ done
 echo "== summary =="
 printf '   %-4s %s/%s\n' "$ARM_A" "$TOTAL_KIT" "$TOTAL_CHECKS"
 [ -n "$ARM_B" ] && printf '   %-4s %s/%s\n' "$ARM_B" "$TOTAL_BARE" "$TOTAL_CHECKS_B"
-if [ -n "$ARM_B" ] && [ "$TOTAL_CHECKS" -gt 0 ]; then
+if [ -n "$ARM_B" ] && [ "$TOTAL_CHECKS" -gt 0 ] && [ "$NOT_MEASURED" = 0 ] && [ "$LIMITED" = 0 ]; then
   printf '   delta %s - %s: %+d checks\n' "$ARM_A" "$ARM_B" "$((TOTAL_KIT - TOTAL_BARE))"
   [ "$ARM_B" = bare ] && [ "$TOTAL_KIT" -le "$TOTAL_BARE" ] && \
     echo "   NOTE: the kit did not come out ahead. Report that as it stands — a harness that only publishes"
@@ -294,4 +331,9 @@ if [ -n "$ARM_B" ] && [ "$TOTAL_CHECKS" -gt 0 ]; then
     echo "         favourable runs measures nothing."
 fi
 [ "$RUNS" = 1 ] && echo "   n=1: one run per arm is an anecdote, not a rate. Use --runs 3+ before quoting a number."
+if [ "$NOT_MEASURED" -gt 0 ] || [ "$LIMITED" = 1 ]; then
+  printf '   INCOMPLETE: %s run(s) NOT MEASURED%s. The totals above are not a result.\n' "$NOT_MEASURED" \
+    "$([ "$LIMITED" = 1 ] && echo ', and the usage limit stopped every later run before it started')"
+  exit 3
+fi
 exit 0

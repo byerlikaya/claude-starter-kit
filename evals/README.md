@@ -48,9 +48,16 @@ token usage and turns — and test and build runs: `Bash` calls that run a test 
 thread and in subagents alike (a subagent's calls arrive in the same stream, carrying `parent_tool_use_id`),
 deduplicated by tool-use id, with main-thread and nested turns beside them. The bare word `test` does not count: on
 real transcripts the calls it caught alone were echo banners, not runs. Each arm then prints a `trace` line —
-delegated k/n, cost, tokens, test runs and turns, nested in brackets. A run whose stream is empty
-or carries no `result` event is flagged and **not counted**: an empty trace says nothing about delegation. Grading
-still reads only the files on disk; the trace is a second measurement beside the grade, never an input to it.
+delegated k/n, cost, tokens, test runs and turns, nested in brackets. Grading still reads only the files on disk;
+the trace is a second measurement beside the grade, never an input to it.
+
+**A run that did not happen is not graded.** A run whose stream is empty, carries no `result` event, ends in an
+error result or hit the usage limit is printed **NOT MEASURED** and left out of the score. The last two are the
+trap: a usage-limit rejection is a well-formed `result` event (`is_error: true`, `api_error_status: 429`), and the
+project it leaves untouched passes every "was not changed" check. Measured: a nine-session run hit the five-hour
+limit in its second session, the next seven returned in about 0.6 s each with no tool call, and the runner before
+this rule scored them 19 of 33. The limit also stops the run — no later session is started — and the runner exits
+3, INCOMPLETE, printing no delta. Without the stream, a reply that is the limit message is treated the same way.
 
 **Test-run cases.** `tests-bugfix-failing-test`, `tests-single-file-refactor` and `tests-small-rule-change` are small
 Node projects with no dependency. Their graders run the tests themselves, so they need `node` on PATH (measured on
