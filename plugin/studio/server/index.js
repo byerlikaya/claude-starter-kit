@@ -19,7 +19,7 @@ import { getFleet, measureSpawnCost } from './lib/fleet.js';
 import { projectDir, listSessions, findSession, listProjects, sessionCwd } from './lib/projects.js';
 import { buildGraph, agentDetail, conversation } from './lib/graph.js';
 import { palette } from './lib/palette.js';
-import { latestVersion, kitStatus } from './lib/kit.js';
+import { latestVersion, latestVersionCached, kitStatus } from './lib/kit.js';
 import { parsePeers, askAll, ask } from './lib/peers.js';
 import {
   createSession, getSession, listSessionsOwned, reap, stopAll, ALLOWED_MODES,
@@ -228,7 +228,9 @@ async function handle(req, res) {
   if (url.pathname === '/api/projects') {
     const cwd = url.searchParams.get('cwd') || process.cwd();
     const started = Date.now();
-    const latest = await latestVersion();
+    // Cached, not awaited. The list is local data; making it wait on a registry cost 8.37 s of
+    // dead time whenever the feed hung, measured. The refresh runs behind this response.
+    const latest = latestVersionCached();
     const projects = listProjects({ currentCwd: cwd, kitOf: (c) => kitStatus(c, latest) });
     for (const p of projects) { p.origin = SELF_NAME; p.local = true; }
 

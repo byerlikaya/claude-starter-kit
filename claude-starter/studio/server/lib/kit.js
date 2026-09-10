@@ -19,7 +19,42 @@ const FETCH_TIMEOUT_MS = 8000;
 let latestCache = null;   // { at, value }
 let inflight = null;
 
-/** The published version, or a stated reason it could not be read. */
+/**
+ * The published version WITHOUT waiting for the network.
+ *
+ * Returns whatever is cached, and starts a refresh if the cache is cold or stale — but never
+ * awaits it. Measured on a corporate machine: with the feed hanging, /api/projects took 8.37 s
+ * because it awaited this, which is the whole FETCH_TIMEOUT_MS. The project list is local data;
+ * it has no business waiting on a registry, and a user watching a 12-second blank reads it as a
+ * hung panel rather than as a slow lookup they never asked for.
+ *
+ * The honesty rule is unchanged: an unfetched answer says so with a reason. It never renders as
+ * "up to date". The reason simply becomes "not fetched yet" until the first refresh lands, and
+ * the next request serves the real answer.
+ */
+export function latestVersionCached() {
+  const fresh = latestCache && Date.now() - latestCache.at < FEED_TTL_MS;
+  // Deferred to a later tick, not merely un-awaited, so the request path does no work of its own.
+  //
+  // It does NOT fix the stall that is still open against this file. Measured on a Windows machine
+  // with an inspecting layer on every connection: while the feed accepts and stays silent, the
+  // first /api/projects sometimes takes 28-31 s (3 of 25) — and during that window a SEPARATE
+  // /api/health on a separate connection does not answer either. So the whole event loop is
+  // blocked, not this endpoint, and removing an await cannot help: there is no await to remove.
+  // A refused connection never reproduces it; only an accepted-and-silent one does.
+  //
+  // Four hypotheses have been tested and all four failed (libuv threadpool saturation, a cold
+  // path after idle, the fetch itself in isolation, and the await on the request path). The
+  // mechanism is unknown and is tracked separately. This line stays because starting work on a
+  // request path is wrong regardless of what turns out to be blocking.
+  if (!fresh && !inflight) {
+    setTimeout(() => { latestVersion().catch(() => {}); }, 0).unref();
+  }
+  if (latestCache) return latestCache.value;
+  return { measured: false, reason: 'not fetched yet', at: Date.now(), pending: true };
+}
+
+/** The published version, or a stated reason it could not be read. Awaits the network. */
 export async function latestVersion({ force = false } = {}) {
   if (!force && latestCache && Date.now() - latestCache.at < FEED_TTL_MS) return latestCache.value;
   if (inflight) return inflight;
