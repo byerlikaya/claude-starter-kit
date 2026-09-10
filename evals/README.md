@@ -402,6 +402,57 @@ already shown 0 of 1.
 Then point `CSK_EVAL_CASES` at a directory holding only the six cases (or run each with `--case`) and use
 `CSK_EVAL_ARMS="kit kitb" CSK_EVAL_DISCIPLINE_B=<that file> CSK_EVAL_TRACE=1 bash evals/run.sh --runs 3 --keep`.
 
+## Measured with `CSK_EVAL_TRACE`: how many times does a small change run its tests?
+
+**Question.** "Tests green" was written into the discipline's Definition of Done, into three agents' DoD, into
+test-expert's red-green line and into the reviewer's "verify before you report", and nothing said who runs the suite.
+So every layer could run it again on code nobody had touched. How often did that happen, and can one reported run
+replace the repeats without losing the run that proves the final code works?
+
+**Baseline first**, because the previous experiment failed its reduction criterion on a floor. The current kit, the
+three Node cases `tests-bugfix-failing-test`, `tests-single-file-refactor` and `tests-small-rule-change`, three runs
+each, CLI 2.1.268, with a go/no-go rule hashed before the runs: at least 7 of 9 sessions counted and a median of at least
+4 test or build runs per session. Result: 9 of 9 counted; runs per session 4 · 3 · 6, 5 · 8 · 4, 3 · 6 · 6, median 5. Of
+the 45 runs the implementing agent made 17, the main thread 13, the reviewer 11, test-expert 3 and security-expert 1;
+every session ran 2 to 5 of them after its last edit, and every session tested its final code. The repeats were
+re-verification across layers, not red-green. A first attempt measured nothing — the usage limit rejected seven of its
+nine sessions, which is where the NOT MEASURED rule above comes from.
+
+**The change.** "Tests green" became one run of the suite after the last edit, reported with the command, the exit code
+and the pass/fail counts; the main thread and the reviewer cite that report and run the suite again only after a
+further edit, or when the report has no exit code. Red-green was kept. Arm `kitb` carried it in the discipline file
+and, through `CSK_EVAL_OVERLAY_B`, in five agent definitions taken from an installed project. The two arms' `.claude/`
+trees differed in exactly those six files, checked afterwards in every one of the 18 projects.
+
+**Setup.** Arms `kit` and `kitb`, the same three cases, three runs each, 18 sessions, CLI 2.1.268 at the start and at the
+end, and the kit tree hash equal to the baseline's. The criteria, cases, runner, overlay and analysis were hashed before
+the first run.
+
+| arm | test/build runs per session | final code tested | checks | cost |
+|---|---|---|---|---|
+| `kit` | 4.44 (median 4) | 9 / 9 | 33 / 33 | $6.54 |
+| `kitb` | 2.22 (median 2) | 9 / 9 | 33 / 33 | $6.77 |
+
+**Pre-registered criteria.** S1, fewer runs: `kitb` at most 0.70 × `kit` and a lower median — **passed** (0.50; 4 → 2).
+S2, safety: every `kitb` session that edited ran a test after its last edit — **passed** (9 of 9). S3, quality: no more
+failed checks than `kit` and no session leaving the tests failing — **passed** (0 and 0). **Decision: ship.** The text in
+`claude-starter/CLAUDE.md` and the agent definitions is the text measured, byte for byte.
+
+**What moved, and what did not.** Who ran the tests: in `kit`, backend-expert 15, the main thread 12, review-agent 11,
+security-expert 2; in `kitb`, backend-expert 17 and the main thread 3. The reviewer was still delegated in every `kitb`
+session (8 of 9 in `kit`) — it stopped re-running a suite that had just passed. Runs after the last edit fell from 2–5
+to 1–2. Cost did not move ($6.54 → $6.77): with a sub-second suite a test run is cheap, so the saving here is runs, not
+dollars; a slow suite would turn it into time, and that was not measured. The Definition of Done grew by 416 bytes,
+about 175 tokens a session, and the always-on budget in `smoke-test §6f` was raised with that reason beside it. `kitb`
+already carried those bytes, so they are inside its $6.77. Three single-prompt Node cases are not a real session, and
+file edits made through `Bash` are invisible to S2.
+
+**To re-run it,** remember that arm `kit` is now the shipped text: build arm B from the previous one. Take
+`claude-starter/CLAUDE.md` from the commit before this change as `CSK_EVAL_DISCIPLINE_B`, and the five agent files from
+the `.claude/agents/` of a project installed from that commit as `CSK_EVAL_OVERLAY_B` (a `--generic` install writes
+`backend-expert-csk.md` from the generic source). Then point `CSK_EVAL_CASES` at the three `tests-*` cases and run
+`CSK_EVAL_ARMS="kit kitb" CSK_EVAL_TRACE=1 bash evals/run.sh --runs 3 --keep`.
+
 ## When `claude plugin eval` opens
 
 `claude plugin eval --ablation with-without` is the purpose-built version of this and would replace `run.sh`

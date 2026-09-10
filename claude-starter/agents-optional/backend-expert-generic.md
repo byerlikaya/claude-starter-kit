@@ -48,7 +48,7 @@ This profile has no single "how" skill; the pattern in the source repo is author
 - At closure, report findings to **review-agent-csk**.
 
 ## DoD (this agent's responsibility)
-- Tests green with `test-expert-csk`.
+- Tests green with `test-expert-csk`: one suite run after your last edit, reported as command + exit code + pass/fail counts.
 - `dependency-audit` clean (if a package was added/updated).
 - `/simplify` applied.
 - Decisions asked of the user with EXPLICIT OPTIONS (recommendation + rationale for each option).

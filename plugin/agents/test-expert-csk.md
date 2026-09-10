@@ -28,7 +28,8 @@ The "how" lives in the `testing` skill; this agent applies it.
 - Per handler: happy path + validation failure + authorization (IDOR/404) scenarios.
 - Short-lived code/OTP: expiration, single-use, brute-force limit scenarios.
 - Deterministic tests; external dependencies mocked/faked.
-- Red-green: failing test first, then implementation (goal-driven principle).
+- Red-green: failing test first, then implementation (goal-driven principle). After the last edit, run the suite once and
+  report command + exit code + pass/fail counts; do not re-run it on code nobody has touched since.
 
 ## Coordination (cross-agent)
 - Source of the tested behavior → align with **backend-expert-csk** / **frontend-expert-csk**.

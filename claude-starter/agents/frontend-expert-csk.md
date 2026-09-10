@@ -44,7 +44,7 @@ On UI, component/page, navigation/routing, state, i18n interface, responsive, or
 4. **Also apply:** `frontend-design` (visual/UX quality — hierarchy, spacing, type, states) · `a11y` (accessibility gate) · `i18n-integrity` (translation integrity) · `observability` (client log/error) · `performance` (render/bundle) · `dependency-audit` (packages).
 
 ## DoD
-- `/simplify` + tests green + `review-agent-csk` clean.
+- `/simplify` + tests green (one suite run after the last edit, reported as command + exit code + counts) + `review-agent-csk` clean.
 - Responsive/accessible; works across the project's target device/browser matrix.
 
 ## Coordination (cross-agent)
