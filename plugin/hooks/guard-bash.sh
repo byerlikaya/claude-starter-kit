@@ -70,7 +70,7 @@ _json_slice(){  # $1 = whole payload, $2 = key -> the raw (still JSON-escaped) s
                    # continuation byte can be 0x5C or 0x22, so a cut cannot land inside a character at a
                    # quote or backslash edge. What this line is worth in SPEED depends on the platform --
                    # read the table in _json_unescape below before quoting a number for it.
-  local pre rest seg tail out bs
+  local pre rest seg w r n base=0 j=0 cl lim run=0 chunk C=4096 W=256; local -a acc=("")
   # Every "step past X" here is arithmetic on a length, never `${s#"$literal"}`. That shape reads like a
   # constant-time strip and is not one: bash retries the pattern at every prefix length, so stripping an
   # n-byte literal costs O(n^2). It was in this function twice, and both were measured:
@@ -84,27 +84,46 @@ _json_slice(){  # $1 = whole payload, $2 = key -> the raw (still JSON-escaped) s
   #     against 0.002s for `${tail:${#seg}+1}` doing exactly the same thing.
   # `${1%%"$2"*}` still finds the FIRST occurrence -- the longest suffix that starts with the key starts at the
   # earliest one -- so a command containing the literal text `"command":"` still cannot relocate the parse.
-  # Output is byte-identical to the previous shape across a 27-case battery: escaped quotes, backslash runs
-  # before a quote, the key twice, the key appearing first as a value, glob metacharacters, UTF-8, no closing
-  # quote, empty input. Two deliberately broken twins -- one byte off in each offset -- prove it can tell.
+  # Stepping by length removed the quadratic strip, but each escaped quote still sliced and re-assigned the
+  # whole remainder, so an escape-dense command stayed k*n here as well (2.2s of the 6.8s described in
+  # _json_unescape below, on Git Bash). The walk is chunked the same way: the payload is read 4096 bytes at a
+  # time and every per-quote operation stays inside the chunk. One thing is carried across edges on purpose
+  # -- the length of the backslash run in front of a quote -- because that run can straddle a window or a
+  # chunk, and its parity is what decides whether the quote ends the value. Isolated, escape-dense 44030 B:
+  # 2.61s -> 0.41s on Git Bash 5.3.15, 0.93s -> 0.09s on macOS/bash 3.2.
+  # Output is byte-identical to the previous shape across 378 cases at four chunk/window sizes down to 7 and 1
+  # bytes, and that shape to the one before it across a 27-case battery (escaped quotes, backslash runs before
+  # a quote, the key twice, the key appearing first as a value, glob metacharacters, UTF-8, no closing quote,
+  # empty input). Broken twins -- the run not carried across a window, a byte skipped after a quote -- prove
+  # the battery sees both.
   pre="${1%%\"$2\"*}"                          # everything before the FIRST `"key"`
   [ "$pre" != "$1" ] || return 0               # key absent: emit nothing
   rest="${1:${#pre}+${#2}+2}"                  # past `"key"`
   seg="${rest%%\"*}"                           # skip `: "` up to the value's opening quote, when there is one
   [ "$seg" = "$rest" ] || rest="${rest:${#seg}+1}"
-  out=""; tail="$rest"
   # Walk to the closing quote that is NOT escaped. A `"` preceded by an odd number of backslashes is content.
+  n=${#rest}; chunk="${rest:0:C}"; cl=${#chunk}
   while :; do
-    seg="${tail%%\"*}"
-    [ "$seg" != "$tail" ] || { out="$out$seg"; break; }   # no closing quote at all: take the rest
-    out="$out$seg"
-    bs="${seg##*[!\\]}"                    # trailing backslash run ("" when the last char is not a backslash)
-    case "$seg" in *[!\\]*) ;; *) bs="$seg" ;; esac       # all-backslash segment: the run is the whole segment
-    if [ $(( ${#bs} % 2 )) -eq 1 ]; then out="$out\""; tail="${tail:${#seg}+1}"; else break; fi
+    lim=$((cl - j))
+    if [ "$lim" -le 0 ]; then
+      [ $((base + cl)) -lt "$n" ] || break                 # no closing quote at all: everything is already taken
+      base=$((base + j)); chunk="${rest:base:C}"; cl=${#chunk}; j=0; continue
+    fi
+    [ "$lim" -le "$W" ] || lim=$W
+    w="${chunk:j:lim}"
+    seg="${w%%\"*}"
+    if [ "$seg" = "$w" ]; then                             # no quote in view: take all of it, carry the run
+      acc+=("$w"); j=$((j+lim))
+      r="${w##*[!\\]}"; case "$w" in *[!\\]*) run=${#r} ;; *) run=$((run+${#w})) ;; esac
+      continue
+    fi
+    acc+=("$seg"); j=$((j+${#seg}+1))
+    r="${seg##*[!\\]}"; case "$seg" in *[!\\]*) run=${#r} ;; *) run=$((run+${#seg})) ;; esac
+    if [ $((run % 2)) -eq 1 ]; then acc+=("\""); run=0; else break; fi
   done
-  printf '%s' "$out"
+  local IFS=''; printf '%s' "${acc[*]}"
 }
-_json_unescape(){  # left-to-right, one whole run per escape; a two-pass sed would corrupt `\\"` (escaped backslash + quote)
+_json_unescape(){  # left-to-right, a chunk at a time; a two-pass sed would corrupt `\\"` (escaped backslash + quote)
   # This is the tier-3 path below -- the one a stock Windows install actually runs on. It used to walk ONE
   # CHARACTER at a time, which is O(n^2) twice over: `${s%"${s#?}"}` matches a pattern the length of the
   # entire remainder just to read one character, and `out="$out$c"` recopies the output for each one.
@@ -135,44 +154,68 @@ _json_unescape(){  # left-to-right, one whole run per escape; a two-pass sed wou
   #     alone would justify the line, and it costs nothing. `local` restores the previous locale on return
   #     -- verified on bash 3.2 and on Git Bash 5.3.15, not assumed.
   #
-  # Heaviest real payload (46815 B, 2813 escapes), whole hook end to end, with _json_slice fixed as well: 2.1s
-  # on macOS/bash 3.2. On Git Bash an escape-dense command of that shape (44080 B, 2755 escapes) takes 6.8s --
-  # 11% of the timeout, so slowness rather than a hole -- and what is left there is k*n in BOTH functions
-  # (slice 2.2s, unescape 3.1s): every escape rescans and recopies the remainder. A sparse 100 KB command is
-  # 1.6-2.1s there. These numbers do not travel, which is why each one names its machine.
-  # Output is byte-identical to the old function across a
-  # 31-case battery (escaped quotes, `\\\\`, a lone trailing backslash, a truncated `\\u`, Turkish, emoji), and
-  # tier 1 and tier 3 return the same verdict on 22 gate cases. A deliberately-broken twin of the new function
-  # proves the battery can tell the two apart.
-  local s="$1" out="" pre c h
+  # Then the cost moved rather than went away. With the per-character walk gone, each escape still sliced the
+  # whole REMAINDER -- `s="${s:${#pre}+1}"` -- so an escape-dense command stayed k*n: on Git Bash a 44080 B
+  # command with 2755 escapes took 6.8s, 11% of the timeout. The input is now touched only a chunk at a time
+  # (`${s:base:C}`, once per 4096 bytes) and every per-escape operation stays inside that chunk, so no escape
+  # pays for the length of the whole command. That is the change that matters: bounding only the lookahead,
+  # while still indexing the full string, was measured too and gave about 4x on both machines, against 6-12x
+  # for the chunked walk. Five bytes are held back at a chunk's end whenever more input follows, so a
+  # `\uXXXX` that starts in a chunk ends in it.
+  # The output goes into an array joined once, not a string recopied at every append, and `\n`/`\t` are
+  # written `$'\n'`/`$'\t'`, so this file carries no raw TAB for an editor or a copy to turn into spaces.
+  #
+  # Measured, isolated, previous shape -> this one:
+  #     macOS/bash 3.2   escape-dense 44030 B, 2590 escapes .. 1.44s -> 0.12s
+  #                      sparse 100014 B, 4 escapes ........... 0.09s -> 0.02s
+  #     Git Bash 5.3.15  escape-dense 44030 B, 2590 escapes .. 3.92s -> 0.54s
+  #     (LANG empty)     sparse 99997 B, 4 escapes ............ 0.49s -> 0.07s
+  # These numbers do not travel, which is why each one names its machine.
+  #
+  # Output is byte-identical to the previous shape across 478 cases, each run at four chunk/window sizes
+  # down to 7 and 1 bytes so that an edge falls every few bytes; that shape was itself byte-identical to
+  # the original character walk across a 31-case battery (escaped quotes, `\\`, a lone trailing backslash, a
+  # truncated `\u`, Turkish, emoji). Deliberately broken twins -- the 5-byte margin cut to 4, the backslash
+  # not stepped over -- prove the battery sees both edges, and tier 1 and tier 3 return the same verdict on
+  # the gate cases.
   local LC_ALL=C
+  local s="$1" pre w c h n base=0 j=0 cl lim chunk C=4096 W=256; local -a acc=("")
   case "$s" in *\\*) ;; *) printf '%s' "$s"; return 0 ;; esac   # no escapes: the common case pays nothing
+  n=${#s}; chunk="${s:0:C}"; cl=${#chunk}
   while :; do
-    pre="${s%%\\*}"                                     # the whole literal run before the next backslash
-    if [ "$pre" = "$s" ]; then out="$out$s"; break; fi   # no backslash left: the remainder is literal
-    out="$out$pre"; s="${s:${#pre}+1}"
-    if [ -z "$s" ]; then out="$out\\"; break; fi         # a lone trailing backslash stays literal, as before
-    c="${s:0:1}"; s="${s:1}"
+    lim=$((cl - j))
+    if [ $((base + cl)) -lt "$n" ]; then                  # more input after this chunk: hold 5 bytes back, so
+      lim=$((lim - 5))                                     # a `\uXXXX` that starts in a chunk also ends in it
+      if [ "$lim" -le 0 ]; then base=$((base + j)); chunk="${s:base:C}"; cl=${#chunk}; j=0; continue; fi
+    else
+      [ "$lim" -gt 0 ] || break
+    fi
+    [ "$lim" -le "$W" ] || lim=$W
+    w="${chunk:j:lim}"
+    pre="${w%%\\*}"                                        # the literal run before the next backslash in view
+    if [ "$pre" = "$w" ]; then acc+=("$w"); j=$((j+lim)); continue; fi
+    acc+=("$pre"); j=$((j+${#pre}+1))
+    if [ $((base + j)) -ge "$n" ]; then acc+=("\\"); break; fi   # a lone trailing backslash stays literal, as before
+    c="${chunk:j:1}"; j=$((j+1))
     case "$c" in
-      n) out="$out
-" ;;
-      t) out="$out	" ;;
+      n) acc+=($'\n') ;;
+      t) acc+=($'\t') ;;
       r) ;;
-      b|f) out="$out " ;;
-      u) if [ ${#s} -ge 4 ]; then h="${s:0:4}"; s="${s:4}"; else h=""; fi   # a short tail leaves s alone, as before
+      b|f) acc+=(" ") ;;
+      u) if [ $((n - base - j)) -ge 4 ]; then h="${chunk:j:4}"; j=$((j+4)); else h=""; fi   # a short tail is left alone, as before
          # A `\uXXXX` used to become a literal `?`. That is not a lossy nicety, it is a hole: `\u002e` is `.`,
          # so `\u002eclaude/hooks/guard-bash.sh` decoded to `?claude/…` and matched no gate pattern, while jq
          # decoded the same bytes to the real path — the two tiers disagreed on whether a payload was an
          # attack. Printable ASCII is decoded properly (builtin printf, no fork); anything else still becomes
          # `?`, which is only ever a display concern because this value is used for MATCHING, never to write.
          case "$h" in
-           00[2-7][0-9a-fA-F]) printf -v c "\\x${h#00}"; out="$out$c" ;;
-           *)                  out="$out?" ;;
+           00[2-7][0-9a-fA-F]) printf -v c "\\x${h#00}"; acc+=("$c") ;;
+           *)                  acc+=("?") ;;
          esac ;;
-      *) out="$out$c" ;;
+      *) acc+=("$c") ;;
     esac
   done
-  printf '%s' "$out"
+  local IFS=''; printf '%s' "${acc[*]}"
 }
 # ---- /CSK-JSON-PARSE -----------------------------------------------------------------------------------
 # A TIER IS CHOSEN ON WHETHER IT WORKS, NOT ON WHETHER IT EXISTS. `command -v` answers the wrong question, and
