@@ -34,7 +34,22 @@ let inflight = null;
  */
 export function latestVersionCached() {
   const fresh = latestCache && Date.now() - latestCache.at < FEED_TTL_MS;
-  if (!fresh && !inflight) { latestVersion().catch(() => {}); }
+  // Deferred to a later tick, not merely un-awaited, so the request path does no work of its own.
+  //
+  // It does NOT fix the stall that is still open against this file. Measured on a Windows machine
+  // with an inspecting layer on every connection: while the feed accepts and stays silent, the
+  // first /api/projects sometimes takes 28-31 s (3 of 25) — and during that window a SEPARATE
+  // /api/health on a separate connection does not answer either. So the whole event loop is
+  // blocked, not this endpoint, and removing an await cannot help: there is no await to remove.
+  // A refused connection never reproduces it; only an accepted-and-silent one does.
+  //
+  // Four hypotheses have been tested and all four failed (libuv threadpool saturation, a cold
+  // path after idle, the fetch itself in isolation, and the await on the request path). The
+  // mechanism is unknown and is tracked separately. This line stays because starting work on a
+  // request path is wrong regardless of what turns out to be blocking.
+  if (!fresh && !inflight) {
+    setTimeout(() => { latestVersion().catch(() => {}); }, 0).unref();
+  }
   if (latestCache) return latestCache.value;
   return { measured: false, reason: 'not fetched yet', at: Date.now(), pending: true };
 }

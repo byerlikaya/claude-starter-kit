@@ -19,3 +19,18 @@ claude-starter/profiles.conf text eol=lf
 # on every pattern, which then never matches the LF diff — silently blinding the trace/secret gate on Windows. The
 # pre-commit also strips a trailing '\r' defensively, but keeping these LF means it never sees one.
 *.txt text eol=lf
+# VERSION is read by the shell — `head -1` in start.sh:345, adopt.sh:203 and adopt.sh:633, and `read -r`
+# in session-update-check.sh. Measured on a Windows checkout: the file comes out `2.9.0\r\n`, and both of
+# those forms keep the CR (doctor.sh strips it with `tr -cd`, the others do not). Today the only visible
+# damage is cosmetic — adopt.sh:216 prints it mid-line, so the carriage return overwrites the start of the
+# status row — but a CR-bearing value also compares unequal to a clean one, so the first version comparison
+# anyone writes would be silently wrong. And `head` itself is not consistent about it: it kept the CR here
+# and dropped it under MSYS, which is the shape of a defect that only appears on someone else's machine.
+VERSION text eol=lf
+# Markdown carries no shell parsing, so this is not about correctness — it is about the release tarball
+# being the same bytes wherever it is built. Measured: a Windows-built archive of v2.9.0 came to 509.004
+# bytes against the published 507.410, and the 1.594-byte difference was CRLF in unpinned files, of which
+# claude-starter/CLAUDE.md alone carried 198. The tarball's SHA is what the Homebrew formula pins, and a
+# SHA that depends on the build machine is the class of defect that took a release down once already.
+*.md text eol=lf
+LICENSE text eol=lf
