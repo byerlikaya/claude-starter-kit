@@ -162,15 +162,17 @@
   /* install */
   .chans{display:grid;grid-template-columns:1fr 1fr;gap:.9rem}
   @media (max-width:720px){.chans{grid-template-columns:1fr}}
-  .chan{border:1px solid var(--line);border-radius:13px;padding:1.15rem 1.2rem;background:var(--panel)}
+  .chan{border:1px solid var(--line);border-radius:13px;padding:1.15rem 1.2rem;background:var(--panel);min-width:0}
   .chan .h{display:flex;align-items:center;justify-content:space-between;margin-bottom:.7rem}
   .chan .h b{font-size:.98rem}
-  .chan .h span{font-family:var(--mono);font-size:.67rem;color:var(--brand-ink);letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line-2);border-radius:999px;padding:.16rem .5rem}
+  .chan .h > span{font-family:var(--mono);font-size:.67rem;color:var(--brand-ink);letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line-2);border-radius:999px;padding:.16rem .5rem}
   .chan pre{margin:0;font-family:var(--mono);font-size:.8rem;background:#0a0e1a;color:#eef1fb;padding:.72rem 3.4rem .72rem .85rem;border-radius:9px;overflow-x:auto;border:1px solid #222842}
   .cb{position:relative}
-  .ccopy{position:absolute;top:.45rem;right:.45rem;font-family:var(--mono);font-size:.68rem;color:#9ba4c4;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.16);border-radius:6px;padding:.22rem .46rem;cursor:pointer}
+  .ccopy{position:absolute;top:.45rem;right:.45rem;font-family:var(--mono);font-size:.68rem;color:#9ba4c4;background:#191c28;border:1px solid rgba(255,255,255,.16);border-radius:6px;padding:.22rem .46rem;cursor:pointer}
   .ccopy:hover{color:#fff;border-color:rgba(255,255,255,.45)}
   .chan pre .p{color:#39d29a}
+  .chan .k{font-family:var(--mono);font-size:.66rem;color:var(--ink-2);letter-spacing:.03em;margin:.65rem 0 .3rem}
+  .chan .h + .k{margin-top:0}
   .note{text-align:center;margin:1.6rem auto 0;color:var(--ink-3);font-family:var(--mono);font-size:.78rem}
 
   footer{border-top:1px solid var(--line);padding:2.6rem 0 3.4rem;color:var(--ink-2);font-size:.88rem}
@@ -341,12 +343,36 @@
       <h2><span class="en">Install &amp; run</span><span class="tr">Kur &amp; çalıştır</span></h2>
     </div>
     <div class="chans">
-      <div class="chan"><div class="h"><b><span class="en">Fresh project</span><span class="tr">Yeni proje</span></b><span>npm</span></div><div class="cb"><pre><span class="p">$</span> npx @byerlikaya/claude-starter-kit</pre><button class="ccopy" data-cmd="npx @byerlikaya/claude-starter-kit">copy</button></div></div>
-      <div class="chan"><div class="h"><b><span class="en">Existing repo</span><span class="tr">Mevcut repo</span></b><span>adopt</span></div><div class="cb"><pre><span class="p">$</span> npx @byerlikaya/claude-starter-kit adopt</pre><button class="ccopy" data-cmd="npx @byerlikaya/claude-starter-kit adopt">copy</button></div></div>
-      <div class="chan"><div class="h"><b>Homebrew</b><span>tap</span></div><div class="cb"><pre><span class="p">$</span> brew install byerlikaya/tap/claude-starter-kit
-<span class="p">$</span> claude-starter-kit</pre><button class="ccopy" data-cmd="brew install byerlikaya/tap/claude-starter-kit">copy</button></div></div>
-      <div class="chan"><div class="h"><b><span class="en">Claude Code plugin</span><span class="tr">Claude Code eklentisi</span></b><span>plugin</span></div><div class="cb"><pre><span class="p">$</span> /plugin marketplace add byerlikaya/claude-starter-kit
-<span class="p">$</span> /plugin install claude-starter-kit@byerlikaya</pre><button class="ccopy" data-cmd="/plugin marketplace add byerlikaya/claude-starter-kit">copy</button></div></div>
+      <div class="chan"><div class="h"><b>npx</b><span>npm</span></div>
+        <div class="k"><span class="en">new project</span><span class="tr">yeni proje</span></div>
+        <div class="cb"><pre><span class="p">$</span> npx @byerlikaya/claude-starter-kit</pre><button class="ccopy" data-cmd="npx @byerlikaya/claude-starter-kit">copy</button></div>
+        <div class="k"><span class="en">existing project</span><span class="tr">mevcut proje</span></div>
+        <div class="cb"><pre><span class="p">$</span> npx @byerlikaya/claude-starter-kit adopt</pre><button class="ccopy" data-cmd="npx @byerlikaya/claude-starter-kit adopt">copy</button></div>
+        <div class="k"><span class="en">refresh an installed kit</span><span class="tr">kurulu kiti tazele</span></div>
+        <div class="cb"><pre><span class="p">$</span> npx @byerlikaya/claude-starter-kit@latest update</pre><button class="ccopy" data-cmd="npx @byerlikaya/claude-starter-kit@latest update">copy</button></div>
+      </div>
+      <div class="chan"><div class="h"><b>Homebrew</b><span>tap</span></div>
+        <div class="k"><span class="en">install</span><span class="tr">kur</span></div>
+        <div class="cb"><pre><span class="p">$</span> brew install byerlikaya/tap/claude-starter-kit</pre><button class="ccopy" data-cmd="brew install byerlikaya/tap/claude-starter-kit">copy</button></div>
+        <div class="k"><span class="en">new project</span><span class="tr">yeni proje</span></div>
+        <div class="cb"><pre><span class="p">$</span> claude-starter-kit</pre><button class="ccopy" data-cmd="claude-starter-kit">copy</button></div>
+        <div class="k"><span class="en">existing project</span><span class="tr">mevcut proje</span></div>
+        <div class="cb"><pre><span class="p">$</span> claude-starter-kit adopt</pre><button class="ccopy" data-cmd="claude-starter-kit adopt">copy</button></div>
+      </div>
+      <div class="chan"><div class="h"><b><span class="en">Release tarball</span><span class="tr">Sürüm arşivi</span></b><span>tarball</span></div>
+        <div class="k"><span class="en">download and unpack</span><span class="tr">indir ve aç</span></div>
+        <div class="cb"><pre><span class="p">$</span> gh release download --repo byerlikaya/claude-starter-kit -p '*.tgz' &amp;&amp; tar xzf claude-starter-kit-*.tgz</pre><button class="ccopy" data-cmd="gh release download --repo byerlikaya/claude-starter-kit -p '*.tgz' &amp;&amp; tar xzf claude-starter-kit-*.tgz">copy</button></div>
+        <div class="k"><span class="en">new project</span><span class="tr">yeni proje</span></div>
+        <div class="cb"><pre><span class="p">$</span> bash start.sh</pre><button class="ccopy" data-cmd="bash start.sh">copy</button></div>
+        <div class="k"><span class="en">existing project, re-run to update</span><span class="tr">mevcut proje, güncellemek için yeniden çalıştır</span></div>
+        <div class="cb"><pre><span class="p">$</span> bash adopt.sh</pre><button class="ccopy" data-cmd="bash adopt.sh">copy</button></div>
+      </div>
+      <div class="chan"><div class="h"><b><span class="en">Claude Code plugin</span><span class="tr">Claude Code eklentisi</span></b><span>plugin</span></div>
+        <div class="k"><span class="en">add the marketplace</span><span class="tr">marketplace ekle</span></div>
+        <div class="cb"><pre><span class="p">$</span> /plugin marketplace add byerlikaya/claude-starter-kit</pre><button class="ccopy" data-cmd="/plugin marketplace add byerlikaya/claude-starter-kit">copy</button></div>
+        <div class="k"><span class="en">then install</span><span class="tr">sonra kur</span></div>
+        <div class="cb"><pre><span class="p">$</span> /plugin install claude-starter-kit@byerlikaya</pre><button class="ccopy" data-cmd="/plugin install claude-starter-kit@byerlikaya">copy</button></div>
+      </div>
     </div>
     <p class="note"><span class="en">After npx, adopt, Homebrew or a release tarball, open Claude Code and run <code>/doctor-csk</code>: it confirms the install is wired and scores the project's readiness. The plugin edition has nothing for it to check.</span><span class="tr">npx, adopt, Homebrew ya da sürüm arşiviyle kurduktan sonra Claude Code'u açıp <code>/doctor-csk</code> komutunu çalıştırın: kurulumun bağlanıp bağlanmadığını doğruluyor ve projenin hazırlık puanını veriyor. Plugin sürümünde denetleyeceği bir şey yok.</span></p>
   </div>
