@@ -19,9 +19,9 @@ export class JsonlReader {
 
   /** Read everything appended since the last call. Returns parsed records.
    *
-   * Async because a transcript open can take 31 s on a machine whose security
-   * layer inspects it, and this sits under the stream tick — see the note at the
-   * top of projects.js. The read is no faster; it just no longer stops the loop.
+   * Async because a transcript read has stalled for tens of seconds on a Windows
+   * machine, and this sits under the stream tick — see the note at the top of
+   * projects.js. The read is no faster; it just no longer stops the loop.
    */
   async read() {
     let st;

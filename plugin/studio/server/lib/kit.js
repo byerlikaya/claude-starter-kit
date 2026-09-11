@@ -37,13 +37,13 @@ export function latestVersionCached() {
   // Deferred to a later tick, not merely un-awaited, so the request path does no work of its own.
   //
   // The panel stall once pinned on this feed was never the feed: a run with the feed disabled
-  // entirely stalled the same way. It was a transcript read. On the Windows machine that has it, a
-  // security layer scans a file after it is written, and a read that lands before the scan finishes
-  // waits for it — 63-65 s for a plain `tail -c 131072` of a 25 MB transcript copy with no kit code
-  // running, 0.04 s warm, 0.044 s after waiting 90 s. It comes in clusters and could not be produced
-  // on demand, so no frequency is claimed. The reads were synchronous, so the whole panel stopped
-  // answering; projects.js keeps that wait inside one request now. This line stays because starting
-  // work on a request path is wrong regardless.
+  // entirely stalled the same way. It was a transcript read on one Windows machine, where a read that
+  // follows a write of the same file can wait — 63-65 s for a plain `tail -c 131072` of a freshly
+  // copied 25 MB transcript with no kit code running, 0.04 s warm, 0.044 s when the read waited 90 s
+  // after the copy. What holds the file was not identified, and the wait comes in clusters that could
+  // not be produced on demand. The reads were synchronous, so the whole panel stopped answering;
+  // projects.js keeps such a wait inside one request now. This line stays because starting work on a
+  // request path is wrong regardless.
   if (!fresh && !inflight) {
     setTimeout(() => { latestVersion().catch(() => {}); }, 0).unref();
   }
@@ -107,7 +107,7 @@ export function compareVersions(a, b) {
 /** What the kit looks like inside one working directory.
  *
  * Async because it runs once per project on the `/api/projects` path, and a
- * synchronous read there blocks the whole panel when one file open stalls —
+ * synchronous read there blocks the whole panel when one read stalls —
  * see the note at the top of projects.js for the measurement.
  */
 export async function kitStatus(cwd, latest) {

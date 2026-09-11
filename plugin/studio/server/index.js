@@ -538,8 +538,8 @@ async function relay(pathname) {
 // Async for the same reason projects.js is, and more urgently: this runs on every
 // stream tick — 700 ms, seven times more often than the project list is polled —
 // so a synchronous stat here is seven times more chances to stop the event loop on
-// a machine where one file open can take 31 s. The stall itself is not ours to fix;
-// keeping it inside the one tick that hit it is.
+// a machine where one transcript read has taken tens of seconds. The stall itself is
+// not ours to fix; keeping it inside the one tick that hit it is.
 async function signature(session) {
   const parts = [];
   try { parts.push(String((await fsp.stat(session.file)).size)); } catch { parts.push('0'); }

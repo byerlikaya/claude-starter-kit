@@ -30,5 +30,5 @@ running as a **plugin**, whose hooks are managed by Claude Code itself; there's 
 scripts are developer instruments: they inspect an installation from outside it, and the plugin edition has no
 installation to inspect. Say this plainly when someone asks why `/doctor-csk` reports nothing on a plugin install,
 rather than treating it as a defect. The Studio panel is not in that group: both editions carry it, and
-`/studio-csk` finds it in either. On a plugin install its kit-telemetry panes report "not measured", for the same
-reason this command has nothing to check there: a plugin install writes no kit files into the project.
+`/studio-csk` finds it in either. On a plugin install its kit-telemetry panes report "not measured": a plugin
+install writes none of the files they read (`.claude/VERSION`, `kit.conf`, the gate scripts) into the project.

@@ -11,15 +11,15 @@
 // copy would break that pin.
 
 // EVERY filesystem call here is async, and that is the point rather than a style
-// choice. On a Windows machine whose security layer scans a file after it is
-// written, a read that lands before the scan finishes waits for it: 63-65 s for a
-// plain `tail -c 131072` of a 25 MB transcript copy with no kit code running, 0.04 s
-// warm, 0.044 s after waiting 90 s. It comes in clusters and could not be produced
-// on demand. With `readSync` such a wait stalled the event loop, so the panel
-// answered NOTHING — `/api/projects` took 33,391 ms and a separate `/api/health` on
-// its own connection went unanswered for 312 of 324 pings. Async does not make the
-// read faster; it keeps the wait inside the one request that hit it while the rest
-// of the panel stays up.
+// choice. On a Windows machine a single synchronous 128 KiB tail read once took
+// 31,209 ms, and because it stopped the event loop the panel answered NOTHING:
+// `/api/projects` took 33,391 ms and a separate `/api/health` on its own connection
+// went unanswered for 312 of 324 pings. Measured later on the same machine with no
+// kit code running, a plain `tail -c 131072` of a freshly copied 25 MB transcript
+// waited 63-65 s right after the copy, 0.04 s warm, and 0.044 s when it waited 90 s
+// first. What holds the file was not identified, and the wait could not be produced
+// on demand. Async does not make the read faster; it keeps the wait inside the one
+// request that hit it while the rest of the panel stays up.
 import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
