@@ -3745,6 +3745,19 @@ if [ -n "$SGR" ] && [ -f "$SGR/.gitattributes" ]; then
   done
   [ -z "$NOEOL" ] && pass "every extensionless shipped hook is pinned to LF in .gitattributes" \
                   || fail "not pinned to LF — a Windows/WSL checkout gets CRLF and the hook dies on its shebang:$NOEOL"
+  # The release tarball's bytes depended on the machine that built it: 22 Studio files (.js .py .html .css) had no
+  # eol pin, so `git -c core.autocrlf=true archive` and a real Windows clone produced CRLF copies of them while the
+  # Linux build that publishes did not. Every text file in a shipped path is pinned now, and this keeps it so — a new
+  # file type added to a shipped path would arrive unpinned and let the build machine decide its bytes again.
+  # Binary files have no line endings to pin; git's own per-file eol report says which ones those are.
+  if [ -d "$SGR/claude-starter" ] && [ -f "$SGR/packaging/build-plugin.sh" ]; then
+    UNPIN="$(git -C "$SGR" ls-files --eol -- start.sh adopt.sh VERSION LICENSE README.md bin claude-starter plugin 2>/dev/null \
+      | awk -F'\t' '{ split($1, f, " "); if (f[1] != "i/-text" && f[1] != "i/none" && $1 !~ /eol=/) print $2 }')"
+    [ -z "$UNPIN" ] && pass "every text file in a shipped path has an eol pin, so the tarball's bytes do not depend on the build machine" \
+                    || fail "text files in shipped paths with no eol pin in .gitattributes — a CRLF build changes their bytes: $(printf '%s\n' "$UNPIN" | head -5 | tr '\n' ' ')($(printf '%s\n' "$UNPIN" | wc -l | tr -d ' ') in all)"
+  else
+    skip scope "shipped-file eol pins not checked (not the kit's source checkout — they are a property of the kit repo)"
+  fi
   # The two editions ship the same hooks; a divergence means one of them was updated and the other was not.
   SDIV=""
   for f in $(git -C "$SGR" ls-files 2>/dev/null | grep -E '^claude-starter/hooks/'); do

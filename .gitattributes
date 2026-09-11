@@ -48,3 +48,12 @@ VERSION text eol=lf
 # Measured by building it both ways; the build without it reproduces the published v2.9.0 SHA exactly.
 *.md text eol=lf
 LICENSE text eol=lf
+# The Studio panel and the npm wrapper are JavaScript, Python, HTML and CSS, and none of those types had a pin.
+# Measured at 2.10.0: `git -c core.autocrlf=true archive` changed the release tarball in 22 files (tar 1,679,360 →
+# 1,689,600 bytes), the same 22 a real Windows clone produced, while the Linux build that publishes reproduced the
+# published SHA. Nothing parses these files line by line, so this is about bytes, like the *.md pin: the tarball must
+# not depend on the machine that builds it. smoke-test §14 keeps every text file in a shipped path pinned.
+*.js text eol=lf
+*.py text eol=lf
+*.html text eol=lf
+*.css text eol=lf
