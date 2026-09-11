@@ -1338,6 +1338,25 @@ if [ "$IS_KIT" = 1 ]; then
     fi
     rm -rf "$VS"
   fi
+  # The npm page showed the Turkish README for 2.10.0. The swap step copied README.npm.md over README.md but left
+  # README.npm.md and README.tr.md in the package, and npm chose README.tr.md among them — reproduced with npm
+  # 10.8.2's own selection code, which returns the registry's exact file; its pick depends on directory order. The
+  # step is run here as written, on copies of the three READMEs, and must leave exactly one: the npm README.
+  RY="$KR/.github/workflows/release.yml"
+  if [ -f "$RY" ] && [ -f "$KR/README.npm.md" ]; then
+    RS="$(awk '/- name: Use the npm-flavoured README for the package/{f=1;next} f&&/^      - name:/{exit} f&&/^        run: \|/{r=1;next} f&&r{sub(/^          /,""); print}' "$RY")"
+    RD="$(mktemp -d)"; cp "$KR/README.md" "$KR/README.npm.md" "$RD/"; [ -f "$KR/README.tr.md" ] && cp "$KR/README.tr.md" "$RD/"
+    ( cd "$RD" && bash -c "$RS" >/dev/null 2>&1 )
+    RN="$(ls "$RD" | grep -c -i '^readme')"
+    if [ -z "$RS" ]; then
+      fail "release.yml: the 'Use the npm-flavoured README for the package' step was not found — it moved; update this check"
+    elif [ "$RN" = 1 ] && cmp -s "$RD/README.md" "$KR/README.npm.md"; then
+      pass "the npm package ends up with exactly one README, the npm one"
+    else
+      fail "after release.yml's README step the package holds $RN README file(s) ($(ls "$RD" | tr '\n' ' ')) — npm can pick the wrong one for its page"
+    fi
+    rm -rf "$RD"
+  fi
   # The hook TABLE is hand-written and nothing tied it to the directory it describes. session-stats.sh was on
   # disk, wired into two skills, and absent from the README — the same class as the picture that drew eleven of
   # twelve agents and the site that advertised eight commands. Every shipped hook must be documented somewhere

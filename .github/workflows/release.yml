@@ -56,9 +56,11 @@ jobs:
           git fetch --no-tags --depth=1 origin gh-pages:refs/remotes/origin/gh-pages
           bash packaging/check-gh-pages.sh
 
-      # The full verify suite runs BEFORE anything is published, so a release can never ship on top of a red
-      # check. (This is the gate that was missing: release used to skip smoke/routing/e2e, so a green publish
-      # could sit on a red CI.)
+      # These gates run BEFORE anything is published, so a release cannot ship on top of a red smoke, routing or
+      # e2e run. (This was the gate that was missing: release used to skip smoke/routing/e2e, so a green publish
+      # could sit on a red CI.) They are not verify.sh's full set: syntax, manifests and studio run only in ci.yml.
+      # And `environment: release` is job-level, so the approval is asked before any step of this job runs; once
+      # approved, a run whose gates pass publishes with no further stop.
       - name: Verify — smoke test + routing eval
         run: |
           bash claude-starter/eval/smoke-test.sh
@@ -106,7 +108,14 @@ jobs:
       # the npm page. Swap in the lean, npm-focused README for the published tarball ONLY (the commit is untouched).
       - name: Use the npm-flavoured README for the package
         run: |
-          if [ -f README.npm.md ]; then cp README.npm.md README.md && echo "npm README staged for publish"; fi
+          # The package must carry exactly one README. npm packs every root README.*, and with README.npm.md and
+          # README.tr.md still beside README.md it chose README.tr.md for the npm page, which is what 2.10.0's page
+          # showed. Its pick among several depends on directory order, so a single file is the only stable answer.
+          if [ -f README.npm.md ]; then
+            cp README.npm.md README.md
+            rm -f README.npm.md README.tr.md
+            echo "npm README staged for publish; README.npm.md and README.tr.md left out of the package"
+          fi
 
       - name: Publish to npm
         run: npm publish --access public
