@@ -3,6 +3,122 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [2.10.0] — 2026-09-11
+
+### Changed — "tests green" is one run of the suite on the final code
+
+- "Tests green" was written into the discipline's Definition of Done, into three agents' DoD, into test-expert's
+  red-green line and into the reviewer's "verify before you report", and nothing said who runs the suite — so each
+  layer ran it again on code nobody had touched. Before this change a small change ran its tests a median of 5 times
+  a session: across nine sessions the implementing agent made 17 of the runs, the main thread 13, the reviewer 11.
+- It now means one run of the suite after the last edit, reported with the command, the exit code and the pass/fail
+  counts. The main thread and the reviewer cite that report and run the suite again only after a further edit, or
+  when the report has no exit code. Red-green — a failing test first — is unchanged.
+- Measured before it shipped, criteria hashed first, 18 sessions on three Node cases: test and build runs per session
+  4.44 → 2.22; the final code was tested in 9 of 9 sessions in both arms; checks 33 of 33 in both; the reviewer was
+  still delegated in every session with the new text (8 of 9 with the old) and stopped re-running a suite that had
+  just passed. Cost did not move on these small cases ($6.54 → $6.77), and the Definition of Done grew by 416 bytes,
+  about 175 tokens a session.
+
+### Fixed — on the pure-bash tier a stock Windows install runs, a large command could outlast the hook's 60 s timeout
+
+- **The shared JSON parser was quadratic, and the 60 s hook timeout turned that into a fail-open.** `guard-bash.sh`
+  and `guard-write.sh` fall back to a pure-bash parser when neither jq nor python3 works — the path a stock Windows
+  install takes, because its `python3` is the Store redirector. It read one character at a time with a pattern as
+  long as the rest of the payload. Measured on macOS with bash 3.2 and both tools shadowed by a stub that resolves
+  and exits 49, the Store redirector's shape, so the pure-bash tier runs: 4205 B took 59.0 s, 4405 B 67.9 s. A
+  PreToolUse hook killed at its timeout emits no exit 2, so every §4.4 and §4.5 rule behind it was skipped. Across
+  6791 Bash calls in 280 real transcripts, 169 (2.49%) were over 4300 B, the size where it crossed the timeout on
+  that machine; the crossing point was not re-measured on Git Bash.
+- **The slice was still quadratic, and the key order decided how much.** `${s#"$literal"}` retries the pattern at
+  every prefix length. On Git Bash 5.3.15, whole hook, sparse commands in the key order Claude Code 2.1.267 sends:
+  46.8 KB 4.35 s → 0.93 s, 100 KB 17.76 s → 1.58 s. `guard-bash.sh`'s header had described the opposite order and now
+  shows the captured one; the parse's result no longer depends on it.
+- **The value is walked a chunk at a time,** so an escape stops paying for the whole command: escape-dense 44 KB,
+  whole hook on Git Bash, 5.36 s → 1.41 s.
+
+### Fixed — the commit-message trace scan was blind to a CRLF blocklist
+
+- `pre-commit` stripped a trailing `\r` from every pattern; `commit-msg` never did, and it is the gate that scans the
+  message. The same blocklist saved LF rejected an authorship trailer (rc 1); saved CRLF — Git for Windows' default
+  with `core.autocrlf=true` — it accepted it (rc 0).
+- `*.json` is pinned in the kit's own `.gitattributes`: on a Windows clone `plugin.json` and `hooks.json` reported
+  modified forever while their blobs matched the index, so `git status -- plugin` there — the check the release's
+  plugin-sync gate runs — showed a diff that was not one. The pin applies at checkout: a clone made before it may
+  show the two files modified once, with identical content, until they are checked out again (`git checkout --
+  plugin/.claude-plugin/plugin.json plugin/hooks/hooks.json`). A fresh clone is clean. `VERSION` is pinned to LF as
+  well — a Windows checkout produced `2.9.0\r\n` — and so are `*.md` and `LICENSE`. The release archive still depends
+  on the machine that builds it: the Studio's `.js`, `.py`, `.html` and `.css` files are not pinned, so an archive
+  built with `core.autocrlf=true` differs from one built without it in all 22 of them. The published archive is built
+  on Linux, by the release workflow.
+
+### Fixed — with a working jq, the transcript byte window never took effect
+
+- `context-usage.sh` bounds its read to the last 256 KiB. Where a working jq was installed, `tail -c` cut the
+  window's first line in half, jq aborted the whole stream on it, and the hook fell back to reading the whole
+  transcript, up to its 200 MiB cap, on every prompt. Measured on macOS with a 45 MB transcript: 245 ms → 21 ms. The
+  fill percentage it prints is now computed in shell arithmetic and rounds half up, so at an exact half it can read
+  0.1 higher than before.
+
+### Fixed — a path in the command refused a commit whose message was clean
+
+- Without a working interpreter the message extraction fell back to the whole command line, so a pathspec naming a
+  blocked term refused a clean commit on a stock Windows install and not where python3 works. An interpreter-free
+  extractor now answers when no interpreter works: 37 command shapes against an independent shlex reference — 33
+  byte-identical, 4 safe fallbacks, 0 mismatches. When it cannot parse with confidence, the over-inclusive fallback
+  stands.
+- The same change removed `guard-commit-scan.sh`'s own `sed | head | sed` payload parser, and a command with no `git`
+  in it no longer spends a process on whether it is a git commit. On Windows 11, Git Bash 5.3.15, no jq and `python3`
+  resolving to the Store redirector, `ls -la`: 7 processes / 0.757 s → 3 / 0.580 s.
+
+### Changed — `pre-commit`'s scans ask once whether anything can match
+
+- One decision per pattern class instead of one grep per pattern; the naming loop runs only when something matched,
+  or when grep could not decide (rc 2 — one broken hand-edited pattern kills a joined alternation). Windows 11, Git
+  Bash 5.3.15, `pre-commit` on 205 added lines: trace loop 0.621 s → 0.063 s, secret loop 0.572 s → 0.059 s. The
+  blocklists' own `#test:` and `#test-clean:` cases: 32 of 32 identical verdicts. The commit-message scan in
+  `commit-msg` still checks one pattern at a time.
+
+### Fixed — two smoke gates could report green while broken
+
+- The block-equality gates named the two files of each pair, so a third carrier — `guard-commit-scan.sh` took the
+  JSON parser — could drift unseen. The marker now decides the file list: at least two files, names printed, anchored
+  so `CSK-JSON-PARSER` is not `CSK-JSON-PARSE`, and a copy that cannot be read is named in the failure. `gj()` now
+  takes the payload's key order as an argument and the verdicts are compared across both orders.
+
+### Fixed — `--dotnet` copied fine into a path where the build cannot run
+
+- MSYS `cp` is not bound by MAX_PATH; MSBuild is. On Windows 11 with `LongPathsEnabled=0`, the default, 1286 files
+  copied to a 275-character path with rc 0, while a minimal console project whose paths crossed that limit failed to
+  build: "the fully qualified file name must be less than 260 characters". The usable limit is 259; the base's
+  deepest path is 156 characters and lands under `./backend/`, so `start.sh` warns when the root exceeds 94
+  characters.
+
+### Fixed — Studio: the project list waited on a network call
+
+- `/api/projects` awaited the update feed before listing local data: ~350 ms → ~15 ms steady, and against a feed that
+  accepts and never answers, 8.37 s → 0.25 s.
+
+### Fixed — Studio: one slow file open stopped the whole panel
+
+- The panel read transcript tails synchronously on the request path. On a Windows machine whose security layer
+  inspects file opens, one open took ~31 s and the whole event loop waited with it: `/api/health` on its own
+  connection went unanswered for 312 of 324 pings. The transcript reads are asynchronous now; the slow request still
+  waits for its file, but `/api/health` answered 195 of 195 meanwhile.
+
+### Added — evals: rules in agent definitions, test runs, and no score for a run that did not happen
+
+- Arm `kitb` swaps in the rule under test: the discipline half of `CSK_EVAL_DISCIPLINE_B`, and files that replace
+  installed ones under `.claude/` from `CSK_EVAL_OVERLAY_B` (a path the install did not create is refused).
+- `CSK_EVAL_TRACE=1` reads the event stream: delegation, cost, tokens, turns per thread, test and build runs in the
+  main thread and subagents, and whether the final code was tested.
+- A run with an empty stream, an error result or a usage-limit rejection is NOT MEASURED and not graded; the limit
+  stops the run and the runner exits 3. Measured the hard way: a limit hit in the second of nine sessions left seven
+  untouched projects, and the previous runner graded them with the rest and reported 19 of 33 for the run. Cases may
+  declare `REQUIRES`.
+- Nine cases (three low-risk, three high-risk, three Node test-run cases), and two measurements in `evals/README.md`:
+  a risk-based delegation threshold (did not ship) and the test-run rule above (shipped).
+
 ## [2.9.0] — 2026-09-09
 
 ### Changed — Studio ships with the kit, and `/studio-csk` launches it
