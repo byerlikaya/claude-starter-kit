@@ -206,10 +206,24 @@ check('a path outside the web root is refused', traversal.status !== 200, `statu
 const write = await get(port, `/api/owned?token=${TOKEN}`, { __method: 'POST' });
 check('a write without the same-origin header is refused', write.status === 403, `status ${write.status}`);
 
+// Wait for the exit to be reported, not for a fixed 600 ms. kill() returns once the request is made, and
+// the exit reaches this process later, as an event. On Windows CI it once had not arrived after 600 ms,
+// and the check read `exit null signal null` for a panel that had been told to stop. A panel that really
+// does not stop still fails here, after SHUTDOWN_MS, and says so.
+const SHUTDOWN_MS = 10000;
+const exitReported = (child.exitCode !== null || child.signalCode !== null)
+  ? Promise.resolve(true)
+  : new Promise((resolve) => {
+    child.once('exit', () => resolve(true));
+    setTimeout(() => resolve(false), SHUTDOWN_MS);
+  });
+const stopAt = Date.now();
 stop();
-await sleep(600);
-check('it shuts down when asked', child.exitCode !== null || child.signalCode !== null,
-  `exit ${child.exitCode} signal ${child.signalCode}`);
+const exited = await exitReported;
+const stopMs = Date.now() - stopAt;
+check('it shuts down when asked', exited,
+  exited ? `exit ${child.exitCode} signal ${child.signalCode} after ${stopMs}ms`
+    : `no exit reported within ${SHUTDOWN_MS / 1000}s of kill(); exit ${child.exitCode} signal ${child.signalCode}`);
 
 // Stopping and stopping *cleanly* are different facts, and one check accepting both hid the
 // difference: POSIX exits 0 because the SIGTERM handler ran and reaped the panel's children;
