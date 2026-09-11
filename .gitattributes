@@ -26,8 +26,9 @@ claude-starter/profiles.conf text eol=lf
 # against a permanent phantom diff. Measured on a Windows clone: plugin/.claude-plugin/plugin.json and
 # plugin/hooks/hooks.json show as modified forever while `git hash-object` matches the index blob
 # exactly, because core.autocrlf rewrites them on checkout and nothing here pinned them back. A commit
-# to "fix" it is empty, and the plugin sync gate reads a diff that is not one. settings.json is in the
-# same set and is the file that wires every hook.
+# to "fix" it is empty, and the plugin sync check there — `bash packaging/build-plugin.sh`, then
+# `git status --porcelain -- plugin` — reads a diff that is not one. The release runs that check on
+# Linux. settings.json is in the same set and is the file that wires every hook.
 *.json text eol=lf
 # VERSION is read by the shell — `head -1` in start.sh:345, adopt.sh:203 and adopt.sh:633, and `read -r`
 # in session-update-check.sh. Measured on a Windows checkout: the file comes out `2.9.0\r\n`, and both of
@@ -42,5 +43,8 @@ VERSION text eol=lf
 # bytes against the published 507.410, and the 1.594-byte difference was CRLF in unpinned files, of which
 # claude-starter/CLAUDE.md alone carried 198. The tarball's SHA is what the Homebrew formula pins, and a
 # SHA that depends on the build machine is the class of defect that took a release down once already.
+# This pin takes the Markdown out of that difference and nothing more: the Studio's .js, .py, .html and
+# .css are not pinned, and an archive built with core.autocrlf=true still differs in every one of them.
+# Measured by building it both ways; the build without it reproduces the published v2.9.0 SHA exactly.
 *.md text eol=lf
 LICENSE text eol=lf
