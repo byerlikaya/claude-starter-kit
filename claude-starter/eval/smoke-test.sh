@@ -1357,6 +1357,22 @@ if [ "$IS_KIT" = 1 ]; then
     fi
     rm -rf "$RD"
   fi
+  # The plugin marketplace went live the moment a release PR merged, ahead of the release's gates and its approval,
+  # because the entry pointed at ./plugin on main. It now installs from the plugin-stable branch, which only the
+  # approved release job moves forward, and the update notice reads the same branch. Three facts that only work
+  # together: drop any one and the plugin either ships ungated again or is announced before it can be installed.
+  MJ="$KR/.claude-plugin/marketplace.json"; RY="$KR/.github/workflows/release.yml"; UH="$KR/claude-starter/hooks/session-update-check.sh"
+  if [ -f "$MJ" ] && [ -f "$RY" ] && [ -f "$UH" ]; then
+    PSMISS=""
+    grep -Eq '"source"[[:space:]]*:[[:space:]]*"git-subdir"' "$MJ" && grep -Eq '"ref"[[:space:]]*:[[:space:]]*"plugin-stable"' "$MJ" \
+      || PSMISS="$PSMISS marketplace.json-does-not-install-from-plugin-stable"
+    grep -Fq 'git/refs/heads/plugin-stable" -f sha="${GITHUB_SHA}" -F force=false' "$RY" \
+      || PSMISS="$PSMISS release.yml-does-not-advance-plugin-stable-fast-forward-only"
+    grep -Fq 'raw.githubusercontent.com/byerlikaya/claude-starter-kit/plugin-stable/plugin/.claude-plugin/plugin.json' "$UH" \
+      || PSMISS="$PSMISS update-notice-does-not-read-plugin-stable"
+    [ -z "$PSMISS" ] && pass "the plugin channel ships from plugin-stable, advanced only by the approved release job" \
+                     || fail "plugin channel gating is incomplete:$PSMISS"
+  fi
   # The hook TABLE is hand-written and nothing tied it to the directory it describes. session-stats.sh was on
   # disk, wired into two skills, and absent from the README — the same class as the picture that drew eleven of
   # twelve agents and the site that advertised eight commands. Every shipped hook must be documented somewhere

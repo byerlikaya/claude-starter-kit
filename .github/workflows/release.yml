@@ -99,6 +99,21 @@ jobs:
             gh release create "$GITHUB_REF_NAME" "$TGZ" --title "$GITHUB_REF_NAME" --notes-file release-notes.md
           fi
 
+      # The plugin marketplace installs from the plugin-stable branch (.claude-plugin/marketplace.json), so the plugin
+      # edition goes live here, inside the approved job and after its gates, not the moment the release PR merges.
+      # Fast-forward only: pointing the branch at an older commit moves installed users back (measured: an update
+      # from a ref at v2.9.0 took an installed 2.10.0 down to 2.9.0), and the branch's ruleset refuses it anyway.
+      # Before npm on purpose: re-running a release whose npm publish already went through fails at npm, since the
+      # version exists, so a step after it would never run.
+      - name: Publish the plugin edition (advance plugin-stable)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -X PATCH "repos/${GITHUB_REPOSITORY}/git/refs/heads/plugin-stable" -f sha="${GITHUB_SHA}" -F force=false >/dev/null
+          now="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/plugin-stable" --jq .object.sha)"
+          [ "$now" = "${GITHUB_SHA}" ] || { echo "::error::plugin-stable is $now, not ${GITHUB_SHA}"; exit 1; }
+          echo "plugin-stable advanced to ${GITHUB_SHA}"
+
       - uses: actions/setup-node@v5
         with:
           node-version: '20'
