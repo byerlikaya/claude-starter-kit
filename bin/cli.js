@@ -28,8 +28,20 @@ Usage:
       keeps the backend pattern recorded there, and restores anything missing. Your CLAUDE.md
       is never touched.
 
+  npx @byerlikaya/claude-starter-kit --version
+      Print the kit version and exit.
+
 Run any of them at the root of your target project.
 On Windows, run inside Git Bash for the smoothest experience (WSL works as a fallback).`);
+  process.exit(0);
+}
+
+// Answered here, before anything is staged. It used to fall through to start.sh, which cost a copy of the whole
+// payload into a temp dir and then refused the flag as an unknown parameter.
+if (sub === '--version' || sub === '-v') {
+  let version = 'unknown';
+  try { version = fs.readFileSync(path.join(pkgDir, 'VERSION'), 'utf8').split(/\r?\n/)[0].trim() || 'unknown'; } catch (_) { /* no VERSION shipped */ }
+  console.log(version);
   process.exit(0);
 }
 

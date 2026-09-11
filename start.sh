@@ -9,6 +9,16 @@
 # start.sh + claude-starter/ must be in the SAME directory. At the project root:  bash start.sh [flags]
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
+
+# --version is answered first, before the source-checkout and payload checks below: it reads only VERSION, so it
+# must work wherever start.sh sits, including a directory those checks would refuse.
+for a in "$@"; do
+  if [ "$a" = "--version" ]; then
+    if [ -f "$HERE/VERSION" ]; then head -1 "$HERE/VERSION" | tr -d '\r'; else echo unknown; fi
+    exit 0
+  fi
+done
+
 SRC="$HERE/claude-starter"
 DEVARCH_URL="https://github.com/DevArchitecture/DevArchitecture"
 
@@ -52,6 +62,7 @@ If no flag is given, the script asks interactively (wizard).
 
 Every install ships the whole kit: all agents, all skills — backend, web and mobile (RN/Expo) together.
   --backend | --frontend | --mobile | --fullstack   accepted, no effect (kept so older commands still run)
+  --version  print the kit version and exit
 USAGE
 }
 

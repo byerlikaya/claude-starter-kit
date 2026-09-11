@@ -1297,6 +1297,47 @@ if [ "$IS_KIT" = 1 ]; then
       pass "bin/cli.js --help matches the current install shape"
     fi
   fi
+  # `--version` printed no version: cli.js staged the whole payload into a temp dir and handed the flag to start.sh,
+  # which refused it as an unknown parameter. Both entry points now answer it before any side effect, and each
+  # assertion is built so a pass cannot happen by accident. cli.js runs with its temp dir pointed at a path that does
+  # not exist: staging there throws, so a pass proves nothing was staged (an empty temp dir proved nothing, since cli.js
+  # removes its own stage). start.sh runs from a directory holding only itself and VERSION, which its payload check
+  # refuses, so a pass proves --version is answered before that check. The unknown-flag probe gets the payload, so
+  # its refusal comes from the flag loop it is meant to test and not from the missing payload.
+  KV="$(head -1 "$KR/VERSION" 2>/dev/null | tr -d '\r')"
+  if [ -f "$KR/bin/cli.js" ] && [ -n "$KV" ]; then
+    if command -v node >/dev/null 2>&1 && node --version >/dev/null 2>&1; then
+      VT="$(mktemp -d)"; VTX="$VT/does-not-exist"
+      vout="$(TMPDIR="$VTX" TEMP="$VTX" TMP="$VTX" node "$KR/bin/cli.js" --version 2>&1)"; vrc=$?
+      if [ "$vrc" = 0 ] && [ "$vout" = "$KV" ]; then
+        pass "npx … --version prints $KV without staging the payload"
+      else
+        fail "npx … --version: rc=$vrc, output '$(printf '%s' "$vout" | head -1)' (want '$KV')"
+      fi
+      rm -rf "$VT"
+    else
+      skip tool "bin/cli.js --version not run (no working node)"
+    fi
+  fi
+  if [ -f "$KR/start.sh" ] && [ -n "$KV" ]; then
+    VS="$(mktemp -d)"; cp "$KR/start.sh" "$KR/VERSION" "$VS/"
+    vout="$(cd "$VS" && bash start.sh --version 2>&1)"; vrc=$?
+    if [ "$vrc" = 0 ] && [ "$vout" = "$KV" ] && [ "$(ls -A "$VS" | wc -l | tr -d ' ')" = 2 ]; then
+      pass "start.sh --version prints $KV before its payload check, and writes nothing"
+    else
+      fail "start.sh --version: rc=$vrc, output '$(printf '%s' "$vout" | head -1)' (want '$KV'), $(ls -A "$VS" | wc -l | tr -d ' ') entries"
+    fi
+    if [ -d "$KR/claude-starter" ]; then
+      cp -R "$KR/claude-starter" "$VS/"
+      vout="$(cd "$VS" && bash start.sh --no-such-flag 2>&1)"; vrc=$?
+      if [ "$vrc" = 1 ] && printf '%s' "$vout" | grep -q 'Unknown parameter: --no-such-flag'; then
+        pass "start.sh still refuses an unknown flag"
+      else
+        fail "start.sh --no-such-flag: rc=$vrc, output '$(printf '%s' "$vout" | head -1)'"
+      fi
+    fi
+    rm -rf "$VS"
+  fi
   # The hook TABLE is hand-written and nothing tied it to the directory it describes. session-stats.sh was on
   # disk, wired into two skills, and absent from the README — the same class as the picture that drew eleven of
   # twelve agents and the site that advertised eight commands. Every shipped hook must be documented somewhere

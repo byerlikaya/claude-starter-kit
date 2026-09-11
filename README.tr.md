@@ -304,7 +304,7 @@ Kurulu bir plugin, siz yenisini istemedikçe kurduğunuz sürümde kalır; bu y�
 ### Yeni proje
 
 ```bash
-bash start.sh [--dotnet|--generic] [-h]
+bash start.sh [--dotnet|--generic] [--version] [-h]
 ```
 
 İki adım: önce backend deseni, sonra hiçbir şey yazılmadan önce onaylayacağınız bir özet.

@@ -304,7 +304,7 @@ An installed plugin stays on the version you installed until you ask for a newer
 ### New project
 
 ```bash
-bash start.sh [--dotnet|--generic] [-h]
+bash start.sh [--dotnet|--generic] [--version] [-h]
 ```
 
 Two steps: backend pattern, then a summary you approve before anything is written.
