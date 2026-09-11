@@ -28,10 +28,10 @@
 # from changing it. Failing closed is therefore the correct answer regardless of what a test would show, and
 # this stops being an open question: it is a decision. Should the interaction ever be specified, revisit.
 #
-# CSK_GATE_LOG=<path>, exported by the user, appends one TSV line per gate decision (BLOCK/ASK/ALLOW, section,
-# rule, command) to that file. Absent by default and write-only — it never influences a verdict. It exists
-# because a gate that cannot be observed firing cannot be measured: "the model never tried it" and "the gate
-# stopped it" leave identical artifacts behind. guard-write.sh writes to the same file.
+# The gate log gets one TSV line per logged decision (BLOCK/ASK/ALLOW, section, rule; the command only with
+# CSK_GATE_LOG_CMD=1). On by default since 2.5.0 (see _gatelog_path below); CSK_GATE_LOG=<path> redirects it.
+# Write-only, it never influences a verdict. It exists because a gate that cannot be observed firing cannot be
+# measured: "the model never tried it" and "the gate stopped it" look the same. guard-write.sh logs there too.
 #
 # CLAUDE_GIT_OK=1, exported by the user before the session starts, pre-authorises the session. It exists for
 # headless/CI runs where no one is at the keyboard. It does NOT replace approval: present the message first.
@@ -259,8 +259,8 @@ PERM_MODE="${PERM_MODE:-}"
 #
 # ON BY DEFAULT since 2.5.0, into .claude/gate-log.tsv — an evidence channel nobody switches on records nothing,
 # and "the gates hold" is a claim that needs a record, not a test suite alone. CSK_GATE_LOG overrides the path;
-# CSK_GATE_LOG=/dev/null (or a read-only .claude) turns it off. Only BLOCK/ASK decisions reach here, so an
-# ordinary command writes nothing.
+# CSK_GATE_LOG=/dev/null (or a read-only .claude) turns it off. Only BLOCK, ASK and CLAUDE_GIT_OK's ALLOW reach
+# here: an ordinary command writes nothing, and a git action CLAUDE_GIT_OK allows writes one ALLOW line.
 #
 # The COMMAND TEXT IS NOT RECORDED by default. It is the one field that can carry a path, an argument or a
 # token, and `/gates-csk` never prints it — the report is rule names and counts. Recording it by default would
@@ -271,7 +271,8 @@ PERM_MODE="${PERM_MODE:-}"
 # the path is already ignored. A kit install gitignores .claude/, so this is the normal case — but the plugin
 # edition drops into repos the installer never touched, and this repo proved the failure itself: the suite left
 # a gate-log.tsv sitting in `git status` as an untracked file waiting to be committed. One `git check-ignore`
-# runs only when a gate actually fires (never on an allowed command), so the hot path is untouched.
+# runs only when a decision is logged (a block, an approval prompt or a CLAUDE_GIT_OK allow); ordinary commands
+# never reach it.
 _gatelog_path(){
   if [ -n "${CSK_GATE_LOG:-}" ]; then printf '%s' "$CSK_GATE_LOG"; return; fi
   [ -d ".claude" ] || return 0

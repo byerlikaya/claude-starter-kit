@@ -220,7 +220,7 @@ Does it actually change anything? The same prompt was run in a Claude Starter Ki
 
 The gates stop accidents, not determined attempts. On a command line there is always a way around a pattern; if you need a real boundary, run Claude Code in a devcontainer or a VM. `/doctor-csk` tells you whether you have one.
 
-**Watching a gate fire.** Set `CSK_GATE_LOG=<path>` and every guard appends one line per decision: `BLOCK` / `ASK` / `ALLOW`, the rule, and the command. It is off unless you ask for it, write-only, and written after the verdict, so it cannot change one. Useful when you need to know whether a gate stopped something or the model simply never went there — those two leave identical traces.
+**Watching a gate fire.** The Bash guard appends a line to `.claude/gate-log.tsv` for each block, approval prompt and `CLAUDE_GIT_OK` pre-authorisation (`BLOCK` / `ASK` / `ALLOW`), and the gate-file write guard one for each block, with the section and the rule; the command is recorded only with `CSK_GATE_LOG_CMD=1`. It is on by default when the project's `.claude/` directory exists and the file is git-ignored or the project is not a repo; `CSK_GATE_LOG=<path>` sends it elsewhere and `/dev/null` turns it off. The commit scan and the board gate refuse without writing a line. It is write-only and written after the verdict, so it cannot change one. Useful when you need to know whether a gate stopped something or the model simply never went there — those two leave identical traces.
 
 ---
 
@@ -256,7 +256,7 @@ node .claude/studio/server/index.js --enable-pty  # plus raw shells — those by
 | `npx @byerlikaya/claude-starter-kit` · Homebrew · release tarball · git clone | installed to `.claude/studio/` |
 | Claude Code plugin | shipped inside the plugin, opened with `/claude-starter-kit:studio-csk` (plugin commands are namespaced) |
 
-All four channels carry it. One command file serves both editions: Claude Code substitutes the plugin's own install path into it, so the panel is found wherever it actually is. The panel behaves identically in both, with one honest gap — its kit-telemetry panes read the project you opened it from, and a plugin install writes nothing into a project, so they report "not measured" with the reason rather than a misleading zero.
+All four channels carry it. One command file serves both editions: Claude Code substitutes the plugin's own install path into it, so the panel is found wherever it actually is. The panel behaves identically in both, with one honest gap — its kit-telemetry tabs read the project you opened it from, and a plugin install puts no kit files into a project, so the gates, stats and board tabs report "not measured" with the reason rather than a misleading zero. The gates tab still lists the gate decisions the plugin's guards logged to that project's `.claude/gate-log.tsv`.
 
 It reads `~/.claude/projects`, which holds **every** Claude Code session on the machine. Starting it from a project root only decides which project it opens on.
 
@@ -292,7 +292,7 @@ bash adopt.sh               # existing project (re-run it to update)
 
 **Windows:** Claude Starter Kit is bash-based. Run it in **Git Bash** ([git-scm.com](https://git-scm.com)); WSL works as a fallback. The gate hooks are shell scripts, so **Git Bash (or WSL) is what makes them run** — on a Windows machine with neither, Claude Code enables its PowerShell tool automatically and the hooks cannot execute, which means no gates. That configuration is not supported by the gate layer, and the installers cannot run there either. With Git Bash present the gates cover **both** shells: the PowerShell tool is on by default for claude.ai and Console accounts, and its commands go through the same rules (`Remove-Item -Recurse -Force`, `… | iex`, `Get-Content .env`, and the rest).
 
-**Plugin edition** — just the agents, skills and gate hooks inside your existing Claude Code, no scaffolding:
+**Plugin edition** — the agents, skills, commands, gate hooks and Studio inside your existing Claude Code, no scaffolding:
 
 ```bash
 /plugin marketplace add byerlikaya/claude-starter-kit
@@ -304,7 +304,7 @@ An installed plugin stays on the version you installed until you ask for a newer
 ### New project
 
 ```bash
-bash start.sh [--dotnet|--generic] [-h]
+bash start.sh [--dotnet|--generic] [--version] [-h]
 ```
 
 Two steps: backend pattern, then a summary you approve before anything is written.

@@ -36,17 +36,12 @@ export function latestVersionCached() {
   const fresh = latestCache && Date.now() - latestCache.at < FEED_TTL_MS;
   // Deferred to a later tick, not merely un-awaited, so the request path does no work of its own.
   //
-  // It does NOT fix the stall that is still open against this file. Measured on a Windows machine
-  // with an inspecting layer on every connection: while the feed accepts and stays silent, the
-  // first /api/projects sometimes takes 28-31 s (3 of 25) — and during that window a SEPARATE
-  // /api/health on a separate connection does not answer either. So the whole event loop is
-  // blocked, not this endpoint, and removing an await cannot help: there is no await to remove.
-  // A refused connection never reproduces it; only an accepted-and-silent one does.
-  //
-  // Four hypotheses have been tested and all four failed (libuv threadpool saturation, a cold
-  // path after idle, the fetch itself in isolation, and the await on the request path). The
-  // mechanism is unknown and is tracked separately. This line stays because starting work on a
-  // request path is wrong regardless of what turns out to be blocking.
+  // The panel stall once pinned on this feed was never the feed: a run with the feed disabled
+  // entirely stalled the same way. It was a synchronous transcript read on one Windows machine: one
+  // 128 KiB tail took 31,209 ms, and the event loop waited with it. projects.js has the panel's
+  // numbers and, kept apart from them, what was measured on that machine later. The reads are async
+  // now, so such a wait stays inside one request. This line stays because starting work on a request
+  // path is wrong regardless.
   if (!fresh && !inflight) {
     setTimeout(() => { latestVersion().catch(() => {}); }, 0).unref();
   }
@@ -110,7 +105,7 @@ export function compareVersions(a, b) {
 /** What the kit looks like inside one working directory.
  *
  * Async because it runs once per project on the `/api/projects` path, and a
- * synchronous read there blocks the whole panel when one file open stalls —
+ * synchronous read there blocks the whole panel when one read stalls —
  * see the note at the top of projects.js for the measurement.
  */
 export async function kitStatus(cwd, latest) {

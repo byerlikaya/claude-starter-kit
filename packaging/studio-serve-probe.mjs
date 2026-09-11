@@ -43,13 +43,13 @@ let pass = 0; let na = 0; let known = 0; const failures = [];
 // never ran.
 const notApplicable = (name, why) => { na += 1; console.log(`  N/A  ${name} — ${why}`); };
 // A third word, and it is deliberately not a pass. The check ran, it measured what it was written
-// to measure, and what it found is a defect we have already isolated and cannot yet explain. Made
-// green it would be a lie; made red it would go red on one Windows run in eight and be silenced
-// within a month, which is how a gate stops being read. KNOWN keeps the observation on screen and
-// off the exit code, and it names the open item every time it prints.
+// to measure, and what it found is a wait the kit neither causes nor can remove. Made green it would
+// be a lie; made red it would fire whenever such a wait happens to occur, which cannot be produced on
+// demand, and be silenced within a month, which is how a gate stops being read. KNOWN keeps the
+// observation on screen and off the exit code, and says what is known about it every time it prints.
 const knownIssue = (name, detail, issue) => {
   known += 1;
-  console.log(`  KNOWN ${name} — ${detail}\n        this is the open item: ${issue}`);
+  console.log(`  KNOWN ${name} — ${detail}\n        what is known: ${issue}`);
 };
 const check = (name, ok, detail) => {
   if (ok) { pass += 1; console.log(`  ok   ${name}${detail ? ` — ${detail}` : ''}`); }
@@ -136,64 +136,103 @@ check('an API call without a token is refused', noTok.status === 403, `status ${
 // whether the panel is still answering at all. The distinction is the whole point. A slow endpoint
 // is an endpoint; a server that answers nothing is a panel the user calls frozen, and the two look
 // identical from a single request. Measured on the machine that has this: during a 29 s stall,
-// /api/health on its own connection did not answer for 20 s either.
+// /api/health on its own connection did not answer either.
+// The list's own time is taken when its request resolves. Reading the clock at the `await` below would
+// come after the 1.5 s sleep and the health call: every fast list would print ~1.5 s, and a slow health
+// call would pass for a slow list.
 const t0 = Date.now();
-const inFlight = get(port, `/api/projects?token=${TOKEN}`);
+let waited = null;
+const inFlight = get(port, `/api/projects?token=${TOKEN}`).then((r) => { waited = Date.now() - t0; return r; });
 await sleep(1500);
+// Whether the list was still being served when the health request went out. A list that finished inside
+// the sleep leaves nothing in flight, so the health answer below cannot say anything about a stall.
+const listInFlight = waited === null;
 const duringStart = Date.now();
 const during = await get(port, `/api/health?token=${TOKEN}`);
 const duringMs = Date.now() - duringStart;
+// Whether the health answer came back before the list did. Only that shows the panel answering during it.
+const healthFirst = waited === null;
 const projects = await inFlight;
-const waited = Date.now() - t0;
 let measured = null;
 try { measured = JSON.parse(projects.body); } catch { /* reported below */ }
 check('projects are read from disk', projects.status === 200 && measured && Array.isArray(measured.projects),
   measured ? `${measured.projects?.length} project(s)` : `status ${projects.status}`);
 
-// The list is local data. It used to await the update feed, so a hanging registry cost the full
-// 8 s fetch timeout on the first request — measured at 8.37 s, and reported from a corporate
-// network as a 12-second panel that read as hung. CSK_UPDATE_URL points at a socket that accepts
-// and never answers, which is exactly that condition; an unreachable host would NOT reproduce it,
-// because a refused connection returns at once.
+// The list is local data. It used to await the update feed, so a registry that accepts and never
+// answers cost the full 8 s fetch timeout on the first request — measured at 8.37 s. (The work began
+// from a report of a 12-second /api/projects; its reporter withdrew the feed as the cause after
+// re-measuring.) CSK_UPDATE_URL points at a socket that accepts and never answers, which is exactly
+// that condition; an unreachable host would NOT reproduce it, because a refused connection returns at once.
 // One measurement, three outcomes — because two independent checks on the same numbers could
 // disagree with each other, and because the first version of this got the naming wrong in a way
 // worth not repeating: it called every slow first call "waiting on the update feed", which is a
 // cause that was later disproven. A run that hits the known block says nothing about the feed at
 // all, so it must not be reported as if it did.
-const STALL_MS = 25000;          // the block measured at 28-31 s; a feed wait would be 8 s at most
+const STALL_MS = 25000;          // earlier stalls held the first request 28-31 s; a feed wait measured 8.37 s against an 8 s timeout
 const LIVENESS_MS = 2000;
+const listLeftMs = listInFlight ? t0 + waited - duringStart : 0;   // how long the list outlived the health request
 const timing = `the first /api/projects took ${waited}ms with a feed that never answers; a separate `
-  + `/api/health on its own connection answered ${during.status} after ${duringMs}ms while it was in flight`;
+  + `/api/health on its own connection ${during.status ? `answered ${during.status}` : 'got no answer'} after ${duringMs}ms`
+  + (!listInFlight ? '; the list had already finished when it was sent'
+    : healthFirst ? ', before the list finished'
+      : `, only after the list, which finished ${listLeftMs}ms after it was sent`);
 
 // LIVENESS is the graded claim, and the timing is not.
 //
 // It used to be the other way round, and that was wrong twice over. `waited` says nothing about the
 // update feed — a run with the feed disabled entirely still stalled, which is what disproved that
-// reading — and it says nothing about the panel either: it is how long ONE file open took, which on a
-// machine whose security layer inspects opens is a property of the disk, not of this code. What the
-// panel owes its user is that a slow read stays inside the request that hit it. That is gradeable,
-// deterministic, and it is exactly what the async conversion bought:
+// reading — and it cannot grade the panel either. It is the wall time of the whole first
+// /api/projects request, transcript reads included, and on the machine that stalls, waits past
+// STALL_MS also happened with no kit code running. What the panel owes its user is that a slow read
+// stays inside the request that hit it. That is gradeable when the list outlives the health request
+// long enough to tell a blocked loop from a free one (below), and it is what the async conversion bought:
 //
 //   sync  (main)   /api/projects 33,391 ms · a separate /api/health went unanswered 312 pings of 324
 //   async (here)   /api/projects 38,918 ms · the same health endpoint answered 195 of 195
 //
 // The read did not get faster. Nothing else went dark.
-check('the panel answers other requests while a read stalls', duringMs < LIVENESS_MS,
-  `${timing}${duringMs < LIVENESS_MS ? '' : ' — the event loop was blocked, so nothing the panel serves responded'}`);
+// Three outcomes, because a blocked loop and a free one look alike when the list ends soon after the
+// health request goes out: a blocked loop answers health right after the list, a free one right away.
+// - health did not answer 200: red, whatever the list did, because the panel did not answer;
+// - health came back before the list: graded, on how long it took;
+// - health came back only after a list that outlived its request by LIVENESS_MS or more: graded, and red,
+//   because a free loop would have answered inside that time (the real /api/health does no waiting);
+// - anything else cannot tell the two apart, so it is not applicable rather than a pass.
+if (during.status !== 200) {
+  check('the panel answers other requests while a read stalls', false,
+    `${timing} — ${during.status ? `a ${during.status} is not a health answer` : 'the request failed, was reset or timed out'}`);
+} else if (listInFlight && healthFirst) {
+  check('the panel answers other requests while a read stalls', duringMs < LIVENESS_MS,
+    `${timing}${duringMs < LIVENESS_MS ? '' : ` — slower than the ${LIVENESS_MS} ms liveness line`}`);
+} else if (listInFlight && listLeftMs >= LIVENESS_MS) {
+  check('the panel answers other requests while a read stalls', false,
+    `${timing} — /api/health on its own connection was held until the list finished`);
+} else {
+  notApplicable('the panel answers other requests while a read stalls', listInFlight
+    ? `${timing}, too soon after the health request to tell a blocked panel from a free one`
+    : `${timing}, so nothing was in flight for it to wait on`);
+}
 
 if (waited < 3000) {
   check('the project list is served from local data, not a network round trip', true, timing);
 } else if (waited > STALL_MS) {
-  // Reported, not graded: the file open really did take half a minute, and no amount of code here
-  // makes a scanned disk faster. Green would hide it; red would fire on one Windows run in eight and
-  // be muted within a month. The graded half is above, and it stays green through exactly this run.
-  knownIssue('one transcript read took the stall shape',
-    `${timing} — the read itself took ~${Math.round(waited / 1000)}s`,
-    'a security layer inspecting file opens: 31.2s measured for a single 128 KiB tail read on this '
-    + 'machine, 0-1 ms on fourteen of fifteen runs. Not the kit\'s to fix; the kit\'s part was keeping '
-    + 'the rest of the panel answering, which the check above grades');
+  // Reported, not graded: the request really did wait that long, and no code here makes it finish sooner.
+  // Green would hide it; red would fire whenever such a wait happens and be muted within a month. The
+  // graded half is above, and it stays green through exactly this run. What is known comes from one
+  // Windows machine, so any other platform gets "not measured on <platform>" rather than that machine's story.
+  knownIssue('the first project list took the stall shape',
+    `${timing} — ~${Math.round(waited / 1000)}s, past the ${STALL_MS / 1000} s stall line`,
+    process.platform === 'win32'
+      ? 'seen before on a Windows machine, where the first request stalled 28-31 s in 3 runs of 25 and one '
+        + 'synchronous 128 KiB transcript tail took 31,209 ms. Separately, with no kit code running, a plain '
+        + 'tail read of a freshly copied 25 MB transcript waited 63-65 s on 3 of 3 reads in one round and on '
+        + 'none of 8 in a later one, and what holds the file was not identified. Making the reads async did not '
+        + 'make the list faster (33,391 ms before, 38,918 ms after); it kept the rest of the panel answering, '
+        + 'which the check above grades'
+      : `not measured on ${process.platform}: the only recorded case is a Windows machine, so this wait is `
+        + 'unexplained here; the check above still grades whether the rest of the panel kept answering');
   notApplicable('the project list is served from local data, not a network round trip',
-    'this run hit the stall above, so its timing measures the disk and cannot speak to the request path');
+    'this run hit the stall above, so its timing is that wait and cannot speak to the request path');
 } else {
   // Neither a local read nor the shape of the known stall. Something else, and it should be loud.
   check('the project list is served from local data, not a network round trip', false,

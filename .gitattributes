@@ -43,8 +43,17 @@ VERSION text eol=lf
 # bytes against the published 507.410, and the 1.594-byte difference was CRLF in unpinned files, of which
 # claude-starter/CLAUDE.md alone carried 198. The tarball's SHA is what the Homebrew formula pins, and a
 # SHA that depends on the build machine is the class of defect that took a release down once already.
-# This pin takes the Markdown out of that difference and nothing more: the Studio's .js, .py, .html and
-# .css are not pinned, and an archive built with core.autocrlf=true still differs in every one of them.
-# Measured by building it both ways; the build without it reproduces the published v2.9.0 SHA exactly.
+# This pin takes the Markdown out of that difference; the rest of it was the Studio's .js, .py, .html and .css,
+# pinned below. Measured by building the archive both ways: the build without autocrlf reproduces the published
+# v2.9.0 SHA exactly.
 *.md text eol=lf
 LICENSE text eol=lf
+# The Studio panel and the npm wrapper are JavaScript, Python, HTML and CSS, and none of those types had a pin.
+# Measured at 2.10.0: `git -c core.autocrlf=true archive` changed the release tarball in 22 files (tar 1,679,360 →
+# 1,689,600 bytes), the same 22 a real Windows clone produced, while the Linux build that publishes reproduced the
+# published SHA. Nothing parses these files line by line, so this is about bytes, like the *.md pin: the tarball must
+# not depend on the machine that builds it. smoke-test §14 keeps every text file in a shipped path pinned.
+*.js text eol=lf
+*.py text eol=lf
+*.html text eol=lf
+*.css text eol=lf

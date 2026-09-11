@@ -35,7 +35,9 @@
 set -uo pipefail
 
 URL="${CSK_UPDATE_URL:-https://registry.npmjs.org/-/package/@byerlikaya%2fclaude-starter-kit/dist-tags}"
-PLUGIN_URL="${CSK_UPDATE_URL:-https://raw.githubusercontent.com/byerlikaya/claude-starter-kit/main/plugin/.claude-plugin/plugin.json}"
+# plugin-stable, not main: the marketplace installs the plugin from that branch, and only an approved release
+# moves it forward. Reading main would announce a release before the plugin channel can deliver it.
+PLUGIN_URL="${CSK_UPDATE_URL:-https://raw.githubusercontent.com/byerlikaya/claude-starter-kit/plugin-stable/plugin/.claude-plugin/plugin.json}"
 MAX_AGE="${CSK_UPDATE_MAX_AGE:-86400}"      # one day between checks
 
 # DIGITS AND DOTS, exactly three fields — nothing else survives to be printed. Deliberately stricter than semver:

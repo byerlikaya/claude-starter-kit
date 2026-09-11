@@ -11,6 +11,7 @@
 npx @byerlikaya/claude-starter-kit          # new project — setup wizard
 npx @byerlikaya/claude-starter-kit adopt    # existing project — handover on a branch
 npx @byerlikaya/claude-starter-kit update   # refresh an installed kit
+npx @byerlikaya/claude-starter-kit --version # print the kit version
 ```
 
 Then open Claude Code and run `/doctor-csk` to confirm the install is wired.

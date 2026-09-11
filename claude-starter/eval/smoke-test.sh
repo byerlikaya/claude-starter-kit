@@ -1297,6 +1297,109 @@ if [ "$IS_KIT" = 1 ]; then
       pass "bin/cli.js --help matches the current install shape"
     fi
   fi
+  # `--version` printed no version: cli.js staged the whole payload into a temp dir and handed the flag to start.sh,
+  # which refused it as an unknown parameter. Both entry points now answer it before any side effect, and each
+  # assertion is built so a pass cannot happen by accident. cli.js runs with its temp dir pointed at a path that does
+  # not exist: staging there throws, so a pass proves nothing was staged (an empty temp dir proved nothing, since cli.js
+  # removes its own stage). start.sh runs from a directory holding only itself and VERSION, which its payload check
+  # refuses, so a pass proves --version is answered before that check. The unknown-flag probe gets the payload, so
+  # its refusal comes from the flag loop it is meant to test and not from the missing payload.
+  KV="$(head -1 "$KR/VERSION" 2>/dev/null | tr -d '\r')"
+  if [ -f "$KR/bin/cli.js" ] && [ -n "$KV" ]; then
+    if command -v node >/dev/null 2>&1 && node --version >/dev/null 2>&1; then
+      VT="$(mktemp -d)"; VTX="$VT/does-not-exist"
+      vout="$(TMPDIR="$VTX" TEMP="$VTX" TMP="$VTX" node "$KR/bin/cli.js" --version 2>&1)"; vrc=$?
+      if [ "$vrc" = 0 ] && [ "$vout" = "$KV" ]; then
+        pass "npx … --version prints $KV without staging the payload"
+      else
+        fail "npx … --version: rc=$vrc, output '$(printf '%s' "$vout" | head -1)' (want '$KV')"
+      fi
+      rm -rf "$VT"
+    else
+      skip tool "bin/cli.js --version not run (no working node)"
+    fi
+  fi
+  if [ -f "$KR/start.sh" ] && [ -n "$KV" ]; then
+    VS="$(mktemp -d)"; cp "$KR/start.sh" "$KR/VERSION" "$VS/"
+    vout="$(cd "$VS" && bash start.sh --version 2>&1)"; vrc=$?
+    if [ "$vrc" = 0 ] && [ "$vout" = "$KV" ] && [ "$(ls -A "$VS" | wc -l | tr -d ' ')" = 2 ]; then
+      pass "start.sh --version prints $KV before its payload check, and writes nothing"
+    else
+      fail "start.sh --version: rc=$vrc, output '$(printf '%s' "$vout" | head -1)' (want '$KV'), $(ls -A "$VS" | wc -l | tr -d ' ') entries"
+    fi
+    vout="$(cd "$VS" && bash start.sh -v 2>&1)"; vrc=$?
+    [ "$vrc" = 0 ] && [ "$vout" = "$KV" ] && pass "start.sh -v prints $KV, as npx … -v does" \
+      || fail "start.sh -v: rc=$vrc, output '$(printf '%s' "$vout" | head -1)' (want '$KV')"
+    # An exported CDPATH makes `cd` print the directory it moved to, and HERE then held two lines.
+    vout="$(cd "$(dirname "$VS")" && CDPATH=. bash "$(basename "$VS")/start.sh" --version 2>&1)"; vrc=$?
+    [ "$vrc" = 0 ] && [ "$vout" = "$KV" ] && pass "start.sh finds its own directory with CDPATH exported" \
+      || fail "start.sh under CDPATH=. from a relative path: rc=$vrc, output '$(printf '%s' "$vout" | tr '\n' '|')' (want '$KV')"
+    if [ -d "$KR/claude-starter" ]; then
+      cp -R "$KR/claude-starter" "$VS/"
+      vout="$(cd "$VS" && bash start.sh --no-such-flag 2>&1)"; vrc=$?
+      if [ "$vrc" = 1 ] && printf '%s' "$vout" | grep -q 'Unknown parameter: --no-such-flag'; then
+        pass "start.sh still refuses an unknown flag"
+      else
+        fail "start.sh --no-such-flag: rc=$vrc, output '$(printf '%s' "$vout" | head -1)'"
+      fi
+    fi
+    rm -rf "$VS"
+  fi
+  if [ -f "$KR/adopt.sh" ] && [ -n "$KV" ]; then
+    VA="$(mktemp -d)"; cp "$KR/adopt.sh" "$KR/VERSION" "$VA/"
+    vout="$(cd "$VA" && bash adopt.sh --version 2>&1 </dev/null)"; vrc=$?
+    if [ "$vrc" = 0 ] && [ "$vout" = "$KV" ] && [ "$(ls -A "$VA" | wc -l | tr -d ' ')" = 2 ]; then
+      pass "adopt.sh --version prints $KV before its payload check, so \`npx … update --version\` answers too"
+    else
+      fail "adopt.sh --version: rc=$vrc, output '$(printf '%s' "$vout" | head -1)' (want '$KV')"
+    fi
+    rm -rf "$VA"
+  fi
+  # The npm page showed the Turkish README for 2.10.0. The swap step copied README.npm.md over README.md but left
+  # README.npm.md and README.tr.md in the package, and npm chose README.tr.md among them — reproduced with npm
+  # 10.8.2's own selection code, which returns the registry's exact file; its pick depends on directory order. The
+  # step is run here as written, on copies of the three READMEs, and must leave exactly one: the npm README. It
+  # must also run before `npm publish` and without an `if:`, or its effect on a copy says nothing about the
+  # package. Carriage returns are stripped first: the workflow file has no eol pin, and a CRLF checkout would
+  # otherwise hand bash a syntax error and fail this for the wrong reason.
+  RY="$KR/.github/workflows/release.yml"
+  if [ -f "$RY" ] && [ -f "$KR/README.npm.md" ]; then
+    RS="$(awk '/- name: Use the npm-flavoured README for the package/{f=1;next} f&&/^      - name:/{exit} f&&/^        run: \|/{r=1;next} f&&r{sub(/\r$/,""); sub(/^          /,""); print}' "$RY")"
+    RD="$(mktemp -d)"; cp "$KR/README.md" "$KR/README.npm.md" "$RD/"; [ -f "$KR/README.tr.md" ] && cp "$KR/README.tr.md" "$RD/"
+    ( cd "$RD" && bash -c "$RS" >/dev/null 2>&1 )
+    RN="$(ls "$RD" | grep -c -i '^readme')"
+    RSL="$(grep -n -e '- name: Use the npm-flavoured README for the package' "$RY" | head -1 | cut -d: -f1)"
+    NPL="$(grep -n -e '- name: Publish to npm' "$RY" | head -1 | cut -d: -f1)"
+    RIF="$(awk '/- name: Use the npm-flavoured README for the package/{f=1;next} f&&/^      - name:/{exit} f&&/^        if:/{print "if"}' "$RY")"
+    if [ -z "$RS" ]; then
+      fail "release.yml: the 'Use the npm-flavoured README for the package' step was not found — it moved; update this check"
+    elif [ -z "$NPL" ] || [ "$RSL" -gt "$NPL" ]; then
+      fail "release.yml: the README step does not run before 'Publish to npm', so it cannot shape the package"
+    elif [ -n "$RIF" ]; then
+      fail "release.yml: the README step carries an if:, so it can be skipped and npm would pack every README"
+    elif [ "$RN" = 1 ] && cmp -s "$RD/README.md" "$KR/README.npm.md"; then
+      pass "the npm package ends up with exactly one README, the npm one"
+    else
+      fail "after release.yml's README step the package holds $RN README file(s) ($(ls "$RD" | tr '\n' ' ')) — npm can pick the wrong one for its page"
+    fi
+    rm -rf "$RD"
+  fi
+  # The plugin marketplace went live the moment a release PR merged, ahead of the release's gates and its approval,
+  # because the entry pointed at ./plugin on main. It now installs from the plugin-stable branch, which only the
+  # approved release job moves forward, and the update notice reads the same branch. Three facts that only work
+  # together: drop any one and the plugin either ships ungated again or is announced before it can be installed.
+  MJ="$KR/.claude-plugin/marketplace.json"; RY="$KR/.github/workflows/release.yml"; UH="$KR/claude-starter/hooks/session-update-check.sh"
+  if [ -f "$MJ" ] && [ -f "$RY" ] && [ -f "$UH" ]; then
+    PSMISS=""
+    grep -Eq '"source"[[:space:]]*:[[:space:]]*"git-subdir"' "$MJ" && grep -Eq '"ref"[[:space:]]*:[[:space:]]*"plugin-stable"' "$MJ" \
+      || PSMISS="$PSMISS marketplace.json-does-not-install-from-plugin-stable"
+    grep -Fq 'git/refs/heads/plugin-stable" -f sha="${GITHUB_SHA}" -F force=false' "$RY" \
+      || PSMISS="$PSMISS release.yml-does-not-advance-plugin-stable-fast-forward-only"
+    grep -Fq 'raw.githubusercontent.com/byerlikaya/claude-starter-kit/plugin-stable/plugin/.claude-plugin/plugin.json' "$UH" \
+      || PSMISS="$PSMISS update-notice-does-not-read-plugin-stable"
+    [ -z "$PSMISS" ] && pass "the plugin channel ships from plugin-stable, advanced only by the approved release job" \
+                     || fail "plugin channel gating is incomplete:$PSMISS"
+  fi
   # The hook TABLE is hand-written and nothing tied it to the directory it describes. session-stats.sh was on
   # disk, wired into two skills, and absent from the README — the same class as the picture that drew eleven of
   # twelve agents and the site that advertised eight commands. Every shipped hook must be documented somewhere
@@ -3040,7 +3143,7 @@ else
   fail "guard-commit-scan.sh missing or not executable — the plugin edition has no commit content gate"
 fi
 
-echo "== 7k) gate observability (CSK_GATE_LOG) — off by default, and never changes the verdict =="
+echo "== 7k) gate observability (CSK_GATE_LOG) — the log never changes the verdict =="
 # Why this exists: a gate that cannot be observed firing cannot be measured. "The model never reached for the
 # command" and "the gate stopped it" leave behind exactly the same artifacts, so evals/permission-pressure had
 # to report "guard-bash never fired" as an INFERENCE rather than a reading. This channel makes it a reading.
@@ -3057,7 +3160,7 @@ blocks2(){ gj auto "$1" | env "${2:-IGNORE=1}" bash "$HOOKS/guard-bash.sh" >/dev
 # 1. Unset: no file appears, and the block still happens (rc=2, not merely non-zero).
 ( cd "$GLD" && unset CSK_GATE_LOG && blocks2 'git reset --hard' ) \
   && pass "log unset: reset --hard still BLOCKED (rc=2)" || fail "log unset: reset --hard not blocked with rc=2 (fail-open or died)"
-[ ! -e "$GLOG" ] && pass "log unset: nothing is written (silent by default)" || fail "log unset: a log file appeared anyway"
+[ ! -e "$GLOG" ] && pass "log unset: nothing is written to that path (no .claude/ here for the default log)" || fail "log unset: a log file appeared anyway"
 # 2. Set: one line, carrying verdict + section + rule. The COMMAND field is empty unless CSK_GATE_LOG_CMD=1
 #    (2.5.0): recording became the default, and the command is the one field that can carry a path or a token
 #    while /gates-csk never prints it. Both halves are cased, because "opt-in" that quietly records anyway is
@@ -3685,6 +3788,26 @@ if [ -n "$SGR" ] && [ -f "$SGR/.gitattributes" ]; then
   done
   [ -z "$NOEOL" ] && pass "every extensionless shipped hook is pinned to LF in .gitattributes" \
                   || fail "not pinned to LF — a Windows/WSL checkout gets CRLF and the hook dies on its shebang:$NOEOL"
+  # The release tarball's bytes depended on the machine that built it: 22 Studio files (.js .py .html .css) had no
+  # eol pin, so `git -c core.autocrlf=true archive` and a real Windows clone produced CRLF copies of them while the
+  # Linux build that publishes did not. Every text file in a shipped path is pinned now, and this keeps it so — a new
+  # file type added to a shipped path would arrive unpinned and let the build machine decide its bytes again.
+  # Binary files have no line endings to pin; git's own per-file eol report says which ones those are.
+  if [ -d "$SGR/claude-starter" ] && [ -f "$SGR/packaging/build-plugin.sh" ]; then
+    # An empty answer must mean "nothing unpinned", never "git listed nothing": two files every checkout has must
+    # be in the listing first. Symlinks and submodules are not regular files; git leaves their i/ field empty.
+    SLIST="$(git -C "$SGR" ls-files -- start.sh adopt.sh VERSION LICENSE README.md bin claude-starter plugin 2>/dev/null)"
+    if ! printf '%s\n' "$SLIST" | grep -qx 'start.sh' || ! printf '%s\n' "$SLIST" | grep -qx 'claude-starter/CLAUDE.md'; then
+      fail "git did not list the kit's shipped files (start.sh and claude-starter/CLAUDE.md are missing), so the eol pin check measured nothing"
+    else
+    UNPIN="$(git -C "$SGR" ls-files --eol -- start.sh adopt.sh VERSION LICENSE README.md bin claude-starter plugin 2>/dev/null \
+      | awk -F'\t' '{ split($1, f, " "); if (f[1] != "i/-text" && f[1] != "i/none" && f[1] != "i/" && $1 !~ /eol=/) print $2 }')"
+    [ -z "$UNPIN" ] && pass "every text file in a shipped path has an eol pin, so the tarball's bytes do not depend on the build machine" \
+                    || fail "text files in shipped paths with no eol pin in .gitattributes — a CRLF build changes their bytes: $(printf '%s\n' "$UNPIN" | head -5 | tr '\n' ' ')($(printf '%s\n' "$UNPIN" | wc -l | tr -d ' ') in all)"
+    fi
+  else
+    skip scope "shipped-file eol pins not checked (not the kit's source checkout — they are a property of the kit repo)"
+  fi
   # The two editions ship the same hooks; a divergence means one of them was updated and the other was not.
   SDIV=""
   for f in $(git -C "$SGR" ls-files 2>/dev/null | grep -E '^claude-starter/hooks/'); do

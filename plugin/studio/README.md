@@ -43,12 +43,28 @@ and the panel refuses requests without it. When a browser cannot be opened — o
 SSH, or headless — the server says so rather than looking like it worked, and
 `/studio-csk` reports the URL either way.
 
-**The plugin edition does not carry the panel.** A plugin install has no
-`.claude/` tree to launch it from, and `build-plugin.sh` enumerates
-`agents skills commands hooks` — Studio is not among them. `/studio-csk` ships
-there anyway and its first step says so, with the installer command, rather than
-leaving a plugin user at an unknown command. This is the same boundary
-`/doctor-csk` already documents for `eval/`, for the same reason.
+**Both editions carry the panel, in different places.** A full install has it
+at `.claude/studio/`; the plugin edition has it at `studio/` in the plugin's own
+root. One `/studio-csk` file serves both, and its first step tells them apart
+by reading `${CLAUDE_PLUGIN_ROOT}/studio/server/index.js` literally: Claude Code
+replaces that placeholder before the command is read, and only when the command
+came from the plugin. A real absolute path is the plugin's panel; the
+placeholder left standing means a full install. Neither path on disk means an
+install from a kit older than the panel, which `/update-csk` brings up to date.
+In the plugin the command is namespaced: `/claude-starter-kit:studio-csk`.
+
+**What the plugin edition cannot show.** A plugin install puts no
+`.claude/VERSION`, `kit.conf` or kit scripts into a project. That project's row
+in the list has no kit badge, and for the project the panel was opened from, the
+inspector's gates, stats and board tabs say "Not measured" with the reason rather
+than zero. The gates tab can still list what the gate log observed: the plugin's
+Bash guard records its blocks, approval prompts and pre-authorised git actions,
+and its gate-file write guard its blocks, in `.claude/gate-log.tsv` when the
+project has a `.claude/` directory, the file is git-ignored or the project is
+not a repo, and `CSK_GATE_LOG` does not send the log elsewhere.
+Everything else — the live
+agent graph, owned sessions, the permission bridge, the terminals — works the
+same in both editions.
 
 **The suite is not here.** It lives in `packaging/studio-test/`, beside the
 repo's other gates, and asserts things about this *repository* — the root

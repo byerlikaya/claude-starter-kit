@@ -11,13 +11,15 @@
 // copy would break that pin.
 
 // EVERY filesystem call here is async, and that is the point rather than a style
-// choice. Measured on a Windows 11 machine whose EDR inspects file opens: reading
-// the 128 KiB tail of one transcript took 0-1 ms on fourteen runs out of fifteen
-// and 31,209 ms on the fifteenth. With `readSync` that stalled the event loop, so
-// the panel answered NOTHING for half a minute — `/api/projects` took 33,391 ms and
-// a separate `/api/health` on its own connection went unanswered for 312 of 324
-// pings. Async does not make the read faster; the same 30 s still passes. It keeps
-// the stall inside the one request that hit it while the rest of the panel stays up.
+// choice. On a Windows machine a single synchronous 128 KiB tail read once took
+// 31,209 ms, and because it blocked the event loop other requests waited with it:
+// `/api/projects` took 33,391 ms and a separate `/api/health` on its own connection
+// went unanswered for 312 of 324 pings. Measured later on the same machine with no
+// kit code running, a plain `tail -c 131072` of a freshly copied 25 MB transcript
+// waited 63-65 s right after the copy, 0.04 s warm, and 0.044 s when it waited 90 s
+// first. What holds the file was not identified, and the wait could not be produced
+// on demand. Async does not make the read faster; it keeps the wait inside the one
+// request that hit it while the rest of the panel stays up.
 import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
