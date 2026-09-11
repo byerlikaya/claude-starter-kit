@@ -4,7 +4,8 @@
 # line sat at v1.6.0 through the entire 1.7.0 release while the counters had been hand-corrected separately.
 # Every other count in this project is gated (README catalogue, plugin edition, byte budgets); this one was not.
 #
-# Compares the site's version and its agent/skill counters against the payload it claims to describe. Read-only.
+# Compares the site's version, and every count of agents, skills and commands it states — counters and prose, in
+# English and Turkish — against the payload it claims to describe. Read-only.
 #
 # Usage:
 #   bash packaging/check-gh-pages.sh              # reads the site from the gh-pages ref (origin/ then local)
@@ -29,6 +30,7 @@ fi
 VER="$(tr -d ' \n\r' < VERSION 2>/dev/null)"
 AGENTS=$(ls claude-starter/agents/*.md 2>/dev/null | wc -l | tr -d ' ')
 SKILLS=$(ls -d claude-starter/skills/*/ 2>/dev/null | wc -l | tr -d ' ')
+COMMANDS=$(ls claude-starter/commands/*.md 2>/dev/null | wc -l | tr -d ' ')
 
 # The site is markup, so read the NUMBERS the way the page renders them: the version marker, and each counter as
 # the digits sitting immediately before its label. Anchored to the label, never to a bare number — the page is
@@ -42,6 +44,7 @@ count_before() {   # $1 = label word as it appears in the page ("agents" / "skil
 }
 site_agents="$(count_before agents)"
 site_skills="$(count_before skills)"
+site_commands="$(count_before commands)"
 
 FAIL=0
 echo "== published site vs payload  ($SRC) =="
@@ -58,6 +61,36 @@ chk() { # $1 label, $2 expected, $3 found(list)
 chk "version" "$VER" "$site_ver"
 chk "agents"  "$AGENTS" "$site_agents"
 chk "skills"  "$SKILLS" "$site_skills"
+chk "commands" "$COMMANDS" "$site_commands"
+
+# Counts written in prose are read too. Before 2.10.0 the page said "39 skills" in its hero, its pitch and its
+# Turkish pitch while every counter said 40, and its commands counter said 7 against 11 — and this script was
+# green, because it read only the counters. The text is the page with its tags removed plus the description meta
+# tags (those are attributes, so removing tags would lose them). A count is a number directly before the noun,
+# allowing the one adjective the page puts between them ("specialist" / "uzman"), and never part of a larger number.
+TEXT="$( { printf '%s' "$HTML" | tr '\n' ' ' | grep -oE '<meta [^>]*>' | grep -E '(name|property)="(og:|twitter:)?description"' \
+            | sed -n 's/.*content="\([^"]*\)".*/\1/p'
+          printf '%s' "$HTML" | tr '\n' ' ' | sed 's/<[^>]*>/ /g'; } | tr -s ' ' )"
+prose_chk() {   # $1 label, $2 expected, $3 noun alternation (EN|TR)
+  local nums bad n
+  nums="$(printf '%s' "$TEXT" | grep -oE "(^|[^0-9.,])[0-9]{1,3} ((specialist|uzman) )?($3)([^[:alpha:]]|$)" | grep -oE '[0-9]{1,3}')"
+  if [ -z "$nums" ]; then
+    echo "  ⚠️  $1 in the page text: no count found — the page changed; update this check, don't ignore it"; FAIL=1; return
+  fi
+  bad="$(printf '%s\n' "$nums" | grep -v -x -F "$2" | sort -u | tr '\n' ' ')"
+  if [ -z "$bad" ]; then
+    echo "  ✅ $1 in the page text: $2 (stated $(printf '%s\n' "$nums" | wc -l | tr -d ' ') time(s))"
+  else
+    echo "  ❌ $1 in the page text: says ${bad}where the payload is $2"
+    for n in $bad; do
+      printf '%s' "$TEXT" | grep -oE ".{0,40}(^|[^0-9.,])$n ((specialist|uzman) )?($3)([^[:alpha:]]|$)" | sed 's/^/        …/'
+    done
+    FAIL=1
+  fi
+}
+prose_chk "agents"   "$AGENTS"   "agents?|ajan"
+prose_chk "skills"   "$SKILLS"   "skills?"
+prose_chk "commands" "$COMMANDS" "commands?|komut"
 
 # The brand mark exists three times and no copy can see the others: assets/icon.svg is the source, the site
 # inlines it as a data: URI favicon (no file reference, so a grep of the working tree finds nothing — and one
@@ -99,7 +132,7 @@ fi
 echo "---"
 if [ "$FAIL" -eq 0 ]; then echo "GH-PAGES: in sync ✅"; exit 0; fi
 echo "GH-PAGES: drifted ❌ — fix the copy named on the failing line above, before publishing"
-echo "  version/agents/skills live in index.html on the gh-pages branch, which is hand-written and has no"
+echo "  version and the agent/skill/command counts live in index.html on the gh-pages branch, which is hand-written and has no"
 echo "  build step, so nothing else will do it. A brand-mark line points at whichever copy moved: the site's"
 echo "  inline favicon, packaging/gen-network.py, or assets/icon.svg itself if you meant to change the mark."
 exit 1
