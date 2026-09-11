@@ -292,7 +292,7 @@ bash adopt.sh               # mevcut proje (tazelemek için tekrar çalıştır�
 
 **Windows:** Claude Starter Kit bash tabanlıdır. **Git Bash** içinde çalıştırın ([git-scm.com](https://git-scm.com)); WSL de alternatif olur. Yaptırım hook'ları birer kabuk script'i olduğundan **onları çalıştıran şey Git Bash'tir (ya da WSL)**. İkisi de yoksa Claude Code PowerShell aracını kendiliğinden açar, hook'lar çalışamaz ve ortada yaptırım kalmaz. Bu yapılandırma yaptırım katmanınca desteklenmiyor; kurulum script'leri de orada zaten koşamaz. Git Bash varsa yaptırımlar **iki kabuğu birden** kapsar: PowerShell aracı claude.ai ve Console hesaplarında varsayılan olarak açıktır ve onun komutları da aynı kurallardan geçer (`Remove-Item -Recurse -Force`, `… | iex`, `Get-Content .env` ve diğerleri).
 
-**Plugin sürümü:** iskele kurmadan, yalnızca agent'lar, skill'ler ve yaptırım hook'ları mevcut Claude Code'unuzun içine:
+**Plugin sürümü:** iskele kurmadan; agent'lar, skill'ler, komutlar, yaptırım hook'ları ve Studio, mevcut Claude Code'unuzun içine:
 
 ```bash
 /plugin marketplace add byerlikaya/claude-starter-kit
