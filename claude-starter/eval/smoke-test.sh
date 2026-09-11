@@ -1807,10 +1807,27 @@ SB=0; for f in "$SKILLS"/*/SKILL.md; do [ -e "$f" ] && SB=$((SB + $(fm_bytes "$f
 # The budget GATES the kit's payload (kit repo, IS_KIT). In an INSTALLED project the user's own agents/skills —
 # including the ones adopt imports from a taken-over agent — legitimately add to the always-on cost (their choice),
 # so there we REPORT the numbers instead of failing the suite.
-bud(){ if [ "$2" -le "$3" ]; then pass "$1 within budget ($2 ≤ $3 bytes)"
-       elif [ "$IS_KIT" = 1 ]; then fail "$1 over budget: $2 > $3 bytes"
+# A budget is a cost ratchet, so when it trips the message has to say WHAT grew. CRLF grows every one of
+# these by a byte per line without a word of prose being added, and the discipline half is 175 lines against
+# a 50-byte margin — so a CRLF checkout fails the gate by 3x the margin and the reader is told "over budget",
+# which sends them looking for text that was never written. Measured on Windows: every .md in a fresh clone
+# carries CR=0 today because .gitattributes pins them, so this is a diagnosis, not a live failure — but the
+# gate that only reports the right verdict for the wrong reason is the gate nobody trusts the second time.
+#
+# `crlf_lines` counts the CR-terminated lines in the same text the budget was measured on, so the two numbers
+# always describe the same bytes. A real overrun still says "over budget"; only a CRLF one is renamed.
+crlf_lines(){ [ -f "$1" ] || { printf '0'; return; }; tr -dc '\r' < "$1" | wc -c | tr -d ' '; }
+bud(){ # $1 name  $2 measured  $3 budget  $4 (optional) the file the bytes came from
+       if [ "$2" -le "$3" ]; then pass "$1 within budget ($2 ≤ $3 bytes)"
+       elif [ "$IS_KIT" = 1 ]; then
+         local cr=0; [ -n "${4:-}" ] && cr="$(crlf_lines "$4")"
+         if [ "$cr" -gt 0 ] && [ $(( $2 - cr )) -le "$3" ]; then
+           fail "$1 over budget ONLY because this checkout is CRLF: $2 > $3 bytes, and $cr of those bytes are carriage returns ($(( $2 - cr )) with LF endings, which is within budget). Re-check out the file rather than editing the budget."
+         else
+           fail "$1 over budget: $2 > $3 bytes"
+         fi
        else pass "$1 $2 bytes (over the kit's $3 baseline — your project's own additions, not gated in an install)"; fi; }
-bud "discipline"         "$DB" "$BUDGET_DISC"
+bud "discipline"         "$DB" "$BUDGET_DISC" "$ROOT/CLAUDE.md"
 bud "agent descriptions" "$AB" "$BUDGET_AGENTS"
 bud "skill descriptions" "$SB" "$BUDGET_SKILLS"
 echo "   always-on total: $((DB+AB+SB)) bytes (budget $((BUDGET_DISC+BUDGET_AGENTS+BUDGET_SKILLS)))"
