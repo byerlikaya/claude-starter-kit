@@ -1327,6 +1327,13 @@ if [ "$IS_KIT" = 1 ]; then
     else
       fail "start.sh --version: rc=$vrc, output '$(printf '%s' "$vout" | head -1)' (want '$KV'), $(ls -A "$VS" | wc -l | tr -d ' ') entries"
     fi
+    vout="$(cd "$VS" && bash start.sh -v 2>&1)"; vrc=$?
+    [ "$vrc" = 0 ] && [ "$vout" = "$KV" ] && pass "start.sh -v prints $KV, as npx … -v does" \
+      || fail "start.sh -v: rc=$vrc, output '$(printf '%s' "$vout" | head -1)' (want '$KV')"
+    # An exported CDPATH makes `cd` print the directory it moved to, and HERE then held two lines.
+    vout="$(cd "$(dirname "$VS")" && CDPATH=. bash "$(basename "$VS")/start.sh" --version 2>&1)"; vrc=$?
+    [ "$vrc" = 0 ] && [ "$vout" = "$KV" ] && pass "start.sh finds its own directory with CDPATH exported" \
+      || fail "start.sh under CDPATH=. from a relative path: rc=$vrc, output '$(printf '%s' "$vout" | tr '\n' '|')' (want '$KV')"
     if [ -d "$KR/claude-starter" ]; then
       cp -R "$KR/claude-starter" "$VS/"
       vout="$(cd "$VS" && bash start.sh --no-such-flag 2>&1)"; vrc=$?
@@ -1338,18 +1345,38 @@ if [ "$IS_KIT" = 1 ]; then
     fi
     rm -rf "$VS"
   fi
+  if [ -f "$KR/adopt.sh" ] && [ -n "$KV" ]; then
+    VA="$(mktemp -d)"; cp "$KR/adopt.sh" "$KR/VERSION" "$VA/"
+    vout="$(cd "$VA" && bash adopt.sh --version 2>&1 </dev/null)"; vrc=$?
+    if [ "$vrc" = 0 ] && [ "$vout" = "$KV" ] && [ "$(ls -A "$VA" | wc -l | tr -d ' ')" = 2 ]; then
+      pass "adopt.sh --version prints $KV before its payload check, so \`npx … update --version\` answers too"
+    else
+      fail "adopt.sh --version: rc=$vrc, output '$(printf '%s' "$vout" | head -1)' (want '$KV')"
+    fi
+    rm -rf "$VA"
+  fi
   # The npm page showed the Turkish README for 2.10.0. The swap step copied README.npm.md over README.md but left
   # README.npm.md and README.tr.md in the package, and npm chose README.tr.md among them — reproduced with npm
   # 10.8.2's own selection code, which returns the registry's exact file; its pick depends on directory order. The
-  # step is run here as written, on copies of the three READMEs, and must leave exactly one: the npm README.
+  # step is run here as written, on copies of the three READMEs, and must leave exactly one: the npm README. It
+  # must also run before `npm publish` and without an `if:`, or its effect on a copy says nothing about the
+  # package. Carriage returns are stripped first: the workflow file has no eol pin, and a CRLF checkout would
+  # otherwise hand bash a syntax error and fail this for the wrong reason.
   RY="$KR/.github/workflows/release.yml"
   if [ -f "$RY" ] && [ -f "$KR/README.npm.md" ]; then
-    RS="$(awk '/- name: Use the npm-flavoured README for the package/{f=1;next} f&&/^      - name:/{exit} f&&/^        run: \|/{r=1;next} f&&r{sub(/^          /,""); print}' "$RY")"
+    RS="$(awk '/- name: Use the npm-flavoured README for the package/{f=1;next} f&&/^      - name:/{exit} f&&/^        run: \|/{r=1;next} f&&r{sub(/\r$/,""); sub(/^          /,""); print}' "$RY")"
     RD="$(mktemp -d)"; cp "$KR/README.md" "$KR/README.npm.md" "$RD/"; [ -f "$KR/README.tr.md" ] && cp "$KR/README.tr.md" "$RD/"
     ( cd "$RD" && bash -c "$RS" >/dev/null 2>&1 )
     RN="$(ls "$RD" | grep -c -i '^readme')"
+    RSL="$(grep -n -e '- name: Use the npm-flavoured README for the package' "$RY" | head -1 | cut -d: -f1)"
+    NPL="$(grep -n -e '- name: Publish to npm' "$RY" | head -1 | cut -d: -f1)"
+    RIF="$(awk '/- name: Use the npm-flavoured README for the package/{f=1;next} f&&/^      - name:/{exit} f&&/^        if:/{print "if"}' "$RY")"
     if [ -z "$RS" ]; then
       fail "release.yml: the 'Use the npm-flavoured README for the package' step was not found — it moved; update this check"
+    elif [ -z "$NPL" ] || [ "$RSL" -gt "$NPL" ]; then
+      fail "release.yml: the README step does not run before 'Publish to npm', so it cannot shape the package"
+    elif [ -n "$RIF" ]; then
+      fail "release.yml: the README step carries an if:, so it can be skipped and npm would pack every README"
     elif [ "$RN" = 1 ] && cmp -s "$RD/README.md" "$KR/README.npm.md"; then
       pass "the npm package ends up with exactly one README, the npm one"
     else

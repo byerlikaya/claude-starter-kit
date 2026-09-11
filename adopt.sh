@@ -9,7 +9,17 @@
 #
 # Usage: at the target project root (same directory as claude-starter/):  bash adopt.sh
 set -uo pipefail
-HERE="$(cd "$(dirname "$0")" && pwd)"
+HERE="$(CDPATH= cd "$(dirname "$0")" && pwd)"
+
+# --version (or -v) is answered first, before the payload check below: it reads only VERSION, so it works
+# wherever adopt.sh sits. `npx … adopt --version` and `update --version` reach it through bin/cli.js.
+for _a in "$@"; do
+  if [ "$_a" = "--version" ] || [ "$_a" = "-v" ]; then
+    if [ -f "$HERE/VERSION" ]; then head -1 "$HERE/VERSION" | tr -d '\r'; else echo unknown; fi
+    exit 0
+  fi
+done
+
 SRC="$HERE/claude-starter"
 [ -d "$SRC" ] || { echo "ERROR: claude-starter/ not found (must be in the same directory as adopt.sh)."; exit 1; }
 
