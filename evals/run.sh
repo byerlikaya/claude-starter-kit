@@ -270,7 +270,7 @@ for cdir in "$CASES"/*/; do
         echo "     or trust $P once interactively." >&2
       fi
       # A run that never happened must not be graded. A usage-limit rejection leaves the seed project untouched, and an
-      # untouched project passes every "was not changed" check: measured, 7 rejected runs scored 2 checks each. So a run is
+      # untouched project passes every "was not changed" check: measured: the seven rejected runs scored 13 checks between them. So a run is
       # graded only on evidence that it ran. In trace mode that is a result that is neither an error nor limited. Without the
       # stream it is a reply that is not the limit message, in the one form seen so far, the result text of a rejected run:
       # "You've hit your session limit · resets …".
