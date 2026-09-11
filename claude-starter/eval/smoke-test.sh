@@ -1799,38 +1799,102 @@ BUDGET_SKILLS=9600  # sum of skill frontmatter; currently 9521. (2.6.x: +843 B �
                      # other rewrites lockfiles: different risk, different DoD, and an audit you can run on any
                      # branch stops being safe the moment it can also apply things)
 fm_bytes(){ awk '/^---$/{c++; next} c==1' "$1" 2>/dev/null | wc -c | tr -d ' '; }
+# The discipline half, and the carriage returns in that same text. DBCR is what the CRLF diagnosis below
+# subtracts, so it comes from the bytes DB measured and never from the whole file: the marker's line and the 24
+# after it add 25 more, so a whole-file count read 201 carriage returns where the measured text holds 176. The half is cut
+# with head at the marker's line, not with awk: Git Bash's awk drops carriage returns as it reads, so on Windows an
+# awk-cut half of a CRLF file measured 12,200 bytes and 0 carriage returns where head gave 12,376 and 176.
+disc_text(){ local n; n="$(grep -n '^<!-- KIT:DISCIPLINE-END' "$1" | head -1 | cut -d: -f1)"
+             if [ -z "$n" ]; then cat "$1"; elif [ "$n" -gt 1 ]; then head -n "$((n - 1))" "$1"; fi; }
+disc_cr(){ disc_text "$1" | tr -dc '\r' | wc -c | tr -d ' '; }
 if [ -f "$ROOT/CLAUDE.md" ]; then
-  DB="$(awk '/^<!-- KIT:DISCIPLINE-END/{exit} {print}' "$ROOT/CLAUDE.md" | wc -c | tr -d ' ')"
-elif [ -f "$ROOT/DISCIPLINE.md" ]; then DB="$(wc -c < "$ROOT/DISCIPLINE.md" | tr -d ' ')"; else DB=0; fi
+  DB="$(disc_text "$ROOT/CLAUDE.md" | wc -c | tr -d ' ')"; DBCR="$(disc_cr "$ROOT/CLAUDE.md")"
+elif [ -f "$ROOT/DISCIPLINE.md" ]; then
+  DB="$(wc -c < "$ROOT/DISCIPLINE.md" | tr -d ' ')"; DBCR="$(tr -dc '\r' < "$ROOT/DISCIPLINE.md" | wc -c | tr -d ' ')"
+else DB=0; DBCR=0; fi
 AB=0; for f in "$AGENTS"/*.md;      do [ -e "$f" ] && AB=$((AB + $(fm_bytes "$f"))); done
 SB=0; for f in "$SKILLS"/*/SKILL.md; do [ -e "$f" ] && SB=$((SB + $(fm_bytes "$f"))); done
 # The budget GATES the kit's payload (kit repo, IS_KIT). In an INSTALLED project the user's own agents/skills —
 # including the ones adopt imports from a taken-over agent — legitimately add to the always-on cost (their choice),
 # so there we REPORT the numbers instead of failing the suite.
 # A budget is a cost ratchet, so when it trips the message has to say WHAT grew. CRLF grows every one of
-# these by a byte per line without a word of prose being added, and the discipline half is 175 lines against
+# these by a byte per line without a word of prose being added, and the discipline half is 176 lines against
 # a 50-byte margin — so a CRLF checkout fails the gate by 3x the margin and the reader is told "over budget",
 # which sends them looking for text that was never written. Measured on Windows: every .md in a fresh clone
 # carries CR=0 today because .gitattributes pins them, so this is a diagnosis, not a live failure — but the
 # gate that only reports the right verdict for the wrong reason is the gate nobody trusts the second time.
 #
-# `crlf_lines` counts the CR-terminated lines in the same text the budget was measured on, so the two numbers
-# always describe the same bytes. A real overrun still says "over budget"; only a CRLF one is renamed.
-crlf_lines(){ [ -f "$1" ] || { printf '0'; return; }; tr -dc '\r' < "$1" | wc -c | tr -d ' '; }
-bud(){ # $1 name  $2 measured  $3 budget  $4 (optional) the file the bytes came from
+# $4 is the number of carriage returns in the same text the budget was measured on, so the two numbers describe
+# the same bytes. A real overrun still says "over budget"; only a CRLF one is renamed.
+bud(){ # $1 name  $2 measured  $3 budget  $4 (optional) carriage returns in the measured text
        if [ "$2" -le "$3" ]; then pass "$1 within budget ($2 ≤ $3 bytes)"
        elif [ "$IS_KIT" = 1 ]; then
-         local cr=0; [ -n "${4:-}" ] && cr="$(crlf_lines "$4")"
+         local cr="${4:-0}"
          if [ "$cr" -gt 0 ] && [ $(( $2 - cr )) -le "$3" ]; then
            fail "$1 over budget ONLY because this checkout is CRLF: $2 > $3 bytes, and $cr of those bytes are carriage returns ($(( $2 - cr )) with LF endings, which is within budget). Re-check out the file rather than editing the budget."
          else
            fail "$1 over budget: $2 > $3 bytes"
          fi
        else pass "$1 $2 bytes (over the kit's $3 baseline — your project's own additions, not gated in an install)"; fi; }
-bud "discipline"         "$DB" "$BUDGET_DISC" "$ROOT/CLAUDE.md"
+bud "discipline"         "$DB" "$BUDGET_DISC" "$DBCR"
 bud "agent descriptions" "$AB" "$BUDGET_AGENTS"
 bud "skill descriptions" "$SB" "$BUDGET_SKILLS"
 echo "   always-on total: $((DB+AB+SB)) bytes (budget $((BUDGET_DISC+BUDGET_AGENTS+BUDGET_SKILLS)))"
+# The diagnosis is pinned, not only written, on CRLF copies of this very file: the carriage-return count must cover
+# exactly the measured lines, a copy whose text is exactly at the budget with LF endings must be named as CRLF with its
+# figures, and one a byte past the budget must still read "over budget". All three failed while the count came from
+# the whole file, which read 201 carriage returns for 176 lines and called a real overrun of up to 25 bytes CRLF.
+# The CRLF copies are written by bash's own printf: awk and sed on Git Bash translate line endings, so a copy they
+# wrote could not be trusted to hold one carriage return per line, and the copy is checked before it is used.
+if [ "$IS_KIT" = 1 ] && [ -f "$ROOT/CLAUDE.md" ]; then
+  CRT="$(mktemp -d)"
+  tr -d '\r' < "$ROOT/CLAUDE.md" > "$CRT/lf.md"
+  lf_lines="$(disc_text "$CRT/lf.md" | wc -l | tr -d ' ')"; lf_bytes="$(disc_text "$CRT/lf.md" | wc -c | tr -d ' ')"
+  margin=$(( BUDGET_DISC - lf_bytes )); pad=""
+  [ "$margin" -ge 0 ] && { printf -v pad '%*s' "$margin" ''; pad="${pad// /x}"; }
+  while IFS= read -r line || [ -n "$line" ]; do printf '%s\r\n' "$line"; done < "$CRT/lf.md" > "$CRT/crlf.md"
+  # Above the marker, over-crlf.md gets the line that puts its text one byte past the budget with LF endings, and
+  # at-crlf.md a line one byte shorter, or none when the margin is 0, which puts its text exactly at the budget.
+  placed=0
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      '<!-- KIT:DISCIPLINE-END'*)
+        if [ "$placed" = 0 ]; then
+          printf '%s\r\n' "$pad" >&3; if [ "$margin" -ge 1 ]; then printf '%s\r\n' "${pad%x}" >&4; fi; placed=1
+        fi ;;
+    esac
+    printf '%s\r\n' "$line" >&3; printf '%s\r\n' "$line" >&4
+  done < "$CRT/lf.md" 3> "$CRT/over-crlf.md" 4> "$CRT/at-crlf.md"
+  all_lines="$(wc -l < "$CRT/lf.md" | tr -d ' ')"; all_cr="$(tr -dc '\r' < "$CRT/crlf.md" | wc -c | tr -d ' ')"
+  c_bytes="$(disc_text "$CRT/crlf.md" | wc -c | tr -d ' ')"; c_cr="$(disc_cr "$CRT/crlf.md")"
+  if [ "$all_cr" != "$all_lines" ]; then
+    fail "CRLF budget diagnosis: the test's CRLF copy holds $all_cr carriage returns for $all_lines lines — the copy is broken on this platform, not the gate"
+  elif [ "$c_cr" = "$lf_lines" ] && [ $(( c_bytes - c_cr )) = "$lf_bytes" ]; then
+    pass "CRLF budget diagnosis counts the carriage returns in the measured text ($c_cr for $lf_lines lines)"
+  else
+    fail "CRLF budget diagnosis: $c_cr carriage returns for $lf_lines measured lines, $c_bytes bytes vs $lf_bytes with LF"
+  fi
+  # The rename itself, at its boundary: always asked while the discipline half is within budget, however far within.
+  if [ "$all_cr" = "$all_lines" ] && [ "$margin" -ge 0 ]; then
+    a_bytes="$(disc_text "$CRT/at-crlf.md" | wc -c | tr -d ' ')"; a_cr="$(disc_cr "$CRT/at-crlf.md")"
+    a_msg="$(pass(){ echo "PASS $*"; }; fail(){ echo "FAIL $*"; }; bud "discipline" "$a_bytes" "$BUDGET_DISC" "$a_cr")"
+    want="FAIL discipline over budget ONLY because this checkout is CRLF: $a_bytes > $BUDGET_DISC bytes, and $a_cr of"
+    want="$want those bytes are carriage returns ($BUDGET_DISC with LF endings"
+    case "$a_msg" in
+      "$want"*) pass "a CRLF checkout at the budget with LF endings is named as CRLF ($a_bytes > $BUDGET_DISC bytes, $a_cr carriage returns)" ;;
+      *) fail "a CRLF checkout at the budget with LF endings was not named as CRLF with its figures: $a_msg" ;;
+    esac
+  fi
+  if [ "$margin" -ge 0 ]; then
+    o_msg="$(pass(){ echo "PASS $*"; }; fail(){ echo "FAIL $*"; }
+             bud "discipline" "$(disc_text "$CRT/over-crlf.md" | wc -c | tr -d ' ')" "$BUDGET_DISC" "$(disc_cr "$CRT/over-crlf.md")")"
+    case "$o_msg" in
+      "FAIL discipline over budget: "*) pass "a real overrun one byte past the margin on a CRLF checkout still reads \"over budget\"" ;;
+      *) fail "a real overrun one byte past the margin on a CRLF checkout was misnamed: $o_msg" ;;
+    esac
+  fi
+  rm -rf "$CRT"
+fi
 # Per-skill ratchet: the total budget grows with the catalogue, so also cap EACH skill's frontmatter — one bloated
 # description can't hide inside the total. Max today is 390 B (systematic-debugging); the cap sits just above it.
 MAX_SKILL_FM=420; SKILL_FAT=""
