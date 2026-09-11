@@ -61,9 +61,10 @@ export function parseRoster(text) {
   return { self: self ? { name: self[1], ref: self[2] } : null, peers };
 }
 
-// Async for the reason projects.js gives: this reads the tail of a transcript, which
-// is the exact operation measured at 31.2 s on one run in fifteen, and it runs on the
-// `/api/fleet` path the panel polls every 2 s — the shortest cycle in the app.
+// Async for the reason projects.js gives: this reads the tail of a transcript — the
+// read a file-scanning security layer held for about a minute right after the file was
+// written — and it runs on the `/api/fleet` path the panel polls every 2 s, the shortest
+// cycle in the app.
 async function readTail(file, size, limit = TAIL_BYTES) {
   let fh;
   try {

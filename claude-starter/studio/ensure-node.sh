@@ -77,8 +77,9 @@ candidates() {
   [ -n "${CSK_STUDIO_NODE:-}" ] && printf '%s\n' "$CSK_STUDIO_NODE"
   printf 'node\n'
   # Guarded, because that pipeline costs three processes whether or not anything is there,
-  # and a process is not always cheap: measured at 880-1483 ms on a Windows box whose EDR
-  # inspects every creation. A directory test costs none.
+  # and a process is not always cheap: a bare /usr/bin/true measured 880-1483 ms on two machines
+  # against 3-5 ms on a healthy one, and one session traced that to endpoint software inspecting every
+  # process creation. A directory test costs none.
   if [ -d "$RUNTIME" ]; then
     ls -1d "$RUNTIME"/node-v*/ 2>/dev/null | sort -r | while read -r d; do
       printf '%s\n' "${d}bin/node" "${d}node.exe"

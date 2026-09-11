@@ -36,17 +36,14 @@ export function latestVersionCached() {
   const fresh = latestCache && Date.now() - latestCache.at < FEED_TTL_MS;
   // Deferred to a later tick, not merely un-awaited, so the request path does no work of its own.
   //
-  // It does NOT fix the stall that is still open against this file. Measured on a Windows machine
-  // with an inspecting layer on every connection: while the feed accepts and stays silent, the
-  // first /api/projects sometimes takes 28-31 s (3 of 25) — and during that window a SEPARATE
-  // /api/health on a separate connection does not answer either. So the whole event loop is
-  // blocked, not this endpoint, and removing an await cannot help: there is no await to remove.
-  // A refused connection never reproduces it; only an accepted-and-silent one does.
-  //
-  // Four hypotheses have been tested and all four failed (libuv threadpool saturation, a cold
-  // path after idle, the fetch itself in isolation, and the await on the request path). The
-  // mechanism is unknown and is tracked separately. This line stays because starting work on a
-  // request path is wrong regardless of what turns out to be blocking.
+  // The panel stall once pinned on this feed was never the feed: a run with the feed disabled
+  // entirely stalled the same way. It was a transcript read. On the Windows machine that has it, a
+  // security layer scans a file after it is written, and a read that lands before the scan finishes
+  // waits for it — 63-65 s for a plain `tail -c 131072` of a 25 MB transcript copy with no kit code
+  // running, 0.04 s warm, 0.044 s after waiting 90 s. It comes in clusters and could not be produced
+  // on demand, so no frequency is claimed. The reads were synchronous, so the whole panel stopped
+  // answering; projects.js keeps that wait inside one request now. This line stays because starting
+  // work on a request path is wrong regardless.
   if (!fresh && !inflight) {
     setTimeout(() => { latestVersion().catch(() => {}); }, 0).unref();
   }

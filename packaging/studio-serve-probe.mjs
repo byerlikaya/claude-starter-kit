@@ -43,13 +43,13 @@ let pass = 0; let na = 0; let known = 0; const failures = [];
 // never ran.
 const notApplicable = (name, why) => { na += 1; console.log(`  N/A  ${name} — ${why}`); };
 // A third word, and it is deliberately not a pass. The check ran, it measured what it was written
-// to measure, and what it found is a defect we have already isolated and cannot yet explain. Made
-// green it would be a lie; made red it would go red on one Windows run in eight and be silenced
-// within a month, which is how a gate stops being read. KNOWN keeps the observation on screen and
-// off the exit code, and it names the open item every time it prints.
+// to measure, and what it found is a wait the kit neither causes nor can remove. Made green it would
+// be a lie; made red it would fire whenever that machine's scanner happens to be busy, which cannot
+// be produced on demand, and be silenced within a month, which is how a gate stops being read. KNOWN
+// keeps the observation on screen and off the exit code, and it names the cause every time it prints.
 const knownIssue = (name, detail, issue) => {
   known += 1;
-  console.log(`  KNOWN ${name} — ${detail}\n        this is the open item: ${issue}`);
+  console.log(`  KNOWN ${name} — ${detail}\n        the cause: ${issue}`);
 };
 const check = (name, ok, detail) => {
   if (ok) { pass += 1; console.log(`  ok   ${name}${detail ? ` — ${detail}` : ''}`); }
@@ -160,7 +160,7 @@ check('projects are read from disk', projects.status === 200 && measured && Arra
 // worth not repeating: it called every slow first call "waiting on the update feed", which is a
 // cause that was later disproven. A run that hits the known block says nothing about the feed at
 // all, so it must not be reported as if it did.
-const STALL_MS = 25000;          // the block measured at 28-31 s; a feed wait would be 8 s at most
+const STALL_MS = 25000;          // scanner waits were measured at 28-31 s and at 63-65 s; a feed wait would be 8 s at most
 const LIVENESS_MS = 2000;
 const timing = `the first /api/projects took ${waited}ms with a feed that never answers; a separate `
   + `/api/health on its own connection answered ${during.status} after ${duringMs}ms while it was in flight`;
@@ -184,14 +184,15 @@ check('the panel answers other requests while a read stalls', duringMs < LIVENES
 if (waited < 3000) {
   check('the project list is served from local data, not a network round trip', true, timing);
 } else if (waited > STALL_MS) {
-  // Reported, not graded: the file open really did take half a minute, and no amount of code here
-  // makes a scanned disk faster. Green would hide it; red would fire on one Windows run in eight and
-  // be muted within a month. The graded half is above, and it stays green through exactly this run.
+  // Reported, not graded: the read really did wait that long, and no code here makes a scanner finish
+  // sooner. Green would hide it; red would fire whenever that machine's scanner is busy and be muted
+  // within a month. The graded half is above, and it stays green through exactly this run.
   knownIssue('one transcript read took the stall shape',
     `${timing} — the read itself took ~${Math.round(waited / 1000)}s`,
-    'a security layer inspecting file opens: 31.2s measured for a single 128 KiB tail read on this '
-    + 'machine, 0-1 ms on fourteen of fifteen runs. Not the kit\'s to fix; the kit\'s part was keeping '
-    + 'the rest of the panel answering, which the check above grades');
+    'a security layer that scans files after they are written: a plain tail read of a 25 MB transcript copy '
+    + 'waited 63-65 s with no kit code running and 0.044 s after waiting 90 s; it comes in clusters and could '
+    + "not be produced on demand. Not the kit's to fix; the kit's part was keeping the rest of the panel "
+    + 'answering, which the check above grades');
   notApplicable('the project list is served from local data, not a network round trip',
     'this run hit the stall above, so its timing measures the disk and cannot speak to the request path');
 } else {
