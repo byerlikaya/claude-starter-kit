@@ -30,11 +30,18 @@ fails, say which one and stop — do not improvise a different launch.
    `npx @byerlikaya/claude-starter-kit@latest update --here --yes` at the project root, or `/update-csk`.
    Then stop. Do not go hunting for the panel anywhere else on disk.
 
-   **What the plugin edition cannot show.** The panel reads the *project you opened it from* for kit
-   telemetry — `.claude/VERSION`, `kit.conf`, the gate scripts. A plugin install writes none of those into
-   a project, so the kit panes report "not measured" with the reason, rather than zero. Say that once when
-   you hand over the URL, so an honest blank is not read as a broken panel. Everything else — the live
-   agent graph, owned sessions, the permission bridge, the terminals — works the same in both editions.
+   **What the plugin edition cannot show.** A plugin install puts no `.claude/VERSION`, `kit.conf` or kit
+   scripts into a project. So that project's row in the list has no kit badge (each row reads its own
+   project), and for the project you opened the panel from, the inspector's gates, stats and board tabs
+   say "Not measured" with the reason, rather than zero. The gates tab can still list observed entries
+   below that. The plugin's Bash guard logs its blocks, approval prompts and `CLAUDE_GIT_OK` pre-authorised
+   git actions, and its gate-file write guard logs its blocks, to `.claude/gate-log.tsv` when the project
+   has a `.claude/` directory and the file is git-ignored or the project is not a repo. With `CSK_GATE_LOG`
+   set they write wherever it points instead, and the panel reads only the project's own
+   `.claude/gate-log.tsv`, so a log sent anywhere else does not show. The commit scan and the board gate
+   refuse without writing a line. Say this once when you hand over the URL, so an honest blank is not
+   read as a broken panel. Everything else — the live agent graph, owned sessions, the permission bridge,
+   the terminals — works the same in both editions.
 
 2. **Resolve a runtime — do not ask whether a name resolves.** `ensure-node.sh` sits beside the panel, so
    use whichever root step 1 settled on:

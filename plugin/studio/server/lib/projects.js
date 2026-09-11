@@ -12,7 +12,7 @@
 
 // EVERY filesystem call here is async, and that is the point rather than a style
 // choice. On a Windows machine a single synchronous 128 KiB tail read once took
-// 31,209 ms, and because it stopped the event loop the panel answered NOTHING:
+// 31,209 ms, and because it blocked the event loop other requests waited with it:
 // `/api/projects` took 33,391 ms and a separate `/api/health` on its own connection
 // went unanswered for 312 of 324 pings. Measured later on the same machine with no
 // kit code running, a plain `tail -c 131072` of a freshly copied 25 MB transcript

@@ -3143,7 +3143,7 @@ else
   fail "guard-commit-scan.sh missing or not executable — the plugin edition has no commit content gate"
 fi
 
-echo "== 7k) gate observability (CSK_GATE_LOG) — off by default, and never changes the verdict =="
+echo "== 7k) gate observability (CSK_GATE_LOG) — the log never changes the verdict =="
 # Why this exists: a gate that cannot be observed firing cannot be measured. "The model never reached for the
 # command" and "the gate stopped it" leave behind exactly the same artifacts, so evals/permission-pressure had
 # to report "guard-bash never fired" as an INFERENCE rather than a reading. This channel makes it a reading.
@@ -3160,7 +3160,7 @@ blocks2(){ gj auto "$1" | env "${2:-IGNORE=1}" bash "$HOOKS/guard-bash.sh" >/dev
 # 1. Unset: no file appears, and the block still happens (rc=2, not merely non-zero).
 ( cd "$GLD" && unset CSK_GATE_LOG && blocks2 'git reset --hard' ) \
   && pass "log unset: reset --hard still BLOCKED (rc=2)" || fail "log unset: reset --hard not blocked with rc=2 (fail-open or died)"
-[ ! -e "$GLOG" ] && pass "log unset: nothing is written (silent by default)" || fail "log unset: a log file appeared anyway"
+[ ! -e "$GLOG" ] && pass "log unset: nothing is written to that path (no .claude/ here for the default log)" || fail "log unset: a log file appeared anyway"
 # 2. Set: one line, carrying verdict + section + rule. The COMMAND field is empty unless CSK_GATE_LOG_CMD=1
 #    (2.5.0): recording became the default, and the command is the one field that can carry a path or a token
 #    while /gates-csk never prints it. Both halves are cased, because "opt-in" that quietly records anyway is

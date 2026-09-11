@@ -62,8 +62,7 @@ export function parseRoster(text) {
 }
 
 // Async for the reason projects.js gives: this reads transcript tails too (TAIL_BYTES, and
-// DEEP_BYTES for the newest few), and it runs on the `/api/fleet` path the panel polls every
-// 2 s, the shortest cycle in the app.
+// DEEP_BYTES for the newest few), and it runs on the `/api/fleet` path the panel polls every 2 s.
 async function readTail(file, size, limit = TAIL_BYTES) {
   let fh;
   try {

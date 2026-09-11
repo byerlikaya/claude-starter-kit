@@ -30,5 +30,11 @@ running as a **plugin**, whose hooks are managed by Claude Code itself; there's 
 scripts are developer instruments: they inspect an installation from outside it, and the plugin edition has no
 installation to inspect. Say this plainly when someone asks why `/doctor-csk` reports nothing on a plugin install,
 rather than treating it as a defect. The Studio panel is not in that group: both editions carry it, and
-`/studio-csk` finds it in either. On a plugin install its kit-telemetry panes report "not measured": a plugin
-install writes none of the files they read (`.claude/VERSION`, `kit.conf`, the gate scripts) into the project.
+`/studio-csk` finds it in either. A plugin install puts no `.claude/VERSION`, `kit.conf` or kit scripts into a
+project, so that project's row in the panel has no kit badge, and for the project the panel was opened from, the
+inspector's gates, stats and board tabs say "Not measured" with the reason. The gates tab can still list observed
+entries below that. The plugin's Bash guard logs its blocks, approval prompts and `CLAUDE_GIT_OK` pre-authorised
+git actions, and its gate-file write guard logs its blocks, to `.claude/gate-log.tsv` when the project has a
+`.claude/` directory and the file is git-ignored or the project is not a repo. With `CSK_GATE_LOG` set they write
+wherever it points instead, and the panel reads only the project's own `.claude/gate-log.tsv`, so a log sent
+anywhere else does not show. The commit scan and the board gate refuse without writing a line.

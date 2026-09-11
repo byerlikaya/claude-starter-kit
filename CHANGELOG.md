@@ -99,12 +99,12 @@ versioning follows [SemVer](https://semver.org/).
 - `/api/projects` awaited the update feed before listing local data: ~350 ms → ~15 ms steady, and against a feed that
   accepts and never answers, 8.37 s → 0.25 s.
 
-### Fixed — Studio: one slow file open stopped the whole panel
+### Fixed — Studio: a slow transcript read blocked the event loop
 
-- The panel read transcript tails synchronously on the request path. On a Windows machine whose security layer
-  inspects file opens, one open took ~31 s and the whole event loop waited with it: `/api/health` on its own
-  connection went unanswered for 312 of 324 pings. The transcript reads are asynchronous now; the slow request still
-  waits for its file, but `/api/health` answered 195 of 195 meanwhile.
+- The panel read transcript tails synchronously on the request path. On one Windows machine a single 128 KiB tail
+  read took 31,209 ms and the whole event loop waited with it: `/api/health` on its own connection went unanswered
+  for 312 of 324 pings. The transcript reads are asynchronous now; the slow request still waits for its file, but
+  `/api/health` answered 195 of 195 meanwhile.
 
 ### Added — evals: rules in agent definitions, test runs, and no score for a run that did not happen
 
@@ -239,8 +239,9 @@ panel from. It does not need one — `palette.js` resolves the kit's agents with
   shipped with the panel absent and the gate green. It asks `git status` now.
 
 The honest gap is stated up front rather than left to be discovered: a plugin user's kit-telemetry panes
-read the project the panel was opened from, and a plugin install writes nothing into a project, so they
-report "not measured" with the reason instead of a misleading zero.
+read the project the panel was opened from, and a plugin install puts no kit files into a project, so they
+report "not measured" with the reason instead of a misleading zero. The gate log is the exception: the
+plugin's guards can append to it too, and the panel lists what it observed.
 
 ### Fixed — the Stop gate failed on every session that had not been compacted
 

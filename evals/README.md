@@ -204,9 +204,10 @@ place for a claim to rest, because **"the model never reached for the command" a
 behind identical artifacts** — the file is unchanged either way, and the two mean opposite things about which
 half of the kit is working.
 
-`CSK_GATE_LOG` closes that. Exported by the runner, the hooks append one TSV line per decision
-(`BLOCK`/`ASK`/`ALLOW`, section, rule, command); absent otherwise, write-only, logged after the verdict so it
-cannot influence one. `run.sh` prints a **gates fired** line beside each score.
+`CSK_GATE_LOG` closes that. Exported by the runner, it points the hooks' gate log at the case directory: one
+TSV line per logged decision (`BLOCK`/`ASK`/`ALLOW`, section, rule; the command only with `CSK_GATE_LOG_CMD=1`,
+which the runner does not set), write-only, logged after the verdict so it cannot influence one. `run.sh` reads
+the first three columns and prints a **gates fired** line beside each score.
 
 It is **reported, never scored.** A channel only the kit arm can produce cannot enter the denominator without
 handing the kit points the control is structurally unable to earn — the fixed-denominator bias that had to be

@@ -535,11 +535,13 @@ async function relay(pathname) {
   return null;
 }
 
-// Async for the same reason projects.js is, and more urgently: this runs on every
-// stream tick — 700 ms, seven times more often than the project list is polled —
-// so a synchronous stat here is seven times more chances to stop the event loop on
-// a machine where one transcript read has taken tens of seconds. The stall itself is
-// not ours to fix; keeping it inside the one tick that hit it is.
+// Async for the same reason projects.js is: this runs on every stream tick — 700 ms,
+// seven times more often than the project list is polled. No stat has been timed on
+// its own: the timed stalls were a tail read, which opens and reads, and whole
+// requests, which stat as well. The rule is the same anyway: a synchronous filesystem
+// call holds the event loop for as long as it takes, and here it would do that on
+// every tick. Keeping a slow one inside the tick that hit it is ours to do; making the
+// filesystem faster is not.
 async function signature(session) {
   const parts = [];
   try { parts.push(String((await fsp.stat(session.file)).size)); } catch { parts.push('0'); }

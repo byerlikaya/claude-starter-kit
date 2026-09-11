@@ -37,13 +37,11 @@ export function latestVersionCached() {
   // Deferred to a later tick, not merely un-awaited, so the request path does no work of its own.
   //
   // The panel stall once pinned on this feed was never the feed: a run with the feed disabled
-  // entirely stalled the same way. It was a transcript read on one Windows machine, where a read that
-  // follows a write of the same file can wait — 63-65 s for a plain `tail -c 131072` of a freshly
-  // copied 25 MB transcript with no kit code running, 0.04 s warm, 0.044 s when the read waited 90 s
-  // after the copy. What holds the file was not identified, and the wait comes in clusters that could
-  // not be produced on demand. The reads were synchronous, so the whole panel stopped answering;
-  // projects.js keeps such a wait inside one request now. This line stays because starting work on a
-  // request path is wrong regardless.
+  // entirely stalled the same way. It was a synchronous transcript read on one Windows machine: one
+  // 128 KiB tail took 31,209 ms, and the event loop waited with it. projects.js has the panel's
+  // numbers and, kept apart from them, what was measured on that machine later. The reads are async
+  // now, so such a wait stays inside one request. This line stays because starting work on a request
+  // path is wrong regardless.
   if (!fresh && !inflight) {
     setTimeout(() => { latestVersion().catch(() => {}); }, 0).unref();
   }

@@ -53,10 +53,16 @@ placeholder left standing means a full install. Neither path on disk means an
 install from a kit older than the panel, which `/update-csk` brings up to date.
 In the plugin the command is namespaced: `/claude-starter-kit:studio-csk`.
 
-**What the plugin edition cannot show.** The panel reads the project it was
-opened from for kit telemetry (`.claude/VERSION`, `kit.conf`, the gate scripts),
-and a plugin install writes none of those into a project, so those panes report
-"not measured" with the reason rather than zero. Everything else — the live
+**What the plugin edition cannot show.** A plugin install puts no
+`.claude/VERSION`, `kit.conf` or kit scripts into a project. That project's row
+in the list has no kit badge, and for the project the panel was opened from, the
+inspector's gates, stats and board tabs say "Not measured" with the reason rather
+than zero. The gates tab can still list what the gate log observed: the plugin's
+Bash guard records its blocks, approval prompts and pre-authorised git actions,
+and its gate-file write guard its blocks, in `.claude/gate-log.tsv` when the
+project has a `.claude/` directory, the file is git-ignored or the project is
+not a repo, and `CSK_GATE_LOG` does not send the log elsewhere.
+Everything else — the live
 agent graph, owned sessions, the permission bridge, the terminals — works the
 same in both editions.
 
