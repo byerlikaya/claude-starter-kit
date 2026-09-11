@@ -65,15 +65,34 @@ chk "commands" "$COMMANDS" "$site_commands"
 
 # Counts written in prose are read too. Before 2.10.0 the page said "39 skills" in its hero, its pitch and its
 # Turkish pitch while every counter said 40, and its commands counter said 7 against 11 — and this script was
-# green, because it read only the counters. The text is the page with its tags removed plus the description meta
-# tags (those are attributes, so removing tags would lose them). A count is a number directly before the noun,
-# allowing the one adjective the page puts between them ("specialist" / "uzman"), and never part of a larger number.
-TEXT="$( { printf '%s' "$HTML" | tr '\n' ' ' | grep -oE '<meta [^>]*>' | grep -E '(name|property)="(og:|twitter:)?description"' \
-            | sed -n 's/.*content="\([^"]*\)".*/\1/p'
-          printf '%s' "$HTML" | tr '\n' ' ' | sed 's/<[^>]*>/ /g'; } | tr -s ' ' )"
+# green, because it read only the counters. The text is the page with its tags removed, plus the description and
+# title meta tags (attributes, so removing tags would lose them; either quote style). &nbsp; counts as a space.
+# The text is read word by word rather than with one regular expression: the page writes its English and Turkish
+# spans side by side ("12 agents 12 ajan"), and a pattern that consumes the space after one count cannot start a
+# match on the next. A count is a word of one to three digits (optionally after "(") followed by the noun, with
+# the one adjective the page puts between them ("specialist" / "uzman") allowed.
+TEXT="$( { printf '%s' "$HTML" | tr '\n' ' ' | grep -oiE '<meta [^>]*>' \
+            | grep -iE "(name|property)=[\"'](og:|twitter:)?(description|title)[\"']" \
+            | sed -n -E -e "s/.*content=\"([^\"]*)\".*/\1/p" -e "s/.*content='([^']*)'.*/\1/p"
+          printf '%s' "$HTML" | tr '\n' ' ' | sed 's/<[^>]*>/ /g'; } \
+        | sed -e 's/&nbsp;/ /g' -e 's/&#160;/ /g' -e 's/&#[xX][aA]0;/ /g' | LC_ALL=C sed $'s/\xc2\xa0/ /g' | tr -s ' ' )"
+prose_nums() {   # $1 noun alternation -> one number per count found
+  printf '%s' "$TEXT" | tr -s ' \t' '\n\n' | awk -v nouns="$1" '
+    { w[NR] = $0 }
+    END {
+      for (i = 1; i <= NR; i++) {
+        n = w[i]; sub(/^\(/, "", n)
+        if (n !~ /^[0-9][0-9]?[0-9]?$/) continue
+        j = i + 1; x = tolower(w[j])
+        if (x == "specialist" || x == "uzman") { j++; x = tolower(w[j]) }
+        sub(/[^a-z].*$/, "", x)
+        if (x ~ ("^(" nouns ")$")) print n
+      }
+    }'
+}
 prose_chk() {   # $1 label, $2 expected, $3 noun alternation (EN|TR)
   local nums bad n
-  nums="$(printf '%s' "$TEXT" | grep -oE "(^|[^0-9.,])[0-9]{1,3} ((specialist|uzman) )?($3)([^[:alpha:]]|$)" | grep -oE '[0-9]{1,3}')"
+  nums="$(prose_nums "$3")"
   if [ -z "$nums" ]; then
     echo "  ⚠️  $1 in the page text: no count found — the page changed; update this check, don't ignore it"; FAIL=1; return
   fi
@@ -83,7 +102,7 @@ prose_chk() {   # $1 label, $2 expected, $3 noun alternation (EN|TR)
   else
     echo "  ❌ $1 in the page text: says ${bad}where the payload is $2"
     for n in $bad; do
-      printf '%s' "$TEXT" | grep -oE ".{0,40}(^|[^0-9.,])$n ((specialist|uzman) )?($3)([^[:alpha:]]|$)" | sed 's/^/        …/'
+      printf '%s' "$TEXT" | grep -oE ".{0,40}(^|[^0-9])$n ((specialist|uzman) )?($3)" | sed 's/^/        …/'
     done
     FAIL=1
   fi

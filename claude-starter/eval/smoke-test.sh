@@ -3794,10 +3794,17 @@ if [ -n "$SGR" ] && [ -f "$SGR/.gitattributes" ]; then
   # file type added to a shipped path would arrive unpinned and let the build machine decide its bytes again.
   # Binary files have no line endings to pin; git's own per-file eol report says which ones those are.
   if [ -d "$SGR/claude-starter" ] && [ -f "$SGR/packaging/build-plugin.sh" ]; then
+    # An empty answer must mean "nothing unpinned", never "git listed nothing": two files every checkout has must
+    # be in the listing first. Symlinks and submodules are not regular files; git leaves their i/ field empty.
+    SLIST="$(git -C "$SGR" ls-files -- start.sh adopt.sh VERSION LICENSE README.md bin claude-starter plugin 2>/dev/null)"
+    if ! printf '%s\n' "$SLIST" | grep -qx 'start.sh' || ! printf '%s\n' "$SLIST" | grep -qx 'claude-starter/CLAUDE.md'; then
+      fail "git did not list the kit's shipped files (start.sh and claude-starter/CLAUDE.md are missing), so the eol pin check measured nothing"
+    else
     UNPIN="$(git -C "$SGR" ls-files --eol -- start.sh adopt.sh VERSION LICENSE README.md bin claude-starter plugin 2>/dev/null \
-      | awk -F'\t' '{ split($1, f, " "); if (f[1] != "i/-text" && f[1] != "i/none" && $1 !~ /eol=/) print $2 }')"
+      | awk -F'\t' '{ split($1, f, " "); if (f[1] != "i/-text" && f[1] != "i/none" && f[1] != "i/" && $1 !~ /eol=/) print $2 }')"
     [ -z "$UNPIN" ] && pass "every text file in a shipped path has an eol pin, so the tarball's bytes do not depend on the build machine" \
                     || fail "text files in shipped paths with no eol pin in .gitattributes — a CRLF build changes their bytes: $(printf '%s\n' "$UNPIN" | head -5 | tr '\n' ' ')($(printf '%s\n' "$UNPIN" | wc -l | tr -d ' ') in all)"
+    fi
   else
     skip scope "shipped-file eol pins not checked (not the kit's source checkout — they are a property of the kit repo)"
   fi
