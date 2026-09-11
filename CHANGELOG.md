@@ -3,6 +3,101 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [2.10.1] — 2026-09-12
+
+### Fixed — the npm page showed the Turkish README
+
+- After the 2.10.0 publish the registry's page README was `README.tr.md`. The release step copied `README.npm.md`
+  over `README.md` but left the other two READMEs in the checkout, and npm packs every root `README.*`. Run through
+  npm 10.8.2's own manifest preparation, the pick depended on directory order: two of four orders returned
+  `README.md`. The step now leaves exactly one README. Smoke runs the step as written, requires it before
+  `npm publish` and without a condition, and requires one README left, equal to `README.npm.md`.
+
+### Fixed — `--version` ran the installer
+
+- `npx @byerlikaya/claude-starter-kit --version` staged the payload, and `start.sh` answered "Unknown parameter:
+  --version"; the Homebrew command failed the same way. `npx … --version` and `-v` now print the kit's `VERSION`
+  from `bin/cli.js` before anything is staged. `start.sh` and `adopt.sh` answer both flags before their own checks,
+  so the Homebrew command and `npx … update --version` answer too, after staging the payload, and they do so with
+  `CDPATH` exported.
+
+### Fixed — the release tarball depended on the machine that built it
+
+- `bin/cli.js` and the Studio's `.js`, `.py`, `.html` and `.css` files had no eol pin: at 2.10.0, `git archive` with
+  `core.autocrlf=true` changed 22 of the tarball's 150 files. They are pinned, and smoke §14 fails on any unpinned
+  text file in a shipped path (the tarball's paths, npm's `files[]`, `plugin/`), naming up to five and giving the
+  count. Measured with the
+  same script on macOS and on Windows (git 2.55.0.windows.5, `core.autocrlf=true` from the system config): the
+  tarball 22/150 → 0/150, the shipped paths 45/287 → 0/287.
+- Installs from npm, Homebrew and the release tarball are not affected: the published 2.10.0 npm package has no CR
+  byte in any of its 156 files, nor the release tarball in its 150, and both are built on `ubuntu-latest`. A
+  git-clone or plugin install made on Windows with `core.autocrlf=true` before the pins got CRLF copies of these
+  files; no effect on the panel was measured. With the pins, these files are LF in an archive and in a fresh clone on
+  either machine.
+- A clone made before the pins with `core.autocrlf=true` keeps 35 newly pinned files that this release does not
+  modify CRLF on disk, with `git status` clean, until its index is rebuilt: in a clean working tree,
+  `git rm -r --cached . && git reset --hard` brought that to 0 on macOS and on Windows.
+
+### Changed — the plugin edition is published with the approved release, not the merge
+
+- The marketplace entry installed from `./plugin` on main, so the plugin edition went live when a release PR merged,
+  before `release.yml`'s gates and its approval. It now installs from the `plugin-stable` branch through a
+  `git-subdir` source. `release.yml` moves that branch to the tagged commit after the GitHub release and before npm,
+  fast-forward only, and the update notice reads the plugin version from the same branch. A ruleset refuses
+  force-pushes and deletion of the branch, with no bypass.
+- Measured in an isolated `CLAUDE_CONFIG_DIR`: an entry with a ref passes `claude plugin validate --strict` and
+  installs that ref's plugin exactly (2.10.0, 134 files), and a user installed from `./plugin` at 2.9.0 moved to
+  2.10.0 when the entry switched. The release job's own token moving the branch is first exercised by this release.
+
+### Fixed — docs: the plugin edition's panel and the gate log
+
+- The Studio README and `/doctor-csk` said the plugin edition does not carry the Studio panel, and both READMEs listed
+  it as just the agents, skills and gate hooks; it has carried the panel since 2.9.0. Both READMEs and `/studio-csk`
+  also said a plugin install writes nothing the panel's kit tabs read. On a plugin install the
+  project's row has no kit badge and the gates, stats and board tabs say "Not measured", but the gates tab still
+  lists the gate log: the plugin's Bash guard and gate-file write guard write it when the project has a `.claude/`
+  directory and the file is git-ignored or the project is not a repo.
+- "Watching a gate fire" said the gate log is off unless `CSK_GATE_LOG` is set and records the command. It has been
+  on by default since 2.5.0, the command is recorded only with `CSK_GATE_LOG_CMD=1`, and the commit scan and the
+  board gate refuse without writing a line.
+
+### Fixed — gates: the site check and the Studio serve probe passed what they exist to catch
+
+- `check-gh-pages.sh` read the version and two counters, so the site said "39 skills" in three places and
+  "7 commands" while the gate was green. It now reads the commands counter and every count written in the page's
+  text, in English and Turkish, including counts side by side, joined by `&nbsp;`, or in description and title meta
+  tags.
+- The Studio serve probe, which e2e runs, timed the project list after its own 1.5 s sleep, and its liveness check
+  passed a list that had already finished, a panel whose event loop the read blocked when the read ended within 2 s
+  of the health request, and a failed health request.
+  It now times the list when its request resolves, fails when health does not answer 200 or answers only after a
+  list that outlived the request by 2 s, and reports not applicable when a blocked loop and a free one look the
+  same. Calibrated against a stand-in panel that holds its event loop or waits on a timer, and resets, hangs or
+  fails its health endpoint.
+
+### Fixed — smoke: a CRLF checkout failed the budget gate as if prose had been added
+
+- The always-on byte budgets trip when the text that reaches every session grows, and a CRLF checkout grows them by
+  one byte a line: the discipline half is 176 lines against a 50-byte margin, so the gate failed with "over budget"
+  and sent the reader to the text. It now counts the carriage returns in the text it measured, which it cuts with
+  `head`: Git Bash's `awk` drops them as it reads. When the file is within budget without them, the failure says so
+  and asks for a re-checkout rather than a budget edit: 12,376 > 12,250 bytes, 176 of them carriage returns, 12,200
+  with LF endings. A real overrun still reads "over budget", with CRLF or without. Smoke checks three things on CRLF
+  copies of the file: the carriage-return count covers exactly the measured lines, a copy whose text is exactly at the
+  budget with LF endings is named as CRLF with its figures, and one a byte past the budget reads "over budget". Not
+  reachable in a fresh clone today: every `.md` is pinned, and a Windows clone with `core.autocrlf=true` measured CR
+  0.
+
+### Fixed — docs: the Windows panel stall is stated as measured
+
+- Comments and the probe's printed text gave the Windows panel stall a frequency and a mechanism that were never
+  measured. They now give the panel's own figures (one synchronous 128 KiB tail read of 31,209 ms; `/api/projects`
+  33,391 ms while `/api/health` went unanswered for 312 of 324 pings) and, separately, what was measured later on
+  that machine with no kit code running: a plain tail read of a freshly copied 25 MB transcript waited 63-65 s on
+  3 of 3 reads in one round and on none of 8 in a later one. What holds the file was not identified. This
+  changelog's 2.10.0 entry is corrected to match, and so is its 2.9.0 claim that a plugin install writes nothing
+  into a project.
+
 ## [2.10.0] — 2026-09-11
 
 ### Changed — "tests green" is one run of the suite on the final code
