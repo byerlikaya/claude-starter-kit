@@ -62,8 +62,7 @@ the trace is a second measurement beside the grade, never an input to it.
 error result or hit the usage limit is printed **NOT MEASURED** and left out of the score. The last two are the
 trap: a usage-limit rejection is a well-formed `result` event (`is_error: true`, `api_error_status: 429`), and the
 project it leaves untouched passes every "was not changed" check. Measured: a nine-session run hit the five-hour
-limit in its second session, the next seven returned in about 0.6 s each with no tool call, and the runner before
-this rule scored them 19 of 33. The limit also stops the run — no later session is started — and the runner exits
+limit in its second session, the next seven returned in about 0.6 s each with no tool call, and the runner before this rule graded them with the rest and reported 19 of 33 for the run. The limit also stops the run — no later session is started — and the runner exits
 3, INCOMPLETE, printing no delta. Without the stream, a reply that is the limit message is treated the same way.
 
 **Test-run cases.** `tests-bugfix-failing-test`, `tests-single-file-refactor` and `tests-small-rule-change` are small
