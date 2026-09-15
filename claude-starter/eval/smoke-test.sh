@@ -1717,7 +1717,12 @@ echo "== 6f) always-on token budget =="
 # for that cost, and a gate rather than a reminder — a verbose new description fails the suite instead of
 # quietly taxing every future session. Budgets sit just above the current sizes: raising one is allowed, but
 # only as a deliberate edit here.
-BUDGET_DISC=12500    # DISCIPLINE.md (the discipline half of CLAUDE.md); currently 12455. (2026-09-15: +255 B net,
+BUDGET_DISC=12560    # DISCIPLINE.md (the discipline half of CLAUDE.md); currently 12531. (2026-09-16: +76 B — the
+                     # SECOND raise in two days, noted so the ratchet stays visible rather than creeping. A field
+                     # session skipped planner-csk on a genuinely ambiguous scope by citing the inline clause's own
+                     # `not code work`, which is the one exemption planner-csk can never be covered by: planning is
+                     # what it does. The DoD now says so where the rule is, not where the escape was taken.)
+                     # (2026-09-15: +255 B net,
                      # two rules a field session cost us. (1) A skill's OUTPUT FORMAT is not on the collision ladder:
                      # an invoked skill said "final reply = the report", the main thread stopped there, and the user
                      # had to ask what we were waiting for — nothing was. (2) The DoD leaned on `/simplify`, a built-in

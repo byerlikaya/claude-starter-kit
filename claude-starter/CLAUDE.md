@@ -55,6 +55,7 @@ and report. Commit/push and destructive commands are gated (§4.4/§4.5).
 
 ## Definition of Done
 - Ambiguous scope goes to **planner-csk** first, so the acceptance criterion is explicit before coding.
+  *Not code work* is not an exemption from this — planning IS its domain.
 - `/simplify` (a built-in — shadowed or absent, run its passes through **review-agent-csk**) + tests green +
   **review-agent-csk** clean + triggered skills + nothing deferred.
 - **Tests green = one run of the suite on the final code.** Whoever makes the last edit runs it and reports the command,

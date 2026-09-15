@@ -24,6 +24,34 @@ versioning follows [SemVer](https://semver.org/).
   `bash build.sh` has to stay free or the gate is unusable — plus two calibration cases in the same directory, so
   a green H4b cannot come from an inert fixture.
 
+### Fixed — the two mandatory steps a real session skipped, and why one of them did not get a gate
+
+- **The `planner-csk` escape hatch.** The DoD opens with "ambiguous scope goes to planner-csk first". A field
+  session kept genuinely ambiguous planning inline and justified it with the discipline's own inline clause,
+  `not code work` — the one exemption that can never cover `planner-csk`, whose entire domain is work that is
+  not code. The DoD now says so where the rule is, rather than leaving it to be inferred where the escape was
+  taken.
+- **The `adr` trigger described the wrong half of the problem.** All three of its examples — database
+  selection, auth strategy, critical pattern — are decisions someone ANNOUNCED as decisions, and those are the
+  easy ones. The decisions that escape arrive inside ordinary build work: what an entity owns, what a session
+  is bound to, what makes a row unique. Measured: one infrastructure task settled four questions of that shape
+  and recorded none, with the skill installed and its trigger read every turn. The test is no longer "was I
+  asked to choose" but "would a maintainer wanting to do this differently need to know why it is this way".
+- **`evals/cases/adr-implicit`**, because the existing measurement had no headroom: `adr-recorded` scores 3/3
+  against 3/3, both arms recording the decision and the rejected option unprompted — and it is easy precisely
+  because its prompt names the choice. The new case never says decide; it asks for per-tenant rate limiting and
+  grades whether the reasoning behind it survives. Its grader is calibrated against three synthetic outcomes
+  rather than trusted (4/4, 1/4, 2/4), and all four checks emit unconditionally so both arms share a
+  denominator. It has NOT been run — `evals/` costs real tokens and is manual by design — and it is listed as
+  unmeasured rather than quietly implying a result.
+- **No commit-time gate, and that is a decision.** The candidate was: warn when a commit touches a
+  migration or schema file and no ADR was written. It is not built, for three reasons. A warning that does not
+  block is not a gate by this kit's own definition — it is a better-placed reminder, which does not justify a
+  new code path in everyone's `pre-commit`. The trigger would have to be stack-specific (EF, Django, Rails,
+  Prisma paths) in a kit that is deliberately stack-neutral. And most migrations are not architectural, so it
+  would fire wrongly often enough to teach people to ignore it. Run `adr-implicit` first: writing a gate for a
+  behaviour nobody has measured is the thing this repo tells itself not to do.
+
 ### Fixed — §4.2 named the vendor in the one place §4.2 forbids, and left its own rule as a comment
 
 - `devarch-module`'s description said "DevArchitecture backend pattern", and a skill description is always-on:
