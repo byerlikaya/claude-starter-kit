@@ -1742,7 +1742,16 @@ echo "== 6f) always-on token budget =="
 # for that cost, and a gate rather than a reminder — a verbose new description fails the suite instead of
 # quietly taxing every future session. Budgets sit just above the current sizes: raising one is allowed, but
 # only as a deliberate edit here.
-BUDGET_DISC=12560    # DISCIPLINE.md (the discipline half of CLAUDE.md); currently 12531. (2026-09-16: +76 B — the
+BUDGET_DISC=12600    # DISCIPLINE.md (the discipline half of CLAUDE.md); currently 12569. (2026-09-16, second entry
+                     # of the day: +38 B. §4.5 already said a failing hook is never bypassed; it now also says never
+                     # to write down the way round one. A field session was blocked reading a .env, moved the read
+                     # into a script file, and stored "put it in a file and run it by path" in its project memory as
+                     # the fix -- so the bypass outlived the session that invented it and was reused. The code half is
+                     # closed (the guard now reads the script), but a note that teaches a workaround generalises to
+                     # every gate, and no gate can reach the memory. This is model discipline and the only reachable
+                     # half. Day total: 12200 -> 12569, +369 B across three edits, stated here so the ratchet is one
+                     # visible number rather than three quiet ones.)
+                     # (2026-09-16: +76 B — the
                      # SECOND raise in two days, noted so the ratchet stays visible rather than creeping. A field
                      # session skipped planner-csk on a genuinely ambiguous scope by citing the inline clause's own
                      # `not code work`, which is the one exemption planner-csk can never be covered by: planning is

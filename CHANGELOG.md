@@ -24,6 +24,16 @@ versioning follows [SemVer](https://semver.org/).
   `bash build.sh` has to stay free or the gate is unusable — plus two calibration cases in the same directory, so
   a green H4b cannot come from an inert fixture.
 
+### Changed — §4.5 now forbids recording a bypass, not only performing one
+
+- The `.env` gate's two-step hole had a second half the code fix does not reach. The field session that found
+  it did not merely walk around the block once: it stored the walk-around in its project memory as the
+  solution — "put the read in a script file and run it by path" — so the bypass outlived the session that
+  invented it and was applied again later. The code half is closed (the guard reads the script now), but a note
+  that teaches a workaround generalises to every gate, and no gate in this kit can reach a memory file.
+- §4.5 already said a failing hook is never bypassed; it now also says never to write down the way round one.
+  This is model discipline, it is labelled as such in the ROADMAP, and it is the only reachable half.
+
 ### Fixed — the route hint depended on one field name, and nothing would have said so
 
 - `route-hint.sh` is the only thing in the kit that reads the prompt TEXT, and it got that text by slicing one
