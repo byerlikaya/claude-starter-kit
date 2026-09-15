@@ -758,6 +758,31 @@ if CONTEXT_WINDOW=1000000 CSK_CONTEXT_MAX_BYTES=1048576 bash "$HOOKS/context-usa
 rm -f "$BIGFX"
 rm -f "$FX"
 [ -x "$HOOKS/commit-msg" ]       && pass "commit-msg hook +x"           || fail "commit-msg missing/not executable"
+# Permission mode, announced once. §4.4 says the commit gate fails closed in auto/dontAsk/plan/bypassPermissions;
+# the session had no way to know which mode it was in, because guard-bash.sh reads permission_mode only when it
+# is already refusing -- one turn too late. Measured in the field: a user said "commit", the guard refused, the
+# mode was switched, the command ran again. Correct behaviour, one turn spent on a fact available from the start.
+#
+# Four properties, and the last two are the ones that keep it from becoming noise: it says nothing in the modes
+# where the prompt reaches a person, and it does not repeat itself. The transcript_path here points at nothing on
+# purpose -- an earlier version sat below the transcript work and never ran for a session whose transcript could
+# not be read, which is precisely the session with no other way to learn its mode.
+PMD="$(mktemp -d)"
+pmline(){ printf '{"hook_event_name":"UserPromptSubmit","session_id":"%s","permission_mode":"%s","transcript_path":"/no/such.jsonl"}' "$2" "$1" \
+  | TMPDIR="$PMD" bash "$HOOKS/context-usage.sh" 2>/dev/null | grep -c '🔒'; }
+[ "$(pmline auto pm1)" = 1 ]        && pass "a fail-closed permission mode is announced (auto)"            || fail "auto was not announced — §4.4 stays invisible until the guard refuses"
+[ "$(pmline auto pm1)" = 0 ]        && pass "...and not repeated on the next turn in the same mode"        || fail "the permission-mode line repeats every turn (per-turn tax in a mode people leave on)"
+[ "$(pmline dontAsk pm1)" = 1 ]     && pass "switching mode mid-session announces the new one"             || fail "a mid-session mode switch went unannounced"
+[ "$(pmline bypassPermissions pm2)" = 1 ] && pass "bypassPermissions is announced too"                     || fail "bypassPermissions was not announced"
+[ "$(pmline default pm3)" = 0 ]     && pass "default says nothing — the prompt reaches a person there"     || fail "the line fires in default, where there is no turn to save"
+[ "$(pmline acceptEdits pm4)" = 0 ] && pass "acceptEdits says nothing either"                              || fail "the line fires in acceptEdits, where the gate does not fail closed"
+if printf '{"hook_event_name":"UserPromptSubmit","session_id":"pm5"}' | TMPDIR="$PMD" bash "$HOOKS/context-usage.sh" 2>/dev/null | grep -q '🔒'; then
+  fail "the line was emitted with no permission_mode in the payload"
+else
+  pass "no permission_mode in the payload -> silent, not a guess"
+fi
+rm -rf "$PMD"
+
 [ -x "$HOOKS/context-usage.sh" ] && pass "context-usage.sh +x"          || fail "context-usage.sh missing/not executable"
 [ -x "$HOOKS/session-guard.sh" ] && pass "session-guard.sh +x (Stop)"   || fail "session-guard.sh missing/not executable"
 
@@ -3492,6 +3517,27 @@ SILENT|[SYSTEM NOTIFICATION] the background agent finished its migration and see
 SILENT|<cross-session-message>report: the migration and the seed are written, an endpoint was added</cross-session-message>
 database-expert-csk|the system notification code needs a migration for the invoices table
 RHCASES
+
+  # --- the field name, which is the way this hook dies quietly -------------------------------------
+  # route-hint is the only thing in the kit that reads the prompt TEXT, and it gets that text by slicing one
+  # named field out of the payload. The published UserPromptSubmit schema calls that field `user_input`; the
+  # payload this hook was written against, and every case above, call it `prompt`. Whichever a given CLI sends,
+  # picking the wrong name fails SILENTLY — the slice is empty, the hook exits 0, routing is gone, and the suite
+  # stays green because the suite chooses the name too. That is the shape of a test that proves only itself.
+  # So the hook accepts both names and these three rows check the half the cases above cannot.
+  rhjson(){ printf '%s' "$1" | CLAUDE_PROJECT_DIR="$RHDIR" bash "$RH" 2>/dev/null; }
+  UI_ROUTE='{"hook_event_name":"UserPromptSubmit","prompt_id":"550e8400","permission_mode":"default","user_input":"write a migration and an index for the invoices table"}'
+  rhjson "$UI_ROUTE" | grep -q 'database-expert-csk' \
+    && pass "route-hint reads the documented 'user_input' field, not only 'prompt'" \
+    || fail "route-hint ignored 'user_input' — on a CLI that sends that name, routing is silently dead"
+  rhjson '{"hook_event_name":"UserPromptSubmit","user_input":"<task-notification>the agent finished the migration</task-notification>"}' \
+    | grep -q . && fail "the notification guard does not cover the 'user_input' shape" \
+    || pass "the notification guard covers both field names"
+  # `prompt_id` is a different field that starts with the same six letters. If the slice ever loses its closing
+  # quote it would match a UUID and route on it, which is a wrong route dressed as a working kit.
+  rhjson '{"hook_event_name":"UserPromptSubmit","prompt_id":"550e8400-e29b-41d4-a716-446655440000"}' \
+    | grep -q . && fail "route-hint matched 'prompt_id' as if it were the prompt" \
+    || pass "route-hint does not mistake 'prompt_id' for the prompt text"
 
   # --- cost gate: this hook runs on EVERY prompt, so its cost is the session's floor ------------------
   # The first implementation scored the payload with nested shell loops — a `sed|tr|sed` normalisation plus a

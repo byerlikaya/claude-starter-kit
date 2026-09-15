@@ -24,6 +24,33 @@ versioning follows [SemVer](https://semver.org/).
   `bash build.sh` has to stay free or the gate is unusable — plus two calibration cases in the same directory, so
   a green H4b cannot come from an inert fixture.
 
+### Fixed — the route hint depended on one field name, and nothing would have said so
+
+- `route-hint.sh` is the only thing in the kit that reads the prompt TEXT, and it got that text by slicing one
+  named field: `prompt`. The published `UserPromptSubmit` schema names that field `user_input`. Which one a
+  given CLI sends is not something this repo can establish from here, and picking wrong fails SILENTLY — the
+  slice comes back empty, the hook exits 0, routing is gone, and the suite stays green because the suite chose
+  the name too. A test that picks the same name as the code proves only that they agree.
+- Both names are now accepted, the fallback costing nothing on the path that already worked. Three cases pin
+  the half the existing ones could not: routing through `user_input`, the notification guard covering that
+  shape too, and `prompt_id` — a different field starting with the same six letters — not being mistaken for
+  the prompt.
+
+### Added — the session is told when the commit gate cannot reach a person
+
+- §4.4 says `git commit` fails closed in `auto`, `dontAsk`, `plan` and `bypassPermissions`, because software
+  answers the prompt there and nothing can prove a person did. What a session had no way to know was which mode
+  it was in: `guard-bash.sh` reads `permission_mode`, but only when it is already refusing, which is one turn
+  too late. Measured in the field — the user said "commit", the guard refused, the mode was switched, the
+  command ran again. Everything behaved correctly and a turn went on a fact that was available from the start.
+- `context-usage.sh` now names the mode ONCE per session, keyed by the mode itself so a mid-session switch
+  announces the new one, and says nothing at all in the modes where the prompt reaches a person — a line
+  repeated before every prompt in a mode people leave on all day is pure tax. The field is read from the
+  documented payload rather than assumed, and an absent field prints nothing rather than guessing.
+- It sits ahead of the transcript work deliberately and derives its own session id: an earlier placement never
+  ran for a session whose transcript could not be read, which is exactly the session with no other way to learn
+  its own mode. Seven cases pin it, four of them about staying quiet.
+
 ### Fixed — the two mandatory steps a real session skipped, and why one of them did not get a gate
 
 - **The `planner-csk` escape hatch.** The DoD opens with "ambiguous scope goes to planner-csk first". A field

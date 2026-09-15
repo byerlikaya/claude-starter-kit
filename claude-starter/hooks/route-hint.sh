@@ -65,7 +65,15 @@ fi
 # substring anyway. Everything after `"prompt":"` up to the closing quote that is not escaped. It goes to awk
 # through the ENVIRONMENT, never through `-v`: awk expands escape sequences in a `-v` value, so a prompt
 # containing a literal backslash would be rewritten before the normaliser ever saw it.
+# TWO FIELD NAMES, because the payload has carried both and this hook is the only thing in the kit that reads
+# the prompt text at all. The published UserPromptSubmit schema names the field `user_input`; the payload this
+# hook was written against, and the suite that pins it, used `prompt`. Which one a given CLI sends is not a fact
+# this repo can establish from here, and getting it wrong is SILENT: the slice comes back empty, the hook exits
+# 0, and routing is simply gone while every test stays green because the tests choose the name too. So both are
+# accepted. The fallback costs nothing on the path that already worked — it only runs when the first name found
+# nothing. `prompt_id` cannot be mistaken for `prompt`: the pattern includes the closing quote.
 CSK_PROMPT="$(printf '%s' "$IN" | sed -n 's/.*"prompt"[[:space:]]*:[[:space:]]*"\(.*\)/\1/p' | sed 's/","[a-z_]*":.*$//' | head -c 4000)"
+[ -n "$CSK_PROMPT" ] || CSK_PROMPT="$(printf '%s' "$IN" | sed -n 's/.*"user_input"[[:space:]]*:[[:space:]]*"\(.*\)/\1/p' | sed 's/","[a-z_]*":.*$//' | head -c 4000)"
 [ -n "$CSK_PROMPT" ] || exit 0
 
 # NOT EVERY TURN CARRIES A REQUEST. A field session watched this hook inject "Use the <x> subagent for this task"
