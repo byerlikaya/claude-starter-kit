@@ -28,6 +28,7 @@ import { decide, pending, alwaysList } from './lib/permissions.js';
 import { open as openTerminal, plan as terminalPlan } from './lib/terminal.js';
 import * as pty from './lib/pty.js';
 import { gateLog, gateReport, sessionStats, board } from './lib/kit-telemetry.js';
+import { writeState, clearStateSync, findRunning } from './lib/instance.js';
 import { remoteRoster } from './lib/roster.js';
 import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
@@ -825,9 +826,22 @@ async function main() {
     });
   });
 
-  server.on('error', (e) => {
+  // A BUSY PORT IS NOT AUTOMATICALLY A PROBLEM. Before 2.10.2 this printed "try --port n+1" and exited 1, which
+  // is the right answer only when a stranger holds the port. When the holder is our OWN panel -- the common case,
+  // because a second session in the same project starts at the same default -- the useful answer is the URL of the
+  // one that is already running, and that URL used to be unrecoverable: the token lived in the first session's
+  // stdout and nowhere else. Measured in the field: two sessions, one live panel, no way to reach it.
+  server.on('error', async (e) => {
     if (e.code === 'EADDRINUSE') {
-      process.stderr.write(`csk-studio: port ${args.port} is already in use — try --port ${args.port + 1}\n`);
+      const running = await findRunning(args.port);
+      if (running) {
+        process.stdout.write(`csk-studio  ${running.url}\n`);
+        process.stdout.write(`            already running on port ${args.port} (pid ${running.pid}${running.name ? `, ${running.name}` : ''}) — reusing it\n`);
+        process.stdout.write('            it belongs to whoever started it; stopping this shell does not stop it\n');
+        if (args.open) openBrowser(running.url);
+        process.exit(0);
+      }
+      process.stderr.write(`csk-studio: port ${args.port} is held by something that is not a csk-studio panel — try --port ${args.port + 1}\n`);
       process.exit(1);
     }
     throw e;
@@ -855,6 +869,18 @@ async function main() {
     process.stdout.write(TOKEN_GENERATED
       ? '            (loopback only; token generated for this run)\n'
       : '            (loopback only; token from CSK_STUDIO_TOKEN)\n');
+
+    // Recorded only after listen() succeeds, so the file never claims a port this process did not get. Failure
+    // to write is not fatal: the panel works, the next session simply cannot find it, which is where we started.
+    writeState(args.port, { token: TOKEN, name: SELF_NAME }).catch((e) => {
+      process.stderr.write(`csk-studio: could not record this instance (${e?.message ?? e}); another session will not find it\n`);
+    });
+    const drop = () => clearStateSync(args.port);
+    process.on('exit', drop);
+    // Ctrl-C and a kill do not run 'exit' handlers on their own, and this is the ordinary way the panel stops.
+    for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+      process.on(sig, () => { drop(); process.exit(0); });
+    }
 
     if (args.open) openBrowser(url);
 

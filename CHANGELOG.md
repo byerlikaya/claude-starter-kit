@@ -24,6 +24,29 @@ versioning follows [SemVer](https://semver.org/).
   `bash build.sh` has to stay free or the gate is unusable — plus two calibration cases in the same directory, so
   a green H4b cannot come from an inert fixture.
 
+### Added — a second session can find the panel that is already running
+
+- The panel printed its tokenised URL once, to the stdout of whoever started it, and kept the token nowhere
+  else. A second session could see the port was taken but not that the holder was our own panel, and had no way
+  to reach it. Measured in the field: port 7777 held by another session's `csk-studio`, the user asked for the
+  panel, and the answer was a dead end — the server said "try --port 7778", 7778 was held by something
+  unrelated, and the command retries once. Two ports, one live panel, no way in.
+- A listening panel now records `{pid, port, token, name, startedAt}` as `instance-<port>.json` under
+  `~/.claude/studio-runtime` (the directory `ensure-node.sh` already owns, overridden by the same
+  `CSK_STUDIO_RUNTIME`), written 0600 because it holds a credential — under `$HOME`, never in the repo where a
+  stray `git add -A` would publish it. It is removed on exit, including on Ctrl-C and `SIGTERM`.
+- On `EADDRINUSE` the panel asks the port whether it is ours before complaining: it probes `/api/health` with
+  the recorded token and compares the pid that answers. Ours and alive → it prints that panel's URL, says who
+  holds it, and exits 0. Anything else → it says the port is held by something that is not a panel, and exits 1
+  as before.
+- A state file is a claim, not a fact, so nothing trusts what it reads: a record that does not answer, or is
+  answered by a different pid, is deleted rather than kept. A panel killed without cleanup therefore reports as
+  "not a panel" and cleans itself up, instead of handing anyone a URL that does not open.
+- Ten assertions pin it in `selfcheck.mjs` §28, and the must-NOT-find cases are the section: no record, a dead
+  record, a pid mismatch, and that each of those deletes the file. `probe` uses `node:http` rather than `fetch`
+  on purpose — the suite's own DOM stub owns the global `fetch`, and the first version using it had the harness
+  reporting a live panel as unreachable.
+
 ### Added — confidence-check asks whether the work can be proven at all
 
 - A sixth check: name the thing that will show the change works — the suite, a migration applied to a real

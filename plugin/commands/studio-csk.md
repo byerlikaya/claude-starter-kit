@@ -95,7 +95,20 @@ fails, say which one and stop — do not improvise a different launch.
    way in is the worst outcome here. Tell the user it runs until they stop it, and how (Ctrl-C in that
    shell, or kill the process). Do not hold it in a foreground tool call.
 
-5. **Port already in use** → retry once with `--port <n>` and report the new URL.
+5. **Port already in use.** Start it anyway and read what it says — the panel checks whether the holder is
+   another csk-studio first, and there is nothing for you to decide before it does. Two answers:
+
+   - `already running on port <n> (pid …) — reusing it`, followed by a tokenised URL and exit 0. That is a
+     panel someone else started, usually another session in this project. **Report that URL**; it is the same
+     panel, and the token in it is the running instance's own. Tell the user it belongs to whoever started it,
+     so closing this shell does not stop it.
+   - `held by something that is not a csk-studio panel` and exit 1. Then retry once with `--port <n+1>` and
+     report the new URL. If that port is taken too, stop and say both are taken rather than walking up the
+     range — something is listening that the user should look at.
+
+   The record that makes the first answer possible lives in `~/.claude/studio-runtime/instance-<port>.json`,
+   0600, and holds the token. A panel that was killed leaves one behind; the next start probes it, gets no
+   answer, and deletes it — so a stale file reports as the second answer, never as a URL that does not open.
 
 6. **`--enable-pty` only if the user asks for raw shells.** When they do, say this before starting it: a
    command typed into a raw shell never becomes a tool call, so it reaches no `PreToolUse` hook and
