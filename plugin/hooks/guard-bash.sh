@@ -590,25 +590,63 @@ CRED='(\.ssh/(id_[A-Za-z0-9_]+|identity)|(^|/)id_(rsa|dsa|ecdsa|ed25519)|\.aws/c
 #
 # Cost: the case prefilter is a shell builtin, the token loop forks nothing, and a file is read only when the
 # command really does name a script that exists on disk -- so an ordinary command pays one case test.
+# NAMING A SCRIPT IS NOT RUNNING IT, and the first version of this rule missed that: it scanned every token,
+# so `ls -l leak.sh`, `chmod +x leak.sh`, `git add leak.sh` and `shellcheck leak.sh` were all blocked. None of
+# them surfaces a secret -- they surface the SCRIPT -- and a gate that stops ordinary file handling is a gate
+# people turn off. Measured before the narrowing: five of six non-executing commands blocked.
+#
+# So a token counts only where a shell would actually execute it: after an interpreter word (flags and their
+# values skipped, which is what `-ExecutionPolicy Bypass -File x.ps1` needs), or as a `./x` / `/abs/x` in
+# COMMAND position -- first, or straight after a separator. An interpreter glued to a separator (`x;bash f.sh`)
+# is found by trimming to the last separator inside the token; word splitting is on whitespace, so that shape
+# would otherwise be missed.
+#
+# It under-blocks rather than over-blocks where it is unsure -- `echo bash leak.sh` still counts, a script
+# whose path is built at runtime does not -- and that is the correct direction for a rule sitting in front of
+# every command in the session.
+_looks_exec=0
 case "$CMD" in
-  *.[Ss][Hh]*|*.[Bb][Aa][Ss][Hh]*|*.[Zz][Ss][Hh]*|*.[Pp][Ss]1*|*./*)
-    set -f                                   # a token like *.sh must not glob against the cwd
-    for _tok in $CMD; do
-      # strip one layer of quoting; `bash "leak.sh"` arrives with the quotes still attached
-      _tok="${_tok%\"}"; _tok="${_tok#\"}"; _tok="${_tok%\'}"; _tok="${_tok#\'}"
-      case "$_tok" in
-        *.[Ss][Hh]|*.[Bb][Aa][Ss][Hh]|*.[Zz][Ss][Hh]|*.[Pp][Ss]1|./*) ;;
-        *) continue ;;
-      esac
-      [ -f "$_tok" ] && [ -r "$_tok" ] || continue
-      if grep -iE -- "$ENV_READ_RE|$ENV_REDIR_RE" "$_tok" 2>/dev/null | grep -qivE -- "$ENV_TEMPLATE_RE"; then
-        set +f
-        block "running a script that reads a .env secret (the two-step read)" "4.5"
-      fi
-    done
-    set +f
-    ;;
+  *.[Ss][Hh]*|*.[Bb][Aa][Ss][Hh]*|*.[Zz][Ss][Hh]*|*.[Pp][Ss]1*|*./*) _looks_exec=1 ;;
 esac
+if [ "$_looks_exec" = 1 ]; then
+  set -f                                     # a token like *.sh must not glob against the cwd
+  _interp=0; _cmdpos=1
+  for _tok in $CMD; do
+    _tok="${_tok%\"}"; _tok="${_tok#\"}"; _tok="${_tok%\'}"; _tok="${_tok#\'}"
+    # separators reset both states: a new command begins after them
+    case "$_tok" in
+      *[\;\&\|]*)
+        case "$_tok" in
+          \;|\&\&|\|\||\||\&) _interp=0; _cmdpos=1; continue ;;
+        esac ;;
+    esac
+    # the interpreter test looks at the tail after any glued separator, then at the basename
+    _base="${_tok##*;}"; _base="${_base##*&}"; _base="${_base##*|}"; _base="${_base##*/}"
+    case "$_base" in
+      bash|sh|zsh|ksh|dash|source|.|powershell|powershell.exe|pwsh|pwsh.exe)
+        _interp=1; _cmdpos=0; continue ;;
+    esac
+    case "$_tok" in
+      -[Ff]ile|-[Ff]|--file) _interp=1; continue ;;   # PowerShell's -File names the script that follows
+      -*) continue ;;                                 # any other flag leaves both states alone
+    esac
+    _cand=0
+    if [ "$_interp" = 1 ]; then
+      _cand=1                                         # the word after an interpreter, flag values included
+    elif [ "$_cmdpos" = 1 ]; then
+      case "$_tok" in ./*|/*) _cand=1 ;; esac          # ./x or an absolute path, run directly
+    fi
+    _cmdpos=0
+    [ "$_cand" = 1 ] || continue
+    [ -f "$_tok" ] && [ -r "$_tok" ] || continue       # a flag value that is not a file just keeps _interp set
+    _interp=0
+    if grep -iE -- "$ENV_READ_RE|$ENV_REDIR_RE" "$_tok" 2>/dev/null | grep -qivE -- "$ENV_TEMPLATE_RE"; then
+      set +f
+      block "running a script that reads a .env secret (the two-step read)" "4.5"
+    fi
+  done
+  set +f
+fi
 
 # §4.5 force-add bypasses .gitignore (sneaks build output / secrets past the bloat & ignore rules); deleting a
 # lockfile is a §4.5 op the discipline already names. Both are only done on an explicit request.

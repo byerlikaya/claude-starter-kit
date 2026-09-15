@@ -2704,10 +2704,21 @@ h4bblock 'bash leak.sh'
 h4bblock './leak.sh'
 h4bblock 'sh leak.sh'
 h4bblock 'powershell -ExecutionPolicy Bypass -File leak.ps1'
+h4bblock 'bash -x leak.sh'
+h4bblock 'source leak.sh'
+h4bblock 'npm test && bash leak.sh'
 h4bfree  'bash clean.sh'
 h4bfree  'bash template.sh'
 h4bfree  'bash missing.sh'
 h4bfree  'echo hello.sh'
+# NAMING A SCRIPT IS NOT RUNNING IT. The first version of the rule scanned every token, and these five were all
+# blocked -- none of them surfaces a secret, they surface the SCRIPT, and a gate that stops ordinary file
+# handling is a gate people switch off. They are here because they are what caught it.
+h4bfree  'ls -l leak.sh'
+h4bfree  'chmod +x leak.sh'
+h4bfree  'git add leak.sh'
+h4bfree  'shellcheck leak.sh'
+h4bfree  'cat leak.sh'
 # Calibration, in the SAME directory the cases run in: the direct rule must still separate these two, or a green
 # H4b would only prove the fixture is inert.
 [ "$(h4brc 'cat .env.local')"   = 2 ] && pass "calibration: the direct .env read still blocks here (H4b)" || fail "calibration broken: cat .env.local no longer blocks (H4b)"

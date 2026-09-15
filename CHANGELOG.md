@@ -19,10 +19,20 @@ versioning follows [SemVer](https://semver.org/).
   The three patterns moved into variables so the direct rule and the script rule cannot diverge.
 - What it does not close, stated in the hook rather than implied: a path built at runtime, decoded, sourced, or
   fetched. Those are not closable by pattern. This closes the literal two-step, which is the one that happens.
+- **Naming a script is not running it.** The first version of this rule scanned every token in the command, so
+  `ls -l leak.sh`, `chmod +x leak.sh`, `git add leak.sh`, `shellcheck leak.sh` and `cat leak.sh` were all
+  blocked — five of six non-executing commands, measured. None of them surfaces a secret; they surface the
+  SCRIPT, and a gate that stops ordinary file handling is a gate people switch off. A token now counts only
+  where a shell would execute it: after an interpreter word with flags and their values skipped (which is what
+  `-ExecutionPolicy Bypass -File x.ps1` needs), or as a `./x` or absolute path in command position. An
+  interpreter glued to a separator (`x;bash f.sh`) is found by trimming to the last separator inside the token.
+- It under-blocks rather than over-blocks where it is unsure, which is the right direction for a rule sitting in
+  front of every command in a session.
 - Cost on an ordinary command is one shell-builtin `case` test; a file is read only when the command really does
-  name a script that exists. Ten cases pin it in `smoke-test.sh` §H4b, half of them must-NOT-block — an ordinary
-  `bash build.sh` has to stay free or the gate is unusable — plus two calibration cases in the same directory, so
-  a green H4b cannot come from an inert fixture.
+  name a script that exists at a position where it would run. Eighteen cases pin it in `smoke-test.sh` §H4b —
+  seven that must block, nine that must not (the five false positives above among them, because they are what
+  caught the over-reach), and two calibration cases in the same directory so a green H4b cannot come from an
+  inert fixture.
 
 ### Changed — §4.5 now forbids recording a bypass, not only performing one
 
