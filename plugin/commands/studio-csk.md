@@ -43,14 +43,16 @@ fails, say which one and stop — do not improvise a different launch.
    read as a broken panel. Everything else — the live agent graph, owned sessions, the permission bridge,
    the terminals — works the same in both editions.
 
-2. **Resolve a runtime — do not ask whether a name resolves.** `ensure-node.sh` sits beside the panel, so
-   use whichever root step 1 settled on:
+2. **Resolve a runtime — do not ask whether a name resolves.** `ensure-node.sh` sits one level ABOVE the panel
+   — beside the `server/` directory, not inside it. Both spellings, in full, so there is nothing to guess:
 
    ```bash
-   bash <panel-root>/ensure-node.sh --explain
+   bash .claude/studio/ensure-node.sh --explain               # full install
+   bash ${CLAUDE_PLUGIN_ROOT}/studio/ensure-node.sh --explain  # plugin edition (step 1 decided which)
    ```
 
-   It prints the path of a Node 18+ that actually runs and exits 1 when there is none. Use that path;
+   It prints the absolute path of a Node 18+ that actually runs, and exits 1 when there is none. Use that path;
+   do not assume it is `node`. Use that path;
    do not assume it is `node`. It looks in places PATH does not reach — a version manager puts node on
    PATH from a login shell only, so "nvm is installed" and "this shell can see node" are different
    facts. And it runs what it finds rather than trusting the name: the Windows Store ships a stub that
@@ -64,7 +66,7 @@ fails, say which one and stop — do not improvise a different launch.
    end. Show them what it would do, then ask:
 
    ```bash
-   bash <panel-root>/ensure-node.sh --plan       # url, size, checksum source, target directory
+   bash <the same path as step 2> --plan       # url, size, checksum source, target directory
    ```
 
    It fetches the current Node LTS from nodejs.org into `~/.claude/studio-runtime`, verifies it against
@@ -76,7 +78,7 @@ fails, say which one and stop — do not improvise a different launch.
    On yes:
 
    ```bash
-   bash <panel-root>/ensure-node.sh --install    # prints the node path on success
+   bash <the same path as step 2> --install    # prints the node path on success
    ```
 
    Never run `--install --yes` on the user's behalf without that answer, and never install anything

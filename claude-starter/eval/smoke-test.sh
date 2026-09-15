@@ -1717,7 +1717,14 @@ echo "== 6f) always-on token budget =="
 # for that cost, and a gate rather than a reminder — a verbose new description fails the suite instead of
 # quietly taxing every future session. Budgets sit just above the current sizes: raising one is allowed, but
 # only as a deliberate edit here.
-BUDGET_DISC=12250    # DISCIPLINE.md (the discipline half of CLAUDE.md); currently 12200 (2026-09-11: +416 B — "tests green"
+BUDGET_DISC=12500    # DISCIPLINE.md (the discipline half of CLAUDE.md); currently 12455. (2026-09-15: +255 B net,
+                     # two rules a field session cost us. (1) A skill's OUTPUT FORMAT is not on the collision ladder:
+                     # an invoked skill said "final reply = the report", the main thread stopped there, and the user
+                     # had to ask what we were waiting for — nothing was. (2) The DoD leaned on `/simplify`, a built-in
+                     # the kit neither ships nor can keep from being shadowed; when it was, the step degraded silently.
+                     # Paid for by dropping the commit LANGUAGE rule from §4.1 — a kit-owned file identical in every
+                     # project cannot know a team's language, so it moved to the ./CLAUDE.md template.)
+                     # (2026-09-11: +416 B — "tests green"
                      # is ONE run of the suite on the final code, reported as command + exit code + counts, and the main
                      # thread and the reviewer cite that report instead of running the suite again. Measured and
                      # pre-registered, 18 sessions on three Node cases (evals/README.md): test and build runs per session
@@ -2639,6 +2646,35 @@ gj auto 'cat config/.env.production' | bash "$HOOKS/guard-bash.sh" >/dev/null 2>
 gj auto 'cp .env /tmp/x'        | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "cp .env out BLOCKED (H4)" || fail "cp .env exfil PASSED (H4)"
 gj auto 'cat .env.example'      | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && pass "cat .env.example (template) NOT over-blocked" || fail ".env.example wrongly blocked"
 gj auto 'sort data.env'         | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && pass "non-dotenv data.env NOT over-blocked" || fail "data.env wrongly blocked"
+# H4b: THE TWO-STEP READ. H4 above scans the COMMAND; until 2.10.2 nothing looked at what a script FILE does.
+# Measured against the then-shipped hook: `cat .env.local` returned 2, while `bash leak.sh`, `./leak.sh` and
+# `sh leak.sh` -- a one-line script running that identical cat -- all returned 0. The `-File x.ps1` form is the
+# same hole on Windows. Each case runs inside its own directory so the guard resolves real files, and the
+# must-NOT-block half is the point: an ordinary `bash build.sh` has to stay free, or the gate is unusable.
+H4B="$(mktemp -d)"
+printf 'TOKEN=synthetic\n'                        > "$H4B/.env.local"
+printf 'TOKEN=placeholder\n'                      > "$H4B/.env.example"
+printf '#!/usr/bin/env bash\ncat .env.local\n'    > "$H4B/leak.sh"
+printf 'Get-Content .env.local\n'                 > "$H4B/leak.ps1"
+printf '#!/usr/bin/env bash\nnpm run build\n'     > "$H4B/clean.sh"
+printf '#!/usr/bin/env bash\ncat .env.example\n'  > "$H4B/template.sh"
+h4brc(){ ( cd "$H4B" && gj auto "$1" | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; echo "$?" ); }
+h4bblock(){ [ "$(h4brc "$1")" = 2 ] && pass "two-step read BLOCKED: $1 (H4b)" || fail "$1 PASSED — the two-step read is open again (H4b)"; }
+h4bfree(){  [ "$(h4brc "$1")" = 0 ] && pass "NOT over-blocked: $1 (H4b)"      || fail "$1 wrongly blocked — ordinary scripts must run (H4b)"; }
+h4bblock 'bash leak.sh'
+h4bblock './leak.sh'
+h4bblock 'sh leak.sh'
+h4bblock 'powershell -ExecutionPolicy Bypass -File leak.ps1'
+h4bfree  'bash clean.sh'
+h4bfree  'bash template.sh'
+h4bfree  'bash missing.sh'
+h4bfree  'echo hello.sh'
+# Calibration, in the SAME directory the cases run in: the direct rule must still separate these two, or a green
+# H4b would only prove the fixture is inert.
+[ "$(h4brc 'cat .env.local')"   = 2 ] && pass "calibration: the direct .env read still blocks here (H4b)" || fail "calibration broken: cat .env.local no longer blocks (H4b)"
+[ "$(h4brc 'cat .env.example')" = 0 ] && pass "calibration: the template still reads here (H4b)"          || fail "calibration broken: .env.example blocked (H4b)"
+rm -rf "$H4B"
+
 # H5: .env was the only credential file either gate covered, which left the files that unlock OTHER systems open.
 # Read one and it is in the context, one summary or one web call from leaving the machine — and unlike a commit,
 # nothing downstream scans for that.

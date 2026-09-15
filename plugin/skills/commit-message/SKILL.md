@@ -14,6 +14,18 @@ Trigger phrases: "commit message", "make a commit", "conventional commit", "writ
 
 Format: `type(scope): summary` + (optional blank line + body) + (optional footer).
 
+## The project decides the format and the language — read that FIRST
+Conventional Commits below is the **default**, not a law. Before writing anything, read `./CLAUDE.md` for a
+`## Conventions` section (`Commit language:` / `Commit format:`). A declared format REPLACES the shape below —
+ticket-prefixed subjects, smart-commit trailers (`#comment`, `#time`), gitmoji, whatever the team runs on. A
+declared language replaces "the project's established language" guess. Nothing declared → the defaults here.
+
+**Whatever the request hands you verbatim — a ticket id, a `#time 1d`, a required prefix — goes into the
+message EXACTLY as given.** Rewriting a literal someone typed is the worst failure this skill has: it looks
+correct and books the wrong number. If a literal contradicts the format, say so and ask; never silently adjust
+it. Same rule for the rest of the message: everything else is yours to word, the literals are not.
+
+
 ## Type (required)
 - `feat` — new feature             · `fix` — bug fix
 - `docs` — docs only               · `refactor` — restructure with no behavior change

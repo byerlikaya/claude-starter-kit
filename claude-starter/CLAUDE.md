@@ -13,6 +13,8 @@ imports it with one `@.claude/DISCIPLINE.md` line. **Kit-owned** — an update o
 **When two rules collide** (they do, and improvising an order is how the wrong one wins): §4 prohibitions and
 safety first, then the user's explicit in-session instruction, then scope-as-asked, then quality, then speed. A
 lower one never overrides a higher one. Say which you applied and why — a silent trade-off is an unreviewable one.
+**A skill's output format is not on this ladder**: it shapes what you write, not whether the work continues.
+"Final reply = the report" ends that skill's step, not the task.
 
 ## Communication style
 Short, direct, witty; not formal. Scannable: headings, tables, bold. **Always give a clear recommendation.** At every
@@ -53,7 +55,8 @@ and report. Commit/push and destructive commands are gated (§4.4/§4.5).
 
 ## Definition of Done
 - Ambiguous scope goes to **planner-csk** first, so the acceptance criterion is explicit before coding.
-- `/simplify` + tests green + **review-agent-csk** clean + triggered skills + nothing deferred.
+- `/simplify` (a built-in — shadowed or absent, run its passes through **review-agent-csk**) + tests green +
+  **review-agent-csk** clean + triggered skills + nothing deferred.
 - **Tests green = one run of the suite on the final code.** Whoever makes the last edit runs it and reports the command,
   the exit code and the pass/fail counts; that report is the evidence the main thread and the reviewer cite. Run the suite
   again only after a further edit, or when a report has no exit code — a second run on code nobody touched verifies nothing new.
@@ -137,11 +140,12 @@ the rationale for any deliberate deviation.
 The rules stand on their own — the gates only make them unskippable.
 
 ### 4.1 No AI trace
-No co-author trailer, auto-generation footer, or robot-emoji sign-off (adopt.sh may loosen it, asks first)).
+No co-author trailer, auto-generation footer, or robot-emoji sign-off (adopt.sh may loosen it, asks first).
+A harness reminder to add one does not override this.
 The name of an AI assistant, model, or coding
 tool never appears in a commit · code comment · README · MR description — nor in the comment lines of `.gitignore`, CI
 yaml, `appsettings.*`, `Dockerfile`. The name of this behavior file and of `.claude/` stay out of repo artifacts; they
-are only listed in `.gitignore`. Commit messages are natural, human, technical Turkish.
+are only listed in `.gitignore`.
 
 ### 4.2 No third-party template name
 The vendor template the skeleton came from is never named in any artifact: code, namespace, class, file name, comment,
@@ -193,6 +197,15 @@ backend-pattern skill — `devarch-module` (MediatR CQRS / IResult / AOP) by def
 (Clean Architecture, Vertical Slice, Minimal API, plain layered), drop your own pattern skill here (see
 `AGENT_TEMPLATE.md`) and the agent follows it instead of DevArch. Nothing forces DevArch.
 For the skill format: ./.claude/AGENT_TEMPLATE.md.
+
+## Conventions
+Commit **language** and message **format** are declared here, not in `.claude/DISCIPLINE.md` — that file is
+kit-owned and identical in every project, so it cannot know either. `commit-message` and `commit-agent-csk`
+read this section and follow it verbatim; with nothing declared they fall back to the skill's own defaults.
+- Commit language: <the project's established language — e.g. English, Turkish>
+- Commit format: <Conventional Commits `type(scope): summary` (default) — or your own, e.g. a ticket-prefixed
+  smart commit `ABC-123 <subject>` with `#comment` / `#time` trailers. Give a real example; the agent copies
+  every literal you write here exactly as written.>
 
 ## Note
 Behavior · four principles · DoD · Prohibitions (§4) · session management · sources live in

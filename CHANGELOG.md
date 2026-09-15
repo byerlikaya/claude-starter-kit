@@ -3,6 +3,89 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed — the .env gate read the command, not the code it was about to run
+
+- `guard-bash.sh` blocked `cat .env`, and let a script that ran the same line straight through. Measured against
+  the shipped hook: `cat .env.local` returned 2, while `bash leak.sh`, `./leak.sh` and `sh leak.sh` — a one-line
+  script running that identical `cat` — all returned 0, as did the Windows shape
+  `powershell -ExecutionPolicy Bypass -File x.ps1`. So the rule stopped the direct path and nothing else, which is
+  worse than it sounds: a session that hits the block and writes the read into a file is the expected next move,
+  not an exotic one, and the workaround persists in a project's memory once it works.
+- A command that names a script now has each LINE of that script judged exactly as a command line would be —
+  the same three patterns, the same `.env.example` exemption, one rule in one place rather than two that drift.
+  Per line, not per file: a file-wide exemption would let a single `# see .env.example` comment unlock the script.
+  The three patterns moved into variables so the direct rule and the script rule cannot diverge.
+- What it does not close, stated in the hook rather than implied: a path built at runtime, decoded, sourced, or
+  fetched. Those are not closable by pattern. This closes the literal two-step, which is the one that happens.
+- Cost on an ordinary command is one shell-builtin `case` test; a file is read only when the command really does
+  name a script that exists. Ten cases pin it in `smoke-test.sh` §H4b, half of them must-NOT-block — an ordinary
+  `bash build.sh` has to stay free or the gate is unusable — plus two calibration cases in the same directory, so
+  a green H4b cannot come from an inert fixture.
+
+### Fixed — three components gave three different answers about commit language
+
+- The discipline said Turkish, `commit-agent-csk` said English, and the `commit-message` skill said the project's
+  own language. All three load at commit time. A kit-owned file that is identical in every project cannot know a
+  team's language, so §4.1 no longer states one: language and message FORMAT are now declared in the project's
+  own `./CLAUDE.md`, under a new `## Conventions` section the template carries, and the skill is the single source
+  that reads it. `commit-agent-csk` no longer pins English or Conventional Commits; it follows the skill.
+- The same path covers a project whose format is not Conventional Commits at all — a ticket-prefixed subject,
+  smart-commit `#comment` / `#time` trailers, gitmoji. Declared format replaces the default rather than fighting it.
+- Both the skill and the agent now say that a literal handed to them — a ticket id, a `#time 1d`, a required
+  prefix — is copied exactly, and a literal that contradicts the format is raised rather than adjusted. Measured
+  in the field: given `#time 1d` in the request, the agent wrote `#time 2d`. A silently rewritten literal looks
+  correct and books the wrong number.
+
+### Fixed — rules that described themselves as gates, and a DoD that leaned on a built-in
+
+- `confidence-check` was introduced in four agent bodies as "the only gate in the kit that fires BEFORE
+  implementation". No hook enforces it. It is model discipline and now says so — the kit's own rule is that
+  presenting the second kind as the first is the defect.
+- The Definition of Done required `/simplify`, a built-in the kit neither ships nor can keep from being shadowed.
+  When a local command of that name shadowed it in a field install, the step degraded to whatever the model
+  reconstructed. The DoD now names the fallback: run its passes through `review-agent-csk`.
+- An invoked skill's OUTPUT FORMAT is not on the rule-collision ladder. A skill that ends with "final reply = the
+  report" ended its own step, not the task. Measured: the main thread stopped there and the user had to ask what
+  the session was waiting for. Nothing was.
+- §4.1 states that a harness reminder to add an attribution trailer does not override it.
+
+### Fixed — `/studio-csk` sent the reader to a path that does not exist
+
+- The command said `ensure-node.sh` "sits beside the panel". It sits one level above it, beside `server/`, so the
+  natural reading resolved to `.claude/studio/server/ensure-node.sh` and exited 127 — and because the command also
+  says "neither path is there → update the kit, do not go hunting", the failure reads as "this install is old".
+  Both spellings are now written out in full.
+- `ensure-node.sh --explain` printed `node` while the command text promised a path and told the reader not to
+  assume it was `node`. It now resolves the one candidate that can be a bare name through `command -v`, so the
+  string it prints is a file that can be handed to a launcher with a different PATH.
+
+### Fixed — `session-manager-csk` and the discipline disagreed about who writes the status line
+
+- The agent's description claimed it appends the status line "at every task close"; the discipline has the main
+  thread write it from the hook's measurement. Read literally the agent's version spawns a subagent every turn,
+  which its own token rules forbid. Its description now names what it is for: a phase boundary and the handover.
+
+### Added — two costs the token discipline did not name
+
+- A RESUMED agent re-pays its GROWN context, not the fresh-context floor. Measured across four turns of one
+  agent: 167k → 187k → 207k → 211k tokens, the last of which was a one-word correction. Continue an agent for
+  the context it holds; open a fresh one, or stay on the main thread, for a correction that needs none of it.
+- Built-in agents are on the same budget as kit agents — one repo-mapping `Explore` measured 520 s and ~150k
+  tokens. The kit owns no search agent, so reaching for a built-in is correct; sizing it is still required.
+
+### Added — Windows commit guidance, and restart is not install
+
+- `commit-agent-csk` carries what a field session paid to learn: on PowerShell 5.1, `git commit -F - @'…'@` hands
+  the message to git as an argument, git reads it as a pathspec, and an earlier `git add` on the same line leaves
+  the tree staged but uncommitted. Write the message to a UTF-8 file with no BOM and use `git commit -F <file>`.
+  And `git status -sb | Select-Object -First 1` returns exit 255 after a commit that succeeded; check with
+  `git log -1 --oneline` instead.
+- `sonarqube-check` now separates restarting from installing. Bringing an already-approved service back up on the
+  same image and volumes is resuming a yes that was already given — which the skill's own advice to keep a named
+  volume assumes. A new image, a new volume, or a tool the machine lacks is an install and still needs the answer.
+
 ## [2.10.1] — 2026-09-12
 
 ### Fixed — the npm page showed the Turkish README

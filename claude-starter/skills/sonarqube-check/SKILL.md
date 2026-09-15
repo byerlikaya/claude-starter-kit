@@ -30,6 +30,11 @@ what the project actually uses; never assume a stack.
 **b) It does not → stand one up locally.** No licence, no external account, nothing leaves the machine. Two ways,
 and **Docker is not required**.
 
+> **Restarting is not installing.** Bringing an already-approved service back up on this machine — the same
+> image, the same volumes — is resuming what the user already said yes to, and this skill's own advice to keep
+> a named volume assumes exactly that. A NEW image, a new volume, or a tool this machine does not have is an
+> install, and needs the answer below.
+>
 > **Nothing here is installed without the user saying so.** Docker, Java, a scanner, a linter — each is a proposal
 > with its cost stated, and the user picks. If they decline all of them, that is a valid answer: go to (c) and
 > report "unverified" rather than installing anything to make a number appear.

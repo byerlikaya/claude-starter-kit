@@ -540,9 +540,15 @@ case "$CMD" in *[Ll][Nn][[:space:]]*|*[Mm][Kk][Ll][Ii][Nn][Kk]*) : ;; *) false ;
 # walked straight through.
 # `Select-String`/`sls` is left OUT on purpose, for the same reason grep/awk/sed are: it takes the pattern
 # first, so `.env` on that line is as likely to be what is being searched for as what is being searched.
-{ case "$CMD" in *[Ee][Nn][Vv]*) : ;; *) false ;; esac && { has '(^|[^A-Za-z0-9_/.-])(cat|less|more|head|tail|tac|nl|xxd|od|strings|hexdump|base64|sort|uniq|cp|scp|rsync|get-content|gc|type|get-item|gi)[[:space:]]+(-[^;&|[:space:]]*[[:space:]]+)*([^;&|[:space:]]*/)?\.env(\.[A-Za-z0-9_-]+)?([[:space:]]|$|[;&|>])' \
-    || has '<[[:space:]]*([^;&|[:space:]]*/)?\.env(\.[A-Za-z0-9_-]+)?([[:space:]]|$|[;&|])'; } \
-    && ! has '\.env\.(example|sample|template|dist)([^A-Za-z0-9_-]|$)'; } \
+# The three patterns live in variables because the SAME rule is applied twice: once to the command below, and
+# once to each line of a script the command runs (the two-step rule further down). Written out twice they drift
+# -- the direct one gains a reader verb, the indirect one silently keeps letting it through.
+ENV_READ_RE='(^|[^A-Za-z0-9_/.-])(cat|less|more|head|tail|tac|nl|xxd|od|strings|hexdump|base64|sort|uniq|cp|scp|rsync|get-content|gc|type|get-item|gi)[[:space:]]+(-[^;&|[:space:]]*[[:space:]]+)*([^;&|[:space:]]*/)?\.env(\.[A-Za-z0-9_-]+)?([[:space:]]|$|[;&|>])'
+ENV_REDIR_RE='<[[:space:]]*([^;&|[:space:]]*/)?\.env(\.[A-Za-z0-9_-]+)?([[:space:]]|$|[;&|])'
+ENV_TEMPLATE_RE='\.env\.(example|sample|template|dist)([^A-Za-z0-9_-]|$)'
+{ case "$CMD" in *[Ee][Nn][Vv]*) : ;; *) false ;; esac && { has "$ENV_READ_RE" \
+    || has "$ENV_REDIR_RE"; } \
+    && ! has "$ENV_TEMPLATE_RE"; } \
     && block "reading a .env secret via the Bash tool" "4.5"
 
 # The same reasoning, one scope wider. `.env` was the only credential file either gate covered, which left the
@@ -566,6 +572,43 @@ CRED='(\.ssh/(id_[A-Za-z0-9_]+|identity)|(^|/)id_(rsa|dsa|ecdsa|ed25519)|\.aws/c
     || has "<[[:space:]]*[^;&|[:space:]]*$CRED"; } \
     && ! has '(\.pub|\.example|\.sample|\.template)([^A-Za-z0-9_-]|$)'; } \
     && block "reading a private key / credential file via the Bash tool" "4.5"
+
+# §4.5-adjacent, THE SECOND STEP. Everything above scans the COMMAND; none of it sees what a script FILE does.
+# Measured against the shipped hook on macOS: `cat .env.local` blocks (rc=2), while `bash leak.sh`, `./leak.sh`
+# and `sh leak.sh` -- a one-line script running that identical cat -- all returned rc=0. The Windows shape,
+# `powershell -ExecutionPolicy Bypass -File x.ps1`, is the same hole, so this is a design gap and not a platform
+# one. It is also not hypothetical: a field session hit the direct block, wrote the read into a .ps1, ran it by
+# path, and stored "put it in a file and use -File" in its memory as the fix.
+#
+# EACH LINE OF THE SCRIPT IS JUDGED EXACTLY AS A COMMAND LINE WOULD BE -- same three patterns, same template
+# exemption, one rule in one place. Per line rather than per file on purpose: a file-wide exemption would let one
+# `# see .env.example` comment unlock the whole script.
+#
+# WHAT THIS DOES NOT CLOSE, so nobody reads it as more than it is: a script that builds the path at runtime,
+# decodes it, sources another file, or is fetched rather than written. Those stay open and are not closable by
+# pattern. This closes the literal two-step, which is the one that actually happens.
+#
+# Cost: the case prefilter is a shell builtin, the token loop forks nothing, and a file is read only when the
+# command really does name a script that exists on disk -- so an ordinary command pays one case test.
+case "$CMD" in
+  *.[Ss][Hh]*|*.[Bb][Aa][Ss][Hh]*|*.[Zz][Ss][Hh]*|*.[Pp][Ss]1*|*./*)
+    set -f                                   # a token like *.sh must not glob against the cwd
+    for _tok in $CMD; do
+      # strip one layer of quoting; `bash "leak.sh"` arrives with the quotes still attached
+      _tok="${_tok%\"}"; _tok="${_tok#\"}"; _tok="${_tok%\'}"; _tok="${_tok#\'}"
+      case "$_tok" in
+        *.[Ss][Hh]|*.[Bb][Aa][Ss][Hh]|*.[Zz][Ss][Hh]|*.[Pp][Ss]1|./*) ;;
+        *) continue ;;
+      esac
+      [ -f "$_tok" ] && [ -r "$_tok" ] || continue
+      if grep -iE -- "$ENV_READ_RE|$ENV_REDIR_RE" "$_tok" 2>/dev/null | grep -qivE -- "$ENV_TEMPLATE_RE"; then
+        set +f
+        block "running a script that reads a .env secret (the two-step read)" "4.5"
+      fi
+    done
+    set +f
+    ;;
+esac
 
 # §4.5 force-add bypasses .gitignore (sneaks build output / secrets past the bloat & ignore rules); deleting a
 # lockfile is a §4.5 op the discipline already names. Both are only done on an explicit request.
