@@ -3433,6 +3433,14 @@ echo "== 7y) route-hint: names the owner next to the request =="
 # unnoticed; the four agent rows above are the other half, proving the agent-over-skill preference still holds
 # where the agent match is credible on its own.
 #
+# THE THREE SILENT NOTIFICATION ROWS pin a turn that carries no request at all. A field session watched the hook
+# inject "Use the <x> subagent for this task" when the user had typed nothing: a background subagent finished,
+# its REPORT was the turn's text, and the report scored as the request -- naming, both times, the agent whose
+# finished work was being reported. Seven of that session's ten injections arrived this way and none was useful.
+# The fourth row is their calibration twin and the reason the check is anchored to the START of the prompt: a
+# real request that happens to contain the words "system notification" must still route, or the fix would have
+# bought silence by going deaf.
+#
 # "the build fails on CI" USED TO ASSERT SILENCE and now asserts ci-pipeline. That is a scope change, not a
 # weakened assertion: the skill gained a "When the pipeline is red" section, so the request it used to have no
 # owner for now has one. A stale expectation kept for its own sake would have taught the opposite of the rule
@@ -3474,6 +3482,10 @@ a11y|this needs an accessibility audit
 a11y|the page needs an accessibility audit
 handoff|I want to hand off the session state
 worktree|isolate this in a git worktree
+SILENT|<task-notification>Agent database-expert-csk finished: wrote the migration and seed for the invoices table</task-notification>
+SILENT|[SYSTEM NOTIFICATION] the background agent finished its migration and seed report
+SILENT|<cross-session-message>report: the migration and the seed are written, an endpoint was added</cross-session-message>
+database-expert-csk|the system notification code needs a migration for the invoices table
 RHCASES
 
   # --- cost gate: this hook runs on EVERY prompt, so its cost is the session's floor ------------------

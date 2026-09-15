@@ -67,6 +67,22 @@ fi
 # containing a literal backslash would be rewritten before the normaliser ever saw it.
 CSK_PROMPT="$(printf '%s' "$IN" | sed -n 's/.*"prompt"[[:space:]]*:[[:space:]]*"\(.*\)/\1/p' | sed 's/","[a-z_]*":.*$//' | head -c 4000)"
 [ -n "$CSK_PROMPT" ] || exit 0
+
+# NOT EVERY TURN CARRIES A REQUEST. A field session watched this hook inject "Use the <x> subagent for this task"
+# on turns where the user had typed nothing at all: a background subagent finished, its REPORT arrived as the
+# turn's text, and the report was scored as if it were the request. Both times the named owner was the agent
+# whose finished work was being reported -- so the hint pushed the main thread to re-delegate work that was
+# already done, at the 10-16k tokens a subagent floor costs. Ten injections that session, zero of them useful.
+#
+# Whether Claude Code really raises UserPromptSubmit for those turns is NOT established here, and this does not
+# depend on the answer: text that OPENS with a notification marker is not a user request under any reading, so
+# staying quiet is right either way. Anchored to the start deliberately -- a person may well write the words
+# "system notification" inside a genuine request, and only a notification BEGINS as one.
+case "$CSK_PROMPT" in
+  '<task-notification'*|'<system-reminder'*|'<cross-session-message'*|'<local-command-stdout'*\
+  |'[SYSTEM NOTIFICATION'*|'[Task '*|'Another Claude session sent a message'*)
+    exit 0 ;;
+esac
 export CSK_PROMPT
 
 # Glob expansion is a shell builtin — no forks. Agents FIRST, then skills: awk reads its arguments in order and

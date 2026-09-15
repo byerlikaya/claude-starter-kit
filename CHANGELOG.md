@@ -24,6 +24,21 @@ versioning follows [SemVer](https://semver.org/).
   `bash build.sh` has to stay free or the gate is unusable — plus two calibration cases in the same directory, so
   a green H4b cannot come from an inert fixture.
 
+### Fixed — the route hint scored subagent reports as if they were requests
+
+- A field session watched `route-hint.sh` inject "Use the `<x>` subagent for this task" on turns where the user
+  had typed nothing: a background subagent finished, its REPORT was the turn's text, and the report scored as
+  the request — naming, both times, the agent whose finished work was being reported. So the hint pushed the
+  main thread to re-delegate work that was already done, at the 10-16k tokens a subagent floor costs. Seven of
+  that session's ten injections arrived this way and none of the ten was useful.
+- Text that OPENS with a notification marker is now left alone. Whether Claude Code raises `UserPromptSubmit`
+  for those turns is not established, and the fix does not depend on the answer: such text is not a user request
+  under any reading. Anchored to the start on purpose — someone may write "system notification" inside a real
+  request, and only a notification begins as one. Four cases pin it in `smoke-test.sh` §7y, three silent and one
+  that is their calibration twin: a genuine request containing those words must still route, or silence would
+  have been bought by going deaf.
+- Cost is unchanged: the check is a shell `case`, so the hook still spends five external commands per prompt.
+
 ### Fixed — three components gave three different answers about commit language
 
 - The discipline said Turkish, `commit-agent-csk` said English, and the `commit-message` skill said the project's
