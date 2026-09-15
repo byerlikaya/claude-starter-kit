@@ -61,6 +61,36 @@ grep -q 'no effect' "$WORK/proj-legacy-flags/.claude/kit.conf" && { echo "FAIL: 
 [ -f "$WORK/proj-legacy-flags/.claude/agents/backend-expert-csk.md" ] || { echo "FAIL: --frontend still pruned the backend agent"; exit 1; }
 echo "[legacy-flags] --frontend accepted and ignored; full set installed"
 
+# §4.2 arming. The blocklist ships the vendor name COMMENTED, beside a note telling the reader to add their own
+# -- right for a name only the user knows, wrong for this one, because on the DevArchitecture path the kit is
+# what brought the vendor onto the machine. So the installer uncomments it there and only there, and both halves
+# are asserted: an armed pattern on --dotnet, and a still-commented one on --generic, where a DevArchitecture
+# pattern would block an ordinary commit that merely discusses the pattern. The third assertion is the one that
+# matters -- an uncommented line proves the edit ran, not that anything is enforced -- so the REAL commit-msg
+# hook is driven with a message carrying the name, and with one that does not.
+BL_DN="$WORK/proj-dotnet/.claude/hooks/trace-blocklist.txt"
+BL_GEN="$WORK/proj-generic/.claude/hooks/trace-blocklist.txt"
+grep -qx 'DevArchitecture'   "$BL_DN"  || { echo "FAIL: --dotnet left the §4.2 vendor pattern commented out"; exit 1; }
+grep -qx '# DevArchitecture' "$BL_GEN" || { echo "FAIL: --generic armed a vendor pattern for a stack it did not install"; exit 1; }
+# In a throwaway repo rather than in proj-dotnet itself, for two reasons: the hook needs a git repository (its
+# board step says so and exits non-zero without one, which is correct -- a commit-msg hook only ever runs inside
+# one), and proj-dotnet is read by later assertions that should not inherit a .git this check created.
+TR="$WORK/trace42"; rm -rf "$TR"; mkdir -p "$TR"
+cp -R "$WORK/proj-dotnet/.claude" "$TR/" && ( cd "$TR" && git init -q . ) \
+  || { echo "FAIL: could not stage the §4.2 hook check"; exit 1; }
+CMT="$TR/msg.txt"
+printf 'feat(api): ported the handler from DevArchitecture\n' > "$CMT"
+( cd "$TR" && bash .claude/hooks/commit-msg "$CMT" ) >/dev/null 2>&1 \
+  && { echo "FAIL: the armed vendor pattern did not block a commit message carrying the name"; exit 1; }
+# The must-PASS twin, and it earned its place: the first version of this check ran outside a repo, where the
+# hook fails for its own reasons, so the blocking assertion above was green against a hook that refused
+# EVERYTHING. A gate tested only on what it must reject is indistinguishable from a gate that rejects all.
+printf 'feat(api): add the unpaid invoices endpoint\n' > "$CMT"
+( cd "$TR" && bash .claude/hooks/commit-msg "$CMT" ) >/dev/null 2>&1 \
+  || { echo "FAIL: the armed vendor pattern blocked an ordinary commit message"; exit 1; }
+rm -rf "$TR"
+echo "[trace-4.2] --dotnet arms the vendor name and the hook enforces it; --generic leaves it commented"
+
 # Every adopt assertion below used to depend on a run sent to /dev/null, then print one line and exit. A red CI
 # therefore arrived with no evidence at all: the recorded stack, what the detector saw, and whether adopt even
 # finished were all unknowable from the log, so a real defect and a flake looked identical. `run_adopt` keeps the

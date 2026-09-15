@@ -24,6 +24,28 @@ versioning follows [SemVer](https://semver.org/).
   `bash build.sh` has to stay free or the gate is unusable — plus two calibration cases in the same directory, so
   a green H4b cannot come from an inert fixture.
 
+### Fixed — §4.2 named the vendor in the one place §4.2 forbids, and left its own rule as a comment
+
+- `devarch-module`'s description said "DevArchitecture backend pattern", and a skill description is always-on:
+  the vendor's name sat in every session's system prompt of every project on that path. §4.2 says that name
+  never appears in an artifact, so the kit was carrying it in the context from which artifacts get written. The
+  description now says "Default .NET backend pattern"; the name stays in the skill BODY and in the README's
+  install section, which is where a reader looking for what the kit ships should find it.
+- `trace-blocklist.txt` ships the vendor pattern commented out, beside a note telling the reader to add their
+  own vendor or template name. That note is right for a name only the user knows and wrong for this one: on the
+  `--dotnet` path the kit is what brought DevArchitecture onto the machine. `start.sh` now uncomments it there —
+  and only there, since a `--generic` install has no DevArchitecture and the pattern would block an ordinary
+  commit that merely discusses it. A project with a legitimate reason to write the name allowlists it, the same
+  escape every other pattern has.
+- Four assertions in `e2e.sh`: armed on `--dotnet`, still commented on `--generic`, and the real `commit-msg`
+  hook driven with a message carrying the name and with one that does not. The must-PASS twin earned its place —
+  the first version ran the hook outside a git repository, where it fails for its own reasons, so the blocking
+  assertion was green against a hook that was refusing everything.
+- **Not renamed, deliberately.** The obvious fix is a neutral component name, and it is blocked by a gap this
+  repo already records: the updater does not prune, so a rename would leave `devarch-module` behind in every
+  existing install and add a second backend-pattern skill beside it. The rename belongs with that fix, not
+  before it.
+
 ### Added — a second session can find the panel that is already running
 
 - The panel printed its tokenised URL once, to the stdout of whoever started it, and kept the token nowhere
