@@ -28,11 +28,27 @@ versioning follows [SemVer](https://semver.org/).
   interpreter glued to a separator (`x;bash f.sh`) is found by trimming to the last separator inside the token.
 - It under-blocks rather than over-blocks where it is unsure, which is the right direction for a rule sitting in
   front of every command in a session.
+- **Three shapes the first prefilter could not see**, named by the Windows session before it had measured
+  anything: `cmd /c x.bat`, an extensionless `bash runme`, and the native Windows spelling of a path. The
+  prefilter keyed on filename EXTENSIONS, so the first two never reached the loop at all; it keys on the
+  interpreter words now, which is broader and costs nothing because everything past it is a shell builtin.
+  `cmd` / `cmd.exe` joined the interpreter list, and its slash-flags (`/c`, `/k`) are recognised alongside
+  dash-flags.
+- Backslashes fold to forward slashes, the way `route-hint.sh` already folds its roots — **for the `case`
+  patterns, not for `[ -f ]`**, and the code says which because the difference is what stops the line being
+  deleted later as redundant. Measured on Git Bash rather than assumed: `[ -f ]` resolves `C:/repo/x.ps1`,
+  `/c/repo/x.ps1` and an unfolded `C:\repo\x.ps1` alike. What needs the fold is the glob — `.\x.ps1` does not
+  match `./*` — and Windows is the platform whose native spelling that is, so without it the candidate is never
+  considered and the rule silently does not exist there.
 - Cost on an ordinary command is one shell-builtin `case` test; a file is read only when the command really does
-  name a script that exists at a position where it would run. Eighteen cases pin it in `smoke-test.sh` §H4b —
-  seven that must block, nine that must not (the five false positives above among them, because they are what
-  caught the over-reach), and two calibration cases in the same directory so a green H4b cannot come from an
-  inert fixture.
+  name a script that exists at a position where it would run. Twenty-five cases pin it in `smoke-test.sh` §H4b
+  — twelve that must block, eleven that must not (the five false positives above among them, because they are
+  what caught the over-reach), and two calibration cases in the same directory so a green H4b cannot come from
+  an inert fixture. A twenty-sixth was removed rather than fixed: `git push origin main` sat in the must-not
+  list and is blocked — by §4.4, correctly, because the payload says `auto`. The suite caught a bad test.
+- **Still unmeasured on Windows**, and recorded here rather than implied away: everything above is a string and
+  logic claim, verified on macOS. Whether the gate EXISTS on Git Bash — the real hook, the real payload, a real
+  `.env` — is measured on that machine, and the entry will say so when it is.
 
 ### Changed — §4.5 now forbids recording a bypass, not only performing one
 
