@@ -46,9 +46,21 @@ versioning follows [SemVer](https://semver.org/).
   what caught the over-reach), and two calibration cases in the same directory so a green H4b cannot come from
   an inert fixture. A twenty-sixth was removed rather than fixed: `git push origin main` sat in the must-not
   list and is blocked — by §4.4, correctly, because the payload says `auto`. The suite caught a bad test.
-- **Still unmeasured on Windows**, and recorded here rather than implied away: everything above is a string and
-  logic claim, verified on macOS. Whether the gate EXISTS on Git Bash — the real hook, the real payload, a real
-  `.env` — is measured on that machine, and the entry will say so when it is.
+- **Measured on Windows 11 with the real hook: the gate exists there, 26 of 26.** Sixteen shapes blocked,
+  including all six native ones — `cmd /c x.bat`, `cmd.exe /k x.bat`, an extensionless `bash runme`,
+  `powershell -File .\x.ps1`, `bash .\x.sh`, and a drive-letter absolute path — and ten that had to stay free
+  did, `echo share`, `echo pushing` and `shellcheck --version` among them, so the widened prefilter costs no
+  false positives.
+- **Cost measured the way it was claimed**: paired old-versus-new in one alternating run, twice, identical both
+  times. Zero extra processes on every ordinary command, including the ones the broad prefilter now examines —
+  `npm test` +0, `git status` +0, `echo share` +0 — because everything past the prefilter is a shell builtin.
+  The only +2 is where a script that really exists gets read, which is the design.
+- **A relative script path is relative to something, and that something was an accident.** It resolved against
+  the hook's own process cwd and never against the payload's `cwd`, a field documented at the top of the file
+  and then never read. Measured: with the process cwd elsewhere, `bash leak.sh` PASSED while the payload still
+  named the project. The payload's cwd is consulted now, with the process cwd kept as the fallback — a wrong
+  payload cwd and an absent one both still block through it, so the lookup only ever adds coverage. Four more
+  cases in §H4b, run from a different directory on purpose.
 
 ### Changed — §4.5 now forbids recording a bypass, not only performing one
 

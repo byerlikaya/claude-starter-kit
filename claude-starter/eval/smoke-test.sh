@@ -2733,6 +2733,23 @@ h4bfree  'git add leak.sh'
 h4bfree  'shellcheck leak.sh'
 h4bfree  'cat leak.sh'
 h4bfree  'echo done'
+# A RELATIVE SCRIPT PATH IS RELATIVE TO SOMETHING, and every row above runs with the hook's process cwd sitting
+# in the fixture, which is the friendly case. Measured on Windows with the real hook: move the process cwd
+# anywhere else and `bash leak.sh` PASSED, while the payload's own `cwd` field -- documented at the top of
+# guard-bash.sh and then never read -- still named the project. Relative-path execution was therefore in scope
+# only by accident of where the hook happened to be started. These rows run the hook from a DIFFERENT directory
+# and pin both halves: the payload's cwd is consulted, and the process cwd still works when the payload's is
+# wrong or missing, so consulting it only ever adds coverage.
+h4bcwd(){ # $1 = payload cwd, $2 = process cwd, $3 = command
+  printf '{"tool_name":"Bash","permission_mode":"auto","cwd":"%s","tool_input":{"command":"%s"},"hook_event_name":"PreToolUse"}' "$1" "$3" \
+    | ( cd "$2" && bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; echo "$?" ); }
+OUTSIDE="$(mktemp -d)"
+[ "$(h4bcwd "$H4B" "$OUTSIDE" 'bash leak.sh')" = 2 ] && pass "a relative script is resolved against the payload's cwd, not only the hook's (H4b)" || fail "relative script run from another cwd PASSED — the rule is in scope only by accident of where the hook starts (H4b)"
+[ "$(h4bcwd "/no/such/dir" "$H4B" 'bash leak.sh')" = 2 ] && pass "...and a wrong payload cwd still falls back to the process cwd (H4b)" || fail "a wrong payload cwd broke the fallback (H4b)"
+[ "$(h4bcwd "" "$H4B" 'bash leak.sh')" = 2 ]           && pass "...and an absent payload cwd does too (H4b)"                            || fail "an absent payload cwd broke the fallback (H4b)"
+[ "$(h4bcwd "$H4B" "$OUTSIDE" 'bash clean.sh')" = 0 ]  && pass "an ordinary script from another cwd is still free (H4b)"                || fail "the cwd lookup over-blocked an ordinary script (H4b)"
+rm -rf "$OUTSIDE"
+
 # Calibration, in the SAME directory the cases run in: the direct rule must still separate these two, or a green
 # H4b would only prove the fixture is inert.
 [ "$(h4brc 'cat .env.local')"   = 2 ] && pass "calibration: the direct .env read still blocks here (H4b)" || fail "calibration broken: cat .env.local no longer blocks (H4b)"

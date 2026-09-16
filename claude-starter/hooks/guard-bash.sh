@@ -609,6 +609,24 @@ CRED='(\.ssh/(id_[A-Za-z0-9_]+|identity)|(^|/)id_(rsa|dsa|ecdsa|ed25519)|\.aws/c
 # at all. It is keyed on the interpreter words instead, which is broader and costs nothing extra -- everything
 # past it is shell builtins, and a command that reaches the loop with no interpreter and no ./ in it does a few
 # string comparisons and stops.
+# A RELATIVE SCRIPT PATH IS RELATIVE TO SOMETHING, and until now that something was this hook's own process
+# cwd -- never the payload's `cwd`, which was documented at the top of this file and then never read. Measured
+# on Windows 11 with the real hook: with the process cwd at the project, `bash leak.sh` blocked; with the
+# process cwd anywhere else it PASSED, while the payload still said the project. Absolute paths blocked from
+# every cwd. So relative-path execution was in scope only by accident of where the hook happened to be started.
+#
+# The payload's own answer is used when it has one, and the process cwd stays as the fallback: measured in the
+# same run, a WRONG payload cwd and an ABSENT one both still blocked through the fallback, so consulting the
+# payload only ever adds coverage. Parameter expansion, no fork, and backslashes folded for the same reason the
+# token is folded below.
+_CWD="${INPUT#*\"cwd\"}"
+if [ "$_CWD" != "$INPUT" ]; then
+  _CWD="${_CWD#*:}"; _CWD="${_CWD#*\"}"; _CWD="${_CWD%%\"*}"; _CWD="${_CWD//\\//}"
+  [ -d "$_CWD" ] || _CWD=""
+else
+  _CWD=""
+fi
+
 _looks_exec=0
 case "$CMD" in
   *[Bb][Aa][Ss][Hh]*|*[Ss][Hh]*|*[Kk][Ss][Hh]*|*[Dd][Aa][Ss][Hh]*|*[Ss][Oo][Uu][Rr][Cc][Ee]*\
@@ -657,9 +675,19 @@ if [ "$_looks_exec" = 1 ]; then
     fi
     _cmdpos=0
     [ "$_cand" = 1 ] || continue
-    [ -f "$_tok" ] && [ -r "$_tok" ] || continue       # a flag value that is not a file just keeps _interp set
+    # Both roots tried: the hook's own cwd first, then the one the payload names. A flag value that is not a
+    # file under either just keeps _interp set, so `-ExecutionPolicy Bypass -File x.ps1` still reaches x.ps1.
+    _path=""
+    if [ -f "$_tok" ] && [ -r "$_tok" ]; then _path="$_tok"
+    elif [ -n "$_CWD" ]; then
+      case "$_tok" in
+        /*|[A-Za-z]:/*) : ;;                            # already absolute; the payload cwd cannot help
+        *) [ -f "$_CWD/$_tok" ] && [ -r "$_CWD/$_tok" ] && _path="$_CWD/$_tok" ;;
+      esac
+    fi
+    [ -n "$_path" ] || continue
     _interp=0
-    if grep -iE -- "$ENV_READ_RE|$ENV_REDIR_RE" "$_tok" 2>/dev/null | grep -qivE -- "$ENV_TEMPLATE_RE"; then
+    if grep -iE -- "$ENV_READ_RE|$ENV_REDIR_RE" "$_path" 2>/dev/null | grep -qivE -- "$ENV_TEMPLATE_RE"; then
       set +f
       block "running a script that reads a .env secret (the two-step read)" "4.5"
     fi
