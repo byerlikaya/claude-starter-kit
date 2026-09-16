@@ -22,6 +22,20 @@ From any project that has the kit:
 node .claude/studio/server/index.js --open   # the same thing without the picker
 ```
 
+**`node` may not be on your PATH, and that is on purpose.** When this kit fetched the runtime for you
+(`ensure-node.sh --install`), it promised to touch nothing outside `~/.claude/studio-runtime` — no PATH edit,
+no shell profile, no admin rights. Measured on a stock Windows 11 machine: after a successful install
+`node --version` reports v24.21.0 through the full path while `command -v node` finds nothing, which is the
+promise being kept rather than a broken install. So every `node …` line on this page means "the node this kit
+can find". Ask for it instead of assuming it:
+
+```bash
+NODE="$(bash .claude/studio/ensure-node.sh)"   # prints an absolute path, exits 1 if there is none
+"$NODE" .claude/studio/server/index.js --open
+```
+
+`/studio-csk` does exactly this for you, which is why it is the first line above and not the second.
+
 Other flags, same file:
 
 ```bash

@@ -233,6 +233,8 @@ It reads `~/.claude/projects` — where Claude Code keeps every session on this 
 ```bash
 /studio-csk                                       # in any project that has the kit
 node .claude/studio/server/index.js --open        # the same, without the slash picker
+# `node` not on PATH? That is the kit keeping its promise not to edit it — ask for the one it fetched:
+#   NODE="$(bash .claude/studio/ensure-node.sh)" && "$NODE" .claude/studio/server/index.js --open
 node .claude/studio/server/index.js --enable-pty  # plus raw shells — those bypass every gate above
 ```
 

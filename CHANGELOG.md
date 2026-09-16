@@ -137,6 +137,21 @@ versioning follows [SemVer](https://semver.org/).
   existing install and add a second backend-pattern skill beside it. The rename belongs with that fix, not
   before it.
 
+### Fixed — every documented way to start the panel assumed a PATH the kit deliberately does not edit
+
+- `studio/README.md` says `node .claude/studio/server/index.js` eight times and the main README once. Those
+  lines fail for exactly the people who used the kit's own installer: `ensure-node.sh --install` promises to
+  touch nothing outside `~/.claude/studio-runtime` — no PATH edit, no shell profile, no admin rights — so after
+  a successful install there is a working Node and `node` still resolves to nothing.
+- Measured on a stock Windows 11 machine, which is also the first time the kit's node-fetching flow has run
+  there at all: `--plan` announced a 36 MB download, a checksum verification and one target directory;
+  `--install` returned 0 in ten seconds; `node --version` through the full path reported v24.21.0 on win32 x64;
+  `ensure-node.sh --resolve` found it; `command -v node` found nothing; `~/.claude` gained exactly one
+  directory. All four promises kept, including the one that makes the documentation wrong.
+- Both READMEs now ask for the path instead of assuming it —
+  `NODE="$(bash .claude/studio/ensure-node.sh)"` — and say why `node` may be absent, so a kept promise does not
+  read as a broken install. `/studio-csk` already did this, which is why it is the first line on the page.
+
 ### Added — a second session can find the panel that is already running
 
 - The panel printed its tokenised URL once, to the stdout of whoever started it, and kept the token nowhere
