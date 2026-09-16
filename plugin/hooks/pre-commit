@@ -217,9 +217,23 @@ if [ -f "$BL" ] && [ -s "$TRACE_F" ] && [ "$_dec" != 1 ]; then
     pat="${pat%$'\r'}"                       # tolerate a CRLF blocklist (Windows/autocrlf checkout) — a trailing \r
     case "$pat" in ''|\#*) continue;; esac   # in the pattern never matches the LF-normalised diff, blinding the gate
     if [ -n "$AL" ] && grep -qxF -- "$pat" "$AL"; then continue; fi
-    if grep -iqE -- "$pat" "$TRACE_F"; then
+    # A PATTERN THAT CANNOT COMPILE IS A GATE THAT IS NOT THERE, and it used to say so in grep's words, not
+    # ours: an unbalanced bracket printed "grep: brackets ([ ]) not balanced" into the middle of the commit
+    # output with nothing naming the file, the line, or the consequence. This file invites users to add their
+    # own vendor pattern, and a user who adds a broken one believes they are covered while nothing matches.
+    # CI catches it in this repo -- smoke drives every pattern with its own case and goes red -- but a consumer
+    # project runs no such suite, so the hook has to say it itself. It warns rather than blocks: the other
+    # patterns all still ran, so the commit is no less scanned than it was, and refusing every commit over one
+    # typo would cost more than the typo does.
+    # `|| _gr=$?` and not a bare call: `set -e` is in force at the top of this file, and a grep that simply
+    # does not match exits 1, which would kill the hook on the first clean pattern. Measured the wrong way once
+    # already -- the bare form made every commit exit 1 with no output at all.
+    _gr=0; grep -iqE -- "$pat" "$TRACE_F" 2>/dev/null || _gr=$?
+    if [ "$_gr" = 0 ]; then
       echo "TRACE-SCANNER: forbidden expression in added code -> '$pat' (§4.1/§4.2)"
       HIT=1
+    elif [ "$_gr" -ge 2 ]; then
+      echo "TRACE-SCANNER: /$pat/ in $BL is not a valid regular expression, so it matches NOTHING. Every other pattern still ran; fix or remove this line."
     fi
   done < "$BL"
 fi
@@ -230,9 +244,13 @@ if [ -f "$SL" ] && [ -s "$SECRET_F" ] && [ "$_dec" != 1 ]; then
     pat="${pat%$'\r'}"                       # tolerate a CRLF blocklist (Windows/autocrlf checkout)
     case "$pat" in ''|\#*) continue;; esac
     if [ -n "$SAL" ] && grep -qxF -- "$pat" "$SAL"; then continue; fi
-    if grep -qE -- "$pat" "$SECRET_F"; then
+    _gr=0; grep -qE -- "$pat" "$SECRET_F" 2>/dev/null || _gr=$?
+    if [ "$_gr" = 0 ]; then
       echo "SECRET-SCANNER: a staged line matches a secret pattern -> /$pat/"
       HIT=1
+    elif [ "$_gr" -ge 2 ]; then
+      # Same reasoning as the trace loop above; the comment there is the long form.
+      echo "SECRET-SCANNER: /$pat/ in $SL is not a valid regular expression, so it matches NOTHING. Every other pattern still ran; fix or remove this line."
     fi
   done < "$SL"
 fi

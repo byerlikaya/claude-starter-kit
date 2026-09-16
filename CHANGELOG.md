@@ -137,6 +137,25 @@ versioning follows [SemVer](https://semver.org/).
   existing install and add a second backend-pattern skill beside it. The rename belongs with that fix, not
   before it.
 
+### Fixed — a blocklist pattern that cannot compile now says so, in the kit's words
+
+- Both blocklists invite a project to add its own line: a vendor name for §4.2, a credential shape for §4.3. A
+  user who adds a broken one is covered by nothing, and the hook used to report that in grep's words —
+  `grep: brackets ([ ]) not balanced` dropped into the middle of the commit output, naming no file, no line and
+  no consequence. In this repo the suite catches it (measured: a deliberately malformed pattern turns smoke
+  red, and green again when removed, because every pattern is driven with its own case). A consumer project
+  runs no such suite, so the hook has to say it itself. It now names the pattern, the file, and what it means:
+  the line matches NOTHING.
+- It warns rather than blocks. Every other pattern still ran, so the commit is no less scanned than before, and
+  refusing every commit over one typo would cost more than the typo.
+- **Measured rather than assumed, in three states**: a broken pattern does NOT blind the others — the scanner
+  loops per pattern rather than combining them into one alternation, so an AWS key beside an unbalanced bracket
+  is still caught; an ordinary line still commits; and grep's raw message no longer reaches the user.
+- The first version of this fix broke every commit. `set -euo pipefail` is in force, and taking the `grep` out
+  of an `if` condition meant the first pattern that simply did not match killed the hook — every commit exiting
+  1 with no output at all. Caught by running the must-PASS case, which is the half that is easy to skip when a
+  change looks like it only touches an error path.
+
 ### Added — the secret scanner can now see a credential that has no issuer prefix
 
 - Every one of the eleven existing patterns recognises a credential by its own SHAPE: `AKIA`, `ghp_`, `AIza`,
