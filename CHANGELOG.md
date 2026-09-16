@@ -3,7 +3,21 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [2.11.0] — 2026-09-16
+
+### Before you update — two things that change behaviour
+
+- **A script that reads a `.env` file can no longer be run through the Bash tool.** The rule used to scan the
+  command only, so `cat .env` was refused while a one-line script doing the same thing was not. It now reads
+  the script. If a build or deploy script of yours loads `.env` and you run it through the tool, it will be
+  refused — put the values in the environment, or run that script outside the session. Naming such a file is
+  still free: `ls`, `git add`, `chmod`, `cat` and a linter on it are all untouched.
+- **The commit-language rule left `.claude/DISCIPLINE.md`.** That file is kit-owned and an update overwrites
+  it, so a project that relied on the rule loses it on this update. It did not belong there: the discipline is
+  identical in every project and cannot know a team's language. Declare it in your own `./CLAUDE.md` instead —
+  the installed template now carries a `## Conventions` section with `Commit language:` and `Commit format:`,
+  and `commit-message` reads them.
+
 
 ### Measured on Windows — what the queue actually returned
 
