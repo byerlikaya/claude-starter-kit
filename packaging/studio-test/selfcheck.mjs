@@ -2157,7 +2157,12 @@ process.stdout.write('\n== §28 the instance record — finding a panel that is 
   // pretending to pass.
   await inst.writeState(deadPort, { token: 'tok-mode', name: 'm', pid: 1 });
   if (process.platform === 'win32') {
-    notApplicable('the record holding the token is written 0600', 'POSIX mode bits do not exist on win32; the file sits under the user profile instead', 'windows-csk');
+    // "covered by: windows-csk" is what this said, and it was not true. Asked directly, that machine has no
+    // node, npm or npx, so it cannot start the panel at all and none of the three Windows questions about this
+    // record -- what replaces 0600, whether Ctrl-C clears it, whether two panels hand back the same URL -- has
+    // been measured by anyone. Naming a coverer who is not covering is worse than naming none: it reads as
+    // measured and retires the question. It says NOBODY until that changes.
+    notApplicable('the record holding the token is written 0600', 'POSIX mode bits do not exist on win32; the file sits under the user profile instead', 'NOBODY YET — no Windows machine here can run the panel (no node), so this is unmeasured, not covered');
   } else {
     const mode = fs.statSync(inst.statePath(deadPort)).mode & 0o777;
     check('the record holding the token is written 0600', mode === 0o600, mode.toString(8));
