@@ -16,6 +16,18 @@ Trigger phrases: "adr", "architecture decision", "decision record", "why this ap
 On an architecture/technology choice that is expensive to reverse, long-lived, or contested
 (database selection, auth strategy, critical pattern). Small/reversible decisions do not require an ADR.
 
+**Most of these are never announced as decisions, and that is how they get missed.** The examples above all
+sound like a question someone asked — "Redis or Postgres?" — so they are easy to recognise. The ones that
+actually escape arrive inside ordinary build work: you are asked to add a feature, and along the way you settle
+what an entity owns, what a session is bound to, what makes a row unique, which layer holds a rule. Nobody said
+"decide"; you decided anyway, and the next person inherits it with no idea it was a choice. Measured in the
+field: one infrastructure task settled four such questions and produced no record of any of them, in a session
+where this skill was installed and its trigger read every turn.
+
+So the test is not "was I asked to choose". It is: **would a maintainer six months from now, wanting to do this
+differently, need to know why it is this way?** If yes, it is an ADR, however undramatic it felt while writing
+it. Cheap tell: you rejected an alternative in your head and moved on without writing it down.
+
 ## On a team, the record ALSO goes on the board
 `docs/` is gitignored in an install, so an ADR written there reaches the machine that wrote it and nobody else —
 which is the opposite of what a decision record is for. When a `teamboard` exists, record it with

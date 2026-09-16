@@ -2082,6 +2082,102 @@ process.stdout.write('\n== §27 the picture at 250 nodes ==\n');
 
 /* --------------------------------------------------------------- verdict */
 
+
+process.stdout.write('\n== §28 the instance record — finding a panel that is already running ==\n');
+
+/* The panel used to print its tokenised URL once, to one session's stdout, and
+   keep the token nowhere else. A second session could see the port was taken but
+   not that the holder was our own panel, and had no way to reach it — measured in
+   the field, two sessions and one live panel that nobody could open.
+
+   A state file answers that, and every assertion below is about NOT trusting it.
+   Files outlive processes: a killed panel, a recycled port and a hand-edited
+   record all produce a file that says a panel is there when none is. So the
+   record is believed only when the port answers /api/health with the token it
+   names AND reports the pid it names, and a record that fails is deleted rather
+   than kept. The must-NOT-find cases are the point of the section; the one
+   happy path is easy and would be green on its own with no checking at all. */
+
+{
+  const rtDir = fs.mkdtempSync(path.join(os.tmpdir(), 'csk-inst-'));
+  const prevRt = process.env.CSK_STUDIO_RUNTIME;
+  process.env.CSK_STUDIO_RUNTIME = rtDir;
+  const inst = await import('../../claude-starter/studio/server/lib/instance.js');
+
+  check('the record lives under the runtime directory the env var names',
+    inst.statePath(7777) === path.join(rtDir, 'instance-7777.json'),
+    inst.statePath(7777));
+
+  // A fake panel: /api/health is all findRunning consults, and answering it here
+  // keeps the section hermetic — no real server, no fixed port, nothing to leak.
+  const http = await import('node:http');
+  const fakePanel = (pid) => new Promise((resolve) => {
+    const srv = http.createServer((req, res) => {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, pid }));
+    });
+    srv.listen(0, '127.0.0.1', () => resolve({ srv, port: srv.address().port }));
+  });
+
+  const live = await fakePanel(4242);
+  await inst.writeState(live.port, { token: 'tok-abc', name: 'testbox', pid: 4242 });
+
+  const found = await inst.findRunning(live.port);
+  check('a live panel is found and its URL carries the recorded token',
+    found?.url === `http://127.0.0.1:${live.port}/?token=tok-abc`, found?.url);
+  check('the record survives being found (finding is not consuming)',
+    fs.existsSync(inst.statePath(live.port)));
+
+  // Same port, same file, a DIFFERENT process answering. A health response alone
+  // is not identity: ports get recycled, and /api/health reports its own pid so
+  // this comparison is possible at all.
+  const mismatch = await inst.findRunning(live.port + 0) && null;
+  await inst.writeState(live.port, { token: 'tok-abc', name: 'testbox', pid: 999999 });
+  check('a record whose pid does not match the answering process is refused',
+    (await inst.findRunning(live.port)) === null, String(mismatch));
+  check('...and that stale record is removed rather than left to mislead the next start',
+    !fs.existsSync(inst.statePath(live.port)));
+
+  live.srv.close();
+
+  // Nothing listening at all: the ordinary aftermath of a crash or a kill -9.
+  const deadPort = live.port;
+  await inst.writeState(deadPort, { token: 'tok-dead', name: 'ghost', pid: 4242 });
+  check('a record with nothing listening behind it is refused',
+    (await inst.findRunning(deadPort)) === null);
+  check('...and it is removed too, so a crashed panel cleans up the next time anyone looks',
+    !fs.existsSync(inst.statePath(deadPort)));
+
+  check('no record at all reads as "not ours", not as an error',
+    (await inst.findRunning(deadPort)) === null);
+
+  // The token is a credential, so the mode is part of the contract and not a
+  // detail. Windows has no POSIX mode bits — the file's protection there is that
+  // it sits under the user's own profile — so the check states that rather than
+  // pretending to pass.
+  await inst.writeState(deadPort, { token: 'tok-mode', name: 'm', pid: 1 });
+  if (process.platform === 'win32') {
+    // This said "covered by: windows-csk" before anyone had asked whether it was, and it was not -- that
+    // machine had no node and could not start the panel at all. It now names the coverer only for what was
+    // actually measured there: icacls on the written record, and two panels handing back the same token. What
+    // is STILL uncovered is the third question, whether a gentle stop clears the record: MSYS `kill -TERM`
+    // cannot reach a Windows process at all ("No such process", separate pid spaces) and `taskkill` without
+    // /F is refused by Windows, so a real console Ctrl-C could not be produced from that harness. A hard
+    // `taskkill /F` does leave the record behind, which is expected -- no handler runs -- and the next panel
+    // discards the stale pid and starts fresh, which was measured.
+    notApplicable('the record holding the token is written 0600', 'POSIX mode bits are advisory on win32; the file inherits the user profile ACL instead — measured: SYSTEM, Administrators and the owner, no Everyone or Users, so weaker than 0600 and written down as such', 'windows-csk for the ACL and the shared-token path; NOBODY YET for whether a gentle stop clears the record');
+  } else {
+    const mode = fs.statSync(inst.statePath(deadPort)).mode & 0o777;
+    check('the record holding the token is written 0600', mode === 0o600, mode.toString(8));
+  }
+  await inst.clearState(deadPort);
+  check('clearState removes the record', !fs.existsSync(inst.statePath(deadPort)));
+
+  fs.rmSync(rtDir, { recursive: true, force: true });
+  if (prevRt === undefined) delete process.env.CSK_STUDIO_RUNTIME;
+  else process.env.CSK_STUDIO_RUNTIME = prevRt;
+}
+
 process.stdout.write('\n');
 if (pass + fail === 0) {
   // The branch that audits the harness itself. An empty run is a broken

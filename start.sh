@@ -378,6 +378,27 @@ echo "  Backend pattern '$STACK': $(ls .claude/agents/*.md 2>/dev/null | wc -l |
 # studio's gate hook is invoked as `bash <path>` today, so the bit is not load-bearing
 # yet; set it anyway, because a future direct exec would fail silently.
 chmod +x .claude/hooks/*.sh .claude/hooks/pre-commit .claude/hooks/commit-msg .claude/eval/*.sh .claude/studio/server/hooks/*.sh 2>/dev/null || true
+
+# --- §4.2: arm the vendor name the kit itself put on this machine ------------------------------------
+# The blocklist ships this pattern COMMENTED, next to a note telling the reader to add their own vendor or
+# template name. That note is right for a name only the user knows -- and wrong for this one, because on the
+# DevArchitecture path the kit is what brought the vendor here. §4.2 says that name never appears in an
+# artifact; leaving the rule as a comment the user has to find made it advice, and advice is what §4.2 is not.
+#
+# Armed ONLY on this path. A --generic install has no DevArchitecture, so a pattern for it would block a
+# perfectly ordinary commit for no reason -- for instance one that merely discusses the pattern.
+#
+# A project with a legitimate reason to write the name puts the full line in its own .trace-allowlist.txt,
+# which is the same escape every other pattern has. The `#test:` line comes with it because smoke-test drives
+# every ACTIVE pattern through the real hook and fails a pattern that has no case: an untested pattern is how
+# a typo ships as a gate that matches nothing.
+if [ "$DEVARCH_ON" = 1 ] && [ -f .claude/hooks/trace-blocklist.txt ]; then
+  if grep -qx '# DevArchitecture' .claude/hooks/trace-blocklist.txt; then
+    awk '/^# DevArchitecture$/ { print "DevArchitecture"; print "#test: ported the handler from DevArchitecture"; next } { print }' \
+      .claude/hooks/trace-blocklist.txt > .claude/hooks/trace-blocklist.txt.kit-tmp \
+      && mv .claude/hooks/trace-blocklist.txt.kit-tmp .claude/hooks/trace-blocklist.txt
+  fi
+fi
 cp "$SRC/AGENT_TEMPLATE.md" .claude/ 2>/dev/null || true
 cp "$SRC/README.md"         .claude/ 2>/dev/null || true
 

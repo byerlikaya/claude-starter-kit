@@ -29,7 +29,8 @@ do not impose your own preferences.
 
 
 ## Before writing any of it
-Run the **confidence-check** skill first. It is the only gate in the kit that fires BEFORE implementation:
+Run the **confidence-check** skill first. It is the only check in the kit that comes BEFORE implementation —
+and it is **model discipline, not a gate**: no hook enforces it, so it holds only because you run it.
 review and the DoD catch bad code, none of them catch correct code that duplicates something already here or
 is built on a recalled API shape. Any "no" is a stop, not a caveat.
 

@@ -43,14 +43,16 @@ fails, say which one and stop — do not improvise a different launch.
    read as a broken panel. Everything else — the live agent graph, owned sessions, the permission bridge,
    the terminals — works the same in both editions.
 
-2. **Resolve a runtime — do not ask whether a name resolves.** `ensure-node.sh` sits beside the panel, so
-   use whichever root step 1 settled on:
+2. **Resolve a runtime — do not ask whether a name resolves.** `ensure-node.sh` sits one level ABOVE the panel
+   — beside the `server/` directory, not inside it. Both spellings, in full, so there is nothing to guess:
 
    ```bash
-   bash <panel-root>/ensure-node.sh --explain
+   bash .claude/studio/ensure-node.sh --explain               # full install
+   bash ${CLAUDE_PLUGIN_ROOT}/studio/ensure-node.sh --explain  # plugin edition (step 1 decided which)
    ```
 
-   It prints the path of a Node 18+ that actually runs and exits 1 when there is none. Use that path;
+   It prints the absolute path of a Node 18+ that actually runs, and exits 1 when there is none. Use that path;
+   do not assume it is `node`. Use that path;
    do not assume it is `node`. It looks in places PATH does not reach — a version manager puts node on
    PATH from a login shell only, so "nvm is installed" and "this shell can see node" are different
    facts. And it runs what it finds rather than trusting the name: the Windows Store ships a stub that
@@ -64,7 +66,7 @@ fails, say which one and stop — do not improvise a different launch.
    end. Show them what it would do, then ask:
 
    ```bash
-   bash <panel-root>/ensure-node.sh --plan       # url, size, checksum source, target directory
+   bash <the same path as step 2> --plan       # url, size, checksum source, target directory
    ```
 
    It fetches the current Node LTS from nodejs.org into `~/.claude/studio-runtime`, verifies it against
@@ -76,7 +78,7 @@ fails, say which one and stop — do not improvise a different launch.
    On yes:
 
    ```bash
-   bash <panel-root>/ensure-node.sh --install    # prints the node path on success
+   bash <the same path as step 2> --install    # prints the node path on success
    ```
 
    Never run `--install --yes` on the user's behalf without that answer, and never install anything
@@ -93,12 +95,33 @@ fails, say which one and stop — do not improvise a different launch.
    way in is the worst outcome here. Tell the user it runs until they stop it, and how (Ctrl-C in that
    shell, or kill the process). Do not hold it in a foreground tool call.
 
-5. **Port already in use** → retry once with `--port <n>` and report the new URL.
+5. **Port already in use.** Start it anyway and read what it says — the panel checks whether the holder is
+   another csk-studio first, and there is nothing for you to decide before it does. Two answers:
+
+   - `already running on port <n> (pid …) — reusing it`, followed by a tokenised URL and exit 0. That is a
+     panel someone else started, usually another session in this project. **Report that URL**; it is the same
+     panel, and the token in it is the running instance's own. Tell the user it belongs to whoever started it,
+     so closing this shell does not stop it.
+   - `held by something that is not a csk-studio panel` and exit 1. Then retry once with `--port <n+1>` and
+     report the new URL. If that port is taken too, stop and say both are taken rather than walking up the
+     range — something is listening that the user should look at.
+
+   The record that makes the first answer possible lives in `~/.claude/studio-runtime/instance-<port>.json`,
+   0600, and holds the token. A panel that was killed leaves one behind; the next start probes it, gets no
+   answer, and deletes it — so a stale file reports as the second answer, never as a URL that does not open.
 
 6. **`--enable-pty` only if the user asks for raw shells.** When they do, say this before starting it: a
    command typed into a raw shell never becomes a tool call, so it reaches no `PreToolUse` hook and
    `guard-bash.sh` is blind to it. Everything else in the panel routes through a tool call and therefore
    through the gates.
+
+**Quoting the panel's output.** It prints two things that belong to this machine and nowhere else: the machine
+NAME, and a URL carrying a freshly generated token. Handing both to the user is the whole point — they are
+sitting at that machine. Putting either into anything that leaves it is not: a commit message, a PR, a
+CHANGELOG, an issue, a report to another session. The name is a §4.3 private term, and the token is a
+credential, loopback-scoped but still live for as long as that panel runs. So when you quote panel output
+anywhere but to the user, drop the machine line and replace the token with `…`. `.private-terms.txt` catches
+the name only if someone thought to add it; nothing catches the token.
 
 **What the panel's scope actually is.** It reads `~/.claude/projects` — every Claude Code session on this
 machine, not this project's. Starting it from a project root only decides which project it opens on. Say

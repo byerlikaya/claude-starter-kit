@@ -352,6 +352,14 @@ case "$MODE" in
     say "looking for a Node $FLOOR or newer"
     found="$(resolve)"
     if [ -n "$found" ]; then
+      # A bare name is not an answer. The caller hands this string to a launcher that may not share this PATH,
+      # and /studio-csk tells the model "use the path it prints" -- while this printed `node`, measured. Only one
+      # candidate can be a name (PATH's own), and works() has already run it, so `command -v` names the very file
+      # that answered. If it somehow resolves to nothing, keep the name rather than lose a working runtime.
+      case "$found" in
+        */*) : ;;
+        *)   _abs="$(command -v "$found" 2>/dev/null)"; [ -n "$_abs" ] && found="$_abs" ;;
+      esac
       say "found: $found"
       printf '%s\n' "$found"
       exit 0

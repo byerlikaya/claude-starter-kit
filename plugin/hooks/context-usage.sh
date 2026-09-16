@@ -61,6 +61,50 @@ $(cat 2>/dev/null || true)"
     if [ "$_r" != "$IN" ]; then _r="${_r#*\"}"; TR="${_r%%\"*}"; fi
   fi
 fi
+# --- Permission mode: say it once, while it still saves a turn -----------------------------------------
+# §4.4 already states that the commit gate FAILS CLOSED in auto, dontAsk, plan and bypassPermissions, because
+# in those modes software answers the prompt and nothing can prove a person did. What the session had no way to
+# know was which mode it was IN. guard-bash.sh reads permission_mode, but only when it is already refusing --
+# which is one turn too late. Measured in the field: the user said "commit", the guard refused, the mode was
+# switched, and the command ran again. Everything behaved correctly and a turn was still spent on a fact that
+# was available from the start.
+#
+# The published UserPromptSubmit schema carries `permission_mode`, with a JSON example showing it, so this is
+# read rather than assumed; if it is ever absent the slice comes back empty and nothing is printed.
+#
+# ONCE PER SESSION, not once per turn. The model needs this fact, not a reminder of it, and a line repeated
+# before every prompt in a mode people leave on all day is pure tax. Keyed by the mode itself, so switching
+# modes mid-session announces the new one -- the same marker pattern the stale-discipline gate below uses.
+# Modes where the gate does NOT fail closed say nothing at all: there the prompt reaches a person and there is
+# no turn to save.
+# Placed HERE, before the transcript work, because it must not depend on it. The first version sat further
+# down and never ran on a session whose transcript could not be read -- the hook exits early for that, and a
+# session with no usable transcript is exactly one that has no other way to learn its own mode. It derives its
+# own session id for the same reason: everything below it is allowed to give up.
+if [ -n "${IN:-}" ]; then
+  PSID="${IN#*\"session_id\"}"
+  [ "$PSID" = "$IN" ] && PSID="" || { PSID="${PSID#*:}"; PSID="${PSID#*\"}"; PSID="${PSID%%\"*}"; }
+  case "$PSID" in ''|*[!A-Za-z0-9._-]*) PSID="" ;; esac
+fi
+if [ -n "${IN:-}" ] && [ -n "${PSID:-}" ]; then
+  PM="${IN#*\"permission_mode\"}"
+  if [ "$PM" != "$IN" ]; then
+    PM="${PM#*:}"; PM="${PM#*\"}"; PM="${PM%%\"*}"
+    case "$PM" in
+      auto|dontAsk|plan|bypassPermissions)
+        PMARK="${TMPDIR:-/tmp}/csk-permmode.${PSID}"
+        WASM=""
+        [ -f "$PMARK" ] && IFS= read -r WASM < "$PMARK" 2>/dev/null
+        if [ "$WASM" != "$PM" ]; then
+          printf '%s' "$PM" > "$PMARK" 2>/dev/null || true
+          echo "🔒 Permission mode: $PM — git commit/push FAILS CLOSED here (§4.4). Say so BEFORE asking for approval: a real yes still comes first, then the user switches mode (or exports CLAUDE_GIT_OK=1 in headless/CI)."
+        fi
+        ;;
+    esac
+  fi
+fi
+
+
 [ -n "$TR" ] && TR="$(unjson_path "$TR")"
 # 2) still missing: derive the project dir from pwd.
 # ---- CSK-TRANSCRIPT-DIR (kept byte-identical in context-usage.sh and session-stats.sh; smoke-test §6i3 pins it)

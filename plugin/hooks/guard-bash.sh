@@ -540,9 +540,15 @@ case "$CMD" in *[Ll][Nn][[:space:]]*|*[Mm][Kk][Ll][Ii][Nn][Kk]*) : ;; *) false ;
 # walked straight through.
 # `Select-String`/`sls` is left OUT on purpose, for the same reason grep/awk/sed are: it takes the pattern
 # first, so `.env` on that line is as likely to be what is being searched for as what is being searched.
-{ case "$CMD" in *[Ee][Nn][Vv]*) : ;; *) false ;; esac && { has '(^|[^A-Za-z0-9_/.-])(cat|less|more|head|tail|tac|nl|xxd|od|strings|hexdump|base64|sort|uniq|cp|scp|rsync|get-content|gc|type|get-item|gi)[[:space:]]+(-[^;&|[:space:]]*[[:space:]]+)*([^;&|[:space:]]*/)?\.env(\.[A-Za-z0-9_-]+)?([[:space:]]|$|[;&|>])' \
-    || has '<[[:space:]]*([^;&|[:space:]]*/)?\.env(\.[A-Za-z0-9_-]+)?([[:space:]]|$|[;&|])'; } \
-    && ! has '\.env\.(example|sample|template|dist)([^A-Za-z0-9_-]|$)'; } \
+# The three patterns live in variables because the SAME rule is applied twice: once to the command below, and
+# once to each line of a script the command runs (the two-step rule further down). Written out twice they drift
+# -- the direct one gains a reader verb, the indirect one silently keeps letting it through.
+ENV_READ_RE='(^|[^A-Za-z0-9_/.-])(cat|less|more|head|tail|tac|nl|xxd|od|strings|hexdump|base64|sort|uniq|cp|scp|rsync|get-content|gc|type|get-item|gi)[[:space:]]+(-[^;&|[:space:]]*[[:space:]]+)*([^;&|[:space:]]*/)?\.env(\.[A-Za-z0-9_-]+)?([[:space:]]|$|[;&|>])'
+ENV_REDIR_RE='<[[:space:]]*([^;&|[:space:]]*/)?\.env(\.[A-Za-z0-9_-]+)?([[:space:]]|$|[;&|])'
+ENV_TEMPLATE_RE='\.env\.(example|sample|template|dist)([^A-Za-z0-9_-]|$)'
+{ case "$CMD" in *[Ee][Nn][Vv]*) : ;; *) false ;; esac && { has "$ENV_READ_RE" \
+    || has "$ENV_REDIR_RE"; } \
+    && ! has "$ENV_TEMPLATE_RE"; } \
     && block "reading a .env secret via the Bash tool" "4.5"
 
 # The same reasoning, one scope wider. `.env` was the only credential file either gate covered, which left the
@@ -566,6 +572,128 @@ CRED='(\.ssh/(id_[A-Za-z0-9_]+|identity)|(^|/)id_(rsa|dsa|ecdsa|ed25519)|\.aws/c
     || has "<[[:space:]]*[^;&|[:space:]]*$CRED"; } \
     && ! has '(\.pub|\.example|\.sample|\.template)([^A-Za-z0-9_-]|$)'; } \
     && block "reading a private key / credential file via the Bash tool" "4.5"
+
+# §4.5-adjacent, THE SECOND STEP. Everything above scans the COMMAND; none of it sees what a script FILE does.
+# Measured against the shipped hook on macOS: `cat .env.local` blocks (rc=2), while `bash leak.sh`, `./leak.sh`
+# and `sh leak.sh` -- a one-line script running that identical cat -- all returned rc=0. The Windows shape,
+# `powershell -ExecutionPolicy Bypass -File x.ps1`, is the same hole, so this is a design gap and not a platform
+# one. It is also not hypothetical: a field session hit the direct block, wrote the read into a .ps1, ran it by
+# path, and stored "put it in a file and use -File" in its memory as the fix.
+#
+# EACH LINE OF THE SCRIPT IS JUDGED EXACTLY AS A COMMAND LINE WOULD BE -- same three patterns, same template
+# exemption, one rule in one place. Per line rather than per file on purpose: a file-wide exemption would let one
+# `# see .env.example` comment unlock the whole script.
+#
+# WHAT THIS DOES NOT CLOSE, so nobody reads it as more than it is: a script that builds the path at runtime,
+# decodes it, sources another file, or is fetched rather than written. Those stay open and are not closable by
+# pattern. This closes the literal two-step, which is the one that actually happens.
+#
+# Cost: the case prefilter is a shell builtin, the token loop forks nothing, and a file is read only when the
+# command really does name a script that exists on disk -- so an ordinary command pays one case test.
+# NAMING A SCRIPT IS NOT RUNNING IT, and the first version of this rule missed that: it scanned every token,
+# so `ls -l leak.sh`, `chmod +x leak.sh`, `git add leak.sh` and `shellcheck leak.sh` were all blocked. None of
+# them surfaces a secret -- they surface the SCRIPT -- and a gate that stops ordinary file handling is a gate
+# people turn off. Measured before the narrowing: five of six non-executing commands blocked.
+#
+# So a token counts only where a shell would actually execute it: after an interpreter word (flags and their
+# values skipped, which is what `-ExecutionPolicy Bypass -File x.ps1` needs), or as a `./x` / `/abs/x` in
+# COMMAND position -- first, or straight after a separator. An interpreter glued to a separator (`x;bash f.sh`)
+# is found by trimming to the last separator inside the token; word splitting is on whitespace, so that shape
+# would otherwise be missed.
+#
+# It under-blocks rather than over-blocks where it is unsure -- `echo bash leak.sh` still counts, a script
+# whose path is built at runtime does not -- and that is the correct direction for a rule sitting in front of
+# every command in the session.
+# The prefilter asks "could this command run something", not "does a filename here end in .sh". Keying it on
+# extensions missed two whole shapes: `cmd /c leak.bat`, and `bash runme` where the script carries no extension
+# at all. It is keyed on the interpreter words instead, which is broader and costs nothing extra -- everything
+# past it is shell builtins, and a command that reaches the loop with no interpreter and no ./ in it does a few
+# string comparisons and stops.
+# A RELATIVE SCRIPT PATH IS RELATIVE TO SOMETHING, and until now that something was this hook's own process
+# cwd -- never the payload's `cwd`, which was documented at the top of this file and then never read. Measured
+# on Windows 11 with the real hook: with the process cwd at the project, `bash leak.sh` blocked; with the
+# process cwd anywhere else it PASSED, while the payload still said the project. Absolute paths blocked from
+# every cwd. So relative-path execution was in scope only by accident of where the hook happened to be started.
+#
+# The payload's own answer is used when it has one, and the process cwd stays as the fallback: measured in the
+# same run, a WRONG payload cwd and an ABSENT one both still blocked through the fallback, so consulting the
+# payload only ever adds coverage. Parameter expansion, no fork, and backslashes folded for the same reason the
+# token is folded below.
+_CWD="${INPUT#*\"cwd\"}"
+if [ "$_CWD" != "$INPUT" ]; then
+  _CWD="${_CWD#*:}"; _CWD="${_CWD#*\"}"; _CWD="${_CWD%%\"*}"; _CWD="${_CWD//\\//}"
+  [ -d "$_CWD" ] || _CWD=""
+else
+  _CWD=""
+fi
+
+_looks_exec=0
+case "$CMD" in
+  *[Bb][Aa][Ss][Hh]*|*[Ss][Hh]*|*[Kk][Ss][Hh]*|*[Dd][Aa][Ss][Hh]*|*[Ss][Oo][Uu][Rr][Cc][Ee]*\
+  |*[Pp][Ww][Ss][Hh]*|*[Cc][Mm][Dd]*|*./*|*.\\*) _looks_exec=1 ;;
+esac
+if [ "$_looks_exec" = 1 ]; then
+  set -f                                     # a token like *.sh must not glob against the cwd
+  _interp=0; _cmdpos=1
+  for _tok in $CMD; do
+    _tok="${_tok%\"}"; _tok="${_tok#\"}"; _tok="${_tok%\'}"; _tok="${_tok#\'}"
+    # Backslashes folded to forward slashes, the same substitution route-hint.sh applies to its roots.
+    #
+    # THE REASON IS THE `case` PATTERNS, NOT `[ -f ]`, and the difference is written down because getting it
+    # wrong is how this line gets deleted later as redundant. Measured on Git Bash (Windows 11) rather than
+    # assumed: `[ -f ]` resolves ALL THREE spellings on its own -- `C:/repo/leak.ps1`, `/c/repo/leak.ps1` and
+    # `C:\repo\leak.ps1` unfolded -- so the existence test never needed this. What needs it is the glob below:
+    # `.\leak.ps1` does not match `./*`, and Windows is where a path is natively written that way. Without the
+    # fold the candidate is never even considered, and the rule quietly does not exist on that platform.
+    #
+    # A no-op where there is nothing to fold. Used ONLY to decide whether a file is being run; nothing is
+    # executed from it, so a `my\ file.sh` style escape loses nothing but this rule's interest.
+    _tok="${_tok//\\//}"
+    # separators reset both states: a new command begins after them
+    case "$_tok" in
+      *[\;\&\|]*)
+        case "$_tok" in
+          \;|\&\&|\|\||\||\&) _interp=0; _cmdpos=1; continue ;;
+        esac ;;
+    esac
+    # the interpreter test looks at the tail after any glued separator, then at the basename
+    _base="${_tok##*;}"; _base="${_base##*&}"; _base="${_base##*|}"; _base="${_base##*/}"
+    case "$_base" in
+      bash|sh|zsh|ksh|dash|source|.|powershell|powershell.exe|pwsh|pwsh.exe|cmd|cmd.exe)
+        _interp=1; _cmdpos=0; continue ;;
+    esac
+    case "$_tok" in
+      -[Ff]ile|-[Ff]|--file) _interp=1; continue ;;   # PowerShell's -File names the script that follows
+      -*) continue ;;                                 # any other flag leaves both states alone
+      /[A-Za-z]) continue ;;                          # cmd.exe spells its flags /c and /k, not -c
+    esac
+    _cand=0
+    if [ "$_interp" = 1 ]; then
+      _cand=1                                         # the word after an interpreter, flag values included
+    elif [ "$_cmdpos" = 1 ]; then
+      case "$_tok" in ./*|/*) _cand=1 ;; esac          # ./x or an absolute path, run directly
+    fi
+    _cmdpos=0
+    [ "$_cand" = 1 ] || continue
+    # Both roots tried: the hook's own cwd first, then the one the payload names. A flag value that is not a
+    # file under either just keeps _interp set, so `-ExecutionPolicy Bypass -File x.ps1` still reaches x.ps1.
+    _path=""
+    if [ -f "$_tok" ] && [ -r "$_tok" ]; then _path="$_tok"
+    elif [ -n "$_CWD" ]; then
+      case "$_tok" in
+        /*|[A-Za-z]:/*) : ;;                            # already absolute; the payload cwd cannot help
+        *) [ -f "$_CWD/$_tok" ] && [ -r "$_CWD/$_tok" ] && _path="$_CWD/$_tok" ;;
+      esac
+    fi
+    [ -n "$_path" ] || continue
+    _interp=0
+    if grep -iE -- "$ENV_READ_RE|$ENV_REDIR_RE" "$_path" 2>/dev/null | grep -qivE -- "$ENV_TEMPLATE_RE"; then
+      set +f
+      block "running a script that reads a .env secret (the two-step read)" "4.5"
+    fi
+  done
+  set +f
+fi
 
 # §4.5 force-add bypasses .gitignore (sneaks build output / secrets past the bloat & ignore rules); deleting a
 # lockfile is a §4.5 op the discipline already names. Both are only done on an explicit request.

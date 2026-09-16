@@ -27,10 +27,29 @@ When a task/subtask closes with DoD met (the last step before commit).
 
 ## How (applies the `commit-message` skill)
 1. Read `git diff --staged` (if empty, `git status` + ask the user with explicit options about scope).
-2. Classify the change → `type(scope): summary` (English, ≤72, no trailing period).
+2. Shape the message **the skill's way** — Conventional Commits `type(scope): summary` unless `./CLAUDE.md`
+   declares a `## Conventions` format, which wins. Language likewise: the project's, never a fixed one.
+   Any literal the request hands you (ticket id, `#time 1d`, a required prefix) is copied EXACTLY; if a literal
+   fights the format, say so and ask rather than adjusting it.
 3. If justification is needed, add the WHY to the body; if breaking, a `BREAKING CHANGE:` footer.
 4. Mixed diff → split into atomic commits, proposing a separate message for each.
 5. **Version/tag** work (tag · CHANGELOG) → applies the `release` skill (SemVer).
+
+## Writing the message on Windows
+`git commit -m` with a multi-line message and PowerShell here-strings do not survive each other: measured on
+PowerShell 5.1, `git commit -F - @'…'@` hands the text to git as an ARGUMENT, git reads it as a pathspec
+("did not match any file(s)"), and a `git add` earlier in the same line leaves the tree staged but uncommitted.
+Write the message to a UTF-8 file WITHOUT a BOM and use `git commit -F <file>`; measured on the same machine,
+that path commits cleanly with the subject and body intact.
+
+**And do not read the outcome through `Select-Object -First N`.** `git status -sb | Select-Object -First 1`
+reports failure after a commit that succeeded — but the cause is not git, not `status`, and not commits. Taking
+the first N items stops the pipeline early, and that alone sets the failing code: measured on PowerShell 5.1,
+`git status -sb` on its own is 0 and so are `-Last 1`, `Out-String`, `ForEach-Object` and `Where-Object` on the
+same output, while `-First 1` fails after `git log`, after `where.exe`, after `cmd /c`, and after `1..5` —
+a producer with no external process in it at all. So the rule is about the operator, not about git. The value
+depends on where you read it: `$LASTEXITCODE` shows -1 inside PowerShell, and the process exits 255 to whatever
+launched it (the low byte of -1); both are the same failure. Judge a commit with `git log -1 --oneline`.
 
 ## Constraints
 - Does NOT modify source code.

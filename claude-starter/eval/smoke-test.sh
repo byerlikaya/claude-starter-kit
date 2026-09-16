@@ -758,6 +758,31 @@ if CONTEXT_WINDOW=1000000 CSK_CONTEXT_MAX_BYTES=1048576 bash "$HOOKS/context-usa
 rm -f "$BIGFX"
 rm -f "$FX"
 [ -x "$HOOKS/commit-msg" ]       && pass "commit-msg hook +x"           || fail "commit-msg missing/not executable"
+# Permission mode, announced once. §4.4 says the commit gate fails closed in auto/dontAsk/plan/bypassPermissions;
+# the session had no way to know which mode it was in, because guard-bash.sh reads permission_mode only when it
+# is already refusing -- one turn too late. Measured in the field: a user said "commit", the guard refused, the
+# mode was switched, the command ran again. Correct behaviour, one turn spent on a fact available from the start.
+#
+# Four properties, and the last two are the ones that keep it from becoming noise: it says nothing in the modes
+# where the prompt reaches a person, and it does not repeat itself. The transcript_path here points at nothing on
+# purpose -- an earlier version sat below the transcript work and never ran for a session whose transcript could
+# not be read, which is precisely the session with no other way to learn its mode.
+PMD="$(mktemp -d)"
+pmline(){ printf '{"hook_event_name":"UserPromptSubmit","session_id":"%s","permission_mode":"%s","transcript_path":"/no/such.jsonl"}' "$2" "$1" \
+  | TMPDIR="$PMD" bash "$HOOKS/context-usage.sh" 2>/dev/null | grep -c '🔒'; }
+[ "$(pmline auto pm1)" = 1 ]        && pass "a fail-closed permission mode is announced (auto)"            || fail "auto was not announced — §4.4 stays invisible until the guard refuses"
+[ "$(pmline auto pm1)" = 0 ]        && pass "...and not repeated on the next turn in the same mode"        || fail "the permission-mode line repeats every turn (per-turn tax in a mode people leave on)"
+[ "$(pmline dontAsk pm1)" = 1 ]     && pass "switching mode mid-session announces the new one"             || fail "a mid-session mode switch went unannounced"
+[ "$(pmline bypassPermissions pm2)" = 1 ] && pass "bypassPermissions is announced too"                     || fail "bypassPermissions was not announced"
+[ "$(pmline default pm3)" = 0 ]     && pass "default says nothing — the prompt reaches a person there"     || fail "the line fires in default, where there is no turn to save"
+[ "$(pmline acceptEdits pm4)" = 0 ] && pass "acceptEdits says nothing either"                              || fail "the line fires in acceptEdits, where the gate does not fail closed"
+if printf '{"hook_event_name":"UserPromptSubmit","session_id":"pm5"}' | TMPDIR="$PMD" bash "$HOOKS/context-usage.sh" 2>/dev/null | grep -q '🔒'; then
+  fail "the line was emitted with no permission_mode in the payload"
+else
+  pass "no permission_mode in the payload -> silent, not a guess"
+fi
+rm -rf "$PMD"
+
 [ -x "$HOOKS/context-usage.sh" ] && pass "context-usage.sh +x"          || fail "context-usage.sh missing/not executable"
 [ -x "$HOOKS/session-guard.sh" ] && pass "session-guard.sh +x (Stop)"   || fail "session-guard.sh missing/not executable"
 
@@ -1717,7 +1742,28 @@ echo "== 6f) always-on token budget =="
 # for that cost, and a gate rather than a reminder — a verbose new description fails the suite instead of
 # quietly taxing every future session. Budgets sit just above the current sizes: raising one is allowed, but
 # only as a deliberate edit here.
-BUDGET_DISC=12250    # DISCIPLINE.md (the discipline half of CLAUDE.md); currently 12200 (2026-09-11: +416 B — "tests green"
+BUDGET_DISC=12600    # DISCIPLINE.md (the discipline half of CLAUDE.md); currently 12569. (2026-09-16, second entry
+                     # of the day: +38 B. §4.5 already said a failing hook is never bypassed; it now also says never
+                     # to write down the way round one. A field session was blocked reading a .env, moved the read
+                     # into a script file, and stored "put it in a file and run it by path" in its project memory as
+                     # the fix -- so the bypass outlived the session that invented it and was reused. The code half is
+                     # closed (the guard now reads the script), but a note that teaches a workaround generalises to
+                     # every gate, and no gate can reach the memory. This is model discipline and the only reachable
+                     # half. Day total: 12200 -> 12569, +369 B across three edits, stated here so the ratchet is one
+                     # visible number rather than three quiet ones.)
+                     # (2026-09-16: +76 B — the
+                     # SECOND raise in two days, noted so the ratchet stays visible rather than creeping. A field
+                     # session skipped planner-csk on a genuinely ambiguous scope by citing the inline clause's own
+                     # `not code work`, which is the one exemption planner-csk can never be covered by: planning is
+                     # what it does. The DoD now says so where the rule is, not where the escape was taken.)
+                     # (2026-09-15: +255 B net,
+                     # two rules a field session cost us. (1) A skill's OUTPUT FORMAT is not on the collision ladder:
+                     # an invoked skill said "final reply = the report", the main thread stopped there, and the user
+                     # had to ask what we were waiting for — nothing was. (2) The DoD leaned on `/simplify`, a built-in
+                     # the kit neither ships nor can keep from being shadowed; when it was, the step degraded silently.
+                     # Paid for by dropping the commit LANGUAGE rule from §4.1 — a kit-owned file identical in every
+                     # project cannot know a team's language, so it moved to the ./CLAUDE.md template.)
+                     # (2026-09-11: +416 B — "tests green"
                      # is ONE run of the suite on the final code, reported as command + exit code + counts, and the main
                      # thread and the reviewer cite that report instead of running the suite again. Measured and
                      # pre-registered, 18 sessions on three Node cases (evals/README.md): test and build runs per session
@@ -2639,6 +2685,77 @@ gj auto 'cat config/.env.production' | bash "$HOOKS/guard-bash.sh" >/dev/null 2>
 gj auto 'cp .env /tmp/x'        | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "cp .env out BLOCKED (H4)" || fail "cp .env exfil PASSED (H4)"
 gj auto 'cat .env.example'      | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && pass "cat .env.example (template) NOT over-blocked" || fail ".env.example wrongly blocked"
 gj auto 'sort data.env'         | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && pass "non-dotenv data.env NOT over-blocked" || fail "data.env wrongly blocked"
+# H4b: THE TWO-STEP READ. H4 above scans the COMMAND; until 2.10.2 nothing looked at what a script FILE does.
+# Measured against the then-shipped hook: `cat .env.local` returned 2, while `bash leak.sh`, `./leak.sh` and
+# `sh leak.sh` -- a one-line script running that identical cat -- all returned 0. The `-File x.ps1` form is the
+# same hole on Windows. Each case runs inside its own directory so the guard resolves real files, and the
+# must-NOT-block half is the point: an ordinary `bash build.sh` has to stay free, or the gate is unusable.
+H4B="$(mktemp -d)"
+printf 'TOKEN=synthetic\n'                        > "$H4B/.env.local"
+printf 'TOKEN=placeholder\n'                      > "$H4B/.env.example"
+printf '#!/usr/bin/env bash\ncat .env.local\n'    > "$H4B/leak.sh"
+printf 'Get-Content .env.local\n'                 > "$H4B/leak.ps1"
+printf '#!/usr/bin/env bash\nnpm run build\n'     > "$H4B/clean.sh"
+printf '#!/usr/bin/env bash\ncat .env.example\n'  > "$H4B/template.sh"
+printf '@echo off\ntype .env.local\n'            > "$H4B/leak.bat"
+printf '#!/usr/bin/env bash\ncat .env.local\n'   > "$H4B/runme"
+h4brc(){ ( cd "$H4B" && gj auto "$1" | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; echo "$?" ); }
+h4bblock(){ [ "$(h4brc "$1")" = 2 ] && pass "two-step read BLOCKED: $1 (H4b)" || fail "$1 PASSED — the two-step read is open again (H4b)"; }
+h4bfree(){  [ "$(h4brc "$1")" = 0 ] && pass "NOT over-blocked: $1 (H4b)"      || fail "$1 wrongly blocked — ordinary scripts must run (H4b)"; }
+h4bblock 'bash leak.sh'
+h4bblock './leak.sh'
+h4bblock 'sh leak.sh'
+h4bblock 'powershell -ExecutionPolicy Bypass -File leak.ps1'
+h4bblock 'bash -x leak.sh'
+h4bblock 'source leak.sh'
+h4bblock 'npm test && bash leak.sh'
+# Three shapes the first prefilter could not see, all pointed out by the Windows session before it measured
+# anything. `cmd /c x.bat` and an extensionless `bash runme` were missed because the prefilter keyed on
+# filename EXTENSIONS rather than on whether the command runs something; it keys on the interpreter words now.
+# The backslash rows are the Windows spelling of a path, folded to forward slashes the way route-hint.sh
+# already folds its roots -- without that the whole rule simply would not exist on the platform whose native
+# form is `.\leak.ps1`. Whether `[ -f ]` then resolves such a path on Git Bash is measured THERE, not here.
+h4bblock 'cmd /c leak.bat'
+h4bblock 'cmd.exe /k leak.bat'
+h4bblock 'bash runme'
+h4bblock 'powershell -File .\\leak.ps1'
+h4bblock 'bash .\\leak.sh'
+h4bfree  'bash clean.sh'
+h4bfree  'bash template.sh'
+h4bfree  'bash missing.sh'
+h4bfree  'echo hello.sh'
+# NAMING A SCRIPT IS NOT RUNNING IT. The first version of the rule scanned every token, and these five were all
+# blocked -- none of them surfaces a secret, they surface the SCRIPT, and a gate that stops ordinary file
+# handling is a gate people switch off. They are here because they are what caught it.
+h4bfree  'ls -l leak.sh'
+h4bfree  'chmod +x leak.sh'
+h4bfree  'git add leak.sh'
+h4bfree  'shellcheck leak.sh'
+h4bfree  'cat leak.sh'
+h4bfree  'echo done'
+# A RELATIVE SCRIPT PATH IS RELATIVE TO SOMETHING, and every row above runs with the hook's process cwd sitting
+# in the fixture, which is the friendly case. Measured on Windows with the real hook: move the process cwd
+# anywhere else and `bash leak.sh` PASSED, while the payload's own `cwd` field -- documented at the top of
+# guard-bash.sh and then never read -- still named the project. Relative-path execution was therefore in scope
+# only by accident of where the hook happened to be started. These rows run the hook from a DIFFERENT directory
+# and pin both halves: the payload's cwd is consulted, and the process cwd still works when the payload's is
+# wrong or missing, so consulting it only ever adds coverage.
+h4bcwd(){ # $1 = payload cwd, $2 = process cwd, $3 = command
+  printf '{"tool_name":"Bash","permission_mode":"auto","cwd":"%s","tool_input":{"command":"%s"},"hook_event_name":"PreToolUse"}' "$1" "$3" \
+    | ( cd "$2" && bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; echo "$?" ); }
+OUTSIDE="$(mktemp -d)"
+[ "$(h4bcwd "$H4B" "$OUTSIDE" 'bash leak.sh')" = 2 ] && pass "a relative script is resolved against the payload's cwd, not only the hook's (H4b)" || fail "relative script run from another cwd PASSED — the rule is in scope only by accident of where the hook starts (H4b)"
+[ "$(h4bcwd "/no/such/dir" "$H4B" 'bash leak.sh')" = 2 ] && pass "...and a wrong payload cwd still falls back to the process cwd (H4b)" || fail "a wrong payload cwd broke the fallback (H4b)"
+[ "$(h4bcwd "" "$H4B" 'bash leak.sh')" = 2 ]           && pass "...and an absent payload cwd does too (H4b)"                            || fail "an absent payload cwd broke the fallback (H4b)"
+[ "$(h4bcwd "$H4B" "$OUTSIDE" 'bash clean.sh')" = 0 ]  && pass "an ordinary script from another cwd is still free (H4b)"                || fail "the cwd lookup over-blocked an ordinary script (H4b)"
+rm -rf "$OUTSIDE"
+
+# Calibration, in the SAME directory the cases run in: the direct rule must still separate these two, or a green
+# H4b would only prove the fixture is inert.
+[ "$(h4brc 'cat .env.local')"   = 2 ] && pass "calibration: the direct .env read still blocks here (H4b)" || fail "calibration broken: cat .env.local no longer blocks (H4b)"
+[ "$(h4brc 'cat .env.example')" = 0 ] && pass "calibration: the template still reads here (H4b)"          || fail "calibration broken: .env.example blocked (H4b)"
+rm -rf "$H4B"
+
 # H5: .env was the only credential file either gate covered, which left the files that unlock OTHER systems open.
 # Read one and it is in the context, one summary or one web call from leaving the machine — and unlike a commit,
 # nothing downstream scans for that.
@@ -3397,6 +3514,14 @@ echo "== 7y) route-hint: names the owner next to the request =="
 # unnoticed; the four agent rows above are the other half, proving the agent-over-skill preference still holds
 # where the agent match is credible on its own.
 #
+# THE THREE SILENT NOTIFICATION ROWS pin a turn that carries no request at all. A field session watched the hook
+# inject "Use the <x> subagent for this task" when the user had typed nothing: a background subagent finished,
+# its REPORT was the turn's text, and the report scored as the request -- naming, both times, the agent whose
+# finished work was being reported. Seven of that session's ten injections arrived this way and none was useful.
+# The fourth row is their calibration twin and the reason the check is anchored to the START of the prompt: a
+# real request that happens to contain the words "system notification" must still route, or the fix would have
+# bought silence by going deaf.
+#
 # "the build fails on CI" USED TO ASSERT SILENCE and now asserts ci-pipeline. That is a scope change, not a
 # weakened assertion: the skill gained a "When the pipeline is red" section, so the request it used to have no
 # owner for now has one. A stale expectation kept for its own sake would have taught the opposite of the rule
@@ -3438,7 +3563,32 @@ a11y|this needs an accessibility audit
 a11y|the page needs an accessibility audit
 handoff|I want to hand off the session state
 worktree|isolate this in a git worktree
+SILENT|<task-notification>Agent database-expert-csk finished: wrote the migration and seed for the invoices table</task-notification>
+SILENT|[SYSTEM NOTIFICATION] the background agent finished its migration and seed report
+SILENT|<cross-session-message>report: the migration and the seed are written, an endpoint was added</cross-session-message>
+database-expert-csk|the system notification code needs a migration for the invoices table
 RHCASES
+
+  # --- the field name, which is the way this hook dies quietly -------------------------------------
+  # route-hint is the only thing in the kit that reads the prompt TEXT, and it gets that text by slicing one
+  # named field out of the payload. The published UserPromptSubmit schema calls that field `user_input`; the
+  # payload this hook was written against, and every case above, call it `prompt`. Whichever a given CLI sends,
+  # picking the wrong name fails SILENTLY — the slice is empty, the hook exits 0, routing is gone, and the suite
+  # stays green because the suite chooses the name too. That is the shape of a test that proves only itself.
+  # So the hook accepts both names and these three rows check the half the cases above cannot.
+  rhjson(){ printf '%s' "$1" | CLAUDE_PROJECT_DIR="$RHDIR" bash "$RH" 2>/dev/null; }
+  UI_ROUTE='{"hook_event_name":"UserPromptSubmit","prompt_id":"550e8400","permission_mode":"default","user_input":"write a migration and an index for the invoices table"}'
+  rhjson "$UI_ROUTE" | grep -q 'database-expert-csk' \
+    && pass "route-hint reads the documented 'user_input' field, not only 'prompt'" \
+    || fail "route-hint ignored 'user_input' — on a CLI that sends that name, routing is silently dead"
+  rhjson '{"hook_event_name":"UserPromptSubmit","user_input":"<task-notification>the agent finished the migration</task-notification>"}' \
+    | grep -q . && fail "the notification guard does not cover the 'user_input' shape" \
+    || pass "the notification guard covers both field names"
+  # `prompt_id` is a different field that starts with the same six letters. If the slice ever loses its closing
+  # quote it would match a UUID and route on it, which is a wrong route dressed as a working kit.
+  rhjson '{"hook_event_name":"UserPromptSubmit","prompt_id":"550e8400-e29b-41d4-a716-446655440000"}' \
+    | grep -q . && fail "route-hint matched 'prompt_id' as if it were the prompt" \
+    || pass "route-hint does not mistake 'prompt_id' for the prompt text"
 
   # --- cost gate: this hook runs on EVERY prompt, so its cost is the session's floor ------------------
   # The first implementation scored the payload with nested shell loops — a `sed|tr|sed` normalisation plus a

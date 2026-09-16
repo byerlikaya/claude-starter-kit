@@ -1,7 +1,7 @@
 ---
 name: devarch-module
 description: |
-  DevArchitecture backend pattern: MediatR CQRS handler/command/query, IResult/IDataResult, Autofac AOP chain,
+  Default .NET backend pattern: MediatR CQRS handler/command/query, IResult/IDataResult, Autofac AOP chain,
   FluentValidation, i18n. backend-expert-csk applies it.
 ---
 

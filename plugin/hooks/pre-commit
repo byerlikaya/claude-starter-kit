@@ -211,15 +211,45 @@ _csk_any(){   # $1 = pattern list  $2 = corpus  $3 = grep flags  $4 = 1 for newl
   grep -q$3 -- "$alt" "$2" 2>/dev/null
 }
 # (1) trace scan — case-INsensitive (vendor / AI-authorship strings), project files only
+# `!= 1` AND NOT `= 0`, AND THE DIFFERENCE IS THE WHOLE GATE. _csk_any joins every pattern into ONE
+# alternation and runs a single grep, so one malformed pattern anywhere in the file takes that grep down with
+# it -- exit 2, not 1. Measured, with a list holding `(AKIA|ASIA)[A-Z0-9]{16}` and `[unclosed`:
+#     good   list + matching corpus -> 0     good   list + clean corpus -> 1
+#     broken list + matching corpus -> 2     broken list + clean corpus -> 2
+# rc 2 means "I could not look", which is not "there is nothing there". So the guard treats anything that is
+# not a clean 1 as a reason to run the per-pattern loop below, where every pattern is tried on its own and the
+# broken one merely fails by itself.
+#
+# `= 0` reads as the same thing and is not: it skips the loop whenever the combined grep errors, so ONE typo
+# in a project's own added pattern turns the entire scanner fail-open and lets the commit through.
+#
+# NOTHING WOULD CATCH THAT SUBSTITUTION. On a well-formed blocklist the two spellings are identical in every
+# case -- measured above, 0 and 1 both route the same way -- so every test in this repo stays green, including
+# the malformed-pattern case, which only goes red BECAUSE the loop still runs. This comment is the only thing
+# standing between that rewrite and a silently open gate.
 if _csk_any "$BL" "$TRACE_F" iE 0; then _dec=0; else _dec=$?; fi
 if [ -f "$BL" ] && [ -s "$TRACE_F" ] && [ "$_dec" != 1 ]; then
   while IFS= read -r pat || [ -n "$pat" ]; do
     pat="${pat%$'\r'}"                       # tolerate a CRLF blocklist (Windows/autocrlf checkout) — a trailing \r
     case "$pat" in ''|\#*) continue;; esac   # in the pattern never matches the LF-normalised diff, blinding the gate
     if [ -n "$AL" ] && grep -qxF -- "$pat" "$AL"; then continue; fi
-    if grep -iqE -- "$pat" "$TRACE_F"; then
+    # A PATTERN THAT CANNOT COMPILE IS A GATE THAT IS NOT THERE, and it used to say so in grep's words, not
+    # ours: an unbalanced bracket printed "grep: brackets ([ ]) not balanced" into the middle of the commit
+    # output with nothing naming the file, the line, or the consequence. This file invites users to add their
+    # own vendor pattern, and a user who adds a broken one believes they are covered while nothing matches.
+    # CI catches it in this repo -- smoke drives every pattern with its own case and goes red -- but a consumer
+    # project runs no such suite, so the hook has to say it itself. It warns rather than blocks: the other
+    # patterns all still ran, so the commit is no less scanned than it was, and refusing every commit over one
+    # typo would cost more than the typo does.
+    # `|| _gr=$?` and not a bare call: `set -e` is in force at the top of this file, and a grep that simply
+    # does not match exits 1, which would kill the hook on the first clean pattern. Measured the wrong way once
+    # already -- the bare form made every commit exit 1 with no output at all.
+    _gr=0; grep -iqE -- "$pat" "$TRACE_F" 2>/dev/null || _gr=$?
+    if [ "$_gr" = 0 ]; then
       echo "TRACE-SCANNER: forbidden expression in added code -> '$pat' (§4.1/§4.2)"
       HIT=1
+    elif [ "$_gr" -ge 2 ]; then
+      echo "TRACE-SCANNER: /$pat/ in $BL is not a valid regular expression, so it matches NOTHING. Every other pattern still ran; fix or remove this line."
     fi
   done < "$BL"
 fi
@@ -230,9 +260,13 @@ if [ -f "$SL" ] && [ -s "$SECRET_F" ] && [ "$_dec" != 1 ]; then
     pat="${pat%$'\r'}"                       # tolerate a CRLF blocklist (Windows/autocrlf checkout)
     case "$pat" in ''|\#*) continue;; esac
     if [ -n "$SAL" ] && grep -qxF -- "$pat" "$SAL"; then continue; fi
-    if grep -qE -- "$pat" "$SECRET_F"; then
+    _gr=0; grep -qE -- "$pat" "$SECRET_F" 2>/dev/null || _gr=$?
+    if [ "$_gr" = 0 ]; then
       echo "SECRET-SCANNER: a staged line matches a secret pattern -> /$pat/"
       HIT=1
+    elif [ "$_gr" -ge 2 ]; then
+      # Same reasoning as the trace loop above; the comment there is the long form.
+      echo "SECRET-SCANNER: /$pat/ in $SL is not a valid regular expression, so it matches NOTHING. Every other pattern still ran; fix or remove this line."
     fi
   done < "$SL"
 fi
