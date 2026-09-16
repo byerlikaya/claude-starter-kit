@@ -619,11 +619,17 @@ if [ "$_looks_exec" = 1 ]; then
   _interp=0; _cmdpos=1
   for _tok in $CMD; do
     _tok="${_tok%\"}"; _tok="${_tok#\"}"; _tok="${_tok%\'}"; _tok="${_tok#\'}"
-    # Backslashes folded to forward slashes, the same substitution route-hint.sh applies to its roots and for
-    # the same reason: on Windows a path arrives natively (`.\leak.ps1`, `C:\repo\leak.ps1`) and neither the
-    # `./` test below nor `[ -f ]` recognises that spelling, so the whole rule would quietly not exist there.
-    # It is a no-op where there is nothing to fold. This is used ONLY to decide whether a file is being run;
-    # nothing is executed from it, so a `my\ file.sh` style escape loses nothing but this rule's interest.
+    # Backslashes folded to forward slashes, the same substitution route-hint.sh applies to its roots.
+    #
+    # THE REASON IS THE `case` PATTERNS, NOT `[ -f ]`, and the difference is written down because getting it
+    # wrong is how this line gets deleted later as redundant. Measured on Git Bash (Windows 11) rather than
+    # assumed: `[ -f ]` resolves ALL THREE spellings on its own -- `C:/repo/leak.ps1`, `/c/repo/leak.ps1` and
+    # `C:\repo\leak.ps1` unfolded -- so the existence test never needed this. What needs it is the glob below:
+    # `.\leak.ps1` does not match `./*`, and Windows is where a path is natively written that way. Without the
+    # fold the candidate is never even considered, and the rule quietly does not exist on that platform.
+    #
+    # A no-op where there is nothing to fold. Used ONLY to decide whether a file is being run; nothing is
+    # executed from it, so a `my\ file.sh` style escape loses nothing but this rule's interest.
     _tok="${_tok//\\//}"
     # separators reset both states: a new command begins after them
     case "$_tok" in
