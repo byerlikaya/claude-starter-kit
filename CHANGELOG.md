@@ -231,8 +231,31 @@ versioning follows [SemVer](https://semver.org/).
 - `commit-agent-csk` carries what a field session paid to learn: on PowerShell 5.1, `git commit -F - @'…'@` hands
   the message to git as an argument, git reads it as a pathspec, and an earlier `git add` on the same line leaves
   the tree staged but uncommitted. Write the message to a UTF-8 file with no BOM and use `git commit -F <file>`.
-  And `git status -sb | Select-Object -First 1` returns exit 255 after a commit that succeeded; check with
-  `git log -1 --oneline` instead.
+  Both halves were then verified on a Windows 11 machine rather than carried over from a report: the here-string
+  really does reach git as a pathspec, the tree really is left staged, and the file path really does commit
+  cleanly.
+- The second claim survived measurement but its stated CAUSE did not, so the text changed. `git status -sb |
+  Select-Object -First 1` does report failure after a successful commit — but not because of git, `status`, or
+  commits. Taking the first N items stops the pipeline early and that alone sets the code: `-Last 1`,
+  `Out-String`, `ForEach-Object` and `Where-Object` over the same output are all 0, while `-First 1` fails after
+  `git log`, after `where.exe`, after `cmd /c`, and after `1..5` — a producer containing no external process at
+  all. The rule is about the operator. The value differs by vantage point: `$LASTEXITCODE` reads -1 inside
+  PowerShell while the process exits 255 to its launcher, the low byte of the same number. A text that had kept
+  the original explanation would have sent its reader to look at git.
+
+### Not changed — the Windows agent-tools report rested on a premise that does not hold
+
+- A field report asked for `PowerShell` in every agent's `tools:` on win32, because a subagent had written that
+  it "had no PowerShell tool and used Bash instead". Measured on Windows 11: a separate `PowerShell` tool does
+  exist, so the request is possible — and it is unnecessary. `Bash` there runs through Git Bash
+  (`uname -s` = `MINGW64_NT-10.0-26200`, GNU bash 5.3.15), so an agent holding only `Bash` is not shell-less,
+  which is the premise the report was built on.
+- The security question it raises answers itself: `settings.json` already matches `Bash|PowerShell` on
+  `PreToolUse`, so adding the tool to an agent would not step around a gate — `guard-bash.sh` fires on
+  PowerShell calls too, and the suite measures fifteen destructive PowerShell shapes being blocked. The README
+  already states this. Nothing in the payload changed; the finding is that the report's premise was wrong.
+- Still unmeasured, and recorded as such: that a subagent's `tools:` list accepts the literal string
+  `PowerShell` and the subagent receives it. Showing that needs a subagent spawned for the purpose.
 - `sonarqube-check` now separates restarting from installing. Bringing an already-approved service back up on the
   same image and volumes is resuming a yes that was already given — which the skill's own advice to keep a named
   volume assumes. A new image, a new volume, or a tool the machine lacks is an install and still needs the answer.

@@ -604,15 +604,27 @@ CRED='(\.ssh/(id_[A-Za-z0-9_]+|identity)|(^|/)id_(rsa|dsa|ecdsa|ed25519)|\.aws/c
 # It under-blocks rather than over-blocks where it is unsure -- `echo bash leak.sh` still counts, a script
 # whose path is built at runtime does not -- and that is the correct direction for a rule sitting in front of
 # every command in the session.
+# The prefilter asks "could this command run something", not "does a filename here end in .sh". Keying it on
+# extensions missed two whole shapes: `cmd /c leak.bat`, and `bash runme` where the script carries no extension
+# at all. It is keyed on the interpreter words instead, which is broader and costs nothing extra -- everything
+# past it is shell builtins, and a command that reaches the loop with no interpreter and no ./ in it does a few
+# string comparisons and stops.
 _looks_exec=0
 case "$CMD" in
-  *.[Ss][Hh]*|*.[Bb][Aa][Ss][Hh]*|*.[Zz][Ss][Hh]*|*.[Pp][Ss]1*|*./*) _looks_exec=1 ;;
+  *[Bb][Aa][Ss][Hh]*|*[Ss][Hh]*|*[Kk][Ss][Hh]*|*[Dd][Aa][Ss][Hh]*|*[Ss][Oo][Uu][Rr][Cc][Ee]*\
+  |*[Pp][Ww][Ss][Hh]*|*[Cc][Mm][Dd]*|*./*|*.\\*) _looks_exec=1 ;;
 esac
 if [ "$_looks_exec" = 1 ]; then
   set -f                                     # a token like *.sh must not glob against the cwd
   _interp=0; _cmdpos=1
   for _tok in $CMD; do
     _tok="${_tok%\"}"; _tok="${_tok#\"}"; _tok="${_tok%\'}"; _tok="${_tok#\'}"
+    # Backslashes folded to forward slashes, the same substitution route-hint.sh applies to its roots and for
+    # the same reason: on Windows a path arrives natively (`.\leak.ps1`, `C:\repo\leak.ps1`) and neither the
+    # `./` test below nor `[ -f ]` recognises that spelling, so the whole rule would quietly not exist there.
+    # It is a no-op where there is nothing to fold. This is used ONLY to decide whether a file is being run;
+    # nothing is executed from it, so a `my\ file.sh` style escape loses nothing but this rule's interest.
+    _tok="${_tok//\\//}"
     # separators reset both states: a new command begins after them
     case "$_tok" in
       *[\;\&\|]*)
@@ -623,12 +635,13 @@ if [ "$_looks_exec" = 1 ]; then
     # the interpreter test looks at the tail after any glued separator, then at the basename
     _base="${_tok##*;}"; _base="${_base##*&}"; _base="${_base##*|}"; _base="${_base##*/}"
     case "$_base" in
-      bash|sh|zsh|ksh|dash|source|.|powershell|powershell.exe|pwsh|pwsh.exe)
+      bash|sh|zsh|ksh|dash|source|.|powershell|powershell.exe|pwsh|pwsh.exe|cmd|cmd.exe)
         _interp=1; _cmdpos=0; continue ;;
     esac
     case "$_tok" in
       -[Ff]ile|-[Ff]|--file) _interp=1; continue ;;   # PowerShell's -File names the script that follows
       -*) continue ;;                                 # any other flag leaves both states alone
+      /[A-Za-z]) continue ;;                          # cmd.exe spells its flags /c and /k, not -c
     esac
     _cand=0
     if [ "$_interp" = 1 ]; then

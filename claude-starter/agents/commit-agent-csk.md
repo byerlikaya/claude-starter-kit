@@ -39,9 +39,17 @@ When a task/subtask closes with DoD met (the last step before commit).
 `git commit -m` with a multi-line message and PowerShell here-strings do not survive each other: measured on
 PowerShell 5.1, `git commit -F - @'…'@` hands the text to git as an ARGUMENT, git reads it as a pathspec
 ("did not match any file(s)"), and a `git add` earlier in the same line leaves the tree staged but uncommitted.
-Write the message to a UTF-8 file WITHOUT a BOM and use `git commit -F <file>`. Also do not judge the result by
-`git status -sb | Select-Object -First 1` — closing the pipeline early returns exit 255 after a commit that
-actually succeeded. Check with `git log -1 --oneline` instead.
+Write the message to a UTF-8 file WITHOUT a BOM and use `git commit -F <file>`; measured on the same machine,
+that path commits cleanly with the subject and body intact.
+
+**And do not read the outcome through `Select-Object -First N`.** `git status -sb | Select-Object -First 1`
+reports failure after a commit that succeeded — but the cause is not git, not `status`, and not commits. Taking
+the first N items stops the pipeline early, and that alone sets the failing code: measured on PowerShell 5.1,
+`git status -sb` on its own is 0 and so are `-Last 1`, `Out-String`, `ForEach-Object` and `Where-Object` on the
+same output, while `-First 1` fails after `git log`, after `where.exe`, after `cmd /c`, and after `1..5` —
+a producer with no external process in it at all. So the rule is about the operator, not about git. The value
+depends on where you read it: `$LASTEXITCODE` shows -1 inside PowerShell, and the process exits 255 to whatever
+launched it (the low byte of -1); both are the same failure. Judge a commit with `git log -1 --oneline`.
 
 ## Constraints
 - Does NOT modify source code.

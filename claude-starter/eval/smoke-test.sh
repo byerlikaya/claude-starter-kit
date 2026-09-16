@@ -2697,6 +2697,8 @@ printf '#!/usr/bin/env bash\ncat .env.local\n'    > "$H4B/leak.sh"
 printf 'Get-Content .env.local\n'                 > "$H4B/leak.ps1"
 printf '#!/usr/bin/env bash\nnpm run build\n'     > "$H4B/clean.sh"
 printf '#!/usr/bin/env bash\ncat .env.example\n'  > "$H4B/template.sh"
+printf '@echo off\ntype .env.local\n'            > "$H4B/leak.bat"
+printf '#!/usr/bin/env bash\ncat .env.local\n'   > "$H4B/runme"
 h4brc(){ ( cd "$H4B" && gj auto "$1" | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; echo "$?" ); }
 h4bblock(){ [ "$(h4brc "$1")" = 2 ] && pass "two-step read BLOCKED: $1 (H4b)" || fail "$1 PASSED — the two-step read is open again (H4b)"; }
 h4bfree(){  [ "$(h4brc "$1")" = 0 ] && pass "NOT over-blocked: $1 (H4b)"      || fail "$1 wrongly blocked — ordinary scripts must run (H4b)"; }
@@ -2707,6 +2709,17 @@ h4bblock 'powershell -ExecutionPolicy Bypass -File leak.ps1'
 h4bblock 'bash -x leak.sh'
 h4bblock 'source leak.sh'
 h4bblock 'npm test && bash leak.sh'
+# Three shapes the first prefilter could not see, all pointed out by the Windows session before it measured
+# anything. `cmd /c x.bat` and an extensionless `bash runme` were missed because the prefilter keyed on
+# filename EXTENSIONS rather than on whether the command runs something; it keys on the interpreter words now.
+# The backslash rows are the Windows spelling of a path, folded to forward slashes the way route-hint.sh
+# already folds its roots -- without that the whole rule simply would not exist on the platform whose native
+# form is `.\leak.ps1`. Whether `[ -f ]` then resolves such a path on Git Bash is measured THERE, not here.
+h4bblock 'cmd /c leak.bat'
+h4bblock 'cmd.exe /k leak.bat'
+h4bblock 'bash runme'
+h4bblock 'powershell -File .\\leak.ps1'
+h4bblock 'bash .\\leak.sh'
 h4bfree  'bash clean.sh'
 h4bfree  'bash template.sh'
 h4bfree  'bash missing.sh'
@@ -2719,6 +2732,7 @@ h4bfree  'chmod +x leak.sh'
 h4bfree  'git add leak.sh'
 h4bfree  'shellcheck leak.sh'
 h4bfree  'cat leak.sh'
+h4bfree  'echo done'
 # Calibration, in the SAME directory the cases run in: the direct rule must still separate these two, or a green
 # H4b would only prove the fixture is inert.
 [ "$(h4brc 'cat .env.local')"   = 2 ] && pass "calibration: the direct .env read still blocks here (H4b)" || fail "calibration broken: cat .env.local no longer blocks (H4b)"
