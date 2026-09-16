@@ -115,6 +115,14 @@ fails, say which one and stop — do not improvise a different launch.
    `guard-bash.sh` is blind to it. Everything else in the panel routes through a tool call and therefore
    through the gates.
 
+**Quoting the panel's output.** It prints two things that belong to this machine and nowhere else: the machine
+NAME, and a URL carrying a freshly generated token. Handing both to the user is the whole point — they are
+sitting at that machine. Putting either into anything that leaves it is not: a commit message, a PR, a
+CHANGELOG, an issue, a report to another session. The name is a §4.3 private term, and the token is a
+credential, loopback-scoped but still live for as long as that panel runs. So when you quote panel output
+anywhere but to the user, drop the machine line and replace the token with `…`. `.private-terms.txt` catches
+the name only if someone thought to add it; nothing catches the token.
+
 **What the panel's scope actually is.** It reads `~/.claude/projects` — every Claude Code session on this
 machine, not this project's. Starting it from a project root only decides which project it opens on. Say
 that when you hand over the URL, so nobody reports "it shows other projects" as a bug.
