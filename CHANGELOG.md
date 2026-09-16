@@ -148,9 +148,18 @@ versioning follows [SemVer](https://semver.org/).
   the line matches NOTHING.
 - It warns rather than blocks. Every other pattern still ran, so the commit is no less scanned than before, and
   refusing every commit over one typo would cost more than the typo.
-- **Measured rather than assumed, in three states**: a broken pattern does NOT blind the others — the scanner
-  loops per pattern rather than combining them into one alternation, so an AWS key beside an unbalanced bracket
-  is still caught; an ordinary line still commits; and grep's raw message no longer reaches the user.
+- **Measured in three states**: a broken pattern does NOT blind the others, an ordinary line still commits, and
+  grep's raw message no longer reaches the user.
+- The reason the first of those holds is not the one this entry first gave, and the correction matters more than
+  the original claim. The patterns ARE combined: `_csk_any` joins them into one alternation and runs a single
+  grep, which a malformed pattern takes down with it — exit 2, measured, on a clean corpus as much as on a
+  matching one. What saves the scanner is that the guard reads `!= 1` rather than `= 0`. Exit 2 means "could not
+  look", which is not "nothing there", so the per-pattern loop still runs and the broken pattern fails alone.
+  Written as `= 0` — which reads as equivalent — one typo in a project's own added pattern would turn the whole
+  scanner fail-open. On a well-formed blocklist the two spellings behave identically in every case, so no test
+  in this repo would show the difference, including the malformed-pattern case, which goes red only BECAUSE the
+  loop still runs. The line now carries a comment saying so, since the comment is the only thing preventing that
+  rewrite.
 - The first version of this fix broke every commit. `set -euo pipefail` is in force, and taking the `grep` out
   of an `if` condition meant the first pattern that simply did not match killed the hook — every commit exiting
   1 with no output at all. Caught by running the must-PASS case, which is the half that is easy to skip when a

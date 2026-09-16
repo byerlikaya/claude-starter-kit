@@ -211,6 +211,22 @@ _csk_any(){   # $1 = pattern list  $2 = corpus  $3 = grep flags  $4 = 1 for newl
   grep -q$3 -- "$alt" "$2" 2>/dev/null
 }
 # (1) trace scan — case-INsensitive (vendor / AI-authorship strings), project files only
+# `!= 1` AND NOT `= 0`, AND THE DIFFERENCE IS THE WHOLE GATE. _csk_any joins every pattern into ONE
+# alternation and runs a single grep, so one malformed pattern anywhere in the file takes that grep down with
+# it -- exit 2, not 1. Measured, with a list holding `(AKIA|ASIA)[A-Z0-9]{16}` and `[unclosed`:
+#     good   list + matching corpus -> 0     good   list + clean corpus -> 1
+#     broken list + matching corpus -> 2     broken list + clean corpus -> 2
+# rc 2 means "I could not look", which is not "there is nothing there". So the guard treats anything that is
+# not a clean 1 as a reason to run the per-pattern loop below, where every pattern is tried on its own and the
+# broken one merely fails by itself.
+#
+# `= 0` reads as the same thing and is not: it skips the loop whenever the combined grep errors, so ONE typo
+# in a project's own added pattern turns the entire scanner fail-open and lets the commit through.
+#
+# NOTHING WOULD CATCH THAT SUBSTITUTION. On a well-formed blocklist the two spellings are identical in every
+# case -- measured above, 0 and 1 both route the same way -- so every test in this repo stays green, including
+# the malformed-pattern case, which only goes red BECAUSE the loop still runs. This comment is the only thing
+# standing between that rewrite and a silently open gate.
 if _csk_any "$BL" "$TRACE_F" iE 0; then _dec=0; else _dec=$?; fi
 if [ -f "$BL" ] && [ -s "$TRACE_F" ] && [ "$_dec" != 1 ]; then
   while IFS= read -r pat || [ -n "$pat" ]; do
