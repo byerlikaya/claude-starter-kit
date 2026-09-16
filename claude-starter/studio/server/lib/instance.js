@@ -32,9 +32,14 @@ export function statePath(port) {
 }
 
 // 0600 twice: in the open flags, and again with chmod. The flag alone loses to a permissive umask on some
-// systems, and chmod alone leaves a window where the token sits world-readable. On Windows both are advisory —
-// the file's protection there is that it lives under the user's own profile — and that is why this is not the
-// only defence: the panel is loopback-only regardless.
+// systems, and chmod alone leaves a window where the token sits world-readable.
+//
+// ON WINDOWS THIS IS NOT 0600 AND SHOULD NOT BE CALLED IT. POSIX mode bits are advisory there; what actually
+// protects the file is the ACL it inherits from the user's profile directory. Measured with icacls on Windows
+// 11: the record carries SYSTEM, Administrators and the owning user, all inherited, and no Everyone or Users
+// entry — so another standard user cannot read it, and a local administrator can. That is weaker than 0600,
+// which is why it is written down rather than rounded off, and why it is not the only defence: the panel
+// listens on loopback and the token is regenerated every run.
 export async function writeState(port, { token, name, pid = process.pid } = {}) {
   const dir = runtimeDir();
   await fsp.mkdir(dir, { recursive: true, mode: 0o700 });

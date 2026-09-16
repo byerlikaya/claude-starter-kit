@@ -5,6 +5,35 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Measured on Windows — what the queue actually returned
+
+Everything in this release that touches a hook, an installer or the panel was re-measured on Windows 11 with
+the real mechanism, because a Mac can prove a string and not a platform. Results, including the ones that
+changed the text:
+
+- **`route-hint` notification guard: 5 of 5.** With the kit installed in a real project, a report-shaped prompt
+  made the old hook speak and the new one stay quiet, on all five markers. Controls held: the same body without
+  a marker routes in both, and a marker in the MIDDLE of the text routes in both — only an opening marker
+  suppresses, which is what the code claims. Cost, paired and alternating over two rounds: zero extra external
+  processes on an ordinary prompt, five per prompt in total, and a notification turn is now *cheaper* by one
+  fork and 52 builtin tests. Wall-clock on a notification turn fell 91 ms, negative in eight pairs out of eight.
+- **The permission-mode line: 8 of 8**, and the `TMPDIR` worry is closed rather than merely untriggered. On Git
+  Bash `TMPDIR` is unset and `/tmp` already IS the Windows temp directory — `%TEMP%` and the native form of
+  `/tmp` are the same path — so the marker cannot land in one place and be looked for in another.
+- **The §4.2 arming: 4 of 4.** After a `--dotnet` install the vendor line is active, with zero carriage returns
+  and no `.kit-tmp` left behind, and it fires: `using DevArchitecture.Core;` is refused, `using System;` is not.
+  On `--generic` the same content commits and the line stays commented.
+- **The panel's instance record**, two of three. Two panels do hand back the same token, confirmed. The file's
+  protection was described here as 0600; on Windows it is not, and the text now says what it is: measured with
+  `icacls`, the record inherits SYSTEM, Administrators and the owner from the profile directory, with no
+  Everyone or Users entry. Another standard user cannot read it; a local administrator can. That is weaker
+  than 0600 and is written down rather than rounded off.
+- **Not measured, and named as such**: whether a gentle stop clears that record. MSYS `kill -TERM` cannot reach
+  a Windows process at all — separate pid spaces, "No such process" — and `taskkill` without `/F` is refused by
+  Windows, so a real console Ctrl-C could not be produced. A hard `taskkill /F` does leave the record behind,
+  which is expected since no handler runs, and the next panel discards the stale pid and starts fresh.
+  `selfcheck.mjs` names the coverer for the two halves that were measured and NOBODY for the third.
+
 ### Fixed — the .env gate read the command, not the code it was about to run
 
 - `guard-bash.sh` blocked `cat .env`, and let a script that ran the same line straight through. Measured against
