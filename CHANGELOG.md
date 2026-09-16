@@ -137,6 +137,27 @@ versioning follows [SemVer](https://semver.org/).
   existing install and add a second backend-pattern skill beside it. The rename belongs with that fix, not
   before it.
 
+### Added — the secret scanner can now see a credential that has no issuer prefix
+
+- Every one of the eleven existing patterns recognises a credential by its own SHAPE: `AKIA`, `ghp_`, `AIza`,
+  `xox`, `sk_live_`, `sk-ant-`, `npm_`, `SG.`, a JWT, a PEM header. A token minted without an issuer prefix has
+  no shape to recognise, so it is a class the list structurally could not see — not a forgotten pattern.
+- Measured on a published 2.10.1 install driving the real `pre-commit`, with calibration in the same run: an
+  AWS key, a GitHub token and a co-author trailer were all blocked, while `http://127.0.0.1:7911/?token=<uuid>`,
+  a bare uuid, and `token=` plus 32 hex all committed cleanly. The kit mints exactly such a URL itself — the
+  Studio panel generates one per run and the command hands it to the user.
+- The new pattern anchors on the query KEY rather than on the value's shape:
+  `[?&](token|api_?key|apikey|access_token|auth_token)=` followed by 20 or more credential characters. It is not
+  about the panel; any `?token=` long enough to be real is one, whoever minted it. Verified against the real
+  hook: the three strings above are now refused, while `?token=<your-token-here>`, `?token=$STUDIO_TOKEN`, a
+  short sample and an ellipsis form all stay committable — those are how a URL gets WRITTEN ABOUT, and they
+  carry characters the class excludes.
+- **A bare uuid still commits, and that is deliberate.** Without a key beside it there is nothing to match on,
+  and a pattern broad enough to catch it would catch every identifier in the repository. The same goes for the
+  other half of this leak: a machine name is any word, so no pattern separates one from prose. That half stays
+  with `.private-terms.txt` and with the rule `/studio-csk` now carries, and it is labelled as discipline rather
+  than dressed up as a gate.
+
 ### Fixed — every documented way to start the panel assumed a PATH the kit deliberately does not edit
 
 - `studio/README.md` says `node .claude/studio/server/index.js` eight times and the main README once. Those
