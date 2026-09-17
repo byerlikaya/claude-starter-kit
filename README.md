@@ -210,6 +210,7 @@ Left is the rule; right is the thing that refuses to let it slide.
 | No credential is *read* into the context — `~/.ssh/id_rsa`, `~/.aws/credentials`, `*.pem`, kubeconfig | `settings.json` read-deny + `guard-bash.sh` |
 | No AI-authorship trace or vendor template name in a commit | `pre-commit` + `commit-msg` git hooks |
 | No build artifact, vendored tree or oversized blob gets staged | `pre-commit` repo-bloat scan |
+| No commit quietly lowers the quality bar: a checker switched off where it fired, a test skipped or deleted, assertions taken out of a test that stays, a stub or an empty `catch` where the work should be | `pre-commit` floor guard, across the stacks the kit supports. Generated files and documentation are exempt; a genuine exception is a line in `.floor-allowlist.txt`, in the same commit, where review sees it |
 | An unvetted skill or agent appearing in `.claude/` is named, with a scanner verdict | `skill-trust.sh` at session start |
 | Always-on context stays lean | `smoke-test.sh` byte budget per component |
 | A running session never follows stale rules after an update | `context-usage.sh` version comparison |

@@ -52,7 +52,7 @@ for h in pre-commit commit-msg; do
   cp "$SRC/hooks/$h" "$OUT/hooks/$h"
   chmod +x "$OUT/hooks/$h"
 done
-cp "$SRC/hooks/trace-blocklist.txt" "$SRC/hooks/secret-blocklist.txt" "$OUT/hooks/"
+cp "$SRC/hooks/trace-blocklist.txt" "$SRC/hooks/secret-blocklist.txt" "$SRC/hooks/floor-blocklist.txt" "$OUT/hooks/"
 
 # hooks/hooks.json — auto-discovered by Claude Code when the plugin is enabled (no plugin.json field needed).
 # Same structure as settings.json's "hooks", but paths resolve through ${CLAUDE_PLUGIN_ROOT} (the plugin's install

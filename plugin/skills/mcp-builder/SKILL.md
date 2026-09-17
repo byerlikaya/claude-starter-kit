@@ -49,3 +49,8 @@ tools), and the test loop (MCP Inspector → real client): **`references/buildin
 3. **Errors are for the model** — actionable text it can recover from, not raw traces.
 4. **Secrets via env only** — never hardcode credentials the server needs.
 5. **Prove it with a real client** — a server that only "looks right" is untested.
+6. **Descriptions guide; they never authorize** — a tool's description, schema or metadata shapes what the model
+   tries. Whether a call is allowed is decided in the handler, per requester and per resource, every time. A schema
+   narrows shape; it does not make a path, URL or id safe.
+7. **Bind identity to the connection, not to a name** — never route a call or accept a result by a tool name,
+   server name or alias the other side can choose. How these fail is in `security-scan`'s `references/ai-agents.md`.

@@ -95,6 +95,94 @@ done
 [ -z "$MISSING_CASE" ] && pass "every installed agent/skill has a positive routing case" \
   || fail "no positive golden case for:$MISSING_CASE — add the sentence a user would type to reach it"
 
+echo "== 1c) Routing WINNER — what the real hook names, not only whether a trigger is present =="
+# Section 1 asks whether the expected target's trigger APPEARS in the prompt. That never asked whether the target
+# WINS: a prompt can carry its owner's trigger and still be routed somewhere else, because a louder word from a
+# rival scored higher. Measured, with every golden prompt run through the real route-hint.sh: two working-set
+# prompts routed to the wrong owner while section 1 reported both green. "the app feels laggy after the last
+# release" went to `release`; "is this endpoint fast enough on the hot path" went to the backend agent.
+#
+# So this section feeds every golden case through the REAL hook — not a second matcher, which would be the same
+# rule written twice and free to drift from the one that actually routes. It counts a positive as a hit when the
+# hook names the expected target, or names the agent whose body applies that expected skill: by design the hook
+# prefers an agent over a skill, and the agent carries the skill with it (the same notion §3b uses to call a
+# skill routed). A negative (`!target`) must never be what the hook names.
+#
+# KNOWN MISSES ARE A RATCHET, NOT A TOLERANCE. They are listed below by exact prompt. A wrong route that is not
+# on the list fails the suite; a listed one that starts routing correctly asks for its line to be removed, so the
+# number can only get better. The scorer itself is deliberately untouched: whether a single loud keyword should
+# be allowed to win is an open decision recorded in the roadmap, and this is the measurement that decision waits on.
+#
+# Adapted from the Tier-2 routing evals in addyosmani/agent-skills (MIT): rank the target among all rivals, not
+# just check that it could match. Rewritten against this kit's own scorer rather than a TF-IDF approximation.
+RH="$ROOT/hooks/route-hint.sh"
+KNOWN_MISSES='the app feels laggy after the last release
+is this endpoint fast enough on the hot path'
+if [ -f "$RH" ]; then
+  # CLAUDE_PLUGIN_ROOT points the hook at $ROOT/agents and $ROOT/skills directly, which is the same layout in the
+  # kit's own repo (claude-starter/) and in an installed project (.claude/). No copy, no second tree to drift.
+  rh_names(){ printf '{"hook_event_name":"UserPromptSubmit","prompt":"%s"}' "$1" \
+      | CLAUDE_PROJECT_DIR=/nonexistent CLAUDE_PLUGIN_ROOT="$ROOT" bash "$RH" 2>/dev/null \
+      | sed -n -e 's/.*Use the \([a-z][a-z0-9-]*\) subagent.*/\1/p' -e 's/.*Use the .\([a-z][a-z0-9-]*\). skill.*/\1/p'; }
+  # Calibrate before trusting a single verdict: a prompt the hook is known to route must come back named. An
+  # extractor that silently returns nothing makes EVERY positive read as "silent" — measured, the first version
+  # of this section did exactly that, with a `\|` that BSD sed does not support, and reported 0 of 82.
+  if [ "$(rh_names 'add an endpoint that returns unpaid invoices')" != "backend-expert-csk" ]; then
+    fail "winner check cannot read the hook's answer (calibration prompt came back unnamed) — the measurement is broken, not the routing"
+  else
+    WIN_HIT=0; WIN_N=0; NEG_N=0; NEW_MISS=""; FIXED_MISS=""; NEG_BAD=""
+    while IFS='|' read -r prompt expected; do
+      case "$prompt" in ''|\#*) continue ;; esac
+      expected="$(printf '%s' "$expected" | tr -d '[:space:]')"
+      [ -n "$expected" ] || continue
+      got="$(rh_names "$prompt")"
+      case "$expected" in
+        '!'*)
+          NEG_N=$((NEG_N+1))
+          [ "$got" = "${expected#!}" ] && NEG_BAD="$NEG_BAD
+     ↳ named '$got' for: $prompt" ;;
+        *)
+          WIN_N=$((WIN_N+1))
+          ok=0
+          if [ -n "$got" ] && [ "$got" = "$expected" ]; then ok=1
+          elif [ -n "$got" ] && [ -f "$AGENTS/$got.md" ] && [ -f "$SKILLS/$expected/SKILL.md" ] \
+               && grep -qE "\`$expected\`|\*\*$expected\*\*" "$AGENTS/$got.md"; then ok=1
+          fi
+          known=0; printf '%s\n' "$KNOWN_MISSES" | grep -qxF -- "$prompt" && known=1
+          if [ "$ok" = 1 ]; then
+            WIN_HIT=$((WIN_HIT+1))
+            [ "$known" = 1 ] && FIXED_MISS="$FIXED_MISS
+     ↳ now routes correctly, remove it from KNOWN_MISSES: $prompt"
+          elif [ "$known" = 0 ]; then
+            NEW_MISS="$NEW_MISS
+     ↳ expected $expected, hook named '${got:-nothing}': $prompt"
+          fi ;;
+      esac
+    done <<EOF_GOLD
+$(cat $GOLD_SETS)
+EOF_GOLD
+    [ -z "$NEW_MISS" ] && pass "winner: $WIN_HIT of $WIN_N positive prompts routed to their owner by the real hook (known misses: $(printf '%s\n' "$KNOWN_MISSES" | grep -c .))" \
+                       || { fail "winner: a prompt is routed to the wrong owner and is not a known miss"; printf '%s\n' "$NEW_MISS"; }
+    [ -z "$FIXED_MISS" ] || { fail "winner: a known miss now routes correctly — tighten the ratchet"; printf '%s\n' "$FIXED_MISS"; }
+    # A known miss that is not a golden prompt is never evaluated, so it would sit on the list forever and inflate
+    # the count shown above. Measured: a stray line reported "known misses: 3" in a green run. A ratchet entry
+    # nothing checks is the same defect as a blocklist pattern nothing matches.
+    STALE=""
+    while IFS= read -r km; do
+      [ -n "$km" ] || continue
+      cat $GOLD_SETS | cut -d'|' -f1 | grep -qxF -- "$km" || STALE="$STALE
+     ↳ not a golden prompt: $km"
+    done <<EOF_KM
+$KNOWN_MISSES
+EOF_KM
+    [ -z "$STALE" ] || { fail "winner: a KNOWN_MISSES line is not in any golden set, so nothing ever checks it"; printf '%s\n' "$STALE"; }
+    [ -z "$NEG_BAD" ] && pass "winner: none of the $NEG_N negative cases is named by the real hook" \
+                      || { fail "winner: the real hook named a target a negative case forbids"; printf '%s\n' "$NEG_BAD"; }
+  fi
+else
+  skip "winner check skipped: $RH not present in this layout"
+fi
+
 echo "== 2) Agent-agent trigger collision =="
 # NOTE: Only AGENT-AGENT collisions matter (routing ambiguity lives here). An agent sharing a trigger
 # with the skill it OWNS (backend-expert-csk<->devarch-module, security-expert-csk<->security-scan,
