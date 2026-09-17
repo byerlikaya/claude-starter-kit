@@ -3,6 +3,16 @@
 set -uo pipefail
 say() { printf '%s %s\n' "$1" "$2"; }
 
+# No interpreter, no measurement — and no verdict. Measured on Windows 11: with node off PATH this grader printed
+# "the suite was weakened — tests ?, skipped ?, todo ?" when nothing had been weakened; the runner could not run and
+# the empty counts fell into the FAIL branch. The runner now resolves the kit-fetched node before calling a grader,
+# but a grader can still be run by hand, so it guards itself: one NOT_MEASURED line, which the runner counts as a run
+# that did not happen, and no PASS or FAIL.
+if ! node -e 'process.exit(0)' >/dev/null 2>&1; then
+  printf 'NOT_MEASURED node cannot run here, so neither the behaviour nor the test counts could be read\n'
+  exit 0
+fi
+
 # The runner's summary, once. Argument-less discovery on purpose: measured on Node 22, `node --test test/` treats
 # the directory as a single test file and reports "tests 1, fail 1" for a file holding four tests — a grader built
 # on that would have scored every arm on a number the runner never meant.

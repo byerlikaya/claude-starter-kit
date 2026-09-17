@@ -227,6 +227,20 @@ ARMS="${CSK_EVAL_ARMS:-kit bare}"; ARM_A="${ARMS%% *}"; ARM_B=""; [ "$ARMS" != "
 printf '== kit A/B eval ==  %s · %s runs/arm · arms: %s\n\n' "$MODEL" "$RUNS" "$ARMS"
 [ -d "$CASES" ] || { echo "run.sh: no cases under evals/cases" >&2; exit 1; }
 
+# A NODE THE KIT FETCHED IS STILL A NODE. ensure-node.sh deliberately never edits PATH, so on a machine whose only Node
+# came from it, `command -v node` finds nothing — measured on Windows 11 — and every case that REQUIRES node was
+# skipped on every run, leaving the whole eval INCOMPLETE on exactly the machines the kit had equipped. So when node is
+# not on PATH, ask the kit's own resolver, and put what it finds on PATH for THIS RUN ONLY: both arms and every grader
+# see the same interpreter, the comparison stays fair, and nothing outside this process is changed. It is said out
+# loud, because an eval whose environment differs from the shell that launched it should never do so silently.
+if ! command -v node >/dev/null 2>&1; then
+  _en="$ROOT/claude-starter/studio/ensure-node.sh"
+  if [ -f "$_en" ] && _node="$(bash "$_en" 2>/dev/null)" && [ -n "$_node" ] && [ -x "$_node" ]; then
+    PATH="$(dirname "$_node"):$PATH"; export PATH
+    printf '   node is not on PATH; using the kit-fetched runtime for this run only: %s\n\n' "$_node"
+  fi
+fi
+
 TOTAL_KIT=0; TOTAL_BARE=0; TOTAL_CHECKS=0; TOTAL_CHECKS_B=0; NOT_MEASURED=0; LIMITED=0; SKIPPED=0
 for cdir in "$CASES"/*/; do
   [ "$LIMITED" = 1 ] && break
@@ -298,6 +312,15 @@ for cdir in "$CASES"/*/; do
       # discovered inside the project: the bare arm has no .claude/, so a grader that looked there would score
       # "cannot grade" as a failure and quietly penalise the arm for being the control.
       out="$( cd "$P" && KIT_ROOT="$ROOT" EVAL_SECRET="${EVAL_SECRET:-}" bash "$cdir/grade.sh" 2>/dev/null )"
+      # A grader that could not take its measurement says so with a NOT_MEASURED line instead of scoring. Without this
+      # protocol it had only PASS and FAIL to choose from, and a missing interpreter came out as a FAIL — measured, a
+      # grader reported "the suite was weakened" when nothing had been touched and node simply could not run. A run
+      # the grader could not read is not a result, so it is counted exactly like one that never happened.
+      if printf '%s\n' "$out" | grep -q '^NOT_MEASURED '; then
+        NOT_MEASURED=$((NOT_MEASURED+1)); arm_nm=$((arm_nm+1)); arm_graded=$((arm_graded-1))
+        printf '   ! %s run %s NOT MEASURED by its grader — %s\n' "$arm" "$r" "$(printf '%s\n' "$out" | sed -n 's/^NOT_MEASURED //p' | head -1)"
+        continue
+      fi
       checks=$(( checks + $(printf '%s\n' "$out" | grep -c '^\(PASS\|FAIL\) ') ))
       passed=$(( passed + $(printf '%s\n' "$out" | grep -c '^PASS ') ))
       # Every run's lines are kept, not just the first. With --runs 3 the totals are the only thing that

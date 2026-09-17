@@ -175,7 +175,8 @@ fi
 # (Adapted from addyosmani/agent-skills, constraint-driven-development, MIT; see floor-blocklist.txt.)
 FAL=""; [ -n "$GITROOT" ] && [ -f "$GITROOT/.floor-allowlist.txt" ] && FAL="$GITROOT/.floor-allowlist.txt"
 # .floor-allowlist.txt: `path:<glob>` exempts a path, `rule:<name>` turns a rule off, any other line exempts that
-# EXACT pattern line. The allowlist sits in the same diff as the code it excuses, which is the point: an exception
+# EXACT pattern line. `path:` is matched as a shell `case` pattern: `*` crosses `/` and `**` is not special, so
+# `path:*.cs` exempts every C# file in the tree. Documented in floor-blocklist.txt and pinned in smoke §7h2. The allowlist sits in the same diff as the code it excuses, which is the point: an exception
 # is a decision someone can see, not a rule that quietly got weaker.
 _floor_allowed(){ # $1 = rule, $2 = pattern (may be empty), $3 = path
   [ -n "$FAL" ] || return 1
@@ -212,10 +213,22 @@ _floor_is_test(){ # $1 = path
 # line-level rule would flag every such edit. A test only loses its checks when it ends with fewer than it began.
 # A rename is not a deletion and git does not report it as one, so moving a test file stays free.
 # Whether a path is a test is decided once, by _floor_is_test, rather than written a second time in awk.
-_floor_structural(){ # $@ = extra git diff arguments
-  git diff "$@" --unified=0 --no-color --src-prefix=a/ --dst-prefix=b/ --diff-filter=DM -- . ':(top,exclude).claude' 2>/dev/null
+# ONE diff and ONE awk serve the whole floor guard — the deleted-test and assertion checks here, and the added-line
+# corpus the pattern half reads further down. They used to be two diffs and two awks, plus two mktemps, which is
+# what an ordinary commit paid for this guard: +7 processes, measured on Windows 11 at about +304 ms over a ~900 ms
+# hook. Merging them removes four processes; the corpus files are named off TRACE_F and created with a builtin
+# redirection, so no process makes them. Nothing about the trace or secret scans changed.
+#
+# Headers are read only between `diff --git` and the first hunk. The corpus parser used to treat any `+++ ` line as a
+# file header, so an added line that itself began `++ ` came through as `+++ …` and re-pointed the path of every line
+# after it; tracking the header state closes that as well. Unfiltered on purpose: deletions, modifications, additions
+# and renames all arrive in one stream. A new file is never counted for assertions (it cannot lose any); a renamed
+# test that also lost assertions is counted, which the old DM-only filter let through.
+FLOOR_F="$TRACE_F.floor"; FLOOR_P="$TRACE_F.floorp"; : > "$FLOOR_F"; : > "$FLOOR_P"
+_floor_diff(){ # $@ = extra git diff arguments
+  git diff "$@" --unified=0 --no-color --src-prefix=a/ --dst-prefix=b/ -- . ':(top,exclude).claude' 2>/dev/null
 }
-while IFS="$(printf '\t')" read -r kind f r a; do
+while IFS=$'\t' read -r kind f r a; do
   [ -n "$f" ] || continue
   _floor_is_test "$f" || continue
   case "$kind" in
@@ -227,22 +240,26 @@ while IFS="$(printf '\t')" read -r kind f r a; do
        echo "FLOOR-GUARD [assertion-removed]: $f loses $((r - a)) assertion(s) and stays in the tree (removed $r, added $a)"
        HIT=1 ;;
   esac
-done < <({ _floor_structural --cached; [ "${CSK_SCAN_UNSTAGED:-0}" = 1 ] && _floor_structural; } \
-  | LC_ALL=C awk '
-      /^diff --git / { hdr = 1; old = ""; p = ""; next }
-      hdr && /^--- /     { old = $0; sub(/^--- (a\/)?/, "", old); next }
+done < <({ _floor_diff --cached; [ "${CSK_SCAN_UNSTAGED:-0}" = 1 ] && _floor_diff; } \
+  | LC_ALL=C awk -v F="$FLOOR_F" -v P="$FLOOR_P" '
+      /^diff --git / { hdr = 1; old = ""; p = ""; isnew = 0; skip = 1; next }
+      hdr && /^--- /     { old = $0; sub(/^--- (a\/)?/, "", old); isnew = (old == "/dev/null"); next }
       hdr && /^\+\+\+ /  { np = $0; sub(/^\+\+\+ (b\/)?/, "", np)
-                           if (np == "/dev/null") { if (old != "") printf "D\t%s\t0\t0\n", old; p = "" } else p = np
+                           if (np == "/dev/null") { if (old != "" && old != "/dev/null") printf "D\t%s\t0\t0\n", old; p = ""; skip = 1 }
+                           else { p = np; skip = (np ~ /\.(md|mdx|txt|rst|adoc)$/) }
                            next }
-      /^@@/ { hdr = 0; next }
+      /^@@/ { hdr = 0; s = $0; sub(/^@@ -[0-9,]+ \+/, "", s); sub(/[, ].*$/, "", s); ln = s + 0; next }
       hdr   { next }
-      p != "" && /^[-+]/ {
-        b = substr($0, 2)
-        if (b ~ /(^|[^A-Za-z0-9_])(assert|Assert|expect|Expect|should|Should|verify|Verify)[A-Za-z_]*[[:space:]]*[.(]/ ||
+      p == "" { next }
+      /^[-+]/ {
+        b = substr($0, 2); plus = (substr($0, 1, 1) == "+")
+        if (plus && !skip) { print b >> F; print p ":" ln >> P }
+        if (plus) ln++
+        if (!isnew && (b ~ /(^|[^A-Za-z0-9_])(assert|Assert|expect|Expect|should|Should|verify|Verify)[A-Za-z_]*[[:space:]]*[.(]/ ||
             b ~ /(^|[^A-Za-z0-9_])t\.(Error|Errorf|Fatal|Fatalf)\(/ ||
             b ~ /(^|[^A-Za-z0-9_])require\./ ||
-            b ~ /(^|[[:space:]])assert[[:space:]]/) {
-          if (substr($0, 1, 1) == "-") rem[p]++; else add[p]++
+            b ~ /(^|[[:space:]])assert[[:space:]]/)) {
+          if (plus) add[p]++; else rem[p]++
           seen[p] = 1
         }
       }
@@ -417,22 +434,8 @@ rm -f "$PRIV_F"
 # It reports the rule, the file, the line and the PATTERN, never the line's text: a suppressed line can carry a
 # secret beside the comment, and the secret scan above is the only place that decides how a value is shown.
 FL="$HERE/floor-blocklist.txt"
-FLOOR_F="$(mktemp)"; FLOOR_P="$(mktemp)"
-
-# Added lines of project code, one per line in FLOOR_F, with `path:line` at the SAME line number in FLOOR_P so a
-# grep hit maps back to its location without re-reading the diff. `.claude/` is the kit's tree, not the project's
-# code. Documentation is skipped because a suppression written in prose silences nothing. The prefixes are pinned
-# because `diff.noprefix` in a user's config would otherwise change every path this parses.
-_floor_corpus(){ # $@ = extra git diff arguments
-  git diff "$@" --unified=0 --no-color --src-prefix=a/ --dst-prefix=b/ -- . ':(top,exclude).claude' 2>/dev/null \
-  | LC_ALL=C awk -v F="$FLOOR_F" -v P="$FLOOR_P" '
-      /^\+\+\+ / { path=$0; sub(/^\+\+\+ (b\/)?/, "", path)
-                   skip = (path == "/dev/null" || path ~ /\.(md|mdx|txt|rst|adoc)$/); next }
-      /^@@/      { s=$0; sub(/^@@ -[0-9,]+ \+/, "", s); sub(/[, ].*$/, "", s); ln = s + 0; next }
-      /^\+/      { if (!skip) { print substr($0, 2) >> F; print path ":" ln >> P } ln++; next }'
-}
-_floor_corpus --cached
-[ "${CSK_SCAN_UNSTAGED:-0}" = 1 ] && _floor_corpus
+# FLOOR_F (added lines of project code) and FLOOR_P (`path:line` at the same line number) were built by the single
+# floor pass ahead of the early exit above.
 
 # A file that opens with a generator marker was not written by this commit's author, and the default stack needs
 # this: EF Core puts a warning pragma into every model snapshot it emits (395k such files on GitHub, measured).
@@ -562,7 +565,7 @@ fi
 if [ "$HIT" -ne 0 ]; then
   echo "-----------------------------------------------------------"
   echo "Commit stopped. Remove the AI-authorship trace / vendor name / secret / bloated file / bar-lowering move from the staged changes."
-  echo "A bar-lowering move that is genuinely warranted? record it in .floor-allowlist.txt at the repo root (path:<glob>, rule:<name>, or the exact pattern line) — in the same commit, where review sees it."
+  echo "A bar-lowering move that is genuinely warranted? record it in .floor-allowlist.txt at the repo root (path:<glob>, rule:<name>, or the exact pattern line) — in the same commit, where review sees it. A path: glob's * also crosses directories: write the narrowest path."
   echo "False positive (trace/secret)? add the EXACT pattern line to .trace-allowlist.txt or .secret-allowlist.txt at the repo root."
   echo "Private path flagged but genuinely public? add that exact term to .private-allowlist.txt at the repo root."
   echo "Large file is intentional? raise CSK_MAX_FILE_BYTES, use Git LFS, or gitignore the build/vendored path."

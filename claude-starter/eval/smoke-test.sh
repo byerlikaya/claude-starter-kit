@@ -3326,6 +3326,10 @@ if command -v git >/dev/null 2>&1 && ( cd "$FGR" && git init -q . && git config 
   ( cd "$FGR" && printf 'x(); // %s\n' "$TSI" >> src/app.ts && printf 'path:src/*\n' > .floor-allowlist.txt ); fg 0 "allowlist path:<glob> exempts that path"
   ( cd "$FGR" && printf 'x(); // %s\n' "$TSI" >> src/app.ts && printf 'rule:silenced-checker\n' > .floor-allowlist.txt ); fg 0 "allowlist rule:<name> turns that rule off"
   ( cd "$FGR" && printf 'x(); // %s\n' "$TSI" >> src/app.ts && printf 'path:lib/*\n' > .floor-allowlist.txt ); fg 1 "calibration: an allowlist for another path exempts nothing here"
+  # `path:` is a shell `case` pattern, so `*` crosses directories: `path:*.ts` exempts src/app.ts, not only root-level
+  # files. That is wider than it reads, and it is documented rather than silently different — this row pins the
+  # documented behaviour, so the words and the code cannot drift apart. Measured on Windows 11 before it was written.
+  ( cd "$FGR" && printf 'x(); // %s\n' "$TSI" >> src/app.ts && printf 'path:*.ts\n' > .floor-allowlist.txt ); fg 0 "a path: glob's * crosses directories (documented): path:*.ts exempts src/app.ts"
   # The report names rule, file:line and pattern, never the line — a suppressed line can hold a secret beside it.
   ( cd "$FGR" && printf 'const k = "zz-report-probe"; // %s\n' "$TSI" >> src/app.ts && git add -A >/dev/null 2>&1 && bash .claude/hooks/pre-commit ) > "$FGR.out" 2>&1
   ( cd "$FGR" && git reset -q --hard HEAD && git clean -qfd ) >/dev/null 2>&1
@@ -3334,6 +3338,14 @@ if command -v git >/dev/null 2>&1 && ( cd "$FGR" && git init -q . && git config 
   else
     fail "floor: report shape wrong or the line leaked"; sed -n '1,3p' "$FGR.out" | sed 's/^/     ↳ /'
   fi
+  # An added line that itself begins `++ ` reaches the diff as `+++ …`. The corpus parser used to take any such line for
+  # a file header, so it re-pointed the path of every line after it — measured: the report read `counter;:2` for a
+  # suppression on src/a.ts line 3. Headers are now read only between `diff --git` and the first hunk.
+  ( cd "$FGR" && printf 'x\n++ counter;\nfoo(); // %s\n' "$TSI" > src/a.ts && git add -A >/dev/null 2>&1 && bash .claude/hooks/pre-commit ) > "$FGR.out" 2>&1
+  ( cd "$FGR" && git reset -q --hard HEAD && git clean -qfd ) >/dev/null 2>&1
+  grep -q 'FLOOR-GUARD \[silenced-checker\]: src/a.ts:3 ' "$FGR.out" \
+    && pass "floor: an added line starting '++ ' is not mistaken for a file header (src/a.ts:3)" \
+    || { fail "floor: an added '++ ' line re-pointed the report's path"; sed -n '1,2p' "$FGR.out" | sed 's/^/     ↳ /'; }
   rm -rf "$FGR" "$FGR.out"
 else
   skip tool "floor guard structural cases skipped (git is absent or unusable here)"

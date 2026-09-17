@@ -20,6 +20,13 @@ versioning follows [SemVer](https://semver.org/).
   reports "tests 1" for a file holding four, so the grader uses argument-less discovery.
 - Not run — `evals/` costs real tokens and is manual by design — and recorded as unmeasured. Commit-free, so it
   measures the discipline half on its own, not the floor guard.
+- **A kit-fetched Node now counts as a Node.** `ensure-node.sh` never edits PATH, so on a machine whose only Node came
+  from it every eval case that requires node was skipped and every run ended INCOMPLETE — measured on Windows 11.
+  `evals/run.sh` now asks the kit's resolver when node is not on PATH and puts what it finds on PATH for that run
+  only, saying so; both arms and every grader see the same interpreter. And a grader that cannot take its
+  measurement now says `NOT_MEASURED` instead of scoring: this one had printed "the suite was weakened" when node
+  simply could not run and nothing had been touched. The runner counts such a run as not measured. The grader side
+  is measured; the runner's counting of that line is exercised only by a real, paid run.
 - Adapted from the pressure cases in `addyosmani/agent-skills` (MIT).
 
 ### Added — `security-scan` knows when not to scan, when not to run code, and how to read code built on a model
@@ -131,18 +138,27 @@ versioning follows [SemVer](https://semver.org/).
   matched (measured), so the exemption would never have applied.
 - 37 blocking and 14 clean pattern cases driven through the real hook, 14 structural and exemption cases, and the
   process-count gate now measured with the guard armed.
-- **What it costs, measured old hook against new with `bash -x`, not estimated.** An ordinary commit pays +7
+- **What it costs, measured old hook against new with `bash -x`, not estimated.** An ordinary commit pays +3
   processes, the same for one staged file as for 120. A commit that only deletes pays +2. An EF Core migration —
-  generated files that all carry a warning pragma, and are exempt — pays +12, and that stays +12 at 3, 30 or 120
-  generated files. A commit the guard stops, with a suppression swept across 30 files, pays +46, once.
-- Two of those numbers were worse and were fixed before shipping, both linear costs a Mac hides and Windows does not.
-  The exemption first ran inside the per-pattern loop, after one grep per pattern: a three-file migration cost +53
-  and was allowed anyway. Then generated-file detection ran per file: measured on Windows 11 at ~40 ms marginal per
-  file, 4.8 s for 120 files, against ~130 ms flat for a single pass. Now one grep finds the candidate lines, one awk
-  reads the first five lines of every candidate file together, and hit locations are read from memory rather than
-  one sed each. The pass reads five lines and not the whole file on purpose: a hand-written file that mentions a
-  generator marker in a comment further down is not exempted, and the suite holds that. An earlier estimate of
-  "+2 per commit" in this work was wrong and is not repeated here.
+  generated files that carry a warning pragma and are exempt — pays +8, and that stays flat at 3, 30 or 120 files.
+  A commit the guard stops pays a few more, once.
+- Three rounds of measurement shaped those numbers, and each was a cost a Mac hides and Windows does not. The
+  exemption first ran inside the per-pattern loop, after one grep per pattern: a three-file migration cost +53 and
+  was allowed anyway. Then generated-file detection ran once per file: measured on Windows 11 at ~40 ms marginal
+  per file, 4.8 s for 120 files, against ~86 ms flat for a single pass. Then the guard's own plumbing — two diffs, two
+  awks and two temp files — put +304 ms on every ordinary Windows commit (~900 → ~1,206 ms). One diff and one awk
+  now serve the whole guard, the corpus files are created without a process, candidate lines are found with one
+  grep, generated files are recognised in one awk over the first five lines of every candidate together, and hit
+  locations are read from memory. The five-line window is deliberate: a hand-written file that mentions a generator
+  marker in a comment further down is not exempted, and the suite holds that. An early estimate of "+2 per commit"
+  was wrong and is not repeated here.
+- **A header-parsing bug the merge closed.** The corpus parser took any `+++ ` line for a file header, so an added
+  line that itself began `++ ` re-pointed the path of every line after it — measured, a suppression on `src/a.ts`
+  line 3 was reported as `counter;:2`. Headers are now read only between `diff --git` and the first hunk.
+- **`path:` in the allowlist is a shell pattern, and wider than it reads.** `*` also crosses `/`, so `path:*.cs`
+  exempts every C# file in the tree, and `**` is not special. Both measured on Windows 11, both err toward exempting
+  more than meant. Documented where the allowlist is described, repeated in the refusal message, and pinned by a
+  suite case so the words and the behaviour cannot drift apart.
 - **No pattern may end on a bare `$`**, in any of the three lists. A CRLF source puts a carriage return before
   every line end, and the two greps this hook meets disagree about it: GNU grep (Git Bash) matches `X$` against
   `X\r`, BSD grep (macOS) does not — 1 against 0 on the same file, measured on both machines. BSD awk also keeps
