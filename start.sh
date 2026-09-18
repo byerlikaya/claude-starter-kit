@@ -62,15 +62,62 @@ If no flag is given, the script asks interactively (wizard).
 
 Every install ships the whole kit: all agents, all skills — backend, web and mobile (RN/Expo) together.
   --backend | --frontend | --mobile | --fullstack   accepted, no effect (kept so older commands still run)
+  --private | --shared   is the install yours alone, or committed for the team? (default: private)
+  --yes, -y      answer every question with yes (unattended install)
   --version, -v  print the kit version and exit
 USAGE
 }
 
 ask_yes() {  # $1 = question; returns 0 if the user says 'yes'
   local a
+  # --yes ALWAYS wins, and it is answered BEFORE stdin is touched at all. Claude Code runs the installer
+  # under a pty, so stdin IS a terminal there and a bare `read` blocks forever on input nobody will type:
+  # testing the terminal first would ignore a --yes that was passed precisely to avoid that. adopt.sh:50
+  # carries the same rule for the same reason, and this script was the one place that never learned it.
+  # $2 = "risky": --yes does NOT answer this one. --yes says "install the kit unattended"; it does not say
+  # "clone a third-party base project into my repository over the network". That action writes thousands of
+  # files into the user's tree and the script itself labels it risky, so it stays an explicit, human yes.
+  # Under --yes these decline and say so, which is the reversible direction.
+  if [ "${2:-}" = risky ] && [ "${ASSUME_YES:-0}" = 1 ]; then
+    printf '%s no %s(--yes does not approve the DevArchitecture base — run without --yes to add it)%s\n' "$1" "$D" "$R"
+    return 1
+  fi
+  if [ "${ASSUME_YES:-0}" = 1 ]; then printf '%s yes %s(--yes)%s\n' "$1" "$D" "$R"; return 0; fi
+  # Deliberately NOT adopt.sh's `[ -t 0 ]` shape. adopt.sh declines outright when stdin is not a terminal;
+  # here `printf 'yes\n' | bash start.sh` is the documented CI form (see the note at the confirm prompt) and
+  # that shape would silently turn every piped install into a cancellation. A pipe reaching EOF already
+  # answers "" => no, so the unattended case stays safe without special-casing it.
   printf '%s [yes/no]: ' "$1"
   read -r a || a=""
   case "$a" in [yY]|[yY][eE][sS]|[eE]|[eE][vV][eE][tT]) return 0 ;; *) return 1 ;; esac
+}
+# Append entries to .gitignore. Three callers had three copies of the same two bugs (start.sh's four-entry
+# loop, and adopt.sh's review-pass.json line), so it lives here and adopt.sh carries the twin.
+#   * A file whose last line has NO trailing newline concatenates the first appended entry onto it —
+#     `node_modules` + `.claude/` becomes `node_modules.claude/`, ignoring neither. `touch` does not help:
+#     it changes the timestamp, not the last byte. So read the last byte and add the newline ourselves.
+#   * `grep -qxF` is an exact-literal test, so a repo that already ignores `.claude` (no trailing slash)
+#     gets a second, redundant line. Ask git the real question instead — `git check-ignore` answers about
+#     the PATH, whatever spelling the existing rule uses. It is only asked inside a repo; outside one we
+#     fall back to the literal test, which is all that is knowable there.
+gi_add() {   # $@ = entries to ensure in ./.gitignore; prints nothing, sets GI_WROTE to what it added
+  local e
+  GI_WROTE=""
+  [ -e .gitignore ] || : > .gitignore
+  for e in "$@"; do
+    if git rev-parse --git-dir >/dev/null 2>&1; then
+      git check-ignore -q "$e" 2>/dev/null && continue
+    else
+      grep -qxF "$e" .gitignore 2>/dev/null && continue
+    fi
+    # last byte is not a newline (and the file is not empty) -> close the line first
+    if [ -s .gitignore ] && [ "$(tail -c 1 .gitignore | od -An -tx1 | tr -d ' \n')" != "0a" ]; then
+      printf '\n' >> .gitignore
+    fi
+    printf '%s\n' "$e" >> .gitignore
+    GI_WROTE="$GI_WROTE $e"
+  done
+  GI_WROTE="${GI_WROTE# }"
 }
 # --- CLAUDE.md split (shared contract with adopt.sh) ---
 # The payload CLAUDE.md carries the kit discipline, then a one-line sentinel, then the project template.
@@ -192,12 +239,15 @@ clone_devarch() {  # $1 = target dir; clone verbatim, drop nested .git, rename t
 # copy-pasted commands, and erroring out there breaks a pipeline over a flag whose absence changes nothing.
 # A one-line notice is printed after the colour helpers load, so the user learns the flag no longer selects
 # anything instead of quietly getting a different set than the one they typed.
-STACK=""; LEGACY_FLAGS=""
+STACK=""; LEGACY_FLAGS=""; ASSUME_YES=0; VISIBILITY=""
 for a in "$@"; do
   case "$a" in
     --backend|--frontend|--mobile|--fullstack) LEGACY_FLAGS="$LEGACY_FLAGS $a" ;;
     --dotnet) STACK="dotnet" ;;
     --generic) STACK="generic" ;;
+    --yes|-y) ASSUME_YES=1 ;;
+    --private) VISIBILITY="private" ;;
+    --shared)  VISIBILITY="shared" ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown parameter: $a"; echo; usage; exit 1 ;;
   esac
@@ -232,8 +282,21 @@ sub "2 steps: backend pattern -> summary & confirm."
 # ===================== STEP 1 · BACKEND PATTERN =====================
 # Asked on EVERY install: the pattern skill is the one thing that is genuinely wrong in the other stack, so it
 # is a real question, not a profile side effect. Skipped only when --dotnet/--generic was given.
+# --yes means UNATTENDED, so it has to answer this one too. Guarding only ask_yes moved the block from the
+# confirm prompt to this read and left the installer hanging just the same — measured on stock Windows with
+# an open-but-empty stdin, where a bare `read` never returns. A flag that does not reach every prompt is a
+# flag that reads as a fix and is not one.
+#
+# Note the deliberate asymmetry with the visibility question below: THAT one is skipped whenever stdin is
+# not a terminal, because it is new and every existing piped caller feeds a fixed sequence it would shift.
+# This one is pre-existing — callers DO pipe an answer to it — so it is skipped only under --yes, where by
+# definition nothing is supposed to be read.
+if [ -z "$STACK" ] && [ "$ASSUME_YES" = 1 ]; then
+  STACK="dotnet"
+  printf '  %sBackend pattern:%s .NET / DevArchitecture %s(default — pass --generic for the stack-agnostic one)%s\n' "$B" "$R" "$D" "$R"
+fi
 if [ -z "$STACK" ]; then
-  h1  "[1/2] Backend pattern"
+  h1  "[1/3] Backend pattern"
   sub "Determines the backend template and whether the .NET-specific skills are included."
   echo
   opt 1 ".NET / DevArchitecture" 1 "full support"
@@ -247,6 +310,51 @@ if [ -z "$STACK" ]; then
   printf '  %s->%s Choice %s[1-2, empty=1]%s: ' "$CY" "$R" "$D" "$R"
   read -r s || s=""                 # empty => default (dotnet)
   case "$s" in 2) STACK="generic" ;; *) STACK="dotnet" ;; esac
+fi
+
+# ===================== STEP 2 · WHO IS THIS INSTALL FOR =====================
+# ONE question about intent, not four about paths. Until now the installer wrote four .gitignore entries
+# unconditionally and the summary never mentioned .gitignore at all — so "confirm the install" silently
+# edited a TRACKED file, which is a change nobody agreed to. The answer decides two of the four entries;
+# the summary below lists the exact lines either way.
+#
+# Two entries are NOT part of the question, and both are guarantees rather than preferences:
+#   * .private-terms.txt is the list of strings that must never be published (internal project names,
+#     client names, hosts). Publishing the list defeats its purpose, so it is ignored in both answers.
+#   * docs/ holds internal working documents — PLAN.md, SESSION_STATE.md, THREAT_MODEL.md,
+#     SECURITY_FINDINGS.md, DISCOVERY.md, EVAL.md. §4.3 promises they stay private and README.md says so
+#     too; a team that shares its kit config has not asked to publish its threat model.
+#
+# ASKED ONLY WHEN SOMEONE IS THERE TO ANSWER. A new prompt consumes a line of stdin, and every existing
+# non-interactive caller feeds a FIXED sequence — `printf 'yes\n' | bash start.sh --generic` is the form in
+# this repo's own e2e and in user scripts. Adding a read shifts that sequence by one: the visibility question
+# ate the 'yes', the confirm prompt hit EOF, and the install silently CANCELLED. Measured: e2e went from
+# green to rc=127 because the installed tree never existed. So a non-interactive run keeps today's behaviour
+# (private) without reading anything, and --private/--shared are how a script chooses instead.
+if [ -z "$VISIBILITY" ] && { [ ! -t 0 ] || [ "$ASSUME_YES" = 1 ]; }; then
+  VISIBILITY="private"
+  printf '  %sInstall visibility:%s private %s(default — pass --shared to commit .claude/ and CLAUDE.md)%s\n' "$B" "$R" "$D" "$R"
+fi
+if [ -z "$VISIBILITY" ]; then
+  h1  "[2/3] Who is this install for?"
+  sub "Decides whether your teammates get the kit's configuration — and what goes into .gitignore."
+  echo
+  opt 1 "Just me" 1 "private"
+  add  ".claude/ and CLAUDE.md stay out of git — nothing appears in your teammates' checkouts"
+  echo
+  opt 2 "The whole team" 0 "shared"
+  add  ".claude/ and CLAUDE.md are committable — everyone gets the same agents, skills and gates"
+  skip "internal working documents (docs/) stay private in BOTH answers"
+  echo
+  printf '  %s->%s Choice %s[1-2, empty=1]%s: ' "$CY" "$R" "$D" "$R"
+  read -r s || s=""                 # empty => default (private = today's behaviour)
+  case "$s" in 2) VISIBILITY="shared" ;; *) VISIBILITY="private" ;; esac
+fi
+# The exact lines this install will append, resolved once so the summary and the writer cannot disagree.
+if [ "$VISIBILITY" = "shared" ]; then
+  GI_PLAN='docs/ .private-terms.txt'
+else
+  GI_PLAN='docs/ .claude/ CLAUDE.md .private-terms.txt'
 fi
 
 # Project name (from the directory) + where the backend base lives.
@@ -282,7 +390,7 @@ count_installed() {   # $1=EXCL list  $2=glob  -> count to install
 N_AG="$(count_installed "" "$SRC/agents/*.md")"
 N_SK="$(count_installed "$EXCL_SKILLS" "$SRC/skills/*/")"
 
-h1 "[2/2] Summary · see what will be installed before you confirm"
+h1 "[3/3] Summary · see what will be installed before you confirm"
 echo
 row "Scope" "${B}full kit ${D}— backend + web + mobile (RN/Expo), every agent and skill${R}"
 row "Included"  "${MG}${B}${N_AG}${R} agents · ${MG}${B}${N_SK}${R} skills will be installed"
@@ -304,6 +412,14 @@ gate "real context measurement + handoff at 75% (Stop hook)"
 gate "destructive command guard (rm -rf / force-push, etc.)"
 echo
 row "Will write" "${D}./.claude (agents·skills·commands·hooks·eval·studio·settings.json) + ./CLAUDE.md${R}"
+# .gitignore is a TRACKED file in most repos, so appending to it is a change to the project — it belongs in
+# the summary, named line by line, not discovered afterwards in `git diff`. Entries this repo already
+# ignores are dropped at write time, so what is listed here is the upper bound, not a promise of four lines.
+if [ "$VISIBILITY" = "shared" ]; then
+  row ".gitignore" "${D}$(printf '%s · ' $GI_PLAN | sed 's/ · $//')  ${YE}(shared: .claude/ and CLAUDE.md stay committable)${R}"
+else
+  row ".gitignore" "${D}$(printf '%s · ' $GI_PLAN | sed 's/ · $//')  ${GR}(private)${R}"
+fi
 # What this machine is missing, BEFORE the confirm prompt — not after, when it becomes a symptom pointing
 # somewhere else. Report-only and never blocking: the kit degrades rather than breaks, and that is exactly why
 # a gap is otherwise invisible. See claude-starter/eval/preflight.sh for the reasoning per tool.
@@ -328,14 +444,14 @@ if [ "$DEVARCH_ON" = 1 ]; then
     echo "  !!! WARNING: An existing project is present and the DevArchitecture backend base is MISSING."
     echo "  Adding it may cause file/structure conflicts and BREAK the project."
     echo "  This kit is meant for setting up a project FROM SCRATCH. Confirm if you still want to add it."
-    if ask_yes "  Do you want to add DevArchitecture to this EXISTING project (risky)?"; then
+    if ask_yes "  Do you want to add DevArchitecture to this EXISTING project (risky)?" risky; then
       clone_devarch "$BACKEND_DIR" || echo "  Continuing without the backend base."
     else
       echo "  Skipped. The backend flow assumes DevArchitecture; you will need to adapt it manually."
     fi
   else
     echo "  Greenfield project: this kit can install the DevArchitecture backend base."
-    if ask_yes "  Should I include the DevArchitecture backend base in the project now?"; then
+    if ask_yes "  Should I include the DevArchitecture backend base in the project now?" risky; then
       clone_devarch "$BACKEND_DIR" || echo "  Could not include the backend base; continuing with kit installation."
     else
       echo "  Skipped. You can add it manually later:  git clone $DEVARCH_URL"
@@ -399,7 +515,11 @@ if [ "$DEVARCH_ON" = 1 ] && [ -f .claude/hooks/trace-blocklist.txt ]; then
       && mv .claude/hooks/trace-blocklist.txt.kit-tmp .claude/hooks/trace-blocklist.txt
   fi
 fi
-cp "$SRC/AGENT_TEMPLATE.md" .claude/ 2>/dev/null || true
+# `|| true` here used to swallow a missing payload file entirely: the install reported success and
+# /skill-csk opened with `Read .claude/AGENT_TEMPLATE.md` against nothing. A best-effort copy is right —
+# a missing doc must not abort an otherwise good install — but it has to be AUDIBLE, or the gap is
+# invisible until someone runs the command. adopt.sh copies the same file for the same reason.
+cp "$SRC/AGENT_TEMPLATE.md" .claude/ 2>/dev/null || printf '  %s!%s AGENT_TEMPLATE.md missing from the payload — /skill-csk will have nothing to read.\n' "$YE" "$R"
 cp "$SRC/README.md"         .claude/ 2>/dev/null || true
 
 # Install manifest — the names the KIT ships. It is the only way to tell kit-owned from project-owned later:
@@ -445,10 +565,12 @@ else
     && mv ./CLAUDE.md.kit-tmp ./CLAUDE.md
   echo "  ./CLAUDE.md existed — prepended the discipline @import; your content is untouched."
 fi
-touch .gitignore
-# .private-terms.txt lists the strings that must never be published (internal project names, client
-# names, host names) — publishing that list would defeat its purpose, so it is ignored from the start.
-for e in 'docs/' '.claude/' 'CLAUDE.md' '.private-terms.txt'; do grep -qxF "$e" .gitignore || echo "$e" >> .gitignore; done
+# The entries were decided in step 2 and printed in the summary; gi_add drops the ones this repo already
+# ignores and fixes a missing trailing newline before appending. Word-split on purpose: GI_PLAN is a
+# space-separated list this script built, not user input.
+# shellcheck disable=SC2086
+gi_add $GI_PLAN
+[ -n "$GI_WROTE" ] && printf '  %s+%s .gitignore: %s\n' "$GR" "$R" "$GI_WROTE"
 # `[ -d .git ]` is a proxy for the answer, and it lies exactly where it matters: in a worktree or a submodule
 # `.git` is a FILE, so the commit gate was never armed there and the installer said nothing was wrong. adopt.sh
 # already names this (red-team hole #6) and start.sh was never taught it. Measured: in a worktree the installer
