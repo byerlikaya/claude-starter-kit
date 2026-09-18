@@ -252,6 +252,52 @@ if [ "$_parsed" = 0 ]; then
   PERM_MODE="$(_json_slice "$INPUT" permission_mode)"
 fi
 PERM_MODE="${PERM_MODE:-}"
+
+# AN UNREADABLE PAYLOAD IS REFUSED, NOT WAVED THROUGH. Both shapes below were found by the parser-conformance
+# oracle, which compares this gate's verdict on the dependency-free tier against a real parser's, and both fell
+# the same way: tier 3 allowed, a real parser blocked. Neither is reachable from a live session today — Claude
+# Code builds the payload and `tool_input` is flat with plain key names — so these are latent fragilities, and
+# they matter because the dependency-free tier is the ONLY tier on a stock Windows desktop and is proposed as
+# the only tier everywhere.
+#
+# The test is the raw byte sequence `"command":`, and it is sound for VALID JSON for one reason: inside a JSON
+# string a quote must be escaped, so those bytes cannot occur inside a value — `\"command\":\"` does not match.
+# That is why the oracle's "a literal `\"command\":\"` inside another value" case still parses normally here
+# rather than being refused: it carries ONE occurrence, the real key.
+#
+#   * MORE THAN ONE occurrence -> the key appears twice (RFC 8259 leaves duplicate names undefined: this slice
+#     takes the first, jq and python take the last) or once nested and once real
+#     (`{"meta":{"command":"ls -la"},"command":"rm -rf /"}` reads the harmless one). Either way the value is a
+#     GUESS, and a gate that guesses is a gate that can be aimed. Checked on the RAW payload rather than only on
+#     the tier-3 path, deliberately: refusing on one tier while another reads the last value and allows would
+#     just move the divergence instead of closing it.
+#   * NO occurrence while the payload names a tool this hook gates -> the key is spelled in a way the slice
+#     cannot see (`command` decodes to `command` for a real parser) or the format moved. Either way the
+#     honest report is "I could not read this", and until now that produced `exit 0` — the gate silently absent,
+#     which is indistinguishable from a session where nothing dangerous was attempted.
+#
+# Deliberately LOUD, chosen with the trade-off stated rather than assumed: if the payload format ever moves,
+# every Bash call on a stock Windows desktop stops with the reason on screen, instead of the gate quietly
+# ceasing to exist. `gatelog` is not available this early (it resolves its path from the payload's cwd, parsed
+# further down), so these two refusals are stderr-only — the one place in this file where a verdict is not
+# logged, and it is a limit rather than a choice.
+_after_cmd_key="${INPUT#*'"command":'}"
+if [ "$_after_cmd_key" != "$INPUT" ]; then
+  case "$_after_cmd_key" in
+    *'"command":'*)
+      echo "GUARD: this payload carries more than one \"command\" key, so the command to judge is ambiguous." >&2
+      echo "Refusing rather than guessing which one runs. If you meant one command, send one key." >&2
+      exit 2 ;;
+  esac
+elif [ -z "$CMD" ]; then
+  case "$INPUT" in
+    *'"tool_name":"Bash"'*|*'"tool_name":"PowerShell"'*)
+      echo "GUARD: this payload names a gated tool but no readable \"command\" key, so nothing could be" >&2
+      echo "judged. Refusing rather than allowing an unread command. If the payload format has changed," >&2
+      echo "the hook needs updating — run the commit or the command yourself in your terminal meanwhile." >&2
+      exit 2 ;;
+  esac
+fi
 [ -z "$CMD" ] && exit 0
 
 # Gate observability. A gate that cannot be seen firing cannot be measured: "the model never reached for the

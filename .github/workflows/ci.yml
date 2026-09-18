@@ -32,6 +32,13 @@ jobs:
       - name: Routing eval — behavioral (golden routing + held-out + agent conflicts)
         run: bash packaging/verify.sh routing
 
+      # The gate must reach the same verdict whichever parser decoded the payload. It runs on every platform CI
+      # covers because the answer differs BY PLATFORM: this runner has jq, a stock Windows desktop has neither
+      # jq nor a python3 that runs, and the four incidents this step exists to prevent were all a tier CI
+      # exercised behaving differently from the tier the user runs.
+      - name: Parser conformance — every tier reaches the same verdict
+        run: bash packaging/verify.sh parser
+
       - name: README skill catalogue in sync with the skills
         run: bash packaging/verify.sh catalogue
 
@@ -103,6 +110,12 @@ jobs:
       # the payload most likely to break on Windows unmeasured. Node is present on both runners.
       - name: Studio — boundary pins, permission bridge, transcript parsing
         run: bash packaging/verify.sh studio
+
+      # Here for a sharper reason than on ubuntu: macOS ships jq with the OS and a stock Windows desktop has no
+      # working decoder at all, so these two runners sit on OPPOSITE tiers. A divergence that hides on one of
+      # them shows on the other, which is the asymmetry that produced every incident in this class.
+      - name: Parser conformance — every tier reaches the same verdict
+        run: bash packaging/verify.sh parser
 
       - name: e2e rehearsal — installer + non-interactive self-heal (with/without jq·python)
         run: bash packaging/verify.sh e2e
