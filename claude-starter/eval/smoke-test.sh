@@ -3286,6 +3286,28 @@ DOC="$(mktemp -d)"
   chmod +x .claude/hooks/*.sh .claude/hooks/pre-commit .claude/hooks/commit-msg
   git config core.hooksPath .claude/hooks )
 bash "$ROOT/eval/doctor.sh" "$DOC" >/dev/null 2>&1 && pass "doctor: healthy install -> exit 0" || fail "doctor flagged a healthy install"
+# THE MANIFEST'S LINE ENDINGS MUST NOT CHANGE WHO OWNS A SKILL. Measured before the fix: the same install with
+# one project skill counted 1 on an LF manifest and 2 on a CRLF one, because `grep -qxF` wants a whole line and
+# `skills/handoff\r` is not `skills/handoff` — so every KIT skill read as project-owned. A Windows checkout with
+# core.autocrlf produces exactly that manifest, and `skill-trust.sh` had already been taught this for the same
+# file; doctor was the copy that had not, which is why the two disagreed on one install. Both spellings are
+# driven here, and the must-fail twin runs the UNSTRIPPED grep against the CRLF manifest so the strip cannot be
+# deleted on the belief that this case would still notice.
+DCR="$(mktemp -d)"
+mkdir -p "$DCR/.claude/skills/only-mine" "$DCR/.claude/hooks"
+cp -R "$SKILLS/handoff" "$DCR/.claude/skills/" 2>/dev/null
+printf '# x\n' > "$DCR/.claude/skills/only-mine/SKILL.md"
+cp "$HOOKS"/*.sh "$DCR/.claude/hooks/" 2>/dev/null; chmod +x "$DCR/.claude/hooks/"*.sh 2>/dev/null
+_own(){ ( cd "$DCR" && bash "$ROOT/eval/doctor.sh" 2>&1 | grep -oE '[0-9]+ project-specific skill' | head -1 | cut -d' ' -f1 ); }
+printf 'skills/handoff\n'   > "$DCR/.claude/kit-manifest.txt"; _lf="$(_own)"
+printf 'skills/handoff\r\n' > "$DCR/.claude/kit-manifest.txt"; _crlf="$(_own)"
+[ -n "$_lf" ] && [ "$_lf" = "$_crlf" ] \
+  && pass "doctor counts project skills the same on an LF and a CRLF manifest ($_lf)" \
+  || fail "doctor's project-skill count depends on the manifest's line endings (LF=$_lf CRLF=$_crlf)"
+grep -qxF 'skills/handoff' "$DCR/.claude/kit-manifest.txt" \
+  && fail "the must-fail twin did not reproduce the CRLF miss, so the case above proves nothing" \
+  || pass "must-fail twin: an unstripped whole-line grep DOES miss the CRLF manifest"
+rm -rf "$DCR"
 # The "non-executable hook" probe only means something where `chmod -x` actually takes effect. On Windows via
 # Git-Bash/MSYS a file with a `#!` shebang is reported executable regardless of the bit, so the broken state can't
 # be created — probe the REAL hook: only assert when chmod -x actually cleared its executability.
