@@ -551,37 +551,34 @@ async function relay(pathname) {
 // call holds the event loop for as long as it takes, and here it would do that on
 // every tick. Keeping a slow one inside the tick that hit it is ours to do; making the
 // filesystem faster is not.
-async function signature(session) {
+/** Exported for the selfcheck. What it decides is only visible over a 45-second SSE capture otherwise,
+ *  and a gate nobody can run in a millisecond is a gate that gets deleted. */
+export async function signature(session) {
   const parts = [];
   try { parts.push(String((await fsp.stat(session.file)).size)); } catch { parts.push('0'); }
   let newest = 0;
-  try {
-    // One level down as well, because a workflow run puts its agents under
-    // `subagents/workflows/<id>/` and buildGraph reads them. A flat readdir
-    // returns that directory, whose size does not move when the transcripts
-    // inside it grow — so a workflow's agents were invisible to this check and
-    // their updates were never pushed while every plain agent's were.
-    for (const e of (await fsp.readdir(session.subagentsDir, { withFileTypes: true })).sort((a, b) => (a.name < b.name ? -1 : 1))) {
-      const p = path.join(session.subagentsDir, e.name);
-      if (e.isDirectory()) {
-        try {
-          for (const n of (await fsp.readdir(p)).sort()) {
-            try {
-              const st = await fsp.stat(path.join(p, n));
-              parts.push(`${e.name}/${n}:${st.size}`);
-              if (st.mtimeMs > newest) newest = st.mtimeMs;
-            } catch { /* vanished mid-scan */ }
-          }
-        } catch { /* unreadable */ }
-        continue;
-      }
+  // FILES ONLY, AT ANY DEPTH. A workflow run puts its agents under `subagents/workflows/<id>/` — two levels
+  // down, not one — and buildGraph reads them. A flat readdir returns the `workflows` directory, whose size
+  // does not move when a transcript inside it grows, so a workflow's agents were invisible here while every
+  // plain agent's growth was seen. Recursing only ONE level was my first fix and it was still wrong: it
+  // stat'ed `workflows/<id>` as though the directory were the file. The selfcheck caught that, which a
+  // 45-second stream capture had not — the capture's extra frames came from the clock bucket below, and I had
+  // read them as proof of the traversal. Hence: walk to the leaves, and only ever stat a file.
+  const walk = async (dir, prefix) => {
+    let entries;
+    try { entries = await fsp.readdir(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries.sort((a, b) => (a.name < b.name ? -1 : 1))) {
+      const p = path.join(dir, e.name);
+      const rel = prefix ? `${prefix}/${e.name}` : e.name;
+      if (e.isDirectory()) { await walk(p, rel); continue; }
       try {
         const st = await fsp.stat(p);
-        parts.push(`${e.name}:${st.size}`);
+        parts.push(`${rel}:${st.size}`);
         if (st.mtimeMs > newest) newest = st.mtimeMs;
       } catch { /* vanished mid-scan */ }
     }
-  } catch { /* no subagents yet */ }
+  };
+  await walk(session.subagentsDir, '');
   // A STATUS CAN CHANGE WITH NO FILE CHANGING. buildGraph calls an agent
   // `running` while `now - mtime < staleMs` and `stale`/`ended` after, so that
   // transition is driven by the clock alone: nothing is written, no size moves,
