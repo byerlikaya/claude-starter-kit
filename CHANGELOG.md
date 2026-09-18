@@ -84,13 +84,30 @@ versioning follows [SemVer](https://semver.org/).
   produced five more — and two of them failed OPEN, which is why the shapes are not cosmetic: **separators were
   not their own tokens**, so `git commit -m c; echo done` was refused (`-m` swallowed `c;` whole) while
   `if true; then git commit -m c -- a.txt; fi` was ALLOWED (the pathspec token was `a.txt;`, which the `--`
-  lookahead dismissed as a separator). A **redirection** now ends the argument list, so `> log.txt`, `2> err`
-  and a heredoc's `<<EOF` stop having their target read as a pathspec — while a redirection belonging to an
-  EARLIER command still cannot end the scan before the commit is reached, which was the fail-open risk inside
-  that fix and is asserted. A **line continuation** joins rather than separates, in both LF and CRLF spelling:
+  lookahead dismissed as a separator). A **redirection** is skipped over, so `> log.txt`, `2> err` and a
+  heredoc's `<<EOF` stop having their target read as a pathspec — while a redirection belonging to an EARLIER
+  command still cannot end the scan before the commit is reached, which was the fail-open risk inside that fix
+  and is asserted. Skipping rather than STOPPING is itself a correction and the reason is worth keeping: the
+  first version broke off at a redirection, and that was written down as a boundary on the grounds that nobody
+  puts a path after one. Measured rather than assumed, `git commit -m c > log.txt -- a.txt` returned rc=0 and the
+  commit carried the unreviewed line — so the boundary's price was not a missed refusal but a leak, and a guess
+  about likelihood is no defence against a fact. Closed, with `2>&1 | tee log` pinned so the closure cannot
+  start reading a pipe's operand as a path. A **line continuation** joins rather than separates, in both LF and CRLF spelling:
   the CRLF one survived the LF fix because the CR sat between the backslash and the newline, and a command
   pasted from a Windows editor carries it. A **lone CR** is deliberately still refused — bash's own argv was
   checked and CR is not in IFS, so `git commit -m c<CR>echo done` really does hand `done` to git as a pathspec.
+- **The suite never asked about the tier CI runs on, and CI was the only machine that could say so.** One
+  assertion went red on `windows-latest` — a CRLF line continuation refusing an ordinary commit — while the same
+  case passed on macOS and on a real Windows desktop. The cause is which decoder is present: GitHub's image has
+  `jq`, so the command arrives DECODED, while a stock desktop has neither `jq` nor `python3` and sees JSON's
+  two-character escapes. A Windows-native binary also opens stdout in TEXT mode, so every LF it writes becomes
+  CRLF, and a command that already held `\r\n` reaches the hook as `\` + CR + CR + LF: the single CRLF fold ate
+  one CR, the continuation rule then looked for `\` + LF with the other CR in the way, and the lone backslash
+  read as a pathspec. **Any Windows user with `jq` installed was on that tier**, so this was a live defect rather
+  than a CI artefact. Every carriage return is now stripped, escaped or real, which needs no loop — and the line
+  that does it was isolated by applying it alone to the failing version. A hermetic fixture (no `jq`, no
+  `python3`, no `perl`) now hands the hook those exact bytes and checks itself first, so a stub that fails to
+  take cannot pass as green rows; calibrated against the failing version, exactly the row CI reported goes red.
   The normaliser is likewise
   extracted from the hook rather than copied. `doctor.sh`
   gained the matching liveness probe, calibrated against a neutered hook. The §4.4 cases that drive a commit now
