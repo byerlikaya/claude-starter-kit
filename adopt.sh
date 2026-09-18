@@ -52,6 +52,32 @@ ask_yes(){ local a
   elif [ -t 0 ]; then printf '%s [yes/no]: ' "$1"; read -r a || a=""
   else printf '%s no %s(non-interactive — pass --yes to apply)%s\n' "$1" "$D" "$R"; a=no; fi
   case "$a" in [yY]|[yY][eE][sS]|[eE]|[eE][vV][eE][tT]) return 0;; *) return 1;; esac; }
+# Twin of start.sh's gi_add — the same two defects were present in both scripts, and twice in this one.
+#   * A .gitignore whose last line has NO trailing newline concatenates the first appended entry onto it:
+#     `node_modules` + `docs/` becomes `node_modulesdocs/`, which ignores neither. Reproduced on the old
+#     shape before this was written. `touch` does not help — it changes the timestamp, not the last byte.
+#   * `grep -qxF` is an exact-literal test, so a repo that already ignores `.claude` (no trailing slash)
+#     collected a second, redundant line. `git check-ignore` asks about the PATH rather than the spelling,
+#     which is the technique this script already uses at the #4 share branch and never applied to its own
+#     writes. Outside a repository there is nothing to ask, so the literal test stays as the fallback.
+gi_add() {   # $@ = entries to ensure in ./.gitignore; sets GI_WROTE to what it actually added
+  local e
+  GI_WROTE=""
+  [ -e .gitignore ] || : > .gitignore
+  for e in "$@"; do
+    if git rev-parse --git-dir >/dev/null 2>&1; then
+      git check-ignore -q "$e" 2>/dev/null && continue
+    else
+      grep -qxF "$e" .gitignore 2>/dev/null && continue
+    fi
+    if [ -s .gitignore ] && [ "$(tail -c 1 .gitignore | od -An -tx1 | tr -d ' \n')" != "0a" ]; then
+      printf '\n' >> .gitignore
+    fi
+    printf '%s\n' "$e" >> .gitignore
+    GI_WROTE="$GI_WROTE $e"
+  done
+  GI_WROTE="${GI_WROTE# }"
+}
 # never-overwrite copy: does NOT overwrite an EXISTING target file (project file is preserved), skips+counts.
 # Result globals: ret_add / ret_skip; conflicts are added to SKIP_LIST. Do NOT call in a subshell (globals are lost).
 SKIP_LIST=""
@@ -516,6 +542,14 @@ copy_noclobber "$SRC/studio"   .claude/studio   "$KIT_PRESENT"; T_ADD=$ret_add; 
 # lives in packaging/studio-test/, outside the payload, so nothing has to be deleted here and
 # the count is simply what landed.
 chmod +x .claude/studio/server/hooks/*.sh 2>/dev/null || true
+# AGENT_TEMPLATE.md — a kit-owned flat file, so it is written on every run rather than never-overwritten.
+# `/skill-csk` opens with `Read .claude/AGENT_TEMPLATE.md`, and until now only start.sh copied it
+# (start.sh:486). That left the command pointing at a file that does not exist on an adopted install, and
+# `update` is an alias of this script (bin/cli.js:48), so a copy placed by start.sh was never refreshed
+# either — it went stale from the day it landed and nothing ever noticed, because §3b iterates skills and
+# agents and this is neither. Overwriting is right for the same reason DISCIPLINE.md is overwritten: the
+# file states the kit's own contract, a project does not author it, and a stale contract is worse than none.
+cp "$SRC/AGENT_TEMPLATE.md" .claude/ 2>/dev/null && echo "  AGENT_TEMPLATE.md written (kit-owned; refreshed on every update)"
 # Report the migration by what LANDED, not by what was missing: devarch-module is on the missing list of every
 # generic project and must not be announced as restored when EXCL_S kept it out.
 if [ -n "$MIGRATE_MISSING" ]; then
@@ -930,7 +964,11 @@ else echo "  #3 keep -> full trace scan"; fi
 # review diff and leave it untracked after a rollback -> 'project untouched' would be a lie.)
 HIDE_NOTE=""
 if [ "$DEC4" = hide ]; then
-  HIDE_NOTE="Keep the kit local after merging:  git rm -r --cached .claude CLAUDE.md  &&  printf '.claude/\nCLAUDE.md\n' >> .gitignore  &&  git commit -m 'kit: keep local'"
+  # docs/ belongs in this command for the same reason it belongs in .gitignore: the opt-out has to cover
+  # the working documents too, or "keep the kit local" leaves the plans, handovers and threat models behind
+  # in the shared repository. The two files the adoption force-added are named explicitly, because they are
+  # tracked despite the ignore rule and `git rm --cached docs` alone would not reach them.
+  HIDE_NOTE="Keep the kit local after merging:  git rm -r --cached .claude CLAUDE.md docs  &&  printf '.claude/\nCLAUDE.md\ndocs/\n' >> .gitignore  &&  git commit -m 'kit: keep local'"
   echo "  #4 hide -> recorded; .claude stays TRACKED on the branch (rollback-safe). Post-merge steps in HANDOVER."
 else
   # `share` is a NO-OP by design: the installer never stages a user's files, it only declines to add a
@@ -1053,10 +1091,23 @@ fi
 # The §4.6 review record is runtime state, not configuration. `start.sh` gitignores `.claude/` wholesale so it
 # is covered there, but an adoption may deliberately TRACK that directory (#4 share) — and then this one file
 # would turn up in every `git status` as a change nobody made on purpose. One narrow line, either way.
-touch .gitignore
-grep -qxF '.claude/review-pass.json' .gitignore || echo '.claude/review-pass.json' >> .gitignore
+#
+# `docs/` closes a privacy hole rather than expressing a preference. README.md and the adr, teamboard and
+# handoff skills all state that docs/ is gitignored in an install, and §4.3 promises internal working
+# documents stay private — but only start.sh ever wrote that entry, so an adoption published every one of
+# them. Measured across the payload: PLAN.md is named in 7 components, SESSION_STATE.md in 6,
+# THREAT_MODEL.md in 6, plus SECURITY_FINDINGS.md, DISCOVERY.md and EVAL.md. A repository receiving this
+# adoption was receiving its own threat model and security findings along with it.
+gi_add '.claude/review-pass.json' 'docs/'
 
-git add .claude CLAUDE.md docs >/dev/null 2>&1
+# Ignoring docs/ and then `git add docs` would stage NOTHING, and that would take the adoption's own record
+# out of the review diff — the exact failure recorded in CHANGELOG 2.5.0, where gitignoring before the
+# branch commit dropped the payload from the diff and left "the project is untouched" untrue after a
+# rollback. So the two files THIS SCRIPT authored are force-added: they are the evidence a reviewer reads,
+# and they are the only things under docs/ that the adoption itself put there. Everything the skills write
+# later stays private, which is what the guarantee was always about.
+git add .claude CLAUDE.md >/dev/null 2>&1
+git add -f docs/HANDOVER.md "$ADR1" >/dev/null 2>&1
 [ -e .gitignore ] && git add .gitignore >/dev/null 2>&1
 [ -e .trace-allowlist.txt ] && git add .trace-allowlist.txt >/dev/null 2>&1
 # NO auto-commit: the change set stays STAGED-but-uncommitted on branch $BR, so every added/changed file shows up
