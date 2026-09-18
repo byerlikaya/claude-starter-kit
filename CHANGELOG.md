@@ -28,16 +28,45 @@ versioning follows [SemVer](https://semver.org/).
   even "the sandbox carries none" holds on only one of the two platforms. The portable reason: `git` cannot be
   absent where a commit is being gated, it being the thing under gate. It also needs no repo and costs one
   process instead of a probe plus a hasher.
-- **Two forms fail closed rather than pass unverified:** `git commit -a` (it stages inside the commit, so at hook
-  time there is nothing staged for a record to be about) and a commit redirected with `-C`/`--git-dir`/`--work-tree`
-  (the record describes THIS worktree). The block prints the reviewed and the staged id side by side — the first
-  version printed nothing, and the failure read as §4.4 to everyone who hit it.
-- Nine cases in `smoke-test.sh` §4f drive the real hook in a real repo, and one of them is the contract itself: the
-  recipe is **extracted from `review-agent-csk.md` and executed**, then the hook is driven against the record it
-  produced. A string comparison would stay green while the two drifted in meaning. `doctor.sh` gained the matching
-  liveness probe, calibrated against a neutered hook. The §4.4 cases that drive a commit now run in a cwd where
-  §4.6 is already satisfied — otherwise each one would have been answered by the new gate while §4.4 could have
-  been deleted entirely with the suite still green.
+- **A commit has to take its content from the INDEX, and the first version of this gate did not say so — which
+  made it a measured fail-open.** With a reviewed line staged and an unreviewed line merely saved in the same
+  file, `git commit -m c -- a.txt` matched the record and committed the unreviewed line. So did `--only`,
+  `--include`, their `-o`/`-i` short forms, `--patch`, `--interactive` and `-a`: git takes those paths from the
+  working tree and ignores what is staged, while the hook hashes the index before git runs. The record was
+  truthful and irrelevant at the same time. All of those forms are now refused, and the premise is pinned by a
+  case that performs such a commit and reads the blob back, so the day git changes its mind the suite says so.
+  (§4.1–4.3 were never affected: git hands its own `pre-commit` hook a temporary index holding the real committed
+  state, measured, so the trace and secret scans always saw what lands.)
+- **That check is a builtin token walk, not a regex, and it costs zero processes** — the ordinary commit used to
+  pay one grep here, which is 62–135 ms on Git Bash. A regex could not do the job: the flag or path has to be an
+  argument of *this* `git commit`, and the previous version could only manage that by refusing to look past the
+  first non-option token, which left `git commit -m x -a` uncaught by its own admission. Quoted spans are
+  stripped first, and that strip is load-bearing — removing it turns seven cases red, among them
+  `git commit -m "add -a flag docs"` and `ls -la && git commit -m x`, the two false positives measured on the
+  first version of the rule. Three further classes are pinned because a review of the walk got them wrong and
+  measuring settled it: a short token is a CLUSTER, so `-qam` is `-q -a -m` and the test has to be a character
+  class rather than an equality check; a BARE `--` commits from the index, so refusing it is a false positive;
+  and an OPTIONAL-value flag swallows nothing, so listing `-S` and `-u` as value-taking made an ordinary
+  `git commit -S -m x` refuse. The Windows leak table is identical with `core.autocrlf` both on and off, and the
+  staged diff's object id is unchanged in every leaking form — which is exactly why the record kept matching.
+- **A commit redirected with `-C`/`--git-dir`/`--work-tree` fails closed**, because the record describes THIS
+  worktree. The block prints the reviewed and the staged id side by side — the first version printed nothing, and
+  the failure read as §4.4 to everyone who hit it.
+- **The record is found through the payload's `cwd`, and that value is normalised as JSON.** §4.6 first resolved a
+  bare relative path against the hook's own process cwd, and a Windows session measured the cost: a process cwd of
+  `/c` with a perfectly valid record in the project answered "nothing has reviewed this diff" — fail-closed, but on
+  a false premise, which sends the user to re-run the reviewer forever. The same session then captured a live
+  payload from the real harness: `cwd` is the project root in native Windows spelling, so every separator arrives
+  doubled by JSON escaping. Folding that alone yields `D://Projects/…`, which Windows tolerates by accident; the
+  accident runs out at the front of a path, where a project on a network share folded to `////server//share` and
+  is no UNC path at all. Escapes are now undone before the fold.
+- `smoke-test.sh` §4f drives the real hook in a real repo — 58 assertions, including 21 refused forms, 17 that
+  must NOT be over-blocked, and the contract itself: the recipe is **extracted from `review-agent-csk.md` and
+  executed**, then the hook is driven against the record it produced. A string comparison would stay green while
+  the two drifted in meaning. The normaliser is likewise extracted from the hook rather than copied. `doctor.sh`
+  gained the matching liveness probe, calibrated against a neutered hook. The §4.4 cases that drive a commit now
+  run in a cwd where §4.6 is already satisfied — otherwise each one would have been answered by the new gate while
+  §4.4 could have been deleted entirely with the suite still green.
 
 ### Changed — the audits go out at once, and the reviewer closes rather than opens
 

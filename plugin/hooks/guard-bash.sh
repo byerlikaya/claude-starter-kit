@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 # Claude Code PreToolUse (Bash) guard. PreToolUse runs in EVERY permission mode, including bypass.
 # stdin JSON, one line, in the key order captured from Claude Code 2.1.267 (values abridged):
-#   {"session_id":…,"transcript_path":…,"cwd":…,"prompt_id":…,
-#    "permission_mode":"default|acceptEdits|auto|dontAsk|plan|bypassPermissions","effort":{…},
+#   {"session_id":…,"transcript_path":…,"cwd":…,"scratchpad_dir":…,"prompt_id":…,
+#    "permission_mode":"default|acceptEdits|auto|dontAsk|plan|bypassPermissions","effort":{"level":…},
 #    "hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"...","description":"..."},"tool_use_id":…}
 #   This line used to show `permission_mode` AFTER `tool_input`. It was never a capture, and it was wrong. The
 #   fallback parser below does not depend on the order either way, because the order is not a documented contract.
+#   Every PATH value (`cwd`, `transcript_path`, `scratchpad_dir`) arrives in the platform's own spelling, so on
+#   Windows it is `D:\Projects\…` and every separator is DOUBLED by JSON escaping. Captured from a live session
+#   on a Windows machine; the `cwd` normaliser below is the one place that matters and it undoes the escape first.
 #
 # §4.5 destructive operations -> HARD BLOCK (exit 2). No key, no mode, no escape.
 #
@@ -628,7 +631,13 @@ CRED='(\.ssh/(id_[A-Za-z0-9_]+|identity)|(^|/)id_(rsa|dsa|ecdsa|ed25519)|\.aws/c
 # token is folded below.
 _CWD="${INPUT#*\"cwd\"}"
 if [ "$_CWD" != "$INPUT" ]; then
-  _CWD="${_CWD#*:}"; _CWD="${_CWD#*\"}"; _CWD="${_CWD%%\"*}"; _CWD="${_CWD//\\//}"
+  # JSON escapes come FIRST, then the fold. The value arrives as the raw bytes of a JSON string, so a Windows
+  # path is `D:\\Projects\\x` — every separator doubled — and folding that alone yields `D://Projects//x`. That
+  # was MEASURED working on Windows (the middle `//` is tolerated) but it works by accident, and the accident
+  # runs out at the front of the path: a project on a network share arrives as `\\\\server\\share`, which folds
+  # to `////server//share` and is no UNC path at all. Undoubling first turns it into `//server/share`, which is.
+  # A single backslash (a value that was never escaped) and a POSIX path both pass through unchanged.
+  _CWD="${_CWD#*:}"; _CWD="${_CWD#*\"}"; _CWD="${_CWD%%\"*}"; _CWD="${_CWD//\\\\/\\}"; _CWD="${_CWD//\\//}"
   [ -d "$_CWD" ] || _CWD=""
 else
   _CWD=""
@@ -812,37 +821,115 @@ if git_has "$CMD" 'commit|push'; then
   # is 20-50 ms on a hook that runs before EVERY Bash call. Here it runs only when a commit or push is already
   # on the table. Scope is `commit` alone — a push stages nothing, so it has no diff of its own to review.
   if git_has "$CMD" 'commit'; then
-    # ONE probe for BOTH refusals, because the overwhelmingly common commit has neither and a process costs
-    # 62-135 ms on Git Bash. If it fires, a second grep says which — so the rare abnormal command pays two and
-    # every ordinary one pays one. (Measured on Windows: each fork removed from this path took ~70 ms off it.)
-    if printf '%s' "$CMD" | grep -qE '(^|[^A-Za-z0-9_-])git[[:space:]]+(-C|--git-dir|--work-tree)([[:space:]=])|(^|[^A-Za-z0-9_-])git([[:space:]]+--?[A-Za-z][A-Za-z-]*([[:space:]]+[^[:space:]]+)?)*[[:space:]]+commit([[:space:]]+--?[A-Za-z][A-Za-z-]*)*[[:space:]]+(-[A-Za-z]*a[A-Za-z]*|--all)([[:space:]]|$|=)'; then
+    # Two questions have to be answered before the record means anything, and BOTH are about the command's own
+    # shape: is git pointed at another worktree, and does this commit take its content from the WORKING TREE
+    # instead of the index? The second one is not a nicety. MEASURED here (macOS, git 2.54.0), with a reviewed
+    # line staged and an unreviewed line left unstaged in the same file:
+    #
+    #   git commit -m c              record matches, commit clean          <- the flow this gate is built for
+    #   git commit --amend -m c      record matches, commit clean
+    #   git commit -m c -- a.txt     record matches, UNREVIEWED LINE IN THE COMMIT
+    #   git commit --only a.txt      record matches, UNREVIEWED LINE IN THE COMMIT
+    #   git commit --include a.txt   record matches, UNREVIEWED LINE IN THE COMMIT
+    #   git commit -o/-i a.txt       record matches, UNREVIEWED LINE IN THE COMMIT
+    #   git commit -a                record matches, UNREVIEWED LINE IN THE COMMIT
+    #
+    # So these forms are a FAIL-OPEN, not an inconvenience: git takes those paths from the working tree and
+    # ignores what is staged, while this hook hashes the index BEFORE git runs. The record is truthful and
+    # irrelevant at the same time. (§4.1-4.3 are unaffected: git hands its own pre-commit hook a temporary index
+    # holding the real committed state, measured, so the trace and secret scans still see what lands.)
+    #
+    # The scan below is BUILTIN-ONLY — no grep, so the ordinary commit now pays zero processes here where it used
+    # to pay one, which on Git Bash is 62-135 ms. It is a token walk rather than a regex on purpose: the flag or
+    # path has to be an argument of THIS `git commit`, and the previous regex version could only manage that by
+    # refusing to look past the first non-option token, which left `git commit -m x -a` uncaught by its own
+    # admission. Stripping quoted spans first is what makes looking further safe, and it is load-bearing: with
+    # the strip removed, 7 cases of the table in the suite go red — among them `git commit -m "add -a flag docs"`
+    # and `ls -la && git commit -m x`, the two false positives that were MEASURED on the first version of this
+    # rule. It has to be a function because it uses `set --` to split, which would otherwise eat the script's own
+    # arguments.
+    _c46_scan() {
+      _C46_REDIR=0; _C46_WT=""
+      local s="$1" pre rest
+      while :; do
+        case "$s" in *\'*\'*) ;; *) break ;; esac
+        pre="${s%%\'*}"; rest="${s#*\'}"; rest="${rest#*\'}"; s="$pre $rest"
+      done
+      while :; do
+        case "$s" in *\"*\"*) ;; *) break ;; esac
+        pre="${s%%\"*}"; rest="${s#*\"}"; rest="${rest#*\"}"; s="$pre $rest"
+      done
+      # Splitting has to happen with globbing OFF, or a pathspec like `*.ts` would expand against the cwd and a
+      # commit could be judged on whatever files happen to sit there.
+      local unglob=0
+      case "$-" in *f*) ;; *) unglob=1; set -f ;; esac
+      set -- $s
+      [ "$unglob" = 1 ] && set +f
+      local tok seen=0 incommit=0
+      while [ $# -gt 0 ]; do
+        tok="$1"; shift
+        if [ "$incommit" = 0 ]; then
+          # Before `commit`: find git and its global options. A shell separator resets the search, so the `git`
+          # in `ls -la && git commit` is found and the one in `echo git commit -a > notes` is not credited twice.
+          case "$tok" in
+            *[\;\&\|]*) seen=0 ;;
+            git|git.exe|*/git|*/git.exe) seen=1 ;;
+            commit) [ "$seen" = 1 ] && incommit=1 ;;
+            -C|--git-dir|--work-tree) [ "$seen" = 1 ] && _C46_REDIR=1; shift ;;
+            --git-dir=*|--work-tree=*) [ "$seen" = 1 ] && _C46_REDIR=1 ;;
+            -c|--namespace|--config-env|--super-prefix|--exec-path) [ "$seen" = 1 ] && shift ;;
+            -*) ;;
+            *) seen=0 ;;
+          esac
+          continue
+        fi
+        # Inside this commit's own arguments. The long forms are globbed where git itself accepts an unambiguous
+        # abbreviation (`--incl`, `--onl`), and `--intera*` rather than `--inter*` so the value-taking
+        # `--inter-hunk-context` is not mistaken for `--interactive`.
+        case "$tok" in
+          *[\;\&\|]*) break ;;
+          # A BARE `--` is not a pathspec: `git commit -m msg --` was measured committing cleanly, from the index.
+          # Only a token after it is one, and a shell separator there is the next command, not a path.
+          --) if [ $# -gt 0 ]; then
+                case "$1" in *[\;\&\|]*) ;; *) _C46_WT="a pathspec after --" ;; esac
+              fi
+              break ;;
+          --al|--all) _C46_WT="--all" ;;
+          --on|--onl|--only) _C46_WT="--only" ;;
+          --inc*) _C46_WT="--include" ;;
+          --intera*) _C46_WT="--interactive" ;;
+          --pat*) _C46_WT="--patch / --pathspec-from-file" ;;
+          # Flags whose value is MANDATORY and may be a separate token, so the token after them is not a path.
+          # `-S`/`--gpg-sign` and `-u`/`--untracked-files` are deliberately NOT here: their value is OPTIONAL and
+          # has to be attached (`-Skeyid`, `-uall`), so they swallow nothing — listing them made `git commit -S -m x`
+          # read `x` as a pathspec and refuse an ordinary signed commit.
+          -m|-F|-t|-U|-c|-C|--message|--file|--template|--unified|--author|--date|--cleanup|--trailer|--fixup|--squash|--reedit-message|--reuse-message|--inter-hunk-context)
+            shift ;;
+          --*) ;;
+          # Any other short token is a CLUSTER, and every letter in it is its own flag — `-qam` is `-q -a -m`.
+          # This is why the test is a character class and not an equality check against `-a`.
+          -*) case "$tok" in *[aoip]*) _C46_WT="a short flag with a/o/i/p in it" ;; esac ;;
+          *) _C46_WT="a pathspec" ;;
+        esac
+      done
+    }
+    _c46_scan "$CMD"
     # The record describes THIS worktree. A command that points git at another one would have us hash the wrong
     # repository and pass it off as verified, so the ambiguous form fails closed instead.
-    if printf '%s' "$CMD" | grep -qE '(^|[^A-Za-z0-9_-])git[[:space:]]+(-C|--git-dir|--work-tree)([[:space:]=])'; then
+    if [ "$_C46_REDIR" = 1 ]; then
       gatelog BLOCK 4.6 "commit redirected at another worktree"
       echo "GUARD (§4.6): this commit points git at another worktree (-C / --git-dir / --work-tree)." >&2
       echo "The review record describes the staged diff of THIS worktree, so it cannot vouch for that one." >&2
       echo "Run the commit from that directory, or run it yourself in your terminal." >&2
       exit 2
     fi
-    # Reaching here means the probe above fired and the worktree form did NOT match, so this is the other half
-    # of it: `-a` / `--all`. That stages tracked changes as PART of the commit, so at this moment they are not
-    # in the staged diff and the record would vouch for nothing. Staging explicitly is the kit's flow anyway
-    # (§4.4 gates `git add`).
-    #
-    # The pattern is anchored on `git … commit` rather than hunting the flag anywhere in the line, because two
-    # independent greps were the first version and both false positives were MEASURED: `ls -la && git commit -m x`
-    # blocked because `-la` contains an `a`, and `git commit -m "add -a flag docs"` blocked because the flag was
-    # inside the MESSAGE — the same disease this file documents for git_has, where skipping arbitrary tokens
-    # false-matched a commit whose message said "reset --hard".
-    #
-    # Its boundary, measured and stated rather than implied: the flag must appear in the run of option tokens
-    # that FOLLOWS `commit`. `git commit -m x -a` — a flag after a non-flag token — is NOT caught. Closing that
-    # would mean scanning past a quoted message again, which is precisely what produced the false positives.
-    gatelog BLOCK 4.6 "commit -a leaves nothing staged to compare"
-    echo "GUARD (§4.6): 'git commit -a' stages its own changes, so there is no staged diff for the review" >&2
-    echo "record to be about. Stage what you mean with 'git add <paths>' and commit that." >&2
-    exit 2
+    if [ -n "$_C46_WT" ]; then
+      gatelog BLOCK 4.6 "commit takes content from the working tree"
+      echo "GUARD (§4.6): this commit takes its content from the working tree ($_C46_WT), not from the" >&2
+      echo "index — so git commits what is in your files, and the review record is about what is staged." >&2
+      echo "Those are different things, and that is how unreviewed lines get in." >&2
+      echo "Stage exactly what you mean with 'git add <paths>', then commit with no paths and no -a." >&2
+      exit 2
     fi
 
     # CSK-REVIEW-PASS (this recipe is kept identical in agents/review-agent-csk.md; smoke-test pins the pair)

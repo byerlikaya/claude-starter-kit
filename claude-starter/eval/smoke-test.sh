@@ -1743,9 +1743,18 @@ echo "== 6f) always-on token budget =="
 # for that cost, and a gate rather than a reminder — a verbose new description fails the suite instead of
 # quietly taxing every future session. Budgets sit just above the current sizes: raising one is allowed, but
 # only as a deliberate edit here.
-BUDGET_DISC=13600    # DISCIPLINE.md (the discipline half of CLAUDE.md); currently 13544. (2026-09-18: +975 B, the
+BUDGET_DISC=13700    # DISCIPLINE.md (the discipline half of CLAUDE.md); currently 13601. (2026-09-18, a second
+                     # +100 B on top of the raise below, and the whole of it went into ONE sentence of §4.6: a commit
+                     # has to take its content from the INDEX. The rule is there because the first version of the gate
+                     # was a MEASURED fail-open — with a reviewed line staged and an unreviewed line merely saved,
+                     # `git commit -- a.txt` (and `--only`, `--include`, `-a`) matched the record and committed the
+                     # unreviewed line, because git takes those paths from the working tree while the hook hashes the
+                     # index. The hook now refuses those forms, so this text is not what enforces it; it is here so
+                     # the refusal is not a surprise, which is the difference between a gate people trust and one they
+                     # route around. §4.6 was COMPRESSED first and this raise is what was left after that: at the
+                     # measured 21804 B -> 9198 tok ratio, ~42 tokens a session. (2026-09-18: +975 B, the
                      # LARGEST single raise this line has taken, and it buys two things no smaller edit could. First
-                     # §4.6, a NEW mechanical gate: a commit is refused unless review-agent-csk recorded the sha256
+                     # §4.6, a NEW mechanical gate: a commit is refused unless review-agent-csk recorded the object id
                      # of this exact staged diff and the HEAD it reviewed — "it was reviewed" stops being a claim the
                      # chain can quietly drop and becomes a file guard-bash.sh compares. Second, Workflow §3 now says
                      # the applicable audits go out in ONE message instead of a queue: the kit stated NOTHING about
@@ -2084,7 +2093,7 @@ gdec(){ printf '%s' "$1" | sed -n 's/.*"permissionDecision"[[:space:]]*:[[:space
 # closed — so each one runs in a cwd where §4.6 is already satisfied. Without this a case asserting rc=2 would
 # be satisfied by §4.6's block while §4.4 could be deleted entirely and the suite would stay green: a gate
 # verified by a different gate. An EMPTY repo makes the record trivially stable — nothing staged (so the diff
-# is empty and its sha256 is a constant) and no HEAD at all (so the hook reads "NONE").
+# is empty and its object id is a constant) and no HEAD at all (so the hook reads "NONE").
 REVIEWED="$(mktemp -d)"
 ( cd "$REVIEWED" && git init -q . >/dev/null 2>&1 && mkdir -p .claude \
   && printf '{"diff_oid":"%s","head":"NONE","ts":"fixture"}\n' "$(printf '' | git hash-object --stdin)" \
@@ -2201,23 +2210,71 @@ gj default 'git commit -m x' | r46 >/dev/null 2>&1; [ "$?" = 2 ] \
 e46="$(gj default 'git commit -m x' | r46 2>&1 >/dev/null)"
 case "$e46" in *"reviewed diff"*|*"staged   diff"*) pass "§4.6: the block prints the reviewed and the staged id" ;;
   *) fail "§4.6: the block does not print what it compared ($e46)" ;; esac
-# 6. `-a` stages inside the commit, so at hook time there is nothing staged for a record to be about. BOTH
-#    directions are cased. The first version used two independent greps — "is there a git commit" and "is there
-#    an -a anywhere" — and measured two false positives: `ls -la && git commit -m x` (the `a` lives in `-la`)
-#    and `git commit -m "add -a flag docs"` (the flag lives in the MESSAGE). That is the same failure this
-#    file's own git_has documents for a commit whose message says "reset --hard", so it gets the same treatment:
-#    a gate that fires on ordinary work is the one people learn to route around.
+# 6. A COMMIT THAT TAKES ITS CONTENT FROM THE WORKING TREE. This is the gate's fail-open, not a nicety, so the
+#    premise is MEASURED here rather than asserted: git is made to commit a path while an unreviewed line sits
+#    unstaged in it, and the committed blob is then read back. If git ever stops doing this the case says so.
+_L46="$(mktemp -d)"
+( cd "$_L46" && git init -q . && git config user.email t@example.com && git config user.name t \
+  && echo one > a.txt && git add a.txt && git commit -qm init \
+  && echo reviewed >> a.txt && git add a.txt \
+  && echo unreviewed >> a.txt )                                  # staged: reviewed. working tree: + unreviewed.
+_L46_STAGED="$( cd "$_L46" && git diff --cached | git hash-object --stdin )"
+( cd "$_L46" && git commit -qm c -- a.txt )
+_L46_AFTER="$( cd "$_L46" && git show HEAD:a.txt )"
+case "$_L46_AFTER" in
+  *unreviewed*) pass "§4.6 premise: 'git commit -- <path>' commits the WORKING TREE, past the staged diff" ;;
+  *) fail "§4.6 premise GONE: a pathspec commit no longer takes working-tree content — re-derive the rule" ;;
+esac
+# Calibration of that fixture: the staged diff the hook would have hashed must NOT have contained the line, or
+# the case above proves nothing (it would be measuring a stage, not a leak).
+if ( cd "$_L46" && git diff --cached >/dev/null; printf '%s' "$_L46_STAGED" | grep -q '^[0-9a-f]\{40\}$' ) \
+   && ! ( cd "$_L46" && git show "$_L46_STAGED" 2>/dev/null | grep -q unreviewed ); then
+  pass "§4.6 premise calibrated: the reviewed (staged) diff did not carry the leaked line"
+else fail "§4.6 premise fixture is broken — the staged diff already contained the unreviewed line"; fi
+rm -rf "$_L46"
+#    Now the rule. Every form git documents as taking working-tree content is refused; `-a` is in the list for
+#    the same reason, not a separate rule any more. BOTH directions are cased, because the first version of this
+#    check used two independent greps — "is there a git commit" and "is there an -a anywhere" — and measured two
+#    false positives: `ls -la && git commit -m x` (the `a` lives in `-la`) and `git commit -m "add -a flag docs"`
+#    (the flag lives in the MESSAGE). That is the same failure this file's own git_has documents for a commit
+#    whose message says "reset --hard": a gate that fires on ordinary work is the one people learn to route
+#    around. The negatives below are therefore not padding — they are the half that keeps the gate usable.
 r46rec "$R46_OID" "$R46_HEAD"
-for _c in 'git commit -am x' 'git commit -a -m x' 'git commit --all -m x'; do
+for _c in 'git commit -am x' 'git commit -a -m x' 'git commit --all -m x' 'git commit -m x -a' \
+          'git commit -m x -- a.txt' 'git commit -m x a.txt' 'git commit --only a.txt -m x' \
+          'git commit -o a.txt -m x' 'git commit --include a.txt -m x' 'git commit -i a.txt -m x' \
+          'git commit -p -m x' 'git commit --patch -m x' 'git commit --interactive' \
+          'git commit --pathspec-from-file=list.txt' 'git commit -m x .' 'ls && git commit -m x -- a.txt' \
+          'git commit -qam x' 'git commit -oqm x a.txt' 'git commit -iqm x a.txt' \
+          'git commit --message=x a.txt' 'git commit -m x -- .'; do
   gj default "$_c" | r46 >/dev/null 2>&1; [ "$?" = 2 ] \
-    && pass "§4.6: '$_c' BLOCKS — it stages its own changes, so no record can cover them" \
-    || fail "§4.6: '$_c' slipped the gate"
+    && pass "§4.6: '$_c' BLOCKS — it commits working-tree content the record cannot cover" \
+    || fail "§4.6 FAIL-OPEN: '$_c' slipped the gate"
 done
-for _c in 'git commit -m x' 'ls -la && git commit -m x' 'git commit -m \"add -a flag docs\"' 'git commit -F msg.txt'; do
+for _c in 'git commit -m x' 'ls -la && git commit -m x' 'git commit -m \"add -a flag docs\"' \
+          'git commit -m \"commit -- all of it\"' 'git commit -m \"reset --hard is refused\"' \
+          'git commit -F msg.txt' 'git commit -s -m \"signed\"' \
+          'git commit -m x && git push' 'git add -A && git commit -m \"two steps\"' \
+          'git commit -m x --inter-hunk-context 3' 'echo \"git commit -a\" > notes.txt' \
+          'git commit -m x --' 'git commit -S -m x' 'git commit -u -m x' \
+          'git commit --message=x' 'git commit -m x -U 3' 'git commit -q -m x'; do
   o="$(gj default "$_c" | r46 2>/dev/null)"
-  [ "$(gdec "$o")" = "ask" ] && pass "§4.6: '$_c' is NOT over-blocked as a -a commit" \
-    || fail "§4.6: '$_c' wrongly blocked as a -a commit (out=$o)"
+  [ "$(gdec "$o")" = "ask" ] && pass "§4.6: '$_c' is NOT over-blocked" \
+    || fail "§4.6: '$_c' wrongly blocked as a working-tree commit (out=$o)"
 done
+# Three of those classes came from a peer session that measured git's behaviour and then reasoned about this
+# scanner instead of running it — one of its three conclusions survived contact with the code. Recorded because
+# the pattern is worth more than the cases: a CLUSTER is not a token to compare (`-qam` is `-q -a -m`, which is
+# why the test is a character class and was already right), a BARE `--` commits from the index and refusing it is
+# a false positive, and an OPTIONAL-value flag swallows nothing — listing `-S` and `-u` as value-taking made an
+# ordinary signed commit refuse. The last two were real and are fixed; all three are pinned above either way.
+# `git commit --amend` is deliberately absent from both lists: §4.5 owns it and answers first (measured — the
+# hook exits 2 with a §4.5 message), so a §4.6 expectation either way would be asserting the wrong rule. The
+# scan's own verdict on it is that it carries no working-tree content, which is what lets §4.5 be the only voice.
+# The refusal has to name WHICH form it saw, or the user cannot tell it from "no record" and reaches for bypass.
+e46wt="$(gj default 'git commit -m x -- a.txt' | r46 2>&1 >/dev/null)"
+case "$e46wt" in *"pathspec"*) pass "§4.6: the working-tree refusal names the form it found" ;;
+  *) fail "§4.6: the working-tree refusal does not say what it saw ($e46wt)" ;; esac
 # 7. A commit pointed at another worktree: the record describes THIS one, so the ambiguous form fails closed.
 gj default 'git -C /nonexistent-csk commit -m x' | r46 >/dev/null 2>&1; [ "$?" = 2 ] \
   && pass "§4.6: a commit redirected with -C fails closed" || fail "§4.6: 'git -C … commit' bypassed the gate"
@@ -2263,6 +2320,26 @@ o="$( cd / && gj46cwd "$R46" default 'git commit -m x' | bash "$HOOKS/guard-bash
 o="$( cd "$R46" && gj default 'git commit -m x' | bash "$HOOKS/guard-bash.sh" 2>/dev/null )"
 [ "$(gdec "$o")" = "ask" ] && pass "§4.6: with no cwd in the payload, the process cwd still resolves the record" \
   || fail "§4.6: the no-cwd payload path regressed (out=$o)"
+# 12. That cwd arrives as the RAW BYTES of a JSON string, so on Windows every separator is DOUBLED — a live
+#     payload was captured on a real Windows session and reads `D:\Projects\…` escaped to `D:\\Projects\\…`.
+#     The normaliser is EXTRACTED FROM THE HOOK and driven here rather than copied; a copy would keep passing
+#     after the hook changed. It is asserted on the transformation and not on a real directory because the
+#     defect is Windows-only: on POSIX `//x` and `////x` resolve identically, so no fixture on this machine can
+#     tell correct folding from broken folding by opening a path. The case that matters is the FRONT of the
+#     path — a project on a network share — where the old single fold produced `////server//share`, which is
+#     not a UNC path, while undoubling first yields `//server/share`, which is.
+_CWDEXPR_N="$(grep -cF '_CWD="${_CWD#*:}"' "$HOOKS/guard-bash.sh")"
+_CWDEXPR="$(grep -F '_CWD="${_CWD#*:}"' "$HOOKS/guard-bash.sh" | head -1)"
+if [ "$_CWDEXPR_N" = 1 ] && [ -n "$_CWDEXPR" ]; then
+  _cwdnorm(){ _CWD="$1"; eval "$_CWDEXPR"; printf '%s' "$_CWD"; }
+  for _pair in 'D:\\Projects\\kit|D:/Projects/kit' '\\\\server\\share\\kit|//server/share/kit' \
+               '/Users/x/kit|/Users/x/kit' 'C:\Windows|C:/Windows'; do
+    _in="${_pair%%|*}"; _want="${_pair#*|}"
+    _got="$(_cwdnorm ":\"$_in\",\"permission_mode\":\"default\"")"
+    [ "$_got" = "$_want" ] && pass "§4.6: payload cwd '$_in' normalises to '$_want'" \
+      || fail "§4.6: payload cwd '$_in' normalised to '$_got', wanted '$_want'"
+  done
+else fail "§4.6: expected exactly one payload-cwd normaliser in guard-bash.sh, found $_CWDEXPR_N"; fi
 # Without the key the hook must stay OUT of the way on `git add`: settings.json owns that prompt, and a hook
 # that answered here would quietly take over a rule the user can see and edit.
 o="$(gj auto 'git add .' | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"
@@ -2917,7 +2994,7 @@ else
                 || fail "canary: the installed guard-bash blocked 'ls -la' (gate too strict, or the hook is broken)"
   # §4.6 sits in FRONT of §4.4 for a commit, so this canary needs a cwd whose review record already matches, or
   # it would assert §4.6's block and report it as a §4.4 ask. An empty repo is the stable case: nothing staged
-  # (so the diff's sha256 is a constant) and no HEAD at all (so the hook reads "NONE").
+  # (so the diff's object id is a constant) and no HEAD at all (so the hook reads "NONE").
   CANRV="$(mktemp -d)"
   ( cd "$CANRV" && git init -q . >/dev/null 2>&1 && mkdir -p .claude \
     && printf '{"diff_oid":"%s","head":"NONE","ts":"fixture"}\n' "$(printf '' | git hash-object --stdin)" \

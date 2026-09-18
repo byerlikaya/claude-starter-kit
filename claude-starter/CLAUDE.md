@@ -180,11 +180,11 @@ been pushed, and only when explicitly asked. A failing hook is never bypassed �
 blocked even when `CLAUDE_GIT_OK` is set.
 
 ### 4.6 A commit needs a clean review OF THIS DIFF
-`review-agent-csk` records git's object id of the staged diff and the `HEAD` it reviewed in `.claude/review-pass.json`;
-`guard-bash.sh` blocks a commit unless both still match — a review of another diff, or of this one on another
-base, is not a review of this commit. **No size exemption:** a one-line auth change is still a diff nobody read
-(RISK decides, not size). Deliberate skip: run the commit in your own terminal; a `CLAUDE_GIT_OK` session
-(headless/CI) bypasses §4.4 and this with it.
+`review-agent-csk` records the staged diff's object id and the `HEAD` it reviewed in `.claude/review-pass.json`;
+`guard-bash.sh` blocks a commit unless both still match — another diff, or this one on another base, is not a
+review of this commit. **No size exemption** — RISK decides, not size. **Commit from the INDEX:** `-a`, a
+pathspec, `--only`/`--include` commit working-tree content no record covers; `git add` first, then commit with
+no paths. Deliberate skip: commit in your own terminal; `CLAUDE_GIT_OK` (headless/CI) bypasses this too.
 
 ---
 > A proactive background warning is not technically possible; the trigger is **every task completion**.
