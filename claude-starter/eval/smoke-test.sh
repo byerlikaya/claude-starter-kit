@@ -2246,7 +2246,8 @@ for _c in 'git commit -am x' 'git commit -a -m x' 'git commit --all -m x' 'git c
           'git commit -p -m x' 'git commit --patch -m x' 'git commit --interactive' \
           'git commit --pathspec-from-file=list.txt' 'git commit -m x .' 'ls && git commit -m x -- a.txt' \
           'git commit -qam x' 'git commit -oqm x a.txt' 'git commit -iqm x a.txt' \
-          'git commit --message=x a.txt' 'git commit -m x -- .'; do
+          'git commit --message=x a.txt' 'git commit -m x -- .' \
+          'git commit -amq x' 'git commit -mq a.txt'; do
   gj default "$_c" | r46 >/dev/null 2>&1; [ "$?" = 2 ] \
     && pass "§4.6: '$_c' BLOCKS — it commits working-tree content the record cannot cover" \
     || fail "§4.6 FAIL-OPEN: '$_c' slipped the gate"
@@ -2257,11 +2258,30 @@ for _c in 'git commit -m x' 'ls -la && git commit -m x' 'git commit -m \"add -a 
           'git commit -m x && git push' 'git add -A && git commit -m \"two steps\"' \
           'git commit -m x --inter-hunk-context 3' 'echo \"git commit -a\" > notes.txt' \
           'git commit -m x --' 'git commit -S -m x' 'git commit -u -m x' \
-          'git commit --message=x' 'git commit -m x -U 3' 'git commit -q -m x'; do
+          'git commit --message=x' 'git commit -m x -U 3' 'git commit -q -m x' \
+          'git commit -qm x' 'git commit -sm x' 'git commit -qnm x' 'git commit -qF msg.txt'; do
   o="$(gj default "$_c" | r46 2>/dev/null)"
   [ "$(gdec "$o")" = "ask" ] && pass "§4.6: '$_c' is NOT over-blocked" \
     || fail "§4.6: '$_c' wrongly blocked as a working-tree commit (out=$o)"
 done
+# `-qm x` is in the negatives because it was a REAL false positive, and the way it hid is the lesson: a cluster
+# ending in a value-taking letter (`-qm`, `-sm`, `-qF`) is followed by its VALUE, not a path, and the walk was
+# reading that value as a pathspec. `git commit -qm x` was refused while `git commit -qm "x"` was allowed — the
+# quote strip removed the message in the quoted form and hid the bug, which is how it survived a full suite pass
+# AND a Windows run of 38 cases. Both spellings are now cased. The condition is "ENDS in m/F/t/U/c/C" rather than
+# "contains", because an attached value means the cluster does not end with the letter: `-mq` is `-m q`, so the
+# token after it really is a pathspec (cased above).
+#
+# KNOWN BOUNDARY, measured and deliberate: `echo git commit -am x` is refused, because this hook does not parse
+# shell. §4.4 already prompts for `echo git commit -m x` and §4.5 already refuses `echo git reset --hard`, so the
+# family is old; §4.6 is the more permissive member of it, and the difference is worth stating rather than
+# implying — §4.5 refuses the QUOTED `echo "git reset --hard"` too (measured), while §4.6 lets a quoted
+# occurrence through, because the quote strip removes it. That is the case that matters in practice: writing the
+# command into a document (`echo "git commit -am x" >> docs.md`) is clean, and both are cased below. Tightening
+# the unquoted form would mean trusting `git` only in command position, trading this harmless refusal for real
+# misses (`sudo git commit -am x`, `env FOO=1 git commit -am x`); an under-block on a security gate is worse than
+# an over-block on a command nobody runs, so it stays as it is.
+#
 # Three of those classes came from a peer session that measured git's behaviour and then reasoned about this
 # scanner instead of running it — one of its three conclusions survived contact with the code. Recorded because
 # the pattern is worth more than the cases: a CLUSTER is not a token to compare (`-qam` is `-q -a -m`, which is
@@ -2271,6 +2291,13 @@ done
 # `git commit --amend` is deliberately absent from both lists: §4.5 owns it and answers first (measured — the
 # hook exits 2 with a §4.5 message), so a §4.6 expectation either way would be asserting the wrong rule. The
 # scan's own verdict on it is that it carries no working-tree content, which is what lets §4.5 be the only voice.
+# The two halves of that boundary, so a later change to either is a decision and not an accident.
+o="$(gj default 'echo \"git commit -am x\" >> docs.md' | r46 2>/dev/null)"
+[ "$(gdec "$o")" = "ask" ] && pass "§4.6: writing a commit command into a document is not read as a commit" \
+  || fail "§4.6: a QUOTED commit command was treated as one — the quote strip regressed (out=$o)"
+gj default 'echo git commit -am x' | r46 >/dev/null 2>&1; [ "$?" = 2 ] \
+  && pass "§4.6: an UNQUOTED echoed -a commit is refused (boundary: the hook does not parse shell)" \
+  || fail "§4.6: the unquoted-echo boundary moved — intended, or an accident?"
 # The refusal has to name WHICH form it saw, or the user cannot tell it from "no record" and reaches for bypass.
 e46wt="$(gj default 'git commit -m x -- a.txt' | r46 2>&1 >/dev/null)"
 case "$e46wt" in *"pathspec"*) pass "§4.6: the working-tree refusal names the form it found" ;;

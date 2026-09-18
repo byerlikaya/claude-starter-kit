@@ -908,7 +908,15 @@ if git_has "$CMD" 'commit|push'; then
           --*) ;;
           # Any other short token is a CLUSTER, and every letter in it is its own flag — `-qam` is `-q -a -m`.
           # This is why the test is a character class and not an equality check against `-a`.
-          -*) case "$tok" in *[aoip]*) _C46_WT="a short flag with a/o/i/p in it" ;; esac ;;
+          #
+          # And if the cluster ENDS in a value-taking letter, the token after it is that VALUE, not a path:
+          # `-qm x` is `-q -m x`, an ordinary commit. Without this, `git commit -qm x` was refused while
+          # `git commit -qm "x"` was allowed — the quote strip hid the bug in the quoted form, which is how it
+          # survived a full pass of the suite and a Windows run of 38 cases. The condition is exact rather than
+          # "contains m": if the value were attached the cluster would not END with the letter (`-mq` is `-m q`,
+          # message `q`, and the next token there really is a pathspec).
+          -*) case "$tok" in *[aoip]*) _C46_WT="a short flag with a/o/i/p in it" ;; esac
+              case "$tok" in *[mFtUcC]) shift ;; esac ;;
           *) _C46_WT="a pathspec" ;;
         esac
       done

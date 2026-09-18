@@ -43,11 +43,13 @@ versioning follows [SemVer](https://semver.org/).
   first non-option token, which left `git commit -m x -a` uncaught by its own admission. Quoted spans are
   stripped first, and that strip is load-bearing — removing it turns seven cases red, among them
   `git commit -m "add -a flag docs"` and `ls -la && git commit -m x`, the two false positives measured on the
-  first version of the rule. Three further classes are pinned because a review of the walk got them wrong and
-  measuring settled it: a short token is a CLUSTER, so `-qam` is `-q -a -m` and the test has to be a character
-  class rather than an equality check; a BARE `--` commits from the index, so refusing it is a false positive;
-  and an OPTIONAL-value flag swallows nothing, so listing `-S` and `-u` as value-taking made an ordinary
-  `git commit -S -m x` refuse. The Windows leak table is identical with `core.autocrlf` both on and off, and the
+  first version of the rule. Four further classes are pinned, each because the walk got one wrong and measuring
+  settled it: a short token is a CLUSTER, so `-qam` is `-q -a -m` and the test has to be a character class rather
+  than an equality check; a cluster ENDING in a value-taking letter is followed by that value, not a path, so
+  `git commit -qm x` was being refused as a pathspec commit while `git commit -qm "x"` was allowed — the quote
+  strip removed the message in the quoted spelling and hid the defect through a full suite pass and a 38-case
+  Windows run; a BARE `--` commits from the index, so refusing it is a false positive; and an OPTIONAL-value flag
+  swallows nothing, so listing `-S` and `-u` as value-taking made an ordinary `git commit -S -m x` refuse. The Windows leak table is identical with `core.autocrlf` both on and off, and the
   staged diff's object id is unchanged in every leaking form — which is exactly why the record kept matching.
 - **A commit redirected with `-C`/`--git-dir`/`--work-tree` fails closed**, because the record describes THIS
   worktree. The block prints the reviewed and the staged id side by side — the first version printed nothing, and
@@ -60,8 +62,10 @@ versioning follows [SemVer](https://semver.org/).
   doubled by JSON escaping. Folding that alone yields `D://Projects/…`, which Windows tolerates by accident; the
   accident runs out at the front of a path, where a project on a network share folded to `////server//share` and
   is no UNC path at all. Escapes are now undone before the fold.
-- `smoke-test.sh` §4f drives the real hook in a real repo — 58 assertions, including 21 refused forms, 17 that
-  must NOT be over-blocked, and the contract itself: the recipe is **extracted from `review-agent-csk.md` and
+- `smoke-test.sh` §4f drives the real hook in a real repo — 66 assertions, including 23 refused forms, 21 that
+  must NOT be over-blocked, a boundary stated in both directions (writing a commit command into a document is
+  clean; an unquoted `echo git commit -am x` is refused, because this hook does not parse shell — tightening that
+  would trade a harmless refusal for real misses like `sudo git commit -am x`), and the contract itself: the recipe is **extracted from `review-agent-csk.md` and
   executed**, then the hook is driven against the record it produced. A string comparison would stay green while
   the two drifted in meaning. The normaliser is likewise extracted from the hook rather than copied. `doctor.sh`
   gained the matching liveness probe, calibrated against a neutered hook. The §4.4 cases that drive a commit now
