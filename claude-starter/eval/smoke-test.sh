@@ -2367,6 +2367,45 @@ for _pair in \
       || fail "§4.6 multiline: '$_cmd' wrongly blocked (out=$o)"
   fi
 done
+# THE REST OF THE SHELL-SHAPE AXIS, swept deliberately rather than waiting for the next report. Every entry
+# here failed before its fix, and two of them failed OPEN — worth stating, because the shapes look cosmetic:
+#   · `git commit -m c; echo done` refused, because the token was `c;` and `-m` swallowed the separator with it
+#   · `if true; then git commit -m c -- a.txt; fi` ALLOWED, because the pathspec token was `a.txt;` and the `--`
+#     lookahead dismissed it as a separator  <- fail-open
+#   · `echo x > f && git commit -m c -- a.txt` had to keep BLOCKING: a redirection belonging to an earlier
+#     command must not end the scan before the commit is even reached  <- the fail-open risk in the fix itself
+#   · a line continuation (`git commit \` + newline) refused, the lone backslash read as a pathspec
+#   · `> log.txt`, `2> err`, `<<EOF` refused, the target or the heredoc delimiter read as a pathspec
+# Separators are now their own tokens and a redirection ends the argument list, which is why one fix covers a
+# list this long. Stated boundary: a pathspec placed AFTER a redirection is not seen.
+# The CRLF rows came from a Windows session and are a shape this machine does not produce on its own: a command
+# pasted from a Windows editor carries `\r\n`, and `\` + CRLF kept refusing an ordinary commit after the LF
+# continuation was already fixed, because the CR sat between the backslash and the newline. A LONE CR is asserted
+# as a BLOCK on purpose, not overlooked: that session checked bash's own argv and CR is not in IFS, so
+# `git commit -m c<CR>echo done` really does hand `done` to git as a pathspec.
+for _pair in \
+  'ask|git commit \\\n  -m c'                             'BLOCK|git commit \\\n  -m c -- a.txt' \
+  'ask|git commit -m c; echo done'                        'ask|if true; then git commit -m c; fi' \
+  'BLOCK|if true; then git commit -m c -- a.txt; fi'      'ask|git commit -F - <<EOF\nmsg\nEOF' \
+  'ask|git commit -m c > log.txt'                         'ask|git commit -m c 2> err' \
+  'ask|git commit -m c >>log.txt'                         'BLOCK|echo x > f && git commit -m c -- a.txt' \
+  'ask|git commit -m ; echo x'                            'ask|git commit -m c || echo f' \
+  'ask|(cd sub && git commit -m c)'                       'BLOCK|(cd sub && git commit -m c -- a.txt)' \
+  'ask|git commit -m \"$(date +%F)\"'                     'BLOCK|git commit -m c $(ls a.txt)' \
+  'ask|git commit\t-m\tc' \
+  'ask|git commit \\\r\n  -m c'                           'BLOCK|git commit \\\r\n  -am c' \
+  'ask|git commit -m c\r\necho done'                      'BLOCK|git commit -m c -- a.txt\r\necho done' \
+  'BLOCK|git commit -m c\recho done' ; do
+  _exp="${_pair%%|*}"; _cmd="${_pair#*|}"
+  if [ "$_exp" = BLOCK ]; then
+    gj default "$_cmd" | r46 >/dev/null 2>&1; [ "$?" = 2 ] \
+      && pass "§4.6 shape: '$_cmd' BLOCKS" || fail "§4.6 shape FAIL-OPEN: '$_cmd' was allowed"
+  else
+    o="$(gj default "$_cmd" | r46 2>/dev/null)"
+    [ "$(gdec "$o")" = "ask" ] && pass "§4.6 shape: '$_cmd' is NOT over-blocked" \
+      || fail "§4.6 shape: '$_cmd' wrongly blocked (out=$o)"
+  fi
+done
 # Globbing must stay OFF while splitting, or a pathspec is judged against whatever files sit in the cwd.
 gj default 'git commit -m c *.txt' | r46 >/dev/null 2>&1; [ "$?" = 2 ] \
   && pass "§4.6: an unexpanded glob pathspec still BLOCKS (splitting runs with noglob)" \

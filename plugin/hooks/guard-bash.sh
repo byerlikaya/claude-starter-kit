@@ -884,8 +884,29 @@ if git_has "$CMD" 'commit|push'; then
       # leaves JSON's two-character `\n` in place. This runs AFTER the quote collapse, so a Windows path inside a
       # quoted message is already a placeholder and cannot be touched here; an UNQUOTED one containing `\n`
       # (`C:\new\x`) can be cut, but only ever as a pathspec, which is refused either way.
-      s="${s//$'\n'/ ; }"
-      s="${s//\\n/ ; }"
+      # CRLF folds to LF first, so every rule below sees one shape of line ending. A command pasted from a
+      # Windows editor carries `\r\n`, and a Windows session measured what that cost: the LF continuation was
+      # fixed while `\` + CRLF still refused an ordinary commit, because the CR sat between the backslash and the
+      # newline. A LONE CR is deliberately left alone — the same session checked bash's own argv and CR is not in
+      # IFS, so `git commit -m c<CR>echo done` really does pass `done` as a pathspec, and refusing it is correct.
+      s="${s//$'\r'$'\n'/$'\n'}"
+      s="${s//\\r\\n/\\n}"
+      # A backslash-newline is a LINE CONTINUATION, the opposite of a separator: it joins. Measured, before this,
+      # `git commit \` + newline + `  -m c` refused the commit, because the lone `\` became a token and read as a
+      # pathspec. It has to go before the newline conversion below, or the newline is gone when we look.
+      s="${s//\\$'\n'/ }"
+      s="${s//\\\\\\n/ }"
+      s="${s//$'\n'/;}"
+      s="${s//\\n/;}"
+      # SEPARATORS BECOME THEIR OWN TOKENS. Without this, `git commit -m c; echo done` refused the commit: the
+      # token was `c;`, `-m` swallowed it whole, the separator inside it was never seen, and `echo` read as a
+      # pathspec. The fail-open twin is worse and was measured too — in
+      # `if true; then git commit -m c -- a.txt; fi` the pathspec token was `a.txt;`, which the `--` lookahead
+      # dismissed as a separator, so the commit was ALLOWED. Padding fixes both at once, and `&&`/`||` simply
+      # become two tokens, which the walk already treats as one boundary.
+      s="${s//;/ ; }"
+      s="${s//&/ & }"
+      s="${s//|/ | }"
       # Splitting has to happen with globbing OFF, or a pathspec like `*.ts` would expand against the cwd and a
       # commit could be judged on whatever files happen to sit there.
       local unglob=0
@@ -915,6 +936,15 @@ if git_has "$CMD" 'commit|push'; then
         # `--inter-hunk-context` is not mistaken for `--interactive`.
         case "$tok" in
           *[\;\&\|]*) break ;;
+          # A REDIRECTION ends this command's argument list as far as a pathspec is concerned, and everything it
+          # can wear is covered by looking for the character rather than the spelling: `> log`, `>log`, `>>log`,
+          # `2> err` and a heredoc's `<<EOF` all carry one. Measured false positives before this: `> log.txt` and
+          # `2> err` left `log.txt` / `2` looking like pathspecs, and `git commit -F - <<EOF` read the delimiter
+          # word as one. It fires only INSIDE the commit's own arguments — a redirection belonging to an earlier
+          # command, as in `echo x > f && git commit -m c -- a.txt`, is ignored and that pathspec is still
+          # refused. Stated boundary: a pathspec placed AFTER a redirection (`git commit > log -- a.txt`) is not
+          # seen. It is not a shape anyone writes, and the alternative is parsing shell.
+          *[\<\>]*) break ;;
           # A BARE `--` is not a pathspec: `git commit -m msg --` was measured committing cleanly, from the index.
           # Only a token after it is one, and a shell separator there is the next command, not a path.
           --) if [ $# -gt 0 ]; then
@@ -931,7 +961,9 @@ if git_has "$CMD" 'commit|push'; then
           # has to be attached (`-Skeyid`, `-uall`), so they swallow nothing — listing them made `git commit -S -m x`
           # read `x` as a pathspec and refuse an ordinary signed commit.
           -m|-F|-t|-U|-c|-C|--message|--file|--template|--unified|--author|--date|--cleanup|--trailer|--fixup|--squash|--reedit-message|--reuse-message|--inter-hunk-context)
-            shift ;;
+            # Only swallow a token that can BE a value. A separator there means the flag was left without one
+            # (`git commit -m ; echo x`), and eating it would hide the boundary and read `echo` as a pathspec.
+            case "${1:-}" in ''|*[\;\&\|]*) ;; *) shift ;; esac ;;
           --*) ;;
           # Any other short token is a CLUSTER, and every letter in it is its own flag — `-qam` is `-q -a -m`.
           # This is why the test is a character class and not an equality check against `-a`.
@@ -943,7 +975,7 @@ if git_has "$CMD" 'commit|push'; then
           # "contains m": if the value were attached the cluster would not END with the letter (`-mq` is `-m q`,
           # message `q`, and the next token there really is a pathspec).
           -*) case "$tok" in *[aoip]*) _C46_WT="a short flag with a/o/i/p in it" ;; esac
-              case "$tok" in *[mFtUcC]) shift ;; esac ;;
+              case "$tok" in *[mFtUcC]) case "${1:-}" in ''|*[\;\&\|]*) ;; *) shift ;; esac ;; esac ;;
           *) _C46_WT="a pathspec" ;;
         esac
       done

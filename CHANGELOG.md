@@ -62,8 +62,8 @@ versioning follows [SemVer](https://semver.org/).
   doubled by JSON escaping. Folding that alone yields `D://Projects/…`, which Windows tolerates by accident; the
   accident runs out at the front of a path, where a project on a network share folded to `////server//share` and
   is no UNC path at all. Escapes are now undone before the fold.
-- `smoke-test.sh` §4f drives the real hook in a real repo — 97 assertions, 41 refused forms and 38 that must NOT
-  be over-blocked, a boundary stated in both directions (writing a commit command into a document is
+- `smoke-test.sh` §4f drives the real hook in a real repo — 119 assertions, 49 refused forms and 52 that must
+  NOT be over-blocked, a boundary stated in both directions (writing a commit command into a document is
   clean; an unquoted `echo git commit -am x` is refused, because this hook does not parse shell — tightening that
   would trade a harmless refusal for real misses like `sudo git commit -am x`), and the contract itself: the recipe is **extracted from `review-agent-csk.md` and
   executed**, then the hook is driven against the record it produced. A string comparison would stay green while
@@ -80,7 +80,18 @@ versioning follows [SemVer](https://semver.org/).
   `git commit -m 'don'\''t break this'`, the canonical POSIX apostrophe idiom, was refused while
   `-m "don't break this"` — identical argv — was clean. Both are converted before the walk, in both the decoded
   and the raw-JSON spelling, because with `jq` the command arrives decoded and on a stock machine the fallback
-  parser does not. The normaliser is likewise
+  parser does not. Sweeping the rest of that axis on purpose, rather than waiting for the next report, then
+  produced five more — and two of them failed OPEN, which is why the shapes are not cosmetic: **separators were
+  not their own tokens**, so `git commit -m c; echo done` was refused (`-m` swallowed `c;` whole) while
+  `if true; then git commit -m c -- a.txt; fi` was ALLOWED (the pathspec token was `a.txt;`, which the `--`
+  lookahead dismissed as a separator). A **redirection** now ends the argument list, so `> log.txt`, `2> err`
+  and a heredoc's `<<EOF` stop having their target read as a pathspec — while a redirection belonging to an
+  EARLIER command still cannot end the scan before the commit is reached, which was the fail-open risk inside
+  that fix and is asserted. A **line continuation** joins rather than separates, in both LF and CRLF spelling:
+  the CRLF one survived the LF fix because the CR sat between the backslash and the newline, and a command
+  pasted from a Windows editor carries it. A **lone CR** is deliberately still refused — bash's own argv was
+  checked and CR is not in IFS, so `git commit -m c<CR>echo done` really does hand `done` to git as a pathspec.
+  The normaliser is likewise
   extracted from the hook rather than copied. `doctor.sh`
   gained the matching liveness probe, calibrated against a neutered hook. The §4.4 cases that drive a commit now
   run in a cwd where §4.6 is already satisfied — otherwise each one would have been answered by the new gate while
