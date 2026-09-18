@@ -282,7 +282,14 @@ _gatelog_path(){
   printf '%s' ".claude/gate-log.tsv"
 }
 gatelog(){  # $1 = verdict (BLOCK|ASK|ALLOW)  $2 = section  $3 = rule
-  _GL="$(_gatelog_path)"; [ -n "$_GL" ] || return 0
+  # Resolve the path ONCE per hook run and remember it HERE, not inside _gatelog_path: that function is invoked
+  # as `$( … )`, which is a subshell, so a global it assigns is discarded the moment it returns — the same trap
+  # this repo already documents for gb_sandbox in smoke-test, and the first version of this memo was written
+  # inside the function and measured as a no-op (11 git processes before and after). Resolving costs two git
+  # processes, and §4.6 made a twice-logging run the normal case for a successful commit: its own ALLOW line,
+  # then §4.4's ASK. On Windows a process is 62-135 ms.
+  if [ "${_GL_MEMO_SET:-0}" != 1 ]; then _GL_MEMO="$(_gatelog_path)"; _GL_MEMO_SET=1; fi
+  _GL="$_GL_MEMO"; [ -n "$_GL" ] || return 0
   if [ "${CSK_GATE_LOG_CMD:-0}" = 1 ]; then
     printf '%s\t§%s\t%s\t%s\n' "$1" "$2" "$3" \
       "$(printf '%s' "$CMD" | tr -d '\000-\037' | cut -c1-200)" >> "$_GL" 2>/dev/null || true
