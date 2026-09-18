@@ -2198,11 +2198,23 @@ gj default 'git commit -m x' | r46 >/dev/null 2>&1; [ "$?" = 2 ] \
 e46="$(gj default 'git commit -m x' | r46 2>&1 >/dev/null)"
 case "$e46" in *"reviewed diff"*|*"staged   diff"*) pass "§4.6: the block prints the reviewed and the staged id" ;;
   *) fail "§4.6: the block does not print what it compared ($e46)" ;; esac
-# 6. `-a` stages inside the commit, so at hook time there is nothing staged for a record to be about.
+# 6. `-a` stages inside the commit, so at hook time there is nothing staged for a record to be about. BOTH
+#    directions are cased. The first version used two independent greps — "is there a git commit" and "is there
+#    an -a anywhere" — and measured two false positives: `ls -la && git commit -m x` (the `a` lives in `-la`)
+#    and `git commit -m "add -a flag docs"` (the flag lives in the MESSAGE). That is the same failure this
+#    file's own git_has documents for a commit whose message says "reset --hard", so it gets the same treatment:
+#    a gate that fires on ordinary work is the one people learn to route around.
 r46rec "$R46_OID" "$R46_HEAD"
-gj default 'git commit -am x' | r46 >/dev/null 2>&1; [ "$?" = 2 ] \
-  && pass "§4.6: 'git commit -a' BLOCKS — it stages its own changes, so no record can cover them" \
-  || fail "§4.6: 'git commit -a' slipped the gate"
+for _c in 'git commit -am x' 'git commit -a -m x' 'git commit --all -m x'; do
+  gj default "$_c" | r46 >/dev/null 2>&1; [ "$?" = 2 ] \
+    && pass "§4.6: '$_c' BLOCKS — it stages its own changes, so no record can cover them" \
+    || fail "§4.6: '$_c' slipped the gate"
+done
+for _c in 'git commit -m x' 'ls -la && git commit -m x' 'git commit -m \"add -a flag docs\"' 'git commit -F msg.txt'; do
+  o="$(gj default "$_c" | r46 2>/dev/null)"
+  [ "$(gdec "$o")" = "ask" ] && pass "§4.6: '$_c' is NOT over-blocked as a -a commit" \
+    || fail "§4.6: '$_c' wrongly blocked as a -a commit (out=$o)"
+done
 # 7. A commit pointed at another worktree: the record describes THIS one, so the ambiguous form fails closed.
 gj default 'git -C /nonexistent-csk commit -m x' | r46 >/dev/null 2>&1; [ "$?" = 2 ] \
   && pass "§4.6: a commit redirected with -C fails closed" || fail "§4.6: 'git -C … commit' bypassed the gate"

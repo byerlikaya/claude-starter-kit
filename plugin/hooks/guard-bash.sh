@@ -821,10 +821,20 @@ if git_has "$CMD" 'commit|push'; then
       echo "Run the commit from that directory, or run it yourself in your terminal." >&2
       exit 2
     fi
-    # `-a` / `--all` stages tracked changes as part of the commit, so at THIS moment the staged diff is empty
-    # and the hash would vouch for nothing. Staging explicitly is the kit's flow anyway (§4.4 gates `git add`).
-    if printf '%s' "$CMD" | grep -qE '(^|[^A-Za-z0-9_-])git[[:space:]]+commit([[:space:]]|$)' \
-       && printf '%s' "$CMD" | grep -qE '(^|[[:space:]])(-[A-Za-z]*a[A-Za-z]*|--all)([[:space:]]|$|=)'; then
+    # `-a` / `--all` stages tracked changes as part of the commit, so at THIS moment they are NOT in the staged
+    # diff and the record would vouch for nothing. Staging explicitly is the kit's flow anyway (§4.4 gates
+    # `git add`).
+    #
+    # ONE grep, and it is anchored on `git … commit` rather than hunting the flag anywhere in the line. Two
+    # independent greps were the first version and both false positives were measured: `ls -la && git commit -m x`
+    # was blocked because `-la` contains an `a`, and `git commit -m "add -a flag docs"` was blocked because the
+    # flag was inside the MESSAGE — the same disease this file documents for git_has, where skipping arbitrary
+    # tokens false-matched a commit whose message said "reset --hard".
+    #
+    # Its boundary, measured and stated rather than implied: the flag must appear in the run of option tokens
+    # that FOLLOWS `commit`. `git commit -m x -a` — a flag after a non-flag token — is NOT caught. Closing that
+    # would mean scanning past a quoted message again, which is precisely what produced the false positives.
+    if printf '%s' "$CMD" | grep -qE '(^|[^A-Za-z0-9_-])git([[:space:]]+--?[A-Za-z][A-Za-z-]*([[:space:]]+[^[:space:]]+)?)*[[:space:]]+commit([[:space:]]+--?[A-Za-z][A-Za-z-]*)*[[:space:]]+(-[A-Za-z]*a[A-Za-z]*|--all)([[:space:]]|$|=)'; then
       gatelog BLOCK 4.6 "commit -a leaves nothing staged to compare"
       echo "GUARD (§4.6): 'git commit -a' stages its own changes, so there is no staged diff for the review" >&2
       echo "record to be about. Stage what you mean with 'git add <paths>' and commit that." >&2
