@@ -2174,6 +2174,9 @@ R46="$(mktemp -d)"
   && echo one > a.txt && git add a.txt && git commit -qm init && echo two >> a.txt && git add a.txt )
 r46(){ ( cd "$R46" && bash "$HOOKS/guard-bash.sh" ); }
 r46rec(){ ( cd "$R46" && mkdir -p .claude && printf '{"diff_oid":"%s","head":"%s","ts":"t"}\n' "$1" "$2" > .claude/review-pass.json ); }
+# A payload that CARRIES a cwd, in the real key order (cwd arrives before permission_mode). `gj` has no cwd at
+# all, which is why the bare-relative-path defect below could ship with the suite green.
+gj46cwd(){ printf '{"cwd":"%s","permission_mode":"%s","tool_name":"Bash","tool_input":{"command":"%s"}}' "$1" "$2" "$3"; }
 R46_OID="$( cd "$R46" && git diff --cached | git hash-object --stdin )"
 R46_HEAD="$( cd "$R46" && git rev-parse --verify --quiet HEAD )"
 # 1. No record at all — the state every project starts in.
@@ -2247,6 +2250,19 @@ for _ord in 'ts_last' 'head_last'; do
   [ "$(gdec "$o")" = "ask" ] && pass "§4.6: the record reads the same whichever field comes last ($_ord)" \
     || fail "§4.6: the reader depends on JSON key order ($_ord) — out=$o"
 done
+# 11. THE RECORD IS FOUND THROUGH THE PAYLOAD'S cwd, NOT THIS PROCESS'S. §4.6 shipped resolving a bare relative
+#     path, and a Windows session measured what that costs: a process cwd of `/c` with a perfectly valid record
+#     sitting in the project answered rc=2 and "nothing has reviewed this diff" — fail-CLOSED, but on a false
+#     premise, which sends the user to re-run the reviewer forever. The `.env` rule in the same hook had already
+#     been taught this; §4.6 had not. Both directions are cased: only the pair shows the mechanism rather than
+#     an accident of where the test happened to stand.
+r46rec "$R46_OID" "$R46_HEAD"
+o="$( cd / && gj46cwd "$R46" default 'git commit -m x' | bash "$HOOKS/guard-bash.sh" 2>/dev/null )"
+[ "$(gdec "$o")" = "ask" ] && pass "§4.6: the record is found via the payload's cwd from an unrelated process cwd" \
+  || fail "§4.6: a valid record was invisible from another process cwd — bare relative path (out=$o)"
+o="$( cd "$R46" && gj default 'git commit -m x' | bash "$HOOKS/guard-bash.sh" 2>/dev/null )"
+[ "$(gdec "$o")" = "ask" ] && pass "§4.6: with no cwd in the payload, the process cwd still resolves the record" \
+  || fail "§4.6: the no-cwd payload path regressed (out=$o)"
 # Without the key the hook must stay OUT of the way on `git add`: settings.json owns that prompt, and a hook
 # that answered here would quietly take over a rule the user can see and edit.
 o="$(gj auto 'git add .' | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"

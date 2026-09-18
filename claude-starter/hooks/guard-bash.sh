@@ -857,7 +857,14 @@ if git_has "$CMD" 'commit|push'; then
     # is being gated, since it is the thing under gate. Plus one process instead of a probe and a hasher, and no
     # repo required. SHA-1 is fine here: this detects a changed diff, it is not a boundary against a forger —
     # anyone who can write the record can write any value into it.
-    RP=".claude/review-pass.json"
+    # RESOLVE AGAINST THE PAYLOAD'S cwd, not this process's. This file already learned that lesson for the
+    # `.env` rule above, and §4.6 shipped without it: measured on Windows, a process cwd of `/c` with a per-
+    # fectly valid record sitting in the project produced rc=2 and the message "nothing has reviewed this
+    # diff" — fail-closed, but on a false premise, which sends the user to re-run the reviewer forever. The
+    # git queries move too, not just the path: a staged diff read in the wrong worktree is the same defect
+    # wearing different clothes. `_CWD` is "" when the payload carried none, and `-C .` is then a no-op.
+    _RPD="${_CWD:-.}"
+    RP="$_RPD/.claude/review-pass.json"
     if [ ! -f "$RP" ]; then
       gatelog BLOCK 4.6 "no review-pass record"
       echo "GUARD (§4.6): nothing has reviewed this diff — '$RP' does not exist." >&2
@@ -867,18 +874,22 @@ if git_has "$CMD" 'commit|push'; then
     fi
     # Read it with SHELL BUILTINS — no `tr`, no `cat`, no subshell. This runs on every commit and a process is
     # 62-135 ms on Git Bash; measured there, each fork taken off this path was worth ~70 ms.
-    # `read -r` drops the newline. `${_l%$'\r'}` drops a carriage return if the record arrived CRLF: cheap
-    # DEFENCE, not a measured fix, and written down as such — in the flat shape the recipe writes, a CR lands
-    # after the final `}`, outside every value, where the `%%"*` cut below already removes it. No fixture in the
-    # suite can tell this strip from its absence, so none of them claims to.
+    # `read -r` drops the newline. `${_l%$'\r'}` drops ONE carriage return per line if the record arrived CRLF.
+    # Its scope is line endings and nothing more, stated that way because the first comment here claimed it
+    # would "matter to a record some other tool reformats" and that was MEASURED FALSE: a reformatter puts a
+    # space after the colon, `"diff_oid": "…"`, which this reader rejects whatever the line endings are (the
+    # `#*\"$1\":\"` search wants them adjacent). So a reformatted record is refused either way; the strip only
+    # covers CRLF. In the flat shape the recipe writes, even that is belt-and-braces — the CR lands after the
+    # final `}`, outside every value, where `%%"*` already cuts it — so no fixture can tell the strip from its
+    # absence and none of them claims to.
     RPJ=""; while IFS= read -r _l || [ -n "$_l" ]; do RPJ="$RPJ${_l%$'\r'}"; done < "$RP"
     _rpf(){ _r="${RPJ#*\"$1\":\"}"; [ "$_r" = "$RPJ" ] && return 1; printf '%s' "${_r%%\"*}"; }
     WANT_D="$(_rpf diff_oid || true)"; WANT_H="$(_rpf head || true)"
-    HAVE_D="$(git diff --cached 2>/dev/null | git hash-object --stdin 2>/dev/null)"
+    HAVE_D="$(git -C "$_RPD" diff --cached 2>/dev/null | git hash-object --stdin 2>/dev/null)"
     # --verify --quiet, not a bare `git rev-parse HEAD`: on an UNBORN head the bare form prints the literal
     # string "HEAD" on stdout and still fails, so `|| echo NONE` appended to it and the value became two
     # lines ("HEAD" then "NONE") — which never matches any record. Measured on a fresh `git init`.
-    HAVE_H="$(git rev-parse --verify --quiet HEAD 2>/dev/null || echo NONE)"
+    HAVE_H="$(git -C "$_RPD" rev-parse --verify --quiet HEAD 2>/dev/null || echo NONE)"
     if [ -z "$WANT_D" ] || [ "$WANT_D" != "$HAVE_D" ] || [ "$WANT_H" != "$HAVE_H" ]; then
       gatelog BLOCK 4.6 "review-pass does not match this diff"
       echo "GUARD (§4.6): the review record does not describe what is staged now." >&2
