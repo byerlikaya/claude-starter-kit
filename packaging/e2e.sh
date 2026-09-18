@@ -411,4 +411,97 @@ grep -q '"type": *"module"' "$UP/.claude/studio/package.json" || { echo "FAIL: t
 [ -f "$UP/.claude/commands/studio-csk.md" ] || { echo "FAIL: the update did not deliver /studio-csk"; exit 1; }
 echo "[update-gets-panel] a 2.8.0-shaped install gained .claude/studio ($(find "$UP/.claude/studio" -type f | wc -l | tr -d ' ') files) and /studio-csk on update"
 
+# ---- the install WIZARD: unattended runs, the .gitignore question, and what --yes may not approve ----
+# These are here rather than in the smoke-test because every one of them needs a real installer run: the
+# question is what the wizard DOES to a project, not what a string in it says. Each case carries the reason it
+# exists, and where a mistake is recoverable only by a twin that fails, the twin is run.
+#
+# The hang these first cases pin was MEASURED on stock Windows before it was fixed: `start.sh` with an
+# open-but-empty stdin returned rc=124 under `timeout` — a block, separated from EOF by calibration (a bare
+# `read` with stdin CLOSED returns rc=1). And it died at the stack chooser, not at `ask_yes`: fixing only the
+# one everybody looked at moved the hang from line 72 to line 248 and the installer still hung. So the pins
+# below have to cover EVERY read, which is what "no question is reached" means here.
+wiz() {                                     # $1 = label -> a fresh project with the installer staged
+  local P="$WORK/wiz-$1"; rm -rf "$P"; mkdir -p "$P"
+  cp start.sh "$P/"; cp -R claude-starter "$P/"; printf '%s' "$P"
+}
+
+# 13 · An unattended install reads NOTHING and completes. stdin is closed rather than a pipe: a pipe would
+#      answer the prompts and prove the opposite of what this asserts.
+W="$(wiz yes-alone)"
+( cd "$W" && bash start.sh --yes >"$W/out.txt" 2>&1 </dev/null )
+[ -d "$W/.claude" ] || { echo "FAIL: start.sh --yes did not install with stdin closed"; exit 1; }
+# 14 · ...and it does NOT approve the risky one. `--yes` means "install the kit unattended", not "clone a
+#      third-party base project into my tree over the network" — the script's own word for that is risky.
+[ ! -e "$W/backend" ] || { echo "FAIL: --yes cloned the DevArchitecture base; that is a separate consent"; exit 1; }
+grep -q 'does not approve' "$W/out.txt" || { echo "FAIL: --yes declined the risky step without saying why"; exit 1; }
+echo "[wizard] --yes installs unattended, reads nothing, and refuses the risky clone with a reason"
+
+# 2 · Without --yes and with nothing on stdin, the installer DECLINES rather than blocking. This is the case
+#     that returned rc=124 on Windows before the guard. `timeout` is the whole assertion: without it a
+#     regression here does not fail the suite, it hangs it.
+W2="$(wiz no-yes-closed)"
+if command -v timeout >/dev/null 2>&1; then
+  ( cd "$W2" && timeout 25 bash start.sh >/dev/null 2>&1 </dev/null ); rc=$?
+  [ "$rc" != 124 ] || { echo "FAIL: start.sh BLOCKED with no --yes and no stdin (the Windows hang)"; exit 1; }
+  [ ! -d "$W2/.claude" ] || { echo "FAIL: start.sh installed without consent and without --yes"; exit 1; }
+  echo "[wizard] no --yes, no stdin: declines (rc=$rc) instead of hanging"
+else
+  echo "[wizard] SKIP (scope): no timeout(1) on this machine, so a hang cannot be told from a slow pass"
+fi
+
+# 15 · THE PIPE-ORDER GATE. A new prompt shifts every existing piped call by one answer. Adding the visibility
+#      question without a guard did exactly that: the question ate the 'yes', the confirm hit EOF, the install
+#      cancelled silently and this suite failed with rc=127. So the non-TTY path must read NOTHING, and the
+#      documented piped form must keep working. Removing the `[ ! -t 0 ]` guard turns this red again.
+W3="$(wiz piped)"
+( cd "$W3" && printf 'yes\n' | bash start.sh --generic >/dev/null 2>&1 )
+[ -d "$W3/.claude" ] || { echo "FAIL: the documented piped install stopped working — a prompt is reading on the non-TTY path"; exit 1; }
+echo "[wizard] the piped form still installs: no question reads on the non-TTY path"
+
+# 4 · A .gitignore with no trailing newline must not have its last line joined to the first entry written.
+#     The twin is the point: the old `touch` + `echo >>` shape produces `node_modulesdocs/`, which is a
+#     silently broken ignore rule rather than a visible error.
+W4="$(wiz nonewline)"
+printf 'node_modules' > "$W4/.gitignore"          # deliberately no trailing newline
+( cd "$W4" && bash start.sh --yes >/dev/null 2>&1 </dev/null )
+grep -qx 'node_modules' "$W4/.gitignore" || { echo "FAIL: the pre-existing entry was joined to an added one"; exit 1; }
+! grep -q 'node_modules[^$]' "$W4/.gitignore" || { echo "FAIL: an added entry ran onto the last existing line"; exit 1; }
+printf 'node_modules' > "$W4/gi.twin"; printf '%s\n' 'docs/' >> "$W4/gi.twin"
+grep -q '^node_modulesdocs/$' "$W4/gi.twin" \
+  || { echo "FAIL: the must-fail twin did not reproduce the join, so case 4 proves nothing"; exit 1; }
+echo "[wizard] .gitignore without a trailing newline keeps its last line intact (twin reproduces the join)"
+
+# 7 · The summary has to NAME the lines it will write. Before this, the user confirmed an install and silently
+#     received four .gitignore entries, two of which (CLAUDE.md, docs/) are project-visible paths.
+grep -q '\.gitignore' "$W/out.txt" || { echo "FAIL: the install summary never mentions .gitignore"; exit 1; }
+for e in 'docs/' '.claude/' 'CLAUDE.md'; do
+  grep -qF "$e" "$W/out.txt" || { echo "FAIL: the summary does not list the .gitignore entry '$e' it writes"; exit 1; }
+  grep -qxF "$e" "$W/.gitignore" || { echo "FAIL: '$e' was announced but not written"; exit 1; }
+done
+echo "[wizard] the summary lists every .gitignore line it writes, and writes every line it lists"
+
+# 9,10,11 · docs/ IS THE PRIVACY CASE, and it has two halves that pull against each other: the working
+#     documents must be ignored, and the adoption's OWN record must still reach the review diff. Ignoring
+#     docs/ without forcing those two files back in is the defect CHANGELOG.md:3328 already records.
+DP="$WORK/wiz-adopt-docs"; rm -rf "$DP"; mkdir -p "$DP"
+( cd "$DP" && git init -q . && git config user.email t@e.com && git config user.name t \
+  && printf '{"name":"x"}\n' > package.json && git add package.json && git commit -qm base )
+cp adopt.sh "$DP/"; cp -R claude-starter "$DP/claude-starter"; cp VERSION "$DP/"
+( cd "$DP" && bash adopt.sh --here --yes </dev/null >/dev/null 2>&1 )
+( cd "$DP" && git diff --cached --name-only | grep -q '^docs/HANDOVER\.md$' ) \
+  || { echo "FAIL: the adoption's own HANDOVER is not in the review diff"; exit 1; }
+( cd "$DP" && git diff --cached --name-only | grep -q '^docs/adr/' ) \
+  || { echo "FAIL: the adoption's own ADR is not in the review diff"; exit 1; }
+( cd "$DP" && : > docs/PLAN.md && git check-ignore -q docs/PLAN.md ) \
+  || { echo "FAIL: docs/PLAN.md is NOT ignored after adopt — internal plans would reach a shared repo"; exit 1; }
+( cd "$DP" && : > docs/SECURITY_FINDINGS.md && git check-ignore -q docs/SECURITY_FINDINGS.md ) \
+  || { echo "FAIL: docs/SECURITY_FINDINGS.md is NOT ignored after adopt"; exit 1; }
+# The twin for the half that is easy to lose: with docs/ ignored, a plain `git add docs` stages nothing, so
+# dropping the -f would silently remove the adoption from its own review.
+( cd "$DP" && git rm -q --cached docs/HANDOVER.md docs/adr/*.md >/dev/null 2>&1; git add docs >/dev/null 2>&1; \
+  [ -z "$(git diff --cached --name-only -- docs)" ] ) \
+  || { echo "FAIL: the twin did not reproduce the drop, so the -f above proves nothing"; exit 1; }
+echo "[wizard] docs/ is private after adopt, and the adoption's own record is still in the diff (twin drops it)"
+
 echo "e2e: all installer rehearsals passed"

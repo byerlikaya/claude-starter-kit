@@ -4,10 +4,11 @@ description: Author or change a kit component (skill / agent / command) against 
 ---
 # /skill-csk
 
-`AGENT_TEMPLATE.md` states the contract for a component. It ships with a `start.sh` install — `adopt.sh` and the
-plugin edition do not carry it. The discipline names it in passing, but no gate checks that anyone reaches it:
-§3b iterates skills and agents only, so this doc can go stale unread. This command is the deliberate route, and
-it ends in the gates rather than in a claim.
+`AGENT_TEMPLATE.md` states the contract for a component. Both installers now carry it — `start.sh` and
+`adopt.sh` alike — and because `update` is an alias of `adopt`, an installed copy is refreshed rather than left
+to go stale. The plugin edition still does not ship it; that is a separate, recorded decision, not an oversight.
+The discipline names this file in passing and §3b iterates skills and agents only, so no gate reaches it by
+routing. This command is the deliberate route, and it ends in the gates rather than in a claim.
 
 **A component is not finished when it is written. It is finished when the suite says so.**
 
