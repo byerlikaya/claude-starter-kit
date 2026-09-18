@@ -851,6 +851,14 @@ if git_has "$CMD" 'commit|push'; then
     _c46_scan() {
       _C46_REDIR=0; _C46_WT=""
       local s="$1" pre rest
+      # An ESCAPED quote is not a delimiter, so it is neutralised before anything tries to pair quotes.
+      # `git commit -m 'don'\''t break this'` is the canonical POSIX way to put an apostrophe in a
+      # single-quoted string, and it was MEASURED refused: the pairing read `'don'` as one span and then lost
+      # the rest, leaving `break` looking like a pathspec. Its argv is identical to the `-m "don't break this"`
+      # spelling, which was already clean — the same one-command-two-spellings trap as the quoted pathspec, in
+      # the over-block direction this time. An apostrophe in a commit message is not an edge case.
+      s="${s//\\\'/Q}"
+      s="${s//\\\"/Q}"
       # A quoted span collapses to the single placeholder `Q`, and this is the whole design: the CONTENT of a
       # quote must not be read as an option or a path, but the TOKEN has to survive. The first version DELETED
       # the span, and that was a measured fail-open on Windows — `git commit -m c "a.txt"` and
@@ -868,6 +876,16 @@ if git_has "$CMD" 'commit|push'; then
         case "$s" in *\'*\'*) ;; *) break ;; esac
         pre="${s%%\'*}"; rest="${s#*\'}"; rest="${rest#*\'}"; s="${pre}Q${rest}"
       done
+      # A NEWLINE IS A COMMAND SEPARATOR and has to become one, or a multi-line Bash call is misread: measured,
+      # `git commit -m c` followed by a line `echo done` refused the commit, because `done` was read as a
+      # pathspec. Splitting alone cannot save it — the default IFS eats newlines, so the boundary is gone by the
+      # time the walk sees tokens. Both spellings are converted because BOTH reach this code: with `jq` the
+      # command arrives decoded and carries a real newline, and on a stock machine without it the fallback parser
+      # leaves JSON's two-character `\n` in place. This runs AFTER the quote collapse, so a Windows path inside a
+      # quoted message is already a placeholder and cannot be touched here; an UNQUOTED one containing `\n`
+      # (`C:\new\x`) can be cut, but only ever as a pathspec, which is refused either way.
+      s="${s//$'\n'/ ; }"
+      s="${s//\\n/ ; }"
       # Splitting has to happen with globbing OFF, or a pathspec like `*.ts` would expand against the cwd and a
       # commit could be judged on whatever files happen to sit there.
       local unglob=0

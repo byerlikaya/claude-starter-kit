@@ -2320,6 +2320,57 @@ for _pair in \
       || fail "§4.6 spelling: '$_cmd' wrongly blocked (out=$o)"
   fi
 done
+# AN ESCAPED QUOTE IS NOT A DELIMITER. `git commit -m 'don'\''t break this'` is the canonical POSIX way to put
+# an apostrophe inside a single-quoted string, and it was MEASURED refused while `-m "don't break this"` — the
+# same argv — was clean. Same one-command-two-spellings trap as the quoted pathspec, in the over-block direction.
+# These entries are double-quoted in the shell so the apostrophes stay literal, and they carry TWO backslashes
+# because a single one is not a valid JSON escape: measured, `jq` rejects the payload outright, so a fixture
+# written with one would be testing a malformed payload rather than this idiom.
+for _pair in \
+  "ask|git commit -m 'don'\\\\''t break this'" \
+  "ask|git commit -m 'it'\\\\''s fine'" \
+  "ask|git commit -m \\\"don't break this\\\"" \
+  "ask|git commit -m 'simple single quoted'" \
+  "BLOCK|git commit -m 'don'\\\\''t' -- a.txt" \
+  "BLOCK|git commit -m c -- 'don'\\\\''t.txt'" ; do
+  _exp="${_pair%%|*}"; _cmd="${_pair#*|}"
+  if [ "$_exp" = BLOCK ]; then
+    gj default "$_cmd" | r46 >/dev/null 2>&1; [ "$?" = 2 ] \
+      && pass "§4.6 escaped quote: '$_cmd' BLOCKS" || fail "§4.6 escaped quote FAIL-OPEN: '$_cmd' allowed"
+  else
+    o="$(gj default "$_cmd" | r46 2>/dev/null)"
+    [ "$(gdec "$o")" = "ask" ] && pass "§4.6 escaped quote: '$_cmd' is NOT over-blocked" \
+      || fail "§4.6 escaped quote: '$_cmd' wrongly blocked (out=$o)"
+  fi
+done
+# A NEWLINE IS A COMMAND SEPARATOR. Measured before the fix: `git commit -m c` on one line and `echo done` on
+# the next REFUSED the commit, because `done` was read as a pathspec — and a multi-line Bash call is one of the
+# commonest shapes there is. Splitting cannot recover the boundary (the default IFS eats newlines), so it is
+# converted to a separator first. Both spellings are cased because both reach the code: with `jq` the command
+# arrives decoded and carries a real newline, and on a stock machine the fallback parser leaves JSON's
+# two-character `\n`. The positives are here too — a commit on one line must still be judged on ITS OWN tokens,
+# not rescued by a neighbouring line.
+for _pair in \
+  'ask|git commit -m c\necho done' \
+  'ask|git commit -m c\nnpm test' \
+  'ask|git commit -m \"msg\"\nnpm run build' \
+  'BLOCK|echo hi\ngit commit -m c -- a.txt' \
+  'BLOCK|git commit -m c -- a.txt\necho done' \
+  'BLOCK|git commit -m c a.txt\necho done' ; do
+  _exp="${_pair%%|*}"; _cmd="${_pair#*|}"
+  if [ "$_exp" = BLOCK ]; then
+    gj default "$_cmd" | r46 >/dev/null 2>&1; [ "$?" = 2 ] \
+      && pass "§4.6 multiline: '$_cmd' BLOCKS" || fail "§4.6 multiline FAIL-OPEN: '$_cmd' was allowed"
+  else
+    o="$(gj default "$_cmd" | r46 2>/dev/null)"
+    [ "$(gdec "$o")" = "ask" ] && pass "§4.6 multiline: '$_cmd' is NOT over-blocked" \
+      || fail "§4.6 multiline: '$_cmd' wrongly blocked (out=$o)"
+  fi
+done
+# Globbing must stay OFF while splitting, or a pathspec is judged against whatever files sit in the cwd.
+gj default 'git commit -m c *.txt' | r46 >/dev/null 2>&1; [ "$?" = 2 ] \
+  && pass "§4.6: an unexpanded glob pathspec still BLOCKS (splitting runs with noglob)" \
+  || fail "§4.6: a glob pathspec slipped — splitting expanded it instead of keeping the token"
 # The two halves of that boundary, so a later change to either is a decision and not an accident.
 o="$(gj default 'echo \"git commit -am x\" >> docs.md' | r46 2>/dev/null)"
 [ "$(gdec "$o")" = "ask" ] && pass "§4.6: writing a commit command into a document is not read as a commit" \

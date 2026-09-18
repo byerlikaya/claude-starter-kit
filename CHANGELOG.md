@@ -62,8 +62,8 @@ versioning follows [SemVer](https://semver.org/).
   doubled by JSON escaping. Folding that alone yields `D://Projects/…`, which Windows tolerates by accident; the
   accident runs out at the front of a path, where a project on a network share folded to `////server//share` and
   is no UNC path at all. Escapes are now undone before the fold.
-- `smoke-test.sh` §4f drives the real hook in a real repo — 84 assertions, including 31 refused forms and 31 that
-  must NOT be over-blocked, a boundary stated in both directions (writing a commit command into a document is
+- `smoke-test.sh` §4f drives the real hook in a real repo — 97 assertions, 41 refused forms and 38 that must NOT
+  be over-blocked, a boundary stated in both directions (writing a commit command into a document is
   clean; an unquoted `echo git commit -am x` is refused, because this hook does not parse shell — tightening that
   would trade a harmless refusal for real misses like `sudo git commit -am x`), and the contract itself: the recipe is **extracted from `review-agent-csk.md` and
   executed**, then the hook is driven against the record it produced. A string comparison would stay green while
@@ -73,7 +73,14 @@ versioning follows [SemVer](https://semver.org/).
   unquoted twins — the same unreviewed line in the commit either way, and no trick needed to reach it, only the
   ordinary habit of quoting a path, which is mandatory once it contains a space. A quoted span now collapses to a
   single placeholder token rather than vanishing: its CONTENT must not be read as an option or a path, but the
-  TOKEN has to survive, and adjacency with it, so `-m"msg"` stays an attached value. The normaliser is likewise
+  TOKEN has to survive, and adjacency with it, so `-m"msg"` stays an attached value. Two more shapes came from
+  the same axis once it was being swept deliberately: **a newline is a command separator**, so
+  `git commit -m c` followed by a line `echo done` was refusing the commit with `done` read as a pathspec — a
+  multi-line call being one of the commonest shapes there is; and **an escaped quote is not a delimiter**, so
+  `git commit -m 'don'\''t break this'`, the canonical POSIX apostrophe idiom, was refused while
+  `-m "don't break this"` — identical argv — was clean. Both are converted before the walk, in both the decoded
+  and the raw-JSON spelling, because with `jq` the command arrives decoded and on a stock machine the fallback
+  parser does not. The normaliser is likewise
   extracted from the hook rather than copied. `doctor.sh`
   gained the matching liveness probe, calibrated against a neutered hook. The §4.4 cases that drive a commit now
   run in a cwd where §4.6 is already satisfied — otherwise each one would have been answered by the new gate while
