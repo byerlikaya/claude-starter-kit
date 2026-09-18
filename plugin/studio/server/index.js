@@ -17,7 +17,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { getFleet, measureSpawnCost } from './lib/fleet.js';
 import { projectDir, listSessions, findSession, listProjects, sessionCwd } from './lib/projects.js';
-import { buildGraph, agentDetail, conversation } from './lib/graph.js';
+import { buildGraph, agentDetail, conversation, STALE_MS } from './lib/graph.js';
 import { palette } from './lib/palette.js';
 import { latestVersion, latestVersionCached, kitStatus } from './lib/kit.js';
 import { parsePeers, askAll, ask } from './lib/peers.js';
@@ -526,6 +526,14 @@ async function handle(req, res) {
    about its cost. */
 
 const STREAM_TICK_MS = 700;
+// How coarsely the clock enters the stream signature while an agent is still
+// recent enough to be called running. Chosen against the two costs it sits
+// between: at the 700 ms tick it would rebuild the graph on every tick for no
+// new information, and at the 120 s stale window it would only ever fire after
+// the transition it exists to announce. Ten seconds is the delay a viewer waits
+// to see "running" become "stale", and the price is one rebuild per ten seconds
+// per watched session, only while something is live.
+const STATUS_BUCKET_MS = 10000;
 
 /** Ask each peer for a path this machine could not answer. */
 async function relay(pathname) {
@@ -546,13 +554,45 @@ async function relay(pathname) {
 async function signature(session) {
   const parts = [];
   try { parts.push(String((await fsp.stat(session.file)).size)); } catch { parts.push('0'); }
+  let newest = 0;
   try {
-    const names = (await fsp.readdir(session.subagentsDir)).sort();
-    const sizes = await Promise.all(names.map(async (n) => {
-      try { return `${n}:${(await fsp.stat(path.join(session.subagentsDir, n))).size}`; } catch { return null; }
-    }));
-    for (const s of sizes) if (s !== null) parts.push(s);
+    // One level down as well, because a workflow run puts its agents under
+    // `subagents/workflows/<id>/` and buildGraph reads them. A flat readdir
+    // returns that directory, whose size does not move when the transcripts
+    // inside it grow — so a workflow's agents were invisible to this check and
+    // their updates were never pushed while every plain agent's were.
+    for (const e of (await fsp.readdir(session.subagentsDir, { withFileTypes: true })).sort((a, b) => (a.name < b.name ? -1 : 1))) {
+      const p = path.join(session.subagentsDir, e.name);
+      if (e.isDirectory()) {
+        try {
+          for (const n of (await fsp.readdir(p)).sort()) {
+            try {
+              const st = await fsp.stat(path.join(p, n));
+              parts.push(`${e.name}/${n}:${st.size}`);
+              if (st.mtimeMs > newest) newest = st.mtimeMs;
+            } catch { /* vanished mid-scan */ }
+          }
+        } catch { /* unreadable */ }
+        continue;
+      }
+      try {
+        const st = await fsp.stat(p);
+        parts.push(`${e.name}:${st.size}`);
+        if (st.mtimeMs > newest) newest = st.mtimeMs;
+      } catch { /* vanished mid-scan */ }
+    }
   } catch { /* no subagents yet */ }
+  // A STATUS CAN CHANGE WITH NO FILE CHANGING. buildGraph calls an agent
+  // `running` while `now - mtime < staleMs` and `stale`/`ended` after, so that
+  // transition is driven by the clock alone: nothing is written, no size moves,
+  // this signature does not change, and the graph is never rebuilt. The panel
+  // then holds `running` for an agent that went quiet, while the stream emits
+  // `idle` every tick. A coarse bucket, added ONLY while something is recent
+  // enough to still be called running, makes the transition arrive within the
+  // bucket and costs one rebuild per bucket (measured at 17 ms on a 1.5 MB
+  // transcript) instead of one per tick. When nothing is recent the bucket is
+  // absent, so an idle session's signature is as stable as it was before.
+  if (newest && Date.now() - newest < STALE_MS) parts.push(`t:${Math.floor(Date.now() / STATUS_BUCKET_MS)}`);
   return parts.join('|');
 }
 
