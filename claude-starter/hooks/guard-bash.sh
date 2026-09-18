@@ -857,8 +857,36 @@ if git_has "$CMD" 'commit|push'; then
       # the rest, leaving `break` looking like a pathspec. Its argv is identical to the `-m "don't break this"`
       # spelling, which was already clean — the same one-command-two-spellings trap as the quoted pathspec, in
       # the over-block direction this time. An apostrophe in a commit message is not an edge case.
-      s="${s//\\\'/Q}"
-      s="${s//\\\"/Q}"
+      # NORMALISE TO REAL CHARACTERS FIRST, so every rule below sees one shape. Two spellings of the same command
+      # reach this code and they are not interchangeable: with `jq` the command arrives DECODED and carries real
+      # control characters, and on a stock machine without it the fallback parser leaves JSON's two-character
+      # `\r` and `\n` in place. A stock Windows machine is the second case, so there the fallback IS the product.
+      #
+      # ALL carriage returns go, escaped or real, and THIS is the line that fixes the defect CI caught — stated
+      # plainly because the first explanation written here was wrong. A CI run on `windows-latest` refused
+      # `git commit \` + CRLF + `  -m c` while the same case passed on macOS AND on a real Windows desktop, and
+      # the cause is the TIER: that image has jq, so the command arrives DECODED, while a stock desktop has
+      # neither jq nor python3 and sees JSON's two-character escapes. A Windows-native binary also opens stdout
+      # in TEXT mode, so every LF it writes becomes CRLF — and a command that already held `\r\n` reaches the
+      # hook as `\` + CR + CR + LF. The previous single CRLF fold ate one CR, the continuation rule then looked
+      # for `\` + LF, found the other CR in the way, and the lone backslash was read as a pathspec. Stripping
+      # every CR handles any number of them with no loop. Isolated by measurement: this one line, applied to the
+      # failing version on its own, turns that case green.
+      #
+      # A LONE CR keeps its verdict rather than its bytes: it vanishes into the token before it, so
+      # `git commit -m c<CR>echo done` still leaves `done` a bare token and is still refused — confirmed correct
+      # by a Windows session that checked bash's own argv (CR is not in IFS, so git really is handed `done`).
+      #
+      # The bracket expression `[\\]` is used for every backslash below, and it is NOT what fixed the above. It
+      # replaced escaped patterns on a hypothesis about bash 5 reading them differently, and that hypothesis was
+      # MEASURED FALSE on bash 5.3.15 — both spellings behave alike there. It stays only because a bracket
+      # expression cannot be misread by anyone (calibrated here: `[\\]n` matches a backslash before an `n` and
+      # leaves a bare `n` alone) and because it keeps replacements free of backslashes. No correctness claim.
+      s="${s//[\\]r/}"
+      s="${s//$'\r'/}"
+      s="${s//[\\]n/$'\n'}"
+      s="${s//[\\]\'/Q}"
+      s="${s//[\\]\"/Q}"
       # A quoted span collapses to the single placeholder `Q`, and this is the whole design: the CONTENT of a
       # quote must not be read as an option or a path, but the TOKEN has to survive. The first version DELETED
       # the span, and that was a measured fail-open on Windows — `git commit -m c "a.txt"` and
@@ -876,28 +904,15 @@ if git_has "$CMD" 'commit|push'; then
         case "$s" in *\'*\'*) ;; *) break ;; esac
         pre="${s%%\'*}"; rest="${s#*\'}"; rest="${rest#*\'}"; s="${pre}Q${rest}"
       done
+      # A backslash-newline is a LINE CONTINUATION, the opposite of a separator: it JOINS. Measured, before this,
+      # `git commit \` + newline + `  -m c` refused the commit, because the lone `\` became a token and read as a
+      # pathspec. It has to run before the conversion below, or the newline is gone when we look for it.
+      s="${s//[\\]$'\n'/ }"
       # A NEWLINE IS A COMMAND SEPARATOR and has to become one, or a multi-line Bash call is misread: measured,
       # `git commit -m c` followed by a line `echo done` refused the commit, because `done` was read as a
       # pathspec. Splitting alone cannot save it — the default IFS eats newlines, so the boundary is gone by the
-      # time the walk sees tokens. Both spellings are converted because BOTH reach this code: with `jq` the
-      # command arrives decoded and carries a real newline, and on a stock machine without it the fallback parser
-      # leaves JSON's two-character `\n` in place. This runs AFTER the quote collapse, so a Windows path inside a
-      # quoted message is already a placeholder and cannot be touched here; an UNQUOTED one containing `\n`
-      # (`C:\new\x`) can be cut, but only ever as a pathspec, which is refused either way.
-      # CRLF folds to LF first, so every rule below sees one shape of line ending. A command pasted from a
-      # Windows editor carries `\r\n`, and a Windows session measured what that cost: the LF continuation was
-      # fixed while `\` + CRLF still refused an ordinary commit, because the CR sat between the backslash and the
-      # newline. A LONE CR is deliberately left alone — the same session checked bash's own argv and CR is not in
-      # IFS, so `git commit -m c<CR>echo done` really does pass `done` as a pathspec, and refusing it is correct.
-      s="${s//$'\r'$'\n'/$'\n'}"
-      s="${s//\\r\\n/\\n}"
-      # A backslash-newline is a LINE CONTINUATION, the opposite of a separator: it joins. Measured, before this,
-      # `git commit \` + newline + `  -m c` refused the commit, because the lone `\` became a token and read as a
-      # pathspec. It has to go before the newline conversion below, or the newline is gone when we look.
-      s="${s//\\$'\n'/ }"
-      s="${s//\\\\\\n/ }"
+      # time the walk sees tokens.
       s="${s//$'\n'/;}"
-      s="${s//\\n/;}"
       # SEPARATORS BECOME THEIR OWN TOKENS. Without this, `git commit -m c; echo done` refused the commit: the
       # token was `c;`, `-m` swallowed it whole, the separator inside it was never seen, and `echo` read as a
       # pathspec. The fail-open twin is worse and was measured too — in
@@ -936,15 +951,26 @@ if git_has "$CMD" 'commit|push'; then
         # `--inter-hunk-context` is not mistaken for `--interactive`.
         case "$tok" in
           *[\;\&\|]*) break ;;
-          # A REDIRECTION ends this command's argument list as far as a pathspec is concerned, and everything it
-          # can wear is covered by looking for the character rather than the spelling: `> log`, `>log`, `>>log`,
-          # `2> err` and a heredoc's `<<EOF` all carry one. Measured false positives before this: `> log.txt` and
-          # `2> err` left `log.txt` / `2` looking like pathspecs, and `git commit -F - <<EOF` read the delimiter
-          # word as one. It fires only INSIDE the commit's own arguments — a redirection belonging to an earlier
-          # command, as in `echo x > f && git commit -m c -- a.txt`, is ignored and that pathspec is still
-          # refused. Stated boundary: a pathspec placed AFTER a redirection (`git commit > log -- a.txt`) is not
-          # seen. It is not a shape anyone writes, and the alternative is parsing shell.
-          *[\<\>]*) break ;;
+          # A REDIRECTION is found by the character rather than the spelling, so `> log`, `>log`, `>>log`,
+          # `2> err` and a heredoc's `<<EOF` are all covered. Measured false positives before this existed:
+          # `> log.txt` and `2> err` left `log.txt` / `2` looking like pathspecs, and `git commit -F - <<EOF`
+          # read the delimiter word as one. All of it fires only INSIDE the commit's own arguments — a
+          # redirection belonging to an earlier command, as in `echo x > f && git commit -m c -- a.txt`, is
+          # ignored and that pathspec is still refused.
+          #
+          # A HEREDOC ends the arguments: what follows is input and a delimiter word, not paths.
+          *'<<'*) break ;;
+          # Any other redirection is SKIPPED OVER, not treated as the end. Breaking here was the first version
+          # and a Windows session measured what it cost: `git commit -m c > log.txt -- a.txt` returned rc=0 AND
+          # the commit carried the unreviewed line, because the scan stopped before reaching the pathspec. The
+          # boundary was documented as "nobody writes that", which is a guess about likelihood, while the leak
+          # is a fact — so it is closed instead. The target is consumed only when the token ENDS in the operator
+          # (`> log`, separate); an attached one (`>log`, `2>&1`) carries its own. And a separator is never
+          # consumed as a target, which is what keeps `2>&1 | tee log` from reading `1` as a pathspec.
+          *[\<\>]*)
+            case "$tok" in
+              *[\<\>]) case "${1:-}" in ''|*[\;\&\|]*) ;; *) shift ;; esac ;;
+            esac ;;
           # A BARE `--` is not a pathspec: `git commit -m msg --` was measured committing cleanly, from the index.
           # Only a token after it is one, and a shell separator there is the next command, not a path.
           --) if [ $# -gt 0 ]; then

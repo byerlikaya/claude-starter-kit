@@ -2376,8 +2376,11 @@ done
 #     command must not end the scan before the commit is even reached  <- the fail-open risk in the fix itself
 #   · a line continuation (`git commit \` + newline) refused, the lone backslash read as a pathspec
 #   · `> log.txt`, `2> err`, `<<EOF` refused, the target or the heredoc delimiter read as a pathspec
-# Separators are now their own tokens and a redirection ends the argument list, which is why one fix covers a
-# list this long. Stated boundary: a pathspec placed AFTER a redirection is not seen.
+# Separators are now their own tokens and a redirection is skipped over, which is why one fix covers a list this
+# long. The skipping is itself a correction: the first version BROKE at a redirection, and a Windows session
+# measured what that cost — `git commit -m c > log.txt -- a.txt` returned rc=0 and the commit carried the
+# unreviewed line, because the scan stopped before reaching the pathspec. It had been documented as a boundary
+# on the grounds that "nobody writes that", which is a guess about likelihood while the leak is a fact. Closed.
 # The CRLF rows came from a Windows session and are a shape this machine does not produce on its own: a command
 # pasted from a Windows editor carries `\r\n`, and `\` + CRLF kept refusing an ordinary commit after the LF
 # continuation was already fixed, because the CR sat between the backslash and the newline. A LONE CR is asserted
@@ -2389,6 +2392,13 @@ for _pair in \
   'BLOCK|if true; then git commit -m c -- a.txt; fi'      'ask|git commit -F - <<EOF\nmsg\nEOF' \
   'ask|git commit -m c > log.txt'                         'ask|git commit -m c 2> err' \
   'ask|git commit -m c >>log.txt'                         'BLOCK|echo x > f && git commit -m c -- a.txt' \
+  'BLOCK|git commit -m c > log.txt -- a.txt'              'BLOCK|git commit -m c >log.txt -- a.txt' \
+  'BLOCK|git commit -m c 2> err -- a.txt'                 'BLOCK|git commit -m c > log.txt a.txt' \
+  'ask|git commit -m c 2>&1 | tee log'                    'ask|git commit -m c < file' \
+  'ask|git commit -m c >&2'                               'BLOCK|for f in a b; do git commit -m c -- a.txt; done' \
+  'BLOCK|{ git commit -m c -- a.txt; }'                   'BLOCK|while :; do git commit -m c -- a.txt; done' \
+  'BLOCK|if true; then git commit -am c; fi'              'ask|git commit -m c; echo done; ls' \
+  'ask|git commit -m c && echo ok' \
   'ask|git commit -m ; echo x'                            'ask|git commit -m c || echo f' \
   'ask|(cd sub && git commit -m c)'                       'BLOCK|(cd sub && git commit -m c -- a.txt)' \
   'ask|git commit -m \"$(date +%F)\"'                     'BLOCK|git commit -m c $(ls a.txt)' \
@@ -2406,6 +2416,49 @@ for _pair in \
       || fail "§4.6 shape: '$_cmd' wrongly blocked (out=$o)"
   fi
 done
+# TIER 1 WITH TEXT-MODE LINE ENDINGS — the dimension this suite never asked about, and CI was the only machine
+# that could answer it. A commit was refused on `windows-latest` while the same case passed on macOS and on a
+# real Windows desktop, and the reason is the TIER: GitHub's image has jq, so the command arrives DECODED, while
+# a stock desktop has neither jq nor python3 and sees JSON's two-character escapes. On top of that, a
+# Windows-native binary opens stdout in TEXT mode, so every LF it writes goes out as CRLF — and a command that
+# already contained `\r\n` reaches the hook as `\` + CR + CR + LF. The single CRLF fold ate one CR, the
+# continuation rule then looked for `\` + LF, found a CR in the way, and the lone backslash read as a pathspec.
+# Any Windows user with jq installed is on that tier, so this was a live defect, not a CI artefact.
+#
+# The stub hands back bytes instead of parsing: hermetic, no jq, no python, no perl. Its own correctness is
+# checked first, because a stub that does not take would make every row below a green that measured nothing.
+_T1D="$(mktemp -d)"
+cat > "$_T1D/jq" <<'EOJQ'
+#!/bin/sh
+case "$*" in
+  *permission_mode*) printf '%s\n' "default" ;;
+  *) printf '%s\n' "$CSK_FAKE_CMD" ;;
+esac
+EOJQ
+chmod +x "$_T1D/jq"
+if [ "$(CSK_FAKE_CMD='probe-me' PATH="$_T1D:$PATH" jq -r '.tool_input.command' </dev/null 2>/dev/null)" = "probe-me" ]; then
+  _t1(){ printf '{"cwd":"%s","permission_mode":"default","tool_name":"Bash","tool_input":{"command":"placeholder"}}' "$R46" \
+         | CSK_FAKE_CMD="$1" PATH="$_T1D:$PATH" bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; }
+  # `\` + CR + CR + LF: a continuation pasted from a Windows editor, decoded by a text-mode writer.
+  _t1 "$(printf 'git commit \\\r\r\n  -m c')"; [ "$?" = 0 ] \
+    && pass "§4.6 tier1-text: a CRLF continuation is not read as a pathspec" \
+    || fail "§4.6 tier1-text: a backslash + CR CR LF refused an ordinary commit (the CI failure)"
+  _t1 "$(printf 'git commit \\\r\r\n  -m c -- a.txt')"; [ "$?" = 2 ] \
+    && pass "§4.6 tier1-text: a real pathspec after that continuation still BLOCKS" \
+    || fail "§4.6 tier1-text FAIL-OPEN: a pathspec after a CRLF continuation was allowed"
+  _t1 'git commit -m c'; [ "$?" = 0 ] \
+    && pass "§4.6 tier1-text: an ordinary commit is untouched on this tier" \
+    || fail "§4.6 tier1-text: a plain commit was refused — the fixture is wrong, CI passes 800+ of these"
+  _t1 "$(printf 'git commit -m c\r\necho done')"; [ "$?" = 0 ] \
+    && pass "§4.6 tier1-text: a CRLF-separated second command is not a pathspec" \
+    || fail "§4.6 tier1-text: a CRLF separator refused an ordinary commit"
+  _t1 "$(printf 'git commit -m c -- a.txt\r\necho done')"; [ "$?" = 2 ] \
+    && pass "§4.6 tier1-text: a pathspec before a CRLF separator still BLOCKS" \
+    || fail "§4.6 tier1-text FAIL-OPEN: a pathspec before a CRLF separator was allowed"
+else
+  fail "§4.6 tier1-text: the jq stub did not take, so this tier went unmeasured (broken fixture, not a pass)"
+fi
+rm -rf "$_T1D"
 # Globbing must stay OFF while splitting, or a pathspec is judged against whatever files sit in the cwd.
 gj default 'git commit -m c *.txt' | r46 >/dev/null 2>&1; [ "$?" = 2 ] \
   && pass "§4.6: an unexpanded glob pathspec still BLOCKS (splitting runs with noglob)" \
