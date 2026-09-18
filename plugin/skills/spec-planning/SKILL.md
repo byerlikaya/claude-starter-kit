@@ -26,12 +26,19 @@ Before writing code: what will be done, how it counts as "done", and in what ord
 ```
 # <Feature> — Plan
 ## Acceptance criteria
-- [ ] <measurable outcome>
+- [ ] AC-1: <measurable outcome>
+- [ ] AC-2: <measurable outcome>
 ## Tasks (order)
-1. <task> — criterion: <...> — dependency: <none/#n> — risk: <low/medium/high>
+1. <task> — satisfies: AC-1 — dependency: <none/#n> — risk: <low/medium/high>
 ## Assumptions / Open questions
 - ...
 ```
+
+**Every criterion carries a stable id, and every task names the ids it satisfies.** The id is what makes the plan
+checkable later: "AC-2 is only partly built" can be said, argued about and tracked; "the second checkbox" cannot,
+and renumbering a list silently re-points every reference to it. Never reuse or renumber an id — a dropped
+criterion keeps its id with a strike-through and a one-line reason. A criterion no task satisfies, and a task that
+satisfies no criterion, are both findings before a line of code is written.
 
 ## Mark what you do not know — do not fill it in
 Where a requirement admits more than one reading, write the marker **`[NEEDS CLARIFICATION: <the question>]`** at
@@ -51,6 +58,40 @@ Rules that keep it honest:
   which reading was rejected — the alternative is what a future reader needs.
 - Zero markers on a genuinely ambiguous brief is a smell, not a win.
 
+## Converge — before the work is called done, hold the code up against the plan
+
+Tests prove the code does what the tests say. Nothing so far proves it does what the PLAN said: a criterion can be
+quietly half-built with every test green, and code nobody asked for can ride along unremarked. So when a plan
+exists, closing the work includes one pass that reads each criterion against the code as it now stands.
+
+Bound the pass to what the plan names — the criteria, the tasks, and the files and components they point at. Do not
+widen the audit into the rest of the codebase. For each `AC-n`, look at the code in that scope and record a finding
+**only where there is a gap**, classified as exactly one of:
+
+| Gap | Means |
+|---|---|
+| **missing** | nothing in the code implements the criterion |
+| **partial** | something does, but not all of what the criterion states |
+| **contradicts** | the code does something that conflicts with the criterion or a plan decision |
+| **unrequested** | the code contains work no criterion or task called for |
+
+`unrequested` is the one that is easy to skip and should not be: it is scope creep made visible (principle 3,
+"surgical change"). It is surfaced, never deleted by this pass — the user decides whether it stays, and if it
+does, it gets a criterion.
+
+Report it as a table — `AC-n | gap | evidence (file/area) | remaining work` — then either:
+- **Converged:** zero findings. Say so in one line, with how many criteria were checked.
+- **Not converged:** append each remaining item to the plan as a task that names its `AC-n`, and go back to
+  producing. Repeat the pass after that work, until it converges or the user accepts a named gap explicitly.
+
+This is model discipline, not a gate: no exit code can judge "partially built". What makes it hold is the table —
+a pass that produced no table did not run.
+
+Adapted from `converge` in github/spec-kit (MIT), trimmed to the part this kit was missing: its plan already had
+acceptance criteria, but nothing ever checked the finished code against them.
+
 ## DoD (this skill's contribution)
 - Every task's "done" is testable; ordering and dependencies are visible; the riskiest work has been brought to the front.
 - Every unresolved ambiguity carries a `[NEEDS CLARIFICATION: …]` marker; no acceptance criterion contains one.
+- Every criterion has a stable `AC-n` id and at least one task that satisfies it; at close, a converge pass
+  has run and either reported **Converged** or left its remaining items in the plan as tasks.

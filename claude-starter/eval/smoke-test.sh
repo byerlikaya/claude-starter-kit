@@ -322,6 +322,7 @@ echo "== 5) Trace + secret scanner ready? =="
 [ -x "$HOOKS/pre-commit" ] && pass "pre-commit hook +x" || fail "pre-commit missing/not executable"
 [ -f "$HOOKS/trace-blocklist.txt" ] && pass "trace-blocklist present" || fail "trace-blocklist.txt missing"
 [ -f "$HOOKS/secret-blocklist.txt" ] && pass "secret-blocklist present" || fail "secret-blocklist.txt missing"
+[ -f "$HOOKS/floor-blocklist.txt" ]  && pass "floor-blocklist present"  || fail "floor-blocklist.txt missing"
 # secret scan (behavioral): a staged fake AWS key MUST be blocked by pre-commit (key split in source so THIS file is clean)
 SDIR="$(mktemp -d)"
 ( cd "$SDIR" && git init -q && git config user.email x@x.x && git config user.name x \
@@ -2852,7 +2853,7 @@ elif [ -f "$PHJ" ]; then
   # the plugin edition gets the commit CONTENT gates at all (a plugin cannot set core.hooksPath). They ship as
   # data for that hook, never wired as git hooks. Shipping them WITHOUT the caller would be worse than not
   # shipping them — two dead files and a channel that still silently lacks the gate — so assert the pair.
-  for h in pre-commit commit-msg trace-blocklist.txt secret-blocklist.txt; do
+  for h in pre-commit commit-msg trace-blocklist.txt secret-blocklist.txt floor-blocklist.txt; do
     [ -e "$PLUGIN/hooks/$h" ] || { fail "plugin missing $h — guard-commit-scan.sh has nothing to run"; break; }
   done
   { [ -x "$PLUGIN/hooks/guard-commit-scan.sh" ] && grep -q 'guard-commit-scan' "$PHJ"; } \
@@ -3213,15 +3214,20 @@ if command -v git >/dev/null 2>&1 && ( cd "$BLR" && git init -q && git config us
   expand(){ LC_ALL=C awk '{ while (match($0, /\{\{A[0-9]+\}\}/)) {
       n=substr($0, RSTART+3, RLENGTH-5); s=""; for(i=0;i<n+0;i++) s=s "A"
       $0 = substr($0,1,RSTART-1) s substr($0, RSTART+RLENGTH) } print }' <<<"$1"; }
+  # The sample's FILE NAME is per list. The floor guard does not scan documentation (.md .txt …) — a suppression in
+  # prose silences nothing — so a floor case written to sample.txt would pass by being ignored, not by being clean,
+  # and every `#test:` would fail for the wrong reason. Trace and secret scans read every file, so .txt stays theirs.
+  BLS=sample.txt
   blcase(){ # $1 = sample line, $2 = "block"|"clean", $3 = label
-    printf '%s\n' "$(expand "$1")" > "$BLR/sample.txt"
-    ( cd "$BLR" && git add sample.txt >/dev/null 2>&1 && bash "$HOOKS/pre-commit" ) >/dev/null 2>&1
+    printf '%s\n' "$(expand "$1")" > "$BLR/$BLS"
+    ( cd "$BLR" && git add "$BLS" >/dev/null 2>&1 && bash "$HOOKS/pre-commit" ) >/dev/null 2>&1
     rc=$?
-    ( cd "$BLR" && git reset -q HEAD -- . >/dev/null 2>&1; rm -f sample.txt )
+    ( cd "$BLR" && git reset -q HEAD -- . >/dev/null 2>&1; rm -f "$BLS" )
     if [ "$2" = block ]; then [ "$rc" -ne 0 ]; else [ "$rc" -eq 0 ]; fi
   }
-  for bl in trace-blocklist secret-blocklist; do
+  for bl in trace-blocklist secret-blocklist floor-blocklist; do
     F="$HOOKS/$bl.txt"; [ -f "$F" ] || { fail "$bl.txt missing"; continue; }
+    case "$bl" in floor-blocklist) BLS=sample.src ;; *) BLS=sample.txt ;; esac
     # (a) coverage: a pattern with no case at all is an untested gate
     UNCOV="$(awk '
       /^#test:/       { if (last != "") cov[last]=1; next }
@@ -3254,6 +3260,15 @@ $(sed -n 's/^#test-clean:[[:space:]]*//p' "$F")
 EOF
     [ -z "$BADC" ] && pass "$bl: all $NC clean case(s) stay committable (no false positive)" \
                    || { fail "$bl: a pattern fires on ordinary text"; printf '%s\n' "$BADC"; }
+    # (d) no BARE `$` anchor. A file saved with CRLF puts a carriage return before the newline of every added line,
+    # and the two greps this hook meets disagree about it: measured, GNU grep (Git Bash) matches `X$` against `X\r`
+    # and BSD grep (macOS) does not — 1 against 0 on the same CRLF file. BSD awk also keeps that CR where gawk drops it.
+    # So a pattern ending in a bare `$` would hold on Windows and silently match nothing on macOS for CRLF sources.
+    # The safe spelling makes end-of-line an ALTERNATIVE to a class that contains CR — `([^A-Za-z0-9_]|$)`,
+    # `([[:space:]]|$)` — and those match identically on both. This rejects any `$` that is not written as `|$)`.
+    BAREEND="$(grep -vE '^#|^[[:space:]]*$' "$F" | sed 's/|\$)//g' | grep -F '$' || true)"
+    [ -z "$BAREEND" ] && pass "$bl: no pattern ends on a bare \$ (CRLF sources match the same on GNU and BSD grep)" \
+                      || { fail "$bl: a bare \$ anchor matches nothing on macOS for a CRLF file — write (class|\$) instead"; printf '     ↳ %s\n' "$BAREEND"; }
   done
   # The self-exclusion must follow the FILE, not one installed path: the same list lives at .claude/hooks/ in a
   # project, claude-starter/hooks/ in this repo and hooks/ in the plugin build. Anchored to the first, the kit's
@@ -3266,6 +3281,77 @@ else
   skip tool "blocklist case run skipped (git is absent or unusable here)"
 fi
 
+echo "== 7h2) floor guard — the structural half, the exemptions, and the report =="
+# The line patterns are driven one by one in 7h. What a single line cannot show is here: a test file deleted, the
+# assertions taken out of one that stays, and the two exemptions a real stack needs — documentation, and generated
+# files, which EF Core fills with warning pragmas (395k model snapshots on GitHub, measured). Every exemption case
+# has a calibration twin that must still block, because an exemption that passes by accident looks identical to
+# one that works.
+#
+# The suppression tokens are assembled at run time ("@ts-""ignore"): this file is project code in the kit's own
+# repo, and a literal here would be a bar-lowering line the guard is right to refuse.
+FGR="$(mktemp -d)"
+if command -v git >/dev/null 2>&1 && ( cd "$FGR" && git init -q . && git config user.email t@t && git config user.name t \
+    && mkdir -p .claude/hooks src tests db \
+    && cp "$HOOKS/pre-commit" "$HOOKS/trace-blocklist.txt" "$HOOKS/secret-blocklist.txt" "$HOOKS/floor-blocklist.txt" .claude/hooks/ \
+    && printf 'export const a = 1;\n' > src/app.ts \
+    && printf "import { a } from '../src/app';\nexpect(a).toBe(1);\nexpect(a).toBeDefined();\n" > tests/app.test.ts \
+    && printf "it('x', () => { expect(1).toBe(1); });\n" > tests/old.test.ts \
+    && printf -- '-- seed\nselect 1;\n' > db/seed.sql \
+    && git add -A && git -c core.hooksPath=/dev/null commit -qm base ) >/dev/null 2>&1; then
+  TSI="@ts-""ignore"; PRG="#prag""ma warning disable 612, 618"; ESD="eslint-""disable"
+  fg(){ # $1 = expected rc, $2 = label; the working tree is prepared by the caller, then reset
+    ( cd "$FGR" && git add -A >/dev/null 2>&1 && bash .claude/hooks/pre-commit ) > "$FGR.out" 2>&1
+    rc=$?
+    ( cd "$FGR" && git reset -q --hard HEAD && git clean -qfd ) >/dev/null 2>&1
+    [ "$rc" = "$1" ] && pass "floor: $2" || { fail "floor: $2 — expected rc=$1, got $rc"; sed -n '1,4p' "$FGR.out" | sed 's/^/     ↳ /'; }
+  }
+  # Structural — the first row is the regression pin: the hook used to exit before this check whenever a commit
+  # added no line at all, so deleting a test file committed cleanly.
+  ( cd "$FGR" && git rm -q tests/old.test.ts );                                        fg 1 "a commit that only deletes a test file is stopped"
+  ( cd "$FGR" && printf "import { a } from '../src/app';\n" > tests/app.test.ts );     fg 1 "assertions removed from a test that stays are stopped"
+  ( cd "$FGR" && printf "import { a } from '../src/app';\nexpect(a).toBe(2);\nexpect(a).toBeDefined();\n" > tests/app.test.ts ); fg 0 "changing an expectation (one out, one in) stays free"
+  ( cd "$FGR" && git mv tests/old.test.ts tests/moved.test.ts );                       fg 0 "moving a test file stays free — a rename is not a deletion"
+  ( cd "$FGR" && git rm -q src/app.ts );                                               fg 0 "deleting a file that is not a test stays free"
+  ( cd "$FGR" && printf 'select 1;\n' > db/seed.sql );                                 fg 0 "removing a SQL '-- ' line is not read as a diff header"
+  # Exemptions, each with the twin that must still block.
+  ( cd "$FGR" && printf '# Guide\n// %s\n' "$ESD" > README.md );                       fg 0 "a suppression written in documentation stays free"
+  ( cd "$FGR" && printf '// %s\n' "$ESD" >> src/app.ts );                              fg 1 "calibration: the same suppression in code is stopped"
+  ( cd "$FGR" && mkdir -p Migrations && printf '\357\273\277// <auto-generated />\nnamespace X {\n%s\n}\n' "$PRG" > Migrations/Snap.cs ); fg 0 "a generated file (BOM + <auto-generated />) may carry a pragma"
+  ( cd "$FGR" && mkdir -p Migrations && printf 'namespace X {\n%s\n}\n' "$PRG" > Migrations/Hand.cs ); fg 1 "calibration: the same pragma in a hand-written file is stopped"
+  # The marker has to OPEN the file. Generated-file detection reads each candidate's first five lines in one pass
+  # rather than `grep -l` over whole files, and this row is why: a hand-written file that only mentions a generator
+  # marker in a comment further down must not be waved through by it.
+  ( cd "$FGR" && mkdir -p Migrations && printf 'l1\nl2\nl3\nl4\nl5\nl6\n// see the @generated docs\n%s\n' "$PRG" > Migrations/Deep.cs ); fg 1 "a generator marker below the first five lines exempts nothing"
+  ( cd "$FGR" && printf 'x(); // %s\n' "$TSI" >> src/app.ts && printf 'path:src/*\n' > .floor-allowlist.txt ); fg 0 "allowlist path:<glob> exempts that path"
+  ( cd "$FGR" && printf 'x(); // %s\n' "$TSI" >> src/app.ts && printf 'rule:silenced-checker\n' > .floor-allowlist.txt ); fg 0 "allowlist rule:<name> turns that rule off"
+  ( cd "$FGR" && printf 'x(); // %s\n' "$TSI" >> src/app.ts && printf 'path:lib/*\n' > .floor-allowlist.txt ); fg 1 "calibration: an allowlist for another path exempts nothing here"
+  # `path:` is a shell `case` pattern, so `*` crosses directories: `path:*.ts` exempts src/app.ts, not only root-level
+  # files. That is wider than it reads, and it is documented rather than silently different — this row pins the
+  # documented behaviour, so the words and the code cannot drift apart. Measured on Windows 11 before it was written.
+  ( cd "$FGR" && printf 'x(); // %s\n' "$TSI" >> src/app.ts && printf 'path:*.ts\n' > .floor-allowlist.txt ); fg 0 "a path: glob's * crosses directories (documented): path:*.ts exempts src/app.ts"
+  # The report names rule, file:line and pattern, never the line — a suppressed line can hold a secret beside it.
+  ( cd "$FGR" && printf 'const k = "zz-report-probe"; // %s\n' "$TSI" >> src/app.ts && git add -A >/dev/null 2>&1 && bash .claude/hooks/pre-commit ) > "$FGR.out" 2>&1
+  ( cd "$FGR" && git reset -q --hard HEAD && git clean -qfd ) >/dev/null 2>&1
+  if grep -q 'FLOOR-GUARD \[silenced-checker\]: src/app.ts:2 ' "$FGR.out" && ! grep -q 'zz-report-probe' "$FGR.out"; then
+    pass "floor: the report names file:line and pattern, and never echoes the line"
+  else
+    fail "floor: report shape wrong or the line leaked"; sed -n '1,3p' "$FGR.out" | sed 's/^/     ↳ /'
+  fi
+  # An added line that itself begins `++ ` reaches the diff as `+++ …`. The corpus parser used to take any such line for
+  # a file header, so it re-pointed the path of every line after it — measured: the report read `counter;:2` for a
+  # suppression on src/a.ts line 3. Headers are now read only between `diff --git` and the first hunk.
+  ( cd "$FGR" && printf 'x\n++ counter;\nfoo(); // %s\n' "$TSI" > src/a.ts && git add -A >/dev/null 2>&1 && bash .claude/hooks/pre-commit ) > "$FGR.out" 2>&1
+  ( cd "$FGR" && git reset -q --hard HEAD && git clean -qfd ) >/dev/null 2>&1
+  grep -q 'FLOOR-GUARD \[silenced-checker\]: src/a.ts:3 ' "$FGR.out" \
+    && pass "floor: an added line starting '++ ' is not mistaken for a file header (src/a.ts:3)" \
+    || { fail "floor: an added '++ ' line re-pointed the report's path"; sed -n '1,2p' "$FGR.out" | sed 's/^/     ↳ /'; }
+  rm -rf "$FGR" "$FGR.out"
+else
+  skip tool "floor guard structural cases skipped (git is absent or unusable here)"
+  rm -rf "$FGR"
+fi
+
 echo "== 7j) commit CONTENT gate reachable without core.hooksPath (plugin edition parity) =="
 # The plugin edition ships Claude Code hooks, not git hooks, so it had the commit APPROVAL gate and none of the
 # commit CONTENT gates: a credential or an authorship trailer could land there while the other three channels
@@ -3276,7 +3362,7 @@ if [ -x "$HOOKS/guard-commit-scan.sh" ]; then
   ( cd "$CS" && git init -q && git config user.email t@t && git config user.name t
     mkdir -p .claude/hooks
     cp "$HOOKS/guard-commit-scan.sh" "$HOOKS/pre-commit" "$HOOKS/commit-msg" \
-       "$HOOKS/trace-blocklist.txt" "$HOOKS/secret-blocklist.txt" .claude/hooks/ 2>/dev/null
+       "$HOOKS/trace-blocklist.txt" "$HOOKS/secret-blocklist.txt" "$HOOKS/floor-blocklist.txt" .claude/hooks/ 2>/dev/null
     chmod +x .claude/hooks/* 2>/dev/null
     echo ok > a.txt && git add a.txt && git commit -qm base --no-verify ) >/dev/null 2>&1
   # The no-jq arm used to interpolate the command RAW, so a multi-line message put a literal newline inside a
@@ -3992,7 +4078,9 @@ echo "== 13) pre-commit cost — the gate people route around is the one that is
 # PROCESSES, the thing Windows actually charges for.
 PCT="$(mktemp -d)"; ( cd "$PCT" && git init -q . && git config user.email t@e.x && git config user.name T
   mkdir -p .claude/hooks && cp "$ROOT/hooks/pre-commit" .claude/hooks/
-  cp "$ROOT/hooks/trace-blocklist.txt" "$ROOT/hooks/secret-blocklist.txt" .claude/hooks/ 2>/dev/null
+  # floor-blocklist.txt too: without it the floor guard's line-pattern half is skipped, and the process count would
+  # be measured for a hook with one gate switched off — the friendly case, which is the one that hides a regression.
+  cp "$ROOT/hooks/trace-blocklist.txt" "$ROOT/hooks/secret-blocklist.txt" "$ROOT/hooks/floor-blocklist.txt" .claude/hooks/ 2>/dev/null
   printf 'seed\n' > seed.txt && git add seed.txt && git commit -qm init
   mkdir -p src && i=1; while [ "$i" -le 120 ]; do printf 'export const V%s = %s;\n' "$i" "$i" > "src/f$i.ts"; i=$((i+1)); done
   git add src >/dev/null 2>&1

@@ -32,7 +32,7 @@ TRACE_F="$(mktemp)"; SECRET_F="$(mktemp)"
 # swallows it, git keeps running, and `.git/index.lock` stays behind holding the repository. Every later git
 # command then fails with "Another git process seems to be running", which names nothing about the real cause.
 # 143 = 128 + SIGTERM, the exit status a shell reports for a process the signal actually stopped.
-_csk_cleanup(){ rm -f "$TRACE_F" "$SECRET_F" ${PRIV_F:+"$PRIV_F"} ${PTERM_F:+"$PTERM_F"}; }
+_csk_cleanup(){ rm -f "$TRACE_F" "$SECRET_F" ${PRIV_F:+"$PRIV_F"} ${PTERM_F:+"$PTERM_F"} ${FLOOR_F:+"$FLOOR_F"} ${FLOOR_P:+"$FLOOR_P"}; }
 trap _csk_cleanup EXIT
 trap '_csk_cleanup; exit 143' INT TERM
 
@@ -166,6 +166,104 @@ if [ -n "$SIZE_TARGETS" ]; then
   done < <(printf '%s\n' "${SIZE_QUERY#$NL}" | git cat-file --batch-check 2>/dev/null \
              | paste -d'\t' <(printf '%s' "$SIZE_TARGETS") - 2>/dev/null)
 fi
+
+# Floor guard, STRUCTURAL half — a test file deleted outright, or assertions taken out of one that stays.
+#
+# It sits here, ahead of the early exit below, because neither move adds a line: a commit that only deletes has
+# nothing for the text scans, and that exit used to end the hook before this ever ran — measured, a deleted test
+# file committed cleanly. The line-pattern half of the floor guard is further down with the other text scans.
+# (Adapted from addyosmani/agent-skills, constraint-driven-development, MIT; see floor-blocklist.txt.)
+FAL=""; [ -n "$GITROOT" ] && [ -f "$GITROOT/.floor-allowlist.txt" ] && FAL="$GITROOT/.floor-allowlist.txt"
+# .floor-allowlist.txt: `path:<glob>` exempts a path, `rule:<name>` turns a rule off, any other line exempts that
+# EXACT pattern line. `path:` is matched as a shell `case` pattern: `*` crosses `/` and `**` is not special, so
+# `path:*.cs` exempts every C# file in the tree. Documented in floor-blocklist.txt and pinned in smoke §7h2. The allowlist sits in the same diff as the code it excuses, which is the point: an exception
+# is a decision someone can see, not a rule that quietly got weaker.
+_floor_allowed(){ # $1 = rule, $2 = pattern (may be empty), $3 = path
+  [ -n "$FAL" ] || return 1
+  local a
+  while IFS= read -r a || [ -n "$a" ]; do
+    a="${a%$'\r'}"
+    case "$a" in
+      ''|\#*) continue ;;
+      path:*) case "$3" in ${a#path:}) return 0 ;; esac ;;
+      rule:*) [ "${a#rule:}" = "$1" ] && return 0 ;;
+      *)      [ -n "$2" ] && [ "$a" = "$2" ] && return 0 ;;
+    esac
+  done < "$FAL"
+  return 1
+}
+
+# Test files, by the naming each ecosystem uses. Names and not whole `test/` directories, because deleting a
+# fixture or a helper there is not a test made easier. Rust integration tests are the one convention that is a
+# directory rather than a name.
+_floor_is_test(){ # $1 = path
+  case "$1" in
+    *.test.*|*.spec.*|*_test.*|*_spec.rb|test_*.py|*/test_*.py) return 0 ;;
+    *Test.java|*Tests.java|*Test.kt|*Tests.kt|*Test.cs|*Tests.cs|*Test.php|*Spec.scala|*Tests.swift) return 0 ;;
+    __tests__/*|*/__tests__/*|tests/*.rs|*/tests/*.rs) return 0 ;;
+  esac
+  return 1
+}
+
+# One diff pass serves both checks, so the cost on an ordinary commit is two processes rather than four. Headers
+# are read only between `diff --git` and the first hunk: a removed content line that itself starts with `-- ` (a
+# SQL comment) shows up as `--- ` and would otherwise be mistaken for a file header.
+#
+# Assertions are counted NET per file, not line by line: changing an expectation removes one and adds one, and a
+# line-level rule would flag every such edit. A test only loses its checks when it ends with fewer than it began.
+# A rename is not a deletion and git does not report it as one, so moving a test file stays free.
+# Whether a path is a test is decided once, by _floor_is_test, rather than written a second time in awk.
+# ONE diff and ONE awk serve the whole floor guard — the deleted-test and assertion checks here, and the added-line
+# corpus the pattern half reads further down. They used to be two diffs and two awks, plus two mktemps, which is
+# what an ordinary commit paid for this guard: +7 processes, measured on Windows 11 at about +304 ms over a ~900 ms
+# hook. Merging them removes four processes; the corpus files are named off TRACE_F and created with a builtin
+# redirection, so no process makes them. Nothing about the trace or secret scans changed.
+#
+# Headers are read only between `diff --git` and the first hunk. The corpus parser used to treat any `+++ ` line as a
+# file header, so an added line that itself began `++ ` came through as `+++ …` and re-pointed the path of every line
+# after it; tracking the header state closes that as well. Unfiltered on purpose: deletions, modifications, additions
+# and renames all arrive in one stream. A new file is never counted for assertions (it cannot lose any); a renamed
+# test that also lost assertions is counted, which the old DM-only filter let through.
+FLOOR_F="$TRACE_F.floor"; FLOOR_P="$TRACE_F.floorp"; : > "$FLOOR_F"; : > "$FLOOR_P"
+_floor_diff(){ # $@ = extra git diff arguments
+  git diff "$@" --unified=0 --no-color --src-prefix=a/ --dst-prefix=b/ -- . ':(top,exclude).claude' 2>/dev/null
+}
+while IFS=$'\t' read -r kind f r a; do
+  [ -n "$f" ] || continue
+  _floor_is_test "$f" || continue
+  case "$kind" in
+    D) _floor_allowed "test-deleted" "" "$f" && continue
+       echo "FLOOR-GUARD [test-deleted]: $f is a test file this commit removes"
+       HIT=1 ;;
+    M) [ "$r" -gt "$a" ] || continue
+       _floor_allowed "assertion-removed" "" "$f" && continue
+       echo "FLOOR-GUARD [assertion-removed]: $f loses $((r - a)) assertion(s) and stays in the tree (removed $r, added $a)"
+       HIT=1 ;;
+  esac
+done < <({ _floor_diff --cached; [ "${CSK_SCAN_UNSTAGED:-0}" = 1 ] && _floor_diff; } \
+  | LC_ALL=C awk -v F="$FLOOR_F" -v P="$FLOOR_P" '
+      /^diff --git / { hdr = 1; old = ""; p = ""; isnew = 0; skip = 1; next }
+      hdr && /^--- /     { old = $0; sub(/^--- (a\/)?/, "", old); isnew = (old == "/dev/null"); next }
+      hdr && /^\+\+\+ /  { np = $0; sub(/^\+\+\+ (b\/)?/, "", np)
+                           if (np == "/dev/null") { if (old != "" && old != "/dev/null") printf "D\t%s\t0\t0\n", old; p = ""; skip = 1 }
+                           else { p = np; skip = (np ~ /\.(md|mdx|txt|rst|adoc)$/) }
+                           next }
+      /^@@/ { hdr = 0; s = $0; sub(/^@@ -[0-9,]+ \+/, "", s); sub(/[, ].*$/, "", s); ln = s + 0; next }
+      hdr   { next }
+      p == "" { next }
+      /^[-+]/ {
+        b = substr($0, 2); plus = (substr($0, 1, 1) == "+")
+        if (plus && !skip) { print b >> F; print p ":" ln >> P }
+        if (plus) ln++
+        if (!isnew && (b ~ /(^|[^A-Za-z0-9_])(assert|Assert|expect|Expect|should|Should|verify|Verify)[A-Za-z_]*[[:space:]]*[.(]/ ||
+            b ~ /(^|[^A-Za-z0-9_])t\.(Error|Errorf|Fatal|Fatalf)\(/ ||
+            b ~ /(^|[^A-Za-z0-9_])require\./ ||
+            b ~ /(^|[[:space:]])assert[[:space:]]/)) {
+          if (plus) add[p]++; else rem[p]++
+          seen[p] = 1
+        }
+      }
+      END { for (f in seen) printf "M\t%s\t%d\t%d\n", f, rem[f] + 0, add[f] + 0 }')
 
 # Nothing staged for the text scans AND the bloat gate is clean -> done.
 { [ -s "$TRACE_F" ] || [ -s "$SECRET_F" ] || [ "$HIT" -ne 0 ]; } || exit 0
@@ -320,9 +418,154 @@ if [ -s "$PTERM_F" ] && [ -s "$SECRET_F" ] && [ "$_dec" != 1 ]; then
 fi
 rm -f "$PRIV_F"
 
+# (4) floor guard — a commit must not LOWER the quality bar on its way to a green check.
+#
+# An agent that hits a red check does not invent a clever loophole; it takes the cheapest road to green. That road
+# is nearly always visible in the lines a commit adds (a checker switched off where it fired, a test told to stop
+# running, a stub or a swallowed error where the work should be) or in what it takes away (a test file, the
+# assertions inside one that stays). The patterns and their cases live in floor-blocklist.txt; the two structural
+# checks that a single line cannot show are here.
+#
+# Adapted from the floor in addyosmani/agent-skills (constraint-driven-development, MIT), rewritten for this hook:
+# the STAGED diff rather than a merge base, since at commit time that is exactly what enters history; bash, since
+# every gate here must run with nothing installed; and the two exemptions a real stack needs, documentation and
+# generated code.
+#
+# It reports the rule, the file, the line and the PATTERN, never the line's text: a suppressed line can carry a
+# secret beside the comment, and the secret scan above is the only place that decides how a value is shown.
+FL="$HERE/floor-blocklist.txt"
+# FLOOR_F (added lines of project code) and FLOOR_P (`path:line` at the same line number) were built by the single
+# floor pass ahead of the early exit above.
+
+# A file that opens with a generator marker was not written by this commit's author, and the default stack needs
+# this: EF Core puts a warning pragma into every model snapshot it emits (395k such files on GitHub, measured).
+# `sed -n '1,5p'` and NOT `head -n 5`: under `set -o pipefail`, head closing the pipe early makes the producer die
+# of SIGPIPE, and the pipeline reports 141 even when grep matched — measured, so the exemption would never apply.
+_FLOOR_GEN="|"
+_floor_generated(){ # $1 = repo-relative path; 0 when the file opens with a generator marker
+  case "$_FLOOR_GEN" in *"|$1=1|"*) return 0 ;; *"|$1=0|"*) return 1 ;; esac
+  local hdr
+  hdr="$(git show ":$1" 2>/dev/null | sed -n '1,5p')" || hdr=""
+  [ -n "$hdr" ] || hdr="$(sed -n '1,5p' -- "${GITROOT:-.}/$1" 2>/dev/null)" || hdr=""
+  if printf '%s\n' "$hdr" | grep -qE '<auto-generated|@generated|Code generated .*DO NOT EDIT|DO NOT EDIT|[Aa]uto-?generated|This file (is|was) (automatically )?generated'; then
+    _FLOOR_GEN="$_FLOOR_GEN$1=1|"; return 0
+  fi
+  _FLOOR_GEN="$_FLOOR_GEN$1=0|"; return 1
+}
+
+# (4a) line patterns. `!= 1` and not `= 0`, for the reason spelled out at the trace scan: a malformed pattern takes
+# the combined grep down with exit 2, which means "could not look", not "nothing is there".
+#
+# EXEMPTIONS ARE APPLIED BEFORE THE PER-PATTERN LOOP, not inside it, and that ordering is a measured cost fix.
+# Attributing a hit to its rule costs one grep per pattern (34 of them). The first version paid that on every
+# commit the cheap pre-check flagged, then exempted the lines — so an EF Core migration, whose three generated files
+# all carry a warning pragma, went from 20 processes to 73 and was allowed anyway. At the 62-135 ms a Git Bash
+# process was measured to cost, that is several seconds on every migration commit of the default stack. Now the
+# candidate lines are found with one grep, their files checked once each, and the loop runs only when a line that
+# is NOT exempt remains. A malformed pattern takes the combined grep down with exit 2; then the slow path runs over
+# every line, exactly as before, so a broken list still reports itself and still scans.
+if _csk_any "$FL" "$FLOOR_F" E 0; then _dec=0; else _dec=$?; fi
+if [ -f "$FL" ] && [ -s "$FLOOR_F" ] && [ "$_dec" != 1 ]; then
+  FLOOR_ALT=""
+  while IFS= read -r pat || [ -n "$pat" ]; do
+    pat="${pat%$'\r'}"
+    case "$pat" in ''|\#*) continue ;; esac
+    FLOOR_ALT="${FLOOR_ALT:+$FLOOR_ALT|}$pat"
+  done < "$FL"
+  KEEP="|"; SLOW=0; FLOOR_MAP=""
+  _cg=0; cand="$(grep -nE -- "$FLOOR_ALT" "$FLOOR_F" 2>/dev/null)" || _cg=$?
+  if [ "$_cg" -ge 2 ]; then
+    SLOW=1
+  elif [ -n "$cand" ]; then
+    nums="$(printf '%s\n' "$cand" | sed 's/:.*//' | tr '\n' ' ')"
+    # One awk maps every candidate line number to its `path:line` at once, instead of one sed per line.
+    CANDMAP="$(LC_ALL=C awk -v L="$nums" 'BEGIN { n = split(L, a, " "); for (i = 1; i <= n; i++) w[a[i]] = 1 } (NR in w) { print NR ":" $0 }' "$FLOOR_P")"
+    FLOOR_MAP="
+$CANDMAP
+"
+    # WHICH CANDIDATE FILES ARE GENERATED, ASKED ONCE FOR ALL OF THEM — measured on Windows, not assumed. Asking per
+    # file cost a Git Bash process pipeline each (~40 ms marginal there, three processes here), so 120 candidate
+    # files took 4.8 s while a single pass over all of them stayed flat at ~130 ms whatever the count. The pass is
+    # awk over the first FIVE lines of each file, not `grep -l` over whole files: a hand-written file that merely
+    # mentions a generator marker in a comment further down must not be exempted. It reads the working tree rather
+    # than the index; a generator header present in one and absent from the other is not a case worth a process per
+    # file, and the direction that could matter only makes the guard stricter.
+    # The answer seeds the same cache _floor_generated uses, so the attribution loop below pays nothing again.
+    FGEN_FILES=""; FGEN_SEEN="|"; set -- 
+    while IFS=: read -r n fpath _; do
+      [ -n "$fpath" ] || continue
+      case "$FGEN_SEEN" in *"|$fpath|"*) continue ;; esac
+      FGEN_SEEN="$FGEN_SEEN$fpath|"
+      [ -f "${GITROOT:-.}/$fpath" ] && set -- "$@" "${GITROOT:-.}/$fpath"
+    done <<EOF_FLOOR_CAND
+$CANDMAP
+EOF_FLOOR_CAND
+    FGEN_LIST=""
+    if [ "$#" -gt 0 ]; then
+      FGEN_LIST="$(LC_ALL=C awk 'FNR > 5 { nextfile }
+        /<auto-generated|@generated|Code generated .*DO NOT EDIT|DO NOT EDIT|[Aa]uto-?generated|This file (is|was) (automatically )?generated/ { print FILENAME; nextfile }' "$@" 2>/dev/null)" || FGEN_LIST=""
+    fi
+    for f in "$@"; do
+      rel="${f#"${GITROOT:-.}"/}"
+      case "
+$FGEN_LIST
+" in *"
+$f
+"*) _FLOOR_GEN="$_FLOOR_GEN$rel=1|" ;; *) _FLOOR_GEN="$_FLOOR_GEN$rel=0|" ;; esac
+    done
+    set --
+    while IFS=: read -r n fpath _; do
+      [ -n "$n" ] || continue
+      _floor_allowed "" "" "$fpath" && continue      # path: exemptions only — no rule or pattern is known yet
+      _floor_generated "$fpath" && continue          # answered from the cache seeded above
+      KEEP="$KEEP$n|"
+    done <<EOF_FLOOR_CAND2
+$CANDMAP
+EOF_FLOOR_CAND2
+  fi
+  if [ "$SLOW" = 1 ] || [ "$KEEP" != "|" ]; then
+    rule="unclassified"
+    while IFS= read -r pat || [ -n "$pat" ]; do
+      pat="${pat%$'\r'}"
+      case "$pat" in
+        '# rule: '*) rule="${pat#\# rule: }"; continue ;;
+        ''|\#*) continue ;;
+      esac
+      _gr=0; hits="$(grep -nE -- "$pat" "$FLOOR_F" 2>/dev/null)" || _gr=$?
+      if [ "$_gr" -ge 2 ]; then
+        echo "FLOOR-GUARD: /$pat/ in $FL is not a valid regular expression, so it matches NOTHING. Every other pattern still ran; fix or remove this line."
+        continue
+      fi
+      [ -n "$hits" ] || continue
+      while IFS=: read -r n _; do
+        [ -n "$n" ] || continue
+        [ "$SLOW" = 1 ] || case "$KEEP" in *"|$n|"*) ;; *) continue ;; esac
+        # The location comes from CANDMAP, already in memory, with parameter expansion — not one sed per hit. A commit
+        # that sweeps a suppression across many files is exactly the one this loop sees, and it is typically retried
+        # after each fix, so a process per hit was paid again on every attempt. The slow path has no map; it uses sed.
+        if [ "$SLOW" = 1 ]; then
+          loc="$(sed -n "${n}p" "$FLOOR_P")"
+        else
+          loc="${FLOOR_MAP#*"
+$n:"}"; loc="${loc%%
+*}"
+        fi
+        fpath="${loc%:*}"
+        _floor_allowed "$rule" "$pat" "$fpath" && continue
+        _floor_generated "$fpath" && continue
+        echo "FLOOR-GUARD [$rule]: $loc adds a move that lowers the bar -> /$pat/"
+        HIT=1
+      done <<EOF_FLOOR_HITS
+$hits
+EOF_FLOOR_HITS
+    done < "$FL"
+  fi
+fi
+
 if [ "$HIT" -ne 0 ]; then
   echo "-----------------------------------------------------------"
-  echo "Commit stopped. Remove the AI-authorship trace / vendor name / secret / bloated file from the staged changes."
+  echo "Commit stopped. Remove the AI-authorship trace / vendor name / secret / bloated file / bar-lowering move from the staged changes."
+  echo "A bar-lowering move that is genuinely warranted? record it in .floor-allowlist.txt at the repo root (path:<glob>, rule:<name>, or the exact pattern line) — in the same commit, where review sees it. A path: glob's * also crosses directories: write the narrowest path."
   echo "False positive (trace/secret)? add the EXACT pattern line to .trace-allowlist.txt or .secret-allowlist.txt at the repo root."
   echo "Private path flagged but genuinely public? add that exact term to .private-allowlist.txt at the repo root."
   echo "Large file is intentional? raise CSK_MAX_FILE_BYTES, use Git LFS, or gitignore the build/vendored path."

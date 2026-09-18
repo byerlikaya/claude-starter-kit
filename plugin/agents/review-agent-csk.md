@@ -33,6 +33,9 @@ Before a work package closes (pre-commit), on the changed diff.
 - Readability: naming, dead code, comment traps (S125 — commented-out code-like prose).
 - Constructive "Prefer X over Y"-style suggestions.
 - **Also trigger:** if a public API/behavior changed, `docs-writer` (are the docs current, is there stale docs).
+- **Also trigger:** if the work was planned (a `docs/PLAN.md` or an equivalent plan with `AC-n` criteria),
+  run the `spec-planning` **converge** pass and put its table in the review. Clean code that leaves a
+  criterion `missing` or `partial` is not a clean review; `unrequested` work is reported, not removed.
 - **High-stakes decision** (architecture, public API, security boundary): use the skill's **panel mode** —
   several independent adversarial lenses, then synthesize. Reserve it for hard-to-reverse calls, not routine diffs.
 - **Verify before you report (two-stage):** a first-pass finding is a *candidate*. Run an independent pass to

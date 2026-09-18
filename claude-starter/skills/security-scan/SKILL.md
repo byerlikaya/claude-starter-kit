@@ -28,6 +28,13 @@ patterns are needed, it runs a web search.
 - **Doesn't:** does not replace a professional pentest / SAST / DAST. The report **guides**, it does not give full assurance — state this at the end of the report.
 - **Boundary:** analysis is local; code/data is not sent to an external service, and the project directory is not left.
 
+## A question is not a scan
+Loading this skill does not mean running all of it. "Is this query injectable?", "should this key be in the
+repo?", "how do I hash these passwords?" are **questions**: answer them from the relevant part of this skill and
+stop — no discovery pass, no fan-out of verifiers, no coverage ledger, no report file. The full workflow below runs
+when the user asks for a scan, an audit or a security review of a codebase or a change, or asks for the report
+itself. When a request could be either, ask one question before starting the full workflow; do not guess upward.
+
 ## Mental model — source → gate → sink
 Reduce every check to three questions:
 1. **Source** — where does the input enter? (route, API endpoint, form, CLI argument, file upload, WebSocket, queue message, external API response)
@@ -47,6 +54,7 @@ false positives. No threat model → map the surface yourself first (Front 0 · 
 - [ ] Source→sink paths traced across the four vulnerability classes
 - [ ] Configuration and secret leakage scanned
 - [ ] Authorization matrix produced, unprotected sensitive endpoints searched for
+- [ ] Code builds on a model (prompts, retrieval, memory, tools, sub-agents, MCP) → Front 5 run (`references/ai-agents.md`)
 - [ ] Each candidate adversarially **verified** (N-verifier disprove pass); FALSE_POSITIVE / CANNOT_VERIFY separated out
 - [ ] Severity **derived from preconditions × access** (not the scanner's category); verification ≠ severity
 - [ ] Findings reported in severity order, no secret disclosed; ruled-out findings recorded too
@@ -56,7 +64,7 @@ false positives. No threat model → map the surface yourself first (Front 0 · 
 
 ## Fronts
 
-Five review fronts — Discovery · Dependencies · Code (source→sink) · Configuration · Authorization: **`references/fronts.md`** (read the fronts you're scanning).
+Five review fronts — Discovery · Dependencies · Code (source→sink) · Configuration · Authorization: **`references/fronts.md`** (read the fronts you're scanning). A sixth, for code built on a model — prompts, retrieval, memory, tools, sub-agents, MCP — lives in **`references/ai-agents.md`**: read it only when that code is present.
 
 When you fan out a sub-agent per front, how you prompt it decides recall — describe vulnerability **shapes** not a
 checklist, scope each agent, and state that vulnerabilities exist: **`references/prompting.md`**.
@@ -86,3 +94,8 @@ The severity scale, finding format, summary line, and the fix-presentation forma
 5. **Do not install tools without asking.**
 6. **Preserve behavior** — a fix must not change functionality beyond closing the vulnerability.
 7. **Stay local** — do not send code/data to an external service, do not cross the project boundary.
+8. **Do not run the code under review to prove a finding** — no build, test, install or fixture run of it unless it
+   is isolated: no network, an empty environment, writes confined to a scratch directory, and hard limits on time
+   and resources. An install runs the target's own scripts; a test run executes whatever the target chose. If that
+   isolation is not available, the finding stays **CANNOT_VERIFY** with the exact local check that would settle
+   it. Reading source never needs any of this; executing it always does.

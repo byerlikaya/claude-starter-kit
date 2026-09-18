@@ -55,6 +55,17 @@ Rules:
 - "Zero findings, coverage complete" is a strong claim and rare. "Zero findings, half the surface unknown" is
   an honest and much more common one.
 
+### When a previous report exists
+Read it before planning, and let it shape priority — never coverage.
+- A previous **TRUE_POSITIVE** carries into this report only if the code on its path is unchanged; the verifier
+  re-checks it like any other candidate. Changed code makes it a fresh candidate, not an inherited one.
+- A previous **FALSE_POSITIVE** rules out that exact claim on that exact unchanged code — nothing more. The surface
+  it sat on is still reviewed.
+- A previous **CANNOT_VERIFY** is current work, unless the fact it waited on is still unavailable; then it carries
+  with that same named blocker.
+- A previous `partial` or `unknown` row is never inherited as `complete`, and a previous narrow or quick pass is
+  never read as "the rest was fine". Say in this report which rows came from the earlier one and why they still hold.
+
 ## Fix presentation
 ```
 How shall we proceed?

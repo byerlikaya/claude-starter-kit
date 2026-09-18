@@ -66,6 +66,12 @@ unanimity with one reason is a monoculture, and it is exactly how a whole panel 
 - **FALSE_POSITIVE** — fails one of the above, or matches an exclusion rule below.
 - **CANNOT_VERIFY** — static reasoning hit its limit (needs a running system / data you don't have). Report it
   honestly as `needs_manual_test`; never inflate uncertainty into a confident verdict.
+  - It carries **no severity**. It is a specific, source-grounded hypothesis that one missing fact blocks — not a
+    low-confidence confirmed vulnerability — and a severity on it would be read as a rating it has not earned.
+  - Name the missing fact exactly, and the check that would settle it.
+  - Controls that live outside the repository — a proxy, a WAF, provider settings, identity policy, network
+    topology, how a renderer sanitizes — are real controls. When a verdict depends on one that the source does not
+    show, do not assume it is **present**, and do not assume it is **absent**: that is what CANNOT_VERIFY is for.
 
 "I couldn't write a working PoC" is **weak** evidence of non-exploitability — do not downgrade on that alone.
 
@@ -116,6 +122,10 @@ from the vulnerability category:
 | **local / operator** | LOW | LOW | INFO |
 
 - Take the **lower** of the two axes. If the precondition list has **3+ items, HIGH is almost certainly wrong.**
+- **HIGH or MEDIUM? Ask one question:** does the demonstrated result fully **defeat** an explicit control for an
+  action with real consequences, or only **weaken** it? Defeat is HIGH territory; weaken is MEDIUM at most. If you
+  cannot state the concrete damage in a sentence, the severity is lower than it feels.
+- Severity never exceeds the impact actually demonstrated.
 - A `threat-model` match may raise severity by **at most one step** — never two (a stated threat can't re-inflate a LOW to HIGH).
 - Record `severity_alignment` (**-5..+5**): judged from the stance of a reviewer who has seen two hundred inflated
   scanner findings this week — how over- or under-stated is the raw claim? Negative = deflate it.

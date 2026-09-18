@@ -92,3 +92,8 @@ Access-control flaws are the class most often missed in a scan, because the code
 5. Verify that authorization is enforced both at the controller **and** at the data-access layer (IDOR: object reference without ownership validation).
 6. Privilege escalation: can a user change their own role/permission? Does a sensitive admin action require extra protection (re-auth/2FA)?
 7. **JWT:** `alg: none` / algorithm confusion, secret embedded in code, missing expiration.
+
+## Front 5 — AI, agent and MCP code
+
+Only when the code under review builds on a model. The classes, the rule that decides what counts, and the extra
+checks a finding must pass before it leaves the verifier are in **`ai-agents.md`**.

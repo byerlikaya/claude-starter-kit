@@ -210,6 +210,7 @@ Solda kural, sağda o kuralın geçilmesine izin vermeyen şey.
 | Hiçbir kimlik dosyası bağlama *okunmaz*: `~/.ssh/id_rsa`, `~/.aws/credentials`, `*.pem`, kubeconfig | `settings.json` okuma reddi + `guard-bash.sh` |
 | Commit'te yapay zekâ imzası veya üçüncü parti şablon adı bulunmaz | `pre-commit` + `commit-msg` git hook'ları |
 | Hiçbir derleme çıktısı, vendor ağacı veya aşırı büyük blob staged edilmez | `pre-commit` depo şişkinliği taraması |
+| Hiçbir commit kalite çıtasını sessizce düşürmez: tetiklendiği yerde susturulan bir denetleyici, atlanan ya da silinen bir test, kalan bir testten çıkarılan assertion'lar, işin yerinde duran bir stub ya da boş `catch` | `pre-commit` çıta koruması, kitin desteklediği yığınlarda. Üretilmiş dosyalar ve dokümantasyon muaf; gerçek bir istisna, aynı commit'te review'un gördüğü bir `.floor-allowlist.txt` satırıdır |
 | `.claude/` içinde beliren, denetlenmemiş bir skill ya da agent adıyla bildirilir ve tarayıcı hükmüyle sunulur | oturum başında `skill-trust.sh` |
 | Sürekli açık bağlam yalın kalır | `smoke-test.sh` bileşen başına bayt bütçesi |
 | Koşan bir oturum, güncellemeden sonra eski kurallara uymaya devam etmez | `context-usage.sh` sürüm karşılaştırması |
