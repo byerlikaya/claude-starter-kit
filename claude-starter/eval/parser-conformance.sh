@@ -35,7 +35,14 @@ LC_ALL=C
 HERE="$(cd "$(dirname "$0")" && pwd)"
 HOOK="$HERE/../hooks/guard-bash.sh"
 [ -f "$HOOK" ] || HOOK="$HERE/../../claude-starter/hooks/guard-bash.sh"
-if [ ! -f "$HOOK" ]; then echo "parser-conformance: guard-bash.sh bulunamadı ($HOOK)"; exit 1; fi
+if [ ! -f "$HOOK" ]; then
+  # Not a divergence and not a broken fixture — there was nothing to measure at all, which is what rc 3 means
+  # everywhere else in this file. Exiting 1 here would have reported "the tiers disagree" for a file that was
+  # merely copied somewhere else, and a caller that maps 1 to "gate failed" would chase a parser bug that does
+  # not exist. The run still fails loudly; only the reason it gives is corrected.
+  echo "parser-conformance: guard-bash.sh bulunamadı ($HOOK) — HİÇBİR ŞEY ÖLÇÜLMEDİ, bu bir geçiş değildir"
+  exit 3
+fi
 
 PASS=0; FAILED=0; UNMEASURED=0; KNOWN_OPEN=0
 ok(){   PASS=$((PASS+1));   printf '  \033[32mOK\033[0m   %s\n' "$1"; }
