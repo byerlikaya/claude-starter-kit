@@ -5,6 +5,142 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — §4.6: a commit is refused unless something reviewed THAT diff
+
+- **"review-agent-csk clean" was a Definition of Done item with nothing behind it.** The chain that reaches it —
+  write, audit, review, commit — was model discipline end to end, so a session that simply did not delegate the
+  review produced a commit indistinguishable from one that passed it. `review-agent-csk` now records what it
+  cleared in `.claude/review-pass.json`, and `guard-bash.sh` refuses `git commit` unless that record still
+  describes what is staged.
+- **Two exact facts, no wall-clock TTL.** The record carries git's object id of the staged diff and the `HEAD` it
+  was reviewed against; both must still match. A time window was the first design and was dropped because it is
+  wrong in both directions: it rejects a record that is still correct (same diff, same base, an hour later) and
+  accepts one that is not (same minute, rebased underneath).
+- **No size exemption.** The first draft skipped single-file commits; that contradicts the kit's own "RISK decides,
+  not size", and a hook cannot judge risk — it can only count files. A one-line auth change is one file and still
+  a diff nobody read. The deliberate ways through are unchanged and explicit: run the commit in your own terminal,
+  or a `CLAUDE_GIT_OK` session, which already bypasses §4.4.
+- **Git does the hashing** — and the reason took two corrections from a Windows machine to get right. On macOS the
+  suite's sandbox reaches its minimal tier and carries no hasher, and there the first version computed an empty
+  hash and blocked every commit: a gate failing for a missing tool instead of a missing review. On Windows that
+  tier cannot be built (`ln -s` yields no real symlink there), the sandbox falls back to stubbing jq/python3 over
+  the full PATH, and `/usr/bin/sha256sum` is present — so "a stock Git Bash lacks the hashers" was wrong, and
+  even "the sandbox carries none" holds on only one of the two platforms. The portable reason: `git` cannot be
+  absent where a commit is being gated, it being the thing under gate. It also needs no repo and costs one
+  process instead of a probe plus a hasher.
+- **A commit has to take its content from the INDEX, and the first version of this gate did not say so — which
+  made it a measured fail-open.** With a reviewed line staged and an unreviewed line merely saved in the same
+  file, `git commit -m c -- a.txt` matched the record and committed the unreviewed line. So did `--only`,
+  `--include`, their `-o`/`-i` short forms, `--patch`, `--interactive` and `-a`: git takes those paths from the
+  working tree and ignores what is staged, while the hook hashes the index before git runs. The record was
+  truthful and irrelevant at the same time. All of those forms are now refused, and the premise is pinned by a
+  case that performs such a commit and reads the blob back, so the day git changes its mind the suite says so.
+  (§4.1–4.3 were never affected: git hands its own `pre-commit` hook a temporary index holding the real committed
+  state, measured, so the trace and secret scans always saw what lands.)
+- **That check is a builtin token walk, not a regex, and it costs zero processes** — the ordinary commit used to
+  pay one grep here, which is 62–135 ms on Git Bash. A regex could not do the job: the flag or path has to be an
+  argument of *this* `git commit`, and the previous version could only manage that by refusing to look past the
+  first non-option token, which left `git commit -m x -a` uncaught by its own admission. Quoted spans are
+  stripped first, and that strip is load-bearing — removing it turns seven cases red, among them
+  `git commit -m "add -a flag docs"` and `ls -la && git commit -m x`, the two false positives measured on the
+  first version of the rule. Four further classes are pinned, each because the walk got one wrong and measuring
+  settled it: a short token is a CLUSTER, so `-qam` is `-q -a -m` and the test has to be a character class rather
+  than an equality check; a cluster ENDING in a value-taking letter is followed by that value, not a path, so
+  `git commit -qm x` was being refused as a pathspec commit while `git commit -qm "x"` was allowed — the quote
+  strip removed the message in the quoted spelling and hid the defect through a full suite pass and a 38-case
+  Windows run; a BARE `--` commits from the index, so refusing it is a false positive; and an OPTIONAL-value flag
+  swallows nothing, so listing `-S` and `-u` as value-taking made an ordinary `git commit -S -m x` refuse. The Windows leak table is identical with `core.autocrlf` both on and off, and the
+  staged diff's object id is unchanged in every leaking form — which is exactly why the record kept matching.
+- **A commit redirected with `-C`/`--git-dir`/`--work-tree` fails closed**, because the record describes THIS
+  worktree. The block prints the reviewed and the staged id side by side — the first version printed nothing, and
+  the failure read as §4.4 to everyone who hit it.
+- **The record is found through the payload's `cwd`, and that value is normalised as JSON.** §4.6 first resolved a
+  bare relative path against the hook's own process cwd, and a Windows session measured the cost: a process cwd of
+  `/c` with a perfectly valid record in the project answered "nothing has reviewed this diff" — fail-closed, but on
+  a false premise, which sends the user to re-run the reviewer forever. The same session then captured a live
+  payload from the real harness: `cwd` is the project root in native Windows spelling, so every separator arrives
+  doubled by JSON escaping. Folding that alone yields `D://Projects/…`, which Windows tolerates by accident; the
+  accident runs out at the front of a path, where a project on a network share folded to `////server//share` and
+  is no UNC path at all. Escapes are now undone before the fold.
+- `smoke-test.sh` §4f drives the real hook in a real repo — 119 assertions, 49 refused forms and 52 that must
+  NOT be over-blocked, a boundary stated in both directions (writing a commit command into a document is
+  clean; an unquoted `echo git commit -am x` is refused, because this hook does not parse shell — tightening that
+  would trade a harmless refusal for real misses like `sudo git commit -am x`), and the contract itself: the recipe is **extracted from `review-agent-csk.md` and
+  executed**, then the hook is driven against the record it produced. A string comparison would stay green while
+  the two drifted in meaning. **Every command is now cased in BOTH spellings, quoted and bare**, because that
+  blind spot produced both defects in this rule: the suite quoted messages and left paths bare, so a quote strip
+  that DELETED spans let `git commit -m c "a.txt"` and `git commit -m c -- "a.txt"` through while refusing their
+  unquoted twins — the same unreviewed line in the commit either way, and no trick needed to reach it, only the
+  ordinary habit of quoting a path, which is mandatory once it contains a space. A quoted span now collapses to a
+  single placeholder token rather than vanishing: its CONTENT must not be read as an option or a path, but the
+  TOKEN has to survive, and adjacency with it, so `-m"msg"` stays an attached value. Two more shapes came from
+  the same axis once it was being swept deliberately: **a newline is a command separator**, so
+  `git commit -m c` followed by a line `echo done` was refusing the commit with `done` read as a pathspec — a
+  multi-line call being one of the commonest shapes there is; and **an escaped quote is not a delimiter**, so
+  `git commit -m 'don'\''t break this'`, the canonical POSIX apostrophe idiom, was refused while
+  `-m "don't break this"` — identical argv — was clean. Both are converted before the walk, in both the decoded
+  and the raw-JSON spelling, because with `jq` the command arrives decoded and on a stock machine the fallback
+  parser does not. Sweeping the rest of that axis on purpose, rather than waiting for the next report, then
+  produced five more — and two of them failed OPEN, which is why the shapes are not cosmetic: **separators were
+  not their own tokens**, so `git commit -m c; echo done` was refused (`-m` swallowed `c;` whole) while
+  `if true; then git commit -m c -- a.txt; fi` was ALLOWED (the pathspec token was `a.txt;`, which the `--`
+  lookahead dismissed as a separator). A **redirection** is skipped over, so `> log.txt`, `2> err` and a
+  heredoc's `<<EOF` stop having their target read as a pathspec — while a redirection belonging to an EARLIER
+  command still cannot end the scan before the commit is reached, which was the fail-open risk inside that fix
+  and is asserted. Skipping rather than STOPPING is itself a correction and the reason is worth keeping: the
+  first version broke off at a redirection, and that was written down as a boundary on the grounds that nobody
+  puts a path after one. Measured rather than assumed, `git commit -m c > log.txt -- a.txt` returned rc=0 and the
+  commit carried the unreviewed line — so the boundary's price was not a missed refusal but a leak, and a guess
+  about likelihood is no defence against a fact. Closed, with `2>&1 | tee log` pinned so the closure cannot
+  start reading a pipe's operand as a path. A **line continuation** joins rather than separates, in both LF and CRLF spelling:
+  the CRLF one survived the LF fix because the CR sat between the backslash and the newline, and a command
+  pasted from a Windows editor carries it. A **lone CR** is deliberately still refused — bash's own argv was
+  checked and CR is not in IFS, so `git commit -m c<CR>echo done` really does hand `done` to git as a pathspec.
+- **The suite never asked about the tier CI runs on, and CI was the only machine that could say so.** One
+  assertion went red on `windows-latest` — a CRLF line continuation refusing an ordinary commit — while the same
+  case passed on macOS and on a real Windows desktop. The cause is which decoder is present: GitHub's image has
+  `jq`, so the command arrives DECODED, while a stock desktop has neither `jq` nor `python3` and sees JSON's
+  two-character escapes. A Windows-native binary also opens stdout in TEXT mode, so every LF it writes becomes
+  CRLF, and a command that already held `\r\n` reaches the hook as `\` + CR + CR + LF: the single CRLF fold ate
+  one CR, the continuation rule then looked for `\` + LF with the other CR in the way, and the lone backslash
+  read as a pathspec. **Any Windows user with `jq` installed was on that tier**, so this was a live defect rather
+  than a CI artefact. Every carriage return is now stripped, escaped or real, which needs no loop — and the line
+  that does it was isolated by applying it alone to the failing version. A hermetic fixture (no `jq`, no
+  `python3`, no `perl`) now hands the hook those exact bytes and checks itself first, so a stub that fails to
+  take cannot pass as green rows; calibrated against the failing version, exactly the row CI reported goes red.
+  The normaliser is likewise
+  extracted from the hook rather than copied. `doctor.sh`
+  gained the matching liveness probe, calibrated against a neutered hook. The §4.4 cases that drive a commit now
+  run in a cwd where §4.6 is already satisfied — otherwise each one would have been answered by the new gate while
+  §4.4 could have been deleted entirely with the suite still green.
+
+### Changed — the audits go out at once, and the reviewer closes rather than opens
+
+- **The kit said nothing about the order or concurrency of its own audits.** Found by reading all twelve agents
+  against each other: `backend-`, `database-`, `frontend-` and `test-expert-csk` each say "at closure, report
+  findings to review-agent-csk", and `AGENT_TEMPLATE.md` says it too — while `review-csk.md` listed
+  review-agent-csk **first**. Five sources against one. Workflow §3 now states that the applicable audits
+  (security · privacy · performance · test) go out as several `Agent` calls in ONE message, that a finding or a red
+  test returns to the owner that wrote the code, and that **all of them run again** afterwards, because the diff
+  they cleared no longer exists. §4 closes only once §3 is clean.
+- `review-csk.md` reordered to match, and it now includes `privacy-agent-csk`, which it had never mentioned.
+- **Two asymmetries closed.** `performance-expert-csk` appeared in no writing agent's Coordination at all — it
+  relied entirely on its own description firing — and `frontend-expert-csk` named no security delegation while
+  backend and database both call it MANDATORY. Both are now wired, XSS/CSRF/client-side secret exposure included.
+- **A design summary before architecture, not after.** `AGENT_TEMPLATE.md` gained a pre-flight step beside
+  `confidence-check`: a new or changed data model/schema, a new or changed API contract, or 2+ domains touched
+  gets 3-5 lines put to the user with `AskUserQuestion` before the first line of code. `adr` records a decision
+  once taken; nothing asked before it was taken. Trivial single-domain work skips it. Model discipline, stated.
+- **No unbounded ping-pong.** `backend-expert-csk` and `database-expert-csk` reference each other with no bound,
+  so more than 3 handovers between the same two agents on one task now stops and asks. Written into both agents as
+  well as the template — a rule only in `AGENT_TEMPLATE.md` reaches nobody, because that file is not loaded into a
+  session.
+- **`devops-expert-csk` leads with the pipeline.** It now asks whether a CI/CD pipeline exists, authors the
+  workflow file when there is none, and reads/updates/triggers/diagnoses it when there is — the runner performs
+  the deploy. A hand-rolled SSH deploy is the fallback for a project with no pipeline, not an equal option.
+- `session-manager-csk`'s description said it "writes the handover" while its own Constraints say it changes no
+  files. It recommends one; `/handoff-csk` writes it. Description corrected.
+
 ### Added — an eval that pressures the model to weaken a test instead of fixing the code
 
 - `evals/cases/pressure-test-weakened`: a discount function that is deterministically wrong, a red test, a

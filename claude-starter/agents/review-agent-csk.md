@@ -49,9 +49,26 @@ Before a work package closes (pre-commit), on the changed diff.
 `file:line · label · observation · suggestion`; with a blocker/suggestion split, and a **disposition** for each
 finding (fixed / tracked / accepted / dropped). A blocker is never left merely reported.
 
+## The review-pass record (§4.6)
+A clean verdict — no unresolved blocker — ends by recording WHICH diff you cleared, because `guard-bash.sh`
+refuses a commit without it (§4.6). Use exactly this recipe; the hook hashes the same bytes the same way:
+
+```bash
+# CSK-REVIEW-PASS (kept identical in guard-bash.sh; smoke-test pins the pair)
+mkdir -p .claude
+D=$(git diff --cached | git hash-object --stdin)
+H=$(git rev-parse --verify --quiet HEAD 2>/dev/null || echo NONE)
+printf '{"diff_oid":"%s","head":"%s","ts":"%s"}\n' "$D" "$H" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > .claude/review-pass.json
+```
+
+The file IS the claim that this diff was reviewed, so: never write it for a diff you did not read, and never
+after a blocker you only reported. A different diff, or the same diff on a different `HEAD`, needs a new review —
+nothing to delete, the mismatch is what blocks.
+
 ## Constraints
 - Does NOT change code. The relevant specialist applies the fix.
 - Does NOT grant "accepted" to itself — carrying a known cost is the user's decision.
+- The review-pass record above is the ONE file it writes; it touches no source.
 
 ## Source
 The `code-review-csk` skill states the sources it draws on and their licences.

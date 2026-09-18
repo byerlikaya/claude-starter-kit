@@ -34,6 +34,12 @@ and it is **model discipline, not a gate**: no hook enforces it, so it holds onl
 review and the DoD catch bad code, none of them catch correct code that duplicates something already here or
 is built on a recalled API shape. Any "no" is a stop, not a caveat.
 
+**Then, when the change carries architecture** — a new or changed data model/schema, a new or changed API
+contract, or 2+ domains touched — write a 3-5 line design summary BEFORE the first line of code: which
+screen/component/contract moves · which pattern · what the alternative was. Put it to the user with
+`AskUserQuestion` and wait for the answer. Trivial single-domain work skips it: RISK decides, not size. Model
+discipline, like the check above — no hook enforces it.
+
 ## When
 On UI, component/page, navigation/routing, state, i18n interface, responsive, or
 (on mobile) native bridge changes.
@@ -53,7 +59,10 @@ On UI, component/page, navigation/routing, state, i18n interface, responsive, or
 - User-facing text → **i18n** (project languages, default TR/EN/DE/RU).
 - Personal data display / consent flow → **privacy-agent-csk** (KVKK/GDPR).
 - Testing (component/e2e) → **test-expert-csk**.
-- At closure, report findings to **review-agent-csk**.
+- Security-critical work (auth/token handling, XSS sink, CSRF surface, a secret reaching client code) → **security-expert-csk** MANDATORY (produces findings).
+- Render path / bundle size / payload / unvirtualised list → **performance-expert-csk** (a measurement, not a hunch).
+- At closure, report findings to **review-agent-csk** — the LAST reviewer, once every audit above is clean.
+- **Send the audits out in parallel:** several `Agent` calls in ONE message. None of them writes product code, so there is nothing to serialise.
 
 ## Constraints
 - Surgical change; follow the existing convention, don't impose a stack.

@@ -143,6 +143,13 @@ DT0=$SECONDS
 DOUT="$( cd "$P" && bash .claude/eval/doctor.sh 2>&1 || true )"
 DEL=$((SECONDS - DT0))
 case "$DOUT" in *"project-specific skill(s)"*) ;; *) echo "FAIL: doctor readiness did not detect the project's own skill"; exit 1 ;; esac
+# The §4.6 liveness probe, asserted on a REAL install rather than left as an unasserted side effect. It was
+# already running here — doctor runs in full — but nothing read its verdict, and this call is wrapped in
+# `|| true`, so a probe reporting "bad" would have passed through every platform silently. The probe itself is
+# calibrated against a neutered hook in smoke-test; what this adds is that it reaches the same verdict on a
+# tree start.sh actually produced, on every OS this job runs on.
+case "$DOUT" in *"enforces the §4.6 review gate"*) ;;
+  *) echo "FAIL: doctor did not confirm the §4.6 review gate on a real install — the probe or the hook is missing"; exit 1 ;; esac
 # COST GATE, and it belongs here rather than in the smoke-test because this job also runs on windows-latest —
 # the only place in CI where a process spawn costs what it costs a real user of Git Bash (62-135 ms against
 # ~1.7ms on the POSIX runners). Doctor's agent-reference check used to run a `grep|cut|tr|sed` for every

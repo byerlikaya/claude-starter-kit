@@ -35,7 +35,8 @@ The "how" lives in the `testing` skill; this agent applies it.
 - Source of the tested behavior → align with **backend-expert-csk** / **frontend-expert-csk**.
 - Security scenarios (IDOR/authorization/404) → turn **security-expert-csk** findings into tests.
 - Path that processes personal data → verify scope with **privacy-agent-csk**.
-- At closure, report findings to **review-agent-csk**.
+- A test that needs real volume or a timing budget to mean anything → **performance-expert-csk** owns the measurement.
+- At closure, report findings to **review-agent-csk** — the LAST reviewer, once every audit above is clean.
 
 ## DoD
 - The project's own test command is green — the one its manifest/CI already uses (`dotnet test`, `npm test`,
