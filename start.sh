@@ -52,6 +52,89 @@ if [ -d "$HERE/packaging" ] && [ -d "$HERE/.git" ] && [ -f "$HERE/VERSION" ]; th
   fi
 fi
 
+# ---- CSK-I18N ------------------------------------------------------------------------------------------
+# The installer speaks the user's language; the artefacts it writes do not.
+#
+# THE ENGLISH STRING IS THE KEY. `m 'Cancelled — nothing changed.'` looks that text up and prints the
+# translation, or the text itself when there is none. Three things fall out of that and they are why it is
+# written this way rather than with invented keys like `msg.cancelled`:
+#   * A missing translation cannot produce a blank line or a bare key — the fallback IS English, structurally.
+#   * The English text stays in the source, so a grep for it (the suite has two) keeps matching.
+#   * The call site says what it prints. `m msg.cancelled` does not.
+# The cost is that editing an English string silently drops its translation and the line reverts to English.
+# That is a regression, not a break, and it is catchable: every pattern in the table below must match a
+# string that occurs in this file.
+#
+# RULES FOR THE TABLE, each one paid for:
+#   * No colour and no escape codes inside a message. Colour lives in the helpers (h1/sub/add/...), which
+#     take an already-translated string. A translator copying an ANSI sequence is a translator breaking it.
+#   * Interpolated values go through %s, never concatenation — Turkish word order and suffixes differ.
+#   * A literal percent must be written %% because the message IS the printf format. "%100 yerel" would
+#     otherwise eat an argument.
+#
+# NOT TRANSLATED, deliberately: the source-repo refusal above and --version. Both answer before the flags
+# are parsed, and language selection cannot run ahead of them without putting a locale lookup in front of a
+# gate whose whole job is to refuse. A gate that parses a locale before it can say no is a worse gate.
+# The inherited CSK_LANG is captured before the working variable is cleared — otherwise this very line
+# would destroy the environment setting it is meant to read.
+CSK_LANG_ENV="${CSK_LANG:-}"
+CSK_LANG=""
+m() {   # $1 = English text (the key); further args fill %s
+  local s="$1"; shift
+  if [ "$CSK_LANG" = tr ]; then
+    case "$s" in
+      "Agentic Working Kit · setup wizard") s='Agentic Working Kit · kurulum sihirbazı' ;;
+      "2 steps: backend pattern -> summary & confirm.") s='2 adım: backend deseni -> özet ve onay.' ;;
+      "[1/3] Backend pattern") s='[1/3] Backend deseni' ;;
+      "Determines the backend template and whether the .NET-specific skills are included.") s="Backend şablonunu ve .NET'e özgü skill'lerin dahil edilip edilmeyeceğini belirler." ;;
+      ".NET / DevArchitecture") s='.NET / DevArchitecture' ;;
+      "full support") s='tam destek' ;;
+      "Generic") s='Genel' ;;
+      "stack-agnostic") s='yığından bağımsız' ;;
+      "devarch-module skill (opinionated MediatR CQRS)") s="devarch-module skill'i (kuralcı MediatR CQRS)" ;;
+      "clones the DevArchitecture base project BEHIND AN APPROVAL GATE (greenfield project)") s='DevArchitecture taban projesini BİR ONAY KAPISININ ARDINDAN klonlar (sıfırdan proje)' ;;
+      "pattern-neutral backend-expert-csk — follows your repo's pattern; declare it as a skill (.claude/skills/)") s='desenden bağımsız backend-expert-csk — deponuzun desenini izler; desenini bir skill olarak bildirin (.claude/skills/)' ;;
+      "devarch-module and the DevArchitecture base NOT INSTALLED (sonarqube-check still installed)") s='devarch-module ve DevArchitecture tabanı KURULMAZ (sonarqube-check yine kurulur)' ;;
+      "[2/3] Who is this install for?") s='[2/3] Bu kurulum kimin için?' ;;
+      "Decides whether your teammates get the kit's configuration — and what goes into .gitignore.") s="Takım arkadaşlarınızın kit yapılandırmasını alıp almayacağını — ve .gitignore'a ne gireceğini belirler." ;;
+      "Just me") s='Yalnız ben' ;;
+      "private") s='özel' ;;
+      "The whole team") s='Tüm ekip' ;;
+      "shared") s='paylaşımlı' ;;
+      ".claude/ and CLAUDE.md stay out of git — nothing appears in your teammates' checkouts") s=".claude/ ve CLAUDE.md git'in dışında kalır — takım arkadaşlarınızın kopyalarında hiçbir şey görünmez" ;;
+      ".claude/ and CLAUDE.md are committable — everyone gets the same agents, skills and gates") s=".claude/ ve CLAUDE.md commit edilebilir — herkes aynı ajanları, skill'leri ve kapıları alır" ;;
+      "internal working documents (docs/) stay private in BOTH answers") s='iç çalışma belgeleri (docs/) HER İKİ cevapta da özel kalır' ;;
+      "[3/3] Summary · see what will be installed before you confirm") s='[3/3] Özet · onaylamadan önce ne kurulacağını görün' ;;
+      "Security gates armed on every install:") s='Her kurulumda devreye giren güvenlik kapıları:' ;;
+      "commit/push approval gate — even in auto/bypass mode (guard-bash)") s='commit/push onay kapısı — auto/bypass modunda bile (guard-bash)' ;;
+      "trace scan — a git hook blocks AI traces / vendor names") s="iz taraması — bir git hook'u AI izlerini / sağlayıcı adlarını engeller" ;;
+      "real context measurement + handoff at 75%% (Stop hook)") s="gerçek bağlam ölçümü + %%75'te devir (Stop hook)" ;;
+      "destructive command guard (rm -rf / force-push, etc.)") s='yıkıcı komut koruması (rm -rf / force-push vb.)' ;;
+      "Install with these settings?") s='Bu ayarlarla kurulayım mı?' ;;
+      "Cancelled — nothing changed.") s='İptal edildi — hiçbir şey değişmedi.' ;;
+      "Choice") s='Seçim' ;;
+      "empty=1") s='boş=1' ;;
+      "(default)") s='(varsayılan)' ;;
+      "Scope") s='Kapsam' ;;
+      "Included") s='İçerik' ;;
+      "Backend pattern") s='Backend deseni' ;;
+      "DevArch base") s='DevArch tabanı' ;;
+      "Will write") s='Yazılacak' ;;
+      "not installed") s='kurulmuyor' ;;
+      "Install visibility:") s='Kurulum görünürlüğü:' ;;
+      "Backend pattern:") s='Backend deseni:' ;;
+      "full kit") s='tam kit' ;;
+      "no effect:") s='etkisi yok:' ;;
+      "(default — pass --generic for the stack-agnostic one)") s='(varsayılan — yığından bağımsızı için --generic geçin)' ;;
+      "(default — pass --shared to commit .claude/ and CLAUDE.md)") s='(varsayılan — .claude/ ve CLAUDE.md commit edilsin isterseniz --shared geçin)' ;;
+      "Security gates armed on every install:") s='Her kurulumda devreye giren güvenlik kapıları:' ;;
+    esac
+  fi
+  # shellcheck disable=SC2059
+  printf "$s" "$@"
+}
+# ---- /CSK-I18N -----------------------------------------------------------------------------------------
+
 usage() {
   cat <<'USAGE'
 Usage: bash start.sh [BACKEND-STACK]
@@ -239,9 +322,41 @@ clone_devarch() {  # $1 = target dir; clone verbatim, drop nested .git, rename t
 # copy-pasted commands, and erroring out there breaks a pipeline over a flag whose absence changes nothing.
 # A one-line notice is printed after the colour helpers load, so the user learns the flag no longer selects
 # anything instead of quietly getting a different set than the one they typed.
+# Language is resolved BEFORE any other flag, because every message below it goes through m(). Four
+# sources, first answer wins: --lang, then CSK_LANG, then the locale variables, then English.
+#
+# English is the default rather than the locale's language on purpose: that is what this installer printed
+# before it could speak anything else, and a default that changes under people is not a default. The locale
+# branch only ever ADDS Turkish for someone whose environment already says Turkish.
+#
+# Measured, and recorded here rather than treated as a defect: on stock Windows LANG, LC_ALL and
+# LC_MESSAGES are ALL empty (Git Bash defaults only LC_CTYPE). So auto-detect never fires there, and a
+# Turkish-speaking Windows user lands on English unless they pass --lang tr or export CSK_LANG.
+_lang_flag=""; _lang_take=0
+for a in "$@"; do
+  if [ "$_lang_take" = 1 ]; then _lang_flag="$a"; _lang_take=0; continue; fi
+  case "$a" in
+    --lang=*) _lang_flag="${a#--lang=}" ;;
+    --lang)   _lang_take=1 ;;
+  esac
+done
+if [ -n "$_lang_flag" ]; then
+  CSK_LANG="$_lang_flag"
+elif [ -n "${CSK_LANG_ENV:-}" ]; then
+  CSK_LANG="$CSK_LANG_ENV"
+else
+  _loc="${LC_ALL:-}"; [ -n "$_loc" ] || _loc="${LC_MESSAGES:-}"; [ -n "$_loc" ] || _loc="${LANG:-}"
+  case "$_loc" in tr*|TR*) CSK_LANG=tr ;; *) CSK_LANG=en ;; esac
+fi
+# Anything that is not a language we actually carry falls back to English rather than printing keys.
+case "$CSK_LANG" in tr|en) ;; *) CSK_LANG=en ;; esac
+
 STACK=""; LEGACY_FLAGS=""; ASSUME_YES=0; VISIBILITY=""
 for a in "$@"; do
   case "$a" in
+    --lang) ;;                       # value consumed in the language pass above
+    --lang=*) ;;
+    tr|en) ;;                        # the value of a separated --lang
     --backend|--frontend|--mobile|--fullstack) LEGACY_FLAGS="$LEGACY_FLAGS $a" ;;
     --dotnet) STACK="dotnet" ;;
     --generic) STACK="generic" ;;
@@ -265,7 +380,7 @@ fi
 h1()   { printf '\n%s%s%s%s\n' "$B" "$CY" "$1" "$R"; }               # section heading
 sub()  { printf '%s%s%s\n' "$D" "$1" "$R"; }                         # dim description
 opt()  { # $1=no $2=label $3=is_default $4=right-badge
-  local mark=''; [ "${3:-0}" = 1 ] && mark=" ${GR}${B}(default)${R}"
+  local mark=''; [ "${3:-0}" = 1 ] && mark=" ${GR}${B}$(m '(default)')${R}"
   printf '  %s%s%s)%s %s%-24s%s %s%s%s%s\n' "$B" "$YE" "$1" "$R" "$B" "$2" "$R" "$MG" "${4:-}" "$R" "$mark"
 }
 add()  { printf '     %s+%s %s\n'      "$GR" "$R" "$1"; }            # INSTALLED
@@ -274,8 +389,8 @@ gate() { printf '     %s>%s %s\n'      "$CY" "$R" "$1"; }            # gate to b
 row()  { printf '  %s%-15s%s %s\n'     "$B" "$1" "$R" "$2"; }        # summary row
 rule() { printf '  %s------------------------------------------------%s\n' "$D" "$R"; }
 
-h1  "Agentic Working Kit · setup wizard"
-sub "2 steps: backend pattern -> summary & confirm."
+h1  "$(m 'Agentic Working Kit · setup wizard')"
+sub "$(m '2 steps: backend pattern -> summary & confirm.')"
 [ -n "$LEGACY_FLAGS" ] && printf '\n  %s!%s%s no effect:%s the kit always installs in full (all agents · all skills).\n' \
   "$YE" "$R" "$B$LEGACY_FLAGS" "$R"
 
@@ -293,21 +408,21 @@ sub "2 steps: backend pattern -> summary & confirm."
 # definition nothing is supposed to be read.
 if [ -z "$STACK" ] && [ "$ASSUME_YES" = 1 ]; then
   STACK="dotnet"
-  printf '  %sBackend pattern:%s .NET / DevArchitecture %s(default — pass --generic for the stack-agnostic one)%s\n' "$B" "$R" "$D" "$R"
+  printf '  %s%s%s .NET / DevArchitecture %s%s%s\n' "$B" "$(m 'Backend pattern:')" "$R" "$D" "$(m '(default — pass --generic for the stack-agnostic one)')" "$R"
 fi
 if [ -z "$STACK" ]; then
-  h1  "[1/3] Backend pattern"
-  sub "Determines the backend template and whether the .NET-specific skills are included."
+  h1  "$(m '[1/3] Backend pattern')"
+  sub "$(m 'Determines the backend template and whether the .NET-specific skills are included.')"
   echo
-  opt 1 ".NET / DevArchitecture" 1 "full support"
-  add  "devarch-module skill (opinionated MediatR CQRS)"
-  gate "clones the DevArchitecture base project BEHIND AN APPROVAL GATE (greenfield project)"
+  opt 1 "$(m '.NET / DevArchitecture')" 1 "$(m 'full support')"
+  add  "$(m 'devarch-module skill (opinionated MediatR CQRS)')"
+  gate "$(m 'clones the DevArchitecture base project BEHIND AN APPROVAL GATE (greenfield project)')"
   echo
-  opt 2 "Generic" 0 "stack-agnostic"
-  add  "pattern-neutral backend-expert-csk — follows your repo's pattern; declare it as a skill (.claude/skills/)"
-  skip "devarch-module and the DevArchitecture base NOT INSTALLED (sonarqube-check still installed)"
+  opt 2 "$(m 'Generic')" 0 "$(m 'stack-agnostic')"
+  add  "$(m "pattern-neutral backend-expert-csk — follows your repo's pattern; declare it as a skill (.claude/skills/)")"
+  skip "$(m 'devarch-module and the DevArchitecture base NOT INSTALLED (sonarqube-check still installed)')"
   echo
-  printf '  %s->%s Choice %s[1-2, empty=1]%s: ' "$CY" "$R" "$D" "$R"
+  printf '  %s->%s %s %s[1-2, %s]%s: ' "$CY" "$R" "$(m 'Choice')" "$D" "$(m 'empty=1')" "$R"
   read -r s || s=""                 # empty => default (dotnet)
   case "$s" in 2) STACK="generic" ;; *) STACK="dotnet" ;; esac
 fi
@@ -333,20 +448,20 @@ fi
 # (private) without reading anything, and --private/--shared are how a script chooses instead.
 if [ -z "$VISIBILITY" ] && { [ ! -t 0 ] || [ "$ASSUME_YES" = 1 ]; }; then
   VISIBILITY="private"
-  printf '  %sInstall visibility:%s private %s(default — pass --shared to commit .claude/ and CLAUDE.md)%s\n' "$B" "$R" "$D" "$R"
+  printf '  %s%s%s %s %s%s%s\n' "$B" "$(m 'Install visibility:')" "$R" "$(m 'private')" "$D" "$(m '(default — pass --shared to commit .claude/ and CLAUDE.md)')" "$R"
 fi
 if [ -z "$VISIBILITY" ]; then
-  h1  "[2/3] Who is this install for?"
-  sub "Decides whether your teammates get the kit's configuration — and what goes into .gitignore."
+  h1  "$(m '[2/3] Who is this install for?')"
+  sub "$(m "Decides whether your teammates get the kit's configuration — and what goes into .gitignore.")"
   echo
-  opt 1 "Just me" 1 "private"
-  add  ".claude/ and CLAUDE.md stay out of git — nothing appears in your teammates' checkouts"
+  opt 1 "$(m 'Just me')" 1 "$(m 'private')"
+  add  "$(m ".claude/ and CLAUDE.md stay out of git — nothing appears in your teammates' checkouts")"
   echo
-  opt 2 "The whole team" 0 "shared"
-  add  ".claude/ and CLAUDE.md are committable — everyone gets the same agents, skills and gates"
-  skip "internal working documents (docs/) stay private in BOTH answers"
+  opt 2 "$(m 'The whole team')" 0 "$(m 'shared')"
+  add  "$(m '.claude/ and CLAUDE.md are committable — everyone gets the same agents, skills and gates')"
+  skip "$(m 'internal working documents (docs/) stay private in BOTH answers')"
   echo
-  printf '  %s->%s Choice %s[1-2, empty=1]%s: ' "$CY" "$R" "$D" "$R"
+  printf '  %s->%s %s %s[1-2, %s]%s: ' "$CY" "$R" "$(m 'Choice')" "$D" "$(m 'empty=1')" "$R"
   read -r s || s=""                 # empty => default (private = today's behaviour)
   case "$s" in 2) VISIBILITY="shared" ;; *) VISIBILITY="private" ;; esac
 fi
@@ -390,7 +505,7 @@ count_installed() {   # $1=EXCL list  $2=glob  -> count to install
 N_AG="$(count_installed "" "$SRC/agents/*.md")"
 N_SK="$(count_installed "$EXCL_SKILLS" "$SRC/skills/*/")"
 
-h1 "[3/3] Summary · see what will be installed before you confirm"
+h1 "$(m '[3/3] Summary · see what will be installed before you confirm')"
 echo
 row "Scope" "${B}full kit ${D}— backend + web + mobile (RN/Expo), every agent and skill${R}"
 row "Included"  "${MG}${B}${N_AG}${R} agents · ${MG}${B}${N_SK}${R} skills will be installed"
@@ -405,11 +520,11 @@ else
   row "DevArch base" "${D}not installed${R}"
 fi
 echo
-printf '  %sSecurity gates armed on every install:%s\n' "$B" "$R"
-gate "commit/push approval gate — even in auto/bypass mode (guard-bash)"
-gate "trace scan — a git hook blocks AI traces / vendor names"
-gate "real context measurement + handoff at 75% (Stop hook)"
-gate "destructive command guard (rm -rf / force-push, etc.)"
+printf '  %s%s%s\n' "$B" "$(m 'Security gates armed on every install:')" "$R"
+gate "$(m 'commit/push approval gate — even in auto/bypass mode (guard-bash)')"
+gate "$(m 'trace scan — a git hook blocks AI traces / vendor names')"
+gate "$(m 'real context measurement + handoff at 75%% (Stop hook)')"
+gate "$(m 'destructive command guard (rm -rf / force-push, etc.)')"
 echo
 row "Will write" "${D}./.claude (agents·skills·commands·hooks·eval·studio·settings.json) + ./CLAUDE.md${R}"
 # .gitignore is a TRACKED file in most repos, so appending to it is a change to the project — it belongs in
@@ -427,8 +542,8 @@ fi
 rule
 echo
 # ask_yes reads from stdin => in CI `printf 'yes\n' | bash start.sh` works; 'no' on EOF (no accidental install).
-if ! ask_yes "  Install with these settings?"; then
-  printf '  %sCancelled — nothing changed.%s\n' "$YE" "$R"
+if ! ask_yes "  $(m 'Install with these settings?')"; then
+  printf '  %s%s%s\n' "$YE" "$(m 'Cancelled — nothing changed.')" "$R"
   exit 0
 fi
 echo
