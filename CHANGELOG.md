@@ -62,12 +62,19 @@ versioning follows [SemVer](https://semver.org/).
   doubled by JSON escaping. Folding that alone yields `D://Projects/…`, which Windows tolerates by accident; the
   accident runs out at the front of a path, where a project on a network share folded to `////server//share` and
   is no UNC path at all. Escapes are now undone before the fold.
-- `smoke-test.sh` §4f drives the real hook in a real repo — 66 assertions, including 23 refused forms, 21 that
+- `smoke-test.sh` §4f drives the real hook in a real repo — 84 assertions, including 31 refused forms and 31 that
   must NOT be over-blocked, a boundary stated in both directions (writing a commit command into a document is
   clean; an unquoted `echo git commit -am x` is refused, because this hook does not parse shell — tightening that
   would trade a harmless refusal for real misses like `sudo git commit -am x`), and the contract itself: the recipe is **extracted from `review-agent-csk.md` and
   executed**, then the hook is driven against the record it produced. A string comparison would stay green while
-  the two drifted in meaning. The normaliser is likewise extracted from the hook rather than copied. `doctor.sh`
+  the two drifted in meaning. **Every command is now cased in BOTH spellings, quoted and bare**, because that
+  blind spot produced both defects in this rule: the suite quoted messages and left paths bare, so a quote strip
+  that DELETED spans let `git commit -m c "a.txt"` and `git commit -m c -- "a.txt"` through while refusing their
+  unquoted twins — the same unreviewed line in the commit either way, and no trick needed to reach it, only the
+  ordinary habit of quoting a path, which is mandatory once it contains a space. A quoted span now collapses to a
+  single placeholder token rather than vanishing: its CONTENT must not be read as an option or a path, but the
+  TOKEN has to survive, and adjacency with it, so `-m"msg"` stays an attached value. The normaliser is likewise
+  extracted from the hook rather than copied. `doctor.sh`
   gained the matching liveness probe, calibrated against a neutered hook. The §4.4 cases that drive a commit now
   run in a cwd where §4.6 is already satisfied — otherwise each one would have been answered by the new gate while
   §4.4 could have been deleted entirely with the suite still green.

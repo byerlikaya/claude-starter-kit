@@ -851,13 +851,22 @@ if git_has "$CMD" 'commit|push'; then
     _c46_scan() {
       _C46_REDIR=0; _C46_WT=""
       local s="$1" pre rest
-      while :; do
-        case "$s" in *\'*\'*) ;; *) break ;; esac
-        pre="${s%%\'*}"; rest="${s#*\'}"; rest="${rest#*\'}"; s="$pre $rest"
-      done
+      # A quoted span collapses to the single placeholder `Q`, and this is the whole design: the CONTENT of a
+      # quote must not be read as an option or a path, but the TOKEN has to survive. The first version DELETED
+      # the span, and that was a measured fail-open on Windows — `git commit -m c "a.txt"` and
+      # `git commit -m c -- "a.txt"` lost the pathspec entirely and were allowed, while their unquoted spellings
+      # were refused, and both commit the same unreviewed line. No trick is needed to get past a gate like that,
+      # only the ordinary habit of quoting a path, which is mandatory once it contains a space. The placeholder
+      # keeps adjacency too, so `-m"msg"` becomes `-mQ` (an attached value, correct) and not `-m Q`.
+      # Double quotes go FIRST: an apostrophe inside a double-quoted message (`-m "don't"`) is ordinary, whereas
+      # a double quote inside a single-quoted one is rare, so this order mangles the rarer shape.
       while :; do
         case "$s" in *\"*\"*) ;; *) break ;; esac
-        pre="${s%%\"*}"; rest="${s#*\"}"; rest="${rest#*\"}"; s="$pre $rest"
+        pre="${s%%\"*}"; rest="${s#*\"}"; rest="${rest#*\"}"; s="${pre}Q${rest}"
+      done
+      while :; do
+        case "$s" in *\'*\'*) ;; *) break ;; esac
+        pre="${s%%\'*}"; rest="${s#*\'}"; rest="${rest#*\'}"; s="${pre}Q${rest}"
       done
       # Splitting has to happen with globbing OFF, or a pathspec like `*.ts` would expand against the cwd and a
       # commit could be judged on whatever files happen to sit there.

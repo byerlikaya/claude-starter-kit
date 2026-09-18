@@ -2291,6 +2291,35 @@ done
 # `git commit --amend` is deliberately absent from both lists: §4.5 owns it and answers first (measured — the
 # hook exits 2 with a §4.5 message), so a §4.6 expectation either way would be asserting the wrong rule. The
 # scan's own verdict on it is that it carries no working-tree content, which is what lets §4.5 be the only voice.
+# EVERY COMMAND HAS TWO SPELLINGS AND THEY ARE TWO CASES. This block exists because the quote strip was a
+# measured FAIL-OPEN: it DELETED quoted spans, so `git commit -m c "a.txt"` and `git commit -m c -- "a.txt"` lost
+# the pathspec entirely and were allowed, while their unquoted spellings were refused — and both commit the same
+# unreviewed line. Getting past the gate needed no trick, only the ordinary habit of quoting a path, which is
+# mandatory once the path contains a space. A quoted span now collapses to a single placeholder token instead of
+# vanishing: the CONTENT must not be read as an option or a path, but the TOKEN has to survive. Adjacency
+# survives with it, so `-m"msg"` stays an attached value rather than becoming two tokens.
+# Both defects found in this rule came from the same blind spot — the suite quoted messages and left paths bare.
+for _pair in \
+  'BLOCK|git commit -m c -- \"a.txt\"'      'BLOCK|git commit -m c -- a.txt' \
+  'BLOCK|git commit -m c \"a.txt\"'         'BLOCK|git commit -m c a.txt' \
+  'BLOCK|git commit -m \"c\" \"a.txt\"'     'BLOCK|git commit -m \"c\" \"my file.ts\"' \
+  'BLOCK|git commit -am \"c\"'              'BLOCK|git commit -mq \"x\"' \
+  'ask|git commit -m \"msg\"'               'ask|git commit -m msg' \
+  'ask|git commit -qm \"x\"'                'ask|git commit -m\"attached\"' \
+  'ask|git commit -F \"msg.txt\"'           'ask|git commit -m \"x\" --' \
+  'ask|ls -la && git commit -m \"x\"'       'ask|git commit -m \"don'"'"'t do this\"' \
+  'ask|git commit -m \"use --only for partial commits\"' \
+  'ask|git commit -m \"see -- separator\"' ; do
+  _exp="${_pair%%|*}"; _cmd="${_pair#*|}"
+  if [ "$_exp" = BLOCK ]; then
+    gj default "$_cmd" | r46 >/dev/null 2>&1; [ "$?" = 2 ] \
+      && pass "§4.6 spelling: '$_cmd' BLOCKS" || fail "§4.6 spelling FAIL-OPEN: '$_cmd' was allowed"
+  else
+    o="$(gj default "$_cmd" | r46 2>/dev/null)"
+    [ "$(gdec "$o")" = "ask" ] && pass "§4.6 spelling: '$_cmd' is NOT over-blocked" \
+      || fail "§4.6 spelling: '$_cmd' wrongly blocked (out=$o)"
+  fi
+done
 # The two halves of that boundary, so a later change to either is a decision and not an accident.
 o="$(gj default 'echo \"git commit -am x\" >> docs.md' | r46 2>/dev/null)"
 [ "$(gdec "$o")" = "ask" ] && pass "§4.6: writing a commit command into a document is not read as a commit" \
