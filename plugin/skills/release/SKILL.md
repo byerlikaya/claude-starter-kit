@@ -27,6 +27,10 @@ Every version is dated; the `Unreleased` section can be auto-populated from comm
 - [ ] `dependency-audit` clean (0 HIGH/CRITICAL)
 - [ ] CHANGELOG up to date
 - [ ] Version number conforms to SemVer
+- [ ] **The release commit is a diff too (§4.6).** A `chore(release)` bump, a CHANGELOG-only edit and a docs-site
+      version touch each stage a diff, and §4.6 exempts nothing by size — `review-agent-csk` runs over them like
+      any other. A version that disagrees with the tag, a CHANGELOG entry naming the wrong one, a generated
+      manifest edited by hand: that is what this review is for, and all three have shipped before.
 - [ ] **Every distribution channel has a documented way to GET this version.** Publishing and reaching users are
       different events. A channel whose consumers pin at install time — an editor extension, a plugin, a vendored
       copy — leaves them on the version they installed until they ask for a new one, so a security fix ships and
