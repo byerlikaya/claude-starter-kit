@@ -812,6 +812,10 @@ if git_has "$CMD" 'commit|push'; then
   # is 20-50 ms on a hook that runs before EVERY Bash call. Here it runs only when a commit or push is already
   # on the table. Scope is `commit` alone — a push stages nothing, so it has no diff of its own to review.
   if git_has "$CMD" 'commit'; then
+    # ONE probe for BOTH refusals, because the overwhelmingly common commit has neither and a process costs
+    # 62-135 ms on Git Bash. If it fires, a second grep says which — so the rare abnormal command pays two and
+    # every ordinary one pays one. (Measured on Windows: each fork removed from this path took ~70 ms off it.)
+    if printf '%s' "$CMD" | grep -qE '(^|[^A-Za-z0-9_-])git[[:space:]]+(-C|--git-dir|--work-tree)([[:space:]=])|(^|[^A-Za-z0-9_-])git([[:space:]]+--?[A-Za-z][A-Za-z-]*([[:space:]]+[^[:space:]]+)?)*[[:space:]]+commit([[:space:]]+--?[A-Za-z][A-Za-z-]*)*[[:space:]]+(-[A-Za-z]*a[A-Za-z]*|--all)([[:space:]]|$|=)'; then
     # The record describes THIS worktree. A command that points git at another one would have us hash the wrong
     # repository and pass it off as verified, so the ambiguous form fails closed instead.
     if printf '%s' "$CMD" | grep -qE '(^|[^A-Za-z0-9_-])git[[:space:]]+(-C|--git-dir|--work-tree)([[:space:]=])'; then
@@ -821,24 +825,24 @@ if git_has "$CMD" 'commit|push'; then
       echo "Run the commit from that directory, or run it yourself in your terminal." >&2
       exit 2
     fi
-    # `-a` / `--all` stages tracked changes as part of the commit, so at THIS moment they are NOT in the staged
-    # diff and the record would vouch for nothing. Staging explicitly is the kit's flow anyway (§4.4 gates
-    # `git add`).
+    # Reaching here means the probe above fired and the worktree form did NOT match, so this is the other half
+    # of it: `-a` / `--all`. That stages tracked changes as PART of the commit, so at this moment they are not
+    # in the staged diff and the record would vouch for nothing. Staging explicitly is the kit's flow anyway
+    # (§4.4 gates `git add`).
     #
-    # ONE grep, and it is anchored on `git … commit` rather than hunting the flag anywhere in the line. Two
-    # independent greps were the first version and both false positives were measured: `ls -la && git commit -m x`
-    # was blocked because `-la` contains an `a`, and `git commit -m "add -a flag docs"` was blocked because the
-    # flag was inside the MESSAGE — the same disease this file documents for git_has, where skipping arbitrary
-    # tokens false-matched a commit whose message said "reset --hard".
+    # The pattern is anchored on `git … commit` rather than hunting the flag anywhere in the line, because two
+    # independent greps were the first version and both false positives were MEASURED: `ls -la && git commit -m x`
+    # blocked because `-la` contains an `a`, and `git commit -m "add -a flag docs"` blocked because the flag was
+    # inside the MESSAGE — the same disease this file documents for git_has, where skipping arbitrary tokens
+    # false-matched a commit whose message said "reset --hard".
     #
     # Its boundary, measured and stated rather than implied: the flag must appear in the run of option tokens
     # that FOLLOWS `commit`. `git commit -m x -a` — a flag after a non-flag token — is NOT caught. Closing that
     # would mean scanning past a quoted message again, which is precisely what produced the false positives.
-    if printf '%s' "$CMD" | grep -qE '(^|[^A-Za-z0-9_-])git([[:space:]]+--?[A-Za-z][A-Za-z-]*([[:space:]]+[^[:space:]]+)?)*[[:space:]]+commit([[:space:]]+--?[A-Za-z][A-Za-z-]*)*[[:space:]]+(-[A-Za-z]*a[A-Za-z]*|--all)([[:space:]]|$|=)'; then
-      gatelog BLOCK 4.6 "commit -a leaves nothing staged to compare"
-      echo "GUARD (§4.6): 'git commit -a' stages its own changes, so there is no staged diff for the review" >&2
-      echo "record to be about. Stage what you mean with 'git add <paths>' and commit that." >&2
-      exit 2
+    gatelog BLOCK 4.6 "commit -a leaves nothing staged to compare"
+    echo "GUARD (§4.6): 'git commit -a' stages its own changes, so there is no staged diff for the review" >&2
+    echo "record to be about. Stage what you mean with 'git add <paths>' and commit that." >&2
+    exit 2
     fi
 
     # CSK-REVIEW-PASS (this recipe is kept identical in agents/review-agent-csk.md; smoke-test pins the pair)
@@ -861,11 +865,13 @@ if git_has "$CMD" 'commit|push'; then
       echo "To skip it deliberately, run the commit yourself in your terminal." >&2
       exit 2
     fi
-    # `\r` as well as `\n` is cheap DEFENCE, not a measured fix, and is written down as such: in the flat shape
-    # the recipe writes, a CRLF record leaves the carriage return after the final `}` — outside every value,
-    # where `%%"*` below already cuts it. No fixture in the suite can tell this strip from its absence, so none
-    # claims to. It costs nothing and would matter to a record some other tool reformats.
-    RPJ="$(tr -d '\r\n' < "$RP" 2>/dev/null)"
+    # Read it with SHELL BUILTINS — no `tr`, no `cat`, no subshell. This runs on every commit and a process is
+    # 62-135 ms on Git Bash; measured there, each fork taken off this path was worth ~70 ms.
+    # `read -r` drops the newline. `${_l%$'\r'}` drops a carriage return if the record arrived CRLF: cheap
+    # DEFENCE, not a measured fix, and written down as such — in the flat shape the recipe writes, a CR lands
+    # after the final `}`, outside every value, where the `%%"*` cut below already removes it. No fixture in the
+    # suite can tell this strip from its absence, so none of them claims to.
+    RPJ=""; while IFS= read -r _l || [ -n "$_l" ]; do RPJ="$RPJ${_l%$'\r'}"; done < "$RP"
     _rpf(){ _r="${RPJ#*\"$1\":\"}"; [ "$_r" = "$RPJ" ] && return 1; printf '%s' "${_r%%\"*}"; }
     WANT_D="$(_rpf diff_oid || true)"; WANT_H="$(_rpf head || true)"
     HAVE_D="$(git diff --cached 2>/dev/null | git hash-object --stdin 2>/dev/null)"
