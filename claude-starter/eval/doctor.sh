@@ -68,6 +68,21 @@ if [ -x .claude/hooks/guard-bash.sh ]; then
   if printf '%s' '{"tool_name":"Bash","permission_mode":"auto","tool_input":{"command":"git push --force"}}' | CSK_GATE_LOG=/dev/null bash .claude/hooks/guard-bash.sh >/dev/null 2>&1; then
     bad "guard-bash.sh did NOT block a force-push — the §4.5 gate is neutered/disarmed" "restore guard-bash.sh from the kit"
   else ok "guard-bash.sh blocks a force-push (gate live, not neutered)"; fi
+
+  # 2c) The §4.6 review gate, probed the same way — and probed on the ONE case whose verdict cannot depend on
+  #     this project's state. "git commit" alone is no probe: with a matching review-pass.json it legitimately
+  #     passes §4.6, and under a mode that cannot prompt §4.4 blocks it anyway, so exit 2 would prove nothing
+  #     about §4.6. A commit pointed at another worktree is refused by §4.6 whatever else is true here, and the
+  #     verdict is read from the MESSAGE rather than the exit code for the same reason. Mode `default` so that a
+  #     disarmed gate answers "ask" and exits 0 instead of colliding with §4.4's fail-closed branch. Nothing
+  #     runs: this is a PreToolUse payload, not a command.
+  PROBE46="$(printf '%s' '{"tool_name":"Bash","permission_mode":"default","tool_input":{"command":"git -C /nonexistent-csk-probe commit -m probe"}}' \
+             | CSK_GATE_LOG=/dev/null bash .claude/hooks/guard-bash.sh 2>&1 >/dev/null)"
+  case "$PROBE46" in
+    *"4.6"*) ok "guard-bash.sh enforces the §4.6 review gate (gate live, not neutered)" ;;
+    *)       bad "guard-bash.sh did NOT enforce §4.6 — a commit can land with no review of its diff" \
+                 "restore guard-bash.sh from the kit (and check review-agent-csk still writes .claude/review-pass.json)" ;;
+  esac
 fi
 
 # 3) core.hooksPath — without it the §4.1/§4.2 commit trace + secret/bloat scan never runs

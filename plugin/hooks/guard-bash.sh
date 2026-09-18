@@ -794,6 +794,82 @@ if git_has "$CMD" 'add|commit|push|checkout'; then
   esac
 fi
 if git_has "$CMD" 'commit|push'; then
+  # §4.6 — A COMMIT NEEDS A CLEAN REVIEW OF THIS DIFF.
+  # review-agent-csk records what it cleared in .claude/review-pass.json; this reads it back and compares two
+  # EXACT facts: the sha256 of the staged diff, and the HEAD it was reviewed against. There is deliberately NO
+  # wall-clock TTL — a time window both rejects records that are still correct (same diff, same base, an hour
+  # later) and accepts ones that are not (same minute, rebased underneath). Two hashes answer the question a
+  # timestamp only approximates.
+  #
+  # Nested inside the commit|push block on purpose: the matcher below costs a process, and on Git Bash a fork
+  # is 20-50 ms on a hook that runs before EVERY Bash call. Here it runs only when a commit or push is already
+  # on the table. Scope is `commit` alone — a push stages nothing, so it has no diff of its own to review.
+  if git_has "$CMD" 'commit'; then
+    # The record describes THIS worktree. A command that points git at another one would have us hash the wrong
+    # repository and pass it off as verified, so the ambiguous form fails closed instead.
+    if printf '%s' "$CMD" | grep -qE '(^|[^A-Za-z0-9_-])git[[:space:]]+(-C|--git-dir|--work-tree)([[:space:]=])'; then
+      gatelog BLOCK 4.6 "commit redirected at another worktree"
+      echo "GUARD (§4.6): this commit points git at another worktree (-C / --git-dir / --work-tree)." >&2
+      echo "The review record describes the staged diff of THIS worktree, so it cannot vouch for that one." >&2
+      echo "Run the commit from that directory, or run it yourself in your terminal." >&2
+      exit 2
+    fi
+    # `-a` / `--all` stages tracked changes as part of the commit, so at THIS moment the staged diff is empty
+    # and the hash would vouch for nothing. Staging explicitly is the kit's flow anyway (§4.4 gates `git add`).
+    if printf '%s' "$CMD" | grep -qE '(^|[^A-Za-z0-9_-])git[[:space:]]+commit([[:space:]]|$)' \
+       && printf '%s' "$CMD" | grep -qE '(^|[[:space:]])(-[A-Za-z]*a[A-Za-z]*|--all)([[:space:]]|$|=)'; then
+      gatelog BLOCK 4.6 "commit -a leaves nothing staged to compare"
+      echo "GUARD (§4.6): 'git commit -a' stages its own changes, so there is no staged diff for the review" >&2
+      echo "record to be about. Stage what you mean with 'git add <paths>' and commit that." >&2
+      exit 2
+    fi
+
+    # CSK-REVIEW-PASS (this recipe is kept identical in agents/review-agent-csk.md; smoke-test pins the pair)
+    # GIT does the hashing, not sha256sum/shasum, and the reason is the one that survives BOTH platforms —
+    # because the first two reasons written here did not. Measured on macOS: the suite's sandbox reaches its
+    # minimal tier (a PATH of awk/sed/grep/head/cat/tr/git/cut built from symlinks), no hasher exists there, and
+    # the first version of this gate computed an EMPTY hash and blocked every commit — failing for a missing tool
+    # instead of a missing review. Measured on Windows: that tier cannot be built at all (`ln -s` yields no real
+    # symlink on that filesystem), the helper falls back to stubbing jq/python3 over the full PATH, and
+    # /usr/bin/sha256sum is right there — so this branch is never exercised on Windows and "the hashers are
+    # missing" was never a portable reason for anything. The portable reason: git cannot be absent where a commit
+    # is being gated, since it is the thing under gate. Plus one process instead of a probe and a hasher, and no
+    # repo required. SHA-1 is fine here: this detects a changed diff, it is not a boundary against a forger —
+    # anyone who can write the record can write any value into it.
+    RP=".claude/review-pass.json"
+    if [ ! -f "$RP" ]; then
+      gatelog BLOCK 4.6 "no review-pass record"
+      echo "GUARD (§4.6): nothing has reviewed this diff — '$RP' does not exist." >&2
+      echo "Run @agent-review-agent-csk on the staged diff; a clean verdict writes the record." >&2
+      echo "To skip it deliberately, run the commit yourself in your terminal." >&2
+      exit 2
+    fi
+    # `\r` as well as `\n` is cheap DEFENCE, not a measured fix, and is written down as such: in the flat shape
+    # the recipe writes, a CRLF record leaves the carriage return after the final `}` — outside every value,
+    # where `%%"*` below already cuts it. No fixture in the suite can tell this strip from its absence, so none
+    # claims to. It costs nothing and would matter to a record some other tool reformats.
+    RPJ="$(tr -d '\r\n' < "$RP" 2>/dev/null)"
+    _rpf(){ _r="${RPJ#*\"$1\":\"}"; [ "$_r" = "$RPJ" ] && return 1; printf '%s' "${_r%%\"*}"; }
+    WANT_D="$(_rpf diff_oid || true)"; WANT_H="$(_rpf head || true)"
+    HAVE_D="$(git diff --cached 2>/dev/null | git hash-object --stdin 2>/dev/null)"
+    # --verify --quiet, not a bare `git rev-parse HEAD`: on an UNBORN head the bare form prints the literal
+    # string "HEAD" on stdout and still fails, so `|| echo NONE` appended to it and the value became two
+    # lines ("HEAD" then "NONE") — which never matches any record. Measured on a fresh `git init`.
+    HAVE_H="$(git rev-parse --verify --quiet HEAD 2>/dev/null || echo NONE)"
+    if [ -z "$WANT_D" ] || [ "$WANT_D" != "$HAVE_D" ] || [ "$WANT_H" != "$HAVE_H" ]; then
+      gatelog BLOCK 4.6 "review-pass does not match this diff"
+      echo "GUARD (§4.6): the review record does not describe what is staged now." >&2
+      # The inputs are printed because a gate that only says "no" is a gate nobody can debug.
+      echo "  reviewed diff : ${WANT_D:-<missing>}" >&2
+      echo "  staged   diff : ${HAVE_D:-<none>}" >&2
+      echo "  reviewed HEAD : ${WANT_H:-<missing>}" >&2
+      echo "  current  HEAD : ${HAVE_H}" >&2
+      echo "Re-run @agent-review-agent-csk on the diff as it stands; the record it writes is the one that" >&2
+      echo "matches. To skip it deliberately, run the commit yourself in your terminal." >&2
+      exit 2
+    fi
+    gatelog ALLOW 4.6 "review-pass matches the staged diff"
+  fi
   # WHICH MODES CAN ACTUALLY ASK A PERSON. `default` and `acceptEdits` show the prompt to the human and wait.
   # `auto` and `dontAsk` do not: in `auto` the permission prompt is answered by the auto-mode classifier, and
   # `dontAsk` is by definition the mode where nothing is asked. The hook still returns "ask" there, the prompt

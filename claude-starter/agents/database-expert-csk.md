@@ -28,6 +28,12 @@ and it is **model discipline, not a gate**: no hook enforces it, so it holds onl
 review and the DoD catch bad code, none of them catch correct code that duplicates something already here or
 is built on a recalled API shape. Any "no" is a stop, not a caveat.
 
+**Then, when the change carries architecture** — a new or changed data model/schema, a new or changed API
+contract, or 2+ domains touched — write a 3-5 line design summary BEFORE the first line of code: which
+table/endpoint/integration point moves · which pattern · what the alternative was. Put it to the user with
+`AskUserQuestion` and wait for the answer. Trivial single-domain work skips it: RISK decides, not size. Model
+discipline, like the check above — no hook enforces it.
+
 ## When
 On changes to the data model, migrations, indexes, or the cache layer.
 
@@ -42,7 +48,10 @@ On changes to the data model, migrations, indexes, or the cache layer.
 - Access/authorization impact of a migration (RLS, IDOR surface) → **security-expert-csk**.
 - Personal-data storage/retention/minimization → **privacy-agent-csk** (KVKK/GDPR).
 - Migration rollback/roll-forward and repo tests → **test-expert-csk**.
-- At closure, report findings to **review-agent-csk**.
+- Query shape / index / cache keying under real volume → **performance-expert-csk** (a query plan, not a hunch).
+- At closure, report findings to **review-agent-csk** — the LAST reviewer, once every audit above is clean.
+- **Send the audits out in parallel:** several `Agent` calls in ONE message. None of them writes product code, so there is nothing to serialise.
+- **No unbounded ping-pong.** More than 3 handovers with the same agent on one task (**backend-expert-csk** is the usual pair) is a loop, not coordination: stop before the fourth, summarise what each round changed and what is still open, and ask the user with `AskUserQuestion`.
 
 ## DoD
 - Migration verified locally with up→down→up.

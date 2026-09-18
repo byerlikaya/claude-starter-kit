@@ -2,7 +2,7 @@
 name: session-manager-csk
 color: blue
 description: |
-  Session/context health auditor for a PHASE BOUNDARY: audits fill, writes the handover. The per-turn
+  Session/context health auditor for a PHASE BOUNDARY: audits fill, recommends the handover. The per-turn
   status line is the main thread's own, from the hook. Evaluates only; writes no code.
 tools: Read, Grep, Glob, Bash
 # No `model` pin. This used to be `haiku`, which is the right tier for mechanical work — but the handover

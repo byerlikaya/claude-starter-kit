@@ -5,6 +5,67 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — §4.6: a commit is refused unless something reviewed THAT diff
+
+- **"review-agent-csk clean" was a Definition of Done item with nothing behind it.** The chain that reaches it —
+  write, audit, review, commit — was model discipline end to end, so a session that simply did not delegate the
+  review produced a commit indistinguishable from one that passed it. `review-agent-csk` now records what it
+  cleared in `.claude/review-pass.json`, and `guard-bash.sh` refuses `git commit` unless that record still
+  describes what is staged.
+- **Two exact facts, no wall-clock TTL.** The record carries git's object id of the staged diff and the `HEAD` it
+  was reviewed against; both must still match. A time window was the first design and was dropped because it is
+  wrong in both directions: it rejects a record that is still correct (same diff, same base, an hour later) and
+  accepts one that is not (same minute, rebased underneath).
+- **No size exemption.** The first draft skipped single-file commits; that contradicts the kit's own "RISK decides,
+  not size", and a hook cannot judge risk — it can only count files. A one-line auth change is one file and still
+  a diff nobody read. The deliberate ways through are unchanged and explicit: run the commit in your own terminal,
+  or a `CLAUDE_GIT_OK` session, which already bypasses §4.4.
+- **Git does the hashing** — and the reason took two corrections from a Windows machine to get right. On macOS the
+  suite's sandbox reaches its minimal tier and carries no hasher, and there the first version computed an empty
+  hash and blocked every commit: a gate failing for a missing tool instead of a missing review. On Windows that
+  tier cannot be built (`ln -s` yields no real symlink there), the sandbox falls back to stubbing jq/python3 over
+  the full PATH, and `/usr/bin/sha256sum` is present — so "a stock Git Bash lacks the hashers" was wrong, and
+  even "the sandbox carries none" holds on only one of the two platforms. The portable reason: `git` cannot be
+  absent where a commit is being gated, it being the thing under gate. It also needs no repo and costs one
+  process instead of a probe plus a hasher.
+- **Two forms fail closed rather than pass unverified:** `git commit -a` (it stages inside the commit, so at hook
+  time there is nothing staged for a record to be about) and a commit redirected with `-C`/`--git-dir`/`--work-tree`
+  (the record describes THIS worktree). The block prints the reviewed and the staged id side by side — the first
+  version printed nothing, and the failure read as §4.4 to everyone who hit it.
+- Nine cases in `smoke-test.sh` §4f drive the real hook in a real repo, and one of them is the contract itself: the
+  recipe is **extracted from `review-agent-csk.md` and executed**, then the hook is driven against the record it
+  produced. A string comparison would stay green while the two drifted in meaning. `doctor.sh` gained the matching
+  liveness probe, calibrated against a neutered hook. The §4.4 cases that drive a commit now run in a cwd where
+  §4.6 is already satisfied — otherwise each one would have been answered by the new gate while §4.4 could have
+  been deleted entirely with the suite still green.
+
+### Changed — the audits go out at once, and the reviewer closes rather than opens
+
+- **The kit said nothing about the order or concurrency of its own audits.** Found by reading all twelve agents
+  against each other: `backend-`, `database-`, `frontend-` and `test-expert-csk` each say "at closure, report
+  findings to review-agent-csk", and `AGENT_TEMPLATE.md` says it too — while `review-csk.md` listed
+  review-agent-csk **first**. Five sources against one. Workflow §3 now states that the applicable audits
+  (security · privacy · performance · test) go out as several `Agent` calls in ONE message, that a finding or a red
+  test returns to the owner that wrote the code, and that **all of them run again** afterwards, because the diff
+  they cleared no longer exists. §4 closes only once §3 is clean.
+- `review-csk.md` reordered to match, and it now includes `privacy-agent-csk`, which it had never mentioned.
+- **Two asymmetries closed.** `performance-expert-csk` appeared in no writing agent's Coordination at all — it
+  relied entirely on its own description firing — and `frontend-expert-csk` named no security delegation while
+  backend and database both call it MANDATORY. Both are now wired, XSS/CSRF/client-side secret exposure included.
+- **A design summary before architecture, not after.** `AGENT_TEMPLATE.md` gained a pre-flight step beside
+  `confidence-check`: a new or changed data model/schema, a new or changed API contract, or 2+ domains touched
+  gets 3-5 lines put to the user with `AskUserQuestion` before the first line of code. `adr` records a decision
+  once taken; nothing asked before it was taken. Trivial single-domain work skips it. Model discipline, stated.
+- **No unbounded ping-pong.** `backend-expert-csk` and `database-expert-csk` reference each other with no bound,
+  so more than 3 handovers between the same two agents on one task now stops and asks. Written into both agents as
+  well as the template — a rule only in `AGENT_TEMPLATE.md` reaches nobody, because that file is not loaded into a
+  session.
+- **`devops-expert-csk` leads with the pipeline.** It now asks whether a CI/CD pipeline exists, authors the
+  workflow file when there is none, and reads/updates/triggers/diagnoses it when there is — the runner performs
+  the deploy. A hand-rolled SSH deploy is the fallback for a project with no pipeline, not an equal option.
+- `session-manager-csk`'s description said it "writes the handover" while its own Constraints say it changes no
+  files. It recommends one; `/handoff-csk` writes it. Description corrected.
+
 ### Added — an eval that pressures the model to weaken a test instead of fixing the code
 
 - `evals/cases/pressure-test-weakened`: a discount function that is deterministically wrong, a red test, a

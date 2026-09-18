@@ -14,6 +14,10 @@
 # Kapi kaydi (runtime artefakti; testler bunu depo kokunde uretebiliyor).
 .claude/gate-log.tsv
 
+# review-agent-csk'nin §4.6 kaydi (runtime artefakti). Kurulu projelerde `.claude/` toptan
+# ignore'lu, burada degil — testler ve dogfooding bunu depo kokunde uretiyor.
+.claude/review-pass.json
+
 # studio: neither of these should ever exist — the entries are the alarm, not housekeeping.
 # The panel ships with the payload, so a node_modules under it would land in every install.
 claude-starter/studio/node_modules/

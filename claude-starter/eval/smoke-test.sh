@@ -1743,7 +1743,17 @@ echo "== 6f) always-on token budget =="
 # for that cost, and a gate rather than a reminder — a verbose new description fails the suite instead of
 # quietly taxing every future session. Budgets sit just above the current sizes: raising one is allowed, but
 # only as a deliberate edit here.
-BUDGET_DISC=12600    # DISCIPLINE.md (the discipline half of CLAUDE.md); currently 12569. (2026-09-16, second entry
+BUDGET_DISC=13600    # DISCIPLINE.md (the discipline half of CLAUDE.md); currently 13544. (2026-09-18: +975 B, the
+                     # LARGEST single raise this line has taken, and it buys two things no smaller edit could. First
+                     # §4.6, a NEW mechanical gate: a commit is refused unless review-agent-csk recorded the sha256
+                     # of this exact staged diff and the HEAD it reviewed — "it was reviewed" stops being a claim the
+                     # chain can quietly drop and becomes a file guard-bash.sh compares. Second, Workflow §3 now says
+                     # the applicable audits go out in ONE message instead of a queue: the kit stated NOTHING about
+                     # their order or concurrency, so every session invented an answer (found by reading all twelve
+                     # agents against each other — four writing agents say "at closure, report findings to
+                     # review-agent-csk" while review-csk.md listed it FIRST). At the measured 21804 B -> 9198 tok
+                     # ratio this is ~410 tokens a session; removing a whole class of unreviewed commit is worth it.)
+                     # (2026-09-16, second entry
                      # of the day: +38 B. §4.5 already said a failing hook is never bypassed; it now also says never
                      # to write down the way round one. A field session was blocked reading a .env, moved the read
                      # into a script file, and stored "put it in a file and run it by path" in its project memory as
@@ -2069,6 +2079,23 @@ gj(){   # $1 = permission mode, $2 = command, $3 = "late" to put permission_mode
   esac
 }
 gdec(){ printf '%s' "$1" | sed -n 's/.*"permissionDecision"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1; }
+# §4.6 SITS IN FRONT OF §4.4 FOR A COMMIT (2.12): with no review record the commit is refused before the §4.4
+# decision is ever reached. Every §4.4 commit case below is about THAT decision — which modes ask, which fail
+# closed — so each one runs in a cwd where §4.6 is already satisfied. Without this a case asserting rc=2 would
+# be satisfied by §4.6's block while §4.4 could be deleted entirely and the suite would stay green: a gate
+# verified by a different gate. An EMPTY repo makes the record trivially stable — nothing staged (so the diff
+# is empty and its sha256 is a constant) and no HEAD at all (so the hook reads "NONE").
+REVIEWED="$(mktemp -d)"
+( cd "$REVIEWED" && git init -q . >/dev/null 2>&1 && mkdir -p .claude \
+  && printf '{"diff_oid":"%s","head":"NONE","ts":"fixture"}\n' "$(printf '' | git hash-object --stdin)" \
+       > .claude/review-pass.json )
+gbr(){ ( cd "$REVIEWED" && bash "$HOOKS/guard-bash.sh" ); }                       # guard-bash in a §4.6-clean cwd
+gbrx(){ ( cd "$REVIEWED" && PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" ); }     # …the stripped-PATH variant
+# The fixture carries its own correctness claim. If it does not actually satisfy §4.6, every case using it is
+# measuring §4.6 instead of what it says it measures — and that is invisible from the outside.
+if gj default 'git commit -m x' | gbr 2>&1 >/dev/null | grep -q '4\.6'; then
+  fail "the §4.6 fixture does not satisfy the gate — every §4.4 commit case below would measure the wrong gate"
+else pass "§4.6 fixture is clean, so the §4.4 commit cases below reach §4.4"; fi
 # KEY ORDER MUST NOT CHANGE A VERDICT. Every fixture in this suite puts `permission_mode` before `tool_input`
 # — which the capture above confirms is the real shape — so until now nothing here exercised the other order
 # at all. That is the shape of a gate verified only on the path someone happens to send: the parser's cost
@@ -2093,13 +2120,13 @@ done
 # the classifier answers it and `dontAsk` asks nothing by definition — measured in a real session as 14 `ASK`
 # lines in the gate log against zero human keypresses — so those two fail closed with plan/bypassPermissions.
 for m in default acceptEdits; do
-  o="$(gj "$m" 'git commit -m x' | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"; r=$?
+  o="$(gj "$m" 'git commit -m x' | gbr 2>/dev/null)"; r=$?
   { [ "$r" = 0 ] && [ "$(gdec "$o")" = "ask" ]; } \
     && pass "git commit ASKS the user in '$m' (§4.4)" \
     || fail "git commit did not ask in '$m' (rc=$r out=$o)"
 done
 for m in auto dontAsk plan bypassPermissions; do
-  gj "$m" 'git commit -m x' | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1
+  gj "$m" 'git commit -m x' | gbr >/dev/null 2>&1
   [ "$?" = 2 ] && pass "git commit FAILS CLOSED in '$m' — nothing there can prove a person answered (§4.4)" \
                 || fail "git commit did not fail closed in '$m' — the prompt is answered by software there"
 done
@@ -2110,7 +2137,7 @@ o="$(gj default 'git push' | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"
 # also why it cannot be hand-escaped here: that would be testing our escaping with our own escaping.
 if [ -n "$JSONQ" ]; then
   NASTY="$(printf 'git commit -m "a\tb \\"q\\" C:\\\\p"')"
-  o="$(json_bash_payload "$NASTY" | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"
+  o="$(json_bash_payload "$NASTY" | gbr 2>/dev/null)"
   # TWO assertions, not one. They fail for different reasons and a single message cannot name both: the
   # payload can be valid JSON and still carry the wrong verdict, which is exactly what a deliberate mutation
   # produced here — "not valid JSON" would have sent the next reader hunting for a parser bug that was not there.
@@ -2122,8 +2149,8 @@ if [ -n "$JSONQ" ]; then
   else fail "§4.4 did not ask for a commit message carrying tabs/quotes/backslashes (oracle: $JSONQ): $o"; fi
 else skip tool "ask-payload JSON check skipped (no working JSON parser: jq, python3 and python all absent or non-functional)"; fi
 # fail closed where no prompt can reach the user
-gj bypassPermissions 'git commit -m x' | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "git commit FAILS CLOSED under bypassPermissions (§4.4)" || fail "git commit PASSED under bypassPermissions (§4.4 hole)"
-printf '%s' '{"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}' | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "git commit FAILS CLOSED when permission_mode is absent" || fail "git commit PASSED with no permission_mode (§4.4 hole)"
+gj bypassPermissions 'git commit -m x' | gbr >/dev/null 2>&1; [ "$?" = 2 ] && pass "git commit FAILS CLOSED under bypassPermissions (§4.4)" || fail "git commit PASSED under bypassPermissions (§4.4 hole)"
+printf '%s' '{"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}' | gbr >/dev/null 2>&1; [ "$?" = 2 ] && pass "git commit FAILS CLOSED when permission_mode is absent" || fail "git commit PASSED with no permission_mode (§4.4 hole)"
 gj auto 'CLAUDE_GIT_OK=1 git commit -m x' | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "inline CLAUDE_GIT_OK injection rejected (§4.4)" || fail "inline CLAUDE_GIT_OK PASSED (§4.4 hole)"
 # pre-authorised session
 gj bypassPermissions 'git commit -m x' | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && pass "git commit PASSES with CLAUDE_GIT_OK=1" || fail "keyed commit blocked (gate too strict)"
@@ -2137,6 +2164,77 @@ done
 # The key opens the approval gate, never the destructive one: `git add -f` is §4.5 and stays blocked.
 gj auto 'git add -f secrets.env' | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1
 [ "$?" = 2 ] && pass "git add -f BLOCKED even with the key (§4.5)" || fail "git add -f PASSED with the key (§4.5 hole)"
+
+echo "== 4f) §4.6 review gate — a commit cannot land on a diff nothing reviewed =="
+# The gate's own three states plus the ways round it, each in a real repo rather than against a string. What
+# makes this testable at all is that both halves answer with FACTS: git's object id of the staged diff, and the
+# HEAD it was reviewed against. Nothing here asserts a timestamp, because the gate does not read one.
+R46="$(mktemp -d)"
+( cd "$R46" && git init -q . && git config user.email t@example.com && git config user.name t \
+  && echo one > a.txt && git add a.txt && git commit -qm init && echo two >> a.txt && git add a.txt )
+r46(){ ( cd "$R46" && bash "$HOOKS/guard-bash.sh" ); }
+r46rec(){ ( cd "$R46" && mkdir -p .claude && printf '{"diff_oid":"%s","head":"%s","ts":"t"}\n' "$1" "$2" > .claude/review-pass.json ); }
+R46_OID="$( cd "$R46" && git diff --cached | git hash-object --stdin )"
+R46_HEAD="$( cd "$R46" && git rev-parse --verify --quiet HEAD )"
+# 1. No record at all — the state every project starts in.
+( cd "$R46" && rm -f .claude/review-pass.json )
+gj default 'git commit -m x' | r46 >/dev/null 2>&1; [ "$?" = 2 ] \
+  && pass "§4.6: no review record BLOCKS the commit (rc=2)" || fail "§4.6: a commit with NO review record was allowed"
+# 2. A record for THIS diff on THIS head — the gate must get out of the way and let §4.4 ask.
+r46rec "$R46_OID" "$R46_HEAD"
+o="$(gj default 'git commit -m x' | r46 2>/dev/null)"
+[ "$(gdec "$o")" = "ask" ] && pass "§4.6: a matching record lets the commit through to the §4.4 ask" \
+                           || fail "§4.6: a matching record did NOT pass the gate (out=$o)"
+# 3. Right diff, wrong base. This is the case a wall-clock TTL cannot see and the reason there is none.
+r46rec "$R46_OID" "0000000000000000000000000000000000000000"
+gj default 'git commit -m x' | r46 >/dev/null 2>&1; [ "$?" = 2 ] \
+  && pass "§4.6: same diff reviewed against another HEAD still BLOCKS" || fail "§4.6: a stale base passed the gate"
+# 4. Wrong diff, right base — a review of something else.
+r46rec "0000000000000000000000000000000000000000" "$R46_HEAD"
+gj default 'git commit -m x' | r46 >/dev/null 2>&1; [ "$?" = 2 ] \
+  && pass "§4.6: a record for a DIFFERENT diff BLOCKS" || fail "§4.6: a record for another diff passed the gate"
+# 5. The message names both sides. A gate that only says "no" cannot be debugged, and the first version of
+#    this one printed nothing — the failure looked like §4.4 to everyone who hit it.
+e46="$(gj default 'git commit -m x' | r46 2>&1 >/dev/null)"
+case "$e46" in *"reviewed diff"*|*"staged   diff"*) pass "§4.6: the block prints the reviewed and the staged id" ;;
+  *) fail "§4.6: the block does not print what it compared ($e46)" ;; esac
+# 6. `-a` stages inside the commit, so at hook time there is nothing staged for a record to be about.
+r46rec "$R46_OID" "$R46_HEAD"
+gj default 'git commit -am x' | r46 >/dev/null 2>&1; [ "$?" = 2 ] \
+  && pass "§4.6: 'git commit -a' BLOCKS — it stages its own changes, so no record can cover them" \
+  || fail "§4.6: 'git commit -a' slipped the gate"
+# 7. A commit pointed at another worktree: the record describes THIS one, so the ambiguous form fails closed.
+gj default 'git -C /nonexistent-csk commit -m x' | r46 >/dev/null 2>&1; [ "$?" = 2 ] \
+  && pass "§4.6: a commit redirected with -C fails closed" || fail "§4.6: 'git -C … commit' bypassed the gate"
+# 8. Scope: a push stages nothing, so §4.6 has no diff of its own to judge and must stay out of the way.
+o="$(gj default 'git push' | r46 2>/dev/null)"
+[ "$(gdec "$o")" = "ask" ] && pass "§4.6 does not touch 'git push' — it still reaches the §4.4 ask" \
+                           || fail "§4.6 wrongly took over 'git push' (out=$o)"
+# 9. THE CONTRACT, run rather than read. The recipe review-agent-csk is told to use is EXTRACTED FROM THAT
+#    DOC and executed here; then the real hook is driven against the record it produced. A string comparison
+#    would pass while the two drifted in meaning — this fails the moment the doc stops satisfying the gate.
+RCP="$(awk '/# CSK-REVIEW-PASS/{f=1;next} f&&/^```/{exit} f' "$AGENTS/review-agent-csk.md")"
+if [ -n "$RCP" ]; then
+  ( cd "$R46" && rm -f .claude/review-pass.json && printf '%s\n' "$RCP" > .rcp.sh && bash .rcp.sh )
+  o="$(gj default 'git commit -m x' | r46 2>/dev/null)"
+  [ "$(gdec "$o")" = "ask" ] \
+    && pass "§4.6: the recipe in review-agent-csk.md produces a record the hook ACCEPTS (contract pinned)" \
+    || fail "§4.6: the documented recipe does not satisfy the gate — the agent and the hook have drifted (out=$o)"
+else fail "§4.6: could not extract the CSK-REVIEW-PASS recipe from review-agent-csk.md (marker moved?)"; fi
+# 10. Key order is not a contract, so the reader must not depend on it. (A CRLF record was cased here too and
+#     REMOVED: in the flat shape the recipe writes, the carriage return lands after the final `}`, outside every
+#     value, and `%%"*` already cuts it — no fixture could tell a \r-stripping reader from one that skips it.
+#     The strip stays in the hook as cheap defence, but it is not a measured fix and is not asserted as one.)
+for _ord in 'ts_last' 'head_last'; do
+  if [ "$_ord" = ts_last ]; then
+    ( cd "$R46" && printf '{"diff_oid":"%s","head":"%s","ts":"t"}\n' "$R46_OID" "$R46_HEAD" > .claude/review-pass.json )
+  else
+    ( cd "$R46" && printf '{"diff_oid":"%s","ts":"t","head":"%s"}\n' "$R46_OID" "$R46_HEAD" > .claude/review-pass.json )
+  fi
+  o="$(gj default 'git commit -m x' | r46 2>/dev/null)"
+  [ "$(gdec "$o")" = "ask" ] && pass "§4.6: the record reads the same whichever field comes last ($_ord)" \
+    || fail "§4.6: the reader depends on JSON key order ($_ord) — out=$o"
+done
 # Without the key the hook must stay OUT of the way on `git add`: settings.json owns that prompt, and a hook
 # that answered here would quietly take over a rule the user can see and edit.
 o="$(gj auto 'git add .' | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"
@@ -2445,9 +2543,9 @@ gj auto 'git -C . push --force' | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" >/
 gj auto 'git push --force-with-lease' | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "push --force-with-lease BLOCKED (H3)" || fail "--force-with-lease PASSED (H3)"
 gj auto 'git -c core.hooksPath=/dev/null commit -m x' | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "git -c core.hooksPath BLOCKED (C1)" || fail "-c core.hooksPath PASSED (C1)"
 # H1: a quote/backtick-wrapped commit must still reach the §4.4 approval gate (not slip through unprompted).
-o="$(gj default 'eval \"git commit -m x\"' | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"; echo "$o" | grep -q '"permissionDecision":"ask"' && pass "eval-wrapped commit still ASKs (H1)" || fail "eval-wrapped commit slipped §4.4 (H1): $o"
+o="$(gj default 'eval \"git commit -m x\"' | gbr 2>/dev/null)"; echo "$o" | grep -q '"permissionDecision":"ask"' && pass "eval-wrapped commit still ASKs (H1)" || fail "eval-wrapped commit slipped §4.4 (H1): $o"
 # Precision: a commit whose MESSAGE contains 'reset --hard' (no git-before-reset) ASKs as a commit, is not blocked.
-o="$(gj default 'git commit -m \"reset --hard bug\"' | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"; echo "$o" | grep -q '"permissionDecision":"ask"' && pass "commit msg with 'reset --hard' NOT over-blocked" || fail "commit msg 'reset --hard' wrongly blocked: $o"
+o="$(gj default 'git commit -m \"reset --hard bug\"' | gbr 2>/dev/null)"; echo "$o" | grep -q '"permissionDecision":"ask"' && pass "commit msg with 'reset --hard' NOT over-blocked" || fail "commit msg 'reset --hard' wrongly blocked: $o"
 # Fallback (no jq AND no python3 — stock Git Bash on Windows): the matchers must still fire on the raw JSON blob (M1).
 GBBASH="$(type -P bash 2>/dev/null || echo bash)"
 gb_unbuildable(){   # $1 = which block, for the message
@@ -2507,7 +2605,7 @@ GBDIR="${GBX%%:*}"; case "$GBX" in *:*) GB_MODE="stubbed" ;; ?*) GB_MODE="minima
 
 
 if [ -n "$GBX" ]; then
-  o="$(gj default 'git commit -m x' | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" 2>/dev/null)"
+  o="$(gj default 'git commit -m x' | gbrx 2>/dev/null)"
   echo "$o" | grep -q '"permissionDecision":"ask"' && pass "no-jq/py: commit still ASKs (M1 fallback closed)" || fail "no-jq/py: commit gate FAILS OPEN (M1): $o"
   gj auto 'git reset --hard' | PATH="$GBX" CLAUDE_GIT_OK=1 "$GBBASH" "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "no-jq/py: reset --hard still BLOCKED" || fail "no-jq/py: reset --hard PASSED (§4.5 fallback hole)"
   # The write side lands on the same tier, and this is the branch a stock Windows install actually runs. Its
@@ -2600,7 +2698,7 @@ if [ -n "$GBX" ]; then
   gjs auto 'git commit -m \"x\" --no-verify' | PATH="$GBX" CLAUDE_GIT_OK=1 "$GBBASH" "$HOOKS/guard-bash.sh" >/dev/null 2>&1
   [ "$?" = 2 ] && pass "no-jq/py: --no-verify inside an escaped-quote command still BLOCKED" \
                 || fail "no-jq/py: escaped quotes hid --no-verify from §4.5"
-  o="$(gjs default 'git commit -F C:\\\\Users\\\\b\\\\msg.txt' | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" 2>/dev/null)"
+  o="$(gjs default 'git commit -F C:\\\\Users\\\\b\\\\msg.txt' | gbrx 2>/dev/null)"
   printf '%s' "$o" | grep -q '"permissionDecision":"ask"' \
     && pass "no-jq/py: a Windows backslash path still reaches the §4.4 ask" \
     || fail "no-jq/py: backslash path derailed the parse (out=$o)"
@@ -2789,7 +2887,14 @@ else
   gj auto 'ls -la' | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1
   [ "$?" = 0 ] && pass "canary: the installed guard-bash ALLOWS an ordinary command" \
                 || fail "canary: the installed guard-bash blocked 'ls -la' (gate too strict, or the hook is broken)"
-  o="$(gj default 'git commit -m x' | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"
+  # §4.6 sits in FRONT of §4.4 for a commit, so this canary needs a cwd whose review record already matches, or
+  # it would assert §4.6's block and report it as a §4.4 ask. An empty repo is the stable case: nothing staged
+  # (so the diff's sha256 is a constant) and no HEAD at all (so the hook reads "NONE").
+  CANRV="$(mktemp -d)"
+  ( cd "$CANRV" && git init -q . >/dev/null 2>&1 && mkdir -p .claude \
+    && printf '{"diff_oid":"%s","head":"NONE","ts":"fixture"}\n' "$(printf '' | git hash-object --stdin)" \
+         > .claude/review-pass.json )
+  o="$(cd "$CANRV" && gj default 'git commit -m x' | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"
   printf '%s' "$o" | grep -q '"permissionDecision":"ask"' \
     && pass "canary: the installed guard-bash ASKS for §4.4" \
     || fail "canary: no §4.4 ask from the installed hook (out=$o)"
@@ -3465,7 +3570,7 @@ grep -q "^BLOCK	§4.5	git reset --hard	git reset --hard$" "$GLOG" 2>/dev/null \
 gj auto 'rm -rf build' | CSK_GATE_LOG="$GLOG" bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1
 [ ! -s "$GLOG" ] && pass "log set: an allowed command writes nothing" || fail "log set: an allowed command was logged"
 # 4. The §4.4 ask is a gate decision too, and it must be distinguishable from a hard block.
-gj default 'git commit -m x' | CSK_GATE_LOG="$GLOG" bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1
+( cd "$REVIEWED" && gj default 'git commit -m x' | CSK_GATE_LOG="$GLOG" bash "$HOOKS/guard-bash.sh" ) >/dev/null 2>&1
 grep -q '^ASK	§4.4' "$GLOG" 2>/dev/null && pass "log set: §4.4 approval prompt logged as ASK, not BLOCK" \
   || fail "log set: the §4.4 ask was not recorded distinctly"
 # 5. A multi-line command cannot corrupt the TSV — the command text is attacker-adjacent (the model composes it).

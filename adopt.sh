@@ -1050,6 +1050,12 @@ else
   echo "  $ADR1 already exists — untouched (never-overwrite)"
 fi
 
+# The §4.6 review record is runtime state, not configuration. `start.sh` gitignores `.claude/` wholesale so it
+# is covered there, but an adoption may deliberately TRACK that directory (#4 share) — and then this one file
+# would turn up in every `git status` as a change nobody made on purpose. One narrow line, either way.
+touch .gitignore
+grep -qxF '.claude/review-pass.json' .gitignore || echo '.claude/review-pass.json' >> .gitignore
+
 git add .claude CLAUDE.md docs >/dev/null 2>&1
 [ -e .gitignore ] && git add .gitignore >/dev/null 2>&1
 [ -e .trace-allowlist.txt ] && git add .trace-allowlist.txt >/dev/null 2>&1
