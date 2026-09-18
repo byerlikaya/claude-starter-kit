@@ -4650,9 +4650,18 @@ if [ -n "$SGR" ] && [ -f "$SGR/.gitattributes" ]; then
       mkdir -p "$SGD/$d/packaging" "$SGD/$d/claude-starter"
       cp -R "$SGR/claude-starter/." "$SGD/$d/claude-starter/" 2>/dev/null
     done
-    ( cd "$SGD/src" && bash start.sh --generic </dev/null >"$SGD/o1" 2>&1 ); SG1=$?
-    ( cd "$SGD/src" && CSK_ALLOW_SOURCE_INSTALL=1 bash start.sh --generic </dev/null >"$SGD/o3" 2>&1 ); SG3=$?
-    ( cd "$SGD/plain" && bash start.sh --generic </dev/null >"$SGD/o2" 2>&1 ); SG2=$?
+    # CSK_LANG=en IS PART OF THE ASSERTION, not tidiness. These three cases read the installer's PROSE, and the
+    # installer is bilingual: on a machine whose locale is Turkish it says "Bu ayarlarla kurulayım mı?" and the
+    # grep below finds nothing. MEASURED on a `LANG=tr_TR.UTF-8` machine — both cases went red while the
+    # installer was behaving correctly (rc=0, install reached the prompt), and the failure text blamed the
+    # guard, which had nothing wrong with it. A suite that asserts on text has to pin the language; the product
+    # keeping locale auto-detection is the feature, and taking it away to keep the suite quiet would be fixing
+    # the wrong side. Note the second grep ("own source repository") would hold without this, because that
+    # message is deliberately never translated — the pin is on all three so the NEXT assertion of this class is
+    # covered too.
+    ( cd "$SGD/src" && CSK_LANG=en bash start.sh --generic </dev/null >"$SGD/o1" 2>&1 ); SG1=$?
+    ( cd "$SGD/src" && CSK_LANG=en CSK_ALLOW_SOURCE_INSTALL=1 bash start.sh --generic </dev/null >"$SGD/o3" 2>&1 ); SG3=$?
+    ( cd "$SGD/plain" && CSK_LANG=en bash start.sh --generic </dev/null >"$SGD/o2" 2>&1 ); SG2=$?
 
     { [ "$SG1" = 1 ] && grep -q "own source repository" "$SGD/o1"; } \
       && pass "start.sh refuses to install from the kit's own checkout (rc=1, named)" \
