@@ -302,9 +302,22 @@ run_row 'boş komut'                     0 -  ''                                
 # ---------------------------------------------------------------------------------------------------------
 echo
 echo "-- düşmanca biçimler --"
-adv(){ # $1 label  $2 expected rc  $3 raw payload  [$4 known-open:<t3>/<t1>]
-  local label="$1" exp="$2" a b known="${4:-}"
-  mkraw "$3"; a="$(t3)"
+# AN EXIT CODE IS NOT A REASON. A row asserting rc=2 passes while the gate refuses for a rule that has nothing
+# to do with the shape under test, and then keeps passing until the fixture changes. That happened here twice:
+#   * a payload whose only `"command"` sat in a SIBLING object was read as "the refusal closed the hole" — the
+#     slice had in fact read the sibling value and §4.5's `destructive rm -rf` fired on it. The harmless twin
+#     (`ls -la` in the same place) returns 0, which is what makes the real behaviour visible: the gate judges a
+#     string that is not the command that will run.
+#   * every adversarial payload carried `"cwd":"/tmp"`, where no review record exists, so each row whose
+#     command was a commit was refused by §4.6 before its own rule was ever reached.
+# So: the payload's cwd is the prepared repo, each row may name the RULE it expects to fire, and the string the
+# slice actually read is printed on every failure.
+t3err(){ ( cd "$R" && bash "$HOOK" < "$P" 2>&1 >/dev/null ) | tr -d '\r' | grep -oE 'GUARD \(§[0-9.]+\)' | head -1; }
+slice_reads(){ bash "$W/dec.sh" < "$P" 2>/dev/null; }
+
+adv(){ # $1 label  $2 expected rc  $3 expected rule (`-` = do not check)  $4 raw payload  [$5 known-open:<t3>/<t1>]
+  local label="$1" exp="$2" want="$3" a b r known="${5:-}"
+  mkraw "${4//@CWD@/$R}"; a="$(t3)"
   if [ "$LADDER" = 1 ]; then b="$(t1)"; else b="$a"; fi
   if [ -n "$known" ] && [ "${CSK_CONFORMANCE_KNOWN_OPEN:-0}" = 1 ]; then
     # A known-open row is a divergence this file FOUND that nothing has fixed yet. It is pinned to the exact
@@ -316,51 +329,87 @@ adv(){ # $1 label  $2 expected rc  $3 raw payload  [$4 known-open:<t3>/<t1>]
     bad "$label — bilinen ayrışma DEĞİŞTİ: kayıt $want, ölçülen $a/$b"; return
   fi
   if [ "$LADDER" = 1 ] && [ "$a" != "$b" ]; then
-    bad "$label — AYRIŞIYOR: tier3 rc=$a · tier1 rc=$b (beklenen $exp)"; return; fi
-  if [ "$a" = "$exp" ]; then ok "$label (rc=$a)"
-  else bad "$label — rc=$a, beklenen $exp $( [ "$exp" = 2 ] && echo '(KÖR KAPI)' || echo '(AŞIRI BLOK)' )"; fi; }
+    bad "$label — AYRIŞIYOR: tier3 rc=$a · tier1 rc=$b (beklenen $exp) · dilim okudu [$(slice_reads)]"; return; fi
+  if [ "$a" != "$exp" ]; then
+    bad "$label — rc=$a, beklenen $exp $( [ "$exp" = 2 ] && echo '(KÖR KAPI)' || echo '(AŞIRI BLOK)' ) · dilim okudu [$(slice_reads)]"; return; fi
+  if [ "$want" != "-" ]; then
+    # the hook prints `GUARD (§4.5): …`, the row names `§4.5`, so this is a containment test and not equality —
+    # written as equality first, which reported "beklenen §4.5, ateşlenen GUARD (§4.5)" on rows that were right.
+    r="$(t3err)"
+    case "$r" in
+      *"$want"*) ok "$label (rc=$a, $want)"; return ;;
+      *) bad "$label — rc=$exp DOĞRU AMA SEBEP YANLIŞ: beklenen $want, ateşlenen ${r:-hiçbir kural} · dilim okudu [$(slice_reads)]"; return ;;
+    esac
+  fi
+  ok "$label (rc=$a)"; }
 
-adv 'command anahtarı iki kez'                 2 \
-  '{"cwd":"/tmp","permission_mode":"default","tool_name":"Bash","tool_input":{"command":"ls -la","command":"rm -rf /"},"tool_use_id":"x"}'
-adv 'gövdede sahte command anahtarı'           2 \
-  '{"cwd":"/tmp","permission_mode":"default","tool_name":"Bash","tool_input":{"description":"\"command\":\"ls\"","command":"rm -rf /"},"tool_use_id":"x"}'
-adv 'gerçek anahtardan önce iç içe nesne'      2 \
-  '{"cwd":"/tmp","permission_mode":"default","tool_name":"Bash","tool_input":{"meta":{"command":"ls -la"},"command":"rm -rf /"},"tool_use_id":"x"}'
-adv 'kapanıştan önce kaçışlı tırnak'           2 \
-  '{"cwd":"/tmp","permission_mode":"default","tool_name":"Bash","tool_input":{"command":"rm -rf / --no-preserve-root \"x\""},"tool_use_id":"x"}'
-adv 'kapanıştan önce kaçışlı ters bölü'        0 \
-  '{"cwd":"/tmp","permission_mode":"default","tool_name":"Bash","tool_input":{"command":"echo C:\\\\"},"tool_use_id":"x"}'
-adv 'anahtar sırası: tool_input önce'          2 \
-  '{"tool_input":{"command":"rm -rf /"},"tool_name":"Bash","cwd":"/tmp","permission_mode":"default","tool_use_id":"x"}'
+adv 'command anahtarı iki kez'                 2 '§4.5' \
+  '{"cwd":"@CWD@","permission_mode":"default","tool_name":"Bash","tool_input":{"command":"ls -la","command":"rm -rf /"},"tool_use_id":"x"}'
+adv 'gövdede sahte command anahtarı'           2 '§4.5' \
+  '{"cwd":"@CWD@","permission_mode":"default","tool_name":"Bash","tool_input":{"description":"\"command\":\"ls\"","command":"rm -rf /"},"tool_use_id":"x"}'
+adv 'gerçek anahtardan önce iç içe nesne'      2 '§4.5' \
+  '{"cwd":"@CWD@","permission_mode":"default","tool_name":"Bash","tool_input":{"meta":{"command":"ls -la"},"command":"rm -rf /"},"tool_use_id":"x"}'
+adv 'kapanıştan önce kaçışlı tırnak'           2 '§4.5' \
+  '{"cwd":"@CWD@","permission_mode":"default","tool_name":"Bash","tool_input":{"command":"rm -rf / --no-preserve-root \"x\""},"tool_use_id":"x"}'
+adv 'kapanıştan önce kaçışlı ters bölü'        0 '-' \
+  '{"cwd":"@CWD@","permission_mode":"default","tool_name":"Bash","tool_input":{"command":"echo C:\\\\"},"tool_use_id":"x"}'
+adv 'anahtar sırası: tool_input önce'          2 '§4.5' \
+  '{"tool_input":{"command":"rm -rf /"},"tool_name":"Bash","cwd":"@CWD@","permission_mode":"default","tool_use_id":"x"}'
 
-# tool_input carries NO command at all and the only `"command":` in the payload sits in a sibling object. A
-# reader that answers `.tool_input.command` returns empty and, if it also records "I parsed it", the gate's
-# "gated tool with no readable command" refusal never runs. Measured as a live fail-open on every jq machine.
-adv 'komut yalnız kardeş nesnede'              2 \
-  '{"cwd":"/tmp","permission_mode":"default","tool_name":"Bash","tool_input":{"foo":1},"meta":{"command":"rm -rf /"},"tool_use_id":"x"}'
-# the must-pass twin, so "it now blocks everything" is excluded rather than assumed
-adv 'sade payload hâlâ geçiyor (ikiz)'         0 \
-  '{"cwd":"/tmp","permission_mode":"default","tool_name":"Bash","tool_input":{"command":"ls -la"},"tool_use_id":"x"}'
+# THE SLICE MUST NOT READ A VALUE FROM OUTSIDE tool_input, and the pair below is what makes that visible. The
+# dangerous shape alone proves nothing: it is refused, but by §4.5 firing on the string the slice pulled out of
+# the SIBLING object — the gate judging text that is not the command that will run. The harmless twin is the
+# row that shows it, because there is nothing in `ls -la` for any rule to catch.
+# Reported once as "the refusal closes this hole". It does not. It was the twin that was missing.
+adv 'kardeş nesnede yıkıcı komut'              2 '§4.5' \
+  '{"cwd":"@CWD@","permission_mode":"default","tool_name":"Bash","tool_input":{"foo":1},"meta":{"command":"rm -rf /"},"tool_use_id":"x"}'
+adv 'kardeş nesnede zararsız komut (İKİZ)'     0 '-' \
+  '{"cwd":"@CWD@","permission_mode":"default","tool_name":"Bash","tool_input":{"foo":1},"meta":{"command":"ls -la"},"tool_use_id":"x"}'
+adv 'sade payload hâlâ geçiyor (ikiz)'         0 '-' \
+  '{"cwd":"@CWD@","permission_mode":"default","tool_name":"Bash","tool_input":{"command":"ls -la"},"tool_use_id":"x"}'
 
-# permission_mode twice: §4.4 fails CLOSED under bypassPermissions, so a nested earlier key that shadows the
-# real one moves the gate from refuse to ask — and under bypass the harness answers ask with allow.
-adv 'permission_mode iki kez (gölgeli bypass)' 2 \
-  '{"cwd":"/tmp","meta":{"permission_mode":"default"},"permission_mode":"bypassPermissions","tool_name":"Bash","tool_input":{"command":"git commit -m x"},"tool_use_id":"x"}'
-adv 'dürüst bypass (ikiz)'                     2 \
-  '{"cwd":"/tmp","permission_mode":"bypassPermissions","tool_name":"Bash","tool_input":{"command":"git commit -m x"},"tool_use_id":"x"}'
-adv 'permission_mode yok (ikiz, meşru)'        2 \
-  '{"cwd":"/tmp","tool_name":"Bash","tool_input":{"command":"git commit -m x"},"tool_use_id":"x"}'
+# THE KEY NAME AS A VALUE. `_json_slice` searches for the bytes `"key"` and does not require the colon that
+# follows a real key, so a payload carrying the key's NAME as a VALUE relocates the parse — and the ambiguity
+# gates that count `"key":` do not see the same thing the parser found. Here the slice reads `ls` while the
+# command that will actually run is `rm -rf /`.
+adv 'anahtar adı DEĞER olarak (command)'       2 '§4.5' \
+  '{"cwd":"@CWD@","a":"command","ls":1,"permission_mode":"default","tool_name":"Bash","tool_input":{"command":"rm -rf /"},"tool_use_id":"x"}'
+adv 'kontrol: aynı komut, gölgesiz (ikiz)'     2 '§4.5' \
+  '{"cwd":"@CWD@","permission_mode":"default","tool_name":"Bash","tool_input":{"command":"rm -rf /"},"tool_use_id":"x"}'
+
+# WHITESPACE BEFORE THE COLON is legal JSON and the parser and its guard must agree about it. The unspaced twin
+# sits next to it so a red row can be read: if both are red the cause is the nested key, if only the spaced one
+# is red the cause is the spacing.
+adv 'iki noktadan önce boşluk'                 2 '§4.5' \
+  '{"cwd":"@CWD@","permission_mode":"default","tool_name":"Bash","tool_input":{"command" : "rm -rf /"},"tool_use_id":"x"}'
+adv 'kontrol: boşluksuz ikiz'                  2 '§4.5' \
+  '{"cwd":"@CWD@","permission_mode":"default","tool_name":"Bash","tool_input":{"command":"rm -rf /"},"tool_use_id":"x"}'
+
+# permission_mode: §4.4 fails CLOSED under bypassPermissions, so a key that shadows the real one moves the gate
+# from refuse to ask, and under bypass the harness answers ask with allow. The cwd is the prepared repo, not
+# /tmp: with no review record §4.6 refuses a commit before §4.4 is ever reached, and every one of these rows
+# would have passed on that unrelated rule. That is exactly what they did before this was fixed.
+adv 'permission_mode iki kez (gölgeli bypass)' 2 '§4.4' \
+  '{"cwd":"@CWD@","meta":{"permission_mode":"default"},"permission_mode":"bypassPermissions","tool_name":"Bash","tool_input":{"command":"git commit -m x"},"tool_use_id":"x"}'
+adv 'permission_mode DEĞER olarak'             2 '§4.4' \
+  '{"cwd":"@CWD@","a":"permission_mode","default":1,"permission_mode":"bypassPermissions","tool_name":"Bash","tool_input":{"command":"git commit -m x"},"tool_use_id":"x"}'
+adv 'dürüst bypass (ikiz)'                     2 '§4.4' \
+  '{"cwd":"@CWD@","permission_mode":"bypassPermissions","tool_name":"Bash","tool_input":{"command":"git commit -m x"},"tool_use_id":"x"}'
+adv 'permission_mode yok (ikiz, meşru)'        2 '§4.4' \
+  '{"cwd":"@CWD@","tool_name":"Bash","tool_input":{"command":"git commit -m x"},"tool_use_id":"x"}'
+adv 'dürüst default: ask, blok değil (ikiz)'   0 '-' \
+  '{"cwd":"@CWD@","permission_mode":"default","tool_name":"Bash","tool_input":{"command":"git commit -m x"},"tool_use_id":"x"}'
 
 # The key NAME written as a unicode escape. A reader that decodes key names finds `command` and judges
 # `rm -rf /`; one that searches for the literal bytes finds nothing and the gate has no command to judge. The
 # safe answer is the refusal either way, so 2 is expected and a reader answering 0 is BLIND, not lenient.
 # The backslash is built at run time and the payload's BYTES are checked before the row is allowed to count:
-# written literally, `c` has arrived here as `\\u0063` — an escaped backslash, inert text every reader
-# agrees about — and the row would have reported a pass while measuring nothing.
-ESCKEY="{\"cwd\":\"/tmp\",\"permission_mode\":\"default\",\"tool_name\":\"Bash\",\"tool_input\":{\"${BS}u0063ommand\":\"rm -rf /\"},\"tool_use_id\":\"x\"}"
+# written literally, the escape has arrived here as an escaped backslash — inert text every reader agrees
+# about — and the row would have reported a pass while measuring nothing.
+ESCKEY="{\"cwd\":\"@CWD@\",\"permission_mode\":\"default\",\"tool_name\":\"Bash\",\"tool_input\":{\"${BS}u0063ommand\":\"rm -rf /\"},\"tool_use_id\":\"x\"}"
 case "$(printf '%s' "$ESCKEY" | od -An -tx1 | tr -d ' \n')" in
   *5c5c7530303633*) bad 'anahtar adı \u kaçışlı — fixture ATIL: çift ters bölü' ;;
-  *5c7530303633*)   adv 'anahtar adı \u kaçışlı' 2 "$ESCKEY" ;;
+  *5c7530303633*)   adv 'anahtar adı \u kaçışlı' 2 '-' "$ESCKEY" ;;
   *)                bad 'anahtar adı \u kaçışlı — fixture kurulamadı' ;;
 esac
 
