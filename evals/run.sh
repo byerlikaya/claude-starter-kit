@@ -126,7 +126,14 @@ build_project() {
 # without the documented escape the kit arm would be unable to commit for reasons that have nothing to do with
 # the behaviour under test. The content gates (trace/secret pre-commit) still run — that is the point.
 # eval_trace_metrics <stream.jsonl> <stdout.txt> — one TSV line:
-#   agent_top agent_all spawned cost in out cache_read cache_create turns bad_lines has_result tests tests_nested turns_top turns_nested is_error limited final_tested
+#   agent_top agent_all spawned cost in out cache_read cache_create turns bad_lines has_result tests tests_nested turns_top turns_nested is_error limited final_tested parallel_msgs agents_in_one_msg_max
+# The last TWO were appended for the parallel-audit rule, which no earlier column could measure: Workflow step
+# 3 says the applicable audits are issued as several `Agent` calls in ONE message, because that is what makes
+# them concurrent. `agent_top` counts calls and `turns_top` counts messages, so 3-in-3 and 3-in-1 are identical
+# in both — and only the second obeys the rule. `parallel_msgs` is the number of main-thread messages carrying
+# two or more Agent calls; `agents_in_one_msg_max` is the largest such message. Main thread only: a subagent
+# fanning out is not the rule's subject. Calibrated in smoke-test (free — this is a pure function over a file,
+# so its own correctness costs no tokens even though running the evals does).
 # The last four were appended, not inserted, so every earlier column keeps its position. `tests` counts Bash calls that run a test
 # runner or a build/lint tool — main thread and subagents alike, since the stream carries both — deduplicated by tool_use id. The bare
 # word "test" is deliberately not a match: measured on real transcripts, the calls it caught alone were echo banners, not runs.
@@ -146,9 +153,16 @@ src, txt = sys.argv[1], sys.argv[2]
 RUNRX = re.compile(r'(^|[\s;&|(])(pytest|jest|vitest|mocha|make|mvn|gradle|tsc|eslint|ruff|flake8|mypy)\b|(dotnet|go|cargo)\s+(test|build)\b|(npm|pnpm|yarn)\s+(run\s+)?(test|build|lint)\b|\bnode\s+--test\b')
 top = allc = bad = limited = 0; res = None
 tests = tnest = 0; seen_tu = set(); msgs_top = set(); msgs_nest = set(); k = last_edit = last_test = edits = 0
+# per_msg: Agent calls PER MAIN-THREAD MESSAGE. `agent_top` and `msgs_top` already existed and cannot answer
+# the question the parallel-audit rule asks: 3 calls in 3 messages and 3 calls in ONE message both read as
+# agent_top=3, and only the second is concurrent — issuing them in one message is what makes them run at the
+# same time. Keyed on the message id, falling back to the line number so messages WITHOUT an id stay separate
+# instead of collapsing into one bucket (which is a latent flaw in msgs_top, left alone here rather than
+# changed silently).
+per_msg = {}
 try: lines = open(src, errors='replace').read().splitlines()
 except OSError: lines = []
-for line in lines:
+for ln, line in enumerate(lines):
     line = line.strip()
     if not line: continue
     try: e = json.loads(line)
@@ -156,12 +170,15 @@ for line in lines:
     if e.get('type') == 'assistant':
         m = e.get('message') or {}; nested = bool(e.get('parent_tool_use_id'))
         if m.get('id'): (msgs_nest if nested else msgs_top).add(m.get('id'))
+        mkey = m.get('id') or ('line', ln)
         for c in m.get('content') or []:
             if not (isinstance(c, dict) and c.get('type') == 'tool_use') or c.get('id') in seen_tu: continue
             seen_tu.add(c.get('id')); k += 1
             if c.get('name') in ('Agent', 'Task'):
                 allc += 1
-                if not nested: top += 1
+                if not nested:
+                    top += 1
+                    per_msg[mkey] = per_msg.get(mkey, 0) + 1
             elif c.get('name') in ('Edit', 'Write', 'MultiEdit', 'NotebookEdit'):
                 edits += 1; last_edit = k
             elif c.get('name') == 'Bash' and RUNRX.search((c.get('input') or {}).get('command') or ''):
@@ -178,7 +195,8 @@ print('\t'.join(str(x) for x in (top, allc, sp, (res or {}).get('total_cost_usd'
       u.get('output_tokens', ''), u.get('cache_read_input_tokens', ''), u.get('cache_creation_input_tokens', ''),
       (res or {}).get('num_turns', ''), bad, 1 if res else 0, tests, tnest, len(msgs_top), len(msgs_nest),
       1 if (res or {}).get('is_error') else 0, 1 if limited or (res or {}).get('api_error_status') == 429 else 0,
-      '' if not edits else (1 if last_test > last_edit else 0))))
+      '' if not edits else (1 if last_test > last_edit else 0),
+      sum(1 for v in per_msg.values() if v >= 2), max(per_msg.values(), default=0))))
 PYM
 }
 

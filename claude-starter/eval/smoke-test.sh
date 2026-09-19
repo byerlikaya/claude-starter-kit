@@ -5013,6 +5013,85 @@ if [ -n "$SGR" ] && [ -f "$SGR/.gitattributes" ]; then
 else note "line-ending check skipped (not a git checkout of the kit)"
 fi
 
+echo "== 15) evals: the parallel-audit metric, because a rule nobody can measure is not a rule =="
+# The paid A/B harness under evals/ is deliberately outside every gate — it spends real tokens. Its TRANSCRIPT
+# PARSER is not: `eval_trace_metrics` is a pure function over a JSONL file, so its correctness costs nothing
+# and belongs here. Workflow step 3 says the applicable audits are issued as several `Agent` calls in ONE
+# message, because that is what makes them concurrent. Until now no column could see that: `agent_top` counts
+# CALLS and `turns_top` counts MESSAGES, so three calls in three messages and three calls in one message are
+# identical in both — and only the second obeys the rule. The experiment designed for it could not be run for
+# exactly that reason, which is the honest definition of a rule that is model discipline rather than a gate.
+# The metric is calibrated rather than trusted, and the pair below is the whole point: SAME call count,
+# different verdict. A metric that cannot separate those two would let the experiment report either answer.
+_EVR="$(cd "$(dirname "$0")/../.." && pwd)/evals/run.sh"
+if [ -f "$_EVR" ]; then
+  _EVD="$(mktemp -d)"
+  # NOT IN A SUBSHELL, and that was a real defect in the first draft of this block: the five rows below ran
+  # inside `( … )`, so `pass`/`fail` incremented counters in a child and the parent never saw them. The rows
+  # PRINTED green and the suite's total went up by one instead of six — which means a `fail` here would have
+  # been invisible and this gate would have been silently always-green. Exactly the class of defect the rest of
+  # this session was spent finding, in the block written to close another one. The function is eval'd in THIS
+  # shell instead; it only defines `eval_trace_metrics`.
+  eval "$(sed -n '/^eval_trace_metrics()/,/^}/p' "$_EVR")"
+  _mk(){ printf '%s\n' "$2" > "$_EVD/$1.jsonl"; eval_trace_metrics "$_EVD/$1.jsonl" "$_EVD/$1.out"; }
+  _agent(){ printf '{"type":"tool_use","id":"%s","name":"Agent","input":{}}' "$1"; }
+  _msg(){ # $1 = message id ("-" for none), $2 = nested?, $3.. = tool ids
+    local id="$1" nest="$2"; shift 2; local parts="" t
+    for t in "$@"; do [ -z "$parts" ] || parts="$parts,"; parts="$parts$(_agent "$t")"; done
+    printf '{"type":"assistant"%s,"message":{%s"content":[%s]}}' \
+      "$( [ "$nest" = 1 ] && printf ',"parent_tool_use_id":"p1"' )" \
+      "$( [ "$id" = - ] || printf '"id":"%s",' "$id" )" "$parts"
+  }
+  _res='{"type":"result","subtype":"success","usage":{},"num_turns":1}'
+  _f(){ printf '%s' "$1" | awk -F'\t' -v n="$2" '{print $n}'; }   # 1=agent_top 19=parallel_msgs 20=max
+
+  # THE DISCRIMINATING PAIR. Three Agent calls either way.
+  _p="$(_mk three_in_one "$(_msg m1 0 a b c)
+$_res")"
+  { [ "$(_f "$_p" 1)" = 3 ] && [ "$(_f "$_p" 19)" = 1 ] && [ "$(_f "$_p" 20)" = 3 ]; } \
+    && pass "evals metric: 3 Agent calls in ONE message -> agent_top 3, parallel_msgs 1, max 3" \
+    || fail "evals metric: 3-in-one read [$_p] — the concurrent case is not being seen"
+  _p="$(_mk three_in_three "$(_msg m1 0 a)
+$(_msg m2 0 b)
+$(_msg m3 0 c)
+$_res")"
+  { [ "$(_f "$_p" 1)" = 3 ] && [ "$(_f "$_p" 19)" = 0 ] && [ "$(_f "$_p" 20)" = 1 ]; } \
+    && pass "evals metric: the SAME 3 calls in three messages -> parallel_msgs 0, max 1 (the pair separates)" \
+    || fail "evals metric: 3-in-three read [$_p] — a queue is being counted as concurrency"
+  # A SUBAGENT fanning out is not the rule's subject: the rule is about the main thread issuing the audits.
+  _p="$(_mk nested_two "$(_msg s1 1 a b)
+$_res")"
+  { [ "$(_f "$_p" 1)" = 0 ] && [ "$(_f "$_p" 19)" = 0 ]; } \
+    && pass "evals metric: a nested message with 2 Agent calls counts as neither" \
+    || fail "evals metric: nested fan-out leaked into the main-thread count [$_p]"
+  # MESSAGES WITH NO ID must stay separate. Collapsing them is a live flaw in the older `turns_top` column,
+  # and inheriting it here would have turned two parallel messages into one.
+  _p="$(_mk anon_two "$(_msg - 0 a b)
+$(_msg - 0 c d)
+$_res")"
+  [ "$(_f "$_p" 19)" = 2 ] \
+    && pass "evals metric: two id-less messages stay two, not one" \
+    || fail "evals metric: id-less messages collapsed [$_p] — parallel_msgs would undercount"
+  _p="$(_mk none "$_res")"
+  { [ "$(_f "$_p" 19)" = 0 ] && [ "$(_f "$_p" 20)" = 0 ]; } \
+    && pass "evals metric: a stream with no Agent call reports 0, not empty" \
+    || fail "evals metric: the empty case read [$_p]"
+  # THE MUST-FAIL TWIN. Lower the threshold from 2 to 1 and the queue case must stop reading 0 — otherwise the
+  # pair above proves only that the numbers are stable, not that they mean what the rows claim.
+  sed 's/if v >= 2/if v >= 1/' "$_EVR" > "$_EVD/mutant.sh"
+  ( eval "$(sed -n '/^eval_trace_metrics()/,/^}/p' "$_EVD/mutant.sh")"
+    printf '%s\n' '{"type":"assistant","message":{"id":"m1","content":[{"type":"tool_use","id":"a","name":"Agent","input":{}}]}}' \
+                  '{"type":"assistant","message":{"id":"m2","content":[{"type":"tool_use","id":"b","name":"Agent","input":{}}]}}' \
+                  '{"type":"result","subtype":"success","usage":{},"num_turns":1}' > "$_EVD/mut.jsonl"
+    _o="$(eval_trace_metrics "$_EVD/mut.jsonl" "$_EVD/mut.out" | awk -F'\t' '{print $19}')"
+    [ "$_o" = 2 ] && exit 0 || exit 1 ) \
+    && pass "evals metric: a broken threshold IS visible (mutant counts a queue as 2 parallel messages)" \
+    || fail "evals metric: the mutant reported the same answer — these rows cannot see a broken counter"
+  rm -rf "$_EVD"
+else
+  skip scope "evals/run.sh is not present (installed project, not a source checkout) — metric not calibrated"
+fi
+
 echo "---"
 if [ "$SKIPN" -gt 0 ]; then
   echo "SKIPPED (nothing was checked here):$SKIP_LIST"
