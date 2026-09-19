@@ -39,6 +39,11 @@ jobs:
       - name: Parser conformance — every tier reaches the same verdict
         run: bash packaging/verify.sh parser
 
+      # The installer's message tables. Here on every platform because the audit is awk, and whether gawk
+      # (this runner, and Git Bash) and BSD awk (macOS) agree on it cannot be measured on one machine.
+      - name: i18n audit — the bilingual tables hold their invariants
+        run: bash packaging/verify.sh i18n
+
       - name: README skill catalogue in sync with the skills
         run: bash packaging/verify.sh catalogue
 
@@ -116,6 +121,11 @@ jobs:
       # them shows on the other, which is the asymmetry that produced every incident in this class.
       - name: Parser conformance — every tier reaches the same verdict
         run: bash packaging/verify.sh parser
+
+      # The installer's message tables. Here on every platform because the audit is awk, and whether gawk
+      # (this runner, and Git Bash) and BSD awk (macOS) agree on it cannot be measured on one machine.
+      - name: i18n audit — the bilingual tables hold their invariants
+        run: bash packaging/verify.sh i18n
 
       - name: e2e rehearsal — installer + non-interactive self-heal (with/without jq·python)
         run: bash packaging/verify.sh e2e

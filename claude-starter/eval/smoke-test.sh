@@ -3304,9 +3304,18 @@ printf 'skills/handoff\r\n' > "$DCR/.claude/kit-manifest.txt"; _crlf="$(_own)"
 [ -n "$_lf" ] && [ "$_lf" = "$_crlf" ] \
   && pass "doctor counts project skills the same on an LF and a CRLF manifest ($_lf)" \
   || fail "doctor's project-skill count depends on the manifest's line endings (LF=$_lf CRLF=$_crlf)"
-grep -qxF 'skills/handoff' "$DCR/.claude/kit-manifest.txt" \
-  && fail "the must-fail twin did not reproduce the CRLF miss, so the case above proves nothing" \
-  || pass "must-fail twin: an unstripped whole-line grep DOES miss the CRLF manifest"
+# The twin asks whether an UNSTRIPPED whole-line grep misses a CRLF line — and the answer is a PLATFORM fact,
+# not a fixture property. It misses on macOS and Linux, which is where the miscount came from. On Git Bash it
+# MATCHES: measured on windows-latest, where this assertion was red for exactly that reason before it said so.
+# So a twin that cannot reproduce is reported as a platform skip with the consequence spelled out, because
+# "this defect cannot occur here" and "the fixture is broken" look identical from a red line. The strip stays
+# either way: the manifest travels between platforms, and the file that reads it does not get to assume which
+# grep will be holding it.
+if grep -qxF 'skills/handoff' "$DCR/.claude/kit-manifest.txt"; then
+  skip platform "the CRLF miss cannot be reproduced here — this grep matches a CR-terminated line, so the miscount this fixes does not occur on this platform"
+else
+  pass "must-fail twin: an unstripped whole-line grep DOES miss the CRLF manifest"
+fi
 rm -rf "$DCR"
 # The "non-executable hook" probe only means something where `chmod -x` actually takes effect. On Windows via
 # Git-Bash/MSYS a file with a `#!` shebang is reported executable regardless of the bit, so the broken state can't

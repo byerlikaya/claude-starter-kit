@@ -34,7 +34,7 @@ fi
 
 # The step list is the contract with ci.yml. Adding a gate here is what makes it runnable locally;
 # adding it to ci.yml alone is what put this file here in the first place.
-STEPS="syntax smoke routing catalogue manifests e2e studio parser"
+STEPS="syntax smoke routing catalogue manifests e2e studio parser i18n"
 
 step_syntax(){
   bash -n start.sh || return 1
@@ -64,6 +64,20 @@ step_e2e(){       bash packaging/e2e.sh; }
 # cannot report the next one. The variable stays in the script and is pinned there to fail if a row it excuses
 # starts passing — a safety valve that cleans itself up, not a permanent dispensation.
 step_parser(){    bash claude-starter/eval/parser-conformance.sh; }
+
+# The bilingual installer's message tables, audited statically: patterns quoted (an unquoted one is a GLOB, and
+# a lot of prose ends in `?`), no colour or raw ESC inside a message, no stray backslash or bare `%` in a string
+# that printf takes as its FORMAT, matching `%s` counts across languages, no `''` (bash concatenates it and eats
+# the apostrophe, so `.NET''e` prints `.NETe` — valid syntax, silently wrong output), and no stale pattern that
+# no longer matches anything in its script.
+#
+# Its own step rather than folded into `syntax`, because it has its own verdict to report and hiding it inside a
+# step whose name says something else is how a gate stops being read. It is pure bash + awk deliberately: a
+# python one would SKIP on a stock Windows desktop, where the Store's python3 stub resolves and then fails — the
+# platform where the installer matters most, and the exact shape of four incidents this repo has already paid
+# for. Whether gawk (Git Bash, ubuntu) and BSD awk (macOS) agree on it is not measurable on one machine, which
+# is why it runs on every platform CI covers.
+step_i18n(){      bash packaging/i18n-audit.sh; }
 
 # The panel IS part of the payload now; it keeps its own step because it is a
 # NODE gate, not because it sits outside what ships. Node is the only thing it
