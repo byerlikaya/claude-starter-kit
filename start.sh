@@ -168,6 +168,34 @@ Every install ships the whole kit: all agents, all skills — backend, web and m
 USAGE
 }
 
+# Read one answer without hanging an unattended run — and be honest about which hang this closes.
+#
+# Four stdin shapes, measured (bare `read`, perl alarm as the clock, each shape calibrated first):
+#   a terminal with a human ....... blocks until they type        <- correct, must not change
+#   a terminal with NOBODY ........ blocks forever                <- the Claude Code pty case
+#   a pipe carrying data .......... returns at once
+#   a pipe at EOF (</dev/null) .... returns at once, answer ""
+#   a pipe open and empty ......... blocks forever                <- closed by the timeout below
+#
+# The timeout applies ONLY when stdin is not a terminal. On a terminal a human may take as long as they
+# like, and cutting them off would be a worse bug than the one being fixed.
+#
+# WHAT THIS DOES NOT FIX, stated plainly because the opposite was nearly written here: a pty IS a terminal,
+# so `[ -t 0 ]` is TRUE for it and this takes the blocking branch. Measured under expect: `[ -t 0 ]` says
+# yes and the read blocks with no input. An unattended run under a pty — which is what Claude Code creates —
+# is therefore still answered by --yes and by nothing else. That is not a gap in the timeout; stdin carries
+# no signal that distinguishes "a terminal nobody is watching" from "a terminal with a slow typist".
+#
+# 10 seconds rather than 5: the cost of being too short is a declined install, which is visible and
+# recoverable, but a producer that legitimately takes a moment to write the answer should still win. The
+# value is an integer because bash 3.2 rejects a fractional -t ("invalid timeout specification", measured).
+csk_read() {   # $1 = name of the variable to set
+  local __v="$1" __a=""
+  if [ -t 0 ]; then read -r __a || __a=""
+  else read -t 10 -r __a || __a=""
+  fi
+  eval "$__v=\$__a"
+}
 ask_yes() {  # $1 = question; returns 0 if the user says 'yes'
   local a
   # --yes ALWAYS wins, and it is answered BEFORE stdin is touched at all. Claude Code runs the installer
@@ -188,7 +216,7 @@ ask_yes() {  # $1 = question; returns 0 if the user says 'yes'
   # that shape would silently turn every piped install into a cancellation. A pipe reaching EOF already
   # answers "" => no, so the unattended case stays safe without special-casing it.
   printf '%s [yes/no]: ' "$1"
-  read -r a || a=""
+  csk_read a
   case "$a" in [yY]|[yY][eE][sS]|[eE]|[eE][vV][eE][tT]) return 0 ;; *) return 1 ;; esac
 }
 # Append entries to .gitignore. Three callers had three copies of the same two bugs (start.sh's four-entry
@@ -440,7 +468,7 @@ if [ -z "$STACK" ]; then
   skip "$(m 'devarch-module and the DevArchitecture base NOT INSTALLED (sonarqube-check still installed)')"
   echo
   printf '  %s->%s %s %s[1-2, %s]%s: ' "$CY" "$R" "$(m 'Choice')" "$D" "$(m 'empty=1')" "$R"
-  read -r s || s=""                 # empty => default (dotnet)
+  csk_read s                        # empty => default (dotnet)
   case "$s" in 2) STACK="generic" ;; *) STACK="dotnet" ;; esac
 fi
 
@@ -479,7 +507,7 @@ if [ -z "$VISIBILITY" ]; then
   skip "$(m 'internal working documents (docs/) stay private in BOTH answers')"
   echo
   printf '  %s->%s %s %s[1-2, %s]%s: ' "$CY" "$R" "$(m 'Choice')" "$D" "$(m 'empty=1')" "$R"
-  read -r s || s=""                 # empty => default (private = today's behaviour)
+  csk_read s                        # empty => default (private = today's behaviour)
   case "$s" in 2) VISIBILITY="shared" ;; *) VISIBILITY="private" ;; esac
 fi
 # The exact lines this install will append, resolved once so the summary and the writer cannot disagree.
