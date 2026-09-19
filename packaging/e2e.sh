@@ -437,17 +437,51 @@ W="$(wiz yes-alone)"
 grep -q 'does not approve' "$W/out.txt" || { echo "FAIL: --yes declined the risky step without saying why"; exit 1; }
 echo "[wizard] --yes installs unattended, reads nothing, and refuses the risky clone with a reason"
 
-# 2 · Without --yes and with nothing on stdin, the installer DECLINES rather than blocking. This is the case
-#     that returned rc=124 on Windows before the guard. `timeout` is the whole assertion: without it a
-#     regression here does not fail the suite, it hangs it.
-W2="$(wiz no-yes-closed)"
-if command -v timeout >/dev/null 2>&1; then
-  ( cd "$W2" && timeout 25 bash start.sh >/dev/null 2>&1 </dev/null ); rc=$?
-  [ "$rc" != 124 ] || { echo "FAIL: start.sh BLOCKED with no --yes and no stdin (the Windows hang)"; exit 1; }
+# 2 · TWO DIFFERENT STDINs, and the difference is the whole point. CLOSED stdin reaches EOF, so every `read`
+#     answers "" and the installer declines. OPEN-BUT-EMPTY never reaches EOF, so a bare `read` waits forever —
+#     that is what a pty looks like, which is how Claude Code runs a command on Windows, and it is the case
+#     `adopt.sh:46-49` was written for. The first version of this case drove `</dev/null` and passed while
+#     measuring the wrong condition, and skipped entirely where `timeout(1)` is absent, which includes macOS.
+#
+#     The timeout is perl's `alarm` rather than `timeout(1)`: perl ships with macOS AND with Git Bash, so the
+#     case runs everywhere instead of announcing a skip on two of three platforms. 142 is SIGALRM.
+#     CALIBRATED IN-LINE, because "it hung" is only meaningful if the two stdins demonstrably differ here: a
+#     bare `read` must time out on the fifo and must return at once on /dev/null. If those two agree, the
+#     fixture proves nothing and says so rather than reporting a pass.
+_to(){ perl -e 'alarm shift; exec @ARGV or exit 127' "$@"; }
+_FC="$WORK/fifo-cal"; rm -rf "$_FC"; mkdir -p "$_FC"
+( cd "$_FC" && mkfifo f && exec 3<>f && _to 4 bash -c 'read -r x' <&3; echo $? > rc_open; exec 3>&- ) || true
+( cd "$_FC" && _to 4 bash -c 'read -r x' </dev/null; echo $? > rc_closed ) || true
+if [ "$(cat "$_FC/rc_open")" = 142 ] && [ "$(cat "$_FC/rc_closed")" != 142 ]; then
+  W2="$(wiz no-yes-closed)"
+  ( cd "$W2" && _to 25 bash start.sh >/dev/null 2>&1 </dev/null ); rc=$?
+  [ "$rc" != 142 ] || { echo "FAIL: start.sh blocked even on CLOSED stdin — every piped install would hang"; exit 1; }
   [ ! -d "$W2/.claude" ] || { echo "FAIL: start.sh installed without consent and without --yes"; exit 1; }
-  echo "[wizard] no --yes, no stdin: declines (rc=$rc) instead of hanging"
+  echo "[wizard] closed stdin: declines (rc=$rc) rather than installing or blocking"
+
+  # --yes is what makes an unattended run safe on a pty. Asserted on the OPEN-EMPTY stdin, which is the
+  # condition that actually hangs, rather than on the one that returns anyway.
+  W2B="$(wiz yes-openempty)"
+  ( cd "$W2B" && mkfifo f && exec 3<>f && _to 25 bash start.sh --yes >/dev/null 2>&1 <&3; echo $? > rc; exec 3>&- ) || true
+  [ "$(cat "$W2B/rc")" != 142 ] \
+    || { echo "FAIL: start.sh --yes BLOCKED on open-but-empty stdin — unattended runs hang under a pty"; exit 1; }
+  echo "[wizard] --yes returns on open-but-empty stdin (the pty shape), rc=$(cat "$W2B/rc")"
+
+  # KNOWN AND OPEN, stated rather than pinned green: WITHOUT --yes, an open-but-empty stdin still blocks —
+  # measured 142 here and on stock Windows, at the stack chooser with no flags and one prompt later with
+  # --generic. `ask_yes` carries a documented reason for having no `-t 0` guard (a `-t 0` test would turn the
+  # documented `printf 'yes\n' | bash start.sh` form into a cancellation); the stack chooser carries none. This
+  # case records the state so a change in EITHER direction is visible, and does not fail the suite over a
+  # trade-off its owner made deliberately.
+  W2C="$(wiz noyes-openempty)"
+  ( cd "$W2C" && mkfifo f && exec 3<>f && _to 12 bash start.sh >/dev/null 2>&1 <&3; echo $? > rc; exec 3>&- ) || true
+  if [ "$(cat "$W2C/rc")" = 142 ] ; then
+    echo "[wizard] KNOWN-OPEN: without --yes an open-but-empty stdin still blocks (the pty hang) — --yes is the route"
+  else
+    echo "[wizard] the no---yes pty hang is GONE (rc=$(cat "$W2C/rc")) — update this note, the trade-off changed"
+  fi
 else
-  echo "[wizard] SKIP (scope): no timeout(1) on this machine, so a hang cannot be told from a slow pass"
+  echo "[wizard] SKIP (fixture): the two stdin shapes did not separate here (open=$(cat "$_FC/rc_open") closed=$(cat "$_FC/rc_closed")), so a hang could not be told from a pass"
 fi
 
 # 15 · THE PIPE-ORDER GATE. A new prompt shifts every existing piped call by one answer. Adding the visibility
