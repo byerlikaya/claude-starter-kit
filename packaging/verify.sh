@@ -34,7 +34,7 @@ fi
 
 # The step list is the contract with ci.yml. Adding a gate here is what makes it runnable locally;
 # adding it to ci.yml alone is what put this file here in the first place.
-STEPS="syntax smoke routing catalogue manifests e2e studio parser i18n"
+STEPS="syntax smoke routing catalogue manifests e2e studio parser i18n subshell"
 
 step_syntax(){
   bash -n start.sh || return 1
@@ -78,6 +78,13 @@ step_parser(){    bash claude-starter/eval/parser-conformance.sh; }
 # for. Whether gawk (Git Bash, ubuntu) and BSD awk (macOS) agree on it is not measurable on one machine, which
 # is why it runs on every platform CI covers.
 step_i18n(){      bash packaging/i18n-audit.sh; }
+# An assertion inside a subshell increments counters in a child, so it PRINTS green while the suite total does
+# not move and a failure is invisible — a silently always-green gate. It happened once, in the block added to
+# calibrate the evals metric: five rows printed pass while the total rose by one instead of six, and it was
+# caught by reading the COUNT rather than the colour. This finds the shape instead of relying on that.
+# The scanner runs its own selftest first and refuses to touch real files if it fails, because its failure mode
+# is noise rather than silence: two early versions flagged `for` loops and their own fixtures.
+step_subshell(){  bash packaging/subshell-audit.sh; }
 
 # The panel IS part of the payload now; it keeps its own step because it is a
 # NODE gate, not because it sits outside what ships. Node is the only thing it

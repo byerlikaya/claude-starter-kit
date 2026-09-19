@@ -29,10 +29,13 @@ skip(){ # $1 = tool|fixture|scope|platform, $2 = what was not checked
 # The reporter is itself a gate now, so it gets measured like one — in a subshell, so the real counters are not
 # disturbed. Three states: a tool-class skip must arm the CI failure, a scope-class skip must not, and neither
 # may be counted as a pass. Without this the asymmetry is a claim in a comment.
-# subshell-audit: intentional — this is the ONE place in this file where a subshell is the point rather than a
-# mistake. `_sk_probe` measures the reporter by letting it write counters that must NOT reach the real ones;
-# the assertions that consume it are outside. Everywhere else, an assertion inside a subshell is a silently
-# always-green gate (it happened once, in the evals-metric block, and the scanner exists because of it).
+# This is the ONE place in this file where a subshell is the point rather than a mistake: `_sk_probe` measures
+# the reporter by letting it write counters that must NOT reach the real ones, and the assertions that consume
+# it are outside. Everywhere else an assertion inside a subshell is a silently always-green gate — it happened
+# once, in the evals-metric block, and packaging/subshell-audit.sh exists because of it. The marker below is
+# on the line above the probe on purpose: the scanner reads that line or the flagged one, nowhere further, so
+# an exception cannot be declared at a distance and then drift away from what it excuses.
+# subshell-audit: intentional
 _sk_probe(){ ( SKIPN=0; SKIP_HARD=0; PASSN=0; SKIP_LIST=""; skip "$1" probe >/dev/null; printf '%s %s %s' "$SKIPN" "$SKIP_HARD" "$PASSN" ); }
 [ "$(_sk_probe tool)"     = "1 1 0" ] && pass "a tool-class skip is counted and arms the CI failure"     || fail "skip tool did not arm the CI failure: $(_sk_probe tool)"
 [ "$(_sk_probe fixture)"  = "1 1 0" ] && pass "a fixture-class skip arms the CI failure too"             || fail "skip fixture did not arm the CI failure: $(_sk_probe fixture)"

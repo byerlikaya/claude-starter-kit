@@ -41,6 +41,9 @@ jobs:
 
       # The installer's message tables. Here on every platform because the audit is awk, and whether gawk
       # (this runner, and Git Bash) and BSD awk (macOS) agree on it cannot be measured on one machine.
+      - name: subshell audit — an assertion in a child shell is a silently green gate
+        run: bash packaging/verify.sh subshell
+
       - name: i18n audit — the bilingual tables hold their invariants
         run: bash packaging/verify.sh i18n
 
@@ -124,6 +127,9 @@ jobs:
 
       # The installer's message tables. Here on every platform because the audit is awk, and whether gawk
       # (this runner, and Git Bash) and BSD awk (macOS) agree on it cannot be measured on one machine.
+      - name: subshell audit — an assertion in a child shell is a silently green gate
+        run: bash packaging/verify.sh subshell
+
       - name: i18n audit — the bilingual tables hold their invariants
         run: bash packaging/verify.sh i18n
 
