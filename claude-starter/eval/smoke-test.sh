@@ -2416,49 +2416,148 @@ for _pair in \
       || fail "§4.6 shape: '$_cmd' wrongly blocked (out=$o)"
   fi
 done
-# TIER 1 WITH TEXT-MODE LINE ENDINGS — the dimension this suite never asked about, and CI was the only machine
-# that could answer it. A commit was refused on `windows-latest` while the same case passed on macOS and on a
-# real Windows desktop, and the reason is the TIER: GitHub's image has jq, so the command arrives DECODED, while
-# a stock desktop has neither jq nor python3 and sees JSON's two-character escapes. On top of that, a
-# Windows-native binary opens stdout in TEXT mode, so every LF it writes goes out as CRLF — and a command that
-# already contained `\r\n` reaches the hook as `\` + CR + CR + LF. The single CRLF fold ate one CR, the
-# continuation rule then looked for `\` + LF, found a CR in the way, and the lone backslash read as a pathspec.
-# Any Windows user with jq installed is on that tier, so this was a live defect, not a CI artefact.
+# TEXT-MODE LINE ENDINGS — the dimension this suite never asked about, and CI was the only machine that could
+# answer it. A commit was refused on `windows-latest` while the same case passed on macOS and on a real Windows
+# desktop. The cause was the TIER: GitHub's image has jq, so the command arrived DECODED, and a Windows-native
+# binary opens stdout in TEXT mode, so every LF it wrote went out as CRLF — a command that already contained
+# `\r\n` reached the hook as `\` + CR + CR + LF. The single CRLF fold ate one CR, the continuation rule then
+# looked for `\` + LF, found a CR in the way, and the lone backslash read as a pathspec.
+# THAT TIER NO LONGER EXISTS, and this block was rewritten because of it rather than deleted. What it used to
+# do was inject the command through a fake `jq` on PATH while the payload carried `"command":"placeholder"`.
+# With the ladder gone the stub is ignored: the two rows expecting a block went red, and — worse — the three
+# expecting rc=0 kept PASSING, because "placeholder" is not a git command at all. A row that passes for a
+# reason unrelated to its name is the exact failure this suite exists to prevent, so the whole block now drives
+# the ONE path that runs, through the payload's own escapes.
 #
-# The stub hands back bytes instead of parsing: hermetic, no jq, no python, no perl. Its own correctness is
-# checked first, because a stub that does not take would make every row below a green that measured nothing.
-_T1D="$(mktemp -d)"
-cat > "$_T1D/jq" <<'EOJQ'
-#!/bin/sh
-case "$*" in
-  *permission_mode*) printf '%s\n' "default" ;;
-  *) printf '%s\n' "$CSK_FAKE_CMD" ;;
-esac
-EOJQ
-chmod +x "$_T1D/jq"
-if [ "$(CSK_FAKE_CMD='probe-me' PATH="$_T1D:$PATH" jq -r '.tool_input.command' </dev/null 2>/dev/null)" = "probe-me" ]; then
-  _t1(){ printf '{"cwd":"%s","permission_mode":"default","tool_name":"Bash","tool_input":{"command":"placeholder"}}' "$R46" \
-         | CSK_FAKE_CMD="$1" PATH="$_T1D:$PATH" bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; }
-  # `\` + CR + CR + LF: a continuation pasted from a Windows editor, decoded by a text-mode writer.
-  _t1 "$(printf 'git commit \\\r\r\n  -m c')"; [ "$?" = 0 ] \
-    && pass "§4.6 tier1-text: a CRLF continuation is not read as a pathspec" \
-    || fail "§4.6 tier1-text: a backslash + CR CR LF refused an ordinary commit (the CI failure)"
-  _t1 "$(printf 'git commit \\\r\r\n  -m c -- a.txt')"; [ "$?" = 2 ] \
-    && pass "§4.6 tier1-text: a real pathspec after that continuation still BLOCKS" \
-    || fail "§4.6 tier1-text FAIL-OPEN: a pathspec after a CRLF continuation was allowed"
-  _t1 'git commit -m c'; [ "$?" = 0 ] \
-    && pass "§4.6 tier1-text: an ordinary commit is untouched on this tier" \
-    || fail "§4.6 tier1-text: a plain commit was refused — the fixture is wrong, CI passes 800+ of these"
-  _t1 "$(printf 'git commit -m c\r\necho done')"; [ "$?" = 0 ] \
-    && pass "§4.6 tier1-text: a CRLF-separated second command is not a pathspec" \
-    || fail "§4.6 tier1-text: a CRLF separator refused an ordinary commit"
-  _t1 "$(printf 'git commit -m c -- a.txt\r\necho done')"; [ "$?" = 2 ] \
-    && pass "§4.6 tier1-text: a pathspec before a CRLF separator still BLOCKS" \
-    || fail "§4.6 tier1-text FAIL-OPEN: a pathspec before a CRLF separator was allowed"
+# FIRST the mechanism, pinned as its own assertion: through VALID JSON a `\r` escape is DROPPED by the
+# unescaper (deliberate CRLF normalisation, documented in the hook), so a CR cannot reach the §4.6 scanner at
+# all and the tier-1 class is unreachable. If a future unescaper stops dropping it, this row goes red and says
+# so — which is the only reason the rows after it are allowed to stop worrying about CR.
+_u46(){ ( eval "$(sed -n '/^_json_slice()/,/^}/p' "$HOOKS/guard-bash.sh")"
+          eval "$(sed -n '/^_json_unescape()/,/^}/p' "$HOOKS/guard-bash.sh")"
+          _json_unescape "$(_json_slice "$1" command)" ); }
+_crn(){ printf '%s' "$1" | tr -dc '\r' | wc -c | tr -d ' '; }   # NOT `od -c | grep -c '\r'` — that counts `r`
+# The counter is calibrated on both classes before it judges anything: a known-CRLF string and a known-LF one.
+# It read 0 on a CRLF file once, plausibly, and was wrong; only `tr -dc` separates the two.
+if [ "$(_crn "$(printf 'a\r\nb\r\nc\r\n')")" = 3 ] && [ "$(_crn "$(printf 'a\nb\nc\n')")" = 0 ]; then
+  _dec="$(_u46 '{"tool_name":"Bash","tool_input":{"command":"git commit \\\r\r\n  -m c -- a.txt"}}')"
+  [ "$(_crn "$_dec")" = 0 ] \
+    && pass "§4.6 text-mode: a \\r escape is dropped, so no CR reaches the scanner from valid JSON" \
+    || fail "§4.6 text-mode: a CR survived the unescaper — the tier-1 CR class is reachable again"
+  case "$_dec" in
+    *'git commit \'*) pass "§4.6 text-mode: the continuation backslash itself survives the decode" ;;
+    *) fail "§4.6 text-mode: the decode lost the continuation backslash (dec=$_dec)" ;;
+  esac
+  # _m2 — THE MECHANISM BEHIND THE TWO SPELLINGS VERDICTING DIFFERENTLY, pinned here so the difference is a
+  # stated fact rather than an argument. Escaped: the backslash survives and LF follows it, so it is a real
+  # continuation. Literal: `\` + CR is not a JSON escape, the unescaper consumes the backslash, and bash does
+  # not treat `\` + CR as a continuation either — so neither the hook nor the shell joins the lines.
+  case "$_dec" in
+    *'\'$'\n'*) pass "§4.6 text-mode: the ESCAPED spelling decodes to a real backslash-LF continuation" ;;
+    *) fail "§4.6 text-mode: the escaped spelling no longer produces a continuation — the BLOCK row's reason is gone" ;;
+  esac
+  _decl="$(_u46 "$(printf '{"tool_name":"Bash","tool_input":{"command":"git commit \\\r\r\n  -m c -- a.txt"}}')")"
+  case "$_decl" in
+    *'\'$'\n'*) fail "§4.6 text-mode: the LITERAL spelling now decodes to a continuation — its allow row is wrong" ;;
+    *) pass "§4.6 text-mode: the LITERAL spelling decodes to NO continuation, which is why it is allowed" ;;
+  esac
 else
-  fail "§4.6 tier1-text: the jq stub did not take, so this tier went unmeasured (broken fixture, not a pass)"
+  fail "§4.6 text-mode: the CR counter is broken (CRLF=$(_crn "$(printf 'a\r\n')") LF=$(_crn "$(printf 'a\n')")), so nothing below measured CR"
 fi
-rm -rf "$_T1D"
+# THEN the verdicts, twice over: once in the shape valid JSON can carry (`\\` `\r` `\r` `\n` escapes), and once
+# with LITERAL CR bytes in the payload. The second is invalid JSON and no harness sends it, but the slice walks
+# bytes rather than validating, so it is reachable by anything that writes the payload itself — defence in
+# depth, and it is the shape that actually carried the original defect.
+_t1e(){ printf '{"cwd":"%s","permission_mode":"default","tool_name":"Bash","tool_input":{"command":"%s"}}' "$R46" "$1" \
+        | ( cd "$R46" && bash "$HOOKS/guard-bash.sh" ) >/dev/null 2>&1; }
+# The two spellings AGREE on three rows and must NOT agree on the fourth, so the expectation is part of the
+# data rather than assumed to be shared. Measured, not reasoned:
+#   escaped `\\` + `\r` `\r` `\n`  ->  decode is `git commit \` + LF + `  -m c -- a.txt`. The backslash
+#     survives, LF follows it, so it IS a line continuation: one command, the pathspec belongs to the commit,
+#     and it must BLOCK.
+#   literal `\` + CR + CR + LF     ->  decode is `git commit ` + CR + CR + LF + `  -m c -- a.txt`. `\` + CR is
+#     not a JSON escape, so the unescaper consumes the backslash — and bash does not treat `\` + CR as a
+#     continuation either, only `\` + LF. So in BOTH the hook's view and the shell's, the LF ends the command:
+#     the commit carries no pathspec and `-- a.txt` sits in a second command that is not a git commit.
+#     Allowing it is correct, and asserting rc=2 here was a wrong expectation of mine, not a hook defect.
+# The `_m2` row below pins that mechanism directly, so if a future unescaper starts keeping that backslash the
+# row that changes says why instead of leaving a verdict flip to be argued about.
+for _sp in escaped literal; do
+  case "$_sp" in
+    escaped) _c1='git commit \\\r\r\n  -m c';          _c2='git commit \\\r\r\n  -m c -- a.txt'; _e2=2
+             _c3='git commit -m c\r\necho done';       _c4='git commit -m c -- a.txt\r\necho done' ;;
+    literal) _c1="$(printf 'git commit \\\r\r\n  -m c')";        _c2="$(printf 'git commit \\\r\r\n  -m c -- a.txt')"; _e2=0
+             _c3="$(printf 'git commit -m c\r\necho done')";     _c4="$(printf 'git commit -m c -- a.txt\r\necho done')" ;;
+  esac
+  _t1e "$_c1"; [ "$?" = 0 ] \
+    && pass "§4.6 text-mode/$_sp: a CRLF continuation is not read as a pathspec" \
+    || fail "§4.6 text-mode/$_sp: a backslash + CR CR LF refused an ordinary commit (the CI failure)"
+  # rc is captured BEFORE the comparison: reading `$?` inside the failure message would report the status of
+  # the `[` test itself, so the number printed would always be 1 and the report would be a lie.
+  _t1e "$_c2"; _r2=$?; [ "$_r2" = "$_e2" ] \
+    && pass "§4.6 text-mode/$_sp: a pathspec after that continuation verdicts $_e2, for the documented reason" \
+    || fail "§4.6 text-mode/$_sp: a pathspec after a CRLF continuation gave rc=$_r2, expected $_e2"
+  _t1e "$_c3"; [ "$?" = 0 ] \
+    && pass "§4.6 text-mode/$_sp: a CRLF-separated second command is not a pathspec" \
+    || fail "§4.6 text-mode/$_sp: a CRLF separator refused an ordinary commit"
+  _t1e "$_c4"; [ "$?" = 2 ] \
+    && pass "§4.6 text-mode/$_sp FAIL-OPEN guard: a pathspec before a CRLF separator BLOCKS" \
+    || fail "§4.6 text-mode/$_sp FAIL-OPEN: a pathspec before a CRLF separator was allowed"
+done
+_t1e 'git commit -m c'; [ "$?" = 0 ] \
+  && pass "§4.6 text-mode: an ordinary commit with no line endings at all is untouched" \
+  || fail "§4.6 text-mode: a plain commit was refused — the fixture is wrong, CI passes 800+ of these"
+
+# --- ONE READER: THE LADDER MUST NOT COME BACK ------------------------------------------------------------
+# The jq -> python3 -> slice ladder was deleted because the readers DISAGREEING was the root cause of four
+# incidents plus a fail-open no parser fix could reach. Nothing structural stops someone re-adding a rung for
+# speed, and a re-added rung would be invisible: every behavioural case in this file would keep passing on the
+# machine that has jq, which is every machine except the stock Windows desktop the ladder kept breaking.
+#
+# The detector is deliberately broader than the ladder that was removed, because review found three ways past
+# a narrower one: it caught `command -v jq` only, so `command -v python3`, `type jq` and — the nastiest — a
+# rung sharing a line with a parameter expansion all walked past it. That last one is native to these files
+# (`_after_cmd_key="${INPUT#*'"command":'}"`), because stripping from the first `#` regardless of quoting eats
+# the code and leaves `_a="${INPUT`. So: strip only a `#` that starts a line or follows whitespace AND is not
+# inside `${…}`, by first blanking every `${…}` expansion, and look for a READER being selected rather than
+# for one spelling of one probe.
+# WHAT A RUNG ACTUALLY IS: an interpreter that consumes THE PAYLOAD. Naming the threat that way is what makes
+# the check both broad and correct. A first attempt looked for `command -v <interpreter>` anywhere and went red
+# on guard-commit-scan's MESSAGE extractor — python3 pulling `-m`'s value out of an already-parsed command
+# string, with a pure-bash fallback, deliberately left in place because it is a different job. Excluding it by
+# a marker failed too: the same block probes on one line and passes `CSK_CMD=` on the next, so a line-based
+# allowance saw only half of it. Every rung that ever existed here piped `$INPUT` into the interpreter on the
+# same line, and nothing that reads `$CMD` touches the payload — so that is the test.
+_ladder(){ grep -vE '^[[:space:]]*#' "$1" | grep -nE '(jq|python3|python|perl|node)' | grep -E 'INPUT' ; }
+_lad_bad=""
+for _h in guard-bash guard-write guard-commit-scan; do
+  _hit="$(_ladder "$HOOKS/$_h.sh" 2>/dev/null)" && _lad_bad="$_lad_bad $_h:${_hit%%:*}"
+  grep -q '_parsed' "$HOOKS/$_h.sh" && _lad_bad="$_lad_bad $_h:_parsed"
+done
+[ -z "$_lad_bad" ] \
+  && pass "one reader: no jq/python3 reader selection in the three guard hooks" \
+  || fail "one reader: a reader ladder is back —$_lad_bad"
+# THE TWINS. Four shapes that MUST fire — the two rungs that were actually deleted, one written with `type`
+# instead of `command -v`, and one sharing its line with a parameter expansion (the shape a comment-stripping
+# detector ate, leaving `_a="${INPUT`). Two that must stay SILENT — prose about the deleted ladder, which
+# these files carry at length on purpose, and the message extractor that reads `$CMD` and never the payload.
+_LT="$(mktemp -d)"
+printf '%s\n' '#!/bin/sh' 'if command -v jq >/dev/null 2>&1 && CMD="$(printf "%s" "$INPUT" | jq -r .x)"; then :; fi' > "$_LT/a.sh"
+printf '%s\n' '#!/bin/sh' 'CMD="$(printf "%s" "$INPUT" | python3 -c "import sys,json")"'                             > "$_LT/b.sh"
+printf '%s\n' '#!/bin/sh' 'type jq >/dev/null && CMD="$(printf "%s" "$INPUT" | jq -r .x)"'                           > "$_LT/c.sh"
+printf '%s\n' '#!/bin/sh' '_a="${INPUT#*x}"; CMD="$(printf "%s" "$INPUT" | jq -r .x)"'                               > "$_LT/d.sh"
+printf '%s\n' '#!/bin/sh' '# the deleted ladder piped "$INPUT" into jq and then python3 — prose, must NOT count' 'X=1' > "$_LT/e.sh"
+printf '%s\n' '#!/bin/sh' 'if command -v python3 >/dev/null 2>&1; then' '  MSG="$(CSK_CMD="$CMD" python3 -c "pass")"' 'fi' > "$_LT/f.sh"
+_tw=0; _twf=""
+for _f in a b c d; do _ladder "$_LT/$_f.sh" >/dev/null 2>&1 || { _tw=1; _twf="$_f"; }; done
+for _f in e f; do _ladder "$_LT/$_f.sh" >/dev/null 2>&1 && { _tw=2; _twf="$_f"; }; done
+case "$_tw" in
+  0) pass "one reader: the detector fires on four rung shapes and stays silent on prose and on the \$CMD reader" ;;
+  1) fail "one reader: the detector MISSED rung shape '$_twf' — the assertion above measured less than it claims" ;;
+  2) fail "one reader: the detector fired on '$_twf', which reads no payload — it would forbid ordinary code" ;;
+esac
+rm -rf "$_LT"
+
 # Globbing must stay OFF while splitting, or a pathspec is judged against whatever files sit in the cwd.
 gj default 'git commit -m c *.txt' | r46 >/dev/null 2>&1; [ "$?" = 2 ] \
   && pass "§4.6: an unexpanded glob pathspec still BLOCKS (splitting runs with noglob)" \

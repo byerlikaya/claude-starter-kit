@@ -313,37 +313,43 @@ _json_keycount(){  # $1 = payload, $2 = key -> sets _KC to how many times it occ
   done
 }
 # ---- /CSK-JSON-PARSE -----------------------------------------------------------------------------------
-# A TIER IS CHOSEN ON WHETHER IT WORKS, NOT ON WHETHER IT EXISTS. `command -v` answers the wrong question, and
-# on Windows the difference disarmed every gate in this file.
+# ONE READER, EVERYWHERE. This hook used to try jq, then python3, then the slice above, choosing a tier on
+# whether its extraction WORKED rather than on whether the binary existed. That was already the second fix to
+# the selection logic, and the ladder stayed the root cause of four separate incidents. It is gone.
 #
-# Measured on a stock Windows 11 desktop (Git Bash 5.3.15, Claude Code 2.1.241, no Python installed): Windows
-# puts %LOCALAPPDATA%\Microsoft\WindowsApps\python3 on PATH BY DEFAULT. It is not an interpreter, it is the
-# Microsoft Store redirector stub (AppInstallerPythonRedirector.exe) — so `command -v python3` succeeds, the
-# stub writes "Python was not found" to STDERR (which `2>/dev/null` swallows) and exits 49 with an EMPTY
-# stdout. CMD therefore came back "", `[ -z "$CMD" ] && exit 0` fired, and the hook allowed the call.
-# Silently, in every permission mode, with nothing written to any log. On that machine `rm -rf /`,
-# `git push --force`, the PowerShell §4.5 twins below, and a Write that rewrites THIS FILE all returned rc=0.
+# WHAT THE TIERS COST, all measured:
+#   * jq on CI. GitHub's windows-latest image HAS jq preinstalled, so every Windows verification ran on tier 1
+#     — a path no Windows user is on. A misfiring force-push regex therefore shipped green.
+#   * The python3 that is not python. On a stock Windows 11 desktop (Git Bash 5.3.15, no Python installed)
+#     Windows puts %LOCALAPPDATA%\Microsoft\WindowsApps\python3 on PATH BY DEFAULT. It is the Microsoft Store
+#     redirector stub: `command -v python3` succeeds, the stub writes "Python was not found" to stderr (which
+#     `2>/dev/null` swallows) and exits 49 with an EMPTY stdout. CMD came back "", `[ -z "$CMD" ] && exit 0`
+#     fired, and the hook ALLOWED the call — silently, in every mode, nothing in any log. On that machine
+#     `rm -rf /`, `git push --force`, the PowerShell §4.5 twins below and a Write that rewrites THIS FILE all
+#     returned rc=0.
+#   * The tier nobody could test. Tier 1 was verified on CI, tier 3 by stripping PATH on macOS/Linux, and
+#     tier 2 — the one every Windows user was actually on — nowhere.
+#   * AND ONE HOLE NO PARSER FIX CAN REACH, which is what this deletion is for rather than the costs above.
+#     `{"tool_input":{"foo":1},"meta":{"command":"rm -rf /"}}`: jq reads `.tool_input.command`, finds nothing,
+#     sets CMD="" and marks the payload parsed, so the reader that CAN see the sibling key never runs. Probed
+#     inside the hook: `CMD=[]` for that payload against `CMD=[rm -rf /]` for the compact one, rc=0 against
+#     rc=2. Measured on both platforms, with and without the ladder: of the seven reader defects the
+#     conformance oracle knows, the shared-token fix closes SIX and this one closes only when the ladder goes.
+#     That is also why the order was forced — deleting first would have left the six open with no second
+#     reader to catch any of them.
 #
-# This is the same bug as the jq-on-CI one described above, one layer up: the tier that runs on a real Windows
-# desktop is the tier nothing tested. §7b pins the pure-bash branch by building a jq/python3-free PATH — and
-# SKIPS on Windows, because Git Bash copies binaries instead of symlinking them. So the ladder was verified on
-# tier 1 (CI, jq present) and tier 3 (macOS/Linux, PATH stripped), and never on tier 2, which is where every
-# Windows user actually is. smoke-test §7c now shadows PATH with a stub that behaves exactly like the real one.
+# Deleting the ladder does not make the slice safer; it makes it the path EVERY run exercises. Stock Windows
+# was already alone on it, which is precisely why it was the least-tested code in the gate. Now CI, both
+# verify-cross jobs and every session here run the same bytes the Windows desktop runs.
 #
-# The fix costs nothing: an extraction's own exit status IS the probe. A tier that cannot answer is skipped,
-# so a broken jq falls through too, and malformed JSON now lands on the slice instead of failing open. On
-# Windows this is also CHEAPER than before — one failed stub call instead of two.
-CMD=""; PERM_MODE=""; _parsed=0
-if command -v jq >/dev/null 2>&1 && CMD="$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)"; then
-  PERM_MODE="$(printf '%s' "$INPUT" | jq -r '.permission_mode // empty' 2>/dev/null)"; _parsed=1
-elif command -v python3 >/dev/null 2>&1 && CMD="$(printf '%s' "$INPUT" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("tool_input",{}).get("command",""))' 2>/dev/null)"; then
-  PERM_MODE="$(printf '%s' "$INPUT" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("permission_mode",""))' 2>/dev/null)"; _parsed=1
-fi
-if [ "$_parsed" = 0 ]; then
-  CMD="$(_json_unescape "$(_json_slice "$INPUT" command)")"
-  PERM_MODE="$(_json_slice "$INPUT" permission_mode)"
-fi
-PERM_MODE="${PERM_MODE:-}"
+# The evidence is `eval/parser-conformance.sh` (run by `verify.sh parser`), which compares this reader against
+# a real parser row by row in both modes: 73 rows with the ladder, 72 with one reader, 0 divergent, 0
+# unmeasurable. Cost on the hot path, measured on stock Windows: the two process spawns that used to precede
+# the slice on every single Bash call are gone (-1 fork per hook per call), and `guard-bash · ls -la` went
+# 376 ms -> 169 ms with no overlap between the two columns, because the Store stub was being spawned and
+# failing on every call.
+CMD="$(_json_unescape "$(_json_slice "$INPUT" command)")"
+PERM_MODE="$(_json_slice "$INPUT" permission_mode)"
 
 # AN UNREADABLE PAYLOAD IS REFUSED, NOT WAVED THROUGH. Both shapes below were found by the parser-conformance
 # oracle, which compares this gate's verdict on the dependency-free tier against a real parser's, and both fell

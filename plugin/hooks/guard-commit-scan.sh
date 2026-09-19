@@ -382,19 +382,17 @@ elif [ "$_n_cmd" -gt 1 ]; then
   echo "Refusing rather than scanning whichever comes first." >&2
   exit 2
 fi
-CMD=""; _parsed=0
-if command -v jq >/dev/null 2>&1 && CMD="$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)"; then
-  _parsed=1
-elif command -v python3 >/dev/null 2>&1 && CMD="$(printf '%s' "$INPUT" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("tool_input",{}).get("command",""))' 2>/dev/null)"; then
-  _parsed=1
-fi
-if [ "$_parsed" = 0 ]; then
-  # Tier 3, and it used to be a `sed | head | sed` pipeline: four processes on EVERY Bash tool call,
-  # to re-derive a string guard-bash.sh had already parsed one hook earlier, and then re-answer a
-  # question it had already answered. Measured on `ls -la`: guard-bash.sh 2 processes, this hook 7.
-  # guard-write.sh already carried the shared parser; this was the one hook that never got it.
-  CMD="$(_json_unescape "$(_json_slice "$INPUT" command)")"
-fi
+# ONE READER, EVERYWHERE — the ladder is gone here too; the reasoning lives in guard-bash.sh next to the same
+# change. Two things specific to THIS hook are worth keeping:
+#   * The value must be UNESCAPED, not raw. A raw-text extraction leaves JSON escapes in place, so `-m \"…\"`
+#     never matches a quote-based scan and the message silently goes unscanned. That is precisely how the
+#     first version of this hook passed a commit carrying a co-author trailer.
+#   * The Windows stub. `command -v python3` found the Microsoft Store redirector, it exited 49 with an empty
+#     stdout, this hook read CMD="" and exited 0, and the commit content scan never ran at all.
+# The shared reader also replaced a `sed | head | sed` pipeline: four processes on EVERY Bash tool call, to
+# re-derive a string guard-bash.sh had already parsed one hook earlier. Measured on `ls -la`: guard-bash.sh 2
+# processes, this hook 7. With the ladder gone neither hook spawns a process to SELECT a reader.
+CMD="$(_json_unescape "$(_json_slice "$INPUT" command)")"
 [ -z "$CMD" ] && exit 0
 
 # A command that does not contain `git` at all cannot match the pattern below, and finding that out

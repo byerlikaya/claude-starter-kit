@@ -351,31 +351,27 @@ elif [ $((_n_fp + _n_nb)) -gt 1 ]; then
   echo "file to judge is ambiguous. Refusing rather than reading whichever comes first." >&2
   exit 2
 fi
-FP=""; _parsed=0
-if command -v jq >/dev/null 2>&1 && FP="$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // .tool_input.notebook_path // empty' 2>/dev/null)"; then
-  _parsed=1
-elif command -v python3 >/dev/null 2>&1 && FP="$(printf '%s' "$INPUT" | python3 -c 'import sys,json;d=json.load(sys.stdin).get("tool_input",{});print(d.get("file_path") or d.get("notebook_path") or "")' 2>/dev/null)"; then
-  _parsed=1
-fi
-if [ "$_parsed" = 0 ]; then
-  # Tier 3 is pure parameter expansion, so it cannot fail the way the two above can. It replaces a sed that
-  # truncated the value at the first escaped quote and never looked at notebook_path.
-  _raw="$(_json_slice "$INPUT" file_path)"
-  [ -n "$_raw" ] || _raw="$(_json_slice "$INPUT" notebook_path)"
-  # THE CAP GOES BEFORE THE UNESCAPER, and the cost it bounds is one THIS CHANGE INTRODUCES — worth saying
-  # plainly rather than dressing up as a pre-existing bug. What it replaces was a single `sed`, which is linear
-  # and was never slow; it was replaced because it truncated the value at the first escaped quote and never
-  # looked at `notebook_path`. The parser that fixes those walks character by character, which is quadratic in
-  # bash, and this is the tier a stock Windows install lands on — where every separator is a backslash, i.e.
-  # an escape, so the "no escapes" fast path never fires. Uncapped, that is a gate with an off switch: a hook
-  # killed at its 60s timeout emits no exit 2 and the write proceeds. Refusing above the cap is safe in the
-  # direction that matters, and the cap sits far above any path a filesystem will accept.
-  [ "${#_raw}" -le "$MAXPATH" ] || { FP="(oversized path: ${#_raw} bytes)"; block "gate-file edit (oversized path)" "$WHY_LONG"; }
-  FP="$(_json_unescape "$_raw")"
-fi
-# The jq tier reaches the fold below with no unescaper in front of it, and a global replace on a huge string is
-# quadratic too, so the cap is re-applied to whatever any tier produced.
-[ "${#FP}" -le "$MAXPATH" ] || { FP="(oversized path: ${#FP} bytes)"; block "gate-file edit (oversized path)" "$WHY_LONG"; }
+# ONE READER, EVERYWHERE — the jq/python3 ladder that stood here is gone; the reasoning and the measurements
+# are in guard-bash.sh next to the same change. What the ladder cost THIS hook specifically: Windows ships a
+# Microsoft Store redirector stub named python3 on PATH by default, `command -v` finds it, it exits 49 with an
+# empty stdout, FP came back "" and `[ -z "$FP" ] && exit 0` let the model rewrite .claude/hooks/guard-bash.sh
+# with its Write tool. Pure parameter expansion cannot fail that way.
+_raw="$(_json_slice "$INPUT" file_path)"
+[ -n "$_raw" ] || _raw="$(_json_slice "$INPUT" notebook_path)"
+# THE CAP GOES BEFORE THE UNESCAPER, and the cost it bounds is one the shared reader INTRODUCED — worth saying
+# plainly rather than dressing up as a pre-existing bug. What it replaced was a single `sed`, which is linear
+# and was never slow; it was replaced because it truncated the value at the first escaped quote and never
+# looked at `notebook_path`. The parser that fixes those walks character by character, which is quadratic in
+# bash, and on Windows every separator is a backslash, i.e. an escape, so the "no escapes" fast path never
+# fires. Uncapped, that is a gate with an off switch: a hook killed at its 60s timeout emits no exit 2 and the
+# write proceeds. Refusing above the cap is safe in the direction that matters, and the cap sits far above any
+# path a filesystem will accept.
+# ONE cap, not two. The second check used to follow the unescaper because the jq tier reached the fold with no
+# unescaper in front of it; with one reader that is gone, and the unescaper only ever SHRINKS its input —
+# measured over 23 escape forms including a surrogate pair and a 4900-byte run of `€` across the chunk
+# edge, with a deliberately-growing stand-in as the calibration, so the check could be seen to fail.
+[ "${#_raw}" -le "$MAXPATH" ] || { FP="(oversized path: ${#_raw} bytes)"; block "gate-file edit (oversized path)" "$WHY_LONG"; }
+FP="$(_json_unescape "$_raw")"
 
 # Nothing extractable. Exiting 0 unconditionally is what a future field rename turns into a silent bypass, so
 # look at the RAW payload instead: refuse only when the text itself names a gate tree. A payload that mentions
