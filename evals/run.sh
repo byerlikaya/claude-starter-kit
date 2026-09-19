@@ -267,7 +267,7 @@ for cdir in "$CASES"/*/; do
   [ -f "$cdir/case.env" ] && [ -f "$cdir/grade.sh" ] || { echo "run.sh: $cname is missing case.env or grade.sh" >&2; exit 1; }
 
   # shellcheck disable=SC1090
-  NEEDS_GIT_OK=0; REQUIRES=""; unset -f seed post_seed 2>/dev/null; . "$cdir/case.env"
+  NEEDS_GIT_OK=0; REQUIRES=""; NEEDS_OVERLAY_B=0; unset -f seed post_seed 2>/dev/null; . "$cdir/case.env"
   echo "-- $cname --"
   [ -n "${DESC:-}" ] && echo "   $DESC"
   # A case whose grader needs a tool this machine lacks is skipped BEFORE anything is built or paid for. Run anyway, it
@@ -276,6 +276,24 @@ for cdir in "$CASES"/*/; do
   if [ -n "$missing" ]; then
     printf '   ! SKIPPED, NOT MEASURED — needs%s, not on PATH; nothing was built or run\n\n' "$missing"
     SKIPPED=$((SKIPPED+1)); continue
+  fi
+
+  # A CASE MAY DECLARE THAT ARM B IS INCOMPLETE WITHOUT AN OVERLAY, and the three high-risk cases do. The rule
+  # they measure — the applicable audits are issued together — lives in TWO places: the discipline file and the
+  # agents' own Coordination sections. `CSK_EVAL_DISCIPLINE_B` replaces the first; `CSK_EVAL_OVERLAY_B` the
+  # second, and it is optional. Run arm B with only the first and it carries the new text beside the OLD agent
+  # files: the rule is half applied, the arms differ in more than one thing, and the experiment reports a
+  # number for a question nobody asked. The runner cannot know which cases care, so the case says so — the
+  # same shape as REQUIRES, and refused BEFORE anything is built or paid for rather than noticed afterwards.
+  if [ "${NEEDS_OVERLAY_B:-0}" = 1 ] && [ -z "${CSK_EVAL_OVERLAY_B:-}" ]; then
+    case " $ARMS " in
+      *" kitb "*)
+        echo "run.sh: $cname declares NEEDS_OVERLAY_B=1 and arm kitb has no CSK_EVAL_OVERLAY_B." >&2
+        echo "  The rule this case measures lives in the agent files too, so arm B would carry the new" >&2
+        echo "  discipline text with the old agents and measure something else. Set CSK_EVAL_OVERLAY_B to a" >&2
+        echo "  directory of agent files, or drop kitb from CSK_EVAL_ARMS for this case." >&2
+        exit 1 ;;
+    esac
   fi
 
   for arm in $ARMS; do
