@@ -165,7 +165,18 @@ R="$W/repo"; mkdir -p "$R"
     "$(git diff --cached | git hash-object --stdin)" "$(git rev-parse --verify --quiet HEAD)" \
     > .claude/review-pass.json )
 
-t3(){ ( cd "$R" && bash "$HOOK" < "$P" >/dev/null 2>&1; printf '%s' "$?" ); }
+# THE PURE-BASH COLUMN HAS TO BE PURE-BASH ON EVERY MACHINE, not only on one that happens to lack jq. Run on
+# the ambient PATH, `t3` is whatever rung the machine can reach — so on a jq box the "tier 3" column IS rung
+# one, both columns mean the same thing, and a ladder-split row records `t3=0/t1=0` and reports that the
+# divergence moved. That is the same defect as a row that only checks rc: the measurement's meaning depended on
+# the environment rather than on what it claimed to measure. The interpreters are shadowed with stubs that
+# EXIST and FAIL, which is the shape a stock Windows desktop already has (the Store python3), so the fallthrough
+# being exercised is the real one and not "the binary is absent".
+NOINT="$W/noint"; mkdir -p "$NOINT"
+for _i in jq python3 python perl node; do
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 1' > "$NOINT/$_i"; chmod +x "$NOINT/$_i"
+done
+t3(){ ( cd "$R" && PATH="$NOINT:$PATH" bash "$HOOK" < "$P" >/dev/null 2>&1; printf '%s' "$?" ); }
 t1(){ if [ -n "$T1PATH" ]; then ( cd "$R" && PATH="$T1PATH:$PATH" bash "$HOOK" < "$P" >/dev/null 2>&1; printf '%s' "$?" )
       else ( cd "$R" && bash "$HOOK" < "$P" >/dev/null 2>&1; printf '%s' "$?" ); fi; }
 
@@ -186,7 +197,11 @@ mk 'ls -la';   a="$(t3)"
 if [ "$a" = 0 ]; then ok "zararsız bir komut geçiyor (kapı aşırı bloklamıyor)"; else bad "kalibrasyon: 'ls -la' rc=$a"; CAL=0; fi
 
 if [ "$LADDER" = 1 ]; then
-  # the tier-1 branch must really be taken, or the second column is the first column twice
+  # BOTH COLUMNS MUST MEAN WHAT THEY SAY, and each needs its own control because they fail in opposite ways.
+  #
+  # The rung-one column must really reach an interpreter: a stub that returns a DIFFERENT command for a
+  # harmless payload flips rc 0 -> 2 only if the branch is taken. Without this the second column can silently
+  # be the first column twice.
   if [ -n "$T1PATH" ]; then
     cp "$SHIM/jq" "$W/jq.real"
     { echo '#!/usr/bin/env bash'
@@ -194,13 +209,40 @@ if [ "$LADDER" = 1 ]; then
     } > "$SHIM/jq"; chmod +x "$SHIM/jq"
     mk 'ls -la'; c="$(t1)"
     cp "$W/jq.real" "$SHIM/jq"; chmod +x "$SHIM/jq"
-    if [ "$c" = 2 ]; then ok "tier 1 dalı gerçekten koşuluyor (stub başka komut döndürünce rc 0->2)"
-    else bad "kalibrasyon: tier 1 dalına girilmiyor — ikinci sütun birincinin kopyası (rc=$c)"; CAL=0; fi
+    if [ "$c" = 2 ]; then ok "rung-1 sütunu gerçekten bir yorumlayıcıya ulaşıyor (stub başka komut döndürünce rc 0->2)"
+    else bad "kalibrasyon: rung-1 dalına girilmiyor — ikinci sütun birincinin kopyası (rc=$c)"; CAL=0; fi
   else
     mk 'ls -la'
-    if jq -r '.tool_input.command // empty' < "$P" 2>/dev/null | grep -qx 'ls -la'; then ok "tier 1 dalı gerçek jq ile koşuluyor"
+    if jq -r '.tool_input.command // empty' < "$P" 2>/dev/null | grep -qx 'ls -la'; then
+      ok "rung-1 sütunu gerçek jq ile koşuluyor"
     else bad "kalibrasyon: gerçek jq beklendiği gibi cevap vermiyor"; CAL=0; fi
   fi
+
+  # The MIRROR control, and it is the one this file did not have: the pure-bash column must IGNORE a working
+  # interpreter that is reachable. Run on the ambient PATH, `t3` was whatever rung the machine could reach — so
+  # on a jq box the "pure bash" column WAS rung one, both columns meant the same thing, and a ladder-split row
+  # recorded no divergence and reported that the divergence had moved. Same class as a row that only checks rc:
+  # the measurement's meaning depended on which binaries happened to be installed.
+  # A WORKING jq shim is placed BEHIND the shadow on the path t3 uses. If the shadow holds, `command -v jq`
+  # finds the failing stub first, the rung falls through and the slice answers `ls -la` for rc=0. If the shim is
+  # reached it returns `rm -rf /` and the row reads 2, which IS the shadow not taking.
+  DECOYBIN="$W/decoybin"; mkdir -p "$DECOYBIN"
+  { echo '#!/usr/bin/env bash'
+    echo "case \"\$2\" in '.tool_input.command // empty') printf '%s\\n' 'rm -rf /' ;; '.permission_mode // empty') printf '%s\\n' default ;; *) exit 3 ;; esac"
+  } > "$DECOYBIN/jq"; chmod +x "$DECOYBIN/jq"
+  mk 'ls -la'
+  c="$( cd "$R" && PATH="$NOINT:$DECOYBIN:$PATH" bash "$HOOK" < "$P" >/dev/null 2>&1; printf '%s' "$?" )"
+  if [ "$c" = 0 ]; then ok "saf-bash sütunu erişilebilir bir yorumlayıcıyı GÖRMEZDEN geliyor (gölge tutuyor)"
+  else bad "kalibrasyon: gölge tutmuyor — saf-bash sütunu bir yorumlayıcıya ulaştı (rc=$c); bu sütun ortamın kurulu ikililerine bağlı demektir"; CAL=0; fi
+else
+  # With one reader the shadow is a no-op, so asserting it would prove nothing. What is worth asserting instead
+  # is WHY it is a no-op: the hook names no interpreter on any line that also touches the payload. A rung that
+  # wrote $INPUT to a temp file and parsed the FILE would not name INPUT on the parsing line, so this looks for
+  # the interpreter and the payload variable independently and reports the pair rather than requiring them to
+  # share a line.
+  _INTERP="$(grep -nE '(^|[^A-Za-z_])(jq|python3?|perl|node|ruby)([^A-Za-z0-9_]|$)' "$HOOK" | grep -v '^[0-9]*: *#' | grep -vc '^$' || true)"
+  if [ "${_INTERP:-0}" = 0 ]; then ok "tek okuyucu: kapıda hiçbir yorumlayıcı adı geçmiyor (gölgeye gerek yok)"
+  else note "tek okuyucu: kapıda $_INTERP satırda yorumlayıcı adı geçiyor — payload'ı okumuyorlarsa sorun değil, ama yapısal kontrol onları adlandırmalı"; fi
 fi
 
 # the decode comparison must be able to SEE a difference, and must be able to FAIL
@@ -318,7 +360,7 @@ echo "-- düşmanca biçimler --"
 # the SECOND `§` and matched nothing at all, so the row reported "no rule fired" for a refusal that names two.
 # Adding `§` to the class would also be fragile under `LC_ALL=C`, where it is two bytes. `[^)]*` has no opinion
 # about what a tag may contain, which is the right amount of opinion for something whose job is to read one.
-t3err(){ ( cd "$R" && bash "$HOOK" < "$P" 2>&1 >/dev/null ) | tr -d '\r' | grep -oE 'GUARD \([^)]*\)' | head -1; }
+t3err(){ ( cd "$R" && PATH="$NOINT:$PATH" bash "$HOOK" < "$P" 2>&1 >/dev/null ) | tr -d '\r' | grep -oE 'GUARD \([^)]*\)' | head -1; }
 slice_reads(){ bash "$W/dec.sh" < "$P" 2>/dev/null; }
 
 adv(){ # $1 label  $2 expected rc  $3 rule  $4 raw payload  [$5 known-open:<t3>/<t1>]
