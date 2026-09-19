@@ -114,13 +114,41 @@ if [ -z "$REFKIND" ]; then
 fi
 note "referans çözücü: $REFKIND"
 
-ref_decode(){ # the reference's own answer for .tool_input.command, straight from the payload
+# THE REFERENCE'S TRANSPORT IS PART OF THE INSTRUMENT, and it was the one thing here taken on faith. Every
+# fixture is byte-checked and the reader's decode is compared byte-exact, but what the reference HANDED BACK
+# was never calibrated. A Windows-native jq opens stdout in TEXT mode and turns every LF it writes into CRLF,
+# so the one row whose decoded value contains an LF diverges by a byte the READER never had — an instrument
+# fault reported as a product divergence, in the file whose whole purpose is to refuse exactly that.
+#
+# The fix is not to normalise the difference away: a CR that a decode genuinely produced and a CR the pipe
+# added look identical after normalisation, so stripping them would hide a real divergence to spare a fake one.
+# Instead the reference is asked for BASE64, which is a single line with no embedded newline, so the platform's
+# line-ending translation has nothing to act on and is out of the path for every reference equally. bash does
+# the decoding, and both sides of the comparison are captured the same way so `$( )` treats them alike.
+B64=0
+if command -v base64 >/dev/null 2>&1 && [ "$(printf 'a\nb' | base64 | tr -d '\n' | base64 -d 2>/dev/null | od -An -tx1 | tr -d ' \n')" = "610a62" ]; then B64=1; fi
+
+ref_encode(){ # the reference's answer for .tool_input.command, base64 on one line
+  case "$REFKIND" in
+    jq)      jq -r '.tool_input.command // empty | @base64' < "$P" 2>/dev/null ;;
+    # Encode::encode first: JSON::PP hands back a CHARACTER string and encode_base64 wants octets, so an
+    # astral character made it return nothing at all. That failure was silent in the worst way — the
+    # known-divergence calibration compares the reference against the slice, and empty differs from the
+    # slice, so the row passed while the reference was carrying nothing.
+    perl)    perl -MJSON::PP -MMIME::Base64 -MEncode -e 'local $/; my $j=decode_json(<STDIN>); print encode_base64(Encode::encode("UTF-8", ($j->{tool_input}{command} // "")), "");' < "$P" 2>/dev/null ;;
+    python3) python3 -c 'import sys,json,base64;sys.stdout.write(base64.b64encode(json.load(sys.stdin).get("tool_input",{}).get("command","").encode()).decode())' < "$P" 2>/dev/null ;;
+    node)    node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{let o;try{o=JSON.parse(s)}catch(e){process.exit(0)}process.stdout.write(Buffer.from(((o.tool_input||{}).command)||"").toString("base64"))})' < "$P" 2>/dev/null ;;
+  esac; }
+
+ref_raw(){ # the direct read, kept as the fallback when nothing can decode base64
   case "$REFKIND" in
     jq)      jq -r '.tool_input.command // empty' < "$P" 2>/dev/null ;;
     perl)    perl -MJSON::PP -e 'local $/; my $j=decode_json(<STDIN>); binmode(STDOUT); print(($j->{tool_input}{command} // ""));' < "$P" 2>/dev/null ;;
     python3) python3 -c 'import sys,json;sys.stdout.write(json.load(sys.stdin).get("tool_input",{}).get("command",""))' < "$P" 2>/dev/null ;;
     node)    node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{let o;try{o=JSON.parse(s)}catch(e){process.exit(0)}process.stdout.write(((o.tool_input||{}).command)||"")})' < "$P" 2>/dev/null ;;
   esac; }
+
+ref_decode(){ if [ "$B64" = 1 ]; then ref_encode | tr -d '\r\n' | base64 -d 2>/dev/null; else ref_raw; fi; }
 
 SHIM="$W/shim"; mkdir -p "$SHIM"; T1PATH=""
 if [ "$REFKIND" != jq ]; then
@@ -248,8 +276,13 @@ fi
 # the decode comparison must be able to SEE a difference, and must be able to FAIL
 mk "echo a${BS}ud83d${BS}ude00b"
 d_s="$(slice_decode)"; d_r="$(ref_decode)"
-if [ "$d_s" != "$d_r" ]; then ok "bilinen çözüm farkı görünüyor (vekil çift: dilim '$d_s' · referans '$d_r')"
-else bad "kalibrasyon: bilinen fark görünmüyor — çözüm karşılaştırması boş olabilir"; CAL=0; fi
+# BOTH SIDES have to be checked, not just their inequality. An empty reference differs from the slice too, so
+# "they differ" passed while the reference was carrying nothing at all — which is how a broken transport hid
+# itself here for one run. The reference must produce the astral character; the slice must produce `??`.
+if [ -z "$d_r" ]; then bad "kalibrasyon: referans vekil çift için BOŞ döndü — taşıma bozuk, 'farklılar' yanlış sebepten geçerdi"; CAL=0
+elif [ "$d_s" = "$d_r" ]; then bad "kalibrasyon: bilinen fark görünmüyor — çözüm karşılaştırması boş olabilir"; CAL=0
+elif [ "$d_s" = 'echo a??b' ]; then ok "bilinen çözüm farkı görünüyor (dilim '$d_s' · referans '$d_r')"
+else bad "kalibrasyon: dilim vekil çift için 'echo a??b' vermedi ('$d_s') — belgelenen normalleştirme değişmiş"; CAL=0; fi
 
 # MUTATION MUST-FAIL: break the extracted slice and require the comparison to notice
 printf '%s\n' '#!/usr/bin/env bash' 'cat >/dev/null' "printf '%s' 'MUTASYON'" > "$W/dec.sh"
@@ -260,6 +293,21 @@ else bad "kalibrasyon: dilim kasten bozuldu ve karşılaştırma fark etmedi —
 mk 'ls -la'
 if [ "$(slice_decode)" = "ls -la" ]; then ok "mutasyondan sonra gerçek dilim geri geldi"
 else bad "kalibrasyon: mutasyon geri alınamadı, kalan satırlar bozuk dilimle ölçülürdü"; CAL=0; fi
+
+# THE REFERENCE'S TRANSPORT, calibrated on values whose bytes are known before they are sent. This is the one
+# the file did not have, and its absence produced a CI failure that named the reader for a fault in the
+# measuring path. A reference that cannot carry a line ending intact cannot be used to judge one.
+REF_LOSSY=0
+mk "a${BS}nb"; _t="$(ref_decode | od -An -tx1 | tr -d ' \n')"
+if [ "$_t" = "610a62" ]; then ok "referans gömülü bir LF'i bozmadan taşıyor ($( [ "$B64" = 1 ] && echo 'base64 taşıma' || echo 'doğrudan okuma' ))"
+else REF_LOSSY=1; bad "referans TAŞIMASI BOZUK: LF için 610a62 beklenirken $_t döndü — bu ölçü aletinin kusuru, kapının değil"; fi
+mk "a${BS}rb"; _t="$(ref_decode | od -An -tx1 | tr -d ' \n')"
+if [ "$_t" = "610d62" ]; then ok "referans gömülü bir CR'i bozmadan taşıyor"
+else REF_LOSSY=1; bad "referans TAŞIMASI BOZUK: CR için 610d62 beklenirken $_t döndü"; fi
+# Deliberately NOT normalised away: a CR the decode really produced and a CR the pipe added are the same byte
+# afterwards, so stripping them would hide a real divergence in order to spare a fake one. A lossy transport
+# makes the CR/LF-bearing rows UNMEASURED instead, which is a result the next reader can act on.
+[ "$REF_LOSSY" = 0 ] || note "taşıma kayıplı — satır sonu taşıyan satırlar ölçülemedi sayılacak, normalleştirilmeyecek"
 
 if [ "$CAL" != 1 ]; then
   echo; echo "KALİBRASYON BAŞARISIZ — korpus raporlanmıyor, çünkü sonucu okunamaz."; exit 1; fi
@@ -277,6 +325,13 @@ echo "-- korpus --"
 
 check_decode(){ # $1 label  $2 expectation
   local s r; s="$(slice_decode)"
+  # A lossy transport cannot judge a line ending, so those rows say so rather than being compared against a
+  # value the instrument mangled. The rows WITHOUT a line ending are unaffected and still run.
+  if [ "$REF_LOSSY" = 1 ]; then
+    case "$2$s" in
+      *$'\n'*|*$'\r'*) unm "$1 · satır sonu taşıyor ve referans taşıması kayıplı — ÖLÇÜLEMEDİ"; return ;;
+    esac
+  fi
   if [ "$2" = "=" ]; then
     r="$(ref_decode)"
     if [ "$s" = "$r" ]; then ok "$1 · çözüm referansla aynı"
