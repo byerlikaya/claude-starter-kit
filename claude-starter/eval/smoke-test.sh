@@ -29,6 +29,10 @@ skip(){ # $1 = tool|fixture|scope|platform, $2 = what was not checked
 # The reporter is itself a gate now, so it gets measured like one — in a subshell, so the real counters are not
 # disturbed. Three states: a tool-class skip must arm the CI failure, a scope-class skip must not, and neither
 # may be counted as a pass. Without this the asymmetry is a claim in a comment.
+# subshell-audit: intentional — this is the ONE place in this file where a subshell is the point rather than a
+# mistake. `_sk_probe` measures the reporter by letting it write counters that must NOT reach the real ones;
+# the assertions that consume it are outside. Everywhere else, an assertion inside a subshell is a silently
+# always-green gate (it happened once, in the evals-metric block, and the scanner exists because of it).
 _sk_probe(){ ( SKIPN=0; SKIP_HARD=0; PASSN=0; SKIP_LIST=""; skip "$1" probe >/dev/null; printf '%s %s %s' "$SKIPN" "$SKIP_HARD" "$PASSN" ); }
 [ "$(_sk_probe tool)"     = "1 1 0" ] && pass "a tool-class skip is counted and arms the CI failure"     || fail "skip tool did not arm the CI failure: $(_sk_probe tool)"
 [ "$(_sk_probe fixture)"  = "1 1 0" ] && pass "a fixture-class skip arms the CI failure too"             || fail "skip fixture did not arm the CI failure: $(_sk_probe fixture)"
@@ -3031,6 +3035,17 @@ gb_why(){ printf '%s' "$1" > "$GB_WHYF"; }
 # Sets GBDIR (for cleanup) and ECHOES THE PATH TO USE — not the directory — so both tiers are consumed
 # identically by the 22 call sites below.
 GBDIR=""; GB_MODE=""
+# WHAT THESE ROWS ASK NOW, since the reader ladder is gone and their old names claimed otherwise. They used
+# to be the tier-3 leg: build a jq/python3-free PATH and check the fallback reader. There is no fallback any
+# more — the same reader runs everywhere — so as a TIER comparison they are empty, and names like "the tier-3
+# parser really parses" were describing machinery that no longer exists.
+# They are NOT empty as a question, which is why they were renamed rather than deleted: they are the only rows
+# that run the hooks from a PATH with nothing on it. "Does the reader work" and "does the hook still work when
+# the machine has nothing" are different questions, and the second one survives the deletion — a gate that
+# reaches for a tool it no longer needs would still pass every ordinary row and fail only here.
+# The sandbox is deliberately built with stubs that EXIST and FAIL rather than by removing the binaries,
+# because "present but non-functional" is what a stock Windows desktop already is (the Store python3), so the
+# path being exercised is the real one.
 gb_sandbox(){   # echoes the PATH to run under, or nothing; $GB_WHYF says why not
   # Thin wrapper over csk_nojq_path: the rule for "a PATH where jq and python3 do not deliver" lives in ONE
   # place, because it was written three times and all three failed on the same platform for the same reason.
@@ -3044,39 +3059,39 @@ GBX="$(gb_sandbox)"
 # discarded — the same trap this suite documents for the scanner's count arrays. The sandbox directory is the
 # first PATH element either way, and a PATH carrying more than one element means the stubbed tier was used.
 GBDIR="${GBX%%:*}"; case "$GBX" in *:*) GB_MODE="stubbed" ;; ?*) GB_MODE="minimal" ;; *) GB_MODE="" ;; esac
-[ -n "$GBX" ] && note "no-jq/py sandbox built in '$GB_MODE' mode ($( [ "$GB_MODE" = stubbed ] && echo 'jq/python3 present but non-functional — the stock Windows shape' || echo 'jq/python3 absent from PATH' ))"
+[ -n "$GBX" ] && note "stripped-PATH sandbox built in '$GB_MODE' mode ($( [ "$GB_MODE" = stubbed ] && echo 'jq/python3 present but non-functional — the stock Windows shape' || echo 'jq/python3 absent from PATH' ))"
 
 
 if [ -n "$GBX" ]; then
   o="$(gj default 'git commit -m x' | gbrx 2>/dev/null)"
-  echo "$o" | grep -q '"permissionDecision":"ask"' && pass "no-jq/py: commit still ASKs (M1 fallback closed)" || fail "no-jq/py: commit gate FAILS OPEN (M1): $o"
-  gj auto 'git reset --hard' | PATH="$GBX" CLAUDE_GIT_OK=1 "$GBBASH" "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "no-jq/py: reset --hard still BLOCKED" || fail "no-jq/py: reset --hard PASSED (§4.5 fallback hole)"
+  echo "$o" | grep -q '"permissionDecision":"ask"' && pass "stripped-PATH: commit still ASKs (M1 fallback closed)" || fail "stripped-PATH: commit gate FAILS OPEN (M1): $o"
+  gj auto 'git reset --hard' | PATH="$GBX" CLAUDE_GIT_OK=1 "$GBBASH" "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "stripped-PATH: reset --hard still BLOCKED" || fail "stripped-PATH: reset --hard PASSED (§4.5 fallback hole)"
   # The write side lands on the same tier, and this is the branch a stock Windows install actually runs. Its
   # pre-2.6.x fallback read only `file_path`, so NotebookEdit — whose path key is `notebook_path` — walked
   # straight past the gate on exactly the machine the gate was hardened for. Measured rc=0 before the fix.
-  wjn '/p/.claude/hooks/guard-bash.sh'      | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "no-jq/py: NotebookEdit of a gate script BLOCKED (notebook_path)" || fail "no-jq/py: notebook_path walked past §4.5 (fallback hole)"
-  wj Write '/p/.claude/hooks/guard-bash.sh' | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "no-jq/py: Write of a gate script still BLOCKED" || fail "no-jq/py: gate-script write PASSED (fallback hole)"
-  wj Write '/p/.claude/skills/../hooks/x.sh'| PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "no-jq/py: traversal to a gate path still BLOCKED" || fail "no-jq/py: traversal PASSED (fallback hole)"
-  wj Write 'C:\\U\\app\\.claude\\hooks\\x.sh' | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "no-jq/py: Windows-separator gate path still BLOCKED" || fail "no-jq/py: backslash path PASSED (fallback hole)"
-  wj Write '/p/src/app.ts'                  | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1 && pass "no-jq/py: ordinary source NOT over-blocked on the fallback tier" || fail "no-jq/py: ordinary source wrongly blocked"
+  wjn '/p/.claude/hooks/guard-bash.sh'      | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "stripped-PATH: NotebookEdit of a gate script BLOCKED (notebook_path)" || fail "stripped-PATH: notebook_path walked past §4.5 (fallback hole)"
+  wj Write '/p/.claude/hooks/guard-bash.sh' | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "stripped-PATH: Write of a gate script still BLOCKED" || fail "stripped-PATH: gate-script write PASSED (fallback hole)"
+  wj Write '/p/.claude/skills/../hooks/x.sh'| PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "stripped-PATH: traversal to a gate path still BLOCKED" || fail "stripped-PATH: traversal PASSED (fallback hole)"
+  wj Write 'C:\\U\\app\\.claude\\hooks\\x.sh' | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "stripped-PATH: Windows-separator gate path still BLOCKED" || fail "stripped-PATH: backslash path PASSED (fallback hole)"
+  wj Write '/p/src/app.ts'                  | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1 && pass "stripped-PATH: ordinary source NOT over-blocked with no tools present" || fail "stripped-PATH: ordinary source wrongly blocked"
   # DISCRIMINATOR. The four rows above ALL stay green if the tier-3 parser is gutted, because the fail-closed
   # raw-payload branch blocks the same payloads for the wrong reason. Only a payload whose TARGET is ordinary
   # while its CONTENT names a gate path tells the two apart: the real parser allows it, a gutted one refuses it.
   printf '%s' '{"tool_name":"Write","tool_input":{"file_path":"/p/README.md","content":"see .claude/hooks/guard-bash.sh"}}' | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1 \
-    && pass "no-jq/py: the tier-3 parser really parses (content naming a gate path does not block)" \
-    || fail "no-jq/py: tier 3 blocked on the raw payload — the parser is not doing the work"
+    && pass "stripped-PATH: the reader really parses (content naming a gate path does not block)" \
+    || fail "stripped-PATH: blocked on the raw payload — the parser is not doing the work"
   # And the rule NAME, not just the rc: a row that only checks rc=2 stays green when the fix is deleted and the
   # raw-payload branch takes over. The stderr line is what says which branch produced the verdict.
   _o="$(wjn '/p/.claude/hooks/guard-bash.sh' | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" 2>&1 >/dev/null)"
   case "$_o" in
-    *"unparsed payload"*) fail "no-jq/py: notebook_path blocked via the raw fallback, not via the parser — the notebook fix is not doing the work" ;;
-    *"blocked AT THE TOOL LEVEL"*) pass "no-jq/py: notebook_path is blocked BY THE PARSER (not the raw fallback)" ;;
-    *) fail "no-jq/py: notebook_path produced no gate message: ${_o:-empty}" ;;
+    *"unparsed payload"*) fail "stripped-PATH: notebook_path blocked via the raw fallback, not via the parser — the notebook fix is not doing the work" ;;
+    *"blocked AT THE TOOL LEVEL"*) pass "stripped-PATH: notebook_path is blocked BY THE PARSER (not the raw fallback)" ;;
+    *) fail "stripped-PATH: notebook_path produced no gate message: ${_o:-empty}" ;;
   esac
   # `\u002e` is `.`. Tier 3 used to substitute `?` for any \uXXXX, so this decoded to `?claude/hooks/…` and
   # matched nothing while jq decoded the identical bytes to a real gate path.
   printf '%s' '{"tool_name":"Write","tool_input":{"file_path":"\u002eclaude/hooks/guard-bash.sh"}}' | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1
-  [ "$?" = 2 ] && pass "no-jq/py: a \\u-escaped gate path is decoded, not substituted" || fail "no-jq/py: \\u002e hid a gate path from §4.5 (tier-1/tier-3 divergence)"
+  [ "$?" = 2 ] && pass "stripped-PATH: a \\u-escaped gate path is decoded, not substituted" || fail "stripped-PATH: \\u002e hid a gate path from §4.5 (the unescaper is not decoding)"
   # THE COST LIVES ON THIS TIER, so the timing assertion belongs here and not only above: with jq present the
   # payload is parsed by a C program and the walk never runs. Here every separator is an escape, which is what
   # made the parser quadratic — 6s at 1,200 separators, 44s at 2,400, against this hook's own 60s timeout.
@@ -3084,22 +3099,22 @@ if [ -n "$GBX" ]; then
   _t0=$(date +%s)
   printf '{"tool_name":"Write","tool_input":{"file_path":"C:%s.claude\\\\hooks\\\\g.sh"}}' "$_bs" | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1
   _rc=$?; _t1=$(date +%s)
-  [ "$_rc" = 2 ] && pass "no-jq/py: an oversized path is refused on the tier that pays for parsing it" || fail "no-jq/py: oversized path not refused (rc=$_rc)"
-  [ $((_t1-_t0)) -le 5 ] && pass "no-jq/py: 3,000 escapes cost under 5s (the gate cannot be timed out)" || fail "no-jq/py: 3,000 escapes took $((_t1-_t0))s — the gate can be made to miss its own timeout"
+  [ "$_rc" = 2 ] && pass "stripped-PATH: an oversized path is refused by the reader that pays for parsing it" || fail "stripped-PATH: oversized path not refused (rc=$_rc)"
+  [ $((_t1-_t0)) -le 5 ] && pass "stripped-PATH: 3,000 escapes cost under 5s (the gate cannot be timed out)" || fail "stripped-PATH: 3,000 escapes took $((_t1-_t0))s — the gate can be made to miss its own timeout"
   # And the worst case that is still ACCEPTED — a value sitting just under the cap — because that is the number
   # an attacker actually gets to spend. Measured 3.4s here; the bound is deliberately loose for slower boxes.
   _bs=""; _i=0; while [ "$_i" -lt 1000 ]; do _bs="$_bs\\\\"; _i=$((_i+1)); done
   _t0=$(date +%s)
   printf '{"tool_name":"Write","tool_input":{"file_path":"C:%s.claude\\\\hooks\\\\g.sh"}}' "$_bs" | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1
   _rc=$?; _t1=$(date +%s)
-  [ "$_rc" = 2 ] && [ $((_t1-_t0)) -le 15 ] && pass "no-jq/py: the worst case UNDER the cap still verdicts in time ($((_t1-_t0))s)" || fail "no-jq/py: at-cap payload rc=$_rc in $((_t1-_t0))s — the cap is sized wrong"
+  [ "$_rc" = 2 ] && [ $((_t1-_t0)) -le 15 ] && pass "stripped-PATH: the worst case UNDER the cap still verdicts in time ($((_t1-_t0))s)" || fail "stripped-PATH: at-cap payload rc=$_rc in $((_t1-_t0))s — the cap is sized wrong"
   # The unparsed-payload branch has three arms and only the .claude one was pinned.
   for _u in 'garbage naming .git/hooks/pre-commit' 'garbage naming .claude/DISCIPLINE.md'; do
     printf '%s' "$_u" | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1
-    [ "$?" = 2 ] && pass "no-jq/py: unparseable payload refused — $_u" || fail "no-jq/py: unparseable payload failed OPEN — $_u"
+    [ "$?" = 2 ] && pass "stripped-PATH: unparseable payload refused — $_u" || fail "stripped-PATH: unparseable payload failed OPEN — $_u"
   done
 else
-  gb_unbuildable "no-jq/py fallback tests"
+  gb_unbuildable "stripped-PATH fallback tests"
 fi
 rm -rf "$GBDIR"
 
@@ -3117,7 +3132,7 @@ GBX="$(gb_sandbox)"
 # discarded — the same trap this suite documents for the scanner's count arrays. The sandbox directory is the
 # first PATH element either way, and a PATH carrying more than one element means the stubbed tier was used.
 GBDIR="${GBX%%:*}"; case "$GBX" in *:*) GB_MODE="stubbed" ;; ?*) GB_MODE="minimal" ;; *) GB_MODE="" ;; esac
-[ -n "$GBX" ] && note "no-jq/py sandbox built in '$GB_MODE' mode ($( [ "$GB_MODE" = stubbed ] && echo 'jq/python3 present but non-functional — the stock Windows shape' || echo 'jq/python3 absent from PATH' ))"
+[ -n "$GBX" ] && note "stripped-PATH sandbox built in '$GB_MODE' mode ($( [ "$GB_MODE" = stubbed ] && echo 'jq/python3 present but non-functional — the stock Windows shape' || echo 'jq/python3 absent from PATH' ))"
 
 
 # session_id chosen deliberately: `-f872` is the exact shape that matched the §4.5 `-f([^a-z]|$)` force rule.
@@ -3126,28 +3141,28 @@ if [ -n "$GBX" ]; then
   # 1) FALSE POSITIVE: an ordinary push must not inherit `-f` from the session id.
   o="$(gjs default 'git push origin feature/x' | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" 2>/dev/null)"; r=$?
   { [ "$r" != 2 ] && printf '%s' "$o" | grep -q '"permissionDecision":"ask"'; } \
-    && pass "no-jq/py: plain push ASKs, not force-blocked by the session id" \
-    || fail "no-jq/py: plain push mis-blocked as force (rc=$r) — the fallback is matching the payload, not the command"
+    && pass "stripped-PATH: plain push ASKs, not force-blocked by the session id" \
+    || fail "stripped-PATH: plain push mis-blocked as force (rc=$r) — the fallback is matching the payload, not the command"
   # 2) APPROVAL INTEGRITY: §4.4 must show the command. A prompt quoting the payload is consent theatre.
   o="$(gjs default 'git push origin feature/x' | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" 2>/dev/null)"
   { printf '%s' "$o" | grep -q 'git push origin feature/x' && ! printf '%s' "$o" | grep -q 'session_id'; } \
-    && pass "no-jq/py: the §4.4 prompt shows the command, not the raw payload" \
-    || fail "no-jq/py: the §4.4 prompt leaked the payload (the human cannot read what they approve)"
+    && pass "stripped-PATH: the §4.4 prompt shows the command, not the raw payload" \
+    || fail "stripped-PATH: the §4.4 prompt leaked the payload (the human cannot read what they approve)"
   # 3) NO NEW HOLE: the slice takes the FIRST \"command\" key, so a decoy inside the command cannot relocate it.
   gjs auto 'git push --force # \"command\":\"ls\"' | PATH="$GBX" CLAUDE_GIT_OK=1 "$GBBASH" "$HOOKS/guard-bash.sh" >/dev/null 2>&1
-  [ "$?" = 2 ] && pass "no-jq/py: decoy \"command\" key inside the command does NOT relocate the parse" \
-                || fail "no-jq/py: decoy \"command\" key walked a force-push past §4.5"
+  [ "$?" = 2 ] && pass "stripped-PATH: decoy \"command\" key inside the command does NOT relocate the parse" \
+                || fail "stripped-PATH: decoy \"command\" key walked a force-push past §4.5"
   # 4) ESCAPES: JSON-escaped quotes and Windows backslash paths must decode, not derail the rules.
   gjs auto 'git commit -m \"x\" --no-verify' | PATH="$GBX" CLAUDE_GIT_OK=1 "$GBBASH" "$HOOKS/guard-bash.sh" >/dev/null 2>&1
-  [ "$?" = 2 ] && pass "no-jq/py: --no-verify inside an escaped-quote command still BLOCKED" \
-                || fail "no-jq/py: escaped quotes hid --no-verify from §4.5"
+  [ "$?" = 2 ] && pass "stripped-PATH: --no-verify inside an escaped-quote command still BLOCKED" \
+                || fail "stripped-PATH: escaped quotes hid --no-verify from §4.5"
   o="$(gjs default 'git commit -F C:\\\\Users\\\\b\\\\msg.txt' | gbrx 2>/dev/null)"
   printf '%s' "$o" | grep -q '"permissionDecision":"ask"' \
-    && pass "no-jq/py: a Windows backslash path still reaches the §4.4 ask" \
-    || fail "no-jq/py: backslash path derailed the parse (out=$o)"
+    && pass "stripped-PATH: a Windows backslash path still reaches the §4.4 ask" \
+    || fail "stripped-PATH: backslash path derailed the parse (out=$o)"
   # 5) NOT OVER-BLOCKING: an ordinary command stays allowed even with the dirty session id.
   gjs default 'ls -la' | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" >/dev/null 2>&1
-  [ "$?" = 0 ] && pass "no-jq/py: 'ls -la' still allowed" || fail "no-jq/py: 'ls -la' blocked (fallback over-blocks)"
+  [ "$?" = 0 ] && pass "stripped-PATH: 'ls -la' still allowed" || fail "stripped-PATH: 'ls -la' blocked (fallback over-blocks)"
   # --- THE KEY THE PARSER FINDS AND THE KEY THE GUARD COUNTS MUST BE THE SAME ONE -----------------------
   # `_json_slice` searches for the bytes `"key"`; the ambiguity guards used to count `"key":` compact. Two
   # different tokens, so five payload shapes read one value while the gate judged another. All five were
@@ -3332,7 +3347,7 @@ if [ -n "$GBX" ]; then
   done
   rm -rf "$_CWDR"
 else
-  gb_unbuildable "no-jq/py discriminating tests"
+  gb_unbuildable "stripped-PATH discriminating tests"
 fi
 rm -rf "$GBDIR"
 
