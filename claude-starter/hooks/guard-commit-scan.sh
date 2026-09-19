@@ -439,6 +439,11 @@ if [ "$FAILED" = 0 ] && [ -x "$DIR/commit-msg" ]; then
   # no interpreter. Cheap: nothing below runs unless the command is already known to be a `git commit`.
   HAS_M=0
   printf '%s' "$CMD" | grep -qE '(^|[[:space:]])(-[A-Za-z]*m|--message)([[:space:]]|=|$)' && HAS_M=1
+  # CSK-NOT-A-RUNG: reads $CMD, an already-parsed command string, and never the payload. The check in
+  # smoke-test treats every interpreter in this file as a reader ladder UNLESS it sits in a marked region,
+  # because describing the dangerous shape kept missing one — a payload written to a temp file names no
+  # INPUT on the line that reads it. Adding a rung therefore means deleting a comment that says what this
+  # one is for, which is the point.
   if command -v python3 >/dev/null 2>&1 && MSG="$(CSK_CMD="$CMD" python3 -c '
 import os, shlex
 try: parts = shlex.split(os.environ["CSK_CMD"])
@@ -515,3 +520,5 @@ if [ "$FAILED" = 1 ]; then
   exit 2
 fi
 exit 0
+
+  # /CSK-NOT-A-RUNG

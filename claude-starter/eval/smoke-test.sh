@@ -2521,14 +2521,25 @@ _t1e 'git commit -m c'; [ "$?" = 0 ] \
 # the code and leaves `_a="${INPUT`. So: strip only a `#` that starts a line or follows whitespace AND is not
 # inside `${…}`, by first blanking every `${…}` expansion, and look for a READER being selected rather than
 # for one spelling of one probe.
-# WHAT A RUNG ACTUALLY IS: an interpreter that consumes THE PAYLOAD. Naming the threat that way is what makes
-# the check both broad and correct. A first attempt looked for `command -v <interpreter>` anywhere and went red
-# on guard-commit-scan's MESSAGE extractor — python3 pulling `-m`'s value out of an already-parsed command
-# string, with a pure-bash fallback, deliberately left in place because it is a different job. Excluding it by
-# a marker failed too: the same block probes on one line and passes `CSK_CMD=` on the next, so a line-based
-# allowance saw only half of it. Every rung that ever existed here piped `$INPUT` into the interpreter on the
-# same line, and nothing that reads `$CMD` touches the payload — so that is the test.
-_ladder(){ grep -vE '^[[:space:]]*#' "$1" | grep -nE '(jq|python3|python|perl|node)' | grep -E 'INPUT' ; }
+# DESCRIBE THE EXEMPTION, NOT THE THREAT. Three attempts at describing a rung failed, each for its own reason,
+# and the third failure is what settles the design:
+#   1. `command -v <interpreter>` anywhere -> red on guard-commit-scan's MESSAGE extractor, which reads an
+#      already-parsed command string and is deliberately in place.
+#   2. excluding that by the `CSK_CMD=` marker on the line -> the same block probes on one line and passes the
+#      marker on the next, so a line-based allowance saw half of it.
+#   3. "an interpreter AND `INPUT` on one line" -> misses the temp-file form, which review named:
+#         printf '%s' "$INPUT" > "$tmp"
+#         CMD="$(jq -r '.tool_input.command' "$tmp")"
+#      The reading line never mentions INPUT. Nor does `jq -r .x <&3` after a here-string, nor any rename of
+#      the variable. And that shape is not exotic: it is what someone writes when a payload gets big enough to
+#      worry about argv limits, which is exactly when a rung gets tempting again.
+# So: EVERY interpreter in these three hooks is a rung unless it sits inside a region marked `CSK-NOT-A-RUNG`.
+# Line-agnostic, survives a rename of INPUT, catches the temp-file form, and — the part that matters — adding
+# a rung now requires deleting a comment that states what the exemption is for. The exemption list is short,
+# closed and reviewable; the dangerous thing is everything else.
+_ladder(){ awk '/^[[:space:]]*# CSK-NOT-A-RUNG/{s=1} /^[[:space:]]*# \/CSK-NOT-A-RUNG/{s=0;next} !s' "$1" \
+             | grep -vE '^[[:space:]]*#' \
+             | grep -nE '(^|[^[:alnum:]_/.-])(jq|python3|python|perl|node)([^[:alnum:]_]|$)' ; }
 _lad_bad=""
 for _h in guard-bash guard-write guard-commit-scan; do
   _hit="$(_ladder "$HOOKS/$_h.sh" 2>/dev/null)" && _lad_bad="$_lad_bad $_h:${_hit%%:*}"
@@ -2546,16 +2557,33 @@ printf '%s\n' '#!/bin/sh' 'if command -v jq >/dev/null 2>&1 && CMD="$(printf "%s
 printf '%s\n' '#!/bin/sh' 'CMD="$(printf "%s" "$INPUT" | python3 -c "import sys,json")"'                             > "$_LT/b.sh"
 printf '%s\n' '#!/bin/sh' 'type jq >/dev/null && CMD="$(printf "%s" "$INPUT" | jq -r .x)"'                           > "$_LT/c.sh"
 printf '%s\n' '#!/bin/sh' '_a="${INPUT#*x}"; CMD="$(printf "%s" "$INPUT" | jq -r .x)"'                               > "$_LT/d.sh"
+# THE SHAPE THAT DEFEATED THE PREVIOUS DETECTOR, and the reason the check describes the exemption instead:
+# the payload goes to a temp file on one line and the interpreter reads the FILE on the next, naming no INPUT.
+printf '%s\n' '#!/bin/sh' 'printf "%s" "$INPUT" > "$tmp"' 'CMD="$(jq -r .x "$tmp")"'                                > "$_LT/g.sh"
+printf '%s\n' '#!/bin/sh' 'exec 3<<<"$INPUT"' 'CMD="$(jq -r .x <&3)"'                                               > "$_LT/h.sh"
 printf '%s\n' '#!/bin/sh' '# the deleted ladder piped "$INPUT" into jq and then python3 — prose, must NOT count' 'X=1' > "$_LT/e.sh"
-printf '%s\n' '#!/bin/sh' 'if command -v python3 >/dev/null 2>&1; then' '  MSG="$(CSK_CMD="$CMD" python3 -c "pass")"' 'fi' > "$_LT/f.sh"
+printf '%s\n' '#!/bin/sh' '# CSK-NOT-A-RUNG: reads $CMD, never the payload' 'MSG="$(CSK_CMD="$CMD" python3 -c "pass")"' '# /CSK-NOT-A-RUNG' > "$_LT/f.sh"
 _tw=0; _twf=""
-for _f in a b c d; do _ladder "$_LT/$_f.sh" >/dev/null 2>&1 || { _tw=1; _twf="$_f"; }; done
+for _f in a b c d g h; do _ladder "$_LT/$_f.sh" >/dev/null 2>&1 || { _tw=1; _twf="$_f"; }; done
 for _f in e f; do _ladder "$_LT/$_f.sh" >/dev/null 2>&1 && { _tw=2; _twf="$_f"; }; done
 case "$_tw" in
-  0) pass "one reader: the detector fires on four rung shapes and stays silent on prose and on the \$CMD reader" ;;
+  0) pass "one reader: the detector fires on six rung shapes, including the temp-file and here-string forms" ;;
   1) fail "one reader: the detector MISSED rung shape '$_twf' — the assertion above measured less than it claims" ;;
   2) fail "one reader: the detector fired on '$_twf', which reads no payload — it would forbid ordinary code" ;;
 esac
+# AND THE EXEMPTIONS ARE COUNTED, closed and open markers alike. A region is only reviewable while there are
+# few of them; an unbounded allowance is the same gate with extra steps. Four today: two rule-pattern regions
+# in guard-bash naming interpreters it REFUSES, and the message extractor in guard-commit-scan.
+_ex=0
+for _h in guard-bash guard-write guard-commit-scan; do
+  _ex=$((_ex + $(grep -c '^[[:space:]]*# CSK-NOT-A-RUNG' "$HOOKS/$_h.sh")))
+  _exc="$(grep -c '^[[:space:]]*# /CSK-NOT-A-RUNG' "$HOOKS/$_h.sh")"
+  _exo="$(grep -c '^[[:space:]]*# CSK-NOT-A-RUNG' "$HOOKS/$_h.sh")"
+  [ "$_exo" = "$_exc" ] || fail "one reader: $_h has $_exo opening and $_exc closing exemption markers — an unclosed region hides everything after it"
+done
+[ "$_ex" = 3 ] \
+  && pass "one reader: exactly 3 exemption regions, each stating what it is for" \
+  || fail "one reader: $_ex exemption regions, expected 3 — the allowance grew, and each one is a place a rung can hide"
 rm -rf "$_LT"
 
 # Globbing must stay OFF while splitting, or a pathspec is judged against whatever files sit in the cwd.
