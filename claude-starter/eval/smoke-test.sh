@@ -2436,10 +2436,18 @@ done
 _u46(){ ( eval "$(sed -n '/^_json_slice()/,/^}/p' "$HOOKS/guard-bash.sh")"
           eval "$(sed -n '/^_json_unescape()/,/^}/p' "$HOOKS/guard-bash.sh")"
           _json_unescape "$(_json_slice "$1" command)" ); }
-_crn(){ printf '%s' "$1" | tr -dc '\r' | wc -c | tr -d ' '; }   # NOT `od -c | grep -c '\r'` — that counts `r`
+# COUNTING CR WITHOUT LEAVING THE SHELL. `od -c | grep -c '\r'` counts the letter `r`, which is the trap this
+# line used to name; `tr -dc '\r' | wc -c` fixed that and then failed on Windows, where the calibration below
+# read CRLF=0 — the guard caught it and the CI leg went red rather than reporting unmeasured rows as passing.
+# Which of `printf` or `tr` was wrong there does not matter, because the answer is to use neither: the length
+# of the string minus the length with CRs removed is parameter expansion only. Verified byte-identical to the
+# printf/tr pair on macOS across four fixtures before the swap, so this changes nothing where it already
+# worked. The fixtures below moved to `$'…'` for the same reason: bash's own escapes, not printf's.
+_crn(){ local s="${1//$'\r'/}"; printf '%s' "$(( ${#1} - ${#s} ))"; }
 # The counter is calibrated on both classes before it judges anything: a known-CRLF string and a known-LF one.
 # It read 0 on a CRLF file once, plausibly, and was wrong; only `tr -dc` separates the two.
-if [ "$(_crn "$(printf 'a\r\nb\r\nc\r\n')")" = 3 ] && [ "$(_crn "$(printf 'a\nb\nc\n')")" = 0 ]; then
+_CAL_CRLF=$'a\r\nb\r\nc\r\n'; _CAL_LF=$'a\nb\nc\n'
+if [ "$(_crn "$_CAL_CRLF")" = 3 ] && [ "$(_crn "$_CAL_LF")" = 0 ]; then
   _dec="$(_u46 '{"tool_name":"Bash","tool_input":{"command":"git commit \\\r\r\n  -m c -- a.txt"}}')"
   [ "$(_crn "$_dec")" = 0 ] \
     && pass "§4.6 text-mode: a \\r escape is dropped, so no CR reaches the scanner from valid JSON" \
@@ -2456,13 +2464,13 @@ if [ "$(_crn "$(printf 'a\r\nb\r\nc\r\n')")" = 3 ] && [ "$(_crn "$(printf 'a\nb\
     *'\'$'\n'*) pass "§4.6 text-mode: the ESCAPED spelling decodes to a real backslash-LF continuation" ;;
     *) fail "§4.6 text-mode: the escaped spelling no longer produces a continuation — the BLOCK row's reason is gone" ;;
   esac
-  _decl="$(_u46 "$(printf '{"tool_name":"Bash","tool_input":{"command":"git commit \\\r\r\n  -m c -- a.txt"}}')")"
+  _decl="$(_u46 $'{"tool_name":"Bash","tool_input":{"command":"git commit \\\r\r\n  -m c -- a.txt"}}')"
   case "$_decl" in
     *'\'$'\n'*) fail "§4.6 text-mode: the LITERAL spelling now decodes to a continuation — its allow row is wrong" ;;
     *) pass "§4.6 text-mode: the LITERAL spelling decodes to NO continuation, which is why it is allowed" ;;
   esac
 else
-  fail "§4.6 text-mode: the CR counter is broken (CRLF=$(_crn "$(printf 'a\r\n')") LF=$(_crn "$(printf 'a\n')")), so nothing below measured CR"
+  fail "§4.6 text-mode: the CR counter is broken (CRLF=$(_crn "$_CAL_CRLF") LF=$(_crn "$_CAL_LF")), so nothing below measured CR"
 fi
 # THEN the verdicts, twice over: once in the shape valid JSON can carry (`\\` `\r` `\r` `\n` escapes), and once
 # with LITERAL CR bytes in the payload. The second is invalid JSON and no harness sends it, but the slice walks
@@ -2486,8 +2494,8 @@ for _sp in escaped literal; do
   case "$_sp" in
     escaped) _c1='git commit \\\r\r\n  -m c';          _c2='git commit \\\r\r\n  -m c -- a.txt'; _e2=2
              _c3='git commit -m c\r\necho done';       _c4='git commit -m c -- a.txt\r\necho done' ;;
-    literal) _c1="$(printf 'git commit \\\r\r\n  -m c')";        _c2="$(printf 'git commit \\\r\r\n  -m c -- a.txt')"; _e2=0
-             _c3="$(printf 'git commit -m c\r\necho done')";     _c4="$(printf 'git commit -m c -- a.txt\r\necho done')" ;;
+    literal) _c1=$'git commit \\\r\r\n  -m c';        _c2=$'git commit \\\r\r\n  -m c -- a.txt'; _e2=0
+             _c3=$'git commit -m c\r\necho done';     _c4=$'git commit -m c -- a.txt\r\necho done' ;;
   esac
   _t1e "$_c1"; [ "$?" = 0 ] \
     && pass "§4.6 text-mode/$_sp: a CRLF continuation is not read as a pathspec" \
