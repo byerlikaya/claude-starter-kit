@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# PARSER CONFORMANCE — the gate must reach the same verdict whichever JSON tier decoded the payload.
+# PARSER CONFORMANCE — the gate's payload reader must agree with a real JSON parser.
 #
-# WHY THIS FILE EXISTS. guard-bash.sh reads its payload through a ladder: jq, then python3, then a pure-bash
-# slice. Three parsers means three behaviours, and every parser incident this kit has had came from the tiers
+# WHY THIS FILE EXISTS. guard-bash.sh read its payload through a ladder: jq, then python3, then a pure-bash
+# slice. Three parsers meant three behaviours, and every parser incident this kit has had came from the tiers
 # DIVERGING rather than from any one of them being weak:
 #   * tier 3 was once `CMD="$INPUT"`, so every `git push` was hard-blocked as a force-push on any session id
 #     containing `-f8`. CI never saw it, because CI has jq.
@@ -10,24 +10,43 @@
 #     tier 2 and FAILED OPEN.
 #   * a Windows-native jq writes stdout in TEXT mode, so tier 1 received `\` + CR + CR + LF where tier 3
 #     received JSON's two-character escapes, and an ordinary commit was refused on one platform only.
-# Each was found by a single assertion going red long after the change that caused it. This file turns "the
-# tiers agree" into one property that is measured directly, so the next divergence fails here and names itself.
+# Each was found by a single assertion going red long after the change that caused it.
 #
-# EXIT CODES ARE COMPARED, NOT BYTES, and that is deliberate. The tiers legitimately hand the rules different
-# bytes: tier 3 drops `\r` at decode (see `r) ;;` in _json_unescape) while tier 1 keeps it until a later fold,
-# and tier 3 renders an astral character as `??` where a real parser produces the character. Both resolve to the
-# same verdict. A byte comparison would report those as defects and bury the one that is not.
+# TWO MODES, AND THE FILE CHOOSES BETWEEN THEM BY LOOKING AT THE HOOK.
+#   LADDER PRESENT — the payload can still be read two ways, so the property is "both tiers reach the same
+#     VERDICT". Exit codes are compared, not bytes: the tiers legitimately hand the rules different bytes and a
+#     byte comparison would report those as defects and bury the one that is not.
+#   LADDER ABSENT — there is only one reader in production, so a tier comparison would be the slice against
+#     itself. The property becomes "the slice DECODES what a real parser decodes", measured against a reference
+#     that never goes through the hook at all, plus "the gate still reaches the verdict each row declares".
+# The DECODE check runs in BOTH modes on purpose. It costs nothing while the ladder is there and it means the
+# normalisations below are already pinned by the time the ladder goes, rather than being written the same day
+# they become the only thing standing.
+#
+# THE MODE DETECTOR IS ITSELF CALIBRATED, IN BOTH DIRECTIONS. It is the one place where this whole file can go
+# quiet: a detector that wrongly says "ladder absent" against a ladder-ful hook stops exercising tier selection
+# and says nothing about it. So two fixtures are built and the detector must answer each correctly before any
+# mode runs.
+#
+# THE DECODE RULES ARE TAKEN FROM THE HOOK'S CASE ARMS, NOT FROM A MEASUREMENT. Pinning whatever the slice
+# happens to do today would make the pin agree with any future change. _json_unescape maps:
+#     \n -> LF   \t -> TAB   \r -> DROPPED   \b and \f -> one space
+#     \uXXXX matching 00[2-7][0-9a-fA-F] (printable ASCII) -> that character
+#     any other \uXXXX -> a single `?`          \<anything else> -> that character literally
+# A row whose expected decode is `=` must match the reference EXACTLY; a row that exercises one of those
+# normalisations carries the literal it must produce, so each normalisation is a stated fact and not an excuse.
 #
 # FIXTURES ARE BYTE-CHECKED BEFORE THEY ARE TRUSTED. A corpus of escapes is the easiest thing in this repo to
 # measure vacuously: write `\\u002e` and the payload carries an escaped BACKSLASH followed by the letters
-# u002e — inert text that every tier agrees about while proving nothing; write it through a shell that expands
-# escapes and the payload carries a real `.` and the parser never sees an escape at all. Both shapes happened
-# while this corpus was being built, on two different machines. So every escape row declares the escape it needs,
-# the payload's bytes are searched for it, and a row whose fixture came out inert is reported as UNMEASURED —
-# never as a pass.
+# u002e — inert text every reader agrees about while proving nothing; write it through a shell that expands
+# escapes and the payload carries a real `.` and no parser ever sees an escape. Both shapes happened while this
+# corpus was being built, on two different machines. So every escape row declares the escape it needs, the
+# payload's bytes are searched for it, and a row whose fixture came out inert is reported UNMEASURED, never as
+# a pass. Every backslash in a fixture is produced at RUN TIME by printf rather than written literally here,
+# because a literal one has to survive every layer between an author and this file and in this repo it has not.
 #
-# Exit 0 = every case agreed. Exit 1 = a divergence, or a fixture that could not be built. Exit 3 = this machine
-# has no second parser, so tier 1 could not be reached and nothing was compared.
+# Exit 0 = everything agreed. Exit 1 = a divergence, a broken fixture, or a calibration that did not answer.
+# Exit 3 = nothing could be compared on this machine (no hook, or no reference parser). Never a pass.
 
 set -u
 LC_ALL=C
@@ -37,9 +56,8 @@ HOOK="$HERE/../hooks/guard-bash.sh"
 [ -f "$HOOK" ] || HOOK="$HERE/../../claude-starter/hooks/guard-bash.sh"
 if [ ! -f "$HOOK" ]; then
   # Not a divergence and not a broken fixture — there was nothing to measure at all, which is what rc 3 means
-  # everywhere else in this file. Exiting 1 here would have reported "the tiers disagree" for a file that was
-  # merely copied somewhere else, and a caller that maps 1 to "gate failed" would chase a parser bug that does
-  # not exist. The run still fails loudly; only the reason it gives is corrected.
+  # everywhere else in this file. Exiting 1 here would report "the readers disagree" for a file that was merely
+  # copied somewhere else, and a caller that maps 1 to "gate failed" would chase a bug that does not exist.
   echo "parser-conformance: guard-bash.sh bulunamadı ($HOOK) — HİÇBİR ŞEY ÖLÇÜLMEDİ, bu bir geçiş değildir"
   exit 3
 fi
@@ -53,55 +71,87 @@ note(){ printf '  ·    %s\n' "$1"; }
 W="$(mktemp -d)"
 trap 'cd /; rm -rf "$W"' EXIT INT TERM
 P="$W/payload.json"
+BS="$(printf '\\')"          # one real backslash, never written literally into this file
 
 # ---------------------------------------------------------------------------------------------------------
-# A REFERENCE PARSER. Tier 1 is only reachable if something on this machine can decode JSON correctly. Real jq
-# is preferred because it IS tier 1; otherwise a shim named `jq` is placed on PATH, backed by whatever real
-# parser exists, so the hook takes its tier-1 branch against genuinely decoded bytes. The shim writes in binary:
-# the Windows text-mode flavour is a separate, already-fixed defect and is not what this file measures.
-# perl is tried before python3 because Git Bash ships perl with JSON::PP in core, while the python3 that is on
-# PATH there is a Store stub that satisfies `command -v` and cannot run.
+# THE MODE DETECTOR, and its calibration in both directions.
+# ---------------------------------------------------------------------------------------------------------
+has_ladder(){ grep -q 'command -v jq' "$1"; }
+
+mkdir -p "$W/det"
+printf '%s\n' '#!/usr/bin/env bash' 'CMD=""' \
+  'if command -v jq >/dev/null 2>&1 && CMD="$(jq -r .x)"; then :; fi' > "$W/det/with.sh"
+printf '%s\n' '#!/usr/bin/env bash' 'CMD=""' 'CMD="$(_json_slice "$INPUT" command)"' > "$W/det/without.sh"
+
+echo "== mod seçici, iki yönde de kalibre ediliyor =="
+DETOK=1
+if has_ladder "$W/det/with.sh"; then ok "merdivenli bir kapıda seçici 'merdiven VAR' diyor"
+else bad "seçici merdivenli kapıyı kaçırdı — kip seçimi güvenilmez"; DETOK=0; fi
+if has_ladder "$W/det/without.sh"; then bad "seçici merdivensiz kapıda 'VAR' dedi — sessizleşmenin tersi, yine de yanlış"; DETOK=0
+else ok "merdivensiz bir kapıda seçici 'merdiven YOK' diyor"; fi
+[ "$DETOK" = 1 ] || { echo; echo "SEÇİCİ KALİBRASYONU BAŞARISIZ — hangi kipin koşacağı bilinemez, hiçbir şey raporlanmıyor"; exit 1; }
+
+LADDER=0; has_ladder "$HOOK" && LADDER=1
+note "kapıda okuma merdiveni: $( [ "$LADDER" = 1 ] && echo 'VAR — iki katman karşılaştırılacak' || echo 'YOK — tek okuyucu, referansa karşı çözüm karşılaştırılacak' )"
+echo
+
+# ---------------------------------------------------------------------------------------------------------
+# A REFERENCE PARSER. Real jq is preferred; otherwise a shim named `jq` is placed on PATH so the hook can still
+# take its tier-1 branch while the ladder exists. The shim writes in binary: the Windows text-mode flavour is a
+# separate, already-fixed defect and not what this file measures. perl comes before python3 because Git Bash
+# ships perl with JSON::PP in core, while the python3 on PATH there is a Store stub that cannot run.
 # ---------------------------------------------------------------------------------------------------------
 REFKIND=""
-if command -v jq >/dev/null 2>&1 && printf '{"a":"b"}' | jq -r '.a' 2>/dev/null | grep -qx b; then
-  REFKIND="jq"
-elif command -v perl >/dev/null 2>&1 && printf '{"a":"b"}' | perl -MJSON::PP -e 'local $/; print decode_json(<STDIN>)->{a}' 2>/dev/null | grep -qx b; then
-  REFKIND="perl"
-elif command -v python3 >/dev/null 2>&1 && printf '{"a":"b"}' | python3 -c 'import sys,json;sys.stdout.write(json.load(sys.stdin)["a"])' 2>/dev/null | grep -qx b; then
-  REFKIND="python3"
-elif command -v node >/dev/null 2>&1 && printf '{"a":"b"}' | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).a))' 2>/dev/null | grep -qx b; then
-  REFKIND="node"
+if   command -v jq      >/dev/null 2>&1 && printf '{"a":"b"}' | jq -r '.a' 2>/dev/null | grep -qx b; then REFKIND=jq
+elif command -v perl    >/dev/null 2>&1 && printf '{"a":"b"}' | perl -MJSON::PP -e 'local $/; print decode_json(<STDIN>)->{a}' 2>/dev/null | grep -qx b; then REFKIND=perl
+elif command -v python3 >/dev/null 2>&1 && printf '{"a":"b"}' | python3 -c 'import sys,json;sys.stdout.write(json.load(sys.stdin)["a"])' 2>/dev/null | grep -qx b; then REFKIND=python3
+elif command -v node    >/dev/null 2>&1 && printf '{"a":"b"}' | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).a))' 2>/dev/null | grep -qx b; then REFKIND=node
 fi
-
-echo "== parser conformance: tier 3 (pure bash) vs tier 1 (a real parser) =="
 if [ -z "$REFKIND" ]; then
-  echo "  bu makinede ikinci bir JSON çözücü yok (jq, perl, python3, node) — tier 1'e ulaşılamıyor."
+  echo "  bu makinede JSON çözebilen ikinci bir araç yok (jq, perl, python3, node)."
   echo "  HİÇBİR ŞEY KARŞILAŞTIRILMADI. Bu bir geçiş değildir."
   exit 3
 fi
 note "referans çözücü: $REFKIND"
 
-SHIM="$W/shim"; mkdir -p "$SHIM"
-if [ "$REFKIND" = "jq" ]; then
-  T1PATH=""   # real jq is already on PATH; the hook finds it by itself
-else
+ref_decode(){ # the reference's own answer for .tool_input.command, straight from the payload
+  case "$REFKIND" in
+    jq)      jq -r '.tool_input.command // empty' < "$P" 2>/dev/null ;;
+    perl)    perl -MJSON::PP -e 'local $/; my $j=decode_json(<STDIN>); binmode(STDOUT); print(($j->{tool_input}{command} // ""));' < "$P" 2>/dev/null ;;
+    python3) python3 -c 'import sys,json;sys.stdout.write(json.load(sys.stdin).get("tool_input",{}).get("command",""))' < "$P" 2>/dev/null ;;
+    node)    node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{let o;try{o=JSON.parse(s)}catch(e){process.exit(0)}process.stdout.write(((o.tool_input||{}).command)||"")})' < "$P" 2>/dev/null ;;
+  esac; }
+
+SHIM="$W/shim"; mkdir -p "$SHIM"; T1PATH=""
+if [ "$REFKIND" != jq ]; then
   case "$REFKIND" in
     perl)    RUN='perl -MJSON::PP -e '\''local $/; my $j=decode_json(<STDIN>); binmode(STDOUT); my $k=$ENV{K}; print(($k eq "cmd" ? ($j->{tool_input}{command} // "") : ($j->{permission_mode} // "")), "\n");'\''' ;;
-    python3) RUN='python3 -c '\''import sys,os,json;d=json.load(sys.stdin);k=os.environ["K"];v=(d.get("tool_input",{}).get("command","") if k=="cmd" else d.get("permission_mode",""));sys.stdout.write(v+"\n")'\''' ;;
-    node)    RUN='node -e '\''let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{let o;try{o=JSON.parse(s)}catch(e){process.exit(5)}const k=process.env.K;const v=k==="cmd"?((o.tool_input||{}).command||""):(o.permission_mode||"");process.stdout.write(v+"\n")})'\''' ;;
+    python3) RUN='python3 -c '\''import sys,os,json;d=json.load(sys.stdin);k=os.environ["K"];sys.stdout.write((d.get("tool_input",{}).get("command","") if k=="cmd" else d.get("permission_mode",""))+"\n")'\''' ;;
+    node)    RUN='node -e '\''let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{let o;try{o=JSON.parse(s)}catch(e){process.exit(5)}const k=process.env.K;process.stdout.write((k==="cmd"?((o.tool_input||{}).command||""):(o.permission_mode||""))+"\n")})'\''' ;;
   esac
-  {
-    echo '#!/usr/bin/env bash'
+  { echo '#!/usr/bin/env bash'
     echo 'case "$2" in'
     echo "  '.tool_input.command // empty') K=cmd ;;"
     echo "  '.permission_mode // empty')    K=pm  ;;"
     echo '  *) exit 3 ;;'
     echo 'esac'
-    echo "export K; $RUN"
-  } > "$SHIM/jq"
-  chmod +x "$SHIM/jq"
-  T1PATH="$SHIM"
+    echo "export K; $RUN"; } > "$SHIM/jq"
+  chmod +x "$SHIM/jq"; T1PATH="$SHIM"
 fi
+
+# ---------------------------------------------------------------------------------------------------------
+# THE SLICE, EXTRACTED. This is what production reads with once the ladder is gone, so it is compared against
+# the reference directly rather than through the hook — a comparison routed through the hook would be the
+# slice against itself the moment the ladder disappears.
+# ---------------------------------------------------------------------------------------------------------
+{ echo '#!/usr/bin/env bash'; echo 'INPUT="$(cat)"'
+  awk '/^_json_slice\(\)/{f=1} f{print} f&&/^}$/{exit}' "$HOOK"
+  awk '/^_json_unescape\(\)/{f=1} f{print} f&&/^}$/{exit}' "$HOOK"
+  echo '_json_unescape "$(_json_slice "$INPUT" command)"'; } > "$W/dec.sh"
+cp "$W/dec.sh" "$W/dec.good.sh"
+if ! bash -n "$W/dec.sh" 2>/dev/null; then
+  echo "  _json_slice / _json_unescape kapıdan çıkarılamadı — çözüm karşılaştırması yapılamaz"; exit 3; fi
+slice_decode(){ bash "$W/dec.sh" < "$P" 2>/dev/null; }
 
 # ---------------------------------------------------------------------------------------------------------
 # A REPO FOR THE GATE TO JUDGE. §4.6 reads a review record, so without one every commit blocks for a reason
@@ -119,244 +169,209 @@ t3(){ ( cd "$R" && bash "$HOOK" < "$P" >/dev/null 2>&1; printf '%s' "$?" ); }
 t1(){ if [ -n "$T1PATH" ]; then ( cd "$R" && PATH="$T1PATH:$PATH" bash "$HOOK" < "$P" >/dev/null 2>&1; printf '%s' "$?" )
       else ( cd "$R" && bash "$HOOK" < "$P" >/dev/null 2>&1; printf '%s' "$?" ); fi; }
 
-# the payload, built by printf so the ARGUMENT is never escape-expanded (only the format string is)
 mk(){ printf '{"cwd":"/tmp","permission_mode":"default","tool_name":"Bash","tool_input":{"command":"%s"},"tool_use_id":"x"}' "$1" > "$P"; }
-mkraw(){ printf '%s' "$1" > "$P"; }   # for the adversarial shapes, which are about the OBJECT, not the command
-
+mkraw(){ printf '%s' "$1" > "$P"; }
 hexof(){ printf '%s' "$1" | od -An -tx1 | tr -d ' \n'; }
 bytes(){ od -An -tx1 "$P" | tr -d ' \n'; }
 
 # ---------------------------------------------------------------------------------------------------------
-# CALIBRATION. Four questions, and the corpus is not reported unless all four answer. Each one has been the
-# difference between a real measurement and a green that meant nothing, at least once, on one of our machines.
+# CALIBRATION. Nothing below is reported unless every question here answers.
 # ---------------------------------------------------------------------------------------------------------
 echo
 echo "-- kalibrasyon --"
 CAL=1
-mk 'rm -rf /'
-a="$(t3)"; b="$(t1)"
-if [ "$a" = 2 ] && [ "$b" = 2 ]; then ok "yıkıcı bir komut iki katmanda da bloklanıyor (kapı koşuyor)"
-else bad "kalibrasyon: 'rm -rf /' t3=$a t1=$b — kapı koşmuyor, korpus anlamsız"; CAL=0; fi
+mk 'rm -rf /'; a="$(t3)"
+if [ "$a" = 2 ]; then ok "yıkıcı bir komut bloklanıyor (kapı gerçekten koşuyor)"; else bad "kalibrasyon: 'rm -rf /' rc=$a"; CAL=0; fi
+mk 'ls -la';   a="$(t3)"
+if [ "$a" = 0 ]; then ok "zararsız bir komut geçiyor (kapı aşırı bloklamıyor)"; else bad "kalibrasyon: 'ls -la' rc=$a"; CAL=0; fi
+
+if [ "$LADDER" = 1 ]; then
+  # the tier-1 branch must really be taken, or the second column is the first column twice
+  if [ -n "$T1PATH" ]; then
+    cp "$SHIM/jq" "$W/jq.real"
+    { echo '#!/usr/bin/env bash'
+      echo "case \"\$2\" in '.tool_input.command // empty') printf '%s\\n' 'rm -rf /' ;; '.permission_mode // empty') printf '%s\\n' default ;; *) exit 3 ;; esac"
+    } > "$SHIM/jq"; chmod +x "$SHIM/jq"
+    mk 'ls -la'; c="$(t1)"
+    cp "$W/jq.real" "$SHIM/jq"; chmod +x "$SHIM/jq"
+    if [ "$c" = 2 ]; then ok "tier 1 dalı gerçekten koşuluyor (stub başka komut döndürünce rc 0->2)"
+    else bad "kalibrasyon: tier 1 dalına girilmiyor — ikinci sütun birincinin kopyası (rc=$c)"; CAL=0; fi
+  else
+    mk 'ls -la'
+    if jq -r '.tool_input.command // empty' < "$P" 2>/dev/null | grep -qx 'ls -la'; then ok "tier 1 dalı gerçek jq ile koşuluyor"
+    else bad "kalibrasyon: gerçek jq beklendiği gibi cevap vermiyor"; CAL=0; fi
+  fi
+fi
+
+# the decode comparison must be able to SEE a difference, and must be able to FAIL
+mk "echo a${BS}ud83d${BS}ude00b"
+d_s="$(slice_decode)"; d_r="$(ref_decode)"
+if [ "$d_s" != "$d_r" ]; then ok "bilinen çözüm farkı görünüyor (vekil çift: dilim '$d_s' · referans '$d_r')"
+else bad "kalibrasyon: bilinen fark görünmüyor — çözüm karşılaştırması boş olabilir"; CAL=0; fi
+
+# MUTATION MUST-FAIL: break the extracted slice and require the comparison to notice
+printf '%s\n' '#!/usr/bin/env bash' 'cat >/dev/null' "printf '%s' 'MUTASYON'" > "$W/dec.sh"
+mk 'ls -la'; d_s="$(slice_decode)"; d_r="$(ref_decode)"
+cp "$W/dec.good.sh" "$W/dec.sh"
+if [ "$d_s" != "$d_r" ]; then ok "bozulmuş bir dilim çözüm karşılaştırmasında YAKALANIYOR (mutasyon testi)"
+else bad "kalibrasyon: dilim kasten bozuldu ve karşılaştırma fark etmedi — kontrol ölü"; CAL=0; fi
 mk 'ls -la'
-a="$(t3)"; b="$(t1)"
-if [ "$a" = 0 ] && [ "$b" = 0 ]; then ok "zararsız bir komut iki katmanda da geçiyor (kapı aşırı bloklamıyor)"
-else bad "kalibrasyon: 'ls -la' t3=$a t1=$b"; CAL=0; fi
-
-# the tier-1 branch must really be taken, or the second column is the first column twice. A stub that returns a
-# DIFFERENT command for a harmless payload proves the branch is live; with real jq the equivalent proof is that
-# jq answers at all.
-if [ -n "$T1PATH" ]; then
-  cp "$SHIM/jq" "$W/jq.real"
-  { echo '#!/usr/bin/env bash'
-    echo "case \"\$2\" in '.tool_input.command // empty') printf '%s\\n' 'rm -rf /' ;; '.permission_mode // empty') printf '%s\\n' default ;; *) exit 3 ;; esac"
-  } > "$SHIM/jq"; chmod +x "$SHIM/jq"
-  mk 'ls -la'; c="$(t1)"
-  cp "$W/jq.real" "$SHIM/jq"; chmod +x "$SHIM/jq"
-  if [ "$c" = 2 ]; then ok "tier 1 dalı gerçekten koşuluyor (pozitif kontrol: stub başka komut döndürünce rc 0->2)"
-  else bad "kalibrasyon: tier 1 dalına girilmiyor — ikinci sütun birincinin kopyası (rc=$c)"; CAL=0; fi
-else
-  mk 'ls -la'
-  if printf '%s' "$(cat "$P")" | jq -r '.tool_input.command // empty' 2>/dev/null | grep -qx 'ls -la'; then
-    ok "tier 1 dalı gerçek jq ile koşuluyor"
-  else bad "kalibrasyon: gerçek jq beklendiği gibi cevap vermiyor"; CAL=0; fi
-fi
-
-# a KNOWN divergence must be visible, or a harness that silently compares nothing would come out all-green.
-# tier 3 renders an astral character as `??`; a real parser produces the character. The VERDICT is the same —
-# which is the whole point of comparing exit codes — but the decoded bytes must differ, and that is checkable.
-mk 'echo a\ud83d\ude00b'
-{ echo '#!/usr/bin/env bash'; echo 'INPUT="$(cat)"'
-  awk '/^_json_slice\(\)/{f=1} f{print} f&&/^}$/{exit}' "$HOOK"
-  awk '/^_json_unescape\(\)/{f=1} f{print} f&&/^}$/{exit}' "$HOOK"
-  echo '_json_unescape "$(_json_slice "$INPUT" command)"'; } > "$W/dec3.sh"
-if bash -n "$W/dec3.sh" 2>/dev/null; then
-  D3="$(bash "$W/dec3.sh" < "$P" 2>/dev/null)"
-  if [ -n "$T1PATH" ]; then D1="$(PATH="$T1PATH:$PATH" jq -r '.tool_input.command // empty' < "$P" 2>/dev/null)"
-  else D1="$(jq -r '.tool_input.command // empty' < "$P" 2>/dev/null)"; fi
-  if [ "$D3" != "$D1" ]; then ok "bilinen bayt ayrışması görünüyor (vekil çift: tier3 '$D3' vs tier1 '$D1') — karşılaştırma canlı"
-  else bad "kalibrasyon: bilinen ayrışma görünmüyor, harness boş karşılaştırıyor olabilir"; CAL=0; fi
-else
-  unm "tier 3 çözücüsü kapıdan çıkarılamadı — bilinen-ayrışma kalibrasyonu koşmadı"
-fi
+if [ "$(slice_decode)" = "ls -la" ]; then ok "mutasyondan sonra gerçek dilim geri geldi"
+else bad "kalibrasyon: mutasyon geri alınamadı, kalan satırlar bozuk dilimle ölçülürdü"; CAL=0; fi
 
 if [ "$CAL" != 1 ]; then
-  echo
-  echo "KALİBRASYON BAŞARISIZ — korpus raporlanmıyor, çünkü sonucu okunamaz."
-  exit 1
-fi
+  echo; echo "KALİBRASYON BAŞARISIZ — korpus raporlanmıyor, çünkü sonucu okunamaz."; exit 1; fi
 
 # ---------------------------------------------------------------------------------------------------------
-# THE CORPUS. Every row states the verdict it expects, so a divergence can be reported with its DIRECTION:
-# a tier answering 0 where 2 was expected is a BLIND GATE (something dangerous got through); a tier answering
-# 2 where 0 was expected is an OVER-BLOCK (the user is taught to reach for --no-verify, which disarms all of §4).
-# Equality is the headline; the direction is what a reviewer needs in order to know how bad a red row is.
-#
-# `need` is the two-character escape the fixture must really carry. The payload's bytes are searched for
-# backslash + that character, and for the doubled form that would mean the escape was written inert. `-` means
-# the row carries no escape and no byte check applies.
+# THE CORPUS. Every row declares the verdict it expects, so a divergence is reported with its DIRECTION: a
+# reader answering 0 where 2 was expected is a BLIND GATE; 2 where 0 was expected is an OVER-BLOCK, which
+# teaches the user to reach for --no-verify and disarms all of §4.
+#   $3 `need`  : the escape the fixture must really carry (`-` none, `hex:…` a whole byte sequence)
+#   $5 `dec`   : `=` the slice must decode exactly what the reference decodes
+#                anything else: the literal the documented normalisation must produce
 # ---------------------------------------------------------------------------------------------------------
 echo
-echo "-- korpus: hüküm eşitliği (rc), bayt değil --"
+echo "-- korpus --"
 
-run_row(){ # $1 label  $2 expected rc  $3 need-escape-char or -  $4 command
-  local label="$1" exp="$2" need="$3" cmd="$4" a b h nh dh
+check_decode(){ # $1 label  $2 expectation
+  local s r; s="$(slice_decode)"
+  if [ "$2" = "=" ]; then
+    r="$(ref_decode)"
+    if [ "$s" = "$r" ]; then ok "$1 · çözüm referansla aynı"
+    else bad "$1 · ÇÖZÜM AYRIŞIYOR: dilim [$s] · referans [$r]"; fi
+  else
+    if [ "$s" = "$2" ]; then ok "$1 · çözüm belgelenen normalleştirmeyi veriyor [$2]"
+    else bad "$1 · NORMALLEŞTİRME BOZULDU: beklenen [$2] · ölçülen [$s]"; fi
+  fi; }
+
+run_row(){ # $1 label  $2 expected rc  $3 need  $4 command  $5 decode expectation
+  local label="$1" exp="$2" need="$3" cmd="$4" dec="$5" a b h nh dh
   mk "$cmd"
   if [ "$need" != "-" ]; then
     h="$(bytes)"
-    # A single character means "the payload must carry backslash + that character, and NOT the doubled form" —
-    # the doubled form is JSON for an escaped backslash followed by a letter, which is inert text every tier
-    # agrees about. Rows whose escape legitimately FOLLOWS an escaped backslash (a line continuation is
-    # `\\` then `\n`) cannot use that rule, because the doubled form is exactly what they are supposed to
-    # contain; they name the whole byte sequence instead, as `hex:…`.
     case "$need" in
       hex:*) nh="${need#hex:}"; dh="" ;;
       *)     nh="5c$(hexof "$need")"; dh="5c5c$(hexof "$need")" ;;
     esac
-    if [ -n "$dh" ]; then
-      case "$h" in
-        *"$dh"*) unm "$label — fixture ATIL: kaçış çift yazılmış ($dh), satır hiçbir şey ölçmez"; return ;;
-      esac
+    if [ -n "$dh" ]; then case "$h" in *"$dh"*) unm "$label — fixture ATIL: kaçış çift yazılmış ($dh)"; return ;; esac; fi
+    case "$h" in *"$nh"*) ;; *) unm "$label — fixture ATIL: payload'da $nh baytları yok"; return ;; esac
+  fi
+  check_decode "$label" "$dec"
+  a="$(t3)"
+  if [ "$LADDER" = 1 ]; then
+    b="$(t1)"
+    if [ "$a" != "$b" ]; then
+      if [ "$a" = "$exp" ]; then bad "$label · AYRIŞIYOR: tier1 rc=$b, beklenen $exp $( [ "$exp" = 2 ] && echo '(tier1 KÖR)' || echo '(tier1 AŞIRI BLOKLUYOR)' )"
+      else bad "$label · AYRIŞIYOR: tier3 rc=$a, beklenen $exp $( [ "$exp" = 2 ] && echo '(tier3 KÖR)' || echo '(tier3 AŞIRI BLOKLUYOR)' )"; fi
+      return
     fi
-    case "$h" in
-      *"$nh"*) ;;
-      *)       unm "$label — fixture ATIL: payload'da $nh baytları yok, kabuk kaçışı yutmuş"; return ;;
-    esac
   fi
-  a="$(t3)"; b="$(t1)"
-  if [ "$a" = "$b" ]; then
-    if [ "$a" = "$exp" ]; then ok "$label (rc=$a)"
-    else bad "$label — iki katman da rc=$a, beklenen $exp $( [ "$exp" = 2 ] && echo '(KÖR KAPI: ikisi de kaçırıyor)' || echo '(AŞIRI BLOK: ikisi de reddediyor)' )"; fi
-  else
-    if [ "$a" = "$exp" ]; then bad "$label — AYRIŞIYOR: tier1 rc=$b, beklenen $exp $( [ "$exp" = 2 ] && echo '(tier1 KÖR)' || echo '(tier1 AŞIRI BLOKLUYOR)' )"
-    else bad "$label — AYRIŞIYOR: tier3 rc=$a, beklenen $exp $( [ "$exp" = 2 ] && echo '(tier3 KÖR)' || echo '(tier3 AŞIRI BLOKLUYOR)' )"; fi
-  fi
-}
+  if [ "$a" = "$exp" ]; then ok "$label · hüküm rc=$a"
+  else bad "$label · HÜKÜM YANLIŞ: rc=$a, beklenen $exp $( [ "$exp" = 2 ] && echo '(KÖR KAPI)' || echo '(AŞIRI BLOK)' )"; fi; }
 
-#         etiket                                  bekl  kaçış  komut
-run_row 'düz commit'                               2 -  'git commit -m c'
-run_row 'pathspec commit'                          2 -  'git commit -m c -- a.txt'
-run_row 'ters bölü devam + LF'                     2 hex:5c5c5c6e  'git commit \\\n  -m c'
-run_row 'ters bölü devam + CRLF'                   2 hex:5c5c5c72  'git commit \\\r\n  -m c'
-run_row 'CRLF ayraç'                               2 r  'git commit -m c\r\necho done'
-run_row 'yalnız CR'                                2 r  'git commit -m c\recho done'
-run_row 'sekme ayraçlı'                            2 t  'git commit\t-m\tc'
-run_row 'kaçışlı tırnak'                           2 '"' 'git commit -m \"a b\"'
-run_row 'rm -rf kök'                               2 -  'rm -rf /'
-run_row 'force push'                               2 -  'git push --force'
-run_row 'git add -f'                               2 -  'git add -f secrets.env'
-run_row 'PowerShell özyinelemeli sil'              2 -  'Remove-Item -Recurse -Force C:\\x'
-run_row 'gate betiğini yeniden yazma (düz)'        2 -  'echo x > .claude/hooks/guard-bash.sh'
-run_row 'gate betiğini yeniden yazma (\u kaçışlı)' 2 u  'echo x > \u002eclaude/hooks/guard-bash.sh'
-run_row 'gate yolunu okuma (\u kaçışlı)'           0 u  'cat \u002eclaude/hooks/guard-bash.sh'
-run_row 'latin kaçışları'                          0 u  'echo \u00e7\u011f\u0131'
-run_row 'vekil çift'                               0 u  'echo a\ud83d\ude00b'
-run_row 'NUL kaçışı'                               0 u  'echo a\u0000b'
-run_row 'backspace'                                0 b  'echo a\bb'
-run_row 'formfeed'                                 0 f  'echo a\fc'
-run_row 'kaçışlı bölü'                             0 /  'cat a\/b\/c.txt'
-run_row 'zararsız komut'                           0 -  'echo not-a-command'
-run_row 'boş komut'                                0 -  ''
+U="${BS}u"     # the two characters a JSON unicode escape starts with, built at run time
+run_row 'düz commit'                    2 -  'git commit -m c'                    '='
+run_row 'pathspec commit'               2 -  'git commit -m c -- a.txt'           '='
+run_row 'devam + LF'                    2 hex:5c5c5c6e  "git commit ${BS}${BS}${BS}n  -m c"   '='
+run_row 'devam + CRLF'                  2 hex:5c5c5c72  "git commit ${BS}${BS}${BS}r${BS}n  -m c"  "git commit ${BS}"$'\n'"  -m c"
+run_row 'CRLF ayraç'                    2 r  "git commit -m c${BS}r${BS}necho done"  "git commit -m c"$'\n'"echo done"
+run_row 'yalnız CR'                     2 r  "git commit -m c${BS}recho done"        'git commit -m cecho done'
+run_row 'sekme ayraçlı'                 2 t  "git commit${BS}t-m${BS}tc"             "git commit"$'\t'"-m"$'\t'"c"
+run_row 'kaçışlı tırnak'                2 '"' "git commit -m ${BS}\"a b${BS}\""      'git commit -m "a b"'
+run_row 'rm -rf kök'                    2 -  'rm -rf /'                           '='
+run_row 'force push'                    2 -  'git push --force'                   '='
+run_row 'git add -f'                    2 -  'git add -f secrets.env'             '='
+run_row 'PowerShell özyinelemeli sil'   2 -  "Remove-Item -Recurse -Force C:${BS}${BS}x"  "Remove-Item -Recurse -Force C:${BS}x"
+run_row 'gate betiği (düz)'             2 -  'echo x > .claude/hooks/guard-bash.sh'  '='
+run_row 'gate betiği (\u kaçışlı)'      2 u  "echo x > ${U}002eclaude/hooks/guard-bash.sh"  'echo x > .claude/hooks/guard-bash.sh'
+run_row 'gate yolunu okuma (\u)'        0 u  "cat ${U}002eclaude/hooks/guard-bash.sh"      'cat .claude/hooks/guard-bash.sh'
+run_row 'latin kaçışları -> ?'          0 u  "echo ${U}00e7${U}011f${U}0131"        'echo ???'
+run_row 'vekil çift -> ??'              0 u  "echo a${U}d83d${U}de00b"              'echo a??b'
+run_row 'NUL kaçışı -> ?'               0 u  "echo a${U}0000b"                      'echo a?b'
+run_row 'backspace -> boşluk'           0 b  "echo a${BS}bb"                        'echo a b'
+run_row 'formfeed -> boşluk'            0 f  "echo a${BS}fc"                        'echo a c'
+run_row 'kaçışlı bölü'                  0 /  "cat a${BS}/b${BS}/c.txt"              'cat a/b/c.txt'
+run_row 'zararsız komut'                0 -  'echo not-a-command'                 '='
+run_row 'boş komut'                     0 -  ''                                   '='
 
 # ---------------------------------------------------------------------------------------------------------
-# ADVERSARIAL SHAPES. The rows above are representative; these are built to make the pure-bash SLICE disagree
-# with a real parser, because that is the disagreement that would matter if the ladder were ever collapsed to
-# one tier. They are written as whole objects rather than as commands: the question is which VALUE each parser
-# reads for `command`, not what the command says.
-#
-# A note on `command` appearing twice: RFC 8259 leaves duplicate names undefined, so "the right answer" is not
-# a standards question. What matters here is only that the two tiers pick the SAME one — if they ever pick
-# differently, a payload could show the user one command and hand the rules another.
+# ADVERSARIAL SHAPES — whole objects rather than commands, because the question is which VALUE each reader
+# takes for a key, not what the command says. RFC 8259 leaves duplicate names undefined, so neither "first
+# wins" nor "last wins" is wrong on its own; what matters is that the gate does not judge one value while
+# showing the user another.
 # ---------------------------------------------------------------------------------------------------------
 echo
-echo "-- düşmanca biçimler: dilim ile gerçek çözücü burada ayrışır mı? --"
-
-adv(){ # $1 label  $2 expected rc  $3 raw payload  [$4 = "known-open:<t3rc>/<t1rc>"]
+echo "-- düşmanca biçimler --"
+adv(){ # $1 label  $2 expected rc  $3 raw payload  [$4 known-open:<t3>/<t1>]
   local label="$1" exp="$2" a b known="${4:-}"
-  mkraw "$3"
-  a="$(t3)"; b="$(t1)"
-  # A KNOWN-OPEN row is a divergence this file FOUND and that nothing has fixed yet. Under
-  # CSK_CONFORMANCE_KNOWN_OPEN=1 it is reported but does not fail the run, so the file can be wired into CI
-  # while the finding is still open — and it is pinned to the EXACT shape observed, so it cannot rot:
-  #   * the shape changes  -> FAIL, because the finding moved and the record is now wrong
-  #   * the row starts passing -> FAIL, because it was FIXED and the marker has to come out
-  # Without the variable the row fails like any other, which is the contract CI asks for once this is closed.
+  mkraw "$3"; a="$(t3)"
+  if [ "$LADDER" = 1 ]; then b="$(t1)"; else b="$a"; fi
   if [ -n "$known" ] && [ "${CSK_CONFORMANCE_KNOWN_OPEN:-0}" = 1 ]; then
+    # A known-open row is a divergence this file FOUND that nothing has fixed yet. It is pinned to the exact
+    # shape observed so it cannot rot: if the shape moves, or if the row starts passing, this FAILS and says so.
     local want="${known#known-open:}"
-    if [ "$a" = "$b" ] && [ "$a" = "$exp" ]; then
-      bad "$label — ARTIK GEÇİYOR: bu bulgu düzeltilmiş, known-open işareti kaldırılmalı"
-      return
-    fi
-    if [ "$a/$b" = "$want" ]; then
-      KNOWN_OPEN=$((KNOWN_OPEN+1))
-      printf '  \033[33mAÇIK\033[0m %s — bilinen ayrışma, kayıtlı: tier3 rc=%s · tier1 rc=%s (beklenen %s)\n' "$label" "$a" "$b" "$exp"
-      return
-    fi
-    bad "$label — bilinen ayrışma DEĞİŞTİ: kayıt $want, ölçülen $a/$b — kayıt güncellenmeli"
-    return
+    if [ "$a" = "$b" ] && [ "$a" = "$exp" ]; then bad "$label — ARTIK GEÇİYOR: bulgu düzeltilmiş, known-open işareti kaldırılmalı"; return; fi
+    if [ "$a/$b" = "$want" ]; then KNOWN_OPEN=$((KNOWN_OPEN+1))
+      printf '  \033[33mAÇIK\033[0m %s — bilinen ayrışma, kayıtlı: %s (beklenen %s)\n' "$label" "$a/$b" "$exp"; return; fi
+    bad "$label — bilinen ayrışma DEĞİŞTİ: kayıt $want, ölçülen $a/$b"; return
   fi
-  if [ "$a" = "$b" ]; then
-    if [ "$a" = "$exp" ]; then ok "$label (rc=$a)"
-    else bad "$label — iki katman da rc=$a, beklenen $exp $( [ "$exp" = 2 ] && echo '(KÖR KAPI)' || echo '(AŞIRI BLOK)' )"; fi
-  else
-    bad "$label — AYRIŞIYOR: tier3 rc=$a · tier1 rc=$b (beklenen $exp) $( { [ "$a" = 0 ] || [ "$b" = 0 ]; } && [ "$exp" = 2 ] && echo '<< bir katman KÖR' || echo '<< bir katman AŞIRI BLOKLUYOR' )"
-  fi
-}
+  if [ "$LADDER" = 1 ] && [ "$a" != "$b" ]; then
+    bad "$label — AYRIŞIYOR: tier3 rc=$a · tier1 rc=$b (beklenen $exp)"; return; fi
+  if [ "$a" = "$exp" ]; then ok "$label (rc=$a)"
+  else bad "$label — rc=$a, beklenen $exp $( [ "$exp" = 2 ] && echo '(KÖR KAPI)' || echo '(AŞIRI BLOK)' )"; fi; }
 
-# The destructive command sits in the SECOND `command`. RFC 8259 leaves duplicate names undefined, so neither
-# "first wins" nor "last wins" is wrong on its own — but the two tiers must not answer differently, and here they
-# do: the slice takes the FIRST and reads `ls -la`, a real parser takes the LAST and reads `rm -rf /`. The slice
-# is the blind one. This row was found by REVIEWING this file rather than by running it: an earlier edit had left
-# both values as `ls -la`, so the row agreed trivially and hid the divergence underneath it.
-adv 'command anahtarı iki kez (ikincisi yıkıcı)' 2 \
-  '{"cwd":"/tmp","permission_mode":"default","tool_name":"Bash","tool_input":{"command":"ls -la","command":"rm -rf /"},"tool_use_id":"x"}' \
-  known-open:0/2
-# a literal `"command":"` inside ANOTHER value: a greedy search would relocate the parse and walk past the rules
-adv 'gövdede sahte command anahtarı'          2 \
+adv 'command anahtarı iki kez'                 2 \
+  '{"cwd":"/tmp","permission_mode":"default","tool_name":"Bash","tool_input":{"command":"ls -la","command":"rm -rf /"},"tool_use_id":"x"}'
+adv 'gövdede sahte command anahtarı'           2 \
   '{"cwd":"/tmp","permission_mode":"default","tool_name":"Bash","tool_input":{"description":"\"command\":\"ls\"","command":"rm -rf /"},"tool_use_id":"x"}'
-# a nested object BEFORE the real key
 adv 'gerçek anahtardan önce iç içe nesne'      2 \
-  '{"cwd":"/tmp","permission_mode":"default","tool_name":"Bash","tool_input":{"meta":{"command":"ls -la"},"command":"rm -rf /"},"tool_use_id":"x"}' \
-  known-open:0/2
-# an escaped quote immediately before the closing quote: the slice must not end the value one byte early
-adv 'kapanış tırnağından önce kaçışlı tırnak'  2 \
+  '{"cwd":"/tmp","permission_mode":"default","tool_name":"Bash","tool_input":{"meta":{"command":"ls -la"},"command":"rm -rf /"},"tool_use_id":"x"}'
+adv 'kapanıştan önce kaçışlı tırnak'           2 \
   '{"cwd":"/tmp","permission_mode":"default","tool_name":"Bash","tool_input":{"command":"rm -rf / --no-preserve-root \"x\""},"tool_use_id":"x"}'
-# an escaped BACKSLASH immediately before the closing quote: the quote really does end the value here
-adv 'kapanış tırnağından önce kaçışlı ters bölü' 0 \
+adv 'kapanıştan önce kaçışlı ters bölü'        0 \
   '{"cwd":"/tmp","permission_mode":"default","tool_name":"Bash","tool_input":{"command":"echo C:\\\\"},"tool_use_id":"x"}'
-# key order is not a contract: tool_input before tool_name, permission_mode last
 adv 'anahtar sırası: tool_input önce'          2 \
   '{"tool_input":{"command":"rm -rf /"},"tool_name":"Bash","cwd":"/tmp","permission_mode":"default","tool_use_id":"x"}'
-# The key NAME written with a unicode escape. A real parser decodes it to `command` and judges `rm -rf /`; the
-# slice searches for the literal bytes `"command"`, finds nothing, and the hook exits 0 with no command to judge.
-# The safe answer is the BLOCK, so 2 is expected here and a tier answering 0 is BLIND, not lenient.
-# The backslash is produced at RUN TIME by printf rather than written literally here. A literal one has to
-# survive every layer between an author and this file, and in this repo it has not: a `c` written by hand
-# arrived as `\\u0063` — JSON for an escaped backslash — which is inert text both tiers agree about, so the row
-# would have reported a pass while measuring nothing. The byte assertion below is what makes that impossible to
-# ship silently; it is the same rule the escape rows in the corpus follow.
-BS="$(printf '\\')"
+
+# tool_input carries NO command at all and the only `"command":` in the payload sits in a sibling object. A
+# reader that answers `.tool_input.command` returns empty and, if it also records "I parsed it", the gate's
+# "gated tool with no readable command" refusal never runs. Measured as a live fail-open on every jq machine.
+adv 'komut yalnız kardeş nesnede'              2 \
+  '{"cwd":"/tmp","permission_mode":"default","tool_name":"Bash","tool_input":{"foo":1},"meta":{"command":"rm -rf /"},"tool_use_id":"x"}'
+# the must-pass twin, so "it now blocks everything" is excluded rather than assumed
+adv 'sade payload hâlâ geçiyor (ikiz)'         0 \
+  '{"cwd":"/tmp","permission_mode":"default","tool_name":"Bash","tool_input":{"command":"ls -la"},"tool_use_id":"x"}'
+
+# permission_mode twice: §4.4 fails CLOSED under bypassPermissions, so a nested earlier key that shadows the
+# real one moves the gate from refuse to ask — and under bypass the harness answers ask with allow.
+adv 'permission_mode iki kez (gölgeli bypass)' 2 \
+  '{"cwd":"/tmp","meta":{"permission_mode":"default"},"permission_mode":"bypassPermissions","tool_name":"Bash","tool_input":{"command":"git commit -m x"},"tool_use_id":"x"}'
+adv 'dürüst bypass (ikiz)'                     2 \
+  '{"cwd":"/tmp","permission_mode":"bypassPermissions","tool_name":"Bash","tool_input":{"command":"git commit -m x"},"tool_use_id":"x"}'
+adv 'permission_mode yok (ikiz, meşru)'        2 \
+  '{"cwd":"/tmp","tool_name":"Bash","tool_input":{"command":"git commit -m x"},"tool_use_id":"x"}'
+
+# The key NAME written as a unicode escape. A reader that decodes key names finds `command` and judges
+# `rm -rf /`; one that searches for the literal bytes finds nothing and the gate has no command to judge. The
+# safe answer is the refusal either way, so 2 is expected and a reader answering 0 is BLIND, not lenient.
+# The backslash is built at run time and the payload's BYTES are checked before the row is allowed to count:
+# written literally, `c` has arrived here as `\\u0063` — an escaped backslash, inert text every reader
+# agrees about — and the row would have reported a pass while measuring nothing.
 ESCKEY="{\"cwd\":\"/tmp\",\"permission_mode\":\"default\",\"tool_name\":\"Bash\",\"tool_input\":{\"${BS}u0063ommand\":\"rm -rf /\"},\"tool_use_id\":\"x\"}"
 case "$(printf '%s' "$ESCKEY" | od -An -tx1 | tr -d ' \n')" in
-  *5c5c7530303633*) bad "düşmanca fixture ATIL: kaçışlı anahtar adı çift ters bölü taşıyor, satır hiçbir şey ölçmez" ;;
-  *5c7530303633*)   adv 'anahtar adı \u kaçışlı' 2 "$ESCKEY" known-open:0/2 ;;
-  *)                bad "düşmanca fixture ATIL: kaçışlı anahtar adı kurulamadı" ;;
+  *5c5c7530303633*) bad 'anahtar adı \u kaçışlı — fixture ATIL: çift ters bölü' ;;
+  *5c7530303633*)   adv 'anahtar adı \u kaçışlı' 2 "$ESCKEY" ;;
+  *)                bad 'anahtar adı \u kaçışlı — fixture kurulamadı' ;;
 esac
 
-# ---------------------------------------------------------------------------------------------------------
 echo
-printf 'PARSER-CONFORMANCE: %s geçti · %s başarısız · %s ölçülemedi · %s bilinen-açık  (referans: %s)\n' \
-  "$PASS" "$FAILED" "$UNMEASURED" "$KNOWN_OPEN" "$REFKIND"
+printf 'PARSER-CONFORMANCE: %s geçti · %s başarısız · %s ölçülemedi · %s bilinen-açık  (kip: %s · referans: %s)\n' \
+  "$PASS" "$FAILED" "$UNMEASURED" "$KNOWN_OPEN" \
+  "$( [ "$LADDER" = 1 ] && echo 'merdivenli' || echo 'tek okuyucu' )" "$REFKIND"
 if [ "$KNOWN_OPEN" -gt 0 ]; then
   echo "$KNOWN_OPEN bilinen ayrışma AÇIK ve bu koşuda başarısızlık sayılmadı (CSK_CONFORMANCE_KNOWN_OPEN=1)."
-  echo "Merdiven bunlar kapanmadan SİLİNMEZ; değişken olmadan koşmak satırları kırmızı gösterir."
 fi
-if [ "$FAILED" -gt 0 ]; then
-  echo "Katmanlar ayrıştı ya da bir fixture kurulamadı. Merdiven SİLİNMEDEN önce bu kapatılmalı."
-  exit 1
-fi
-if [ "$UNMEASURED" -gt 0 ]; then
-  echo "Bazı satırlar ölçülemedi — bu bir geçiş değildir, fixture'ları düzeltin."
-  exit 1
-fi
-echo "Her iki katman da her vakada aynı hükmü verdi."
+if [ "$FAILED" -gt 0 ]; then echo "Okuyucu referanstan ayrıştı ya da bir hüküm yanlış. Bu kapatılmalı."; exit 1; fi
+if [ "$UNMEASURED" -gt 0 ]; then echo "Bazı satırlar ölçülemedi — bu bir geçiş değildir, fixture'ları düzeltin."; exit 1; fi
+echo "Kapının okuyucusu her vakada referansla aynı sonuca vardı."
 exit 0
