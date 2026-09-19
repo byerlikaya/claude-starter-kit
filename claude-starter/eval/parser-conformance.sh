@@ -312,11 +312,13 @@ echo "-- düşmanca biçimler --"
 #     command was a commit was refused by §4.6 before its own rule was ever reached.
 # So: the payload's cwd is the prepared repo, each row may name the RULE it expects to fire, and the string the
 # slice actually read is printed on every failure.
-# `/` is in the class on purpose: a refusal that protects two sections is tagged `GUARD (§4.4/§4.5)`, and an
-# extraction stopping at the first `§4.x` captured `GUARD (§4.4` — no closing paren, and a row naming `§4.5`
-# then failed against a message that contains it. The containment test below was never the problem; the
-# extraction was too narrow. A compound tag is the honest one for a gate that guards more than one rule.
-t3err(){ ( cd "$R" && bash "$HOOK" < "$P" 2>&1 >/dev/null ) | tr -d '\r' | grep -oE 'GUARD \(§[0-9./]+\)' | head -1; }
+# EVERYTHING UP TO THE CLOSING PAREN, rather than a class of the characters a tag is expected to contain. A
+# refusal protecting two sections is tagged `GUARD (§4.4/§4.5)`, and two narrower attempts both failed on it:
+# `§[0-9.]+` stopped at the `/` and captured `GUARD (§4.4` with no closing paren, then `§[0-9./]+` stopped at
+# the SECOND `§` and matched nothing at all, so the row reported "no rule fired" for a refusal that names two.
+# Adding `§` to the class would also be fragile under `LC_ALL=C`, where it is two bytes. `[^)]*` has no opinion
+# about what a tag may contain, which is the right amount of opinion for something whose job is to read one.
+t3err(){ ( cd "$R" && bash "$HOOK" < "$P" 2>&1 >/dev/null ) | tr -d '\r' | grep -oE 'GUARD \([^)]*\)' | head -1; }
 slice_reads(){ bash "$W/dec.sh" < "$P" 2>/dev/null; }
 
 adv(){ # $1 label  $2 expected rc  $3 rule  $4 raw payload  [$5 known-open:<t3>/<t1>]
