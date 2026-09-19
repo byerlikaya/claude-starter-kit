@@ -6,8 +6,20 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"       # .claude/
 AGENTS="$ROOT/agents"; SKILLS="$ROOT/skills"; HOOKS="$ROOT/hooks"
 FAIL=0; PASSN=0; SKIPN=0; SKIP_HARD=0; SKIP_LIST=""
-pass(){ PASSN=$((PASSN+1)); echo "  ✅ $1"; }
-fail(){ FAIL=$((FAIL+1)); echo "  ❌ $1"; }
+# EVERY ASSERTION APPENDS ITS COUNTER VALUE TO A FILE, and that one redirect is what makes the check below
+# possible: a file survives a subshell, a variable does not. An assertion that runs inside `( … )` increments
+# counters in a child, so it PRINTS green while the total does not move — a failure there is invisible and the
+# gate is silently always-green. It happened once, in the block added to calibrate the evals metric: five rows
+# printed pass while the total rose by one instead of six, and it was caught by reading the COUNT rather than
+# the colour. A defect found that way stays found only if something looks for it.
+# Both helpers MUST log the SAME quantity. A first version had `pass` log PASSN and `fail` log the sum: with
+# different counters, a pass following a fail repeats the previous value and accuses a clean row.
+# The label is stripped of line endings first — labels here carry payloads and decoded values, and a real LF
+# inside one splits a log line in two and manufactures a repeat that belongs to the harness.
+ASSERTLOG="$(mktemp)"
+_al(){ local l="${1//$'\n'/ }"; l="${l//$'\r'/ }"; printf '%s\t%s\n' "$((PASSN+FAIL))" "$l" >> "$ASSERTLOG"; }
+pass(){ PASSN=$((PASSN+1)); _al "P $1"; echo "  ✅ $1"; }
+fail(){ FAIL=$((FAIL+1));   _al "F $1"; echo "  ❌ $1"; }
 # A VERDICT WITHOUT A DENOMINATOR IS NOT A VERDICT. This suite printed one line — "SMOKE-TEST: PASSED ✅" — and
 # it printed the identical line whether 574 assertions ran or 293 did (CSK_SMOKE_SCOPE=install drops the rest).
 # Worse, seventeen places reported a test that DID NOT RUN as a green ✅, so "a tool is missing here" and "the
@@ -5120,6 +5132,52 @@ $_res")"
 else
   skip scope "evals/run.sh is not present (installed project, not a source checkout) — metric not calibrated"
 fi
+
+# --- DID EVERY ASSERTION REACH THE COUNTERS? ------------------------------------------------------------
+# The parent's logged values are exactly total, total-1, … 1, so walk the log FROM THE END expecting that
+# chain. A line on the chain ran in the parent; every line that is not was executed in a child.
+# The earlier rule — "a repeat means the line before it was lost" — is WRONG for the shape that actually
+# happened here. Several assertions inside ONE subshell make the counter ADVANCE inside the child:
+#     parent at P · child logs P+1, P+2, P+3 · parent resumes and logs P+1
+# There is a single drop, at the resume, so that rule named ONE of five lost rows and missed the rest. It
+# survived its own calibration because the synthetic fixture modelled three SEPARATE subshells, which produce
+# repeats rather than a climb: the fixture and the rule came from the same wrong mental model and agreed with
+# each other. Measured on the real shape, not reasoned. The backward walk needs no special case — runs,
+# separate subshells and a loss at the very end all fall out of it.
+_analyse(){ # $1 = log, $2 = visible total
+  awk -F'\t' -v final="$2" '
+    { n[NR]=$1; lab[NR]=$2 }
+    END { e=final+0; h=0
+      for (i=NR; i>=1; i--) { if (n[i]+0 == e) e--; else out[++h]=lab[i] }
+      for (j=h; j>=1; j--) printf "     >> %s\n", out[j]
+      printf "HITS=%d\n", h }' "$1"; }
+# CALIBRATED ON A SYNTHETIC LOG BEFORE IT IS TRUSTED. A detector that quietly stopped working reports zero
+# findings, which reads as a clean bill of health and is exactly the failure it exists to catch. The fixture
+# carries BOTH shapes — a run of three inside one child, and a loss at the very end — plus four parent lines
+# it must NOT accuse.
+_ALZ=0; _cal="$(mktemp)"
+printf '1\tp1\n2\tp2\n3\tRUN-1\n4\tRUN-2\n5\tRUN-3\n3\tp3\n4\tp4\n5\tSON\n' > "$_cal"
+_co="$(_analyse "$_cal" 4)"
+if [ "$(printf '%s' "$_co" | sed -n 's/^HITS=//p')" = 4 ] \
+   && printf '%s' "$_co" | grep -q 'RUN-1' && printf '%s' "$_co" | grep -q 'RUN-2' \
+   && printf '%s' "$_co" | grep -q 'RUN-3' && printf '%s' "$_co" | grep -q 'SON' \
+   && ! printf '%s' "$_co" | grep -qE '>> p[1-4]$'; then
+  _ALZ=1
+else
+  fail "assertion-log analyser failed its own calibration — not looking for losses (out: $(printf '%s' "$_co" | tr '\n' ' '))"
+fi
+rm -f "$_cal"
+if [ "$_ALZ" = 1 ]; then
+  _ao="$(_analyse "$ASSERTLOG" "$((PASSN+FAIL))")"
+  _ah="$(printf '%s' "$_ao" | sed -n 's/^HITS=//p')"
+  if [ "${_ah:-0}" = 0 ]; then pass "every assertion reached the counters (none ran in a child shell)"
+  else
+    echo "  ❌ ${_ah} assertion(s) ran in a subshell — they printed a verdict the totals never saw:"
+    printf '%s\n' "$_ao" | grep '>>'
+    FAIL=$((FAIL+1))
+  fi
+fi
+rm -f "$ASSERTLOG"
 
 echo "---"
 if [ "$SKIPN" -gt 0 ]; then
