@@ -5024,7 +5024,18 @@ echo "== 15) evals: the parallel-audit metric, because a rule nobody can measure
 # The metric is calibrated rather than trusted, and the pair below is the whole point: SAME call count,
 # different verdict. A metric that cannot separate those two would let the experiment report either answer.
 _EVR="$(cd "$(dirname "$0")/../.." && pwd)/evals/run.sh"
-if [ -f "$_EVR" ]; then
+# python3 IS PROBED BY RUNNING IT, not by `command -v`. `eval_trace_metrics` is a python heredoc, so the
+# generic JSONQ oracle above does not cover it — that one is happy with jq. And on a stock Windows desktop
+# `command -v python3` finds the Microsoft Store redirector stub, which resolves, prints nothing, and exits
+# 49; taking that as "python3 exists" is the exact mistake that kept a fail-open alive in this kit for months.
+# Without this probe the rows below would FAIL on such a machine instead of skipping, which is a test defect
+# reported as a product one. A tool-class skip still turns CI red, and that is correct: every runner has a
+# working python3, so its absence there means a broken runner rather than an honest boundary.
+_PY3OK=0
+printf '' | python3 -c 'import sys,json' >/dev/null 2>&1 && _PY3OK=1
+if [ -f "$_EVR" ] && [ "$_PY3OK" = 0 ]; then
+  skip tool "evals metric not calibrated (no working python3 — eval_trace_metrics is a python heredoc)"
+elif [ -f "$_EVR" ]; then
   _EVD="$(mktemp -d)"
   # NOT IN A SUBSHELL, and that was a real defect in the first draft of this block: the five rows below ran
   # inside `( … )`, so `pass`/`fail` incremented counters in a child and the parent never saw them. The rows
