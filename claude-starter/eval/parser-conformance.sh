@@ -63,10 +63,45 @@ if [ ! -f "$HOOK" ]; then
 fi
 
 PASS=0; FAILED=0; UNMEASURED=0; KNOWN_OPEN=0
-ok(){   PASS=$((PASS+1));   printf '  \033[32mOK\033[0m   %s\n' "$1"; }
-bad(){  FAILED=$((FAILED+1)); printf '  \033[31mFAIL\033[0m %s\n' "$1"; }
-unm(){  UNMEASURED=$((UNMEASURED+1)); printf '  \033[33m????\033[0m %s\n' "$1"; }
+
+# AN ASSERTION THAT RAN IN A SUBSHELL IS INVISIBLE, and this file is as exposed to it as any other. `ok`/`bad`
+# move shell VARIABLES, so inside `( … )` or a pipeline they move a copy in a child: the row prints, the total
+# does not, and a `bad` there cannot fail the run. Colour cannot find it — only the DELTA can.
+# So every assertion also appends the counter's value to a file. A file survives a subshell; a variable does
+# not. Walking that log afterwards, each line must show the counter one higher than the line before, and any
+# line that repeats means the assertion BEFORE it was lost. The append is a redirect, not a process.
+# `$BASHPID != $$` is shorter and exact, and is not used: it does not exist on bash 3.2, which is what macOS
+# runs, so it would detect nothing on one of the three supported platforms while looking like it worked.
+# The label is stripped of line endings first — a decoded value can contain a real LF, which would split one
+# log line into two and manufacture a repeat that is the harness's and not the suite's.
+ASSERTLOG="$(mktemp)"
+ok(){   PASS=$((PASS+1));   _al "OK  $1"; printf '  \033[32mOK\033[0m   %s\n' "$1"; }
+bad(){  FAILED=$((FAILED+1)); _al "BAD $1"; printf '  \033[31mFAIL\033[0m %s\n' "$1"; }
+unm(){  UNMEASURED=$((UNMEASURED+1)); _al "UNM $1"; printf '  \033[33m????\033[0m %s\n' "$1"; }
 note(){ printf '  ·    %s\n' "$1"; }
+_al(){ local l="${1//$'\n'/ }"; l="${l//$'\r'/ }"; printf '%s\t%s\n' "$((PASS+FAILED+UNMEASURED))" "$l" >> "$ASSERTLOG"; }
+
+# The analyser, and its calibration on a SYNTHETIC log so the detector is never trusted untested. A detector
+# that silently stopped working would report "0 findings", which reads as a clean bill of health and is the
+# same failure it exists to catch. Two planted defects — one mid-run, one at the very end, which has no
+# following line to reveal it and is caught by comparing the log's last value against the visible total.
+_analyse(){ # $1 log, $2 visible total -> prints offenders, then HITS=n
+  awk -F'\t' -v final="$2" '
+    { n[NR]=$1; lab[NR]=$2 }
+    END { h=0
+      for (i=2; i<=NR; i++) if (n[i] <= n[i-1]) { printf "     >> %s\n", lab[i-1]; h++ }
+      if (NR>0 && n[NR] > final) { printf "     >> %s   (son satır)\n", lab[NR]; h++ }
+      printf "HITS=%d\n", h }' "$1"; }
+_cal="$(mktemp)"
+printf '1\ttemiz-bir\n2\tPLANTED-ORTA\n2\ttemiz-iki\n3\ttemiz-uc\n4\tPLANTED-SON\n' > "$_cal"
+_co="$(_analyse "$_cal" 3)"
+if [ "$(printf '%s' "$_co" | sed -n 's/^HITS=//p')" = 2 ] \
+   && printf '%s' "$_co" | grep -q 'PLANTED-ORTA' && printf '%s' "$_co" | grep -q 'PLANTED-SON'; then
+  _ALZ=1
+else
+  _ALZ=0; printf '  \033[33m????\033[0m %s\n' "alt-kabuk dedektörü kendi kalibrasyonunu geçemedi — bu koşuda iddia kaybı ARANMAYACAK"
+fi
+rm -f "$_cal"
 
 W="$(mktemp -d)"
 trap 'cd /; rm -rf "$W"' EXIT INT TERM
@@ -539,6 +574,18 @@ case "$(printf '%s' "$ESCKEY" | od -An -tx1 | tr -d ' \n')" in
 esac
 
 echo
+# Every assertion must have been visible to the parent. A row lost to a subshell is worse than a red one: a
+# `bad` there prints and cannot fail the run, so the gate is silently always-green from that line onward.
+if [ "$_ALZ" = 1 ]; then
+  _ao="$(_analyse "$ASSERTLOG" "$((PASS+FAILED+UNMEASURED))")"
+  _ah="$(printf '%s' "$_ao" | sed -n 's/^HITS=//p')"
+  if [ "${_ah:-0}" != 0 ]; then
+    printf '  \033[31mFAIL\033[0m %s\n' "$_ah iddia ALT KABUKTA koştu — sayaca ulaşmadılar, bir 'bad' orada görünmez olurdu:"
+    printf '%s\n' "$_ao" | grep '>>'
+    FAILED=$((FAILED+1))
+  fi
+fi
+rm -f "$ASSERTLOG"
 printf 'PARSER-CONFORMANCE: %s geçti · %s başarısız · %s ölçülemedi · %s bilinen-açık  (kip: %s · referans: %s)\n' \
   "$PASS" "$FAILED" "$UNMEASURED" "$KNOWN_OPEN" \
   "$( [ "$LADDER" = 1 ] && echo 'merdivenli' || echo 'tek okuyucu' )" "$REFKIND"
