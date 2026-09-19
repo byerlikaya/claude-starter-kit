@@ -448,24 +448,48 @@ echo "[wizard] --yes installs unattended, reads nothing, and refuses the risky c
 #     CALIBRATED IN-LINE, because "it hung" is only meaningful if the two stdins demonstrably differ here: a
 #     bare `read` must time out on the fifo and must return at once on /dev/null. If those two agree, the
 #     fixture proves nothing and says so rather than reporting a pass.
-_to(){ perl -e 'alarm shift; exec @ARGV or exit 127' "$@"; }
+# The bound is a POLLING PARENT, not a timeout utility, and that is the whole point: it cannot itself hang.
+# The first version used `perl -e alarm` + exec, and on windows-latest the alarm did not interrupt a blocked
+# `read` — so the e2e step ran until the job was killed. Steps 1-7 green, step 8 with no conclusion at all.
+# The calibration below was supposed to catch a broken bound and skip; instead it was the FIRST thing to hang,
+# because it used the same mechanism. A calibration that can hang is not a calibration. This loop runs at most
+# `secs` iterations of `sleep 1` and then SIGKILLs, so every path is bounded by construction.
+_bounded(){                     # $1 = seconds, rest = command; prints BLOCKED or rc=<n>
+  local secs="$1"; shift
+  # THE BUDGET MUST EXCEED THE PRODUCT'S OWN. `csk_read` waits 10 s per prompt and the no-flag path reaches two
+  # of them, so a 20 s bound reported BLOCKED for an installer that was about to decline correctly at ~20 s —
+  # my harness's budget, not a hang. Measured directly afterwards: rc=0, "Cancelled — nothing changed". 60 s
+  # leaves room for three bounded reads plus the work between them.
+  # `<&0` is load-bearing: bash redirects a BACKGROUND job's stdin from /dev/null unless it is given one
+  # explicitly, so without this the child never sees the caller's fifo, reads EOF and returns rc=1. The
+  # calibration below caught exactly that and skipped rather than reporting a pass — which is what it is for.
+  # The child's own output is swallowed HERE rather than by the caller: a redirect on the call site silences
+  # this function's verdict too, which is how the captured value came back empty and the installer's banner
+  # ended up inside a status line.
+  "$@" <&0 >/dev/null 2>&1 & local p=$! i=0
+  while [ "$i" -lt "$secs" ]; do
+    kill -0 "$p" 2>/dev/null || { wait "$p"; echo "rc=$?"; return 0; }
+    sleep 1; i=$((i+1))
+  done
+  kill -9 "$p" 2>/dev/null; wait "$p" 2>/dev/null; echo BLOCKED
+}
 _FC="$WORK/fifo-cal"; rm -rf "$_FC"; mkdir -p "$_FC"
-( cd "$_FC" && mkfifo f && exec 3<>f && _to 4 bash -c 'read -r x' <&3; echo $? > rc_open; exec 3>&- ) || true
-( cd "$_FC" && _to 4 bash -c 'read -r x' </dev/null; echo $? > rc_closed ) || true
-if [ "$(cat "$_FC/rc_open")" = 142 ] && [ "$(cat "$_FC/rc_closed")" != 142 ]; then
+( cd "$_FC" && mkfifo f && exec 3<>f && _bounded 5 bash -c 'read -r x' <&3 > rc_open; exec 3>&- ) || true
+( cd "$_FC" && _bounded 5 bash -c 'read -r x' </dev/null > rc_closed ) || true
+if [ "$(cat "$_FC/rc_open")" = BLOCKED ] && [ "$(cat "$_FC/rc_closed")" != BLOCKED ]; then
   W2="$(wiz no-yes-closed)"
-  ( cd "$W2" && _to 25 bash start.sh >/dev/null 2>&1 </dev/null ); rc=$?
-  [ "$rc" != 142 ] || { echo "FAIL: start.sh blocked even on CLOSED stdin — every piped install would hang"; exit 1; }
+  rc="$( cd "$W2" && _bounded 60 bash start.sh </dev/null )"
+  [ "$rc" != BLOCKED ] || { echo "FAIL: start.sh blocked even on CLOSED stdin — every piped install would hang"; exit 1; }
   [ ! -d "$W2/.claude" ] || { echo "FAIL: start.sh installed without consent and without --yes"; exit 1; }
-  echo "[wizard] closed stdin: declines (rc=$rc) rather than installing or blocking"
+  echo "[wizard] closed stdin: declines ($rc) rather than installing or blocking"
 
   # --yes is what makes an unattended run safe on a pty. Asserted on the OPEN-EMPTY stdin, which is the
   # condition that actually hangs, rather than on the one that returns anyway.
   W2B="$(wiz yes-openempty)"
-  ( cd "$W2B" && mkfifo f && exec 3<>f && _to 25 bash start.sh --yes >/dev/null 2>&1 <&3; echo $? > rc; exec 3>&- ) || true
-  [ "$(cat "$W2B/rc")" != 142 ] \
+  ( cd "$W2B" && mkfifo f && exec 3<>f && _bounded 60 bash start.sh --yes <&3 > rc; exec 3>&- ) || true
+  [ "$(cat "$W2B/rc")" != BLOCKED ] \
     || { echo "FAIL: start.sh --yes BLOCKED on open-but-empty stdin — unattended runs hang under a pty"; exit 1; }
-  echo "[wizard] --yes returns on open-but-empty stdin (the pty shape), rc=$(cat "$W2B/rc")"
+  echo "[wizard] --yes returns on open-but-empty stdin (the pty shape), $(cat "$W2B/rc")"
 
   # THE PIPE SHAPE IS CLOSED, and this is a real verdict rather than a recorded state. Without --yes, an
   # open-but-empty stdin used to block forever — measured 142 here and on stock Windows, at the stack chooser
@@ -473,12 +497,12 @@ if [ "$(cat "$_FC/rc_open")" = 142 ] && [ "$(cat "$_FC/rc_closed")" != 142 ]; th
   # returns and declines instead. The must-fail twin lives with the fix: removing the timeout from `csk_read`
   # puts 142 back on this same fifo.
   W2C="$(wiz noyes-openempty)"
-  ( cd "$W2C" && mkfifo f && exec 3<>f && _to 20 bash start.sh >/dev/null 2>&1 <&3; echo $? > rc; exec 3>&- ) || true
-  [ "$(cat "$W2C/rc")" != 142 ] \
+  ( cd "$W2C" && mkfifo f && exec 3<>f && _bounded 60 bash start.sh <&3 > rc; exec 3>&- ) || true
+  [ "$(cat "$W2C/rc")" != BLOCKED ] \
     || { echo "FAIL: without --yes an open-but-empty stdin BLOCKS again — the bounded read regressed"; exit 1; }
   [ ! -d "$W2C/.claude" ] \
     || { echo "FAIL: the bounded read answered YES on its own — a timeout must decline, never consent"; exit 1; }
-  echo "[wizard] open-but-empty PIPE: returns and declines (rc=$(cat "$W2C/rc")), nothing installed"
+  echo "[wizard] open-but-empty PIPE: returns and declines ($(cat "$W2C/rc")), nothing installed"
 
   # CANNOT-CLOSE, and named that way on purpose rather than "known-open", which reads as something that will be
   # closed one day. A PTY WITH NO INPUT cannot be distinguished from a human who types slowly: `[ -t 0 ]` is
