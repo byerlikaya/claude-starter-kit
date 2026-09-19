@@ -27,11 +27,58 @@ SRC="$HERE/claude-starter"
 # Left empty, Stage 2 picks a smart default (first adopt -> new; update + untracked .claude -> here; update +
 # tracked -> ask). Unknown flags are ignored here (start.sh owns --backend/--dotnet/… ; adopt auto-detects shape).
 BRANCH_MODE=""; ASSUME_YES=0
-for _a in "$@"; do case "$_a" in
+_lang_flag=""; _lang_take=0
+for _a in "$@"; do
+  if [ "$_lang_take" = 1 ]; then _lang_flag="$_a"; _lang_take=0; continue; fi
+  case "$_a" in
   --here)       BRANCH_MODE=here ;;
   --new-branch) BRANCH_MODE=new  ;;
   --yes|-y)     ASSUME_YES=1     ;;   # assume "yes" at every gate — for agent-driven / CI updates (no TTY to prompt)
+  --lang=*)     _lang_flag="${_a#--lang=}" ;;
+  --lang)       _lang_take=1 ;;
 esac; done
+
+# ---- CSK-I18N (the twin of start.sh's; see the long note there for why the English string is the key) ----
+# Short version, because the reasoning belongs in one place: `m 'text'` prints the translation of that text
+# or the text itself. A missing translation therefore cannot print a blank line or a bare key — the fallback
+# IS English. Colour never enters a message (the helpers above add it), interpolation goes through %s, and a
+# literal percent must be written %% because the message is the printf format.
+#
+# Language: --lang, then CSK_LANG, then LC_ALL/LC_MESSAGES/LANG, then English. English is the default rather
+# than the locale's language because that is what this script printed before it could speak anything else.
+# On stock Windows all three locale variables are empty (measured), so auto-detect never fires there and a
+# Turkish-speaking Windows user needs the flag — documented behaviour, not a defect.
+if [ -n "$_lang_flag" ]; then
+  CSK_LANG="$_lang_flag"
+elif [ -z "${CSK_LANG:-}" ]; then
+  _loc="${LC_ALL:-}"; [ -n "$_loc" ] || _loc="${LC_MESSAGES:-}"; [ -n "$_loc" ] || _loc="${LANG:-}"
+  case "$_loc" in tr*|TR*) CSK_LANG=tr ;; *) CSK_LANG=en ;; esac
+fi
+case "$CSK_LANG" in tr|en) ;; *) CSK_LANG=en ;; esac
+m() {   # $1 = English text (the key); further args fill %s
+  local s="$1"; shift
+  if [ "$CSK_LANG" = tr ]; then
+    case "$s" in
+      "kit adopt · Stage 1 — DETECTION (read-only; nothing changes)") s='kit adopt · Aşama 1 — TESPİT (salt okunur; hiçbir şey değişmez)' ;;
+      "[1] Environment") s='[1] Ortam' ;;
+      "[2] Existing agentic setup (accumulated work to inherit)") s='[2] Mevcut agentic kurulum (devralınacak birikim)' ;;
+      "[3] 7 handover decisions — SMART SUGGESTION") s='[3] 7 devir kararı — AKILLI ÖNERİ' ;;
+      "Review the decisions") s='Kararları gözden geçirin' ;;
+      "Backend stack") s='Backend yığını' ;;
+      "Recorded backend stack looks wrong") s='Kayıtlı backend yığını yanlış görünüyor' ;;
+      "Stage 2 — apply the kit (coexist)") s='Aşama 2 — kiti uygula (bir arada yaşama)' ;;
+      "Stopped") s='Durduruldu' ;;
+      "Stayed at Stage 1 — NOTHING CHANGED (read-only).") s="Aşama 1'de kalındı — HİÇBİR ŞEY DEĞİŞMEDİ (salt okunur)." ;;
+      "Coexist summary") s='Bir arada yaşama özeti' ;;
+      "Stage 3 — activate the kit discipline (without touching the project CLAUDE.md) + settings merge") s="Aşama 3 — kit disiplinini etkinleştir (proje CLAUDE.md'sine dokunmadan) + ayar birleştirme" ;;
+      "Stage 4 — arm the git gates (SHIM via husky) + PROOF") s='Aşama 4 — git kapılarını devreye al (husky üzerinden SHIM) + KANIT' ;;
+      "Review in your editor — nothing committed yet") s='Editörünüzde gözden geçirin — henüz hiçbir şey commit edilmedi' ;;
+    esac
+  fi
+  # shellcheck disable=SC2059
+  printf "$s" "$@"
+}
+# ---- /CSK-I18N -----------------------------------------------------------------------------------------
 
 # --- color: only on an interactive TTY (same guard as start.sh) ---
 if [ -t 1 ] && [ "${TERM:-dumb}" != "dumb" ] && [ -z "${NO_COLOR:-}" ]; then
@@ -52,6 +99,32 @@ ask_yes(){ local a
   elif [ -t 0 ]; then printf '%s [yes/no]: ' "$1"; read -r a || a=""
   else printf '%s no %s(non-interactive — pass --yes to apply)%s\n' "$1" "$D" "$R"; a=no; fi
   case "$a" in [yY]|[yY][eE][sS]|[eE]|[eE][vV][eE][tT]) return 0;; *) return 1;; esac; }
+# Twin of start.sh's gi_add — the same two defects were present in both scripts, and twice in this one.
+#   * A .gitignore whose last line has NO trailing newline concatenates the first appended entry onto it:
+#     `node_modules` + `docs/` becomes `node_modulesdocs/`, which ignores neither. Reproduced on the old
+#     shape before this was written. `touch` does not help — it changes the timestamp, not the last byte.
+#   * `grep -qxF` is an exact-literal test, so a repo that already ignores `.claude` (no trailing slash)
+#     collected a second, redundant line. `git check-ignore` asks about the PATH rather than the spelling,
+#     which is the technique this script already uses at the #4 share branch and never applied to its own
+#     writes. Outside a repository there is nothing to ask, so the literal test stays as the fallback.
+gi_add() {   # $@ = entries to ensure in ./.gitignore; sets GI_WROTE to what it actually added
+  local e
+  GI_WROTE=""
+  [ -e .gitignore ] || : > .gitignore
+  for e in "$@"; do
+    if git rev-parse --git-dir >/dev/null 2>&1; then
+      git check-ignore -q "$e" 2>/dev/null && continue
+    else
+      grep -qxF "$e" .gitignore 2>/dev/null && continue
+    fi
+    if [ -s .gitignore ] && [ "$(tail -c 1 .gitignore | od -An -tx1 | tr -d ' \n')" != "0a" ]; then
+      printf '\n' >> .gitignore
+    fi
+    printf '%s\n' "$e" >> .gitignore
+    GI_WROTE="$GI_WROTE $e"
+  done
+  GI_WROTE="${GI_WROTE# }"
+}
 # never-overwrite copy: does NOT overwrite an EXISTING target file (project file is preserved), skips+counts.
 # Result globals: ret_add / ret_skip; conflicts are added to SKIP_LIST. Do NOT call in a subshell (globals are lost).
 SKIP_LIST=""
@@ -138,11 +211,11 @@ kit_agent_to_skill() {   # $1 = agent .md file, $2 = base name
   printf '%s\n' "$body"
 }
 
-h1 "kit adopt · Stage 1 — DETECTION (read-only; nothing changes)"
+h1 "$(m 'kit adopt · Stage 1 — DETECTION (read-only; nothing changes)')"
 sub "Reads the existing project, produces a smart suggestion for the 7 handover decisions. Approval + mutation in the next stage."
 
 # ========================= [1] ENVIRONMENT =========================
-h1 "[1] Environment"
+h1 "$(m '[1] Environment')"
 # git context — in a worktree/submodule .git is a FILE (do NOT use [ -d .git ]; red-team hole #6)
 IS_GIT=0; GITTOP=""; GITKIND="no git — 'git init' required"
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
@@ -186,7 +259,7 @@ elif [ -f pyproject.toml ] || [ -f requirements.txt ]; then STACK="Python"; fi
 row "stack hint" "$STACK$([ "$IS_DEVARCH" = 1 ] && echo " · DevArchitecture layout detected")"
 
 # ================= [2] EXISTING AGENTIC SETUP =================
-h1 "[2] Existing agentic setup (accumulated work to inherit)"
+h1 "$(m '[2] Existing agentic setup (accumulated work to inherit)')"
 HAS_CLAUDE=0; [ -d .claude ] && HAS_CLAUDE=1
 # count only the PROJECT's own agents/skills — exclude the kit's -csk agents and kit skills left by a prior adopt
 N_PAGENTS=0; [ -d .claude/agents ] && N_PAGENTS="$(find .claude/agents -name '*.md' ! -name '*-csk.md' 2>/dev/null | wc -l | tr -d ' ')"
@@ -259,7 +332,7 @@ COAUTHOR=0
 OFFREPO=0; { [ "$HAS_CLAUDE" = 0 ] && [ "$HAS_MD" = 0 ]; } && OFFREPO=1
 
 # ===================== [3] SMART SUGGESTION ======================
-h1 "[3] 7 handover decisions — SMART SUGGESTION"
+h1 "$(m '[3] 7 handover decisions — SMART SUGGESTION')"
 sub "format:  decision  ->  SUGGESTED  ->  rationale   (you can review and override all of them in the next stage)"
 if [ "$N_COLLIDE" != 0 ]; then
   prop "1 Role overlap" "kit takes over" "$N_COLLIDE project agent(s) cover the SAME job as a kit agent ($COLLIDE) — routing is ambiguous; kit wins, yours preserved"
@@ -303,7 +376,7 @@ DEC7="$([ "$OFFREPO" = 1 ] && echo transfer || echo local)"
 [ "$DEC1" = none ] && DEC1=keep
 [ "$DEC4" = kit-default ] && DEC4=share
 if [ -t 0 ]; then
-  h1 "Review the decisions"
+  h1 "$(m 'Review the decisions')"
   # ask_dec: echoes the chosen value to STDOUT; ALL prompts/errors go to STDERR so $(...) captures only the value
   ask_dec(){ local label="$1" a="$2" b="$3" cur="$4" v fa fb; fa="${a:0:1}"; fb="${b:0:1}"
     while :; do
@@ -338,7 +411,7 @@ if [ -z "${KIT_STACK:-}" ] && [ "$KIT_PRESENT" != 1 ]; then
   if [ "$IS_DOTNET" = 1 ]; then
     KIT_STACK=dotnet
     if [ -t 0 ]; then
-      h1 "Backend stack"
+      h1 "$(m 'Backend stack')"
       sub "Detected a .NET project$([ "$IS_DEVARCH" = 1 ] && echo ' with a DevArchitecture (Business/Handlers CQRS) layout')."
       ask_yes "Install the .NET/DevArchitecture backend pattern (devarch-module)? (no = stack-agnostic generic)" || KIT_STACK=generic
     fi
@@ -365,7 +438,7 @@ fi
 # not consent, and the fail-safe direction is to keep what is written down. The mismatch is still reported
 # loudly every run, with the one command that corrects it on purpose.
 if [ "$KIT_PRESENT" = 1 ] && [ "$KIT_STACK" = generic ] && [ "$IS_DEVARCH" = 1 ]; then
-  h1 "Recorded backend stack looks wrong"
+  h1 "$(m 'Recorded backend stack looks wrong')"
   warn "kit.conf records stack=generic, but this project has a DevArchitecture layout (a Business/Handlers tree, or a DevArchitecture.sln)."
   sub "Left as-is, the refresh keeps pruning devarch-module and holds the generic backend agent."
   if [ "${CSK_CORRECT_STACK:-0}" = 1 ]; then
@@ -413,7 +486,7 @@ esac
 if [ ! -t 0 ] && [ "$KIT_PRESENT" = 1 ]; then ASSUME_YES=1; fi
 
 # ================= [STAGE 2] HANDOVER BRANCH + COEXIST =================
-h1 "Stage 2 — apply the kit (coexist)"
+h1 "$(m 'Stage 2 — apply the kit (coexist)')"
 if [ "$IS_GIT" != 1 ]; then
   warn "no git repo — cannot apply safely. First:  git init && git add -A && git commit -m init  (then run again)."
   exit 0
@@ -440,7 +513,7 @@ if [ "$DEC_BR" = here ]; then WHERE="the current branch '$BASE'"; else WHERE="a 
 # choice. Report-only; never blocks.
 [ -f "$SRC/eval/preflight.sh" ] && bash "$SRC/eval/preflight.sh"
 if ! ask_yes "Apply the kit onto $WHERE now? (mutation; staged-not-committed, reversible with git)"; then
-  h1 "Stopped"; sub "Stayed at Stage 1 — NOTHING CHANGED (read-only)."; exit 0
+  h1 "$(m 'Stopped')"; sub "$(m 'Stayed at Stage 1 — NOTHING CHANGED (read-only).')"; exit 0
 fi
 
 if [ "$DEC_BR" = here ]; then
@@ -516,6 +589,14 @@ copy_noclobber "$SRC/studio"   .claude/studio   "$KIT_PRESENT"; T_ADD=$ret_add; 
 # lives in packaging/studio-test/, outside the payload, so nothing has to be deleted here and
 # the count is simply what landed.
 chmod +x .claude/studio/server/hooks/*.sh 2>/dev/null || true
+# AGENT_TEMPLATE.md — a kit-owned flat file, so it is written on every run rather than never-overwritten.
+# `/skill-csk` opens with `Read .claude/AGENT_TEMPLATE.md`, and until now only start.sh copied it
+# (start.sh:486). That left the command pointing at a file that does not exist on an adopted install, and
+# `update` is an alias of this script (bin/cli.js:48), so a copy placed by start.sh was never refreshed
+# either — it went stale from the day it landed and nothing ever noticed, because §3b iterates skills and
+# agents and this is neither. Overwriting is right for the same reason DISCIPLINE.md is overwritten: the
+# file states the kit's own contract, a project does not author it, and a stale contract is worse than none.
+cp "$SRC/AGENT_TEMPLATE.md" .claude/ 2>/dev/null && echo "  AGENT_TEMPLATE.md written (kit-owned; refreshed on every update)"
 # Report the migration by what LANDED, not by what was missing: devarch-module is on the missing list of every
 # generic project and must not be announced as restored when EXCL_S kept it out.
 if [ -n "$MIGRATE_MISSING" ]; then
@@ -643,7 +724,7 @@ fi
   echo "version=$( [ -f "$HERE/VERSION" ] && head -1 "$HERE/VERSION" || echo unknown )"
 } > .claude/kit.conf
 
-h1 "Coexist summary"
+h1 "$(m 'Coexist summary')"
 row "kit agents (-csk)" "+$A_ADD added$([ "$A_SKIP" != 0 ] && echo " · $A_SKIP skipped")"
 row "skills"            "+$S_ADD$([ "$S_SKIP" != 0 ] && echo " · $S_SKIP skipped")"
 row "commands"           "+$C_ADD$([ "$C_SKIP" != 0 ] && echo " · $C_SKIP skipped")"
@@ -664,7 +745,7 @@ esac
 [ -n "$SKIP_LIST" ] && { warn "conflicting files (the project's was PRESERVED, the kit's skipped):"; for s in $SKIP_LIST; do printf '     %s- %s%s\n' "$D" "$s" "$R"; done; }
 
 # ============ [STAGE 3] DISCIPLINE ACTIVE + SETTINGS MERGE ============
-h1 "Stage 3 — activate the kit discipline (without touching the project CLAUDE.md) + settings merge"
+h1 "$(m 'Stage 3 — activate the kit discipline (without touching the project CLAUDE.md) + settings merge')"
 
 # 3a) DISCIPLINE.md: install the discipline half of the payload CLAUDE.md as a separate, FLAT file —
 #     everything above the sentinel line. Contains NO @import (leaf) -> no 4-hop trap.
@@ -795,7 +876,7 @@ else
 fi
 
 # ============ [STAGE 4] GIT-HOOK ARMING (SHIM) + PROOF ============
-h1 "Stage 4 — arm the git gates (SHIM via husky) + PROOF"
+h1 "$(m 'Stage 4 — arm the git gates (SHIM via husky) + PROOF')"
 
 # 4a) location of the existing hook chain (the shim calls this too)
 ORIG_HOOKS=""
@@ -930,7 +1011,11 @@ else echo "  #3 keep -> full trace scan"; fi
 # review diff and leave it untracked after a rollback -> 'project untouched' would be a lie.)
 HIDE_NOTE=""
 if [ "$DEC4" = hide ]; then
-  HIDE_NOTE="Keep the kit local after merging:  git rm -r --cached .claude CLAUDE.md  &&  printf '.claude/\nCLAUDE.md\n' >> .gitignore  &&  git commit -m 'kit: keep local'"
+  # docs/ belongs in this command for the same reason it belongs in .gitignore: the opt-out has to cover
+  # the working documents too, or "keep the kit local" leaves the plans, handovers and threat models behind
+  # in the shared repository. The two files the adoption force-added are named explicitly, because they are
+  # tracked despite the ignore rule and `git rm --cached docs` alone would not reach them.
+  HIDE_NOTE="Keep the kit local after merging:  git rm -r --cached .claude CLAUDE.md docs  &&  printf '.claude/\nCLAUDE.md\ndocs/\n' >> .gitignore  &&  git commit -m 'kit: keep local'"
   echo "  #4 hide -> recorded; .claude stays TRACKED on the branch (rollback-safe). Post-merge steps in HANDOVER."
 else
   # `share` is a NO-OP by design: the installer never stages a user's files, it only declines to add a
@@ -1053,16 +1138,29 @@ fi
 # The §4.6 review record is runtime state, not configuration. `start.sh` gitignores `.claude/` wholesale so it
 # is covered there, but an adoption may deliberately TRACK that directory (#4 share) — and then this one file
 # would turn up in every `git status` as a change nobody made on purpose. One narrow line, either way.
-touch .gitignore
-grep -qxF '.claude/review-pass.json' .gitignore || echo '.claude/review-pass.json' >> .gitignore
+#
+# `docs/` closes a privacy hole rather than expressing a preference. README.md and the adr, teamboard and
+# handoff skills all state that docs/ is gitignored in an install, and §4.3 promises internal working
+# documents stay private — but only start.sh ever wrote that entry, so an adoption published every one of
+# them. Measured across the payload: PLAN.md is named in 7 components, SESSION_STATE.md in 6,
+# THREAT_MODEL.md in 6, plus SECURITY_FINDINGS.md, DISCOVERY.md and EVAL.md. A repository receiving this
+# adoption was receiving its own threat model and security findings along with it.
+gi_add '.claude/review-pass.json' 'docs/'
 
-git add .claude CLAUDE.md docs >/dev/null 2>&1
+# Ignoring docs/ and then `git add docs` would stage NOTHING, and that would take the adoption's own record
+# out of the review diff — the exact failure recorded in CHANGELOG 2.5.0, where gitignoring before the
+# branch commit dropped the payload from the diff and left "the project is untouched" untrue after a
+# rollback. So the two files THIS SCRIPT authored are force-added: they are the evidence a reviewer reads,
+# and they are the only things under docs/ that the adoption itself put there. Everything the skills write
+# later stays private, which is what the guarantee was always about.
+git add .claude CLAUDE.md >/dev/null 2>&1
+git add -f docs/HANDOVER.md "$ADR1" >/dev/null 2>&1
 [ -e .gitignore ] && git add .gitignore >/dev/null 2>&1
 [ -e .trace-allowlist.txt ] && git add .trace-allowlist.txt >/dev/null 2>&1
 # NO auto-commit: the change set stays STAGED-but-uncommitted on branch $BR, so every added/changed file shows up
 # in your editor's Source Control / Changes panel for review. HEAD is untouched until you commit yourself.
 
-h1 "Review in your editor — nothing committed yet"
+h1 "$(m 'Review in your editor — nothing committed yet')"
 row "staged" "$(git diff --cached --stat 2>/dev/null | tail -1 || echo '(none)')"
 sub "$ONBRANCH_LINE"
 sub "see it:   open the Source Control / Changes panel (every added + changed file is listed)  ·  or: git status"

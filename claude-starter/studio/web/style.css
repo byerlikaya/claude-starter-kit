@@ -636,6 +636,43 @@ body.resizing .cv-root { pointer-events: none; }
   transition: font-size 120ms ease;
 }
 
+/* MID, THE LIVE EXEMPTION. `far` below already establishes this principle —
+   "with 250 strokes on screen the only bright ones must be the branches that
+   are alive" — and gives the live card its name, its mark and a z-index. It
+   was never applied to THIS band, which is the one a viewer actually sits in:
+   measured at 60% with fourteen agents, and there the running card is
+   distinguishable from thirteen finished ones only by the hue of a 7px disc.
+   The panel's own README promises "which agent is running, what it is doing
+   right now"; at mid it was keeping neither.
+   The description is dropped at mid because forty dark lower halves are a
+   noise floor that stops the type line reading. ONE is not a floor — it is
+   the signal, and it is the only field that says WHICH agent. It is drawn
+   counter-scaled like every other survivor in this block, so it clears the
+   same 9px screen floor that set the band rather than undercutting it, and
+   clamped to one line so it cannot reclaim the whole lower half. */
+[data-lod="mid"] .cv-node[data-state="live"] .cv-desc {
+  opacity: 1;
+  font-size: calc(11px / var(--k));      /* 11 SCREEN px at any k */
+  -webkit-line-clamp: 1; line-clamp: 1;
+}
+/* The chip keeps its WORD here instead of collapsing to a disc. The disc
+   exists because 10px of chip text is 2px on screen at the bottom of this
+   band and was clipping the type line; the running card is the one place that
+   trade is wrong, so its chip is counter-scaled instead of silenced. Every
+   property the disc rule set has to be undone explicitly, or the word renders
+   inside a 7px circle. */
+[data-lod="mid"] .cv-node[data-state="live"] .cv-chip {
+  font-size: calc(9px / var(--k));
+  padding: 0 calc(5px / var(--k));
+  width: auto; height: auto;
+  border-radius: calc(999px / var(--k));
+  background: transparent;
+  border-color: color-mix(in srgb, var(--busy) 45%, transparent);
+}
+/* Rides above its neighbours for the same reason it does at `far`: the words
+   it just kept must not sit under the next card. */
+[data-lod="mid"] .cv-node[data-state="live"] { z-index: 5; }
+
 /* FAR — k < 0.20, or more drawn nodes than the label budget. No text is
    attempted for an ordinary node, because none would survive. Three things
    still resolve at this size and each gets a channel: POSITION (which type

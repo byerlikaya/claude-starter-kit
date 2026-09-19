@@ -411,4 +411,221 @@ grep -q '"type": *"module"' "$UP/.claude/studio/package.json" || { echo "FAIL: t
 [ -f "$UP/.claude/commands/studio-csk.md" ] || { echo "FAIL: the update did not deliver /studio-csk"; exit 1; }
 echo "[update-gets-panel] a 2.8.0-shaped install gained .claude/studio ($(find "$UP/.claude/studio" -type f | wc -l | tr -d ' ') files) and /studio-csk on update"
 
+# ---- the install WIZARD: unattended runs, the .gitignore question, and what --yes may not approve ----
+# These are here rather than in the smoke-test because every one of them needs a real installer run: the
+# question is what the wizard DOES to a project, not what a string in it says. Each case carries the reason it
+# exists, and where a mistake is recoverable only by a twin that fails, the twin is run.
+#
+# The hang these first cases pin was MEASURED on stock Windows before it was fixed: `start.sh` with an
+# open-but-empty stdin returned rc=124 under `timeout` — a block, separated from EOF by calibration (a bare
+# `read` with stdin CLOSED returns rc=1). And it died at the stack chooser, not at `ask_yes`: fixing only the
+# one everybody looked at moved the hang from line 72 to line 248 and the installer still hung. So the pins
+# below have to cover EVERY read, which is what "no question is reached" means here.
+wiz() {                                     # $1 = label -> a fresh project with the installer staged
+  local P="$WORK/wiz-$1"; rm -rf "$P"; mkdir -p "$P"
+  cp start.sh "$P/"; cp -R claude-starter "$P/"; printf '%s' "$P"
+}
+
+# 13 · An unattended install reads NOTHING and completes. stdin is closed rather than a pipe: a pipe would
+#      answer the prompts and prove the opposite of what this asserts.
+W="$(wiz yes-alone)"
+( cd "$W" && bash start.sh --yes >"$W/out.txt" 2>&1 </dev/null )
+[ -d "$W/.claude" ] || { echo "FAIL: start.sh --yes did not install with stdin closed"; exit 1; }
+# 14 · ...and it does NOT approve the risky one. `--yes` means "install the kit unattended", not "clone a
+#      third-party base project into my tree over the network" — the script's own word for that is risky.
+[ ! -e "$W/backend" ] || { echo "FAIL: --yes cloned the DevArchitecture base; that is a separate consent"; exit 1; }
+grep -q 'does not approve' "$W/out.txt" || { echo "FAIL: --yes declined the risky step without saying why"; exit 1; }
+echo "[wizard] --yes installs unattended, reads nothing, and refuses the risky clone with a reason"
+
+# 2 · TWO DIFFERENT STDINs, and the difference is the whole point. CLOSED stdin reaches EOF, so every `read`
+#     answers "" and the installer declines. OPEN-BUT-EMPTY never reaches EOF, so a bare `read` waits forever —
+#     that is what a pty looks like, which is how Claude Code runs a command on Windows, and it is the case
+#     `adopt.sh:46-49` was written for. The first version of this case drove `</dev/null` and passed while
+#     measuring the wrong condition, and skipped entirely where `timeout(1)` is absent, which includes macOS.
+#
+#     The timeout is perl's `alarm` rather than `timeout(1)`: perl ships with macOS AND with Git Bash, so the
+#     case runs everywhere instead of announcing a skip on two of three platforms. 142 is SIGALRM.
+#     CALIBRATED IN-LINE, because "it hung" is only meaningful if the two stdins demonstrably differ here: a
+#     bare `read` must time out on the fifo and must return at once on /dev/null. If those two agree, the
+#     fixture proves nothing and says so rather than reporting a pass.
+# The bound is a POLLING PARENT, not a timeout utility, and that is the whole point: it cannot itself hang.
+# The first version used `perl -e alarm` + exec, and on windows-latest the alarm did not interrupt a blocked
+# `read` — so the e2e step ran until the job was killed. Steps 1-7 green, step 8 with no conclusion at all.
+# The calibration below was supposed to catch a broken bound and skip; instead it was the FIRST thing to hang,
+# because it used the same mechanism. A calibration that can hang is not a calibration. This loop runs at most
+# `secs` iterations of `sleep 1` and then SIGKILLs, so every path is bounded by construction.
+_bounded(){                     # $1 = seconds, rest = command; prints BLOCKED or rc=<n>
+  local secs="$1"; shift
+  # THE BUDGET MUST EXCEED THE PRODUCT'S OWN. `csk_read` waits 10 s per prompt and the no-flag path reaches two
+  # of them, so a 20 s bound reported BLOCKED for an installer that was about to decline correctly at ~20 s —
+  # my harness's budget, not a hang. Measured directly afterwards: rc=0, "Cancelled — nothing changed". 60 s
+  # leaves room for three bounded reads plus the work between them.
+  # `<&0` is load-bearing: bash redirects a BACKGROUND job's stdin from /dev/null unless it is given one
+  # explicitly, so without this the child never sees the caller's fifo, reads EOF and returns rc=1. The
+  # calibration below caught exactly that and skipped rather than reporting a pass — which is what it is for.
+  # The child's own output is swallowed HERE rather than by the caller: a redirect on the call site silences
+  # this function's verdict too, which is how the captured value came back empty and the installer's banner
+  # ended up inside a status line.
+  "$@" <&0 >/dev/null 2>&1 & local p=$! i=0
+  while [ "$i" -lt "$secs" ]; do
+    kill -0 "$p" 2>/dev/null || { wait "$p"; echo "rc=$?"; return 0; }
+    sleep 1; i=$((i+1))
+  done
+  kill -9 "$p" 2>/dev/null; wait "$p" 2>/dev/null; echo BLOCKED
+}
+_FC="$WORK/fifo-cal"; rm -rf "$_FC"; mkdir -p "$_FC"
+( cd "$_FC" && mkfifo f && exec 3<>f && _bounded 5 bash -c 'read -r x' <&3 > rc_open; exec 3>&- ) || true
+( cd "$_FC" && _bounded 5 bash -c 'read -r x' </dev/null > rc_closed ) || true
+if [ "$(cat "$_FC/rc_open")" = BLOCKED ] && [ "$(cat "$_FC/rc_closed")" != BLOCKED ]; then
+  W2="$(wiz no-yes-closed)"
+  rc="$( cd "$W2" && _bounded 60 bash start.sh </dev/null )"
+  [ "$rc" != BLOCKED ] || { echo "FAIL: start.sh blocked even on CLOSED stdin — every piped install would hang"; exit 1; }
+  [ ! -d "$W2/.claude" ] || { echo "FAIL: start.sh installed without consent and without --yes"; exit 1; }
+  echo "[wizard] closed stdin: declines ($rc) rather than installing or blocking"
+
+  # --yes is what makes an unattended run safe on a pty. Asserted on the OPEN-EMPTY stdin, which is the
+  # condition that actually hangs, rather than on the one that returns anyway.
+  W2B="$(wiz yes-openempty)"
+  ( cd "$W2B" && mkfifo f && exec 3<>f && _bounded 60 bash start.sh --yes <&3 > rc; exec 3>&- ) || true
+  [ "$(cat "$W2B/rc")" != BLOCKED ] \
+    || { echo "FAIL: start.sh --yes BLOCKED on open-but-empty stdin — unattended runs hang under a pty"; exit 1; }
+  echo "[wizard] --yes returns on open-but-empty stdin (the pty shape), $(cat "$W2B/rc")"
+
+  # THE PIPE SHAPE IS CLOSED, and this is a real verdict rather than a recorded state. Without --yes, an
+  # open-but-empty stdin used to block forever — measured 142 here and on stock Windows, at the stack chooser
+  # with no flags and one prompt later with --generic. All three bare reads are now bounded, so the installer
+  # returns and declines instead. The must-fail twin lives with the fix: removing the timeout from `csk_read`
+  # puts 142 back on this same fifo.
+  W2C="$(wiz noyes-openempty)"
+  ( cd "$W2C" && mkfifo f && exec 3<>f && _bounded 60 bash start.sh <&3 > rc; exec 3>&- ) || true
+  [ "$(cat "$W2C/rc")" != BLOCKED ] \
+    || { echo "FAIL: without --yes an open-but-empty stdin BLOCKS again — the bounded read regressed"; exit 1; }
+  [ ! -d "$W2C/.claude" ] \
+    || { echo "FAIL: the bounded read answered YES on its own — a timeout must decline, never consent"; exit 1; }
+  echo "[wizard] open-but-empty PIPE: returns and declines ($(cat "$W2C/rc")), nothing installed"
+
+  # CANNOT-CLOSE, and named that way on purpose rather than "known-open", which reads as something that will be
+  # closed one day. A PTY WITH NO INPUT cannot be distinguished from a human who types slowly: `[ -t 0 ]` is
+  # TRUE under a pty, so no stdin test separates the two, and a bounded read would either cut off a real person
+  # or consent on their behalf. `--yes` is the answer and the only answer. This is not asserted here because a
+  # real pty cannot be allocated from this harness — `winpty` refuses when its own stdin is not a terminal and
+  # Git Bash ships no `script` — so it is recorded as unmeasurable rather than left looking pending. The
+  # measured half above is the pipe; do not read it as covering the pty.
+else
+  echo "[wizard] SKIP (fixture): the two stdin shapes did not separate here (open=$(cat "$_FC/rc_open") closed=$(cat "$_FC/rc_closed")), so a hang could not be told from a pass"
+fi
+
+# 15 · THE PIPE-ORDER GATE. A new prompt shifts every existing piped call by one answer. Adding the visibility
+#      question without a guard did exactly that: the question ate the 'yes', the confirm hit EOF, the install
+#      cancelled silently and this suite failed with rc=127. So the non-TTY path must read NOTHING, and the
+#      documented piped form must keep working. Removing the `[ ! -t 0 ]` guard turns this red again.
+W3="$(wiz piped)"
+( cd "$W3" && printf 'yes\n' | bash start.sh --generic >/dev/null 2>&1 )
+[ -d "$W3/.claude" ] || { echo "FAIL: the documented piped install stopped working — a prompt is reading on the non-TTY path"; exit 1; }
+echo "[wizard] the piped form still installs: no question reads on the non-TTY path"
+
+# 4 · A .gitignore with no trailing newline must not have its last line joined to the first entry written.
+#     The twin is the point: the old `touch` + `echo >>` shape produces `node_modulesdocs/`, which is a
+#     silently broken ignore rule rather than a visible error.
+W4="$(wiz nonewline)"
+printf 'node_modules' > "$W4/.gitignore"          # deliberately no trailing newline
+( cd "$W4" && bash start.sh --yes >/dev/null 2>&1 </dev/null )
+grep -qx 'node_modules' "$W4/.gitignore" || { echo "FAIL: the pre-existing entry was joined to an added one"; exit 1; }
+! grep -q 'node_modules[^$]' "$W4/.gitignore" || { echo "FAIL: an added entry ran onto the last existing line"; exit 1; }
+printf 'node_modules' > "$W4/gi.twin"; printf '%s\n' 'docs/' >> "$W4/gi.twin"
+grep -q '^node_modulesdocs/$' "$W4/gi.twin" \
+  || { echo "FAIL: the must-fail twin did not reproduce the join, so case 4 proves nothing"; exit 1; }
+echo "[wizard] .gitignore without a trailing newline keeps its last line intact (twin reproduces the join)"
+
+# 7 · The summary has to NAME the lines it will write. Before this, the user confirmed an install and silently
+#     received four .gitignore entries, two of which (CLAUDE.md, docs/) are project-visible paths.
+grep -q '\.gitignore' "$W/out.txt" || { echo "FAIL: the install summary never mentions .gitignore"; exit 1; }
+for e in 'docs/' '.claude/' 'CLAUDE.md'; do
+  grep -qF "$e" "$W/out.txt" || { echo "FAIL: the summary does not list the .gitignore entry '$e' it writes"; exit 1; }
+  grep -qxF "$e" "$W/.gitignore" || { echo "FAIL: '$e' was announced but not written"; exit 1; }
+done
+echo "[wizard] the summary lists every .gitignore line it writes, and writes every line it lists"
+
+# 9,10,11 · docs/ IS THE PRIVACY CASE, and it has two halves that pull against each other: the working
+#     documents must be ignored, and the adoption's OWN record must still reach the review diff. Ignoring
+#     docs/ without forcing those two files back in is the defect CHANGELOG.md:3328 already records.
+DP="$WORK/wiz-adopt-docs"; rm -rf "$DP"; mkdir -p "$DP"
+( cd "$DP" && git init -q . && git config user.email t@e.com && git config user.name t \
+  && printf '{"name":"x"}\n' > package.json && git add package.json && git commit -qm base )
+cp adopt.sh "$DP/"; cp -R claude-starter "$DP/claude-starter"; cp VERSION "$DP/"
+( cd "$DP" && bash adopt.sh --here --yes </dev/null >/dev/null 2>&1 )
+( cd "$DP" && git diff --cached --name-only | grep -q '^docs/HANDOVER\.md$' ) \
+  || { echo "FAIL: the adoption's own HANDOVER is not in the review diff"; exit 1; }
+( cd "$DP" && git diff --cached --name-only | grep -q '^docs/adr/' ) \
+  || { echo "FAIL: the adoption's own ADR is not in the review diff"; exit 1; }
+( cd "$DP" && : > docs/PLAN.md && git check-ignore -q docs/PLAN.md ) \
+  || { echo "FAIL: docs/PLAN.md is NOT ignored after adopt — internal plans would reach a shared repo"; exit 1; }
+( cd "$DP" && : > docs/SECURITY_FINDINGS.md && git check-ignore -q docs/SECURITY_FINDINGS.md ) \
+  || { echo "FAIL: docs/SECURITY_FINDINGS.md is NOT ignored after adopt"; exit 1; }
+# The twin for the half that is easy to lose: with docs/ ignored, a plain `git add docs` stages nothing, so
+# dropping the -f would silently remove the adoption from its own review.
+( cd "$DP" && git rm -q --cached docs/HANDOVER.md docs/adr/*.md >/dev/null 2>&1; git add docs >/dev/null 2>&1; \
+  [ -z "$(git diff --cached --name-only -- docs)" ] ) \
+  || { echo "FAIL: the twin did not reproduce the drop, so the -f above proves nothing"; exit 1; }
+echo "[wizard] docs/ is private after adopt, and the adoption's own record is still in the diff (twin drops it)"
+
+# 6 · --shared and --private differ in WHAT they ignore, which is the whole point of asking. shared keeps
+#     .claude/ and CLAUDE.md committable so a team can review them; private hides them. Both are asserted,
+#     because a default that silently matched the other choice would make the question decorative.
+W5="$(wiz shared)"
+( cd "$W5" && CSK_LANG=en bash start.sh --yes --shared >/dev/null 2>&1 </dev/null )
+for e in 'docs/' '.private-terms.txt'; do
+  grep -qxF "$e" "$W5/.gitignore" || { echo "FAIL: --shared did not ignore '$e'"; exit 1; }
+done
+for e in '.claude/' 'CLAUDE.md'; do
+  ! grep -qxF "$e" "$W5/.gitignore" || { echo "FAIL: --shared ignored '$e' — the team could not review it"; exit 1; }
+done
+grep -qxF '.claude/' "$W/.gitignore" || { echo "FAIL: the private default did not ignore .claude/"; exit 1; }
+echo "[wizard] --shared ignores 2 entries and keeps .claude/ + CLAUDE.md committable; private ignores 4"
+
+# 5 · ASK GIT, DO NOT COMPARE STRINGS. A repo that already ignores `.claude` without the trailing slash is
+#     covered, and appending `.claude/` next to it is a second redundant rule. The old whole-line grep could
+#     not see that; `git check-ignore` answers the question that matters. Needs a real repo, since that is
+#     what makes check-ignore answerable at all.
+W6="$WORK/wiz-dupe"; rm -rf "$W6"; mkdir -p "$W6"
+cp start.sh "$W6/"; cp -R claude-starter "$W6/"
+( cd "$W6" && git init -q . && git config user.email t@e.com && git config user.name t )
+printf '.claude\n' > "$W6/.gitignore"                  # no trailing slash, and already effective
+( cd "$W6" && CSK_LANG=en bash start.sh --yes >/dev/null 2>&1 </dev/null )
+[ "$(grep -c '^\.claude' "$W6/.gitignore")" = 1 ] \
+  || { echo "FAIL: a repo already ignoring .claude got a second redundant rule ($(grep -c '^\.claude' "$W6/.gitignore"))"; exit 1; }
+echo "[wizard] an already-ignored .claude is not ignored twice (git check-ignore, not string equality)"
+
+# 8 · The same helper has to work where there is NO repo to ask. Every wizard case above ran outside a repo,
+#     so the fallback is already exercised — this asserts it reached the right answer rather than merely not
+#     crashing, which is the difference between a fallback and a silent no-op.
+[ -f "$W4/.gitignore" ] && [ "$(grep -c . "$W4/.gitignore")" -ge 2 ] \
+  || { echo "FAIL: outside a git repo the gitignore fallback wrote nothing usable"; exit 1; }
+echo "[wizard] outside a repo the fallback still writes the entries (and keeps the trailing-newline fix)"
+
+# 12 · `hide` writes nothing itself — it hands the user a command to run after the merge, because ignoring the
+#      payload BEFORE the branch commit is what once dropped it from the review diff. So what has to be right
+#      is the INSTRUCTION, and the instruction is a static string: asserted on the source rather than by
+#      driving the interactive flow. The first attempt here did drive it, and the prompt sequence guessed wrong
+#      so the path was never reached — a case that reported a skip while measuring nothing. Reading the string
+#      is both complete and deterministic, and it is the whole of what `hide` promises.
+# Match the ASSIGNMENT THAT CARRIES THE COMMAND, not the first line whose name matches. `HIDE_NOTE=""` is
+# declared empty earlier in the file, and `grep -m1 'HIDE_NOTE='` took that one — so all three checks below
+# failed against a perfectly good file, and the must-fail twin then "passed" for the wrong reason: it was not
+# the mutation failing, it was the assertion already broken. Anchoring on the command itself removes both.
+HN="$(grep -m1 'HIDE_NOTE=.*rm -r --cached' adopt.sh || true)"
+case "$HN" in
+  *'rm -r --cached'*) ;;
+  *) echo "FAIL: the hide instruction does not untrack anything"; exit 1 ;;
+esac
+case "$HN" in
+  *'--cached .claude CLAUDE.md docs'*) ;;
+  *) echo "FAIL: the hide instruction does not untrack docs — plans and threat models would stay tracked"; exit 1 ;;
+esac
+case "$HN" in
+  *'docs/'*) ;;
+  *) echo "FAIL: the hide instruction does not add docs/ to .gitignore"; exit 1 ;;
+esac
+echo "[wizard] the hide instruction covers docs in BOTH halves (untrack and ignore)"
+
 echo "e2e: all installer rehearsals passed"

@@ -2416,49 +2416,176 @@ for _pair in \
       || fail "§4.6 shape: '$_cmd' wrongly blocked (out=$o)"
   fi
 done
-# TIER 1 WITH TEXT-MODE LINE ENDINGS — the dimension this suite never asked about, and CI was the only machine
-# that could answer it. A commit was refused on `windows-latest` while the same case passed on macOS and on a
-# real Windows desktop, and the reason is the TIER: GitHub's image has jq, so the command arrives DECODED, while
-# a stock desktop has neither jq nor python3 and sees JSON's two-character escapes. On top of that, a
-# Windows-native binary opens stdout in TEXT mode, so every LF it writes goes out as CRLF — and a command that
-# already contained `\r\n` reaches the hook as `\` + CR + CR + LF. The single CRLF fold ate one CR, the
-# continuation rule then looked for `\` + LF, found a CR in the way, and the lone backslash read as a pathspec.
-# Any Windows user with jq installed is on that tier, so this was a live defect, not a CI artefact.
+# TEXT-MODE LINE ENDINGS — the dimension this suite never asked about, and CI was the only machine that could
+# answer it. A commit was refused on `windows-latest` while the same case passed on macOS and on a real Windows
+# desktop. The cause was the TIER: GitHub's image has jq, so the command arrived DECODED, and a Windows-native
+# binary opens stdout in TEXT mode, so every LF it wrote went out as CRLF — a command that already contained
+# `\r\n` reached the hook as `\` + CR + CR + LF. The single CRLF fold ate one CR, the continuation rule then
+# looked for `\` + LF, found a CR in the way, and the lone backslash read as a pathspec.
+# THAT TIER NO LONGER EXISTS, and this block was rewritten because of it rather than deleted. What it used to
+# do was inject the command through a fake `jq` on PATH while the payload carried `"command":"placeholder"`.
+# With the ladder gone the stub is ignored: the two rows expecting a block went red, and — worse — the three
+# expecting rc=0 kept PASSING, because "placeholder" is not a git command at all. A row that passes for a
+# reason unrelated to its name is the exact failure this suite exists to prevent, so the whole block now drives
+# the ONE path that runs, through the payload's own escapes.
 #
-# The stub hands back bytes instead of parsing: hermetic, no jq, no python, no perl. Its own correctness is
-# checked first, because a stub that does not take would make every row below a green that measured nothing.
-_T1D="$(mktemp -d)"
-cat > "$_T1D/jq" <<'EOJQ'
-#!/bin/sh
-case "$*" in
-  *permission_mode*) printf '%s\n' "default" ;;
-  *) printf '%s\n' "$CSK_FAKE_CMD" ;;
-esac
-EOJQ
-chmod +x "$_T1D/jq"
-if [ "$(CSK_FAKE_CMD='probe-me' PATH="$_T1D:$PATH" jq -r '.tool_input.command' </dev/null 2>/dev/null)" = "probe-me" ]; then
-  _t1(){ printf '{"cwd":"%s","permission_mode":"default","tool_name":"Bash","tool_input":{"command":"placeholder"}}' "$R46" \
-         | CSK_FAKE_CMD="$1" PATH="$_T1D:$PATH" bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; }
-  # `\` + CR + CR + LF: a continuation pasted from a Windows editor, decoded by a text-mode writer.
-  _t1 "$(printf 'git commit \\\r\r\n  -m c')"; [ "$?" = 0 ] \
-    && pass "§4.6 tier1-text: a CRLF continuation is not read as a pathspec" \
-    || fail "§4.6 tier1-text: a backslash + CR CR LF refused an ordinary commit (the CI failure)"
-  _t1 "$(printf 'git commit \\\r\r\n  -m c -- a.txt')"; [ "$?" = 2 ] \
-    && pass "§4.6 tier1-text: a real pathspec after that continuation still BLOCKS" \
-    || fail "§4.6 tier1-text FAIL-OPEN: a pathspec after a CRLF continuation was allowed"
-  _t1 'git commit -m c'; [ "$?" = 0 ] \
-    && pass "§4.6 tier1-text: an ordinary commit is untouched on this tier" \
-    || fail "§4.6 tier1-text: a plain commit was refused — the fixture is wrong, CI passes 800+ of these"
-  _t1 "$(printf 'git commit -m c\r\necho done')"; [ "$?" = 0 ] \
-    && pass "§4.6 tier1-text: a CRLF-separated second command is not a pathspec" \
-    || fail "§4.6 tier1-text: a CRLF separator refused an ordinary commit"
-  _t1 "$(printf 'git commit -m c -- a.txt\r\necho done')"; [ "$?" = 2 ] \
-    && pass "§4.6 tier1-text: a pathspec before a CRLF separator still BLOCKS" \
-    || fail "§4.6 tier1-text FAIL-OPEN: a pathspec before a CRLF separator was allowed"
+# FIRST the mechanism, pinned as its own assertion: through VALID JSON a `\r` escape is DROPPED by the
+# unescaper (deliberate CRLF normalisation, documented in the hook), so a CR cannot reach the §4.6 scanner at
+# all and the tier-1 class is unreachable. If a future unescaper stops dropping it, this row goes red and says
+# so — which is the only reason the rows after it are allowed to stop worrying about CR.
+_u46(){ ( eval "$(sed -n '/^_json_slice()/,/^}/p' "$HOOKS/guard-bash.sh")"
+          eval "$(sed -n '/^_json_unescape()/,/^}/p' "$HOOKS/guard-bash.sh")"
+          _json_unescape "$(_json_slice "$1" command)" ); }
+_crn(){ printf '%s' "$1" | tr -dc '\r' | wc -c | tr -d ' '; }   # NOT `od -c | grep -c '\r'` — that counts `r`
+# The counter is calibrated on both classes before it judges anything: a known-CRLF string and a known-LF one.
+# It read 0 on a CRLF file once, plausibly, and was wrong; only `tr -dc` separates the two.
+if [ "$(_crn "$(printf 'a\r\nb\r\nc\r\n')")" = 3 ] && [ "$(_crn "$(printf 'a\nb\nc\n')")" = 0 ]; then
+  _dec="$(_u46 '{"tool_name":"Bash","tool_input":{"command":"git commit \\\r\r\n  -m c -- a.txt"}}')"
+  [ "$(_crn "$_dec")" = 0 ] \
+    && pass "§4.6 text-mode: a \\r escape is dropped, so no CR reaches the scanner from valid JSON" \
+    || fail "§4.6 text-mode: a CR survived the unescaper — the tier-1 CR class is reachable again"
+  case "$_dec" in
+    *'git commit \'*) pass "§4.6 text-mode: the continuation backslash itself survives the decode" ;;
+    *) fail "§4.6 text-mode: the decode lost the continuation backslash (dec=$_dec)" ;;
+  esac
+  # _m2 — THE MECHANISM BEHIND THE TWO SPELLINGS VERDICTING DIFFERENTLY, pinned here so the difference is a
+  # stated fact rather than an argument. Escaped: the backslash survives and LF follows it, so it is a real
+  # continuation. Literal: `\` + CR is not a JSON escape, the unescaper consumes the backslash, and bash does
+  # not treat `\` + CR as a continuation either — so neither the hook nor the shell joins the lines.
+  case "$_dec" in
+    *'\'$'\n'*) pass "§4.6 text-mode: the ESCAPED spelling decodes to a real backslash-LF continuation" ;;
+    *) fail "§4.6 text-mode: the escaped spelling no longer produces a continuation — the BLOCK row's reason is gone" ;;
+  esac
+  _decl="$(_u46 "$(printf '{"tool_name":"Bash","tool_input":{"command":"git commit \\\r\r\n  -m c -- a.txt"}}')")"
+  case "$_decl" in
+    *'\'$'\n'*) fail "§4.6 text-mode: the LITERAL spelling now decodes to a continuation — its allow row is wrong" ;;
+    *) pass "§4.6 text-mode: the LITERAL spelling decodes to NO continuation, which is why it is allowed" ;;
+  esac
 else
-  fail "§4.6 tier1-text: the jq stub did not take, so this tier went unmeasured (broken fixture, not a pass)"
+  fail "§4.6 text-mode: the CR counter is broken (CRLF=$(_crn "$(printf 'a\r\n')") LF=$(_crn "$(printf 'a\n')")), so nothing below measured CR"
 fi
-rm -rf "$_T1D"
+# THEN the verdicts, twice over: once in the shape valid JSON can carry (`\\` `\r` `\r` `\n` escapes), and once
+# with LITERAL CR bytes in the payload. The second is invalid JSON and no harness sends it, but the slice walks
+# bytes rather than validating, so it is reachable by anything that writes the payload itself — defence in
+# depth, and it is the shape that actually carried the original defect.
+_t1e(){ printf '{"cwd":"%s","permission_mode":"default","tool_name":"Bash","tool_input":{"command":"%s"}}' "$R46" "$1" \
+        | ( cd "$R46" && bash "$HOOKS/guard-bash.sh" ) >/dev/null 2>&1; }
+# The two spellings AGREE on three rows and must NOT agree on the fourth, so the expectation is part of the
+# data rather than assumed to be shared. Measured, not reasoned:
+#   escaped `\\` + `\r` `\r` `\n`  ->  decode is `git commit \` + LF + `  -m c -- a.txt`. The backslash
+#     survives, LF follows it, so it IS a line continuation: one command, the pathspec belongs to the commit,
+#     and it must BLOCK.
+#   literal `\` + CR + CR + LF     ->  decode is `git commit ` + CR + CR + LF + `  -m c -- a.txt`. `\` + CR is
+#     not a JSON escape, so the unescaper consumes the backslash — and bash does not treat `\` + CR as a
+#     continuation either, only `\` + LF. So in BOTH the hook's view and the shell's, the LF ends the command:
+#     the commit carries no pathspec and `-- a.txt` sits in a second command that is not a git commit.
+#     Allowing it is correct, and asserting rc=2 here was a wrong expectation of mine, not a hook defect.
+# The `_m2` row below pins that mechanism directly, so if a future unescaper starts keeping that backslash the
+# row that changes says why instead of leaving a verdict flip to be argued about.
+for _sp in escaped literal; do
+  case "$_sp" in
+    escaped) _c1='git commit \\\r\r\n  -m c';          _c2='git commit \\\r\r\n  -m c -- a.txt'; _e2=2
+             _c3='git commit -m c\r\necho done';       _c4='git commit -m c -- a.txt\r\necho done' ;;
+    literal) _c1="$(printf 'git commit \\\r\r\n  -m c')";        _c2="$(printf 'git commit \\\r\r\n  -m c -- a.txt')"; _e2=0
+             _c3="$(printf 'git commit -m c\r\necho done')";     _c4="$(printf 'git commit -m c -- a.txt\r\necho done')" ;;
+  esac
+  _t1e "$_c1"; [ "$?" = 0 ] \
+    && pass "§4.6 text-mode/$_sp: a CRLF continuation is not read as a pathspec" \
+    || fail "§4.6 text-mode/$_sp: a backslash + CR CR LF refused an ordinary commit (the CI failure)"
+  # rc is captured BEFORE the comparison: reading `$?` inside the failure message would report the status of
+  # the `[` test itself, so the number printed would always be 1 and the report would be a lie.
+  _t1e "$_c2"; _r2=$?; [ "$_r2" = "$_e2" ] \
+    && pass "§4.6 text-mode/$_sp: a pathspec after that continuation verdicts $_e2, for the documented reason" \
+    || fail "§4.6 text-mode/$_sp: a pathspec after a CRLF continuation gave rc=$_r2, expected $_e2"
+  _t1e "$_c3"; [ "$?" = 0 ] \
+    && pass "§4.6 text-mode/$_sp: a CRLF-separated second command is not a pathspec" \
+    || fail "§4.6 text-mode/$_sp: a CRLF separator refused an ordinary commit"
+  _t1e "$_c4"; [ "$?" = 2 ] \
+    && pass "§4.6 text-mode/$_sp FAIL-OPEN guard: a pathspec before a CRLF separator BLOCKS" \
+    || fail "§4.6 text-mode/$_sp FAIL-OPEN: a pathspec before a CRLF separator was allowed"
+done
+_t1e 'git commit -m c'; [ "$?" = 0 ] \
+  && pass "§4.6 text-mode: an ordinary commit with no line endings at all is untouched" \
+  || fail "§4.6 text-mode: a plain commit was refused — the fixture is wrong, CI passes 800+ of these"
+
+# --- ONE READER: THE LADDER MUST NOT COME BACK ------------------------------------------------------------
+# The jq -> python3 -> slice ladder was deleted because the readers DISAGREEING was the root cause of four
+# incidents plus a fail-open no parser fix could reach. Nothing structural stops someone re-adding a rung for
+# speed, and a re-added rung would be invisible: every behavioural case in this file would keep passing on the
+# machine that has jq, which is every machine except the stock Windows desktop the ladder kept breaking.
+#
+# The detector is deliberately broader than the ladder that was removed, because review found three ways past
+# a narrower one: it caught `command -v jq` only, so `command -v python3`, `type jq` and — the nastiest — a
+# rung sharing a line with a parameter expansion all walked past it. That last one is native to these files
+# (`_after_cmd_key="${INPUT#*'"command":'}"`), because stripping from the first `#` regardless of quoting eats
+# the code and leaves `_a="${INPUT`. So: strip only a `#` that starts a line or follows whitespace AND is not
+# inside `${…}`, by first blanking every `${…}` expansion, and look for a READER being selected rather than
+# for one spelling of one probe.
+# DESCRIBE THE EXEMPTION, NOT THE THREAT. Three attempts at describing a rung failed, each for its own reason,
+# and the third failure is what settles the design:
+#   1. `command -v <interpreter>` anywhere -> red on guard-commit-scan's MESSAGE extractor, which reads an
+#      already-parsed command string and is deliberately in place.
+#   2. excluding that by the `CSK_CMD=` marker on the line -> the same block probes on one line and passes the
+#      marker on the next, so a line-based allowance saw half of it.
+#   3. "an interpreter AND `INPUT` on one line" -> misses the temp-file form, which review named:
+#         printf '%s' "$INPUT" > "$tmp"
+#         CMD="$(jq -r '.tool_input.command' "$tmp")"
+#      The reading line never mentions INPUT. Nor does `jq -r .x <&3` after a here-string, nor any rename of
+#      the variable. And that shape is not exotic: it is what someone writes when a payload gets big enough to
+#      worry about argv limits, which is exactly when a rung gets tempting again.
+# So: EVERY interpreter in these three hooks is a rung unless it sits inside a region marked `CSK-NOT-A-RUNG`.
+# Line-agnostic, survives a rename of INPUT, catches the temp-file form, and — the part that matters — adding
+# a rung now requires deleting a comment that states what the exemption is for. The exemption list is short,
+# closed and reviewable; the dangerous thing is everything else.
+_ladder(){ awk '/^[[:space:]]*# CSK-NOT-A-RUNG/{s=1} /^[[:space:]]*# \/CSK-NOT-A-RUNG/{s=0;next} !s' "$1" \
+             | grep -vE '^[[:space:]]*#' \
+             | grep -nE '(^|[^[:alnum:]_/.-])(jq|python3|python|perl|node)([^[:alnum:]_]|$)' ; }
+_lad_bad=""
+for _h in guard-bash guard-write guard-commit-scan; do
+  _hit="$(_ladder "$HOOKS/$_h.sh" 2>/dev/null)" && _lad_bad="$_lad_bad $_h:${_hit%%:*}"
+  grep -q '_parsed' "$HOOKS/$_h.sh" && _lad_bad="$_lad_bad $_h:_parsed"
+done
+[ -z "$_lad_bad" ] \
+  && pass "one reader: no jq/python3 reader selection in the three guard hooks" \
+  || fail "one reader: a reader ladder is back —$_lad_bad"
+# THE TWINS. Four shapes that MUST fire — the two rungs that were actually deleted, one written with `type`
+# instead of `command -v`, and one sharing its line with a parameter expansion (the shape a comment-stripping
+# detector ate, leaving `_a="${INPUT`). Two that must stay SILENT — prose about the deleted ladder, which
+# these files carry at length on purpose, and the message extractor that reads `$CMD` and never the payload.
+_LT="$(mktemp -d)"
+printf '%s\n' '#!/bin/sh' 'if command -v jq >/dev/null 2>&1 && CMD="$(printf "%s" "$INPUT" | jq -r .x)"; then :; fi' > "$_LT/a.sh"
+printf '%s\n' '#!/bin/sh' 'CMD="$(printf "%s" "$INPUT" | python3 -c "import sys,json")"'                             > "$_LT/b.sh"
+printf '%s\n' '#!/bin/sh' 'type jq >/dev/null && CMD="$(printf "%s" "$INPUT" | jq -r .x)"'                           > "$_LT/c.sh"
+printf '%s\n' '#!/bin/sh' '_a="${INPUT#*x}"; CMD="$(printf "%s" "$INPUT" | jq -r .x)"'                               > "$_LT/d.sh"
+# THE SHAPE THAT DEFEATED THE PREVIOUS DETECTOR, and the reason the check describes the exemption instead:
+# the payload goes to a temp file on one line and the interpreter reads the FILE on the next, naming no INPUT.
+printf '%s\n' '#!/bin/sh' 'printf "%s" "$INPUT" > "$tmp"' 'CMD="$(jq -r .x "$tmp")"'                                > "$_LT/g.sh"
+printf '%s\n' '#!/bin/sh' 'exec 3<<<"$INPUT"' 'CMD="$(jq -r .x <&3)"'                                               > "$_LT/h.sh"
+printf '%s\n' '#!/bin/sh' '# the deleted ladder piped "$INPUT" into jq and then python3 — prose, must NOT count' 'X=1' > "$_LT/e.sh"
+printf '%s\n' '#!/bin/sh' '# CSK-NOT-A-RUNG: reads $CMD, never the payload' 'MSG="$(CSK_CMD="$CMD" python3 -c "pass")"' '# /CSK-NOT-A-RUNG' > "$_LT/f.sh"
+_tw=0; _twf=""
+for _f in a b c d g h; do _ladder "$_LT/$_f.sh" >/dev/null 2>&1 || { _tw=1; _twf="$_f"; }; done
+for _f in e f; do _ladder "$_LT/$_f.sh" >/dev/null 2>&1 && { _tw=2; _twf="$_f"; }; done
+case "$_tw" in
+  0) pass "one reader: the detector fires on six rung shapes, including the temp-file and here-string forms" ;;
+  1) fail "one reader: the detector MISSED rung shape '$_twf' — the assertion above measured less than it claims" ;;
+  2) fail "one reader: the detector fired on '$_twf', which reads no payload — it would forbid ordinary code" ;;
+esac
+# AND THE EXEMPTIONS ARE COUNTED, closed and open markers alike. A region is only reviewable while there are
+# few of them; an unbounded allowance is the same gate with extra steps. Four today: two rule-pattern regions
+# in guard-bash naming interpreters it REFUSES, and the message extractor in guard-commit-scan.
+_ex=0
+for _h in guard-bash guard-write guard-commit-scan; do
+  _ex=$((_ex + $(grep -c '^[[:space:]]*# CSK-NOT-A-RUNG' "$HOOKS/$_h.sh")))
+  _exc="$(grep -c '^[[:space:]]*# /CSK-NOT-A-RUNG' "$HOOKS/$_h.sh")"
+  _exo="$(grep -c '^[[:space:]]*# CSK-NOT-A-RUNG' "$HOOKS/$_h.sh")"
+  [ "$_exo" = "$_exc" ] || fail "one reader: $_h has $_exo opening and $_exc closing exemption markers — an unclosed region hides everything after it"
+done
+[ "$_ex" = 3 ] \
+  && pass "one reader: exactly 3 exemption regions, each stating what it is for" \
+  || fail "one reader: $_ex exemption regions, expected 3 — the allowance grew, and each one is a place a rung can hide"
+rm -rf "$_LT"
+
 # Globbing must stay OFF while splitting, or a pathspec is judged against whatever files sit in the cwd.
 gj default 'git commit -m c *.txt' | r46 >/dev/null 2>&1; [ "$?" = 2 ] \
   && pass "§4.6: an unexpanded glob pathspec still BLOCKS (splitting runs with noglob)" \
@@ -2527,14 +2654,18 @@ o="$( cd "$R46" && gj default 'git commit -m x' | bash "$HOOKS/guard-bash.sh" 2>
 #     tell correct folding from broken folding by opening a path. The case that matters is the FRONT of the
 #     path — a project on a network share — where the old single fold produced `////server//share`, which is
 #     not a UNC path, while undoubling first yields `//server/share`, which is.
-_CWDEXPR_N="$(grep -cF '_CWD="${_CWD#*:}"' "$HOOKS/guard-bash.sh")"
-_CWDEXPR="$(grep -F '_CWD="${_CWD#*:}"' "$HOOKS/guard-bash.sh" | head -1)"
+# The EXTRACTION half of this line is gone: `cwd` now comes from `_json_slice` like every other key, because
+# its own hand-rolled `${INPUT#*"cwd"}` + `#*:` was the last caller matching a key without its colon — a decoy
+# pointed the §4.5 relative-path rules at another directory (measured: rc=0 where the honest payload was 2).
+# What stayed is the NORMALISATION, and it is pinned here against the raw value the slice hands over.
+_CWDEXPR_N="$(grep -cF '_CWD="${_CWD//\\\\/\\}"' "$HOOKS/guard-bash.sh")"
+_CWDEXPR="$(grep -F '_CWD="${_CWD//\\\\/\\}"' "$HOOKS/guard-bash.sh" | head -1)"
 if [ "$_CWDEXPR_N" = 1 ] && [ -n "$_CWDEXPR" ]; then
   _cwdnorm(){ _CWD="$1"; eval "$_CWDEXPR"; printf '%s' "$_CWD"; }
   for _pair in 'D:\\Projects\\kit|D:/Projects/kit' '\\\\server\\share\\kit|//server/share/kit' \
                '/Users/x/kit|/Users/x/kit' 'C:\Windows|C:/Windows'; do
     _in="${_pair%%|*}"; _want="${_pair#*|}"
-    _got="$(_cwdnorm ":\"$_in\",\"permission_mode\":\"default\"")"
+    _got="$(_cwdnorm "$_in")"
     [ "$_got" = "$_want" ] && pass "§4.6: payload cwd '$_in' normalises to '$_want'" \
       || fail "§4.6: payload cwd '$_in' normalised to '$_got', wanted '$_want'"
   done
@@ -3009,6 +3140,189 @@ if [ -n "$GBX" ]; then
   # 5) NOT OVER-BLOCKING: an ordinary command stays allowed even with the dirty session id.
   gjs default 'ls -la' | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" >/dev/null 2>&1
   [ "$?" = 0 ] && pass "no-jq/py: 'ls -la' still allowed" || fail "no-jq/py: 'ls -la' blocked (fallback over-blocks)"
+  # --- THE KEY THE PARSER FINDS AND THE KEY THE GUARD COUNTS MUST BE THE SAME ONE -----------------------
+  # `_json_slice` searches for the bytes `"key"`; the ambiguity guards used to count `"key":` compact. Two
+  # different tokens, so five payload shapes read one value while the gate judged another. All five were
+  # measured on THIS path (jq and python3 shadowed, the stock-Windows shape) as rc=0 on the shipped hook:
+  #   key name as a VALUE — `{"a":"command","ls":1,…{"command":"rm -rf /"}}` read `ls`
+  #   the same for permission_mode and for guard-write's file_path
+  #   duplicate key with ONE SPACE before the colon — the count went blind, the parser read the first value
+  #   a decoy `tool_name` placed earlier — the "gated tool" net answered for the wrong tool
+  # Each row asserts the RULE in the hook's stderr, not just rc=2. That is the lesson of this round: a row
+  # that only checks rc=2 was satisfied for a whole night by §4.5's `rm -rf` rule while the refusal it named
+  # never fired, and its harmless twin — the same shape with `ls -la` — was quietly rc=0 the whole time.
+  _t3(){ printf '%s' "$1" | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" 2>&1 >/dev/null; }
+  _amb(){ # $1 = payload, $2 = phrase the refusal must contain, $3 = what the row is about
+    _t3_out="$(_t3 "$1")"
+    case "$_t3_out" in
+      *"$2"*) pass "one-token: $3 is refused, and by the rule that names it" ;;
+      *) fail "one-token FAIL-OPEN: $3 — expected a refusal containing '$2', got: ${_t3_out:-<silence>}" ;;
+    esac
+  }
+  _t3_out=""
+  _amb '{"tool_name":"Bash","permission_mode":"default","a":"command","ls":1,"tool_input":{"command":"rm -rf /"}}' \
+       'destructive rm -rf' 'a key name appearing as a VALUE no longer relocates the parse'
+  # permission_mode AS A VALUE is closed by the PARSER, not by a refusal: the decoy is no longer an
+  # occurrence, so the count stays 1 and there is nothing ambiguous to refuse. The discriminating consequence
+  # is therefore §4.4's branch, which only a gated command reaches — so this row commits in a §4.6-clean cwd.
+  # Read the decoy (`default`) and the hook emits `ask`, which `bypassPermissions` turns into `allow`; read
+  # the real value and it FAILS CLOSED. Asserting rc alone here is sound because the twin below rules out the
+  # blanket case. Written first with `ls -la`, which no mode-dependent rule judges: the row went red for being
+  # silent, and the silence was correct — the payload really is harmless once the decoy is ignored.
+  ( cd "$REVIEWED" && printf '%s' '{"tool_name":"Bash","a":"permission_mode","default":1,"permission_mode":"bypassPermissions","tool_input":{"command":"git commit -m x"}}' \
+    | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" >/dev/null 2>&1 )
+  [ "$?" = 2 ] && pass "one-token: a permission_mode decoy VALUE does not relocate the mode (§4.4 still fails closed)" \
+               || fail "one-token FAIL-OPEN: a decoy permission_mode value was read as the mode — §4.4 was disarmed"
+  _o="$( cd "$REVIEWED" && printf '%s' '{"tool_name":"Bash","a":"permission_mode","default":1,"permission_mode":"default","tool_input":{"command":"git commit -m x"}}' \
+    | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" 2>/dev/null )"
+  [ "$(gdec "$_o")" = "ask" ] \
+    && pass "one-token: with the real mode 'default' the same shape still ASKs (not blanket-blocked)" \
+    || fail "one-token: a decoy alongside an honest 'default' mode was refused outright (out=$_o)"
+  _amb '{"tool_name":"Bash","permission_mode":"default","meta":{"command":"ls"},"tool_input":{"command" : "rm -rf /"}}' \
+       '"command" keys' 'a duplicate key with whitespace before the colon'
+  _amb '{"tool_name":"Bash","meta":{"permission_mode":"default"},"permission_mode":"bypassPermissions","tool_input":{"command":"ls -la"}}' \
+       '"permission_mode" keys' 'a shadowed permission_mode'
+  _amb '{"meta":{"tool_name":"Read"},"tool_name": "Bash","tool_input":{"foo":1}}' \
+       'no readable' 'a decoy tool_name placed before the real one'
+  # THE TWINS THAT MUST NOT BE REFUSED. Without these the five rows above are satisfied by a gate that blocks
+  # everything, which is the other way this file has been wrong.
+  for _ok in '{"tool_name":"Bash","permission_mode":"default","tool_input":{"command":"ls -la"}}' \
+             '{"tool_name":"Bash","permission_mode":"default","tool_input":{"command":"grep -rn permission_mode ."}}' \
+             '{"tool_name":"Bash","permission_mode":"default","tool_input":{"command":"echo the word command here"}}' \
+             '{"tool_name":"Read","tool_input":{"foo":1}}' \
+             '{"tool_name":"Bash","tool_input":{"command":""}}' ; do
+    printf '%s' "$_ok" | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" >/dev/null 2>&1
+    [ "$?" = 0 ] && pass "one-token: an honest payload is NOT refused — ${_ok:0:58}…" \
+                 || fail "one-token OVER-BLOCK: an honest payload was refused — $_ok"
+  done
+  # A harmless nested command is the row that exposed the wrong-reason pass. It must be refused by the
+  # DUPLICATE-KEY rule now, since two real `"command"` keys is exactly what it carries.
+  _amb '{"tool_name":"Bash","permission_mode":"default","meta":{"command":"ls -la"},"tool_input":{"command":"echo hi"}}' \
+       '"command" keys' 'a HARMLESS nested command (the shape that used to pass for the wrong reason)'
+  # guard-write, same disease, and it is the hook that stops the gates being rewritten.
+  # guard-write, and the TWO shapes are closed by DIFFERENT halves of the change — labelling them alike is how
+  # one of them ended up unprotected. Review mutation-proved it: with the ambiguity refusal disabled, the
+  # duplicate-key row went 2 -> 0 while the value-form row stayed at 2, because its rc comes from §4.5 reading
+  # the now-correctly-sliced real path. So each row names its own mechanism and checks the message.
+  _wout(){ printf '%s' "$1" | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" 2>&1 >/dev/null; }
+  _o="$(_wout '{"meta":{"file_path":"/tmp/ok.txt"},"tool_name":"Write","tool_input":{"file_path":".claude/hooks/guard-bash.sh","content":"x"}}')"
+  case "$_o" in
+    *'path keys'*) pass "one-token: guard-write REFUSES two real path keys (the counter's half)" ;;
+    *) fail "one-token FAIL-OPEN: a duplicate path key was judged, not refused — ${_o:-<silence>}" ;;
+  esac
+  _o="$(_wout '{"a":"file_path","/tmp/ok.txt":1,"tool_name":"Write","tool_input":{"file_path":".claude/hooks/guard-bash.sh","content":"x"}}')"
+  case "$_o" in
+    *"editing '.claude/hooks/guard-bash.sh'"*) pass "one-token: guard-write reads the REAL path past a value-form decoy (the parser's half)" ;;
+    *) fail "one-token FAIL-OPEN: a value-form decoy relocated the path — ${_o:-<silence>}" ;;
+  esac
+  printf '%s' '{"tool_name":"Write","tool_input":{"file_path":"src/app.ts","content":"x"}}' \
+    | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1
+  [ "$?" = 0 ] && pass "one-token: guard-write still allows an ordinary source file" \
+               || fail "one-token OVER-BLOCK: guard-write refused src/app.ts"
+  # THE PASS CAP. Requiring the colon means one extra scan per decoy, and the work is quadratic in their
+  # number: measured 12 ms at 50 decoys, 1839 ms at 3200 on macOS/bash, and Git Bash is several times slower
+  # again. Uncapped that is a gate with an off switch, because a PreToolUse hook killed at its 60s timeout
+  # emits no exit 2 and the command proceeds. Capped at 64 passes, over-cap counts as AMBIGUOUS: the same
+  # 3200-decoy payload is refused in 100 ms instead of being walked. Both halves are asserted — the refusal
+  # AND the bound — because a cap that refuses slowly is still a timeout waiting to happen.
+  _flood="$(_i=0; printf '%s' '{"tool_name":"Bash","permission_mode":"default",'
+            while [ "$_i" -lt 3200 ]; do printf '"k%s":"command",' "$_i"; _i=$((_i+1)); done
+            printf '%s' '"tool_input":{"command":"ls -la"}}')"
+  _t0=$(date +%s)
+  _fo="$(printf '%s' "$_flood" | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" 2>&1 >/dev/null)"; _frc=$?
+  _t1=$(date +%s)
+  # The message must say OVER-CAP, not a count: those occurrences are candidate positions, key-form or not, so
+  # reporting "65 keys" was a sentinel dressed as a measurement and its remedy ("send one key") was already
+  # satisfied by this payload, which carries exactly one real key.
+  { [ "$_frc" = 2 ] && case "$_fo" in *'occurrences of "command"'*) true ;; *) false ;; esac; } \
+    && pass "one-token: a decoy flood is refused as over-cap, and said so (${#_flood} bytes)" \
+    || fail "one-token FAIL-OPEN: a decoy flood produced rc=$_frc — ${_fo:-<silence>}"
+  [ $((_t1-_t0)) -le 10 ] \
+    && pass "one-token: the pass cap bounds that refusal ($((_t1-_t0))s, the hook's timeout is 60s)" \
+    || fail "one-token: the decoy flood took $((_t1-_t0))s — the cap is not bounding the work"
+  # THE TWIN THAT KEEPS THE CAP HONEST, and it is the one to write first: an ORDINARY command whose own TEXT
+  # contains the key name many times — writing a JSON schema, a settings file, an OpenAPI doc — must be
+  # ALLOWED. If the cap counted the word rather than the token, patching a hooks.json would be refused with a
+  # message about duplicate keys the user cannot act on, which is the failure mode this kit calls worse than
+  # the hole: a gate that blocks the innocent teaches people to reach for --no-verify.
+  # It is safe for a measured reason: content can contribute at most ONE occurrence of the token per string,
+  # and only as that string's tail, where the next byte is `,` `}` `]` and never a colon. (The stronger claim
+  # first written here — "both quotes unescaped can only be a key or a value" — is false; a key whose name
+  # ends in a quote spells the token too, and is refused by the COUNT rather than by the invariant.)
+  # The fixture below hand-writes its escapes, so its own byte counts are asserted rather than assumed: 71
+  # occurrences of the WORD, exactly 1 of the token. Asserting that is the point — a fixture that merely
+  # looked right is how this block was wrong before.
+  _sch="$(_i=0; printf '%s' '[' ; while [ "$_i" -lt 70 ]; do [ "$_i" = 0 ] || printf ','; printf '{\\"command\\":\\"c%s\\"}' "$_i"; _i=$((_i+1)); done; printf '%s' ']')"
+  _schp="$(printf '{"tool_name":"Bash","permission_mode":"default","tool_input":{"command":"echo %s > schema.json"}}' "$_sch")"
+  _nw="$(printf '%s' "$_schp" | grep -o 'command' | wc -l | tr -d ' ')"
+  _nt="$(printf '%s' "$_schp" | grep -o '"command"' | wc -l | tr -d ' ')"
+  { [ "$_nw" -gt 64 ] && [ "$_nt" = 1 ]; } \
+    && pass "one-token: the schema fixture really is the hard case ($_nw words, $_nt token)" \
+    || fail "one-token: the schema fixture is not what it claims ($_nw words, $_nt tokens) — the row below measures nothing"
+  printf '%s' "$_schp" | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" >/dev/null 2>&1
+  [ "$?" = 0 ] \
+    && pass "one-token: a command whose own text carries the key name 70 times is ALLOWED (the cap counts tokens, not words)" \
+    || fail "one-token OVER-BLOCK: writing a JSON schema was refused — the cap is counting the word, not the key token"
+  # AND THE CALIBRATION TWIN, which the comment above used to cite while no such fixture existed: 70 REAL keys
+  # must cross the cap and be refused. Without it, "a 70-word command is allowed" is satisfied by a counter
+  # that can never reach 64 at all.
+  _mk="$(_i=0; while [ "$_i" -lt 70 ]; do printf '"k%s":"command",' "$_i"; _i=$((_i+1)); done)"
+  _o="$(printf '{"tool_name":"Bash","permission_mode":"default",%s"tool_input":{"command":"ls -la"}}' "$_mk" \
+        | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" 2>&1 >/dev/null)"
+  case "$_o" in
+    *'occurrences of "command"'*) pass "one-token: 70 real keys DO cross the cap and are refused, with over-cap said plainly" ;;
+    *) fail "one-token: 70 real keys did not trip the cap — ${_o:-<silence>}" ;;
+  esac
+  # THE STRING REQUIREMENT. A non-string value returns empty instead of the payload's own punctuation, which
+  # the old shape handed to the matchers as `:123}}`. Review mutation-proved this was unasserted anywhere in
+  # the suite or in parser-conformance.sh: reverting it changed no row. Asserted on the PARSER, because the
+  # hook's verdict is rc=0 either way (a single unreadable key is not the gated-tool case).
+  _u2(){ ( eval "$(sed -n '/^_json_slice()/,/^}/p' "$HOOKS/guard-bash.sh")"; _json_slice "$1" command ); }
+  for _ns in '{"tool_input":{"command":123}}' '{"tool_input":{"command":null}}' '{"tool_input":{"command":{"x":1}}}' ; do
+    [ -z "$(_u2 "$_ns")" ] \
+      && pass "one-token: a non-string value yields NOTHING, not punctuation — $_ns" \
+      || fail "one-token: a non-string value produced [$(_u2 "$_ns")] — the matchers would judge the payload's own syntax"
+  done
+  [ "$(_u2 '{"tool_input":{"command":"ls -la"}}')" = "ls -la" ] \
+    && pass "one-token: a string value is still returned in full (the requirement is not a blanket refusal)" \
+    || fail "one-token: the STRING requirement broke an ordinary value"
+  # guard-write's summed rule must not refuse an ordinary NotebookEdit, which carries the OTHER path key.
+  printf '%s' '{"tool_name":"NotebookEdit","tool_input":{"notebook_path":"/tmp/nb.ipynb","new_source":"print(1)"}}' \
+    | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1
+  [ "$?" = 0 ] && pass "one-token: an ordinary NotebookEdit still passes the summed path-key rule" \
+               || fail "one-token OVER-BLOCK: the file_path+notebook_path sum refused a plain NotebookEdit"
+  # `cwd` WAS THE ONE KEY LEFT WITH A HAND-ROLLED EXTRACTION, and review found it: `${INPUT#*"cwd"}` then
+  # `#*:`, i.e. the key matched without its colon and no count guarding it. It decides the directory a
+  # RELATIVE command is resolved against, so a decoy pointed §4.5's two-step `.env` rule at an empty
+  # directory and the read was never examined. The payload's cwd is only consulted when the hook's PROCESS
+  # cwd is not the project, so the fixture runs from elsewhere — that is the only situation where this key
+  # matters at all, and testing it from inside the project would measure nothing.
+  _CWDR="$(mktemp -d)"; mkdir -p "$_CWDR/proj" "$_CWDR/decoy" "$_CWDR/away"
+  printf 'SECRET=abc\n' > "$_CWDR/proj/.env"; printf 'cat .env\n' > "$_CWDR/proj/leak.sh"
+  _cw(){ ( cd "$_CWDR/away" && printf '%s' "$1" | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" 2>&1 >/dev/null ); }
+  _o="$(_cw "{\"cwd\":\"$_CWDR/proj\",\"tool_name\":\"Bash\",\"permission_mode\":\"default\",\"tool_input\":{\"command\":\"bash leak.sh\"}}")"
+  case "$_o" in
+    *'.env secret'*) pass "one-token: the payload's cwd is read through the parser (§4.5 still sees a relative .env read)" ;;
+    *) fail "one-token: the honest cwd case stopped working — ${_o:-<silence>}" ;;
+  esac
+  _o="$(_cw "{\"a\":\"cwd\",\"b\":\"$_CWDR/decoy\",\"cwd\":\"$_CWDR/proj\",\"tool_name\":\"Bash\",\"permission_mode\":\"default\",\"tool_input\":{\"command\":\"bash leak.sh\"}}")"
+  case "$_o" in
+    *'.env secret'*) pass "one-token: a value-form cwd decoy no longer relocates the working directory" ;;
+    *) fail "one-token FAIL-OPEN: a cwd decoy hid a relative .env read from §4.5 — ${_o:-<silence>}" ;;
+  esac
+  _o="$(_cw "{\"cwd\":\"$_CWDR/decoy\",\"cwd\":\"$_CWDR/proj\",\"tool_name\":\"Bash\",\"permission_mode\":\"default\",\"tool_input\":{\"command\":\"bash leak.sh\"}}")"
+  case "$_o" in
+    *'one "cwd" key'*) pass "one-token: two real cwd keys are REFUSED rather than resolved first-wins" ;;
+    *) fail "one-token FAIL-OPEN: a duplicate cwd key was resolved, not refused — ${_o:-<silence>}" ;;
+  esac
+  for _ok in "{\"cwd\":\"$_CWDR/proj\",\"tool_name\":\"Bash\",\"permission_mode\":\"default\",\"tool_input\":{\"command\":\"ls -la\"}}" \
+             '{"tool_name":"Bash","permission_mode":"default","tool_input":{"command":"ls -la"}}' \
+             '{"tool_name":"Bash","permission_mode":"default","tool_input":{"command":"echo cwd"}}' ; do
+    ( cd "$_CWDR/away" && printf '%s' "$_ok" | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" >/dev/null 2>&1 )
+    [ "$?" = 0 ] && pass "one-token: cwd handling does not over-block — ${_ok:0:52}…" \
+                 || fail "one-token OVER-BLOCK: the cwd rule refused an ordinary payload — $_ok"
+  done
+  rm -rf "$_CWDR"
 else
   gb_unbuildable "no-jq/py discriminating tests"
 fi
@@ -3286,6 +3600,37 @@ DOC="$(mktemp -d)"
   chmod +x .claude/hooks/*.sh .claude/hooks/pre-commit .claude/hooks/commit-msg
   git config core.hooksPath .claude/hooks )
 bash "$ROOT/eval/doctor.sh" "$DOC" >/dev/null 2>&1 && pass "doctor: healthy install -> exit 0" || fail "doctor flagged a healthy install"
+# THE MANIFEST'S LINE ENDINGS MUST NOT CHANGE WHO OWNS A SKILL. Measured before the fix: the same install with
+# one project skill counted 1 on an LF manifest and 2 on a CRLF one, because `grep -qxF` wants a whole line and
+# `skills/handoff\r` is not `skills/handoff` — so every KIT skill read as project-owned. A Windows checkout with
+# core.autocrlf produces exactly that manifest, and `skill-trust.sh` had already been taught this for the same
+# file; doctor was the copy that had not, which is why the two disagreed on one install. Both spellings are
+# driven here, and the must-fail twin runs the UNSTRIPPED grep against the CRLF manifest so the strip cannot be
+# deleted on the belief that this case would still notice.
+DCR="$(mktemp -d)"
+mkdir -p "$DCR/.claude/skills/only-mine" "$DCR/.claude/hooks"
+cp -R "$SKILLS/handoff" "$DCR/.claude/skills/" 2>/dev/null
+printf '# x\n' > "$DCR/.claude/skills/only-mine/SKILL.md"
+cp "$HOOKS"/*.sh "$DCR/.claude/hooks/" 2>/dev/null; chmod +x "$DCR/.claude/hooks/"*.sh 2>/dev/null
+_own(){ ( cd "$DCR" && bash "$ROOT/eval/doctor.sh" 2>&1 | grep -oE '[0-9]+ project-specific skill' | head -1 | cut -d' ' -f1 ); }
+printf 'skills/handoff\n'   > "$DCR/.claude/kit-manifest.txt"; _lf="$(_own)"
+printf 'skills/handoff\r\n' > "$DCR/.claude/kit-manifest.txt"; _crlf="$(_own)"
+[ -n "$_lf" ] && [ "$_lf" = "$_crlf" ] \
+  && pass "doctor counts project skills the same on an LF and a CRLF manifest ($_lf)" \
+  || fail "doctor's project-skill count depends on the manifest's line endings (LF=$_lf CRLF=$_crlf)"
+# The twin asks whether an UNSTRIPPED whole-line grep misses a CRLF line — and the answer is a PLATFORM fact,
+# not a fixture property. It misses on macOS and Linux, which is where the miscount came from. On Git Bash it
+# MATCHES: measured on windows-latest, where this assertion was red for exactly that reason before it said so.
+# So a twin that cannot reproduce is reported as a platform skip with the consequence spelled out, because
+# "this defect cannot occur here" and "the fixture is broken" look identical from a red line. The strip stays
+# either way: the manifest travels between platforms, and the file that reads it does not get to assume which
+# grep will be holding it.
+if grep -qxF 'skills/handoff' "$DCR/.claude/kit-manifest.txt"; then
+  skip platform "the CRLF miss cannot be reproduced here — this grep matches a CR-terminated line, so the miscount this fixes does not occur on this platform"
+else
+  pass "must-fail twin: an unstripped whole-line grep DOES miss the CRLF manifest"
+fi
+rm -rf "$DCR"
 # The "non-executable hook" probe only means something where `chmod -x` actually takes effect. On Windows via
 # Git-Bash/MSYS a file with a `#!` shebang is reported executable regardless of the bit, so the broken state can't
 # be created — probe the REAL hook: only assert when chmod -x actually cleared its executability.
@@ -4628,9 +4973,18 @@ if [ -n "$SGR" ] && [ -f "$SGR/.gitattributes" ]; then
       mkdir -p "$SGD/$d/packaging" "$SGD/$d/claude-starter"
       cp -R "$SGR/claude-starter/." "$SGD/$d/claude-starter/" 2>/dev/null
     done
-    ( cd "$SGD/src" && bash start.sh --generic </dev/null >"$SGD/o1" 2>&1 ); SG1=$?
-    ( cd "$SGD/src" && CSK_ALLOW_SOURCE_INSTALL=1 bash start.sh --generic </dev/null >"$SGD/o3" 2>&1 ); SG3=$?
-    ( cd "$SGD/plain" && bash start.sh --generic </dev/null >"$SGD/o2" 2>&1 ); SG2=$?
+    # CSK_LANG=en IS PART OF THE ASSERTION, not tidiness. These three cases read the installer's PROSE, and the
+    # installer is bilingual: on a machine whose locale is Turkish it says "Bu ayarlarla kurulayım mı?" and the
+    # grep below finds nothing. MEASURED on a `LANG=tr_TR.UTF-8` machine — both cases went red while the
+    # installer was behaving correctly (rc=0, install reached the prompt), and the failure text blamed the
+    # guard, which had nothing wrong with it. A suite that asserts on text has to pin the language; the product
+    # keeping locale auto-detection is the feature, and taking it away to keep the suite quiet would be fixing
+    # the wrong side. Note the second grep ("own source repository") would hold without this, because that
+    # message is deliberately never translated — the pin is on all three so the NEXT assertion of this class is
+    # covered too.
+    ( cd "$SGD/src" && CSK_LANG=en bash start.sh --generic </dev/null >"$SGD/o1" 2>&1 ); SG1=$?
+    ( cd "$SGD/src" && CSK_LANG=en CSK_ALLOW_SOURCE_INSTALL=1 bash start.sh --generic </dev/null >"$SGD/o3" 2>&1 ); SG3=$?
+    ( cd "$SGD/plain" && CSK_LANG=en bash start.sh --generic </dev/null >"$SGD/o2" 2>&1 ); SG2=$?
 
     { [ "$SG1" = 1 ] && grep -q "own source repository" "$SGD/o1"; } \
       && pass "start.sh refuses to install from the kit's own checkout (rc=1, named)" \

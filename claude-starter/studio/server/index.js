@@ -17,7 +17,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { getFleet, measureSpawnCost } from './lib/fleet.js';
 import { projectDir, listSessions, findSession, listProjects, sessionCwd } from './lib/projects.js';
-import { buildGraph, agentDetail, conversation } from './lib/graph.js';
+import { buildGraph, agentDetail, conversation, STALE_MS } from './lib/graph.js';
 import { palette } from './lib/palette.js';
 import { latestVersion, latestVersionCached, kitStatus } from './lib/kit.js';
 import { parsePeers, askAll, ask } from './lib/peers.js';
@@ -526,6 +526,14 @@ async function handle(req, res) {
    about its cost. */
 
 const STREAM_TICK_MS = 700;
+// How coarsely the clock enters the stream signature while an agent is still
+// recent enough to be called running. Chosen against the two costs it sits
+// between: at the 700 ms tick it would rebuild the graph on every tick for no
+// new information, and at the 120 s stale window it would only ever fire after
+// the transition it exists to announce. Ten seconds is the delay a viewer waits
+// to see "running" become "stale", and the price is one rebuild per ten seconds
+// per watched session, only while something is live.
+const STATUS_BUCKET_MS = 10000;
 
 /** Ask each peer for a path this machine could not answer. */
 async function relay(pathname) {
@@ -543,16 +551,45 @@ async function relay(pathname) {
 // call holds the event loop for as long as it takes, and here it would do that on
 // every tick. Keeping a slow one inside the tick that hit it is ours to do; making the
 // filesystem faster is not.
-async function signature(session) {
+/** Exported for the selfcheck. What it decides is only visible over a 45-second SSE capture otherwise,
+ *  and a gate nobody can run in a millisecond is a gate that gets deleted. */
+export async function signature(session) {
   const parts = [];
   try { parts.push(String((await fsp.stat(session.file)).size)); } catch { parts.push('0'); }
-  try {
-    const names = (await fsp.readdir(session.subagentsDir)).sort();
-    const sizes = await Promise.all(names.map(async (n) => {
-      try { return `${n}:${(await fsp.stat(path.join(session.subagentsDir, n))).size}`; } catch { return null; }
-    }));
-    for (const s of sizes) if (s !== null) parts.push(s);
-  } catch { /* no subagents yet */ }
+  let newest = 0;
+  // FILES ONLY, AT ANY DEPTH. A workflow run puts its agents under `subagents/workflows/<id>/` — two levels
+  // down, not one — and buildGraph reads them. A flat readdir returns the `workflows` directory, whose size
+  // does not move when a transcript inside it grows, so a workflow's agents were invisible here while every
+  // plain agent's growth was seen. Recursing only ONE level was my first fix and it was still wrong: it
+  // stat'ed `workflows/<id>` as though the directory were the file. The selfcheck caught that, which a
+  // 45-second stream capture had not — the capture's extra frames came from the clock bucket below, and I had
+  // read them as proof of the traversal. Hence: walk to the leaves, and only ever stat a file.
+  const walk = async (dir, prefix) => {
+    let entries;
+    try { entries = await fsp.readdir(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries.sort((a, b) => (a.name < b.name ? -1 : 1))) {
+      const p = path.join(dir, e.name);
+      const rel = prefix ? `${prefix}/${e.name}` : e.name;
+      if (e.isDirectory()) { await walk(p, rel); continue; }
+      try {
+        const st = await fsp.stat(p);
+        parts.push(`${rel}:${st.size}`);
+        if (st.mtimeMs > newest) newest = st.mtimeMs;
+      } catch { /* vanished mid-scan */ }
+    }
+  };
+  await walk(session.subagentsDir, '');
+  // A STATUS CAN CHANGE WITH NO FILE CHANGING. buildGraph calls an agent
+  // `running` while `now - mtime < staleMs` and `stale`/`ended` after, so that
+  // transition is driven by the clock alone: nothing is written, no size moves,
+  // this signature does not change, and the graph is never rebuilt. The panel
+  // then holds `running` for an agent that went quiet, while the stream emits
+  // `idle` every tick. A coarse bucket, added ONLY while something is recent
+  // enough to still be called running, makes the transition arrive within the
+  // bucket and costs one rebuild per bucket (measured at 17 ms on a 1.5 MB
+  // transcript) instead of one per tick. When nothing is recent the bucket is
+  // absent, so an idle session's signature is as stable as it was before.
+  if (newest && Date.now() - newest < STALE_MS) parts.push(`t:${Math.floor(Date.now() / STATUS_BUCKET_MS)}`);
   return parts.join('|');
 }
 

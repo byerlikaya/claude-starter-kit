@@ -446,9 +446,16 @@ fi
 MAN=.claude/kit-manifest.txt
 if [ -f "$MAN" ]; then
   OWN=0
+  # The CR strip is the whole reason this reads through `tr` rather than grepping the file directly, and it is
+  # not defensive: MEASURED on a CRLF manifest with one project skill installed, this counted TWO. `grep -qxF`
+  # wants a whole-line match, `skills/handoff\r` is not `skills/handoff`, so every KIT skill read as
+  # project-owned. A Windows checkout with core.autocrlf produces exactly that manifest. `skill-trust.sh`
+  # already strips it for the same reason and the same file — this was the copy that did not, which is why the
+  # two answers disagreed on the same install.
+  MANTXT="$(tr -d '\r' < "$MAN")"
   for d in .claude/skills/*/; do
     [ -d "$d" ] || continue
-    grep -qxF "skills/$(basename "$d")" "$MAN" || OWN=$((OWN+1))
+    printf '%s\n' "$MANTXT" | grep -qxF "skills/$(basename "$d")" || OWN=$((OWN+1))
   done
   [ "$OWN" -gt 0 ] && rdy "$OWN project-specific skill(s) alongside the kit's" \
                    || gap "no project-specific skill — only the kit's generic ones are installed" \

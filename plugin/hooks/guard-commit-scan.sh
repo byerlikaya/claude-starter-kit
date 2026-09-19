@@ -29,7 +29,11 @@ _json_slice(){  # $1 = whole payload, $2 = key -> the raw (still JSON-escaped) s
                    # continuation byte can be 0x5C or 0x22, so a cut cannot land inside a character at a
                    # quote or backslash edge. What this line is worth in SPEED depends on the platform --
                    # read the table in _json_unescape below before quoting a number for it.
-  local pre rest seg w r n base=0 j=0 cl lim run=0 chunk C=4096 W=256; local -a acc=("")
+  local pre rest seg w r n base=0 j=0 cl lim run=0 chunk C=4096 W=256 hay="$1" k="\"$2\""; local -a acc=("")
+  # It ALSO sets `_JS`, so a caller on the hot path can read the value without `$( )`, which is a fork. The
+  # printf stays because the existing callers compose it (`_json_unescape "$(_json_slice …)"`), but the one
+  # caller that used to do its own fork-free extraction — `_CWD` — reads `_JS` and keeps costing nothing.
+  _JS=""
   # Every "step past X" here is arithmetic on a length, never `${s#"$literal"}`. That shape reads like a
   # constant-time strip and is not one: bash retries the pattern at every prefix length, so stripping an
   # n-byte literal costs O(n^2). It was in this function twice, and both were measured:
@@ -41,8 +45,18 @@ _json_slice(){  # $1 = whole payload, $2 = key -> the raw (still JSON-escaped) s
   #     payload is still moving (`effort` is absent from the field list recorded on 2.1.246).
   #   * `${tail#"$seg"\"}` stepped past each escaped quote: 16.8s for a single 100 KB step on Git Bash,
   #     against 0.002s for `${tail:${#seg}+1}` doing exactly the same thing.
-  # `${1%%"$2"*}` still finds the FIRST occurrence -- the longest suffix that starts with the key starts at the
-  # earliest one -- so a command containing the literal text `"command":"` still cannot relocate the parse.
+  # `${hay%%"$k"*}` finds the FIRST occurrence -- the longest suffix that starts with the key starts at the
+  # earliest one. THAT ALONE IS NOT ENOUGH, and the sentence that used to stand here said it was: it claimed a
+  # command "containing the literal text `\"command\":\"` still cannot relocate the parse", which is true of
+  # that byte sequence and irrelevant, because this search is for `"command"` WITHOUT the colon. A JSON VALUE
+  # equal to the key name is exactly those bytes between two unescaped quotes. Measured on the shipped hook:
+  #   {"tool_name":"Bash","a":"command","ls":1,"tool_input":{"command":"rm -rf /"}}   ->  read `ls`
+  #   {"a":"permission_mode","default":1,"permission_mode":"bypassPermissions",…}     ->  read `default`
+  #   {"a":"file_path","/tmp/ok":1,"tool_input":{"file_path":".claude/hooks/x.sh"}}   ->  read `/tmp/ok`
+  # In each case the gate judged a harmless string while a dangerous one was the actual argument, and jq read
+  # the real value -- so on a stock Windows desktop, where this was already the only parser, the gate could be
+  # aimed with one extra key. The loop below therefore accepts an occurrence only when optional JSON whitespace
+  # and then `:` follow it, which is the only place a key can appear; everything else keeps searching.
   # Stepping by length removed the quadratic strip, but each escaped quote still sliced and re-assigned the
   # whole remainder, so an escape-dense command stayed k*n here as well (2.2s of the 6.8s described in
   # _json_unescape below, on Git Bash). The walk is chunked the same way: the payload is read 4096 bytes at a
@@ -55,11 +69,43 @@ _json_slice(){  # $1 = whole payload, $2 = key -> the raw (still JSON-escaped) s
   # a quote, the key twice, the key appearing first as a value, glob metacharacters, UTF-8, no closing quote,
   # empty input). Broken twins -- the run not carried across a window, a byte skipped after a quote -- prove
   # the battery sees both.
-  pre="${1%%\"$2\"*}"                          # everything before the FIRST `"key"`
-  [ "$pre" != "$1" ] || return 0               # key absent: emit nothing
-  rest="${1:${#pre}+${#2}+2}"                  # past `"key"`
-  seg="${rest%%\"*}"                           # skip `: "` up to the value's opening quote, when there is one
-  [ "$seg" = "$rest" ] || rest="${rest:${#seg}+1}"
+  # THE NUMBER OF PASSES IS CAPPED, for the same reason guard-write caps the path length: an unbounded cost on
+  # a PreToolUse hook is a gate with an off switch, because a hook killed at its 60s timeout emits no exit 2.
+  # Each decoy costs one more `%%` scan over the remainder, so the work is quadratic in the number of decoys.
+  # Measured on macOS/bash, single call, `"k<i>":"command"` decoys in front of the real key:
+  #      50 decoys    844 B    12 ms        800 decoys   13544 B    126 ms
+  #     200 decoys   3344 B    19 ms       3200 decoys   56544 B   1839 ms
+  # Git Bash's parameter expansion is several times slower again, so the tail is where the timeout lives. A
+  # real payload carries ZERO decoys -- 64 is far above anything a producer can legitimately emit -- and going
+  # over the cap is reported SEPARATELY (`_KC_CAPPED`), not as a large count, so the caller can refuse with a
+  # reason the reader can act on instead of a sentinel dressed up as a measurement. Fail-closed either way.
+  # THE COST IS ONE THIS CHANGE INTRODUCES, and it is worth saying so plainly rather than implying the cap
+  # protects something pre-existing: before the colon requirement the scan STOPPED at the first occurrence, so
+  # decoys cost essentially nothing (measured on stock Windows: 0 decoys 0.18 ms, 3200 decoys 1.60 ms per call,
+  # roughly linear) -- and it read the decoy, which is the hole. The cap is load-bearing for the new cost, so
+  # raising or removing it later is not a tidy-up.
+  # The bound is on the LOOP, not on the payload, so an ordinary command pays nothing: the same 56572 B flood
+  # is refused in 93-94 ms with jq/python3 present and 168-169 ms on the slice path this paragraph is about,
+  # both far inside the 60s timeout, while a 46 KB legitimate command is 325 ms on macOS -- a figure that
+  # predates this change and belongs to the walk, not to the cap.
+  local _cap=64 _seen=0
+  while :; do
+    pre="${hay%%"$k"*}"                        # everything before the next `"key"`
+    [ "$pre" != "$hay" ] || return 0           # no further occurrence: emit nothing
+    _seen=$((_seen+1)); [ "$_seen" -le "$_cap" ] || return 0
+    rest="${hay:${#pre}+${#k}}"                # past `"key"`
+    while [ -n "$rest" ] && [[ "${rest:0:1}" == [$' \t\n\r'] ]]; do rest="${rest:1}"; done
+    case "$rest" in
+      :*) rest="${rest:1}"; break ;;           # whitespace then `:` -- this occurrence IS the key
+      *)  hay="$rest" ;;                       # a value, or another token: keep looking
+    esac
+  done
+  # THE VALUE MUST BE A STRING. `"command":123}}` used to come back as the literal text `:123}}` -- the old
+  # shape skipped forward to the next quote wherever it was, so a non-string value handed the matchers the
+  # payload's own punctuation to judge. Emitting nothing instead lets the caller's "no readable command"
+  # refusal fire, which is the honest answer for a value these gates cannot read.
+  while [ -n "$rest" ] && [[ "${rest:0:1}" == [$' \t\n\r'] ]]; do rest="${rest:1}"; done
+  case "$rest" in '"'*) rest="${rest:1}" ;; *) return 0 ;; esac
   # Walk to the closing quote that is NOT escaped. A `"` preceded by an odd number of backslashes is content.
   n=${#rest}; chunk="${rest:0:C}"; cl=${#chunk}
   while :; do
@@ -80,7 +126,7 @@ _json_slice(){  # $1 = whole payload, $2 = key -> the raw (still JSON-escaped) s
     r="${seg##*[!\\]}"; case "$seg" in *[!\\]*) run=${#r} ;; *) run=$((run+${#seg})) ;; esac
     if [ $((run % 2)) -eq 1 ]; then acc+=("\""); run=0; else break; fi
   done
-  local IFS=''; printf '%s' "${acc[*]}"
+  local IFS=''; _JS="${acc[*]}"; printf '%s' "$_JS"
 }
 _json_unescape(){  # left-to-right, a chunk at a time; a two-pass sed would corrupt `\\"` (escaped backslash + quote)
   # This is the tier-3 path below -- the one a stock Windows install actually runs on. It used to walk ONE
@@ -176,6 +222,52 @@ _json_unescape(){  # left-to-right, a chunk at a time; a two-pass sed would corr
   done
   local IFS=''; printf '%s' "${acc[*]}"
 }
+_json_keycount(){  # $1 = payload, $2 = key -> sets _KC to how many times it occurs AS A KEY
+  # IT SETS A VARIABLE INSTEAD OF PRINTING, and that is not a style choice. Written as `n="$(_json_keycount
+  # …)"` first, which is a command substitution, which is a FORK -- on a hook that runs before every Bash and
+  # every Write call. Measured on macOS/bash, typical payload, 200 reps: the substitution form cost 0.790 ms
+  # per call against 0.090 ms for the raw byte test it replaces, and the whole hook went 15.00 -> 16.58 ms.
+  # This project's own recorded Git Bash process cost is 62-135 ms, rising to ~400 ms under load, so three
+  # added forks per call would have been a freeze on the platform the change is meant to protect. Setting _KC
+  # keeps the count in the caller's own shell: expansion only, zero forks.
+  # The counter the ambiguity refusals need, and it exists because the hand-written byte test they used to do
+  # looked for a DIFFERENT token than the parser above: `"key":` compact, while the parser searches `"key"` and
+  # tolerates whitespace before the colon. Two consequences, both measured on the shipped hook:
+  #   * `{…"meta":{"command":"ls"},"tool_input":{"command" : "rm -rf /"}}` -- ONE SPACE and the duplicate-key
+  #     refusal went blind while the parser happily read the first value.
+  #   * a key name appearing as a VALUE was counted as an occurrence by neither, which is the hole the parser
+  #     above now closes; counting the same form here is what keeps the two from drifting apart again.
+  # Sharing ONE definition with the parser is the point: a guard that searches for something else than the
+  # thing it guards is the defect, not an implementation detail.
+  # WHAT THE TOKEN CAN BE, stated correctly. An earlier version of this comment said the bytes `"command"`
+  # with both quotes unescaped "can only be a key or a value equal to the key name". That is wrong, and the
+  # counter-example was found by review, not by reasoning: a KEY whose own name ends with a quote spells the
+  # token out of its escaped quote plus the string's terminator --
+  #   {"tool_input":{"x\"command":"DECOY","command":"rm -rf /"}}   slice -> DECOY, count -> 2
+  # which is refused BECAUSE the count sees two, not because the invariant held. The same shape as a VALUE is
+  # harmless (a string's terminator is followed by `,` `}` `]`, never `:`, so it is skipped and not counted:
+  #   {"description":"ends with \"command","command":"rm -rf /"}    slice -> rm -rf /, count -> 1 ).
+  # What IS true, and is what keeps ordinary work from being refused: content can contribute at most one
+  # occurrence per string and only as that string's tail, where the next byte is never a colon. Measured on 19
+  # payloads built by a real JSON encoder -- `grep -rn '"command":' .`, a heredoc writing a hooks.json, `sed`
+  # over settings.json, a commit message quoting the word, commands ending in `"command` -- every count <= 1.
+  # Same pass cap as the slice, and over-cap reports AMBIGUOUS rather than a true count: the callers refuse on
+  # `> 1`, so a payload built to outrun the loop is refused instead of being timed out past the gate.
+  local LC_ALL=C hay="$1" k="\"$2\"" pre rest c=0 _cap=64 _seen=0
+  _KC=0; _KC_CAPPED=0
+  while :; do
+    pre="${hay%%"$k"*}"
+    [ "$pre" != "$hay" ] || { _KC=$c; return 0; }
+    # OVER-CAP IS ITS OWN ANSWER, not a large count. `_KC_CAPPED` lets the caller say what actually happened:
+    # the occurrences it stopped at are candidate positions, key-form or not, so calling them "65 keys" was a
+    # sentinel dressed up as a measurement and the remedy it offered ("send one key") was already satisfied.
+    _seen=$((_seen+1)); [ "$_seen" -le "$_cap" ] || { _KC=$((_cap+1)); _KC_CAPPED=$_cap; return 0; }
+    rest="${hay:${#pre}+${#k}}"
+    while [ -n "$rest" ] && [[ "${rest:0:1}" == [$' \t\n\r'] ]]; do rest="${rest:1}"; done
+    case "$rest" in :*) c=$((c+1)) ;; esac
+    hay="$rest"
+  done
+}
 # ---- /CSK-JSON-PARSE -----------------------------------------------------------------------------------
 
 # Extract the -m/--message VALUES from the command line without an interpreter.
@@ -270,19 +362,37 @@ INPUT="$(cat)"
 # whether it exists. Windows ships a Store redirector stub named python3 on PATH by default; `command -v` finds
 # it, it exits 49 with an empty stdout, and this hook then read CMD="" and exited 0 — the commit content scan
 # never ran. Measured on a stock Windows 11 desktop. The extraction's own exit status is the probe.
-CMD=""; _parsed=0
-if command -v jq >/dev/null 2>&1 && CMD="$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)"; then
-  _parsed=1
-elif command -v python3 >/dev/null 2>&1 && CMD="$(printf '%s' "$INPUT" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("tool_input",{}).get("command",""))' 2>/dev/null)"; then
-  _parsed=1
+# AN AMBIGUOUS COMMAND IS REFUSED HERE TOO, rather than leaning on guard-bash.sh doing it. That argument —
+# "the other hook on the same matcher already refuses this" — was made in this very file and was wrong twice
+# in one review round: for the value-form shadow BOTH hooks allowed, so §4.1/§4.2 and the secret scan never
+# ran on a commit that carried a trailer. A content scanner that silently does not run is the exact failure
+# `pre-commit` exists to prevent, and this hook is the plugin edition's only copy of it.
+# `_KC`, not `$( )`: this hook runs before every Bash call and a command substitution is a fork. It is also
+# deliberately BEFORE the `case "$CMD" in *git*` fast bail below, even though that means non-git commands pay
+# for the count: an ambiguous payload's FIRST value can be `ls` while a `git commit` sits in the second key,
+# and bailing on the first value is exactly how a content scan silently does not run. Fork-free, the count is
+# expansion only, so paying it on every call is measured in microseconds rather than in processes.
+_json_keycount "$INPUT" command; _n_cmd=$_KC
+if [ "$_KC_CAPPED" != 0 ]; then
+  echo "GUARD: this payload contains more than $_KC_CAPPED occurrences of \"command\", so the scan for the" >&2
+  echo "real key was stopped. Refusing rather than scanning whichever one it had reached." >&2
+  exit 2
+elif [ "$_n_cmd" -gt 1 ]; then
+  echo "GUARD: this payload carries $_n_cmd \"command\" keys, so the commit content to scan is ambiguous." >&2
+  echo "Refusing rather than scanning whichever comes first." >&2
+  exit 2
 fi
-if [ "$_parsed" = 0 ]; then
-  # Tier 3, and it used to be a `sed | head | sed` pipeline: four processes on EVERY Bash tool call,
-  # to re-derive a string guard-bash.sh had already parsed one hook earlier, and then re-answer a
-  # question it had already answered. Measured on `ls -la`: guard-bash.sh 2 processes, this hook 7.
-  # guard-write.sh already carried the shared parser; this was the one hook that never got it.
-  CMD="$(_json_unescape "$(_json_slice "$INPUT" command)")"
-fi
+# ONE READER, EVERYWHERE — the ladder is gone here too; the reasoning lives in guard-bash.sh next to the same
+# change. Two things specific to THIS hook are worth keeping:
+#   * The value must be UNESCAPED, not raw. A raw-text extraction leaves JSON escapes in place, so `-m \"…\"`
+#     never matches a quote-based scan and the message silently goes unscanned. That is precisely how the
+#     first version of this hook passed a commit carrying a co-author trailer.
+#   * The Windows stub. `command -v python3` found the Microsoft Store redirector, it exited 49 with an empty
+#     stdout, this hook read CMD="" and exited 0, and the commit content scan never ran at all.
+# The shared reader also replaced a `sed | head | sed` pipeline: four processes on EVERY Bash tool call, to
+# re-derive a string guard-bash.sh had already parsed one hook earlier. Measured on `ls -la`: guard-bash.sh 2
+# processes, this hook 7. With the ladder gone neither hook spawns a process to SELECT a reader.
+CMD="$(_json_unescape "$(_json_slice "$INPUT" command)")"
 [ -z "$CMD" ] && exit 0
 
 # A command that does not contain `git` at all cannot match the pattern below, and finding that out
@@ -329,6 +439,11 @@ if [ "$FAILED" = 0 ] && [ -x "$DIR/commit-msg" ]; then
   # no interpreter. Cheap: nothing below runs unless the command is already known to be a `git commit`.
   HAS_M=0
   printf '%s' "$CMD" | grep -qE '(^|[[:space:]])(-[A-Za-z]*m|--message)([[:space:]]|=|$)' && HAS_M=1
+  # CSK-NOT-A-RUNG: reads $CMD, an already-parsed command string, and never the payload. The check in
+  # smoke-test treats every interpreter in this file as a reader ladder UNLESS it sits in a marked region,
+  # because describing the dangerous shape kept missing one — a payload written to a temp file names no
+  # INPUT on the line that reads it. Adding a rung therefore means deleting a comment that says what this
+  # one is for, which is the point.
   if command -v python3 >/dev/null 2>&1 && MSG="$(CSK_CMD="$CMD" python3 -c '
 import os, shlex
 try: parts = shlex.split(os.environ["CSK_CMD"])
@@ -405,3 +520,5 @@ if [ "$FAILED" = 1 ]; then
   exit 2
 fi
 exit 0
+
+  # /CSK-NOT-A-RUNG
