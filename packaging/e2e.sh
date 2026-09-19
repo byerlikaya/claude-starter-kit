@@ -467,19 +467,26 @@ if [ "$(cat "$_FC/rc_open")" = 142 ] && [ "$(cat "$_FC/rc_closed")" != 142 ]; th
     || { echo "FAIL: start.sh --yes BLOCKED on open-but-empty stdin — unattended runs hang under a pty"; exit 1; }
   echo "[wizard] --yes returns on open-but-empty stdin (the pty shape), rc=$(cat "$W2B/rc")"
 
-  # KNOWN AND OPEN, stated rather than pinned green: WITHOUT --yes, an open-but-empty stdin still blocks —
-  # measured 142 here and on stock Windows, at the stack chooser with no flags and one prompt later with
-  # --generic. `ask_yes` carries a documented reason for having no `-t 0` guard (a `-t 0` test would turn the
-  # documented `printf 'yes\n' | bash start.sh` form into a cancellation); the stack chooser carries none. This
-  # case records the state so a change in EITHER direction is visible, and does not fail the suite over a
-  # trade-off its owner made deliberately.
+  # THE PIPE SHAPE IS CLOSED, and this is a real verdict rather than a recorded state. Without --yes, an
+  # open-but-empty stdin used to block forever — measured 142 here and on stock Windows, at the stack chooser
+  # with no flags and one prompt later with --generic. All three bare reads are now bounded, so the installer
+  # returns and declines instead. The must-fail twin lives with the fix: removing the timeout from `csk_read`
+  # puts 142 back on this same fifo.
   W2C="$(wiz noyes-openempty)"
-  ( cd "$W2C" && mkfifo f && exec 3<>f && _to 12 bash start.sh >/dev/null 2>&1 <&3; echo $? > rc; exec 3>&- ) || true
-  if [ "$(cat "$W2C/rc")" = 142 ] ; then
-    echo "[wizard] KNOWN-OPEN: without --yes an open-but-empty stdin still blocks (the pty hang) — --yes is the route"
-  else
-    echo "[wizard] the no---yes pty hang is GONE (rc=$(cat "$W2C/rc")) — update this note, the trade-off changed"
-  fi
+  ( cd "$W2C" && mkfifo f && exec 3<>f && _to 20 bash start.sh >/dev/null 2>&1 <&3; echo $? > rc; exec 3>&- ) || true
+  [ "$(cat "$W2C/rc")" != 142 ] \
+    || { echo "FAIL: without --yes an open-but-empty stdin BLOCKS again — the bounded read regressed"; exit 1; }
+  [ ! -d "$W2C/.claude" ] \
+    || { echo "FAIL: the bounded read answered YES on its own — a timeout must decline, never consent"; exit 1; }
+  echo "[wizard] open-but-empty PIPE: returns and declines (rc=$(cat "$W2C/rc")), nothing installed"
+
+  # CANNOT-CLOSE, and named that way on purpose rather than "known-open", which reads as something that will be
+  # closed one day. A PTY WITH NO INPUT cannot be distinguished from a human who types slowly: `[ -t 0 ]` is
+  # TRUE under a pty, so no stdin test separates the two, and a bounded read would either cut off a real person
+  # or consent on their behalf. `--yes` is the answer and the only answer. This is not asserted here because a
+  # real pty cannot be allocated from this harness — `winpty` refuses when its own stdin is not a terminal and
+  # Git Bash ships no `script` — so it is recorded as unmeasurable rather than left looking pending. The
+  # measured half above is the pipe; do not read it as covering the pty.
 else
   echo "[wizard] SKIP (fixture): the two stdin shapes did not separate here (open=$(cat "$_FC/rc_open") closed=$(cat "$_FC/rc_closed")), so a hang could not be told from a pass"
 fi
