@@ -125,6 +125,23 @@ m() {   # $1 = English text (the key); further args fill %s
       "Backend pattern:") s='Backend deseni:' ;;
       "full kit") s='tam kit' ;;
       "no effect:") s='etkisi yok:' ;;
+      "Installing:") s='Kuruluyor:' ;;
+      "Tip:  open Claude Code and run /doctor-csk — it checks the install is wired (hooks executable, core.hooksPath set, discipline imported) and scores the project's readiness. CLAUDE.md loads the discipline every session.") s="İpucu:  Claude Code'u açıp /doctor-csk çalıştırın — kurulumun bağlı olduğunu denetler (hook'lar çalıştırılabilir, core.hooksPath ayarlı, disiplin import edilmiş) ve projenin hazırlığını puanlar. CLAUDE.md disiplini her oturumda yükler." ;;
+      "Backend pattern '%s': %s agents, %s skills installed.") s="Backend deseni '%s': %s ajan, %s skill kuruldu." ;;
+      ".claude/DISCIPLINE.md written — kit-owned; an update overwrites it, so keep your own rules out of it.") s='.claude/DISCIPLINE.md yazıldı — kit sahipli; güncelleme üzerine yazar, kendi kurallarınızı buraya koymayın.' ;;
+      "./CLAUDE.md created — EDIT the project section.") s='./CLAUDE.md oluşturuldu — proje bölümünü DÜZENLEYİN.' ;;
+      "trace scan: core.hooksPath -> .claude/hooks (§4.1/§4.2 commit gate active)") s='iz taraması: core.hooksPath -> .claude/hooks (§4.1/§4.2 commit kapısı etkin)' ;;
+      "Done. ./.claude + ./CLAUDE.md ready (full kit · backend pattern: %s); claude-starter/ deleted.") s='Bitti. ./.claude + ./CLAUDE.md hazır (tam kit · backend deseni: %s); claude-starter/ silindi.' ;;
+      "Next: 1) fill in the CLAUDE.md project section  2) open Claude Code at the repo root") s="Sırada: 1) CLAUDE.md proje bölümünü doldurun  2) Claude Code'u depo kökünde açın" ;;
+      "Note: if Claude Code is ALREADY running here, restart it — CLAUDE.md and the discipline load at session start.") s='Not: Claude Code burada ZATEN çalışıyorsa yeniden başlatın — CLAUDE.md ve disiplin oturum başında yüklenir.' ;;
+      "Panel: /studio-csk opens the Studio panel from this project (or: node .claude/studio/server/index.js --open).") s='Panel: /studio-csk bu projeden Studio panelini açar (ya da: node .claude/studio/server/index.js --open).' ;;
+      "— backend + web + mobile (RN/Expo), every agent and skill") s='— backend + web + mobil (RN/Expo), her ajan ve her skill' ;;
+      "%s agents · %s skills will be installed") s='%s ajan · %s skill kurulacak' ;;
+      "non-.NET — generic") s='.NET değil — genel' ;;
+      "(devarch-module not installed; sonarqube-check installed)") s='(devarch-module kurulmuyor; sonarqube-check kuruluyor)' ;;
+      "approval gate -> ./%s") s='onay kapısı -> ./%s' ;;
+      "(./frontend reserved next to it)") s='(yanında ./frontend ayrılıyor)' ;;
+      "(shared: .claude/ and CLAUDE.md stay committable)") s='(paylaşımlı: .claude/ ve CLAUDE.md commit edilebilir kalır)' ;;
       "(default — pass --generic for the stack-agnostic one)") s='(varsayılan — yığından bağımsızı için --generic geçin)' ;;
       "(default — pass --shared to commit .claude/ and CLAUDE.md)") s='(varsayılan — .claude/ ve CLAUDE.md commit edilsin isterseniz --shared geçin)' ;;
       "Security gates armed on every install:") s='Her kurulumda devreye giren güvenlik kapıları:' ;;
@@ -507,17 +524,17 @@ N_SK="$(count_installed "$EXCL_SKILLS" "$SRC/skills/*/")"
 
 h1 "$(m '[3/3] Summary · see what will be installed before you confirm')"
 echo
-row "Scope" "${B}full kit ${D}— backend + web + mobile (RN/Expo), every agent and skill${R}"
-row "Included"  "${MG}${B}${N_AG}${R} agents · ${MG}${B}${N_SK}${R} skills will be installed"
+row "$(m 'Scope')" "${B}$(m 'full kit')${D} $(m '— backend + web + mobile (RN/Expo), every agent and skill')${R}"
+row "$(m 'Included')"  "$(m '%s agents · %s skills will be installed' "${MG}${B}${N_AG}${R}" "${MG}${B}${N_SK}${R}")"
 if [ "$STACK" = "generic" ]; then
-  row "Backend pattern" "non-.NET — generic ${D}(devarch-module not installed; sonarqube-check installed)${R}"
+  row "$(m 'Backend pattern')" "$(m 'non-.NET — generic') ${D}$(m '(devarch-module not installed; sonarqube-check installed)')${R}"
 else
-  row "Backend pattern" ".NET / DevArchitecture ${D}(full support)${R}"
+  row "$(m 'Backend pattern')" ".NET / DevArchitecture ${D}($(m 'full support'))${R}"
 fi
 if [ "$DEVARCH_ON" = 1 ]; then
-  row "DevArch base" "${YE}approval gate -> ./$BACKEND_DIR ${D}(./frontend reserved next to it)${R}"
+  row "$(m 'DevArch base')" "${YE}$(m 'approval gate -> ./%s' "$BACKEND_DIR") ${D}$(m '(./frontend reserved next to it)')${R}"
 else
-  row "DevArch base" "${D}not installed${R}"
+  row "$(m 'DevArch base')" "${D}$(m 'not installed')${R}"
 fi
 echo
 printf '  %s%s%s\n' "$B" "$(m 'Security gates armed on every install:')" "$R"
@@ -526,14 +543,14 @@ gate "$(m 'trace scan — a git hook blocks AI traces / vendor names')"
 gate "$(m 'real context measurement + handoff at 75%% (Stop hook)')"
 gate "$(m 'destructive command guard (rm -rf / force-push, etc.)')"
 echo
-row "Will write" "${D}./.claude (agents·skills·commands·hooks·eval·studio·settings.json) + ./CLAUDE.md${R}"
+row "$(m 'Will write')" "${D}./.claude (agents·skills·commands·hooks·eval·studio·settings.json) + ./CLAUDE.md${R}"
 # .gitignore is a TRACKED file in most repos, so appending to it is a change to the project — it belongs in
 # the summary, named line by line, not discovered afterwards in `git diff`. Entries this repo already
 # ignores are dropped at write time, so what is listed here is the upper bound, not a promise of four lines.
 if [ "$VISIBILITY" = "shared" ]; then
-  row ".gitignore" "${D}$(printf '%s · ' $GI_PLAN | sed 's/ · $//')  ${YE}(shared: .claude/ and CLAUDE.md stay committable)${R}"
+  row ".gitignore" "${D}$(printf '%s · ' $GI_PLAN | sed 's/ · $//')  ${YE}$(m '(shared: .claude/ and CLAUDE.md stay committable)')${R}"
 else
-  row ".gitignore" "${D}$(printf '%s · ' $GI_PLAN | sed 's/ · $//')  ${GR}(private)${R}"
+  row ".gitignore" "${D}$(printf '%s · ' $GI_PLAN | sed 's/ · $//')  ${GR}($(m 'private'))${R}"
 fi
 # What this machine is missing, BEFORE the confirm prompt — not after, when it becomes a symptom pointing
 # somewhere else. Report-only and never blocking: the kit degrades rather than breaks, and that is exactly why
@@ -582,7 +599,7 @@ if [ "$DEVARCH_ON" = 1 ]; then
 fi
 
 # --- Step 4: Kit installation (./.claude + ./CLAUDE.md) — everything, minus the .NET-only pattern skill ---
-echo "== Installing: ./.claude + ./CLAUDE.md =="
+echo "== $(m 'Installing:') ./.claude + ./CLAUDE.md =="
 mkdir -p .claude/agents .claude/skills .claude/commands .claude/hooks .claude/eval .claude/studio
 cp -R "$SRC/agents/."   .claude/agents/
 cp -R "$SRC/skills/."   .claude/skills/
@@ -601,7 +618,7 @@ for d in $EXCL_SKILLS; do rm -rf ".claude/skills/$d"; done
 if [ "$STACK" = "generic" ] && [ -f "$SRC/agents-optional/backend-expert-generic.md" ]; then
   cp "$SRC/agents-optional/backend-expert-generic.md" .claude/agents/backend-expert-csk.md
 fi
-echo "  Backend pattern '$STACK': $(ls .claude/agents/*.md 2>/dev/null | wc -l | tr -d ' ') agents, $(ls -d .claude/skills/*/ 2>/dev/null | wc -l | tr -d ' ') skills installed."
+echo "  $(m "Backend pattern '%s': %s agents, %s skills installed." "$STACK" "$(ls .claude/agents/*.md 2>/dev/null | wc -l | tr -d ' ')" "$(ls -d .claude/skills/*/ 2>/dev/null | wc -l | tr -d ' ')")"
 [ -f "$SRC/settings.json" ] && cp "$SRC/settings.json" .claude/settings.json
 [ -f "$HERE/VERSION" ] && cp "$HERE/VERSION" .claude/VERSION   # make the kit version trackable in the installed project
 # Glob form so every shipped hook/eval is made executable — including ones added later (guard-write.sh,
@@ -663,11 +680,11 @@ cp "$SRC/README.md"         .claude/ 2>/dev/null || true
 # Discipline (kit-owned, refreshed on every update) vs project section (yours, written once), joined by @import.
 kit_require_sentinel "$SRC/CLAUDE.md"
 kit_discipline_of "$SRC/CLAUDE.md" > .claude/DISCIPLINE.md
-echo "  .claude/DISCIPLINE.md written — kit-owned; an update overwrites it, so keep your own rules out of it."
+echo "  $(m '.claude/DISCIPLINE.md written — kit-owned; an update overwrites it, so keep your own rules out of it.')"
 if [ ! -f ./CLAUDE.md ]; then
   { printf '<!-- kit discipline · on conflict the project rules BELOW win -->\n%s\n' "$IMPORT_LINE"
     kit_project_of "$SRC/CLAUDE.md"; } > ./CLAUDE.md
-  echo "  ./CLAUDE.md created — EDIT the project section."
+  echo "  $(m './CLAUDE.md created — EDIT the project section.')"
 elif kit_has_import ./CLAUDE.md; then
   echo "  ./CLAUDE.md kept as-is (already imports the discipline) — the refresh landed in DISCIPLINE.md."
 elif kit_claude_md_is_legacy ./CLAUDE.md; then
@@ -707,16 +724,16 @@ gi_add $GI_PLAN
 # outside a repo — and it carries no path spelling to disagree about. Verified here at a normal root, a
 # worktree root, a subdirectory and a non-repo.
 if PFX="$(git rev-parse --show-prefix 2>/dev/null)" && [ -z "$PFX" ] && git config core.hooksPath .claude/hooks 2>/dev/null; then
-  echo "  trace scan: core.hooksPath -> .claude/hooks (§4.1/§4.2 commit gate active)"
+  echo "  $(m 'trace scan: core.hooksPath -> .claude/hooks (§4.1/§4.2 commit gate active)')"
 else
   echo "  NOTE: no git repository at this level; after 'git init' run:  git config core.hooksPath .claude/hooks"
 fi
 rm -rf "$SRC"
 echo
-echo "== Done. ./.claude + ./CLAUDE.md ready (full kit · backend pattern: $STACK); claude-starter/ deleted. =="
-echo "Next: 1) fill in the CLAUDE.md project section  2) open Claude Code at the repo root"
-echo "Note: if Claude Code is ALREADY running here, restart it — CLAUDE.md and the discipline load at session start."
-echo "Tip:  open Claude Code and run /doctor-csk — it checks the install is wired (hooks executable, core.hooksPath set, discipline imported) and scores the project's readiness. CLAUDE.md loads the discipline every session."
+echo "== $(m 'Done. ./.claude + ./CLAUDE.md ready (full kit · backend pattern: %s); claude-starter/ deleted.' "$STACK") =="
+echo "$(m 'Next: 1) fill in the CLAUDE.md project section  2) open Claude Code at the repo root')"
+echo "$(m 'Note: if Claude Code is ALREADY running here, restart it — CLAUDE.md and the discipline load at session start.')"
+echo "$(m "Tip:  open Claude Code and run /doctor-csk — it checks the install is wired (hooks executable, core.hooksPath set, discipline imported) and scores the project's readiness. CLAUDE.md loads the discipline every session.")"
 # Say what is true of THIS machine, not what is true in general. The line used to
 # print identically with or without node, so on a machine that cannot start the
 # panel it read as a footnote rather than as the reason nothing will happen. The
@@ -724,7 +741,7 @@ echo "Tip:  open Claude Code and run /doctor-csk — it checks the install is wi
 # it is asked of the INSTALLED copy: $SRC is deleted at line 397, a few lines
 # above this, so asking there answered "no node" on every machine.
 if bash .claude/eval/preflight.sh --has node 2>/dev/null; then
-  echo "Panel: /studio-csk opens the Studio panel from this project (or: node .claude/studio/server/index.js --open)."
+  echo "$(m 'Panel: /studio-csk opens the Studio panel from this project (or: node .claude/studio/server/index.js --open).')"
 else
   echo "Panel: needs Node 18+, which is not on this machine — but that is no longer a dead end."
   echo "       The kit fetches one for the panel: bash .claude/studio/ensure-node.sh --plan  (asks first;"
