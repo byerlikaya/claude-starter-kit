@@ -81,22 +81,34 @@ unm(){  UNMEASURED=$((UNMEASURED+1)); _al "UNM $1"; printf '  \033[33m????\033[0
 note(){ printf '  ·    %s\n' "$1"; }
 _al(){ local l="${1//$'\n'/ }"; l="${l//$'\r'/ }"; printf '%s\t%s\n' "$((PASS+FAILED+UNMEASURED))" "$l" >> "$ASSERTLOG"; }
 
-# The analyser, and its calibration on a SYNTHETIC log so the detector is never trusted untested. A detector
-# that silently stopped working would report "0 findings", which reads as a clean bill of health and is the
-# same failure it exists to catch. Two planted defects — one mid-run, one at the very end, which has no
-# following line to reveal it and is caught by comparing the log's last value against the visible total.
-_analyse(){ # $1 log, $2 visible total -> prints offenders, then HITS=n
+# THE RULE: the PARENT's logged values are exactly total, total-1, … 1, so walk the log BACKWARD expecting
+# that chain. A line on the chain is a parent line; every line that is not was executed in a child.
+#
+# The first version used "a repeat at N means N-1 was lost", which is only true when each loss sits in its OWN
+# subshell. Several assertions inside ONE `( … )` — the shape that actually occurred in this repo, five rows
+# at once — make the counter ADVANCE inside the child (P+1, P+2, P+3) and then DROP when the parent resumes;
+# that rule saw one drop and named one row, missing the rest. A synthetic fixture had modelled separate
+# subshells, so it agreed with itself. Running the real shape is what showed the difference.
+# The backward walk needs no special case for runs, for separate subshells, or for a loss at the very end.
+_analyse(){ # $1 log, $2 visible total -> prints offenders in file order, then HITS=n
   awk -F'\t' -v final="$2" '
     { n[NR]=$1; lab[NR]=$2 }
-    END { h=0
-      for (i=2; i<=NR; i++) if (n[i] <= n[i-1]) { printf "     >> %s\n", lab[i-1]; h++ }
-      if (NR>0 && n[NR] > final) { printf "     >> %s   (son satır)\n", lab[NR]; h++ }
+    END { e=final+0; h=0
+      for (i=NR; i>=1; i--) { if (n[i]+0 == e) e--; else out[++h]=lab[i] }
+      for (j=h; j>=1; j--) printf "     >> %s\n", out[j]
       printf "HITS=%d\n", h }' "$1"; }
+
+# Calibrated on a SYNTHETIC log before it is trusted, because a detector that quietly stopped working would
+# report "0 findings" — a clean bill of health, and the same failure it exists to catch. The fixture carries
+# the shape that broke the previous rule (a RUN inside one subshell) plus a loss at the very end, and a clean
+# tail that must not be accused.
 _cal="$(mktemp)"
-printf '1\ttemiz-bir\n2\tPLANTED-ORTA\n2\ttemiz-iki\n3\ttemiz-uc\n4\tPLANTED-SON\n' > "$_cal"
-_co="$(_analyse "$_cal" 3)"
-if [ "$(printf '%s' "$_co" | sed -n 's/^HITS=//p')" = 2 ] \
-   && printf '%s' "$_co" | grep -q 'PLANTED-ORTA' && printf '%s' "$_co" | grep -q 'PLANTED-SON'; then
+printf '1\tp1\n2\tp2\n3\tRUN-1\n4\tRUN-2\n5\tRUN-3\n3\tp3\n4\tp4\n5\tSON\n' > "$_cal"
+_co="$(_analyse "$_cal" 4)"
+if [ "$(printf '%s' "$_co" | sed -n 's/^HITS=//p')" = 4 ] \
+   && printf '%s' "$_co" | grep -q 'RUN-1' && printf '%s' "$_co" | grep -q 'RUN-2' \
+   && printf '%s' "$_co" | grep -q 'RUN-3' && printf '%s' "$_co" | grep -q 'SON' \
+   && ! printf '%s' "$_co" | grep -q 'p[1-4]'; then
   _ALZ=1
 else
   _ALZ=0; printf '  \033[33m????\033[0m %s\n' "alt-kabuk dedektörü kendi kalibrasyonunu geçemedi — bu koşuda iddia kaybı ARANMAYACAK"
