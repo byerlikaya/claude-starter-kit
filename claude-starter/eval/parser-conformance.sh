@@ -312,10 +312,22 @@ echo "-- düşmanca biçimler --"
 #     command was a commit was refused by §4.6 before its own rule was ever reached.
 # So: the payload's cwd is the prepared repo, each row may name the RULE it expects to fire, and the string the
 # slice actually read is printed on every failure.
-t3err(){ ( cd "$R" && bash "$HOOK" < "$P" 2>&1 >/dev/null ) | tr -d '\r' | grep -oE 'GUARD \(§[0-9.]+\)' | head -1; }
+# `/` is in the class on purpose: a refusal that protects two sections is tagged `GUARD (§4.4/§4.5)`, and an
+# extraction stopping at the first `§4.x` captured `GUARD (§4.4` — no closing paren, and a row naming `§4.5`
+# then failed against a message that contains it. The containment test below was never the problem; the
+# extraction was too narrow. A compound tag is the honest one for a gate that guards more than one rule.
+t3err(){ ( cd "$R" && bash "$HOOK" < "$P" 2>&1 >/dev/null ) | tr -d '\r' | grep -oE 'GUARD \(§[0-9./]+\)' | head -1; }
 slice_reads(){ bash "$W/dec.sh" < "$P" 2>/dev/null; }
 
-adv(){ # $1 label  $2 expected rc  $3 expected rule (`-` = do not check)  $4 raw payload  [$5 known-open:<t3>/<t1>]
+adv(){ # $1 label  $2 expected rc  $3 rule  $4 raw payload  [$5 known-open:<t3>/<t1>]
+  #   $3 = `-`            do not check why it answered
+  #        `§4.x`         the hook's own tag must contain this
+  #                       An ambiguity refusal is named this way rather than by the destructive rule that used
+  #                       to fire: the kit refuses a payload it cannot read unambiguously instead of picking a
+  #                       winner, so the refusal comes FIRST and no command is judged at all. A row naming the
+  #                       destructive rule would be asserting a last-wins policy this kit does not have.
+  #        `ladder-split` while a reader ladder exists this payload is EXPECTED to diverge, because the
+  #                       divergence IS the ladder's defect; with one reader the row must reach $2 instead.
   local label="$1" exp="$2" want="$3" a b r known="${5:-}"
   mkraw "${4//@CWD@/$R}"; a="$(t3)"
   if [ "$LADDER" = 1 ]; then b="$(t1)"; else b="$a"; fi
@@ -327,6 +339,20 @@ adv(){ # $1 label  $2 expected rc  $3 expected rule (`-` = do not check)  $4 raw
     if [ "$a/$b" = "$want" ]; then KNOWN_OPEN=$((KNOWN_OPEN+1))
       printf '  \033[33mAÇIK\033[0m %s — bilinen ayrışma, kayıtlı: %s (beklenen %s)\n' "$label" "$a/$b" "$exp"; return; fi
     bad "$label — bilinen ayrışma DEĞİŞTİ: kayıt $want, ölçülen $a/$b"; return
+  fi
+  if [ "$want" = "ladder-split" ]; then
+    # Two readers, one of which cannot see this shape at all — that IS the ladder's defect, so while the ladder
+    # exists the row asserts the divergence rather than pretending it is absent. Pinned to the exact pair, so a
+    # change in the shape fails, and so does the divergence DISAPPEARING while the ladder is still there: that
+    # would mean something else moved and the row is no longer describing what it says it describes.
+    if [ "$LADDER" = 1 ]; then
+      if [ "$a" = 2 ] && [ "$b" = 0 ]; then ok "$label · merdiven dururken AYRIŞIYOR (t3=2 t1=0) — merdivenin kusuru, silinince kapanmalı"
+      else bad "$label · merdivenli ayrışma DEĞİŞTİ: kayıt t3=2/t1=0, ölçülen t3=$a/t1=$b · dilim okudu [$(slice_reads)]"; fi
+      return
+    fi
+    if [ "$a" = "$exp" ]; then ok "$label · tek okuyucuda kapandı (rc=$a)"
+    else bad "$label · merdiven gitti ama HÂLÂ AÇIK: rc=$a, beklenen $exp · dilim okudu [$(slice_reads)]"; fi
+    return
   fi
   if [ "$LADDER" = 1 ] && [ "$a" != "$b" ]; then
     bad "$label — AYRIŞIYOR: tier3 rc=$a · tier1 rc=$b (beklenen $exp) · dilim okudu [$(slice_reads)]"; return; fi
@@ -343,11 +369,11 @@ adv(){ # $1 label  $2 expected rc  $3 expected rule (`-` = do not check)  $4 raw
   fi
   ok "$label (rc=$a)"; }
 
-adv 'command anahtarı iki kez'                 2 '§4.5' \
+adv 'command anahtarı iki kez'                 2 '§4.4' \
   '{"cwd":"@CWD@","permission_mode":"default","tool_name":"Bash","tool_input":{"command":"ls -la","command":"rm -rf /"},"tool_use_id":"x"}'
 adv 'gövdede sahte command anahtarı'           2 '§4.5' \
   '{"cwd":"@CWD@","permission_mode":"default","tool_name":"Bash","tool_input":{"description":"\"command\":\"ls\"","command":"rm -rf /"},"tool_use_id":"x"}'
-adv 'gerçek anahtardan önce iç içe nesne'      2 '§4.5' \
+adv 'gerçek anahtardan önce iç içe nesne'      2 '§4.4' \
   '{"cwd":"@CWD@","permission_mode":"default","tool_name":"Bash","tool_input":{"meta":{"command":"ls -la"},"command":"rm -rf /"},"tool_use_id":"x"}'
 adv 'kapanıştan önce kaçışlı tırnak'           2 '§4.5' \
   '{"cwd":"@CWD@","permission_mode":"default","tool_name":"Bash","tool_input":{"command":"rm -rf / --no-preserve-root \"x\""},"tool_use_id":"x"}'
@@ -361,7 +387,7 @@ adv 'anahtar sırası: tool_input önce'          2 '§4.5' \
 # the SIBLING object — the gate judging text that is not the command that will run. The harmless twin is the
 # row that shows it, because there is nothing in `ls -la` for any rule to catch.
 # Reported once as "the refusal closes this hole". It does not. It was the twin that was missing.
-adv 'kardeş nesnede yıkıcı komut'              2 '§4.5' \
+adv 'kardeş nesnede yıkıcı komut'              2 'ladder-split' \
   '{"cwd":"@CWD@","permission_mode":"default","tool_name":"Bash","tool_input":{"foo":1},"meta":{"command":"rm -rf /"},"tool_use_id":"x"}'
 adv 'kardeş nesnede zararsız komut (İKİZ)'     0 '-' \
   '{"cwd":"@CWD@","permission_mode":"default","tool_name":"Bash","tool_input":{"foo":1},"meta":{"command":"ls -la"},"tool_use_id":"x"}'
