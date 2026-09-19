@@ -504,4 +504,63 @@ cp adopt.sh "$DP/"; cp -R claude-starter "$DP/claude-starter"; cp VERSION "$DP/"
   || { echo "FAIL: the twin did not reproduce the drop, so the -f above proves nothing"; exit 1; }
 echo "[wizard] docs/ is private after adopt, and the adoption's own record is still in the diff (twin drops it)"
 
+# 6 · --shared and --private differ in WHAT they ignore, which is the whole point of asking. shared keeps
+#     .claude/ and CLAUDE.md committable so a team can review them; private hides them. Both are asserted,
+#     because a default that silently matched the other choice would make the question decorative.
+W5="$(wiz shared)"
+( cd "$W5" && CSK_LANG=en bash start.sh --yes --shared >/dev/null 2>&1 </dev/null )
+for e in 'docs/' '.private-terms.txt'; do
+  grep -qxF "$e" "$W5/.gitignore" || { echo "FAIL: --shared did not ignore '$e'"; exit 1; }
+done
+for e in '.claude/' 'CLAUDE.md'; do
+  ! grep -qxF "$e" "$W5/.gitignore" || { echo "FAIL: --shared ignored '$e' — the team could not review it"; exit 1; }
+done
+grep -qxF '.claude/' "$W/.gitignore" || { echo "FAIL: the private default did not ignore .claude/"; exit 1; }
+echo "[wizard] --shared ignores 2 entries and keeps .claude/ + CLAUDE.md committable; private ignores 4"
+
+# 5 · ASK GIT, DO NOT COMPARE STRINGS. A repo that already ignores `.claude` without the trailing slash is
+#     covered, and appending `.claude/` next to it is a second redundant rule. The old whole-line grep could
+#     not see that; `git check-ignore` answers the question that matters. Needs a real repo, since that is
+#     what makes check-ignore answerable at all.
+W6="$WORK/wiz-dupe"; rm -rf "$W6"; mkdir -p "$W6"
+cp start.sh "$W6/"; cp -R claude-starter "$W6/"
+( cd "$W6" && git init -q . && git config user.email t@e.com && git config user.name t )
+printf '.claude\n' > "$W6/.gitignore"                  # no trailing slash, and already effective
+( cd "$W6" && CSK_LANG=en bash start.sh --yes >/dev/null 2>&1 </dev/null )
+[ "$(grep -c '^\.claude' "$W6/.gitignore")" = 1 ] \
+  || { echo "FAIL: a repo already ignoring .claude got a second redundant rule ($(grep -c '^\.claude' "$W6/.gitignore"))"; exit 1; }
+echo "[wizard] an already-ignored .claude is not ignored twice (git check-ignore, not string equality)"
+
+# 8 · The same helper has to work where there is NO repo to ask. Every wizard case above ran outside a repo,
+#     so the fallback is already exercised — this asserts it reached the right answer rather than merely not
+#     crashing, which is the difference between a fallback and a silent no-op.
+[ -f "$W4/.gitignore" ] && [ "$(grep -c . "$W4/.gitignore")" -ge 2 ] \
+  || { echo "FAIL: outside a git repo the gitignore fallback wrote nothing usable"; exit 1; }
+echo "[wizard] outside a repo the fallback still writes the entries (and keeps the trailing-newline fix)"
+
+# 12 · `hide` writes nothing itself — it hands the user a command to run after the merge, because ignoring the
+#      payload BEFORE the branch commit is what once dropped it from the review diff. So what has to be right
+#      is the INSTRUCTION, and the instruction is a static string: asserted on the source rather than by
+#      driving the interactive flow. The first attempt here did drive it, and the prompt sequence guessed wrong
+#      so the path was never reached — a case that reported a skip while measuring nothing. Reading the string
+#      is both complete and deterministic, and it is the whole of what `hide` promises.
+# Match the ASSIGNMENT THAT CARRIES THE COMMAND, not the first line whose name matches. `HIDE_NOTE=""` is
+# declared empty earlier in the file, and `grep -m1 'HIDE_NOTE='` took that one — so all three checks below
+# failed against a perfectly good file, and the must-fail twin then "passed" for the wrong reason: it was not
+# the mutation failing, it was the assertion already broken. Anchoring on the command itself removes both.
+HN="$(grep -m1 'HIDE_NOTE=.*rm -r --cached' adopt.sh || true)"
+case "$HN" in
+  *'rm -r --cached'*) ;;
+  *) echo "FAIL: the hide instruction does not untrack anything"; exit 1 ;;
+esac
+case "$HN" in
+  *'--cached .claude CLAUDE.md docs'*) ;;
+  *) echo "FAIL: the hide instruction does not untrack docs — plans and threat models would stay tracked"; exit 1 ;;
+esac
+case "$HN" in
+  *'docs/'*) ;;
+  *) echo "FAIL: the hide instruction does not add docs/ to .gitignore"; exit 1 ;;
+esac
+echo "[wizard] the hide instruction covers docs in BOTH halves (untrack and ignore)"
+
 echo "e2e: all installer rehearsals passed"
