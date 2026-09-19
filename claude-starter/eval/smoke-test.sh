@@ -2527,14 +2527,18 @@ o="$( cd "$R46" && gj default 'git commit -m x' | bash "$HOOKS/guard-bash.sh" 2>
 #     tell correct folding from broken folding by opening a path. The case that matters is the FRONT of the
 #     path — a project on a network share — where the old single fold produced `////server//share`, which is
 #     not a UNC path, while undoubling first yields `//server/share`, which is.
-_CWDEXPR_N="$(grep -cF '_CWD="${_CWD#*:}"' "$HOOKS/guard-bash.sh")"
-_CWDEXPR="$(grep -F '_CWD="${_CWD#*:}"' "$HOOKS/guard-bash.sh" | head -1)"
+# The EXTRACTION half of this line is gone: `cwd` now comes from `_json_slice` like every other key, because
+# its own hand-rolled `${INPUT#*"cwd"}` + `#*:` was the last caller matching a key without its colon — a decoy
+# pointed the §4.5 relative-path rules at another directory (measured: rc=0 where the honest payload was 2).
+# What stayed is the NORMALISATION, and it is pinned here against the raw value the slice hands over.
+_CWDEXPR_N="$(grep -cF '_CWD="${_CWD//\\\\/\\}"' "$HOOKS/guard-bash.sh")"
+_CWDEXPR="$(grep -F '_CWD="${_CWD//\\\\/\\}"' "$HOOKS/guard-bash.sh" | head -1)"
 if [ "$_CWDEXPR_N" = 1 ] && [ -n "$_CWDEXPR" ]; then
   _cwdnorm(){ _CWD="$1"; eval "$_CWDEXPR"; printf '%s' "$_CWD"; }
   for _pair in 'D:\\Projects\\kit|D:/Projects/kit' '\\\\server\\share\\kit|//server/share/kit' \
                '/Users/x/kit|/Users/x/kit' 'C:\Windows|C:/Windows'; do
     _in="${_pair%%|*}"; _want="${_pair#*|}"
-    _got="$(_cwdnorm ":\"$_in\",\"permission_mode\":\"default\"")"
+    _got="$(_cwdnorm "$_in")"
     [ "$_got" = "$_want" ] && pass "§4.6: payload cwd '$_in' normalises to '$_want'" \
       || fail "§4.6: payload cwd '$_in' normalised to '$_got', wanted '$_want'"
   done
@@ -3009,6 +3013,189 @@ if [ -n "$GBX" ]; then
   # 5) NOT OVER-BLOCKING: an ordinary command stays allowed even with the dirty session id.
   gjs default 'ls -la' | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" >/dev/null 2>&1
   [ "$?" = 0 ] && pass "no-jq/py: 'ls -la' still allowed" || fail "no-jq/py: 'ls -la' blocked (fallback over-blocks)"
+  # --- THE KEY THE PARSER FINDS AND THE KEY THE GUARD COUNTS MUST BE THE SAME ONE -----------------------
+  # `_json_slice` searches for the bytes `"key"`; the ambiguity guards used to count `"key":` compact. Two
+  # different tokens, so five payload shapes read one value while the gate judged another. All five were
+  # measured on THIS path (jq and python3 shadowed, the stock-Windows shape) as rc=0 on the shipped hook:
+  #   key name as a VALUE — `{"a":"command","ls":1,…{"command":"rm -rf /"}}` read `ls`
+  #   the same for permission_mode and for guard-write's file_path
+  #   duplicate key with ONE SPACE before the colon — the count went blind, the parser read the first value
+  #   a decoy `tool_name` placed earlier — the "gated tool" net answered for the wrong tool
+  # Each row asserts the RULE in the hook's stderr, not just rc=2. That is the lesson of this round: a row
+  # that only checks rc=2 was satisfied for a whole night by §4.5's `rm -rf` rule while the refusal it named
+  # never fired, and its harmless twin — the same shape with `ls -la` — was quietly rc=0 the whole time.
+  _t3(){ printf '%s' "$1" | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" 2>&1 >/dev/null; }
+  _amb(){ # $1 = payload, $2 = phrase the refusal must contain, $3 = what the row is about
+    _t3_out="$(_t3 "$1")"
+    case "$_t3_out" in
+      *"$2"*) pass "one-token: $3 is refused, and by the rule that names it" ;;
+      *) fail "one-token FAIL-OPEN: $3 — expected a refusal containing '$2', got: ${_t3_out:-<silence>}" ;;
+    esac
+  }
+  _t3_out=""
+  _amb '{"tool_name":"Bash","permission_mode":"default","a":"command","ls":1,"tool_input":{"command":"rm -rf /"}}' \
+       'destructive rm -rf' 'a key name appearing as a VALUE no longer relocates the parse'
+  # permission_mode AS A VALUE is closed by the PARSER, not by a refusal: the decoy is no longer an
+  # occurrence, so the count stays 1 and there is nothing ambiguous to refuse. The discriminating consequence
+  # is therefore §4.4's branch, which only a gated command reaches — so this row commits in a §4.6-clean cwd.
+  # Read the decoy (`default`) and the hook emits `ask`, which `bypassPermissions` turns into `allow`; read
+  # the real value and it FAILS CLOSED. Asserting rc alone here is sound because the twin below rules out the
+  # blanket case. Written first with `ls -la`, which no mode-dependent rule judges: the row went red for being
+  # silent, and the silence was correct — the payload really is harmless once the decoy is ignored.
+  ( cd "$REVIEWED" && printf '%s' '{"tool_name":"Bash","a":"permission_mode","default":1,"permission_mode":"bypassPermissions","tool_input":{"command":"git commit -m x"}}' \
+    | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" >/dev/null 2>&1 )
+  [ "$?" = 2 ] && pass "one-token: a permission_mode decoy VALUE does not relocate the mode (§4.4 still fails closed)" \
+               || fail "one-token FAIL-OPEN: a decoy permission_mode value was read as the mode — §4.4 was disarmed"
+  _o="$( cd "$REVIEWED" && printf '%s' '{"tool_name":"Bash","a":"permission_mode","default":1,"permission_mode":"default","tool_input":{"command":"git commit -m x"}}' \
+    | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" 2>/dev/null )"
+  [ "$(gdec "$_o")" = "ask" ] \
+    && pass "one-token: with the real mode 'default' the same shape still ASKs (not blanket-blocked)" \
+    || fail "one-token: a decoy alongside an honest 'default' mode was refused outright (out=$_o)"
+  _amb '{"tool_name":"Bash","permission_mode":"default","meta":{"command":"ls"},"tool_input":{"command" : "rm -rf /"}}' \
+       '"command" keys' 'a duplicate key with whitespace before the colon'
+  _amb '{"tool_name":"Bash","meta":{"permission_mode":"default"},"permission_mode":"bypassPermissions","tool_input":{"command":"ls -la"}}' \
+       '"permission_mode" keys' 'a shadowed permission_mode'
+  _amb '{"meta":{"tool_name":"Read"},"tool_name": "Bash","tool_input":{"foo":1}}' \
+       'no readable' 'a decoy tool_name placed before the real one'
+  # THE TWINS THAT MUST NOT BE REFUSED. Without these the five rows above are satisfied by a gate that blocks
+  # everything, which is the other way this file has been wrong.
+  for _ok in '{"tool_name":"Bash","permission_mode":"default","tool_input":{"command":"ls -la"}}' \
+             '{"tool_name":"Bash","permission_mode":"default","tool_input":{"command":"grep -rn permission_mode ."}}' \
+             '{"tool_name":"Bash","permission_mode":"default","tool_input":{"command":"echo the word command here"}}' \
+             '{"tool_name":"Read","tool_input":{"foo":1}}' \
+             '{"tool_name":"Bash","tool_input":{"command":""}}' ; do
+    printf '%s' "$_ok" | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" >/dev/null 2>&1
+    [ "$?" = 0 ] && pass "one-token: an honest payload is NOT refused — ${_ok:0:58}…" \
+                 || fail "one-token OVER-BLOCK: an honest payload was refused — $_ok"
+  done
+  # A harmless nested command is the row that exposed the wrong-reason pass. It must be refused by the
+  # DUPLICATE-KEY rule now, since two real `"command"` keys is exactly what it carries.
+  _amb '{"tool_name":"Bash","permission_mode":"default","meta":{"command":"ls -la"},"tool_input":{"command":"echo hi"}}' \
+       '"command" keys' 'a HARMLESS nested command (the shape that used to pass for the wrong reason)'
+  # guard-write, same disease, and it is the hook that stops the gates being rewritten.
+  # guard-write, and the TWO shapes are closed by DIFFERENT halves of the change — labelling them alike is how
+  # one of them ended up unprotected. Review mutation-proved it: with the ambiguity refusal disabled, the
+  # duplicate-key row went 2 -> 0 while the value-form row stayed at 2, because its rc comes from §4.5 reading
+  # the now-correctly-sliced real path. So each row names its own mechanism and checks the message.
+  _wout(){ printf '%s' "$1" | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" 2>&1 >/dev/null; }
+  _o="$(_wout '{"meta":{"file_path":"/tmp/ok.txt"},"tool_name":"Write","tool_input":{"file_path":".claude/hooks/guard-bash.sh","content":"x"}}')"
+  case "$_o" in
+    *'path keys'*) pass "one-token: guard-write REFUSES two real path keys (the counter's half)" ;;
+    *) fail "one-token FAIL-OPEN: a duplicate path key was judged, not refused — ${_o:-<silence>}" ;;
+  esac
+  _o="$(_wout '{"a":"file_path","/tmp/ok.txt":1,"tool_name":"Write","tool_input":{"file_path":".claude/hooks/guard-bash.sh","content":"x"}}')"
+  case "$_o" in
+    *"editing '.claude/hooks/guard-bash.sh'"*) pass "one-token: guard-write reads the REAL path past a value-form decoy (the parser's half)" ;;
+    *) fail "one-token FAIL-OPEN: a value-form decoy relocated the path — ${_o:-<silence>}" ;;
+  esac
+  printf '%s' '{"tool_name":"Write","tool_input":{"file_path":"src/app.ts","content":"x"}}' \
+    | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1
+  [ "$?" = 0 ] && pass "one-token: guard-write still allows an ordinary source file" \
+               || fail "one-token OVER-BLOCK: guard-write refused src/app.ts"
+  # THE PASS CAP. Requiring the colon means one extra scan per decoy, and the work is quadratic in their
+  # number: measured 12 ms at 50 decoys, 1839 ms at 3200 on macOS/bash, and Git Bash is several times slower
+  # again. Uncapped that is a gate with an off switch, because a PreToolUse hook killed at its 60s timeout
+  # emits no exit 2 and the command proceeds. Capped at 64 passes, over-cap counts as AMBIGUOUS: the same
+  # 3200-decoy payload is refused in 100 ms instead of being walked. Both halves are asserted — the refusal
+  # AND the bound — because a cap that refuses slowly is still a timeout waiting to happen.
+  _flood="$(_i=0; printf '%s' '{"tool_name":"Bash","permission_mode":"default",'
+            while [ "$_i" -lt 3200 ]; do printf '"k%s":"command",' "$_i"; _i=$((_i+1)); done
+            printf '%s' '"tool_input":{"command":"ls -la"}}')"
+  _t0=$(date +%s)
+  _fo="$(printf '%s' "$_flood" | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" 2>&1 >/dev/null)"; _frc=$?
+  _t1=$(date +%s)
+  # The message must say OVER-CAP, not a count: those occurrences are candidate positions, key-form or not, so
+  # reporting "65 keys" was a sentinel dressed as a measurement and its remedy ("send one key") was already
+  # satisfied by this payload, which carries exactly one real key.
+  { [ "$_frc" = 2 ] && case "$_fo" in *'occurrences of "command"'*) true ;; *) false ;; esac; } \
+    && pass "one-token: a decoy flood is refused as over-cap, and said so (${#_flood} bytes)" \
+    || fail "one-token FAIL-OPEN: a decoy flood produced rc=$_frc — ${_fo:-<silence>}"
+  [ $((_t1-_t0)) -le 10 ] \
+    && pass "one-token: the pass cap bounds that refusal ($((_t1-_t0))s, the hook's timeout is 60s)" \
+    || fail "one-token: the decoy flood took $((_t1-_t0))s — the cap is not bounding the work"
+  # THE TWIN THAT KEEPS THE CAP HONEST, and it is the one to write first: an ORDINARY command whose own TEXT
+  # contains the key name many times — writing a JSON schema, a settings file, an OpenAPI doc — must be
+  # ALLOWED. If the cap counted the word rather than the token, patching a hooks.json would be refused with a
+  # message about duplicate keys the user cannot act on, which is the failure mode this kit calls worse than
+  # the hole: a gate that blocks the innocent teaches people to reach for --no-verify.
+  # It is safe for a measured reason: content can contribute at most ONE occurrence of the token per string,
+  # and only as that string's tail, where the next byte is `,` `}` `]` and never a colon. (The stronger claim
+  # first written here — "both quotes unescaped can only be a key or a value" — is false; a key whose name
+  # ends in a quote spells the token too, and is refused by the COUNT rather than by the invariant.)
+  # The fixture below hand-writes its escapes, so its own byte counts are asserted rather than assumed: 71
+  # occurrences of the WORD, exactly 1 of the token. Asserting that is the point — a fixture that merely
+  # looked right is how this block was wrong before.
+  _sch="$(_i=0; printf '%s' '[' ; while [ "$_i" -lt 70 ]; do [ "$_i" = 0 ] || printf ','; printf '{\\"command\\":\\"c%s\\"}' "$_i"; _i=$((_i+1)); done; printf '%s' ']')"
+  _schp="$(printf '{"tool_name":"Bash","permission_mode":"default","tool_input":{"command":"echo %s > schema.json"}}' "$_sch")"
+  _nw="$(printf '%s' "$_schp" | grep -o 'command' | wc -l | tr -d ' ')"
+  _nt="$(printf '%s' "$_schp" | grep -o '"command"' | wc -l | tr -d ' ')"
+  { [ "$_nw" -gt 64 ] && [ "$_nt" = 1 ]; } \
+    && pass "one-token: the schema fixture really is the hard case ($_nw words, $_nt token)" \
+    || fail "one-token: the schema fixture is not what it claims ($_nw words, $_nt tokens) — the row below measures nothing"
+  printf '%s' "$_schp" | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" >/dev/null 2>&1
+  [ "$?" = 0 ] \
+    && pass "one-token: a command whose own text carries the key name 70 times is ALLOWED (the cap counts tokens, not words)" \
+    || fail "one-token OVER-BLOCK: writing a JSON schema was refused — the cap is counting the word, not the key token"
+  # AND THE CALIBRATION TWIN, which the comment above used to cite while no such fixture existed: 70 REAL keys
+  # must cross the cap and be refused. Without it, "a 70-word command is allowed" is satisfied by a counter
+  # that can never reach 64 at all.
+  _mk="$(_i=0; while [ "$_i" -lt 70 ]; do printf '"k%s":"command",' "$_i"; _i=$((_i+1)); done)"
+  _o="$(printf '{"tool_name":"Bash","permission_mode":"default",%s"tool_input":{"command":"ls -la"}}' "$_mk" \
+        | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" 2>&1 >/dev/null)"
+  case "$_o" in
+    *'occurrences of "command"'*) pass "one-token: 70 real keys DO cross the cap and are refused, with over-cap said plainly" ;;
+    *) fail "one-token: 70 real keys did not trip the cap — ${_o:-<silence>}" ;;
+  esac
+  # THE STRING REQUIREMENT. A non-string value returns empty instead of the payload's own punctuation, which
+  # the old shape handed to the matchers as `:123}}`. Review mutation-proved this was unasserted anywhere in
+  # the suite or in parser-conformance.sh: reverting it changed no row. Asserted on the PARSER, because the
+  # hook's verdict is rc=0 either way (a single unreadable key is not the gated-tool case).
+  _u2(){ ( eval "$(sed -n '/^_json_slice()/,/^}/p' "$HOOKS/guard-bash.sh")"; _json_slice "$1" command ); }
+  for _ns in '{"tool_input":{"command":123}}' '{"tool_input":{"command":null}}' '{"tool_input":{"command":{"x":1}}}' ; do
+    [ -z "$(_u2 "$_ns")" ] \
+      && pass "one-token: a non-string value yields NOTHING, not punctuation — $_ns" \
+      || fail "one-token: a non-string value produced [$(_u2 "$_ns")] — the matchers would judge the payload's own syntax"
+  done
+  [ "$(_u2 '{"tool_input":{"command":"ls -la"}}')" = "ls -la" ] \
+    && pass "one-token: a string value is still returned in full (the requirement is not a blanket refusal)" \
+    || fail "one-token: the STRING requirement broke an ordinary value"
+  # guard-write's summed rule must not refuse an ordinary NotebookEdit, which carries the OTHER path key.
+  printf '%s' '{"tool_name":"NotebookEdit","tool_input":{"notebook_path":"/tmp/nb.ipynb","new_source":"print(1)"}}' \
+    | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1
+  [ "$?" = 0 ] && pass "one-token: an ordinary NotebookEdit still passes the summed path-key rule" \
+               || fail "one-token OVER-BLOCK: the file_path+notebook_path sum refused a plain NotebookEdit"
+  # `cwd` WAS THE ONE KEY LEFT WITH A HAND-ROLLED EXTRACTION, and review found it: `${INPUT#*"cwd"}` then
+  # `#*:`, i.e. the key matched without its colon and no count guarding it. It decides the directory a
+  # RELATIVE command is resolved against, so a decoy pointed §4.5's two-step `.env` rule at an empty
+  # directory and the read was never examined. The payload's cwd is only consulted when the hook's PROCESS
+  # cwd is not the project, so the fixture runs from elsewhere — that is the only situation where this key
+  # matters at all, and testing it from inside the project would measure nothing.
+  _CWDR="$(mktemp -d)"; mkdir -p "$_CWDR/proj" "$_CWDR/decoy" "$_CWDR/away"
+  printf 'SECRET=abc\n' > "$_CWDR/proj/.env"; printf 'cat .env\n' > "$_CWDR/proj/leak.sh"
+  _cw(){ ( cd "$_CWDR/away" && printf '%s' "$1" | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" 2>&1 >/dev/null ); }
+  _o="$(_cw "{\"cwd\":\"$_CWDR/proj\",\"tool_name\":\"Bash\",\"permission_mode\":\"default\",\"tool_input\":{\"command\":\"bash leak.sh\"}}")"
+  case "$_o" in
+    *'.env secret'*) pass "one-token: the payload's cwd is read through the parser (§4.5 still sees a relative .env read)" ;;
+    *) fail "one-token: the honest cwd case stopped working — ${_o:-<silence>}" ;;
+  esac
+  _o="$(_cw "{\"a\":\"cwd\",\"b\":\"$_CWDR/decoy\",\"cwd\":\"$_CWDR/proj\",\"tool_name\":\"Bash\",\"permission_mode\":\"default\",\"tool_input\":{\"command\":\"bash leak.sh\"}}")"
+  case "$_o" in
+    *'.env secret'*) pass "one-token: a value-form cwd decoy no longer relocates the working directory" ;;
+    *) fail "one-token FAIL-OPEN: a cwd decoy hid a relative .env read from §4.5 — ${_o:-<silence>}" ;;
+  esac
+  _o="$(_cw "{\"cwd\":\"$_CWDR/decoy\",\"cwd\":\"$_CWDR/proj\",\"tool_name\":\"Bash\",\"permission_mode\":\"default\",\"tool_input\":{\"command\":\"bash leak.sh\"}}")"
+  case "$_o" in
+    *'one "cwd" key'*) pass "one-token: two real cwd keys are REFUSED rather than resolved first-wins" ;;
+    *) fail "one-token FAIL-OPEN: a duplicate cwd key was resolved, not refused — ${_o:-<silence>}" ;;
+  esac
+  for _ok in "{\"cwd\":\"$_CWDR/proj\",\"tool_name\":\"Bash\",\"permission_mode\":\"default\",\"tool_input\":{\"command\":\"ls -la\"}}" \
+             '{"tool_name":"Bash","permission_mode":"default","tool_input":{"command":"ls -la"}}' \
+             '{"tool_name":"Bash","permission_mode":"default","tool_input":{"command":"echo cwd"}}' ; do
+    ( cd "$_CWDR/away" && printf '%s' "$_ok" | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" >/dev/null 2>&1 )
+    [ "$?" = 0 ] && pass "one-token: cwd handling does not over-block — ${_ok:0:52}…" \
+                 || fail "one-token OVER-BLOCK: the cwd rule refused an ordinary payload — $_ok"
+  done
+  rm -rf "$_CWDR"
 else
   gb_unbuildable "no-jq/py discriminating tests"
 fi
