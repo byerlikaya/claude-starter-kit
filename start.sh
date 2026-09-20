@@ -247,6 +247,63 @@ gi_add() {   # $@ = entries to ensure in ./.gitignore; prints nothing, sets GI_W
   done
   GI_WROTE="${GI_WROTE# }"
 }
+# Append eol pins to .gitattributes. ONLY in shared mode, and only for what cannot defend itself.
+#
+# MEASURED, not inferred — the ROADMAP called this an inference. A bare repo, a project that TRACKS .claude/,
+# and a second clone with core.autocrlf=true (a git setting, so the mechanism reproduces anywhere):
+#   the committed blob                     0 CR
+#   the working tree after that checkout   1345 CR in guard-bash.sh · 575 in pre-commit
+# And the CR is fatal to a shell script whatever the invocation. settings.json runs hooks as
+# `bash .claude/hooks/guard-bash.sh`, which does NOT save them:
+#   ./hook          -> env: bash\r: No such file or directory
+#   bash hook       -> syntax error: unexpected end of file
+#   case … in\r     -> syntax error near unexpected token `newline`
+#   f(){\r          -> syntax error near unexpected token `{`
+# A gate that cannot be parsed is a gate that is not running, and the whole of §4 goes with it.
+#
+# WHY ONLY THE SCRIPTS. The data files the hooks read line by line (blocklists, profiles.conf) already strip a
+# trailing CR themselves — the kit's own .gitattributes says so, and calls that strip "the real defence" for
+# exactly this case, a user's project where nothing pins anything. A shell script cannot do that: it cannot
+# strip its own carriage returns before bash parses it. So the pins below are the scripts plus, belt and
+# braces, the data types that are cheap to include; they are deliberately NOT a blanket `.claude/**`, which
+# would apply text conversion to any binary a skill might carry.
+#
+# WHY ONLY SHARED MODE. In the private install .claude/ is gitignored, so git never checks it out and there is
+# nothing to convert. Writing repo-wide attributes for someone who did not share their config would be editing
+# a file they own to fix a problem they do not have.
+#
+# The two lessons gi_add carries apply here too — a missing trailing newline concatenates the first entry onto
+# the last line, and the real question is not "is this text in the file" but "does git already answer lf for
+# this path". `git check-attr` is the equivalent of gi_add's `git check-ignore`: it answers about the PATH,
+# whatever pattern spelling an existing rule uses, so a project that already pins `* text eol=lf` gets nothing.
+GA_LINES='.claude/**/*.sh text eol=lf
+.claude/hooks/pre-commit text eol=lf
+.claude/hooks/commit-msg text eol=lf
+.claude/**/*.txt text eol=lf
+.claude/**/*.conf text eol=lf'
+ga_add() {   # no args; prints nothing, sets GA_WROTE to the number of lines added
+  local line
+  GA_WROTE=0
+  if git rev-parse --git-dir >/dev/null 2>&1; then
+    case "$(git check-attr eol -- .claude/hooks/guard-bash.sh 2>/dev/null)" in
+      *": lf") return 0 ;;
+    esac
+  fi
+  [ -e .gitattributes ] || : > .gitattributes
+  printf '%s\n' "$GA_LINES" | while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    if grep -qxF "$line" .gitattributes 2>/dev/null; then continue; fi
+    if [ -s .gitattributes ] && [ "$(tail -c 1 .gitattributes | od -An -tx1 | tr -d ' \n')" != "0a" ]; then
+      printf '\n' >> .gitattributes
+    fi
+    printf '%s\n' "$line" >> .gitattributes
+  done
+  # The loop above runs in a subshell (it is the right-hand side of a pipe), so it cannot report back through a
+  # variable — the same trap this kit spent a night on. Count the result from the FILE instead.
+  GA_WROTE="$(printf '%s\n' "$GA_LINES" | while IFS= read -r line; do
+      [ -n "$line" ] && grep -qxF "$line" .gitattributes 2>/dev/null && echo x
+    done | wc -l | tr -d ' ')"
+}
 # --- CLAUDE.md split (shared contract with adopt.sh) ---
 # The payload CLAUDE.md carries the kit discipline, then a one-line sentinel, then the project template.
 # The discipline half is installed as .claude/DISCIPLINE.md (kit-owned, overwritten on every update) and
@@ -731,6 +788,17 @@ fi
 # shellcheck disable=SC2086
 gi_add $GI_PLAN
 [ -n "$GI_WROTE" ] && printf '  %s+%s .gitignore: %s\n' "$GR" "$R" "$GI_WROTE"
+# Pinned only when git will actually CHECK .claude/ OUT — and that question goes to git, not to the mode
+# variable, for the same reason gi_add asks `git check-ignore` instead of grepping the file: the variable is
+# what we intended, the answer is what is true. They agree in the normal case (a private install has just
+# added `.claude/` to .gitignore) and they differ in the ones that matter — a repo that already ignored
+# `.claude/` before this install, or a shared install inside a repo whose parent rules ignore it anyway.
+# Where git will never check the directory out there is no conversion to prevent, and writing repo-wide
+# attributes for that project would be editing a file its owner did not need touched.
+if ! git check-ignore -q .claude 2>/dev/null; then
+  ga_add
+  [ "${GA_WROTE:-0}" != 0 ] && printf '  %s+%s .gitattributes: %s eol pin(s) so shared hooks stay LF\n' "$GR" "$R" "$GA_WROTE"
+fi
 # `[ -d .git ]` is a proxy for the answer, and it lies exactly where it matters: in a worktree or a submodule
 # `.git` is a FILE, so the commit gate was never armed there and the installer said nothing was wrong. adopt.sh
 # already names this (red-team hole #6) and start.sh was never taught it. Measured: in a worktree the installer

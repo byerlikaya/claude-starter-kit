@@ -4891,8 +4891,16 @@ echo "== 14) shipped hooks are LF in EVERY edition — a hook that arrives CRLF 
 # is exactly why it survived — WSL does not, and answers `$'\r': command not found`. A gate that dies on its
 # shebang is not a gate that failed, it is a gate nobody notices is absent.
 # Asked of git rather than of the checkout, so the answer does not depend on the platform running the suite.
+# SCOPED TO THE KIT'S OWN REPO, and the earlier condition — a git toplevel plus a .gitattributes — was not.
+# It read as "am I in the kit's checkout" and actually meant "is there any repo here with pin rules", so it
+# fired in any project that merely CONTAINS a copy of the payload: `git ls-files` finds
+# claude-starter/hooks/pre-commit there and the pins it looks for are the kit repo's, not that project's.
+# It went unnoticed because nothing had ever written a .gitattributes into an installed project — the
+# installer doing that (so a shared .claude/ survives a Windows checkout) is what made this reachable, and it
+# came back as a red assertion about the kit's own files inside somebody else's adopted repo. The markers
+# below are the same ones start.sh uses to refuse installing from the kit's checkout.
 SGR="$(git -C "$ROOT" rev-parse --show-toplevel 2>/dev/null || true)"
-if [ -n "$SGR" ] && [ -f "$SGR/.gitattributes" ]; then
+if [ -n "$SGR" ] && [ -f "$SGR/.gitattributes" ] && [ -d "$SGR/packaging" ] && [ -f "$SGR/VERSION" ] && [ -d "$SGR/claude-starter" ]; then
   NOEOL=""
   for f in $(git -C "$SGR" ls-files 2>/dev/null | grep -E '(^|/)hooks/[^/.]+$'); do
     git -C "$SGR" check-attr eol -- "$f" 2>/dev/null | grep -q ': eol: lf$' || NOEOL="$NOEOL $f"

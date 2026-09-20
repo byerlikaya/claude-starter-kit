@@ -1146,6 +1146,33 @@ fi
 # THREAT_MODEL.md in 6, plus SECURITY_FINDINGS.md, DISCOVERY.md and EVAL.md. A repository receiving this
 # adoption was receiving its own threat model and security findings along with it.
 gi_add '.claude/review-pass.json' 'docs/'
+# TWIN OF start.sh's ga_add, and this path needs it MORE: adopt.sh does not gitignore `.claude/` at all — it
+# only ignores review-pass.json and docs/ — so an adopted project TRACKS the kit's configuration by default.
+# That is the shared case, which is the one where a Windows teammate's `core.autocrlf=true` rewrites every
+# installed hook to CRLF on checkout. Measured on a bare-repo round trip: the committed blob carries 0 CR and
+# the working tree comes back with 1345 in guard-bash.sh and 575 in pre-commit, and a CR is fatal to a shell
+# script whatever the invocation — `bash hook` gives `syntax error: unexpected end of file`, not a warning.
+# The data files the hooks read strip a trailing CR themselves; a script cannot strip its own.
+# Asked of git rather than assumed, like the line above: if this repo ignores `.claude/` after all, nothing to do.
+if ! git check-ignore -q .claude 2>/dev/null; then
+  GA_LINES='.claude/**/*.sh text eol=lf
+.claude/hooks/pre-commit text eol=lf
+.claude/hooks/commit-msg text eol=lf
+.claude/**/*.txt text eol=lf
+.claude/**/*.conf text eol=lf'
+  if ! git check-attr eol -- .claude/hooks/guard-bash.sh 2>/dev/null | grep -q ': lf$'; then
+    [ -e .gitattributes ] || : > .gitattributes
+    printf '%s\n' "$GA_LINES" | while IFS= read -r _gal; do
+      [ -n "$_gal" ] || continue      # set -e is on from line 898: no `cmd && continue` here
+      if grep -qxF "$_gal" .gitattributes 2>/dev/null; then continue; fi
+      if [ -s .gitattributes ] && [ "$(tail -c 1 .gitattributes | od -An -tx1 | tr -d ' \n')" != "0a" ]; then
+        printf '\n' >> .gitattributes
+      fi
+      printf '%s\n' "$_gal" >> .gitattributes
+    done
+    printf '  + .gitattributes: eol pins so the shared hooks stay LF on a Windows checkout\n'
+  fi
+fi
 
 # Ignoring docs/ and then `git add docs` would stage NOTHING, and that would take the adoption's own record
 # out of the review diff — the exact failure recorded in CHANGELOG 2.5.0, where gitignoring before the

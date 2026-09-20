@@ -628,4 +628,59 @@ case "$HN" in
 esac
 echo "[wizard] the hide instruction covers docs in BOTH halves (untrack and ignore)"
 
+# 15 · A SHARED install must pin the hooks to LF, and the proof is the conversion not happening — not the
+#      file being written. The ROADMAP carried this as an inference ("çıkarım, gözlem değil — patlamadı");
+#      it is now measured. Mechanism, reproduced with git settings alone so it does not need Windows:
+#        committed blob                      0 CR
+#        clone with core.autocrlf=true       1345 CR in guard-bash.sh · 575 in pre-commit
+#      and a CR is fatal to a shell script whatever the invocation — settings.json runs hooks as
+#      `bash .claude/hooks/…` and that gives `syntax error: unexpected end of file`, not a warning. The data
+#      files the hooks read strip a trailing CR themselves; a script cannot strip its own.
+#      The calibration twin is the point: with the pin removed the same round trip must come back dirty, or
+#      this case is asserting that a clone is clean for some reason of its own.
+_ga_crs() {   # $1 = project dir, $2 = path inside it -> CR count after a core.autocrlf=true checkout
+  local p="$1" f="$2" bare="$1.bare" clone="$1.clone"
+  rm -rf "$bare" "$clone"; git init -q --bare "$bare"
+  ( cd "$p" && git add -A >/dev/null 2>&1 && git commit -qm shared >/dev/null 2>&1
+    git push -q "$bare" HEAD:refs/heads/main >/dev/null 2>&1 )
+  git clone -q -c core.autocrlf=true "$bare" "$clone" 2>/dev/null
+  if [ -f "$clone/$f" ]; then tr -dc '\r' < "$clone/$f" | wc -c | tr -d ' '; else echo MISSING; fi
+}
+W15="$(wiz shared-eol)"
+( cd "$W15" && git init -q . && git config user.email t@example.invalid && git config user.name t \
+    && printf 'x\n' > README.md && git add README.md && git commit -qm base >/dev/null 2>&1 )
+( cd "$W15" && printf 'yes\n' | bash start.sh --generic --shared >/dev/null 2>&1 )
+grep -qF '.claude/**/*.sh text eol=lf' "$W15/.gitattributes" 2>/dev/null \
+  || { echo "FAIL: a shared install did not pin .claude/**/*.sh to LF"; exit 1; }
+for f in .claude/hooks/guard-bash.sh .claude/hooks/pre-commit; do
+  n="$(_ga_crs "$W15" "$f")"
+  [ "$n" = 0 ] || { echo "FAIL: $f came back with $n CR from a core.autocrlf=true clone — the pin is not holding"; exit 1; }
+done
+rm -f "$W15/.gitattributes"
+n="$(_ga_crs "$W15" .claude/hooks/guard-bash.sh)"
+{ [ "$n" != 0 ] && [ "$n" != MISSING ]; } \
+  || { echo "FAIL: with the pin removed the clone stayed clean ($n CR) — case 15 proves nothing"; exit 1; }
+echo "[wizard] a shared install keeps hooks LF through a core.autocrlf clone (twin: $n CR without the pin)"
+
+# 16 · ...and a PRIVATE install must not touch .gitattributes at all. git never checks .claude/ out there, so
+#      there is nothing to convert, and writing repo-wide attributes would be editing a file whose owner has
+#      no problem to fix. The condition is asked of git (`check-ignore`), not read from the mode variable.
+W16="$(wiz private-eol)"
+( cd "$W16" && git init -q . && git config user.email t@example.invalid && git config user.name t \
+    && printf 'x\n' > README.md && git add README.md && git commit -qm base >/dev/null 2>&1 )
+( cd "$W16" && printf 'yes\n' | bash start.sh --generic --private >/dev/null 2>&1 )
+[ ! -e "$W16/.gitattributes" ] \
+  || { echo "FAIL: a private install wrote .gitattributes, which it has no reason to touch"; exit 1; }
+echo "[wizard] a private install leaves .gitattributes alone"
+
+# 17 · A project that ALREADY answers lf for those paths gets nothing appended. The question is asked of git,
+#      so any pattern spelling counts — `* text eol=lf` here, which no literal grep would have recognised.
+W17="$(wiz already-eol)"
+( cd "$W17" && git init -q . && git config user.email t@example.invalid && git config user.name t \
+    && printf '* text eol=lf\n' > .gitattributes && git add .gitattributes && git commit -qm ga >/dev/null 2>&1 )
+( cd "$W17" && printf 'yes\n' | bash start.sh --generic --shared >/dev/null 2>&1 )
+[ "$(wc -l < "$W17/.gitattributes" | tr -d ' ')" = 1 ] \
+  || { echo "FAIL: an existing eol rule was not recognised; the installer appended redundant pins"; exit 1; }
+echo "[wizard] an existing eol rule is recognised, whatever its spelling, and nothing is appended"
+
 echo "e2e: all installer rehearsals passed"

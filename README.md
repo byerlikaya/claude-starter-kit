@@ -357,7 +357,7 @@ At install time Claude Starter Kit stamps `.claude/kit.conf` with the backend pa
 | `.claude/settings.json` | merged schema-aware; your own hooks and permissions survive |
 | your own agents and skills (no `-csk` suffix) | untouched |
 
-Where the change lands is a choice. A first adopt opens a `kit-adopt-<timestamp>` review branch. A routine update whose `.claude/` is gitignored applies on your current branch. An update with a **tracked** `.claude/` asks. Force it with `--here` or `--new-branch`, and skip the prompts with `--yes`. Either way the change is staged and uncommitted.
+Where the change lands is a choice. A first adopt opens a `kit-adopt-<timestamp>` review branch. A routine update whose `.claude/` is gitignored applies on your current branch. An update with a **tracked** `.claude/` asks. Force it with `--here` or `--new-branch`, and skip the prompts with `--yes`. Either way the change is staged and uncommitted. A tracked `.claude/` also gets eol pins in `.gitattributes`: a shell script cannot strip its own carriage returns, so without them a teammate whose git has `core.autocrlf=true` checks the hooks out as CRLF and `bash` answers `syntax error` instead of running the gate.
 
 Inside a session, **`/update-csk`** does the version check, runs the updater, verifies with `/doctor-csk`, then prompts `/compact` so the refreshed discipline loads in the same session. **`/doctor-csk`** checks a live install at any time — hooks executable, `core.hooksPath` set, gates wired, the discipline actually imported — and prints an advisory readiness score for the project itself.
 
