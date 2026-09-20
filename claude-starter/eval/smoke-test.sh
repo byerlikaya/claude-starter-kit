@@ -1269,10 +1269,23 @@ _blk_gate CSK-TRANSCRIPT-DIR "the duplicated transcript-dir resolver"
 _blk_gate CSK-JSON-PARSE     "the duplicated JSON parser"
 # End to end: called by hand from this repo, the hook must produce a reading rather than "transcript not found".
 cu_hand="$(cd "$ROOT/.." && bash "$HOOKS/context-usage.sh" 2>&1)"
+# The three arms used to be pass / note / note, and `note` touches no counter — so on any machine without a
+# transcript for this cwd the assertion left no trace at all: not a pass, not a skip, not a line in the
+# summary. Measured 2026-09-20: this desk graded 938 and the ubuntu runner 937, and THIS was the one, the same
+# one stock Windows was missing (its §6i3 read 6 against 7 here). A heading printed, a dim line printed, and
+# the difference was invisible to both counters.
+#
+# `scope`, not `fixture` or `tool`: nothing is broken or absent on a machine that simply has no session
+# transcript for this directory, and the scope/platform classes are the ones that do NOT arm CSK_VERIFY_STRICT.
+# Calling a runner with no transcript a broken runner would make CI red for an honest condition.
+#
+# And the third arm is now a FAILURE rather than a note. The hook has exactly two legitimate answers — a
+# reading, or "transcript not found". Anything else means it broke, and the old note swallowed that too: the
+# arm that existed to report an unexplained output was the one guaranteed never to be read.
 case "$cu_hand" in
-  *"transcript not found"*) note "by-hand reading unavailable here (no transcript for this cwd) — encoding still pinned above" ;;
+  *"transcript not found"*) skip scope "the by-hand end-to-end read (no transcript for this cwd; the encoding itself is pinned above)" ;;
   *%*)                      pass "by-hand call resolves its own transcript and reports a fill" ;;
-  *)                        note "by-hand call produced no reading (out=${cu_hand:-empty})" ;;
+  *)                        fail "by-hand call answered neither a reading nor 'transcript not found' — the hook broke (out=${cu_hand:-empty})" ;;
 esac
 
 echo "== 6j) session-stats: evidence signals read off the transcript =="
@@ -1960,10 +1973,14 @@ BUDGET_DISC=13700    # DISCIPLINE.md (the discipline half of CLAUDE.md); current
                      # and the wrong one winning silently. The only rule in this file that is about the OTHER
                      # rules, so it cannot live in the README the way the compaction note does. Plus the Audit
                      # row naming performance-expert-csk — an agent nothing routes to is an idle component.)
-BUDGET_AGENTS=5800   # sum of agent frontmatter; currently 5407, measured 2026-09-20 by reading this suite's
+BUDGET_AGENTS=5800   # sum of agent frontmatter; currently 5527, measured 2026-09-20 by reading this suite's
                      # own printed line rather than a hand-rolled counter (a hand-rolled one answered 5503 and
-                     # was thrown away). The note here said 5765 and was 358 B stale — a wrong number sitting in
-                     # the repo, which is exactly what this file exists to prevent. (1.11.0: +218 B of USER vocabulary on two agents.
+                     # was thrown away). Two corrections in one day: the note said 5765 against a measured 5407,
+                     # and then +120 B of `, PowerShell` on the ten Bash-carrying agents moved it to 5527 — so
+                     # the number is updated in the SAME commit that changed it, which is the discipline the
+                     # 5765 drift was evidence against. What the 120 bytes buy: on Windows those agents had no
+                     # PowerShell-capable tool at all, and the Bash fallback mangles non-ASCII console output
+                     # (measured: `çğıöşü` -> 87 a7 8d 94 9f 81). (1.11.0: +218 B of USER vocabulary on two agents.
                      # Found in a real install: a design request produced a good analysis and no delegation. The
                      # SKILLS already carried that vocabulary ("visual design", "typography", "memory leak") so
                      # the skill fired and every gate stayed green, while the AGENT that owns the work was
