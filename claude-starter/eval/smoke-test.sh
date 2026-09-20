@@ -3955,31 +3955,67 @@ sec "== 7g) adopt.sh settings merge is HOOK-AWARE (updates refresh kit hooks, pr
 # Regression guard for the jq-less/stale-settings bug: on update the kit OWNS its hooks, so a new event
 # (SessionStart) must get wired and a stale kit entry (old timeout) refreshed, WITHOUT duplicating hooks or
 # dropping the project's own custom hooks. Extract the merge program from adopt.sh (single source of truth).
-if [ "$IS_KIT" = 1 ] && command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then
-  ADOPT="$(cd "$ROOT/.." && pwd)/adopt.sh"; KSET="$ROOT/settings.json"
-  if [ -f "$ADOPT" ] && [ -f "$KSET" ]; then
+# THE TIER THIS MACHINE WOULD ACTUALLY USE, not the one this desk happens to have. adopt.sh merges through
+# three tiers — jq, then a python heredoc, then a wholesale replace when neither exists — and this block used
+# to test the FIRST one and print a dim `note` on any machine without jq. Measured 2026-09-20: that made four
+# assertions vanish on stock Windows and on CI's Windows leg, which shadows jq on purpose, with neither counter
+# moving. And the machine that skipped was precisely the machine running the tier nobody tested.
+#
+# So the tier is selected the way adopt.sh selects it and the same four properties are asserted whichever runs.
+# The count stays 4 everywhere, which keeps the per-section ledger comparable across platforms instead of
+# turning a tier difference into a coverage difference.
+ADOPT="$(cd "$ROOT/.." && pwd)/adopt.sh"; KSET="$ROOT/settings.json"
+_OLDSET='{ "hooks": { "UserPromptSubmit": [ { "hooks": [ { "type":"command","command":"bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/context-usage.sh\" 2>/dev/null || true","timeout":10 } ] } ], "PostToolUse":[{"hooks":[{"type":"command","command":"bash ./custom.sh"}]}] } }'
+# Same probe adopt.sh uses, and for the reason recorded there: pick the first interpreter that RUNS, not the
+# first that resolves — the Store redirector named python3 passes `command -v` and then exits 49.
+_MPY=""; for _pc in python3 python py; do
+  if command -v "$_pc" >/dev/null 2>&1 && printf '{}' | "$_pc" -c 'import sys,json;json.load(sys.stdin)' >/dev/null 2>&1; then
+    _MPY="$(command -v "$_pc")"; break
+  fi
+done
+_MJQ=0; command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1 && _MJQ=1
+if [ "$IS_KIT" != 1 ]; then
+  skip scope "the adopt.sh settings merge (an installed project has no adopt.sh to extract it from)"
+elif [ ! -f "$ADOPT" ] || [ ! -f "$KSET" ]; then
+  skip fixture "the adopt.sh settings merge (adopt.sh or settings.json is not where this expects it)"
+elif [ "$_MJQ" = 0 ] && [ -z "$_MPY" ]; then
+  skip tool "the adopt.sh settings merge (no working jq and no working python; adopt.sh's third tier replaces the file wholesale and is not exercised here)"
+else
+  MTMP="$(mktemp -d)"; printf '%s' "$_OLDSET" > "$MTMP/old.json"; _MERGED=0; _TIER=""
+  if [ "$_MJQ" = 1 ]; then
+    _TIER=jq
     JQM="$(awk '/^JQ_MERGE=./{f=1} f{print} f&&/\)\)'"'"'$/{exit}' "$ADOPT" | sed "1s/^JQ_MERGE='//; \$s/'\$//")"
-    MTMP="$(mktemp -d)"
-    printf '%s' '{ "hooks": { "UserPromptSubmit": [ { "hooks": [ { "type":"command","command":"bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/context-usage.sh\" 2>/dev/null || true","timeout":10 } ] } ], "PostToolUse":[{"hooks":[{"type":"command","command":"bash ./custom.sh"}]}] } }' > "$MTMP/old.json"
-    if jq -n --slurpfile p "$MTMP/old.json" --slurpfile k "$KSET" "$JQM" > "$MTMP/out.json" 2>/dev/null; then
-      # Asserted against the KIT's own SessionStart, not a hard-coded count: the point is that an event the
-      # project did not have arrives complete on update. A literal number silently goes stale the next time
-      # the kit wires another hook to the same event, and then reports a working merge as broken.
-      KSS="$(jq -c '[.hooks.SessionStart[].hooks[].command]|sort' "$KSET")"
-      MSS="$(jq -c '[.hooks.SessionStart[].hooks[].command]|sort' "$MTMP/out.json")"
-      [ "$KSS" = "$MSS" ] && pass "merge: new event (SessionStart) gets wired on update, with every kit hook on it" || fail "merge: SessionStart wiring differs from the kit's — expected $KSS, got $MSS"
-      [ "$(jq -r '.hooks.UserPromptSubmit|length' "$MTMP/out.json")" = 1 ] && pass "merge: no duplicate hook after update (stale kit entry dropped)" || fail "merge: duplicate UserPromptSubmit hook survived"
-      # Read the expected timeout from the kit rather than pinning a literal — for the same reason the
-      # SessionStart assert above is derived: a hard-coded number reports a working merge as broken the day
-      # the kit retunes its timeouts. The fixture carries 10, so this still proves the stale value was replaced.
-      KTO="$(jq -r '.hooks.UserPromptSubmit[0].hooks[0].timeout' "$KSET")"
-      MTO="$(jq -r '.hooks.UserPromptSubmit[0].hooks[0].timeout' "$MTMP/out.json")"
-      [ "$MTO" = "$KTO" ] && [ "$MTO" != 10 ] && pass "merge: stale hook timeout refreshed to kit's ($KTO)" || fail "merge: stale timeout not refreshed — expected $KTO, got $MTO"
-      [ "$(jq -r '.hooks.PostToolUse[0].hooks[0].command' "$MTMP/out.json")" = "bash ./custom.sh" ] && pass "merge: project's OWN custom hook preserved" || fail "merge: custom hook lost"
-    else fail "merge: extracted JQ_MERGE failed to run (extraction drift?)"; fi
-    rm -rf "$MTMP"
-  else note "merge test skipped (adopt.sh or settings.json not found)"; fi
-else note "merge test skipped (installed project or no jq)"; fi
+    jq -n --slurpfile p "$MTMP/old.json" --slurpfile k "$KSET" "$JQM" > "$MTMP/out.json" 2>/dev/null && _MERGED=1
+    _g(){ jq -r "$1" "$2"; }; _gc(){ jq -c "$1" "$2"; }
+  else
+    _TIER="${_MPY##*/}"
+    # The python program is EXTRACTED from adopt.sh, exactly as JQ_MERGE is, so a drift in the shipped merge
+    # cannot pass here: a copy in the test would assert what the test author believed rather than what ships.
+    # NOT anchored at end of line: adopt.sh's heredoc line continues past the marker with `&& [ -s ... ]; then`,
+    # and a `$` anchor extracted nothing while reporting it as a product failure. Measured while writing this.
+    awk '/<<.PYEOF./{f=1;next} /^PYEOF$/{exit} f' "$ADOPT" > "$MTMP/merge.py"
+    [ -s "$MTMP/merge.py" ] && "$_MPY" "$MTMP/merge.py" "$KSET" "$MTMP/old.json" "$MTMP/out.json" 2>/dev/null && [ -s "$MTMP/out.json" ] && _MERGED=1
+    # A reader with the same four answers jq gives, so the assertions below are identical text on both tiers.
+    _g(){ "$_MPY" -c 'import sys,json;d=json.load(open(sys.argv[2]));e=sys.argv[1]
+if e=="upslen": print(len(d["hooks"]["UserPromptSubmit"]))
+elif e=="upsto": print(d["hooks"]["UserPromptSubmit"][0]["hooks"][0]["timeout"])
+elif e=="ptu": print(d["hooks"]["PostToolUse"][0]["hooks"][0]["command"])' "$1" "$2"; }
+    _gc(){ "$_MPY" -c 'import sys,json;d=json.load(open(sys.argv[2]));print(json.dumps(sorted(h["command"] for e in d["hooks"]["SessionStart"] for h in e["hooks"]),separators=(",",":")))' "$1" "$2"; }
+  fi
+  if [ "$_MERGED" = 1 ]; then
+    if [ "$_TIER" = jq ]; then KSS="$(_gc '[.hooks.SessionStart[].hooks[].command]|sort' "$KSET")"; MSS="$(_gc '[.hooks.SessionStart[].hooks[].command]|sort' "$MTMP/out.json")"
+                          else KSS="$(_gc ss "$KSET")"; MSS="$(_gc ss "$MTMP/out.json")"; fi
+    [ "$KSS" = "$MSS" ] && pass "merge[$_TIER]: new event (SessionStart) gets wired on update, with every kit hook on it" || fail "merge[$_TIER]: SessionStart wiring differs from the kit's — expected $KSS, got $MSS"
+    if [ "$_TIER" = jq ]; then UPSL="$(_g '.hooks.UserPromptSubmit|length' "$MTMP/out.json")"; KTO="$(_g '.hooks.UserPromptSubmit[0].hooks[0].timeout' "$KSET")"; MTO="$(_g '.hooks.UserPromptSubmit[0].hooks[0].timeout' "$MTMP/out.json")"; PTU="$(_g '.hooks.PostToolUse[0].hooks[0].command' "$MTMP/out.json")"
+                          else UPSL="$(_g upslen "$MTMP/out.json")"; KTO="$(_g upsto "$KSET")"; MTO="$(_g upsto "$MTMP/out.json")"; PTU="$(_g ptu "$MTMP/out.json")"; fi
+    [ "$UPSL" = 1 ] && pass "merge[$_TIER]: no duplicate hook after update (stale kit entry dropped)" || fail "merge[$_TIER]: duplicate UserPromptSubmit hook survived ($UPSL)"
+    [ "$MTO" = "$KTO" ] && [ "$MTO" != 10 ] && pass "merge[$_TIER]: stale hook timeout refreshed to kit's ($KTO)" || fail "merge[$_TIER]: stale timeout not refreshed — expected $KTO, got $MTO"
+    [ "$PTU" = "bash ./custom.sh" ] && pass "merge[$_TIER]: project's OWN custom hook preserved" || fail "merge[$_TIER]: custom hook lost ($PTU)"
+  else
+    fail "merge[$_TIER]: the merge program extracted from adopt.sh did not run (extraction drift?)"
+  fi
+  rm -rf "$MTMP"
+fi
 
 sec "== 7i) skill trust gate: an unvetted component cannot arrive silently =="
 [ -x "$HOOKS/skill-trust.sh" ] && pass "skill-trust.sh +x" || fail "skill-trust.sh missing/not executable"
