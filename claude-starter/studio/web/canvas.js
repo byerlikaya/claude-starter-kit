@@ -52,6 +52,21 @@ const DRAW_MS = 300;
 // many exist. And 200 flowing lines carry less than 20 do — past a certain
 // density motion stops reading as direction and starts reading as noise, which
 // is the same reason the pulse is restrained rather than loud.
+//
+// Profiled 2026-09-20, and it says this ceiling is the AESTHETIC one, not a
+// frame-budget one: 250 nodes with the budget full (60 strokes flowing) held a
+// median frame of 8.3 ms with nothing over 16.7 ms, and forcing the state past
+// the cap stayed flat at 150 and at 250 strokes. The knee was 400 strokes —
+// median 16.6 ms, 11 frames over budget. So the number is ~6x conservative for
+// performance on that machine, and it is kept for legibility.
+//
+// What that profile cost to get right, twice: rAF ran at a healthy 8.3 ms in a
+// HIDDEN pane while a deliberately expensive repaint changed the median by
+// nothing at all (ratio 1.00) — the pixels were never produced, so "paint is
+// free here" would have been a true number about a false world. Visible, the
+// same twin degraded 11x. And the first pass profiled `flow` with 9 strokes
+// moving, not 60: the observed case was not the legal worst case. Measure this
+// with both twins or do not quote it.
 const MOTION_BUDGET = 60;
 // Marks, so a card says what kind of thing it is before it is read.
 //
