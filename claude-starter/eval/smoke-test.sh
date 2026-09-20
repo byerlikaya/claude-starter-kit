@@ -856,7 +856,7 @@ csk_exec_check "eval script" "$HERE"/*.sh
 # no information about it, so there is nothing to assert; the POSIX runners are where this gate has teeth.
 CSK_FILEMODE="$(git -C "$ROOT" config --get core.fileMode 2>/dev/null || echo true)"
 case "${CSK_FILEMODE:-true}" in
-  false|0|no) note "index mode check skipped (core.fileMode=$CSK_FILEMODE — this platform does not track the bit)" ;;
+  false|0|no) skip platform "the index-mode check (core.fileMode=$CSK_FILEMODE — this platform does not track the executable bit)" 1 ;;
   *)
 if command -v git >/dev/null 2>&1 && git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   IDX="$(git -C "$ROOT" ls-files -s -- "$HOOKS" "$HERE" 2>/dev/null \
@@ -1416,6 +1416,51 @@ _o="$(_ss_runaway "$_R_GEN")"
   && pass "session-stats: 25 calls and 3 real failures in one prompt IS a runaway loop" \
   || fail "session-stats: the genuine runaway case stopped firing (runaway=$(ss_f "$_o" runaway)) — the pair below would prove nothing"
 _o="$(_ss_runaway "$_R_GAT")"
+
+# THE TWO PLATFORM COUNTS (11 and 1, above) ARE MEASURED, NOT COUNTED FROM THE SOURCE. windows-csk read them
+# off the per-section ledger: 902+26=928 against 940 here, short by twelve, localised to exactly those two
+# `note` calls. A static count of the symlink block answered 9 — and that same static counter had already
+# reported 0 assertions inside a block that plainly had them, so it has a demonstrated blind spot with nested
+# branches. The deficit is a measurement; the source count is an instrument reading. If 11 is wrong the balance
+# says so on the next run, which is the whole point of having a balance.
+# TWO GATES ON THE GUARD'S RECOVERY TEXT. `block()` printed ONE sentence for all 33 rules, and for the
+# gate-tamper and secret families that sentence said "if approved, run the command manually in the terminal" —
+# advice that COMPLETES the action the rule just refused (a gate disarmed by hand stays off for every later
+# session; a secret printed by hand is the same leak with an extra step). Fixed in b19495b with a class per
+# rule; these two assertions are what stop it coming back, because the way it comes back is someone tidying
+# seven sentences into one.
+_GB="$HOOKS/guard-bash.sh"
+if [ -f "$_GB" ]; then
+  # (1) A class on every call. Without it a call falls back to generic text silently, which is how one sentence
+  #     survived 33 rules. The pattern matches a call whose last argument is the section number.
+  _NOCLASS="$(grep -cE 'block "[^"]*" "[0-9.]+"[[:space:]]*$' "$_GB" 2>/dev/null || true)"
+  [ "${_NOCLASS:-0}" = 0 ] \
+    && pass "every block() call carries a rule class (none falls back to generic recovery text)" \
+    || fail "$_NOCLASS block() call(s) carry no class — the generic recovery line returns for them"
+  # (2) THE ADVISORY SENTENCE IS GONE. First attempt at this assertion grepped the tamper/secret arms for
+  #     "manually|by hand|yourself" and went red on the FIXED text — because those arms now say "DOING IT BY
+  #     HAND IS NOT THE ANSWER EITHER" and "printing it by hand is the same leak with an extra step". A check
+  #     that greps for a phrase cannot tell advice from prohibition, which is the same defect this suite keeps
+  #     finding elsewhere: it searched for a string instead of the property it guards. So pin the property —
+  #     the old advisory sentence must not appear anywhere in the hook.
+  _ADV="$(grep -ciE 'run the command manually in the terminal' "$_GB" 2>/dev/null || true)"
+  [ "${_ADV:-0}" = 0 ] \
+    && pass "no refusal tells the reader to run the blocked command manually (the generic advice is gone)" \
+    || fail "the generic 'run the command manually in the terminal' advice is back ($_ADV occurrence(s))"
+  # (3) And the two families carry their OWN text rather than sharing one line. Structural, not phrase-based:
+  #     the way this regresses is seven sentences being tidied back into one, and that shows up as arms whose
+  #     text is identical, not as a particular wording.
+  _ARM(){ awk -v k="$1" '$0 ~ "^[[:space:]]*" k "\\)" {sub(/^[^)]*\) */,""); print; exit}' "$_GB"; }
+  _T="$(_ARM tamper)"; _S="$(_ARM secret)"; _L="$(_ARM loss)"
+  if [ -n "$_T" ] && [ -n "$_S" ] && [ "$_T" != "$_L" ] && [ "$_S" != "$_L" ] && [ "$_T" != "$_S" ]; then
+    pass "the tamper and secret refusals each carry their own recovery line (not one shared sentence)"
+  else
+    fail "a recovery line is missing or shared — tamper/secret must not reuse another class's sentence"
+  fi
+else
+  skip fixture "the guard recovery-text gates (guard-bash.sh is not where this expects it)" 2
+fi
+
 { [ "$(ss_f "$_o" runaway)" = 0 ] && [ "$(ss_f "$_o" refused)" = 3 ]; } \
   && pass "session-stats: the same 25 calls with 3 REFUSALS is not a runaway loop, and the 3 are still reported" \
   || fail "session-stats FALSE ALARM: refusals tripped the runaway warning (runaway=$(ss_f "$_o" runaway) refused=$(ss_f "$_o" refused))"
@@ -3172,7 +3217,7 @@ if ln -s ../hooks "$GWSL/.claude/skills/link" 2>/dev/null && [ -L "$GWSL/.claude
     rm -f "$GWSL.link"
   fi
 else
-  note "symlinks unavailable here — the ancestor probe was not exercised (platform)"
+  skip platform "the ancestor-symlink probe (Git Bash's \`ln -s\` makes a COPY, so [ -L ] is false and the block cannot run here)" 11
 fi
 rm -rf "$GWSL"
 # THE HOOK MUST RUN AS THE HARNESS RUNS IT. Every other row here invokes it as `bash <file>`, which exercises
