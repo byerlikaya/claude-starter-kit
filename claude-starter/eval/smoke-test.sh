@@ -18,8 +18,23 @@ FAIL=0; PASSN=0; SKIPN=0; SKIP_HARD=0; SKIP_LIST=""
 # inside one splits a log line in two and manufactures a repeat that belongs to the harness.
 ASSERTLOG="$(mktemp)"
 _al(){ local l="${1//$'\n'/ }"; l="${l//$'\r'/ }"; printf '%s\t%s\n' "$((PASSN+FAIL))" "$l" >> "$ASSERTLOG"; }
-pass(){ PASSN=$((PASSN+1)); _al "P $1"; echo "  ✅ $1"; }
-fail(){ FAIL=$((FAIL+1));   _al "F $1"; echo "  ❌ $1"; }
+# PER-SECTION LEDGER. The summary's two numbers say how much ran; they never said WHERE what did not run went,
+# and that is the whole of §5: measured 2026-09-20, stock Windows graded 900 against this desk's 938, and of the
+# 38 missing only 6 announced themselves. Attributing the other 32 took a peer diffing two runs by hand, and it
+# only worked because they had both outputs. So the suite now emits its own per-section counts and any two
+# platforms are directly comparable without a third party.
+#
+# A SECOND log rather than a column on ASSERTLOG: that file's shape is audited by _analyse (it walks the counter
+# backwards expecting total, total-1, …) and skips do not touch those counters at all. Adding rows there would
+# break the audit; adding a file cannot.
+SECLOG="$(mktemp)"
+CURSEC="<before the first heading>"
+_sl(){ printf '%s\t%s\n' "$CURSEC" "$1" >> "$SECLOG"; }
+# Every heading goes through this instead of `echo`, so the ledger cannot drift from what was printed: there is
+# one place that knows the current section and it is the one that announced it.
+sec(){ CURSEC="$1"; echo "$1"; }
+pass(){ PASSN=$((PASSN+1)); _al "P $1"; _sl P; echo "  ✅ $1"; }
+fail(){ FAIL=$((FAIL+1));   _al "F $1"; _sl F; echo "  ❌ $1"; }
 # A VERDICT WITHOUT A DENOMINATOR IS NOT A VERDICT. This suite printed one line — "SMOKE-TEST: PASSED ✅" — and
 # it printed the identical line whether 574 assertions ran or 293 did (CSK_SMOKE_SCOPE=install drops the rest).
 # Worse, seventeen places reported a test that DID NOT RUN as a green ✅, so "a tool is missing here" and "the
@@ -35,6 +50,7 @@ skip(){ # $1 = tool|fixture|scope|platform, $2 = what was not checked
   SKIPN=$((SKIPN+1)); SKIP_LIST="$SKIP_LIST
     [$1] $2"
   case "$1" in tool|fixture) SKIP_HARD=$((SKIP_HARD+1)) ;; esac
+  _sl "S:$1"
   echo "  ⏭  [$1] $2 — NOT CHECKED"
 }
 
@@ -47,8 +63,12 @@ skip(){ # $1 = tool|fixture|scope|platform, $2 = what was not checked
 # once, in the evals-metric block, and packaging/subshell-audit.sh exists because of it. The marker below is
 # on the line above the probe on purpose: the scanner reads that line or the flagged one, nowhere further, so
 # an exception cannot be declared at a distance and then drift away from what it excuses.
+# `SECLOG=/dev/null` inside the subshell for a reason worth keeping: a subshell does not leak its COUNTERS,
+# which is what this probe relies on, but it does leak a FILE WRITE. The first ledger run reported 4 skips in
+# the pre-heading bucket while the suite reported 0 — the probe's four deliberate non-skips. The ledger
+# disagreed with the counters it describes, which is the one thing a ledger may never do.
 # subshell-audit: intentional
-_sk_probe(){ ( SKIPN=0; SKIP_HARD=0; PASSN=0; SKIP_LIST=""; skip "$1" probe >/dev/null; printf '%s %s %s' "$SKIPN" "$SKIP_HARD" "$PASSN" ); }
+_sk_probe(){ ( SECLOG=/dev/null; SKIPN=0; SKIP_HARD=0; PASSN=0; SKIP_LIST=""; skip "$1" probe >/dev/null; printf '%s %s %s' "$SKIPN" "$SKIP_HARD" "$PASSN" ); }
 [ "$(_sk_probe tool)"     = "1 1 0" ] && pass "a tool-class skip is counted and arms the CI failure"     || fail "skip tool did not arm the CI failure: $(_sk_probe tool)"
 [ "$(_sk_probe fixture)"  = "1 1 0" ] && pass "a fixture-class skip arms the CI failure too"             || fail "skip fixture did not arm the CI failure: $(_sk_probe fixture)"
 [ "$(_sk_probe scope)"    = "1 0 0" ] && pass "a scope-class skip is counted but does NOT fail CI"       || fail "skip scope wrongly armed the CI failure: $(_sk_probe scope)"
@@ -159,7 +179,7 @@ kit_owned() {  # $1 = manifest entry, e.g. agents/backend-expert-csk.md or skill
   grep -qxF "$1" "$ROOT/kit-manifest.txt"
 }
 
-echo "== 1) Agent frontmatter & trigger =="
+sec "== 1) Agent frontmatter & trigger =="
 AC=0
 for f in $(agent_quality_files); do
   n=$(basename "$f")
@@ -208,7 +228,7 @@ for c in planner-csk security-expert-csk privacy-agent-csk test-expert-csk revie
 done
 [ "$AC" -ge 7 ] && pass "$AC agents found (7 core complete)" || fail "agent count below the 7 core: $AC"
 
-echo "== 2) Skill frontmatter & trigger =="
+sec "== 2) Skill frontmatter & trigger =="
 for d in "$SKILLS"/*/; do
   n=$(basename "$d"); f="$d/SKILL.md"
   [ -f "$f" ] || { fail "$n: no SKILL.md"; continue; }
@@ -224,7 +244,7 @@ for d in "$SKILLS"/*/; do
 done
 pass "$(ls -d "$SKILLS"/*/ | wc -l | tr -d ' ') skills scanned (name==dir · name≤64 · description≤1024)"
 
-echo "== 3) Orphan skill reference (agent -> nonexistent skill) =="
+sec "== 3) Orphan skill reference (agent -> nonexistent skill) =="
 # (a) Do the X's in "applies the \`X\` skill" in an agent body exist?
 for f in $(agent_quality_files); do
   for ref in $(grep -oE 'applies the `[a-z0-9-]+` skill' "$f" | grep -oE '`[a-z0-9-]+`' | tr -d '`'); do
@@ -329,7 +349,7 @@ refs_audit "$REFT/orphan/skills" > "$REFLOG" 2>&1
                     || fail "refs_audit: orphan tree reported $REFS_BAD, expected 1"
 rm -rf "$REFT"
 
-echo "== 3b) Orphan component: every skill & agent must be ROUTED (kit invariant, no idle components) =="
+sec "== 3b) Orphan component: every skill & agent must be ROUTED (kit invariant, no idle components) =="
 # Rule: nothing idle. A skill/agent that only auto-triggers on its own description is "dark" — the orchestrator is
 # never told to reach it. It is ROUTED when its name appears in an agent body, a command, or the discipline (the
 # trigger map): CLAUDE.md in the kit repo, DISCIPLINE.md in an install. A cross-link from ANOTHER skill's body does
@@ -355,7 +375,7 @@ for f in "$AGENTS"/*.md; do
 done
 pass "every skill & agent is routed (no idle components)"
 
-echo "== 3b2) Capability: a skill cannot demand a tool its agent does not have =="
+sec "== 3b2) Capability: a skill cannot demand a tool its agent does not have =="
 # A rule an agent physically cannot obey is worse than no rule: it does not fail, it degrades quietly into the
 # thing it forbids. `privacy-compliance` told its agent to CHECK THE OFFICIAL SOURCE rather than decide from
 # memory, and privacy-agent-csk shipped with Read/Grep/Glob — no WebFetch. Nothing flagged it. It surfaced in a
@@ -382,7 +402,7 @@ done
 [ -z "$CAPFAIL" ] && pass "every skill's declared tool requirement is met by the agents that apply it" \
                   || fail "an agent applies a skill it cannot obey:$CAPFAIL"
 
-echo "== 3c) Backend variant parity: a --generic install must not lose routing =="
+sec "== 3c) Backend variant parity: a --generic install must not lose routing =="
 # On a non-.NET stack the installer REPLACES backend-expert-csk with agents-optional/backend-expert-generic.
 # Every skill routed only from the .NET variant then silently stops being reached on that stack — §3b cannot see
 # it, because the skill is still routed by *some* agent. The pattern skill is the one legitimate difference.
@@ -403,12 +423,12 @@ else
   skip scope "backend variant parity skipped (installed project — agents-optional/ is not installed)"
 fi
 
-echo "== 4) Stub / unfilled skill leftover =="
+sec "== 4) Stub / unfilled skill leftover =="
 if grep -rlq "to be filled\|generated from source" "$SKILLS" 2>/dev/null; then
   fail "stub marker still present"; else pass "no stub"
 fi
 
-echo "== 5) Trace + secret scanner ready? =="
+sec "== 5) Trace + secret scanner ready? =="
 [ -x "$HOOKS/pre-commit" ] && pass "pre-commit hook +x" || fail "pre-commit missing/not executable"
 [ -f "$HOOKS/trace-blocklist.txt" ] && pass "trace-blocklist present" || fail "trace-blocklist.txt missing"
 [ -f "$HOOKS/secret-blocklist.txt" ] && pass "secret-blocklist present" || fail "secret-blocklist.txt missing"
@@ -422,7 +442,7 @@ if ( cd "$SDIR" && bash pre-commit ) >/dev/null 2>&1; then fail "secret scan LET
 rm -rf "$SDIR"
 
 
-echo "== 5b) Team board: is the claim a real lock, or only a convention? =="
+sec "== 5b) Team board: is the claim a real lock, or only a convention? =="
 # SCOPED, and this one is the whole cost. Measured on a Windows 11 desktop: this section alone is 682 s of
 # the 892 s an install-scope suite takes -- 76% of it -- and e2e runs that suite three times, so it is roughly
 # 34 of the 37 minutes the e2e step spends on windows-latest. What it drives is board.sh (12x) and
@@ -792,7 +812,7 @@ fi
 
 else note "scope=install: board race cases skipped (payload behaviour, not this install)"; fi
 
-echo "== 5e) executable bit on every shipped script =="
+sec "== 5e) executable bit on every shipped script =="
 # A hook that loses +x does not fail loudly: Claude Code invokes it through `bash <path>`, so it keeps working
 # in the installed tree while the repo carries a broken mode, and start.sh chmods on install which hides it
 # again. The only place it is visible is the git index — so that is where it is checked. This gate exists
@@ -829,7 +849,7 @@ if command -v git >/dev/null 2>&1 && git -C "$ROOT" rev-parse --is-inside-work-t
 fi
  ;;
 esac
-echo "== 6) Context-usage threshold logic (fixture) + hook integrity =="
+sec "== 6) Context-usage threshold logic (fixture) + hook integrity =="
 FX="$(mktemp)"
 printf '%s\n' '{"type":"assistant","isSidechain":false,"message":{"usage":{"input_tokens":1000,"cache_read_input_tokens":800000,"cache_creation_input_tokens":0}}}' > "$FX"
 o1="$(CONTEXT_WINDOW=1000000 bash "$HOOKS/context-usage.sh" "$FX" 2>/dev/null)"
@@ -877,7 +897,7 @@ rm -rf "$PMD"
 [ -x "$HOOKS/context-usage.sh" ] && pass "context-usage.sh +x"          || fail "context-usage.sh missing/not executable"
 [ -x "$HOOKS/session-guard.sh" ] && pass "session-guard.sh +x (Stop)"   || fail "session-guard.sh missing/not executable"
 
-echo "== 6b) Stop-hook gate: once per THRESHOLD · never blocks · systemMessage (not a hook error) =="
+sec "== 6b) Stop-hook gate: once per THRESHOLD · never blocks · systemMessage (not a hook error) =="
 SGFX="$(mktemp)"
 SGPFX="smoketest-$$-${RANDOM:-0}"
 mkjson(){ printf '{"session_id":"%s","transcript_path":"%s","hook_event_name":"Stop","stop_hook_active":%s}' "$1" "$2" "$3"; }
@@ -1043,7 +1063,7 @@ csk_nojq_path(){   # $@ = the tools the code under test needs on PATH
 }
 # ---- /CSK-NOJQ-PATH --------------------------------------------------------------------------------------
 
-echo "== 6c) no-jq fallback: sidechain-safe + full token sum =="
+sec "== 6c) no-jq fallback: sidechain-safe + full token sum =="
 BASHBIN="$(command -v bash 2>/dev/null || echo bash)"   # absolute -> a stripped PATH must not hide bash itself
 JXBIN="$(csk_nojq_path awk sed grep head tail cat ls tr)"
 if [ -n "$JXBIN" ]; then
@@ -1061,14 +1081,14 @@ else
 fi
 rm -rf "${JXBIN%%:*}"
 
-echo "== 6d) locale: percentage keeps '.' under a comma locale =="
+sec "== 6d) locale: percentage keeps '.' under a comma locale =="
 FXL="$(mktemp)"
 printf '%s\n' '{"type":"assistant","isSidechain":false,"message":{"usage":{"input_tokens":1000,"cache_read_input_tokens":800000,"cache_creation_input_tokens":0}}}' > "$FXL"
 ol="$(LANG=tr_TR.UTF-8 LC_NUMERIC=tr_TR.UTF-8 CONTEXT_WINDOW=1000000 bash "$HOOKS/context-usage.sh" "$FXL" 2>/dev/null | head -1)"
 case "$ol" in *,*) fail "locale: percentage emitted a comma under tr_TR: $ol" ;; *) pass "locale: decimal stays '.' under tr_TR ($ol)" ;; esac
 rm -f "$FXL"
 
-echo "== 6i) context-usage: bounded tail read + assistant anchor =="
+sec "== 6i) context-usage: bounded tail read + assistant anchor =="
 # Two defects this locks down, both fatal on the no-jq path (stock Git Bash on Windows):
 #   1. The scan read the whole transcript on EVERY turn though the record it wants is the LAST match.
 #      4.7s on a 180MB transcript -> past the hook's timeout -> the fill line never reached the model.
@@ -1121,7 +1141,7 @@ grep -q 'tail -n' "$HOOKS/context-usage.sh" && pass "transcript is read through 
   || fail "context-usage.sh no longer bounds its read — the whole transcript is scanned every turn"
 rm -rf "$CUD" "${CUJX%%:*}"
 
-echo "== 6i2) hook paths survive a WINDOWS stdin payload (JSON-escaped backslashes) =="
+sec "== 6i2) hook paths survive a WINDOWS stdin payload (JSON-escaped backslashes) =="
 # The paths a hook receives on stdin are JSON values, and JSON escapes a backslash as two. So on Windows the
 # real path C:\Users\me\a.jsonl arrives as "C:\\Users\\me\\a.jsonl", and a sed slice hands back the doubled
 # form — a string that names no file on any platform. Every consumer then failed the same quiet way:
@@ -1182,7 +1202,7 @@ o="$(wjson SessionStart | CLAUDE_PROJECT_DIR= bash "$HOOKS/skill-trust.sh" 2>/de
 case "$o" in *skills/mine*) pass "skill-trust decodes a JSON-escaped cwd (the notice still notices)" ;; *) fail "skill-trust could not resolve a Windows-shaped cwd — the gate is inert there · payload was: $(wjson SessionStart)" ;; esac
 rm -rf "$WPD"
 
-echo "== 6i3) transcript directory encoding (the BY-HAND call, no hook payload) =="
+sec "== 6i3) transcript directory encoding (the BY-HAND call, no hook payload) =="
 # With a hook payload on stdin the transcript path is handed over; called by hand there is none, so the hook has
 # to reproduce how Claude Code encodes a cwd into $HOME/.claude/projects/<name>. Getting that wrong is not
 # cosmetic: `context-usage.sh --verbose` and `session-stats.sh` then find nothing, the 🔋 line disappears, and
@@ -1288,7 +1308,7 @@ case "$cu_hand" in
   *)                        fail "by-hand call answered neither a reading nor 'transcript not found' — the hook broke (out=${cu_hand:-empty})" ;;
 esac
 
-echo "== 6j) session-stats: evidence signals read off the transcript =="
+sec "== 6j) session-stats: evidence signals read off the transcript =="
 [ -x "$HOOKS/session-stats.sh" ] && pass "session-stats.sh +x" || fail "session-stats.sh missing/not executable"
 SSD="$(mktemp -d)"; SSF="$SSD/t.jsonl"
 {
@@ -1387,7 +1407,7 @@ for s in reflect handoff; do
 done
 rm -rf "$SSD"
 
-echo "== 6e) CLAUDE.md split: sentinel · discipline/project boundary · no profile split =="
+sec "== 6e) CLAUDE.md split: sentinel · discipline/project boundary · no profile split =="
 # In the kit repo ROOT is claude-starter/ (payload). In an installed project it is .claude/, which has no
 # CLAUDE.md but does have the already-split DISCIPLINE.md. Assert whichever is present.
 if [ -f "$ROOT/CLAUDE.md" ]; then
@@ -1734,7 +1754,7 @@ if [ "$IS_KIT" = 1 ]; then
   fi
 fi
 
-echo "== 6h) pre-commit scanners: must not go blind on a large diff =="
+sec "== 6h) pre-commit scanners: must not go blind on a large diff =="
 # The scanners used to be `printf "$ADDED" | grep -q`. grep -q exits on the first match, printf dies of SIGPIPE,
 # and `set -o pipefail` turned that into "no match" — so a trace or a secret in a LARGE staged diff sailed through.
 # A gate that only works on small commits is worse than no gate. These cases lock the behaviour down.
@@ -1845,7 +1865,7 @@ if command -v git >/dev/null 2>&1 && ( cd "$PR" && git init -q && git config use
   rm -rf "$PR" "$PCLOG"
 else skip tool "pre-commit scanner tests skipped (no working git — it must BUILD a repo, not just resolve)"; fi
 
-echo "== 6g) stale-discipline gate: an update landing mid-session must be announced =="
+sec "== 6g) stale-discipline gate: an update landing mid-session must be announced =="
 # CLAUDE.md loads once, at session start. If the kit is updated while a session runs, the model keeps quoting
 # the previous version's rules. Build a throwaway hooks/ + VERSION pair so the script resolves ../VERSION.
 SD="$(mktemp -d)"; mkdir -p "$SD/hooks"; cp "$HOOKS/context-usage.sh" "$SD/hooks/"
@@ -1872,7 +1892,7 @@ case "$o" in *"kit updated"*) fail "stale gate leaked into the Stop payload" ;; 
 rm -f "$SD/VERSION"; run_cu >/dev/null 2>&1 && pass "stale gate: fails open when VERSION is absent" || fail "stale gate exited non-zero without VERSION"
 rm -rf "$SD"; rm -f "$SDFX" "${TMPDIR:-/tmp}/csk-kit-version.$SDSID"
 
-echo "== 6g2) stale-WIRING gate: a session resumed across a kit update runs the old hooks =="
+sec "== 6g2) stale-WIRING gate: a session resumed across a kit update runs the old hooks =="
 # Measured on Windows: settings.json on disk had already been corrected and `--resume` still produced the error
 # naming the OLD, mangled hook path, while the same event in a fresh session was clean. So a resumed session
 # keeps the wiring it started with — and on the release that fixed that path, "the wiring it started with" means
@@ -1894,7 +1914,7 @@ o="$( cd "$SWD" && swp | CONTEXT_WINDOW=1000000 bash "$SWD/.claude/hooks/context
 case "$o" in *"OLDER hook wiring"*) fail "stale-wiring gate fired without a kit settings.json to compare against" ;; *) pass "stale-wiring: silent when settings.json is absent or hand-rewired" ;; esac
 rm -rf "$SWD"; rm -f "${TMPDIR:-/tmp}/csk-kit-version.sw-$$"
 
-echo "== 6f) always-on token budget =="
+sec "== 6f) always-on token budget =="
 # Everything below is loaded into EVERY session's context (and, when Claude spawns one, into a subagent's).
 # Measured with a real `claude -p` turn: 21804 bytes of always-on material cost 9198 tokens. Bytes are a proxy
 # for that cost, and a gate rather than a reminder — a verbose new description fails the suite instead of
@@ -2184,7 +2204,7 @@ else pass "some agents lack a proactive cue:$NO_CUE (your project's own agents, 
 # not the matcher regexes. Full scope remains the default and is what the standalone CI step runs.
 # (UNITS is declared at the top — it gates cases that run before this point too.)
 [ "$UNITS" = 0 ] && note "scope=install: gate UNIT cases skipped (they test payload bytes, not this install) — canary below"
-echo "== 7) settings.json & guard (§4.4/§4.5) =="
+sec "== 7) settings.json & guard (§4.4/§4.5) =="
 # THIS FILE IS SHIPPED, NOT GENERATED, so whether it parses has no machine-specific answer and needs no oracle.
 # Gating it on jq meant the platform where this kit's hooks are most fragile — a stock Windows box with no jq —
 # was the one platform that never checked whether the file wiring those hooks parses at all. The shell version
@@ -2342,7 +2362,7 @@ done
 gj auto 'git add -f secrets.env' | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1
 [ "$?" = 2 ] && pass "git add -f BLOCKED even with the key (§4.5)" || fail "git add -f PASSED with the key (§4.5 hole)"
 
-echo "== 4f) §4.6 review gate — a commit cannot land on a diff nothing reviewed =="
+sec "== 4f) §4.6 review gate — a commit cannot land on a diff nothing reviewed =="
 # The gate's own three states plus the ways round it, each in a real repo rather than against a string. What
 # makes this testable at all is that both halves answer with FACTS: git's object id of the staged diff, and the
 # HEAD it was reviewed against. Nothing here asserts a timestamp, because the gate does not read one.
@@ -3146,7 +3166,7 @@ gj auto 'git add -f dist/bundle.js' | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&
 gj auto 'git add -A'                | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && pass "git add -A NOT over-blocked" || fail "git add -A wrongly blocked (gate too strict)"
 gj auto 'rm package-lock.json'      | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "lockfile deletion BLOCKED (§4.5)" || fail "lockfile deletion PASSED (§4.5 hole)"
 
-echo "== 7b) guard-bash matcher — audit bypass regressions (unified git_has) =="
+sec "== 7b) guard-bash matcher — audit bypass regressions (unified git_has) =="
 # An adversarial audit found these git-invocation forms slipped the old 'git +subcmd' rules. Each must now be caught.
 gj auto 'git -C . reset --hard' | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "git -C reset --hard BLOCKED (H2)" || fail "git -C reset --hard PASSED (H2)"
 gj auto 'git\treset --hard'     | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "TAB-separated reset --hard BLOCKED (H2)" || fail "TAB-separated reset --hard PASSED (H2)"
@@ -3515,7 +3535,7 @@ else
 fi
 rm -rf "$GBDIR"
 
-echo "== 7c) broken interpreters — a tier that EXISTS but does not WORK must not fail open =="
+sec "== 7c) broken interpreters — a tier that EXISTS but does not WORK must not fail open =="
 # §7b tests tier 3 by taking jq and python3 AWAY. That is not the shape the failure had, and it is why the
 # failure survived: on a stock Windows 11 desktop python3 is PRESENT and BROKEN. Windows puts
 # %LOCALAPPDATA%\Microsoft\WindowsApps\python3 on PATH by default — the Microsoft Store redirector stub, not an
@@ -3704,7 +3724,7 @@ else
     && pass "canary: the installed guard-bash ASKS for §4.4" \
     || fail "canary: no §4.4 ask from the installed hook (out=$o)"
 fi
-echo "== 7c) session rehydration (SessionStart, C1) =="
+sec "== 7c) session rehydration (SessionStart, C1) =="
 [ -x "$HOOKS/session-rehydrate.sh" ] && pass "session-rehydrate.sh +x" || fail "session-rehydrate.sh missing/not executable"
 # Fails open + silent when there is no handover; injects additionalContext when docs/SESSION_STATE.md exists.
 RHD="$(mktemp -d)"
@@ -3746,7 +3766,7 @@ if command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then
     || fail "a hook uses exec form — on Windows 'bash' off the PATH is System32/bash.exe (WSL), so every gate dies"
 fi
 
-echo "== 7d) plugin gate hooks shipped (P1) =="
+sec "== 7d) plugin gate hooks shipped (P1) =="
 PLUGIN="$(cd "$ROOT/.." && pwd)/plugin"
 PHJ="$PLUGIN/hooks/hooks.json"
 if [ "$IS_KIT" != 1 ]; then
@@ -3777,7 +3797,7 @@ else
   fail "plugin/hooks/hooks.json missing — run packaging/build-plugin.sh"
 fi
 
-echo "== 7e) install doctor + installer hygiene (P7) =="
+sec "== 7e) install doctor + installer hygiene (P7) =="
 [ -x "$ROOT/eval/doctor.sh" ] && pass "doctor.sh +x" || fail "doctor.sh missing/not executable"
 # doctor must PASS a healthy install and FAIL a broken one (a non-executable hook = a silently-skipped gate).
 DOC="$(mktemp -d)"
@@ -3886,7 +3906,7 @@ else
 fi
 for c in update-csk doctor-csk; do [ -f "$ROOT/commands/$c.md" ] && pass "/$c present" || fail "/$c command missing"; done
 
-echo "== 7f) supply-chain scanner (scan-skill.sh) =="
+sec "== 7f) supply-chain scanner (scan-skill.sh) =="
 [ -x "$ROOT/eval/scan-skill.sh" ] && pass "scan-skill.sh +x" || fail "scan-skill.sh missing/not executable"
 # The kit's OWN skills must all score SAFE — a false positive on legit content would erode trust in the scan.
 # Kit-repo only: in an installed project $SKILLS also holds the user's own skills, whose score is not the kit's to gate.
@@ -3931,7 +3951,7 @@ bash "$ROOT/eval/scan-skill.sh" "$SCX/skills/one/SKILL.md" >/dev/null 2>&1 \
   && fail "scan-skill PASSED the reader-then-path exfil form" || pass "scan-skill: reader-then-path exfil still caught"
 rm -rf "$SCX"
 
-echo "== 7g) adopt.sh settings merge is HOOK-AWARE (updates refresh kit hooks, preserve custom) =="
+sec "== 7g) adopt.sh settings merge is HOOK-AWARE (updates refresh kit hooks, preserve custom) =="
 # Regression guard for the jq-less/stale-settings bug: on update the kit OWNS its hooks, so a new event
 # (SessionStart) must get wired and a stale kit entry (old timeout) refreshed, WITHOUT duplicating hooks or
 # dropping the project's own custom hooks. Extract the merge program from adopt.sh (single source of truth).
@@ -3961,7 +3981,7 @@ if [ "$IS_KIT" = 1 ] && command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >
   else note "merge test skipped (adopt.sh or settings.json not found)"; fi
 else note "merge test skipped (installed project or no jq)"; fi
 
-echo "== 7i) skill trust gate: an unvetted component cannot arrive silently =="
+sec "== 7i) skill trust gate: an unvetted component cannot arrive silently =="
 [ -x "$HOOKS/skill-trust.sh" ] && pass "skill-trust.sh +x" || fail "skill-trust.sh missing/not executable"
 STD="$(mktemp -d)"
 mkdir -p "$STD/.claude/hooks" "$STD/.claude/eval" "$STD/.claude/skills/handoff" "$STD/.claude/skills/mine" "$STD/.claude/skills/evil"
@@ -4004,7 +4024,7 @@ else
   grep -q 'skill-trust' "$ROOT/settings.json" && pass "settings.json wires skill-trust.sh (no jq: name check)" || fail "skill-trust.sh is not wired"
 fi
 
-echo "== 7u) update notice: announces a release WITHOUT spending the session opening =="
+sec "== 7u) update notice: announces a release WITHOUT spending the session opening =="
 # This hook exists to tell a project that a newer kit is published. What makes it dangerous is not the message but
 # the lookup behind it: SessionStart blocks the session until the hook returns, so a foreground network call turns
 # a missing proxy or an offline laptop into a frozen session opening — the 2.0.1 failure with a different cause.
@@ -4138,7 +4158,7 @@ else
 fi
 
 if [ "$UNITS" = 1 ]; then
-echo "== 7h) blocklist rules carry their own cases, and every case drives the REAL hook =="
+sec "== 7h) blocklist rules carry their own cases, and every case drives the REAL hook =="
 # A pattern list is the kit's most edit-prone surface — every project adds its own vendor name — and a typo in a
 # regex produces a gate that matches nothing while still looking armed. So each pattern carries its case on the
 # line below it (`#test:` must be caught, `#test-clean:` must not) and the suite runs them THROUGH pre-commit
@@ -4222,7 +4242,7 @@ else
   skip tool "blocklist case run skipped (git is absent or unusable here)"
 fi
 
-echo "== 7h2) floor guard — the structural half, the exemptions, and the report =="
+sec "== 7h2) floor guard — the structural half, the exemptions, and the report =="
 # The line patterns are driven one by one in 7h. What a single line cannot show is here: a test file deleted, the
 # assertions taken out of one that stays, and the two exemptions a real stack needs — documentation, and generated
 # files, which EF Core fills with warning pragmas (395k model snapshots on GitHub, measured). Every exemption case
@@ -4293,7 +4313,7 @@ else
   rm -rf "$FGR"
 fi
 
-echo "== 7j) commit CONTENT gate reachable without core.hooksPath (plugin edition parity) =="
+sec "== 7j) commit CONTENT gate reachable without core.hooksPath (plugin edition parity) =="
 # The plugin edition ships Claude Code hooks, not git hooks, so it had the commit APPROVAL gate and none of the
 # commit CONTENT gates: a credential or an authorship trailer could land there while the other three channels
 # stopped it. guard-commit-scan.sh runs the REAL scanners from PreToolUse instead of re-implementing them.
@@ -4368,7 +4388,7 @@ else
   fail "guard-commit-scan.sh missing or not executable — the plugin edition has no commit content gate"
 fi
 
-echo "== 7k) gate observability (CSK_GATE_LOG) — the log never changes the verdict =="
+sec "== 7k) gate observability (CSK_GATE_LOG) — the log never changes the verdict =="
 # Why this exists: a gate that cannot be observed firing cannot be measured. "The model never reached for the
 # command" and "the gate stopped it" leave behind exactly the same artifacts, so evals/permission-pressure had
 # to report "guard-bash never fired" as an INFERENCE rather than a reading. This channel makes it a reading.
@@ -4423,7 +4443,7 @@ rm -rf "$GLD"
 
 fi
 if [ "$IS_KIT" = 1 ] && [ -f "$(cd "$ROOT/.." && pwd)/adopt.sh" ] && command -v git >/dev/null 2>&1; then
-echo "== 7x) update COST: a refresh must not be a fork storm =="
+sec "== 7x) update COST: a refresh must not be a fork storm =="
 # A user's Windows machine took 6m43s for one `update --here --yes` (npx itself: 6.7s — the kit's own work was the
 # rest). The cause is the shape this project keeps hitting: per-item shell loops. adopt.sh spawned `dirname` +
 # `mkdir` + `cp` per payload file, `basename`+`dirname` per installed skill, and — the same loop already fixed in
@@ -4471,7 +4491,7 @@ fi
 rm -rf "$UPC" "$UST"
 fi
 
-echo "== 7w) supply-chain scanner COST — and that cheap did not become blind =="
+sec "== 7w) supply-chain scanner COST — and that cheap did not become blind =="
 # The real reason a user's update looked hung. §7x traces adopt.sh, but the scanner runs as a child `bash`, so its
 # spawns never appeared in that trace: adopt.sh measured a tidy 78 while scan-skill.sh burned 244 greps behind it.
 # On the reporting machine, scanning 64 files took 8m07s — user 12.6s, sys 2m46s. Four greps per file became four
@@ -4525,7 +4545,7 @@ else
 fi
 rm -rf "$SCD"
 
-echo "== 7y) route-hint: names the owner next to the request =="
+sec "== 7y) route-hint: names the owner next to the request =="
 # The kit's own thesis is "rule -> gate, not reminder", and delegation was the one core rule left as a reminder.
 # Measured: on 12 focused domain tasks the main thread delegated 0 times; with this hook injecting a DIRECT
 # instruction it delegated 19 times out of 24 across two rounds. The wording is why — an earlier version that
@@ -4666,7 +4686,7 @@ else
   fail "route-hint.sh missing or not executable — plain prompts get no routing"
 fi
 
-echo "== 7z) No kit name shadows a Claude Code bundled skill/command =="
+sec "== 7z) No kit name shadows a Claude Code bundled skill/command =="
 # Skills and commands share one namespace: a SKILL.md and a commands/*.md both create `/name`, and per the
 # official docs a project skill "also overrides a bundled skill with the same name" — silently. The kit shipped a
 # `code-review` skill for months, which means every project that installed it lost the bundled `/code-review` and
@@ -4682,7 +4702,7 @@ done
 [ -z "$SHADOW" ] && pass "no kit skill/command shadows a bundled name" \
   || fail "these shadow a Claude Code bundled name (it becomes unreachable for the user):$SHADOW — add the -csk suffix"
 
-echo "== 8) Slash commands =="
+sec "== 8) Slash commands =="
 # Every command carries the -csk suffix, for the same reason the agents do: `/review` and `/simplify` collide with
 # Claude Code's built-ins, and a user facing two identically-named entries in the picker cannot tell which is the
 # kit's. Suffixing every one of them keeps one rule instead of a list of exceptions, and leaves room for built-ins
@@ -4719,7 +4739,7 @@ if [ "$IS_KIT" = 1 ]; then
   done
 fi
 
-echo "== 9) auto-mode classifier config — reported, never claimed as a gate =="
+sec "== 9) auto-mode classifier config — reported, never claimed as a gate =="
 # The rules live in USER settings because the classifier ignores autoMode in .claude/settings.json. They are
 # CONFIGURATION: measured 2026-08-24 (2.1.238, interactive, auto mode), a hard_deny naming `git reset --hard`
 # verbatim did not stop it, and a no-policy control behaved the same — so nothing here asserts enforcement.
@@ -4782,7 +4802,7 @@ PY2
 else
   fail "automode-policy skill missing from the payload"
 fi
-echo "== 10) gate report — the evidence half of the gate claim =="
+sec "== 10) gate report — the evidence half of the gate claim =="
 # The suite proves a gate CAN fire. This tool reports whether anything DID. Its two failure modes are both
 # silent, so both are cased here: reporting "0 firings" when logging was simply off (a measurement gap read as
 # evidence), and an inventory that drifts from the rules it claims to cover.
@@ -4868,7 +4888,7 @@ if [ -f "$GR" ]; then
 else
   fail "eval/gate-report.sh missing from the payload"
 fi
-echo "== 11) gate log defaults + hooks that cannot hang =="
+sec "== 11) gate log defaults + hooks that cannot hang =="
 # Two behaviours that only exist because they were measured, and that regress silently if nobody cases them.
 GTMP2="$(mktemp -d)"; mkdir -p "$GTMP2/.claude"
 gjson(){ printf '{"tool_name":"Bash","tool_input":{"command":"%s"},"permission_mode":"default"}' "$1"; }
@@ -4951,7 +4971,7 @@ rm -rf "$DCT"
 printf '{"transcript_path":"/nonexistent.jsonl"}' | bash "$ROOT/hooks/context-usage.sh" >/dev/null 2>&1 \
   && pass "context-usage.sh still handles real hook stdin" || fail "context-usage.sh broke on real hook stdin"
 rm -rf "$GTMP2"
-echo "== 12) PowerShell is a shell too =="
+sec "== 12) PowerShell is a shell too =="
 # Claude Code's hooks reference says it outright: match `Bash|PowerShell`, because on Windows wherever the
 # PowerShell tool is enabled it IS the shell, and without Git Bash the Bash tool is never registered. The tool
 # sends the same payload shape, so the git rules carried over untouched — every POSIX-shaped rule did not.
@@ -5007,7 +5027,7 @@ $PSOK
 PSEOF2
 [ -z "$PSFP" ] && pass "everyday PowerShell stays allowed ($PSM cases, no false positives)" \
                || fail "PowerShell false positive(s):$PSFP"
-echo "== 13) pre-commit cost — the gate people route around is the one that is slow =="
+sec "== 13) pre-commit cost — the gate people route around is the one that is slow =="
 # Measured on a 373-file merge: the old file loop spawned ~7 processes per file (three `printf | grep` pairs and
 # a `git cat-file`), 2,643 in total. At the 62-135 ms a Git Bash process was measured to cost on a Windows 11
 # desktop that is three to six minutes of SPAWN OVERHEAD ALONE, and the field report on that merge came in at
@@ -5032,7 +5052,7 @@ if [ "${SPAWN:-9999}" -le 120 ]; then pass "pre-commit stays under one process p
 else fail "pre-commit spawns $SPAWN processes for 120 files — the per-file loop is back (Windows pays 62-135 ms each)"; fi
 rm -rf "$PCT"
 
-echo "== 14) shipped hooks are LF in EVERY edition — a hook that arrives CRLF is a hook that does not run =="
+sec "== 14) shipped hooks are LF in EVERY edition — a hook that arrives CRLF is a hook that does not run =="
 # `*.sh text eol=lf` covers most of them, but pre-commit and commit-msg are extensionless, so each copy needs
 # its own .gitattributes line. claude-starter's two had one; their plugin twins did not, and it went unnoticed
 # because nothing compared the editions. Measured on a Windows checkout: both claude-starter hooks came out LF
@@ -5200,7 +5220,7 @@ if [ -n "$SGR" ] && [ -f "$SGR/.gitattributes" ] && [ -d "$SGR/packaging" ] && [
 else note "line-ending check skipped (not a git checkout of the kit)"
 fi
 
-echo "== 15) evals: the parallel-audit metric, because a rule nobody can measure is not a rule =="
+sec "== 15) evals: the parallel-audit metric, because a rule nobody can measure is not a rule =="
 # The paid A/B harness under evals/ is deliberately outside every gate — it spends real tokens. Its TRANSCRIPT
 # PARSER is not: `eval_trace_metrics` is a pure function over a JSONL file, so its correctness costs nothing
 # and belongs here. Workflow step 3 says the applicable audits are issued as several `Agent` calls in ONE
@@ -5337,6 +5357,34 @@ fi
 rm -f "$ASSERTLOG"
 
 echo "---"
+# The ledger. Compact on purpose: one token per section, so two platforms diff in a glance and a peer does not
+# have to be asked for an artefact. A section that prints a heading and grades nothing shows up as `=0`, which
+# is the shape that hid §7g's four assertions for months.
+if [ -s "$SECLOG" ]; then
+  # TWO NUMBERS FOR ONE QUANTITY, on purpose. The ledger is derived from a different mechanism than PASSN/SKIPN
+  # (a file the assertions append to, versus variables they increment), so the two can disagree — and on the
+  # ledger's very first run they did, by four. A ledger that can drift from the verdict it sits under is worse
+  # than none, so the disagreement is a failure rather than a footnote.
+  _lg="$(awk -F'\t' '{ if ($2 ~ /^S:/) s++; else g++ } END { printf "%d %d", g+0, s+0 }' "$SECLOG")"
+  if [ "$_lg" != "$((PASSN+FAIL)) $SKIPN" ]; then
+    echo "  ❌ the per-section ledger disagrees with the counters: ledger='$_lg' counters='$((PASSN+FAIL)) $SKIPN'"
+    echo "     (a skip or an assertion reached one mechanism and not the other — the ledger is not attributable)"
+    FAIL=$((FAIL+1))
+  fi
+  echo "PER-SECTION (passes+fails graded, skips in parentheses):"
+  awk -F'\t' '
+    { key=$1; sub(/^== /,"",key); sub(/ ==.*$/,"",key); sub(/\).*$/,")",key)
+      if (!(key in seen)) { seen[key]=1; order[++k]=key }
+      if ($2 ~ /^S:/) sk[key]++; else g[key]++ }
+    END { line=""
+          for (i=1;i<=k;i++) { key=order[i]
+            t = key "=" (g[key]+0) (sk[key] ? "(" sk[key] ")" : "")
+            if (length(line) + length(t) + 1 > 110) { print "  " line; line=t } else line = (line=="" ? t : line " " t) }
+          if (line != "") print "  " line }
+  ' "$SECLOG"
+  echo "---"
+fi
+rm -f "$SECLOG"
 if [ "$SKIPN" -gt 0 ]; then
   echo "SKIPPED (nothing was checked here):$SKIP_LIST"
   echo "---"
