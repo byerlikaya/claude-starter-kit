@@ -128,6 +128,18 @@ json_ok(){    # stdin parses as JSON — the `jq empty` question. rc 2 = no orac
     *)  "$JSONQ" -c 'import sys,json;json.load(sys.stdin)' >/dev/null 2>&1 ;;
   esac
 }
+json_no_execform(){  # $1 = a settings.json. True when NO hook uses exec form (a non-empty "args" anywhere).
+  # Here rather than inline for the reason the ladder exists: the check was `if jq …` with no else, so on a
+  # machine without jq it did not run and nothing said so. rc 2 = no oracle at all.
+  case "$JSONQ" in
+    jq) jq -e '[.hooks[][].hooks[]? | select((.args // []) | length > 0)] | length == 0' "$1" >/dev/null 2>&1 ;;
+    "") return 2 ;;
+    *)  "$JSONQ" -c 'import sys,json
+d=json.load(open(sys.argv[1]))
+bad=[h for ev in d.get("hooks",{}).values() for e in ev for h in (e.get("hooks") or []) if (h.get("args") or [])]
+sys.exit(0 if not bad else 1)' "$1" 2>/dev/null ;;
+  esac
+}
 json_get(){   # $1 = dotted path. Mimics `jq -e`: prints the value as JSON, non-zero when absent, null or false.
   # The two branches must answer IDENTICALLY, including what they print on a miss — jq prints `null` and exits 1,
   # so the python branch does too. An oracle whose answer depends on which tier happened to be installed is not
@@ -2251,9 +2263,9 @@ if [ -f "$ROOT/settings.json" ]; then
     *'"hooks"'*'"permissions"'*|*'"permissions"'*'"hooks"'*) pass "settings.json carries both top-level keys the kit ships" ;;
     *) fail "settings.json lost \"hooks\" or \"permissions\" — the wiring or the deny list is gone" ;;
   esac
-  if command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then
-    jq empty "$ROOT/settings.json" 2>/dev/null && pass "settings.json parses under a real JSON parser" || fail "settings.json invalid JSON (jq)"
-  else skip tool "settings.json under a real JSON parser (no working jq; the two shape checks above did run)"; fi
+    if [ -n "$JSONQ" ]; then
+    json_ok < "$ROOT/settings.json" && pass "settings.json parses under a real JSON parser ($JSONQ)" || fail "settings.json is invalid JSON (oracle: $JSONQ)"
+  else skip tool "settings.json under a real JSON parser (no working jq, python3 or python; the two shape checks above did run)"; fi
 else fail "settings.json missing"; fi
 [ -x "$HOOKS/guard-bash.sh" ] && pass "guard-bash.sh +x" || fail "guard-bash.sh missing/not executable"
 if [ "$UNITS" = 1 ]; then
@@ -3744,7 +3756,7 @@ mkdir -p "$RHD/docs"; printf '# Session Handover\n' > "$RHD/docs/SESSION_STATE.m
 o="$(printf '{"hook_event_name":"SessionStart","cwd":"%s"}' "$RHD" | CLAUDE_PROJECT_DIR= bash "$HOOKS/session-rehydrate.sh" 2>/dev/null)"
 case "$o" in *'"additionalContext"'*SESSION_STATE*) pass "handover present -> injects additionalContext pointer" ;;
   *) fail "session-rehydrate did not inject a pointer when SESSION_STATE.md exists" ;; esac
-if command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then printf '%s' "$o" | jq empty 2>/dev/null && pass "rehydrate output is valid JSON" || fail "rehydrate output is not valid JSON";
+if [ -n "$JSONQ" ]; then printf '%s' "$o" | json_ok && pass "rehydrate output is valid JSON ($JSONQ)" || fail "rehydrate output is not valid JSON";
     else skip tool "the rehydrate output JSON-validity check (no working jq)"; fi
 rm -rf "$RHD"
 grep -q 'SessionStart' "$ROOT/settings.json" && grep -q 'session-rehydrate.sh' "$ROOT/settings.json" \
@@ -3771,11 +3783,12 @@ grep -q 'cd .*\$CLAUDE_PROJECT_DIR' "$ROOT/settings.json" \
 # shell, and on a Windows box checked during this work `where bash` answered C:\Windows\System32\bash.exe — the
 # WSL launcher, not Git Bash, in a namespace where C:\Repos\app does not exist. Wiring `"command": "bash"` would
 # have run that (or failed where WSL is absent), taking every gate with it.
-if command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then
-  jq -e '[.hooks[][].hooks[]? | select((.args // []) | length > 0)] | length == 0' "$ROOT/settings.json" >/dev/null 2>&1 \
-    && pass "no exec-form hook (bare 'bash' on Windows PATH resolves to WSL, not Git Bash)" \
-    || fail "a hook uses exec form — on Windows 'bash' off the PATH is System32/bash.exe (WSL), so every gate dies"
-else skip tool "the exec-form hook check (no working jq to read settings.json with)"
+if json_no_execform "$ROOT/settings.json"; then
+  pass "no exec-form hook (bare 'bash' on Windows PATH resolves to WSL, not Git Bash) [$JSONQ]"
+elif [ -z "$JSONQ" ]; then
+  skip tool "the exec-form hook check (no JSON oracle: jq, python3 and python all absent or non-functional)"
+else
+  fail "a hook uses exec form — on Windows 'bash' off the PATH is System32/bash.exe (WSL), so every gate dies"
 fi
 
 sec "== 7d) plugin gate hooks shipped (P1) =="
@@ -3784,7 +3797,8 @@ PHJ="$PLUGIN/hooks/hooks.json"
 if [ "$IS_KIT" != 1 ]; then
   skip scope "plugin edition check skipped (installed project — plugin/ lives in the kit repo only)"
 elif [ -f "$PHJ" ]; then
-  if command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then jq empty "$PHJ" 2>/dev/null && pass "plugin hooks.json valid JSON" || fail "plugin hooks.json invalid JSON"; else pass "plugin hooks.json present (no jq)"; fi
+  if [ -n "$JSONQ" ]; then json_ok < "$PHJ" && pass "plugin hooks.json valid JSON ($JSONQ)" || fail "plugin hooks.json invalid JSON"
+  else skip tool "plugin hooks.json validity (no JSON oracle) — it used to report a PASS for a check nobody ran"; fi
   grep -q 'CLAUDE_PLUGIN_ROOT' "$PHJ" && pass "plugin hooks.json resolves via \${CLAUDE_PLUGIN_ROOT}" || fail "plugin hooks.json does not use \${CLAUDE_PLUGIN_ROOT}"
   grep -q 'CLAUDE_PROJECT_DIR' "$PHJ" && fail "plugin hooks.json leaks \${CLAUDE_PROJECT_DIR} (wrong for a plugin)" || pass "plugin hooks.json has no \${CLAUDE_PROJECT_DIR}"
   for h in guard-bash.sh guard-write.sh context-usage.sh session-guard.sh session-rehydrate.sh; do
