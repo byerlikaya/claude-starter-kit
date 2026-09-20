@@ -1150,9 +1150,14 @@ gi_add '.claude/review-pass.json' 'docs/'
 # only ignores review-pass.json and docs/ — so an adopted project TRACKS the kit's configuration by default.
 # That is the shared case, which is the one where a Windows teammate's `core.autocrlf=true` rewrites every
 # installed hook to CRLF on checkout. Measured on a bare-repo round trip: the committed blob carries 0 CR and
-# the working tree comes back with 1345 in guard-bash.sh and 575 in pre-commit, and a CR is fatal to a shell
-# script whatever the invocation — `bash hook` gives `syntax error: unexpected end of file`, not a warning.
-# The data files the hooks read strip a trailing CR themselves; a script cannot strip its own.
+# the working tree comes back with 1345 in guard-bash.sh, 575 in pre-commit and 49 in commit-msg — measured on
+# a real Windows machine through this path, with 149 files tracked and `.claude/` not gitignored. Only
+# `autocrlf=true` corrupts (`input` and `false` come back clean unpinned), and that is the Git for Windows
+# system-level default, so this protects the person who changed nothing.
+# The victim is NOT Git Bash: a CRLF hook still runs there, measured against a destructive payload with the
+# identical verdict. It is a non-MSYS bash on the same tree — WSL, which the kit's own .gitattributes names
+# and which neither of us could measure. The data files the hooks read strip a trailing CR themselves; a
+# script cannot strip its own, which is why the pin covers the scripts rather than trusting a strip.
 # Asked of git rather than assumed, like the line above: if this repo ignores `.claude/` after all, nothing to do.
 if ! git check-ignore -q .claude 2>/dev/null; then
   GA_LINES='.claude/**/*.sh text eol=lf

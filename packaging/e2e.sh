@@ -633,9 +633,16 @@ echo "[wizard] the hide instruction covers docs in BOTH halves (untrack and igno
 #      it is now measured. Mechanism, reproduced with git settings alone so it does not need Windows:
 #        committed blob                      0 CR
 #        clone with core.autocrlf=true       1345 CR in guard-bash.sh · 575 in pre-commit
-#      and a CR is fatal to a shell script whatever the invocation — settings.json runs hooks as
-#      `bash .claude/hooks/…` and that gives `syntax error: unexpected end of file`, not a warning. The data
-#      files the hooks read strip a trailing CR themselves; a script cannot strip its own.
+#      Only `autocrlf=true` produces that; `input` and `false` come back clean even unpinned, and `true` is the
+#      Git for Windows system default — so this is for the person who changed nothing.
+#      WHO IT PROTECTS, corrected after a real Windows run: NOT Git Bash, where a CRLF hook still runs and
+#      returns the identical verdict. It is a non-MSYS bash reading the same tree — WSL, which the kit's own
+#      .gitattributes names and which is unmeasured by anyone here. What this case pins is narrower and fully
+#      measured: with the pin the working tree matches the blob, without it it does not.
+#      FIXTURE NOTE for anyone adding a case here: adopt.sh leaves `claude-starter/` in the project, and
+#      committing that trips the kit's OWN trace scanner and floor guard (the payload contains the very
+#      expressions they block). A fixture that commits after adopt must remove the payload first or it fails
+#      for a reason that has nothing to do with what it is testing.
 #      The calibration twin is the point: with the pin removed the same round trip must come back dirty, or
 #      this case is asserting that a clone is clean for some reason of its own.
 _ga_crs() {   # $1 = project dir, $2 = path inside it -> CR count after a core.autocrlf=true checkout

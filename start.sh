@@ -252,14 +252,27 @@ gi_add() {   # $@ = entries to ensure in ./.gitignore; prints nothing, sets GI_W
 # MEASURED, not inferred — the ROADMAP called this an inference. A bare repo, a project that TRACKS .claude/,
 # and a second clone with core.autocrlf=true (a git setting, so the mechanism reproduces anywhere):
 #   the committed blob                     0 CR
-#   the working tree after that checkout   1345 CR in guard-bash.sh · 575 in pre-commit
-# And the CR is fatal to a shell script whatever the invocation. settings.json runs hooks as
-# `bash .claude/hooks/guard-bash.sh`, which does NOT save them:
+#   the working tree after that checkout   1345 CR in guard-bash.sh · 575 in pre-commit · 49 in commit-msg
+# Reproduced on a REAL Windows machine, both installers, all three autocrlf settings, with the pin and without
+# it — the numbers above are that run's, not the simulation's.
+# WHO THE VICTIM IS, corrected after a real Windows measurement, because the obvious answer is wrong.
+# A CRLF hook does NOT die on Git Bash: the 1345-CR copy from an unpinned clone was run against a destructive
+# payload through the real invocation and answered exactly like the LF copy — rc=2, same GUARD line. The kit's
+# own .gitattributes already records this ("Git Bash happens to tolerate that … but WSL does not"). The death
+# shapes below are real but were measured on macOS bash, and macOS never receives CRLF from autocrlf=true in
+# the first place, since that is a Windows default:
 #   ./hook          -> env: bash\r: No such file or directory
 #   bash hook       -> syntax error: unexpected end of file
 #   case … in\r     -> syntax error near unexpected token `newline`
 #   f(){\r          -> syntax error near unexpected token `{`
-# A gate that cannot be parsed is a gate that is not running, and the whole of §4 goes with it.
+# So what the pin protects is a NON-MSYS bash reading that same Windows working tree — WSL is the documented
+# case, and it is UNMEASURED by either of us: `wsl.exe` resolves on the Windows desk with no distro installed,
+# which is the Store-python3 shape and not evidence. What IS measured is that the pin removes a difference
+# nobody should have to reason about: with it the working tree matches the blob on every autocrlf setting.
+#
+# AND IT PROTECTS AGAINST EXACTLY ONE SETTING. Unpinned, `core.autocrlf=input` and `=false` already come back
+# with 0 CR; only `true` corrupts. That one is the Git for Windows default and it arrives from the SYSTEM
+# config, not the global one — so the person the pin is for is the person who changed nothing.
 #
 # WHY ONLY THE SCRIPTS. The data files the hooks read line by line (blocklists, profiles.conf) already strip a
 # trailing CR themselves — the kit's own .gitattributes says so, and calls that strip "the real defence" for
