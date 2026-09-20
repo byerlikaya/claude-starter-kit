@@ -5,7 +5,7 @@ description: |
   Code review specialist. Use immediately after writing or modifying a nontrivial diff: audits whether it improves
   the system's code health, against the four principles (simplicity, surgical change, readability, altitude).
   Findings via `code-review-csk`; writes no code.
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash, PowerShell
 ---
 
 # Review Agent

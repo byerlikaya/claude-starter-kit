@@ -5,7 +5,7 @@ description: |
   PostgreSQL + EF Core + Redis data-layer expert. Applies the `db-migration` skill. **Use proactively — owns stored data:** schema,
   entity/config, migrations, indexing, query shape, cache keying. Any request about it is yours whatever its
   size or wording.
-tools: Read, Grep, Glob, Edit, Write, Bash
+tools: Read, Grep, Glob, Edit, Write, Bash, PowerShell
 ---
 
 # Database Expert (PostgreSQL / EF Core / Redis)

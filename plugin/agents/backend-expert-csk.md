@@ -6,7 +6,7 @@ description: |
   IResult / AOP by default; a project may declare its own). **Use proactively — owns server behaviour:** endpoints,
   handlers, validators, controllers, business rules, integrations. Any request about it is yours whatever its
   size or wording.
-tools: Read, Grep, Glob, Edit, Write, Bash
+tools: Read, Grep, Glob, Edit, Write, Bash, PowerShell
 ---
 
 # Backend Expert (.NET)

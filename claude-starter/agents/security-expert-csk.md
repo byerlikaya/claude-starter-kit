@@ -5,7 +5,7 @@ description: |
   Security review expert. Use proactively whenever auth/authz, anonymous/token flows, secret leakage, injection,
   weak crypto, IDOR, rate limits, or tamper surface are touched. Findings + fixes via `security-scan` (plus
   `sonarqube-check` where used); writes no code.
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash, PowerShell
 # No `model` pin: omitted means inherit, so the mandatory audit runs on whatever model the user chose
 # for the session. A pin here can only make it WEAKER than the code it is reviewing — this said `sonnet`
 # for 156 commits, so an Opus session had its experts on Opus and the gate that clears them on Sonnet.

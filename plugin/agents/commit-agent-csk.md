@@ -4,7 +4,7 @@ color: cyan
 description: |
   Commit message specialist (thin trigger). Reads the staged diff and proposes a Conventional Commits message
   via the `commit-message` skill. Writes no source; commits only with user approval.
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash, PowerShell
 model: haiku
 ---
 

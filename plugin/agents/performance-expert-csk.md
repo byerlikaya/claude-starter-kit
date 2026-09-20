@@ -4,7 +4,7 @@ color: orange
 description: |
   Performance auditor. Use proactively when a change touches a hot path, a query/loop, a render path, a large
   payload, or when something is reported slow. Produces measured findings via `performance`; writes no fix.
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash, PowerShell
 ---
 
 # Performance Expert
