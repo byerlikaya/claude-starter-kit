@@ -46,12 +46,18 @@ fail(){ FAIL=$((FAIL+1));   _al "F $1"; _sl F; echo "  ❌ $1"; }
 #   platform — the platform genuinely cannot express the case (Git Bash keeps shebang scripts executable).
 # Only the first two turn CI red; the other two are honest answers everywhere. Locally nothing fails, because a
 # developer without jq should still get a usable run — the asymmetry IS the design, not an oversight.
-skip(){ # $1 = tool|fixture|scope|platform, $2 = what was not checked
-  SKIPN=$((SKIPN+1)); SKIP_LIST="$SKIP_LIST
-    [$1] $2"
-  case "$1" in tool|fixture) SKIP_HARD=$((SKIP_HARD+1)) ;; esac
-  _sl "S:$1"
-  echo "  ⏭  [$1] $2 — NOT CHECKED"
+# $3 = HOW MANY CHECKS this one line stands for, default 1. One skip line covering six assertions made the
+# summary say "1 skipped" where six checks did not run, which is the same lie as saying nothing: measured on
+# stock Windows, §15 lost 6 assertions behind a single announced skip. Counting per CHECK is what makes
+# `graded + skipped` comparable across platforms — every assertion either ran or is announced, so the two
+# totals should meet. A caller that passes no count keeps the old behaviour.
+skip(){ # $1 = tool|fixture|scope|platform, $2 = what was not checked, $3 = how many checks (default 1)
+  local _n="${3:-1}" _i=0
+  SKIPN=$((SKIPN+_n)); SKIP_LIST="$SKIP_LIST
+    [$1] $2$([ "$_n" -gt 1 ] && printf ' (%s checks)' "$_n")"
+  case "$1" in tool|fixture) SKIP_HARD=$((SKIP_HARD+_n)) ;; esac
+  while [ "$_i" -lt "$_n" ]; do _sl "S:$1"; _i=$((_i+1)); done
+  echo "  ⏭  [$1] $2 — NOT CHECKED$([ "$_n" -gt 1 ] && printf ' (%s checks)' "$_n")"
 }
 
 # The reporter is itself a gate now, so it gets measured like one — in a subshell, so the real counters are not
@@ -73,6 +79,10 @@ _sk_probe(){ ( SECLOG=/dev/null; SKIPN=0; SKIP_HARD=0; PASSN=0; SKIP_LIST=""; sk
 [ "$(_sk_probe fixture)"  = "1 1 0" ] && pass "a fixture-class skip arms the CI failure too"             || fail "skip fixture did not arm the CI failure: $(_sk_probe fixture)"
 [ "$(_sk_probe scope)"    = "1 0 0" ] && pass "a scope-class skip is counted but does NOT fail CI"       || fail "skip scope wrongly armed the CI failure: $(_sk_probe scope)"
 [ "$(_sk_probe platform)" = "1 0 0" ] && pass "a platform-class skip is counted but does NOT fail CI"    || fail "skip platform wrongly armed the CI failure: $(_sk_probe platform)"
+# subshell-audit: intentional
+_sk_probe_n(){ ( SECLOG=/dev/null; SKIPN=0; SKIP_HARD=0; PASSN=0; SKIP_LIST=""; skip "$1" probe "$2" >/dev/null; printf '%s %s %s' "$SKIPN" "$SKIP_HARD" "$PASSN" ); }
+[ "$(_sk_probe_n tool 6)"  = "6 6 0" ] && pass "a skip standing for 6 checks counts 6, not 1"                 || fail "a counted skip did not count: $(_sk_probe_n tool 6)"
+[ "$(_sk_probe_n scope 4)" = "4 0 0" ] && pass "a counted scope skip counts 4 and still does NOT fail CI"     || fail "a counted scope skip armed CI or miscounted: $(_sk_probe_n scope 4)"
 # Kit repo (payload) vs an INSTALLED project. Kit conventions (Trigger phrases, byte budget) are GATES on the
 # payload but must not fail a user's project for their OWN agents/skills — including the ones adopt imports from a
 # taken-over agent. In an install those become a report (note), not a failure. Kit repo has CLAUDE.md next to the
@@ -966,7 +976,7 @@ if [ -n "$JSONQ" ]; then
   [ "$NB" -eq 0 ] && pass "stop-hook fast path spawns no nested shell (the cost this removes)" \
                   || fail "stop-hook still starts $NB nested shell(s) with a published reading available"
   rm -f "${TMPDIR:-/tmp}/csk-context.${SGPFX}-cnt" "$SGFX.trace"
-else skip tool "stop-hook JSON check skipped (no working JSON parser: jq, python3 and python all absent or non-functional)"; fi
+else skip tool "stop-hook JSON check skipped (no working JSON parser: jq, python3 and python all absent or non-functional)" 5; fi
 # (7) fail-open: unreadable transcript -> exit 0 and silent (never blocks on measurement failure)
 o="$(mkjson "${SGPFX}-f" "/no/such.jsonl" false | bash "$HOOKS/session-guard.sh" 2>/dev/null)"; r=$?
 { [ "$r" = 0 ] && [ -z "$o" ]; } && pass "stop-hook: measurement failure fails open (exit 0, silent)" || fail "stop-hook not fail-open (rc=$r out=$o)"
@@ -2243,7 +2253,7 @@ if [ -f "$ROOT/settings.json" ]; then
   esac
   if command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then
     jq empty "$ROOT/settings.json" 2>/dev/null && pass "settings.json parses under a real JSON parser" || fail "settings.json invalid JSON (jq)"
-  else note "full JSON parse not run here (no jq) — the two checks above did run"; fi
+  else skip tool "settings.json under a real JSON parser (no working jq; the two shape checks above did run)"; fi
 else fail "settings.json missing"; fi
 [ -x "$HOOKS/guard-bash.sh" ] && pass "guard-bash.sh +x" || fail "guard-bash.sh missing/not executable"
 if [ "$UNITS" = 1 ]; then
@@ -2344,7 +2354,7 @@ if [ -n "$JSONQ" ]; then
   if [ "$(printf '%s' "$o" | json_get hookSpecificOutput.permissionDecision)" = '"ask"' ]; then
     pass "an escaped commit message still reaches the §4.4 ask (oracle: $JSONQ)"
   else fail "§4.4 did not ask for a commit message carrying tabs/quotes/backslashes (oracle: $JSONQ): $o"; fi
-else skip tool "ask-payload JSON check skipped (no working JSON parser: jq, python3 and python all absent or non-functional)"; fi
+else skip tool "ask-payload JSON check skipped (no working JSON parser: jq, python3 and python all absent or non-functional)" 2; fi
 # fail closed where no prompt can reach the user
 gj bypassPermissions 'git commit -m x' | gbr >/dev/null 2>&1; [ "$?" = 2 ] && pass "git commit FAILS CLOSED under bypassPermissions (§4.4)" || fail "git commit PASSED under bypassPermissions (§4.4 hole)"
 printf '%s' '{"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}' | gbr >/dev/null 2>&1; [ "$?" = 2 ] && pass "git commit FAILS CLOSED when permission_mode is absent" || fail "git commit PASSED with no permission_mode (§4.4 hole)"
@@ -3734,7 +3744,8 @@ mkdir -p "$RHD/docs"; printf '# Session Handover\n' > "$RHD/docs/SESSION_STATE.m
 o="$(printf '{"hook_event_name":"SessionStart","cwd":"%s"}' "$RHD" | CLAUDE_PROJECT_DIR= bash "$HOOKS/session-rehydrate.sh" 2>/dev/null)"
 case "$o" in *'"additionalContext"'*SESSION_STATE*) pass "handover present -> injects additionalContext pointer" ;;
   *) fail "session-rehydrate did not inject a pointer when SESSION_STATE.md exists" ;; esac
-if command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then printf '%s' "$o" | jq empty 2>/dev/null && pass "rehydrate output is valid JSON" || fail "rehydrate output is not valid JSON"; fi
+if command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then printf '%s' "$o" | jq empty 2>/dev/null && pass "rehydrate output is valid JSON" || fail "rehydrate output is not valid JSON";
+    else skip tool "the rehydrate output JSON-validity check (no working jq)"; fi
 rm -rf "$RHD"
 grep -q 'SessionStart' "$ROOT/settings.json" && grep -q 'session-rehydrate.sh' "$ROOT/settings.json" \
   && pass "settings.json wires SessionStart -> session-rehydrate.sh" || fail "settings.json missing SessionStart -> session-rehydrate wiring"
@@ -3764,6 +3775,7 @@ if command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then
   jq -e '[.hooks[][].hooks[]? | select((.args // []) | length > 0)] | length == 0' "$ROOT/settings.json" >/dev/null 2>&1 \
     && pass "no exec-form hook (bare 'bash' on Windows PATH resolves to WSL, not Git Bash)" \
     || fail "a hook uses exec form — on Windows 'bash' off the PATH is System32/bash.exe (WSL), so every gate dies"
+else skip tool "the exec-form hook check (no working jq to read settings.json with)"
 fi
 
 sec "== 7d) plugin gate hooks shipped (P1) =="
@@ -3975,11 +3987,11 @@ _MPY=""; for _pc in python3 python py; do
 done
 _MJQ=0; command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1 && _MJQ=1
 if [ "$IS_KIT" != 1 ]; then
-  skip scope "the adopt.sh settings merge (an installed project has no adopt.sh to extract it from)"
+  skip scope "the adopt.sh settings merge (an installed project has no adopt.sh to extract it from)" 4
 elif [ ! -f "$ADOPT" ] || [ ! -f "$KSET" ]; then
-  skip fixture "the adopt.sh settings merge (adopt.sh or settings.json is not where this expects it)"
+  skip fixture "the adopt.sh settings merge (adopt.sh or settings.json is not where this expects it)" 4
 elif [ "$_MJQ" = 0 ] && [ -z "$_MPY" ]; then
-  skip tool "the adopt.sh settings merge (no working jq and no working python; adopt.sh's third tier replaces the file wholesale and is not exercised here)"
+  skip tool "the adopt.sh settings merge (no working jq and no working python; adopt.sh's third tier replaces the file wholesale and is not exercised here)" 4
 else
   MTMP="$(mktemp -d)"; printf '%s' "$_OLDSET" > "$MTMP/old.json"; _MERGED=0; _TIER=""
   if [ "$_MJQ" = 1 ]; then
@@ -4806,7 +4818,7 @@ PY2
                      || fail "autoMode array(s) without \"\$defaults\" — built-in rules would be replaced:$BADARR"
     python3 -c 'import json,sys;json.load(open(sys.argv[1]))' "$P" >/dev/null 2>&1 \
       && pass "policy.json is valid JSON" || fail "policy.json is not valid JSON"
-  else note "policy shape check skipped (no WORKING python3 — a Store stub counts as absent)"
+  else skip tool "the policy shape check (no WORKING python3 — a Store stub counts as absent)" 2
   fi
 
   # (b1) no claude CLI -> "cannot verify" (4), never a false green
@@ -5277,7 +5289,7 @@ _EVR="$(cd "$(dirname "$0")/../.." && pwd)/evals/run.sh"
 _PY3OK=0
 printf '' | python3 -c 'import sys,json' >/dev/null 2>&1 && _PY3OK=1
 if [ -f "$_EVR" ] && [ "$_PY3OK" = 0 ]; then
-  skip tool "evals metric not calibrated (no working python3 — eval_trace_metrics is a python heredoc)"
+  skip tool "evals metric not calibrated (no working python3 — eval_trace_metrics is a python heredoc)" 6
 elif [ -f "$_EVR" ]; then
   _EVD="$(mktemp -d)"
   # NOT IN A SUBSHELL, and that was a real defect in the first draft of this block: the five rows below ran
