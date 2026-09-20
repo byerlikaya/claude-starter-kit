@@ -1239,6 +1239,60 @@ ss(){ printf '%s\n' "$SS" | sed -n "s/^$1=//p" | head -1; }
 printf '%s\n' '{"type":"assistant","isSidechain":false,"message":{"content":[{"type":"tool_use","input":{"command":"grep -c \"Request interrupted by user\" f.jsonl"}}]}}' > "$SSD/fp.jsonl"
 [ "$(bash "$HOOKS/session-stats.sh" --raw "$SSD/fp.jsonl" 2>/dev/null | sed -n 's/^interrupts=//p')" = 0 ] \
   && pass "the interrupt phrase inside a tool input is not counted" || fail "a tool input mentioning the interrupt phrase was counted as a real interrupt"
+# A REFUSED CALL IS NOT A FAILED APPROACH. `is_error: true` covers two different events: a tool that RAN and
+# failed, and a call nothing ever executed because the harness, a kit gate or the user refused it. Counting the
+# second as the first made this report accuse the model of thrashing for the gate doing its job — a field
+# session produced a "runaway loop" warning whose errors were mostly denials. Measured over 14 real
+# transcripts, 101 is_error results: 69.3% genuine, 18.8% protocol (read-before-write, string-not-found — the
+# tool RAN, so they stay counted), 11.9% refusals.
+# THE PAIR IS THE POINT: the same prompt shape, the same count, one warning and no warning.
+ss_one(){ printf '%s\n' "$2" > "$SSD/$1.jsonl"; bash "$HOOKS/session-stats.sh" --raw "$SSD/$1.jsonl" 2>/dev/null; }
+ss_f(){ printf '%s\n' "$1" | sed -n "s/^$2=//p" | head -1; }
+_R_GEN='{"type":"user","isSidechain":false,"message":{"content":[{"type":"tool_result","is_error":true,"content":"Exit code 1 Traceback (most recent call last)"}]}}'
+_R_USR='{"type":"user","isSidechain":false,"message":{"content":[{"type":"tool_result","is_error":true,"content":"The user doesnt want to proceed with this tool use. The tool use was rejected"}]}}'
+_R_HAR='{"type":"user","isSidechain":false,"message":{"content":[{"type":"tool_result","is_error":true,"content":"<tool_use_error>Blocked: sleep 90 followed by: tail -f log</tool_use_error>"}]}}'
+_R_GAT='{"type":"user","isSidechain":false,"message":{"content":[{"type":"tool_result","is_error":true,"content":"PreToolUse:Bash hook error: GUARD 4.5 destructive rm -rf stopped AT THE TOOL LEVEL"}]}}'
+_R_PRO='{"type":"user","isSidechain":false,"message":{"content":[{"type":"tool_result","is_error":true,"content":"<tool_use_error>File has not been read yet. Read it first before writing to it.</tool_use_error>"}]}}'
+_o="$(ss_one gen "$_R_GEN")"
+{ [ "$(ss_f "$_o" errors)" = 1 ] && [ "$(ss_f "$_o" refused)" = 0 ]; } \
+  && pass "session-stats: a tool that RAN and failed counts as an error" \
+  || fail "session-stats: a genuine failure read errors=$(ss_f "$_o" errors) refused=$(ss_f "$_o" refused)"
+for _p in "usr:the user declining" "har:the harness blocking the command shape" "gat:a kit gate blocking it"; do
+  eval "_pl=\$_R_$(printf '%s' "${_p%%:*}" | tr '[:lower:]' '[:upper:]')"
+  _o="$(ss_one "${_p%%:*}" "$_pl")"
+  { [ "$(ss_f "$_o" errors)" = 0 ] && [ "$(ss_f "$_o" refused)" = 1 ]; } \
+    && pass "session-stats: ${_p#*:} is refused, not failed" \
+    || fail "session-stats: ${_p#*:} read errors=$(ss_f "$_o" errors) refused=$(ss_f "$_o" refused)"
+done
+# PROTOCOL errors stay counted, and that is deliberate: the tool ran and rejected the input, so repeating one
+# is exactly the thrash this report exists to see. Without this row the change could quietly excuse them too.
+_o="$(ss_one pro "$_R_PRO")"
+{ [ "$(ss_f "$_o" errors)" = 1 ] && [ "$(ss_f "$_o" refused)" = 0 ]; } \
+  && pass "session-stats: read-before-write still counts as an error (the tool RAN)" \
+  || fail "session-stats: a protocol error was excused — errors=$(ss_f "$_o" errors) refused=$(ss_f "$_o" refused)"
+# The refusal marker WITHOUT an is_error must add nothing: a prompt that merely mentions the phrase, or a tool
+# input grepping for it, would otherwise invent refusals out of text.
+_o="$(ss_one nomarker '{"type":"user","isSidechain":false,"message":{"role":"user","content":"why did it say the user doesnt want to proceed with this tool use?"}}')"
+{ [ "$(ss_f "$_o" refused)" = 0 ] && [ "$(ss_f "$_o" errors)" = 0 ]; } \
+  && pass "session-stats: the refusal phrase in a PROMPT invents nothing" \
+  || fail "session-stats: a prompt mentioning the phrase produced refused=$(ss_f "$_o" refused)"
+# THE FALSE ALARM ITSELF. 25 tool calls in one prompt plus 3 errors trips the runaway warning. Same shape,
+# same counts, refusals instead of failures: it must NOT trip, and the refusals must still be reported.
+_ss_runaway(){ # $1 = the error record to repeat 3 times -> runaway count
+  { printf '%s\n' '{"type":"user","isSidechain":false,"message":{"role":"user","content":"make the integration test pass"}}'
+    _i=0; while [ "$_i" -lt 25 ]; do printf '%s\n' '{"type":"assistant","isSidechain":false,"message":{"content":[{"type":"tool_use"}]}}'; _i=$((_i+1)); done
+    _i=0; while [ "$_i" -lt 3 ]; do printf '%s\n' "$1"; _i=$((_i+1)); done
+  } > "$SSD/ra.jsonl"
+  bash "$HOOKS/session-stats.sh" --raw "$SSD/ra.jsonl" 2>/dev/null
+}
+_o="$(_ss_runaway "$_R_GEN")"
+[ "$(ss_f "$_o" runaway)" = 1 ] \
+  && pass "session-stats: 25 calls and 3 real failures in one prompt IS a runaway loop" \
+  || fail "session-stats: the genuine runaway case stopped firing (runaway=$(ss_f "$_o" runaway)) — the pair below would prove nothing"
+_o="$(_ss_runaway "$_R_GAT")"
+{ [ "$(ss_f "$_o" runaway)" = 0 ] && [ "$(ss_f "$_o" refused)" = 3 ]; } \
+  && pass "session-stats: the same 25 calls with 3 REFUSALS is not a runaway loop, and the 3 are still reported" \
+  || fail "session-stats FALSE ALARM: refusals tripped the runaway warning (runaway=$(ss_f "$_o" runaway) refused=$(ss_f "$_o" refused))"
 # UTF-8 must not kill the scan: BSD awk aborts on a multi-byte char inside a character class unless LC_ALL=C.
 printf '%s\n' '{"type":"user","isSidechain":false,"message":{"role":"user","content":"şu değişikliği gözden geçirir misin — İıĞğŞşÇçÖöÜü"}}' > "$SSD/utf8.jsonl"
 bash "$HOOKS/session-stats.sh" --raw "$SSD/utf8.jsonl" >/dev/null 2>&1 \

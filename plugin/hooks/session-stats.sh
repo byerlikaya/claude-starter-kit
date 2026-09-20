@@ -78,6 +78,33 @@ STATS="$(LC_ALL=C awk '
     next
   }
 
+  # --- a REFUSED call is not a failed approach, and counting it as one is how this report cried wolf -------
+  # `is_error: true` is set for two different things: a tool that RAN and failed, and a call that was never
+  # executed because something refused it. The second is a decision ABOUT the call, not an outcome OF it, and
+  # the approach the model chose may have been perfectly good. Lumping them together made the report accuse the model
+  # of thrashing on a machine where refusals are simply more frequent — a field session produced a "runaway
+  # loop" warning whose counted errors were mostly denials. A warning that fires on the innocent is worse
+  # than none: the rule in this kit is that an ignored warning teaches nothing.
+  #
+  # MEASURED before it was written, over 14 real transcripts, 101 is_error results:
+  #   69.3%  a genuine failure — the approach did not work
+  #   18.8%  protocol: read-before-write, "string to replace not found". The tool RAN and rejected the input,
+  #          so these stay counted: repeating one is exactly the thrash this report should see.
+  #   11.9%  REFUSED: the harness blocked the command shape (6.9%), a kit gate blocked it (3.0%), the user
+  #          declined (2.0%). None of them ran.
+  # The field report describes a much larger refusal share on a Windows project; that mix is not measured here
+  # and this split does not depend on which one is typical — a refusal is not a failure at any ratio.
+  function refusals(line,   c, r) {
+    c = line; r  = gsub(/want to proceed with this tool use/, "", c)
+    c = line; r += gsub(/<tool_use_error>Blocked:/, "", c)
+    c = line; r += gsub(/requested permissions/, "", c)
+    # A PreToolUse hook that blocks (exit 2) and one that errors (exit 1) both surface as "hook error" here.
+    # Neither one is a failing approach: the first is the gate doing its job, the second is a defect in the kit
+    # Both belong outside the error rate, and the second is visible in the gate log instead.
+    c = line; r += gsub(/PreToolUse:[^"]*hook error/, "", c)
+    return r
+  }
+
   # --- interrupts: anchored on the content block, never on raw text --------------------------------------
   # The bare phrase also appears inside tool inputs (a grep for it, this very comment) — matching that would
   # count the session\x27s own tooling as user frustration. The `"text":"[` prefix only occurs in a real block.
@@ -89,14 +116,18 @@ STATS="$(LC_ALL=C awk '
   /"type": *"assistant"/ {
     turns++
     c=$0; cur += gsub(/"type": *"tool_use"/, "", c)
-    c=$0; e=gsub(/"is_error": *true/, "", c); errs+=e; curerr+=e
+    c=$0; e=gsub(/"is_error": *true/, "", c)
+    r=refusals($0); if (r>e) r=e          # a line cannot hold more refusals than it holds errors
+    errs+=e-r; curerr+=e-r; refused+=r
     c=$0; deleg += gsub(/"name": *"Agent"/, "", c)
     next
   }
 
   # --- user records: a real prompt opens a new cycle; a tool_result is just the tail of this one ----------
   /"type": *"user"/ {
-    c=$0; e=gsub(/"is_error": *true/, "", c); errs+=e; curerr+=e
+    c=$0; e=gsub(/"is_error": *true/, "", c)
+    r=refusals($0); if (r>e) r=e
+    errs+=e-r; curerr+=e-r; refused+=r
     if ($0 ~ /"type": *"tool_result"/) next
     # Not every user-role record is something a human typed. Slash-command invocations, their stdout, pasted
     # terminal output, image attachments, the caveat banner and the "continued from a previous conversation"
@@ -142,8 +173,8 @@ STATS="$(LC_ALL=C awk '
   END {
     if (started) close_cycle()
     for (k in seen) if (seen[k] > 1) { dupdistinct++; dupextra += seen[k]-1 }
-    printf "cycles=%d\nturns=%d\ntools=%d\nmaxtools=%d\nrunaway=%d\nrunaway_errors=%d\nerrors=%d\ninterrupts=%d\ndup_extra=%d\ndup_distinct=%d\ncompactions=%d\nauto_compactions=%d\npre_tokens=%d\npost_tokens=%d\ndelegations=%d\n",
-      cycles+0, turns+0, tools+0, maxtools+0, runaway+0, runworst+0, errs+0, ints+0, dupextra+0, dupdistinct+0, comp+0, autocomp+0, pre+0, post+0, deleg+0
+    printf "cycles=%d\nturns=%d\ntools=%d\nmaxtools=%d\nrunaway=%d\nrunaway_errors=%d\nerrors=%d\ninterrupts=%d\ndup_extra=%d\ndup_distinct=%d\ncompactions=%d\nauto_compactions=%d\npre_tokens=%d\npost_tokens=%d\ndelegations=%d\nrefused=%d\n",
+      cycles+0, turns+0, tools+0, maxtools+0, runaway+0, runworst+0, errs+0, ints+0, dupextra+0, dupdistinct+0, comp+0, autocomp+0, pre+0, post+0, deleg+0, refused+0
   }
 ' RUNAWAY="${CSK_RUNAWAY_TOOLS:-25}" RUNERR="${CSK_RUNAWAY_ERRORS:-3}" "$TR")"
 
@@ -161,7 +192,14 @@ AVG="$(LC_ALL=C awk -v t="$S_tools" -v c="$S_cycles" 'BEGIN{ if(c+0>0) printf "%
 EPCT="$(LC_ALL=C awk -v e="$S_errors" -v t="$S_tools" 'BEGIN{ if(t+0>0) printf "%.0f", (e/t)*100; else print "0" }')"
 
 echo "📊 Session evidence (measured from the transcript — not recalled)"
-echo "   $S_cycles prompt(s) · $S_tools tool call(s) · avg $AVG per prompt · ${EPCT}% tool errors"
+# Refusals are REPORTED but never warned about: a session that hit a gate twenty times is worth knowing and is
+# not a defect, and the moment it counts toward the error rate the report starts accusing the model of the
+# gate's work. Shown only when there were any, so a clean session's line does not grow a "0 refused".
+if [ "${S_refused:-0}" -gt 0 ]; then
+  echo "   $S_cycles prompt(s) · $S_tools tool call(s) · avg $AVG per prompt · ${EPCT}% tool errors · $S_refused refused (not counted as errors)"
+else
+  echo "   $S_cycles prompt(s) · $S_tools tool call(s) · avg $AVG per prompt · ${EPCT}% tool errors"
+fi
 
 # Findings only when a threshold is crossed. A clean line for every signal would bury the one that matters and
 # train the reader to skim past the block — the failure mode of every dashboard that reports all-green.
