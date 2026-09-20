@@ -1960,7 +1960,10 @@ BUDGET_DISC=13700    # DISCIPLINE.md (the discipline half of CLAUDE.md); current
                      # and the wrong one winning silently. The only rule in this file that is about the OTHER
                      # rules, so it cannot live in the README the way the compaction note does. Plus the Audit
                      # row naming performance-expert-csk — an agent nothing routes to is an idle component.)
-BUDGET_AGENTS=5800   # sum of agent frontmatter; currently 5765 (1.11.0: +218 B of USER vocabulary on two agents.
+BUDGET_AGENTS=5800   # sum of agent frontmatter; currently 5407, measured 2026-09-20 by reading this suite's
+                     # own printed line rather than a hand-rolled counter (a hand-rolled one answered 5503 and
+                     # was thrown away). The note here said 5765 and was 358 B stale — a wrong number sitting in
+                     # the repo, which is exactly what this file exists to prevent. (1.11.0: +218 B of USER vocabulary on two agents.
                      # Found in a real install: a design request produced a good analysis and no delegation. The
                      # SKILLS already carried that vocabulary ("visual design", "typography", "memory leak") so
                      # the skill fired and every gate stayed green, while the AGENT that owns the work was
@@ -1974,7 +1977,11 @@ BUDGET_AGENTS=5800   # sum of agent frontmatter; currently 5765 (1.11.0: +218 B 
                      # +performance-expert-csk (~426B) — security, privacy and tests each had an independent
                      # reviewer and performance was the one quality axis where the author audited their own
                      # work. Bought at ~110 tokens per session; the alternative was leaving that gap open.)
-BUDGET_SKILLS=9600  # sum of skill frontmatter; currently 9521. (2.6.x: +843 B — ten descriptions gained a
+BUDGET_SKILLS=9600  # sum of skill frontmatter; currently 9588 — **12 bytes of headroom**, measured
+                    # 2026-09-20 (the note said 9521 and was 67 B stale). Read that margin before editing any
+                    # description: one added clause trips this gate, and that is the ratchet working, not a bug.
+                    # Raising the ceiling needs the same thing every bump here needed — a written reason for what
+                    # the bytes buy. (2.6.x: +843 B — ten descriptions gained a
                     # "Use when …" sentence. The field's job is to say WHEN to reach for the skill; a description
                     # that only says what its author knows is matched by nothing, and inside this kit that was
                     # invisible because route-hint.sh and the trigger map do the routing. Outside the harness —
