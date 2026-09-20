@@ -646,12 +646,25 @@ echo "[wizard] the hide instruction covers docs in BOTH halves (untrack and igno
 #      The calibration twin is the point: with the pin removed the same round trip must come back dirty, or
 #      this case is asserting that a clone is clean for some reason of its own.
 _ga_crs() {   # $1 = project dir, $2 = path inside it -> CR count after a core.autocrlf=true checkout
-  local p="$1" f="$2" bare="$1.bare" clone="$1.clone"
-  rm -rf "$bare" "$clone"; git init -q --bare "$bare"
-  ( cd "$p" && git add -A >/dev/null 2>&1 && git commit -qm shared >/dev/null 2>&1
-    git push -q "$bare" HEAD:refs/heads/main >/dev/null 2>&1 )
-  git clone -q -c core.autocrlf=true "$bare" "$clone" 2>/dev/null
-  if [ -f "$clone/$f" ]; then tr -dc '\r' < "$clone/$f" | wc -c | tr -d ' '; else echo MISSING; fi
+  # NO BARE REPO AND NO BRANCH NAME. The first version pushed to `refs/heads/main` in a fresh bare whose HEAD
+  # came from `init.defaultBranch` — so on a desk where that is `main` the clone checked the tree out and on a
+  # runner where it is not, the clone checked out NOTHING ("remote HEAD refers to nonexistent ref") and every
+  # file read as MISSING. Green on the machine that wrote it, red on all three runners, for a reason that has
+  # nothing to do with what the case measures. Cloning the project directly takes its own HEAD, whatever it is
+  # called, and the question of branch names disappears.
+  # And it reports WHY rather than a word: the first version swallowed every error into MISSING, so a broken
+  # fixture came back wearing the product's failure message and sent the search to the installer.
+  local p="$1" f="$2" clone="$1.clone"
+  rm -rf "$clone"
+  ( cd "$p" && git add -A >/dev/null 2>&1 && git commit -qm shared >/dev/null 2>&1 ) || true
+  if ! git clone -q -c core.autocrlf=true "$p" "$clone" 2>"$p.clone.err"; then
+    echo "FIXTURE: clone of $p failed: $(head -1 "$p.clone.err")"; return 0
+  fi
+  if [ ! -f "$clone/$f" ]; then
+    echo "FIXTURE: $f is not in the clone (tracked files: $(git -C "$clone" ls-files | wc -l | tr -d ' ')) $(head -1 "$p.clone.err")"
+    return 0
+  fi
+  tr -dc '\r' < "$clone/$f" | wc -c | tr -d ' '
 }
 W15="$(wiz shared-eol)"
 ( cd "$W15" && git init -q . && git config user.email t@example.invalid && git config user.name t \
@@ -661,11 +674,13 @@ grep -qF '.claude/**/*.sh text eol=lf' "$W15/.gitattributes" 2>/dev/null \
   || { echo "FAIL: a shared install did not pin .claude/**/*.sh to LF"; exit 1; }
 for f in .claude/hooks/guard-bash.sh .claude/hooks/pre-commit; do
   n="$(_ga_crs "$W15" "$f")"
+  case "$n" in FIXTURE:*) echo "FAIL: case 15's own fixture broke, not the product — $n"; exit 1 ;; esac
   [ "$n" = 0 ] || { echo "FAIL: $f came back with $n CR from a core.autocrlf=true clone — the pin is not holding"; exit 1; }
 done
 rm -f "$W15/.gitattributes"
 n="$(_ga_crs "$W15" .claude/hooks/guard-bash.sh)"
-{ [ "$n" != 0 ] && [ "$n" != MISSING ]; } \
+case "$n" in FIXTURE:*) echo "FAIL: the twin's own fixture broke — $n"; exit 1 ;; esac
+[ "$n" != 0 ] \
   || { echo "FAIL: with the pin removed the clone stayed clean ($n CR) — case 15 proves nothing"; exit 1; }
 echo "[wizard] a shared install keeps hooks LF through a core.autocrlf clone (twin: $n CR without the pin)"
 
