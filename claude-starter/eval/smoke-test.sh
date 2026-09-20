@@ -239,24 +239,95 @@ for f in $(agent_quality_files); do
   done
 done
 pass "agent->skill references (applies + Also apply) checked"
-# (c) progressive disclosure: a `references/X.md` pointer in a SKILL.md body must resolve to a real file
-for d in "$SKILLS"/*/; do
-  f="$d/SKILL.md"; [ -f "$f" ] || continue
-  # A pointer may be to this skill's own references/ OR, qualified with a skill name, to another skill's —
-  # `security-scan/references/verify.md`. Cross-skill is legitimate and the kit's single-source-of-truth rule
-  # depends on it: the verifier contract lives in one file and code-review-csk points at it rather than keeping a
-  # second copy to drift. The check stays strict either way — a wrong skill name or a missing file still fails.
-  for ref in $(grep -oE '([a-z0-9-]+/)?references/[A-Za-z0-9_-]+\.md' "$f" | sort -u); do
-    case "$ref" in
-      */references/*.md)
+# (c) progressive disclosure, both directions.
+#
+# A pointer may be to this skill's own references/ OR, qualified with a skill name, to another skill's —
+# `security-scan/references/verify.md`. Cross-skill is legitimate and the kit's single-source-of-truth rule
+# depends on it: the verifier contract lives in one file and code-review-csk points at it rather than keeping a
+# second copy to drift. The check stays strict either way — a wrong skill name or a missing file still fails.
+#
+# Two things this used to miss, both measured on 2026-09-20 before the change:
+#   1. It read only SKILL.md. THREE pointers already lived inside reference files and none was checked
+#      (db-migration/tool-matrix.md, security-scan/prompting.md, testing/flaky-triage.md → cross-skill).
+#      A reference file is loaded the same way and rots the same way; the depth of the file is not the question.
+#   2. It never asked the INVERSE question. A reference nothing points at is an orphan component — which this
+#      kit refuses for skills and agents two sections below (§3b) and refused nowhere here. That is the failure
+#      a progressive-disclosure refactor produces silently: move the pointer into a reference file, and the
+#      target leaves the gate's sight without anything going red.
+#
+# One code path for the payload and for the calibration trees, because a calibration that re-implements the
+# rule proves only that the rule can be written twice. Sets REFS_BAD; problems go to stdout as they are found.
+refs_audit(){
+  local root="$1" d sk f ref tgt key seen="" bad=0 seen_n=0 ref_n=0
+  for d in "$root"/*/; do
+    sk="${d%/}"; sk="${sk##*/}"
+    for f in "$d/SKILL.md" "$d"references/*.md; do
+      [ -f "$f" ] || continue
+      for ref in $(grep -oE '([a-z0-9-]+/)?references/[A-Za-z0-9_-]+\.md' "$f" | sort -u); do
         case "$ref" in
-          references/*) [ -f "$d/$ref" ] || fail "$(basename "$d"): SKILL.md points to missing $ref" ;;
-          *) [ -f "$SKILLS/$ref" ] || fail "$(basename "$d"): SKILL.md points to missing $ref (cross-skill)" ;;
-        esac ;;
-    esac
+          references/*)      tgt="$d$ref";     key="$sk/$ref" ;;
+          */references/*.md) tgt="$root/$ref"; key="$ref" ;;
+          *) continue ;;
+        esac
+        [ -f "$tgt" ] || { echo "    $sk: ${f##*/} points to missing $ref"; bad=$((bad+1)); }
+        seen="$seen $key"; seen_n=$((seen_n+1))
+      done
+    done
   done
+  for d in "$root"/*/; do
+    sk="${d%/}"; sk="${sk##*/}"
+    for f in "$d"references/*.md; do
+      [ -f "$f" ] || continue
+      key="$sk/references/${f##*/}"; ref_n=$((ref_n+1))
+      case " $seen " in
+        *" $key "*) ;;
+        *) echo "    $key: orphan — no SKILL.md or reference file points at it"; bad=$((bad+1)) ;;
+      esac
+    done
+  done
+  REFS_BAD=$bad; REFS_SEEN_N=$seen_n; REFS_FILE_N=$ref_n
+}
+
+refs_audit "$SKILLS"
+[ "$REFS_BAD" = 0 ] \
+  && pass "skill references: $REFS_SEEN_N pointers resolve, $REFS_FILE_N reference files none orphaned" \
+  || fail "skill references: $REFS_BAD problem(s) above"
+
+# The gate itself, in the three states the kit requires. There is no tool to be missing here — the rule is pure
+# file logic — so there is no honest-skip state to test, and that is stated rather than left as a gap.
+# The expected problem lines go to a log rather than the terminal: printed inline they read as findings against
+# the payload, which is how a calibration gets "fixed" by someone chasing a problem that was put there on purpose.
+# A redirection on a function call does not fork, so REFS_BAD still comes back from the current shell.
+REFT="$(mktemp -d)"; REFLOG="$REFT/audit.log"
+mkdir -p "$REFT/ok/skills/a/references" "$REFT/nested/skills/a/references" "$REFT/orphan/skills/a/references"
+# ok: SKILL.md -> a.md -> b.md, every file pointed at
+printf 'see references/a.md\n'  > "$REFT/ok/skills/a/SKILL.md"
+printf 'more in references/b.md\n' > "$REFT/ok/skills/a/references/a.md"
+printf 'leaf\n'                  > "$REFT/ok/skills/a/references/b.md"
+refs_audit "$REFT/ok/skills" > "$REFLOG" 2>&1
+[ "$REFS_BAD" = 0 ] && pass "refs_audit: a clean tree passes" \
+  || { fail "refs_audit: clean tree reported $REFS_BAD"; sed 's/^/      /' "$REFLOG"; }
+# nested: the broken pointer is INSIDE the reference file — the exact case the old SKILL.md-only scan could not see
+printf 'see references/a.md\n' > "$REFT/nested/skills/a/SKILL.md"
+printf 'more in references/gone.md\n' > "$REFT/nested/skills/a/references/a.md"
+refs_audit "$REFT/nested/skills" > "$REFLOG" 2>&1
+[ "$REFS_BAD" = 1 ] && pass "refs_audit: a missing pointer inside a reference file fails" \
+                    || fail "refs_audit: nested-miss tree reported $REFS_BAD, expected 1"
+# …and the calibration's own truth claim: that same tree is INVISIBLE to the rule this replaced. If the old
+# scan also caught it, the fixture is not exercising the new half and the pass above means nothing.
+OLDBAD=0
+for ref in $(grep -oE '([a-z0-9-]+/)?references/[A-Za-z0-9_-]+\.md' "$REFT/nested/skills/a/SKILL.md" | sort -u); do
+  [ -f "$REFT/nested/skills/a/$ref" ] || OLDBAD=$((OLDBAD+1))
 done
-pass "skill references/*.md pointers resolve"
+[ "$OLDBAD" = 0 ] && pass "refs_audit: that fixture is invisible to the SKILL.md-only rule it replaces" \
+                  || fail "refs_audit: the nested fixture is caught by the old rule too ($OLDBAD) — it proves nothing"
+# orphan: a reference file nothing points at
+printf 'no pointers here\n' > "$REFT/orphan/skills/a/SKILL.md"
+printf 'nobody sent you\n'  > "$REFT/orphan/skills/a/references/lost.md"
+refs_audit "$REFT/orphan/skills" > "$REFLOG" 2>&1
+[ "$REFS_BAD" = 1 ] && pass "refs_audit: an orphan reference file fails" \
+                    || fail "refs_audit: orphan tree reported $REFS_BAD, expected 1"
+rm -rf "$REFT"
 
 echo "== 3b) Orphan component: every skill & agent must be ROUTED (kit invariant, no idle components) =="
 # Rule: nothing idle. A skill/agent that only auto-triggers on its own description is "dark" — the orchestrator is
