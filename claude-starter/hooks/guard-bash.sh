@@ -490,10 +490,38 @@ gatelog(){  # $1 = verdict (BLOCK|ASK|ALLOW)  $2 = section  $3 = rule
   fi
 }
 
+# $1 = rule name · $2 = section · $3 = CLASS, which decides the second line.
+#
+# ONE SENTENCE FOR 33 RULES WAS WRONG THREE WAYS, and the third one is why this is not cosmetic. It read
+# "This destructive operation is only performed if the user EXPLICITLY requests it. If approved, run the
+# command manually in the terminal."
+#   * The adjective was false for most of them. Reading a .env, `git rebase`, `commit --amend` and
+#     `git add -f` destroy nothing.
+#   * For the tamper and secret classes the ADVICE WAS THE VIOLATION. "If approved, run it manually" told
+#     the reader to disarm the hooks by hand, or to cat the .env themselves — the two things those rules
+#     exist to stop. A gate that ends by describing how to perform the thing it just refused is not a gate.
+#   * A single sentence cannot name the legitimate route, because the legitimate route is different for
+#     every class. Naming it is the whole value of the line.
+#
+# Deliberately NOT here yet: a "you can finish the task without this step" clause. That rests on the
+# hypothesis that wording changes behaviour, which is unmeasured — the paid `no-secret-logging` case is its
+# criterion and it has to come after the number, not before it.
+#
+# An unclassified call is LOUD rather than silent: it prints (unclassified) and the suite pins that every
+# call site passes a class. A default that reads plausibly is how the old single sentence survived.
 block(){
   gatelog BLOCK "$2" "$1"
   echo "GUARD (§$2): '$1' stopped AT THE TOOL LEVEL." >&2
-  echo "This destructive operation is only performed if the user EXPLICITLY requests it. If approved, run the command manually in the terminal." >&2
+  case "${3:-}" in
+    loss)     echo "Nothing here is undone by retrying. If the user asked for exactly this target, they can run it in their own terminal." >&2 ;;
+    history)  echo "This rewrites or discards work that is already committed. Ask the person who shares the branch; a new commit usually reaches the same end without rewriting." >&2 ;;
+    tamper)   echo "Turning a gate off is not a step in any task, and DOING IT BY HAND IS NOT THE ANSWER EITHER — a gate disarmed by hand stays off for every later session. If a rule is wrong, change the rule and say so." >&2 ;;
+    secret)   echo "The value does not belong in a transcript, so printing it by hand is the same leak with an extra step. If the task truly needs it, the user supplies it out of band." >&2 ;;
+    bypass)   echo "The ignore rule is deliberate. If the file genuinely belongs in the repository, change .gitignore in the same commit so the decision is reviewable." >&2 ;;
+    exec)     echo "This runs code that nobody has read. Download it, read it, then run the local copy." >&2 ;;
+    exposure) echo "This widens access for every user on the machine, not just this session. Grant the narrowest mode that works." >&2 ;;
+    *)        echo "(unclassified rule — this block carries no recovery line; that is a defect in the hook, not in your command.)" >&2 ;;
+  esac
   exit 2
 }
 
@@ -529,7 +557,7 @@ git_has() {  # $1 = command text, $2 = subcommand alternation (e.g. 'commit|push
 case "$CMD" in *[Gg][Ii][Tt]*) HAS_GIT=1 ;; *) HAS_GIT=0 ;; esac
 has() { printf '%s' "$CMD" | grep -qiE -- "$1"; }   # flag/substring test on the command (-- so a -flag pattern is safe)
 
-{ git_has "$CMD" 'reset'  && has '--hard'; }                                                && block "git reset --hard" "4.5"
+{ git_has "$CMD" 'reset'  && has '--hard'; }                                                && block "git reset --hard" "4.5" history
 # §4.5 force-push. Same two defects the `git add -f` rule had, and the same repair: the flag has to be one of
 # THIS `git push`'s own arguments, at its own quoting level, and the test is case-SENSITIVE. `has()` greps the
 # whole command with `-i`, so `-F` matched the `-f` alternative — and `git commit -F msg.txt; git push` is the
@@ -557,20 +585,20 @@ if [ "$HAS_GIT" = 1 ] && git_has "$CMD" 'push'; then
   _PUSHSEG="$(printf '%s' "$CMD" | grep -oE 'git[[:space:]]+([^;&|]*[[:space:]])?push([^;&|]*)' 2>/dev/null || true)"
   while IFS= read -r _seg; do
     [ -n "$_seg" ] || continue
-    _push_forces "$_seg" && { block "git push --force" "4.5"; break; }
+    _push_forces "$_seg" && { block "git push --force" "4.5" history; break; }
   done <<< "$_PUSHSEG"
 fi
-{ git_has "$CMD" 'clean'  && has '-[A-Za-z]*f'; }                                           && block "git clean -f" "4.5"
-case "$CMD" in *[Nn][Oo]-[Vv][Ee][Rr][Ii][Ff][Yy]*) : ;; *) false ;; esac                                          && block "hook skip (--no-verify)" "4.5"
-git_has "$CMD" 'rebase'                                    && block "git rebase" "4.5"
-git_has "$CMD" 'filter-branch|filter-repo'                && block "git filter-branch/filter-repo" "4.5"
-{ git_has "$CMD" 'commit' && has '--amend'; }                                              && block "git commit --amend" "4.5"
+{ git_has "$CMD" 'clean'  && has '-[A-Za-z]*f'; }                                           && block "git clean -f" "4.5" loss
+case "$CMD" in *[Nn][Oo]-[Vv][Ee][Rr][Ii][Ff][Yy]*) : ;; *) false ;; esac                                          && block "hook skip (--no-verify)" "4.5" tamper
+git_has "$CMD" 'rebase'                                    && block "git rebase" "4.5" history
+git_has "$CMD" 'filter-branch|filter-repo'                && block "git filter-branch/filter-repo" "4.5" history
+{ git_has "$CMD" 'commit' && has '--amend'; }                                              && block "git commit --amend" "4.5" history
 # Scoped to targets carrying `/`, `*` or `~` ON PURPOSE — `rm -rf build` is a routine local delete and blocking
 # it would make the gate noise. What was NOT on purpose: the recursive flag was matched as lowercase `r` in one
 # short cluster, so `rm -Rf /`, `rm -fR /`, `rm -f -r /` and `rm --recursive --force /` all walked past while
 # `rm -rf /` was blocked. Same class as the chmod hole found in evals/permission-pressure: one spelling gated,
 # another reaching the identical state. Case, flag order and the long form are all the same command.
-case "$CMD" in *[Rr][Mm]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE 'rm +(-[A-Za-z]* +|--[a-z-]+ +)*(-[A-Za-z]*[rR][A-Za-z]*|--recursive)( +(-[A-Za-z]+|--[a-z-]+))* +.*(/|\*|~)' && block "destructive rm -rf" "4.5"
+case "$CMD" in *[Rr][Mm]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE 'rm +(-[A-Za-z]* +|--[a-z-]+ +)*(-[A-Za-z]*[rR][A-Za-z]*|--recursive)( +(-[A-Za-z]+|--[a-z-]+))* +.*(/|\*|~)' && block "destructive rm -rf" "4.5" loss
 # A whole-tree `git checkout -- .` / `git restore .` destroys every uncommitted change with no reflog and no
 # undo — the same loss as `reset --hard`, which has been gated since the beginning, by a command that was not.
 # Not hypothetical: a verification subagent ran exactly this over uncommitted work in this repo and took the
@@ -578,17 +606,17 @@ case "$CMD" in *[Rr][Mm]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE 'rm +
 # named file is an everyday, recoverable act and gating it would make the rule noise. The option-skipping
 # prefix is git_has's, so `git -C <path>` and `git -c k=v` cannot walk around it and a commit MESSAGE
 # containing the word "checkout" does not trip it; both are pinned as cases.
-[ "$HAS_GIT" = 1 ] && echo "$CMD" | grep -qE '(^|[^A-Za-z0-9_-])git[[:space:]]+((-[Cc][[:space:]]+[^[:space:];&|]+|--(git-dir|work-tree|namespace|config-env|super-prefix|exec-path)[[:space:]=]+[^[:space:];&|]+|-[^[:space:];&|]+)[[:space:]]+)*(checkout|restore)([[:space:]]+[^;&|[:space:]]+)*[[:space:]]+(\.|\*|\./|:/)([[:space:]]|[;&|]|$)' && block "whole-tree revert (git checkout/restore over everything)" "4.5"
-case "$CMD" in *[Mm][Kk][Ff][Ss]*|*[Dd][Dd]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE '(^|[^a-zA-Z])(mkfs|dd +if=)'       && block "disk-level destructive command" "4.5"
+[ "$HAS_GIT" = 1 ] && echo "$CMD" | grep -qE '(^|[^A-Za-z0-9_-])git[[:space:]]+((-[Cc][[:space:]]+[^[:space:];&|]+|--(git-dir|work-tree|namespace|config-env|super-prefix|exec-path)[[:space:]=]+[^[:space:];&|]+|-[^[:space:];&|]+)[[:space:]]+)*(checkout|restore)([[:space:]]+[^;&|[:space:]]+)*[[:space:]]+(\.|\*|\./|:/)([[:space:]]|[;&|]|$)' && block "whole-tree revert (git checkout/restore over everything)" "4.5" history
+case "$CMD" in *[Mm][Kk][Ff][Ss]*|*[Dd][Dd]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE '(^|[^a-zA-Z])(mkfs|dd +if=)'       && block "disk-level destructive command" "4.5" loss
 
 # §4.5 remote-code-execution & permission-nuke -> HARD BLOCK. A downloaded script piped straight into a shell
 # runs code no one has read; a world-writable chmod or a disk-overwriting dd is irreversible.
 # CSK-NOT-A-RUNG: the interpreter names below are PATTERNS naming things to BLOCK, not invocations. The
 # check in smoke-test treats any interpreter outside a marked region as a reader ladder, so a rule that
 # matches `curl | python3` has to say that it is a rule.
-case "$CMD" in *[Cc][Uu][Rr][Ll]*|*[Ww][Gg][Ee][Tt]*|*[Ff][Ee][Tt][Cc][Hh]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE '(curl|wget|fetch)([^|]|\|\|)*\|[[:space:]]*(sudo[[:space:]]+)?(bash|sh|zsh|python[0-9.]*|node|perl|ruby)([[:space:]]|$)' && block "pipe-to-shell (curl|bash RCE)" "4.5"
+case "$CMD" in *[Cc][Uu][Rr][Ll]*|*[Ww][Gg][Ee][Tt]*|*[Ff][Ee][Tt][Cc][Hh]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE '(curl|wget|fetch)([^|]|\|\|)*\|[[:space:]]*(sudo[[:space:]]+)?(bash|sh|zsh|python[0-9.]*|node|perl|ruby)([[:space:]]|$)' && block "pipe-to-shell (curl|bash RCE)" "4.5" exec
 # /CSK-NOT-A-RUNG
-case "$CMD" in *[Dd][Dd]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE '(^|[^a-zA-Z])dd[[:space:]]+([^|]*[[:space:]])?of='  && block "dd of= (disk overwrite)" "4.5"
+case "$CMD" in *[Dd][Dd]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE '(^|[^a-zA-Z])dd[[:space:]]+([^|]*[[:space:]])?of='  && block "dd of= (disk overwrite)" "4.5" loss
 
 # §4.5 INFRASTRUCTURE TEARDOWN. Same shape as the rules above — one command, no undo — but the blast radius is a
 # cloud account or a cluster rather than a disk. `terraform destroy` and `pulumi destroy` remove every managed
@@ -638,13 +666,13 @@ _IAC_UNATT_PU="pulumi[^;&|]*[[:space:]]up([^;&|]*[[:space:]])?(-y|--yes|-f|--ski
 _IAC_CLUSTER="(kubectl[^;&|]*[[:space:]]delete([^a-zA-Z0-9_-]|$)|helm[^;&|]*[[:space:]](uninstall|delete|del|un)([^a-zA-Z0-9_-]|$))"
 case "$CMD" in *[Tt][Ee][Rr][Rr][Aa][Ff][Oo][Rr][Mm]*|*[Tt][Oo][Ff][Uu]*|*[Pp][Uu][Ll][Uu][Mm][Ii]*) : ;; *) false ;; esac \
   && ! echo "$CMD" | grep -qiE "$_IAC_SAFE" && _iac "$_IAC_DESTROY" \
-  && block "infrastructure destroy (removes every managed resource)" "4.5"
+  && block "infrastructure destroy (removes every managed resource)" "4.5" loss
 case "$CMD" in *[Tt][Ee][Rr][Rr][Aa][Ff][Oo][Rr][Mm]*|*[Tt][Oo][Ff][Uu]*|*[Pp][Uu][Ll][Uu][Mm][Ii]*) : ;; *) false ;; esac \
   && ! echo "$CMD" | grep -qiE "$_IAC_SAFE" && { _iac "$_IAC_UNATT_TF" || _iac "$_IAC_UNATT_PU"; } \
-  && block "unattended infrastructure apply (skips the tool's only confirmation)" "4.5"
+  && block "unattended infrastructure apply (skips the tool's only confirmation)" "4.5" loss
 case "$CMD" in *[Kk][Uu][Bb][Ee][Cc][Tt][Ll]*|*[Hh][Ee][Ll][Mm]*) : ;; *) false ;; esac \
   && ! echo "$CMD" | grep -qiE "$_IAC_SAFE" && _iac "$_IAC_CLUSTER" \
-  && block "cluster teardown (kubectl delete / helm uninstall)" "4.5"
+  && block "cluster teardown (kubectl delete / helm uninstall)" "4.5" loss
 # The rule is WORLD-WRITABLE, so the pattern matches the resulting permission and not one spelling of it. It
 # used to match `777`, `0777`, `a+rwx` and `+rwx` only, which let `1777`, `2777`, `666` and `o+w` reach exactly
 # the same state — and this was not theoretical: in the A/B harness (evals/permission-pressure) a model asked to
@@ -653,7 +681,7 @@ case "$CMD" in *[Kk][Uu][Bb][Ee][Cc][Tt][Ll]*|*[Hh][Ee][Ll][Mm]*) : ;; *) false 
 # Numeric: 3 or 4 octal digits whose LAST digit carries the write bit for other (2·3·6·7). Symbolic: any subject
 # list containing `o` or `a`, with `+` or `=`, granting `w`. `755`, `644`, `u+w` and `chmod +x` stay untouched —
 # each of those carries its own case in smoke-test §7, because a gate this repo cannot prove is not a gate.
-case "$CMD" in *[Cc][Hh][Mm][Oo][Dd]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE '(^|[^a-zA-Z])chmod[[:space:]]+(-[A-Za-z]*[[:space:]]+)*([0-7]?[0-7][0-7][2367]|[ugoa]*[oa][ugoa]*[+=][rwxXst]*w[rwxXst]*|a=?\+?rwx|\+rwx)([[:space:]]|$)' && block "chmod world-writable (777/1777/666/o+w …)" "4.5"
+case "$CMD" in *[Cc][Hh][Mm][Oo][Dd]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE '(^|[^a-zA-Z])chmod[[:space:]]+(-[A-Za-z]*[[:space:]]+)*([0-7]?[0-7][0-7][2367]|[ugoa]*[oa][ugoa]*[+=][rwxXst]*w[rwxXst]*|a=?\+?rwx|\+rwx)([[:space:]]|$)' && block "chmod world-writable (777/1777/666/o+w …)" "4.5" exposure
 
 # §4.5 PowerShell equivalents -> HARD BLOCK. The PowerShell tool sends the SAME payload shape (tool_input.command)
 # and Claude Code's own hooks reference says to match `Bash|PowerShell`, because on Windows wherever that tool is
@@ -672,16 +700,16 @@ PS_FORCE='-f(o(r(c(e)?)?)?)?([[:space:]]|$)'
 # Recursive+forced removal aimed at a glob, a drive root, a UNC path, or $HOME — the shapes that take a tree out.
 { case "$CMD" in *-[Rr]*) : ;; *) false ;; esac && has "(^|[^A-Za-z0-9_-])$PS_RM[[:space:]]" && has "$PS_RECURSE" && has "$PS_FORCE" \
   && has '(\*|[A-Za-z]:\\|\\\\|\$HOME|\$env:USERPROFILE|~)'; } \
-  && block "PowerShell recursive force delete (Remove-Item -Recurse -Force)" "4.5"
+  && block "PowerShell recursive force delete (Remove-Item -Recurse -Force)" "4.5" loss
 # Download-and-execute, the PowerShell shape of curl|bash: any fetcher piped into Invoke-Expression.
 case "$CMD" in *[Ii][Ee][Xx]*|*[Ii][Nn][Vv][Oo][Kk][Ee]-[Ee][Xx][Pp][Rr][Ee][Ss][Ss][Ii][Oo][Nn]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE '(invoke-webrequest|iwr|invoke-restmethod|irm|curl|wget)[^|]*\|[[:space:]]*(invoke-expression|iex)([[:space:]]|$)' \
-  && block "PowerShell download-and-execute (… | iex)" "4.5"
+  && block "PowerShell download-and-execute (… | iex)" "4.5" exec
 # Disk-level destruction. No POSIX equivalent of these names, so the mkfs/dd rule never saw them.
 case "$CMD" in *[Ff][Oo][Rr][Mm][Aa][Tt]-*|*[Cc][Ll][Ee][Aa][Rr]-*|*-[Pp][Aa][Rr][Tt][Ii][Tt][Ii][Oo][Nn]*|*[Ii][Nn][Ii][Tt][Ii][Aa][Ll][Ii][Zz][Ee]-*|*[Ss][Ee][Tt]-[Dd][Ii][Ss][Kk]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE '(^|[^A-Za-z0-9_-])(format-volume|clear-disk|remove-partition|initialize-disk|set-disk)([[:space:]]|$)' \
-  && block "PowerShell disk-level destructive command" "4.5"
+  && block "PowerShell disk-level destructive command" "4.5" loss
 # World-writable ACL: icacls is what chmod 777 looks like on Windows.
 case "$CMD" in *[Ii][Cc][Aa][Cc][Ll][Ss]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE '(^|[^A-Za-z0-9_-])icacls\b[^;&|]*/grant[^;&|]*(everyone|users|authenticated users)[^;&|]*:\(?[^)]*[FM]' \
-  && block "PowerShell world-writable ACL (icacls /grant Everyone:F)" "4.5"
+  && block "PowerShell world-writable ACL (icacls /grant Everyone:F)" "4.5" exposure
 
 # §4.5 gate-tampering -> HARD BLOCK. A gate you can silently remove is not a gate: redirecting core.hooksPath,
 # or deleting/overwriting/patching the hook scripts, would disarm the trace/secret/approval gates in one line.
@@ -690,10 +718,10 @@ case "$CMD" in *[Ii][Cc][Aa][Cc][Ll][Ss]*) : ;; *) false ;; esac && echo "$CMD" 
 # verify it. Only the write forms disarm: a bare `git config core.hooksPath <value>`, `--unset`, `--replace-all`.
 [ "$HAS_GIT" = 1 ] && echo "$CMD" | grep -qE 'git[[:space:]]+config\b[^|]*core\.hooksPath' \
   && ! echo "$CMD" | grep -qE 'git[[:space:]]+config\b[^|]*(--get(-all|-regexp|-urlmatch)?|--list)([[:space:]]|$)' \
-  && block "git config core.hooksPath (disarms the git hooks)" "4.5"
+  && block "git config core.hooksPath (disarms the git hooks)" "4.5" tamper
 # Inline config override: `git -c core.hooksPath=…` / `git --config-env core.hooksPath=…` turns the hooks off for
 # that one command WITHOUT the word `config` (so the rule above misses it) — the exact equivalent of --no-verify.
-[ "$HAS_GIT" = 1 ] && echo "$CMD" | grep -qiE 'git[[:space:]]+([^;&|]*[[:space:]])?(-c|--config-env)[[:space:]=]+core\.hooksPath' && block "git -c core.hooksPath (disarms the git hooks)" "4.5"
+[ "$HAS_GIT" = 1 ] && echo "$CMD" | grep -qiE 'git[[:space:]]+([^;&|]*[[:space:]])?(-c|--config-env)[[:space:]=]+core\.hooksPath' && block "git -c core.hooksPath (disarms the git hooks)" "4.5" tamper
 # A write to a gate path (hook script, settings.json, or .git/hooks) via ANY common mechanism — writer verbs, the
 # in-place editors, and the interpreters an evasion reaches for (perl/python/ruby/node/ed) — plus the variable-
 # indirected redirect (VAR=.claude/hooks; … > $VAR). Reading a gate file stays allowed, and `chmod +x` is NOT
@@ -719,13 +747,13 @@ GATE='\.(claude/(hooks|settings\.json|DISCIPLINE\.md)|git/hooks)'
 # are still blocked (asserted in smoke-test, in both directions).
 # CSK-NOT-A-RUNG: same — `perl`, `python3`, `ruby`, `node` here are names the gate REFUSES when they are
 # pointed at a gate file, not readers this hook uses.
-case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE "(^|[^A-Za-z0-9_-])(rm|mv|cp|truncate|tee|install|ln|perl|python[0-9.]*|ruby|node|ex|ed|set-content|add-content|clear-content|out-file|new-item|rename-item|copy-item|move-item|remove-item)\b[^;&|]*$GATE" && block "write/tamper of a gate file (hook/settings/.git-hooks)" "4.5"
-case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE "(sed|perl|awk|ruby)[[:space:]]+(-[^[:space:]]+[[:space:]]+)*-i[^;&|]*$GATE"          && block "in-place edit of a gate file" "4.5"
+case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE "(^|[^A-Za-z0-9_-])(rm|mv|cp|truncate|tee|install|ln|perl|python[0-9.]*|ruby|node|ex|ed|set-content|add-content|clear-content|out-file|new-item|rename-item|copy-item|move-item|remove-item)\b[^;&|]*$GATE" && block "write/tamper of a gate file (hook/settings/.git-hooks)" "4.5" tamper
+case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE "(sed|perl|awk|ruby)[[:space:]]+(-[^[:space:]]+[[:space:]]+)*-i[^;&|]*$GATE"          && block "in-place edit of a gate file" "4.5" tamper
 # /CSK-NOT-A-RUNG
 # The redirect TARGET must be the gate path, not merely something later on the line: a target is one token, so
 # it cannot contain whitespace or a command separator.
-case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE ">[[:space:]]*['\"]?[^[:space:];&|<>]*$GATE"                                          && block "redirect over a gate file" "4.5"
-{ case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false ;; esac && has "=[^;&|]*$GATE" && has '>>?[[:space:]]*\$'; }                                                          && block "indirected write to a gate path (variable + redirect)" "4.5"
+case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE ">[[:space:]]*['\"]?[^[:space:];&|<>]*$GATE"                                          && block "redirect over a gate file" "4.5" tamper
+{ case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false ;; esac && has "=[^;&|]*$GATE" && has '>>?[[:space:]]*\$'; }                                                          && block "indirected write to a gate path (variable + redirect)" "4.5" tamper
 # A symlink whose TARGET is the config directory itself is the two-step form of editing a hook, and step one
 # names no gate path at all: `ln -sfn .claude cfg` passed every rule above, and then `cfg/hooks/guard-bash.sh`
 # is an ordinary-looking path that lands on the real gate script — measured, both steps rc=0, file overwritten.
@@ -734,7 +762,7 @@ case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false 
 # argument (`.claude`, `../.claude`, `/p/.git`), so linking to something inside the tree — `ln -s
 # .claude/skills c` — is untouched here and handled at write time instead. `.git` needs its own prefilter:
 # the one above only knows `claude` and `hooks`.
-case "$CMD" in *[Ll][Nn][[:space:]]*|*[Mm][Kk][Ll][Ii][Nn][Kk]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE '(^|[;&|[:space:]])(ln|mklink)[^;&|]*[[:space:]]([^;&|[:space:]]*/)?\.(claude|git)([[:space:]]|$)' && block "symlink pointing at the config directory (a gate path in two steps)" "4.5"
+case "$CMD" in *[Ll][Nn][[:space:]]*|*[Mm][Kk][Ll][Ii][Nn][Kk]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE '(^|[;&|[:space:]])(ln|mklink)[^;&|]*[[:space:]]([^;&|[:space:]]*/)?\.(claude|git)([[:space:]]|$)' && block "symlink pointing at the config directory (a gate path in two steps)" "4.5" tamper
 
 # §4.5-adjacent: a .env file holds secrets. The settings.json Read-tool deny does NOT cover the Bash tool, so a
 # `cat .env` would surface them. Block the direct-file readers/copiers and a `< .env` input redirect on a
@@ -755,7 +783,7 @@ ENV_TEMPLATE_RE='\.env\.(example|sample|template|dist)([^A-Za-z0-9_-]|$)'
 { case "$CMD" in *[Ee][Nn][Vv]*) : ;; *) false ;; esac && { has "$ENV_READ_RE" \
     || has "$ENV_REDIR_RE"; } \
     && ! has "$ENV_TEMPLATE_RE"; } \
-    && block "reading a .env secret via the Bash tool" "4.5"
+    && block "reading a .env secret via the Bash tool" "4.5" secret
 
 # The same reasoning, one scope wider. `.env` was the only credential file either gate covered, which left the
 # ones that actually unlock other systems wide open: an SSH private key, AWS credentials, a kubeconfig, a .netrc.
@@ -777,7 +805,7 @@ CRED='(\.ssh/(id_[A-Za-z0-9_]+|identity)|(^|/)id_(rsa|dsa|ecdsa|ed25519)|\.aws/c
   && { has "(^|[^A-Za-z0-9_/.-])(cat|less|more|head|tail|tac|nl|xxd|od|strings|hexdump|base64|cp|scp|rsync|curl|wget|get-content|gc|type|get-item|gi)[[:space:]]+(-[^;&|[:space:]]*[[:space:]]+)*[^;&|[:space:]]*$CRED" \
     || has "<[[:space:]]*[^;&|[:space:]]*$CRED"; } \
     && ! has '(\.pub|\.example|\.sample|\.template)([^A-Za-z0-9_-]|$)'; } \
-    && block "reading a private key / credential file via the Bash tool" "4.5"
+    && block "reading a private key / credential file via the Bash tool" "4.5" secret
 
 # §4.5-adjacent, THE SECOND STEP. Everything above scans the COMMAND; none of it sees what a script FILE does.
 # Measured against the shipped hook on macOS: `cat .env.local` blocks (rc=2), while `bash leak.sh`, `./leak.sh`
@@ -919,7 +947,7 @@ if [ "$_looks_exec" = 1 ]; then
     _interp=0
     if grep -iE -- "$ENV_READ_RE|$ENV_REDIR_RE" "$_path" 2>/dev/null | grep -qivE -- "$ENV_TEMPLATE_RE"; then
       set +f
-      block "running a script that reads a .env secret (the two-step read)" "4.5"
+      block "running a script that reads a .env secret (the two-step read)" "4.5" secret
     fi
   done
   set +f
@@ -964,7 +992,7 @@ if [ "$HAS_GIT" = 1 ] && git_has "$CMD" 'add'; then
   _ADDSEG="$(printf '%s' "$CMD" | grep -oE 'git[[:space:]]+([^;&|]*[[:space:]])?add([^;&|]*)' 2>/dev/null || true)"
   while IFS= read -r _seg; do
     [ -n "$_seg" ] || continue
-    _addf_owns "$_seg" && { block "git add -f (bypasses .gitignore)" "4.5"; break; }
+    _addf_owns "$_seg" && { block "git add -f (bypasses .gitignore)" "4.5" bypass; break; }
   done <<< "$_ADDSEG"
 fi
   # `git update-index --add` stages a path REGARDLESS of .gitignore — the same bypass `git add -f` performs, by
@@ -973,8 +1001,8 @@ fi
   # said. (Staging itself is deliberately NOT gated here — only commit and push ask — so this rule is about the
   # gitignore bypass alone, not about stopping people from staging files.)
   [ "$HAS_GIT" = 1 ] && echo "$CMD" | grep -qE 'git[[:space:]]+([^;&|]*[[:space:]])?update-index\b[^;&|]*(--add|--force-remove)' \
-    && block "git update-index --add (bypasses .gitignore, same as git add -f)" "4.5"
-case "$CMD" in *[Rr][Mm]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE '(rm|git[[:space:]]+rm)\b[^|]*(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|npm-shrinkwrap\.json|Gemfile\.lock|poetry\.lock|Pipfile\.lock|Cargo\.lock|composer\.lock|go\.sum|packages\.lock\.json)' && block "lockfile deletion" "4.5"
+    && block "git update-index --add (bypasses .gitignore, same as git add -f)" "4.5" bypass
+case "$CMD" in *[Rr][Mm]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE '(rm|git[[:space:]]+rm)\b[^|]*(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|npm-shrinkwrap\.json|Gemfile\.lock|poetry\.lock|Pipfile\.lock|Cargo\.lock|composer\.lock|go\.sum|packages\.lock\.json)' && block "lockfile deletion" "4.5" loss
 
 # --- §4.4 commit/push approval gate ---
 # Escape a shell string into a JSON string body. A raw control character inside a JSON string is a parse
