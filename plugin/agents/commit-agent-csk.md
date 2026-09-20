@@ -42,6 +42,18 @@ PowerShell 5.1, `git commit -F - @'…'@` hands the text to git as an ARGUMENT, 
 Write the message to a UTF-8 file WITHOUT a BOM and use `git commit -F <file>`; measured on the same machine,
 that path commits cleanly with the subject and body intact.
 
+**And the cmdlet you reach for first breaks that rule.** Measured on PowerShell 5.1, both obvious ways to write
+the file violate it. `Set-Content` writes the system's ANSI codepage: on a Turkish machine `ı ç ğ ö ş ü` go out
+as the single bytes `fd e7 f0 f6 fe fc`, git stores them as `c3bd c3a7 c3b0 c3bd c3b6 c3be c3bc`, and the
+subject then reads `fix(kapý): çðýöþü` — on every platform, permanently, inside the commit. `Out-File -Encoding
+utf8` gets the characters right and prepends a BOM, which lands *inside the subject* as an invisible first
+character in every log line. Two forms are clean:
+`[System.IO.File]::WriteAllText($p, $s, [System.Text.UTF8Encoding]::new($false))`, or write the file from Bash,
+where `printf` is clean, and commit with `git commit -F <file>`. This is PowerShell's default file encoding and
+not the shell bridge: writing through Bash and through the PowerShell tool was compared byte for byte and the
+two are identical. So a project whose declared commit language is not ASCII (the template offers Turkish) needs
+one of those two forms, not a shell choice.
+
 **And do not read the outcome through `Select-Object -First N`.** `git status -sb | Select-Object -First 1`
 reports failure after a commit that succeeded — but the cause is not git, not `status`, and not commits. Taking
 the first N items stops the pipeline early, and that alone sets the failing code: measured on PowerShell 5.1,
