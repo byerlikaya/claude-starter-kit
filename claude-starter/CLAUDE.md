@@ -167,10 +167,10 @@ a team that adopted the kit may have chosen to share them instead, and the trace
 ### 4.4 Commit/push only with explicit approval
 No `git commit` / `git push` unless the user says "commit" / "push"; `git add` and `checkout -b` need approval too.
 "Done / we can proceed" is **not** approval. **Present the message FIRST** — even in auto/fast mode. `guard-bash.sh`
-intercepts commit/push in every mode, but only `default`/`acceptEdits` put the prompt in front of a person; in
-`auto`, `dontAsk`, `plan`, `bypassPermissions` software answers it, so there it FAILS CLOSED. Get a real yes,
-then switch mode or export `CLAUDE_GIT_OK=1` (headless/CI — pre-authorises the tool, **never replaces
-approval**). Never hand the user a command to paste.
+asks in `default`/`acceptEdits`; in `auto`, `dontAsk`, `plan`, `bypassPermissions` nobody sees a prompt, so it
+FAILS CLOSED — get a real yes, then switch mode. Never hand the user a command to paste. **Headless/CI:** if
+`printenv CLAUDE_GIT_OK` is set AND this request itself says "commit"/"push", that IS the approval — commit
+(a review blocker still stops you) and show the message in your report.
 
 ### 4.5 Destructive operations require approval
 `git reset --hard`, `git checkout -- .`, `push --force`, `clean -f`, `--no-verify`, `--no-gpg-sign`, `git add -f`, deleting a lockfile,
