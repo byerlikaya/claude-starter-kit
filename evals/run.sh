@@ -72,7 +72,7 @@ WORK="$(mktemp -d "$WORKBASE/csk-eval.XXXXXX")" || { echo "run.sh: could not cre
 [ -n "$WORK" ] && [ -d "$WORK" ] || { echo "run.sh: scratch dir is empty/missing — refusing to run" >&2; exit 2; }
 # The prune matters as much as the rm: a worktree whose directory is gone stays REGISTERED in the parent, and
 # the registrations accumulate one per case per run until `worktree add` starts refusing paths.
-trap '[ "$KEEP" = 1 ] && echo "scratch kept: $WORK" || rm -rf "$WORK"; git -C "${CSK_EVAL_PARENT:-$HOME/.csk-eval-parent}" worktree prune >/dev/null 2>&1 || true' EXIT
+trap '[ "$KEEP" = 1 ] && echo "scratch kept: $WORK" || { rm -rf "$WORK"; _P="${CSK_EVAL_PARENT:-$HOME/.csk-eval-parent}"; git -C "$_P" worktree prune >/dev/null 2>&1; git -C "$_P" for-each-ref --format="%(refname:short)" "refs/heads/csk-eval/${WORK##*/}/" 2>/dev/null | while read -r _b; do git -C "$_P" branch -D "$_b" >/dev/null 2>&1; done; }; true' EXIT
 
 # build_project <dir> <arm>  — identical seed in both arms; the kit is the only variable.
 build_project() {
@@ -102,9 +102,17 @@ build_project() {
   #
   # Falls back to `git init` when the parent is absent, so the suite still runs; the two permission-dependent
   # cases then report `! workspace untrusted` exactly as before rather than failing.
+  # ORPHAN, not detached at a base commit — and this is a correction of the first version. That one put every
+  # scratch project on an empty root commit, so the seed became the SECOND commit and any grader that counts
+  # commits was off by one: `commit-format` checks `rev-list --count HEAD -le 1` for "no commit beyond the
+  # seed", and with the extra root it PASSED "a commit landed" when the model had committed nothing, read the
+  # subject as "seed", and passed "no AI trace" on the seed commit too. Measured: detached worktree + seed ->
+  # count 2, grader says a commit landed; orphan worktree + seed -> count 1, grader correctly says none did.
+  # An orphan branch has no parent, so the seed is the root exactly as it was under `git init`. Trust is still
+  # inherited (re-measured: warning 0) and the branch is deleted on exit with the worktree.
   EVPAR="${CSK_EVAL_PARENT:-$HOME/.csk-eval-parent}"
-  if [ -d "$EVPAR/.git" ] && git -C "$EVPAR" rev-parse --verify --quiet base >/dev/null 2>&1 \
-     && git -C "$EVPAR" worktree add -q --detach "$dir" base 2>/dev/null; then
+  EVBR="csk-eval/${WORK##*/}/${dir##*/}"
+  if [ -d "$EVPAR/.git" ] && git -C "$EVPAR" worktree add -q --orphan -b "$EVBR" "$dir" 2>/dev/null; then
     EVWT="$EVWT $dir"
   else
     ( cd "$dir" || exit 1; git init -q )
