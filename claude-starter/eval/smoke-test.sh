@@ -441,8 +441,20 @@ if [ "$IS_KIT" = 1 ] && [ -f "$AGENTS/backend-expert-csk.md" ] && [ -f "$ROOT/ag
   routed "$PATTERN_SKILL" "$ROOT/agents-optional/backend-expert-generic.md" \
     && fail "the generic backend variant references $PATTERN_SKILL — that skill is pruned on a generic install" \
     || pass "the generic variant does not reference the .NET-only pattern skill"
+  # TOOLS parity, not only routing parity. Found by installing with --generic and counting: 12 agents, but only
+  # 9 carrying PowerShell where 10 were edited — the edit had globbed agents/*.md and never reached
+  # agents-optional/, so a --generic install shipped a backend agent with a different toolset from every other
+  # shell-carrying agent. The routing check above could not see it; it compares what the agent is FOR, not what
+  # it can RUN.
+  _TD="$(grep -m1 '^tools:' "$AGENTS/backend-expert-csk.md")"
+  _TG="$(grep -m1 '^tools:' "$ROOT/agents-optional/backend-expert-generic.md")"
+  [ -n "$_TD" ] && [ "$_TD" = "$_TG" ] \
+    && pass "the generic backend variant carries the same tools as the default ($_TD)" \
+    || fail "a --generic install gets a different toolset — default '$_TD' vs generic '$_TG'"
 else
-  skip scope "backend variant parity skipped (installed project — agents-optional/ is not installed)"
+  # Three checks stand behind this one line (routing parity, the pattern-skill exclusion, tools parity). It used
+  # to count one for two, which is the same lie the per-check skip count exists to stop.
+  skip scope "backend variant parity skipped (installed project — agents-optional/ is not installed)" 3
 fi
 
 sec "== 4) Stub / unfilled skill leftover =="
