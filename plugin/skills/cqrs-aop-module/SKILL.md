@@ -1,5 +1,5 @@
 ---
-name: devarch-module
+name: cqrs-aop-module
 description: |
   Default .NET backend pattern: MediatR CQRS handler/command/query, IResult/IDataResult, Autofac AOP chain,
   FluentValidation, i18n. backend-expert-csk applies it.
@@ -10,13 +10,13 @@ description: |
 <!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
      Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
      truncated or dropped, which strips the very keywords a match depends on. -->
-Trigger phrases: "devarch-module", "new handler", "write a command", "add a query", "validator", "aspect"
+Trigger phrases: "cqrs-aop-module", "new handler", "write a command", "add a query", "validator", "aspect"
 
 > **This is the DEFAULT backend pattern, not the only one.** `backend-expert-csk` is pattern-neutral; it applies
 > whichever backend-pattern skill the project ships. A project on Clean Architecture, Vertical Slice, Minimal API,
 > or plain layered replaces this skill with its own (same format) — the agent then follows that. Nothing forces DevArch.
 
-> **Kit adaptation (local, .claude/):** `backend-expert-csk` applies the `devarch-module` skill. Sources (alignment):
+> **Kit adaptation (local, .claude/):** `backend-expert-csk` applies the `cqrs-aop-module` skill. Sources (alignment):
 > the DevArchitecture pattern — **its name does NOT leak into generated code / namespace / file / comment / csproj / Swagger /
 > JWT (§4.2).** The pattern lives here; the generated artifact is written with project-specific names.
 

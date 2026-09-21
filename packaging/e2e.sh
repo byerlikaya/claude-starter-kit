@@ -9,7 +9,7 @@ WORK="${RUNNER_TEMP:-$(mktemp -d)}"
 # ---- start.sh: 2 combinations (backend pattern) ----
 # 2.0 removed the profile split, and with it four of the six combinations: they differed only in which
 # components were deleted after an identical install. The backend pattern is the one axis that still changes
-# what lands on disk (devarch-module + the backend agent variant), so it is the one axis still rehearsed.
+# what lands on disk (cqrs-aop-module + the backend agent variant), so it is the one axis still rehearsed.
 # The legacy-flag case is here rather than in the smoke-test because only an end-to-end run proves an old
 # command line still installs — the thing that would break a CI step someone wrote a year ago.
 combo() {
@@ -47,7 +47,7 @@ combo() {
 # The expected counts come from the PAYLOAD, not from a number typed here. Written by hand they drift with the
 # first component added — the network diagram's subtitle did exactly that, announcing 11 agents and 36 skills
 # over a picture it had drawn with 12 and 38 — and the failure reads like a broken install rather than a stale
-# constant. `--generic` prunes exactly one skill (devarch-module), so that arm is the payload count minus one;
+# constant. `--generic` prunes exactly one skill (cqrs-aop-module), so that arm is the payload count minus one;
 # the assertion that matters is still "the set does not vary silently", and it survives intact.
 KIT_AG=$(ls "$ROOT"/claude-starter/agents/*.md 2>/dev/null | wc -l | tr -d ' ')
 KIT_SK=$(ls -d "$ROOT"/claude-starter/skills/*/ 2>/dev/null | wc -l | tr -d ' ')
@@ -107,7 +107,7 @@ evidence() {    # $1 = label, $2 = project dir
   echo "---- evidence · $1 (adopt exit=$ADOPT_RC) ----"
   echo "  kit.conf:";        sed 's/^/    /' "$2/.claude/kit.conf" 2>/dev/null || echo "    (absent)"
   echo "  components:       agents=$(ls "$2"/.claude/agents/*.md 2>/dev/null | wc -l | tr -d ' ') skills=$(ls -d "$2"/.claude/skills/*/ 2>/dev/null | wc -l | tr -d ' ')"
-  echo "  devarch-module:   $([ -d "$2/.claude/skills/devarch-module" ] && echo present || echo absent)"
+  echo "  cqrs-aop-module:   $([ -d "$2/.claude/skills/cqrs-aop-module" ] && echo present || echo absent)"
   # The two signals the stack detector reads, evaluated here the same way adopt.sh evaluates them.
   echo "  .sln/.csproj:     $( (cd "$2" && find . -maxdepth 3 \( -name '*.sln' -o -name '*.csproj' \) 2>/dev/null | head -3 | tr '\n' ' ') )"
   echo "  Business/Handlers: $( (cd "$2" && find . -maxdepth 4 -type d -path '*/Business/Handlers' 2>/dev/null | head -1) )"
@@ -129,13 +129,13 @@ printf -- '---\nname: backend-expert\ndescription: legacy\n---\n' > "$P/.claude/
 ( cd "$P" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
 run_adopt "$P" --yes
 grep -q '^stack=dotnet' "$P/.claude/kit.conf"           || die ".sln under ./backend not detected as dotnet" adopt-dotnet "$P"
-[ -d "$P/.claude/skills/devarch-module" ]               || die "devarch-module missing on a dotnet adopt" adopt-dotnet "$P"
+[ -d "$P/.claude/skills/cqrs-aop-module" ]               || die "cqrs-aop-module missing on a dotnet adopt" adopt-dotnet "$P"
 [ ! -f "$P/.claude/agents/backend-expert.md" ]          || die "overlapping project agent was not taken over" adopt-dotnet "$P"
 [ -f "$P/.claude/superseded/agents/backend-expert.md" ] || die "taken-over agent's original was not backed up" adopt-dotnet "$P"
 [ -f "$P/.claude/skills/backend-expert-local/SKILL.md" ]|| die "taken-over agent's domain was not imported to a project skill" adopt-dotnet "$P"
 # The manifest lists what the KIT ships, so the skill this adopt imported from the project must NOT appear in it
 # — that is exactly the distinction the readiness check and the trust gate are built on.
-grep -q '^skills/devarch-module$' "$P/.claude/kit-manifest.txt"     || { echo "FAIL: manifest missing a kit skill"; exit 1; }
+grep -q '^skills/cqrs-aop-module$' "$P/.claude/kit-manifest.txt"     || { echo "FAIL: manifest missing a kit skill"; exit 1; }
 grep -q '^skills/backend-expert-local$' "$P/.claude/kit-manifest.txt" && { echo "FAIL: manifest claims a project-imported skill as kit-owned"; exit 1; }
 # Captured, not piped: `grep -q` closes the pipe on its first match, doctor takes a SIGPIPE, and `pipefail`
 # would then report a passing assertion as a failure.
@@ -168,22 +168,22 @@ case "$DOUT" in *"enforces the §4.6 review gate"*) ;;
 # doctor's elapsed time is printed on SUCCESS too, not only in the failure message. The bound above is loose by
 # design, so a silent pass hides the trend that matters: 2s creeping to 8s is the regression arriving, and it
 # reads as "fine" until the day it trips. The number in the log is what makes that visible in hindsight.
-echo "[adopt-dotnet] stack=dotnet · devarch-module kept · overlap imported to skill + backed up · smoke OK · doctor ${DEL}s"
+echo "[adopt-dotnet] stack=dotnet · cqrs-aop-module kept · overlap imported to skill + backed up · smoke OK · doctor ${DEL}s"
 
-# A generic (Node) project: no .sln -> generic, devarch-module pruned.
+# A generic (Node) project: no .sln -> generic, cqrs-aop-module pruned.
 G="$WORK/adopt-generic"; rm -rf "$G"; mkdir -p "$G"
 cp adopt.sh "$G/"; cp -R claude-starter "$G/"; cp VERSION "$G/"; printf '{"name":"x"}' > "$G/package.json"
 ( cd "$G" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
 run_adopt "$G" --yes
 grep -q '^stack=generic' "$G/.claude/kit.conf"          || die "Node project not recorded as generic" adopt-generic "$G"
-[ ! -d "$G/.claude/skills/devarch-module" ]             || die "devarch-module not pruned on a generic adopt" adopt-generic "$G"
-echo "[adopt-generic] stack=generic · devarch-module pruned"
+[ ! -d "$G/.claude/skills/cqrs-aop-module" ]             || die "cqrs-aop-module not pruned on a generic adopt" adopt-generic "$G"
+echo "[adopt-generic] stack=generic · cqrs-aop-module pruned"
 
 # A REFRESH whose recorded stack is a stale 'generic' on a clearly-DevArch project. The correction is OFFERED,
 # never applied behind the user's back — so this asserts BOTH halves, and the first half is the one that was
 # missing. The old test ran `--yes` (no tty) and required stack=dotnet, i.e. it demanded that a recorded choice
 # be overruled where nobody could be asked. It passed for five releases while a user who installed --generic on
-# a .NET project that is NOT DevArchitecture got devarch-module and the .NET agent pushed onto them.
+# a .NET project that is NOT DevArchitecture got cqrs-aop-module and the .NET agent pushed onto them.
 R="$WORK/adopt-refresh"; rm -rf "$R"; mkdir -p "$R"
 cp adopt.sh "$R/"; cp -R claude-starter "$R/"; cp VERSION "$R/"; printf '{"name":"x"}' > "$R/package.json"
 ( cd "$R" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
@@ -195,13 +195,37 @@ mkdir -p "$R/backend/Business/Handlers"; : > "$R/backend/DevArchitecture.sln"
 # (a) nobody to ask -> the recorded choice STANDS, and the mismatch is reported rather than acted on.
 run_adopt "$R" --yes
 grep -q '^stack=generic' "$R/.claude/kit.conf"          || die "a non-interactive refresh silently overruled the recorded stack" adopt-refresh/keep "$R"
-[ ! -d "$R/.claude/skills/devarch-module" ]             || die "devarch-module installed without anyone approving the stack change" adopt-refresh/keep "$R"
+[ ! -d "$R/.claude/skills/cqrs-aop-module" ]             || die "cqrs-aop-module installed without anyone approving the stack change" adopt-refresh/keep "$R"
 grep -qi 'stack-agnostic' "$R/.claude/agents/backend-expert-csk.md" || die "backend agent flipped to .NET without approval" adopt-refresh/keep "$R"
-# (b) asked for deliberately -> corrected, and devarch-module comes back with it.
+# (b) asked for deliberately -> corrected, and cqrs-aop-module comes back with it.
 CSK_CORRECT_STACK=1 run_adopt "$R" --yes
 grep -q '^stack=dotnet' "$R/.claude/kit.conf"           || die "CSK_CORRECT_STACK=1 did not correct a stale generic stack" adopt-refresh/fix "$R"
-[ -d "$R/.claude/skills/devarch-module" ]               || die "devarch-module not restored after the stack correction" adopt-refresh/fix "$R"
+[ -d "$R/.claude/skills/cqrs-aop-module" ]               || die "cqrs-aop-module not restored after the stack correction" adopt-refresh/fix "$R"
 echo "[adopt-refresh] recorded generic KEPT without a person · CSK_CORRECT_STACK=1 corrects it -> dotnet"
+
+# ---- adopt.sh: the devarch-module -> cqrs-aop-module RENAME, on an install that predates kit.conf ----
+# The skill was renamed, and three things could have gone wrong on the upgrade path; this case holds all three.
+# (1) kit_infer_shape reads the STACK from the skill's directory name when kit.conf is absent, so a check for the
+#     new name alone classifies every old .NET install as generic — and the generic path PRUNES the pattern skill.
+# (2) kit-manifest.txt arrived in v1.8.0 and the skill shipped from v1.0.0, so the stale-files sweep is blind to
+#     an install not updated since before 1.8.0.
+# (3) that sweep only REPORTS, so without a migration two pattern skills would compete for every prompt.
+# The fixture is shaped to isolate (1): no .sln, no kit.conf, no manifest — the OLD directory is the only signal.
+U="$WORK/adopt-rename"; rm -rf "$U"; mkdir -p "$U"
+cp adopt.sh "$U/"; cp -R claude-starter "$U/"; cp VERSION "$U/"
+: > "$U/App.sln"
+( cd "$U" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
+run_adopt "$U" --yes
+[ -d "$U/.claude/skills/cqrs-aop-module" ]  || die "the first adopt did not install the .NET pattern skill" adopt-rename/setup "$U"
+# Down to the shape of a pre-1.8.0 .NET install that has never been updated since:
+mv "$U/.claude/skills/cqrs-aop-module" "$U/.claude/skills/devarch-module"
+rm -f "$U/.claude/kit.conf" "$U/.claude/kit-manifest.txt" "$U/App.sln"
+( cd "$U" && git add -A && git commit -qm 'shape of a pre-1.8.0 dotnet install' ) >/dev/null 2>&1
+run_adopt "$U" --yes
+grep -q '^stack=dotnet' "$U/.claude/kit.conf" || die "an install carrying only the OLD skill name was inferred generic (it would be pruned)" adopt-rename "$U"
+[ -d "$U/.claude/skills/cqrs-aop-module" ]    || die "the .NET pattern skill is gone after the rename migration" adopt-rename "$U"
+[ ! -d "$U/.claude/skills/devarch-module" ]   || die "the old skill was left beside the new one — two pattern skills compete" adopt-rename "$U"
+echo "[adopt-rename] pre-kit.conf install carrying the OLD name -> inferred dotnet, migrated, no duplicate"
 
 # ---- adopt.sh: pre-2.0 profile MIGRATION ----
 # A project installed by 1.x with `--backend` is missing the frontend agent and four UI skills. 2.0 completes

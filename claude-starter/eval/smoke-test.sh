@@ -429,7 +429,7 @@ sec "== 3c) Backend variant parity: a --generic install must not lose routing ==
 # Every skill routed only from the .NET variant then silently stops being reached on that stack — §3b cannot see
 # it, because the skill is still routed by *some* agent. The pattern skill is the one legitimate difference.
 if [ "$IS_KIT" = 1 ] && [ -f "$AGENTS/backend-expert-csk.md" ] && [ -f "$ROOT/agents-optional/backend-expert-generic.md" ]; then
-  PATTERN_SKILL="devarch-module"   # .NET-only by definition; the generic variant must NOT carry it
+  PATTERN_SKILL="cqrs-aop-module"   # .NET-only by definition; the generic variant must NOT carry it
   MISSING=""
   for d in "$SKILLS"/*/; do
     n=$(basename "$d"); [ "$n" = "$PATTERN_SKILL" ] && continue

@@ -5,7 +5,7 @@
 # Every install is identical — there is no frontend/backend/mobile split. Measured before it was removed: the
 # widest profile pruning saved ~400 tokens of listing, while the split cost a per-profile e2e matrix, a second
 # prune path in adopt.sh, and shipped a set the plugin channel never matched. The ONE thing that legitimately
-# varies is the backend pattern, because devarch-module is .NET-specific and wrong in a Node/Go/Python repo.
+# varies is the backend pattern, because cqrs-aop-module is .NET-specific and wrong in a Node/Go/Python repo.
 # start.sh + claude-starter/ must be in the SAME directory. At the project root:  bash start.sh [flags]
 set -euo pipefail
 HERE="$(CDPATH= cd "$(dirname "$0")" && pwd)"
@@ -91,10 +91,10 @@ m() {   # $1 = English text (the key); further args fill %s
       "full support") s='tam destek' ;;
       "Generic") s='Genel' ;;
       "stack-agnostic") s='yığından bağımsız' ;;
-      "devarch-module skill (opinionated MediatR CQRS)") s="devarch-module skill'i (kuralcı MediatR CQRS)" ;;
+      "cqrs-aop-module skill (opinionated MediatR CQRS)") s="cqrs-aop-module skill'i (kuralcı MediatR CQRS)" ;;
       "clones the DevArchitecture base project BEHIND AN APPROVAL GATE (greenfield project)") s='DevArchitecture taban projesini BİR ONAY KAPISININ ARDINDAN klonlar (sıfırdan proje)' ;;
       "pattern-neutral backend-expert-csk — follows your repo's pattern; declare it as a skill (.claude/skills/)") s='desenden bağımsız backend-expert-csk — deponuzun desenini izler; desenini bir skill olarak bildirin (.claude/skills/)' ;;
-      "devarch-module and the DevArchitecture base NOT INSTALLED (sonarqube-check still installed)") s='devarch-module ve DevArchitecture tabanı KURULMAZ (sonarqube-check yine kurulur)' ;;
+      "cqrs-aop-module and the DevArchitecture base NOT INSTALLED (sonarqube-check still installed)") s='cqrs-aop-module ve DevArchitecture tabanı KURULMAZ (sonarqube-check yine kurulur)' ;;
       "[2/3] Who is this install for?") s='[2/3] Bu kurulum kimin için?' ;;
       "Decides whether your teammates get the kit's configuration — and what goes into .gitignore.") s="Takım arkadaşlarınızın kit yapılandırmasını alıp almayacağını — ve .gitignore'a ne gireceğini belirler." ;;
       "Just me") s='Yalnız ben' ;;
@@ -138,7 +138,7 @@ m() {   # $1 = English text (the key); further args fill %s
       "— backend + web + mobile (RN/Expo), every agent and skill") s='— backend + web + mobil (RN/Expo), her ajan ve her skill' ;;
       "%s agents · %s skills will be installed") s='%s ajan · %s skill kurulacak' ;;
       "non-.NET — generic") s='.NET değil — genel' ;;
-      "(devarch-module not installed; sonarqube-check installed)") s='(devarch-module kurulmuyor; sonarqube-check kuruluyor)' ;;
+      "(cqrs-aop-module not installed; sonarqube-check installed)") s='(cqrs-aop-module kurulmuyor; sonarqube-check kuruluyor)' ;;
       "approval gate -> ./%s") s='onay kapısı -> ./%s' ;;
       "(./frontend reserved next to it)") s='(yanında ./frontend ayrılıyor)' ;;
       "(shared: .claude/ and CLAUDE.md stay committable)") s='(paylaşımlı: .claude/ ve CLAUDE.md commit edilebilir kalır)' ;;
@@ -157,8 +157,8 @@ usage() {
 Usage: bash start.sh [BACKEND-STACK]
   Stack:  --dotnet | --generic   (default: dotnet)
 If no flag is given, the script asks interactively (wizard).
-  --dotnet   .NET/DevArchitecture full support (devarch-module + DevArch gate)
-  --generic  stack-agnostic backend (NO devarch-module; sonarqube-check is language-agnostic and stays)
+  --dotnet   .NET/DevArchitecture full support (cqrs-aop-module + DevArch gate)
+  --generic  stack-agnostic backend (NO cqrs-aop-module; sonarqube-check is language-agnostic and stays)
 
 Every install ships the whole kit: all agents, all skills — backend, web and mobile (RN/Expo) together.
   --backend | --frontend | --mobile | --fullstack   accepted, no effect (kept so older commands still run)
@@ -530,12 +530,12 @@ if [ -z "$STACK" ]; then
   sub "$(m 'Determines the backend template and whether the .NET-specific skills are included.')"
   echo
   opt 1 "$(m '.NET / DevArchitecture')" 1 "$(m 'full support')"
-  add  "$(m 'devarch-module skill (opinionated MediatR CQRS)')"
+  add  "$(m 'cqrs-aop-module skill (opinionated MediatR CQRS)')"
   gate "$(m 'clones the DevArchitecture base project BEHIND AN APPROVAL GATE (greenfield project)')"
   echo
   opt 2 "$(m 'Generic')" 0 "$(m 'stack-agnostic')"
   add  "$(m "pattern-neutral backend-expert-csk — follows your repo's pattern; declare it as a skill (.claude/skills/)")"
-  skip "$(m 'devarch-module and the DevArchitecture base NOT INSTALLED (sonarqube-check still installed)')"
+  skip "$(m 'cqrs-aop-module and the DevArchitecture base NOT INSTALLED (sonarqube-check still installed)')"
   echo
   printf '  %s->%s %s %s[1-2, %s]%s: ' "$CY" "$R" "$(m 'Choice')" "$D" "$(m 'empty=1')" "$R"
   csk_read s                        # empty => default (dotnet)
@@ -596,13 +596,13 @@ PROJECT_NAME="$(printf '%s' "$PROJECT_NAME" | tr -cs 'A-Za-z0-9._-' '-' | sed 's
 # directory with a README, and a directory is cheaper to delete than a missing one is to discover.
 BACKEND_DIR="backend"
 
-# --- The only remaining prune: devarch-module is .NET-specific and wrong in a Node/Go/Python repo. ---
+# --- The only remaining prune: cqrs-aop-module is .NET-specific and wrong in a Node/Go/Python repo. ---
 DEVARCH_ON=0
 EXCL_SKILLS=""
 if [ "$STACK" = "dotnet" ]; then
   DEVARCH_ON=1
 else
-  EXCL_SKILLS="devarch-module"   # sonarqube-check is language-agnostic and stays
+  EXCL_SKILLS="cqrs-aop-module"   # sonarqube-check is language-agnostic and stays
 fi
 
 # ===================== STEP 2 · SUMMARY + CONFIRM =====================
@@ -625,7 +625,7 @@ echo
 row "$(m 'Scope')" "${B}$(m 'full kit')${D} $(m '— backend + web + mobile (RN/Expo), every agent and skill')${R}"
 row "$(m 'Included')"  "$(m '%s agents · %s skills will be installed' "${MG}${B}${N_AG}${R}" "${MG}${B}${N_SK}${R}")"
 if [ "$STACK" = "generic" ]; then
-  row "$(m 'Backend pattern')" "$(m 'non-.NET — generic') ${D}$(m '(devarch-module not installed; sonarqube-check installed)')${R}"
+  row "$(m 'Backend pattern')" "$(m 'non-.NET — generic') ${D}$(m '(cqrs-aop-module not installed; sonarqube-check installed)')${R}"
 else
   row "$(m 'Backend pattern')" ".NET / DevArchitecture ${D}($(m 'full support'))${R}"
 fi
@@ -767,7 +767,7 @@ cp "$SRC/README.md"         .claude/ 2>/dev/null || true
 } > .claude/kit-manifest.txt 2>/dev/null || true
 
 # Remember the backend pattern, so a later update refreshes the project with the same one instead of
-# grafting devarch-module onto a Node repo. No 'profile=' key any more — the component set no longer varies,
+# grafting cqrs-aop-module onto a Node repo. No 'profile=' key any more — the component set no longer varies,
 # and adopt.sh treats a leftover 'profile=' from a pre-2.0 install as a migration signal, not as a shape.
 { echo "# Written by start.sh. The updater reads this to keep the project's backend pattern."
   echo "stack=$STACK"

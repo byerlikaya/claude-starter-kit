@@ -5,6 +5,21 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — the .NET backend-pattern skill is now `cqrs-aop-module` (was `devarch-module`)
+
+- **The old name carried a third-party template's name into every .NET project's skill list and `/` picker.**
+  It is renamed to a neutral name that says what it is: the MediatR CQRS / IResult / AOP pattern. Nothing about
+  its content changed.
+- **Upgrading is automatic and nothing is deleted.** On an update the installer MOVES the old skill directory to
+  the new name, so a customised copy keeps its content. If both names are already present it moves nothing and
+  says so, and you remove the old one when ready.
+- **The upgrade path is what made this more than a rename.** Stack detection for installs that predate
+  `kit.conf` reads the stack from this skill's directory name, so a rename that only knew the new name would
+  have classified every such .NET install as generic on its next update — and the generic path removes the
+  pattern skill. Measured against that exact mistake: with the naive rename, an old .NET install came out
+  `stack=generic` with the pattern skill gone; with this change it comes out `stack=dotnet`, migrated, with no
+  leftover copy. Detection and generic pruning now recognise both names.
+
 ### Added — §4.6: a commit is refused unless something reviewed THAT diff
 
 - **"review-agent-csk clean" was a Definition of Done item with nothing behind it.** The chain that reaches it —

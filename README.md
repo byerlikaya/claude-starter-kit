@@ -143,11 +143,11 @@ Two git hooks — `pre-commit` and `commit-msg` — run the trace, secret, repo-
 | `code-review-csk` | Code review discipline: severity-ranked, reasoned feedback on whether a change improves the system's overall code health. |
 | `commit-message` | Conventional Commits: reads the staged diff and proposes `type(scope): summary`, with body/footer when needed. |
 | `confidence-check` | Readiness gate BEFORE writing implementation code: does this already exist, does it fit the project's architecture, is the API claim… |
+| `cqrs-aop-module` | Default .NET backend pattern: MediatR CQRS handler/command/query, IResult/IDataResult, Autofac AOP chain, FluentValidation, i18n. |
 | `db-migration` | Apply schema migrations safely: detect the tool, classify the change by risk, gate destructive ones behind approval, back up in prod,… |
 | `dependency-audit` | Dependency risk assessment, read-only: known CVEs, deprecated packages, licence compliance, maintenance status, lockfile integrity, and a… |
 | `dependency-upgrade` | Bring dependencies current without breaking the build: find what is vulnerable, deprecated or behind, classify each target version by… |
 | `deploy` | Ship a build reversibly — to a host you manage or a platform that manages it. |
-| `devarch-module` | Default .NET backend pattern: MediatR CQRS handler/command/query, IResult/IDataResult, Autofac AOP chain, FluentValidation, i18n. |
 | `docs-writer` | Keeps documentation in sync with the code: README, usage and related docs when a public API or behavior changes. |
 | `eval-grader` | Measure output quality, don't vibe it: score a generative task with a two-layer grader — deterministic code metrics + per-dimension… |
 | `frontend-design` | Visual and UX design quality for interfaces: hierarchy, spacing rhythm, typographic scale, a restrained color system, layout composition,… |
@@ -313,11 +313,11 @@ bash start.sh [--dotnet|--generic] [--version] [-h]
 
 Two steps: backend pattern, then a summary you approve before anything is written.
 
-**Both installs carry the same team** — all 12 agents, and every skill except the one that is a backend pattern: `--generic` leaves out `devarch-module`, which is .NET-specific and wrong in a Node or Go repo, and installs the other 39. Backend, web and mobile (React Native/Expo) come together either way. A project that starts as an API and grows a web client is already equipped for both.
+**Both installs carry the same team** — all 12 agents, and every skill except the one that is a backend pattern: `--generic` leaves out `cqrs-aop-module`, which is .NET-specific and wrong in a Node or Go repo, and installs the other 39. Backend, web and mobile (React Native/Expo) come together either way. A project that starts as an API and grows a web client is already equipped for both.
 
 | Asked at install | Options | What it changes |
 |:--|:--|:--|
-| Backend pattern | `--dotnet` · `--generic` | the `devarch-module` skill and the DevArchitecture base |
+| Backend pattern | `--dotnet` · `--generic` | the `cqrs-aop-module` skill and the DevArchitecture base |
 | DevArch base — only on `--dotnet` | approve · skip | whether `./backend` is scaffolded |
 
 **`--dotnet`** clones the production-ready [DevArchitecture](https://github.com/DevArchitecture/DevArchitecture) foundation (CQRS · IResult · AOP · auth) behind an approval gate, and installs agents that already know it — so tokens go to your business logic instead of regenerating a standard architecture. The backend goes in `./backend`, `./frontend` is reserved next to it, and the solution file is renamed to your project.
@@ -347,7 +347,7 @@ npx @byerlikaya/claude-starter-kit@latest update    # or /update-csk inside a se
 <details open>
 <summary>🔁&nbsp; <b>Update mechanics — what is refreshed, and where the change lands</b></summary>
 
-At install time Claude Starter Kit stamps `.claude/kit.conf` with the backend pattern and which installer ran, plus `.claude/VERSION`. A refresh **keeps the pattern**: a `--dotnet` project keeps `devarch-module`, and a Node repo is never handed one. Where the stamp is missing, the updater reads the pattern back from the installed files. Any missing component is restored, and every one it adds is **named in the output** rather than appearing silently.
+At install time Claude Starter Kit stamps `.claude/kit.conf` with the backend pattern and which installer ran, plus `.claude/VERSION`. A refresh **keeps the pattern**: a `--dotnet` project keeps `cqrs-aop-module`, and a Node repo is never handed one. Where the stamp is missing, the updater reads the pattern back from the installed files. Any missing component is restored, and every one it adds is **named in the output** rather than appearing silently.
 
 | | On update |
 |:--|:--|

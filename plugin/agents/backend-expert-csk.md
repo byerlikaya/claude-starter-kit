@@ -2,7 +2,7 @@
 name: backend-expert-csk
 color: green
 description: |
-  Senior .NET backend expert. Applies the project's backend-pattern skill (devarch-module = MediatR CQRS /
+  Senior .NET backend expert. Applies the project's backend-pattern skill (cqrs-aop-module = MediatR CQRS /
   IResult / AOP by default; a project may declare its own). **Use proactively — owns server behaviour:** endpoints,
   handlers, validators, controllers, business rules, integrations. Any request about it is yours whatever its
   size or wording.
@@ -15,7 +15,7 @@ tools: Read, Grep, Glob, Edit, Write, Bash, PowerShell
      focused on WHEN to delegate, which is the field Claude actually reads. -->
 Trigger phrases: "new handler", "write a command", "add a query", "endpoint", "business rule", "DevArchitecture module"
 
-Pattern-neutral. The "how" lives in the project's **backend-pattern skill** — `devarch-module` by default; a
+Pattern-neutral. The "how" lives in the project's **backend-pattern skill** — `cqrs-aop-module` by default; a
 project on another pattern (Clean Architecture, Vertical Slice, Minimal API, plain layered) declares its own
 pattern skill under `.claude/skills/` and this agent applies THAT instead. The agent routes; the skill decides the shape.
 
@@ -43,9 +43,9 @@ discipline, like the check above — no hook enforces it.
 When the backend needs a new feature, handler, validator, controller, or business rule.
 
 ## How — apply the project's backend-pattern skill (SINGLE source of truth; on conflict the skill wins)
-The "how" lives in the pattern skill, not here. Default is `devarch-module`; the reminder below is ITS shape —
+The "how" lives in the pattern skill, not here. Default is `cqrs-aop-module`; the reminder below is ITS shape —
 a project on another pattern follows its own skill instead, and these DevArch specifics do not apply:
-- **`devarch-module` (default):** layout `Business/Handlers/{Entity}/Commands|Queries|ValidationRules`; return `IResult`/`IDataResult<T>` (no bare types); AOP order `[SecuredOperation]` → `[ValidationAspect]` → `[CacheAspect]`/`[CacheRemoveAspect]`; an anonymous endpoint drops `[SecuredOperation]`.
+- **`cqrs-aop-module` (default):** layout `Business/Handlers/{Entity}/Commands|Queries|ValidationRules`; return `IResult`/`IDataResult<T>` (no bare types); AOP order `[SecuredOperation]` → `[ValidationAspect]` → `[CacheAspect]`/`[CacheRemoveAspect]`; an anonymous endpoint drops `[SecuredOperation]`.
 - Domain-specific contracts (if any) live in the project's relevant skill (e.g. payment/credential flow, reporting/rollup) — follow those.
 - **Also apply** `api-design` (contract/versioning) · `observability` (log/trace/metric) · `performance` (bottleneck) · `dependency-audit` (add/update package) · `i18n-integrity` (user-facing text: error/email/notification) · `mcp-builder` (building an MCP server or tool — implementation work, so it belongs to an owner rather than the main thread).
 

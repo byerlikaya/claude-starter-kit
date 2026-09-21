@@ -179,11 +179,15 @@ kit_legacy_boundary() {
   printf '%s' "$n"
 }
 # A project installed before kit.conf existed carries its backend pattern only in what is on disk. Read it
-# back, so a refresh does not graft devarch-module onto a repo that deliberately runs without it.
+# back, so a refresh does not graft cqrs-aop-module onto a repo that deliberately runs without it.
 kit_infer_shape() {
-  # A .NET stack is marked by the devarch-module skill being installed; the generic stack prunes it. (The
+  # A .NET stack is marked by the .NET pattern skill being installed; the generic stack prunes it. (The
   # backend agent itself is pattern-neutral now, so its text is no longer a reliable stack signal.)
-  if [ -d .claude/skills/devarch-module ]; then KIT_STACK=dotnet; else KIT_STACK=generic; fi
+  # BOTH NAMES. The skill was `devarch-module` from v1.0.0 until the rename to `cqrs-aop-module`, and this
+  # function exists for exactly the installs that predate kit.conf — which are the installs that carry the OLD
+  # name. Reading only the new one would classify every such .NET project as generic on its next update, and
+  # the generic path PRUNES the pattern skill: a silent downgrade, found by reading this line before renaming.
+  if [ -d .claude/skills/cqrs-aop-module ] || [ -d .claude/skills/devarch-module ]; then KIT_STACK=dotnet; else KIT_STACK=generic; fi
   KIT_INSTALLER="${KIT_INSTALLER:-pre-kit.conf}"
   INFERRED=1
 }
@@ -285,7 +289,7 @@ KIT_PRESENT=0; KIT_VER=""
 { [ -f .claude/DISCIPLINE.md ] || [ -d .claude/git-shim ] || ls .claude/agents/*-csk.md >/dev/null 2>&1 || [ -f .claude/VERSION ]; } && KIT_PRESENT=1
 [ -f .claude/VERSION ] && KIT_VER="$(head -1 .claude/VERSION 2>/dev/null)"
 # Backend pattern of the existing install. A .NET install must not have its DevArch expert swapped for the
-# generic one, and a Node repo must not be handed devarch-module. LEGACY_PROFILE is a pre-2.0 leftover: back
+# generic one, and a Node repo must not be handed cqrs-aop-module. LEGACY_PROFILE is a pre-2.0 leftover: back
 # then the component set varied, so it recorded which parts were pruned. It no longer selects anything — it
 # only tells the migration notice below that this project was installed under the old, narrower shape.
 LEGACY_PROFILE="$(kit_conf_get profile)"; KIT_STACK="$(kit_conf_get stack)"; KIT_INSTALLER="$(kit_conf_get installer)"
@@ -413,7 +417,7 @@ if [ -z "${KIT_STACK:-}" ] && [ "$KIT_PRESENT" != 1 ]; then
     if [ -t 0 ]; then
       h1 "$(m 'Backend stack')"
       sub "Detected a .NET project$([ "$IS_DEVARCH" = 1 ] && echo ' with a DevArchitecture (Business/Handlers CQRS) layout')."
-      ask_yes "Install the .NET/DevArchitecture backend pattern (devarch-module)? (no = stack-agnostic generic)" || KIT_STACK=generic
+      ask_yes "Install the .NET/DevArchitecture backend pattern (cqrs-aop-module)? (no = stack-agnostic generic)" || KIT_STACK=generic
     fi
   else
     KIT_STACK=generic
@@ -430,7 +434,7 @@ fi
 #
 # The old test was `[ ! -t 0 ] || ask_yes …`, i.e. NO TTY MEANT YES. Every agent-driven or CI update runs without
 # a tty, so the branch whose own comment said "never flip silently" was the silent one. Measured: a .NET-shaped
-# repo installed with --generic, updated with `adopt.sh --yes`, came out stack=dotnet with devarch-module
+# repo installed with --generic, updated with `adopt.sh --yes`, came out stack=dotnet with the .NET pattern skill
 # installed and backend-expert-csk rewritten to the .NET variant — which then hands the agent a pattern the
 # project does not use. The user's report was "I installed this as generic, why does it think it is .NET".
 #
@@ -440,7 +444,7 @@ fi
 if [ "$KIT_PRESENT" = 1 ] && [ "$KIT_STACK" = generic ] && [ "$IS_DEVARCH" = 1 ]; then
   h1 "$(m 'Recorded backend stack looks wrong')"
   warn "kit.conf records stack=generic, but this project has a DevArchitecture layout (a Business/Handlers tree, or a DevArchitecture.sln)."
-  sub "Left as-is, the refresh keeps pruning devarch-module and holds the generic backend agent."
+  sub "Left as-is, the refresh keeps pruning cqrs-aop-module and holds the generic backend agent."
   if [ "${CSK_CORRECT_STACK:-0}" = 1 ]; then
     KIT_STACK=dotnet; echo "  stack corrected -> dotnet (CSK_CORRECT_STACK=1)"
   elif [ -t 0 ] && [ "${ASSUME_YES:-0}" != 1 ] && ask_yes "Correct it to dotnet? (install the DevArchitecture pattern skill + the .NET backend agent)"; then
@@ -555,21 +559,44 @@ if [ -n "$LEGACY_PROFILE" ]; then
 fi
 # The .NET pattern skill ships only for a dotnet backend. Prune it for generic on a FRESH adopt too (not only a
 # recorded refresh) — otherwise a generic project silently carries a DevArch pattern skill it never uses.
-[ "$KIT_STACK" = "generic" ] && EXCL_S="$EXCL_S devarch-module"
+# THE RENAME MIGRATION: devarch-module -> cqrs-aop-module. The kit renamed its own skill, so on an upgrade the
+# old directory is MOVED to the new name rather than left beside it. Three measured reasons it is not left to
+# the stale-files sweep further down:
+#   1. that sweep REPORTS and never deletes (deliberately: a name in an old manifest is not proof the file is
+#      ours), so until the user acts the project would carry two .NET pattern skills competing for every prompt;
+#   2. kit-manifest.txt arrived in v1.8.0 and this skill shipped from v1.0.0, so an install not updated since
+#      before 1.8.0 has no manifest and the sweep is BLIND to it;
+#   3. kit_infer_shape reads the stack from this directory's name.
+# The sweep's caution does not apply here because nothing is deleted: the directory is renamed, its content
+# travels with it, and a customised copy survives under the new name. A re-adopt then force-refreshes it like
+# every other kit skill. If BOTH names are already present nothing is moved — the sweep below will name the old
+# one, and the user decides.
+if [ "$KIT_STACK" = "dotnet" ] && [ -d .claude/skills/devarch-module ]; then
+  if [ ! -e .claude/skills/cqrs-aop-module ]; then
+    mv .claude/skills/devarch-module .claude/skills/cqrs-aop-module 2>/dev/null \
+      && echo "  .NET pattern skill renamed: devarch-module -> cqrs-aop-module (content kept)"
+  else
+    echo "  ⚠️  both devarch-module and cqrs-aop-module are present — nothing moved; remove the old one when ready"
+  fi
+fi
+[ "$KIT_STACK" = "generic" ] && EXCL_S="$EXCL_S cqrs-aop-module"
 # #1 keepmine: your overlapping agents own those roles, so the kit's matching -csk agents are NOT installed.
 [ "$COLLIDE_MODE" = keepmine ] && for b in $COLLIDE; do EXCL_A="$EXCL_A $b-csk.md"; done
 # kit-owned trees: FORCE-refresh on a re-adopt (KIT_PRESENT) so kit updates land; never-overwrite on a fresh adopt
 copy_noclobber "$SRC/agents"   .claude/agents   "$KIT_PRESENT" "$EXCL_A"; A_ADD=$ret_add; A_SKIP=$ret_skip
 copy_noclobber "$SRC/skills"   .claude/skills   "$KIT_PRESENT" "$EXCL_S"; S_ADD=$ret_add; S_SKIP=$ret_skip
-# EXCL_S keeps devarch-module from being COPIED, which is not the same as removing one already on disk. A
+# EXCL_S keeps cqrs-aop-module from being COPIED, which is not the same as removing one already on disk. A
 # refresh that records stack=generic while the skill sits installed leaves the project in a state the kit
 # itself treats as impossible: kit_infer_shape reads the stack back OUT of that very directory when kit.conf
 # is missing, route-hint scores it and recommends it, and it shows in the session's skill list. Measured on a
 # real repo whose recorded stack is generic — the skill survived the refresh and a turn opened with
 # "Use the `devarch-module` skill for this task", i.e. the wrong routing arrived by a second path after the
 # backend agent had already been put right. `start.sh --generic` has always deleted it; a refresh now agrees.
-if [ "$KIT_STACK" = "generic" ] && [ -d .claude/skills/devarch-module ]; then
-  rm -rf .claude/skills/devarch-module 2>/dev/null && echo "  devarch-module removed (the recorded stack is generic)"
+# Both names, for the same reason as kit_infer_shape: an install from before the rename carries the old one.
+if [ "$KIT_STACK" = "generic" ]; then
+  for _pk in cqrs-aop-module devarch-module; do
+    [ -d ".claude/skills/$_pk" ] && rm -rf ".claude/skills/$_pk" 2>/dev/null && echo "  $_pk removed (the recorded stack is generic)"
+  done
 fi
 copy_noclobber "$SRC/commands" .claude/commands "$KIT_PRESENT"; C_ADD=$ret_add; C_SKIP=$ret_skip
 copy_noclobber "$SRC/hooks"    .claude/hooks    "$KIT_PRESENT"; H_ADD=$ret_add; H_SKIP=$ret_skip
@@ -597,7 +624,7 @@ chmod +x .claude/studio/server/hooks/*.sh 2>/dev/null || true
 # agents and this is neither. Overwriting is right for the same reason DISCIPLINE.md is overwritten: the
 # file states the kit's own contract, a project does not author it, and a stale contract is worse than none.
 cp "$SRC/AGENT_TEMPLATE.md" .claude/ 2>/dev/null && echo "  AGENT_TEMPLATE.md written (kit-owned; refreshed on every update)"
-# Report the migration by what LANDED, not by what was missing: devarch-module is on the missing list of every
+# Report the migration by what LANDED, not by what was missing: cqrs-aop-module is on the missing list of every
 # generic project and must not be announced as restored when EXCL_S kept it out.
 if [ -n "$MIGRATE_MISSING" ]; then
   MIGRATED=""

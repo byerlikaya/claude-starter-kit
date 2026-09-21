@@ -57,7 +57,7 @@ while IFS='|' read -r prompt expected; do
   # exception is the .NET pattern skill, the one component a --generic install legitimately does not have.
   if ! trs="$(triggers_of "$expected")"; then
     case "$expected" in
-      devarch-module) skip "\"$prompt\" -> $expected (generic backend: the .NET pattern skill is not installed)" ;;
+      cqrs-aop-module) skip "\"$prompt\" -> $expected (generic backend: the .NET pattern skill is not installed)" ;;
       *)              fail "\"$prompt\" -> $expected: target not installed — 2.0 ships every component" ;;
     esac
     continue
@@ -185,7 +185,7 @@ fi
 
 echo "== 2) Agent-agent trigger collision =="
 # NOTE: Only AGENT-AGENT collisions matter (routing ambiguity lives here). An agent sharing a trigger
-# with the skill it OWNS (backend-expert-csk<->devarch-module, security-expert-csk<->security-scan,
+# with the skill it OWNS (backend-expert-csk<->cqrs-aop-module, security-expert-csk<->security-scan,
 # devops-expert-csk<->incident-runbook ...) is EXPECTED: the skill is the agent's internal "how"
 # source, not a separate dispatch — the router picks the agent, the agent reads the skill inside a
 # single subagent. So an agent<->its-own-skill overlap is intentional and is NOT a FAIL here.
