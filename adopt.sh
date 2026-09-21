@@ -819,6 +819,11 @@ fi
 # kit hook entries are REFRESHED (new events + current timeouts land; stale kit entries drop) while the project's OWN
 # custom hooks and permissions are PRESERVED. Non-hook keys deep-merge (project scalar wins, arrays concat+dedup).
 # Blind concat would leave a stale duplicate (e.g. an old timeout-10 context-usage hook that then times out).
+# RETIRED permission entries are the same problem for rules: concat+dedup never REMOVES, so a rule the kit stopped
+# shipping stays in every project that installed it. The four §4.4 `ask` rules are retired because a matching
+# ask rule prompts even when a hook returns "allow" (Claude Code permissions doc), which made the hook's
+# CLAUDE_GIT_OK pre-authorisation dead: a headless session was refused `git add` and never committed. The hook
+# now asks for all four itself. These exact strings are the kit's own; a project that wants them can re-add them.
 KSET="$SRC/settings.json"; PSET=".claude/settings.json"
 JQ_MERGE='
 def ddedup: reduce .[] as $x ([]; if any(.[]; .==$x) then . else .+[$x] end);
@@ -830,7 +835,15 @@ def is_kit: ((.hooks // []) | map((((.command // "") + " " + ((.args // []) | jo
 def merge_hooks(kh;ph):
   (((kh|keys_unsorted)+(ph|keys_unsorted))|unique) as $e
   | reduce $e[] as $k ({}; .[$k]=((kh[$k] // [])+((ph[$k] // [])|map(select(is_kit|not)))));
-(dm($k[0]; $p[0])) | .hooks=merge_hooks(($k[0].hooks // {}); ($p[0].hooks // {}))'
+def retired: ["Bash(git add:*)","Bash(git commit:*)","Bash(git push:*)","Bash(git checkout -b:*)"];
+def drop_retired: if (.permissions.ask|type)=="array" then .permissions.ask -= retired else . end;
+(dm($k[0]; $p[0]) | drop_retired) | .hooks=merge_hooks(($k[0].hooks // {}); ($p[0].hooks // {}))'
+# Which retired rules the project carries NOW, read before the merge so the removal can be announced by name.
+# A string match cannot tell the kit's copy from one the project wrote itself, so the removal is never silent
+# and the merge line below does not claim "permissions PRESERVED" when some were not.
+RET_HIT=""; [ -f "$PSET" ] && for _r in 'git add' 'git commit' 'git push' 'git checkout -b'; do
+  grep -qF "\"Bash($_r:*)\"" "$PSET" && RET_HIT="$RET_HIT${RET_HIT:+|}$_r"; done
+KEPT="custom hooks/permissions PRESERVED"; [ -n "$RET_HIT" ] && KEPT="custom hooks and every other permission PRESERVED"
 if [ ! -f "$PSET" ]; then
   [ -f "$KSET" ] && { cp "$KSET" "$PSET"; echo "  settings.json: was missing in the project -> the kit's was installed"; }
 # Probed by RUNNING — the python3 arm below already does exactly this, with a comment about the Store
@@ -843,7 +856,7 @@ elif command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; the
   else
     MERGED="$(jq -n --slurpfile p "$PSET" --slurpfile k "$KSET" "$JQ_MERGE" 2>/dev/null || true)"
     if [ -n "$MERGED" ] && printf '%s' "$MERGED" | jq -e . >/dev/null 2>&1; then
-      printf '%s\n' "$MERGED" > "$PSET"; echo "  settings.json: hook-aware MERGE via jq (kit hooks refreshed - custom hooks/permissions PRESERVED)"
+      printf '%s\n' "$MERGED" > "$PSET"; echo "  settings.json: hook-aware MERGE via jq (kit hooks refreshed - $KEPT)"
     else
       warn "settings.json: jq merge failed -> project setting PRESERVED (not overwritten)."
     fi
@@ -880,9 +893,12 @@ def merge_hooks(kh,ph):
   for e in evs: o[e]=list(kh.get(e,[]))+[x for x in ph.get(e,[]) if not is_kit(x)]
   return o
 m=dm(kit,proj); m["hooks"]=merge_hooks(kit.get("hooks",{}),proj.get("hooks",{}))
+RETIRED=["Bash(git add:*)","Bash(git commit:*)","Bash(git push:*)","Bash(git checkout -b:*)"]
+if isinstance(m.get("permissions"),dict) and isinstance(m["permissions"].get("ask"),list):
+  m["permissions"]["ask"]=[x for x in m["permissions"]["ask"] if x not in RETIRED]
 open(sys.argv[3],"w").write(json.dumps(m,indent=2)+"\n")
 PYEOF
-    mv "$PSET.tmp" "$PSET"; echo "  settings.json: hook-aware MERGE via ${PYBIN##*/} (kit hooks refreshed - custom hooks/permissions PRESERVED)"
+    mv "$PSET.tmp" "$PSET"; echo "  settings.json: hook-aware MERGE via ${PYBIN##*/} (kit hooks refreshed - $KEPT)"
   else
     rm -f "$PSET.tmp"; warn "settings.json: ${PYBIN##*/} merge failed -> project setting PRESERVED (not overwritten)."
   fi
@@ -901,6 +917,10 @@ else
     echo "  settings.json: no jq/python3 -> kit-only settings REPLACED with the current kit's (backup: $BAK — re-add any custom permissions from it)"
   fi
 fi
+# Announce only what is actually gone: the foreign-hook arm and a failed merge leave the file untouched.
+RET_GONE=""; _IFS="$IFS"; IFS='|'; for _r in $RET_HIT; do
+  grep -qF "\"Bash($_r:*)\"" "$PSET" 2>/dev/null || RET_GONE="$RET_GONE${RET_GONE:+, }$_r"; done; IFS="$_IFS"
+[ -n "$RET_GONE" ] && echo "  settings.json: retired §4.4 ask rule(s) REMOVED ($RET_GONE) — guard-bash.sh now asks for these itself; an ask rule would override its CLAUDE_GIT_OK allow. Re-add one only if your project wants that trade."
 
 # ============ [STAGE 4] GIT-HOOK ARMING (SHIM) + PROOF ============
 h1 "$(m 'Stage 4 — arm the git gates (SHIM via husky) + PROOF')"
@@ -1103,7 +1123,7 @@ cat > docs/HANDOVER.md <<HAND
 - Kit agents: $NCCK (-csk namespace; no clash with project agents).
 - Project agents: $N_PAGENTS — UNTOUCHED, in place + active (recursive discovery).
 - Discipline: .claude/DISCIPLINE.md + @import into the project CLAUDE.md (content untouched).
-- settings.json: hook-aware merge (kit hooks REFRESHED to current — new events + timeouts land; your own custom hooks/permissions PRESERVED).
+- settings.json: hook-aware merge (kit hooks REFRESHED to current — new events + timeouts land; your own custom hooks/permissions PRESERVED${RET_GONE:+, except the retired §4.4 ask rule(s) REMOVED: $RET_GONE — guard-bash.sh asks for these itself}).
 - Git gates: $HOOKDESC.
 - Overlapping roles: $MERGE_NOTE.
 - $BR_HANDOVER_LINE

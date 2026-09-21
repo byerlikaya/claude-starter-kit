@@ -5,6 +5,22 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — `CLAUDE_GIT_OK` pre-authorises a headless commit again
+
+- **The pre-authorisation was dead and nothing said so.** `settings.json` shipped `ask` rules for `git add`,
+  `git commit`, `git push` and `git checkout -b`, and Claude Code evaluates a matching `ask` rule regardless of
+  what a PreToolUse hook returns — so the hook's `allow` under `CLAUDE_GIT_OK=1` could never clear them, and a
+  headless session has nobody to answer the prompt. Measured in the paid A/B: the gate log recorded
+  `ALLOW §4.4 CLAUDE_GIT_OK`, yet the kit arm staged nothing and committed nothing.
+- **The prompt now comes from `guard-bash.sh` alone**, and the four rules are gone. In the interactive modes the
+  hook asks for all four verbs, as the rules did; in auto, dontAsk, plan and bypass, `git commit` and `git push`
+  still fail closed, while a plain `git add` and `git checkout -b` run — staging and branching publish nothing.
+  `git add -f` is still refused. The deploy `ask` rules (`ssh`, `scp`, `rsync`, `docker`) are unchanged.
+- **Updating removes the retired rules from existing installs.** The settings merge only ever added entries, so
+  without this the fix would have reached new installs and no one else. It removes exactly those four strings and
+  keeps every other rule, including ones you wrote yourself. If you want them back, re-add them — knowing they
+  switch the pre-authorisation off.
+
 ### Changed — the .NET backend-pattern skill is now `cqrs-aop-module` (was `devarch-module`)
 
 - **The old name carried a third-party template's name into every .NET project's skill list and `/` picker.**

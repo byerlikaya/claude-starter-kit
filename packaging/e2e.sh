@@ -273,9 +273,18 @@ mk_stale_install(){                       # $1 = dir : a healthy 1.4.x install w
   cp adopt.sh "$d/"; cp -R claude-starter "$d/"; cp VERSION "$d/"
   cp -R "$d/claude-starter/." "$d/.claude/" 2>/dev/null; cp VERSION "$d/.claude/VERSION"
   printf 'profile=fullstack\nstack=generic\ninstaller=start.sh\n' > "$d/.claude/kit.conf"
-  printf '%s\n' '{ "hooks": { "UserPromptSubmit": [ { "hooks": [ { "type":"command","command":"bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/context-usage.sh\" 2>/dev/null || true","timeout":10 } ] } ] } }' > "$d/.claude/settings.json"
+  printf '%s\n' '{ "permissions": { "ask": [ "Bash(git add:*)", "Bash(git commit:*)", "Bash(git push:*)", "Bash(git checkout -b:*)", "Bash(terraform apply:*)" ] }, "hooks": { "UserPromptSubmit": [ { "hooks": [ { "type":"command","command":"bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/context-usage.sh\" 2>/dev/null || true","timeout":10 } ] } ] } }' > "$d/.claude/settings.json"
   printf '# project rules\n@.claude/DISCIPLINE.md\n' > "$d/CLAUDE.md"
   ( cd "$d" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
+}
+# The four §4.4 ask rules were RETIRED from the kit (a matching ask rule outranks a hook's "allow", so it killed
+# CLAUDE_GIT_OK). Concat+dedup never removes, so an update must drop them explicitly; the fixture carries all four
+# plus one rule of the project's own, which must survive every arm that merges. Prints what it found, not a verdict
+# word, so a failure names the rule that stayed.
+retired_gone(){                           # $1 = settings.json
+  local r left=""; for r in 'Bash(git add:*)' 'Bash(git commit:*)' 'Bash(git push:*)' 'Bash(git checkout -b:*)'; do
+    grep -qF "\"$r\"" "$1" && left="$left $r"; done
+  [ -z "$left" ] || { echo "FAIL: an update kept retired §4.4 ask rule(s):$left — CLAUDE_GIT_OK stays dead in that project"; exit 1; }
 }
 # The refreshed value is read from the kit, not pinned to a literal. A hard-coded number turns every future
 # timeout retune into a red e2e that blames the merge — which is exactly what happened when the hook timeouts
@@ -289,10 +298,24 @@ KIT_TO="$(awk '/context-usage\.sh/{f=1} f && /"timeout"/{gsub(/[^0-9]/,""); prin
 [ -n "$KIT_TO" ] && [ "$KIT_TO" != 10 ] || { echo "FAIL: could not read the kit's UserPromptSubmit timeout (got '${KIT_TO:-}') — the stale-vs-refreshed assertions below would prove nothing"; exit 1; }
 # (A) update · non-interactive · NO --yes -> APPLIES (self-heal): stale hook refreshed, SessionStart wired, CLAUDE.md kept
 U="$WORK/selfheal"; mk_stale_install "$U"
-( cd "$U" && bash adopt.sh --here </dev/null >/dev/null 2>&1 )
+UOUT="$( cd "$U" && bash adopt.sh --here </dev/null 2>&1 )"
 grep -q 'SessionStart' "$U/.claude/settings.json"       || { echo "FAIL: non-interactive update did not self-heal (SessionStart missing)"; exit 1; }
 grep -q "\"timeout\": $KIT_TO" "$U/.claude/settings.json"      || { echo "FAIL: non-interactive update did not refresh the stale timeout"; exit 1; }
 head -1 "$U/CLAUDE.md" | grep -q 'project rules'        || { echo "FAIL: update clobbered the project's own CLAUDE.md"; exit 1; }
+retired_gone "$U/.claude/settings.json"
+grep -q '"Bash(terraform apply:\*)"' "$U/.claude/settings.json" || { echo "FAIL: retiring the kit's ask rules also dropped the project's own"; exit 1; }
+grep -q '"Bash(ssh:\*)"' "$U/.claude/settings.json"             || { echo "FAIL: retiring the §4.4 rules also dropped the kit's deploy ask rules"; exit 1; }
+# The removal is a change to a file the project may track, and a string match cannot tell the kit's copy from the
+# project's own — so it must be SAID, by name, and the merge line must not claim every permission was preserved.
+case "$UOUT" in *"ask rule(s) REMOVED (git add, git commit, git push, git checkout -b)"*) ;;
+  *) echo "FAIL: the retired ask rules were removed SILENTLY — output: $(printf '%s' "$UOUT" | grep 'settings.json' | tr '\n' ' ')"; exit 1 ;; esac
+case "$UOUT" in *"custom hooks/permissions PRESERVED"*) echo "FAIL: the merge line claims every permission was preserved while rules were removed"; exit 1 ;; esac
+grep -q 'retired §4.4 ask rule(s) REMOVED: git add, git commit, git push, git checkout -b' "$U/docs/HANDOVER.md" 2>/dev/null \
+  || { echo "FAIL: HANDOVER.md does not record the removed rules (it would read 'permissions PRESERVED')"; exit 1; }
+# Twin: a second update has nothing left to retire, so it must announce nothing and keep the plain claim.
+UOUT2="$( cd "$U" && bash adopt.sh --here </dev/null 2>&1 )"
+case "$UOUT2" in *"REMOVED ("*) echo "FAIL: an update with no retired rule present still announced a removal"; exit 1 ;; esac
+case "$UOUT2" in *"custom hooks/permissions PRESERVED"*) ;; *) echo "FAIL: the plain PRESERVED line is gone even when nothing was removed"; exit 1 ;; esac
 # (B) SAME, but with NO jq and NO python3 on PATH (the real Windows Git-Bash case) -> kit-only settings safely
 # REPLACED + backup kept. The strip needs a symlink farm; Git-Bash on Windows can't make one, so there we skip this
 # sub-test (with a note) and rely on (A) + the portable-bash fallback proven on the POSIX runners.
@@ -314,6 +337,7 @@ if [ -L "$SYMPROBE" ]; then
     grep -q "\"timeout\": $KIT_TO" "$N/.claude/settings.json"    || { echo "FAIL: no-jq/python update did not refresh the timeout"; exit 1; }
     ls "$N"/.claude/settings.json.bak-* >/dev/null 2>&1   || { echo "FAIL: no-jq/python replace did not keep a backup"; exit 1; }
     head -1 "$N/CLAUDE.md" | grep -q 'project rules'      || { echo "FAIL: no-jq/python update clobbered CLAUDE.md"; exit 1; }
+    retired_gone "$N/.claude/settings.json"
     NOJQ_NOTE="with + WITHOUT jq/python"
     # (D) Python exposed ONLY as `py` (the Windows Python Launcher) — no jq, no python3/python. The merge must run
     #     via py and heal, NOT fall through to the .kit reference (the exact case a Git-Bash Windows user hit).
@@ -325,6 +349,8 @@ if [ -L "$SYMPROBE" ]; then
       grep -q 'SessionStart' "$P/.claude/settings.json"   || { echo "FAIL: py-launcher update did not self-heal (SessionStart)"; exit 1; }
       grep -q "\"timeout\": $KIT_TO" "$P/.claude/settings.json"  || { echo "FAIL: py-launcher update did not refresh the timeout"; exit 1; }
       [ ! -e "$P/.claude/settings.json.kit" ]             || { echo "FAIL: py present but the merge fell back to .kit"; exit 1; }
+      retired_gone "$P/.claude/settings.json"
+      grep -q '"Bash(terraform apply:\*)"' "$P/.claude/settings.json" || { echo "FAIL: py merge dropped the project's own ask rule with the retired ones"; exit 1; }
       rm -f "$NODEPS/py"
     fi
   else NOJQ_NOTE="with jq/python (couldn't build a jq-less PATH here)"; fi
@@ -338,7 +364,7 @@ cp adopt.sh "$F/"; cp -R claude-starter "$F/"; cp VERSION "$F/"; printf '{"name"
 ( cd "$F" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
 ( cd "$F" && bash adopt.sh --here </dev/null >/dev/null 2>&1 )
 [ ! -f "$F/.claude/DISCIPLINE.md" ]                     || { echo "FAIL: first adopt must NOT apply non-interactively without --yes"; exit 1; }
-echo "[adopt-selfheal] update self-heals off a TTY ($NOJQ_NOTE) · backup kept · CLAUDE.md preserved · first adopt still needs --yes"
+echo "[adopt-selfheal] update self-heals off a TTY ($NOJQ_NOTE) · retired §4.4 ask rules dropped, own rules kept · backup kept · CLAUDE.md preserved · first adopt still needs --yes"
 
 # (D) TTY + --yes must NOT hang — the /update-csk regression. adopt.sh once tested `-t 0` BEFORE --yes, so an
 # --yes run that inherited a TTY (Claude Code drives commands under a pty on Windows) blocked on a prompt. Every
