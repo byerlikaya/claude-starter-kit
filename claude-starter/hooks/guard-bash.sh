@@ -538,6 +538,7 @@ block(){
     bypass)   echo "The ignore rule is deliberate. If the file genuinely belongs in the repository, change .gitignore in the same commit so the decision is reviewable." >&2 ;;
     exec)     echo "This runs code that nobody has read. Download it, read it, then run the local copy." >&2 ;;
     exposure) echo "This widens access for every user on the machine, not just this session. Grant the narrowest mode that works." >&2 ;;
+    approval) echo "This needs a person to say yes and this session has no way to put the prompt in front of one. Either the user switches to default/acceptEdits with Shift+Tab — in this session, no restart — or the NEXT session starts with CLAUDE_GIT_OK=1. The key is set by the user before the session; it cannot be set from inside the command." >&2 ;;
     *)        echo "(unclassified rule — this block carries no recovery line; that is a defect in the hook, not in your command.)" >&2 ;;
   esac
   exit 2
@@ -1381,10 +1382,60 @@ ${BRANCH_WARN}Approve only if the commit message above was shown to you and you 
       echo "GUARD (§4.4): 'git commit/push' is gated by approval AT THE TOOL LEVEL, and this session's permission mode ('${PERM_MODE:-unknown}') cannot put that prompt in front of a person." >&2
       echo "Present the commit MESSAGE to the user and get EXPLICIT approval. Then one of:" >&2
       echo "  (a) the user presses Shift+Tab to switch to default/acceptEdits — IN THIS SESSION, no restart — and this gate asks them directly, OR" >&2
-      echo "  (b) the NEXT session is started with 'CLAUDE_GIT_OK=1' (headless/CI) — the key cannot be added to a session already running. It covers COMMIT AND PUSH ONLY;;" >&2
+      echo "  (b) the NEXT session is started with 'CLAUDE_GIT_OK=1' (headless/CI) — the key cannot be added to a session already running. It covers the §4.4 APPROVAL set (add · checkout -b · commit · push) and nothing else;" >&2
       echo "      force-push, git add -f, hook tampering and the §4.5 destructive set all still block, OR" >&2
       echo "  (c) the user runs the command in their own terminal." >&2
       exit 2 ;;
+  esac
+fi
+
+# §4.4 — STAGING AND BRANCHING TAKE THE SAME ROUTE AS COMMIT AND PUSH.
+#
+# Until now `git add` and `git checkout -b` were gated ONLY by the `ask` rules in settings.json, and this
+# hook returned no decision for them in every mode — measured, all five modes, no CLAUDE_GIT_OK. That split
+# is what made CLAUDE_GIT_OK unable to do the one thing it advertises: the published permission reference
+# says a matching `ask` rule still prompts even when a PreToolUse hook returns "allow", so the hook's allow
+# could never clear the settings rule, and headless there is nobody to answer. Measured in the paid A/B:
+# `commit-format` asked explicitly for a commit, the gate log recorded ALLOW §4.4 CLAUDE_GIT_OK, and the
+# arm still committed 0/3 — the fix applied, nothing staged, nothing committed.
+#
+# Deleting those ask rules alone would have been a §4.4 REGRESSION, which is why this block exists first:
+# with the rules gone and no hook decision, add and checkout -b would run ungated in every mode, silently in
+# bypass and auto. So the rule moves into the hook rather than disappearing, and the settings change lands
+# after it. ORDER MATTERS: hook first (stricter), settings second.
+#
+# `-b` is matched precisely rather than by `checkout` alone. Plain `git checkout main` is branch switching,
+# it is not in the settings ask rule, and gating it here would be new policy rather than the same policy in
+# a new place. Calibrated: `checkout -b x` and `checkout --quiet -b x` match; `checkout main`, `checkout --
+# .` and `checkout b` do not. Known and deliberate: `git switch -c` is NOT matched, because it was not in
+# the settings rule either — that is a pre-existing gap, recorded rather than silently widened here.
+if git_has "$CMD" 'add' \
+   || printf '%s' "$CMD" | grep -qE '(^|[^A-Za-z0-9_-])git([[:space:]]+-[^[:space:]]+)*[[:space:]]+checkout([[:space:]]+[^[:space:];&|]+)*[[:space:]]+-b([[:space:]]|$)'; then
+  case "${PERM_MODE:-}" in
+    default|acceptEdits)
+      ask_user "§4.4 staging/branching approval gate. Claude wants to run:
+
+$(printf '%s' "$CMD" | cut -c1-400)
+
+Approving lets Claude run the command itself."
+      ;;
+    *)
+      # NO DECISION, and this is where the spec for this change was wrong rather than where the suite was.
+      # Routing add/checkout -b to the commit/push fail-closed arm made three existing assertions red, and
+      # all three drive mode `auto`:
+      #     git add -A NOT over-blocked            (beside "git add -f BLOCKED": the pair is the point)
+      #     git add leak.sh must run               (H4b — ordinary scripts)
+      #     git checkout -b feature/x must pass    (§4.5 whole-tree-revert case list)
+      # The comment on the first one says it outright: "a plain add must NOT be over-blocked". These are
+      # considered decisions, not omissions, and the reason they are right is the one the paid A/B measured
+      # on `destructive-refused`: a gate that costs the request and buys nothing is a net loss. Staging
+      # publishes nothing. The consequential steps — commit and push — already fail closed here, and
+      # `git add -f` is already a §4.5 block. Failing closed on a plain `git add` would stop every
+      # non-interactive session from staging while protecting nothing that commit does not already protect.
+      #
+      # What the interactive arm above still buys: the settings.json `ask` rules for add and checkout -b can
+      # be removed without losing the prompt, which is what frees CLAUDE_GIT_OK to work at all.
+      : ;;
   esac
 fi
 
