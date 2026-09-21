@@ -2440,6 +2440,36 @@ done
 # The key opens the approval gate, never the destructive one: `git add -f` is §4.5 and stays blocked.
 gj auto 'git add -f secrets.env' | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1
 [ "$?" = 2 ] && pass "git add -f BLOCKED even with the key (§4.5)" || fail "git add -f PASSED with the key (§4.5 hole)"
+# BRANCH CREATION, BOTH DIRECTIONS. The first version of this rule was calibrated only against over-matching
+# (`checkout main`, `checkout -- .`, `checkout b`), so nothing asked whether it matched ENOUGH — and `checkout -B`,
+# both `--orphan`s, every `switch` creator and any global option in front (`git -C repo …`) ran with no prompt.
+# The flag list is git's own `checkout -h` / `switch -h`. Each list reports its count, so a pattern that stops
+# seeing a spelling names it rather than turning the row quietly green.
+_bc_miss=""; _bc_n=0
+for c in 'git checkout -b x' 'git checkout -B x' 'git checkout --orphan x' 'git checkout --quiet -b x' \
+         'git switch -c x' 'git switch -C x' 'git switch --create x' 'git switch --create=x' \
+         'git switch --force-create x' 'git switch --orphan x' 'git -C repo checkout -b x' 'git -c k=v switch -c x'; do
+  _bc_n=$((_bc_n+1)); o="$(gj default "$c" | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"
+  [ "$(gdec "$o")" = "ask" ] || _bc_miss="$_bc_miss [$c]"
+done
+[ -z "$_bc_miss" ] && pass "every branch-creating spelling ASKS in default mode ($_bc_n of $_bc_n, §4.4)" \
+                   || fail "branch creation ran with no prompt (§4.4 hole):$_bc_miss"
+_bc_over=""; _bc_n=0
+for c in 'git checkout main' 'git checkout b' 'git switch main' 'git switch --detach' 'git switch -' 'git -C repo switch main'; do
+  _bc_n=$((_bc_n+1)); o="$(gj default "$c" | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"
+  [ "$(gdec "$o")" = "ask" ] && _bc_over="$_bc_over [$c]"
+done
+[ -z "$_bc_over" ] && pass "moving between existing branches is NOT gated ($_bc_n of $_bc_n pass silently)" \
+                   || fail "branch SWITCHING was gated as if it created a branch (over-match):$_bc_over"
+# The key must cover what the gate covers: a creator the hook asks about but the key does not allow would leave
+# a headless session with a prompt nobody can answer.
+_bc_nokey=""
+for c in 'git switch -c x' 'git switch --orphan x' 'git checkout -B x' 'git -C repo checkout -b x'; do
+  o="$(gj auto "$c" | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" 2>/dev/null)"
+  [ "$(gdec "$o")" = "allow" ] || _bc_nokey="$_bc_nokey [$c]"
+done
+[ -z "$_bc_nokey" ] && pass "a keyed session ALLOWS every gated branch creator (4 of 4)" \
+                    || fail "the key does not cover a branch creator the gate asks about:$_bc_nokey"
 
 sec "== 4f) §4.6 review gate — a commit cannot land on a diff nothing reviewed =="
 # The gate's own three states plus the ways round it, each in a real repo rather than against a string. What

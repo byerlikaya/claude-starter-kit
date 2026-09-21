@@ -1050,7 +1050,8 @@ allow_preauthorised(){
     "$(json_escape "CLAUDE_GIT_OK: session pre-authorised before it started (§4.4 headless/CI)")"
   exit 0
 }
-# THE WHOLE APPROVAL-GATED GIT SET IS NOW GUARDED HERE — add, commit, push and checkout -b. It used to be
+# THE WHOLE APPROVAL-GATED GIT SET IS NOW GUARDED HERE — add, commit, push and branch creation (checkout -b,
+# switch -c, in every spelling the staging/branching block at the end matches). It used to be
 # split with settings.json, which carried `ask` rules for all four, and that split is what made this key
 # useless: a matching ask rule prompts even when a hook returns "allow", so the key could never clear it and
 # headless there was nobody to answer. A pre-authorised run could not even STAGE, while §4.4 advertised the
@@ -1066,7 +1067,7 @@ allow_preauthorised(){
 #     one and never runs when the key is set. A pre-authorised session commits WITHOUT a review record. The
 #     payload CLAUDE.md §4.6 states it ("Deliberate skip: … CLAUDE_GIT_OK (headless/CI) bypasses this too")
 #     and it is written here as well, because the person reading the hook is not reading that file.
-if git_has "$CMD" 'add|commit|push|checkout'; then
+if git_has "$CMD" 'add|commit|push|checkout|switch'; then
   # The key is granted by the user's environment, never by the command line the model composes.
   if printf '%s' "$CMD" | grep -q 'CLAUDE_GIT_OK'; then
     gatelog BLOCK 4.4 "approval key set inside the command"
@@ -1390,7 +1391,7 @@ ${BRANCH_WARN}Approve only if the commit message above was shown to you and you 
       echo "GUARD (§4.4): 'git commit/push' is gated by approval AT THE TOOL LEVEL, and this session's permission mode ('${PERM_MODE:-unknown}') cannot put that prompt in front of a person." >&2
       echo "Present the commit MESSAGE to the user and get EXPLICIT approval. Then one of:" >&2
       echo "  (a) the user presses Shift+Tab to switch to default/acceptEdits — IN THIS SESSION, no restart — and this gate asks them directly, OR" >&2
-      echo "  (b) the NEXT session is started with 'CLAUDE_GIT_OK=1' (headless/CI) — the key cannot be added to a session already running. It covers the §4.4 APPROVAL set (add · checkout -b · commit · push) and nothing else;" >&2
+      echo "  (b) the NEXT session is started with 'CLAUDE_GIT_OK=1' (headless/CI) — the key cannot be added to a session already running. It covers the §4.4 APPROVAL set (add · checkout -b / switch -c · commit · push) and nothing else;" >&2
       echo "      force-push, git add -f, hook tampering and the §4.5 destructive set all still block, OR" >&2
       echo "  (c) the user runs the command in their own terminal." >&2
       exit 2 ;;
@@ -1412,13 +1413,22 @@ fi
 # bypass and auto. So the rule moves into the hook rather than disappearing, and the settings change lands
 # after it. ORDER MATTERS: hook first (stricter), settings second.
 #
-# `-b` is matched precisely rather than by `checkout` alone. Plain `git checkout main` is branch switching,
-# it is not in the settings ask rule, and gating it here would be new policy rather than the same policy in
-# a new place. Calibrated: `checkout -b x` and `checkout --quiet -b x` match; `checkout main`, `checkout --
-# .` and `checkout b` do not. Known and deliberate: `git switch -c` is NOT matched, because it was not in
-# the settings rule either — that is a pre-existing gap, recorded rather than silently widened here.
+# BRANCH CREATION, by every spelling git accepts, not just the one the old settings rule named. The flag is
+# matched precisely rather than the subcommand alone: plain `git checkout main` / `git switch main` is moving
+# between branches, and gating it would be new policy rather than the same policy in a new place.
+#   checkout -b / -B / --orphan      switch -c / -C / --create / --force-create / --orphan  (also `--x=name`)
+# — the flag list is git's own `checkout -h` / `switch -h` (git 2.54), not recalled.
+# The prefix is git_has's own global-option skip, so `git -C repo checkout -b x` and `git -c k=v …` are seen.
+# Measured before this, default mode: only a bare `git checkout -b x` asked — `-C <path>` and `-c <kv>` in
+# front of it, `checkout -B`, both `--orphan`s and all four `switch` creators ran with no prompt, and the `switch` forms were
+# not even in the CLAUDE_GIT_OK set above, so a keyed session got no allow for them either.
+# Calibrated in smoke §4e, BOTH directions: every creator above, with and without a global option in front,
+# must ask; `checkout main`, `switch main`, `switch --detach`, `checkout -- .` and `checkout b` must not. The
+# first version of this rule had only the second half, which is how `-B` went unnoticed beside `-b`.
+# NOT covered, deliberately: `git branch <name>` creates a branch without switching to it; it was never in the
+# §4.4 set and adding it here would be a policy change, not a spelling fix.
 if git_has "$CMD" 'add' \
-   || printf '%s' "$CMD" | grep -qE '(^|[^A-Za-z0-9_-])git([[:space:]]+-[^[:space:]]+)*[[:space:]]+checkout([[:space:]]+[^[:space:];&|]+)*[[:space:]]+-b([[:space:]]|$)'; then
+   || printf '%s' "$CMD" | grep -qE '(^|[^A-Za-z0-9_-])git[[:space:]]+((-[Cc][[:space:]]+[^[:space:];&|]+|--(git-dir|work-tree|namespace|config-env|super-prefix|exec-path)[[:space:]=]+[^[:space:];&|]+|-[^[:space:];&|]+)[[:space:]]+)*(checkout([[:space:]]+[^[:space:];&|]+)*[[:space:]]+(-[bB]|--orphan)|switch([[:space:]]+[^[:space:];&|]+)*[[:space:]]+(-[cC]|--create|--force-create|--orphan))([[:space:]=]|$)'; then
   case "${PERM_MODE:-}" in
     default|acceptEdits)
       ask_user "§4.4 staging/branching approval gate. Claude wants to run:

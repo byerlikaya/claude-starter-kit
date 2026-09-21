@@ -5,6 +5,17 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — every way of creating a branch asks, not only `git checkout -b`
+
+- **The approval gate knew one spelling.** In the interactive modes only a bare `git checkout -b x` prompted.
+  `checkout -B`, `checkout --orphan`, `switch -c` / `-C` / `--create` / `--force-create` / `--orphan`, and any
+  of them behind a git global option (`git -C repo checkout -b x`) ran without a prompt; the `switch` forms
+  were also missing from the `CLAUDE_GIT_OK` set, so a pre-authorised session got no allow for them.
+- **All of them now ask, and the key covers all of them.** Moving between existing branches (`git checkout
+  main`, `git switch main`, `git switch --detach`) is still not gated. `git branch <name>` — creating a branch
+  without switching to it — was never in the approval set and is not added here.
+- The suite now checks both directions: every creating spelling must ask, and no switching spelling may.
+
 ### Fixed — `CLAUDE_GIT_OK` pre-authorises a headless commit again
 
 - **The pre-authorisation was dead and nothing said so.** `settings.json` shipped `ask` rules for `git add`,

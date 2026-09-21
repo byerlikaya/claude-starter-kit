@@ -165,7 +165,7 @@ use an abstract phrasing like "internal spec". A fresh install gitignores this f
 a team that adopted the kit may have chosen to share them instead, and the trace scan skips `.claude/` for that reason.
 
 ### 4.4 Commit/push only with explicit approval
-No `git commit` / `git push` unless the user says "commit" / "push"; `git add` and `checkout -b` need approval too.
+No `git commit` / `git push` unless the user says "commit" / "push"; `git add` and creating a branch need approval too.
 "Done / we can proceed" is **not** approval. **Present the message FIRST** — even in auto/fast mode. `guard-bash.sh`
 asks in `default`/`acceptEdits`; in `auto`, `dontAsk`, `plan`, `bypassPermissions` nobody sees a prompt, so it
 FAILS CLOSED — get a real yes, then switch mode. Never hand the user a command to paste. **Headless/CI:** if
