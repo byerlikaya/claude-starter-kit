@@ -1050,14 +1050,22 @@ allow_preauthorised(){
     "$(json_escape "CLAUDE_GIT_OK: session pre-authorised before it started (§4.4 headless/CI)")"
   exit 0
 }
-# The approval-gated git set is guarded in two places: this hook asks for commit/push, and settings.json also
-# asks for `git add` and `git checkout -b`. The key used to answer only the first, by exiting 0 — which means
-# "this hook has no opinion" and leaves the settings rule in force. So a headless run could not even STAGE,
-# while §4.4 advertised the key as the way to work with nobody at the keyboard: the flag's only purpose, and
-# it did not achieve it. Measured with the A/B harness (evals/), where the kit arm proposed a commit and
-# stopped in every run while the bare arm committed freely.
-# Reached only AFTER the §4.5 blocks above, so a pre-authorised session still cannot force-push, amend,
-# reset --hard or `git add -f` — the key opens the approval gate, never the destructive one.
+# THE WHOLE APPROVAL-GATED GIT SET IS NOW GUARDED HERE — add, commit, push and checkout -b. It used to be
+# split with settings.json, which carried `ask` rules for all four, and that split is what made this key
+# useless: a matching ask rule prompts even when a hook returns "allow", so the key could never clear it and
+# headless there was nobody to answer. A pre-authorised run could not even STAGE, while §4.4 advertised the
+# key as the way to work with nobody at the keyboard — the flag's only purpose, and it did not achieve it.
+# Measured with the A/B harness (evals/): the kit arm committed 0/3 with the key set and its own gate log
+# reading ALLOW. Those four settings rules are gone now, and an update strips them from existing projects.
+#
+# WHAT THE KEY DOES AND DOES NOT OPEN, because a wrong sentence here is what someone reads before
+# misdiagnosing — this comment has been wrong twice already:
+#   * §4.5 stays shut. This is reached only AFTER the destructive blocks above, so a pre-authorised session
+#     still cannot force-push, amend, reset --hard or `git add -f`.
+#   * §4.6 IS OPENED, deliberately, and that is easy to miss because the block sits a few lines below this
+#     one and never runs when the key is set. A pre-authorised session commits WITHOUT a review record. The
+#     payload CLAUDE.md §4.6 states it ("Deliberate skip: … CLAUDE_GIT_OK (headless/CI) bypasses this too")
+#     and it is written here as well, because the person reading the hook is not reading that file.
 if git_has "$CMD" 'add|commit|push|checkout'; then
   # The key is granted by the user's environment, never by the command line the model composes.
   if printf '%s' "$CMD" | grep -q 'CLAUDE_GIT_OK'; then
