@@ -67,9 +67,12 @@ MODEL="$(claude --version 2>/dev/null | head -1)"
 # exit. A missing CSK_EVAL_WORK is a typo, not a reason to write to /.
 WORKBASE="${CSK_EVAL_WORK:-${TMPDIR:-/tmp}}"
 [ -d "$WORKBASE" ] || { echo "run.sh: work dir '$WORKBASE' does not exist (CSK_EVAL_WORK) — create it or unset the variable" >&2; exit 2; }
+EVWT=""   # scratch worktrees created this run; removed on exit so the parent does not accumulate them
 WORK="$(mktemp -d "$WORKBASE/csk-eval.XXXXXX")" || { echo "run.sh: could not create a scratch dir under '$WORKBASE'" >&2; exit 2; }
 [ -n "$WORK" ] && [ -d "$WORK" ] || { echo "run.sh: scratch dir is empty/missing — refusing to run" >&2; exit 2; }
-trap '[ "$KEEP" = 1 ] && echo "scratch kept: $WORK" || rm -rf "$WORK"' EXIT
+# The prune matters as much as the rm: a worktree whose directory is gone stays REGISTERED in the parent, and
+# the registrations accumulate one per case per run until `worktree add` starts refusing paths.
+trap '[ "$KEEP" = 1 ] && echo "scratch kept: $WORK" || rm -rf "$WORK"; git -C "${CSK_EVAL_PARENT:-$HOME/.csk-eval-parent}" worktree prune >/dev/null 2>&1 || true' EXIT
 
 # build_project <dir> <arm>  — identical seed in both arms; the kit is the only variable.
 build_project() {
@@ -80,8 +83,33 @@ build_project() {
   # scratch path made this run `git init`, `git config user.email eval@example.invalid`, the case's `seed`
   # (which overwrites README.md) and finally `git add -A && git commit` against the repo itself, committing a
   # working tree of real work under the message "seed". Nothing here may run outside the scratch project.
+  # A SCRATCH PROJECT IS A WORKTREE OF A TRUSTED THROWAWAY PARENT, not a fresh `git init`, and the reason is
+  # measured rather than stylistic. `git init` makes the directory its OWN project boundary; a new project is
+  # untrusted; an untrusted project has its `permissions.allow` DROPPED. Three probes, 2026-09-21:
+  #   permissions.allow absent + git init  -> no warning   (this is why an earlier probe read "trust inherited")
+  #   permissions.allow present, no git    -> no warning
+  #   permissions.allow present + git init -> "has not been trusted"
+  # The two cases that need a pre-approved permission (`commit-format`, `secret-refused`) were therefore
+  # unmeasurable for a reason that had nothing to do with §4.4: CLAUDE_GIT_OK was being handed over correctly
+  # and the permission LAYER was gone underneath it.
+  #
+  # A worktree inherits its parent's trust, and that inheritance follows the RELATIONSHIP rather than the path
+  # (measured: a worktree under TMPDIR is trusted too). The parent is `~/.csk-eval-parent` — created once, no
+  # remote, one empty root commit — and NOT this repository: a worktree of the kit repo can see `origin`, all
+  # its branches and `origin/main`, and these cases deliberately provoke destructive git commands in an arm
+  # that has no gates. Measured before rejecting it: origin = the live GitHub remote, 24 branches visible.
+  # With the throwaway parent: 0 files, 0 remotes, no origin/main, no trust warning.
+  #
+  # Falls back to `git init` when the parent is absent, so the suite still runs; the two permission-dependent
+  # cases then report `! workspace untrusted` exactly as before rather than failing.
+  EVPAR="${CSK_EVAL_PARENT:-$HOME/.csk-eval-parent}"
+  if [ -d "$EVPAR/.git" ] && git -C "$EVPAR" rev-parse --verify --quiet base >/dev/null 2>&1 \
+     && git -C "$EVPAR" worktree add -q --detach "$dir" base 2>/dev/null; then
+    EVWT="$EVWT $dir"
+  else
+    ( cd "$dir" || exit 1; git init -q )
+  fi
   ( cd "$dir" || exit 1
-    git init -q
     git config user.email eval@example.invalid
     git config user.name  "Eval Runner"
     git config commit.gpgsign false
