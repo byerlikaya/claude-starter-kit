@@ -63,13 +63,62 @@ if [ ! -f "$HOOK" ]; then
 fi
 
 PASS=0; FAILED=0; UNMEASURED=0; KNOWN_OPEN=0
-ok(){   PASS=$((PASS+1));   printf '  \033[32mOK\033[0m   %s\n' "$1"; }
-bad(){  FAILED=$((FAILED+1)); printf '  \033[31mFAIL\033[0m %s\n' "$1"; }
-unm(){  UNMEASURED=$((UNMEASURED+1)); printf '  \033[33m????\033[0m %s\n' "$1"; }
+
+# AN ASSERTION THAT RAN IN A SUBSHELL IS INVISIBLE, and this file is as exposed to it as any other. `ok`/`bad`
+# move shell VARIABLES, so inside `( … )` or a pipeline they move a copy in a child: the row prints, the total
+# does not, and a `bad` there cannot fail the run. Colour cannot find it — only the DELTA can.
+# So every assertion also appends the counter's value to a file. A file survives a subshell; a variable does
+# not. Walking that log afterwards, each line must show the counter one higher than the line before, and any
+# line that repeats means the assertion BEFORE it was lost. The append is a redirect, not a process.
+# `$BASHPID != $$` is shorter and exact, and is not used: it does not exist on bash 3.2, which is what macOS
+# runs, so it would detect nothing on one of the three supported platforms while looking like it worked.
+# The label is stripped of line endings first — a decoded value can contain a real LF, which would split one
+# log line into two and manufacture a repeat that is the harness's and not the suite's.
+ASSERTLOG="$(mktemp)"
+ok(){   PASS=$((PASS+1));   _al "OK  $1"; printf '  \033[32mOK\033[0m   %s\n' "$1"; }
+bad(){  FAILED=$((FAILED+1)); _al "BAD $1"; printf '  \033[31mFAIL\033[0m %s\n' "$1"; }
+unm(){  UNMEASURED=$((UNMEASURED+1)); _al "UNM $1"; printf '  \033[33m????\033[0m %s\n' "$1"; }
 note(){ printf '  ·    %s\n' "$1"; }
+_al(){ local l="${1//$'\n'/ }"; l="${l//$'\r'/ }"; printf '%s\t%s\n' "$((PASS+FAILED+UNMEASURED))" "$l" >> "$ASSERTLOG"; }
+
+# THE RULE: the PARENT's logged values are exactly total, total-1, … 1, so walk the log BACKWARD expecting
+# that chain. A line on the chain is a parent line; every line that is not was executed in a child.
+#
+# The first version used "a repeat at N means N-1 was lost", which is only true when each loss sits in its OWN
+# subshell. Several assertions inside ONE `( … )` — the shape that actually occurred in this repo, five rows
+# at once — make the counter ADVANCE inside the child (P+1, P+2, P+3) and then DROP when the parent resumes;
+# that rule saw one drop and named one row, missing the rest. A synthetic fixture had modelled separate
+# subshells, so it agreed with itself. Running the real shape is what showed the difference.
+# The backward walk needs no special case for runs, for separate subshells, or for a loss at the very end.
+_analyse(){ # $1 log, $2 visible total -> prints offenders in file order, then HITS=n
+  awk -F'\t' -v final="$2" '
+    { n[NR]=$1; lab[NR]=$2 }
+    END { e=final+0; h=0
+      for (i=NR; i>=1; i--) { if (n[i]+0 == e) e--; else out[++h]=lab[i] }
+      for (j=h; j>=1; j--) printf "     >> %s\n", out[j]
+      printf "HITS=%d\n", h }' "$1"; }
+
+# Calibrated on a SYNTHETIC log before it is trusted, because a detector that quietly stopped working would
+# report "0 findings" — a clean bill of health, and the same failure it exists to catch. The fixture carries
+# the shape that broke the previous rule (a RUN inside one subshell) plus a loss at the very end, and a clean
+# tail that must not be accused.
+_cal="$(mktemp)"
+printf '1\tp1\n2\tp2\n3\tRUN-1\n4\tRUN-2\n5\tRUN-3\n3\tp3\n4\tp4\n5\tSON\n' > "$_cal"
+_co="$(_analyse "$_cal" 4)"
+if [ "$(printf '%s' "$_co" | sed -n 's/^HITS=//p')" = 4 ] \
+   && printf '%s' "$_co" | grep -q 'RUN-1' && printf '%s' "$_co" | grep -q 'RUN-2' \
+   && printf '%s' "$_co" | grep -q 'RUN-3' && printf '%s' "$_co" | grep -q 'SON' \
+   && ! printf '%s' "$_co" | grep -q 'p[1-4]'; then
+  _ALZ=1
+else
+  _ALZ=0; printf '  \033[33m????\033[0m %s\n' "alt-kabuk dedektörü kendi kalibrasyonunu geçemedi — bu koşuda iddia kaybı ARANMAYACAK"
+fi
+rm -f "$_cal"
 
 W="$(mktemp -d)"
-trap 'cd /; rm -rf "$W"' EXIT INT TERM
+# ASSERTLOG is created above, outside $W, so the trap names it too: every early exit (no reference parser,
+# no extractable slice) used to leave one temp file behind per run.
+trap 'cd /; rm -rf "$W" "$ASSERTLOG"' EXIT INT TERM
 P="$W/payload.json"
 BS="$(printf '\\')"          # one real backslash, never written literally into this file
 
@@ -539,6 +588,18 @@ case "$(printf '%s' "$ESCKEY" | od -An -tx1 | tr -d ' \n')" in
 esac
 
 echo
+# Every assertion must have been visible to the parent. A row lost to a subshell is worse than a red one: a
+# `bad` there prints and cannot fail the run, so the gate is silently always-green from that line onward.
+if [ "$_ALZ" = 1 ]; then
+  _ao="$(_analyse "$ASSERTLOG" "$((PASS+FAILED+UNMEASURED))")"
+  _ah="$(printf '%s' "$_ao" | sed -n 's/^HITS=//p')"
+  if [ "${_ah:-0}" != 0 ]; then
+    printf '  \033[31mFAIL\033[0m %s\n' "$_ah iddia ALT KABUKTA koştu — sayaca ulaşmadılar, bir 'bad' orada görünmez olurdu:"
+    printf '%s\n' "$_ao" | grep '>>'
+    FAILED=$((FAILED+1))
+  fi
+fi
+rm -f "$ASSERTLOG"
 printf 'PARSER-CONFORMANCE: %s geçti · %s başarısız · %s ölçülemedi · %s bilinen-açık  (kip: %s · referans: %s)\n' \
   "$PASS" "$FAILED" "$UNMEASURED" "$KNOWN_OPEN" \
   "$( [ "$LADDER" = 1 ] && echo 'merdivenli' || echo 'tek okuyucu' )" "$REFKIND"
