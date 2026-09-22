@@ -5,7 +5,7 @@
 # Every install is identical — there is no frontend/backend/mobile split. Measured before it was removed: the
 # widest profile pruning saved ~400 tokens of listing, while the split cost a per-profile e2e matrix, a second
 # prune path in adopt.sh, and shipped a set the plugin channel never matched. The ONE thing that legitimately
-# varies is the backend pattern, because devarch-module is .NET-specific and wrong in a Node/Go/Python repo.
+# varies is the backend pattern, because cqrs-aop-module is .NET-specific and wrong in a Node/Go/Python repo.
 # start.sh + claude-starter/ must be in the SAME directory. At the project root:  bash start.sh [flags]
 set -euo pipefail
 HERE="$(CDPATH= cd "$(dirname "$0")" && pwd)"
@@ -52,25 +52,270 @@ if [ -d "$HERE/packaging" ] && [ -d "$HERE/.git" ] && [ -f "$HERE/VERSION" ]; th
   fi
 fi
 
+# ---- CSK-I18N ------------------------------------------------------------------------------------------
+# The installer speaks the user's language; the artefacts it writes do not.
+#
+# THE ENGLISH STRING IS THE KEY. `m 'Cancelled — nothing changed.'` looks that text up and prints the
+# translation, or the text itself when there is none. Three things fall out of that and they are why it is
+# written this way rather than with invented keys like `msg.cancelled`:
+#   * A missing translation cannot produce a blank line or a bare key — the fallback IS English, structurally.
+#   * The English text stays in the source, so a grep for it (the suite has two) keeps matching.
+#   * The call site says what it prints. `m msg.cancelled` does not.
+# The cost is that editing an English string silently drops its translation and the line reverts to English.
+# That is a regression, not a break, and it is catchable: every pattern in the table below must match a
+# string that occurs in this file.
+#
+# RULES FOR THE TABLE, each one paid for:
+#   * No colour and no escape codes inside a message. Colour lives in the helpers (h1/sub/add/...), which
+#     take an already-translated string. A translator copying an ANSI sequence is a translator breaking it.
+#   * Interpolated values go through %s, never concatenation — Turkish word order and suffixes differ.
+#   * A literal percent must be written %% because the message IS the printf format. "%100 yerel" would
+#     otherwise eat an argument.
+#
+# NOT TRANSLATED, deliberately: the source-repo refusal above and --version. Both answer before the flags
+# are parsed, and language selection cannot run ahead of them without putting a locale lookup in front of a
+# gate whose whole job is to refuse. A gate that parses a locale before it can say no is a worse gate.
+# The inherited CSK_LANG is captured before the working variable is cleared — otherwise this very line
+# would destroy the environment setting it is meant to read.
+CSK_LANG_ENV="${CSK_LANG:-}"
+CSK_LANG=""
+m() {   # $1 = English text (the key); further args fill %s
+  local s="$1"; shift
+  if [ "$CSK_LANG" = tr ]; then
+    case "$s" in
+      "Agentic Working Kit · setup wizard") s='Agentic Working Kit · kurulum sihirbazı' ;;
+      "2 steps: backend pattern -> summary & confirm.") s='2 adım: backend deseni -> özet ve onay.' ;;
+      "[1/3] Backend pattern") s='[1/3] Backend deseni' ;;
+      "Determines the backend template and whether the .NET-specific skills are included.") s="Backend şablonunu ve .NET'e özgü skill'lerin dahil edilip edilmeyeceğini belirler." ;;
+      ".NET / DevArchitecture") s='.NET / DevArchitecture' ;;
+      "full support") s='tam destek' ;;
+      "Generic") s='Genel' ;;
+      "stack-agnostic") s='yığından bağımsız' ;;
+      "cqrs-aop-module skill (opinionated MediatR CQRS)") s="cqrs-aop-module skill'i (kuralcı MediatR CQRS)" ;;
+      "clones the DevArchitecture base project BEHIND AN APPROVAL GATE (greenfield project)") s='DevArchitecture taban projesini BİR ONAY KAPISININ ARDINDAN klonlar (sıfırdan proje)' ;;
+      "pattern-neutral backend-expert-csk — follows your repo's pattern; declare it as a skill (.claude/skills/)") s='desenden bağımsız backend-expert-csk — deponuzun desenini izler; desenini bir skill olarak bildirin (.claude/skills/)' ;;
+      "cqrs-aop-module and the DevArchitecture base NOT INSTALLED (sonarqube-check still installed)") s='cqrs-aop-module ve DevArchitecture tabanı KURULMAZ (sonarqube-check yine kurulur)' ;;
+      "[2/3] Who is this install for?") s='[2/3] Bu kurulum kimin için?' ;;
+      "Decides whether your teammates get the kit's configuration — and what goes into .gitignore.") s="Takım arkadaşlarınızın kit yapılandırmasını alıp almayacağını — ve .gitignore'a ne gireceğini belirler." ;;
+      "Just me") s='Yalnız ben' ;;
+      "private") s='özel' ;;
+      "The whole team") s='Tüm ekip' ;;
+      "shared") s='paylaşımlı' ;;
+      ".claude/ and CLAUDE.md stay out of git — nothing appears in your teammates' checkouts") s=".claude/ ve CLAUDE.md git'in dışında kalır — takım arkadaşlarınızın kopyalarında hiçbir şey görünmez" ;;
+      ".claude/ and CLAUDE.md are committable — everyone gets the same agents, skills and gates") s=".claude/ ve CLAUDE.md commit edilebilir — herkes aynı ajanları, skill'leri ve kapıları alır" ;;
+      "internal working documents (docs/) stay private in BOTH answers") s='iç çalışma belgeleri (docs/) HER İKİ cevapta da özel kalır' ;;
+      "[3/3] Summary · see what will be installed before you confirm") s='[3/3] Özet · onaylamadan önce ne kurulacağını görün' ;;
+      "Security gates armed on every install:") s='Her kurulumda devreye giren güvenlik kapıları:' ;;
+      "commit/push approval gate — even in auto/bypass mode (guard-bash)") s='commit/push onay kapısı — auto/bypass modunda bile (guard-bash)' ;;
+      "trace scan — a git hook blocks AI traces / vendor names") s="iz taraması — bir git hook'u AI izlerini / sağlayıcı adlarını engeller" ;;
+      "real context measurement + handoff at 75%% (Stop hook)") s="gerçek bağlam ölçümü + %%75'te devir (Stop hook)" ;;
+      "destructive command guard (rm -rf / force-push, etc.)") s='yıkıcı komut koruması (rm -rf / force-push vb.)' ;;
+      "Install with these settings?") s='Bu ayarlarla kurulayım mı?' ;;
+      "Cancelled — nothing changed.") s='İptal edildi — hiçbir şey değişmedi.' ;;
+      "Choice") s='Seçim' ;;
+      "empty=1") s='boş=1' ;;
+      "(default)") s='(varsayılan)' ;;
+      "Scope") s='Kapsam' ;;
+      "Included") s='İçerik' ;;
+      "Backend pattern") s='Backend deseni' ;;
+      "DevArch base") s='DevArch tabanı' ;;
+      "Will write") s='Yazılacak' ;;
+      "not installed") s='kurulmuyor' ;;
+      "Install visibility:") s='Kurulum görünürlüğü:' ;;
+      "Backend pattern:") s='Backend deseni:' ;;
+      "full kit") s='tam kit' ;;
+      "no effect:") s='etkisi yok:' ;;
+      "Installing:") s='Kuruluyor:' ;;
+      "Tip:  open Claude Code and run /doctor-csk — it checks the install is wired (hooks executable, core.hooksPath set, discipline imported) and scores the project's readiness. CLAUDE.md loads the discipline every session.") s="İpucu:  Claude Code'u açıp /doctor-csk çalıştırın — kurulumun bağlı olduğunu denetler (hook'lar çalıştırılabilir, core.hooksPath ayarlı, disiplin import edilmiş) ve projenin hazırlığını puanlar. CLAUDE.md disiplini her oturumda yükler." ;;
+      "Backend pattern '%s': %s agents, %s skills installed.") s="Backend deseni '%s': %s ajan, %s skill kuruldu." ;;
+      ".claude/DISCIPLINE.md written — kit-owned; an update overwrites it, so keep your own rules out of it.") s='.claude/DISCIPLINE.md yazıldı — kit sahipli; güncelleme üzerine yazar, kendi kurallarınızı buraya koymayın.' ;;
+      "./CLAUDE.md created — EDIT the project section.") s='./CLAUDE.md oluşturuldu — proje bölümünü DÜZENLEYİN.' ;;
+      "trace scan: core.hooksPath -> .claude/hooks (§4.1/§4.2 commit gate active)") s='iz taraması: core.hooksPath -> .claude/hooks (§4.1/§4.2 commit kapısı etkin)' ;;
+      "Done. ./.claude + ./CLAUDE.md ready (full kit · backend pattern: %s); claude-starter/ deleted.") s='Bitti. ./.claude + ./CLAUDE.md hazır (tam kit · backend deseni: %s); claude-starter/ silindi.' ;;
+      "Next: 1) fill in the CLAUDE.md project section  2) open Claude Code at the repo root") s="Sırada: 1) CLAUDE.md proje bölümünü doldurun  2) Claude Code'u depo kökünde açın" ;;
+      "Note: if Claude Code is ALREADY running here, restart it — CLAUDE.md and the discipline load at session start.") s='Not: Claude Code burada ZATEN çalışıyorsa yeniden başlatın — CLAUDE.md ve disiplin oturum başında yüklenir.' ;;
+      "Panel: /studio-csk opens the Studio panel from this project (or: node .claude/studio/server/index.js --open).") s='Panel: /studio-csk bu projeden Studio panelini açar (ya da: node .claude/studio/server/index.js --open).' ;;
+      "— backend + web + mobile (RN/Expo), every agent and skill") s='— backend + web + mobil (RN/Expo), her ajan ve her skill' ;;
+      "%s agents · %s skills will be installed") s='%s ajan · %s skill kurulacak' ;;
+      "non-.NET — generic") s='.NET değil — genel' ;;
+      "(cqrs-aop-module not installed; sonarqube-check installed)") s='(cqrs-aop-module kurulmuyor; sonarqube-check kuruluyor)' ;;
+      "approval gate -> ./%s") s='onay kapısı -> ./%s' ;;
+      "(./frontend reserved next to it)") s='(yanında ./frontend ayrılıyor)' ;;
+      "(shared: .claude/ and CLAUDE.md stay committable)") s='(paylaşımlı: .claude/ ve CLAUDE.md commit edilebilir kalır)' ;;
+      "(default — pass --generic for the stack-agnostic one)") s='(varsayılan — yığından bağımsızı için --generic geçin)' ;;
+      "(default — pass --shared to commit .claude/ and CLAUDE.md)") s='(varsayılan — .claude/ ve CLAUDE.md commit edilsin isterseniz --shared geçin)' ;;
+      "Security gates armed on every install:") s='Her kurulumda devreye giren güvenlik kapıları:' ;;
+    esac
+  fi
+  # shellcheck disable=SC2059
+  printf "$s" "$@"
+}
+# ---- /CSK-I18N -----------------------------------------------------------------------------------------
+
 usage() {
   cat <<'USAGE'
 Usage: bash start.sh [BACKEND-STACK]
   Stack:  --dotnet | --generic   (default: dotnet)
 If no flag is given, the script asks interactively (wizard).
-  --dotnet   .NET/DevArchitecture full support (devarch-module + DevArch gate)
-  --generic  stack-agnostic backend (NO devarch-module; sonarqube-check is language-agnostic and stays)
+  --dotnet   .NET/DevArchitecture full support (cqrs-aop-module + DevArch gate)
+  --generic  stack-agnostic backend (NO cqrs-aop-module; sonarqube-check is language-agnostic and stays)
 
 Every install ships the whole kit: all agents, all skills — backend, web and mobile (RN/Expo) together.
   --backend | --frontend | --mobile | --fullstack   accepted, no effect (kept so older commands still run)
+  --private | --shared   is the install yours alone, or committed for the team? (default: private)
+  --yes, -y      answer every question with yes (unattended install)
   --version, -v  print the kit version and exit
 USAGE
 }
 
+# Read one answer without hanging an unattended run — and be honest about which hang this closes.
+#
+# Four stdin shapes, measured (bare `read`, perl alarm as the clock, each shape calibrated first):
+#   a terminal with a human ....... blocks until they type        <- correct, must not change
+#   a terminal with NOBODY ........ blocks forever                <- the Claude Code pty case
+#   a pipe carrying data .......... returns at once
+#   a pipe at EOF (</dev/null) .... returns at once, answer ""
+#   a pipe open and empty ......... blocks forever                <- closed by the timeout below
+#
+# The timeout applies ONLY when stdin is not a terminal. On a terminal a human may take as long as they
+# like, and cutting them off would be a worse bug than the one being fixed.
+#
+# WHAT THIS DOES NOT FIX, stated plainly because the opposite was nearly written here: a pty IS a terminal,
+# so `[ -t 0 ]` is TRUE for it and this takes the blocking branch. Measured under expect: `[ -t 0 ]` says
+# yes and the read blocks with no input. An unattended run under a pty — which is what Claude Code creates —
+# is therefore still answered by --yes and by nothing else. That is not a gap in the timeout; stdin carries
+# no signal that distinguishes "a terminal nobody is watching" from "a terminal with a slow typist".
+#
+# 10 seconds rather than 5: the cost of being too short is a declined install, which is visible and
+# recoverable, but a producer that legitimately takes a moment to write the answer should still win. The
+# value is an integer because bash 3.2 rejects a fractional -t ("invalid timeout specification", measured).
+csk_read() {   # $1 = name of the variable to set
+  local __v="$1" __a=""
+  if [ -t 0 ]; then read -r __a || __a=""
+  else read -t 10 -r __a || __a=""
+  fi
+  eval "$__v=\$__a"
+}
 ask_yes() {  # $1 = question; returns 0 if the user says 'yes'
   local a
+  # --yes ALWAYS wins, and it is answered BEFORE stdin is touched at all. Claude Code runs the installer
+  # under a pty, so stdin IS a terminal there and a bare `read` blocks forever on input nobody will type:
+  # testing the terminal first would ignore a --yes that was passed precisely to avoid that. adopt.sh:50
+  # carries the same rule for the same reason, and this script was the one place that never learned it.
+  # $2 = "risky": --yes does NOT answer this one. --yes says "install the kit unattended"; it does not say
+  # "clone a third-party base project into my repository over the network". That action writes thousands of
+  # files into the user's tree and the script itself labels it risky, so it stays an explicit, human yes.
+  # Under --yes these decline and say so, which is the reversible direction.
+  if [ "${2:-}" = risky ] && [ "${ASSUME_YES:-0}" = 1 ]; then
+    printf '%s no %s(--yes does not approve the DevArchitecture base — run without --yes to add it)%s\n' "$1" "$D" "$R"
+    return 1
+  fi
+  if [ "${ASSUME_YES:-0}" = 1 ]; then printf '%s yes %s(--yes)%s\n' "$1" "$D" "$R"; return 0; fi
+  # Deliberately NOT adopt.sh's `[ -t 0 ]` shape. adopt.sh declines outright when stdin is not a terminal;
+  # here `printf 'yes\n' | bash start.sh` is the documented CI form (see the note at the confirm prompt) and
+  # that shape would silently turn every piped install into a cancellation. A pipe reaching EOF already
+  # answers "" => no, so the unattended case stays safe without special-casing it.
   printf '%s [yes/no]: ' "$1"
-  read -r a || a=""
+  csk_read a
   case "$a" in [yY]|[yY][eE][sS]|[eE]|[eE][vV][eE][tT]) return 0 ;; *) return 1 ;; esac
+}
+# Append entries to .gitignore. Three callers had three copies of the same two bugs (start.sh's four-entry
+# loop, and adopt.sh's review-pass.json line), so it lives here and adopt.sh carries the twin.
+#   * A file whose last line has NO trailing newline concatenates the first appended entry onto it —
+#     `node_modules` + `.claude/` becomes `node_modules.claude/`, ignoring neither. `touch` does not help:
+#     it changes the timestamp, not the last byte. So read the last byte and add the newline ourselves.
+#   * `grep -qxF` is an exact-literal test, so a repo that already ignores `.claude` (no trailing slash)
+#     gets a second, redundant line. Ask git the real question instead — `git check-ignore` answers about
+#     the PATH, whatever spelling the existing rule uses. It is only asked inside a repo; outside one we
+#     fall back to the literal test, which is all that is knowable there.
+gi_add() {   # $@ = entries to ensure in ./.gitignore; prints nothing, sets GI_WROTE to what it added
+  local e
+  GI_WROTE=""
+  [ -e .gitignore ] || : > .gitignore
+  for e in "$@"; do
+    if git rev-parse --git-dir >/dev/null 2>&1; then
+      git check-ignore -q "$e" 2>/dev/null && continue
+    else
+      grep -qxF "$e" .gitignore 2>/dev/null && continue
+    fi
+    # last byte is not a newline (and the file is not empty) -> close the line first
+    if [ -s .gitignore ] && [ "$(tail -c 1 .gitignore | od -An -tx1 | tr -d ' \n')" != "0a" ]; then
+      printf '\n' >> .gitignore
+    fi
+    printf '%s\n' "$e" >> .gitignore
+    GI_WROTE="$GI_WROTE $e"
+  done
+  GI_WROTE="${GI_WROTE# }"
+}
+# Append eol pins to .gitattributes. ONLY in shared mode, and only for what cannot defend itself.
+#
+# MEASURED, not inferred — the ROADMAP called this an inference. A bare repo, a project that TRACKS .claude/,
+# and a second clone with core.autocrlf=true (a git setting, so the mechanism reproduces anywhere):
+#   the committed blob                     0 CR
+#   the working tree after that checkout   1345 CR in guard-bash.sh · 575 in pre-commit · 49 in commit-msg
+# Reproduced on a REAL Windows machine, both installers, all three autocrlf settings, with the pin and without
+# it — the numbers above are that run's, not the simulation's.
+# WHO THE VICTIM IS, corrected after a real Windows measurement, because the obvious answer is wrong.
+# A CRLF hook does NOT die on Git Bash: the 1345-CR copy from an unpinned clone was run against a destructive
+# payload through the real invocation and answered exactly like the LF copy — rc=2, same GUARD line. The kit's
+# own .gitattributes already records this ("Git Bash happens to tolerate that … but WSL does not"). The death
+# shapes below are real but were measured on macOS bash, and macOS never receives CRLF from autocrlf=true in
+# the first place, since that is a Windows default:
+#   ./hook          -> env: bash\r: No such file or directory
+#   bash hook       -> syntax error: unexpected end of file
+#   case … in\r     -> syntax error near unexpected token `newline`
+#   f(){\r          -> syntax error near unexpected token `{`
+# So what the pin protects is a NON-MSYS bash reading that same Windows working tree — WSL is the documented
+# case, and it is UNMEASURED by either of us: `wsl.exe` resolves on the Windows desk with no distro installed,
+# which is the Store-python3 shape and not evidence. What IS measured is that the pin removes a difference
+# nobody should have to reason about: with it the working tree matches the blob on every autocrlf setting.
+#
+# AND IT PROTECTS AGAINST EXACTLY ONE SETTING. Unpinned, `core.autocrlf=input` and `=false` already come back
+# with 0 CR; only `true` corrupts. That one is the Git for Windows default and it arrives from the SYSTEM
+# config, not the global one — so the person the pin is for is the person who changed nothing.
+#
+# WHY ONLY THE SCRIPTS. The data files the hooks read line by line (blocklists, profiles.conf) already strip a
+# trailing CR themselves — the kit's own .gitattributes says so, and calls that strip "the real defence" for
+# exactly this case, a user's project where nothing pins anything. A shell script cannot do that: it cannot
+# strip its own carriage returns before bash parses it. So the pins below are the scripts plus, belt and
+# braces, the data types that are cheap to include; they are deliberately NOT a blanket `.claude/**`, which
+# would apply text conversion to any binary a skill might carry.
+#
+# WHY ONLY SHARED MODE. In the private install .claude/ is gitignored, so git never checks it out and there is
+# nothing to convert. Writing repo-wide attributes for someone who did not share their config would be editing
+# a file they own to fix a problem they do not have.
+#
+# The two lessons gi_add carries apply here too — a missing trailing newline concatenates the first entry onto
+# the last line, and the real question is not "is this text in the file" but "does git already answer lf for
+# this path". `git check-attr` is the equivalent of gi_add's `git check-ignore`: it answers about the PATH,
+# whatever pattern spelling an existing rule uses, so a project that already pins `* text eol=lf` gets nothing.
+GA_LINES='.claude/**/*.sh text eol=lf
+.claude/hooks/pre-commit text eol=lf
+.claude/hooks/commit-msg text eol=lf
+.claude/**/*.txt text eol=lf
+.claude/**/*.conf text eol=lf'
+ga_add() {   # no args; prints nothing, sets GA_WROTE to the number of lines added
+  local line
+  GA_WROTE=0
+  if git rev-parse --git-dir >/dev/null 2>&1; then
+    case "$(git check-attr eol -- .claude/hooks/guard-bash.sh 2>/dev/null)" in
+      *": lf") return 0 ;;
+    esac
+  fi
+  [ -e .gitattributes ] || : > .gitattributes
+  printf '%s\n' "$GA_LINES" | while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    if grep -qxF "$line" .gitattributes 2>/dev/null; then continue; fi
+    if [ -s .gitattributes ] && [ "$(tail -c 1 .gitattributes | od -An -tx1 | tr -d ' \n')" != "0a" ]; then
+      printf '\n' >> .gitattributes
+    fi
+    printf '%s\n' "$line" >> .gitattributes
+  done
+  # The loop above runs in a subshell (it is the right-hand side of a pipe), so it cannot report back through a
+  # variable — the same trap this kit spent a night on. Count the result from the FILE instead.
+  GA_WROTE="$(printf '%s\n' "$GA_LINES" | while IFS= read -r line; do
+      [ -n "$line" ] && grep -qxF "$line" .gitattributes 2>/dev/null && echo x
+    done | wc -l | tr -d ' ')"
 }
 # --- CLAUDE.md split (shared contract with adopt.sh) ---
 # The payload CLAUDE.md carries the kit discipline, then a one-line sentinel, then the project template.
@@ -192,12 +437,47 @@ clone_devarch() {  # $1 = target dir; clone verbatim, drop nested .git, rename t
 # copy-pasted commands, and erroring out there breaks a pipeline over a flag whose absence changes nothing.
 # A one-line notice is printed after the colour helpers load, so the user learns the flag no longer selects
 # anything instead of quietly getting a different set than the one they typed.
-STACK=""; LEGACY_FLAGS=""
+# Language is resolved BEFORE any other flag, because every message below it goes through m(). Four
+# sources, first answer wins: --lang, then CSK_LANG, then the locale variables, then English.
+#
+# English is the default rather than the locale's language on purpose: that is what this installer printed
+# before it could speak anything else, and a default that changes under people is not a default. The locale
+# branch only ever ADDS Turkish for someone whose environment already says Turkish.
+#
+# Measured, and recorded here rather than treated as a defect: on stock Windows LANG, LC_ALL and
+# LC_MESSAGES are ALL empty (Git Bash defaults only LC_CTYPE). So auto-detect never fires there, and a
+# Turkish-speaking Windows user lands on English unless they pass --lang tr or export CSK_LANG.
+_lang_flag=""; _lang_take=0
+for a in "$@"; do
+  if [ "$_lang_take" = 1 ]; then _lang_flag="$a"; _lang_take=0; continue; fi
+  case "$a" in
+    --lang=*) _lang_flag="${a#--lang=}" ;;
+    --lang)   _lang_take=1 ;;
+  esac
+done
+if [ -n "$_lang_flag" ]; then
+  CSK_LANG="$_lang_flag"
+elif [ -n "${CSK_LANG_ENV:-}" ]; then
+  CSK_LANG="$CSK_LANG_ENV"
+else
+  _loc="${LC_ALL:-}"; [ -n "$_loc" ] || _loc="${LC_MESSAGES:-}"; [ -n "$_loc" ] || _loc="${LANG:-}"
+  case "$_loc" in tr*|TR*) CSK_LANG=tr ;; *) CSK_LANG=en ;; esac
+fi
+# Anything that is not a language we actually carry falls back to English rather than printing keys.
+case "$CSK_LANG" in tr|en) ;; *) CSK_LANG=en ;; esac
+
+STACK=""; LEGACY_FLAGS=""; ASSUME_YES=0; VISIBILITY=""
 for a in "$@"; do
   case "$a" in
+    --lang) ;;                       # value consumed in the language pass above
+    --lang=*) ;;
+    tr|en) ;;                        # the value of a separated --lang
     --backend|--frontend|--mobile|--fullstack) LEGACY_FLAGS="$LEGACY_FLAGS $a" ;;
     --dotnet) STACK="dotnet" ;;
     --generic) STACK="generic" ;;
+    --yes|-y) ASSUME_YES=1 ;;
+    --private) VISIBILITY="private" ;;
+    --shared)  VISIBILITY="shared" ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown parameter: $a"; echo; usage; exit 1 ;;
   esac
@@ -215,7 +495,7 @@ fi
 h1()   { printf '\n%s%s%s%s\n' "$B" "$CY" "$1" "$R"; }               # section heading
 sub()  { printf '%s%s%s\n' "$D" "$1" "$R"; }                         # dim description
 opt()  { # $1=no $2=label $3=is_default $4=right-badge
-  local mark=''; [ "${3:-0}" = 1 ] && mark=" ${GR}${B}(default)${R}"
+  local mark=''; [ "${3:-0}" = 1 ] && mark=" ${GR}${B}$(m '(default)')${R}"
   printf '  %s%s%s)%s %s%-24s%s %s%s%s%s\n' "$B" "$YE" "$1" "$R" "$B" "$2" "$R" "$MG" "${4:-}" "$R" "$mark"
 }
 add()  { printf '     %s+%s %s\n'      "$GR" "$R" "$1"; }            # INSTALLED
@@ -224,29 +504,87 @@ gate() { printf '     %s>%s %s\n'      "$CY" "$R" "$1"; }            # gate to b
 row()  { printf '  %s%-15s%s %s\n'     "$B" "$1" "$R" "$2"; }        # summary row
 rule() { printf '  %s------------------------------------------------%s\n' "$D" "$R"; }
 
-h1  "Agentic Working Kit · setup wizard"
-sub "2 steps: backend pattern -> summary & confirm."
+h1  "$(m 'Agentic Working Kit · setup wizard')"
+sub "$(m '2 steps: backend pattern -> summary & confirm.')"
 [ -n "$LEGACY_FLAGS" ] && printf '\n  %s!%s%s no effect:%s the kit always installs in full (all agents · all skills).\n' \
   "$YE" "$R" "$B$LEGACY_FLAGS" "$R"
 
 # ===================== STEP 1 · BACKEND PATTERN =====================
 # Asked on EVERY install: the pattern skill is the one thing that is genuinely wrong in the other stack, so it
 # is a real question, not a profile side effect. Skipped only when --dotnet/--generic was given.
+# --yes means UNATTENDED, so it has to answer this one too. Guarding only ask_yes moved the block from the
+# confirm prompt to this read and left the installer hanging just the same — measured on stock Windows with
+# an open-but-empty stdin, where a bare `read` never returns. A flag that does not reach every prompt is a
+# flag that reads as a fix and is not one.
+#
+# Note the deliberate asymmetry with the visibility question below: THAT one is skipped whenever stdin is
+# not a terminal, because it is new and every existing piped caller feeds a fixed sequence it would shift.
+# This one is pre-existing — callers DO pipe an answer to it — so it is skipped only under --yes, where by
+# definition nothing is supposed to be read.
+if [ -z "$STACK" ] && [ "$ASSUME_YES" = 1 ]; then
+  STACK="dotnet"
+  printf '  %s%s%s .NET / DevArchitecture %s%s%s\n' "$B" "$(m 'Backend pattern:')" "$R" "$D" "$(m '(default — pass --generic for the stack-agnostic one)')" "$R"
+fi
 if [ -z "$STACK" ]; then
-  h1  "[1/2] Backend pattern"
-  sub "Determines the backend template and whether the .NET-specific skills are included."
+  h1  "$(m '[1/3] Backend pattern')"
+  sub "$(m 'Determines the backend template and whether the .NET-specific skills are included.')"
   echo
-  opt 1 ".NET / DevArchitecture" 1 "full support"
-  add  "devarch-module skill (opinionated MediatR CQRS)"
-  gate "clones the DevArchitecture base project BEHIND AN APPROVAL GATE (greenfield project)"
+  opt 1 "$(m '.NET / DevArchitecture')" 1 "$(m 'full support')"
+  add  "$(m 'cqrs-aop-module skill (opinionated MediatR CQRS)')"
+  gate "$(m 'clones the DevArchitecture base project BEHIND AN APPROVAL GATE (greenfield project)')"
   echo
-  opt 2 "Generic" 0 "stack-agnostic"
-  add  "pattern-neutral backend-expert-csk — follows your repo's pattern; declare it as a skill (.claude/skills/)"
-  skip "devarch-module and the DevArchitecture base NOT INSTALLED (sonarqube-check still installed)"
+  opt 2 "$(m 'Generic')" 0 "$(m 'stack-agnostic')"
+  add  "$(m "pattern-neutral backend-expert-csk — follows your repo's pattern; declare it as a skill (.claude/skills/)")"
+  skip "$(m 'cqrs-aop-module and the DevArchitecture base NOT INSTALLED (sonarqube-check still installed)')"
   echo
-  printf '  %s->%s Choice %s[1-2, empty=1]%s: ' "$CY" "$R" "$D" "$R"
-  read -r s || s=""                 # empty => default (dotnet)
+  printf '  %s->%s %s %s[1-2, %s]%s: ' "$CY" "$R" "$(m 'Choice')" "$D" "$(m 'empty=1')" "$R"
+  csk_read s                        # empty => default (dotnet)
   case "$s" in 2) STACK="generic" ;; *) STACK="dotnet" ;; esac
+fi
+
+# ===================== STEP 2 · WHO IS THIS INSTALL FOR =====================
+# ONE question about intent, not four about paths. Until now the installer wrote four .gitignore entries
+# unconditionally and the summary never mentioned .gitignore at all — so "confirm the install" silently
+# edited a TRACKED file, which is a change nobody agreed to. The answer decides two of the four entries;
+# the summary below lists the exact lines either way.
+#
+# Two entries are NOT part of the question, and both are guarantees rather than preferences:
+#   * .private-terms.txt is the list of strings that must never be published (internal project names,
+#     client names, hosts). Publishing the list defeats its purpose, so it is ignored in both answers.
+#   * docs/ holds internal working documents — PLAN.md, SESSION_STATE.md, THREAT_MODEL.md,
+#     SECURITY_FINDINGS.md, DISCOVERY.md, EVAL.md. §4.3 promises they stay private and README.md says so
+#     too; a team that shares its kit config has not asked to publish its threat model.
+#
+# ASKED ONLY WHEN SOMEONE IS THERE TO ANSWER. A new prompt consumes a line of stdin, and every existing
+# non-interactive caller feeds a FIXED sequence — `printf 'yes\n' | bash start.sh --generic` is the form in
+# this repo's own e2e and in user scripts. Adding a read shifts that sequence by one: the visibility question
+# ate the 'yes', the confirm prompt hit EOF, and the install silently CANCELLED. Measured: e2e went from
+# green to rc=127 because the installed tree never existed. So a non-interactive run keeps today's behaviour
+# (private) without reading anything, and --private/--shared are how a script chooses instead.
+if [ -z "$VISIBILITY" ] && { [ ! -t 0 ] || [ "$ASSUME_YES" = 1 ]; }; then
+  VISIBILITY="private"
+  printf '  %s%s%s %s %s%s%s\n' "$B" "$(m 'Install visibility:')" "$R" "$(m 'private')" "$D" "$(m '(default — pass --shared to commit .claude/ and CLAUDE.md)')" "$R"
+fi
+if [ -z "$VISIBILITY" ]; then
+  h1  "$(m '[2/3] Who is this install for?')"
+  sub "$(m "Decides whether your teammates get the kit's configuration — and what goes into .gitignore.")"
+  echo
+  opt 1 "$(m 'Just me')" 1 "$(m 'private')"
+  add  "$(m ".claude/ and CLAUDE.md stay out of git — nothing appears in your teammates' checkouts")"
+  echo
+  opt 2 "$(m 'The whole team')" 0 "$(m 'shared')"
+  add  "$(m '.claude/ and CLAUDE.md are committable — everyone gets the same agents, skills and gates')"
+  skip "$(m 'internal working documents (docs/) stay private in BOTH answers')"
+  echo
+  printf '  %s->%s %s %s[1-2, %s]%s: ' "$CY" "$R" "$(m 'Choice')" "$D" "$(m 'empty=1')" "$R"
+  csk_read s                        # empty => default (private = today's behaviour)
+  case "$s" in 2) VISIBILITY="shared" ;; *) VISIBILITY="private" ;; esac
+fi
+# The exact lines this install will append, resolved once so the summary and the writer cannot disagree.
+if [ "$VISIBILITY" = "shared" ]; then
+  GI_PLAN='docs/ .private-terms.txt'
+else
+  GI_PLAN='docs/ .claude/ CLAUDE.md .private-terms.txt'
 fi
 
 # Project name (from the directory) + where the backend base lives.
@@ -258,13 +596,13 @@ PROJECT_NAME="$(printf '%s' "$PROJECT_NAME" | tr -cs 'A-Za-z0-9._-' '-' | sed 's
 # directory with a README, and a directory is cheaper to delete than a missing one is to discover.
 BACKEND_DIR="backend"
 
-# --- The only remaining prune: devarch-module is .NET-specific and wrong in a Node/Go/Python repo. ---
+# --- The only remaining prune: cqrs-aop-module is .NET-specific and wrong in a Node/Go/Python repo. ---
 DEVARCH_ON=0
 EXCL_SKILLS=""
 if [ "$STACK" = "dotnet" ]; then
   DEVARCH_ON=1
 else
-  EXCL_SKILLS="devarch-module"   # sonarqube-check is language-agnostic and stays
+  EXCL_SKILLS="cqrs-aop-module"   # sonarqube-check is language-agnostic and stays
 fi
 
 # ===================== STEP 2 · SUMMARY + CONFIRM =====================
@@ -282,28 +620,36 @@ count_installed() {   # $1=EXCL list  $2=glob  -> count to install
 N_AG="$(count_installed "" "$SRC/agents/*.md")"
 N_SK="$(count_installed "$EXCL_SKILLS" "$SRC/skills/*/")"
 
-h1 "[2/2] Summary · see what will be installed before you confirm"
+h1 "$(m '[3/3] Summary · see what will be installed before you confirm')"
 echo
-row "Scope" "${B}full kit ${D}— backend + web + mobile (RN/Expo), every agent and skill${R}"
-row "Included"  "${MG}${B}${N_AG}${R} agents · ${MG}${B}${N_SK}${R} skills will be installed"
+row "$(m 'Scope')" "${B}$(m 'full kit')${D} $(m '— backend + web + mobile (RN/Expo), every agent and skill')${R}"
+row "$(m 'Included')"  "$(m '%s agents · %s skills will be installed' "${MG}${B}${N_AG}${R}" "${MG}${B}${N_SK}${R}")"
 if [ "$STACK" = "generic" ]; then
-  row "Backend pattern" "non-.NET — generic ${D}(devarch-module not installed; sonarqube-check installed)${R}"
+  row "$(m 'Backend pattern')" "$(m 'non-.NET — generic') ${D}$(m '(cqrs-aop-module not installed; sonarqube-check installed)')${R}"
 else
-  row "Backend pattern" ".NET / DevArchitecture ${D}(full support)${R}"
+  row "$(m 'Backend pattern')" ".NET / DevArchitecture ${D}($(m 'full support'))${R}"
 fi
 if [ "$DEVARCH_ON" = 1 ]; then
-  row "DevArch base" "${YE}approval gate -> ./$BACKEND_DIR ${D}(./frontend reserved next to it)${R}"
+  row "$(m 'DevArch base')" "${YE}$(m 'approval gate -> ./%s' "$BACKEND_DIR") ${D}$(m '(./frontend reserved next to it)')${R}"
 else
-  row "DevArch base" "${D}not installed${R}"
+  row "$(m 'DevArch base')" "${D}$(m 'not installed')${R}"
 fi
 echo
-printf '  %sSecurity gates armed on every install:%s\n' "$B" "$R"
-gate "commit/push approval gate — even in auto/bypass mode (guard-bash)"
-gate "trace scan — a git hook blocks AI traces / vendor names"
-gate "real context measurement + handoff at 75% (Stop hook)"
-gate "destructive command guard (rm -rf / force-push, etc.)"
+printf '  %s%s%s\n' "$B" "$(m 'Security gates armed on every install:')" "$R"
+gate "$(m 'commit/push approval gate — even in auto/bypass mode (guard-bash)')"
+gate "$(m 'trace scan — a git hook blocks AI traces / vendor names')"
+gate "$(m 'real context measurement + handoff at 75%% (Stop hook)')"
+gate "$(m 'destructive command guard (rm -rf / force-push, etc.)')"
 echo
-row "Will write" "${D}./.claude (agents·skills·commands·hooks·eval·studio·settings.json) + ./CLAUDE.md${R}"
+row "$(m 'Will write')" "${D}./.claude (agents·skills·commands·hooks·eval·studio·settings.json) + ./CLAUDE.md${R}"
+# .gitignore is a TRACKED file in most repos, so appending to it is a change to the project — it belongs in
+# the summary, named line by line, not discovered afterwards in `git diff`. Entries this repo already
+# ignores are dropped at write time, so what is listed here is the upper bound, not a promise of four lines.
+if [ "$VISIBILITY" = "shared" ]; then
+  row ".gitignore" "${D}$(printf '%s · ' $GI_PLAN | sed 's/ · $//')  ${YE}$(m '(shared: .claude/ and CLAUDE.md stay committable)')${R}"
+else
+  row ".gitignore" "${D}$(printf '%s · ' $GI_PLAN | sed 's/ · $//')  ${GR}($(m 'private'))${R}"
+fi
 # What this machine is missing, BEFORE the confirm prompt — not after, when it becomes a symptom pointing
 # somewhere else. Report-only and never blocking: the kit degrades rather than breaks, and that is exactly why
 # a gap is otherwise invisible. See claude-starter/eval/preflight.sh for the reasoning per tool.
@@ -311,8 +657,8 @@ row "Will write" "${D}./.claude (agents·skills·commands·hooks·eval·studio·
 rule
 echo
 # ask_yes reads from stdin => in CI `printf 'yes\n' | bash start.sh` works; 'no' on EOF (no accidental install).
-if ! ask_yes "  Install with these settings?"; then
-  printf '  %sCancelled — nothing changed.%s\n' "$YE" "$R"
+if ! ask_yes "  $(m 'Install with these settings?')"; then
+  printf '  %s%s%s\n' "$YE" "$(m 'Cancelled — nothing changed.')" "$R"
   exit 0
 fi
 echo
@@ -328,14 +674,14 @@ if [ "$DEVARCH_ON" = 1 ]; then
     echo "  !!! WARNING: An existing project is present and the DevArchitecture backend base is MISSING."
     echo "  Adding it may cause file/structure conflicts and BREAK the project."
     echo "  This kit is meant for setting up a project FROM SCRATCH. Confirm if you still want to add it."
-    if ask_yes "  Do you want to add DevArchitecture to this EXISTING project (risky)?"; then
+    if ask_yes "  Do you want to add DevArchitecture to this EXISTING project (risky)?" risky; then
       clone_devarch "$BACKEND_DIR" || echo "  Continuing without the backend base."
     else
       echo "  Skipped. The backend flow assumes DevArchitecture; you will need to adapt it manually."
     fi
   else
     echo "  Greenfield project: this kit can install the DevArchitecture backend base."
-    if ask_yes "  Should I include the DevArchitecture backend base in the project now?"; then
+    if ask_yes "  Should I include the DevArchitecture backend base in the project now?" risky; then
       clone_devarch "$BACKEND_DIR" || echo "  Could not include the backend base; continuing with kit installation."
     else
       echo "  Skipped. You can add it manually later:  git clone $DEVARCH_URL"
@@ -351,7 +697,7 @@ if [ "$DEVARCH_ON" = 1 ]; then
 fi
 
 # --- Step 4: Kit installation (./.claude + ./CLAUDE.md) — everything, minus the .NET-only pattern skill ---
-echo "== Installing: ./.claude + ./CLAUDE.md =="
+echo "== $(m 'Installing:') ./.claude + ./CLAUDE.md =="
 mkdir -p .claude/agents .claude/skills .claude/commands .claude/hooks .claude/eval .claude/studio
 cp -R "$SRC/agents/."   .claude/agents/
 cp -R "$SRC/skills/."   .claude/skills/
@@ -370,7 +716,7 @@ for d in $EXCL_SKILLS; do rm -rf ".claude/skills/$d"; done
 if [ "$STACK" = "generic" ] && [ -f "$SRC/agents-optional/backend-expert-generic.md" ]; then
   cp "$SRC/agents-optional/backend-expert-generic.md" .claude/agents/backend-expert-csk.md
 fi
-echo "  Backend pattern '$STACK': $(ls .claude/agents/*.md 2>/dev/null | wc -l | tr -d ' ') agents, $(ls -d .claude/skills/*/ 2>/dev/null | wc -l | tr -d ' ') skills installed."
+echo "  $(m "Backend pattern '%s': %s agents, %s skills installed." "$STACK" "$(ls .claude/agents/*.md 2>/dev/null | wc -l | tr -d ' ')" "$(ls -d .claude/skills/*/ 2>/dev/null | wc -l | tr -d ' ')")"
 [ -f "$SRC/settings.json" ] && cp "$SRC/settings.json" .claude/settings.json
 [ -f "$HERE/VERSION" ] && cp "$HERE/VERSION" .claude/VERSION   # make the kit version trackable in the installed project
 # Glob form so every shipped hook/eval is made executable — including ones added later (guard-write.sh,
@@ -399,7 +745,11 @@ if [ "$DEVARCH_ON" = 1 ] && [ -f .claude/hooks/trace-blocklist.txt ]; then
       && mv .claude/hooks/trace-blocklist.txt.kit-tmp .claude/hooks/trace-blocklist.txt
   fi
 fi
-cp "$SRC/AGENT_TEMPLATE.md" .claude/ 2>/dev/null || true
+# `|| true` here used to swallow a missing payload file entirely: the install reported success and
+# /skill-csk opened with `Read .claude/AGENT_TEMPLATE.md` against nothing. A best-effort copy is right —
+# a missing doc must not abort an otherwise good install — but it has to be AUDIBLE, or the gap is
+# invisible until someone runs the command. adopt.sh copies the same file for the same reason.
+cp "$SRC/AGENT_TEMPLATE.md" .claude/ 2>/dev/null || printf '  %s!%s AGENT_TEMPLATE.md missing from the payload — /skill-csk will have nothing to read.\n' "$YE" "$R"
 cp "$SRC/README.md"         .claude/ 2>/dev/null || true
 
 # Install manifest — the names the KIT ships. It is the only way to tell kit-owned from project-owned later:
@@ -417,7 +767,7 @@ cp "$SRC/README.md"         .claude/ 2>/dev/null || true
 } > .claude/kit-manifest.txt 2>/dev/null || true
 
 # Remember the backend pattern, so a later update refreshes the project with the same one instead of
-# grafting devarch-module onto a Node repo. No 'profile=' key any more — the component set no longer varies,
+# grafting cqrs-aop-module onto a Node repo. No 'profile=' key any more — the component set no longer varies,
 # and adopt.sh treats a leftover 'profile=' from a pre-2.0 install as a migration signal, not as a shape.
 { echo "# Written by start.sh. The updater reads this to keep the project's backend pattern."
   echo "stack=$STACK"
@@ -428,11 +778,11 @@ cp "$SRC/README.md"         .claude/ 2>/dev/null || true
 # Discipline (kit-owned, refreshed on every update) vs project section (yours, written once), joined by @import.
 kit_require_sentinel "$SRC/CLAUDE.md"
 kit_discipline_of "$SRC/CLAUDE.md" > .claude/DISCIPLINE.md
-echo "  .claude/DISCIPLINE.md written — kit-owned; an update overwrites it, so keep your own rules out of it."
+echo "  $(m '.claude/DISCIPLINE.md written — kit-owned; an update overwrites it, so keep your own rules out of it.')"
 if [ ! -f ./CLAUDE.md ]; then
   { printf '<!-- kit discipline · on conflict the project rules BELOW win -->\n%s\n' "$IMPORT_LINE"
     kit_project_of "$SRC/CLAUDE.md"; } > ./CLAUDE.md
-  echo "  ./CLAUDE.md created — EDIT the project section."
+  echo "  $(m './CLAUDE.md created — EDIT the project section.')"
 elif kit_has_import ./CLAUDE.md; then
   echo "  ./CLAUDE.md kept as-is (already imports the discipline) — the refresh landed in DISCIPLINE.md."
 elif kit_claude_md_is_legacy ./CLAUDE.md; then
@@ -445,10 +795,23 @@ else
     && mv ./CLAUDE.md.kit-tmp ./CLAUDE.md
   echo "  ./CLAUDE.md existed — prepended the discipline @import; your content is untouched."
 fi
-touch .gitignore
-# .private-terms.txt lists the strings that must never be published (internal project names, client
-# names, host names) — publishing that list would defeat its purpose, so it is ignored from the start.
-for e in 'docs/' '.claude/' 'CLAUDE.md' '.private-terms.txt'; do grep -qxF "$e" .gitignore || echo "$e" >> .gitignore; done
+# The entries were decided in step 2 and printed in the summary; gi_add drops the ones this repo already
+# ignores and fixes a missing trailing newline before appending. Word-split on purpose: GI_PLAN is a
+# space-separated list this script built, not user input.
+# shellcheck disable=SC2086
+gi_add $GI_PLAN
+[ -n "$GI_WROTE" ] && printf '  %s+%s .gitignore: %s\n' "$GR" "$R" "$GI_WROTE"
+# Pinned only when git will actually CHECK .claude/ OUT — and that question goes to git, not to the mode
+# variable, for the same reason gi_add asks `git check-ignore` instead of grepping the file: the variable is
+# what we intended, the answer is what is true. They agree in the normal case (a private install has just
+# added `.claude/` to .gitignore) and they differ in the ones that matter — a repo that already ignored
+# `.claude/` before this install, or a shared install inside a repo whose parent rules ignore it anyway.
+# Where git will never check the directory out there is no conversion to prevent, and writing repo-wide
+# attributes for that project would be editing a file its owner did not need touched.
+if ! git check-ignore -q .claude 2>/dev/null; then
+  ga_add
+  [ "${GA_WROTE:-0}" != 0 ] && printf '  %s+%s .gitattributes: %s eol pin(s) so shared hooks stay LF\n' "$GR" "$R" "$GA_WROTE"
+fi
 # `[ -d .git ]` is a proxy for the answer, and it lies exactly where it matters: in a worktree or a submodule
 # `.git` is a FILE, so the commit gate was never armed there and the installer said nothing was wrong. adopt.sh
 # already names this (red-team hole #6) and start.sh was never taught it. Measured: in a worktree the installer
@@ -470,16 +833,16 @@ for e in 'docs/' '.claude/' 'CLAUDE.md' '.private-terms.txt'; do grep -qxF "$e" 
 # outside a repo — and it carries no path spelling to disagree about. Verified here at a normal root, a
 # worktree root, a subdirectory and a non-repo.
 if PFX="$(git rev-parse --show-prefix 2>/dev/null)" && [ -z "$PFX" ] && git config core.hooksPath .claude/hooks 2>/dev/null; then
-  echo "  trace scan: core.hooksPath -> .claude/hooks (§4.1/§4.2 commit gate active)"
+  echo "  $(m 'trace scan: core.hooksPath -> .claude/hooks (§4.1/§4.2 commit gate active)')"
 else
   echo "  NOTE: no git repository at this level; after 'git init' run:  git config core.hooksPath .claude/hooks"
 fi
 rm -rf "$SRC"
 echo
-echo "== Done. ./.claude + ./CLAUDE.md ready (full kit · backend pattern: $STACK); claude-starter/ deleted. =="
-echo "Next: 1) fill in the CLAUDE.md project section  2) open Claude Code at the repo root"
-echo "Note: if Claude Code is ALREADY running here, restart it — CLAUDE.md and the discipline load at session start."
-echo "Tip:  open Claude Code and run /doctor-csk — it checks the install is wired (hooks executable, core.hooksPath set, discipline imported) and scores the project's readiness. CLAUDE.md loads the discipline every session."
+echo "== $(m 'Done. ./.claude + ./CLAUDE.md ready (full kit · backend pattern: %s); claude-starter/ deleted.' "$STACK") =="
+echo "$(m 'Next: 1) fill in the CLAUDE.md project section  2) open Claude Code at the repo root')"
+echo "$(m 'Note: if Claude Code is ALREADY running here, restart it — CLAUDE.md and the discipline load at session start.')"
+echo "$(m "Tip:  open Claude Code and run /doctor-csk — it checks the install is wired (hooks executable, core.hooksPath set, discipline imported) and scores the project's readiness. CLAUDE.md loads the discipline every session.")"
 # Say what is true of THIS machine, not what is true in general. The line used to
 # print identically with or without node, so on a machine that cannot start the
 # panel it read as a footnote rather than as the reason nothing will happen. The
@@ -487,7 +850,7 @@ echo "Tip:  open Claude Code and run /doctor-csk — it checks the install is wi
 # it is asked of the INSTALLED copy: $SRC is deleted at line 397, a few lines
 # above this, so asking there answered "no node" on every machine.
 if bash .claude/eval/preflight.sh --has node 2>/dev/null; then
-  echo "Panel: /studio-csk opens the Studio panel from this project (or: node .claude/studio/server/index.js --open)."
+  echo "$(m 'Panel: /studio-csk opens the Studio panel from this project (or: node .claude/studio/server/index.js --open).')"
 else
   echo "Panel: needs Node 18+, which is not on this machine — but that is no longer a dead end."
   echo "       The kit fetches one for the panel: bash .claude/studio/ensure-node.sh --plan  (asks first;"

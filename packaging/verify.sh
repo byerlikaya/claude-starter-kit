@@ -34,7 +34,7 @@ fi
 
 # The step list is the contract with ci.yml. Adding a gate here is what makes it runnable locally;
 # adding it to ci.yml alone is what put this file here in the first place.
-STEPS="syntax smoke routing catalogue manifests e2e studio"
+STEPS="syntax smoke routing catalogue manifests e2e studio parser i18n subshell"
 
 step_syntax(){
   bash -n start.sh || return 1
@@ -52,6 +52,39 @@ step_smoke(){     bash claude-starter/eval/smoke-test.sh; }
 step_routing(){   bash claude-starter/eval/routing-eval.sh; }
 step_catalogue(){ bash packaging/build-readme-catalog.sh --check; }
 step_e2e(){       bash packaging/e2e.sh; }
+
+# The gate must reach the same verdict whichever parser decoded the payload. This is a real step rather than a
+# smoke section because it needs a SECOND parser to compare against, and a machine with only one has measured
+# nothing — the script answers 3 for that, which is this file's skip, so the rc passes straight through with no
+# translation: 0 every case agreed, 1 a divergence, 3 nothing compared. Under CSK_VERIFY_STRICT, which CI sets,
+# that skip turns red, and it should: on a runner a missing parser is a broken runner.
+#
+# It is wired without `CSK_CONFORMANCE_KNOWN_OPEN`, deliberately. That variable exists to let the file land
+# while its three findings were still open; all three are closed, so setting it here would mean a gate that
+# cannot report the next one. The variable stays in the script and is pinned there to fail if a row it excuses
+# starts passing — a safety valve that cleans itself up, not a permanent dispensation.
+step_parser(){    bash claude-starter/eval/parser-conformance.sh; }
+
+# The bilingual installer's message tables, audited statically: patterns quoted (an unquoted one is a GLOB, and
+# a lot of prose ends in `?`), no colour or raw ESC inside a message, no stray backslash or bare `%` in a string
+# that printf takes as its FORMAT, matching `%s` counts across languages, no `''` (bash concatenates it and eats
+# the apostrophe, so `.NET''e` prints `.NETe` — valid syntax, silently wrong output), and no stale pattern that
+# no longer matches anything in its script.
+#
+# Its own step rather than folded into `syntax`, because it has its own verdict to report and hiding it inside a
+# step whose name says something else is how a gate stops being read. It is pure bash + awk deliberately: a
+# python one would SKIP on a stock Windows desktop, where the Store's python3 stub resolves and then fails — the
+# platform where the installer matters most, and the exact shape of four incidents this repo has already paid
+# for. Whether gawk (Git Bash, ubuntu) and BSD awk (macOS) agree on it is not measurable on one machine, which
+# is why it runs on every platform CI covers.
+step_i18n(){      bash packaging/i18n-audit.sh; }
+# An assertion inside a subshell increments counters in a child, so it PRINTS green while the suite total does
+# not move and a failure is invisible — a silently always-green gate. It happened once, in the block added to
+# calibrate the evals metric: five rows printed pass while the total rose by one instead of six, and it was
+# caught by reading the COUNT rather than the colour. This finds the shape instead of relying on that.
+# The scanner runs its own selftest first and refuses to touch real files if it fails, because its failure mode
+# is noise rather than silence: two early versions flagged `for` loops and their own fixtures.
+step_subshell(){  bash packaging/subshell-audit.sh; }
 
 # The panel IS part of the payload now; it keeps its own step because it is a
 # NODE gate, not because it sits outside what ships. Node is the only thing it

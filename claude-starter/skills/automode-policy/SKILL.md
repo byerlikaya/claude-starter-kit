@@ -56,8 +56,9 @@ not the policy file, because a policy file that parses is not a policy that appl
 
 Deliberately **not** set: `environment` (your trusted repos/buckets/domains — guessing them either over-trusts
 or, set without `"$defaults"`, wipes the built-in list) and `allow` (loosening is the user's call, never the
-kit's). §4.4 needs nothing here: content-scoped `permissions.ask` rules already force a prompt in auto mode,
-and the kit ships those in project settings.
+kit's). §4.4 needs nothing here: `guard-bash.sh` fails `git commit`/`git push` closed in auto mode, and it —
+not a `permissions.ask` rule — is what asks in the interactive modes. An `ask` rule for those verbs would
+break the `CLAUDE_GIT_OK` pre-authorisation: a matching ask rule prompts even when a hook returns `allow`.
 
 ## How
 ```bash

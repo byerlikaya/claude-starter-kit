@@ -76,7 +76,7 @@ i am not sure what we want here yet, help me scope it|brainstorm
 review the code I just wrote before I push|code-review-csk
 write a commit message for the staged changes|commit-message
 add column last_login to the users table|db-migration
-add a query handler with a validator for this module|devarch-module
+add a query handler with a validator for this module|cqrs-aop-module
 the settings screen needs a state management fix|frontend
 we need a consent flow before we store any of this|privacy-compliance
 let us step back and see what we missed this week|reflect

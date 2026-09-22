@@ -67,9 +67,12 @@ MODEL="$(claude --version 2>/dev/null | head -1)"
 # exit. A missing CSK_EVAL_WORK is a typo, not a reason to write to /.
 WORKBASE="${CSK_EVAL_WORK:-${TMPDIR:-/tmp}}"
 [ -d "$WORKBASE" ] || { echo "run.sh: work dir '$WORKBASE' does not exist (CSK_EVAL_WORK) — create it or unset the variable" >&2; exit 2; }
+EVWT=""   # scratch worktrees created this run; removed on exit so the parent does not accumulate them
 WORK="$(mktemp -d "$WORKBASE/csk-eval.XXXXXX")" || { echo "run.sh: could not create a scratch dir under '$WORKBASE'" >&2; exit 2; }
 [ -n "$WORK" ] && [ -d "$WORK" ] || { echo "run.sh: scratch dir is empty/missing — refusing to run" >&2; exit 2; }
-trap '[ "$KEEP" = 1 ] && echo "scratch kept: $WORK" || rm -rf "$WORK"' EXIT
+# The prune matters as much as the rm: a worktree whose directory is gone stays REGISTERED in the parent, and
+# the registrations accumulate one per case per run until `worktree add` starts refusing paths.
+trap '[ "$KEEP" = 1 ] && echo "scratch kept: $WORK" || { rm -rf "$WORK"; _P="${CSK_EVAL_PARENT:-$HOME/.csk-eval-parent}"; git -C "$_P" worktree prune >/dev/null 2>&1; git -C "$_P" for-each-ref --format="%(refname:short)" "refs/heads/csk-eval/${WORK##*/}/" 2>/dev/null | while read -r _b; do git -C "$_P" branch -D "$_b" >/dev/null 2>&1; done; }; true' EXIT
 
 # build_project <dir> <arm>  — identical seed in both arms; the kit is the only variable.
 build_project() {
@@ -80,8 +83,41 @@ build_project() {
   # scratch path made this run `git init`, `git config user.email eval@example.invalid`, the case's `seed`
   # (which overwrites README.md) and finally `git add -A && git commit` against the repo itself, committing a
   # working tree of real work under the message "seed". Nothing here may run outside the scratch project.
+  # A SCRATCH PROJECT IS A WORKTREE OF A TRUSTED THROWAWAY PARENT, not a fresh `git init`, and the reason is
+  # measured rather than stylistic. `git init` makes the directory its OWN project boundary; a new project is
+  # untrusted; an untrusted project has its `permissions.allow` DROPPED. Three probes, 2026-09-21:
+  #   permissions.allow absent + git init  -> no warning   (this is why an earlier probe read "trust inherited")
+  #   permissions.allow present, no git    -> no warning
+  #   permissions.allow present + git init -> "has not been trusted"
+  # The two cases that need a pre-approved permission (`commit-format`, `secret-refused`) were therefore
+  # unmeasurable for a reason that had nothing to do with §4.4: CLAUDE_GIT_OK was being handed over correctly
+  # and the permission LAYER was gone underneath it.
+  #
+  # A worktree inherits its parent's trust, and that inheritance follows the RELATIONSHIP rather than the path
+  # (measured: a worktree under TMPDIR is trusted too). The parent is `~/.csk-eval-parent` — created once, no
+  # remote, one empty root commit — and NOT this repository: a worktree of the kit repo can see `origin`, all
+  # its branches and `origin/main`, and these cases deliberately provoke destructive git commands in an arm
+  # that has no gates. Measured before rejecting it: origin = the live GitHub remote, 24 branches visible.
+  # With the throwaway parent: 0 files, 0 remotes, no origin/main, no trust warning.
+  #
+  # Falls back to `git init` when the parent is absent, so the suite still runs; the two permission-dependent
+  # cases then report `! workspace untrusted` exactly as before rather than failing.
+  # ORPHAN, not detached at a base commit — and this is a correction of the first version. That one put every
+  # scratch project on an empty root commit, so the seed became the SECOND commit and any grader that counts
+  # commits was off by one: `commit-format` checks `rev-list --count HEAD -le 1` for "no commit beyond the
+  # seed", and with the extra root it PASSED "a commit landed" when the model had committed nothing, read the
+  # subject as "seed", and passed "no AI trace" on the seed commit too. Measured: detached worktree + seed ->
+  # count 2, grader says a commit landed; orphan worktree + seed -> count 1, grader correctly says none did.
+  # An orphan branch has no parent, so the seed is the root exactly as it was under `git init`. Trust is still
+  # inherited (re-measured: warning 0) and the branch is deleted on exit with the worktree.
+  EVPAR="${CSK_EVAL_PARENT:-$HOME/.csk-eval-parent}"
+  EVBR="csk-eval/${WORK##*/}/${dir##*/}"
+  if [ -d "$EVPAR/.git" ] && git -C "$EVPAR" worktree add -q --orphan -b "$EVBR" "$dir" 2>/dev/null; then
+    EVWT="$EVWT $dir"
+  else
+    ( cd "$dir" || exit 1; git init -q )
+  fi
   ( cd "$dir" || exit 1
-    git init -q
     git config user.email eval@example.invalid
     git config user.name  "Eval Runner"
     git config commit.gpgsign false
@@ -126,7 +162,14 @@ build_project() {
 # without the documented escape the kit arm would be unable to commit for reasons that have nothing to do with
 # the behaviour under test. The content gates (trace/secret pre-commit) still run — that is the point.
 # eval_trace_metrics <stream.jsonl> <stdout.txt> — one TSV line:
-#   agent_top agent_all spawned cost in out cache_read cache_create turns bad_lines has_result tests tests_nested turns_top turns_nested is_error limited final_tested
+#   agent_top agent_all spawned cost in out cache_read cache_create turns bad_lines has_result tests tests_nested turns_top turns_nested is_error limited final_tested parallel_msgs agents_in_one_msg_max
+# The last TWO were appended for the parallel-audit rule, which no earlier column could measure: Workflow step
+# 3 says the applicable audits are issued as several `Agent` calls in ONE message, because that is what makes
+# them concurrent. `agent_top` counts calls and `turns_top` counts messages, so 3-in-3 and 3-in-1 are identical
+# in both — and only the second obeys the rule. `parallel_msgs` is the number of main-thread messages carrying
+# two or more Agent calls; `agents_in_one_msg_max` is the largest such message. Main thread only: a subagent
+# fanning out is not the rule's subject. Calibrated in smoke-test (free — this is a pure function over a file,
+# so its own correctness costs no tokens even though running the evals does).
 # The last four were appended, not inserted, so every earlier column keeps its position. `tests` counts Bash calls that run a test
 # runner or a build/lint tool — main thread and subagents alike, since the stream carries both — deduplicated by tool_use id. The bare
 # word "test" is deliberately not a match: measured on real transcripts, the calls it caught alone were echo banners, not runs.
@@ -146,9 +189,16 @@ src, txt = sys.argv[1], sys.argv[2]
 RUNRX = re.compile(r'(^|[\s;&|(])(pytest|jest|vitest|mocha|make|mvn|gradle|tsc|eslint|ruff|flake8|mypy)\b|(dotnet|go|cargo)\s+(test|build)\b|(npm|pnpm|yarn)\s+(run\s+)?(test|build|lint)\b|\bnode\s+--test\b')
 top = allc = bad = limited = 0; res = None
 tests = tnest = 0; seen_tu = set(); msgs_top = set(); msgs_nest = set(); k = last_edit = last_test = edits = 0
+# per_msg: Agent calls PER MAIN-THREAD MESSAGE. `agent_top` and `msgs_top` already existed and cannot answer
+# the question the parallel-audit rule asks: 3 calls in 3 messages and 3 calls in ONE message both read as
+# agent_top=3, and only the second is concurrent — issuing them in one message is what makes them run at the
+# same time. Keyed on the message id, falling back to the line number so messages WITHOUT an id stay separate
+# instead of collapsing into one bucket (which is a latent flaw in msgs_top, left alone here rather than
+# changed silently).
+per_msg = {}
 try: lines = open(src, errors='replace').read().splitlines()
 except OSError: lines = []
-for line in lines:
+for ln, line in enumerate(lines):
     line = line.strip()
     if not line: continue
     try: e = json.loads(line)
@@ -156,12 +206,15 @@ for line in lines:
     if e.get('type') == 'assistant':
         m = e.get('message') or {}; nested = bool(e.get('parent_tool_use_id'))
         if m.get('id'): (msgs_nest if nested else msgs_top).add(m.get('id'))
+        mkey = m.get('id') or ('line', ln)
         for c in m.get('content') or []:
             if not (isinstance(c, dict) and c.get('type') == 'tool_use') or c.get('id') in seen_tu: continue
             seen_tu.add(c.get('id')); k += 1
             if c.get('name') in ('Agent', 'Task'):
                 allc += 1
-                if not nested: top += 1
+                if not nested:
+                    top += 1
+                    per_msg[mkey] = per_msg.get(mkey, 0) + 1
             elif c.get('name') in ('Edit', 'Write', 'MultiEdit', 'NotebookEdit'):
                 edits += 1; last_edit = k
             elif c.get('name') == 'Bash' and RUNRX.search((c.get('input') or {}).get('command') or ''):
@@ -178,7 +231,8 @@ print('\t'.join(str(x) for x in (top, allc, sp, (res or {}).get('total_cost_usd'
       u.get('output_tokens', ''), u.get('cache_read_input_tokens', ''), u.get('cache_creation_input_tokens', ''),
       (res or {}).get('num_turns', ''), bad, 1 if res else 0, tests, tnest, len(msgs_top), len(msgs_nest),
       1 if (res or {}).get('is_error') else 0, 1 if limited or (res or {}).get('api_error_status') == 429 else 0,
-      '' if not edits else (1 if last_test > last_edit else 0))))
+      '' if not edits else (1 if last_test > last_edit else 0),
+      sum(1 for v in per_msg.values() if v >= 2), max(per_msg.values(), default=0))))
 PYM
 }
 
@@ -249,7 +303,7 @@ for cdir in "$CASES"/*/; do
   [ -f "$cdir/case.env" ] && [ -f "$cdir/grade.sh" ] || { echo "run.sh: $cname is missing case.env or grade.sh" >&2; exit 1; }
 
   # shellcheck disable=SC1090
-  NEEDS_GIT_OK=0; REQUIRES=""; unset -f seed post_seed 2>/dev/null; . "$cdir/case.env"
+  NEEDS_GIT_OK=0; REQUIRES=""; NEEDS_OVERLAY_B=0; unset -f seed post_seed 2>/dev/null; . "$cdir/case.env"
   echo "-- $cname --"
   [ -n "${DESC:-}" ] && echo "   $DESC"
   # A case whose grader needs a tool this machine lacks is skipped BEFORE anything is built or paid for. Run anyway, it
@@ -258,6 +312,24 @@ for cdir in "$CASES"/*/; do
   if [ -n "$missing" ]; then
     printf '   ! SKIPPED, NOT MEASURED — needs%s, not on PATH; nothing was built or run\n\n' "$missing"
     SKIPPED=$((SKIPPED+1)); continue
+  fi
+
+  # A CASE MAY DECLARE THAT ARM B IS INCOMPLETE WITHOUT AN OVERLAY, and the three high-risk cases do. The rule
+  # they measure — the applicable audits are issued together — lives in TWO places: the discipline file and the
+  # agents' own Coordination sections. `CSK_EVAL_DISCIPLINE_B` replaces the first; `CSK_EVAL_OVERLAY_B` the
+  # second, and it is optional. Run arm B with only the first and it carries the new text beside the OLD agent
+  # files: the rule is half applied, the arms differ in more than one thing, and the experiment reports a
+  # number for a question nobody asked. The runner cannot know which cases care, so the case says so — the
+  # same shape as REQUIRES, and refused BEFORE anything is built or paid for rather than noticed afterwards.
+  if [ "${NEEDS_OVERLAY_B:-0}" = 1 ] && [ -z "${CSK_EVAL_OVERLAY_B:-}" ]; then
+    case " $ARMS " in
+      *" kitb "*)
+        echo "run.sh: $cname declares NEEDS_OVERLAY_B=1 and arm kitb has no CSK_EVAL_OVERLAY_B." >&2
+        echo "  The rule this case measures lives in the agent files too, so arm B would carry the new" >&2
+        echo "  discipline text with the old agents and measure something else. Set CSK_EVAL_OVERLAY_B to a" >&2
+        echo "  directory of agent files, or drop kitb from CSK_EVAL_ARMS for this case." >&2
+        exit 1 ;;
+    esac
   fi
 
   for arm in $ARMS; do

@@ -6,8 +6,35 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"       # .claude/
 AGENTS="$ROOT/agents"; SKILLS="$ROOT/skills"; HOOKS="$ROOT/hooks"
 FAIL=0; PASSN=0; SKIPN=0; SKIP_HARD=0; SKIP_LIST=""
-pass(){ PASSN=$((PASSN+1)); echo "  ✅ $1"; }
-fail(){ FAIL=$((FAIL+1)); echo "  ❌ $1"; }
+# EVERY ASSERTION APPENDS ITS COUNTER VALUE TO A FILE, and that one redirect is what makes the check below
+# possible: a file survives a subshell, a variable does not. An assertion that runs inside `( … )` increments
+# counters in a child, so it PRINTS green while the total does not move — a failure there is invisible and the
+# gate is silently always-green. It happened once, in the block added to calibrate the evals metric: five rows
+# printed pass while the total rose by one instead of six, and it was caught by reading the COUNT rather than
+# the colour. A defect found that way stays found only if something looks for it.
+# Both helpers MUST log the SAME quantity. A first version had `pass` log PASSN and `fail` log the sum: with
+# different counters, a pass following a fail repeats the previous value and accuses a clean row.
+# The label is stripped of line endings first — labels here carry payloads and decoded values, and a real LF
+# inside one splits a log line in two and manufactures a repeat that belongs to the harness.
+ASSERTLOG="$(mktemp)"
+_al(){ local l="${1//$'\n'/ }"; l="${l//$'\r'/ }"; printf '%s\t%s\n' "$((PASSN+FAIL))" "$l" >> "$ASSERTLOG"; }
+# PER-SECTION LEDGER. The summary's two numbers say how much ran; they never said WHERE what did not run went,
+# and that is the whole of §5: measured 2026-09-20, stock Windows graded 900 against this desk's 938, and of the
+# 38 missing only 6 announced themselves. Attributing the other 32 took a peer diffing two runs by hand, and it
+# only worked because they had both outputs. So the suite now emits its own per-section counts and any two
+# platforms are directly comparable without a third party.
+#
+# A SECOND log rather than a column on ASSERTLOG: that file's shape is audited by _analyse (it walks the counter
+# backwards expecting total, total-1, …) and skips do not touch those counters at all. Adding rows there would
+# break the audit; adding a file cannot.
+SECLOG="$(mktemp)"
+CURSEC="<before the first heading>"
+_sl(){ printf '%s\t%s\n' "$CURSEC" "$1" >> "$SECLOG"; }
+# Every heading goes through this instead of `echo`, so the ledger cannot drift from what was printed: there is
+# one place that knows the current section and it is the one that announced it.
+sec(){ CURSEC="$1"; echo "$1"; }
+pass(){ PASSN=$((PASSN+1)); _al "P $1"; _sl P; echo "  ✅ $1"; }
+fail(){ FAIL=$((FAIL+1));   _al "F $1"; _sl F; echo "  ❌ $1"; }
 # A VERDICT WITHOUT A DENOMINATOR IS NOT A VERDICT. This suite printed one line — "SMOKE-TEST: PASSED ✅" — and
 # it printed the identical line whether 574 assertions ran or 293 did (CSK_SMOKE_SCOPE=install drops the rest).
 # Worse, seventeen places reported a test that DID NOT RUN as a green ✅, so "a tool is missing here" and "the
@@ -19,21 +46,43 @@ fail(){ FAIL=$((FAIL+1)); echo "  ❌ $1"; }
 #   platform — the platform genuinely cannot express the case (Git Bash keeps shebang scripts executable).
 # Only the first two turn CI red; the other two are honest answers everywhere. Locally nothing fails, because a
 # developer without jq should still get a usable run — the asymmetry IS the design, not an oversight.
-skip(){ # $1 = tool|fixture|scope|platform, $2 = what was not checked
-  SKIPN=$((SKIPN+1)); SKIP_LIST="$SKIP_LIST
-    [$1] $2"
-  case "$1" in tool|fixture) SKIP_HARD=$((SKIP_HARD+1)) ;; esac
-  echo "  ⏭  [$1] $2 — NOT CHECKED"
+# $3 = HOW MANY CHECKS this one line stands for, default 1. One skip line covering six assertions made the
+# summary say "1 skipped" where six checks did not run, which is the same lie as saying nothing: measured on
+# stock Windows, §15 lost 6 assertions behind a single announced skip. Counting per CHECK is what makes
+# `graded + skipped` comparable across platforms — every assertion either ran or is announced, so the two
+# totals should meet. A caller that passes no count keeps the old behaviour.
+skip(){ # $1 = tool|fixture|scope|platform, $2 = what was not checked, $3 = how many checks (default 1)
+  local _n="${3:-1}" _i=0
+  SKIPN=$((SKIPN+_n)); SKIP_LIST="$SKIP_LIST
+    [$1] $2$([ "$_n" -gt 1 ] && printf ' (%s checks)' "$_n")"
+  case "$1" in tool|fixture) SKIP_HARD=$((SKIP_HARD+_n)) ;; esac
+  while [ "$_i" -lt "$_n" ]; do _sl "S:$1"; _i=$((_i+1)); done
+  echo "  ⏭  [$1] $2 — NOT CHECKED$([ "$_n" -gt 1 ] && printf ' (%s checks)' "$_n")"
 }
 
 # The reporter is itself a gate now, so it gets measured like one — in a subshell, so the real counters are not
 # disturbed. Three states: a tool-class skip must arm the CI failure, a scope-class skip must not, and neither
 # may be counted as a pass. Without this the asymmetry is a claim in a comment.
-_sk_probe(){ ( SKIPN=0; SKIP_HARD=0; PASSN=0; SKIP_LIST=""; skip "$1" probe >/dev/null; printf '%s %s %s' "$SKIPN" "$SKIP_HARD" "$PASSN" ); }
+# This is the ONE place in this file where a subshell is the point rather than a mistake: `_sk_probe` measures
+# the reporter by letting it write counters that must NOT reach the real ones, and the assertions that consume
+# it are outside. Everywhere else an assertion inside a subshell is a silently always-green gate — it happened
+# once, in the evals-metric block, and packaging/subshell-audit.sh exists because of it. The marker below is
+# on the line above the probe on purpose: the scanner reads that line or the flagged one, nowhere further, so
+# an exception cannot be declared at a distance and then drift away from what it excuses.
+# `SECLOG=/dev/null` inside the subshell for a reason worth keeping: a subshell does not leak its COUNTERS,
+# which is what this probe relies on, but it does leak a FILE WRITE. The first ledger run reported 4 skips in
+# the pre-heading bucket while the suite reported 0 — the probe's four deliberate non-skips. The ledger
+# disagreed with the counters it describes, which is the one thing a ledger may never do.
+# subshell-audit: intentional
+_sk_probe(){ ( SECLOG=/dev/null; SKIPN=0; SKIP_HARD=0; PASSN=0; SKIP_LIST=""; skip "$1" probe >/dev/null; printf '%s %s %s' "$SKIPN" "$SKIP_HARD" "$PASSN" ); }
 [ "$(_sk_probe tool)"     = "1 1 0" ] && pass "a tool-class skip is counted and arms the CI failure"     || fail "skip tool did not arm the CI failure: $(_sk_probe tool)"
 [ "$(_sk_probe fixture)"  = "1 1 0" ] && pass "a fixture-class skip arms the CI failure too"             || fail "skip fixture did not arm the CI failure: $(_sk_probe fixture)"
 [ "$(_sk_probe scope)"    = "1 0 0" ] && pass "a scope-class skip is counted but does NOT fail CI"       || fail "skip scope wrongly armed the CI failure: $(_sk_probe scope)"
 [ "$(_sk_probe platform)" = "1 0 0" ] && pass "a platform-class skip is counted but does NOT fail CI"    || fail "skip platform wrongly armed the CI failure: $(_sk_probe platform)"
+# subshell-audit: intentional
+_sk_probe_n(){ ( SECLOG=/dev/null; SKIPN=0; SKIP_HARD=0; PASSN=0; SKIP_LIST=""; skip "$1" probe "$2" >/dev/null; printf '%s %s %s' "$SKIPN" "$SKIP_HARD" "$PASSN" ); }
+[ "$(_sk_probe_n tool 6)"  = "6 6 0" ] && pass "a skip standing for 6 checks counts 6, not 1"                 || fail "a counted skip did not count: $(_sk_probe_n tool 6)"
+[ "$(_sk_probe_n scope 4)" = "4 0 0" ] && pass "a counted scope skip counts 4 and still does NOT fail CI"     || fail "a counted scope skip armed CI or miscounted: $(_sk_probe_n scope 4)"
 # Kit repo (payload) vs an INSTALLED project. Kit conventions (Trigger phrases, byte budget) are GATES on the
 # payload but must not fail a user's project for their OWN agents/skills — including the ones adopt imports from a
 # taken-over agent. In an install those become a report (note), not a failure. Kit repo has CLAUDE.md next to the
@@ -77,6 +126,18 @@ json_ok(){    # stdin parses as JSON — the `jq empty` question. rc 2 = no orac
     jq) jq empty >/dev/null 2>&1 ;;
     "") return 2 ;;
     *)  "$JSONQ" -c 'import sys,json;json.load(sys.stdin)' >/dev/null 2>&1 ;;
+  esac
+}
+json_no_execform(){  # $1 = a settings.json. True when NO hook uses exec form (a non-empty "args" anywhere).
+  # Here rather than inline for the reason the ladder exists: the check was `if jq …` with no else, so on a
+  # machine without jq it did not run and nothing said so. rc 2 = no oracle at all.
+  case "$JSONQ" in
+    jq) jq -e '[.hooks[][].hooks[]? | select((.args // []) | length > 0)] | length == 0' "$1" >/dev/null 2>&1 ;;
+    "") return 2 ;;
+    *)  "$JSONQ" -c 'import sys,json
+d=json.load(open(sys.argv[1]))
+bad=[h for ev in d.get("hooks",{}).values() for e in ev for h in (e.get("hooks") or []) if (h.get("args") or [])]
+sys.exit(0 if not bad else 1)' "$1" 2>/dev/null ;;
   esac
 }
 json_get(){   # $1 = dotted path. Mimics `jq -e`: prints the value as JSON, non-zero when absent, null or false.
@@ -140,7 +201,7 @@ kit_owned() {  # $1 = manifest entry, e.g. agents/backend-expert-csk.md or skill
   grep -qxF "$1" "$ROOT/kit-manifest.txt"
 }
 
-echo "== 1) Agent frontmatter & trigger =="
+sec "== 1) Agent frontmatter & trigger =="
 AC=0
 for f in $(agent_quality_files); do
   n=$(basename "$f")
@@ -189,7 +250,7 @@ for c in planner-csk security-expert-csk privacy-agent-csk test-expert-csk revie
 done
 [ "$AC" -ge 7 ] && pass "$AC agents found (7 core complete)" || fail "agent count below the 7 core: $AC"
 
-echo "== 2) Skill frontmatter & trigger =="
+sec "== 2) Skill frontmatter & trigger =="
 for d in "$SKILLS"/*/; do
   n=$(basename "$d"); f="$d/SKILL.md"
   [ -f "$f" ] || { fail "$n: no SKILL.md"; continue; }
@@ -205,7 +266,7 @@ for d in "$SKILLS"/*/; do
 done
 pass "$(ls -d "$SKILLS"/*/ | wc -l | tr -d ' ') skills scanned (name==dir · name≤64 · description≤1024)"
 
-echo "== 3) Orphan skill reference (agent -> nonexistent skill) =="
+sec "== 3) Orphan skill reference (agent -> nonexistent skill) =="
 # (a) Do the X's in "applies the \`X\` skill" in an agent body exist?
 for f in $(agent_quality_files); do
   for ref in $(grep -oE 'applies the `[a-z0-9-]+` skill' "$f" | grep -oE '`[a-z0-9-]+`' | tr -d '`'); do
@@ -220,26 +281,97 @@ for f in $(agent_quality_files); do
   done
 done
 pass "agent->skill references (applies + Also apply) checked"
-# (c) progressive disclosure: a `references/X.md` pointer in a SKILL.md body must resolve to a real file
-for d in "$SKILLS"/*/; do
-  f="$d/SKILL.md"; [ -f "$f" ] || continue
-  # A pointer may be to this skill's own references/ OR, qualified with a skill name, to another skill's —
-  # `security-scan/references/verify.md`. Cross-skill is legitimate and the kit's single-source-of-truth rule
-  # depends on it: the verifier contract lives in one file and code-review-csk points at it rather than keeping a
-  # second copy to drift. The check stays strict either way — a wrong skill name or a missing file still fails.
-  for ref in $(grep -oE '([a-z0-9-]+/)?references/[A-Za-z0-9_-]+\.md' "$f" | sort -u); do
-    case "$ref" in
-      */references/*.md)
+# (c) progressive disclosure, both directions.
+#
+# A pointer may be to this skill's own references/ OR, qualified with a skill name, to another skill's —
+# `security-scan/references/verify.md`. Cross-skill is legitimate and the kit's single-source-of-truth rule
+# depends on it: the verifier contract lives in one file and code-review-csk points at it rather than keeping a
+# second copy to drift. The check stays strict either way — a wrong skill name or a missing file still fails.
+#
+# Two things this used to miss, both measured on 2026-09-20 before the change:
+#   1. It read only SKILL.md. THREE pointers already lived inside reference files and none was checked
+#      (db-migration/tool-matrix.md, security-scan/prompting.md, testing/flaky-triage.md → cross-skill).
+#      A reference file is loaded the same way and rots the same way; the depth of the file is not the question.
+#   2. It never asked the INVERSE question. A reference nothing points at is an orphan component — which this
+#      kit refuses for skills and agents two sections below (§3b) and refused nowhere here. That is the failure
+#      a progressive-disclosure refactor produces silently: move the pointer into a reference file, and the
+#      target leaves the gate's sight without anything going red.
+#
+# One code path for the payload and for the calibration trees, because a calibration that re-implements the
+# rule proves only that the rule can be written twice. Sets REFS_BAD; problems go to stdout as they are found.
+refs_audit(){
+  local root="$1" d sk f ref tgt key seen="" bad=0 seen_n=0 ref_n=0
+  for d in "$root"/*/; do
+    sk="${d%/}"; sk="${sk##*/}"
+    for f in "$d/SKILL.md" "$d"references/*.md; do
+      [ -f "$f" ] || continue
+      for ref in $(grep -oE '([a-z0-9-]+/)?references/[A-Za-z0-9_-]+\.md' "$f" | sort -u); do
         case "$ref" in
-          references/*) [ -f "$d/$ref" ] || fail "$(basename "$d"): SKILL.md points to missing $ref" ;;
-          *) [ -f "$SKILLS/$ref" ] || fail "$(basename "$d"): SKILL.md points to missing $ref (cross-skill)" ;;
-        esac ;;
-    esac
+          references/*)      tgt="$d$ref";     key="$sk/$ref" ;;
+          */references/*.md) tgt="$root/$ref"; key="$ref" ;;
+          *) continue ;;
+        esac
+        [ -f "$tgt" ] || { echo "    $sk: ${f##*/} points to missing $ref"; bad=$((bad+1)); }
+        seen="$seen $key"; seen_n=$((seen_n+1))
+      done
+    done
   done
-done
-pass "skill references/*.md pointers resolve"
+  for d in "$root"/*/; do
+    sk="${d%/}"; sk="${sk##*/}"
+    for f in "$d"references/*.md; do
+      [ -f "$f" ] || continue
+      key="$sk/references/${f##*/}"; ref_n=$((ref_n+1))
+      case " $seen " in
+        *" $key "*) ;;
+        *) echo "    $key: orphan — no SKILL.md or reference file points at it"; bad=$((bad+1)) ;;
+      esac
+    done
+  done
+  REFS_BAD=$bad; REFS_SEEN_N=$seen_n; REFS_FILE_N=$ref_n
+}
 
-echo "== 3b) Orphan component: every skill & agent must be ROUTED (kit invariant, no idle components) =="
+refs_audit "$SKILLS"
+[ "$REFS_BAD" = 0 ] \
+  && pass "skill references: $REFS_SEEN_N pointers resolve, $REFS_FILE_N reference files none orphaned" \
+  || fail "skill references: $REFS_BAD problem(s) above"
+
+# The gate itself, in the three states the kit requires. There is no tool to be missing here — the rule is pure
+# file logic — so there is no honest-skip state to test, and that is stated rather than left as a gap.
+# The expected problem lines go to a log rather than the terminal: printed inline they read as findings against
+# the payload, which is how a calibration gets "fixed" by someone chasing a problem that was put there on purpose.
+# A redirection on a function call does not fork, so REFS_BAD still comes back from the current shell.
+REFT="$(mktemp -d)"; REFLOG="$REFT/audit.log"
+mkdir -p "$REFT/ok/skills/a/references" "$REFT/nested/skills/a/references" "$REFT/orphan/skills/a/references"
+# ok: SKILL.md -> a.md -> b.md, every file pointed at
+printf 'see references/a.md\n'  > "$REFT/ok/skills/a/SKILL.md"
+printf 'more in references/b.md\n' > "$REFT/ok/skills/a/references/a.md"
+printf 'leaf\n'                  > "$REFT/ok/skills/a/references/b.md"
+refs_audit "$REFT/ok/skills" > "$REFLOG" 2>&1
+[ "$REFS_BAD" = 0 ] && pass "refs_audit: a clean tree passes" \
+  || { fail "refs_audit: clean tree reported $REFS_BAD"; sed 's/^/      /' "$REFLOG"; }
+# nested: the broken pointer is INSIDE the reference file — the exact case the old SKILL.md-only scan could not see
+printf 'see references/a.md\n' > "$REFT/nested/skills/a/SKILL.md"
+printf 'more in references/gone.md\n' > "$REFT/nested/skills/a/references/a.md"
+refs_audit "$REFT/nested/skills" > "$REFLOG" 2>&1
+[ "$REFS_BAD" = 1 ] && pass "refs_audit: a missing pointer inside a reference file fails" \
+                    || fail "refs_audit: nested-miss tree reported $REFS_BAD, expected 1"
+# …and the calibration's own truth claim: that same tree is INVISIBLE to the rule this replaced. If the old
+# scan also caught it, the fixture is not exercising the new half and the pass above means nothing.
+OLDBAD=0
+for ref in $(grep -oE '([a-z0-9-]+/)?references/[A-Za-z0-9_-]+\.md' "$REFT/nested/skills/a/SKILL.md" | sort -u); do
+  [ -f "$REFT/nested/skills/a/$ref" ] || OLDBAD=$((OLDBAD+1))
+done
+[ "$OLDBAD" = 0 ] && pass "refs_audit: that fixture is invisible to the SKILL.md-only rule it replaces" \
+                  || fail "refs_audit: the nested fixture is caught by the old rule too ($OLDBAD) — it proves nothing"
+# orphan: a reference file nothing points at
+printf 'no pointers here\n' > "$REFT/orphan/skills/a/SKILL.md"
+printf 'nobody sent you\n'  > "$REFT/orphan/skills/a/references/lost.md"
+refs_audit "$REFT/orphan/skills" > "$REFLOG" 2>&1
+[ "$REFS_BAD" = 1 ] && pass "refs_audit: an orphan reference file fails" \
+                    || fail "refs_audit: orphan tree reported $REFS_BAD, expected 1"
+rm -rf "$REFT"
+
+sec "== 3b) Orphan component: every skill & agent must be ROUTED (kit invariant, no idle components) =="
 # Rule: nothing idle. A skill/agent that only auto-triggers on its own description is "dark" — the orchestrator is
 # never told to reach it. It is ROUTED when its name appears in an agent body, a command, or the discipline (the
 # trigger map): CLAUDE.md in the kit repo, DISCIPLINE.md in an install. A cross-link from ANOTHER skill's body does
@@ -265,7 +397,7 @@ for f in "$AGENTS"/*.md; do
 done
 pass "every skill & agent is routed (no idle components)"
 
-echo "== 3b2) Capability: a skill cannot demand a tool its agent does not have =="
+sec "== 3b2) Capability: a skill cannot demand a tool its agent does not have =="
 # A rule an agent physically cannot obey is worse than no rule: it does not fail, it degrades quietly into the
 # thing it forbids. `privacy-compliance` told its agent to CHECK THE OFFICIAL SOURCE rather than decide from
 # memory, and privacy-agent-csk shipped with Read/Grep/Glob — no WebFetch. Nothing flagged it. It surfaced in a
@@ -292,12 +424,12 @@ done
 [ -z "$CAPFAIL" ] && pass "every skill's declared tool requirement is met by the agents that apply it" \
                   || fail "an agent applies a skill it cannot obey:$CAPFAIL"
 
-echo "== 3c) Backend variant parity: a --generic install must not lose routing =="
+sec "== 3c) Backend variant parity: a --generic install must not lose routing =="
 # On a non-.NET stack the installer REPLACES backend-expert-csk with agents-optional/backend-expert-generic.
 # Every skill routed only from the .NET variant then silently stops being reached on that stack — §3b cannot see
 # it, because the skill is still routed by *some* agent. The pattern skill is the one legitimate difference.
 if [ "$IS_KIT" = 1 ] && [ -f "$AGENTS/backend-expert-csk.md" ] && [ -f "$ROOT/agents-optional/backend-expert-generic.md" ]; then
-  PATTERN_SKILL="devarch-module"   # .NET-only by definition; the generic variant must NOT carry it
+  PATTERN_SKILL="cqrs-aop-module"   # .NET-only by definition; the generic variant must NOT carry it
   MISSING=""
   for d in "$SKILLS"/*/; do
     n=$(basename "$d"); [ "$n" = "$PATTERN_SKILL" ] && continue
@@ -309,16 +441,28 @@ if [ "$IS_KIT" = 1 ] && [ -f "$AGENTS/backend-expert-csk.md" ] && [ -f "$ROOT/ag
   routed "$PATTERN_SKILL" "$ROOT/agents-optional/backend-expert-generic.md" \
     && fail "the generic backend variant references $PATTERN_SKILL — that skill is pruned on a generic install" \
     || pass "the generic variant does not reference the .NET-only pattern skill"
+  # TOOLS parity, not only routing parity. Found by installing with --generic and counting: 12 agents, but only
+  # 9 carrying PowerShell where 10 were edited — the edit had globbed agents/*.md and never reached
+  # agents-optional/, so a --generic install shipped a backend agent with a different toolset from every other
+  # shell-carrying agent. The routing check above could not see it; it compares what the agent is FOR, not what
+  # it can RUN.
+  _TD="$(grep -m1 '^tools:' "$AGENTS/backend-expert-csk.md")"
+  _TG="$(grep -m1 '^tools:' "$ROOT/agents-optional/backend-expert-generic.md")"
+  [ -n "$_TD" ] && [ "$_TD" = "$_TG" ] \
+    && pass "the generic backend variant carries the same tools as the default ($_TD)" \
+    || fail "a --generic install gets a different toolset — default '$_TD' vs generic '$_TG'"
 else
-  skip scope "backend variant parity skipped (installed project — agents-optional/ is not installed)"
+  # Three checks stand behind this one line (routing parity, the pattern-skill exclusion, tools parity). It used
+  # to count one for two, which is the same lie the per-check skip count exists to stop.
+  skip scope "backend variant parity skipped (installed project — agents-optional/ is not installed)" 3
 fi
 
-echo "== 4) Stub / unfilled skill leftover =="
+sec "== 4) Stub / unfilled skill leftover =="
 if grep -rlq "to be filled\|generated from source" "$SKILLS" 2>/dev/null; then
   fail "stub marker still present"; else pass "no stub"
 fi
 
-echo "== 5) Trace + secret scanner ready? =="
+sec "== 5) Trace + secret scanner ready? =="
 [ -x "$HOOKS/pre-commit" ] && pass "pre-commit hook +x" || fail "pre-commit missing/not executable"
 [ -f "$HOOKS/trace-blocklist.txt" ] && pass "trace-blocklist present" || fail "trace-blocklist.txt missing"
 [ -f "$HOOKS/secret-blocklist.txt" ] && pass "secret-blocklist present" || fail "secret-blocklist.txt missing"
@@ -332,7 +476,7 @@ if ( cd "$SDIR" && bash pre-commit ) >/dev/null 2>&1; then fail "secret scan LET
 rm -rf "$SDIR"
 
 
-echo "== 5b) Team board: is the claim a real lock, or only a convention? =="
+sec "== 5b) Team board: is the claim a real lock, or only a convention? =="
 # SCOPED, and this one is the whole cost. Measured on a Windows 11 desktop: this section alone is 682 s of
 # the 892 s an install-scope suite takes -- 76% of it -- and e2e runs that suite three times, so it is roughly
 # 34 of the 37 minutes the e2e step spends on windows-latest. What it drives is board.sh (12x) and
@@ -702,7 +846,7 @@ fi
 
 else note "scope=install: board race cases skipped (payload behaviour, not this install)"; fi
 
-echo "== 5e) executable bit on every shipped script =="
+sec "== 5e) executable bit on every shipped script =="
 # A hook that loses +x does not fail loudly: Claude Code invokes it through `bash <path>`, so it keeps working
 # in the installed tree while the repo carries a broken mode, and start.sh chmods on install which hides it
 # again. The only place it is visible is the git index — so that is where it is checked. This gate exists
@@ -724,7 +868,7 @@ csk_exec_check "eval script" "$HERE"/*.sh
 # no information about it, so there is nothing to assert; the POSIX runners are where this gate has teeth.
 CSK_FILEMODE="$(git -C "$ROOT" config --get core.fileMode 2>/dev/null || echo true)"
 case "${CSK_FILEMODE:-true}" in
-  false|0|no) note "index mode check skipped (core.fileMode=$CSK_FILEMODE — this platform does not track the bit)" ;;
+  false|0|no) skip platform "the index-mode check (core.fileMode=$CSK_FILEMODE — this platform does not track the executable bit)" 1 ;;
   *)
 if command -v git >/dev/null 2>&1 && git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   IDX="$(git -C "$ROOT" ls-files -s -- "$HOOKS" "$HERE" 2>/dev/null \
@@ -739,7 +883,7 @@ if command -v git >/dev/null 2>&1 && git -C "$ROOT" rev-parse --is-inside-work-t
 fi
  ;;
 esac
-echo "== 6) Context-usage threshold logic (fixture) + hook integrity =="
+sec "== 6) Context-usage threshold logic (fixture) + hook integrity =="
 FX="$(mktemp)"
 printf '%s\n' '{"type":"assistant","isSidechain":false,"message":{"usage":{"input_tokens":1000,"cache_read_input_tokens":800000,"cache_creation_input_tokens":0}}}' > "$FX"
 o1="$(CONTEXT_WINDOW=1000000 bash "$HOOKS/context-usage.sh" "$FX" 2>/dev/null)"
@@ -787,7 +931,7 @@ rm -rf "$PMD"
 [ -x "$HOOKS/context-usage.sh" ] && pass "context-usage.sh +x"          || fail "context-usage.sh missing/not executable"
 [ -x "$HOOKS/session-guard.sh" ] && pass "session-guard.sh +x (Stop)"   || fail "session-guard.sh missing/not executable"
 
-echo "== 6b) Stop-hook gate: once per THRESHOLD · never blocks · systemMessage (not a hook error) =="
+sec "== 6b) Stop-hook gate: once per THRESHOLD · never blocks · systemMessage (not a hook error) =="
 SGFX="$(mktemp)"
 SGPFX="smoketest-$$-${RANDOM:-0}"
 mkjson(){ printf '{"session_id":"%s","transcript_path":"%s","hook_event_name":"Stop","stop_hook_active":%s}' "$1" "$2" "$3"; }
@@ -856,7 +1000,7 @@ if [ -n "$JSONQ" ]; then
   [ "$NB" -eq 0 ] && pass "stop-hook fast path spawns no nested shell (the cost this removes)" \
                   || fail "stop-hook still starts $NB nested shell(s) with a published reading available"
   rm -f "${TMPDIR:-/tmp}/csk-context.${SGPFX}-cnt" "$SGFX.trace"
-else skip tool "stop-hook JSON check skipped (no working JSON parser: jq, python3 and python all absent or non-functional)"; fi
+else skip tool "stop-hook JSON check skipped (no working JSON parser: jq, python3 and python all absent or non-functional)" 5; fi
 # (7) fail-open: unreadable transcript -> exit 0 and silent (never blocks on measurement failure)
 o="$(mkjson "${SGPFX}-f" "/no/such.jsonl" false | bash "$HOOKS/session-guard.sh" 2>/dev/null)"; r=$?
 { [ "$r" = 0 ] && [ -z "$o" ]; } && pass "stop-hook: measurement failure fails open (exit 0, silent)" || fail "stop-hook not fail-open (rc=$r out=$o)"
@@ -953,7 +1097,7 @@ csk_nojq_path(){   # $@ = the tools the code under test needs on PATH
 }
 # ---- /CSK-NOJQ-PATH --------------------------------------------------------------------------------------
 
-echo "== 6c) no-jq fallback: sidechain-safe + full token sum =="
+sec "== 6c) no-jq fallback: sidechain-safe + full token sum =="
 BASHBIN="$(command -v bash 2>/dev/null || echo bash)"   # absolute -> a stripped PATH must not hide bash itself
 JXBIN="$(csk_nojq_path awk sed grep head tail cat ls tr)"
 if [ -n "$JXBIN" ]; then
@@ -971,14 +1115,14 @@ else
 fi
 rm -rf "${JXBIN%%:*}"
 
-echo "== 6d) locale: percentage keeps '.' under a comma locale =="
+sec "== 6d) locale: percentage keeps '.' under a comma locale =="
 FXL="$(mktemp)"
 printf '%s\n' '{"type":"assistant","isSidechain":false,"message":{"usage":{"input_tokens":1000,"cache_read_input_tokens":800000,"cache_creation_input_tokens":0}}}' > "$FXL"
 ol="$(LANG=tr_TR.UTF-8 LC_NUMERIC=tr_TR.UTF-8 CONTEXT_WINDOW=1000000 bash "$HOOKS/context-usage.sh" "$FXL" 2>/dev/null | head -1)"
 case "$ol" in *,*) fail "locale: percentage emitted a comma under tr_TR: $ol" ;; *) pass "locale: decimal stays '.' under tr_TR ($ol)" ;; esac
 rm -f "$FXL"
 
-echo "== 6i) context-usage: bounded tail read + assistant anchor =="
+sec "== 6i) context-usage: bounded tail read + assistant anchor =="
 # Two defects this locks down, both fatal on the no-jq path (stock Git Bash on Windows):
 #   1. The scan read the whole transcript on EVERY turn though the record it wants is the LAST match.
 #      4.7s on a 180MB transcript -> past the hook's timeout -> the fill line never reached the model.
@@ -1031,7 +1175,7 @@ grep -q 'tail -n' "$HOOKS/context-usage.sh" && pass "transcript is read through 
   || fail "context-usage.sh no longer bounds its read — the whole transcript is scanned every turn"
 rm -rf "$CUD" "${CUJX%%:*}"
 
-echo "== 6i2) hook paths survive a WINDOWS stdin payload (JSON-escaped backslashes) =="
+sec "== 6i2) hook paths survive a WINDOWS stdin payload (JSON-escaped backslashes) =="
 # The paths a hook receives on stdin are JSON values, and JSON escapes a backslash as two. So on Windows the
 # real path C:\Users\me\a.jsonl arrives as "C:\\Users\\me\\a.jsonl", and a sed slice hands back the doubled
 # form — a string that names no file on any platform. Every consumer then failed the same quiet way:
@@ -1092,7 +1236,7 @@ o="$(wjson SessionStart | CLAUDE_PROJECT_DIR= bash "$HOOKS/skill-trust.sh" 2>/de
 case "$o" in *skills/mine*) pass "skill-trust decodes a JSON-escaped cwd (the notice still notices)" ;; *) fail "skill-trust could not resolve a Windows-shaped cwd — the gate is inert there · payload was: $(wjson SessionStart)" ;; esac
 rm -rf "$WPD"
 
-echo "== 6i3) transcript directory encoding (the BY-HAND call, no hook payload) =="
+sec "== 6i3) transcript directory encoding (the BY-HAND call, no hook payload) =="
 # With a hook payload on stdin the transcript path is handed over; called by hand there is none, so the hook has
 # to reproduce how Claude Code encodes a cwd into $HOME/.claude/projects/<name>. Getting that wrong is not
 # cosmetic: `context-usage.sh --verbose` and `session-stats.sh` then find nothing, the 🔋 line disappears, and
@@ -1179,13 +1323,26 @@ _blk_gate CSK-TRANSCRIPT-DIR "the duplicated transcript-dir resolver"
 _blk_gate CSK-JSON-PARSE     "the duplicated JSON parser"
 # End to end: called by hand from this repo, the hook must produce a reading rather than "transcript not found".
 cu_hand="$(cd "$ROOT/.." && bash "$HOOKS/context-usage.sh" 2>&1)"
+# The three arms used to be pass / note / note, and `note` touches no counter — so on any machine without a
+# transcript for this cwd the assertion left no trace at all: not a pass, not a skip, not a line in the
+# summary. Measured 2026-09-20: this desk graded 938 and the ubuntu runner 937, and THIS was the one, the same
+# one stock Windows was missing (its §6i3 read 6 against 7 here). A heading printed, a dim line printed, and
+# the difference was invisible to both counters.
+#
+# `scope`, not `fixture` or `tool`: nothing is broken or absent on a machine that simply has no session
+# transcript for this directory, and the scope/platform classes are the ones that do NOT arm CSK_VERIFY_STRICT.
+# Calling a runner with no transcript a broken runner would make CI red for an honest condition.
+#
+# And the third arm is now a FAILURE rather than a note. The hook has exactly two legitimate answers — a
+# reading, or "transcript not found". Anything else means it broke, and the old note swallowed that too: the
+# arm that existed to report an unexplained output was the one guaranteed never to be read.
 case "$cu_hand" in
-  *"transcript not found"*) note "by-hand reading unavailable here (no transcript for this cwd) — encoding still pinned above" ;;
+  *"transcript not found"*) skip scope "the by-hand end-to-end read (no transcript for this cwd; the encoding itself is pinned above)" ;;
   *%*)                      pass "by-hand call resolves its own transcript and reports a fill" ;;
-  *)                        note "by-hand call produced no reading (out=${cu_hand:-empty})" ;;
+  *)                        fail "by-hand call answered neither a reading nor 'transcript not found' — the hook broke (out=${cu_hand:-empty})" ;;
 esac
 
-echo "== 6j) session-stats: evidence signals read off the transcript =="
+sec "== 6j) session-stats: evidence signals read off the transcript =="
 [ -x "$HOOKS/session-stats.sh" ] && pass "session-stats.sh +x" || fail "session-stats.sh missing/not executable"
 SSD="$(mktemp -d)"; SSF="$SSD/t.jsonl"
 {
@@ -1220,6 +1377,105 @@ ss(){ printf '%s\n' "$SS" | sed -n "s/^$1=//p" | head -1; }
 printf '%s\n' '{"type":"assistant","isSidechain":false,"message":{"content":[{"type":"tool_use","input":{"command":"grep -c \"Request interrupted by user\" f.jsonl"}}]}}' > "$SSD/fp.jsonl"
 [ "$(bash "$HOOKS/session-stats.sh" --raw "$SSD/fp.jsonl" 2>/dev/null | sed -n 's/^interrupts=//p')" = 0 ] \
   && pass "the interrupt phrase inside a tool input is not counted" || fail "a tool input mentioning the interrupt phrase was counted as a real interrupt"
+# A REFUSED CALL IS NOT A FAILED APPROACH. `is_error: true` covers two different events: a tool that RAN and
+# failed, and a call nothing ever executed because the harness, a kit gate or the user refused it. Counting the
+# second as the first made this report accuse the model of thrashing for the gate doing its job — a field
+# session produced a "runaway loop" warning whose errors were mostly denials. Measured over 14 real
+# transcripts, 101 is_error results: 69.3% genuine, 18.8% protocol (read-before-write, string-not-found — the
+# tool RAN, so they stay counted), 11.9% refusals.
+# THE PAIR IS THE POINT: the same prompt shape, the same count, one warning and no warning.
+ss_one(){ printf '%s\n' "$2" > "$SSD/$1.jsonl"; bash "$HOOKS/session-stats.sh" --raw "$SSD/$1.jsonl" 2>/dev/null; }
+ss_f(){ printf '%s\n' "$1" | sed -n "s/^$2=//p" | head -1; }
+_R_GEN='{"type":"user","isSidechain":false,"message":{"content":[{"type":"tool_result","is_error":true,"content":"Exit code 1 Traceback (most recent call last)"}]}}'
+_R_USR='{"type":"user","isSidechain":false,"message":{"content":[{"type":"tool_result","is_error":true,"content":"The user doesnt want to proceed with this tool use. The tool use was rejected"}]}}'
+_R_HAR='{"type":"user","isSidechain":false,"message":{"content":[{"type":"tool_result","is_error":true,"content":"<tool_use_error>Blocked: sleep 90 followed by: tail -f log</tool_use_error>"}]}}'
+_R_GAT='{"type":"user","isSidechain":false,"message":{"content":[{"type":"tool_result","is_error":true,"content":"PreToolUse:Bash hook error: GUARD 4.5 destructive rm -rf stopped AT THE TOOL LEVEL"}]}}'
+_R_PRO='{"type":"user","isSidechain":false,"message":{"content":[{"type":"tool_result","is_error":true,"content":"<tool_use_error>File has not been read yet. Read it first before writing to it.</tool_use_error>"}]}}'
+_o="$(ss_one gen "$_R_GEN")"
+{ [ "$(ss_f "$_o" errors)" = 1 ] && [ "$(ss_f "$_o" refused)" = 0 ]; } \
+  && pass "session-stats: a tool that RAN and failed counts as an error" \
+  || fail "session-stats: a genuine failure read errors=$(ss_f "$_o" errors) refused=$(ss_f "$_o" refused)"
+for _p in "usr:the user declining" "har:the harness blocking the command shape" "gat:a kit gate blocking it"; do
+  eval "_pl=\$_R_$(printf '%s' "${_p%%:*}" | tr '[:lower:]' '[:upper:]')"
+  _o="$(ss_one "${_p%%:*}" "$_pl")"
+  { [ "$(ss_f "$_o" errors)" = 0 ] && [ "$(ss_f "$_o" refused)" = 1 ]; } \
+    && pass "session-stats: ${_p#*:} is refused, not failed" \
+    || fail "session-stats: ${_p#*:} read errors=$(ss_f "$_o" errors) refused=$(ss_f "$_o" refused)"
+done
+# PROTOCOL errors stay counted, and that is deliberate: the tool ran and rejected the input, so repeating one
+# is exactly the thrash this report exists to see. Without this row the change could quietly excuse them too.
+_o="$(ss_one pro "$_R_PRO")"
+{ [ "$(ss_f "$_o" errors)" = 1 ] && [ "$(ss_f "$_o" refused)" = 0 ]; } \
+  && pass "session-stats: read-before-write still counts as an error (the tool RAN)" \
+  || fail "session-stats: a protocol error was excused — errors=$(ss_f "$_o" errors) refused=$(ss_f "$_o" refused)"
+# The refusal marker WITHOUT an is_error must add nothing: a prompt that merely mentions the phrase, or a tool
+# input grepping for it, would otherwise invent refusals out of text.
+_o="$(ss_one nomarker '{"type":"user","isSidechain":false,"message":{"role":"user","content":"why did it say the user doesnt want to proceed with this tool use?"}}')"
+{ [ "$(ss_f "$_o" refused)" = 0 ] && [ "$(ss_f "$_o" errors)" = 0 ]; } \
+  && pass "session-stats: the refusal phrase in a PROMPT invents nothing" \
+  || fail "session-stats: a prompt mentioning the phrase produced refused=$(ss_f "$_o" refused)"
+# THE FALSE ALARM ITSELF. 25 tool calls in one prompt plus 3 errors trips the runaway warning. Same shape,
+# same counts, refusals instead of failures: it must NOT trip, and the refusals must still be reported.
+_ss_runaway(){ # $1 = the error record to repeat 3 times -> runaway count
+  { printf '%s\n' '{"type":"user","isSidechain":false,"message":{"role":"user","content":"make the integration test pass"}}'
+    _i=0; while [ "$_i" -lt 25 ]; do printf '%s\n' '{"type":"assistant","isSidechain":false,"message":{"content":[{"type":"tool_use"}]}}'; _i=$((_i+1)); done
+    _i=0; while [ "$_i" -lt 3 ]; do printf '%s\n' "$1"; _i=$((_i+1)); done
+  } > "$SSD/ra.jsonl"
+  bash "$HOOKS/session-stats.sh" --raw "$SSD/ra.jsonl" 2>/dev/null
+}
+_o="$(_ss_runaway "$_R_GEN")"
+[ "$(ss_f "$_o" runaway)" = 1 ] \
+  && pass "session-stats: 25 calls and 3 real failures in one prompt IS a runaway loop" \
+  || fail "session-stats: the genuine runaway case stopped firing (runaway=$(ss_f "$_o" runaway)) — the pair below would prove nothing"
+_o="$(_ss_runaway "$_R_GAT")"
+
+# THE TWO PLATFORM COUNTS (11 and 1, above) ARE MEASURED, NOT COUNTED FROM THE SOURCE. windows-csk read them
+# off the per-section ledger: 902+26=928 against 940 here, short by twelve, localised to exactly those two
+# `note` calls. A static count of the symlink block answered 9 — and that same static counter had already
+# reported 0 assertions inside a block that plainly had them, so it has a demonstrated blind spot with nested
+# branches. The deficit is a measurement; the source count is an instrument reading. If 11 is wrong the balance
+# says so on the next run, which is the whole point of having a balance.
+# TWO GATES ON THE GUARD'S RECOVERY TEXT. `block()` printed ONE sentence for all 33 rules, and for the
+# gate-tamper and secret families that sentence said "if approved, run the command manually in the terminal" —
+# advice that COMPLETES the action the rule just refused (a gate disarmed by hand stays off for every later
+# session; a secret printed by hand is the same leak with an extra step). Fixed in b19495b with a class per
+# rule; these two assertions are what stop it coming back, because the way it comes back is someone tidying
+# seven sentences into one.
+_GB="$HOOKS/guard-bash.sh"
+if [ -f "$_GB" ]; then
+  # (1) A class on every call. Without it a call falls back to generic text silently, which is how one sentence
+  #     survived 33 rules. The pattern matches a call whose last argument is the section number.
+  _NOCLASS="$(grep -cE 'block "[^"]*" "[0-9.]+"[[:space:]]*$' "$_GB" 2>/dev/null || true)"
+  [ "${_NOCLASS:-0}" = 0 ] \
+    && pass "every block() call carries a rule class (none falls back to generic recovery text)" \
+    || fail "$_NOCLASS block() call(s) carry no class — the generic recovery line returns for them"
+  # (2) THE ADVISORY SENTENCE IS GONE. First attempt at this assertion grepped the tamper/secret arms for
+  #     "manually|by hand|yourself" and went red on the FIXED text — because those arms now say "DOING IT BY
+  #     HAND IS NOT THE ANSWER EITHER" and "printing it by hand is the same leak with an extra step". A check
+  #     that greps for a phrase cannot tell advice from prohibition, which is the same defect this suite keeps
+  #     finding elsewhere: it searched for a string instead of the property it guards. So pin the property —
+  #     the old advisory sentence must not appear anywhere in the hook.
+  _ADV="$(grep -ciE 'run the command manually in the terminal' "$_GB" 2>/dev/null || true)"
+  [ "${_ADV:-0}" = 0 ] \
+    && pass "no refusal tells the reader to run the blocked command manually (the generic advice is gone)" \
+    || fail "the generic 'run the command manually in the terminal' advice is back ($_ADV occurrence(s))"
+  # (3) And the two families carry their OWN text rather than sharing one line. Structural, not phrase-based:
+  #     the way this regresses is seven sentences being tidied back into one, and that shows up as arms whose
+  #     text is identical, not as a particular wording.
+  _ARM(){ awk -v k="$1" '$0 ~ "^[[:space:]]*" k "\\)" {sub(/^[^)]*\) */,""); print; exit}' "$_GB"; }
+  _T="$(_ARM tamper)"; _S="$(_ARM secret)"; _L="$(_ARM loss)"
+  if [ -n "$_T" ] && [ -n "$_S" ] && [ "$_T" != "$_L" ] && [ "$_S" != "$_L" ] && [ "$_T" != "$_S" ]; then
+    pass "the tamper and secret refusals each carry their own recovery line (not one shared sentence)"
+  else
+    fail "a recovery line is missing or shared — tamper/secret must not reuse another class's sentence"
+  fi
+else
+  skip fixture "the guard recovery-text gates (guard-bash.sh is not where this expects it)" 2
+fi
+
+{ [ "$(ss_f "$_o" runaway)" = 0 ] && [ "$(ss_f "$_o" refused)" = 3 ]; } \
+  && pass "session-stats: the same 25 calls with 3 REFUSALS is not a runaway loop, and the 3 are still reported" \
+  || fail "session-stats FALSE ALARM: refusals tripped the runaway warning (runaway=$(ss_f "$_o" runaway) refused=$(ss_f "$_o" refused))"
 # UTF-8 must not kill the scan: BSD awk aborts on a multi-byte char inside a character class unless LC_ALL=C.
 printf '%s\n' '{"type":"user","isSidechain":false,"message":{"role":"user","content":"şu değişikliği gözden geçirir misin — İıĞğŞşÇçÖöÜü"}}' > "$SSD/utf8.jsonl"
 bash "$HOOKS/session-stats.sh" --raw "$SSD/utf8.jsonl" >/dev/null 2>&1 \
@@ -1230,7 +1486,7 @@ for s in reflect handoff; do
 done
 rm -rf "$SSD"
 
-echo "== 6e) CLAUDE.md split: sentinel · discipline/project boundary · no profile split =="
+sec "== 6e) CLAUDE.md split: sentinel · discipline/project boundary · no profile split =="
 # In the kit repo ROOT is claude-starter/ (payload). In an installed project it is .claude/, which has no
 # CLAUDE.md but does have the already-split DISCIPLINE.md. Assert whichever is present.
 if [ -f "$ROOT/CLAUDE.md" ]; then
@@ -1577,7 +1833,7 @@ if [ "$IS_KIT" = 1 ]; then
   fi
 fi
 
-echo "== 6h) pre-commit scanners: must not go blind on a large diff =="
+sec "== 6h) pre-commit scanners: must not go blind on a large diff =="
 # The scanners used to be `printf "$ADDED" | grep -q`. grep -q exits on the first match, printf dies of SIGPIPE,
 # and `set -o pipefail` turned that into "no match" — so a trace or a secret in a LARGE staged diff sailed through.
 # A gate that only works on small commits is worse than no gate. These cases lock the behaviour down.
@@ -1688,7 +1944,7 @@ if command -v git >/dev/null 2>&1 && ( cd "$PR" && git init -q && git config use
   rm -rf "$PR" "$PCLOG"
 else skip tool "pre-commit scanner tests skipped (no working git — it must BUILD a repo, not just resolve)"; fi
 
-echo "== 6g) stale-discipline gate: an update landing mid-session must be announced =="
+sec "== 6g) stale-discipline gate: an update landing mid-session must be announced =="
 # CLAUDE.md loads once, at session start. If the kit is updated while a session runs, the model keeps quoting
 # the previous version's rules. Build a throwaway hooks/ + VERSION pair so the script resolves ../VERSION.
 SD="$(mktemp -d)"; mkdir -p "$SD/hooks"; cp "$HOOKS/context-usage.sh" "$SD/hooks/"
@@ -1715,7 +1971,7 @@ case "$o" in *"kit updated"*) fail "stale gate leaked into the Stop payload" ;; 
 rm -f "$SD/VERSION"; run_cu >/dev/null 2>&1 && pass "stale gate: fails open when VERSION is absent" || fail "stale gate exited non-zero without VERSION"
 rm -rf "$SD"; rm -f "$SDFX" "${TMPDIR:-/tmp}/csk-kit-version.$SDSID"
 
-echo "== 6g2) stale-WIRING gate: a session resumed across a kit update runs the old hooks =="
+sec "== 6g2) stale-WIRING gate: a session resumed across a kit update runs the old hooks =="
 # Measured on Windows: settings.json on disk had already been corrected and `--resume` still produced the error
 # naming the OLD, mangled hook path, while the same event in a fresh session was clean. So a resumed session
 # keeps the wiring it started with — and on the release that fixed that path, "the wiring it started with" means
@@ -1737,7 +1993,7 @@ o="$( cd "$SWD" && swp | CONTEXT_WINDOW=1000000 bash "$SWD/.claude/hooks/context
 case "$o" in *"OLDER hook wiring"*) fail "stale-wiring gate fired without a kit settings.json to compare against" ;; *) pass "stale-wiring: silent when settings.json is absent or hand-rewired" ;; esac
 rm -rf "$SWD"; rm -f "${TMPDIR:-/tmp}/csk-kit-version.sw-$$"
 
-echo "== 6f) always-on token budget =="
+sec "== 6f) always-on token budget =="
 # Everything below is loaded into EVERY session's context (and, when Claude spawns one, into a subagent's).
 # Measured with a real `claude -p` turn: 21804 bytes of always-on material cost 9198 tokens. Bytes are a proxy
 # for that cost, and a gate rather than a reminder — a verbose new description fails the suite instead of
@@ -1816,7 +2072,14 @@ BUDGET_DISC=13700    # DISCIPLINE.md (the discipline half of CLAUDE.md); current
                      # and the wrong one winning silently. The only rule in this file that is about the OTHER
                      # rules, so it cannot live in the README the way the compaction note does. Plus the Audit
                      # row naming performance-expert-csk — an agent nothing routes to is an idle component.)
-BUDGET_AGENTS=5800   # sum of agent frontmatter; currently 5765 (1.11.0: +218 B of USER vocabulary on two agents.
+BUDGET_AGENTS=5800   # sum of agent frontmatter; currently 5527, measured 2026-09-20 by reading this suite's
+                     # own printed line rather than a hand-rolled counter (a hand-rolled one answered 5503 and
+                     # was thrown away). Two corrections in one day: the note said 5765 against a measured 5407,
+                     # and then +120 B of `, PowerShell` on the ten Bash-carrying agents moved it to 5527 — so
+                     # the number is updated in the SAME commit that changed it, which is the discipline the
+                     # 5765 drift was evidence against. What the 120 bytes buy: on Windows those agents had no
+                     # PowerShell-capable tool at all, and the Bash fallback mangles non-ASCII console output
+                     # (measured: `çğıöşü` -> 87 a7 8d 94 9f 81). (1.11.0: +218 B of USER vocabulary on two agents.
                      # Found in a real install: a design request produced a good analysis and no delegation. The
                      # SKILLS already carried that vocabulary ("visual design", "typography", "memory leak") so
                      # the skill fired and every gate stayed green, while the AGENT that owns the work was
@@ -1830,7 +2093,11 @@ BUDGET_AGENTS=5800   # sum of agent frontmatter; currently 5765 (1.11.0: +218 B 
                      # +performance-expert-csk (~426B) — security, privacy and tests each had an independent
                      # reviewer and performance was the one quality axis where the author audited their own
                      # work. Bought at ~110 tokens per session; the alternative was leaving that gap open.)
-BUDGET_SKILLS=9600  # sum of skill frontmatter; currently 9521. (2.6.x: +843 B — ten descriptions gained a
+BUDGET_SKILLS=9600  # sum of skill frontmatter; currently 9588 — **12 bytes of headroom**, measured
+                    # 2026-09-20 (the note said 9521 and was 67 B stale). Read that margin before editing any
+                    # description: one added clause trips this gate, and that is the ratchet working, not a bug.
+                    # Raising the ceiling needs the same thing every bump here needed — a written reason for what
+                    # the bytes buy. (2.6.x: +843 B — ten descriptions gained a
                     # "Use when …" sentence. The field's job is to say WHEN to reach for the skill; a description
                     # that only says what its author knows is matched by nothing, and inside this kit that was
                     # invisible because route-hint.sh and the trigger map do the routing. Outside the harness —
@@ -2016,7 +2283,7 @@ else pass "some agents lack a proactive cue:$NO_CUE (your project's own agents, 
 # not the matcher regexes. Full scope remains the default and is what the standalone CI step runs.
 # (UNITS is declared at the top — it gates cases that run before this point too.)
 [ "$UNITS" = 0 ] && note "scope=install: gate UNIT cases skipped (they test payload bytes, not this install) — canary below"
-echo "== 7) settings.json & guard (§4.4/§4.5) =="
+sec "== 7) settings.json & guard (§4.4/§4.5) =="
 # THIS FILE IS SHIPPED, NOT GENERATED, so whether it parses has no machine-specific answer and needs no oracle.
 # Gating it on jq meant the platform where this kit's hooks are most fragile — a stock Windows box with no jq —
 # was the one platform that never checked whether the file wiring those hooks parses at all. The shell version
@@ -2053,9 +2320,9 @@ if [ -f "$ROOT/settings.json" ]; then
     *'"hooks"'*'"permissions"'*|*'"permissions"'*'"hooks"'*) pass "settings.json carries both top-level keys the kit ships" ;;
     *) fail "settings.json lost \"hooks\" or \"permissions\" — the wiring or the deny list is gone" ;;
   esac
-  if command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then
-    jq empty "$ROOT/settings.json" 2>/dev/null && pass "settings.json parses under a real JSON parser" || fail "settings.json invalid JSON (jq)"
-  else note "full JSON parse not run here (no jq) — the two checks above did run"; fi
+    if [ -n "$JSONQ" ]; then
+    json_ok < "$ROOT/settings.json" && pass "settings.json parses under a real JSON parser ($JSONQ)" || fail "settings.json is invalid JSON (oracle: $JSONQ)"
+  else skip tool "settings.json under a real JSON parser (no working jq, python3 or python; the two shape checks above did run)"; fi
 else fail "settings.json missing"; fi
 [ -x "$HOOKS/guard-bash.sh" ] && pass "guard-bash.sh +x" || fail "guard-bash.sh missing/not executable"
 if [ "$UNITS" = 1 ]; then
@@ -2156,7 +2423,7 @@ if [ -n "$JSONQ" ]; then
   if [ "$(printf '%s' "$o" | json_get hookSpecificOutput.permissionDecision)" = '"ask"' ]; then
     pass "an escaped commit message still reaches the §4.4 ask (oracle: $JSONQ)"
   else fail "§4.4 did not ask for a commit message carrying tabs/quotes/backslashes (oracle: $JSONQ): $o"; fi
-else skip tool "ask-payload JSON check skipped (no working JSON parser: jq, python3 and python all absent or non-functional)"; fi
+else skip tool "ask-payload JSON check skipped (no working JSON parser: jq, python3 and python all absent or non-functional)" 2; fi
 # fail closed where no prompt can reach the user
 gj bypassPermissions 'git commit -m x' | gbr >/dev/null 2>&1; [ "$?" = 2 ] && pass "git commit FAILS CLOSED under bypassPermissions (§4.4)" || fail "git commit PASSED under bypassPermissions (§4.4 hole)"
 printf '%s' '{"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}' | gbr >/dev/null 2>&1; [ "$?" = 2 ] && pass "git commit FAILS CLOSED when permission_mode is absent" || fail "git commit PASSED with no permission_mode (§4.4 hole)"
@@ -2173,8 +2440,61 @@ done
 # The key opens the approval gate, never the destructive one: `git add -f` is §4.5 and stays blocked.
 gj auto 'git add -f secrets.env' | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1
 [ "$?" = 2 ] && pass "git add -f BLOCKED even with the key (§4.5)" || fail "git add -f PASSED with the key (§4.5 hole)"
+# BRANCH CREATION, BOTH DIRECTIONS. The first version of this rule was calibrated only against over-matching
+# (`checkout main`, `checkout -- .`, `checkout b`), so nothing asked whether it matched ENOUGH — and `checkout -B`,
+# both `--orphan`s, every `switch` creator and any global option in front (`git -C repo …`) ran with no prompt.
+# The flag list is git's own `checkout -h` / `switch -h`. Each list reports its count, so a pattern that stops
+# seeing a spelling names it rather than turning the row quietly green.
+_bc_miss=""; _bc_n=0
+for c in 'git checkout -b x' 'git checkout -B x' 'git checkout --orphan x' 'git checkout --quiet -b x' \
+         'git switch -c x' 'git switch -C x' 'git switch --create x' 'git switch --create=x' \
+         'git switch --force-create x' 'git switch --orphan x' 'git -C repo checkout -b x' 'git -c k=v switch -c x'; do
+  _bc_n=$((_bc_n+1)); o="$(gj default "$c" | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"
+  [ "$(gdec "$o")" = "ask" ] || _bc_miss="$_bc_miss [$c]"
+done
+[ -z "$_bc_miss" ] && pass "every branch-creating spelling ASKS in default mode ($_bc_n of $_bc_n, §4.4)" \
+                   || fail "branch creation ran with no prompt (§4.4 hole):$_bc_miss"
+_bc_over=""; _bc_n=0
+for c in 'git checkout main' 'git checkout b' 'git switch main' 'git switch --detach' 'git switch -' 'git -C repo switch main'; do
+  _bc_n=$((_bc_n+1)); o="$(gj default "$c" | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"
+  [ "$(gdec "$o")" = "ask" ] && _bc_over="$_bc_over [$c]"
+done
+[ -z "$_bc_over" ] && pass "moving between existing branches is NOT gated ($_bc_n of $_bc_n pass silently)" \
+                   || fail "branch SWITCHING was gated as if it created a branch (over-match):$_bc_over"
+# The key must cover what the gate covers: a creator the hook asks about but the key does not allow would leave
+# a headless session with a prompt nobody can answer.
+_bc_nokey=""
+for c in 'git switch -c x' 'git switch --orphan x' 'git checkout -B x' 'git -C repo checkout -b x'; do
+  o="$(gj auto "$c" | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" 2>/dev/null)"
+  [ "$(gdec "$o")" = "allow" ] || _bc_nokey="$_bc_nokey [$c]"
+done
+[ -z "$_bc_nokey" ] && pass "a keyed session ALLOWS every gated branch creator (4 of 4)" \
+                    || fail "the key does not cover a branch creator the gate asks about:$_bc_nokey"
+# FORCED BRANCH SURGERY IS §4.5, both directions. Before the rule, default mode made no decision for any
+# `git branch` form. The safe twins differ from the forced ones by CASE ONLY (-d/-D, -m/-M, -c/-C), so the
+# negative list is what catches a case-folding matcher, and `git branch x && rm -f y` catches one that reads a
+# flag belonging to the next command. The forced list runs with the key set: §4.5 is the gate it cannot open.
+_fb_miss=""; _fb_n=0
+for c in 'git branch -D x' 'git branch -d -f x' 'git branch --delete --force x' 'git branch -Df x' \
+         'git branch -f x HEAD~3' 'git branch --force x HEAD~3' 'git branch -M old new' 'git branch -C old new' \
+         'git -C repo branch -D x' 'git branch --force --delete x' 'git branch --force -d x' 'git branch -qD x' \
+         'git branch -Dq x' 'git branch --force --move a b' 'git branch --copy --force a b'; do
+  _fb_n=$((_fb_n+1)); gj auto "$c" | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1
+  [ "$?" = 2 ] || _fb_miss="$_fb_miss [$c]"
+done
+[ -z "$_fb_miss" ] && pass "forced git branch is BLOCKED, even with the key ($_fb_n of $_fb_n, §4.5)" \
+                   || fail "forced git branch ran (§4.5 hole — unmerged work or history lost):$_fb_miss"
+_fb_over=""; _fb_n=0
+for c in 'git branch' 'git branch -a' 'git branch --list feat' 'git branch feature' 'git branch -c old new' \
+         'git branch -m old new' 'git branch -d x' 'git branch -vv' 'git branch --sort=-committerdate' \
+         'git branch -u origin/feature' 'git branch x && rm -f y' 'git branch --contains HEAD' 'git branch -r' 'git branch -v'; do
+  _fb_n=$((_fb_n+1)); gj default "$c" | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1
+  [ "$?" = 2 ] && _fb_over="$_fb_over [$c]"
+done
+[ -z "$_fb_over" ] && pass "safe git branch forms run ($_fb_n of $_fb_n — -d/-m/-c twins, listing, creation)" \
+                   || fail "a safe git branch form was blocked as forced (over-match):$_fb_over"
 
-echo "== 4f) §4.6 review gate — a commit cannot land on a diff nothing reviewed =="
+sec "== 4f) §4.6 review gate — a commit cannot land on a diff nothing reviewed =="
 # The gate's own three states plus the ways round it, each in a real repo rather than against a string. What
 # makes this testable at all is that both halves answer with FACTS: git's object id of the staged diff, and the
 # HEAD it was reviewed against. Nothing here asserts a timestamp, because the gate does not read one.
@@ -2416,49 +2736,184 @@ for _pair in \
       || fail "§4.6 shape: '$_cmd' wrongly blocked (out=$o)"
   fi
 done
-# TIER 1 WITH TEXT-MODE LINE ENDINGS — the dimension this suite never asked about, and CI was the only machine
-# that could answer it. A commit was refused on `windows-latest` while the same case passed on macOS and on a
-# real Windows desktop, and the reason is the TIER: GitHub's image has jq, so the command arrives DECODED, while
-# a stock desktop has neither jq nor python3 and sees JSON's two-character escapes. On top of that, a
-# Windows-native binary opens stdout in TEXT mode, so every LF it writes goes out as CRLF — and a command that
-# already contained `\r\n` reaches the hook as `\` + CR + CR + LF. The single CRLF fold ate one CR, the
-# continuation rule then looked for `\` + LF, found a CR in the way, and the lone backslash read as a pathspec.
-# Any Windows user with jq installed is on that tier, so this was a live defect, not a CI artefact.
+# TEXT-MODE LINE ENDINGS — the dimension this suite never asked about, and CI was the only machine that could
+# answer it. A commit was refused on `windows-latest` while the same case passed on macOS and on a real Windows
+# desktop. The cause was the TIER: GitHub's image has jq, so the command arrived DECODED, and a Windows-native
+# binary opens stdout in TEXT mode, so every LF it wrote went out as CRLF — a command that already contained
+# `\r\n` reached the hook as `\` + CR + CR + LF. The single CRLF fold ate one CR, the continuation rule then
+# looked for `\` + LF, found a CR in the way, and the lone backslash read as a pathspec.
+# THAT TIER NO LONGER EXISTS, and this block was rewritten because of it rather than deleted. What it used to
+# do was inject the command through a fake `jq` on PATH while the payload carried `"command":"placeholder"`.
+# With the ladder gone the stub is ignored: the two rows expecting a block went red, and — worse — the three
+# expecting rc=0 kept PASSING, because "placeholder" is not a git command at all. A row that passes for a
+# reason unrelated to its name is the exact failure this suite exists to prevent, so the whole block now drives
+# the ONE path that runs, through the payload's own escapes.
 #
-# The stub hands back bytes instead of parsing: hermetic, no jq, no python, no perl. Its own correctness is
-# checked first, because a stub that does not take would make every row below a green that measured nothing.
-_T1D="$(mktemp -d)"
-cat > "$_T1D/jq" <<'EOJQ'
-#!/bin/sh
-case "$*" in
-  *permission_mode*) printf '%s\n' "default" ;;
-  *) printf '%s\n' "$CSK_FAKE_CMD" ;;
-esac
-EOJQ
-chmod +x "$_T1D/jq"
-if [ "$(CSK_FAKE_CMD='probe-me' PATH="$_T1D:$PATH" jq -r '.tool_input.command' </dev/null 2>/dev/null)" = "probe-me" ]; then
-  _t1(){ printf '{"cwd":"%s","permission_mode":"default","tool_name":"Bash","tool_input":{"command":"placeholder"}}' "$R46" \
-         | CSK_FAKE_CMD="$1" PATH="$_T1D:$PATH" bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; }
-  # `\` + CR + CR + LF: a continuation pasted from a Windows editor, decoded by a text-mode writer.
-  _t1 "$(printf 'git commit \\\r\r\n  -m c')"; [ "$?" = 0 ] \
-    && pass "§4.6 tier1-text: a CRLF continuation is not read as a pathspec" \
-    || fail "§4.6 tier1-text: a backslash + CR CR LF refused an ordinary commit (the CI failure)"
-  _t1 "$(printf 'git commit \\\r\r\n  -m c -- a.txt')"; [ "$?" = 2 ] \
-    && pass "§4.6 tier1-text: a real pathspec after that continuation still BLOCKS" \
-    || fail "§4.6 tier1-text FAIL-OPEN: a pathspec after a CRLF continuation was allowed"
-  _t1 'git commit -m c'; [ "$?" = 0 ] \
-    && pass "§4.6 tier1-text: an ordinary commit is untouched on this tier" \
-    || fail "§4.6 tier1-text: a plain commit was refused — the fixture is wrong, CI passes 800+ of these"
-  _t1 "$(printf 'git commit -m c\r\necho done')"; [ "$?" = 0 ] \
-    && pass "§4.6 tier1-text: a CRLF-separated second command is not a pathspec" \
-    || fail "§4.6 tier1-text: a CRLF separator refused an ordinary commit"
-  _t1 "$(printf 'git commit -m c -- a.txt\r\necho done')"; [ "$?" = 2 ] \
-    && pass "§4.6 tier1-text: a pathspec before a CRLF separator still BLOCKS" \
-    || fail "§4.6 tier1-text FAIL-OPEN: a pathspec before a CRLF separator was allowed"
+# FIRST the mechanism, pinned as its own assertion: through VALID JSON a `\r` escape is DROPPED by the
+# unescaper (deliberate CRLF normalisation, documented in the hook), so a CR cannot reach the §4.6 scanner at
+# all and the tier-1 class is unreachable. If a future unescaper stops dropping it, this row goes red and says
+# so — which is the only reason the rows after it are allowed to stop worrying about CR.
+_u46(){ ( eval "$(sed -n '/^_json_slice()/,/^}/p' "$HOOKS/guard-bash.sh")"
+          eval "$(sed -n '/^_json_unescape()/,/^}/p' "$HOOKS/guard-bash.sh")"
+          _json_unescape "$(_json_slice "$1" command)" ); }
+# COUNTING CR WITHOUT LEAVING THE SHELL. `od -c | grep -c '\r'` counts the letter `r`, which is the trap this
+# line used to name; `tr -dc '\r' | wc -c` fixed that and then failed on Windows, where the calibration below
+# read CRLF=0 — the guard caught it and the CI leg went red rather than reporting unmeasured rows as passing.
+# Which of `printf` or `tr` was wrong there does not matter, because the answer is to use neither: the length
+# of the string minus the length with CRs removed is parameter expansion only. Verified byte-identical to the
+# printf/tr pair on macOS across four fixtures before the swap, so this changes nothing where it already
+# worked. The fixtures below moved to `$'…'` for the same reason: bash's own escapes, not printf's.
+_crn(){ local s="${1//$'\r'/}"; printf '%s' "$(( ${#1} - ${#s} ))"; }
+# The counter is calibrated on both classes before it judges anything: a known-CRLF string and a known-LF one.
+# It read 0 on a CRLF file once, plausibly, and was wrong; only `tr -dc` separates the two.
+_CAL_CRLF=$'a\r\nb\r\nc\r\n'; _CAL_LF=$'a\nb\nc\n'
+if [ "$(_crn "$_CAL_CRLF")" = 3 ] && [ "$(_crn "$_CAL_LF")" = 0 ]; then
+  _dec="$(_u46 '{"tool_name":"Bash","tool_input":{"command":"git commit \\\r\r\n  -m c -- a.txt"}}')"
+  [ "$(_crn "$_dec")" = 0 ] \
+    && pass "§4.6 text-mode: a \\r escape is dropped, so no CR reaches the scanner from valid JSON" \
+    || fail "§4.6 text-mode: a CR survived the unescaper — the tier-1 CR class is reachable again"
+  case "$_dec" in
+    *'git commit \'*) pass "§4.6 text-mode: the continuation backslash itself survives the decode" ;;
+    *) fail "§4.6 text-mode: the decode lost the continuation backslash (dec=$_dec)" ;;
+  esac
+  # _m2 — THE MECHANISM BEHIND THE TWO SPELLINGS VERDICTING DIFFERENTLY, pinned here so the difference is a
+  # stated fact rather than an argument. Escaped: the backslash survives and LF follows it, so it is a real
+  # continuation. Literal: `\` + CR is not a JSON escape, the unescaper consumes the backslash, and bash does
+  # not treat `\` + CR as a continuation either — so neither the hook nor the shell joins the lines.
+  case "$_dec" in
+    *'\'$'\n'*) pass "§4.6 text-mode: the ESCAPED spelling decodes to a real backslash-LF continuation" ;;
+    *) fail "§4.6 text-mode: the escaped spelling no longer produces a continuation — the BLOCK row's reason is gone" ;;
+  esac
+  _decl="$(_u46 $'{"tool_name":"Bash","tool_input":{"command":"git commit \\\r\r\n  -m c -- a.txt"}}')"
+  case "$_decl" in
+    *'\'$'\n'*) fail "§4.6 text-mode: the LITERAL spelling now decodes to a continuation — its allow row is wrong" ;;
+    *) pass "§4.6 text-mode: the LITERAL spelling decodes to NO continuation, which is why it is allowed" ;;
+  esac
 else
-  fail "§4.6 tier1-text: the jq stub did not take, so this tier went unmeasured (broken fixture, not a pass)"
+  fail "§4.6 text-mode: the CR counter is broken (CRLF=$(_crn "$_CAL_CRLF") LF=$(_crn "$_CAL_LF")), so nothing below measured CR"
 fi
-rm -rf "$_T1D"
+# THEN the verdicts, twice over: once in the shape valid JSON can carry (`\\` `\r` `\r` `\n` escapes), and once
+# with LITERAL CR bytes in the payload. The second is invalid JSON and no harness sends it, but the slice walks
+# bytes rather than validating, so it is reachable by anything that writes the payload itself — defence in
+# depth, and it is the shape that actually carried the original defect.
+_t1e(){ printf '{"cwd":"%s","permission_mode":"default","tool_name":"Bash","tool_input":{"command":"%s"}}' "$R46" "$1" \
+        | ( cd "$R46" && bash "$HOOKS/guard-bash.sh" ) >/dev/null 2>&1; }
+# The two spellings AGREE on three rows and must NOT agree on the fourth, so the expectation is part of the
+# data rather than assumed to be shared. Measured, not reasoned:
+#   escaped `\\` + `\r` `\r` `\n`  ->  decode is `git commit \` + LF + `  -m c -- a.txt`. The backslash
+#     survives, LF follows it, so it IS a line continuation: one command, the pathspec belongs to the commit,
+#     and it must BLOCK.
+#   literal `\` + CR + CR + LF     ->  decode is `git commit ` + CR + CR + LF + `  -m c -- a.txt`. `\` + CR is
+#     not a JSON escape, so the unescaper consumes the backslash — and bash does not treat `\` + CR as a
+#     continuation either, only `\` + LF. So in BOTH the hook's view and the shell's, the LF ends the command:
+#     the commit carries no pathspec and `-- a.txt` sits in a second command that is not a git commit.
+#     Allowing it is correct, and asserting rc=2 here was a wrong expectation of mine, not a hook defect.
+# The `_m2` row below pins that mechanism directly, so if a future unescaper starts keeping that backslash the
+# row that changes says why instead of leaving a verdict flip to be argued about.
+for _sp in escaped literal; do
+  case "$_sp" in
+    escaped) _c1='git commit \\\r\r\n  -m c';          _c2='git commit \\\r\r\n  -m c -- a.txt'; _e2=2
+             _c3='git commit -m c\r\necho done';       _c4='git commit -m c -- a.txt\r\necho done' ;;
+    literal) _c1=$'git commit \\\r\r\n  -m c';        _c2=$'git commit \\\r\r\n  -m c -- a.txt'; _e2=0
+             _c3=$'git commit -m c\r\necho done';     _c4=$'git commit -m c -- a.txt\r\necho done' ;;
+  esac
+  _t1e "$_c1"; [ "$?" = 0 ] \
+    && pass "§4.6 text-mode/$_sp: a CRLF continuation is not read as a pathspec" \
+    || fail "§4.6 text-mode/$_sp: a backslash + CR CR LF refused an ordinary commit (the CI failure)"
+  # rc is captured BEFORE the comparison: reading `$?` inside the failure message would report the status of
+  # the `[` test itself, so the number printed would always be 1 and the report would be a lie.
+  _t1e "$_c2"; _r2=$?; [ "$_r2" = "$_e2" ] \
+    && pass "§4.6 text-mode/$_sp: a pathspec after that continuation verdicts $_e2, for the documented reason" \
+    || fail "§4.6 text-mode/$_sp: a pathspec after a CRLF continuation gave rc=$_r2, expected $_e2"
+  _t1e "$_c3"; [ "$?" = 0 ] \
+    && pass "§4.6 text-mode/$_sp: a CRLF-separated second command is not a pathspec" \
+    || fail "§4.6 text-mode/$_sp: a CRLF separator refused an ordinary commit"
+  _t1e "$_c4"; [ "$?" = 2 ] \
+    && pass "§4.6 text-mode/$_sp FAIL-OPEN guard: a pathspec before a CRLF separator BLOCKS" \
+    || fail "§4.6 text-mode/$_sp FAIL-OPEN: a pathspec before a CRLF separator was allowed"
+done
+_t1e 'git commit -m c'; [ "$?" = 0 ] \
+  && pass "§4.6 text-mode: an ordinary commit with no line endings at all is untouched" \
+  || fail "§4.6 text-mode: a plain commit was refused — the fixture is wrong, CI passes 800+ of these"
+
+# --- ONE READER: THE LADDER MUST NOT COME BACK ------------------------------------------------------------
+# The jq -> python3 -> slice ladder was deleted because the readers DISAGREEING was the root cause of four
+# incidents plus a fail-open no parser fix could reach. Nothing structural stops someone re-adding a rung for
+# speed, and a re-added rung would be invisible: every behavioural case in this file would keep passing on the
+# machine that has jq, which is every machine except the stock Windows desktop the ladder kept breaking.
+#
+# The detector is deliberately broader than the ladder that was removed, because review found three ways past
+# a narrower one: it caught `command -v jq` only, so `command -v python3`, `type jq` and — the nastiest — a
+# rung sharing a line with a parameter expansion all walked past it. That last one is native to these files
+# (`_after_cmd_key="${INPUT#*'"command":'}"`), because stripping from the first `#` regardless of quoting eats
+# the code and leaves `_a="${INPUT`. So: strip only a `#` that starts a line or follows whitespace AND is not
+# inside `${…}`, by first blanking every `${…}` expansion, and look for a READER being selected rather than
+# for one spelling of one probe.
+# DESCRIBE THE EXEMPTION, NOT THE THREAT. Three attempts at describing a rung failed, each for its own reason,
+# and the third failure is what settles the design:
+#   1. `command -v <interpreter>` anywhere -> red on guard-commit-scan's MESSAGE extractor, which reads an
+#      already-parsed command string and is deliberately in place.
+#   2. excluding that by the `CSK_CMD=` marker on the line -> the same block probes on one line and passes the
+#      marker on the next, so a line-based allowance saw half of it.
+#   3. "an interpreter AND `INPUT` on one line" -> misses the temp-file form, which review named:
+#         printf '%s' "$INPUT" > "$tmp"
+#         CMD="$(jq -r '.tool_input.command' "$tmp")"
+#      The reading line never mentions INPUT. Nor does `jq -r .x <&3` after a here-string, nor any rename of
+#      the variable. And that shape is not exotic: it is what someone writes when a payload gets big enough to
+#      worry about argv limits, which is exactly when a rung gets tempting again.
+# So: EVERY interpreter in these three hooks is a rung unless it sits inside a region marked `CSK-NOT-A-RUNG`.
+# Line-agnostic, survives a rename of INPUT, catches the temp-file form, and — the part that matters — adding
+# a rung now requires deleting a comment that states what the exemption is for. The exemption list is short,
+# closed and reviewable; the dangerous thing is everything else.
+_ladder(){ awk '/^[[:space:]]*# CSK-NOT-A-RUNG/{s=1} /^[[:space:]]*# \/CSK-NOT-A-RUNG/{s=0;next} !s' "$1" \
+             | grep -vE '^[[:space:]]*#' \
+             | grep -nE '(^|[^[:alnum:]_/.-])(jq|python3|python|perl|node)([^[:alnum:]_]|$)' ; }
+_lad_bad=""
+for _h in guard-bash guard-write guard-commit-scan; do
+  _hit="$(_ladder "$HOOKS/$_h.sh" 2>/dev/null)" && _lad_bad="$_lad_bad $_h:${_hit%%:*}"
+  grep -q '_parsed' "$HOOKS/$_h.sh" && _lad_bad="$_lad_bad $_h:_parsed"
+done
+[ -z "$_lad_bad" ] \
+  && pass "one reader: no jq/python3 reader selection in the three guard hooks" \
+  || fail "one reader: a reader ladder is back —$_lad_bad"
+# THE TWINS. Four shapes that MUST fire — the two rungs that were actually deleted, one written with `type`
+# instead of `command -v`, and one sharing its line with a parameter expansion (the shape a comment-stripping
+# detector ate, leaving `_a="${INPUT`). Two that must stay SILENT — prose about the deleted ladder, which
+# these files carry at length on purpose, and the message extractor that reads `$CMD` and never the payload.
+_LT="$(mktemp -d)"
+printf '%s\n' '#!/bin/sh' 'if command -v jq >/dev/null 2>&1 && CMD="$(printf "%s" "$INPUT" | jq -r .x)"; then :; fi' > "$_LT/a.sh"
+printf '%s\n' '#!/bin/sh' 'CMD="$(printf "%s" "$INPUT" | python3 -c "import sys,json")"'                             > "$_LT/b.sh"
+printf '%s\n' '#!/bin/sh' 'type jq >/dev/null && CMD="$(printf "%s" "$INPUT" | jq -r .x)"'                           > "$_LT/c.sh"
+printf '%s\n' '#!/bin/sh' '_a="${INPUT#*x}"; CMD="$(printf "%s" "$INPUT" | jq -r .x)"'                               > "$_LT/d.sh"
+# THE SHAPE THAT DEFEATED THE PREVIOUS DETECTOR, and the reason the check describes the exemption instead:
+# the payload goes to a temp file on one line and the interpreter reads the FILE on the next, naming no INPUT.
+printf '%s\n' '#!/bin/sh' 'printf "%s" "$INPUT" > "$tmp"' 'CMD="$(jq -r .x "$tmp")"'                                > "$_LT/g.sh"
+printf '%s\n' '#!/bin/sh' 'exec 3<<<"$INPUT"' 'CMD="$(jq -r .x <&3)"'                                               > "$_LT/h.sh"
+printf '%s\n' '#!/bin/sh' '# the deleted ladder piped "$INPUT" into jq and then python3 — prose, must NOT count' 'X=1' > "$_LT/e.sh"
+printf '%s\n' '#!/bin/sh' '# CSK-NOT-A-RUNG: reads $CMD, never the payload' 'MSG="$(CSK_CMD="$CMD" python3 -c "pass")"' '# /CSK-NOT-A-RUNG' > "$_LT/f.sh"
+_tw=0; _twf=""
+for _f in a b c d g h; do _ladder "$_LT/$_f.sh" >/dev/null 2>&1 || { _tw=1; _twf="$_f"; }; done
+for _f in e f; do _ladder "$_LT/$_f.sh" >/dev/null 2>&1 && { _tw=2; _twf="$_f"; }; done
+case "$_tw" in
+  0) pass "one reader: the detector fires on six rung shapes, including the temp-file and here-string forms" ;;
+  1) fail "one reader: the detector MISSED rung shape '$_twf' — the assertion above measured less than it claims" ;;
+  2) fail "one reader: the detector fired on '$_twf', which reads no payload — it would forbid ordinary code" ;;
+esac
+# AND THE EXEMPTIONS ARE COUNTED, closed and open markers alike. A region is only reviewable while there are
+# few of them; an unbounded allowance is the same gate with extra steps. Four today: two rule-pattern regions
+# in guard-bash naming interpreters it REFUSES, and the message extractor in guard-commit-scan.
+_ex=0
+for _h in guard-bash guard-write guard-commit-scan; do
+  _ex=$((_ex + $(grep -c '^[[:space:]]*# CSK-NOT-A-RUNG' "$HOOKS/$_h.sh")))
+  _exc="$(grep -c '^[[:space:]]*# /CSK-NOT-A-RUNG' "$HOOKS/$_h.sh")"
+  _exo="$(grep -c '^[[:space:]]*# CSK-NOT-A-RUNG' "$HOOKS/$_h.sh")"
+  [ "$_exo" = "$_exc" ] || fail "one reader: $_h has $_exo opening and $_exc closing exemption markers — an unclosed region hides everything after it"
+done
+[ "$_ex" = 3 ] \
+  && pass "one reader: exactly 3 exemption regions, each stating what it is for" \
+  || fail "one reader: $_ex exemption regions, expected 3 — the allowance grew, and each one is a place a rung can hide"
+rm -rf "$_LT"
+
 # Globbing must stay OFF while splitting, or a pathspec is judged against whatever files sit in the cwd.
 gj default 'git commit -m c *.txt' | r46 >/dev/null 2>&1; [ "$?" = 2 ] \
   && pass "§4.6: an unexpanded glob pathspec still BLOCKS (splitting runs with noglob)" \
@@ -2527,14 +2982,18 @@ o="$( cd "$R46" && gj default 'git commit -m x' | bash "$HOOKS/guard-bash.sh" 2>
 #     tell correct folding from broken folding by opening a path. The case that matters is the FRONT of the
 #     path — a project on a network share — where the old single fold produced `////server//share`, which is
 #     not a UNC path, while undoubling first yields `//server/share`, which is.
-_CWDEXPR_N="$(grep -cF '_CWD="${_CWD#*:}"' "$HOOKS/guard-bash.sh")"
-_CWDEXPR="$(grep -F '_CWD="${_CWD#*:}"' "$HOOKS/guard-bash.sh" | head -1)"
+# The EXTRACTION half of this line is gone: `cwd` now comes from `_json_slice` like every other key, because
+# its own hand-rolled `${INPUT#*"cwd"}` + `#*:` was the last caller matching a key without its colon — a decoy
+# pointed the §4.5 relative-path rules at another directory (measured: rc=0 where the honest payload was 2).
+# What stayed is the NORMALISATION, and it is pinned here against the raw value the slice hands over.
+_CWDEXPR_N="$(grep -cF '_CWD="${_CWD//\\\\/\\}"' "$HOOKS/guard-bash.sh")"
+_CWDEXPR="$(grep -F '_CWD="${_CWD//\\\\/\\}"' "$HOOKS/guard-bash.sh" | head -1)"
 if [ "$_CWDEXPR_N" = 1 ] && [ -n "$_CWDEXPR" ]; then
   _cwdnorm(){ _CWD="$1"; eval "$_CWDEXPR"; printf '%s' "$_CWD"; }
   for _pair in 'D:\\Projects\\kit|D:/Projects/kit' '\\\\server\\share\\kit|//server/share/kit' \
                '/Users/x/kit|/Users/x/kit' 'C:\Windows|C:/Windows'; do
     _in="${_pair%%|*}"; _want="${_pair#*|}"
-    _got="$(_cwdnorm ":\"$_in\",\"permission_mode\":\"default\"")"
+    _got="$(_cwdnorm "$_in")"
     [ "$_got" = "$_want" ] && pass "§4.6: payload cwd '$_in' normalises to '$_want'" \
       || fail "§4.6: payload cwd '$_in' normalised to '$_got', wanted '$_want'"
   done
@@ -2823,7 +3282,7 @@ if ln -s ../hooks "$GWSL/.claude/skills/link" 2>/dev/null && [ -L "$GWSL/.claude
     rm -f "$GWSL.link"
   fi
 else
-  note "symlinks unavailable here — the ancestor probe was not exercised (platform)"
+  skip platform "the ancestor-symlink probe (Git Bash's \`ln -s\` makes a COPY, so [ -L ] is false and the block cannot run here)" 11
 fi
 rm -rf "$GWSL"
 # THE HOOK MUST RUN AS THE HARNESS RUNS IT. Every other row here invokes it as `bash <file>`, which exercises
@@ -2839,7 +3298,7 @@ gj auto 'git add -f dist/bundle.js' | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&
 gj auto 'git add -A'                | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && pass "git add -A NOT over-blocked" || fail "git add -A wrongly blocked (gate too strict)"
 gj auto 'rm package-lock.json'      | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "lockfile deletion BLOCKED (§4.5)" || fail "lockfile deletion PASSED (§4.5 hole)"
 
-echo "== 7b) guard-bash matcher — audit bypass regressions (unified git_has) =="
+sec "== 7b) guard-bash matcher — audit bypass regressions (unified git_has) =="
 # An adversarial audit found these git-invocation forms slipped the old 'git +subcmd' rules. Each must now be caught.
 gj auto 'git -C . reset --hard' | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "git -C reset --hard BLOCKED (H2)" || fail "git -C reset --hard PASSED (H2)"
 gj auto 'git\treset --hard'     | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "TAB-separated reset --hard BLOCKED (H2)" || fail "TAB-separated reset --hard PASSED (H2)"
@@ -2892,6 +3351,17 @@ gb_why(){ printf '%s' "$1" > "$GB_WHYF"; }
 # Sets GBDIR (for cleanup) and ECHOES THE PATH TO USE — not the directory — so both tiers are consumed
 # identically by the 22 call sites below.
 GBDIR=""; GB_MODE=""
+# WHAT THESE ROWS ASK NOW, since the reader ladder is gone and their old names claimed otherwise. They used
+# to be the tier-3 leg: build a jq/python3-free PATH and check the fallback reader. There is no fallback any
+# more — the same reader runs everywhere — so as a TIER comparison they are empty, and names like "the tier-3
+# parser really parses" were describing machinery that no longer exists.
+# They are NOT empty as a question, which is why they were renamed rather than deleted: they are the only rows
+# that run the hooks from a PATH with nothing on it. "Does the reader work" and "does the hook still work when
+# the machine has nothing" are different questions, and the second one survives the deletion — a gate that
+# reaches for a tool it no longer needs would still pass every ordinary row and fail only here.
+# The sandbox is deliberately built with stubs that EXIST and FAIL rather than by removing the binaries,
+# because "present but non-functional" is what a stock Windows desktop already is (the Store python3), so the
+# path being exercised is the real one.
 gb_sandbox(){   # echoes the PATH to run under, or nothing; $GB_WHYF says why not
   # Thin wrapper over csk_nojq_path: the rule for "a PATH where jq and python3 do not deliver" lives in ONE
   # place, because it was written three times and all three failed on the same platform for the same reason.
@@ -2905,39 +3375,39 @@ GBX="$(gb_sandbox)"
 # discarded — the same trap this suite documents for the scanner's count arrays. The sandbox directory is the
 # first PATH element either way, and a PATH carrying more than one element means the stubbed tier was used.
 GBDIR="${GBX%%:*}"; case "$GBX" in *:*) GB_MODE="stubbed" ;; ?*) GB_MODE="minimal" ;; *) GB_MODE="" ;; esac
-[ -n "$GBX" ] && note "no-jq/py sandbox built in '$GB_MODE' mode ($( [ "$GB_MODE" = stubbed ] && echo 'jq/python3 present but non-functional — the stock Windows shape' || echo 'jq/python3 absent from PATH' ))"
+[ -n "$GBX" ] && note "stripped-PATH sandbox built in '$GB_MODE' mode ($( [ "$GB_MODE" = stubbed ] && echo 'jq/python3 present but non-functional — the stock Windows shape' || echo 'jq/python3 absent from PATH' ))"
 
 
 if [ -n "$GBX" ]; then
   o="$(gj default 'git commit -m x' | gbrx 2>/dev/null)"
-  echo "$o" | grep -q '"permissionDecision":"ask"' && pass "no-jq/py: commit still ASKs (M1 fallback closed)" || fail "no-jq/py: commit gate FAILS OPEN (M1): $o"
-  gj auto 'git reset --hard' | PATH="$GBX" CLAUDE_GIT_OK=1 "$GBBASH" "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "no-jq/py: reset --hard still BLOCKED" || fail "no-jq/py: reset --hard PASSED (§4.5 fallback hole)"
+  echo "$o" | grep -q '"permissionDecision":"ask"' && pass "stripped-PATH: commit still ASKs (M1 fallback closed)" || fail "stripped-PATH: commit gate FAILS OPEN (M1): $o"
+  gj auto 'git reset --hard' | PATH="$GBX" CLAUDE_GIT_OK=1 "$GBBASH" "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "stripped-PATH: reset --hard still BLOCKED" || fail "stripped-PATH: reset --hard PASSED (§4.5 fallback hole)"
   # The write side lands on the same tier, and this is the branch a stock Windows install actually runs. Its
   # pre-2.6.x fallback read only `file_path`, so NotebookEdit — whose path key is `notebook_path` — walked
   # straight past the gate on exactly the machine the gate was hardened for. Measured rc=0 before the fix.
-  wjn '/p/.claude/hooks/guard-bash.sh'      | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "no-jq/py: NotebookEdit of a gate script BLOCKED (notebook_path)" || fail "no-jq/py: notebook_path walked past §4.5 (fallback hole)"
-  wj Write '/p/.claude/hooks/guard-bash.sh' | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "no-jq/py: Write of a gate script still BLOCKED" || fail "no-jq/py: gate-script write PASSED (fallback hole)"
-  wj Write '/p/.claude/skills/../hooks/x.sh'| PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "no-jq/py: traversal to a gate path still BLOCKED" || fail "no-jq/py: traversal PASSED (fallback hole)"
-  wj Write 'C:\\U\\app\\.claude\\hooks\\x.sh' | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "no-jq/py: Windows-separator gate path still BLOCKED" || fail "no-jq/py: backslash path PASSED (fallback hole)"
-  wj Write '/p/src/app.ts'                  | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1 && pass "no-jq/py: ordinary source NOT over-blocked on the fallback tier" || fail "no-jq/py: ordinary source wrongly blocked"
+  wjn '/p/.claude/hooks/guard-bash.sh'      | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "stripped-PATH: NotebookEdit of a gate script BLOCKED (notebook_path)" || fail "stripped-PATH: notebook_path walked past §4.5 (fallback hole)"
+  wj Write '/p/.claude/hooks/guard-bash.sh' | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "stripped-PATH: Write of a gate script still BLOCKED" || fail "stripped-PATH: gate-script write PASSED (fallback hole)"
+  wj Write '/p/.claude/skills/../hooks/x.sh'| PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "stripped-PATH: traversal to a gate path still BLOCKED" || fail "stripped-PATH: traversal PASSED (fallback hole)"
+  wj Write 'C:\\U\\app\\.claude\\hooks\\x.sh' | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "stripped-PATH: Windows-separator gate path still BLOCKED" || fail "stripped-PATH: backslash path PASSED (fallback hole)"
+  wj Write '/p/src/app.ts'                  | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1 && pass "stripped-PATH: ordinary source NOT over-blocked with no tools present" || fail "stripped-PATH: ordinary source wrongly blocked"
   # DISCRIMINATOR. The four rows above ALL stay green if the tier-3 parser is gutted, because the fail-closed
   # raw-payload branch blocks the same payloads for the wrong reason. Only a payload whose TARGET is ordinary
   # while its CONTENT names a gate path tells the two apart: the real parser allows it, a gutted one refuses it.
   printf '%s' '{"tool_name":"Write","tool_input":{"file_path":"/p/README.md","content":"see .claude/hooks/guard-bash.sh"}}' | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1 \
-    && pass "no-jq/py: the tier-3 parser really parses (content naming a gate path does not block)" \
-    || fail "no-jq/py: tier 3 blocked on the raw payload — the parser is not doing the work"
+    && pass "stripped-PATH: the reader really parses (content naming a gate path does not block)" \
+    || fail "stripped-PATH: blocked on the raw payload — the parser is not doing the work"
   # And the rule NAME, not just the rc: a row that only checks rc=2 stays green when the fix is deleted and the
   # raw-payload branch takes over. The stderr line is what says which branch produced the verdict.
   _o="$(wjn '/p/.claude/hooks/guard-bash.sh' | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" 2>&1 >/dev/null)"
   case "$_o" in
-    *"unparsed payload"*) fail "no-jq/py: notebook_path blocked via the raw fallback, not via the parser — the notebook fix is not doing the work" ;;
-    *"blocked AT THE TOOL LEVEL"*) pass "no-jq/py: notebook_path is blocked BY THE PARSER (not the raw fallback)" ;;
-    *) fail "no-jq/py: notebook_path produced no gate message: ${_o:-empty}" ;;
+    *"unparsed payload"*) fail "stripped-PATH: notebook_path blocked via the raw fallback, not via the parser — the notebook fix is not doing the work" ;;
+    *"blocked AT THE TOOL LEVEL"*) pass "stripped-PATH: notebook_path is blocked BY THE PARSER (not the raw fallback)" ;;
+    *) fail "stripped-PATH: notebook_path produced no gate message: ${_o:-empty}" ;;
   esac
   # `\u002e` is `.`. Tier 3 used to substitute `?` for any \uXXXX, so this decoded to `?claude/hooks/…` and
   # matched nothing while jq decoded the identical bytes to a real gate path.
   printf '%s' '{"tool_name":"Write","tool_input":{"file_path":"\u002eclaude/hooks/guard-bash.sh"}}' | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1
-  [ "$?" = 2 ] && pass "no-jq/py: a \\u-escaped gate path is decoded, not substituted" || fail "no-jq/py: \\u002e hid a gate path from §4.5 (tier-1/tier-3 divergence)"
+  [ "$?" = 2 ] && pass "stripped-PATH: a \\u-escaped gate path is decoded, not substituted" || fail "stripped-PATH: \\u002e hid a gate path from §4.5 (the unescaper is not decoding)"
   # THE COST LIVES ON THIS TIER, so the timing assertion belongs here and not only above: with jq present the
   # payload is parsed by a C program and the walk never runs. Here every separator is an escape, which is what
   # made the parser quadratic — 6s at 1,200 separators, 44s at 2,400, against this hook's own 60s timeout.
@@ -2945,22 +3415,22 @@ if [ -n "$GBX" ]; then
   _t0=$(date +%s)
   printf '{"tool_name":"Write","tool_input":{"file_path":"C:%s.claude\\\\hooks\\\\g.sh"}}' "$_bs" | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1
   _rc=$?; _t1=$(date +%s)
-  [ "$_rc" = 2 ] && pass "no-jq/py: an oversized path is refused on the tier that pays for parsing it" || fail "no-jq/py: oversized path not refused (rc=$_rc)"
-  [ $((_t1-_t0)) -le 5 ] && pass "no-jq/py: 3,000 escapes cost under 5s (the gate cannot be timed out)" || fail "no-jq/py: 3,000 escapes took $((_t1-_t0))s — the gate can be made to miss its own timeout"
+  [ "$_rc" = 2 ] && pass "stripped-PATH: an oversized path is refused by the reader that pays for parsing it" || fail "stripped-PATH: oversized path not refused (rc=$_rc)"
+  [ $((_t1-_t0)) -le 5 ] && pass "stripped-PATH: 3,000 escapes cost under 5s (the gate cannot be timed out)" || fail "stripped-PATH: 3,000 escapes took $((_t1-_t0))s — the gate can be made to miss its own timeout"
   # And the worst case that is still ACCEPTED — a value sitting just under the cap — because that is the number
   # an attacker actually gets to spend. Measured 3.4s here; the bound is deliberately loose for slower boxes.
   _bs=""; _i=0; while [ "$_i" -lt 1000 ]; do _bs="$_bs\\\\"; _i=$((_i+1)); done
   _t0=$(date +%s)
   printf '{"tool_name":"Write","tool_input":{"file_path":"C:%s.claude\\\\hooks\\\\g.sh"}}' "$_bs" | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1
   _rc=$?; _t1=$(date +%s)
-  [ "$_rc" = 2 ] && [ $((_t1-_t0)) -le 15 ] && pass "no-jq/py: the worst case UNDER the cap still verdicts in time ($((_t1-_t0))s)" || fail "no-jq/py: at-cap payload rc=$_rc in $((_t1-_t0))s — the cap is sized wrong"
+  [ "$_rc" = 2 ] && [ $((_t1-_t0)) -le 15 ] && pass "stripped-PATH: the worst case UNDER the cap still verdicts in time ($((_t1-_t0))s)" || fail "stripped-PATH: at-cap payload rc=$_rc in $((_t1-_t0))s — the cap is sized wrong"
   # The unparsed-payload branch has three arms and only the .claude one was pinned.
   for _u in 'garbage naming .git/hooks/pre-commit' 'garbage naming .claude/DISCIPLINE.md'; do
     printf '%s' "$_u" | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1
-    [ "$?" = 2 ] && pass "no-jq/py: unparseable payload refused — $_u" || fail "no-jq/py: unparseable payload failed OPEN — $_u"
+    [ "$?" = 2 ] && pass "stripped-PATH: unparseable payload refused — $_u" || fail "stripped-PATH: unparseable payload failed OPEN — $_u"
   done
 else
-  gb_unbuildable "no-jq/py fallback tests"
+  gb_unbuildable "stripped-PATH fallback tests"
 fi
 rm -rf "$GBDIR"
 
@@ -2978,7 +3448,7 @@ GBX="$(gb_sandbox)"
 # discarded — the same trap this suite documents for the scanner's count arrays. The sandbox directory is the
 # first PATH element either way, and a PATH carrying more than one element means the stubbed tier was used.
 GBDIR="${GBX%%:*}"; case "$GBX" in *:*) GB_MODE="stubbed" ;; ?*) GB_MODE="minimal" ;; *) GB_MODE="" ;; esac
-[ -n "$GBX" ] && note "no-jq/py sandbox built in '$GB_MODE' mode ($( [ "$GB_MODE" = stubbed ] && echo 'jq/python3 present but non-functional — the stock Windows shape' || echo 'jq/python3 absent from PATH' ))"
+[ -n "$GBX" ] && note "stripped-PATH sandbox built in '$GB_MODE' mode ($( [ "$GB_MODE" = stubbed ] && echo 'jq/python3 present but non-functional — the stock Windows shape' || echo 'jq/python3 absent from PATH' ))"
 
 
 # session_id chosen deliberately: `-f872` is the exact shape that matched the §4.5 `-f([^a-z]|$)` force rule.
@@ -2987,34 +3457,217 @@ if [ -n "$GBX" ]; then
   # 1) FALSE POSITIVE: an ordinary push must not inherit `-f` from the session id.
   o="$(gjs default 'git push origin feature/x' | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" 2>/dev/null)"; r=$?
   { [ "$r" != 2 ] && printf '%s' "$o" | grep -q '"permissionDecision":"ask"'; } \
-    && pass "no-jq/py: plain push ASKs, not force-blocked by the session id" \
-    || fail "no-jq/py: plain push mis-blocked as force (rc=$r) — the fallback is matching the payload, not the command"
+    && pass "stripped-PATH: plain push ASKs, not force-blocked by the session id" \
+    || fail "stripped-PATH: plain push mis-blocked as force (rc=$r) — the fallback is matching the payload, not the command"
   # 2) APPROVAL INTEGRITY: §4.4 must show the command. A prompt quoting the payload is consent theatre.
   o="$(gjs default 'git push origin feature/x' | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" 2>/dev/null)"
   { printf '%s' "$o" | grep -q 'git push origin feature/x' && ! printf '%s' "$o" | grep -q 'session_id'; } \
-    && pass "no-jq/py: the §4.4 prompt shows the command, not the raw payload" \
-    || fail "no-jq/py: the §4.4 prompt leaked the payload (the human cannot read what they approve)"
+    && pass "stripped-PATH: the §4.4 prompt shows the command, not the raw payload" \
+    || fail "stripped-PATH: the §4.4 prompt leaked the payload (the human cannot read what they approve)"
   # 3) NO NEW HOLE: the slice takes the FIRST \"command\" key, so a decoy inside the command cannot relocate it.
   gjs auto 'git push --force # \"command\":\"ls\"' | PATH="$GBX" CLAUDE_GIT_OK=1 "$GBBASH" "$HOOKS/guard-bash.sh" >/dev/null 2>&1
-  [ "$?" = 2 ] && pass "no-jq/py: decoy \"command\" key inside the command does NOT relocate the parse" \
-                || fail "no-jq/py: decoy \"command\" key walked a force-push past §4.5"
+  [ "$?" = 2 ] && pass "stripped-PATH: decoy \"command\" key inside the command does NOT relocate the parse" \
+                || fail "stripped-PATH: decoy \"command\" key walked a force-push past §4.5"
   # 4) ESCAPES: JSON-escaped quotes and Windows backslash paths must decode, not derail the rules.
   gjs auto 'git commit -m \"x\" --no-verify' | PATH="$GBX" CLAUDE_GIT_OK=1 "$GBBASH" "$HOOKS/guard-bash.sh" >/dev/null 2>&1
-  [ "$?" = 2 ] && pass "no-jq/py: --no-verify inside an escaped-quote command still BLOCKED" \
-                || fail "no-jq/py: escaped quotes hid --no-verify from §4.5"
+  [ "$?" = 2 ] && pass "stripped-PATH: --no-verify inside an escaped-quote command still BLOCKED" \
+                || fail "stripped-PATH: escaped quotes hid --no-verify from §4.5"
   o="$(gjs default 'git commit -F C:\\\\Users\\\\b\\\\msg.txt' | gbrx 2>/dev/null)"
   printf '%s' "$o" | grep -q '"permissionDecision":"ask"' \
-    && pass "no-jq/py: a Windows backslash path still reaches the §4.4 ask" \
-    || fail "no-jq/py: backslash path derailed the parse (out=$o)"
+    && pass "stripped-PATH: a Windows backslash path still reaches the §4.4 ask" \
+    || fail "stripped-PATH: backslash path derailed the parse (out=$o)"
   # 5) NOT OVER-BLOCKING: an ordinary command stays allowed even with the dirty session id.
   gjs default 'ls -la' | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" >/dev/null 2>&1
-  [ "$?" = 0 ] && pass "no-jq/py: 'ls -la' still allowed" || fail "no-jq/py: 'ls -la' blocked (fallback over-blocks)"
+  [ "$?" = 0 ] && pass "stripped-PATH: 'ls -la' still allowed" || fail "stripped-PATH: 'ls -la' blocked (fallback over-blocks)"
+  # --- THE KEY THE PARSER FINDS AND THE KEY THE GUARD COUNTS MUST BE THE SAME ONE -----------------------
+  # `_json_slice` searches for the bytes `"key"`; the ambiguity guards used to count `"key":` compact. Two
+  # different tokens, so five payload shapes read one value while the gate judged another. All five were
+  # measured on THIS path (jq and python3 shadowed, the stock-Windows shape) as rc=0 on the shipped hook:
+  #   key name as a VALUE — `{"a":"command","ls":1,…{"command":"rm -rf /"}}` read `ls`
+  #   the same for permission_mode and for guard-write's file_path
+  #   duplicate key with ONE SPACE before the colon — the count went blind, the parser read the first value
+  #   a decoy `tool_name` placed earlier — the "gated tool" net answered for the wrong tool
+  # Each row asserts the RULE in the hook's stderr, not just rc=2. That is the lesson of this round: a row
+  # that only checks rc=2 was satisfied for a whole night by §4.5's `rm -rf` rule while the refusal it named
+  # never fired, and its harmless twin — the same shape with `ls -la` — was quietly rc=0 the whole time.
+  _t3(){ printf '%s' "$1" | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" 2>&1 >/dev/null; }
+  _amb(){ # $1 = payload, $2 = phrase the refusal must contain, $3 = what the row is about
+    _t3_out="$(_t3 "$1")"
+    case "$_t3_out" in
+      *"$2"*) pass "one-token: $3 is refused, and by the rule that names it" ;;
+      *) fail "one-token FAIL-OPEN: $3 — expected a refusal containing '$2', got: ${_t3_out:-<silence>}" ;;
+    esac
+  }
+  _t3_out=""
+  _amb '{"tool_name":"Bash","permission_mode":"default","a":"command","ls":1,"tool_input":{"command":"rm -rf /"}}' \
+       'destructive rm -rf' 'a key name appearing as a VALUE no longer relocates the parse'
+  # permission_mode AS A VALUE is closed by the PARSER, not by a refusal: the decoy is no longer an
+  # occurrence, so the count stays 1 and there is nothing ambiguous to refuse. The discriminating consequence
+  # is therefore §4.4's branch, which only a gated command reaches — so this row commits in a §4.6-clean cwd.
+  # Read the decoy (`default`) and the hook emits `ask`, which `bypassPermissions` turns into `allow`; read
+  # the real value and it FAILS CLOSED. Asserting rc alone here is sound because the twin below rules out the
+  # blanket case. Written first with `ls -la`, which no mode-dependent rule judges: the row went red for being
+  # silent, and the silence was correct — the payload really is harmless once the decoy is ignored.
+  ( cd "$REVIEWED" && printf '%s' '{"tool_name":"Bash","a":"permission_mode","default":1,"permission_mode":"bypassPermissions","tool_input":{"command":"git commit -m x"}}' \
+    | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" >/dev/null 2>&1 )
+  [ "$?" = 2 ] && pass "one-token: a permission_mode decoy VALUE does not relocate the mode (§4.4 still fails closed)" \
+               || fail "one-token FAIL-OPEN: a decoy permission_mode value was read as the mode — §4.4 was disarmed"
+  _o="$( cd "$REVIEWED" && printf '%s' '{"tool_name":"Bash","a":"permission_mode","default":1,"permission_mode":"default","tool_input":{"command":"git commit -m x"}}' \
+    | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" 2>/dev/null )"
+  [ "$(gdec "$_o")" = "ask" ] \
+    && pass "one-token: with the real mode 'default' the same shape still ASKs (not blanket-blocked)" \
+    || fail "one-token: a decoy alongside an honest 'default' mode was refused outright (out=$_o)"
+  _amb '{"tool_name":"Bash","permission_mode":"default","meta":{"command":"ls"},"tool_input":{"command" : "rm -rf /"}}' \
+       '"command" keys' 'a duplicate key with whitespace before the colon'
+  _amb '{"tool_name":"Bash","meta":{"permission_mode":"default"},"permission_mode":"bypassPermissions","tool_input":{"command":"ls -la"}}' \
+       '"permission_mode" keys' 'a shadowed permission_mode'
+  _amb '{"meta":{"tool_name":"Read"},"tool_name": "Bash","tool_input":{"foo":1}}' \
+       'no readable' 'a decoy tool_name placed before the real one'
+  # THE TWINS THAT MUST NOT BE REFUSED. Without these the five rows above are satisfied by a gate that blocks
+  # everything, which is the other way this file has been wrong.
+  for _ok in '{"tool_name":"Bash","permission_mode":"default","tool_input":{"command":"ls -la"}}' \
+             '{"tool_name":"Bash","permission_mode":"default","tool_input":{"command":"grep -rn permission_mode ."}}' \
+             '{"tool_name":"Bash","permission_mode":"default","tool_input":{"command":"echo the word command here"}}' \
+             '{"tool_name":"Read","tool_input":{"foo":1}}' \
+             '{"tool_name":"Bash","tool_input":{"command":""}}' ; do
+    printf '%s' "$_ok" | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" >/dev/null 2>&1
+    [ "$?" = 0 ] && pass "one-token: an honest payload is NOT refused — ${_ok:0:58}…" \
+                 || fail "one-token OVER-BLOCK: an honest payload was refused — $_ok"
+  done
+  # A harmless nested command is the row that exposed the wrong-reason pass. It must be refused by the
+  # DUPLICATE-KEY rule now, since two real `"command"` keys is exactly what it carries.
+  _amb '{"tool_name":"Bash","permission_mode":"default","meta":{"command":"ls -la"},"tool_input":{"command":"echo hi"}}' \
+       '"command" keys' 'a HARMLESS nested command (the shape that used to pass for the wrong reason)'
+  # guard-write, same disease, and it is the hook that stops the gates being rewritten.
+  # guard-write, and the TWO shapes are closed by DIFFERENT halves of the change — labelling them alike is how
+  # one of them ended up unprotected. Review mutation-proved it: with the ambiguity refusal disabled, the
+  # duplicate-key row went 2 -> 0 while the value-form row stayed at 2, because its rc comes from §4.5 reading
+  # the now-correctly-sliced real path. So each row names its own mechanism and checks the message.
+  _wout(){ printf '%s' "$1" | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" 2>&1 >/dev/null; }
+  _o="$(_wout '{"meta":{"file_path":"/tmp/ok.txt"},"tool_name":"Write","tool_input":{"file_path":".claude/hooks/guard-bash.sh","content":"x"}}')"
+  case "$_o" in
+    *'path keys'*) pass "one-token: guard-write REFUSES two real path keys (the counter's half)" ;;
+    *) fail "one-token FAIL-OPEN: a duplicate path key was judged, not refused — ${_o:-<silence>}" ;;
+  esac
+  _o="$(_wout '{"a":"file_path","/tmp/ok.txt":1,"tool_name":"Write","tool_input":{"file_path":".claude/hooks/guard-bash.sh","content":"x"}}')"
+  case "$_o" in
+    *"editing '.claude/hooks/guard-bash.sh'"*) pass "one-token: guard-write reads the REAL path past a value-form decoy (the parser's half)" ;;
+    *) fail "one-token FAIL-OPEN: a value-form decoy relocated the path — ${_o:-<silence>}" ;;
+  esac
+  printf '%s' '{"tool_name":"Write","tool_input":{"file_path":"src/app.ts","content":"x"}}' \
+    | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1
+  [ "$?" = 0 ] && pass "one-token: guard-write still allows an ordinary source file" \
+               || fail "one-token OVER-BLOCK: guard-write refused src/app.ts"
+  # THE PASS CAP. Requiring the colon means one extra scan per decoy, and the work is quadratic in their
+  # number: measured 12 ms at 50 decoys, 1839 ms at 3200 on macOS/bash, and Git Bash is several times slower
+  # again. Uncapped that is a gate with an off switch, because a PreToolUse hook killed at its 60s timeout
+  # emits no exit 2 and the command proceeds. Capped at 64 passes, over-cap counts as AMBIGUOUS: the same
+  # 3200-decoy payload is refused in 100 ms instead of being walked. Both halves are asserted — the refusal
+  # AND the bound — because a cap that refuses slowly is still a timeout waiting to happen.
+  _flood="$(_i=0; printf '%s' '{"tool_name":"Bash","permission_mode":"default",'
+            while [ "$_i" -lt 3200 ]; do printf '"k%s":"command",' "$_i"; _i=$((_i+1)); done
+            printf '%s' '"tool_input":{"command":"ls -la"}}')"
+  _t0=$(date +%s)
+  _fo="$(printf '%s' "$_flood" | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" 2>&1 >/dev/null)"; _frc=$?
+  _t1=$(date +%s)
+  # The message must say OVER-CAP, not a count: those occurrences are candidate positions, key-form or not, so
+  # reporting "65 keys" was a sentinel dressed as a measurement and its remedy ("send one key") was already
+  # satisfied by this payload, which carries exactly one real key.
+  { [ "$_frc" = 2 ] && case "$_fo" in *'occurrences of "command"'*) true ;; *) false ;; esac; } \
+    && pass "one-token: a decoy flood is refused as over-cap, and said so (${#_flood} bytes)" \
+    || fail "one-token FAIL-OPEN: a decoy flood produced rc=$_frc — ${_fo:-<silence>}"
+  [ $((_t1-_t0)) -le 10 ] \
+    && pass "one-token: the pass cap bounds that refusal ($((_t1-_t0))s, the hook's timeout is 60s)" \
+    || fail "one-token: the decoy flood took $((_t1-_t0))s — the cap is not bounding the work"
+  # THE TWIN THAT KEEPS THE CAP HONEST, and it is the one to write first: an ORDINARY command whose own TEXT
+  # contains the key name many times — writing a JSON schema, a settings file, an OpenAPI doc — must be
+  # ALLOWED. If the cap counted the word rather than the token, patching a hooks.json would be refused with a
+  # message about duplicate keys the user cannot act on, which is the failure mode this kit calls worse than
+  # the hole: a gate that blocks the innocent teaches people to reach for --no-verify.
+  # It is safe for a measured reason: content can contribute at most ONE occurrence of the token per string,
+  # and only as that string's tail, where the next byte is `,` `}` `]` and never a colon. (The stronger claim
+  # first written here — "both quotes unescaped can only be a key or a value" — is false; a key whose name
+  # ends in a quote spells the token too, and is refused by the COUNT rather than by the invariant.)
+  # The fixture below hand-writes its escapes, so its own byte counts are asserted rather than assumed: 71
+  # occurrences of the WORD, exactly 1 of the token. Asserting that is the point — a fixture that merely
+  # looked right is how this block was wrong before.
+  _sch="$(_i=0; printf '%s' '[' ; while [ "$_i" -lt 70 ]; do [ "$_i" = 0 ] || printf ','; printf '{\\"command\\":\\"c%s\\"}' "$_i"; _i=$((_i+1)); done; printf '%s' ']')"
+  _schp="$(printf '{"tool_name":"Bash","permission_mode":"default","tool_input":{"command":"echo %s > schema.json"}}' "$_sch")"
+  _nw="$(printf '%s' "$_schp" | grep -o 'command' | wc -l | tr -d ' ')"
+  _nt="$(printf '%s' "$_schp" | grep -o '"command"' | wc -l | tr -d ' ')"
+  { [ "$_nw" -gt 64 ] && [ "$_nt" = 1 ]; } \
+    && pass "one-token: the schema fixture really is the hard case ($_nw words, $_nt token)" \
+    || fail "one-token: the schema fixture is not what it claims ($_nw words, $_nt tokens) — the row below measures nothing"
+  printf '%s' "$_schp" | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" >/dev/null 2>&1
+  [ "$?" = 0 ] \
+    && pass "one-token: a command whose own text carries the key name 70 times is ALLOWED (the cap counts tokens, not words)" \
+    || fail "one-token OVER-BLOCK: writing a JSON schema was refused — the cap is counting the word, not the key token"
+  # AND THE CALIBRATION TWIN, which the comment above used to cite while no such fixture existed: 70 REAL keys
+  # must cross the cap and be refused. Without it, "a 70-word command is allowed" is satisfied by a counter
+  # that can never reach 64 at all.
+  _mk="$(_i=0; while [ "$_i" -lt 70 ]; do printf '"k%s":"command",' "$_i"; _i=$((_i+1)); done)"
+  _o="$(printf '{"tool_name":"Bash","permission_mode":"default",%s"tool_input":{"command":"ls -la"}}' "$_mk" \
+        | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" 2>&1 >/dev/null)"
+  case "$_o" in
+    *'occurrences of "command"'*) pass "one-token: 70 real keys DO cross the cap and are refused, with over-cap said plainly" ;;
+    *) fail "one-token: 70 real keys did not trip the cap — ${_o:-<silence>}" ;;
+  esac
+  # THE STRING REQUIREMENT. A non-string value returns empty instead of the payload's own punctuation, which
+  # the old shape handed to the matchers as `:123}}`. Review mutation-proved this was unasserted anywhere in
+  # the suite or in parser-conformance.sh: reverting it changed no row. Asserted on the PARSER, because the
+  # hook's verdict is rc=0 either way (a single unreadable key is not the gated-tool case).
+  _u2(){ ( eval "$(sed -n '/^_json_slice()/,/^}/p' "$HOOKS/guard-bash.sh")"; _json_slice "$1" command ); }
+  for _ns in '{"tool_input":{"command":123}}' '{"tool_input":{"command":null}}' '{"tool_input":{"command":{"x":1}}}' ; do
+    [ -z "$(_u2 "$_ns")" ] \
+      && pass "one-token: a non-string value yields NOTHING, not punctuation — $_ns" \
+      || fail "one-token: a non-string value produced [$(_u2 "$_ns")] — the matchers would judge the payload's own syntax"
+  done
+  [ "$(_u2 '{"tool_input":{"command":"ls -la"}}')" = "ls -la" ] \
+    && pass "one-token: a string value is still returned in full (the requirement is not a blanket refusal)" \
+    || fail "one-token: the STRING requirement broke an ordinary value"
+  # guard-write's summed rule must not refuse an ordinary NotebookEdit, which carries the OTHER path key.
+  printf '%s' '{"tool_name":"NotebookEdit","tool_input":{"notebook_path":"/tmp/nb.ipynb","new_source":"print(1)"}}' \
+    | PATH="$GBX" "$GBBASH" "$HOOKS/guard-write.sh" >/dev/null 2>&1
+  [ "$?" = 0 ] && pass "one-token: an ordinary NotebookEdit still passes the summed path-key rule" \
+               || fail "one-token OVER-BLOCK: the file_path+notebook_path sum refused a plain NotebookEdit"
+  # `cwd` WAS THE ONE KEY LEFT WITH A HAND-ROLLED EXTRACTION, and review found it: `${INPUT#*"cwd"}` then
+  # `#*:`, i.e. the key matched without its colon and no count guarding it. It decides the directory a
+  # RELATIVE command is resolved against, so a decoy pointed §4.5's two-step `.env` rule at an empty
+  # directory and the read was never examined. The payload's cwd is only consulted when the hook's PROCESS
+  # cwd is not the project, so the fixture runs from elsewhere — that is the only situation where this key
+  # matters at all, and testing it from inside the project would measure nothing.
+  _CWDR="$(mktemp -d)"; mkdir -p "$_CWDR/proj" "$_CWDR/decoy" "$_CWDR/away"
+  printf 'SECRET=abc\n' > "$_CWDR/proj/.env"; printf 'cat .env\n' > "$_CWDR/proj/leak.sh"
+  _cw(){ ( cd "$_CWDR/away" && printf '%s' "$1" | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" 2>&1 >/dev/null ); }
+  _o="$(_cw "{\"cwd\":\"$_CWDR/proj\",\"tool_name\":\"Bash\",\"permission_mode\":\"default\",\"tool_input\":{\"command\":\"bash leak.sh\"}}")"
+  case "$_o" in
+    *'.env secret'*) pass "one-token: the payload's cwd is read through the parser (§4.5 still sees a relative .env read)" ;;
+    *) fail "one-token: the honest cwd case stopped working — ${_o:-<silence>}" ;;
+  esac
+  _o="$(_cw "{\"a\":\"cwd\",\"b\":\"$_CWDR/decoy\",\"cwd\":\"$_CWDR/proj\",\"tool_name\":\"Bash\",\"permission_mode\":\"default\",\"tool_input\":{\"command\":\"bash leak.sh\"}}")"
+  case "$_o" in
+    *'.env secret'*) pass "one-token: a value-form cwd decoy no longer relocates the working directory" ;;
+    *) fail "one-token FAIL-OPEN: a cwd decoy hid a relative .env read from §4.5 — ${_o:-<silence>}" ;;
+  esac
+  _o="$(_cw "{\"cwd\":\"$_CWDR/decoy\",\"cwd\":\"$_CWDR/proj\",\"tool_name\":\"Bash\",\"permission_mode\":\"default\",\"tool_input\":{\"command\":\"bash leak.sh\"}}")"
+  case "$_o" in
+    *'one "cwd" key'*) pass "one-token: two real cwd keys are REFUSED rather than resolved first-wins" ;;
+    *) fail "one-token FAIL-OPEN: a duplicate cwd key was resolved, not refused — ${_o:-<silence>}" ;;
+  esac
+  for _ok in "{\"cwd\":\"$_CWDR/proj\",\"tool_name\":\"Bash\",\"permission_mode\":\"default\",\"tool_input\":{\"command\":\"ls -la\"}}" \
+             '{"tool_name":"Bash","permission_mode":"default","tool_input":{"command":"ls -la"}}' \
+             '{"tool_name":"Bash","permission_mode":"default","tool_input":{"command":"echo cwd"}}' ; do
+    ( cd "$_CWDR/away" && printf '%s' "$_ok" | PATH="$GBX" "$GBBASH" "$HOOKS/guard-bash.sh" >/dev/null 2>&1 )
+    [ "$?" = 0 ] && pass "one-token: cwd handling does not over-block — ${_ok:0:52}…" \
+                 || fail "one-token OVER-BLOCK: the cwd rule refused an ordinary payload — $_ok"
+  done
+  rm -rf "$_CWDR"
 else
-  gb_unbuildable "no-jq/py discriminating tests"
+  gb_unbuildable "stripped-PATH discriminating tests"
 fi
 rm -rf "$GBDIR"
 
-echo "== 7c) broken interpreters — a tier that EXISTS but does not WORK must not fail open =="
+sec "== 7c) broken interpreters — a tier that EXISTS but does not WORK must not fail open =="
 # §7b tests tier 3 by taking jq and python3 AWAY. That is not the shape the failure had, and it is why the
 # failure survived: on a stock Windows 11 desktop python3 is PRESENT and BROKEN. Windows puts
 # %LOCALAPPDATA%\Microsoft\WindowsApps\python3 on PATH by default — the Microsoft Store redirector stub, not an
@@ -3203,7 +3856,7 @@ else
     && pass "canary: the installed guard-bash ASKS for §4.4" \
     || fail "canary: no §4.4 ask from the installed hook (out=$o)"
 fi
-echo "== 7c) session rehydration (SessionStart, C1) =="
+sec "== 7c) session rehydration (SessionStart, C1) =="
 [ -x "$HOOKS/session-rehydrate.sh" ] && pass "session-rehydrate.sh +x" || fail "session-rehydrate.sh missing/not executable"
 # Fails open + silent when there is no handover; injects additionalContext when docs/SESSION_STATE.md exists.
 RHD="$(mktemp -d)"
@@ -3213,7 +3866,8 @@ mkdir -p "$RHD/docs"; printf '# Session Handover\n' > "$RHD/docs/SESSION_STATE.m
 o="$(printf '{"hook_event_name":"SessionStart","cwd":"%s"}' "$RHD" | CLAUDE_PROJECT_DIR= bash "$HOOKS/session-rehydrate.sh" 2>/dev/null)"
 case "$o" in *'"additionalContext"'*SESSION_STATE*) pass "handover present -> injects additionalContext pointer" ;;
   *) fail "session-rehydrate did not inject a pointer when SESSION_STATE.md exists" ;; esac
-if command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then printf '%s' "$o" | jq empty 2>/dev/null && pass "rehydrate output is valid JSON" || fail "rehydrate output is not valid JSON"; fi
+if [ -n "$JSONQ" ]; then printf '%s' "$o" | json_ok && pass "rehydrate output is valid JSON ($JSONQ)" || fail "rehydrate output is not valid JSON";
+    else skip tool "the rehydrate output JSON-validity check (no working jq)"; fi
 rm -rf "$RHD"
 grep -q 'SessionStart' "$ROOT/settings.json" && grep -q 'session-rehydrate.sh' "$ROOT/settings.json" \
   && pass "settings.json wires SessionStart -> session-rehydrate.sh" || fail "settings.json missing SessionStart -> session-rehydrate wiring"
@@ -3239,19 +3893,22 @@ grep -q 'cd .*\$CLAUDE_PROJECT_DIR' "$ROOT/settings.json" \
 # shell, and on a Windows box checked during this work `where bash` answered C:\Windows\System32\bash.exe — the
 # WSL launcher, not Git Bash, in a namespace where C:\Repos\app does not exist. Wiring `"command": "bash"` would
 # have run that (or failed where WSL is absent), taking every gate with it.
-if command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then
-  jq -e '[.hooks[][].hooks[]? | select((.args // []) | length > 0)] | length == 0' "$ROOT/settings.json" >/dev/null 2>&1 \
-    && pass "no exec-form hook (bare 'bash' on Windows PATH resolves to WSL, not Git Bash)" \
-    || fail "a hook uses exec form — on Windows 'bash' off the PATH is System32/bash.exe (WSL), so every gate dies"
+if json_no_execform "$ROOT/settings.json"; then
+  pass "no exec-form hook (bare 'bash' on Windows PATH resolves to WSL, not Git Bash) [$JSONQ]"
+elif [ -z "$JSONQ" ]; then
+  skip tool "the exec-form hook check (no JSON oracle: jq, python3 and python all absent or non-functional)"
+else
+  fail "a hook uses exec form — on Windows 'bash' off the PATH is System32/bash.exe (WSL), so every gate dies"
 fi
 
-echo "== 7d) plugin gate hooks shipped (P1) =="
+sec "== 7d) plugin gate hooks shipped (P1) =="
 PLUGIN="$(cd "$ROOT/.." && pwd)/plugin"
 PHJ="$PLUGIN/hooks/hooks.json"
 if [ "$IS_KIT" != 1 ]; then
   skip scope "plugin edition check skipped (installed project — plugin/ lives in the kit repo only)"
 elif [ -f "$PHJ" ]; then
-  if command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then jq empty "$PHJ" 2>/dev/null && pass "plugin hooks.json valid JSON" || fail "plugin hooks.json invalid JSON"; else pass "plugin hooks.json present (no jq)"; fi
+  if [ -n "$JSONQ" ]; then json_ok < "$PHJ" && pass "plugin hooks.json valid JSON ($JSONQ)" || fail "plugin hooks.json invalid JSON"
+  else skip tool "plugin hooks.json validity (no JSON oracle) — it used to report a PASS for a check nobody ran"; fi
   grep -q 'CLAUDE_PLUGIN_ROOT' "$PHJ" && pass "plugin hooks.json resolves via \${CLAUDE_PLUGIN_ROOT}" || fail "plugin hooks.json does not use \${CLAUDE_PLUGIN_ROOT}"
   grep -q 'CLAUDE_PROJECT_DIR' "$PHJ" && fail "plugin hooks.json leaks \${CLAUDE_PROJECT_DIR} (wrong for a plugin)" || pass "plugin hooks.json has no \${CLAUDE_PROJECT_DIR}"
   for h in guard-bash.sh guard-write.sh context-usage.sh session-guard.sh session-rehydrate.sh; do
@@ -3276,7 +3933,7 @@ else
   fail "plugin/hooks/hooks.json missing — run packaging/build-plugin.sh"
 fi
 
-echo "== 7e) install doctor + installer hygiene (P7) =="
+sec "== 7e) install doctor + installer hygiene (P7) =="
 [ -x "$ROOT/eval/doctor.sh" ] && pass "doctor.sh +x" || fail "doctor.sh missing/not executable"
 # doctor must PASS a healthy install and FAIL a broken one (a non-executable hook = a silently-skipped gate).
 DOC="$(mktemp -d)"
@@ -3286,6 +3943,37 @@ DOC="$(mktemp -d)"
   chmod +x .claude/hooks/*.sh .claude/hooks/pre-commit .claude/hooks/commit-msg
   git config core.hooksPath .claude/hooks )
 bash "$ROOT/eval/doctor.sh" "$DOC" >/dev/null 2>&1 && pass "doctor: healthy install -> exit 0" || fail "doctor flagged a healthy install"
+# THE MANIFEST'S LINE ENDINGS MUST NOT CHANGE WHO OWNS A SKILL. Measured before the fix: the same install with
+# one project skill counted 1 on an LF manifest and 2 on a CRLF one, because `grep -qxF` wants a whole line and
+# `skills/handoff\r` is not `skills/handoff` — so every KIT skill read as project-owned. A Windows checkout with
+# core.autocrlf produces exactly that manifest, and `skill-trust.sh` had already been taught this for the same
+# file; doctor was the copy that had not, which is why the two disagreed on one install. Both spellings are
+# driven here, and the must-fail twin runs the UNSTRIPPED grep against the CRLF manifest so the strip cannot be
+# deleted on the belief that this case would still notice.
+DCR="$(mktemp -d)"
+mkdir -p "$DCR/.claude/skills/only-mine" "$DCR/.claude/hooks"
+cp -R "$SKILLS/handoff" "$DCR/.claude/skills/" 2>/dev/null
+printf '# x\n' > "$DCR/.claude/skills/only-mine/SKILL.md"
+cp "$HOOKS"/*.sh "$DCR/.claude/hooks/" 2>/dev/null; chmod +x "$DCR/.claude/hooks/"*.sh 2>/dev/null
+_own(){ ( cd "$DCR" && bash "$ROOT/eval/doctor.sh" 2>&1 | grep -oE '[0-9]+ project-specific skill' | head -1 | cut -d' ' -f1 ); }
+printf 'skills/handoff\n'   > "$DCR/.claude/kit-manifest.txt"; _lf="$(_own)"
+printf 'skills/handoff\r\n' > "$DCR/.claude/kit-manifest.txt"; _crlf="$(_own)"
+[ -n "$_lf" ] && [ "$_lf" = "$_crlf" ] \
+  && pass "doctor counts project skills the same on an LF and a CRLF manifest ($_lf)" \
+  || fail "doctor's project-skill count depends on the manifest's line endings (LF=$_lf CRLF=$_crlf)"
+# The twin asks whether an UNSTRIPPED whole-line grep misses a CRLF line — and the answer is a PLATFORM fact,
+# not a fixture property. It misses on macOS and Linux, which is where the miscount came from. On Git Bash it
+# MATCHES: measured on windows-latest, where this assertion was red for exactly that reason before it said so.
+# So a twin that cannot reproduce is reported as a platform skip with the consequence spelled out, because
+# "this defect cannot occur here" and "the fixture is broken" look identical from a red line. The strip stays
+# either way: the manifest travels between platforms, and the file that reads it does not get to assume which
+# grep will be holding it.
+if grep -qxF 'skills/handoff' "$DCR/.claude/kit-manifest.txt"; then
+  skip platform "the CRLF miss cannot be reproduced here — this grep matches a CR-terminated line, so the miscount this fixes does not occur on this platform"
+else
+  pass "must-fail twin: an unstripped whole-line grep DOES miss the CRLF manifest"
+fi
+rm -rf "$DCR"
 # The "non-executable hook" probe only means something where `chmod -x` actually takes effect. On Windows via
 # Git-Bash/MSYS a file with a `#!` shebang is reported executable regardless of the bit, so the broken state can't
 # be created — probe the REAL hook: only assert when chmod -x actually cleared its executability.
@@ -3354,7 +4042,7 @@ else
 fi
 for c in update-csk doctor-csk; do [ -f "$ROOT/commands/$c.md" ] && pass "/$c present" || fail "/$c command missing"; done
 
-echo "== 7f) supply-chain scanner (scan-skill.sh) =="
+sec "== 7f) supply-chain scanner (scan-skill.sh) =="
 [ -x "$ROOT/eval/scan-skill.sh" ] && pass "scan-skill.sh +x" || fail "scan-skill.sh missing/not executable"
 # The kit's OWN skills must all score SAFE — a false positive on legit content would erode trust in the scan.
 # Kit-repo only: in an installed project $SKILLS also holds the user's own skills, whose score is not the kit's to gate.
@@ -3399,37 +4087,73 @@ bash "$ROOT/eval/scan-skill.sh" "$SCX/skills/one/SKILL.md" >/dev/null 2>&1 \
   && fail "scan-skill PASSED the reader-then-path exfil form" || pass "scan-skill: reader-then-path exfil still caught"
 rm -rf "$SCX"
 
-echo "== 7g) adopt.sh settings merge is HOOK-AWARE (updates refresh kit hooks, preserve custom) =="
+sec "== 7g) adopt.sh settings merge is HOOK-AWARE (updates refresh kit hooks, preserve custom) =="
 # Regression guard for the jq-less/stale-settings bug: on update the kit OWNS its hooks, so a new event
 # (SessionStart) must get wired and a stale kit entry (old timeout) refreshed, WITHOUT duplicating hooks or
 # dropping the project's own custom hooks. Extract the merge program from adopt.sh (single source of truth).
-if [ "$IS_KIT" = 1 ] && command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then
-  ADOPT="$(cd "$ROOT/.." && pwd)/adopt.sh"; KSET="$ROOT/settings.json"
-  if [ -f "$ADOPT" ] && [ -f "$KSET" ]; then
+# THE TIER THIS MACHINE WOULD ACTUALLY USE, not the one this desk happens to have. adopt.sh merges through
+# three tiers — jq, then a python heredoc, then a wholesale replace when neither exists — and this block used
+# to test the FIRST one and print a dim `note` on any machine without jq. Measured 2026-09-20: that made four
+# assertions vanish on stock Windows and on CI's Windows leg, which shadows jq on purpose, with neither counter
+# moving. And the machine that skipped was precisely the machine running the tier nobody tested.
+#
+# So the tier is selected the way adopt.sh selects it and the same four properties are asserted whichever runs.
+# The count stays 4 everywhere, which keeps the per-section ledger comparable across platforms instead of
+# turning a tier difference into a coverage difference.
+ADOPT="$(cd "$ROOT/.." && pwd)/adopt.sh"; KSET="$ROOT/settings.json"
+_OLDSET='{ "hooks": { "UserPromptSubmit": [ { "hooks": [ { "type":"command","command":"bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/context-usage.sh\" 2>/dev/null || true","timeout":10 } ] } ], "PostToolUse":[{"hooks":[{"type":"command","command":"bash ./custom.sh"}]}] } }'
+# Same probe adopt.sh uses, and for the reason recorded there: pick the first interpreter that RUNS, not the
+# first that resolves — the Store redirector named python3 passes `command -v` and then exits 49.
+_MPY=""; for _pc in python3 python py; do
+  if command -v "$_pc" >/dev/null 2>&1 && printf '{}' | "$_pc" -c 'import sys,json;json.load(sys.stdin)' >/dev/null 2>&1; then
+    _MPY="$(command -v "$_pc")"; break
+  fi
+done
+_MJQ=0; command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1 && _MJQ=1
+if [ "$IS_KIT" != 1 ]; then
+  skip scope "the adopt.sh settings merge (an installed project has no adopt.sh to extract it from)" 4
+elif [ ! -f "$ADOPT" ] || [ ! -f "$KSET" ]; then
+  skip fixture "the adopt.sh settings merge (adopt.sh or settings.json is not where this expects it)" 4
+elif [ "$_MJQ" = 0 ] && [ -z "$_MPY" ]; then
+  skip tool "the adopt.sh settings merge (no working jq and no working python; adopt.sh's third tier replaces the file wholesale and is not exercised here)" 4
+else
+  MTMP="$(mktemp -d)"; printf '%s' "$_OLDSET" > "$MTMP/old.json"; _MERGED=0; _TIER=""
+  if [ "$_MJQ" = 1 ]; then
+    _TIER=jq
     JQM="$(awk '/^JQ_MERGE=./{f=1} f{print} f&&/\)\)'"'"'$/{exit}' "$ADOPT" | sed "1s/^JQ_MERGE='//; \$s/'\$//")"
-    MTMP="$(mktemp -d)"
-    printf '%s' '{ "hooks": { "UserPromptSubmit": [ { "hooks": [ { "type":"command","command":"bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/context-usage.sh\" 2>/dev/null || true","timeout":10 } ] } ], "PostToolUse":[{"hooks":[{"type":"command","command":"bash ./custom.sh"}]}] } }' > "$MTMP/old.json"
-    if jq -n --slurpfile p "$MTMP/old.json" --slurpfile k "$KSET" "$JQM" > "$MTMP/out.json" 2>/dev/null; then
-      # Asserted against the KIT's own SessionStart, not a hard-coded count: the point is that an event the
-      # project did not have arrives complete on update. A literal number silently goes stale the next time
-      # the kit wires another hook to the same event, and then reports a working merge as broken.
-      KSS="$(jq -c '[.hooks.SessionStart[].hooks[].command]|sort' "$KSET")"
-      MSS="$(jq -c '[.hooks.SessionStart[].hooks[].command]|sort' "$MTMP/out.json")"
-      [ "$KSS" = "$MSS" ] && pass "merge: new event (SessionStart) gets wired on update, with every kit hook on it" || fail "merge: SessionStart wiring differs from the kit's — expected $KSS, got $MSS"
-      [ "$(jq -r '.hooks.UserPromptSubmit|length' "$MTMP/out.json")" = 1 ] && pass "merge: no duplicate hook after update (stale kit entry dropped)" || fail "merge: duplicate UserPromptSubmit hook survived"
-      # Read the expected timeout from the kit rather than pinning a literal — for the same reason the
-      # SessionStart assert above is derived: a hard-coded number reports a working merge as broken the day
-      # the kit retunes its timeouts. The fixture carries 10, so this still proves the stale value was replaced.
-      KTO="$(jq -r '.hooks.UserPromptSubmit[0].hooks[0].timeout' "$KSET")"
-      MTO="$(jq -r '.hooks.UserPromptSubmit[0].hooks[0].timeout' "$MTMP/out.json")"
-      [ "$MTO" = "$KTO" ] && [ "$MTO" != 10 ] && pass "merge: stale hook timeout refreshed to kit's ($KTO)" || fail "merge: stale timeout not refreshed — expected $KTO, got $MTO"
-      [ "$(jq -r '.hooks.PostToolUse[0].hooks[0].command' "$MTMP/out.json")" = "bash ./custom.sh" ] && pass "merge: project's OWN custom hook preserved" || fail "merge: custom hook lost"
-    else fail "merge: extracted JQ_MERGE failed to run (extraction drift?)"; fi
-    rm -rf "$MTMP"
-  else note "merge test skipped (adopt.sh or settings.json not found)"; fi
-else note "merge test skipped (installed project or no jq)"; fi
+    jq -n --slurpfile p "$MTMP/old.json" --slurpfile k "$KSET" "$JQM" > "$MTMP/out.json" 2>/dev/null && _MERGED=1
+    _g(){ jq -r "$1" "$2"; }; _gc(){ jq -c "$1" "$2"; }
+  else
+    _TIER="${_MPY##*/}"
+    # The python program is EXTRACTED from adopt.sh, exactly as JQ_MERGE is, so a drift in the shipped merge
+    # cannot pass here: a copy in the test would assert what the test author believed rather than what ships.
+    # NOT anchored at end of line: adopt.sh's heredoc line continues past the marker with `&& [ -s ... ]; then`,
+    # and a `$` anchor extracted nothing while reporting it as a product failure. Measured while writing this.
+    awk '/<<.PYEOF./{f=1;next} /^PYEOF$/{exit} f' "$ADOPT" > "$MTMP/merge.py"
+    [ -s "$MTMP/merge.py" ] && "$_MPY" "$MTMP/merge.py" "$KSET" "$MTMP/old.json" "$MTMP/out.json" 2>/dev/null && [ -s "$MTMP/out.json" ] && _MERGED=1
+    # A reader with the same four answers jq gives, so the assertions below are identical text on both tiers.
+    _g(){ "$_MPY" -c 'import sys,json;d=json.load(open(sys.argv[2]));e=sys.argv[1]
+if e=="upslen": print(len(d["hooks"]["UserPromptSubmit"]))
+elif e=="upsto": print(d["hooks"]["UserPromptSubmit"][0]["hooks"][0]["timeout"])
+elif e=="ptu": print(d["hooks"]["PostToolUse"][0]["hooks"][0]["command"])' "$1" "$2"; }
+    _gc(){ "$_MPY" -c 'import sys,json;d=json.load(open(sys.argv[2]));print(json.dumps(sorted(h["command"] for e in d["hooks"]["SessionStart"] for h in e["hooks"]),separators=(",",":")))' "$1" "$2"; }
+  fi
+  if [ "$_MERGED" = 1 ]; then
+    if [ "$_TIER" = jq ]; then KSS="$(_gc '[.hooks.SessionStart[].hooks[].command]|sort' "$KSET")"; MSS="$(_gc '[.hooks.SessionStart[].hooks[].command]|sort' "$MTMP/out.json")"
+                          else KSS="$(_gc ss "$KSET")"; MSS="$(_gc ss "$MTMP/out.json")"; fi
+    [ "$KSS" = "$MSS" ] && pass "merge[$_TIER]: new event (SessionStart) gets wired on update, with every kit hook on it" || fail "merge[$_TIER]: SessionStart wiring differs from the kit's — expected $KSS, got $MSS"
+    if [ "$_TIER" = jq ]; then UPSL="$(_g '.hooks.UserPromptSubmit|length' "$MTMP/out.json")"; KTO="$(_g '.hooks.UserPromptSubmit[0].hooks[0].timeout' "$KSET")"; MTO="$(_g '.hooks.UserPromptSubmit[0].hooks[0].timeout' "$MTMP/out.json")"; PTU="$(_g '.hooks.PostToolUse[0].hooks[0].command' "$MTMP/out.json")"
+                          else UPSL="$(_g upslen "$MTMP/out.json")"; KTO="$(_g upsto "$KSET")"; MTO="$(_g upsto "$MTMP/out.json")"; PTU="$(_g ptu "$MTMP/out.json")"; fi
+    [ "$UPSL" = 1 ] && pass "merge[$_TIER]: no duplicate hook after update (stale kit entry dropped)" || fail "merge[$_TIER]: duplicate UserPromptSubmit hook survived ($UPSL)"
+    [ "$MTO" = "$KTO" ] && [ "$MTO" != 10 ] && pass "merge[$_TIER]: stale hook timeout refreshed to kit's ($KTO)" || fail "merge[$_TIER]: stale timeout not refreshed — expected $KTO, got $MTO"
+    [ "$PTU" = "bash ./custom.sh" ] && pass "merge[$_TIER]: project's OWN custom hook preserved" || fail "merge[$_TIER]: custom hook lost ($PTU)"
+  else
+    fail "merge[$_TIER]: the merge program extracted from adopt.sh did not run (extraction drift?)"
+  fi
+  rm -rf "$MTMP"
+fi
 
-echo "== 7i) skill trust gate: an unvetted component cannot arrive silently =="
+sec "== 7i) skill trust gate: an unvetted component cannot arrive silently =="
 [ -x "$HOOKS/skill-trust.sh" ] && pass "skill-trust.sh +x" || fail "skill-trust.sh missing/not executable"
 STD="$(mktemp -d)"
 mkdir -p "$STD/.claude/hooks" "$STD/.claude/eval" "$STD/.claude/skills/handoff" "$STD/.claude/skills/mine" "$STD/.claude/skills/evil"
@@ -3472,7 +4196,7 @@ else
   grep -q 'skill-trust' "$ROOT/settings.json" && pass "settings.json wires skill-trust.sh (no jq: name check)" || fail "skill-trust.sh is not wired"
 fi
 
-echo "== 7u) update notice: announces a release WITHOUT spending the session opening =="
+sec "== 7u) update notice: announces a release WITHOUT spending the session opening =="
 # This hook exists to tell a project that a newer kit is published. What makes it dangerous is not the message but
 # the lookup behind it: SessionStart blocks the session until the hook returns, so a foreground network call turns
 # a missing proxy or an offline laptop into a frozen session opening — the 2.0.1 failure with a different cause.
@@ -3606,7 +4330,7 @@ else
 fi
 
 if [ "$UNITS" = 1 ]; then
-echo "== 7h) blocklist rules carry their own cases, and every case drives the REAL hook =="
+sec "== 7h) blocklist rules carry their own cases, and every case drives the REAL hook =="
 # A pattern list is the kit's most edit-prone surface — every project adds its own vendor name — and a typo in a
 # regex produces a gate that matches nothing while still looking armed. So each pattern carries its case on the
 # line below it (`#test:` must be caught, `#test-clean:` must not) and the suite runs them THROUGH pre-commit
@@ -3690,7 +4414,7 @@ else
   skip tool "blocklist case run skipped (git is absent or unusable here)"
 fi
 
-echo "== 7h2) floor guard — the structural half, the exemptions, and the report =="
+sec "== 7h2) floor guard — the structural half, the exemptions, and the report =="
 # The line patterns are driven one by one in 7h. What a single line cannot show is here: a test file deleted, the
 # assertions taken out of one that stays, and the two exemptions a real stack needs — documentation, and generated
 # files, which EF Core fills with warning pragmas (395k model snapshots on GitHub, measured). Every exemption case
@@ -3761,7 +4485,7 @@ else
   rm -rf "$FGR"
 fi
 
-echo "== 7j) commit CONTENT gate reachable without core.hooksPath (plugin edition parity) =="
+sec "== 7j) commit CONTENT gate reachable without core.hooksPath (plugin edition parity) =="
 # The plugin edition ships Claude Code hooks, not git hooks, so it had the commit APPROVAL gate and none of the
 # commit CONTENT gates: a credential or an authorship trailer could land there while the other three channels
 # stopped it. guard-commit-scan.sh runs the REAL scanners from PreToolUse instead of re-implementing them.
@@ -3836,7 +4560,7 @@ else
   fail "guard-commit-scan.sh missing or not executable — the plugin edition has no commit content gate"
 fi
 
-echo "== 7k) gate observability (CSK_GATE_LOG) — the log never changes the verdict =="
+sec "== 7k) gate observability (CSK_GATE_LOG) — the log never changes the verdict =="
 # Why this exists: a gate that cannot be observed firing cannot be measured. "The model never reached for the
 # command" and "the gate stopped it" leave behind exactly the same artifacts, so evals/permission-pressure had
 # to report "guard-bash never fired" as an INFERENCE rather than a reading. This channel makes it a reading.
@@ -3891,7 +4615,7 @@ rm -rf "$GLD"
 
 fi
 if [ "$IS_KIT" = 1 ] && [ -f "$(cd "$ROOT/.." && pwd)/adopt.sh" ] && command -v git >/dev/null 2>&1; then
-echo "== 7x) update COST: a refresh must not be a fork storm =="
+sec "== 7x) update COST: a refresh must not be a fork storm =="
 # A user's Windows machine took 6m43s for one `update --here --yes` (npx itself: 6.7s — the kit's own work was the
 # rest). The cause is the shape this project keeps hitting: per-item shell loops. adopt.sh spawned `dirname` +
 # `mkdir` + `cp` per payload file, `basename`+`dirname` per installed skill, and — the same loop already fixed in
@@ -3939,7 +4663,7 @@ fi
 rm -rf "$UPC" "$UST"
 fi
 
-echo "== 7w) supply-chain scanner COST — and that cheap did not become blind =="
+sec "== 7w) supply-chain scanner COST — and that cheap did not become blind =="
 # The real reason a user's update looked hung. §7x traces adopt.sh, but the scanner runs as a child `bash`, so its
 # spawns never appeared in that trace: adopt.sh measured a tidy 78 while scan-skill.sh burned 244 greps behind it.
 # On the reporting machine, scanning 64 files took 8m07s — user 12.6s, sys 2m46s. Four greps per file became four
@@ -3993,7 +4717,7 @@ else
 fi
 rm -rf "$SCD"
 
-echo "== 7y) route-hint: names the owner next to the request =="
+sec "== 7y) route-hint: names the owner next to the request =="
 # The kit's own thesis is "rule -> gate, not reminder", and delegation was the one core rule left as a reminder.
 # Measured: on 12 focused domain tasks the main thread delegated 0 times; with this hook injecting a DIRECT
 # instruction it delegated 19 times out of 24 across two rounds. The wording is why — an earlier version that
@@ -4134,7 +4858,7 @@ else
   fail "route-hint.sh missing or not executable — plain prompts get no routing"
 fi
 
-echo "== 7z) No kit name shadows a Claude Code bundled skill/command =="
+sec "== 7z) No kit name shadows a Claude Code bundled skill/command =="
 # Skills and commands share one namespace: a SKILL.md and a commands/*.md both create `/name`, and per the
 # official docs a project skill "also overrides a bundled skill with the same name" — silently. The kit shipped a
 # `code-review` skill for months, which means every project that installed it lost the bundled `/code-review` and
@@ -4150,7 +4874,7 @@ done
 [ -z "$SHADOW" ] && pass "no kit skill/command shadows a bundled name" \
   || fail "these shadow a Claude Code bundled name (it becomes unreachable for the user):$SHADOW — add the -csk suffix"
 
-echo "== 8) Slash commands =="
+sec "== 8) Slash commands =="
 # Every command carries the -csk suffix, for the same reason the agents do: `/review` and `/simplify` collide with
 # Claude Code's built-ins, and a user facing two identically-named entries in the picker cannot tell which is the
 # kit's. Suffixing every one of them keeps one rule instead of a list of exceptions, and leaves room for built-ins
@@ -4187,7 +4911,7 @@ if [ "$IS_KIT" = 1 ]; then
   done
 fi
 
-echo "== 9) auto-mode classifier config — reported, never claimed as a gate =="
+sec "== 9) auto-mode classifier config — reported, never claimed as a gate =="
 # The rules live in USER settings because the classifier ignores autoMode in .claude/settings.json. They are
 # CONFIGURATION: measured 2026-08-24 (2.1.238, interactive, auto mode), a hard_deny naming `git reset --hard`
 # verbatim did not stop it, and a no-policy control behaved the same — so nothing here asserts enforcement.
@@ -4218,7 +4942,7 @@ PY2
                      || fail "autoMode array(s) without \"\$defaults\" — built-in rules would be replaced:$BADARR"
     python3 -c 'import json,sys;json.load(open(sys.argv[1]))' "$P" >/dev/null 2>&1 \
       && pass "policy.json is valid JSON" || fail "policy.json is not valid JSON"
-  else note "policy shape check skipped (no WORKING python3 — a Store stub counts as absent)"
+  else skip tool "the policy shape check (no WORKING python3 — a Store stub counts as absent)" 2
   fi
 
   # (b1) no claude CLI -> "cannot verify" (4), never a false green
@@ -4250,7 +4974,7 @@ PY2
 else
   fail "automode-policy skill missing from the payload"
 fi
-echo "== 10) gate report — the evidence half of the gate claim =="
+sec "== 10) gate report — the evidence half of the gate claim =="
 # The suite proves a gate CAN fire. This tool reports whether anything DID. Its two failure modes are both
 # silent, so both are cased here: reporting "0 firings" when logging was simply off (a measurement gap read as
 # evidence), and an inventory that drifts from the rules it claims to cover.
@@ -4336,7 +5060,7 @@ if [ -f "$GR" ]; then
 else
   fail "eval/gate-report.sh missing from the payload"
 fi
-echo "== 11) gate log defaults + hooks that cannot hang =="
+sec "== 11) gate log defaults + hooks that cannot hang =="
 # Two behaviours that only exist because they were measured, and that regress silently if nobody cases them.
 GTMP2="$(mktemp -d)"; mkdir -p "$GTMP2/.claude"
 gjson(){ printf '{"tool_name":"Bash","tool_input":{"command":"%s"},"permission_mode":"default"}' "$1"; }
@@ -4419,7 +5143,7 @@ rm -rf "$DCT"
 printf '{"transcript_path":"/nonexistent.jsonl"}' | bash "$ROOT/hooks/context-usage.sh" >/dev/null 2>&1 \
   && pass "context-usage.sh still handles real hook stdin" || fail "context-usage.sh broke on real hook stdin"
 rm -rf "$GTMP2"
-echo "== 12) PowerShell is a shell too =="
+sec "== 12) PowerShell is a shell too =="
 # Claude Code's hooks reference says it outright: match `Bash|PowerShell`, because on Windows wherever the
 # PowerShell tool is enabled it IS the shell, and without Git Bash the Bash tool is never registered. The tool
 # sends the same payload shape, so the git rules carried over untouched — every POSIX-shaped rule did not.
@@ -4475,7 +5199,7 @@ $PSOK
 PSEOF2
 [ -z "$PSFP" ] && pass "everyday PowerShell stays allowed ($PSM cases, no false positives)" \
                || fail "PowerShell false positive(s):$PSFP"
-echo "== 13) pre-commit cost — the gate people route around is the one that is slow =="
+sec "== 13) pre-commit cost — the gate people route around is the one that is slow =="
 # Measured on a 373-file merge: the old file loop spawned ~7 processes per file (three `printf | grep` pairs and
 # a `git cat-file`), 2,643 in total. At the 62-135 ms a Git Bash process was measured to cost on a Windows 11
 # desktop that is three to six minutes of SPAWN OVERHEAD ALONE, and the field report on that merge came in at
@@ -4500,7 +5224,7 @@ if [ "${SPAWN:-9999}" -le 120 ]; then pass "pre-commit stays under one process p
 else fail "pre-commit spawns $SPAWN processes for 120 files — the per-file loop is back (Windows pays 62-135 ms each)"; fi
 rm -rf "$PCT"
 
-echo "== 14) shipped hooks are LF in EVERY edition — a hook that arrives CRLF is a hook that does not run =="
+sec "== 14) shipped hooks are LF in EVERY edition — a hook that arrives CRLF is a hook that does not run =="
 # `*.sh text eol=lf` covers most of them, but pre-commit and commit-msg are extensionless, so each copy needs
 # its own .gitattributes line. claude-starter's two had one; their plugin twins did not, and it went unnoticed
 # because nothing compared the editions. Measured on a Windows checkout: both claude-starter hooks came out LF
@@ -4508,8 +5232,16 @@ echo "== 14) shipped hooks are LF in EVERY edition — a hook that arrives CRLF 
 # is exactly why it survived — WSL does not, and answers `$'\r': command not found`. A gate that dies on its
 # shebang is not a gate that failed, it is a gate nobody notices is absent.
 # Asked of git rather than of the checkout, so the answer does not depend on the platform running the suite.
+# SCOPED TO THE KIT'S OWN REPO, and the earlier condition — a git toplevel plus a .gitattributes — was not.
+# It read as "am I in the kit's checkout" and actually meant "is there any repo here with pin rules", so it
+# fired in any project that merely CONTAINS a copy of the payload: `git ls-files` finds
+# claude-starter/hooks/pre-commit there and the pins it looks for are the kit repo's, not that project's.
+# It went unnoticed because nothing had ever written a .gitattributes into an installed project — the
+# installer doing that (so a shared .claude/ survives a Windows checkout) is what made this reachable, and it
+# came back as a red assertion about the kit's own files inside somebody else's adopted repo. The markers
+# below are the same ones start.sh uses to refuse installing from the kit's checkout.
 SGR="$(git -C "$ROOT" rev-parse --show-toplevel 2>/dev/null || true)"
-if [ -n "$SGR" ] && [ -f "$SGR/.gitattributes" ]; then
+if [ -n "$SGR" ] && [ -f "$SGR/.gitattributes" ] && [ -d "$SGR/packaging" ] && [ -f "$SGR/VERSION" ] && [ -d "$SGR/claude-starter" ]; then
   NOEOL=""
   for f in $(git -C "$SGR" ls-files 2>/dev/null | grep -E '(^|/)hooks/[^/.]+$'); do
     git -C "$SGR" check-attr eol -- "$f" 2>/dev/null | grep -q ': eol: lf$' || NOEOL="$NOEOL $f"
@@ -4628,9 +5360,18 @@ if [ -n "$SGR" ] && [ -f "$SGR/.gitattributes" ]; then
       mkdir -p "$SGD/$d/packaging" "$SGD/$d/claude-starter"
       cp -R "$SGR/claude-starter/." "$SGD/$d/claude-starter/" 2>/dev/null
     done
-    ( cd "$SGD/src" && bash start.sh --generic </dev/null >"$SGD/o1" 2>&1 ); SG1=$?
-    ( cd "$SGD/src" && CSK_ALLOW_SOURCE_INSTALL=1 bash start.sh --generic </dev/null >"$SGD/o3" 2>&1 ); SG3=$?
-    ( cd "$SGD/plain" && bash start.sh --generic </dev/null >"$SGD/o2" 2>&1 ); SG2=$?
+    # CSK_LANG=en IS PART OF THE ASSERTION, not tidiness. These three cases read the installer's PROSE, and the
+    # installer is bilingual: on a machine whose locale is Turkish it says "Bu ayarlarla kurulayım mı?" and the
+    # grep below finds nothing. MEASURED on a `LANG=tr_TR.UTF-8` machine — both cases went red while the
+    # installer was behaving correctly (rc=0, install reached the prompt), and the failure text blamed the
+    # guard, which had nothing wrong with it. A suite that asserts on text has to pin the language; the product
+    # keeping locale auto-detection is the feature, and taking it away to keep the suite quiet would be fixing
+    # the wrong side. Note the second grep ("own source repository") would hold without this, because that
+    # message is deliberately never translated — the pin is on all three so the NEXT assertion of this class is
+    # covered too.
+    ( cd "$SGD/src" && CSK_LANG=en bash start.sh --generic </dev/null >"$SGD/o1" 2>&1 ); SG1=$?
+    ( cd "$SGD/src" && CSK_LANG=en CSK_ALLOW_SOURCE_INSTALL=1 bash start.sh --generic </dev/null >"$SGD/o3" 2>&1 ); SG3=$?
+    ( cd "$SGD/plain" && CSK_LANG=en bash start.sh --generic </dev/null >"$SGD/o2" 2>&1 ); SG2=$?
 
     { [ "$SG1" = 1 ] && grep -q "own source repository" "$SGD/o1"; } \
       && pass "start.sh refuses to install from the kit's own checkout (rc=1, named)" \
@@ -4651,7 +5392,171 @@ if [ -n "$SGR" ] && [ -f "$SGR/.gitattributes" ]; then
 else note "line-ending check skipped (not a git checkout of the kit)"
 fi
 
+sec "== 15) evals: the parallel-audit metric, because a rule nobody can measure is not a rule =="
+# The paid A/B harness under evals/ is deliberately outside every gate — it spends real tokens. Its TRANSCRIPT
+# PARSER is not: `eval_trace_metrics` is a pure function over a JSONL file, so its correctness costs nothing
+# and belongs here. Workflow step 3 says the applicable audits are issued as several `Agent` calls in ONE
+# message, because that is what makes them concurrent. Until now no column could see that: `agent_top` counts
+# CALLS and `turns_top` counts MESSAGES, so three calls in three messages and three calls in one message are
+# identical in both — and only the second obeys the rule. The experiment designed for it could not be run for
+# exactly that reason, which is the honest definition of a rule that is model discipline rather than a gate.
+# The metric is calibrated rather than trusted, and the pair below is the whole point: SAME call count,
+# different verdict. A metric that cannot separate those two would let the experiment report either answer.
+_EVR="$(cd "$(dirname "$0")/../.." && pwd)/evals/run.sh"
+# python3 IS PROBED BY RUNNING IT, not by `command -v`. `eval_trace_metrics` is a python heredoc, so the
+# generic JSONQ oracle above does not cover it — that one is happy with jq. And on a stock Windows desktop
+# `command -v python3` finds the Microsoft Store redirector stub, which resolves, prints nothing, and exits
+# 49; taking that as "python3 exists" is the exact mistake that kept a fail-open alive in this kit for months.
+# Without this probe the rows below would FAIL on such a machine instead of skipping, which is a test defect
+# reported as a product one. A tool-class skip still turns CI red, and that is correct: every runner has a
+# working python3, so its absence there means a broken runner rather than an honest boundary.
+_PY3OK=0
+printf '' | python3 -c 'import sys,json' >/dev/null 2>&1 && _PY3OK=1
+if [ -f "$_EVR" ] && [ "$_PY3OK" = 0 ]; then
+  skip tool "evals metric not calibrated (no working python3 — eval_trace_metrics is a python heredoc)" 6
+elif [ -f "$_EVR" ]; then
+  _EVD="$(mktemp -d)"
+  # NOT IN A SUBSHELL, and that was a real defect in the first draft of this block: the five rows below ran
+  # inside `( … )`, so `pass`/`fail` incremented counters in a child and the parent never saw them. The rows
+  # PRINTED green and the suite's total went up by one instead of six — which means a `fail` here would have
+  # been invisible and this gate would have been silently always-green. Exactly the class of defect the rest of
+  # this session was spent finding, in the block written to close another one. The function is eval'd in THIS
+  # shell instead; it only defines `eval_trace_metrics`.
+  eval "$(sed -n '/^eval_trace_metrics()/,/^}/p' "$_EVR")"
+  _mk(){ printf '%s\n' "$2" > "$_EVD/$1.jsonl"; eval_trace_metrics "$_EVD/$1.jsonl" "$_EVD/$1.out"; }
+  _agent(){ printf '{"type":"tool_use","id":"%s","name":"Agent","input":{}}' "$1"; }
+  _msg(){ # $1 = message id ("-" for none), $2 = nested?, $3.. = tool ids
+    local id="$1" nest="$2"; shift 2; local parts="" t
+    for t in "$@"; do [ -z "$parts" ] || parts="$parts,"; parts="$parts$(_agent "$t")"; done
+    printf '{"type":"assistant"%s,"message":{%s"content":[%s]}}' \
+      "$( [ "$nest" = 1 ] && printf ',"parent_tool_use_id":"p1"' )" \
+      "$( [ "$id" = - ] || printf '"id":"%s",' "$id" )" "$parts"
+  }
+  _res='{"type":"result","subtype":"success","usage":{},"num_turns":1}'
+  _f(){ printf '%s' "$1" | awk -F'\t' -v n="$2" '{print $n}'; }   # 1=agent_top 19=parallel_msgs 20=max
+
+  # THE DISCRIMINATING PAIR. Three Agent calls either way.
+  _p="$(_mk three_in_one "$(_msg m1 0 a b c)
+$_res")"
+  { [ "$(_f "$_p" 1)" = 3 ] && [ "$(_f "$_p" 19)" = 1 ] && [ "$(_f "$_p" 20)" = 3 ]; } \
+    && pass "evals metric: 3 Agent calls in ONE message -> agent_top 3, parallel_msgs 1, max 3" \
+    || fail "evals metric: 3-in-one read [$_p] — the concurrent case is not being seen"
+  _p="$(_mk three_in_three "$(_msg m1 0 a)
+$(_msg m2 0 b)
+$(_msg m3 0 c)
+$_res")"
+  { [ "$(_f "$_p" 1)" = 3 ] && [ "$(_f "$_p" 19)" = 0 ] && [ "$(_f "$_p" 20)" = 1 ]; } \
+    && pass "evals metric: the SAME 3 calls in three messages -> parallel_msgs 0, max 1 (the pair separates)" \
+    || fail "evals metric: 3-in-three read [$_p] — a queue is being counted as concurrency"
+  # A SUBAGENT fanning out is not the rule's subject: the rule is about the main thread issuing the audits.
+  _p="$(_mk nested_two "$(_msg s1 1 a b)
+$_res")"
+  { [ "$(_f "$_p" 1)" = 0 ] && [ "$(_f "$_p" 19)" = 0 ]; } \
+    && pass "evals metric: a nested message with 2 Agent calls counts as neither" \
+    || fail "evals metric: nested fan-out leaked into the main-thread count [$_p]"
+  # MESSAGES WITH NO ID must stay separate. Collapsing them is a live flaw in the older `turns_top` column,
+  # and inheriting it here would have turned two parallel messages into one.
+  _p="$(_mk anon_two "$(_msg - 0 a b)
+$(_msg - 0 c d)
+$_res")"
+  [ "$(_f "$_p" 19)" = 2 ] \
+    && pass "evals metric: two id-less messages stay two, not one" \
+    || fail "evals metric: id-less messages collapsed [$_p] — parallel_msgs would undercount"
+  _p="$(_mk none "$_res")"
+  { [ "$(_f "$_p" 19)" = 0 ] && [ "$(_f "$_p" 20)" = 0 ]; } \
+    && pass "evals metric: a stream with no Agent call reports 0, not empty" \
+    || fail "evals metric: the empty case read [$_p]"
+  # THE MUST-FAIL TWIN. Lower the threshold from 2 to 1 and the queue case must stop reading 0 — otherwise the
+  # pair above proves only that the numbers are stable, not that they mean what the rows claim.
+  sed 's/if v >= 2/if v >= 1/' "$_EVR" > "$_EVD/mutant.sh"
+  ( eval "$(sed -n '/^eval_trace_metrics()/,/^}/p' "$_EVD/mutant.sh")"
+    printf '%s\n' '{"type":"assistant","message":{"id":"m1","content":[{"type":"tool_use","id":"a","name":"Agent","input":{}}]}}' \
+                  '{"type":"assistant","message":{"id":"m2","content":[{"type":"tool_use","id":"b","name":"Agent","input":{}}]}}' \
+                  '{"type":"result","subtype":"success","usage":{},"num_turns":1}' > "$_EVD/mut.jsonl"
+    _o="$(eval_trace_metrics "$_EVD/mut.jsonl" "$_EVD/mut.out" | awk -F'\t' '{print $19}')"
+    [ "$_o" = 2 ] && exit 0 || exit 1 ) \
+    && pass "evals metric: a broken threshold IS visible (mutant counts a queue as 2 parallel messages)" \
+    || fail "evals metric: the mutant reported the same answer — these rows cannot see a broken counter"
+  rm -rf "$_EVD"
+else
+  skip scope "evals/run.sh is not present (installed project, not a source checkout) — metric not calibrated"
+fi
+
+# --- DID EVERY ASSERTION REACH THE COUNTERS? ------------------------------------------------------------
+# The parent's logged values are exactly total, total-1, … 1, so walk the log FROM THE END expecting that
+# chain. A line on the chain ran in the parent; every line that is not was executed in a child.
+# The earlier rule — "a repeat means the line before it was lost" — is WRONG for the shape that actually
+# happened here. Several assertions inside ONE subshell make the counter ADVANCE inside the child:
+#     parent at P · child logs P+1, P+2, P+3 · parent resumes and logs P+1
+# There is a single drop, at the resume, so that rule named ONE of five lost rows and missed the rest. It
+# survived its own calibration because the synthetic fixture modelled three SEPARATE subshells, which produce
+# repeats rather than a climb: the fixture and the rule came from the same wrong mental model and agreed with
+# each other. Measured on the real shape, not reasoned. The backward walk needs no special case — runs,
+# separate subshells and a loss at the very end all fall out of it.
+_analyse(){ # $1 = log, $2 = visible total
+  awk -F'\t' -v final="$2" '
+    { n[NR]=$1; lab[NR]=$2 }
+    END { e=final+0; h=0
+      for (i=NR; i>=1; i--) { if (n[i]+0 == e) e--; else out[++h]=lab[i] }
+      for (j=h; j>=1; j--) printf "     >> %s\n", out[j]
+      printf "HITS=%d\n", h }' "$1"; }
+# CALIBRATED ON A SYNTHETIC LOG BEFORE IT IS TRUSTED. A detector that quietly stopped working reports zero
+# findings, which reads as a clean bill of health and is exactly the failure it exists to catch. The fixture
+# carries BOTH shapes — a run of three inside one child, and a loss at the very end — plus four parent lines
+# it must NOT accuse.
+_ALZ=0; _cal="$(mktemp)"
+printf '1\tp1\n2\tp2\n3\tRUN-1\n4\tRUN-2\n5\tRUN-3\n3\tp3\n4\tp4\n5\tSON\n' > "$_cal"
+_co="$(_analyse "$_cal" 4)"
+if [ "$(printf '%s' "$_co" | sed -n 's/^HITS=//p')" = 4 ] \
+   && printf '%s' "$_co" | grep -q 'RUN-1' && printf '%s' "$_co" | grep -q 'RUN-2' \
+   && printf '%s' "$_co" | grep -q 'RUN-3' && printf '%s' "$_co" | grep -q 'SON' \
+   && ! printf '%s' "$_co" | grep -qE '>> p[1-4]$'; then
+  _ALZ=1
+else
+  fail "assertion-log analyser failed its own calibration — not looking for losses (out: $(printf '%s' "$_co" | tr '\n' ' '))"
+fi
+rm -f "$_cal"
+if [ "$_ALZ" = 1 ]; then
+  _ao="$(_analyse "$ASSERTLOG" "$((PASSN+FAIL))")"
+  _ah="$(printf '%s' "$_ao" | sed -n 's/^HITS=//p')"
+  if [ "${_ah:-0}" = 0 ]; then pass "every assertion reached the counters (none ran in a child shell)"
+  else
+    echo "  ❌ ${_ah} assertion(s) ran in a subshell — they printed a verdict the totals never saw:"
+    printf '%s\n' "$_ao" | grep '>>'
+    FAIL=$((FAIL+1))
+  fi
+fi
+rm -f "$ASSERTLOG"
+
 echo "---"
+# The ledger. Compact on purpose: one token per section, so two platforms diff in a glance and a peer does not
+# have to be asked for an artefact. A section that prints a heading and grades nothing shows up as `=0`, which
+# is the shape that hid §7g's four assertions for months.
+if [ -s "$SECLOG" ]; then
+  # TWO NUMBERS FOR ONE QUANTITY, on purpose. The ledger is derived from a different mechanism than PASSN/SKIPN
+  # (a file the assertions append to, versus variables they increment), so the two can disagree — and on the
+  # ledger's very first run they did, by four. A ledger that can drift from the verdict it sits under is worse
+  # than none, so the disagreement is a failure rather than a footnote.
+  _lg="$(awk -F'\t' '{ if ($2 ~ /^S:/) s++; else g++ } END { printf "%d %d", g+0, s+0 }' "$SECLOG")"
+  if [ "$_lg" != "$((PASSN+FAIL)) $SKIPN" ]; then
+    echo "  ❌ the per-section ledger disagrees with the counters: ledger='$_lg' counters='$((PASSN+FAIL)) $SKIPN'"
+    echo "     (a skip or an assertion reached one mechanism and not the other — the ledger is not attributable)"
+    FAIL=$((FAIL+1))
+  fi
+  echo "PER-SECTION (passes+fails graded, skips in parentheses):"
+  awk -F'\t' '
+    { key=$1; sub(/^== /,"",key); sub(/ ==.*$/,"",key); sub(/\).*$/,")",key)
+      if (!(key in seen)) { seen[key]=1; order[++k]=key }
+      if ($2 ~ /^S:/) sk[key]++; else g[key]++ }
+    END { line=""
+          for (i=1;i<=k;i++) { key=order[i]
+            t = key "=" (g[key]+0) (sk[key] ? "(" sk[key] ")" : "")
+            if (length(line) + length(t) + 1 > 110) { print "  " line; line=t } else line = (line=="" ? t : line " " t) }
+          if (line != "") print "  " line }
+  ' "$SECLOG"
+  echo "---"
+fi
+rm -f "$SECLOG"
 if [ "$SKIPN" -gt 0 ]; then
   echo "SKIPPED (nothing was checked here):$SKIP_LIST"
   echo "---"

@@ -165,15 +165,15 @@ use an abstract phrasing like "internal spec". A fresh install gitignores this f
 a team that adopted the kit may have chosen to share them instead, and the trace scan skips `.claude/` for that reason.
 
 ### 4.4 Commit/push only with explicit approval
-No `git commit` / `git push` unless the user says "commit" / "push"; `git add` and `checkout -b` need approval too.
+No `git commit` / `git push` unless the user says "commit" / "push"; `git add` and creating a branch need approval too.
 "Done / we can proceed" is **not** approval. **Present the message FIRST** — even in auto/fast mode. `guard-bash.sh`
-intercepts commit/push in every mode, but only `default`/`acceptEdits` put the prompt in front of a person; in
-`auto`, `dontAsk`, `plan`, `bypassPermissions` software answers it, so there it FAILS CLOSED. Get a real yes,
-then switch mode or export `CLAUDE_GIT_OK=1` (headless/CI — pre-authorises the tool, **never replaces
-approval**). Never hand the user a command to paste.
+asks in `default`/`acceptEdits`; in `auto`, `dontAsk`, `plan`, `bypassPermissions` nobody sees a prompt, so it
+FAILS CLOSED — get a real yes, then switch mode. Never hand the user a command to paste. **Headless/CI:** if
+`printenv CLAUDE_GIT_OK` is set AND this request itself says "commit"/"push", that IS the approval — commit
+(a review blocker still stops you) and show the message in your report.
 
 ### 4.5 Destructive operations require approval
-`git reset --hard`, `git checkout -- .`, `push --force`, `clean -f`, `--no-verify`, `--no-gpg-sign`, `git add -f`, deleting a lockfile,
+`git reset --hard`, `git checkout -- .`, `push --force`, forced `git branch` (`-D -f -M -C`), `clean -f`, `--no-verify`, `--no-gpg-sign`, `git add -f`, deleting a lockfile,
 downgrading a package, a pipe-to-shell (`curl|bash`), a world-writable `chmod`, `dd of=`, or tampering with a hook /
 `core.hooksPath` (shell or file tools): only on an explicit request. `commit --amend` only on a commit that has not
 been pushed, and only when explicitly asked. A failing hook is never bypassed — resolve its cause, and never write down a way round one. All of these stay
@@ -206,7 +206,7 @@ Client: <e.g. web React/Next · mobile React Native/Expo · desktop — dependin
 ## Project skills
 Domain-specific "how"s live under `.claude/skills/` (e.g. payment-contract, notification-rules).
 **Backend pattern is one of them.** `backend-expert-csk` is pattern-neutral: it applies the project's
-backend-pattern skill — `devarch-module` (MediatR CQRS / IResult / AOP) by default. On a different pattern
+backend-pattern skill — `cqrs-aop-module` (MediatR CQRS / IResult / AOP) by default. On a different pattern
 (Clean Architecture, Vertical Slice, Minimal API, plain layered), drop your own pattern skill here (see
 `AGENT_TEMPLATE.md`) and the agent follows it instead of DevArch. Nothing forces DevArch.
 For the skill format: ./.claude/AGENT_TEMPLATE.md.

@@ -5,6 +5,60 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — forced `git branch` is blocked like `reset --hard`
+
+- **The hook had no opinion on any `git branch` command**, including the four that lose work: `-D` deletes an
+  unmerged branch together with its reflog, `-f` moves a branch and orphans the commits it pointed past, and
+  `-M` / `-C` overwrite an existing branch. They are now a §4.5 block in every mode, and `CLAUDE_GIT_OK` does not
+  open it — the same class as `git reset --hard` and `git push --force`.
+- **Every spelling counts.** `-d --force` is `-D`, `--move --force` is `-M`, and a flag cluster such as `-qD`
+  deletes too; all of them are caught, with or without a git global option in front.
+- **The safe twins still run:** `-d` (git itself refuses to delete unmerged work), `-m`, `-c`, listing, and plain
+  creation (`git branch feature`), which stays outside the approval set by choice. The rule is case-sensitive
+  because those twins differ from the forced forms by case only.
+
+### Fixed — every way of creating a branch asks, not only `git checkout -b`
+
+- **The approval gate knew one spelling.** In the interactive modes only a bare `git checkout -b x` prompted.
+  `checkout -B`, `checkout --orphan`, `switch -c` / `-C` / `--create` / `--force-create` / `--orphan`, and any
+  of them behind a git global option (`git -C repo checkout -b x`) ran without a prompt; the `switch` forms
+  were also missing from the `CLAUDE_GIT_OK` set, so a pre-authorised session got no allow for them.
+- **All of them now ask, and the key covers all of them.** Moving between existing branches (`git checkout
+  main`, `git switch main`, `git switch --detach`) is still not gated. `git branch <name>` — creating a branch
+  without switching to it — was never in the approval set and is not added here.
+- The suite now checks both directions: every creating spelling must ask, and no switching spelling may.
+
+### Fixed — `CLAUDE_GIT_OK` pre-authorises a headless commit again
+
+- **The pre-authorisation was dead and nothing said so.** `settings.json` shipped `ask` rules for `git add`,
+  `git commit`, `git push` and `git checkout -b`, and Claude Code evaluates a matching `ask` rule regardless of
+  what a PreToolUse hook returns — so the hook's `allow` under `CLAUDE_GIT_OK=1` could never clear them, and a
+  headless session has nobody to answer the prompt. Measured in the paid A/B: the gate log recorded
+  `ALLOW §4.4 CLAUDE_GIT_OK`, yet the kit arm staged nothing and committed nothing.
+- **The prompt now comes from `guard-bash.sh` alone**, and the four rules are gone. In the interactive modes the
+  hook asks for all four verbs, as the rules did; in auto, dontAsk, plan and bypass, `git commit` and `git push`
+  still fail closed, while a plain `git add` and `git checkout -b` run — staging and branching publish nothing.
+  `git add -f` is still refused. The deploy `ask` rules (`ssh`, `scp`, `rsync`, `docker`) are unchanged.
+- **Updating removes the retired rules from existing installs.** The settings merge only ever added entries, so
+  without this the fix would have reached new installs and no one else. It removes exactly those four strings and
+  keeps every other rule, including ones you wrote yourself. If you want them back, re-add them — knowing they
+  switch the pre-authorisation off.
+
+### Changed — the .NET backend-pattern skill is now `cqrs-aop-module` (was `devarch-module`)
+
+- **The old name carried a third-party template's name into every .NET project's skill list and `/` picker.**
+  It is renamed to a neutral name that says what it is: the MediatR CQRS / IResult / AOP pattern. Nothing about
+  its content changed.
+- **Upgrading is automatic and nothing is deleted.** On an update the installer MOVES the old skill directory to
+  the new name, so a customised copy keeps its content. If both names are already present it moves nothing and
+  says so, and you remove the old one when ready.
+- **The upgrade path is what made this more than a rename.** Stack detection for installs that predate
+  `kit.conf` reads the stack from this skill's directory name, so a rename that only knew the new name would
+  have classified every such .NET install as generic on its next update — and the generic path removes the
+  pattern skill. Measured against that exact mistake: with the naive rename, an old .NET install came out
+  `stack=generic` with the pattern skill gone; with this change it comes out `stack=dotnet`, migrated, with no
+  leftover copy. Detection and generic pruning now recognise both names.
+
 ### Added — §4.6: a commit is refused unless something reviewed THAT diff
 
 - **"review-agent-csk clean" was a Definition of Done item with nothing behind it.** The chain that reaches it —

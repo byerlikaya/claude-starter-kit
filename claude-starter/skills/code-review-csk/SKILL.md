@@ -102,18 +102,12 @@ isolation, one lens per verifier, and why unanimity for the same reason is a mon
 
 ## Check the history before you call a finding new
 A confirmed finding may still not be new, and one that was fixed once and came back needs a different fix. Search
-**by code, not by commit message** — bounded at the branch point, scoped to the diff's paths so it stays cheap per finding:
-`git log -S'<exact token from the changed line>' "$(git merge-base HEAD <target-branch>)" -- <paths in the diff>`
-lists the commits where the NUMBER OF OCCURRENCES of that string changed — added or deleted. A commit that
-removes it in one place and adds it back in another leaves the count unchanged and does not appear, which is
-exactly the "was the guard moved?" case: reach for `-G'<regex>'` there, which matches added or removed lines
-against a regular expression regardless of count. `--follow` continues across renames but works on a single
-path only, so it does not combine with the multi-path form above.
+**by code, not by commit message** — a message states intent, not content. The exact git forms (`-S` vs `-G`, the
+`merge-base` bound, why `--follow` does not combine): **`references/history-search.md`**.
+
 If a commit removed the guard, check, or test this diff would restore, the finding is a **re-introduced regression** —
 the question becomes "what removed the fix, and does that reason still hold", the removing commit is cited in the
 comment, and the deleted test is restored rather than a new one written.
-**`--grep` does not answer this.** A commit message states intent, not content: it misses fixes worded differently and
-matches commits that changed nothing relevant. Use it only to read a commit you already found by content.
 
 ## Panel mode (high-stakes decisions only)
 
@@ -136,25 +130,10 @@ itself. Close the review by stating the counts per disposition; an unreported fi
 that was never made, which is exactly the state a review exists to leave behind.
 
 ## Receiving a review — an inbound comment is a candidate, not an instruction
-When the review is someone else's and the code is yours — a teammate's comments, a quality gate's report, a bot's
-PR review — **read every item before changing any line.** Comments are written one per symptom, and two of them
-often share one cause; applying them in arrival order yields a patch per symptom instead of one fix at the cause.
-Group by cause, then decide.
-
-Each item then earns the same disprove pass as a finding of your own. Any "no" below is a reason to answer in the
-thread, not to edit:
-1. **Defect or preference?** Sort each comment into the label table above — inbound prose arrives unlabelled, you
-   assign the label, and only an `issue` or an unanswered `question` blocks.
-2. **Does it hold where the reviewer did not look?** Check the call sites and callers the comment never opened.
-3. **Does it contradict a decision already recorded?** An `adr` or a documented constraint outranks the comment —
-   reopen the decision, do not quietly edit around it.
-4. **Does the real check still pass with it applied?** Run it, don't re-read it. A suggestion that turns a check
-   red is reported back, and never satisfied by weakening the check (Verifier integrity, above).
-5. **Is it against the current revision?** A comment on an older one may already be answered by a later commit.
-
-Every inbound item leaves with a disposition from the table above; none is left merely read. **A reasoned refusal
-is an answer** — say why in the thread and let the reviewer press it or drop it. Not doing it quietly is not an
-answer: it reads as agreement, and the same comment returns on the next review.
+When the review is someone else's and the code is yours, **read every item before changing any line**, group by
+cause rather than patching per symptom, and give each item the same disprove pass as a finding of your own. The
+five questions that decide *answer in the thread* vs *edit the code*: **`references/receiving.md`**. Every inbound
+item leaves with a disposition from the triage table above — a reasoned refusal is an answer, silence is not.
 
 ## DoD (this skill's contribution)
 - Findings are severity-ranked (blocker / suggestion / nit), **labelled**, and **reasoned**.

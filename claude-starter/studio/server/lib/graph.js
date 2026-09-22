@@ -210,7 +210,14 @@ async function readAgentDir(subagentsDir) {
  * rather than running — an unfinished agent whose file stopped growing is a
  * different fact from one that is working.
  */
-export async function buildGraph(session, { staleMs = 120000 } = {}) {
+/** How long an unfinished agent may stay quiet before it is called stale
+ *  rather than running. Exported because index.js's stream signature has to
+ *  know the same number: a status that changes on the clock alone has to be
+ *  re-asked for while it can still change, and two copies of this window
+ *  would drift into a panel that never updates or one that never settles. */
+export const STALE_MS = 120000;
+
+export async function buildGraph(session, { staleMs = STALE_MS } = {}) {
   const { records, malformed } = await readAll(session.file);
   const main = scanMain(records);
   const agents = await readAgentDir(session.subagentsDir);

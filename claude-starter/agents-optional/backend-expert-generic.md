@@ -5,7 +5,7 @@ description: |
   from the repo rather than assumed. **Use proactively — owns server behaviour:** endpoints, services/handlers,
   validation, business rules, error contracts, integrations. Any request about it is yours whatever its size
   or wording.
-tools: Read, Grep, Glob, Edit, Write, Bash
+tools: Read, Grep, Glob, Edit, Write, Bash, PowerShell
 ---
 
 # Backend Expert (stack-agnostic)

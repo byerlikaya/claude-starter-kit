@@ -9,7 +9,7 @@ WORK="${RUNNER_TEMP:-$(mktemp -d)}"
 # ---- start.sh: 2 combinations (backend pattern) ----
 # 2.0 removed the profile split, and with it four of the six combinations: they differed only in which
 # components were deleted after an identical install. The backend pattern is the one axis that still changes
-# what lands on disk (devarch-module + the backend agent variant), so it is the one axis still rehearsed.
+# what lands on disk (cqrs-aop-module + the backend agent variant), so it is the one axis still rehearsed.
 # The legacy-flag case is here rather than in the smoke-test because only an end-to-end run proves an old
 # command line still installs — the thing that would break a CI step someone wrote a year ago.
 combo() {
@@ -47,7 +47,7 @@ combo() {
 # The expected counts come from the PAYLOAD, not from a number typed here. Written by hand they drift with the
 # first component added — the network diagram's subtitle did exactly that, announcing 11 agents and 36 skills
 # over a picture it had drawn with 12 and 38 — and the failure reads like a broken install rather than a stale
-# constant. `--generic` prunes exactly one skill (devarch-module), so that arm is the payload count minus one;
+# constant. `--generic` prunes exactly one skill (cqrs-aop-module), so that arm is the payload count minus one;
 # the assertion that matters is still "the set does not vary silently", and it survives intact.
 KIT_AG=$(ls "$ROOT"/claude-starter/agents/*.md 2>/dev/null | wc -l | tr -d ' ')
 KIT_SK=$(ls -d "$ROOT"/claude-starter/skills/*/ 2>/dev/null | wc -l | tr -d ' ')
@@ -107,7 +107,7 @@ evidence() {    # $1 = label, $2 = project dir
   echo "---- evidence · $1 (adopt exit=$ADOPT_RC) ----"
   echo "  kit.conf:";        sed 's/^/    /' "$2/.claude/kit.conf" 2>/dev/null || echo "    (absent)"
   echo "  components:       agents=$(ls "$2"/.claude/agents/*.md 2>/dev/null | wc -l | tr -d ' ') skills=$(ls -d "$2"/.claude/skills/*/ 2>/dev/null | wc -l | tr -d ' ')"
-  echo "  devarch-module:   $([ -d "$2/.claude/skills/devarch-module" ] && echo present || echo absent)"
+  echo "  cqrs-aop-module:   $([ -d "$2/.claude/skills/cqrs-aop-module" ] && echo present || echo absent)"
   # The two signals the stack detector reads, evaluated here the same way adopt.sh evaluates them.
   echo "  .sln/.csproj:     $( (cd "$2" && find . -maxdepth 3 \( -name '*.sln' -o -name '*.csproj' \) 2>/dev/null | head -3 | tr '\n' ' ') )"
   echo "  Business/Handlers: $( (cd "$2" && find . -maxdepth 4 -type d -path '*/Business/Handlers' 2>/dev/null | head -1) )"
@@ -129,13 +129,13 @@ printf -- '---\nname: backend-expert\ndescription: legacy\n---\n' > "$P/.claude/
 ( cd "$P" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
 run_adopt "$P" --yes
 grep -q '^stack=dotnet' "$P/.claude/kit.conf"           || die ".sln under ./backend not detected as dotnet" adopt-dotnet "$P"
-[ -d "$P/.claude/skills/devarch-module" ]               || die "devarch-module missing on a dotnet adopt" adopt-dotnet "$P"
+[ -d "$P/.claude/skills/cqrs-aop-module" ]               || die "cqrs-aop-module missing on a dotnet adopt" adopt-dotnet "$P"
 [ ! -f "$P/.claude/agents/backend-expert.md" ]          || die "overlapping project agent was not taken over" adopt-dotnet "$P"
 [ -f "$P/.claude/superseded/agents/backend-expert.md" ] || die "taken-over agent's original was not backed up" adopt-dotnet "$P"
 [ -f "$P/.claude/skills/backend-expert-local/SKILL.md" ]|| die "taken-over agent's domain was not imported to a project skill" adopt-dotnet "$P"
 # The manifest lists what the KIT ships, so the skill this adopt imported from the project must NOT appear in it
 # — that is exactly the distinction the readiness check and the trust gate are built on.
-grep -q '^skills/devarch-module$' "$P/.claude/kit-manifest.txt"     || { echo "FAIL: manifest missing a kit skill"; exit 1; }
+grep -q '^skills/cqrs-aop-module$' "$P/.claude/kit-manifest.txt"     || { echo "FAIL: manifest missing a kit skill"; exit 1; }
 grep -q '^skills/backend-expert-local$' "$P/.claude/kit-manifest.txt" && { echo "FAIL: manifest claims a project-imported skill as kit-owned"; exit 1; }
 # Captured, not piped: `grep -q` closes the pipe on its first match, doctor takes a SIGPIPE, and `pipefail`
 # would then report a passing assertion as a failure.
@@ -168,22 +168,22 @@ case "$DOUT" in *"enforces the §4.6 review gate"*) ;;
 # doctor's elapsed time is printed on SUCCESS too, not only in the failure message. The bound above is loose by
 # design, so a silent pass hides the trend that matters: 2s creeping to 8s is the regression arriving, and it
 # reads as "fine" until the day it trips. The number in the log is what makes that visible in hindsight.
-echo "[adopt-dotnet] stack=dotnet · devarch-module kept · overlap imported to skill + backed up · smoke OK · doctor ${DEL}s"
+echo "[adopt-dotnet] stack=dotnet · cqrs-aop-module kept · overlap imported to skill + backed up · smoke OK · doctor ${DEL}s"
 
-# A generic (Node) project: no .sln -> generic, devarch-module pruned.
+# A generic (Node) project: no .sln -> generic, cqrs-aop-module pruned.
 G="$WORK/adopt-generic"; rm -rf "$G"; mkdir -p "$G"
 cp adopt.sh "$G/"; cp -R claude-starter "$G/"; cp VERSION "$G/"; printf '{"name":"x"}' > "$G/package.json"
 ( cd "$G" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
 run_adopt "$G" --yes
 grep -q '^stack=generic' "$G/.claude/kit.conf"          || die "Node project not recorded as generic" adopt-generic "$G"
-[ ! -d "$G/.claude/skills/devarch-module" ]             || die "devarch-module not pruned on a generic adopt" adopt-generic "$G"
-echo "[adopt-generic] stack=generic · devarch-module pruned"
+[ ! -d "$G/.claude/skills/cqrs-aop-module" ]             || die "cqrs-aop-module not pruned on a generic adopt" adopt-generic "$G"
+echo "[adopt-generic] stack=generic · cqrs-aop-module pruned"
 
 # A REFRESH whose recorded stack is a stale 'generic' on a clearly-DevArch project. The correction is OFFERED,
 # never applied behind the user's back — so this asserts BOTH halves, and the first half is the one that was
 # missing. The old test ran `--yes` (no tty) and required stack=dotnet, i.e. it demanded that a recorded choice
 # be overruled where nobody could be asked. It passed for five releases while a user who installed --generic on
-# a .NET project that is NOT DevArchitecture got devarch-module and the .NET agent pushed onto them.
+# a .NET project that is NOT DevArchitecture got cqrs-aop-module and the .NET agent pushed onto them.
 R="$WORK/adopt-refresh"; rm -rf "$R"; mkdir -p "$R"
 cp adopt.sh "$R/"; cp -R claude-starter "$R/"; cp VERSION "$R/"; printf '{"name":"x"}' > "$R/package.json"
 ( cd "$R" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
@@ -195,13 +195,37 @@ mkdir -p "$R/backend/Business/Handlers"; : > "$R/backend/DevArchitecture.sln"
 # (a) nobody to ask -> the recorded choice STANDS, and the mismatch is reported rather than acted on.
 run_adopt "$R" --yes
 grep -q '^stack=generic' "$R/.claude/kit.conf"          || die "a non-interactive refresh silently overruled the recorded stack" adopt-refresh/keep "$R"
-[ ! -d "$R/.claude/skills/devarch-module" ]             || die "devarch-module installed without anyone approving the stack change" adopt-refresh/keep "$R"
+[ ! -d "$R/.claude/skills/cqrs-aop-module" ]             || die "cqrs-aop-module installed without anyone approving the stack change" adopt-refresh/keep "$R"
 grep -qi 'stack-agnostic' "$R/.claude/agents/backend-expert-csk.md" || die "backend agent flipped to .NET without approval" adopt-refresh/keep "$R"
-# (b) asked for deliberately -> corrected, and devarch-module comes back with it.
+# (b) asked for deliberately -> corrected, and cqrs-aop-module comes back with it.
 CSK_CORRECT_STACK=1 run_adopt "$R" --yes
 grep -q '^stack=dotnet' "$R/.claude/kit.conf"           || die "CSK_CORRECT_STACK=1 did not correct a stale generic stack" adopt-refresh/fix "$R"
-[ -d "$R/.claude/skills/devarch-module" ]               || die "devarch-module not restored after the stack correction" adopt-refresh/fix "$R"
+[ -d "$R/.claude/skills/cqrs-aop-module" ]               || die "cqrs-aop-module not restored after the stack correction" adopt-refresh/fix "$R"
 echo "[adopt-refresh] recorded generic KEPT without a person · CSK_CORRECT_STACK=1 corrects it -> dotnet"
+
+# ---- adopt.sh: the devarch-module -> cqrs-aop-module RENAME, on an install that predates kit.conf ----
+# The skill was renamed, and three things could have gone wrong on the upgrade path; this case holds all three.
+# (1) kit_infer_shape reads the STACK from the skill's directory name when kit.conf is absent, so a check for the
+#     new name alone classifies every old .NET install as generic — and the generic path PRUNES the pattern skill.
+# (2) kit-manifest.txt arrived in v1.8.0 and the skill shipped from v1.0.0, so the stale-files sweep is blind to
+#     an install not updated since before 1.8.0.
+# (3) that sweep only REPORTS, so without a migration two pattern skills would compete for every prompt.
+# The fixture is shaped to isolate (1): no .sln, no kit.conf, no manifest — the OLD directory is the only signal.
+U="$WORK/adopt-rename"; rm -rf "$U"; mkdir -p "$U"
+cp adopt.sh "$U/"; cp -R claude-starter "$U/"; cp VERSION "$U/"
+: > "$U/App.sln"
+( cd "$U" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
+run_adopt "$U" --yes
+[ -d "$U/.claude/skills/cqrs-aop-module" ]  || die "the first adopt did not install the .NET pattern skill" adopt-rename/setup "$U"
+# Down to the shape of a pre-1.8.0 .NET install that has never been updated since:
+mv "$U/.claude/skills/cqrs-aop-module" "$U/.claude/skills/devarch-module"
+rm -f "$U/.claude/kit.conf" "$U/.claude/kit-manifest.txt" "$U/App.sln"
+( cd "$U" && git add -A && git commit -qm 'shape of a pre-1.8.0 dotnet install' ) >/dev/null 2>&1
+run_adopt "$U" --yes
+grep -q '^stack=dotnet' "$U/.claude/kit.conf" || die "an install carrying only the OLD skill name was inferred generic (it would be pruned)" adopt-rename "$U"
+[ -d "$U/.claude/skills/cqrs-aop-module" ]    || die "the .NET pattern skill is gone after the rename migration" adopt-rename "$U"
+[ ! -d "$U/.claude/skills/devarch-module" ]   || die "the old skill was left beside the new one — two pattern skills compete" adopt-rename "$U"
+echo "[adopt-rename] pre-kit.conf install carrying the OLD name -> inferred dotnet, migrated, no duplicate"
 
 # ---- adopt.sh: pre-2.0 profile MIGRATION ----
 # A project installed by 1.x with `--backend` is missing the frontend agent and four UI skills. 2.0 completes
@@ -249,9 +273,18 @@ mk_stale_install(){                       # $1 = dir : a healthy 1.4.x install w
   cp adopt.sh "$d/"; cp -R claude-starter "$d/"; cp VERSION "$d/"
   cp -R "$d/claude-starter/." "$d/.claude/" 2>/dev/null; cp VERSION "$d/.claude/VERSION"
   printf 'profile=fullstack\nstack=generic\ninstaller=start.sh\n' > "$d/.claude/kit.conf"
-  printf '%s\n' '{ "hooks": { "UserPromptSubmit": [ { "hooks": [ { "type":"command","command":"bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/context-usage.sh\" 2>/dev/null || true","timeout":10 } ] } ] } }' > "$d/.claude/settings.json"
+  printf '%s\n' '{ "permissions": { "ask": [ "Bash(git add:*)", "Bash(git commit:*)", "Bash(git push:*)", "Bash(git checkout -b:*)", "Bash(terraform apply:*)" ] }, "hooks": { "UserPromptSubmit": [ { "hooks": [ { "type":"command","command":"bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/context-usage.sh\" 2>/dev/null || true","timeout":10 } ] } ] } }' > "$d/.claude/settings.json"
   printf '# project rules\n@.claude/DISCIPLINE.md\n' > "$d/CLAUDE.md"
   ( cd "$d" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
+}
+# The four §4.4 ask rules were RETIRED from the kit (a matching ask rule outranks a hook's "allow", so it killed
+# CLAUDE_GIT_OK). Concat+dedup never removes, so an update must drop them explicitly; the fixture carries all four
+# plus one rule of the project's own, which must survive every arm that merges. Prints what it found, not a verdict
+# word, so a failure names the rule that stayed.
+retired_gone(){                           # $1 = settings.json
+  local r left=""; for r in 'Bash(git add:*)' 'Bash(git commit:*)' 'Bash(git push:*)' 'Bash(git checkout -b:*)'; do
+    grep -qF "\"$r\"" "$1" && left="$left $r"; done
+  [ -z "$left" ] || { echo "FAIL: an update kept retired §4.4 ask rule(s):$left — CLAUDE_GIT_OK stays dead in that project"; exit 1; }
 }
 # The refreshed value is read from the kit, not pinned to a literal. A hard-coded number turns every future
 # timeout retune into a red e2e that blames the merge — which is exactly what happened when the hook timeouts
@@ -265,10 +298,24 @@ KIT_TO="$(awk '/context-usage\.sh/{f=1} f && /"timeout"/{gsub(/[^0-9]/,""); prin
 [ -n "$KIT_TO" ] && [ "$KIT_TO" != 10 ] || { echo "FAIL: could not read the kit's UserPromptSubmit timeout (got '${KIT_TO:-}') — the stale-vs-refreshed assertions below would prove nothing"; exit 1; }
 # (A) update · non-interactive · NO --yes -> APPLIES (self-heal): stale hook refreshed, SessionStart wired, CLAUDE.md kept
 U="$WORK/selfheal"; mk_stale_install "$U"
-( cd "$U" && bash adopt.sh --here </dev/null >/dev/null 2>&1 )
+UOUT="$( cd "$U" && bash adopt.sh --here </dev/null 2>&1 )"
 grep -q 'SessionStart' "$U/.claude/settings.json"       || { echo "FAIL: non-interactive update did not self-heal (SessionStart missing)"; exit 1; }
 grep -q "\"timeout\": $KIT_TO" "$U/.claude/settings.json"      || { echo "FAIL: non-interactive update did not refresh the stale timeout"; exit 1; }
 head -1 "$U/CLAUDE.md" | grep -q 'project rules'        || { echo "FAIL: update clobbered the project's own CLAUDE.md"; exit 1; }
+retired_gone "$U/.claude/settings.json"
+grep -q '"Bash(terraform apply:\*)"' "$U/.claude/settings.json" || { echo "FAIL: retiring the kit's ask rules also dropped the project's own"; exit 1; }
+grep -q '"Bash(ssh:\*)"' "$U/.claude/settings.json"             || { echo "FAIL: retiring the §4.4 rules also dropped the kit's deploy ask rules"; exit 1; }
+# The removal is a change to a file the project may track, and a string match cannot tell the kit's copy from the
+# project's own — so it must be SAID, by name, and the merge line must not claim every permission was preserved.
+case "$UOUT" in *"ask rule(s) REMOVED (git add, git commit, git push, git checkout -b)"*) ;;
+  *) echo "FAIL: the retired ask rules were removed SILENTLY — output: $(printf '%s' "$UOUT" | grep 'settings.json' | tr '\n' ' ')"; exit 1 ;; esac
+case "$UOUT" in *"custom hooks/permissions PRESERVED"*) echo "FAIL: the merge line claims every permission was preserved while rules were removed"; exit 1 ;; esac
+grep -q 'retired §4.4 ask rule(s) REMOVED: git add, git commit, git push, git checkout -b' "$U/docs/HANDOVER.md" 2>/dev/null \
+  || { echo "FAIL: HANDOVER.md does not record the removed rules (it would read 'permissions PRESERVED')"; exit 1; }
+# Twin: a second update has nothing left to retire, so it must announce nothing and keep the plain claim.
+UOUT2="$( cd "$U" && bash adopt.sh --here </dev/null 2>&1 )"
+case "$UOUT2" in *"REMOVED ("*) echo "FAIL: an update with no retired rule present still announced a removal"; exit 1 ;; esac
+case "$UOUT2" in *"custom hooks/permissions PRESERVED"*) ;; *) echo "FAIL: the plain PRESERVED line is gone even when nothing was removed"; exit 1 ;; esac
 # (B) SAME, but with NO jq and NO python3 on PATH (the real Windows Git-Bash case) -> kit-only settings safely
 # REPLACED + backup kept. The strip needs a symlink farm; Git-Bash on Windows can't make one, so there we skip this
 # sub-test (with a note) and rely on (A) + the portable-bash fallback proven on the POSIX runners.
@@ -290,6 +337,7 @@ if [ -L "$SYMPROBE" ]; then
     grep -q "\"timeout\": $KIT_TO" "$N/.claude/settings.json"    || { echo "FAIL: no-jq/python update did not refresh the timeout"; exit 1; }
     ls "$N"/.claude/settings.json.bak-* >/dev/null 2>&1   || { echo "FAIL: no-jq/python replace did not keep a backup"; exit 1; }
     head -1 "$N/CLAUDE.md" | grep -q 'project rules'      || { echo "FAIL: no-jq/python update clobbered CLAUDE.md"; exit 1; }
+    retired_gone "$N/.claude/settings.json"
     NOJQ_NOTE="with + WITHOUT jq/python"
     # (D) Python exposed ONLY as `py` (the Windows Python Launcher) — no jq, no python3/python. The merge must run
     #     via py and heal, NOT fall through to the .kit reference (the exact case a Git-Bash Windows user hit).
@@ -301,6 +349,8 @@ if [ -L "$SYMPROBE" ]; then
       grep -q 'SessionStart' "$P/.claude/settings.json"   || { echo "FAIL: py-launcher update did not self-heal (SessionStart)"; exit 1; }
       grep -q "\"timeout\": $KIT_TO" "$P/.claude/settings.json"  || { echo "FAIL: py-launcher update did not refresh the timeout"; exit 1; }
       [ ! -e "$P/.claude/settings.json.kit" ]             || { echo "FAIL: py present but the merge fell back to .kit"; exit 1; }
+      retired_gone "$P/.claude/settings.json"
+      grep -q '"Bash(terraform apply:\*)"' "$P/.claude/settings.json" || { echo "FAIL: py merge dropped the project's own ask rule with the retired ones"; exit 1; }
       rm -f "$NODEPS/py"
     fi
   else NOJQ_NOTE="with jq/python (couldn't build a jq-less PATH here)"; fi
@@ -314,7 +364,7 @@ cp adopt.sh "$F/"; cp -R claude-starter "$F/"; cp VERSION "$F/"; printf '{"name"
 ( cd "$F" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
 ( cd "$F" && bash adopt.sh --here </dev/null >/dev/null 2>&1 )
 [ ! -f "$F/.claude/DISCIPLINE.md" ]                     || { echo "FAIL: first adopt must NOT apply non-interactively without --yes"; exit 1; }
-echo "[adopt-selfheal] update self-heals off a TTY ($NOJQ_NOTE) · backup kept · CLAUDE.md preserved · first adopt still needs --yes"
+echo "[adopt-selfheal] update self-heals off a TTY ($NOJQ_NOTE) · retired §4.4 ask rules dropped, own rules kept · backup kept · CLAUDE.md preserved · first adopt still needs --yes"
 
 # (D) TTY + --yes must NOT hang — the /update-csk regression. adopt.sh once tested `-t 0` BEFORE --yes, so an
 # --yes run that inherited a TTY (Claude Code drives commands under a pty on Windows) blocked on a prompt. Every
@@ -410,5 +460,299 @@ grep -q '"type": *"module"' "$UP/.claude/studio/package.json" || { echo "FAIL: t
 [ -f "$UP/.claude/studio/ensure-node.sh" ] || { echo "FAIL: the update brought the panel but not the runtime finder beside it"; exit 1; }
 [ -f "$UP/.claude/commands/studio-csk.md" ] || { echo "FAIL: the update did not deliver /studio-csk"; exit 1; }
 echo "[update-gets-panel] a 2.8.0-shaped install gained .claude/studio ($(find "$UP/.claude/studio" -type f | wc -l | tr -d ' ') files) and /studio-csk on update"
+
+# ---- the install WIZARD: unattended runs, the .gitignore question, and what --yes may not approve ----
+# These are here rather than in the smoke-test because every one of them needs a real installer run: the
+# question is what the wizard DOES to a project, not what a string in it says. Each case carries the reason it
+# exists, and where a mistake is recoverable only by a twin that fails, the twin is run.
+#
+# The hang these first cases pin was MEASURED on stock Windows before it was fixed: `start.sh` with an
+# open-but-empty stdin returned rc=124 under `timeout` — a block, separated from EOF by calibration (a bare
+# `read` with stdin CLOSED returns rc=1). And it died at the stack chooser, not at `ask_yes`: fixing only the
+# one everybody looked at moved the hang from line 72 to line 248 and the installer still hung. So the pins
+# below have to cover EVERY read, which is what "no question is reached" means here.
+wiz() {                                     # $1 = label -> a fresh project with the installer staged
+  local P="$WORK/wiz-$1"; rm -rf "$P"; mkdir -p "$P"
+  cp start.sh "$P/"; cp -R claude-starter "$P/"; printf '%s' "$P"
+}
+
+# 13 · An unattended install reads NOTHING and completes. stdin is closed rather than a pipe: a pipe would
+#      answer the prompts and prove the opposite of what this asserts.
+W="$(wiz yes-alone)"
+( cd "$W" && bash start.sh --yes >"$W/out.txt" 2>&1 </dev/null )
+[ -d "$W/.claude" ] || { echo "FAIL: start.sh --yes did not install with stdin closed"; exit 1; }
+# 14 · ...and it does NOT approve the risky one. `--yes` means "install the kit unattended", not "clone a
+#      third-party base project into my tree over the network" — the script's own word for that is risky.
+[ ! -e "$W/backend" ] || { echo "FAIL: --yes cloned the DevArchitecture base; that is a separate consent"; exit 1; }
+grep -q 'does not approve' "$W/out.txt" || { echo "FAIL: --yes declined the risky step without saying why"; exit 1; }
+echo "[wizard] --yes installs unattended, reads nothing, and refuses the risky clone with a reason"
+
+# 2 · TWO DIFFERENT STDINs, and the difference is the whole point. CLOSED stdin reaches EOF, so every `read`
+#     answers "" and the installer declines. OPEN-BUT-EMPTY never reaches EOF, so a bare `read` waits forever —
+#     that is what a pty looks like, which is how Claude Code runs a command on Windows, and it is the case
+#     `adopt.sh:46-49` was written for. The first version of this case drove `</dev/null` and passed while
+#     measuring the wrong condition, and skipped entirely where `timeout(1)` is absent, which includes macOS.
+#
+#     The timeout is perl's `alarm` rather than `timeout(1)`: perl ships with macOS AND with Git Bash, so the
+#     case runs everywhere instead of announcing a skip on two of three platforms. 142 is SIGALRM.
+#     CALIBRATED IN-LINE, because "it hung" is only meaningful if the two stdins demonstrably differ here: a
+#     bare `read` must time out on the fifo and must return at once on /dev/null. If those two agree, the
+#     fixture proves nothing and says so rather than reporting a pass.
+# The bound is a POLLING PARENT, not a timeout utility, and that is the whole point: it cannot itself hang.
+# The first version used `perl -e alarm` + exec, and on windows-latest the alarm did not interrupt a blocked
+# `read` — so the e2e step ran until the job was killed. Steps 1-7 green, step 8 with no conclusion at all.
+# The calibration below was supposed to catch a broken bound and skip; instead it was the FIRST thing to hang,
+# because it used the same mechanism. A calibration that can hang is not a calibration. This loop runs at most
+# `secs` iterations of `sleep 1` and then SIGKILLs, so every path is bounded by construction.
+_bounded(){                     # $1 = seconds, rest = command; prints BLOCKED or rc=<n>
+  local secs="$1"; shift
+  # THE BUDGET MUST EXCEED THE PRODUCT'S OWN. `csk_read` waits 10 s per prompt and the no-flag path reaches two
+  # of them, so a 20 s bound reported BLOCKED for an installer that was about to decline correctly at ~20 s —
+  # my harness's budget, not a hang. Measured directly afterwards: rc=0, "Cancelled — nothing changed". 60 s
+  # leaves room for three bounded reads plus the work between them.
+  # `<&0` is load-bearing: bash redirects a BACKGROUND job's stdin from /dev/null unless it is given one
+  # explicitly, so without this the child never sees the caller's fifo, reads EOF and returns rc=1. The
+  # calibration below caught exactly that and skipped rather than reporting a pass — which is what it is for.
+  # The child's own output is swallowed HERE rather than by the caller: a redirect on the call site silences
+  # this function's verdict too, which is how the captured value came back empty and the installer's banner
+  # ended up inside a status line.
+  "$@" <&0 >/dev/null 2>&1 & local p=$! i=0
+  while [ "$i" -lt "$secs" ]; do
+    kill -0 "$p" 2>/dev/null || { wait "$p"; echo "rc=$?"; return 0; }
+    sleep 1; i=$((i+1))
+  done
+  kill -9 "$p" 2>/dev/null; wait "$p" 2>/dev/null; echo BLOCKED
+}
+_FC="$WORK/fifo-cal"; rm -rf "$_FC"; mkdir -p "$_FC"
+( cd "$_FC" && mkfifo f && exec 3<>f && _bounded 5 bash -c 'read -r x' <&3 > rc_open; exec 3>&- ) || true
+( cd "$_FC" && _bounded 5 bash -c 'read -r x' </dev/null > rc_closed ) || true
+if [ "$(cat "$_FC/rc_open")" = BLOCKED ] && [ "$(cat "$_FC/rc_closed")" != BLOCKED ]; then
+  W2="$(wiz no-yes-closed)"
+  rc="$( cd "$W2" && _bounded 60 bash start.sh </dev/null )"
+  [ "$rc" != BLOCKED ] || { echo "FAIL: start.sh blocked even on CLOSED stdin — every piped install would hang"; exit 1; }
+  [ ! -d "$W2/.claude" ] || { echo "FAIL: start.sh installed without consent and without --yes"; exit 1; }
+  echo "[wizard] closed stdin: declines ($rc) rather than installing or blocking"
+
+  # --yes is what makes an unattended run safe on a pty. Asserted on the OPEN-EMPTY stdin, which is the
+  # condition that actually hangs, rather than on the one that returns anyway.
+  W2B="$(wiz yes-openempty)"
+  ( cd "$W2B" && mkfifo f && exec 3<>f && _bounded 60 bash start.sh --yes <&3 > rc; exec 3>&- ) || true
+  [ "$(cat "$W2B/rc")" != BLOCKED ] \
+    || { echo "FAIL: start.sh --yes BLOCKED on open-but-empty stdin — unattended runs hang under a pty"; exit 1; }
+  echo "[wizard] --yes returns on open-but-empty stdin (the pty shape), $(cat "$W2B/rc")"
+
+  # THE PIPE SHAPE IS CLOSED, and this is a real verdict rather than a recorded state. Without --yes, an
+  # open-but-empty stdin used to block forever — measured 142 here and on stock Windows, at the stack chooser
+  # with no flags and one prompt later with --generic. All three bare reads are now bounded, so the installer
+  # returns and declines instead. The must-fail twin lives with the fix: removing the timeout from `csk_read`
+  # puts 142 back on this same fifo.
+  W2C="$(wiz noyes-openempty)"
+  ( cd "$W2C" && mkfifo f && exec 3<>f && _bounded 60 bash start.sh <&3 > rc; exec 3>&- ) || true
+  [ "$(cat "$W2C/rc")" != BLOCKED ] \
+    || { echo "FAIL: without --yes an open-but-empty stdin BLOCKS again — the bounded read regressed"; exit 1; }
+  [ ! -d "$W2C/.claude" ] \
+    || { echo "FAIL: the bounded read answered YES on its own — a timeout must decline, never consent"; exit 1; }
+  echo "[wizard] open-but-empty PIPE: returns and declines ($(cat "$W2C/rc")), nothing installed"
+
+  # CANNOT-CLOSE, and named that way on purpose rather than "known-open", which reads as something that will be
+  # closed one day. A PTY WITH NO INPUT cannot be distinguished from a human who types slowly: `[ -t 0 ]` is
+  # TRUE under a pty, so no stdin test separates the two, and a bounded read would either cut off a real person
+  # or consent on their behalf. `--yes` is the answer and the only answer. This is not asserted here because a
+  # real pty cannot be allocated from this harness — `winpty` refuses when its own stdin is not a terminal and
+  # Git Bash ships no `script` — so it is recorded as unmeasurable rather than left looking pending. The
+  # measured half above is the pipe; do not read it as covering the pty.
+else
+  echo "[wizard] SKIP (fixture): the two stdin shapes did not separate here (open=$(cat "$_FC/rc_open") closed=$(cat "$_FC/rc_closed")), so a hang could not be told from a pass"
+fi
+
+# 15 · THE PIPE-ORDER GATE. A new prompt shifts every existing piped call by one answer. Adding the visibility
+#      question without a guard did exactly that: the question ate the 'yes', the confirm hit EOF, the install
+#      cancelled silently and this suite failed with rc=127. So the non-TTY path must read NOTHING, and the
+#      documented piped form must keep working. Removing the `[ ! -t 0 ]` guard turns this red again.
+W3="$(wiz piped)"
+( cd "$W3" && printf 'yes\n' | bash start.sh --generic >/dev/null 2>&1 )
+[ -d "$W3/.claude" ] || { echo "FAIL: the documented piped install stopped working — a prompt is reading on the non-TTY path"; exit 1; }
+echo "[wizard] the piped form still installs: no question reads on the non-TTY path"
+
+# 4 · A .gitignore with no trailing newline must not have its last line joined to the first entry written.
+#     The twin is the point: the old `touch` + `echo >>` shape produces `node_modulesdocs/`, which is a
+#     silently broken ignore rule rather than a visible error.
+W4="$(wiz nonewline)"
+printf 'node_modules' > "$W4/.gitignore"          # deliberately no trailing newline
+( cd "$W4" && bash start.sh --yes >/dev/null 2>&1 </dev/null )
+grep -qx 'node_modules' "$W4/.gitignore" || { echo "FAIL: the pre-existing entry was joined to an added one"; exit 1; }
+! grep -q 'node_modules[^$]' "$W4/.gitignore" || { echo "FAIL: an added entry ran onto the last existing line"; exit 1; }
+printf 'node_modules' > "$W4/gi.twin"; printf '%s\n' 'docs/' >> "$W4/gi.twin"
+grep -q '^node_modulesdocs/$' "$W4/gi.twin" \
+  || { echo "FAIL: the must-fail twin did not reproduce the join, so case 4 proves nothing"; exit 1; }
+echo "[wizard] .gitignore without a trailing newline keeps its last line intact (twin reproduces the join)"
+
+# 7 · The summary has to NAME the lines it will write. Before this, the user confirmed an install and silently
+#     received four .gitignore entries, two of which (CLAUDE.md, docs/) are project-visible paths.
+grep -q '\.gitignore' "$W/out.txt" || { echo "FAIL: the install summary never mentions .gitignore"; exit 1; }
+for e in 'docs/' '.claude/' 'CLAUDE.md'; do
+  grep -qF "$e" "$W/out.txt" || { echo "FAIL: the summary does not list the .gitignore entry '$e' it writes"; exit 1; }
+  grep -qxF "$e" "$W/.gitignore" || { echo "FAIL: '$e' was announced but not written"; exit 1; }
+done
+echo "[wizard] the summary lists every .gitignore line it writes, and writes every line it lists"
+
+# 9,10,11 · docs/ IS THE PRIVACY CASE, and it has two halves that pull against each other: the working
+#     documents must be ignored, and the adoption's OWN record must still reach the review diff. Ignoring
+#     docs/ without forcing those two files back in is the defect CHANGELOG.md:3328 already records.
+DP="$WORK/wiz-adopt-docs"; rm -rf "$DP"; mkdir -p "$DP"
+( cd "$DP" && git init -q . && git config user.email t@e.com && git config user.name t \
+  && printf '{"name":"x"}\n' > package.json && git add package.json && git commit -qm base )
+cp adopt.sh "$DP/"; cp -R claude-starter "$DP/claude-starter"; cp VERSION "$DP/"
+( cd "$DP" && bash adopt.sh --here --yes </dev/null >/dev/null 2>&1 )
+( cd "$DP" && git diff --cached --name-only | grep -q '^docs/HANDOVER\.md$' ) \
+  || { echo "FAIL: the adoption's own HANDOVER is not in the review diff"; exit 1; }
+( cd "$DP" && git diff --cached --name-only | grep -q '^docs/adr/' ) \
+  || { echo "FAIL: the adoption's own ADR is not in the review diff"; exit 1; }
+( cd "$DP" && : > docs/PLAN.md && git check-ignore -q docs/PLAN.md ) \
+  || { echo "FAIL: docs/PLAN.md is NOT ignored after adopt — internal plans would reach a shared repo"; exit 1; }
+( cd "$DP" && : > docs/SECURITY_FINDINGS.md && git check-ignore -q docs/SECURITY_FINDINGS.md ) \
+  || { echo "FAIL: docs/SECURITY_FINDINGS.md is NOT ignored after adopt"; exit 1; }
+# The twin for the half that is easy to lose: with docs/ ignored, a plain `git add docs` stages nothing, so
+# dropping the -f would silently remove the adoption from its own review.
+( cd "$DP" && git rm -q --cached docs/HANDOVER.md docs/adr/*.md >/dev/null 2>&1; git add docs >/dev/null 2>&1; \
+  [ -z "$(git diff --cached --name-only -- docs)" ] ) \
+  || { echo "FAIL: the twin did not reproduce the drop, so the -f above proves nothing"; exit 1; }
+echo "[wizard] docs/ is private after adopt, and the adoption's own record is still in the diff (twin drops it)"
+
+# 6 · --shared and --private differ in WHAT they ignore, which is the whole point of asking. shared keeps
+#     .claude/ and CLAUDE.md committable so a team can review them; private hides them. Both are asserted,
+#     because a default that silently matched the other choice would make the question decorative.
+W5="$(wiz shared)"
+( cd "$W5" && CSK_LANG=en bash start.sh --yes --shared >/dev/null 2>&1 </dev/null )
+for e in 'docs/' '.private-terms.txt'; do
+  grep -qxF "$e" "$W5/.gitignore" || { echo "FAIL: --shared did not ignore '$e'"; exit 1; }
+done
+for e in '.claude/' 'CLAUDE.md'; do
+  ! grep -qxF "$e" "$W5/.gitignore" || { echo "FAIL: --shared ignored '$e' — the team could not review it"; exit 1; }
+done
+grep -qxF '.claude/' "$W/.gitignore" || { echo "FAIL: the private default did not ignore .claude/"; exit 1; }
+echo "[wizard] --shared ignores 2 entries and keeps .claude/ + CLAUDE.md committable; private ignores 4"
+
+# 5 · ASK GIT, DO NOT COMPARE STRINGS. A repo that already ignores `.claude` without the trailing slash is
+#     covered, and appending `.claude/` next to it is a second redundant rule. The old whole-line grep could
+#     not see that; `git check-ignore` answers the question that matters. Needs a real repo, since that is
+#     what makes check-ignore answerable at all.
+W6="$WORK/wiz-dupe"; rm -rf "$W6"; mkdir -p "$W6"
+cp start.sh "$W6/"; cp -R claude-starter "$W6/"
+( cd "$W6" && git init -q . && git config user.email t@e.com && git config user.name t )
+printf '.claude\n' > "$W6/.gitignore"                  # no trailing slash, and already effective
+( cd "$W6" && CSK_LANG=en bash start.sh --yes >/dev/null 2>&1 </dev/null )
+[ "$(grep -c '^\.claude' "$W6/.gitignore")" = 1 ] \
+  || { echo "FAIL: a repo already ignoring .claude got a second redundant rule ($(grep -c '^\.claude' "$W6/.gitignore"))"; exit 1; }
+echo "[wizard] an already-ignored .claude is not ignored twice (git check-ignore, not string equality)"
+
+# 8 · The same helper has to work where there is NO repo to ask. Every wizard case above ran outside a repo,
+#     so the fallback is already exercised — this asserts it reached the right answer rather than merely not
+#     crashing, which is the difference between a fallback and a silent no-op.
+[ -f "$W4/.gitignore" ] && [ "$(grep -c . "$W4/.gitignore")" -ge 2 ] \
+  || { echo "FAIL: outside a git repo the gitignore fallback wrote nothing usable"; exit 1; }
+echo "[wizard] outside a repo the fallback still writes the entries (and keeps the trailing-newline fix)"
+
+# 12 · `hide` writes nothing itself — it hands the user a command to run after the merge, because ignoring the
+#      payload BEFORE the branch commit is what once dropped it from the review diff. So what has to be right
+#      is the INSTRUCTION, and the instruction is a static string: asserted on the source rather than by
+#      driving the interactive flow. The first attempt here did drive it, and the prompt sequence guessed wrong
+#      so the path was never reached — a case that reported a skip while measuring nothing. Reading the string
+#      is both complete and deterministic, and it is the whole of what `hide` promises.
+# Match the ASSIGNMENT THAT CARRIES THE COMMAND, not the first line whose name matches. `HIDE_NOTE=""` is
+# declared empty earlier in the file, and `grep -m1 'HIDE_NOTE='` took that one — so all three checks below
+# failed against a perfectly good file, and the must-fail twin then "passed" for the wrong reason: it was not
+# the mutation failing, it was the assertion already broken. Anchoring on the command itself removes both.
+HN="$(grep -m1 'HIDE_NOTE=.*rm -r --cached' adopt.sh || true)"
+case "$HN" in
+  *'rm -r --cached'*) ;;
+  *) echo "FAIL: the hide instruction does not untrack anything"; exit 1 ;;
+esac
+case "$HN" in
+  *'--cached .claude CLAUDE.md docs'*) ;;
+  *) echo "FAIL: the hide instruction does not untrack docs — plans and threat models would stay tracked"; exit 1 ;;
+esac
+case "$HN" in
+  *'docs/'*) ;;
+  *) echo "FAIL: the hide instruction does not add docs/ to .gitignore"; exit 1 ;;
+esac
+echo "[wizard] the hide instruction covers docs in BOTH halves (untrack and ignore)"
+
+# 15 · A SHARED install must pin the hooks to LF, and the proof is the conversion not happening — not the
+#      file being written. The ROADMAP carried this as an inference ("çıkarım, gözlem değil — patlamadı");
+#      it is now measured. Mechanism, reproduced with git settings alone so it does not need Windows:
+#        committed blob                      0 CR
+#        clone with core.autocrlf=true       1345 CR in guard-bash.sh · 575 in pre-commit
+#      Only `autocrlf=true` produces that; `input` and `false` come back clean even unpinned, and `true` is the
+#      Git for Windows system default — so this is for the person who changed nothing.
+#      WHO IT PROTECTS, corrected after a real Windows run: NOT Git Bash, where a CRLF hook still runs and
+#      returns the identical verdict. It is a non-MSYS bash reading the same tree — WSL, which the kit's own
+#      .gitattributes names and which is unmeasured by anyone here. What this case pins is narrower and fully
+#      measured: with the pin the working tree matches the blob, without it it does not.
+#      FIXTURE NOTE for anyone adding a case here: adopt.sh leaves `claude-starter/` in the project, and
+#      committing that trips the kit's OWN trace scanner and floor guard (the payload contains the very
+#      expressions they block). A fixture that commits after adopt must remove the payload first or it fails
+#      for a reason that has nothing to do with what it is testing.
+#      The calibration twin is the point: with the pin removed the same round trip must come back dirty, or
+#      this case is asserting that a clone is clean for some reason of its own.
+_ga_crs() {   # $1 = project dir, $2 = path inside it -> CR count after a core.autocrlf=true checkout
+  # NO BARE REPO AND NO BRANCH NAME. The first version pushed to `refs/heads/main` in a fresh bare whose HEAD
+  # came from `init.defaultBranch` — so on a desk where that is `main` the clone checked the tree out and on a
+  # runner where it is not, the clone checked out NOTHING ("remote HEAD refers to nonexistent ref") and every
+  # file read as MISSING. Green on the machine that wrote it, red on all three runners, for a reason that has
+  # nothing to do with what the case measures. Cloning the project directly takes its own HEAD, whatever it is
+  # called, and the question of branch names disappears.
+  # And it reports WHY rather than a word: the first version swallowed every error into MISSING, so a broken
+  # fixture came back wearing the product's failure message and sent the search to the installer.
+  local p="$1" f="$2" clone="$1.clone"
+  rm -rf "$clone"
+  ( cd "$p" && git add -A >/dev/null 2>&1 && git commit -qm shared >/dev/null 2>&1 ) || true
+  if ! git clone -q -c core.autocrlf=true "$p" "$clone" 2>"$p.clone.err"; then
+    echo "FIXTURE: clone of $p failed: $(head -1 "$p.clone.err")"; return 0
+  fi
+  if [ ! -f "$clone/$f" ]; then
+    echo "FIXTURE: $f is not in the clone (tracked files: $(git -C "$clone" ls-files | wc -l | tr -d ' ')) $(head -1 "$p.clone.err")"
+    return 0
+  fi
+  tr -dc '\r' < "$clone/$f" | wc -c | tr -d ' '
+}
+W15="$(wiz shared-eol)"
+( cd "$W15" && git init -q . && git config user.email t@example.invalid && git config user.name t \
+    && printf 'x\n' > README.md && git add README.md && git commit -qm base >/dev/null 2>&1 )
+( cd "$W15" && printf 'yes\n' | bash start.sh --generic --shared >/dev/null 2>&1 )
+grep -qF '.claude/**/*.sh text eol=lf' "$W15/.gitattributes" 2>/dev/null \
+  || { echo "FAIL: a shared install did not pin .claude/**/*.sh to LF"; exit 1; }
+for f in .claude/hooks/guard-bash.sh .claude/hooks/pre-commit; do
+  n="$(_ga_crs "$W15" "$f")"
+  case "$n" in FIXTURE:*) echo "FAIL: case 15's own fixture broke, not the product — $n"; exit 1 ;; esac
+  [ "$n" = 0 ] || { echo "FAIL: $f came back with $n CR from a core.autocrlf=true clone — the pin is not holding"; exit 1; }
+done
+rm -f "$W15/.gitattributes"
+n="$(_ga_crs "$W15" .claude/hooks/guard-bash.sh)"
+case "$n" in FIXTURE:*) echo "FAIL: the twin's own fixture broke — $n"; exit 1 ;; esac
+[ "$n" != 0 ] \
+  || { echo "FAIL: with the pin removed the clone stayed clean ($n CR) — case 15 proves nothing"; exit 1; }
+echo "[wizard] a shared install keeps hooks LF through a core.autocrlf clone (twin: $n CR without the pin)"
+
+# 16 · ...and a PRIVATE install must not touch .gitattributes at all. git never checks .claude/ out there, so
+#      there is nothing to convert, and writing repo-wide attributes would be editing a file whose owner has
+#      no problem to fix. The condition is asked of git (`check-ignore`), not read from the mode variable.
+W16="$(wiz private-eol)"
+( cd "$W16" && git init -q . && git config user.email t@example.invalid && git config user.name t \
+    && printf 'x\n' > README.md && git add README.md && git commit -qm base >/dev/null 2>&1 )
+( cd "$W16" && printf 'yes\n' | bash start.sh --generic --private >/dev/null 2>&1 )
+[ ! -e "$W16/.gitattributes" ] \
+  || { echo "FAIL: a private install wrote .gitattributes, which it has no reason to touch"; exit 1; }
+echo "[wizard] a private install leaves .gitattributes alone"
+
+# 17 · A project that ALREADY answers lf for those paths gets nothing appended. The question is asked of git,
+#      so any pattern spelling counts — `* text eol=lf` here, which no literal grep would have recognised.
+W17="$(wiz already-eol)"
+( cd "$W17" && git init -q . && git config user.email t@example.invalid && git config user.name t \
+    && printf '* text eol=lf\n' > .gitattributes && git add .gitattributes && git commit -qm ga >/dev/null 2>&1 )
+( cd "$W17" && printf 'yes\n' | bash start.sh --generic --shared >/dev/null 2>&1 )
+[ "$(wc -l < "$W17/.gitattributes" | tr -d ' ')" = 1 ] \
+  || { echo "FAIL: an existing eol rule was not recognised; the installer appended redundant pins"; exit 1; }
+echo "[wizard] an existing eol rule is recognised, whatever its spelling, and nothing is appended"
 
 echo "e2e: all installer rehearsals passed"

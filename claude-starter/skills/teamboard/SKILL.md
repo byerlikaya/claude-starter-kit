@@ -30,37 +30,17 @@ and that session re-reads the board and refuses. This is an atomic compare-and-s
 no daemon. The engine builds its commits with git plumbing, so claiming **never touches your working tree,
 index, branch or stash** — you can claim mid-feature with dirty files.
 
-`init` first probes whether the server accepts a custom ref namespace; if it does not, it falls back to the
-orphan branch `refs/heads/csk-board`, which every server accepts and which enforces the same rule. Do not merge
-that branch into code.
-
 ## Off by default; on when a team asks for it
 A repo that never ran `init` **has no board and no gates** — no claim, no commit gate, no edit gate, nothing at
 session start. Solo work is unchanged, and so is every project that installed the kit before this existed. Do not
 create a board because a repo merely has more than one contributor; create one when the user says the team keeps
-colliding. Three levels, and the user picks:
-
-| | Effect |
-|---|---|
-| no board (default) | nothing at all |
-| `require_item: referenced` in the board's `config` | claims and the shared memory, but no gate: a commit is only checked when it names an item |
-| `require_item: all` (what `init` writes) | claim before you edit, and every commit names an item or `[chore]` |
+colliding. Creating one, choosing between its three levels and the ref-namespace fallback: **`references/setup.md`**
+— one person runs it once, and everybody else configures nothing.
 
 Already have a board and want it out of the way? `/board-csk off` (add `--global` for every repo) releases **all
 three** gates and leaves the board itself intact; `/board-csk on` restores it. `CSK_NO_BOARD=1` does the same for
-one session. A board with no remote is fine too — you get the item list, the dependency order and the gates,
-just nothing shared.
-
-## Setting it up — one person, one command; everybody else configures nothing
-- **Whoever starts it:** `/board-csk init`, then add the items. It probes what the server accepts, creates the
-  board on the code repo's own `origin`, and that is the whole setup — no account, no token, no service.
-- **A separate board repository:** `/board-csk init --remote <url>` (or an existing remote's name). Use it when
-  the board is shared across several repos, or when people who must claim work cannot push to the code repo. It
-  gets its own `csk-board` remote and never touches `origin`.
-- **Everyone else: nothing.** They clone as usual. Session start fetches the board on its own (detached), the
-  ref namespace is auto-detected including the orphan-branch fallback, and `/board-csk` fetches on the spot if
-  the background refresh has not landed yet. Never tell a teammate to run `init` — a second `init` is how a team
-  ends up with two boards.
+one session. This half stays here on purpose: someone a gate has just stopped needs the answer without opening a
+second file.
 
 ## The rules
 1. **Claim before you touch code.** `claim <id>` fails if someone else holds it, if it is done, or if a

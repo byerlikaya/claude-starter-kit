@@ -18,7 +18,7 @@ import { palette, _internals as paletteInternals } from '../../claude-starter/st
 import { renderMarkdown } from '../../claude-starter/studio/web/md.js';
 import { ALLOWED_MODES } from '../../claude-starter/studio/server/lib/session.js';
 import { parsePeers } from '../../claude-starter/studio/server/lib/peers.js';
-import { writeAllowed } from '../../claude-starter/studio/server/index.js';
+import { writeAllowed, signature } from '../../claude-starter/studio/server/index.js';
 import { prepare, decide, pending, cleanup, _internals as permInternals } from '../../claude-starter/studio/server/lib/permissions.js';
 import { execFileSync } from 'node:child_process';
 import os from 'node:os';
@@ -2189,6 +2189,52 @@ if (fail) {
   process.stdout.write(`${failures.length} failure(s):\n`);
   for (const f of failures) process.stdout.write(`  - ${f}\n`);
 }
+// ---- the stream signature: what decides whether a status change ever reaches the panel ----
+// Both of these were measured over a 45-second SSE capture against the previous version, with a synthetic
+// session built on disk: an agent that goes quiet held `running` FOREVER (1 graph frame in 150 s), and three
+// writes to a workflow agent's transcript produced NO frame at all. Those captures proved the defects; these
+// assertions are what stops them coming back, because a two-minute timing test is one nobody runs twice.
+{
+  const sigHome = fs.mkdtempSync(path.join(os.tmpdir(), 'csk-studio-sig-'));
+  const sess = { file: path.join(sigHome, 's.jsonl'), subagentsDir: path.join(sigHome, 'subagents') };
+  fs.writeFileSync(sess.file, '{}\n');
+  const wfDir = path.join(sess.subagentsDir, 'workflows', 'wf_1');
+  fs.mkdirSync(wfDir, { recursive: true });
+  const flat = path.join(sess.subagentsDir, 'agent-aflat.jsonl');
+  const nested = path.join(wfDir, 'agent-anested.jsonl');
+  fs.writeFileSync(flat, 'x\n');
+  fs.writeFileSync(nested, 'x\n');
+
+  // A workflow agent lives one level down. A flat readdir sees only the `workflows` DIRECTORY, whose size does
+  // not move when a transcript inside it grows, so its updates were invisible to the stream.
+  const beforeGrow = await signature(sess);
+  fs.appendFileSync(nested, 'yy\n');
+  const afterGrow = await signature(sess);
+  check('stream signature notices a NESTED (workflow) agent growing',
+    beforeGrow !== afterGrow, `${beforeGrow} vs ${afterGrow}`);
+  check('stream signature names the nested file, not just its directory',
+    afterGrow.includes('wf_1/agent-anested.jsonl'), afterGrow);
+
+  // A STATUS CHANGES ON THE CLOCK ALONE: `running` becomes `stale` with nothing written. The signature must
+  // therefore carry a coarse clock component while something is recent enough to still be called running, and
+  // must NOT carry one otherwise — an idle session's signature has to stay as stable as it was before.
+  const fresh = await signature(sess);
+  check('a recent agent puts a clock bucket in the signature', /\|t:\d+$/.test(fresh), fresh);
+  const old = Date.now() / 1000 - 600;
+  fs.utimesSync(flat, old, old);
+  fs.utimesSync(nested, old, old);
+  const quiet = await signature(sess);
+  check('an agent quiet for longer than the stale window does NOT', !/\|t:\d+/.test(quiet), quiet);
+
+  // The bucket is derived from the clock rather than from a counter, so it is the same for two calls inside one
+  // bucket. Pinned because a per-tick value would rebuild the graph 85 times a bucket for no new information.
+  fs.utimesSync(flat, Date.now() / 1000, Date.now() / 1000);
+  const a = await signature(sess);
+  const b = await signature(sess);
+  check('two calls inside one bucket agree', a === b, `${a} vs ${b}`);
+  fs.rmSync(sigHome, { recursive: true, force: true });
+}
+
 process.stdout.write(`${pass}/${pass + fail} assertions passed`
   + (skipped ? `, ${skipped} skipped` : '')
   + (na ? `, ${na} n/a on ${process.platform}` : '') + '\n');

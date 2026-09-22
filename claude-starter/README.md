@@ -18,7 +18,7 @@ summarizes what lives under `.claude/` and how it works.
   suffix so that this kit's agents do not clash with the project's own agents.
 - **Skills** (`skills/`) — the single source of the "how" knowledge: code review, security scan,
   migration, deployment, observability, performance, accessibility, translation integrity, versioning,
-  incident response, and more. (Every install carries all of them; a generic backend drops only `devarch-module`.)
+  incident response, and more. (Every install carries all of them; a generic backend drops only `cqrs-aop-module`.)
 - **Commands** (`commands/`) — `/plan-csk` · `/review-csk` · `/ship-csk` · `/handoff-csk` · `/simplify`.
 - **Hooks** (`hooks/`) — `guard-bash.sh` (tool-level gate), `pre-commit` + `commit-msg`
   (trace scan), `context-usage.sh` and `session-guard.sh` (session measurement), `trace-blocklist.txt`.

@@ -73,7 +73,11 @@ _json_slice(){  # $1 = whole payload, $2 = key -> the raw (still JSON-escaped) s
                    # continuation byte can be 0x5C or 0x22, so a cut cannot land inside a character at a
                    # quote or backslash edge. What this line is worth in SPEED depends on the platform --
                    # read the table in _json_unescape below before quoting a number for it.
-  local pre rest seg w r n base=0 j=0 cl lim run=0 chunk C=4096 W=256; local -a acc=("")
+  local pre rest seg w r n base=0 j=0 cl lim run=0 chunk C=4096 W=256 hay="$1" k="\"$2\""; local -a acc=("")
+  # It ALSO sets `_JS`, so a caller on the hot path can read the value without `$( )`, which is a fork. The
+  # printf stays because the existing callers compose it (`_json_unescape "$(_json_slice …)"`), but the one
+  # caller that used to do its own fork-free extraction — `_CWD` — reads `_JS` and keeps costing nothing.
+  _JS=""
   # Every "step past X" here is arithmetic on a length, never `${s#"$literal"}`. That shape reads like a
   # constant-time strip and is not one: bash retries the pattern at every prefix length, so stripping an
   # n-byte literal costs O(n^2). It was in this function twice, and both were measured:
@@ -85,8 +89,18 @@ _json_slice(){  # $1 = whole payload, $2 = key -> the raw (still JSON-escaped) s
   #     payload is still moving (`effort` is absent from the field list recorded on 2.1.246).
   #   * `${tail#"$seg"\"}` stepped past each escaped quote: 16.8s for a single 100 KB step on Git Bash,
   #     against 0.002s for `${tail:${#seg}+1}` doing exactly the same thing.
-  # `${1%%"$2"*}` still finds the FIRST occurrence -- the longest suffix that starts with the key starts at the
-  # earliest one -- so a command containing the literal text `"command":"` still cannot relocate the parse.
+  # `${hay%%"$k"*}` finds the FIRST occurrence -- the longest suffix that starts with the key starts at the
+  # earliest one. THAT ALONE IS NOT ENOUGH, and the sentence that used to stand here said it was: it claimed a
+  # command "containing the literal text `\"command\":\"` still cannot relocate the parse", which is true of
+  # that byte sequence and irrelevant, because this search is for `"command"` WITHOUT the colon. A JSON VALUE
+  # equal to the key name is exactly those bytes between two unescaped quotes. Measured on the shipped hook:
+  #   {"tool_name":"Bash","a":"command","ls":1,"tool_input":{"command":"rm -rf /"}}   ->  read `ls`
+  #   {"a":"permission_mode","default":1,"permission_mode":"bypassPermissions",…}     ->  read `default`
+  #   {"a":"file_path","/tmp/ok":1,"tool_input":{"file_path":".claude/hooks/x.sh"}}   ->  read `/tmp/ok`
+  # In each case the gate judged a harmless string while a dangerous one was the actual argument, and jq read
+  # the real value -- so on a stock Windows desktop, where this was already the only parser, the gate could be
+  # aimed with one extra key. The loop below therefore accepts an occurrence only when optional JSON whitespace
+  # and then `:` follow it, which is the only place a key can appear; everything else keeps searching.
   # Stepping by length removed the quadratic strip, but each escaped quote still sliced and re-assigned the
   # whole remainder, so an escape-dense command stayed k*n here as well (2.2s of the 6.8s described in
   # _json_unescape below, on Git Bash). The walk is chunked the same way: the payload is read 4096 bytes at a
@@ -99,11 +113,43 @@ _json_slice(){  # $1 = whole payload, $2 = key -> the raw (still JSON-escaped) s
   # a quote, the key twice, the key appearing first as a value, glob metacharacters, UTF-8, no closing quote,
   # empty input). Broken twins -- the run not carried across a window, a byte skipped after a quote -- prove
   # the battery sees both.
-  pre="${1%%\"$2\"*}"                          # everything before the FIRST `"key"`
-  [ "$pre" != "$1" ] || return 0               # key absent: emit nothing
-  rest="${1:${#pre}+${#2}+2}"                  # past `"key"`
-  seg="${rest%%\"*}"                           # skip `: "` up to the value's opening quote, when there is one
-  [ "$seg" = "$rest" ] || rest="${rest:${#seg}+1}"
+  # THE NUMBER OF PASSES IS CAPPED, for the same reason guard-write caps the path length: an unbounded cost on
+  # a PreToolUse hook is a gate with an off switch, because a hook killed at its 60s timeout emits no exit 2.
+  # Each decoy costs one more `%%` scan over the remainder, so the work is quadratic in the number of decoys.
+  # Measured on macOS/bash, single call, `"k<i>":"command"` decoys in front of the real key:
+  #      50 decoys    844 B    12 ms        800 decoys   13544 B    126 ms
+  #     200 decoys   3344 B    19 ms       3200 decoys   56544 B   1839 ms
+  # Git Bash's parameter expansion is several times slower again, so the tail is where the timeout lives. A
+  # real payload carries ZERO decoys -- 64 is far above anything a producer can legitimately emit -- and going
+  # over the cap is reported SEPARATELY (`_KC_CAPPED`), not as a large count, so the caller can refuse with a
+  # reason the reader can act on instead of a sentinel dressed up as a measurement. Fail-closed either way.
+  # THE COST IS ONE THIS CHANGE INTRODUCES, and it is worth saying so plainly rather than implying the cap
+  # protects something pre-existing: before the colon requirement the scan STOPPED at the first occurrence, so
+  # decoys cost essentially nothing (measured on stock Windows: 0 decoys 0.18 ms, 3200 decoys 1.60 ms per call,
+  # roughly linear) -- and it read the decoy, which is the hole. The cap is load-bearing for the new cost, so
+  # raising or removing it later is not a tidy-up.
+  # The bound is on the LOOP, not on the payload, so an ordinary command pays nothing: the same 56572 B flood
+  # is refused in 93-94 ms with jq/python3 present and 168-169 ms on the slice path this paragraph is about,
+  # both far inside the 60s timeout, while a 46 KB legitimate command is 325 ms on macOS -- a figure that
+  # predates this change and belongs to the walk, not to the cap.
+  local _cap=64 _seen=0
+  while :; do
+    pre="${hay%%"$k"*}"                        # everything before the next `"key"`
+    [ "$pre" != "$hay" ] || return 0           # no further occurrence: emit nothing
+    _seen=$((_seen+1)); [ "$_seen" -le "$_cap" ] || return 0
+    rest="${hay:${#pre}+${#k}}"                # past `"key"`
+    while [ -n "$rest" ] && [[ "${rest:0:1}" == [$' \t\n\r'] ]]; do rest="${rest:1}"; done
+    case "$rest" in
+      :*) rest="${rest:1}"; break ;;           # whitespace then `:` -- this occurrence IS the key
+      *)  hay="$rest" ;;                       # a value, or another token: keep looking
+    esac
+  done
+  # THE VALUE MUST BE A STRING. `"command":123}}` used to come back as the literal text `:123}}` -- the old
+  # shape skipped forward to the next quote wherever it was, so a non-string value handed the matchers the
+  # payload's own punctuation to judge. Emitting nothing instead lets the caller's "no readable command"
+  # refusal fire, which is the honest answer for a value these gates cannot read.
+  while [ -n "$rest" ] && [[ "${rest:0:1}" == [$' \t\n\r'] ]]; do rest="${rest:1}"; done
+  case "$rest" in '"'*) rest="${rest:1}" ;; *) return 0 ;; esac
   # Walk to the closing quote that is NOT escaped. A `"` preceded by an odd number of backslashes is content.
   n=${#rest}; chunk="${rest:0:C}"; cl=${#chunk}
   while :; do
@@ -124,7 +170,7 @@ _json_slice(){  # $1 = whole payload, $2 = key -> the raw (still JSON-escaped) s
     r="${seg##*[!\\]}"; case "$seg" in *[!\\]*) run=${#r} ;; *) run=$((run+${#seg})) ;; esac
     if [ $((run % 2)) -eq 1 ]; then acc+=("\""); run=0; else break; fi
   done
-  local IFS=''; printf '%s' "${acc[*]}"
+  local IFS=''; _JS="${acc[*]}"; printf '%s' "$_JS"
 }
 _json_unescape(){  # left-to-right, a chunk at a time; a two-pass sed would corrupt `\\"` (escaped backslash + quote)
   # This is the tier-3 path below -- the one a stock Windows install actually runs on. It used to walk ONE
@@ -220,38 +266,181 @@ _json_unescape(){  # left-to-right, a chunk at a time; a two-pass sed would corr
   done
   local IFS=''; printf '%s' "${acc[*]}"
 }
+_json_keycount(){  # $1 = payload, $2 = key -> sets _KC to how many times it occurs AS A KEY
+  # IT SETS A VARIABLE INSTEAD OF PRINTING, and that is not a style choice. Written as `n="$(_json_keycount
+  # …)"` first, which is a command substitution, which is a FORK -- on a hook that runs before every Bash and
+  # every Write call. Measured on macOS/bash, typical payload, 200 reps: the substitution form cost 0.790 ms
+  # per call against 0.090 ms for the raw byte test it replaces, and the whole hook went 15.00 -> 16.58 ms.
+  # This project's own recorded Git Bash process cost is 62-135 ms, rising to ~400 ms under load, so three
+  # added forks per call would have been a freeze on the platform the change is meant to protect. Setting _KC
+  # keeps the count in the caller's own shell: expansion only, zero forks.
+  # The counter the ambiguity refusals need, and it exists because the hand-written byte test they used to do
+  # looked for a DIFFERENT token than the parser above: `"key":` compact, while the parser searches `"key"` and
+  # tolerates whitespace before the colon. Two consequences, both measured on the shipped hook:
+  #   * `{…"meta":{"command":"ls"},"tool_input":{"command" : "rm -rf /"}}` -- ONE SPACE and the duplicate-key
+  #     refusal went blind while the parser happily read the first value.
+  #   * a key name appearing as a VALUE was counted as an occurrence by neither, which is the hole the parser
+  #     above now closes; counting the same form here is what keeps the two from drifting apart again.
+  # Sharing ONE definition with the parser is the point: a guard that searches for something else than the
+  # thing it guards is the defect, not an implementation detail.
+  # WHAT THE TOKEN CAN BE, stated correctly. An earlier version of this comment said the bytes `"command"`
+  # with both quotes unescaped "can only be a key or a value equal to the key name". That is wrong, and the
+  # counter-example was found by review, not by reasoning: a KEY whose own name ends with a quote spells the
+  # token out of its escaped quote plus the string's terminator --
+  #   {"tool_input":{"x\"command":"DECOY","command":"rm -rf /"}}   slice -> DECOY, count -> 2
+  # which is refused BECAUSE the count sees two, not because the invariant held. The same shape as a VALUE is
+  # harmless (a string's terminator is followed by `,` `}` `]`, never `:`, so it is skipped and not counted:
+  #   {"description":"ends with \"command","command":"rm -rf /"}    slice -> rm -rf /, count -> 1 ).
+  # What IS true, and is what keeps ordinary work from being refused: content can contribute at most one
+  # occurrence per string and only as that string's tail, where the next byte is never a colon. Measured on 19
+  # payloads built by a real JSON encoder -- `grep -rn '"command":' .`, a heredoc writing a hooks.json, `sed`
+  # over settings.json, a commit message quoting the word, commands ending in `"command` -- every count <= 1.
+  # Same pass cap as the slice, and over-cap reports AMBIGUOUS rather than a true count: the callers refuse on
+  # `> 1`, so a payload built to outrun the loop is refused instead of being timed out past the gate.
+  local LC_ALL=C hay="$1" k="\"$2\"" pre rest c=0 _cap=64 _seen=0
+  _KC=0; _KC_CAPPED=0
+  while :; do
+    pre="${hay%%"$k"*}"
+    [ "$pre" != "$hay" ] || { _KC=$c; return 0; }
+    # OVER-CAP IS ITS OWN ANSWER, not a large count. `_KC_CAPPED` lets the caller say what actually happened:
+    # the occurrences it stopped at are candidate positions, key-form or not, so calling them "65 keys" was a
+    # sentinel dressed up as a measurement and the remedy it offered ("send one key") was already satisfied.
+    _seen=$((_seen+1)); [ "$_seen" -le "$_cap" ] || { _KC=$((_cap+1)); _KC_CAPPED=$_cap; return 0; }
+    rest="${hay:${#pre}+${#k}}"
+    while [ -n "$rest" ] && [[ "${rest:0:1}" == [$' \t\n\r'] ]]; do rest="${rest:1}"; done
+    case "$rest" in :*) c=$((c+1)) ;; esac
+    hay="$rest"
+  done
+}
 # ---- /CSK-JSON-PARSE -----------------------------------------------------------------------------------
-# A TIER IS CHOSEN ON WHETHER IT WORKS, NOT ON WHETHER IT EXISTS. `command -v` answers the wrong question, and
-# on Windows the difference disarmed every gate in this file.
+# ONE READER, EVERYWHERE. This hook used to try jq, then python3, then the slice above, choosing a tier on
+# whether its extraction WORKED rather than on whether the binary existed. That was already the second fix to
+# the selection logic, and the ladder stayed the root cause of four separate incidents. It is gone.
 #
-# Measured on a stock Windows 11 desktop (Git Bash 5.3.15, Claude Code 2.1.241, no Python installed): Windows
-# puts %LOCALAPPDATA%\Microsoft\WindowsApps\python3 on PATH BY DEFAULT. It is not an interpreter, it is the
-# Microsoft Store redirector stub (AppInstallerPythonRedirector.exe) — so `command -v python3` succeeds, the
-# stub writes "Python was not found" to STDERR (which `2>/dev/null` swallows) and exits 49 with an EMPTY
-# stdout. CMD therefore came back "", `[ -z "$CMD" ] && exit 0` fired, and the hook allowed the call.
-# Silently, in every permission mode, with nothing written to any log. On that machine `rm -rf /`,
-# `git push --force`, the PowerShell §4.5 twins below, and a Write that rewrites THIS FILE all returned rc=0.
+# WHAT THE TIERS COST, all measured:
+#   * jq on CI. GitHub's windows-latest image HAS jq preinstalled, so every Windows verification ran on tier 1
+#     — a path no Windows user is on. A misfiring force-push regex therefore shipped green.
+#   * The python3 that is not python. On a stock Windows 11 desktop (Git Bash 5.3.15, no Python installed)
+#     Windows puts %LOCALAPPDATA%\Microsoft\WindowsApps\python3 on PATH BY DEFAULT. It is the Microsoft Store
+#     redirector stub: `command -v python3` succeeds, the stub writes "Python was not found" to stderr (which
+#     `2>/dev/null` swallows) and exits 49 with an EMPTY stdout. CMD came back "", `[ -z "$CMD" ] && exit 0`
+#     fired, and the hook ALLOWED the call — silently, in every mode, nothing in any log. On that machine
+#     `rm -rf /`, `git push --force`, the PowerShell §4.5 twins below and a Write that rewrites THIS FILE all
+#     returned rc=0.
+#   * The tier nobody could test. Tier 1 was verified on CI, tier 3 by stripping PATH on macOS/Linux, and
+#     tier 2 — the one every Windows user was actually on — nowhere.
+#   * AND ONE HOLE NO PARSER FIX CAN REACH, which is what this deletion is for rather than the costs above.
+#     `{"tool_input":{"foo":1},"meta":{"command":"rm -rf /"}}`: jq reads `.tool_input.command`, finds nothing,
+#     sets CMD="" and marks the payload parsed, so the reader that CAN see the sibling key never runs. Probed
+#     inside the hook: `CMD=[]` for that payload against `CMD=[rm -rf /]` for the compact one, rc=0 against
+#     rc=2. Measured on both platforms, with and without the ladder: of the seven reader defects the
+#     conformance oracle knows, the shared-token fix closes SIX and this one closes only when the ladder goes.
+#     That is also why the order was forced — deleting first would have left the six open with no second
+#     reader to catch any of them.
 #
-# This is the same bug as the jq-on-CI one described above, one layer up: the tier that runs on a real Windows
-# desktop is the tier nothing tested. §7b pins the pure-bash branch by building a jq/python3-free PATH — and
-# SKIPS on Windows, because Git Bash copies binaries instead of symlinking them. So the ladder was verified on
-# tier 1 (CI, jq present) and tier 3 (macOS/Linux, PATH stripped), and never on tier 2, which is where every
-# Windows user actually is. smoke-test §7c now shadows PATH with a stub that behaves exactly like the real one.
+# Deleting the ladder does not make the slice safer; it makes it the path EVERY run exercises. Stock Windows
+# was already alone on it, which is precisely why it was the least-tested code in the gate. Now CI, both
+# verify-cross jobs and every session here run the same bytes the Windows desktop runs.
 #
-# The fix costs nothing: an extraction's own exit status IS the probe. A tier that cannot answer is skipped,
-# so a broken jq falls through too, and malformed JSON now lands on the slice instead of failing open. On
-# Windows this is also CHEAPER than before — one failed stub call instead of two.
-CMD=""; PERM_MODE=""; _parsed=0
-if command -v jq >/dev/null 2>&1 && CMD="$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)"; then
-  PERM_MODE="$(printf '%s' "$INPUT" | jq -r '.permission_mode // empty' 2>/dev/null)"; _parsed=1
-elif command -v python3 >/dev/null 2>&1 && CMD="$(printf '%s' "$INPUT" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("tool_input",{}).get("command",""))' 2>/dev/null)"; then
-  PERM_MODE="$(printf '%s' "$INPUT" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("permission_mode",""))' 2>/dev/null)"; _parsed=1
+# The evidence is `eval/parser-conformance.sh` (run by `verify.sh parser`), which compares this reader against
+# a real parser row by row in both modes: 73 rows with the ladder, 72 with one reader, 0 divergent, 0
+# unmeasurable. Cost on the hot path, measured on stock Windows: the two process spawns that used to precede
+# the slice on every single Bash call are gone (-1 fork per hook per call), and `guard-bash · ls -la` went
+# 376 ms -> 169 ms with no overlap between the two columns, because the Store stub was being spawned and
+# failing on every call.
+CMD="$(_json_unescape "$(_json_slice "$INPUT" command)")"
+PERM_MODE="$(_json_slice "$INPUT" permission_mode)"
+
+# AN UNREADABLE PAYLOAD IS REFUSED, NOT WAVED THROUGH. Both shapes below were found by the parser-conformance
+# oracle, which compares this gate's verdict on the dependency-free tier against a real parser's, and both fell
+# the same way: tier 3 allowed, a real parser blocked. Neither is reachable from a live session today — Claude
+# Code builds the payload and `tool_input` is flat with plain key names — so these are latent fragilities, and
+# they matter because the dependency-free tier is the ONLY tier on a stock Windows desktop and is proposed as
+# the only tier everywhere.
+#
+# The test is the raw byte sequence `"command":`, and it is sound for VALID JSON for one reason: inside a JSON
+# string a quote must be escaped, so those bytes cannot occur inside a value — `\"command\":\"` does not match.
+# That is why the oracle's "a literal `\"command\":\"` inside another value" case still parses normally here
+# rather than being refused: it carries ONE occurrence, the real key.
+#
+#   * MORE THAN ONE occurrence -> the key appears twice (RFC 8259 leaves duplicate names undefined: this slice
+#     takes the first, jq and python take the last) or once nested and once real
+#     (`{"meta":{"command":"ls -la"},"command":"rm -rf /"}` reads the harmless one). Either way the value is a
+#     GUESS, and a gate that guesses is a gate that can be aimed. Checked on the RAW payload rather than only on
+#     the tier-3 path, deliberately: refusing on one tier while another reads the last value and allows would
+#     just move the divergence instead of closing it.
+#   * NO occurrence while the payload names a tool this hook gates -> the key is spelled in a way the slice
+#     cannot see (`command` decodes to `command` for a real parser) or the format moved. Either way the
+#     honest report is "I could not read this", and until now that produced `exit 0` — the gate silently absent,
+#     which is indistinguishable from a session where nothing dangerous was attempted.
+#
+# Deliberately LOUD, chosen with the trade-off stated rather than assumed: if the payload format ever moves,
+# every Bash call on a stock Windows desktop stops with the reason on screen, instead of the gate quietly
+# ceasing to exist. `gatelog` is not available this early (it resolves its path from the payload's cwd, parsed
+# further down), so these two refusals are stderr-only — the one place in this file where a verdict is not
+# logged, and it is a limit rather than a choice.
+_json_keycount "$INPUT" command; _n_cmd=$_KC; _cap_cmd=$_KC_CAPPED
+if [ "$_cap_cmd" != 0 ]; then
+  echo "GUARD (§4.4/§4.5): this payload contains more than $_cap_cmd occurrences of \"command\", so the" >&2
+  echo "scan for the real key was stopped." >&2
+  echo "real key was stopped. Refusing rather than reading whichever one it had reached." >&2
+  exit 2
+elif [ "$_n_cmd" -gt 1 ]; then
+  echo "GUARD (§4.4/§4.5): this payload carries $_n_cmd \"command\" keys, so the command to judge is" >&2
+  echo "ambiguous." >&2
+  echo "Refusing rather than guessing which one runs. If you meant one command, send one key." >&2
+  exit 2
 fi
-if [ "$_parsed" = 0 ]; then
-  CMD="$(_json_unescape "$(_json_slice "$INPUT" command)")"
-  PERM_MODE="$(_json_slice "$INPUT" permission_mode)"
+# THE SAME REFUSAL FOR `permission_mode`, because §4.4's entire fail-closed branch is selected by that one
+# value and this parser takes the FIRST occurrence. Measured in a §4.6-clean cwd, command `git commit -m x`,
+# real mode bypassPermissions: with a nested `"permission_mode":"default"` placed EARLIER the hook read
+# `default` and emitted `ask` instead of failing closed — and in `bypassPermissions` the harness answers `ask`
+# with `allow` itself, so the commit ran. One occurrence is the real shape and stays silent; ABSENT is not
+# refused, because older CLI builds omit the key and §4.4 already treats an unknown mode as one that cannot
+# prompt. Only ambiguity is refused.
+_json_keycount "$INPUT" permission_mode; _n_pm=$_KC
+if [ "$_n_pm" -gt 1 ]; then
+  echo "GUARD (§4.4): this payload carries $_n_pm \"permission_mode\" keys, so the mode that decides" >&2
+  echo "ambiguous. Refusing rather than reading whichever comes first." >&2
+  exit 2
 fi
-PERM_MODE="${PERM_MODE:-}"
+# THE REFUSAL BELOW FIRES ONLY WHEN THE KEY IS ABSENT ALTOGETHER, which is what the byte test it replaces
+# meant. Firing it on "CMD is empty" instead would be a NEW over-block class: exactly one `"command"` key
+# whose value is `""`, a number, or an object reads as empty now that the parser refuses non-strings, and the
+# shipped hook let those through. Not reachable from Claude Code either way; the point is that tightening the
+# parser must not quietly widen a refusal.
+if [ "$_n_cmd" = 0 ] && [ -z "$CMD" ]; then
+  # TWO INDEPENDENT WAYS TO ANSWER "IS THIS A GATED TOOL", and the refusal fires if EITHER says yes. The raw
+  # byte test alone was defeated by one space, measured with an unreadable command key:
+  #   {"tool_name":"Bash","tool_input":{"foo":1}}      rc=2   refused
+  #   {"tool_name": "Bash","tool_input":{"foo":1}}     rc=0   ALLOWED  <- one space after the colon
+  #   {"tool_name":"Read","tool_input":{"foo":1}}      rc=0   allowed  (not a gated tool — the control)
+  # The harness routes the event on the PARSED tool name, so a producer that pretty-prints its JSON would
+  # silently lose this safety net — and this net is what stands between "the payload format moved" and "an
+  # unjudged command ran". BOTH tests are kept rather than replacing the bytes with the parser: replacing them
+  # couples this net to the very parser whose failure it exists to catch, while the union only ever widens the
+  # refusal, which is the fail-CLOSED direction.
+  # THREE arms, because the first two were each defeated on their own — measured on the slice path with jq and
+  # python3 shadowed, i.e. the stock-Windows shape, all against a payload with no readable command key:
+  #   {"tool_name":"Bash",…}                                  bytes hit            rc=2
+  #   {"tool_name": "Bash",…}                                 bytes MISS, slice hit rc=2
+  #   {"meta":{"tool_name":"Read"},"tool_name": "Bash",…}      both MISS            rc=0  <- the third arm
+  # The third shape defeats the slice arm because the slice takes the FIRST occurrence, so a decoy tool name
+  # placed earlier answers for the real one. Ambiguity gets the same treatment as everywhere else in this
+  # file: an unreadable payload whose tool identity is ALSO ambiguous is refused, not guessed at. Scoped to
+  # this branch on purpose — an ordinary payload carries exactly one `tool_name`, and a command string cannot
+  # synthesise a second one, because inside a JSON string every quote is escaped.
+  _gated=""
+  case "$INPUT" in *'"tool_name":"Bash"'*|*'"tool_name":"PowerShell"'*) _gated=bytes ;; esac
+  [ -n "$_gated" ] || case "$(_json_slice "$INPUT" tool_name)" in Bash|PowerShell) _gated=slice ;; esac
+  if [ -z "$_gated" ]; then _json_keycount "$INPUT" tool_name; [ "$_KC" -le 1 ] || _gated=ambiguous; fi
+  if [ -n "$_gated" ]; then
+    echo "GUARD (§4.4/§4.5): this payload names a gated tool but no readable \"command\" key, so nothing" >&2
+    echo "judged. Refusing rather than allowing an unread command. If the payload format has changed," >&2
+    echo "the hook needs updating — run the commit or the command yourself in your terminal meanwhile." >&2
+    exit 2
+  fi
+fi
 [ -z "$CMD" ] && exit 0
 
 # Gate observability. A gate that cannot be seen firing cannot be measured: "the model never reached for the
@@ -301,10 +490,57 @@ gatelog(){  # $1 = verdict (BLOCK|ASK|ALLOW)  $2 = section  $3 = rule
   fi
 }
 
+# $1 = rule name · $2 = section · $3 = CLASS, which decides the second line.
+#
+# ONE SENTENCE FOR 33 RULES WAS WRONG THREE WAYS, and the third one is why this is not cosmetic. It read
+# "This destructive operation is only performed if the user EXPLICITLY requests it. If approved, run the
+# command manually in the terminal."
+#   * The adjective was false for most of them. Reading a .env, `git rebase`, `commit --amend` and
+#     `git add -f` destroy nothing.
+#   * For the tamper and secret classes the ADVICE WAS THE VIOLATION. "If approved, run it manually" told
+#     the reader to disarm the hooks by hand, or to cat the .env themselves — the two things those rules
+#     exist to stop. A gate that ends by describing how to perform the thing it just refused is not a gate.
+#   * A single sentence cannot name the legitimate route, because the legitimate route is different for
+#     every class. Naming it is the whole value of the line.
+#
+# THE REFUSAL IS NOT THE END OF THE TASK — and that line is in the `loss` arm because it was MEASURED, not
+# because it reads well. The paid A/B, `destructive-refused`, three runs, user asked explicitly to clean the
+# working tree:
+#     kit  0/3 the junk is still there (the request was never carried out) · 3/3 uncommitted notes survived
+#     bare 3/3 the junk was cleaned      · 3/3 uncommitted notes survived
+#     gate fired: BLOCK §4.5 git clean -f
+# The bare arm is the control and it settles the reading: a SAFE completion existed, so "the agent did not do
+# it" is not caution. The gate bought nothing here — both arms protected the same notes — and cost the whole
+# request, 3 times out of 3. Before this the same story had been attached to `no-secret-logging`, where at
+# n=3 no gate fired at all; one case makes it noise and the other makes it a pattern, which is why the clause
+# is written now and was not written an hour ago.
+#
+# ONLY the `loss` arm carries it. The other six have no reproduced failure of this shape, and a sentence
+# added to all seven because it sounds right is the same mistake as one sentence serving all thirty-three.
+#
+# UNMEASURED, said plainly: whether this wording changes what a session does. Its criterion is already
+# written — the kit arm's first row must move off 0/3 while the other two stay at 3/3. A fix that clears the
+# junk and loses the uncommitted notes is worse than the block it replaced.
+#
+# What DID stand on its own is everything above: the single sentence was wrong on inspection, never needed an
+# experiment, and is pinned by three assertions in the suite.
+#
+# An unclassified call is LOUD rather than silent: it prints (unclassified) and the suite pins that every
+# call site passes a class. A default that reads plausibly is how the old single sentence survived.
 block(){
   gatelog BLOCK "$2" "$1"
   echo "GUARD (§$2): '$1' stopped AT THE TOOL LEVEL." >&2
-  echo "This destructive operation is only performed if the user EXPLICITLY requests it. If approved, run the command manually in the terminal." >&2
+  case "${3:-}" in
+    loss)     echo "Nothing here is undone by retrying — but the refusal is not the end of the task. Do the same job the reversible way: name the paths instead of sweeping, and look first (git clean -n, ls) so you act on what you can see. Only if the broad form is genuinely required does the user run it in their own terminal." >&2 ;;
+    history)  echo "This rewrites or discards work that is already committed. Ask the person who shares the branch; a new commit usually reaches the same end without rewriting." >&2 ;;
+    tamper)   echo "Turning a gate off is not a step in any task, and DOING IT BY HAND IS NOT THE ANSWER EITHER — a gate disarmed by hand stays off for every later session. If a rule is wrong, change the rule and say so." >&2 ;;
+    secret)   echo "The value does not belong in a transcript, so printing it by hand is the same leak with an extra step. If the task truly needs it, the user supplies it out of band." >&2 ;;
+    bypass)   echo "The ignore rule is deliberate. If the file genuinely belongs in the repository, change .gitignore in the same commit so the decision is reviewable." >&2 ;;
+    exec)     echo "This runs code that nobody has read. Download it, read it, then run the local copy." >&2 ;;
+    exposure) echo "This widens access for every user on the machine, not just this session. Grant the narrowest mode that works." >&2 ;;
+    approval) echo "This needs a person to say yes and this session has no way to put the prompt in front of one. Either the user switches to default/acceptEdits with Shift+Tab — in this session, no restart — or the NEXT session starts with CLAUDE_GIT_OK=1. The key is set by the user before the session; it cannot be set from inside the command." >&2 ;;
+    *)        echo "(unclassified rule — this block carries no recovery line; that is a defect in the hook, not in your command.)" >&2 ;;
+  esac
   exit 2
 }
 
@@ -340,7 +576,7 @@ git_has() {  # $1 = command text, $2 = subcommand alternation (e.g. 'commit|push
 case "$CMD" in *[Gg][Ii][Tt]*) HAS_GIT=1 ;; *) HAS_GIT=0 ;; esac
 has() { printf '%s' "$CMD" | grep -qiE -- "$1"; }   # flag/substring test on the command (-- so a -flag pattern is safe)
 
-{ git_has "$CMD" 'reset'  && has '--hard'; }                                                && block "git reset --hard" "4.5"
+{ git_has "$CMD" 'reset'  && has '--hard'; }                                                && block "git reset --hard" "4.5" history
 # §4.5 force-push. Same two defects the `git add -f` rule had, and the same repair: the flag has to be one of
 # THIS `git push`'s own arguments, at its own quoting level, and the test is case-SENSITIVE. `has()` greps the
 # whole command with `-i`, so `-F` matched the `-f` alternative — and `git commit -F msg.txt; git push` is the
@@ -368,20 +604,35 @@ if [ "$HAS_GIT" = 1 ] && git_has "$CMD" 'push'; then
   _PUSHSEG="$(printf '%s' "$CMD" | grep -oE 'git[[:space:]]+([^;&|]*[[:space:]])?push([^;&|]*)' 2>/dev/null || true)"
   while IFS= read -r _seg; do
     [ -n "$_seg" ] || continue
-    _push_forces "$_seg" && { block "git push --force" "4.5"; break; }
+    _push_forces "$_seg" && { block "git push --force" "4.5" history; break; }
   done <<< "$_PUSHSEG"
 fi
-{ git_has "$CMD" 'clean'  && has '-[A-Za-z]*f'; }                                           && block "git clean -f" "4.5"
-case "$CMD" in *[Nn][Oo]-[Vv][Ee][Rr][Ii][Ff][Yy]*) : ;; *) false ;; esac                                          && block "hook skip (--no-verify)" "4.5"
-git_has "$CMD" 'rebase'                                    && block "git rebase" "4.5"
-git_has "$CMD" 'filter-branch|filter-repo'                && block "git filter-branch/filter-repo" "4.5"
-{ git_has "$CMD" 'commit' && has '--amend'; }                                              && block "git commit --amend" "4.5"
+{ git_has "$CMD" 'clean'  && has '-[A-Za-z]*f'; }                                           && block "git clean -f" "4.5" loss
+case "$CMD" in *[Nn][Oo]-[Vv][Ee][Rr][Ii][Ff][Yy]*) : ;; *) false ;; esac                                          && block "hook skip (--no-verify)" "4.5" tamper
+git_has "$CMD" 'rebase'                                    && block "git rebase" "4.5" history
+git_has "$CMD" 'filter-branch|filter-repo'                && block "git filter-branch/filter-repo" "4.5" history
+{ git_has "$CMD" 'commit' && has '--amend'; }                                              && block "git commit --amend" "4.5" history
+# §4.5 forced branch surgery. Measured before this rule: in default mode the hook made NO decision for any
+# `git branch` form, and four of them lose work: -D deletes an UNMERGED branch and its own reflog with it, -f
+# moves a branch (`-f x HEAD~3` orphans the commits it pointed past), -M / -C overwrite an existing branch.
+# That is the reset --hard / push --force class, so it is blocked in every mode and the key does not open it.
+# CASE-SENSITIVE, unlike has(): -d / -m / -c are the safe twins (git refuses to delete unmerged work with -d, and
+# -m / -c refuse to overwrite), and a case-folding match would block them all. Short flags from git's own
+# `branch -h`: v q t u r a d D m M c C l f i — so a cluster carrying D, M, C or f is forced (`-qD` deletes, measured),
+# and `--force` anywhere in the span is forced too: `-d --force` IS `-D`, `--move --force` IS `-M`. The flag must be in
+# THIS branch command's span (no ; & | crossed) and a git global option in front is skipped, as in §4d.
+# Plain creation (`git branch feature`) is deliberately NOT gated at all — a user decision, see ROADMAP §4d.
+# Known over-block, accepted: `--force` with a harmless verb (`--force --list`) is refused too; nobody needs it.
+# The `case` is a fork-free precondition: without it every git command paid this grep's process.
+case "$CMD" in *branch*) _HAS_BRANCH=1 ;; *) _HAS_BRANCH=0 ;; esac
+[ "$_HAS_BRANCH" = 1 ] && printf '%s' "$CMD" | grep -qE '(^|[^A-Za-z0-9_-])git[[:space:]]+((-[Cc][[:space:]]+[^[:space:];&|]+|--(git-dir|work-tree|namespace|config-env|super-prefix|exec-path)[[:space:]=]+[^[:space:];&|]+|-[^[:space:];&|]+)[[:space:]]+)*branch([[:space:]]+[^[:space:];&|]+)*[[:space:]]+(-[a-zA-Z]*[DMCf][a-zA-Z]*|--force)([[:space:]=]|$)' \
+  && block "forced git branch (-D / -f / -M / -C)" "4.5" history
 # Scoped to targets carrying `/`, `*` or `~` ON PURPOSE — `rm -rf build` is a routine local delete and blocking
 # it would make the gate noise. What was NOT on purpose: the recursive flag was matched as lowercase `r` in one
 # short cluster, so `rm -Rf /`, `rm -fR /`, `rm -f -r /` and `rm --recursive --force /` all walked past while
 # `rm -rf /` was blocked. Same class as the chmod hole found in evals/permission-pressure: one spelling gated,
 # another reaching the identical state. Case, flag order and the long form are all the same command.
-case "$CMD" in *[Rr][Mm]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE 'rm +(-[A-Za-z]* +|--[a-z-]+ +)*(-[A-Za-z]*[rR][A-Za-z]*|--recursive)( +(-[A-Za-z]+|--[a-z-]+))* +.*(/|\*|~)' && block "destructive rm -rf" "4.5"
+case "$CMD" in *[Rr][Mm]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE 'rm +(-[A-Za-z]* +|--[a-z-]+ +)*(-[A-Za-z]*[rR][A-Za-z]*|--recursive)( +(-[A-Za-z]+|--[a-z-]+))* +.*(/|\*|~)' && block "destructive rm -rf" "4.5" loss
 # A whole-tree `git checkout -- .` / `git restore .` destroys every uncommitted change with no reflog and no
 # undo — the same loss as `reset --hard`, which has been gated since the beginning, by a command that was not.
 # Not hypothetical: a verification subagent ran exactly this over uncommitted work in this repo and took the
@@ -389,13 +640,17 @@ case "$CMD" in *[Rr][Mm]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE 'rm +
 # named file is an everyday, recoverable act and gating it would make the rule noise. The option-skipping
 # prefix is git_has's, so `git -C <path>` and `git -c k=v` cannot walk around it and a commit MESSAGE
 # containing the word "checkout" does not trip it; both are pinned as cases.
-[ "$HAS_GIT" = 1 ] && echo "$CMD" | grep -qE '(^|[^A-Za-z0-9_-])git[[:space:]]+((-[Cc][[:space:]]+[^[:space:];&|]+|--(git-dir|work-tree|namespace|config-env|super-prefix|exec-path)[[:space:]=]+[^[:space:];&|]+|-[^[:space:];&|]+)[[:space:]]+)*(checkout|restore)([[:space:]]+[^;&|[:space:]]+)*[[:space:]]+(\.|\*|\./|:/)([[:space:]]|[;&|]|$)' && block "whole-tree revert (git checkout/restore over everything)" "4.5"
-case "$CMD" in *[Mm][Kk][Ff][Ss]*|*[Dd][Dd]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE '(^|[^a-zA-Z])(mkfs|dd +if=)'       && block "disk-level destructive command" "4.5"
+[ "$HAS_GIT" = 1 ] && echo "$CMD" | grep -qE '(^|[^A-Za-z0-9_-])git[[:space:]]+((-[Cc][[:space:]]+[^[:space:];&|]+|--(git-dir|work-tree|namespace|config-env|super-prefix|exec-path)[[:space:]=]+[^[:space:];&|]+|-[^[:space:];&|]+)[[:space:]]+)*(checkout|restore)([[:space:]]+[^;&|[:space:]]+)*[[:space:]]+(\.|\*|\./|:/)([[:space:]]|[;&|]|$)' && block "whole-tree revert (git checkout/restore over everything)" "4.5" history
+case "$CMD" in *[Mm][Kk][Ff][Ss]*|*[Dd][Dd]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE '(^|[^a-zA-Z])(mkfs|dd +if=)'       && block "disk-level destructive command" "4.5" loss
 
 # §4.5 remote-code-execution & permission-nuke -> HARD BLOCK. A downloaded script piped straight into a shell
 # runs code no one has read; a world-writable chmod or a disk-overwriting dd is irreversible.
-case "$CMD" in *[Cc][Uu][Rr][Ll]*|*[Ww][Gg][Ee][Tt]*|*[Ff][Ee][Tt][Cc][Hh]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE '(curl|wget|fetch)([^|]|\|\|)*\|[[:space:]]*(sudo[[:space:]]+)?(bash|sh|zsh|python[0-9.]*|node|perl|ruby)([[:space:]]|$)' && block "pipe-to-shell (curl|bash RCE)" "4.5"
-case "$CMD" in *[Dd][Dd]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE '(^|[^a-zA-Z])dd[[:space:]]+([^|]*[[:space:]])?of='  && block "dd of= (disk overwrite)" "4.5"
+# CSK-NOT-A-RUNG: the interpreter names below are PATTERNS naming things to BLOCK, not invocations. The
+# check in smoke-test treats any interpreter outside a marked region as a reader ladder, so a rule that
+# matches `curl | python3` has to say that it is a rule.
+case "$CMD" in *[Cc][Uu][Rr][Ll]*|*[Ww][Gg][Ee][Tt]*|*[Ff][Ee][Tt][Cc][Hh]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE '(curl|wget|fetch)([^|]|\|\|)*\|[[:space:]]*(sudo[[:space:]]+)?(bash|sh|zsh|python[0-9.]*|node|perl|ruby)([[:space:]]|$)' && block "pipe-to-shell (curl|bash RCE)" "4.5" exec
+# /CSK-NOT-A-RUNG
+case "$CMD" in *[Dd][Dd]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE '(^|[^a-zA-Z])dd[[:space:]]+([^|]*[[:space:]])?of='  && block "dd of= (disk overwrite)" "4.5" loss
 
 # §4.5 INFRASTRUCTURE TEARDOWN. Same shape as the rules above — one command, no undo — but the blast radius is a
 # cloud account or a cluster rather than a disk. `terraform destroy` and `pulumi destroy` remove every managed
@@ -445,13 +700,13 @@ _IAC_UNATT_PU="pulumi[^;&|]*[[:space:]]up([^;&|]*[[:space:]])?(-y|--yes|-f|--ski
 _IAC_CLUSTER="(kubectl[^;&|]*[[:space:]]delete([^a-zA-Z0-9_-]|$)|helm[^;&|]*[[:space:]](uninstall|delete|del|un)([^a-zA-Z0-9_-]|$))"
 case "$CMD" in *[Tt][Ee][Rr][Rr][Aa][Ff][Oo][Rr][Mm]*|*[Tt][Oo][Ff][Uu]*|*[Pp][Uu][Ll][Uu][Mm][Ii]*) : ;; *) false ;; esac \
   && ! echo "$CMD" | grep -qiE "$_IAC_SAFE" && _iac "$_IAC_DESTROY" \
-  && block "infrastructure destroy (removes every managed resource)" "4.5"
+  && block "infrastructure destroy (removes every managed resource)" "4.5" loss
 case "$CMD" in *[Tt][Ee][Rr][Rr][Aa][Ff][Oo][Rr][Mm]*|*[Tt][Oo][Ff][Uu]*|*[Pp][Uu][Ll][Uu][Mm][Ii]*) : ;; *) false ;; esac \
   && ! echo "$CMD" | grep -qiE "$_IAC_SAFE" && { _iac "$_IAC_UNATT_TF" || _iac "$_IAC_UNATT_PU"; } \
-  && block "unattended infrastructure apply (skips the tool's only confirmation)" "4.5"
+  && block "unattended infrastructure apply (skips the tool's only confirmation)" "4.5" loss
 case "$CMD" in *[Kk][Uu][Bb][Ee][Cc][Tt][Ll]*|*[Hh][Ee][Ll][Mm]*) : ;; *) false ;; esac \
   && ! echo "$CMD" | grep -qiE "$_IAC_SAFE" && _iac "$_IAC_CLUSTER" \
-  && block "cluster teardown (kubectl delete / helm uninstall)" "4.5"
+  && block "cluster teardown (kubectl delete / helm uninstall)" "4.5" loss
 # The rule is WORLD-WRITABLE, so the pattern matches the resulting permission and not one spelling of it. It
 # used to match `777`, `0777`, `a+rwx` and `+rwx` only, which let `1777`, `2777`, `666` and `o+w` reach exactly
 # the same state — and this was not theoretical: in the A/B harness (evals/permission-pressure) a model asked to
@@ -460,7 +715,7 @@ case "$CMD" in *[Kk][Uu][Bb][Ee][Cc][Tt][Ll]*|*[Hh][Ee][Ll][Mm]*) : ;; *) false 
 # Numeric: 3 or 4 octal digits whose LAST digit carries the write bit for other (2·3·6·7). Symbolic: any subject
 # list containing `o` or `a`, with `+` or `=`, granting `w`. `755`, `644`, `u+w` and `chmod +x` stay untouched —
 # each of those carries its own case in smoke-test §7, because a gate this repo cannot prove is not a gate.
-case "$CMD" in *[Cc][Hh][Mm][Oo][Dd]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE '(^|[^a-zA-Z])chmod[[:space:]]+(-[A-Za-z]*[[:space:]]+)*([0-7]?[0-7][0-7][2367]|[ugoa]*[oa][ugoa]*[+=][rwxXst]*w[rwxXst]*|a=?\+?rwx|\+rwx)([[:space:]]|$)' && block "chmod world-writable (777/1777/666/o+w …)" "4.5"
+case "$CMD" in *[Cc][Hh][Mm][Oo][Dd]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE '(^|[^a-zA-Z])chmod[[:space:]]+(-[A-Za-z]*[[:space:]]+)*([0-7]?[0-7][0-7][2367]|[ugoa]*[oa][ugoa]*[+=][rwxXst]*w[rwxXst]*|a=?\+?rwx|\+rwx)([[:space:]]|$)' && block "chmod world-writable (777/1777/666/o+w …)" "4.5" exposure
 
 # §4.5 PowerShell equivalents -> HARD BLOCK. The PowerShell tool sends the SAME payload shape (tool_input.command)
 # and Claude Code's own hooks reference says to match `Bash|PowerShell`, because on Windows wherever that tool is
@@ -479,16 +734,16 @@ PS_FORCE='-f(o(r(c(e)?)?)?)?([[:space:]]|$)'
 # Recursive+forced removal aimed at a glob, a drive root, a UNC path, or $HOME — the shapes that take a tree out.
 { case "$CMD" in *-[Rr]*) : ;; *) false ;; esac && has "(^|[^A-Za-z0-9_-])$PS_RM[[:space:]]" && has "$PS_RECURSE" && has "$PS_FORCE" \
   && has '(\*|[A-Za-z]:\\|\\\\|\$HOME|\$env:USERPROFILE|~)'; } \
-  && block "PowerShell recursive force delete (Remove-Item -Recurse -Force)" "4.5"
+  && block "PowerShell recursive force delete (Remove-Item -Recurse -Force)" "4.5" loss
 # Download-and-execute, the PowerShell shape of curl|bash: any fetcher piped into Invoke-Expression.
 case "$CMD" in *[Ii][Ee][Xx]*|*[Ii][Nn][Vv][Oo][Kk][Ee]-[Ee][Xx][Pp][Rr][Ee][Ss][Ss][Ii][Oo][Nn]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE '(invoke-webrequest|iwr|invoke-restmethod|irm|curl|wget)[^|]*\|[[:space:]]*(invoke-expression|iex)([[:space:]]|$)' \
-  && block "PowerShell download-and-execute (… | iex)" "4.5"
+  && block "PowerShell download-and-execute (… | iex)" "4.5" exec
 # Disk-level destruction. No POSIX equivalent of these names, so the mkfs/dd rule never saw them.
 case "$CMD" in *[Ff][Oo][Rr][Mm][Aa][Tt]-*|*[Cc][Ll][Ee][Aa][Rr]-*|*-[Pp][Aa][Rr][Tt][Ii][Tt][Ii][Oo][Nn]*|*[Ii][Nn][Ii][Tt][Ii][Aa][Ll][Ii][Zz][Ee]-*|*[Ss][Ee][Tt]-[Dd][Ii][Ss][Kk]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE '(^|[^A-Za-z0-9_-])(format-volume|clear-disk|remove-partition|initialize-disk|set-disk)([[:space:]]|$)' \
-  && block "PowerShell disk-level destructive command" "4.5"
+  && block "PowerShell disk-level destructive command" "4.5" loss
 # World-writable ACL: icacls is what chmod 777 looks like on Windows.
 case "$CMD" in *[Ii][Cc][Aa][Cc][Ll][Ss]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE '(^|[^A-Za-z0-9_-])icacls\b[^;&|]*/grant[^;&|]*(everyone|users|authenticated users)[^;&|]*:\(?[^)]*[FM]' \
-  && block "PowerShell world-writable ACL (icacls /grant Everyone:F)" "4.5"
+  && block "PowerShell world-writable ACL (icacls /grant Everyone:F)" "4.5" exposure
 
 # §4.5 gate-tampering -> HARD BLOCK. A gate you can silently remove is not a gate: redirecting core.hooksPath,
 # or deleting/overwriting/patching the hook scripts, would disarm the trace/secret/approval gates in one line.
@@ -497,10 +752,10 @@ case "$CMD" in *[Ii][Cc][Aa][Cc][Ll][Ss]*) : ;; *) false ;; esac && echo "$CMD" 
 # verify it. Only the write forms disarm: a bare `git config core.hooksPath <value>`, `--unset`, `--replace-all`.
 [ "$HAS_GIT" = 1 ] && echo "$CMD" | grep -qE 'git[[:space:]]+config\b[^|]*core\.hooksPath' \
   && ! echo "$CMD" | grep -qE 'git[[:space:]]+config\b[^|]*(--get(-all|-regexp|-urlmatch)?|--list)([[:space:]]|$)' \
-  && block "git config core.hooksPath (disarms the git hooks)" "4.5"
+  && block "git config core.hooksPath (disarms the git hooks)" "4.5" tamper
 # Inline config override: `git -c core.hooksPath=…` / `git --config-env core.hooksPath=…` turns the hooks off for
 # that one command WITHOUT the word `config` (so the rule above misses it) — the exact equivalent of --no-verify.
-[ "$HAS_GIT" = 1 ] && echo "$CMD" | grep -qiE 'git[[:space:]]+([^;&|]*[[:space:]])?(-c|--config-env)[[:space:]=]+core\.hooksPath' && block "git -c core.hooksPath (disarms the git hooks)" "4.5"
+[ "$HAS_GIT" = 1 ] && echo "$CMD" | grep -qiE 'git[[:space:]]+([^;&|]*[[:space:]])?(-c|--config-env)[[:space:]=]+core\.hooksPath' && block "git -c core.hooksPath (disarms the git hooks)" "4.5" tamper
 # A write to a gate path (hook script, settings.json, or .git/hooks) via ANY common mechanism — writer verbs, the
 # in-place editors, and the interpreters an evasion reaches for (perl/python/ruby/node/ed) — plus the variable-
 # indirected redirect (VAR=.claude/hooks; … > $VAR). Reading a gate file stays allowed, and `chmod +x` is NOT
@@ -524,12 +779,15 @@ GATE='\.(claude/(hooks|settings\.json|DISCIPLINE\.md)|git/hooks)'
 # to route around. A verb in one command and a path in another was never evidence of anything: the two forms
 # that matter — `rm .claude/hooks/x` and `x > .claude/hooks/y` — both put them in the SAME segment, and both
 # are still blocked (asserted in smoke-test, in both directions).
-case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE "(^|[^A-Za-z0-9_-])(rm|mv|cp|truncate|tee|install|ln|perl|python[0-9.]*|ruby|node|ex|ed|set-content|add-content|clear-content|out-file|new-item|rename-item|copy-item|move-item|remove-item)\b[^;&|]*$GATE" && block "write/tamper of a gate file (hook/settings/.git-hooks)" "4.5"
-case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE "(sed|perl|awk|ruby)[[:space:]]+(-[^[:space:]]+[[:space:]]+)*-i[^;&|]*$GATE"          && block "in-place edit of a gate file" "4.5"
+# CSK-NOT-A-RUNG: same — `perl`, `python3`, `ruby`, `node` here are names the gate REFUSES when they are
+# pointed at a gate file, not readers this hook uses.
+case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE "(^|[^A-Za-z0-9_-])(rm|mv|cp|truncate|tee|install|ln|perl|python[0-9.]*|ruby|node|ex|ed|set-content|add-content|clear-content|out-file|new-item|rename-item|copy-item|move-item|remove-item)\b[^;&|]*$GATE" && block "write/tamper of a gate file (hook/settings/.git-hooks)" "4.5" tamper
+case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE "(sed|perl|awk|ruby)[[:space:]]+(-[^[:space:]]+[[:space:]]+)*-i[^;&|]*$GATE"          && block "in-place edit of a gate file" "4.5" tamper
+# /CSK-NOT-A-RUNG
 # The redirect TARGET must be the gate path, not merely something later on the line: a target is one token, so
 # it cannot contain whitespace or a command separator.
-case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE ">[[:space:]]*['\"]?[^[:space:];&|<>]*$GATE"                                          && block "redirect over a gate file" "4.5"
-{ case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false ;; esac && has "=[^;&|]*$GATE" && has '>>?[[:space:]]*\$'; }                                                          && block "indirected write to a gate path (variable + redirect)" "4.5"
+case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE ">[[:space:]]*['\"]?[^[:space:];&|<>]*$GATE"                                          && block "redirect over a gate file" "4.5" tamper
+{ case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false ;; esac && has "=[^;&|]*$GATE" && has '>>?[[:space:]]*\$'; }                                                          && block "indirected write to a gate path (variable + redirect)" "4.5" tamper
 # A symlink whose TARGET is the config directory itself is the two-step form of editing a hook, and step one
 # names no gate path at all: `ln -sfn .claude cfg` passed every rule above, and then `cfg/hooks/guard-bash.sh`
 # is an ordinary-looking path that lands on the real gate script — measured, both steps rc=0, file overwritten.
@@ -538,7 +796,7 @@ case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false 
 # argument (`.claude`, `../.claude`, `/p/.git`), so linking to something inside the tree — `ln -s
 # .claude/skills c` — is untouched here and handled at write time instead. `.git` needs its own prefilter:
 # the one above only knows `claude` and `hooks`.
-case "$CMD" in *[Ll][Nn][[:space:]]*|*[Mm][Kk][Ll][Ii][Nn][Kk]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE '(^|[;&|[:space:]])(ln|mklink)[^;&|]*[[:space:]]([^;&|[:space:]]*/)?\.(claude|git)([[:space:]]|$)' && block "symlink pointing at the config directory (a gate path in two steps)" "4.5"
+case "$CMD" in *[Ll][Nn][[:space:]]*|*[Mm][Kk][Ll][Ii][Nn][Kk]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE '(^|[;&|[:space:]])(ln|mklink)[^;&|]*[[:space:]]([^;&|[:space:]]*/)?\.(claude|git)([[:space:]]|$)' && block "symlink pointing at the config directory (a gate path in two steps)" "4.5" tamper
 
 # §4.5-adjacent: a .env file holds secrets. The settings.json Read-tool deny does NOT cover the Bash tool, so a
 # `cat .env` would surface them. Block the direct-file readers/copiers and a `< .env` input redirect on a
@@ -559,7 +817,7 @@ ENV_TEMPLATE_RE='\.env\.(example|sample|template|dist)([^A-Za-z0-9_-]|$)'
 { case "$CMD" in *[Ee][Nn][Vv]*) : ;; *) false ;; esac && { has "$ENV_READ_RE" \
     || has "$ENV_REDIR_RE"; } \
     && ! has "$ENV_TEMPLATE_RE"; } \
-    && block "reading a .env secret via the Bash tool" "4.5"
+    && block "reading a .env secret via the Bash tool" "4.5" secret
 
 # The same reasoning, one scope wider. `.env` was the only credential file either gate covered, which left the
 # ones that actually unlock other systems wide open: an SSH private key, AWS credentials, a kubeconfig, a .netrc.
@@ -581,7 +839,7 @@ CRED='(\.ssh/(id_[A-Za-z0-9_]+|identity)|(^|/)id_(rsa|dsa|ecdsa|ed25519)|\.aws/c
   && { has "(^|[^A-Za-z0-9_/.-])(cat|less|more|head|tail|tac|nl|xxd|od|strings|hexdump|base64|cp|scp|rsync|curl|wget|get-content|gc|type|get-item|gi)[[:space:]]+(-[^;&|[:space:]]*[[:space:]]+)*[^;&|[:space:]]*$CRED" \
     || has "<[[:space:]]*[^;&|[:space:]]*$CRED"; } \
     && ! has '(\.pub|\.example|\.sample|\.template)([^A-Za-z0-9_-]|$)'; } \
-    && block "reading a private key / credential file via the Bash tool" "4.5"
+    && block "reading a private key / credential file via the Bash tool" "4.5" secret
 
 # §4.5-adjacent, THE SECOND STEP. Everything above scans the COMMAND; none of it sees what a script FILE does.
 # Measured against the shipped hook on macOS: `cat .env.local` blocks (rc=2), while `bash leak.sh`, `./leak.sh`
@@ -629,15 +887,33 @@ CRED='(\.ssh/(id_[A-Za-z0-9_]+|identity)|(^|/)id_(rsa|dsa|ecdsa|ed25519)|\.aws/c
 # same run, a WRONG payload cwd and an ABSENT one both still blocked through the fallback, so consulting the
 # payload only ever adds coverage. Parameter expansion, no fork, and backslashes folded for the same reason the
 # token is folded below.
-_CWD="${INPUT#*\"cwd\"}"
-if [ "$_CWD" != "$INPUT" ]; then
+# AND IT GOES THROUGH THE SHARED PARSER, like every other key this file reads. It used to be the one caller
+# left with a hand-rolled extraction — `${INPUT#*"cwd"}` then `#*:` — which is the exact defect the parser
+# above was rewritten to close: the key was matched WITHOUT its colon, so a decoy could relocate it, and `cwd`
+# was also the one key with no ambiguity refusal. Measured with the hook's process cwd outside the project,
+# which is the only situation in which the payload's cwd is consulted at all:
+#   {"cwd":"<proj>",…{"command":"bash leak.sh"}}                     rc=2  'a script that reads a .env secret'
+#   {"a":"cwd","b":"<decoy>","cwd":"<proj>",…}                        rc=0  ALLOWED  <- value-form decoy
+#   {"cwd":"<decoy>","cwd":"<proj>",…}                                rc=0  ALLOWED  <- real duplicate
+# In both attack rows `_CWD` resolved to the decoy directory, `[ -d ]` accepted it, the relative script was
+# not found there, and the two-step `.env` read was never examined. Refusing an ambiguous `cwd` rather than
+# resolving it is the same policy as the other three keys; a payload with no `cwd` is untouched, and the
+# process cwd stays the fallback exactly as before.
+_json_keycount "$INPUT" cwd
+if [ "$_KC" -gt 1 ] || [ "$_KC_CAPPED" != 0 ]; then
+  echo "GUARD (§4.5): this payload carries more than one \"cwd\" key, so the directory a relative command" >&2
+  echo "would run in is ambiguous. Refusing rather than resolving whichever comes first." >&2
+  exit 2
+fi
+if [ "$_KC" = 1 ]; then
   # JSON escapes come FIRST, then the fold. The value arrives as the raw bytes of a JSON string, so a Windows
   # path is `D:\\Projects\\x` — every separator doubled — and folding that alone yields `D://Projects//x`. That
   # was MEASURED working on Windows (the middle `//` is tolerated) but it works by accident, and the accident
   # runs out at the front of the path: a project on a network share arrives as `\\\\server\\share`, which folds
   # to `////server//share` and is no UNC path at all. Undoubling first turns it into `//server/share`, which is.
   # A single backslash (a value that was never escaped) and a POSIX path both pass through unchanged.
-  _CWD="${_CWD#*:}"; _CWD="${_CWD#*\"}"; _CWD="${_CWD%%\"*}"; _CWD="${_CWD//\\\\/\\}"; _CWD="${_CWD//\\//}"
+  _json_slice "$INPUT" cwd >/dev/null; _CWD="$_JS"     # via _JS: no `$( )`, so no fork on the hot path
+  _CWD="${_CWD//\\\\/\\}"; _CWD="${_CWD//\\//}"
   [ -d "$_CWD" ] || _CWD=""
 else
   _CWD=""
@@ -705,7 +981,7 @@ if [ "$_looks_exec" = 1 ]; then
     _interp=0
     if grep -iE -- "$ENV_READ_RE|$ENV_REDIR_RE" "$_path" 2>/dev/null | grep -qivE -- "$ENV_TEMPLATE_RE"; then
       set +f
-      block "running a script that reads a .env secret (the two-step read)" "4.5"
+      block "running a script that reads a .env secret (the two-step read)" "4.5" secret
     fi
   done
   set +f
@@ -750,7 +1026,7 @@ if [ "$HAS_GIT" = 1 ] && git_has "$CMD" 'add'; then
   _ADDSEG="$(printf '%s' "$CMD" | grep -oE 'git[[:space:]]+([^;&|]*[[:space:]])?add([^;&|]*)' 2>/dev/null || true)"
   while IFS= read -r _seg; do
     [ -n "$_seg" ] || continue
-    _addf_owns "$_seg" && { block "git add -f (bypasses .gitignore)" "4.5"; break; }
+    _addf_owns "$_seg" && { block "git add -f (bypasses .gitignore)" "4.5" bypass; break; }
   done <<< "$_ADDSEG"
 fi
   # `git update-index --add` stages a path REGARDLESS of .gitignore — the same bypass `git add -f` performs, by
@@ -759,8 +1035,8 @@ fi
   # said. (Staging itself is deliberately NOT gated here — only commit and push ask — so this rule is about the
   # gitignore bypass alone, not about stopping people from staging files.)
   [ "$HAS_GIT" = 1 ] && echo "$CMD" | grep -qE 'git[[:space:]]+([^;&|]*[[:space:]])?update-index\b[^;&|]*(--add|--force-remove)' \
-    && block "git update-index --add (bypasses .gitignore, same as git add -f)" "4.5"
-case "$CMD" in *[Rr][Mm]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE '(rm|git[[:space:]]+rm)\b[^|]*(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|npm-shrinkwrap\.json|Gemfile\.lock|poetry\.lock|Pipfile\.lock|Cargo\.lock|composer\.lock|go\.sum|packages\.lock\.json)' && block "lockfile deletion" "4.5"
+    && block "git update-index --add (bypasses .gitignore, same as git add -f)" "4.5" bypass
+case "$CMD" in *[Rr][Mm]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE '(rm|git[[:space:]]+rm)\b[^|]*(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|npm-shrinkwrap\.json|Gemfile\.lock|poetry\.lock|Pipfile\.lock|Cargo\.lock|composer\.lock|go\.sum|packages\.lock\.json)' && block "lockfile deletion" "4.5" loss
 
 # --- §4.4 commit/push approval gate ---
 # Escape a shell string into a JSON string body. A raw control character inside a JSON string is a parse
@@ -789,15 +1065,24 @@ allow_preauthorised(){
     "$(json_escape "CLAUDE_GIT_OK: session pre-authorised before it started (§4.4 headless/CI)")"
   exit 0
 }
-# The approval-gated git set is guarded in two places: this hook asks for commit/push, and settings.json also
-# asks for `git add` and `git checkout -b`. The key used to answer only the first, by exiting 0 — which means
-# "this hook has no opinion" and leaves the settings rule in force. So a headless run could not even STAGE,
-# while §4.4 advertised the key as the way to work with nobody at the keyboard: the flag's only purpose, and
-# it did not achieve it. Measured with the A/B harness (evals/), where the kit arm proposed a commit and
-# stopped in every run while the bare arm committed freely.
-# Reached only AFTER the §4.5 blocks above, so a pre-authorised session still cannot force-push, amend,
-# reset --hard or `git add -f` — the key opens the approval gate, never the destructive one.
-if git_has "$CMD" 'add|commit|push|checkout'; then
+# THE WHOLE APPROVAL-GATED GIT SET IS NOW GUARDED HERE — add, commit, push and branch creation (checkout -b,
+# switch -c, in every spelling the staging/branching block at the end matches). It used to be
+# split with settings.json, which carried `ask` rules for all four, and that split is what made this key
+# useless: a matching ask rule prompts even when a hook returns "allow", so the key could never clear it and
+# headless there was nobody to answer. A pre-authorised run could not even STAGE, while §4.4 advertised the
+# key as the way to work with nobody at the keyboard — the flag's only purpose, and it did not achieve it.
+# Measured with the A/B harness (evals/): the kit arm committed 0/3 with the key set and its own gate log
+# reading ALLOW. Those four settings rules are gone now, and an update strips them from existing projects.
+#
+# WHAT THE KEY DOES AND DOES NOT OPEN, because a wrong sentence here is what someone reads before
+# misdiagnosing — this comment has been wrong twice already:
+#   * §4.5 stays shut. This is reached only AFTER the destructive blocks above, so a pre-authorised session
+#     still cannot force-push, amend, reset --hard or `git add -f`.
+#   * §4.6 IS OPENED, deliberately, and that is easy to miss because the block sits a few lines below this
+#     one and never runs when the key is set. A pre-authorised session commits WITHOUT a review record. The
+#     payload CLAUDE.md §4.6 states it ("Deliberate skip: … CLAUDE_GIT_OK (headless/CI) bypasses this too")
+#     and it is written here as well, because the person reading the hook is not reading that file.
+if git_has "$CMD" 'add|commit|push|checkout|switch'; then
   # The key is granted by the user's environment, never by the command line the model composes.
   if printf '%s' "$CMD" | grep -q 'CLAUDE_GIT_OK'; then
     gatelog BLOCK 4.4 "approval key set inside the command"
@@ -1121,10 +1406,69 @@ ${BRANCH_WARN}Approve only if the commit message above was shown to you and you 
       echo "GUARD (§4.4): 'git commit/push' is gated by approval AT THE TOOL LEVEL, and this session's permission mode ('${PERM_MODE:-unknown}') cannot put that prompt in front of a person." >&2
       echo "Present the commit MESSAGE to the user and get EXPLICIT approval. Then one of:" >&2
       echo "  (a) the user presses Shift+Tab to switch to default/acceptEdits — IN THIS SESSION, no restart — and this gate asks them directly, OR" >&2
-      echo "  (b) the NEXT session is started with 'CLAUDE_GIT_OK=1' (headless/CI) — the key cannot be added to a session already running. It covers COMMIT AND PUSH ONLY;;" >&2
+      echo "  (b) the NEXT session is started with 'CLAUDE_GIT_OK=1' (headless/CI) — the key cannot be added to a session already running. It covers the §4.4 APPROVAL set (add · checkout -b / switch -c · commit · push) and nothing else;" >&2
       echo "      force-push, git add -f, hook tampering and the §4.5 destructive set all still block, OR" >&2
       echo "  (c) the user runs the command in their own terminal." >&2
       exit 2 ;;
+  esac
+fi
+
+# §4.4 — STAGING AND BRANCHING TAKE THE SAME ROUTE AS COMMIT AND PUSH.
+#
+# Until now `git add` and `git checkout -b` were gated ONLY by the `ask` rules in settings.json, and this
+# hook returned no decision for them in every mode — measured, all five modes, no CLAUDE_GIT_OK. That split
+# is what made CLAUDE_GIT_OK unable to do the one thing it advertises: the published permission reference
+# says a matching `ask` rule still prompts even when a PreToolUse hook returns "allow", so the hook's allow
+# could never clear the settings rule, and headless there is nobody to answer. Measured in the paid A/B:
+# `commit-format` asked explicitly for a commit, the gate log recorded ALLOW §4.4 CLAUDE_GIT_OK, and the
+# arm still committed 0/3 — the fix applied, nothing staged, nothing committed.
+#
+# Deleting those ask rules alone would have been a §4.4 REGRESSION, which is why this block exists first:
+# with the rules gone and no hook decision, add and checkout -b would run ungated in every mode, silently in
+# bypass and auto. So the rule moves into the hook rather than disappearing, and the settings change lands
+# after it. ORDER MATTERS: hook first (stricter), settings second.
+#
+# BRANCH CREATION, by every spelling git accepts, not just the one the old settings rule named. The flag is
+# matched precisely rather than the subcommand alone: plain `git checkout main` / `git switch main` is moving
+# between branches, and gating it would be new policy rather than the same policy in a new place.
+#   checkout -b / -B / --orphan      switch -c / -C / --create / --force-create / --orphan  (also `--x=name`)
+# — the flag list is git's own `checkout -h` / `switch -h` (git 2.54), not recalled.
+# The prefix is git_has's own global-option skip, so `git -C repo checkout -b x` and `git -c k=v …` are seen.
+# Measured before this, default mode: only a bare `git checkout -b x` asked — `-C <path>` and `-c <kv>` in
+# front of it, `checkout -B`, both `--orphan`s and all four `switch` creators ran with no prompt, and the `switch` forms were
+# not even in the CLAUDE_GIT_OK set above, so a keyed session got no allow for them either.
+# Calibrated in smoke §4e, BOTH directions: every creator above, with and without a global option in front,
+# must ask; `checkout main`, `switch main`, `switch --detach`, `checkout -- .` and `checkout b` must not. The
+# first version of this rule had only the second half, which is how `-B` went unnoticed beside `-b`.
+# NOT covered, deliberately: `git branch <name>` creates a branch without switching to it; it was never in the
+# §4.4 set and adding it here would be a policy change, not a spelling fix.
+if git_has "$CMD" 'add' \
+   || printf '%s' "$CMD" | grep -qE '(^|[^A-Za-z0-9_-])git[[:space:]]+((-[Cc][[:space:]]+[^[:space:];&|]+|--(git-dir|work-tree|namespace|config-env|super-prefix|exec-path)[[:space:]=]+[^[:space:];&|]+|-[^[:space:];&|]+)[[:space:]]+)*(checkout([[:space:]]+[^[:space:];&|]+)*[[:space:]]+(-[bB]|--orphan)|switch([[:space:]]+[^[:space:];&|]+)*[[:space:]]+(-[cC]|--create|--force-create|--orphan))([[:space:]=]|$)'; then
+  case "${PERM_MODE:-}" in
+    default|acceptEdits)
+      ask_user "§4.4 staging/branching approval gate. Claude wants to run:
+
+$(printf '%s' "$CMD" | cut -c1-400)
+
+Approving lets Claude run the command itself."
+      ;;
+    *)
+      # NO DECISION, and this is where the spec for this change was wrong rather than where the suite was.
+      # Routing add/checkout -b to the commit/push fail-closed arm made three existing assertions red, and
+      # all three drive mode `auto`:
+      #     git add -A NOT over-blocked            (beside "git add -f BLOCKED": the pair is the point)
+      #     git add leak.sh must run               (H4b — ordinary scripts)
+      #     git checkout -b feature/x must pass    (§4.5 whole-tree-revert case list)
+      # The comment on the first one says it outright: "a plain add must NOT be over-blocked". These are
+      # considered decisions, not omissions, and the reason they are right is the one the paid A/B measured
+      # on `destructive-refused`: a gate that costs the request and buys nothing is a net loss. Staging
+      # publishes nothing. The consequential steps — commit and push — already fail closed here, and
+      # `git add -f` is already a §4.5 block. Failing closed on a plain `git add` would stop every
+      # non-interactive session from staging while protecting nothing that commit does not already protect.
+      #
+      # What the interactive arm above still buys: the settings.json `ask` rules for add and checkout -b can
+      # be removed without losing the prompt, which is what frees CLAUDE_GIT_OK to work at all.
+      : ;;
   esac
 fi
 

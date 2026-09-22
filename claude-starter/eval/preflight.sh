@@ -65,7 +65,7 @@ any_of(){
     return 0
   fi
   printf '  %s✗%s %-22s %s\n' "$YE" "$R" "$label" "$why"
-  printf '      %sfix: %s%s\n' "$D" "$fix" "$R"
+  printf '      %s%s%s%s\n' "$D" "$(m 'fix: ')" "$fix" "$R"
   return 1
 }
 
@@ -73,7 +73,38 @@ any_of(){
     works "$HAS" && exit 0 || exit 1
   fi
 
-[ "$QUIET" = 1 ] || printf '\n  %sPreflight — what this machine has%s\n' "$B" "$R"
+# ---- CSK-I18N ------------------------------------------------------------------------------------------
+# This script prints during the install, so it speaks the installer's language. Same contract as start.sh:
+# the English string is the key, a missing translation prints English, and TOOL NAMES ARE NEVER TRANSLATED —
+# `bash`, `git`, `jq`, `node` are identifiers, not words. Only the prose around them is.
+case "${CSK_LANG:-}" in tr|en) ;; *)
+  _loc="${LC_ALL:-}"; [ -n "$_loc" ] || _loc="${LC_MESSAGES:-}"; [ -n "$_loc" ] || _loc="${LANG:-}"
+  case "$_loc" in tr*|TR*) CSK_LANG=tr ;; *) CSK_LANG=en ;; esac ;;
+esac
+m() {
+  local s="$1"; shift
+  if [ "$CSK_LANG" = tr ]; then
+    case "$s" in
+      "Preflight — what this machine has") s='Ön kontrol — bu makinede ne var' ;;
+      "Missing REQUIRED:") s='Eksik ZORUNLU:' ;;
+      "— install these first.") s='— önce bunları kurun.' ;;
+      "All required tools present.") s='Zorunlu araçların hepsi mevcut.' ;;
+      "Optional gaps above are safe but worth closing.") s='Yukarıdaki isteğe bağlı boşluklar güvenli ama kapatmaya değer.' ;;
+      "Everything the kit wants is here.") s='Kitin istediği her şey burada.' ;;
+      "is the panel only — every gate still holds without it.") s='yalnız panel içindir — o olmadan da her kapı tutar.' ;;
+      "Or let the kit get one: %s") s='Ya da kitin bir tane getirmesine izin verin: %s' ;;
+      "fix: ") s='çözüm: ' ;;
+      "node 18+") s='node 18+' ;;
+      "jq or python") s='jq ya da python' ;;
+      "sha256 tool") s='sha256 aracı' ;;
+    esac
+  fi
+  # shellcheck disable=SC2059
+  printf "$s" "$@"
+}
+# ---- /CSK-I18N -----------------------------------------------------------------------------------------
+
+[ "$QUIET" = 1 ] || printf '\n  %s%s%s\n' "$B" "$(m 'Preflight — what this machine has')" "$R"
 
 # --- REQUIRED: without these the kit does not work at all -------------------------------------------------
 # Hooks are wired in SHELL form on purpose, and `bash` is resolved by the shell Claude Code already runs them
@@ -92,7 +123,7 @@ any_of "git" "the commit-time trace/secret gates are git hooks" \
   # machine that has never seen node. It sits in REQUIRED anyway, deliberately, because the panel now installs
   # into every project, and a component that silently does not start on some machines is worse than one that
   # says what it needs. The reason string names which half is affected, so the REQUIRED heading stays true.
-  any_of "node 18+" "the CSK Studio panel (/studio-csk); the gates themselves are bash and do not need it" \
+  any_of "$(m 'node 18+')" "the CSK Studio panel (/studio-csk); the gates themselves are bash and do not need it" \
     "nodejs.org · Windows: winget install OpenJS.NodeJS.LTS · macOS: brew install node · Linux: apt install nodejs" \
     node || MISSING_REQ="$MISSING_REQ node"
 
@@ -100,26 +131,26 @@ any_of "git" "the commit-time trace/secret gates are git hooks" \
 # jq/python are only needed to MERGE an existing settings.json on update. The pure-bash path replaces the file
 # instead (keeping a backup), which is safe but loses hooks the project added itself — the sort of thing that
 # is obvious in advance and baffling afterwards.
-any_of "jq or python" "settings merge on update falls back to replace+backup (a project's OWN custom hooks are not preserved)" \
+any_of "$(m 'jq or python')" "settings merge on update falls back to replace+backup (a project's OWN custom hooks are not preserved)" \
   "Windows: winget install jqlang.jq · macOS: brew install jq · Linux: apt install jq" jq python3 python py \
   || MISSING_OPT="$MISSING_OPT jq/python"
-any_of "sha256 tool" "the skill-trust gate falls back to cksum (catches accidental edits, not crafted ones)" \
+any_of "$(m 'sha256 tool')" "the skill-trust gate falls back to cksum (catches accidental edits, not crafted ones)" \
   "Windows/Linux: coreutils (sha256sum) · macOS: shasum is preinstalled" sha256sum shasum || MISSING_OPT="$MISSING_OPT sha256"
 
 if [ -n "$MISSING_REQ" ]; then
-  printf '\n  %sMissing REQUIRED:%s%s — install these first.\n' "$YE$B" "$R" "$MISSING_REQ"
+  printf '\n  %s%s%s%s %s\n' "$YE$B" "$(m 'Missing REQUIRED:')" "$R" "$MISSING_REQ" "$(m '— install these first.')"
     case "$MISSING_REQ" in
       # Which half is gone. "The kit will not work" is false when only node is missing: every gate is bash and
       # still holds; what is lost is the panel.
-      *node*) printf '    %snode%s is the panel only — every gate still holds without it.\n' "$B" "$R"
+      *node*) printf '    %snode%s %s\n' "$B" "$R" "$(m 'is the panel only — every gate still holds without it.')"
               # And it is not a dead end: the kit fetches a runtime for the panel itself, into one
               # directory under $HOME, verified against the published checksum. It asks first.
-              printf '    Or let the kit get one: %sbash .claude/studio/ensure-node.sh --plan%s\n' "$B" "$R" ;;
+              printf '    %s\n' "$(m 'Or let the kit get one: %s' "${B}bash .claude/studio/ensure-node.sh --plan${R}")" ;;
     esac
 elif [ -n "$MISSING_OPT" ]; then
-  [ "$QUIET" = 1 ] || printf '\n  %sAll required tools present.%s Optional gaps above are safe but worth closing.\n' "$GR" "$R"
+  [ "$QUIET" = 1 ] || printf '\n  %s%s%s %s\n' "$GR" "$(m 'All required tools present.')" "$R" "$(m 'Optional gaps above are safe but worth closing.')"
 else
-  [ "$QUIET" = 1 ] || printf '\n  %sEverything the kit wants is here.%s\n' "$GR" "$R"
+  [ "$QUIET" = 1 ] || printf '\n  %s%s%s\n' "$GR" "$(m 'Everything the kit wants is here.')" "$R"
 fi
 
 # Report-only by design: a missing OPTIONAL tool never fails. `--quiet` exits non-zero only for REQUIRED gaps,
