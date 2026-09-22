@@ -5,6 +5,77 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.12.0] — 2026-09-22
+
+### Before you update — five things that change behaviour
+
+- **A commit now needs a review of THAT diff.** `review-agent-csk` records what it cleared in
+  `.claude/review-pass.json`, and a commit is refused unless the record still matches what is staged and the
+  `HEAD` it was reviewed on. Run the review before committing; commit from the index (`git add`, then `git commit`
+  with no paths). Committing in your own terminal is the deliberate way round it, and `CLAUDE_GIT_OK` skips it.
+- **A commit can no longer quietly lower the quality bar.** `pre-commit` refuses a checker switched off where it
+  fired (`@ts-ignore`, `eslint-disable`, `# noqa`, …), a skipped or focused test, a stub left where code should
+  be, a deleted test file, and assertions taken out of a test. A genuine exception goes in `.floor-allowlist.txt`
+  at the repo root, in the same diff as the code it excuses.
+- **Forced `git branch` is blocked** — `-D`, `-f`, `-M`, `-C` and every spelling of them, in every mode, and
+  `CLAUDE_GIT_OK` does not open it. `-d`, `-m`, `-c`, listing and plain creation still run.
+- **The update removes four `ask` rules from your `.claude/settings.json`** — `git add`, `git commit`,
+  `git push`, `git checkout -b` — and names them when it does. The hook asks for these itself now, and an `ask`
+  rule would stop `CLAUDE_GIT_OK` from working. Every other rule you have is kept.
+- **The .NET pattern skill is renamed** `devarch-module` → `cqrs-aop-module`. The update moves the directory and
+  keeps its content; nothing to do unless both names are present, in which case it says so.
+
+### Added — the installer speaks Turkish; what it writes stays English
+
+- `start.sh`, `adopt.sh` and `preflight.sh` print in Turkish with `--lang tr`, `CSK_LANG=tr`, or a Turkish
+  locale (`LC_ALL` / `LC_MESSAGES` / `LANG`, in that order); anything else, including an unknown value, is
+  English. Only what is printed changes: `CLAUDE.md`, the agents, the skills and your commit messages stay
+  English, tool names are never translated, and both languages install the same files.
+- **On Windows, pass `--lang tr` or set `CSK_LANG=tr`.** Git Bash leaves `LANG`, `LC_ALL` and `LC_MESSAGES`
+  empty, so the locale is never detected there and the installer stays in English.
+- The English string is the lookup key, so a missing translation falls back to English rather than printing a
+  blank line or a key. A new `verify.sh` step (`i18n`) audits the translation tables in bash — not python,
+  because the Windows Store stub would make a python checker skip exactly where these scripts are hardest.
+
+### Fixed — unattended installs no longer hang, and `--yes` no longer clones a third-party project
+
+- Under a terminal with nobody at it, the confirmation and the stack chooser waited forever. Both now answer to
+  `--yes` — the only thing that helps there, because stdin cannot tell an unattended terminal from a slow typist.
+  When stdin is NOT a terminal and stays open without sending anything, a prompt gives up after 10 s and takes
+  the safe answer. The piped CI form (`printf 'yes\n' | bash start.sh`) still works.
+- `--yes` now DECLINES the two DevArchitecture questions instead of approving them. Installing the kit unattended
+  is not consent to clone a base project into your repository over the network; that still needs a person.
+
+### Changed — `.gitignore` is asked, and the summary shows every line it will write
+
+- The installer used to add four entries to a tracked `.gitignore` without mentioning it. It now asks once —
+  keep the kit's files private (the old behaviour, still the default) or share them — and the summary lists the
+  exact lines before you confirm. Two defects in the writer went with it: a file without a trailing newline got
+  its last entry glued to the next (`node_modulesdocs/`), and `.claude/` could be added twice.
+
+### Fixed — an adopted install no longer publishes `docs/`
+
+- `start.sh` kept `docs/` private but `adopt.sh` staged it, so an adopted repository received the working
+  documents the skills write there — `THREAT_MODEL.md`, `SECURITY_FINDINGS.md`, `PLAN.md`, `SESSION_STATE.md`.
+  It is private now, and the "hide" choice covers it too. The adoption's own `HANDOVER` and ADR are still added,
+  so they stay visible in the review diff.
+- `AGENT_TEMPLATE.md` now ships with an adoption and is refreshed on every update. `/skill-csk` opens by reading
+  it, so on an adopted install the command pointed at nothing.
+
+### Changed — a refusal names the way forward, not the violation
+
+- One sentence served every block rule, and for two classes its advice was the violation itself: a hook-tamper
+  refusal ended by telling you to disarm the hooks by hand, a secret refusal by telling you to print the secret
+  yourself. Each rule now belongs to a class — loss, history, tamper, secret, bypass, exec, exposure, approval —
+  and each class carries its own next step. A rule with no class says so loudly instead of borrowing a plausible
+  sentence.
+
+### Added — `verify.sh` finds assertions that pass without being counted
+
+- An assertion inside a subshell prints green while the suite's total does not move, so its failure is
+  invisible. A tenth step (`subshell`) looks for that shape; a deliberate exception carries a marker on the line
+  it excuses.
+
 ### Fixed — forced `git branch` is blocked like `reset --hard`
 
 - **The hook had no opinion on any `git branch` command**, including the four that lose work: `-D` deletes an
