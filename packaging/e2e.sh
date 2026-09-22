@@ -6,6 +6,26 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"; cd "$ROOT"
 WORK="${RUNNER_TEMP:-$(mktemp -d)}"
 
+# WHY A LOG AND NOT /dev/null, for every installer and smoke call below.
+#
+# They all used to discard their output. Under `set -e` a failing one killed the run with nothing on screen
+# but an exit status, so the reason was unknowable. That is exactly what happened on a Windows leg of
+# e9d90a0: the generic combo failed, the output was gone, and it could only be filed as "not reproduced" —
+# which is NOT the same as "not observed". Four passes out of five made a runner flake the likely reading,
+# but nothing could have distinguished a flake from a real defect, and nothing would have next time either.
+#
+# A green run prints exactly what it printed before: the log is read ONLY when the step fails, and then only
+# its tail, so CI output stays quiet until it has something to say. "Produced no output at all" is reported
+# as its own case, because an empty log and a missing log answer different questions.
+_STEP=0
+_slog(){ _STEP=$((_STEP+1)); printf '%s/e2e-step-%02d.log' "$WORK" "$_STEP"; }
+_evidence(){   # $1 = label, $2 = log path, $3 = the step's exit status
+  echo "FAIL [$1]: the step exited $3. Last 20 lines of its own output:" >&2
+  if [ -s "$2" ]; then tail -n 20 "$2" | sed 's/^/    | /' >&2
+  else echo "    | (the step produced no output at all)" >&2; fi
+  exit 1
+}
+
 # ---- start.sh: 2 combinations (backend pattern) ----
 # 2.0 removed the profile split, and with it four of the six combinations: they differed only in which
 # components were deleted after an identical install. The backend pattern is the one axis that still changes
@@ -16,12 +36,12 @@ combo() {
   local lbl="$1" inp="$2" exp_ag="$3" exp_sk="$4"; shift 4
   local P="$WORK/proj-$lbl"; rm -rf "$P"; mkdir -p "$P"
   cp start.sh "$P/"; cp -R claude-starter "$P/"
-  ( cd "$P" && printf "$inp" | bash start.sh "$@" >/dev/null )
+  _L="$(_slog)"; ( cd "$P" && printf "$inp" | bash start.sh "$@" ) >"$_L" 2>&1 || _evidence "start.sh in $P" "$_L" $?
   # scope=install: the gate UNIT cases drive hook binaries the installer copies UNCHANGED, so running all of
   # them in every combination re-checks identical bytes. Install scope keeps the install-dependent assertions
   # plus a canary that proves the installed hook actually executes; the exhaustive cases run once, in CI's
   # standalone full-scope smoke-test step.
-  ( cd "$P" && CSK_SMOKE_SCOPE=install bash .claude/eval/smoke-test.sh >/dev/null )
+  _L="$(_slog)"; ( cd "$P" && CSK_SMOKE_SCOPE=install bash .claude/eval/smoke-test.sh ) >"$_L" 2>&1 || _evidence "smoke-test.sh in $P" "$_L" $?
   # The install manifest is what separates kit-owned from project-owned downstream (doctor readiness, trust gate).
   [ -s "$P/.claude/kit-manifest.txt" ] || { echo "FAIL [$lbl]: .claude/kit-manifest.txt missing or empty"; exit 1; }
   grep -q '^skills/handoff$' "$P/.claude/kit-manifest.txt" || { echo "FAIL [$lbl]: manifest does not list the shipped skills"; exit 1; }
@@ -164,7 +184,7 @@ case "$DOUT" in *"enforces the §4.6 review gate"*) ;;
 # the regression on macOS would sit below a healthy Windows run and fail the job for being slow. The portable
 # half of the protection is the route-hint gate in smoke-test.sh §7y, where the old code took 34s on macOS too.
 [ "$DEL" -le 20 ] || { echo "FAIL: doctor.sh took ${DEL}s (>20s) — a per-pair fork loop is back; on Git Bash this reads as a hang"; exit 1; }
-( cd "$P" && CSK_SMOKE_SCOPE=install bash .claude/eval/smoke-test.sh >/dev/null )|| { echo "FAIL: the adopted project's own smoke-test did not pass"; exit 1; }
+_L="$(_slog)"; ( cd "$P" && CSK_SMOKE_SCOPE=install bash .claude/eval/smoke-test.sh ) >"$_L" 2>&1 || { tail -n 20 "$_L" | sed 's/^/    | /' >&2; echo "FAIL: the adopted project's own smoke-test did not pass"; exit 1; }
 # doctor's elapsed time is printed on SUCCESS too, not only in the failure message. The bound above is loose by
 # design, so a silent pass hides the trend that matters: 2s creeping to 8s is the regression arriving, and it
 # reads as "fine" until the day it trips. The number in the log is what makes that visible in hindsight.
@@ -332,7 +352,7 @@ if [ -L "$SYMPROBE" ]; then
   done; IFS="$oldIFS"
   rm -f "$NODEPS"/jq "$NODEPS"/jq.* "$NODEPS"/python "$NODEPS"/python3 "$NODEPS"/python.* "$NODEPS"/python3.* 2>/dev/null
   if ! PATH="$NODEPS" bash -c 'command -v jq >/dev/null 2>&1' && ! PATH="$NODEPS" bash -c 'command -v python3 >/dev/null 2>&1'; then
-    ( cd "$N" && PATH="$NODEPS" bash adopt.sh --here </dev/null >/dev/null 2>&1 )
+    _L="$(_slog)"; ( cd "$N" && PATH="$NODEPS" bash adopt.sh --here </dev/null ) >"$_L" 2>&1 || _evidence "adopt.sh in $N" "$_L" $?
     grep -q 'SessionStart' "$N/.claude/settings.json"     || { echo "FAIL: no-jq/python update did not self-heal the settings"; exit 1; }
     grep -q "\"timeout\": $KIT_TO" "$N/.claude/settings.json"    || { echo "FAIL: no-jq/python update did not refresh the timeout"; exit 1; }
     ls "$N"/.claude/settings.json.bak-* >/dev/null 2>&1   || { echo "FAIL: no-jq/python replace did not keep a backup"; exit 1; }
@@ -345,7 +365,7 @@ if [ -L "$SYMPROBE" ]; then
     if [ -n "$REALPY" ]; then
       P="$WORK/selfheal-py"; mk_stale_install "$P"
       printf '#!/bin/sh\nexec "%s" "$@"\n' "$REALPY" > "$NODEPS/py"; chmod +x "$NODEPS/py"
-      ( cd "$P" && PATH="$NODEPS" bash adopt.sh --here </dev/null >/dev/null 2>&1 )
+      _L="$(_slog)"; ( cd "$P" && PATH="$NODEPS" bash adopt.sh --here </dev/null ) >"$_L" 2>&1 || _evidence "adopt.sh in $P" "$_L" $?
       grep -q 'SessionStart' "$P/.claude/settings.json"   || { echo "FAIL: py-launcher update did not self-heal (SessionStart)"; exit 1; }
       grep -q "\"timeout\": $KIT_TO" "$P/.claude/settings.json"  || { echo "FAIL: py-launcher update did not refresh the timeout"; exit 1; }
       [ ! -e "$P/.claude/settings.json.kit" ]             || { echo "FAIL: py present but the merge fell back to .kit"; exit 1; }
@@ -362,7 +382,7 @@ rm -f "$SYMPROBE"
 F="$WORK/firstadopt"; rm -rf "$F"; mkdir -p "$F"
 cp adopt.sh "$F/"; cp -R claude-starter "$F/"; cp VERSION "$F/"; printf '{"name":"x"}' > "$F/package.json"
 ( cd "$F" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
-( cd "$F" && bash adopt.sh --here </dev/null >/dev/null 2>&1 )
+_L="$(_slog)"; ( cd "$F" && bash adopt.sh --here </dev/null ) >"$_L" 2>&1 || _evidence "adopt.sh in $F" "$_L" $?
 [ ! -f "$F/.claude/DISCIPLINE.md" ]                     || { echo "FAIL: first adopt must NOT apply non-interactively without --yes"; exit 1; }
 echo "[adopt-selfheal] update self-heals off a TTY ($NOJQ_NOTE) · retired §4.4 ask rules dropped, own rules kept · backup kept · CLAUDE.md preserved · first adopt still needs --yes"
 
@@ -374,8 +394,8 @@ T="$WORK/pty-yes"; rm -rf "$T"; mkdir -p "$T"
 cp start.sh adopt.sh VERSION "$T/"; cp -R claude-starter "$T/"
 # empty baseline commit BEFORE install (no hooksPath yet), then install; the refresh below STAGES only (like
 # /update-csk) so no pre-commit trace hook runs — the point here is the prompt behaviour, not a commit.
-( cd "$T" && git init -q && git config user.email t@t.t && git config user.name t && git commit -q --allow-empty -m base \
-    && printf 'yes\nno\n' | bash start.sh --dotnet >/dev/null 2>&1 )
+_L="$(_slog)"; ( cd "$T" && git init -q && git config user.email t@t.t && git config user.name t && git commit -q --allow-empty -m base \
+    && printf 'yes\nno\n' | bash start.sh --dotnet ) >"$_L" 2>&1 || _evidence "start.sh --dotnet in $T" "$_L" $?
 cp adopt.sh "$T/adopt.sh"; cp -R claude-starter "$T/claude-starter"   # a refresh reads the payload beside adopt.sh
 if script --version >/dev/null 2>&1; then PTY_FLAVOR=linux            # util-linux: script -q -e -c CMD FILE
 elif command -v script >/dev/null 2>&1;  then PTY_FLAVOR=bsd          # BSD/macOS: script -q FILE CMD…
@@ -443,8 +463,8 @@ fi
 # the second half would pass against an installer that had shipped it all along, i.e. prove nothing.
 UP="$WORK/update-gets-panel"; rm -rf "$UP"; mkdir -p "$UP"
 cp start.sh VERSION "$UP/"; cp -R claude-starter "$UP/"; rm -rf "$UP/claude-starter/studio" "$UP/claude-starter/commands/studio-csk.md"
-( cd "$UP" && git init -q && git config user.email t@t.t && git config user.name t \
-    && git commit -q --allow-empty -m base && printf 'yes\n' | bash start.sh --generic >/dev/null 2>&1 )
+_L="$(_slog)"; ( cd "$UP" && git init -q && git config user.email t@t.t && git config user.name t \
+    && git commit -q --allow-empty -m base && printf 'yes\n' | bash start.sh --generic ) >"$_L" 2>&1 || _evidence "start.sh --generic in $UP" "$_L" $?
 [ -f "$UP/.claude/VERSION" ] || { echo "FAIL: the pre-panel install did not complete"; exit 1; }
 # The installer that ran is THIS one, so it mkdir'd an empty .claude/studio before finding nothing to
 # copy. A real 2.8.0 install has no such directory; remove it, or the assertion below is checking that
@@ -453,7 +473,7 @@ rmdir "$UP/.claude/studio" 2>/dev/null || true
 [ ! -e "$UP/.claude/studio" ] || { echo "FAIL: the fixture is wrong — the pre-panel install already has a panel, so the update below would prove nothing"; exit 1; }
 [ ! -e "$UP/.claude/commands/studio-csk.md" ] || { echo "FAIL: the fixture is wrong — /studio-csk is already installed"; exit 1; }
 cp adopt.sh "$UP/"; cp -R claude-starter "$UP/claude-starter"; cp VERSION "$UP/"
-( cd "$UP" && bash adopt.sh --here --yes </dev/null >/dev/null 2>&1 )
+_L="$(_slog)"; ( cd "$UP" && bash adopt.sh --here --yes </dev/null ) >"$_L" 2>&1 || _evidence "adopt.sh in $UP" "$_L" $?
 [ -f "$UP/.claude/studio/server/index.js" ] || { echo "FAIL: an existing kit install did NOT get the panel on update — this is the reported bug"; exit 1; }
 grep -q '"type": *"module"' "$UP/.claude/studio/package.json" || { echo "FAIL: the updated panel has no \"type\":\"module\" — it would die on first import"; exit 1; }
 [ ! -d "$UP/.claude/studio/test" ] || { echo "FAIL: the update shipped studio/test into the project"; exit 1; }
@@ -570,7 +590,7 @@ fi
 #      cancelled silently and this suite failed with rc=127. So the non-TTY path must read NOTHING, and the
 #      documented piped form must keep working. Removing the `[ ! -t 0 ]` guard turns this red again.
 W3="$(wiz piped)"
-( cd "$W3" && printf 'yes\n' | bash start.sh --generic >/dev/null 2>&1 )
+_L="$(_slog)"; ( cd "$W3" && printf 'yes\n' | bash start.sh --generic ) >"$_L" 2>&1 || _evidence "start.sh in $W3" "$_L" $?
 [ -d "$W3/.claude" ] || { echo "FAIL: the documented piped install stopped working — a prompt is reading on the non-TTY path"; exit 1; }
 echo "[wizard] the piped form still installs: no question reads on the non-TTY path"
 
@@ -579,7 +599,7 @@ echo "[wizard] the piped form still installs: no question reads on the non-TTY p
 #     silently broken ignore rule rather than a visible error.
 W4="$(wiz nonewline)"
 printf 'node_modules' > "$W4/.gitignore"          # deliberately no trailing newline
-( cd "$W4" && bash start.sh --yes >/dev/null 2>&1 </dev/null )
+_L="$(_slog)"; ( cd "$W4" && bash start.sh --yes </dev/null ) >"$_L" 2>&1 || _evidence "start.sh in $W4" "$_L" $?
 grep -qx 'node_modules' "$W4/.gitignore" || { echo "FAIL: the pre-existing entry was joined to an added one"; exit 1; }
 ! grep -q 'node_modules[^$]' "$W4/.gitignore" || { echo "FAIL: an added entry ran onto the last existing line"; exit 1; }
 printf 'node_modules' > "$W4/gi.twin"; printf '%s\n' 'docs/' >> "$W4/gi.twin"
@@ -603,7 +623,7 @@ DP="$WORK/wiz-adopt-docs"; rm -rf "$DP"; mkdir -p "$DP"
 ( cd "$DP" && git init -q . && git config user.email t@e.com && git config user.name t \
   && printf '{"name":"x"}\n' > package.json && git add package.json && git commit -qm base )
 cp adopt.sh "$DP/"; cp -R claude-starter "$DP/claude-starter"; cp VERSION "$DP/"
-( cd "$DP" && bash adopt.sh --here --yes </dev/null >/dev/null 2>&1 )
+_L="$(_slog)"; ( cd "$DP" && bash adopt.sh --here --yes </dev/null ) >"$_L" 2>&1 || _evidence "adopt.sh in $DP" "$_L" $?
 ( cd "$DP" && git diff --cached --name-only | grep -q '^docs/HANDOVER\.md$' ) \
   || { echo "FAIL: the adoption's own HANDOVER is not in the review diff"; exit 1; }
 ( cd "$DP" && git diff --cached --name-only | grep -q '^docs/adr/' ) \
@@ -623,7 +643,7 @@ echo "[wizard] docs/ is private after adopt, and the adoption's own record is st
 #     .claude/ and CLAUDE.md committable so a team can review them; private hides them. Both are asserted,
 #     because a default that silently matched the other choice would make the question decorative.
 W5="$(wiz shared)"
-( cd "$W5" && CSK_LANG=en bash start.sh --yes --shared >/dev/null 2>&1 </dev/null )
+_L="$(_slog)"; ( cd "$W5" && CSK_LANG=en bash start.sh --yes --shared </dev/null ) >"$_L" 2>&1 || _evidence "start.sh in $W5" "$_L" $?
 for e in 'docs/' '.private-terms.txt'; do
   grep -qxF "$e" "$W5/.gitignore" || { echo "FAIL: --shared did not ignore '$e'"; exit 1; }
 done
@@ -641,7 +661,7 @@ W6="$WORK/wiz-dupe"; rm -rf "$W6"; mkdir -p "$W6"
 cp start.sh "$W6/"; cp -R claude-starter "$W6/"
 ( cd "$W6" && git init -q . && git config user.email t@e.com && git config user.name t )
 printf '.claude\n' > "$W6/.gitignore"                  # no trailing slash, and already effective
-( cd "$W6" && CSK_LANG=en bash start.sh --yes >/dev/null 2>&1 </dev/null )
+_L="$(_slog)"; ( cd "$W6" && CSK_LANG=en bash start.sh --yes </dev/null ) >"$_L" 2>&1 || _evidence "start.sh in $W6" "$_L" $?
 [ "$(grep -c '^\.claude' "$W6/.gitignore")" = 1 ] \
   || { echo "FAIL: a repo already ignoring .claude got a second redundant rule ($(grep -c '^\.claude' "$W6/.gitignore"))"; exit 1; }
 echo "[wizard] an already-ignored .claude is not ignored twice (git check-ignore, not string equality)"
@@ -719,7 +739,7 @@ _ga_crs() {   # $1 = project dir, $2 = path inside it -> CR count after a core.a
 W15="$(wiz shared-eol)"
 ( cd "$W15" && git init -q . && git config user.email t@example.invalid && git config user.name t \
     && printf 'x\n' > README.md && git add README.md && git commit -qm base >/dev/null 2>&1 )
-( cd "$W15" && printf 'yes\n' | bash start.sh --generic --shared >/dev/null 2>&1 )
+_L="$(_slog)"; ( cd "$W15" && printf 'yes\n' | bash start.sh --generic --shared ) >"$_L" 2>&1 || _evidence "start.sh in $W15" "$_L" $?
 grep -qF '.claude/**/*.sh text eol=lf' "$W15/.gitattributes" 2>/dev/null \
   || { echo "FAIL: a shared install did not pin .claude/**/*.sh to LF"; exit 1; }
 for f in .claude/hooks/guard-bash.sh .claude/hooks/pre-commit; do
@@ -740,7 +760,7 @@ echo "[wizard] a shared install keeps hooks LF through a core.autocrlf clone (tw
 W16="$(wiz private-eol)"
 ( cd "$W16" && git init -q . && git config user.email t@example.invalid && git config user.name t \
     && printf 'x\n' > README.md && git add README.md && git commit -qm base >/dev/null 2>&1 )
-( cd "$W16" && printf 'yes\n' | bash start.sh --generic --private >/dev/null 2>&1 )
+_L="$(_slog)"; ( cd "$W16" && printf 'yes\n' | bash start.sh --generic --private ) >"$_L" 2>&1 || _evidence "start.sh in $W16" "$_L" $?
 [ ! -e "$W16/.gitattributes" ] \
   || { echo "FAIL: a private install wrote .gitattributes, which it has no reason to touch"; exit 1; }
 echo "[wizard] a private install leaves .gitattributes alone"
@@ -750,7 +770,7 @@ echo "[wizard] a private install leaves .gitattributes alone"
 W17="$(wiz already-eol)"
 ( cd "$W17" && git init -q . && git config user.email t@example.invalid && git config user.name t \
     && printf '* text eol=lf\n' > .gitattributes && git add .gitattributes && git commit -qm ga >/dev/null 2>&1 )
-( cd "$W17" && printf 'yes\n' | bash start.sh --generic --shared >/dev/null 2>&1 )
+_L="$(_slog)"; ( cd "$W17" && printf 'yes\n' | bash start.sh --generic --shared ) >"$_L" 2>&1 || _evidence "start.sh in $W17" "$_L" $?
 [ "$(wc -l < "$W17/.gitattributes" | tr -d ' ')" = 1 ] \
   || { echo "FAIL: an existing eol rule was not recognised; the installer appended redundant pins"; exit 1; }
 echo "[wizard] an existing eol rule is recognised, whatever its spelling, and nothing is appended"
