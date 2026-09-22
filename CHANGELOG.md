@@ -5,6 +5,18 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — forced `git branch` is blocked like `reset --hard`
+
+- **The hook had no opinion on any `git branch` command**, including the four that lose work: `-D` deletes an
+  unmerged branch together with its reflog, `-f` moves a branch and orphans the commits it pointed past, and
+  `-M` / `-C` overwrite an existing branch. They are now a §4.5 block in every mode, and `CLAUDE_GIT_OK` does not
+  open it — the same class as `git reset --hard` and `git push --force`.
+- **Every spelling counts.** `-d --force` is `-D`, `--move --force` is `-M`, and a flag cluster such as `-qD`
+  deletes too; all of them are caught, with or without a git global option in front.
+- **The safe twins still run:** `-d` (git itself refuses to delete unmerged work), `-m`, `-c`, listing, and plain
+  creation (`git branch feature`), which stays outside the approval set by choice. The rule is case-sensitive
+  because those twins differ from the forced forms by case only.
+
 ### Fixed — every way of creating a branch asks, not only `git checkout -b`
 
 - **The approval gate knew one spelling.** In the interactive modes only a bare `git checkout -b x` prompted.

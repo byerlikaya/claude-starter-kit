@@ -2470,6 +2470,29 @@ for c in 'git switch -c x' 'git switch --orphan x' 'git checkout -B x' 'git -C r
 done
 [ -z "$_bc_nokey" ] && pass "a keyed session ALLOWS every gated branch creator (4 of 4)" \
                     || fail "the key does not cover a branch creator the gate asks about:$_bc_nokey"
+# FORCED BRANCH SURGERY IS §4.5, both directions. Before the rule, default mode made no decision for any
+# `git branch` form. The safe twins differ from the forced ones by CASE ONLY (-d/-D, -m/-M, -c/-C), so the
+# negative list is what catches a case-folding matcher, and `git branch x && rm -f y` catches one that reads a
+# flag belonging to the next command. The forced list runs with the key set: §4.5 is the gate it cannot open.
+_fb_miss=""; _fb_n=0
+for c in 'git branch -D x' 'git branch -d -f x' 'git branch --delete --force x' 'git branch -Df x' \
+         'git branch -f x HEAD~3' 'git branch --force x HEAD~3' 'git branch -M old new' 'git branch -C old new' \
+         'git -C repo branch -D x' 'git branch --force --delete x' 'git branch --force -d x' 'git branch -qD x' \
+         'git branch -Dq x' 'git branch --force --move a b' 'git branch --copy --force a b'; do
+  _fb_n=$((_fb_n+1)); gj auto "$c" | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1
+  [ "$?" = 2 ] || _fb_miss="$_fb_miss [$c]"
+done
+[ -z "$_fb_miss" ] && pass "forced git branch is BLOCKED, even with the key ($_fb_n of $_fb_n, §4.5)" \
+                   || fail "forced git branch ran (§4.5 hole — unmerged work or history lost):$_fb_miss"
+_fb_over=""; _fb_n=0
+for c in 'git branch' 'git branch -a' 'git branch --list feat' 'git branch feature' 'git branch -c old new' \
+         'git branch -m old new' 'git branch -d x' 'git branch -vv' 'git branch --sort=-committerdate' \
+         'git branch -u origin/feature' 'git branch x && rm -f y' 'git branch --contains HEAD' 'git branch -r' 'git branch -v'; do
+  _fb_n=$((_fb_n+1)); gj default "$c" | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1
+  [ "$?" = 2 ] && _fb_over="$_fb_over [$c]"
+done
+[ -z "$_fb_over" ] && pass "safe git branch forms run ($_fb_n of $_fb_n — -d/-m/-c twins, listing, creation)" \
+                   || fail "a safe git branch form was blocked as forced (over-match):$_fb_over"
 
 sec "== 4f) §4.6 review gate — a commit cannot land on a diff nothing reviewed =="
 # The gate's own three states plus the ways round it, each in a real repo rather than against a string. What

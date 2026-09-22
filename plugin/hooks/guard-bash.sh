@@ -612,6 +612,21 @@ case "$CMD" in *[Nn][Oo]-[Vv][Ee][Rr][Ii][Ff][Yy]*) : ;; *) false ;; esac       
 git_has "$CMD" 'rebase'                                    && block "git rebase" "4.5" history
 git_has "$CMD" 'filter-branch|filter-repo'                && block "git filter-branch/filter-repo" "4.5" history
 { git_has "$CMD" 'commit' && has '--amend'; }                                              && block "git commit --amend" "4.5" history
+# §4.5 forced branch surgery. Measured before this rule: in default mode the hook made NO decision for any
+# `git branch` form, and four of them lose work: -D deletes an UNMERGED branch and its own reflog with it, -f
+# moves a branch (`-f x HEAD~3` orphans the commits it pointed past), -M / -C overwrite an existing branch.
+# That is the reset --hard / push --force class, so it is blocked in every mode and the key does not open it.
+# CASE-SENSITIVE, unlike has(): -d / -m / -c are the safe twins (git refuses to delete unmerged work with -d, and
+# -m / -c refuse to overwrite), and a case-folding match would block them all. Short flags from git's own
+# `branch -h`: v q t u r a d D m M c C l f i — so a cluster carrying D, M, C or f is forced (`-qD` deletes, measured),
+# and `--force` anywhere in the span is forced too: `-d --force` IS `-D`, `--move --force` IS `-M`. The flag must be in
+# THIS branch command's span (no ; & | crossed) and a git global option in front is skipped, as in §4d.
+# Plain creation (`git branch feature`) is deliberately NOT gated at all — a user decision, see ROADMAP §4d.
+# Known over-block, accepted: `--force` with a harmless verb (`--force --list`) is refused too; nobody needs it.
+# The `case` is a fork-free precondition: without it every git command paid this grep's process.
+case "$CMD" in *branch*) _HAS_BRANCH=1 ;; *) _HAS_BRANCH=0 ;; esac
+[ "$_HAS_BRANCH" = 1 ] && printf '%s' "$CMD" | grep -qE '(^|[^A-Za-z0-9_-])git[[:space:]]+((-[Cc][[:space:]]+[^[:space:];&|]+|--(git-dir|work-tree|namespace|config-env|super-prefix|exec-path)[[:space:]=]+[^[:space:];&|]+|-[^[:space:];&|]+)[[:space:]]+)*branch([[:space:]]+[^[:space:];&|]+)*[[:space:]]+(-[a-zA-Z]*[DMCf][a-zA-Z]*|--force)([[:space:]=]|$)' \
+  && block "forced git branch (-D / -f / -M / -C)" "4.5" history
 # Scoped to targets carrying `/`, `*` or `~` ON PURPOSE — `rm -rf build` is a routine local delete and blocking
 # it would make the gate noise. What was NOT on purpose: the recursive flag was matched as lowercase `r` in one
 # short cluster, so `rm -Rf /`, `rm -fR /`, `rm -f -r /` and `rm --recursive --force /` all walked past while

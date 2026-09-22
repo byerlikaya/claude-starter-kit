@@ -173,7 +173,7 @@ FAILS CLOSED — get a real yes, then switch mode. Never hand the user a command
 (a review blocker still stops you) and show the message in your report.
 
 ### 4.5 Destructive operations require approval
-`git reset --hard`, `git checkout -- .`, `push --force`, `clean -f`, `--no-verify`, `--no-gpg-sign`, `git add -f`, deleting a lockfile,
+`git reset --hard`, `git checkout -- .`, `push --force`, forced `git branch` (`-D -f -M -C`), `clean -f`, `--no-verify`, `--no-gpg-sign`, `git add -f`, deleting a lockfile,
 downgrading a package, a pipe-to-shell (`curl|bash`), a world-writable `chmod`, `dd of=`, or tampering with a hook /
 `core.hooksPath` (shell or file tools): only on an explicit request. `commit --amend` only on a commit that has not
 been pushed, and only when explicitly asked. A failing hook is never bypassed — resolve its cause, and never write down a way round one. All of these stay
