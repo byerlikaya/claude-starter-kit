@@ -116,7 +116,9 @@ fi
 rm -f "$_cal"
 
 W="$(mktemp -d)"
-trap 'cd /; rm -rf "$W"' EXIT INT TERM
+# ASSERTLOG is created above, outside $W, so the trap names it too: every early exit (no reference parser,
+# no extractable slice) used to leave one temp file behind per run.
+trap 'cd /; rm -rf "$W" "$ASSERTLOG"' EXIT INT TERM
 P="$W/payload.json"
 BS="$(printf '\\')"          # one real backslash, never written literally into this file
 
