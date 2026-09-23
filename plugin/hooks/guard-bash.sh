@@ -1406,70 +1406,24 @@ ${BRANCH_WARN}Approve only if the commit message above was shown to you and you 
       echo "GUARD (§4.4): 'git commit/push' is gated by approval AT THE TOOL LEVEL, and this session's permission mode ('${PERM_MODE:-unknown}') cannot put that prompt in front of a person." >&2
       echo "Present the commit MESSAGE to the user and get EXPLICIT approval. Then one of:" >&2
       echo "  (a) the user presses Shift+Tab to switch to default/acceptEdits — IN THIS SESSION, no restart — and this gate asks them directly, OR" >&2
-      echo "  (b) the NEXT session is started with 'CLAUDE_GIT_OK=1' (headless/CI) — the key cannot be added to a session already running. It covers the §4.4 APPROVAL set (add · checkout -b / switch -c · commit · push) and nothing else;" >&2
+      echo "  (b) the NEXT session is started with 'CLAUDE_GIT_OK=1' (headless/CI) — the key cannot be added to a session already running. It covers the §4.4 APPROVAL set (commit · push; staging and branching need no key) and nothing else;" >&2
       echo "      force-push, git add -f, hook tampering and the §4.5 destructive set all still block, OR" >&2
       echo "  (c) the user runs the command in their own terminal." >&2
       exit 2 ;;
   esac
 fi
 
-# §4.4 — STAGING AND BRANCHING TAKE THE SAME ROUTE AS COMMIT AND PUSH.
+# §4.4 — STAGING AND BRANCHING ARE FREE, IN EVERY MODE. Commit and push are the approval set; `git add` and
+# creating a branch are not, by the user's decision: neither publishes anything, both are undone locally, and
+# asking for them made auto mode stop and demand a mode switch for work that cannot hurt anyone. So this hook
+# returns NO decision for them in any mode, and the kit's settings.json already allows Bash — they simply run.
 #
-# Until now `git add` and `git checkout -b` were gated ONLY by the `ask` rules in settings.json, and this
-# hook returned no decision for them in every mode — measured, all five modes, no CLAUDE_GIT_OK. That split
-# is what made CLAUDE_GIT_OK unable to do the one thing it advertises: the published permission reference
-# says a matching `ask` rule still prompts even when a PreToolUse hook returns "allow", so the hook's allow
-# could never clear the settings rule, and headless there is nobody to answer. Measured in the paid A/B:
-# `commit-format` asked explicitly for a commit, the gate log recorded ALLOW §4.4 CLAUDE_GIT_OK, and the
-# arm still committed 0/3 — the fix applied, nothing staged, nothing committed.
+# What stays gated around them, unchanged: `git add -f` is §4.5 (it bypasses a .gitignore rule) and blocks above;
+# forced branch operations (-D/-f/-M/-C) block above; commit and push fail closed where nobody can be asked and
+# ask where someone can. CLAUDE_GIT_OK still returns an explicit allow for add and branch creation (the block
+# before §4.6), which a headless session needs when its own settings do not allow Bash.
 #
-# Deleting those ask rules alone would have been a §4.4 REGRESSION, which is why this block exists first:
-# with the rules gone and no hook decision, add and checkout -b would run ungated in every mode, silently in
-# bypass and auto. So the rule moves into the hook rather than disappearing, and the settings change lands
-# after it. ORDER MATTERS: hook first (stricter), settings second.
-#
-# BRANCH CREATION, by every spelling git accepts, not just the one the old settings rule named. The flag is
-# matched precisely rather than the subcommand alone: plain `git checkout main` / `git switch main` is moving
-# between branches, and gating it would be new policy rather than the same policy in a new place.
-#   checkout -b / -B / --orphan      switch -c / -C / --create / --force-create / --orphan  (also `--x=name`)
-# — the flag list is git's own `checkout -h` / `switch -h` (git 2.54), not recalled.
-# The prefix is git_has's own global-option skip, so `git -C repo checkout -b x` and `git -c k=v …` are seen.
-# Measured before this, default mode: only a bare `git checkout -b x` asked — `-C <path>` and `-c <kv>` in
-# front of it, `checkout -B`, both `--orphan`s and all four `switch` creators ran with no prompt, and the `switch` forms were
-# not even in the CLAUDE_GIT_OK set above, so a keyed session got no allow for them either.
-# Calibrated in smoke §4e, BOTH directions: every creator above, with and without a global option in front,
-# must ask; `checkout main`, `switch main`, `switch --detach`, `checkout -- .` and `checkout b` must not. The
-# first version of this rule had only the second half, which is how `-B` went unnoticed beside `-b`.
-# NOT covered, deliberately: `git branch <name>` creates a branch without switching to it; it was never in the
-# §4.4 set and adding it here would be a policy change, not a spelling fix.
-if git_has "$CMD" 'add' \
-   || printf '%s' "$CMD" | grep -qE '(^|[^A-Za-z0-9_-])git[[:space:]]+((-[Cc][[:space:]]+[^[:space:];&|]+|--(git-dir|work-tree|namespace|config-env|super-prefix|exec-path)[[:space:]=]+[^[:space:];&|]+|-[^[:space:];&|]+)[[:space:]]+)*(checkout([[:space:]]+[^[:space:];&|]+)*[[:space:]]+(-[bB]|--orphan)|switch([[:space:]]+[^[:space:];&|]+)*[[:space:]]+(-[cC]|--create|--force-create|--orphan))([[:space:]=]|$)'; then
-  case "${PERM_MODE:-}" in
-    default|acceptEdits)
-      ask_user "§4.4 staging/branching approval gate. Claude wants to run:
-
-$(printf '%s' "$CMD" | cut -c1-400)
-
-Approving lets Claude run the command itself."
-      ;;
-    *)
-      # NO DECISION, and this is where the spec for this change was wrong rather than where the suite was.
-      # Routing add/checkout -b to the commit/push fail-closed arm made three existing assertions red, and
-      # all three drive mode `auto`:
-      #     git add -A NOT over-blocked            (beside "git add -f BLOCKED": the pair is the point)
-      #     git add leak.sh must run               (H4b — ordinary scripts)
-      #     git checkout -b feature/x must pass    (§4.5 whole-tree-revert case list)
-      # The comment on the first one says it outright: "a plain add must NOT be over-blocked". These are
-      # considered decisions, not omissions, and the reason they are right is the one the paid A/B measured
-      # on `destructive-refused`: a gate that costs the request and buys nothing is a net loss. Staging
-      # publishes nothing. The consequential steps — commit and push — already fail closed here, and
-      # `git add -f` is already a §4.5 block. Failing closed on a plain `git add` would stop every
-      # non-interactive session from staging while protecting nothing that commit does not already protect.
-      #
-      # What the interactive arm above still buys: the settings.json `ask` rules for add and checkout -b can
-      # be removed without losing the prompt, which is what frees CLAUDE_GIT_OK to work at all.
-      : ;;
-  esac
-fi
-
+# Branch creation used to be matched here in every spelling git accepts (checkout -b/-B/--orphan, switch
+# -c/-C/--create/--force-create/--orphan, with global options in front) so that default mode could ask. That
+# matcher is gone with the question; smoke §4e now pins the opposite — every spelling runs without a prompt.
 exit 0

@@ -88,4 +88,4 @@ Security-critical decision, schema risk, or ambiguous contract → delegate to t
 
 ## Prohibitions (absolute)
 CLAUDE.md §4 applies: no AI trace · vendor template name must not leak into code · internal docs confidential ·
-commit/push/branch/stage only with explicit approval · destructive operations require an explicit request, no hook bypass.
+commit/push only with explicit approval (staging and branching are free) · destructive operations require an explicit request, no hook bypass.
