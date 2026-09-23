@@ -79,7 +79,11 @@ fi
 # would destroy the environment setting it is meant to read.
 CSK_LANG_ENV="${CSK_LANG:-}"
 CSK_LANG=""
-m() {   # $1 = English text (the key); further args fill %s
+# `_mt` puts the result in _M with printf -v, so a call site pays no subshell: `$(m …)` is a FORK, and on Git
+# Bash a fork is ~50 ms. Measured on Windows: the $(m …) form added 22 forks and ~1 s to one install; adopt.sh's
+# printf -v twin removed them. `m` stays as a thin wrapper for the rare nested case that needs a value inline.
+m() { _mt "$@"; printf '%s' "$_M"; }
+_mt() {   # $1 = English text (the key); further args fill %s; result in _M
   local s="$1"; shift
   if [ "$CSK_LANG" = tr ]; then
     case "$s" in
@@ -200,7 +204,7 @@ m() {   # $1 = English text (the key); further args fill %s
     esac
   fi
   # shellcheck disable=SC2059
-  printf "$s" "$@"
+  printf -v _M "$s" "$@"
 }
 # ---- /CSK-I18N -----------------------------------------------------------------------------------------
 
@@ -280,15 +284,16 @@ ask_yes() {  # $1 = question; returns 0 if the user says 'yes'
   # files into the user's tree and the script itself labels it risky, so it stays an explicit, human yes.
   # Under --yes these decline and say so, which is the reversible direction.
   if [ "${2:-}" = risky ] && [ "${ASSUME_YES:-0}" = 1 ]; then
-    printf '%s %s %s%s%s\n' "$1" "$(m 'no')" "$D" "$(m '(--yes does not approve the DevArchitecture base — run without --yes to add it)')" "$R"
+    _mt 'no'; _a="$_M"; _mt '(--yes does not approve the DevArchitecture base — run without --yes to add it)'
+    printf '%s %s %s%s%s\n' "$1" "$_a" "$D" "$_M" "$R"
     return 1
   fi
-  if [ "${ASSUME_YES:-0}" = 1 ]; then printf '%s %s %s(--yes)%s\n' "$1" "$(m 'yes')" "$D" "$R"; return 0; fi
+  if [ "${ASSUME_YES:-0}" = 1 ]; then _mt 'yes'; printf '%s %s %s(--yes)%s\n' "$1" "$_M" "$D" "$R"; return 0; fi
   # Deliberately NOT adopt.sh's `[ -t 0 ]` shape. adopt.sh declines outright when stdin is not a terminal;
   # here `printf 'yes\n' | bash start.sh` is the documented CI form (see the note at the confirm prompt) and
   # that shape would silently turn every piped install into a cancellation. A pipe reaching EOF already
   # answers "" => no, so the unattended case stays safe without special-casing it.
-  printf '%s %s: ' "$1" "$(m '[yes/no]')"
+  _mt '[yes/no]'; printf '%s %s: ' "$1" "$_M"
   csk_read a
   case "$a" in [yY]|[yY][eE][sS]|[eE]|[eE][vV][eE][tT]) return 0 ;; *) return 1 ;; esac
 }
@@ -458,27 +463,27 @@ csk_path_budget_warn(){
   local rl; rl="$(csk_native_len .)"
   [ "$rl" -gt 94 ] 2>/dev/null || return 0
   echo
-  echo "  $(m '!!! WARNING: this project root is %s characters; the .NET base needs it to be 94 or fewer.' "$rl")"
-  echo "  $(m "The copy will SUCCEED and the build will FAIL: the base's deepest file is 156 characters, and")"
-  echo "  $(m 'Windows cannot open a path past 259 unless long paths are enabled. Measured here: dotnet build')"
-  echo "  $(m 'stops with %s.' '"the fully qualified file name must be less than 260 characters"')"
-  echo "  $(m '94 is also optimistic — a build writes bin/ and obj/ BELOW the sources, so the real room is less.')"
-  echo "  $(m 'Two things fix it: install at a shorter root (%s rather than a deep Documents path),' 'C:\src\<name>')"
-  echo "  $(m 'or set LongPathsEnabled=1 under %s (admin).' 'HKLM\SYSTEM\CurrentControlSet\Control\FileSystem')"
-  echo "  $(m '(core.longpaths only affects git, not the build, so it will not help here.)')"
+  { _mt '!!! WARNING: this project root is %s characters; the .NET base needs it to be 94 or fewer.' "$rl"; echo "  ${_M}"; }
+  { _mt "The copy will SUCCEED and the build will FAIL: the base's deepest file is 156 characters, and"; echo "  ${_M}"; }
+  { _mt 'Windows cannot open a path past 259 unless long paths are enabled. Measured here: dotnet build'; echo "  ${_M}"; }
+  { _mt 'stops with %s.' '"the fully qualified file name must be less than 260 characters"'; echo "  ${_M}"; }
+  { _mt '94 is also optimistic — a build writes bin/ and obj/ BELOW the sources, so the real room is less.'; echo "  ${_M}"; }
+  { _mt 'Two things fix it: install at a shorter root (%s rather than a deep Documents path),' 'C:\src\<name>'; echo "  ${_M}"; }
+  { _mt 'or set LongPathsEnabled=1 under %s (admin).' 'HKLM\SYSTEM\CurrentControlSet\Control\FileSystem'; echo "  ${_M}"; }
+  { _mt '(core.longpaths only affects git, not the build, so it will not help here.)'; echo "  ${_M}"; }
   echo
 }
 clone_devarch() {  # $1 = target dir; clone verbatim, drop nested .git, rename the .sln to the project name
   local target="${1:-.}"
-  command -v git >/dev/null 2>&1 || { echo "  $(m 'ERROR: git missing; cannot include DevArchitecture.')"; return 1; }
+  command -v git >/dev/null 2>&1 || { { _mt 'ERROR: git missing; cannot include DevArchitecture.'; echo "  ${_M}"; }; return 1; }
   local tmp; tmp="$(mktemp -d)"
-  echo "  $(m 'Downloading: %s' "$DEVARCH_URL")"
+  { _mt 'Downloading: %s' "$DEVARCH_URL"; echo "  ${_M}"; }
   # No timeout on this one, deliberately: a first clone of a real backend base legitimately takes minutes on a
   # slow link, and cutting it off would break the feature to fix a hang it does not have. What it CAN hit is the
   # credential prompt — if the URL ever moves behind auth, git asks for a username and the installer stops dead
   # with no output. Suppressing the prompt turns that into the error message two lines below.
   if ! GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never git clone --depth 1 "$DEVARCH_URL" "$tmp/da" >/dev/null 2>&1; then
-    echo "  $(m 'ERROR: clone failed (network/access?). Manually: %s' "git clone $DEVARCH_URL")"
+    { _mt 'ERROR: clone failed (network/access?). Manually: %s' "git clone $DEVARCH_URL"; echo "  ${_M}"; }
     rm -rf "$tmp"; return 1
   fi
   rm -rf "$tmp/da/.git"     # not a separate repo/submodule, included as verbatim files
@@ -487,11 +492,11 @@ clone_devarch() {  # $1 = target dir; clone verbatim, drop nested .git, rename t
   rm -rf "$tmp"
   # Rename the solution file to the project name (safe — the .sln name is independent of the projects it references).
   if [ -f "$target/DevArchitecture.sln" ] && [ "$PROJECT_NAME" != "DevArchitecture" ]; then
-    mv "$target/DevArchitecture.sln" "$target/${PROJECT_NAME}.sln" && echo "  $(m 'Renamed the solution to %s.' "${PROJECT_NAME}.sln")"
+    mv "$target/DevArchitecture.sln" "$target/${PROJECT_NAME}.sln" && { _mt 'Renamed the solution to %s.' "${PROJECT_NAME}.sln"; echo "  ${_M}"; }
   fi
-  echo "  $(m 'DevArchitecture base placed in: %s.' "$([ "$target" = "." ] && m 'the project root' || echo "$target/")")"
-  echo "  $(m 'NOTE (§4.2): the template name still lives in namespaces / csproj / appsettings — as the FIRST')"
-  echo "  $(m 'task, ask an agent to rename DevArchitecture -> %s throughout.' "${PROJECT_NAME}")"
+  { _mt 'DevArchitecture base placed in: %s.' "$([ "$target" = "." ] && m 'the project root' || echo "$target/")"; echo "  ${_M}"; }
+  { _mt 'NOTE (§4.2): the template name still lives in namespaces / csproj / appsettings — as the FIRST'; echo "  ${_M}"; }
+  { _mt 'task, ask an agent to rename DevArchitecture -> %s throughout.' "${PROJECT_NAME}"; echo "  ${_M}"; }
   # The base ships ~8 MB of third-party front-end assets under wwwroot/lib/**/dist/, and the repo-bloat gate
   # stops the first commit over them. That is the gate doing its job — whether to commit vendored assets is a
   # real decision — but discovering it at `git commit` time, on a project you have not written a line of yet,
@@ -499,9 +504,9 @@ clone_devarch() {  # $1 = target dir; clone verbatim, drop nested .git, rename t
   VLIB="$(find "$target" -type d -path '*wwwroot/lib' 2>/dev/null | head -1)"
   if [ -n "$VLIB" ]; then
     VN="$(find "$VLIB" -type f 2>/dev/null | wc -l | tr -d ' ')"
-    echo "  $(m 'HEADS-UP: the base carries %s vendored front-end files under %s (bootstrap et al).' "$VN" "${VLIB#./}/")"
-    echo "  $(m 'The repo-bloat gate will stop your first commit over them. Decide once: gitignore that path, or')"
-    echo "  $(m 'commit them deliberately with %s (§4.5: an explicit, one-off exception).' "'git commit --no-verify'")"
+    { _mt 'HEADS-UP: the base carries %s vendored front-end files under %s (bootstrap et al).' "$VN" "${VLIB#./}/"; echo "  ${_M}"; }
+    { _mt 'The repo-bloat gate will stop your first commit over them. Decide once: gitignore that path, or'; echo "  ${_M}"; }
+    { _mt 'commit them deliberately with %s (§4.5: an explicit, one-off exception).' "'git commit --no-verify'"; echo "  ${_M}"; }
   fi
 }
 
@@ -594,23 +599,27 @@ padr() {   # $1 = text, $2 = width; sets PADDED
   PADDED="$1"
   while [ "$n" -gt 0 ]; do PADDED="$PADDED "; n=$((n-1)); done
 }
-h1()   { printf '\n%s%s%s%s\n' "$B" "$CY" "$1" "$R"; }               # section heading
-sub()  { printf '%s%s%s\n' "$D" "$1" "$R"; }                         # dim description
+# The helpers below take the ENGLISH key and translate it themselves, so no call site needs a $(m …) fork.
+h1()   { _mt "$@"; printf '\n%s%s%s%s\n' "$B" "$CY" "$_M" "$R"; }         # section heading
+sub()  { _mt "$@"; printf '%s%s%s\n' "$D" "$_M" "$R"; }                   # dim description
 opt()  { # $1=no $2=label $3=is_default $4=right-badge
-  local mark=''; [ "${3:-0}" = 1 ] && mark=" ${GR}${B}$(m '(default)')${R}"
-  padr "$2" 24
-  printf '  %s%s%s)%s %s%s%s %s%s%s%s\n' "$B" "$YE" "$1" "$R" "$B" "$PADDED" "$R" "$MG" "${4:-}" "$R" "$mark"
+  local mark='' lbl; [ "${3:-0}" = 1 ] && { _mt '(default)'; mark=" ${GR}${B}${_M}${R}"; }
+  _mt "${4:-}"; local badge="$_M"; _mt "$2"; lbl="$_M"
+  padr "$lbl" 24
+  printf '  %s%s%s)%s %s%s%s %s%s%s%s\n' "$B" "$YE" "$1" "$R" "$B" "$PADDED" "$R" "$MG" "$badge" "$R" "$mark"
 }
-add()  { printf '     %s+%s %s\n'      "$GR" "$R" "$1"; }            # INSTALLED
-skip() { printf '     %s-%s %s%s%s\n'  "$YE" "$R" "$D" "$1" "$R"; }  # NOT INSTALLED (tradeoff)
-gate() { printf '     %s>%s %s\n'      "$CY" "$R" "$1"; }            # gate to be armed
-row()  { padr "$1" 15; printf '  %s%s%s %s\n' "$B" "$PADDED" "$R" "$2"; }   # summary row
+add()  { _mt "$@"; printf '     %s+%s %s\n'      "$GR" "$R" "$_M"; }            # INSTALLED
+skip() { _mt "$@"; printf '     %s-%s %s%s%s\n'  "$YE" "$R" "$D" "$_M" "$R"; }  # NOT INSTALLED (tradeoff)
+gate() { _mt "$@"; printf '     %s>%s %s\n'      "$CY" "$R" "$_M"; }            # gate to be armed
+row()  { _mt "$1"; padr "$_M" 15; printf '  %s%s%s %s\n' "$B" "$PADDED" "$R" "$2"; }   # summary row; $1 = key
 rule() { printf '  %s------------------------------------------------%s\n' "$D" "$R"; }
 
-h1  "$(m 'Agentic Working Kit · setup wizard')"
-sub "$(m '3 steps: backend pattern -> who it is for -> summary & confirm.')"
-[ -n "$LEGACY_FLAGS" ] && printf '\n  %s!%s%s %s%s %s\n' \
-  "$YE" "$R" "$B$LEGACY_FLAGS" "$(m 'no effect:')" "$R" "$(m 'the kit always installs in full (all agents · all skills).')"
+h1  'Agentic Working Kit · setup wizard'
+sub '3 steps: backend pattern -> who it is for -> summary & confirm.'
+if [ -n "$LEGACY_FLAGS" ]; then
+  _mt 'no effect:'; _a="$_M"; _mt 'the kit always installs in full (all agents · all skills).'
+  printf '\n  %s!%s%s %s%s %s\n' "$YE" "$R" "$B$LEGACY_FLAGS" "$_a" "$R" "$_M"
+fi
 
 # ===================== STEP 1 · BACKEND PATTERN =====================
 # Asked on EVERY install: the pattern skill is the one thing that is genuinely wrong in the other stack, so it
@@ -626,21 +635,23 @@ sub "$(m '3 steps: backend pattern -> who it is for -> summary & confirm.')"
 # definition nothing is supposed to be read.
 if [ -z "$STACK" ] && [ "$ASSUME_YES" = 1 ]; then
   STACK="dotnet"
-  printf '  %s%s%s .NET / DevArchitecture %s%s%s\n' "$B" "$(m 'Backend pattern:')" "$R" "$D" "$(m '(default — pass --generic for the stack-agnostic one)')" "$R"
+  _mt 'Backend pattern:'; _a="$_M"; _mt '(default — pass --generic for the stack-agnostic one)'
+  printf '  %s%s%s .NET / DevArchitecture %s%s%s\n' "$B" "$_a" "$R" "$D" "$_M" "$R"
 fi
 if [ -z "$STACK" ]; then
-  h1  "$(m '[1/3] Backend pattern')"
-  sub "$(m 'Determines the backend template and whether the .NET-specific skills are included.')"
+  h1  '[1/3] Backend pattern'
+  sub 'Determines the backend template and whether the .NET-specific skills are included.'
   echo
-  opt 1 "$(m '.NET / DevArchitecture')" 1 "$(m 'full support')"
-  add  "$(m 'cqrs-aop-module skill (opinionated MediatR CQRS)')"
-  gate "$(m 'clones the DevArchitecture base project BEHIND AN APPROVAL GATE (greenfield project)')"
+  opt 1 '.NET / DevArchitecture' 1 'full support'
+  add  'cqrs-aop-module skill (opinionated MediatR CQRS)'
+  gate 'clones the DevArchitecture base project BEHIND AN APPROVAL GATE (greenfield project)'
   echo
-  opt 2 "$(m 'Generic')" 0 "$(m 'stack-agnostic')"
-  add  "$(m "pattern-neutral backend-expert-csk — follows your repo's pattern; declare it as a skill (.claude/skills/)")"
-  skip "$(m 'cqrs-aop-module and the DevArchitecture base NOT INSTALLED (sonarqube-check still installed)')"
+  opt 2 'Generic' 0 'stack-agnostic'
+  add  "pattern-neutral backend-expert-csk — follows your repo's pattern; declare it as a skill (.claude/skills/)"
+  skip 'cqrs-aop-module and the DevArchitecture base NOT INSTALLED (sonarqube-check still installed)'
   echo
-  printf '  %s->%s %s %s[1-2, %s]%s: ' "$CY" "$R" "$(m 'Choice')" "$D" "$(m 'empty=1')" "$R"
+  _mt 'Choice'; _a="$_M"; _mt 'empty=1'
+  printf '  %s->%s %s %s[1-2, %s]%s: ' "$CY" "$R" "$_a" "$D" "$_M" "$R"
   csk_read s                        # empty => default (dotnet)
   case "$s" in 2) STACK="generic" ;; *) STACK="dotnet" ;; esac
 fi
@@ -666,20 +677,22 @@ fi
 # (private) without reading anything, and --private/--shared are how a script chooses instead.
 if [ -z "$VISIBILITY" ] && { [ ! -t 0 ] || [ "$ASSUME_YES" = 1 ]; }; then
   VISIBILITY="private"
-  printf '  %s%s%s %s %s%s%s\n' "$B" "$(m 'Install visibility:')" "$R" "$(m 'private')" "$D" "$(m '(default — pass --shared to commit .claude/ and CLAUDE.md)')" "$R"
+  _mt 'Install visibility:'; _a="$_M"; _mt 'private'; _b="$_M"; _mt '(default — pass --shared to commit .claude/ and CLAUDE.md)'
+  printf '  %s%s%s %s %s%s%s\n' "$B" "$_a" "$R" "$_b" "$D" "$_M" "$R"
 fi
 if [ -z "$VISIBILITY" ]; then
-  h1  "$(m '[2/3] Who is this install for?')"
-  sub "$(m "Decides whether your teammates get the kit's configuration — and what goes into .gitignore.")"
+  h1  '[2/3] Who is this install for?'
+  sub "Decides whether your teammates get the kit's configuration — and what goes into .gitignore."
   echo
-  opt 1 "$(m 'Just me')" 1 "$(m 'private')"
-  add  "$(m ".claude/ and CLAUDE.md stay out of git — nothing appears in your teammates' checkouts")"
+  opt 1 'Just me' 1 'private'
+  add  ".claude/ and CLAUDE.md stay out of git — nothing appears in your teammates' checkouts"
   echo
-  opt 2 "$(m 'The whole team')" 0 "$(m 'shared')"
-  add  "$(m '.claude/ and CLAUDE.md are committable — everyone gets the same agents, skills and gates')"
-  skip "$(m 'internal working documents (docs/) stay private in BOTH answers')"
+  opt 2 'The whole team' 0 'shared'
+  add  '.claude/ and CLAUDE.md are committable — everyone gets the same agents, skills and gates'
+  skip 'internal working documents (docs/) stay private in BOTH answers'
   echo
-  printf '  %s->%s %s %s[1-2, %s]%s: ' "$CY" "$R" "$(m 'Choice')" "$D" "$(m 'empty=1')" "$R"
+  _mt 'Choice'; _a="$_M"; _mt 'empty=1'
+  printf '  %s->%s %s %s[1-2, %s]%s: ' "$CY" "$R" "$_a" "$D" "$_M" "$R"
   csk_read s                        # empty => default (private = today's behaviour)
   case "$s" in 2) VISIBILITY="shared" ;; *) VISIBILITY="private" ;; esac
 fi
@@ -723,35 +736,41 @@ count_installed() {   # $1=EXCL list  $2=glob  -> count to install
 N_AG="$(count_installed "" "$SRC/agents/*.md")"
 N_SK="$(count_installed "$EXCL_SKILLS" "$SRC/skills/*/")"
 
-h1 "$(m '[3/3] Summary · see what will be installed before you confirm')"
+h1 '[3/3] Summary · see what will be installed before you confirm'
 echo
-row "$(m 'Scope')" "${B}$(m 'full kit')${D} $(m '— backend + web + mobile (RN/Expo), every agent and skill')${R}"
-row "$(m 'Included')"  "$(m '%s agents · %s skills will be installed' "${MG}${B}${N_AG}${R}" "${MG}${B}${N_SK}${R}")"
+_mt 'full kit'; _a="$_M"; _mt '— backend + web + mobile (RN/Expo), every agent and skill'
+row 'Scope' "${B}${_a}${D} ${_M}${R}"
+_mt '%s agents · %s skills will be installed' "${MG}${B}${N_AG}${R}" "${MG}${B}${N_SK}${R}"
+row 'Included'  "$_M"
 if [ "$STACK" = "generic" ]; then
-  row "$(m 'Backend pattern')" "$(m 'non-.NET — generic') ${D}$(m '(cqrs-aop-module not installed; sonarqube-check installed)')${R}"
+  _mt 'non-.NET — generic'; _a="$_M"; _mt '(cqrs-aop-module not installed; sonarqube-check installed)'
+  row 'Backend pattern' "$_a ${D}${_M}${R}"
 else
-  row "$(m 'Backend pattern')" ".NET / DevArchitecture ${D}($(m 'full support'))${R}"
+  _mt 'full support'; row 'Backend pattern' ".NET / DevArchitecture ${D}(${_M})${R}"
 fi
 if [ "$DEVARCH_ON" = 1 ]; then
-  row "$(m 'DevArch base')" "${YE}$(m 'approval gate -> ./%s' "$BACKEND_DIR") ${D}$(m '(./frontend reserved next to it)')${R}"
+  _mt 'approval gate -> ./%s' "$BACKEND_DIR"; _a="$_M"; _mt '(./frontend reserved next to it)'
+  row 'DevArch base' "${YE}${_a} ${D}${_M}${R}"
 else
-  row "$(m 'DevArch base')" "${D}$(m 'not installed')${R}"
+  _mt 'not installed'; row 'DevArch base' "${D}${_M}${R}"
 fi
 echo
-printf '  %s%s%s\n' "$B" "$(m 'Security gates armed on every install:')" "$R"
-gate "$(m 'commit/push approval gate — even in auto/bypass mode (guard-bash)')"
-gate "$(m 'trace scan — a git hook blocks AI traces / vendor names')"
-gate "$(m 'real context measurement + handoff at 75%% (Stop hook)')"
-gate "$(m 'destructive command guard (rm -rf / force-push, etc.)')"
+_mt 'Security gates armed on every install:'; printf '  %s%s%s\n' "$B" "$_M" "$R"
+gate 'commit/push approval gate — even in auto/bypass mode (guard-bash)'
+gate 'trace scan — a git hook blocks AI traces / vendor names'
+gate 'real context measurement + handoff at 75%% (Stop hook)'
+gate 'destructive command guard (rm -rf / force-push, etc.)'
 echo
-row "$(m 'Will write')" "${D}./.claude (agents·skills·commands·hooks·eval·studio·settings.json) + ./CLAUDE.md${R}"
+row 'Will write' "${D}./.claude (agents·skills·commands·hooks·eval·studio·settings.json) + ./CLAUDE.md${R}"
 # .gitignore is a TRACKED file in most repos, so appending to it is a change to the project — it belongs in
 # the summary, named line by line, not discovered afterwards in `git diff`. Entries this repo already
 # ignores are dropped at write time, so what is listed here is the upper bound, not a promise of four lines.
 if [ "$VISIBILITY" = "shared" ]; then
-  row ".gitignore" "${D}$(printf '%s · ' $GI_PLAN | sed 's/ · $//')  ${YE}$(m '(shared: .claude/ and CLAUDE.md stay committable)')${R}"
+  _mt '(shared: .claude/ and CLAUDE.md stay committable)'
+  row ".gitignore" "${D}$(printf '%s · ' $GI_PLAN | sed 's/ · $//')  ${YE}${_M}${R}"
 else
-  row ".gitignore" "${D}$(printf '%s · ' $GI_PLAN | sed 's/ · $//')  ${GR}($(m 'private'))${R}"
+  _mt 'private'; _a="$_M"
+  row ".gitignore" "${D}$(printf '%s · ' $GI_PLAN | sed 's/ · $//')  ${GR}(${_a})${R}"
 fi
 # What this machine is missing, BEFORE the confirm prompt — not after, when it becomes a symptom pointing
 # somewhere else. Report-only and never blocking: the kit degrades rather than breaks, and that is exactly why
@@ -760,47 +779,50 @@ fi
 rule
 echo
 # ask_yes reads from stdin => in CI `printf 'yes\n' | bash start.sh` works; 'no' on EOF (no accidental install).
-if ! ask_yes "  $(m 'Install with these settings?')"; then
-  printf '  %s%s%s\n' "$YE" "$(m 'Cancelled — nothing changed.')" "$R"
+_mt 'Install with these settings?'
+if ! ask_yes "  $_M"; then
+  _mt 'Cancelled — nothing changed.'; printf '  %s%s%s\n' "$YE" "$_M" "$R"
   exit 0
 fi
 echo
 
 # --- Step 3: Backend base (only .NET/DevArchitecture; APPROVAL GATE) ---
 if [ "$DEVARCH_ON" = 1 ]; then
-  echo "== $(m 'Backend base (DevArchitecture)') =="
+  { _mt 'Backend base (DevArchitecture)'; echo "== ${_M} =="; }
   csk_path_budget_warn
-  echo "  $(m 'Target: %s (the frontend stays separate under ./frontend).' "./$BACKEND_DIR")"
+  { _mt 'Target: %s (the frontend stays separate under ./frontend).' "./$BACKEND_DIR"; echo "  ${_M}"; }
   if has_devarch "$BACKEND_DIR"; then
-    echo "  $(m 'DevArchitecture detected — base already present, skipping copy.')"
+    { _mt 'DevArchitecture detected — base already present, skipping copy.'; echo "  ${_M}"; }
   elif project_has_source; then
-    echo "  $(m '!!! WARNING: An existing project is present and the DevArchitecture backend base is MISSING.')"
-    echo "  $(m 'Adding it may cause file/structure conflicts and BREAK the project.')"
-    echo "  $(m 'This kit is meant for setting up a project FROM SCRATCH. Confirm if you still want to add it.')"
-    if ask_yes "  $(m 'Do you want to add DevArchitecture to this EXISTING project (risky)?')" risky; then
-      clone_devarch "$BACKEND_DIR" || echo "  $(m 'Continuing without the backend base.')"
+    { _mt '!!! WARNING: An existing project is present and the DevArchitecture backend base is MISSING.'; echo "  ${_M}"; }
+    { _mt 'Adding it may cause file/structure conflicts and BREAK the project.'; echo "  ${_M}"; }
+    { _mt 'This kit is meant for setting up a project FROM SCRATCH. Confirm if you still want to add it.'; echo "  ${_M}"; }
+    _mt 'Do you want to add DevArchitecture to this EXISTING project (risky)?'
+    if ask_yes "  $_M" risky; then
+      clone_devarch "$BACKEND_DIR" || { _mt 'Continuing without the backend base.'; echo "  ${_M}"; }
     else
-      echo "  $(m 'Skipped. The backend flow assumes DevArchitecture; you will need to adapt it manually.')"
+      { _mt 'Skipped. The backend flow assumes DevArchitecture; you will need to adapt it manually.'; echo "  ${_M}"; }
     fi
   else
-    echo "  $(m 'Greenfield project: this kit can install the DevArchitecture backend base.')"
-    if ask_yes "  $(m 'Should I include the DevArchitecture backend base in the project now?')" risky; then
-      clone_devarch "$BACKEND_DIR" || echo "  $(m 'Could not include the backend base; continuing with kit installation.')"
+    { _mt 'Greenfield project: this kit can install the DevArchitecture backend base.'; echo "  ${_M}"; }
+    _mt 'Should I include the DevArchitecture backend base in the project now?'
+    if ask_yes "  $_M" risky; then
+      clone_devarch "$BACKEND_DIR" || { _mt 'Could not include the backend base; continuing with kit installation.'; echo "  ${_M}"; }
     else
-      echo "  $(m 'Skipped. You can add it manually later:  %s' "git clone $DEVARCH_URL")"
+      { _mt 'Skipped. You can add it manually later:  %s' "git clone $DEVARCH_URL"; echo "  ${_M}"; }
     fi
   fi
   # Reserve ./frontend so the layout is explicit (build the frontend here; the backend is in ./backend).
   if [ ! -e ./frontend ]; then
     mkdir -p frontend
     printf '# frontend\n\nBuild your frontend here (the `frontend-expert-csk` agent helps). The backend lives in `../backend`.\n' > frontend/README.md
-    echo "  $(m 'Reserved ./frontend for your frontend.')"
+    { _mt 'Reserved ./frontend for your frontend.'; echo "  ${_M}"; }
   fi
   echo
 fi
 
 # --- Step 4: Kit installation (./.claude + ./CLAUDE.md) — everything, minus the .NET-only pattern skill ---
-echo "== $(m 'Installing:') ./.claude + ./CLAUDE.md =="
+{ _mt 'Installing:'; echo "== ${_M} ./.claude + ./CLAUDE.md =="; }
 mkdir -p .claude/agents .claude/skills .claude/commands .claude/hooks .claude/eval .claude/studio
 cp -R "$SRC/agents/."   .claude/agents/
 cp -R "$SRC/skills/."   .claude/skills/
@@ -819,7 +841,7 @@ for d in $EXCL_SKILLS; do rm -rf ".claude/skills/$d"; done
 if [ "$STACK" = "generic" ] && [ -f "$SRC/agents-optional/backend-expert-generic.md" ]; then
   cp "$SRC/agents-optional/backend-expert-generic.md" .claude/agents/backend-expert-csk.md
 fi
-echo "  $(m "Backend pattern '%s': %s agents, %s skills installed." "$STACK" "$(ls .claude/agents/*.md 2>/dev/null | wc -l | tr -d ' ')" "$(ls -d .claude/skills/*/ 2>/dev/null | wc -l | tr -d ' ')")"
+{ _mt "Backend pattern '%s': %s agents, %s skills installed." "$STACK" "$(ls .claude/agents/*.md 2>/dev/null | wc -l | tr -d ' ')" "$(ls -d .claude/skills/*/ 2>/dev/null | wc -l | tr -d ' ')"; echo "  ${_M}"; }
 [ -f "$SRC/settings.json" ] && cp "$SRC/settings.json" .claude/settings.json
 [ -f "$HERE/VERSION" ] && cp "$HERE/VERSION" .claude/VERSION   # make the kit version trackable in the installed project
 # Glob form so every shipped hook/eval is made executable — including ones added later (guard-write.sh,
@@ -852,7 +874,7 @@ fi
 # /skill-csk opened with `Read .claude/AGENT_TEMPLATE.md` against nothing. A best-effort copy is right —
 # a missing doc must not abort an otherwise good install — but it has to be AUDIBLE, or the gap is
 # invisible until someone runs the command. adopt.sh copies the same file for the same reason.
-cp "$SRC/AGENT_TEMPLATE.md" .claude/ 2>/dev/null || printf '  %s!%s %s\n' "$YE" "$R" "$(m 'AGENT_TEMPLATE.md missing from the payload — /skill-csk will have nothing to read.')"
+cp "$SRC/AGENT_TEMPLATE.md" .claude/ 2>/dev/null || { _mt 'AGENT_TEMPLATE.md missing from the payload — /skill-csk will have nothing to read.'; printf '  %s!%s %s\n' "$YE" "$R" "$_M"; }
 cp "$SRC/README.md"         .claude/ 2>/dev/null || true
 
 # Install manifest — the names the KIT ships. It is the only way to tell kit-owned from project-owned later:
@@ -881,22 +903,22 @@ cp "$SRC/README.md"         .claude/ 2>/dev/null || true
 # Discipline (kit-owned, refreshed on every update) vs project section (yours, written once), joined by @import.
 kit_require_sentinel "$SRC/CLAUDE.md"
 kit_discipline_of "$SRC/CLAUDE.md" > .claude/DISCIPLINE.md
-echo "  $(m '.claude/DISCIPLINE.md written — kit-owned; an update overwrites it, so keep your own rules out of it.')"
+{ _mt '.claude/DISCIPLINE.md written — kit-owned; an update overwrites it, so keep your own rules out of it.'; echo "  ${_M}"; }
 if [ ! -f ./CLAUDE.md ]; then
   { printf '<!-- kit discipline · on conflict the project rules BELOW win -->\n%s\n' "$IMPORT_LINE"
     kit_project_of "$SRC/CLAUDE.md"; } > ./CLAUDE.md
-  echo "  $(m './CLAUDE.md created — EDIT the project section.')"
+  { _mt './CLAUDE.md created — EDIT the project section.'; echo "  ${_M}"; }
 elif kit_has_import ./CLAUDE.md; then
-  echo "  $(m './CLAUDE.md kept as-is (already imports the discipline) — the refresh landed in DISCIPLINE.md.')"
+  { _mt './CLAUDE.md kept as-is (already imports the discipline) — the refresh landed in DISCIPLINE.md.'; echo "  ${_M}"; }
 elif kit_claude_md_is_legacy ./CLAUDE.md; then
-  echo "  $(m '! ./CLAUDE.md carries the discipline INLINE (pre-1.1 layout) — left untouched.')"
-  echo "    $(m 'Discipline updates will NOT reach it. To migrate: delete everything above your')"
-  echo "    $(m '%s heading and leave this single line in its place:' "'# CLAUDE.md — <project>'")"
+  { _mt '! ./CLAUDE.md carries the discipline INLINE (pre-1.1 layout) — left untouched.'; echo "  ${_M}"; }
+  { _mt 'Discipline updates will NOT reach it. To migrate: delete everything above your'; echo "    ${_M}"; }
+  { _mt '%s heading and leave this single line in its place:' "'# CLAUDE.md — <project>'"; echo "    ${_M}"; }
   echo "        $IMPORT_LINE"
 else
   { printf '<!-- kit discipline · on conflict the project rules BELOW win -->\n%s\n\n' "$IMPORT_LINE"; cat ./CLAUDE.md; } > ./CLAUDE.md.kit-tmp \
     && mv ./CLAUDE.md.kit-tmp ./CLAUDE.md
-  echo "  $(m './CLAUDE.md existed — prepended the discipline @import; your content is untouched.')"
+  { _mt './CLAUDE.md existed — prepended the discipline @import; your content is untouched.'; echo "  ${_M}"; }
 fi
 # The entries were decided in step 2 and printed in the summary; gi_add drops the ones this repo already
 # ignores and fixes a missing trailing newline before appending. Word-split on purpose: GI_PLAN is a
@@ -913,7 +935,7 @@ gi_add $GI_PLAN
 # attributes for that project would be editing a file its owner did not need touched.
 if ! git check-ignore -q .claude 2>/dev/null; then
   ga_add
-  [ "${GA_WROTE:-0}" != 0 ] && printf '  %s+%s .gitattributes: %s\n' "$GR" "$R" "$(m '%s eol pin(s) so shared hooks stay LF' "$GA_WROTE")"
+  [ "${GA_WROTE:-0}" != 0 ] && { _mt '%s eol pin(s) so shared hooks stay LF' "$GA_WROTE"; printf '  %s+%s .gitattributes: %s\n' "$GR" "$R" "$_M"; }
 fi
 # `[ -d .git ]` is a proxy for the answer, and it lies exactly where it matters: in a worktree or a submodule
 # `.git` is a FILE, so the commit gate was never armed there and the installer said nothing was wrong. adopt.sh
@@ -936,16 +958,16 @@ fi
 # outside a repo — and it carries no path spelling to disagree about. Verified here at a normal root, a
 # worktree root, a subdirectory and a non-repo.
 if PFX="$(git rev-parse --show-prefix 2>/dev/null)" && [ -z "$PFX" ] && git config core.hooksPath .claude/hooks 2>/dev/null; then
-  echo "  $(m 'trace scan: core.hooksPath -> .claude/hooks (§4.1/§4.2 commit gate active)')"
+  { _mt 'trace scan: core.hooksPath -> .claude/hooks (§4.1/§4.2 commit gate active)'; echo "  ${_M}"; }
 else
-  echo "  $(m 'NOTE: no git repository at this level; after %s run:  %s' "'git init'" 'git config core.hooksPath .claude/hooks')"
+  { _mt 'NOTE: no git repository at this level; after %s run:  %s' "'git init'" 'git config core.hooksPath .claude/hooks'; echo "  ${_M}"; }
 fi
 rm -rf "$SRC"
 echo
-echo "== $(m 'Done. ./.claude + ./CLAUDE.md ready (full kit · backend pattern: %s); claude-starter/ deleted.' "$STACK") =="
-echo "$(m 'Next: 1) fill in the CLAUDE.md project section  2) open Claude Code at the repo root')"
-echo "$(m 'Note: if Claude Code is ALREADY running here, restart it — CLAUDE.md and the discipline load at session start.')"
-echo "$(m "Tip:  open Claude Code and run /doctor-csk — it checks the install is wired (hooks executable, core.hooksPath set, discipline imported) and scores the project's readiness. CLAUDE.md loads the discipline every session.")"
+{ _mt 'Done. ./.claude + ./CLAUDE.md ready (full kit · backend pattern: %s); claude-starter/ deleted.' "$STACK"; echo "== ${_M} =="; }
+{ _mt 'Next: 1) fill in the CLAUDE.md project section  2) open Claude Code at the repo root'; echo "${_M}"; }
+{ _mt 'Note: if Claude Code is ALREADY running here, restart it — CLAUDE.md and the discipline load at session start.'; echo "${_M}"; }
+{ _mt "Tip:  open Claude Code and run /doctor-csk — it checks the install is wired (hooks executable, core.hooksPath set, discipline imported) and scores the project's readiness. CLAUDE.md loads the discipline every session."; echo "${_M}"; }
 # Say what is true of THIS machine, not what is true in general. The line used to
 # print identically with or without node, so on a machine that cannot start the
 # panel it read as a footnote rather than as the reason nothing will happen. The
@@ -953,12 +975,12 @@ echo "$(m "Tip:  open Claude Code and run /doctor-csk — it checks the install 
 # it is asked of the INSTALLED copy: $SRC is deleted at line 397, a few lines
 # above this, so asking there answered "no node" on every machine.
 if bash .claude/eval/preflight.sh --has node 2>/dev/null; then
-  echo "$(m 'Panel: /studio-csk opens the Studio panel from this project (or: node .claude/studio/server/index.js --open).')"
+  { _mt 'Panel: /studio-csk opens the Studio panel from this project (or: node .claude/studio/server/index.js --open).'; echo "${_M}"; }
 else
-  echo "$(m 'Panel: needs Node 18+, which is not on this machine — but that is no longer a dead end.')"
-  echo "       $(m 'The kit fetches one for the panel: %s  (asks first;' 'bash .claude/studio/ensure-node.sh --plan')"
-  echo "       $(m 'verified against the published checksum, into %s, nothing else touched).' '~/.claude/studio-runtime')"
-  echo "       $(m 'Every gate still holds meanwhile; the panel is the only part that needs node.')"
+  { _mt 'Panel: needs Node 18+, which is not on this machine — but that is no longer a dead end.'; echo "${_M}"; }
+  { _mt 'The kit fetches one for the panel: %s  (asks first;' 'bash .claude/studio/ensure-node.sh --plan'; echo "       ${_M}"; }
+  { _mt 'verified against the published checksum, into %s, nothing else touched).' '~/.claude/studio-runtime'; echo "       ${_M}"; }
+  { _mt 'Every gate still holds meanwhile; the panel is the only part that needs node.'; echo "       ${_M}"; }
 fi
-[ "$STACK" = "dotnet" ] && echo "$(m 'Layout: backend in ./backend · build your frontend in ./frontend · first agent task: rename DevArchitecture -> %s.' "$PROJECT_NAME")"
+[ "$STACK" = "dotnet" ] && { _mt 'Layout: backend in ./backend · build your frontend in ./frontend · first agent task: rename DevArchitecture -> %s.' "$PROJECT_NAME"; echo "${_M}"; }
 rm -f -- "$0"

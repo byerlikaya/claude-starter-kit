@@ -65,7 +65,8 @@ padr() {   # $1 = text, $2 = width; sets PADDED
 }
 # any_of "label" "why it matters" "fix hint" cmd...
 any_of(){
-  label="$1"; why="$2"; fix="$3"; shift 3
+  # label, why and fix are ENGLISH keys, translated here so no call site forks. A tool name passes through.
+  _mt "$1"; label="$_M"; _mt "$2"; why="$_M"; _mt "$3"; fix="$_M"; shift 3
   found=""
   for c in "$@"; do works "$c" && { found="$c"; break; }; done
   if [ -n "$found" ]; then
@@ -74,7 +75,7 @@ any_of(){
   fi
   padr "$label" 22
   printf '  %s✗%s %s %s\n' "$YE" "$R" "$PADDED" "$why"
-  printf '      %s%s%s%s\n' "$D" "$(m 'fix: ')" "$fix" "$R"
+  _mt 'fix: '; printf '      %s%s%s%s\n' "$D" "$_M" "$fix" "$R"
   return 1
 }
 
@@ -90,7 +91,9 @@ case "${CSK_LANG:-}" in tr|en) ;; *)
   _loc="${LC_ALL:-}"; [ -n "$_loc" ] || _loc="${LC_MESSAGES:-}"; [ -n "$_loc" ] || _loc="${LANG:-}"
   case "$_loc" in tr*|TR*) CSK_LANG=tr ;; *) CSK_LANG=en ;; esac ;;
 esac
-m() {
+# `_mt` writes into _M with printf -v: a `$(m …)` call site is a fork, ~50 ms each on Git Bash.
+m() { _mt "$@"; printf '%s' "$_M"; }
+_mt() {
   local s="$1"; shift
   if [ "$CSK_LANG" = tr ]; then
     case "$s" in
@@ -118,11 +121,11 @@ m() {
     esac
   fi
   # shellcheck disable=SC2059
-  printf "$s" "$@"
+  printf -v _M "$s" "$@"
 }
 # ---- /CSK-I18N -----------------------------------------------------------------------------------------
 
-[ "$QUIET" = 1 ] || printf '\n  %s%s%s\n' "$B" "$(m 'Preflight — what this machine has')" "$R"
+[ "$QUIET" = 1 ] || { _mt 'Preflight — what this machine has'; printf '\n  %s%s%s\n' "$B" "$_M" "$R"; }
 
 # --- REQUIRED: without these the kit does not work at all -------------------------------------------------
 # Hooks are wired in SHELL form on purpose, and `bash` is resolved by the shell Claude Code already runs them
@@ -131,17 +134,17 @@ m() {
 # living in a filesystem namespace where `C:\Repos\app` does not exist (`/mnt/c/Repos/app` does). A wiring that
 # spawns `bash` by PATH name would have run THAT, or failed outright where WSL is not installed — every gate
 # gone, with an error pointing nowhere near the cause. Hence shell form, and hence this note.
-any_of "bash" "$(m 'the whole kit is bash')" \
-  "$(m 'Windows: install Git for Windows (git-scm.com) and run Claude Code from Git Bash')" bash || MISSING_REQ="$MISSING_REQ bash"
-any_of "awk" "$(m 'context measurement, routing, doctor')" \
-  "$(m 'Windows: ships with Git Bash · macOS: preinstalled · Linux: apt install gawk')" awk gawk mawk || MISSING_REQ="$MISSING_REQ awk"
-any_of "git" "$(m 'the commit-time trace/secret gates are git hooks')" \
+any_of "bash" 'the whole kit is bash' \
+  'Windows: install Git for Windows (git-scm.com) and run Claude Code from Git Bash' bash || MISSING_REQ="$MISSING_REQ bash"
+any_of "awk" 'context measurement, routing, doctor' \
+  'Windows: ships with Git Bash · macOS: preinstalled · Linux: apt install gawk' awk gawk mawk || MISSING_REQ="$MISSING_REQ awk"
+any_of "git" 'the commit-time trace/secret gates are git hooks' \
   "git-scm.com · macOS: xcode-select --install · Linux: apt install git" git || MISSING_REQ="$MISSING_REQ git"
   # Node is required for the panel and for nothing else: every gate in this kit is bash, and they all hold on a
   # machine that has never seen node. It sits in REQUIRED anyway, deliberately, because the panel now installs
   # into every project, and a component that silently does not start on some machines is worse than one that
   # says what it needs. The reason string names which half is affected, so the REQUIRED heading stays true.
-  any_of "$(m 'node 18+')" "$(m 'the CSK Studio panel (/studio-csk); the gates themselves are bash and do not need it')" \
+  any_of 'node 18+' 'the CSK Studio panel (/studio-csk); the gates themselves are bash and do not need it' \
     "nodejs.org · Windows: winget install OpenJS.NodeJS.LTS · macOS: brew install node · Linux: apt install nodejs" \
     node || MISSING_REQ="$MISSING_REQ node"
 
@@ -149,26 +152,28 @@ any_of "git" "$(m 'the commit-time trace/secret gates are git hooks')" \
 # jq/python are only needed to MERGE an existing settings.json on update. The pure-bash path replaces the file
 # instead (keeping a backup), which is safe but loses hooks the project added itself — the sort of thing that
 # is obvious in advance and baffling afterwards.
-any_of "$(m 'jq or python')" "$(m "settings merge on update falls back to replace+backup (a project's OWN custom hooks are not preserved)")" \
+any_of 'jq or python' "settings merge on update falls back to replace+backup (a project's OWN custom hooks are not preserved)" \
   "Windows: winget install jqlang.jq · macOS: brew install jq · Linux: apt install jq" jq python3 python py \
   || MISSING_OPT="$MISSING_OPT jq/python"
-any_of "$(m 'sha256 tool')" "$(m 'the skill-trust gate falls back to cksum (catches accidental edits, not crafted ones)')" \
-  "$(m 'Windows/Linux: coreutils (sha256sum) · macOS: shasum is preinstalled')" sha256sum shasum || MISSING_OPT="$MISSING_OPT sha256"
+any_of 'sha256 tool' 'the skill-trust gate falls back to cksum (catches accidental edits, not crafted ones)' \
+  'Windows/Linux: coreutils (sha256sum) · macOS: shasum is preinstalled' sha256sum shasum || MISSING_OPT="$MISSING_OPT sha256"
 
 if [ -n "$MISSING_REQ" ]; then
-  printf '\n  %s%s%s%s %s\n' "$YE$B" "$(m 'Missing REQUIRED:')" "$R" "$MISSING_REQ" "$(m '— install these first.')"
+  _mt 'Missing REQUIRED:'; _a="$_M"; _mt '— install these first.'
+  printf '\n  %s%s%s%s %s\n' "$YE$B" "$_a" "$R" "$MISSING_REQ" "$_M"
     case "$MISSING_REQ" in
       # Which half is gone. "The kit will not work" is false when only node is missing: every gate is bash and
       # still holds; what is lost is the panel.
-      *node*) printf '    %snode%s %s\n' "$B" "$R" "$(m 'is the panel only — every gate still holds without it.')"
+      *node*) _mt 'is the panel only — every gate still holds without it.'; printf '    %snode%s %s\n' "$B" "$R" "$_M"
               # And it is not a dead end: the kit fetches a runtime for the panel itself, into one
               # directory under $HOME, verified against the published checksum. It asks first.
               printf '    %s\n' "$(m 'Or let the kit get one: %s' "${B}bash .claude/studio/ensure-node.sh --plan${R}")" ;;
     esac
 elif [ -n "$MISSING_OPT" ]; then
-  [ "$QUIET" = 1 ] || printf '\n  %s%s%s %s\n' "$GR" "$(m 'All required tools present.')" "$R" "$(m 'Optional gaps above are safe but worth closing.')"
+  [ "$QUIET" = 1 ] || { _mt 'All required tools present.'; _a="$_M"; _mt 'Optional gaps above are safe but worth closing.'
+                        printf '\n  %s%s%s %s\n' "$GR" "$_a" "$R" "$_M"; }
 else
-  [ "$QUIET" = 1 ] || printf '\n  %s%s%s\n' "$GR" "$(m 'Everything the kit wants is here.')" "$R"
+  [ "$QUIET" = 1 ] || { _mt 'Everything the kit wants is here.'; printf '\n  %s%s%s\n' "$GR" "$_M" "$R"; }
 fi
 
 # Report-only by design: a missing OPTIONAL tool never fails. `--quiet` exits non-zero only for REQUIRED gaps,
