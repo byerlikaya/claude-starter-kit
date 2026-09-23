@@ -232,6 +232,11 @@ fi
 # exits non-zero here becomes an error banner in the user's session once per turn.
 if [ -z "${TOTAL:-}" ]; then
   [ -n "$IN" ] && exit 0
+  # Name the missing reader rather than blaming the transcript's size: without it nothing was read at all.
+  if [ ! -f "$HERE/../eval/lib/settings-json.awk" ]; then
+    echo "context-usage: the kit's JSON reader is missing ($HERE/../eval/lib/settings-json.awk) — update the kit" >&2
+    exit 1
+  fi
   echo "context-usage: usage not found in the byte-bounded window (transcript too large to scan within the hook timeout)" >&2
   exit 1
 fi

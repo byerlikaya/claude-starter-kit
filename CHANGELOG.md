@@ -5,6 +5,36 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.13.0] — 2026-09-23
+
+### Before you update — five things that change behaviour
+
+- **The installer asks which language to speak.** An interactive `start.sh` or `adopt.sh` now opens with an
+  English / Türkçe menu. `--lang`, `CSK_LANG`, `--yes` and any non-terminal stdin skip it, so a scripted or piped
+  install is never stopped by it (on a Turkish locale it now prints Turkish throughout).
+- **`git add` and creating a branch no longer ask, in any mode.** Commit and push still need your approval
+  everywhere; in `auto`, `dontAsk`, `plan` and `bypassPermissions` they still fail closed.
+- **The kit no longer uses jq or python.** Nothing to install or remove, but `preflight.sh` stops listing them,
+  and a machine without them now runs the same code as one with them.
+- **Studio's raw terminal is gone.** `--enable-pty` is now an unknown argument (exit 64). Shell work in the panel
+  still runs through a session's Bash tool.
+- **An update writes the new JSON reader to `.claude/eval/lib/`.** `doctor.sh`, `context-usage.sh` and the
+  settings merge read through it; if that directory is missing, `doctor.sh` and a by-hand `context-usage.sh` say so
+  by name.
+
+### Changed — the e2e rehearsal says why it failed
+
+- `packaging/e2e.sh` used to send every installer and smoke call to `/dev/null`, so a failing step under `set -e`
+  left only an exit status. Every installer and smoke step now writes its own numbered log, and only a failing
+  step prints its last 20 lines. A green run prints what it printed before.
+
+### Fixed — an assertion inside a subshell could not fail the parser suite
+
+- `parser-conformance.sh` counted results in shell variables, so an assertion inside `( … )` or a pipeline moved a
+  copy and a failure there could not turn the run red. Every assertion now also logs the counter to a file, and a
+  backward walk over that log names each lost assertion, including several lost inside one subshell. The file is
+  removed on every exit path, early ones included.
+
 ### Changed — staging and creating a branch no longer ask, in any mode
 
 - `git add` and creating a branch (`checkout -b`/`-B`/`--orphan`, `switch -c`/`-C`/`--create`/`--orphan`) run
