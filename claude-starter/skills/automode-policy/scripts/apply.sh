@@ -24,17 +24,14 @@ esac; done
 
 [ -f "$POLICY" ] || { echo "❌ policy.json not found next to this script"; exit 1; }
 
-# A JSON merge into the user's own settings file is not a job for sed. Without a JSON tool we print the
-# fragment and stop: a half-merged global settings file is worse than an uninstalled policy.
-# Probed, not looked up. Windows ships a Microsoft Store redirector stub named python3 on PATH by default: it
-# passes `command -v`, exits 49 and writes nothing, so selecting it here would send this script down the merge
-# path with a tool that cannot merge — writing an empty file over the user's global settings. The "print the
-# fragment and stop" branch below is the correct answer on that machine, and this is what reaches it.
-MERGER=""
-printf '{}' | jq -e . >/dev/null 2>&1 && MERGER=jq
-[ -z "$MERGER" ] && printf '{}' | python3 -c 'import sys,json;json.load(sys.stdin)' >/dev/null 2>&1 && MERGER=python3
-if [ -z "$MERGER" ]; then
-  echo "⚠️  neither jq nor python3 is available — not merging your settings file by hand."
+# A JSON merge into the user's own settings file is not a job for sed. It goes through the kit's one JSON reader
+# (eval/lib/settings-json.awk, the same file adopt.sh merges with) — the same code on every OS. This used to pick
+# jq, then python3, and on a stock Windows box with neither it printed the fragment and stopped, so the one
+# platform with no JSON tool could not install the policy at all. The reader sits three levels up in both
+# editions: .claude/skills/<s>/scripts -> .claude/eval/lib, and <plugin>/skills/<s>/scripts -> <plugin>/eval/lib.
+SJ="$HERE/../../../eval/lib/settings-json.awk"
+if [ ! -f "$SJ" ]; then
+  echo "⚠️  the kit's JSON reader is missing ($SJ) — not merging your settings file by hand."
   echo "   Add this block to $TARGET yourself (keep the \"\$defaults\" entries verbatim):"
   echo; cat "$POLICY"; exit 3
 fi
@@ -43,20 +40,11 @@ mkdir -p "$(dirname "$TARGET")"
 [ -f "$TARGET" ] || printf '{}\n' > "$TARGET"
 
 TMP="$TARGET.csk-new"; BAK="$TARGET.csk-bak-$(date +%Y%m%d-%H%M%S)"
-if [ "$MERGER" = jq ]; then
-  jq -s '.[0] * .[1]' "$TARGET" "$POLICY" > "$TMP" || { echo "❌ merge failed (invalid JSON in $TARGET?)"; rm -f "$TMP"; exit 1; }
-  [ "$STRICT" = 1 ] && { jq '.autoMode.classifyAllShell = true' "$TMP" > "$TMP.2" && mv "$TMP.2" "$TMP"; }
-else
-  python3 - "$TARGET" "$POLICY" "$TMP" "$STRICT" <<'PY' || { echo "❌ merge failed (invalid JSON in the target?)"; exit 1; }
-import json,sys
-tgt,pol,out,strict=sys.argv[1:5]
-cur=json.load(open(tgt)); add=json.load(open(pol))
-am=dict(cur.get("autoMode") or {}); am.update(add["autoMode"])
-if strict=="1": am["classifyAllShell"]=True
-cur["autoMode"]=am
-json.dump(cur,open(out,"w"),indent=2,ensure_ascii=False); open(out,"a").write("\n")
-PY
-fi
+# autoMode takes every member of the policy's autoMode (the policy wins), the user's other members and every other
+# key untouched. rc 10 = the target is not a JSON object: nothing is written.
+if [ "$STRICT" = 1 ]; then set -- -v setk=classifyAllShell -v setv=true; else set --; fi
+awk -v op=overlay -v key=autoMode "$@" -f "$SJ" "$TARGET" "$POLICY" > "$TMP" && [ -s "$TMP" ] \
+  || { echo "❌ merge failed (invalid JSON in $TARGET?)"; rm -f "$TMP"; exit 1; }
 
 # Verify the CANDIDATE before it is anyone's real configuration. `claude --settings <file>` runs the
 # classifier config resolution against the file, so a policy that would silently drop the 66 built-in

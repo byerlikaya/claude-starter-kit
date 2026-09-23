@@ -10,7 +10,6 @@
 // provisional bubble that the authoritative record replaces.
 
 import { renderMarkdown } from './md.js';
-import { Term } from './term.js';
 
 const el = (tag, cls, text) => {
   const n = document.createElement(tag);
@@ -429,37 +428,6 @@ export class Chat {
   get active() { return this.activeId ? this.panes.get(this.activeId) : null; }
   get ids() { return [...this.panes.keys()]; }
 
-  /** A raw shell as a tab. Only reachable when the server was started with
-   *  --enable-pty; the view carries its own warning. */
-  async startTerminal({ cwd, rows = 30, cols = 110 }) {
-    const res = await fetch(this.api('/api/pty'), {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', ...this.headers },
-      body: JSON.stringify({ cwd, rows, cols }),
-    });
-    const body = await res.json().catch(() => ({ ok: false, reason: 'bad response' }));
-    if (!body.ok) return { ok: false, reason: body.reason };
-
-    const host = document.createElement('div');
-    const term = new Term(host, {
-      api: this.api,
-      headers: this.headers,
-      terminal: body.terminal,
-      onClose: (id) => this.close(id),
-    });
-    const pane = {
-      kind: 'term', id: term.id, root: host, term,
-      session: { state: 'running', permissionMode: 'raw shell', gated: false },
-      disconnect: () => term.disconnect(),
-      permissions: [], unread: 0,
-    };
-    host.hidden = true;
-    this.panesEl.append(host);
-    this.panes.set(term.id, pane);
-    this.activate(term.id);
-    return { ok: true, terminal: body.terminal };
-  }
-
   async start({ cwd, model, permissionMode, resume }) {
     const res = await fetch(this.api('/api/owned'), {
       method: 'POST',
@@ -507,11 +475,8 @@ export class Chat {
     }
     this.paintTabs();
     const a = this.active;
-    if (a?.kind === 'term') a.term.screen.focus();
-    else a?.inputEl?.focus();
-    // A terminal is not a session, so the canvas is left where it is rather
-    // than pointed at a session id that does not exist.
-    this.onActivate(a?.kind === 'term' ? null : id);
+    a?.inputEl?.focus();
+    this.onActivate(id);
   }
 
   close(id) {
@@ -539,11 +504,9 @@ export class Chat {
       const dot = el('span', 'tab-dot');
       dot.dataset.state = p.session?.state ?? 'unknown';
       tab.append(dot);
-      const label = p.kind === 'term' ? `shell ${shortId(id)}`
-        : p.readOnly ? `👁 ${p.session?.title ? String(p.session.title).slice(0, 18) : shortId(id)}`
+      const label = p.readOnly ? `👁 ${p.session?.title ? String(p.session.title).slice(0, 18) : shortId(id)}`
           : (p.session?.resumedFrom ? `↩ ${shortId(p.session.resumedFrom)}` : shortId(id));
       tab.append(el('span', 'tab-name', label));
-      if (p.kind === 'term') tab.classList.add('tab-term');
       if (p.permissions?.length) tab.append(el('span', 'tab-badge warn', String(p.permissions.length)));
       else if (p.unread) tab.append(el('span', 'tab-badge', String(p.unread)));
       tab.title = `${id}\n${p.session?.state ?? ''} · ${p.session?.permissionMode ?? ''}`;
@@ -563,14 +526,6 @@ export class Chat {
       this.stateEl.textContent = 'observed · read-only';
       this.stateEl.dataset.state = 'observed';
       this.stateEl.classList.remove('ungated');
-      this.costEl.textContent = '';
-      this.stopEl.hidden = true;
-      return;
-    }
-    if (a?.kind === 'term') {
-      this.stateEl.textContent = `${s.state} · raw shell · NO GATE`;
-      this.stateEl.dataset.state = s.state;
-      this.stateEl.classList.add('ungated');
       this.costEl.textContent = '';
       this.stopEl.hidden = true;
       return;

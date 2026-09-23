@@ -1947,7 +1947,8 @@ else skip tool "pre-commit scanner tests skipped (no working git — it must BUI
 sec "== 6g) stale-discipline gate: an update landing mid-session must be announced =="
 # CLAUDE.md loads once, at session start. If the kit is updated while a session runs, the model keeps quoting
 # the previous version's rules. Build a throwaway hooks/ + VERSION pair so the script resolves ../VERSION.
-SD="$(mktemp -d)"; mkdir -p "$SD/hooks"; cp "$HOOKS/context-usage.sh" "$SD/hooks/"
+SD="$(mktemp -d)"; mkdir -p "$SD/hooks" "$SD/eval/lib"; cp "$HOOKS/context-usage.sh" "$SD/hooks/"
+cp "$ROOT/eval/lib/settings-json.awk" "$SD/eval/lib/"   # a real install carries the reader context-usage parses with
 SDFX="$(mktemp)"; printf '%s\n' '{"type":"assistant","isSidechain":false,"message":{"usage":{"input_tokens":0,"cache_read_input_tokens":300000,"cache_creation_input_tokens":0}}}' > "$SDFX"
 SDSID="smoketest-stale-$$-${RANDOM:-0}"
 ups(){ printf '{"session_id":"%s","hook_event_name":"UserPromptSubmit","transcript_path":"%s"}' "$SDSID" "$SDFX"; }
@@ -1978,8 +1979,9 @@ sec "== 6g2) stale-WIRING gate: a session resumed across a kit update runs the o
 # the broken one. A hook cannot report its own absence, so this catches the other half: hooks that DO run, but
 # not the way the file on disk says they should. `$0` is the evidence — the kit wires `bash .claude/hooks/<n>.sh`,
 # so a correctly-launched hook sees a relative `$0` and anything else came from a different settings.json.
-SWD="$(mktemp -d)"; mkdir -p "$SWD/.claude/hooks"
+SWD="$(mktemp -d)"; mkdir -p "$SWD/.claude/hooks" "$SWD/.claude/eval/lib"
 cp "$HOOKS/context-usage.sh" "$SWD/.claude/hooks/"; cp "$ROOT/settings.json" "$SWD/.claude/"
+cp "$ROOT/eval/lib/settings-json.awk" "$SWD/.claude/eval/lib/"
 printf '%s\n' '{"type":"assistant","isSidechain":false,"message":{"usage":{"input_tokens":0,"cache_read_input_tokens":300000,"cache_creation_input_tokens":0}}}' > "$SWD/t.jsonl"
 swp(){ printf '{"hook_event_name":"UserPromptSubmit","session_id":"sw-%s","transcript_path":"%s/t.jsonl"}' "$$" "$SWD"; }
 o="$( cd "$SWD" && swp | CONTEXT_WINDOW=1000000 bash .claude/hooks/context-usage.sh 2>/dev/null )"
@@ -2900,8 +2902,9 @@ case "$_tw" in
   2) fail "one reader: the detector fired on '$_twf', which reads no payload — it would forbid ordinary code" ;;
 esac
 # AND THE EXEMPTIONS ARE COUNTED, closed and open markers alike. A region is only reviewable while there are
-# few of them; an unbounded allowance is the same gate with extra steps. Four today: two rule-pattern regions
-# in guard-bash naming interpreters it REFUSES, and the message extractor in guard-commit-scan.
+# few of them; an unbounded allowance is the same gate with extra steps. Two today: the rule-pattern regions in
+# guard-bash naming interpreters it REFUSES. guard-commit-scan's python3 message extractor was the third; it
+# went when the kit moved to one bash path, so a region there now would be a rung coming back.
 _ex=0
 for _h in guard-bash guard-write guard-commit-scan; do
   _ex=$((_ex + $(grep -c '^[[:space:]]*# CSK-NOT-A-RUNG' "$HOOKS/$_h.sh")))
@@ -2909,10 +2912,55 @@ for _h in guard-bash guard-write guard-commit-scan; do
   _exo="$(grep -c '^[[:space:]]*# CSK-NOT-A-RUNG' "$HOOKS/$_h.sh")"
   [ "$_exo" = "$_exc" ] || fail "one reader: $_h has $_exo opening and $_exc closing exemption markers — an unclosed region hides everything after it"
 done
-[ "$_ex" = 3 ] \
-  && pass "one reader: exactly 3 exemption regions, each stating what it is for" \
-  || fail "one reader: $_ex exemption regions, expected 3 — the allowance grew, and each one is a place a rung can hide"
+[ "$_ex" = 2 ] \
+  && pass "one reader: exactly 2 exemption regions, each stating what it is for" \
+  || fail "one reader: $_ex exemption regions, expected 2 — the allowance grew, and each one is a place a rung can hide"
 rm -rf "$_LT"
+
+# ONE PATH, EVERY SCRIPT. The rule above keeps the three guard hooks on one payload reader; this one widens it to
+# everything the kit ships and runs: no product script may call jq or python, on any line outside a marked
+# CSK-NOT-A-RUNG region. The kit used to pick jq, then python, then bash per machine, so a Mac and a stock Windows
+# box ran different code — and the differences were defects: an unescaped tab made board-sync's JSON unparseable,
+# a spaced -F path got a clean commit refused, adopt's settings merge dropped the project's own rules. Test tools
+# (this file, parser-conformance, routing-eval) may still use jq as an ORACLE, with an honest skip when it is absent.
+_one(){ awk '/^[[:space:]]*# CSK-NOT-A-RUNG/{s=1} /^[[:space:]]*# \/CSK-NOT-A-RUNG/{s=0;next} !s' "$1" \
+          | grep -vE '^[[:space:]]*#' \
+          | grep -nE '(^|[^[:alnum:]_/.$-])(jq|python3|python|py)([[:space:]]|$|[;|&)`"'"'"'])' ; }
+_one_files(){ for f in "$HOOKS"/*.sh "$HOOKS/pre-commit" "$HOOKS/commit-msg" "$ROOT"/eval/*.sh "$ROOT"/skills/*/scripts/*.sh \
+                       "$ROOT"/studio/*.sh "$ROOT/../start.sh" "$ROOT/../adopt.sh"; do
+                [ -f "$f" ] || continue
+                case "${f##*/}" in smoke-test.sh|parser-conformance.sh|routing-eval.sh) continue ;; esac
+                printf '%s\n' "$f"; done; }
+_one_bad=""; _one_n=0
+while IFS= read -r _f; do _one_n=$((_one_n+1)); _h="$(_one "$_f")" && _one_bad="$_one_bad ${_f#"$ROOT"/}:${_h%%:*}"; done <<EOF_ONE
+$(_one_files)
+EOF_ONE
+# A count, not just a verdict: "0 findings" over a list that silently lost its hooks is the blind gate this suite
+# has already shipped twice. Every hook is a product script, so fewer than the hooks alone means the list broke.
+_one_min="$(ls "$HOOKS"/*.sh 2>/dev/null | wc -l | tr -d ' ')"
+if [ "$_one_n" -lt "$_one_min" ] || [ "$_one_n" = 0 ]; then
+  fail "one path: scanned $_one_n product scripts, fewer than the $_one_min hooks alone — the file list is broken, not the kit"
+elif [ -z "$_one_bad" ]; then
+  pass "one path: no jq/python call in $_one_n shipped product scripts (hooks, eval, skill scripts, studio, installers)"
+else
+  fail "one path: a product script calls jq/python, so machines diverge again —$_one_bad"
+fi
+# Twins: the detector fires on real calls and stays silent on prose and on a .py file name.
+_OT="$(mktemp -d)"
+printf '%s\n' 'x="$(jq -r .a f)"'                  > "$_OT/a.sh"
+printf '%s\n' 'printf "{}" | python3 -c "pass"'    > "$_OT/b.sh"
+printf '%s\n' 'if command -v python >/dev/null; then :; fi' > "$_OT/c.sh"
+printf '%s\n' '# no jq or python3 needed here'     > "$_OT/d.sh"
+printf '%s\n' 'cp tool.py x; echo "see jq.md"'      > "$_OT/e.sh"
+_ow=0; _owf=""
+for _f in a b c; do _one "$_OT/$_f.sh" >/dev/null 2>&1 || { _ow=1; _owf="$_f"; }; done
+for _f in d e; do _one "$_OT/$_f.sh" >/dev/null 2>&1 && { _ow=2; _owf="$_f"; }; done
+case "$_ow" in
+  0) pass "one path: the detector fires on jq/python3/python calls and ignores prose and .py names" ;;
+  1) fail "one path: the detector MISSED call shape '$_owf'" ;;
+  2) fail "one path: the detector fired on '$_owf', which calls nothing" ;;
+esac
+rm -rf "$_OT"
 
 # Globbing must stay OFF while splitting, or a pathspec is judged against whatever files sit in the cwd.
 gj default 'git commit -m c *.txt' | r46 >/dev/null 2>&1; [ "$?" = 2 ] \
@@ -3869,6 +3917,38 @@ case "$o" in *'"additionalContext"'*SESSION_STATE*) pass "handover present -> in
 if [ -n "$JSONQ" ]; then printf '%s' "$o" | json_ok && pass "rehydrate output is valid JSON ($JSONQ)" || fail "rehydrate output is not valid JSON";
     else skip tool "the rehydrate output JSON-validity check (no working jq)"; fi
 rm -rf "$RHD"
+# board-sync builds its JSON with one awk escaper on every machine. The no-jq escaper it replaced handled only the
+# quote, the backslash and the newline, so a TAB in an item title produced JSON the CLI cannot parse and the board
+# silently vanished from the session — measured: jq rc=5 on that output. Compared BYTE FOR BYTE against the
+# string `jq -cn --arg` produced for the same cache, so it needs no oracle and never skips.
+BSD="$(mktemp -d)"
+if ( cd "$BSD" && git init -q . ) >/dev/null 2>&1; then
+  printf '%s\n' $'#1 "Fix\tlogin" C:\\app\r\x01 ok\nsecond' > "$BSD/.git/csk-board-cache"
+  date -u +%s > "$BSD/.git/csk-board-cache.at"
+  o="$(printf '{}' | CLAUDE_PROJECT_DIR="$BSD" bash "$HOOKS/board-sync.sh" 2>/dev/null)"
+  want='{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"#1 \"Fix\tlogin\" C:\\app\r\u0001 ok\nsecond\nBoard state above is a cached snapshot; /board-csk sync refreshes it."}}'
+  [ "$o" = "$want" ] && pass "board-sync escapes tab, CR, control bytes, quote and backslash exactly as jq does (no jq needed)" \
+                     || fail "board-sync JSON differs from jq's for a cache with a tab/CR/control byte — got: ${o:-<silence>}"
+  # A CRLF cache: the line-ending CR is dropped on every OS (MSYS gawk drops it on read, BSD awk does not — the
+  # hook strips it itself so both emit these bytes); a CR inside a line is still escaped.
+  printf 'one\r\nmid\rcr\r\n' > "$BSD/.git/csk-board-cache"
+  o="$(printf '{}' | CLAUDE_PROJECT_DIR="$BSD" bash "$HOOKS/board-sync.sh" 2>/dev/null)"
+  case "$o" in *'"additionalContext":"one\nmid\rcr\nBoard state'*) pass "board-sync drops a CRLF line-ending CR on every OS and keeps a mid-line CR" ;;
+    *) fail "board-sync CRLF handling differs by platform — got: ${o:-<silence>}" ;; esac
+else
+  fail "FIXTURE: git init failed in $BSD — the board-sync escaping case measured nothing"
+fi
+rm -rf "$BSD"
+# context-usage reads the record's OWN usage, not a key of the same name nested in a tool input or result. A regex
+# over the line took the first "input_tokens" it saw (50% read as 0%) and counted a user record whose toolUseResult
+# held {"type":"assistant","usage":…} (a false 90% hand-off). The reader parses each candidate record.
+CUD="$(mktemp -d)"; CUU='"usage":{"input_tokens":10,"cache_creation_input_tokens":0,"cache_read_input_tokens":500000}'
+printf '%s\n' '{"isSidechain":false,"message":{"role":"assistant","content":[{"type":"tool_use","input":{"x":{"input_tokens":3,"cache_read_input_tokens":1}}}],'"$CUU"'},"type":"assistant"}' \
+  '{"isSidechain":false,"type":"user","toolUseResult":{"type":"assistant","message":{"usage":{"input_tokens":1,"cache_read_input_tokens":900000}}},"message":{"role":"user","content":"x"}}' > "$CUD/t.jsonl"
+o="$(printf '{"transcript_path":"%s"}' "$CUD/t.jsonl" | bash "$HOOKS/context-usage.sh" 2>/dev/null)"
+case "$o" in *"%50.0"*) pass "context-usage counts the record's own usage, not a nested look-alike (50.0%)" ;;
+  *) fail "context-usage was fooled by a nested usage/type in a tool input or result — expected %50.0, got: ${o:-<silence>}" ;; esac
+rm -rf "$CUD"
 grep -q 'SessionStart' "$ROOT/settings.json" && grep -q 'session-rehydrate.sh' "$ROOT/settings.json" \
   && pass "settings.json wires SessionStart -> session-rehydrate.sh" || fail "settings.json missing SessionStart -> session-rehydrate wiring"
 
@@ -3940,6 +4020,9 @@ DOC="$(mktemp -d)"
 ( cd "$DOC"; git init -q >/dev/null 2>&1; git config user.email t@t; git config user.name t; mkdir -p .claude/hooks
   cp "$HOOKS"/*.sh .claude/hooks/ 2>/dev/null; cp "$HOOKS/pre-commit" "$HOOKS/commit-msg" .claude/hooks/ 2>/dev/null
   cp "$ROOT/settings.json" .claude/ 2>/dev/null; echo "0.0.0" > .claude/VERSION
+  # A real install carries eval/ whole (start.sh: cp -R eval/. .claude/eval/), and doctor reads settings.json
+  # through the kit's JSON reader there — without it doctor rightly reports the install as broken.
+  mkdir -p .claude/eval/lib; cp "$ROOT/eval/lib/settings-json.awk" .claude/eval/lib/ 2>/dev/null
   chmod +x .claude/hooks/*.sh .claude/hooks/pre-commit .claude/hooks/commit-msg
   git config core.hooksPath .claude/hooks )
 bash "$ROOT/eval/doctor.sh" "$DOC" >/dev/null 2>&1 && pass "doctor: healthy install -> exit 0" || fail "doctor flagged a healthy install"
@@ -4088,67 +4171,29 @@ bash "$ROOT/eval/scan-skill.sh" "$SCX/skills/one/SKILL.md" >/dev/null 2>&1 \
 rm -rf "$SCX"
 
 sec "== 7g) adopt.sh settings merge is HOOK-AWARE (updates refresh kit hooks, preserve custom) =="
-# Regression guard for the jq-less/stale-settings bug: on update the kit OWNS its hooks, so a new event
-# (SessionStart) must get wired and a stale kit entry (old timeout) refreshed, WITHOUT duplicating hooks or
-# dropping the project's own custom hooks. Extract the merge program from adopt.sh (single source of truth).
-# THE TIER THIS MACHINE WOULD ACTUALLY USE, not the one this desk happens to have. adopt.sh merges through
-# three tiers — jq, then a python heredoc, then a wholesale replace when neither exists — and this block used
-# to test the FIRST one and print a dim `note` on any machine without jq. Measured 2026-09-20: that made four
-# assertions vanish on stock Windows and on CI's Windows leg, which shadows jq on purpose, with neither counter
-# moving. And the machine that skipped was precisely the machine running the tier nobody tested.
-#
-# So the tier is selected the way adopt.sh selects it and the same four properties are asserted whichever runs.
-# The count stays 4 everywhere, which keeps the per-section ledger comparable across platforms instead of
-# turning a tier difference into a coverage difference.
-ADOPT="$(cd "$ROOT/.." && pwd)/adopt.sh"; KSET="$ROOT/settings.json"
+# Regression guard for the stale-settings bug: on update the kit OWNS its hooks, so a new event (SessionStart)
+# must get wired and a stale kit entry (old timeout) refreshed, WITHOUT duplicating hooks or dropping the
+# project's own custom hooks. The merge is ONE awk program that adopt.sh runs and the payload ships
+# (eval/lib/settings-json.awk), so it is run here as it ships — on every machine, jq or not, in the kit and in
+# an installed project alike. The three per-tool tiers this block once chose between are gone: the machine that
+# skipped used to be exactly the one running the tier nobody tested (measured 2026-09-20).
+SJ="$ROOT/eval/lib/settings-json.awk"; KSET="$ROOT/settings.json"
 _OLDSET='{ "hooks": { "UserPromptSubmit": [ { "hooks": [ { "type":"command","command":"bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/context-usage.sh\" 2>/dev/null || true","timeout":10 } ] } ], "PostToolUse":[{"hooks":[{"type":"command","command":"bash ./custom.sh"}]}] } }'
-# Same probe adopt.sh uses, and for the reason recorded there: pick the first interpreter that RUNS, not the
-# first that resolves — the Store redirector named python3 passes `command -v` and then exits 49.
-_MPY=""; for _pc in python3 python py; do
-  if command -v "$_pc" >/dev/null 2>&1 && printf '{}' | "$_pc" -c 'import sys,json;json.load(sys.stdin)' >/dev/null 2>&1; then
-    _MPY="$(command -v "$_pc")"; break
-  fi
-done
-_MJQ=0; command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1 && _MJQ=1
-if [ "$IS_KIT" != 1 ]; then
-  skip scope "the adopt.sh settings merge (an installed project has no adopt.sh to extract it from)" 4
-elif [ ! -f "$ADOPT" ] || [ ! -f "$KSET" ]; then
-  skip fixture "the adopt.sh settings merge (adopt.sh or settings.json is not where this expects it)" 4
-elif [ "$_MJQ" = 0 ] && [ -z "$_MPY" ]; then
-  skip tool "the adopt.sh settings merge (no working jq and no working python; adopt.sh's third tier replaces the file wholesale and is not exercised here)" 4
+if [ ! -f "$SJ" ] || [ ! -f "$KSET" ]; then
+  skip fixture "the settings merge (eval/lib/settings-json.awk or settings.json is not where this expects it)" 4
 else
-  MTMP="$(mktemp -d)"; printf '%s' "$_OLDSET" > "$MTMP/old.json"; _MERGED=0; _TIER=""
-  if [ "$_MJQ" = 1 ]; then
-    _TIER=jq
-    JQM="$(awk '/^JQ_MERGE=./{f=1} f{print} f&&/\)\)'"'"'$/{exit}' "$ADOPT" | sed "1s/^JQ_MERGE='//; \$s/'\$//")"
-    jq -n --slurpfile p "$MTMP/old.json" --slurpfile k "$KSET" "$JQM" > "$MTMP/out.json" 2>/dev/null && _MERGED=1
-    _g(){ jq -r "$1" "$2"; }; _gc(){ jq -c "$1" "$2"; }
+  MTMP="$(mktemp -d)"; printf '%s' "$_OLDSET" > "$MTMP/old.json"
+  if awk -v op=merge -f "$SJ" "$KSET" "$MTMP/old.json" > "$MTMP/out.json" 2>/dev/null && [ -s "$MTMP/out.json" ]; then
+    _g(){ awk -v op="$1" -v path="$2" -f "$SJ" "$3" 2>/dev/null; }
+    KSS="$(_g get hooks.SessionStart "$KSET")"; MSS="$(_g get hooks.SessionStart "$MTMP/out.json")"
+    [ -n "$KSS" ] && [ "$KSS" = "$MSS" ] && pass "merge: new event (SessionStart) gets wired on update, with every kit hook on it" || fail "merge: SessionStart wiring differs from the kit's — expected $KSS, got $MSS"
+    UPSL="$(_g len hooks.UserPromptSubmit "$MTMP/out.json")"; KTO="$(_g get hooks.UserPromptSubmit.0.hooks.0.timeout "$KSET")"
+    MTO="$(_g get hooks.UserPromptSubmit.0.hooks.0.timeout "$MTMP/out.json")"; PTU="$(_g get hooks.PostToolUse.0.hooks.0.command "$MTMP/out.json")"
+    [ "$UPSL" = 1 ] && pass "merge: no duplicate hook after update (stale kit entry dropped)" || fail "merge: duplicate UserPromptSubmit hook survived ($UPSL)"
+    [ -n "$KTO" ] && [ "$MTO" = "$KTO" ] && [ "$MTO" != 10 ] && pass "merge: stale hook timeout refreshed to kit's ($KTO)" || fail "merge: stale timeout not refreshed — expected $KTO, got $MTO"
+    [ "$PTU" = '"bash ./custom.sh"' ] && pass "merge: project's OWN custom hook preserved" || fail "merge: custom hook lost ($PTU)"
   else
-    _TIER="${_MPY##*/}"
-    # The python program is EXTRACTED from adopt.sh, exactly as JQ_MERGE is, so a drift in the shipped merge
-    # cannot pass here: a copy in the test would assert what the test author believed rather than what ships.
-    # NOT anchored at end of line: adopt.sh's heredoc line continues past the marker with `&& [ -s ... ]; then`,
-    # and a `$` anchor extracted nothing while reporting it as a product failure. Measured while writing this.
-    awk '/<<.PYEOF./{f=1;next} /^PYEOF$/{exit} f' "$ADOPT" > "$MTMP/merge.py"
-    [ -s "$MTMP/merge.py" ] && "$_MPY" "$MTMP/merge.py" "$KSET" "$MTMP/old.json" "$MTMP/out.json" 2>/dev/null && [ -s "$MTMP/out.json" ] && _MERGED=1
-    # A reader with the same four answers jq gives, so the assertions below are identical text on both tiers.
-    _g(){ "$_MPY" -c 'import sys,json;d=json.load(open(sys.argv[2]));e=sys.argv[1]
-if e=="upslen": print(len(d["hooks"]["UserPromptSubmit"]))
-elif e=="upsto": print(d["hooks"]["UserPromptSubmit"][0]["hooks"][0]["timeout"])
-elif e=="ptu": print(d["hooks"]["PostToolUse"][0]["hooks"][0]["command"])' "$1" "$2"; }
-    _gc(){ "$_MPY" -c 'import sys,json;d=json.load(open(sys.argv[2]));print(json.dumps(sorted(h["command"] for e in d["hooks"]["SessionStart"] for h in e["hooks"]),separators=(",",":")))' "$1" "$2"; }
-  fi
-  if [ "$_MERGED" = 1 ]; then
-    if [ "$_TIER" = jq ]; then KSS="$(_gc '[.hooks.SessionStart[].hooks[].command]|sort' "$KSET")"; MSS="$(_gc '[.hooks.SessionStart[].hooks[].command]|sort' "$MTMP/out.json")"
-                          else KSS="$(_gc ss "$KSET")"; MSS="$(_gc ss "$MTMP/out.json")"; fi
-    [ "$KSS" = "$MSS" ] && pass "merge[$_TIER]: new event (SessionStart) gets wired on update, with every kit hook on it" || fail "merge[$_TIER]: SessionStart wiring differs from the kit's — expected $KSS, got $MSS"
-    if [ "$_TIER" = jq ]; then UPSL="$(_g '.hooks.UserPromptSubmit|length' "$MTMP/out.json")"; KTO="$(_g '.hooks.UserPromptSubmit[0].hooks[0].timeout' "$KSET")"; MTO="$(_g '.hooks.UserPromptSubmit[0].hooks[0].timeout' "$MTMP/out.json")"; PTU="$(_g '.hooks.PostToolUse[0].hooks[0].command' "$MTMP/out.json")"
-                          else UPSL="$(_g upslen "$MTMP/out.json")"; KTO="$(_g upsto "$KSET")"; MTO="$(_g upsto "$MTMP/out.json")"; PTU="$(_g ptu "$MTMP/out.json")"; fi
-    [ "$UPSL" = 1 ] && pass "merge[$_TIER]: no duplicate hook after update (stale kit entry dropped)" || fail "merge[$_TIER]: duplicate UserPromptSubmit hook survived ($UPSL)"
-    [ "$MTO" = "$KTO" ] && [ "$MTO" != 10 ] && pass "merge[$_TIER]: stale hook timeout refreshed to kit's ($KTO)" || fail "merge[$_TIER]: stale timeout not refreshed — expected $KTO, got $MTO"
-    [ "$PTU" = "bash ./custom.sh" ] && pass "merge[$_TIER]: project's OWN custom hook preserved" || fail "merge[$_TIER]: custom hook lost ($PTU)"
-  else
-    fail "merge[$_TIER]: the merge program extracted from adopt.sh did not run (extraction drift?)"
+    fail "merge: eval/lib/settings-json.awk did not produce a merged file"
   fi
   rm -rf "$MTMP"
 fi
@@ -4505,9 +4550,7 @@ if [ -x "$HOOKS/guard-commit-scan.sh" ]; then
   # cares most about, none of them real: the suite trains you to ignore it, which is worse than not having it.
   # Escape here the way the sender does. Backslash first, or it would re-escape the escapes.
   csesc(){ local s="$1"; s="${s//\\/\\\\}"; s="${s//\"/\\\"}"; s="${s//$'\n'/\\n}"; s="${s//$'\t'/\\t}"; printf '%s' "$s"; }
-  csj(){ if command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then
-           jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}'
-         else printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' "$(csesc "$1")"; fi; }
+  csj(){ printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' "$(csesc "$1")"; }
   csrun(){ ( cd "$CS" && printf '%s' "$(csj "$1")" | bash .claude/hooks/guard-commit-scan.sh ) >/dev/null 2>&1; }
   # This is a PreToolUse hook, so the same exit-code contract as guard-bash applies: only `2` blocks, and any
   # other failure means the hook died and Claude Code runs the commit. The four block cases below used to test
@@ -4552,6 +4595,25 @@ $TRFX\""; then pass "multi-line AI trace in the commit message BLOCKED (§4.1)"
   if csblk "git commit -F $MFX"; then pass "-F <file> carrying an AI trace BLOCKED (§4.1)"
   else fail "-F <file> AI trace not blocked with rc=2 (§4.1 hole or the hook died)"; fi
   rm -f "$MFX"
+  # A QUOTED -F path with a space. The sed extraction that ran wherever python3 did not stopped at the space, read
+  # `-F "my msg.txt"` as `my`, found no such file and refused the commit — a clean one. The awk tokenizer is now
+  # the only path; both directions are asserted so an extraction that reads NOTHING cannot pass as "clean".
+  MFD="$(mktemp -d "${TMPDIR:-/tmp}/csk-mfd.XXXXXX")"; printf 'feat: from a spaced path\n' > "$MFD/my msg.txt"
+  csrun "git commit -F \"$MFD/my msg.txt\"" && pass "-F \"path with space\" is read (clean passes)" \
+                                           || fail "-F \"path with space\" with a clean message was blocked — the path was cut at the space"
+  printf 'feat: x\n\n%s: Claude\n' "Co-""Authored-By" > "$MFD/my msg.txt"
+  if csblk "git commit -F \"$MFD/my msg.txt\""; then pass "-F \"path with space\" carrying an AI trace BLOCKED (§4.1)"
+  else fail "-F \"path with space\" AI trace not blocked with rc=2"; fi
+  rm -rf "$MFD"
+  # git reads the LAST -F (measured: `commit -F one -F two` commits two). Scanning the first let a clean file in
+  # front hide a traced one behind it — both orders asserted, so "always refuse two -F" cannot pass either.
+  MFD="$(mktemp -d "${TMPDIR:-/tmp}/csk-mfd2.XXXXXX")"; printf 'feat: clean\n' > "$MFD/c.txt"
+  printf 'feat: x\n\n%s: Claude\n' "Co-""Authored-By" > "$MFD/d.txt"
+  if csblk "git commit -F $MFD/c.txt -F $MFD/d.txt"; then pass "-F clean -F traced: the LAST file (what git commits) is scanned and BLOCKED"
+  else fail "-F clean -F traced was not blocked — the gate scanned the first -F, git commits the last (§4.1 hole)"; fi
+  csrun "git commit -F $MFD/d.txt -F $MFD/c.txt" && pass "-F traced -F clean passes (git commits the clean one)" \
+                                                 || fail "-F traced -F clean was blocked although git commits the clean file"
+  rm -rf "$MFD"
   ( cd "$CS" && git config core.hooksPath .claude/hooks ) >/dev/null 2>&1
   csrun 'git commit' && pass "editor message allowed once a commit-msg git hook can scan it (full install)" \
                      || fail "full install over-blocks an editor-composed message"
@@ -5277,6 +5339,16 @@ if [ -n "$SGR" ] && [ -f "$SGR/.gitattributes" ] && [ -d "$SGR/packaging" ] && [
   done
   [ -z "$SDIV" ] && pass "claude-starter/hooks and plugin/hooks ship byte-identical files" \
                  || fail "the two editions have drifted apart:$SDIV — one was updated and the other was not"
+  # The JSON reader too: automode-policy's apply.sh finds it three levels up in either edition, so a plugin
+  # without it (or with a stale copy) merges nothing — or merges differently from the kit.
+  if [ -f "$SGR/claude-starter/eval/lib/settings-json.awk" ]; then
+    cmp -s "$SGR/claude-starter/eval/lib/settings-json.awk" "$SGR/plugin/eval/lib/settings-json.awk" \
+      && [ -f "$SGR/plugin/skills/automode-policy/scripts/../../../eval/lib/settings-json.awk" ] \
+      && pass "plugin/eval/lib carries the same JSON reader, where the skill script looks for it" \
+      || fail "plugin/eval/lib/settings-json.awk is missing or differs from claude-starter/eval/lib — run packaging/build-plugin.sh"
+  else
+    fail "claude-starter/eval/lib/settings-json.awk is missing — the kit has no JSON reader"
+  fi
 
   # ---- ci.yml and verify.sh must name the SAME gates -------------------------------------------------------
   # Source-repo only: neither file is installed. This exists because the gates used to be written in ci.yml and

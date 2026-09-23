@@ -237,7 +237,6 @@ It reads `~/.claude/projects` — where Claude Code keeps every session on this 
 node .claude/studio/server/index.js --open        # the same, without the slash picker
 # `node` not on PATH? That is the kit keeping its promise not to edit it — ask for the one it fetched:
 #   NODE="$(bash .claude/studio/ensure-node.sh)" && "$NODE" .claude/studio/server/index.js --open
-node .claude/studio/server/index.js --enable-pty  # plus raw shells — those bypass every gate above
 ```
 
 | In the panel | What it rests on |
@@ -268,8 +267,6 @@ It reads `~/.claude/projects`, which holds **every** Claude Code session on the 
   <img src="assets/studio-graph.png" alt="Twelve agents and a workflow container on one canvas, each card carrying its status, tool count, tokens and duration; the failed agent is outlined in red" width="900">
   <br><sub>What each agent is doing, what it has spent, and the one that failed — reachable by the ⚠ button without hunting for it.</sub>
 </div>
-
-**Raw terminals are off unless you ask for them.** A shell typed into directly never reaches a `PreToolUse` hook, so `guard-bash.sh` never sees the command — the panel says so on screen in red rather than leaving you to discover it. Everything else in the panel goes through a tool call, and therefore through the gates.
 
 ---
 
@@ -308,16 +305,18 @@ An installed plugin stays on the version you installed until you ask for a newer
 ### New project
 
 ```bash
-bash start.sh [--dotnet|--generic] [--version] [-h]
+bash start.sh [--dotnet|--generic] [--private|--shared] [--lang tr|en] [--yes] [--version] [-h]
 ```
 
-Two steps: backend pattern, then a summary you approve before anything is written.
+The wizard first asks for its language (English or Turkish), then the backend pattern and who the install is for, and ends with a summary you approve before anything is written. Every prompt and message follows the language you pick; the files it installs stay English.
 
 **Both installs carry the same team** — all 12 agents, and every skill except the one that is a backend pattern: `--generic` leaves out `cqrs-aop-module`, which is .NET-specific and wrong in a Node or Go repo, and installs the other 39. Backend, web and mobile (React Native/Expo) come together either way. A project that starts as an API and grows a web client is already equipped for both.
 
 | Asked at install | Options | What it changes |
 |:--|:--|:--|
+| Language | `--lang en` · `--lang tr` | what the installer prints — nothing it writes |
 | Backend pattern | `--dotnet` · `--generic` | the `cqrs-aop-module` skill and the DevArchitecture base |
+| Who it is for | `--private` · `--shared` | whether `.claude/` and `CLAUDE.md` are gitignored or committed for the team |
 | DevArch base — only on `--dotnet` | approve · skip | whether `./backend` is scaffolded |
 
 **`--dotnet`** clones the production-ready [DevArchitecture](https://github.com/DevArchitecture/DevArchitecture) foundation (CQRS · IResult · AOP · auth) behind an approval gate, and installs agents that already know it — so tokens go to your business logic instead of regenerating a standard architecture. The backend goes in `./backend`, `./frontend` is reserved next to it, and the solution file is renamed to your project.
@@ -384,9 +383,11 @@ bash .claude/eval/doctor.sh          # is this install healthy, and is the proje
 bash .claude/eval/preflight.sh       # which tools this machine has, and what degrades without them
 ```
 
-`preflight.sh` also runs inside `start.sh`, `adopt.sh` and `doctor.sh`. The kit degrades rather than breaks when a
-tool is absent — no `jq` falls back to `python`, then to plain bash; no `sha256sum` falls back to `cksum` — which is
-the right design and also the reason a gap never announces itself. Preflight names the gap and what it costs. It
+`preflight.sh` also runs inside `start.sh`, `adopt.sh` and `doctor.sh`. The kit needs neither `jq` nor `python`: every
+JSON read and write, every hook and every installer step is one bash/awk path, so macOS, Linux and a stock Windows
+Git Bash run the same code and get the same result. Where a tool is still optional the kit degrades rather than
+breaks — no `sha256sum` falls back to `cksum` — which is the right design and also the reason a gap never announces
+itself. Preflight names the gap and what it costs. It
 reports; it never installs anything on your machine and never blocks a run.
 
 ## Extending

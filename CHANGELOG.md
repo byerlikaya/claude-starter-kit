@@ -5,6 +5,67 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — one path on every OS: the kit no longer uses jq or python
+
+- Every hook, installer step and eval script now runs the same bash/awk code on macOS, Linux and a stock
+  Windows Git Bash. Before this, each machine picked jq, then python, then bash, so they ran different code. The
+  kit reads and writes JSON through one reader, `.claude/eval/lib/settings-json.awk`, which `adopt.sh`,
+  `doctor.sh` and `automode-policy` all share. `preflight.sh` no longer reports jq or python, because nothing
+  needs them.
+- A new smoke gate fails when a shipped product script calls jq or python. It prints how many scripts it
+  scanned, and calibration twins check that it fires on a real call and stays silent on prose.
+
+### Fixed — defects that only lived on machines without jq or python
+
+- **An update without jq or python3 no longer throws away your own settings.** On such a machine (a stock
+  Windows Git Bash, where `python3` is often the Microsoft Store stub) the update used to replace
+  `.claude/settings.json` with the kit's copy, so a rule like `Bash(terraform apply:*)` was lost and only a
+  backup kept it. The settings merge is now one awk program, `.claude/eval/lib/settings-json.awk`, and gives the
+  same result on every machine: the kit's hooks refreshed, your own hooks, rules and keys kept. A file that is
+  not valid JSON is left untouched and reported.
+- **The board vanished from the session when an item title had a tab.** `board-sync.sh` escaped only the
+  quote, the backslash and the newline, so a tab, a CR or any control byte produced JSON the CLI could not
+  parse (measured: jq rc=5), and the CLI dropped it without a word. The escaper now matches `jq` byte for byte on
+  15 inputs.
+- **A clean `git commit -F "my msg.txt"` was refused.** Without python3 the commit gate cut the path at the
+  first space, found no such file and refused the commit. That happened on 5 of 12 measured shapes: quoted,
+  spaced or Windows-backslash paths, and a repeated `-F`. The gate now reads `-F` with the same tokenizer it
+  uses for `-m`, and on all 30 shapes it returns what python's `shlex` returned.
+- **On a machine without python3, `doctor` said "delegation MAY be denied".** It now gives a real verdict.
+  Invalid JSON there was also reported as "hook events missing", with advice to restore the kit's file, which
+  would have dropped the project's own hooks. It is now reported as invalid JSON.
+- **`automode-policy` could not install on a stock Windows box.** With no jq or python it printed the policy and
+  stopped. It now merges, and its output matches `jq -s '.[0] * .[1]'`.
+
+### Removed
+
+- The Studio panel's raw terminal (`--enable-pty`). It was off by default and Unix-only. It was the one part of
+  the panel that bypassed the kit's gates, and the panel's only python3 dependency. Shell work in the panel still
+  runs through a session's Bash tool, where the gates apply.
+
+### Added — the installer asks which language to speak
+
+- An interactive `start.sh` or `adopt.sh` now opens with a two-line menu, English or Türkçe, and the rest
+  of the run speaks the answer. The locale only decides which entry is the default. Detection alone was not
+  enough: a macOS desk can run in Turkish while the shell exports `LANG=C.UTF-8`, so Turkish was never
+  offered. `--lang`, `CSK_LANG`, `--yes` and any non-terminal stdin skip the menu, so scripted and piped
+  installs read exactly what they read before.
+
+### Fixed — Turkish mode printed English
+
+- Roughly 45 lines in `start.sh` and more than 200 in `adopt.sh` never went through the message table, so
+  a Turkish install still printed English. The DevArchitecture prompt, the `CLAUDE.md` branches, the
+  long-path warning, the proof lines and most of the adopt summary were among them. Every printed line now
+  has a Turkish text, written for a Turkish reader rather than translated word for word. The yes/no prompts read
+  `[evet/hayır]`, and `--help` has a Turkish version.
+- `--lang tr` never reached the preflight block. The chosen language was not exported, and the child
+  script fell back to English.
+- Turkish labels threw the summary columns out of line, because `printf` pads by bytes. They are now
+  padded by characters.
+- A new e2e case runs both installers in Turkish, down both backend paths plus an adopt and a refresh,
+  and fails on any English function word in the output. The same run in English has to match, or the
+  case reports a broken detector instead of passing.
+
 ## [2.12.0] — 2026-09-22
 
 ### Before you update — five things that change behaviour

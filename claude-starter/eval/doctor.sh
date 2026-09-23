@@ -101,58 +101,25 @@ fi
 #    nothing). PreToolUse/UserPromptSubmit/Stop are required; SessionStart (rehydration) is a warn if absent.
 S=.claude/settings.json
 if [ -f "$S" ]; then
-  # Probed by RUNNING, like §4b does for python3 two sections down. On `command -v` alone a jq that resolves
-  # and fails takes this branch forever: the documented grep fallback below becomes unreachable, `jq empty`
-  # failing is blamed on the USER's file, and doctor prescribes overwriting it — which would destroy any
-  # hooks the project added. Measured with a stub jq on a healthy install: "settings.json is invalid JSON",
-  # rc=1, and the three checks after it simply absent.
-  if command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then
-    if jq empty "$S" 2>/dev/null; then
-      ok "settings.json is valid JSON"
-      EMPTY=""
-      for ev in PreToolUse UserPromptSubmit Stop; do
-        n="$(jq -r --arg e "$ev" '(.hooks[$e] // []) | length' "$S" 2>/dev/null)"
-        case "$n" in ''|0) EMPTY="$EMPTY $ev" ;; esac
-      done
-      [ -z "$EMPTY" ] && ok "settings.json wires PreToolUse / UserPromptSubmit / Stop (non-empty)" \
-                      || bad "settings.json hook events empty or missing:$EMPTY — those gates won't fire" "restore settings.json from the kit"
-      sn="$(jq -r '(.hooks.SessionStart // []) | length' "$S" 2>/dev/null)"
-      case "$sn" in ''|0) warn "SessionStart not wired — session rehydration after /compact or /clear is inactive (update the kit)" ;; *) ok "SessionStart wired (session rehydration active)" ;; esac
-    else bad "settings.json is invalid JSON" "restore settings.json from the kit"; fi
-  else
-    # no jq: the NAME is not the wiring. `"PreToolUse": []` carries the name and wires nothing, and this branch
-    # passed it — so on a stock Windows box, the one platform with no jq, doctor reported `healthy` over a
-    # settings.json whose §4.4/§4.5 tool gate was empty. That is the M2 finding from the 1.4.0 audit, fixed for
-    # the jq path and never for this one; measured here against a hand-built fixture, and it is what
-    # smoke-test's M2a case caught the first time it was able to run without jq.
-    # Emptiness needs no parser: after the event's `[`, the first non-space character is `]` exactly when the
-    # array is empty. Pure parameter expansion, so it costs no process on the hook-heavy platform.
-    json_event_nonempty(){   # $1 = file, $2 = event -> 0 when that event's array holds at least one entry
-      local all s c
-      all="$(cat "$1" 2>/dev/null)"
-      s="${all#*\"$2\"}"
-      [ "$s" != "$all" ] || return 1
-      case "$s" in *"["*) ;; *) return 1 ;; esac
-      s="${s#*"["}"
-      while [ -n "$s" ]; do
-        c="${s%"${s#?}"}"; s="${s#?}"
-        case "$c" in [[:space:]]) continue ;; esac
-        [ "$c" = "]" ] && return 1
-        return 0
-      done
-      return 1
-    }
-    MISS=""; EMPTYNJ=""
+  # ONE READER on every machine: the kit's own awk JSON reader, the same file adopt.sh merges with. There were two
+  # branches here — jq where jq ran, a name-and-bracket shape check where it did not — and the second could not
+  # tell valid JSON from invalid at all, so a stock Windows box got a weaker doctor than a Mac. Now both get the
+  # parse: validity, then each event's array length.
+  SJ=.claude/eval/lib/settings-json.awk
+  if [ ! -f "$SJ" ]; then
+    bad "the kit's JSON reader is missing ($SJ) — settings.json cannot be checked" "update the kit"
+  elif awk -v op=validate -f "$SJ" "$S" 2>/dev/null; then
+    ok "settings.json is valid JSON"
+    EMPTY=""
     for ev in PreToolUse UserPromptSubmit Stop; do
-      if grep -q "\"$ev\"" "$S"; then
-        json_event_nonempty "$S" "$ev" || EMPTYNJ="$EMPTYNJ $ev"
-      else MISS="$MISS $ev"; fi
+      n="$(awk -v op=len -v path="hooks.$ev" -f "$SJ" "$S" 2>/dev/null)"
+      case "$n" in ''|0) EMPTY="$EMPTY $ev" ;; esac
     done
-    { [ -z "$MISS" ] && [ -z "$EMPTYNJ" ] && grep -q 'hooks/' "$S"; } \
-      && ok "settings.json wires the required hook events, each non-empty (no jq: shape check)" \
-      || bad "settings.json hook events missing:$MISS empty:$EMPTYNJ — those gates won't fire" "restore settings.json from the kit"
-    grep -q '"SessionStart"' "$S" || warn "SessionStart not wired — session rehydration inactive (update the kit)"
-  fi
+    [ -z "$EMPTY" ] && ok "settings.json wires PreToolUse / UserPromptSubmit / Stop (non-empty)" \
+                    || bad "settings.json hook events empty or missing:$EMPTY — those gates won't fire" "restore settings.json from the kit"
+    sn="$(awk -v op=len -v path=hooks.SessionStart -f "$SJ" "$S" 2>/dev/null)"
+    case "$sn" in ''|0) warn "SessionStart not wired — session rehydration after /compact or /clear is inactive (update the kit)" ;; *) ok "SessionStart wired (session rehydration active)" ;; esac
+  else bad "settings.json is invalid JSON" "fix the syntax by hand — restoring the kit's file would drop any hooks you added"; fi
   # `${CLAUDE_PROJECT_DIR}` inside a hook command is the shape that breaks on Windows, and it breaks invisibly.
   # Claude Code substitutes that placeholder into the command STRING before any shell sees it; on Windows the
   # value is `C:\Repos\app` and the separators are gone by the time bash reads it. The reported path was
@@ -204,47 +171,19 @@ fi
 DENYSRC=""
 for f in .claude/settings.json .claude/settings.local.json "$HOME/.claude/settings.json"; do
   [ -f "$f" ] || continue
-  # A deny entry for the delegation tool, in any of its spellings, with or without an argument pattern.
-  # `python3` is guarded: on Windows it is often a Microsoft Store execution alias that BLOCKS instead of
-  # failing, so calling it unconditionally can hang the whole doctor run on the machines least able to debug it.
-  # Absent python3 does NOT silently skip the check — a skipped check that reports nothing is indistinguishable
-  # from a check that passed, which is the failure this whole file exists to prevent.
-  # Not "is python3 on PATH" — "can python3 parse JSON". Windows puts a Microsoft Store redirector stub of
-  # that name on PATH by default; it passes `command -v`, exits 49 and prints nothing. NOPY then stayed 0, the
-  # parse below failed silently, DENYSRC stayed empty, and this reported `ok delegation is enabled` on a
-  # machine where nothing had been read. That is the false green this file's own comments are about, and on
-  # Windows it was the default outcome. The probe passes arguments: an argless stub run opens the Store.
-  #
-  # With no usable interpreter this check used to say nothing at all — on Windows, which is every stock
-  # Windows machine, and "check by hand" is advice nobody acts on. A grep cannot tell a deny list from an
-  # allow list, so it cannot produce the ❌; what it CAN do is notice that both spellings are in the same
-  # file and say so as a warning. Coarse on purpose: it is allowed to be wrong in the direction of asking a
-  # human to look, never in the direction of a verdict it did not earn.
-  if ! printf '{}' | python3 -c 'import sys,json;json.load(sys.stdin)' >/dev/null 2>&1; then
-    NOPY=1
-    grep -qE '"(Agent|Task)(\([^"]*\))?"' "$f" 2>/dev/null && grep -q '"deny"' "$f" 2>/dev/null \
-      && MAYBEDENY="${MAYBEDENY:-} $f"
-    continue
+  # A deny entry for the delegation tool, in any of its spellings, with or without an argument pattern. Read
+  # with the kit's JSON reader, so "is Agent/Task in permissions.deny" is answered from the parse on every OS.
+  # It used to need python3: on Windows — a Store stub, or nothing — the check degraded to "both words appear in
+  # the file", a prompt instead of a verdict. An unreadable file is still NOT a silent pass (NOPY below).
+  if [ ! -f "${SJ:-.claude/eval/lib/settings-json.awk}" ] || ! awk -v op=validate -f "${SJ:-.claude/eval/lib/settings-json.awk}" "$f" 2>/dev/null; then
+    NOPY=1; MAYBEDENY="${MAYBEDENY:-} $f"; continue
   fi
-  grep -qE '"(Agent|Task)(\([^"]*\))?"' "$f" 2>/dev/null \
-    && grep -q '"deny"' "$f" 2>/dev/null \
-    && python3 - "$f" <<'PY' 2>/dev/null && DENYSRC="$DENYSRC $f"
-import json,sys,re
-try: d=json.load(open(sys.argv[1]))
-except Exception: sys.exit(1)
-deny=(d.get('permissions') or {}).get('deny') or []
-sys.exit(0 if any(re.match(r'^(Agent|Task)\b', str(x)) for x in deny) else 1)
-PY
+  awk -v op=strings -v path=permissions.deny -f "${SJ:-.claude/eval/lib/settings-json.awk}" "$f" 2>/dev/null \
+    | grep -qE '^(Agent|Task)([^A-Za-z0-9_]|$)' && DENYSRC="$DENYSRC $f"
 done
 if [ "${NOPY:-0}" = 1 ]; then
-  if [ -n "${MAYBEDENY:-}" ]; then
-    warn "delegation MAY be denied in:${MAYBEDENY} — both \"deny\" and \"Agent\"/\"Task\" appear in that file."
-    warn "  No JSON parser here to tell whether they are in the same block, so this is a prompt, not a verdict:"
-    warn "  open it and check that Agent/Task is not under permissions.deny. If it is, no subagent can ever run."
-  else
-    warn "delegation check could not run precisely — no working python3 (a Microsoft Store stub counts as none)."
-    warn "  Nothing suspicious found by name; install python3 or jq for a real answer."
-  fi
+  warn "delegation check could not read:${MAYBEDENY} — not valid JSON (or the kit's reader is missing)."
+  warn "  open it and check that Agent/Task is not under permissions.deny. If it is, no subagent can ever run."
 fi
 # `A && B && ok … || bad …` cannot express three outcomes. With no usable python3 the && chain is false, so the
 # || arm fired and reported `the Agent tool is DENIED in:` — an empty list, a failure that had not been found,

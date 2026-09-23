@@ -41,7 +41,6 @@ Other flags, same file:
 ```bash
 node .claude/studio/server/index.js --port 8080
 node .claude/studio/server/index.js --selftest     # offline checks, no browser
-node .claude/studio/server/index.js --enable-pty   # raw shells (no gates — see below)
 ```
 
 **Started per project, scoped to the machine.** Studio reads
@@ -77,8 +76,8 @@ and its gate-file write guard its blocks, in `.claude/gate-log.tsv` when the
 project has a `.claude/` directory, the file is git-ignored or the project is
 not a repo, and `CSK_GATE_LOG` does not send the log elsewhere.
 Everything else — the live
-agent graph, owned sessions, the permission bridge, the terminals — works the
-same in both editions.
+agent graph, owned sessions, the permission bridge — works the same in both
+editions.
 
 **The suite is not here.** It lives in `packaging/studio-test/`, beside the
 repo's other gates, and asserts things about this *repository* — the root
@@ -247,31 +246,6 @@ permission mode, while an interactive session has them. So there is no
 structured choice to render. When a reply offers options in prose the panel
 makes them clickable, which sends that text — a shortcut for typing it, not a
 channel that does not exist.
-
-## Raw shells
-
-Off unless asked for:
-
-```bash
-node .claude/studio/server/index.js --enable-pty
-```
-
-This is the one surface in the panel that steps outside the kit's own gates. A
-command typed in a raw shell never reaches a PreToolUse hook, because there is
-no tool call to intercept — so `guard-bash.sh` and everything beside it are
-blind to it. The panel says so on the screen, in the tab, and in the startup
-log, and everything else it offers routes shell work through a session's `Bash`
-tool where the gates do apply.
-
-The terminal itself needs nothing installed: Python's `pty` is in the standard
-library, and this repo already depends on python3. Measured: a real `/dev/ttys*`,
-`[ -t 0 ]` true inside it, and `TIOCSWINSZ` resizing. Unix only — the `pty`
-module does not exist on Windows, which is reported rather than worked around.
-
-What it renders is scrollback with colour, carriage returns, backspaces and the
-common erase sequences: `ls --color`, `git status`, a test run. It is not a
-screen, so a full-screen program (vim, htop) is out of scope by design — the
-view says as much when it sees one painting.
 
 ## Security
 

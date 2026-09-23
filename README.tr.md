@@ -235,7 +235,6 @@ Panel `~/.claude/projects` dizinini okuyor; Claude Code bu makinedeki bütün ot
 ```bash
 /studio-csk                                       # kit kurulu her projede
 node .claude/studio/server/index.js --open        # aynısı, slash seçicisi olmadan
-node .claude/studio/server/index.js --enable-pty  # artı ham kabuklar: onlar yukarıdaki her kapıyı atlar
 ```
 
 | Panelde ne var | Neye dayanıyor |
@@ -266,8 +265,6 @@ Panel `~/.claude/projects` dizinini okuyor; orada bu makinedeki **her** Claude C
   <img src="assets/studio-graph.png" alt="Tek tuvalde on iki ajan ve bir workflow konteyneri; her kart durumunu, araç sayısını, token ve süresini taşıyor, düşen ajan kırmızıyla çerçeveli" width="900">
   <br><sub>Hangi ajan ne yapıyor, ne harcadı, hangisi düştü. Düşeni aramak gerekmiyor; ⚠ düğmesi doğrudan ona götürüyor.</sub>
 </div>
-
-**Ham terminaller siz istemedikçe kapalı.** Doğrudan yazdığınız bir kabuk hiçbir `PreToolUse` hook'una uğramıyor, dolayısıyla `guard-bash.sh` o komutu hiç görmüyor. Panel bunu keşfetmenizi beklemiyor, ekranda kırmızıyla söylüyor. Paneldeki diğer her şey bir araç çağrısından, yani kapılardan geçiyor.
 
 ---
 
@@ -306,16 +303,18 @@ Kurulu bir plugin, siz yenisini istemedikçe kurduğunuz sürümde kalır; bu y�
 ### Yeni proje
 
 ```bash
-bash start.sh [--dotnet|--generic] [--version] [-h]
+bash start.sh [--dotnet|--generic] [--private|--shared] [--lang tr|en] [--yes] [--version] [-h]
 ```
 
-İki adım: önce backend deseni, sonra hiçbir şey yazılmadan önce onaylayacağınız bir özet.
+Sihirbaz önce hangi dilde konuşacağını sorar (Türkçe ya da İngilizce), ardından backend desenini ve kurulumu kimin kullanacağını; sonunda hiçbir şey yazılmadan önce onaylayacağınız bir özet gösterir. Seçtiğiniz dil tüm sorulara ve mesajlara uygulanır; kurulan dosyalar İngilizce kalır.
 
 **İki kurulum da aynı ekibi getiriyor:** 12 agent'ın tamamı ve bir backend deseni olan tek skill dışında bütün skill'ler. `--generic`, Node ya da Go deposunda yanlış duracak `cqrs-aop-module`'ü kurmuyor, diğer 39'unu kuruyor. Backend, web ve mobil (React Native/Expo) her iki hâlde de bir arada geliyor. API olarak başlayıp web istemcisi kazanan bir proje, ikisi için de baştan donanımlıdır.
 
 | Kurulumda sorulan | Seçenekler | Neyi değiştirir |
 |:--|:--|:--|
+| Dil | `--lang tr` · `--lang en` | kurulumun ekrana yazdıkları — diske yazdığı hiçbir şey değil |
 | Backend deseni | `--dotnet` · `--generic` | `cqrs-aop-module` skill'i ve DevArchitecture temeli |
+| Kimin için | `--private` · `--shared` | `.claude/` ve `CLAUDE.md`'nin gitignore'a mı gireceği, yoksa ekip için commit mi edileceği |
 | DevArch temeli (yalnızca `--dotnet` ile) | onayla · atla | `./backend` iskelesinin kurulup kurulmayacağı |
 
 **`--dotnet`**, üretime hazır [DevArchitecture](https://github.com/DevArchitecture/DevArchitecture) temelini (CQRS · IResult · AOP · auth) bir onay kapısının arkasından klonlar ve onu zaten bilen agent'ları kurar; böylece token'lar standart bir mimariyi yeniden üretmeye değil, sizin iş mantığınıza gider. Backend `./backend` altına yerleşir, yanında `./frontend` ayrılır ve çözüm dosyası projenizin adını alır.
@@ -382,9 +381,11 @@ bash .claude/eval/doctor.sh          # bu kurulum sağlıklı mı, proje hazır 
 bash .claude/eval/preflight.sh       # bu makinede hangi araçlar var, olmayanlar neyi zayıflatıyor
 ```
 
-`preflight.sh` ayrıca `start.sh`, `adopt.sh` ve `doctor.sh` içinden de koşar. Bir araç eksik olduğunda kit kırılmaz,
-kabiliyet düşürerek devam eder: `jq` yoksa `python`'a, o da yoksa saf bash'e; `sha256sum` yoksa `cksum`'a iner.
-Doğru tasarım bu, ama aynı zamanda bir eksiğin kendini hiç duyurmamasının da sebebi. Preflight eksiği ve bedelini
+`preflight.sh` ayrıca `start.sh`, `adopt.sh` ve `doctor.sh` içinden de koşar. Kit ne `jq` ne `python` ister: her JSON
+okuma ve yazma, her hook ve her kurulum adımı tek bir bash/awk yolundan geçer; macOS, Linux ve sıfır bir Windows Git
+Bash aynı kodu koşar, aynı sonucu alır. Hâlâ isteğe bağlı olan bir araç eksikse kit kırılmaz, kabiliyet düşürerek
+devam eder: `sha256sum` yoksa `cksum`'a iner. Doğru tasarım bu, ama aynı zamanda bir eksiğin kendini hiç
+duyurmamasının da sebebi. Preflight eksiği ve bedelini
 adıyla söyler. Yalnızca rapor eder; makinenize hiçbir şey kurmaz ve hiçbir çalıştırmayı engellemez.
 
 ## Genişletme

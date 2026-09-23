@@ -288,12 +288,13 @@ fi
 # off a TTY with NO flag and NO manual edit (this is what /update-csk drives), and the settings refresh must work
 # even with NO jq and NO python3 (typical Windows Git-Bash). A FIRST adopt (brownfield) still needs --yes. Every run
 # uses a closed stdin so the test can never hang.
-mk_stale_install(){                       # $1 = dir : a healthy 1.4.x install whose settings.json is STALE
+mk_stale_install(){                       # $1 = dir, [$2 = settings.json] : a healthy 1.4.x install whose settings.json is STALE
   local d="$1"; rm -rf "$d"; mkdir -p "$d/.claude"
   cp adopt.sh "$d/"; cp -R claude-starter "$d/"; cp VERSION "$d/"
   cp -R "$d/claude-starter/." "$d/.claude/" 2>/dev/null; cp VERSION "$d/.claude/VERSION"
   printf 'profile=fullstack\nstack=generic\ninstaller=start.sh\n' > "$d/.claude/kit.conf"
-  printf '%s\n' '{ "permissions": { "ask": [ "Bash(git add:*)", "Bash(git commit:*)", "Bash(git push:*)", "Bash(git checkout -b:*)", "Bash(terraform apply:*)" ] }, "hooks": { "UserPromptSubmit": [ { "hooks": [ { "type":"command","command":"bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/context-usage.sh\" 2>/dev/null || true","timeout":10 } ] } ] } }' > "$d/.claude/settings.json"
+  if [ -n "${2:-}" ]; then printf '%s\n' "$2"; else printf '%s\n' '{ "permissions": { "ask": [ "Bash(git add:*)", "Bash(git commit:*)", "Bash(git push:*)", "Bash(git checkout -b:*)", "Bash(terraform apply:*)" ] }, "hooks": { "UserPromptSubmit": [ { "hooks": [ { "type":"command","command":"bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/context-usage.sh\" 2>/dev/null || true","timeout":10 } ] } ] } }'; fi > "$d/settings.stale"
+  cp "$d/settings.stale" "$d/.claude/settings.json"
   printf '# project rules\n@.claude/DISCIPLINE.md\n' > "$d/CLAUDE.md"
   ( cd "$d" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
 }
@@ -318,7 +319,7 @@ KIT_TO="$(awk '/context-usage\.sh/{f=1} f && /"timeout"/{gsub(/[^0-9]/,""); prin
 [ -n "$KIT_TO" ] && [ "$KIT_TO" != 10 ] || { echo "FAIL: could not read the kit's UserPromptSubmit timeout (got '${KIT_TO:-}') — the stale-vs-refreshed assertions below would prove nothing"; exit 1; }
 # (A) update · non-interactive · NO --yes -> APPLIES (self-heal): stale hook refreshed, SessionStart wired, CLAUDE.md kept
 U="$WORK/selfheal"; mk_stale_install "$U"
-UOUT="$( cd "$U" && bash adopt.sh --here </dev/null 2>&1 )"
+UOUT="$( cd "$U" && bash adopt.sh --here </dev/null 2>&1 )"; cp "$U/.claude/settings.json" "$U/settings.first"
 grep -q 'SessionStart' "$U/.claude/settings.json"       || { echo "FAIL: non-interactive update did not self-heal (SessionStart missing)"; exit 1; }
 grep -q "\"timeout\": $KIT_TO" "$U/.claude/settings.json"      || { echo "FAIL: non-interactive update did not refresh the stale timeout"; exit 1; }
 head -1 "$U/CLAUDE.md" | grep -q 'project rules'        || { echo "FAIL: update clobbered the project's own CLAUDE.md"; exit 1; }
@@ -336,55 +337,78 @@ grep -q 'retired §4.4 ask rule(s) REMOVED: git add, git commit, git push, git c
 UOUT2="$( cd "$U" && bash adopt.sh --here </dev/null 2>&1 )"
 case "$UOUT2" in *"REMOVED ("*) echo "FAIL: an update with no retired rule present still announced a removal"; exit 1 ;; esac
 case "$UOUT2" in *"custom hooks/permissions PRESERVED"*) ;; *) echo "FAIL: the plain PRESERVED line is gone even when nothing was removed"; exit 1 ;; esac
-# (B) SAME, but with NO jq and NO python3 on PATH (the real Windows Git-Bash case) -> kit-only settings safely
-# REPLACED + backup kept. The strip needs a symlink farm; Git-Bash on Windows can't make one, so there we skip this
-# sub-test (with a note) and rely on (A) + the portable-bash fallback proven on the POSIX runners.
-# Probe ONCE whether this filesystem makes real symlinks. Git-Bash on Windows copies instead — a copied .exe is
-# DLL-fragile and can't run, so a mirror-farm PATH there is both broken and slow (thousands of copies). Only build
-# the jq-less strip where symlinks are real; elsewhere skip this leg (the no-jq code is proven on the POSIX runners).
-SYMPROBE="$WORK/.symprobe"; rm -f "$SYMPROBE"; ln -s "$(command -v bash 2>/dev/null)" "$SYMPROBE" 2>/dev/null
-if [ -L "$SYMPROBE" ]; then
-  N="$WORK/selfheal-nojq"; mk_stale_install "$N"
-  NODEPS="$WORK/nodeps-bin"; rm -rf "$NODEPS"; mkdir -p "$NODEPS"    # mirror every tool on PATH, then drop jq + python*
-  oldIFS="$IFS"; IFS=:
-  for d in $PATH; do [ -d "$d" ] || continue
-    for f in "$d"/*; do b="$(basename "$f" 2>/dev/null)"; [ -n "$b" ] && [ -x "$f" ] && [ ! -e "$NODEPS/$b" ] && ln -s "$f" "$NODEPS/$b" 2>/dev/null; done
-  done; IFS="$oldIFS"
-  rm -f "$NODEPS"/jq "$NODEPS"/jq.* "$NODEPS"/python "$NODEPS"/python3 "$NODEPS"/python.* "$NODEPS"/python3.* 2>/dev/null
-  if ! PATH="$NODEPS" bash -c 'command -v jq >/dev/null 2>&1' && ! PATH="$NODEPS" bash -c 'command -v python3 >/dev/null 2>&1'; then
-    _L="$(_slog)"; ( cd "$N" && PATH="$NODEPS" bash adopt.sh --here </dev/null ) >"$_L" 2>&1 || _evidence "adopt.sh in $N" "$_L" $?
-    grep -q 'SessionStart' "$N/.claude/settings.json"     || { echo "FAIL: no-jq/python update did not self-heal the settings"; exit 1; }
-    grep -q "\"timeout\": $KIT_TO" "$N/.claude/settings.json"    || { echo "FAIL: no-jq/python update did not refresh the timeout"; exit 1; }
-    ls "$N"/.claude/settings.json.bak-* >/dev/null 2>&1   || { echo "FAIL: no-jq/python replace did not keep a backup"; exit 1; }
-    head -1 "$N/CLAUDE.md" | grep -q 'project rules'      || { echo "FAIL: no-jq/python update clobbered CLAUDE.md"; exit 1; }
-    retired_gone "$N/.claude/settings.json"
-    NOJQ_NOTE="with + WITHOUT jq/python"
-    # (D) Python exposed ONLY as `py` (the Windows Python Launcher) — no jq, no python3/python. The merge must run
-    #     via py and heal, NOT fall through to the .kit reference (the exact case a Git-Bash Windows user hit).
-    REALPY="$(command -v python3 2>/dev/null || command -v python 2>/dev/null)"
-    if [ -n "$REALPY" ]; then
-      P="$WORK/selfheal-py"; mk_stale_install "$P"
-      printf '#!/bin/sh\nexec "%s" "$@"\n' "$REALPY" > "$NODEPS/py"; chmod +x "$NODEPS/py"
-      _L="$(_slog)"; ( cd "$P" && PATH="$NODEPS" bash adopt.sh --here </dev/null ) >"$_L" 2>&1 || _evidence "adopt.sh in $P" "$_L" $?
-      grep -q 'SessionStart' "$P/.claude/settings.json"   || { echo "FAIL: py-launcher update did not self-heal (SessionStart)"; exit 1; }
-      grep -q "\"timeout\": $KIT_TO" "$P/.claude/settings.json"  || { echo "FAIL: py-launcher update did not refresh the timeout"; exit 1; }
-      [ ! -e "$P/.claude/settings.json.kit" ]             || { echo "FAIL: py present but the merge fell back to .kit"; exit 1; }
-      retired_gone "$P/.claude/settings.json"
-      grep -q '"Bash(terraform apply:\*)"' "$P/.claude/settings.json" || { echo "FAIL: py merge dropped the project's own ask rule with the retired ones"; exit 1; }
-      rm -f "$NODEPS/py"
-    fi
-  else NOJQ_NOTE="with jq/python (couldn't build a jq-less PATH here)"; fi
+# (B) The merge is ONE awk path, so a machine without jq/python3 must produce the SAME file. Stubs named jq,
+# python3, python and py sit FIRST on PATH and exit 49 like the Microsoft Store redirector: were the merge still
+# to reach for either tool it would get a failing one. No symlink farm, so this leg runs on Windows Git-Bash too.
+N="$WORK/selfheal-nojq"; mk_stale_install "$N"
+STUBS="$WORK/store-stubs"; rm -rf "$STUBS"; mkdir -p "$STUBS"
+for _t in jq python3 python py; do printf '#!/bin/sh\necho "Python was not found" >&2\nexit 49\n' > "$STUBS/$_t"; chmod +x "$STUBS/$_t"; done
+_L="$(_slog)"; ( cd "$N" && PATH="$STUBS:$PATH" bash adopt.sh --here </dev/null ) >"$_L" 2>&1 || _evidence "adopt.sh in $N" "$_L" $?
+cmp -s "$U/settings.first" "$N/.claude/settings.json" \
+  || { echo "FAIL: with jq/python3 failing, the settings merge produced a different file:"; diff "$U/settings.first" "$N/.claude/settings.json" | head -20; exit 1; }
+# (E) A project that grew its own settings: a foreign hook in a kit event, a foreign event, a stale copy of a kit
+# hook, extra rules in all three permission arrays, and keys the kit does not ship. Each must land where the old
+# jq merge put it — asserted by name here, and against that jq program itself where jq exists.
+R="$WORK/selfheal-rich"; mk_stale_install "$R" '{
+  "model": "opus", "env": { "A": "1", "B": "say \"hi\" \\ ç" }, "skillListingBudgetFraction": 0.5,
+  "permissions": { "allow": [ "Bash", "WebFetch(domain:example.com)" ], "ask": [ "Bash(git push:*)", "Bash(terraform apply:*)" ],
+    "deny": [ "Read(.env)", "Read(secrets/**)" ], "defaultMode": "acceptEdits" },
+  "hooks": {
+    "PreToolUse": [ { "matcher": "Bash", "hooks": [ { "type": "command", "command": "my-own-check.sh", "timeout": 5 } ] },
+                    { "matcher": "Bash|PowerShell", "hooks": [ { "type": "command", "command": "bash", "args": [ "old/.claude/hooks/guard-bash.sh" ] } ] } ],
+    "Notification": [ { "hooks": [ { "type": "command", "command": "notify-send hi" } ] } ]
+  }
+}'
+
+_L="$(_slog)"; ( cd "$R" && PATH="$STUBS:$PATH" bash adopt.sh --here </dev/null ) >"$_L" 2>&1 || _evidence "adopt.sh in $R" "$_L" $?
+for _k in '"my-own-check.sh"' '"notify-send hi"' '"model": "opus"' '"defaultMode": "acceptEdits"' '"Read(secrets/**)"' \
+          '"WebFetch(domain:example.com)"' '"Bash(terraform apply:*)"' '"B": "say \"hi\" \\ ç"' '"skillListingBudgetFraction": 0.5' 'SessionStart'; do
+  grep -qF "$_k" "$R/.claude/settings.json" || { echo "FAIL: the merge lost the project's $_k"; exit 1; }; done
+! grep -qF 'old/.claude/hooks/guard-bash.sh' "$R/.claude/settings.json" || { echo "FAIL: a stale kit hook survived the refresh"; exit 1; }
+! grep -qF '"Bash(git push:*)"' "$R/.claude/settings.json"              || { echo "FAIL: a retired ask rule survived the merge"; exit 1; }
+[ "$(grep -cF '"Read(.env)"' "$R/.claude/settings.json")" = 1 ]           || { echo "FAIL: a rule both sides carry was not deduplicated"; exit 1; }
+# Parity with the program the awk merge replaced. It lives here only, as the oracle; the product never runs it.
+# Compared after `jq -S .`, so key order is out and array order stays in. Needs a jq that RUNS (not a stub).
+JQ_ORACLE='
+def ddedup: reduce .[] as $x ([]; if any(.[]; .==$x) then . else .+[$x] end);
+def dm(a;b): reduce (b|keys_unsorted[]) as $k (a;
+  if (.[$k]|type)=="object" and (b[$k]|type)=="object" then .[$k]=dm(.[$k];b[$k])
+  elif (.[$k]|type)=="array" and (b[$k]|type)=="array" then .[$k]=((.[$k]+b[$k])|ddedup)
+  else .[$k]=b[$k] end);
+def is_kit: ((.hooks // []) | map((((.command // "") + " " + ((.args // []) | join(" "))) | contains(".claude/hooks/"))) | any);
+def merge_hooks(kh;ph):
+  (((kh|keys_unsorted)+(ph|keys_unsorted))|unique) as $e
+  | reduce $e[] as $k ({}; .[$k]=((kh[$k] // [])+((ph[$k] // [])|map(select(is_kit|not)))));
+def retired: ["Bash(git add:*)","Bash(git commit:*)","Bash(git push:*)","Bash(git checkout -b:*)"];
+def drop_retired: if (.permissions.ask|type)=="array" then .permissions.ask -= retired else . end;
+(dm($k[0]; $p[0]) | drop_retired) | .hooks=merge_hooks(($k[0].hooks // {}); ($p[0].hooks // {}))'
+if printf '{}' | jq -e . >/dev/null 2>&1; then
+  # `|`, not `:`, between the two paths: a Windows temp dir is `D:\a\_temp`, so a colon split handed jq "D" —
+  # measured on windows-latest ("Could not open D:"), where jq exists and this oracle actually runs.
+  for _c in "$U/settings.stale|$U/settings.first" "$R/settings.stale|$R/.claude/settings.json"; do
+    _in="${_c%%|*}"; _out="${_c#*|}"
+    _want="$(jq -n --slurpfile p "$_in" --slurpfile k claude-starter/settings.json "$JQ_ORACLE" | jq -S .)"
+    [ -n "$_want" ] && [ "$_want" = "$(jq -S . "$_out")" ] \
+      || { echo "FAIL: the awk merge disagrees with the jq oracle on $_in:"; diff <(printf '%s\n' "$_want") <(jq -S . "$_out") | head -20; exit 1; }
+  done
+  PARITY_NOTE="awk merge == jq oracle on 2 fixtures"
 else
-  NOJQ_NOTE="with jq/python (no-jq PATH-strip needs POSIX symlinks — that leg runs on Linux/macOS)"
+  PARITY_NOTE="jq-oracle parity SKIPPED (no working jq here; it runs on the CI runners)"
+  echo "[adopt-selfheal] SKIP: jq-oracle parity — no working jq on this machine"
 fi
-rm -f "$SYMPROBE"
+# (F) Invalid JSON is refused and left byte-for-byte as it was, and HANDOVER must not claim a merge.
+I="$WORK/selfheal-invalid"; mk_stale_install "$I" '{ "permissions": { "ask": [ "Bash(terraform apply:*)" ] '
+IOUT="$( cd "$I" && PATH="$STUBS:$PATH" bash adopt.sh --here </dev/null 2>&1 )"
+cmp -s "$I/settings.stale" "$I/.claude/settings.json" || { echo "FAIL: an invalid settings.json was overwritten"; exit 1; }
+case "$IOUT" in *"INVALID JSON -> merge ABORT"*) ;; *) echo "FAIL: an invalid settings.json was not reported as such"; exit 1 ;; esac
+grep -q 'settings.json: NOT merged' "$I/docs/HANDOVER.md" 2>/dev/null || { echo "FAIL: HANDOVER claims a merge that did not run"; exit 1; }
 # (C) FIRST adopt (no kit present) · non-interactive · NO --yes -> declines (a brownfield change still needs consent)
 F="$WORK/firstadopt"; rm -rf "$F"; mkdir -p "$F"
 cp adopt.sh "$F/"; cp -R claude-starter "$F/"; cp VERSION "$F/"; printf '{"name":"x"}' > "$F/package.json"
 ( cd "$F" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
 _L="$(_slog)"; ( cd "$F" && bash adopt.sh --here </dev/null ) >"$_L" 2>&1 || _evidence "adopt.sh in $F" "$_L" $?
 [ ! -f "$F/.claude/DISCIPLINE.md" ]                     || { echo "FAIL: first adopt must NOT apply non-interactively without --yes"; exit 1; }
-echo "[adopt-selfheal] update self-heals off a TTY ($NOJQ_NOTE) · retired §4.4 ask rules dropped, own rules kept · backup kept · CLAUDE.md preserved · first adopt still needs --yes"
+echo "[adopt-selfheal] update self-heals off a TTY, same file with jq/python failing · $PARITY_NOTE · retired §4.4 ask rules dropped, own rules and hooks kept · invalid JSON refused · CLAUDE.md preserved · first adopt still needs --yes"
 
 # (D) TTY + --yes must NOT hang — the /update-csk regression. adopt.sh once tested `-t 0` BEFORE --yes, so an
 # --yes run that inherited a TTY (Claude Code drives commands under a pty on Windows) blocked on a prompt. Every
@@ -774,5 +798,61 @@ _L="$(_slog)"; ( cd "$W17" && printf 'yes\n' | bash start.sh --generic --shared 
 [ "$(wc -l < "$W17/.gitattributes" | tr -d ' ')" = 1 ] \
   || { echo "FAIL: an existing eol rule was not recognised; the installer appended redundant pins"; exit 1; }
 echo "[wizard] an existing eol rule is recognised, whatever its spelling, and nothing is appended"
+
+# 18 · A Turkish install prints no English sentence. Two detectors, because each is blind where the other sees:
+#      (a) BY NAME: every string that reaches the translator (`_mt`) with no Turkish row is appended to
+#          CSK_I18N_MISS. The first version of this case grepped English function words only, and review showed
+#          50 of 114 strings contain none ("Scope", "Installing:", "Security gates armed on every install:") —
+#          four deleted rows printed English and the case still said 0. A miss is now caught whatever its words.
+#      (b) BY WORDS, for a line that never goes through the translator at all (a raw echo). Double-quoted text is
+#          stripped first: the Windows long-path warning QUOTES the .NET error in English on purpose.
+#      Both backend paths run, because the DevArchitecture block only prints on one; adopt runs fresh + refresh.
+#      CALIBRATED in-line: the miss mechanism must record a key it has no row for, and the English run must hit
+#      the word list — otherwise a detector is broken, not the product.
+_en_words(){ sed 's/"[^"]*"//g' "$1" | grep -cwE 'the|and|is|are|to|of|with|will|your|this|not|be|has|was|for' || true; }
+_MISS="$WORK/i18n-miss.txt"; : > "$_MISS"
+_cal="$(CSK_I18N_MISS="$_MISS" bash -c "$(sed -n '/^_mt() {/,/^}/p' start.sh)"'
+  CSK_LANG=tr; _mt "zz-calibration-key-with-no-row"' 2>&1)"
+grep -qx 'zz-calibration-key-with-no-row' "$_MISS" \
+  || { echo "FAIL: FIXTURE — _mt did not record a key with no row (${_cal:-no output}); the miss detector is dead"; exit 1; }
+: > "$_MISS"
+for _shape in "dotnet|evet\nhayır\n" "generic|evet\n"; do
+  _stk="${_shape%%|*}"; _inp="${_shape#*|}"
+  for _lg in tr en; do
+    W18="$(wiz "lang-$_stk-$_lg")"
+    _L="$(_slog)"; ( cd "$W18" && printf "$_inp" | CSK_I18N_MISS="$_MISS" NO_COLOR=1 bash start.sh "--$_stk" --lang "$_lg" ) >"$_L" 2>&1 \
+      || _evidence "start.sh --lang $_lg in $W18" "$_L" $?
+    cp "$_L" "$W18/out-$_lg.txt"
+  done
+  _n_en="$(_en_words "$W18/out-en.txt")"; W18tr="$WORK/wiz-lang-$_stk-tr"
+  [ "$_n_en" -gt 0 ] || { echo "FAIL: FIXTURE — the English $_stk run matched 0 function words; the detector is broken, not the product"; exit 1; }
+  [ -d "$W18tr/.claude" ] || { echo "FAIL: the Turkish $_stk install did not complete"; exit 1; }
+  _n_tr="$(_en_words "$W18tr/out-tr.txt")"
+  [ "$_n_tr" = 0 ] || { echo "FAIL: --lang tr ($_stk) printed $_n_tr English line(s):" >&2
+                        sed 's/"[^"]*"//g' "$W18tr/out-tr.txt" | grep -wE 'the|and|is|are|to|of|with|will|your|this|not|be|has|was|for' | sed 's/^/    | /' >&2; exit 1; }
+done
+# ...and adopt.sh, twice per language: the first adoption and the refresh print different blocks.
+for _lg in tr en; do
+  W18a="$WORK/adopt-lang-$_lg"; rm -rf "$W18a"; mkdir -p "$W18a"
+  ( cd "$W18a" && git init -q . && git config user.email t@example.invalid && git config user.name t \
+      && printf '{"name":"x"}\n' > package.json && git add -A && git commit -qm init >/dev/null 2>&1 )
+  : > "$W18a/out.txt"
+  for _pass in 1 2; do
+    cp adopt.sh VERSION "$W18a/"; cp -R claude-starter "$W18a/"
+    _L="$(_slog)"; ( cd "$W18a" && CSK_I18N_MISS="$_MISS" NO_COLOR=1 bash adopt.sh --lang "$_lg" --yes </dev/null ) >"$_L" 2>&1 \
+      || _evidence "adopt.sh --lang $_lg (pass $_pass) in $W18a" "$_L" $?
+    cat "$_L" >> "$W18a/out.txt"
+  done
+done
+_n_en="$(_en_words "$WORK/adopt-lang-en/out.txt")"
+[ "$_n_en" -gt 0 ] || { echo "FAIL: FIXTURE — the English adopt run matched 0 function words; the detector is broken, not the product"; exit 1; }
+_n_tr="$(_en_words "$WORK/adopt-lang-tr/out.txt")"
+[ "$_n_tr" = 0 ] || { echo "FAIL: adopt.sh --lang tr printed $_n_tr English line(s):" >&2
+                      sed 's/"[^"]*"//g' "$WORK/adopt-lang-tr/out.txt" | grep -wE 'the|and|is|are|to|of|with|will|your|this|not|be|has|was|for' | sed 's/^/    | /' >&2; exit 1; }
+if [ -s "$_MISS" ]; then
+  echo "FAIL: --lang tr reached $(sort -u "$_MISS" | wc -l | tr -d ' ') string(s) with no Turkish row:" >&2
+  sort -u "$_MISS" | sed 's/^/    | /' >&2; exit 1
+fi
+echo "[wizard] --lang tr: 0 strings without a Turkish row, 0 raw English lines (start.sh x2 paths, adopt fresh+refresh)"
 
 echo "e2e: all installer rehearsals passed"

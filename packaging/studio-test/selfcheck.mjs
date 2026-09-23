@@ -20,11 +20,10 @@ import { ALLOWED_MODES } from '../../claude-starter/studio/server/lib/session.js
 import { parsePeers } from '../../claude-starter/studio/server/lib/peers.js';
 import { writeAllowed, signature } from '../../claude-starter/studio/server/index.js';
 import { prepare, decide, pending, cleanup, _internals as permInternals } from '../../claude-starter/studio/server/lib/permissions.js';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import os from 'node:os';
 import { quickReplies } from '../../claude-starter/studio/web/chat.js';
 import { installDom } from './dom-stub.mjs';
-import * as pty from '../../claude-starter/studio/server/lib/pty.js';
 import { plan as terminalPlan } from '../../claude-starter/studio/server/lib/terminal.js';
 import { gateLog, gateReport, board, sessionStats, _internals as kitInternals } from '../../claude-starter/studio/server/lib/kit-telemetry.js';
 import { parseRoster, remoteRoster } from '../../claude-starter/studio/server/lib/roster.js';
@@ -533,57 +532,34 @@ for (const [name, text, want] of qr) {
 check('emphasis is stripped from the label',
   quickReplies('Which?\n1. **Tabs**\n2. `Spaces`')[0] === 'Tabs');
 
-/* --------------------------------------------- §14 raw terminals ------
-   The one surface here the kit's gates cannot see. A command typed in a raw
-   shell never reaches a PreToolUse hook, because there is no tool call to
-   intercept. That makes "off unless asked for" a property worth pinning. */
+/* ------------------------------------------ §14 no raw shell, no python ---
+   The panel once offered raw shells behind a flag. They were the one surface the
+   kit's gates could not see — a command typed there never becomes a tool call —
+   and the only reason the panel needed python3. Shell work goes through a
+   session's Bash tool, where the gates apply. These pin that it stays that way:
+   one bash path, no python3, on every OS. They read this checkout's files and
+   run its server entry point, nothing about the machine. */
 
-process.stdout.write('\n== §14 raw terminals ==\n');
-
-check('a raw shell is refused until it is asked for',
-  pty.create({ cwd: process.cwd() }).ok === false && pty.isEnabled() === false);
-check('the refusal names the flag rather than failing vaguely',
-  /--enable-pty/.test(pty.create({ cwd: process.cwd() }).reason ?? ''));
-
-const ptySrc = read(path.join(STUDIO, 'server', 'lib', 'pty.js')) ?? '';
-check('Windows is told it cannot, rather than left to fail',
-  /Unix-only/.test(ptySrc) && /win32/.test(ptySrc));
-check('the bridge is not named pty.py, which would shadow the module it imports',
-  fs.existsSync(path.join(STUDIO, 'server', 'lib', 'pty-bridge.py')) &&
-  !fs.existsSync(path.join(STUDIO, 'server', 'lib', 'pty.py')));
-// The shell scripts here are covered by verify.sh's syntax step; the python one
-// is not, so it is checked where it lives.
-//
-// A resolvable name is not a working interpreter. Windows ships a python3 stub
-// that passes `command -v`, prints "Python was not found" and exits 49 — so the
-// candidates are tried in order and the first one that actually runs is used.
-// ENOENT was the only miss handled before, which turned that stub into a loud
-// FAIL claiming the bridge does not compile, when nothing had compiled it.
+process.stdout.write('\n== §14 no raw shell, no python ==\n');
 {
-  const bridgePath = path.join(STUDIO, 'server', 'lib', 'pty-bridge.py');
-  let compiled = null;
-  for (const c of ['python3', 'python']) {
-    try {
-      execFileSync(c, ['-c', 'import ast,sys; ast.parse(open(sys.argv[1]).read())', bridgePath],
-        { stdio: 'pipe', timeout: 20000 });
-      compiled = true; break;
-    } catch (e) {
-      // Only a real parse failure is an answer; a missing or stubbed
-      // interpreter means we still have not asked anyone.
-      if (e.status === 1 && String(e.stderr ?? '').includes('SyntaxError')) { compiled = false; break; }
-    }
-  }
-  if (compiled === null) skip('the bridge compiles', 'tool', 'no working python found to parse it');
-  else check('the bridge compiles', compiled, 'pty-bridge.py has a syntax error');
-}
-check('the scrollback buffer holds bytes, not concatenated base64',
-  /Buffer\.concat/.test(ptySrc) && !/this\.buffer \+= msg\.d/.test(ptySrc));
+  const RAW_SHELL = /python3|pty-bridge|\/api\/pty|enable-pty/;
+  const files = walk(STUDIO);
+  const hits = files.filter((f) => RAW_SHELL.test(read(f) ?? ''))
+    .map((f) => path.relative(REPO, f));
+  // A scan that saw nothing proves nothing, so the count is part of the verdict.
+  check(`no studio file names python3, the pty bridge, /api/pty or --enable-pty (${files.length} files read)`,
+    files.length > 0 && hits.length === 0,
+    files.length === 0 ? 'the walk found no files — the scan is broken, not clean' : hits.join(', '));
 
-const termSrc = read(path.join(STUDIO, 'web', 'term.js')) ?? '';
-check('the terminal view says on screen that nothing guards it',
-  /No gate here/.test(termSrc));
-check('keystrokes are queued so their order survives the network',
-  /outbox/.test(termSrc) && /await fetch/.test(termSrc));
+  // Behaviour, not text: the server's own parser has to turn the flag away. An
+  // unknown argument is rejected with exit 64 and says which one, so a flag that
+  // was quietly re-accepted, or quietly ignored, both show here.
+  const r = spawnSync(process.execPath, [path.join(STUDIO, 'server', 'index.js'), '--enable-pty'],
+    { encoding: 'utf8', timeout: 20000 });
+  check('the server rejects --enable-pty as an unknown argument',
+    r.status === 64 && /unknown argument: --enable-pty/.test(r.stderr ?? ''),
+    `rc=${r.status} stderr=${JSON.stringify((r.stderr ?? '').trim().slice(0, 200))}`);
+}
 
 // Behaviour: the plan a terminal launch would run, quoted.
 process.stdout.write('\n== §15 handing a session to a real terminal ==\n');
@@ -782,7 +758,7 @@ process.stdout.write('\n== §20 browser modules load ==\n');
 
 {
   const cleanup = installDom();
-  for (const mod of ['md.js', 'canvas.js', 'chat.js', 'term.js', 'app.js']) {
+  for (const mod of ['md.js', 'canvas.js', 'chat.js', 'app.js']) {
     let err = null;
     try {
       // Cache-busted so a module is really evaluated on every run.
@@ -844,7 +820,7 @@ process.stdout.write('\n== §21 collections are declared ==\n');
 const COLLECTION_USE = /(?<![.\w$])([a-z][A-Za-z0-9_]*)\.(?:has|add|delete|clear)\(/g;
 const GLOBALS = new Set(['localStorage', 'sessionStorage', 'classList', 'dataset', 'document', 'window', 'store', 'headers', 'params', 'searchParams']);
 
-for (const mod of ['app.js', 'chat.js', 'canvas.js', 'term.js']) {
+for (const mod of ['app.js', 'chat.js', 'canvas.js']) {
   const src = read(path.join(STUDIO, 'web', mod)) ?? '';
   const used = new Set();
   let m;
@@ -969,64 +945,6 @@ check('both widths are remembered', /csk-studio-side-w/.test(appSrc2) && /csk-st
     'private mode throws on setItem; an unguarded write kills the click handler');
 }
 
-
-/* ------------------------------------- §25 the pty bridge survives garbage */
-
-// One frame that would not base64-decode killed the whole terminal, and it
-// surfaced as an exit with no code — which reads as "the shell died on its
-// own" rather than "we sent it something bad". Assert the behaviour, because
-// the fix is an except clause and a grep for one proves nothing about reach.
-{
-  const bridge = path.join(STUDIO, 'server', 'lib', 'pty-bridge.py');
-  // The platform question is asked FIRST, before any interpreter is probed. On
-  // Windows the answer cannot change, so probing there spends two process spawns
-  // to learn nothing — and on Git Bash a spawn is 62-135 ms, which is why this
-  // repo counts them rather than timing them. It can also hit the Store's python3
-  // stub, producing a misleading failure on the way to a foregone conclusion.
-  let python = null;
-  if (process.platform !== 'win32') {
-    for (const c of ['python3', 'python']) {
-      try {
-        execFileSync(c, ['-c', 'import pty'], { stdio: 'ignore', timeout: 10000 });
-        python = c; break;
-      } catch { /* try the next one; a resolvable name is not a working one */ }
-    }
-  }
-  if (process.platform === 'win32') {
-    // Python's `pty` is Unix-only — it imports tty, which imports termios. So this
-    // assertion cannot pass on Windows even with Python installed, and calling it
-    // a missing tool made it permanently red under CSK_VERIFY_STRICT. What Windows
-    // must do instead is refuse the raw shell, and §14 asserts exactly that.
-    notApplicable('the pty bridge survives an undecodable frame',
-      "python's pty module is Unix-only",
-      'the §14 pin that Windows is told it cannot, rather than left to fail');
-  } else if (!python) {
-    skip('the pty bridge survives an undecodable frame', 'tool', 'no python3 with the pty module');
-  } else {
-    const probe = [
-      'import json,subprocess,sys,time',
-      `p=subprocess.Popen([${JSON.stringify(python)},${JSON.stringify(bridge)},"/tmp","/bin/sh","30","100"],`,
-      ' stdin=subprocess.PIPE,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,text=True,bufsize=1)',
-      'time.sleep(0.5)',
-      'assert p.poll() is None, "bridge exited before the test began"',
-      'p.stdin.write(json.dumps({"t":"in","d":"!!!not-base64!!!"})+chr(10)); p.stdin.flush()',
-      'p.stdin.write(json.dumps({"t":"size","rows":"abc","cols":None})+chr(10)); p.stdin.flush()',
-      'time.sleep(0.8)',
-      'alive = p.poll() is None',
-      'p.terminate()',
-      'print("ALIVE" if alive else "DEAD")',
-    ].join('\n');
-    let verdict = '';
-    try {
-      verdict = execFileSync(python, ['-c', probe], { encoding: 'utf8', timeout: 30000 }).trim();
-    } catch (e) {
-      verdict = `ERROR ${e?.message ?? e}`;
-    }
-    check('the pty bridge survives an undecodable frame',
-      verdict === 'ALIVE',
-      `a bad frame took the terminal down instead of being dropped (got ${JSON.stringify(verdict)})`);
-  }
-}
 
 /* --------------------------------- §26 delegation reads as motion ------
    The graph was correct and inert. A viewer could see that two cards were
