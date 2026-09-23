@@ -5480,6 +5480,92 @@ if [ -n "$SGR" ] && [ -f "$SGR/.gitattributes" ] && [ -d "$SGR/packaging" ] && [
 else note "line-ending check skipped (not a git checkout of the kit)"
 fi
 
+sec "== 14b) the star line (once, on a first install) and the front page it points at =="
+# One file owns the line — its URL, both languages, and when it stays quiet — so these checks drive THAT file,
+# with CI and CSK_NO_STAR set or cleared by each case itself: a runner exports CI=true, and a check that read it
+# from the environment would pass here and assert the opposite there.
+STAR="$ROOT/eval/lib/star.sh"
+if [ -f "$STAR" ]; then
+  _SURL="$(sed -n 's/^CSK_REPO_URL="\(.*\)"$/\1/p' "$STAR" | head -1)"
+  _so="$(env -u CI -u CSK_NO_STAR CSK_LANG=en bash "$STAR" 2>&1)"
+  [ -n "$_SURL" ] && [ "$(printf '%s\n' "$_so" | grep -c .)" = 1 ] && case "$_so" in "⭐ "*"$_SURL") true ;; *) false ;; esac \
+    && pass "star line: exactly one line, ending in the one URL ($_SURL)" \
+    || fail "star line: expected one '⭐ …$_SURL' line, got: '${_so:-<nothing>}'"
+  case "$(env -u CI -u CSK_NO_STAR CSK_LANG=tr bash "$STAR" 2>&1)" in
+    *"yıldız"*"$_SURL") pass "star line speaks Turkish under CSK_LANG=tr" ;;
+    *) fail "star line under CSK_LANG=tr is not the Turkish row" ;; esac
+  _q=""
+  for _env in "CSK_NO_STAR=1" "CSK_NO_STAR=yes" "CI=1" "CI=true" "CI="; do
+    [ -z "$(env -u CI -u CSK_NO_STAR "$_env" bash "$STAR" 2>&1)" ] || _q="$_q $_env"
+  done
+  [ -z "$_q" ] && pass "star line is silent under CSK_NO_STAR=1/yes and whenever CI is defined (1, true, empty)" \
+               || fail "star line printed under:$_q"
+  [ -n "$(env -u CI CSK_NO_STAR=0 bash "$STAR" 2>&1)" ] && pass "CSK_NO_STAR=0 does not silence it (0 means no)" \
+    || fail "CSK_NO_STAR=0 silenced the star line"
+  # --once: ONCE PER KIT VERSION, via a marker that holds the version it was shown for — written only when the
+  # line actually printed. Outside git the marker is .claude/star-shown; inside git it is in the git dir, where no
+  # `git add .claude` can commit it (review found the first version landing in a tracked .claude/).
+  _SP="$(mktemp -d)"; mkdir -p "$_SP/.claude"; printf '9.9.0\n' > "$_SP/.claude/VERSION"
+  _o1="$(env -u CI -u CSK_NO_STAR bash "$STAR" --once "$_SP" 2>&1)"
+  _o2="$(env -u CI -u CSK_NO_STAR bash "$STAR" --once "$_SP" 2>&1)"
+  printf '9.9.1\n' > "$_SP/.claude/VERSION"
+  _o3="$(env -u CI -u CSK_NO_STAR bash "$STAR" --once "$_SP" 2>&1)"
+  _mv="$(head -1 "$_SP/.claude/star-shown" 2>/dev/null)"
+  printf '9.9.2\n' > "$_SP/.claude/VERSION"
+  _o4="$(env -u CSK_NO_STAR CI=true bash "$STAR" --once "$_SP" 2>&1)"; _mv4="$(head -1 "$_SP/.claude/star-shown" 2>/dev/null)"
+  [ -n "$_o1" ] && [ -z "$_o2" ] && [ -n "$_o3" ] && [ "$_mv" = 9.9.1 ] && [ -z "$_o4" ] && [ "$_mv4" = 9.9.1 ] \
+    && pass "--once: once per version (shown · same version silent · new version shown), marker holds the version; a silenced run writes nothing" \
+    || fail "--once broken: v1='${_o1:+shown}' v1-again='${_o2:+shown}' v2='${_o3:+shown}' marker='$_mv' silenced='${_o4:+shown}' marker-after='$_mv4'"
+  rm -rf "$_SP"
+  if command -v git >/dev/null 2>&1; then
+    _SG="$(mktemp -d)"; ( cd "$_SG" && git init -q . ) >/dev/null 2>&1; mkdir -p "$_SG/.claude"; printf '9.9.0\n' > "$_SG/.claude/VERSION"
+    env -u CI -u CSK_NO_STAR bash "$STAR" --once "$_SG" >/dev/null 2>&1
+    _gm="$(cd "$_SG" && git rev-parse --git-path crewforth-star 2>/dev/null)"
+    [ -f "$_SG/$_gm" ] && [ ! -e "$_SG/.claude/star-shown" ] && ! (cd "$_SG" && git status --porcelain --untracked-files=all --ignored 2>/dev/null) | grep -q 'star' \
+      && pass "inside git the marker lives in the git dir ($_gm) and git status cannot see it" \
+      || fail "inside git the marker is not in the git dir (git-path '$_gm'), or it shows up in git status"
+    rm -rf "$_SG"
+  else
+    skip tool "git-dir marker check skipped (no git)"
+  fi
+  # Single source: the callers name the FILE, never the URL. A second copy of the URL is how the rename in a
+  # later phase ends up changing two of three places.
+  _callers="$ROOT/eval/doctor.sh"; [ "$IS_KIT" = 1 ] && _callers="$_callers $ROOT/../start.sh $ROOT/../adopt.sh"
+  _dup=""; _nocall=""
+  for _c in $_callers; do
+    [ -f "$_c" ] || continue
+    grep -qF "$_SURL" "$_c" && _dup="$_dup ${_c##*/}"
+    grep -q 'eval/lib/star\.sh\|lib/star\.sh' "$_c" || _nocall="$_nocall ${_c##*/}"
+  done
+  [ -z "$_dup$_nocall" ] && pass "the repo URL lives only in lib/star.sh; $(printf '%s\n' $_callers | grep -c .) caller(s) call it" \
+    || fail "star single source broken — URL copied into:${_dup:- none} · not calling star.sh:${_nocall:- none}"
+else
+  skip scope "star line checks skipped (this project has no eval/lib/star.sh)" 7
+fi
+# The front page. Kit repo only: an installed project has no README of ours.
+if [ "$IS_KIT" = 1 ]; then
+  KR="$(cd "$ROOT/.." && pwd)"
+  _fp=""
+  for _rf in README.md README.tr.md; do
+    _top="$(awk '/^---$/{exit} {print}' "$KR/$_rf" 2>/dev/null)"
+    case "$_top" in *"npx crewforth"*) ;; *) _fp="$_fp $_rf(no npx crewforth)" ;; esac
+    case "$_top" in *"studio-flow.gif"*) ;; *) _fp="$_fp $_rf(no studio-flow.gif)" ;; esac
+  done
+  case "$(awk '/^## /{exit} {print}' "$KR/README.npm.md" 2>/dev/null)" in *"npx crewforth"*) ;; *) _fp="$_fp README.npm.md(no npx crewforth)" ;; esac
+  [ -z "$_fp" ] && pass "all three READMEs open with npx crewforth, and both GitHub READMEs show the panel GIF above the first rule" \
+                || fail "front page is missing its install line or GIF:$_fp"
+  # Every assets/ file a README points at exists — src=, srcset= and the npm README's absolute raw URL alike.
+  # The count is printed: "no broken image" means nothing unless it says how many references it looked at.
+  _refs="$(grep -ohE 'assets/[A-Za-z0-9._/-]+\.(svg|png|gif|jpg)' "$KR/README.md" "$KR/README.tr.md" "$KR/README.npm.md" 2>/dev/null | sort -u)"
+  _nref="$(printf '%s\n' "$_refs" | grep -c .)"; _miss=""
+  for _a in $_refs; do [ -f "$KR/$_a" ] || _miss="$_miss $_a"; done
+  if [ "$_nref" -lt 5 ]; then fail "README asset scan found only $_nref reference(s) — the extractor is broken, not the READMEs"
+  elif [ -z "$_miss" ]; then pass "every README asset reference resolves ($_nref of $_nref distinct files exist)"
+  else fail "README points at missing assets:$_miss"; fi
+else
+  skip scope "front-page checks skipped (installed project — the READMEs live in the kit repo)" 2
+fi
+
 sec "== 15) evals: the parallel-audit metric, because a rule nobody can measure is not a rule =="
 # The paid A/B harness under evals/ is deliberately outside every gate — it spends real tokens. Its TRANSCRIPT
 # PARSER is not: `eval_trace_metrics` is a pure function over a JSONL file, so its correctness costs nothing

@@ -1,6 +1,11 @@
-# Claude Starter Kit
+<p align="center"><img src="https://raw.githubusercontent.com/byerlikaya/claude-starter-kit/main/assets/logo.svg" alt="Crewforth" width="420"></p>
 
-**Not one assistant — an engineering team that actually runs.** 12 specialist agents, 40 skills, and a process that plans, builds, audits and reviews a change before it closes. On a shared repo, taking a work item is an atomic git claim, so two people cannot start the same one.
+**Your engineering crew for Claude Code.** 12 specialists plan, build, review and ship your change — in any stack — and the rules that matter are enforced, not remembered.
+
+```bash
+npx crewforth          # new project
+npx crewforth adopt    # existing repo — handed over on a branch, your main untouched
+```
 
 [![npm](https://img.shields.io/npm/v/@byerlikaya/claude-starter-kit?style=flat-square)](https://www.npmjs.com/package/@byerlikaya/claude-starter-kit)
 [![License](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)](https://github.com/byerlikaya/claude-starter-kit/blob/main/LICENSE)
@@ -8,11 +13,13 @@
 ## Install
 
 ```bash
-npx @byerlikaya/claude-starter-kit          # new project — setup wizard
-npx @byerlikaya/claude-starter-kit adopt    # existing project — handover on a branch
-npx @byerlikaya/claude-starter-kit update   # refresh an installed kit
-npx @byerlikaya/claude-starter-kit --version # print the kit version
+npx crewforth              # new project — setup wizard
+npx crewforth adopt        # existing project — handover on a branch
+npx crewforth update       # refresh an installed kit
+npx crewforth --version    # print the kit version
 ```
+
+The previous command, `npx @byerlikaya/claude-starter-kit`, still works and installs the same kit.
 
 Then open Claude Code and run `/doctor-csk` to confirm the install is wired.
 

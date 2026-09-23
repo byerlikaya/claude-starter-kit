@@ -21,6 +21,8 @@ Verify the kit is actually *active* in this project (not just present on disk):
    a devcontainer or an MCP server is the user's call.
 5. Summarise: **healthy**, or the precise fixes applied/needed, plus the readiness score. If it's not a git repo,
    note that the commit-time gates need `git init` + `git config core.hooksPath .claude/hooks`.
+   If the output contains a line starting with ⭐, pass it to the user verbatim as the LAST line of your summary —
+   it prints once per kit version, and it is meant for the user, not for you.
 
 If `.claude/eval/doctor.sh` doesn't exist, this is not a full (start.sh / adopt.sh) install — the kit is likely
 running as a **plugin**, whose hooks are managed by Claude Code itself; there's nothing for the doctor to check.

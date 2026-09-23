@@ -1,22 +1,37 @@
 <div align="center">
 
-<img src="assets/logo.svg" alt="Claude Starter Kit" width="460">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/logo.svg">
+  <source media="(prefers-color-scheme: light)" srcset="assets/logo-light.svg">
+  <img src="assets/logo.svg" alt="Crewforth" width="420">
+</picture>
 
-**Not one assistant. An engineering team that actually runs.**
+**Your engineering crew for Claude Code.**
 
-12 specialist agents plan the work, build it, put it through security and test review, then close it
+12 specialists plan, build, review and ship your change — in any stack —<br>
+and the rules that matter are enforced, not remembered.
+
+</div>
+
+```bash
+npx crewforth          # new project
+npx crewforth adopt    # existing repo — handed over on a branch, your main untouched
+```
+
+<div align="center">
 
 ![Version](https://img.shields.io/badge/version-2.13.0-2563eb?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)
 ![Agents](https://img.shields.io/badge/agents-12-f59e0b?style=flat-square)
 ![Skills](https://img.shields.io/badge/skills-40-f59e0b?style=flat-square)
-![Claude Code](https://img.shields.io/badge/Claude_Code-agentic_kit-8b5cf6?style=flat-square)
 
 🇬🇧 English · [🇹🇷 Türkçe](README.tr.md)
 
 <img src="assets/studio-flow.gif" alt="A delegation assembling itself in the panel: agents appear as they spawn, dashes travel from the session down each live branch, a workflow run fills with its members, and one agent fails" width="880">
 
 <sub>Twelve agents on one canvas as they spawn — kit agents in their own colours, Claude's built-ins in theirs.<br>The panel is in this repository; see <a href="#seeing-it-run">Seeing it run</a>.</sub>
+
+<!-- PROOF: one line of evidence goes here after the Phase 3 measurement. Empty until then — no number is published unmeasured. -->
 
 </div>
 
@@ -37,9 +52,11 @@ In Claude Code every job happens in the same place: you ask, the model writes. C
 ## Quick start
 
 ```bash
-npx @byerlikaya/claude-starter-kit          # new project — setup wizard
-npx @byerlikaya/claude-starter-kit adopt    # existing project — handover on a branch
+npx crewforth          # new project — setup wizard
+npx crewforth adopt    # existing project — handover on a branch
 ```
+
+<sub>The previous command, `npx @byerlikaya/claude-starter-kit`, still works and installs the same kit.</sub>
 
 Then open Claude Code and run **`/doctor-csk`**: it confirms the install is wired and scores the project's readiness. Homebrew, a release tarball and a plugin edition are in [Install](#install).
 

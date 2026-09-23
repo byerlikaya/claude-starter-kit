@@ -29,6 +29,19 @@ versioning follows [SemVer](https://semver.org/).
 - **`adopt.sh` no longer asks about .NET** on a fresh adopt, and no longer deletes a pattern skill on a generic stack.
 
 
+### Added — the Crewforth front page and a one-time star line
+
+- **New brand set.** `assets/logo.svg`, `logo-light.svg`, `icon.svg` and `mark.svg` are the Crewforth mark (›››);
+  `social-preview.png/.svg` and `icon-512/180/32.png` are new; the unused `logo.png` is removed. The generated
+  diagrams and the Studio panel draw the same mark.
+- **README front page** (English, Turkish, npm): the promise, `npx crewforth` / `npx crewforth adopt`, four badges
+  and the panel GIF. `npx @byerlikaya/claude-starter-kit` still works.
+- **A star line, once per kit version.** The install, an update to a new version, or a healthy `doctor` —
+  whichever comes first — prints one line asking for a star; a marker in the git dir (never under `.claude/`, so
+  it is never committed) records the version, and nothing repeats it until the version changes. `/update-csk` and
+  `/doctor-csk` pass the line through to you; no hook or session start prints it. `CSK_NO_STAR=1`, or any defined
+  `CI`, silences it, and a silenced run leaves no marker.
+
 ## [2.13.0] — 2026-09-23
 
 ### Before you update — five things that change behaviour

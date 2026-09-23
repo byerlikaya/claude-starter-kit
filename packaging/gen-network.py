@@ -64,16 +64,17 @@ def pol(cx,cy,r,deg):
 def pt(p): return f"{p[0]:.1f},{p[1]:.1f}"
 
 # The brand mark — ONE copy in this file, drawn wherever it is needed. assets/icon.svg is the source of truth;
-# packaging/check-gh-pages.sh reads the rect literals below and compares them against it and against the site's
+# packaging/check-gh-pages.sh reads the rect/polyline literals below and compares them against it and the site's
 # inlined favicon. Three hand-kept copies already drift, which is why this is a function and not a second paste:
 # every place the mark appears in a generated diagram renders these exact rects.
 MARK_BOX = 200                                   # the mark's own coordinate system
 def mark(tx, ty, scale):
     P=[f'<g transform="translate({tx:.1f},{ty:.1f}) scale({scale})" aria-hidden="true">']
-    P.append('<rect width="200" height="200" rx="46" fill="#0B1020"/><g transform="rotate(20 100 100)">')
-    P.append('<rect x="58" y="38" width="22" height="124" rx="11" fill="#E5E7FB"/>')
-    P.append('<rect x="88" y="38" width="22" height="124" rx="11" fill="#B9BEF9"/>')
-    P.append('<rect x="118" y="32" width="26" height="136" rx="13" fill="#A78BFA"/></g></g>')
+    P.append('<rect width="200" height="200" rx="46" fill="#0B1020"/>')
+    P.append('<polyline points="44,58 86,100 44,142" stroke="#E5E7FB" stroke-width="21" stroke-linecap="round" stroke-linejoin="round" fill="none"/>')
+    P.append('<polyline points="80,58 122,100 80,142" stroke="#B9BEF9" stroke-width="21" stroke-linecap="round" stroke-linejoin="round" fill="none"/>')
+    P.append('<polyline points="116,58 158,100 116,142" stroke="#A78BFA" stroke-width="24" stroke-linecap="round" stroke-linejoin="round" fill="none"/>')
+    P.append('</g>')
     return "".join(P)
 
 # Wordmark: the icon sits to the LEFT of the title, and the pair is centred as one block. The text width is
@@ -193,7 +194,7 @@ def build(subtitle):
         P.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="35" fill="none" stroke="#ffffff" stroke-opacity="0.85" stroke-width="2"/>')
         P.append(f'<text x="{x:.1f}" y="{y+4.5:.1f}" text-anchor="middle" font-size="12.5" font-weight="700" fill="#0b1220">{SHORT[nm]}</text>')
         P.append('</g>')
-    # center: real logo. SOURCE OF TRUTH IS assets/icon.svg — the three rects below are a hand-copy of it, and
+    # center: real logo. SOURCE OF TRUTH IS assets/icon.svg — mark() is a hand-copy of it, and
     # the gh-pages favicon (an inline data: URI in index.html) is a second hand-copy of the same artwork. None
     # of the three can see the others, so `packaging/check-gh-pages.sh` compares them; if you change the mark,
     # change assets/icon.svg first and let that gate tell you what else drifted.
