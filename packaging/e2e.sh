@@ -309,11 +309,19 @@ echo "[legacy-dotnet-adopted] vendor line left commented (was not armed before) 
 # path under the CRLF name) — built by awk into a file, not through `$( )`, which eats a trailing CR on Git Bash.
 X="$WORK/legacy-dotnet-crlf"; legacy_dotnet_install "$X" cqrs-aop-module
 awk '{ printf "%s\r\n", $0 }' "$X/.claude/hooks/trace-blocklist.txt" > "$X/bl.crlf" && mv "$X/bl.crlf" "$X/.claude/hooks/trace-blocklist.txt"
-XCR="$(tr -dc '\r' < "$X/.claude/hooks/trace-blocklist.txt" | wc -c | tr -d ' ')"
-[ "${XCR:-0}" -gt 0 ] && grep -qxE $'DevArchitecture\r' "$X/.claude/hooks/trace-blocklist.txt" \
-  || { echo "FAIL: FIXTURE — the CRLF blocklist has ${XCR:-0} CRs or no armed CRLF line; the case would test the LF path"; exit 1; }
+# Counted, not grepped: Git Bash's grep drops a trailing CR before matching, so `grep -x $'…\r'` is never true
+# there and `grep -x …` cannot tell CRLF from LF (measured on stock Windows — the first version of this guard
+# failed there on a correct fixture). "Every line ends CR" = CR count equals line count; the armed line is found
+# with the same `\r?` the product uses.
+XBL="$X/.claude/hooks/trace-blocklist.txt"
+XCR="$(tr -dc '\r' < "$XBL" | wc -c | tr -d ' ')"; XNL="$(wc -l < "$XBL" | tr -d ' ')"
+[ "${XCR:-0}" -gt 0 ] && [ "$XCR" = "$XNL" ] && grep -qxE $'DevArchitecture\r?' "$XBL" \
+  || { echo "FAIL: FIXTURE — the blocklist has ${XCR:-0} CRs over ${XNL:-0} lines, or no armed line; the case would not test the CRLF path"; exit 1; }
 run_adopt "$X" --here --yes
-grep -qx 'DevArchitecture' "$X/.claude/hooks/trace-blocklist.txt" || die "an armed CRLF vendor line was dropped by the update" legacy-dotnet-crlf "$X"
+grep -qx 'DevArchitecture' "$XBL" || die "an armed CRLF vendor line was dropped by the update" legacy-dotnet-crlf "$X"
+# ...and it is LF now. On Git Bash the grep above passes for a line that still ends CR, so only a count can say so.
+XCR2="$(tr -dc '\r' < "$XBL" | wc -c | tr -d ' ')"
+[ "$XCR2" = 0 ] || die "the updated blocklist still carries $XCR2 CRs" legacy-dotnet-crlf "$X"
 echo "[legacy-dotnet-crlf] armed line read through CRLF ($XCR CRs) stays armed after the update"
 
 # ---- the devarch-module -> cqrs-aop-module RENAME is kept inside the 3.0 migration ----
