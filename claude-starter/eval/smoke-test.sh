@@ -3927,6 +3927,12 @@ if ( cd "$BSD" && git init -q . ) >/dev/null 2>&1; then
   want='{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"#1 \"Fix\tlogin\" C:\\app\r\u0001 ok\nsecond\nBoard state above is a cached snapshot; /board-csk sync refreshes it."}}'
   [ "$o" = "$want" ] && pass "board-sync escapes tab, CR, control bytes, quote and backslash exactly as jq does (no jq needed)" \
                      || fail "board-sync JSON differs from jq's for a cache with a tab/CR/control byte — got: ${o:-<silence>}"
+  # A CRLF cache: the line-ending CR is dropped on every OS (MSYS gawk drops it on read, BSD awk does not — the
+  # hook strips it itself so both emit these bytes); a CR inside a line is still escaped.
+  printf 'one\r\nmid\rcr\r\n' > "$BSD/.git/csk-board-cache"
+  o="$(printf '{}' | CLAUDE_PROJECT_DIR="$BSD" bash "$HOOKS/board-sync.sh" 2>/dev/null)"
+  case "$o" in *'"additionalContext":"one\nmid\rcr\nBoard state'*) pass "board-sync drops a CRLF line-ending CR on every OS and keeps a mid-line CR" ;;
+    *) fail "board-sync CRLF handling differs by platform — got: ${o:-<silence>}" ;; esac
 else
   fail "FIXTURE: git init failed in $BSD — the board-sync escaping case measured nothing"
 fi

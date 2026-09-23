@@ -79,12 +79,14 @@ Board state above is a cached snapshot; /board-csk sync refreshes it."
 # the quote, the backslash and the newline, so a tab in an item title produced JSON the CLI cannot parse
 # (measured: jq rc=5) and the board silently vanished from the session — on exactly the no-jq machine this
 # branch existed for. The trailing newline on the printf closes the last record, so a value ending in a newline
-# keeps it. One awk, no subshell per character.
+# keeps it. One awk, no subshell per character. A CR that ENDS a line is dropped on purpose: it is a CRLF line
+# ending, not content, and MSYS gawk already drops it on read (text mode) while BSD awk keeps it — measured on
+# Windows. Stripping it here makes every OS emit the same bytes; a CR inside a line is still escaped as \r.
 ESC="$(printf '%s\n' "$MSG" | LC_ALL=C awk 'BEGIN { ORS = ""
     for (i = 1; i < 32; i++) ctl[i] = sprintf("%c", i)
     nm[8] = "\\b"; nm[9] = "\\t"; nm[12] = "\\f"; nm[13] = "\\r" }
   NR > 1 { print "\\n" }
-  { s = $0
+  { s = $0; sub(/\r$/, "", s)
     gsub(/\\/, "\\\\", s); gsub(/"/, "\\\"", s)
     for (i = 1; i < 32; i++) {
       if (i == 10 || !index(s, ctl[i])) continue
