@@ -177,16 +177,11 @@ print(json.dumps({"tool_name":"Bash","permission_mode":"default","tool_input":{"
 # ---- what the gates are allowed to see, and whose fault a failure is -----------------------------------------
 # Two questions the suite had been answering by DIRECTORY, which is why a real defect walked through both.
 #
-# 1) Which agent files get their own quality gated? Everything in agents/, PLUS the swap-in variants in
-#    agents-optional/ that the installer moves INTO agents/ on a generic backend. backend-expert-generic.md is as
-#    much a kit agent as any other, and it was reached by exactly one of nine checks because it sits one
-#    directory over — which is how it came to ship with no auto-delegation cue, the very defect the cue check
-#    exists to catch. NOT used by the checks that reason about the INSTALLED SET (agent count, always-on byte
-#    budget, orphan routing): a swap-in replaces its counterpart rather than adding to it, and it is routed
-#    under the name it takes once installed.
+# 1) Which agent files get their own quality gated? Everything in agents/. (Before 3.0 a swap-in variant sat in
+#    agents-optional/ and had to be listed here too — it once shipped with no auto-delegation cue because only
+#    one of nine checks reached it. There is one backend agent now, so the list is agents/ and nothing else.)
 agent_quality_files() {
   ls "$AGENTS"/*.md 2>/dev/null
-  [ "$IS_KIT" = 1 ] && ls "$ROOT/agents-optional"/*.md 2>/dev/null
   return 0
 }
 # 2) Is a component one the KIT shipped? .claude/kit-manifest.txt records exactly that (written by start.sh and
@@ -424,37 +419,33 @@ done
 [ -z "$CAPFAIL" ] && pass "every skill's declared tool requirement is met by the agents that apply it" \
                   || fail "an agent applies a skill it cannot obey:$CAPFAIL"
 
-sec "== 3c) Backend variant parity: a --generic install must not lose routing =="
-# On a non-.NET stack the installer REPLACES backend-expert-csk with agents-optional/backend-expert-generic.
-# Every skill routed only from the .NET variant then silently stops being reached on that stack — §3b cannot see
-# it, because the skill is still routed by *some* agent. The pattern skill is the one legitimate difference.
-if [ "$IS_KIT" = 1 ] && [ -f "$AGENTS/backend-expert-csk.md" ] && [ -f "$ROOT/agents-optional/backend-expert-generic.md" ]; then
-  PATTERN_SKILL="cqrs-aop-module"   # .NET-only by definition; the generic variant must NOT carry it
-  MISSING=""
-  for d in "$SKILLS"/*/; do
-    n=$(basename "$d"); [ "$n" = "$PATTERN_SKILL" ] && continue
-    routed "$n" "$AGENTS/backend-expert-csk.md" || continue
-    routed "$n" "$ROOT/agents-optional/backend-expert-generic.md" || MISSING="$MISSING $n"
+sec "== 3c) Backend is stack-agnostic, and the pattern skill kept its routing =="
+# 3.0 removed the .NET install path: one backend agent, one pattern skill (backend-architecture) that resolves
+# the stack per project. Three ways that regresses silently, each one invisible to §3b (everything stays routed):
+#   (1) a stack assumption creeps back into the agent — a .NET-only type or layout in the text that the agent
+#       reads on EVERY project, Node and Go included;
+#   (2) the agent stops pointing at backend-architecture, so the stack step is never reached;
+#   (3) backend-architecture drops a trigger cqrs-aop-module used to own, and those prompts stop routing.
+BE="$AGENTS/backend-expert-csk.md"; BA="$SKILLS/backend-architecture/SKILL.md"
+if [ -f "$BE" ] && [ -f "$BA" ]; then
+  # Tokens that only make sense on one stack. A name in an ecosystem TABLE is fine (the skill carries one);
+  # the agent file carries no table, so any hit there is an assumption.
+  STACK_BOUND="$(grep -noE 'IResult|IDataResult|Business/Handlers|MediatR|Autofac|SecuredOperation|ValidationAspect|DevArchitecture|Senior \.NET|\(\.NET\)' "$BE" 2>/dev/null)"
+  [ -z "$STACK_BOUND" ] && pass "backend-expert-csk carries no stack-bound type or layout" \
+                        || fail "backend-expert-csk assumes a stack again: $(printf '%s' "$STACK_BOUND" | tr '\n' ' ')"
+  routed backend-architecture "$BE" && pass "backend-expert-csk applies backend-architecture" \
+                                    || fail "backend-expert-csk no longer names backend-architecture — the stack step is unreachable from it"
+  BA_TRIG="$(grep -m1 '^Trigger phrases:' "$BA")"; TMISS=""; TSEEN=0
+  for t in "new handler" "write a command" "add a query" "validator"; do
+    TSEEN=$((TSEEN+1))
+    case "$BA_TRIG" in *"\"$t\""*) ;; *) TMISS="$TMISS \"$t\"" ;; esac
   done
-  [ -z "$MISSING" ] && pass "the generic backend variant routes everything the .NET one does (bar $PATTERN_SKILL)" \
-                    || fail "a --generic install loses routing to:$MISSING — add it to agents-optional/backend-expert-generic.md"
-  routed "$PATTERN_SKILL" "$ROOT/agents-optional/backend-expert-generic.md" \
-    && fail "the generic backend variant references $PATTERN_SKILL — that skill is pruned on a generic install" \
-    || pass "the generic variant does not reference the .NET-only pattern skill"
-  # TOOLS parity, not only routing parity. Found by installing with --generic and counting: 12 agents, but only
-  # 9 carrying PowerShell where 10 were edited — the edit had globbed agents/*.md and never reached
-  # agents-optional/, so a --generic install shipped a backend agent with a different toolset from every other
-  # shell-carrying agent. The routing check above could not see it; it compares what the agent is FOR, not what
-  # it can RUN.
-  _TD="$(grep -m1 '^tools:' "$AGENTS/backend-expert-csk.md")"
-  _TG="$(grep -m1 '^tools:' "$ROOT/agents-optional/backend-expert-generic.md")"
-  [ -n "$_TD" ] && [ "$_TD" = "$_TG" ] \
-    && pass "the generic backend variant carries the same tools as the default ($_TD)" \
-    || fail "a --generic install gets a different toolset — default '$_TD' vs generic '$_TG'"
+  [ -z "$TMISS" ] && pass "backend-architecture keeps all $TSEEN triggers cqrs-aop-module owned" \
+                  || fail "backend-architecture lost former cqrs-aop-module triggers:$TMISS — those prompts stop routing"
+elif [ "$IS_KIT" = 1 ]; then
+  fail "backend-expert-csk.md or skills/backend-architecture is missing from the payload"
 else
-  # Three checks stand behind this one line (routing parity, the pattern-skill exclusion, tools parity). It used
-  # to count one for two, which is the same lie the per-check skip count exists to stop.
-  skip scope "backend variant parity skipped (installed project — agents-optional/ is not installed)" 3
+  skip scope "backend stack-agnostic checks skipped (this project removed backend-expert-csk or backend-architecture)" 3
 fi
 
 sec "== 4) Stub / unfilled skill leftover =="
@@ -1530,7 +1521,9 @@ if [ -f "$ROOT/kit.conf" ]; then
   grep -q '^profile=' "$ROOT/kit.conf" && fail "kit.conf still records profile= — a 2.0 installer must drop that key" \
     || pass "kit.conf carries no profile= key"
   KS="$(sed -n 's/^stack=//p' "$ROOT/kit.conf" | head -1)"
-  case "$KS" in dotnet|generic) pass "kit.conf records a known backend pattern ($KS)" ;; *) fail "kit.conf stack invalid: '$KS'" ;; esac
+  # Always generic since 3.0: both installers write it, and an update rewrites a former 'dotnet'. A 'dotnet'
+  # surviving here means the 3.0 migration did not run on this project.
+  case "$KS" in generic) pass "kit.conf records stack=generic" ;; *) fail "kit.conf stack is '$KS' — every 3.0 install and update writes generic" ;; esac
 fi
 
 # Counts the installer and the READMEs advertise are DERIVED from the payload, but nothing recomputed them, so
@@ -2074,7 +2067,8 @@ BUDGET_DISC=13700    # DISCIPLINE.md (the discipline half of CLAUDE.md); current
                      # and the wrong one winning silently. The only rule in this file that is about the OTHER
                      # rules, so it cannot live in the README the way the compaction note does. Plus the Audit
                      # row naming performance-expert-csk — an agent nothing routes to is an idle component.)
-BUDGET_AGENTS=5800   # sum of agent frontmatter; currently 5527, measured 2026-09-20 by reading this suite's
+BUDGET_AGENTS=5800   # sum of agent frontmatter; currently 5582, measured 2026-09-23 (3.0: the backend and database
+                     # agents' descriptions rewritten stack-agnostic, +55 B). Before that 5527, measured 2026-09-20 by reading this suite's
                      # own printed line rather than a hand-rolled counter (a hand-rolled one answered 5503 and
                      # was thrown away). Two corrections in one day: the note said 5765 against a measured 5407,
                      # and then +120 B of `, PowerShell` on the ten Bash-carrying agents moved it to 5527 — so
@@ -2095,7 +2089,9 @@ BUDGET_AGENTS=5800   # sum of agent frontmatter; currently 5527, measured 2026-0
                      # +performance-expert-csk (~426B) — security, privacy and tests each had an independent
                      # reviewer and performance was the one quality axis where the author audited their own
                      # work. Bought at ~110 tokens per session; the alternative was leaving that gap open.)
-BUDGET_SKILLS=9600  # sum of skill frontmatter; currently 9588 — **12 bytes of headroom**, measured
+BUDGET_SKILLS=9600  # sum of skill frontmatter; currently 9597 — **3 bytes of headroom**, measured 2026-09-23 from
+                    # this suite's own line. 3.0 swapped cqrs-aop-module (-202 B) for backend-architecture (+211 B) and
+                    # the ceiling was NOT raised: the new description was cut until it fit. Before that 9588, measured
                     # 2026-09-20 (the note said 9521 and was 67 B stale). Read that margin before editing any
                     # description: one added clause trips this gate, and that is the ratchet working, not a bug.
                     # Raising the ceiling needs the same thing every bump here needed — a written reason for what
@@ -4704,7 +4700,20 @@ UPC="$(mktemp -d)"; UST="$(mktemp -d)"; UKR="$(cd "$ROOT/.." && pwd)"
 # a second copy of the payload where the detection walk can see it.
 cp "$UKR/start.sh" "$UKR/adopt.sh" "$UKR/VERSION" "$UST/" 2>/dev/null
 cp -R "$UKR/claude-starter" "$UST/" 2>/dev/null
-( cd "$UPC" && git init -q . && printf 'yes\nno\n' | bash "$UST/start.sh" --dotnet >/dev/null 2>&1 ) 2>/dev/null
+# --dotnet on purpose: since 3.0 it is accepted, warns, and installs the one stack-agnostic kit. Asserting that
+# here (not only in e2e) keeps an old README command from turning back into an "Unknown parameter" exit.
+( cd "$UPC" && git init -q . && printf 'yes\n' | CSK_LANG=en bash "$UST/start.sh" --dotnet >"$UPC.dotnet.log" 2>&1 ) 2>/dev/null   # English: the check greps the English line
+if [ -f "$UPC/.claude/kit.conf" ]; then
+  grep -q 'the .NET-specific path was removed in 3.0' "$UPC.dotnet.log" \
+    && pass "start.sh --dotnet warns that the .NET path was removed" \
+    || fail "start.sh --dotnet installed without the 3.0 removal warning"
+  grep -qx 'stack=generic' "$UPC/.claude/kit.conf" && [ ! -d "$UPC/.claude/skills/cqrs-aop-module" ] \
+    && pass "start.sh --dotnet installs the stack-agnostic kit (stack=generic, no cqrs-aop-module)" \
+    || fail "start.sh --dotnet did not install the stack-agnostic kit: $(grep '^stack=' "$UPC/.claude/kit.conf")"
+else
+  skip fixture "start.sh --dotnet checks skipped (the fixture install did not complete here)" 2
+fi
+rm -f "$UPC.dotnet.log"
 # start.sh removes the payload next to itself when it finishes, so the stage is refilled before the update runs.
 cp "$UKR/adopt.sh" "$UKR/VERSION" "$UST/" 2>/dev/null; cp -R "$UKR/claude-starter" "$UST/" 2>/dev/null
 if [ -f "$UPC/.claude/VERSION" ] && [ -d "$UST/claude-starter" ] && [ -f "$UKR/claude-starter/CLAUDE.md" ]; then

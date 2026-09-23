@@ -47,5 +47,7 @@ asistan tarafindan
 #test-clean: docs: explain the migration rollback procedure
 
 # --- §4.2 vendor / third-party template names (fill in per project) ---
+# The installers uncomment the next line only in a project that keeps the former .NET pattern skill
+# (.claude/skills/cqrs-aop-module), because that skill names the template it was derived from.
 # DevArchitecture
 # <vendor-template-name>

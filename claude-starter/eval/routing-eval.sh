@@ -53,13 +53,10 @@ while IFS='|' read -r prompt expected; do
   [ -n "$expected" ] || continue
   neg=0; case "$expected" in '!'*) neg=1; expected="${expected#!}" ;; esac   # !target = must NOT route here
   # Pre-2.0 this skipped when the target was pruned by profile. Profiles are gone: every install carries every
-  # agent and skill, so an absent target is a missing component or a stale golden row — both real failures. The
-  # exception is the .NET pattern skill, the one component a --generic install legitimately does not have.
+  # agent and skill, so an absent target is a missing component or a stale golden row — both real failures.
+  # (Until 3.0 the .NET pattern skill was the one exception; 3.0 ships one install shape, so there is none.)
   if ! trs="$(triggers_of "$expected")"; then
-    case "$expected" in
-      cqrs-aop-module) skip "\"$prompt\" -> $expected (generic backend: the .NET pattern skill is not installed)" ;;
-      *)              fail "\"$prompt\" -> $expected: target not installed — 2.0 ships every component" ;;
-    esac
+    fail "\"$prompt\" -> $expected: target not installed — every install ships every component"
     continue
   fi
   np="$(norm "$prompt")"
@@ -185,7 +182,7 @@ fi
 
 echo "== 2) Agent-agent trigger collision =="
 # NOTE: Only AGENT-AGENT collisions matter (routing ambiguity lives here). An agent sharing a trigger
-# with the skill it OWNS (backend-expert-csk<->cqrs-aop-module, security-expert-csk<->security-scan,
+# with the skill it OWNS (backend-expert-csk<->backend-architecture, security-expert-csk<->security-scan,
 # devops-expert-csk<->incident-runbook ...) is EXPECTED: the skill is the agent's internal "how"
 # source, not a separate dispatch — the router picks the agent, the agent reads the skill inside a
 # single subagent. So an agent<->its-own-skill overlap is intentional and is NOT a FAIL here.

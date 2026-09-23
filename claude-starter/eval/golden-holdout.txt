@@ -47,3 +47,7 @@ we need to put this build on the server tonight|deploy
 #
 # Both stay listed so the next person sees the class was considered and why the trigger cannot express it. If
 # route-hint ever scores on more than contiguous substrings, reopen them.
+# 3.0 rows for backend-architecture. Honesty note: written by the same person who wrote that skill's triggers,
+# in the same change — so these are weaker held-out evidence than the rows above.
+empty repo, nobody has picked a language or framework for the api yet|backend-architecture
+we cannot agree whether this service should be layered or split per feature|backend-architecture

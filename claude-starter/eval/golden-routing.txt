@@ -76,7 +76,7 @@ i am not sure what we want here yet, help me scope it|brainstorm
 review the code I just wrote before I push|code-review-csk
 write a commit message for the staged changes|commit-message
 add column last_login to the users table|db-migration
-add a query handler with a validator for this module|cqrs-aop-module
+add a query handler with a validator for this module|backend-architecture
 the settings screen needs a state management fix|frontend
 we need a consent flow before we store any of this|privacy-compliance
 let us step back and see what we missed this week|reflect
@@ -85,6 +85,11 @@ how do we split this into tasks with acceptance criteria|spec-planning
 are the tests green after that change|testing
 check for AI trace before the commit|trace-scan
 is a handover needed, the context status looks high|session-manager-csk
+
+# --- 3.0: the stack is resolved per project by backend-architecture (it replaced cqrs-aop-module) ---
+which stack should we use for this backend|backend-architecture
+set up the project structure for a new API|backend-architecture
+choose a database for this service|backend-architecture
 
 # --- Negative: prompt must NOT route to target (over-broad-trigger guard) ---
 #

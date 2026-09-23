@@ -3,7 +3,31 @@
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [Unreleased] — 3.0.0
+
+### BREAKING — the backend is stack-agnostic; the .NET install path is gone
+
+- **`--dotnet` no longer selects anything.** It is still accepted: it prints a warning and installs the same
+  stack-agnostic kit as every other command line. `--generic` is accepted silently. The wizard has two steps now
+  (who the install is for · summary) — scripts that piped an answer to the old backend question should drop it.
+- **No base project is cloned any more.** The DevArchitecture base, its approval gate, the `./backend` / `./frontend`
+  scaffold and the Windows long-path warning that came with it are removed.
+- **`cqrs-aop-module` is no longer shipped.** Its replacement is `backend-architecture`, which resolves the stack per
+  project — the request, then `CLAUDE.md ## Stack`, then the repo's manifests, and only in an empty repo up to four
+  multiple-choice questions (each with a recommended option and "Decide for me") — then records the answer in
+  `## Stack` and an ADR, and carries a pattern menu (layered · clean/hexagonal · vertical slice · CQRS) and the
+  language-neutral backend rules. Its triggers include the four the old skill routed.
+- **One backend agent.** `backend-expert-csk` is stack-agnostic and applies the project's own pattern skill if it has
+  one, `backend-architecture` otherwise; `agents-optional/` is gone. `database-expert-csk` reads the engine and ORM
+  from `## Stack` / the repo instead of assuming PostgreSQL + EF Core. `planner-csk` resolves the stack before
+  planning in an empty repo.
+- **Updating a pre-3.0 `--dotnet` install keeps your pattern skill.** `kit.conf` is rewritten to `stack=generic`
+  (the key stays, for older updaters); `.claude/skills/cqrs-aop-module` — or `devarch-module`, renamed as before —
+  is left exactly as it is and becomes a project skill that the backend agent goes on applying. The update says so
+  once, the stale-file sweep no longer offers to delete it, and while it is present the §4.2 `DevArchitecture` line
+  in the trace blocklist stays armed. `CSK_CORRECT_STACK` has no effect and says so.
+- **`adopt.sh` no longer asks about .NET** on a fresh adopt, and no longer deletes a pattern skill on a generic stack.
+
 
 ## [2.13.0] — 2026-09-23
 

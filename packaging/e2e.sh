@@ -5,6 +5,9 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"; cd "$ROOT"
 WORK="${RUNNER_TEMP:-$(mktemp -d)}"
+# Several assertions grep the installers' English output. A Turkish locale (or an exported CSK_LANG=tr) turns
+# those into false failures, so the run is pinned to English; case 18 passes --lang explicitly, which wins.
+export CSK_LANG=en
 
 # WHY A LOG AND NOT /dev/null, for every installer and smoke call below.
 #
@@ -30,10 +33,9 @@ _evidence(){   # $1 = label, $2 = log path, $3 = the step's exit status
   exit 1
 }
 
-# ---- start.sh: 2 combinations (backend pattern) ----
-# 2.0 removed the profile split, and with it four of the six combinations: they differed only in which
-# components were deleted after an identical install. The backend pattern is the one axis that still changes
-# what lands on disk (cqrs-aop-module + the backend agent variant), so it is the one axis still rehearsed.
+# ---- start.sh: 2 combinations (one install shape + old command lines) ----
+# 2.0 removed the profile split and 3.0 removed the backend pattern choice: every install lands the same set on
+# disk. What is still rehearsed is that the set does not vary silently, and that old flags keep installing it.
 # The legacy-flag case is here rather than in the smoke-test because only an end-to-end run proves an old
 # command line still installs — the thing that would break a CI step someone wrote a year ago.
 combo() {
@@ -71,49 +73,38 @@ combo() {
 # The expected counts come from the PAYLOAD, not from a number typed here. Written by hand they drift with the
 # first component added — the network diagram's subtitle did exactly that, announcing 11 agents and 36 skills
 # over a picture it had drawn with 12 and 38 — and the failure reads like a broken install rather than a stale
-# constant. `--generic` prunes exactly one skill (cqrs-aop-module), so that arm is the payload count minus one;
-# the assertion that matters is still "the set does not vary silently", and it survives intact.
+# constant. Every arm expects the FULL payload: since 3.0 nothing is pruned.
 KIT_AG=$(ls "$ROOT"/claude-starter/agents/*.md 2>/dev/null | wc -l | tr -d ' ')
 KIT_SK=$(ls -d "$ROOT"/claude-starter/skills/*/ 2>/dev/null | wc -l | tr -d ' ')
 [ "${KIT_AG:-0}" -gt 0 ] && [ "${KIT_SK:-0}" -gt 0 ] || { echo "FAIL: cannot count the payload at $ROOT/claude-starter"; exit 1; }
 echo "payload: $KIT_AG agents, $KIT_SK skills (expectations derived, not typed)"
-combo dotnet        'yes\nno\n'  "$KIT_AG" "$KIT_SK"          --dotnet
-combo generic       'yes\n'      "$KIT_AG" "$((KIT_SK - 1))"  --generic
-# An old command line must still install, and must install the FULL set — the flag is accepted, not obeyed.
-combo legacy-flags  'yes\n'      "$KIT_AG" "$((KIT_SK - 1))"  --frontend --generic
+combo generic       'yes\n'  "$KIT_AG" "$KIT_SK"
+# Old command lines must still install, and must install the FULL set — the flags are accepted, not obeyed.
+# --dotnet is the 3.0 case: it once selected a .NET-only install and now warns and installs the same kit.
+combo legacy-flags  'yes\n'  "$KIT_AG" "$KIT_SK"  --frontend --generic
+combo legacy-dotnet 'yes\n'  "$KIT_AG" "$KIT_SK"  --dotnet
 grep -q 'no effect' "$WORK/proj-legacy-flags/.claude/kit.conf" && { echo "FAIL: notice leaked into kit.conf"; exit 1; }
 [ -f "$WORK/proj-legacy-flags/.claude/agents/backend-expert-csk.md" ] || { echo "FAIL: --frontend still pruned the backend agent"; exit 1; }
-echo "[legacy-flags] --frontend accepted and ignored; full set installed"
+for _p in generic legacy-flags legacy-dotnet; do
+  grep -qx 'stack=generic' "$WORK/proj-$_p/.claude/kit.conf" || { echo "FAIL [$_p]: kit.conf does not record stack=generic"; exit 1; }
+  [ ! -e "$WORK/proj-$_p/.claude/skills/cqrs-aop-module" ] || { echo "FAIL [$_p]: the removed .NET pattern skill was installed"; exit 1; }
+  [ ! -e "$WORK/proj-$_p/backend" ] && [ ! -e "$WORK/proj-$_p/frontend" ] || { echo "FAIL [$_p]: the installer scaffolded ./backend or ./frontend"; exit 1; }
+done
+# The warning is read from the combo's own log (the last one _slog handed out was its smoke run, so the install
+# log is the one before it).
+grep -q 'the .NET-specific path was removed in 3.0' "$(printf '%s/e2e-step-%02d.log' "$WORK" $((_STEP-1)))" \
+  || { echo "FAIL: start.sh --dotnet installed without saying the .NET path was removed"; exit 1; }
+echo "[legacy-flags] --frontend and --dotnet accepted, not obeyed; --dotnet warns; full set, stack=generic"
 
-# §4.2 arming. The blocklist ships the vendor name COMMENTED, beside a note telling the reader to add their own
-# -- right for a name only the user knows, wrong for this one, because on the DevArchitecture path the kit is
-# what brought the vendor onto the machine. So the installer uncomments it there and only there, and both halves
-# are asserted: an armed pattern on --dotnet, and a still-commented one on --generic, where a DevArchitecture
-# pattern would block an ordinary commit that merely discusses the pattern. The third assertion is the one that
-# matters -- an uncommented line proves the edit ran, not that anything is enforced -- so the REAL commit-msg
-# hook is driven with a message carrying the name, and with one that does not.
-BL_DN="$WORK/proj-dotnet/.claude/hooks/trace-blocklist.txt"
-BL_GEN="$WORK/proj-generic/.claude/hooks/trace-blocklist.txt"
-grep -qx 'DevArchitecture'   "$BL_DN"  || { echo "FAIL: --dotnet left the §4.2 vendor pattern commented out"; exit 1; }
-grep -qx '# DevArchitecture' "$BL_GEN" || { echo "FAIL: --generic armed a vendor pattern for a stack it did not install"; exit 1; }
-# In a throwaway repo rather than in proj-dotnet itself, for two reasons: the hook needs a git repository (its
-# board step says so and exits non-zero without one, which is correct -- a commit-msg hook only ever runs inside
-# one), and proj-dotnet is read by later assertions that should not inherit a .git this check created.
-TR="$WORK/trace42"; rm -rf "$TR"; mkdir -p "$TR"
-cp -R "$WORK/proj-dotnet/.claude" "$TR/" && ( cd "$TR" && git init -q . ) \
-  || { echo "FAIL: could not stage the §4.2 hook check"; exit 1; }
-CMT="$TR/msg.txt"
-printf 'feat(api): ported the handler from DevArchitecture\n' > "$CMT"
-( cd "$TR" && bash .claude/hooks/commit-msg "$CMT" ) >/dev/null 2>&1 \
-  && { echo "FAIL: the armed vendor pattern did not block a commit message carrying the name"; exit 1; }
-# The must-PASS twin, and it earned its place: the first version of this check ran outside a repo, where the
-# hook fails for its own reasons, so the blocking assertion above was green against a hook that refused
-# EVERYTHING. A gate tested only on what it must reject is indistinguishable from a gate that rejects all.
-printf 'feat(api): add the unpaid invoices endpoint\n' > "$CMT"
-( cd "$TR" && bash .claude/hooks/commit-msg "$CMT" ) >/dev/null 2>&1 \
-  || { echo "FAIL: the armed vendor pattern blocked an ordinary commit message"; exit 1; }
-rm -rf "$TR"
-echo "[trace-4.2] --dotnet arms the vendor name and the hook enforces it; --generic leaves it commented"
+
+# §4.2 on a clean install. The blocklist ships the vendor name COMMENTED; since 3.0 no install arms it, because
+# no install brings the vendor onto the machine. (The one project that still arms it is a MIGRATED .NET install
+# that keeps its pattern skill — asserted, with the real hook, in the legacy-dotnet-migration case below.)
+grep -qx '# DevArchitecture' "$WORK/proj-generic/.claude/hooks/trace-blocklist.txt" \
+  || { echo "FAIL: a clean 3.0 install armed a vendor pattern it has no reason to block"; exit 1; }
+grep -qx '# DevArchitecture' "$WORK/proj-legacy-dotnet/.claude/hooks/trace-blocklist.txt" \
+  || { echo "FAIL: start.sh --dotnet armed the vendor pattern — the flag is supposed to change nothing"; exit 1; }
+echo "[trace-4.2] clean installs (with and without --dotnet) leave the vendor name commented"
 
 # Every adopt assertion below used to depend on a run sent to /dev/null, then print one line and exit. A red CI
 # therefore arrived with no evidence at all: the recorded stack, what the detector saw, and whether adopt even
@@ -132,9 +123,8 @@ evidence() {    # $1 = label, $2 = project dir
   echo "  kit.conf:";        sed 's/^/    /' "$2/.claude/kit.conf" 2>/dev/null || echo "    (absent)"
   echo "  components:       agents=$(ls "$2"/.claude/agents/*.md 2>/dev/null | wc -l | tr -d ' ') skills=$(ls -d "$2"/.claude/skills/*/ 2>/dev/null | wc -l | tr -d ' ')"
   echo "  cqrs-aop-module:   $([ -d "$2/.claude/skills/cqrs-aop-module" ] && echo present || echo absent)"
-  # The two signals the stack detector reads, evaluated here the same way adopt.sh evaluates them.
-  echo "  .sln/.csproj:     $( (cd "$2" && find . -maxdepth 3 \( -name '*.sln' -o -name '*.csproj' \) 2>/dev/null | head -3 | tr '\n' ' ') )"
-  echo "  Business/Handlers: $( (cd "$2" && find . -maxdepth 4 -type d -path '*/Business/Handlers' 2>/dev/null | head -1) )"
+  echo "  devarch-module:    $([ -d "$2/.claude/skills/devarch-module" ] && echo present || echo absent)"
+  echo "  §4.2 vendor line:  $(grep -xE '#? ?DevArchitecture' "$2/.claude/hooks/trace-blocklist.txt" 2>/dev/null | head -1)"
   echo "  branch:           $(git -C "$2" rev-parse --abbrev-ref HEAD 2>/dev/null)"
   echo "  adopt output (tail):"; printf '%s\n' "$ADOPT_OUT" | tail -45 | sed 's/^/    /'
   echo "---- end evidence ----"
@@ -143,23 +133,24 @@ die() {         # $1 = message, $2 = label, $3 = project dir
   echo "FAIL: $1"; evidence "$2" "$3"; exit 1
 }
 
-# ---- adopt.sh: stack detection (.sln under ./backend) + agent-overlap takeover ----
-# A brownfield DevArch project: solution under ./backend (NOT root), Business/Handlers layout, and a
-# pre-existing backend-expert.md that collides with the kit's backend-expert-csk.
-P="$WORK/adopt-dotnet"; rm -rf "$P"; mkdir -p "$P/backend/Business/Handlers" "$P/.claude/agents"
+# ---- adopt.sh: a brownfield .NET project (solution under ./backend) + agent-overlap takeover ----
+# Since 3.0 a .NET repo is adopted exactly like any other: stack=generic, no pattern skill, the stack is left to
+# backend-architecture. What is still exercised here is the takeover of a colliding project agent.
+P="$WORK/adopt-brownfield"; rm -rf "$P"; mkdir -p "$P/backend" "$P/.claude/agents"
 cp adopt.sh "$P/"; cp -R claude-starter "$P/"; cp VERSION "$P/"
-: > "$P/backend/DevArchitecture.sln"
+: > "$P/backend/App.sln"
 printf -- '---\nname: backend-expert\ndescription: legacy\n---\n' > "$P/.claude/agents/backend-expert.md"
 ( cd "$P" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
 run_adopt "$P" --yes
-grep -q '^stack=dotnet' "$P/.claude/kit.conf"           || die ".sln under ./backend not detected as dotnet" adopt-dotnet "$P"
-[ -d "$P/.claude/skills/cqrs-aop-module" ]               || die "cqrs-aop-module missing on a dotnet adopt" adopt-dotnet "$P"
-[ ! -f "$P/.claude/agents/backend-expert.md" ]          || die "overlapping project agent was not taken over" adopt-dotnet "$P"
-[ -f "$P/.claude/superseded/agents/backend-expert.md" ] || die "taken-over agent's original was not backed up" adopt-dotnet "$P"
-[ -f "$P/.claude/skills/backend-expert-local/SKILL.md" ]|| die "taken-over agent's domain was not imported to a project skill" adopt-dotnet "$P"
+grep -qx 'stack=generic' "$P/.claude/kit.conf"          || die "a .NET brownfield adopt did not record stack=generic" adopt-brownfield "$P"
+[ ! -e "$P/.claude/skills/cqrs-aop-module" ]             || die "the removed .NET pattern skill was installed" adopt-brownfield "$P"
+[ ! -f "$P/.claude/agents/backend-expert.md" ]          || die "overlapping project agent was not taken over" adopt-brownfield "$P"
+[ -f "$P/.claude/superseded/agents/backend-expert.md" ] || die "taken-over agent's original was not backed up" adopt-brownfield "$P"
+[ -f "$P/.claude/skills/backend-expert-local/SKILL.md" ]|| die "taken-over agent's domain was not imported to a project skill" adopt-brownfield "$P"
 # The manifest lists what the KIT ships, so the skill this adopt imported from the project must NOT appear in it
 # — that is exactly the distinction the readiness check and the trust gate are built on.
-grep -q '^skills/cqrs-aop-module$' "$P/.claude/kit-manifest.txt"     || { echo "FAIL: manifest missing a kit skill"; exit 1; }
+grep -q '^skills/backend-architecture$' "$P/.claude/kit-manifest.txt" || { echo "FAIL: manifest missing a kit skill"; exit 1; }
+grep -q '^skills/cqrs-aop-module$' "$P/.claude/kit-manifest.txt"      && { echo "FAIL: manifest still lists the removed .NET pattern skill"; exit 1; }
 grep -q '^skills/backend-expert-local$' "$P/.claude/kit-manifest.txt" && { echo "FAIL: manifest claims a project-imported skill as kit-owned"; exit 1; }
 # Captured, not piped: `grep -q` closes the pipe on its first match, doctor takes a SIGPIPE, and `pipefail`
 # would then report a passing assertion as a failure.
@@ -192,64 +183,160 @@ _slog; ( cd "$P" && CSK_SMOKE_SCOPE=install bash .claude/eval/smoke-test.sh ) >"
 # doctor's elapsed time is printed on SUCCESS too, not only in the failure message. The bound above is loose by
 # design, so a silent pass hides the trend that matters: 2s creeping to 8s is the regression arriving, and it
 # reads as "fine" until the day it trips. The number in the log is what makes that visible in hindsight.
-echo "[adopt-dotnet] stack=dotnet · cqrs-aop-module kept · overlap imported to skill + backed up · smoke OK · doctor ${DEL}s"
+echo "[adopt-brownfield] .NET repo -> stack=generic · no pattern skill · overlap imported to skill + backed up · smoke OK · doctor ${DEL}s"
 
-# A generic (Node) project: no .sln -> generic, cqrs-aop-module pruned.
+# A Node project: same shape as every other adopt.
 G="$WORK/adopt-generic"; rm -rf "$G"; mkdir -p "$G"
 cp adopt.sh "$G/"; cp -R claude-starter "$G/"; cp VERSION "$G/"; printf '{"name":"x"}' > "$G/package.json"
 ( cd "$G" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
 run_adopt "$G" --yes
 grep -q '^stack=generic' "$G/.claude/kit.conf"          || die "Node project not recorded as generic" adopt-generic "$G"
-[ ! -d "$G/.claude/skills/cqrs-aop-module" ]             || die "cqrs-aop-module not pruned on a generic adopt" adopt-generic "$G"
-echo "[adopt-generic] stack=generic · cqrs-aop-module pruned"
+[ ! -d "$G/.claude/skills/cqrs-aop-module" ]             || die "the removed .NET pattern skill was installed" adopt-generic "$G"
+echo "[adopt-generic] stack=generic · no pattern skill"
 
-# A REFRESH whose recorded stack is a stale 'generic' on a clearly-DevArch project. The correction is OFFERED,
-# never applied behind the user's back — so this asserts BOTH halves, and the first half is the one that was
-# missing. The old test ran `--yes` (no tty) and required stack=dotnet, i.e. it demanded that a recorded choice
-# be overruled where nobody could be asked. It passed for five releases while a user who installed --generic on
-# a .NET project that is NOT DevArchitecture got cqrs-aop-module and the .NET agent pushed onto them.
-R="$WORK/adopt-refresh"; rm -rf "$R"; mkdir -p "$R"
-cp adopt.sh "$R/"; cp -R claude-starter "$R/"; cp VERSION "$R/"; printf '{"name":"x"}' > "$R/package.json"
+# CSK_CORRECT_STACK used to flip a recorded 'generic' to 'dotnet'. 3.0 has one shape, so the variable does
+# nothing — and says so, rather than being silently ignored by an automation that still sets it.
+R="$WORK/adopt-refresh"; rm -rf "$R"; mkdir -p "$R/backend"
+cp adopt.sh "$R/"; cp -R claude-starter "$R/"; cp VERSION "$R/"; : > "$R/backend/App.sln"
 ( cd "$R" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
 run_adopt "$R" --yes
 ( cd "$R" && git add -A && git commit -qm adopt1 ) >/dev/null 2>&1
-grep -q '^stack=generic' "$R/.claude/kit.conf"          || die "first adopt of a Node project should record generic" adopt-refresh/1st "$R"
-mkdir -p "$R/backend/Business/Handlers"; : > "$R/backend/DevArchitecture.sln"
-( cd "$R" && git add -A && git commit -qm 'add devarch structure' )
-# (a) nobody to ask -> the recorded choice STANDS, and the mismatch is reported rather than acted on.
-run_adopt "$R" --yes
-grep -q '^stack=generic' "$R/.claude/kit.conf"          || die "a non-interactive refresh silently overruled the recorded stack" adopt-refresh/keep "$R"
-[ ! -d "$R/.claude/skills/cqrs-aop-module" ]             || die "cqrs-aop-module installed without anyone approving the stack change" adopt-refresh/keep "$R"
-grep -qi 'stack-agnostic' "$R/.claude/agents/backend-expert-csk.md" || die "backend agent flipped to .NET without approval" adopt-refresh/keep "$R"
-# (b) asked for deliberately -> corrected, and cqrs-aop-module comes back with it.
+cp adopt.sh "$R/"; cp -R claude-starter "$R/"
 CSK_CORRECT_STACK=1 run_adopt "$R" --yes
-grep -q '^stack=dotnet' "$R/.claude/kit.conf"           || die "CSK_CORRECT_STACK=1 did not correct a stale generic stack" adopt-refresh/fix "$R"
-[ -d "$R/.claude/skills/cqrs-aop-module" ]               || die "cqrs-aop-module not restored after the stack correction" adopt-refresh/fix "$R"
-echo "[adopt-refresh] recorded generic KEPT without a person · CSK_CORRECT_STACK=1 corrects it -> dotnet"
+grep -qx 'stack=generic' "$R/.claude/kit.conf"          || die "CSK_CORRECT_STACK=1 changed the recorded stack" adopt-refresh "$R"
+[ ! -d "$R/.claude/skills/cqrs-aop-module" ]             || die "CSK_CORRECT_STACK=1 installed a pattern skill" adopt-refresh "$R"
+case "$ADOPT_OUT" in *"CSK_CORRECT_STACK has no effect"*) ;; *) die "CSK_CORRECT_STACK=1 was ignored without a word" adopt-refresh "$R" ;; esac
+echo "[adopt-refresh] CSK_CORRECT_STACK=1 is a no-op that says so; stack=generic kept"
 
-# ---- adopt.sh: the devarch-module -> cqrs-aop-module RENAME, on an install that predates kit.conf ----
-# The skill was renamed, and three things could have gone wrong on the upgrade path; this case holds all three.
-# (1) kit_infer_shape reads the STACK from the skill's directory name when kit.conf is absent, so a check for the
-#     new name alone classifies every old .NET install as generic — and the generic path PRUNES the pattern skill.
-# (2) kit-manifest.txt arrived in v1.8.0 and the skill shipped from v1.0.0, so the stale-files sweep is blind to
-#     an install not updated since before 1.8.0.
-# (3) that sweep only REPORTS, so without a migration two pattern skills would compete for every prompt.
-# The fixture is shaped to isolate (1): no .sln, no kit.conf, no manifest — the OLD directory is the only signal.
-U="$WORK/adopt-rename"; rm -rf "$U"; mkdir -p "$U"
-cp adopt.sh "$U/"; cp -R claude-starter "$U/"; cp VERSION "$U/"
-: > "$U/App.sln"
-( cd "$U" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
-run_adopt "$U" --yes
-[ -d "$U/.claude/skills/cqrs-aop-module" ]  || die "the first adopt did not install the .NET pattern skill" adopt-rename/setup "$U"
-# Down to the shape of a pre-1.8.0 .NET install that has never been updated since:
-mv "$U/.claude/skills/cqrs-aop-module" "$U/.claude/skills/devarch-module"
-rm -f "$U/.claude/kit.conf" "$U/.claude/kit-manifest.txt" "$U/App.sln"
-( cd "$U" && git add -A && git commit -qm 'shape of a pre-1.8.0 dotnet install' ) >/dev/null 2>&1
-run_adopt "$U" --yes
-grep -q '^stack=dotnet' "$U/.claude/kit.conf" || die "an install carrying only the OLD skill name was inferred generic (it would be pruned)" adopt-rename "$U"
-[ -d "$U/.claude/skills/cqrs-aop-module" ]    || die "the .NET pattern skill is gone after the rename migration" adopt-rename "$U"
-[ ! -d "$U/.claude/skills/devarch-module" ]   || die "the old skill was left beside the new one — two pattern skills compete" adopt-rename "$U"
-echo "[adopt-rename] pre-kit.conf install carrying the OLD name -> inferred dotnet, migrated, no duplicate"
+# ---- 3.0 MIGRATION: a 2.13-shaped --dotnet install, updated ----
+# The old installer is not in this tree, so the shape is produced by THIS tree's start.sh and then turned into
+# what 2.13's start.sh --dotnet left behind. (A first version copied the payload into .claude/ by hand; that left
+# a .claude/CLAUDE.md no real install has, and the installed smoke-test took the project for the kit repo — 21
+# "failures" that were the fixture's, not the product's.) The fixture carries its own correctness claim, checked
+# before the update runs: stack=dotnet in kit.conf, the pattern skill on disk AND in the manifest (that is what
+# makes the stale sweep see it), and the §4.2 vendor line armed. The pattern skill carries a user edit so "kept"
+# means kept byte for byte, not merely "a directory of that name exists". Measured separately, once, against
+# the real v2.13.0 installer (git archive of the tag): the same assertions held.
+legacy_dotnet_install(){        # $1 = dir, $2 = pattern skill (cqrs-aop-module | devarch-module), $3 = installer (start.sh | adopt.sh)
+  local d="$1" pk="$2" inst="${3:-start.sh}"; rm -rf "$d"; mkdir -p "$d/backend"
+  cp start.sh "$d/"; cp -R claude-starter "$d/"
+  _slog; ( cd "$d" && git init -q && git config user.email t@t.t && git config user.name t \
+      && printf 'yes\n' | bash start.sh ) >"$_L" 2>&1 || _evidence "start.sh in $d" "$_L" $?
+  printf '2.13.0\n' > "$d/.claude/VERSION"
+  mkdir -p "$d/.claude/skills/$pk"
+  printf -- '---\nname: %s\ndescription: |\n  Project backend pattern (kept from a pre-3.0 install).\n---\nTrigger phrases: "new handler"\n# edited by the team\n' "$pk" \
+    > "$d/.claude/skills/$pk/SKILL.md"
+  # 2.13's start.sh --dotnet armed the vendor line; 2.13's adopt.sh never did.
+  [ "$inst" = start.sh ] && awk '/^# DevArchitecture$/ { print "DevArchitecture"; print "#test: ported the handler from DevArchitecture"; next } { print }' \
+    claude-starter/hooks/trace-blocklist.txt > "$d/.claude/hooks/trace-blocklist.txt"
+  { for x in claude-starter/skills/*/; do echo "skills/$(basename "$x")"; done; echo "skills/$pk"
+    for x in claude-starter/agents/*.md; do echo "agents/$(basename "$x")"; done
+    for x in claude-starter/commands/*.md; do echo "commands/$(basename "$x")"; done; } > "$d/.claude/kit-manifest.txt"
+  printf '# Written by %s.\nstack=dotnet\ninstaller=%s\nversion=2.13.0\n' "$inst" "$inst" > "$d/.claude/kit.conf"
+  : > "$d/backend/App.sln"
+  # Committed BEFORE the update payload is staged beside it: the install armed core.hooksPath, and the trace scan
+  # would (rightly) refuse a commit carrying the kit's own payload. A failure here must be loud — under `set -e`
+  # a silent subshell exit is how the first version of this line ended the whole run with no message.
+  _slog; ( cd "$d" && git add -A && git commit -q -m 'shape of a 2.13 dotnet install' ) >"$_L" 2>&1 \
+    || _evidence "fixture commit in $d" "$_L" $?
+  cp adopt.sh "$d/"; cp -R claude-starter "$d/"; cp VERSION "$d/"
+}
+L="$WORK/legacy-dotnet-migration"; legacy_dotnet_install "$L" cqrs-aop-module
+LSUM="$(cksum < "$L/.claude/skills/cqrs-aop-module/SKILL.md")"
+# The fixture's own claim, checked before anything runs against it.
+grep -qx 'stack=dotnet' "$L/.claude/kit.conf" && grep -qx 'skills/cqrs-aop-module' "$L/.claude/kit-manifest.txt" \
+  && grep -qx 'DevArchitecture' "$L/.claude/hooks/trace-blocklist.txt" \
+  || { echo "FAIL: FIXTURE — the legacy dotnet install is not 2.13-shaped; the migration below would prove nothing"; exit 1; }
+run_adopt "$L" --here --yes
+grep -qx 'stack=generic' "$L/.claude/kit.conf"          || die "a 2.13 dotnet install was not migrated to stack=generic" legacy-dotnet-migration "$L"
+[ -f "$L/.claude/skills/cqrs-aop-module/SKILL.md" ]     || die "the migration DELETED the project's pattern skill" legacy-dotnet-migration "$L"
+[ "$(cksum < "$L/.claude/skills/cqrs-aop-module/SKILL.md")" = "$LSUM" ] || die "the migration rewrote the project's pattern skill" legacy-dotnet-migration "$L"
+grep -qx 'skills/cqrs-aop-module' "$L/.claude/kit-manifest.txt" && die "the pattern skill is still listed as kit-owned" legacy-dotnet-migration "$L"
+case "$ADOPT_OUT" in *"cqrs-aop-module is now a project skill"*) ;; *) die "the migration did not say the pattern skill is now the project's" legacy-dotnet-migration "$L" ;; esac
+case "$ADOPT_OUT" in *"no longer shipped:"*"skills/cqrs-aop-module"*) die "the stale sweep offered to rm -r the kept pattern skill" legacy-dotnet-migration "$L" ;; esac
+grep -qx 'DevArchitecture' "$L/.claude/hooks/trace-blocklist.txt" || die "§4.2: the vendor line was disarmed on a project that keeps the pattern skill" legacy-dotnet-migration "$L"
+# An armed line proves the edit ran, not that anything is enforced — so drive the REAL commit-msg hook, in a
+# throwaway repo (the hook needs one, and this project is read again below), with and without the name.
+TR="$WORK/trace42"; rm -rf "$TR"; mkdir -p "$TR"
+cp -R "$L/.claude" "$TR/" && ( cd "$TR" && git init -q . ) || { echo "FAIL: could not stage the §4.2 hook check"; exit 1; }
+CMT="$TR/msg.txt"
+printf 'feat(api): ported the handler from DevArchitecture\n' > "$CMT"
+( cd "$TR" && bash .claude/hooks/commit-msg "$CMT" ) >/dev/null 2>&1 \
+  && { echo "FAIL: the armed vendor pattern did not block a commit message carrying the name"; exit 1; }
+# The must-PASS twin: a hook that refuses EVERYTHING also passes the assertion above.
+printf 'feat(api): add the unpaid invoices endpoint\n' > "$CMT"
+( cd "$TR" && bash .claude/hooks/commit-msg "$CMT" ) >/dev/null 2>&1 \
+  || { echo "FAIL: the armed vendor pattern blocked an ordinary commit message"; exit 1; }
+rm -rf "$TR"
+_slog; ( cd "$L" && CSK_SMOKE_SCOPE=install bash .claude/eval/smoke-test.sh ) >"$_L" 2>&1 || _evidence "smoke-test.sh in $L" "$_L" $?
+# Second update: the record now says generic, so the notice retires — but the skill and the §4.2 line stay.
+cp adopt.sh "$L/"; cp -R claude-starter "$L/"
+run_adopt "$L" --here --yes
+case "$ADOPT_OUT" in *"cqrs-aop-module is now a project skill"*) die "the 3.0 migration notice repeats on every update" legacy-dotnet-migration/2nd "$L" ;; esac
+[ -f "$L/.claude/skills/cqrs-aop-module/SKILL.md" ] && grep -qx 'DevArchitecture' "$L/.claude/hooks/trace-blocklist.txt" \
+  || die "a second update lost the kept pattern skill or its §4.2 line" legacy-dotnet-migration/2nd "$L"
+echo "[legacy-dotnet-migration] 2.13 --dotnet -> stack=generic · cqrs-aop-module kept byte-for-byte, off the manifest, not swept · notice once · §4.2 armed and enforced · smoke OK"
+
+# ---- §4.2 is PRESERVED, never newly armed: a 2.13 install made by adopt.sh on a real DevArchitecture codebase ----
+# 2.13's updater never armed the vendor line, so such a project still carries the name in its own namespaces. An
+# early 3.0 draft armed the line whenever the pattern skill existed, and every commit touching that code then failed
+# (rc=1, measured in review). So: after the update the line is still a comment, and a real commit of the project's
+# own code goes through the real hooks. The must-fail twin arms the line by hand and makes the same commit — if
+# that one ALSO passes, the commit step is not exercising the scanner and the pass above proves nothing.
+V="$WORK/legacy-dotnet-adopted"; legacy_dotnet_install "$V" cqrs-aop-module adopt.sh
+mkdir -p "$V/backend/Business"; printf 'namespace DevArchitecture.Business;\npublic class A {}\n' > "$V/backend/Business/A.cs"
+_slog; ( cd "$V" && git add backend && git commit -qm 'existing code' ) >"$_L" 2>&1 || _evidence "fixture code commit in $V" "$_L" $?
+grep -qx '# DevArchitecture' "$V/.claude/hooks/trace-blocklist.txt" || { echo "FAIL: FIXTURE — the adopt-made 2.13 install should have the vendor line commented"; exit 1; }
+run_adopt "$V" --here --yes
+grep -qx '# DevArchitecture' "$V/.claude/hooks/trace-blocklist.txt" || die "the update ARMED a vendor line that was not armed before" legacy-dotnet-adopted "$V"
+# A NEW file in that namespace: the scanner reads ADDED lines only, so editing a line below an unchanged
+# `namespace DevArchitecture…` line would pass whatever the blocklist said (the first version of this case did
+# exactly that, and its twin passed too — which is how it was caught).
+printf 'namespace DevArchitecture.Business;\npublic class B {}\n' > "$V/backend/Business/B.cs"
+_slog; ( cd "$V" && git add backend && git commit -qm 'feat(api): add B' ) >"$_L" 2>&1 \
+  || _evidence "a commit of the project's own DevArchitecture-named code after the update (it must pass)" "$_L" $?
+cp "$V/.claude/hooks/trace-blocklist.txt" "$V/bl.keep"
+awk '/^# DevArchitecture$/ { print "DevArchitecture"; next } { print }' "$V/bl.keep" > "$V/.claude/hooks/trace-blocklist.txt"
+printf 'namespace DevArchitecture.Business;\npublic class C {}\n' > "$V/backend/Business/C.cs"
+( cd "$V" && git add backend && git commit -qm 'feat(api): add C' ) >/dev/null 2>&1 \
+  && { echo "FAIL: the must-fail twin committed with the vendor line ARMED — the commit step does not reach the scanner"; exit 1; }
+mv "$V/bl.keep" "$V/.claude/hooks/trace-blocklist.txt"
+echo "[legacy-dotnet-adopted] vendor line left commented (was not armed before) · own DevArchitecture-named code commits · twin: armed line blocks it"
+
+# ---- §4.2 preserved through a CRLF blocklist ----
+# The armed line read as `DevArchitecture\r` did not match a plain `grep -x`, so an update switched the protection
+# off silently. The fixture's CRs are COUNTED before it is used (a CRLF fixture that came out LF would test the LF
+# path under the CRLF name) — built by awk into a file, not through `$( )`, which eats a trailing CR on Git Bash.
+X="$WORK/legacy-dotnet-crlf"; legacy_dotnet_install "$X" cqrs-aop-module
+awk '{ printf "%s\r\n", $0 }' "$X/.claude/hooks/trace-blocklist.txt" > "$X/bl.crlf" && mv "$X/bl.crlf" "$X/.claude/hooks/trace-blocklist.txt"
+# Counted, not grepped: Git Bash's grep drops a trailing CR before matching, so `grep -x $'…\r'` is never true
+# there and `grep -x …` cannot tell CRLF from LF (measured on stock Windows — the first version of this guard
+# failed there on a correct fixture). "Every line ends CR" = CR count equals line count; the armed line is found
+# with the same `\r?` the product uses.
+XBL="$X/.claude/hooks/trace-blocklist.txt"
+XCR="$(tr -dc '\r' < "$XBL" | wc -c | tr -d ' ')"; XNL="$(wc -l < "$XBL" | tr -d ' ')"
+[ "${XCR:-0}" -gt 0 ] && [ "$XCR" = "$XNL" ] && grep -qxE $'DevArchitecture\r?' "$XBL" \
+  || { echo "FAIL: FIXTURE — the blocklist has ${XCR:-0} CRs over ${XNL:-0} lines, or no armed line; the case would not test the CRLF path"; exit 1; }
+run_adopt "$X" --here --yes
+grep -qx 'DevArchitecture' "$XBL" || die "an armed CRLF vendor line was dropped by the update" legacy-dotnet-crlf "$X"
+# ...and it is LF now. On Git Bash the grep above passes for a line that still ends CR, so only a count can say so.
+XCR2="$(tr -dc '\r' < "$XBL" | wc -c | tr -d ' ')"
+[ "$XCR2" = 0 ] || die "the updated blocklist still carries $XCR2 CRs" legacy-dotnet-crlf "$X"
+echo "[legacy-dotnet-crlf] armed line read through CRLF ($XCR CRs) stays armed after the update"
+
+# ---- the devarch-module -> cqrs-aop-module RENAME is kept inside the 3.0 migration ----
+# An install from before the rename, and before kit.conf and the manifest (pre-1.8.0): the OLD directory is the
+# only signal. It must be renamed (content kept), announced as a project skill, and not left beside the new one.
+U="$WORK/adopt-rename"; legacy_dotnet_install "$U" devarch-module
+rm -f "$U/.claude/kit.conf" "$U/.claude/kit-manifest.txt"   # .claude/ is gitignored here: nothing to commit
+USUM="$(cksum < "$U/.claude/skills/devarch-module/SKILL.md")"
+run_adopt "$U" --here --yes
+grep -qx 'stack=generic' "$U/.claude/kit.conf"   || die "a pre-kit.conf dotnet install was not migrated to stack=generic" adopt-rename "$U"
+[ -f "$U/.claude/skills/cqrs-aop-module/SKILL.md" ] || die "the pattern skill is gone after the rename migration" adopt-rename "$U"
+[ "$(cksum < "$U/.claude/skills/cqrs-aop-module/SKILL.md")" = "$USUM" ] || die "the rename changed the skill's content" adopt-rename "$U"
+[ ! -d "$U/.claude/skills/devarch-module" ]      || die "the old skill was left beside the new one — two pattern skills compete" adopt-rename "$U"
+case "$ADOPT_OUT" in *"cqrs-aop-module is now a project skill"*) ;; *) die "a pre-kit.conf dotnet install got no migration notice" adopt-rename "$U" ;; esac
+echo "[adopt-rename] pre-kit.conf install carrying the OLD name -> renamed (content kept), announced, no duplicate"
 
 # ---- adopt.sh: pre-2.0 profile MIGRATION ----
 # A project installed by 1.x with `--backend` is missing the frontend agent and four UI skills. 2.0 completes
@@ -270,22 +357,22 @@ for s in frontend frontend-rn-expo frontend-design a11y; do
   [ -d "$M/.claude/skills/$s" ] || { echo "FAIL: migration did not restore skills/$s"; exit 1; }
 done
 grep -q '^profile=' "$M/.claude/kit.conf" && { echo "FAIL: migration left the profile= key behind — the notice would repeat forever"; exit 1; }
-grep -q '^stack=dotnet' "$M/.claude/kit.conf" || { echo "FAIL: migration lost the recorded backend pattern"; exit 1; }
+grep -qx 'stack=generic' "$M/.claude/kit.conf" || { echo "FAIL: a pre-2.0 stack=dotnet install was not migrated to stack=generic"; exit 1; }
 # Second run must be QUIET: the notice is retired by removing the key, not by a flag.
 MOUT2="$( cd "$M" && bash adopt.sh --yes 2>&1 || true )"
 case "$MOUT2" in *"profile pruning was removed"*) echo "FAIL: migration notice repeats on every refresh"; exit 1 ;; esac
-echo "[adopt-migrate] pre-2.0 backend install completed (+1 agent, +4 skills) · pattern kept · notice retired"
+echo "[adopt-migrate] pre-2.0 backend install completed (+1 agent, +4 skills) · stack=generic · notice retired"
 
 # ---- Channel parity: start.sh and the plugin edition must ship the SAME components ----
 # The two channels drifting is not hypothetical — it is what shipped a sleeping agent and broke the route-hint
 # cases on pruned profiles. With the split gone they are identical by construction, so assert it.
 if [ -d plugin/agents ] && [ -d plugin/skills ]; then
-  PA_="$WORK/proj-dotnet/.claude"
+  PA_="$WORK/proj-generic/.claude"
   diff <(ls "$PA_"/agents/*.md | xargs -n1 basename | sort) <(ls plugin/agents/*.md | xargs -n1 basename | sort) >/dev/null \
     || { echo "FAIL: installed agents differ from the plugin edition"; exit 1; }
   diff <(ls -d "$PA_"/skills/*/ | xargs -n1 basename | sort) <(ls -d plugin/skills/*/ | xargs -n1 basename | sort) >/dev/null \
     || { echo "FAIL: installed skills differ from the plugin edition"; exit 1; }
-  echo "[channel-parity] a --dotnet install and the plugin edition ship the same agents and skills"
+  echo "[channel-parity] a start.sh install and the plugin edition ship the same agents and skills"
 fi
 
 # Non-interactive SELF-HEAL — the /update-csk path. An UPDATE of an existing install must fix a stale settings.json
@@ -423,7 +510,7 @@ cp start.sh adopt.sh VERSION "$T/"; cp -R claude-starter "$T/"
 # empty baseline commit BEFORE install (no hooksPath yet), then install; the refresh below STAGES only (like
 # /update-csk) so no pre-commit trace hook runs — the point here is the prompt behaviour, not a commit.
 _slog; ( cd "$T" && git init -q && git config user.email t@t.t && git config user.name t && git commit -q --allow-empty -m base \
-    && printf 'yes\nno\n' | bash start.sh --dotnet ) >"$_L" 2>&1 || _evidence "start.sh --dotnet in $T" "$_L" $?
+    && printf 'yes\n' | bash start.sh ) >"$_L" 2>&1 || _evidence "start.sh in $T" "$_L" $?
 cp adopt.sh "$T/adopt.sh"; cp -R claude-starter "$T/claude-starter"   # a refresh reads the payload beside adopt.sh
 if script --version >/dev/null 2>&1; then PTY_FLAVOR=linux            # util-linux: script -q -e -c CMD FILE
 elif command -v script >/dev/null 2>&1;  then PTY_FLAVOR=bsd          # BSD/macOS: script -q FILE CMD…
@@ -448,7 +535,7 @@ fi
 # (b) is the one that was silently wrong: the old resolver looked for `<parent>/claude-starter/agents`,
 # found nothing anywhere but here, and drew all twelve kit agents in the grey reserved for types nobody
 # declared — "not measured" rendered as a fact.
-PN="$WORK/proj-dotnet"
+PN="$WORK/proj-generic"
 if command -v node >/dev/null 2>&1 && node --version >/dev/null 2>&1; then
   NV="$(node --version)"
   # Keep the output. Discarding it and naming the node version in the failure sent
@@ -529,11 +616,10 @@ wiz() {                                     # $1 = label -> a fresh project with
 W="$(wiz yes-alone)"
 ( cd "$W" && bash start.sh --yes >"$W/out.txt" 2>&1 </dev/null )
 [ -d "$W/.claude" ] || { echo "FAIL: start.sh --yes did not install with stdin closed"; exit 1; }
-# 14 · ...and it does NOT approve the risky one. `--yes` means "install the kit unattended", not "clone a
-#      third-party base project into my tree over the network" — the script's own word for that is risky.
-[ ! -e "$W/backend" ] || { echo "FAIL: --yes cloned the DevArchitecture base; that is a separate consent"; exit 1; }
-grep -q 'does not approve' "$W/out.txt" || { echo "FAIL: --yes declined the risky step without saying why"; exit 1; }
-echo "[wizard] --yes installs unattended, reads nothing, and refuses the risky clone with a reason"
+# 14 · ...and it writes nothing outside .claude/, CLAUDE.md and the ignore/attribute files. Until 3.0 --yes
+#      had a network clone of a base project to decline; there is none now, so no scaffold may appear at all.
+[ ! -e "$W/backend" ] && [ ! -e "$W/frontend" ] || { echo "FAIL: --yes scaffolded ./backend or ./frontend"; exit 1; }
+echo "[wizard] --yes installs unattended, reads nothing, and scaffolds nothing"
 
 # 2 · TWO DIFFERENT STDINs, and the difference is the whole point. CLOSED stdin reaches EOF, so every `read`
 #     answers "" and the installer declines. OPEN-BUT-EMPTY never reaches EOF, so a bare `read` waits forever —
@@ -810,7 +896,8 @@ echo "[wizard] an existing eol rule is recognised, whatever its spelling, and no
 #          four deleted rows printed English and the case still said 0. A miss is now caught whatever its words.
 #      (b) BY WORDS, for a line that never goes through the translator at all (a raw echo). Double-quoted text is
 #          stripped first: the Windows long-path warning QUOTES the .NET error in English on purpose.
-#      Both backend paths run, because the DevArchitecture block only prints on one; adopt runs fresh + refresh.
+#      Both command lines run — the plain one and the legacy --dotnet, whose warning only prints there; adopt runs
+#      fresh + refresh.
 #      CALIBRATED in-line: the miss mechanism must record a key it has no row for, and the English run must hit
 #      the word list — otherwise a detector is broken, not the product.
 _en_words(){ sed 's/"[^"]*"//g' "$1" | grep -cwE 'the|and|is|are|to|of|with|will|your|this|not|be|has|was|for' || true; }
@@ -820,7 +907,7 @@ _cal="$(CSK_I18N_MISS="$_MISS" bash -c "$(sed -n '/^_mt() {/,/^}/p' start.sh)"'
 grep -qx 'zz-calibration-key-with-no-row' "$_MISS" \
   || { echo "FAIL: FIXTURE — _mt did not record a key with no row (${_cal:-no output}); the miss detector is dead"; exit 1; }
 : > "$_MISS"
-for _shape in "dotnet|evet\nhayır\n" "generic|evet\n"; do
+for _shape in "dotnet|evet\n" "generic|evet\n"; do
   _stk="${_shape%%|*}"; _inp="${_shape#*|}"
   for _lg in tr en; do
     W18="$(wiz "lang-$_stk-$_lg")"
@@ -857,6 +944,6 @@ if [ -s "$_MISS" ]; then
   echo "FAIL: --lang tr reached $(sort -u "$_MISS" | wc -l | tr -d ' ') string(s) with no Turkish row:" >&2
   sort -u "$_MISS" | sed 's/^/    | /' >&2; exit 1
 fi
-echo "[wizard] --lang tr: 0 strings without a Turkish row, 0 raw English lines (start.sh x2 paths, adopt fresh+refresh)"
+echo "[wizard] --lang tr: 0 strings without a Turkish row, 0 raw English lines (start.sh plain + --dotnet, adopt fresh+refresh)"
 
 echo "e2e: all installer rehearsals passed"

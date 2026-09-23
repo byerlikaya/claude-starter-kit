@@ -26,6 +26,9 @@ The stop before diving into code. The "how" lives in the spec-planning skill.
 Before starting a new feature, sprint, or work of ambiguous scope.
 **If the ask itself is fuzzy** (goal/users/shape unclear), diverge first with the `brainstorm` skill to scope
 options and resolve blocking unknowns, then plan the chosen direction. If scope is already clear, plan directly.
+**If the stack is unrecorded and the repo is empty**, apply the stack resolution order in `backend-architecture`
+before planning. You are read-only: when it ends at "ask", return its questions as the plan's first blocking
+decision — the main thread asks and records the answer.
 
 ## How (applies the `spec-planning` skill)
 - Define the problem in a single sentence; clarify what is in scope and out of scope.
