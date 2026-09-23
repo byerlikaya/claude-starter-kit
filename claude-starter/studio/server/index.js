@@ -26,7 +26,6 @@ import {
 } from './lib/session.js';
 import { decide, pending, alwaysList } from './lib/permissions.js';
 import { open as openTerminal, plan as terminalPlan } from './lib/terminal.js';
-import * as pty from './lib/pty.js';
 import { gateLog, gateReport, sessionStats, board } from './lib/kit-telemetry.js';
 import { writeState, clearStateSync, findRunning } from './lib/instance.js';
 import { remoteRoster } from './lib/roster.js';
@@ -47,7 +46,7 @@ const MIME = {
 };
 
 function parseArgs(argv) {
-  const out = { port: 7777, selftest: false, open: false, peers: [], name: null, pty: false };
+  const out = { port: 7777, selftest: false, open: false, peers: [], name: null };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--port' || a === '-p') {
@@ -67,8 +66,6 @@ function parseArgs(argv) {
       i += 1;
     } else if (a === '--open' || a === '-o') {
       out.open = true;
-    } else if (a === '--enable-pty') {
-      out.pty = true;
     } else if (a === '--selftest') {
       out.selftest = true;
     } else if (a === '--help' || a === '-h') {
@@ -376,54 +373,6 @@ async function handle(req, res) {
       command: typeof body.command === 'string' ? body.command : undefined,
     });
     return sendJson(res, out.ok ? 200 : 400, out);
-  }
-
-  /* ------------------------------------------------------------- pty ---
-     Off unless asked for. A raw shell is the one surface here that the kit's
-     own gates cannot see, so it is never on by default and the panel says so. */
-
-  if (url.pathname === '/api/pty' && req.method === 'GET') {
-    const cap = pty.capability();
-    return sendJson(res, 200, {
-      measured: true,
-      enabled: pty.isEnabled(),
-      available: cap.available,
-      reason: cap.available ? null : cap.reason,
-      // Said plainly, because the panel repeats it on screen.
-      warning: 'a raw shell bypasses the kit gates: commands typed here never reach a PreToolUse hook',
-      terminals: pty.list(),
-    });
-  }
-
-  const ptyMatch = url.pathname.match(/^\/api\/pty(?:\/([^/]+)(?:\/(input|resize|close|stream))?)?$/);
-  if (ptyMatch) {
-    const [, tid, verb] = ptyMatch;
-
-    if (tid && verb === 'stream') {
-      const t = pty.get(tid);
-      if (!t) return sendJson(res, 404, { ok: false, reason: 'no such terminal' });
-      return ptyStream(req, res, t);
-    }
-
-    const gate = writeAllowed(req);
-    if (!gate.ok) return sendJson(res, 403, { ok: false, reason: gate.reason });
-    if (req.method !== 'POST') return sendJson(res, 405, { ok: false, reason: 'POST only' });
-
-    const body = await readBody(req);
-    if (!body) return sendJson(res, 400, { ok: false, reason: 'body was not JSON' });
-
-    if (!tid) {
-      const made = pty.create({ cwd: body.cwd, rows: body.rows, cols: body.cols });
-      if (!made.ok) return sendJson(res, 400, made);
-      return sendJson(res, 201, { ok: true, terminal: made.terminal.summary() });
-    }
-
-    const t = pty.get(tid);
-    if (!t) return sendJson(res, 404, { ok: false, reason: 'no such terminal' });
-    if (verb === 'input') return sendJson(res, 200, { ...t.write(String(body.data ?? '')), terminal: t.summary() });
-    if (verb === 'resize') return sendJson(res, 200, { ...t.resize(body.rows, body.cols), terminal: t.summary() });
-    if (verb === 'close') return sendJson(res, 200, { ...t.close(), terminal: t.summary() });
-    return sendJson(res, 400, { ok: false, reason: 'unknown action' });
   }
 
   if (url.pathname === '/api/stream') {
@@ -759,24 +708,6 @@ function ownedStream(req, res, url, session) {
   req.on('error', stop);
 }
 
-/** One terminal's output, replayed then followed. */
-function ptyStream(req, res, terminal) {
-  res.writeHead(200, {
-    'content-type': 'text/event-stream; charset=utf-8',
-    'cache-control': 'no-store',
-    connection: 'keep-alive',
-    'x-accel-buffering': 'no',
-  });
-  const write = (event, data) => {
-    try { res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); } catch { /* client gone */ }
-  };
-  write('state', terminal.summary());
-  const unsubscribe = terminal.subscribe((msg) => write(msg.t === 'out' ? 'out' : 'state', msg.t === 'out' ? msg.d : terminal.summary()));
-  const stop = () => { unsubscribe(); try { res.end(); } catch { /* gone */ } };
-  req.on('close', stop);
-  req.on('error', stop);
-}
-
 async function selftest() {
   const checks = [];
   const check = (name, ok, detail) => checks.push({ name, ok, detail });
@@ -837,7 +768,6 @@ async function main() {
       'csk-studio — visual orchestration panel for Claude Code\n\n' +
         '  --port <n>   port to listen on (default 7777, loopback only)\n' +
         '  --peer <url> another machine running Studio (repeatable)\n' +
-        '  --enable-pty allow raw shells in the panel — these BYPASS the kit gates\n' +
         '  --open, -o   open the panel in a browser once it is listening\n' +
         '  --name <s>   label for this machine (default: hostname)\n' +
         '  --selftest   run offline checks and exit\n' +
@@ -884,7 +814,6 @@ async function main() {
     throw e;
   });
 
-  pty.enable(args.pty);
   PEERS = parsePeers([
     ...args.peers,
     ...(process.env.CSK_STUDIO_PEERS ?? '').split(',').map((x) => x.trim()).filter(Boolean),
@@ -895,9 +824,6 @@ async function main() {
     const url = `http://${LOOPBACK}:${args.port}/?token=${TOKEN}`;
     process.stdout.write(`csk-studio  ${url}\n`);
     process.stdout.write(`            machine: ${SELF_NAME}\n`);
-    if (args.pty) {
-      process.stdout.write('            raw terminals: ENABLED — commands typed there bypass the kit gates\n');
-    }
     if (PEERS.length) {
       for (const p of PEERS) {
         process.stdout.write(`            peer: ${p.error ? `${p.spec} — ${p.error}` : p.base}\n`);
@@ -941,7 +867,6 @@ async function main() {
       // Children outlive their parent unless told otherwise, and a panel that
       // leaks running sessions is worse than one that never started them.
       stopAll();
-      pty.closeAll();
       server.close(() => process.exit(0));
       setTimeout(() => process.exit(0), 2000).unref();
     });

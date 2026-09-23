@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Preflight — name the tools this machine is missing BEFORE they turn into a surprise mid-session.
 #
-# Why this exists. The kit is written to degrade rather than break: no jq -> python -> py -> pure bash for the
-# settings merge, sha256sum -> shasum -> cksum for digests, and so on. That is the right design, and it is also
+# Why this exists. The kit is written to degrade rather than break: sha256sum -> shasum -> cksum for digests,
+# and so on. (It no longer needs jq or python at all — every JSON read and write is one bash/awk path on every
+# OS — so neither is reported here: a row for a tool nothing uses would send people to install it.) That is the right design, and it is also
 # why a missing tool never announces itself — the fallback runs, something is quietly worse, and the user finds
 # out later from a symptom that points somewhere else. A Windows Git Bash install with no jq and no python is
 # the normal case, not the exotic one, and it was where every surprise in this project came from.
@@ -44,8 +45,6 @@ have(){ command -v "$1" >/dev/null 2>&1; }
 works(){
   have "$1" || return 1
   case "$1" in
-    python3|python|py) printf '{}' | "$1" -c 'import sys,json;json.load(sys.stdin)' >/dev/null 2>&1 ;;
-    jq)                printf '{}' | jq -e . >/dev/null 2>&1 ;;
       # The panel needs 18+, and a name that resolves is not an interpreter that runs: the Windows Store ships a
       # python3 that satisfies `command -v` and then exits 49. So run node, read the major it reports, and hold
       # the floor. A node that cannot execute fails here rather than at first use.
@@ -107,7 +106,6 @@ _mt() {
       "Or let the kit get one: %s") s='İsterseniz kit sizin için indirebilir: %s' ;;
       "fix: ") s='çözüm: ' ;;
       "node 18+") s='node 18+' ;;
-      "jq or python") s='jq ya da python' ;;
       "sha256 tool") s='sha256 aracı' ;;
       "the whole kit is bash") s='kitin tamamı bash ile yazıldı' ;;
       "Windows: install Git for Windows (git-scm.com) and run Claude Code from Git Bash") s="Windows: Git for Windows'u kurun (git-scm.com) ve Claude Code'u Git Bash'ten çalıştırın" ;;
@@ -115,7 +113,6 @@ _mt() {
       "Windows: ships with Git Bash · macOS: preinstalled · Linux: apt install gawk") s='Windows: Git Bash ile gelir · macOS: hazır gelir · Linux: apt install gawk' ;;
       "the commit-time trace/secret gates are git hooks") s="commit anındaki iz ve gizli bilgi kapıları git hook'u olarak çalışır" ;;
       "the CSK Studio panel (/studio-csk); the gates themselves are bash and do not need it") s='CSK Studio paneli (/studio-csk) için; kapılar bash ile çalışır, Node gerektirmez' ;;
-      "settings merge on update falls back to replace+backup (a project's OWN custom hooks are not preserved)") s="güncellemede settings.json birleştirilemez, yedeklenip değiştirilir (projeye ÖZEL hook'lar korunmaz)" ;;
       "the skill-trust gate falls back to cksum (catches accidental edits, not crafted ones)") s="skill güven kapısı cksum'a düşer (kazara değişiklikleri yakalar, kasıtlı olanları yakalayamaz)" ;;
       "Windows/Linux: coreutils (sha256sum) · macOS: shasum is preinstalled") s='Windows/Linux: coreutils (sha256sum) · macOS: shasum hazır gelir' ;;
     esac
@@ -149,12 +146,6 @@ any_of "git" 'the commit-time trace/secret gates are git hooks' \
     node || MISSING_REQ="$MISSING_REQ node"
 
 # --- OPTIONAL: the kit falls back, but the fallback is worse in a way worth knowing about ------------------
-# jq/python are only needed to MERGE an existing settings.json on update. The pure-bash path replaces the file
-# instead (keeping a backup), which is safe but loses hooks the project added itself — the sort of thing that
-# is obvious in advance and baffling afterwards.
-any_of 'jq or python' "settings merge on update falls back to replace+backup (a project's OWN custom hooks are not preserved)" \
-  "Windows: winget install jqlang.jq · macOS: brew install jq · Linux: apt install jq" jq python3 python py \
-  || MISSING_OPT="$MISSING_OPT jq/python"
 any_of 'sha256 tool' 'the skill-trust gate falls back to cksum (catches accidental edits, not crafted ones)' \
   'Windows/Linux: coreutils (sha256sum) · macOS: shasum is preinstalled' sha256sum shasum || MISSING_OPT="$MISSING_OPT sha256"
 

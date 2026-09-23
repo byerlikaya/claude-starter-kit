@@ -235,7 +235,6 @@ Panel `~/.claude/projects` dizinini okuyor; Claude Code bu makinedeki bütün ot
 ```bash
 /studio-csk                                       # kit kurulu her projede
 node .claude/studio/server/index.js --open        # aynısı, slash seçicisi olmadan
-node .claude/studio/server/index.js --enable-pty  # artı ham kabuklar: onlar yukarıdaki her kapıyı atlar
 ```
 
 | Panelde ne var | Neye dayanıyor |
@@ -266,8 +265,6 @@ Panel `~/.claude/projects` dizinini okuyor; orada bu makinedeki **her** Claude C
   <img src="assets/studio-graph.png" alt="Tek tuvalde on iki ajan ve bir workflow konteyneri; her kart durumunu, araç sayısını, token ve süresini taşıyor, düşen ajan kırmızıyla çerçeveli" width="900">
   <br><sub>Hangi ajan ne yapıyor, ne harcadı, hangisi düştü. Düşeni aramak gerekmiyor; ⚠ düğmesi doğrudan ona götürüyor.</sub>
 </div>
-
-**Ham terminaller siz istemedikçe kapalı.** Doğrudan yazdığınız bir kabuk hiçbir `PreToolUse` hook'una uğramıyor, dolayısıyla `guard-bash.sh` o komutu hiç görmüyor. Panel bunu keşfetmenizi beklemiyor, ekranda kırmızıyla söylüyor. Paneldeki diğer her şey bir araç çağrısından, yani kapılardan geçiyor.
 
 ---
 
@@ -384,9 +381,11 @@ bash .claude/eval/doctor.sh          # bu kurulum sağlıklı mı, proje hazır 
 bash .claude/eval/preflight.sh       # bu makinede hangi araçlar var, olmayanlar neyi zayıflatıyor
 ```
 
-`preflight.sh` ayrıca `start.sh`, `adopt.sh` ve `doctor.sh` içinden de koşar. Bir araç eksik olduğunda kit kırılmaz,
-kabiliyet düşürerek devam eder: `jq` yoksa `python`'a, o da yoksa saf bash'e; `sha256sum` yoksa `cksum`'a iner.
-Doğru tasarım bu, ama aynı zamanda bir eksiğin kendini hiç duyurmamasının da sebebi. Preflight eksiği ve bedelini
+`preflight.sh` ayrıca `start.sh`, `adopt.sh` ve `doctor.sh` içinden de koşar. Kit ne `jq` ne `python` ister: her JSON
+okuma ve yazma, her hook ve her kurulum adımı tek bir bash/awk yolundan geçer; macOS, Linux ve sıfır bir Windows Git
+Bash aynı kodu koşar, aynı sonucu alır. Hâlâ isteğe bağlı olan bir araç eksikse kit kırılmaz, kabiliyet düşürerek
+devam eder: `sha256sum` yoksa `cksum`'a iner. Doğru tasarım bu, ama aynı zamanda bir eksiğin kendini hiç
+duyurmamasının da sebebi. Preflight eksiği ve bedelini
 adıyla söyler. Yalnızca rapor eder; makinenize hiçbir şey kurmaz ve hiçbir çalıştırmayı engellemez.
 
 ## Genişletme

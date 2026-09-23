@@ -275,17 +275,16 @@ _json_keycount(){  # $1 = payload, $2 = key -> sets _KC to how many times it occ
 # Without this tier the fallback below hands the WHOLE command line to the message scanner, and a file path is
 # not a message: `git commit -m "feat: add scaffolding" -- src/AI-generated/scaffold.ts` was refused with
 # "TRACE-SCANNER (message): 'AI-generated'" while the message itself is clean. The same commit is ACCEPTED
-# where python3 works, because that tier returns only the -m values — so the gate's verdict depended on
-# whether an interpreter resolved, not on the commit. This makes the interpreter-free tier answer the same
-# question the python3 tier answers.
+# by a python3 shlex tier — which this file used to prefer where python ran — so the verdict depended on the
+# machine, not on the commit. That tier is gone: this tokenizer is now the only one, on every machine.
 #
 # It is awk, not parameter expansion, and that is deliberate on a hook that already spawns ~49 processes for a
 # commit: a pure-shell character walk was written first and MEASURED QUADRATIC — 146 B 0.006s,
 # 4 KB 0.181s, 16 KB 1.03s, 64 KB 8.08s. That does NOT blow the 60 s timeout the kit sets, and the
 # largest command payload seen across 6791 real Bash calls was 46.8 KB — so this is a tail-risk
 # trade, not a rescue: awk is 0.049s flat to 64 KB and 0.585s at 1 MB, so the cost stops depending
-# on what someone pasted into a commit message. One fork, on a path that already spawns ~49 and only
-# when the python3 tier is unavailable; the zero-fork rule still governs the per-Bash-call path.
+# on what someone pasted into a commit message. One fork, on a path that already spawns ~49 and runs only
+# for a `git commit`; the zero-fork rule still governs the per-Bash-call path.
 # Byte-oriented under LC_ALL=C, which is safe because a UTF-8 continuation byte is always >= 0x80
 # and can never equal an ASCII quote.
 #
@@ -294,8 +293,10 @@ _json_keycount(){  # $1 = payload, $2 = key -> sets _KC to how many times it occ
 # remove false positives — it can never open a blind spot. Verified against a POSIX shlex oracle written
 # independently in another language: 37 command shapes, 33 byte-identical, 4 safe fallbacks, 0 mismatches,
 # with the harness itself calibrated by two deliberate mutations.
-csk_msg_values() {
-  CSK_CMD="$1" LC_ALL=C awk '
+# The one tokenizer: shell quoting rules (the subset shlex.split applies), then every value of the named option.
+# $1 = command, $2 = short flag, $3 = long flag, $4 = 1 to stop at the first value.
+csk_opt_values() {
+  CSK_CMD="$1" CSK_S="$2" CSK_L="$3" CSK_FIRST="${4:-0}" LC_ALL=C awk '
     BEGIN {
       s = ENVIRON["CSK_CMD"]; n = length(s); i = 1
       ntok = 0; cur = ""; have = 0
@@ -338,21 +339,24 @@ csk_msg_values() {
       }
       if (have) { ntok++; tok[ntok] = cur }
 
+      S = ENVIRON["CSK_S"]; L = ENVIRON["CSK_L"]; first = ENVIRON["CSK_FIRST"] == "1"; LE = L "="
       out = ""; nout = 0
       for (k = 1; k <= ntok; k++) {
         t = tok[k]
-        if (t == "-m" || t == "--message") {
+        if (t == S || t == L) {
           k++
           if (k > ntok) exit 1                            # -m with nothing after it: do not guess
           nout++; res[nout] = tok[k]
-        } else if (substr(t, 1, 10) == "--message=") {
-          nout++; res[nout] = substr(t, 11)
+        } else if (substr(t, 1, length(LE)) == LE) {
+          nout++; res[nout] = substr(t, length(LE) + 1)
         }
+        if (first && nout) break
       }
       for (k = 1; k <= nout; k++) printf "%s\n", res[k]
       exit 0
     }'
 }
+csk_msg_values() { csk_opt_values "$1" -m --message; }
 
 INPUT="$(cat)"
 # Same ladder as guard-bash.sh, and for the same reason: the raw-text fallback leaves JSON escapes in place,
@@ -422,14 +426,11 @@ fi
 # what scans it. Reuse it on the -m value when there is one; an editor-composed message is not visible here and
 # stays the git hook's job.
 if [ "$FAILED" = 0 ] && [ -x "$DIR/commit-msg" ]; then
-  # shlex parses the command the way a shell does, which matters because a real commit message is MULTI-LINE:
-  # a line-oriented `sed` extraction found the subject and stopped, so a co-author trailer on line 3 — the
-  # single most likely §4.1 violation, and the one the bare arm of the eval actually produced — went unscanned.
-  # Without python3, scan the whole command text instead of guessing where the message ends: over-inclusive
-  # beats a gate with a blind spot, and anything matching here belongs in neither the message nor the command.
-  # `&&` on the assignment, not a bare `command -v`: a python3 that exists but cannot run (the Windows Store
-  # stub) must land in the same over-inclusive fallback as no python3 at all. Testing existence alone left
-  # MSG="" here, which reads exactly like "this commit has no -m" and skipped the message scan entirely.
+  # The message is tokenized the way a shell does (csk_opt_values), which matters because a real commit message
+  # is MULTI-LINE: a line-oriented `sed` extraction found the subject and stopped, so a co-author trailer on line
+  # 3 — the single most likely §4.1 violation, and the one the bare arm of the eval actually produced — went
+  # unscanned. When the tokenizer cannot parse the command, scan the whole command text instead of guessing
+  # where the message ends: over-inclusive beats a gate with a blind spot.
   #
   # But WHICH branch we are in cannot be decided from MSG's emptiness either, and that is the subtler half.
   # "there is no -m" and "there is an -m but nothing here can extract it" are different facts with opposite
@@ -439,25 +440,11 @@ if [ "$FAILED" = 0 ] && [ -x "$DIR/commit-msg" ]; then
   # no interpreter. Cheap: nothing below runs unless the command is already known to be a `git commit`.
   HAS_M=0
   printf '%s' "$CMD" | grep -qE '(^|[[:space:]])(-[A-Za-z]*m|--message)([[:space:]]|=|$)' && HAS_M=1
-  # CSK-NOT-A-RUNG: reads $CMD, an already-parsed command string, and never the payload. The check in
-  # smoke-test treats every interpreter in this file as a reader ladder UNLESS it sits in a marked region,
-  # because describing the dangerous shape kept missing one — a payload written to a temp file names no
-  # INPUT on the line that reads it. Adding a rung therefore means deleting a comment that says what this
-  # one is for, which is the point.
-  if command -v python3 >/dev/null 2>&1 && MSG="$(CSK_CMD="$CMD" python3 -c '
-import os, shlex
-try: parts = shlex.split(os.environ["CSK_CMD"])
-except ValueError: parts = []
-out = []
-for i, p in enumerate(parts):
-    if p in ("-m", "--message") and i + 1 < len(parts): out.append(parts[i + 1])
-    elif p.startswith("--message="): out.append(p.split("=", 1)[1])
-print("\n".join(out))
-' 2>/dev/null)"; then
-    :
-  elif MSG="$(csk_msg_values "$CMD")"; then
-    :
-  else
+  # ONE tokenizer, awk, on every machine. A python3 `shlex` branch used to run first where python worked, so a
+  # Mac and a Windows box took different code through a gate. Measured before it was removed: on 18 `-m`
+  # shapes the awk tokenizer returned what shlex returned, 18/18. A command awk cannot tokenize (an unclosed
+  # quote, a -m with nothing after it) scans the whole command instead, which can only over-report.
+  if ! MSG="$(csk_msg_values "$CMD")"; then
     MSG="$CMD"
   fi
   if [ "$HAS_M" = 1 ] && [ -n "$MSG" ]; then
@@ -472,27 +459,11 @@ $(bash "$DIR/commit-msg" "$MF" 2>&1)" || FAILED=1
     # closes itself. In a plugin-only install nothing does — and a co-authorship trailer lives in the message,
     # not the diff, so that is precisely where §4.1 would be lost. Fail closed rather than wave it through:
     # a gate that silently skips the case it was built for is worse than no gate, because it reads as covered.
-    MFILE=""
-    if command -v python3 >/dev/null 2>&1; then
-      MFILE="$(CSK_CMD="$CMD" python3 -c '
-import os, shlex
-try: parts = shlex.split(os.environ["CSK_CMD"])
-except ValueError: parts = []
-for i, p in enumerate(parts):
-    if p in ("-F", "--file") and i + 1 < len(parts): print(parts[i + 1]); break
-    if p.startswith("--file="): print(p.split("=", 1)[1]); break
-' 2>/dev/null)"
-    fi
-    # No interpreter (or a stub that cannot run): a -F path is a single token, so a plain extraction gets it.
-    # Without this the file is never read on Windows and the branch below refuses the commit — correct as a
-    # direction, but it refuses the CLEAN -F commits too, and a gate that blocks the innocent is the one people
-    # learn to route around. shlex is still preferred where it exists: it handles a quoted path with spaces.
-    if [ -z "$MFILE" ]; then
-      MFILE="$(printf '%s' "$CMD" \
-        | sed -n 's/.*[[:space:]]--\{0,1\}[Ff]\(ile\)\{0,1\}[[:space:]=]\{1,\}\([^[:space:];&|]\{1,\}\).*/\2/p' \
-        | head -1)"
-      MFILE="${MFILE%\"}"; MFILE="${MFILE#\"}"; MFILE="${MFILE%\'}"; MFILE="${MFILE#\'}"
-    fi
+    # The same tokenizer finds -F/--file. The sed extraction it replaced stopped at the first space, so on the
+    # machines with no python it read `-F "my msg.txt"` as `my` — measured, 5 of 12 shapes wrong (quoted or
+    # spaced paths, a repeated -F, a Windows backslash path) — and the branch below then refused a CLEAN
+    # commit. 12/12 now equal what shlex returned.
+    MFILE="$(csk_opt_values "$CMD" -F --file 1)" || MFILE=""
     if [ -n "$MFILE" ] && [ -f "$MFILE" ]; then
       OUT="$OUT
 $(bash "$DIR/commit-msg" "$MFILE" 2>&1)" || FAILED=1
@@ -520,5 +491,3 @@ if [ "$FAILED" = 1 ]; then
   exit 2
 fi
 exit 0
-
-  # /CSK-NOT-A-RUNG

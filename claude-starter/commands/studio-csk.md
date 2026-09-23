@@ -1,7 +1,7 @@
 ---
 name: studio-csk
 description: Open CSK Studio — the visual panel for what agents are doing, what they spent, and which gates fired.
-argument-hint: "[--port <n>] [--enable-pty]"
+argument-hint: "[--port <n>]"
 ---
 # /studio-csk
 
@@ -40,8 +40,8 @@ fails, say which one and stop — do not improvise a different launch.
    set they write wherever it points instead, and the panel reads only the project's own
    `.claude/gate-log.tsv`, so a log sent anywhere else does not show. The commit scan and the board gate
    refuse without writing a line. Say this once when you hand over the URL, so an honest blank is not
-   read as a broken panel. Everything else — the live agent graph, owned sessions, the permission bridge,
-   the terminals — works the same in both editions.
+   read as a broken panel. Everything else — the live agent graph, owned sessions, the permission bridge —
+   works the same in both editions.
 
 2. **Resolve a runtime — do not ask whether a name resolves.** `ensure-node.sh` sits one level ABOVE the panel
    — beside the `server/` directory, not inside it. Both spellings, in full, so there is nothing to guess:
@@ -109,11 +109,6 @@ fails, say which one and stop — do not improvise a different launch.
    The record that makes the first answer possible lives in `~/.claude/studio-runtime/instance-<port>.json`,
    0600, and holds the token. A panel that was killed leaves one behind; the next start probes it, gets no
    answer, and deletes it — so a stale file reports as the second answer, never as a URL that does not open.
-
-6. **`--enable-pty` only if the user asks for raw shells.** When they do, say this before starting it: a
-   command typed into a raw shell never becomes a tool call, so it reaches no `PreToolUse` hook and
-   `guard-bash.sh` is blind to it. Everything else in the panel routes through a tool call and therefore
-   through the gates.
 
 **Quoting the panel's output.** It prints two things that belong to this machine and nowhere else: the machine
 NAME, and a URL carrying a freshly generated token. Handing both to the user is the whole point — they are

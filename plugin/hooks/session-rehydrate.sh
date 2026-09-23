@@ -34,15 +34,8 @@ STATE="$ROOT/docs/SESSION_STATE.md"
 MSG="A session handover from before this context boundary exists at docs/SESSION_STATE.md. Read it before continuing — it holds the in-progress task state, open decisions, and the intended next step. Do not restart the work from scratch."
 
 # hookSpecificOutput.additionalContext is the documented channel that injects text into the model's context.
-# Prefer jq to build the JSON (it escapes the string correctly); the printf fallback stays valid only because
-# MSG is a fixed constant with no quote/backslash/newline — keep it that way if you edit it.
-# The status of the jq call is what decides, not its existence: this branch used to end with jq, whose
-# failure left EMPTY stdout and rc=0 — the exact shape of the legitimate "nothing to report" case, so the
-# loss was invisible. The fallback below emits byte-identical output, which is why falling through costs
-# nothing. Measured with a stub jq: 0 bytes before, unchanged output after. No extra process.
-if command -v jq >/dev/null 2>&1 && OUT="$(jq -cn --arg m "$MSG" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}' 2>/dev/null)" && [ -n "$OUT" ]; then
-  printf '%s\n' "$OUT"
-else
-  printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":%s}}\n' "\"$MSG\""
-fi
+# ONE PATH, no jq: MSG is a fixed constant with no quote, backslash, control character or newline, so it needs no
+# escaping and every machine emits the same bytes. If you ever make MSG dynamic, escape it the way board-sync.sh
+# does (jq-identical, measured) — a raw quote or tab here makes JSON the CLI silently drops.
+printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$MSG"
 exit 0

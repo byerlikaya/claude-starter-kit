@@ -30,7 +30,6 @@ const el = {
   fullscreen: document.getElementById('fullscreen'),
   newSession: document.getElementById('new-session'),
   continueSession: document.getElementById('continue-session'),
-  newTerm: document.getElementById('new-term'),
   sessionsMeta: document.getElementById('sessions-meta'),
   summary: document.getElementById('graph-summary'),
   pulse: document.getElementById('pulse'),
@@ -340,24 +339,6 @@ el.newSession.addEventListener('click', async () => {
     el.newSession.textContent = '+ session';
   }
 });
-
-// The shell button only exists where a shell can exist. Offering a control
-// that always fails is worse than not offering it.
-getJson('/api/pty')
-  .then((r) => {
-    if (!r.enabled || !r.available) return;
-    el.newTerm.hidden = false;
-    el.newTerm.title = r.warning;
-    el.newTerm.addEventListener('click', async () => {
-      el.newTerm.disabled = true;
-      try {
-        const out = await chat.startTerminal({ cwd: projectsData?.cwd ?? null });
-        if (!out.ok) el.foot.textContent = `could not open a shell: ${out.reason}`;
-        else { el.chat.hidden = false; el.chatSplit.hidden = false; shell.classList.remove('no-chat'); }
-      } finally { el.newTerm.disabled = false; }
-    });
-  })
-  .catch(() => { /* older server, or pty off */ });
 
 /* --------------------------------------------------------------- canvas */
 

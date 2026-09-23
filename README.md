@@ -237,7 +237,6 @@ It reads `~/.claude/projects` — where Claude Code keeps every session on this 
 node .claude/studio/server/index.js --open        # the same, without the slash picker
 # `node` not on PATH? That is the kit keeping its promise not to edit it — ask for the one it fetched:
 #   NODE="$(bash .claude/studio/ensure-node.sh)" && "$NODE" .claude/studio/server/index.js --open
-node .claude/studio/server/index.js --enable-pty  # plus raw shells — those bypass every gate above
 ```
 
 | In the panel | What it rests on |
@@ -268,8 +267,6 @@ It reads `~/.claude/projects`, which holds **every** Claude Code session on the 
   <img src="assets/studio-graph.png" alt="Twelve agents and a workflow container on one canvas, each card carrying its status, tool count, tokens and duration; the failed agent is outlined in red" width="900">
   <br><sub>What each agent is doing, what it has spent, and the one that failed — reachable by the ⚠ button without hunting for it.</sub>
 </div>
-
-**Raw terminals are off unless you ask for them.** A shell typed into directly never reaches a `PreToolUse` hook, so `guard-bash.sh` never sees the command — the panel says so on screen in red rather than leaving you to discover it. Everything else in the panel goes through a tool call, and therefore through the gates.
 
 ---
 
@@ -386,9 +383,11 @@ bash .claude/eval/doctor.sh          # is this install healthy, and is the proje
 bash .claude/eval/preflight.sh       # which tools this machine has, and what degrades without them
 ```
 
-`preflight.sh` also runs inside `start.sh`, `adopt.sh` and `doctor.sh`. The kit degrades rather than breaks when a
-tool is absent — no `jq` falls back to `python`, then to plain bash; no `sha256sum` falls back to `cksum` — which is
-the right design and also the reason a gap never announces itself. Preflight names the gap and what it costs. It
+`preflight.sh` also runs inside `start.sh`, `adopt.sh` and `doctor.sh`. The kit needs neither `jq` nor `python`: every
+JSON read and write, every hook and every installer step is one bash/awk path, so macOS, Linux and a stock Windows
+Git Bash run the same code and get the same result. Where a tool is still optional the kit degrades rather than
+breaks — no `sha256sum` falls back to `cksum` — which is the right design and also the reason a gap never announces
+itself. Preflight names the gap and what it costs. It
 reports; it never installs anything on your machine and never blocks a run.
 
 ## Extending

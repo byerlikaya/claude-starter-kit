@@ -73,18 +73,27 @@ fi
 MSG="$(cat "$CACHE")
 Board state above is a cached snapshot; /board-csk sync refreshes it."
 
-# The status of the jq call decides, not its existence. This branch ended with jq, so a jq that resolves and
-# fails left EMPTY stdout with rc=0 — indistinguishable from the legitimate "no board, nothing to say" case.
-# The escaper below produces byte-identical output, and it was written for exactly the machine where this
-# matters: board.sh is deliberately jq-free, so the cache IS populated on a Windows box with no jq.
-# Measured with a stub jq: 0 bytes before, unchanged 288 after. No extra process.
-if command -v jq >/dev/null 2>&1 && OUT="$(jq -cn --arg m "$MSG" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}' 2>/dev/null)" && [ -n "$OUT" ]; then
-  printf '%s\n' "$OUT"
-else
-  # No jq on Windows Git Bash. The cache is machine-written (emails, ids, titles), so escape the two characters
-  # that can break the JSON rather than trusting the content: a quote or a backslash in an item title would
-  # otherwise produce a payload the CLI silently drops.
-  ESC="$(printf '%s' "$MSG" | sed 's/\\/\\\\/g; s/"/\\"/g' | awk 'BEGIN{ORS=""} NR>1{print "\\n"} {print}')"
-  printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$ESC"
-fi
+# ONE PATH, no jq. The JSON is built here on every machine, so a Mac with jq and a Windows box without it emit the
+# same bytes. The escaper is jq-identical, measured on 15 inputs (quote, backslash, tab, CR, C0 controls, DEL,
+# UTF-8, leading/trailing newlines, 5000 chars): 15/15 equal to `jq -cn --arg m`. The one it replaced escaped only
+# the quote, the backslash and the newline, so a tab in an item title produced JSON the CLI cannot parse
+# (measured: jq rc=5) and the board silently vanished from the session — on exactly the no-jq machine this
+# branch existed for. The trailing newline on the printf closes the last record, so a value ending in a newline
+# keeps it. One awk, no subshell per character.
+ESC="$(printf '%s\n' "$MSG" | LC_ALL=C awk 'BEGIN { ORS = ""
+    for (i = 1; i < 32; i++) ctl[i] = sprintf("%c", i)
+    nm[8] = "\\b"; nm[9] = "\\t"; nm[12] = "\\f"; nm[13] = "\\r" }
+  NR > 1 { print "\\n" }
+  { s = $0
+    gsub(/\\/, "\\\\", s); gsub(/"/, "\\\"", s)
+    for (i = 1; i < 32; i++) {
+      if (i == 10 || !index(s, ctl[i])) continue
+      r = (i in nm) ? nm[i] : sprintf("\\u%04x", i)
+      out = ""; while ((p = index(s, ctl[i])) > 0) { out = out substr(s, 1, p - 1) r; s = substr(s, p + 1) }
+      s = out s
+    }
+    d = sprintf("%c", 127)
+    if (index(s, d)) { out = ""; while ((p = index(s, d)) > 0) { out = out substr(s, 1, p - 1) "\\u007f"; s = substr(s, p + 1) }; s = out s }
+    print s }')"
+printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$ESC"
 exit 0

@@ -161,44 +161,26 @@ fi
 # was needed. Reachable by interrupting a subagent, which leaves that record last. The same predicate now guards
 # both engines so they cannot drift; if a record ever lacks `.type` both go quiet, and a hook that says nothing
 # is recoverable in a way that a hook confidently reporting 0.9% is not.
-# A TIER IS CHOSEN ON WHETHER IT WORKS, NOT ON WHETHER IT EXISTS — the rule the guards learned in 2.6.0, and
-# the last place in the kit that still asked the other question. `command -v` alone commits this hook to the jq
-# branch, and a jq that resolves and fails then produces nothing: the awk branch below never runs and the turn
-# reports "usage not found" instead of the reading. Measured with a stub jq on PATH: correct run says
-# `🔋 Session: %80.0`, the stubbed run says `usage not found in the byte-bounded window`. Windows is where that
-# shape lives — it ships a Microsoft Store redirector named python3 that passes `command -v` and cannot run.
-#
-# The probe costs ONE process, and only where jq already exists: on a machine without it `command -v` short
-# circuits and nothing is spawned. That is the right way round for this kit, because the platform where a spawn
-# is expensive (Git Bash, ~62 ms) is the platform that usually has no jq, and the platforms that pay for the
-# probe are the ones where a process is cheap. It runs once per turn, not once per record.
-HAVE_JQ=0
-if command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then HAVE_JQ=1; fi
-# `scan` prints one number per matching record and the caller keeps the LAST — taken with `${x##*NL}`,
-# which is shell, where `| tail -1` was a process on a hook that runs before every prompt.
+# ONE ENGINE, awk, on every machine. There used to be a jq branch in front of it, chosen when jq worked; the two
+# were written to agree and they did — measured on 60 real transcripts, 60/60 returned the same last total. So
+# the jq branch bought nothing but a second way to be wrong: it had to be probed every turn (a process, and on a
+# box with a stub jq a branch that produced nothing), and jq aborts a stream on the front-truncated first line
+# that the byte window below produces, which awk simply skips. The same answer on every OS, no probe.
+# `scan` prints the total of the LAST matching record; callers take the last line with `${x##*NL}`, which is
+# shell, where `| tail -1` was a process on a hook that runs before every prompt.
 last_line() { printf '%s' "${1##*$'\n'}"; }
 scan() {                                             # reads JSONL on stdin, prints one total per record
-  if [ "$HAVE_JQ" = 1 ]; then
-    jq -r 'select((.isSidechain // false) == false)
-      | select(.type == "assistant")
-      | select(.message.usage.cache_read_input_tokens != null)
-      | (.message.usage.input_tokens
-         + (.message.usage.cache_read_input_tokens // 0)
-         + (.message.usage.cache_creation_input_tokens // 0))' 2>/dev/null
-  else
-    # No jq: parse the JSONL line-by-line — same predicate, same number.
-    awk '
-      /"isSidechain": *true/  { next }
-      !/"type": *"assistant"/ { next }
-      /"cache_read_input_tokens"/ {
-        i=0; r=0; c=0
-        if (match($0, /"input_tokens": *[0-9]+/))                 { s=substr($0,RSTART,RLENGTH); gsub(/[^0-9]/,"",s); i=s }
-        if (match($0, /"cache_read_input_tokens": *[0-9]+/))      { s=substr($0,RSTART,RLENGTH); gsub(/[^0-9]/,"",s); r=s }
-        if (match($0, /"cache_creation_input_tokens": *[0-9]+/))  { s=substr($0,RSTART,RLENGTH); gsub(/[^0-9]/,"",s); c=s }
-        total=i+r+c
-      }
-      END { if (total!="") print total }'
-  fi
+  awk '
+    /"isSidechain": *true/  { next }
+    !/"type": *"assistant"/ { next }
+    /"cache_read_input_tokens"/ {
+      i=0; r=0; c=0
+      if (match($0, /"input_tokens": *[0-9]+/))                 { s=substr($0,RSTART,RLENGTH); gsub(/[^0-9]/,"",s); i=s }
+      if (match($0, /"cache_read_input_tokens": *[0-9]+/))      { s=substr($0,RSTART,RLENGTH); gsub(/[^0-9]/,"",s); r=s }
+      if (match($0, /"cache_creation_input_tokens": *[0-9]+/))  { s=substr($0,RSTART,RLENGTH); gsub(/[^0-9]/,"",s); c=s }
+      total=i+r+c
+    }
+    END { if (total!="") print total }'
 }
 
 # Read the TAIL, not the file, and bound it by BYTES not lines. We want the LAST match; a tail hands back the
@@ -232,7 +214,7 @@ SZ="$(wc -c < "$TR" 2>/dev/null)"; SZ="${SZ//[!0-9]/}"; SZ="${SZ:-0}"
 TOTAL=""
 for B in 262144 4194304; do                         # 256 KiB, then 4 MiB
   if [ "$SZ" -gt "$B" ]; then
-    TOTAL="$(tail -c "$B" "$TR" | tail -n +2 | scan)"   # the tail cut a line in half; jq aborts on it
+    TOTAL="$(tail -c "$B" "$TR" | tail -n +2 | scan)"   # the tail cut a line in half; drop it
   else
     TOTAL="$(tail -c "$B" "$TR" | scan)"                # whole file: the first line is intact
   fi

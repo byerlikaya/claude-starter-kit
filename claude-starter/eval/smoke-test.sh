@@ -2900,8 +2900,9 @@ case "$_tw" in
   2) fail "one reader: the detector fired on '$_twf', which reads no payload — it would forbid ordinary code" ;;
 esac
 # AND THE EXEMPTIONS ARE COUNTED, closed and open markers alike. A region is only reviewable while there are
-# few of them; an unbounded allowance is the same gate with extra steps. Four today: two rule-pattern regions
-# in guard-bash naming interpreters it REFUSES, and the message extractor in guard-commit-scan.
+# few of them; an unbounded allowance is the same gate with extra steps. Two today: the rule-pattern regions in
+# guard-bash naming interpreters it REFUSES. guard-commit-scan's python3 message extractor was the third; it
+# went when the kit moved to one bash path, so a region there now would be a rung coming back.
 _ex=0
 for _h in guard-bash guard-write guard-commit-scan; do
   _ex=$((_ex + $(grep -c '^[[:space:]]*# CSK-NOT-A-RUNG' "$HOOKS/$_h.sh")))
@@ -2909,10 +2910,55 @@ for _h in guard-bash guard-write guard-commit-scan; do
   _exo="$(grep -c '^[[:space:]]*# CSK-NOT-A-RUNG' "$HOOKS/$_h.sh")"
   [ "$_exo" = "$_exc" ] || fail "one reader: $_h has $_exo opening and $_exc closing exemption markers — an unclosed region hides everything after it"
 done
-[ "$_ex" = 3 ] \
-  && pass "one reader: exactly 3 exemption regions, each stating what it is for" \
-  || fail "one reader: $_ex exemption regions, expected 3 — the allowance grew, and each one is a place a rung can hide"
+[ "$_ex" = 2 ] \
+  && pass "one reader: exactly 2 exemption regions, each stating what it is for" \
+  || fail "one reader: $_ex exemption regions, expected 2 — the allowance grew, and each one is a place a rung can hide"
 rm -rf "$_LT"
+
+# ONE PATH, EVERY SCRIPT. The rule above keeps the three guard hooks on one payload reader; this one widens it to
+# everything the kit ships and runs: no product script may call jq or python, on any line outside a marked
+# CSK-NOT-A-RUNG region. The kit used to pick jq, then python, then bash per machine, so a Mac and a stock Windows
+# box ran different code — and the differences were defects: an unescaped tab made board-sync's JSON unparseable,
+# a spaced -F path got a clean commit refused, adopt's settings merge dropped the project's own rules. Test tools
+# (this file, parser-conformance, routing-eval) may still use jq as an ORACLE, with an honest skip when it is absent.
+_one(){ awk '/^[[:space:]]*# CSK-NOT-A-RUNG/{s=1} /^[[:space:]]*# \/CSK-NOT-A-RUNG/{s=0;next} !s' "$1" \
+          | grep -vE '^[[:space:]]*#' \
+          | grep -nE '(^|[^[:alnum:]_/.$-])(jq|python3|python|py)([[:space:]]|$|[;|&)`"'"'"'])' ; }
+_one_files(){ for f in "$HOOKS"/*.sh "$HOOKS/pre-commit" "$HOOKS/commit-msg" "$ROOT"/eval/*.sh "$ROOT"/skills/*/scripts/*.sh \
+                       "$ROOT"/studio/*.sh "$ROOT/../start.sh" "$ROOT/../adopt.sh"; do
+                [ -f "$f" ] || continue
+                case "${f##*/}" in smoke-test.sh|parser-conformance.sh|routing-eval.sh) continue ;; esac
+                printf '%s\n' "$f"; done; }
+_one_bad=""; _one_n=0
+while IFS= read -r _f; do _one_n=$((_one_n+1)); _h="$(_one "$_f")" && _one_bad="$_one_bad ${_f#"$ROOT"/}:${_h%%:*}"; done <<EOF_ONE
+$(_one_files)
+EOF_ONE
+# A count, not just a verdict: "0 findings" over a list that silently lost its hooks is the blind gate this suite
+# has already shipped twice. Every hook is a product script, so fewer than the hooks alone means the list broke.
+_one_min="$(ls "$HOOKS"/*.sh 2>/dev/null | wc -l | tr -d ' ')"
+if [ "$_one_n" -lt "$_one_min" ] || [ "$_one_n" = 0 ]; then
+  fail "one path: scanned $_one_n product scripts, fewer than the $_one_min hooks alone — the file list is broken, not the kit"
+elif [ -z "$_one_bad" ]; then
+  pass "one path: no jq/python call in $_one_n shipped product scripts (hooks, eval, skill scripts, studio, installers)"
+else
+  fail "one path: a product script calls jq/python, so machines diverge again —$_one_bad"
+fi
+# Twins: the detector fires on real calls and stays silent on prose and on a .py file name.
+_OT="$(mktemp -d)"
+printf '%s\n' 'x="$(jq -r .a f)"'                  > "$_OT/a.sh"
+printf '%s\n' 'printf "{}" | python3 -c "pass"'    > "$_OT/b.sh"
+printf '%s\n' 'if command -v python >/dev/null; then :; fi' > "$_OT/c.sh"
+printf '%s\n' '# no jq or python3 needed here'     > "$_OT/d.sh"
+printf '%s\n' 'cp tool.py x; echo "see jq.md"'      > "$_OT/e.sh"
+_ow=0; _owf=""
+for _f in a b c; do _one "$_OT/$_f.sh" >/dev/null 2>&1 || { _ow=1; _owf="$_f"; }; done
+for _f in d e; do _one "$_OT/$_f.sh" >/dev/null 2>&1 && { _ow=2; _owf="$_f"; }; done
+case "$_ow" in
+  0) pass "one path: the detector fires on jq/python3/python calls and ignores prose and .py names" ;;
+  1) fail "one path: the detector MISSED call shape '$_owf'" ;;
+  2) fail "one path: the detector fired on '$_owf', which calls nothing" ;;
+esac
+rm -rf "$_OT"
 
 # Globbing must stay OFF while splitting, or a pathspec is judged against whatever files sit in the cwd.
 gj default 'git commit -m c *.txt' | r46 >/dev/null 2>&1; [ "$?" = 2 ] \
@@ -3869,6 +3915,22 @@ case "$o" in *'"additionalContext"'*SESSION_STATE*) pass "handover present -> in
 if [ -n "$JSONQ" ]; then printf '%s' "$o" | json_ok && pass "rehydrate output is valid JSON ($JSONQ)" || fail "rehydrate output is not valid JSON";
     else skip tool "the rehydrate output JSON-validity check (no working jq)"; fi
 rm -rf "$RHD"
+# board-sync builds its JSON with one awk escaper on every machine. The no-jq escaper it replaced handled only the
+# quote, the backslash and the newline, so a TAB in an item title produced JSON the CLI cannot parse and the board
+# silently vanished from the session — measured: jq rc=5 on that output. Compared BYTE FOR BYTE against the
+# string `jq -cn --arg` produced for the same cache, so it needs no oracle and never skips.
+BSD="$(mktemp -d)"
+if ( cd "$BSD" && git init -q . ) >/dev/null 2>&1; then
+  printf '%s\n' $'#1 "Fix\tlogin" C:\\app\r\x01 ok\nsecond' > "$BSD/.git/csk-board-cache"
+  date -u +%s > "$BSD/.git/csk-board-cache.at"
+  o="$(printf '{}' | CLAUDE_PROJECT_DIR="$BSD" bash "$HOOKS/board-sync.sh" 2>/dev/null)"
+  want='{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"#1 \"Fix\tlogin\" C:\\app\r\u0001 ok\nsecond\nBoard state above is a cached snapshot; /board-csk sync refreshes it."}}'
+  [ "$o" = "$want" ] && pass "board-sync escapes tab, CR, control bytes, quote and backslash exactly as jq does (no jq needed)" \
+                     || fail "board-sync JSON differs from jq's for a cache with a tab/CR/control byte — got: ${o:-<silence>}"
+else
+  fail "FIXTURE: git init failed in $BSD — the board-sync escaping case measured nothing"
+fi
+rm -rf "$BSD"
 grep -q 'SessionStart' "$ROOT/settings.json" && grep -q 'session-rehydrate.sh' "$ROOT/settings.json" \
   && pass "settings.json wires SessionStart -> session-rehydrate.sh" || fail "settings.json missing SessionStart -> session-rehydrate wiring"
 
@@ -3940,6 +4002,9 @@ DOC="$(mktemp -d)"
 ( cd "$DOC"; git init -q >/dev/null 2>&1; git config user.email t@t; git config user.name t; mkdir -p .claude/hooks
   cp "$HOOKS"/*.sh .claude/hooks/ 2>/dev/null; cp "$HOOKS/pre-commit" "$HOOKS/commit-msg" .claude/hooks/ 2>/dev/null
   cp "$ROOT/settings.json" .claude/ 2>/dev/null; echo "0.0.0" > .claude/VERSION
+  # A real install carries eval/ whole (start.sh: cp -R eval/. .claude/eval/), and doctor reads settings.json
+  # through the kit's JSON reader there — without it doctor rightly reports the install as broken.
+  mkdir -p .claude/eval/lib; cp "$ROOT/eval/lib/settings-json.awk" .claude/eval/lib/ 2>/dev/null
   chmod +x .claude/hooks/*.sh .claude/hooks/pre-commit .claude/hooks/commit-msg
   git config core.hooksPath .claude/hooks )
 bash "$ROOT/eval/doctor.sh" "$DOC" >/dev/null 2>&1 && pass "doctor: healthy install -> exit 0" || fail "doctor flagged a healthy install"
@@ -4505,9 +4570,7 @@ if [ -x "$HOOKS/guard-commit-scan.sh" ]; then
   # cares most about, none of them real: the suite trains you to ignore it, which is worse than not having it.
   # Escape here the way the sender does. Backslash first, or it would re-escape the escapes.
   csesc(){ local s="$1"; s="${s//\\/\\\\}"; s="${s//\"/\\\"}"; s="${s//$'\n'/\\n}"; s="${s//$'\t'/\\t}"; printf '%s' "$s"; }
-  csj(){ if command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then
-           jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}'
-         else printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' "$(csesc "$1")"; fi; }
+  csj(){ printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' "$(csesc "$1")"; }
   csrun(){ ( cd "$CS" && printf '%s' "$(csj "$1")" | bash .claude/hooks/guard-commit-scan.sh ) >/dev/null 2>&1; }
   # This is a PreToolUse hook, so the same exit-code contract as guard-bash applies: only `2` blocks, and any
   # other failure means the hook died and Claude Code runs the commit. The four block cases below used to test
@@ -4552,6 +4615,16 @@ $TRFX\""; then pass "multi-line AI trace in the commit message BLOCKED (§4.1)"
   if csblk "git commit -F $MFX"; then pass "-F <file> carrying an AI trace BLOCKED (§4.1)"
   else fail "-F <file> AI trace not blocked with rc=2 (§4.1 hole or the hook died)"; fi
   rm -f "$MFX"
+  # A QUOTED -F path with a space. The sed extraction that ran wherever python3 did not stopped at the space, read
+  # `-F "my msg.txt"` as `my`, found no such file and refused the commit — a clean one. The awk tokenizer is now
+  # the only path; both directions are asserted so an extraction that reads NOTHING cannot pass as "clean".
+  MFD="$(mktemp -d "${TMPDIR:-/tmp}/csk-mfd.XXXXXX")"; printf 'feat: from a spaced path\n' > "$MFD/my msg.txt"
+  csrun "git commit -F \"$MFD/my msg.txt\"" && pass "-F \"path with space\" is read (clean passes)" \
+                                           || fail "-F \"path with space\" with a clean message was blocked — the path was cut at the space"
+  printf 'feat: x\n\n%s: Claude\n' "Co-""Authored-By" > "$MFD/my msg.txt"
+  if csblk "git commit -F \"$MFD/my msg.txt\""; then pass "-F \"path with space\" carrying an AI trace BLOCKED (§4.1)"
+  else fail "-F \"path with space\" AI trace not blocked with rc=2"; fi
+  rm -rf "$MFD"
   ( cd "$CS" && git config core.hooksPath .claude/hooks ) >/dev/null 2>&1
   csrun 'git commit' && pass "editor message allowed once a commit-msg git hook can scan it (full install)" \
                      || fail "full install over-blocks an editor-composed message"
@@ -5277,6 +5350,16 @@ if [ -n "$SGR" ] && [ -f "$SGR/.gitattributes" ] && [ -d "$SGR/packaging" ] && [
   done
   [ -z "$SDIV" ] && pass "claude-starter/hooks and plugin/hooks ship byte-identical files" \
                  || fail "the two editions have drifted apart:$SDIV — one was updated and the other was not"
+  # The JSON reader too: automode-policy's apply.sh finds it three levels up in either edition, so a plugin
+  # without it (or with a stale copy) merges nothing — or merges differently from the kit.
+  if [ -f "$SGR/claude-starter/eval/lib/settings-json.awk" ]; then
+    cmp -s "$SGR/claude-starter/eval/lib/settings-json.awk" "$SGR/plugin/eval/lib/settings-json.awk" \
+      && [ -f "$SGR/plugin/skills/automode-policy/scripts/../../../eval/lib/settings-json.awk" ] \
+      && pass "plugin/eval/lib carries the same JSON reader, where the skill script looks for it" \
+      || fail "plugin/eval/lib/settings-json.awk is missing or differs from claude-starter/eval/lib — run packaging/build-plugin.sh"
+  else
+    fail "claude-starter/eval/lib/settings-json.awk is missing — the kit has no JSON reader"
+  fi
 
   # ---- ci.yml and verify.sh must name the SAME gates -------------------------------------------------------
   # Source-repo only: neither file is installed. This exists because the gates used to be written in ci.yml and

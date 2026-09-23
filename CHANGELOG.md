@@ -5,6 +5,38 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — one path on every OS: the kit no longer uses jq or python
+
+- Every hook, installer step and eval script now runs the same bash/awk code on macOS, Linux and a stock
+  Windows Git Bash. Before this, each machine picked jq, then python, then bash, so they ran different code. The
+  kit reads and writes JSON through one reader, `.claude/eval/lib/settings-json.awk`, which `adopt.sh`,
+  `doctor.sh` and `automode-policy` all share. `preflight.sh` no longer reports jq or python, because nothing
+  needs them.
+- A new smoke gate fails when a shipped product script calls jq or python. It prints how many scripts it
+  scanned, and calibration twins check that it fires on a real call and stays silent on prose.
+
+### Fixed — defects that only lived on machines without jq or python
+
+- **The board vanished from the session when an item title had a tab.** `board-sync.sh` escaped only the
+  quote, the backslash and the newline, so a tab, a CR or any control byte produced JSON the CLI could not
+  parse (measured: jq rc=5), and the CLI dropped it without a word. The escaper now matches `jq` byte for byte on
+  15 inputs.
+- **A clean `git commit -F "my msg.txt"` was refused.** Without python3 the commit gate cut the path at the
+  first space, found no such file and refused the commit. That happened on 5 of 12 measured shapes: quoted,
+  spaced or Windows-backslash paths, and a repeated `-F`. The gate now reads `-F` with the same tokenizer it
+  uses for `-m`, and on all 30 shapes it returns what python's `shlex` returned.
+- **On a machine without python3, `doctor` said "delegation MAY be denied".** It now gives a real verdict.
+  Invalid JSON there was also reported as "hook events missing", with advice to restore the kit's file, which
+  would have dropped the project's own hooks. It is now reported as invalid JSON.
+- **`automode-policy` could not install on a stock Windows box.** With no jq or python it printed the policy and
+  stopped. It now merges, and its output matches `jq -s '.[0] * .[1]'`.
+
+### Removed
+
+- The Studio panel's raw terminal (`--enable-pty`). It was off by default and Unix-only. It was the one part of
+  the panel that bypassed the kit's gates, and the panel's only python3 dependency. Shell work in the panel still
+  runs through a session's Bash tool, where the gates apply.
+
 ### Added — the installer asks which language to speak
 
 - An interactive `start.sh` or `adopt.sh` now opens with a two-line menu, English or Türkçe, and the rest
