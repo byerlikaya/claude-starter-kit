@@ -83,68 +83,120 @@ m() {   # $1 = English text (the key); further args fill %s
   local s="$1"; shift
   if [ "$CSK_LANG" = tr ]; then
     case "$s" in
-      "Agentic Working Kit · setup wizard") s='Agentic Working Kit · kurulum sihirbazı' ;;
-      "2 steps: backend pattern -> summary & confirm.") s='2 adım: backend deseni -> özet ve onay.' ;;
-      "[1/3] Backend pattern") s='[1/3] Backend deseni' ;;
-      "Determines the backend template and whether the .NET-specific skills are included.") s="Backend şablonunu ve .NET'e özgü skill'lerin dahil edilip edilmeyeceğini belirler." ;;
+      "Agentic Working Kit · setup wizard") s='Agentic Working Kit · kurulum' ;;
+      "[1/3] Backend pattern") s='[1/3] Backend mimarisi' ;;
+      "Determines the backend template and whether the .NET-specific skills are included.") s="Hangi backend şablonunun kullanılacağını ve .NET'e özel skill'lerin kurulup kurulmayacağını seçin." ;;
       ".NET / DevArchitecture") s='.NET / DevArchitecture' ;;
       "full support") s='tam destek' ;;
       "Generic") s='Genel' ;;
-      "stack-agnostic") s='yığından bağımsız' ;;
-      "cqrs-aop-module skill (opinionated MediatR CQRS)") s="cqrs-aop-module skill'i (kuralcı MediatR CQRS)" ;;
-      "clones the DevArchitecture base project BEHIND AN APPROVAL GATE (greenfield project)") s='DevArchitecture taban projesini BİR ONAY KAPISININ ARDINDAN klonlar (sıfırdan proje)' ;;
-      "pattern-neutral backend-expert-csk — follows your repo's pattern; declare it as a skill (.claude/skills/)") s='desenden bağımsız backend-expert-csk — deponuzun desenini izler; desenini bir skill olarak bildirin (.claude/skills/)' ;;
+      "stack-agnostic") s='her yığınla çalışır' ;;
+      "cqrs-aop-module skill (opinionated MediatR CQRS)") s="cqrs-aop-module skill'i (MediatR ile CQRS, kendi kurallarıyla)" ;;
+      "clones the DevArchitecture base project BEHIND AN APPROVAL GATE (greenfield project)") s='sıfırdan projede DevArchitecture tabanını eklemeyi teklif eder (siz onaylamadan klonlanmaz)' ;;
+      "pattern-neutral backend-expert-csk — follows your repo's pattern; declare it as a skill (.claude/skills/)") s='backend-expert-csk belirli bir desene bağlı değil — deponuzdaki deseni izler; deseninizi .claude/skills/ altına skill olarak ekleyin' ;;
       "cqrs-aop-module and the DevArchitecture base NOT INSTALLED (sonarqube-check still installed)") s='cqrs-aop-module ve DevArchitecture tabanı KURULMAZ (sonarqube-check yine kurulur)' ;;
-      "[2/3] Who is this install for?") s='[2/3] Bu kurulum kimin için?' ;;
-      "Decides whether your teammates get the kit's configuration — and what goes into .gitignore.") s="Takım arkadaşlarınızın kit yapılandırmasını alıp almayacağını — ve .gitignore'a ne gireceğini belirler." ;;
-      "Just me") s='Yalnız ben' ;;
-      "private") s='özel' ;;
+      "[2/3] Who is this install for?") s='[2/3] Kurulumu kim kullanacak?' ;;
+      "Decides whether your teammates get the kit's configuration — and what goes into .gitignore.") s="Kit ayarlarının ekiple paylaşılıp paylaşılmayacağını ve .gitignore'a nelerin ekleneceğini belirler." ;;
+      "Just me") s='Yalnızca ben' ;;
+      "private") s='kişisel' ;;
       "The whole team") s='Tüm ekip' ;;
       "shared") s='paylaşımlı' ;;
-      ".claude/ and CLAUDE.md stay out of git — nothing appears in your teammates' checkouts") s=".claude/ ve CLAUDE.md git'in dışında kalır — takım arkadaşlarınızın kopyalarında hiçbir şey görünmez" ;;
-      ".claude/ and CLAUDE.md are committable — everyone gets the same agents, skills and gates") s=".claude/ ve CLAUDE.md commit edilebilir — herkes aynı ajanları, skill'leri ve kapıları alır" ;;
-      "internal working documents (docs/) stay private in BOTH answers") s='iç çalışma belgeleri (docs/) HER İKİ cevapta da özel kalır' ;;
-      "[3/3] Summary · see what will be installed before you confirm") s='[3/3] Özet · onaylamadan önce ne kurulacağını görün' ;;
+      ".claude/ and CLAUDE.md stay out of git — nothing appears in your teammates' checkouts") s=".claude/ ve CLAUDE.md git'e girmez — ekip arkadaşlarınız hiçbir şey görmez" ;;
+      ".claude/ and CLAUDE.md are committable — everyone gets the same agents, skills and gates") s=".claude/ ve CLAUDE.md commit'lenebilir — herkes aynı ajanlarla, skill'lerle ve kapılarla çalışır" ;;
+      "internal working documents (docs/) stay private in BOTH answers") s='iç çalışma belgeleri (docs/) HER İKİ seçenekte de dışarıda kalır' ;;
+      "[3/3] Summary · see what will be installed before you confirm") s='[3/3] Özet · onaylamadan önce neyin kurulacağına bakın' ;;
       "Security gates armed on every install:") s='Her kurulumda devreye giren güvenlik kapıları:' ;;
-      "commit/push approval gate — even in auto/bypass mode (guard-bash)") s='commit/push onay kapısı — auto/bypass modunda bile (guard-bash)' ;;
-      "trace scan — a git hook blocks AI traces / vendor names") s="iz taraması — bir git hook'u AI izlerini / sağlayıcı adlarını engeller" ;;
-      "real context measurement + handoff at 75%% (Stop hook)") s="gerçek bağlam ölçümü + %%75'te devir (Stop hook)" ;;
-      "destructive command guard (rm -rf / force-push, etc.)") s='yıkıcı komut koruması (rm -rf / force-push vb.)' ;;
-      "Install with these settings?") s='Bu ayarlarla kurulayım mı?' ;;
-      "Cancelled — nothing changed.") s='İptal edildi — hiçbir şey değişmedi.' ;;
-      "Choice") s='Seçim' ;;
+      "commit/push approval gate — even in auto/bypass mode (guard-bash)") s='commit ve push için onay şartı — auto/bypass modunda bile (guard-bash)' ;;
+      "trace scan — a git hook blocks AI traces / vendor names") s="iz taraması — AI izlerini ve sağlayıcı adlarını bir git hook'u yakalar" ;;
+      "real context measurement + handoff at 75%% (Stop hook)") s="bağlam doluluğu gerçekten ölçülür, %%75'te devir önerilir (Stop hook)" ;;
+      "destructive command guard (rm -rf / force-push, etc.)") s='yıkıcı komut koruması (rm -rf, force-push vb.)' ;;
+      "Install with these settings?") s='Bu ayarlarla kurayım mı?' ;;
+      "Cancelled — nothing changed.") s='İptal edildi, hiçbir şey değişmedi.' ;;
+      "Choice") s='Seçiminiz' ;;
       "empty=1") s='boş=1' ;;
       "(default)") s='(varsayılan)' ;;
       "Scope") s='Kapsam' ;;
-      "Included") s='İçerik' ;;
-      "Backend pattern") s='Backend deseni' ;;
+      "Included") s='Kurulacaklar' ;;
+      "Backend pattern") s='Mimari' ;;
       "DevArch base") s='DevArch tabanı' ;;
-      "Will write") s='Yazılacak' ;;
-      "not installed") s='kurulmuyor' ;;
-      "Install visibility:") s='Kurulum görünürlüğü:' ;;
-      "Backend pattern:") s='Backend deseni:' ;;
+      "Will write") s='Yazılacaklar' ;;
+      "not installed") s='kurulmayacak' ;;
+      "Install visibility:") s='Kurulum türü:' ;;
+      "Backend pattern:") s='Backend mimarisi:' ;;
       "full kit") s='tam kit' ;;
       "no effect:") s='etkisi yok:' ;;
       "Installing:") s='Kuruluyor:' ;;
-      "Tip:  open Claude Code and run /doctor-csk — it checks the install is wired (hooks executable, core.hooksPath set, discipline imported) and scores the project's readiness. CLAUDE.md loads the discipline every session.") s="İpucu:  Claude Code'u açıp /doctor-csk çalıştırın — kurulumun bağlı olduğunu denetler (hook'lar çalıştırılabilir, core.hooksPath ayarlı, disiplin import edilmiş) ve projenin hazırlığını puanlar. CLAUDE.md disiplini her oturumda yükler." ;;
-      "Backend pattern '%s': %s agents, %s skills installed.") s="Backend deseni '%s': %s ajan, %s skill kuruldu." ;;
-      ".claude/DISCIPLINE.md written — kit-owned; an update overwrites it, so keep your own rules out of it.") s='.claude/DISCIPLINE.md yazıldı — kit sahipli; güncelleme üzerine yazar, kendi kurallarınızı buraya koymayın.' ;;
-      "./CLAUDE.md created — EDIT the project section.") s='./CLAUDE.md oluşturuldu — proje bölümünü DÜZENLEYİN.' ;;
-      "trace scan: core.hooksPath -> .claude/hooks (§4.1/§4.2 commit gate active)") s='iz taraması: core.hooksPath -> .claude/hooks (§4.1/§4.2 commit kapısı etkin)' ;;
-      "Done. ./.claude + ./CLAUDE.md ready (full kit · backend pattern: %s); claude-starter/ deleted.") s='Bitti. ./.claude + ./CLAUDE.md hazır (tam kit · backend deseni: %s); claude-starter/ silindi.' ;;
-      "Next: 1) fill in the CLAUDE.md project section  2) open Claude Code at the repo root") s="Sırada: 1) CLAUDE.md proje bölümünü doldurun  2) Claude Code'u depo kökünde açın" ;;
-      "Note: if Claude Code is ALREADY running here, restart it — CLAUDE.md and the discipline load at session start.") s='Not: Claude Code burada ZATEN çalışıyorsa yeniden başlatın — CLAUDE.md ve disiplin oturum başında yüklenir.' ;;
-      "Panel: /studio-csk opens the Studio panel from this project (or: node .claude/studio/server/index.js --open).") s='Panel: /studio-csk bu projeden Studio panelini açar (ya da: node .claude/studio/server/index.js --open).' ;;
-      "— backend + web + mobile (RN/Expo), every agent and skill") s='— backend + web + mobil (RN/Expo), her ajan ve her skill' ;;
-      "%s agents · %s skills will be installed") s='%s ajan · %s skill kurulacak' ;;
-      "non-.NET — generic") s='.NET değil — genel' ;;
-      "(cqrs-aop-module not installed; sonarqube-check installed)") s='(cqrs-aop-module kurulmuyor; sonarqube-check kuruluyor)' ;;
-      "approval gate -> ./%s") s='onay kapısı -> ./%s' ;;
-      "(./frontend reserved next to it)") s='(yanında ./frontend ayrılıyor)' ;;
-      "(shared: .claude/ and CLAUDE.md stay committable)") s='(paylaşımlı: .claude/ ve CLAUDE.md commit edilebilir kalır)' ;;
-      "(default — pass --generic for the stack-agnostic one)") s='(varsayılan — yığından bağımsızı için --generic geçin)' ;;
-      "(default — pass --shared to commit .claude/ and CLAUDE.md)") s='(varsayılan — .claude/ ve CLAUDE.md commit edilsin isterseniz --shared geçin)' ;;
-      "Security gates armed on every install:") s='Her kurulumda devreye giren güvenlik kapıları:' ;;
+      "Tip:  open Claude Code and run /doctor-csk — it checks the install is wired (hooks executable, core.hooksPath set, discipline imported) and scores the project's readiness. CLAUDE.md loads the discipline every session.") s="İpucu:  Claude Code'u açıp /doctor-csk çalıştırın — kurulumun eksiksiz bağlandığını denetler (hook'lar çalıştırılabilir mi, core.hooksPath ayarlı mı, disiplin import edilmiş mi) ve projenin ne kadar hazır olduğunu puanlar. Disiplin, CLAUDE.md sayesinde her oturumda yüklenir." ;;
+      "Backend pattern '%s': %s agents, %s skills installed.") s="Backend mimarisi '%s': %s ajan ve %s skill kuruldu." ;;
+      ".claude/DISCIPLINE.md written — kit-owned; an update overwrites it, so keep your own rules out of it.") s='.claude/DISCIPLINE.md yazıldı. Bu dosya kite ait ve her güncellemede yeniden yazılır; kendi kurallarınızı buraya eklemeyin.' ;;
+      "./CLAUDE.md created — EDIT the project section.") s='./CLAUDE.md oluşturuldu — proje bölümünü sizin DOLDURMANIZ gerekiyor.' ;;
+      "trace scan: core.hooksPath -> .claude/hooks (§4.1/§4.2 commit gate active)") s='iz taraması: core.hooksPath -> .claude/hooks (§4.1/§4.2 commit kapısı açık)' ;;
+      "Done. ./.claude + ./CLAUDE.md ready (full kit · backend pattern: %s); claude-starter/ deleted.") s='Tamamlandı. ./.claude ve ./CLAUDE.md hazır (tam kit · backend mimarisi: %s); claude-starter/ silindi.' ;;
+      "Next: 1) fill in the CLAUDE.md project section  2) open Claude Code at the repo root") s="Sıradaki adımlar: 1) CLAUDE.md'deki proje bölümünü doldurun  2) Claude Code'u deponun kökünde açın" ;;
+      "Note: if Claude Code is ALREADY running here, restart it — CLAUDE.md and the discipline load at session start.") s='Not: Claude Code bu klasörde ZATEN açıksa yeniden başlatın — CLAUDE.md ve disiplin oturum açılırken yüklenir.' ;;
+      "Panel: /studio-csk opens the Studio panel from this project (or: node .claude/studio/server/index.js --open).") s='Panel: /studio-csk komutu Studio panelini bu projeden açar (alternatif: node .claude/studio/server/index.js --open).' ;;
+      "— backend + web + mobile (RN/Expo), every agent and skill") s="— backend, web ve mobil (RN/Expo); tüm ajanlar ve skill'ler" ;;
+      "%s agents · %s skills will be installed") s='%s ajan · %s skill' ;;
+      "non-.NET — generic") s='.NET dışı — genel' ;;
+      "(cqrs-aop-module not installed; sonarqube-check installed)") s='(cqrs-aop-module kurulmayacak; sonarqube-check kurulacak)' ;;
+      "approval gate -> ./%s") s='onayınızla -> ./%s' ;;
+      "(./frontend reserved next to it)") s='(yanına ./frontend klasörü açılır)' ;;
+      "(shared: .claude/ and CLAUDE.md stay committable)") s="(paylaşımlı: .claude/ ve CLAUDE.md commit'lenebilir kalır)" ;;
+      "(default — pass --generic for the stack-agnostic one)") s='(varsayılan — her yığına uyan seçenek için --generic verin)' ;;
+      "(default — pass --shared to commit .claude/ and CLAUDE.md)") s="(varsayılan — .claude/ ve CLAUDE.md'yi commit'lemek için --shared verin)" ;;
+      "no") s='hayır' ;;
+      "(--yes does not approve the DevArchitecture base — run without --yes to add it)") s='(--yes DevArchitecture tabanını onaylamaz — eklemek için --yes olmadan çalıştırın)' ;;
+      "yes") s='evet' ;;
+      "[yes/no]") s='[evet/hayır]' ;;
+      "!!! WARNING: this project root is %s characters; the .NET base needs it to be 94 or fewer.") s='!!! UYARI: proje kökünün yolu %s karakter; .NET tabanı için en fazla 94 olmalı.' ;;
+      "The copy will SUCCEED and the build will FAIL: the base's deepest file is 156 characters, and") s='Kopyalama SORUNSUZ görünür ama derleme BAŞARISIZ olur. Tabanın en derin dosyası 156 karakter,' ;;
+      "Windows cannot open a path past 259 unless long paths are enabled. Measured here: dotnet build") s='Windows ise uzun yol desteği açık değilse 259 karakteri aşan yolları açamaz. Ölçüldü: dotnet build' ;;
+      "stops with %s.") s='%s hatasıyla duruyor.' ;;
+      "94 is also optimistic — a build writes bin/ and obj/ BELOW the sources, so the real room is less.") s='94 bile iyimser: derleme bin/ ve obj/ klasörlerini kaynakların ALTINA yazar, gerçek pay daha da az.' ;;
+      "Two things fix it: install at a shorter root (%s rather than a deep Documents path),") s='Çözüm iki yoldan biri: projeyi daha kısa bir yola taşıyın (derin bir Documents yolu yerine %s gibi),' ;;
+      "or set LongPathsEnabled=1 under %s (admin).") s='ya da %s altında LongPathsEnabled=1 yapın (yönetici yetkisi gerekir).' ;;
+      "(core.longpaths only affects git, not the build, so it will not help here.)") s="(core.longpaths yalnızca git'i etkiler, derlemeyi değil; burada işe yaramaz.)" ;;
+      "ERROR: git missing; cannot include DevArchitecture.") s='HATA: git bulunamadı, DevArchitecture eklenemiyor.' ;;
+      "Downloading: %s") s='İndiriliyor: %s' ;;
+      "ERROR: clone failed (network/access?). Manually: %s") s='HATA: klonlanamadı (ağ ya da erişim sorunu olabilir). Elle denemek için: %s' ;;
+      "Renamed the solution to %s.") s='Solution dosyası %s olarak yeniden adlandırıldı.' ;;
+      "DevArchitecture base placed in: %s.") s='DevArchitecture tabanı eklendi: %s.' ;;
+      "the project root") s='proje kökü' ;;
+      "NOTE (§4.2): the template name still lives in namespaces / csproj / appsettings — as the FIRST") s='NOT (§4.2): şablonun adı namespace, csproj ve appsettings içinde hâlâ geçiyor.' ;;
+      "task, ask an agent to rename DevArchitecture -> %s throughout.") s='İLK iş olarak bir ajandan DevArchitecture adını her yerde %s ile değiştirmesini isteyin.' ;;
+      "HEADS-UP: the base carries %s vendored front-end files under %s (bootstrap et al).") s='DİKKAT: taban %s dosyalık hazır ön yüz kütüphanesiyle geliyor (%s altında; bootstrap vb.).' ;;
+      "The repo-bloat gate will stop your first commit over them. Decide once: gitignore that path, or") s="Depo şişmesi kapısı ilk commit'inizi bu dosyalar yüzünden durduracak. Baştan karar verin: o yolu .gitignore'a ekleyin" ;;
+      "commit them deliberately with %s (§4.5: an explicit, one-off exception).") s="ya da bilerek %s ile commit'leyin (§4.5: açıkça verilmiş, tek seferlik istisna)." ;;
+      "the kit always installs in full (all agents · all skills).") s="kit her zaman eksiksiz kurulur (tüm ajanlar · tüm skill'ler)." ;;
+      "3 steps: backend pattern -> who it is for -> summary & confirm.") s='3 adım: backend mimarisi -> kim kullanacak -> özet ve onay.' ;;
+      "Backend base (DevArchitecture)") s='Backend tabanı (DevArchitecture)' ;;
+      "Target: %s (the frontend stays separate under ./frontend).") s='Hedef: %s (frontend ayrıca ./frontend altında durur).' ;;
+      "DevArchitecture detected — base already present, skipping copy.") s='DevArchitecture zaten kurulu, kopyalama atlandı.' ;;
+      "!!! WARNING: An existing project is present and the DevArchitecture backend base is MISSING.") s='!!! UYARI: Burada mevcut bir proje var ve DevArchitecture backend tabanı YOK.' ;;
+      "Adding it may cause file/structure conflicts and BREAK the project.") s='Tabanı eklemek dosya ve klasör çakışmalarına yol açıp projeyi BOZABİLİR.' ;;
+      "This kit is meant for setting up a project FROM SCRATCH. Confirm if you still want to add it.") s='Bu kit SIFIRDAN kurulan projeler için tasarlandı. Yine de eklemek istiyorsanız onaylayın.' ;;
+      "Do you want to add DevArchitecture to this EXISTING project (risky)?") s='DevArchitecture bu MEVCUT projeye eklensin mi (riskli)?' ;;
+      "Continuing without the backend base.") s='Backend tabanı olmadan devam ediliyor.' ;;
+      "Skipped. The backend flow assumes DevArchitecture; you will need to adapt it manually.") s="Atlandı. Backend akışı DevArchitecture'a göre kurgulandı; projenize elle uyarlamanız gerekecek." ;;
+      "Greenfield project: this kit can install the DevArchitecture backend base.") s='Sıfırdan bir proje: kit, DevArchitecture backend tabanını da kurabilir.' ;;
+      "Should I include the DevArchitecture backend base in the project now?") s='DevArchitecture backend tabanını şimdi projeye ekleyeyim mi?' ;;
+      "Could not include the backend base; continuing with kit installation.") s='Backend tabanı eklenemedi; kit kurulumu devam ediyor.' ;;
+      "Skipped. You can add it manually later:  %s") s='Atlandı. İsterseniz daha sonra elle ekleyebilirsiniz:  %s' ;;
+      "Reserved ./frontend for your frontend.") s='Frontend için ./frontend klasörü ayrıldı.' ;;
+      "AGENT_TEMPLATE.md missing from the payload — /skill-csk will have nothing to read.") s='AGENT_TEMPLATE.md pakette yok — /skill-csk okuyacak bir şablon bulamayacak.' ;;
+      "./CLAUDE.md kept as-is (already imports the discipline) — the refresh landed in DISCIPLINE.md.") s="./CLAUDE.md'ye dokunulmadı (disiplini zaten import ediyor); güncelleme DISCIPLINE.md'ye yazıldı." ;;
+      "! ./CLAUDE.md carries the discipline INLINE (pre-1.1 layout) — left untouched.") s='! ./CLAUDE.md disiplini dosyanın İÇİNDE taşıyor (1.1 öncesi düzen) — dokunulmadı.' ;;
+      "Discipline updates will NOT reach it. To migrate: delete everything above your") s='Disiplin güncellemeleri bu dosyaya ULAŞMAZ. Geçiş için şu başlığın üstündeki her şeyi silin:' ;;
+      "%s heading and leave this single line in its place:") s='%s — sildiğiniz yere de yalnızca şu satırı koyun:' ;;
+      "./CLAUDE.md existed — prepended the discipline @import; your content is untouched.") s='./CLAUDE.md zaten vardı — en başa disiplinin @import satırı eklendi, içeriğinize dokunulmadı.' ;;
+      "%s eol pin(s) so shared hooks stay LF") s="%s eol kuralı eklendi; paylaşılan hook'lar LF olarak kalır" ;;
+      "NOTE: no git repository at this level; after %s run:  %s") s='NOT: bu klasörde git deposu yok. %s yaptıktan sonra şunu çalıştırın:  %s' ;;
+      "Panel: needs Node 18+, which is not on this machine — but that is no longer a dead end.") s='Panel: Node 18+ gerekiyor ve bu makinede yok — ama bunun da bir çözümü var.' ;;
+      "The kit fetches one for the panel: %s  (asks first;") s='Kit, panel için Node indirebilir: %s  (önce sorar;' ;;
+      "verified against the published checksum, into %s, nothing else touched).") s='yayımlanan checksum ile doğrular, yalnızca %s içine kurar, başka hiçbir şeye dokunmaz).' ;;
+      "Every gate still holds meanwhile; the panel is the only part that needs node.") s="Bu arada tüm kapılar çalışmaya devam eder; Node'a yalnızca panel ihtiyaç duyar." ;;
+      "Layout: backend in ./backend · build your frontend in ./frontend · first agent task: rename DevArchitecture -> %s.") s="Düzen: backend ./backend içinde · frontend'i ./frontend içinde geliştirin · ajanın ilk işi: DevArchitecture adını %s ile değiştirmek." ;;
+      "ERROR: the %s sentinel line is missing from %s — refusing to guess the discipline/project split.") s='HATA: %s işaret satırı %s içinde bulunamadı — disiplinin nerede bitip proje bölümünün nerede başladığı tahmin edilmeyecek.' ;;
+      "Unknown parameter: %s") s='Bilinmeyen parametre: %s' ;;
     esac
   fi
   # shellcheck disable=SC2059
@@ -153,6 +205,26 @@ m() {   # $1 = English text (the key); further args fill %s
 # ---- /CSK-I18N -----------------------------------------------------------------------------------------
 
 usage() {
+  # A heredoc cannot go through m() line by line without breaking its layout, so the Turkish help is its own
+  # block. Flags and commands are identical in both; only the prose differs.
+  if [ "${CSK_LANG:-}" = tr ]; then
+    cat <<'USAGE_TR'
+Kullanım: bash start.sh [SEÇENEKLER]
+Seçenek vermezseniz kurulum sihirbazı her şeyi adım adım sorar.
+
+Backend mimarisi (varsayılan: --dotnet)
+  --dotnet   .NET/DevArchitecture için tam destek (cqrs-aop-module + onaylı DevArchitecture tabanı)
+  --generic  her yığına uyan backend (cqrs-aop-module kurulmaz; sonarqube-check dilden bağımsız, kurulur)
+
+Kit her zaman eksiksiz kurulur: tüm ajanlar ve skill'ler — backend, web ve mobil (RN/Expo).
+  --backend | --frontend | --mobile | --fullstack   hâlâ kabul edilir ama etkisi yok (eski komutlar bozulmasın diye)
+  --private | --shared   kurulum yalnızca sizin mi, yoksa ekiple paylaşılıp commit'lenecek mi? (varsayılan: private)
+  --lang tr|en   kurulum dili (verilmezse sihirbaz sorar)
+  --yes, -y      tüm sorulara evet de (gözetimsiz kurulum)
+  --version, -v  kit sürümünü yazdırıp çık
+USAGE_TR
+    return
+  fi
   cat <<'USAGE'
 Usage: bash start.sh [BACKEND-STACK]
   Stack:  --dotnet | --generic   (default: dotnet)
@@ -163,7 +235,8 @@ If no flag is given, the script asks interactively (wizard).
 Every install ships the whole kit: all agents, all skills — backend, web and mobile (RN/Expo) together.
   --backend | --frontend | --mobile | --fullstack   accepted, no effect (kept so older commands still run)
   --private | --shared   is the install yours alone, or committed for the team? (default: private)
-  --yes, -y      answer every question with yes (unattended install)
+  --lang tr|en   installer language (asked interactively when not given)
+  --yes, -y     answer every question with yes (unattended install)
   --version, -v  print the kit version and exit
 USAGE
 }
@@ -207,15 +280,15 @@ ask_yes() {  # $1 = question; returns 0 if the user says 'yes'
   # files into the user's tree and the script itself labels it risky, so it stays an explicit, human yes.
   # Under --yes these decline and say so, which is the reversible direction.
   if [ "${2:-}" = risky ] && [ "${ASSUME_YES:-0}" = 1 ]; then
-    printf '%s no %s(--yes does not approve the DevArchitecture base — run without --yes to add it)%s\n' "$1" "$D" "$R"
+    printf '%s %s %s%s%s\n' "$1" "$(m 'no')" "$D" "$(m '(--yes does not approve the DevArchitecture base — run without --yes to add it)')" "$R"
     return 1
   fi
-  if [ "${ASSUME_YES:-0}" = 1 ]; then printf '%s yes %s(--yes)%s\n' "$1" "$D" "$R"; return 0; fi
+  if [ "${ASSUME_YES:-0}" = 1 ]; then printf '%s %s %s(--yes)%s\n' "$1" "$(m 'yes')" "$D" "$R"; return 0; fi
   # Deliberately NOT adopt.sh's `[ -t 0 ]` shape. adopt.sh declines outright when stdin is not a terminal;
   # here `printf 'yes\n' | bash start.sh` is the documented CI form (see the note at the confirm prompt) and
   # that shape would silently turn every piped install into a cancellation. A pipe reaching EOF already
   # answers "" => no, so the unattended case stays safe without special-casing it.
-  printf '%s [yes/no]: ' "$1"
+  printf '%s %s: ' "$1" "$(m '[yes/no]')"
   csk_read a
   case "$a" in [yY]|[yY][eE][sS]|[eE]|[eE][vV][eE][tT]) return 0 ;; *) return 1 ;; esac
 }
@@ -326,7 +399,7 @@ IMPORT_LINE='@.claude/DISCIPLINE.md'
 # (in this comment, in the docs, in the discipline text itself) can never be mistaken for the split point.
 # Abort loudly if it is gone: a silent miss would ship the ENTIRE template as "discipline" — exactly how the
 # old '<PROJE ADI>' marker failed once the payload was translated to English.
-kit_require_sentinel() { grep -qE '^<!-- KIT:DISCIPLINE-END' "$1" || { echo "ERROR: the '<!-- KIT:DISCIPLINE-END' sentinel line is missing from $1 — refusing to guess the discipline/project split."; exit 1; }; }
+kit_require_sentinel() { grep -qE '^<!-- KIT:DISCIPLINE-END' "$1" || { printf '%s\n' "$(m 'ERROR: the %s sentinel line is missing from %s — refusing to guess the discipline/project split.' "'<!-- KIT:DISCIPLINE-END'" "$1")"; exit 1; }; }
 kit_discipline_of()    { awk '/^<!-- KIT:DISCIPLINE-END/{exit} {print}' "$1"; }
 kit_project_of()       { awk 'f{print} /^<!-- KIT:DISCIPLINE-END/{f=1}' "$1"; }
 # Anchored: the import must BE the line, not merely be mentioned in prose (the discipline text names the path).
@@ -385,27 +458,27 @@ csk_path_budget_warn(){
   local rl; rl="$(csk_native_len .)"
   [ "$rl" -gt 94 ] 2>/dev/null || return 0
   echo
-  echo "  !!! WARNING: this project root is $rl characters; the .NET base needs it to be 94 or fewer."
-  echo "  The copy will SUCCEED and the build will FAIL: the base's deepest file is 156 characters, and"
-  echo "  Windows cannot open a path past 259 unless long paths are enabled. Measured here: dotnet build"
-  echo "  stops with \"the fully qualified file name must be less than 260 characters\"."
-  echo "  94 is also optimistic — a build writes bin/ and obj/ BELOW the sources, so the real room is less."
-  echo "  Two things fix it: install at a shorter root (C:\\src\\<name> rather than a deep Documents path),"
-  echo "  or set LongPathsEnabled=1 under HKLM\\SYSTEM\\CurrentControlSet\\Control\\FileSystem (admin)."
-  echo "  (core.longpaths only affects git, not the build, so it will not help here.)"
+  echo "  $(m '!!! WARNING: this project root is %s characters; the .NET base needs it to be 94 or fewer.' "$rl")"
+  echo "  $(m "The copy will SUCCEED and the build will FAIL: the base's deepest file is 156 characters, and")"
+  echo "  $(m 'Windows cannot open a path past 259 unless long paths are enabled. Measured here: dotnet build')"
+  echo "  $(m 'stops with %s.' '"the fully qualified file name must be less than 260 characters"')"
+  echo "  $(m '94 is also optimistic — a build writes bin/ and obj/ BELOW the sources, so the real room is less.')"
+  echo "  $(m 'Two things fix it: install at a shorter root (%s rather than a deep Documents path),' 'C:\src\<name>')"
+  echo "  $(m 'or set LongPathsEnabled=1 under %s (admin).' 'HKLM\SYSTEM\CurrentControlSet\Control\FileSystem')"
+  echo "  $(m '(core.longpaths only affects git, not the build, so it will not help here.)')"
   echo
 }
 clone_devarch() {  # $1 = target dir; clone verbatim, drop nested .git, rename the .sln to the project name
   local target="${1:-.}"
-  command -v git >/dev/null 2>&1 || { echo "  ERROR: git missing; cannot include DevArchitecture."; return 1; }
+  command -v git >/dev/null 2>&1 || { echo "  $(m 'ERROR: git missing; cannot include DevArchitecture.')"; return 1; }
   local tmp; tmp="$(mktemp -d)"
-  echo "  Downloading: $DEVARCH_URL"
+  echo "  $(m 'Downloading: %s' "$DEVARCH_URL")"
   # No timeout on this one, deliberately: a first clone of a real backend base legitimately takes minutes on a
   # slow link, and cutting it off would break the feature to fix a hang it does not have. What it CAN hit is the
   # credential prompt — if the URL ever moves behind auth, git asks for a username and the installer stops dead
   # with no output. Suppressing the prompt turns that into the error message two lines below.
   if ! GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never git clone --depth 1 "$DEVARCH_URL" "$tmp/da" >/dev/null 2>&1; then
-    echo "  ERROR: clone failed (network/access?). Manually: git clone $DEVARCH_URL"
+    echo "  $(m 'ERROR: clone failed (network/access?). Manually: %s' "git clone $DEVARCH_URL")"
     rm -rf "$tmp"; return 1
   fi
   rm -rf "$tmp/da/.git"     # not a separate repo/submodule, included as verbatim files
@@ -414,11 +487,11 @@ clone_devarch() {  # $1 = target dir; clone verbatim, drop nested .git, rename t
   rm -rf "$tmp"
   # Rename the solution file to the project name (safe — the .sln name is independent of the projects it references).
   if [ -f "$target/DevArchitecture.sln" ] && [ "$PROJECT_NAME" != "DevArchitecture" ]; then
-    mv "$target/DevArchitecture.sln" "$target/${PROJECT_NAME}.sln" && echo "  Renamed the solution to ${PROJECT_NAME}.sln."
+    mv "$target/DevArchitecture.sln" "$target/${PROJECT_NAME}.sln" && echo "  $(m 'Renamed the solution to %s.' "${PROJECT_NAME}.sln")"
   fi
-  echo "  DevArchitecture base placed in: $([ "$target" = "." ] && echo 'the project root' || echo "$target/")."
-  echo "  NOTE (§4.2): the template name still lives in namespaces / csproj / appsettings — as the FIRST"
-  echo "  task, ask an agent to rename DevArchitecture -> ${PROJECT_NAME} throughout."
+  echo "  $(m 'DevArchitecture base placed in: %s.' "$([ "$target" = "." ] && m 'the project root' || echo "$target/")")"
+  echo "  $(m 'NOTE (§4.2): the template name still lives in namespaces / csproj / appsettings — as the FIRST')"
+  echo "  $(m 'task, ask an agent to rename DevArchitecture -> %s throughout.' "${PROJECT_NAME}")"
   # The base ships ~8 MB of third-party front-end assets under wwwroot/lib/**/dist/, and the repo-bloat gate
   # stops the first commit over them. That is the gate doing its job — whether to commit vendored assets is a
   # real decision — but discovering it at `git commit` time, on a project you have not written a line of yet,
@@ -426,9 +499,9 @@ clone_devarch() {  # $1 = target dir; clone verbatim, drop nested .git, rename t
   VLIB="$(find "$target" -type d -path '*wwwroot/lib' 2>/dev/null | head -1)"
   if [ -n "$VLIB" ]; then
     VN="$(find "$VLIB" -type f 2>/dev/null | wc -l | tr -d ' ')"
-    echo "  HEADS-UP: the base carries $VN vendored front-end files under ${VLIB#./}/ (bootstrap et al)."
-    echo "  The repo-bloat gate will stop your first commit over them. Decide once: gitignore that path, or"
-    echo "  commit them deliberately with 'git commit --no-verify' (§4.5: an explicit, one-off exception)."
+    echo "  $(m 'HEADS-UP: the base carries %s vendored front-end files under %s (bootstrap et al).' "$VN" "${VLIB#./}/")"
+    echo "  $(m 'The repo-bloat gate will stop your first commit over them. Decide once: gitignore that path, or')"
+    echo "  $(m 'commit them deliberately with %s (§4.5: an explicit, one-off exception).' "'git commit --no-verify'")"
   fi
 }
 
@@ -447,24 +520,44 @@ clone_devarch() {  # $1 = target dir; clone verbatim, drop nested .git, rename t
 # Measured, and recorded here rather than treated as a defect: on stock Windows LANG, LC_ALL and
 # LC_MESSAGES are ALL empty (Git Bash defaults only LC_CTYPE). So auto-detect never fires there, and a
 # Turkish-speaking Windows user lands on English unless they pass --lang tr or export CSK_LANG.
-_lang_flag=""; _lang_take=0
+#
+# AN INTERACTIVE INSTALL ASKS. Detection alone was not enough: on macOS the system language can be Turkish
+# while the shell exports LANG=C.UTF-8 (measured on a Turkish desk), so the locale said English and the user
+# never saw a choice. So when a human is at the terminal and nothing named a language (no --lang, no
+# CSK_LANG), the first thing printed is a two-line menu, and the locale only decides which entry is the
+# default. It is skipped under --yes and whenever stdin is not a terminal — for the same reason the
+# visibility question is: every piped caller feeds a fixed answer sequence, and one more read would shift it.
+_lang_flag=""; _lang_take=0; _lang_yes=0
 for a in "$@"; do
   if [ "$_lang_take" = 1 ]; then _lang_flag="$a"; _lang_take=0; continue; fi
   case "$a" in
     --lang=*) _lang_flag="${a#--lang=}" ;;
     --lang)   _lang_take=1 ;;
+    --yes|-y) _lang_yes=1 ;;
   esac
 done
+_loc="${LC_ALL:-}"; [ -n "$_loc" ] || _loc="${LC_MESSAGES:-}"; [ -n "$_loc" ] || _loc="${LANG:-}"
+case "$_loc" in tr*|TR*) _lang_detected=tr ;; *) _lang_detected=en ;; esac
 if [ -n "$_lang_flag" ]; then
   CSK_LANG="$_lang_flag"
 elif [ -n "${CSK_LANG_ENV:-}" ]; then
   CSK_LANG="$CSK_LANG_ENV"
+elif [ -t 0 ] && [ "$_lang_yes" = 0 ]; then
+  if [ "$_lang_detected" = tr ]; then _lang_def=2; else _lang_def=1; fi
+  printf '\n  Language / Dil\n    1) English\n    2) Türkçe\n  -> [1-2, empty/boş=%s]: ' "$_lang_def"
+  csk_read _lang_ans
+  case "${_lang_ans:-$_lang_def}" in
+    2|tr|TR|t|T|[tT]ürkçe|[tT]urkce|[tT]urkish) CSK_LANG=tr ;;
+    *) CSK_LANG=en ;;
+  esac
 else
-  _loc="${LC_ALL:-}"; [ -n "$_loc" ] || _loc="${LC_MESSAGES:-}"; [ -n "$_loc" ] || _loc="${LANG:-}"
-  case "$_loc" in tr*|TR*) CSK_LANG=tr ;; *) CSK_LANG=en ;; esac
+  CSK_LANG="$_lang_detected"
 fi
 # Anything that is not a language we actually carry falls back to English rather than printing keys.
 case "$CSK_LANG" in tr|en) ;; *) CSK_LANG=en ;; esac
+# Exported because eval/preflight.sh runs as a child and resolves its own language from the environment: a
+# choice made by --lang or the menu above stayed in this shell, and the preflight block printed English.
+export CSK_LANG
 
 STACK=""; LEGACY_FLAGS=""; ASSUME_YES=0; VISIBILITY=""
 for a in "$@"; do
@@ -479,7 +572,7 @@ for a in "$@"; do
     --private) VISIBILITY="private" ;;
     --shared)  VISIBILITY="shared" ;;
     -h|--help) usage; exit 0 ;;
-    *) echo "Unknown parameter: $a"; echo; usage; exit 1 ;;
+    *) printf '%s\n' "$(m 'Unknown parameter: %s' "$a")"; echo; usage; exit 1 ;;
   esac
 done
 
@@ -492,22 +585,32 @@ if [ -t 1 ] && [ "${TERM:-dumb}" != "dumb" ] && [ -z "${NO_COLOR:-}" ]; then
 else
   R=''; B=''; D=''; CY=''; GR=''; YE=''; MG=''
 fi
+# printf's %-Ns pads by BYTES, so a Turkish label (İ, ç, ı are two bytes each) came out short and knocked
+# its column out of line. Pad by characters instead: drop the UTF-8 continuation bytes under the C locale
+# and count what is left. Builtins only — no fork per row.
+padr() {   # $1 = text, $2 = width; sets PADDED
+  local LC_ALL=C n
+  n="${1//[$'\200'-$'\277']/}"; n=$(( $2 - ${#n} ))
+  PADDED="$1"
+  while [ "$n" -gt 0 ]; do PADDED="$PADDED "; n=$((n-1)); done
+}
 h1()   { printf '\n%s%s%s%s\n' "$B" "$CY" "$1" "$R"; }               # section heading
 sub()  { printf '%s%s%s\n' "$D" "$1" "$R"; }                         # dim description
 opt()  { # $1=no $2=label $3=is_default $4=right-badge
   local mark=''; [ "${3:-0}" = 1 ] && mark=" ${GR}${B}$(m '(default)')${R}"
-  printf '  %s%s%s)%s %s%-24s%s %s%s%s%s\n' "$B" "$YE" "$1" "$R" "$B" "$2" "$R" "$MG" "${4:-}" "$R" "$mark"
+  padr "$2" 24
+  printf '  %s%s%s)%s %s%s%s %s%s%s%s\n' "$B" "$YE" "$1" "$R" "$B" "$PADDED" "$R" "$MG" "${4:-}" "$R" "$mark"
 }
 add()  { printf '     %s+%s %s\n'      "$GR" "$R" "$1"; }            # INSTALLED
 skip() { printf '     %s-%s %s%s%s\n'  "$YE" "$R" "$D" "$1" "$R"; }  # NOT INSTALLED (tradeoff)
 gate() { printf '     %s>%s %s\n'      "$CY" "$R" "$1"; }            # gate to be armed
-row()  { printf '  %s%-15s%s %s\n'     "$B" "$1" "$R" "$2"; }        # summary row
+row()  { padr "$1" 15; printf '  %s%s%s %s\n' "$B" "$PADDED" "$R" "$2"; }   # summary row
 rule() { printf '  %s------------------------------------------------%s\n' "$D" "$R"; }
 
 h1  "$(m 'Agentic Working Kit · setup wizard')"
-sub "$(m '2 steps: backend pattern -> summary & confirm.')"
-[ -n "$LEGACY_FLAGS" ] && printf '\n  %s!%s%s no effect:%s the kit always installs in full (all agents · all skills).\n' \
-  "$YE" "$R" "$B$LEGACY_FLAGS" "$R"
+sub "$(m '3 steps: backend pattern -> who it is for -> summary & confirm.')"
+[ -n "$LEGACY_FLAGS" ] && printf '\n  %s!%s%s %s%s %s\n' \
+  "$YE" "$R" "$B$LEGACY_FLAGS" "$(m 'no effect:')" "$R" "$(m 'the kit always installs in full (all agents · all skills).')"
 
 # ===================== STEP 1 · BACKEND PATTERN =====================
 # Asked on EVERY install: the pattern skill is the one thing that is genuinely wrong in the other stack, so it
@@ -665,33 +768,33 @@ echo
 
 # --- Step 3: Backend base (only .NET/DevArchitecture; APPROVAL GATE) ---
 if [ "$DEVARCH_ON" = 1 ]; then
-  echo "== Backend base (DevArchitecture) =="
+  echo "== $(m 'Backend base (DevArchitecture)') =="
   csk_path_budget_warn
-  echo "  Target: ./$BACKEND_DIR (the frontend stays separate under ./frontend)."
+  echo "  $(m 'Target: %s (the frontend stays separate under ./frontend).' "./$BACKEND_DIR")"
   if has_devarch "$BACKEND_DIR"; then
-    echo "  DevArchitecture detected — base already present, skipping copy."
+    echo "  $(m 'DevArchitecture detected — base already present, skipping copy.')"
   elif project_has_source; then
-    echo "  !!! WARNING: An existing project is present and the DevArchitecture backend base is MISSING."
-    echo "  Adding it may cause file/structure conflicts and BREAK the project."
-    echo "  This kit is meant for setting up a project FROM SCRATCH. Confirm if you still want to add it."
-    if ask_yes "  Do you want to add DevArchitecture to this EXISTING project (risky)?" risky; then
-      clone_devarch "$BACKEND_DIR" || echo "  Continuing without the backend base."
+    echo "  $(m '!!! WARNING: An existing project is present and the DevArchitecture backend base is MISSING.')"
+    echo "  $(m 'Adding it may cause file/structure conflicts and BREAK the project.')"
+    echo "  $(m 'This kit is meant for setting up a project FROM SCRATCH. Confirm if you still want to add it.')"
+    if ask_yes "  $(m 'Do you want to add DevArchitecture to this EXISTING project (risky)?')" risky; then
+      clone_devarch "$BACKEND_DIR" || echo "  $(m 'Continuing without the backend base.')"
     else
-      echo "  Skipped. The backend flow assumes DevArchitecture; you will need to adapt it manually."
+      echo "  $(m 'Skipped. The backend flow assumes DevArchitecture; you will need to adapt it manually.')"
     fi
   else
-    echo "  Greenfield project: this kit can install the DevArchitecture backend base."
-    if ask_yes "  Should I include the DevArchitecture backend base in the project now?" risky; then
-      clone_devarch "$BACKEND_DIR" || echo "  Could not include the backend base; continuing with kit installation."
+    echo "  $(m 'Greenfield project: this kit can install the DevArchitecture backend base.')"
+    if ask_yes "  $(m 'Should I include the DevArchitecture backend base in the project now?')" risky; then
+      clone_devarch "$BACKEND_DIR" || echo "  $(m 'Could not include the backend base; continuing with kit installation.')"
     else
-      echo "  Skipped. You can add it manually later:  git clone $DEVARCH_URL"
+      echo "  $(m 'Skipped. You can add it manually later:  %s' "git clone $DEVARCH_URL")"
     fi
   fi
   # Reserve ./frontend so the layout is explicit (build the frontend here; the backend is in ./backend).
   if [ ! -e ./frontend ]; then
     mkdir -p frontend
     printf '# frontend\n\nBuild your frontend here (the `frontend-expert-csk` agent helps). The backend lives in `../backend`.\n' > frontend/README.md
-    echo "  Reserved ./frontend for your frontend."
+    echo "  $(m 'Reserved ./frontend for your frontend.')"
   fi
   echo
 fi
@@ -749,7 +852,7 @@ fi
 # /skill-csk opened with `Read .claude/AGENT_TEMPLATE.md` against nothing. A best-effort copy is right —
 # a missing doc must not abort an otherwise good install — but it has to be AUDIBLE, or the gap is
 # invisible until someone runs the command. adopt.sh copies the same file for the same reason.
-cp "$SRC/AGENT_TEMPLATE.md" .claude/ 2>/dev/null || printf '  %s!%s AGENT_TEMPLATE.md missing from the payload — /skill-csk will have nothing to read.\n' "$YE" "$R"
+cp "$SRC/AGENT_TEMPLATE.md" .claude/ 2>/dev/null || printf '  %s!%s %s\n' "$YE" "$R" "$(m 'AGENT_TEMPLATE.md missing from the payload — /skill-csk will have nothing to read.')"
 cp "$SRC/README.md"         .claude/ 2>/dev/null || true
 
 # Install manifest — the names the KIT ships. It is the only way to tell kit-owned from project-owned later:
@@ -784,16 +887,16 @@ if [ ! -f ./CLAUDE.md ]; then
     kit_project_of "$SRC/CLAUDE.md"; } > ./CLAUDE.md
   echo "  $(m './CLAUDE.md created — EDIT the project section.')"
 elif kit_has_import ./CLAUDE.md; then
-  echo "  ./CLAUDE.md kept as-is (already imports the discipline) — the refresh landed in DISCIPLINE.md."
+  echo "  $(m './CLAUDE.md kept as-is (already imports the discipline) — the refresh landed in DISCIPLINE.md.')"
 elif kit_claude_md_is_legacy ./CLAUDE.md; then
-  echo "  ! ./CLAUDE.md carries the discipline INLINE (pre-1.1 layout) — left untouched."
-  echo "    Discipline updates will NOT reach it. To migrate: delete everything above your"
-  echo "    '# CLAUDE.md — <project>' heading and leave this single line in its place:"
+  echo "  $(m '! ./CLAUDE.md carries the discipline INLINE (pre-1.1 layout) — left untouched.')"
+  echo "    $(m 'Discipline updates will NOT reach it. To migrate: delete everything above your')"
+  echo "    $(m '%s heading and leave this single line in its place:' "'# CLAUDE.md — <project>'")"
   echo "        $IMPORT_LINE"
 else
   { printf '<!-- kit discipline · on conflict the project rules BELOW win -->\n%s\n\n' "$IMPORT_LINE"; cat ./CLAUDE.md; } > ./CLAUDE.md.kit-tmp \
     && mv ./CLAUDE.md.kit-tmp ./CLAUDE.md
-  echo "  ./CLAUDE.md existed — prepended the discipline @import; your content is untouched."
+  echo "  $(m './CLAUDE.md existed — prepended the discipline @import; your content is untouched.')"
 fi
 # The entries were decided in step 2 and printed in the summary; gi_add drops the ones this repo already
 # ignores and fixes a missing trailing newline before appending. Word-split on purpose: GI_PLAN is a
@@ -810,7 +913,7 @@ gi_add $GI_PLAN
 # attributes for that project would be editing a file its owner did not need touched.
 if ! git check-ignore -q .claude 2>/dev/null; then
   ga_add
-  [ "${GA_WROTE:-0}" != 0 ] && printf '  %s+%s .gitattributes: %s eol pin(s) so shared hooks stay LF\n' "$GR" "$R" "$GA_WROTE"
+  [ "${GA_WROTE:-0}" != 0 ] && printf '  %s+%s .gitattributes: %s\n' "$GR" "$R" "$(m '%s eol pin(s) so shared hooks stay LF' "$GA_WROTE")"
 fi
 # `[ -d .git ]` is a proxy for the answer, and it lies exactly where it matters: in a worktree or a submodule
 # `.git` is a FILE, so the commit gate was never armed there and the installer said nothing was wrong. adopt.sh
@@ -835,7 +938,7 @@ fi
 if PFX="$(git rev-parse --show-prefix 2>/dev/null)" && [ -z "$PFX" ] && git config core.hooksPath .claude/hooks 2>/dev/null; then
   echo "  $(m 'trace scan: core.hooksPath -> .claude/hooks (§4.1/§4.2 commit gate active)')"
 else
-  echo "  NOTE: no git repository at this level; after 'git init' run:  git config core.hooksPath .claude/hooks"
+  echo "  $(m 'NOTE: no git repository at this level; after %s run:  %s' "'git init'" 'git config core.hooksPath .claude/hooks')"
 fi
 rm -rf "$SRC"
 echo
@@ -852,10 +955,10 @@ echo "$(m "Tip:  open Claude Code and run /doctor-csk — it checks the install 
 if bash .claude/eval/preflight.sh --has node 2>/dev/null; then
   echo "$(m 'Panel: /studio-csk opens the Studio panel from this project (or: node .claude/studio/server/index.js --open).')"
 else
-  echo "Panel: needs Node 18+, which is not on this machine — but that is no longer a dead end."
-  echo "       The kit fetches one for the panel: bash .claude/studio/ensure-node.sh --plan  (asks first;"
-  echo "       verified against the published checksum, into ~/.claude/studio-runtime, nothing else touched)."
-  echo "       Every gate still holds meanwhile; the panel is the only part that needs node."
+  echo "$(m 'Panel: needs Node 18+, which is not on this machine — but that is no longer a dead end.')"
+  echo "       $(m 'The kit fetches one for the panel: %s  (asks first;' 'bash .claude/studio/ensure-node.sh --plan')"
+  echo "       $(m 'verified against the published checksum, into %s, nothing else touched).' '~/.claude/studio-runtime')"
+  echo "       $(m 'Every gate still holds meanwhile; the panel is the only part that needs node.')"
 fi
-[ "$STACK" = "dotnet" ] && echo "Layout: backend in ./backend · build your frontend in ./frontend · first agent task: rename DevArchitecture -> $PROJECT_NAME."
+[ "$STACK" = "dotnet" ] && echo "$(m 'Layout: backend in ./backend · build your frontend in ./frontend · first agent task: rename DevArchitecture -> %s.' "$PROJECT_NAME")"
 rm -f -- "$0"

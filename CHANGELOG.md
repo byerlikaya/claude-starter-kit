@@ -5,6 +5,29 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — the installer asks which language to speak
+
+- An interactive `start.sh` or `adopt.sh` now opens with a two-line menu, English or Türkçe, and the rest
+  of the run speaks the answer. The locale only decides which entry is the default. Detection alone was not
+  enough: a macOS desk can run in Turkish while the shell exports `LANG=C.UTF-8`, so Turkish was never
+  offered. `--lang`, `CSK_LANG`, `--yes` and any non-terminal stdin skip the menu, so scripted and piped
+  installs read exactly what they read before.
+
+### Fixed — Turkish mode printed English
+
+- Roughly 45 lines in `start.sh` and more than 200 in `adopt.sh` never went through the message table, so
+  a Turkish install still printed English. The DevArchitecture prompt, the `CLAUDE.md` branches, the
+  long-path warning, the proof lines and most of the adopt summary were among them. Every printed line now
+  has a Turkish text, written for a Turkish reader rather than translated word for word. The yes/no prompts read
+  `[evet/hayır]`, and `--help` has a Turkish version.
+- `--lang tr` never reached the preflight block. The chosen language was not exported, and the child
+  script fell back to English.
+- Turkish labels threw the summary columns out of line, because `printf` pads by bytes. They are now
+  padded by characters.
+- A new e2e case runs both installers in Turkish, down both backend paths plus an adopt and a refresh,
+  and fails on any English function word in the output. The same run in English has to match, or the
+  case reports a broken detector instead of passing.
+
 ## [2.12.0] — 2026-09-22
 
 ### Before you update — five things that change behaviour

@@ -775,4 +775,47 @@ _L="$(_slog)"; ( cd "$W17" && printf 'yes\n' | bash start.sh --generic --shared 
   || { echo "FAIL: an existing eol rule was not recognised; the installer appended redundant pins"; exit 1; }
 echo "[wizard] an existing eol rule is recognised, whatever its spelling, and nothing is appended"
 
+# 18 · A Turkish install prints no English sentence. The i18n audit only checks the rows that EXIST in the
+#      table; a line that never went through m() is invisible to it — which is how the DevArchitecture prompt,
+#      the CLAUDE.md branches and a whole warning block shipped in English under --lang tr. So this asks the
+#      output instead: English function words, matched case-sensitively as whole words (Turkish "Not:" is a
+#      word, "not" is not). Both backend paths run, because the DevArchitecture block only prints on one.
+#      CALIBRATED in-line: the same run in English must hit, or the detector is broken, not the product.
+_en_words(){ grep -cwE 'the|and|is|are|to|of|with|will|your|this|not|be|has|was|for' "$1" || true; }
+for _shape in "dotnet|evet\nhayır\n" "generic|evet\n"; do
+  _stk="${_shape%%|*}"; _inp="${_shape#*|}"
+  for _lg in tr en; do
+    W18="$(wiz "lang-$_stk-$_lg")"
+    _L="$(_slog)"; ( cd "$W18" && printf "$_inp" | NO_COLOR=1 bash start.sh "--$_stk" --lang "$_lg" ) >"$_L" 2>&1 \
+      || _evidence "start.sh --lang $_lg in $W18" "$_L" $?
+    cp "$_L" "$W18/out-$_lg.txt"
+  done
+  _n_en="$(_en_words "$W18/out-en.txt")"; W18tr="$WORK/wiz-lang-$_stk-tr"
+  [ "$_n_en" -gt 0 ] || { echo "FAIL: FIXTURE — the English $_stk run matched 0 function words; the detector is broken, not the product"; exit 1; }
+  [ -d "$W18tr/.claude" ] || { echo "FAIL: the Turkish $_stk install did not complete"; exit 1; }
+  _n_tr="$(_en_words "$W18tr/out-tr.txt")"
+  [ "$_n_tr" = 0 ] || { echo "FAIL: --lang tr ($_stk) printed $_n_tr English line(s):" >&2
+                        grep -wE 'the|and|is|are|to|of|with|will|your|this|not|be|has|was|for' "$W18tr/out-tr.txt" | sed 's/^/    | /' >&2; exit 1; }
+  echo "[wizard] --lang tr ($_stk): 0 English lines (calibration: the English run matched $_n_en)"
+done
+# ...and adopt.sh, twice per language: the first adoption and the refresh print different blocks.
+for _lg in tr en; do
+  W18a="$WORK/adopt-lang-$_lg"; rm -rf "$W18a"; mkdir -p "$W18a"
+  ( cd "$W18a" && git init -q . && git config user.email t@example.invalid && git config user.name t \
+      && printf '{"name":"x"}\n' > package.json && git add -A && git commit -qm init >/dev/null 2>&1 )
+  : > "$W18a/out.txt"
+  for _pass in 1 2; do
+    cp adopt.sh VERSION "$W18a/"; cp -R claude-starter "$W18a/"
+    _L="$(_slog)"; ( cd "$W18a" && NO_COLOR=1 bash adopt.sh --lang "$_lg" --yes </dev/null ) >"$_L" 2>&1 \
+      || _evidence "adopt.sh --lang $_lg (pass $_pass) in $W18a" "$_L" $?
+    cat "$_L" >> "$W18a/out.txt"
+  done
+done
+_n_en="$(_en_words "$WORK/adopt-lang-en/out.txt")"
+[ "$_n_en" -gt 0 ] || { echo "FAIL: FIXTURE — the English adopt run matched 0 function words; the detector is broken, not the product"; exit 1; }
+_n_tr="$(_en_words "$WORK/adopt-lang-tr/out.txt")"
+[ "$_n_tr" = 0 ] || { echo "FAIL: adopt.sh --lang tr printed $_n_tr English line(s):" >&2
+                      grep -wE 'the|and|is|are|to|of|with|will|your|this|not|be|has|was|for' "$WORK/adopt-lang-tr/out.txt" | sed 's/^/    | /' >&2; exit 1; }
+echo "[wizard] adopt.sh --lang tr (adopt + refresh): 0 English lines (calibration: the English run matched $_n_en)"
+
 echo "e2e: all installer rehearsals passed"

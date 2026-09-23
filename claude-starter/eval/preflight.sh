@@ -55,16 +55,25 @@ works(){
     *)                 return 0 ;;
   esac
 }
+# printf's %-Ns pads by bytes, and a translated label ("sha256 aracı") is longer in bytes than in characters,
+# so its column came out one short. Count characters: drop UTF-8 continuation bytes under C, pad the rest.
+padr() {   # $1 = text, $2 = width; sets PADDED
+  local LC_ALL=C n
+  n="${1//[$'\200'-$'\277']/}"; n=$(( $2 - ${#n} ))
+  PADDED="$1"
+  while [ "$n" -gt 0 ]; do PADDED="$PADDED "; n=$((n-1)); done
+}
 # any_of "label" "why it matters" "fix hint" cmd...
 any_of(){
   label="$1"; why="$2"; fix="$3"; shift 3
   found=""
   for c in "$@"; do works "$c" && { found="$c"; break; }; done
   if [ -n "$found" ]; then
-    [ "$QUIET" = 1 ] || printf '  %s✓%s %-22s %s%s%s\n' "$GR" "$R" "$label" "$D" "$found" "$R"
+    [ "$QUIET" = 1 ] || { padr "$label" 22; printf '  %s✓%s %s %s%s%s\n' "$GR" "$R" "$PADDED" "$D" "$found" "$R"; }
     return 0
   fi
-  printf '  %s✗%s %-22s %s\n' "$YE" "$R" "$label" "$why"
+  padr "$label" 22
+  printf '  %s✗%s %s %s\n' "$YE" "$R" "$PADDED" "$why"
   printf '      %s%s%s%s\n' "$D" "$(m 'fix: ')" "$fix" "$R"
   return 1
 }
@@ -85,18 +94,27 @@ m() {
   local s="$1"; shift
   if [ "$CSK_LANG" = tr ]; then
     case "$s" in
-      "Preflight — what this machine has") s='Ön kontrol — bu makinede ne var' ;;
-      "Missing REQUIRED:") s='Eksik ZORUNLU:' ;;
+      "Preflight — what this machine has") s='Ön kontrol — bu makinede neler var' ;;
+      "Missing REQUIRED:") s='Eksik ZORUNLU araçlar:' ;;
       "— install these first.") s='— önce bunları kurun.' ;;
-      "All required tools present.") s='Zorunlu araçların hepsi mevcut.' ;;
-      "Optional gaps above are safe but worth closing.") s='Yukarıdaki isteğe bağlı boşluklar güvenli ama kapatmaya değer.' ;;
-      "Everything the kit wants is here.") s='Kitin istediği her şey burada.' ;;
-      "is the panel only — every gate still holds without it.") s='yalnız panel içindir — o olmadan da her kapı tutar.' ;;
-      "Or let the kit get one: %s") s='Ya da kitin bir tane getirmesine izin verin: %s' ;;
+      "All required tools present.") s='Zorunlu araçların hepsi kurulu.' ;;
+      "Optional gaps above are safe but worth closing.") s='Yukarıdaki isteğe bağlı eksikler sorun çıkarmaz ama gidermeye değer.' ;;
+      "Everything the kit wants is here.") s='Kitin ihtiyaç duyduğu her şey kurulu.' ;;
+      "is the panel only — every gate still holds without it.") s='yalnızca panel için gerekli — o olmadan da tüm kapılar çalışır.' ;;
+      "Or let the kit get one: %s") s='İsterseniz kit sizin için indirebilir: %s' ;;
       "fix: ") s='çözüm: ' ;;
       "node 18+") s='node 18+' ;;
       "jq or python") s='jq ya da python' ;;
       "sha256 tool") s='sha256 aracı' ;;
+      "the whole kit is bash") s='kitin tamamı bash ile yazıldı' ;;
+      "Windows: install Git for Windows (git-scm.com) and run Claude Code from Git Bash") s="Windows: Git for Windows'u kurun (git-scm.com) ve Claude Code'u Git Bash'ten çalıştırın" ;;
+      "context measurement, routing, doctor") s='bağlam ölçümü, yönlendirme ve doctor için' ;;
+      "Windows: ships with Git Bash · macOS: preinstalled · Linux: apt install gawk") s='Windows: Git Bash ile gelir · macOS: hazır gelir · Linux: apt install gawk' ;;
+      "the commit-time trace/secret gates are git hooks") s="commit anındaki iz ve gizli bilgi kapıları git hook'u olarak çalışır" ;;
+      "the CSK Studio panel (/studio-csk); the gates themselves are bash and do not need it") s='CSK Studio paneli (/studio-csk) için; kapılar bash ile çalışır, Node gerektirmez' ;;
+      "settings merge on update falls back to replace+backup (a project's OWN custom hooks are not preserved)") s="güncellemede settings.json birleştirilemez, yedeklenip değiştirilir (projeye ÖZEL hook'lar korunmaz)" ;;
+      "the skill-trust gate falls back to cksum (catches accidental edits, not crafted ones)") s="skill güven kapısı cksum'a düşer (kazara değişiklikleri yakalar, kasıtlı olanları yakalayamaz)" ;;
+      "Windows/Linux: coreutils (sha256sum) · macOS: shasum is preinstalled") s='Windows/Linux: coreutils (sha256sum) · macOS: shasum hazır gelir' ;;
     esac
   fi
   # shellcheck disable=SC2059
@@ -113,17 +131,17 @@ m() {
 # living in a filesystem namespace where `C:\Repos\app` does not exist (`/mnt/c/Repos/app` does). A wiring that
 # spawns `bash` by PATH name would have run THAT, or failed outright where WSL is not installed — every gate
 # gone, with an error pointing nowhere near the cause. Hence shell form, and hence this note.
-any_of "bash" "the whole kit is bash" \
-  "Windows: install Git for Windows (git-scm.com) and run Claude Code from Git Bash" bash || MISSING_REQ="$MISSING_REQ bash"
-any_of "awk" "context measurement, routing, doctor" \
-  "Windows: ships with Git Bash · macOS: preinstalled · Linux: apt install gawk" awk gawk mawk || MISSING_REQ="$MISSING_REQ awk"
-any_of "git" "the commit-time trace/secret gates are git hooks" \
+any_of "bash" "$(m 'the whole kit is bash')" \
+  "$(m 'Windows: install Git for Windows (git-scm.com) and run Claude Code from Git Bash')" bash || MISSING_REQ="$MISSING_REQ bash"
+any_of "awk" "$(m 'context measurement, routing, doctor')" \
+  "$(m 'Windows: ships with Git Bash · macOS: preinstalled · Linux: apt install gawk')" awk gawk mawk || MISSING_REQ="$MISSING_REQ awk"
+any_of "git" "$(m 'the commit-time trace/secret gates are git hooks')" \
   "git-scm.com · macOS: xcode-select --install · Linux: apt install git" git || MISSING_REQ="$MISSING_REQ git"
   # Node is required for the panel and for nothing else: every gate in this kit is bash, and they all hold on a
   # machine that has never seen node. It sits in REQUIRED anyway, deliberately, because the panel now installs
   # into every project, and a component that silently does not start on some machines is worse than one that
   # says what it needs. The reason string names which half is affected, so the REQUIRED heading stays true.
-  any_of "$(m 'node 18+')" "the CSK Studio panel (/studio-csk); the gates themselves are bash and do not need it" \
+  any_of "$(m 'node 18+')" "$(m 'the CSK Studio panel (/studio-csk); the gates themselves are bash and do not need it')" \
     "nodejs.org · Windows: winget install OpenJS.NodeJS.LTS · macOS: brew install node · Linux: apt install nodejs" \
     node || MISSING_REQ="$MISSING_REQ node"
 
@@ -131,11 +149,11 @@ any_of "git" "the commit-time trace/secret gates are git hooks" \
 # jq/python are only needed to MERGE an existing settings.json on update. The pure-bash path replaces the file
 # instead (keeping a backup), which is safe but loses hooks the project added itself — the sort of thing that
 # is obvious in advance and baffling afterwards.
-any_of "$(m 'jq or python')" "settings merge on update falls back to replace+backup (a project's OWN custom hooks are not preserved)" \
+any_of "$(m 'jq or python')" "$(m "settings merge on update falls back to replace+backup (a project's OWN custom hooks are not preserved)")" \
   "Windows: winget install jqlang.jq · macOS: brew install jq · Linux: apt install jq" jq python3 python py \
   || MISSING_OPT="$MISSING_OPT jq/python"
-any_of "$(m 'sha256 tool')" "the skill-trust gate falls back to cksum (catches accidental edits, not crafted ones)" \
-  "Windows/Linux: coreutils (sha256sum) · macOS: shasum is preinstalled" sha256sum shasum || MISSING_OPT="$MISSING_OPT sha256"
+any_of "$(m 'sha256 tool')" "$(m 'the skill-trust gate falls back to cksum (catches accidental edits, not crafted ones)')" \
+  "$(m 'Windows/Linux: coreutils (sha256sum) · macOS: shasum is preinstalled')" sha256sum shasum || MISSING_OPT="$MISSING_OPT sha256"
 
 if [ -n "$MISSING_REQ" ]; then
   printf '\n  %s%s%s%s %s\n' "$YE$B" "$(m 'Missing REQUIRED:')" "$R" "$MISSING_REQ" "$(m '— install these first.')"

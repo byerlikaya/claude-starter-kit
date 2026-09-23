@@ -306,16 +306,18 @@ Kurulu bir plugin, siz yenisini istemedikçe kurduğunuz sürümde kalır; bu y�
 ### Yeni proje
 
 ```bash
-bash start.sh [--dotnet|--generic] [--version] [-h]
+bash start.sh [--dotnet|--generic] [--private|--shared] [--lang tr|en] [--yes] [--version] [-h]
 ```
 
-İki adım: önce backend deseni, sonra hiçbir şey yazılmadan önce onaylayacağınız bir özet.
+Sihirbaz önce hangi dilde konuşacağını sorar (Türkçe ya da İngilizce), ardından backend desenini ve kurulumu kimin kullanacağını; sonunda hiçbir şey yazılmadan önce onaylayacağınız bir özet gösterir. Seçtiğiniz dil tüm sorulara ve mesajlara uygulanır; kurulan dosyalar İngilizce kalır.
 
 **İki kurulum da aynı ekibi getiriyor:** 12 agent'ın tamamı ve bir backend deseni olan tek skill dışında bütün skill'ler. `--generic`, Node ya da Go deposunda yanlış duracak `cqrs-aop-module`'ü kurmuyor, diğer 39'unu kuruyor. Backend, web ve mobil (React Native/Expo) her iki hâlde de bir arada geliyor. API olarak başlayıp web istemcisi kazanan bir proje, ikisi için de baştan donanımlıdır.
 
 | Kurulumda sorulan | Seçenekler | Neyi değiştirir |
 |:--|:--|:--|
+| Dil | `--lang tr` · `--lang en` | kurulumun ekrana yazdıkları — diske yazdığı hiçbir şey değil |
 | Backend deseni | `--dotnet` · `--generic` | `cqrs-aop-module` skill'i ve DevArchitecture temeli |
+| Kimin için | `--private` · `--shared` | `.claude/` ve `CLAUDE.md`'nin gitignore'a mı gireceği, yoksa ekip için commit mi edileceği |
 | DevArch temeli (yalnızca `--dotnet` ile) | onayla · atla | `./backend` iskelesinin kurulup kurulmayacağı |
 
 **`--dotnet`**, üretime hazır [DevArchitecture](https://github.com/DevArchitecture/DevArchitecture) temelini (CQRS · IResult · AOP · auth) bir onay kapısının arkasından klonlar ve onu zaten bilen agent'ları kurar; böylece token'lar standart bir mimariyi yeniden üretmeye değil, sizin iş mantığınıza gider. Backend `./backend` altına yerleşir, yanında `./frontend` ayrılır ve çözüm dosyası projenizin adını alır.

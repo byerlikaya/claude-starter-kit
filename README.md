@@ -308,16 +308,18 @@ An installed plugin stays on the version you installed until you ask for a newer
 ### New project
 
 ```bash
-bash start.sh [--dotnet|--generic] [--version] [-h]
+bash start.sh [--dotnet|--generic] [--private|--shared] [--lang tr|en] [--yes] [--version] [-h]
 ```
 
-Two steps: backend pattern, then a summary you approve before anything is written.
+The wizard first asks for its language (English or Turkish), then the backend pattern and who the install is for, and ends with a summary you approve before anything is written. Every prompt and message follows the language you pick; the files it installs stay English.
 
 **Both installs carry the same team** — all 12 agents, and every skill except the one that is a backend pattern: `--generic` leaves out `cqrs-aop-module`, which is .NET-specific and wrong in a Node or Go repo, and installs the other 39. Backend, web and mobile (React Native/Expo) come together either way. A project that starts as an API and grows a web client is already equipped for both.
 
 | Asked at install | Options | What it changes |
 |:--|:--|:--|
+| Language | `--lang en` · `--lang tr` | what the installer prints — nothing it writes |
 | Backend pattern | `--dotnet` · `--generic` | the `cqrs-aop-module` skill and the DevArchitecture base |
+| Who it is for | `--private` · `--shared` | whether `.claude/` and `CLAUDE.md` are gitignored or committed for the team |
 | DevArch base — only on `--dotnet` | approve · skip | whether `./backend` is scaffolded |
 
 **`--dotnet`** clones the production-ready [DevArchitecture](https://github.com/DevArchitecture/DevArchitecture) foundation (CQRS · IResult · AOP · auth) behind an approval gate, and installs agents that already know it — so tokens go to your business logic instead of regenerating a standard architecture. The backend goes in `./backend`, `./frontend` is reserved next to it, and the solution file is renamed to your project.
