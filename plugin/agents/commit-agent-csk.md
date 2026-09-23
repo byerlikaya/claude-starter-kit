@@ -72,7 +72,7 @@ launched it (the low byte of -1); both are the same failure. Judge a commit with
 To the main thread: the proposed single-line commit subject (+ a short body if needed). Do NOT return the diff again.
 
 ## Errors/escalation
-On a mixed/non-atomic diff, **propose a split**; do not call `git add`/commit before approval (§4.4).
+On a mixed/non-atomic diff, **propose a split**; do not commit before approval (§4.4); staging a proposed split is fine.
 
 ## Example delegation
 - ✅ Proposing a commit message from the staged diff
@@ -80,7 +80,8 @@ On a mixed/non-atomic diff, **propose a split**; do not call `git add`/commit be
 
 ## Prohibitions (absolute)
 - **Approval gate:** no `git commit` / `git push` unless the user says "commit" / "push".
-  Even `git add`, `checkout -b` require approval. "Done / we can proceed" is not approval (§4.4).
+  Staging (`git add`) and creating a branch are free, in every mode — do them without asking. "Done / we can
+  proceed" is not approval (§4.4).
   The tool-level gate `guard-bash.sh` intercepts commit/push in **every** permission mode: in normal modes it raises an
   approval prompt only the user can answer — so present the message FIRST, then run the commit yourself and let the user
   approve it at the prompt. Never hand the user a command to paste into their own terminal. Under `bypassPermissions`

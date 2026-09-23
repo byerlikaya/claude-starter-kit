@@ -201,7 +201,7 @@ Solda kural, sağda o kuralın geçilmesine izin vermeyen şey.
 
 | Kural | Neyle uygulanıyor |
 |:--|:--|
-| Commit ve push her izin modunda onayınızı gerektirir | `guard-bash.sh`, yalnızca sizin cevaplayabileceğiniz bir istem açar. `bypassPermissions` altında kapalı düşer |
+| Commit ve push her izin modunda onayınızı gerektirir; stage etmek ve dal açmak serbesttir | `guard-bash.sh`, yalnızca sizin cevaplayabileceğiniz bir istem açar. `bypassPermissions` altında kapalı düşer |
 | Bir commit, **tam olarak kendi diff'i** için temiz bir review gerektirir | `guard-bash.sh`, `review-agent-csk` değişikliği temize çıkarırken kaydettiği değerlerle staged diff'in git nesne kimliğini ve review'un yapıldığı `HEAD`'i karşılaştırır. Başka bir diff'in — ya da aynı diff'in başka bir taban üzerindeki — review'u sayılmaz; boyut istisnası yoktur |
 | Yıkıcı işlemler: `reset --hard`, `checkout -- .`, force push, `rm -rf`, `clean -f`, `--no-verify`, amend | `guard-bash.sh`, araç seviyesinde engeller |
 | Uzaktan kod çalıştırma ve izin patlatma: `curl…\|bash`, herkese yazılabilir `chmod`, `dd of=` | `guard-bash.sh`, her modda sert engel |

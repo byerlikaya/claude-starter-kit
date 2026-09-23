@@ -2440,20 +2440,27 @@ done
 # The key opens the approval gate, never the destructive one: `git add -f` is §4.5 and stays blocked.
 gj auto 'git add -f secrets.env' | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1
 [ "$?" = 2 ] && pass "git add -f BLOCKED even with the key (§4.5)" || fail "git add -f PASSED with the key (§4.5 hole)"
-# BRANCH CREATION, BOTH DIRECTIONS. The first version of this rule was calibrated only against over-matching
-# (`checkout main`, `checkout -- .`, `checkout b`), so nothing asked whether it matched ENOUGH — and `checkout -B`,
-# both `--orphan`s, every `switch` creator and any global option in front (`git -C repo …`) ran with no prompt.
-# The flag list is git's own `checkout -h` / `switch -h`. Each list reports its count, so a pattern that stops
-# seeing a spelling names it rather than turning the row quietly green.
+# STAGING AND BRANCH CREATION ARE FREE, in every mode (user decision: neither publishes anything). Every spelling
+# git accepts runs with NO hook decision in default, acceptEdits and auto — the list is git's own `checkout -h` /
+# `switch -h`, so a leftover matcher that still asks for one spelling names it. The twin below proves the gate did
+# not go blind altogether: commit still ASKS in default mode and still fails closed in auto.
 _bc_miss=""; _bc_n=0
+for m in default acceptEdits auto; do
 for c in 'git checkout -b x' 'git checkout -B x' 'git checkout --orphan x' 'git checkout --quiet -b x' \
          'git switch -c x' 'git switch -C x' 'git switch --create x' 'git switch --create=x' \
-         'git switch --force-create x' 'git switch --orphan x' 'git -C repo checkout -b x' 'git -c k=v switch -c x'; do
-  _bc_n=$((_bc_n+1)); o="$(gj default "$c" | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"
-  [ "$(gdec "$o")" = "ask" ] || _bc_miss="$_bc_miss [$c]"
-done
-[ -z "$_bc_miss" ] && pass "every branch-creating spelling ASKS in default mode ($_bc_n of $_bc_n, §4.4)" \
-                   || fail "branch creation ran with no prompt (§4.4 hole):$_bc_miss"
+         'git switch --force-create x' 'git switch --orphan x' 'git -C repo checkout -b x' 'git -c k=v switch -c x' \
+         'git add .' 'git add -A' 'git add src/a.js'; do
+  _bc_n=$((_bc_n+1)); o="$(gj "$m" "$c" | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"; r=$?
+  { [ "$r" = 0 ] && [ -z "$(gdec "$o")" ]; } || _bc_miss="$_bc_miss [$m: $c rc=$r $(gdec "$o")]"
+done; done
+[ -z "$_bc_miss" ] && pass "staging and every branch-creating spelling run free in default/acceptEdits/auto ($_bc_n of $_bc_n, no prompt)" \
+                   || fail "staging/branching was gated although it is free by decision:$_bc_miss"
+# Push, not commit: a commit here would stop at §4.6 (no review record in this fixture) before §4.4 could ask.
+o="$(gj default 'git push' | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"
+[ "$(gdec "$o")" = "ask" ] && pass "twin: push still ASKS in default mode (the gate is not blind)" \
+                           || fail "push no longer asks in default mode (§4.4 hole) — out=$o"
+gj auto 'git push' | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] \
+  && pass "twin: push still FAILS CLOSED in auto mode" || fail "push ran in auto mode without approval (§4.4 hole)"
 _bc_over=""; _bc_n=0
 for c in 'git checkout main' 'git checkout b' 'git switch main' 'git switch --detach' 'git switch -' 'git -C repo switch main'; do
   _bc_n=$((_bc_n+1)); o="$(gj default "$c" | bash "$HOOKS/guard-bash.sh" 2>/dev/null)"
@@ -2461,15 +2468,15 @@ for c in 'git checkout main' 'git checkout b' 'git switch main' 'git switch --de
 done
 [ -z "$_bc_over" ] && pass "moving between existing branches is NOT gated ($_bc_n of $_bc_n pass silently)" \
                    || fail "branch SWITCHING was gated as if it created a branch (over-match):$_bc_over"
-# The key must cover what the gate covers: a creator the hook asks about but the key does not allow would leave
-# a headless session with a prompt nobody can answer.
+# The key still returns an explicit allow for branch creators: a headless session whose own settings do not
+# allow Bash needs that decision to run them at all.
 _bc_nokey=""
 for c in 'git switch -c x' 'git switch --orphan x' 'git checkout -B x' 'git -C repo checkout -b x'; do
   o="$(gj auto "$c" | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" 2>/dev/null)"
   [ "$(gdec "$o")" = "allow" ] || _bc_nokey="$_bc_nokey [$c]"
 done
-[ -z "$_bc_nokey" ] && pass "a keyed session ALLOWS every gated branch creator (4 of 4)" \
-                    || fail "the key does not cover a branch creator the gate asks about:$_bc_nokey"
+[ -z "$_bc_nokey" ] && pass "a keyed session ALLOWS every branch creator explicitly (4 of 4)" \
+                    || fail "the key does not allow a branch creator explicitly:$_bc_nokey"
 # FORCED BRANCH SURGERY IS §4.5, both directions. Before the rule, default mode made no decision for any
 # `git branch` form. The safe twins differ from the forced ones by CASE ONLY (-d/-D, -m/-M, -c/-C), so the
 # negative list is what catches a case-folding matcher, and `git branch x && rm -f y` catches one that reads a

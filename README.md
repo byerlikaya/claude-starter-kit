@@ -201,7 +201,7 @@ Left is the rule; right is the thing that refuses to let it slide.
 
 | Rule | Enforced by |
 |:--|:--|
-| Commit and push need your approval, in every permission mode | `guard-bash.sh` raises a prompt only you can answer. Fails closed under `bypassPermissions` |
+| Commit and push need your approval, in every permission mode; staging and creating a branch are free | `guard-bash.sh` raises a prompt only you can answer. Fails closed under `bypassPermissions` |
 | A commit needs a clean review **of the diff it is actually about** | `guard-bash.sh` compares git's object id of the staged diff, and the `HEAD` it was reviewed against, with what `review-agent-csk` recorded when it cleared the change. A review of another diff — or of this one on another base — does not count, and there is no size exemption |
 | Destructive ops: `reset --hard`, `checkout -- .`, force push, `rm -rf`, `clean -f`, `--no-verify`, amend | `guard-bash.sh`, blocked at the tool level |
 | Remote code execution and permission nukes: `curl…\|bash`, world-writable `chmod`, `dd of=` | `guard-bash.sh`, hard-blocked in every mode |

@@ -5,6 +5,15 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — staging and creating a branch no longer ask, in any mode
+
+- `git add` and creating a branch (`checkout -b`/`-B`/`--orphan`, `switch -c`/`-C`/`--create`/`--orphan`) run
+  without a prompt in every permission mode. Neither publishes anything, and asking for them made auto mode stop
+  and demand a mode switch for work that cannot hurt anyone. `git add -f` and forced branch operations stay
+  blocked (§4.5).
+- Commit and push are unchanged: they need your approval in every mode, auto included. Where a prompt can reach
+  you they ask; where it cannot (`auto`, `dontAsk`, `plan`, `bypassPermissions`) they fail closed.
+
 ## [2.12.0] — 2026-09-22
 
 ### Before you update — five things that change behaviour
