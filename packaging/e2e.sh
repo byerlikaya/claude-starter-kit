@@ -383,8 +383,10 @@ def retired: ["Bash(git add:*)","Bash(git commit:*)","Bash(git push:*)","Bash(gi
 def drop_retired: if (.permissions.ask|type)=="array" then .permissions.ask -= retired else . end;
 (dm($k[0]; $p[0]) | drop_retired) | .hooks=merge_hooks(($k[0].hooks // {}); ($p[0].hooks // {}))'
 if printf '{}' | jq -e . >/dev/null 2>&1; then
-  for _c in "$U/settings.stale:$U/settings.first" "$R/settings.stale:$R/.claude/settings.json"; do
-    _in="${_c%%:*}"; _out="${_c#*:}"
+  # `|`, not `:`, between the two paths: a Windows temp dir is `D:\a\_temp`, so a colon split handed jq "D" —
+  # measured on windows-latest ("Could not open D:"), where jq exists and this oracle actually runs.
+  for _c in "$U/settings.stale|$U/settings.first" "$R/settings.stale|$R/.claude/settings.json"; do
+    _in="${_c%%|*}"; _out="${_c#*|}"
     _want="$(jq -n --slurpfile p "$_in" --slurpfile k claude-starter/settings.json "$JQ_ORACLE" | jq -S .)"
     [ -n "$_want" ] && [ "$_want" = "$(jq -S . "$_out")" ] \
       || { echo "FAIL: the awk merge disagrees with the jq oracle on $_in:"; diff <(printf '%s\n' "$_want") <(jq -S . "$_out") | head -20; exit 1; }
