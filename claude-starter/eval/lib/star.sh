@@ -25,7 +25,10 @@ case "${CSK_NO_STAR:-}" in ''|0) ;; *) exit 0 ;; esac
 MARK=""; VER=""
 if [ "${1:-}" = --once ]; then
   _dir="${2:-.}"
-  VER="$(head -1 "$_dir/.claude/VERSION" 2>/dev/null | tr -d '\r')"; VER="${VER:-unknown}"
+  # Builtin reads, not `head | tr` in a $( ): on Git Bash those two pipelines were 4 of ~11 processes and ~250 ms
+  # of ~395 ms per call (measured on stock Windows). `read` takes the first line; the CR is stripped by expansion.
+  # The braces matter: a failed `<` reports before a trailing 2>/dev/null applies (measured: 450 bytes of stderr).
+  VER=""; { IFS= read -r VER < "$_dir/.claude/VERSION"; } 2>/dev/null; VER="${VER%$'\r'}"; VER="${VER:-unknown}"
   # GIT_DIR/GIT_WORK_TREE dropped: exported by a caller (a hook), they would point the marker at another repo.
   MARK="$(cd "$_dir" 2>/dev/null && env -u GIT_DIR -u GIT_WORK_TREE git rev-parse --git-path crewforth-star 2>/dev/null)" || MARK=""
   case "$MARK" in
@@ -33,7 +36,7 @@ if [ "${1:-}" = --once ]; then
     /*|[A-Za-z]:*) ;;                          # absolute (POSIX or a Windows drive path from git)
     *) MARK="$_dir/$MARK" ;;                   # git answers relative to the directory it was asked in
   esac
-  [ "$(head -1 "$MARK" 2>/dev/null | tr -d '\r')" = "$VER" ] && exit 0
+  _seen=""; { IFS= read -r _seen < "$MARK"; } 2>/dev/null; [ "${_seen%$'\r'}" = "$VER" ] && exit 0
 fi
 
 # ---- CSK-I18N ------------------------------------------------------------------------------------------
