@@ -304,7 +304,9 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
     esac
   fi
   # shellcheck disable=SC2059
-  printf -v _M "$s" "$@"
+  # `--` ends option parsing: without it ANY format starting with '-' ("--dotnet …", "- x") is read as an option
+  # and printf exits 2 — measured on bash 3.2 (macOS) and Git Bash 5.3; with it both assign normally.
+  printf -v _M -- "$s" "$@"
 }
 # ---- /CSK-I18N -----------------------------------------------------------------------------------------
 

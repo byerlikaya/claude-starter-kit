@@ -158,7 +158,9 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
     esac
   fi
   # shellcheck disable=SC2059
-  printf -v _M "$s" "$@"
+  # `--` ends option parsing: without it ANY format starting with '-' ("--dotnet …", "- x") is read as an option
+  # and printf exits 2 — measured on bash 3.2 (macOS) and Git Bash 5.3; with it both assign normally.
+  printf -v _M -- "$s" "$@"
 }
 # ---- /CSK-I18N -----------------------------------------------------------------------------------------
 
@@ -480,8 +482,8 @@ fi
 # backend-architecture skill decides the stack per project. The flag stays ACCEPTED so an old script or README
 # command keeps working — but it says what it no longer does, rather than silently meaning something else.
 if [ "$DOTNET_FLAG" = 1 ]; then
-  # The key must not START with '-': _mt ends in `printf -v _M "$s"`, and a format beginning with '--' is read
-  # as an option (measured: "printf: --: invalid option", rc=2, nothing installed). The Turkish row too.
+  # This key once started with '--' and `printf -v _M "$s"` read it as an option (rc=2, nothing installed); _mt
+  # now passes `--`, so a leading '-' is safe — the wording stays as it is.
   _mt 'The --dotnet flag is ignored: the .NET-specific path was removed in 3.0; installing the stack-agnostic kit.'
   printf '\n  %s!%s %s\n' "$YE" "$R" "$_M"
 fi
