@@ -138,12 +138,12 @@ Two git hooks — `pre-commit` and `commit-msg` — run the trace, secret, repo-
 | `adr` | Architecture Decision Record: context-decision-consequences, for decisions that are expensive to reverse. |
 | `api-design` | API contract design: resource naming, error model, versioning, pagination, backward compatibility, OpenAPI. |
 | `automode-policy` | Auto-mode classifier config: inspect what the classifier that now answers permission prompts is configured with, and catch the silent… |
+| `backend-architecture` | Decide, record and apply the backend stack and architecture pattern. |
 | `brainstorm` | Divergent discovery BEFORE planning: turn a fuzzy ask into 2–4 scoped options + named unknowns, pick a direction, hand to spec-planning. |
 | `ci-pipeline` | CI pipeline discipline: lint→build→test→quality→security, fail-fast, deterministic build, secret handling, PR gates. |
 | `code-review-csk` | Code review discipline: severity-ranked, reasoned feedback on whether a change improves the system's overall code health. |
 | `commit-message` | Conventional Commits: reads the staged diff and proposes `type(scope): summary`, with body/footer when needed. |
 | `confidence-check` | Readiness gate BEFORE writing implementation code: does this already exist, does it fit the project's architecture, is the API claim… |
-| `cqrs-aop-module` | Default .NET backend pattern: MediatR CQRS handler/command/query, IResult/IDataResult, Autofac AOP chain, FluentValidation, i18n. |
 | `db-migration` | Apply schema migrations safely: detect the tool, classify the change by risk, gate destructive ones behind approval, back up in prod,… |
 | `dependency-audit` | Dependency risk assessment, read-only: known CVEs, deprecated packages, licence compliance, maintenance status, lockfile integrity, and a… |
 | `dependency-upgrade` | Bring dependencies current without breaking the build: find what is vulnerable, deprecated or behind, classify each target version by… |
@@ -305,23 +305,19 @@ An installed plugin stays on the version you installed until you ask for a newer
 ### New project
 
 ```bash
-bash start.sh [--dotnet|--generic] [--private|--shared] [--lang tr|en] [--yes] [--version] [-h]
+bash start.sh [--private|--shared] [--lang tr|en] [--yes] [--version] [-h]
 ```
 
-The wizard first asks for its language (English or Turkish), then the backend pattern and who the install is for, and ends with a summary you approve before anything is written. Every prompt and message follows the language you pick; the files it installs stay English.
+The wizard first asks for its language (English or Turkish), then who the install is for, and ends with a summary you approve before anything is written. Every prompt and message follows the language you pick; the files it installs stay English.
 
-**Both installs carry the same team** — all 12 agents, and every skill except the one that is a backend pattern: `--generic` leaves out `cqrs-aop-module`, which is .NET-specific and wrong in a Node or Go repo, and installs the other 39. Backend, web and mobile (React Native/Expo) come together either way. A project that starts as an API and grows a web client is already equipped for both.
+**Every install carries the same team** — all 12 agents and all 40 skills. Backend, web and mobile (React Native/Expo) come together. A project that starts as an API and grows a web client is already equipped for both.
 
 | Asked at install | Options | What it changes |
 |:--|:--|:--|
 | Language | `--lang en` · `--lang tr` | what the installer prints — nothing it writes |
-| Backend pattern | `--dotnet` · `--generic` | the `cqrs-aop-module` skill and the DevArchitecture base |
 | Who it is for | `--private` · `--shared` | whether `.claude/` and `CLAUDE.md` are gitignored or committed for the team |
-| DevArch base — only on `--dotnet` | approve · skip | whether `./backend` is scaffolded |
 
-**`--dotnet`** clones the production-ready [DevArchitecture](https://github.com/DevArchitecture/DevArchitecture) foundation (CQRS · IResult · AOP · auth) behind an approval gate, and installs agents that already know it — so tokens go to your business logic instead of regenerating a standard architecture. The backend goes in `./backend`, `./frontend` is reserved next to it, and the solution file is renamed to your project.
-
-**`--generic`** installs the same expert without that pattern — for Node, Go, Python, or a .NET project on a different pattern. Nothing forces DevArchitecture: the backend expert applies whichever pattern skill your project declares.
+**The backend is stack-agnostic.** The installer does not ask for a stack. On the first backend task the `backend-architecture` skill resolves it — your request, then the `## Stack` section of `CLAUDE.md`, then the repo's manifests (`package.json`, `go.mod`, `pyproject.toml`, `*.csproj`, …) — and only in an empty repo asks at most four multiple-choice questions, each with a recommended answer and a "Decide for me" option. The answer is written to `## Stack` and recorded as an ADR, so it is asked once. Node, Go, Python, .NET and the JVM are supported alike, and a project that ships its own pattern skill under `.claude/skills/` has it applied instead.
 
 ### Existing project
 
@@ -346,7 +342,7 @@ npx @byerlikaya/claude-starter-kit@latest update    # or /update-csk inside a se
 <details open>
 <summary>🔁&nbsp; <b>Update mechanics — what is refreshed, and where the change lands</b></summary>
 
-At install time Claude Starter Kit stamps `.claude/kit.conf` with the backend pattern and which installer ran, plus `.claude/VERSION`. A refresh **keeps the pattern**: a `--dotnet` project keeps `cqrs-aop-module`, and a Node repo is never handed one. Where the stamp is missing, the updater reads the pattern back from the installed files. Any missing component is restored, and every one it adds is **named in the output** rather than appearing silently.
+At install time Claude Starter Kit stamps `.claude/kit.conf` with which installer ran, plus `.claude/VERSION`. A project installed before 3.0 with the .NET pattern **keeps its `cqrs-aop-module` skill** as a project skill that the backend expert goes on applying; the update says so and never deletes it. Any missing component is restored, and every one it adds is **named in the output** rather than appearing silently.
 
 | | On update |
 |:--|:--|

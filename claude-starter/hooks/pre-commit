@@ -437,7 +437,7 @@ FL="$HERE/floor-blocklist.txt"
 # FLOOR_F (added lines of project code) and FLOOR_P (`path:line` at the same line number) were built by the single
 # floor pass ahead of the early exit above.
 
-# A file that opens with a generator marker was not written by this commit's author, and the default stack needs
+# A file that opens with a generator marker was not written by this commit's author, and an EF Core project needs
 # this: EF Core puts a warning pragma into every model snapshot it emits (395k such files on GitHub, measured).
 # `sed -n '1,5p'` and NOT `head -n 5`: under `set -o pipefail`, head closing the pipe early makes the producer die
 # of SIGPIPE, and the pipeline reports 141 even when grep matched — measured, so the exemption would never apply.
@@ -460,7 +460,7 @@ _floor_generated(){ # $1 = repo-relative path; 0 when the file opens with a gene
 # Attributing a hit to its rule costs one grep per pattern (34 of them). The first version paid that on every
 # commit the cheap pre-check flagged, then exempted the lines — so an EF Core migration, whose three generated files
 # all carry a warning pragma, went from 20 processes to 73 and was allowed anyway. At the 62-135 ms a Git Bash
-# process was measured to cost, that is several seconds on every migration commit of the default stack. Now the
+# process was measured to cost, that is several seconds on every migration commit of an EF Core project. Now the
 # candidate lines are found with one grep, their files checked once each, and the loop runs only when a line that
 # is NOT exempt remains. A malformed pattern takes the combined grep down with exit 2; then the slow path runs over
 # every line, exactly as before, so a broken list still reports itself and still scans.

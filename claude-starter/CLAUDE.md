@@ -199,16 +199,19 @@ no paths. Deliberate skip: commit in your own terminal; `CLAUDE_GIT_OK` (headles
 <One sentence: what it does, for whom.>
 
 ## Stack
-Backend: <e.g. .NET 10 + PostgreSQL + Redis · or Node/Go/Python — depending on the project>
+<!-- Empty? Agents fill this via the `backend-architecture` skill on the first backend task: explicit request →
+     this section → repo manifests → at most 4 questions, asked ONCE and recorded here plus an ADR. -->
+Runtime: <e.g. Node 22 · Go 1.23 · Python 3.12 · .NET 10 · Java 21>
+Web framework: <e.g. Fastify · chi · FastAPI · ASP.NET Core · Spring Boot>
+Database: <e.g. PostgreSQL 17 (+ Redis cache) · SQLite · MongoDB> · Migrations: <tool>
+Architecture pattern: <layered · clean/hexagonal · vertical slice · CQRS>
 Client: <e.g. web React/Next · mobile React Native/Expo · desktop — depending on the project>
-<Fill in per the project. Agents detect the stack from here + the repo structure.>
 
 ## Project skills
 Domain-specific "how"s live under `.claude/skills/` (e.g. payment-contract, notification-rules).
-**Backend pattern is one of them.** `backend-expert-csk` is pattern-neutral: it applies the project's
-backend-pattern skill — `cqrs-aop-module` (MediatR CQRS / IResult / AOP) by default. On a different pattern
-(Clean Architecture, Vertical Slice, Minimal API, plain layered), drop your own pattern skill here (see
-`AGENT_TEMPLATE.md`) and the agent follows it instead of DevArch. Nothing forces DevArch.
+**A backend pattern can be one of them.** `backend-expert-csk` applies the project's own pattern skill when there
+is one, and `backend-architecture` otherwise. To pin a pattern the team already uses, drop it here as a skill
+(see `AGENT_TEMPLATE.md`) and the agent follows it.
 For the skill format: ./.claude/AGENT_TEMPLATE.md.
 
 ## Conventions

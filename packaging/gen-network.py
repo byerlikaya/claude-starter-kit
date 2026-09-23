@@ -30,12 +30,12 @@ SHORT = {"planner-csk":"planner","backend-expert-csk":"backend","frontend-expert
     "privacy-agent-csk":"privacy","performance-expert-csk":"perf","test-expert-csk":"test","review-agent-csk":"review",
     "commit-agent-csk":"commit","session-manager-csk":"session"}
 EDGES = {
- "backend-expert-csk":"api-design confidence-check dependency-audit cqrs-aop-module i18n-integrity observability performance sonarqube-check",
+ "backend-expert-csk":"api-design backend-architecture confidence-check dependency-audit i18n-integrity observability performance sonarqube-check",
  "commit-agent-csk":"commit-message release",
- "database-expert-csk":"confidence-check db-migration sonarqube-check",
+ "database-expert-csk":"backend-architecture confidence-check db-migration sonarqube-check",
  "devops-expert-csk":"adr ci-pipeline dependency-audit dependency-upgrade docs-writer incident-runbook observability performance release trace-scan deploy",
  "frontend-expert-csk":"a11y confidence-check dependency-audit frontend frontend-design frontend-rn-expo i18n-integrity observability performance",
- "planner-csk":"adr brainstorm spec-planning",
+ "planner-csk":"adr backend-architecture brainstorm spec-planning",
  "privacy-agent-csk":"privacy-compliance",
  "review-agent-csk":"code-review docs-writer",
  "security-expert-csk":"red-team security-scan sonarqube-check threat-model",
@@ -50,7 +50,7 @@ ST_OF = dict(AGENTS)
 
 # deliberate home-stage for each skill (so groups read clean); default = first agent's stage
 SKILL_HOME = {
- "api-design":"build","cqrs-aop-module":"build","db-migration":"build","frontend":"build",
+ "api-design":"build","backend-architecture":"build","db-migration":"build","frontend":"build",
  "frontend-design":"build","frontend-rn-expo":"build","a11y":"build","i18n-integrity":"build",
  "dependency-audit":"build","dependency-upgrade":"build","observability":"build","performance":"build",
  "ci-pipeline":"ops","deploy":"ops","incident-runbook":"ops","trace-scan":"ops","docs-writer":"ops",

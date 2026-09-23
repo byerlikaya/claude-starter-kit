@@ -18,15 +18,16 @@ if (sub === '--help' || sub === '-h' || sub === 'help') {
   console.log(`Claude Starter Kit
 
 Usage:
-  npx @byerlikaya/claude-starter-kit [init] [--dotnet|--generic]
-      Set up the kit in a fresh project (start.sh wizard). Every install ships the whole kit;
-      the only choice is the backend pattern.
+  npx @byerlikaya/claude-starter-kit [init] [--private|--shared] [--yes]
+      Set up the kit in a fresh project (start.sh wizard). Every install ships the whole kit and
+      is stack-agnostic: the stack is recorded per project in CLAUDE.md ## Stack.
+      (--dotnet was removed in 3.0; it is still accepted, warns, and installs the same kit.)
   npx @byerlikaya/claude-starter-kit adopt
       Hand the kit over onto an existing project (adopt.sh).
   npx @byerlikaya/claude-starter-kit@latest update
       Refresh a project that already has the kit. Alias of 'adopt': it reads .claude/kit.conf,
-      keeps the backend pattern recorded there, and restores anything missing. Your CLAUDE.md
-      is never touched.
+      migrates a pre-3.0 .NET install (its pattern skill stays, as a project skill), and
+      restores anything missing. Your CLAUDE.md is never touched.
 
   npx @byerlikaya/claude-starter-kit --version
       Print the kit version and exit.

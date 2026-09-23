@@ -138,12 +138,12 @@ Beş aşamaya yayılmış **12 uzman agent** var. Kalite, hiçbir şey commit ed
 | `adr` | Mimari Karar Kaydı: bağlam-karar-sonuç; geri dönüşü pahalı kararlar için. |
 | `api-design` | API sözleşme tasarımı: kaynak adlandırma, hata modeli, sürümleme, sayfalama, geriye dönük uyumluluk, OpenAPI. |
 | `automode-policy` | Auto mod sınıflandırıcısının yapılandırmasını denetler: kitin kuralları orada mı ve asıl sessiz arıza yaşanıyor mu, yani özel bir autoMode bloğu yerleşik engelleme kurallarını uyarısızca siliyor mu. Kapı değil, rapordur; ölçüldü ve özel kurallar uygulanmıyor (2026-08-24). |
+| `backend-architecture` | Backend yığınını ve mimari desenini seçer, kaydeder ve uygular. |
 | `brainstorm` | Planlamadan ÖNCE ıraksak keşif: bulanık isteği 2-4 kapsamlı seçenek + adlandırılmış bilinmezlere çevir, bir yön seç, spec-planning'e devret. |
 | `ci-pipeline` | CI hattı disiplini: lint→build→test→kalite→güvenlik, hızlı-başarısızlık, deterministik derleme, secret yönetimi, PR kapıları. |
 | `code-review-csk` | Kod inceleme disiplini: önem sırasına dizili, gerekçeli geri bildirim: değişiklik sistemin genel kod sağlığını iyileştiriyor mu. |
 | `commit-message` | Conventional Commits: staged diff'i okur, `type(scope): özet` önerir; gerektiğinde gövde/footer ekler. |
 | `confidence-check` | Uygulamaya BAŞLAMADAN önce hazırlık kapısı: bu iş zaten var mı, mimariye uyuyor mu, dış API iddiası doğrulandı mı, çalışan bir referans var mı, kök neden biliniyor mu. Herhangi bir "hayır" durdurur. |
-| `cqrs-aop-module` | Varsayılan .NET backend deseni: MediatR CQRS handler/command/query, IResult/IDataResult, Autofac AOP zinciri, FluentValidation, i18n. |
 | `db-migration` | Şema göçlerini güvenle uygula: aracı sapta, değişikliği riske göre sınıfla, yıkıcı olanları onaya bağla, prod'da yedekle, önizle-uygula-doğrula, hatada geri al. |
 | `dependency-audit` | Bağımlılık denetimi: bilinen CVE'ler, lisans uyumu, terk edilmiş/eski paketler, lockfile bütünlüğü ve her yeni bağımlılık için gerekçe. |
 | `dependency-upgrade` | Bağımlılıkları build'i kırmadan güncele taşı: neyin açığı var, neyi deprecated, neyi geride belirle; her hedef sürümü riske göre sınıfla (patch/minor/major), güvenli olanı uygula, doğrula, kırmızıda geri al. |
@@ -303,23 +303,19 @@ Kurulu bir plugin, siz yenisini istemedikçe kurduğunuz sürümde kalır; bu y�
 ### Yeni proje
 
 ```bash
-bash start.sh [--dotnet|--generic] [--private|--shared] [--lang tr|en] [--yes] [--version] [-h]
+bash start.sh [--private|--shared] [--lang tr|en] [--yes] [--version] [-h]
 ```
 
-Sihirbaz önce hangi dilde konuşacağını sorar (Türkçe ya da İngilizce), ardından backend desenini ve kurulumu kimin kullanacağını; sonunda hiçbir şey yazılmadan önce onaylayacağınız bir özet gösterir. Seçtiğiniz dil tüm sorulara ve mesajlara uygulanır; kurulan dosyalar İngilizce kalır.
+Sihirbaz önce hangi dilde konuşacağını sorar (Türkçe ya da İngilizce), ardından kurulumu kimin kullanacağını; sonunda hiçbir şey yazılmadan önce onaylayacağınız bir özet gösterir. Seçtiğiniz dil tüm sorulara ve mesajlara uygulanır; kurulan dosyalar İngilizce kalır.
 
-**İki kurulum da aynı ekibi getiriyor:** 12 agent'ın tamamı ve bir backend deseni olan tek skill dışında bütün skill'ler. `--generic`, Node ya da Go deposunda yanlış duracak `cqrs-aop-module`'ü kurmuyor, diğer 39'unu kuruyor. Backend, web ve mobil (React Native/Expo) her iki hâlde de bir arada geliyor. API olarak başlayıp web istemcisi kazanan bir proje, ikisi için de baştan donanımlıdır.
+**Her kurulum aynı ekibi getiriyor:** 12 agent'ın ve 40 skill'in tamamı. Backend, web ve mobil (React Native/Expo) bir arada geliyor. API olarak başlayıp web istemcisi kazanan bir proje, ikisi için de baştan donanımlıdır.
 
 | Kurulumda sorulan | Seçenekler | Neyi değiştirir |
 |:--|:--|:--|
 | Dil | `--lang tr` · `--lang en` | kurulumun ekrana yazdıkları — diske yazdığı hiçbir şey değil |
-| Backend deseni | `--dotnet` · `--generic` | `cqrs-aop-module` skill'i ve DevArchitecture temeli |
 | Kimin için | `--private` · `--shared` | `.claude/` ve `CLAUDE.md`'nin gitignore'a mı gireceği, yoksa ekip için commit mi edileceği |
-| DevArch temeli (yalnızca `--dotnet` ile) | onayla · atla | `./backend` iskelesinin kurulup kurulmayacağı |
 
-**`--dotnet`**, üretime hazır [DevArchitecture](https://github.com/DevArchitecture/DevArchitecture) temelini (CQRS · IResult · AOP · auth) bir onay kapısının arkasından klonlar ve onu zaten bilen agent'ları kurar; böylece token'lar standart bir mimariyi yeniden üretmeye değil, sizin iş mantığınıza gider. Backend `./backend` altına yerleşir, yanında `./frontend` ayrılır ve çözüm dosyası projenizin adını alır.
-
-**`--generic`** aynı uzmanı o desen olmadan kurar: Node, Go, Python ya da farklı bir desen kullanan bir .NET projesi için. Hiçbir şey DevArchitecture'ı dayatmaz: backend uzmanı, projenizin beyan ettiği desen skill'ini uygular.
+**Backend yığından bağımsızdır.** Kurulum yığın sormaz. İlk backend işinde `backend-architecture` skill'i yığını çözer: önce isteğiniz, sonra `CLAUDE.md`'deki `## Stack` bölümü, sonra deponun manifest dosyaları (`package.json`, `go.mod`, `pyproject.toml`, `*.csproj`, …); yalnız boş bir depoda, her birinde önerilen bir cevap ve "Decide for me" seçeneği olan en fazla dört çoktan seçmeli soru sorar. Cevap `## Stack` bölümüne yazılır ve bir ADR ile kaydedilir; yani bir kez sorulur. Node, Go, Python, .NET ve JVM eşit desteklenir; `.claude/skills/` altına kendi desen skill'ini koyan projede o uygulanır.
 
 ### Mevcut proje
 
@@ -344,7 +340,7 @@ npx @byerlikaya/claude-starter-kit@latest update    # ya da oturum içinde /upda
 <details open>
 <summary>🔁&nbsp; <b>Güncelleme mekaniği: ne tazeleniyor, değişiklik nereye iniyor</b></summary>
 
-Claude Starter Kit kurulum sırasında `.claude/kit.conf` dosyasına backend desenini ve hangi kurulum script'inin koştuğunu, ayrıca `.claude/VERSION` dosyasına sürümü yazar. Tazeleme **deseni korur**: `--dotnet` ile kurulmuş bir proje `cqrs-aop-module` ile kalır, bir Node deposuna o hiç verilmez. Damga eksikse güncelleyici deseni kurulu dosyalardan geri okur. Eksik her bileşen yerine konur ve eklenen her şey sessizce belirmek yerine **çıktıda adıyla anılır**.
+Claude Starter Kit kurulum sırasında `.claude/kit.conf` dosyasına hangi kurulum script'inin koştuğunu, ayrıca `.claude/VERSION` dosyasına sürümü yazar. 3.0'dan önce .NET deseniyle kurulmuş bir proje **`cqrs-aop-module` skill'ini korur**: backend uzmanının uygulamaya devam ettiği bir proje skill'i olarak kalır; güncelleme bunu söyler ve asla silmez. Eksik her bileşen yerine konur ve eklenen her şey sessizce belirmek yerine **çıktıda adıyla anılır**.
 
 | | Güncellemede |
 |:--|:--|

@@ -22,7 +22,7 @@ manage, "reversible" means the previous release still sits on disk and the swap 
 On a platform that manages the host for you, "reversible" means the previous *artefact* is still addressable and
 you re-point the environment at it — you do not rebuild it. Phase 0 picks the branch; everything after follows.
 
-> **Kit adaptation (local, .claude/):** Default backend is **.NET (Docker recommended)**. **Deploy requires explicit
+> **Kit adaptation (local, .claude/):** Any backend runtime (Docker recommended). **Deploy requires explicit
 > approval (§4.4)**; a backup before every swap and a health gate after are mandatory. If `.deploy.yml` carries server
 > credentials it goes into `.gitignore`. §4 Prohibitions apply.
 
