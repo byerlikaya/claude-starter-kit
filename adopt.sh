@@ -242,11 +242,10 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "custom hooks and every other permission PRESERVED") s="özel hook'lar ve diğer tüm izinler KORUNDU" ;;
       "custom hooks/permissions PRESERVED") s="özel hook'lar ve izinler KORUNDU" ;;
       "settings.json: was missing in the project -> the kit's was installed") s='settings.json: projede yoktu -> kitinki kuruldu' ;;
-      "settings.json: existing file is INVALID JSON -> merge ABORT (no silent overwrite). Fix it by hand first.") s='settings.json: mevcut dosya GEÇERSİZ JSON -> birleştirme İPTAL (üzerine sessizce yazılmaz). Önce elle düzeltin.' ;;
-      "settings.json: hook-aware MERGE via %s (kit hooks refreshed - %s)") s="settings.json: %s ile hook'ları gözeten BİRLEŞTİRME (kit hook'ları yenilendi - %s)" ;;
-      "settings.json: %s merge failed -> project setting PRESERVED (not overwritten).") s='settings.json: %s ile birleştirme başarısız -> proje ayarı KORUNDU (üzerine yazılmadı).' ;;
-      "settings.json: no jq/python3 and a non-kit hook is present -> cannot merge safely. Kit reference at %s -> reconcile by hand.") s='settings.json: jq/python3 yok ve kite ait olmayan bir hook var -> güvenle birleştirilemez. Kitin sürümü %s içinde -> elle birleştirin.' ;;
-      "settings.json: no jq/python3 -> kit-only settings REPLACED with the current kit's (backup: %s — re-add any custom permissions from it)") s='settings.json: jq/python3 yok -> yalnız kit ayarları içeren dosya güncel kitinkiyle DEĞİŞTİRİLDİ (yedek: %s — özel izinleriniz varsa oradan geri ekleyin)' ;;
+      "settings.json: hook-aware MERGE (kit hooks refreshed - %s)") s="settings.json: hook'ları gözeten BİRLEŞTİRME (kit hook'ları yenilendi - %s)" ;;
+      "settings.json: %s") s='settings.json: %s' ;;
+      "merge failed -> project setting PRESERVED (not overwritten)") s='birleştirme başarısız -> proje ayarı KORUNDU (üzerine yazılmadı)' ;;
+      "existing file is INVALID JSON -> merge ABORT (no silent overwrite). Fix it by hand first.") s='mevcut dosya GEÇERSİZ JSON -> birleştirme İPTAL (üzerine sessizce yazılmaz). Önce elle düzeltin.' ;;
       "settings.json: retired §4.4 ask rule(s) REMOVED (%s) — guard-bash.sh now asks for these itself; an ask rule would override its CLAUDE_GIT_OK allow. Re-add one only if your project wants that trade.") s='settings.json: emekliye ayrılan §4.4 ask kuralları KALDIRILDI (%s) — bunları artık guard-bash.sh kendisi soruyor; bir ask kuralı onun CLAUDE_GIT_OK iznini ezerdi. Bu bedeli bilerek istiyorsanız geri ekleyin.' ;;
       "Stage 4 — arm the git gates (SHIM via husky) + PROOF") s='Aşama 4 — git kapılarını devreye al (husky üzerinden SHIM) + KANIT' ;;
       "core.hooksPath -> .claude/hooks (no existing hook chain)") s='core.hooksPath -> .claude/hooks (başka hook zinciri yok)' ;;
@@ -779,10 +778,8 @@ fi
 
 if [ "$DEC_BR" = here ]; then _mt "the current branch '%s'" "$BASE"; else _mt "a new review branch (off '%s')" "$BASE"; fi
 WHERE="$_M"
-# Missing tools named before the mutation prompt, not after. It matters more here than on a fresh install: the
-# settings MERGE is the step that needs jq/python, and without them an update replaces settings.json (backup
-# kept) instead of merging — so a project's own hooks are dropped. Better to say that while it is still a
-# choice. Report-only; never blocks.
+# Missing tools named before the mutation prompt, not after, while going ahead is still a choice. The settings
+# merge is not among them: it is awk and runs the same everywhere. Report-only; never blocks.
 [ -f "$SRC/eval/preflight.sh" ] && bash "$SRC/eval/preflight.sh"
 if ! ask_yes 'Apply the kit onto %s now? (mutation; staged-not-committed, reversible with git)' "$WHERE"; then
   h1m 'Stopped'; subm 'Stayed at Stage 1 — NOTHING CHANGED (read-only).'; exit 0
@@ -1101,104 +1098,41 @@ fi
 # ask rule prompts even when a hook returns "allow" (Claude Code permissions doc), which made the hook's
 # CLAUDE_GIT_OK pre-authorisation dead: a headless session was refused `git add` and never committed. The hook
 # now asks for all four itself. These exact strings are the kit's own; a project that wants them can re-add them.
+# ONE path on every OS: the merge is claude-starter/eval/lib/settings-json.awk (POSIX awk; its header holds the
+# reader contract and the merge semantics). jq and python3 are absent on a stock Windows Git-Bash, where python3
+# is often the Microsoft Store stub (exit 49); the old per-tool arms REPLACED the file there and lost the project's
+# own rules. Input that is not a JSON object is refused and left untouched; the output is re-read before use.
 KSET="$SRC/settings.json"; PSET=".claude/settings.json"
-JQ_MERGE='
-def ddedup: reduce .[] as $x ([]; if any(.[]; .==$x) then . else .+[$x] end);
-def dm(a;b): reduce (b|keys_unsorted[]) as $k (a;
-  if (.[$k]|type)=="object" and (b[$k]|type)=="object" then .[$k]=dm(.[$k];b[$k])
-  elif (.[$k]|type)=="array" and (b[$k]|type)=="array" then .[$k]=((.[$k]+b[$k])|ddedup)
-  else .[$k]=b[$k] end);
-def is_kit: ((.hooks // []) | map((((.command // "") + " " + ((.args // []) | join(" "))) | contains(".claude/hooks/"))) | any);   # command AND args: tolerates either wiring shape
-def merge_hooks(kh;ph):
-  (((kh|keys_unsorted)+(ph|keys_unsorted))|unique) as $e
-  | reduce $e[] as $k ({}; .[$k]=((kh[$k] // [])+((ph[$k] // [])|map(select(is_kit|not)))));
-def retired: ["Bash(git add:*)","Bash(git commit:*)","Bash(git push:*)","Bash(git checkout -b:*)"];
-def drop_retired: if (.permissions.ask|type)=="array" then .permissions.ask -= retired else . end;
-(dm($k[0]; $p[0]) | drop_retired) | .hooks=merge_hooks(($k[0].hooks // {}); ($p[0].hooks // {}))'
+SET_AWK="$SRC/eval/lib/settings-json.awk"
 # Which retired rules the project carries NOW, read before the merge so the removal can be announced by name.
 # A string match cannot tell the kit's copy from one the project wrote itself, so the removal is never silent
 # and the merge line below does not claim "permissions PRESERVED" when some were not.
-RET_HIT=""; [ -f "$PSET" ] && for _r in 'git add' 'git commit' 'git push' 'git checkout -b'; do
+SET_NOTE=""; RET_HIT=""; [ -f "$PSET" ] && for _r in 'git add' 'git commit' 'git push' 'git checkout -b'; do
   grep -qF "\"Bash($_r:*)\"" "$PSET" && RET_HIT="$RET_HIT${RET_HIT:+|}$_r"; done
 if [ -n "$RET_HIT" ]; then _mt 'custom hooks and every other permission PRESERVED'; else _mt 'custom hooks/permissions PRESERVED'; fi
 KEPT="$_M"   # terminal-only (HANDOVER.md words its own line), so translated
 if [ ! -f "$PSET" ]; then
   [ -f "$KSET" ] && { cp "$KSET" "$PSET"; say "settings.json: was missing in the project -> the kit's was installed"; }
-# Probed by RUNNING — the python3 arm below already does exactly this, with a comment about the Store
-# redirector. Selecting on `command -v` alone made a broken jq abort the merge and wire NOTHING, while the
-# run still ended in OK + PROOF and HANDOVER recorded "kit hooks REFRESHED". Measured: 10 hook entries with
-# a working jq, 10 via the python3 arm with jq absent, 0 with a jq that resolves and fails.
-elif command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then
-  if ! jq -e . "$PSET" >/dev/null 2>&1; then
-    warnm 'settings.json: existing file is INVALID JSON -> merge ABORT (no silent overwrite). Fix it by hand first.'
-  else
-    MERGED="$(jq -n --slurpfile p "$PSET" --slurpfile k "$KSET" "$JQ_MERGE" 2>/dev/null || true)"
-    if [ -n "$MERGED" ] && printf '%s' "$MERGED" | jq -e . >/dev/null 2>&1; then
-      printf '%s\n' "$MERGED" > "$PSET"; say 'settings.json: hook-aware MERGE via %s (kit hooks refreshed - %s)' jq "$KEPT"
-    else
-      warnm 'settings.json: %s merge failed -> project setting PRESERVED (not overwritten).' jq
-    fi
-  fi
-elif PYBIN=""; for _pc in python3 python py; do
-       # Pick the first that RUNS, not the first that EXISTS. Windows puts a Microsoft Store redirector stub
-       # named python3 (and python) on PATH by default; `command -v` stops there and never reaches `py`, the
-       # Windows Python Launcher, which on a machine with real Python installed is the one that works. The old
-       # order therefore selected the stub on exactly the machines this branch exists for, and the merge below
-       # fell through to "merge failed -> project setting PRESERVED" with no hint why. Args are always passed:
-       # an argless run of that stub opens the Microsoft Store instead of failing.
-       if command -v "$_pc" >/dev/null 2>&1 && printf '{}' | "$_pc" -c 'import sys,json;json.load(sys.stdin)' >/dev/null 2>&1; then
-         PYBIN="$(command -v "$_pc")"; break
-       fi
-     done; [ -n "$PYBIN" ]; then
-  if "$PYBIN" - "$KSET" "$PSET" "$PSET.tmp" 2>/dev/null <<'PYEOF' && [ -s "$PSET.tmp" ]; then
-import json,sys
-kit=json.load(open(sys.argv[1])); proj=json.load(open(sys.argv[2]))
-def ddedup(a):
-  out=[]
-  for x in a:
-    if x not in out: out.append(x)
-  return out
-def dm(a,b):
-  r=dict(a)
-  for k,v in b.items():
-    if isinstance(r.get(k),dict) and isinstance(v,dict): r[k]=dm(r[k],v)
-    elif isinstance(r.get(k),list) and isinstance(v,list): r[k]=ddedup(r[k]+v)
-    else: r[k]=v
-  return r
-def is_kit(e): return any(".claude/hooks/" in (h.get("command") or "") for h in (e.get("hooks") or []))
-def merge_hooks(kh,ph):
-  evs=list(dict.fromkeys(list(kh)+list(ph))); o={}
-  for e in evs: o[e]=list(kh.get(e,[]))+[x for x in ph.get(e,[]) if not is_kit(x)]
-  return o
-m=dm(kit,proj); m["hooks"]=merge_hooks(kit.get("hooks",{}),proj.get("hooks",{}))
-RETIRED=["Bash(git add:*)","Bash(git commit:*)","Bash(git push:*)","Bash(git checkout -b:*)"]
-if isinstance(m.get("permissions"),dict) and isinstance(m["permissions"].get("ask"),list):
-  m["permissions"]["ask"]=[x for x in m["permissions"]["ask"] if x not in RETIRED]
-open(sys.argv[3],"w").write(json.dumps(m,indent=2)+"\n")
-PYEOF
-    mv "$PSET.tmp" "$PSET"; say 'settings.json: hook-aware MERGE via %s (kit hooks refreshed - %s)' "${PYBIN##*/}" "$KEPT"
-  else
-    rm -f "$PSET.tmp"; warnm 'settings.json: %s merge failed -> project setting PRESERVED (not overwritten).' "${PYBIN##*/}"
-  fi
 else
-  # No jq AND no python3 (common on Windows Git-Bash) — we can't parse JSON to merge. But if the project's
-  # settings.json carries ONLY kit-owned hooks (every "command" points at .claude/hooks/ — no hook the user added),
-  # it is safe to REPLACE it wholesale with the kit's current settings: stale hooks/timeouts refresh and new events
-  # (SessionStart) wire up, with zero dependencies. A timestamped backup is kept so nothing is lost (re-add any
-  # custom permissions from it). If a FOREIGN hook is present we do NOT guess — leave the file, drop a kit reference.
-  if grep '"command"' "$PSET" | grep -qv '\.claude/hooks/'; then
-    cp "$KSET" "$PSET.kit" 2>/dev/null || true
-    warnm 'settings.json: no jq/python3 and a non-kit hook is present -> cannot merge safely. Kit reference at %s -> reconcile by hand.' .claude/settings.json.kit
-  else
-    BAK="$PSET.bak-$(date +%Y%m%d-%H%M%S)"; cp "$PSET" "$BAK" 2>/dev/null || true
-    cp "$KSET" "$PSET"
-    say "settings.json: no jq/python3 -> kit-only settings REPLACED with the current kit's (backup: %s — re-add any custom permissions from it)" "$BAK"
-  fi
+  awk -v op=merge -v retired='Bash(git add:*)|Bash(git commit:*)|Bash(git push:*)|Bash(git checkout -b:*)' -f "$SET_AWK" "$KSET" "$PSET" > "$PSET.tmp" 2>/dev/null
+  case "$?" in
+    0) if [ -s "$PSET.tmp" ] && awk -v op=validate -f "$SET_AWK" "$PSET.tmp" 2>/dev/null; then
+         mv "$PSET.tmp" "$PSET"; say 'settings.json: hook-aware MERGE (kit hooks refreshed - %s)' "$KEPT"
+       else SET_NOTE="merge failed -> project setting PRESERVED (not overwritten)"; fi ;;
+    10) SET_NOTE="existing file is INVALID JSON -> merge ABORT (no silent overwrite). Fix it by hand first." ;;
+    *) SET_NOTE="merge failed -> project setting PRESERVED (not overwritten)" ;;
+  esac
+  # SET_NOTE stays English: HANDOVER.md records it verbatim. The terminal gets it translated — each value above
+  # is its own table key.
+  rm -f "$PSET.tmp"; [ -n "$SET_NOTE" ] && { _mt "$SET_NOTE"; warnm 'settings.json: %s' "$_M"; }
 fi
-# Announce only what is actually gone: the foreign-hook arm and a failed merge leave the file untouched.
+# Announce only what is actually gone: a refused or failed merge leaves the file untouched.
 RET_GONE=""; _IFS="$IFS"; IFS='|'; for _r in $RET_HIT; do
   grep -qF "\"Bash($_r:*)\"" "$PSET" 2>/dev/null || RET_GONE="$RET_GONE${RET_GONE:+, }$_r"; done; IFS="$_IFS"
 [ -n "$RET_GONE" ] && say 'settings.json: retired §4.4 ask rule(s) REMOVED (%s) — guard-bash.sh now asks for these itself; an ask rule would override its CLAUDE_GIT_OK allow. Re-add one only if your project wants that trade.' "$RET_GONE"
+# A refused or failed merge leaves the file as it was, so HANDOVER must not claim a merge that did not run.
+if [ -n "$SET_NOTE" ]; then HAND_SET="NOT merged — ${SET_NOTE%.}"
+else HAND_SET="hook-aware merge (kit hooks REFRESHED to current — new events + timeouts land; your own custom hooks/permissions PRESERVED${RET_GONE:+, except the retired §4.4 ask rule(s) REMOVED: $RET_GONE — guard-bash.sh asks for these itself})"; fi
 
 # ============ [STAGE 4] GIT-HOOK ARMING (SHIM) + PROOF ============
 h1m 'Stage 4 — arm the git gates (SHIM via husky) + PROOF'
@@ -1402,7 +1336,7 @@ cat > docs/HANDOVER.md <<HAND
 - Kit agents: $NCCK (-csk namespace; no clash with project agents).
 - Project agents: $N_PAGENTS — UNTOUCHED, in place + active (recursive discovery).
 - Discipline: .claude/DISCIPLINE.md + @import into the project CLAUDE.md (content untouched).
-- settings.json: hook-aware merge (kit hooks REFRESHED to current — new events + timeouts land; your own custom hooks/permissions PRESERVED${RET_GONE:+, except the retired §4.4 ask rule(s) REMOVED: $RET_GONE — guard-bash.sh asks for these itself}).
+- settings.json: $HAND_SET.
 - Git gates: $HOOKDESC.
 - Overlapping roles: $MERGE_NOTE.
 - $BR_HANDOVER_LINE

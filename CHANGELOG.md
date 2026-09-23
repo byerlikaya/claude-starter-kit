@@ -17,6 +17,12 @@ versioning follows [SemVer](https://semver.org/).
 
 ### Fixed — defects that only lived on machines without jq or python
 
+- **An update without jq or python3 no longer throws away your own settings.** On such a machine (a stock
+  Windows Git Bash, where `python3` is often the Microsoft Store stub) the update used to replace
+  `.claude/settings.json` with the kit's copy, so a rule like `Bash(terraform apply:*)` was lost and only a
+  backup kept it. The settings merge is now one awk program, `.claude/eval/lib/settings-json.awk`, and gives the
+  same result on every machine: the kit's hooks refreshed, your own hooks, rules and keys kept. A file that is
+  not valid JSON is left untouched and reported.
 - **The board vanished from the session when an item title had a tab.** `board-sync.sh` escaped only the
   quote, the backslash and the newline, so a tab, a CR or any control byte produced JSON the CLI could not
   parse (measured: jq rc=5), and the CLI dropped it without a word. The escaper now matches `jq` byte for byte on
