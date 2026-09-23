@@ -29,7 +29,8 @@ SRC="$HERE/claude-starter"
 BRANCH_MODE=""; ASSUME_YES=0
 _lang_flag=""; _lang_take=0
 for _a in "$@"; do
-  if [ "$_lang_take" = 1 ]; then _lang_flag="$_a"; _lang_take=0; continue; fi
+  # `--lang` with no value must not swallow the next flag: `--lang --yes` is --yes with no language given.
+  if [ "$_lang_take" = 1 ]; then _lang_take=0; case "$_a" in -*) ;; *) _lang_flag="$_a"; continue ;; esac; fi
   case "$_a" in
   --here)       BRANCH_MODE=here ;;
   --new-branch) BRANCH_MODE=new  ;;
@@ -44,39 +45,280 @@ esac; done
 # IS English. Colour never enters a message (the helpers above add it), interpolation goes through %s, and a
 # literal percent must be written %% because the message is the printf format.
 #
-# Language: --lang, then CSK_LANG, then LC_ALL/LC_MESSAGES/LANG, then English. English is the default rather
-# than the locale's language because that is what this script printed before it could speak anything else.
-# On stock Windows all three locale variables are empty (measured), so auto-detect never fires there and a
-# Turkish-speaking Windows user needs the flag — documented behaviour, not a defect.
+# Language: --lang, then an inherited CSK_LANG, then — on an interactive run without --yes — a one-line menu,
+# then LC_ALL/LC_MESSAGES/LANG, then English. An interactive run ASKS because detection alone never offered
+# Turkish where it should have: measured, macOS can run with a Turkish system language while the shell exports
+# LANG=C.UTF-8. The locale still picks the menu's default. A piped, CI or --yes run never sees the menu (a
+# `read` there would block or eat the caller's input) and keeps plain detection. On stock Windows all three
+# locale variables are empty (measured), so a non-interactive Windows run needs the flag — documented
+# behaviour, not a defect. English stays the fallback because it is what this script printed before it could
+# speak anything else.
+_loc="${LC_ALL:-}"; [ -n "$_loc" ] || _loc="${LC_MESSAGES:-}"; [ -n "$_loc" ] || _loc="${LANG:-}"
+case "$_loc" in tr*|TR*) _lang_det=tr; _lang_def=2 ;; *) _lang_det=en; _lang_def=1 ;; esac
 if [ -n "$_lang_flag" ]; then
   CSK_LANG="$_lang_flag"
-elif [ -z "${CSK_LANG:-}" ]; then
-  _loc="${LC_ALL:-}"; [ -n "$_loc" ] || _loc="${LC_MESSAGES:-}"; [ -n "$_loc" ] || _loc="${LANG:-}"
-  case "$_loc" in tr*|TR*) CSK_LANG=tr ;; *) CSK_LANG=en ;; esac
+elif [ -n "${CSK_LANG:-}" ]; then
+  :
+elif [ -t 0 ] && [ "$ASSUME_YES" != 1 ]; then
+  printf '\n  Language / Dil\n    1) English\n    2) Türkçe\n  -> [1-2, empty/boş=%s]: ' "$_lang_def"
+  read -r _lang_ans || _lang_ans=""
+  [ -n "$_lang_ans" ] || _lang_ans="$_lang_def"
+  case "$_lang_ans" in 2|tr|TR|t|T) CSK_LANG=tr ;; *) CSK_LANG=en ;; esac
+else
+  CSK_LANG="$_lang_det"
 fi
 case "$CSK_LANG" in tr|en) ;; *) CSK_LANG=en ;; esac
-m() {   # $1 = English text (the key); further args fill %s
+# Exported: child scripts (eval/preflight.sh) resolve their own language from the environment, and an
+# unexported choice from --lang or the menu made them print English.
+export CSK_LANG
+# _mt sets _M instead of printing, so a call site can translate WITHOUT a `$( )` subshell. Each subshell is a
+# fork, and on Git Bash a fork costs 62-135 ms; wrapping ~100 lines in `$(m …)` would have added seconds to
+# every update. The helpers below (say/h1m/subm/warnm/rowm/rowv/propm, ask_yes) all go through _mt.
+m() { _mt "$@"; printf '%s' "$_M"; }
+_mt() {   # $1 = English text (the key); further args fill %s; result in _M
+  # An empty key must still ASSIGN: bash 3.2's `printf -v _M ""` leaves _M holding the previous translation.
+  [ -n "${1:-}" ] || { _M=""; return 0; }
   local s="$1"; shift
   if [ "$CSK_LANG" = tr ]; then
     case "$s" in
-      "kit adopt · Stage 1 — DETECTION (read-only; nothing changes)") s='kit adopt · Aşama 1 — TESPİT (salt okunur; hiçbir şey değişmez)' ;;
+      "kit adopt · Stage 1 — DETECTION (read-only; nothing changes)") s='kit adopt · Aşama 1 — TESPİT (salt okunur, hiçbir şey değişmez)' ;;
+      "Reads the existing project, produces a smart suggestion for the 7 handover decisions. Approval + mutation in the next stage.") s='Projeyi okur ve devralma için 7 karara akıllı bir öneri çıkarır. Onay ve değişiklikler sonraki aşamada.' ;;
       "[1] Environment") s='[1] Ortam' ;;
-      "[2] Existing agentic setup (accumulated work to inherit)") s='[2] Mevcut agentic kurulum (devralınacak birikim)' ;;
-      "[3] 7 handover decisions — SMART SUGGESTION") s='[3] 7 devir kararı — AKILLI ÖNERİ' ;;
+      "no git — 'git init' required") s="git yok — önce 'git init' gerekli" ;;
+      "worktree/submodule (.git file)") s='worktree/submodule (.git bir dosya)' ;;
+      "normal repo") s='normal depo' ;;
+      "git hook system") s='git hook sistemi' ;;
+      "none") s='yok' ;;
+      "kit (already armed)") s='kit (zaten devrede)' ;;
+      "pre-commit framework") s='pre-commit çatısı' ;;
+      "unknown") s='bilinmiyor' ;;
+      "DevArchitecture layout detected") s='DevArchitecture düzeni bulundu' ;;
+      "stack hint") s='yığın ipucu' ;;
+      "[2] Existing agentic setup (accumulated work to inherit)") s='[2] Projedeki agentic kurulum (korunacak birikim)' ;;
+      "present — %s project agents · %s project skills") s="var — %s proje ajanı · %s proje skill'i" ;;
+      "present") s='var' ;;
+      "already adopted%s — this run REFRESHES kit files, project untouched") s='kit zaten kurulu%s — bu çalıştırma yalnız kit dosyalarını YENİLER, projeye dokunmaz' ;;
+      "kit status") s='kit durumu' ;;
+      "(no kit.conf — read back from the installed files)") s='(kit.conf yok — kurulu dosyalardan çıkarıldı)' ;;
+      "inferred pattern") s='çıkarılan desen' ;;
+      "stack=%s %s — the refresh keeps it") s='stack=%s %s — güncelleme bunu korur' ;;
+      "recorded pattern") s='kayıtlı desen' ;;
+      "stack=%s · via %s — the refresh keeps it") s='stack=%s · kuran: %s — güncelleme bunu korur' ;;
+      "— profile pruning was removed in 2.0; this refresh completes the install") s="— profil budama 2.0'da kalktı; bu güncelleme eksikleri tamamlar" ;;
+      "pre-2.0 profile") s='2.0 öncesi profil' ;;
+      "YES — shared with the team") s='EVET — ekiple paylaşılıyor' ;;
+      "no/untracked") s='hayır / izlenmiyor' ;;
+      ".claude/CLAUDE.md in git") s=".claude/CLAUDE.md git'te mi" ;;
+      "supply-chain scan flagged existing project skills/agents (advisory — review before trusting them):") s='tedarik zinciri taraması projedeki bazı skill/ajanları işaretledi (yalnız uyarı — güvenmeden önce inceleyin):' ;;
+      "full report after install: %s  (heuristic; a security skill can score low by design)") s="kurulumdan sonra tam rapor: %s  (sezgisel; güvenlik skill'leri doğası gereği düşük puan alabilir)" ;;
+      "supply-chain scan") s='tedarik zinciri taraması' ;;
+      "existing project skills/agents look clean (no red flags)") s='projedeki skill/ajanlar temiz görünüyor (şüpheli bir şey yok)' ;;
+      "[3] 7 handover decisions — SMART SUGGESTION") s='[3] Devralma için 7 karar — AKILLI ÖNERİ' ;;
+      "format:  decision  ->  SUGGESTED  ->  rationale   (you can review and override all of them in the next stage)") s='biçim:  karar  ->  ÖNERİ  ->  gerekçe   (hepsini sonraki aşamada inceleyip değiştirebilirsiniz)' ;;
+      "1 Role overlap") s='1 Rol çakışması' ;;
+      "kit takes over") s='kit üstlenir' ;;
+      "%s project agent(s) cover the SAME job as a kit agent (%s) — routing is ambiguous; kit wins, yours preserved") s='%s proje ajanı bir kit ajanıyla AYNI işi yapıyor (%s) — hangisine gideceği belirsiz; kit öne geçer, sizinkiler saklanır' ;;
+      "1 Role clash") s='1 Rol çakışması' ;;
+      "keep (coexist)") s='koru (yan yana)' ;;
+      "%s project agents, none overlap a kit role; thanks to -csk they live side by side") s='%s proje ajanı var, hiçbiri kit rolleriyle çakışmıyor; -csk eki sayesinde yan yana çalışırlar' ;;
+      "no custom agents found in the project") s='projede özel ajan yok' ;;
+      "2 Precedence") s='2 Öncelik' ;;
+      "project wins (fixed)") s='proje önde (sabit)' ;;
+      "on conflict the project's rules always win; the kit fills gaps (not overridable)") s='çakışmada her zaman projenin kuralı geçerli; kit yalnız boşlukları doldurur (değiştirilemez)' ;;
+      "3 Trace gate") s='3 İz kapısı' ;;
+      "loosen (.trace-allowlist)") s='gevşet (.trace-allowlist)' ;;
+      "co-author/sign-off present in git log — may be a convention") s='git geçmişinde co-author/sign-off var — ekibin alışkanlığı olabilir' ;;
+      "keep") s='koru' ;;
+      "no co-author/sign-off convention seen") s='co-author/sign-off alışkanlığı görülmedi' ;;
+      "4 Share/hide") s='4 Paylaş/gizle' ;;
+      "share") s='paylaş' ;;
+      ".claude/CLAUDE.md is tracked — keep sharing with the team") s=".claude/CLAUDE.md git'te izleniyor — ekiple paylaşmaya devam" ;;
+      "untracked; kit files are shared by default — pick hide to keep them local") s='izlenmiyor; kit dosyaları varsayılan olarak paylaşılır — yerelde tutmak için hide seçin' ;;
+      "5 Git hooks") s="5 Git hook'ları" ;;
+      "install directly") s='doğrudan kur' ;;
+      "no existing hook system") s='hook sistemi yok' ;;
+      "SHIM (bridge)") s='SHIM (köprü)' ;;
+      "existing %s present — let both run") s='%s zaten var — ikisi birlikte çalışsın' ;;
+      "baseline+regression") s='taban + gerileme' ;;
+      "existing code debt unknown; absolute 0/0/0/0 is risky") s='mevcut kod borcu bilinmiyor; mutlak 0/0/0/0 riskli' ;;
+      "7 Off-repo: no local .claude/CLAUDE.md — decisions may live in chat/on the web; there is context I CANNOT SEE.") s='7 Depo dışı: yerelde .claude/CLAUDE.md yok — kararlar sohbette ya da webde kalmış olabilir; GÖREMEDİĞİM bir bağlam var.' ;;
+      "  -> suggestion") s='  -> öneri' ;;
+      "you transfer") s='siz aktarın' ;;
+      "in the mutation stage 'paste if any' is asked; goes into HANDOVER.md") s="uygulama aşamasında 'varsa yapıştırın' diye sorulur; HANDOVER.md'ye yazılır" ;;
+      "7 Off-repo") s='7 Depo dışı' ;;
+      "local + ask") s='yerel + sor' ;;
+      "some decisions are in files; still may be in-chat (asked during the stage)") s='kararların bir kısmı dosyalarda; sohbette kalanlar olabilir (aşama sırasında sorulur)' ;;
       "Review the decisions") s='Kararları gözden geçirin' ;;
+      "[%s/%s] (current: %s, ENTER=keep): ") s='[%s/%s] (şu an: %s, ENTER=aynen kalsın): ' ;;
+      'type "%s" or "%s" (or ENTER to keep "%s")') s='"%s" ya da "%s" yazın ("%s" kalsın diye yalnız ENTER)' ;;
+      "Accept all smart suggestions?") s='Tüm akıllı öneriler kabul edilsin mi?' ;;
+      "All smart suggestions accepted.") s='Tüm akıllı öneriler kabul edildi.' ;;
+      "Reviewing each decision. ENTER keeps the current value. (#1 overlap and #2/#5 are handled separately below.)") s='Kararlar tek tek soruluyor. ENTER mevcut değeri korur. (#1 çakışma ve #2/#5 aşağıda ayrıca ele alınıyor.)' ;;
+      "#3 Trace gate") s='#3 İz kapısı' ;;
+      "#4 Share/hide") s='#4 Paylaş/gizle' ;;
+      "#7 Off-repo") s='#7 Depo dışı' ;;
+      "Final: #3=%s #4=%s #6=%s #7=%s  (#2 project-wins, #5 SHIM — fixed)") s='Sonuç: #3=%s #4=%s #6=%s #7=%s  (#2 proje önde, #5 SHIM — sabit)' ;;
+      "(non-interactive: smart defaults accepted)") s='(etkileşimsiz çalışma: akıllı varsayılanlar kabul edildi)' ;;
       "Backend stack") s='Backend yığını' ;;
+      "Detected a .NET project with a DevArchitecture (Business/Handlers CQRS) layout.") s='.NET projesi bulundu, DevArchitecture (Business/Handlers CQRS) düzeninde.' ;;
+      "Detected a .NET project.") s='.NET projesi bulundu.' ;;
+      "Install the .NET/DevArchitecture backend pattern (cqrs-aop-module)? (no = stack-agnostic generic)") s='.NET/DevArchitecture backend deseni (cqrs-aop-module) kurulsun mu? (hayır = yığından bağımsız generic)' ;;
+      "backend stack -> %s") s='backend yığını -> %s' ;;
       "Recorded backend stack looks wrong") s='Kayıtlı backend yığını yanlış görünüyor' ;;
-      "Stage 2 — apply the kit (coexist)") s='Aşama 2 — kiti uygula (bir arada yaşama)' ;;
+      "kit.conf records stack=generic, but this project has a DevArchitecture layout (a Business/Handlers tree, or a DevArchitecture.sln).") s='kit.conf stack=generic diyor, ama projede DevArchitecture düzeni var (Business/Handlers ağacı ya da DevArchitecture.sln).' ;;
+      "Left as-is, the refresh keeps pruning cqrs-aop-module and holds the generic backend agent.") s="Böyle kalırsa güncelleme cqrs-aop-module'ü çıkarmaya ve generic backend ajanını kullanmaya devam eder." ;;
+      "stack corrected -> dotnet (CSK_CORRECT_STACK=1)") s='yığın düzeltildi -> dotnet (CSK_CORRECT_STACK=1)' ;;
+      "Correct it to dotnet? (install the DevArchitecture pattern skill + the .NET backend agent)") s="dotnet olarak düzeltilsin mi? (DevArchitecture desen skill'i ve .NET backend ajanı kurulur)" ;;
+      "stack corrected -> dotnet (DevArchitecture)") s='yığın düzeltildi -> dotnet (DevArchitecture)' ;;
+      "kept stack=generic — a recorded choice is not overruled where nobody can be asked.") s='stack=generic olarak kaldı — soracak kimse yokken kayıtlı bir seçim değiştirilmez.' ;;
+      "If the record IS stale, correct it deliberately:  %s") s='Kayıt gerçekten ESKİYSE bilerek düzeltin:  %s' ;;
+      "Role overlap — project & kit both cover: %s") s='Rol çakışması — proje ve kit aynı işi yapıyor: %s' ;;
+      "Two agents for one job = the router picks one, usually your older agent — so the kit's would sit idle.") s='Aynı iş için iki ajan olunca yönlendirici birini seçer, çoğu zaman sizin eski ajanınızı — kitinki boşta kalır.' ;;
+      "kit's -csk agents win; each old agent's domain is imported to a draft skill (skills/<name>-local), original backed up") s="kitin -csk ajanları öne geçer; eski ajanın alan bilgisi taslak bir skill'e (skills/<name>-local) taşınır, orijinali yedeklenir" ;;
+      "your agents win; the kit's overlapping -csk agents are not installed") s='sizin ajanlarınız öne geçer; kitin çakışan -csk ajanları kurulmaz' ;;
+      "keep both (routing stays ambiguous; only documented in HANDOVER)") s="ikisi de kalır (yönlendirme belirsiz kalır; yalnız HANDOVER'a not düşülür)" ;;
+      "owner") s='sahip' ;;
+      "type takeover, keepmine or coexist") s='takeover, keepmine ya da coexist yazın' ;;
+      "overlap -> %s") s='çakışma -> %s' ;;
+      "Stage 2 — apply the kit (coexist)") s='Aşama 2 — kiti uygula (projeyle yan yana)' ;;
+      "no git repo — cannot apply safely. First:  %s  (then run again).") s='git deposu yok — güvenle uygulanamaz. Önce şunu çalıştırın:  %s  (sonra tekrar deneyin).' ;;
+      "Apply on a NEW review branch? (no = apply on the current branch '%s')") s="YENİ bir inceleme dalında mı uygulansın? (hayır = mevcut '%s' dalında)" ;;
+      "the current branch '%s'") s="mevcut '%s' dalı" ;;
+      "a new review branch (off '%s')") s="'%s' üzerinden açılan yeni bir inceleme dalı" ;;
+      "Apply the kit onto %s now? (mutation; staged-not-committed, reversible with git)") s='Kit şimdi uygulansın mı? Hedef: %s (dosyalar değişir; stage edilir, commit edilmez, git ile geri alınabilir)' ;;
       "Stopped") s='Durduruldu' ;;
       "Stayed at Stage 1 — NOTHING CHANGED (read-only).") s="Aşama 1'de kalındı — HİÇBİR ŞEY DEĞİŞMEDİ (salt okunur)." ;;
-      "Coexist summary") s='Bir arada yaşama özeti' ;;
-      "Stage 3 — activate the kit discipline (without touching the project CLAUDE.md) + settings merge") s="Aşama 3 — kit disiplinini etkinleştir (proje CLAUDE.md'sine dokunmadan) + ayar birleştirme" ;;
+      "applying on the current branch: %s  (no separate branch; staged, HEAD untouched until you commit)") s='mevcut dala uygulanıyor: %s  (ayrı dal yok; değişiklikler stage edilir, siz commit edene kadar HEAD yerinde kalır)' ;;
+      "You are on your current branch %s with everything STAGED but NOT committed.") s='Mevcut %s dalındasınız; her şey STAGE edildi ama commit EDİLMEDİ.' ;;
+      "accept:   %s") s='kabul:    %s' ;;
+      "discard:  %s   (un-stages everything; nothing was committed)") s="vazgeç:   %s   (stage'i boşaltır; zaten hiçbir şey commit edilmedi)" ;;
+      "HEAD is a prior adopt branch (%s) — the review diff will be vs it, not your main line. Consider %s first.") s="HEAD önceki bir adopt dalında (%s) — inceleme diff'i ana dalınıza değil bu dala göre çıkar. Önce %s çalıştırmayı düşünün." ;;
+      "ERROR: could not open branch '%s'.") s="HATA: '%s' dalı açılamadı." ;;
+      "handover branch: %s  (%s stays clean)") s='inceleme dalı: %s  (%s temiz kalır)' ;;
+      "You are on branch %s with everything STAGED but NOT committed.") s='%s dalındasınız; her şey STAGE edildi ama commit EDİLMEDİ.' ;;
+      "accept:   %s   then:  %s") s='kabul:    %s   ardından:  %s' ;;
+      "discard:  %s") s='vazgeç:   %s' ;;
+      ".NET pattern skill renamed: devarch-module -> cqrs-aop-module (content kept)") s=".NET desen skill'inin adı değişti: devarch-module -> cqrs-aop-module (içerik korundu)" ;;
+      "⚠️  both devarch-module and cqrs-aop-module are present — nothing moved; remove the old one when ready") s='⚠️  devarch-module ve cqrs-aop-module ikisi birden var — hiçbir şey taşınmadı; hazır olduğunuzda eskisini silin' ;;
+      "%s removed (the recorded stack is generic)") s='%s kaldırıldı (kayıtlı yığın generic)' ;;
+      "AGENT_TEMPLATE.md written (kit-owned; refreshed on every update)") s='AGENT_TEMPLATE.md yazıldı (kitin dosyası; her güncellemede yenilenir)' ;;
+      "pre-2.0 install (profile=%s): profile pruning was removed — completing the install") s='2.0 öncesi kurulum (profile=%s): profil budama kalktı — eksikler tamamlanıyor' ;;
+      "pre-2.0 install (profile=%s): nothing was missing — the full set was already present") s='2.0 öncesi kurulum (profile=%s): eksik yok — tam set zaten kuruluydu' ;;
+      "overlap: %s -> skill '%s' already present (kept); original re-backed up") s="çakışma: %s -> '%s' skill'i zaten var (korundu); orijinal yeniden yedeklendi" ;;
+      "overlap: %s -> imported to skill '%s' (draft); kit's %s owns routing") s="çakışma: %s -> '%s' skill'ine taşındı (taslak); yönlendirme artık kitin %s ajanında" ;;
+      "ref-sweep: %s → %s in %s") s='ref-sweep: %s → %s (%s)' ;;
+      "Reference sweep: rewrote taken-over agent names to their -csk id across CLAUDE.md + referenced docs") s='Referans taraması: devralınan ajan adları CLAUDE.md ve bağlı belgelerde -csk adlarına çevrildi' ;;
+      "ref-sweep: no stale references in CLAUDE.md's chain") s='ref-sweep: CLAUDE.md ve bağlı belgelerde eski ad kalmamış' ;;
+      "backend-expert-csk.md pre-existed (preserved) — generic variant NOT applied") s='backend-expert-csk.md zaten vardı (korundu) — generic sürüm UYGULANMADI' ;;
+      "backend-expert-csk -> generic variant (%s)") s='backend-expert-csk -> generic sürüm (%s)' ;;
+      "backend-expert-csk kept on the .NET/DevArchitecture variant (recorded stack: dotnet)") s='backend-expert-csk .NET/DevArchitecture sürümünde bırakıldı (kayıtlı yığın: dotnet)' ;;
+      "⚠️  installed by an older kit and no longer shipped:%s") s='⚠️  eski bir kit sürümünden kalan, artık dağıtılmayan dosyalar:%s' ;;
+      "The name is the invocation: a leftover COMMAND still lists in the / picker (/review twice), and a") s='Burada adın kendisi çağrıdır: artakalan bir KOMUT / menüsünde hâlâ görünür (/review iki kez), artakalan' ;;
+      "leftover SKILL still matches prompts, so it competes with whatever replaced it.") s='bir SKILL de istemlerle eşleşmeye devam eder ve yerine gelenle yarışır.' ;;
+      "Nothing is deleted for you — one of these may be a file you customised. To drop them all:") s='Hiçbiri sizin yerinize silinmez — aralarında özelleştirdiğiniz bir dosya olabilir. Hepsini kaldırmak için:' ;;
+      "Coexist summary") s='Kurulum özeti' ;;
+      "%s · %s skipped") s='%s · %s atlandı' ;;
+      "+%s added") s='+%s eklendi' ;;
+      "kit agents (-csk)") s='kit ajanları (-csk)' ;;
+      "skills") s="skill'ler" ;;
+      "commands") s='komutlar' ;;
+      "hooks") s="hook'lar" ;;
+      "%s (needs Node 18+)") s='%s (Node 18+ gerekir)' ;;
+      "%s (%s imported to skills/<name>-local drafts; originals backed up in superseded/)") s='%s (%s tanesi skills/<name>-local taslaklarına taşındı; orijinaller superseded/ altında)' ;;
+      "%s — the rest UNTOUCHED") s='%s — geri kalanına DOKUNULMADI' ;;
+      "project agents") s='proje ajanları' ;;
+      "overlap") s='çakışma' ;;
+      "keepmine — your agents own: %s (kit's -csk for these NOT installed)") s='keepmine — bu roller sizin ajanlarınızda: %s (kitin karşılık gelen -csk ajanları KURULMADI)' ;;
+      "overlap: %s — BOTH kept; routing between your agent and the kit's -csk stays ambiguous") s='çakışma: %s — İKİSİ de kaldı; sizin ajanınızla kitin -csk ajanı arasında seçim belirsiz' ;;
+      "conflicting files (the project's was PRESERVED, the kit's skipped):") s='çakışan dosyalar (projeninki KORUNDU, kitinki atlandı):' ;;
+      "Stage 3 — activate the kit discipline (without touching the project CLAUDE.md) + settings merge") s="Aşama 3 — kit disiplinini etkinleştir (proje CLAUDE.md'sine dokunmadan) + ayarları birleştir" ;;
+      "DISCIPLINE.md written (kit discipline only; the project template stays out of it)") s='DISCIPLINE.md yazıldı (yalnız kit disiplini; proje şablonu içinde yok)' ;;
+      "CLAUDE.md: @import already present (idempotent)") s='CLAUDE.md: @import zaten var (tekrar eklenmedi)' ;;
+      "CLAUDE.md carries the discipline INLINE (pre-1.1 layout) — discipline updates cannot reach it.") s='CLAUDE.md disiplini DOSYANIN İÇİNDE taşıyor (1.1 öncesi düzen) — disiplin güncellemeleri ona ulaşamaz.' ;;
+      "the inline block is lines 1-%s; your project section starts at line %s") s='gömülü blok 1-%s. satırlar; proje bölümünüz %s. satırda başlıyor' ;;
+      "  Replace that inline block with the single @import line? (a backup is written; this branch is reviewable)") s='  Bu gömülü blok tek bir @import satırıyla değiştirilsin mi? (yedek alınır; değişiklik bu dalda incelenebilir)' ;;
+      "CLAUDE.md migrated -> @import + your project section (backup: %s)") s='CLAUDE.md taşındı -> @import + proje bölümünüz (yedek: %s)' ;;
+      "Skipped. Discipline updates will NOT reach this project until you migrate.") s='Atlandı. Taşıyana kadar disiplin güncellemeleri bu projeye ULAŞMAZ.' ;;
+      "Project heading not found — migrate by hand: delete everything above it, leave only:  %s") s='Proje başlığı bulunamadı — elle taşıyın: başlığın üstündeki her şeyi silin, yalnız şunu bırakın:  %s' ;;
+      "CLAUDE.md: single-line @import prepended (project content untouched)") s='CLAUDE.md: başına tek satırlık @import eklendi (proje içeriğine dokunulmadı)' ;;
+      "CLAUDE.md was missing -> @import + project template created") s='CLAUDE.md yoktu -> @import ve proje şablonuyla oluşturuldu' ;;
+      "custom hooks and every other permission PRESERVED") s="özel hook'lar ve diğer tüm izinler KORUNDU" ;;
+      "custom hooks/permissions PRESERVED") s="özel hook'lar ve izinler KORUNDU" ;;
+      "settings.json: was missing in the project -> the kit's was installed") s='settings.json: projede yoktu -> kitinki kuruldu' ;;
+      "settings.json: hook-aware MERGE (kit hooks refreshed - %s)") s="settings.json: hook'ları gözeten BİRLEŞTİRME (kit hook'ları yenilendi - %s)" ;;
+      "settings.json: %s") s='settings.json: %s' ;;
+      "merge failed -> project setting PRESERVED (not overwritten)") s='birleştirme başarısız -> proje ayarı KORUNDU (üzerine yazılmadı)' ;;
+      "existing file is INVALID JSON -> merge ABORT (no silent overwrite). Fix it by hand first.") s='mevcut dosya GEÇERSİZ JSON -> birleştirme İPTAL (üzerine sessizce yazılmaz). Önce elle düzeltin.' ;;
+      "settings.json: retired §4.4 ask rule(s) REMOVED (%s) — guard-bash.sh now asks for these itself; an ask rule would override its CLAUDE_GIT_OK allow. Re-add one only if your project wants that trade.") s='settings.json: emekliye ayrılan §4.4 ask kuralları KALDIRILDI (%s) — bunları artık guard-bash.sh kendisi soruyor; bir ask kuralı onun CLAUDE_GIT_OK iznini ezerdi. Bu bedeli bilerek istiyorsanız geri ekleyin.' ;;
       "Stage 4 — arm the git gates (SHIM via husky) + PROOF") s='Aşama 4 — git kapılarını devreye al (husky üzerinden SHIM) + KANIT' ;;
-      "Review in your editor — nothing committed yet") s='Editörünüzde gözden geçirin — henüz hiçbir şey commit edilmedi' ;;
+      "core.hooksPath -> .claude/hooks (no existing hook chain)") s='core.hooksPath -> .claude/hooks (başka hook zinciri yok)' ;;
+      "SHIM installed -> core.hooksPath=.claude/git-shim (kit + %s run together)") s='SHIM kuruldu -> core.hooksPath=.claude/git-shim (kit ve %s birlikte çalışır)' ;;
+      "worktree/submodule: core.hooksPath may also affect the main checkout (git design).") s="worktree/submodule: core.hooksPath ana checkout'u da etkileyebilir (git böyle tasarlanmış)." ;;
+      "Stage 4b — PROOF") s='Aşama 4b — KANIT' ;;
+      "~  PROOF-1: skipped — could not stage the probe file (nothing was measured)") s='~  KANIT-1: atlandı — deneme dosyası stage edilemedi (hiçbir şey ölçülmedi)' ;;
+      "PROOF-1 FAILED: the trace scan LET THROUGH the AI trace") s='KANIT-1 BAŞARISIZ: iz taraması AI izini GEÇİRDİ' ;;
+      "OK · PROOF-1: staged AI trace BLOCKED by the trace scan") s='OK · KANIT-1: stage edilen AI izini iz taraması ENGELLEDİ' ;;
+      "~  PROOF-1: hook blocked (%s)") s='~  KANIT-1: hook engelledi (%s)' ;;
+      "PROOF-2 FAILED: guard-bash LET THROUGH the keyless commit") s="KANIT-2 BAŞARISIZ: guard-bash anahtarsız commit'i GEÇİRDİ" ;;
+      "OK · PROOF-2: guard-bash BLOCKED the keyless 'git commit' (holds in auto/bypass too)") s="OK · KANIT-2: guard-bash anahtarsız 'git commit'i ENGELLEDİ (auto/bypass modunda da geçerli)" ;;
+      "OK · PROOF-3: %s kit agents (-csk) installed + discoverable") s='OK · KANIT-3: %s kit ajanı (-csk) kurulu ve bulunabiliyor' ;;
+      "PROOF-3: no kit agent") s='KANIT-3: kit ajanı yok' ;;
+      "OK · PROOF-4: DISCIPLINE.md loaded + @import-ed from CLAUDE.md") s="OK · KANIT-4: DISCIPLINE.md yerinde ve CLAUDE.md'den @import ediliyor" ;;
+      "PROOF-4: discipline not linked") s='KANIT-4: disiplin bağlanmamış' ;;
+      "%s line(s): %s") s='%s, satır: %s' ;;
+      "PROOF-5: CLAUDE.md (or a doc it references) names auto-delegated agent(s) by an old bare id — rename each to its -csk id, else delegation to them silently fails:%s") s='KANIT-5: CLAUDE.md (ya da bağlı bir belge) otomatik devredilen ajanları eski, eksiz adıyla anıyor — her birini -csk adıyla değiştirin, yoksa onlara devretme sessizce başarısız olur:%s' ;;
+      "PROOF-5: CLAUDE.md (or a referenced doc) names pull-only agent(s) by an old bare id (still work; rename for consistency):%s") s='KANIT-5: CLAUDE.md (ya da bağlı bir belge) elle çağrılan ajanları eski, eksiz adıyla anıyor (yine çalışır; tutarlılık için yeniden adlandırın):%s' ;;
+      "PROOF: kit 100%% ACTIVE — gates armed, agents + discipline loaded") s='KANIT: kit %%100 ETKİN — kapılar devrede, ajanlar ve disiplin yüklü' ;;
+      "PROOF: some gates could not be verified (see above)") s='KANIT: bazı kapılar doğrulanamadı (yukarıya bakın)' ;;
+      "Stage B — apply the decisions") s='Aşama B — kararları uygula' ;;
+      "#3 loosen -> .trace-allowlist.txt (co-author trailer exempt)") s='#3 loosen -> .trace-allowlist.txt (co-author satırı taramadan muaf)' ;;
+      "#3 keep -> full trace scan") s='#3 keep -> tam iz taraması' ;;
+      "#4 hide -> recorded; .claude stays TRACKED on the branch (rollback-safe). Post-merge steps in HANDOVER.") s="#4 hide -> kaydedildi; .claude bu dalda İZLENMEYE devam eder (geri almak güvenli). Merge sonrası adımlar HANDOVER'da." ;;
+      "#4 share -> .claude/CLAUDE.md is tracked; nothing added to .gitignore, so it stays shared") s="#4 share -> .claude/CLAUDE.md izleniyor; .gitignore'a bir şey eklenmedi, paylaşılmaya devam eder" ;;
+      "#4 share -> nothing added to .gitignore, but this repo ALREADY ignores .claude — the stage step skips it, so it is NOT shared") s="#4 share -> .gitignore'a bir şey eklenmedi, ama bu depo .claude'u ZATEN yok sayıyor — stage adımı onu atlar, yani PAYLAŞILMAZ" ;;
+      "#4 share -> nothing added to .gitignore; the stage step below adds .claude — commit it to share it") s="#4 share -> .gitignore'a bir şey eklenmedi; aşağıdaki stage adımı .claude'u ekler — paylaşmak için commit edin" ;;
+      "#7 off-repo decisions — paste them here") s='#7 depo dışındaki kararlar — buraya yapıştırın' ;;
+      "Write the decisions made in chat/on the web but NOT in the repo. When done, an EMPTY line (Enter).") s='Sohbette ya da webde alınıp depoya YAZILMAMIŞ kararları girin. Bitirmek için BOŞ bir satır (Enter).' ;;
+      "#7 -> %s lines will go into HANDOVER") s="#7 -> %s satır HANDOVER'a yazılacak" ;;
+      "#7 -> empty") s='#7 -> boş' ;;
+      "Stage 5 — HANDOVER.md + ADR (handover persists; decisions are not lost)") s='Aşama 5 — HANDOVER.md + ADR (devralma kayda geçer; kararlar kaybolmaz)' ;;
+      "%s written") s='%s yazıldı' ;;
+      "%s written (persistent handover decision)") s='%s yazıldı (devralmanın kalıcı karar kaydı)' ;;
+      "%s already exists — untouched (never-overwrite)") s='%s zaten var — dokunulmadı (üzerine asla yazılmaz)' ;;
+      "+ .gitattributes: eol pins so the shared hooks stay LF on a Windows checkout") s="+ .gitattributes: paylaşılan hook'lar Windows checkout'unda LF kalsın diye eol sabitlendi" ;;
+      "Review in your editor — nothing committed yet") s='Editörünüzde inceleyin — henüz hiçbir şey commit edilmedi' ;;
+      "staged") s='stage edilen' ;;
+      "see it:   open the Source Control / Changes panel (every added + changed file is listed)  ·  or: %s") s='görmek için:  Source Control / Changes panelini açın (eklenen ve değişen her dosya orada)  ·  ya da: %s' ;;
+      "panel:    %s opens it from this project (or: %s)") s='panel:    bu projede %s ile açılır (ya da: %s)' ;;
+      "panel:    needs Node 18+, absent here — the kit can fetch one: %s") s='panel:    Node 18+ gerekiyor ve bu makinede yok — kit indirebilir: %s' ;;
+      "(it asks first, verifies the checksum, and touches nothing outside %s)") s='(önce sorar, sağlama toplamını doğrular ve %s dışında hiçbir şeye dokunmaz)' ;;
+      "If Claude Code is running in this project, run /compact (or /clear) — CLAUDE.md and the discipline reload") s='Claude Code bu projede açıksa /compact (ya da /clear) çalıştırın — CLAUDE.md ve disiplin aynı süreçte' ;;
+      "on /compact and /clear in the same process, so a session opened before this run stops quoting the old rules (no restart needed).") s='/compact ve /clear ile yeniden yüklenir; böylece önceden açılmış oturum eski kuralları uygulamayı bırakır (yeniden başlatmak gerekmez).' ;;
+      "yes") s='evet' ;;
+      "no") s='hayır' ;;
+      "[yes/no]") s='[evet/hayır]' ;;
+      "(non-interactive — pass --yes to apply)") s='(etkileşimsiz — uygulamak için --yes ekleyin)' ;;
+      "ERROR: the %s sentinel line is missing from %s — refusing to guess the discipline/project split.") s='HATA: %s işaret satırı yok (dosya: %s) — disiplin ile proje bölümünün sınırı tahmin edilmeyecek.' ;;
+      "studio (panel)") ;;   # identifier, printed as is
+      "settings.json") ;;   # identifier, printed as is
+      "eval") ;;   # identifier, printed as is
+      "Node/JS") ;;   # identifier, printed as is
+      "Go") ;;   # identifier, printed as is
+      "Python") ;;   # identifier, printed as is
+      ".NET") ;;   # identifier, printed as is
+      "CLAUDE.md") ;;   # identifier, printed as is
+      "6 Brownfield DoD") ;;   # identifier, printed as is
+      ".claude/") ;;   # identifier, printed as is
+      "git") ;;   # identifier, printed as is
+      "husky (.husky/)") ;;   # identifier, printed as is
+      "lefthook") ;;   # identifier, printed as is
+      # No row: the line prints in English. CSK_I18N_MISS (set by e2e case 18) collects every such key, so a
+      # missing translation is caught by NAME rather than guessed from which English words it happens to contain.
+      *) [ -n "${CSK_I18N_MISS:-}" ] && printf '%s\n' "$s" >> "$CSK_I18N_MISS" ;;
     esac
   fi
   # shellcheck disable=SC2059
-  printf "$s" "$@"
+  printf -v _M "$s" "$@"
 }
 # ---- /CSK-I18N -----------------------------------------------------------------------------------------
 
@@ -86,19 +328,43 @@ if [ -t 1 ] && [ "${TERM:-dumb}" != "dumb" ] && [ -z "${NO_COLOR:-}" ]; then
 else R=''; B=''; D=''; CY=''; GR=''; YE=''; MG=''; fi
 h1()  { printf '\n%s%s%s%s\n' "$B" "$CY" "$1" "$R"; }
 sub() { printf '%s%s%s\n' "$D" "$1" "$R"; }
-row() { printf '  %s%-20s%s %s\n' "$B" "$1" "$R" "$2"; }
+# printf's %-Ns pads by BYTES, so a Turkish label (İ, ç, ı are two bytes each) came out short and knocked its
+# column out of line. Pad by characters: drop UTF-8 continuation bytes under C and count the rest. No fork.
+padr() {   # $1 = text, $2 = width; sets PADDED
+  local LC_ALL=C n
+  n="${1//[$'\200'-$'\277']/}"; n=$(( $2 - ${#n} ))
+  PADDED="$1"
+  while [ "$n" -gt 0 ]; do PADDED="$PADDED "; n=$((n-1)); done
+}
+row() { padr "$1" 20; printf '  %s%s%s %s\n' "$B" "$PADDED" "$R" "$2"; }
 warn(){ printf '  %s!%s %s%s%s\n' "$YE" "$R" "$YE" "$1" "$R"; }
 # smart suggestion line:  number+decision · SUGGESTED(green) · rationale(dim)
-prop(){ printf '  %s%-18s%s %s%-24s%s %s%s%s\n' "$B" "$1" "$R" "$GR" "$2" "$R" "$D" "$3" "$R"; }
+prop(){ local _p1; padr "$1" 18; _p1="$PADDED"; padr "$2" 24
+        printf '  %s%s%s %s%s%s %s%s%s\n' "$B" "$_p1" "$R" "$GR" "$PADDED" "$R" "$D" "$3" "$R"; }
+# Translating twins of the helpers above: the FIRST argument is the English key, the rest fill its %s.
+# rowv translates only the label (value printed verbatim); rowm translates both; propm all three.
+say()  { _mt "$@"; printf '  %s\n' "$_M"; }
+h1m()  { _mt "$@"; h1 "$_M"; }
+subm() { _mt "$@"; sub "$_M"; }
+warnm(){ _mt "$@"; warn "$_M"; }
+rowv() { local v="$2"; _mt "$1"; row "$_M" "$v"; }
+rowm() { local l; _mt "$1"; l="$_M"; shift; _mt "$@"; row "$l" "$_M"; }
+propm(){ local a b; _mt "$1"; a="$_M"; _mt "$2"; b="$_M"; shift 2; _mt "$@"; prop "$a" "$b" "$_M"; }
 # --yes ALWAYS wins — check it BEFORE the TTY test. A `read` on a TTY blocks on human input, so if we tested
 # `-t 0` first, an agent/CI run that DID pass --yes but happens to inherit a TTY (Claude Code on Windows runs
 # under a pty) would hang at the prompt, ignoring --yes. Only when --yes is absent do we prompt (TTY) or decline
 # cleanly (no TTY — a bare `read` would otherwise block forever on an open-but-empty stdin).
-ask_yes(){ local a
-  if [ "${ASSUME_YES:-0}" = 1 ]; then printf '%s yes %s(--yes)%s\n' "$1" "$D" "$R"; a=yes
-  elif [ -t 0 ]; then printf '%s [yes/no]: ' "$1"; read -r a || a=""
-  else printf '%s no %s(non-interactive — pass --yes to apply)%s\n' "$1" "$D" "$R"; a=no; fi
-  case "$a" in [yY]|[yY][eE][sS]|[eE]|[eE][vV][eE][tT]) return 0;; *) return 1;; esac; }
+# $1 = the English prompt (translated here), further args fill its %s.
+ask_yes(){ local a q w
+  _mt "$@"; q="$_M"
+  if [ "${ASSUME_YES:-0}" = 1 ]; then _mt 'yes'; printf '%s %s %s(--yes)%s\n' "$q" "$_M" "$D" "$R"; a=yes
+  elif [ -t 0 ]; then _mt '[yes/no]'; printf '%s %s: ' "$q" "$_M"; read -r a || a=""
+  else _mt 'no'; w="$_M"; _mt '(non-interactive — pass --yes to apply)'; printf '%s %s %s%s%s\n' "$q" "$w" "$D" "$_M" "$R"; a=no; fi
+  case "$a" in
+    [yY]|[yY][eE][sS]|[eE]|[eE][vV][eE][tT]) return 0;;
+    [hH]|hayır|Hayır|hayir|Hayir) return 1;;   # explicit Turkish "no" (anything unrecognised is "no" too)
+    *) return 1;;
+  esac; }
 # Twin of start.sh's gi_add — the same two defects were present in both scripts, and twice in this one.
 #   * A .gitignore whose last line has NO trailing newline concatenates the first appended entry onto it:
 #     `node_modules` + `docs/` becomes `node_modulesdocs/`, which ignores neither. Reproduced on the old
@@ -158,7 +424,7 @@ IMPORT_LINE='@.claude/DISCIPLINE.md'
 # Sentinel matched ANCHORED to line start, so prose that merely names the token is never mistaken for the split
 # point. Abort loudly if it is gone: a silent miss ships the ENTIRE template as "discipline" — which is exactly
 # what the previous '<PROJE ADI>' marker did once the payload was translated to English.
-kit_require_sentinel() { grep -qE '^<!-- KIT:DISCIPLINE-END' "$1" || { echo "ERROR: the '<!-- KIT:DISCIPLINE-END' sentinel line is missing from $1 — refusing to guess the discipline/project split."; exit 1; }; }
+kit_require_sentinel() { grep -qE '^<!-- KIT:DISCIPLINE-END' "$1" || { _mt "ERROR: the %s sentinel line is missing from %s — refusing to guess the discipline/project split." "'<!-- KIT:DISCIPLINE-END'" "$1"; printf '%s\n' "$_M"; exit 1; }; }
 kit_discipline_of()    { awk '/^<!-- KIT:DISCIPLINE-END/{exit} {print}' "$1"; }
 kit_project_of()       { awk 'f{print} /^<!-- KIT:DISCIPLINE-END/{f=1}' "$1"; }
 # Anchored: the import must BE the line, not merely be mentioned in prose (the discipline text names the path).
@@ -215,18 +481,18 @@ kit_agent_to_skill() {   # $1 = agent .md file, $2 = base name
   printf '%s\n' "$body"
 }
 
-h1 "$(m 'kit adopt · Stage 1 — DETECTION (read-only; nothing changes)')"
-sub "Reads the existing project, produces a smart suggestion for the 7 handover decisions. Approval + mutation in the next stage."
+h1m 'kit adopt · Stage 1 — DETECTION (read-only; nothing changes)'
+subm 'Reads the existing project, produces a smart suggestion for the 7 handover decisions. Approval + mutation in the next stage.'
 
 # ========================= [1] ENVIRONMENT =========================
-h1 "$(m '[1] Environment')"
+h1m '[1] Environment'
 # git context — in a worktree/submodule .git is a FILE (do NOT use [ -d .git ]; red-team hole #6)
 IS_GIT=0; GITTOP=""; GITKIND="no git — 'git init' required"
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   IS_GIT=1; GITTOP="$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
   if [ -f "$GITTOP/.git" ]; then GITKIND="worktree/submodule (.git file)"; else GITKIND="normal repo"; fi
 fi
-row "git" "$GITKIND"
+rowm 'git' "$GITKIND"   # every GITKIND value is a literal with its own table row
 
 # existing hook system (decision #5 — single-hooksPath clash with husky/lefthook)
 HOOKSYS="none"
@@ -239,7 +505,9 @@ esac
 [ -d .husky ] && HOOKSYS="husky (.husky/)"
 { [ -f lefthook.yml ] || [ -f .lefthook.yml ]; } && HOOKSYS="lefthook"
 [ -f .pre-commit-config.yaml ] && HOOKSYS="pre-commit framework"
-row "git hook system" "$HOOKSYS"
+# A core.hooksPath value is DATA (a Windows one carries backslashes, which a printf format would expand: `\t`, `\n`),
+# so it goes in as a plain value; only the fixed names are table keys.
+case "$HOOKSYS" in core.hooksPath=*) rowv 'git hook system' "$HOOKSYS" ;; *) rowm 'git hook system' "$HOOKSYS" ;; esac
 
 # stack hint (context). Look PAST the root: a .NET solution commonly lives in ./backend, ./src, ./server — the
 # old root-only `ls ./*.sln` reported "unknown" for exactly those layouts and the install silently fell back to
@@ -260,10 +528,12 @@ if [ -n "$DOTNET_HIT" ]; then
 elif [ -f package.json ]; then STACK="Node/JS"
 elif [ -f go.mod ]; then STACK="Go"
 elif [ -f pyproject.toml ] || [ -f requirements.txt ]; then STACK="Python"; fi
-row "stack hint" "$STACK$([ "$IS_DEVARCH" = 1 ] && echo " · DevArchitecture layout detected")"
+_mt "$STACK"; _v="$_M"
+[ "$IS_DEVARCH" = 1 ] && { _mt 'DevArchitecture layout detected'; _v="$_v · $_M"; }
+rowv 'stack hint' "$_v"
 
 # ================= [2] EXISTING AGENTIC SETUP =================
-h1 "$(m '[2] Existing agentic setup (accumulated work to inherit)')"
+h1m '[2] Existing agentic setup (accumulated work to inherit)'
 HAS_CLAUDE=0; [ -d .claude ] && HAS_CLAUDE=1
 # count only the PROJECT's own agents/skills — exclude the kit's -csk agents and kit skills left by a prior adopt
 N_PAGENTS=0; [ -d .claude/agents ] && N_PAGENTS="$(find .claude/agents -name '*.md' ! -name '*-csk.md' 2>/dev/null | wc -l | tr -d ' ')"
@@ -297,14 +567,22 @@ LEGACY_PROFILE="$(kit_conf_get profile)"; KIT_STACK="$(kit_conf_get stack)"; KIT
 # refresh would swap a .NET project's expert for the generic one.
 INFERRED=0
 { [ "$KIT_PRESENT" = 1 ] && [ -z "$KIT_STACK" ]; } && kit_infer_shape
-row ".claude/" "$([ "$HAS_CLAUDE" = 1 ] && echo "present — $N_PAGENTS project agents · $N_PSKILLS project skills" || echo "none")"
-row "CLAUDE.md" "$([ "$HAS_MD" = 1 ] && echo "present" || echo "none")"
-row "settings.json" "$([ "$HAS_SETTINGS" = 1 ] && echo "present" || echo "none")"
-[ "$KIT_PRESENT" = 1 ] && row "kit status" "${YE}already adopted${KIT_VER:+ (v$KIT_VER)} — this run REFRESHES kit files, project untouched${R}"
-[ -n "$KIT_STACK" ] && row "$([ "$INFERRED" = 1 ] && echo 'inferred pattern' || echo 'recorded pattern')" \
-  "stack=${KIT_STACK}$([ "$INFERRED" = 1 ] && echo " ${YE}(no kit.conf — read back from the installed files)${R}" || echo " · via ${KIT_INSTALLER:-?}") — the refresh keeps it"
-[ -n "$LEGACY_PROFILE" ] && row "pre-2.0 profile" \
-  "${YE}profile=${LEGACY_PROFILE}${R} ${D}— profile pruning was removed in 2.0; this refresh completes the install${R}"
+if [ "$HAS_CLAUDE" = 1 ]; then rowm '.claude/' 'present — %s project agents · %s project skills' "$N_PAGENTS" "$N_PSKILLS"
+else rowm '.claude/' 'none'; fi
+if [ "$HAS_MD" = 1 ]; then _v=present; else _v=none; fi;       rowm 'CLAUDE.md' "$_v"
+if [ "$HAS_SETTINGS" = 1 ]; then _v=present; else _v=none; fi; rowm 'settings.json' "$_v"
+[ "$KIT_PRESENT" = 1 ] && { _mt 'already adopted%s — this run REFRESHES kit files, project untouched' "${KIT_VER:+ (v$KIT_VER)}"
+                            rowv 'kit status' "${YE}$_M${R}"; }
+if [ -n "$KIT_STACK" ]; then
+  if [ "$INFERRED" = 1 ]; then
+    _mt '(no kit.conf — read back from the installed files)'
+    rowm 'inferred pattern' 'stack=%s %s — the refresh keeps it' "$KIT_STACK" "${YE}$_M${R}"
+  else
+    rowm 'recorded pattern' 'stack=%s · via %s — the refresh keeps it' "$KIT_STACK" "${KIT_INSTALLER:-?}"
+  fi
+fi
+[ -n "$LEGACY_PROFILE" ] && { _mt '— profile pruning was removed in 2.0; this refresh completes the install'
+                              rowv 'pre-2.0 profile' "${YE}profile=${LEGACY_PROFILE}${R} ${D}$_M${R}"; }
 
 # tracked in git? (decision #4 — share/hide)
 TRACKED=0
@@ -312,7 +590,8 @@ if [ "$IS_GIT" = 1 ]; then
   git ls-files --error-unmatch CLAUDE.md >/dev/null 2>&1 && TRACKED=1
   { [ "$HAS_CLAUDE" = 1 ] && [ -n "$(git ls-files .claude 2>/dev/null | head -1)" ]; } && TRACKED=1
 fi
-row ".claude/CLAUDE.md in git" "$([ "$TRACKED" = 1 ] && echo "YES — shared with the team" || echo "no/untracked")"
+if [ "$TRACKED" = 1 ]; then _v='YES — shared with the team'; else _v='no/untracked'; fi
+rowm '.claude/CLAUDE.md in git' "$_v"
 
 # Supply-chain scan (advisory, read-only): the project's OWN (non-csk) skills/agents may have been pulled from an
 # untrusted source. Scan them for red flags (curl|bash, prompt-injection directives, credential exfil) before the
@@ -320,11 +599,12 @@ row ".claude/CLAUDE.md in git" "$([ "$TRACKED" = 1 ] && echo "YES — shared wit
 if { [ "$N_PAGENTS" != 0 ] || [ "$N_PSKILLS" != 0 ]; } && [ -f "$SRC/eval/scan-skill.sh" ]; then
   SCANOUT="$(bash "$SRC/eval/scan-skill.sh" .claude 2>/dev/null)"
   if printf '%s' "$SCANOUT" | grep -qE 'DANGER|REVIEW'; then
-    warn "supply-chain scan flagged existing project skills/agents (advisory — review before trusting them):"
+    warnm 'supply-chain scan flagged existing project skills/agents (advisory — review before trusting them):'
     printf '%s\n' "$SCANOUT" | grep -E 'DANGER|REVIEW' | sed 's/^/    /'
-    sub "    full report after install: bash .claude/eval/scan-skill.sh .claude  (heuristic; a security skill can score low by design)"
+    _mt 'full report after install: %s  (heuristic; a security skill can score low by design)' 'bash .claude/eval/scan-skill.sh .claude'
+    sub "    $_M"
   else
-    row "supply-chain scan" "existing project skills/agents look clean (no red flags)"
+    rowm 'supply-chain scan' 'existing project skills/agents look clean (no red flags)'
   fi
 fi
 
@@ -336,37 +616,38 @@ COAUTHOR=0
 OFFREPO=0; { [ "$HAS_CLAUDE" = 0 ] && [ "$HAS_MD" = 0 ]; } && OFFREPO=1
 
 # ===================== [3] SMART SUGGESTION ======================
-h1 "$(m '[3] 7 handover decisions — SMART SUGGESTION')"
-sub "format:  decision  ->  SUGGESTED  ->  rationale   (you can review and override all of them in the next stage)"
+h1m '[3] 7 handover decisions — SMART SUGGESTION'
+subm 'format:  decision  ->  SUGGESTED  ->  rationale   (you can review and override all of them in the next stage)'
 if [ "$N_COLLIDE" != 0 ]; then
-  prop "1 Role overlap" "kit takes over" "$N_COLLIDE project agent(s) cover the SAME job as a kit agent ($COLLIDE) — routing is ambiguous; kit wins, yours preserved"
+  propm '1 Role overlap' 'kit takes over' '%s project agent(s) cover the SAME job as a kit agent (%s) — routing is ambiguous; kit wins, yours preserved' "$N_COLLIDE" "$COLLIDE"
 elif [ "$N_PAGENTS" != 0 ]; then
-  prop "1 Role clash" "keep (coexist)" "$N_PAGENTS project agents, none overlap a kit role; thanks to -csk they live side by side"
+  propm '1 Role clash' 'keep (coexist)' '%s project agents, none overlap a kit role; thanks to -csk they live side by side' "$N_PAGENTS"
 else
-  prop "1 Role clash" "none" "no custom agents found in the project"
+  propm '1 Role clash' 'none' 'no custom agents found in the project'
 fi
-prop "2 Precedence" "project wins (fixed)" "on conflict the project's rules always win; the kit fills gaps (not overridable)"
+propm '2 Precedence' 'project wins (fixed)' "on conflict the project's rules always win; the kit fills gaps (not overridable)"
 if [ "$COAUTHOR" = 1 ]; then
-  prop "3 Trace gate" "loosen (.trace-allowlist)" "co-author/sign-off present in git log — may be a convention"
+  propm '3 Trace gate' 'loosen (.trace-allowlist)' 'co-author/sign-off present in git log — may be a convention'
 else
-  prop "3 Trace gate" "keep" "no co-author/sign-off convention seen"
+  propm '3 Trace gate' 'keep' 'no co-author/sign-off convention seen'
 fi
 if [ "$TRACKED" = 1 ]; then
-  prop "4 Share/hide" "share" ".claude/CLAUDE.md is tracked — keep sharing with the team"
+  propm '4 Share/hide' 'share' '.claude/CLAUDE.md is tracked — keep sharing with the team'
 else
-  prop "4 Share/hide" "share" "untracked; kit files are shared by default — pick hide to keep them local"
+  propm '4 Share/hide' 'share' 'untracked; kit files are shared by default — pick hide to keep them local'
 fi
 if [ "$HOOKSYS" = "none" ]; then
-  prop "5 Git hooks" "install directly" "no existing hook system"
+  propm '5 Git hooks' 'install directly' 'no existing hook system'
 else
-  prop "5 Git hooks" "SHIM (bridge)" "existing $HOOKSYS present — let both run"
+  case "$HOOKSYS" in core.hooksPath=*) _M="$HOOKSYS" ;; *) _mt "$HOOKSYS" ;; esac   # a path is data, a name is a key
+  propm '5 Git hooks' 'SHIM (bridge)' 'existing %s present — let both run' "$_M"
 fi
-prop "6 Brownfield DoD" "baseline+regression" "existing code debt unknown; absolute 0/0/0/0 is risky"
+propm '6 Brownfield DoD' 'baseline+regression' 'existing code debt unknown; absolute 0/0/0/0 is risky'
 if [ "$OFFREPO" = 1 ]; then
-  warn "7 Off-repo: no local .claude/CLAUDE.md — decisions may live in chat/on the web; there is context I CANNOT SEE."
-  prop "  -> suggestion" "you transfer" "in the mutation stage 'paste if any' is asked; goes into HANDOVER.md"
+  warnm '7 Off-repo: no local .claude/CLAUDE.md — decisions may live in chat/on the web; there is context I CANNOT SEE.'
+  propm '  -> suggestion' 'you transfer' "in the mutation stage 'paste if any' is asked; goes into HANDOVER.md"
 else
-  prop "7 Off-repo" "local + ask" "some decisions are in files; still may be in-chat (asked during the stage)"
+  propm '7 Off-repo' 'local + ask' 'some decisions are in files; still may be in-chat (asked during the stage)'
 fi
 
 # ============ COMPILE DECISIONS + OVERRIDE (Stage B) ============
@@ -380,31 +661,34 @@ DEC7="$([ "$OFFREPO" = 1 ] && echo transfer || echo local)"
 [ "$DEC1" = none ] && DEC1=keep
 [ "$DEC4" = kit-default ] && DEC4=share
 if [ -t 0 ]; then
-  h1 "$(m 'Review the decisions')"
-  # ask_dec: echoes the chosen value to STDOUT; ALL prompts/errors go to STDERR so $(...) captures only the value
-  ask_dec(){ local label="$1" a="$2" b="$3" cur="$4" v fa fb; fa="${a:0:1}"; fb="${b:0:1}"
+  h1m 'Review the decisions'
+  # ask_dec: echoes the chosen value to STDOUT; ALL prompts/errors go to STDERR so $(...) captures only the value.
+  # $1 is the English label (translated here); the typed tokens $2/$3 stay English — they are what the user types.
+  ask_dec(){ local label a="$2" b="$3" cur="$4" v fa fb; fa="${a:0:1}"; fb="${b:0:1}"; _mt "$1"; label="$_M"
     while :; do
-      printf '  %s%s%s [%s/%s] (current: %s%s%s, ENTER=keep): ' "$B" "$label" "$R" "$a" "$b" "$B" "$cur" "$R" >&2
+      _mt '[%s/%s] (current: %s, ENTER=keep): ' "$a" "$b" "${B}$cur${R}"
+      printf '  %s%s%s %s' "$B" "$label" "$R" "$_M" >&2
       read -r v || v=""
       case "$v" in
         "")         echo "$cur"; return ;;
         "$a"|"$fa") echo "$a";   return ;;
         "$b"|"$fb") echo "$b";   return ;;
-        *) printf '     %s! type "%s" or "%s" (or ENTER to keep "%s")%s\n' "$YE" "$a" "$b" "$cur" "$R" >&2 ;;
+        *) _mt 'type "%s" or "%s" (or ENTER to keep "%s")' "$a" "$b" "$cur"
+           printf '     %s! %s%s\n' "$YE" "$_M" "$R" >&2 ;;
       esac
     done; }
-  if ask_yes "Accept all smart suggestions?"; then
-    sub "All smart suggestions accepted."
+  if ask_yes 'Accept all smart suggestions?'; then
+    subm 'All smart suggestions accepted.'
   else
-    sub "Reviewing each decision. ENTER keeps the current value. (#1 overlap and #2/#5 are handled separately below.)"
+    subm 'Reviewing each decision. ENTER keeps the current value. (#1 overlap and #2/#5 are handled separately below.)'
     DEC3="$(ask_dec '#3 Trace gate'     loosen   keep     "$DEC3")"
     DEC4="$(ask_dec '#4 Share/hide'     share    hide     "$DEC4")"
     DEC6="$(ask_dec '#6 Brownfield DoD' baseline absolute "$DEC6")"
     DEC7="$(ask_dec '#7 Off-repo'       transfer skip     "$DEC7")"
   fi
-  echo "  Final: #3=$DEC3 #4=$DEC4 #6=$DEC6 #7=$DEC7  (#2 project-wins, #5 SHIM — fixed)"
+  say 'Final: #3=%s #4=%s #6=%s #7=%s  (#2 project-wins, #5 SHIM — fixed)' "$DEC3" "$DEC4" "$DEC6" "$DEC7"
 else
-  sub "(non-interactive: smart defaults accepted)"
+  subm '(non-interactive: smart defaults accepted)'
 fi
 
 # --- Backend stack (fresh adopt only) --------------------------------------------------------------------
@@ -415,14 +699,16 @@ if [ -z "${KIT_STACK:-}" ] && [ "$KIT_PRESENT" != 1 ]; then
   if [ "$IS_DOTNET" = 1 ]; then
     KIT_STACK=dotnet
     if [ -t 0 ]; then
-      h1 "$(m 'Backend stack')"
-      sub "Detected a .NET project$([ "$IS_DEVARCH" = 1 ] && echo ' with a DevArchitecture (Business/Handlers CQRS) layout')."
-      ask_yes "Install the .NET/DevArchitecture backend pattern (cqrs-aop-module)? (no = stack-agnostic generic)" || KIT_STACK=generic
+      h1m 'Backend stack'
+      if [ "$IS_DEVARCH" = 1 ]; then subm 'Detected a .NET project with a DevArchitecture (Business/Handlers CQRS) layout.'
+      else subm 'Detected a .NET project.'; fi
+      ask_yes 'Install the .NET/DevArchitecture backend pattern (cqrs-aop-module)? (no = stack-agnostic generic)' || KIT_STACK=generic
     fi
   else
     KIT_STACK=generic
   fi
-  echo "  backend stack -> ${KIT_STACK}$([ "$IS_DEVARCH" = 1 ] && [ "$KIT_STACK" = dotnet ] && echo ' (DevArchitecture)')"
+  _v=""; [ "$IS_DEVARCH" = 1 ] && [ "$KIT_STACK" = dotnet ] && _v=' (DevArchitecture)'
+  say 'backend stack -> %s' "${KIT_STACK}$_v"
 fi
 
 # --- Refresh: a recorded stack is a decision, and a sniff does not get to overrule it -----------------------
@@ -442,16 +728,16 @@ fi
 # not consent, and the fail-safe direction is to keep what is written down. The mismatch is still reported
 # loudly every run, with the one command that corrects it on purpose.
 if [ "$KIT_PRESENT" = 1 ] && [ "$KIT_STACK" = generic ] && [ "$IS_DEVARCH" = 1 ]; then
-  h1 "$(m 'Recorded backend stack looks wrong')"
-  warn "kit.conf records stack=generic, but this project has a DevArchitecture layout (a Business/Handlers tree, or a DevArchitecture.sln)."
-  sub "Left as-is, the refresh keeps pruning cqrs-aop-module and holds the generic backend agent."
+  h1m 'Recorded backend stack looks wrong'
+  warnm 'kit.conf records stack=generic, but this project has a DevArchitecture layout (a Business/Handlers tree, or a DevArchitecture.sln).'
+  subm 'Left as-is, the refresh keeps pruning cqrs-aop-module and holds the generic backend agent.'
   if [ "${CSK_CORRECT_STACK:-0}" = 1 ]; then
-    KIT_STACK=dotnet; echo "  stack corrected -> dotnet (CSK_CORRECT_STACK=1)"
-  elif [ -t 0 ] && [ "${ASSUME_YES:-0}" != 1 ] && ask_yes "Correct it to dotnet? (install the DevArchitecture pattern skill + the .NET backend agent)"; then
-    KIT_STACK=dotnet; echo "  stack corrected -> dotnet (DevArchitecture)"
+    KIT_STACK=dotnet; say 'stack corrected -> dotnet (CSK_CORRECT_STACK=1)'
+  elif [ -t 0 ] && [ "${ASSUME_YES:-0}" != 1 ] && ask_yes 'Correct it to dotnet? (install the DevArchitecture pattern skill + the .NET backend agent)'; then
+    KIT_STACK=dotnet; say 'stack corrected -> dotnet (DevArchitecture)'
   else
-    echo "  kept stack=generic — a recorded choice is not overruled where nobody can be asked."
-    echo "  If the record IS stale, correct it deliberately:  CSK_CORRECT_STACK=1 bash adopt.sh --yes"
+    say 'kept stack=generic — a recorded choice is not overruled where nobody can be asked.'
+    say 'If the record IS stale, correct it deliberately:  %s' 'CSK_CORRECT_STACK=1 bash adopt.sh --yes'
   fi
 fi
 
@@ -462,21 +748,22 @@ fi
 # (you ran adopt to get the kit's agents). The chosen mode is APPLIED on the handover branch in Stage 2.
 COLLIDE_MODE=coexist
 if [ "$N_COLLIDE" != 0 ]; then
-  h1 "Role overlap — project & kit both cover: $COLLIDE"
-  sub "Two agents for one job = the router picks one, usually your older agent — so the kit's would sit idle."
-  sub "  takeover  kit's -csk agents win; each old agent's domain is imported to a draft skill (skills/<name>-local), original backed up"
-  sub "  keepmine  your agents win; the kit's overlapping -csk agents are not installed"
-  sub "  coexist   keep both (routing stays ambiguous; only documented in HANDOVER)"
+  h1m 'Role overlap — project & kit both cover: %s' "$COLLIDE"
+  subm "Two agents for one job = the router picks one, usually your older agent — so the kit's would sit idle."
+  # the first word of each line is the token the user types, so it stays English and outside the message
+  _mt "kit's -csk agents win; each old agent's domain is imported to a draft skill (skills/<name>-local), original backed up"; sub "  takeover  $_M"
+  _mt "your agents win; the kit's overlapping -csk agents are not installed";                                                 sub "  keepmine  $_M"
+  _mt 'keep both (routing stays ambiguous; only documented in HANDOVER)';                                                     sub "  coexist   $_M"
   COLLIDE_MODE=takeover
   if [ -t 0 ] && [ "${ASSUME_YES:-0}" != 1 ]; then   # --yes keeps the documented non-interactive default (takeover)
     while :; do
-      printf '  %sowner%s [takeover/keepmine/coexist] (ENTER=takeover): ' "$B" "$R"
+      _mt 'owner'; printf '  %s%s%s [takeover/keepmine/coexist] (ENTER=takeover): ' "$B" "$_M" "$R"
       read -r _v || _v=""
       case "$_v" in ""|t|takeover) COLLIDE_MODE=takeover; break ;; k|keepmine) COLLIDE_MODE=keepmine; break ;; c|coexist) COLLIDE_MODE=coexist; break ;;
-        *) printf '     %s! type takeover, keepmine or coexist%s\n' "$YE" "$R" >&2 ;; esac
+        *) _mt 'type takeover, keepmine or coexist'; printf '     %s! %s%s\n' "$YE" "$_M" "$R" >&2 ;; esac
     done
   fi
-  echo "  overlap -> $COLLIDE_MODE"
+  say 'overlap -> %s' "$COLLIDE_MODE"
 fi
 # #1 display/HANDOVER value reflects what actually happens.
 case "$COLLIDE_MODE" in
@@ -490,9 +777,9 @@ esac
 if [ ! -t 0 ] && [ "$KIT_PRESENT" = 1 ]; then ASSUME_YES=1; fi
 
 # ================= [STAGE 2] HANDOVER BRANCH + COEXIST =================
-h1 "$(m 'Stage 2 — apply the kit (coexist)')"
+h1m 'Stage 2 — apply the kit (coexist)'
 if [ "$IS_GIT" != 1 ]; then
-  warn "no git repo — cannot apply safely. First:  git init && git add -A && git commit -m init  (then run again)."
+  warnm 'no git repo — cannot apply safely. First:  %s  (then run again).' 'git init && git add -A && git commit -m init'
   exit 0
 fi
 
@@ -506,43 +793,44 @@ if [ -z "$DEC_BR" ]; then
   if   [ "$KIT_PRESENT" != 1 ]; then DEC_BR=new     # first adopt: isolate the change, keep the main line clean
   elif [ "$TRACKED" != 1 ];     then DEC_BR=here    # update + untracked .claude: no tracked diff -> a branch is noise
   elif [ -t 0 ]; then                               # update + tracked: a real diff exists -> prefer new, but ask
-    ask_yes "Apply on a NEW review branch? (no = apply on the current branch '$BASE')" && DEC_BR=new || DEC_BR=here
+    ask_yes "Apply on a NEW review branch? (no = apply on the current branch '%s')" "$BASE" && DEC_BR=new || DEC_BR=here
   else DEC_BR=new; fi                               # non-interactive + tracked: the safe default is a new branch
 fi
 
-if [ "$DEC_BR" = here ]; then WHERE="the current branch '$BASE'"; else WHERE="a new review branch (off '$BASE')"; fi
-# Missing tools named before the mutation prompt, not after. It matters more here than on a fresh install: the
-# settings MERGE is the step that needs jq/python, and without them an update replaces settings.json (backup
-# kept) instead of merging — so a project's own hooks are dropped. Better to say that while it is still a
-# choice. Report-only; never blocks.
+if [ "$DEC_BR" = here ]; then _mt "the current branch '%s'" "$BASE"; else _mt "a new review branch (off '%s')" "$BASE"; fi
+WHERE="$_M"
+# Missing tools named before the mutation prompt, not after, while going ahead is still a choice. The settings
+# merge is not among them: it is awk and runs the same everywhere. Report-only; never blocks.
 [ -f "$SRC/eval/preflight.sh" ] && bash "$SRC/eval/preflight.sh"
-if ! ask_yes "Apply the kit onto $WHERE now? (mutation; staged-not-committed, reversible with git)"; then
-  h1 "$(m 'Stopped')"; sub "$(m 'Stayed at Stage 1 — NOTHING CHANGED (read-only).')"; exit 0
+if ! ask_yes 'Apply the kit onto %s now? (mutation; staged-not-committed, reversible with git)' "$WHERE"; then
+  h1m 'Stopped'; subm 'Stayed at Stage 1 — NOTHING CHANGED (read-only).'; exit 0
 fi
 
+# BR_HANDOVER_LINE / GEN_WHERE / ADR_BR_STATUS go into HANDOVER.md and the ADR, so they stay English (artefacts).
+# ONBRANCH/ACCEPT/DISCARD_LINE are only ever printed to the terminal, so they are translated here.
 if [ "$DEC_BR" = here ]; then
   BR="$BASE"                                          # $BR is referenced downstream; on 'here' it IS the current branch
-  echo "  applying on the current branch: ${B}$BASE${R}  (no separate branch; staged, HEAD untouched until you commit)"
+  say 'applying on the current branch: %s  (no separate branch; staged, HEAD untouched until you commit)' "${B}$BASE${R}"
   BR_HANDOVER_LINE="Applied on the current branch: $BASE (the change set is STAGED-not-committed — review in 'git status' / your editor, then commit; HEAD untouched until you do)."
   GEN_WHERE="current branch $BASE"
   ADR_BR_STATUS="accepted (applied on current branch: $BASE — staged, not committed)"
-  ONBRANCH_LINE="You are on your current branch $BASE with everything STAGED but NOT committed."
-  ACCEPT_LINE="accept:   git commit -m 'adopt agentic kit'"
-  DISCARD_LINE="discard:  git reset --hard HEAD   (un-stages everything; nothing was committed)"
+  _mt 'You are on your current branch %s with everything STAGED but NOT committed.' "$BASE"; ONBRANCH_LINE="$_M"
+  _mt 'accept:   %s' "git commit -m 'adopt agentic kit'"; ACCEPT_LINE="$_M"
+  _mt 'discard:  %s   (un-stages everything; nothing was committed)' 'git reset --hard HEAD'; DISCARD_LINE="$_M"
 else
-  case "$BASE" in kit-adopt-*) warn "HEAD is a prior adopt branch ($BASE) — the review diff will be vs it, not your main line. Consider 'git checkout <main>' first." ;; esac
+  case "$BASE" in kit-adopt-*) warnm 'HEAD is a prior adopt branch (%s) — the review diff will be vs it, not your main line. Consider %s first.' "$BASE" "'git checkout <main>'" ;; esac
   TS="$(date +%Y%m%d-%H%M%S)"; BR="kit-adopt-$TS"
   # Second-resolution timestamp: two adopts within one second would collide and the second checkout would fail.
   # Bump a counter until the name is free (also covers a re-run after a discarded attempt left the branch behind).
   n=2; while git rev-parse --verify -q "refs/heads/$BR" >/dev/null 2>&1; do BR="kit-adopt-$TS-$n"; n=$((n+1)); done
-  git checkout -b "$BR" >/dev/null 2>&1 || { echo "ERROR: could not open branch '$BR'."; exit 1; }
-  echo "  handover branch: ${B}$BR${R}  (${BASE} stays clean)"
+  git checkout -b "$BR" >/dev/null 2>&1 || { _mt "ERROR: could not open branch '%s'." "$BR"; printf '%s\n' "$_M"; exit 1; }
+  say 'handover branch: %s  (%s stays clean)' "${B}$BR${R}" "$BASE"
   BR_HANDOVER_LINE="Handover branch: $BR  ($BASE untouched; the change set is STAGED-not-committed — review in your editor / 'git status', then commit)."
   GEN_WHERE="branch $BR"
   ADR_BR_STATUS="accepted (handover branch: $BR)"
-  ONBRANCH_LINE="You are on branch $BR with everything STAGED but NOT committed."
-  ACCEPT_LINE="accept:   git commit -m 'adopt agentic kit'   then:  git checkout $BASE && git merge $BR"
-  DISCARD_LINE="discard:  git reset --hard $BASE && git checkout $BASE && git branch -D $BR"
+  _mt 'You are on branch %s with everything STAGED but NOT committed.' "$BR"; ONBRANCH_LINE="$_M"
+  _mt 'accept:   %s   then:  %s' "git commit -m 'adopt agentic kit'" "git checkout $BASE && git merge $BR"; ACCEPT_LINE="$_M"
+  _mt 'discard:  %s' "git reset --hard $BASE && git checkout $BASE && git branch -D $BR"; DISCARD_LINE="$_M"
 fi
 
 mkdir -p .claude
@@ -574,9 +862,9 @@ fi
 if [ "$KIT_STACK" = "dotnet" ] && [ -d .claude/skills/devarch-module ]; then
   if [ ! -e .claude/skills/cqrs-aop-module ]; then
     mv .claude/skills/devarch-module .claude/skills/cqrs-aop-module 2>/dev/null \
-      && echo "  .NET pattern skill renamed: devarch-module -> cqrs-aop-module (content kept)"
+      && say '.NET pattern skill renamed: devarch-module -> cqrs-aop-module (content kept)'
   else
-    echo "  ⚠️  both devarch-module and cqrs-aop-module are present — nothing moved; remove the old one when ready"
+    say '⚠️  both devarch-module and cqrs-aop-module are present — nothing moved; remove the old one when ready'
   fi
 fi
 [ "$KIT_STACK" = "generic" ] && EXCL_S="$EXCL_S cqrs-aop-module"
@@ -595,7 +883,7 @@ copy_noclobber "$SRC/skills"   .claude/skills   "$KIT_PRESENT" "$EXCL_S"; S_ADD=
 # Both names, for the same reason as kit_infer_shape: an install from before the rename carries the old one.
 if [ "$KIT_STACK" = "generic" ]; then
   for _pk in cqrs-aop-module devarch-module; do
-    [ -d ".claude/skills/$_pk" ] && rm -rf ".claude/skills/$_pk" 2>/dev/null && echo "  $_pk removed (the recorded stack is generic)"
+    [ -d ".claude/skills/$_pk" ] && rm -rf ".claude/skills/$_pk" 2>/dev/null && say '%s removed (the recorded stack is generic)' "$_pk"
   done
 fi
 copy_noclobber "$SRC/commands" .claude/commands "$KIT_PRESENT"; C_ADD=$ret_add; C_SKIP=$ret_skip
@@ -623,17 +911,17 @@ chmod +x .claude/studio/server/hooks/*.sh 2>/dev/null || true
 # either — it went stale from the day it landed and nothing ever noticed, because §3b iterates skills and
 # agents and this is neither. Overwriting is right for the same reason DISCIPLINE.md is overwritten: the
 # file states the kit's own contract, a project does not author it, and a stale contract is worse than none.
-cp "$SRC/AGENT_TEMPLATE.md" .claude/ 2>/dev/null && echo "  AGENT_TEMPLATE.md written (kit-owned; refreshed on every update)"
+cp "$SRC/AGENT_TEMPLATE.md" .claude/ 2>/dev/null && say 'AGENT_TEMPLATE.md written (kit-owned; refreshed on every update)'
 # Report the migration by what LANDED, not by what was missing: cqrs-aop-module is on the missing list of every
 # generic project and must not be announced as restored when EXCL_S kept it out.
 if [ -n "$MIGRATE_MISSING" ]; then
   MIGRATED=""
   for c in $MIGRATE_MISSING; do [ -e ".claude/$c" ] && MIGRATED="$MIGRATED $c"; done
   if [ -n "$MIGRATED" ]; then
-    warn "pre-2.0 install (profile=$LEGACY_PROFILE): profile pruning was removed — completing the install"
+    warnm 'pre-2.0 install (profile=%s): profile pruning was removed — completing the install' "$LEGACY_PROFILE"
     for c in $MIGRATED; do echo "      ${GR}+${R} $c"; done
   else
-    echo "  pre-2.0 install (profile=$LEGACY_PROFILE): nothing was missing — the full set was already present"
+    say 'pre-2.0 install (profile=%s): nothing was missing — the full set was already present' "$LEGACY_PROFILE"
   fi
 fi
 # #1 takeover: the kit's -csk owns the role, and the OLD agent's domain is IMPORTED into an active project skill
@@ -646,11 +934,11 @@ if [ "$COLLIDE_MODE" = takeover ] && [ -n "$COLLIDE" ]; then
   for b in $COLLIDE; do
     af=".claude/agents/$b.md"; [ -f "$af" ] || continue
     if [ -e ".claude/skills/$b-local/SKILL.md" ]; then       # idempotent: a prior takeover already imported it
-      echo "  overlap: $b -> skill '$b-local' already present (kept); original re-backed up"
+      say "overlap: %s -> skill '%s' already present (kept); original re-backed up" "$b" "$b-local"
     else
       mkdir -p ".claude/skills/$b-local"
       kit_agent_to_skill "$af" "$b" > ".claude/skills/$b-local/SKILL.md"
-      echo "  overlap: $b -> imported to skill '$b-local' (draft); kit's $b-csk owns routing"
+      say "overlap: %s -> imported to skill '%s' (draft); kit's %s owns routing" "$b" "$b-local" "$b-csk"
     fi
     cp "$af" ".claude/superseded/agents/$b.md"; rm -f "$af"
     N_TAKEN=$((N_TAKEN+1))
@@ -676,11 +964,11 @@ if [ "$N_TAKEN" -gt 0 ] && [ -f CLAUDE.md ]; then
         sed -E "s/(^|[^A-Za-z-])$b([^A-Za-z-]|\$)/\1$b-csk\2/g" "$f" > "$f.kit-sweep" && mv "$f.kit-sweep" "$f"
         i=$((i+1)); SWEPT=$((SWEPT+1))
       done
-      [ "$i" -gt 0 ] && echo "  ref-sweep: $b → $b-csk in $f"
+      [ "$i" -gt 0 ] && say 'ref-sweep: %s → %s in %s' "$b" "$b-csk" "$f"
     done
   done
-  [ "$SWEPT" -gt 0 ] && h1 "Reference sweep: rewrote taken-over agent names to their -csk id across CLAUDE.md + referenced docs" \
-                     || echo "  ref-sweep: no stale references in CLAUDE.md's chain"
+  [ "$SWEPT" -gt 0 ] && h1m 'Reference sweep: rewrote taken-over agent names to their -csk id across CLAUDE.md + referenced docs' \
+                     || say "ref-sweep: no stale references in CLAUDE.md's chain"
 fi
 # Stack-compatible backend: non-.NET projects get the generic backend-expert-csk. A RECORDED stack always beats
 # repo sniffing — a refresh of a 'dotnet' install must keep the DevArch-bound agent even when the .sln lives in
@@ -690,11 +978,11 @@ if [ -n "$KIT_STACK" ]; then [ "$KIT_STACK" = "generic" ] && WANT_GENERIC=1
 elif [ "$STACK" != ".NET" ]; then WANT_GENERIC=1; fi
 if [ "$WANT_GENERIC" = 1 ] && [ -f "$SRC/agents-optional/backend-expert-generic.md" ] && [ -e .claude/agents/backend-expert-csk.md ]; then
   case " $SKIP_LIST " in
-    *" .claude/agents/backend-expert-csk.md "*) warn "backend-expert-csk.md pre-existed (preserved) — generic variant NOT applied" ;;
-    *) cp "$SRC/agents-optional/backend-expert-generic.md" .claude/agents/backend-expert-csk.md; echo "  backend-expert-csk -> generic variant (${KIT_STACK:-$STACK})" ;;
+    *" .claude/agents/backend-expert-csk.md "*) warnm 'backend-expert-csk.md pre-existed (preserved) — generic variant NOT applied' ;;
+    *) cp "$SRC/agents-optional/backend-expert-generic.md" .claude/agents/backend-expert-csk.md; say 'backend-expert-csk -> generic variant (%s)' "${KIT_STACK:-$STACK}" ;;
   esac
 elif [ "$KIT_STACK" = "dotnet" ] && [ -e .claude/agents/backend-expert-csk.md ]; then
-  echo "  backend-expert-csk kept on the .NET/DevArchitecture variant (recorded stack: dotnet)"
+  say 'backend-expert-csk kept on the .NET/DevArchitecture variant (recorded stack: dotnet)'
 fi
 chmod +x .claude/hooks/*.sh .claude/hooks/pre-commit .claude/hooks/commit-msg 2>/dev/null || true
 [ -f "$HERE/VERSION" ] && cp "$HERE/VERSION" .claude/VERSION 2>/dev/null || true   # first-class marker so a future adopt detects a REFRESH
@@ -726,10 +1014,10 @@ if [ -f .claude/kit-manifest.txt ]; then
   done < .claude/kit-manifest.txt
   if [ -n "$STALE" ]; then
     echo
-    echo "  ⚠️  installed by an older kit and no longer shipped:$STALE"
-    echo "     The name is the invocation: a leftover COMMAND still lists in the / picker (/review twice), and a"
-    echo "     leftover SKILL still matches prompts, so it competes with whatever replaced it."
-    echo "     Nothing is deleted for you — one of these may be a file you customised. To drop them all:"
+    say '⚠️  installed by an older kit and no longer shipped:%s' "$STALE"
+    _mt 'The name is the invocation: a leftover COMMAND still lists in the / picker (/review twice), and a'; printf '     %s\n' "$_M"
+    _mt 'leftover SKILL still matches prompts, so it competes with whatever replaced it.';                   printf '     %s\n' "$_M"
+    _mt 'Nothing is deleted for you — one of these may be a file you customised. To drop them all:';         printf '     %s\n' "$_M"
     printf '       rm -r'; for e in $STALE; do printf ' .claude/%s' "$e"; done; echo
   fi
 fi
@@ -751,68 +1039,75 @@ fi
   echo "version=$( [ -f "$HERE/VERSION" ] && head -1 "$HERE/VERSION" || echo unknown )"
 } > .claude/kit.conf
 
-h1 "$(m 'Coexist summary')"
-row "kit agents (-csk)" "+$A_ADD added$([ "$A_SKIP" != 0 ] && echo " · $A_SKIP skipped")"
-row "skills"            "+$S_ADD$([ "$S_SKIP" != 0 ] && echo " · $S_SKIP skipped")"
-row "commands"           "+$C_ADD$([ "$C_SKIP" != 0 ] && echo " · $C_SKIP skipped")"
-row "hooks"           "+$H_ADD$([ "$H_SKIP" != 0 ] && echo " · $H_SKIP skipped")"
-row "eval"               "+$E_ADD"
+h1m 'Coexist summary'
+# _cnt: "<added>" plus " · N skipped" when something was skipped; result in _v (no subshell, see _mt)
+_cnt(){ _v="$1"; if [ "${2:-0}" != 0 ]; then _mt '%s · %s skipped' "$_v" "$2"; _v="$_M"; fi; }
+_mt '+%s added' "$A_ADD"; _cnt "$_M" "$A_SKIP"; rowv 'kit agents (-csk)' "$_v"
+_cnt "+$S_ADD" "$S_SKIP"; rowv 'skills'   "$_v"
+_cnt "+$C_ADD" "$C_SKIP"; rowv 'commands' "$_v"
+_cnt "+$H_ADD" "$H_SKIP"; rowv 'hooks'    "$_v"
+rowv 'eval' "+$E_ADD"
 # The component table is where someone scans for what they got, and it was
 # advertising a command that refuses on a machine without node — a row promising
 # a capability it had not checked. Qualified from the same preflight query the
 # closing line uses, so the version rule keeps one home.
 PANEL_CMD="/studio-csk"
-bash "$SRC/eval/preflight.sh" --has node 2>/dev/null || PANEL_CMD="/studio-csk (needs Node 18+)"
-row "studio (panel)"     "+$T_ADD$([ "${T_SKIP:-0}" != 0 ] && echo " · $T_SKIP skipped") ${D}— $PANEL_CMD${R}"
-row "project agents"     "$N_PAGENTS$([ "${N_TAKEN:-0}" != 0 ] && echo " ($N_TAKEN imported to skills/<name>-local drafts; originals backed up in superseded/)") — the rest UNTOUCHED"
+bash "$SRC/eval/preflight.sh" --has node 2>/dev/null || { _mt '%s (needs Node 18+)' /studio-csk; PANEL_CMD="$_M"; }
+_cnt "+$T_ADD" "${T_SKIP:-0}"; rowv 'studio (panel)' "$_v ${D}— $PANEL_CMD${R}"
+_v="$N_PAGENTS"
+[ "${N_TAKEN:-0}" != 0 ] && { _mt '%s (%s imported to skills/<name>-local drafts; originals backed up in superseded/)' "$_v" "$N_TAKEN"; _v="$_M"; }
+_mt '%s — the rest UNTOUCHED' "$_v"; rowv 'project agents' "$_M"
 case "$COLLIDE_MODE" in
-  keepmine) [ "$N_COLLIDE" != 0 ] && row "overlap" "keepmine — your agents own: $COLLIDE (kit's -csk for these NOT installed)" ;;
-  coexist)  [ "$N_COLLIDE" != 0 ] && warn "overlap: $COLLIDE — BOTH kept; routing between your agent and the kit's -csk stays ambiguous" ;;
+  keepmine) [ "$N_COLLIDE" != 0 ] && rowm 'overlap' "keepmine — your agents own: %s (kit's -csk for these NOT installed)" "$COLLIDE" ;;
+  coexist)  [ "$N_COLLIDE" != 0 ] && warnm "overlap: %s — BOTH kept; routing between your agent and the kit's -csk stays ambiguous" "$COLLIDE" ;;
 esac
-[ -n "$SKIP_LIST" ] && { warn "conflicting files (the project's was PRESERVED, the kit's skipped):"; for s in $SKIP_LIST; do printf '     %s- %s%s\n' "$D" "$s" "$R"; done; }
+[ -n "$SKIP_LIST" ] && { warnm "conflicting files (the project's was PRESERVED, the kit's skipped):"; for s in $SKIP_LIST; do printf '     %s- %s%s\n' "$D" "$s" "$R"; done; }
 
 # ============ [STAGE 3] DISCIPLINE ACTIVE + SETTINGS MERGE ============
-h1 "$(m 'Stage 3 — activate the kit discipline (without touching the project CLAUDE.md) + settings merge')"
+h1m "Stage 3 — activate the kit discipline (without touching the project CLAUDE.md) + settings merge"
 
 # 3a) DISCIPLINE.md: install the discipline half of the payload CLAUDE.md as a separate, FLAT file —
 #     everything above the sentinel line. Contains NO @import (leaf) -> no 4-hop trap.
 if [ -f "$SRC/CLAUDE.md" ]; then
   kit_require_sentinel "$SRC/CLAUDE.md"
   kit_discipline_of "$SRC/CLAUDE.md" > .claude/DISCIPLINE.md
-  echo "  DISCIPLINE.md written (kit discipline only; the project template stays out of it)"
+  say 'DISCIPLINE.md written (kit discipline only; the project template stays out of it)'
 fi
 
 # 3b) single-line @import into the project CLAUDE.md (if present DON'T touch content, only prepend; if absent create).
 if [ -f CLAUDE.md ]; then
-  if kit_has_import CLAUDE.md; then echo "  CLAUDE.md: @import already present (idempotent)"
+  if kit_has_import CLAUDE.md; then say 'CLAUDE.md: @import already present (idempotent)'
   elif kit_claude_md_is_legacy CLAUDE.md; then
     # Pre-1.1: the whole discipline sits inline. Blindly prepending the @import would load it TWICE, and leaving
     # it alone means discipline updates never reach this project. Offer the exact swap, with a backup.
-    warn "CLAUDE.md carries the discipline INLINE (pre-1.1 layout) — discipline updates cannot reach it."
+    warnm 'CLAUDE.md carries the discipline INLINE (pre-1.1 layout) — discipline updates cannot reach it.'
     BND="$(kit_legacy_boundary CLAUDE.md | head -1)"
     if [ -n "$BND" ] && [ "$BND" -gt 1 ] 2>/dev/null \
        && head -n "$((BND-1))" CLAUDE.md | grep -q '^## Four working principles' \
        && head -n "$((BND-1))" CLAUDE.md | grep -q '^### 4\.5 '; then
-      printf '     %sthe inline block is lines 1-%s; your project section starts at line %s%s\n' "$D" "$((BND-1))" "$BND" "$R"
-      if ask_yes "  Replace that inline block with the single @import line? (a backup is written; this branch is reviewable)"; then
+      _mt 'the inline block is lines 1-%s; your project section starts at line %s' "$((BND-1))" "$BND"
+      printf '     %s%s%s\n' "$D" "$_M" "$R"
+      if ask_yes '  Replace that inline block with the single @import line? (a backup is written; this branch is reviewable)'; then
         BK=".claude/CLAUDE.md.pre-kit-$TS"
         cp CLAUDE.md "$BK"
         { printf '<!-- kit discipline · on conflict the project rules BELOW win -->\n%s\n\n' "$IMPORT_LINE"
           tail -n +"$BND" CLAUDE.md; } > CLAUDE.md.kit-tmp && mv CLAUDE.md.kit-tmp CLAUDE.md
-        echo "  CLAUDE.md migrated -> @import + your project section (backup: $BK)"
+        say 'CLAUDE.md migrated -> @import + your project section (backup: %s)' "$BK"
       else
-        printf '     %sSkipped. Discipline updates will NOT reach this project until you migrate.%s\n' "$D" "$R"
+        _mt 'Skipped. Discipline updates will NOT reach this project until you migrate.'
+        printf '     %s%s%s\n' "$D" "$_M" "$R"
       fi
     else
-      printf '     %sProject heading not found — migrate by hand: delete everything above it, leave only:  %s%s\n' "$D" "$IMPORT_LINE" "$R"
+      _mt 'Project heading not found — migrate by hand: delete everything above it, leave only:  %s' "$IMPORT_LINE"
+      printf '     %s%s%s\n' "$D" "$_M" "$R"
     fi
   else
     { printf '<!-- kit discipline · on conflict the project rules BELOW win -->\n%s\n\n' "$IMPORT_LINE"; cat CLAUDE.md; } > CLAUDE.md.kit-tmp && mv CLAUDE.md.kit-tmp CLAUDE.md
-    echo "  CLAUDE.md: single-line @import prepended (project content untouched)"
+    say 'CLAUDE.md: single-line @import prepended (project content untouched)'
   fi
 else
   printf '%s\n\n# CLAUDE.md — <PROJECT NAME>\n\n## Project\n<One sentence: what it does, for whom.>\n' "$IMPORT_LINE" > CLAUDE.md
-  echo "  CLAUDE.md was missing -> @import + project template created"
+  say 'CLAUDE.md was missing -> @import + project template created'
 fi
 
 # 3c) settings.json HOOK-AWARE merge: the kit OWNS its hooks (any command referencing .claude/hooks/), so on update
@@ -824,106 +1119,49 @@ fi
 # ask rule prompts even when a hook returns "allow" (Claude Code permissions doc), which made the hook's
 # CLAUDE_GIT_OK pre-authorisation dead: a headless session was refused `git add` and never committed. The hook
 # now asks for all four itself. These exact strings are the kit's own; a project that wants them can re-add them.
+# ONE path on every OS: the merge is claude-starter/eval/lib/settings-json.awk (POSIX awk; its header holds the
+# reader contract and the merge semantics). jq and python3 are absent on a stock Windows Git-Bash, where python3
+# is often the Microsoft Store stub (exit 49); the old per-tool arms REPLACED the file there and lost the project's
+# own rules. Input that is not a JSON object is refused and left untouched; the output is re-read before use.
 KSET="$SRC/settings.json"; PSET=".claude/settings.json"
-JQ_MERGE='
-def ddedup: reduce .[] as $x ([]; if any(.[]; .==$x) then . else .+[$x] end);
-def dm(a;b): reduce (b|keys_unsorted[]) as $k (a;
-  if (.[$k]|type)=="object" and (b[$k]|type)=="object" then .[$k]=dm(.[$k];b[$k])
-  elif (.[$k]|type)=="array" and (b[$k]|type)=="array" then .[$k]=((.[$k]+b[$k])|ddedup)
-  else .[$k]=b[$k] end);
-def is_kit: ((.hooks // []) | map((((.command // "") + " " + ((.args // []) | join(" "))) | contains(".claude/hooks/"))) | any);   # command AND args: tolerates either wiring shape
-def merge_hooks(kh;ph):
-  (((kh|keys_unsorted)+(ph|keys_unsorted))|unique) as $e
-  | reduce $e[] as $k ({}; .[$k]=((kh[$k] // [])+((ph[$k] // [])|map(select(is_kit|not)))));
-def retired: ["Bash(git add:*)","Bash(git commit:*)","Bash(git push:*)","Bash(git checkout -b:*)"];
-def drop_retired: if (.permissions.ask|type)=="array" then .permissions.ask -= retired else . end;
-(dm($k[0]; $p[0]) | drop_retired) | .hooks=merge_hooks(($k[0].hooks // {}); ($p[0].hooks // {}))'
+SET_AWK="$SRC/eval/lib/settings-json.awk"
 # Which retired rules the project carries NOW, read before the merge so the removal can be announced by name.
 # A string match cannot tell the kit's copy from one the project wrote itself, so the removal is never silent
 # and the merge line below does not claim "permissions PRESERVED" when some were not.
-RET_HIT=""; [ -f "$PSET" ] && for _r in 'git add' 'git commit' 'git push' 'git checkout -b'; do
+SET_NOTE=""; RET_HIT=""; [ -f "$PSET" ] && for _r in 'git add' 'git commit' 'git push' 'git checkout -b'; do
   grep -qF "\"Bash($_r:*)\"" "$PSET" && RET_HIT="$RET_HIT${RET_HIT:+|}$_r"; done
-KEPT="custom hooks/permissions PRESERVED"; [ -n "$RET_HIT" ] && KEPT="custom hooks and every other permission PRESERVED"
+if [ -n "$RET_HIT" ]; then _mt 'custom hooks and every other permission PRESERVED'; else _mt 'custom hooks/permissions PRESERVED'; fi
+KEPT="$_M"   # terminal-only (HANDOVER.md words its own line), so translated
+SET_FRESH=0
 if [ ! -f "$PSET" ]; then
-  [ -f "$KSET" ] && { cp "$KSET" "$PSET"; echo "  settings.json: was missing in the project -> the kit's was installed"; }
-# Probed by RUNNING — the python3 arm below already does exactly this, with a comment about the Store
-# redirector. Selecting on `command -v` alone made a broken jq abort the merge and wire NOTHING, while the
-# run still ended in OK + PROOF and HANDOVER recorded "kit hooks REFRESHED". Measured: 10 hook entries with
-# a working jq, 10 via the python3 arm with jq absent, 0 with a jq that resolves and fails.
-elif command -v jq >/dev/null 2>&1 && printf '{}' | jq -e . >/dev/null 2>&1; then
-  if ! jq -e . "$PSET" >/dev/null 2>&1; then
-    warn "settings.json: existing file is INVALID JSON -> merge ABORT (no silent overwrite). Fix it by hand first."
-  else
-    MERGED="$(jq -n --slurpfile p "$PSET" --slurpfile k "$KSET" "$JQ_MERGE" 2>/dev/null || true)"
-    if [ -n "$MERGED" ] && printf '%s' "$MERGED" | jq -e . >/dev/null 2>&1; then
-      printf '%s\n' "$MERGED" > "$PSET"; echo "  settings.json: hook-aware MERGE via jq (kit hooks refreshed - $KEPT)"
-    else
-      warn "settings.json: jq merge failed -> project setting PRESERVED (not overwritten)."
-    fi
-  fi
-elif PYBIN=""; for _pc in python3 python py; do
-       # Pick the first that RUNS, not the first that EXISTS. Windows puts a Microsoft Store redirector stub
-       # named python3 (and python) on PATH by default; `command -v` stops there and never reaches `py`, the
-       # Windows Python Launcher, which on a machine with real Python installed is the one that works. The old
-       # order therefore selected the stub on exactly the machines this branch exists for, and the merge below
-       # fell through to "merge failed -> project setting PRESERVED" with no hint why. Args are always passed:
-       # an argless run of that stub opens the Microsoft Store instead of failing.
-       if command -v "$_pc" >/dev/null 2>&1 && printf '{}' | "$_pc" -c 'import sys,json;json.load(sys.stdin)' >/dev/null 2>&1; then
-         PYBIN="$(command -v "$_pc")"; break
-       fi
-     done; [ -n "$PYBIN" ]; then
-  if "$PYBIN" - "$KSET" "$PSET" "$PSET.tmp" 2>/dev/null <<'PYEOF' && [ -s "$PSET.tmp" ]; then
-import json,sys
-kit=json.load(open(sys.argv[1])); proj=json.load(open(sys.argv[2]))
-def ddedup(a):
-  out=[]
-  for x in a:
-    if x not in out: out.append(x)
-  return out
-def dm(a,b):
-  r=dict(a)
-  for k,v in b.items():
-    if isinstance(r.get(k),dict) and isinstance(v,dict): r[k]=dm(r[k],v)
-    elif isinstance(r.get(k),list) and isinstance(v,list): r[k]=ddedup(r[k]+v)
-    else: r[k]=v
-  return r
-def is_kit(e): return any(".claude/hooks/" in (h.get("command") or "") for h in (e.get("hooks") or []))
-def merge_hooks(kh,ph):
-  evs=list(dict.fromkeys(list(kh)+list(ph))); o={}
-  for e in evs: o[e]=list(kh.get(e,[]))+[x for x in ph.get(e,[]) if not is_kit(x)]
-  return o
-m=dm(kit,proj); m["hooks"]=merge_hooks(kit.get("hooks",{}),proj.get("hooks",{}))
-RETIRED=["Bash(git add:*)","Bash(git commit:*)","Bash(git push:*)","Bash(git checkout -b:*)"]
-if isinstance(m.get("permissions"),dict) and isinstance(m["permissions"].get("ask"),list):
-  m["permissions"]["ask"]=[x for x in m["permissions"]["ask"] if x not in RETIRED]
-open(sys.argv[3],"w").write(json.dumps(m,indent=2)+"\n")
-PYEOF
-    mv "$PSET.tmp" "$PSET"; echo "  settings.json: hook-aware MERGE via ${PYBIN##*/} (kit hooks refreshed - $KEPT)"
-  else
-    rm -f "$PSET.tmp"; warn "settings.json: ${PYBIN##*/} merge failed -> project setting PRESERVED (not overwritten)."
-  fi
+  SET_FRESH=1
+  [ -f "$KSET" ] && { cp "$KSET" "$PSET"; say "settings.json: was missing in the project -> the kit's was installed"; }
 else
-  # No jq AND no python3 (common on Windows Git-Bash) — we can't parse JSON to merge. But if the project's
-  # settings.json carries ONLY kit-owned hooks (every "command" points at .claude/hooks/ — no hook the user added),
-  # it is safe to REPLACE it wholesale with the kit's current settings: stale hooks/timeouts refresh and new events
-  # (SessionStart) wire up, with zero dependencies. A timestamped backup is kept so nothing is lost (re-add any
-  # custom permissions from it). If a FOREIGN hook is present we do NOT guess — leave the file, drop a kit reference.
-  if grep '"command"' "$PSET" | grep -qv '\.claude/hooks/'; then
-    cp "$KSET" "$PSET.kit" 2>/dev/null || true
-    warn "settings.json: no jq/python3 and a non-kit hook is present -> cannot merge safely. Kit reference at .claude/settings.json.kit -> reconcile by hand."
-  else
-    BAK="$PSET.bak-$(date +%Y%m%d-%H%M%S)"; cp "$PSET" "$BAK" 2>/dev/null || true
-    cp "$KSET" "$PSET"
-    echo "  settings.json: no jq/python3 -> kit-only settings REPLACED with the current kit's (backup: $BAK — re-add any custom permissions from it)"
-  fi
+  awk -v op=merge -v retired='Bash(git add:*)|Bash(git commit:*)|Bash(git push:*)|Bash(git checkout -b:*)' -f "$SET_AWK" "$KSET" "$PSET" > "$PSET.tmp" 2>/dev/null
+  case "$?" in
+    0) if [ -s "$PSET.tmp" ] && awk -v op=validate -f "$SET_AWK" "$PSET.tmp" 2>/dev/null; then
+         # Written THROUGH the existing file, not swapped in with mv: a symlinked settings.json (a team's shared
+         # file) keeps its link and gets the merge, and a 0600 mode survives.
+         cat "$PSET.tmp" > "$PSET"; say 'settings.json: hook-aware MERGE (kit hooks refreshed - %s)' "$KEPT"
+       else SET_NOTE="merge failed -> project setting PRESERVED (not overwritten)"; fi ;;
+    10) SET_NOTE="existing file is INVALID JSON -> merge ABORT (no silent overwrite). Fix it by hand first." ;;
+    *) SET_NOTE="merge failed -> project setting PRESERVED (not overwritten)" ;;
+  esac
+  # SET_NOTE stays English: HANDOVER.md records it verbatim. The terminal gets it translated — each value above
+  # is its own table key.
+  rm -f "$PSET.tmp"; [ -n "$SET_NOTE" ] && { _mt "$SET_NOTE"; warnm 'settings.json: %s' "$_M"; }
 fi
-# Announce only what is actually gone: the foreign-hook arm and a failed merge leave the file untouched.
+# Announce only what is actually gone: a refused or failed merge leaves the file untouched.
 RET_GONE=""; _IFS="$IFS"; IFS='|'; for _r in $RET_HIT; do
   grep -qF "\"Bash($_r:*)\"" "$PSET" 2>/dev/null || RET_GONE="$RET_GONE${RET_GONE:+, }$_r"; done; IFS="$_IFS"
-[ -n "$RET_GONE" ] && echo "  settings.json: retired §4.4 ask rule(s) REMOVED ($RET_GONE) — guard-bash.sh now asks for these itself; an ask rule would override its CLAUDE_GIT_OK allow. Re-add one only if your project wants that trade."
+[ -n "$RET_GONE" ] && say 'settings.json: retired §4.4 ask rule(s) REMOVED (%s) — guard-bash.sh now asks for these itself; an ask rule would override its CLAUDE_GIT_OK allow. Re-add one only if your project wants that trade.' "$RET_GONE"
+# A refused or failed merge leaves the file as it was, so HANDOVER must not claim a merge that did not run.
+if [ -n "$SET_NOTE" ]; then HAND_SET="NOT merged — ${SET_NOTE%.}"
+elif [ "$SET_FRESH" = 1 ]; then HAND_SET="the kit's settings.json installed (the project had none, so nothing was merged)"
+else HAND_SET="hook-aware merge (kit hooks REFRESHED to current — new events + timeouts land; your own custom hooks/permissions PRESERVED${RET_GONE:+, except the retired §4.4 ask rule(s) REMOVED: $RET_GONE — guard-bash.sh asks for these itself})"; fi
 
 # ============ [STAGE 4] GIT-HOOK ARMING (SHIM) + PROOF ============
-h1 "$(m 'Stage 4 — arm the git gates (SHIM via husky) + PROOF')"
+h1m 'Stage 4 — arm the git gates (SHIM via husky) + PROOF'
 
 # 4a) location of the existing hook chain (the shim calls this too)
 ORIG_HOOKS=""
@@ -935,7 +1173,7 @@ case "$ORIG_HOOKS" in .claude/hooks|.claude/git-shim) ORIG_HOOKS="" ;; esac
 
 if [ -z "$ORIG_HOOKS" ]; then
   git config core.hooksPath .claude/hooks
-  echo "  core.hooksPath -> .claude/hooks (no existing hook chain)"
+  say 'core.hooksPath -> .claude/hooks (no existing hook chain)'
 else
   mkdir -p .claude/git-shim
   for hk in pre-commit commit-msg; do
@@ -954,12 +1192,12 @@ SHIM
     chmod +x ".claude/git-shim/$hk"
   done
   git config core.hooksPath .claude/git-shim
-  echo "  SHIM installed -> core.hooksPath=.claude/git-shim (kit + $ORIG_HOOKS run together)"
+  say 'SHIM installed -> core.hooksPath=.claude/git-shim (kit + %s run together)' "$ORIG_HOOKS"
 fi
-[ "$GITKIND" = "worktree/submodule (.git file)" ] && warn "worktree/submodule: core.hooksPath may also affect the main checkout (git design)."
+[ "$GITKIND" = "worktree/submodule (.git file)" ] && warnm 'worktree/submodule: core.hooksPath may also affect the main checkout (git design).'
 
 # 4b) PROOF — is the kit actually working? (not a claim)
-h1 "Stage 4b — PROOF"
+h1m 'Stage 4b — PROOF'
 PROOF_OK=1; HP="$(git config --get core.hooksPath 2>/dev/null || echo .claude/hooks)"
 # 1) trace-scan git hook: a staged AI trace MUST be BLOCKED (NO real commit; run the hook directly)
 # move any allowlist aside so PROOF measures the SCANNER itself, not the project's own exemptions (else a loosened repo fails the proof)
@@ -972,22 +1210,22 @@ printf 'Co-Authored%s: Test <x@y.z>\n' '-By' > .kit-proof.txt   # not contiguous
 # A proof that can fail for a reason unrelated to what it proves is worse than no proof: it sends the reader
 # hunting a gate that is fine. (The allowlist is already handled above by moving it aside.)
 if ! git add -f .kit-proof.txt >/dev/null 2>&1 || [ -z "$(git diff --cached --name-only -- .kit-proof.txt 2>/dev/null)" ]; then
-  echo "  ~  PROOF-1: skipped — could not stage the probe file (nothing was measured)"
+  say '~  PROOF-1: skipped — could not stage the probe file (nothing was measured)'
 elif bash "$HP/pre-commit" >/tmp/kitproof.$$ 2>&1; then
-  warn "PROOF-1 FAILED: the trace scan LET THROUGH the AI trace"; PROOF_OK=0
+  warnm 'PROOF-1 FAILED: the trace scan LET THROUGH the AI trace'; PROOF_OK=0
 elif grep -qiE 'TRACE-SCANNER|Commit stopped|forbidden' /tmp/kitproof.$$; then
-  echo "  OK · PROOF-1: staged AI trace BLOCKED by the trace scan"
-else echo "  ~  PROOF-1: hook blocked ($(head -1 /tmp/kitproof.$$ 2>/dev/null))"; fi
+  say 'OK · PROOF-1: staged AI trace BLOCKED by the trace scan'
+else say '~  PROOF-1: hook blocked (%s)' "$(head -1 /tmp/kitproof.$$ 2>/dev/null)"; fi
 git reset -q .kit-proof.txt 2>/dev/null; rm -f .kit-proof.txt /tmp/kitproof.$$
 [ -f .trace-allowlist.txt.proofbak ] && mv .trace-allowlist.txt.proofbak .trace-allowlist.txt 2>/dev/null
 # 2) guard-bash git-approval gate: keyless 'git commit' -> block
 if printf '{"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}' | bash .claude/hooks/guard-bash.sh >/dev/null 2>&1; then
-  warn "PROOF-2 FAILED: guard-bash LET THROUGH the keyless commit"; PROOF_OK=0
-else echo "  OK · PROOF-2: guard-bash BLOCKED the keyless 'git commit' (holds in auto/bypass too)"; fi
+  warnm 'PROOF-2 FAILED: guard-bash LET THROUGH the keyless commit'; PROOF_OK=0
+else say "OK · PROOF-2: guard-bash BLOCKED the keyless 'git commit' (holds in auto/bypass too)"; fi
 # 3) can the kit agents + discipline be loaded
 NCCK="$(ls .claude/agents/*-csk.md 2>/dev/null | wc -l | tr -d ' ')"
-if [ "${NCCK:-0}" -ge 1 ]; then echo "  OK · PROOF-3: $NCCK kit agents (-csk) installed + discoverable"; else warn "PROOF-3: no kit agent"; PROOF_OK=0; fi
-if [ -s .claude/DISCIPLINE.md ] && grep -qF '@.claude/DISCIPLINE.md' CLAUDE.md; then echo "  OK · PROOF-4: DISCIPLINE.md loaded + @import-ed from CLAUDE.md"; else warn "PROOF-4: discipline not linked"; PROOF_OK=0; fi
+if [ "${NCCK:-0}" -ge 1 ]; then say 'OK · PROOF-3: %s kit agents (-csk) installed + discoverable' "$NCCK"; else warnm 'PROOF-3: no kit agent'; PROOF_OK=0; fi
+if [ -s .claude/DISCIPLINE.md ] && grep -qF '@.claude/DISCIPLINE.md' CLAUDE.md; then say 'OK · PROOF-4: DISCIPLINE.md loaded + @import-ed from CLAUDE.md'; else warnm 'PROOF-4: discipline not linked'; PROOF_OK=0; fi
 # PROOF-5: a takeover renamed the project's agents to `-csk`, but CLAUDE.md — or an orchestration doc it points to
 # (e.g. "detail: docs/AGENTS.md") — may still name the OLD bare agent, which now matches no installed agent, so
 # delegation to it silently fails. We follow CLAUDE.md's reference chain (its @imports + docs/…md paths) so the
@@ -1019,8 +1257,9 @@ if [ -f CLAUDE.md ] && ls .claude/agents/*-csk.md >/dev/null 2>&1; then
   export CSK_AGENT_BASES
   while IFS="$(printf '\t')" read -r base aname f lines; do
     [ -n "$base" ] || continue
+    _mt '%s line(s): %s' "$f" "$lines"
     entry="
-     ↳ \"$base\" → \"$aname\"  ($f line(s): $lines)"
+     ↳ \"$base\" → \"$aname\"  ($_M)"
     case "$PULL_AGENTS" in *" $aname "*) STALE_PULL="$STALE_PULL$entry" ;; *) STALE="$STALE$entry" ;; esac
   done <<EOF
 $(awk '
@@ -1041,18 +1280,18 @@ $(awk '
         if ((i, order[j]) in hit) print base[i] "\t" full[i] "\t" order[j] "\t" hit[i, order[j]]
   }' $SCAN 2>/dev/null)
 EOF
-  [ -n "$STALE" ] && warn "PROOF-5: CLAUDE.md (or a doc it references) names auto-delegated agent(s) by an old bare id — rename each to its -csk id, else delegation to them silently fails:$STALE"
-  [ -n "$STALE_PULL" ] && warn "PROOF-5: CLAUDE.md (or a referenced doc) names pull-only agent(s) by an old bare id (still work; rename for consistency):$STALE_PULL"
+  [ -n "$STALE" ] && warnm 'PROOF-5: CLAUDE.md (or a doc it references) names auto-delegated agent(s) by an old bare id — rename each to its -csk id, else delegation to them silently fails:%s' "$STALE"
+  [ -n "$STALE_PULL" ] && warnm 'PROOF-5: CLAUDE.md (or a referenced doc) names pull-only agent(s) by an old bare id (still work; rename for consistency):%s' "$STALE_PULL"
 fi
-[ "$PROOF_OK" = 1 ] && h1 "PROOF: kit 100% ACTIVE — gates armed, agents + discipline loaded" || warn "PROOF: some gates could not be verified (see above)"
+[ "$PROOF_OK" = 1 ] && h1m 'PROOF: kit 100%% ACTIVE — gates armed, agents + discipline loaded' || warnm 'PROOF: some gates could not be verified (see above)'
 
 # ============ [STAGE B] APPLY THE DECISIONS ============
-h1 "Stage B — apply the decisions"
+h1m 'Stage B — apply the decisions'
 # #3 loosen trace gate -> repo-root .trace-allowlist.txt (co-author/sign-off exempt from the trace scan)
 if [ "$DEC3" = loosen ]; then
   { [ -f .trace-allowlist.txt ] && cat .trace-allowlist.txt; printf 'Co-Authored%s\n' '-By'; } | sort -u > .trace-allowlist.txt.t && mv .trace-allowlist.txt.t .trace-allowlist.txt
-  echo "  #3 loosen -> .trace-allowlist.txt (co-author trailer exempt)"
-else echo "  #3 keep -> full trace scan"; fi
+  say '#3 loosen -> .trace-allowlist.txt (co-author trailer exempt)'
+else say '#3 keep -> full trace scan'; fi
 # #4 share/hide — the payload is ALWAYS committed to the review branch (so the diff is real + rollback stays clean);
 # 'hide' becomes a post-merge follow-up in HANDOVER. (Gitignoring .claude BEFORE the commit would drop it from the
 # review diff and leave it untracked after a rollback -> 'project untouched' would be a lie.)
@@ -1063,7 +1302,7 @@ if [ "$DEC4" = hide ]; then
   # in the shared repository. The two files the adoption force-added are named explicitly, because they are
   # tracked despite the ignore rule and `git rm --cached docs` alone would not reach them.
   HIDE_NOTE="Keep the kit local after merging:  git rm -r --cached .claude CLAUDE.md docs  &&  printf '.claude/\nCLAUDE.md\ndocs/\n' >> .gitignore  &&  git commit -m 'kit: keep local'"
-  echo "  #4 hide -> recorded; .claude stays TRACKED on the branch (rollback-safe). Post-merge steps in HANDOVER."
+  say '#4 hide -> recorded; .claude stays TRACKED on the branch (rollback-safe). Post-merge steps in HANDOVER.'
 else
   # `share` is a NO-OP by design: the installer never stages a user's files, it only declines to add a
   # .gitignore entry. Saying "tracked + shared with the team" therefore reported an outcome it had neither
@@ -1071,11 +1310,11 @@ else
   # already covers .claude/ and `git ls-files .claude` returns nothing. Report the state that IS true, and
   # say plainly which part is left to the user.
   if [ "$TRACKED" = 1 ]; then
-    echo "  #4 share -> .claude/CLAUDE.md is tracked; nothing added to .gitignore, so it stays shared"
+    say '#4 share -> .claude/CLAUDE.md is tracked; nothing added to .gitignore, so it stays shared'
   elif git check-ignore -q .claude 2>/dev/null; then
-    echo "  #4 share -> nothing added to .gitignore, but this repo ALREADY ignores .claude — the stage step skips it, so it is NOT shared"
+    say '#4 share -> nothing added to .gitignore, but this repo ALREADY ignores .claude — the stage step skips it, so it is NOT shared'
   else
-    echo "  #4 share -> nothing added to .gitignore; the stage step below adds .claude — commit it to share it"
+    say '#4 share -> nothing added to .gitignore; the stage step below adds .claude — commit it to share it'
   fi
 fi
 # #1 merge: document (NO automatic risky merge — red-team; merging is a human-approved follow-up)
@@ -1087,15 +1326,15 @@ esac
 # #7 off-repo transfer: paste from the user (interactive; skipped on non-TTY and under --yes)
 OFFREPO_TEXT=""
 if [ "$DEC7" = transfer ] && [ -t 0 ] && [ "${ASSUME_YES:-0}" != 1 ]; then
-  h1 "#7 off-repo decisions — paste them here"
-  sub "Write the decisions made in chat/on the web but NOT in the repo. When done, an EMPTY line (Enter)."
+  h1m '#7 off-repo decisions — paste them here'
+  subm 'Write the decisions made in chat/on the web but NOT in the repo. When done, an EMPTY line (Enter).'
   while IFS= read -r line; do [ -z "$line" ] && break; OFFREPO_TEXT="$OFFREPO_TEXT
 - $line"; done
-  [ -n "$OFFREPO_TEXT" ] && echo "  #7 -> $(printf '%s' "$OFFREPO_TEXT" | grep -c .) lines will go into HANDOVER" || echo "  #7 -> empty"
+  [ -n "$OFFREPO_TEXT" ] && say '#7 -> %s lines will go into HANDOVER' "$(printf '%s' "$OFFREPO_TEXT" | grep -c .)" || say '#7 -> empty'
 fi
 
 # ============ [STAGE 5] HANDOVER.md + ADR (decisions persist) ============
-h1 "Stage 5 — HANDOVER.md + ADR (handover persists; decisions are not lost)"
+h1m 'Stage 5 — HANDOVER.md + ADR (handover persists; decisions are not lost)'
 mkdir -p docs docs/adr
 DATE_H="$(date +%Y-%m-%d)"
 # compute the decision values first (avoid inner-quote/command-sub tangle in the heredoc)
@@ -1123,7 +1362,7 @@ cat > docs/HANDOVER.md <<HAND
 - Kit agents: $NCCK (-csk namespace; no clash with project agents).
 - Project agents: $N_PAGENTS — UNTOUCHED, in place + active (recursive discovery).
 - Discipline: .claude/DISCIPLINE.md + @import into the project CLAUDE.md (content untouched).
-- settings.json: hook-aware merge (kit hooks REFRESHED to current — new events + timeouts land; your own custom hooks/permissions PRESERVED${RET_GONE:+, except the retired §4.4 ask rule(s) REMOVED: $RET_GONE — guard-bash.sh asks for these itself}).
+- settings.json: $HAND_SET.
 - Git gates: $HOOKDESC.
 - Overlapping roles: $MERGE_NOTE.
 - $BR_HANDOVER_LINE
@@ -1151,7 +1390,7 @@ $OFFSEC
 ---
 Generated: kit adopt · $DATE_H · $GEN_WHERE  (apart from this line there is NO tool SIGNATURE)
 HAND
-echo "  docs/HANDOVER.md written"
+say '%s written' docs/HANDOVER.md
 
 # 5b) ADR-0001 — the handover itself is a persistent decision (never-overwrite)
 ADR1="docs/adr/0001-agentic-kit-adoption.md"
@@ -1177,9 +1416,9 @@ Goal: don't break the project, don't lose decisions made, don't leave the kit pa
 From now on decisions are written as ADRs under docs/adr/, NOT in chat (persistence).
 Inherited stale rules are subject to "confirm"; not authoritative until verified with code.
 ADR
-  echo "  $ADR1 written (persistent handover decision)"
+  say '%s written (persistent handover decision)' "$ADR1"
 else
-  echo "  $ADR1 already exists — untouched (never-overwrite)"
+  say '%s already exists — untouched (never-overwrite)' "$ADR1"
 fi
 
 # The §4.6 review record is runtime state, not configuration. `start.sh` gitignores `.claude/` wholesale so it
@@ -1222,7 +1461,7 @@ if ! git check-ignore -q .claude 2>/dev/null; then
       fi
       printf '%s\n' "$_gal" >> .gitattributes
     done
-    printf '  + .gitattributes: eol pins so the shared hooks stay LF on a Windows checkout\n'
+    say '+ .gitattributes: eol pins so the shared hooks stay LF on a Windows checkout'
   fi
 fi
 
@@ -1239,21 +1478,22 @@ git add -f docs/HANDOVER.md "$ADR1" >/dev/null 2>&1
 # NO auto-commit: the change set stays STAGED-but-uncommitted on branch $BR, so every added/changed file shows up
 # in your editor's Source Control / Changes panel for review. HEAD is untouched until you commit yourself.
 
-h1 "$(m 'Review in your editor — nothing committed yet')"
-row "staged" "$(git diff --cached --stat 2>/dev/null | tail -1 || echo '(none)')"
+h1m 'Review in your editor — nothing committed yet'
+rowv 'staged' "$(git diff --cached --stat 2>/dev/null | tail -1 || echo '(none)')"   # git's own stat line
 sub "$ONBRANCH_LINE"
-sub "see it:   open the Source Control / Changes panel (every added + changed file is listed)  ·  or: git status"
+subm 'see it:   open the Source Control / Changes panel (every added + changed file is listed)  ·  or: %s' 'git status'
 # The refresh is how an existing project gains the panel, and until now its closing
 # summary named neither the panel nor node — so a machine without node finished
 # quietly and the user found out later, at first use. That is the report this
 # whole round came from.
 if bash "$SRC/eval/preflight.sh" --has node 2>/dev/null; then
-  sub "panel:    /studio-csk opens it from this project (or: node .claude/studio/server/index.js --open)"
+  subm 'panel:    %s opens it from this project (or: %s)' /studio-csk 'node .claude/studio/server/index.js --open'
 else
-  sub "panel:    needs Node 18+, absent here — the kit can fetch one: bash .claude/studio/ensure-node.sh --plan"
-  sub "          (it asks first, verifies the checksum, and touches nothing outside ~/.claude/studio-runtime)"
+  subm 'panel:    needs Node 18+, absent here — the kit can fetch one: %s' 'bash .claude/studio/ensure-node.sh --plan'
+  _mt '(it asks first, verifies the checksum, and touches nothing outside %s)' '~/.claude/studio-runtime'; sub "          $_M"
 fi
 sub "$ACCEPT_LINE"
 sub "$DISCARD_LINE"
-warn "If Claude Code is running in this project, run /compact (or /clear) — CLAUDE.md and the discipline reload"
-printf '     %son /compact and /clear in the same process, so a session opened before this run stops quoting the old rules (no restart needed).%s\n' "$D" "$R"
+warnm 'If Claude Code is running in this project, run /compact (or /clear) — CLAUDE.md and the discipline reload'
+_mt 'on /compact and /clear in the same process, so a session opened before this run stops quoting the old rules (no restart needed).'
+printf '     %s%s%s\n' "$D" "$_M" "$R"

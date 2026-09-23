@@ -16,6 +16,11 @@ mkdir -p "$OUT/.claude-plugin" "$OUT/hooks"
 cp -R "$SRC/agents"   "$OUT/agents"
 cp -R "$SRC/skills"   "$OUT/skills"
 cp -R "$SRC/commands" "$OUT/commands"
+# The kit's one JSON reader. A skill script reaches it at scripts/../../../eval/lib in BOTH editions
+# (automode-policy/scripts/apply.sh merges the user's settings with it), so it ships at the same relative spot
+# here. Only lib/ — the rest of eval/ is install-only tooling the plugin does not carry.
+mkdir -p "$OUT/eval"
+cp -R "$SRC/eval/lib" "$OUT/eval/lib"
 
 # The panel. Measured, not assumed, before this line was written:
 #   - a plugin's whole directory is copied to the user's machine on install; no manifest field opts a
