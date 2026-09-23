@@ -1439,3 +1439,9 @@ sub "$DISCARD_LINE"
 warnm 'If Claude Code is running in this project, run /compact (or /clear) — CLAUDE.md and the discipline reload'
 _mt 'on /compact and /clear in the same process, so a session opened before this run stops quoting the old rules (no restart needed).'
 printf '     %s%s%s\n' "$D" "$_M" "$R"
+# The star line, once per kit version: a first adopt, or the first update to a new version. lib/star.sh keeps
+# the marker (shared with doctor.sh) and owns the text, URL and the CSK_NO_STAR / CI silence.
+if [ -f .claude/eval/lib/star.sh ]; then
+  _S="$(bash .claude/eval/lib/star.sh --once . 2>/dev/null || true)"
+  if [ -n "$_S" ]; then printf '\n%s\n' "$_S"; fi   # an `&&` here was the script's LAST status: rc=1 on every update
+fi

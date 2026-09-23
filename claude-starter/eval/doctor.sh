@@ -302,6 +302,9 @@ if [ -d .claude/studio ] && ! bash "$PREFLIGHT" --has node 2>/dev/null; then
   PANEL_NOTE=" · panel needs Node 18+ — .claude/studio/ensure-node.sh --plan fetches one"
 fi
 if [ "$FAIL" -eq 0 ]; then echo "DOCTOR: healthy ✅$PANEL_NOTE"
+  # Healthy verdict: the star line, once per kit version — the marker is shared with the installers, so the
+  # doctor run that /update-csk makes right after an update stays quiet. Text/URL/silence: lib/star.sh.
+  [ -f "$(dirname "$0")/lib/star.sh" ] && bash "$(dirname "$0")/lib/star.sh" --once .
 else echo "DOCTOR: $FAIL issue(s) ❌ — apply the fixes above$PANEL_NOTE"; fi
 
 # 8b) The shell matcher. Claude Code's hooks reference is explicit: inspect shell commands with

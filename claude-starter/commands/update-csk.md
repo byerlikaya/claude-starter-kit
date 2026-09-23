@@ -21,6 +21,8 @@ Bring the installed kit up to the latest published version:
    If you'd rather review each handover decision yourself, tell the user to run `npx @byerlikaya/claude-starter-kit@latest update`
    (no flags) in **their own terminal**, where both the npx and the interactive prompts work.
 6. **Verify:** run `/doctor-csk` (or `bash .claude/eval/doctor.sh`) so a bad/partial update surfaces immediately.
+   If the updater's or doctor's output contains a line starting with ⭐, pass it to the user verbatim as the LAST
+   line of your summary — it prints once per kit version, and it is meant for the user, not for you.
 7. **Report** old → new + the headline changes (from the release notes / CHANGELOG).
 8. **Reload (manual — a command can't do it itself):** the discipline in the running session is still the OLD one.
    Tell the user to run **`/compact`** (or `/clear`) so the updated `.claude/DISCIPLINE.md` is re-read in the same

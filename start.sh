@@ -733,4 +733,10 @@ else
   { _mt 'verified against the published checksum, into %s, nothing else touched).' '~/.claude/studio-runtime'; echo "       ${_M}"; }
   { _mt 'Every gate still holds meanwhile; the panel is the only part that needs node.'; echo "       ${_M}"; }
 fi
+# The star line, once per kit version (lib/star.sh keeps the marker in the git dir; text, URL and the
+# CSK_NO_STAR / CI silence live there too). `_S` first so the blank line appears only when the line does.
+if [ -f .claude/eval/lib/star.sh ]; then
+  _S="$(bash .claude/eval/lib/star.sh --once . 2>/dev/null || true)"
+  if [ -n "$_S" ]; then printf '\n%s\n' "$_S"; fi   # an `&&` here was the script's LAST status: rc=1 on every update
+fi
 rm -f -- "$0"

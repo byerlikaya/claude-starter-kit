@@ -117,23 +117,26 @@ prose_chk "commands" "$COMMANDS" "commands?|komut"
 # rects into the diagram core. Three hand-kept copies drift; that is what this repo gates everywhere else.
 # Compared on SHAPE, not bytes: the site writes single quotes and %23 for #, and omits width/height, so both
 # sides are reduced to the same canonical fragment before the strings are compared.
-# Truncated at the FIRST </g> on purpose: gen-network wraps the mark in an extra translate/scale group, so a
-# greedy match there swallows one closing tag more than the other two have and the comparison fails on the
-# wrapper rather than on the artwork.
+# The fragment is the 200x200 background tile plus the strokes drawn on it — exactly those elements, so a
+# wrapper group (gen-network adds a translate/scale one) or a trailing </svg> is never part of the comparison.
+# Written for the ››› mark (three polylines, since the Crewforth set). A copy still drawing the OLD mark
+# (rotated rects) yields no fragment and is reported "not found", which is a drift too.
 canon_mark() {   # stdin: any svg text -> the mark fragment, quote/encoding/whitespace normalised
   sed "s/%23/#/g; s/'/\"/g" | tr -d ' \n\r\t' \
-    | grep -oE '<rectwidth="200".*' | head -1 | sed 's|</g>.*|</g>|'
+    | grep -oE '<rectwidth="200"height="200"[^>]*/>(<polyline[^>]*/>)+' | head -1
 }
 # Displayed as a short digest — the fragment itself is 250 characters and three of them on one line is a wall
 # nobody reads. A mismatch prints both digests; the fragments are two `canon_mark` calls away when you need them.
 dig() { printf '%s' "$1" | cksum | awk '{print $1}'; }
 SRC_MARK="$(canon_mark < assets/icon.svg 2>/dev/null || true)"
 SITE_MARK="$(printf '%s' "$HTML" | grep -F 'rel="icon"' | canon_mark || true)"
-GEN_MARK="$(grep -oE "'<rect[^']*'" packaging/gen-network.py 2>/dev/null | tr -d "'" | tr -d '\n' | canon_mark || true)"
+GEN_MARK="$(grep -oE "'<(rect|polyline)[^']*'" packaging/gen-network.py 2>/dev/null | tr -d "'" | tr -d '\n' | canon_mark || true)"
 # Not routed through chk(): its wording is "site says …", which would point a reader at the gh-pages branch for
 # a mismatch that lives in a python file in this repo.
-mark_chk() {   # $1 = where this copy lives, $2 = its fragment
-  if [ -z "$2" ]; then
+mark_chk() {   # $1 = where this copy lives, $2 = its fragment, $3 = that copy's raw text (optional)
+  if [ -z "$2" ] && printf '%s' "${3:-}" | tr -d ' \n\r\t' | grep -q 'rotate(20100100)'; then
+    echo "  ❌ brand mark in $1 is still the pre-Crewforth mark (rotated bars) — redraw it from assets/icon.svg"; FAIL=1
+  elif [ -z "$2" ]; then
     echo "  ⚠️  brand mark in $1: not found — the markup changed; update this check, don't ignore it"; FAIL=1
   elif [ "$2" = "$SRC_MARK" ]; then
     echo "  ✅ brand mark in $1 matches assets/icon.svg ($(dig "$2"))"
@@ -144,8 +147,8 @@ mark_chk() {   # $1 = where this copy lives, $2 = its fragment
 if [ -z "$SRC_MARK" ]; then
   echo "  ⚠️  brand mark: assets/icon.svg did not parse — it is the source of the other two copies"; FAIL=1
 else
-  mark_chk "the published favicon"      "$SITE_MARK"
-  mark_chk "packaging/gen-network.py"   "$GEN_MARK"
+  mark_chk "the published favicon"      "$SITE_MARK" "$(printf '%s' "$HTML" | grep -F 'rel="icon"' || true)"
+  mark_chk "packaging/gen-network.py"   "$GEN_MARK" "$(cat packaging/gen-network.py 2>/dev/null)"
 fi
 
 echo "---"

@@ -1,22 +1,37 @@
 <div align="center">
 
-<img src="assets/logo.svg" alt="Claude Starter Kit" width="460">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/logo.svg">
+  <source media="(prefers-color-scheme: light)" srcset="assets/logo-light.svg">
+  <img src="assets/logo.svg" alt="Crewforth" width="420">
+</picture>
 
-**Tek bir asistan değil. Gerçekten işleyen bir mühendislik ekibi.**
+**Claude Code için mühendislik ekibiniz.**
 
-12 uzman agent işi planlar, yazar, güvenlik ve test incelemesinden geçirir, sonra kapatır
+12 uzman değişikliğinizi planlar, yazar, inceler ve yayına taşır — yığınınız ne olursa olsun —<br>
+önemli kurallar da akılda tutulmaya bırakılmaz, uygulanır.
+
+</div>
+
+```bash
+npx crewforth          # yeni proje
+npx crewforth adopt    # mevcut depo — ayrı bir dalda devralınır, main'inize dokunulmaz
+```
+
+<div align="center">
 
 ![Sürüm](https://img.shields.io/badge/version-2.13.0-2563eb?style=flat-square)
 ![Lisans](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)
 ![Agent](https://img.shields.io/badge/agents-12-f59e0b?style=flat-square)
 ![Skill](https://img.shields.io/badge/skills-40-f59e0b?style=flat-square)
-![Claude Code](https://img.shields.io/badge/Claude_Code-agentic_kit-8b5cf6?style=flat-square)
 
 [🇬🇧 English](README.md) · 🇹🇷 Türkçe
 
 <img src="assets/studio-flow.gif" alt="Panelde kendini kuran bir delegasyon: ajanlar doğdukça beliriyor, kesik çizgiler oturumdan canlı olan her dala akıyor, bir workflow koşusu üyeleriyle doluyor ve bir ajan düşüyor" width="880">
 
 <sub>On iki ajan, doğduğu anda tek tuvalde beliriyor: kitin ajanları kendi renkleriyle, Claude'un yerleşikleri ayrı bir paletle.<br>Panel bu depoda; <a href="#canlı-panel">Canlı panel</a> bölümüne bakın.</sub>
+
+<!-- PROOF: Faz 3 ölçümünden sonra buraya tek satırlık kanıt gelir. O zamana kadar boş — ölçülmemiş rakam yayınlanmaz. -->
 
 </div>
 
@@ -37,9 +52,11 @@ Claude Code'da her iş tek bir yerde olup biter: siz söylersiniz, model yazar. 
 ## Hızlı başlangıç
 
 ```bash
-npx @byerlikaya/claude-starter-kit          # yeni proje: kurulum sihirbazı
-npx @byerlikaya/claude-starter-kit adopt    # mevcut proje: dal üzerinde devir
+npx crewforth          # yeni proje: kurulum sihirbazı
+npx crewforth adopt    # mevcut proje: dal üzerinde devir
 ```
+
+<sub>Önceki komut, `npx @byerlikaya/claude-starter-kit`, hâlâ çalışıyor ve aynı kiti kuruyor.</sub>
 
 Ardından Claude Code'u açıp **`/doctor-csk`** komutunu çalıştırın: kurulumun bağlanıp bağlanmadığını doğruluyor ve projenin hazırlık puanını veriyor. Homebrew, sürüm arşivi ve plugin sürümü için [Kurulum](#kurulum) bölümüne bakın.
 
