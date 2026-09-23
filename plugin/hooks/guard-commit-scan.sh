@@ -463,7 +463,25 @@ $(bash "$DIR/commit-msg" "$MF" 2>&1)" || FAILED=1
     # machines with no python it read `-F "my msg.txt"` as `my` — measured, 5 of 12 shapes wrong (quoted or
     # spaced paths, a repeated -F, a Windows backslash path) — and the branch below then refused a CLEAN
     # commit. 12/12 now equal what shlex returned.
-    MFILE="$(csk_opt_values "$CMD" -F --file 1)" || MFILE=""
+    #
+    # The LAST -F wins, because that is the file git reads: measured on git 2.54, `commit -F one -F two` commits
+    # two. Taking the first (what shlex-first-match did) let `-F clean.txt -F traced.txt` scan the clean file and
+    # commit the traced one — a §4.1 hole, found in review. And when the tokenizer cannot parse the line (a shape
+    # it does not model, e.g. ANSI-C `$'…'` quoting later in the command), a -F is still there: fall back to the
+    # greedy extraction (last match), and if even that names no readable file, refuse rather than skip.
+    if MFILE="$(csk_opt_values "$CMD" -F --file)"; then
+      MFILE="${MFILE##*$'\n'}"
+    else
+      MFILE="$(printf '%s' "$CMD" \
+        | sed -n 's/.*[[:space:]]--\{0,1\}[Ff]\(ile\)\{0,1\}[[:space:]=]\{1,\}\([^[:space:];&|]\{1,\}\).*/\2/p' | head -1)"
+      MFILE="${MFILE%\"}"; MFILE="${MFILE#\"}"; MFILE="${MFILE%\'}"; MFILE="${MFILE#\'}"
+      if printf '%s' "$CMD" | grep -qE '(^|[[:space:]])(-F|--file)([[:space:]=]|$)' && { [ -z "$MFILE" ] || [ ! -f "$MFILE" ]; }; then
+        echo "GUARD (§4.1): this commit reads its message from a file (-F), and the command could not be parsed" >&2
+        echo "well enough to know which file. Scan cannot run, so the commit is refused. Commit with a plain" >&2
+        echo "-F <path> (or -m) in a command of its own." >&2
+        exit 2
+      fi
+    fi
     if [ -n "$MFILE" ] && [ -f "$MFILE" ]; then
       OUT="$OUT
 $(bash "$DIR/commit-msg" "$MFILE" 2>&1)" || FAILED=1

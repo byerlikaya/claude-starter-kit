@@ -29,7 +29,8 @@ SRC="$HERE/claude-starter"
 BRANCH_MODE=""; ASSUME_YES=0
 _lang_flag=""; _lang_take=0
 for _a in "$@"; do
-  if [ "$_lang_take" = 1 ]; then _lang_flag="$_a"; _lang_take=0; continue; fi
+  # `--lang` with no value must not swallow the next flag: `--lang --yes` is --yes with no language given.
+  if [ "$_lang_take" = 1 ]; then _lang_take=0; case "$_a" in -*) ;; *) _lang_flag="$_a"; continue ;; esac; fi
   case "$_a" in
   --here)       BRANCH_MODE=here ;;
   --new-branch) BRANCH_MODE=new  ;;
@@ -75,6 +76,8 @@ export CSK_LANG
 # every update. The helpers below (say/h1m/subm/warnm/rowm/rowv/propm, ask_yes) all go through _mt.
 m() { _mt "$@"; printf '%s' "$_M"; }
 _mt() {   # $1 = English text (the key); further args fill %s; result in _M
+  # An empty key must still ASSIGN: bash 3.2's `printf -v _M ""` leaves _M holding the previous translation.
+  [ -n "${1:-}" ] || { _M=""; return 0; }
   local s="$1"; shift
   if [ "$CSK_LANG" = tr ]; then
     case "$s" in
@@ -146,7 +149,7 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "local + ask") s='yerel + sor' ;;
       "some decisions are in files; still may be in-chat (asked during the stage)") s='kararların bir kısmı dosyalarda; sohbette kalanlar olabilir (aşama sırasında sorulur)' ;;
       "Review the decisions") s='Kararları gözden geçirin' ;;
-      "[%s/%s] (current: %s, ENTER=keep): ") s='[%s/%s] (şu an: %s, ENTER=aynen kalsın):' ;;
+      "[%s/%s] (current: %s, ENTER=keep): ") s='[%s/%s] (şu an: %s, ENTER=aynen kalsın): ' ;;
       'type "%s" or "%s" (or ENTER to keep "%s")') s='"%s" ya da "%s" yazın ("%s" kalsın diye yalnız ENTER)' ;;
       "Accept all smart suggestions?") s='Tüm akıllı öneriler kabul edilsin mi?' ;;
       "All smart suggestions accepted.") s='Tüm akıllı öneriler kabul edildi.' ;;
@@ -296,6 +299,22 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "[yes/no]") s='[evet/hayır]' ;;
       "(non-interactive — pass --yes to apply)") s='(etkileşimsiz — uygulamak için --yes ekleyin)' ;;
       "ERROR: the %s sentinel line is missing from %s — refusing to guess the discipline/project split.") s='HATA: %s işaret satırı yok (dosya: %s) — disiplin ile proje bölümünün sınırı tahmin edilmeyecek.' ;;
+      "studio (panel)") ;;   # identifier, printed as is
+      "settings.json") ;;   # identifier, printed as is
+      "eval") ;;   # identifier, printed as is
+      "Node/JS") ;;   # identifier, printed as is
+      "Go") ;;   # identifier, printed as is
+      "Python") ;;   # identifier, printed as is
+      ".NET") ;;   # identifier, printed as is
+      "CLAUDE.md") ;;   # identifier, printed as is
+      "6 Brownfield DoD") ;;   # identifier, printed as is
+      ".claude/") ;;   # identifier, printed as is
+      "git") ;;   # identifier, printed as is
+      "husky (.husky/)") ;;   # identifier, printed as is
+      "lefthook") ;;   # identifier, printed as is
+      # No row: the line prints in English. CSK_I18N_MISS (set by e2e case 18) collects every such key, so a
+      # missing translation is caught by NAME rather than guessed from which English words it happens to contain.
+      *) [ -n "${CSK_I18N_MISS:-}" ] && printf '%s\n' "$s" >> "$CSK_I18N_MISS" ;;
     esac
   fi
   # shellcheck disable=SC2059
@@ -486,7 +505,9 @@ esac
 [ -d .husky ] && HOOKSYS="husky (.husky/)"
 { [ -f lefthook.yml ] || [ -f .lefthook.yml ]; } && HOOKSYS="lefthook"
 [ -f .pre-commit-config.yaml ] && HOOKSYS="pre-commit framework"
-rowm 'git hook system' "${HOOKSYS//%/%%}"   # %-escaped: it can carry a core.hooksPath value, and the value is a format
+# A core.hooksPath value is DATA (a Windows one carries backslashes, which a printf format would expand: `\t`, `\n`),
+# so it goes in as a plain value; only the fixed names are table keys.
+case "$HOOKSYS" in core.hooksPath=*) rowv 'git hook system' "$HOOKSYS" ;; *) rowm 'git hook system' "$HOOKSYS" ;; esac
 
 # stack hint (context). Look PAST the root: a .NET solution commonly lives in ./backend, ./src, ./server — the
 # old root-only `ls ./*.sln` reported "unknown" for exactly those layouts and the install silently fell back to
@@ -618,7 +639,7 @@ fi
 if [ "$HOOKSYS" = "none" ]; then
   propm '5 Git hooks' 'install directly' 'no existing hook system'
 else
-  _mt "${HOOKSYS//%/%%}"   # the display name ("kit (already armed)" has a row), expanded before propm reuses _M
+  case "$HOOKSYS" in core.hooksPath=*) _M="$HOOKSYS" ;; *) _mt "$HOOKSYS" ;; esac   # a path is data, a name is a key
   propm '5 Git hooks' 'SHIM (bridge)' 'existing %s present — let both run' "$_M"
 fi
 propm '6 Brownfield DoD' 'baseline+regression' 'existing code debt unknown; absolute 0/0/0/0 is risky'
@@ -1111,13 +1132,17 @@ SET_NOTE=""; RET_HIT=""; [ -f "$PSET" ] && for _r in 'git add' 'git commit' 'git
   grep -qF "\"Bash($_r:*)\"" "$PSET" && RET_HIT="$RET_HIT${RET_HIT:+|}$_r"; done
 if [ -n "$RET_HIT" ]; then _mt 'custom hooks and every other permission PRESERVED'; else _mt 'custom hooks/permissions PRESERVED'; fi
 KEPT="$_M"   # terminal-only (HANDOVER.md words its own line), so translated
+SET_FRESH=0
 if [ ! -f "$PSET" ]; then
+  SET_FRESH=1
   [ -f "$KSET" ] && { cp "$KSET" "$PSET"; say "settings.json: was missing in the project -> the kit's was installed"; }
 else
   awk -v op=merge -v retired='Bash(git add:*)|Bash(git commit:*)|Bash(git push:*)|Bash(git checkout -b:*)' -f "$SET_AWK" "$KSET" "$PSET" > "$PSET.tmp" 2>/dev/null
   case "$?" in
     0) if [ -s "$PSET.tmp" ] && awk -v op=validate -f "$SET_AWK" "$PSET.tmp" 2>/dev/null; then
-         mv "$PSET.tmp" "$PSET"; say 'settings.json: hook-aware MERGE (kit hooks refreshed - %s)' "$KEPT"
+         # Written THROUGH the existing file, not swapped in with mv: a symlinked settings.json (a team's shared
+         # file) keeps its link and gets the merge, and a 0600 mode survives.
+         cat "$PSET.tmp" > "$PSET"; say 'settings.json: hook-aware MERGE (kit hooks refreshed - %s)' "$KEPT"
        else SET_NOTE="merge failed -> project setting PRESERVED (not overwritten)"; fi ;;
     10) SET_NOTE="existing file is INVALID JSON -> merge ABORT (no silent overwrite). Fix it by hand first." ;;
     *) SET_NOTE="merge failed -> project setting PRESERVED (not overwritten)" ;;
@@ -1132,6 +1157,7 @@ RET_GONE=""; _IFS="$IFS"; IFS='|'; for _r in $RET_HIT; do
 [ -n "$RET_GONE" ] && say 'settings.json: retired §4.4 ask rule(s) REMOVED (%s) — guard-bash.sh now asks for these itself; an ask rule would override its CLAUDE_GIT_OK allow. Re-add one only if your project wants that trade.' "$RET_GONE"
 # A refused or failed merge leaves the file as it was, so HANDOVER must not claim a merge that did not run.
 if [ -n "$SET_NOTE" ]; then HAND_SET="NOT merged — ${SET_NOTE%.}"
+elif [ "$SET_FRESH" = 1 ]; then HAND_SET="the kit's settings.json installed (the project had none, so nothing was merged)"
 else HAND_SET="hook-aware merge (kit hooks REFRESHED to current — new events + timeouts land; your own custom hooks/permissions PRESERVED${RET_GONE:+, except the retired §4.4 ask rule(s) REMOVED: $RET_GONE — guard-bash.sh asks for these itself})"; fi
 
 # ============ [STAGE 4] GIT-HOOK ARMING (SHIM) + PROOF ============

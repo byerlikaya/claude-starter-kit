@@ -93,6 +93,8 @@ esac
 # `_mt` writes into _M with printf -v: a `$(m …)` call site is a fork, ~50 ms each on Git Bash.
 m() { _mt "$@"; printf '%s' "$_M"; }
 _mt() {
+  # An empty key must still ASSIGN: bash 3.2's `printf -v _M ""` leaves _M holding the previous translation.
+  [ -n "${1:-}" ] || { _M=""; return 0; }
   local s="$1"; shift
   if [ "$CSK_LANG" = tr ]; then
     case "$s" in
@@ -115,6 +117,14 @@ _mt() {
       "the CSK Studio panel (/studio-csk); the gates themselves are bash and do not need it") s='CSK Studio paneli (/studio-csk) için; kapılar bash ile çalışır, Node gerektirmez' ;;
       "the skill-trust gate falls back to cksum (catches accidental edits, not crafted ones)") s="skill güven kapısı cksum'a düşer (kazara değişiklikleri yakalar, kasıtlı olanları yakalayamaz)" ;;
       "Windows/Linux: coreutils (sha256sum) · macOS: shasum is preinstalled") s='Windows/Linux: coreutils (sha256sum) · macOS: shasum hazır gelir' ;;
+      "bash") ;;   # identifier, printed as is
+      "awk") ;;   # identifier, printed as is
+      "git") ;;   # identifier, printed as is
+      "nodejs.org · Windows: winget install OpenJS.NodeJS.LTS · macOS: brew install node · Linux: apt install nodejs") ;;   # identifier, printed as is
+      "git-scm.com · macOS: xcode-select --install · Linux: apt install git") ;;   # identifier, printed as is
+      # No row: the line prints in English. CSK_I18N_MISS (set by e2e case 18) collects every such key, so a
+      # missing translation is caught by NAME rather than guessed from which English words it happens to contain.
+      *) [ -n "${CSK_I18N_MISS:-}" ] && printf '%s\n' "$s" >> "$CSK_I18N_MISS" ;;
     esac
   fi
   # shellcheck disable=SC2059

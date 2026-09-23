@@ -84,6 +84,8 @@ CSK_LANG=""
 # printf -v twin removed them. `m` stays as a thin wrapper for the rare nested case that needs a value inline.
 m() { _mt "$@"; printf '%s' "$_M"; }
 _mt() {   # $1 = English text (the key); further args fill %s; result in _M
+  # An empty key must still ASSIGN: bash 3.2's `printf -v _M ""` leaves _M holding the previous translation.
+  [ -n "${1:-}" ] || { _M=""; return 0; }
   local s="$1"; shift
   if [ "$CSK_LANG" = tr ]; then
     case "$s" in
@@ -201,6 +203,10 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "Layout: backend in ./backend · build your frontend in ./frontend · first agent task: rename DevArchitecture -> %s.") s="Düzen: backend ./backend içinde · frontend'i ./frontend içinde geliştirin · ajanın ilk işi: DevArchitecture adını %s ile değiştirmek." ;;
       "ERROR: the %s sentinel line is missing from %s — refusing to guess the discipline/project split.") s='HATA: %s işaret satırı %s içinde bulunamadı — disiplinin nerede bitip proje bölümünün nerede başladığı tahmin edilmeyecek.' ;;
       "Unknown parameter: %s") s='Bilinmeyen parametre: %s' ;;
+      ".gitignore") ;;   # identifier, printed as is
+      # No row: the line prints in English. CSK_I18N_MISS (set by e2e case 18) collects every such key, so a
+      # missing translation is caught by NAME rather than guessed from which English words it happens to contain.
+      *) [ -n "${CSK_I18N_MISS:-}" ] && printf '%s\n' "$s" >> "$CSK_I18N_MISS" ;;
     esac
   fi
   # shellcheck disable=SC2059
@@ -534,11 +540,13 @@ clone_devarch() {  # $1 = target dir; clone verbatim, drop nested .git, rename t
 # visibility question is: every piped caller feeds a fixed answer sequence, and one more read would shift it.
 _lang_flag=""; _lang_take=0; _lang_yes=0
 for a in "$@"; do
-  if [ "$_lang_take" = 1 ]; then _lang_flag="$a"; _lang_take=0; continue; fi
+  # `--lang` with no value must not swallow the next flag: `--lang --yes` is --yes with no language given.
+  if [ "$_lang_take" = 1 ]; then _lang_take=0; case "$a" in -*) ;; *) _lang_flag="$a"; continue ;; esac; fi
   case "$a" in
     --lang=*) _lang_flag="${a#--lang=}" ;;
     --lang)   _lang_take=1 ;;
     --yes|-y) _lang_yes=1 ;;
+    -h|--help|-v|--version) _lang_yes=1 ;;   # help and version answer at once, not after a language menu
   esac
 done
 _loc="${LC_ALL:-}"; [ -n "$_loc" ] || _loc="${LC_MESSAGES:-}"; [ -n "$_loc" ] || _loc="${LANG:-}"

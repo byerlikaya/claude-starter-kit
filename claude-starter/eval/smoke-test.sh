@@ -1947,7 +1947,8 @@ else skip tool "pre-commit scanner tests skipped (no working git — it must BUI
 sec "== 6g) stale-discipline gate: an update landing mid-session must be announced =="
 # CLAUDE.md loads once, at session start. If the kit is updated while a session runs, the model keeps quoting
 # the previous version's rules. Build a throwaway hooks/ + VERSION pair so the script resolves ../VERSION.
-SD="$(mktemp -d)"; mkdir -p "$SD/hooks"; cp "$HOOKS/context-usage.sh" "$SD/hooks/"
+SD="$(mktemp -d)"; mkdir -p "$SD/hooks" "$SD/eval/lib"; cp "$HOOKS/context-usage.sh" "$SD/hooks/"
+cp "$ROOT/eval/lib/settings-json.awk" "$SD/eval/lib/"   # a real install carries the reader context-usage parses with
 SDFX="$(mktemp)"; printf '%s\n' '{"type":"assistant","isSidechain":false,"message":{"usage":{"input_tokens":0,"cache_read_input_tokens":300000,"cache_creation_input_tokens":0}}}' > "$SDFX"
 SDSID="smoketest-stale-$$-${RANDOM:-0}"
 ups(){ printf '{"session_id":"%s","hook_event_name":"UserPromptSubmit","transcript_path":"%s"}' "$SDSID" "$SDFX"; }
@@ -1978,8 +1979,9 @@ sec "== 6g2) stale-WIRING gate: a session resumed across a kit update runs the o
 # the broken one. A hook cannot report its own absence, so this catches the other half: hooks that DO run, but
 # not the way the file on disk says they should. `$0` is the evidence — the kit wires `bash .claude/hooks/<n>.sh`,
 # so a correctly-launched hook sees a relative `$0` and anything else came from a different settings.json.
-SWD="$(mktemp -d)"; mkdir -p "$SWD/.claude/hooks"
+SWD="$(mktemp -d)"; mkdir -p "$SWD/.claude/hooks" "$SWD/.claude/eval/lib"
 cp "$HOOKS/context-usage.sh" "$SWD/.claude/hooks/"; cp "$ROOT/settings.json" "$SWD/.claude/"
+cp "$ROOT/eval/lib/settings-json.awk" "$SWD/.claude/eval/lib/"
 printf '%s\n' '{"type":"assistant","isSidechain":false,"message":{"usage":{"input_tokens":0,"cache_read_input_tokens":300000,"cache_creation_input_tokens":0}}}' > "$SWD/t.jsonl"
 swp(){ printf '{"hook_event_name":"UserPromptSubmit","session_id":"sw-%s","transcript_path":"%s/t.jsonl"}' "$$" "$SWD"; }
 o="$( cd "$SWD" && swp | CONTEXT_WINDOW=1000000 bash .claude/hooks/context-usage.sh 2>/dev/null )"
@@ -3937,6 +3939,16 @@ else
   fail "FIXTURE: git init failed in $BSD — the board-sync escaping case measured nothing"
 fi
 rm -rf "$BSD"
+# context-usage reads the record's OWN usage, not a key of the same name nested in a tool input or result. A regex
+# over the line took the first "input_tokens" it saw (50% read as 0%) and counted a user record whose toolUseResult
+# held {"type":"assistant","usage":…} (a false 90% hand-off). The reader parses each candidate record.
+CUD="$(mktemp -d)"; CUU='"usage":{"input_tokens":10,"cache_creation_input_tokens":0,"cache_read_input_tokens":500000}'
+printf '%s\n' '{"isSidechain":false,"message":{"role":"assistant","content":[{"type":"tool_use","input":{"x":{"input_tokens":3,"cache_read_input_tokens":1}}}],'"$CUU"'},"type":"assistant"}' \
+  '{"isSidechain":false,"type":"user","toolUseResult":{"type":"assistant","message":{"usage":{"input_tokens":1,"cache_read_input_tokens":900000}}},"message":{"role":"user","content":"x"}}' > "$CUD/t.jsonl"
+o="$(printf '{"transcript_path":"%s"}' "$CUD/t.jsonl" | bash "$HOOKS/context-usage.sh" 2>/dev/null)"
+case "$o" in *"%50.0"*) pass "context-usage counts the record's own usage, not a nested look-alike (50.0%)" ;;
+  *) fail "context-usage was fooled by a nested usage/type in a tool input or result — expected %50.0, got: ${o:-<silence>}" ;; esac
+rm -rf "$CUD"
 grep -q 'SessionStart' "$ROOT/settings.json" && grep -q 'session-rehydrate.sh' "$ROOT/settings.json" \
   && pass "settings.json wires SessionStart -> session-rehydrate.sh" || fail "settings.json missing SessionStart -> session-rehydrate wiring"
 
@@ -4592,6 +4604,15 @@ $TRFX\""; then pass "multi-line AI trace in the commit message BLOCKED (§4.1)"
   printf 'feat: x\n\n%s: Claude\n' "Co-""Authored-By" > "$MFD/my msg.txt"
   if csblk "git commit -F \"$MFD/my msg.txt\""; then pass "-F \"path with space\" carrying an AI trace BLOCKED (§4.1)"
   else fail "-F \"path with space\" AI trace not blocked with rc=2"; fi
+  rm -rf "$MFD"
+  # git reads the LAST -F (measured: `commit -F one -F two` commits two). Scanning the first let a clean file in
+  # front hide a traced one behind it — both orders asserted, so "always refuse two -F" cannot pass either.
+  MFD="$(mktemp -d "${TMPDIR:-/tmp}/csk-mfd2.XXXXXX")"; printf 'feat: clean\n' > "$MFD/c.txt"
+  printf 'feat: x\n\n%s: Claude\n' "Co-""Authored-By" > "$MFD/d.txt"
+  if csblk "git commit -F $MFD/c.txt -F $MFD/d.txt"; then pass "-F clean -F traced: the LAST file (what git commits) is scanned and BLOCKED"
+  else fail "-F clean -F traced was not blocked — the gate scanned the first -F, git commits the last (§4.1 hole)"; fi
+  csrun "git commit -F $MFD/d.txt -F $MFD/c.txt" && pass "-F traced -F clean passes (git commits the clean one)" \
+                                                 || fail "-F traced -F clean was blocked although git commits the clean file"
   rm -rf "$MFD"
   ( cd "$CS" && git config core.hooksPath .claude/hooks ) >/dev/null 2>&1
   csrun 'git commit' && pass "editor message allowed once a commit-msg git hook can scan it (full install)" \

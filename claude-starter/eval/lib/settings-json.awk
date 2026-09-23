@@ -27,25 +27,43 @@
 # reference .claude/hooks/ (in "command" or "args"). permissions.ask then loses every rule named in -v retired.
 # Output is pretty-printed with two-space indent, the layout jq writes, so merging the kit onto itself gives the
 # kit's bytes back.
-function sk(){ while(P<=L && index(" \t\r\n", substr(S,P,1))) P++ }
-function ps(  st,c){ st=P; P++
-  while(P<=L){ c=substr(S,P,1); if(c=="\\"){ P+=2; continue } P++; if(c=="\"") return substr(S,st,P-st) }
+# The text is split into CH[] once. substr(S,P,1) is O(len) per call on BSD awk, which made a 1 MB file take ~20 s;
+# array indexing is O(1), so parsing is linear. split(s, CH, "") splits into characters in onetrue/BSD awk, gawk
+# and mawk alike.
+function sk(){ while(P<=L && index(" \t\r\n", CH[P])) P++ }
+# Strings are held to RFC 8259, the grammar Claude Code's JSON.parse applies: an escape is one of \" \\ \/ \b \f \n
+# \r \t or \u + 4 hex digits, and no raw control character (below 0x20). The raw token is returned, escapes kept.
+function ps(  t,c,i){ t=CH[P]; P++
+  while(P<=L){ c=CH[P]; P++
+    if(c=="\\"){ if(P>L) return ""; c=CH[P]; P++
+      if(c=="u"){ t=t "\\u"; for(i=0;i<4;i++){ if(P>L || !index("0123456789abcdefABCDEF", CH[P])) return ""; t=t CH[P]; P++ }; continue }
+      if(!index("\"\\/bfnrt", c)) return ""; t=t "\\" c; continue }
+    if(index(CTL, c)) return ""
+    t=t c; if(c=="\"") return t }
   return "" }
-function pv(  id,c,k,q,st){ sk(); c=substr(S,P,1); id=++NN; N[id]=0
+function pv(  id,c,k,q,st){ sk(); c=CH[P]; id=++NN; N[id]=0
   if(c=="{" || c=="["){ T[id]=(c=="{" ? "o" : "a"); P++; sk()
-    if(substr(S,P,1)==(c=="{" ? "}" : "]")){ P++; return id }
+    if(CH[P]==(c=="{" ? "}" : "]")){ P++; return id }
     while(1){ k=""
-      if(c=="{"){ sk(); if(substr(S,P,1)!="\"" || (k=ps())=="") return 0; sk(); if(substr(S,P++,1)!=":") return 0 }
+      if(c=="{"){ sk(); if(CH[P]!="\"" || (k=ps())=="") return 0; sk(); if(CH[P++]!=":") return 0 }
       if(!(q=pv())) return 0
-      N[id]++; K[id,N[id]]=k; C[id,N[id]]=q; sk(); st=substr(S,P++,1)
+      N[id]++; K[id,N[id]]=k; C[id,N[id]]=q; sk(); st=CH[P++]
       if(st==(c=="{" ? "}" : "]")) return id
       if(st!=",") return 0 } }
   T[id]="s"
   if(c=="\""){ V[id]=ps(); return (V[id]=="" ? 0 : id) }
-  st=P; while(P<=L && substr(S,P,1) ~ /[-+.0-9A-Za-z]/) P++; V[id]=substr(S,st,P-st)
+  st=""; while(P<=L && CH[P] ~ /[-+.0-9A-Za-z]/){ st=st CH[P]; P++ }; V[id]=st
   return (V[id] ~ /^(true|false|null|-?(0|[1-9][0-9]*)([.][0-9]+)?([eE][-+]?[0-9]+)?)$/ ? id : 0) }
-function doc(s,  r){ S=s; L=length(s); P=1; r=pv(); sk(); return (r && P>L && T[r]=="o") ? r : 0 }
-function get(o,k,  i){ for(i=1;i<=N[o];i++) if(K[o,i]==k) return C[o,i]; return 0 }
+# doc(f): parse file number f. CH[] is built from that file's lines directly: gluing the lines into one string
+# first was itself quadratic (each append copies the whole buffer) on a many-line file.
+function doc(f,  r,i,j,n,tc){ split("",CH); L=0
+  for(i=1;i<=NL[f];i++){ n=split(LN[f,i],tc,""); for(j=1;j<=n;j++) CH[++L]=tc[j]; CH[++L]="\n" }
+  P=1
+  if(CTL==""){ for(r=1;r<32;r++) CTL=CTL sprintf("%c",r) }
+  r=pv(); sk(); return (r && P>L && T[r]=="o") ? r : 0 }
+# A duplicated key: the LAST value wins, as in JSON.parse and jq — the value Claude Code actually reads.
+function get(o,k,  i){ for(i=N[o];i>=1;i--) if(K[o,i]==k) return C[o,i]; return 0 }
+function isnull(id){ return T[id]=="s" && V[id]=="null" }
 function at(id,path,  n,sg,i){ n=split(path,sg,".")
   for(i=1;i<=n && id;i++) id=(T[id]=="o") ? get(id,"\"" sg[i] "\"") : (T[id]=="a" && sg[i] ~ /^[0-9]+$/ && sg[i]<N[id]) ? C[id,sg[i]+1] : 0
   return id }
@@ -75,6 +93,7 @@ function hooks(kh,ph,  r,i,e,a,x,y,j){ r=mk("o")
   for(i=1;i<=N[kh];i++){ e=K[kh,i]; if(!get(r,e)) add(r,e,mk("a")) }
   for(i=1;i<=N[ph];i++){ e=K[ph,i]; if(!get(r,e)) add(r,e,mk("a")) }
   for(i=1;i<=N[r];i++){ e=K[r,i]; a=C[r,i]; x=get(kh,e); y=get(ph,e)
+    if(isnull(x)) x=0; if(isnull(y)) y=0          # null event = no entries, as the jq merge's `// []` read it
     if((x && T[x]!="a") || (y && T[y]!="a")) return 0
     for(j=1;j<=N[x];j++) add(a,"",C[x,j])
     for(j=1;j<=N[y];j++) if(!is_kit(C[y,j])) add(a,"",C[y,j]) }
@@ -84,15 +103,33 @@ function put(id,ind,  i,s,o){
   o=(T[id]=="o"); if(!N[id]) return (o ? "{}" : "[]")
   s=(o ? "{" : "["); for(i=1;i<=N[id];i++) s=s (i>1 ? "," : "") "\n" ind "  " (o ? K[id,i] ": " : "") put(C[id,i], ind "  ")
   return s "\n" ind (o ? "}" : "]") }
-FNR==1{ f++ } { B[f]=B[f] $0 "\n" }
+# dls(s): parse one string (a JSONL record) the same way.
+function dls(s,  r,n){ split("",CH); L=split(s,CH,""); P=1
+  if(CTL==""){ for(r=1;r<32;r++) CTL=CTL sprintf("%c",r) }
+  r=pv(); sk(); return (r && P>L && T[r]=="o") ? r : 0 }
+FILENAME!=cur{ f++; cur=FILENAME } { LN[f,++NL[f]]=$0 }
 END{
-  if(op=="validate") exit !doc(B[1])
-  if(op=="get" || op=="len"){ if(!(r=doc(B[1]))) exit 10; if(!(r=at(r,path))) exit 1
+  # op=usage (hooks/context-usage.sh): FILE is a transcript tail (JSONL). Walking from the LAST line back, print the
+  # context total of the last record that is a real top-level `type: assistant`, not a sidechain, carrying
+  # message.usage.cache_read_input_tokens — the predicate the former jq program applied. Each candidate is PARSED:
+  # a regex over the line matched the same key names inside tool inputs and results, and could count a nested
+  # object instead of the record's own usage. A line that does not parse (the window's cut first line) is skipped.
+  if(op=="usage"){ for(i=NL[1];i>=1;i--){ l=LN[1,i]; if(!index(l,"cache_read_input_tokens")) continue
+      if(!(r=dls(l))) continue
+      x=get(r,"\"isSidechain\""); if(x && !(isnull(x) || V[x]=="false")) continue
+      x=get(r,"\"type\""); if(!x || V[x]!="\"assistant\"") continue
+      u=at(r,"message.usage"); if(T[u]!="o") continue
+      cr=get(u,"\"cache_read_input_tokens\""); if(!cr || isnull(cr)) continue
+      it=get(u,"\"input_tokens\""); cc=get(u,"\"cache_creation_input_tokens\"")
+      print (it && !isnull(it) ? V[it] : 0) + V[cr] + (cc && !isnull(cc) ? V[cc] : 0); exit 0 }
+    exit 0 }
+  if(op=="validate") exit !doc(1)
+  if(op=="get" || op=="len"){ if(!(r=doc(1))) exit 10; if(!(r=at(r,path))) exit 1
     if(op=="get"){ print put(r,""); exit 0 } if(T[r]=="s") exit 1; print N[r]; exit 0 }
-  if(op=="strings"){ if(!(r=doc(B[1]))) exit 10; if(!(r=at(r,path))) exit 1; if(T[r]!="a") exit 1
+  if(op=="strings"){ if(!(r=doc(1))) exit 10; if(!(r=at(r,path))) exit 1; if(T[r]!="a") exit 1
     for(i=1;i<=N[r];i++){ c=C[r,i]; if(T[c]=="s" && substr(V[c],1,1)=="\"") print substr(V[c],2,length(V[c])-2) }
     exit 0 }
-  if(op=="overlay"){ if(!(t=doc(B[1]))) exit 10; if(!(q=doc(B[2]))) exit 11; kk="\"" key "\""
+  if(op=="overlay"){ if(!(t=doc(1))) exit 10; if(!(q=doc(2))) exit 11; kk="\"" key "\""
     qv=get(q,kk); if(T[qv]!="o") exit 11; tv=get(t,kk); if(tv && T[tv]!="o") exit 10
     nv=mk("o"); for(i=1;i<=N[tv];i++){ x=get(qv,K[tv,i]); add(nv,K[tv,i], x ? x : C[tv,i]) }
     for(i=1;i<=N[qv];i++) if(!get(nv,K[qv,i])) add(nv,K[qv,i],C[qv,i])
@@ -102,9 +139,9 @@ END{
     x=0; for(i=1;i<=N[t];i++) if(K[t,i]==kk){ C[t,i]=nv; x=1 }
     if(!x) add(t,kk,nv)
     print put(t,""); exit 0 }
-  if(!(k=doc(B[1]))) exit 11
-  if(!(p=doc(B[2]))) exit 10
-  kh=get(k,"\"hooks\""); ph=get(p,"\"hooks\"")
+  if(!(k=doc(1))) exit 11
+  if(!(p=doc(2))) exit 10
+  kh=get(k,"\"hooks\""); ph=get(p,"\"hooks\""); if(isnull(kh)) kh=0; if(isnull(ph)) ph=0
   if((kh && T[kh]!="o") || (ph && T[ph]!="o")) exit 12
   r=dm(k,p); if(!(h=hooks(kh ? kh : mk("o"), ph ? ph : mk("o")))) exit 12
   for(i=1;i<=N[r];i++) if(K[r,i]=="\"hooks\""){ C[r,i]=h; h=0 }
