@@ -150,10 +150,18 @@ fi
 #     enforced — a project is free to ship many skills, it just needs to know the trade and the two documented
 #     ways out (raise skillListingBudgetFraction, or set low-priority skills to "name-only" in skillOverrides).
 if [ -d .claude/skills ]; then
-  LISTING=$(for f in .claude/skills/*/SKILL.md; do
-      [ -e "$f" ] || continue
-      awk '/^---$/{c++; next} c==1' "$f" | awk '/^(name|description):/,0'
-    done | wc -c | tr -d ' ')
+  # ONE awk over every SKILL.md, not two per skill: 41 skills made this 82 spawns, which on Git Bash is several
+  # seconds on its own. Counts what `awk c==1 | awk '/^(name|description):/,0' | wc -c` counted — the frontmatter
+  # from its first name:/description: line on, in bytes. LC_ALL=C because wc -c counts bytes and gawk's length()
+  # counts characters under a UTF-8 locale: measured on Git Bash (gawk 5.4, LC_ALL=en_US.UTF-8), dropping it read
+  # the shipped set 38 short — its em dashes alone move the number. macOS awk counts bytes either way.
+  SKF=""; for f in .claude/skills/*/SKILL.md; do [ -e "$f" ] && SKF=1 && break; done
+  LISTING=0
+  [ -n "$SKF" ] && LISTING=$(LC_ALL=C awk '
+      FNR==1 { c=0; on=0 }
+      /^---$/ { c++; next }
+      c==1 { if (!on && /^(name|description):/) on=1; if (on) n += length($0) + 1 }
+      END { print n+0 }' .claude/skills/*/SKILL.md)
   CW="${CONTEXT_WINDOW:-1000000}"; BUDGET=$((CW/100))
   if [ "$LISTING" -le "$BUDGET" ]; then
     ok "skill listing fits the budget (${LISTING} <= ${BUDGET} chars at 1% of a ${CW}-token window)"
@@ -407,9 +415,14 @@ if [ -f "$MAN" ]; then
   # already strips it for the same reason and the same file — this was the copy that did not, which is why the
   # two answers disagreed on the same install.
   MANTXT="$(tr -d '\r' < "$MAN")"
+  # A whole-line match by shell pattern, the way skill-trust.sh reads the same file: a `basename` and a `grep`
+  # per skill was 82 spawns for the shipped set — the bulk of doctor's cost on Git Bash.
+  NL='
+'
   for d in .claude/skills/*/; do
     [ -d "$d" ] || continue
-    printf '%s\n' "$MANTXT" | grep -qxF "skills/$(basename "$d")" || OWN=$((OWN+1))
+    s="${d%/}"; s="${s##*/}"
+    case "$NL$MANTXT$NL" in *"${NL}skills/$s$NL"*) ;; *) OWN=$((OWN+1)) ;; esac
   done
   [ "$OWN" -gt 0 ] && rdy "$OWN project-specific skill(s) alongside the kit's" \
                    || gap "no project-specific skill — only the kit's generic ones are installed" \
