@@ -8,7 +8,7 @@
 // Zero dependencies, by design: the kit ships no npm packages and this stays
 // inside that promise. `node server/index.js` is the whole install step.
 
-import './lib/crew-env.js';   // first: resolves the pre-3.0 CSK_* names before anything reads CREW_*
+import './lib/crew-env.js';   // first: resolves the 2.x variable names before anything reads CREW_*
 import http from 'node:http';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';

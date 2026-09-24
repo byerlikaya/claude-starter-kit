@@ -17,7 +17,7 @@
 # Quiet when CREW_NO_STAR is set to anything but 0, or when CI is defined at all: an unattended run has nobody to
 # read it. A silenced run writes NO marker, so the line is still owed to whoever runs it by hand later.
 set -u
-# Pre-3.0 CSK_* names still work for the variables a user can set (one helper: eval/lib/crew-env.sh).
+# The 2.x names of the variables a user can set still work (one helper: eval/lib/crew-env.sh).
 _crew_d="${BASH_SOURCE%/*}"; [ "$_crew_d" = "${BASH_SOURCE}" ] && _crew_d=.
 [ -f "$_crew_d/./crew-env.sh" ] && . "$_crew_d/./crew-env.sh"; unset _crew_d
 CREW_REPO_URL="https://github.com/Crewforth/crewforth"

@@ -33,7 +33,7 @@
 # The version string is treated as untrusted input: it comes off the network, is filtered to [0-9A-Za-z.-], and must
 # look like a release before it is ever printed into the model's context.
 set -uo pipefail
-# Pre-3.0 CSK_* names still work for the variables a user can set (one helper: eval/lib/crew-env.sh).
+# The 2.x names of the variables a user can set still work (one helper: eval/lib/crew-env.sh).
 _crew_d="${BASH_SOURCE%/*}"; [ "$_crew_d" = "${BASH_SOURCE}" ] && _crew_d=.
 [ -f "$_crew_d/../eval/lib/crew-env.sh" ] && . "$_crew_d/../eval/lib/crew-env.sh"; unset _crew_d
 

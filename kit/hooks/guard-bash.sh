@@ -39,7 +39,7 @@
 # CLAUDE_GIT_OK=1, exported by the user before the session starts, pre-authorises the session. It exists for
 # headless/CI runs where no one is at the keyboard. It does NOT replace approval: present the message first.
 set -uo pipefail
-# Pre-3.0 CSK_* names still work for the variables a user can set (one helper: eval/lib/crew-env.sh).
+# The 2.x names of the variables a user can set still work (one helper: eval/lib/crew-env.sh).
 _crew_d="${BASH_SOURCE%/*}"; [ "$_crew_d" = "${BASH_SOURCE}" ] && _crew_d=.
 [ -f "$_crew_d/../eval/lib/crew-env.sh" ] && . "$_crew_d/../eval/lib/crew-env.sh"; unset _crew_d
 INPUT="$(cat)"

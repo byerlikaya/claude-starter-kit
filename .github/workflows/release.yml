@@ -19,6 +19,8 @@ jobs:
     environment: release   # publish waits for manual approval (see repo → Environments → release)
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0   # e2e rehearses the 3.0 migration on the real v2.13.0 tree (git archive)
 
       - name: Resolve version (VERSION file must match the tag)
         id: v

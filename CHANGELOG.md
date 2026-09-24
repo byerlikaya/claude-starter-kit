@@ -1,9 +1,57 @@
 # Changelog
 
+Crewforth was named Claude Starter Kit until 3.0.0.
+
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased] — 3.0.0
+
+### BREAKING — Claude Starter Kit is now Crewforth
+
+One name everywhere: the package, the components, the variables, the payload. **Updating a 2.x project migrates it**
+(`npx crewforth update`, `/crew-update`, or `adopt.sh`); nothing of yours is deleted.
+
+| 2.x | 3.0 |
+|---|---|
+| `npx @byerlikaya/claude-starter-kit` | `npx crewforth` |
+| `@byerlikaya/csk-studio` · `csk-studio` | `@crewforth/studio` · `crewforth-studio` |
+| plugin `claude-starter-kit@byerlikaya` | `crewforth@crewforth` — reinstall: `/plugin install crewforth@crewforth` |
+| `brew install byerlikaya/tap/claude-starter-kit` | `brew install byerlikaya/tap/crewforth` |
+| agents `<x>-csk` (`backend-expert-csk`) | `crew-<x>` (`crew-backend-expert`) |
+| commands `/<x>-csk` (`/review-csk`, `/ship-csk`) | `/crew-<x>` (`/crew-review`, `/crew-ship`) |
+| skill `code-review-csk` | `crew-code-review` |
+| payload directory `claude-starter/` | `kit/` |
+
+- **The update moves the kit's own files** from `<x>-csk` to `crew-<x>` and says each move. Only names the kit
+  ships are considered: a file of yours that happens to end in `-csk` stays, and does not make the project look like
+  a kit install. If both names exist, nothing moves, your `crew-` file is not overwritten, and the update tells you
+  to keep one.
+- **`CLAUDE.md` and the docs it references are swept** for the old kit names (`backend-expert-csk`,
+  `@agent-planner-csk`, `/review-csk`) and rewritten to the `crew-` form; nothing else in those files changes.
+  A symlinked `CLAUDE.md` is written through, and nothing outside the project is edited. `doctor` (PROOF-5) reports
+  an old agent name written into `CLAUDE.md` later.
+- **`npx crewforth add`** accepts `security-expert`, `crew-security-expert` and the 2.x name `security-expert-csk`
+  alike; `add --list` shows the `crew-` names.
+- **Variables are `CREW_*`.** The ones you set yourself keep working under their 2.x name for the whole 3.x line;
+  when both are set, `CREW_*` wins:
+
+  | 2.x | 3.0 |
+  |---|---|
+  | `CSK_LANG` | `CREW_LANG` |
+  | `CSK_NO_STAR` | `CREW_NO_STAR` |
+  | `CSK_NO_UPDATE_CHECK` | `CREW_NO_UPDATE_CHECK` |
+  | `CSK_NO_BOARD` | `CREW_NO_BOARD` |
+  | `CSK_GATE_LOG` · `CSK_GATE_LOG_CMD` | `CREW_GATE_LOG` · `CREW_GATE_LOG_CMD` |
+  | `CSK_STUDIO_TOKEN` · `CSK_STUDIO_PEERS` · `CSK_STUDIO_RUNTIME` | `CREW_STUDIO_TOKEN` · `CREW_STUDIO_PEERS` · `CREW_STUDIO_RUNTIME` |
+  | `CSK_MAX_FILE_BYTES` | `CREW_MAX_FILE_BYTES` |
+  | `CSK_ALLOW_SOURCE_INSTALL` | `CREW_ALLOW_SOURCE_INSTALL` |
+
+  Internal and test variables were renamed with no fallback.
+- **Kept on purpose:** the team board's git names (`refs/csk/board`, the `csk-board` branch, `csk.board*` config),
+  so a board shared with a 2.x teammate is not split; the Studio panel's saved layout in the browser; auto-mode
+  classifier rules applied by 2.x (`CSK …`) still count in `automode-policy`'s check.
+- **Fixed:** an update appended `docs/` to `.gitignore` again on every run when `docs/` held tracked files.
 
 ### BREAKING — the backend is stack-agnostic; the .NET install path is gone
 
@@ -17,9 +65,9 @@ versioning follows [SemVer](https://semver.org/).
   multiple-choice questions (each with a recommended option and "Decide for me") — then records the answer in
   `## Stack` and an ADR, and carries a pattern menu (layered · clean/hexagonal · vertical slice · CQRS) and the
   language-neutral backend rules. Its triggers include the four the old skill routed.
-- **One backend agent.** `backend-expert-csk` is stack-agnostic and applies the project's own pattern skill if it has
-  one, `backend-architecture` otherwise; `agents-optional/` is gone. `database-expert-csk` reads the engine and ORM
-  from `## Stack` / the repo instead of assuming PostgreSQL + EF Core. `planner-csk` resolves the stack before
+- **One backend agent.** `crew-backend-expert` is stack-agnostic and applies the project's own pattern skill if it has
+  one, `backend-architecture` otherwise; `agents-optional/` is gone. `crew-database-expert` reads the engine and ORM
+  from `## Stack` / the repo instead of assuming PostgreSQL + EF Core. `crew-planner` resolves the stack before
   planning in an empty repo.
 - **Updating a pre-3.0 `--dotnet` install keeps your pattern skill.** `kit.conf` is rewritten to `stack=generic`
   (the key stays, for older updaters); `.claude/skills/cqrs-aop-module` — or `devarch-module`, renamed as before —
@@ -35,11 +83,11 @@ versioning follows [SemVer](https://semver.org/).
   `social-preview.png/.svg` and `icon-512/180/32.png` are new; the unused `logo.png` is removed. The generated
   diagrams and the Studio panel draw the same mark.
 - **README front page** (English, Turkish, npm): the promise, `npx crewforth` / `npx crewforth adopt`, four badges
-  and the panel GIF. `npx @byerlikaya/claude-starter-kit` still works.
+  and the panel GIF.
 - **A star line, once per kit version.** The install, an update to a new version, or a healthy `doctor` —
   whichever comes first — prints one line asking for a star; a marker in the git dir (never under `.claude/`, so
-  it is never committed) records the version, and nothing repeats it until the version changes. `/update-csk` and
-  `/doctor-csk` pass the line through to you; no hook or session start prints it. `CSK_NO_STAR=1`, or any defined
+  it is never committed) records the version, and nothing repeats it until the version changes. `/crew-update` and
+  `/crew-doctor` pass the line through to you; no hook or session start prints it. `CREW_NO_STAR=1`, or any defined
   `CI`, silences it, and a silenced run leaves no marker.
 - **A measured proof line on the front page.** Under deadline pressure, bare Claude Code made a directory
   world-writable in 6 of 10 runs, with the kit in 0 of 10 (`permission-pressure`, Fisher one-sided p = 0.0054). The

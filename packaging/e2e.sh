@@ -578,18 +578,18 @@ fi
 starn(){ grep -c '⭐' "$1" 2>/dev/null || true; }
 SP="$WORK/star"; rm -rf "$SP"; mkdir -p "$SP"; cp start.sh VERSION "$SP/"; cp -R kit "$SP/"
 _slog; ( cd "$SP" && git init -q && git config user.email t@t.t && git config user.name t && git commit -q --allow-empty -m b \
-    && printf 'yes\n' | env -u CI -u CREW_NO_STAR bash start.sh ) >"$_L" 2>&1 || _evidence "start.sh in $SP" "$_L" $?
+    && printf 'yes\n' | env -u CI -u CREW_NO_STAR -u CSK_NO_STAR bash start.sh ) >"$_L" 2>&1 || _evidence "start.sh in $SP" "$_L" $?
 S1="$(starn "$_L")"
-dstar(){ ( cd "$SP" && env -u CI -u CREW_NO_STAR bash .claude/eval/doctor.sh 2>&1 || true ) > "$WORK/star-doctor.txt"
+dstar(){ ( cd "$SP" && env -u CI -u CREW_NO_STAR -u CSK_NO_STAR bash .claude/eval/doctor.sh 2>&1 || true ) > "$WORK/star-doctor.txt"
          case "$(cat "$WORK/star-doctor.txt")" in *"DOCTOR: healthy"*) ;; *) echo "FAIL: FIXTURE — doctor is not healthy here, so its star checks prove nothing" >&2; echo UNHEALTHY; return ;; esac
          starn "$WORK/star-doctor.txt"; }
 D1="$(dstar)"                                              # same version as the install: silent
 restage(){ cp adopt.sh "$SP/"; cp -R kit "$SP/"; printf '%s\n' "$1" > "$SP/VERSION"; }
 restage "$(head -1 VERSION)"
-_slog; ( cd "$SP" && env -u CI -u CREW_NO_STAR bash adopt.sh --here --yes </dev/null ) >"$_L" 2>&1 || _evidence "adopt.sh same-version update in $SP" "$_L" $?
+_slog; ( cd "$SP" && env -u CI -u CREW_NO_STAR -u CSK_NO_STAR bash adopt.sh --here --yes </dev/null ) >"$_L" 2>&1 || _evidence "adopt.sh same-version update in $SP" "$_L" $?
 S2="$(starn "$_L")"
 restage "9.9.9-e2e"
-_slog; ( cd "$SP" && env -u CI -u CREW_NO_STAR bash adopt.sh --here --yes </dev/null ) >"$_L" 2>&1 || _evidence "adopt.sh new-version update in $SP" "$_L" $?
+_slog; ( cd "$SP" && env -u CI -u CREW_NO_STAR -u CSK_NO_STAR bash adopt.sh --here --yes </dev/null ) >"$_L" 2>&1 || _evidence "adopt.sh new-version update in $SP" "$_L" $?
 S3="$(starn "$_L")"
 D2="$(dstar)"                                              # the doctor /crew-update runs right after: silent
 printf '9.9.10-e2e\n' > "$SP/.claude/VERSION"; D3="$(dstar)"   # a new version reached by doctor first: shown
@@ -600,13 +600,98 @@ D4="$(dstar)"                                              # ...once
   || { echo "FAIL: the star marker landed under .claude/ in a git project — a tracked .claude/ would commit it"; exit 1; }
 for _q in "CREW_NO_STAR=1" "CI=true"; do
   SQ="$WORK/star-quiet"; rm -rf "$SQ"; mkdir -p "$SQ"; cp start.sh VERSION "$SQ/"; cp -R kit "$SQ/"
-  _slog; ( cd "$SQ" && git init -q && printf 'yes\n' | env -u CI -u CREW_NO_STAR "$_q" bash start.sh ) >"$_L" 2>&1 || _evidence "start.sh $_q in $SQ" "$_L" $?
+  _slog; ( cd "$SQ" && git init -q && printf 'yes\n' | env -u CI -u CREW_NO_STAR -u CSK_NO_STAR "$_q" bash start.sh ) >"$_L" 2>&1 || _evidence "start.sh $_q in $SQ" "$_L" $?
   _qm="$(cd "$SQ" && git rev-parse --git-path crewforth-star)"
   [ "$(starn "$_L")" = 0 ] && [ ! -e "$SQ/$_qm" ] || { echo "FAIL: under $_q the install printed the star line or wrote its marker"; exit 1; }
-  DQ="$( cd "$SQ" && env -u CI -u CREW_NO_STAR "$_q" bash .claude/eval/doctor.sh 2>&1 || true )"
+  DQ="$( cd "$SQ" && env -u CI -u CREW_NO_STAR -u CSK_NO_STAR "$_q" bash .claude/eval/doctor.sh 2>&1 || true )"
   [ "$(printf '%s\n' "$DQ" | grep -c '⭐' || true)" = 0 ] || { echo "FAIL: under $_q doctor printed the star line"; exit 1; }
 done
 echo "[star] once per version: install 1 · doctor 0 · same-version update 0 · new-version update 1 · doctor 0 · new version via doctor 1 · again 0 · marker in the git dir · CREW_NO_STAR=1 / CI=true: 0, no marker"
+
+# ---- 2.x → 3.0: a real 2.13.0 install, updated by this tree ----
+# The fixture is the released installer itself (841eb4e = v2.13.0), taken with git archive — a hand-made "old
+# install" would only prove the migration understands what its author thinks 2.13 left behind. CI checks out
+# with fetch-depth 0 for this; without the commit the case cannot run, which is a fixture skip, red under strict.
+OLD=841eb4e
+if ! git cat-file -e "$OLD^{commit}" 2>/dev/null; then
+  [ "${CREW_VERIFY_STRICT:-0}" = 1 ] && { echo "FAIL: FIXTURE — commit $OLD (v2.13.0) is not in this clone; the 3.0 migration cannot be rehearsed (shallow checkout?)"; exit 1; }
+  echo "[migrate-2.13] SKIP (fixture): commit $OLD (v2.13.0) is not in this clone — a shallow checkout"
+else
+  mtree(){ ( cd "$1" && find . -type f ! -path './.git/*' ! -name gate-log.tsv 2>/dev/null | LC_ALL=C sort | while IFS= read -r f; do printf '%s ' "$f"; cksum < "$f"; done ) | cksum; }
+  old_install(){   # $1 = project dir → a 2.13.0 install with a user line, a user agent and a user allow rule
+    rm -rf "$1"; mkdir -p "$1"; git archive "$OLD" start.sh VERSION claude-starter | tar -x -C "$1"
+    _slog; ( cd "$1" && git init -q && bash start.sh --generic --yes --lang en ) >"$_L" 2>&1 || _evidence "2.13.0 start.sh in $1" "$_L" $?
+    [ -f "$1/.claude/agents/backend-expert-csk.md" ] || { echo "FAIL: FIXTURE — the 2.13.0 install left no backend-expert-csk.md"; exit 1; }
+    printf '\nAsk @agent-security-expert-csk, then run /review-csk; my own my-helper-csk and security-expert-cskx stay.\n' >> "$1/CLAUDE.md"
+    printf -- '---\nname: my-helper-csk\n---\nmine\n' > "$1/.claude/agents/my-helper-csk.md"
+    perl -0pi -e 's/("allow": \[\n\s*)"Bash"/$1"Bash(make test:*)", "Bash"/' "$1/.claude/settings.json"
+    grep -q 'make test' "$1/.claude/settings.json" || { echo "FAIL: FIXTURE — the user allow rule was not planted"; exit 1; }
+    cp "$1/CLAUDE.md" "$1/CLAUDE.md.before"; cp "$1/.claude/agents/my-helper-csk.md" "$WORK/my-helper.before"
+    cp adopt.sh VERSION "$1/"; cp -R kit "$1/"
+  }
+  MG="$WORK/migrate-2.13"; old_install "$MG"
+  NOLD="$(ls "$MG"/.claude/agents/*-csk.md "$MG"/.claude/commands/*-csk.md 2>/dev/null | grep -vc my-helper || true)"
+  _slog; ( cd "$MG" && bash adopt.sh --yes ) >"$_L" 2>&1 || _evidence "adopt.sh over 2.13.0 in $MG" "$_L" $?
+  NREN="$(grep -c '^.*3\.0 rename: ' "$_L" || true)"
+  LEFT="$(cd "$MG/.claude" && find agents commands skills -name '*-csk*' ! -name 'my-helper-csk.md' | tr '\n' ' ')"
+  [ -z "$LEFT" ] || { echo "FAIL: after the update, old kit names are still on disk: $LEFT"; exit 1; }
+  for kf in kit/agents/crew-*.md kit/commands/crew-*.md; do
+    [ -f "$MG/.claude/${kf#kit/}" ] || { echo "FAIL: the update did not leave ${kf#kit/}"; exit 1; }
+  done
+  [ -d "$MG/.claude/skills/crew-code-review" ] || { echo "FAIL: the update did not leave skills/crew-code-review"; exit 1; }
+  cmp -s "$MG/.claude/agents/my-helper-csk.md" "$WORK/my-helper.before" || { echo "FAIL: the migration touched the user's own my-helper-csk.md"; exit 1; }
+  grep -q '"Bash(make test:\*)"' "$MG/.claude/settings.json" || { echo "FAIL: the user's allow rule did not survive the update"; exit 1; }
+  # CLAUDE.md: every change is a kit name. Map each crew- name back to its 2.x form; the result must be the old file.
+  # Longest name first, or crew-review would eat the front of crew-review-agent.
+  REV="$(for kf in kit/agents/crew-*.md kit/commands/crew-*.md kit/skills/crew-*/; do kn="${kf%/}"; kn="${kn##*/}"; printf '%s\n' "${kn%.md}"; done \
+         | awk '{ print length($0) "\t" $0 }' | sort -rn | cut -f2 | while IFS= read -r kn; do printf ' -e s/%s/%s-csk/g' "$kn" "${kn#crew-}"; done)"
+  sed $REV "$MG/CLAUDE.md" | cmp -s - "$MG/CLAUDE.md.before" \
+    || { echo "FAIL: CLAUDE.md changed beyond kit names:"; sed $REV "$MG/CLAUDE.md" | diff "$MG/CLAUDE.md.before" - | head -n 10; exit 1; }
+  grep -q '@agent-crew-security-expert, then run /crew-review; my own my-helper-csk and security-expert-cskx stay' "$MG/CLAUDE.md" \
+    || { echo "FAIL: the ref-sweep did not rewrite the user's line as expected:"; tail -n 2 "$MG/CLAUDE.md"; exit 1; }
+  # The moved kit agents are the kit's: counting them as the project's once made the next update rewrite HANDOVER.md.
+  grep -q '^- Project agents: 1 ' "$MG/docs/HANDOVER.md" \
+    || { echo "FAIL: HANDOVER.md does not count exactly the user's one agent: $(grep '^- Project agents' "$MG/docs/HANDOVER.md")"; exit 1; }
+  grep -q 'PROOF-5' "$_L" && { echo "FAIL: the update's ref-sweep left a stale kit name for PROOF-5 to report:"; grep -A3 'PROOF-5' "$_L"; exit 1; }
+  # doctor PROOF-5 sees a 2.x name too. Measured on a copy, so the idempotency tree below is not disturbed.
+  MD="$WORK/migrate-2.13-doctor"; rm -rf "$MD"; cp -R "$MG" "$MD"
+  DOC0="$( cd "$MD" && bash .claude/eval/doctor.sh 2>&1 || true )"
+  printf 'Hand plans to @agent-planner-csk.\n' >> "$MD/CLAUDE.md"
+  DOC1="$( cd "$MD" && bash .claude/eval/doctor.sh 2>&1 || true )"
+  case "$DOC0" in *'"planner-csk" → "crew-planner"'*) echo "FAIL: doctor reported planner-csk before any line named it"; exit 1 ;; esac
+  case "$DOC1" in *'"planner-csk" → "crew-planner"'*) ;; *) echo "FAIL: doctor did not report @agent-planner-csk as a stale 2.x name:"; printf '%s\n' "$DOC1" | grep -i -A3 'agent' | head -n 8; exit 1 ;; esac
+  # Idempotency: a second update changes nothing (the gate log is an activity log and is left out).
+  H1="$(mtree "$MG")"
+  _slog; ( cd "$MG" && bash adopt.sh --yes ) >"$_L" 2>&1 || _evidence "second adopt.sh in $MG" "$_L" $?
+  [ "$(mtree "$MG")" = "$H1" ] || { echo "FAIL: a second update changed the tree after the 3.0 migration"; exit 1; }
+  grep -q '3\.0 rename\|3\.0 ref-sweep' "$_L" && { echo "FAIL: the second update announced the migration again"; exit 1; }
+  # Both names present: nothing moves, the user is told.
+  MB="$WORK/migrate-2.13-both"; old_install "$MB"
+  printf 'mine\n' > "$MB/.claude/agents/crew-planner.md"; cp "$MB/.claude/agents/planner-csk.md" "$WORK/planner.before"
+  # CLAUDE.md as a symlink (CLAUDE.md → AGENTS.md is common) and a reference that leaves the project.
+  mv "$MB/CLAUDE.md" "$MB/AGENTS.md"; ln -s AGENTS.md "$MB/CLAUDE.md" 2>/dev/null
+  # Git Bash without developer-mode symlinks makes `ln -s` a COPY; then there is no link to keep, and saying so beats a false red.
+  MBLINK=0; [ -L "$MB/CLAUDE.md" ] && MBLINK=1; [ "$MBLINK" = 1 ] || cp "$MB/AGENTS.md" "$MB/CLAUDE.md"
+  mkdir -p "$WORK/outside"; printf 'Ask backend-expert-csk.\n' > "$WORK/outside/NOTES.md"; cp "$WORK/outside/NOTES.md" "$WORK/outside.before"
+  printf 'See ../outside/NOTES.md\n' >> "$MB/AGENTS.md"
+  _slog; ( cd "$MB" && bash adopt.sh --yes ) >"$_L" 2>&1 || _evidence "adopt.sh with both names in $MB" "$_L" $?
+  grep -q 'both the old and the new name exist for:.*agents/planner-csk.md' "$_L" || { echo "FAIL: both names existed and the update did not say so"; exit 1; }
+  cmp -s "$MB/.claude/agents/planner-csk.md" "$WORK/planner.before" || { echo "FAIL: planner-csk.md changed although both names existed"; exit 1; }
+  [ "$(cat "$MB/.claude/agents/crew-planner.md")" = mine ] || { echo "FAIL: both names existed and the update overwrote the user's crew-planner.md"; exit 1; }
+  if [ "$MBLINK" = 1 ]; then
+    [ -L "$MB/CLAUDE.md" ] || { echo "FAIL: the ref-sweep replaced the CLAUDE.md symlink with a file"; exit 1; }
+    grep -q '@agent-crew-security-expert' "$MB/AGENTS.md" || { echo "FAIL: the ref-sweep did not write through the CLAUDE.md symlink"; exit 1; }
+    MBL="symlinked CLAUDE.md written through"
+  else MBL="symlink N/A here (ln -s copies)"; fi
+  cmp -s "$WORK/outside/NOTES.md" "$WORK/outside.before" || { echo "FAIL: the ref-sweep edited a file outside the project"; exit 1; }
+  # Never installed, but a user agent that happens to end in -csk: not a kit install, so the user's own skill stays.
+  MF="$WORK/migrate-fresh"; rm -rf "$MF"; mkdir -p "$MF/.claude/agents" "$MF/.claude/skills/testing"
+  printf -- '---\nname: my-helper-csk\n---\n' > "$MF/.claude/agents/my-helper-csk.md"; printf 'MINE\n' > "$MF/.claude/skills/testing/SKILL.md"
+  cp adopt.sh VERSION "$MF/"; cp -R kit "$MF/"
+  _slog; ( cd "$MF" && git init -q && bash adopt.sh --yes ) >"$_L" 2>&1 || _evidence "adopt.sh in a never-installed project in $MF" "$_L" $?
+  [ "$(cat "$MF/.claude/skills/testing/SKILL.md")" = MINE ] || { echo "FAIL: a user agent ending in -csk made a fresh project look installed and its own skill was overwritten"; exit 1; }
+  echo "[migrate-2.13] real v2.13.0 install → $NREN renamed ($NOLD old agent/command files) · 0 old kit names left · user agent, allow rule untouched · HANDOVER counts 1 project agent · CLAUDE.md: kit names only · 2nd update: same tree, silent · no PROOF-5 after the sweep · doctor flags a planted @agent-planner-csk · both names: warned, nothing moved, user crew- file kept · $MBL · outside file untouched · fresh project with my-helper-csk: own skill kept"
+fi
 
 # ---- the two no-install doors: `add` and `studio` (pure Node, no bash) ----
 # Driven through bin/cli.js exactly as `npx crewforth …` runs it. Every tree comparison is a hash over the files'
@@ -652,11 +737,34 @@ if command -v node >/dev/null 2>&1 && node --version >/dev/null 2>&1; then
   # 6 · --list covers the catalogue exactly.
   NL="$(node "$CLI" add --list | grep -c '^  ')"; NC=$(( $(ls kit/agents/*.md | wc -l) + $(ls -d kit/skills/*/ | wc -l) ))
   [ "$NL" = "$NC" ] || { echo "FAIL: add --list shows $NL entries, the catalogue has $NC"; exit 1; }
+  NA="$(node "$CLI" add --list | sed -n '/^Agents/,/^$/p' | grep -c '^  crew-')"; NKA="$(ls kit/agents/crew-*.md | wc -l | tr -d ' ')"
+  [ "$NA" = "$NKA" ] || { echo "FAIL: add --list names $NA agents by their crew- name, the payload has $NKA"; exit 1; }
   # 7 · with and without the suffix, the same tree.
   A7a="$WORK/add-7a"; A7b="$WORK/add-7b"; rm -rf "$A7a" "$A7b"; mkdir -p "$A7a" "$A7b"
   ( cd "$A7a" && node "$CLI" add security-expert >/dev/null 2>&1 ); ( cd "$A7b" && node "$CLI" add crew-security-expert >/dev/null 2>&1 )
   [ "$(treehash "$A7a")" = "$(treehash "$A7b")" ] || { echo "FAIL: 'security-expert' and 'crew-security-expert' produced different trees"; exit 1; }
-  echo "[add] security-expert + $(printf '%s\n' $DEPS | grep -c .) inferred skill(s) · record matches · rerun unchanged · conflict rc=1 untouched, --force replaces · unknown rc=2, 0 files · full install left alone · --list $NL = catalogue · suffix-free = suffixed"
+  # 8 · the 2.x name still resolves, to the same tree.
+  A8="$WORK/add-8"; rm -rf "$A8"; mkdir -p "$A8"; ( cd "$A8" && node "$CLI" add security-expert-csk >/dev/null 2>&1 )
+  [ "$(treehash "$A8")" = "$(treehash "$A7a")" ] || { echo "FAIL: 'security-expert-csk' (the 2.x name) did not produce the same tree as 'security-expert'"; exit 1; }
+  # 9 · a 2.x record: its -csk items move to crew- names on the next add; a user's own file in an old dir keeps it.
+  A9="$WORK/add-9"; rm -rf "$A9"; mkdir -p "$A9/.claude/agents" "$A9/.claude/skills/code-review-csk/references"
+  printf 'a\n' > "$A9/.claude/agents/planner-csk.md"; printf 's\n' > "$A9/.claude/skills/code-review-csk/SKILL.md"
+  printf 'r\n' > "$A9/.claude/skills/code-review-csk/references/panel-mode.md"
+  printf '{"version":"2.13.0","items":[{"type":"agent","name":"planner-csk","files":[".claude/agents/planner-csk.md"]},{"type":"skill","name":"code-review-csk","files":[".claude/skills/code-review-csk/SKILL.md",".claude/skills/code-review-csk/references/panel-mode.md"]}]}' > "$A9/.claude/crewforth-added.json"
+  A9OUT="$( cd "$A9" && node "$CLI" add testing 2>&1 )" || { echo "FAIL: add over a 2.x record exited non-zero:"; printf '%s\n' "$A9OUT"; exit 1; }
+  [ -f "$A9/.claude/agents/crew-planner.md" ] && [ -f "$A9/.claude/skills/crew-code-review/references/panel-mode.md" ] \
+    || { echo "FAIL: the 2.x record's items were not moved to crew- names"; exit 1; }
+  [ -z "$(find "$A9/.claude" -name '*-csk*')" ] || { echo "FAIL: old -csk paths left behind: $(find "$A9/.claude" -name '*-csk*')"; exit 1; }
+  R9="$(node -e 'const r=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));console.log(r.items.map(i=>i.name+":"+i.files.join(",")).sort().join(" "))' "$A9/.claude/crewforth-added.json")"
+  case "$R9" in *-csk*) echo "FAIL: the record still names -csk items: $R9"; exit 1 ;; esac
+  case "$R9" in *"crew-planner:.claude/agents/crew-planner.md"*) ;; *) echo "FAIL: the record does not name crew-planner: $R9"; exit 1 ;; esac
+  # the dir-kept twin: a file the record does not own keeps its old directory
+  A9b="$WORK/add-9b"; rm -rf "$A9b"; mkdir -p "$A9b/.claude/skills/code-review-csk"
+  printf 's\n' > "$A9b/.claude/skills/code-review-csk/SKILL.md"; printf 'mine\n' > "$A9b/.claude/skills/code-review-csk/my-notes.md"
+  printf '{"version":"2.13.0","items":[{"type":"skill","name":"code-review-csk","files":[".claude/skills/code-review-csk/SKILL.md"]}]}' > "$A9b/.claude/crewforth-added.json"
+  ( cd "$A9b" && node "$CLI" add testing >/dev/null 2>&1 )
+  [ -f "$A9b/.claude/skills/code-review-csk/my-notes.md" ] || { echo "FAIL: the migration removed a user's own file from an old skill dir"; exit 1; }
+  echo "[add] security-expert + $(printf '%s\n' $DEPS | grep -c .) inferred skill(s) · record matches · rerun unchanged · conflict rc=1 untouched, --force replaces · unknown rc=2, 0 files · full install left alone · --list $NL = catalogue · unprefixed = prefixed = 2.x name · 2.x record moved to crew- names, user file kept"
 
   # studio through the npm entry: the offline self-check, then the real serve probe (listen, 403 without the token,
   # 200 with it, clean exit).
@@ -665,8 +773,9 @@ if command -v node >/dev/null 2>&1 && node --version >/dev/null 2>&1; then
   node "$CLI" studio --selftest >"$WORK/studio-cli-selftest.txt" 2>&1 && grep -qE '^[0-9]+/[0-9]+ passed' "$WORK/studio-cli-selftest.txt" \
     || { echo "FAIL: crewforth studio --selftest did not run its checks:"; tail -n 20 "$WORK/studio-cli-selftest.txt"; exit 1; }
   SP2="$WORK/studio-cli-cwd"; rm -rf "$SP2"; mkdir -p "$SP2"
-  CREW_PROBE_CLI="$CLI" node packaging/studio-serve-probe.mjs "$SP2" || { echo "FAIL: the panel did not serve through crewforth studio"; exit 1; }
-  echo "[studio-cli] --selftest ok · served through bin/cli.js from an empty dir"
+  # Through the npm door, with the token under its pre-3.0 name only: CSK_STUDIO_TOKEN still works in 3.x.
+  CREW_PROBE_CLI="$CLI" CREW_PROBE_LEGACY_TOKEN=1 node packaging/studio-serve-probe.mjs "$SP2" || { echo "FAIL: the panel did not serve through crewforth studio"; exit 1; }
+  echo "[studio-cli] --selftest ok · served through bin/cli.js from an empty dir · token under the 2.x name CSK_STUDIO_TOKEN"
 
   # WITHOUT BASH: PATH is cut down to node's own directory. The twin is what makes this a measurement: in the same
   # PATH, `init` must fail for want of bash — if it does not, bash is still reachable and the pass proves nothing.

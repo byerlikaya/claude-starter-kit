@@ -2002,7 +2002,7 @@ sec "== 6f) always-on token budget =="
 # for that cost, and a gate rather than a reminder — a verbose new description fails the suite instead of
 # quietly taxing every future session. Budgets sit just above the current sizes: raising one is allowed, but
 # only as a deliberate edit here.
-BUDGET_DISC=13723    # 3.0 rename -csk→crew-: +23 B (23 occurrences), not content — measured 13696 → 13719.
+BUDGET_DISC=13723    # 3.0 rename (suffix → crew- prefix): +23 B (23 occurrences), not content — measured 13696 → 13719.
                      # DISCIPLINE.md (the discipline half of CLAUDE.md); before 3.0 the ceiling was 13700, currently 13601. (2026-09-18, a second
                      # +100 B on top of the raise below, and the whole of it went into ONE sentence of §4.6: a commit
                      # has to take its content from the INDEX. The rule is there because the first version of the gate
@@ -2098,7 +2098,7 @@ BUDGET_AGENTS=5800   # sum of agent frontmatter; currently 5582, measured 2026-0
                      # +crew-performance-expert (~426B) — security, privacy and tests each had an independent
                      # reviewer and performance was the one quality axis where the author audited their own
                      # work. Bought at ~110 tokens per session; the alternative was leaving that gap open.)
-BUDGET_SKILLS=9604  # 3.0 rename -csk→crew-: +7 B (7 occurrences), not content — measured 9597 → 9604.
+BUDGET_SKILLS=9604  # 3.0 rename (suffix → crew- prefix): +7 B (7 occurrences), not content — measured 9597 → 9604.
                     # Before 3.0: 9600; sum of skill frontmatter; currently 9597 — **3 bytes of headroom**, measured 2026-09-23 from
                     # this suite's own line. 3.0 swapped cqrs-aop-module (-202 B) for backend-architecture (+211 B) and
                     # the ceiling was NOT raised: the new description was cut until it fit. Before that 9588, measured
@@ -5519,39 +5519,45 @@ sec "== 14b) the star line (once, on a first install) and the front page it poin
 STAR="$ROOT/eval/lib/star.sh"
 if [ -f "$STAR" ]; then
   _SURL="$(sed -n 's/^CREW_REPO_URL="\(.*\)"$/\1/p' "$STAR" | head -1)"
-  _so="$(env -u CI -u CREW_NO_STAR CREW_LANG=en bash "$STAR" 2>&1)"
+  _so="$(env -u CI -u CREW_NO_STAR -u CSK_NO_STAR CREW_LANG=en bash "$STAR" 2>&1)"
   [ -n "$_SURL" ] && [ "$(printf '%s\n' "$_so" | grep -c .)" = 1 ] && case "$_so" in "⭐ "*"$_SURL") true ;; *) false ;; esac \
     && pass "star line: exactly one line, ending in the one URL ($_SURL)" \
     || fail "star line: expected one '⭐ …$_SURL' line, got: '${_so:-<nothing>}'"
-  case "$(env -u CI -u CREW_NO_STAR CREW_LANG=tr bash "$STAR" 2>&1)" in
+  case "$(env -u CI -u CREW_NO_STAR -u CSK_NO_STAR CREW_LANG=tr bash "$STAR" 2>&1)" in
     *"yıldız"*"$_SURL") pass "star line speaks Turkish under CREW_LANG=tr" ;;
     *) fail "star line under CREW_LANG=tr is not the Turkish row" ;; esac
   _q=""
   for _env in "CREW_NO_STAR=1" "CREW_NO_STAR=yes" "CI=1" "CI=true" "CI="; do
-    [ -z "$(env -u CI -u CREW_NO_STAR "$_env" bash "$STAR" 2>&1)" ] || _q="$_q $_env"
+    [ -z "$(env -u CI -u CREW_NO_STAR -u CSK_NO_STAR "$_env" bash "$STAR" 2>&1)" ] || _q="$_q $_env"
   done
   [ -z "$_q" ] && pass "star line is silent under CREW_NO_STAR=1/yes and whenever CI is defined (1, true, empty)" \
                || fail "star line printed under:$_q"
   [ -n "$(env -u CI CREW_NO_STAR=0 bash "$STAR" 2>&1)" ] && pass "CREW_NO_STAR=0 does not silence it (0 means no)" \
     || fail "CREW_NO_STAR=0 silenced the star line"
+  # 3.x reads the pre-3.0 name through crew-env.sh: CSK_NO_STAR alone still silences, and a CREW_NO_STAR that is
+  # set wins over it — even set to 0.
+  [ -z "$(env -u CI -u CREW_NO_STAR CSK_NO_STAR=1 bash "$STAR" 2>&1)" ] && pass "CSK_NO_STAR=1 (the 2.x name) still silences the star line" \
+    || fail "CSK_NO_STAR=1 no longer silences the star line — crew-env.sh is not read, or no longer maps NO_STAR"
+  [ -n "$(env -u CI CREW_NO_STAR=0 CSK_NO_STAR=1 bash "$STAR" 2>&1)" ] && pass "CREW_NO_STAR=0 wins over CSK_NO_STAR=1" \
+    || fail "CSK_NO_STAR=1 overrode a CREW_NO_STAR that was set — the new name must win"
   # --once: ONCE PER KIT VERSION, via a marker that holds the version it was shown for — written only when the
   # line actually printed. Outside git the marker is .claude/star-shown; inside git it is in the git dir, where no
   # `git add .claude` can commit it (review found the first version landing in a tracked .claude/).
   _SP="$(mktemp -d)"; mkdir -p "$_SP/.claude"; printf '9.9.0\n' > "$_SP/.claude/VERSION"
-  _o1="$(env -u CI -u CREW_NO_STAR bash "$STAR" --once "$_SP" 2>&1)"
-  _o2="$(env -u CI -u CREW_NO_STAR bash "$STAR" --once "$_SP" 2>&1)"
+  _o1="$(env -u CI -u CREW_NO_STAR -u CSK_NO_STAR bash "$STAR" --once "$_SP" 2>&1)"
+  _o2="$(env -u CI -u CREW_NO_STAR -u CSK_NO_STAR bash "$STAR" --once "$_SP" 2>&1)"
   printf '9.9.1\n' > "$_SP/.claude/VERSION"
-  _o3="$(env -u CI -u CREW_NO_STAR bash "$STAR" --once "$_SP" 2>&1)"
+  _o3="$(env -u CI -u CREW_NO_STAR -u CSK_NO_STAR bash "$STAR" --once "$_SP" 2>&1)"
   _mv="$(head -1 "$_SP/.claude/star-shown" 2>/dev/null)"
   printf '9.9.2\n' > "$_SP/.claude/VERSION"
-  _o4="$(env -u CREW_NO_STAR CI=true bash "$STAR" --once "$_SP" 2>&1)"; _mv4="$(head -1 "$_SP/.claude/star-shown" 2>/dev/null)"
+  _o4="$(env -u CREW_NO_STAR -u CSK_NO_STAR CI=true bash "$STAR" --once "$_SP" 2>&1)"; _mv4="$(head -1 "$_SP/.claude/star-shown" 2>/dev/null)"
   [ -n "$_o1" ] && [ -z "$_o2" ] && [ -n "$_o3" ] && [ "$_mv" = 9.9.1 ] && [ -z "$_o4" ] && [ "$_mv4" = 9.9.1 ] \
     && pass "--once: once per version (shown · same version silent · new version shown), marker holds the version; a silenced run writes nothing" \
     || fail "--once broken: v1='${_o1:+shown}' v1-again='${_o2:+shown}' v2='${_o3:+shown}' marker='$_mv' silenced='${_o4:+shown}' marker-after='$_mv4'"
   rm -rf "$_SP"
   if command -v git >/dev/null 2>&1; then
     _SG="$(mktemp -d)"; ( cd "$_SG" && git init -q . ) >/dev/null 2>&1; mkdir -p "$_SG/.claude"; printf '9.9.0\n' > "$_SG/.claude/VERSION"
-    env -u CI -u CREW_NO_STAR bash "$STAR" --once "$_SG" >/dev/null 2>&1
+    env -u CI -u CREW_NO_STAR -u CSK_NO_STAR bash "$STAR" --once "$_SG" >/dev/null 2>&1
     _gm="$(cd "$_SG" && git rev-parse --git-path crewforth-star 2>/dev/null)"
     [ -f "$_SG/$_gm" ] && [ ! -e "$_SG/.claude/star-shown" ] && ! (cd "$_SG" && git status --porcelain --untracked-files=all --ignored 2>/dev/null) | grep -q 'star' \
       && pass "inside git the marker lives in the git dir ($_gm) and git status cannot see it" \
@@ -5596,6 +5602,69 @@ if [ "$IS_KIT" = 1 ]; then
   else fail "README points at missing assets:$_miss"; fi
 else
   skip scope "front-page checks skipped (installed project — the READMEs live in the kit repo)" 2
+fi
+
+sec "== 14c) the 3.0 rename left no old name behind — outside history and the code that reads the old names =="
+# 3.0 renamed the kit (Claude Starter Kit → Crewforth), its components (<x>-csk → crew-<x>), its variables
+# (CSK_* → CREW_*), its payload directory and its package. An old name that survives anywhere else is a leftover:
+# a message that names a command nobody has, a variable nobody reads. This gate is permanent, not a one-off sweep.
+# ONE allow-list: a place where an old name is the point — history, or the code that reads, moves or tests the old
+# names. Glob TAB lines TAB reason. The line count is PINNED, exactly: an allowed file is not a free pass, so one
+# more old name in it is red too, and a removed one asks for the pin to come down. An entry that allows nothing is
+# a failure as well, so the list cannot quietly rot. Kept on purpose and NOT matched: the team board's git names
+# (refs/csk/board, the csk-board branch, csk.board*) and the Studio's saved-layout keys — renaming either would
+# split a board shared with a 2.x teammate or reset a layout.
+if [ -n "$SGR" ] && [ -d "$SGR/packaging" ] && [ -f "$SGR/VERSION" ] && [ -d "$SGR/kit" ] && [ -f "$SGR/packaging/build-plugin.sh" ]; then
+  RN_ALLOW='CHANGELOG.md	166	history: every entry before 3.0 keeps the name it shipped under
+README*.md	59	prose outside the generated sections is rewritten in its own change (5R)
+adopt.sh	15	the 2.x → 3.0 migration: moves <x>-csk, sweeps CLAUDE.md, PROOF-5, the CSK_CORRECT_STACK no-op
+bin/cli.js	4	add accepts a typed <x>-csk and moves an add record written under the old names
+*/eval/doctor.sh	1	PROOF-5 reports a 2.x agent name still used in CLAUDE.md
+*/eval/lib/crew-env.sh	8	the bash compat helper: reads CSK_* when CREW_* is unset
+*/studio/server/lib/crew-env.js	8	the Node compat helper, same list
+*/skills/automode-policy/scripts/check.sh	4	a classifier config applied by 2.x keeps its "CSK …" rule names
+evals/run.sh	3	~/.csk-eval-parent is a trusted directory on the machine that runs evals; renaming it drops the trust
+kit/eval/smoke-test.sh	23	this gate'"'"'s own pattern, and the tests that the CSK_* names still work
+packaging/e2e.sh	47	the migration rehearsal on the real v2.13.0 tree, and the 2.x add names
+packaging/studio-serve-probe.mjs	6	the test that CSK_STUDIO_TOKEN still works and loses to CREW_STUDIO_TOKEN'
+  RN_PAT='-csk([^A-Za-z0-9_]|$)|\.csk([^A-Za-z0-9_]|$)|CSK_|(^|[^A-Za-z0-9_])CSK([^A-Za-z0-9_]|$)|Claude Starter Kit|claude-starter-kit|claude-starter/|@byerlikaya/'
+  RN_FILES="$(git -C "$SGR" ls-files -co --exclude-standard 2>/dev/null)"
+  RN_N="$(printf '%s\n' "$RN_FILES" | grep -c .)"
+  # file<TAB>matching-line count, for every file with an old name in it
+  RN_HITS="$(cd "$SGR" && printf '%s\n' "$RN_FILES" | while IFS= read -r f; do [ -f "$f" ] && printf '%s\0' "$f"; done \
+             | xargs -0 grep -IcE -e "$RN_PAT" 2>/dev/null | sed -n 's/:\([1-9][0-9]*\)$/	\1/p')"
+  RN_BAD=""; RN_GOT=""
+  while IFS="$(printf '\t')" read -r f c; do
+    [ -n "$f" ] || continue; hit=""
+    while IFS="$(printf '\t')" read -r g _ _; do case "$f" in $g) hit="$g"; break ;; esac; done <<EOF
+$RN_ALLOW
+EOF
+    if [ -n "$hit" ]; then RN_GOT="$RN_GOT
+$hit	$c"; else RN_BAD="$RN_BAD $f"; fi
+  done <<EOF
+$RN_HITS
+EOF
+  RN_OFF=""
+  while IFS="$(printf '\t')" read -r g pin _; do
+    got="$(printf '%s\n' "$RN_GOT" | awk -F'\t' -v g="$g" '$1==g{n+=$2} END{print n+0}')"
+    [ "$got" = "$pin" ] || RN_OFF="$RN_OFF
+       $g: pinned $pin, found $got"
+  done <<EOF
+$RN_ALLOW
+EOF
+  RN_AN="$(printf '%s\n' "$RN_ALLOW" | grep -c .)"
+  if [ "$RN_N" -lt 100 ]; then
+    fail "the old-name scan listed $RN_N files — git ls-files did not see the checkout, so it measured nothing"
+  elif [ -n "$RN_BAD" ]; then
+    fail "old names outside the allow-list — rename them, or add a line with its reason:$(for f in $RN_BAD; do printf '\n       %s' "$(cd "$SGR" && grep -nE -e "$RN_PAT" "$f" | head -n 2 | sed "s|^|$f:|" | tr '\n' ' ')"; done)"
+  else
+    pass "no old name outside the $RN_AN-line allow-list ($RN_N files scanned, $(printf '%s\n' "$RN_HITS" | grep -c .) allowed)"
+  fi
+  [ "$RN_AN" -le 15 ] && pass "the old-name allow-list has $RN_AN lines (ceiling 15)" || fail "the old-name allow-list grew to $RN_AN lines (ceiling 15) — rename instead"
+  [ -z "$RN_OFF" ] && pass "every allow-list line holds exactly its pinned count of old-name lines (none allows nothing)" \
+    || fail "allowed old-name lines moved off their pin — a new one is a leftover, a removed one lowers the pin:$RN_OFF"
+else
+  skip scope "old-name residue not checked — not a git checkout of the kit's source" 3
 fi
 
 sec "== 15) evals: the parallel-audit metric, because a rule nobody can measure is not a rule =="

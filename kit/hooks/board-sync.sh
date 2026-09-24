@@ -16,7 +16,7 @@
 #     NEXT session. On an unreachable remote the session-start cost stays at zero.
 #   - Fails OPEN and SILENT: no repo, no board, no cache -> no output, exit 0. It never blocks a session.
 set -uo pipefail
-# Pre-3.0 CSK_* names still work for the variables a user can set (one helper: eval/lib/crew-env.sh).
+# The 2.x names of the variables a user can set still work (one helper: eval/lib/crew-env.sh).
 _crew_d="${BASH_SOURCE%/*}"; [ "$_crew_d" = "${BASH_SOURCE}" ] && _crew_d=.
 [ -f "$_crew_d/../eval/lib/crew-env.sh" ] && . "$_crew_d/../eval/lib/crew-env.sh"; unset _crew_d
 

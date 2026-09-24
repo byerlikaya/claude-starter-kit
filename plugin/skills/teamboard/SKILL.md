@@ -74,7 +74,7 @@ Items come from either direction, and both end at `add`:
 ## Tracker link (honest boundary)
 Teams use Jira, Trello, Linear, GitHub Issues or nothing, so the kit **binds to none of them**. An item carries an
 optional `external:` field, which is a link and nothing more — no sync, no import, no write-back. A team that
-wants two-way sync writes an executable `.csk/board-adapter.sh` answering two verbs: `import` (emit
+wants two-way sync writes an executable `.crew/board-adapter.sh` answering two verbs: `import` (emit
 `<id>|<title>|<deps>|<external>` lines to be fed to `add`) and `export <id> <status>` (push the state outward).
 The kit ships no adapter; do not claim integration the kit does not have.
 

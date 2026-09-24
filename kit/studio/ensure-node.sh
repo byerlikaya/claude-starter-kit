@@ -20,7 +20,7 @@
 #      CREW_STUDIO_RUNTIME       where fetched runtimes live (default ~/.claude/studio-runtime)
 #      CREW_STUDIO_NODE_VERSION  pin a version instead of asking nodejs.org for the newest LTS
 set -u
-# Pre-3.0 CSK_* names still work for the variables a user can set (one helper: eval/lib/crew-env.sh).
+# The 2.x names of the variables a user can set still work (one helper: eval/lib/crew-env.sh).
 _crew_d="${BASH_SOURCE%/*}"; [ "$_crew_d" = "${BASH_SOURCE}" ] && _crew_d=.
 [ -f "$_crew_d/../eval/lib/crew-env.sh" ] && . "$_crew_d/../eval/lib/crew-env.sh"; unset _crew_d
 

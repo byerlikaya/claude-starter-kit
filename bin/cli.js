@@ -186,13 +186,57 @@ function assertDirsOrAbsent(projectRoot, dir) {
   }
 }
 
+// The 3.0 name migration for projects that used `add` rather than the full install: every record item still named
+// <x>-csk (a 2.x add) moves to its crew- name — files included — and the record follows. Same rule as the updater:
+// move, never delete; if the new name already exists nothing moves and the user is told. Paths come from the record
+// and are rewritten only in the component segment, then checked like every other write.
+function removeEmptyDirs(dir) {
+  let entries;
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (_) { return; }
+  for (const e of entries) if (e.isDirectory() && !e.isSymbolicLink()) removeEmptyDirs(path.join(dir, e.name));
+  try { fs.rmdirSync(dir); } catch (_) { /* not empty — something of the user's is in it */ }
+}
+
+function migrateAdded(projectRoot, cat, log, err) {
+  const recFile = path.join(projectRoot, '.claude', RECORD);
+  let rec;
+  try { rec = JSON.parse(fs.readFileSync(recFile, 'utf8')); } catch (_) { return 0; }
+  if (!rec || typeof rec !== 'object' || !Array.isArray(rec.items)) return 0;
+  let changed = 0;
+  for (const it of rec.items) {
+    if (!it || typeof it.name !== 'string' || !it.name.endsWith(LEGACY_SUFFIX)) continue;
+    const r = resolveName(cat, it.name);
+    if (!r || r.type !== it.type) continue;
+    const oldSeg = it.type === 'agent' ? `agents/${it.name}.md` : `skills/${it.name}/`;
+    const newSeg = it.type === 'agent' ? `agents/${r.name}.md` : `skills/${r.name}/`;
+    const files = Array.isArray(it.files) ? it.files : [];
+    const moves = files.map((f) => ({ from: f, to: String(f).replace(oldSeg, newSeg) }));
+    const clash = moves.filter((m) => m.to !== m.from && fs.existsSync(path.join(projectRoot, m.to)));
+    if (clash.length) { err(`add: ${it.name} → ${r.name}: both names exist (${clash[0].to}) — nothing moved; keep one`); continue; }
+    for (const m of moves) {
+      const src = path.join(projectRoot, m.from); const dst = path.join(projectRoot, m.to);
+      if (m.to === m.from || !fs.existsSync(src)) continue;
+      assertSafeTarget(projectRoot, src); assertSafeTarget(projectRoot, dst);
+      fs.mkdirSync(path.dirname(dst), { recursive: true });
+      fs.renameSync(src, dst);
+    }
+    // An emptied old skill directory goes too, deepest first; a directory still holding a user's own file stays.
+    if (it.type === 'skill') removeEmptyDirs(path.join(projectRoot, '.claude', 'skills', it.name));
+    // Moved, not upgraded: the files still hold the content of the version that added them.
+    log(`3.0 rename: ${it.name} → ${r.name} (content from ${rec.version || '2.x'}; \`npx crewforth add ${r.name} --force\` updates it)`);
+    it.name = r.name; it.files = moves.map((m) => m.to); changed += 1;
+  }
+  if (changed) fs.writeFileSync(recFile, `${JSON.stringify(rec, null, 2)}\n`);
+  return changed;
+}
+
 function listCommand(pkgDir, log) {
   const cat = catalogue(pkgDir);
-  log(`Agents (${cat.agents.length}) — npx crewforth add <name>`);
-  for (const a of cat.agents) log(`  ${bare(a).padEnd(22)} ${firstSentence(path.join(cat.root, 'agents', `${a}.md`))}`);
+  log(`Agents (${cat.agents.length}) — npx crewforth add <name>  (the crew- prefix is optional when you type it)`);
+  for (const a of cat.agents) log(`  ${a.padEnd(24)} ${firstSentence(path.join(cat.root, 'agents', `${a}.md`))}`);
   log('');
   log(`Skills (${cat.skills.length})`);
-  for (const s of cat.skills) log(`  ${s.padEnd(22)} ${firstSentence(path.join(cat.root, 'skills', s, 'SKILL.md'))}`);
+  for (const s of cat.skills) log(`  ${s.padEnd(24)} ${firstSentence(path.join(cat.root, 'skills', s, 'SKILL.md'))}`);
   return 0;
 }
 
@@ -221,7 +265,7 @@ function addCommand(pkgDir, args, opts = {}) {
   }
 
   const cat = catalogue(pkgDir);
-  // All or nothing: every name must resolve before anything is planned.
+  // All or nothing: every name must resolve before anything is planned — or migrated.
   const resolved = []; const unknown = [];
   for (const n of names) { const r = resolveName(cat, n); if (r) resolved.push(r); else unknown.push(n); }
   if (unknown.length) {
@@ -229,6 +273,7 @@ function addCommand(pkgDir, args, opts = {}) {
     err('Nothing was written.');
     return 2;
   }
+  const migrated = migrateAdded(projectRoot, cat, log, err);
 
   // Expand agents into their skills; keep a stable, de-duplicated order.
   const items = []; const pairs = new Set();
@@ -263,7 +308,7 @@ function addCommand(pkgDir, args, opts = {}) {
   const conflicts = plan.filter((p) => p.state === 'differs');
   if (conflicts.length && !force) {
     for (const c of conflicts) err(`add: ${shown(projectRoot, c.dst)} exists with different content — not overwritten (use --force to replace it)`);
-    err('Nothing was written.');
+    err(migrated ? 'Nothing was added (only the 3.0 renames above were made).' : 'Nothing was written.');
     return 1;
   }
 

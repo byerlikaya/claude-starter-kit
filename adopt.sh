@@ -9,7 +9,7 @@
 #
 # Usage: at the target project root (same directory as kit/):  bash adopt.sh
 set -uo pipefail
-# Pre-3.0 CSK_* names still work for the variables a user can set (one helper: eval/lib/crew-env.sh).
+# The 2.x names of the variables a user can set still work (one helper: eval/lib/crew-env.sh).
 _crew_d="${BASH_SOURCE%/*}"; [ "$_crew_d" = "${BASH_SOURCE}" ] && _crew_d=.
 [ -f "$_crew_d/kit/eval/lib/crew-env.sh" ] && . "$_crew_d/kit/eval/lib/crew-env.sh"; unset _crew_d
 HERE="$(CDPATH= cd "$(dirname "$0")" && pwd)"
@@ -104,6 +104,9 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "(no kit.conf — read back from the installed files)") s='(kit.conf yok — kurulu dosyalardan çıkarıldı)' ;;
       "inferred pattern") s='çıkarılan desen' ;;
       "recorded pattern") s='kayıtlı desen' ;;
+      "3.0 rename: %s → %s") s='3.0 ad değişikliği: %s → %s' ;;
+      "3.0 rename: both the old and the new name exist for:%s — nothing moved; keep one") s='3.0 ad değişikliği: eski ve yeni ad ikisi de var:%s — hiçbir şey taşınmadı; birini tutun' ;;
+      "3.0 ref-sweep: old kit names → crew- names in %s") s='3.0 referans taraması: %s içindeki eski kit adları crew- adlarına çevrildi' ;;
       "stack=%s %s") s='stack=%s %s' ;;
       "stack=%s · via %s") s='stack=%s · kuran: %s' ;;
       "stack=dotnet — 3.0 records generic; the pattern skill stays as a project skill") s="stack=dotnet — 3.0 generic kaydeder; desen skill'i proje skill'i olarak kalır" ;;
@@ -370,7 +373,7 @@ gi_add() {   # $@ = entries to ensure in ./.gitignore; sets GI_WROTE to what it 
   [ -e .gitignore ] || : > .gitignore
   for e in "$@"; do
     if git rev-parse --git-dir >/dev/null 2>&1; then
-      git check-ignore -q "$e" 2>/dev/null && continue
+      git check-ignore -q --no-index "$e" 2>/dev/null && continue   # --no-index: a dir holding tracked files (docs/HANDOVER.md) still counts as ignored
     else
       grep -qxF "$e" .gitignore 2>/dev/null && continue
     fi
@@ -519,12 +522,21 @@ _mt "$STACK"; rowv 'stack hint' "$_M"
 h1m '[2] Existing agentic setup (accumulated work to inherit)'
 HAS_CLAUDE=0; [ -d .claude ] && HAS_CLAUDE=1
 # count only the PROJECT's own agents/skills — exclude the kit's crew- agents and kit skills left by a prior adopt
-N_PAGENTS=0; [ -d .claude/agents ] && N_PAGENTS="$(find .claude/agents -name '*.md' ! -name 'crew-*.md' 2>/dev/null | wc -l | tr -d ' ')"
+# A 2.x install still has the kit's components under their old <x>-csk names (moved further down); they are the
+# kit's, not the project's, so they are left out of both counts. The names come from the payload, like the move.
+KIT_OLD=" "; for kf in "$SRC"/agents/crew-*.md "$SRC"/skills/crew-*/; do kf="${kf%/}"; kf="${kf##*/}"; kf="${kf%.md}"; KIT_OLD="$KIT_OLD${kf#crew-}-csk "; done
+N_PAGENTS=0
+if [ -d .claude/agents ]; then
+  while IFS= read -r f; do f="${f##*/}"; f="${f%.md}"; case "$KIT_OLD" in *" $f "*) ;; *) N_PAGENTS=$((N_PAGENTS+1)) ;; esac
+  done < <(find .claude/agents -name '*.md' ! -name 'crew-*.md' 2>/dev/null)
+fi
 N_PSKILLS=0
 if [ -d .claude/skills ]; then
   # `basename $(dirname …)` per skill is two spawns × every installed skill, for a number printed once. Parameter
   # expansion does the same slicing with none.
-  while IFS= read -r f; do d="${f%/SKILL.md}"; d="${d##*/}"; [ -d "$SRC/skills/$d" ] || N_PSKILLS=$((N_PSKILLS+1)); done < <(find .claude/skills -name 'SKILL.md' 2>/dev/null)
+  while IFS= read -r f; do d="${f%/SKILL.md}"; d="${d##*/}"
+    [ -d "$SRC/skills/$d" ] || case "$KIT_OLD" in *" $d "*) ;; *) N_PSKILLS=$((N_PSKILLS+1)) ;; esac
+  done < <(find .claude/skills -name 'SKILL.md' 2>/dev/null)
 fi
 # Same-domain agent overlap: a PROJECT agent whose base name matches a kit crew- agent (e.g. backend-expert vs
 # crew-backend-expert). The two describe the same job, so the router has to pick between them — plain coexist
@@ -540,6 +552,9 @@ HAS_SETTINGS=0; [ -f .claude/settings.json ] && HAS_SETTINGS=1
 # already-adopted fingerprint: did a PRIOR adopt/kit install run here? -> REFRESH semantics, not a fresh handover
 KIT_PRESENT=0; KIT_VER=""
 { [ -f .claude/DISCIPLINE.md ] || [ -d .claude/git-shim ] || ls .claude/agents/crew-*.md >/dev/null 2>&1 || [ -f .claude/VERSION ]; } && KIT_PRESENT=1
+# A 2.x install, by the kit's OWN old names only: a project agent that merely ends in -csk (my-helper-csk.md) must
+# not make a never-installed project look installed — that turns on the force-refresh and overwrites its files.
+if [ "$KIT_PRESENT" = 0 ]; then for n in $KIT_OLD; do [ -f ".claude/agents/$n.md" ] && { KIT_PRESENT=1; break; }; done; fi
 [ -f .claude/VERSION ] && KIT_VER="$(head -1 .claude/VERSION 2>/dev/null)"
 # Backend pattern of the existing install. Since 3.0 there is ONE shape (generic) and this only answers a
 # migration question: was this a pre-3.0 .NET install? If so its pattern skill stays, as the project's own.
@@ -783,7 +798,7 @@ fi
 
 mkdir -p .claude
 # Every adopt installs the full payload; the only thing that varies is the .NET pattern skill below.
-EXCL_A=""; EXCL_S=""
+EXCL_A=""; EXCL_S=""; EXCL_C=""
 # Pre-2.0 migration: that install pruned by profile, so components are MISSING and this refresh restores them.
 # The list is derived from a before/after disk diff rather than from a profile→pruned map, because the map
 # (profiles.conf) no longer exists — and a diff also reports components added by the version bump itself,
@@ -819,12 +834,33 @@ if [ "$KIT_PRESENT" = 1 ] && [ -d .claude/skills/devarch-module ]; then
 fi
 [ "$LEGACY_DOTNET" = 1 ] && [ -d .claude/skills/cqrs-aop-module ] \
   && say "cqrs-aop-module is now a project skill (the kit no longer ships it); backend-expert applies it as your project's pattern."
+# THE 3.0 NAME MIGRATION: <x>-csk -> crew-<x>, for the KIT'S OWN components only (agents, commands, the code-review
+# skill), and only on a project the kit was installed on. Same principle as the devarch-module rename above: move,
+# never delete. The names come from the payload, so a project file that merely ends in -csk (my-helper-csk.md) is
+# never considered. If both names exist nothing moves — the user decides which one is theirs. The force-refresh just
+# below then brings every moved file's content up to 3.0.
+LEGACY_MOVED=0; LEGACY_BOTH=""
+if [ "$KIT_PRESENT" = 1 ]; then
+  for kf in "$SRC"/agents/crew-*.md "$SRC"/commands/crew-*.md "$SRC"/skills/crew-*/; do
+    [ -e "$kf" ] || continue
+    kf="${kf%/}"; kd="${kf%/*}"; kd="${kd##*/}"; kn="${kf##*/}"; kx=""
+    case "$kn" in *.md) kn="${kn%.md}"; kx=".md" ;; esac
+    old=".claude/$kd/${kn#crew-}-csk$kx"; new=".claude/$kd/$kn$kx"
+    [ -e "$old" ] || continue
+    if [ -e "$new" ]; then LEGACY_BOTH="$LEGACY_BOTH $old"
+      # 2.x never shipped a crew- name, so that file is the user's: the force-refresh below must not replace it.
+      case "$kd" in agents) EXCL_A="$EXCL_A $kn$kx" ;; skills) EXCL_S="$EXCL_S $kn" ;; commands) EXCL_C="$EXCL_C $kn$kx" ;; esac
+    else mv "$old" "$new" 2>/dev/null && { LEGACY_MOVED=$((LEGACY_MOVED+1)); say '3.0 rename: %s → %s' "${old#.claude/}" "${new#.claude/}"; }
+    fi
+  done
+  [ -n "$LEGACY_BOTH" ] && warnm '3.0 rename: both the old and the new name exist for:%s — nothing moved; keep one' "$LEGACY_BOTH"
+fi
 # #1 keepmine: your overlapping agents own those roles, so the kit's matching crew- agents are NOT installed.
 [ "$COLLIDE_MODE" = keepmine ] && for b in $COLLIDE; do EXCL_A="$EXCL_A crew-$b.md"; done
 # kit-owned trees: FORCE-refresh on a re-adopt (KIT_PRESENT) so kit updates land; never-overwrite on a fresh adopt
 copy_noclobber "$SRC/agents"   .claude/agents   "$KIT_PRESENT" "$EXCL_A"; A_ADD=$ret_add; A_SKIP=$ret_skip
 copy_noclobber "$SRC/skills"   .claude/skills   "$KIT_PRESENT" "$EXCL_S"; S_ADD=$ret_add; S_SKIP=$ret_skip
-copy_noclobber "$SRC/commands" .claude/commands "$KIT_PRESENT"; C_ADD=$ret_add; C_SKIP=$ret_skip
+copy_noclobber "$SRC/commands" .claude/commands "$KIT_PRESENT" "$EXCL_C"; C_ADD=$ret_add; C_SKIP=$ret_skip
 # Read BEFORE the hooks tree is refreshed: whether §4.2's vendor line is armed right now (see the re-arm below).
 # `\r?`: a blocklist that reached this checkout CRLF (autocrlf=true, a Windows editor) still counts as armed —
 # a plain -x match read it as disarmed and the refresh switched §4.2 off without a word (measured in review).
@@ -911,6 +947,40 @@ if [ "$N_TAKEN" -gt 0 ] && [ -f CLAUDE.md ]; then
   done
   [ "$SWEPT" -gt 0 ] && h1m 'Reference sweep: rewrote taken-over agent names to their crew- id across CLAUDE.md + referenced docs' \
                      || say "ref-sweep: no stale references in CLAUDE.md's chain"
+fi
+# The 3.0 names in CLAUDE.md's reference chain (itself, its @imports, the docs/*.md it names): each OLD kit name —
+# backend-expert-csk, /review-csk, @agent-planner-csk — becomes its crew- form. Only kit names, from the payload;
+# the boundary is the takeover sweep's (not glued to a longer name, `@agent-` allowed), so the rest of the file is
+# left as it was. Runs only when a file mentions -csk at all.
+if [ "$KIT_PRESENT" = 1 ] && [ -f CLAUDE.md ] && grep -q -e '-csk' CLAUDE.md $(grep -oE '@?[A-Za-z0-9_./-]+\.md' CLAUDE.md 2>/dev/null | sed 's/^@//' | sort -u) 2>/dev/null; then
+  LSWEEP="CLAUDE.md"
+  for r in $(grep -oE '@?[A-Za-z0-9_./-]+\.md' CLAUDE.md 2>/dev/null | sed 's/^@//' | sort -u); do
+    r="${r#./}"
+    case "$r" in .claude/*) continue ;; esac   # kit-owned (DISCIPLINE.md is rewritten on every update anyway)
+    case "/$r/" in */../*) continue ;; esac     # inside the project only: an update does not edit files outside it
+    [ -f "$r" ] && [ "$r" != "CLAUDE.md" ] && LSWEEP="$LSWEEP $r"
+  done
+  set --
+  for kf in "$SRC"/agents/crew-*.md "$SRC"/commands/crew-*.md "$SRC"/skills/crew-*/; do
+    [ -e "$kf" ] || continue
+    kn="${kf%/}"; kn="${kn##*/}"; kn="${kn%.md}"; kb="${kn#crew-}"
+    set -- "$@" -e "s/(^|[^A-Za-z0-9_-]|@agent-)$kb-csk([^A-Za-z0-9_-]|\$)/\1$kn\2/g"
+  done
+  for f in $LSWEEP; do
+    grep -q -e '-csk' "$f" 2>/dev/null || continue
+    # A symlink is followed only to a target inside the project (CLAUDE.md → AGENTS.md is common); writing with
+    # `cat >` rather than `mv` goes THROUGH the link and keeps the file's mode, instead of replacing it.
+    if [ -L "$f" ]; then t="$(readlink "$f")"; case "$t" in /*|*..*) continue ;; esac; fi
+    i=0; cp "$f" "$f.kit-before"
+    while [ "$i" -lt 5 ]; do
+      sed -E "$@" "$f" > "$f.kit-sweep" || { rm -f "$f.kit-sweep"; break; }   # a failed sed changes nothing
+      cmp -s "$f" "$f.kit-sweep" && { rm -f "$f.kit-sweep"; break; }
+      cat "$f.kit-sweep" > "$f"; rm -f "$f.kit-sweep"; i=$((i+1))
+    done
+    cmp -s "$f" "$f.kit-before" || say '3.0 ref-sweep: old kit names → crew- names in %s' "$f"
+    rm -f "$f.kit-before"
+  done
+  set --
 fi
 # §4.2: an armed vendor line STAYS armed, and nothing else arms it. The blocklist ships `# DevArchitecture`
 # commented; before 3.0 only `start.sh --dotnet` uncommented it, and the force-refresh above resets it to a
@@ -1196,7 +1266,7 @@ if [ -f CLAUDE.md ] && ls .claude/agents/crew-*.md >/dev/null 2>&1; then
       for (i=1;i<=nf;i++) {
         f=files[i]; n=(f in nm) ? nm[f] : ""
         if (n=="") { n=f; sub(/\.md$/,"",n); sub(/.*\//,"",n) }
-        if (n ~ /^crew-/) { b=n; sub(/^crew-/,"",b); print b "\t" n }
+        if (n ~ /^crew-/) { b=n; sub(/^crew-/,"",b); print b "\t" n; print b "-csk\t" n }
       }
     }' .claude/agents/crew-*.md 2>/dev/null)"
   export CREW_AGENT_BASES
@@ -1216,7 +1286,7 @@ $(awk '
   FNR==1 { order[++nf]=FILENAME }
   {
     for (i=1;i<=nb;i++)
-      if ($0 ~ ("(^|[^a-zA-Z-])" base[i] "([^a-zA-Z-]|\$)"))
+      if ($0 ~ ("(^|[^a-zA-Z0-9_-]|@agent-)" base[i] "([^a-zA-Z0-9_-]|\$)"))
         hit[i, FILENAME] = (hit[i, FILENAME]=="" ? FNR : hit[i, FILENAME] "," FNR)
   }
   END {

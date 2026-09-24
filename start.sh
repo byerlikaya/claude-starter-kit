@@ -7,7 +7,7 @@
 # not vary either: the stack is decided per project by the backend-architecture skill and recorded in CLAUDE.md.
 # start.sh + kit/ must be in the SAME directory. At the project root:  bash start.sh [flags]
 set -euo pipefail
-# Pre-3.0 CSK_* names still work for the variables a user can set (one helper: eval/lib/crew-env.sh).
+# The 2.x names of the variables a user can set still work (one helper: eval/lib/crew-env.sh).
 _crew_d="${BASH_SOURCE%/*}"; [ "$_crew_d" = "${BASH_SOURCE}" ] && _crew_d=.
 [ -f "$_crew_d/kit/eval/lib/crew-env.sh" ] && . "$_crew_d/kit/eval/lib/crew-env.sh"; unset _crew_d
 HERE="$(CDPATH= cd "$(dirname "$0")" && pwd)"
@@ -264,7 +264,7 @@ gi_add() {   # $@ = entries to ensure in ./.gitignore; prints nothing, sets GI_W
   [ -e .gitignore ] || : > .gitignore
   for e in "$@"; do
     if git rev-parse --git-dir >/dev/null 2>&1; then
-      git check-ignore -q "$e" 2>/dev/null && continue
+      git check-ignore -q --no-index "$e" 2>/dev/null && continue   # --no-index: a dir holding tracked files (docs/HANDOVER.md) still counts as ignored
     else
       grep -qxF "$e" .gitignore 2>/dev/null && continue
     fi

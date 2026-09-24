@@ -5,7 +5,7 @@
 # set (so the commit trace/secret scan never runs), settings.json missing (so the tool-level gates never fire).
 # Zero-dep, bash-only, Git-Bash safe. Run from the project root (or pass the path):  bash .claude/eval/doctor.sh
 set -uo pipefail
-# Pre-3.0 CSK_* names still work for the variables a user can set (one helper: eval/lib/crew-env.sh).
+# The 2.x names of the variables a user can set still work (one helper: eval/lib/crew-env.sh).
 _crew_d="${BASH_SOURCE%/*}"; [ "$_crew_d" = "${BASH_SOURCE}" ] && _crew_d=.
 [ -f "$_crew_d/lib/crew-env.sh" ] && . "$_crew_d/lib/crew-env.sh"; unset _crew_d
 ROOT="${1:-.}"
@@ -229,7 +229,7 @@ if [ -f CLAUDE.md ] && ls .claude/agents/*.md >/dev/null 2>&1; then
       for (i=1;i<=nf;i++) {
         f=files[i]; n=(f in nm) ? nm[f] : ""
         if (n=="") { n=f; sub(/\.md$/,"",n); sub(/.*\//,"",n) }              # fallback: the file name
-        if (n ~ /^crew-/) { b=n; sub(/^crew-/,"",b); print b "\t" n }
+        if (n ~ /^crew-/) { b=n; sub(/^crew-/,"",b); print b "\t" n; print b "-csk\t" n }   # the 2.x name is stale too
       }
     }' .claude/agents/*.md)"
   export CREW_AGENT_BASES
@@ -251,7 +251,7 @@ $(awk '
     # bare `base` NOT touching a `-` on either side (so not crew-base, nor base-local) and not glued into a longer word — the identical
     # boundary the grep used. Agent ids are [a-z-] only, so nothing here needs regex escaping.
     for (i=1;i<=nb;i++)
-      if ($0 ~ ("(^|[^a-zA-Z-])" base[i] "([^a-zA-Z-]|$)"))
+      if ($0 ~ ("(^|[^a-zA-Z0-9_-]|@agent-)" base[i] "([^a-zA-Z0-9_-]|$)"))
         hit[i, FILENAME] = (hit[i, FILENAME]=="" ? FNR : hit[i, FILENAME] "," FNR)
   }
   # Emitted in agent order, then scanned-file order, so the report reads the same as it always did rather
