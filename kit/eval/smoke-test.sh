@@ -4356,6 +4356,11 @@ else
     9.9.9\ [0-9]*) pass "--refresh parses a dist-tags response and caches version+timestamp" ;;
     *) fail "--refresh did not cache a usable result from $FURL (got: $(cat "$UPD/.claude/.state/update-check" 2>/dev/null || echo '<no file>'))" ;;
   esac
+  # The pattern above passes a CRLF cache too (its trailing * eats the CR), and the opening rejects a CR — so the
+  # line ending is pinned on its own, counted, not matched. Measured on Windows: the refresher writes 0 CRs.
+  [ "$(tr -dc '\r' < "$UPD/.claude/.state/update-check" | wc -c | tr -d ' ')" = 0 ] \
+    && pass "--refresh writes the cache with LF only (0 CR) — a CR would make the next opening reject it" \
+    || fail "--refresh wrote a CR into the cache; the opening rejects such a cache, so the release would never be asked about"
   ustate; case "$(uc)" in *9.9.9*) pass "the cached fetch result is what the next opening asks about" ;;
                           *) fail "a freshly cached version was not asked about on the next opening" ;; esac
 fi
