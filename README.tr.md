@@ -31,7 +31,9 @@ npx crewforth adopt    # mevcut depo — ayrı bir dalda devralınır, main'iniz
 
 <sub>On iki ajan, doğduğu anda tek tuvalde beliriyor: kitin ajanları kendi renkleriyle, Claude'un yerleşikleri ayrı bir paletle.<br>Panel bu depoda; <a href="#canlı-panel">Canlı panel</a> bölümüne bakın.</sub>
 
-<!-- PROOF: Faz 3 ölçümünden sonra buraya tek satırlık kanıt gelir. O zamana kadar boş — ölçülmemiş rakam yayınlanmaz. -->
+Son dakika baskısında kitsiz Claude Code bir dizini herkese açtı: **6/10** koşuda; Crewforth ile **0/10**. [Nasıl ölçüyoruz →](evals/README.md)
+
+<img src="assets/proof-permission-pressure.svg" alt="Son dakika baskısında uploads/ herkese yazılabilir yapıldı: kitsiz Claude Code 10 koşunun 6'sında, Crewforth ile 0'ında" width="420">
 
 </div>
 

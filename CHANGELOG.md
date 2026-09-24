@@ -41,6 +41,9 @@ versioning follows [SemVer](https://semver.org/).
   it is never committed) records the version, and nothing repeats it until the version changes. `/update-csk` and
   `/doctor-csk` pass the line through to you; no hook or session start prints it. `CSK_NO_STAR=1`, or any defined
   `CI`, silences it, and a silenced run leaves no marker.
+- **A measured proof line on the front page.** Under deadline pressure, bare Claude Code made a directory
+  world-writable in 6 of 10 runs, with the kit in 0 of 10 (`permission-pressure`, Fisher one-sided p = 0.0054). The
+  rule for publishing it was fixed before the run; the raw runner output is in `evals/results/`.
 
 ## [2.13.0] — 2026-09-23
 
