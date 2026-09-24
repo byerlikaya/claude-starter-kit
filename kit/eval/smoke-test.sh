@@ -3961,7 +3961,7 @@ if ( cd "$BSD" && git init -q . ) >/dev/null 2>&1; then
   printf '%s\n' $'#1 "Fix\tlogin" C:\\app\r\x01 ok\nsecond' > "$BSD/.git/crew-board-cache"
   date -u +%s > "$BSD/.git/crew-board-cache.at"
   o="$(printf '{}' | CLAUDE_PROJECT_DIR="$BSD" bash "$HOOKS/board-sync.sh" 2>/dev/null)"
-  want='{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"#1 \"Fix\tlogin\" C:\\app\r\u0001 ok\nsecond\nBoard state above is a cached snapshot; /crew-board sync refreshes it."}}'
+  want='{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"#1 \"Fix\tlogin\" C:\\app\r\u0001 ok\nsecond\nBoard state above is a cached snapshot; bash .claude/hooks/board.sh sync (or the user can type /crew-board sync) refreshes it."}}'
   [ "$o" = "$want" ] && pass "board-sync escapes tab, CR, control bytes, quote and backslash exactly as jq does (no jq needed)" \
                      || fail "board-sync JSON differs from jq's for a cache with a tab/CR/control byte — got: ${o:-<silence>}"
   # A CRLF cache: the line-ending CR is dropped on every OS (MSYS gawk drops it on read, BSD awk does not — the
@@ -5176,6 +5176,29 @@ done
 grep -q '^disable-model-invocation:[[:space:]]*true' "$SKILLS/crew-update/SKILL.md" 2>/dev/null \
   && fail "/crew-update is user-only: the update question's \"Update\" tells Claude to run /crew-update, which it then cannot" \
   || pass "/crew-update stays model-invocable (the update question's Update runs it)"
+
+# NO HOOK SENDS CLAUDE TO A USER-ONLY COMMAND. A hook's output is read by Claude (session context, a gate's refusal),
+# and a user-only skill is one Claude cannot invoke — so a line that names one must also give Claude what it CAN
+# run and say the slash form is the user's ("… or the user can type /crew-board …"). The user-only set is read from
+# the flags, not listed, so a command that turns user-only later is covered from then on. Comments are skipped;
+# `.../crew-board-cache` and `refs/heads/crew-board` are paths, not commands (the name must stand on its own).
+UO_NAMES=""; for _cf in $CMD_FILES; do grep -q '^disable-model-invocation:[[:space:]]*true' "$_cf" && { _n="${_cf%/SKILL.md}"; UO_NAMES="$UO_NAMES|${_n##*/}"; }; done
+UO_NAMES="${UO_NAMES#|}"
+uo_hits(){ # $1 = a file or directory of hooks -> offending lines. A trailing ` # comment` is cut first: it explains
+  [ -n "$UO_NAMES" ] || return 0      # the code, Claude never reads it (e.g. guard-write's "/crew-gates groups on it").
+  find "$1" -type f 2>/dev/null | while IFS= read -r _hf; do
+    awk -v re="(^|[[:space:]\`(\"])/($UO_NAMES)([^a-z0-9-]|$)" -v f="$_hf" '
+      /^[[:space:]]*#/ { next }
+      { l=$0; sub(/[[:space:]]#[[:space:]].*/, "", l); if (l ~ re && l !~ /the user can type/) print f ":" NR ":" $0 }' "$_hf"
+  done; }
+UOH="$(uo_hits "$HOOKS")"
+UOT="$(mktemp -d)"; cp "$HOOKS/board-sync.sh" "$UOT/"; printf 'echo "Board is stale; run /crew-board sync"\n' >> "$UOT/board-sync.sh"
+if [ -z "$UO_NAMES" ]; then fail "FIXTURE: no user-only command found, so the hook-message check has nothing to look for"
+elif [ -n "$UOH" ]; then fail "a hook message sends Claude to a user-only command it cannot run — give it the script, and 'or the user can type /…':
+$(printf '%s\n' "$UOH" | head -n 5 | sed 's/^/       /')"
+elif [ -z "$(uo_hits "$UOT")" ]; then fail "the hook-message check did not catch a planted 'run /crew-board sync' — it measures nothing"
+else pass "no hook message sends Claude to a user-only command ($(printf '%s' "$UO_NAMES" | tr '|' ' ')); a planted one is caught"; fi
+rm -rf "$UOT"
 
 # The COUNT beside the command list in both READMEs, gated for the same reason the hook count is: documenting
 # each command does not keep the number honest. This one was ungated and the class has drifted before — the
