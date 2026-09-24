@@ -922,6 +922,11 @@ if [ "$COLLIDE_MODE" = takeover ] && [ -n "$COLLIDE" ]; then
     N_TAKEN=$((N_TAKEN+1))
   done
 fi
+# Both reference sweeps below rewrite user files with sed. MSYS sed (Git Bash) drops the CR of every CRLF line it
+# reads, so a CRLF CLAUDE.md came back LF-only in full — not just the rewritten line (measured on Windows: 36 CRs
+# → 0; the 2.13 re-adopt kept all 36). GNU sed's -b reads the bytes as they are; BSD sed has no -b and keeps CRs
+# anyway, so the flag is used only where it exists.
+_SB=; sed -b q </dev/null >/dev/null 2>&1 && _SB=-b
 # #1b takeover reference sweep — the rename above orphaned every project reference to the taken-over agents
 # ($COLLIDE): "→ backend-expert" in CLAUDE.md, the "detail: docs/AGENTS.md" orchestration doc, etc. This is the ONE
 # moment the kit knows the exact old→new map, so it COMPLETES the migration instead of leaving the user to chase
@@ -939,7 +944,7 @@ if [ "$N_TAKEN" -gt 0 ] && [ -f CLAUDE.md ]; then
     for f in $SWEEP; do
       i=0
       while grep -qE "(^|[^A-Za-z-])$b([^A-Za-z-]|$)" "$f" 2>/dev/null && [ "$i" -lt 5 ]; do
-        sed -E "s/(^|[^A-Za-z-])$b([^A-Za-z-]|\$)/\1crew-$b\2/g" "$f" > "$f.kit-sweep" && mv "$f.kit-sweep" "$f"
+        sed $_SB -E "s/(^|[^A-Za-z-])$b([^A-Za-z-]|\$)/\1crew-$b\2/g" "$f" > "$f.kit-sweep" && mv "$f.kit-sweep" "$f"
         i=$((i+1)); SWEPT=$((SWEPT+1))
       done
       [ "$i" -gt 0 ] && say 'ref-sweep: %s → %s in %s' "$b" "crew-$b" "$f"
@@ -979,7 +984,7 @@ if [ "$KIT_PRESENT" = 1 ] && [ -f CLAUDE.md ] && grep -q -e '-csk' CLAUDE.md $(g
     if [ -L "$f" ]; then t="$(readlink "$f")"; case "$t" in /*|*..*) continue ;; esac; fi
     i=0; cp "$f" "$f.kit-before"
     while [ "$i" -lt 5 ]; do
-      sed -E "$@" "$f" > "$f.kit-sweep" || { rm -f "$f.kit-sweep"; break; }   # a failed sed changes nothing
+      sed $_SB -E "$@" "$f" > "$f.kit-sweep" || { rm -f "$f.kit-sweep"; break; }   # a failed sed changes nothing
       cmp -s "$f" "$f.kit-sweep" && { rm -f "$f.kit-sweep"; break; }
       cat "$f.kit-sweep" > "$f"; rm -f "$f.kit-sweep"; i=$((i+1))
     done

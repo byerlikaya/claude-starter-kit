@@ -679,6 +679,12 @@ else
   printf 'See %s/outside/ABS.md\n' "$WORK" >> "$MB/AGENTS.md"
   mkdir -p "$WORK/shared"; printf 'Ask planner-csk.\n' > "$WORK/shared/NOTE.md"; cp "$WORK/shared/NOTE.md" "$WORK/shared.before"
   ln -s "$WORK/shared" "$MB/shared" 2>/dev/null && [ -L "$MB/shared" ] && printf 'See shared/NOTE.md\n' >> "$MB/AGENTS.md"
+  # CRLF, as a Windows editor leaves it: the sweep must keep every CR, not only the rewritten line's. MSYS sed
+  # dropped all of them (measured on Windows: 36 → 0), which BSD sed never does — so this leg bites on Windows.
+  MBT="$MB/AGENTS.md"; [ "$MBLINK" = 1 ] || MBT="$MB/CLAUDE.md"
+  awk '{ sub(/\r$/, ""); printf "%s\r\n", $0 }' "$MBT" > "$MBT.crlf" && cat "$MBT.crlf" > "$MBT" && rm -f "$MBT.crlf"
+  MBCR0="$(tr -dc '\r' < "$MBT" | wc -c | tr -d ' ')"; MBNL0="$(wc -l < "$MBT" | tr -d ' ')"
+  [ "$MBCR0" -gt 0 ] && [ "$MBCR0" = "$MBNL0" ] || { echo "FAIL: FIXTURE — the CRLF CLAUDE.md has $MBCR0 CRs for $MBNL0 lines"; exit 1; }
   _slog; ( cd "$MB" && bash adopt.sh --yes ) >"$_L" 2>&1 || _evidence "adopt.sh with both names in $MB" "$_L" $?
   grep -q 'both the old and the new name exist for:.*agents/planner-csk.md' "$_L" || { echo "FAIL: both names existed and the update did not say so"; exit 1; }
   cmp -s "$MB/.claude/agents/planner-csk.md" "$WORK/planner.before" || { echo "FAIL: planner-csk.md changed although both names existed"; exit 1; }
@@ -688,6 +694,8 @@ else
     grep -q '@agent-crew-security-expert' "$MB/AGENTS.md" || { echo "FAIL: the ref-sweep did not write through the CLAUDE.md symlink"; exit 1; }
     MBL="symlinked CLAUDE.md written through"
   else MBL="symlink N/A here (ln -s copies)"; fi
+  MBCR1="$(tr -dc '\r' < "$MBT" | wc -c | tr -d ' ')"
+  [ "$MBCR1" = "$MBCR0" ] || { echo "FAIL: the ref-sweep changed the CR count of a CRLF CLAUDE.md: $MBCR0 → $MBCR1"; exit 1; }
   cmp -s "$WORK/outside/NOTES.md" "$WORK/outside.before" || { echo "FAIL: the ref-sweep edited a file outside the project (../)"; exit 1; }
   cmp -s "$WORK/outside/ABS.md" "$WORK/outside-abs.before" || { echo "FAIL: the ref-sweep edited a file outside the project (absolute path)"; exit 1; }
   cmp -s "$WORK/shared/NOTE.md" "$WORK/shared.before" || { echo "FAIL: the ref-sweep edited a file outside the project (through a symlinked directory)"; exit 1; }
@@ -697,7 +705,7 @@ else
   cp adopt.sh VERSION "$MF/"; cp -R kit "$MF/"
   _slog; ( cd "$MF" && git init -q && bash adopt.sh --yes ) >"$_L" 2>&1 || _evidence "adopt.sh in a never-installed project in $MF" "$_L" $?
   [ "$(cat "$MF/.claude/skills/testing/SKILL.md")" = MINE ] || { echo "FAIL: a user agent ending in -csk made a fresh project look installed and its own skill was overwritten"; exit 1; }
-  echo "[migrate-2.13] real v2.13.0 install → $NREN renamed ($NOLD old agent/command files) · 0 old kit names left · user agent, allow rule untouched · HANDOVER counts 1 project agent · CLAUDE.md: kit names only · 2nd update: same tree, silent · no PROOF-5 after the sweep · doctor flags a planted @agent-planner-csk · both names: warned, nothing moved, user crew- file kept · $MBL · outside files untouched (../, absolute, symlinked dir) · fresh project with my-helper-csk: own skill kept"
+  echo "[migrate-2.13] real v2.13.0 install → $NREN renamed ($NOLD old agent/command files) · 0 old kit names left · user agent, allow rule untouched · HANDOVER counts 1 project agent · CLAUDE.md: kit names only · 2nd update: same tree, silent · no PROOF-5 after the sweep · doctor flags a planted @agent-planner-csk · both names: warned, nothing moved, user crew- file kept · $MBL · CRLF kept ($MBCR0 → $MBCR1 CRs) · outside files untouched (../, absolute, symlinked dir) · fresh project with my-helper-csk: own skill kept"
 fi
 
 # ---- the two no-install doors: `add` and `studio` (pure Node, no bash) ----
