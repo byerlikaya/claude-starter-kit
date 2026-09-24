@@ -20,8 +20,8 @@ get approval for the destructive one, and keep a rollback path ready in every ca
 all common ORM/migration tools.
 
 > **Kit adaptation (local, .claude/):** Engine and tool come from `CLAUDE.md ## Stack` or repo detection
-> (`backend-architecture`). `database-expert-crew` applies it; **a destructive migration requires explicit approval (§4.5)**, commit/push with explicit approval (§4.4). Authorization/IDOR
-> impact → **security-expert-crew**; personal-data retention → **privacy-agent-crew**. §4 Prohibitions apply.
+> (`backend-architecture`). `crew-database-expert` applies it; **a destructive migration requires explicit approval (§4.5)**, commit/push with explicit approval (§4.4). Authorization/IDOR
+> impact → **crew-security-expert**; personal-data retention → **crew-privacy-agent**. §4 Prohibitions apply.
 
 ## Checklist
 - [ ] Tool detected, pending migrations listed

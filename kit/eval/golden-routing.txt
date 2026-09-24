@@ -10,22 +10,22 @@
 # If the target isn't installed in this profile, the line is SKIPPED (won't fail a pruned install).
 # NEGATIVE line: <prompt>|!<target> asserts the prompt must NOT route to <target> (none of its triggers match) —
 # a guard against over-broad triggers. See the "must NOT route" block at the end of this file.
-add a new handler for the order endpoint|backend-expert-crew
-write a migration for this table|database-expert-crew
-build a responsive component for the login screen|frontend-expert-crew
+add a new handler for the order endpoint|crew-backend-expert
+write a migration for this table|crew-database-expert
+build a responsive component for the login screen|crew-frontend-expert
 # Positive twins of the seven over-broad-word rows below: the replacement phrase must still route.
 cut a release and tag it|release
-review the code in this PR|code-review-crew
+review the code in this PR|crew-code-review
 the page layout is broken on mobile|frontend-design
-requests are timing out under load|performance-expert-crew
-add client routing to the app|frontend-expert-crew
+requests are timing out under load|crew-performance-expert
+add client routing to the app|crew-frontend-expert
 add a new rn screen with expo router|frontend-rn-expo
-run an OWASP check and a full security scan|security-expert-crew
-we need a kvkk privacy audit|privacy-agent-crew
-commit the changes|commit-agent-crew
-run tests and give me a coverage report|test-expert-crew
-do a PR review and look at the diff|review-agent-crew
-plan first and produce a task breakdown|planner-crew
+run an OWASP check and a full security scan|crew-security-expert
+we need a kvkk privacy audit|crew-privacy-agent
+commit the changes|crew-commit-agent
+run tests and give me a coverage report|crew-test-expert
+do a PR review and look at the diff|crew-review-agent
+plan first and produce a task breakdown|crew-planner
 deploy this and go to production on the VPS|deploy
 prepare the changelog and cut a tag|release
 set up a ci pipeline with github actions|ci-pipeline
@@ -41,8 +41,8 @@ handle api versioning with an openapi contract|api-design
 the page is slow, do a performance optimization|performance
 write an incident runbook and a postmortem|incident-runbook
 red team the prompt injection defenses|red-team
-ship to prod and be ready to rollback|devops-expert-crew
-set up a reverse proxy and ssl|devops-expert-crew
+ship to prod and be ready to rollback|crew-devops-expert
+set up a reverse proxy and ssl|crew-devops-expert
 keep going until the tests pass and the review is clean|iterate
 debug this and find the root cause of the intermittent bug|systematic-debugging
 improve the visual design — the spacing and typography look off|frontend-design
@@ -56,11 +56,11 @@ set up an eval to measure output quality against a baseline|eval-grader
 # "memory leak") so the skill fired and the gate stayed green, while the agent that OWNS the work was
 # unreachable by the words anyone actually types. Testing the skill proved the mapping existed; it never proved
 # a real sentence reached the delegation layer.
-the app does not look premium, improve the visual design|frontend-expert-crew
-add a dark mode and a design token layer|frontend-expert-crew
-the icons are inconsistent, we need a design system|frontend-expert-crew
-we have a memory leak in production|performance-expert-crew
-the app feels laggy after the last release|performance-expert-crew
+the app does not look premium, improve the visual design|crew-frontend-expert
+add a dark mode and a design token layer|crew-frontend-expert
+the icons are inconsistent, we need a design system|crew-frontend-expert
+we have a memory leak in production|crew-performance-expert
+the app feels laggy after the last release|crew-performance-expert
 users report the app crashes on startup|systematic-debugging
 the login is broken and I do not know why|systematic-debugging
 # Narrowing a trigger has to be paid for with a positive case, or the fix for a false route quietly creates an
@@ -70,10 +70,10 @@ the context is full, check the token budget before we continue|token-budget
 # --- Core components that had NO positive case until 1.11.0 ---
 # An audit found 12 skills and one agent that the routing gate never checked — including security-scan,
 # code-review, testing and spec-planning, i.e. most of what the kit advertises. A component with no case is a
-# component whose reachability is assumed, which is exactly how frontend-expert-crew went unreachable for a whole
+# component whose reachability is assumed, which is exactly how crew-frontend-expert went unreachable for a whole
 # class of request while every gate stayed green.
 i am not sure what we want here yet, help me scope it|brainstorm
-review the code I just wrote before I push|code-review-crew
+review the code I just wrote before I push|crew-code-review
 write a commit message for the staged changes|commit-message
 add column last_login to the users table|db-migration
 add a query handler with a validator for this module|backend-architecture
@@ -84,7 +84,7 @@ scan for vulnerabilities in the auth flow|security-scan
 how do we split this into tasks with acceptance criteria|spec-planning
 are the tests green after that change|testing
 check for AI trace before the commit|trace-scan
-is a handover needed, the context status looks high|session-manager-crew
+is a handover needed, the context status looks high|crew-session-manager
 
 # --- 3.0: the stack is resolved per project by backend-architecture (it replaced cqrs-aop-module) ---
 which stack should we use for this backend|backend-architecture
@@ -96,19 +96,19 @@ choose a database for this service|backend-architecture
 # The seven rows below are the ones that were REPORTED FROM LIVE USE, not invented. Each generic English word
 # was a standalone trigger, and a single trigger of six characters or more clears the score floor on its own —
 # so any sentence containing the word routed somewhere unrelated. Measured before the fix: all seven misrouted.
-#   "context"  -> token-budget            "version"  -> release             "review"  -> review-agent-crew
-#   "routing"  -> frontend-expert-crew     "timeout"  -> performance-expert  "screen"  -> frontend-expert-crew
+#   "context"  -> token-budget            "version"  -> release             "review"  -> crew-review-agent
+#   "routing"  -> crew-frontend-expert     "timeout"  -> performance-expert  "screen"  -> crew-frontend-expert
 #   "layout"   -> frontend-design
 # None of them came from this release's widening: all seven were triggers in 2.6.0 and earlier, which the diff
 # against v2.6.0 confirms. Each was replaced by the phrase that carries the intent rather than deleted, and the
 # POSITIVE twin of every row sits in the block above — a guard that only proves silence would be satisfied by
 # a component with no triggers at all.
 give me more context on this bug|!token-budget
-review the jira ticket before I send it|!review-agent-crew
+review the jira ticket before I send it|!crew-review-agent
 the image version is 3.2, rebuild it|!release
-the routing table is misconfigured|!frontend-expert-crew
-the request timeout is 30 seconds|!performance-expert-crew
-the screen froze during the demo|!frontend-expert-crew
+the routing table is misconfigured|!crew-frontend-expert
+the request timeout is 30 seconds|!crew-performance-expert
+the screen froze during the demo|!crew-frontend-expert
 fix the layout of this json file|!frontend-design
 design the database schema|!frontend-design
 read the model context and summarize it|!mcp-builder
@@ -116,17 +116,17 @@ optimize the slow sql query performance|!systematic-debugging
 # `build` contains `ui`, and `UI` used to be a trigger, so a CI failure routed to the frontend expert. A wrong
 # route is worse than none: it looks like the kit worked. Fixed by word-bounded matching AND by retiring the
 # bare `UI` trigger for `UI polish`; this line fails if either regresses.
-the build fails on CI|!frontend-expert-crew
-the docker build is broken in the pipeline|!frontend-expert-crew
+the build fails on CI|!crew-frontend-expert
+the docker build is broken in the pipeline|!crew-frontend-expert
 # Same class, found while verifying the fix above: a bare `token` trigger sent "design token layer" to the
 # session-context skill. A one-word trigger for a word that lives in two vocabularies is not a trigger.
 add a dark mode and a design token layer|!token-budget
 isolate this work in a git worktree before the parallel agents run|worktree
 before I start, am I sure enough to implement this|confidence-check
 upgrade dependencies to current versions|dependency-upgrade
-is this endpoint fast enough on the hot path|performance-expert-crew
+is this endpoint fast enough on the hot path|crew-performance-expert
 who is working on which sprint item right now|teamboard
-audit this against ccpa and lgpd for data protection regulation|privacy-agent-crew
+audit this against ccpa and lgpd for data protection regulation|crew-privacy-agent
 is my auto mode classifier policy still intact|automode-policy
 
 # --- negative guards added with the trigger widening -------------------------------------------------

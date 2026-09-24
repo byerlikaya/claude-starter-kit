@@ -14,7 +14,7 @@
 # Kapi kaydi (runtime artefakti; testler bunu depo kokunde uretebiliyor).
 .claude/gate-log.tsv
 
-# review-agent-crew'nin §4.6 kaydi (runtime artefakti). Kurulu projelerde `.claude/` toptan
+# crew-review-agent'nin §4.6 kaydi (runtime artefakti). Kurulu projelerde `.claude/` toptan
 # ignore'lu, burada degil — testler ve dogfooding bunu depo kokunde uretiyor.
 .claude/review-pass.json
 

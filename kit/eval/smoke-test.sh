@@ -187,9 +187,9 @@ agent_quality_files() {
 # 2) Is a component one the KIT shipped? .claude/kit-manifest.txt records exactly that (written by start.sh and
 #    adopt.sh since 1.8.0). The "not gated in an install" escapes exist so a project's OWN agents and skills are
 #    never failed by kit conventions — but with no ownership test they also excused the kit's own, and the suite
-#    printed a green line saying so: "some agents lack a proactive cue: backend-expert-crew (your project's own
+#    printed a green line saying so: "some agents lack a proactive cue: crew-backend-expert (your project's own
 #    agents, not gated)". No manifest -> stay lenient; absence of evidence is not ownership.
-kit_owned() {  # $1 = manifest entry, e.g. agents/backend-expert-crew.md or skills/a11y
+kit_owned() {  # $1 = manifest entry, e.g. agents/crew-backend-expert.md or skills/a11y
   [ "$IS_KIT" = 1 ] && return 0
   [ -n "${1:-}" ] || return 1                      # no id to check -> lenient; never let "" match a blank line
   [ -f "$ROOT/kit-manifest.txt" ] || return 1      # no manifest -> lenient; absence of evidence is not ownership
@@ -227,7 +227,7 @@ done
 # these said `sonnet`, so an Opus session reviewed Opus-written code on Sonnet. That is backwards for the one
 # review the kit calls mandatory, and Claude Code's own built-in Explore states the opposite rule: inherit,
 # capped upward, never forced down. Buy rigour with `effort:`, which raises thinking on the user's own model.
-for a in security-expert-crew privacy-agent-crew; do
+for a in crew-security-expert crew-privacy-agent; do
   [ -f "$AGENTS/$a.md" ] || continue
   if grep -qE '^model:' "$AGENTS/$a.md"; then
     if kit_owned "agents/$a.md"; then fail "$a pins a model — a mandatory audit must inherit the session's model, never a fixed tier"
@@ -240,7 +240,7 @@ done
 # asserted as a fixed number: adopt.sh's `keepmine` mode legitimately leaves a kit agent out when the project
 # already owns that role, and a brownfield adopt is exactly the case this suite must not fail. The floor is the
 # core seven, which no mode may drop.
-for c in planner-crew security-expert-crew privacy-agent-crew test-expert-crew review-agent-crew commit-agent-crew session-manager-crew; do
+for c in crew-planner crew-security-expert crew-privacy-agent crew-test-expert crew-review-agent crew-commit-agent crew-session-manager; do
   [ -f "$AGENTS/$c.md" ] || fail "missing core agent: $c"
 done
 [ "$AC" -ge 7 ] && pass "$AC agents found (7 core complete)" || fail "agent count below the 7 core: $AC"
@@ -280,7 +280,7 @@ pass "agent->skill references (applies + Also apply) checked"
 #
 # A pointer may be to this skill's own references/ OR, qualified with a skill name, to another skill's —
 # `security-scan/references/verify.md`. Cross-skill is legitimate and the kit's single-source-of-truth rule
-# depends on it: the verifier contract lives in one file and code-review-crew points at it rather than keeping a
+# depends on it: the verifier contract lives in one file and crew-code-review points at it rather than keeping a
 # second copy to drift. The check stays strict either way — a wrong skill name or a missing file still fails.
 #
 # Two things this used to miss, both measured on 2026-09-20 before the change:
@@ -395,7 +395,7 @@ pass "every skill & agent is routed (no idle components)"
 sec "== 3b2) Capability: a skill cannot demand a tool its agent does not have =="
 # A rule an agent physically cannot obey is worse than no rule: it does not fail, it degrades quietly into the
 # thing it forbids. `privacy-compliance` told its agent to CHECK THE OFFICIAL SOURCE rather than decide from
-# memory, and privacy-agent-crew shipped with Read/Grep/Glob — no WebFetch. Nothing flagged it. It surfaced in a
+# memory, and crew-privacy-agent shipped with Read/Grep/Glob — no WebFetch. Nothing flagged it. It surfaced in a
 # real regulatory audit, where the routing had to split the work by hand to get around a gap in the kit.
 #
 # So the requirement is declared in the skill (`<!-- Requires-tool: X -->`) and checked here against every agent
@@ -426,15 +426,15 @@ sec "== 3c) Backend is stack-agnostic, and the pattern skill kept its routing ==
 #       reads on EVERY project, Node and Go included;
 #   (2) the agent stops pointing at backend-architecture, so the stack step is never reached;
 #   (3) backend-architecture drops a trigger cqrs-aop-module used to own, and those prompts stop routing.
-BE="$AGENTS/backend-expert-crew.md"; BA="$SKILLS/backend-architecture/SKILL.md"
+BE="$AGENTS/crew-backend-expert.md"; BA="$SKILLS/backend-architecture/SKILL.md"
 if [ -f "$BE" ] && [ -f "$BA" ]; then
   # Tokens that only make sense on one stack. A name in an ecosystem TABLE is fine (the skill carries one);
   # the agent file carries no table, so any hit there is an assumption.
   STACK_BOUND="$(grep -noE 'IResult|IDataResult|Business/Handlers|MediatR|Autofac|SecuredOperation|ValidationAspect|DevArchitecture|Senior \.NET|\(\.NET\)' "$BE" 2>/dev/null)"
-  [ -z "$STACK_BOUND" ] && pass "backend-expert-crew carries no stack-bound type or layout" \
-                        || fail "backend-expert-crew assumes a stack again: $(printf '%s' "$STACK_BOUND" | tr '\n' ' ')"
-  routed backend-architecture "$BE" && pass "backend-expert-crew applies backend-architecture" \
-                                    || fail "backend-expert-crew no longer names backend-architecture — the stack step is unreachable from it"
+  [ -z "$STACK_BOUND" ] && pass "crew-backend-expert carries no stack-bound type or layout" \
+                        || fail "crew-backend-expert assumes a stack again: $(printf '%s' "$STACK_BOUND" | tr '\n' ' ')"
+  routed backend-architecture "$BE" && pass "crew-backend-expert applies backend-architecture" \
+                                    || fail "crew-backend-expert no longer names backend-architecture — the stack step is unreachable from it"
   BA_TRIG="$(grep -m1 '^Trigger phrases:' "$BA")"; TMISS=""; TSEEN=0
   for t in "new handler" "write a command" "add a query" "validator"; do
     TSEEN=$((TSEEN+1))
@@ -451,9 +451,9 @@ if [ -f "$BE" ] && [ -f "$BA" ]; then
   [ -z "$_QMISS" ] && pass "backend-architecture step 4 names both question labels verbatim: (Recommended) and Decide for me" \
                    || fail "backend-architecture step 4 lost its question label(s):$_QMISS"
 elif [ "$IS_KIT" = 1 ]; then
-  fail "backend-expert-crew.md or skills/backend-architecture is missing from the payload"
+  fail "crew-backend-expert.md or skills/backend-architecture is missing from the payload"
 else
-  skip scope "backend stack-agnostic checks skipped (this project removed backend-expert-crew or backend-architecture)" 4
+  skip scope "backend stack-agnostic checks skipped (this project removed crew-backend-expert or backend-architecture)" 4
 fi
 
 sec "== 4) Stub / unfilled skill leftover =="
@@ -796,14 +796,14 @@ else
     sw_commit "feat: unattributed" && fail "board ON: an unattributed commit landed" \
                                    || pass "board ON: the gates are active (unattributed commit refused)"
     ( cd "$SW/solo" && bash "$HOOKS/board.sh" off ) >/dev/null 2>&1
-    sw_commit "feat: unattributed"  && pass "/board-crew off releases the COMMIT gate" \
-                                    || fail "/board-crew off left the commit gate armed — a partial switch is a trap"
-    sw_write && pass "/board-crew off releases the EDIT gate" || fail "/board-crew off left the edit gate armed"
-    [ -f "$SW/solo/.git/csk-board-cache" ] && fail "/board-crew off left the session-start cache behind" \
-                                           || pass "/board-crew off leaves nothing for the session hook to announce"
+    sw_commit "feat: unattributed"  && pass "/crew-board off releases the COMMIT gate" \
+                                    || fail "/crew-board off left the commit gate armed — a partial switch is a trap"
+    sw_write && pass "/crew-board off releases the EDIT gate" || fail "/crew-board off left the edit gate armed"
+    [ -f "$SW/solo/.git/csk-board-cache" ] && fail "/crew-board off left the session-start cache behind" \
+                                           || pass "/crew-board off leaves nothing for the session hook to announce"
     ( cd "$SW/solo" && bash "$HOOKS/board.sh" on ) >/dev/null 2>&1
-    sw_commit "feat: unattributed" && fail "/board-crew on did not re-arm the commit gate" \
-                                   || pass "/board-crew on puts every gate back"
+    sw_commit "feat: unattributed" && fail "/crew-board on did not re-arm the commit gate" \
+                                   || pass "/crew-board on puts every gate back"
     # The env switch has to reach all three too — it is the "just for this session" form of the same decision.
     B0="$(cd "$SW/solo" && git rev-list --count HEAD)"
     ( cd "$SW/solo" && date -u +%s > g.txt; git add -A; CREW_NO_BOARD=1 git commit -q -m "feat: env switch" ) >/dev/null 2>&1
@@ -1779,7 +1779,7 @@ if [ "$IS_KIT" = 1 ]; then
     done
   done
   # The DIAGRAMS make a claim too, and it is the one a reader takes at face value because nobody counts nodes in
-  # a picture. The hand-drawn pipeline shipped with eleven of twelve agents — performance-expert-crew was simply
+  # a picture. The hand-drawn pipeline shipped with eleven of twelve agents — crew-performance-expert was simply
   # never drawn — and every gate stayed green because none of them looked at an SVG. Both diagrams are generated
   # from the payload now; this asserts the generated output actually contains every agent, so a generator that
   # silently drops one fails here instead of on the front page.
@@ -2002,7 +2002,7 @@ sec "== 6f) always-on token budget =="
 # for that cost, and a gate rather than a reminder — a verbose new description fails the suite instead of
 # quietly taxing every future session. Budgets sit just above the current sizes: raising one is allowed, but
 # only as a deliberate edit here.
-BUDGET_DISC=13723    # 3.0 rename -csk→-crew: +23 B (23 occurrences), not content — measured 13696 → 13719.
+BUDGET_DISC=13723    # 3.0 rename -csk→crew-: +23 B (23 occurrences), not content — measured 13696 → 13719.
                      # DISCIPLINE.md (the discipline half of CLAUDE.md); before 3.0 the ceiling was 13700, currently 13601. (2026-09-18, a second
                      # +100 B on top of the raise below, and the whole of it went into ONE sentence of §4.6: a commit
                      # has to take its content from the INDEX. The rule is there because the first version of the gate
@@ -2014,13 +2014,13 @@ BUDGET_DISC=13723    # 3.0 rename -csk→-crew: +23 B (23 occurrences), not cont
                      # route around. §4.6 was COMPRESSED first and this raise is what was left after that: at the
                      # measured 21804 B -> 9198 tok ratio, ~42 tokens a session. (2026-09-18: +975 B, the
                      # LARGEST single raise this line has taken, and it buys two things no smaller edit could. First
-                     # §4.6, a NEW mechanical gate: a commit is refused unless review-agent-crew recorded the object id
+                     # §4.6, a NEW mechanical gate: a commit is refused unless crew-review-agent recorded the object id
                      # of this exact staged diff and the HEAD it reviewed — "it was reviewed" stops being a claim the
                      # chain can quietly drop and becomes a file guard-bash.sh compares. Second, Workflow §3 now says
                      # the applicable audits go out in ONE message instead of a queue: the kit stated NOTHING about
                      # their order or concurrency, so every session invented an answer (found by reading all twelve
                      # agents against each other — four writing agents say "at closure, report findings to
-                     # review-agent-crew" while review-crew.md listed it FIRST). At the measured 21804 B -> 9198 tok
+                     # crew-review-agent" while crew-review.md listed it FIRST). At the measured 21804 B -> 9198 tok
                      # ratio this is ~410 tokens a session; removing a whole class of unreviewed commit is worth it.)
                      # (2026-09-16, second entry
                      # of the day: +38 B. §4.5 already said a failing hook is never bypassed; it now also says never
@@ -2033,8 +2033,8 @@ BUDGET_DISC=13723    # 3.0 rename -csk→-crew: +23 B (23 occurrences), not cont
                      # visible number rather than three quiet ones.)
                      # (2026-09-16: +76 B — the
                      # SECOND raise in two days, noted so the ratchet stays visible rather than creeping. A field
-                     # session skipped planner-crew on a genuinely ambiguous scope by citing the inline clause's own
-                     # `not code work`, which is the one exemption planner-crew can never be covered by: planning is
+                     # session skipped crew-planner on a genuinely ambiguous scope by citing the inline clause's own
+                     # `not code work`, which is the one exemption crew-planner can never be covered by: planning is
                      # what it does. The DoD now says so where the rule is, not where the escape was taken.)
                      # (2026-09-15: +255 B net,
                      # two rules a field session cost us. (1) A skill's OUTPUT FORMAT is not on the collision ladder:
@@ -2075,7 +2075,7 @@ BUDGET_DISC=13723    # 3.0 rename -csk→-crew: +23 B (23 occurrences), not cont
                      # model improvising an order every time §4, an explicit instruction and scope disagree —
                      # and the wrong one winning silently. The only rule in this file that is about the OTHER
                      # rules, so it cannot live in the README the way the compaction note does. Plus the Audit
-                     # row naming performance-expert-crew — an agent nothing routes to is an idle component.)
+                     # row naming crew-performance-expert — an agent nothing routes to is an idle component.)
 BUDGET_AGENTS=5800   # sum of agent frontmatter; currently 5582, measured 2026-09-23 (3.0: the backend and database
                      # agents' descriptions rewritten stack-agnostic, +55 B). Before that 5527, measured 2026-09-20 by reading this suite's
                      # own printed line rather than a hand-rolled counter (a hand-rolled one answered 5503 and
@@ -2095,10 +2095,10 @@ BUDGET_AGENTS=5800   # sum of agent frontmatter; currently 5582, measured 2026-0
                      # clause rather than the trigger list, because that clause is what the harness reads when
                      # it decides to delegate at all. (1.5.0: 9 agents rewritten to action-oriented
                      # "use proactively" descriptions so Claude Code auto-delegation actually fires. 1.8.0:
-                     # +performance-expert-crew (~426B) — security, privacy and tests each had an independent
+                     # +crew-performance-expert (~426B) — security, privacy and tests each had an independent
                      # reviewer and performance was the one quality axis where the author audited their own
                      # work. Bought at ~110 tokens per session; the alternative was leaving that gap open.)
-BUDGET_SKILLS=9604  # 3.0 rename -csk→-crew: +7 B (7 occurrences), not content — measured 9597 → 9604.
+BUDGET_SKILLS=9604  # 3.0 rename -csk→crew-: +7 B (7 occurrences), not content — measured 9597 → 9604.
                     # Before 3.0: 9600; sum of skill frontmatter; currently 9597 — **3 bytes of headroom**, measured 2026-09-23 from
                     # this suite's own line. 3.0 swapped cqrs-aop-module (-202 B) for backend-architecture (+211 B) and
                     # the ceiling was NOT raised: the new description was cut until it fit. Before that 9588, measured
@@ -2267,7 +2267,7 @@ done
 # expert. Handlers, endpoints.") rarely auto-invokes — the specialist stays dormant and the kit reads as inert.
 # Every agent EXCEPT the two deliberately pull-only ones (invoked explicitly: a commit needs approval; session
 # health is emitted by a hook) must carry a cue, or a future passive rewrite silently regresses delegation.
-PULL_AGENTS=" commit-agent-crew session-manager-crew "
+PULL_AGENTS=" crew-commit-agent crew-session-manager "
 NO_CUE=""
 for f in $(agent_quality_files); do
   [ -e "$f" ] || continue
@@ -2997,17 +2997,17 @@ gj default 'git -C /nonexistent-crew commit -m x' | r46 >/dev/null 2>&1; [ "$?" 
 o="$(gj default 'git push' | r46 2>/dev/null)"
 [ "$(gdec "$o")" = "ask" ] && pass "§4.6 does not touch 'git push' — it still reaches the §4.4 ask" \
                            || fail "§4.6 wrongly took over 'git push' (out=$o)"
-# 9. THE CONTRACT, run rather than read. The recipe review-agent-crew is told to use is EXTRACTED FROM THAT
+# 9. THE CONTRACT, run rather than read. The recipe crew-review-agent is told to use is EXTRACTED FROM THAT
 #    DOC and executed here; then the real hook is driven against the record it produced. A string comparison
 #    would pass while the two drifted in meaning — this fails the moment the doc stops satisfying the gate.
-RCP="$(awk '/# CSK-REVIEW-PASS/{f=1;next} f&&/^```/{exit} f' "$AGENTS/review-agent-crew.md")"
+RCP="$(awk '/# CSK-REVIEW-PASS/{f=1;next} f&&/^```/{exit} f' "$AGENTS/crew-review-agent.md")"
 if [ -n "$RCP" ]; then
   ( cd "$R46" && rm -f .claude/review-pass.json && printf '%s\n' "$RCP" > .rcp.sh && bash .rcp.sh )
   o="$(gj default 'git commit -m x' | r46 2>/dev/null)"
   [ "$(gdec "$o")" = "ask" ] \
-    && pass "§4.6: the recipe in review-agent-crew.md produces a record the hook ACCEPTS (contract pinned)" \
+    && pass "§4.6: the recipe in crew-review-agent.md produces a record the hook ACCEPTS (contract pinned)" \
     || fail "§4.6: the documented recipe does not satisfy the gate — the agent and the hook have drifted (out=$o)"
-else fail "§4.6: could not extract the CSK-REVIEW-PASS recipe from review-agent-crew.md (marker moved?)"; fi
+else fail "§4.6: could not extract the CSK-REVIEW-PASS recipe from crew-review-agent.md (marker moved?)"; fi
 # 10. Key order is not a contract, so the reader must not depend on it. (A CRLF record was cased here too and
 #     REMOVED: in the flat shape the recipe writes, the carriage return lands after the final `}`, outside every
 #     value, and `%%"*` already cuts it — no fixture could tell a \r-stripping reader from one that skips it.
@@ -3939,7 +3939,7 @@ if ( cd "$BSD" && git init -q . ) >/dev/null 2>&1; then
   printf '%s\n' $'#1 "Fix\tlogin" C:\\app\r\x01 ok\nsecond' > "$BSD/.git/csk-board-cache"
   date -u +%s > "$BSD/.git/csk-board-cache.at"
   o="$(printf '{}' | CLAUDE_PROJECT_DIR="$BSD" bash "$HOOKS/board-sync.sh" 2>/dev/null)"
-  want='{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"#1 \"Fix\tlogin\" C:\\app\r\u0001 ok\nsecond\nBoard state above is a cached snapshot; /board-crew sync refreshes it."}}'
+  want='{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"#1 \"Fix\tlogin\" C:\\app\r\u0001 ok\nsecond\nBoard state above is a cached snapshot; /crew-board sync refreshes it."}}'
   [ "$o" = "$want" ] && pass "board-sync escapes tab, CR, control bytes, quote and backslash exactly as jq does (no jq needed)" \
                      || fail "board-sync JSON differs from jq's for a cache with a tab/CR/control byte — got: ${o:-<silence>}"
   # A CRLF cache: the line-ending CR is dropped on every OS (MSYS gawk drops it on read, BSD awk does not — the
@@ -4136,7 +4136,7 @@ if [ "$IS_KIT" = 1 ]; then
 else
   skip scope "start.sh glob check skipped (installed project — start.sh is removed post-install)"
 fi
-for c in update-crew doctor-crew; do [ -f "$ROOT/commands/$c.md" ] && pass "/$c present" || fail "/$c command missing"; done
+for c in crew-update crew-doctor; do [ -f "$ROOT/commands/$c.md" ] && pass "/$c present" || fail "/$c command missing"; done
 
 sec "== 7f) supply-chain scanner (scan-skill.sh) =="
 [ -x "$ROOT/eval/scan-skill.sh" ] && pass "scan-skill.sh +x" || fail "scan-skill.sh missing/not executable"
@@ -4357,9 +4357,9 @@ pc(){ ( printf '{"hook_event_name":"SessionStart","source":"startup","cwd":"%s"}
 o="$(pc)"
 case "$o" in *2.0.0*2.1.0*) pass "plugin edition: reads its own plugin.json and announces (v2.0.0 -> v2.1.0)" ;;
              *) fail "plugin edition announced nothing — it is idle in the channel it ships to (got: ${o:-<silence>})" ;; esac
-case "$o" in *"claude plugin update"*) pass "plugin edition names ITS update path, not /update-crew" ;;
+case "$o" in *"claude plugin update"*) pass "plugin edition names ITS update path, not /crew-update" ;;
              *) fail "plugin edition points at the wrong update path: $o" ;; esac
-case "$o" in *update-crew*) fail "plugin edition told the user to run /update-crew, which it does not have" ;; esac
+case "$o" in *crew-update*) fail "plugin edition told the user to run /crew-update, which it does not have" ;; esac
 [ -f "$XDG/claude-starter-kit/update-notified" ] && pass "plugin edition remembers the announcement at user level" \
   || fail "plugin edition wrote no once-per-version marker — it will re-announce every session"
 # A project install WINS: with both present the same release must not be announced twice from two directions.
@@ -4370,7 +4370,7 @@ mv "$UPD/.claude/VERSION.bak" "$UPD/.claude/VERSION"
 rm -f "$XDG/claude-starter-kit/update-notified"
 printf '2.1.0 %s\n' "$(date +%s)" > "$UPD/.claude/.state/update-check"; ustate
 o="$(pc)"
-case "$o" in *"/update-crew"*) pass "both editions present: the project install owns the notice (one message, not two)" ;;
+case "$o" in *"/crew-update"*) pass "both editions present: the project install owns the notice (one message, not two)" ;;
              *"claude plugin update"*) fail "the plugin copy spoke over the project install — one release, two notices" ;;
              *) fail "both editions present but nothing was announced: ${o:-<silence>}" ;; esac
 rm -rf "$UPD"
@@ -4655,7 +4655,7 @@ blocks2(){ gj auto "$1" | env "${2:-IGNORE=1}" bash "$HOOKS/guard-bash.sh" >/dev
 [ ! -e "$GLOG" ] && pass "log unset: nothing is written to that path (no .claude/ here for the default log)" || fail "log unset: a log file appeared anyway"
 # 2. Set: one line, carrying verdict + section + rule. The COMMAND field is empty unless CREW_GATE_LOG_CMD=1
 #    (2.5.0): recording became the default, and the command is the one field that can carry a path or a token
-#    while /gates-crew never prints it. Both halves are cased, because "opt-in" that quietly records anyway is
+#    while /crew-gates never prints it. Both halves are cased, because "opt-in" that quietly records anyway is
 #    the failure that matters here.
 blocks2 'git reset --hard' "CREW_GATE_LOG=$GLOG" \
   && pass "log set: reset --hard still BLOCKED (rc=2, verdict unchanged)" || fail "log set: the gate stopped blocking with rc=2"
@@ -4815,7 +4815,7 @@ sec "== 7y) route-hint: names the owner next to the request =="
 #
 # THE SECOND a11y ROW IS THE REGRESSION PIN, and it looks redundant on purpose: it is the first row plus the
 # word "page". Before the selection was rewritten, that one word SILENCED the hook — `page` is a
-# frontend-expert-crew trigger worth 4, an agent match used to overwrite the current best whatever its score, and
+# crew-frontend-expert trigger worth 4, an agent match used to overwrite the current best whatever its score, and
 # 4 then failed the `>= 6` floor, so a strong a11y match was discarded and nothing was printed. Adding a common
 # noun to a request removed its routing. The two rows differ by that word alone so the shape cannot come back
 # unnoticed; the four agent rows above are the other half, proving the agent-over-skill preference still holds
@@ -4860,20 +4860,20 @@ if [ -x "$RH" ]; then
       [ "$got" = "$want" ] && pass "route-hint -> $want" || fail "route-hint on \"$prompt\" gave '\''$got'\'', wanted $want"
     fi
   done <<'RHCASES'
-frontend-expert-crew|the three components in src/components all style themselves differently
-backend-expert-crew|add an endpoint that returns unpaid invoices
-database-expert-crew|write a migration and an index for the invoices table
-devops-expert-crew|set up a ci pipeline with github actions
+crew-frontend-expert|the three components in src/components all style themselves differently
+crew-backend-expert|add an endpoint that returns unpaid invoices
+crew-database-expert|write a migration and an index for the invoices table
+crew-devops-expert|set up a ci pipeline with github actions
 SILENT|what is the capital of France
 ci-pipeline|the build fails on CI
 a11y|this needs an accessibility audit
 a11y|the page needs an accessibility audit
 handoff|I want to hand off the session state
 worktree|isolate this in a git worktree
-SILENT|<task-notification>Agent database-expert-crew finished: wrote the migration and seed for the invoices table</task-notification>
+SILENT|<task-notification>Agent crew-database-expert finished: wrote the migration and seed for the invoices table</task-notification>
 SILENT|[SYSTEM NOTIFICATION] the background agent finished its migration and seed report
 SILENT|<cross-session-message>report: the migration and the seed are written, an endpoint was added</cross-session-message>
-database-expert-crew|the system notification code needs a migration for the invoices table
+crew-database-expert|the system notification code needs a migration for the invoices table
 RHCASES
 
   # --- the field name, which is the way this hook dies quietly -------------------------------------
@@ -4885,7 +4885,7 @@ RHCASES
   # So the hook accepts both names and these three rows check the half the cases above cannot.
   rhjson(){ printf '%s' "$1" | CLAUDE_PROJECT_DIR="$RHDIR" bash "$RH" 2>/dev/null; }
   UI_ROUTE='{"hook_event_name":"UserPromptSubmit","prompt_id":"550e8400","permission_mode":"default","user_input":"write a migration and an index for the invoices table"}'
-  rhjson "$UI_ROUTE" | grep -q 'database-expert-crew' \
+  rhjson "$UI_ROUTE" | grep -q 'crew-database-expert' \
     && pass "route-hint reads the documented 'user_input' field, not only 'prompt'" \
     || fail "route-hint ignored 'user_input' — on a CLI that sends that name, routing is silently dead"
   rhjson '{"hook_event_name":"UserPromptSubmit","user_input":"<task-notification>the agent finished the migration</task-notification>"}' \
@@ -4960,20 +4960,20 @@ for b in $BUNDLED; do
   [ -f "$ROOT/commands/$b.md" ] && SHADOW="$SHADOW commands/$b.md"
 done
 [ -z "$SHADOW" ] && pass "no kit skill/command shadows a bundled name" \
-  || fail "these shadow a Claude Code bundled name (it becomes unreachable for the user):$SHADOW — add the -crew suffix"
+  || fail "these shadow a Claude Code bundled name (it becomes unreachable for the user):$SHADOW — add the crew- prefix"
 
 sec "== 8) Slash commands =="
-# Every command carries the -crew suffix, for the same reason the agents do: `/review` and `/simplify` collide with
+# Every command carries the crew- prefix, for the same reason the agents do: `/review` and `/simplify` collide with
 # Claude Code's built-ins, and a user facing two identically-named entries in the picker cannot tell which is the
-# kit's. Suffixing every one of them keeps one rule instead of a list of exceptions, and leaves room for built-ins
-# the CLI adds later. The filename IS the invocation, so a missing suffix is a silent collision, not a cosmetic slip.
-for c in brainstorm-crew plan-crew review-crew ship-crew handoff-crew doctor-crew update-crew studio-crew; do
+# kit's. Prefixing every one of them keeps one rule instead of a list of exceptions, and leaves room for built-ins
+# the CLI adds later. The filename IS the invocation, so a missing prefix is a silent collision, not a cosmetic slip.
+for c in crew-brainstorm crew-plan crew-review crew-ship crew-handoff crew-doctor crew-update crew-studio; do
   [ -f "$ROOT/commands/$c.md" ] && pass "/$c present" || fail "/$c command missing"
 done
 for c in brainstorm plan review ship handoff studio; do
-  [ -f "$ROOT/commands/$c.md" ] && fail "/$c present without the -crew suffix — collides with a built-in"
+  [ -f "$ROOT/commands/$c.md" ] && fail "/$c present without the crew- prefix — collides with a built-in"
 done
-pass "no unsuffixed command shadows a built-in"
+pass "no unprefixed command shadows a built-in"
 
 # The COUNT beside the command list in both READMEs, gated for the same reason the hook count is: documenting
 # each command does not keep the number honest. This one was ungated and the class has drifted before — the
@@ -5112,7 +5112,7 @@ if [ -f "$GR" ]; then
                    *) fail "gate-report: a logged firing is missing from the report" ;; esac
 
   # (d) routed, not idle.
-  [ -f "$ROOT/commands/gates-crew.md" ] && pass "/gates-crew command present (report is routed)" \
+  [ -f "$ROOT/commands/crew-gates.md" ] && pass "/crew-gates command present (report is routed)" \
                                        || fail "gate-report.sh has no command routing it — an idle component"
 
   # (e) doctor is RUN, not grepped. Grepping doctor.sh for "gate-report.sh" passed while both new sections
@@ -5216,7 +5216,7 @@ if mkfifo "$FF" 2>/dev/null && [ -p "$FF" ]; then
   kill "$FW" 2>/dev/null; rm -f "$FF"
 else note "stdin-hang case skipped (no working mkfifo)"; fi
 # (e) the diagnostics must not contaminate the evidence. doctor's §2b probe drives the REAL guard to check it
-#     is not neutered, so without CREW_GATE_LOG=/dev/null every `/doctor-crew` writes a synthetic force-push
+#     is not neutered, so without CREW_GATE_LOG=/dev/null every `/crew-doctor` writes a synthetic force-push
 #     block and the report starts counting the diagnostics instead of what the model reached for.
 DCT="$(mktemp -d)"; mkdir -p "$DCT/.claude"
 for d in eval hooks skills commands agents; do [ -d "$ROOT/$d" ] && cp -R "$ROOT/$d" "$DCT/.claude/$d"; done

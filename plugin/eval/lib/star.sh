@@ -8,7 +8,7 @@
 #   star.sh                    unconditional (tests, and anyone who wants to see it).
 #
 # Nothing else prints it: not a hook, not a session start. Cost: one line (~30 tokens) per version, and only when
-# the model relays it — /update-crew and /doctor-crew tell it to pass the line through as the last line.
+# the model relays it — /crew-update and /crew-doctor tell it to pass the line through as the last line.
 #
 # The marker lives in the git dir (`git rev-parse --git-path`), NOT under .claude/: a project that tracks .claude/
 # would otherwise commit it, and one person's "seen" would silence the line for the whole team. Outside a git

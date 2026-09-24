@@ -2,7 +2,7 @@
 name: frontend
 description: |
   Stack-agnostic frontend discipline (web · mobile · desktop): component structure, state, data fetching,
-  loading/empty/error states, i18n, accessibility, performance. frontend-expert-crew applies it on every stack.
+  loading/empty/error states, i18n, accessibility, performance. crew-frontend-expert applies it on every stack.
 ---
 
 # Frontend Discipline (stack-agnostic)
@@ -50,7 +50,7 @@ the browser to check it. The full convention: **`references/verify-contract.md`*
 ## DoD (this skill's contribution)
 - `/simplify`; no dead styles/unused props.
 - The four states are covered; `i18n-integrity` clean; accessibility passes the baseline matrix.
-- `review-agent-crew` clean.
+- `crew-review-agent` clean.
 
 ## Constraints
 - Surgical change; follow existing conventions, do not impose a stack/preference.

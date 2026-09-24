@@ -81,7 +81,7 @@ echo "== 1b) Routing COVERAGE — every installed component has at least one pos
 # The golden set proves that the cases in it route. It never proved that every component HAS a case, and an audit
 # found 12 skills and one agent with none — including security-scan, code-review, testing and spec-planning. A
 # component with no case is a component whose reachability is nobody's job to check, which is exactly how
-# frontend-expert-crew stayed unreachable for a whole class of request while every gate reported green. Adding a
+# crew-frontend-expert stayed unreachable for a whole class of request while every gate reported green. Adding a
 # component now means adding the sentence that must reach it.
 MISSING_CASE=""
 for f in "$AGENTS"/*.md "$SKILLS"/*/SKILL.md; do
@@ -124,7 +124,7 @@ if [ -f "$RH" ]; then
   # Calibrate before trusting a single verdict: a prompt the hook is known to route must come back named. An
   # extractor that silently returns nothing makes EVERY positive read as "silent" — measured, the first version
   # of this section did exactly that, with a `\|` that BSD sed does not support, and reported 0 of 82.
-  if [ "$(rh_names 'add an endpoint that returns unpaid invoices')" != "backend-expert-crew" ]; then
+  if [ "$(rh_names 'add an endpoint that returns unpaid invoices')" != "crew-backend-expert" ]; then
     fail "winner check cannot read the hook's answer (calibration prompt came back unnamed) — the measurement is broken, not the routing"
   else
     WIN_HIT=0; WIN_N=0; NEG_N=0; NEW_MISS=""; FIXED_MISS=""; NEG_BAD=""
@@ -182,8 +182,8 @@ fi
 
 echo "== 2) Agent-agent trigger collision =="
 # NOTE: Only AGENT-AGENT collisions matter (routing ambiguity lives here). An agent sharing a trigger
-# with the skill it OWNS (backend-expert-crew<->backend-architecture, security-expert-crew<->security-scan,
-# devops-expert-crew<->incident-runbook ...) is EXPECTED: the skill is the agent's internal "how"
+# with the skill it OWNS (crew-backend-expert<->backend-architecture, crew-security-expert<->security-scan,
+# crew-devops-expert<->incident-runbook ...) is EXPECTED: the skill is the agent's internal "how"
 # source, not a separate dispatch — the router picks the agent, the agent reads the skill inside a
 # single subagent. So an agent<->its-own-skill overlap is intentional and is NOT a FAIL here.
 # Collect each agent's unique (normalized) triggers; anything appearing in 2+ agents = collision.

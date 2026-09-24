@@ -8,7 +8,7 @@ this directory is `kit/studio/`, and `kit/` is what every
 channel already ships. `start.sh` and `adopt.sh` copy it to `.claude/studio/`,
 beside `agents`, `skills`, `commands`, `hooks` and `eval` — the sixth of six.
 
-That was the other way round until a real project updated with `/update-crew`,
+That was the other way round until a real project updated with `/crew-update`,
 ran the documented command and got ENOENT: the project had no `package.json`,
 and nothing had ever installed the panel into it. Excluding it from every
 channel was a decision; a documented command that cannot work is a defect.
@@ -18,7 +18,7 @@ channel was a decision; a documented command that cannot work is a defect.
 From any project that has the kit:
 
 ```bash
-/studio-crew                                  # the slash command; probes node, starts it, reports the URL
+/crew-studio                                  # the slash command; probes node, starts it, reports the URL
 node .claude/studio/server/index.js --open   # the same thing without the picker
 ```
 
@@ -34,7 +34,7 @@ NODE="$(bash .claude/studio/ensure-node.sh)"   # prints an absolute path, exits 
 "$NODE" .claude/studio/server/index.js --open
 ```
 
-`/studio-crew` does exactly this for you, which is why it is the first line above and not the second.
+`/crew-studio` does exactly this for you, which is why it is the first line above and not the second.
 
 Other flags, same file:
 
@@ -54,17 +54,17 @@ Run it from wherever is convenient, or run it once and leave it up.
 `--open` exists so the URL is not copied by hand: the token is generated per run
 and the panel refuses requests without it. When a browser cannot be opened — over
 SSH, or headless — the server says so rather than looking like it worked, and
-`/studio-crew` reports the URL either way.
+`/crew-studio` reports the URL either way.
 
 **Both editions carry the panel, in different places.** A full install has it
 at `.claude/studio/`; the plugin edition has it at `studio/` in the plugin's own
-root. One `/studio-crew` file serves both, and its first step tells them apart
+root. One `/crew-studio` file serves both, and its first step tells them apart
 by reading `${CLAUDE_PLUGIN_ROOT}/studio/server/index.js` literally: Claude Code
 replaces that placeholder before the command is read, and only when the command
 came from the plugin. A real absolute path is the plugin's panel; the
 placeholder left standing means a full install. Neither path on disk means an
-install from a kit older than the panel, which `/update-crew` brings up to date.
-In the plugin the command is namespaced: `/claude-starter-kit:studio-crew`.
+install from a kit older than the panel, which `/crew-update` brings up to date.
+In the plugin the command is namespaced: `/claude-starter-kit:crew-studio`.
 
 **What the plugin edition cannot show.** A plugin install puts no
 `.claude/VERSION`, `kit.conf` or kit scripts into a project. That project's row

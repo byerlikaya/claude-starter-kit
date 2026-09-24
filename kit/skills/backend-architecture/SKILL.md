@@ -12,7 +12,7 @@ description: |
      truncated or dropped, which strips the very keywords a match depends on. -->
 Trigger phrases: "tech stack", "which framework", "choose a database", "backend pattern", "project structure", "new api", "new handler", "write a command", "add a query", "validator", "which stack should", "set up the project structure", "language or framework", "layered or", "vertical slice", "hexagonal", "clean architecture"
 
-The "how" behind `backend-expert-crew`, and the stack step `planner-crew` and `database-expert-crew` rely on.
+The "how" behind `crew-backend-expert`, and the stack step `crew-planner` and `crew-database-expert` rely on.
 **Model discipline, not a gate:** no hook checks that the stack was resolved before code was written.
 
 ## When
@@ -101,5 +101,5 @@ kept from an older kit install, or one the team wrote (format: `.claude/AGENT_TE
 the stack is resolved and recorded the same way.
 
 ## Not here — the single source is elsewhere
-Schema and migrations → `db-migration` · tests → `testing` · review → `code-review-crew` · contracts and
+Schema and migrations → `db-migration` · tests → `testing` · review → `crew-code-review` · contracts and
 versioning → `api-design` · logs/traces → `observability`.

@@ -18,7 +18,7 @@ interval. Open-ended exploration with no checkable target does not belong here.
 
 ## The loop
 1. **Name the exit test first** — the concrete, checkable condition that means "done": tests green,
-   `review-agent-crew` clean, the spec's acceptance criterion met, zero SonarQube findings. No exit test →
+   `crew-review-agent` clean, the spec's acceptance criterion met, zero SonarQube findings. No exit test →
    go to spec-planning first; a loop without a target never terminates.
    **Prefer an external, machine-grounded verifier** — a test exit code, a schema match, a lint/quality gate —
    over an LLM's self-assessment. A model grading its own output inflates; an "it looks done" or even a single
@@ -31,7 +31,7 @@ interval. Open-ended exploration with no checkable target does not belong here.
 4. **Repeat** until the exit test passes. Stop early and surface it if: two rounds pass with no new
    progress (you are stuck — report, don't spin), the exit test itself is wrong, or a blocker needs a
    decision from the user.
-5. **Close at the DoD gate, not at a commit.** `commit-agent-crew` still proposes and waits for §4.4
+5. **Close at the DoD gate, not at a commit.** `crew-commit-agent` still proposes and waits for §4.4
    approval. The loop never commits, pushes, or deploys on its own.
 
 ## Guardrails

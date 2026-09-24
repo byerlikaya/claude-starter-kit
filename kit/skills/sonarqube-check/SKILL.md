@@ -77,8 +77,8 @@ Know which one applies before planning the work.
 
 Group findings by `rule` (`csharpsquid:S1481`, `typescript:S3776`, `python:S5852`, …) and take one rule at a time,
 all occurrences together. Read what the rule actually asks, fix the cause, cite the rule id in the change. The
-domain owner does the fixing — a security rule is `security-expert-crew`'s, a query/index rule is
-`database-expert-crew`'s.
+domain owner does the fixing — a security rule is `crew-security-expert`'s, a query/index rule is
+`crew-database-expert`'s.
 
 **Never close a finding by silencing it.** `#pragma warning disable`, `// NOSONAR`, `eslint-disable`, an exclusion in
 `sonar-project.properties` — each one changes the report without changing the code. It needs a written reason and
@@ -98,7 +98,7 @@ Repeat until the gate says `OK` and the counts are zero. Nothing here closes on 
 Community Build has no **taint/injection analysis** (data flow from user input to a dangerous sink — SQLi, XSS,
 command injection); that engine is in the paid editions. It also has no branch/PR analysis. So a clean local gate
 is not proof of injection safety: cover that with the **`security-scan`** and **`threat-model`** skills plus a
-`security-expert-crew` review, and say which of the two verdicts you are reporting.
+`crew-security-expert` review, and say which of the two verdicts you are reporting.
 
 ## DoD
 - The verdict is quoted **from an analysis**: gate status, counts by severity, ratings, analysis date, and where it

@@ -301,7 +301,7 @@ const agentsOnDisk = fs.readdirSync(path.join(PAYLOAD, 'agents')).filter((f) => 
 check('every kit agent in the payload is in the palette',
   pal.measured === true && pal.kitAgents === agentsOnDisk,
   `${pal.kitAgents} in the palette, ${agentsOnDisk} .md files in ${path.relative(REPO, path.join(PAYLOAD, 'agents'))}`);
-check('a declared colour resolves to a hex value', /^#[0-9a-f]{6}$/i.test(pal.map['security-expert-crew']?.hex ?? ''));
+check('a declared colour resolves to a hex value', /^#[0-9a-f]{6}$/i.test(pal.map['crew-security-expert']?.hex ?? ''));
 check('an undeclared agent type falls back to neutral, never a borrowed colour',
   !pal.map['no-such-agent-type'] && /^#[0-9a-f]{6}$/i.test(pal.unknown));
 
@@ -1595,8 +1595,8 @@ process.stdout.write('\n== §27 the picture at 250 nodes ==\n');
     && LOD_NEAR > LOD_FAR,
     `near=${LOD_NEAR} far=${LOD_FAR} hyst=${LOD_HYST} budget=${LABEL_BUDGET}`);
 
-  const TYPES = ['Explore', 'Plan', 'reviewer', 'tester', 'planner-crew',
-    'backend-expert-crew', 'docs-agent', 'security'];
+  const TYPES = ['Explore', 'Plan', 'reviewer', 'tester', 'crew-planner',
+    'crew-backend-expert', 'docs-agent', 'security'];
   const PAL = {
     map: Object.fromEntries(TYPES.map((t, i) => [t, {
       hex: ['#26c6e6', '#a874f5', '#35c874', '#f2a65a'][i % 4],
@@ -1824,7 +1824,7 @@ process.stdout.write('\n== §27 the picture at 250 nodes ==\n');
     // Found by type rather than by index, so the fixture's type cycle can be
     // reordered without turning this into a puzzle.
     const byType = (t) => big.els.get([...big.nodes.values()].find((n) => n.agentType === t).id);
-    const live = byType('backend-expert-crew');
+    const live = byType('crew-backend-expert');
     const done = big.els.get('n100');
     check('the label a running node keeps says what it is doing, not just what it is',
       big.nodes.get(live.dataset.id).status === 'running'
@@ -1836,7 +1836,7 @@ process.stdout.write('\n== §27 the picture at 250 nodes ==\n');
       live.parts.type.dataset.short === 'backend'
       && byType('docs-agent').parts.type.dataset.short === 'docs'
       && byType('Explore').parts.type.dataset.short === 'Explore',
-      `backend-expert-crew -> ${JSON.stringify(live.parts.type.dataset.short)},`
+      `crew-backend-expert -> ${JSON.stringify(live.parts.type.dataset.short)},`
       + ` docs-agent -> ${JSON.stringify(byType('docs-agent').parts.type.dataset.short)},`
       + ` Explore -> ${JSON.stringify(byType('Explore').parts.type.dataset.short)}`);
 

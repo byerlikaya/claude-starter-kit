@@ -996,7 +996,7 @@ function paintProjects() {
       } else if (p.kit.outdated) {
         k.classList.add('old');
         k.textContent = `${p.kit.version} → ${p.kit.latest}`;
-        k.title = `kit ${p.kit.version} is behind ${p.kit.latest} — run /update-crew in this project`;
+        k.title = `kit ${p.kit.version} is behind ${p.kit.latest} — run /crew-update in this project`;
       } else if (p.kit.ahead) {
         k.classList.add('ahead');
         k.textContent = p.kit.version;

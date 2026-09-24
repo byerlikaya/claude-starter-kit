@@ -1,6 +1,6 @@
 # Agent Template Contract (Claude Code)
 
-All expert agents conform to this skeleton. Canonical reference: **`backend-expert-crew`**.
+All expert agents conform to this skeleton. Canonical reference: **`crew-backend-expert`**.
 Principle: **agent = thin trigger** ("who / when"), **skill = "how"**. Knowledge lives in the skill, the trigger in the agent.
 
 ## Frontmatter (required fields)
@@ -17,9 +17,9 @@ Principle: **agent = thin trigger** ("who / when"), **skill = "how"**. Knowledge
 3b. **Before writing any of it — writing experts only.** Two pre-flight checks, both **model discipline**; no hook enforces either:
     - `confidence-check` — the only check in the kit that comes BEFORE implementation. Any "no" is a stop, not a caveat.
     - **A design summary, when the change carries architecture** — a new or changed data model/schema, a new or changed API contract, or 2+ domains touched. Three to five lines (which table/endpoint/integration point moves · which pattern · what the alternative was), put to the user with `AskUserQuestion` before the first line of code. Trivial single-domain work skips it: RISK decides, not size.
-4. **Coordination (cross-agent) — recommended for writing experts.** Whom this work is delegated to: security→security-expert-crew, schema→database-expert-crew, tests→test-expert-crew, messages→i18n, personal data→privacy-agent-crew, hot path/query/render/payload→performance-expert-crew, findings at closure→review-agent-crew. It turns the agent into an orchestrator; usually unnecessary for read-only auditors.
+4. **Coordination (cross-agent) — recommended for writing experts.** Whom this work is delegated to: security→crew-security-expert, schema→crew-database-expert, tests→crew-test-expert, messages→i18n, personal data→crew-privacy-agent, hot path/query/render/payload→crew-performance-expert, findings at closure→crew-review-agent. It turns the agent into an orchestrator; usually unnecessary for read-only auditors.
     - **The read-only audits go out in parallel** — several `Agent` calls in ONE message. None of them writes product code, so there is nothing to serialise (discipline Workflow §3).
-    - **No unbounded ping-pong.** More than 3 handovers between the SAME two agents on one task (e.g. `backend-expert-crew` ↔ `database-expert-crew`) is a loop, not coordination: stop before the fourth, summarise what each round changed and what is still open, and put it to the user with `AskUserQuestion`. Model discipline — nothing counts the hops for you.
+    - **No unbounded ping-pong.** More than 3 handovers between the SAME two agents on one task (e.g. `crew-backend-expert` ↔ `crew-database-expert`) is a loop, not coordination: stop before the fourth, summarise what each round changed and what is still open, and put it to the user with `AskUserQuestion`. Model discipline — nothing counts the hops for you.
 5. **DoD** — closure responsibility: `/simplify` + tests green + `sonarqube-check` (0/0/0/0, build 0/0).
 6. **Output & context (token)** — what returns to the main thread: a **short summary**, not raw logs/dumps; heavy output goes to `docs/*.md` (token-budget skill).
 7. **Errors/escalation** — when stuck/unsure, **stop and report** or hand off to the relevant expert; do not proceed on a guess.
@@ -31,22 +31,22 @@ Principle: **agent = thin trigger** ("who / when"), **skill = "how"**. Knowledge
 
 | Agent | Role | model | Why |
 |---|---|---|---|
-| session-manager-crew | assessment | `haiku` | lightweight, writes no code |
-| security-expert-crew | audit | `sonnet` | decision-heavy (auth/IDOR) |
-| review-agent-crew | audit | `haiku` | read-only findings |
-| commit-agent-crew | message generation | `haiku` | lightweight, writes no code |
-| privacy-agent-crew | audit | `sonnet` | decision-heavy (KVKK/GDPR) |
-| planner-crew | planning | `inherit` | wants stable reasoning |
-| backend-expert-crew | writing | `inherit` | complex code, main model |
-| database-expert-crew | writing | `inherit` | migration/schema risk |
-| test-expert-crew | writing | `inherit` | behavioral correctness |
-| frontend-expert-crew | writing | `inherit` | UI + native bridge |
+| crew-session-manager | assessment | `haiku` | lightweight, writes no code |
+| crew-security-expert | audit | `sonnet` | decision-heavy (auth/IDOR) |
+| crew-review-agent | audit | `haiku` | read-only findings |
+| crew-commit-agent | message generation | `haiku` | lightweight, writes no code |
+| crew-privacy-agent | audit | `sonnet` | decision-heavy (KVKK/GDPR) |
+| crew-planner | planning | `inherit` | wants stable reasoning |
+| crew-backend-expert | writing | `inherit` | complex code, main model |
+| crew-database-expert | writing | `inherit` | migration/schema risk |
+| crew-test-expert | writing | `inherit` | behavioral correctness |
+| crew-frontend-expert | writing | `inherit` | UI + native bridge |
 
 Pulling the read-only trio down to Haiku lowers token/cost; the writing experts stay at full power.
 (Aliases are valid in Claude Code frontmatter; if the field is empty, `inherit` is assumed.)
 
 ## Placement
-- Project-local (10): `./.claude/agents/` — session-manager-crew, backend/database/security/test/frontend-expert-crew, review-agent-crew, commit-agent-crew, planner-crew, privacy-agent-crew. Everything stays inside the repo; no dependency on home (`~/.claude`) (handover §3).
+- Project-local (10): `./.claude/agents/` — crew-session-manager, backend/database/security/test/crew-frontend-expert, crew-review-agent, crew-commit-agent, crew-planner, crew-privacy-agent. Everything stays inside the repo; no dependency on home (`~/.claude`) (handover §3).
 - No extra agent is needed; stack-specific "hows" live under `./.claude/skills/` (the frontend's "how" is in the project's frontend skill / CLAUDE.md).
 
 ## Decompose along the cost axis (tool < skill < subagent)
@@ -83,4 +83,4 @@ until it passes. The kit's evals ARE those tests.
 4. **Only then** write `SKILL.md` (+ `references/` for depth) until all three go green. Red → green, never green-by-assertion-weakening (that's the Verifier-integrity anti-pattern the review skill itself flags).
 
 ## Reference example
-`backend-expert-crew.md` is this contract applied verbatim; when creating a new agent, copy it and fill it in.
+`crew-backend-expert.md` is this contract applied verbatim; when creating a new agent, copy it and fill it in.

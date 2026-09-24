@@ -117,7 +117,7 @@ _mt() {
       "context measurement, routing, doctor") s='bağlam ölçümü, yönlendirme ve doctor için' ;;
       "Windows: ships with Git Bash · macOS: preinstalled · Linux: apt install gawk") s='Windows: Git Bash ile gelir · macOS: hazır gelir · Linux: apt install gawk' ;;
       "the commit-time trace/secret gates are git hooks") s="commit anındaki iz ve gizli bilgi kapıları git hook'u olarak çalışır" ;;
-      "the CSK Studio panel (/studio-crew); the gates themselves are bash and do not need it") s='CSK Studio paneli (/studio-crew) için; kapılar bash ile çalışır, Node gerektirmez' ;;
+      "the CSK Studio panel (/crew-studio); the gates themselves are bash and do not need it") s='CSK Studio paneli (/crew-studio) için; kapılar bash ile çalışır, Node gerektirmez' ;;
       "the skill-trust gate falls back to cksum (catches accidental edits, not crafted ones)") s="skill güven kapısı cksum'a düşer (kazara değişiklikleri yakalar, kasıtlı olanları yakalayamaz)" ;;
       "Windows/Linux: coreutils (sha256sum) · macOS: shasum is preinstalled") s='Windows/Linux: coreutils (sha256sum) · macOS: shasum hazır gelir' ;;
       "bash") ;;   # identifier, printed as is
@@ -154,7 +154,7 @@ any_of "git" 'the commit-time trace/secret gates are git hooks' \
   # machine that has never seen node. It sits in REQUIRED anyway, deliberately, because the panel now installs
   # into every project, and a component that silently does not start on some machines is worse than one that
   # says what it needs. The reason string names which half is affected, so the REQUIRED heading stays true.
-  any_of 'node 18+' 'the CSK Studio panel (/studio-crew); the gates themselves are bash and do not need it' \
+  any_of 'node 18+' 'the CSK Studio panel (/crew-studio); the gates themselves are bash and do not need it' \
     "nodejs.org · Windows: winget install OpenJS.NodeJS.LTS · macOS: brew install node · Linux: apt install nodejs" \
     node || MISSING_REQ="$MISSING_REQ node"
 

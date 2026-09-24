@@ -32,7 +32,7 @@ echo "== Claude Starter Kit — install doctor =="
 # 0) Is the kit even here?
 [ -d .claude ] || { echo "  ❌ no .claude/ in '$PWD' — is the kit installed here?"; echo "     ↳ fix: npx @byerlikaya/claude-starter-kit adopt"; exit 1; }
 
-# 1) VERSION (marks a full install; also what /update-crew compares)
+# 1) VERSION (marks a full install; also what /crew-update compares)
 if [ -f .claude/VERSION ]; then ok "VERSION present ($(head -1 .claude/VERSION | tr -cd '0-9A-Za-z.-'))"
 else bad "VERSION missing" "reinstall or update the kit (npx @byerlikaya/claude-starter-kit update)"; fi
 
@@ -45,7 +45,7 @@ if [ -f .claude/VERSION ] && [ -f .claude/.state/update-check ]; then
   DCUR="$(head -1 .claude/VERSION 2>/dev/null | tr -cd '0-9A-Za-z.-')"
   if [ -n "$DLATEST" ] && awk -v a="$DLATEST" -v b="$DCUR" 'BEGIN{split(a,x,".");split(b,y,".");
        for(i=1;i<=3;i++){if(x[i]+0>y[i]+0)exit 0; if(x[i]+0<y[i]+0)exit 1} exit 1}'; then
-    warn "kit v$DCUR installed, v$DLATEST published — update with /update-crew"
+    warn "kit v$DCUR installed, v$DLATEST published — update with /crew-update"
   fi
 fi
 
@@ -64,7 +64,7 @@ done
 # 2b) Behaviour probe — a hook that is present + executable can still be NEUTERED (its body replaced with `exit 0`).
 #     Drive guard-bash with a command it MUST block; if it does not exit 2, the §4.5 gate is disarmed.
 if [ -x .claude/hooks/guard-bash.sh ]; then
-  # CREW_GATE_LOG=/dev/null: this probe drives the real gate, so without it every `/doctor-crew` writes a
+  # CREW_GATE_LOG=/dev/null: this probe drives the real gate, so without it every `/crew-doctor` writes a
   # synthetic "git push --force blocked" line into the evidence log — and the gate report would then be
   # counting the diagnostics instead of what the model reached for. A measurement tool that contaminates the
   # thing it measures is worse than none.
@@ -84,7 +84,7 @@ if [ -x .claude/hooks/guard-bash.sh ]; then
   case "$PROBE46" in
     *"4.6"*) ok "guard-bash.sh enforces the §4.6 review gate (gate live, not neutered)" ;;
     *)       bad "guard-bash.sh did NOT enforce §4.6 — a commit can land with no review of its diff" \
-                 "restore guard-bash.sh from the kit (and check review-agent-crew still writes .claude/review-pass.json)" ;;
+                 "restore guard-bash.sh from the kit (and check crew-review-agent still writes .claude/review-pass.json)" ;;
   esac
 fi
 
@@ -200,7 +200,7 @@ elif [ "${NOPY:-0}" != 1 ]; then
 fi
 
 # 5) Agent-name references resolve to an installed agent — checked across CLAUDE.md AND every local doc it points to
-#    (its @imports and docs/*.md references). A brownfield takeover renames the project's agents to `-crew` ids, but
+#    (its @imports and docs/*.md references). A brownfield takeover renames the project's agents to `crew-` ids, but
 #    CLAUDE.md — or an orchestration doc it delegates to, e.g. "detail: docs/AGENTS.md" — may still name the OLD bare
 #    agent. That name matches no installed agent, so delegation to it silently fails. Following CLAUDE.md's reference
 #    chain catches the pointed-to docs too, while unreferenced prose (design/audit docs, code comments) is ignored —
@@ -208,7 +208,7 @@ fi
 if [ -f CLAUDE.md ] && ls .claude/agents/*.md >/dev/null 2>&1; then
   # Two pull-only agents are invoked explicitly (a commit needs approval; session health is emitted by a hook),
   # NOT auto-delegated — so a bare reference to them does not break delegation; it is only a naming inconsistency.
-  PULL_AGENTS=" commit-agent-crew session-manager-crew "
+  PULL_AGENTS=" crew-commit-agent crew-session-manager "
   # Scan set = CLAUDE.md + the local .md files it references (one level: its @imports and any `docs/…md` path).
   SCAN="CLAUDE.md"
   for r in $(grep -oE '@?[A-Za-z0-9_./-]+\.md' CLAUDE.md 2>/dev/null | sed 's/^@//' | sort -u); do
@@ -229,7 +229,7 @@ if [ -f CLAUDE.md ] && ls .claude/agents/*.md >/dev/null 2>&1; then
       for (i=1;i<=nf;i++) {
         f=files[i]; n=(f in nm) ? nm[f] : ""
         if (n=="") { n=f; sub(/\.md$/,"",n); sub(/.*\//,"",n) }              # fallback: the file name
-        if (n ~ /-crew$/) { b=n; sub(/-crew$/,"",b); print b "\t" n }
+        if (n ~ /^crew-/) { b=n; sub(/^crew-/,"",b); print b "\t" n }
       }
     }' .claude/agents/*.md)"
   export CREW_AGENT_BASES
@@ -248,7 +248,7 @@ $(awk '
   }
   FNR==1 { order[++nf]=FILENAME }
   {
-    # bare `base` NOT followed by `-` (so not base-crew) and not glued into a longer word — the identical
+    # bare `base` NOT touching a `-` on either side (so not crew-base, nor base-local) and not glued into a longer word — the identical
     # boundary the grep used. Agent ids are [a-z-] only, so nothing here needs regex escaping.
     for (i=1;i<=nb;i++)
       if ($0 ~ ("(^|[^a-zA-Z-])" base[i] "([^a-zA-Z-]|$)"))
@@ -264,7 +264,7 @@ $(awk '
 EOF
   if [ -n "$STALE" ]; then
     bad "CLAUDE.md (or a doc it references) names auto-delegated agent(s) that no installed agent matches — delegation to them silently fails" \
-        "rename each bare reference to its \`-crew\` id:$STALE"
+        "rename each bare reference to its \`crew-\` id:$STALE"
   fi
   [ -n "$STALE_PULL" ] && warn "CLAUDE.md (or a referenced doc) names pull-only agent(s) by their old bare id — invoked explicitly, so delegation still works; rename for consistency:$STALE_PULL"
   [ -z "$STALE$STALE_PULL" ] && ok "agent references resolve to installed agents (CLAUDE.md + referenced docs)"
@@ -306,7 +306,7 @@ if [ -d .claude/studio ] && ! bash "$PREFLIGHT" --has node 2>/dev/null; then
 fi
 if [ "$FAIL" -eq 0 ]; then echo "DOCTOR: healthy ✅$PANEL_NOTE"
   # Healthy verdict: the star line, once per kit version — the marker is shared with the installers, so the
-  # doctor run that /update-crew makes right after an update stays quiet. Text/URL/silence: lib/star.sh.
+  # doctor run that /crew-update makes right after an update stays quiet. Text/URL/silence: lib/star.sh.
   [ -f "$(dirname "$0")/lib/star.sh" ] && bash "$(dirname "$0")/lib/star.sh" --once .
 else echo "DOCTOR: $FAIL issue(s) ❌ — apply the fixes above$PANEL_NOTE"; fi
 
@@ -351,9 +351,9 @@ if [ -f .claude/eval/gate-report.sh ]; then
   GOUT="$(bash .claude/eval/gate-report.sh 2>/dev/null)"; GRC=$?
   case "$GRC" in
     0) GL="$(printf '%s' "$GOUT" | grep -E 'decision\(s\)|no gate has fired' | head -1 | sed 's/^ *//')"
-       [ -n "$GL" ] && ok "gate activity: $GL" || ok "gate activity recorded (see /gates-crew)" ;;
-    3) skip "gate activity NOT MEASURED — nowhere to record (see /gates-crew)" ;;
-    *) skip "gate activity unreadable (see /gates-crew)" ;;
+       [ -n "$GL" ] && ok "gate activity: $GL" || ok "gate activity recorded (see /crew-gates)" ;;
+    3) skip "gate activity NOT MEASURED — nowhere to record (see /crew-gates)" ;;
+    *) skip "gate activity unreadable (see /crew-gates)" ;;
   esac
 fi
 # --- Agentic readiness (ADVISORY) -------------------------------------------------------------------------

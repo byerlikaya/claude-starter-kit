@@ -153,7 +153,7 @@ seen[FILENAME] { next }                                    # one Trigger-phrases
   # agent hit discarded a far stronger skill hit, and the discarded total then fell under the floor below and
   # the hook printed NOTHING. Measured before this change: "this needs an accessibility audit" produced the
   # a11y hint, and "the PAGE needs an accessibility audit" produced silence, because `page` is a
-  # frontend-expert-crew trigger worth 4 which replaced the a11y score of ~30 and then failed `>= 6`. Adding a common noun
+  # crew-frontend-expert trigger worth 4 which replaced the a11y score of ~30 and then failed `>= 6`. Adding a common noun
   # to a request removed the routing entirely, which is the opposite of what a preference is for. Each kind now
   # keeps its own best and the preference is applied at the END, among candidates that clear the floor.
   if (kind == "agent") { if (score > bestA) { bestA=score; nameA=name } }
@@ -175,7 +175,7 @@ BESTKIND="${RES%%	*}"; BEST="${RES#*	}"
 # version hedged — "unless it is a one-line edit", "if it is genuinely not that agent's work, say so" — which
 # handed the model two explicit ways to decline, and it took them: 4 of 12. The docs give the phrasing that
 # works verbatim ("Use the test-runner subagent to fix failing tests"), so that is what goes in. A user typing
-# "use frontend-expert-crew for this" gets obeyed without argument; there is no reason to write it more weakly
+# "use crew-frontend-expert for this" gets obeyed without argument; there is no reason to write it more weakly
 # just because a hook is doing the typing.
 if [ "$BESTKIND" = skill ]; then
   MSG="Use the \`$BEST\` skill for this task."

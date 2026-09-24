@@ -122,7 +122,7 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "full kit") s='tam kit' ;;
       "no effect:") s='etkisi yok:' ;;
       "Installing:") s='Kuruluyor:' ;;
-      "Tip:  open Claude Code and run /doctor-crew — it checks the install is wired (hooks executable, core.hooksPath set, discipline imported) and scores the project's readiness. CLAUDE.md loads the discipline every session.") s="İpucu:  Claude Code'u açıp /doctor-crew çalıştırın — kurulumun eksiksiz bağlandığını denetler (hook'lar çalıştırılabilir mi, core.hooksPath ayarlı mı, disiplin import edilmiş mi) ve projenin ne kadar hazır olduğunu puanlar. Disiplin, CLAUDE.md sayesinde her oturumda yüklenir." ;;
+      "Tip:  open Claude Code and run /crew-doctor — it checks the install is wired (hooks executable, core.hooksPath set, discipline imported) and scores the project's readiness. CLAUDE.md loads the discipline every session.") s="İpucu:  Claude Code'u açıp /crew-doctor çalıştırın — kurulumun eksiksiz bağlandığını denetler (hook'lar çalıştırılabilir mi, core.hooksPath ayarlı mı, disiplin import edilmiş mi) ve projenin ne kadar hazır olduğunu puanlar. Disiplin, CLAUDE.md sayesinde her oturumda yüklenir." ;;
       "%s agents, %s skills installed.") s="%s ajan ve %s skill kuruldu." ;;
       ".claude/DISCIPLINE.md written — kit-owned; an update overwrites it, so keep your own rules out of it.") s='.claude/DISCIPLINE.md yazıldı. Bu dosya kite ait ve her güncellemede yeniden yazılır; kendi kurallarınızı buraya eklemeyin.' ;;
       "./CLAUDE.md created — EDIT the project section.") s='./CLAUDE.md oluşturuldu — proje bölümünü sizin DOLDURMANIZ gerekiyor.' ;;
@@ -130,7 +130,7 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "Done. ./.claude + ./CLAUDE.md ready (full kit); kit/ deleted.") s='Tamamlandı. ./.claude ve ./CLAUDE.md hazır (tam kit); kit/ silindi.' ;;
       "Next: 1) fill in the CLAUDE.md project section  2) open Claude Code at the repo root") s="Sıradaki adımlar: 1) CLAUDE.md'deki proje bölümünü doldurun  2) Claude Code'u deponun kökünde açın" ;;
       "Note: if Claude Code is ALREADY running here, restart it — CLAUDE.md and the discipline load at session start.") s='Not: Claude Code bu klasörde ZATEN açıksa yeniden başlatın — CLAUDE.md ve disiplin oturum açılırken yüklenir.' ;;
-      "Panel: /studio-crew opens the Studio panel from this project (or: node .claude/studio/server/index.js --open).") s='Panel: /studio-crew komutu Studio panelini bu projeden açar (alternatif: node .claude/studio/server/index.js --open).' ;;
+      "Panel: /crew-studio opens the Studio panel from this project (or: node .claude/studio/server/index.js --open).") s='Panel: /crew-studio komutu Studio panelini bu projeden açar (alternatif: node .claude/studio/server/index.js --open).' ;;
       "— backend + web + mobile (RN/Expo), every agent and skill") s="— backend, web ve mobil (RN/Expo); tüm ajanlar ve skill'ler" ;;
       "%s agents · %s skills will be installed") s='%s ajan · %s skill' ;;
       "(shared: .claude/ and CLAUDE.md stay committable)") s="(paylaşımlı: .claude/ ve CLAUDE.md commit'lenebilir kalır)" ;;
@@ -140,7 +140,7 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "[yes/no]") s='[evet/hayır]' ;;
       "the kit always installs in full (all agents · all skills).") s="kit her zaman eksiksiz kurulur (tüm ajanlar · tüm skill'ler)." ;;
       "2 steps: who it is for -> summary & confirm.") s='2 adım: kim kullanacak -> özet ve onay.' ;;
-      "AGENT_TEMPLATE.md missing from the payload — /skill-crew will have nothing to read.") s='AGENT_TEMPLATE.md pakette yok — /skill-crew okuyacak bir şablon bulamayacak.' ;;
+      "AGENT_TEMPLATE.md missing from the payload — /crew-skill will have nothing to read.") s='AGENT_TEMPLATE.md pakette yok — /crew-skill okuyacak bir şablon bulamayacak.' ;;
       "./CLAUDE.md kept as-is (already imports the discipline) — the refresh landed in DISCIPLINE.md.") s="./CLAUDE.md'ye dokunulmadı (disiplini zaten import ediyor); güncelleme DISCIPLINE.md'ye yazıldı." ;;
       "! ./CLAUDE.md carries the discipline INLINE (pre-1.1 layout) — left untouched.") s='! ./CLAUDE.md disiplini dosyanın İÇİNDE taşıyor (1.1 öncesi düzen) — dokunulmadı.' ;;
       "Discipline updates will NOT reach it. To migrate: delete everything above your") s='Disiplin güncellemeleri bu dosyaya ULAŞMAZ. Geçiş için şu başlığın üstündeki her şeyi silin:' ;;
@@ -599,7 +599,7 @@ cp -R "$SRC/commands/." .claude/commands/
 VENDOR_ARMED=0; grep -qxE $'DevArchitecture\r?' .claude/hooks/trace-blocklist.txt 2>/dev/null && VENDOR_ARMED=1   # before the copy resets it; \r? = a CRLF copy still counts
 cp -R "$SRC/hooks/."    .claude/hooks/ 2>/dev/null || true
 cp -R "$SRC/eval/."     .claude/eval/ 2>/dev/null || true
-# The Studio panel — launched by /studio-crew from this project's root. One `cp -R`
+# The Studio panel — launched by /crew-studio from this project's root. One `cp -R`
 # plus one `rm`, not a selective walk: on Git Bash a per-file copy of 25 files is 25
 # process spawns at 62-135 ms each. test/ is dropped because its assertions read the
 # The panel's own suite is NOT here to delete: it lives in packaging/studio-test/,
@@ -625,10 +625,10 @@ if [ "$VENDOR_ARMED" = 1 ] && [ -f .claude/hooks/trace-blocklist.txt ] \
     && mv .claude/hooks/trace-blocklist.txt.kit-tmp .claude/hooks/trace-blocklist.txt
 fi
 # `|| true` here used to swallow a missing payload file entirely: the install reported success and
-# /skill-crew opened with `Read .claude/AGENT_TEMPLATE.md` against nothing. A best-effort copy is right —
+# /crew-skill opened with `Read .claude/AGENT_TEMPLATE.md` against nothing. A best-effort copy is right —
 # a missing doc must not abort an otherwise good install — but it has to be AUDIBLE, or the gap is
 # invisible until someone runs the command. adopt.sh copies the same file for the same reason.
-cp "$SRC/AGENT_TEMPLATE.md" .claude/ 2>/dev/null || { _mt 'AGENT_TEMPLATE.md missing from the payload — /skill-crew will have nothing to read.'; printf '  %s!%s %s\n' "$YE" "$R" "$_M"; }
+cp "$SRC/AGENT_TEMPLATE.md" .claude/ 2>/dev/null || { _mt 'AGENT_TEMPLATE.md missing from the payload — /crew-skill will have nothing to read.'; printf '  %s!%s %s\n' "$YE" "$R" "$_M"; }
 cp "$SRC/README.md"         .claude/ 2>/dev/null || true
 
 # Install manifest — the names the KIT ships. It is the only way to tell kit-owned from project-owned later:
@@ -721,7 +721,7 @@ echo
 { _mt 'Done. ./.claude + ./CLAUDE.md ready (full kit); kit/ deleted.'; echo "== ${_M} =="; }
 { _mt 'Next: 1) fill in the CLAUDE.md project section  2) open Claude Code at the repo root'; echo "${_M}"; }
 { _mt 'Note: if Claude Code is ALREADY running here, restart it — CLAUDE.md and the discipline load at session start.'; echo "${_M}"; }
-{ _mt "Tip:  open Claude Code and run /doctor-crew — it checks the install is wired (hooks executable, core.hooksPath set, discipline imported) and scores the project's readiness. CLAUDE.md loads the discipline every session."; echo "${_M}"; }
+{ _mt "Tip:  open Claude Code and run /crew-doctor — it checks the install is wired (hooks executable, core.hooksPath set, discipline imported) and scores the project's readiness. CLAUDE.md loads the discipline every session."; echo "${_M}"; }
 # Say what is true of THIS machine, not what is true in general. The line used to
 # print identically with or without node, so on a machine that cannot start the
 # panel it read as a footnote rather than as the reason nothing will happen. The
@@ -729,7 +729,7 @@ echo
 # it is asked of the INSTALLED copy: $SRC is deleted at line 397, a few lines
 # above this, so asking there answered "no node" on every machine.
 if bash .claude/eval/preflight.sh --has node 2>/dev/null; then
-  { _mt 'Panel: /studio-crew opens the Studio panel from this project (or: node .claude/studio/server/index.js --open).'; echo "${_M}"; }
+  { _mt 'Panel: /crew-studio opens the Studio panel from this project (or: node .claude/studio/server/index.js --open).'; echo "${_M}"; }
 else
   { _mt 'Panel: needs Node 18+, which is not on this machine — but that is no longer a dead end.'; echo "${_M}"; }
   { _mt 'The kit fetches one for the panel: %s  (asks first;' 'bash .claude/studio/ensure-node.sh --plan'; echo "       ${_M}"; }

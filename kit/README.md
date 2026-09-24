@@ -14,12 +14,12 @@ summarizes what lives under `.claude/` and how it works.
 ## What's inside `.claude/`
 
 - **Agents** (`agents/`) — one thin trigger per role: planning, backend, database, security,
-  privacy, testing, frontend, devops, review, commit, and session management. Names carry a `-crew`
-  suffix so that this kit's agents do not clash with the project's own agents.
+  privacy, testing, frontend, devops, review, commit, and session management. Names carry a `crew-`
+  prefix so that this kit's agents do not clash with the project's own agents.
 - **Skills** (`skills/`) — the single source of the "how" knowledge: code review, security scan,
   migration, deployment, observability, performance, accessibility, translation integrity, versioning,
   incident response, and more. (Every install carries all of them — the kit is stack-agnostic.)
-- **Commands** (`commands/`) — `/plan-crew` · `/review-crew` · `/ship-crew` · `/handoff-crew` · `/simplify`.
+- **Commands** (`commands/`) — `/crew-plan` · `/crew-review` · `/crew-ship` · `/crew-handoff` · `/simplify`.
 - **Hooks** (`hooks/`) — `guard-bash.sh` (tool-level gate), `pre-commit` + `commit-msg`
   (trace scan), `context-usage.sh` and `session-guard.sh` (session measurement), `trace-blocklist.txt`.
   `session-stats.sh` sits alongside them but is wired to no event: the `reflect` and `handoff` skills run it on
@@ -47,8 +47,8 @@ summarizes what lives under `.claude/` and how it works.
 
 ## Workflow
 
-`/plan-crew` (ambiguous scope) → expert agents generate → `/review-crew` (security · quality · testing) →
-`/ship-crew` (DoD gate; proposes the commit, waits for approval) → when context fills up, `/handoff-crew` → `/clear`.
+`/crew-plan` (ambiguous scope) → expert agents generate → `/crew-review` (security · quality · testing) →
+`/crew-ship` (DoD gate; proposes the commit, waits for approval) → when context fills up, `/crew-handoff` → `/clear`.
 
 ## Session and token management
 
@@ -82,7 +82,7 @@ Run `npx @byerlikaya/claude-starter-kit@latest update` at the project root. `.cl
 | Session threshold (75% · 90%) | `context-usage.sh` (measurement) + `session-guard.sh` (Stop hook, warns once per threshold) |
 | Always-on context stays lean | `smoke-test.sh` byte budgets: discipline · agent descriptions · skill descriptions |
 | A running session never follows stale rules | `context-usage.sh` compares `.claude/VERSION` with the session's starting version |
-| Quality gate (projects using SonarQube — language-agnostic) | `sonarqube-check` + `/ship-crew` |
+| Quality gate (projects using SonarQube — language-agnostic) | `sonarqube-check` + `/crew-ship` |
 
 ## Verification
 

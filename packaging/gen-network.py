@@ -12,36 +12,36 @@ STAGE = {"plan":"#5b8cff","build":"#34d17f","ops":"#26c6e6","audit":"#ff9040",
          "close":"#a874f5","session":"#94a3c8","core":"#c79bff"}
 # each AGENT its own distinct colour (shade within its stage hue) so skills+edges are traceable
 AGENT_COLOR = {
- "planner-crew":"#5b8cff",                                                     # plan · blue
- "backend-expert-crew":"#35c874","frontend-expert-crew":"#84e6b0","database-expert-crew":"#1e9b57",  # build · green shades
- "devops-expert-crew":"#26c6e6",                                               # ops · cyan
- "security-expert-crew":"#ff8a4d","privacy-agent-crew":"#ffbc8a","test-expert-crew":"#db5f1c","performance-expert-crew":"#f2a65a",       # audit · orange shades
- "review-agent-crew":"#b07cf6","commit-agent-crew":"#8659ee",                   # close · violet shades
- "session-manager-crew":"#9aa7cc"}                                             # session · slate
+ "crew-planner":"#5b8cff",                                                     # plan · blue
+ "crew-backend-expert":"#35c874","crew-frontend-expert":"#84e6b0","crew-database-expert":"#1e9b57",  # build · green shades
+ "crew-devops-expert":"#26c6e6",                                               # ops · cyan
+ "crew-security-expert":"#ff8a4d","crew-privacy-agent":"#ffbc8a","crew-test-expert":"#db5f1c","crew-performance-expert":"#f2a65a",       # audit · orange shades
+ "crew-review-agent":"#b07cf6","crew-commit-agent":"#8659ee",                   # close · violet shades
+ "crew-session-manager":"#9aa7cc"}                                             # session · slate
 STAGE_NAME = {"plan":"PLAN","build":"BUILD","ops":"OPS","audit":"AUDIT","close":"CLOSE","session":"SESSION","core":"MAIN-THREAD"}
 ORDER = ["plan","build","ops","audit","close","session","core"]
 
-AGENTS = [("planner-crew","plan"),("backend-expert-crew","build"),("frontend-expert-crew","build"),
-    ("database-expert-crew","build"),("devops-expert-crew","ops"),("security-expert-crew","audit"),
-    ("privacy-agent-crew","audit"),("test-expert-crew","audit"),("performance-expert-crew","audit"),("review-agent-crew","close"),
-    ("commit-agent-crew","close"),("session-manager-crew","session")]
-SHORT = {"planner-crew":"planner","backend-expert-crew":"backend","frontend-expert-crew":"frontend",
-    "database-expert-crew":"database","devops-expert-crew":"devops","security-expert-crew":"security",
-    "privacy-agent-crew":"privacy","performance-expert-crew":"perf","test-expert-crew":"test","review-agent-crew":"review",
-    "commit-agent-crew":"commit","session-manager-crew":"session"}
+AGENTS = [("crew-planner","plan"),("crew-backend-expert","build"),("crew-frontend-expert","build"),
+    ("crew-database-expert","build"),("crew-devops-expert","ops"),("crew-security-expert","audit"),
+    ("crew-privacy-agent","audit"),("crew-test-expert","audit"),("crew-performance-expert","audit"),("crew-review-agent","close"),
+    ("crew-commit-agent","close"),("crew-session-manager","session")]
+SHORT = {"crew-planner":"planner","crew-backend-expert":"backend","crew-frontend-expert":"frontend",
+    "crew-database-expert":"database","crew-devops-expert":"devops","crew-security-expert":"security",
+    "crew-privacy-agent":"privacy","crew-performance-expert":"perf","crew-test-expert":"test","crew-review-agent":"review",
+    "crew-commit-agent":"commit","crew-session-manager":"session"}
 EDGES = {
- "backend-expert-crew":"api-design backend-architecture confidence-check dependency-audit i18n-integrity observability performance sonarqube-check",
- "commit-agent-crew":"commit-message release",
- "database-expert-crew":"backend-architecture confidence-check db-migration sonarqube-check",
- "devops-expert-crew":"adr ci-pipeline dependency-audit dependency-upgrade docs-writer incident-runbook observability performance release trace-scan deploy",
- "frontend-expert-crew":"a11y confidence-check dependency-audit frontend frontend-design frontend-rn-expo i18n-integrity observability performance",
- "planner-crew":"adr backend-architecture brainstorm spec-planning",
- "privacy-agent-crew":"privacy-compliance",
- "review-agent-crew":"code-review docs-writer",
- "security-expert-crew":"red-team security-scan sonarqube-check threat-model",
- "session-manager-crew":"handoff token-budget",
- "test-expert-crew":"testing",
- "performance-expert-crew":"performance"}
+ "crew-backend-expert":"api-design backend-architecture confidence-check dependency-audit i18n-integrity observability performance sonarqube-check",
+ "crew-commit-agent":"commit-message release",
+ "crew-database-expert":"backend-architecture confidence-check db-migration sonarqube-check",
+ "crew-devops-expert":"adr ci-pipeline dependency-audit dependency-upgrade docs-writer incident-runbook observability performance release trace-scan deploy",
+ "crew-frontend-expert":"a11y confidence-check dependency-audit frontend frontend-design frontend-rn-expo i18n-integrity observability performance",
+ "crew-planner":"adr backend-architecture brainstorm spec-planning",
+ "crew-privacy-agent":"privacy-compliance",
+ "crew-review-agent":"code-review docs-writer",
+ "crew-security-expert":"red-team security-scan sonarqube-check threat-model",
+ "crew-session-manager":"handoff token-budget",
+ "crew-test-expert":"testing",
+ "crew-performance-expert":"performance"}
 # Skills no single agent owns: routed from a command and the discipline's trigger map rather than from an
 # agent body, so they have no `applies` edge to draw and sit in the centre instead.
 CORE_SKILLS = ["systematic-debugging","iterate","reflect","worktree","mcp-builder","eval-grader","teamboard",
@@ -184,7 +184,7 @@ def build(subtitle):
         P.append(f'<rect x="{x-w/2:.1f}" y="{y-h/2:.1f}" width="{w:.1f}" height="{h}" rx="13.5" fill="#0f1830" stroke="{col}" stroke-width="1.6" filter="url(#glow)"/>')
         P.append(f'<text x="{x:.1f}" y="{y+4.2:.1f}" text-anchor="middle" font-size="12.5" font-weight="600" fill="#eaf0ff">{html.escape(s)}</text>')
     # agent nodes
-    # The node LABEL is the short name — twelve full "-crew" names would not fit inside a 35px circle. The full
+    # The node LABEL is the short name — twelve full "crew-" names would not fit inside a 35px circle. The full
     # name goes in a <title>, which a screen reader announces on the node and a gate can grep for. Without it the
     # picture never contains the string it is a picture of, so nothing downstream can check it is complete.
     for nm,st in AGENTS:
@@ -208,18 +208,18 @@ def build(subtitle):
 # Pipeline diagram (orchestration-*.svg) — the SEQUENCE the network diagram cannot show at a glance.
 # It lives in this file, not its own, because both pictures must draw from ONE agent list and ONE colour map:
 # an agent that is green in the network and orange in the pipeline is two pictures of two different kits. The
-# hand-drawn version this replaces had eleven agents in it — performance-expert-crew was simply never added, and
+# hand-drawn version this replaces had eleven agents in it — crew-performance-expert was simply never added, and
 # nothing compared the picture to the payload. Now the columns ARE the agent list.
 PIPE = [
- ("1","UNDERSTAND","ANLA",    "#5b8cff", ["planner-crew"],
+ ("1","UNDERSTAND","ANLA",    "#5b8cff", ["crew-planner"],
   "ambiguous scope → a plan", "belirsiz kapsam → plan"),
- ("2","PRODUCE","ÜRET",       "#34d17f", ["backend-expert-crew","database-expert-crew","frontend-expert-crew","devops-expert-crew"],
+ ("2","PRODUCE","ÜRET",       "#34d17f", ["crew-backend-expert","crew-database-expert","crew-frontend-expert","crew-devops-expert"],
   "the domain owner builds", "alanın sahibi üretir"),
- ("3","AUDIT","DENETLE",      "#ff9040", ["security-expert-crew","privacy-agent-crew","test-expert-crew","performance-expert-crew"],
+ ("3","AUDIT","DENETLE",      "#ff9040", ["crew-security-expert","crew-privacy-agent","crew-test-expert","crew-performance-expert"],
   "security review is mandatory", "güvenlik incelemesi zorunlu"),
- ("4","CLOSE","KAPAT",        "#a874f5", ["review-agent-crew","commit-agent-crew"],
+ ("4","CLOSE","KAPAT",        "#a874f5", ["crew-review-agent","crew-commit-agent"],
   "DoD gate · waits for your approval", "Bitti kapısı · onayınızı bekler"),
- ("5","HAND OFF","DEVRET",    "#94a3c8", ["session-manager-crew"],
+ ("5","HAND OFF","DEVRET",    "#94a3c8", ["crew-session-manager"],
   "context fills → hand off, /clear", "bağlam doldu → devret, /clear"),
 ]
 # Fail loudly rather than draw a wrong picture: a new agent must be placed in a stage, not silently dropped.
@@ -274,7 +274,7 @@ HANDOVER = [
  ("Detect",     "Tespit",   "",              "",             "#5b8cff"),
  ("Propose",    "Öneri",    "7 decisions",   "7 karar",      "#5b8cff"),
  ("Handover",   "Dal aç",   "branch",        "devir",        "#a874f5"),
- ("Coexist",    "Birlikte", "-crew agents",   "-crew ajan",    "#34d17f"),
+ ("Coexist",    "Birlikte", "crew- agents",   "crew- ajan",    "#34d17f"),
  ("Discipline", "Disiplin", "+ settings",    "+ ayarlar",    "#34d17f"),
  ("Proof",      "Kanıt",    "gates ready",   "kapılar hazır","#ff9040"),
  ("HANDOVER.md","HANDOVER.md","+ ADR",       "+ ADR",        "#26c6e6"),
@@ -347,8 +347,8 @@ def build_board(tr=False):
     RX, RW = 596, 380
     Y1, Y2, CH_ = 52, 152, 78
 
-    card(LX, Y1, LW, CH_, "#5b8cff", "ali",  ["/board-crew", "claim #1"])
-    card(LX, Y2, LW, CH_, "#a874f5", "ayşe" if tr else "ayse", ["/board-crew", "claim #1"])
+    card(LX, Y1, LW, CH_, "#5b8cff", "ali",  ["/crew-board", "claim #1"])
+    card(LX, Y2, LW, CH_, "#a874f5", "ayşe" if tr else "ayse", ["/crew-board", "claim #1"])
 
     lab = "push" if not tr else "push"
     arrow(LX+LW, Y1+CH_/2, CX, lab, "#5b8cff")
@@ -389,11 +389,11 @@ FLOW = [
  # Both the command label AND both body lines are per-language: an earlier version shared one label field, and
  # the English diagram shipped reading "uzman ajanlar". Lines are kept short enough to fit the box at the width
  # below — a label that overflows its box is worse than no label, because it renders on top of the border.
- ("/plan-crew",     "/plan-crew",     "#5b8cff", "belirsiz kapsam", "ambiguous scope",   "planlamaya gider",  "goes to planning"),
+ ("/crew-plan",     "/crew-plan",     "#5b8cff", "belirsiz kapsam", "ambiguous scope",   "planlamaya gider",  "goes to planning"),
  ("uzman ajanlar", "expert agents", "#34d17f", "alanın sahibi",   "the domain owner",  "işi yapar",         "does the work"),
- ("/review-crew",   "/review-crew",   "#ff9040", "güvenlik · kalite","security · quality","· test denetimi",  "· test audit"),
- ("/ship-crew",     "/ship-crew",     "#a874f5", "Bitti Tanımı",    "Definition of Done","onayınızı bekler",  "waits for approval"),
- ("/handoff-crew",  "/handoff-crew",  "#94a3c8", "bağlam doldu",    "context is full",   "devret, /clear",    "hand off, /clear"),
+ ("/crew-review",   "/crew-review",   "#ff9040", "güvenlik · kalite","security · quality","· test denetimi",  "· test audit"),
+ ("/crew-ship",     "/crew-ship",     "#a874f5", "Bitti Tanımı",    "Definition of Done","onayınızı bekler",  "waits for approval"),
+ ("/crew-handoff",  "/crew-handoff",  "#94a3c8", "bağlam doldu",    "context is full",   "devret, /clear",    "hand off, /clear"),
 ]
 FW, FH = 960, 232
 def build_flow(tr=False):

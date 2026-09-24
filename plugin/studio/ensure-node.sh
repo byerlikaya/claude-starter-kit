@@ -356,7 +356,7 @@ case "$MODE" in
     found="$(resolve)"
     if [ -n "$found" ]; then
       # A bare name is not an answer. The caller hands this string to a launcher that may not share this PATH,
-      # and /studio-crew tells the model "use the path it prints" -- while this printed `node`, measured. Only one
+      # and /crew-studio tells the model "use the path it prints" -- while this printed `node`, measured. Only one
       # candidate can be a name (PATH's own), and works() has already run it, so `command -v` names the very file
       # that answered. If it somehow resolves to nothing, keep the name rather than lose a working runtime.
       case "$found" in

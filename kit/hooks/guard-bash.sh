@@ -458,7 +458,7 @@ fi
 # here: an ordinary command writes nothing, and a git action CLAUDE_GIT_OK allows writes one ALLOW line.
 #
 # The COMMAND TEXT IS NOT RECORDED by default. It is the one field that can carry a path, an argument or a
-# token, and `/gates-crew` never prints it — the report is rule names and counts. Recording it by default would
+# token, and `/crew-gates` never prints it — the report is rule names and counts. Recording it by default would
 # buy nothing and add a place for a secret to sit. `CREW_GATE_LOG_CMD=1` puts it back for debugging a false
 # positive, which is the only thing it is good for.
 # Where the default log may go. An explicit CREW_GATE_LOG is the operator's call and is used as given. The
@@ -1099,7 +1099,7 @@ if git_has "$CMD" 'add|commit|push|checkout|switch'; then
 fi
 if git_has "$CMD" 'commit|push'; then
   # §4.6 — A COMMIT NEEDS A CLEAN REVIEW OF THIS DIFF.
-  # review-agent-crew records what it cleared in .claude/review-pass.json; this reads it back and compares two
+  # crew-review-agent records what it cleared in .claude/review-pass.json; this reads it back and compares two
   # EXACT facts: the sha256 of the staged diff, and the HEAD it was reviewed against. There is deliberately NO
   # wall-clock TTL — a time window both rejects records that are still correct (same diff, same base, an hour
   # later) and accepts ones that are not (same minute, rebased underneath). Two hashes answer the question a
@@ -1313,7 +1313,7 @@ if git_has "$CMD" 'commit|push'; then
       exit 2
     fi
 
-    # CSK-REVIEW-PASS (this recipe is kept identical in agents/review-agent-crew.md; smoke-test pins the pair)
+    # CSK-REVIEW-PASS (this recipe is kept identical in agents/crew-review-agent.md; smoke-test pins the pair)
     # GIT does the hashing, not sha256sum/shasum, and the reason is the one that survives BOTH platforms —
     # because the first two reasons written here did not. Measured on macOS: the suite's sandbox reaches its
     # minimal tier (a PATH of awk/sed/grep/head/cat/tr/git/cut built from symlinks), no hasher exists there, and
@@ -1336,7 +1336,7 @@ if git_has "$CMD" 'commit|push'; then
     if [ ! -f "$RP" ]; then
       gatelog BLOCK 4.6 "no review-pass record"
       echo "GUARD (§4.6): nothing has reviewed this diff — '$RP' does not exist." >&2
-      echo "Run @agent-review-agent-crew on the staged diff; a clean verdict writes the record." >&2
+      echo "Run @agent-crew-review-agent on the staged diff; a clean verdict writes the record." >&2
       echo "To skip it deliberately, run the commit yourself in your terminal." >&2
       exit 2
     fi
@@ -1366,7 +1366,7 @@ if git_has "$CMD" 'commit|push'; then
       echo "  staged   diff : ${HAVE_D:-<none>}" >&2
       echo "  reviewed HEAD : ${WANT_H:-<missing>}" >&2
       echo "  current  HEAD : ${HAVE_H}" >&2
-      echo "Re-run @agent-review-agent-crew on the diff as it stands; the record it writes is the one that" >&2
+      echo "Re-run @agent-crew-review-agent on the diff as it stands; the record it writes is the one that" >&2
       echo "matches. To skip it deliberately, run the commit yourself in your terminal." >&2
       exit 2
     fi

@@ -61,8 +61,11 @@ if (sub === '--version' || sub === '-v') {
 // Paths are built from CATALOGUE names only. A name the user typed is looked up in the catalogue and never used as a
 // path segment itself, so `..`, an absolute path or a separator cannot reach the file system.
 
-// The one place the agent suffix is spelled. Phase 5 renames it; a user's `add security-expert` must not change.
-const AGENT_SUFFIX = '-crew';
+// The one place the component prefix is spelled. The user types the bare name (`add security-expert`); the
+// prefixed name (`crew-security-expert`) and the pre-3.0 suffixed one (`security-expert-csk`) resolve to the same entry.
+const AGENT_PREFIX = 'crew-';
+const LEGACY_SUFFIX = '-csk';   // 2.x names, accepted on input only
+const bare = (n) => (n.startsWith(AGENT_PREFIX) ? n.slice(AGENT_PREFIX.length) : n);
 const NAME_RE = /^[a-z0-9][a-z0-9-]*$/;
 const RECORD = 'crewforth-added.json';
 
@@ -81,14 +84,16 @@ function catalogue(pkgDir) {
   return { root, agents, skills };
 }
 
-// Resolve what the user typed to a catalogue entry. Order: agent `<name><suffix>`, skill `<name>`, skill
-// `<name><suffix>` (a few skills carry the suffix too). A typed suffix is accepted and stripped first.
+// Resolve what the user typed to a catalogue entry. A typed prefix (`crew-x`) or legacy suffix (`x-csk`) is stripped
+// first; then: agent `crew-<name>`, skill `<name>`, skill `crew-<name>` (the code-review skill carries the prefix).
 function resolveName(cat, typed) {
   if (typeof typed !== 'string' || !NAME_RE.test(typed)) return null;
-  const base = typed.endsWith(AGENT_SUFFIX) ? typed.slice(0, -AGENT_SUFFIX.length) : typed;
-  if (cat.agents.includes(base + AGENT_SUFFIX)) return { type: 'agent', name: base + AGENT_SUFFIX };
+  let base = typed.endsWith(LEGACY_SUFFIX) ? typed.slice(0, -LEGACY_SUFFIX.length) : typed;
+  base = bare(base);
+  if (!base) return null;
+  if (cat.agents.includes(AGENT_PREFIX + base)) return { type: 'agent', name: AGENT_PREFIX + base };
   if (cat.skills.includes(base)) return { type: 'skill', name: base };
-  if (cat.skills.includes(base + AGENT_SUFFIX)) return { type: 'skill', name: base + AGENT_SUFFIX };
+  if (cat.skills.includes(AGENT_PREFIX + base)) return { type: 'skill', name: AGENT_PREFIX + base };
   return null;
 }
 
@@ -121,7 +126,7 @@ function distance(a, b) {
   return d[a.length][b.length];
 }
 function suggest(cat, typed) {
-  const shown = [...cat.agents.map((a) => a.slice(0, -AGENT_SUFFIX.length)), ...cat.skills];
+  const shown = [...cat.agents.map(bare), ...cat.skills];
   const t = String(typed).toLowerCase();
   return shown.map((n) => [n, distance(t, n)]).sort((x, y) => x[1] - y[1] || x[0].localeCompare(y[0])).slice(0, 3).map((x) => x[0]);
 }
@@ -184,7 +189,7 @@ function assertDirsOrAbsent(projectRoot, dir) {
 function listCommand(pkgDir, log) {
   const cat = catalogue(pkgDir);
   log(`Agents (${cat.agents.length}) — npx crewforth add <name>`);
-  for (const a of cat.agents) log(`  ${a.slice(0, -AGENT_SUFFIX.length).padEnd(22)} ${firstSentence(path.join(cat.root, 'agents', `${a}.md`))}`);
+  for (const a of cat.agents) log(`  ${bare(a).padEnd(22)} ${firstSentence(path.join(cat.root, 'agents', `${a}.md`))}`);
   log('');
   log(`Skills (${cat.skills.length})`);
   for (const s of cat.skills) log(`  ${s.padEnd(22)} ${firstSentence(path.join(cat.root, 'skills', s, 'SKILL.md'))}`);
@@ -233,7 +238,7 @@ function addCommand(pkgDir, args, opts = {}) {
     if (r.type !== 'agent') continue;
     const text = fs.readFileSync(path.join(cat.root, 'agents', `${r.name}.md`), 'utf8');
     const deps = noDeps ? [] : inferSkills(text, cat.skills);
-    if (deps.length) log(`${r.name.slice(0, -AGENT_SUFFIX.length)} uses ${deps.length} skill(s), adding them too: ${deps.join(', ')}`);
+    if (deps.length) log(`${bare(r.name)} uses ${deps.length} skill(s), adding them too: ${deps.join(', ')}`);
     for (const d of deps) push({ type: 'skill', name: d });
     for (const p of pairedAgents(text, cat.agents, r.name)) pairs.add(p);
   }
@@ -304,7 +309,7 @@ function addCommand(pkgDir, args, opts = {}) {
 
   for (const it of items) log(`  ${it.type === 'agent' ? 'agent' : 'skill'}  ${it.name}`);
   log(wrote ? `${wrote} file(s) written${same ? `, ${same} already up to date` : ''}.` : `Already up to date — ${same} file(s) unchanged.`);
-  if (pairs.size) log(`Works well with: ${[...pairs].sort().map((a) => a.slice(0, -AGENT_SUFFIX.length)).join(', ')} (not installed — add them the same way).`);
+  if (pairs.size) log(`Works well with: ${[...pairs].sort().map(bare).join(', ')} (not installed — add them the same way).`);
   log("Added the agent's instructions. The gates (hooks, commit checks) come with the full install: `npx crewforth init`.");
   return 0;
 }

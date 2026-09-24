@@ -17,7 +17,7 @@ a trace leaks sooner or later; this skill + the hooks stop the leak at commit ti
 
 ## When
 - Before every commit (automatic: `pre-commit` + `commit-msg` hooks).
-- Before commit-agent-crew proposes a message (manual verification).
+- Before crew-commit-agent proposes a message (manual verification).
 
 ## How
 Pattern list: `./.claude/hooks/trace-blocklist.txt` (grep -iE, one pattern per line).

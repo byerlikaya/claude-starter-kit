@@ -2,7 +2,7 @@
 # SessionStart hook (startup only) — say ONCE that a newer kit version is published, and never make the session
 # wait to find out.
 #
-# The gap it closes: a fix only reaches a project when somebody REMEMBERS to run /update-crew. Nothing surfaces a
+# The gap it closes: a fix only reaches a project when somebody REMEMBERS to run /crew-update. Nothing surfaces a
 # release, so shipped fixes sit unused in installs that would want them.
 #
 # The rule that shapes every line below: **this hook performs no network I/O in the foreground.** A SessionStart
@@ -20,7 +20,7 @@
 #     session-start channel also carries the rehydrate and trust notices — training the user to skim it is a cost
 #     paid by those two, not by this one.
 #   - BOTH editions, each on its own channel. A project install compares `.claude/VERSION` against the npm dist-tag
-#     and points at `/update-crew`; a plugin install compares its own `.claude-plugin/plugin.json` against the
+#     and points at `/crew-update`; a plugin install compares its own `.claude-plugin/plugin.json` against the
 #     marketplace repo's copy — the number that will actually reach it — and points at `claude plugin update`.
 #     The plugin's cache is user-level (`$XDG_CACHE_HOME`), the one case where the kit's "everything inside the
 #     repo" rule cannot apply, because a plugin install is not inside one. With both present the project install
@@ -106,7 +106,7 @@ if [ -f "$CL/VERSION" ]; then
   read -r _cv < "$CL/VERSION" 2>/dev/null || _cv=""; CUR="$(sane_version "$_cv")" || exit 0
   STATE="$CL/.state"                                            # repo-local: the install lives in the repo
   FEED="${CREW_UPDATE_URL:-$URL}"; KEY=latest
-  HOWTO='`/update-crew` performs the update and reports what changed'
+  HOWTO='`/crew-update` performs the update and reports what changed'
 elif [ -n "$PR_ROOT" ] && [ -f "$PJSON" ]; then
   # The plugin edition has a version too — its own manifest — and the number that will actually reach it is the one
   # in the marketplace repo, not npm's. They are bumped by the same release commit, but "tends to match" is not a
