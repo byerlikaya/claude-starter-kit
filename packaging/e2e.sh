@@ -608,6 +608,88 @@ for _q in "CSK_NO_STAR=1" "CI=true"; do
 done
 echo "[star] once per version: install 1 · doctor 0 · same-version update 0 · new-version update 1 · doctor 0 · new version via doctor 1 · again 0 · marker in the git dir · CSK_NO_STAR=1 / CI=true: 0, no marker"
 
+# ---- the two no-install doors: `add` and `studio` (pure Node, no bash) ----
+# Driven through bin/cli.js exactly as `npx crewforth …` runs it. Every tree comparison is a hash over the files'
+# paths and bytes, so "nothing changed" is measured, not assumed from an exit code.
+if command -v node >/dev/null 2>&1 && node --version >/dev/null 2>&1; then
+  CLI="$ROOT/bin/cli.js"
+  treehash(){ ( cd "$1" && find . -type f 2>/dev/null | LC_ALL=C sort | while IFS= read -r f; do printf '%s ' "$f"; cksum < "$f"; done ) | cksum; }
+  nfiles(){ find "$1" -type f 2>/dev/null | wc -l | tr -d ' '; }
+  # The dependency rule, asked of the ONE function that holds it — not re-derived here.
+  # The dependency list is read from the CLI's own announcement ("<agent> uses N skill(s), adding them too: …"),
+  # which prints the result of the one inference function — so the rule is tested where it lives, not re-derived.
+  DEPS="$( D0="$(mktemp -d)"; cd "$D0" && node "$CLI" add security-expert 2>/dev/null \
+           | sed -n 's/^security-expert uses [0-9]* skill(s), adding them too: //p' | tr -d ',' ; rm -rf "$D0" )"
+  # 1 · add security-expert in an empty dir: the agent, every inferred skill, and a record that lists what landed.
+  A1="$WORK/add-1"; rm -rf "$A1"; mkdir -p "$A1"
+  AOUT="$( cd "$A1" && node "$CLI" add security-expert 2>&1 )" || { echo "FAIL: add security-expert exited non-zero:"; printf '%s\n' "$AOUT"; exit 1; }
+  [ -f "$A1/.claude/agents/security-expert-csk.md" ] || { echo "FAIL: add did not place the agent"; exit 1; }
+  for sk in $DEPS; do cmp -s "$A1/.claude/skills/$sk/SKILL.md" "claude-starter/skills/$sk/SKILL.md" || { echo "FAIL: inferred skill $sk missing or different"; exit 1; }; done
+  [ -n "$DEPS" ] || { echo "FAIL: FIXTURE — no skills inferred for security-expert, so the dependency case proves nothing"; exit 1; }
+  RECOK="$(node -e 'const r=JSON.parse(require("fs").readFileSync(process.argv[1]+"/.claude/crewforth-added.json","utf8"));
+    const fs=require("fs");const listed=r.items.flatMap(i=>i.files);const miss=listed.filter(f=>!fs.existsSync(process.argv[1]+"/"+f));
+    process.stdout.write(`${r.items.length} ${listed.length} ${miss.length} ${r.version}`)' "$A1")"
+  set -- $RECOK
+  [ "$1" = "$(( $(printf '%s\n' $DEPS | grep -c .) + 1 ))" ] && [ "$2" = "$(( $(nfiles "$A1/.claude") - 1 ))" ] && [ "$3" = 0 ] && [ "$4" = "$(head -1 VERSION)" ] \
+    || { echo "FAIL: crewforth-added.json does not describe what landed (items/files/missing/version = $RECOK)"; exit 1; }
+  # 2 · the same command again changes nothing.
+  H1="$(treehash "$A1")"; ( cd "$A1" && node "$CLI" add security-expert >/dev/null 2>&1 ) || { echo "FAIL: a repeated add exited non-zero"; exit 1; }
+  [ "$(treehash "$A1")" = "$H1" ] || { echo "FAIL: a repeated add changed the tree"; exit 1; }
+  # 3 · a file that differs is not overwritten (exit 1, bytes intact); --force replaces it.
+  TM="$A1/.claude/skills/threat-model/SKILL.md"; printf 'local edit\n' >> "$TM"; H2="$(treehash "$A1")"
+  set +e; ( cd "$A1" && node "$CLI" add security-expert >/dev/null 2>&1 ); CRC=$?; set -e
+  [ "$CRC" = 1 ] && [ "$(treehash "$A1")" = "$H2" ] || { echo "FAIL: a conflicting add exited $CRC or changed the tree — the conflict check is not holding"; exit 1; }
+  ( cd "$A1" && node "$CLI" add security-expert --force >/dev/null 2>&1 ) && cmp -s "$TM" claude-starter/skills/threat-model/SKILL.md \
+    || { echo "FAIL: add --force did not replace the differing file"; exit 1; }
+  # 4 · an unknown name: exit 2, nothing written — including the valid name beside it — and a suggestion.
+  A4="$WORK/add-4"; rm -rf "$A4"; mkdir -p "$A4"
+  set +e; U4="$( cd "$A4" && node "$CLI" add security-expert secruity-scan 2>&1 )"; URC=$?; set -e
+  [ "$URC" = 2 ] && [ "$(nfiles "$A4")" = 0 ] && case "$U4" in *"did you mean: security-scan"*) true ;; *) false ;; esac \
+    || { echo "FAIL: unknown name gave rc=$URC, $(nfiles "$A4") file(s), output: $U4"; exit 1; }
+  # 5 · a full install is left alone.
+  A5="$WORK/add-5"; rm -rf "$A5"; mkdir -p "$A5/.claude"; printf 'stack=generic\n' > "$A5/.claude/kit.conf"; H5="$(treehash "$A5")"
+  ( cd "$A5" && node "$CLI" add testing >/dev/null 2>&1 ) && [ "$(treehash "$A5")" = "$H5" ] || { echo "FAIL: add wrote into a project with the full install"; exit 1; }
+  # 6 · --list covers the catalogue exactly.
+  NL="$(node "$CLI" add --list | grep -c '^  ')"; NC=$(( $(ls claude-starter/agents/*.md | wc -l) + $(ls -d claude-starter/skills/*/ | wc -l) ))
+  [ "$NL" = "$NC" ] || { echo "FAIL: add --list shows $NL entries, the catalogue has $NC"; exit 1; }
+  # 7 · with and without the suffix, the same tree.
+  A7a="$WORK/add-7a"; A7b="$WORK/add-7b"; rm -rf "$A7a" "$A7b"; mkdir -p "$A7a" "$A7b"
+  ( cd "$A7a" && node "$CLI" add security-expert >/dev/null 2>&1 ); ( cd "$A7b" && node "$CLI" add security-expert-csk >/dev/null 2>&1 )
+  [ "$(treehash "$A7a")" = "$(treehash "$A7b")" ] || { echo "FAIL: 'security-expert' and 'security-expert-csk' produced different trees"; exit 1; }
+  echo "[add] security-expert + $(printf '%s\n' $DEPS | grep -c .) inferred skill(s) · record matches · rerun unchanged · conflict rc=1 untouched, --force replaces · unknown rc=2, 0 files · full install left alone · --list $NL = catalogue · suffix-free = suffixed"
+
+  # studio through the npm entry: the offline self-check, then the real serve probe (listen, 403 without the token,
+  # 200 with it, clean exit).
+  # rc=0 is not enough: if the panel's own "am I the program" check fails, main() never runs and the process exits
+  # 0 with no output (measured in review). The verdict line is what proves the self-check actually ran.
+  node "$CLI" studio --selftest >"$WORK/studio-cli-selftest.txt" 2>&1 && grep -qE '^[0-9]+/[0-9]+ passed' "$WORK/studio-cli-selftest.txt" \
+    || { echo "FAIL: crewforth studio --selftest did not run its checks:"; tail -n 20 "$WORK/studio-cli-selftest.txt"; exit 1; }
+  SP2="$WORK/studio-cli-cwd"; rm -rf "$SP2"; mkdir -p "$SP2"
+  CSK_PROBE_CLI="$CLI" node packaging/studio-serve-probe.mjs "$SP2" || { echo "FAIL: the panel did not serve through crewforth studio"; exit 1; }
+  echo "[studio-cli] --selftest ok · served through bin/cli.js from an empty dir"
+
+  # WITHOUT BASH: PATH is cut down to node's own directory. The twin is what makes this a measurement: in the same
+  # PATH, `init` must fail for want of bash — if it does not, bash is still reachable and the pass proves nothing.
+  NODEDIR="$(dirname "$(command -v node)")"
+  if [ -x "$NODEDIR/bash" ] || [ -x "$NODEDIR/bash.exe" ]; then
+    echo "[no-bash] SKIP (fixture): bash lives in node's own directory ($NODEDIR), so PATH cannot exclude it here"
+  else
+    NB="$WORK/nobash"; rm -rf "$NB"; mkdir -p "$NB"; NODEBIN="$(command -v node)"
+    ( cd "$NB" && PATH="$NODEDIR" "$NODEBIN" "$CLI" add --list >/dev/null 2>&1 ) || { echo "FAIL: add --list needed more than node (PATH=$NODEDIR)"; exit 1; }
+    ( cd "$NB" && PATH="$NODEDIR" "$NODEBIN" "$CLI" studio --selftest 2>&1 ) | grep -qE '^[0-9]+/[0-9]+ passed' \
+      || { echo "FAIL: studio --selftest did not run its checks with only node on PATH ($NODEDIR)"; exit 1; }
+    if [ "$(uname -s | cut -c1-5)" = MINGW ] || [ "$(uname -s | cut -c1-4)" = MSYS ]; then
+      echo "[no-bash] add --list and studio --selftest ran with PATH=node's dir only · twin N/A on Windows (the wrapper finds Git Bash by absolute path, not PATH)"
+    else
+      set +e; TW="$( cd "$NB" && PATH="$NODEDIR" "$NODEBIN" "$CLI" init --yes 2>&1 )"; TRC=$?; set -e
+      case "$TW" in *"needs bash"*) ;; *) echo "FAIL: FIXTURE — init did not miss bash under PATH=$NODEDIR (rc=$TRC), so the no-bash pass proves nothing"; exit 1 ;; esac
+      echo "[no-bash] add --list and studio --selftest ran with PATH=node's dir only · twin: init under the same PATH says it needs bash"
+    fi
+  fi
+else
+  echo "[add/studio-cli] SKIPPED (no working node here — both doors are Node programs)"
+fi
+
 # ---- UPDATE: a project that ALREADY has the kit gets the panel on its next update ----
 # This is the reported bug, end to end. The project is installed from a payload with NO studio/ — the
 # shape every 2.8.0 install has — and then updated the way /update-csk drives it. The panel must ARRIVE.

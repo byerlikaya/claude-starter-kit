@@ -95,7 +95,11 @@ await new Promise((r) => blackHole.listen(0, '127.0.0.1', r));
 const feedUrl = `http://127.0.0.1:${blackHole.address().port}/dist-tags`;
 
 const port = await freePort();
-const child = spawn(process.execPath, [entry, '--port', String(port)], {
+// CSK_PROBE_CLI=<path to bin/cli.js>: start the panel the way `npx crewforth studio` does — through the npm entry,
+// with the browser suppressed — so every check below also covers that door. <root> is then only the cwd.
+const viaCli = process.env.CSK_PROBE_CLI;
+const argvFor = viaCli ? [path.resolve(viaCli), 'studio', '--no-open', '--port', String(port)] : [entry, '--port', String(port)];
+const child = spawn(process.execPath, argvFor, {
   cwd: root,
   env: { ...process.env, CSK_STUDIO_TOKEN: TOKEN, CSK_UPDATE_URL: feedUrl },
   stdio: ['ignore', 'pipe', 'pipe'],
