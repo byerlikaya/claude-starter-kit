@@ -154,6 +154,9 @@ function listFiles(dir, rel = '') {
 }
 
 // Refuse to write through a symlink anywhere between the project root and the target, and anywhere outside it.
+// Project-relative, always with `/` — one spelling in every message and in the record, on Windows too.
+function shown(projectRoot, p) { return path.relative(projectRoot, p).split(path.sep).join('/'); }
+
 function assertSafeTarget(projectRoot, target) {
   const rel = path.relative(projectRoot, target);
   if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) throw new Error(`refusing to write outside the project: ${target}`);
@@ -162,7 +165,7 @@ function assertSafeTarget(projectRoot, target) {
     cur = path.join(cur, part);
     let st;
     try { st = fs.lstatSync(cur); } catch (_) { return; } // the rest does not exist yet
-    if (st.isSymbolicLink()) throw new Error(`refusing to write through a symlink: ${path.relative(projectRoot, cur)}`);
+    if (st.isSymbolicLink()) throw new Error(`refusing to write through a symlink: ${shown(projectRoot, cur)}`);
   }
 }
 
@@ -174,7 +177,7 @@ function assertDirsOrAbsent(projectRoot, dir) {
     cur = path.join(cur, part);
     let st;
     try { st = fs.statSync(cur); } catch (_) { return; }
-    if (!st.isDirectory()) throw new Error(`${path.relative(projectRoot, cur)} exists and is not a directory`);
+    if (!st.isDirectory()) throw new Error(`${shown(projectRoot, cur)} exists and is not a directory`);
   }
 }
 
@@ -254,7 +257,7 @@ function addCommand(pkgDir, args, opts = {}) {
   }
   const conflicts = plan.filter((p) => p.state === 'differs');
   if (conflicts.length && !force) {
-    for (const c of conflicts) err(`add: ${path.relative(projectRoot, c.dst)} exists with different content — not overwritten (use --force to replace it)`);
+    for (const c of conflicts) err(`add: ${shown(projectRoot, c.dst)} exists with different content — not overwritten (use --force to replace it)`);
     err('Nothing was written.');
     return 1;
   }
@@ -268,7 +271,7 @@ function addCommand(pkgDir, args, opts = {}) {
   const rec = { version: 'unknown', items: (prev && !Array.isArray(prev) && typeof prev === 'object' && Array.isArray(prev.items)) ? prev.items : [] };
   try { rec.version = fs.readFileSync(path.join(pkgDir, 'VERSION'), 'utf8').split(/\r?\n/)[0].trim() || 'unknown'; } catch (_) { /* keep 'unknown' */ }
   for (const it of items) {
-    const files = plan.filter((p) => p.item === it).map((p) => path.relative(projectRoot, p.dst).split(path.sep).join('/'));
+    const files = plan.filter((p) => p.item === it).map((p) => shown(projectRoot, p.dst));
     rec.items = rec.items.filter((x) => !(x && x.type === it.type && x.name === it.name));
     rec.items.push({ type: it.type, name: it.name, files });
   }
