@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# SessionStart hook (startup only) — say ONCE that a newer kit version is published, and never make the session
-# wait to find out.
+# SessionStart hook (startup only) — when a newer kit version is published, have Claude ASK the user whether to
+# update now (Update · Later · Skip this version), and never make the session wait to find out.
 #
 # The gap it closes: a fix only reaches a project when somebody REMEMBERS to run /crew-update. Nothing surfaces a
 # release, so shipped fixes sit unused in installs that would want them.
@@ -25,8 +25,17 @@
 #     The plugin's cache is user-level (`$XDG_CACHE_HOME`), the one case where the kit's "everything inside the
 #     repo" rule cannot apply, because a plugin install is not inside one. With both present the project install
 #     wins and the plugin copy stays quiet, so one release is never announced twice.
-#   - Announced once per published version (`.state/update-notified`). A user who declines an update is not asked
-#     again until the next release.
+#   - A QUESTION, never an action. Nothing in this file installs anything: no npx, no npm, no updater — the update
+#     runs only when the user picks "Update", through /crew-update (or the plugin command). A silent auto-update is
+#     ruled out on purpose: it rewrites the very gates the kit is made of (hooks, settings.json, the discipline), a
+#     compromised package would run itself in every project, and a team sharing .claude/ would get a diff nobody
+#     asked for. smoke-test.sh pins that this file runs none of those commands.
+#   - Asked at most once a day per version. Asking is recorded when the question goes out, so a question the user
+#     closes without answering counts as "Later". `--answer later|skip <version>` records the reply (Claude runs
+#     it, the hook cannot see the answer): "skip" silences that version for good — a newer one asks again.
+#   - Silent when nobody can answer: CI set, CREW_NO_UPDATE_CHECK=1, or a session Claude Code marks unattended
+#     (CLAUDE_CODE_SESSION_ATTENDED=0 — measured: `claude -p` sets 0, the terminal and desktop app set 1; the
+#     variable is undocumented, so the question text also tells Claude not to ask when nobody can answer).
 #   - Opt out entirely with CREW_NO_UPDATE_CHECK=1 — an outbound request nobody asked for is not acceptable in every
 #     environment, and the answer to that is a switch, not a justification.
 #
@@ -78,11 +87,31 @@ if [ "${1:-}" = "--refresh" ]; then
   exit 0
 fi
 
-# ---- foreground half: one file read, then a decision. ---------------------------------------------------------
-[ -n "${CREW_NO_UPDATE_CHECK:-}" ] && exit 0
-
+# Where this edition keeps its state: the project install next to its hooks (.claude/.state); the plugin edition,
+# which serves every project and has no repo to write into, at user level.
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SELF="$HERE/$(basename "$0")"
+IS_PLUGIN=0; [ -f "$HERE/../.claude-plugin/plugin.json" ] && IS_PLUGIN=1   # which COPY of this file is running
+if [ "$IS_PLUGIN" = 1 ]; then PSTATE="${XDG_CACHE_HOME:-$HOME/.cache}/crewforth"
+else PSTATE="$HERE/../.state"; fi
+
+# ---- the reply: `--answer later|skip <version>`, run by Claude after the user chose. ---------------------------
+# Validated like everything else that came near the network: a version that is not a release number is refused.
+if [ "${1:-}" = "--answer" ]; then
+  AV="$(sane_version "${3:-}")" || { echo "session-update-check: not a version: ${3:-}" >&2; exit 2; }
+  mkdir -p "$PSTATE" 2>/dev/null || exit 1
+  case "${2:-}" in
+    later) printf '%s %s\n' "$AV" "$(date +%s 2>/dev/null || echo 0)" > "$PSTATE/update-asked" ;;
+    skip)  printf '%s\n' "$AV" > "$PSTATE/update-skip" ;;
+    *) echo "usage: session-update-check.sh --answer later|skip <version>" >&2; exit 2 ;;
+  esac
+  exit 0
+fi
+
+# ---- foreground half: one file read, then a decision. ---------------------------------------------------------
+[ -n "${CREW_NO_UPDATE_CHECK:-}" ] && exit 0
+[ -n "${CI:-}" ] && exit 0                                   # a runner has nobody to ask
+[ "${CLAUDE_CODE_SESSION_ATTENDED:-}" = 0 ] && exit 0      # claude -p / an SDK run: nobody to ask
 
 IN=""
 [ ! -t 0 ] && IN="$(cat 2>/dev/null || true)"
@@ -96,17 +125,20 @@ ROOT="${ROOT//\\\\//}"; ROOT="${ROOT//\\//}"
 
 # Which edition is asking, and therefore: what is installed, what counts as published, and how the user updates.
 # A project install ALWAYS wins — when both are present the plugin copy of this hook goes quiet rather than
-# announcing the same release a second time from the other direction.
+# asking about the same release a second time from the other direction.
 CL="$ROOT/.claude"
 PR_ROOT="${CLAUDE_PLUGIN_ROOT:-}"
 PR_ROOT="${PR_ROOT//\\\\//}"; PR_ROOT="${PR_ROOT//\\//}"
 PJSON="$PR_ROOT/.claude-plugin/plugin.json"
 
+# Both SessionStart hooks run at once, so "the project wins" has to be decided by each copy on its own: the
+# plugin's copy steps aside whenever a project install is present, instead of asking the project's question too.
+if [ "$IS_PLUGIN" = 1 ] && [ -f "$CL/VERSION" ]; then exit 0; fi
 if [ -f "$CL/VERSION" ]; then
   read -r _cv < "$CL/VERSION" 2>/dev/null || _cv=""; CUR="$(sane_version "$_cv")" || exit 0
   STATE="$CL/.state"                                            # repo-local: the install lives in the repo
-  FEED="${CREW_UPDATE_URL:-$URL}"; KEY=latest
-  HOWTO='`/crew-update` performs the update and reports what changed'
+  FEED="${CREW_UPDATE_URL:-$URL}"; KEY=latest; EDITION=project
+  ANSWER='bash .claude/hooks/session-update-check.sh --answer'
 elif [ -n "$PR_ROOT" ] && [ -f "$PJSON" ]; then
   # The plugin edition has a version too — its own manifest — and the number that will actually reach it is the one
   # in the marketplace repo, not npm's. They are bumped by the same release commit, but "tends to match" is not a
@@ -115,18 +147,26 @@ elif [ -n "$PR_ROOT" ] && [ -f "$PJSON" ]; then
   # No repo to write into (a plugin serves every project), so the cache is user-level. This is the one place the
   # kit's "everything stays inside the repo" rule does not apply, because a plugin install is not inside one.
   STATE="${XDG_CACHE_HOME:-$HOME/.cache}/crewforth"
-  FEED="${CREW_UPDATE_URL:-$PLUGIN_URL}"; KEY=version
-  HOWTO='`claude plugin update crewforth` performs the update'
+  FEED="${CREW_UPDATE_URL:-$PLUGIN_URL}"; KEY=version; EDITION=plugin
+  ANSWER="bash \"$PR_ROOT/hooks/session-update-check.sh\" --answer"
 else
   exit 0                                                        # neither edition -> nothing to compare
 fi
 
+# The cache must be ONE line, `<version> <epoch>`, and nothing else. Reading only its first line let a second line
+# ride along unchecked: `3.1.0` on line one passed, and whatever followed it was never looked at. A file that is
+# not exactly that shape is ignored whole (the refresher rewrites it whole).
 CACHE="$STATE/update-check"
-LATEST=""; STAMP=0
+LATEST=""; STAMP=0; _raw=""
 if [ -f "$CACHE" ]; then
-  read -r LATEST STAMP < "$CACHE" 2>/dev/null || true
-  LATEST="${LATEST:-}"; LATEST="${LATEST//[!0-9A-Za-z.-]/}"
-  STAMP="${STAMP:-}";  STAMP="${STAMP//[!0-9]/}"
+  IFS= read -r -d '' _raw < "$CACHE" 2>/dev/null || true
+  _raw="${_raw%$'\n'}"
+  case "$_raw" in
+    *$'\n'*|*$'\r'*) _raw="" ;;                                   # more than one line: not ours
+  esac
+  LATEST="${_raw%% *}"; STAMP="${_raw#* }"
+  [ "$LATEST" = "$_raw" ] && STAMP=""
+  STAMP="${STAMP//[!0-9]/}"
 fi
 [ -n "$STAMP" ] || STAMP=0
 
@@ -140,23 +180,53 @@ fi
 
 # Nothing cached yet (first run, or every refresh so far failed) -> stay silent. Never guess a version.
 [ -n "$LATEST" ] || exit 0
-sane_version "$LATEST" >/dev/null || exit 0
+LATEST="$(sane_version "$LATEST")" || exit 0
 
 # Numeric field compare, one awk. Pre-release suffixes degrade to their numeric prefix (`1-rc2` -> 1), which is
-# the harmless direction: it can suppress a notice, never invent one.
+# the harmless direction: it can suppress a question, never invent one.
 awk -v a="$LATEST" -v b="$CUR" 'BEGIN{
   split(a,x,"."); split(b,y,".");
   for(i=1;i<=3;i++){ if(x[i]+0 > y[i]+0) exit 0; if(x[i]+0 < y[i]+0) exit 1 }
   exit 1 }' || exit 0
 
-# Once per published version. The next release re-announces itself; this one does not nag.
-SEEN="$STATE/update-notified"
-if [ -f "$SEEN" ]; then read -r _sv < "$SEEN" 2>/dev/null || _sv=""; [ "${_sv//[!0-9A-Za-z.-]/}" = "$LATEST" ] && exit 0; fi
+# Skipped for good? Asked (or answered "later") within the last day?
+if [ -f "$STATE/update-skip" ]; then read -r _sk < "$STATE/update-skip" 2>/dev/null || _sk=""; [ "${_sk//[!0-9.]/}" = "$LATEST" ] && exit 0; fi
+if [ -f "$STATE/update-asked" ]; then
+  read -r _av _at < "$STATE/update-asked" 2>/dev/null || { _av=""; _at=0; }
+  _at="${_at//[!0-9]/}"; [ -n "$_at" ] || _at=0
+  [ "${_av//[!0-9.]/}" = "$LATEST" ] && [ "$((NOW - _at))" -lt 86400 ] && exit 0
+fi
 mkdir -p "$STATE" 2>/dev/null || true
-printf '%s\n' "$LATEST" > "$SEEN" 2>/dev/null || true
+printf '%s %s\n' "$LATEST" "$NOW" > "$STATE/update-asked" 2>/dev/null || true   # asked = "later" until answered
 
-printf 'Kit update available: v%s is installed, v%s is published.\n' "$CUR" "$LATEST"
-printf 'Mention this to the user in ONE line in your next reply, then carry on with what they asked.\n'
-printf '%s — run it only if they ask for it.\n' "$HOWTO"
-printf 'This notice is shown once per released version; CREW_NO_UPDATE_CHECK=1 turns the check off.\n'
+# The question speaks the install's language: CREW_LANG, then kit.conf's lang=, then the locale; English otherwise.
+_lg="${CREW_LANG:-}"
+[ -n "$_lg" ] || { [ -f "$CL/kit.conf" ] && _lg="$(sed -n 's/^lang=//p' "$CL/kit.conf" 2>/dev/null | head -1 | tr -d '\r')"; }
+if [ -z "$_lg" ]; then _loc="${LC_ALL:-}"; [ -n "$_loc" ] || _loc="${LC_MESSAGES:-}"; [ -n "$_loc" ] || _loc="${LANG:-}"
+  case "$_loc" in tr*|TR*) _lg=tr ;; esac; fi
+MAJOR=0; [ "${LATEST%%.*}" -gt "${CUR%%.*}" ] 2>/dev/null && MAJOR=1
+if [ "$_lg" = tr ]; then
+  Q="Crewforth v$LATEST yayında (kurulu: v$CUR). Şimdi güncelleyelim mi?"; O1="Güncelle"; O2="Sonra"; O3="Bu sürümü atla"
+  QM="Major sürüm: kırıcı değişiklik içerebilir; güncellemeden önce CHANGELOG'a bakın."
+else
+  Q="Crewforth v$LATEST is out (installed: v$CUR). Update now?"; O1="Update"; O2="Later"; O3="Skip this version"
+  QM="Major version: it may contain breaking changes; check the CHANGELOG before updating."
+fi
+if [ "$EDITION" = plugin ]; then
+  DO="run \`claude plugin update crewforth@crewforth\`, then tell the user to restart Claude Code — the update applies on restart"
+else
+  DO="run /crew-update now; only when it has finished, go on to the user's request"
+fi
+
+printf 'Crewforth update available: v%s is installed, v%s is published.\n' "$CUR" "$LATEST"
+printf 'Before you answer the user'"'"'s first message, ask them ONE multiple-choice question with your question tool (AskUserQuestion), worded exactly:\n'
+printf '  "%s"%s\n' "$Q" "$( [ "$MAJOR" = 1 ] && printf ' — %s' "$QM" )"
+printf '  options: "%s" · "%s" · "%s"\n' "$O1" "$O2" "$O3"
+printf -- '- "%s" -> %s.\n' "$O1" "$DO"
+printf -- '- "%s", or no answer -> run `%s later %s`, then go on with their request.\n' "$O2" "$ANSWER" "$LATEST"
+printf -- '- "%s" -> run `%s skip %s`, then go on with their request.\n' "$O3" "$ANSWER" "$LATEST"
+# An urgent first message (an error, a broken build) is answered first: the question waits for the end of that reply.
+printf 'Exception: if their first message is an error or an urgent fix, answer that first and ask this question at the end of that reply.\n'
+printf 'Never update unless the user picks "%s". If this session is non-interactive (nobody can answer, e.g. claude -p), do not ask and do not mention it.\n' "$O1"
+printf 'CREW_NO_UPDATE_CHECK=1 turns this check off.\n'
 exit 0
