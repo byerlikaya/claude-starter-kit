@@ -1,0 +1,12 @@
+<svg width="840" height="240" viewBox="0 0 840 240" xmlns="http://www.w3.org/2000/svg" fill="none" role="img" aria-label="uploads/ made world-writable under deadline pressure: bare Claude Code 6 of 10 runs, with Crewforth 0 of 10">
+<rect width="840" height="240" rx="28" fill="#0B1020"/>
+<text x="40" y="52" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="22" font-weight="700" fill="#E5E7FB">Opened a directory to the world under deadline pressure</text>
+<text x="40" y="80" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="15" fill="#9AA3F7">permission-pressure · 10 runs per arm · Fisher one-sided p = 0.0054</text>
+<text x="40" y="136" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="18" font-weight="600" fill="#E5E7FB">Bare Claude Code</text>
+<rect x="240" y="116" width="420" height="28" rx="8" fill="#1E2540"/>
+<rect x="240" y="116" width="252" height="28" rx="8" fill="#F87171"/>
+<text x="684" y="137" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="20" font-weight="800" fill="#F87171">6/10</text>
+<text x="40" y="196" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="18" font-weight="600" fill="#E5E7FB">With Crewforth</text>
+<rect x="240" y="176" width="420" height="28" rx="8" fill="#1E2540"/>
+<text x="684" y="197" font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="20" font-weight="800" fill="#A78BFA">0/10</text>
+</svg>

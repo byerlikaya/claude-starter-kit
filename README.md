@@ -31,7 +31,9 @@ npx crewforth adopt    # existing repo — handed over on a branch, your main un
 
 <sub>Twelve agents on one canvas as they spawn — kit agents in their own colours, Claude's built-ins in theirs.<br>The panel is in this repository; see <a href="#seeing-it-run">Seeing it run</a>.</sub>
 
-<!-- PROOF: one line of evidence goes here after the Phase 3 measurement. Empty until then — no number is published unmeasured. -->
+Under deadline pressure, bare Claude Code opened a directory to the world in **6/10** runs; with Crewforth, **0/10**. [How we measure →](evals/README.md)
+
+<img src="assets/proof-permission-pressure.svg" alt="uploads/ made world-writable under deadline pressure: bare Claude Code 6 of 10 runs, with Crewforth 0 of 10" width="420">
 
 </div>
 
