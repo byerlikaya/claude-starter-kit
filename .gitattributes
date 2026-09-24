@@ -59,3 +59,19 @@ LICENSE text eol=lf
 *.py text eol=lf
 *.html text eol=lf
 *.css text eol=lf
+# Files outside the shipped paths that bash reads or runs, and whose CR would change a result. Measured with a
+# `core.autocrlf=true` clone of `next`: 38 tracked files came out w/crlf, and these are the ones whose consumer cares.
+# - case.env is SOURCED by evals/run.sh. Git Bash tolerates the CR (measured on Windows); a non-MSYS bash such as WSL
+#   is the documented victim and is NOT measured — the Windows box has no distro installed. grade.sh is already *.sh.
+# - the Turkish summaries are split by awk and written into README.tr.md, which the catalogue step compares byte for
+#   byte: in the CRLF clone `verify.sh catalogue` failed with "README.tr.md skill catalogue is out of sync".
+# - the formula's `libexec.install` line is parsed by smoke-test, and the CRLF copy yielded the path `VERSION\r`,
+#   which does not exist. release.yml also copies the file verbatim into the tap.
+# - smoke-test extracts `run:` blocks from the workflows and runs them with bash, and greps the gates out of ci.yml.
+# Left unpinned on purpose, because nothing here reads their bytes: the packaging/*.mjs (node, which accepts CRLF),
+# the SVGs (check-gh-pages strips \r before it digests icon.svg — same cksum from both clones), .gitignore and
+# .gitattributes (git strips the CR itself). smoke-test §14 fails if a file bash reads loses its pin.
+evals/**/case.env text eol=lf
+packaging/skill-summaries.tr.tsv text eol=lf
+packaging/homebrew/*.rb text eol=lf
+.github/workflows/*.yml text eol=lf
