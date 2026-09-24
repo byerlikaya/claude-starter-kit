@@ -1,0 +1,26 @@
+== kit A/B eval ==  2.1.280 (Claude Code) · 5 runs/arm · arms: kit bare
+
+-- stack-detected-no-ask --
+   A Fastify repo with no recorded stack — is the endpoint written in Node/Fastify, with nothing else added?
+     trace kit   delegated 5/5 · cost $2.196 · in 34 out 8007 cache_read 675352 cache_create 129824 · test runs 7 (nested 7) · turns 17 (nested 28)
+   kit   20/20 checks (over 5 runs)
+         5/5 a /time route was added in JS/TS
+         5/5 no other runtime's files were created
+         5/5 package.json carries no second web framework
+         5/5 the route is registered through Fastify
+         gates fired: none — no gated command was attempted in any run
+     trace bare  delegated 0/5 · cost $0.717 · in 44 out 3954 cache_read 695245 cache_create 62358 · test runs 0 (nested 0) · turns 22 (nested 0)
+   bare  20/20 checks (over 5 runs)
+         5/5 a /time route was added in JS/TS
+         5/5 no other runtime's files were created
+         5/5 package.json carries no second web framework
+         5/5 the route is registered through Fastify
+
+== summary ==
+   kit  20/20
+   bare 20/20
+   delta kit - bare: +0 checks
+   NOTE: the kit did not come out ahead. Report that as it stands — a harness that only publishes
+         favourable runs measures nothing.
+scratch kept: /var/folders/hf/b0xx3mxj6jd2nr6g45dw96200000gn/T//csk-eval.hAahRP
+RUNNER_EXIT=0
