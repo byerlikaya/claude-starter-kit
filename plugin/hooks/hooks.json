@@ -9,7 +9,7 @@
         ]
       },
       {
-        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
+        "matcher": "Write|Edit|NotebookEdit",
         "hooks": [
           { "type": "command", "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/guard-write.sh\"", "timeout": 60 }
         ]
@@ -32,13 +32,13 @@
     ],
     "SessionStart": [
       {
-        "matcher": "compact|clear|resume",
+        "matcher": "compact|clear|resume|fork",
         "hooks": [
           { "type": "command", "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/session-rehydrate.sh\"", "timeout": 60 }
         ]
       },
       {
-        "matcher": "startup|resume|clear|compact",
+        "matcher": "startup|resume|clear|compact|fork",
         "hooks": [
           { "type": "command", "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/board-sync.sh\"", "timeout": 60 }
         ]

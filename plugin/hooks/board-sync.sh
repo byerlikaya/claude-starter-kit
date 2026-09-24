@@ -73,8 +73,10 @@ fi
 # Never invent a board state. No cache (no board here, or every refresh so far failed) -> stay silent.
 [ -s "$CACHE" ] || exit 0
 
+# /crew-board is user-only, so the command Claude can run itself comes first (the plugin's copy names its path).
+if [ -f "$HERE/../.claude-plugin/plugin.json" ]; then _BS="bash \"$HERE/board.sh\" sync"; else _BS='bash .claude/hooks/board.sh sync'; fi
 MSG="$(cat "$CACHE")
-Board state above is a cached snapshot; /crew-board sync refreshes it."
+Board state above is a cached snapshot; $_BS (or the user can type /crew-board sync) refreshes it."
 
 # ONE PATH, no jq. The JSON is built here on every machine, so a Mac with jq and a Windows box without it emit the
 # same bytes. The escaper is jq-identical, measured on 15 inputs (quote, backslash, tab, CR, C0 controls, DEL,

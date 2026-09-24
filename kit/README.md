@@ -19,7 +19,7 @@ summarizes what lives under `.claude/` and how it works.
 - **Skills** (`skills/`) — the single source of the "how" knowledge: code review, security scan,
   migration, deployment, observability, performance, accessibility, translation integrity, versioning,
   incident response, and more. (Every install carries all of them — the kit is stack-agnostic.)
-- **Commands** (`commands/`) — `/crew-plan` · `/crew-review` · `/crew-ship` · `/crew-handoff` · `/simplify`.
+- **Commands** — `/crew-plan` · `/crew-review` · `/crew-ship` · `/crew-handoff` and the rest. Since 3.0 they are skills (`skills/crew-<name>/`, marked `metadata: kind: command`), as Claude Code merged commands into skills; `/simplify` is Claude Code's own.
 - **Hooks** (`hooks/`) — `guard-bash.sh` (tool-level gate), `pre-commit` + `commit-msg`
   (trace scan), `context-usage.sh` and `session-guard.sh` (session measurement), `trace-blocklist.txt`.
   `session-stats.sh` sits alongside them but is wired to no event: the `reflect` and `handoff` skills run it on

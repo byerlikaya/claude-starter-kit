@@ -110,6 +110,12 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "3.0 rename: %s → %s") s='3.0 ad değişikliği: %s → %s' ;;
       "3.0 rename: both the old and the new name exist for:%s — nothing moved; keep one") s='3.0 ad değişikliği: eski ve yeni ad ikisi de var:%s — hiçbir şey taşınmadı; birini tutun' ;;
       "3.0 ref-sweep: old kit names → crew- names in %s") s='3.0 referans taraması: %s içindeki eski kit adları crew- adlarına çevrildi' ;;
+      "3.0 commands are skills: %s → %s") s="3.0'da komutlar skill oldu: %s → %s" ;;
+      "3.0 commands are skills: a skill of that name already exists for:%s — nothing moved; keep one") s="3.0'da komutlar skill oldu: bu adla bir skill zaten var:%s — hiçbir şey taşınmadı; birini tutun" ;;
+      "3.0 commands are skills: an older copy of an already-moved command is left in place:%s — remove it") s="3.0'da komutlar skill oldu: taşınmış bir komutun eski kopyası yerinde bırakıldı:%s — silin" ;;
+      "3.0 commands are skills: symlinked command file(s) left as they are:%s — the skill of that name now answers /name") s="3.0'da komutlar skill oldu: symlink olan komut dosyaları olduğu gibi bırakıldı:%s — /ad artık aynı adlı skill'e gider" ;;
+      "3.0 commands are skills: .claude/commands is a symlink (shared?) — nothing was moved out of it; the skills of those names now answer /name") s="3.0'da komutlar skill oldu: .claude/commands bir symlink (paylaşılan?) — içinden hiçbir şey taşınmadı; /ad artık aynı adlı skill'lere gider" ;;
+      "your own command(s) keep their name — the kit skill of the same name was not installed:%s") s="kendi komutlarınız adını korur — aynı adlı kit skill'i kurulmadı:%s" ;;
       "3.0 board: moved to the crew names in this clone:%s") s='3.0 pano: bu klonda crew adlarına taşındı:%s' ;;
       "3.0 board: the remote's 2.x board ref is not deleted — while it exists, 3.x writes both, so 2.x teammates still see your claims; ask the team to update, then delete the old ref") s="3.0 pano: uzaktaki 2.x pano ref'i silinmedi — o durdukça 3.x ikisine birden yazar, 2.x kullanan ekip arkadaşları sahiplenmelerinizi görmeye devam eder; ekipten de güncellemesini isteyin, sonra eski ref'i silin" ;;
       "3.0 auto-mode: the kit rules in %s are renamed CSK … → Crewforth … (backup: %s)") s='3.0 auto-mode: %s içindeki kit kuralları CSK … → Crewforth … olarak yeniden adlandırıldı (yedek: %s)' ;;
@@ -849,7 +855,7 @@ fi
 # below then brings every moved file's content up to 3.0.
 LEGACY_MOVED=0; LEGACY_BOTH=""
 if [ "$KIT_PRESENT" = 1 ]; then
-  for kf in "$SRC"/agents/crew-*.md "$SRC"/commands/crew-*.md "$SRC"/skills/crew-*/; do
+  for kf in "$SRC"/agents/crew-*.md "$SRC"/skills/crew-*/; do   # skills/ includes the commands since 3.0
     [ -e "$kf" ] || continue
     kf="${kf%/}"; kd="${kf%/*}"; kd="${kd##*/}"; kn="${kf##*/}"; kx=""
     case "$kn" in *.md) kn="${kn%.md}"; kx=".md" ;; esac
@@ -863,6 +869,45 @@ if [ "$KIT_PRESENT" = 1 ]; then
   done
   [ -n "$LEGACY_BOTH" ] && warnm '3.0 rename: both the old and the new name exist for:%s — nothing moved; keep one' "$LEGACY_BOTH"
 fi
+# THE 3.0 COMMANDS -> SKILLS MOVE. Claude Code merged custom commands into skills (`.claude/commands/` is "the
+# older format"), and a skill and a command of the same name are the same `/name` — the skill wins. So the kit's
+# own commands move to `.claude/skills/crew-<x>/SKILL.md`: `/crew-review` stays `/crew-review`. A 2.x `<x>-csk.md`
+# goes straight there, with no stop at `commands/crew-<x>.md`. Which skills were commands is read from the payload
+# (`metadata: kind: command`), so a command of the user's own in .claude/commands/ is never considered; and when a
+# `.claude/skills/crew-<x>/` already exists nothing moves — the user is told and decides, and the refresh leaves
+# that directory alone. Moved, never deleted; the force-refresh below then brings each moved file up to 3.0.
+CMD_SKILLS="$(grep -l '^  kind: command' "$SRC"/skills/crew-*/SKILL.md 2>/dev/null)"   # one process for all of them
+NCMD=0; CMD_BOTH=""; CMD_DUP=""; CMD_LINK=""; CMD_MINE=""
+# A .claude/commands that is itself a symlink (a directory shared by several projects) is left alone whole: moving
+# files OUT of it would empty it for every other project that points at it.
+CMD_DIR_SHARED=0; [ -L .claude/commands ] && CMD_DIR_SHARED=1
+for kf in $CMD_SKILLS; do
+  NCMD=$((NCMD+1))
+  kn="${kf%/SKILL.md}"; kn="${kn##*/}"; kb="${kn#crew-}"
+  if [ "$KIT_PRESENT" != 1 ]; then
+    # FRESH adopt: a commands/crew-<x>.md here is the PROJECT's own (the kit was never installed). The kit's skill
+    # of that name would silently win over it, so the kit's copy is not installed and the user is told.
+    [ -f ".claude/commands/$kn.md" ] && { EXCL_S="$EXCL_S $kn"; CMD_MINE="$CMD_MINE $kn"; }
+    continue
+  fi
+  [ "$CMD_DIR_SHARED" = 1 ] && continue
+  MOVED_NOW=0
+  for old in ".claude/commands/$kn.md" ".claude/commands/$kb-csk.md"; do
+    [ -f "$old" ] || [ -L "$old" ] || continue
+    if [ -L "$old" ]; then CMD_LINK="$CMD_LINK ${old#.claude/}"; continue; fi   # a moved relative link would dangle
+    if [ "$MOVED_NOW" = 1 ]; then CMD_DUP="$CMD_DUP ${old#.claude/}"; continue; fi   # the other kit copy of the same command
+    if [ -e ".claude/skills/$kn" ]; then CMD_BOTH="$CMD_BOTH ${old#.claude/}"; EXCL_S="$EXCL_S $kn"
+    else mkdir -p ".claude/skills/$kn" && mv "$old" ".claude/skills/$kn/SKILL.md" \
+         && { MOVED_NOW=1; say '3.0 commands are skills: %s → %s' "${old#.claude/}" "skills/$kn/SKILL.md"; }
+    fi
+  done
+done
+[ -n "$CMD_BOTH" ] && warnm '3.0 commands are skills: a skill of that name already exists for:%s — nothing moved; keep one' "$CMD_BOTH"
+[ -n "$CMD_DUP" ]  && warnm '3.0 commands are skills: an older copy of an already-moved command is left in place:%s — remove it' "$CMD_DUP"
+[ -n "$CMD_LINK" ] && warnm '3.0 commands are skills: symlinked command file(s) left as they are:%s — the skill of that name now answers /name' "$CMD_LINK"
+[ "$CMD_DIR_SHARED" = 1 ] && [ "$KIT_PRESENT" = 1 ] && warnm '3.0 commands are skills: .claude/commands is a symlink (shared?) — nothing was moved out of it; the skills of those names now answer /name'
+[ -n "$CMD_MINE" ] && warnm 'your own command(s) keep their name — the kit skill of the same name was not installed:%s' "$CMD_MINE"
+[ "$CMD_DIR_SHARED" = 1 ] || rmdir .claude/commands 2>/dev/null || true   # only when nothing of the user's is left in it
 # THE 3.0 BOARD NAMES, in THIS clone only: the board ref, its local settings, its caches, and a `csk-board` remote
 # move to the crew names. The remote's 2.x ref is never deleted: while it exists board.sh writes both refs in one
 # atomic push, so a 2.x teammate still sees every claim — and the user is told the team should update too.
@@ -915,7 +960,11 @@ fi
 # kit-owned trees: FORCE-refresh on a re-adopt (KIT_PRESENT) so kit updates land; never-overwrite on a fresh adopt
 copy_noclobber "$SRC/agents"   .claude/agents   "$KIT_PRESENT" "$EXCL_A"; A_ADD=$ret_add; A_SKIP=$ret_skip
 copy_noclobber "$SRC/skills"   .claude/skills   "$KIT_PRESENT" "$EXCL_S"; S_ADD=$ret_add; S_SKIP=$ret_skip
-copy_noclobber "$SRC/commands" .claude/commands "$KIT_PRESENT" "$EXCL_C"; C_ADD=$ret_add; C_SKIP=$ret_skip
+# The commands arrived with skills/ (one SKILL.md each), so the summary counts them apart, as the user knows them.
+# Counted from what is on disk: a command skill counts as delivered when the installed SKILL.md is the payload's.
+C_ADD=0; for kf in $CMD_SKILLS; do kn="${kf%/SKILL.md}"; kn="${kn##*/}"; cmp -s "$kf" ".claude/skills/$kn/SKILL.md" && C_ADD=$((C_ADD+1)); done
+C_SKIP=$((NCMD - C_ADD)); S_ADD=$((S_ADD - C_ADD)); S_SKIP=$((S_SKIP - C_SKIP))
+[ "$S_ADD" -ge 0 ] || S_ADD=0; [ "$S_SKIP" -ge 0 ] || S_SKIP=0
 # Read BEFORE the hooks tree is refreshed: whether §4.2's vendor line is armed right now (see the re-arm below).
 # `\r?`: a blocklist that reached this checkout CRLF (autocrlf=true, a Windows editor) still counts as armed —
 # a plain -x match read it as disarmed and the refresh switched §4.2 off without a word (measured in review).
@@ -1027,7 +1076,7 @@ if [ "$KIT_PRESENT" = 1 ] && [ -f CLAUDE.md ] && grep -q -e '-csk' CLAUDE.md $(g
     LSWEEP="$LSWEEP $r"
   done
   set --
-  for kf in "$SRC"/agents/crew-*.md "$SRC"/commands/crew-*.md "$SRC"/skills/crew-*/; do
+  for kf in "$SRC"/agents/crew-*.md "$SRC"/skills/crew-*/; do   # skills/ includes the commands since 3.0
     [ -e "$kf" ] || continue
     kn="${kf%/}"; kn="${kn##*/}"; kn="${kn%.md}"; kb="${kn#crew-}"
     set -- "$@" -e "s/(^|[^A-Za-z0-9_-]|@agent-)$kb-csk([^A-Za-z0-9_-]|\$)/\1$kn\2/g"
@@ -1108,7 +1157,6 @@ fi
 # skill trust gate.
 { for d in "$SRC"/skills/*/;     do [ -d "$d" ] && echo "skills/$(basename "$d")"; done
   for f in "$SRC"/agents/*.md;   do [ -e "$f" ] && echo "agents/$(basename "$f")"; done
-  for f in "$SRC"/commands/*.md; do [ -e "$f" ] && echo "commands/$(basename "$f")"; done
 } > .claude/kit-manifest.txt 2>/dev/null || true
 
 # stack= is always generic since 3.0; the key is kept for older updaters. Rewritten WITHOUT the pre-2.0

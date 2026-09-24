@@ -5,6 +5,12 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"       # .claude/
 AGENTS="$ROOT/agents"; SKILLS="$ROOT/skills"; HOOKS="$ROOT/hooks"
+# Slash commands are skills since 3.0 (Claude Code merged custom commands into skills); the kit marks its own with
+# `metadata: kind: command`. One grep for all of them; everything below that means "a command" asks is_cmd.
+CMD_FILES="$(grep -l '^  kind: command' "$SKILLS"/*/SKILL.md 2>/dev/null | tr '\n' ' ')"
+CMD_NAMES=" "; for _cf in $CMD_FILES; do _cn="${_cf%/SKILL.md}"; CMD_NAMES="$CMD_NAMES${_cn##*/} "; done
+is_cmd(){ case "$CMD_NAMES" in *" $1 "*) return 0 ;; esac; return 1; }
+NCMD=0; for _cf in $CMD_FILES; do NCMD=$((NCMD+1)); done
 FAIL=0; PASSN=0; SKIPN=0; SKIP_HARD=0; SKIP_LIST=""
 # EVERY ASSERTION APPENDS ITS COUNTER VALUE TO A FILE, and that one redirect is what makes the check below
 # possible: a file survives a subshell, a variable does not. An assertion that runs inside `( … )` increments
@@ -250,7 +256,7 @@ for d in "$SKILLS"/*/; do
   n=$(basename "$d"); f="$d/SKILL.md"
   [ -f "$f" ] || { fail "$n: no SKILL.md"; continue; }
   grep -q '^name:' "$f"           || fail "$n: no name"
-  grep -q 'Trigger phrases:' "$f" || need_trigger "$n: no Trigger phrases" "skills/$n"
+  is_cmd "$n" || grep -q 'Trigger phrases:' "$f" || need_trigger "$n: no Trigger phrases" "skills/$n"   # a command is typed, not matched
   # Agent-Skills spec limits (agentskills.io/specification) — keep skills portable to any compliant host:
   #   name == parent dir, name ≤ 64 chars, description ≤ 1024 chars.
   nm="$(awk -F':' '/^name:/{sub(/^name:[[:space:]]*/,"",$0); print; exit}' "$f" | tr -d ' \r')"
@@ -371,7 +377,6 @@ sec "== 3b) Orphan component: every skill & agent must be ROUTED (kit invariant,
 # never told to reach it. It is ROUTED when its name appears in an agent body, a command, or the discipline (the
 # trigger map): CLAUDE.md in the kit repo, DISCIPLINE.md in an install. A cross-link from ANOTHER skill's body does
 # NOT count (skills/ is not searched). In an install, a user's own un-routed skill is a note, not a failure.
-CMDS="$ROOT/commands"
 ROUTE_DOC="$ROOT/CLAUDE.md"; [ -f "$ROUTE_DOC" ] || ROUTE_DOC="$ROOT/DISCIPLINE.md"
 # match NAME delimited by a non-[a-z0-9-] char on both sides, so `frontend` does not match inside frontend-design.
 # Names always appear inside backticks / table cells / prose (never bare at line start/end), so the two delimiters
@@ -379,14 +384,15 @@ ROUTE_DOC="$ROOT/CLAUDE.md"; [ -f "$ROUTE_DOC" ] || ROUTE_DOC="$ROOT/DISCIPLINE.
 routed(){ local nm="$1"; shift; grep -rqE "[^a-z0-9-]$nm[^a-z0-9-]" "$@" 2>/dev/null; }
 for d in "$SKILLS"/*/; do
   n=$(basename "$d")
-  routed "$n" "$AGENTS" "$CMDS" "$ROUTE_DOC" && continue
+  is_cmd "$n" && continue                          # a command is reached by the user typing /name
+  routed "$n" "$AGENTS" $CMD_FILES "$ROUTE_DOC" && continue
   if kit_owned "skills/$n"; then fail "orphan skill '$n': no agent/command/discipline routes to it"
   else note "skill '$n' not routed by the kit discipline (your own skill? route it from ./CLAUDE.md)"; fi
 done
 # agents route from a command or the discipline (exclude the agent's own file: don't search $AGENTS)
 for f in "$AGENTS"/*.md; do
   a=$(basename "$f" .md)
-  routed "$a" "$CMDS" "$ROUTE_DOC" && continue
+  routed "$a" $CMD_FILES "$ROUTE_DOC" && continue
   if kit_owned "agents/$a.md"; then fail "orphan agent '$a': no command/discipline routes to it"
   else note "agent '$a' not routed by the kit discipline"; fi
 done
@@ -1767,7 +1773,7 @@ if [ "$IS_KIT" = 1 ]; then
   # Only the badge is asserted, deliberately -- it is the one number a reader takes on trust without scrolling,
   # and pinning every prose mention would fail on a sentence that legitimately says "12 agents own one domain".
   NAG="$(ls "$AGENTS"/*.md 2>/dev/null | wc -l | tr -d ' ')"
-  NSK="$(find "$SKILLS" -maxdepth 2 -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')"
+  NSK="$(( $(find "$SKILLS" -maxdepth 2 -name SKILL.md 2>/dev/null | wc -l | tr -d ' ') - NCMD ))"   # commands are counted as commands
   for rf in README.md README.tr.md; do
     [ -f "$KR/$rf" ] || continue
     for pair in "agents:$NAG" "skills:$NSK"; do
@@ -2098,7 +2104,12 @@ BUDGET_AGENTS=5800   # sum of agent frontmatter; currently 5582, measured 2026-0
                      # +crew-performance-expert (~426B) — security, privacy and tests each had an independent
                      # reviewer and performance was the one quality axis where the author audited their own
                      # work. Bought at ~110 tokens per session; the alternative was leaving that gap open.)
-BUDGET_SKILLS=9604  # 3.0 rename (suffix → crew- prefix): +7 B (7 occurrences), not content — measured 9597 → 9604.
+BUDGET_SKILLS=10265 # 3.0: commands merged into skills — 661 B previously in the listing but uncounted, not new content:
+                    # the six model-invocable commands (doctor 136 · handoff 91 · plan 151 · review 82 · ship 78 ·
+                    # update 123) now live in skills/, where this sum sees them. The five user-only ones
+                    # (disable-model-invocation: true) are not in the listing and are not counted. The other skills
+                    # measured 9604 before and after — the ceiling moved by exactly the 661, not a byte for anything new.
+                    # Before that: 9604 — 3.0 rename (suffix → crew- prefix): +7 B (7 occurrences), not content — 9597 → 9604.
                     # Before 3.0: 9600; sum of skill frontmatter; currently 9597 — **3 bytes of headroom**, measured 2026-09-23 from
                     # this suite's own line. 3.0 swapped cqrs-aop-module (-202 B) for backend-architecture (+211 B) and
                     # the ceiling was NOT raised: the new description was cut until it fit. Before that 9588, measured
@@ -2139,7 +2150,9 @@ BUDGET_SKILLS=9604  # 3.0 rename (suffix → crew- prefix): +7 B (7 occurrences)
                      # +dependency-upgrade (~444B), split from dependency-audit because one reports and the
                      # other rewrites lockfiles: different risk, different DoD, and an audit you can run on any
                      # branch stops being safe the moment it can also apply things)
-fm_bytes(){ awk '/^---$/{c++; next} c==1' "$1" 2>/dev/null | wc -c | tr -d ' '; }
+# A SKILL.md's `metadata:` block is the kit's own catalogue data (`kind: command`); Claude Code does not act on it
+# and it never enters the listing, so it is not counted. Nothing else in a frontmatter is skipped.
+fm_bytes(){ awk '/^---$/{c++; next} c==1 { if ($0 ~ /^metadata:/) { m=1; next } if (m && $0 ~ /^[ \t]/) next; m=0; print }' "$1" 2>/dev/null | wc -c | tr -d ' '; }
 # The discipline half, and the carriage returns in that same text. DBCR is what the CRLF diagnosis below
 # subtracts, so it comes from the bytes DB measured and never from the whole file: the marker's line and the 24
 # after it add 25 more, so a whole-file count read 201 carriage returns where the measured text holds 176. The half is cut
@@ -2154,7 +2167,15 @@ elif [ -f "$ROOT/DISCIPLINE.md" ]; then
   DB="$(wc -c < "$ROOT/DISCIPLINE.md" | tr -d ' ')"; DBCR="$(tr -dc '\r' < "$ROOT/DISCIPLINE.md" | wc -c | tr -d ' ')"
 else DB=0; DBCR=0; fi
 AB=0; for f in "$AGENTS"/*.md;      do [ -e "$f" ] && AB=$((AB + $(fm_bytes "$f"))); done
-SB=0; for f in "$SKILLS"/*/SKILL.md; do [ -e "$f" ] && SB=$((SB + $(fm_bytes "$f"))); done
+# THE RULE: a skill counts unless its frontmatter says `disable-model-invocation: true`. Per the skills reference,
+# with that flag "the description is not in context" — only the user can invoke it, so it costs the listing nothing.
+# Every other skill's description IS in the listing every session, and that is what this budget is for. (Before
+# 3.0 the six model-invocable commands sat in the same listing from commands/, and this sum never saw them.)
+SB=0; for f in "$SKILLS"/*/SKILL.md; do
+  [ -e "$f" ] || continue
+  grep -q '^disable-model-invocation:[[:space:]]*true' "$f" && continue
+  SB=$((SB + $(fm_bytes "$f")))
+done
 # The budget GATES the kit's payload (kit repo, IS_KIT). In an INSTALLED project the user's own agents/skills —
 # including the ones adopt imports from a taken-over agent — legitimately add to the always-on cost (their choice),
 # so there we REPORT the numbers instead of failing the suite.
@@ -2258,6 +2279,7 @@ else pass "some skill frontmatter over ${MAX_SKILL_FM} B:$SKILL_FAT (your projec
 MISSING=""
 for f in $(agent_quality_files) "$SKILLS"/*/SKILL.md; do
   [ -e "$f" ] || continue
+  case "$f" in */SKILL.md) _sn="${f%/SKILL.md}"; is_cmd "${_sn##*/}" && continue ;; esac   # commands are typed
   grep -qi 'trigger phrases:' "$f" || MISSING="$MISSING $(basename "$(dirname "$f")")/$(basename "$f")"
 done
 [ -z "$MISSING" ] && pass "every agent/skill still declares Trigger phrases" || need_trigger "no trigger phrases in:$MISSING"
@@ -3939,7 +3961,7 @@ if ( cd "$BSD" && git init -q . ) >/dev/null 2>&1; then
   printf '%s\n' $'#1 "Fix\tlogin" C:\\app\r\x01 ok\nsecond' > "$BSD/.git/crew-board-cache"
   date -u +%s > "$BSD/.git/crew-board-cache.at"
   o="$(printf '{}' | CLAUDE_PROJECT_DIR="$BSD" bash "$HOOKS/board-sync.sh" 2>/dev/null)"
-  want='{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"#1 \"Fix\tlogin\" C:\\app\r\u0001 ok\nsecond\nBoard state above is a cached snapshot; /crew-board sync refreshes it."}}'
+  want='{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"#1 \"Fix\tlogin\" C:\\app\r\u0001 ok\nsecond\nBoard state above is a cached snapshot; bash .claude/hooks/board.sh sync (or the user can type /crew-board sync) refreshes it."}}'
   [ "$o" = "$want" ] && pass "board-sync escapes tab, CR, control bytes, quote and backslash exactly as jq does (no jq needed)" \
                      || fail "board-sync JSON differs from jq's for a cache with a tab/CR/control byte — got: ${o:-<silence>}"
   # A CRLF cache: the line-ending CR is dropped on every OS (MSYS gawk drops it on read, BSD awk does not — the
@@ -4136,7 +4158,7 @@ if [ "$IS_KIT" = 1 ]; then
 else
   skip scope "start.sh glob check skipped (installed project — start.sh is removed post-install)"
 fi
-for c in crew-update crew-doctor; do [ -f "$ROOT/commands/$c.md" ] && pass "/$c present" || fail "/$c command missing"; done
+for c in crew-update crew-doctor; do [ -f "$SKILLS/$c/SKILL.md" ] && is_cmd "$c" && pass "/$c present" || fail "/$c command missing"; done
 
 sec "== 7f) supply-chain scanner (scan-skill.sh) =="
 [ -x "$ROOT/eval/scan-skill.sh" ] && pass "scan-skill.sh +x" || fail "scan-skill.sh missing/not executable"
@@ -4498,6 +4520,42 @@ if [ -n "$WNR" ] && [ -d "$WNR/packaging" ] && [ -f "$WNR/adopt.sh" ] && [ -f "$
 else
   skip scope "whats-new extraction not checked — not a checkout with adopt.sh and CHANGELOG.md beside the payload"
 fi
+
+# 16) A FORKED session (SessionStart source "fork", Claude Code 2.1.214+). The rehydrate, skill-trust and board
+#     hooks run there as on resume — the fork continues work the parent had; the update question does not — a fork
+#     is not a new opening. Asked of the wiring (both editions) AND of the hooks themselves with a fork payload.
+hk_matcher(){ awk -v h="$2" '/"matcher"/{m=$0; sub(/.*"matcher"[[:space:]]*:[[:space:]]*"/,"",m); sub(/".*/,"",m)} index($0,h){print m; exit}' "$1"; }
+FK_FILES="$ROOT/settings.json"; FKR="$(git -C "$ROOT" rev-parse --show-toplevel 2>/dev/null || true)"
+[ -n "$FKR" ] && [ -f "$FKR/plugin/hooks/hooks.json" ] && FK_FILES="$FK_FILES $FKR/plugin/hooks/hooks.json"
+for _ff in $FK_FILES; do
+  _fl="${_ff##*/}"
+  for _h in session-rehydrate.sh skill-trust.sh board-sync.sh; do
+    # The plugin edition does not wire skill-trust at all, by design (build-plugin.sh: it needs the install's
+    # kit-manifest.txt, which a plugin has no project to hold). Not wired is not "wired without fork".
+    if [ "$_fl" = hooks.json ] && [ "$_h" = skill-trust.sh ] && ! grep -q "$_h" "$_ff"; then
+      pass "hooks.json: skill-trust.sh is not wired in the plugin edition (by design), so fork does not apply"; continue; fi
+    case "|$(hk_matcher "$_ff" "$_h")|" in *"|fork|"*) pass "$_fl: $_h runs in a forked session (matcher has fork)" ;;
+      *) fail "$_fl: $_h is not matched on fork — a forked session skips it (matcher: $(hk_matcher "$_ff" "$_h"))" ;; esac
+  done
+  [ "$(hk_matcher "$_ff" session-update-check.sh)" = startup ] && pass "$_fl: the update question stays on startup alone" \
+    || fail "$_fl: session-update-check.sh is matched on more than startup: $(hk_matcher "$_ff" session-update-check.sh)"
+done
+FK="$(mktemp -d)"; mkdir -p "$FK/docs" "$FK/.claude/.state"; printf 'state\n' > "$FK/docs/SESSION_STATE.md"; printf '3.0.0\n' > "$FK/.claude/VERSION"
+case "$(printf '{"hook_event_name":"SessionStart","source":"fork","cwd":"%s"}' "$FK" | CLAUDE_PROJECT_DIR="$FK" bash "$HOOKS/session-rehydrate.sh" 2>/dev/null)" in
+  *SESSION_STATE.md*) pass "session-rehydrate.sh, fed a fork, points the forked session at the handover" ;;
+  *) fail "session-rehydrate.sh said nothing to a forked session" ;; esac
+for _h in skill-trust.sh board-sync.sh; do
+  ( printf '{"hook_event_name":"SessionStart","source":"fork","cwd":"%s"}' "$FK" | CLAUDE_PROJECT_DIR="$FK" bash "$HOOKS/$_h" ) >/dev/null 2>&1 \
+    && pass "$_h runs to completion on a fork payload (rc=0)" || fail "$_h failed on a fork payload"
+done
+printf '3.1.0 %s\n' "$(date +%s)" > "$FK/.claude/.state/update-check"
+fku(){ printf '{"hook_event_name":"SessionStart","source":"%s","cwd":"%s"}' "$1" "$FK" \
+  | env -u CI -u CREW_NO_UPDATE_CHECK CLAUDE_CODE_SESSION_ATTENDED=1 CLAUDE_PROJECT_DIR="$FK" CREW_UPDATE_URL=http://10.255.255.1/x bash "$HOOKS/session-update-check.sh" 2>/dev/null; }
+[ -z "$(fku fork)" ] && pass "session-update-check.sh is silent on a fork, even if a wiring matched it" || fail "the update question was asked in a forked session"
+rm -f "$FK/.claude/.state/update-asked"
+case "$(fku startup)" in *"v3.1.0"*) pass "the same cache on startup asks (the fork silence is the source check, not a broken fixture)" ;;
+  *) fail "FIXTURE: startup is silent too, so the fork silence proves nothing" ;; esac
+rm -rf "$FK"
 
 # Wired, or it is an idle component — and wired on `startup` ALONE: resume/clear/compact re-open the same session,
 # where a second copy of this notice is pure noise.
@@ -5081,7 +5139,6 @@ BUNDLED="batch claude-api code-review debug doctor loop run-skill-generator run 
 SHADOW=""
 for b in $BUNDLED; do
   [ -d "$ROOT/skills/$b" ]      && SHADOW="$SHADOW skills/$b"
-  [ -f "$ROOT/commands/$b.md" ] && SHADOW="$SHADOW commands/$b.md"
 done
 [ -z "$SHADOW" ] && pass "no kit skill/command shadows a bundled name" \
   || fail "these shadow a Claude Code bundled name (it becomes unreachable for the user):$SHADOW — add the crew- prefix"
@@ -5092,30 +5149,74 @@ sec "== 8) Slash commands =="
 # kit's. Prefixing every one of them keeps one rule instead of a list of exceptions, and leaves room for built-ins
 # the CLI adds later. The filename IS the invocation, so a missing prefix is a silent collision, not a cosmetic slip.
 for c in crew-brainstorm crew-plan crew-review crew-ship crew-handoff crew-doctor crew-update crew-studio; do
-  [ -f "$ROOT/commands/$c.md" ] && pass "/$c present" || fail "/$c command missing"
+  [ -f "$SKILLS/$c/SKILL.md" ] && is_cmd "$c" && pass "/$c present" || fail "/$c command missing"
 done
-for c in brainstorm plan review ship handoff studio; do
-  [ -f "$ROOT/commands/$c.md" ] && fail "/$c present without the crew- prefix — collides with a built-in"
+# By presence on disk, not by the command marker: an unmarked skills/review/ collides just the same, and asking
+# is_cmd would let it through. `brainstorm` and `handoff` are left out on purpose — both are real skills of the kit
+# (not commands; `handoff` is in the discipline's trigger map), and Claude Code has no built-in of either name.
+for c in plan review ship studio; do
+  [ -e "$SKILLS/$c" ] && fail "/$c present without the crew- prefix — collides with a built-in"
 done
 pass "no unprefixed command shadows a built-in"
+[ ! -d "$ROOT/commands" ] && pass "no commands/ directory: the slash commands are skills (Claude Code: commands/ is the older format)" \
+  || fail "a commands/ directory is back — the kit ships its commands as skills since 3.0"
+
+# WHO MAY INVOKE EACH COMMAND, decided one by one and pinned here. User-only (disable-model-invocation: true): the
+# ones whose side effect the user must start, or that open a UI; their descriptions then stay out of Claude's
+# context. Model-invocable: the ones the discipline or another flow expects Claude to run — /crew-update above all,
+# which the session-start update question tells Claude to run when the user picks Update.
+for c in crew-studio crew-board crew-skill crew-gates crew-brainstorm; do
+  grep -q '^disable-model-invocation:[[:space:]]*true' "$SKILLS/$c/SKILL.md" 2>/dev/null \
+    && pass "/$c is user-only (disable-model-invocation: true)" || fail "/$c lost disable-model-invocation: true — it should only run when the user types it"
+done
+for c in crew-plan crew-review crew-ship crew-handoff crew-doctor crew-update; do
+  grep -q '^disable-model-invocation:[[:space:]]*true' "$SKILLS/$c/SKILL.md" 2>/dev/null \
+    && fail "/$c is user-only — the discipline or another flow needs Claude to run it" || pass "/$c is model-invocable"
+done
+grep -q '^disable-model-invocation:[[:space:]]*true' "$SKILLS/crew-update/SKILL.md" 2>/dev/null \
+  && fail "/crew-update is user-only: the update question's \"Update\" tells Claude to run /crew-update, which it then cannot" \
+  || pass "/crew-update stays model-invocable (the update question's Update runs it)"
+
+# NO HOOK SENDS CLAUDE TO A USER-ONLY COMMAND. A hook's output is read by Claude (session context, a gate's refusal),
+# and a user-only skill is one Claude cannot invoke — so a line that names one must also give Claude what it CAN
+# run and say the slash form is the user's ("… or the user can type /crew-board …"). The user-only set is read from
+# the flags, not listed, so a command that turns user-only later is covered from then on. Comments are skipped;
+# `.../crew-board-cache` and `refs/heads/crew-board` are paths, not commands (the name must stand on its own).
+UO_NAMES=""; for _cf in $CMD_FILES; do grep -q '^disable-model-invocation:[[:space:]]*true' "$_cf" && { _n="${_cf%/SKILL.md}"; UO_NAMES="$UO_NAMES|${_n##*/}"; }; done
+UO_NAMES="${UO_NAMES#|}"
+uo_hits(){ # $1 = a file or directory of hooks -> offending lines. A trailing ` # comment` is cut first: it explains
+  [ -n "$UO_NAMES" ] || return 0      # the code, Claude never reads it (e.g. guard-write's "/crew-gates groups on it").
+  find "$1" -type f 2>/dev/null | while IFS= read -r _hf; do
+    awk -v re="(^|[[:space:]\`(\"])/($UO_NAMES)([^a-z0-9-]|$)" -v f="$_hf" '
+      /^[[:space:]]*#/ { next }
+      { l=$0; sub(/[[:space:]]#[[:space:]].*/, "", l); if (l ~ re && l !~ /the user can type/) print f ":" NR ":" $0 }' "$_hf"
+  done; }
+UOH="$(uo_hits "$HOOKS")"
+UOT="$(mktemp -d)"; cp "$HOOKS/board-sync.sh" "$UOT/"; printf 'echo "Board is stale; run /crew-board sync"\n' >> "$UOT/board-sync.sh"
+if [ -z "$UO_NAMES" ]; then fail "FIXTURE: no user-only command found, so the hook-message check has nothing to look for"
+elif [ -n "$UOH" ]; then fail "a hook message sends Claude to a user-only command it cannot run — give it the script, and 'or the user can type /…':
+$(printf '%s\n' "$UOH" | head -n 5 | sed 's/^/       /')"
+elif [ -z "$(uo_hits "$UOT")" ]; then fail "the hook-message check did not catch a planted 'run /crew-board sync' — it measures nothing"
+else pass "no hook message sends Claude to a user-only command ($(printf '%s' "$UO_NAMES" | tr '|' ' ')); a planted one is caught"; fi
+rm -rf "$UOT"
 
 # The COUNT beside the command list in both READMEs, gated for the same reason the hook count is: documenting
 # each command does not keep the number honest. This one was ungated and the class has drifted before — the
 # site once advertised eight commands over a directory holding more. Any label spelling, the number is the claim.
 if [ "$IS_KIT" = 1 ]; then
   KR="$(cd "$ROOT/.." && pwd)"
-  TC="$(ls "$ROOT"/commands/*.md 2>/dev/null | wc -l | tr -d ' ')"
+  TC="$NCMD"
   # README.npm.md carries the same claim in a bullet rather than a table row, and it was ALREADY stale at
   # 8 against 10 shipped — the drift this gate exists for, sitting on the page npm renders.
   for r in README.md README.tr.md README.npm.md; do
     [ -f "$KR/$r" ] || continue
     grep -qE "(\*\*Slash commands\*\*|\*\*Slash komutu\*\*) \| $TC \||\*\*$TC slash commands\*\*" "$KR/$r" \
       && pass "$r states the real slash-command count ($TC)" \
-      || fail "$r does not state $TC slash commands — the count drifted from commands/"
+      || fail "$r does not state $TC slash commands — the count drifted from the command skills"
     # ...and every command must actually be listed beside that number, or the count is right and the list is stale.
     MISSING_CMD=""
-    for f in "$ROOT"/commands/*.md; do
-      cn="$(basename "$f" .md)"
+    for f in $CMD_FILES; do
+      cn="${f%/SKILL.md}"; cn="${cn##*/}"
       grep -q "/$cn" "$KR/$r" || MISSING_CMD="$MISSING_CMD /$cn"
     done
     [ -z "$MISSING_CMD" ] && pass "$r lists every shipped command" \
@@ -5236,7 +5337,7 @@ if [ -f "$GR" ]; then
                    *) fail "gate-report: a logged firing is missing from the report" ;; esac
 
   # (d) routed, not idle.
-  [ -f "$ROOT/commands/crew-gates.md" ] && pass "/crew-gates command present (report is routed)" \
+  is_cmd crew-gates && pass "/crew-gates command present (report is routed)" \
                                        || fail "gate-report.sh has no command routing it — an idle component"
 
   # (e) doctor is RUN, not grepped. Grepping doctor.sh for "gate-report.sh" passed while both new sections
@@ -5244,7 +5345,7 @@ if [ -f "$GR" ]; then
   #     evidence was `skip: command not found` on stderr. A wiring check that never executes the wiring is not
   #     a check. This installs a fixture and reads what doctor actually prints.
   DTMP="$(mktemp -d)"; mkdir -p "$DTMP/.claude"
-  for d in eval hooks skills commands agents; do [ -d "$ROOT/$d" ] && cp -R "$ROOT/$d" "$DTMP/.claude/$d"; done
+  for d in eval hooks skills agents; do [ -d "$ROOT/$d" ] && cp -R "$ROOT/$d" "$DTMP/.claude/$d"; done
   cp "$ROOT/settings.json" "$DTMP/.claude/settings.json" 2>/dev/null
   DOUT="$(cd "$DTMP" && bash .claude/eval/doctor.sh 2>"$DTMP/err")"
   # An install from before 2.5.0 keeps the old `Bash`-only matcher, and nothing in the session looks wrong
@@ -5343,7 +5444,7 @@ else note "stdin-hang case skipped (no working mkfifo)"; fi
 #     is not neutered, so without CREW_GATE_LOG=/dev/null every `/crew-doctor` writes a synthetic force-push
 #     block and the report starts counting the diagnostics instead of what the model reached for.
 DCT="$(mktemp -d)"; mkdir -p "$DCT/.claude"
-for d in eval hooks skills commands agents; do [ -d "$ROOT/$d" ] && cp -R "$ROOT/$d" "$DCT/.claude/$d"; done
+for d in eval hooks skills agents; do [ -d "$ROOT/$d" ] && cp -R "$ROOT/$d" "$DCT/.claude/$d"; done
 cp "$ROOT/settings.json" "$DCT/.claude/settings.json" 2>/dev/null
 ( cd "$DCT" && bash .claude/eval/doctor.sh >/dev/null 2>&1; bash .claude/eval/doctor.sh >/dev/null 2>&1 )
 if [ -s "$DCT/.claude/gate-log.tsv" ]; then
@@ -5737,12 +5838,12 @@ sec "== 14c) the 3.0 rename left no old name behind — outside history and the 
 # more old name in it is red too, and a removed one asks for the pin to come down. An entry that allows nothing is
 # a failure as well, so the list cannot quietly rot.
 if [ -n "$SGR" ] && [ -d "$SGR/packaging" ] && [ -f "$SGR/VERSION" ] && [ -d "$SGR/kit" ] && [ -f "$SGR/packaging/build-plugin.sh" ]; then
-  RN_ALLOW='CHANGELOG.md	191	history: every entry before 3.0 keeps the name it shipped under
+  RN_ALLOW='CHANGELOG.md	192	history: every entry before 3.0 keeps the name it shipped under
 evals/results/*	6	history: recorded eval runs stay byte-for-byte
 README.md	34	prose outside the generated sections is rewritten in its own change (5R)
 README.tr.md	34	the same, Turkish
 README.npm.md	12	the same, npm page
-adopt.sh	46	migration: finds and moves 2.x names (components, CLAUDE.md, board, auto-mode rules, variables)
+adopt.sh	48	migration: finds and moves 2.x names (components, CLAUDE.md, board, auto-mode rules, variables)
 bin/cli.js	4	migration: add accepts a typed <x>-csk and moves an add record written under the old names
 */eval/doctor.sh	6	migration: PROOF-5 and the variable notice name what is still on the 2.x spelling
 */crew-env.*	18	compat layer (bash + Node): reads CSK_* when CREW_* is unset — removed in 4.0
@@ -5750,7 +5851,7 @@ bin/cli.js	4	migration: add accepts a typed <x>-csk and moves an add record writ
 */skills/automode-policy/scripts/check.sh	4	compat layer: counts auto-mode rules still named by 2.x — removed in 4.0
 */studio/web/storage-migrate.js	4	migration: moves the panel'"'"'s saved layout to the new keys — removed in 4.0
 kit/eval/smoke-test.sh	32	tests: this gate'"'"'s own pattern, and that the 2.x names still work
-packaging/*	112	tests: the migration rehearsal on the real v2.13.0 tree, the legacy token and layout checks'
+packaging/*	124	tests: the migration rehearsal on the real v2.13.0 tree, the legacy token and layout checks'
   # Case-insensitive, and `csk` as a word on its own: -csk, .csk, refs/csk/, csk-board, csk.board, CSK_ — every
   # shape the old name took. The first version listed shapes and missed the lowercase board names entirely.
   RN_PAT='(^|[^a-z0-9])csk([^a-z0-9]|$)|claude starter kit|claude-starter-kit|claude-starter/|@byerlikaya/'

@@ -78,10 +78,15 @@ function catalogue(pkgDir) {
     .map((f) => f.slice(0, -3))
     .sort();
   const skillsDir = path.join(root, 'skills');
-  const skills = fs.readdirSync(skillsDir)
+  const all = fs.readdirSync(skillsDir)
     .filter((d) => fs.statSync(path.join(skillsDir, d)).isDirectory() && fs.existsSync(path.join(skillsDir, d, 'SKILL.md')))
     .sort();
-  return { root, agents, skills };
+  // Since 3.0 the slash commands are skills (Claude Code merged the two); the kit marks them in frontmatter with
+  // `metadata: kind: command`, so they are listed — and counted — as the commands people know them as.
+  const isCommand = (d) => /\n {2}kind: command\r?\n/.test(fs.readFileSync(path.join(skillsDir, d, 'SKILL.md'), 'utf8').split(/\r?\n---\r?\n/)[0] + '\n');   // CRLF too
+  const commands = all.filter(isCommand);
+  const skills = all.filter((d) => !commands.includes(d));
+  return { root, agents, skills, commands };
 }
 
 // Resolve what the user typed to a catalogue entry. A typed prefix (`crew-x`) or legacy suffix (`x-csk`) is stripped
@@ -94,6 +99,7 @@ function resolveName(cat, typed) {
   if (cat.agents.includes(AGENT_PREFIX + base)) return { type: 'agent', name: AGENT_PREFIX + base };
   if (cat.skills.includes(base)) return { type: 'skill', name: base };
   if (cat.skills.includes(AGENT_PREFIX + base)) return { type: 'skill', name: AGENT_PREFIX + base };
+  if (cat.commands.includes(AGENT_PREFIX + base)) return { type: 'skill', name: AGENT_PREFIX + base };   // a command is a skill on disk
   return null;
 }
 
@@ -237,6 +243,9 @@ function listCommand(pkgDir, log) {
   log('');
   log(`Skills (${cat.skills.length})`);
   for (const s of cat.skills) log(`  ${s.padEnd(24)} ${firstSentence(path.join(cat.root, 'skills', s, 'SKILL.md'))}`);
+  log('');
+  log(`Commands (${cat.commands.length}) — typed as /<name>`);
+  for (const c of cat.commands) log(`  ${('/' + c).padEnd(24)} ${firstSentence(path.join(cat.root, 'skills', c, 'SKILL.md'))}`);
   return 0;
 }
 

@@ -592,10 +592,11 @@ echo
 
 # --- Kit installation (./.claude + ./CLAUDE.md) — everything, no prune ---
 { _mt 'Installing:'; echo "== ${_M} ./.claude + ./CLAUDE.md =="; }
-mkdir -p .claude/agents .claude/skills .claude/commands .claude/hooks .claude/eval .claude/studio
+mkdir -p .claude/agents .claude/skills .claude/hooks .claude/eval .claude/studio
 cp -R "$SRC/agents/."   .claude/agents/
 cp -R "$SRC/skills/."   .claude/skills/
-cp -R "$SRC/commands/." .claude/commands/
+# The slash commands are skills since 3.0 (Claude Code merged custom commands into skills): they arrive with
+# skills/ above, marked `metadata: kind: command`. There is no commands/ directory any more.
 VENDOR_ARMED=0; grep -qxE $'DevArchitecture\r?' .claude/hooks/trace-blocklist.txt 2>/dev/null && VENDOR_ARMED=1   # before the copy resets it; \r? = a CRLF copy still counts
 cp -R "$SRC/hooks/."    .claude/hooks/ 2>/dev/null || true
 cp -R "$SRC/eval/."     .claude/eval/ 2>/dev/null || true
@@ -642,7 +643,6 @@ cp "$SRC/README.md"         .claude/ 2>/dev/null || true
 # read by nobody, and adopt.sh's stale sweep only considers commands/, agents/ and skills/ entries anyway.
 { for d in "$SRC"/skills/*/;     do [ -d "$d" ] && echo "skills/$(basename "$d")"; done
   for f in "$SRC"/agents/*.md;   do [ -e "$f" ] && echo "agents/$(basename "$f")"; done
-  for f in "$SRC"/commands/*.md; do [ -e "$f" ] && echo "commands/$(basename "$f")"; done
 } > .claude/kit-manifest.txt 2>/dev/null || true
 
 # stack= is always 'generic' since 3.0. The key is KEPT because an older updater reads it, and a file without it
