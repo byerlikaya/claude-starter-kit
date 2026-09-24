@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 # Setup wizard: asks who the install is for, shows a summary and asks for confirmation; then installs the WHOLE
-# kit (./.claude + ./CLAUDE.md); finally deletes claude-starter/ and itself.
+# kit (./.claude + ./CLAUDE.md); finally deletes kit/ and itself.
 # Every install is identical — there is no frontend/backend/mobile split. Measured before it was removed: the
 # widest profile pruning saved ~400 tokens of listing, while the split cost a per-profile e2e matrix, a second
 # prune path in adopt.sh, and shipped a set the plugin channel never matched. Since 3.0 the backend pattern does
 # not vary either: the stack is decided per project by the backend-architecture skill and recorded in CLAUDE.md.
-# start.sh + claude-starter/ must be in the SAME directory. At the project root:  bash start.sh [flags]
+# start.sh + kit/ must be in the SAME directory. At the project root:  bash start.sh [flags]
 set -euo pipefail
+# The 2.x names of the variables a user can set still work (one helper: eval/lib/crew-env.sh).
+_crew_d="${BASH_SOURCE%/*}"; [ "$_crew_d" = "${BASH_SOURCE}" ] && _crew_d=.
+[ -f "$_crew_d/kit/eval/lib/crew-env.sh" ] && . "$_crew_d/kit/eval/lib/crew-env.sh"; unset _crew_d
 HERE="$(CDPATH= cd "$(dirname "$0")" && pwd)"
 
 # --version (or -v) is answered first, before the source-checkout and payload checks below: it reads only VERSION, so it
@@ -18,16 +21,16 @@ for a in "$@"; do
   fi
 done
 
-SRC="$HERE/claude-starter"
+SRC="$HERE/kit"
 
 if [ ! -d "$SRC" ]; then
-  echo "ERROR: 'claude-starter/' folder not found."
-  echo "start.sh and claude-starter/ must be in the SAME directory (both come together when you unzip)."
+  echo "ERROR: 'kit/' folder not found."
+  echo "start.sh and kit/ must be in the SAME directory (both come together when you unzip)."
   exit 1
 fi
 
 # Refuse to run inside a checkout of the kit's own source repository. This script ends by deleting
-# claude-starter/ and itself, which is correct when the kit has been unpacked into a project and is being
+# kit/ and itself, which is correct when the kit has been unpacked into a project and is being
 # consumed — and destroys the source when someone invokes it by absolute path from somewhere else while
 # developing the kit. That is not hypothetical: it removed 122 tracked files during this kit's own
 # development, recovered only because they were committed.
@@ -35,22 +38,22 @@ fi
 # The kit's developer instructions already said "do not run start.sh in this repo". A rule that only holds
 # while someone remembers it is the exact thing this kit exists to replace with a gate, so here is the gate.
 # The three markers together appear in the source repo and in no install: an installed kit has .claude/ and
-# CLAUDE.md, never packaging/ next to a claude-starter/ it has not yet consumed.
+# CLAUDE.md, never packaging/ next to a kit/ it has not yet consumed.
 if [ -d "$HERE/packaging" ] && [ -d "$HERE/.git" ] && [ -f "$HERE/VERSION" ]; then
-  if [ "${CSK_ALLOW_SOURCE_INSTALL:-0}" = 1 ]; then
-    echo "WARNING: CSK_ALLOW_SOURCE_INSTALL=1 — installing from the kit's own source checkout."
+  if [ "${CREW_ALLOW_SOURCE_INSTALL:-0}" = 1 ]; then
+    echo "WARNING: CREW_ALLOW_SOURCE_INSTALL=1 — installing from the kit's own source checkout."
     echo "  $SRC and this script will be deleted when the install finishes."
   else
     echo "ERROR: this is the kit's own source repository, not a project to install into."
     echo "  Running here would delete $SRC and this script at the end — that is what the installer does."
     echo "  To try the installer, copy the kit somewhere else first:"
     echo "      cp -R \"$HERE\" /tmp/kit-trial && cd /tmp/kit-trial && bash start.sh"
-    echo "  Set CSK_ALLOW_SOURCE_INSTALL=1 if you really mean to consume this checkout."
+    echo "  Set CREW_ALLOW_SOURCE_INSTALL=1 if you really mean to consume this checkout."
     exit 1
   fi
 fi
 
-# ---- CSK-I18N ------------------------------------------------------------------------------------------
+# ---- CREW-I18N ------------------------------------------------------------------------------------------
 # The installer speaks the user's language; the artefacts it writes do not.
 #
 # THE ENGLISH STRING IS THE KEY. `m 'Cancelled — nothing changed.'` looks that text up and prints the
@@ -73,10 +76,10 @@ fi
 # NOT TRANSLATED, deliberately: the source-repo refusal above and --version. Both answer before the flags
 # are parsed, and language selection cannot run ahead of them without putting a locale lookup in front of a
 # gate whose whole job is to refuse. A gate that parses a locale before it can say no is a worse gate.
-# The inherited CSK_LANG is captured before the working variable is cleared — otherwise this very line
+# The inherited CREW_LANG is captured before the working variable is cleared — otherwise this very line
 # would destroy the environment setting it is meant to read.
-CSK_LANG_ENV="${CSK_LANG:-}"
-CSK_LANG=""
+CREW_LANG_ENV="${CREW_LANG:-}"
+CREW_LANG=""
 # `_mt` puts the result in _M with printf -v, so a call site pays no subshell: `$(m …)` is a FORK, and on Git
 # Bash a fork is ~50 ms. Measured on Windows: the $(m …) form added 22 forks and ~1 s to one install; adopt.sh's
 # printf -v twin removed them. `m` stays as a thin wrapper for the rare nested case that needs a value inline.
@@ -85,9 +88,9 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
   # An empty key must still ASSIGN: bash 3.2's `printf -v _M ""` leaves _M holding the previous translation.
   [ -n "${1:-}" ] || { _M=""; return 0; }
   local s="$1"; shift
-  if [ "$CSK_LANG" = tr ]; then
+  if [ "$CREW_LANG" = tr ]; then
     case "$s" in
-      "Agentic Working Kit · setup wizard") s='Agentic Working Kit · kurulum' ;;
+      "Crewforth · setup wizard") s='Crewforth · kurulum' ;;
       "stack-agnostic") s='her yığınla çalışır' ;;
       "[1/2] Who is this install for?") s='[1/2] Kurulumu kim kullanacak?' ;;
       "Decides whether your teammates get the kit's configuration — and what goes into .gitignore.") s="Kit ayarlarının ekiple paylaşılıp paylaşılmayacağını ve .gitignore'a nelerin ekleneceğini belirler." ;;
@@ -119,15 +122,15 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "full kit") s='tam kit' ;;
       "no effect:") s='etkisi yok:' ;;
       "Installing:") s='Kuruluyor:' ;;
-      "Tip:  open Claude Code and run /doctor-csk — it checks the install is wired (hooks executable, core.hooksPath set, discipline imported) and scores the project's readiness. CLAUDE.md loads the discipline every session.") s="İpucu:  Claude Code'u açıp /doctor-csk çalıştırın — kurulumun eksiksiz bağlandığını denetler (hook'lar çalıştırılabilir mi, core.hooksPath ayarlı mı, disiplin import edilmiş mi) ve projenin ne kadar hazır olduğunu puanlar. Disiplin, CLAUDE.md sayesinde her oturumda yüklenir." ;;
+      "Tip:  open Claude Code and run /crew-doctor — it checks the install is wired (hooks executable, core.hooksPath set, discipline imported) and scores the project's readiness. CLAUDE.md loads the discipline every session.") s="İpucu:  Claude Code'u açıp /crew-doctor çalıştırın — kurulumun eksiksiz bağlandığını denetler (hook'lar çalıştırılabilir mi, core.hooksPath ayarlı mı, disiplin import edilmiş mi) ve projenin ne kadar hazır olduğunu puanlar. Disiplin, CLAUDE.md sayesinde her oturumda yüklenir." ;;
       "%s agents, %s skills installed.") s="%s ajan ve %s skill kuruldu." ;;
       ".claude/DISCIPLINE.md written — kit-owned; an update overwrites it, so keep your own rules out of it.") s='.claude/DISCIPLINE.md yazıldı. Bu dosya kite ait ve her güncellemede yeniden yazılır; kendi kurallarınızı buraya eklemeyin.' ;;
       "./CLAUDE.md created — EDIT the project section.") s='./CLAUDE.md oluşturuldu — proje bölümünü sizin DOLDURMANIZ gerekiyor.' ;;
       "trace scan: core.hooksPath -> .claude/hooks (§4.1/§4.2 commit gate active)") s='iz taraması: core.hooksPath -> .claude/hooks (§4.1/§4.2 commit kapısı açık)' ;;
-      "Done. ./.claude + ./CLAUDE.md ready (full kit); claude-starter/ deleted.") s='Tamamlandı. ./.claude ve ./CLAUDE.md hazır (tam kit); claude-starter/ silindi.' ;;
+      "Done. ./.claude + ./CLAUDE.md ready (full kit); kit/ deleted.") s='Tamamlandı. ./.claude ve ./CLAUDE.md hazır (tam kit); kit/ silindi.' ;;
       "Next: 1) fill in the CLAUDE.md project section  2) open Claude Code at the repo root") s="Sıradaki adımlar: 1) CLAUDE.md'deki proje bölümünü doldurun  2) Claude Code'u deponun kökünde açın" ;;
       "Note: if Claude Code is ALREADY running here, restart it — CLAUDE.md and the discipline load at session start.") s='Not: Claude Code bu klasörde ZATEN açıksa yeniden başlatın — CLAUDE.md ve disiplin oturum açılırken yüklenir.' ;;
-      "Panel: /studio-csk opens the Studio panel from this project (or: node .claude/studio/server/index.js --open).") s='Panel: /studio-csk komutu Studio panelini bu projeden açar (alternatif: node .claude/studio/server/index.js --open).' ;;
+      "Panel: /crew-studio opens the Studio panel from this project (or: node .claude/studio/server/index.js --open).") s='Panel: /crew-studio komutu Studio panelini bu projeden açar (alternatif: node .claude/studio/server/index.js --open).' ;;
       "— backend + web + mobile (RN/Expo), every agent and skill") s="— backend, web ve mobil (RN/Expo); tüm ajanlar ve skill'ler" ;;
       "%s agents · %s skills will be installed") s='%s ajan · %s skill' ;;
       "(shared: .claude/ and CLAUDE.md stay committable)") s="(paylaşımlı: .claude/ ve CLAUDE.md commit'lenebilir kalır)" ;;
@@ -137,7 +140,7 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "[yes/no]") s='[evet/hayır]' ;;
       "the kit always installs in full (all agents · all skills).") s="kit her zaman eksiksiz kurulur (tüm ajanlar · tüm skill'ler)." ;;
       "2 steps: who it is for -> summary & confirm.") s='2 adım: kim kullanacak -> özet ve onay.' ;;
-      "AGENT_TEMPLATE.md missing from the payload — /skill-csk will have nothing to read.") s='AGENT_TEMPLATE.md pakette yok — /skill-csk okuyacak bir şablon bulamayacak.' ;;
+      "AGENT_TEMPLATE.md missing from the payload — /crew-skill will have nothing to read.") s='AGENT_TEMPLATE.md pakette yok — /crew-skill okuyacak bir şablon bulamayacak.' ;;
       "./CLAUDE.md kept as-is (already imports the discipline) — the refresh landed in DISCIPLINE.md.") s="./CLAUDE.md'ye dokunulmadı (disiplini zaten import ediyor); güncelleme DISCIPLINE.md'ye yazıldı." ;;
       "! ./CLAUDE.md carries the discipline INLINE (pre-1.1 layout) — left untouched.") s='! ./CLAUDE.md disiplini dosyanın İÇİNDE taşıyor (1.1 öncesi düzen) — dokunulmadı.' ;;
       "Discipline updates will NOT reach it. To migrate: delete everything above your") s='Disiplin güncellemeleri bu dosyaya ULAŞMAZ. Geçiş için şu başlığın üstündeki her şeyi silin:' ;;
@@ -152,9 +155,9 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "ERROR: the %s sentinel line is missing from %s — refusing to guess the discipline/project split.") s='HATA: %s işaret satırı %s içinde bulunamadı — disiplinin nerede bitip proje bölümünün nerede başladığı tahmin edilmeyecek.' ;;
       "Unknown parameter: %s") s='Bilinmeyen parametre: %s' ;;
       ".gitignore") ;;   # identifier, printed as is
-      # No row: the line prints in English. CSK_I18N_MISS (set by e2e case 18) collects every such key, so a
+      # No row: the line prints in English. CREW_I18N_MISS (set by e2e case 18) collects every such key, so a
       # missing translation is caught by NAME rather than guessed from which English words it happens to contain.
-      *) [ -n "${CSK_I18N_MISS:-}" ] && printf '%s\n' "$s" >> "$CSK_I18N_MISS" ;;
+      *) [ -n "${CREW_I18N_MISS:-}" ] && printf '%s\n' "$s" >> "$CREW_I18N_MISS" ;;
     esac
   fi
   # shellcheck disable=SC2059
@@ -162,12 +165,12 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
   # and printf exits 2 — measured on bash 3.2 (macOS) and Git Bash 5.3; with it both assign normally.
   printf -v _M -- "$s" "$@"
 }
-# ---- /CSK-I18N -----------------------------------------------------------------------------------------
+# ---- /CREW-I18N -----------------------------------------------------------------------------------------
 
 usage() {
   # A heredoc cannot go through m() line by line without breaking its layout, so the Turkish help is its own
   # block. Flags and commands are identical in both; only the prose differs.
-  if [ "${CSK_LANG:-}" = tr ]; then
+  if [ "${CREW_LANG:-}" = tr ]; then
     cat <<'USAGE_TR'
 Kullanım: bash start.sh [SEÇENEKLER]
 Seçenek vermezseniz kurulum sihirbazı her şeyi adım adım sorar.
@@ -224,7 +227,7 @@ USAGE
 # 10 seconds rather than 5: the cost of being too short is a declined install, which is visible and
 # recoverable, but a producer that legitimately takes a moment to write the answer should still win. The
 # value is an integer because bash 3.2 rejects a fractional -t ("invalid timeout specification", measured).
-csk_read() {   # $1 = name of the variable to set
+crew_read() {   # $1 = name of the variable to set
   local __v="$1" __a=""
   if [ -t 0 ]; then read -r __a || __a=""
   else read -t 10 -r __a || __a=""
@@ -243,7 +246,7 @@ ask_yes() {  # $1 = question; returns 0 if the user says 'yes'
   # that shape would silently turn every piped install into a cancellation. A pipe reaching EOF already
   # answers "" => no, so the unattended case stays safe without special-casing it.
   _mt '[yes/no]'; printf '%s %s: ' "$1" "$_M"
-  csk_read a
+  crew_read a
   case "$a" in [yY]|[yY][eE][sS]|[eE]|[eE][vV][eE][tT]) return 0 ;; *) return 1 ;; esac
 }
 # Append entries to .gitignore. Three callers had three copies of the same two bugs (start.sh's four-entry
@@ -261,7 +264,7 @@ gi_add() {   # $@ = entries to ensure in ./.gitignore; prints nothing, sets GI_W
   [ -e .gitignore ] || : > .gitignore
   for e in "$@"; do
     if git rev-parse --git-dir >/dev/null 2>&1; then
-      git check-ignore -q "$e" 2>/dev/null && continue
+      git check-ignore -q --no-index "$e" 2>/dev/null && continue   # --no-index: a dir holding tracked files (docs/HANDOVER.md) still counts as ignored
     else
       grep -qxF "$e" .gitignore 2>/dev/null && continue
     fi
@@ -370,7 +373,7 @@ kit_claude_md_is_legacy() {
 # A one-line notice is printed after the colour helpers load, so the user learns the flag no longer selects
 # anything instead of quietly getting a different set than the one they typed.
 # Language is resolved BEFORE any other flag, because every message below it goes through m(). Four
-# sources, first answer wins: --lang, then CSK_LANG, then the locale variables, then English.
+# sources, first answer wins: --lang, then CREW_LANG, then the locale variables, then English.
 #
 # English is the default rather than the locale's language on purpose: that is what this installer printed
 # before it could speak anything else, and a default that changes under people is not a default. The locale
@@ -378,12 +381,12 @@ kit_claude_md_is_legacy() {
 #
 # Measured, and recorded here rather than treated as a defect: on stock Windows LANG, LC_ALL and
 # LC_MESSAGES are ALL empty (Git Bash defaults only LC_CTYPE). So auto-detect never fires there, and a
-# Turkish-speaking Windows user lands on English unless they pass --lang tr or export CSK_LANG.
+# Turkish-speaking Windows user lands on English unless they pass --lang tr or export CREW_LANG.
 #
 # AN INTERACTIVE INSTALL ASKS. Detection alone was not enough: on macOS the system language can be Turkish
 # while the shell exports LANG=C.UTF-8 (measured on a Turkish desk), so the locale said English and the user
 # never saw a choice. So when a human is at the terminal and nothing named a language (no --lang, no
-# CSK_LANG), the first thing printed is a two-line menu, and the locale only decides which entry is the
+# CREW_LANG), the first thing printed is a two-line menu, and the locale only decides which entry is the
 # default. It is skipped under --yes and whenever stdin is not a terminal — for the same reason the
 # visibility question is: every piped caller feeds a fixed answer sequence, and one more read would shift it.
 _lang_flag=""; _lang_take=0; _lang_yes=0
@@ -400,25 +403,25 @@ done
 _loc="${LC_ALL:-}"; [ -n "$_loc" ] || _loc="${LC_MESSAGES:-}"; [ -n "$_loc" ] || _loc="${LANG:-}"
 case "$_loc" in tr*|TR*) _lang_detected=tr ;; *) _lang_detected=en ;; esac
 if [ -n "$_lang_flag" ]; then
-  CSK_LANG="$_lang_flag"
-elif [ -n "${CSK_LANG_ENV:-}" ]; then
-  CSK_LANG="$CSK_LANG_ENV"
+  CREW_LANG="$_lang_flag"
+elif [ -n "${CREW_LANG_ENV:-}" ]; then
+  CREW_LANG="$CREW_LANG_ENV"
 elif [ -t 0 ] && [ "$_lang_yes" = 0 ]; then
   if [ "$_lang_detected" = tr ]; then _lang_def=2; else _lang_def=1; fi
   printf '\n  Language / Dil\n    1) English\n    2) Türkçe\n  -> [1-2, empty/boş=%s]: ' "$_lang_def"
-  csk_read _lang_ans
+  crew_read _lang_ans
   case "${_lang_ans:-$_lang_def}" in
-    2|tr|TR|t|T|[tT]ürkçe|[tT]urkce|[tT]urkish) CSK_LANG=tr ;;
-    *) CSK_LANG=en ;;
+    2|tr|TR|t|T|[tT]ürkçe|[tT]urkce|[tT]urkish) CREW_LANG=tr ;;
+    *) CREW_LANG=en ;;
   esac
 else
-  CSK_LANG="$_lang_detected"
+  CREW_LANG="$_lang_detected"
 fi
 # Anything that is not a language we actually carry falls back to English rather than printing keys.
-case "$CSK_LANG" in tr|en) ;; *) CSK_LANG=en ;; esac
+case "$CREW_LANG" in tr|en) ;; *) CREW_LANG=en ;; esac
 # Exported because eval/preflight.sh runs as a child and resolves its own language from the environment: a
 # choice made by --lang or the menu above stayed in this shell, and the preflight block printed English.
-export CSK_LANG
+export CREW_LANG
 
 STACK="generic"; DOTNET_FLAG=0; LEGACY_FLAGS=""; ASSUME_YES=0; VISIBILITY=""
 for a in "$@"; do
@@ -470,7 +473,7 @@ gate() { _mt "$@"; printf '     %s>%s %s\n'      "$CY" "$R" "$_M"; }            
 row()  { _mt "$1"; padr "$_M" 15; printf '  %s%s%s %s\n' "$B" "$PADDED" "$R" "$2"; }   # summary row; $1 = key
 rule() { printf '  %s------------------------------------------------%s\n' "$D" "$R"; }
 
-h1  'Agentic Working Kit · setup wizard'
+h1  'Crewforth · setup wizard'
 sub '2 steps: who it is for -> summary & confirm.'
 if [ -n "$LEGACY_FLAGS" ]; then
   _mt 'no effect:'; _a="$_M"; _mt 'the kit always installs in full (all agents · all skills).'
@@ -525,7 +528,7 @@ if [ -z "$VISIBILITY" ]; then
   echo
   _mt 'Choice'; _a="$_M"; _mt 'empty=1'
   printf '  %s->%s %s %s[1-2, %s]%s: ' "$CY" "$R" "$_a" "$D" "$_M" "$R"
-  csk_read s                        # empty => default (private = today's behaviour)
+  crew_read s                        # empty => default (private = today's behaviour)
   case "$s" in 2) VISIBILITY="shared" ;; *) VISIBILITY="private" ;; esac
 fi
 # The exact lines this install will append, resolved once so the summary and the writer cannot disagree.
@@ -575,7 +578,7 @@ else
 fi
 # What this machine is missing, BEFORE the confirm prompt — not after, when it becomes a symptom pointing
 # somewhere else. Report-only and never blocking: the kit degrades rather than breaks, and that is exactly why
-# a gap is otherwise invisible. See claude-starter/eval/preflight.sh for the reasoning per tool.
+# a gap is otherwise invisible. See kit/eval/preflight.sh for the reasoning per tool.
 [ -f "$SRC/eval/preflight.sh" ] && bash "$SRC/eval/preflight.sh"
 rule
 echo
@@ -596,11 +599,11 @@ cp -R "$SRC/commands/." .claude/commands/
 VENDOR_ARMED=0; grep -qxE $'DevArchitecture\r?' .claude/hooks/trace-blocklist.txt 2>/dev/null && VENDOR_ARMED=1   # before the copy resets it; \r? = a CRLF copy still counts
 cp -R "$SRC/hooks/."    .claude/hooks/ 2>/dev/null || true
 cp -R "$SRC/eval/."     .claude/eval/ 2>/dev/null || true
-# The Studio panel — launched by /studio-csk from this project's root. One `cp -R`
+# The Studio panel — launched by /crew-studio from this project's root. One `cp -R`
 # plus one `rm`, not a selective walk: on Git Bash a per-file copy of 25 files is 25
 # process spawns at 62-135 ms each. test/ is dropped because its assertions read the
 # The panel's own suite is NOT here to delete: it lives in packaging/studio-test/,
-# outside the payload, because claude-starter/ ships whole and 104 KB of test code
+# outside the payload, because kit/ ships whole and 104 KB of test code
 # would travel through all four channels only to be removed on arrival.
 cp -R "$SRC/studio/."   .claude/studio/ 2>/dev/null || true
 { _mt "%s agents, %s skills installed." "$(ls .claude/agents/*.md 2>/dev/null | wc -l | tr -d ' ')" "$(ls -d .claude/skills/*/ 2>/dev/null | wc -l | tr -d ' ')"; echo "  ${_M}"; }
@@ -622,10 +625,10 @@ if [ "$VENDOR_ARMED" = 1 ] && [ -f .claude/hooks/trace-blocklist.txt ] \
     && mv .claude/hooks/trace-blocklist.txt.kit-tmp .claude/hooks/trace-blocklist.txt
 fi
 # `|| true` here used to swallow a missing payload file entirely: the install reported success and
-# /skill-csk opened with `Read .claude/AGENT_TEMPLATE.md` against nothing. A best-effort copy is right —
+# /crew-skill opened with `Read .claude/AGENT_TEMPLATE.md` against nothing. A best-effort copy is right —
 # a missing doc must not abort an otherwise good install — but it has to be AUDIBLE, or the gap is
 # invisible until someone runs the command. adopt.sh copies the same file for the same reason.
-cp "$SRC/AGENT_TEMPLATE.md" .claude/ 2>/dev/null || { _mt 'AGENT_TEMPLATE.md missing from the payload — /skill-csk will have nothing to read.'; printf '  %s!%s %s\n' "$YE" "$R" "$_M"; }
+cp "$SRC/AGENT_TEMPLATE.md" .claude/ 2>/dev/null || { _mt 'AGENT_TEMPLATE.md missing from the payload — /crew-skill will have nothing to read.'; printf '  %s!%s %s\n' "$YE" "$R" "$_M"; }
 cp "$SRC/README.md"         .claude/ 2>/dev/null || true
 
 # Install manifest — the names the KIT ships. It is the only way to tell kit-owned from project-owned later:
@@ -715,10 +718,10 @@ else
 fi
 rm -rf "$SRC"
 echo
-{ _mt 'Done. ./.claude + ./CLAUDE.md ready (full kit); claude-starter/ deleted.'; echo "== ${_M} =="; }
+{ _mt 'Done. ./.claude + ./CLAUDE.md ready (full kit); kit/ deleted.'; echo "== ${_M} =="; }
 { _mt 'Next: 1) fill in the CLAUDE.md project section  2) open Claude Code at the repo root'; echo "${_M}"; }
 { _mt 'Note: if Claude Code is ALREADY running here, restart it — CLAUDE.md and the discipline load at session start.'; echo "${_M}"; }
-{ _mt "Tip:  open Claude Code and run /doctor-csk — it checks the install is wired (hooks executable, core.hooksPath set, discipline imported) and scores the project's readiness. CLAUDE.md loads the discipline every session."; echo "${_M}"; }
+{ _mt "Tip:  open Claude Code and run /crew-doctor — it checks the install is wired (hooks executable, core.hooksPath set, discipline imported) and scores the project's readiness. CLAUDE.md loads the discipline every session."; echo "${_M}"; }
 # Say what is true of THIS machine, not what is true in general. The line used to
 # print identically with or without node, so on a machine that cannot start the
 # panel it read as a footnote rather than as the reason nothing will happen. The
@@ -726,7 +729,7 @@ echo
 # it is asked of the INSTALLED copy: $SRC is deleted at line 397, a few lines
 # above this, so asking there answered "no node" on every machine.
 if bash .claude/eval/preflight.sh --has node 2>/dev/null; then
-  { _mt 'Panel: /studio-csk opens the Studio panel from this project (or: node .claude/studio/server/index.js --open).'; echo "${_M}"; }
+  { _mt 'Panel: /crew-studio opens the Studio panel from this project (or: node .claude/studio/server/index.js --open).'; echo "${_M}"; }
 else
   { _mt 'Panel: needs Node 18+, which is not on this machine — but that is no longer a dead end.'; echo "${_M}"; }
   { _mt 'The kit fetches one for the panel: %s  (asks first;' 'bash .claude/studio/ensure-node.sh --plan'; echo "       ${_M}"; }
@@ -734,7 +737,7 @@ else
   { _mt 'Every gate still holds meanwhile; the panel is the only part that needs node.'; echo "       ${_M}"; }
 fi
 # The star line, once per kit version (lib/star.sh keeps the marker in the git dir; text, URL and the
-# CSK_NO_STAR / CI silence live there too). `_S` first so the blank line appears only when the line does.
+# CREW_NO_STAR / CI silence live there too). `_S` first so the blank line appears only when the line does.
 if [ -f .claude/eval/lib/star.sh ]; then
   _S="$(bash .claude/eval/lib/star.sh --once . 2>/dev/null || true)"
   if [ -n "$_S" ]; then printf '\n%s\n' "$_S"; fi   # an `&&` here was the script's LAST status: rc=1 on every update

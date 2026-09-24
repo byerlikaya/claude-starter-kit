@@ -28,9 +28,9 @@ else
 fi
 
 VER="$(tr -d ' \n\r' < VERSION 2>/dev/null)"
-AGENTS=$(ls claude-starter/agents/*.md 2>/dev/null | wc -l | tr -d ' ')
-SKILLS=$(ls -d claude-starter/skills/*/ 2>/dev/null | wc -l | tr -d ' ')
-COMMANDS=$(ls claude-starter/commands/*.md 2>/dev/null | wc -l | tr -d ' ')
+AGENTS=$(ls kit/agents/*.md 2>/dev/null | wc -l | tr -d ' ')
+SKILLS=$(ls -d kit/skills/*/ 2>/dev/null | wc -l | tr -d ' ')
+COMMANDS=$(ls kit/commands/*.md 2>/dev/null | wc -l | tr -d ' ')
 
 # The site is markup, so read the NUMBERS the way the page renders them: the version marker, and each counter as
 # the digits sitting immediately before its label. Anchored to the label, never to a bare number — the page is

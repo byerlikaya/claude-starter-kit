@@ -95,13 +95,21 @@ await new Promise((r) => blackHole.listen(0, '127.0.0.1', r));
 const feedUrl = `http://127.0.0.1:${blackHole.address().port}/dist-tags`;
 
 const port = await freePort();
-// CSK_PROBE_CLI=<path to bin/cli.js>: start the panel the way `npx crewforth studio` does — through the npm entry,
+// CREW_PROBE_CLI=<path to bin/cli.js>: start the panel the way `npx crewforth studio` does — through the npm entry,
 // with the browser suppressed — so every check below also covers that door. <root> is then only the cwd.
-const viaCli = process.env.CSK_PROBE_CLI;
+const viaCli = process.env.CREW_PROBE_CLI;
 const argvFor = viaCli ? [path.resolve(viaCli), 'studio', '--no-open', '--port', String(port)] : [entry, '--port', String(port)];
+// The token's two names. CREW_PROBE_LEGACY_TOKEN=1 hands it over ONLY under the pre-3.0 CSK_STUDIO_TOKEN, which
+// must still work for the 3.x line; otherwise CREW_STUDIO_TOKEN carries it and CSK_ holds a decoy that must lose.
+const LEGACY_TOKEN = process.env.CREW_PROBE_LEGACY_TOKEN === '1';
+const DECOY = 'legacy-name-must-lose';
+const childEnv = { ...process.env, CREW_UPDATE_URL: feedUrl };
+delete childEnv.CREW_PROBE_LEGACY_TOKEN;
+if (LEGACY_TOKEN) { delete childEnv.CREW_STUDIO_TOKEN; childEnv.CSK_STUDIO_TOKEN = TOKEN; }
+else { childEnv.CREW_STUDIO_TOKEN = TOKEN; childEnv.CSK_STUDIO_TOKEN = DECOY; }
 const child = spawn(process.execPath, argvFor, {
   cwd: root,
-  env: { ...process.env, CSK_STUDIO_TOKEN: TOKEN, CSK_UPDATE_URL: feedUrl },
+  env: childEnv,
   stdio: ['ignore', 'pipe', 'pipe'],
 });
 
@@ -127,11 +135,16 @@ if (!up) { stop(); process.exit(1); }
 check('it prints its URL with the token', /http:\/\/127\.0\.0\.1:\d+\/\?token=/.test(out), out.split('\n')[0]);
 
 const shell = await get(port, `/?token=${TOKEN}`);
-check('the panel page is served', shell.status === 200 && /<div id="canvas"|cv-root|CSK Studio/.test(shell.body),
+check('the panel page is served', shell.status === 200 && /<div id="canvas"|cv-root|Crewforth Studio/.test(shell.body),
   `status ${shell.status}, ${shell.body.length} bytes`);
 
 const noTok = await get(port, '/api/health');
 check('an API call without a token is refused', noTok.status === 403, `status ${noTok.status}`);
+if (LEGACY_TOKEN) check('the token given only as CSK_STUDIO_TOKEN (pre-3.0 name) is the one in force', up, 'answered with it');
+else {
+  const decoy = await get(port, `/api/health?token=${DECOY}`);
+  check('CREW_STUDIO_TOKEN wins over a CSK_STUDIO_TOKEN set beside it', decoy.status === 403, `decoy status ${decoy.status}`);
+}
 
 // Timed, and it must be the FIRST call to this endpoint: the answer is cached, so a later one
 // measures the cache rather than the fetch. A mutation that put the network back on this path
@@ -165,7 +178,7 @@ check('projects are read from disk', projects.status === 200 && measured && Arra
 // The list is local data. It used to await the update feed, so a registry that accepts and never
 // answers cost the full 8 s fetch timeout on the first request — measured at 8.37 s. (The work began
 // from a report of a 12-second /api/projects; its reporter withdrew the feed as the cause after
-// re-measuring.) CSK_UPDATE_URL points at a socket that accepts and never answers, which is exactly
+// re-measuring.) CREW_UPDATE_URL points at a socket that accepts and never answers, which is exactly
 // that condition; an unreachable host would NOT reproduce it, because a refused connection returns at once.
 // One measurement, three outcomes — because two independent checks on the same numbers could
 // disagree with each other, and because the first version of this got the naming wrong in a way

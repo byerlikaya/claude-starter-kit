@@ -1,18 +1,18 @@
 {
-  "name": "@byerlikaya/claude-starter-kit",
-  "version": "2.13.0",
-  "description": "Agentic working kit for Claude Code \u2014 disciplined project scaffolding with agents, skills, and tool-level gates.",
+  "name": "crewforth",
+  "version": "3.0.0",
+  "description": "Crewforth \u2014 your engineering crew for Claude Code: agents, skills and tool-level gates, in any stack.",
   "bin": {
-    "claude-starter-kit": "bin/cli.js"
+    "crewforth": "bin/cli.js"
   },
   "scripts": {
-    "studio": "node claude-starter/studio/server/index.js --open"
+    "studio": "node kit/studio/server/index.js --open"
   },
   "files": [
     "bin/",
     "start.sh",
     "adopt.sh",
-    "claude-starter/",
+    "kit/",
     "VERSION",
     "LICENSE",
     "README.md"
@@ -44,6 +44,6 @@
   "author": "Bar\u0131\u015f Yerlikaya",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/byerlikaya/claude-starter-kit.git"
+    "url": "git+https://github.com/Crewforth/crewforth.git"
   }
 }

@@ -5,9 +5,13 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"; cd "$ROOT"
 WORK="${RUNNER_TEMP:-$(mktemp -d)}"
-# Several assertions grep the installers' English output. A Turkish locale (or an exported CSK_LANG=tr) turns
+# Several assertions grep the installers' English output. A Turkish locale (or an exported CREW_LANG=tr) turns
 # those into false failures, so the run is pinned to English; case 18 passes --lang explicitly, which wins.
-export CSK_LANG=en
+export CREW_LANG=en
+# An update renames 2.x auto-mode rules in the USER's settings (CLAUDE_CONFIG_DIR, else ~/.claude). This run must
+# never reach the real one, so it gets its own; and a 2.x variable in the caller's shell must not leak into cases.
+export CLAUDE_CONFIG_DIR="$WORK/claude-config"; mkdir -p "$CLAUDE_CONFIG_DIR"
+for _v in $(compgen -e); do case "$_v" in CSK_*) unset "$_v" ;; esac; done
 
 # WHY A LOG AND NOT /dev/null, for every installer and smoke call below.
 #
@@ -41,13 +45,13 @@ _evidence(){   # $1 = label, $2 = log path, $3 = the step's exit status
 combo() {
   local lbl="$1" inp="$2" exp_ag="$3" exp_sk="$4"; shift 4
   local P="$WORK/proj-$lbl"; rm -rf "$P"; mkdir -p "$P"
-  cp start.sh "$P/"; cp -R claude-starter "$P/"
+  cp start.sh "$P/"; cp -R kit "$P/"
   _slog; ( cd "$P" && printf "$inp" | bash start.sh "$@" ) >"$_L" 2>&1 || _evidence "start.sh in $P" "$_L" $?
   # scope=install: the gate UNIT cases drive hook binaries the installer copies UNCHANGED, so running all of
   # them in every combination re-checks identical bytes. Install scope keeps the install-dependent assertions
   # plus a canary that proves the installed hook actually executes; the exhaustive cases run once, in CI's
   # standalone full-scope smoke-test step.
-  _slog; ( cd "$P" && CSK_SMOKE_SCOPE=install bash .claude/eval/smoke-test.sh ) >"$_L" 2>&1 || _evidence "smoke-test.sh in $P" "$_L" $?
+  _slog; ( cd "$P" && CREW_SMOKE_SCOPE=install bash .claude/eval/smoke-test.sh ) >"$_L" 2>&1 || _evidence "smoke-test.sh in $P" "$_L" $?
   # The install manifest is what separates kit-owned from project-owned downstream (doctor readiness, trust gate).
   [ -s "$P/.claude/kit-manifest.txt" ] || { echo "FAIL [$lbl]: .claude/kit-manifest.txt missing or empty"; exit 1; }
   grep -q '^skills/handoff$' "$P/.claude/kit-manifest.txt" || { echo "FAIL [$lbl]: manifest does not list the shipped skills"; exit 1; }
@@ -57,14 +61,14 @@ combo() {
   [ "$ag" = "$exp_ag" ] || { echo "FAIL [$lbl]: expected $exp_ag agents, got $ag"; exit 1; }
   [ "$sk" = "$exp_sk" ] || { echo "FAIL [$lbl]: expected $exp_sk skills, got $sk"; exit 1; }
   grep -q '^profile=' "$P/.claude/kit.conf" && { echo "FAIL [$lbl]: kit.conf still records a profile"; exit 1; }
-  # The panel. `/studio-csk` resolves exactly this path and nothing else, so its absence is the ENOENT
+  # The panel. `/crew-studio` resolves exactly this path and nothing else, so its absence is the ENOENT
   # this whole change exists to stop — asserted rather than assumed, in every install combination.
-  [ -f "$P/.claude/studio/server/index.js" ] || { echo "FAIL [$lbl]: .claude/studio/server/index.js missing — /studio-csk would ENOENT"; exit 1; }
+  [ -f "$P/.claude/studio/server/index.js" ] || { echo "FAIL [$lbl]: .claude/studio/server/index.js missing — /crew-studio would ENOENT"; exit 1; }
   # Silently load-bearing: every server file is ESM. Without this manifest node reads them as CommonJS
   # and the panel installs cleanly, then dies on its first import — a failure only the user meets.
   grep -q '"type": *"module"' "$P/.claude/studio/package.json" || { echo "FAIL [$lbl]: studio/package.json missing or not \"type\":\"module\" — the ESM server would not load"; exit 1; }
   [ ! -d "$P/.claude/studio/test" ] || { echo "FAIL [$lbl]: studio/test shipped into the project — its pins read the REPO and would be red here"; exit 1; }
-  # The runtime finder. /studio-csk runs exactly this path when node is missing, and without it a
+  # The runtime finder. /crew-studio runs exactly this path when node is missing, and without it a
   # machine with no node is back to the dead end the whole feature exists to remove — silently,
   # because everything else about the install would still look right.
   [ -f "$P/.claude/studio/ensure-node.sh" ] || { echo "FAIL [$lbl]: .claude/studio/ensure-node.sh missing — a machine without node gets no way to get one"; exit 1; }
@@ -74,9 +78,9 @@ combo() {
 # first component added — the network diagram's subtitle did exactly that, announcing 11 agents and 36 skills
 # over a picture it had drawn with 12 and 38 — and the failure reads like a broken install rather than a stale
 # constant. Every arm expects the FULL payload: since 3.0 nothing is pruned.
-KIT_AG=$(ls "$ROOT"/claude-starter/agents/*.md 2>/dev/null | wc -l | tr -d ' ')
-KIT_SK=$(ls -d "$ROOT"/claude-starter/skills/*/ 2>/dev/null | wc -l | tr -d ' ')
-[ "${KIT_AG:-0}" -gt 0 ] && [ "${KIT_SK:-0}" -gt 0 ] || { echo "FAIL: cannot count the payload at $ROOT/claude-starter"; exit 1; }
+KIT_AG=$(ls "$ROOT"/kit/agents/*.md 2>/dev/null | wc -l | tr -d ' ')
+KIT_SK=$(ls -d "$ROOT"/kit/skills/*/ 2>/dev/null | wc -l | tr -d ' ')
+[ "${KIT_AG:-0}" -gt 0 ] && [ "${KIT_SK:-0}" -gt 0 ] || { echo "FAIL: cannot count the payload at $ROOT/kit"; exit 1; }
 echo "payload: $KIT_AG agents, $KIT_SK skills (expectations derived, not typed)"
 combo generic       'yes\n'  "$KIT_AG" "$KIT_SK"
 # Old command lines must still install, and must install the FULL set — the flags are accepted, not obeyed.
@@ -84,7 +88,7 @@ combo generic       'yes\n'  "$KIT_AG" "$KIT_SK"
 combo legacy-flags  'yes\n'  "$KIT_AG" "$KIT_SK"  --frontend --generic
 combo legacy-dotnet 'yes\n'  "$KIT_AG" "$KIT_SK"  --dotnet
 grep -q 'no effect' "$WORK/proj-legacy-flags/.claude/kit.conf" && { echo "FAIL: notice leaked into kit.conf"; exit 1; }
-[ -f "$WORK/proj-legacy-flags/.claude/agents/backend-expert-csk.md" ] || { echo "FAIL: --frontend still pruned the backend agent"; exit 1; }
+[ -f "$WORK/proj-legacy-flags/.claude/agents/crew-backend-expert.md" ] || { echo "FAIL: --frontend still pruned the backend agent"; exit 1; }
 for _p in generic legacy-flags legacy-dotnet; do
   grep -qx 'stack=generic' "$WORK/proj-$_p/.claude/kit.conf" || { echo "FAIL [$_p]: kit.conf does not record stack=generic"; exit 1; }
   [ ! -e "$WORK/proj-$_p/.claude/skills/cqrs-aop-module" ] || { echo "FAIL [$_p]: the removed .NET pattern skill was installed"; exit 1; }
@@ -137,7 +141,7 @@ die() {         # $1 = message, $2 = label, $3 = project dir
 # Since 3.0 a .NET repo is adopted exactly like any other: stack=generic, no pattern skill, the stack is left to
 # backend-architecture. What is still exercised here is the takeover of a colliding project agent.
 P="$WORK/adopt-brownfield"; rm -rf "$P"; mkdir -p "$P/backend" "$P/.claude/agents"
-cp adopt.sh "$P/"; cp -R claude-starter "$P/"; cp VERSION "$P/"
+cp adopt.sh "$P/"; cp -R kit "$P/"; cp VERSION "$P/"
 : > "$P/backend/App.sln"
 printf -- '---\nname: backend-expert\ndescription: legacy\n---\n' > "$P/.claude/agents/backend-expert.md"
 ( cd "$P" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
@@ -179,7 +183,7 @@ case "$DOUT" in *"enforces the §4.6 review gate"*) ;;
 # the regression on macOS would sit below a healthy Windows run and fail the job for being slow. The portable
 # half of the protection is the route-hint gate in smoke-test.sh §7y, where the old code took 34s on macOS too.
 [ "$DEL" -le 20 ] || { echo "FAIL: doctor.sh took ${DEL}s (>20s) — a per-pair fork loop is back; on Git Bash this reads as a hang"; exit 1; }
-_slog; ( cd "$P" && CSK_SMOKE_SCOPE=install bash .claude/eval/smoke-test.sh ) >"$_L" 2>&1 || { tail -n 20 "$_L" | sed 's/^/    | /' >&2; echo "FAIL: the adopted project's own smoke-test did not pass"; exit 1; }
+_slog; ( cd "$P" && CREW_SMOKE_SCOPE=install bash .claude/eval/smoke-test.sh ) >"$_L" 2>&1 || { tail -n 20 "$_L" | sed 's/^/    | /' >&2; echo "FAIL: the adopted project's own smoke-test did not pass"; exit 1; }
 # doctor's elapsed time is printed on SUCCESS too, not only in the failure message. The bound above is loose by
 # design, so a silent pass hides the trend that matters: 2s creeping to 8s is the regression arriving, and it
 # reads as "fine" until the day it trips. The number in the log is what makes that visible in hindsight.
@@ -187,7 +191,7 @@ echo "[adopt-brownfield] .NET repo -> stack=generic · no pattern skill · overl
 
 # A Node project: same shape as every other adopt.
 G="$WORK/adopt-generic"; rm -rf "$G"; mkdir -p "$G"
-cp adopt.sh "$G/"; cp -R claude-starter "$G/"; cp VERSION "$G/"; printf '{"name":"x"}' > "$G/package.json"
+cp adopt.sh "$G/"; cp -R kit "$G/"; cp VERSION "$G/"; printf '{"name":"x"}' > "$G/package.json"
 ( cd "$G" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
 run_adopt "$G" --yes
 grep -q '^stack=generic' "$G/.claude/kit.conf"          || die "Node project not recorded as generic" adopt-generic "$G"
@@ -197,11 +201,11 @@ echo "[adopt-generic] stack=generic · no pattern skill"
 # CSK_CORRECT_STACK used to flip a recorded 'generic' to 'dotnet'. 3.0 has one shape, so the variable does
 # nothing — and says so, rather than being silently ignored by an automation that still sets it.
 R="$WORK/adopt-refresh"; rm -rf "$R"; mkdir -p "$R/backend"
-cp adopt.sh "$R/"; cp -R claude-starter "$R/"; cp VERSION "$R/"; : > "$R/backend/App.sln"
+cp adopt.sh "$R/"; cp -R kit "$R/"; cp VERSION "$R/"; : > "$R/backend/App.sln"
 ( cd "$R" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
 run_adopt "$R" --yes
 ( cd "$R" && git add -A && git commit -qm adopt1 ) >/dev/null 2>&1
-cp adopt.sh "$R/"; cp -R claude-starter "$R/"
+cp adopt.sh "$R/"; cp -R kit "$R/"
 CSK_CORRECT_STACK=1 run_adopt "$R" --yes
 grep -qx 'stack=generic' "$R/.claude/kit.conf"          || die "CSK_CORRECT_STACK=1 changed the recorded stack" adopt-refresh "$R"
 [ ! -d "$R/.claude/skills/cqrs-aop-module" ]             || die "CSK_CORRECT_STACK=1 installed a pattern skill" adopt-refresh "$R"
@@ -219,7 +223,7 @@ echo "[adopt-refresh] CSK_CORRECT_STACK=1 is a no-op that says so; stack=generic
 # the real v2.13.0 installer (git archive of the tag): the same assertions held.
 legacy_dotnet_install(){        # $1 = dir, $2 = pattern skill (cqrs-aop-module | devarch-module), $3 = installer (start.sh | adopt.sh)
   local d="$1" pk="$2" inst="${3:-start.sh}"; rm -rf "$d"; mkdir -p "$d/backend"
-  cp start.sh "$d/"; cp -R claude-starter "$d/"
+  cp start.sh "$d/"; cp -R kit "$d/"
   _slog; ( cd "$d" && git init -q && git config user.email t@t.t && git config user.name t \
       && printf 'yes\n' | bash start.sh ) >"$_L" 2>&1 || _evidence "start.sh in $d" "$_L" $?
   printf '2.13.0\n' > "$d/.claude/VERSION"
@@ -228,10 +232,10 @@ legacy_dotnet_install(){        # $1 = dir, $2 = pattern skill (cqrs-aop-module 
     > "$d/.claude/skills/$pk/SKILL.md"
   # 2.13's start.sh --dotnet armed the vendor line; 2.13's adopt.sh never did.
   [ "$inst" = start.sh ] && awk '/^# DevArchitecture$/ { print "DevArchitecture"; print "#test: ported the handler from DevArchitecture"; next } { print }' \
-    claude-starter/hooks/trace-blocklist.txt > "$d/.claude/hooks/trace-blocklist.txt"
-  { for x in claude-starter/skills/*/; do echo "skills/$(basename "$x")"; done; echo "skills/$pk"
-    for x in claude-starter/agents/*.md; do echo "agents/$(basename "$x")"; done
-    for x in claude-starter/commands/*.md; do echo "commands/$(basename "$x")"; done; } > "$d/.claude/kit-manifest.txt"
+    kit/hooks/trace-blocklist.txt > "$d/.claude/hooks/trace-blocklist.txt"
+  { for x in kit/skills/*/; do echo "skills/$(basename "$x")"; done; echo "skills/$pk"
+    for x in kit/agents/*.md; do echo "agents/$(basename "$x")"; done
+    for x in kit/commands/*.md; do echo "commands/$(basename "$x")"; done; } > "$d/.claude/kit-manifest.txt"
   printf '# Written by %s.\nstack=dotnet\ninstaller=%s\nversion=2.13.0\n' "$inst" "$inst" > "$d/.claude/kit.conf"
   : > "$d/backend/App.sln"
   # Committed BEFORE the update payload is staged beside it: the install armed core.hooksPath, and the trace scan
@@ -239,7 +243,7 @@ legacy_dotnet_install(){        # $1 = dir, $2 = pattern skill (cqrs-aop-module 
   # a silent subshell exit is how the first version of this line ended the whole run with no message.
   _slog; ( cd "$d" && git add -A && git commit -q -m 'shape of a 2.13 dotnet install' ) >"$_L" 2>&1 \
     || _evidence "fixture commit in $d" "$_L" $?
-  cp adopt.sh "$d/"; cp -R claude-starter "$d/"; cp VERSION "$d/"
+  cp adopt.sh "$d/"; cp -R kit "$d/"; cp VERSION "$d/"
 }
 L="$WORK/legacy-dotnet-migration"; legacy_dotnet_install "$L" cqrs-aop-module
 LSUM="$(cksum < "$L/.claude/skills/cqrs-aop-module/SKILL.md")"
@@ -268,9 +272,9 @@ printf 'feat(api): add the unpaid invoices endpoint\n' > "$CMT"
 ( cd "$TR" && bash .claude/hooks/commit-msg "$CMT" ) >/dev/null 2>&1 \
   || { echo "FAIL: the armed vendor pattern blocked an ordinary commit message"; exit 1; }
 rm -rf "$TR"
-_slog; ( cd "$L" && CSK_SMOKE_SCOPE=install bash .claude/eval/smoke-test.sh ) >"$_L" 2>&1 || _evidence "smoke-test.sh in $L" "$_L" $?
+_slog; ( cd "$L" && CREW_SMOKE_SCOPE=install bash .claude/eval/smoke-test.sh ) >"$_L" 2>&1 || _evidence "smoke-test.sh in $L" "$_L" $?
 # Second update: the record now says generic, so the notice retires — but the skill and the §4.2 line stay.
-cp adopt.sh "$L/"; cp -R claude-starter "$L/"
+cp adopt.sh "$L/"; cp -R kit "$L/"
 run_adopt "$L" --here --yes
 case "$ADOPT_OUT" in *"cqrs-aop-module is now a project skill"*) die "the 3.0 migration notice repeats on every update" legacy-dotnet-migration/2nd "$L" ;; esac
 [ -f "$L/.claude/skills/cqrs-aop-module/SKILL.md" ] && grep -qx 'DevArchitecture' "$L/.claude/hooks/trace-blocklist.txt" \
@@ -343,16 +347,16 @@ echo "[adopt-rename] pre-kit.conf install carrying the OLD name -> renamed (cont
 # it. Built by hand rather than by running the old start.sh, because the old installer no longer exists — the
 # fixture IS the contract: kit.conf carrying profile=, and the exact set that profile pruned.
 M="$WORK/adopt-migrate"; rm -rf "$M"; mkdir -p "$M/.claude/agents" "$M/.claude/skills"
-cp adopt.sh "$M/"; cp -R claude-starter "$M/"; cp VERSION "$M/"
-cp claude-starter/agents/*.md "$M/.claude/agents/"; rm -f "$M/.claude/agents/frontend-expert-csk.md"
-cp -R claude-starter/skills/. "$M/.claude/skills/"
+cp adopt.sh "$M/"; cp -R kit "$M/"; cp VERSION "$M/"
+cp kit/agents/*.md "$M/.claude/agents/"; rm -f "$M/.claude/agents/crew-frontend-expert.md"
+cp -R kit/skills/. "$M/.claude/skills/"
 for s in frontend frontend-rn-expo frontend-design a11y; do rm -rf "$M/.claude/skills/$s"; done
 printf 'profile=backend\nstack=dotnet\ninstaller=start.sh\n' > "$M/.claude/kit.conf"
 printf '1.10.1' > "$M/.claude/VERSION"
 ( cd "$M" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
 MOUT="$( cd "$M" && bash adopt.sh --yes 2>&1 || true )"
 case "$MOUT" in *"profile pruning was removed"*) ;; *) echo "FAIL: migration was silent — the user is never told the shape changed"; exit 1 ;; esac
-[ -f "$M/.claude/agents/frontend-expert-csk.md" ] || { echo "FAIL: migration did not restore the pruned agent"; exit 1; }
+[ -f "$M/.claude/agents/crew-frontend-expert.md" ] || { echo "FAIL: migration did not restore the pruned agent"; exit 1; }
 for s in frontend frontend-rn-expo frontend-design a11y; do
   [ -d "$M/.claude/skills/$s" ] || { echo "FAIL: migration did not restore skills/$s"; exit 1; }
 done
@@ -375,14 +379,14 @@ if [ -d plugin/agents ] && [ -d plugin/skills ]; then
   echo "[channel-parity] a start.sh install and the plugin edition ship the same agents and skills"
 fi
 
-# Non-interactive SELF-HEAL — the /update-csk path. An UPDATE of an existing install must fix a stale settings.json
-# off a TTY with NO flag and NO manual edit (this is what /update-csk drives), and the settings refresh must work
+# Non-interactive SELF-HEAL — the /crew-update path. An UPDATE of an existing install must fix a stale settings.json
+# off a TTY with NO flag and NO manual edit (this is what /crew-update drives), and the settings refresh must work
 # even with NO jq and NO python3 (typical Windows Git-Bash). A FIRST adopt (brownfield) still needs --yes. Every run
 # uses a closed stdin so the test can never hang.
 mk_stale_install(){                       # $1 = dir, [$2 = settings.json] : a healthy 1.4.x install whose settings.json is STALE
   local d="$1"; rm -rf "$d"; mkdir -p "$d/.claude"
-  cp adopt.sh "$d/"; cp -R claude-starter "$d/"; cp VERSION "$d/"
-  cp -R "$d/claude-starter/." "$d/.claude/" 2>/dev/null; cp VERSION "$d/.claude/VERSION"
+  cp adopt.sh "$d/"; cp -R kit "$d/"; cp VERSION "$d/"
+  cp -R "$d/kit/." "$d/.claude/" 2>/dev/null; cp VERSION "$d/.claude/VERSION"
   printf 'profile=fullstack\nstack=generic\ninstaller=start.sh\n' > "$d/.claude/kit.conf"
   if [ -n "${2:-}" ]; then printf '%s\n' "$2"; else printf '%s\n' '{ "permissions": { "ask": [ "Bash(git add:*)", "Bash(git commit:*)", "Bash(git push:*)", "Bash(git checkout -b:*)", "Bash(terraform apply:*)" ] }, "hooks": { "UserPromptSubmit": [ { "hooks": [ { "type":"command","command":"bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/context-usage.sh\" 2>/dev/null || true","timeout":10 } ] } ] } }'; fi > "$d/settings.stale"
   cp "$d/settings.stale" "$d/.claude/settings.json"
@@ -406,7 +410,7 @@ retired_gone(){                           # $1 = settings.json
 # was tied to the shell-form shape and went blank the moment hooks moved to exec form, where the path sits inside
 # an `args` array and the timeout is several lines further down. The guard below caught that rather than letting
 # the assertions quietly pass on an empty value — which is the whole reason it is there.
-KIT_TO="$(awk '/context-usage\.sh/{f=1} f && /"timeout"/{gsub(/[^0-9]/,""); print; exit}' claude-starter/settings.json)"
+KIT_TO="$(awk '/context-usage\.sh/{f=1} f && /"timeout"/{gsub(/[^0-9]/,""); print; exit}' kit/settings.json)"
 [ -n "$KIT_TO" ] && [ "$KIT_TO" != 10 ] || { echo "FAIL: could not read the kit's UserPromptSubmit timeout (got '${KIT_TO:-}') — the stale-vs-refreshed assertions below would prove nothing"; exit 1; }
 # (A) update · non-interactive · NO --yes -> APPLIES (self-heal): stale hook refreshed, SessionStart wired, CLAUDE.md kept
 U="$WORK/selfheal"; mk_stale_install "$U"
@@ -478,7 +482,7 @@ if printf '{}' | jq -e . >/dev/null 2>&1; then
   # measured on windows-latest ("Could not open D:"), where jq exists and this oracle actually runs.
   for _c in "$U/settings.stale|$U/settings.first" "$R/settings.stale|$R/.claude/settings.json"; do
     _in="${_c%%|*}"; _out="${_c#*|}"
-    _want="$(jq -n --slurpfile p "$_in" --slurpfile k claude-starter/settings.json "$JQ_ORACLE" | jq -S .)"
+    _want="$(jq -n --slurpfile p "$_in" --slurpfile k kit/settings.json "$JQ_ORACLE" | jq -S .)"
     [ -n "$_want" ] && [ "$_want" = "$(jq -S . "$_out")" ] \
       || { echo "FAIL: the awk merge disagrees with the jq oracle on $_in:"; diff <(printf '%s\n' "$_want") <(jq -S . "$_out") | head -20; exit 1; }
   done
@@ -495,23 +499,23 @@ case "$IOUT" in *"INVALID JSON -> merge ABORT"*) ;; *) echo "FAIL: an invalid se
 grep -q 'settings.json: NOT merged' "$I/docs/HANDOVER.md" 2>/dev/null || { echo "FAIL: HANDOVER claims a merge that did not run"; exit 1; }
 # (C) FIRST adopt (no kit present) · non-interactive · NO --yes -> declines (a brownfield change still needs consent)
 F="$WORK/firstadopt"; rm -rf "$F"; mkdir -p "$F"
-cp adopt.sh "$F/"; cp -R claude-starter "$F/"; cp VERSION "$F/"; printf '{"name":"x"}' > "$F/package.json"
+cp adopt.sh "$F/"; cp -R kit "$F/"; cp VERSION "$F/"; printf '{"name":"x"}' > "$F/package.json"
 ( cd "$F" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
 _slog; ( cd "$F" && bash adopt.sh --here </dev/null ) >"$_L" 2>&1 || _evidence "adopt.sh in $F" "$_L" $?
 [ ! -f "$F/.claude/DISCIPLINE.md" ]                     || { echo "FAIL: first adopt must NOT apply non-interactively without --yes"; exit 1; }
 echo "[adopt-selfheal] update self-heals off a TTY, same file with jq/python failing · $PARITY_NOTE · retired §4.4 ask rules dropped, own rules and hooks kept · invalid JSON refused · CLAUDE.md preserved · first adopt still needs --yes"
 
-# (D) TTY + --yes must NOT hang — the /update-csk regression. adopt.sh once tested `-t 0` BEFORE --yes, so an
+# (D) TTY + --yes must NOT hang — the /crew-update regression. adopt.sh once tested `-t 0` BEFORE --yes, so an
 # --yes run that inherited a TTY (Claude Code drives commands under a pty on Windows) blocked on a prompt. Every
 # test above misses it by construction — they close stdin, so `-t 0` is false. Here we allocate a REAL pty and
 # assert the refresh completes under --yes. Needs a pty-capable `script`; skipped where none exists (Git-Bash).
 T="$WORK/pty-yes"; rm -rf "$T"; mkdir -p "$T"
-cp start.sh adopt.sh VERSION "$T/"; cp -R claude-starter "$T/"
+cp start.sh adopt.sh VERSION "$T/"; cp -R kit "$T/"
 # empty baseline commit BEFORE install (no hooksPath yet), then install; the refresh below STAGES only (like
-# /update-csk) so no pre-commit trace hook runs — the point here is the prompt behaviour, not a commit.
+# /crew-update) so no pre-commit trace hook runs — the point here is the prompt behaviour, not a commit.
 _slog; ( cd "$T" && git init -q && git config user.email t@t.t && git config user.name t && git commit -q --allow-empty -m base \
     && printf 'yes\n' | bash start.sh ) >"$_L" 2>&1 || _evidence "start.sh in $T" "$_L" $?
-cp adopt.sh "$T/adopt.sh"; cp -R claude-starter "$T/claude-starter"   # a refresh reads the payload beside adopt.sh
+cp adopt.sh "$T/adopt.sh"; cp -R kit "$T/kit"   # a refresh reads the payload beside adopt.sh
 if script --version >/dev/null 2>&1; then PTY_FLAVOR=linux            # util-linux: script -q -e -c CMD FILE
 elif command -v script >/dev/null 2>&1;  then PTY_FLAVOR=bsd          # BSD/macOS: script -q FILE CMD…
 else PTY_FLAVOR=none; fi
@@ -532,7 +536,7 @@ fi
 # Two claims, both of which were false before this release and neither of which any assertion above can
 # see: (a) the installed panel starts at all — the ESM/`--selftest` path, which is what catches a missed
 # package.json; (b) its palette resolves the kit's agents from `.claude/`, not only from this checkout.
-# (b) is the one that was silently wrong: the old resolver looked for `<parent>/claude-starter/agents`,
+# (b) is the one that was silently wrong: the old resolver looked for `<parent>/kit/agents`,
 # found nothing anywhere but here, and drew all twelve kit agents in the grey reserved for types nobody
 # declared — "not measured" rendered as a fact.
 PN="$WORK/proj-generic"
@@ -572,41 +576,207 @@ else
 fi
 
 # ---- the star line: once per kit version, through the real installers and doctor ----
-# Every case sets or clears CI and CSK_NO_STAR itself: the runner exports CI=true, and inheriting it would turn
+# Every case sets or clears CI and CREW_NO_STAR itself: the runner exports CI=true, and inheriting it would turn
 # every "prints" below into "silent" there — green locally, red in CI, for a reason that is not the product.
 # The version is changed by editing the STAGED payload's VERSION, which is what a real new release does.
 starn(){ grep -c '⭐' "$1" 2>/dev/null || true; }
-SP="$WORK/star"; rm -rf "$SP"; mkdir -p "$SP"; cp start.sh VERSION "$SP/"; cp -R claude-starter "$SP/"
+SP="$WORK/star"; rm -rf "$SP"; mkdir -p "$SP"; cp start.sh VERSION "$SP/"; cp -R kit "$SP/"
 _slog; ( cd "$SP" && git init -q && git config user.email t@t.t && git config user.name t && git commit -q --allow-empty -m b \
-    && printf 'yes\n' | env -u CI -u CSK_NO_STAR bash start.sh ) >"$_L" 2>&1 || _evidence "start.sh in $SP" "$_L" $?
+    && printf 'yes\n' | env -u CI -u CREW_NO_STAR -u CSK_NO_STAR bash start.sh ) >"$_L" 2>&1 || _evidence "start.sh in $SP" "$_L" $?
 S1="$(starn "$_L")"
-dstar(){ ( cd "$SP" && env -u CI -u CSK_NO_STAR bash .claude/eval/doctor.sh 2>&1 || true ) > "$WORK/star-doctor.txt"
+dstar(){ ( cd "$SP" && env -u CI -u CREW_NO_STAR -u CSK_NO_STAR bash .claude/eval/doctor.sh 2>&1 || true ) > "$WORK/star-doctor.txt"
          case "$(cat "$WORK/star-doctor.txt")" in *"DOCTOR: healthy"*) ;; *) echo "FAIL: FIXTURE — doctor is not healthy here, so its star checks prove nothing" >&2; echo UNHEALTHY; return ;; esac
          starn "$WORK/star-doctor.txt"; }
 D1="$(dstar)"                                              # same version as the install: silent
-restage(){ cp adopt.sh "$SP/"; cp -R claude-starter "$SP/"; printf '%s\n' "$1" > "$SP/VERSION"; }
+restage(){ cp adopt.sh "$SP/"; cp -R kit "$SP/"; printf '%s\n' "$1" > "$SP/VERSION"; }
 restage "$(head -1 VERSION)"
-_slog; ( cd "$SP" && env -u CI -u CSK_NO_STAR bash adopt.sh --here --yes </dev/null ) >"$_L" 2>&1 || _evidence "adopt.sh same-version update in $SP" "$_L" $?
+_slog; ( cd "$SP" && env -u CI -u CREW_NO_STAR -u CSK_NO_STAR bash adopt.sh --here --yes </dev/null ) >"$_L" 2>&1 || _evidence "adopt.sh same-version update in $SP" "$_L" $?
 S2="$(starn "$_L")"
 restage "9.9.9-e2e"
-_slog; ( cd "$SP" && env -u CI -u CSK_NO_STAR bash adopt.sh --here --yes </dev/null ) >"$_L" 2>&1 || _evidence "adopt.sh new-version update in $SP" "$_L" $?
+_slog; ( cd "$SP" && env -u CI -u CREW_NO_STAR -u CSK_NO_STAR bash adopt.sh --here --yes </dev/null ) >"$_L" 2>&1 || _evidence "adopt.sh new-version update in $SP" "$_L" $?
 S3="$(starn "$_L")"
-D2="$(dstar)"                                              # the doctor /update-csk runs right after: silent
+D2="$(dstar)"                                              # the doctor /crew-update runs right after: silent
 printf '9.9.10-e2e\n' > "$SP/.claude/VERSION"; D3="$(dstar)"   # a new version reached by doctor first: shown
 D4="$(dstar)"                                              # ...once
 [ "$S1/$D1/$S2/$S3/$D2/$D3/$D4" = "1/0/0/1/0/1/0" ] \
   || { echo "FAIL: star line not once per version — install/doctor/same-ver update/new-ver update/doctor/new-ver doctor/doctor = $S1/$D1/$S2/$S3/$D2/$D3/$D4 (want 1/0/0/1/0/1/0)"; exit 1; }
 [ -z "$(cd "$SP" && git status --porcelain -- .claude/star-shown 2>/dev/null)" ] && [ ! -e "$SP/.claude/star-shown" ] \
   || { echo "FAIL: the star marker landed under .claude/ in a git project — a tracked .claude/ would commit it"; exit 1; }
-for _q in "CSK_NO_STAR=1" "CI=true"; do
-  SQ="$WORK/star-quiet"; rm -rf "$SQ"; mkdir -p "$SQ"; cp start.sh VERSION "$SQ/"; cp -R claude-starter "$SQ/"
-  _slog; ( cd "$SQ" && git init -q && printf 'yes\n' | env -u CI -u CSK_NO_STAR "$_q" bash start.sh ) >"$_L" 2>&1 || _evidence "start.sh $_q in $SQ" "$_L" $?
+for _q in "CREW_NO_STAR=1" "CI=true"; do
+  SQ="$WORK/star-quiet"; rm -rf "$SQ"; mkdir -p "$SQ"; cp start.sh VERSION "$SQ/"; cp -R kit "$SQ/"
+  _slog; ( cd "$SQ" && git init -q && printf 'yes\n' | env -u CI -u CREW_NO_STAR -u CSK_NO_STAR "$_q" bash start.sh ) >"$_L" 2>&1 || _evidence "start.sh $_q in $SQ" "$_L" $?
   _qm="$(cd "$SQ" && git rev-parse --git-path crewforth-star)"
   [ "$(starn "$_L")" = 0 ] && [ ! -e "$SQ/$_qm" ] || { echo "FAIL: under $_q the install printed the star line or wrote its marker"; exit 1; }
-  DQ="$( cd "$SQ" && env -u CI -u CSK_NO_STAR "$_q" bash .claude/eval/doctor.sh 2>&1 || true )"
+  DQ="$( cd "$SQ" && env -u CI -u CREW_NO_STAR -u CSK_NO_STAR "$_q" bash .claude/eval/doctor.sh 2>&1 || true )"
   [ "$(printf '%s\n' "$DQ" | grep -c '⭐' || true)" = 0 ] || { echo "FAIL: under $_q doctor printed the star line"; exit 1; }
 done
-echo "[star] once per version: install 1 · doctor 0 · same-version update 0 · new-version update 1 · doctor 0 · new version via doctor 1 · again 0 · marker in the git dir · CSK_NO_STAR=1 / CI=true: 0, no marker"
+echo "[star] once per version: install 1 · doctor 0 · same-version update 0 · new-version update 1 · doctor 0 · new version via doctor 1 · again 0 · marker in the git dir · CREW_NO_STAR=1 / CI=true: 0, no marker"
+
+# ---- 2.x → 3.0: a real 2.13.0 install, updated by this tree ----
+# The fixture is the released installer itself (841eb4e = v2.13.0), taken with git archive — a hand-made "old
+# install" would only prove the migration understands what its author thinks 2.13 left behind. CI checks out
+# with fetch-depth 0 for this; without the commit the case cannot run, which is a fixture skip, red under strict.
+OLD=841eb4e
+if ! git cat-file -e "$OLD^{commit}" 2>/dev/null; then
+  [ "${CREW_VERIFY_STRICT:-0}" = 1 ] && { echo "FAIL: FIXTURE — commit $OLD (v2.13.0) is not in this clone; the 3.0 migration cannot be rehearsed (shallow checkout?)"; exit 1; }
+  echo "[migrate-2.13] SKIP (fixture): commit $OLD (v2.13.0) is not in this clone — a shallow checkout"
+else
+  mtree(){ ( cd "$1" && find . -type f ! -path './.git/*' ! -name gate-log.tsv 2>/dev/null | LC_ALL=C sort | while IFS= read -r f; do printf '%s ' "$f"; cksum < "$f"; done ) | cksum; }
+  old_install(){   # $1 = project dir → a 2.13.0 install with a user line, a user agent and a user allow rule
+    # tar gets a relative target: on a Windows runner $WORK is D:\a\_temp, and GNU tar reads `-C D:…` as host:path.
+    rm -rf "$1"; mkdir -p "$1"; git archive "$OLD" start.sh VERSION claude-starter | ( cd "$1" && tar -xf - )
+    _slog; ( cd "$1" && git init -q && bash start.sh --generic --yes --lang en ) >"$_L" 2>&1 || _evidence "2.13.0 start.sh in $1" "$_L" $?
+    [ -f "$1/.claude/agents/backend-expert-csk.md" ] || { echo "FAIL: FIXTURE — the 2.13.0 install left no backend-expert-csk.md"; exit 1; }
+    printf '\nAsk @agent-security-expert-csk, then run /review-csk; my own my-helper-csk and security-expert-cskx stay.\n' >> "$1/CLAUDE.md"
+    printf -- '---\nname: my-helper-csk\n---\nmine\n' > "$1/.claude/agents/my-helper-csk.md"
+    perl -0pi -e 's/("allow": \[\n\s*)"Bash"/$1"Bash(make test:*)", "Bash"/' "$1/.claude/settings.json"
+    grep -q 'make test' "$1/.claude/settings.json" || { echo "FAIL: FIXTURE — the user allow rule was not planted"; exit 1; }
+    cp "$1/CLAUDE.md" "$1/CLAUDE.md.before"; cp "$1/.claude/agents/my-helper-csk.md" "$WORK/my-helper.before"
+    cp adopt.sh VERSION "$1/"; cp -R kit "$1/"
+  }
+  MG="$WORK/migrate-2.13"; old_install "$MG"
+  NOLD="$(ls "$MG"/.claude/agents/*-csk.md "$MG"/.claude/commands/*-csk.md 2>/dev/null | grep -vc my-helper || true)"
+  # A 2.x auto-mode policy in the user's settings (this run's own CLAUDE_CONFIG_DIR), and a 2.x variable in the
+  # environment: the update renames the first and names the second, and the old variable still silences the star.
+  AMS="$CLAUDE_CONFIG_DIR/settings.json"
+  printf '{\n  "theme": "dark",\n  "autoMode": {\n    "hard_deny": ["$defaults", "CSK Uncommitted Work Destruction: a"],\n    "soft_deny": ["$defaults", "CSK Gate Tampering: b", "CSK Internal Docs Publication: c", "CSK Other: mine"]\n  }\n}\n' > "$AMS"
+  cp "$AMS" "$WORK/automode.before"
+  _slog; ( cd "$MG" && env CSK_NO_STAR=1 CSK_NET_TIMEOUT=60 bash adopt.sh --yes ) >"$_L" 2>&1 || _evidence "adopt.sh over 2.13.0 in $MG" "$_L" $?
+  grep -q 'CSK_NET_TIMEOUT is set but no longer read — set CREW_NET_TIMEOUT instead' "$_L" || { echo "FAIL: the update promised or said nothing about CSK_NET_TIMEOUT, which is not read any more"; exit 1; }
+  grep -q 'CSK_NO_STAR is set — its 3.0 name is CREW_NO_STAR' "$_L" || { echo "FAIL: the update did not name CREW_NO_STAR for a set CSK_NO_STAR"; exit 1; }
+  grep -q '⭐' "$_L" && { echo "FAIL: CSK_NO_STAR=1 no longer silences the star line on an update"; exit 1; }
+  [ "$(grep -o '"Crewforth ' "$AMS" | wc -l | tr -d ' ')" = 3 ] && ! grep -qE '"CSK (Uncommitted|Gate|Internal)' "$AMS" && grep -q '"CSK Other: mine"' "$AMS" \
+    || { echo "FAIL: the 2.x auto-mode rules were not renamed exactly (the user's own CSK Other must stay):"; cat "$AMS"; exit 1; }
+  [ "$(diff "$WORK/automode.before" "$AMS" | grep -c '^>')" = 2 ] || { echo "FAIL: the auto-mode rename changed more than the rule-name lines"; diff "$WORK/automode.before" "$AMS"; exit 1; }
+  ls "$AMS".crew-bak-* >/dev/null 2>&1 && cmp -s "$(ls "$AMS".crew-bak-* | head -n 1)" "$WORK/automode.before" \
+    || { echo "FAIL: no byte-exact backup of the user's settings before the auto-mode rename"; exit 1; }
+  DENV="$( cd "$MG" && env CSK_NO_STAR=1 bash .claude/eval/doctor.sh 2>&1 || true )"
+  case "$DENV" in *'CSK_NO_STAR is set — its 3.0 name is CREW_NO_STAR'*) ;; *) echo "FAIL: doctor did not name CREW_NO_STAR for a set CSK_NO_STAR"; exit 1 ;; esac
+  NREN="$(grep -c '^.*3\.0 rename: ' "$_L" || true)"
+  LEFT="$(cd "$MG/.claude" && find agents commands skills -name '*-csk*' ! -name 'my-helper-csk.md' | tr '\n' ' ')"
+  [ -z "$LEFT" ] || { echo "FAIL: after the update, old kit names are still on disk: $LEFT"; exit 1; }
+  for kf in kit/agents/crew-*.md kit/commands/crew-*.md; do
+    [ -f "$MG/.claude/${kf#kit/}" ] || { echo "FAIL: the update did not leave ${kf#kit/}"; exit 1; }
+  done
+  [ -d "$MG/.claude/skills/crew-code-review" ] || { echo "FAIL: the update did not leave skills/crew-code-review"; exit 1; }
+  cmp -s "$MG/.claude/agents/my-helper-csk.md" "$WORK/my-helper.before" || { echo "FAIL: the migration touched the user's own my-helper-csk.md"; exit 1; }
+  grep -q '"Bash(make test:\*)"' "$MG/.claude/settings.json" || { echo "FAIL: the user's allow rule did not survive the update"; exit 1; }
+  # CLAUDE.md: every change is a kit name. Map each crew- name back to its 2.x form; the result must be the old file.
+  # Longest name first, or crew-review would eat the front of crew-review-agent.
+  REV="$(for kf in kit/agents/crew-*.md kit/commands/crew-*.md kit/skills/crew-*/; do kn="${kf%/}"; kn="${kn##*/}"; printf '%s\n' "${kn%.md}"; done \
+         | awk '{ print length($0) "\t" $0 }' | sort -rn | cut -f2 | while IFS= read -r kn; do printf ' -e s/%s/%s-csk/g' "$kn" "${kn#crew-}"; done)"
+  sed $REV "$MG/CLAUDE.md" | cmp -s - "$MG/CLAUDE.md.before" \
+    || { echo "FAIL: CLAUDE.md changed beyond kit names:"; sed $REV "$MG/CLAUDE.md" | diff "$MG/CLAUDE.md.before" - | head -n 10; exit 1; }
+  grep -q '@agent-crew-security-expert, then run /crew-review; my own my-helper-csk and security-expert-cskx stay' "$MG/CLAUDE.md" \
+    || { echo "FAIL: the ref-sweep did not rewrite the user's line as expected:"; tail -n 2 "$MG/CLAUDE.md"; exit 1; }
+  # The moved kit agents are the kit's: counting them as the project's once made the next update rewrite HANDOVER.md.
+  grep -q '^- Project agents: 1 ' "$MG/docs/HANDOVER.md" \
+    || { echo "FAIL: HANDOVER.md does not count exactly the user's one agent: $(grep '^- Project agents' "$MG/docs/HANDOVER.md")"; exit 1; }
+  grep -q 'PROOF-5' "$_L" && { echo "FAIL: the update's ref-sweep left a stale kit name for PROOF-5 to report:"; grep -A3 'PROOF-5' "$_L"; exit 1; }
+  # doctor PROOF-5 sees a 2.x name too. Measured on a copy, so the idempotency tree below is not disturbed.
+  MD="$WORK/migrate-2.13-doctor"; rm -rf "$MD"; cp -R "$MG" "$MD"
+  DOC0="$( cd "$MD" && bash .claude/eval/doctor.sh 2>&1 || true )"
+  printf 'Hand plans to @agent-planner-csk.\n' >> "$MD/CLAUDE.md"
+  DOC1="$( cd "$MD" && bash .claude/eval/doctor.sh 2>&1 || true )"
+  case "$DOC0" in *'"planner-csk" → "crew-planner"'*) echo "FAIL: doctor reported planner-csk before any line named it"; exit 1 ;; esac
+  case "$DOC1" in *'"planner-csk" → "crew-planner"'*) ;; *) echo "FAIL: doctor did not report @agent-planner-csk as a stale 2.x name:"; printf '%s\n' "$DOC1" | grep -i -A3 'agent' | head -n 8; exit 1 ;; esac
+  # Idempotency: a second update changes nothing (the gate log is an activity log and is left out).
+  H1="$(mtree "$MG")"
+  _slog; ( cd "$MG" && bash adopt.sh --yes ) >"$_L" 2>&1 || _evidence "second adopt.sh in $MG" "$_L" $?
+  [ "$(mtree "$MG")" = "$H1" ] || { echo "FAIL: a second update changed the tree after the 3.0 migration"; exit 1; }
+  grep -q '3\.0 rename\|3\.0 ref-sweep' "$_L" && { echo "FAIL: the second update announced the migration again"; exit 1; }
+  # Both names present: nothing moves, the user is told.
+  MB="$WORK/migrate-2.13-both"; old_install "$MB"
+  printf 'mine\n' > "$MB/.claude/agents/crew-planner.md"; cp "$MB/.claude/agents/planner-csk.md" "$WORK/planner.before"
+  # CLAUDE.md as a symlink (CLAUDE.md → AGENTS.md is common) and a reference that leaves the project.
+  mv "$MB/CLAUDE.md" "$MB/AGENTS.md"; ln -s AGENTS.md "$MB/CLAUDE.md" 2>/dev/null
+  # Git Bash without developer-mode symlinks makes `ln -s` a COPY; then there is no link to keep, and saying so beats a false red.
+  MBLINK=0; [ -L "$MB/CLAUDE.md" ] && MBLINK=1; [ "$MBLINK" = 1 ] || cp "$MB/AGENTS.md" "$MB/CLAUDE.md"
+  mkdir -p "$WORK/outside"; printf 'Ask backend-expert-csk.\n' > "$WORK/outside/NOTES.md"; cp "$WORK/outside/NOTES.md" "$WORK/outside.before"
+  printf 'See ../outside/NOTES.md\n' >> "$MB/AGENTS.md"
+  # ...and the two other ways out: an absolute path, and a directory that is a symlink to somewhere else.
+  printf 'Ask planner-csk.\n' > "$WORK/outside/ABS.md"; cp "$WORK/outside/ABS.md" "$WORK/outside-abs.before"
+  # POSIX spelling from the shell itself: a Windows runner's $WORK is D:\a\_temp, which the reference scan does
+  # not read as a path at all — the leg would pass without testing anything.
+  printf 'See %s/outside/ABS.md\n' "$(cd "$WORK" && pwd)" >> "$MB/AGENTS.md"
+  mkdir -p "$WORK/shared"; printf 'Ask planner-csk.\n' > "$WORK/shared/NOTE.md"; cp "$WORK/shared/NOTE.md" "$WORK/shared.before"
+  MBDL="symlinked dir N/A here (ln -s copies)"
+  ln -s "$WORK/shared" "$MB/shared" 2>/dev/null && [ -L "$MB/shared" ] && { printf 'See shared/NOTE.md\n' >> "$MB/AGENTS.md"; MBDL="symlinked dir"; }
+  # CRLF, as a Windows editor leaves it: the sweep must keep every CR, not only the rewritten line's. MSYS sed
+  # dropped all of them (measured on Windows: 36 → 0), which BSD sed never does — so this leg bites on Windows.
+  MBT="$MB/AGENTS.md"; [ "$MBLINK" = 1 ] || MBT="$MB/CLAUDE.md"
+  awk '{ sub(/\r$/, ""); printf "%s\r\n", $0 }' "$MBT" > "$MBT.crlf" && cat "$MBT.crlf" > "$MBT" && rm -f "$MBT.crlf"
+  MBCR0="$(tr -dc '\r' < "$MBT" | wc -c | tr -d ' ')"; MBNL0="$(wc -l < "$MBT" | tr -d ' ')"
+  [ "$MBCR0" -gt 0 ] && [ "$MBCR0" = "$MBNL0" ] || { echo "FAIL: FIXTURE — the CRLF CLAUDE.md has $MBCR0 CRs for $MBNL0 lines"; exit 1; }
+  _slog; ( cd "$MB" && bash adopt.sh --yes ) >"$_L" 2>&1 || _evidence "adopt.sh with both names in $MB" "$_L" $?
+  grep -q 'both the old and the new name exist for:.*agents/planner-csk.md' "$_L" || { echo "FAIL: both names existed and the update did not say so"; exit 1; }
+  cmp -s "$MB/.claude/agents/planner-csk.md" "$WORK/planner.before" || { echo "FAIL: planner-csk.md changed although both names existed"; exit 1; }
+  [ "$(cat "$MB/.claude/agents/crew-planner.md")" = mine ] || { echo "FAIL: both names existed and the update overwrote the user's crew-planner.md"; exit 1; }
+  if [ "$MBLINK" = 1 ]; then
+    [ -L "$MB/CLAUDE.md" ] || { echo "FAIL: the ref-sweep replaced the CLAUDE.md symlink with a file"; exit 1; }
+    grep -q '@agent-crew-security-expert' "$MB/AGENTS.md" || { echo "FAIL: the ref-sweep did not write through the CLAUDE.md symlink"; exit 1; }
+    MBL="symlinked CLAUDE.md written through"
+  else MBL="symlink N/A here (ln -s copies)"; fi
+  MBCR1="$(tr -dc '\r' < "$MBT" | wc -c | tr -d ' ')"
+  [ "$MBCR1" = "$MBCR0" ] || { echo "FAIL: the ref-sweep changed the CR count of a CRLF CLAUDE.md: $MBCR0 → $MBCR1"; exit 1; }
+  cmp -s "$WORK/outside/NOTES.md" "$WORK/outside.before" || { echo "FAIL: the ref-sweep edited a file outside the project (../)"; exit 1; }
+  cmp -s "$WORK/outside/ABS.md" "$WORK/outside-abs.before" || { echo "FAIL: the ref-sweep edited a file outside the project (absolute path)"; exit 1; }
+  cmp -s "$WORK/shared/NOTE.md" "$WORK/shared.before" || { echo "FAIL: the ref-sweep edited a file outside the project (through a symlinked directory)"; exit 1; }
+  # Never installed, but a user agent that happens to end in -csk: not a kit install, so the user's own skill stays.
+  MF="$WORK/migrate-fresh"; rm -rf "$MF"; mkdir -p "$MF/.claude/agents" "$MF/.claude/skills/testing"
+  printf -- '---\nname: my-helper-csk\n---\n' > "$MF/.claude/agents/my-helper-csk.md"; printf 'MINE\n' > "$MF/.claude/skills/testing/SKILL.md"
+  cp adopt.sh VERSION "$MF/"; cp -R kit "$MF/"
+  _slog; ( cd "$MF" && git init -q && bash adopt.sh --yes ) >"$_L" 2>&1 || _evidence "adopt.sh in a never-installed project in $MF" "$_L" $?
+  [ "$(cat "$MF/.claude/skills/testing/SKILL.md")" = MINE ] || { echo "FAIL: a user agent ending in -csk made a fresh project look installed and its own skill was overwritten"; exit 1; }
+  # THE BOARD, MIXED: a 2.x clone (the v2.13.0 board.sh) and a 2.13 install updated to 3.0 share one remote. A 2.x
+  # client only ever reads refs/csk/board, so while that ref exists 3.x writes BOTH refs in one atomic push. What
+  # must hold: nothing either side put on the board goes missing, and the lock holds ACROSS the versions.
+  # The 3.0 side runs with a git whose merge-tree is gone, as on git 2.34 (Ubuntu 22.04) — the design must not
+  # need it, and this is what proves it does not.
+  BR="$WORK/board-mixed"; rm -rf "$BR"; mkdir -p "$BR/shim"; git init -q --bare "$BR/r.git"
+  REALGIT="$(command -v git)"
+  printf '#!/bin/sh\ncase "$1" in merge-tree) echo "error: unknown option (git 2.34 has no merge-tree --write-tree)" >&2; exit 129 ;; esac\nexec "%s" "$@"\n' "$REALGIT" > "$BR/shim/git"; chmod +x "$BR/shim/git"
+  ( PATH="$BR/shim:$PATH"; git merge-tree --write-tree HEAD HEAD >/dev/null 2>&1; [ $? = 129 ] ) || { echo "FAIL: FIXTURE — the merge-tree-less git shim did not take effect"; exit 1; }
+  git show "$OLD:claude-starter/hooks/board.sh" > "$BR/board-2x.sh"
+  b2(){ ( cd "$BR/a" && bash ../board-2x.sh "$@" ) >/dev/null 2>&1; }
+  b3(){ ( cd "$BB" && PATH="$BR/shim:$PATH" bash .claude/hooks/board.sh "$@" ) >/dev/null 2>&1; }
+  ( cd "$BR" && git clone -q r.git a 2>/dev/null && cd a && git config user.email a@x && git config user.name a \
+      && git commit -q --allow-empty -m seed && git push -q origin HEAD:refs/heads/main ) >/dev/null 2>&1 \
+    && b2 init && b2 add 001 "First" && b2 add 002 "Second" && b2 claim 001 && b2 decide "D1 from 2.x" "before the update" \
+    || { echo "FAIL: FIXTURE — the 2.x clone could not create its board"; exit 1; }
+  git -C "$BR/r.git" rev-parse -q --verify refs/csk/board >/dev/null || { echo "FAIL: FIXTURE — the 2.x board is not on the remote under refs/csk/board"; exit 1; }
+  BB="$BR/b"; git clone -q "$BR/r.git" "$BB" 2>/dev/null; git -C "$BB" config user.email b@x; git -C "$BB" config user.name b
+  git archive "$OLD" start.sh VERSION claude-starter | ( cd "$BB" && tar -xf - )
+  _slog; ( cd "$BB" && bash start.sh --generic --yes --lang en && bash .claude/hooks/board.sh sync ) >"$_L" 2>&1 || _evidence "2.13.0 install + board sync in $BB" "$_L" $?
+  BGD="$(cd "$BB" && cd "$(git rev-parse --git-common-dir)" && pwd)"   # git answers relative (.git); make it absolute
+  git -C "$BB" rev-parse -q --verify refs/csk/board >/dev/null && ls "$BGD"/csk-board-* >/dev/null 2>&1 \
+    || { echo "FAIL: FIXTURE — the 2.13 install has no local 2.x board ref or cache"; exit 1; }
+  cp adopt.sh VERSION "$BB/"; cp -R kit "$BB/"
+  _slog; ( cd "$BB" && bash adopt.sh --yes ) >"$_L" 2>&1 || _evidence "adopt.sh over the 2.13 board clone in $BB" "$_L" $?
+  git -C "$BB" rev-parse -q --verify refs/crew/board >/dev/null && ! git -C "$BB" rev-parse -q --verify refs/csk/board >/dev/null \
+    && ! ls "$BGD"/csk-board-* >/dev/null 2>&1 && ls "$BGD"/crew-board-* >/dev/null 2>&1 \
+    || { echo "FAIL: the update did not move the local board ref and caches to the crew names"; exit 1; }
+  grep -q "the remote's 2.x board ref is not deleted" "$_L" || { echo "FAIL: the update did not tell the user the team must update too"; exit 1; }
+  b3 add 003 "Third" && b3 claim 002 && b3 decide "D2 from 3.0" "after the update" || { echo "FAIL: the 3.0 clone could not write the board"; exit 1; }
+  [ "$(git -C "$BR/r.git" rev-parse refs/csk/board)" = "$(git -C "$BR/r.git" rev-parse refs/crew/board 2>/dev/null)" ] \
+    || { echo "FAIL: after a 3.0 write the remote's two board refs differ — the 2.x clients do not see it"; exit 1; }
+  # the 2.x teammate keeps working: its claim of an item 3.0 holds must be REFUSED, and its own writes must reach 3.0
+  b2 add 004 "Fourth" || { echo "FAIL: FIXTURE — the 2.x clone could not keep writing"; exit 1; }
+  b2 claim 002 && { echo "FAIL: the lock does not hold across versions — 2.x claimed #002, which 3.0 holds"; exit 1; }
+  b2 claim 004 && b2 decide "D3 from 2.x" "after the other clone updated" || { echo "FAIL: FIXTURE — the 2.x clone could not keep writing"; exit 1; }
+  b3 claim 004 && { echo "FAIL: the lock does not hold across versions — 3.0 claimed #004, which 2.x holds"; exit 1; }
+  b3 sync; b3 add 005 "Fifth" || { echo "FAIL: the 3.0 clone could not write after the 2.x writes"; exit 1; }
+  for BREF in refs/crew/board refs/csk/board; do
+    BIT="$(git -C "$BR/r.git" ls-tree --name-only "$BREF" items/ | sed 's|^items/||; s|-.*||' | LC_ALL=C sort | tr '\n' ' ')"
+    BDC="$(git -C "$BR/r.git" ls-tree --name-only "$BREF" decisions/ | wc -l | tr -d ' ')"
+    [ "$BIT" = "001 002 003 004 005 " ] && [ "$BDC" = 3 ] \
+      || { echo "FAIL: a board entry is missing from $BREF: items [$BIT], decisions $BDC of 3"; exit 1; }
+  done
+  own(){ ( cd "$BB" && PATH="$BR/shim:$PATH" bash .claude/hooks/board.sh show "$1" ) 2>/dev/null | grep -m1 '^owner: ' | cut -d' ' -f2-; }
+  [ "$(own 001)" = a@x ] && [ "$(own 002)" = b@x ] && [ "$(own 004)" = a@x ] \
+    || { echo "FAIL: owners across the versions came out wrong: 001 '$(own 001)' 002 '$(own 002)' 004 '$(own 004)'"; exit 1; }
+  echo "[migrate-2.13] real v2.13.0 install → $NREN renamed ($NOLD old agent/command files) · CSK_NO_STAR=1: named by update + doctor, star still silent · CSK_NET_TIMEOUT: "no longer read" · auto-mode rules renamed (3 of 3, user rule kept, backup byte-exact) · 0 old kit names left · user agent, allow rule untouched · HANDOVER counts 1 project agent · CLAUDE.md: kit names only · 2nd update: same tree, silent · no PROOF-5 after the sweep · doctor flags a planted @agent-planner-csk · both names: warned, nothing moved, user crew- file kept · $MBL · CRLF kept ($MBCR0 → $MBCR1 CRs) · outside files untouched (../, absolute, $MBDL) · fresh project with my-helper-csk: own skill kept · board, 2.x + 3.0 clones, git without merge-tree: 5 items + 3 decisions on both refs, cross-version claims refused both ways"
+fi
 
 # ---- the two no-install doors: `add` and `studio` (pure Node, no bash) ----
 # Driven through bin/cli.js exactly as `npx crewforth …` runs it. Every tree comparison is a hash over the files'
@@ -623,8 +793,8 @@ if command -v node >/dev/null 2>&1 && node --version >/dev/null 2>&1; then
   # 1 · add security-expert in an empty dir: the agent, every inferred skill, and a record that lists what landed.
   A1="$WORK/add-1"; rm -rf "$A1"; mkdir -p "$A1"
   AOUT="$( cd "$A1" && node "$CLI" add security-expert 2>&1 )" || { echo "FAIL: add security-expert exited non-zero:"; printf '%s\n' "$AOUT"; exit 1; }
-  [ -f "$A1/.claude/agents/security-expert-csk.md" ] || { echo "FAIL: add did not place the agent"; exit 1; }
-  for sk in $DEPS; do cmp -s "$A1/.claude/skills/$sk/SKILL.md" "claude-starter/skills/$sk/SKILL.md" || { echo "FAIL: inferred skill $sk missing or different"; exit 1; }; done
+  [ -f "$A1/.claude/agents/crew-security-expert.md" ] || { echo "FAIL: add did not place the agent"; exit 1; }
+  for sk in $DEPS; do cmp -s "$A1/.claude/skills/$sk/SKILL.md" "kit/skills/$sk/SKILL.md" || { echo "FAIL: inferred skill $sk missing or different"; exit 1; }; done
   [ -n "$DEPS" ] || { echo "FAIL: FIXTURE — no skills inferred for security-expert, so the dependency case proves nothing"; exit 1; }
   RECOK="$(node -e 'const r=JSON.parse(require("fs").readFileSync(process.argv[1]+"/.claude/crewforth-added.json","utf8"));
     const fs=require("fs");const listed=r.items.flatMap(i=>i.files);const miss=listed.filter(f=>!fs.existsSync(process.argv[1]+"/"+f));
@@ -639,7 +809,7 @@ if command -v node >/dev/null 2>&1 && node --version >/dev/null 2>&1; then
   TM="$A1/.claude/skills/threat-model/SKILL.md"; printf 'local edit\n' >> "$TM"; H2="$(treehash "$A1")"
   set +e; ( cd "$A1" && node "$CLI" add security-expert >/dev/null 2>&1 ); CRC=$?; set -e
   [ "$CRC" = 1 ] && [ "$(treehash "$A1")" = "$H2" ] || { echo "FAIL: a conflicting add exited $CRC or changed the tree — the conflict check is not holding"; exit 1; }
-  ( cd "$A1" && node "$CLI" add security-expert --force >/dev/null 2>&1 ) && cmp -s "$TM" claude-starter/skills/threat-model/SKILL.md \
+  ( cd "$A1" && node "$CLI" add security-expert --force >/dev/null 2>&1 ) && cmp -s "$TM" kit/skills/threat-model/SKILL.md \
     || { echo "FAIL: add --force did not replace the differing file"; exit 1; }
   # 4 · an unknown name: exit 2, nothing written — including the valid name beside it — and a suggestion.
   A4="$WORK/add-4"; rm -rf "$A4"; mkdir -p "$A4"
@@ -650,13 +820,36 @@ if command -v node >/dev/null 2>&1 && node --version >/dev/null 2>&1; then
   A5="$WORK/add-5"; rm -rf "$A5"; mkdir -p "$A5/.claude"; printf 'stack=generic\n' > "$A5/.claude/kit.conf"; H5="$(treehash "$A5")"
   ( cd "$A5" && node "$CLI" add testing >/dev/null 2>&1 ) && [ "$(treehash "$A5")" = "$H5" ] || { echo "FAIL: add wrote into a project with the full install"; exit 1; }
   # 6 · --list covers the catalogue exactly.
-  NL="$(node "$CLI" add --list | grep -c '^  ')"; NC=$(( $(ls claude-starter/agents/*.md | wc -l) + $(ls -d claude-starter/skills/*/ | wc -l) ))
+  NL="$(node "$CLI" add --list | grep -c '^  ')"; NC=$(( $(ls kit/agents/*.md | wc -l) + $(ls -d kit/skills/*/ | wc -l) ))
   [ "$NL" = "$NC" ] || { echo "FAIL: add --list shows $NL entries, the catalogue has $NC"; exit 1; }
+  NA="$(node "$CLI" add --list | sed -n '/^Agents/,/^$/p' | grep -c '^  crew-')"; NKA="$(ls kit/agents/crew-*.md | wc -l | tr -d ' ')"
+  [ "$NA" = "$NKA" ] || { echo "FAIL: add --list names $NA agents by their crew- name, the payload has $NKA"; exit 1; }
   # 7 · with and without the suffix, the same tree.
   A7a="$WORK/add-7a"; A7b="$WORK/add-7b"; rm -rf "$A7a" "$A7b"; mkdir -p "$A7a" "$A7b"
-  ( cd "$A7a" && node "$CLI" add security-expert >/dev/null 2>&1 ); ( cd "$A7b" && node "$CLI" add security-expert-csk >/dev/null 2>&1 )
-  [ "$(treehash "$A7a")" = "$(treehash "$A7b")" ] || { echo "FAIL: 'security-expert' and 'security-expert-csk' produced different trees"; exit 1; }
-  echo "[add] security-expert + $(printf '%s\n' $DEPS | grep -c .) inferred skill(s) · record matches · rerun unchanged · conflict rc=1 untouched, --force replaces · unknown rc=2, 0 files · full install left alone · --list $NL = catalogue · suffix-free = suffixed"
+  ( cd "$A7a" && node "$CLI" add security-expert >/dev/null 2>&1 ); ( cd "$A7b" && node "$CLI" add crew-security-expert >/dev/null 2>&1 )
+  [ "$(treehash "$A7a")" = "$(treehash "$A7b")" ] || { echo "FAIL: 'security-expert' and 'crew-security-expert' produced different trees"; exit 1; }
+  # 8 · the 2.x name still resolves, to the same tree.
+  A8="$WORK/add-8"; rm -rf "$A8"; mkdir -p "$A8"; ( cd "$A8" && node "$CLI" add security-expert-csk >/dev/null 2>&1 )
+  [ "$(treehash "$A8")" = "$(treehash "$A7a")" ] || { echo "FAIL: 'security-expert-csk' (the 2.x name) did not produce the same tree as 'security-expert'"; exit 1; }
+  # 9 · a 2.x record: its -csk items move to crew- names on the next add; a user's own file in an old dir keeps it.
+  A9="$WORK/add-9"; rm -rf "$A9"; mkdir -p "$A9/.claude/agents" "$A9/.claude/skills/code-review-csk/references"
+  printf 'a\n' > "$A9/.claude/agents/planner-csk.md"; printf 's\n' > "$A9/.claude/skills/code-review-csk/SKILL.md"
+  printf 'r\n' > "$A9/.claude/skills/code-review-csk/references/panel-mode.md"
+  printf '{"version":"2.13.0","items":[{"type":"agent","name":"planner-csk","files":[".claude/agents/planner-csk.md"]},{"type":"skill","name":"code-review-csk","files":[".claude/skills/code-review-csk/SKILL.md",".claude/skills/code-review-csk/references/panel-mode.md"]}]}' > "$A9/.claude/crewforth-added.json"
+  A9OUT="$( cd "$A9" && node "$CLI" add testing 2>&1 )" || { echo "FAIL: add over a 2.x record exited non-zero:"; printf '%s\n' "$A9OUT"; exit 1; }
+  [ -f "$A9/.claude/agents/crew-planner.md" ] && [ -f "$A9/.claude/skills/crew-code-review/references/panel-mode.md" ] \
+    || { echo "FAIL: the 2.x record's items were not moved to crew- names"; exit 1; }
+  [ -z "$(find "$A9/.claude" -name '*-csk*')" ] || { echo "FAIL: old -csk paths left behind: $(find "$A9/.claude" -name '*-csk*')"; exit 1; }
+  R9="$(node -e 'const r=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));console.log(r.items.map(i=>i.name+":"+i.files.join(",")).sort().join(" "))' "$A9/.claude/crewforth-added.json")"
+  case "$R9" in *-csk*) echo "FAIL: the record still names -csk items: $R9"; exit 1 ;; esac
+  case "$R9" in *"crew-planner:.claude/agents/crew-planner.md"*) ;; *) echo "FAIL: the record does not name crew-planner: $R9"; exit 1 ;; esac
+  # the dir-kept twin: a file the record does not own keeps its old directory
+  A9b="$WORK/add-9b"; rm -rf "$A9b"; mkdir -p "$A9b/.claude/skills/code-review-csk"
+  printf 's\n' > "$A9b/.claude/skills/code-review-csk/SKILL.md"; printf 'mine\n' > "$A9b/.claude/skills/code-review-csk/my-notes.md"
+  printf '{"version":"2.13.0","items":[{"type":"skill","name":"code-review-csk","files":[".claude/skills/code-review-csk/SKILL.md"]}]}' > "$A9b/.claude/crewforth-added.json"
+  ( cd "$A9b" && node "$CLI" add testing >/dev/null 2>&1 )
+  [ -f "$A9b/.claude/skills/code-review-csk/my-notes.md" ] || { echo "FAIL: the migration removed a user's own file from an old skill dir"; exit 1; }
+  echo "[add] security-expert + $(printf '%s\n' $DEPS | grep -c .) inferred skill(s) · record matches · rerun unchanged · conflict rc=1 untouched, --force replaces · unknown rc=2, 0 files · full install left alone · --list $NL = catalogue · unprefixed = prefixed = 2.x name · 2.x record moved to crew- names, user file kept"
 
   # studio through the npm entry: the offline self-check, then the real serve probe (listen, 403 without the token,
   # 200 with it, clean exit).
@@ -665,8 +858,9 @@ if command -v node >/dev/null 2>&1 && node --version >/dev/null 2>&1; then
   node "$CLI" studio --selftest >"$WORK/studio-cli-selftest.txt" 2>&1 && grep -qE '^[0-9]+/[0-9]+ passed' "$WORK/studio-cli-selftest.txt" \
     || { echo "FAIL: crewforth studio --selftest did not run its checks:"; tail -n 20 "$WORK/studio-cli-selftest.txt"; exit 1; }
   SP2="$WORK/studio-cli-cwd"; rm -rf "$SP2"; mkdir -p "$SP2"
-  CSK_PROBE_CLI="$CLI" node packaging/studio-serve-probe.mjs "$SP2" || { echo "FAIL: the panel did not serve through crewforth studio"; exit 1; }
-  echo "[studio-cli] --selftest ok · served through bin/cli.js from an empty dir"
+  # Through the npm door, with the token under its pre-3.0 name only: CSK_STUDIO_TOKEN still works in 3.x.
+  CREW_PROBE_CLI="$CLI" CREW_PROBE_LEGACY_TOKEN=1 node packaging/studio-serve-probe.mjs "$SP2" || { echo "FAIL: the panel did not serve through crewforth studio"; exit 1; }
+  echo "[studio-cli] --selftest ok · served through bin/cli.js from an empty dir · token under the 2.x name CSK_STUDIO_TOKEN"
 
   # WITHOUT BASH: PATH is cut down to node's own directory. The twin is what makes this a measurement: in the same
   # PATH, `init` must fail for want of bash — if it does not, bash is still reachable and the pass proves nothing.
@@ -692,11 +886,11 @@ fi
 
 # ---- UPDATE: a project that ALREADY has the kit gets the panel on its next update ----
 # This is the reported bug, end to end. The project is installed from a payload with NO studio/ — the
-# shape every 2.8.0 install has — and then updated the way /update-csk drives it. The panel must ARRIVE.
+# shape every 2.8.0 install has — and then updated the way /crew-update drives it. The panel must ARRIVE.
 # Asserted in both directions: absent after the old install, present after the update. Asserting only
 # the second half would pass against an installer that had shipped it all along, i.e. prove nothing.
 UP="$WORK/update-gets-panel"; rm -rf "$UP"; mkdir -p "$UP"
-cp start.sh VERSION "$UP/"; cp -R claude-starter "$UP/"; rm -rf "$UP/claude-starter/studio" "$UP/claude-starter/commands/studio-csk.md"
+cp start.sh VERSION "$UP/"; cp -R kit "$UP/"; rm -rf "$UP/kit/studio" "$UP/kit/commands/crew-studio.md"
 _slog; ( cd "$UP" && git init -q && git config user.email t@t.t && git config user.name t \
     && git commit -q --allow-empty -m base && printf 'yes\n' | bash start.sh --generic ) >"$_L" 2>&1 || _evidence "start.sh --generic in $UP" "$_L" $?
 [ -f "$UP/.claude/VERSION" ] || { echo "FAIL: the pre-panel install did not complete"; exit 1; }
@@ -705,15 +899,15 @@ _slog; ( cd "$UP" && git init -q && git config user.email t@t.t && git config us
 # an empty directory became a full one rather than that a panel arrived where there was none.
 rmdir "$UP/.claude/studio" 2>/dev/null || true
 [ ! -e "$UP/.claude/studio" ] || { echo "FAIL: the fixture is wrong — the pre-panel install already has a panel, so the update below would prove nothing"; exit 1; }
-[ ! -e "$UP/.claude/commands/studio-csk.md" ] || { echo "FAIL: the fixture is wrong — /studio-csk is already installed"; exit 1; }
-cp adopt.sh "$UP/"; cp -R claude-starter "$UP/claude-starter"; cp VERSION "$UP/"
+[ ! -e "$UP/.claude/commands/crew-studio.md" ] || { echo "FAIL: the fixture is wrong — /crew-studio is already installed"; exit 1; }
+cp adopt.sh "$UP/"; cp -R kit "$UP/kit"; cp VERSION "$UP/"
 _slog; ( cd "$UP" && bash adopt.sh --here --yes </dev/null ) >"$_L" 2>&1 || _evidence "adopt.sh in $UP" "$_L" $?
 [ -f "$UP/.claude/studio/server/index.js" ] || { echo "FAIL: an existing kit install did NOT get the panel on update — this is the reported bug"; exit 1; }
 grep -q '"type": *"module"' "$UP/.claude/studio/package.json" || { echo "FAIL: the updated panel has no \"type\":\"module\" — it would die on first import"; exit 1; }
 [ ! -d "$UP/.claude/studio/test" ] || { echo "FAIL: the update shipped studio/test into the project"; exit 1; }
 [ -f "$UP/.claude/studio/ensure-node.sh" ] || { echo "FAIL: the update brought the panel but not the runtime finder beside it"; exit 1; }
-[ -f "$UP/.claude/commands/studio-csk.md" ] || { echo "FAIL: the update did not deliver /studio-csk"; exit 1; }
-echo "[update-gets-panel] a 2.8.0-shaped install gained .claude/studio ($(find "$UP/.claude/studio" -type f | wc -l | tr -d ' ') files) and /studio-csk on update"
+[ -f "$UP/.claude/commands/crew-studio.md" ] || { echo "FAIL: the update did not deliver /crew-studio"; exit 1; }
+echo "[update-gets-panel] a 2.8.0-shaped install gained .claude/studio ($(find "$UP/.claude/studio" -type f | wc -l | tr -d ' ') files) and /crew-studio on update"
 
 # ---- the install WIZARD: unattended runs, the .gitignore question, and what --yes may not approve ----
 # These are here rather than in the smoke-test because every one of them needs a real installer run: the
@@ -727,7 +921,7 @@ echo "[update-gets-panel] a 2.8.0-shaped install gained .claude/studio ($(find "
 # below have to cover EVERY read, which is what "no question is reached" means here.
 wiz() {                                     # $1 = label -> a fresh project with the installer staged
   local P="$WORK/wiz-$1"; rm -rf "$P"; mkdir -p "$P"
-  cp start.sh "$P/"; cp -R claude-starter "$P/"; printf '%s' "$P"
+  cp start.sh "$P/"; cp -R kit "$P/"; printf '%s' "$P"
 }
 
 # 13 · An unattended install reads NOTHING and completes. stdin is closed rather than a pipe: a pipe would
@@ -759,7 +953,7 @@ echo "[wizard] --yes installs unattended, reads nothing, and scaffolds nothing"
 # `secs` iterations of `sleep 1` and then SIGKILLs, so every path is bounded by construction.
 _bounded(){                     # $1 = seconds, rest = command; prints BLOCKED or rc=<n>
   local secs="$1"; shift
-  # THE BUDGET MUST EXCEED THE PRODUCT'S OWN. `csk_read` waits 10 s per prompt and the no-flag path reaches two
+  # THE BUDGET MUST EXCEED THE PRODUCT'S OWN. `crew_read` waits 10 s per prompt and the no-flag path reaches two
   # of them, so a 20 s bound reported BLOCKED for an installer that was about to decline correctly at ~20 s —
   # my harness's budget, not a hang. Measured directly afterwards: rc=0, "Cancelled — nothing changed". 60 s
   # leaves room for three bounded reads plus the work between them.
@@ -797,7 +991,7 @@ if [ "$(cat "$_FC/rc_open")" = BLOCKED ] && [ "$(cat "$_FC/rc_closed")" != BLOCK
   # THE PIPE SHAPE IS CLOSED, and this is a real verdict rather than a recorded state. Without --yes, an
   # open-but-empty stdin used to block forever — measured 142 here and on stock Windows, at the stack chooser
   # with no flags and one prompt later with --generic. All three bare reads are now bounded, so the installer
-  # returns and declines instead. The must-fail twin lives with the fix: removing the timeout from `csk_read`
+  # returns and declines instead. The must-fail twin lives with the fix: removing the timeout from `crew_read`
   # puts 142 back on this same fifo.
   W2C="$(wiz noyes-openempty)"
   ( cd "$W2C" && mkfifo f && exec 3<>f && _bounded 60 bash start.sh <&3 > rc; exec 3>&- ) || true
@@ -855,7 +1049,7 @@ echo "[wizard] the summary lists every .gitignore line it writes, and writes eve
 DP="$WORK/wiz-adopt-docs"; rm -rf "$DP"; mkdir -p "$DP"
 ( cd "$DP" && git init -q . && git config user.email t@e.com && git config user.name t \
   && printf '{"name":"x"}\n' > package.json && git add package.json && git commit -qm base )
-cp adopt.sh "$DP/"; cp -R claude-starter "$DP/claude-starter"; cp VERSION "$DP/"
+cp adopt.sh "$DP/"; cp -R kit "$DP/kit"; cp VERSION "$DP/"
 _slog; ( cd "$DP" && bash adopt.sh --here --yes </dev/null ) >"$_L" 2>&1 || _evidence "adopt.sh in $DP" "$_L" $?
 ( cd "$DP" && git diff --cached --name-only | grep -q '^docs/HANDOVER\.md$' ) \
   || { echo "FAIL: the adoption's own HANDOVER is not in the review diff"; exit 1; }
@@ -876,7 +1070,7 @@ echo "[wizard] docs/ is private after adopt, and the adoption's own record is st
 #     .claude/ and CLAUDE.md committable so a team can review them; private hides them. Both are asserted,
 #     because a default that silently matched the other choice would make the question decorative.
 W5="$(wiz shared)"
-_slog; ( cd "$W5" && CSK_LANG=en bash start.sh --yes --shared </dev/null ) >"$_L" 2>&1 || _evidence "start.sh in $W5" "$_L" $?
+_slog; ( cd "$W5" && CREW_LANG=en bash start.sh --yes --shared </dev/null ) >"$_L" 2>&1 || _evidence "start.sh in $W5" "$_L" $?
 for e in 'docs/' '.private-terms.txt'; do
   grep -qxF "$e" "$W5/.gitignore" || { echo "FAIL: --shared did not ignore '$e'"; exit 1; }
 done
@@ -891,10 +1085,10 @@ echo "[wizard] --shared ignores 2 entries and keeps .claude/ + CLAUDE.md committ
 #     not see that; `git check-ignore` answers the question that matters. Needs a real repo, since that is
 #     what makes check-ignore answerable at all.
 W6="$WORK/wiz-dupe"; rm -rf "$W6"; mkdir -p "$W6"
-cp start.sh "$W6/"; cp -R claude-starter "$W6/"
+cp start.sh "$W6/"; cp -R kit "$W6/"
 ( cd "$W6" && git init -q . && git config user.email t@e.com && git config user.name t )
 printf '.claude\n' > "$W6/.gitignore"                  # no trailing slash, and already effective
-_slog; ( cd "$W6" && CSK_LANG=en bash start.sh --yes </dev/null ) >"$_L" 2>&1 || _evidence "start.sh in $W6" "$_L" $?
+_slog; ( cd "$W6" && CREW_LANG=en bash start.sh --yes </dev/null ) >"$_L" 2>&1 || _evidence "start.sh in $W6" "$_L" $?
 [ "$(grep -c '^\.claude' "$W6/.gitignore")" = 1 ] \
   || { echo "FAIL: a repo already ignoring .claude got a second redundant rule ($(grep -c '^\.claude' "$W6/.gitignore"))"; exit 1; }
 echo "[wizard] an already-ignored .claude is not ignored twice (git check-ignore, not string equality)"
@@ -942,7 +1136,7 @@ echo "[wizard] the hide instruction covers docs in BOTH halves (untrack and igno
 #      returns the identical verdict. It is a non-MSYS bash reading the same tree — WSL, which the kit's own
 #      .gitattributes names and which is unmeasured by anyone here. What this case pins is narrower and fully
 #      measured: with the pin the working tree matches the blob, without it it does not.
-#      FIXTURE NOTE for anyone adding a case here: adopt.sh leaves `claude-starter/` in the project, and
+#      FIXTURE NOTE for anyone adding a case here: adopt.sh leaves `kit/` in the project, and
 #      committing that trips the kit's OWN trace scanner and floor guard (the payload contains the very
 #      expressions they block). A fixture that commits after adopt must remove the payload first or it fails
 #      for a reason that has nothing to do with what it is testing.
@@ -1010,7 +1204,7 @@ echo "[wizard] an existing eol rule is recognised, whatever its spelling, and no
 
 # 18 · A Turkish install prints no English sentence. Two detectors, because each is blind where the other sees:
 #      (a) BY NAME: every string that reaches the translator (`_mt`) with no Turkish row is appended to
-#          CSK_I18N_MISS. The first version of this case grepped English function words only, and review showed
+#          CREW_I18N_MISS. The first version of this case grepped English function words only, and review showed
 #          50 of 114 strings contain none ("Scope", "Installing:", "Security gates armed on every install:") —
 #          four deleted rows printed English and the case still said 0. A miss is now caught whatever its words.
 #      (b) BY WORDS, for a line that never goes through the translator at all (a raw echo). Double-quoted text is
@@ -1021,8 +1215,8 @@ echo "[wizard] an existing eol rule is recognised, whatever its spelling, and no
 #      the word list — otherwise a detector is broken, not the product.
 _en_words(){ sed 's/"[^"]*"//g' "$1" | grep -cwE 'the|and|is|are|to|of|with|will|your|this|not|be|has|was|for' || true; }
 _MISS="$WORK/i18n-miss.txt"; : > "$_MISS"
-_cal="$(CSK_I18N_MISS="$_MISS" bash -c "$(sed -n '/^_mt() {/,/^}/p' start.sh)"'
-  CSK_LANG=tr; _mt "zz-calibration-key-with-no-row"' 2>&1)"
+_cal="$(CREW_I18N_MISS="$_MISS" bash -c "$(sed -n '/^_mt() {/,/^}/p' start.sh)"'
+  CREW_LANG=tr; _mt "zz-calibration-key-with-no-row"' 2>&1)"
 grep -qx 'zz-calibration-key-with-no-row' "$_MISS" \
   || { echo "FAIL: FIXTURE — _mt did not record a key with no row (${_cal:-no output}); the miss detector is dead"; exit 1; }
 : > "$_MISS"
@@ -1030,7 +1224,7 @@ for _shape in "dotnet|evet\n" "generic|evet\n"; do
   _stk="${_shape%%|*}"; _inp="${_shape#*|}"
   for _lg in tr en; do
     W18="$(wiz "lang-$_stk-$_lg")"
-    _slog; ( cd "$W18" && printf "$_inp" | CSK_I18N_MISS="$_MISS" NO_COLOR=1 bash start.sh "--$_stk" --lang "$_lg" ) >"$_L" 2>&1 \
+    _slog; ( cd "$W18" && printf "$_inp" | CREW_I18N_MISS="$_MISS" NO_COLOR=1 bash start.sh "--$_stk" --lang "$_lg" ) >"$_L" 2>&1 \
       || _evidence "start.sh --lang $_lg in $W18" "$_L" $?
     cp "$_L" "$W18/out-$_lg.txt"
   done
@@ -1048,8 +1242,8 @@ for _lg in tr en; do
       && printf '{"name":"x"}\n' > package.json && git add -A && git commit -qm init >/dev/null 2>&1 )
   : > "$W18a/out.txt"
   for _pass in 1 2; do
-    cp adopt.sh VERSION "$W18a/"; cp -R claude-starter "$W18a/"
-    _slog; ( cd "$W18a" && CSK_I18N_MISS="$_MISS" NO_COLOR=1 bash adopt.sh --lang "$_lg" --yes </dev/null ) >"$_L" 2>&1 \
+    cp adopt.sh VERSION "$W18a/"; cp -R kit "$W18a/"
+    _slog; ( cd "$W18a" && CREW_I18N_MISS="$_MISS" NO_COLOR=1 bash adopt.sh --lang "$_lg" --yes </dev/null ) >"$_L" 2>&1 \
       || _evidence "adopt.sh --lang $_lg (pass $_pass) in $W18a" "$_L" $?
     cat "$_L" >> "$W18a/out.txt"
   done

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Grouped (by-stage sector) agent<->skill network, dark premium — Claude Starter Kit README.
+# Grouped (by-stage sector) agent<->skill network, dark premium — Crewforth README.
 import math, html
 
 CX, CY = 650, 690
@@ -12,36 +12,36 @@ STAGE = {"plan":"#5b8cff","build":"#34d17f","ops":"#26c6e6","audit":"#ff9040",
          "close":"#a874f5","session":"#94a3c8","core":"#c79bff"}
 # each AGENT its own distinct colour (shade within its stage hue) so skills+edges are traceable
 AGENT_COLOR = {
- "planner-csk":"#5b8cff",                                                     # plan · blue
- "backend-expert-csk":"#35c874","frontend-expert-csk":"#84e6b0","database-expert-csk":"#1e9b57",  # build · green shades
- "devops-expert-csk":"#26c6e6",                                               # ops · cyan
- "security-expert-csk":"#ff8a4d","privacy-agent-csk":"#ffbc8a","test-expert-csk":"#db5f1c","performance-expert-csk":"#f2a65a",       # audit · orange shades
- "review-agent-csk":"#b07cf6","commit-agent-csk":"#8659ee",                   # close · violet shades
- "session-manager-csk":"#9aa7cc"}                                             # session · slate
+ "crew-planner":"#5b8cff",                                                     # plan · blue
+ "crew-backend-expert":"#35c874","crew-frontend-expert":"#84e6b0","crew-database-expert":"#1e9b57",  # build · green shades
+ "crew-devops-expert":"#26c6e6",                                               # ops · cyan
+ "crew-security-expert":"#ff8a4d","crew-privacy-agent":"#ffbc8a","crew-test-expert":"#db5f1c","crew-performance-expert":"#f2a65a",       # audit · orange shades
+ "crew-review-agent":"#b07cf6","crew-commit-agent":"#8659ee",                   # close · violet shades
+ "crew-session-manager":"#9aa7cc"}                                             # session · slate
 STAGE_NAME = {"plan":"PLAN","build":"BUILD","ops":"OPS","audit":"AUDIT","close":"CLOSE","session":"SESSION","core":"MAIN-THREAD"}
 ORDER = ["plan","build","ops","audit","close","session","core"]
 
-AGENTS = [("planner-csk","plan"),("backend-expert-csk","build"),("frontend-expert-csk","build"),
-    ("database-expert-csk","build"),("devops-expert-csk","ops"),("security-expert-csk","audit"),
-    ("privacy-agent-csk","audit"),("test-expert-csk","audit"),("performance-expert-csk","audit"),("review-agent-csk","close"),
-    ("commit-agent-csk","close"),("session-manager-csk","session")]
-SHORT = {"planner-csk":"planner","backend-expert-csk":"backend","frontend-expert-csk":"frontend",
-    "database-expert-csk":"database","devops-expert-csk":"devops","security-expert-csk":"security",
-    "privacy-agent-csk":"privacy","performance-expert-csk":"perf","test-expert-csk":"test","review-agent-csk":"review",
-    "commit-agent-csk":"commit","session-manager-csk":"session"}
+AGENTS = [("crew-planner","plan"),("crew-backend-expert","build"),("crew-frontend-expert","build"),
+    ("crew-database-expert","build"),("crew-devops-expert","ops"),("crew-security-expert","audit"),
+    ("crew-privacy-agent","audit"),("crew-test-expert","audit"),("crew-performance-expert","audit"),("crew-review-agent","close"),
+    ("crew-commit-agent","close"),("crew-session-manager","session")]
+SHORT = {"crew-planner":"planner","crew-backend-expert":"backend","crew-frontend-expert":"frontend",
+    "crew-database-expert":"database","crew-devops-expert":"devops","crew-security-expert":"security",
+    "crew-privacy-agent":"privacy","crew-performance-expert":"perf","crew-test-expert":"test","crew-review-agent":"review",
+    "crew-commit-agent":"commit","crew-session-manager":"session"}
 EDGES = {
- "backend-expert-csk":"api-design backend-architecture confidence-check dependency-audit i18n-integrity observability performance sonarqube-check",
- "commit-agent-csk":"commit-message release",
- "database-expert-csk":"backend-architecture confidence-check db-migration sonarqube-check",
- "devops-expert-csk":"adr ci-pipeline dependency-audit dependency-upgrade docs-writer incident-runbook observability performance release trace-scan deploy",
- "frontend-expert-csk":"a11y confidence-check dependency-audit frontend frontend-design frontend-rn-expo i18n-integrity observability performance",
- "planner-csk":"adr backend-architecture brainstorm spec-planning",
- "privacy-agent-csk":"privacy-compliance",
- "review-agent-csk":"code-review docs-writer",
- "security-expert-csk":"red-team security-scan sonarqube-check threat-model",
- "session-manager-csk":"handoff token-budget",
- "test-expert-csk":"testing",
- "performance-expert-csk":"performance"}
+ "crew-backend-expert":"api-design backend-architecture confidence-check dependency-audit i18n-integrity observability performance sonarqube-check",
+ "crew-commit-agent":"commit-message release",
+ "crew-database-expert":"backend-architecture confidence-check db-migration sonarqube-check",
+ "crew-devops-expert":"adr ci-pipeline dependency-audit dependency-upgrade docs-writer incident-runbook observability performance release trace-scan deploy",
+ "crew-frontend-expert":"a11y confidence-check dependency-audit frontend frontend-design frontend-rn-expo i18n-integrity observability performance",
+ "crew-planner":"adr backend-architecture brainstorm spec-planning",
+ "crew-privacy-agent":"privacy-compliance",
+ "crew-review-agent":"code-review docs-writer",
+ "crew-security-expert":"red-team security-scan sonarqube-check threat-model",
+ "crew-session-manager":"handoff token-budget",
+ "crew-test-expert":"testing",
+ "crew-performance-expert":"performance"}
 # Skills no single agent owns: routed from a command and the discipline's trigger map rather than from an
 # agent body, so they have no `applies` edge to draw and sit in the centre instead.
 CORE_SKILLS = ["systematic-debugging","iterate","reflect","worktree","mcp-builder","eval-grader","teamboard",
@@ -80,7 +80,7 @@ def mark(tx, ty, scale):
 # Wordmark: the icon sits to the LEFT of the title, and the pair is centred as one block. The text width is
 # estimated from the glyph count because there is no font metric available here; a few pixels of asymmetry in a
 # title is invisible, whereas a hard-coded x would break the moment the font size changes.
-TITLE = "Claude Starter Kit"
+TITLE = "Crewforth"
 def wordmark(cx, y, fs, icon=42, gap=16):
     tw = len(TITLE.replace(" ","")) * fs*0.555 + TITLE.count(" ") * fs*0.28 - len(TITLE)*0.6
     dx = (icon+gap)/2.0
@@ -148,7 +148,7 @@ def epath(x1,y1,x2,y2):
 
 def build(subtitle):
     P=[]
-    P.append(f'<svg viewBox="0 0 {W} {H}" xmlns="http://www.w3.org/2000/svg" font-family="\'Segoe UI\',system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="Claude Starter Kit — agent/skill network">')
+    P.append(f'<svg viewBox="0 0 {W} {H}" xmlns="http://www.w3.org/2000/svg" font-family="\'Segoe UI\',system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="Crewforth — agent/skill network">')
     P.append('<defs>')
     P.append('<radialGradient id="bg" cx="50%" cy="48%" r="72%"><stop offset="0" stop-color="#101a34"/><stop offset="1" stop-color="#05070f"/></radialGradient>')
     P.append('<filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="3.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>')
@@ -184,7 +184,7 @@ def build(subtitle):
         P.append(f'<rect x="{x-w/2:.1f}" y="{y-h/2:.1f}" width="{w:.1f}" height="{h}" rx="13.5" fill="#0f1830" stroke="{col}" stroke-width="1.6" filter="url(#glow)"/>')
         P.append(f'<text x="{x:.1f}" y="{y+4.2:.1f}" text-anchor="middle" font-size="12.5" font-weight="600" fill="#eaf0ff">{html.escape(s)}</text>')
     # agent nodes
-    # The node LABEL is the short name — twelve full "-csk" names would not fit inside a 35px circle. The full
+    # The node LABEL is the short name — twelve full "crew-" names would not fit inside a 35px circle. The full
     # name goes in a <title>, which a screen reader announces on the node and a gate can grep for. Without it the
     # picture never contains the string it is a picture of, so nothing downstream can check it is complete.
     for nm,st in AGENTS:
@@ -208,18 +208,18 @@ def build(subtitle):
 # Pipeline diagram (orchestration-*.svg) — the SEQUENCE the network diagram cannot show at a glance.
 # It lives in this file, not its own, because both pictures must draw from ONE agent list and ONE colour map:
 # an agent that is green in the network and orange in the pipeline is two pictures of two different kits. The
-# hand-drawn version this replaces had eleven agents in it — performance-expert-csk was simply never added, and
+# hand-drawn version this replaces had eleven agents in it — crew-performance-expert was simply never added, and
 # nothing compared the picture to the payload. Now the columns ARE the agent list.
 PIPE = [
- ("1","UNDERSTAND","ANLA",    "#5b8cff", ["planner-csk"],
+ ("1","UNDERSTAND","ANLA",    "#5b8cff", ["crew-planner"],
   "ambiguous scope → a plan", "belirsiz kapsam → plan"),
- ("2","PRODUCE","ÜRET",       "#34d17f", ["backend-expert-csk","database-expert-csk","frontend-expert-csk","devops-expert-csk"],
+ ("2","PRODUCE","ÜRET",       "#34d17f", ["crew-backend-expert","crew-database-expert","crew-frontend-expert","crew-devops-expert"],
   "the domain owner builds", "alanın sahibi üretir"),
- ("3","AUDIT","DENETLE",      "#ff9040", ["security-expert-csk","privacy-agent-csk","test-expert-csk","performance-expert-csk"],
+ ("3","AUDIT","DENETLE",      "#ff9040", ["crew-security-expert","crew-privacy-agent","crew-test-expert","crew-performance-expert"],
   "security review is mandatory", "güvenlik incelemesi zorunlu"),
- ("4","CLOSE","KAPAT",        "#a874f5", ["review-agent-csk","commit-agent-csk"],
+ ("4","CLOSE","KAPAT",        "#a874f5", ["crew-review-agent","crew-commit-agent"],
   "DoD gate · waits for your approval", "Bitti kapısı · onayınızı bekler"),
- ("5","HAND OFF","DEVRET",    "#94a3c8", ["session-manager-csk"],
+ ("5","HAND OFF","DEVRET",    "#94a3c8", ["crew-session-manager"],
   "context fills → hand off, /clear", "bağlam doldu → devret, /clear"),
 ]
 # Fail loudly rather than draw a wrong picture: a new agent must be placed in a stage, not silently dropped.
@@ -238,7 +238,7 @@ PW, PH = 900, 424
 def build_pipeline(subtitle, tr=False):
     cols=len(PIPE); m=40; usable=PW-2*m; cw=usable/cols
     P=[]
-    P.append(f'<svg viewBox="0 0 {PW} {PH}" xmlns="http://www.w3.org/2000/svg" font-family="\'Segoe UI\',system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="Claude Starter Kit — five stages">')
+    P.append(f'<svg viewBox="0 0 {PW} {PH}" xmlns="http://www.w3.org/2000/svg" font-family="\'Segoe UI\',system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="Crewforth — five stages">')
     P.append('<defs>')
     P.append('<radialGradient id="bg" cx="50%" cy="42%" r="78%"><stop offset="0" stop-color="#101a34"/><stop offset="1" stop-color="#05070f"/></radialGradient>')
     P.append('<filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="3.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>')
@@ -274,7 +274,7 @@ HANDOVER = [
  ("Detect",     "Tespit",   "",              "",             "#5b8cff"),
  ("Propose",    "Öneri",    "7 decisions",   "7 karar",      "#5b8cff"),
  ("Handover",   "Dal aç",   "branch",        "devir",        "#a874f5"),
- ("Coexist",    "Birlikte", "-csk agents",   "-csk ajan",    "#34d17f"),
+ ("Coexist",    "Birlikte", "crew- agents",   "crew- ajan",    "#34d17f"),
  ("Discipline", "Disiplin", "+ settings",    "+ ayarlar",    "#34d17f"),
  ("Proof",      "Kanıt",    "gates ready",   "kapılar hazır","#ff9040"),
  ("HANDOVER.md","HANDOVER.md","+ ADR",       "+ ADR",        "#26c6e6"),
@@ -286,7 +286,7 @@ def build_handover(tr=False):
     n=len(HANDOVER); m=20; gap=12
     bw=(HW-2*m-gap*(n-1))/n
     P=[]
-    P.append(f'<svg viewBox="0 0 {HW} {HH}" xmlns="http://www.w3.org/2000/svg" font-family="\'Segoe UI\',system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="Claude Starter Kit — handover steps">')
+    P.append(f'<svg viewBox="0 0 {HW} {HH}" xmlns="http://www.w3.org/2000/svg" font-family="\'Segoe UI\',system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="Crewforth — handover steps">')
     P.append('<defs>')
     P.append('<linearGradient id="hbg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#101a34"/><stop offset="1" stop-color="#070b18"/></linearGradient>')
     P.append('<filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>')
@@ -318,7 +318,7 @@ def build_handover(tr=False):
 # exists — so it puts both claims in the same second and both answers side by side.
 BW_, BH_ = 1000, 276
 def build_board(tr=False):
-    P=[f'<svg viewBox="0 0 {BW_} {BH_}" xmlns="http://www.w3.org/2000/svg" font-family="\'Segoe UI\',system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="Claude Starter Kit — the board claim race">']
+    P=[f'<svg viewBox="0 0 {BW_} {BH_}" xmlns="http://www.w3.org/2000/svg" font-family="\'Segoe UI\',system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="Crewforth — the board claim race">']
     P.append('<defs>')
     P.append('<linearGradient id="bbg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#101a34"/><stop offset="1" stop-color="#070b18"/></linearGradient>')
     P.append('<filter id="bglow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>')
@@ -347,15 +347,15 @@ def build_board(tr=False):
     RX, RW = 596, 380
     Y1, Y2, CH_ = 52, 152, 78
 
-    card(LX, Y1, LW, CH_, "#5b8cff", "ali",  ["/board-csk", "claim #1"])
-    card(LX, Y2, LW, CH_, "#a874f5", "ayşe" if tr else "ayse", ["/board-csk", "claim #1"])
+    card(LX, Y1, LW, CH_, "#5b8cff", "ali",  ["/crew-board", "claim #1"])
+    card(LX, Y2, LW, CH_, "#a874f5", "ayşe" if tr else "ayse", ["/crew-board", "claim #1"])
 
     lab = "push" if not tr else "push"
     arrow(LX+LW, Y1+CH_/2, CX, lab, "#5b8cff")
     arrow(LX+LW, Y2+CH_/2, CX, lab, "#a874f5")
 
     P.append(f'<rect x="{CX}" y="{Y1}" width="{CW}" height="{Y2+CH_-Y1}" rx="15" fill="#0d1526" stroke="#26c6e6" stroke-width="2" filter="url(#bglow)"/>')
-    P.append(f'<text x="{CX+CW/2}" y="{Y1+40}" text-anchor="middle" font-size="14" font-weight="800" fill="#eaf0ff" font-family="ui-monospace,Menlo,monospace">refs/csk/board</text>')
+    P.append(f'<text x="{CX+CW/2}" y="{Y1+40}" text-anchor="middle" font-size="14" font-weight="800" fill="#eaf0ff" font-family="ui-monospace,Menlo,monospace">refs/crew/board</text>')
     t1 = "yalnız ileri sarım" if tr else "fast-forward only"
     t2 = "sunucu yok · token yok" if tr else "no server · no token"
     t3 = "git'in kendi kuralı" if tr else "git's own rule decides"
@@ -389,16 +389,16 @@ FLOW = [
  # Both the command label AND both body lines are per-language: an earlier version shared one label field, and
  # the English diagram shipped reading "uzman ajanlar". Lines are kept short enough to fit the box at the width
  # below — a label that overflows its box is worse than no label, because it renders on top of the border.
- ("/plan-csk",     "/plan-csk",     "#5b8cff", "belirsiz kapsam", "ambiguous scope",   "planlamaya gider",  "goes to planning"),
+ ("/crew-plan",     "/crew-plan",     "#5b8cff", "belirsiz kapsam", "ambiguous scope",   "planlamaya gider",  "goes to planning"),
  ("uzman ajanlar", "expert agents", "#34d17f", "alanın sahibi",   "the domain owner",  "işi yapar",         "does the work"),
- ("/review-csk",   "/review-csk",   "#ff9040", "güvenlik · kalite","security · quality","· test denetimi",  "· test audit"),
- ("/ship-csk",     "/ship-csk",     "#a874f5", "Bitti Tanımı",    "Definition of Done","onayınızı bekler",  "waits for approval"),
- ("/handoff-csk",  "/handoff-csk",  "#94a3c8", "bağlam doldu",    "context is full",   "devret, /clear",    "hand off, /clear"),
+ ("/crew-review",   "/crew-review",   "#ff9040", "güvenlik · kalite","security · quality","· test denetimi",  "· test audit"),
+ ("/crew-ship",     "/crew-ship",     "#a874f5", "Bitti Tanımı",    "Definition of Done","onayınızı bekler",  "waits for approval"),
+ ("/crew-handoff",  "/crew-handoff",  "#94a3c8", "bağlam doldu",    "context is full",   "devret, /clear",    "hand off, /clear"),
 ]
 FW, FH = 960, 232
 def build_flow(tr=False):
     n=len(FLOW); m=26; gap=10; bw=(FW-2*m-gap*(n-1))/n
-    P=[f'<svg viewBox="0 0 {FW} {FH}" xmlns="http://www.w3.org/2000/svg" font-family="\'Segoe UI\',system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="Claude Starter Kit — command flow">']
+    P=[f'<svg viewBox="0 0 {FW} {FH}" xmlns="http://www.w3.org/2000/svg" font-family="\'Segoe UI\',system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="Crewforth — command flow">']
     P.append('<defs><linearGradient id="fbg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#101a34"/><stop offset="1" stop-color="#070b18"/></linearGradient>')
     P.append('<filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>')
     P.append(f'<rect width="{FW}" height="{FH}" fill="url(#fbg)"/>')

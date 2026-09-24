@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
-// Runner for the Claude Starter Kit. The kit is a set of bash scripts (start.sh / adopt.sh)
-// plus the claude-starter/ payload, all bundled in this npm package. This wrapper stages the
+// Runner for the Crewforth. The kit is a set of bash scripts (start.sh / adopt.sh)
+// plus the kit/ payload, all bundled in this npm package. This wrapper stages the
 // payload in a temp dir and runs the requested script with the user's project as the CWD, so
 // the script's self-cleanup only ever removes the temp copies — never the package or the CWD.
 
@@ -15,16 +15,16 @@ const argv = process.argv.slice(2);
 const sub = argv[0];
 
 if (sub === '--help' || sub === '-h' || sub === 'help') {
-  console.log(`Claude Starter Kit
+  console.log(`Crewforth
 
 Usage:
-  npx @byerlikaya/claude-starter-kit [init] [--private|--shared] [--yes]
+  npx crewforth [init] [--private|--shared] [--yes]
       Set up the kit in a fresh project (start.sh wizard). Every install ships the whole kit and
       is stack-agnostic: the stack is recorded per project in CLAUDE.md ## Stack.
       (--dotnet was removed in 3.0; it is still accepted, warns, and installs the same kit.)
-  npx @byerlikaya/claude-starter-kit adopt
+  npx crewforth adopt
       Hand the kit over onto an existing project (adopt.sh).
-  npx @byerlikaya/claude-starter-kit@latest update
+  npx crewforth@latest update
       Refresh a project that already has the kit. Alias of 'adopt': it reads .claude/kit.conf,
       migrates a pre-3.0 .NET install (its pattern skill stays, as a project skill), and
       restores anything missing. Your CLAUDE.md is never touched.
@@ -35,7 +35,7 @@ Usage:
       Copy one agent or skill (and the skills an agent uses) into ./.claude — not the full install.
       --list shows the catalogue; --force replaces a file that differs; --no-deps adds the agent alone.
 
-  npx @byerlikaya/claude-starter-kit --version
+  npx crewforth --version
       Print the kit version and exit.
 
 Run any of them at the root of your target project.
@@ -61,12 +61,15 @@ if (sub === '--version' || sub === '-v') {
 // Paths are built from CATALOGUE names only. A name the user typed is looked up in the catalogue and never used as a
 // path segment itself, so `..`, an absolute path or a separator cannot reach the file system.
 
-// The one place the agent suffix is spelled. Phase 5 renames it; a user's `add security-expert` must not change.
-const AGENT_SUFFIX = '-csk';
+// The one place the component prefix is spelled. The user types the bare name (`add security-expert`); the
+// prefixed name (`crew-security-expert`) and the pre-3.0 suffixed one (`security-expert-csk`) resolve to the same entry.
+const AGENT_PREFIX = 'crew-';
+const LEGACY_SUFFIX = '-csk';   // 2.x names, accepted on input only
+const bare = (n) => (n.startsWith(AGENT_PREFIX) ? n.slice(AGENT_PREFIX.length) : n);
 const NAME_RE = /^[a-z0-9][a-z0-9-]*$/;
 const RECORD = 'crewforth-added.json';
 
-function payloadDir(pkgDir) { return path.join(pkgDir, 'claude-starter'); }
+function payloadDir(pkgDir) { return path.join(pkgDir, 'kit'); }
 
 function catalogue(pkgDir) {
   const root = payloadDir(pkgDir);
@@ -81,14 +84,16 @@ function catalogue(pkgDir) {
   return { root, agents, skills };
 }
 
-// Resolve what the user typed to a catalogue entry. Order: agent `<name><suffix>`, skill `<name>`, skill
-// `<name><suffix>` (a few skills carry the suffix too). A typed suffix is accepted and stripped first.
+// Resolve what the user typed to a catalogue entry. A typed prefix (`crew-x`) or legacy suffix (`x-csk`) is stripped
+// first; then: agent `crew-<name>`, skill `<name>`, skill `crew-<name>` (the code-review skill carries the prefix).
 function resolveName(cat, typed) {
   if (typeof typed !== 'string' || !NAME_RE.test(typed)) return null;
-  const base = typed.endsWith(AGENT_SUFFIX) ? typed.slice(0, -AGENT_SUFFIX.length) : typed;
-  if (cat.agents.includes(base + AGENT_SUFFIX)) return { type: 'agent', name: base + AGENT_SUFFIX };
+  let base = typed.endsWith(LEGACY_SUFFIX) ? typed.slice(0, -LEGACY_SUFFIX.length) : typed;
+  base = bare(base);
+  if (!base) return null;
+  if (cat.agents.includes(AGENT_PREFIX + base)) return { type: 'agent', name: AGENT_PREFIX + base };
   if (cat.skills.includes(base)) return { type: 'skill', name: base };
-  if (cat.skills.includes(base + AGENT_SUFFIX)) return { type: 'skill', name: base + AGENT_SUFFIX };
+  if (cat.skills.includes(AGENT_PREFIX + base)) return { type: 'skill', name: AGENT_PREFIX + base };
   return null;
 }
 
@@ -121,7 +126,7 @@ function distance(a, b) {
   return d[a.length][b.length];
 }
 function suggest(cat, typed) {
-  const shown = [...cat.agents.map((a) => a.slice(0, -AGENT_SUFFIX.length)), ...cat.skills];
+  const shown = [...cat.agents.map(bare), ...cat.skills];
   const t = String(typed).toLowerCase();
   return shown.map((n) => [n, distance(t, n)]).sort((x, y) => x[1] - y[1] || x[0].localeCompare(y[0])).slice(0, 3).map((x) => x[0]);
 }
@@ -181,13 +186,57 @@ function assertDirsOrAbsent(projectRoot, dir) {
   }
 }
 
+// The 3.0 name migration for projects that used `add` rather than the full install: every record item still named
+// <x>-csk (a 2.x add) moves to its crew- name — files included — and the record follows. Same rule as the updater:
+// move, never delete; if the new name already exists nothing moves and the user is told. Paths come from the record
+// and are rewritten only in the component segment, then checked like every other write.
+function removeEmptyDirs(dir) {
+  let entries;
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (_) { return; }
+  for (const e of entries) if (e.isDirectory() && !e.isSymbolicLink()) removeEmptyDirs(path.join(dir, e.name));
+  try { fs.rmdirSync(dir); } catch (_) { /* not empty — something of the user's is in it */ }
+}
+
+function migrateAdded(projectRoot, cat, log, err) {
+  const recFile = path.join(projectRoot, '.claude', RECORD);
+  let rec;
+  try { rec = JSON.parse(fs.readFileSync(recFile, 'utf8')); } catch (_) { return 0; }
+  if (!rec || typeof rec !== 'object' || !Array.isArray(rec.items)) return 0;
+  let changed = 0;
+  for (const it of rec.items) {
+    if (!it || typeof it.name !== 'string' || !it.name.endsWith(LEGACY_SUFFIX)) continue;
+    const r = resolveName(cat, it.name);
+    if (!r || r.type !== it.type) continue;
+    const oldSeg = it.type === 'agent' ? `agents/${it.name}.md` : `skills/${it.name}/`;
+    const newSeg = it.type === 'agent' ? `agents/${r.name}.md` : `skills/${r.name}/`;
+    const files = Array.isArray(it.files) ? it.files : [];
+    const moves = files.map((f) => ({ from: f, to: String(f).replace(oldSeg, newSeg) }));
+    const clash = moves.filter((m) => m.to !== m.from && fs.existsSync(path.join(projectRoot, m.to)));
+    if (clash.length) { err(`add: ${it.name} → ${r.name}: both names exist (${clash[0].to}) — nothing moved; keep one`); continue; }
+    for (const m of moves) {
+      const src = path.join(projectRoot, m.from); const dst = path.join(projectRoot, m.to);
+      if (m.to === m.from || !fs.existsSync(src)) continue;
+      assertSafeTarget(projectRoot, src); assertSafeTarget(projectRoot, dst);
+      fs.mkdirSync(path.dirname(dst), { recursive: true });
+      fs.renameSync(src, dst);
+    }
+    // An emptied old skill directory goes too, deepest first; a directory still holding a user's own file stays.
+    if (it.type === 'skill') removeEmptyDirs(path.join(projectRoot, '.claude', 'skills', it.name));
+    // Moved, not upgraded: the files still hold the content of the version that added them.
+    log(`3.0 rename: ${it.name} → ${r.name} (content from ${rec.version || '2.x'}; \`npx crewforth add ${r.name} --force\` updates it)`);
+    it.name = r.name; it.files = moves.map((m) => m.to); changed += 1;
+  }
+  if (changed) fs.writeFileSync(recFile, `${JSON.stringify(rec, null, 2)}\n`);
+  return changed;
+}
+
 function listCommand(pkgDir, log) {
   const cat = catalogue(pkgDir);
-  log(`Agents (${cat.agents.length}) — npx crewforth add <name>`);
-  for (const a of cat.agents) log(`  ${a.slice(0, -AGENT_SUFFIX.length).padEnd(22)} ${firstSentence(path.join(cat.root, 'agents', `${a}.md`))}`);
+  log(`Agents (${cat.agents.length}) — npx crewforth add <name>  (the crew- prefix is optional when you type it)`);
+  for (const a of cat.agents) log(`  ${a.padEnd(24)} ${firstSentence(path.join(cat.root, 'agents', `${a}.md`))}`);
   log('');
   log(`Skills (${cat.skills.length})`);
-  for (const s of cat.skills) log(`  ${s.padEnd(22)} ${firstSentence(path.join(cat.root, 'skills', s, 'SKILL.md'))}`);
+  for (const s of cat.skills) log(`  ${s.padEnd(24)} ${firstSentence(path.join(cat.root, 'skills', s, 'SKILL.md'))}`);
   return 0;
 }
 
@@ -216,7 +265,7 @@ function addCommand(pkgDir, args, opts = {}) {
   }
 
   const cat = catalogue(pkgDir);
-  // All or nothing: every name must resolve before anything is planned.
+  // All or nothing: every name must resolve before anything is planned — or migrated.
   const resolved = []; const unknown = [];
   for (const n of names) { const r = resolveName(cat, n); if (r) resolved.push(r); else unknown.push(n); }
   if (unknown.length) {
@@ -224,6 +273,7 @@ function addCommand(pkgDir, args, opts = {}) {
     err('Nothing was written.');
     return 2;
   }
+  const migrated = migrateAdded(projectRoot, cat, log, err);
 
   // Expand agents into their skills; keep a stable, de-duplicated order.
   const items = []; const pairs = new Set();
@@ -233,7 +283,7 @@ function addCommand(pkgDir, args, opts = {}) {
     if (r.type !== 'agent') continue;
     const text = fs.readFileSync(path.join(cat.root, 'agents', `${r.name}.md`), 'utf8');
     const deps = noDeps ? [] : inferSkills(text, cat.skills);
-    if (deps.length) log(`${r.name.slice(0, -AGENT_SUFFIX.length)} uses ${deps.length} skill(s), adding them too: ${deps.join(', ')}`);
+    if (deps.length) log(`${bare(r.name)} uses ${deps.length} skill(s), adding them too: ${deps.join(', ')}`);
     for (const d of deps) push({ type: 'skill', name: d });
     for (const p of pairedAgents(text, cat.agents, r.name)) pairs.add(p);
   }
@@ -258,7 +308,7 @@ function addCommand(pkgDir, args, opts = {}) {
   const conflicts = plan.filter((p) => p.state === 'differs');
   if (conflicts.length && !force) {
     for (const c of conflicts) err(`add: ${shown(projectRoot, c.dst)} exists with different content — not overwritten (use --force to replace it)`);
-    err('Nothing was written.');
+    err(migrated ? 'Nothing was added (only the 3.0 renames above were made).' : 'Nothing was written.');
     return 1;
   }
 
@@ -304,7 +354,7 @@ function addCommand(pkgDir, args, opts = {}) {
 
   for (const it of items) log(`  ${it.type === 'agent' ? 'agent' : 'skill'}  ${it.name}`);
   log(wrote ? `${wrote} file(s) written${same ? `, ${same} already up to date` : ''}.` : `Already up to date — ${same} file(s) unchanged.`);
-  if (pairs.size) log(`Works well with: ${[...pairs].sort().map((a) => a.slice(0, -AGENT_SUFFIX.length)).join(', ')} (not installed — add them the same way).`);
+  if (pairs.size) log(`Works well with: ${[...pairs].sort().map(bare).join(', ')} (not installed — add them the same way).`);
   log("Added the agent's instructions. The gates (hooks, commit checks) come with the full install: `npx crewforth init`.");
   return 0;
 }
@@ -329,7 +379,7 @@ if (sub === 'studio') {
   const pass = rest.filter((a) => a !== '--no-open');
   // --open is the default; not added to an offline or informational run.
   if (!noOpen && !pass.some((a) => ['--open', '-o', '--selftest', '--help', '-h'].includes(a))) pass.push('--open');
-  const entry = path.join(pkgDir, 'claude-starter', 'studio', 'server', 'index.js');
+  const entry = path.join(pkgDir, 'kit', 'studio', 'server', 'index.js');
   process.argv = [process.argv[0], entry, ...pass];
   import(require('url').pathToFileURL(entry).href).catch((e) => {
     console.error(`crewforth studio: ${e && e.message ? e.message : e}`);
@@ -382,9 +432,9 @@ if (probe.error) {
 const realpath = (p) => { try { return fs.realpathSync.native(p); } catch (_) { return p; } };
 
 // Stage the bundled payload in a temp dir so the script's self-cleanup is harmless.
-const stage = fs.mkdtempSync(path.join(realpath(os.tmpdir()), 'claude-starter-kit-'));
+const stage = fs.mkdtempSync(path.join(realpath(os.tmpdir()), 'crewforth-'));
 try {
-  for (const item of [script, 'claude-starter', 'VERSION']) {
+  for (const item of [script, 'kit', 'VERSION']) {
     const src = path.join(pkgDir, item);
     if (fs.existsSync(src)) fs.cpSync(src, path.join(stage, item), { recursive: true });
   }
@@ -392,7 +442,7 @@ try {
   let res;
   if (process.platform !== 'win32') {
     // macOS / Linux: run the staged script directly. cwd = the user's project so it installs there;
-    // $0 resolves to the stage so the payload (claude-starter/) is found next to it. No path munging —
+    // $0 resolves to the stage so the payload (kit/) is found next to it. No path munging —
     // a backslash is a legal Unix filename char, and rewriting it would corrupt real paths.
     res = spawnSync(BASH, [path.join(stage, script), ...passArgs], {
       stdio: 'inherit',

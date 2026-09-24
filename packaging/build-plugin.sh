@@ -5,10 +5,10 @@
 # trace/secret/bloat scan) — those are wired by core.hooksPath, which only the full install (start.sh / adopt.sh)
 # can set. So a plugin user gets the Claude Code gates (commit/push approval, destructive-op & write guards,
 # context measurement, session rehydration) but the commit-time trace scan still needs the full install.
-# Single source of truth stays claude-starter/; this regenerates plugin/ from it.
+# Single source of truth stays kit/; this regenerates plugin/ from it.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SRC="$ROOT/claude-starter"
+SRC="$ROOT/kit"
 OUT="$ROOT/plugin"
 
 rm -rf "$OUT"
@@ -123,20 +123,20 @@ VERSION="$(cat "$ROOT/VERSION")"
 cat > "$OUT/.claude-plugin/plugin.json" <<JSON
 {
   "\$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
-  "name": "claude-starter-kit",
-  "displayName": "Claude Starter Kit",
-  "description": "Agentic Working Kit — disciplined agents, skills, slash commands, and tool-level gate hooks (commit/push approval, destructive-op & write guards, context-fill measurement, session rehydration) for Claude Code. The git-commit trace/secret/bloat scan needs the full install (start.sh / adopt.sh).",
+  "name": "crewforth",
+  "displayName": "Crewforth",
+  "description": "Crewforth — disciplined agents, skills, slash commands, and tool-level gate hooks (commit/push approval, destructive-op & write guards, context-fill measurement, session rehydration) for Claude Code. The git-commit trace/secret/bloat scan needs the full install (start.sh / adopt.sh).",
   "version": "${VERSION}",
   "author": { "name": "Barış Yerlikaya" },
-  "homepage": "https://github.com/byerlikaya/claude-starter-kit",
-  "repository": "https://github.com/byerlikaya/claude-starter-kit",
+  "homepage": "https://github.com/Crewforth/crewforth",
+  "repository": "https://github.com/Crewforth/crewforth",
   "license": "MIT",
   "keywords": ["claude-code", "agents", "skills", "workflow", "hooks"]
 }
 JSON
 
 # Asserted, not printed. The counts below are a summary a reader skims; this is the one component whose
-# absence would be invisible — the plugin would install cleanly and /studio-csk would send the user to a
+# absence would be invisible — the plugin would install cleanly and /crew-studio would send the user to a
 # path that is not there.
 [ -f "$OUT/studio/server/index.js" ] || { echo "build-plugin.sh: the panel did not land in $OUT/studio" >&2; exit 1; }
 

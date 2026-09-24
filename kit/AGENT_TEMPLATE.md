@@ -1,0 +1,86 @@
+# Agent Template Contract (Claude Code)
+
+All expert agents conform to this skeleton. Canonical reference: **`crew-backend-expert`**.
+Principle: **agent = thin trigger** ("who / when"), **skill = "how"**. Knowledge lives in the skill, the trigger in the agent.
+
+## Frontmatter (required fields)
+- `name`: kebab-case, exactly matching the file name.
+- `description`: Claude Code makes its delegation decision **by looking at this**. It must contain three things:
+  (1) what it does, (2) **WHEN** it kicks in, (3) a `Trigger phrases:` line (English key phrases).
+- `tools`: least-privilege principle. Read-only auditor → `Read, Grep, Glob (+Bash)`; writing expert → `+ Edit, Write`.
+- `model`: cost routing (table below). If the field is absent, the main session model is inherited (inherit).
+
+## Body sections (fixed order)
+1. **When** — triggering context.
+2. **Expertise stance — recommended.** 3-5 **role-specific** concrete behaviors that the best in that role does differently (not a generic "be an expert"). It raises the decision/stance; the mechanical "how" stays in the skill.
+3. **How (follow its skill)** — which skill + that skill's exit points specific to this agent. The skill is the **single source of truth**; do not copy the "how" into the agent — at most a quick reminder, and on conflict the skill wins (§2 "no repetition").
+3b. **Before writing any of it — writing experts only.** Two pre-flight checks, both **model discipline**; no hook enforces either:
+    - `confidence-check` — the only check in the kit that comes BEFORE implementation. Any "no" is a stop, not a caveat.
+    - **A design summary, when the change carries architecture** — a new or changed data model/schema, a new or changed API contract, or 2+ domains touched. Three to five lines (which table/endpoint/integration point moves · which pattern · what the alternative was), put to the user with `AskUserQuestion` before the first line of code. Trivial single-domain work skips it: RISK decides, not size.
+4. **Coordination (cross-agent) — recommended for writing experts.** Whom this work is delegated to: security→crew-security-expert, schema→crew-database-expert, tests→crew-test-expert, messages→i18n, personal data→crew-privacy-agent, hot path/query/render/payload→crew-performance-expert, findings at closure→crew-review-agent. It turns the agent into an orchestrator; usually unnecessary for read-only auditors.
+    - **The read-only audits go out in parallel** — several `Agent` calls in ONE message. None of them writes product code, so there is nothing to serialise (discipline Workflow §3).
+    - **No unbounded ping-pong.** More than 3 handovers between the SAME two agents on one task (e.g. `crew-backend-expert` ↔ `crew-database-expert`) is a loop, not coordination: stop before the fourth, summarise what each round changed and what is still open, and put it to the user with `AskUserQuestion`. Model discipline — nothing counts the hops for you.
+5. **DoD** — closure responsibility: `/simplify` + tests green + `sonarqube-check` (0/0/0/0, build 0/0).
+6. **Output & context (token)** — what returns to the main thread: a **short summary**, not raw logs/dumps; heavy output goes to `docs/*.md` (token-budget skill).
+7. **Errors/escalation** — when stuck/unsure, **stop and report** or hand off to the relevant expert; do not proceed on a guess.
+8. **Example delegation** — 1 ✅ triggers / 1 ❌ does-not-trigger line (delegation accuracy).
+9. **Constraints** — read-only or not, what it does not do, platform/policy limits.
+
+## Model routing (cost calibration)
+**Use a tier ALIAS, not a dated model ID** (`haiku`/`sonnet`/`opus`/`inherit`). An alias resolves automatically to the current tier; when a model is renamed/deprecated, agents do not silently break. Use a full ID (`claude-sonnet-…`) only if pinning to a specific version is required.
+
+| Agent | Role | model | Why |
+|---|---|---|---|
+| crew-session-manager | assessment | `haiku` | lightweight, writes no code |
+| crew-security-expert | audit | `sonnet` | decision-heavy (auth/IDOR) |
+| crew-review-agent | audit | `haiku` | read-only findings |
+| crew-commit-agent | message generation | `haiku` | lightweight, writes no code |
+| crew-privacy-agent | audit | `sonnet` | decision-heavy (KVKK/GDPR) |
+| crew-planner | planning | `inherit` | wants stable reasoning |
+| crew-backend-expert | writing | `inherit` | complex code, main model |
+| crew-database-expert | writing | `inherit` | migration/schema risk |
+| crew-test-expert | writing | `inherit` | behavioral correctness |
+| crew-frontend-expert | writing | `inherit` | UI + native bridge |
+
+Pulling the read-only trio down to Haiku lowers token/cost; the writing experts stay at full power.
+(Aliases are valid in Claude Code frontmatter; if the field is empty, `inherit` is assumed.)
+
+## Placement
+- Project-local (10): `./.claude/agents/` — crew-session-manager, backend/database/security/test/crew-frontend-expert, crew-review-agent, crew-commit-agent, crew-planner, crew-privacy-agent. Everything stays inside the repo; no dependency on home (`~/.claude`) (handover §3).
+- No extra agent is needed; stack-specific "hows" live under `./.claude/skills/` (the frontend's "how" is in the project's frontend skill / CLAUDE.md).
+
+## Decompose along the cost axis (tool < skill < subagent)
+A monolithic prompt is a smell. Move each responsibility to the **cheapest primitive that suffices**:
+
+```
+cheaper, weaker  ◀──────────────────────────────▶  more power, more cost
+ TOOL / code-exec         SKILL                  SUBAGENT
+ one call, stateless,     instructions read      its own context window
+ deterministic            on demand              & its own goal
+```
+
+Smell tests:
+- A tool that dumps **>2k tokens** into context → replace it with **code execution** over the data (compute over context, not a data dump).
+- Writing **"always do X before Y"** into an agent prompt → that belongs in a **skill**, not copied prose.
+- A **subagent whose output is one number/line** → it shouldn't be a subagent; inline it. Delegate for *isolation*, not by default (see `token-budget`).
+
+**Typed contract between stages.** A prose handoff drops data — a confidence number gets lost when the orchestrator
+re-parses a paragraph. Require a **typed contract** at every stage boundary (e.g. `{value, confidence, method,
+flags}`) and **validate-and-clamp** it before trusting it (known fields only, enums constrained, list lengths
+capped). *Anchor the number, not just the narrative.*
+
+## Test-first (add the eval before the skill/agent)
+Treat a new skill/agent like code under TDD: write the checkable expectation **first**, watch it fail, then build
+until it passes. The kit's evals ARE those tests.
+1. **Golden routing** — add a line to `eval/golden-routing.txt` (`<a realistic prompt>|<this target>`) *before* writing
+   the skill. Run `routing-eval.sh`: it FAILS (target missing / no trigger). That failure defines the trigger phrases
+   you must choose — you're designing the description against a concrete prompt, not guessing.
+2. **Negative guard** — if a trigger risks over-firing (a generic word like "design", "review", "model"), add a
+   `<prompt>|!<target>` line so an over-broad trigger fails the eval. This is how a trim stays trimmed.
+3. **Budget & spec** — `smoke-test.sh` gates name==dir, description ≤1024, and the always-on byte budget; a verbose
+   description fails the suite rather than quietly taxing every session. Register the TR summary + regenerate the
+   catalogue (`build-readme-catalog.sh`) so `--check` stays green.
+4. **Only then** write `SKILL.md` (+ `references/` for depth) until all three go green. Red → green, never green-by-assertion-weakening (that's the Verifier-integrity anti-pattern the review skill itself flags).
+
+## Reference example
+`crew-backend-expert.md` is this contract applied verbatim; when creating a new agent, copy it and fill it in.
