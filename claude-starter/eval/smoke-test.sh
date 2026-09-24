@@ -1635,8 +1635,8 @@ if [ "$IS_KIT" = 1 ]; then
   # 10.8.2's own selection code, which returns the registry's exact file; its pick depends on directory order. The
   # step is run here as written, on copies of the three READMEs, and must leave exactly one: the npm README. It
   # must also run before `npm publish` and without an `if:`, or its effect on a copy says nothing about the
-  # package. Carriage returns are stripped first: the workflow file has no eol pin, and a CRLF checkout would
-  # otherwise hand bash a syntax error and fail this for the wrong reason.
+  # package. Carriage returns are stripped first: the workflows are pinned to LF now (§14 checks it), but a copy
+  # that arrives CRLF anyway would otherwise hand bash a syntax error and fail this for the wrong reason.
   RY="$KR/.github/workflows/release.yml"
   if [ -f "$RY" ] && [ -f "$KR/README.npm.md" ]; then
     RS="$(awk '/- name: Use the npm-flavoured README for the package/{f=1;next} f&&/^      - name:/{exit} f&&/^        run: \|/{r=1;next} f&&r{sub(/\r$/,""); sub(/^          /,""); print}' "$RY")"
@@ -5478,6 +5478,28 @@ if [ -n "$SGR" ] && [ -f "$SGR/.gitattributes" ] && [ -d "$SGR/packaging" ] && [
     note "verify.sh / ci.yml cases skipped (not a source checkout of the kit)"
   fi
 else note "line-ending check skipped (not a git checkout of the kit)"
+fi
+# The shipped-path check above covers what a user receives. The kit's own tooling has a second set: files that bash
+# sources, runs or splits here, and whose trailing CR changes an answer. A `core.autocrlf=true` clone of the tree
+# checked out 38 files CRLF, among them every evals/cases/*/case.env (sourced by evals/run.sh), the Turkish summaries
+# (the catalogue step then failed: README.tr.md "out of sync"), the Homebrew formula (its install list parsed to the
+# path `VERSION\r`) and the workflows (whose `run:` blocks this suite executes). Asked of the attributes, as above, so
+# the answer reads the working tree's .gitattributes and does not depend on the platform running the suite.
+if [ -n "$SGR" ] && [ -f "$SGR/.gitattributes" ] && [ -d "$SGR/evals/cases" ] && [ -f "$SGR/VERSION" ] && [ -d "$SGR/claude-starter" ]; then
+  BSPEC="evals .github/workflows packaging/homebrew packaging/skill-summaries.tr.tsv :(glob)**/*.sh"
+  # shellcheck disable=SC2086 # BSPEC is a list of pathspecs, split on purpose
+  BLIST="$(git -C "$SGR" ls-files --eol -- $BSPEC 2>/dev/null)"
+  BN="$(printf '%s\n' "$BLIST" | grep -c .)"
+  # An empty answer must mean "nothing unpinned", never "git listed nothing": files that must be in the set are asked for.
+  if ! printf '%s\n' "$BLIST" | grep -q '	evals/cases/[^/]*/case\.env$' || ! printf '%s\n' "$BLIST" | grep -q '	packaging/skill-summaries\.tr\.tsv$'; then
+    fail "git did not list evals/cases/*/case.env or packaging/skill-summaries.tr.tsv, so the tooling eol check measured nothing ($BN files listed)"
+  else
+    BUNPIN="$(printf '%s\n' "$BLIST" | awk -F'\t' '{ split($1, f, " "); if (f[1] != "i/-text" && f[1] != "i/none" && f[1] != "i/" && $1 !~ /eol=lf/) print $2 }')"
+    [ -z "$BUNPIN" ] && pass "every file bash reads in the kit's tooling is pinned to LF ($BN of $BN: evals, workflows, formula, summaries, *.sh)" \
+                     || fail "files bash reads with no eol=lf pin — a core.autocrlf=true checkout gives them CRLF: $(printf '%s\n' "$BUNPIN" | head -5 | tr '\n' ' ')($(printf '%s\n' "$BUNPIN" | wc -l | tr -d ' ') of $BN)"
+  fi
+else
+  skip scope "eol pins on the kit's tooling (evals, workflows, formula) not checked — not a git checkout of the kit's source"
 fi
 
 sec "== 14b) the star line (once, on a first install) and the front page it points at =="
