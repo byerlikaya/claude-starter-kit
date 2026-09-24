@@ -39,7 +39,7 @@ jobs:
           # exits 0 — so a whole new subtree the build emits but nobody committed would ship as an
           # absent directory, with this gate green. `git status --porcelain` sees both.
           if [ -n "$(git status --porcelain -- plugin)" ]; then
-            echo "::error::plugin/ is out of sync with claude-starter/. Run packaging/build-plugin.sh and commit."
+            echo "::error::plugin/ is out of sync with kit/. Run packaging/build-plugin.sh and commit."
             git --no-pager status --porcelain -- plugin
             git --no-pager diff --stat -- plugin
             exit 1
@@ -63,8 +63,8 @@ jobs:
       # approved, a run whose gates pass publishes with no further stop.
       - name: Verify — smoke test + routing eval
         run: |
-          bash claude-starter/eval/smoke-test.sh
-          bash claude-starter/eval/routing-eval.sh
+          bash kit/eval/smoke-test.sh
+          bash kit/eval/routing-eval.sh
 
       - name: Verify — installer e2e (start.sh combos + adopt.sh)
         run: bash packaging/e2e.sh

@@ -53,7 +53,7 @@ LC_ALL=C
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 HOOK="$HERE/../hooks/guard-bash.sh"
-[ -f "$HOOK" ] || HOOK="$HERE/../../claude-starter/hooks/guard-bash.sh"
+[ -f "$HOOK" ] || HOOK="$HERE/../../kit/hooks/guard-bash.sh"
 if [ ! -f "$HOOK" ]; then
   # Not a divergence and not a broken fixture — there was nothing to measure at all, which is what rc 3 means
   # everywhere else in this file. Exiting 1 here would report "the readers disagree" for a file that was merely

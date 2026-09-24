@@ -1,6 +1,6 @@
 # Distribution / publishing
 
-The kit ships through several channels. These files support the ones that do **not** depend on a GitHub clone. Each channel bundles the same payload (`start.sh`, `adopt.sh`, `claude-starter/`, `VERSION`).
+The kit ships through several channels. These files support the ones that do **not** depend on a GitHub clone. Each channel bundles the same payload (`start.sh`, `adopt.sh`, `kit/`, `VERSION`).
 
 ## npm (npx) — primary
 
@@ -74,4 +74,4 @@ Users can install the kit's agents, skills, and commands directly in Claude Code
 
 This is the **lite** edition — it registers the agents/skills/commands only, *without* the scaffolding (no git-hook gates, no `.gitignore` / `kit.conf` writes). The component set is identical to a `start.sh` install, and `e2e.sh` asserts that parity. For the full kit use `start.sh` / `adopt.sh`.
 
-`plugin/` (and its `.claude-plugin/plugin.json`) is generated from `claude-starter/` by **`packaging/build-plugin.sh`** — rerun it after changing agents/skills/commands so the plugin stays in sync. The release workflow verifies this on every tag. The marketplace manifest is `.claude-plugin/marketplace.json` at the repo root.
+`plugin/` (and its `.claude-plugin/plugin.json`) is generated from `kit/` by **`packaging/build-plugin.sh`** — rerun it after changing agents/skills/commands so the plugin stays in sync. The release workflow verifies this on every tag. The marketplace manifest is `.claude-plugin/marketplace.json` at the repo root.

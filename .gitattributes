@@ -3,11 +3,11 @@
 *.sh text eol=lf
 # The awk JSON reader ships in the payload, and a CRLF build would change its bytes (smoke checks every shipped pin).
 *.awk text eol=lf
-claude-starter/hooks/pre-commit text eol=lf
-claude-starter/hooks/commit-msg text eol=lf
+kit/hooks/pre-commit text eol=lf
+kit/hooks/commit-msg text eol=lf
 # The plugin edition ships the same two hooks under a different root, and being extensionless they are not
 # covered by *.sh either. They were left out when that edition was added: measured on a Windows checkout, both
-# claude-starter copies came out LF and both plugin copies came out CRLF. Git Bash happens to tolerate that
+# kit copies came out LF and both plugin copies came out CRLF. Git Bash happens to tolerate that
 # (verified: the trace scan still blocks), but WSL does not — which is the exact failure the note above is
 # about — and a gate that dies with `$'\r': command not found` is a gate that is not running.
 plugin/hooks/pre-commit text eol=lf
@@ -15,7 +15,7 @@ plugin/hooks/commit-msg text eol=lf
 # Config the installers parse line-by-line: a CRLF checkout would leave '\r' on every parsed value, so a
 # profile lookup would silently miss and the install would fall back to "prune nothing". The scripts also
 # strip '\r' defensively, but keeping these LF means the parsers never see one.
-claude-starter/profiles.conf text eol=lf
+kit/profiles.conf text eol=lf
 *.conf text eol=lf
 # Blocklists/allowlists and other data files the hooks read line-by-line as patterns: a CRLF checkout leaves a '\r'
 # on every pattern, which then never matches the LF diff — silently blinding the trace/secret gate on Windows.
@@ -43,7 +43,7 @@ VERSION text eol=lf
 # Markdown carries no shell parsing, so this is not about correctness — it is about the release tarball
 # being the same bytes wherever it is built. Measured: a Windows-built archive of v2.9.0 came to 509.004
 # bytes against the published 507.410, and the 1.594-byte difference was CRLF in unpinned files, of which
-# claude-starter/CLAUDE.md alone carried 198. The tarball's SHA is what the Homebrew formula pins, and a
+# kit/CLAUDE.md alone carried 198. The tarball's SHA is what the Homebrew formula pins, and a
 # SHA that depends on the build machine is the class of defect that took a release down once already.
 # This pin takes the Markdown out of that difference; the rest of it was the Studio's .js, .py, .html and .css,
 # pinned below. Measured by building the archive both ways: the build without autocrlf reproduces the published

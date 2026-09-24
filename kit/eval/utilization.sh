@@ -23,8 +23,8 @@ esac
 
 # Where the skills live: an installed project, or this repo's payload when run from the kit's own checkout.
 SKILLS=""; OWNREPO=0
-for d in .claude/skills claude-starter/skills; do [ -d "$d" ] && { SKILLS="$d"; break; }; done
-[ "$SKILLS" = "claude-starter/skills" ] && OWNREPO=1
+for d in .claude/skills kit/skills; do [ -d "$d" ] && { SKILLS="$d"; break; }; done
+[ "$SKILLS" = "kit/skills" ] && OWNREPO=1
 if [ -z "$SKILLS" ]; then echo "utilization: no skills directory here (looked for .claude/skills)"; exit 0; fi
 
 TR=""

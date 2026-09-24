@@ -5,10 +5,10 @@
 # trace/secret/bloat scan) — those are wired by core.hooksPath, which only the full install (start.sh / adopt.sh)
 # can set. So a plugin user gets the Claude Code gates (commit/push approval, destructive-op & write guards,
 # context measurement, session rehydration) but the commit-time trace scan still needs the full install.
-# Single source of truth stays claude-starter/; this regenerates plugin/ from it.
+# Single source of truth stays kit/; this regenerates plugin/ from it.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SRC="$ROOT/claude-starter"
+SRC="$ROOT/kit"
 OUT="$ROOT/plugin"
 
 rm -rf "$OUT"

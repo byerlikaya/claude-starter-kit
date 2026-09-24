@@ -7,7 +7,7 @@
 # Later stages: open git branch -> mutation (settings merge · DISCIPLINE.md · coexist) -> install proof
 # -> HANDOVER.md / ADR. The SUGGESTION produced here for each decision is applied in the next stage via review/override.
 #
-# Usage: at the target project root (same directory as claude-starter/):  bash adopt.sh
+# Usage: at the target project root (same directory as kit/):  bash adopt.sh
 set -uo pipefail
 HERE="$(CDPATH= cd "$(dirname "$0")" && pwd)"
 
@@ -20,8 +20,8 @@ for _a in "$@"; do
   fi
 done
 
-SRC="$HERE/claude-starter"
-[ -d "$SRC" ] || { echo "ERROR: claude-starter/ not found (must be in the same directory as adopt.sh)."; exit 1; }
+SRC="$HERE/kit"
+[ -d "$SRC" ] || { echo "ERROR: kit/ not found (must be in the same directory as adopt.sh)."; exit 1; }
 
 # --- flags (B5 — where a refresh lands) ---  --here: the current branch · --new-branch: a fresh review branch.
 # Left empty, Stage 2 picks a smart default (first adopt -> new; update + untracked .claude -> here; update +
@@ -1061,7 +1061,7 @@ fi
 # ask rule prompts even when a hook returns "allow" (Claude Code permissions doc), which made the hook's
 # CLAUDE_GIT_OK pre-authorisation dead: a headless session was refused `git add` and never committed. The hook
 # now asks for all four itself. These exact strings are the kit's own; a project that wants them can re-add them.
-# ONE path on every OS: the merge is claude-starter/eval/lib/settings-json.awk (POSIX awk; its header holds the
+# ONE path on every OS: the merge is kit/eval/lib/settings-json.awk (POSIX awk; its header holds the
 # reader contract and the merge semantics). jq and python3 are absent on a stock Windows Git-Bash, where python3
 # is often the Microsoft Store stub (exit 49); the old per-tool arms REPLACED the file there and lost the project's
 # own rules. Input that is not a JSON object is refused and left untouched; the output is re-read before use.

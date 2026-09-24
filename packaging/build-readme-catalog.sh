@@ -25,7 +25,7 @@ set -euo pipefail
 export LC_ALL=C
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
-SKILLS="$ROOT/claude-starter/skills"
+SKILLS="$ROOT/kit/skills"
 TRMAP="$HERE/skill-summaries.tr.tsv"       # Turkish summaries (build-time data; see file header)
 CHECK=0; [ "${1:-}" = "--check" ] && CHECK=1
 TAB="$(printf '\t')"
@@ -119,7 +119,7 @@ N="$(printf '%s' "$TABLE_EN" | grep -c '^| `')"
 # line from its data now, but a stale SVG on disk is still possible — the generator only runs when someone
 # remembers to run it. So the checked-in file is compared here, in the gate that already exists for exactly
 # this class of drift (the README is a VIEW of the payload, never a hand-maintained copy).
-AG="$(ls "$ROOT/claude-starter/agents"/*.md 2>/dev/null | wc -l | tr -d ' ')"
+AG="$(ls "$ROOT/kit/agents"/*.md 2>/dev/null | wc -l | tr -d ' ')"
 for svg in network-en network-tr; do
   f="$ROOT/assets/$svg.svg"
   [ -f "$f" ] || { echo "ERROR: assets/$svg.svg is missing — the README embeds it." >&2; rc=1; continue; }

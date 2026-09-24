@@ -1486,7 +1486,7 @@ done
 rm -rf "$SSD"
 
 sec "== 6e) CLAUDE.md split: sentinel · discipline/project boundary · no profile split =="
-# In the kit repo ROOT is claude-starter/ (payload). In an installed project it is .claude/, which has no
+# In the kit repo ROOT is kit/ (payload). In an installed project it is .claude/, which has no
 # CLAUDE.md but does have the already-split DISCIPLINE.md. Assert whichever is present.
 if [ -f "$ROOT/CLAUDE.md" ]; then
   grep -qE '^<!-- KIT:DISCIPLINE-END' "$ROOT/CLAUDE.md" && pass "payload CLAUDE.md carries the KIT:DISCIPLINE-END sentinel" \
@@ -1617,8 +1617,8 @@ if [ "$IS_KIT" = 1 ]; then
     vout="$(cd "$(dirname "$VS")" && CDPATH=. bash "$(basename "$VS")/start.sh" --version 2>&1)"; vrc=$?
     [ "$vrc" = 0 ] && [ "$vout" = "$KV" ] && pass "start.sh finds its own directory with CDPATH exported" \
       || fail "start.sh under CDPATH=. from a relative path: rc=$vrc, output '$(printf '%s' "$vout" | tr '\n' '|')' (want '$KV')"
-    if [ -d "$KR/claude-starter" ]; then
-      cp -R "$KR/claude-starter" "$VS/"
+    if [ -d "$KR/kit" ]; then
+      cp -R "$KR/kit" "$VS/"
       vout="$(cd "$VS" && bash start.sh --no-such-flag 2>&1)"; vrc=$?
       if [ "$vrc" = 1 ] && printf '%s' "$vout" | grep -q 'Unknown parameter: --no-such-flag'; then
         pass "start.sh still refuses an unknown flag"
@@ -1671,7 +1671,7 @@ if [ "$IS_KIT" = 1 ]; then
   # because the entry pointed at ./plugin on main. It now installs from the plugin-stable branch, which only the
   # approved release job moves forward, and the update notice reads the same branch. Three facts that only work
   # together: drop any one and the plugin either ships ungated again or is announced before it can be installed.
-  MJ="$KR/.claude-plugin/marketplace.json"; RY="$KR/.github/workflows/release.yml"; UH="$KR/claude-starter/hooks/session-update-check.sh"
+  MJ="$KR/.claude-plugin/marketplace.json"; RY="$KR/.github/workflows/release.yml"; UH="$KR/kit/hooks/session-update-check.sh"
   if [ -f "$MJ" ] && [ -f "$RY" ] && [ -f "$UH" ]; then
     PSMISS=""
     grep -Eq '"source"[[:space:]]*:[[:space:]]*"git-subdir"' "$MJ" && grep -Eq '"ref"[[:space:]]*:[[:space:]]*"plugin-stable"' "$MJ" \
@@ -4460,7 +4460,7 @@ EOF
                       || { fail "$bl: a bare \$ anchor matches nothing on macOS for a CRLF file — write (class|\$) instead"; printf '     ↳ %s\n' "$BAREEND"; }
   done
   # The self-exclusion must follow the FILE, not one installed path: the same list lives at .claude/hooks/ in a
-  # project, claude-starter/hooks/ in this repo and hooks/ in the plugin build. Anchored to the first, the kit's
+  # project, kit/hooks/ in this repo and hooks/ in the plugin build. Anchored to the first, the kit's
   # own repo scanned its own pattern list and the cases above could never have been committed.
   grep -q 'glob)\*\*/secret-blocklist.txt' "$HOOKS/pre-commit" \
     && pass "pre-commit excludes the blocklists by name, not by installed path" \
@@ -4700,14 +4700,14 @@ sec "== 7x) update COST: a refresh must not be a fork storm =="
 # not wall-clock: macOS finishes either version in ~1s, so a timing assertion here would prove nothing.
 #
 # The installer is COPIED into the fixture before it runs. start.sh deletes the payload sitting next to ITSELF
-# once it is done, so invoking "$KITREPO/start.sh" from elsewhere wipes claude-starter/ out of the kit repo —
+# once it is done, so invoking "$KITREPO/start.sh" from elsewhere wipes kit/ out of the kit repo —
 # which is exactly what an earlier version of this case did. e2e.sh has always copied first; so does this now.
 UPC="$(mktemp -d)"; UST="$(mktemp -d)"; UKR="$(cd "$ROOT/.." && pwd)"
 # The project and the STAGED payload live in separate directories — the shape npx actually produces (adopt.sh
-# and claude-starter/ unpacked in a temp stage, cwd = the user's project). Staging inside the project would put
+# and kit/ unpacked in a temp stage, cwd = the user's project). Staging inside the project would put
 # a second copy of the payload where the detection walk can see it.
 cp "$UKR/start.sh" "$UKR/adopt.sh" "$UKR/VERSION" "$UST/" 2>/dev/null
-cp -R "$UKR/claude-starter" "$UST/" 2>/dev/null
+cp -R "$UKR/kit" "$UST/" 2>/dev/null
 # --dotnet on purpose: since 3.0 it is accepted, warns, and installs the one stack-agnostic kit. Asserting that
 # here (not only in e2e) keeps an old README command from turning back into an "Unknown parameter" exit.
 ( cd "$UPC" && git init -q . && printf 'yes\n' | CSK_LANG=en bash "$UST/start.sh" --dotnet >"$UPC.dotnet.log" 2>&1 ) 2>/dev/null   # English: the check greps the English line
@@ -4723,8 +4723,8 @@ else
 fi
 rm -f "$UPC.dotnet.log"
 # start.sh removes the payload next to itself when it finishes, so the stage is refilled before the update runs.
-cp "$UKR/adopt.sh" "$UKR/VERSION" "$UST/" 2>/dev/null; cp -R "$UKR/claude-starter" "$UST/" 2>/dev/null
-if [ -f "$UPC/.claude/VERSION" ] && [ -d "$UST/claude-starter" ] && [ -f "$UKR/claude-starter/CLAUDE.md" ]; then
+cp "$UKR/adopt.sh" "$UKR/VERSION" "$UST/" 2>/dev/null; cp -R "$UKR/kit" "$UST/" 2>/dev/null
+if [ -f "$UPC/.claude/VERSION" ] && [ -d "$UST/kit" ] && [ -f "$UKR/kit/CLAUDE.md" ]; then
   ( cd "$UPC" && bash -x "$UST/adopt.sh" --here --yes </dev/null >/dev/null 2>"$UPC/trace" ) 2>/dev/null
   SPAWN="$(grep -cE '^\++ (dirname|basename|mkdir|cp|sed|grep|cut|tr|head|find|awk|wc|ls|chmod|rm|mv|cat|date)( |$)' "$UPC/trace" 2>/dev/null | tr -cd '0-9')"
   SPAWN="${SPAWN:-0}"
@@ -4740,7 +4740,7 @@ if [ -f "$UPC/.claude/VERSION" ] && [ -d "$UST/claude-starter" ] && [ -f "$UKR/c
     fail "update spawns $SPAWN external commands (> 200): a per-item shell loop is back — on Git Bash that is minutes, not milliseconds"
   fi
   # Self-check: the fixture must not have eaten the kit's own payload on its way through.
-  [ -d "$UKR/claude-starter/skills" ] && [ -f "$UKR/start.sh" ] \
+  [ -d "$UKR/kit/skills" ] && [ -f "$UKR/start.sh" ] \
     && pass "cost fixture left the kit repo intact (installer ran from the copy, not from the repo)" \
     || fail "the cost fixture damaged the kit repo — start.sh was run in place instead of from a copy"
 else
@@ -5312,8 +5312,8 @@ rm -rf "$PCT"
 
 sec "== 14) shipped hooks are LF in EVERY edition — a hook that arrives CRLF is a hook that does not run =="
 # `*.sh text eol=lf` covers most of them, but pre-commit and commit-msg are extensionless, so each copy needs
-# its own .gitattributes line. claude-starter's two had one; their plugin twins did not, and it went unnoticed
-# because nothing compared the editions. Measured on a Windows checkout: both claude-starter hooks came out LF
+# its own .gitattributes line. kit's two had one; their plugin twins did not, and it went unnoticed
+# because nothing compared the editions. Measured on a Windows checkout: both kit hooks came out LF
 # and both plugin hooks came out CRLF. Git Bash tolerates that (the trace scan still blocked, verified), which
 # is exactly why it survived — WSL does not, and answers `$'\r': command not found`. A gate that dies on its
 # shebang is not a gate that failed, it is a gate nobody notices is absent.
@@ -5321,13 +5321,13 @@ sec "== 14) shipped hooks are LF in EVERY edition — a hook that arrives CRLF i
 # SCOPED TO THE KIT'S OWN REPO, and the earlier condition — a git toplevel plus a .gitattributes — was not.
 # It read as "am I in the kit's checkout" and actually meant "is there any repo here with pin rules", so it
 # fired in any project that merely CONTAINS a copy of the payload: `git ls-files` finds
-# claude-starter/hooks/pre-commit there and the pins it looks for are the kit repo's, not that project's.
+# kit/hooks/pre-commit there and the pins it looks for are the kit repo's, not that project's.
 # It went unnoticed because nothing had ever written a .gitattributes into an installed project — the
 # installer doing that (so a shared .claude/ survives a Windows checkout) is what made this reachable, and it
 # came back as a red assertion about the kit's own files inside somebody else's adopted repo. The markers
 # below are the same ones start.sh uses to refuse installing from the kit's checkout.
 SGR="$(git -C "$ROOT" rev-parse --show-toplevel 2>/dev/null || true)"
-if [ -n "$SGR" ] && [ -f "$SGR/.gitattributes" ] && [ -d "$SGR/packaging" ] && [ -f "$SGR/VERSION" ] && [ -d "$SGR/claude-starter" ]; then
+if [ -n "$SGR" ] && [ -f "$SGR/.gitattributes" ] && [ -d "$SGR/packaging" ] && [ -f "$SGR/VERSION" ] && [ -d "$SGR/kit" ]; then
   NOEOL=""
   for f in $(git -C "$SGR" ls-files 2>/dev/null | grep -E '(^|/)hooks/[^/.]+$'); do
     git -C "$SGR" check-attr eol -- "$f" 2>/dev/null | grep -q ': eol: lf$' || NOEOL="$NOEOL $f"
@@ -5339,14 +5339,14 @@ if [ -n "$SGR" ] && [ -f "$SGR/.gitattributes" ] && [ -d "$SGR/packaging" ] && [
   # Linux build that publishes did not. Every text file in a shipped path is pinned now, and this keeps it so — a new
   # file type added to a shipped path would arrive unpinned and let the build machine decide its bytes again.
   # Binary files have no line endings to pin; git's own per-file eol report says which ones those are.
-  if [ -d "$SGR/claude-starter" ] && [ -f "$SGR/packaging/build-plugin.sh" ]; then
+  if [ -d "$SGR/kit" ] && [ -f "$SGR/packaging/build-plugin.sh" ]; then
     # An empty answer must mean "nothing unpinned", never "git listed nothing": two files every checkout has must
     # be in the listing first. Symlinks and submodules are not regular files; git leaves their i/ field empty.
-    SLIST="$(git -C "$SGR" ls-files -- start.sh adopt.sh VERSION LICENSE README.md bin claude-starter plugin 2>/dev/null)"
-    if ! printf '%s\n' "$SLIST" | grep -qx 'start.sh' || ! printf '%s\n' "$SLIST" | grep -qx 'claude-starter/CLAUDE.md'; then
-      fail "git did not list the kit's shipped files (start.sh and claude-starter/CLAUDE.md are missing), so the eol pin check measured nothing"
+    SLIST="$(git -C "$SGR" ls-files -- start.sh adopt.sh VERSION LICENSE README.md bin kit plugin 2>/dev/null)"
+    if ! printf '%s\n' "$SLIST" | grep -qx 'start.sh' || ! printf '%s\n' "$SLIST" | grep -qx 'kit/CLAUDE.md'; then
+      fail "git did not list the kit's shipped files (start.sh and kit/CLAUDE.md are missing), so the eol pin check measured nothing"
     else
-    UNPIN="$(git -C "$SGR" ls-files --eol -- start.sh adopt.sh VERSION LICENSE README.md bin claude-starter plugin 2>/dev/null \
+    UNPIN="$(git -C "$SGR" ls-files --eol -- start.sh adopt.sh VERSION LICENSE README.md bin kit plugin 2>/dev/null \
       | awk -F'\t' '{ split($1, f, " "); if (f[1] != "i/-text" && f[1] != "i/none" && f[1] != "i/" && $1 !~ /eol=/) print $2 }')"
     [ -z "$UNPIN" ] && pass "every text file in a shipped path has an eol pin, so the tarball's bytes do not depend on the build machine" \
                     || fail "text files in shipped paths with no eol pin in .gitattributes — a CRLF build changes their bytes: $(printf '%s\n' "$UNPIN" | head -5 | tr '\n' ' ')($(printf '%s\n' "$UNPIN" | wc -l | tr -d ' ') in all)"
@@ -5356,22 +5356,22 @@ if [ -n "$SGR" ] && [ -f "$SGR/.gitattributes" ] && [ -d "$SGR/packaging" ] && [
   fi
   # The two editions ship the same hooks; a divergence means one of them was updated and the other was not.
   SDIV=""
-  for f in $(git -C "$SGR" ls-files 2>/dev/null | grep -E '^claude-starter/hooks/'); do
+  for f in $(git -C "$SGR" ls-files 2>/dev/null | grep -E '^kit/hooks/'); do
     p="plugin/hooks/${f##*/}"
     [ -f "$SGR/$p" ] || continue
     cmp -s "$SGR/$f" "$SGR/$p" || SDIV="$SDIV ${f##*/}"
   done
-  [ -z "$SDIV" ] && pass "claude-starter/hooks and plugin/hooks ship byte-identical files" \
+  [ -z "$SDIV" ] && pass "kit/hooks and plugin/hooks ship byte-identical files" \
                  || fail "the two editions have drifted apart:$SDIV — one was updated and the other was not"
   # The JSON reader too: automode-policy's apply.sh finds it three levels up in either edition, so a plugin
   # without it (or with a stale copy) merges nothing — or merges differently from the kit.
-  if [ -f "$SGR/claude-starter/eval/lib/settings-json.awk" ]; then
-    cmp -s "$SGR/claude-starter/eval/lib/settings-json.awk" "$SGR/plugin/eval/lib/settings-json.awk" \
+  if [ -f "$SGR/kit/eval/lib/settings-json.awk" ]; then
+    cmp -s "$SGR/kit/eval/lib/settings-json.awk" "$SGR/plugin/eval/lib/settings-json.awk" \
       && [ -f "$SGR/plugin/skills/automode-policy/scripts/../../../eval/lib/settings-json.awk" ] \
       && pass "plugin/eval/lib carries the same JSON reader, where the skill script looks for it" \
-      || fail "plugin/eval/lib/settings-json.awk is missing or differs from claude-starter/eval/lib — run packaging/build-plugin.sh"
+      || fail "plugin/eval/lib/settings-json.awk is missing or differs from kit/eval/lib — run packaging/build-plugin.sh"
   else
-    fail "claude-starter/eval/lib/settings-json.awk is missing — the kit has no JSON reader"
+    fail "kit/eval/lib/settings-json.awk is missing — the kit has no JSON reader"
   fi
 
   # ---- ci.yml and verify.sh must name the SAME gates -------------------------------------------------------
@@ -5439,7 +5439,7 @@ if [ -n "$SGR" ] && [ -f "$SGR/.gitattributes" ] && [ -d "$SGR/packaging" ] && [
                    || fail "verify.sh answered rc=$URC for an unknown step — a typo'd gate name would look like a result"
 
   # ---- start.sh refuses to consume the kit's own checkout ---------------------------------------------------
-  # The installer ends by deleting claude-starter/ and itself. That is right when the kit has been unpacked
+  # The installer ends by deleting kit/ and itself. That is right when the kit has been unpacked
   # into a project; run by absolute path from a developer's checkout it deletes the source. It did: 122 tracked
   # files, recovered only because they were committed. The developer instructions already said "do not run
   # start.sh in this repo", which is a rule, and a rule that holds only while someone remembers it is what this
@@ -5453,8 +5453,8 @@ if [ -n "$SGR" ] && [ -f "$SGR/.gitattributes" ] && [ -d "$SGR/packaging" ] && [
     mkdir -p "$SGD/src/.git" "$SGD/plain"
     for d in src plain; do
       cp "$SGR/start.sh" "$SGR/VERSION" "$SGD/$d/" 2>/dev/null
-      mkdir -p "$SGD/$d/packaging" "$SGD/$d/claude-starter"
-      cp -R "$SGR/claude-starter/." "$SGD/$d/claude-starter/" 2>/dev/null
+      mkdir -p "$SGD/$d/packaging" "$SGD/$d/kit"
+      cp -R "$SGR/kit/." "$SGD/$d/kit/" 2>/dev/null
     done
     # CSK_LANG=en IS PART OF THE ASSERTION, not tidiness. These three cases read the installer's PROSE, and the
     # installer is bilingual: on a machine whose locale is Turkish it says "Bu ayarlarla kurulayım mı?" and the
@@ -5471,7 +5471,7 @@ if [ -n "$SGR" ] && [ -f "$SGR/.gitattributes" ] && [ -d "$SGR/packaging" ] && [
 
     { [ "$SG1" = 1 ] && grep -q "own source repository" "$SGD/o1"; } \
       && pass "start.sh refuses to install from the kit's own checkout (rc=1, named)" \
-      || fail "start.sh ran inside a source checkout (rc=$SG1) — it would delete claude-starter/ and itself, which is how 122 tracked files were lost"
+      || fail "start.sh ran inside a source checkout (rc=$SG1) — it would delete kit/ and itself, which is how 122 tracked files were lost"
     # The three markers must be required TOGETHER. A shipped tarball carries VERSION and packaging/ and no .git,
     # so a guard keyed on any one of them would refuse every real install instead of the developer accident.
     { [ "$SG2" = 0 ] && ! grep -q "own source repository" "$SGD/o2" && grep -q "Install with these settings" "$SGD/o2"; } \
@@ -5493,7 +5493,7 @@ fi
 # (the catalogue step then failed: README.tr.md "out of sync"), the Homebrew formula (its install list parsed to the
 # path `VERSION\r`) and the workflows (whose `run:` blocks this suite executes). Asked of the attributes, as above, so
 # the answer reads the working tree's .gitattributes and does not depend on the platform running the suite.
-if [ -n "$SGR" ] && [ -f "$SGR/.gitattributes" ] && [ -d "$SGR/evals/cases" ] && [ -f "$SGR/VERSION" ] && [ -d "$SGR/claude-starter" ]; then
+if [ -n "$SGR" ] && [ -f "$SGR/.gitattributes" ] && [ -d "$SGR/evals/cases" ] && [ -f "$SGR/VERSION" ] && [ -d "$SGR/kit" ]; then
   BSPEC="evals .github/workflows packaging/homebrew packaging/skill-summaries.tr.tsv :(glob)**/*.sh"
   # shellcheck disable=SC2086 # BSPEC is a list of pathspecs, split on purpose
   BLIST="$(git -C "$SGR" ls-files --eol -- $BSPEC 2>/dev/null)"

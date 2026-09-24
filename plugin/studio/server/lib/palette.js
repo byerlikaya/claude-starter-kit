@@ -19,7 +19,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
  * Where the kit's agents sit, relative to this file.
  *
  * One rule, no candidate list: the panel lives inside the component tree it
- * reads, so `<studio>/../agents` is the answer in the repo (`claude-starter/`),
+ * reads, so `<studio>/../agents` is the answer in the repo (`kit/`),
  * in an install (`.claude/`) and in a plugin root alike. A two-candidate
  * resolver would be a branch exercised in one layout and rotting in the other.
  *

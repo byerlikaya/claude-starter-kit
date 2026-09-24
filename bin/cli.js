@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 // Runner for the Claude Starter Kit. The kit is a set of bash scripts (start.sh / adopt.sh)
-// plus the claude-starter/ payload, all bundled in this npm package. This wrapper stages the
+// plus the kit/ payload, all bundled in this npm package. This wrapper stages the
 // payload in a temp dir and runs the requested script with the user's project as the CWD, so
 // the script's self-cleanup only ever removes the temp copies — never the package or the CWD.
 
@@ -66,7 +66,7 @@ const AGENT_SUFFIX = '-csk';
 const NAME_RE = /^[a-z0-9][a-z0-9-]*$/;
 const RECORD = 'crewforth-added.json';
 
-function payloadDir(pkgDir) { return path.join(pkgDir, 'claude-starter'); }
+function payloadDir(pkgDir) { return path.join(pkgDir, 'kit'); }
 
 function catalogue(pkgDir) {
   const root = payloadDir(pkgDir);
@@ -329,7 +329,7 @@ if (sub === 'studio') {
   const pass = rest.filter((a) => a !== '--no-open');
   // --open is the default; not added to an offline or informational run.
   if (!noOpen && !pass.some((a) => ['--open', '-o', '--selftest', '--help', '-h'].includes(a))) pass.push('--open');
-  const entry = path.join(pkgDir, 'claude-starter', 'studio', 'server', 'index.js');
+  const entry = path.join(pkgDir, 'kit', 'studio', 'server', 'index.js');
   process.argv = [process.argv[0], entry, ...pass];
   import(require('url').pathToFileURL(entry).href).catch((e) => {
     console.error(`crewforth studio: ${e && e.message ? e.message : e}`);
@@ -384,7 +384,7 @@ const realpath = (p) => { try { return fs.realpathSync.native(p); } catch (_) { 
 // Stage the bundled payload in a temp dir so the script's self-cleanup is harmless.
 const stage = fs.mkdtempSync(path.join(realpath(os.tmpdir()), 'claude-starter-kit-'));
 try {
-  for (const item of [script, 'claude-starter', 'VERSION']) {
+  for (const item of [script, 'kit', 'VERSION']) {
     const src = path.join(pkgDir, item);
     if (fs.existsSync(src)) fs.cpSync(src, path.join(stage, item), { recursive: true });
   }
@@ -392,7 +392,7 @@ try {
   let res;
   if (process.platform !== 'win32') {
     // macOS / Linux: run the staged script directly. cwd = the user's project so it installs there;
-    // $0 resolves to the stage so the payload (claude-starter/) is found next to it. No path munging —
+    // $0 resolves to the stage so the payload (kit/) is found next to it. No path munging —
     // a backslash is a legal Unix filename char, and rewriting it would corrupt real paths.
     res = spawnSync(BASH, [path.join(stage, script), ...passArgs], {
       stdio: 'inherit',

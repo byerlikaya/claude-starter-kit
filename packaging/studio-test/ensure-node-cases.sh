@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Cases for claude-starter/studio/ensure-node.sh — the script that decides whether this
+# Cases for kit/studio/ensure-node.sh — the script that decides whether this
 # machine can run the panel, and goes and gets a runtime when it cannot.
 #
 # The branches that matter most are the ones a developer machine can never reach: "there is
@@ -9,7 +9,7 @@
 set -u
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-SCRIPT="$ROOT/claude-starter/studio/ensure-node.sh"
+SCRIPT="$ROOT/kit/studio/ensure-node.sh"
 WORK="$(mktemp -d 2>/dev/null || mktemp -d -t csk-ensure-node)"
 trap 'rm -rf "$WORK"' EXIT INT TERM
 
@@ -673,7 +673,7 @@ done
 # The floor is written in two files because preflight ships in editions that carry no
 # panel. Two copies are fine; two different numbers are not.
 a="$(sed -n 's/^FLOOR=\([0-9][0-9]*\).*/\1/p' "$SCRIPT" | head -1)"
-b="$(grep -o 'node [0-9][0-9]*+' "$ROOT/claude-starter/eval/preflight.sh" | head -1 | tr -cd '0-9')"
+b="$(grep -o 'node [0-9][0-9]*+' "$ROOT/kit/eval/preflight.sh" | head -1 | tr -cd '0-9')"
 check 'preflight and ensure-node state the same Node floor' \
   "$([ -n "$a" ] && [ "$a" = "$b" ] && echo 1 || echo 0)" "ensure-node=$a preflight=$b"
 

@@ -117,7 +117,7 @@ KNOWN_MISSES='the app feels laggy after the last release
 is this endpoint fast enough on the hot path'
 if [ -f "$RH" ]; then
   # CLAUDE_PLUGIN_ROOT points the hook at $ROOT/agents and $ROOT/skills directly, which is the same layout in the
-  # kit's own repo (claude-starter/) and in an installed project (.claude/). No copy, no second tree to drift.
+  # kit's own repo (kit/) and in an installed project (.claude/). No copy, no second tree to drift.
   rh_names(){ printf '{"hook_event_name":"UserPromptSubmit","prompt":"%s"}' "$1" \
       | CLAUDE_PROJECT_DIR=/nonexistent CLAUDE_PLUGIN_ROOT="$ROOT" bash "$RH" 2>/dev/null \
       | sed -n -e 's/.*Use the \([a-z][a-z0-9-]*\) subagent.*/\1/p' -e 's/.*Use the .\([a-z][a-z0-9-]*\). skill.*/\1/p'; }

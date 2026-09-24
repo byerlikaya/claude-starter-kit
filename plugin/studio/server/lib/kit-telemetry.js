@@ -33,7 +33,7 @@ function run(cmd, args, opts = {}) {
 /** Where the kit's own scripts live for a given project, if they do. */
 function kitPaths(cwd) {
   const installed = path.join(cwd, '.claude');
-  const source = path.join(cwd, 'claude-starter');
+  const source = path.join(cwd, 'kit');
   if (fs.existsSync(path.join(installed, 'hooks', 'guard-bash.sh'))) {
     return { kind: 'installed', hooks: path.join(installed, 'hooks'), evalDir: path.join(installed, 'eval') };
   }
@@ -115,7 +115,7 @@ export async function gateReport(cwd) {
 
   // The script finds the hooks relative to where it is run: `./.claude/hooks`
   // in an installed project, `./hooks` otherwise. In this kit's own checkout
-  // that second shape only resolves from inside claude-starter/, and the log it
+  // that second shape only resolves from inside kit/, and the log it
   // should read is one level up. Both layouts are given what they expect rather
   // than the script being asked to guess.
   const from = kit.kind === 'installed' ? cwd : path.dirname(kit.hooks);

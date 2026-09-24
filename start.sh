@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Setup wizard: asks who the install is for, shows a summary and asks for confirmation; then installs the WHOLE
-# kit (./.claude + ./CLAUDE.md); finally deletes claude-starter/ and itself.
+# kit (./.claude + ./CLAUDE.md); finally deletes kit/ and itself.
 # Every install is identical — there is no frontend/backend/mobile split. Measured before it was removed: the
 # widest profile pruning saved ~400 tokens of listing, while the split cost a per-profile e2e matrix, a second
 # prune path in adopt.sh, and shipped a set the plugin channel never matched. Since 3.0 the backend pattern does
 # not vary either: the stack is decided per project by the backend-architecture skill and recorded in CLAUDE.md.
-# start.sh + claude-starter/ must be in the SAME directory. At the project root:  bash start.sh [flags]
+# start.sh + kit/ must be in the SAME directory. At the project root:  bash start.sh [flags]
 set -euo pipefail
 HERE="$(CDPATH= cd "$(dirname "$0")" && pwd)"
 
@@ -18,16 +18,16 @@ for a in "$@"; do
   fi
 done
 
-SRC="$HERE/claude-starter"
+SRC="$HERE/kit"
 
 if [ ! -d "$SRC" ]; then
-  echo "ERROR: 'claude-starter/' folder not found."
-  echo "start.sh and claude-starter/ must be in the SAME directory (both come together when you unzip)."
+  echo "ERROR: 'kit/' folder not found."
+  echo "start.sh and kit/ must be in the SAME directory (both come together when you unzip)."
   exit 1
 fi
 
 # Refuse to run inside a checkout of the kit's own source repository. This script ends by deleting
-# claude-starter/ and itself, which is correct when the kit has been unpacked into a project and is being
+# kit/ and itself, which is correct when the kit has been unpacked into a project and is being
 # consumed — and destroys the source when someone invokes it by absolute path from somewhere else while
 # developing the kit. That is not hypothetical: it removed 122 tracked files during this kit's own
 # development, recovered only because they were committed.
@@ -35,7 +35,7 @@ fi
 # The kit's developer instructions already said "do not run start.sh in this repo". A rule that only holds
 # while someone remembers it is the exact thing this kit exists to replace with a gate, so here is the gate.
 # The three markers together appear in the source repo and in no install: an installed kit has .claude/ and
-# CLAUDE.md, never packaging/ next to a claude-starter/ it has not yet consumed.
+# CLAUDE.md, never packaging/ next to a kit/ it has not yet consumed.
 if [ -d "$HERE/packaging" ] && [ -d "$HERE/.git" ] && [ -f "$HERE/VERSION" ]; then
   if [ "${CSK_ALLOW_SOURCE_INSTALL:-0}" = 1 ]; then
     echo "WARNING: CSK_ALLOW_SOURCE_INSTALL=1 — installing from the kit's own source checkout."
@@ -124,7 +124,7 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       ".claude/DISCIPLINE.md written — kit-owned; an update overwrites it, so keep your own rules out of it.") s='.claude/DISCIPLINE.md yazıldı. Bu dosya kite ait ve her güncellemede yeniden yazılır; kendi kurallarınızı buraya eklemeyin.' ;;
       "./CLAUDE.md created — EDIT the project section.") s='./CLAUDE.md oluşturuldu — proje bölümünü sizin DOLDURMANIZ gerekiyor.' ;;
       "trace scan: core.hooksPath -> .claude/hooks (§4.1/§4.2 commit gate active)") s='iz taraması: core.hooksPath -> .claude/hooks (§4.1/§4.2 commit kapısı açık)' ;;
-      "Done. ./.claude + ./CLAUDE.md ready (full kit); claude-starter/ deleted.") s='Tamamlandı. ./.claude ve ./CLAUDE.md hazır (tam kit); claude-starter/ silindi.' ;;
+      "Done. ./.claude + ./CLAUDE.md ready (full kit); kit/ deleted.") s='Tamamlandı. ./.claude ve ./CLAUDE.md hazır (tam kit); kit/ silindi.' ;;
       "Next: 1) fill in the CLAUDE.md project section  2) open Claude Code at the repo root") s="Sıradaki adımlar: 1) CLAUDE.md'deki proje bölümünü doldurun  2) Claude Code'u deponun kökünde açın" ;;
       "Note: if Claude Code is ALREADY running here, restart it — CLAUDE.md and the discipline load at session start.") s='Not: Claude Code bu klasörde ZATEN açıksa yeniden başlatın — CLAUDE.md ve disiplin oturum açılırken yüklenir.' ;;
       "Panel: /studio-csk opens the Studio panel from this project (or: node .claude/studio/server/index.js --open).") s='Panel: /studio-csk komutu Studio panelini bu projeden açar (alternatif: node .claude/studio/server/index.js --open).' ;;
@@ -575,7 +575,7 @@ else
 fi
 # What this machine is missing, BEFORE the confirm prompt — not after, when it becomes a symptom pointing
 # somewhere else. Report-only and never blocking: the kit degrades rather than breaks, and that is exactly why
-# a gap is otherwise invisible. See claude-starter/eval/preflight.sh for the reasoning per tool.
+# a gap is otherwise invisible. See kit/eval/preflight.sh for the reasoning per tool.
 [ -f "$SRC/eval/preflight.sh" ] && bash "$SRC/eval/preflight.sh"
 rule
 echo
@@ -600,7 +600,7 @@ cp -R "$SRC/eval/."     .claude/eval/ 2>/dev/null || true
 # plus one `rm`, not a selective walk: on Git Bash a per-file copy of 25 files is 25
 # process spawns at 62-135 ms each. test/ is dropped because its assertions read the
 # The panel's own suite is NOT here to delete: it lives in packaging/studio-test/,
-# outside the payload, because claude-starter/ ships whole and 104 KB of test code
+# outside the payload, because kit/ ships whole and 104 KB of test code
 # would travel through all four channels only to be removed on arrival.
 cp -R "$SRC/studio/."   .claude/studio/ 2>/dev/null || true
 { _mt "%s agents, %s skills installed." "$(ls .claude/agents/*.md 2>/dev/null | wc -l | tr -d ' ')" "$(ls -d .claude/skills/*/ 2>/dev/null | wc -l | tr -d ' ')"; echo "  ${_M}"; }
@@ -715,7 +715,7 @@ else
 fi
 rm -rf "$SRC"
 echo
-{ _mt 'Done. ./.claude + ./CLAUDE.md ready (full kit); claude-starter/ deleted.'; echo "== ${_M} =="; }
+{ _mt 'Done. ./.claude + ./CLAUDE.md ready (full kit); kit/ deleted.'; echo "== ${_M} =="; }
 { _mt 'Next: 1) fill in the CLAUDE.md project section  2) open Claude Code at the repo root'; echo "${_M}"; }
 { _mt 'Note: if Claude Code is ALREADY running here, restart it — CLAUDE.md and the discipline load at session start.'; echo "${_M}"; }
 { _mt "Tip:  open Claude Code and run /doctor-csk — it checks the install is wired (hooks executable, core.hooksPath set, discipline imported) and scores the project's readiness. CLAUDE.md loads the discipline every session."; echo "${_M}"; }

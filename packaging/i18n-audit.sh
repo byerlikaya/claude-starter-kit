@@ -30,7 +30,7 @@ cd "$(dirname "$0")/.." || exit 1
 
 SQ=$'\047'   # a literal apostrophe, passed into awk rather than quoted inside it
 FILES=("$@")
-[ ${#FILES[@]} -gt 0 ] || FILES=(start.sh adopt.sh claude-starter/eval/preflight.sh claude-starter/eval/lib/star.sh)
+[ ${#FILES[@]} -gt 0 ] || FILES=(start.sh adopt.sh kit/eval/preflight.sh kit/eval/lib/star.sh)
 
 fails=0
 total=0

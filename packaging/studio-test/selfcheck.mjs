@@ -10,32 +10,32 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { _internals } from '../../claude-starter/studio/server/lib/fleet.js';
-import { contextFill } from '../../claude-starter/studio/server/lib/transcript.js';
-import { encodeCwd } from '../../claude-starter/studio/server/lib/projects.js';
-import { _internals as graphInternals } from '../../claude-starter/studio/server/lib/graph.js';
-import { palette, _internals as paletteInternals } from '../../claude-starter/studio/server/lib/palette.js';
-import { renderMarkdown } from '../../claude-starter/studio/web/md.js';
-import { ALLOWED_MODES } from '../../claude-starter/studio/server/lib/session.js';
-import { parsePeers } from '../../claude-starter/studio/server/lib/peers.js';
-import { writeAllowed, signature } from '../../claude-starter/studio/server/index.js';
-import { prepare, decide, pending, cleanup, _internals as permInternals } from '../../claude-starter/studio/server/lib/permissions.js';
+import { _internals } from '../../kit/studio/server/lib/fleet.js';
+import { contextFill } from '../../kit/studio/server/lib/transcript.js';
+import { encodeCwd } from '../../kit/studio/server/lib/projects.js';
+import { _internals as graphInternals } from '../../kit/studio/server/lib/graph.js';
+import { palette, _internals as paletteInternals } from '../../kit/studio/server/lib/palette.js';
+import { renderMarkdown } from '../../kit/studio/web/md.js';
+import { ALLOWED_MODES } from '../../kit/studio/server/lib/session.js';
+import { parsePeers } from '../../kit/studio/server/lib/peers.js';
+import { writeAllowed, signature } from '../../kit/studio/server/index.js';
+import { prepare, decide, pending, cleanup, _internals as permInternals } from '../../kit/studio/server/lib/permissions.js';
 import { execFileSync, spawnSync } from 'node:child_process';
 import os from 'node:os';
-import { quickReplies } from '../../claude-starter/studio/web/chat.js';
+import { quickReplies } from '../../kit/studio/web/chat.js';
 import { installDom } from './dom-stub.mjs';
-import { plan as terminalPlan } from '../../claude-starter/studio/server/lib/terminal.js';
-import { gateLog, gateReport, board, sessionStats, _internals as kitInternals } from '../../claude-starter/studio/server/lib/kit-telemetry.js';
-import { parseRoster, remoteRoster } from '../../claude-starter/studio/server/lib/roster.js';
+import { plan as terminalPlan } from '../../kit/studio/server/lib/terminal.js';
+import { gateLog, gateReport, board, sessionStats, _internals as kitInternals } from '../../kit/studio/server/lib/kit-telemetry.js';
+import { parseRoster, remoteRoster } from '../../kit/studio/server/lib/roster.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // The suite lives beside the other gates rather than inside the panel, because
-// claude-starter/ is shipped whole: a test directory under it would travel to
+// kit/ is shipped whole: a test directory under it would travel to
 // every user through all four channels only to be deleted by the installer.
 // 104 KB of it, measured. So the panel is named from the repo root, not walked
 // up to from here.
 const REPO = path.resolve(HERE, '..', '..');
-const PAYLOAD = path.join(REPO, 'claude-starter');
+const PAYLOAD = path.join(REPO, 'kit');
 const STUDIO = path.join(PAYLOAD, 'studio');
 const WEB_ROOT = path.join(STUDIO, 'web');
 
@@ -115,12 +115,12 @@ const rootPkg = JSON.parse(read(path.join(REPO, 'package.json')) ?? '{}');
 // Inverted, not deleted. The old pin held the panel OUT of every channel; a
 // real project then updated, ran the documented command and got ENOENT, because
 // nothing had ever installed it. The claim now runs the other way and has to
-// fail the moment the panel stops shipping: `claude-starter/` is the one string
+// fail the moment the panel stops shipping: `kit/` is the one string
 // every channel already carries (npm files[], make-release.sh's whitelist,
 // bin/cli.js's staging list, the Homebrew formula), so living under it is what
 // makes "installed" true rather than a fourth place to remember.
-const shipsPayload = Array.isArray(rootPkg.files) && rootPkg.files.some((f) => String(f).replace(/\/$/, '') === 'claude-starter');
-const insidePayload = path.basename(PAYLOAD) === 'claude-starter';
+const shipsPayload = Array.isArray(rootPkg.files) && rootPkg.files.some((f) => String(f).replace(/\/$/, '') === 'kit');
+const insidePayload = path.basename(PAYLOAD) === 'kit';
 const carried = ['server/index.js', 'web/index.html', 'package.json', 'ensure-node.sh']
   .filter((f) => fs.existsSync(path.join(STUDIO, f)));
 check(
@@ -312,9 +312,9 @@ const palHome = fs.mkdtempSync(path.join(os.tmpdir(), 'csk-studio-palette-'));
 try {
   const shapes = {
     install: path.join(palHome, 'install', '.claude'),
-    repo: path.join(palHome, 'repo', 'claude-starter'),
+    repo: path.join(palHome, 'repo', 'kit'),
     // The third layout, and the one the comment above claimed in prose while nothing measured it: a
-    // plugin root has no `.claude` or `claude-starter` segment at all — agents/ and studio/ sit
+    // plugin root has no `.claude` or `kit` segment at all — agents/ and studio/ sit
     // directly in it. Now that the plugin edition ships the panel, this is a real deployment.
     plugin: path.join(palHome, 'plugin', 'claude-starter-kit'),
   };
@@ -762,7 +762,7 @@ process.stdout.write('\n== §20 browser modules load ==\n');
     let err = null;
     try {
       // Cache-busted so a module is really evaluated on every run.
-      await import(`../../claude-starter/studio/web/${mod}?t=${Date.now()}`);
+      await import(`../../kit/studio/web/${mod}?t=${Date.now()}`);
     } catch (e) {
       err = e;
     }
@@ -774,7 +774,7 @@ process.stdout.write('\n== §20 browser modules load ==\n');
   {
     let err = null;
     try {
-      const { Canvas } = await import(`../../claude-starter/studio/web/canvas.js?render=${Date.now()}`);
+      const { Canvas } = await import(`../../kit/studio/web/canvas.js?render=${Date.now()}`);
       const host = document.createElement('div');
       const c = new Canvas(host, {});
       c.setPalette({ map: { Explore: { hex: '#26c6e6', source: 'builtin' } }, unknown: '#94a3c8' });
@@ -1116,7 +1116,7 @@ function computed(rules, el, ancestors, media = []) {
   const rules = cssRules(cssText);
   const REDUCE = ['(prefers-reduced-motion: reduce)'];
 
-  const { Canvas } = await import(`../../claude-starter/studio/web/canvas.js?motion=${Date.now()}`);
+  const { Canvas } = await import(`../../kit/studio/web/canvas.js?motion=${Date.now()}`);
   const PAL = {
     map: {
       Explore: { hex: '#26c6e6', source: 'builtin' },
@@ -1578,7 +1578,7 @@ process.stdout.write('\n== §27 the picture at 250 nodes ==\n');
   const canvasSrc = read(path.join(STUDIO, 'web', 'canvas.js')) ?? '';
   const rules = cssRules(cssText);
   const REDUCE = ['(prefers-reduced-motion: reduce)'];
-  const { Canvas } = await import(`../../claude-starter/studio/web/canvas.js?lod=${Date.now()}`);
+  const { Canvas } = await import(`../../kit/studio/web/canvas.js?lod=${Date.now()}`);
 
   // Thresholds are read out of the module rather than restated here. A
   // threshold written down twice is a threshold that drifts.
@@ -2020,7 +2020,7 @@ process.stdout.write('\n== §28 the instance record — finding a panel that is 
   const rtDir = fs.mkdtempSync(path.join(os.tmpdir(), 'csk-inst-'));
   const prevRt = process.env.CSK_STUDIO_RUNTIME;
   process.env.CSK_STUDIO_RUNTIME = rtDir;
-  const inst = await import('../../claude-starter/studio/server/lib/instance.js');
+  const inst = await import('../../kit/studio/server/lib/instance.js');
 
   check('the record lives under the runtime directory the env var names',
     inst.statePath(7777) === path.join(rtDir, 'instance-7777.json'),

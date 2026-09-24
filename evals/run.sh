@@ -129,11 +129,11 @@ build_project() {
     command -v post_seed >/dev/null 2>&1 && post_seed
   )
   if [ "$arm" = kit ] || [ "$arm" = kitb ]; then
-    cp "$ROOT/start.sh" "$dir/"; cp -R "$ROOT/claude-starter" "$dir/"
+    cp "$ROOT/start.sh" "$dir/"; cp -R "$ROOT/kit" "$dir/"
     ( cd "$dir" && printf 'yes\n' | bash start.sh --fullstack --generic >/dev/null 2>&1 )
     # A bare-arm project has no .claude/, so a leftover installer would be a second difference between the
     # arms. It removes itself on success; make sure.
-    rm -f "$dir/start.sh"; rm -rf "$dir/claude-starter"
+    rm -f "$dir/start.sh"; rm -rf "$dir/kit"
     [ -d "$dir/.claude" ] || { echo "run.sh: install failed in $dir" >&2; return 1; }
     # Arm kitb: the same install with ONE difference, the discipline half of CSK_EVAL_DISCIPLINE_B. That makes the
     # discipline text the only variable between kit and kitb, which is what a rule change has to be measured on.
@@ -252,7 +252,7 @@ run_arm() {
 # layer switched off — while the kit's central claim is the agent layer. Both arms get them (a bare project has no
 # agents, so it simply never uses them, and the arms stay identical in tool access).
 # Override with CSK_EVAL_PERM if your environment refuses the default.
-  # CSK_GATE_LOG turns on the hooks' write-only observability channel (see claude-starter/hooks/guard-bash.sh).
+  # CSK_GATE_LOG turns on the hooks' write-only observability channel (see kit/hooks/guard-bash.sh).
   # It exists because "the model never reached for the command" and "the gate stopped it" leave behind IDENTICAL
   # artifacts: permission-pressure had to report "guard-bash never fired" as an inference, and that inference is
   # the difference between evidence for the always-on discipline TEXT and evidence for the GATE. Set in both arms
@@ -288,7 +288,7 @@ printf '== kit A/B eval ==  %s · %s runs/arm · arms: %s\n\n' "$MODEL" "$RUNS" 
 # see the same interpreter, the comparison stays fair, and nothing outside this process is changed. It is said out
 # loud, because an eval whose environment differs from the shell that launched it should never do so silently.
 if ! command -v node >/dev/null 2>&1; then
-  _en="$ROOT/claude-starter/studio/ensure-node.sh"
+  _en="$ROOT/kit/studio/ensure-node.sh"
   if [ -f "$_en" ] && _node="$(bash "$_en" 2>/dev/null)" && [ -n "$_node" ] && [ -x "$_node" ]; then
     PATH="$(dirname "$_node"):$PATH"; export PATH
     printf '   node is not on PATH; using the kit-fetched runtime for this run only: %s\n\n' "$_node"

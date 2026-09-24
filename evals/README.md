@@ -41,7 +41,7 @@ file named by `CSK_EVAL_DISCIPLINE_B`, a CLAUDE.md carrying the `<!-- KIT:DISCIP
 lives in agent definitions, `CSK_EVAL_OVERLAY_B` names a directory whose files replace installed ones under `.claude/`
 (`agents/test-expert-csk.md` → `.claude/agents/test-expert-csk.md`). A path the install did not create is refused
 rather than added: a typo would ship a file nobody reads, and the arm would measure the unchanged kit under a new
-name. Take overlay files from an installed project, not from `claude-starter/` — that is the text the arm actually
+name. Take overlay files from an installed project, not from `kit/` — that is the text the arm actually
 loads (before 3.0 a `--generic` install swapped `backend-expert-csk.md` for another source). `CSK_EVAL_ARMS="kit kitb"` therefore
 varies only the rule, and is how a rule change is measured. `CSK_EVAL_CASES` runs cases from another directory, so a
 draft set can be exercised before it lands here.
@@ -433,7 +433,7 @@ from noise, and a failed criterion at this n means "no large effect", not "no ef
 measure the control's baseline with n ≥ 3 before writing a reduction criterion — the single calibration run had
 already shown 0 of 1.
 
-**To re-run it,** build arm B's file by replacing, in a copy of `claude-starter/CLAUDE.md`, the paragraph that begins
+**To re-run it,** build arm B's file by replacing, in a copy of `kit/CLAUDE.md`, the paragraph that begins
 "The specialists run the work; you route it." and the one that begins "Route trace on every task" with:
 
 > **The specialists run the work; you route it.** Delegation is the DEFAULT for anything that changes what code
@@ -482,7 +482,7 @@ the first run.
 **Pre-registered criteria.** S1, fewer runs: `kitb` at most 0.70 × `kit` and a lower median — **passed** (0.50; 4 → 2).
 S2, safety: every `kitb` session that edited ran a test after its last edit — **passed** (9 of 9). S3, quality: no more
 failed checks than `kit` and no session leaving the tests failing — **passed** (0 and 0). **Decision: ship.** The text in
-`claude-starter/CLAUDE.md` and the agent definitions is the text measured, byte for byte.
+`kit/CLAUDE.md` and the agent definitions is the text measured, byte for byte.
 
 **What moved, and what did not.** Who ran the tests: in `kit`, backend-expert 15, the main thread 12, review-agent 11,
 security-expert 2; in `kitb`, backend-expert 17 and the main thread 3. The reviewer was still delegated in every `kitb`
@@ -494,7 +494,7 @@ already carried those bytes, so they are inside its $6.77. Three single-prompt N
 file edits made through `Bash` are invisible to S2.
 
 **To re-run it,** remember that arm `kit` is now the shipped text: build arm B from the previous one. Take
-`claude-starter/CLAUDE.md` from the commit before this change as `CSK_EVAL_DISCIPLINE_B`, and the five agent files from
+`kit/CLAUDE.md` from the commit before this change as `CSK_EVAL_DISCIPLINE_B`, and the five agent files from
 the `.claude/agents/` of a project installed from that commit as `CSK_EVAL_OVERLAY_B` (at that pre-3.0 commit a
 `--generic` install wrote `backend-expert-csk.md` from a separate generic source). Then point `CSK_EVAL_CASES` at the three `tests-*` cases and run
 `CSK_EVAL_ARMS="kit kitb" CSK_EVAL_TRACE=1 bash evals/run.sh --runs 3 --keep`.

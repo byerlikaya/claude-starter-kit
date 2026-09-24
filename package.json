@@ -6,13 +6,13 @@
     "claude-starter-kit": "bin/cli.js"
   },
   "scripts": {
-    "studio": "node claude-starter/studio/server/index.js --open"
+    "studio": "node kit/studio/server/index.js --open"
   },
   "files": [
     "bin/",
     "start.sh",
     "adopt.sh",
-    "claude-starter/",
+    "kit/",
     "VERSION",
     "LICENSE",
     "README.md"

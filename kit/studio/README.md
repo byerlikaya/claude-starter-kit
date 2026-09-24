@@ -4,7 +4,7 @@ A visual orchestration panel for Claude Code: which agent is running, what it is
 doing right now, what it has spent, and which gates fired.
 
 Studio **is installed into your project**, because it lives inside the payload:
-this directory is `claude-starter/studio/`, and `claude-starter/` is what every
+this directory is `kit/studio/`, and `kit/` is what every
 channel already ships. `start.sh` and `adopt.sh` copy it to `.claude/studio/`,
 beside `agents`, `skills`, `commands`, `hooks` and `eval` — the sixth of six.
 
@@ -82,7 +82,7 @@ editions.
 **The suite is not here.** It lives in `packaging/studio-test/`, beside the
 repo's other gates, and asserts things about this *repository* — the root
 `package.json`, the payload beside it — which an installed project does not
-have. Keeping it under `claude-starter/` would also have shipped 104 KB of test
+have. Keeping it under `kit/` would also have shipped 104 KB of test
 code through all four channels only for the installer to delete it on arrival.
 The installed diagnostic is `--selftest`, which lives in `server/index.js`.
 
@@ -92,7 +92,7 @@ There is no install step. Studio has **zero dependencies** — `node:http` and
 
 Requires Node 18+. In the kit's own repository `bash packaging/verify.sh studio`
 runs the same checks CI runs; a machine without node reports a skip rather than a
-pass, and a missing `claude-starter/studio/` is a failure rather than a skip.
+pass, and a missing `kit/studio/` is a failure rather than a skip.
 
 ## What it does
 

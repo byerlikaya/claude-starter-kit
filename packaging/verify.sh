@@ -40,16 +40,16 @@ step_syntax(){
   bash -n start.sh || return 1
   bash -n adopt.sh || return 1
   local s
-  for s in claude-starter/hooks/*.sh claude-starter/eval/*.sh packaging/*.sh packaging/studio-test/*.sh \
-           claude-starter/studio/*.sh claude-starter/studio/server/hooks/*.sh; do
+  for s in kit/hooks/*.sh kit/eval/*.sh packaging/*.sh packaging/studio-test/*.sh \
+           kit/studio/*.sh kit/studio/server/hooks/*.sh; do
     [ -f "$s" ] || continue
     bash -n "$s" || return 1
   done
   echo "shell syntax ok"
 }
 
-step_smoke(){     bash claude-starter/eval/smoke-test.sh; }
-step_routing(){   bash claude-starter/eval/routing-eval.sh; }
+step_smoke(){     bash kit/eval/smoke-test.sh; }
+step_routing(){   bash kit/eval/routing-eval.sh; }
 step_catalogue(){ bash packaging/build-readme-catalog.sh --check; }
 step_e2e(){       bash packaging/e2e.sh; }
 
@@ -63,7 +63,7 @@ step_e2e(){       bash packaging/e2e.sh; }
 # while its three findings were still open; all three are closed, so setting it here would mean a gate that
 # cannot report the next one. The variable stays in the script and is pinned there to fail if a row it excuses
 # starts passing — a safety valve that cleans itself up, not a permanent dispensation.
-step_parser(){    bash claude-starter/eval/parser-conformance.sh; }
+step_parser(){    bash kit/eval/parser-conformance.sh; }
 
 # The bilingual installer's message tables, audited statically: patterns quoted (an unquoted one is a GLOB, and
 # a lot of prose ends in `?`), no colour or raw ESC inside a message, no stray backslash or bare `%` in a string
@@ -95,7 +95,7 @@ step_subshell(){  bash packaging/subshell-audit.sh; }
 # was optional; now that every channel ships it, a botched move would show as a
 # yellow "skipped, NOT a pass" that nobody reads as broken.
 step_studio(){
-  [ -d claude-starter/studio ] || { echo "claude-starter/studio is MISSING — the panel ships in the payload"; return 1; }
+  [ -d kit/studio ] || { echo "kit/studio is MISSING — the panel ships in the payload"; return 1; }
   command -v node >/dev/null 2>&1 || { echo "SKIP: node is not on PATH"; return 3; }
   node --version >/dev/null 2>&1 || { echo "SKIP: node is on PATH but does not run"; return 3; }
   node packaging/studio-test/selfcheck.mjs || return 1
@@ -108,9 +108,9 @@ step_studio(){
   # assumed. The release-time sync gate catches drift only at release; this catches it on every run.
   [ -f plugin/studio/server/index.js ] || {
     echo "plugin/studio is MISSING — the plugin edition ships the panel; run packaging/build-plugin.sh"; return 1; }
-  diff -r claude-starter/studio plugin/studio >/dev/null 2>&1 || {
-    echo "plugin/studio has drifted from claude-starter/studio — run packaging/build-plugin.sh and commit the result"
-    diff -rq claude-starter/studio plugin/studio | head -10; return 1; }
+  diff -r kit/studio plugin/studio >/dev/null 2>&1 || {
+    echo "plugin/studio has drifted from kit/studio — run packaging/build-plugin.sh and commit the result"
+    diff -rq kit/studio plugin/studio | head -10; return 1; }
 }
 
 # The only step that needs a tool the repo does not carry. CI installs the CLI; a developer machine
