@@ -1044,7 +1044,7 @@ export class Canvas {
      can be unavailable (private windows, blocked site data), so every access
      is guarded and the canvas falls back to auto layout. */
 
-  #key() { return `csk-studio-layout:${this.flow}:${this.sessionKey}`; }
+  #key() { return `crewforth-studio-layout:${this.flow}:${this.sessionKey}`; }
 
   #persist() {
     if (!this.sessionKey) return;   // no session, nothing to key the layout to
@@ -1147,13 +1147,13 @@ function mixHex(a, b, t) {
 
 function readFlow() {
   try {
-    const v = localStorage.getItem('csk-studio-flow');
+    const v = localStorage.getItem('crewforth-studio-flow');
     return v === 'right' ? 'right' : 'down';
   } catch { return 'down'; }
 }
 
 function writeFlow(v) {
-  try { localStorage.setItem('csk-studio-flow', v); } catch { /* blocked storage */ }
+  try { localStorage.setItem('crewforth-studio-flow', v); } catch { /* blocked storage */ }
 }
 
 function fmtTokens(t) {

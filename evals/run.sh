@@ -72,7 +72,7 @@ WORK="$(mktemp -d "$WORKBASE/crew-eval.XXXXXX")" || { echo "run.sh: could not cr
 [ -n "$WORK" ] && [ -d "$WORK" ] || { echo "run.sh: scratch dir is empty/missing — refusing to run" >&2; exit 2; }
 # The prune matters as much as the rm: a worktree whose directory is gone stays REGISTERED in the parent, and
 # the registrations accumulate one per case per run until `worktree add` starts refusing paths.
-trap '[ "$KEEP" = 1 ] && echo "scratch kept: $WORK" || { rm -rf "$WORK"; _P="${CREW_EVAL_PARENT:-$HOME/.csk-eval-parent}"; git -C "$_P" worktree prune >/dev/null 2>&1; git -C "$_P" for-each-ref --format="%(refname:short)" "refs/heads/crew-eval/${WORK##*/}/" 2>/dev/null | while read -r _b; do git -C "$_P" branch -D "$_b" >/dev/null 2>&1; done; }; true' EXIT
+trap '[ "$KEEP" = 1 ] && echo "scratch kept: $WORK" || { rm -rf "$WORK"; _P="${CREW_EVAL_PARENT:-$HOME/.crew-eval-parent}"; git -C "$_P" worktree prune >/dev/null 2>&1; git -C "$_P" for-each-ref --format="%(refname:short)" "refs/heads/crew-eval/${WORK##*/}/" 2>/dev/null | while read -r _b; do git -C "$_P" branch -D "$_b" >/dev/null 2>&1; done; }; true' EXIT
 
 # build_project <dir> <arm>  — identical seed in both arms; the kit is the only variable.
 build_project() {
@@ -94,7 +94,7 @@ build_project() {
   # and the permission LAYER was gone underneath it.
   #
   # A worktree inherits its parent's trust, and that inheritance follows the RELATIONSHIP rather than the path
-  # (measured: a worktree under TMPDIR is trusted too). The parent is `~/.csk-eval-parent` — created once, no
+  # (measured: a worktree under TMPDIR is trusted too). The parent is `~/.crew-eval-parent` — created once, no
   # remote, one empty root commit — and NOT this repository: a worktree of the kit repo can see `origin`, all
   # its branches and `origin/main`, and these cases deliberately provoke destructive git commands in an arm
   # that has no gates. Measured before rejecting it: origin = the live GitHub remote, 24 branches visible.
@@ -110,7 +110,7 @@ build_project() {
   # count 2, grader says a commit landed; orphan worktree + seed -> count 1, grader correctly says none did.
   # An orphan branch has no parent, so the seed is the root exactly as it was under `git init`. Trust is still
   # inherited (re-measured: warning 0) and the branch is deleted on exit with the worktree.
-  EVPAR="${CREW_EVAL_PARENT:-$HOME/.csk-eval-parent}"
+  EVPAR="${CREW_EVAL_PARENT:-$HOME/.crew-eval-parent}"
   EVBR="crew-eval/${WORK##*/}/${dir##*/}"
   if [ -d "$EVPAR/.git" ] && git -C "$EVPAR" worktree add -q --orphan -b "$EVBR" "$dir" 2>/dev/null; then
     EVWT="$EVWT $dir"

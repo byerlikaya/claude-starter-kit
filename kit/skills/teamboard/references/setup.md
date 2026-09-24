@@ -9,7 +9,7 @@ need it: a teammate who clones the repo configures nothing.
   board on the code repo's own `origin`, and that is the whole setup — no account, no token, no service.
 - **A separate board repository:** `/crew-board init --remote <url>` (or an existing remote's name). Use it when
   the board is shared across several repos, or when people who must claim work cannot push to the code repo. It
-  gets its own `csk-board` remote and never touches `origin`.
+  gets its own `crew-board` remote and never touches `origin`.
 - **Everyone else: nothing.** They clone as usual. Session start fetches the board on its own (detached), the
   ref namespace is auto-detected including the orphan-branch fallback, and `/crew-board` fetches on the spot if
   the background refresh has not landed yet. Never tell a teammate to run `init` — a second `init` is how a team
@@ -17,8 +17,8 @@ need it: a teammate who clones the repo configures nothing.
 
 ## The ref namespace, and the fallback
 
-`init` first probes whether the server accepts a custom ref namespace (`refs/csk/board`); if it does not, it
-falls back to the orphan branch `refs/heads/csk-board`, which every server accepts and which enforces the same
+`init` first probes whether the server accepts a custom ref namespace (`refs/crew/board`); if it does not, it
+falls back to the orphan branch `refs/heads/crew-board`, which every server accepts and which enforces the same
 fast-forward rule. Do not merge that branch into code.
 
 ## Which level to create

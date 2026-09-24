@@ -590,7 +590,7 @@ else
   ( cd "$BD/ayse" && bash ../board.sh sync ) >/dev/null 2>&1
   ( cd "$BD/ayse" && bash ../board.sh claim 001 ) >/dev/null 2>&1     # held by ali -> refused
   ( cd "$BD/ali"  && bash ../board.sh sync ) >/dev/null 2>&1
-  RLOG="$(git -C "$BD/ali" cat-file -p refs/csk/board:refusals.log 2>/dev/null)"
+  RLOG="$(git -C "$BD/ali" cat-file -p refs/crew/board:refusals.log 2>/dev/null)"
   case "$RLOG" in
     *"|001|held|"*) pass "a refused claim is recorded on the board, where the whole team can count it" ;;
     *) fail "the refusal left no trace — the lock's only evidence is unrecorded: [$RLOG]" ;;
@@ -639,7 +639,7 @@ else
   ( cd "$BD/ali" && bash ../board.sh note 020 "half-done, parked at lib/x.ts:12" ) >/dev/null 2>&1
   ( cd "$BD/ali" && bash ../board.sh decide "Errors return problem+json" "Any endpoint returning a bare string is a bug." "-" ) >/dev/null 2>&1
   ( cd "$BD/ayse" && bash ../board.sh sync ) >/dev/null 2>&1
-  rm -f "$BD/ayse/.git/csk-board-seen"
+  rm -f "$BD/ayse/.git/crew-board-seen"
   ( cd "$BD/ali" && bash ../board.sh add 021 "Also unrelated" ) >/dev/null 2>&1
   ( cd "$BD/ayse" && bash ../board.sh sync ) >/dev/null 2>&1
   START="$( cd "$BD/ayse" && bash ../board.sh claim 021 2>&1 )"
@@ -693,7 +693,7 @@ else
   ( cd "$BD/ayse" && bash ../board.sh decisions 2>/dev/null | grep -q "Refresh tokens travel in a header" ) \
     && pass "a decision recorded by one teammate arrives in another's clone" \
     || fail "the decision never reached the second clone — decisions stay as local as the ADRs they replace"
-  rm -f "$BD/ayse/.git/csk-board-seen"
+  rm -f "$BD/ayse/.git/crew-board-seen"
   ( cd "$BD/ayse" && bash ../board.sh cache 2>/dev/null | grep -q "recorded since you last looked" ) \
     && pass "an unread decision announces itself at session start" \
     || fail "an unread decision is silent at session start — it arrives after the work it should have changed"
@@ -703,7 +703,7 @@ else
     || pass "once read, the decision stops being announced"
   # First read must not leak a shell error: the marker file does not exist yet, and an input redirect from a
   # missing file complains BEFORE 2>/dev/null takes effect. That error landed in a session-start hook once.
-  rm -f "$BD/ali/.git/csk-board-seen"
+  rm -f "$BD/ali/.git/crew-board-seen"
   ERRTXT="$( cd "$BD/ali" && bash ../board.sh cache 2>&1 >/dev/null )"
   [ -z "$ERRTXT" ] && pass "reading the board with no seen-marker yet writes nothing to stderr" \
                    || fail "stderr leak on first read: $ERRTXT"
@@ -755,12 +755,12 @@ else
   ) >/dev/null 2>&1 || FB_OK=0
   if [ "$FB_OK" = 0 ]; then fail "board could not be created against a server that refuses custom refs"
   else
-    RREF="$(cd "$FB/one" && git config --get csk.boardRef 2>/dev/null)"
-    [ "$RREF" = "refs/heads/csk-board" ] && pass "server refuses refs/csk/* -> init falls back to the orphan branch" \
+    RREF="$(cd "$FB/one" && git config --get crew.boardRef 2>/dev/null)"
+    [ "$RREF" = "refs/heads/crew-board" ] && pass "server refuses refs/crew/* -> init falls back to the orphan branch" \
                                          || fail "fallback did not engage (ref recorded: '$RREF')"
     ( cd "$FB/two" && bash ../board.sh sync ) >/dev/null 2>&1
-    TREF="$(cd "$FB/two" && git config --get csk.boardRef 2>/dev/null)"
-    [ "$TREF" = "refs/heads/csk-board" ] && pass "a teammate that never ran the probe resolves the fallback ref itself" \
+    TREF="$(cd "$FB/two" && git config --get crew.boardRef 2>/dev/null)"
+    [ "$TREF" = "refs/heads/crew-board" ] && pass "a teammate that never ran the probe resolves the fallback ref itself" \
                                          || fail "teammate did not find the fallback board (ref: '$TREF') — the board would be invisible to everyone but its author"
     if ( cd "$FB/two" && bash ../board.sh claim 001 ) >/dev/null 2>&1
     then fail "the lock does not hold on the fallback ref: a claimed item was claimed again"
@@ -799,7 +799,7 @@ else
     sw_commit "feat: unattributed"  && pass "/crew-board off releases the COMMIT gate" \
                                     || fail "/crew-board off left the commit gate armed — a partial switch is a trap"
     sw_write && pass "/crew-board off releases the EDIT gate" || fail "/crew-board off left the edit gate armed"
-    [ -f "$SW/solo/.git/csk-board-cache" ] && fail "/crew-board off left the session-start cache behind" \
+    [ -f "$SW/solo/.git/crew-board-cache" ] && fail "/crew-board off left the session-start cache behind" \
                                            || pass "/crew-board off leaves nothing for the session hook to announce"
     ( cd "$SW/solo" && bash "$HOOKS/board.sh" on ) >/dev/null 2>&1
     sw_commit "feat: unattributed" && fail "/crew-board on did not re-arm the commit gate" \
@@ -829,7 +829,7 @@ else
   ) >/dev/null 2>&1 || SR_OK=0
   if [ "$SR_OK" = 0 ]; then fail "init --remote could not put the board in a separate repository"
   else
-    ( cd "$SR/boardonly.git" && git for-each-ref --format='%(refname)' ) 2>/dev/null | grep -q csk \
+    ( cd "$SR/boardonly.git" && git for-each-ref --format='%(refname)' ) 2>/dev/null | grep -q 'refs/crew/board' \
       && pass "init --remote puts the board in a separate repository (no git config knowledge needed)" \
       || fail "init --remote recorded the remote but the board did not land in it"
     ( cd "$SR/app" && git remote get-url origin ) >/dev/null 2>&1 \
@@ -3936,15 +3936,15 @@ rm -rf "$RHD"
 # string `jq -cn --arg` produced for the same cache, so it needs no oracle and never skips.
 BSD="$(mktemp -d)"
 if ( cd "$BSD" && git init -q . ) >/dev/null 2>&1; then
-  printf '%s\n' $'#1 "Fix\tlogin" C:\\app\r\x01 ok\nsecond' > "$BSD/.git/csk-board-cache"
-  date -u +%s > "$BSD/.git/csk-board-cache.at"
+  printf '%s\n' $'#1 "Fix\tlogin" C:\\app\r\x01 ok\nsecond' > "$BSD/.git/crew-board-cache"
+  date -u +%s > "$BSD/.git/crew-board-cache.at"
   o="$(printf '{}' | CLAUDE_PROJECT_DIR="$BSD" bash "$HOOKS/board-sync.sh" 2>/dev/null)"
   want='{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"#1 \"Fix\tlogin\" C:\\app\r\u0001 ok\nsecond\nBoard state above is a cached snapshot; /crew-board sync refreshes it."}}'
   [ "$o" = "$want" ] && pass "board-sync escapes tab, CR, control bytes, quote and backslash exactly as jq does (no jq needed)" \
                      || fail "board-sync JSON differs from jq's for a cache with a tab/CR/control byte — got: ${o:-<silence>}"
   # A CRLF cache: the line-ending CR is dropped on every OS (MSYS gawk drops it on read, BSD awk does not — the
   # hook strips it itself so both emit these bytes); a CR inside a line is still escaped.
-  printf 'one\r\nmid\rcr\r\n' > "$BSD/.git/csk-board-cache"
+  printf 'one\r\nmid\rcr\r\n' > "$BSD/.git/crew-board-cache"
   o="$(printf '{}' | CLAUDE_PROJECT_DIR="$BSD" bash "$HOOKS/board-sync.sh" 2>/dev/null)"
   case "$o" in *'"additionalContext":"one\nmid\rcr\nBoard state'*) pass "board-sync drops a CRLF line-ending CR on every OS and keeps a mid-line CR" ;;
     *) fail "board-sync CRLF handling differs by platform — got: ${o:-<silence>}" ;; esac
@@ -5612,30 +5612,32 @@ sec "== 14c) the 3.0 rename left no old name behind — outside history and the 
 # names. Glob TAB matches TAB reason. The match count is PINNED, exactly: an allowed file is not a free pass, so one
 # more old name in it is red too, and a removed one asks for the pin to come down. An entry that allows nothing is
 # a failure as well, so the list cannot quietly rot. Kept on purpose and NOT matched: the team board's git names
-# (refs/csk/board, the csk-board branch, csk.board*) and the Studio's saved-layout keys — renaming either would
+# (refs/crew/board, the csk-board branch, csk.board*) and the Studio's saved-layout keys — renaming either would
 # split a board shared with a 2.x teammate or reset a layout.
 if [ -n "$SGR" ] && [ -d "$SGR/packaging" ] && [ -f "$SGR/VERSION" ] && [ -d "$SGR/kit" ] && [ -f "$SGR/packaging/build-plugin.sh" ]; then
-  RN_ALLOW='CHANGELOG.md	187	history: every entry before 3.0 keeps the name it shipped under
+  RN_ALLOW='CHANGELOG.md	191	history: every entry before 3.0 keeps the name it shipped under
+evals/results/*	6	history: recorded eval runs stay byte-for-byte
 README.md	34	prose outside the generated sections is rewritten in its own change (5R)
 README.tr.md	34	the same, Turkish
 README.npm.md	12	the same, npm page
-adopt.sh	21	the 2.x → 3.0 migration: moves <x>-csk, sweeps CLAUDE.md, PROOF-5, the CSK_CORRECT_STACK no-op
-bin/cli.js	4	add accepts a typed <x>-csk and moves an add record written under the old names
-*/eval/doctor.sh	1	PROOF-5 reports a 2.x agent name still used in CLAUDE.md
-*/eval/lib/crew-env.sh	10	the bash compat helper: reads CSK_* when CREW_* is unset
-*/studio/server/lib/crew-env.js	8	the Node compat helper, same list
-*/skills/automode-policy/scripts/check.sh	4	a classifier config applied by 2.x keeps its "CSK …" rule names
-evals/run.sh	3	~/.csk-eval-parent is a trusted directory on the machine that runs evals; renaming it drops the trust
-kit/eval/smoke-test.sh	34	this gate'"'"'s own pattern, and the tests that the CSK_* names still work
-packaging/e2e.sh	72	the migration rehearsal on the real v2.13.0 tree, and the 2.x add names
-packaging/studio-serve-probe.mjs	6	the test that CSK_STUDIO_TOKEN still works and loses to CREW_STUDIO_TOKEN'
-  RN_PAT='-csk([^A-Za-z0-9_]|$)|\.csk([^A-Za-z0-9_]|$)|CSK_|(^|[^A-Za-z0-9_])CSK([^A-Za-z0-9_]|$)|Claude Starter Kit|claude-starter-kit|claude-starter/|@byerlikaya/'
+adopt.sh	42	migration: finds and moves 2.x names (components, CLAUDE.md, board, auto-mode rules, variables)
+bin/cli.js	4	migration: add accepts a typed <x>-csk and moves an add record written under the old names
+*/eval/doctor.sh	4	migration: PROOF-5 and the variable notice name what is still on the 2.x spelling
+*/crew-env.*	18	compat layer (bash + Node): reads CSK_* when CREW_* is unset — removed in 4.0
+*/hooks/board.sh	32	compat layer: reads the 2.x board ref and settings and folds them in — removed in 4.0
+*/skills/automode-policy/scripts/check.sh	4	compat layer: counts auto-mode rules still named by 2.x — removed in 4.0
+*/studio/web/storage-migrate.js	4	migration: moves the panel'"'"'s saved layout to the new keys — removed in 4.0
+kit/eval/smoke-test.sh	34	tests: this gate'"'"'s own pattern, and that the 2.x names still work
+packaging/*	107	tests: the migration rehearsal on the real v2.13.0 tree, the legacy token and layout checks'
+  # Case-insensitive, and `csk` as a word on its own: -csk, .csk, refs/csk/, csk-board, csk.board, CSK_ — every
+  # shape the old name took. The first version listed shapes and missed the lowercase board names entirely.
+  RN_PAT='(^|[^a-z0-9])csk([^a-z0-9]|$)|claude starter kit|claude-starter-kit|claude-starter/|@byerlikaya/'
   RN_FILES="$(git -C "$SGR" ls-files -co --exclude-standard 2>/dev/null)"
   RN_N="$(printf '%s\n' "$RN_FILES" | grep -c .)"
   # file<TAB>match count, for every file with an old name in it. MATCHES, not lines: counting lines let a second
   # old name ride on a line that already held one (measured in review — all three checks stayed green).
   RN_HITS="$(cd "$SGR" && printf '%s\n' "$RN_FILES" | while IFS= read -r f; do [ -f "$f" ] && printf '%s\0' "$f"; done \
-             | xargs -0 grep -IHoE -e "$RN_PAT" 2>/dev/null | awk '{ sub(/:.*/, ""); n[$0]++ } END { for (f in n) print f "\t" n[f] }')"
+             | xargs -0 grep -IHoiE -e "$RN_PAT" 2>/dev/null | awk '{ sub(/:.*/, ""); n[$0]++ } END { for (f in n) print f "\t" n[f] }')"
   RN_BAD=""; RN_GOT=""
   while IFS="$(printf '\t')" read -r f c; do
     [ -n "$f" ] || continue; hit=""
@@ -5659,7 +5661,7 @@ EOF
   if [ "$RN_N" -lt 100 ]; then
     fail "the old-name scan listed $RN_N files — git ls-files did not see the checkout, so it measured nothing"
   elif [ -n "$RN_BAD" ]; then
-    fail "old names outside the allow-list — rename them, or add a line with its reason:$(for f in $RN_BAD; do printf '\n       %s' "$(cd "$SGR" && grep -nE -e "$RN_PAT" "$f" | head -n 2 | sed "s|^|$f:|" | tr '\n' ' ')"; done)"
+    fail "old names outside the allow-list — rename them, or add a line with its reason:$(for f in $RN_BAD; do printf '\n       %s' "$(cd "$SGR" && grep -niE -e "$RN_PAT" "$f" | head -n 2 | sed "s|^|$f:|" | tr '\n' ' ')"; done)"
   else
     pass "no old name outside the $RN_AN-line allow-list ($RN_N files scanned, $(printf '%s\n' "$RN_HITS" | grep -c .) allowed)"
   fi

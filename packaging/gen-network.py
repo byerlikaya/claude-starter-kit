@@ -355,7 +355,7 @@ def build_board(tr=False):
     arrow(LX+LW, Y2+CH_/2, CX, lab, "#a874f5")
 
     P.append(f'<rect x="{CX}" y="{Y1}" width="{CW}" height="{Y2+CH_-Y1}" rx="15" fill="#0d1526" stroke="#26c6e6" stroke-width="2" filter="url(#bglow)"/>')
-    P.append(f'<text x="{CX+CW/2}" y="{Y1+40}" text-anchor="middle" font-size="14" font-weight="800" fill="#eaf0ff" font-family="ui-monospace,Menlo,monospace">refs/csk/board</text>')
+    P.append(f'<text x="{CX+CW/2}" y="{Y1+40}" text-anchor="middle" font-size="14" font-weight="800" fill="#eaf0ff" font-family="ui-monospace,Menlo,monospace">refs/crew/board</text>')
     t1 = "yalnız ileri sarım" if tr else "fast-forward only"
     t2 = "sunucu yok · token yok" if tr else "no server · no token"
     t3 = "git'in kendi kuralı" if tr else "git's own rule decides"

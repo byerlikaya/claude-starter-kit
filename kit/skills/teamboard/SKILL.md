@@ -24,7 +24,7 @@ context from scratch. The board makes those three facts shared.
 Never hand-edit the board; every write must go through the engine or it loses its atomicity.
 
 ## Why a claim is a real lock, not a convention
-The board lives on a git ref (`refs/csk/board`), not in the worktree. A claim is a commit pushed to that ref, and
+The board lives on a git ref (`refs/crew/board`), not in the worktree. A claim is a commit pushed to that ref, and
 `git push` is fast-forward-only: when two people claim the same item from the same base, **one push is rejected**
 and that session re-reads the board and refuses. This is an atomic compare-and-swap with no server, no token and
 no daemon. The engine builds its commits with git plumbing, so claiming **never touches your working tree,

@@ -496,7 +496,7 @@ done
 [ -n "${CREW_NO_BOARD:-}" ] && exit 0
 GD=".git"
 [ -d "$GD" ] || GD="$(git rev-parse --git-common-dir 2>/dev/null)"   # worktree/submodule: .git is a file
-if [ -n "$GD" ] && [ -f "$GD/csk-board-guard" ]; then
+if [ -n "$GD" ] && [ -f "$GD/crew-board-guard" ]; then
   case "$FP" in
     */docs/*|docs/*|*/.claude/*|.claude/*) ;;   # planning notes and kit config are not the work being claimed
     *)

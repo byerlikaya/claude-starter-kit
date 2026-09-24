@@ -304,6 +304,10 @@ PANEL_NOTE=""
 if [ -d .claude/studio ] && ! bash "$PREFLIGHT" --has node 2>/dev/null; then
   PANEL_NOTE=" · panel needs Node 18+ — .claude/studio/ensure-node.sh --plan fetches one"
 fi
+# A 2.x variable name still works until 4.0 (lib/crew-env.sh reads it); name its 3.0 spelling so the user can switch.
+for _v in $(compgen -e); do
+  case "$_v" in CSK_CORRECT_STACK) ;; CSK_*) warn "$_v is set — its 3.0 name is CREW_${_v#CSK_} (the old name works until 4.0)" ;; esac
+done
 if [ "$FAIL" -eq 0 ]; then echo "DOCTOR: healthy ✅$PANEL_NOTE"
   # Healthy verdict: the star line, once per kit version — the marker is shared with the installers, so the
   # doctor run that /crew-update makes right after an update stays quiet. Text/URL/silence: lib/star.sh.

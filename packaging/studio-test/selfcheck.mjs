@@ -870,7 +870,28 @@ const appSrc2 = read(path.join(STUDIO, 'web', 'app.js')) ?? '';
 check('the right-hand divider grows its panel when dragged left',
   /edge === 'right' \? -1 : 1/.test(appSrc2),
   'sharing one handler without inverting the delta shrank the panel being opened');
-check('both widths are remembered', /csk-studio-side-w/.test(appSrc2) && /csk-studio-chat-w/.test(appSrc2));
+check('both widths are remembered', /crewforth-studio-side-w/.test(appSrc2) && /crewforth-studio-chat-w/.test(appSrc2));
+
+// 3.0 renamed the saved-layout keys. The move is run against a Map-backed storage, so what is asserted is the
+// behaviour — the layout survives, the old key is gone, a value already under the new name is not overwritten —
+// and not the source text. And the panel must call it before it reads any key.
+{
+  const { migrateStorage } = await import(`../../kit/studio/web/storage-migrate.js?t=${Date.now()}`);
+  const m = new Map([['csk-studio-theme', 'dark'], ['csk-studio-layout:down:s1', '{"a":1}'],
+    ['csk-studio-side-w', '300'], ['crewforth-studio-side-w', '410'], ['unrelated', 'x']]);
+  const ls = { get length() { return m.size; }, key: (i) => [...m.keys()][i] ?? null,
+    getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k) };
+  const moved = migrateStorage(ls);
+  check('a 2.x saved layout survives the key rename (moved, old key removed, newer value kept)',
+    moved === 3 && m.get('crewforth-studio-theme') === 'dark' && m.get('crewforth-studio-layout:down:s1') === '{"a":1}'
+      && m.get('crewforth-studio-side-w') === '410' && m.get('unrelated') === 'x'
+      && ![...m.keys()].some((k) => k.startsWith('csk-studio-')),
+    JSON.stringify([...m.entries()]));
+  check('a second open moves nothing', migrateStorage(ls) === 0);
+  const firstRead = appSrc2.search(/store\.get\(|localStorage\.getItem\(/);
+  check('the panel migrates the keys before it reads any', /migrateStorage\(localStorage\)/.test(appSrc2)
+    && appSrc2.indexOf('migrateStorage(localStorage)') < firstRead, `first read at ${firstRead}`);
+}
 
 
 /* ------------------------------------------- §23 launching from a symlink */
@@ -939,9 +960,9 @@ check('both widths are remembered', /csk-studio-side-w/.test(appSrc2) && /csk-st
     'without this the sidebar keeps a tall empty gap where the tree was');
 
   check('the fold choice is remembered per browser',
-    /csk-studio-fold-/.test(app));
+    /crewforth-studio-fold-/.test(app));
   check('a browser that refuses localStorage still folds',
-    /localStorage\.setItem\(`csk-studio-fold-[\s\S]{0,120}?\} catch/.test(app),
+    /localStorage\.setItem\(`crewforth-studio-fold-[\s\S]{0,120}?\} catch/.test(app),
     'private mode throws on setItem; an unguarded write kills the click handler');
 }
 

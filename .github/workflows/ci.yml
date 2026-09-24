@@ -2,7 +2,7 @@ name: ci
 
 on:
   push:
-    branches: [main]
+    branches: [main, next]
   pull_request:
 
 # Every gate below is defined ONCE, in packaging/verify.sh, and invoked here by name. The commands used to

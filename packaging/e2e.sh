@@ -8,6 +8,10 @@ WORK="${RUNNER_TEMP:-$(mktemp -d)}"
 # Several assertions grep the installers' English output. A Turkish locale (or an exported CREW_LANG=tr) turns
 # those into false failures, so the run is pinned to English; case 18 passes --lang explicitly, which wins.
 export CREW_LANG=en
+# An update renames 2.x auto-mode rules in the USER's settings (CLAUDE_CONFIG_DIR, else ~/.claude). This run must
+# never reach the real one, so it gets its own; and a 2.x variable in the caller's shell must not leak into cases.
+export CLAUDE_CONFIG_DIR="$WORK/claude-config"; mkdir -p "$CLAUDE_CONFIG_DIR"
+for _v in $(compgen -e); do case "$_v" in CSK_*) unset "$_v" ;; esac; done
 
 # WHY A LOG AND NOT /dev/null, for every installer and smoke call below.
 #
@@ -619,7 +623,8 @@ if ! git cat-file -e "$OLD^{commit}" 2>/dev/null; then
 else
   mtree(){ ( cd "$1" && find . -type f ! -path './.git/*' ! -name gate-log.tsv 2>/dev/null | LC_ALL=C sort | while IFS= read -r f; do printf '%s ' "$f"; cksum < "$f"; done ) | cksum; }
   old_install(){   # $1 = project dir → a 2.13.0 install with a user line, a user agent and a user allow rule
-    rm -rf "$1"; mkdir -p "$1"; git archive "$OLD" start.sh VERSION claude-starter | tar -x -C "$1"
+    # tar gets a relative target: on a Windows runner $WORK is D:\a\_temp, and GNU tar reads `-C D:…` as host:path.
+    rm -rf "$1"; mkdir -p "$1"; git archive "$OLD" start.sh VERSION claude-starter | ( cd "$1" && tar -xf - )
     _slog; ( cd "$1" && git init -q && bash start.sh --generic --yes --lang en ) >"$_L" 2>&1 || _evidence "2.13.0 start.sh in $1" "$_L" $?
     [ -f "$1/.claude/agents/backend-expert-csk.md" ] || { echo "FAIL: FIXTURE — the 2.13.0 install left no backend-expert-csk.md"; exit 1; }
     printf '\nAsk @agent-security-expert-csk, then run /review-csk; my own my-helper-csk and security-expert-cskx stay.\n' >> "$1/CLAUDE.md"
@@ -631,7 +636,21 @@ else
   }
   MG="$WORK/migrate-2.13"; old_install "$MG"
   NOLD="$(ls "$MG"/.claude/agents/*-csk.md "$MG"/.claude/commands/*-csk.md 2>/dev/null | grep -vc my-helper || true)"
-  _slog; ( cd "$MG" && bash adopt.sh --yes ) >"$_L" 2>&1 || _evidence "adopt.sh over 2.13.0 in $MG" "$_L" $?
+  # A 2.x auto-mode policy in the user's settings (this run's own CLAUDE_CONFIG_DIR), and a 2.x variable in the
+  # environment: the update renames the first and names the second, and the old variable still silences the star.
+  AMS="$CLAUDE_CONFIG_DIR/settings.json"
+  printf '{\n  "theme": "dark",\n  "autoMode": {\n    "hard_deny": ["$defaults", "CSK Uncommitted Work Destruction: a"],\n    "soft_deny": ["$defaults", "CSK Gate Tampering: b", "CSK Internal Docs Publication: c", "CSK Other: mine"]\n  }\n}\n' > "$AMS"
+  cp "$AMS" "$WORK/automode.before"
+  _slog; ( cd "$MG" && env CSK_NO_STAR=1 bash adopt.sh --yes ) >"$_L" 2>&1 || _evidence "adopt.sh over 2.13.0 in $MG" "$_L" $?
+  grep -q 'CSK_NO_STAR is set — its 3.0 name is CREW_NO_STAR' "$_L" || { echo "FAIL: the update did not name CREW_NO_STAR for a set CSK_NO_STAR"; exit 1; }
+  grep -q '⭐' "$_L" && { echo "FAIL: CSK_NO_STAR=1 no longer silences the star line on an update"; exit 1; }
+  [ "$(grep -o '"Crewforth ' "$AMS" | wc -l | tr -d ' ')" = 3 ] && ! grep -qE '"CSK (Uncommitted|Gate|Internal)' "$AMS" && grep -q '"CSK Other: mine"' "$AMS" \
+    || { echo "FAIL: the 2.x auto-mode rules were not renamed exactly (the user's own CSK Other must stay):"; cat "$AMS"; exit 1; }
+  [ "$(diff "$WORK/automode.before" "$AMS" | grep -c '^>')" = 2 ] || { echo "FAIL: the auto-mode rename changed more than the rule-name lines"; diff "$WORK/automode.before" "$AMS"; exit 1; }
+  ls "$AMS".crew-bak-* >/dev/null 2>&1 && cmp -s "$(ls "$AMS".crew-bak-* | head -n 1)" "$WORK/automode.before" \
+    || { echo "FAIL: no byte-exact backup of the user's settings before the auto-mode rename"; exit 1; }
+  DENV="$( cd "$MG" && env CSK_NO_STAR=1 bash .claude/eval/doctor.sh 2>&1 || true )"
+  case "$DENV" in *'CSK_NO_STAR is set — its 3.0 name is CREW_NO_STAR'*) ;; *) echo "FAIL: doctor did not name CREW_NO_STAR for a set CSK_NO_STAR"; exit 1 ;; esac
   NREN="$(grep -c '^.*3\.0 rename: ' "$_L" || true)"
   LEFT="$(cd "$MG/.claude" && find agents commands skills -name '*-csk*' ! -name 'my-helper-csk.md' | tr '\n' ' ')"
   [ -z "$LEFT" ] || { echo "FAIL: after the update, old kit names are still on disk: $LEFT"; exit 1; }
@@ -676,7 +695,9 @@ else
   printf 'See ../outside/NOTES.md\n' >> "$MB/AGENTS.md"
   # ...and the two other ways out: an absolute path, and a directory that is a symlink to somewhere else.
   printf 'Ask planner-csk.\n' > "$WORK/outside/ABS.md"; cp "$WORK/outside/ABS.md" "$WORK/outside-abs.before"
-  printf 'See %s/outside/ABS.md\n' "$WORK" >> "$MB/AGENTS.md"
+  # POSIX spelling from the shell itself: a Windows runner's $WORK is D:\a\_temp, which the reference scan does
+  # not read as a path at all — the leg would pass without testing anything.
+  printf 'See %s/outside/ABS.md\n' "$(cd "$WORK" && pwd)" >> "$MB/AGENTS.md"
   mkdir -p "$WORK/shared"; printf 'Ask planner-csk.\n' > "$WORK/shared/NOTE.md"; cp "$WORK/shared/NOTE.md" "$WORK/shared.before"
   ln -s "$WORK/shared" "$MB/shared" 2>/dev/null && [ -L "$MB/shared" ] && printf 'See shared/NOTE.md\n' >> "$MB/AGENTS.md"
   # CRLF, as a Windows editor leaves it: the sweep must keep every CR, not only the rewritten line's. MSYS sed
@@ -705,7 +726,46 @@ else
   cp adopt.sh VERSION "$MF/"; cp -R kit "$MF/"
   _slog; ( cd "$MF" && git init -q && bash adopt.sh --yes ) >"$_L" 2>&1 || _evidence "adopt.sh in a never-installed project in $MF" "$_L" $?
   [ "$(cat "$MF/.claude/skills/testing/SKILL.md")" = MINE ] || { echo "FAIL: a user agent ending in -csk made a fresh project look installed and its own skill was overwritten"; exit 1; }
-  echo "[migrate-2.13] real v2.13.0 install → $NREN renamed ($NOLD old agent/command files) · 0 old kit names left · user agent, allow rule untouched · HANDOVER counts 1 project agent · CLAUDE.md: kit names only · 2nd update: same tree, silent · no PROOF-5 after the sweep · doctor flags a planted @agent-planner-csk · both names: warned, nothing moved, user crew- file kept · $MBL · CRLF kept ($MBCR0 → $MBCR1 CRs) · outside files untouched (../, absolute, symlinked dir) · fresh project with my-helper-csk: own skill kept"
+  # THE BOARD, MIXED: a 2.x clone (the v2.13.0 board.sh) and a 2.13 install updated to 3.0 share one remote. The
+  # 3.0 clone writes only the crew ref and reads the 2.x one, so after both sides have written, nothing either
+  # side put on the board may be missing from the 3.0 view — and the 2.x ref on the remote is never written by 3.0.
+  BR="$WORK/board-mixed"; rm -rf "$BR"; mkdir -p "$BR"; git init -q --bare "$BR/r.git"
+  git show "$OLD:claude-starter/hooks/board.sh" > "$BR/board-2x.sh"
+  ( cd "$BR" && git clone -q r.git a 2>/dev/null && cd a && git config user.email a@x && git config user.name a \
+      && git commit -q --allow-empty -m seed && git push -q origin HEAD:refs/heads/main \
+      && bash ../board-2x.sh init && bash ../board-2x.sh add 001 "First" && bash ../board-2x.sh add 002 "Second" \
+      && bash ../board-2x.sh claim 001 && bash ../board-2x.sh decide "D1 from 2.x" "before the update" ) >/dev/null 2>&1 \
+    || { echo "FAIL: FIXTURE — the 2.x clone could not create its board"; exit 1; }
+  git -C "$BR/r.git" rev-parse -q --verify refs/csk/board >/dev/null || { echo "FAIL: FIXTURE — the 2.x board is not on the remote under refs/csk/board"; exit 1; }
+  BB="$BR/b"; git clone -q "$BR/r.git" "$BB" 2>/dev/null; git -C "$BB" config user.email b@x; git -C "$BB" config user.name b
+  git archive "$OLD" start.sh VERSION claude-starter | ( cd "$BB" && tar -xf - )
+  _slog; ( cd "$BB" && bash start.sh --generic --yes --lang en && bash .claude/hooks/board.sh sync ) >"$_L" 2>&1 || _evidence "2.13.0 install + board sync in $BB" "$_L" $?
+  BGD="$(cd "$BB" && cd "$(git rev-parse --git-common-dir)" && pwd)"   # git answers relative (.git); make it absolute
+  git -C "$BB" rev-parse -q --verify refs/csk/board >/dev/null && ls "$BGD"/csk-board-* >/dev/null 2>&1 \
+    || { echo "FAIL: FIXTURE — the 2.13 install has no local 2.x board ref or cache"; exit 1; }
+  cp adopt.sh VERSION "$BB/"; cp -R kit "$BB/"
+  _slog; ( cd "$BB" && bash adopt.sh --yes ) >"$_L" 2>&1 || _evidence "adopt.sh over the 2.13 board clone in $BB" "$_L" $?
+  git -C "$BB" rev-parse -q --verify refs/crew/board >/dev/null && ! git -C "$BB" rev-parse -q --verify refs/csk/board >/dev/null \
+    && ! ls "$BGD"/csk-board-* >/dev/null 2>&1 && ls "$BGD"/crew-board-* >/dev/null 2>&1 \
+    || { echo "FAIL: the update did not move the local board ref and caches to the crew names"; exit 1; }
+  grep -q "the remote's 2.x board ref is left as it is" "$_L" || { echo "FAIL: the update did not tell the user the team must update too"; exit 1; }
+  L0="$(git -C "$BR/r.git" rev-parse refs/csk/board)"
+  ( cd "$BB" && bash .claude/hooks/board.sh add 003 "Third" && bash .claude/hooks/board.sh claim 002 \
+      && bash .claude/hooks/board.sh decide "D2 from 3.0" "after the update" ) >/dev/null 2>&1 || { echo "FAIL: the 3.0 clone could not write the board"; exit 1; }
+  [ "$(git -C "$BR/r.git" rev-parse refs/csk/board)" = "$L0" ] || { echo "FAIL: 3.0 wrote to the 2.x board ref on the remote"; exit 1; }
+  git -C "$BR/r.git" rev-parse -q --verify refs/crew/board >/dev/null || { echo "FAIL: 3.0 did not create the crew board ref on the remote"; exit 1; }
+  # the 2.x teammate keeps working, on the old ref, after the 3.0 clone started writing the new one
+  ( cd "$BR/a" && bash ../board-2x.sh add 004 "Fourth" && bash ../board-2x.sh claim 002 \
+      && bash ../board-2x.sh decide "D3 from 2.x" "after the other clone updated" ) >/dev/null 2>&1 || { echo "FAIL: FIXTURE — the 2.x clone could not keep writing"; exit 1; }
+  ( cd "$BB" && bash .claude/hooks/board.sh sync && bash .claude/hooks/board.sh add 005 "Fifth" ) >/dev/null 2>&1
+  BIT="$(git -C "$BR/r.git" ls-tree --name-only refs/crew/board items/ | sed 's|^items/||; s|-.*||' | LC_ALL=C sort | tr '\n' ' ')"
+  BDC="$(git -C "$BR/r.git" ls-tree --name-only refs/crew/board decisions/ | wc -l | tr -d ' ')"
+  [ "$BIT" = "001 002 003 004 005 " ] && [ "$BDC" = 3 ] \
+    || { echo "FAIL: a board entry was lost between the 2.x and 3.0 clones: items [$BIT], decisions $BDC of 3"; exit 1; }
+  O1="$(cd "$BB" && bash .claude/hooks/board.sh show 001 | grep -m1 '^owner: ')"; O2="$(cd "$BB" && bash .claude/hooks/board.sh show 002 | grep -m1 '^owner: ')"
+  [ "$O1" = "owner: a@x" ] && [ "$O2" = "owner: b@x" ] \
+    || { echo "FAIL: claims across the two names came out wrong (001 '$O1', want a@x · 002 '$O2', want b@x — the 3.x side wins a both-sides edit)"; exit 1; }
+  echo "[migrate-2.13] real v2.13.0 install → $NREN renamed ($NOLD old agent/command files) · CSK_NO_STAR=1: named by update + doctor, star still silent · auto-mode rules renamed (3 of 3, user rule kept, backup byte-exact) · 0 old kit names left · user agent, allow rule untouched · HANDOVER counts 1 project agent · CLAUDE.md: kit names only · 2nd update: same tree, silent · no PROOF-5 after the sweep · doctor flags a planted @agent-planner-csk · both names: warned, nothing moved, user crew- file kept · $MBL · CRLF kept ($MBCR0 → $MBCR1 CRs) · outside files untouched (../, absolute, symlinked dir) · fresh project with my-helper-csk: own skill kept · board: 2.x + 3.0 clones, 5 items + 3 decisions, none lost, 2.x ref untouched by 3.0"
 fi
 
 # ---- the two no-install doors: `add` and `studio` (pure Node, no bash) ----

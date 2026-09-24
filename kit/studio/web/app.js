@@ -5,6 +5,7 @@
 // the CLI is missing would read as a quiet, healthy machine, which is exactly
 // the kind of lie this panel exists to stop telling.
 
+import { migrateStorage } from './storage-migrate.js';
 import { Canvas } from './canvas.js';
 import { renderMarkdown } from './md.js';
 import { Chat } from './chat.js';
@@ -48,18 +49,19 @@ const getJson = async (p) => {
 
 /* ---------------------------------------------------------------- theme */
 
+try { migrateStorage(localStorage); } catch { /* blocked storage */ }
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch { return null; } },
   set(k, v) { try { localStorage.setItem(k, v); } catch { /* blocked storage */ } },
 };
 
-const savedTheme = store.get('csk-studio-theme');
+const savedTheme = store.get('crewforth-studio-theme');
 if (savedTheme === 'light' || savedTheme === 'dark') document.documentElement.dataset.theme = savedTheme;
 
 el.theme.addEventListener('click', () => {
   const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
   document.documentElement.dataset.theme = next;
-  store.set('csk-studio-theme', next);
+  store.set('crewforth-studio-theme', next);
 });
 
 /* --------------------------------------------------------------- panels
@@ -69,8 +71,8 @@ el.theme.addEventListener('click', () => {
    control. */
 
 const PANEL = {
-  side: { min: 170, max: 620, def: 260, wide: 460, varName: '--side-w', key: 'csk-studio-side-w' },
-  chat: { min: 280, max: 900, def: 420, wide: 720, varName: '--chat-w', key: 'csk-studio-chat-w' },
+  side: { min: 170, max: 620, def: 260, wide: 460, varName: '--side-w', key: 'crewforth-studio-side-w' },
+  chat: { min: 280, max: 900, def: 420, wide: 720, varName: '--chat-w', key: 'crewforth-studio-chat-w' },
 };
 
 function setPanel(which, px, persist = true) {
@@ -94,10 +96,10 @@ const shell = document.querySelector('.shell');
 function setSideHidden(hidden, refit = true) {
   shell.classList.toggle('no-side', hidden);
   el.sideShow.hidden = !hidden;
-  store.set('csk-studio-side-hidden', hidden ? '1' : '0');
+  store.set('crewforth-studio-side-hidden', hidden ? '1' : '0');
   if (refit) canvas.fitIfUntouched();
 }
-setSideHidden(store.get('csk-studio-side-hidden') === '1', false);
+setSideHidden(store.get('crewforth-studio-side-hidden') === '1', false);
 
 function dragPanel(handle, which, edge) {
   let drag = null;
@@ -206,13 +208,13 @@ function setFold(key, folded) {
   const sect = document.querySelector(`.side-block[data-sect="${key}"]`);
   if (sect) sect.classList.toggle('folded', folded);
   try {
-    localStorage.setItem(`csk-studio-fold-${key}`, folded ? '1' : '0');
+    localStorage.setItem(`crewforth-studio-fold-${key}`, folded ? '1' : '0');
   } catch { /* private mode: the fold still works, it just is not remembered */ }
 }
 
 function foldState(key) {
   try {
-    return localStorage.getItem(`csk-studio-fold-${key}`) === '1';
+    return localStorage.getItem(`crewforth-studio-fold-${key}`) === '1';
   } catch {
     return false;
   }

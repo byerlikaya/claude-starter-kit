@@ -107,6 +107,10 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "3.0 rename: %s → %s") s='3.0 ad değişikliği: %s → %s' ;;
       "3.0 rename: both the old and the new name exist for:%s — nothing moved; keep one") s='3.0 ad değişikliği: eski ve yeni ad ikisi de var:%s — hiçbir şey taşınmadı; birini tutun' ;;
       "3.0 ref-sweep: old kit names → crew- names in %s") s='3.0 referans taraması: %s içindeki eski kit adları crew- adlarına çevrildi' ;;
+      "3.0 board: moved to the crew names in this clone:%s") s='3.0 pano: bu klonda crew adlarına taşındı:%s' ;;
+      "3.0 board: the remote's 2.x board ref is left as it is — 2.x teammates keep working on it and 3.x reads it; ask the team to update") s="3.0 pano: uzaktaki 2.x pano ref'ine dokunulmadı — 2.x kullanan ekip arkadaşları orada çalışmaya devam eder, 3.x onu okur; ekipten de güncellemesini isteyin" ;;
+      "3.0 auto-mode: the kit rules in %s are renamed CSK … → Crewforth … (backup: %s)") s='3.0 auto-mode: %s içindeki kit kuralları CSK … → Crewforth … olarak yeniden adlandırıldı (yedek: %s)' ;;
+      "%s is set — its 3.0 name is %s (the old name works until 4.0)") s="%s ayarlı — 3.0'daki adı %s (eski ad 4.0'a kadar çalışır)" ;;
       "stack=%s %s") s='stack=%s %s' ;;
       "stack=%s · via %s") s='stack=%s · kuran: %s' ;;
       "stack=dotnet — 3.0 records generic; the pattern skill stays as a project skill") s="stack=dotnet — 3.0 generic kaydeder; desen skill'i proje skill'i olarak kalır" ;;
@@ -855,6 +859,48 @@ if [ "$KIT_PRESENT" = 1 ]; then
   done
   [ -n "$LEGACY_BOTH" ] && warnm '3.0 rename: both the old and the new name exist for:%s — nothing moved; keep one' "$LEGACY_BOTH"
 fi
+# THE 3.0 BOARD NAMES, in THIS clone only: the board ref, its local settings, its caches, and a `csk-board` remote
+# move to the crew names. The remote's 2.x ref is never touched — a 2.x teammate keeps writing it, and board.sh
+# reads it and folds it into the crew ref for the whole 3.x line — so the user is told the team should update too.
+if [ "$KIT_PRESENT" = 1 ] && _BGD="$(git rev-parse --git-common-dir 2>/dev/null)" && [ -n "$_BGD" ]; then
+  _BMV=""; _BHEAD="$(git symbolic-ref -q HEAD 2>/dev/null || true)"
+  for _bp in "refs/csk/board refs/crew/board" "refs/heads/csk-board refs/heads/crew-board"; do
+    _bo="${_bp% *}"; _bn="${_bp#* }"
+    _bs="$(git rev-parse -q --verify "$_bo" 2>/dev/null)" || continue
+    [ "$_BHEAD" = "$_bo" ] && continue                                   # never delete the checked-out branch
+    git rev-parse -q --verify "$_bn" >/dev/null 2>&1 && continue          # both: board.sh folds the old one in
+    git update-ref "$_bn" "$_bs" && git update-ref -d "$_bo" "$_bs" && _BMV="$_BMV $_bn"
+  done
+  if git remote get-url csk-board >/dev/null 2>&1 && ! git remote get-url crew-board >/dev/null 2>&1; then
+    git remote rename csk-board crew-board 2>/dev/null && _BMV="$_BMV remote:crew-board"
+  fi
+  for _bk in board boardRef boardRemote; do
+    _bv="$(git config --local --get "csk.$_bk" 2>/dev/null)" || continue
+    case "$_bv" in refs/csk/board) _bv=refs/crew/board ;; refs/heads/csk-board) _bv=refs/heads/crew-board ;; csk-board) _bv=crew-board ;; esac
+    git config --local --get "crew.$_bk" >/dev/null 2>&1 || git config --local "crew.$_bk" "$_bv"
+    git config --local --unset "csk.$_bk" 2>/dev/null; _BMV="$_BMV crew.$_bk"
+  done
+  for _bf in "$_BGD"/csk-board-*; do
+    [ -e "$_bf" ] || continue
+    _bt="$_BGD/crew-board-${_bf##*/csk-board-}"
+    if [ -e "$_bt" ]; then rm -f "$_bf"; else mv "$_bf" "$_bt"; fi
+  done
+  if [ -n "$_BMV" ]; then
+    say '3.0 board: moved to the crew names in this clone:%s' "$_BMV"
+    warnm "3.0 board: the remote's 2.x board ref is left as it is — 2.x teammates keep working on it and 3.x reads it; ask the team to update"
+  fi
+fi
+# THE 3.0 AUTO-MODE RULE NAMES: a policy applied by 2.x named its rules "CSK …" in the USER's settings. They become
+# "Crewforth …" here, after a backup, and only those three rule names change — every other byte is left as it was.
+_AMS="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"
+if [ "$KIT_PRESENT" = 1 ] && [ -f "$_AMS" ] && grep -qE '"CSK (Uncommitted Work Destruction|Gate Tampering|Internal Docs Publication):' "$_AMS" 2>/dev/null; then
+  _AMB="$_AMS.crew-bak-$(date +%Y%m%d-%H%M%S)"; _SB0=; sed -b q </dev/null >/dev/null 2>&1 && _SB0=-b
+  if cp "$_AMS" "$_AMB" && sed $_SB0 -E 's/"CSK (Uncommitted Work Destruction|Gate Tampering|Internal Docs Publication):/"Crewforth \1:/g' "$_AMB" > "$_AMS.crew-new" \
+     && [ -s "$_AMS.crew-new" ] && cat "$_AMS.crew-new" > "$_AMS"; then
+    say '3.0 auto-mode: the kit rules in %s are renamed CSK … → Crewforth … (backup: %s)' "$_AMS" "$_AMB"
+  fi
+  rm -f "$_AMS.crew-new"
+fi
 # #1 keepmine: your overlapping agents own those roles, so the kit's matching crew- agents are NOT installed.
 [ "$COLLIDE_MODE" = keepmine ] && for b in $COLLIDE; do EXCL_A="$EXCL_A crew-$b.md"; done
 # kit-owned trees: FORCE-refresh on a re-adopt (KIT_PRESENT) so kit updates land; never-overwrite on a fresh adopt
@@ -1523,6 +1569,11 @@ sub "$DISCARD_LINE"
 warnm 'If Claude Code is running in this project, run /compact (or /clear) — CLAUDE.md and the discipline reload'
 _mt 'on /compact and /clear in the same process, so a session opened before this run stops quoting the old rules (no restart needed).'
 printf '     %s%s%s\n' "$D" "$_M" "$R"
+# A 2.x variable name still works until 4.0 (eval/lib/crew-env.sh reads it); say its 3.0 name once, here, so the
+# user can switch. compgen is a builtin — the list of set names costs no process.
+for _v in $(compgen -e); do
+  case "$_v" in CSK_CORRECT_STACK) ;; CSK_*) warnm '%s is set — its 3.0 name is %s (the old name works until 4.0)' "$_v" "CREW_${_v#CSK_}" ;; esac
+done
 # The star line, once per kit version: a first adopt, or the first update to a new version. lib/star.sh keeps
 # the marker (shared with doctor.sh) and owns the text, URL and the CREW_NO_STAR / CI silence.
 if [ -f .claude/eval/lib/star.sh ]; then

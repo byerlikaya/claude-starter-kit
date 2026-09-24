@@ -39,8 +39,33 @@ _git_dir(){ git rev-parse --git-common-dir 2>/dev/null; }
 # Ref namespace. Default is a custom namespace so the board never shows up in `git branch` and never enters the
 # code history. Some servers refuse refs outside refs/heads|refs/tags; `probe` detects that and records the
 # fallback here, per clone.
-_ref(){ git config --get csk.boardRef 2>/dev/null || echo 'refs/csk/board'; }
-_remote(){ git config --get csk.boardRemote 2>/dev/null || echo 'origin'; }
+#
+# The board's settings are read ONCE per run, in one process: `crew.board`, `crew.boardRef`, `crew.boardRemote`,
+# and — for the 3.x line only, removed in 4.0 — their 2.x names under `csk.`. A `crew.` key always wins. Reading
+# them one `git config --get` at a time cost a process per call, and _ref alone is called a dozen times a run.
+_load_cfg(){
+  local line k v
+  _C_BOARD=""; _C_REF=""; _C_REMOTE=""; _L_BOARD=""; _L_REF=""; _L_REMOTE=""
+  while IFS= read -r line; do
+    k="${line%% *}"; v="${line#* }"; [ "$k" = "$line" ] && v=""
+    case "$k" in
+      crew.board) _C_BOARD="$v" ;; crew.boardref) _C_REF="$v" ;; crew.boardremote) _C_REMOTE="$v" ;;
+      csk.board) _L_BOARD="$v" ;; csk.boardref) _L_REF="$v" ;; csk.boardremote) _L_REMOTE="$v" ;;
+    esac
+  done <<EOF
+$(git config --get-regexp '^(crew|csk)\.board(ref|remote)?$' 2>/dev/null)
+EOF
+  # The ref, and where its 2.x counterpart lives (see _fold_legacy), resolved here so no caller forks for them.
+  _REF="${_C_REF:-$_L_REF}"
+  case "$_REF" in refs/csk/board|'') _REF='refs/crew/board' ;; refs/heads/csk-board) _REF='refs/heads/crew-board' ;; esac
+  case "$_REF" in
+    refs/heads/*) _LREFS='refs/crew/legacy/branch refs/heads/csk-board'; _LSPEC='+refs/heads/csk-board*:refs/crew/legacy/branch*' ;;
+    *)            _LREFS='refs/crew/legacy/board refs/csk/board';        _LSPEC='+refs/csk/*:refs/crew/legacy/*' ;;
+  esac
+}
+_load_cfg
+_ref(){ printf '%s\n' "$_REF"; }
+_remote(){ printf '%s\n' "${_C_REMOTE:-${_L_REMOTE:-origin}}"; }
 
 # ---- network git: never block, never prompt ------------------------------------------------------------
 # Every git call that reaches a REMOTE goes through here, because a remote is where a hook stops being slow
@@ -79,35 +104,92 @@ _me(){
   printf '%s' "$m"
 }
 
-_have_board(){ git rev-parse --verify -q "$(_ref)" >/dev/null 2>&1; }
+# ---- the 2.x board, read for the whole 3.x line (removed in 4.0) -------------------------------------------
+# A 2.x teammate keeps writing refs/csk/board (or the csk-board branch). 3.x writes only the crew name, and folds
+# whatever the old ref holds into it, so a mixed team loses no item, claim, decision or refusal. The old ref is
+# fetched into refs/crew/legacy/* (never back under the old name) and the old local refs of a 2.x clone count too.
+# The fold is a real three-way merge (git merge-tree); on the one append-only file both sides write,
+# refusals.log, the lines are united; on an item both sides edited, the 3.x side is kept.
+_fold_legacy(){ # fold every old ref present into the board ref; local only — the next write shares it
+  local l n out rc tree conf p idx b sha
+  for l in $_LREFS; do
+    l="$(git rev-parse -q --verify "$l^{commit}" 2>/dev/null)" || continue
+    n="$(git rev-parse -q --verify "$_REF^{commit}" 2>/dev/null)"
+    if [ -z "$n" ]; then git update-ref "$_REF" "$l"; continue; fi          # no 3.x board yet: start from 2.x
+    git merge-base --is-ancestor "$l" "$n" 2>/dev/null && continue            # already folded in
+    out="$(git merge-tree --write-tree --name-only --allow-unrelated-histories "$n" "$l" 2>/dev/null)"; rc=$?
+    if [ "$rc" -gt 1 ] || [ -z "$out" ]; then
+      printf 'the 2.x board (%s) could not be merged in — git 2.38+ is needed for merge-tree\n' "$l" > "$(_git_dir)/crew-board-lasterror"
+      continue
+    fi
+    tree="${out%%$'\n'*}"; conf=""
+    [ "$rc" = 1 ] && conf="$(printf '%s\n' "$out" | sed -n '2,/^$/p' | sed '/^$/d')"
+    if [ -n "$conf" ]; then
+      idx="$(_git_dir)/crew-index.$$"; rm -f "$idx"
+      GIT_INDEX_FILE="$idx" git read-tree "$tree" 2>/dev/null
+      while IFS= read -r p; do
+        [ -n "$p" ] || continue
+        if [ "$p" = refusals.log ]; then
+          b="$( { git cat-file -p "$n:$p" 2>/dev/null; git cat-file -p "$l:$p" 2>/dev/null; } | awk '!seen[$0]++' | _blob)"
+        else
+          b="$(git rev-parse -q --verify "$n:$p" 2>/dev/null)" || { GIT_INDEX_FILE="$idx" git update-index --force-remove "$p" 2>/dev/null; continue; }
+        fi
+        GIT_INDEX_FILE="$idx" git update-index --add --cacheinfo "100644,$b,$p" 2>/dev/null
+      done <<EOF
+$conf
+EOF
+      tree="$(GIT_INDEX_FILE="$idx" git write-tree 2>/dev/null)"; rm -f "$idx"
+      [ -n "$tree" ] || continue
+    fi
+    sha="$(git commit-tree "$tree" -p "$n" -p "$l" -m 'board: fold in the 2.x board')" && git update-ref "$_REF" "$sha"
+  done
+}
+
+# One for-each-ref answers both "is there a board" and "is there a 2.x one to start from" — the commit gate runs
+# this on every commit, so a second process here would be paid by every repo, board or not.
+_have_board(){
+  local found; found="$(git for-each-ref --format='%(refname)' "$_REF" $_LREFS 2>/dev/null)"
+  [ -n "$found" ] || return 1
+  case "$found" in *"$_REF"*) return 0 ;; esac
+  _fold_legacy; git rev-parse --verify -q "$_REF" >/dev/null 2>&1
+}
 
 # The board is OFF until somebody creates one — a repo with no board ref has no gates at all, which is what
 # every solo project and every pre-existing install stays. This is the separate question of switching it off
 # in a repo that HAS one: someone working alone on a shared repo for an afternoon, or a team pausing it.
-#   git config csk.board off            this clone
-#   git config --global csk.board off   every repo you touch
+#   git config crew.board off            this clone
+#   git config --global crew.board off   every repo you touch
 #   CREW_NO_BOARD=1                      this session only
 # Honoured by every entry point, including the commit gate — a switch that turns off two of three gates is a
 # trap, not a switch.
 _enabled(){
   [ -n "${CREW_NO_BOARD:-}" ] && return 1
-  case "$(git config --get csk.board 2>/dev/null)" in off|false|0|no) return 1 ;; esac
+  case "${_C_BOARD:-$_L_BOARD}" in off|false|0|no) return 1 ;; esac
   return 0
 }
 
 # Fetch the board ref. Forced (+) on purpose: local board state is never authoritative and is never worth
 # keeping — every mutation re-derives itself from the fetched state (see _mutate).
 _fetch(){
-  local ref remote; ref="$(_ref)"; remote="$(_remote)"
-  _gitnet fetch -q "$remote" "+$ref:$ref" 2>/dev/null && return 0
+  local ref remote err; ref="$(_ref)"; remote="$(_remote)"
+  # The 2.x ref rides along as a glob, which never fails for want of a match — so the common case stays ONE fetch.
+  err="$(LC_ALL=C _gitnet fetch -q "$remote" "+$ref:$ref" "$_LSPEC" 2>&1)" && { _fold_legacy; return 0; }
+  # Reachable but no 3.x board there yet: a 2.x team's board may be, under the old name — start from it. An
+  # unreachable remote stops here, so offline costs one timeout, not three.
+  case "$err" in *"couldn't find remote ref"*) ;; *) return 1 ;; esac
+  if _gitnet fetch -q "$remote" "$_LSPEC" 2>/dev/null; then
+    _fold_legacy; git rev-parse -q --verify "$ref" >/dev/null 2>&1 && return 0
+  fi
   # Only the teammate who ran `init` runs `probe`, so only that clone learns the team fell back to the orphan
-  # branch. Everyone else would look for refs/csk/board forever and see no board at all. When nothing is
-  # recorded here and the default namespace turns up empty, try the fallback and record the answer — one extra
-  # fetch, once per clone.
-  if [ -z "$(git config --get csk.boardRef 2>/dev/null)" ] \
-     && _gitnet fetch -q "$remote" '+refs/heads/csk-board:refs/heads/csk-board' 2>/dev/null; then
-    git config csk.boardRef 'refs/heads/csk-board'
-    return 0
+  # branch. Everyone else would look for refs/crew/board forever and see no board at all. When nothing is
+  # recorded here and the default namespace turns up empty, try the fallback (and its 2.x name) and record the
+  # answer — one extra fetch, once per clone.
+  [ -z "${_C_REF:-$_L_REF}" ] || return 1
+  if _gitnet fetch -q "$remote" '+refs/heads/crew-board*:refs/heads/crew-board*' '+refs/heads/csk-board*:refs/crew/legacy/branch*' 2>/dev/null; then
+    git config crew.boardRef 'refs/heads/crew-board'; _load_cfg
+    _fold_legacy
+    git rev-parse -q --verify refs/heads/crew-board >/dev/null 2>&1 && return 0
+    git config --unset crew.boardRef 2>/dev/null; _load_cfg
   fi
   return 1
 }
@@ -212,7 +294,7 @@ _commit_push(){ # _commit_push <tree> <message> -> 0 pushed · 2 rejected (retry
   # Anything else (offline, no push rights, server refuses the namespace) is not a race. Keep the change
   # locally so work is not lost, and say plainly that the team cannot see it.
   git update-ref "$(_ref)" "$sha"
-  printf '%s\n' "$err" > "$(_git_dir)/csk-board-lasterror"
+  printf '%s\n' "$err" > "$(_git_dir)/crew-board-lasterror"
   return 3
 }
 
@@ -492,7 +574,7 @@ cmd_status(){
   done
   echo
   echo "Claimable now: $(_free_ids)"
-  [ -f "$(_git_dir)/csk-board-lasterror" ] && echo "Last sync error: $(cat "$(_git_dir)/csk-board-lasterror")"
+  [ -f "$(_git_dir)/crew-board-lasterror" ] && echo "Last sync error: $(cat "$(_git_dir)/crew-board-lasterror")"
   return 0
 }
 
@@ -511,8 +593,8 @@ cmd_cache(){ # rebuild the local cache; NEVER called on the foreground path with
   # hook throttles on, and without it a repo that has no board (every solo project, and every install that
   # upgraded into this feature) re-spawned a background fetch at every single session opening — looking, forever,
   # for a ref nobody is ever going to create.
-  if ! _enabled; then rm -f "$(_git_dir)/csk-board-guard" "$(_git_dir)/csk-board-cache"; _now_epoch > "$(_git_dir)/csk-board-cache.at" 2>/dev/null; return 0; fi
-  _have_board || { _now_epoch > "$(_git_dir)/csk-board-cache.at" 2>/dev/null; return 0; }
+  if ! _enabled; then rm -f "$(_git_dir)/crew-board-guard" "$(_git_dir)/crew-board-cache"; _now_epoch > "$(_git_dir)/crew-board-cache.at" 2>/dev/null; return 0; fi
+  _have_board || { _now_epoch > "$(_git_dir)/crew-board-cache.at" 2>/dev/null; return 0; }
   local out me p c id st ow ti now stale_h b
   me="$(_me)"; now="$(_now_epoch)"; stale_h="$(_conf stale_hours 8)"
   local mine="" others="" free="" stale=""
@@ -561,22 +643,22 @@ You have held #$(_field "$c" id) for $(_age "$ob") with an empty handover note. 
 Stale claims (no activity for ${stale_h}h+): $stale — ask the owner before taking one over; never steal silently."
   out="$out
 Claim before you start: /crew-board claim <id>. Commits are gated on a live claim."
-  printf '%s\n' "$out" > "$(_git_dir)/csk-board-cache"
-  _now_epoch > "$(_git_dir)/csk-board-cache.at"
+  printf '%s\n' "$out" > "$(_git_dir)/crew-board-cache"
+  _now_epoch > "$(_git_dir)/crew-board-cache.at"
 
   # One-bit flag for the PreToolUse write guard. The guard runs before EVERY file edit, so it must not shell out
   # to this script — on Windows a process costs 62-135 ms and a hot-path fork loop is a freeze. It tests for this
   # file and nothing else: present means "a board exists, it requires a claim, and this user holds none", which
   # is the only state that blocks. Recomputed here, i.e. at session start and after every board command.
   if [ -z "$mine" ] && [ "$(_conf require_item all)" = all ]; then
-    : > "$(_git_dir)/csk-board-guard"
+    : > "$(_git_dir)/crew-board-guard"
   else
-    rm -f "$(_git_dir)/csk-board-guard"
+    rm -f "$(_git_dir)/crew-board-guard"
   fi
   printf '%s\n' "$out"
 }
 
-cmd_sync(){ _fetch && rm -f "$(_git_dir)/csk-board-lasterror" || echo "board: remote unreachable — showing the last known state"; cmd_cache; }
+cmd_sync(){ _fetch && rm -f "$(_git_dir)/crew-board-lasterror" || echo "board: remote unreachable — showing the last known state"; cmd_cache; }
 
 # ---------------------------------------------------------------- decisions
 #
@@ -640,27 +722,29 @@ cmd_decisions(){ # decisions [id]
 # "New" means "recorded since you last looked at the board" — the marker moves when the user actually views
 # them, not when the cache is rebuilt, or a decision would be announced once to a session nobody was reading.
 _seen_now(){ local d; d="$(_git_dir)"; [ -n "$d" ] || return 0
-  _decision_paths | wc -l | tr -d ' ' > "$d/csk-board-seen" 2>/dev/null || true; }
+  _decision_paths | wc -l | tr -d ' ' > "$d/crew-board-seen" 2>/dev/null || true; }
 # Tested with [ -f ] rather than a redirect plus 2>/dev/null: bash applies redirections left to right, so an
 # input redirect from a missing file fails BEFORE stderr is silenced and the complaint reaches the terminal —
 # which is how a first-run read leaked an error line into a session-start hook.
 _seen_count(){ local d s=""; d="$(_git_dir)"
-  [ -n "$d" ] && [ -f "$d/csk-board-seen" ] && s="$(tr -cd '0-9' < "$d/csk-board-seen" 2>/dev/null)"
+  [ -n "$d" ] && [ -f "$d/crew-board-seen" ] && s="$(tr -cd '0-9' < "$d/crew-board-seen" 2>/dev/null)"
   printf '%s' "${s:-0}"; }
 
 cmd_off(){ # off [--global]
-  git config ${1:+--global} csk.board off
+  git config ${1:+--global} crew.board off; _load_cfg
   cmd_cache >/dev/null
   echo "Board OFF${1:+ (global: every repo)}. No claim needed, no commit gate, no edit gate; the board itself is untouched."
   echo "Back on: /crew-board on${1:+ --global}"
 }
 cmd_on(){
-  git config ${1:+--global} --unset csk.board 2>/dev/null || true
+  git config ${1:+--global} --unset crew.board 2>/dev/null || true
+  git config ${1:+--global} --unset csk.board 2>/dev/null || true   # the 2.x key would otherwise keep it off
   # A --global off would otherwise keep overriding a repo that just turned itself back on, and the user would
   # see "on" printed while nothing changed.
-  [ -z "${1:-}" ] && case "$(git config --global --get csk.board 2>/dev/null)" in
-    off|false|0|no) git config csk.board on ;;
+  [ -z "${1:-}" ] && case "$(git config --global --get crew.board 2>/dev/null || git config --global --get csk.board 2>/dev/null)" in
+    off|false|0|no) git config crew.board on ;;
   esac
+  _load_cfg
   cmd_cache >/dev/null
   _enabled && echo "Board ON. Claim before you start: /crew-board" \
            || echo "Still off — CREW_NO_BOARD is set in this session's environment; unset it."
@@ -692,20 +776,20 @@ cmd_probe(){
   # throwaway ref and read the answer from the server. On refusal, fall back to an orphan branch, which every
   # server accepts and which enforces the same fast-forward rule the lock depends on.
   #
-  # Measured 2026-08-09 against github.com: refs/csk/* ACCEPTED, and the probe ref deleted cleanly afterwards
+  # Measured 2026-08-09 against github.com: a custom refs/<name>/* namespace ACCEPTED, and the probe ref deleted cleanly afterwards
   # (0 refs left). That is one server on one day, not a guarantee for every host and every org policy — which
   # is why this stays a probe rather than becoming a hard-coded assumption.
   local remote empty probe
   remote="$(_remote)"
   empty="$(git hash-object -w -t tree /dev/null)"
   probe="$(git commit-tree "$empty" -m 'board: capability probe')"
-  if _gitnet push --quiet "$remote" "$probe:refs/csk/probe" 2>/dev/null; then
-    _gitnet push --quiet "$remote" ":refs/csk/probe" 2>/dev/null
-    git config csk.boardRef 'refs/csk/board'
-    echo "probe: custom ref namespace accepted -> refs/csk/board (invisible to git branch)"
+  if _gitnet push --quiet "$remote" "$probe:refs/crew/probe" 2>/dev/null; then
+    _gitnet push --quiet "$remote" ":refs/crew/probe" 2>/dev/null
+    git config crew.boardRef 'refs/crew/board'; _load_cfg
+    echo "probe: custom ref namespace accepted -> refs/crew/board (invisible to git branch)"
   else
-    git config csk.boardRef 'refs/heads/csk-board'
-    echo "probe: server refused refs/csk/* -> falling back to the orphan branch refs/heads/csk-board"
+    git config crew.boardRef 'refs/heads/crew-board'; _load_cfg
+    echo "probe: server refused refs/crew/* -> falling back to the orphan branch refs/heads/crew-board"
     echo "       (same fast-forward lock; it will appear in the branch list — do not merge it)"
   fi
 }
@@ -722,13 +806,13 @@ cmd_init(){ # init [--remote <name|url>] [all|referenced]
     # `https://…` and `git@host:org/x.git` were recognised but a filesystem path (a self-hosted mirror, a share,
     # a test fixture) was not, and it failed with "no remote named /srv/board.git" — which reads as a bug.
     if git remote get-url "$target" >/dev/null 2>&1; then
-      git config csk.boardRemote "$target"
+      git config crew.boardRemote "$target"; _load_cfg
       echo "board remote: $target"
     else
-      if git remote get-url csk-board >/dev/null 2>&1; then git remote set-url csk-board "$target"
-      else git remote add csk-board "$target"; fi
-      git config csk.boardRemote csk-board
-      echo "board remote: csk-board -> $target"
+      if git remote get-url crew-board >/dev/null 2>&1; then git remote set-url crew-board "$target"
+      else git remote add crew-board "$target"; fi
+      git config crew.boardRemote crew-board; _load_cfg
+      echo "board remote: crew-board -> $target"
     fi
   fi
   if _have_board; then echo "board already initialised at $(_ref)"; return 0; fi
@@ -755,7 +839,7 @@ cmd_init(){ # init [--remote <name|url>] [all|referenced]
   _commit_push "$tree" "board: initialise"
   case $? in
     0) echo "board initialised at $(_ref) on $(_remote)" ;;
-    3) echo "board created LOCALLY ONLY — the remote refused or is unreachable:"; cat "$(_git_dir)/csk-board-lasterror" ;;
+    3) echo "board created LOCALLY ONLY — the remote refused or is unreachable:"; cat "$(_git_dir)/crew-board-lasterror" ;;
   esac
 }
 
@@ -808,7 +892,7 @@ board.sh <command>
   add <id> <title> [deps] [external]
   init [--remote <name|url>] [all|referenced]
                             create the board (probes ref support first). Defaults to `origin`; --remote points
-                            it at a separate board repository (a URL gets its own `csk-board` remote).
+                            it at a separate board repository (a URL gets its own `crew-board` remote).
   probe                     ask the server whether it accepts the custom ref namespace
   off [--global] / on       switch every board gate off (or back on) for this repo, or for every repo.
                             A repo that never ran `init` has no gates in the first place.

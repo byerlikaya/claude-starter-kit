@@ -54,7 +54,7 @@ cd "$ROOT" 2>/dev/null || exit 0
 GITDIR="$(git rev-parse --git-common-dir 2>/dev/null)" || exit 0
 [ -n "$GITDIR" ] || exit 0
 
-CACHE="$GITDIR/csk-board-cache"
+CACHE="$GITDIR/crew-board-cache"
 STAMP=0
 [ -f "$CACHE.at" ] && STAMP="$(tr -cd '0-9' < "$CACHE.at" 2>/dev/null)"
 [ -n "$STAMP" ] || STAMP=0

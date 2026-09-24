@@ -33,8 +33,9 @@ One name everywhere: the package, the components, the variables, the payload. **
   an old agent name written into `CLAUDE.md` later.
 - **`npx crewforth add`** accepts `security-expert`, `crew-security-expert` and the 2.x name `security-expert-csk`
   alike; `add --list` shows the `crew-` names.
-- **Variables are `CREW_*`.** The ones you set yourself keep working under their 2.x name for the whole 3.x line;
-  when both are set, `CREW_*` wins:
+- **Variables are `CREW_*`.** The ones you set yourself keep working under their 2.x name for the whole 3.x line
+  (removed in 4.0); when both are set, `CREW_*` wins, and the update and `doctor` name the new spelling of any 2.x
+  one still set:
 
   | 2.x | 3.0 |
   |---|---|
@@ -48,9 +49,16 @@ One name everywhere: the package, the components, the variables, the payload. **
   | `CSK_ALLOW_SOURCE_INSTALL` | `CREW_ALLOW_SOURCE_INSTALL` |
 
   Internal and test variables were renamed with no fallback.
-- **Kept on purpose:** the team board's git names (`refs/csk/board`, the `csk-board` branch, `csk.board*` config),
-  so a board shared with a 2.x teammate is not split; the Studio panel's saved layout in the browser; auto-mode
-  classifier rules applied by 2.x (`CSK …`) still count in `automode-policy`'s check.
+- **The team board is `refs/crew/board`** (or the `crew-board` branch where the server refuses custom refs), with
+  `crew.board*` settings. The update moves this clone's board ref, settings, caches and a `csk-board` remote; the
+  remote's 2.x ref is left alone and the update says so. For the whole 3.x line the board also reads the 2.x ref and
+  folds it in, so a team that updates one person at a time loses no item, claim or decision: what a 2.x teammate
+  writes reaches 3.x, and on an item both sides changed, the 3.x side is kept. 2.x clones do not see 3.x writes —
+  update the whole team.
+- **The Studio panel keeps your layout:** its saved theme, widths and canvas layout move to the new key names the
+  first time it opens.
+- **Auto-mode rules applied by 2.x** (`CSK …` in your user settings) are renamed `Crewforth …` by the update, after
+  a backup; nothing else in that file changes.
 - **Fixed:** an update appended `docs/` to `.gitignore` again on every run when `docs/` held tracked files.
 
 ### BREAKING — the backend is stack-agnostic; the .NET install path is gone
