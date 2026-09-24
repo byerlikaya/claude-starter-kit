@@ -41,8 +41,11 @@ The "how" behind `backend-expert-csk`, and the stack step `planner-csk` and `dat
    (`docker-compose*.yml`, connection-string env names, migration folders). Two backends in one repo is a
    monorepo, not an ambiguity: record each with its path.
 4. **Still open (a greenfield repo) → ask, once.** Use `AskUserQuestion` with **at most four** questions, only for
-   what is still unknown: runtime/language · web framework · database · architecture pattern. Every question
-   carries one option labelled **(Recommended)** with a one-line reason, and a **"Decide for me"** option.
+   what is still unknown: runtime/language · web framework · database · architecture pattern. **Every question has
+   exactly one option whose label ends with `(Recommended)`** (its description gives the one-line reason) **and
+   exactly one option labelled `Decide for me`, verbatim** — the user's way to hand the choice back to you.
+   No `AskUserQuestion` in this session (headless, or the tool is off)? Write the same questions as text, with the
+   same two labels on every question, and stop there.
 
 **Record it.** Write the answer into the `## Stack` section of the project's `CLAUDE.md` (Runtime · Web framework ·
 Database + migration tool · Architecture pattern), then record the choice with the `adr` skill (and `board.sh decide`
