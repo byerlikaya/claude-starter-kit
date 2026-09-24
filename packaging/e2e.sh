@@ -286,8 +286,7 @@ legacy_dotnet_install(){        # $1 = dir, $2 = pattern skill (cqrs-aop-module 
   [ "$inst" = start.sh ] && awk '/^# DevArchitecture$/ { print "DevArchitecture"; print "#test: ported the handler from DevArchitecture"; next } { print }' \
     kit/hooks/trace-blocklist.txt > "$d/.claude/hooks/trace-blocklist.txt"
   { for x in kit/skills/*/; do echo "skills/$(basename "$x")"; done; echo "skills/$pk"
-    for x in kit/agents/*.md; do echo "agents/$(basename "$x")"; done
-    for x in kit/commands/*.md; do echo "commands/$(basename "$x")"; done; } > "$d/.claude/kit-manifest.txt"
+    for x in kit/agents/*.md; do echo "agents/$(basename "$x")"; done; } > "$d/.claude/kit-manifest.txt"
   printf '# Written by %s.\nstack=dotnet\ninstaller=%s\nversion=2.13.0\n' "$inst" "$inst" > "$d/.claude/kit.conf"
   : > "$d/backend/App.sln"
   # Committed BEFORE the update payload is staged beside it: the install armed core.hooksPath, and the trace scan
@@ -681,6 +680,7 @@ else
     [ -f "$1/.claude/agents/backend-expert-csk.md" ] || { echo "FAIL: FIXTURE — the 2.13.0 install left no backend-expert-csk.md"; exit 1; }
     printf '\nAsk @agent-security-expert-csk, then run /review-csk; my own my-helper-csk and security-expert-cskx stay.\n' >> "$1/CLAUDE.md"
     printf -- '---\nname: my-helper-csk\n---\nmine\n' > "$1/.claude/agents/my-helper-csk.md"
+    printf -- '---\ndescription: my own command\n---\nDo my thing.\n' > "$1/.claude/commands/my-cmd.md"; cp "$1/.claude/commands/my-cmd.md" "$WORK/my-cmd.before"
     perl -0pi -e 's/("allow": \[\n\s*)"Bash"/$1"Bash(make test:*)", "Bash"/' "$1/.claude/settings.json"
     grep -q 'make test' "$1/.claude/settings.json" || { echo "FAIL: FIXTURE — the user allow rule was not planted"; exit 1; }
     cp "$1/CLAUDE.md" "$1/CLAUDE.md.before"; cp "$1/.claude/agents/my-helper-csk.md" "$WORK/my-helper.before"
@@ -705,17 +705,30 @@ else
   DENV="$( cd "$MG" && env CSK_NO_STAR=1 bash .claude/eval/doctor.sh 2>&1 || true )"
   case "$DENV" in *'CSK_NO_STAR is set — its 3.0 name is CREW_NO_STAR'*) ;; *) echo "FAIL: doctor did not name CREW_NO_STAR for a set CSK_NO_STAR"; exit 1 ;; esac
   NREN="$(grep -c '^.*3\.0 rename: ' "$_L" || true)"
-  LEFT="$(cd "$MG/.claude" && find agents commands skills -name '*-csk*' ! -name 'my-helper-csk.md' | tr '\n' ' ')"
+  # commands/ may be gone after the 3.0 commands -> skills move, and under pipefail a find over a missing directory
+  # would end the run: only existing directories are searched.
+  LEFT="$(cd "$MG/.claude" && for _d in agents commands skills; do [ -d "$_d" ] && find "$_d" -name '*-csk*' ! -name 'my-helper-csk.md'; done | tr '\n' ' ')"
   [ -z "$LEFT" ] || { echo "FAIL: after the update, old kit names are still on disk: $LEFT"; exit 1; }
-  for kf in kit/agents/crew-*.md kit/commands/crew-*.md; do
+  for kf in kit/agents/crew-*.md; do
     [ -f "$MG/.claude/${kf#kit/}" ] || { echo "FAIL: the update did not leave ${kf#kit/}"; exit 1; }
   done
+  # THE 3.0 COMMANDS -> SKILLS MOVE, from the real 2.13.0 tree: each <x>-csk.md lands straight in skills/crew-<x>/,
+  # no kit command is left in commands/, and the user's own command there is exactly as it was.
+  CMDN=0; for kf in $(grep -l '^  kind: command' kit/skills/crew-*/SKILL.md); do CMDN=$((CMDN+1)); kn="${kf%/SKILL.md}"; kn="${kn##*/}"
+    [ -f "$MG/.claude/skills/$kn/SKILL.md" ] || { echo "FAIL: the update did not bring /$kn to skills/$kn/SKILL.md"; exit 1; }
+  done
+  [ "$CMDN" = 11 ] || { echo "FAIL: FIXTURE — expected 11 command skills in the payload, found $CMDN"; exit 1; }
+  KLEFT="$(cd "$MG/.claude" && { ls commands 2>/dev/null | grep -v '^my-cmd\.md$' || true; } | tr '\n' ' ')"   # grep -v finding nothing is the pass
+  [ -z "$KLEFT" ] || { echo "FAIL: kit command files were left in .claude/commands/: $KLEFT"; exit 1; }
+  cmp -s "$MG/.claude/commands/my-cmd.md" "$WORK/my-cmd.before" || { echo "FAIL: the move touched the user's own .claude/commands/my-cmd.md"; exit 1; }
+  NCMV="$(grep -c '3.0 commands are skills: commands/' "$_L" || true)"
+  [ "$NCMV" = 11 ] || { echo "FAIL: the update announced $NCMV command moves, want 11 (one per 2.x -csk command)"; exit 1; }
   [ -d "$MG/.claude/skills/crew-code-review" ] || { echo "FAIL: the update did not leave skills/crew-code-review"; exit 1; }
   cmp -s "$MG/.claude/agents/my-helper-csk.md" "$WORK/my-helper.before" || { echo "FAIL: the migration touched the user's own my-helper-csk.md"; exit 1; }
   grep -q '"Bash(make test:\*)"' "$MG/.claude/settings.json" || { echo "FAIL: the user's allow rule did not survive the update"; exit 1; }
   # CLAUDE.md: every change is a kit name. Map each crew- name back to its 2.x form; the result must be the old file.
   # Longest name first, or crew-review would eat the front of crew-review-agent.
-  REV="$(for kf in kit/agents/crew-*.md kit/commands/crew-*.md kit/skills/crew-*/; do kn="${kf%/}"; kn="${kn##*/}"; printf '%s\n' "${kn%.md}"; done \
+  REV="$(for kf in kit/agents/crew-*.md kit/skills/crew-*/; do kn="${kf%/}"; kn="${kn##*/}"; printf '%s\n' "${kn%.md}"; done \
          | awk '{ print length($0) "\t" $0 }' | sort -rn | cut -f2 | while IFS= read -r kn; do printf ' -e s/%s/%s-csk/g' "$kn" "${kn#crew-}"; done)"
   sed $REV "$MG/CLAUDE.md" | cmp -s - "$MG/CLAUDE.md.before" \
     || { echo "FAIL: CLAUDE.md changed beyond kit names:"; sed $REV "$MG/CLAUDE.md" | diff "$MG/CLAUDE.md.before" - | head -n 10; exit 1; }
@@ -740,6 +753,8 @@ else
   # Both names present: nothing moves, the user is told.
   MB="$WORK/migrate-2.13-both"; old_install "$MB"
   printf 'mine\n' > "$MB/.claude/agents/crew-planner.md"; cp "$MB/.claude/agents/planner-csk.md" "$WORK/planner.before"
+  # ...and a skills/crew-review/ of the user's own beside the 2.x commands/review-csk.md.
+  mkdir -p "$MB/.claude/skills/crew-review"; printf 'my notes\n' > "$MB/.claude/skills/crew-review/notes.md"
   # CLAUDE.md as a symlink (CLAUDE.md → AGENTS.md is common) and a reference that leaves the project.
   mv "$MB/CLAUDE.md" "$MB/AGENTS.md"; ln -s AGENTS.md "$MB/CLAUDE.md" 2>/dev/null
   # Git Bash without developer-mode symlinks makes `ln -s` a COPY; then there is no link to keep, and saying so beats a false red.
@@ -763,6 +778,9 @@ else
   _slog; ( cd "$MB" && bash adopt.sh --yes ) >"$_L" 2>&1 || _evidence "adopt.sh with both names in $MB" "$_L" $?
   grep -q 'both the old and the new name exist for:.*agents/planner-csk.md' "$_L" || { echo "FAIL: both names existed and the update did not say so"; exit 1; }
   cmp -s "$MB/.claude/agents/planner-csk.md" "$WORK/planner.before" || { echo "FAIL: planner-csk.md changed although both names existed"; exit 1; }
+  grep -q 'a skill of that name already exists for:.*commands/review-csk.md' "$_L" || { echo "FAIL: a user skills/crew-review/ and commands/review-csk.md both existed and the update did not say so"; exit 1; }
+  [ -f "$MB/.claude/commands/review-csk.md" ] && [ "$(ls "$MB/.claude/skills/crew-review")" = notes.md ] \
+    || { echo "FAIL: with both names present something moved or the user's skills/crew-review/ was written into: $(ls "$MB/.claude/skills/crew-review" | tr '\n' ' ')"; exit 1; }
   [ "$(cat "$MB/.claude/agents/crew-planner.md")" = mine ] || { echo "FAIL: both names existed and the update overwrote the user's crew-planner.md"; exit 1; }
   if [ "$MBLINK" = 1 ]; then
     [ -L "$MB/CLAUDE.md" ] || { echo "FAIL: the ref-sweep replaced the CLAUDE.md symlink with a file"; exit 1; }
@@ -827,7 +845,66 @@ else
   own(){ ( cd "$BB" && PATH="$BR/shim:$PATH" bash .claude/hooks/board.sh show "$1" ) 2>/dev/null | grep -m1 '^owner: ' | cut -d' ' -f2-; }
   [ "$(own 001)" = a@x ] && [ "$(own 002)" = b@x ] && [ "$(own 004)" = a@x ] \
     || { echo "FAIL: owners across the versions came out wrong: 001 '$(own 001)' 002 '$(own 002)' 004 '$(own 004)'"; exit 1; }
-  echo "[migrate-2.13] real v2.13.0 install → $NREN renamed ($NOLD old agent/command files) · CSK_NO_STAR=1: named by update + doctor, star still silent · CSK_NET_TIMEOUT: "no longer read" · auto-mode rules renamed (3 of 3, user rule kept, backup byte-exact) · 0 old kit names left · user agent, allow rule untouched · HANDOVER counts 1 project agent · CLAUDE.md: kit names only · 2nd update: same tree, silent · no PROOF-5 after the sweep · doctor flags a planted @agent-planner-csk · both names: warned, nothing moved, user crew- file kept · $MBL · CRLF kept ($MBCR0 → $MBCR1 CRs) · outside files untouched (../, absolute, $MBDL) · fresh project with my-helper-csk: own skill kept · board, 2.x + 3.0 clones, git without merge-tree: 5 items + 3 decisions on both refs, cross-version claims refused both ways"
+  echo "[migrate-2.13] real v2.13.0 install → $NREN renamed ($NOLD old agent/command files) · CSK_NO_STAR=1: named by update + doctor, star still silent · CSK_NET_TIMEOUT: "no longer read" · auto-mode rules renamed (3 of 3, user rule kept, backup byte-exact) · 0 old kit names left · 11 commands moved straight to skills/crew-*/ (commands/ holds only the user's my-cmd.md) · user agent, allow rule untouched · HANDOVER counts 1 project agent · CLAUDE.md: kit names only · 2nd update: same tree, silent · no PROOF-5 after the sweep · doctor flags a planted @agent-planner-csk · both names: warned, nothing moved, user crew- file kept, user skills/crew-review untouched · $MBL · CRLF kept ($MBCR0 → $MBCR1 CRs) · outside files untouched (../, absolute, $MBDL) · fresh project with my-helper-csk: own skill kept · board, 2.x + 3.0 clones, git without merge-tree: 5 items + 3 decisions on both refs, cross-version claims refused both ways"
+  # FROM 3.0 AS IT STOOD BEFORE COMMANDS BECAME SKILLS (next @ 30e727d): .claude/commands/crew-*.md move to
+  # skills/crew-*/SKILL.md, the user's own command stays, and a second update changes nothing.
+  PRE5E=30e727d
+  if git cat-file -e "$PRE5E^{commit}" 2>/dev/null; then
+    M3="$WORK/migrate-3.0-cmds"; rm -rf "$M3"; mkdir -p "$M3"
+    git archive "$PRE5E" start.sh VERSION kit | ( cd "$M3" && tar -xf - )
+    _slog; ( cd "$M3" && git init -q && bash start.sh --yes --lang en ) >"$_L" 2>&1 || _evidence "3.0 (pre-skills) start.sh in $M3" "$_L" $?
+    [ "$(ls "$M3/.claude/commands" 2>/dev/null | grep -c '^crew-')" = 11 ] || { echo "FAIL: FIXTURE — the pre-skills 3.0 install has no 11 commands/crew-*.md"; exit 1; }
+    printf -- '---\ndescription: mine\n---\nMine.\n' > "$M3/.claude/commands/my-cmd.md"; cp "$M3/.claude/commands/my-cmd.md" "$WORK/my-cmd3.before"
+    cp adopt.sh VERSION "$M3/"; cp -R kit "$M3/"
+    _slog; ( cd "$M3" && bash adopt.sh --yes ) >"$_L" 2>&1 || _evidence "adopt.sh over the pre-skills 3.0 install in $M3" "$_L" $?
+    for kf in $(grep -l '^  kind: command' kit/skills/crew-*/SKILL.md); do kn="${kf%/SKILL.md}"; kn="${kn##*/}"
+      cmp -s "$M3/.claude/skills/$kn/SKILL.md" "$kf" || { echo "FAIL: /$kn is not the 3.0 skill at skills/$kn/SKILL.md after the update"; exit 1; }
+    done
+    [ "$(ls "$M3/.claude/commands" 2>/dev/null | tr '\n' ' ')" = "my-cmd.md " ] || { echo "FAIL: commands/ after the update holds: $(ls "$M3/.claude/commands" | tr '\n' ' ') (want only my-cmd.md)"; exit 1; }
+    cmp -s "$M3/.claude/commands/my-cmd.md" "$WORK/my-cmd3.before" || { echo "FAIL: the user's my-cmd.md changed"; exit 1; }
+    H3="$(mtree "$M3")"
+    _slog; ( cd "$M3" && bash adopt.sh --yes ) >"$_L" 2>&1 || _evidence "second adopt.sh in $M3" "$_L" $?
+    [ "$(mtree "$M3")" = "$H3" ] || { echo "FAIL: a second update changed the tree after the commands -> skills move"; exit 1; }
+    grep -q '3.0 commands are skills' "$_L" && { echo "FAIL: the second update announced the commands move again"; exit 1; }
+    echo "[migrate-3.0-cmds] next @ $PRE5E install → 11 commands/crew-*.md now skills/crew-*/SKILL.md (byte-equal to the payload) · user my-cmd.md kept · 2nd update: same tree, silent"
+    # Odd shapes, apart from the clean case above so that one stays silent on its second run:
+    #  - two kit copies of one command (crew-review.md and a 2.x review-csk.md): the first moves and is refreshed;
+    #    the second is reported, not mistaken for "a skill of that name already exists", and not deleted;
+    #  - a command file that is a RELATIVE symlink: moving it one level deeper would leave it dangling, so it stays.
+    M4="$WORK/migrate-3.0-odd"; rm -rf "$M4"; mkdir -p "$M4"
+    git archive "$PRE5E" start.sh VERSION kit | ( cd "$M4" && tar -xf - )
+    _slog; ( cd "$M4" && git init -q && bash start.sh --yes --lang en ) >"$_L" 2>&1 || _evidence "3.0 (pre-skills) start.sh in $M4" "$_L" $?
+    cp "$M4/.claude/commands/crew-review.md" "$M4/.claude/commands/review-csk.md"
+    mkdir -p "$M4/shared"; mv "$M4/.claude/commands/crew-ship.md" "$M4/shared/crew-ship.md"
+    M4LINK=0; ln -s ../../shared/crew-ship.md "$M4/.claude/commands/crew-ship.md" 2>/dev/null && [ -L "$M4/.claude/commands/crew-ship.md" ] && M4LINK=1
+    [ "$M4LINK" = 1 ] || { rm -f "$M4/.claude/commands/crew-ship.md"; cp "$M4/shared/crew-ship.md" "$M4/.claude/commands/crew-ship.md"; }
+    cp adopt.sh VERSION "$M4/"; cp -R kit "$M4/"
+    _slog; ( cd "$M4" && bash adopt.sh --yes ) >"$_L" 2>&1 || _evidence "adopt.sh over the odd 3.0 install in $M4" "$_L" $?
+    cmp -s "$M4/.claude/skills/crew-review/SKILL.md" kit/skills/crew-review/SKILL.md || { echo "FAIL: with a second kit copy present, the moved /crew-review was not refreshed to 3.0"; exit 1; }
+    grep -q 'an older copy of an already-moved command is left in place:.*commands/review-csk.md' "$_L" && [ -f "$M4/.claude/commands/review-csk.md" ] \
+      || { echo "FAIL: the second kit copy (review-csk.md) was not reported, or was deleted"; exit 1; }
+    grep -q 'a skill of that name already exists for:.*review-csk' "$_L" && { echo "FAIL: the second copy was reported as a user skill clash — the skill was the script's own move"; exit 1; }
+    if [ "$M4LINK" = 1 ]; then
+      [ -L "$M4/.claude/commands/crew-ship.md" ] && [ -f "$M4/.claude/commands/crew-ship.md" ] && grep -q 'symlinked command file(s) left as they are:.*commands/crew-ship.md' "$_L" \
+        || { echo "FAIL: a symlinked command was moved (it would dangle) or not reported"; exit 1; }
+      M4L="relative symlink left intact and reported"
+    else M4L="symlink N/A here (ln -s copies)"; fi
+    cmp -s "$M4/.claude/skills/crew-ship/SKILL.md" kit/skills/crew-ship/SKILL.md || { echo "FAIL: /crew-ship was not installed as a skill beside the kept link"; exit 1; }
+    # FRESH adopt of a project that has its OWN commands/crew-review.md: the kit never installed it, so it is the
+    # user's, and the kit's skill of that name would silently win over it — the kit's copy is not installed.
+    M5="$WORK/adopt-own-crew-cmd"; rm -rf "$M5"; mkdir -p "$M5/.claude/commands"
+    printf -- '---\ndescription: our own review\n---\nOurs.\n' > "$M5/.claude/commands/crew-review.md"; cp "$M5/.claude/commands/crew-review.md" "$WORK/own-review.before"
+    cp adopt.sh VERSION "$M5/"; cp -R kit "$M5/"
+    _slog; ( cd "$M5" && git init -q && bash adopt.sh --yes ) >"$_L" 2>&1 || _evidence "fresh adopt.sh with an own commands/crew-review.md in $M5" "$_L" $?
+    cmp -s "$M5/.claude/commands/crew-review.md" "$WORK/own-review.before" && [ ! -e "$M5/.claude/skills/crew-review" ] \
+      && grep -q 'your own command(s) keep their name — the kit skill of the same name was not installed:.*crew-review' "$_L" \
+      || { echo "FAIL: a fresh adopt shadowed the project's own /crew-review with the kit's skill"; exit 1; }
+    [ -f "$M5/.claude/skills/crew-plan/SKILL.md" ] || { echo "FAIL: FIXTURE — the fresh adopt did not install the other command skills"; exit 1; }
+    echo "[migrate-3.0-odd] two kit copies: one moved + refreshed, the other reported and kept · $M4L · fresh adopt: the project's own /crew-review kept, the kit's not installed"
+  else
+    [ "${CREW_VERIFY_STRICT:-0}" = 1 ] && { echo "FAIL: FIXTURE — commit $PRE5E (3.0 before commands became skills) is not in this clone"; exit 1; }
+    echo "[migrate-3.0-cmds] SKIP (fixture): commit $PRE5E is not in this clone — a shallow checkout"
+  fi
 fi
 
 # ---- the two no-install doors: `add` and `studio` (pure Node, no bash) ----
@@ -942,7 +1019,7 @@ fi
 # Asserted in both directions: absent after the old install, present after the update. Asserting only
 # the second half would pass against an installer that had shipped it all along, i.e. prove nothing.
 UP="$WORK/update-gets-panel"; rm -rf "$UP"; mkdir -p "$UP"
-cp start.sh VERSION "$UP/"; cp -R kit "$UP/"; rm -rf "$UP/kit/studio" "$UP/kit/commands/crew-studio.md"
+cp start.sh VERSION "$UP/"; cp -R kit "$UP/"; rm -rf "$UP/kit/studio" "$UP/kit/skills/crew-studio"
 _slog; ( cd "$UP" && git init -q && git config user.email t@t.t && git config user.name t \
     && git commit -q --allow-empty -m base && printf 'yes\n' | bash start.sh --generic ) >"$_L" 2>&1 || _evidence "start.sh --generic in $UP" "$_L" $?
 [ -f "$UP/.claude/VERSION" ] || { echo "FAIL: the pre-panel install did not complete"; exit 1; }
@@ -951,14 +1028,14 @@ _slog; ( cd "$UP" && git init -q && git config user.email t@t.t && git config us
 # an empty directory became a full one rather than that a panel arrived where there was none.
 rmdir "$UP/.claude/studio" 2>/dev/null || true
 [ ! -e "$UP/.claude/studio" ] || { echo "FAIL: the fixture is wrong — the pre-panel install already has a panel, so the update below would prove nothing"; exit 1; }
-[ ! -e "$UP/.claude/commands/crew-studio.md" ] || { echo "FAIL: the fixture is wrong — /crew-studio is already installed"; exit 1; }
+[ ! -e "$UP/.claude/skills/crew-studio" ] || { echo "FAIL: the fixture is wrong — /crew-studio is already installed"; exit 1; }
 cp adopt.sh "$UP/"; cp -R kit "$UP/kit"; cp VERSION "$UP/"
 _slog; ( cd "$UP" && bash adopt.sh --here --yes </dev/null ) >"$_L" 2>&1 || _evidence "adopt.sh in $UP" "$_L" $?
 [ -f "$UP/.claude/studio/server/index.js" ] || { echo "FAIL: an existing kit install did NOT get the panel on update — this is the reported bug"; exit 1; }
 grep -q '"type": *"module"' "$UP/.claude/studio/package.json" || { echo "FAIL: the updated panel has no \"type\":\"module\" — it would die on first import"; exit 1; }
 [ ! -d "$UP/.claude/studio/test" ] || { echo "FAIL: the update shipped studio/test into the project"; exit 1; }
 [ -f "$UP/.claude/studio/ensure-node.sh" ] || { echo "FAIL: the update brought the panel but not the runtime finder beside it"; exit 1; }
-[ -f "$UP/.claude/commands/crew-studio.md" ] || { echo "FAIL: the update did not deliver /crew-studio"; exit 1; }
+[ -f "$UP/.claude/skills/crew-studio/SKILL.md" ] || { echo "FAIL: the update did not deliver /crew-studio"; exit 1; }
 echo "[update-gets-panel] a 2.8.0-shaped install gained .claude/studio ($(find "$UP/.claude/studio" -type f | wc -l | tr -d ' ') files) and /crew-studio on update"
 
 # ---- the install WIZARD: unattended runs, the .gitignore question, and what --yes may not approve ----

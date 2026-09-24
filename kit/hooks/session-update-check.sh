@@ -115,6 +115,10 @@ fi
 
 IN=""
 [ ! -t 0 ] && IN="$(cat 2>/dev/null || true)"
+# `startup` only. The matcher already says so; this is the same rule in the hook itself, so a wiring that also
+# matched resume, clear, compact or fork (a forked session, Claude Code 2.1.214+) cannot ask the question again.
+case "$IN" in *'"source"'*) _src="${IN#*\"source\"}"; _src="${_src#*\"}"; _src="${_src%%\"*}"
+  [ "$_src" = startup ] || exit 0 ;; esac
 ROOT="${CLAUDE_PROJECT_DIR:-}"
 [ -n "$ROOT" ] || { _r="${IN#*\"cwd\"}"; [ "$_r" != "$IN" ] && { _r="${_r#*\"}"; ROOT="${_r%%\"*}"; }; }
 [ -n "$ROOT" ] || ROOT="$PWD"

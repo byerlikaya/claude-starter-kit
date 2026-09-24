@@ -87,6 +87,8 @@ MISSING_CASE=""
 for f in "$AGENTS"/*.md "$SKILLS"/*/SKILL.md; do
   [ -e "$f" ] || continue
   case "$f" in */SKILL.md) n="$(basename "$(dirname "$f")")" ;; *) n="$(basename "$f" .md)" ;; esac
+  # A slash command (a skill marked `metadata: kind: command` since 3.0) is typed as /name, never routed to.
+  case "$f" in */SKILL.md) grep -q '^  kind: command' "$f" && continue ;; esac
   grep -qE "^[^#]*\|$n\$" $GOLD_SETS || MISSING_CASE="$MISSING_CASE $n"
 done
 [ -z "$MISSING_CASE" ] && pass "every installed agent/skill has a positive routing case" \

@@ -85,6 +85,21 @@ One name everywhere: the package, the components, the variables, the payload. **
 - **`adopt.sh` no longer asks about .NET** on a fresh adopt, and no longer deletes a pattern skill on a generic stack.
 
 
+### Changed — the slash commands are skills; forked sessions are recognised
+
+- **The 11 commands are skills now**, as Claude Code merged custom commands into skills (`.claude/commands/` is
+  its older format). They live in `.claude/skills/crew-<name>/SKILL.md`; the names you type are unchanged
+  (`/crew-review` is still `/crew-review`). Five run only when you type them — `/crew-studio`, `/crew-board`,
+  `/crew-skill`, `/crew-gates`, `/crew-brainstorm` — and stay out of Claude's context; the other six
+  (`/crew-plan`, `/crew-review`, `/crew-ship`, `/crew-handoff`, `/crew-update`, `/crew-doctor`) Claude may run itself,
+  as the workflow expects.
+- **The update moves them.** The kit's own commands move from `.claude/commands/` to `.claude/skills/` (a 2.x
+  `<name>-csk.md` goes straight there); a command of your own in `.claude/commands/` is not touched, and if a skill of
+  the same name already exists nothing moves and the update says so.
+- **Forked sessions** (Claude Code 2.1.214+) get the handover reminder, the skill-trust check and the team board
+  like a resumed one; the update question stays on a fresh start only.
+- **`MultiEdit` is gone from the file-tool gate's matcher** — it is no longer a Claude Code tool.
+
 ### Added — "an update is out, update now?"
 
 - **A newer release is a question, not a footnote.** At session start Claude asks once — **Update · Later · Skip

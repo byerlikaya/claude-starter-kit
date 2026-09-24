@@ -15,7 +15,7 @@ rm -rf "$OUT"
 mkdir -p "$OUT/.claude-plugin" "$OUT/hooks"
 cp -R "$SRC/agents"   "$OUT/agents"
 cp -R "$SRC/skills"   "$OUT/skills"
-cp -R "$SRC/commands" "$OUT/commands"
+# No commands/: since 3.0 the slash commands are skills (metadata kind: command) and ship with skills/.
 # The kit's one JSON reader. A skill script reaches it at scripts/../../../eval/lib in BOTH editions
 # (automode-policy/scripts/apply.sh merges the user's settings with it), so it ships at the same relative spot
 # here. Only lib/ — the rest of eval/ is install-only tooling the plugin does not carry.
@@ -74,7 +74,7 @@ cat > "$OUT/hooks/hooks.json" <<'HOOKS'
         ]
       },
       {
-        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
+        "matcher": "Write|Edit|NotebookEdit",
         "hooks": [
           { "type": "command", "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/guard-write.sh\"", "timeout": 60 }
         ]
@@ -97,13 +97,13 @@ cat > "$OUT/hooks/hooks.json" <<'HOOKS'
     ],
     "SessionStart": [
       {
-        "matcher": "compact|clear|resume",
+        "matcher": "compact|clear|resume|fork",
         "hooks": [
           { "type": "command", "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/session-rehydrate.sh\"", "timeout": 60 }
         ]
       },
       {
-        "matcher": "startup|resume|clear|compact",
+        "matcher": "startup|resume|clear|compact|fork",
         "hooks": [
           { "type": "command", "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/board-sync.sh\"", "timeout": 60 }
         ]
@@ -140,4 +140,5 @@ JSON
 # path that is not there.
 [ -f "$OUT/studio/server/index.js" ] || { echo "build-plugin.sh: the panel did not land in $OUT/studio" >&2; exit 1; }
 
-echo "plugin/ generated (v${VERSION}): $(ls "$OUT/agents"/*.md | wc -l | tr -d ' ') agents, $(ls -d "$OUT/skills"/*/ | wc -l | tr -d ' ') skills, $(ls "$OUT/commands"/*.md | wc -l | tr -d ' ') commands, $(ls "$OUT/hooks"/*.sh | wc -l | tr -d ' ') hooks, studio ($(find "$OUT/studio" -type f | wc -l | tr -d ' ') files)"
+NCMD="$(grep -l '^  kind: command' "$OUT"/skills/*/SKILL.md 2>/dev/null | wc -l | tr -d ' ')"
+echo "plugin/ generated (v${VERSION}): $(ls "$OUT/agents"/*.md | wc -l | tr -d ' ') agents, $(( $(ls -d "$OUT/skills"/*/ | wc -l | tr -d ' ') - NCMD )) skills, $NCMD commands (as skills), $(ls "$OUT/hooks"/*.sh | wc -l | tr -d ' ') hooks, studio ($(find "$OUT/studio" -type f | wc -l | tr -d ' ') files)"

@@ -35,6 +35,9 @@ TAB="$(printf '\t')"
 raw_rows() {
   for d in "$SKILLS"/*/; do
     f="$d/SKILL.md"; [ -f "$f" ] || continue
+    # A slash command is a skill on disk since 3.0 (metadata kind: command); the README lists the commands in their
+    # own row, so the skill catalogue leaves them out and still counts the 40 skills.
+    grep -q '^  kind: command' "$f" && continue
     awk '
       /^---[ \t]*$/ { fm++; if (fm==2) exit; next }
       fm==1 {

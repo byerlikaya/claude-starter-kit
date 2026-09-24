@@ -29,8 +29,9 @@ fi
 
 VER="$(tr -d ' \n\r' < VERSION 2>/dev/null)"
 AGENTS=$(ls kit/agents/*.md 2>/dev/null | wc -l | tr -d ' ')
-SKILLS=$(ls -d kit/skills/*/ 2>/dev/null | wc -l | tr -d ' ')
-COMMANDS=$(ls kit/commands/*.md 2>/dev/null | wc -l | tr -d ' ')
+# Since 3.0 the slash commands are skills on disk, marked `metadata: kind: command`; the site counts them apart.
+COMMANDS=$(grep -l '^  kind: command' kit/skills/*/SKILL.md 2>/dev/null | wc -l | tr -d ' ')
+SKILLS=$(( $(ls -d kit/skills/*/ 2>/dev/null | wc -l | tr -d ' ') - COMMANDS ))
 
 # The site is markup, so read the NUMBERS the way the page renders them: the version marker, and each counter as
 # the digits sitting immediately before its label. Anchored to the label, never to a bare number — the page is

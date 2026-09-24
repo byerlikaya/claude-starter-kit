@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Claude Code PreToolUse guard for the FILE tools (Write / Edit / MultiEdit / NotebookEdit).
+# Claude Code PreToolUse guard for the FILE tools (Write / Edit / NotebookEdit).
 # Companion to guard-bash.sh: that one covers shell tampering, this one covers the model editing the gate
 # scripts directly with its file tools. A gate you can silently rewrite is not a gate.
 #
