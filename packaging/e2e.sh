@@ -57,14 +57,14 @@ combo() {
   [ "$ag" = "$exp_ag" ] || { echo "FAIL [$lbl]: expected $exp_ag agents, got $ag"; exit 1; }
   [ "$sk" = "$exp_sk" ] || { echo "FAIL [$lbl]: expected $exp_sk skills, got $sk"; exit 1; }
   grep -q '^profile=' "$P/.claude/kit.conf" && { echo "FAIL [$lbl]: kit.conf still records a profile"; exit 1; }
-  # The panel. `/studio-csk` resolves exactly this path and nothing else, so its absence is the ENOENT
+  # The panel. `/studio-crew` resolves exactly this path and nothing else, so its absence is the ENOENT
   # this whole change exists to stop — asserted rather than assumed, in every install combination.
-  [ -f "$P/.claude/studio/server/index.js" ] || { echo "FAIL [$lbl]: .claude/studio/server/index.js missing — /studio-csk would ENOENT"; exit 1; }
+  [ -f "$P/.claude/studio/server/index.js" ] || { echo "FAIL [$lbl]: .claude/studio/server/index.js missing — /studio-crew would ENOENT"; exit 1; }
   # Silently load-bearing: every server file is ESM. Without this manifest node reads them as CommonJS
   # and the panel installs cleanly, then dies on its first import — a failure only the user meets.
   grep -q '"type": *"module"' "$P/.claude/studio/package.json" || { echo "FAIL [$lbl]: studio/package.json missing or not \"type\":\"module\" — the ESM server would not load"; exit 1; }
   [ ! -d "$P/.claude/studio/test" ] || { echo "FAIL [$lbl]: studio/test shipped into the project — its pins read the REPO and would be red here"; exit 1; }
-  # The runtime finder. /studio-csk runs exactly this path when node is missing, and without it a
+  # The runtime finder. /studio-crew runs exactly this path when node is missing, and without it a
   # machine with no node is back to the dead end the whole feature exists to remove — silently,
   # because everything else about the install would still look right.
   [ -f "$P/.claude/studio/ensure-node.sh" ] || { echo "FAIL [$lbl]: .claude/studio/ensure-node.sh missing — a machine without node gets no way to get one"; exit 1; }
@@ -84,7 +84,7 @@ combo generic       'yes\n'  "$KIT_AG" "$KIT_SK"
 combo legacy-flags  'yes\n'  "$KIT_AG" "$KIT_SK"  --frontend --generic
 combo legacy-dotnet 'yes\n'  "$KIT_AG" "$KIT_SK"  --dotnet
 grep -q 'no effect' "$WORK/proj-legacy-flags/.claude/kit.conf" && { echo "FAIL: notice leaked into kit.conf"; exit 1; }
-[ -f "$WORK/proj-legacy-flags/.claude/agents/backend-expert-csk.md" ] || { echo "FAIL: --frontend still pruned the backend agent"; exit 1; }
+[ -f "$WORK/proj-legacy-flags/.claude/agents/backend-expert-crew.md" ] || { echo "FAIL: --frontend still pruned the backend agent"; exit 1; }
 for _p in generic legacy-flags legacy-dotnet; do
   grep -qx 'stack=generic' "$WORK/proj-$_p/.claude/kit.conf" || { echo "FAIL [$_p]: kit.conf does not record stack=generic"; exit 1; }
   [ ! -e "$WORK/proj-$_p/.claude/skills/cqrs-aop-module" ] || { echo "FAIL [$_p]: the removed .NET pattern skill was installed"; exit 1; }
@@ -344,7 +344,7 @@ echo "[adopt-rename] pre-kit.conf install carrying the OLD name -> renamed (cont
 # fixture IS the contract: kit.conf carrying profile=, and the exact set that profile pruned.
 M="$WORK/adopt-migrate"; rm -rf "$M"; mkdir -p "$M/.claude/agents" "$M/.claude/skills"
 cp adopt.sh "$M/"; cp -R kit "$M/"; cp VERSION "$M/"
-cp kit/agents/*.md "$M/.claude/agents/"; rm -f "$M/.claude/agents/frontend-expert-csk.md"
+cp kit/agents/*.md "$M/.claude/agents/"; rm -f "$M/.claude/agents/frontend-expert-crew.md"
 cp -R kit/skills/. "$M/.claude/skills/"
 for s in frontend frontend-rn-expo frontend-design a11y; do rm -rf "$M/.claude/skills/$s"; done
 printf 'profile=backend\nstack=dotnet\ninstaller=start.sh\n' > "$M/.claude/kit.conf"
@@ -352,7 +352,7 @@ printf '1.10.1' > "$M/.claude/VERSION"
 ( cd "$M" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
 MOUT="$( cd "$M" && bash adopt.sh --yes 2>&1 || true )"
 case "$MOUT" in *"profile pruning was removed"*) ;; *) echo "FAIL: migration was silent — the user is never told the shape changed"; exit 1 ;; esac
-[ -f "$M/.claude/agents/frontend-expert-csk.md" ] || { echo "FAIL: migration did not restore the pruned agent"; exit 1; }
+[ -f "$M/.claude/agents/frontend-expert-crew.md" ] || { echo "FAIL: migration did not restore the pruned agent"; exit 1; }
 for s in frontend frontend-rn-expo frontend-design a11y; do
   [ -d "$M/.claude/skills/$s" ] || { echo "FAIL: migration did not restore skills/$s"; exit 1; }
 done
@@ -375,8 +375,8 @@ if [ -d plugin/agents ] && [ -d plugin/skills ]; then
   echo "[channel-parity] a start.sh install and the plugin edition ship the same agents and skills"
 fi
 
-# Non-interactive SELF-HEAL — the /update-csk path. An UPDATE of an existing install must fix a stale settings.json
-# off a TTY with NO flag and NO manual edit (this is what /update-csk drives), and the settings refresh must work
+# Non-interactive SELF-HEAL — the /update-crew path. An UPDATE of an existing install must fix a stale settings.json
+# off a TTY with NO flag and NO manual edit (this is what /update-crew drives), and the settings refresh must work
 # even with NO jq and NO python3 (typical Windows Git-Bash). A FIRST adopt (brownfield) still needs --yes. Every run
 # uses a closed stdin so the test can never hang.
 mk_stale_install(){                       # $1 = dir, [$2 = settings.json] : a healthy 1.4.x install whose settings.json is STALE
@@ -501,14 +501,14 @@ _slog; ( cd "$F" && bash adopt.sh --here </dev/null ) >"$_L" 2>&1 || _evidence "
 [ ! -f "$F/.claude/DISCIPLINE.md" ]                     || { echo "FAIL: first adopt must NOT apply non-interactively without --yes"; exit 1; }
 echo "[adopt-selfheal] update self-heals off a TTY, same file with jq/python failing · $PARITY_NOTE · retired §4.4 ask rules dropped, own rules and hooks kept · invalid JSON refused · CLAUDE.md preserved · first adopt still needs --yes"
 
-# (D) TTY + --yes must NOT hang — the /update-csk regression. adopt.sh once tested `-t 0` BEFORE --yes, so an
+# (D) TTY + --yes must NOT hang — the /update-crew regression. adopt.sh once tested `-t 0` BEFORE --yes, so an
 # --yes run that inherited a TTY (Claude Code drives commands under a pty on Windows) blocked on a prompt. Every
 # test above misses it by construction — they close stdin, so `-t 0` is false. Here we allocate a REAL pty and
 # assert the refresh completes under --yes. Needs a pty-capable `script`; skipped where none exists (Git-Bash).
 T="$WORK/pty-yes"; rm -rf "$T"; mkdir -p "$T"
 cp start.sh adopt.sh VERSION "$T/"; cp -R kit "$T/"
 # empty baseline commit BEFORE install (no hooksPath yet), then install; the refresh below STAGES only (like
-# /update-csk) so no pre-commit trace hook runs — the point here is the prompt behaviour, not a commit.
+# /update-crew) so no pre-commit trace hook runs — the point here is the prompt behaviour, not a commit.
 _slog; ( cd "$T" && git init -q && git config user.email t@t.t && git config user.name t && git commit -q --allow-empty -m base \
     && printf 'yes\n' | bash start.sh ) >"$_L" 2>&1 || _evidence "start.sh in $T" "$_L" $?
 cp adopt.sh "$T/adopt.sh"; cp -R kit "$T/kit"   # a refresh reads the payload beside adopt.sh
@@ -591,7 +591,7 @@ S2="$(starn "$_L")"
 restage "9.9.9-e2e"
 _slog; ( cd "$SP" && env -u CI -u CSK_NO_STAR bash adopt.sh --here --yes </dev/null ) >"$_L" 2>&1 || _evidence "adopt.sh new-version update in $SP" "$_L" $?
 S3="$(starn "$_L")"
-D2="$(dstar)"                                              # the doctor /update-csk runs right after: silent
+D2="$(dstar)"                                              # the doctor /update-crew runs right after: silent
 printf '9.9.10-e2e\n' > "$SP/.claude/VERSION"; D3="$(dstar)"   # a new version reached by doctor first: shown
 D4="$(dstar)"                                              # ...once
 [ "$S1/$D1/$S2/$S3/$D2/$D3/$D4" = "1/0/0/1/0/1/0" ] \
@@ -623,7 +623,7 @@ if command -v node >/dev/null 2>&1 && node --version >/dev/null 2>&1; then
   # 1 · add security-expert in an empty dir: the agent, every inferred skill, and a record that lists what landed.
   A1="$WORK/add-1"; rm -rf "$A1"; mkdir -p "$A1"
   AOUT="$( cd "$A1" && node "$CLI" add security-expert 2>&1 )" || { echo "FAIL: add security-expert exited non-zero:"; printf '%s\n' "$AOUT"; exit 1; }
-  [ -f "$A1/.claude/agents/security-expert-csk.md" ] || { echo "FAIL: add did not place the agent"; exit 1; }
+  [ -f "$A1/.claude/agents/security-expert-crew.md" ] || { echo "FAIL: add did not place the agent"; exit 1; }
   for sk in $DEPS; do cmp -s "$A1/.claude/skills/$sk/SKILL.md" "kit/skills/$sk/SKILL.md" || { echo "FAIL: inferred skill $sk missing or different"; exit 1; }; done
   [ -n "$DEPS" ] || { echo "FAIL: FIXTURE — no skills inferred for security-expert, so the dependency case proves nothing"; exit 1; }
   RECOK="$(node -e 'const r=JSON.parse(require("fs").readFileSync(process.argv[1]+"/.claude/crewforth-added.json","utf8"));
@@ -654,8 +654,8 @@ if command -v node >/dev/null 2>&1 && node --version >/dev/null 2>&1; then
   [ "$NL" = "$NC" ] || { echo "FAIL: add --list shows $NL entries, the catalogue has $NC"; exit 1; }
   # 7 · with and without the suffix, the same tree.
   A7a="$WORK/add-7a"; A7b="$WORK/add-7b"; rm -rf "$A7a" "$A7b"; mkdir -p "$A7a" "$A7b"
-  ( cd "$A7a" && node "$CLI" add security-expert >/dev/null 2>&1 ); ( cd "$A7b" && node "$CLI" add security-expert-csk >/dev/null 2>&1 )
-  [ "$(treehash "$A7a")" = "$(treehash "$A7b")" ] || { echo "FAIL: 'security-expert' and 'security-expert-csk' produced different trees"; exit 1; }
+  ( cd "$A7a" && node "$CLI" add security-expert >/dev/null 2>&1 ); ( cd "$A7b" && node "$CLI" add security-expert-crew >/dev/null 2>&1 )
+  [ "$(treehash "$A7a")" = "$(treehash "$A7b")" ] || { echo "FAIL: 'security-expert' and 'security-expert-crew' produced different trees"; exit 1; }
   echo "[add] security-expert + $(printf '%s\n' $DEPS | grep -c .) inferred skill(s) · record matches · rerun unchanged · conflict rc=1 untouched, --force replaces · unknown rc=2, 0 files · full install left alone · --list $NL = catalogue · suffix-free = suffixed"
 
   # studio through the npm entry: the offline self-check, then the real serve probe (listen, 403 without the token,
@@ -692,11 +692,11 @@ fi
 
 # ---- UPDATE: a project that ALREADY has the kit gets the panel on its next update ----
 # This is the reported bug, end to end. The project is installed from a payload with NO studio/ — the
-# shape every 2.8.0 install has — and then updated the way /update-csk drives it. The panel must ARRIVE.
+# shape every 2.8.0 install has — and then updated the way /update-crew drives it. The panel must ARRIVE.
 # Asserted in both directions: absent after the old install, present after the update. Asserting only
 # the second half would pass against an installer that had shipped it all along, i.e. prove nothing.
 UP="$WORK/update-gets-panel"; rm -rf "$UP"; mkdir -p "$UP"
-cp start.sh VERSION "$UP/"; cp -R kit "$UP/"; rm -rf "$UP/kit/studio" "$UP/kit/commands/studio-csk.md"
+cp start.sh VERSION "$UP/"; cp -R kit "$UP/"; rm -rf "$UP/kit/studio" "$UP/kit/commands/studio-crew.md"
 _slog; ( cd "$UP" && git init -q && git config user.email t@t.t && git config user.name t \
     && git commit -q --allow-empty -m base && printf 'yes\n' | bash start.sh --generic ) >"$_L" 2>&1 || _evidence "start.sh --generic in $UP" "$_L" $?
 [ -f "$UP/.claude/VERSION" ] || { echo "FAIL: the pre-panel install did not complete"; exit 1; }
@@ -705,15 +705,15 @@ _slog; ( cd "$UP" && git init -q && git config user.email t@t.t && git config us
 # an empty directory became a full one rather than that a panel arrived where there was none.
 rmdir "$UP/.claude/studio" 2>/dev/null || true
 [ ! -e "$UP/.claude/studio" ] || { echo "FAIL: the fixture is wrong — the pre-panel install already has a panel, so the update below would prove nothing"; exit 1; }
-[ ! -e "$UP/.claude/commands/studio-csk.md" ] || { echo "FAIL: the fixture is wrong — /studio-csk is already installed"; exit 1; }
+[ ! -e "$UP/.claude/commands/studio-crew.md" ] || { echo "FAIL: the fixture is wrong — /studio-crew is already installed"; exit 1; }
 cp adopt.sh "$UP/"; cp -R kit "$UP/kit"; cp VERSION "$UP/"
 _slog; ( cd "$UP" && bash adopt.sh --here --yes </dev/null ) >"$_L" 2>&1 || _evidence "adopt.sh in $UP" "$_L" $?
 [ -f "$UP/.claude/studio/server/index.js" ] || { echo "FAIL: an existing kit install did NOT get the panel on update — this is the reported bug"; exit 1; }
 grep -q '"type": *"module"' "$UP/.claude/studio/package.json" || { echo "FAIL: the updated panel has no \"type\":\"module\" — it would die on first import"; exit 1; }
 [ ! -d "$UP/.claude/studio/test" ] || { echo "FAIL: the update shipped studio/test into the project"; exit 1; }
 [ -f "$UP/.claude/studio/ensure-node.sh" ] || { echo "FAIL: the update brought the panel but not the runtime finder beside it"; exit 1; }
-[ -f "$UP/.claude/commands/studio-csk.md" ] || { echo "FAIL: the update did not deliver /studio-csk"; exit 1; }
-echo "[update-gets-panel] a 2.8.0-shaped install gained .claude/studio ($(find "$UP/.claude/studio" -type f | wc -l | tr -d ' ') files) and /studio-csk on update"
+[ -f "$UP/.claude/commands/studio-crew.md" ] || { echo "FAIL: the update did not deliver /studio-crew"; exit 1; }
+echo "[update-gets-panel] a 2.8.0-shaped install gained .claude/studio ($(find "$UP/.claude/studio" -type f | wc -l | tr -d ' ') files) and /studio-crew on update"
 
 # ---- the install WIZARD: unattended runs, the .gitignore question, and what --yes may not approve ----
 # These are here rather than in the smoke-test because every one of them needs a real installer run: the

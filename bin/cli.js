@@ -62,7 +62,7 @@ if (sub === '--version' || sub === '-v') {
 // path segment itself, so `..`, an absolute path or a separator cannot reach the file system.
 
 // The one place the agent suffix is spelled. Phase 5 renames it; a user's `add security-expert` must not change.
-const AGENT_SUFFIX = '-csk';
+const AGENT_SUFFIX = '-crew';
 const NAME_RE = /^[a-z0-9][a-z0-9-]*$/;
 const RECORD = 'crewforth-added.json';
 

@@ -24,7 +24,7 @@ more than one, and each needs its own engine.
 
 **Injection / taint rules are not in any of these** — they run only on SonarQube Server/Cloud, in the commercial
 editions. So even a spotless local run says nothing about SQLi/XSS/command injection; that gap is covered by
-`security-scan` + `threat-model` + a `security-expert-csk` review, and is reported as its own line, never folded
+`security-scan` + `threat-model` + a `security-expert-crew` review, and is reported as its own line, never folded
 into a "clean" claim.
 
 Pin versions so builds stay reproducible (with Central Package Management, declare it there). Turning warnings into

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # kit adopt — hands the kit OVER (handover) to an EXISTING project, brownfield-safe.
 # Later becomes the `kit adopt` subcommand. Handover philosophy: don't break the project · don't lose decisions made ·
-# don't leave the kit passive (100% hybrid). Kit agents are namespaced with -csk -> no clash with project agents.
+# don't leave the kit passive (100% hybrid). Kit agents are namespaced with -crew -> no clash with project agents.
 #
 # >>> STAGE 1: detection + smart suggestion only. CHANGES NOTHING (read-only). <<<
 # Later stages: open git branch -> mutation (settings merge · DISCIPLINE.md · coexist) -> install proof
@@ -123,7 +123,7 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "%s project agent(s) cover the SAME job as a kit agent (%s) — routing is ambiguous; kit wins, yours preserved") s='%s proje ajanı bir kit ajanıyla AYNI işi yapıyor (%s) — hangisine gideceği belirsiz; kit öne geçer, sizinkiler saklanır' ;;
       "1 Role clash") s='1 Rol çakışması' ;;
       "keep (coexist)") s='koru (yan yana)' ;;
-      "%s project agents, none overlap a kit role; thanks to -csk they live side by side") s='%s proje ajanı var, hiçbiri kit rolleriyle çakışmıyor; -csk eki sayesinde yan yana çalışırlar' ;;
+      "%s project agents, none overlap a kit role; thanks to -crew they live side by side") s='%s proje ajanı var, hiçbiri kit rolleriyle çakışmıyor; -crew eki sayesinde yan yana çalışırlar' ;;
       "no custom agents found in the project") s='projede özel ajan yok' ;;
       "2 Precedence") s='2 Öncelik' ;;
       "project wins (fixed)") s='proje önde (sabit)' ;;
@@ -164,8 +164,8 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "(non-interactive: smart defaults accepted)") s='(etkileşimsiz çalışma: akıllı varsayılanlar kabul edildi)' ;;
       "Role overlap — project & kit both cover: %s") s='Rol çakışması — proje ve kit aynı işi yapıyor: %s' ;;
       "Two agents for one job = the router picks one, usually your older agent — so the kit's would sit idle.") s='Aynı iş için iki ajan olunca yönlendirici birini seçer, çoğu zaman sizin eski ajanınızı — kitinki boşta kalır.' ;;
-      "kit's -csk agents win; each old agent's domain is imported to a draft skill (skills/<name>-local), original backed up") s="kitin -csk ajanları öne geçer; eski ajanın alan bilgisi taslak bir skill'e (skills/<name>-local) taşınır, orijinali yedeklenir" ;;
-      "your agents win; the kit's overlapping -csk agents are not installed") s='sizin ajanlarınız öne geçer; kitin çakışan -csk ajanları kurulmaz' ;;
+      "kit's -crew agents win; each old agent's domain is imported to a draft skill (skills/<name>-local), original backed up") s="kitin -crew ajanları öne geçer; eski ajanın alan bilgisi taslak bir skill'e (skills/<name>-local) taşınır, orijinali yedeklenir" ;;
+      "your agents win; the kit's overlapping -crew agents are not installed") s='sizin ajanlarınız öne geçer; kitin çakışan -crew ajanları kurulmaz' ;;
       "keep both (routing stays ambiguous; only documented in HANDOVER)") s="ikisi de kalır (yönlendirme belirsiz kalır; yalnız HANDOVER'a not düşülür)" ;;
       "owner") s='sahip' ;;
       "type takeover, keepmine or coexist") s='takeover, keepmine ya da coexist yazın' ;;
@@ -196,7 +196,7 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "overlap: %s -> skill '%s' already present (kept); original re-backed up") s="çakışma: %s -> '%s' skill'i zaten var (korundu); orijinal yeniden yedeklendi" ;;
       "overlap: %s -> imported to skill '%s' (draft); kit's %s owns routing") s="çakışma: %s -> '%s' skill'ine taşındı (taslak); yönlendirme artık kitin %s ajanında" ;;
       "ref-sweep: %s → %s in %s") s='ref-sweep: %s → %s (%s)' ;;
-      "Reference sweep: rewrote taken-over agent names to their -csk id across CLAUDE.md + referenced docs") s='Referans taraması: devralınan ajan adları CLAUDE.md ve bağlı belgelerde -csk adlarına çevrildi' ;;
+      "Reference sweep: rewrote taken-over agent names to their -crew id across CLAUDE.md + referenced docs") s='Referans taraması: devralınan ajan adları CLAUDE.md ve bağlı belgelerde -crew adlarına çevrildi' ;;
       "ref-sweep: no stale references in CLAUDE.md's chain") s='ref-sweep: CLAUDE.md ve bağlı belgelerde eski ad kalmamış' ;;
       "⚠️  installed by an older kit and no longer shipped:%s") s='⚠️  eski bir kit sürümünden kalan, artık dağıtılmayan dosyalar:%s' ;;
       "The name is the invocation: a leftover COMMAND still lists in the / picker (/review twice), and a") s='Burada adın kendisi çağrıdır: artakalan bir KOMUT / menüsünde hâlâ görünür (/review iki kez), artakalan' ;;
@@ -205,7 +205,7 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "Coexist summary") s='Kurulum özeti' ;;
       "%s · %s skipped") s='%s · %s atlandı' ;;
       "+%s added") s='+%s eklendi' ;;
-      "kit agents (-csk)") s='kit ajanları (-csk)' ;;
+      "kit agents (-crew)") s='kit ajanları (-crew)' ;;
       "skills") s="skill'ler" ;;
       "commands") s='komutlar' ;;
       "hooks") s="hook'lar" ;;
@@ -214,8 +214,8 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "%s — the rest UNTOUCHED") s='%s — geri kalanına DOKUNULMADI' ;;
       "project agents") s='proje ajanları' ;;
       "overlap") s='çakışma' ;;
-      "keepmine — your agents own: %s (kit's -csk for these NOT installed)") s='keepmine — bu roller sizin ajanlarınızda: %s (kitin karşılık gelen -csk ajanları KURULMADI)' ;;
-      "overlap: %s — BOTH kept; routing between your agent and the kit's -csk stays ambiguous") s='çakışma: %s — İKİSİ de kaldı; sizin ajanınızla kitin -csk ajanı arasında seçim belirsiz' ;;
+      "keepmine — your agents own: %s (kit's -crew for these NOT installed)") s='keepmine — bu roller sizin ajanlarınızda: %s (kitin karşılık gelen -crew ajanları KURULMADI)' ;;
+      "overlap: %s — BOTH kept; routing between your agent and the kit's -crew stays ambiguous") s='çakışma: %s — İKİSİ de kaldı; sizin ajanınızla kitin -crew ajanı arasında seçim belirsiz' ;;
       "conflicting files (the project's was PRESERVED, the kit's skipped):") s='çakışan dosyalar (projeninki KORUNDU, kitinki atlandı):' ;;
       "Stage 3 — activate the kit discipline (without touching the project CLAUDE.md) + settings merge") s="Aşama 3 — kit disiplinini etkinleştir (proje CLAUDE.md'sine dokunmadan) + ayarları birleştir" ;;
       "DISCIPLINE.md written (kit discipline only; the project template stays out of it)") s='DISCIPLINE.md yazıldı (yalnız kit disiplini; proje şablonu içinde yok)' ;;
@@ -247,12 +247,12 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "~  PROOF-1: hook blocked (%s)") s='~  KANIT-1: hook engelledi (%s)' ;;
       "PROOF-2 FAILED: guard-bash LET THROUGH the keyless commit") s="KANIT-2 BAŞARISIZ: guard-bash anahtarsız commit'i GEÇİRDİ" ;;
       "OK · PROOF-2: guard-bash BLOCKED the keyless 'git commit' (holds in auto/bypass too)") s="OK · KANIT-2: guard-bash anahtarsız 'git commit'i ENGELLEDİ (auto/bypass modunda da geçerli)" ;;
-      "OK · PROOF-3: %s kit agents (-csk) installed + discoverable") s='OK · KANIT-3: %s kit ajanı (-csk) kurulu ve bulunabiliyor' ;;
+      "OK · PROOF-3: %s kit agents (-crew) installed + discoverable") s='OK · KANIT-3: %s kit ajanı (-crew) kurulu ve bulunabiliyor' ;;
       "PROOF-3: no kit agent") s='KANIT-3: kit ajanı yok' ;;
       "OK · PROOF-4: DISCIPLINE.md loaded + @import-ed from CLAUDE.md") s="OK · KANIT-4: DISCIPLINE.md yerinde ve CLAUDE.md'den @import ediliyor" ;;
       "PROOF-4: discipline not linked") s='KANIT-4: disiplin bağlanmamış' ;;
       "%s line(s): %s") s='%s, satır: %s' ;;
-      "PROOF-5: CLAUDE.md (or a doc it references) names auto-delegated agent(s) by an old bare id — rename each to its -csk id, else delegation to them silently fails:%s") s='KANIT-5: CLAUDE.md (ya da bağlı bir belge) otomatik devredilen ajanları eski, eksiz adıyla anıyor — her birini -csk adıyla değiştirin, yoksa onlara devretme sessizce başarısız olur:%s' ;;
+      "PROOF-5: CLAUDE.md (or a doc it references) names auto-delegated agent(s) by an old bare id — rename each to its -crew id, else delegation to them silently fails:%s") s='KANIT-5: CLAUDE.md (ya da bağlı bir belge) otomatik devredilen ajanları eski, eksiz adıyla anıyor — her birini -crew adıyla değiştirin, yoksa onlara devretme sessizce başarısız olur:%s' ;;
       "PROOF-5: CLAUDE.md (or a referenced doc) names pull-only agent(s) by an old bare id (still work; rename for consistency):%s") s='KANIT-5: CLAUDE.md (ya da bağlı bir belge) elle çağrılan ajanları eski, eksiz adıyla anıyor (yine çalışır; tutarlılık için yeniden adlandırın):%s' ;;
       "PROOF: kit 100%% ACTIVE — gates armed, agents + discipline loaded") s='KANIT: kit %%100 ETKİN — kapılar devrede, ajanlar ve disiplin yüklü' ;;
       "PROOF: some gates could not be verified (see above)") s='KANIT: bazı kapılar doğrulanamadı (yukarıya bakın)' ;;
@@ -383,7 +383,7 @@ gi_add() {   # $@ = entries to ensure in ./.gitignore; sets GI_WROTE to what it 
 # Result globals: ret_add / ret_skip; conflicts are added to SKIP_LIST. Do NOT call in a subshell (globals are lost).
 SKIP_LIST=""
 # $4 = space-separated names to SKIP entirely, matched against the first path component of each source file
-# ('frontend-expert-csk.md' for agents/, 'a11y' for skills/). We skip rather than copy-then-delete: a project
+# ('frontend-expert-crew.md' for agents/, 'a11y' for skills/). We skip rather than copy-then-delete: a project
 # may own a directory of the same name, and a refresh must never remove the project's own files.
 # Per-FILE process spawns are what make this hurt on Windows: Git Bash pays 62-135 ms per process where Linux pays
 # ~1.7ms, so `dirname`+`mkdir`+`cp` for each of ~100 payload files is minutes, not milliseconds. Measured on a
@@ -448,7 +448,7 @@ kit_infer_shape() {
 # glue '\r' to every value — 'generic\r' matches no branch, and the refresh would pick the wrong pattern.
 kit_conf_get()         { [ -f .claude/kit.conf ] && sed -n "s/^$1=//p" .claude/kit.conf | head -1 | tr -d '\r'; }
 
-# Turn a project agent into a DRAFT project skill (prints the SKILL.md to stdout). On takeover the kit's -csk
+# Turn a project agent into a DRAFT project skill (prints the SKILL.md to stdout). On takeover the kit's -crew
 # agent owns routing (who/when); this carries the OLD agent's domain (its "how") into an active skill the kit
 # agent can apply, so nothing is lost from the working setup. It keeps the agent's description (domain keywords)
 # and body, guarantees a Trigger-phrases line for discovery, and marks it as a carried-over draft to refine.
@@ -461,10 +461,10 @@ kit_agent_to_skill() {   # $1 = agent .md file, $2 = base name
   body="$(awk 'c>=2{print} /^---[ \t]*$/{c++}' "$f")"
   printf '%s\n' '---' "name: ${b}-local"
   printf 'description: |\n  %s\n' "$desc"
-  printf '  Carried over from the project'"'"'s own %s agent when %s-csk took over the role — trim to the domain worth keeping.\n' "$b" "$b"
+  printf '  Carried over from the project'"'"'s own %s agent when %s-crew took over the role — trim to the domain worth keeping.\n' "$b" "$b"
   printf '  Trigger phrases: %s\n---\n\n' "$trig"
   printf '# %s — project knowledge (carried over on kit adoption)\n\n' "$b"
-  printf '> Draft generated from your original `%s` agent; the kit'"'"'s `%s-csk` applies this skill. Refine it to the domain "how" worth keeping.\n\n' "$b" "$b"
+  printf '> Draft generated from your original `%s` agent; the kit'"'"'s `%s-crew` applies this skill. Refine it to the domain "how" worth keeping.\n\n' "$b" "$b"
   printf '%s\n' "$body"
 }
 
@@ -515,28 +515,28 @@ _mt "$STACK"; rowv 'stack hint' "$_M"
 # ================= [2] EXISTING AGENTIC SETUP =================
 h1m '[2] Existing agentic setup (accumulated work to inherit)'
 HAS_CLAUDE=0; [ -d .claude ] && HAS_CLAUDE=1
-# count only the PROJECT's own agents/skills — exclude the kit's -csk agents and kit skills left by a prior adopt
-N_PAGENTS=0; [ -d .claude/agents ] && N_PAGENTS="$(find .claude/agents -name '*.md' ! -name '*-csk.md' 2>/dev/null | wc -l | tr -d ' ')"
+# count only the PROJECT's own agents/skills — exclude the kit's -crew agents and kit skills left by a prior adopt
+N_PAGENTS=0; [ -d .claude/agents ] && N_PAGENTS="$(find .claude/agents -name '*.md' ! -name '*-crew.md' 2>/dev/null | wc -l | tr -d ' ')"
 N_PSKILLS=0
 if [ -d .claude/skills ]; then
   # `basename $(dirname …)` per skill is two spawns × every installed skill, for a number printed once. Parameter
   # expansion does the same slicing with none.
   while IFS= read -r f; do d="${f%/SKILL.md}"; d="${d##*/}"; [ -d "$SRC/skills/$d" ] || N_PSKILLS=$((N_PSKILLS+1)); done < <(find .claude/skills -name 'SKILL.md' 2>/dev/null)
 fi
-# Same-domain agent overlap: a PROJECT agent whose base name matches a kit -csk agent (e.g. backend-expert vs
-# backend-expert-csk). The two describe the same job, so the router has to pick between them — plain coexist
+# Same-domain agent overlap: a PROJECT agent whose base name matches a kit -crew agent (e.g. backend-expert vs
+# backend-expert-crew). The two describe the same job, so the router has to pick between them — plain coexist
 # leaves that ambiguous and the project's older agent tends to win, which defeats installing the kit. Collect
 # the overlaps so the handover can RESOLVE them, not merely note them.
 COLLIDE=""
 if [ -d .claude/agents ]; then
-  for kf in "$SRC"/agents/*-csk.md; do b="$(basename "$kf" -csk.md)"; [ -f ".claude/agents/$b.md" ] && COLLIDE="$COLLIDE $b"; done
+  for kf in "$SRC"/agents/*-crew.md; do b="$(basename "$kf" -crew.md)"; [ -f ".claude/agents/$b.md" ] && COLLIDE="$COLLIDE $b"; done
 fi
 COLLIDE="${COLLIDE# }"; N_COLLIDE=0; [ -n "$COLLIDE" ] && N_COLLIDE="$(printf '%s\n' $COLLIDE | wc -l | tr -d ' ')"
 HAS_MD=0; [ -f CLAUDE.md ] && HAS_MD=1
 HAS_SETTINGS=0; [ -f .claude/settings.json ] && HAS_SETTINGS=1
 # already-adopted fingerprint: did a PRIOR adopt/kit install run here? -> REFRESH semantics, not a fresh handover
 KIT_PRESENT=0; KIT_VER=""
-{ [ -f .claude/DISCIPLINE.md ] || [ -d .claude/git-shim ] || ls .claude/agents/*-csk.md >/dev/null 2>&1 || [ -f .claude/VERSION ]; } && KIT_PRESENT=1
+{ [ -f .claude/DISCIPLINE.md ] || [ -d .claude/git-shim ] || ls .claude/agents/*-crew.md >/dev/null 2>&1 || [ -f .claude/VERSION ]; } && KIT_PRESENT=1
 [ -f .claude/VERSION ] && KIT_VER="$(head -1 .claude/VERSION 2>/dev/null)"
 # Backend pattern of the existing install. Since 3.0 there is ONE shape (generic) and this only answers a
 # migration question: was this a pre-3.0 .NET install? If so its pattern skill stays, as the project's own.
@@ -580,7 +580,7 @@ fi
 if [ "$TRACKED" = 1 ]; then _v='YES — shared with the team'; else _v='no/untracked'; fi
 rowm '.claude/CLAUDE.md in git' "$_v"
 
-# Supply-chain scan (advisory, read-only): the project's OWN (non-csk) skills/agents may have been pulled from an
+# Supply-chain scan (advisory, read-only): the project's OWN (non-crew) skills/agents may have been pulled from an
 # untrusted source. Scan them for red flags (curl|bash, prompt-injection directives, credential exfil) before the
 # kit starts coexisting with them. Heuristic; it NEVER blocks — it surfaces, the user judges.
 if { [ "$N_PAGENTS" != 0 ] || [ "$N_PSKILLS" != 0 ]; } && [ -f "$SRC/eval/scan-skill.sh" ]; then
@@ -608,7 +608,7 @@ subm 'format:  decision  ->  SUGGESTED  ->  rationale   (you can review and over
 if [ "$N_COLLIDE" != 0 ]; then
   propm '1 Role overlap' 'kit takes over' '%s project agent(s) cover the SAME job as a kit agent (%s) — routing is ambiguous; kit wins, yours preserved' "$N_COLLIDE" "$COLLIDE"
 elif [ "$N_PAGENTS" != 0 ]; then
-  propm '1 Role clash' 'keep (coexist)' '%s project agents, none overlap a kit role; thanks to -csk they live side by side' "$N_PAGENTS"
+  propm '1 Role clash' 'keep (coexist)' '%s project agents, none overlap a kit role; thanks to -crew they live side by side' "$N_PAGENTS"
 else
   propm '1 Role clash' 'none' 'no custom agents found in the project'
 fi
@@ -687,17 +687,17 @@ KIT_STACK=generic
 [ "${CSK_CORRECT_STACK:-0}" = 1 ] && say 'CSK_CORRECT_STACK has no effect since 3.0 — there is one backend shape; the stack lives in CLAUDE.md ## Stack.'
 
 # --- Role overlap (#1): resolve same-domain agent collisions ---------------------------------------------
-# When a project agent and a kit -csk agent cover the same job, "coexist" leaves routing ambiguous. Offer to
+# When a project agent and a kit -crew agent cover the same job, "coexist" leaves routing ambiguous. Offer to
 # resolve it. takeover = kit wins (your agent preserved, moved out of the routing pool); keepmine = your agent
-# wins (the kit's overlapping -csk is not installed); coexist = keep both (documented). Non-interactive -> takeover
+# wins (the kit's overlapping -crew is not installed); coexist = keep both (documented). Non-interactive -> takeover
 # (you ran adopt to get the kit's agents). The chosen mode is APPLIED on the handover branch in Stage 2.
 COLLIDE_MODE=coexist
 if [ "$N_COLLIDE" != 0 ]; then
   h1m 'Role overlap — project & kit both cover: %s' "$COLLIDE"
   subm "Two agents for one job = the router picks one, usually your older agent — so the kit's would sit idle."
   # the first word of each line is the token the user types, so it stays English and outside the message
-  _mt "kit's -csk agents win; each old agent's domain is imported to a draft skill (skills/<name>-local), original backed up"; sub "  takeover  $_M"
-  _mt "your agents win; the kit's overlapping -csk agents are not installed";                                                 sub "  keepmine  $_M"
+  _mt "kit's -crew agents win; each old agent's domain is imported to a draft skill (skills/<name>-local), original backed up"; sub "  takeover  $_M"
+  _mt "your agents win; the kit's overlapping -crew agents are not installed";                                                 sub "  keepmine  $_M"
   _mt 'keep both (routing stays ambiguous; only documented in HANDOVER)';                                                     sub "  coexist   $_M"
   COLLIDE_MODE=takeover
   if [ -t 0 ] && [ "${ASSUME_YES:-0}" != 1 ]; then   # --yes keeps the documented non-interactive default (takeover)
@@ -717,7 +717,7 @@ case "$COLLIDE_MODE" in
 esac
 
 # A non-interactive REFRESH of an existing kit install is low-risk — it rewrites only kit-owned files and the change
-# is staged/reversible — so it applies by default; this is what lets /update-csk self-heal without any flag. A first
+# is staged/reversible — so it applies by default; this is what lets /update-crew self-heal without any flag. A first
 # adopt (KIT_PRESENT=0, a larger brownfield change) still requires an explicit --yes when there is no TTY to ask.
 if [ ! -t 0 ] && [ "$KIT_PRESENT" = 1 ]; then ASSUME_YES=1; fi
 
@@ -791,7 +791,7 @@ if [ -n "$LEGACY_PROFILE" ]; then
   for d in "$SRC"/skills/*/;    do [ -d "$d" ] && [ ! -d ".claude/skills/$(basename "$d")" ] && MIGRATE_MISSING="$MIGRATE_MISSING skills/$(basename "$d")"; done
 fi
 # THE 3.0 MIGRATION. The kit no longer ships cqrs-aop-module, and a project that had it keeps it: from now on it is
-# the PROJECT's own pattern skill, which backend-expert-csk applies ahead of backend-architecture. Nothing here
+# the PROJECT's own pattern skill, which backend-expert-crew applies ahead of backend-architecture. Nothing here
 # deletes it, the copy below cannot touch it (the payload no longer carries the name), and the stale sweep
 # further down is told to leave it out, because that sweep's advice is an `rm -r` line.
 #
@@ -816,8 +816,8 @@ if [ "$KIT_PRESENT" = 1 ] && [ -d .claude/skills/devarch-module ]; then
 fi
 [ "$LEGACY_DOTNET" = 1 ] && [ -d .claude/skills/cqrs-aop-module ] \
   && say "cqrs-aop-module is now a project skill (the kit no longer ships it); backend-expert applies it as your project's pattern."
-# #1 keepmine: your overlapping agents own those roles, so the kit's matching -csk agents are NOT installed.
-[ "$COLLIDE_MODE" = keepmine ] && for b in $COLLIDE; do EXCL_A="$EXCL_A $b-csk.md"; done
+# #1 keepmine: your overlapping agents own those roles, so the kit's matching -crew agents are NOT installed.
+[ "$COLLIDE_MODE" = keepmine ] && for b in $COLLIDE; do EXCL_A="$EXCL_A $b-crew.md"; done
 # kit-owned trees: FORCE-refresh on a re-adopt (KIT_PRESENT) so kit updates land; never-overwrite on a fresh adopt
 copy_noclobber "$SRC/agents"   .claude/agents   "$KIT_PRESENT" "$EXCL_A"; A_ADD=$ret_add; A_SKIP=$ret_skip
 copy_noclobber "$SRC/skills"   .claude/skills   "$KIT_PRESENT" "$EXCL_S"; S_ADD=$ret_add; S_SKIP=$ret_skip
@@ -828,7 +828,7 @@ copy_noclobber "$SRC/commands" .claude/commands "$KIT_PRESENT"; C_ADD=$ret_add; 
 VENDOR_ARMED=0; grep -qxE $'DevArchitecture\r?' .claude/hooks/trace-blocklist.txt 2>/dev/null && VENDOR_ARMED=1
 copy_noclobber "$SRC/hooks"    .claude/hooks    "$KIT_PRESENT"; H_ADD=$ret_add; H_SKIP=$ret_skip
 copy_noclobber "$SRC/eval"     .claude/eval     "$KIT_PRESENT"; E_ADD=$ret_add; E_SKIP=$ret_skip
-# The Studio panel. This is the line that answers "I updated and `/studio-csk` says the panel
+# The Studio panel. This is the line that answers "I updated and `/studio-crew` says the panel
 # is missing": with KIT_PRESENT=1 it is a force-refresh, so a project that already has the kit
 # gets the panel on its next update.
 # NOT passed the $4 exclusion argument even though `test` would match it correctly — a non-empty
@@ -844,7 +844,7 @@ copy_noclobber "$SRC/studio"   .claude/studio   "$KIT_PRESENT"; T_ADD=$ret_add; 
 # the count is simply what landed.
 chmod +x .claude/studio/server/hooks/*.sh 2>/dev/null || true
 # AGENT_TEMPLATE.md — a kit-owned flat file, so it is written on every run rather than never-overwritten.
-# `/skill-csk` opens with `Read .claude/AGENT_TEMPLATE.md`, and until now only start.sh copied it
+# `/skill-crew` opens with `Read .claude/AGENT_TEMPLATE.md`, and until now only start.sh copied it
 # (start.sh:486). That left the command pointing at a file that does not exist on an adopted install, and
 # `update` is an alias of this script (bin/cli.js:48), so a copy placed by start.sh was never refreshed
 # either — it went stale from the day it landed and nothing ever noticed, because §3b iterates skills and
@@ -863,7 +863,7 @@ if [ -n "$MIGRATE_MISSING" ]; then
     say 'pre-2.0 install (profile=%s): nothing was missing — the full set was already present' "$LEGACY_PROFILE"
   fi
 fi
-# #1 takeover: the kit's -csk owns the role, and the OLD agent's domain is IMPORTED into an active project skill
+# #1 takeover: the kit's -crew owns the role, and the OLD agent's domain is IMPORTED into an active project skill
 # (skills/<base>-local) that the kit agent applies — so nothing is lost from the working setup. The agent is then
 # removed from the routing pool (Claude Code discovers .claude/agents/*.md, not subdirs) so routing is no longer
 # ambiguous, and the raw original is kept under .claude/superseded/agents/ as a backup. The skill is a DRAFT to refine.
@@ -877,7 +877,7 @@ if [ "$COLLIDE_MODE" = takeover ] && [ -n "$COLLIDE" ]; then
     else
       mkdir -p ".claude/skills/$b-local"
       kit_agent_to_skill "$af" "$b" > ".claude/skills/$b-local/SKILL.md"
-      say "overlap: %s -> imported to skill '%s' (draft); kit's %s owns routing" "$b" "$b-local" "$b-csk"
+      say "overlap: %s -> imported to skill '%s' (draft); kit's %s owns routing" "$b" "$b-local" "$b-crew"
     fi
     cp "$af" ".claude/superseded/agents/$b.md"; rm -f "$af"
     N_TAKEN=$((N_TAKEN+1))
@@ -886,8 +886,8 @@ fi
 # #1b takeover reference sweep — the rename above orphaned every project reference to the taken-over agents
 # ($COLLIDE): "→ backend-expert" in CLAUDE.md, the "detail: docs/AGENTS.md" orchestration doc, etc. This is the ONE
 # moment the kit knows the exact old→new map, so it COMPLETES the migration instead of leaving the user to chase
-# dangling names. It rewrites each bare old name to its -csk id across CLAUDE.md's reference chain (its @imports +
-# docs/…md paths), boundary-safe: `backend-expert` → `backend-expert-csk`, but `backend-expert-csk`/`-local` and
+# dangling names. It rewrites each bare old name to its -crew id across CLAUDE.md's reference chain (its @imports +
+# docs/…md paths), boundary-safe: `backend-expert` → `backend-expert-crew`, but `backend-expert-crew`/`-local` and
 # `backend-expertise` are left intact (no double-suffix). Unreferenced design/audit docs and code comments are NOT
 # touched (precise, no false positives). The edit lands on the adopt review branch — visible in the diff, revertible.
 if [ "$N_TAKEN" -gt 0 ] && [ -f CLAUDE.md ]; then
@@ -900,13 +900,13 @@ if [ "$N_TAKEN" -gt 0 ] && [ -f CLAUDE.md ]; then
     for f in $SWEEP; do
       i=0
       while grep -qE "(^|[^A-Za-z-])$b([^A-Za-z-]|$)" "$f" 2>/dev/null && [ "$i" -lt 5 ]; do
-        sed -E "s/(^|[^A-Za-z-])$b([^A-Za-z-]|\$)/\1$b-csk\2/g" "$f" > "$f.kit-sweep" && mv "$f.kit-sweep" "$f"
+        sed -E "s/(^|[^A-Za-z-])$b([^A-Za-z-]|\$)/\1$b-crew\2/g" "$f" > "$f.kit-sweep" && mv "$f.kit-sweep" "$f"
         i=$((i+1)); SWEPT=$((SWEPT+1))
       done
-      [ "$i" -gt 0 ] && say 'ref-sweep: %s → %s in %s' "$b" "$b-csk" "$f"
+      [ "$i" -gt 0 ] && say 'ref-sweep: %s → %s in %s' "$b" "$b-crew" "$f"
     done
   done
-  [ "$SWEPT" -gt 0 ] && h1m 'Reference sweep: rewrote taken-over agent names to their -csk id across CLAUDE.md + referenced docs' \
+  [ "$SWEPT" -gt 0 ] && h1m 'Reference sweep: rewrote taken-over agent names to their -crew id across CLAUDE.md + referenced docs' \
                      || say "ref-sweep: no stale references in CLAUDE.md's chain"
 fi
 # §4.2: an armed vendor line STAYS armed, and nothing else arms it. The blocklist ships `# DevArchitecture`
@@ -928,7 +928,7 @@ chmod +x .claude/hooks/*.sh .claude/hooks/pre-commit .claude/hooks/commit-msg 2>
 # Stale kit files: names the kit USED to ship and no longer does. `copy_noclobber` only ever adds, so a component
 # removed or renamed upstream lives on in the project forever — and that is not cosmetic, because for all three
 # kinds the NAME IS THE INVOCATION. A command's filename is what the / picker lists: after 1.11.0 renamed the
-# commands, an un-pruned `review.md` sits beside `review-csk.md` and both show up. A SKILL's directory name is
+# commands, an un-pruned `review.md` sits beside `review-crew.md` and both show up. A SKILL's directory name is
 # what the router scores — `route-hint.sh` ranks `.claude/skills/*/SKILL.md` by the trigger phrases inside, so a
 # renamed skill left on disk competes with its own replacement for every prompt. Measured on this machine: a
 # 2.6.0 install upgraded in place kept `skills/vps-deploy` beside the new `skills/deploy`, both with live
@@ -984,7 +984,7 @@ fi
 h1m 'Coexist summary'
 # _cnt: "<added>" plus " · N skipped" when something was skipped; result in _v (no subshell, see _mt)
 _cnt(){ _v="$1"; if [ "${2:-0}" != 0 ]; then _mt '%s · %s skipped' "$_v" "$2"; _v="$_M"; fi; }
-_mt '+%s added' "$A_ADD"; _cnt "$_M" "$A_SKIP"; rowv 'kit agents (-csk)' "$_v"
+_mt '+%s added' "$A_ADD"; _cnt "$_M" "$A_SKIP"; rowv 'kit agents (-crew)' "$_v"
 _cnt "+$S_ADD" "$S_SKIP"; rowv 'skills'   "$_v"
 _cnt "+$C_ADD" "$C_SKIP"; rowv 'commands' "$_v"
 _cnt "+$H_ADD" "$H_SKIP"; rowv 'hooks'    "$_v"
@@ -993,15 +993,15 @@ rowv 'eval' "+$E_ADD"
 # advertising a command that refuses on a machine without node — a row promising
 # a capability it had not checked. Qualified from the same preflight query the
 # closing line uses, so the version rule keeps one home.
-PANEL_CMD="/studio-csk"
-bash "$SRC/eval/preflight.sh" --has node 2>/dev/null || { _mt '%s (needs Node 18+)' /studio-csk; PANEL_CMD="$_M"; }
+PANEL_CMD="/studio-crew"
+bash "$SRC/eval/preflight.sh" --has node 2>/dev/null || { _mt '%s (needs Node 18+)' /studio-crew; PANEL_CMD="$_M"; }
 _cnt "+$T_ADD" "${T_SKIP:-0}"; rowv 'studio (panel)' "$_v ${D}— $PANEL_CMD${R}"
 _v="$N_PAGENTS"
 [ "${N_TAKEN:-0}" != 0 ] && { _mt '%s (%s imported to skills/<name>-local drafts; originals backed up in superseded/)' "$_v" "$N_TAKEN"; _v="$_M"; }
 _mt '%s — the rest UNTOUCHED' "$_v"; rowv 'project agents' "$_M"
 case "$COLLIDE_MODE" in
-  keepmine) [ "$N_COLLIDE" != 0 ] && rowm 'overlap' "keepmine — your agents own: %s (kit's -csk for these NOT installed)" "$COLLIDE" ;;
-  coexist)  [ "$N_COLLIDE" != 0 ] && warnm "overlap: %s — BOTH kept; routing between your agent and the kit's -csk stays ambiguous" "$COLLIDE" ;;
+  keepmine) [ "$N_COLLIDE" != 0 ] && rowm 'overlap' "keepmine — your agents own: %s (kit's -crew for these NOT installed)" "$COLLIDE" ;;
+  coexist)  [ "$N_COLLIDE" != 0 ] && warnm "overlap: %s — BOTH kept; routing between your agent and the kit's -crew stays ambiguous" "$COLLIDE" ;;
 esac
 [ -n "$SKIP_LIST" ] && { warnm "conflicting files (the project's was PRESERVED, the kit's skipped):"; for s in $SKIP_LIST; do printf '     %s- %s%s\n' "$D" "$s" "$R"; done; }
 
@@ -1165,15 +1165,15 @@ if printf '{"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}' | ba
   warnm 'PROOF-2 FAILED: guard-bash LET THROUGH the keyless commit'; PROOF_OK=0
 else say "OK · PROOF-2: guard-bash BLOCKED the keyless 'git commit' (holds in auto/bypass too)"; fi
 # 3) can the kit agents + discipline be loaded
-NCCK="$(ls .claude/agents/*-csk.md 2>/dev/null | wc -l | tr -d ' ')"
-if [ "${NCCK:-0}" -ge 1 ]; then say 'OK · PROOF-3: %s kit agents (-csk) installed + discoverable' "$NCCK"; else warnm 'PROOF-3: no kit agent'; PROOF_OK=0; fi
+NCCK="$(ls .claude/agents/*-crew.md 2>/dev/null | wc -l | tr -d ' ')"
+if [ "${NCCK:-0}" -ge 1 ]; then say 'OK · PROOF-3: %s kit agents (-crew) installed + discoverable' "$NCCK"; else warnm 'PROOF-3: no kit agent'; PROOF_OK=0; fi
 if [ -s .claude/DISCIPLINE.md ] && grep -qF '@.claude/DISCIPLINE.md' CLAUDE.md; then say 'OK · PROOF-4: DISCIPLINE.md loaded + @import-ed from CLAUDE.md'; else warnm 'PROOF-4: discipline not linked'; PROOF_OK=0; fi
-# PROOF-5: a takeover renamed the project's agents to `-csk`, but CLAUDE.md — or an orchestration doc it points to
+# PROOF-5: a takeover renamed the project's agents to `-crew`, but CLAUDE.md — or an orchestration doc it points to
 # (e.g. "detail: docs/AGENTS.md") — may still name the OLD bare agent, which now matches no installed agent, so
 # delegation to it silently fails. We follow CLAUDE.md's reference chain (its @imports + docs/…md paths) so the
 # pointed-to docs are checked too; the migration cannot safely rewrite hand-authored prose, so we TELL, precisely.
-if [ -f CLAUDE.md ] && ls .claude/agents/*-csk.md >/dev/null 2>&1; then
-  PULL_AGENTS=" commit-agent-csk session-manager-csk "   # invoked explicitly, not auto-delegated
+if [ -f CLAUDE.md ] && ls .claude/agents/*-crew.md >/dev/null 2>&1; then
+  PULL_AGENTS=" commit-agent-crew session-manager-crew "   # invoked explicitly, not auto-delegated
   SCAN="CLAUDE.md"
   for r in $(grep -oE '@?[A-Za-z0-9_./-]+\.md' CLAUDE.md 2>/dev/null | sed 's/^@//' | sort -u); do
     [ -f "$r" ] && [ "$r" != "CLAUDE.md" ] && SCAN="$SCAN $r"
@@ -1193,9 +1193,9 @@ if [ -f CLAUDE.md ] && ls .claude/agents/*-csk.md >/dev/null 2>&1; then
       for (i=1;i<=nf;i++) {
         f=files[i]; n=(f in nm) ? nm[f] : ""
         if (n=="") { n=f; sub(/\.md$/,"",n); sub(/.*\//,"",n) }
-        if (n ~ /-csk$/) { b=n; sub(/-csk$/,"",b); print b "\t" n }
+        if (n ~ /-crew$/) { b=n; sub(/-crew$/,"",b); print b "\t" n }
       }
-    }' .claude/agents/*-csk.md 2>/dev/null)"
+    }' .claude/agents/*-crew.md 2>/dev/null)"
   export CSK_AGENT_BASES
   while IFS="$(printf '\t')" read -r base aname f lines; do
     [ -n "$base" ] || continue
@@ -1222,7 +1222,7 @@ $(awk '
         if ((i, order[j]) in hit) print base[i] "\t" full[i] "\t" order[j] "\t" hit[i, order[j]]
   }' $SCAN 2>/dev/null)
 EOF
-  [ -n "$STALE" ] && warnm 'PROOF-5: CLAUDE.md (or a doc it references) names auto-delegated agent(s) by an old bare id — rename each to its -csk id, else delegation to them silently fails:%s' "$STALE"
+  [ -n "$STALE" ] && warnm 'PROOF-5: CLAUDE.md (or a doc it references) names auto-delegated agent(s) by an old bare id — rename each to its -crew id, else delegation to them silently fails:%s' "$STALE"
   [ -n "$STALE_PULL" ] && warnm 'PROOF-5: CLAUDE.md (or a referenced doc) names pull-only agent(s) by an old bare id (still work; rename for consistency):%s' "$STALE_PULL"
 fi
 [ "$PROOF_OK" = 1 ] && h1m 'PROOF: kit 100%% ACTIVE — gates armed, agents + discipline loaded' || warnm 'PROOF: some gates could not be verified (see above)'
@@ -1261,8 +1261,8 @@ else
 fi
 # #1 merge: document (NO automatic risky merge — red-team; merging is a human-approved follow-up)
 case "$DEC1" in
-  takeover) MERGE_NOTE="takeover: the kit's -csk agents own the overlapping roles ($COLLIDE); each old agent's domain was imported to a draft skill (skills/<name>-local) the kit agent applies, and the original backed up under superseded/agents/ — refine the drafts" ;;
-  keepmine) MERGE_NOTE="keepmine: your agents own the overlapping roles ($COLLIDE); the kit's matching -csk agents were not installed" ;;
+  takeover) MERGE_NOTE="takeover: the kit's -crew agents own the overlapping roles ($COLLIDE); each old agent's domain was imported to a draft skill (skills/<name>-local) the kit agent applies, and the original backed up under superseded/agents/ — refine the drafts" ;;
+  keepmine) MERGE_NOTE="keepmine: your agents own the overlapping roles ($COLLIDE); the kit's matching -crew agents were not installed" ;;
   *)        MERGE_NOTE="keep: project + kit agents side by side (no overlaps, or overlaps left to coexist)" ;;
 esac
 # #7 off-repo transfer: paste from the user (interactive; skipped on non-TTY and under --yes)
@@ -1280,7 +1280,7 @@ h1m 'Stage 5 — HANDOVER.md + ADR (handover persists; decisions are not lost)'
 mkdir -p docs docs/adr
 DATE_H="$(date +%Y-%m-%d)"
 # compute the decision values first (avoid inner-quote/command-sub tangle in the heredoc)
-case "$DEC1" in takeover) D1='takeover (kit -csk owns overlaps; your agents imported to <name>-local skills, originals in superseded/)';; keepmine) D1='keepmine (your agents own overlaps)';; none) D1='none';; *) D1='keep (coexist)';; esac
+case "$DEC1" in takeover) D1='takeover (kit -crew owns overlaps; your agents imported to <name>-local skills, originals in superseded/)';; keepmine) D1='keepmine (your agents own overlaps)';; none) D1='none';; *) D1='keep (coexist)';; esac
 D2='project wins'   # precedence is fixed (DEC2 not overridable) — no false 'kit wins' record
 D3="$([ "$DEC3" = loosen ] && echo 'loosen (.trace-allowlist written)' || echo 'keep (full)')"
 D4="$([ "$DEC4" = hide ] && echo 'hide (gitignore)' || echo 'keep sharing')"
@@ -1301,7 +1301,7 @@ cat > docs/HANDOVER.md <<HAND
 > sections you need to fill in. The tool does NOT SIGN off anything as "done".
 
 ## What was handed over (mechanical)
-- Kit agents: $NCCK (-csk namespace; no clash with project agents).
+- Kit agents: $NCCK (-crew namespace; no clash with project agents).
 - Project agents: $N_PAGENTS — UNTOUCHED, in place + active (recursive discovery).
 - Discipline: .claude/DISCIPLINE.md + @import into the project CLAUDE.md (content untouched).
 - settings.json: $HAND_SET.
@@ -1348,7 +1348,7 @@ The existing project was equipped for agentic work with the standard kit under a
 Goal: don't break the project, don't lose decisions made, don't leave the kit passive (hybrid).
 
 ## Decision
-- Kit agents were installed under the -csk namespace; project agents preserved side by side, untouched.
+- Kit agents were installed under the -crew namespace; project agents preserved side by side, untouched.
 - Kit discipline active via .claude/DISCIPLINE.md + @import; the project CLAUDE.md untouched.
 - On rule conflicts the PROJECT wins (axis-by-axis).
 - Git gates: $HOOKDESC.
@@ -1429,7 +1429,7 @@ subm 'see it:   open the Source Control / Changes panel (every added + changed f
 # quietly and the user found out later, at first use. That is the report this
 # whole round came from.
 if bash "$SRC/eval/preflight.sh" --has node 2>/dev/null; then
-  subm 'panel:    %s opens it from this project (or: %s)' /studio-csk 'node .claude/studio/server/index.js --open'
+  subm 'panel:    %s opens it from this project (or: %s)' /studio-crew 'node .claude/studio/server/index.js --open'
 else
   subm 'panel:    needs Node 18+, absent here — the kit can fetch one: %s' 'bash .claude/studio/ensure-node.sh --plan'
   _mt '(it asks first, verifies the checksum, and touches nothing outside %s)' '~/.claude/studio-runtime'; sub "          $_M"

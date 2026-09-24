@@ -37,8 +37,8 @@ create a board because a repo merely has more than one contributor; create one w
 colliding. Creating one, choosing between its three levels and the ref-namespace fallback: **`references/setup.md`**
 — one person runs it once, and everybody else configures nothing.
 
-Already have a board and want it out of the way? `/board-csk off` (add `--global` for every repo) releases **all
-three** gates and leaves the board itself intact; `/board-csk on` restores it. `CSK_NO_BOARD=1` does the same for
+Already have a board and want it out of the way? `/board-crew off` (add `--global` for every repo) releases **all
+three** gates and leaves the board itself intact; `/board-crew on` restores it. `CSK_NO_BOARD=1` does the same for
 one session. This half stays here on purpose: someone a gate has just stopped needs the answer without opening a
 second file.
 
@@ -66,7 +66,7 @@ applies unchanged: strip secrets, tokens, credentials and personal notes, leave 
 
 ## Filling the board
 Items come from either direction, and both end at `add`:
-- **From a plan:** `planner-csk` + `spec-planning` produce `docs/PLAN.md` with measurable acceptance criteria and
+- **From a plan:** `planner-crew` + `spec-planning` produce `docs/PLAN.md` with measurable acceptance criteria and
   a dependency order; each task becomes one `add <id> <title> <deps>`. Keep the plan's dependency edges — they
   are what makes `claim` able to refuse blocked work.
 - **By hand:** the user dictates the items.

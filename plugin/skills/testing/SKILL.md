@@ -2,7 +2,7 @@
 name: testing
 description: |
   The how of testing: pyramid, AAA, isolation, risk coverage, determinism. Guarantees the DoD's "tests are
-  green". test-expert-csk applies it.
+  green". test-expert-crew applies it.
   Use when writing or changing tests, or when a suite is flaky, slow or green for the wrong reason.
 ---
 

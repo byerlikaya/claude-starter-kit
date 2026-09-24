@@ -39,7 +39,7 @@ for **isolation / parallelism / a clean window**, or when the isolated work woul
 6. **Least tooling.** An agent holds only the tools it needs; extras accidentally pollute the context + burn the limit.
 7. **Lean SKILL.md.** Skills load into the main context; heavy reference goes to a separate file, only when needed.
 8. **Targeted reading.** Instead of reading a whole file, pinpoint with Grep/Glob.
-9. **Manage with /context.** session-manager-csk recommends continue/handoff+clear based on the real percentage; at a phase boundary, `/clear`.
+9. **Manage with /context.** session-manager-crew recommends continue/handoff+clear based on the real percentage; at a phase boundary, `/clear`.
 10. **Bound what a command hands back.** All of the rules above govern the context's own footprint; none of them
    govern what a single `Bash` call dumps into it. A `find` over a monorepo, an unfiltered log, a full test run —
    each returns everything to the main thread whether or not any of it is read. Ask for the answer, not the

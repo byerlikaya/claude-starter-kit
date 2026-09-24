@@ -46,7 +46,7 @@ squint-test / heuristic-review pass to run before handing UI back: **`references
 
 ## Coordination
 Architecture, state, and folder structure → `frontend`. Accessibility gate (contrast, focus, ARIA) → `a11y`.
-Applied by **frontend-expert-csk** on any stack; the stack-specific "how" stays in the project's frontend skill.
+Applied by **frontend-expert-crew** on any stack; the stack-specific "how" stays in the project's frontend skill.
 
 ## Invariant rules
 1. **Hierarchy before decoration** — fix what the eye sees first before adding any color or flourish.

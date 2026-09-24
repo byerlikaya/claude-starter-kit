@@ -136,7 +136,7 @@ cat > "$OUT/.claude-plugin/plugin.json" <<JSON
 JSON
 
 # Asserted, not printed. The counts below are a summary a reader skims; this is the one component whose
-# absence would be invisible — the plugin would install cleanly and /studio-csk would send the user to a
+# absence would be invisible — the plugin would install cleanly and /studio-crew would send the user to a
 # path that is not there.
 [ -f "$OUT/studio/server/index.js" ] || { echo "build-plugin.sh: the panel did not land in $OUT/studio" >&2; exit 1; }
 

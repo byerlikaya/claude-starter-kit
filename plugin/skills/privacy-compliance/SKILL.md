@@ -2,7 +2,7 @@
 name: privacy-compliance
 description: |
   KVKK/GDPR audit method: data inventory, purpose/basis/retention, minimisation, consent, transparency,
-  data-subject rights, cross-border transfer. privacy-agent-csk applies it.
+  data-subject rights, cross-border transfer. privacy-agent-crew applies it.
 ---
 
 # Privacy Compliance (KVKK / GDPR)
@@ -16,7 +16,7 @@ Trigger phrases: "kvkk", "gdpr", "privacy", "consent", "data retention", "minimi
 <!-- Machine-readable, and smoke-test enforces it: every agent that applies this skill must carry WebFetch.
      Without it the instruction below is one an agent physically cannot obey — it would either decide from
      memory, which this skill forbids in the same breath, or quietly skip the check. That is exactly what
-     happened: the skill said "check the official source", privacy-agent-csk shipped with Read/Grep/Glob, and
+     happened: the skill said "check the official source", privacy-agent-crew shipped with Read/Grep/Glob, and
      the gap only surfaced during a real regulatory audit when the routing had to work around it by hand. -->
 
 ## Official sources (authority — always defer to these)

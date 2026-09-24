@@ -241,7 +241,7 @@ for (const h of document.querySelectorAll('[data-fold-for]')) {
    Write endpoints need the token and a header that a cross-origin page cannot
    attach without a preflight this server never answers. */
 
-const writeHeaders = { 'x-csk-studio': '1', ...(token ? { authorization: `Bearer ${token}` } : {}) };
+const writeHeaders = { 'x-crew-studio': '1', ...(token ? { authorization: `Bearer ${token}` } : {}) };
 const chat = new Chat(el.chat, { api, headers: writeHeaders });
 
 const ownedIds = new Set();
@@ -996,7 +996,7 @@ function paintProjects() {
       } else if (p.kit.outdated) {
         k.classList.add('old');
         k.textContent = `${p.kit.version} → ${p.kit.latest}`;
-        k.title = `kit ${p.kit.version} is behind ${p.kit.latest} — run /update-csk in this project`;
+        k.title = `kit ${p.kit.version} is behind ${p.kit.latest} — run /update-crew in this project`;
       } else if (p.kit.ahead) {
         k.classList.add('ahead');
         k.textContent = p.kit.version;

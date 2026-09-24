@@ -210,9 +210,9 @@ const { normalise } = _internals;
 
 const real = normalise({
   pid: 71288, cwd: '/tmp/x', kind: 'interactive',
-  startedAt: 1787667229756, sessionId: 'abc-123', name: 'mac-csk', status: 'busy',
+  startedAt: 1787667229756, sessionId: 'abc-123', name: 'mac-session', status: 'busy',
 });
-check('normalise keeps the identifying fields', real?.sessionId === 'abc-123' && real.name === 'mac-csk' && real.status === 'busy');
+check('normalise keeps the identifying fields', real?.sessionId === 'abc-123' && real.name === 'mac-session' && real.status === 'busy');
 check('normalise surfaces waitingFor when present',
   normalise({ sessionId: 'w', status: 'waiting', waitingFor: 'input needed' })?.waitingFor === 'input needed');
 check('normalise keeps waitingFor null when absent', real?.waitingFor === null);
@@ -301,7 +301,7 @@ const agentsOnDisk = fs.readdirSync(path.join(PAYLOAD, 'agents')).filter((f) => 
 check('every kit agent in the payload is in the palette',
   pal.measured === true && pal.kitAgents === agentsOnDisk,
   `${pal.kitAgents} in the palette, ${agentsOnDisk} .md files in ${path.relative(REPO, path.join(PAYLOAD, 'agents'))}`);
-check('a declared colour resolves to a hex value', /^#[0-9a-f]{6}$/i.test(pal.map['security-expert-csk']?.hex ?? ''));
+check('a declared colour resolves to a hex value', /^#[0-9a-f]{6}$/i.test(pal.map['security-expert-crew']?.hex ?? ''));
 check('an undeclared agent type falls back to neutral, never a borrowed colour',
   !pal.map['no-such-agent-type'] && /^#[0-9a-f]{6}$/i.test(pal.unknown));
 
@@ -389,17 +389,17 @@ const req = (headers) => ({ headers });
 check('a request without the header is refused',
   writeAllowed(req({})).ok === false);
 check('a request with the wrong header value is refused',
-  writeAllowed(req({ 'x-csk-studio': '0' })).ok === false);
+  writeAllowed(req({ 'x-crew-studio': '0' })).ok === false);
 check('a same-origin request with the header is allowed',
-  writeAllowed(req({ 'x-csk-studio': '1', origin: 'http://127.0.0.1:7777' })).ok === true);
+  writeAllowed(req({ 'x-crew-studio': '1', origin: 'http://127.0.0.1:7777' })).ok === true);
 check('localhost counts as same-origin',
-  writeAllowed(req({ 'x-csk-studio': '1', origin: 'http://localhost:7777' })).ok === true);
+  writeAllowed(req({ 'x-crew-studio': '1', origin: 'http://localhost:7777' })).ok === true);
 check('a cross-origin request is refused even with the header',
-  writeAllowed(req({ 'x-csk-studio': '1', origin: 'https://evil.example' })).ok === false);
+  writeAllowed(req({ 'x-crew-studio': '1', origin: 'https://evil.example' })).ok === false);
 check('an unparseable Origin is refused rather than ignored',
-  writeAllowed(req({ 'x-csk-studio': '1', origin: 'not a url' })).ok === false);
+  writeAllowed(req({ 'x-crew-studio': '1', origin: 'not a url' })).ok === false);
 check('a request with no Origin at all still needs the header',
-  writeAllowed(req({ 'x-csk-studio': '1' })).ok === true &&
+  writeAllowed(req({ 'x-crew-studio': '1' })).ok === true &&
   writeAllowed(req({ origin: 'http://127.0.0.1:7777' })).ok === false);
 check('a token always exists, generated when none was supplied',
   /CSK_STUDIO_TOKEN \|\| randomUUID\(\)/.test(idxSrc));
@@ -1595,8 +1595,8 @@ process.stdout.write('\n== §27 the picture at 250 nodes ==\n');
     && LOD_NEAR > LOD_FAR,
     `near=${LOD_NEAR} far=${LOD_FAR} hyst=${LOD_HYST} budget=${LABEL_BUDGET}`);
 
-  const TYPES = ['Explore', 'Plan', 'reviewer', 'tester', 'planner-csk',
-    'backend-expert-csk', 'docs-agent', 'security'];
+  const TYPES = ['Explore', 'Plan', 'reviewer', 'tester', 'planner-crew',
+    'backend-expert-crew', 'docs-agent', 'security'];
   const PAL = {
     map: Object.fromEntries(TYPES.map((t, i) => [t, {
       hex: ['#26c6e6', '#a874f5', '#35c874', '#f2a65a'][i % 4],
@@ -1824,7 +1824,7 @@ process.stdout.write('\n== §27 the picture at 250 nodes ==\n');
     // Found by type rather than by index, so the fixture's type cycle can be
     // reordered without turning this into a puzzle.
     const byType = (t) => big.els.get([...big.nodes.values()].find((n) => n.agentType === t).id);
-    const live = byType('backend-expert-csk');
+    const live = byType('backend-expert-crew');
     const done = big.els.get('n100');
     check('the label a running node keeps says what it is doing, not just what it is',
       big.nodes.get(live.dataset.id).status === 'running'
@@ -1836,7 +1836,7 @@ process.stdout.write('\n== §27 the picture at 250 nodes ==\n');
       live.parts.type.dataset.short === 'backend'
       && byType('docs-agent').parts.type.dataset.short === 'docs'
       && byType('Explore').parts.type.dataset.short === 'Explore',
-      `backend-expert-csk -> ${JSON.stringify(live.parts.type.dataset.short)},`
+      `backend-expert-crew -> ${JSON.stringify(live.parts.type.dataset.short)},`
       + ` docs-agent -> ${JSON.stringify(byType('docs-agent').parts.type.dataset.short)},`
       + ` Explore -> ${JSON.stringify(byType('Explore').parts.type.dataset.short)}`);
 
@@ -2075,7 +2075,7 @@ process.stdout.write('\n== §28 the instance record — finding a panel that is 
   // pretending to pass.
   await inst.writeState(deadPort, { token: 'tok-mode', name: 'm', pid: 1 });
   if (process.platform === 'win32') {
-    // This said "covered by: windows-csk" before anyone had asked whether it was, and it was not -- that
+    // This said "covered by: the Windows session" before anyone had asked whether it was, and it was not -- that
     // machine had no node and could not start the panel at all. It now names the coverer only for what was
     // actually measured there: icacls on the written record, and two panels handing back the same token. What
     // is STILL uncovered is the third question, whether a gentle stop clears the record: MSYS `kill -TERM`
@@ -2083,7 +2083,7 @@ process.stdout.write('\n== §28 the instance record — finding a panel that is 
     // /F is refused by Windows, so a real console Ctrl-C could not be produced from that harness. A hard
     // `taskkill /F` does leave the record behind, which is expected -- no handler runs -- and the next panel
     // discards the stale pid and starts fresh, which was measured.
-    notApplicable('the record holding the token is written 0600', 'POSIX mode bits are advisory on win32; the file inherits the user profile ACL instead — measured: SYSTEM, Administrators and the owner, no Everyone or Users, so weaker than 0600 and written down as such', 'windows-csk for the ACL and the shared-token path; NOBODY YET for whether a gentle stop clears the record');
+    notApplicable('the record holding the token is written 0600', 'POSIX mode bits are advisory on win32; the file inherits the user profile ACL instead — measured: SYSTEM, Administrators and the owner, no Everyone or Users, so weaker than 0600 and written down as such', 'windows-crew for the ACL and the shared-token path; NOBODY YET for whether a gentle stop clears the record');
   } else {
     const mode = fs.statSync(inst.statePath(deadPort)).mode & 0o777;
     check('the record holding the token is written 0600', mode === 0o600, mode.toString(8));

@@ -21,7 +21,7 @@ npx crewforth --version    # print the kit version
 
 The previous command, `npx @byerlikaya/claude-starter-kit`, still works and installs the same kit.
 
-Then open Claude Code and run `/doctor-csk` to confirm the install is wired.
+Then open Claude Code and run `/doctor-crew` to confirm the install is wired.
 
 Requires **bash** and **git**. On Windows, run it in Git Bash.
 
@@ -31,7 +31,7 @@ In Claude Code every job happens in the same place: you ask, the model writes. C
 
 - **12 specialist agents** across five stages — plan, build, audit, close, hand off. An ambiguous request goes to planning first; a security review is mandatory before a risk-critical change can close.
 - **40 skills** holding the method — testing, migrations, API contracts, observability, accessibility, deployment — written once, applied by whoever needs it. You stop re-explaining your standards every session.
-- **11 slash commands** — `/plan-csk`, `/review-csk`, `/ship-csk`, `/handoff-csk`, `/brainstorm-csk`, `/update-csk`, `/doctor-csk`, `/board-csk`, `/gates-csk`, `/skill-csk`, `/studio-csk`.
+- **11 slash commands** — `/plan-crew`, `/review-crew`, `/ship-crew`, `/handoff-crew`, `/brainstorm-crew`, `/update-crew`, `/doctor-crew`, `/board-crew`, `/gates-crew`, `/skill-crew`, `/studio-crew`.
 - **A team board, when more than one of you shares the repo.** Taking an item is a push to a git ref, and pushing is fast-forward-only — so of two simultaneous claims exactly one lands and the other is refused in under a second, before any code is written. Decisions and handover notes travel with it, so what one session settled reaches the next person's. Off until you ask for it; solo work never sees it.
 - **Guardrails that hold on their own.** Destructive commands are refused before they run, commits wait for your approval, secrets and AI-authorship traces never reach history — enforced at the tool level, not left to the model.
 - **Safe adoption.** `adopt` lands everything on a branch, staged and uncommitted, so you review the whole change before keeping it. `main` is never touched.
@@ -50,4 +50,4 @@ Homebrew, a release tarball, and a Claude Code plugin edition are documented in 
 
 ## Licence
 
-MIT © Barış Yerlikaya. The `code-review-csk` skill aligns with NIST SP 800-218 (SSDF) PW.7 and the OpenSSF Scorecard `Code-Review` check, writes comments in the [Conventional Comments](https://conventionalcomments.org/) vocabulary (CC BY 3.0), and its review priority order is distilled and restated from [google/eng-practices](https://github.com/google/eng-practices) (CC-BY 3.0).
+MIT © Barış Yerlikaya. The `code-review-crew` skill aligns with NIST SP 800-218 (SSDF) PW.7 and the OpenSSF Scorecard `Code-Review` check, writes comments in the [Conventional Comments](https://conventionalcomments.org/) vocabulary (CC BY 3.0), and its review priority order is distilled and restated from [google/eng-practices](https://github.com/google/eng-practices) (CC-BY 3.0).

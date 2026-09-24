@@ -60,7 +60,7 @@ npx crewforth adopt    # existing project — handover on a branch
 
 <sub>The previous command, `npx @byerlikaya/claude-starter-kit`, still works and installs the same kit.</sub>
 
-Then open Claude Code and run **`/doctor-csk`**: it confirms the install is wired and scores the project's readiness. Homebrew, a release tarball and a plugin edition are in [Install](#install).
+Then open Claude Code and run **`/doctor-crew`**: it confirms the install is wired and scores the project's readiness. Homebrew, a release tarball and a plugin edition are in [Install](#install).
 
 ## Contents
 
@@ -92,22 +92,22 @@ Then open Claude Code and run **`/doctor-csk`**: it confirms the install is wire
 
 | Agent | Stage | Fires when |
 |:--|:--|:--|
-| **planner-csk** | 🧭 Understand | scope is ambiguous |
-| **backend-expert-csk** | 🔨 Produce | server / API / business logic |
-| **database-expert-csk** | 🔨 Produce | schema, migration, index, cache |
-| **frontend-expert-csk** | 🔨 Produce | UI, component, client work |
-| **devops-expert-csk** | 🔨 Produce | deployment, CI pipeline, incident |
-| **security-expert-csk** | 🔍 Audit | auth / IDOR / injection / secret · **mandatory if security-critical** |
-| **privacy-agent-csk** | 🔍 Audit | personal data — KVKK/GDPR, plus any regime the project declares |
-| **test-expert-csk** | 🔍 Audit | tests, coverage, regression |
-| **performance-expert-csk** | 🔍 Audit | hot path, query/loop, render, payload |
-| **review-agent-csk** | ✅ Close | pre-commit code-health review |
-| **commit-agent-csk** | ✅ Close | proposes the commit, waits for approval |
-| **session-manager-csk** | 🤝 Hand off | context fills / phase boundary |
+| **planner-crew** | 🧭 Understand | scope is ambiguous |
+| **backend-expert-crew** | 🔨 Produce | server / API / business logic |
+| **database-expert-crew** | 🔨 Produce | schema, migration, index, cache |
+| **frontend-expert-crew** | 🔨 Produce | UI, component, client work |
+| **devops-expert-crew** | 🔨 Produce | deployment, CI pipeline, incident |
+| **security-expert-crew** | 🔍 Audit | auth / IDOR / injection / secret · **mandatory if security-critical** |
+| **privacy-agent-crew** | 🔍 Audit | personal data — KVKK/GDPR, plus any regime the project declares |
+| **test-expert-crew** | 🔍 Audit | tests, coverage, regression |
+| **performance-expert-crew** | 🔍 Audit | hot path, query/loop, render, payload |
+| **review-agent-crew** | ✅ Close | pre-commit code-health review |
+| **commit-agent-crew** | ✅ Close | proposes the commit, waits for approval |
+| **session-manager-crew** | 🤝 Hand off | context fills / phase boundary |
 
 </details>
 
-**Models are not pinned.** Every agent runs on the model you chose for the session, so a review that clears a change is never weaker than whatever wrote it. Two exceptions earn their keep: `security-expert-csk` buys extra rigour with `effort: high`, and `commit-agent-csk` runs on `haiku` because turning a staged diff into a Conventional Commit is mechanical. Change any of it in the agent's frontmatter if your project wants something else.
+**Models are not pinned.** Every agent runs on the model you chose for the session, so a review that clears a change is never weaker than whatever wrote it. Two exceptions earn their keep: `security-expert-crew` buys extra rigour with `effort: high`, and `commit-agent-crew` runs on `haiku` because turning a staged diff into a Conventional Commit is mechanical. Change any of it in the agent's frontmatter if your project wants something else.
 
 ## What's inside
 
@@ -120,7 +120,7 @@ Then open Claude Code and run **`/doctor-csk`**: it confirms the install is wire
 |:--|:--:|:--|
 | **Agents** | 12 | Thin triggers — *who* owns a domain and *when* they fire |
 | **Skills** | 40 | The method, written once, applied by whoever needs it |
-| **Slash commands** | 11 | `/brainstorm-csk` · `/plan-csk` · `/review-csk` · `/ship-csk` · `/handoff-csk` · `/update-csk` · `/doctor-csk` · `/board-csk` · `/gates-csk` · `/skill-csk` · `/studio-csk`|
+| **Slash commands** | 11 | `/brainstorm-crew` · `/plan-crew` · `/review-crew` · `/ship-crew` · `/handoff-crew` · `/update-crew` · `/doctor-crew` · `/board-crew` · `/gates-crew` · `/skill-crew` · `/studio-crew`|
 | **Hooks** | 12 | The gates, plus session measurement and routing |
 | **Discipline** | 1 | Principles, workflow, Definition of Done, prohibitions — imported by your `CLAUDE.md` |
 
@@ -139,7 +139,7 @@ Then open Claude Code and run **`/doctor-csk`**: it confirms the install is wire
 | `skill-trust.sh` | Names any skill or agent Claude Starter Kit never shipped and you never accepted |
 | `session-stats.sh` | Reports what the session actually did — failing tool loops, repeated prompts, interrupts. `reflect` and `handoff` read it, so a retrospective rests on the record rather than on recollection |
 | `session-update-check.sh` | Says once, when a session opens, that a newer kit version is published — each edition compared against the channel that will deliver it. The lookup runs detached and at most daily, so an offline or proxied machine costs the session opening nothing; `CSK_NO_UPDATE_CHECK=1` turns it off |
-| `board.sh` | The team board engine: claims a work item, hands it over, completes it. Off unless a repo runs `/board-csk init` |
+| `board.sh` | The team board engine: claims a work item, hands it over, completes it. Off unless a repo runs `/board-crew init` |
 | `board-sync.sh` | Puts a team's board state into a session. Reads a local cache at session start and refreshes it detached, so an unreachable remote costs the session opening nothing; `CSK_NO_BOARD=1` turns it off |
 
 Two git hooks — `pre-commit` and `commit-msg` — run the trace, secret, repo-bloat and private-path scans. The last one exists because a path that only lives on your machine reaches a shared repo by being pasted, not by being typed: it blocks your own `$HOME` automatically, and the internal project, client and host names only you can recognise come from a gitignored `.private-terms.txt` (`.private-allowlist.txt` is the escape). The plugin edition ships all of these except `skill-trust.sh`, which decides what is kit-owned from the `kit-manifest.txt` an installer writes and the plugin never creates.
@@ -160,7 +160,7 @@ Two git hooks — `pre-commit` and `commit-msg` — run the trace, secret, repo-
 | `backend-architecture` | Decide, record and apply the backend stack and architecture pattern. |
 | `brainstorm` | Divergent discovery BEFORE planning: turn a fuzzy ask into 2–4 scoped options + named unknowns, pick a direction, hand to spec-planning. |
 | `ci-pipeline` | CI pipeline discipline: lint→build→test→quality→security, fail-fast, deterministic build, secret handling, PR gates. |
-| `code-review-csk` | Code review discipline: severity-ranked, reasoned feedback on whether a change improves the system's overall code health. |
+| `code-review-crew` | Code review discipline: severity-ranked, reasoned feedback on whether a change improves the system's overall code health. |
 | `commit-message` | Conventional Commits: reads the staged diff and proposes `type(scope): summary`, with body/footer when needed. |
 | `confidence-check` | Readiness gate BEFORE writing implementation code: does this already exist, does it fit the project's architecture, is the API claim… |
 | `db-migration` | Apply schema migrations safely: detect the tool, classify the change by risk, gate destructive ones behind approval, back up in prod,… |
@@ -211,7 +211,7 @@ Three rules hold the design together.
 The everyday shape of it:
 
 <div align="center">
-  <img src="assets/workflow-en.svg" alt="Command flow: /plan-csk, expert agents, /review-csk, /ship-csk, /handoff-csk" width="820">
+  <img src="assets/workflow-en.svg" alt="Command flow: /plan-crew, expert agents, /review-crew, /ship-crew, /handoff-crew" width="820">
 </div>
 
 ## Rule → gate
@@ -221,7 +221,7 @@ Left is the rule; right is the thing that refuses to let it slide.
 | Rule | Enforced by |
 |:--|:--|
 | Commit and push need your approval, in every permission mode; staging and creating a branch are free | `guard-bash.sh` raises a prompt only you can answer. Fails closed under `bypassPermissions` |
-| A commit needs a clean review **of the diff it is actually about** | `guard-bash.sh` compares git's object id of the staged diff, and the `HEAD` it was reviewed against, with what `review-agent-csk` recorded when it cleared the change. A review of another diff — or of this one on another base — does not count, and there is no size exemption |
+| A commit needs a clean review **of the diff it is actually about** | `guard-bash.sh` compares git's object id of the staged diff, and the `HEAD` it was reviewed against, with what `review-agent-crew` recorded when it cleared the change. A review of another diff — or of this one on another base — does not count, and there is no size exemption |
 | Destructive ops: `reset --hard`, `checkout -- .`, force push, `rm -rf`, `clean -f`, `--no-verify`, amend | `guard-bash.sh`, blocked at the tool level |
 | Remote code execution and permission nukes: `curl…\|bash`, world-writable `chmod`, `dd of=` | `guard-bash.sh`, hard-blocked in every mode |
 | Disarming a gate — redirecting `core.hooksPath`, editing or deleting a hook, or rewriting the discipline the gates enforce | `guard-bash.sh` (shell) + `guard-write.sh` (file edits). Both match the **resolved** path, so `..` segments, doubled slashes, Windows separators and a symlinked parent all reach the same verdict as the plain spelling |
@@ -239,7 +239,7 @@ Every rule carries cases for **both** halves: that it blocks what it must, and t
 
 Does it actually change anything? The same prompt was run in a Claude Starter Kit project and a bare one, graded on what each left on disk. Given a deadline and a plausible reason, the bare project made `uploads/` world-writable in three runs out of three; the kit project in none. The interesting part is that the gate never fired: the kit arm never reached for the command, it declined on its own and cited the rule. On unhurried work the two are indistinguishable, and those measurements are published with their reasoning in [`evals/README.md`](evals/README.md).
 
-The gates stop accidents, not determined attempts. On a command line there is always a way around a pattern; if you need a real boundary, run Claude Code in a devcontainer or a VM. `/doctor-csk` tells you whether you have one.
+The gates stop accidents, not determined attempts. On a command line there is always a way around a pattern; if you need a real boundary, run Claude Code in a devcontainer or a VM. `/doctor-crew` tells you whether you have one.
 
 **Watching a gate fire.** The Bash guard appends a line to `.claude/gate-log.tsv` for each block, approval prompt and `CLAUDE_GIT_OK` pre-authorisation (`BLOCK` / `ASK` / `ALLOW`), and the gate-file write guard one for each block, with the section and the rule; the command is recorded only with `CSK_GATE_LOG_CMD=1`. It is on by default when the project's `.claude/` directory exists and the file is git-ignored or the project is not a repo; `CSK_GATE_LOG=<path>` sends it elsewhere and `/dev/null` turns it off. The commit scan and the board gate refuse without writing a line. It is write-only and written after the verdict, so it cannot change one. Useful when you need to know whether a gate stopped something or the model simply never went there — those two leave identical traces.
 
@@ -252,7 +252,7 @@ A delegation three levels deep is, in a terminal, a scrollback you have already 
 It reads `~/.claude/projects` — where Claude Code keeps every session on this machine — so one running panel sees all of them at once, whether or not a project has the kit installed, and without being started inside any of them.
 
 ```bash
-/studio-csk                                       # in any project that has the kit
+/studio-crew                                       # in any project that has the kit
 node .claude/studio/server/index.js --open        # the same, without the slash picker
 # `node` not on PATH? That is the kit keeping its promise not to edit it — ask for the one it fetched:
 #   NODE="$(bash .claude/studio/ensure-node.sh)" && "$NODE" .claude/studio/server/index.js --open
@@ -271,12 +271,12 @@ node .claude/studio/server/index.js --open        # the same, without the slash 
   <br><sub>The same panel, driven: open a session, read what an agent reported, jump to the one that failed, read the conversation behind it.</sub>
 </div>
 
-**Studio installs with the kit.** `start.sh` and `adopt.sh` create six directories under `.claude/` and Studio is the sixth, so in any project that has the kit you open it with **`/studio-csk`** — or, without the slash picker, `node .claude/studio/server/index.js --open`. It has zero npm dependencies, wants Node 18+, binds to `127.0.0.1` only and requires a per-run token on every API path. **No Node on the machine? The kit goes and gets one.** `.claude/studio/ensure-node.sh --plan` shows exactly what it would fetch — the current LTS from nodejs.org, checked against the published SHA-256 and unpacked into `~/.claude/studio-runtime` — and installs nothing until you say yes. No admin rights, no package manager, no PATH edit; deleting that one directory undoes it.
+**Studio installs with the kit.** `start.sh` and `adopt.sh` create six directories under `.claude/` and Studio is the sixth, so in any project that has the kit you open it with **`/studio-crew`** — or, without the slash picker, `node .claude/studio/server/index.js --open`. It has zero npm dependencies, wants Node 18+, binds to `127.0.0.1` only and requires a per-run token on every API path. **No Node on the machine? The kit goes and gets one.** `.claude/studio/ensure-node.sh --plan` shows exactly what it would fetch — the current LTS from nodejs.org, checked against the published SHA-256 and unpacked into `~/.claude/studio-runtime` — and installs nothing until you say yes. No admin rights, no package manager, no PATH edit; deleting that one directory undoes it.
 
 | Channel | Studio |
 |:--|:--|
 | `npx @byerlikaya/claude-starter-kit` · Homebrew · release tarball · git clone | installed to `.claude/studio/` |
-| Claude Code plugin | shipped inside the plugin, opened with `/claude-starter-kit:studio-csk` (plugin commands are namespaced) |
+| Claude Code plugin | shipped inside the plugin, opened with `/claude-starter-kit:studio-crew` (plugin commands are namespaced) |
 
 All four channels carry it. One command file serves both editions: Claude Code substitutes the plugin's own install path into it, so the panel is found wherever it actually is. The panel behaves identically in both, with one honest gap — its kit-telemetry tabs read the project you opened it from, and a plugin install puts no kit files into a project, so the gates, stats and board tabs report "not measured" with the reason rather than a misleading zero. The gates tab still lists the gate decisions the plugin's guards logged to that project's `.claude/gate-log.tsv`.
 
@@ -355,7 +355,7 @@ Every change lands on a separate branch, **staged and not committed** — so eac
 ### Updating
 
 ```bash
-npx @byerlikaya/claude-starter-kit@latest update    # or /update-csk inside a session
+npx @byerlikaya/claude-starter-kit@latest update    # or /update-crew inside a session
 ```
 
 <details open>
@@ -369,11 +369,11 @@ At install time Claude Starter Kit stamps `.claude/kit.conf` with which installe
 | `.claude/DISCIPLINE.md` | **overwritten** — it is kit-owned, so keep nothing of your own in it |
 | `./CLAUDE.md` | never touched — your project rules stay exactly as written |
 | `.claude/settings.json` | merged schema-aware; your own hooks and permissions survive |
-| your own agents and skills (no `-csk` suffix) | untouched |
+| your own agents and skills (no `-crew` suffix) | untouched |
 
 Where the change lands is a choice. A first adopt opens a `kit-adopt-<timestamp>` review branch. A routine update whose `.claude/` is gitignored applies on your current branch. An update with a **tracked** `.claude/` asks. Force it with `--here` or `--new-branch`, and skip the prompts with `--yes`. Either way the change is staged and uncommitted. A tracked `.claude/` also gets eol pins in `.gitattributes`, so the hooks stay LF for a teammate whose git has `core.autocrlf=true` — the Git for Windows default. Git Bash runs a CRLF hook anyway (measured); the pin is for a bash that does not, WSL being the documented case, and for keeping the working tree identical to what was committed.
 
-Inside a session, **`/update-csk`** does the version check, runs the updater, verifies with `/doctor-csk`, then prompts `/compact` so the refreshed discipline loads in the same session. **`/doctor-csk`** checks a live install at any time — hooks executable, `core.hooksPath` set, gates wired, the discipline actually imported — and prints an advisory readiness score for the project itself.
+Inside a session, **`/update-crew`** does the version check, runs the updater, verifies with `/doctor-crew`, then prompts `/compact` so the refreshed discipline loads in the same session. **`/doctor-crew`** checks a live install at any time — hooks executable, `core.hooksPath` set, gates wired, the discipline actually imported — and prints an advisory readiness score for the project itself.
 
 If a project's `CLAUDE.md` carries the discipline **inline** instead of importing it, updates cannot reach it. The updater detects this, shows the affected lines, and offers to replace them with the single `@.claude/DISCIPLINE.md` import — writing a backup first, on a branch you review. Decline and nothing is touched.
 
@@ -413,6 +413,6 @@ When you add an agent or a skill, follow the `AGENT_TEMPLATE.md` contract: front
 
 MIT — see [LICENSE](LICENSE).
 
-- **[NIST SP 800-218 (SSDF)](https://csrc.nist.gov/pubs/sp/800/218/final)** PW.7 and the **[OpenSSF Scorecard](https://github.com/ossf/scorecard)** `Code-Review` check — the governance layer of `code-review-csk`: that review happens, and that findings are recorded and triaged.
-- **[Conventional Comments](https://conventionalcomments.org/)** — the comment label vocabulary `code-review-csk` writes in (CC BY 3.0).
-- **[google/eng-practices](https://github.com/google/eng-practices)** — the review priority order and the "code health" bar in `code-review-csk`, distilled and restated (CC-BY 3.0).
+- **[NIST SP 800-218 (SSDF)](https://csrc.nist.gov/pubs/sp/800/218/final)** PW.7 and the **[OpenSSF Scorecard](https://github.com/ossf/scorecard)** `Code-Review` check — the governance layer of `code-review-crew`: that review happens, and that findings are recorded and triaged.
+- **[Conventional Comments](https://conventionalcomments.org/)** — the comment label vocabulary `code-review-crew` writes in (CC BY 3.0).
+- **[google/eng-practices](https://github.com/google/eng-practices)** — the review priority order and the "code health" bar in `code-review-crew`, distilled and restated (CC-BY 3.0).

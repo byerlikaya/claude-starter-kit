@@ -35,7 +35,7 @@ carries the session.
 
 ## Who runs it
 
-Wherever the handover is written — usually inside `session-manager-csk`, which the discipline routes this
+Wherever the handover is written — usually inside `session-manager-crew`, which the discipline routes this
 through, sometimes the main thread. Either way no agent in this kit holds the delegation tool (all twelve
 shipped agents declare an explicit allowlist and none contains it), so there is no separate cold-reader
 subagent to hand the file to. That is a real limitation and worth naming: the same context that wrote the file is answering

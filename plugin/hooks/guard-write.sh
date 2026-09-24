@@ -285,10 +285,10 @@ _json_keycount(){  # $1 = payload, $2 = key -> sets _KC to how many times it occ
 }
 # ---- /CSK-JSON-PARSE -----------------------------------------------------------------------------------
 
-block(){  # $1 = rule name for the log (must keep the `gate-file edit` prefix — /gates-csk groups on it), $2 = why
+block(){  # $1 = rule name for the log (must keep the `gate-file edit` prefix — /gates-crew groups on it), $2 = why
   # Same write-only observability channel as guard-bash.sh, on by default into .claude/gate-log.tsv since 2.5.0
   # and with the same rule about the payload: the path is NOT recorded unless CSK_GATE_LOG_CMD=1, because
-  # /gates-csk reports rule names and counts and never the argument. Logged after the verdict; it cannot
+  # /gates-crew reports rule names and counts and never the argument. Logged after the verdict; it cannot
   # change it. CSK_GATE_LOG overrides the path; point it at /dev/null to turn recording off.
   _GL="${CSK_GATE_LOG:-}"
   if [ -z "$_GL" ] && [ -d ".claude" ]; then
@@ -498,9 +498,9 @@ if [ -n "$GD" ] && [ -f "$GD/csk-board-guard" ]; then
     */docs/*|docs/*|*/.claude/*|.claude/*) ;;   # planning notes and kit config are not the work being claimed
     *)
       echo "BOARD GATE: you hold no work item, so nobody else can see what you are starting." >&2
-      echo "Claim one first: /board-csk  (lists what is free, what is blocked, and who holds the rest)." >&2
+      echo "Claim one first: /board-crew  (lists what is free, what is blocked, and who holds the rest)." >&2
       echo "Work that belongs to no item: set CSK_NO_BOARD=1 for this session, and commit it with [chore]." >&2
-      echo "Just claimed one elsewhere? The board view is cached — /board-csk sync refreshes it." >&2
+      echo "Just claimed one elsewhere? The board view is cached — /board-crew sync refreshes it." >&2
       exit 2 ;;
   esac
 fi

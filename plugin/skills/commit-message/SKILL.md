@@ -2,7 +2,7 @@
 name: commit-message
 description: |
   Conventional Commits: reads the staged diff and proposes `type(scope): summary`, with body/footer when needed.
-  One logical change = one commit. commit-agent-csk applies it.
+  One logical change = one commit. commit-agent-crew applies it.
 ---
 
 # Commit Message (Conventional Commits v1.0.0)

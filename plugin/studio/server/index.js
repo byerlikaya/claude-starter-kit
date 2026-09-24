@@ -122,8 +122,8 @@ function authorised(req, url) {
  * preflight first, and this server answers none.
  */
 export function writeAllowed(req) {
-  if (req.headers['x-csk-studio'] !== '1') {
-    return { ok: false, reason: 'missing x-csk-studio header' };
+  if (req.headers['x-crew-studio'] !== '1') {
+    return { ok: false, reason: 'missing x-crew-studio header' };
   }
   const origin = req.headers.origin;
   if (origin) {

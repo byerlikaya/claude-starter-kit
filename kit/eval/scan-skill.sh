@@ -117,10 +117,10 @@ echo "== skill/agent security scan: $TARGET =="
 if [ -f "$TARGET" ]; then
   scan_file "$TARGET"
 elif [ -d "$TARGET" ]; then
-  # Skill/agent definition files only (markdown). Skip the kit's own -csk agents (trusted, not third-party).
+  # Skill/agent definition files only (markdown). Skip the kit's own -crew agents (trusted, not third-party).
   FILES=()
   while IFS= read -r f; do
-    case "$f" in *-csk.md) continue ;; esac
+    case "$f" in *-crew.md) continue ;; esac
     FILES+=("$f")
   done < <(find "$TARGET" \( -name 'SKILL.md' -o -name '*.md' \) -path '*/skills/*' -o -path '*/agents/*' -name '*.md' 2>/dev/null | sort -u)
   # A skill directory with no SKILL.md is invisible to the scan above — the loop only ever sees files, so a

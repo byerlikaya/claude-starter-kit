@@ -492,7 +492,7 @@ else
   bad 'the length check stays out of the way when unzip is present' "$out"
 fi
 
-# The boundary itself, to the character. windows-csk pins the CONSTANT against a real
+# The boundary itself, to the character. the Windows session pins the CONSTANT against a real
 # Expand-Archive on a real zip; this pins the ARITHMETIC against the constant, so a future
 # edit cannot quietly measure one object against another one's budget. That mismatch happened
 # twice in one round, in both directions.

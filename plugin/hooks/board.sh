@@ -232,14 +232,14 @@ _mutate(){ # _mutate <action> <id> [note]
       2) attempt=$((attempt+1)) ;;       # lost the race — re-read and re-decide
     esac
   done
-  printf 'board: the board changed under three consecutive attempts; run `/board-csk` and retry\n' >&2
+  printf 'board: the board changed under three consecutive attempts; run `/board-crew` and retry\n' >&2
   return 1
 }
 
 _apply_once(){ # -> 0 ok · 1 refused · 2 race · 3 unshared
   local action="$1" id="$2" note="${3:-}" me c path
   me="$(_me)"
-  c="$(_load "$id")" || { printf 'board: no item #%s (run `/board-csk` to list)\n' "$id" >&2; return 1; }
+  c="$(_load "$id")" || { printf 'board: no item #%s (run `/board-crew` to list)\n' "$id" >&2; return 1; }
   path="$(_path_for "$id")"
 
   local title status deps external owner since since_ep beat hand comp
@@ -436,7 +436,7 @@ cmd_claim(){
        # is a deliberate local board, not a failure, and telling that user their team cannot see it is noise
        # about a team that does not exist.
        if git remote get-url "$(_remote)" >/dev/null 2>&1; then
-         printf '#%s claimed LOCALLY ONLY — the remote is unreachable, your team cannot see it.\n   Run `/board-csk sync` before you rely on it.\n' "$1"
+         printf '#%s claimed LOCALLY ONLY — the remote is unreachable, your team cannot see it.\n   Run `/board-crew sync` before you rely on it.\n' "$1"
        else
          printf '#%s is yours (%s) — local board, no remote configured.\n' "$1" "$(_me)"
          _related "$1"
@@ -460,7 +460,7 @@ cmd_status(){
   #
   # Fails open: an unreachable remote falls through to whatever is local, so the view still appears offline.
   _fetch >/dev/null 2>&1 || true
-  _have_board || { echo "No board in this repo yet (and none on '$(_remote)'). Create one: /board-csk init"; return 0; }
+  _have_board || { echo "No board in this repo yet (and none on '$(_remote)'). Create one: /board-crew init"; return 0; }
   local me p c id st ow ti dep bl now stale_h
   me="$(_me)"; now="$(_now_epoch)"; stale_h="$(_conf stale_hours 8)"
   # HELD is not decoration: "who holds it" without "for how long" is the question a teammate actually asks, and
@@ -533,7 +533,7 @@ cmd_cache(){ # rebuild the local cache; NEVER called on the foreground path with
   dnew=$(( dtotal - dseen )); [ "$dnew" -lt 0 ] && dnew=0
   if [ "$dnew" -gt 0 ]; then
     out="$out
-$dnew team decision(s) recorded since you last looked — read them before planning: /board-csk decisions"
+$dnew team decision(s) recorded since you last looked — read them before planning: /board-crew decisions"
     for p in $(_decision_paths | tail -"$dnew"); do
       c="$(_cat "$p")"
       out="$out
@@ -552,12 +552,12 @@ $dnew team decision(s) recorded since you last looked — read them before plann
     om="$(_section "$c" Handover)"
     [ -n "$om" ] && continue
     out="$out
-You have held #$(_field "$c" id) for $(_age "$ob") with an empty handover note. If you are still on it, say where it stands (/board-csk note); if not, release it (/board-csk drop)."
+You have held #$(_field "$c" id) for $(_age "$ob") with an empty handover note. If you are still on it, say where it stands (/board-crew note); if not, release it (/board-crew drop)."
   done
   [ -n "$stale" ] && out="$out
 Stale claims (no activity for ${stale_h}h+): $stale — ask the owner before taking one over; never steal silently."
   out="$out
-Claim before you start: /board-csk claim <id>. Commits are gated on a live claim."
+Claim before you start: /board-crew claim <id>. Commits are gated on a live claim."
   printf '%s\n' "$out" > "$(_git_dir)/csk-board-cache"
   _now_epoch > "$(_git_dir)/csk-board-cache.at"
 
@@ -595,10 +595,10 @@ _next_decision_id(){
 cmd_decide(){ # decide <title> [body] [items]
   local title="${1:-}" body="${2:-}" items="${3:--}" attempt=1 rc
   [ -n "$title" ] || _die 'decide needs a title: board.sh decide "<what was decided>" "<why + what it means for other work>"'
-  _enabled || _die "the board is off in this repo (/board-csk on)"
+  _enabled || _die "the board is off in this repo (/board-crew on)"
   while [ "$attempt" -le 3 ]; do
     _fetch || true
-    _have_board || _die "no board here yet (/board-csk init)"
+    _have_board || _die "no board here yet (/board-crew init)"
     local id slug blob tree
     id="$(_next_decision_id)"
     slug="$(printf '%s' "$title" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/^-//;s/-$//' | cut -c1-48)"
@@ -616,7 +616,7 @@ cmd_decide(){ # decide <title> [body] [items]
 }
 
 cmd_decisions(){ # decisions [id]
-  _have_board || { echo "No board here (/board-csk init)."; return 0; }
+  _have_board || { echo "No board here (/board-crew init)."; return 0; }
   local p c
   if [ -n "${1:-}" ]; then
     p="$(_decision_paths | grep -m1 "^decisions/$1-")" || true
@@ -629,7 +629,7 @@ cmd_decisions(){ # decisions [id]
     printf '%s  %s\n    %s · %s\n' "$(_field "$c" id)" "$(_field "$c" title)" "$(_field "$c" author)" "$(_field "$c" date)"
     n=$((n+1))
   done
-  [ "$n" = 0 ] && echo "No decisions recorded yet. Record one: /board-csk decide \"<what was decided>\""
+  [ "$n" = 0 ] && echo "No decisions recorded yet. Record one: /board-crew decide \"<what was decided>\""
   _seen_now
   return 0
 }
@@ -649,7 +649,7 @@ cmd_off(){ # off [--global]
   git config ${1:+--global} csk.board off
   cmd_cache >/dev/null
   echo "Board OFF${1:+ (global: every repo)}. No claim needed, no commit gate, no edit gate; the board itself is untouched."
-  echo "Back on: /board-csk on${1:+ --global}"
+  echo "Back on: /board-crew on${1:+ --global}"
 }
 cmd_on(){
   git config ${1:+--global} --unset csk.board 2>/dev/null || true
@@ -659,7 +659,7 @@ cmd_on(){
     off|false|0|no) git config csk.board on ;;
   esac
   cmd_cache >/dev/null
-  _enabled && echo "Board ON. Claim before you start: /board-csk" \
+  _enabled && echo "Board ON. Claim before you start: /board-crew" \
            || echo "Still off — CSK_NO_BOARD is set in this session's environment; unset it."
 }
 
@@ -735,7 +735,7 @@ cmd_init(){ # init [--remote <name|url>] [all|referenced]
   if ! git remote get-url "$(_remote)" >/dev/null 2>&1; then
     printf 'No remote named "%s" in this repo — creating a LOCAL board.\n' "$(_remote)"
     printf 'It gives you the item list, dependency order and the commit gate, but nothing is shared.\n'
-    printf 'To share it later: add a remote, then /board-csk sync. To point elsewhere now: /board-csk init --remote <url>.\n'
+    printf 'To share it later: add a remote, then /board-crew sync. To point elsewhere now: /board-crew init --remote <url>.\n'
     local lblob ltree
     lblob="$(printf 'require_item: %s\nstale_hours: 8\n' "${1:-all}" | _blob)"
     ltree="$(_tree_with config "$lblob")" || _die "could not build the board tree"
@@ -773,20 +773,20 @@ cmd_gate(){ # gate <commit-msg-file>
 BOARD GATE: this commit names no board item.
   Put [#<id>] in the message for the item you are working on, or [chore] for work that
   belongs to no item (it is recorded, not blocked).
-  See what is claimable: /board-csk
+  See what is claimable: /board-crew
 MSG
     return 1
   fi
   local c owner status
-  c="$(_load "$id")" || { printf 'BOARD GATE: no item #%s on the board (stale board? run /board-csk sync)\n' "$id" >&2; return 1; }
+  c="$(_load "$id")" || { printf 'BOARD GATE: no item #%s on the board (stale board? run /board-crew sync)\n' "$id" >&2; return 1; }
   owner="$(_field "$c" owner)"; status="$(_field "$c" status)"
   local me; me="$(_me)"
   if [ "$owner" != "$me" ]; then
-    printf 'BOARD GATE: #%s is held by %s, not you. Claim it or pick another: /board-csk\n' "$id" "${owner:--}" >&2
-    printf '            (if you believe this is stale, run /board-csk sync first)\n' >&2
+    printf 'BOARD GATE: #%s is held by %s, not you. Claim it or pick another: /board-crew\n' "$id" "${owner:--}" >&2
+    printf '            (if you believe this is stale, run /board-crew sync first)\n' >&2
     return 1
   fi
-  [ "$status" = in_progress ] || { printf 'BOARD GATE: #%s is "%s", not in_progress. Run: /board-csk claim %s\n' "$id" "$status" "$id" >&2; return 1; }
+  [ "$status" = in_progress ] || { printf 'BOARD GATE: #%s is "%s", not in_progress. Run: /board-crew claim %s\n' "$id" "$status" "$id" >&2; return 1; }
   # Deliberately no heartbeat refresh here: publishing one costs a push, and a commit must work offline and
   # must not be slowed by the network. The heartbeat is advanced by the board commands and at session start.
   return 0

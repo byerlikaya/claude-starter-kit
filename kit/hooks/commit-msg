@@ -9,7 +9,7 @@ BL="$HERE/trace-blocklist.txt"
 MSG_FILE="${1:-}"
 [ -n "$MSG_FILE" ] && [ -f "$MSG_FILE" ] || exit 0
 
-# (2) Board claim gate. It is a no-op in every repo that never ran `/board-csk init` — board.sh returns 0 when
+# (2) Board claim gate. It is a no-op in every repo that never ran `/board-crew init` — board.sh returns 0 when
 # the board ref does not exist, so solo projects and the kit's own repo behave exactly as before. It reads the
 # LOCAL ref only: committing must never require the network.
 if [ -f "$HERE/board.sh" ]; then

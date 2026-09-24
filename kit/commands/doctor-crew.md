@@ -1,0 +1,42 @@
+---
+name: doctor-crew
+description: Health-check the installed kit — hooks executable, core.hooksPath set, gates wired, discipline loaded.
+---
+# /doctor-crew
+Verify the kit is actually *active* in this project (not just present on disk):
+1. Run `bash .claude/eval/doctor.sh`.
+2. Read its report. It checks: VERSION present · every hook executable · the required git hooks (pre-commit,
+   commit-msg) present · **guard-bash actually blocks a force-push** (catches a hook that is present but neutered) ·
+   `core.hooksPath` points at `.claude/hooks` (else the §4.1/§4.2 commit trace + secret/bloat scan never runs) ·
+   `settings.json` valid and wiring the PreToolUse / UserPromptSubmit / Stop gates to **non-empty** hook arrays
+   (an empty `[]` wires nothing); SessionStart (rehydration) is reported as a warning if absent · **`./CLAUDE.md`
+   actually imports `.claude/DISCIPLINE.md`** — without that line the discipline sits on disk and never loads, which
+   every other check is blind to.
+3. For each ❌, apply the printed fix. Anything that changes git config or file permissions needs approval first —
+   show the exact command and wait.
+4. Read the **Readiness** block too. It is advisory (never changes the verdict) and asks a different question — is
+   this *project* set up to be worked on by agents: CLAUDE.md project section filled in · a project-specific skill
+   alongside the kit's generic ones · a devcontainer to sandbox agent commands · an MCP server · CLAUDE.md not
+   drifted behind the code. Report the gaps as suggestions, not as failures, and never "fix" them unasked — adding
+   a devcontainer or an MCP server is the user's call.
+5. Summarise: **healthy**, or the precise fixes applied/needed, plus the readiness score. If it's not a git repo,
+   note that the commit-time gates need `git init` + `git config core.hooksPath .claude/hooks`.
+   If the output contains a line starting with ⭐, pass it to the user verbatim as the LAST line of your summary —
+   it prints once per kit version, and it is meant for the user, not for you.
+
+If `.claude/eval/doctor.sh` doesn't exist, this is not a full (start.sh / adopt.sh) install — the kit is likely
+running as a **plugin**, whose hooks are managed by Claude Code itself; there's nothing for the doctor to check.
+
+**The eval scripts are installer-only, by decision.** `eval/` — `doctor.sh`, `smoke-test.sh`, `routing-eval.sh`,
+`scan-skill.sh`, `utilization.sh` — ships with `start.sh` and `adopt.sh` and NOT with the plugin edition. The eval
+scripts are developer instruments: they inspect an installation from outside it, and the plugin edition has no
+installation to inspect. Say this plainly when someone asks why `/doctor-crew` reports nothing on a plugin install,
+rather than treating it as a defect. The Studio panel is not in that group: both editions carry it, and
+`/studio-crew` finds it in either. A plugin install puts no `.claude/VERSION`, `kit.conf` or kit scripts into a
+project, so that project's row in the panel has no kit badge, and for the project the panel was opened from, the
+inspector's gates, stats and board tabs say "Not measured" with the reason. The gates tab can still list observed
+entries below that. The plugin's Bash guard logs its blocks, approval prompts and `CLAUDE_GIT_OK` pre-authorised
+git actions, and its gate-file write guard logs its blocks, to `.claude/gate-log.tsv` when the project has a
+`.claude/` directory and the file is git-ignored or the project is not a repo. With `CSK_GATE_LOG` set they write
+wherever it points instead, and the panel reads only the project's own `.claude/gate-log.tsv`, so a log sent
+anywhere else does not show. The commit scan and the board gate refuse without writing a line.

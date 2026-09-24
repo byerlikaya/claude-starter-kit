@@ -71,7 +71,7 @@ fi
 [ -s "$CACHE" ] || exit 0
 
 MSG="$(cat "$CACHE")
-Board state above is a cached snapshot; /board-csk sync refreshes it."
+Board state above is a cached snapshot; /board-crew sync refreshes it."
 
 # ONE PATH, no jq. The JSON is built here on every machine, so a Mac with jq and a Windows box without it emit the
 # same bytes. The escaper is jq-identical, measured on 15 inputs (quote, backslash, tab, CR, C0 controls, DEL,

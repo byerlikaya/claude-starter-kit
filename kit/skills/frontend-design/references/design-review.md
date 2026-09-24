@@ -31,4 +31,4 @@ Once the scales exist, name them as tokens (CSS custom properties / theme object
 - **Consistency sweep** — same button in two places identical? Same card padding everywhere? Divergence is the top "assembled, not designed" tell.
 - **Restraint check** — can anything be *removed*? A border that a gap already implies, a color that space already separates, a shadow doing nothing. Subtraction usually improves it.
 
-Report design findings the way `review-agent-csk` expects: concrete (element + which lever + the fix), not "make it prettier".
+Report design findings the way `review-agent-crew` expects: concrete (element + which lever + the fix), not "make it prettier".

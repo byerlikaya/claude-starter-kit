@@ -73,7 +73,7 @@ not assumed — it matters if you diff that file in CI.
 
 `check.sh` exit codes: `0` config as expected · `2` built-ins dropped · `3` kit rules absent/partial · `4`
 cannot read the config
-(CLI too old, or auto mode unavailable on this account). `/doctor-csk` reports the same check.
+(CLI too old, or auto mode unavailable on this account). `/doctor-crew` reports the same check.
 
 `--strict` sets `autoMode.classifyAllShell`, which suspends narrow Bash/PowerShell allow rules while auto mode
 is active so every shell command reaches the classifier. It buys coverage with latency and one classifier call

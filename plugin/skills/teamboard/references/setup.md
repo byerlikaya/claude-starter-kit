@@ -5,13 +5,13 @@ need it: a teammate who clones the repo configures nothing.
 
 ## Who runs what
 
-- **Whoever starts it:** `/board-csk init`, then add the items. It probes what the server accepts, creates the
+- **Whoever starts it:** `/board-crew init`, then add the items. It probes what the server accepts, creates the
   board on the code repo's own `origin`, and that is the whole setup — no account, no token, no service.
-- **A separate board repository:** `/board-csk init --remote <url>` (or an existing remote's name). Use it when
+- **A separate board repository:** `/board-crew init --remote <url>` (or an existing remote's name). Use it when
   the board is shared across several repos, or when people who must claim work cannot push to the code repo. It
   gets its own `csk-board` remote and never touches `origin`.
 - **Everyone else: nothing.** They clone as usual. Session start fetches the board on its own (detached), the
-  ref namespace is auto-detected including the orphan-branch fallback, and `/board-csk` fetches on the spot if
+  ref namespace is auto-detected including the orphan-branch fallback, and `/board-crew` fetches on the spot if
   the background refresh has not landed yet. Never tell a teammate to run `init` — a second `init` is how a team
   ends up with two boards.
 
