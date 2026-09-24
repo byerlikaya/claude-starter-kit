@@ -58,17 +58,20 @@ esac; done
 # speak anything else.
 _loc="${LC_ALL:-}"; [ -n "$_loc" ] || _loc="${LC_MESSAGES:-}"; [ -n "$_loc" ] || _loc="${LANG:-}"
 case "$_loc" in tr*|TR*) _lang_det=tr; _lang_def=2 ;; *) _lang_det=en; _lang_def=1 ;; esac
+_LANG_CHOSEN=1                                             # 0 = a locale guess: used, never written down
 if [ -n "$_lang_flag" ]; then
   CREW_LANG="$_lang_flag"
 elif [ -n "${CREW_LANG:-}" ]; then
   :
+elif _lang_rec="$(sed -n 's/^lang=//p' .claude/kit.conf 2>/dev/null | head -1 | tr -d '\r')" && [ -n "$_lang_rec" ]; then
+  CREW_LANG="$_lang_rec"   # an update keeps the language the install chose (the session-start prompt speaks it too)
 elif [ -t 0 ] && [ "$ASSUME_YES" != 1 ]; then
   printf '\n  Language / Dil\n    1) English\n    2) Türkçe\n  -> [1-2, empty/boş=%s]: ' "$_lang_def"
   read -r _lang_ans || _lang_ans=""
   [ -n "$_lang_ans" ] || _lang_ans="$_lang_def"
   case "$_lang_ans" in 2|tr|TR|t|T) CREW_LANG=tr ;; *) CREW_LANG=en ;; esac
 else
-  CREW_LANG="$_lang_det"
+  CREW_LANG="$_lang_det"; _LANG_CHOSEN=0
 fi
 case "$CREW_LANG" in tr|en) ;; *) CREW_LANG=en ;; esac
 # Exported: child scripts (eval/preflight.sh) resolve their own language from the environment, and an
@@ -1115,7 +1118,27 @@ fi
   echo "stack=generic"
   echo "installer=${KIT_INSTALLER:-adopt.sh}"
   echo "version=$( [ -f "$HERE/VERSION" ] && head -1 "$HERE/VERSION" || echo unknown )"
+  # Only a language somebody chose is recorded (--lang, CREW_LANG, the menu, or the one already recorded). A
+  # --yes run with nothing named guesses from the locale, and a guess written down would pin an install that was
+  # set up in Turkish to English from its first unattended update on.
+  [ "$_LANG_CHOSEN" = 1 ] && echo "lang=$CREW_LANG"
 } > .claude/kit.conf
+# What changed, for /crew-update to report: the package's own CHANGELOG sections newer than the version this
+# project had, and no newer than the one being installed — read from the package on disk, never from the network.
+# A fresh adopt has no "before", so it gets no file (and a stale one from an earlier update is removed).
+rm -f .claude/.state/whats-new.md 2>/dev/null
+_kv="$(printf '%s' "$KIT_VER" | tr -d '\r')"
+case "$_kv" in *[!0-9.]*|'') _kv="" ;; [0-9]*.[0-9]*.[0-9]*) ;; *) _kv="" ;; esac   # an odd old version compares as 0.0.0 — every section would look new
+if [ "$KIT_PRESENT" = 1 ] && [ -n "$_kv" ] && [ -f "$HERE/CHANGELOG.md" ] && [ -f "$HERE/VERSION" ]; then
+  mkdir -p .claude/.state 2>/dev/null
+  awk -v from="$_kv" -v to="$(head -1 "$HERE/VERSION" | tr -d '\r')" '
+    function cmp(a,b,  x,y,i){ split(a,x,"."); split(b,y,"."); for(i=1;i<=3;i++){ if(x[i]+0>y[i]+0) return 1; if(x[i]+0<y[i]+0) return -1 } return 0 }
+    /^## \[/ { v=$0; sub(/^## \[/,"",v); w=v; sub(/\].*/,"",v)
+                if (v=="Unreleased") { v=w; sub(/^[^—]*— */,"",v); sub(/[^0-9.].*/,"",v) }
+                keep = (v ~ /^[0-9]+\.[0-9]+\.[0-9]+$/ && cmp(v,from)>0 && cmp(v,to)<=0) }
+    keep' "$HERE/CHANGELOG.md" | tr -d '\r' > .claude/.state/whats-new.md 2>/dev/null
+  [ -s .claude/.state/whats-new.md ] || rm -f .claude/.state/whats-new.md
+fi
 
 h1m 'Coexist summary'
 # _cnt: "<added>" plus " · N skipped" when something was skipped; result in _v (no subshell, see _mt)
@@ -1509,7 +1532,9 @@ fi
 # them. Measured across the payload: PLAN.md is named in 7 components, SESSION_STATE.md in 6,
 # THREAT_MODEL.md in 6, plus SECURITY_FINDINGS.md, DISCOVERY.md and EVAL.md. A repository receiving this
 # adoption was receiving its own threat model and security findings along with it.
-gi_add '.claude/review-pass.json' 'docs/'
+# `.claude/.state/` for the same reason as the review record: it is this machine's runtime state (the update
+# check's cache and answers, the pre-update snapshot) and a tracked .claude/ would otherwise put it in git status.
+gi_add '.claude/review-pass.json' 'docs/' '.claude/.state/'
 # TWIN OF start.sh's ga_add, and this path needs it MORE: adopt.sh does not gitignore `.claude/` at all — it
 # only ignores review-pass.json and docs/ — so an adopted project TRACKS the kit's configuration by default.
 # That is the shared case, which is the one where a Windows teammate's `core.autocrlf=true` rewrites every

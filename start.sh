@@ -415,7 +415,7 @@ elif [ -t 0 ] && [ "$_lang_yes" = 0 ]; then
     *) CREW_LANG=en ;;
   esac
 else
-  CREW_LANG="$_lang_detected"
+  CREW_LANG="$_lang_detected"; _LANG_GUESSED=1
 fi
 # Anything that is not a language we actually carry falls back to English rather than printing keys.
 case "$CREW_LANG" in tr|en) ;; *) CREW_LANG=en ;; esac
@@ -533,7 +533,7 @@ if [ -z "$VISIBILITY" ]; then
 fi
 # The exact lines this install will append, resolved once so the summary and the writer cannot disagree.
 if [ "$VISIBILITY" = "shared" ]; then
-  GI_PLAN='docs/ .private-terms.txt'
+  GI_PLAN='docs/ .private-terms.txt .claude/.state/'   # .state is runtime state (update cache, snapshot), never shared
 else
   GI_PLAN='docs/ .claude/ CLAUDE.md .private-terms.txt'
 fi
@@ -652,6 +652,9 @@ cp "$SRC/README.md"         .claude/ 2>/dev/null || true
   echo "stack=$STACK"
   echo "installer=start.sh"
   echo "version=$( [ -f "$HERE/VERSION" ] && head -1 "$HERE/VERSION" || echo unknown )"
+  # A locale guess (--yes or no terminal, nothing named) is used but not recorded: the next update would reuse it
+  # as if somebody had chosen it. --lang, CREW_LANG and the menu are choices, and are.
+  [ "${_LANG_GUESSED:-0}" = 1 ] || echo "lang=${CREW_LANG:-en}"
 } > .claude/kit.conf
 
 # Discipline (kit-owned, refreshed on every update) vs project section (yours, written once), joined by @import.

@@ -85,6 +85,19 @@ One name everywhere: the package, the components, the variables, the payload. **
 - **`adopt.sh` no longer asks about .NET** on a fresh adopt, and no longer deletes a pattern skill on a generic stack.
 
 
+### Added — "an update is out, update now?"
+
+- **A newer release is a question, not a footnote.** At session start Claude asks once — **Update · Later · Skip
+  this version** — before answering the first message. Update runs `/crew-update` (a plugin install runs
+  `claude plugin update crewforth@crewforth`, applied on restart). Later, or closing the question, asks again the
+  next day at the earliest; Skip is silent until a newer release. A major version adds a line to read the CHANGELOG
+  first. The question speaks the install's language, and nothing is asked in CI, with `CREW_NO_UPDATE_CHECK=1`, or
+  in a non-interactive run (`claude -p`). There is no silent auto-update: nothing updates without the user's pick.
+- **`/crew-update` shows what it did.** It names uncommitted changes in `.claude/` and `CLAUDE.md` first and asks
+  before going on; afterwards it lists the files added, changed, moved and removed, and reports what changed from
+  the installed package's own CHANGELOG — never from the network.
+- **A shared `.claude/` keeps `.claude/.state/` out of git** — the kit's runtime state on this machine.
+
 ### Added — the Crewforth front page and a one-time star line
 
 - **New brand set.** `assets/logo.svg`, `logo-light.svg`, `icon.svg` and `mark.svg` are the Crewforth mark (›››);

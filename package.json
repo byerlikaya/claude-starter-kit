@@ -15,7 +15,7 @@
     "kit/",
     "VERSION",
     "LICENSE",
-    "README.md"
+    "README.md", "CHANGELOG.md"
   ],
   "engines": {
     "node": ">=16.7"

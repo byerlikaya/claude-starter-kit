@@ -434,7 +434,7 @@ const realpath = (p) => { try { return fs.realpathSync.native(p); } catch (_) { 
 // Stage the bundled payload in a temp dir so the script's self-cleanup is harmless.
 const stage = fs.mkdtempSync(path.join(realpath(os.tmpdir()), 'crewforth-'));
 try {
-  for (const item of [script, 'kit', 'VERSION']) {
+  for (const item of [script, 'kit', 'VERSION', 'CHANGELOG.md']) {   // CHANGELOG: the updater extracts what changed from it
     const src = path.join(pkgDir, item);
     if (fs.existsSync(src)) fs.cpSync(src, path.join(stage, item), { recursive: true });
   }
