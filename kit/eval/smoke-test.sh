@@ -5611,24 +5611,22 @@ sec "== 14c) the 3.0 rename left no old name behind — outside history and the 
 # ONE allow-list: a place where an old name is the point — history, or the code that reads, moves or tests the old
 # names. Glob TAB matches TAB reason. The match count is PINNED, exactly: an allowed file is not a free pass, so one
 # more old name in it is red too, and a removed one asks for the pin to come down. An entry that allows nothing is
-# a failure as well, so the list cannot quietly rot. Kept on purpose and NOT matched: the team board's git names
-# (refs/crew/board, the csk-board branch, csk.board*) and the Studio's saved-layout keys — renaming either would
-# split a board shared with a 2.x teammate or reset a layout.
+# a failure as well, so the list cannot quietly rot.
 if [ -n "$SGR" ] && [ -d "$SGR/packaging" ] && [ -f "$SGR/VERSION" ] && [ -d "$SGR/kit" ] && [ -f "$SGR/packaging/build-plugin.sh" ]; then
   RN_ALLOW='CHANGELOG.md	191	history: every entry before 3.0 keeps the name it shipped under
 evals/results/*	6	history: recorded eval runs stay byte-for-byte
 README.md	34	prose outside the generated sections is rewritten in its own change (5R)
 README.tr.md	34	the same, Turkish
 README.npm.md	12	the same, npm page
-adopt.sh	42	migration: finds and moves 2.x names (components, CLAUDE.md, board, auto-mode rules, variables)
+adopt.sh	46	migration: finds and moves 2.x names (components, CLAUDE.md, board, auto-mode rules, variables)
 bin/cli.js	4	migration: add accepts a typed <x>-csk and moves an add record written under the old names
-*/eval/doctor.sh	4	migration: PROOF-5 and the variable notice name what is still on the 2.x spelling
+*/eval/doctor.sh	6	migration: PROOF-5 and the variable notice name what is still on the 2.x spelling
 */crew-env.*	18	compat layer (bash + Node): reads CSK_* when CREW_* is unset — removed in 4.0
-*/hooks/board.sh	32	compat layer: reads the 2.x board ref and settings and folds them in — removed in 4.0
+*/hooks/board.sh	42	compat layer: reads the 2.x board ref and settings and folds them in — removed in 4.0
 */skills/automode-policy/scripts/check.sh	4	compat layer: counts auto-mode rules still named by 2.x — removed in 4.0
 */studio/web/storage-migrate.js	4	migration: moves the panel'"'"'s saved layout to the new keys — removed in 4.0
-kit/eval/smoke-test.sh	34	tests: this gate'"'"'s own pattern, and that the 2.x names still work
-packaging/*	107	tests: the migration rehearsal on the real v2.13.0 tree, the legacy token and layout checks'
+kit/eval/smoke-test.sh	32	tests: this gate'"'"'s own pattern, and that the 2.x names still work
+packaging/*	112	tests: the migration rehearsal on the real v2.13.0 tree, the legacy token and layout checks'
   # Case-insensitive, and `csk` as a word on its own: -csk, .csk, refs/csk/, csk-board, csk.board, CSK_ — every
   # shape the old name took. The first version listed shapes and missed the lowercase board names entirely.
   RN_PAT='(^|[^a-z0-9])csk([^a-z0-9]|$)|claude starter kit|claude-starter-kit|claude-starter/|@byerlikaya/'

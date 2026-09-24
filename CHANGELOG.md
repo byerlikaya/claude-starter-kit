@@ -34,8 +34,8 @@ One name everywhere: the package, the components, the variables, the payload. **
 - **`npx crewforth add`** accepts `security-expert`, `crew-security-expert` and the 2.x name `security-expert-csk`
   alike; `add --list` shows the `crew-` names.
 - **Variables are `CREW_*`.** The ones you set yourself keep working under their 2.x name for the whole 3.x line
-  (removed in 4.0); when both are set, `CREW_*` wins, and the update and `doctor` name the new spelling of any 2.x
-  one still set:
+  (removed in 4.0); when both are set, `CREW_*` wins. The update and `doctor` name the new spelling of any 2.x
+  variable still set — and say plainly when it is one that is no longer read:
 
   | 2.x | 3.0 |
   |---|---|
@@ -50,11 +50,11 @@ One name everywhere: the package, the components, the variables, the payload. **
 
   Internal and test variables were renamed with no fallback.
 - **The team board is `refs/crew/board`** (or the `crew-board` branch where the server refuses custom refs), with
-  `crew.board*` settings. The update moves this clone's board ref, settings, caches and a `csk-board` remote; the
-  remote's 2.x ref is left alone and the update says so. For the whole 3.x line the board also reads the 2.x ref and
-  folds it in, so a team that updates one person at a time loses no item, claim or decision: what a 2.x teammate
-  writes reaches 3.x, and on an item both sides changed, the 3.x side is kept. 2.x clones do not see 3.x writes —
-  update the whole team.
+  `crew.board*` settings. The update moves this clone's board ref, settings and caches and adds a `crew-board`
+  remote beside a `csk-board` one; it never deletes the remote's 2.x ref, and says so. While that ref exists, every
+  3.x write goes to both refs in one atomic push, so a team that updates one person at a time keeps one board and
+  one lock: a 2.x claim is refused against a 3.x claim and the other way round, and nothing either side writes is
+  lost. Delete the old ref once everyone is on 3.x. No git feature newer than the kit already needed is involved.
 - **The Studio panel keeps your layout:** its saved theme, widths and canvas layout move to the new key names the
   first time it opens.
 - **Auto-mode rules applied by 2.x** (`CSK …` in your user settings) are renamed `Crewforth …` by the update, after

@@ -55,13 +55,10 @@ _load_cfg(){
   done <<EOF
 $(git config --get-regexp '^(crew|csk)\.board(ref|remote)?$' 2>/dev/null)
 EOF
-  # The ref, and where its 2.x counterpart lives (see _fold_legacy), resolved here so no caller forks for them.
+  # The ref, and where its fetched copy lands (see _fetch), resolved here so no caller forks for them.
   _REF="${_C_REF:-$_L_REF}"
   case "$_REF" in refs/csk/board|'') _REF='refs/crew/board' ;; refs/heads/csk-board) _REF='refs/heads/crew-board' ;; esac
-  case "$_REF" in
-    refs/heads/*) _LREFS='refs/crew/legacy/branch refs/heads/csk-board'; _LSPEC='+refs/heads/csk-board*:refs/crew/legacy/branch*' ;;
-    *)            _LREFS='refs/crew/legacy/board refs/csk/board';        _LSPEC='+refs/csk/*:refs/crew/legacy/*' ;;
-  esac
+  case "$_REF" in refs/heads/*) _RN='refs/crew/remote/branch' ;; *) _RN='refs/crew/remote/board' ;; esac
 }
 _load_cfg
 _ref(){ printf '%s\n' "$_REF"; }
@@ -104,54 +101,59 @@ _me(){
   printf '%s' "$m"
 }
 
-# ---- the 2.x board, read for the whole 3.x line (removed in 4.0) -------------------------------------------
-# A 2.x teammate keeps writing refs/csk/board (or the csk-board branch). 3.x writes only the crew name, and folds
-# whatever the old ref holds into it, so a mixed team loses no item, claim, decision or refusal. The old ref is
-# fetched into refs/crew/legacy/* (never back under the old name) and the old local refs of a 2.x clone count too.
-# The fold is a real three-way merge (git merge-tree); on the one append-only file both sides write,
-# refusals.log, the lines are united; on an item both sides edited, the 3.x side is kept.
-_fold_legacy(){ # fold every old ref present into the board ref; local only — the next write shares it
-  local l n out rc tree conf p idx b sha
-  for l in $_LREFS; do
-    l="$(git rev-parse -q --verify "$l^{commit}" 2>/dev/null)" || continue
-    n="$(git rev-parse -q --verify "$_REF^{commit}" 2>/dev/null)"
-    if [ -z "$n" ]; then git update-ref "$_REF" "$l"; continue; fi          # no 3.x board yet: start from 2.x
-    git merge-base --is-ancestor "$l" "$n" 2>/dev/null && continue            # already folded in
-    out="$(git merge-tree --write-tree --name-only --allow-unrelated-histories "$n" "$l" 2>/dev/null)"; rc=$?
-    if [ "$rc" -gt 1 ] || [ -z "$out" ]; then
-      printf 'the 2.x board (%s) could not be merged in — git 2.38+ is needed for merge-tree\n' "$l" > "$(_git_dir)/crew-board-lasterror"
-      continue
+# ---- the 2.x board, kept in step for the whole 3.x line (removed in 4.0) ---------------------------------
+# A 2.x teammate reads and writes only refs/csk/board (or the csk-board branch) and will never read the crew
+# name. So while that ref exists on the remote, it stays the team's lock: every 3.x write is built on whichever of
+# the two refs is ahead and pushed to BOTH in one `git push --atomic` — both move or neither does, so a claim can
+# never be granted on one ref and refused on the other. A 2.x claim is then refused against a 3.x claim and the
+# other way round, exactly as within one version. When the team deletes the old ref, 3.x stops writing it.
+# Histories that split before this (two boards made independently) are joined by a three-way merge built with
+# read-tree, which every git has — no merge-tree, which needs 2.38. On the one file both sides append to,
+# refusals.log, the lines are united; any other file changed on both sides keeps the 3.x side.
+_rev(){ git rev-parse -q --verify "$1^{commit}" 2>/dev/null; }
+_join(){ # _join <3.x commit> <2.x commit> -> a commit that has both as parents
+  local n="$1" l="$2" base bt idx p b t
+  base="$(git merge-base "$n" "$l" 2>/dev/null)"
+  if [ -n "$base" ]; then bt="$base^{tree}"; else bt="$(git hash-object -w -t tree /dev/null)"; fi
+  idx="$(_git_dir)/crew-index.$$"; rm -f "$idx"
+  GIT_INDEX_FILE="$idx" git read-tree -m -i --aggressive "$bt" "$n^{tree}" "$l^{tree}" 2>/dev/null || { rm -f "$idx"; return 1; }
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    if [ "$p" = refusals.log ]; then
+      b="$( { git cat-file -p "$n:$p" 2>/dev/null; git cat-file -p "$l:$p" 2>/dev/null; } | awk '!seen[$0]++' | _blob)"
+    else
+      b="$(git rev-parse -q --verify "$n:$p" 2>/dev/null || git rev-parse -q --verify "$l:$p" 2>/dev/null)"
     fi
-    tree="${out%%$'\n'*}"; conf=""
-    [ "$rc" = 1 ] && conf="$(printf '%s\n' "$out" | sed -n '2,/^$/p' | sed '/^$/d')"
-    if [ -n "$conf" ]; then
-      idx="$(_git_dir)/crew-index.$$"; rm -f "$idx"
-      GIT_INDEX_FILE="$idx" git read-tree "$tree" 2>/dev/null
-      while IFS= read -r p; do
-        [ -n "$p" ] || continue
-        if [ "$p" = refusals.log ]; then
-          b="$( { git cat-file -p "$n:$p" 2>/dev/null; git cat-file -p "$l:$p" 2>/dev/null; } | awk '!seen[$0]++' | _blob)"
-        else
-          b="$(git rev-parse -q --verify "$n:$p" 2>/dev/null)" || { GIT_INDEX_FILE="$idx" git update-index --force-remove "$p" 2>/dev/null; continue; }
-        fi
-        GIT_INDEX_FILE="$idx" git update-index --add --cacheinfo "100644,$b,$p" 2>/dev/null
-      done <<EOF
-$conf
+    GIT_INDEX_FILE="$idx" git update-index --force-remove "$p" 2>/dev/null
+    [ -n "$b" ] && GIT_INDEX_FILE="$idx" git update-index --add --cacheinfo "100644,$b,$p" 2>/dev/null
+  done <<EOF
+$(GIT_INDEX_FILE="$idx" git ls-files -u 2>/dev/null | cut -f2 | sort -u)
 EOF
-      tree="$(GIT_INDEX_FILE="$idx" git write-tree 2>/dev/null)"; rm -f "$idx"
-      [ -n "$tree" ] || continue
-    fi
-    sha="$(git commit-tree "$tree" -p "$n" -p "$l" -m 'board: fold in the 2.x board')" && git update-ref "$_REF" "$sha"
-  done
+  t="$(GIT_INDEX_FILE="$idx" git write-tree 2>/dev/null)"; rm -f "$idx"
+  [ -n "$t" ] || return 1
+  git commit-tree "$t" -p "$n" -p "$l" -m 'board: join the 2.x and 3.x boards'
+}
+# The 2.x ref this clone last saw on the remote, as "<local copy> <remote name>"; empty when there is none.
+# The copy that matches this clone's mode wins; otherwise the other form (a 2.x team on the other mode).
+_legacy(){
+  local found; found="$(git for-each-ref --format='%(refname)' refs/crew/legacy/ns/board refs/crew/legacy/branch 2>/dev/null)"
+  case "$_REF" in
+    refs/heads/*) case "$found" in *refs/crew/legacy/branch*) echo 'refs/crew/legacy/branch refs/heads/csk-board' ;; *refs/crew/legacy/ns/board*) echo 'refs/crew/legacy/ns/board refs/csk/board' ;; esac ;;
+    *)            case "$found" in *refs/crew/legacy/ns/board*) echo 'refs/crew/legacy/ns/board refs/csk/board' ;; *refs/crew/legacy/branch*) echo 'refs/crew/legacy/branch refs/heads/csk-board' ;; esac ;;
+  esac
 }
 
-# One for-each-ref answers both "is there a board" and "is there a 2.x one to start from" — the commit gate runs
-# this on every commit, so a second process here would be paid by every repo, board or not.
+# One for-each-ref answers both "is there a board" and "is there a 2.x one here to start from" — the commit gate
+# runs this on every commit, so a second process here would be paid by every repo, board or not. A local 2.x
+# board (one that was never pushed, or a clone updated without the updater) becomes the crew ref.
 _have_board(){
-  local found; found="$(git for-each-ref --format='%(refname)' "$_REF" $_LREFS 2>/dev/null)"
+  local found l; found="$(git for-each-ref --format='%(refname)' "$_REF" refs/csk/board refs/heads/csk-board 2>/dev/null)"
   [ -n "$found" ] || return 1
   case "$found" in *"$_REF"*) return 0 ;; esac
-  _fold_legacy; git rev-parse --verify -q "$_REF" >/dev/null 2>&1
+  for l in refs/csk/board refs/heads/csk-board; do
+    case "$found" in *"$l"*) git update-ref "$_REF" "$(_rev "$l")" 2>/dev/null && return 0 ;; esac
+  done
+  return 1
 }
 
 # The board is OFF until somebody creates one — a repo with no board ref has no gates at all, which is what
@@ -168,32 +170,34 @@ _enabled(){
   return 0
 }
 
-# Fetch the board ref. Forced (+) on purpose: local board state is never authoritative and is never worth
-# keeping — every mutation re-derives itself from the fetched state (see _mutate).
+# Fetch the board. The remote is authoritative: local board state is never worth keeping over it — every mutation
+# re-derives itself from the fetched state (see _mutate). ONE fetch, whatever the team runs: the crew ref in both
+# modes and the 2.x ref in both modes, all as globs (a glob never fails for want of a match) into this clone's own
+# refs/crew/remote/* and refs/crew/legacy/* — never into refs/heads, where a glob would overwrite a user's branch
+# that merely starts with the same name. --prune drops a copy whose remote ref is gone, which is how 3.x learns the
+# team deleted the 2.x ref. Returns 0 board here · 1 remote unreachable · 4 reachable, no board anywhere.
 _fetch(){
-  local ref remote err; ref="$(_ref)"; remote="$(_remote)"
-  # The 2.x ref rides along as a glob, which never fails for want of a match — so the common case stays ONE fetch.
-  err="$(LC_ALL=C _gitnet fetch -q "$remote" "+$ref:$ref" "$_LSPEC" 2>&1)" && { _fold_legacy; return 0; }
-  # Reachable but no 3.x board there yet: a 2.x team's board may be, under the old name — start from it. An
-  # unreachable remote stops here, so offline costs one timeout, not three.
-  case "$err" in *"couldn't find remote ref"*) ;; *) return 1 ;; esac
-  if _gitnet fetch -q "$remote" "$_LSPEC" 2>/dev/null; then
-    _fold_legacy; git rev-parse -q --verify "$ref" >/dev/null 2>&1 && return 0
-  fi
+  _gitnet fetch -q --prune "$(_remote)" '+refs/crew/board*:refs/crew/remote/board*' '+refs/heads/crew-board*:refs/crew/remote/branch*' \
+    '+refs/csk/*:refs/crew/legacy/ns/*' '+refs/heads/csk-board*:refs/crew/legacy/branch*' >/dev/null 2>&1 || return 1
+  local rn lg lc b
   # Only the teammate who ran `init` runs `probe`, so only that clone learns the team fell back to the orphan
-  # branch. Everyone else would look for refs/crew/board forever and see no board at all. When nothing is
-  # recorded here and the default namespace turns up empty, try the fallback (and its 2.x name) and record the
-  # answer — one extra fetch, once per clone.
-  [ -z "${_C_REF:-$_L_REF}" ] || return 1
-  if _gitnet fetch -q "$remote" '+refs/heads/crew-board*:refs/heads/crew-board*' '+refs/heads/csk-board*:refs/crew/legacy/branch*' 2>/dev/null; then
-    git config crew.boardRef 'refs/heads/crew-board'; _load_cfg
-    _fold_legacy
-    git rev-parse -q --verify refs/heads/crew-board >/dev/null 2>&1 && return 0
-    git config --unset crew.boardRef 2>/dev/null; _load_cfg
+  # branch. Everyone else resolves it here from what the remote has, and records the answer once.
+  if [ -z "${_C_REF:-$_L_REF}" ] && [ -z "$(_rev refs/crew/remote/board)" ]; then
+    if [ -n "$(_rev refs/crew/remote/branch)" ] || { [ -z "$(_rev refs/crew/legacy/ns/board)" ] && [ -n "$(_rev refs/crew/legacy/branch)" ]; }; then
+      git config crew.boardRef 'refs/heads/crew-board'; _load_cfg
+    fi
   fi
-  return 1
+  rn="$(_rev "$_RN")"; [ -n "$rn" ] || rn="$(_rev "$_REF")"     # nothing on the remote yet: a local board stands
+  lg="$(_legacy)"; lc="$(_rev "${lg%% *}")"
+  if [ -z "$lc" ]; then b="$rn"
+  elif [ -z "$rn" ] || git merge-base --is-ancestor "$rn" "$lc" 2>/dev/null; then b="$lc"
+  elif git merge-base --is-ancestor "$lc" "$rn" 2>/dev/null; then b="$rn"
+  else b="$(_join "$rn" "$lc")" || { b="$rn"; _JOIN_ERR=1
+    printf 'the 2.x board could not be joined in — its entries are not shown; run /crew-board sync again\n' > "$(_git_dir)/crew-board-lasterror"; }
+  fi
+  [ -n "$b" ] || return 4
+  git update-ref "$_REF" "$b"
 }
-
 _cat(){ git cat-file -p "$(_ref):$1" 2>/dev/null; }
 _item_paths(){ git ls-tree --name-only "$(_ref)" items/ 2>/dev/null; }
 
@@ -278,11 +282,24 @@ _tree_with(){ # _tree_with <path> <blob>  [<path2> <blob2> ...] -> tree sha, bas
 }
 
 _commit_push(){ # _commit_push <tree> <message> -> 0 pushed · 2 rejected (retry) · 3 unshared (offline/denied)
-  local tree="$1" msg="$2" sha
+  local tree="$1" msg="$2" sha lg err rc
   if _have_board; then sha="$(git commit-tree "$tree" -p "$(_ref)" -m "$msg")"
   else                 sha="$(git commit-tree "$tree" -m "$msg")"; fi
   [ -n "$sha" ] || return 1
-  local err; err="$(_gitnet push --quiet "$(_remote)" "$sha:$(_ref)" 2>&1)"; local rc=$?
+  lg="$(_legacy)"
+  if [ -n "$lg" ]; then
+    # Both refs in one atomic push: the 2.x ref is still the team's lock (see _join's header).
+    err="$(LC_ALL=C _gitnet push --atomic --quiet "$(_remote)" "$sha:$(_ref)" "$sha:${lg#* }" 2>&1)"; rc=$?
+    case "$err" in *atomic*support*|*support*atomic*)
+      # A server without atomic push: the 2.x ref first, since it is the lock; the crew ref follows it and a
+      # failure there heals on the next write, which is built on whichever ref is ahead.
+      err="$(LC_ALL=C _gitnet push --quiet "$(_remote)" "$sha:${lg#* }" 2>&1)"; rc=$?
+      [ $rc -eq 0 ] && _gitnet push --quiet "$(_remote)" "$sha:$(_ref)" >/dev/null 2>&1 ;;
+    esac
+    [ $rc -eq 0 ] && git update-ref "${lg%% *}" "$sha"
+  else
+    err="$(LC_ALL=C _gitnet push --quiet "$(_remote)" "$sha:$(_ref)" 2>&1)"; rc=$?
+  fi
   if [ $rc -eq 0 ]; then
     git update-ref "$(_ref)" "$sha"
     return 0
@@ -658,7 +675,11 @@ Claim before you start: /crew-board claim <id>. Commits are gated on a live clai
   printf '%s\n' "$out"
 }
 
-cmd_sync(){ _fetch && rm -f "$(_git_dir)/crew-board-lasterror" || echo "board: remote unreachable — showing the last known state"; cmd_cache; }
+cmd_sync(){
+  _JOIN_ERR=""
+  if _fetch; then [ -n "$_JOIN_ERR" ] || rm -f "$(_git_dir)/crew-board-lasterror"
+  else echo "board: remote unreachable — showing the last known state"; fi
+  cmd_cache; }
 
 # ---------------------------------------------------------------- decisions
 #
@@ -831,8 +852,11 @@ cmd_init(){ # init [--remote <name|url>] [all|referenced]
     echo "local board created at $(_ref)"
     return 0
   fi
-  _fetch && { echo "board already exists on the remote; fetched it"; cmd_cache >/dev/null; return 0; }
-  cmd_probe
+  local frc; _fetch; frc=$?
+  [ "$frc" = 0 ] && { echo "board already exists on the remote; fetched it"; cmd_cache >/dev/null; return 0; }
+  # Probe only a server that answered. An unreachable one refuses the probe push too, and recording that as
+  # "custom refs refused" pinned this clone to the branch form for good — away from where its team's board lives.
+  [ "$frc" = 4 ] && cmd_probe
   local blob tree
   blob="$(printf 'require_item: %s\nstale_hours: 8\n' "${1:-all}" | _blob)"
   tree="$(_tree_with config "$blob")" || _die "could not build the board tree"

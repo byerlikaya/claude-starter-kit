@@ -6,8 +6,9 @@
 # renamed with no fallback. The old names go in 4.0.
 #
 # Builtins only (a loop of `eval`s): sourcing this costs no process, which matters in hooks on Git Bash.
-for _crew_v in LANG NO_STAR NO_UPDATE_CHECK NO_BOARD GATE_LOG GATE_LOG_CMD STUDIO_TOKEN STUDIO_PEERS STUDIO_RUNTIME \
-               MAX_FILE_BYTES ALLOW_SOURCE_INSTALL; do
+# Kept after this file runs: the updater and doctor read it to say which set 2.x names still work.
+_crew_legacy=" LANG NO_STAR NO_UPDATE_CHECK NO_BOARD GATE_LOG GATE_LOG_CMD STUDIO_TOKEN STUDIO_PEERS STUDIO_RUNTIME MAX_FILE_BYTES ALLOW_SOURCE_INSTALL "
+for _crew_v in $_crew_legacy; do
   eval "if [ -z \"\${CREW_$_crew_v+x}\" ] && [ -n \"\${CSK_$_crew_v+x}\" ]; then CREW_$_crew_v=\"\$CSK_$_crew_v\"; export CREW_$_crew_v; fi"
 done
 unset _crew_v

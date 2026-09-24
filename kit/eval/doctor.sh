@@ -306,7 +306,12 @@ if [ -d .claude/studio ] && ! bash "$PREFLIGHT" --has node 2>/dev/null; then
 fi
 # A 2.x variable name still works until 4.0 (lib/crew-env.sh reads it); name its 3.0 spelling so the user can switch.
 for _v in $(compgen -e); do
-  case "$_v" in CSK_CORRECT_STACK) ;; CSK_*) warn "$_v is set — its 3.0 name is CREW_${_v#CSK_} (the old name works until 4.0)" ;; esac
+  case "$_v" in CSK_CORRECT_STACK) ;; CSK_*)
+    case "${_crew_legacy:-}" in
+      *" ${_v#CSK_} "*) warn "$_v is set — its 3.0 name is CREW_${_v#CSK_} (the old name works until 4.0)" ;;
+      *)                warn "$_v is set but no longer read — set CREW_${_v#CSK_} instead" ;;
+    esac ;;
+  esac
 done
 if [ "$FAIL" -eq 0 ]; then echo "DOCTOR: healthy ✅$PANEL_NOTE"
   # Healthy verdict: the star line, once per kit version — the marker is shared with the installers, so the

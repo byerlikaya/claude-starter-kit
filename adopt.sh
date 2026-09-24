@@ -108,9 +108,10 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "3.0 rename: both the old and the new name exist for:%s — nothing moved; keep one") s='3.0 ad değişikliği: eski ve yeni ad ikisi de var:%s — hiçbir şey taşınmadı; birini tutun' ;;
       "3.0 ref-sweep: old kit names → crew- names in %s") s='3.0 referans taraması: %s içindeki eski kit adları crew- adlarına çevrildi' ;;
       "3.0 board: moved to the crew names in this clone:%s") s='3.0 pano: bu klonda crew adlarına taşındı:%s' ;;
-      "3.0 board: the remote's 2.x board ref is left as it is — 2.x teammates keep working on it and 3.x reads it; ask the team to update") s="3.0 pano: uzaktaki 2.x pano ref'ine dokunulmadı — 2.x kullanan ekip arkadaşları orada çalışmaya devam eder, 3.x onu okur; ekipten de güncellemesini isteyin" ;;
+      "3.0 board: the remote's 2.x board ref is not deleted — while it exists, 3.x writes both, so 2.x teammates still see your claims; ask the team to update, then delete the old ref") s="3.0 pano: uzaktaki 2.x pano ref'i silinmedi — o durdukça 3.x ikisine birden yazar, 2.x kullanan ekip arkadaşları sahiplenmelerinizi görmeye devam eder; ekipten de güncellemesini isteyin, sonra eski ref'i silin" ;;
       "3.0 auto-mode: the kit rules in %s are renamed CSK … → Crewforth … (backup: %s)") s='3.0 auto-mode: %s içindeki kit kuralları CSK … → Crewforth … olarak yeniden adlandırıldı (yedek: %s)' ;;
       "%s is set — its 3.0 name is %s (the old name works until 4.0)") s="%s ayarlı — 3.0'daki adı %s (eski ad 4.0'a kadar çalışır)" ;;
+      "%s is set but no longer read — set %s instead") s='%s ayarlı ama artık okunmuyor — yerine %s ayarlayın' ;;
       "stack=%s %s") s='stack=%s %s' ;;
       "stack=%s · via %s") s='stack=%s · kuran: %s' ;;
       "stack=dotnet — 3.0 records generic; the pattern skill stays as a project skill") s="stack=dotnet — 3.0 generic kaydeder; desen skill'i proje skill'i olarak kalır" ;;
@@ -860,8 +861,8 @@ if [ "$KIT_PRESENT" = 1 ]; then
   [ -n "$LEGACY_BOTH" ] && warnm '3.0 rename: both the old and the new name exist for:%s — nothing moved; keep one' "$LEGACY_BOTH"
 fi
 # THE 3.0 BOARD NAMES, in THIS clone only: the board ref, its local settings, its caches, and a `csk-board` remote
-# move to the crew names. The remote's 2.x ref is never touched — a 2.x teammate keeps writing it, and board.sh
-# reads it and folds it into the crew ref for the whole 3.x line — so the user is told the team should update too.
+# move to the crew names. The remote's 2.x ref is never deleted: while it exists board.sh writes both refs in one
+# atomic push, so a 2.x teammate still sees every claim — and the user is told the team should update too.
 if [ "$KIT_PRESENT" = 1 ] && _BGD="$(git rev-parse --git-common-dir 2>/dev/null)" && [ -n "$_BGD" ]; then
   _BMV=""; _BHEAD="$(git symbolic-ref -q HEAD 2>/dev/null || true)"
   for _bp in "refs/csk/board refs/crew/board" "refs/heads/csk-board refs/heads/crew-board"; do
@@ -871,12 +872,17 @@ if [ "$KIT_PRESENT" = 1 ] && _BGD="$(git rev-parse --git-common-dir 2>/dev/null)
     git rev-parse -q --verify "$_bn" >/dev/null 2>&1 && continue          # both: board.sh folds the old one in
     git update-ref "$_bn" "$_bs" && git update-ref -d "$_bo" "$_bs" && _BMV="$_BMV $_bn"
   done
-  if git remote get-url csk-board >/dev/null 2>&1 && ! git remote get-url crew-board >/dev/null 2>&1; then
-    git remote rename csk-board crew-board 2>/dev/null && _BMV="$_BMV remote:crew-board"
+  # A board remote made by `init --remote <url>` is ADDED under the crew name, never renamed: a global
+  # csk.boardRemote=csk-board (outside this clone, not moved here) must keep finding its remote. And a remote that
+  # is already called crew-board is someone else's — then the setting keeps pointing at csk-board.
+  _BRM=0
+  if _bu="$(git remote get-url csk-board 2>/dev/null)"; then
+    if ! git remote get-url crew-board >/dev/null 2>&1; then git remote add crew-board "$_bu" 2>/dev/null && { _BRM=1; _BMV="$_BMV remote:crew-board"; }
+    elif [ "$(git remote get-url crew-board 2>/dev/null)" = "$_bu" ]; then _BRM=1; fi
   fi
   for _bk in board boardRef boardRemote; do
     _bv="$(git config --local --get "csk.$_bk" 2>/dev/null)" || continue
-    case "$_bv" in refs/csk/board) _bv=refs/crew/board ;; refs/heads/csk-board) _bv=refs/heads/crew-board ;; csk-board) _bv=crew-board ;; esac
+    case "$_bv" in refs/csk/board) _bv=refs/crew/board ;; refs/heads/csk-board) _bv=refs/heads/crew-board ;; csk-board) [ "$_BRM" = 1 ] && _bv=crew-board ;; esac
     git config --local --get "crew.$_bk" >/dev/null 2>&1 || git config --local "crew.$_bk" "$_bv"
     git config --local --unset "csk.$_bk" 2>/dev/null; _BMV="$_BMV crew.$_bk"
   done
@@ -887,7 +893,7 @@ if [ "$KIT_PRESENT" = 1 ] && _BGD="$(git rev-parse --git-common-dir 2>/dev/null)
   done
   if [ -n "$_BMV" ]; then
     say '3.0 board: moved to the crew names in this clone:%s' "$_BMV"
-    warnm "3.0 board: the remote's 2.x board ref is left as it is — 2.x teammates keep working on it and 3.x reads it; ask the team to update"
+    warnm "3.0 board: the remote's 2.x board ref is not deleted — while it exists, 3.x writes both, so 2.x teammates still see your claims; ask the team to update, then delete the old ref"
   fi
 fi
 # THE 3.0 AUTO-MODE RULE NAMES: a policy applied by 2.x named its rules "CSK …" in the USER's settings. They become
@@ -1572,7 +1578,12 @@ printf '     %s%s%s\n' "$D" "$_M" "$R"
 # A 2.x variable name still works until 4.0 (eval/lib/crew-env.sh reads it); say its 3.0 name once, here, so the
 # user can switch. compgen is a builtin — the list of set names costs no process.
 for _v in $(compgen -e); do
-  case "$_v" in CSK_CORRECT_STACK) ;; CSK_*) warnm '%s is set — its 3.0 name is %s (the old name works until 4.0)' "$_v" "CREW_${_v#CSK_}" ;; esac
+  case "$_v" in CSK_CORRECT_STACK) ;; CSK_*)
+    case "${_crew_legacy:-}" in
+      *" ${_v#CSK_} "*) warnm '%s is set — its 3.0 name is %s (the old name works until 4.0)' "$_v" "CREW_${_v#CSK_}" ;;
+      *)                warnm '%s is set but no longer read — set %s instead' "$_v" "CREW_${_v#CSK_}" ;;
+    esac ;;
+  esac
 done
 # The star line, once per kit version: a first adopt, or the first update to a new version. lib/star.sh keeps
 # the marker (shared with doctor.sh) and owns the text, URL and the CREW_NO_STAR / CI silence.
