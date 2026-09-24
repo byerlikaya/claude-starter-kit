@@ -14,12 +14,15 @@
 # would otherwise commit it, and one person's "seen" would silence the line for the whole team. Outside a git
 # repository it falls back to <project>/.claude/star-shown.
 #
-# Quiet when CSK_NO_STAR is set to anything but 0, or when CI is defined at all: an unattended run has nobody to
+# Quiet when CREW_NO_STAR is set to anything but 0, or when CI is defined at all: an unattended run has nobody to
 # read it. A silenced run writes NO marker, so the line is still owed to whoever runs it by hand later.
 set -u
-CSK_REPO_URL="https://github.com/byerlikaya/claude-starter-kit"
+# Pre-3.0 CSK_* names still work for the variables a user can set (one helper: eval/lib/crew-env.sh).
+_crew_d="${BASH_SOURCE%/*}"; [ "$_crew_d" = "${BASH_SOURCE}" ] && _crew_d=.
+[ -f "$_crew_d/./crew-env.sh" ] && . "$_crew_d/./crew-env.sh"; unset _crew_d
+CREW_REPO_URL="https://github.com/byerlikaya/claude-starter-kit"
 
-case "${CSK_NO_STAR:-}" in ''|0) ;; *) exit 0 ;; esac
+case "${CREW_NO_STAR:-}" in ''|0) ;; *) exit 0 ;; esac
 [ -n "${CI+set}" ] && exit 0
 
 MARK=""; VER=""
@@ -40,18 +43,18 @@ if [ "${1:-}" = --once ]; then
 fi
 
 # ---- CSK-I18N ------------------------------------------------------------------------------------------
-# Same contract as preflight.sh: the installer exports CSK_LANG; run on its own (doctor), the locale decides.
-case "${CSK_LANG:-}" in tr|en) ;; *)
+# Same contract as preflight.sh: the installer exports CREW_LANG; run on its own (doctor), the locale decides.
+case "${CREW_LANG:-}" in tr|en) ;; *)
   _loc="${LC_ALL:-}"; [ -n "$_loc" ] || _loc="${LC_MESSAGES:-}"; [ -n "$_loc" ] || _loc="${LANG:-}"
-  case "$_loc" in tr*|TR*) CSK_LANG=tr ;; *) CSK_LANG=en ;; esac ;;
+  case "$_loc" in tr*|TR*) CREW_LANG=tr ;; *) CREW_LANG=en ;; esac ;;
 esac
 _mt() {
   [ -n "${1:-}" ] || { _M=""; return 0; }
   local s="$1"; shift
-  if [ "$CSK_LANG" = tr ]; then
+  if [ "$CREW_LANG" = tr ]; then
     case "$s" in
       "⭐ If Crewforth saves you a review round, a star helps others find it: %s") s='⭐ Crewforth bir inceleme turunu kurtardıysa, bir yıldız başkalarının da bulmasına yardım eder: %s' ;;
-      *) [ -n "${CSK_I18N_MISS:-}" ] && printf '%s\n' "$s" >> "$CSK_I18N_MISS" ;;
+      *) [ -n "${CREW_I18N_MISS:-}" ] && printf '%s\n' "$s" >> "$CREW_I18N_MISS" ;;
     esac
   fi
   # shellcheck disable=SC2059
@@ -59,7 +62,7 @@ _mt() {
 }
 # ---- /CSK-I18N -----------------------------------------------------------------------------------------
 
-_mt '⭐ If Crewforth saves you a review round, a star helps others find it: %s' "$CSK_REPO_URL"
+_mt '⭐ If Crewforth saves you a review round, a star helps others find it: %s' "$CREW_REPO_URL"
 # The marker only after the line actually went out: a closed stdout must not record "shown".
 if printf '%s\n' "$_M" && [ -n "$MARK" ]; then
   { printf '%s\n' "$VER" > "$MARK"; } 2>/dev/null

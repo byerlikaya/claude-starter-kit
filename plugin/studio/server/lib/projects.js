@@ -26,7 +26,7 @@ import path from 'node:path';
 
 // Overridable so a second instance can be pointed at a different transcript
 // store — which is also the only way to exercise the peer relay on one machine.
-export const PROJECTS_ROOT = process.env.CSK_STUDIO_PROJECTS_ROOT
+export const PROJECTS_ROOT = process.env.CREW_STUDIO_PROJECTS_ROOT
   || path.join(os.homedir(), '.claude', 'projects');
 
 /** Fold a working directory into the directory name Claude Code uses. */

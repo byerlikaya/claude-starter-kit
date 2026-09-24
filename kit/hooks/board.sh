@@ -26,6 +26,9 @@
 #   No jq (Windows Git Bash has none). No `date -d` / `date -j` (GNU and BSD disagree) — timestamps are stored
 #   as BOTH an ISO string for humans and an epoch integer for arithmetic, so nothing ever has to be re-parsed.
 set -uo pipefail
+# Pre-3.0 CSK_* names still work for the variables a user can set (one helper: eval/lib/crew-env.sh).
+_crew_d="${BASH_SOURCE%/*}"; [ "$_crew_d" = "${BASH_SOURCE}" ] && _crew_d=.
+[ -f "$_crew_d/../eval/lib/crew-env.sh" ] && . "$_crew_d/../eval/lib/crew-env.sh"; unset _crew_d
 
 # ---------------------------------------------------------------- repo primitives
 
@@ -52,7 +55,7 @@ _remote(){ git config --get csk.boardRemote 2>/dev/null || echo 'origin'; }
 # Bounding these is safe precisely because failure is ALREADY the graceful path: a non-zero _fetch means
 # "remote unreachable — showing the last known state", and a non-zero _commit_push means "kept locally, the
 # team cannot see it yet". So this converts a hang into a sentence the user can act on, and never into data
-# loss. CSK_NET_TIMEOUT overrides the bound for a slow link.
+# loss. CREW_NET_TIMEOUT overrides the bound for a slow link.
 # `timeout` is coreutils and macOS does not ship it; Homebrew's coreutils installs it as `gtimeout`. Looking for
 # both is not the same as ASSUMING one — an assumed binary would fail silently, a searched one either bounds the
 # call or is honestly absent. When neither exists the prompt suppression above still applies and the call is
@@ -62,7 +65,7 @@ _remote(){ git config --get csk.boardRemote 2>/dev/null || echo 'origin'; }
 _TMO="$(command -v timeout 2>/dev/null || command -v gtimeout 2>/dev/null || true)"
 _gitnet(){
   if [ -n "$_TMO" ]; then
-    GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never "$_TMO" "${CSK_NET_TIMEOUT:-15}" git "$@"
+    GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never "$_TMO" "${CREW_NET_TIMEOUT:-15}" git "$@"
   else
     GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never git "$@"
   fi
@@ -83,11 +86,11 @@ _have_board(){ git rev-parse --verify -q "$(_ref)" >/dev/null 2>&1; }
 # in a repo that HAS one: someone working alone on a shared repo for an afternoon, or a team pausing it.
 #   git config csk.board off            this clone
 #   git config --global csk.board off   every repo you touch
-#   CSK_NO_BOARD=1                      this session only
+#   CREW_NO_BOARD=1                      this session only
 # Honoured by every entry point, including the commit gate — a switch that turns off two of three gates is a
 # trap, not a switch.
 _enabled(){
-  [ -n "${CSK_NO_BOARD:-}" ] && return 1
+  [ -n "${CREW_NO_BOARD:-}" ] && return 1
   case "$(git config --get csk.board 2>/dev/null)" in off|false|0|no) return 1 ;; esac
   return 0
 }
@@ -660,7 +663,7 @@ cmd_on(){
   esac
   cmd_cache >/dev/null
   _enabled && echo "Board ON. Claim before you start: /board-crew" \
-           || echo "Still off — CSK_NO_BOARD is set in this session's environment; unset it."
+           || echo "Still off — CREW_NO_BOARD is set in this session's environment; unset it."
 }
 
 cmd_beat(){

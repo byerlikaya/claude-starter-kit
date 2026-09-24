@@ -51,7 +51,7 @@ Skipping one of these is how a component ships half-installed:
 bash .claude/eval/scan-skill.sh .claude/skills/<name>    # supply-chain: SAFE, and rc=3 means NOT scanned
 bash .claude/eval/routing-eval.sh                        # the golden case, positive and negative
 bash .claude/eval/smoke-test.sh                          # structure, budget, §3b routed, cross-links
-CSK_NO_STAR=1 bash .claude/eval/doctor.sh               # the live install still healthy (star line off here)
+CREW_NO_STAR=1 bash .claude/eval/doctor.sh               # the live install still healthy (star line off here)
 ```
 
 In the plugin edition none of the four commands above exist — it ships no `eval/` at all — so there the proof is

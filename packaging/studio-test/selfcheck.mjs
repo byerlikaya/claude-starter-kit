@@ -59,14 +59,14 @@ function check(name, ok, detail) {
  * A check that could not run, said out loud.
  *
  * `tool` means the machine is missing something the check needs. Under
- * CSK_VERIFY_STRICT — which CI sets — that is a broken runner, not an honest
+ * CREW_VERIFY_STRICT — which CI sets — that is a broken runner, not an honest
  * boundary, so it goes red. Every other class stays a skip.
  */
 /**
  * An assertion that does not apply on this platform, and is measured on another.
  *
  * Distinct from skip() on purpose. `tool` skips mean "this could have been
- * measured and was not", so CSK_VERIFY_STRICT turns them red — a runner missing
+ * measured and was not", so CREW_VERIFY_STRICT turns them red — a runner missing
  * a tool is a broken runner. A capability the platform does not have is a
  * different statement: it stays green here because it is red-or-green somewhere
  * else, and saying so is the only way the strict rule keeps its meaning.
@@ -80,7 +80,7 @@ function notApplicable(name, why, coveredBy) {
 }
 
 function skip(name, kind, why) {
-  const strict = process.env.CSK_VERIFY_STRICT === '1' && kind === 'tool';
+  const strict = process.env.CREW_VERIFY_STRICT === '1' && kind === 'tool';
   if (strict) {
     fail += 1;
     failures.push(`${name} — required ${kind} missing: ${why}`);
@@ -402,7 +402,7 @@ check('a request with no Origin at all still needs the header',
   writeAllowed(req({ 'x-crew-studio': '1' })).ok === true &&
   writeAllowed(req({ origin: 'http://127.0.0.1:7777' })).ok === false);
 check('a token always exists, generated when none was supplied',
-  /CSK_STUDIO_TOKEN \|\| randomUUID\(\)/.test(idxSrc));
+  /CREW_STUDIO_TOKEN \|\| randomUUID\(\)/.test(idxSrc));
 check('the token gate covers every /api/ path',
   /url\.pathname\.startsWith\('\/api\/'\) && !authorised/.test(idxSrc));
 
@@ -465,7 +465,7 @@ if (gate) {
     try {
       execFileSync('bash', [HOOK, gate.spool], {
         input: payload,
-        env: { ...process.env, CSK_GATE_WAIT: '1', ...env },
+        env: { ...process.env, CREW_GATE_WAIT: '1', ...env },
         stdio: ['pipe', 'pipe', 'pipe'],
       });
       return 0;
@@ -2018,8 +2018,8 @@ process.stdout.write('\n== §28 the instance record — finding a panel that is 
 
 {
   const rtDir = fs.mkdtempSync(path.join(os.tmpdir(), 'csk-inst-'));
-  const prevRt = process.env.CSK_STUDIO_RUNTIME;
-  process.env.CSK_STUDIO_RUNTIME = rtDir;
+  const prevRt = process.env.CREW_STUDIO_RUNTIME;
+  process.env.CREW_STUDIO_RUNTIME = rtDir;
   const inst = await import('../../kit/studio/server/lib/instance.js');
 
   check('the record lives under the runtime directory the env var names',
@@ -2092,8 +2092,8 @@ process.stdout.write('\n== §28 the instance record — finding a panel that is 
   check('clearState removes the record', !fs.existsSync(inst.statePath(deadPort)));
 
   fs.rmSync(rtDir, { recursive: true, force: true });
-  if (prevRt === undefined) delete process.env.CSK_STUDIO_RUNTIME;
-  else process.env.CSK_STUDIO_RUNTIME = prevRt;
+  if (prevRt === undefined) delete process.env.CREW_STUDIO_RUNTIME;
+  else process.env.CREW_STUDIO_RUNTIME = prevRt;
 }
 
 process.stdout.write('\n');

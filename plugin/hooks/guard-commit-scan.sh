@@ -296,9 +296,9 @@ _json_keycount(){  # $1 = payload, $2 = key -> sets _KC to how many times it occ
 # The one tokenizer: shell quoting rules (the subset shlex.split applies), then every value of the named option.
 # $1 = command, $2 = short flag, $3 = long flag, $4 = 1 to stop at the first value.
 csk_opt_values() {
-  CSK_CMD="$1" CSK_S="$2" CSK_L="$3" CSK_FIRST="${4:-0}" LC_ALL=C awk '
+  CREW_CMD="$1" CREW_S="$2" CREW_L="$3" CREW_FIRST="${4:-0}" LC_ALL=C awk '
     BEGIN {
-      s = ENVIRON["CSK_CMD"]; n = length(s); i = 1
+      s = ENVIRON["CREW_CMD"]; n = length(s); i = 1
       ntok = 0; cur = ""; have = 0
       while (i <= n) {
         c = substr(s, i, 1)
@@ -339,7 +339,7 @@ csk_opt_values() {
       }
       if (have) { ntok++; tok[ntok] = cur }
 
-      S = ENVIRON["CSK_S"]; L = ENVIRON["CSK_L"]; first = ENVIRON["CSK_FIRST"] == "1"; LE = L "="
+      S = ENVIRON["CREW_S"]; L = ENVIRON["CREW_L"]; first = ENVIRON["CREW_FIRST"] == "1"; LE = L "="
       out = ""; nout = 0
       for (k = 1; k <= ntok; k++) {
         t = tok[k]
@@ -419,7 +419,7 @@ printf '%s' "$CMD" | grep -qE '(^|[[:space:]])(--all|-[A-Za-z]*a[A-Za-z]*)([[:sp
 FAILED=0
 OUT=""
 if [ -x "$DIR/pre-commit" ]; then
-  OUT="$(CSK_SCAN_UNSTAGED="$UNSTAGED" bash "$DIR/pre-commit" 2>&1)" || FAILED=1
+  OUT="$(CREW_SCAN_UNSTAGED="$UNSTAGED" bash "$DIR/pre-commit" 2>&1)" || FAILED=1
 fi
 
 # The message carries its own trace risk (a co-author trailer lives there, not in the diff), and commit-msg is

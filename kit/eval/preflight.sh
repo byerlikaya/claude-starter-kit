@@ -16,6 +16,9 @@
 #   bash preflight.sh            # human-readable report, always exit 0
 #   bash preflight.sh --quiet    # print only what is missing; exit 1 if any REQUIRED tool is absent
 set -uo pipefail
+# Pre-3.0 CSK_* names still work for the variables a user can set (one helper: eval/lib/crew-env.sh).
+_crew_d="${BASH_SOURCE%/*}"; [ "$_crew_d" = "${BASH_SOURCE}" ] && _crew_d=.
+[ -f "$_crew_d/lib/crew-env.sh" ] && . "$_crew_d/lib/crew-env.sh"; unset _crew_d
 
 QUIET=0
 case "${1:-}" in --quiet|-q) QUIET=1 ;; esac
@@ -86,9 +89,9 @@ any_of(){
 # This script prints during the install, so it speaks the installer's language. Same contract as start.sh:
 # the English string is the key, a missing translation prints English, and TOOL NAMES ARE NEVER TRANSLATED —
 # `bash`, `git`, `jq`, `node` are identifiers, not words. Only the prose around them is.
-case "${CSK_LANG:-}" in tr|en) ;; *)
+case "${CREW_LANG:-}" in tr|en) ;; *)
   _loc="${LC_ALL:-}"; [ -n "$_loc" ] || _loc="${LC_MESSAGES:-}"; [ -n "$_loc" ] || _loc="${LANG:-}"
-  case "$_loc" in tr*|TR*) CSK_LANG=tr ;; *) CSK_LANG=en ;; esac ;;
+  case "$_loc" in tr*|TR*) CREW_LANG=tr ;; *) CREW_LANG=en ;; esac ;;
 esac
 # `_mt` writes into _M with printf -v: a `$(m …)` call site is a fork, ~50 ms each on Git Bash.
 m() { _mt "$@"; printf '%s' "$_M"; }
@@ -96,7 +99,7 @@ _mt() {
   # An empty key must still ASSIGN: bash 3.2's `printf -v _M ""` leaves _M holding the previous translation.
   [ -n "${1:-}" ] || { _M=""; return 0; }
   local s="$1"; shift
-  if [ "$CSK_LANG" = tr ]; then
+  if [ "$CREW_LANG" = tr ]; then
     case "$s" in
       "Preflight — what this machine has") s='Ön kontrol — bu makinede neler var' ;;
       "Missing REQUIRED:") s='Eksik ZORUNLU araçlar:' ;;
@@ -122,9 +125,9 @@ _mt() {
       "git") ;;   # identifier, printed as is
       "nodejs.org · Windows: winget install OpenJS.NodeJS.LTS · macOS: brew install node · Linux: apt install nodejs") ;;   # identifier, printed as is
       "git-scm.com · macOS: xcode-select --install · Linux: apt install git") ;;   # identifier, printed as is
-      # No row: the line prints in English. CSK_I18N_MISS (set by e2e case 18) collects every such key, so a
+      # No row: the line prints in English. CREW_I18N_MISS (set by e2e case 18) collects every such key, so a
       # missing translation is caught by NAME rather than guessed from which English words it happens to contain.
-      *) [ -n "${CSK_I18N_MISS:-}" ] && printf '%s\n' "$s" >> "$CSK_I18N_MISS" ;;
+      *) [ -n "${CREW_I18N_MISS:-}" ] && printf '%s\n' "$s" >> "$CREW_I18N_MISS" ;;
     esac
   fi
   # shellcheck disable=SC2059

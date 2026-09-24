@@ -8,6 +8,7 @@
 // Zero dependencies, by design: the kit ships no npm packages and this stays
 // inside that promise. `node server/index.js` is the whole install step.
 
+import './lib/crew-env.js';   // first: resolves the pre-3.0 CSK_* names before anything reads CREW_*
 import http from 'node:http';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
@@ -99,8 +100,8 @@ function sendJson(res, status, value) {
 // in the user's browser can POST to loopback. One is generated when none is
 // supplied and printed with the URL, so the default is safe rather than
 // convenient-and-open.
-const TOKEN = process.env.CSK_STUDIO_TOKEN || randomUUID();
-const TOKEN_GENERATED = !process.env.CSK_STUDIO_TOKEN;
+const TOKEN = process.env.CREW_STUDIO_TOKEN || randomUUID();
+const TOKEN_GENERATED = !process.env.CREW_STUDIO_TOKEN;
 
 // Peers are other machines running Studio, reached over a forwarded port. This
 // server still listens on loopback only; a peer never widens that.
@@ -772,7 +773,7 @@ async function main() {
         '  --name <s>   label for this machine (default: hostname)\n' +
         '  --selftest   run offline checks and exit\n' +
         '  --help       this text\n\n' +
-        'Set CSK_STUDIO_TOKEN to require a bearer token, CSK_STUDIO_PEERS for a\n' +
+        'Set CREW_STUDIO_TOKEN to require a bearer token, CREW_STUDIO_PEERS for a\n' +
         'comma-separated peer list.\n\n' +
         'Peers are normally reached over a forwarded port, which keeps every\n' +
         'Studio on loopback:\n' +
@@ -816,7 +817,7 @@ async function main() {
 
   PEERS = parsePeers([
     ...args.peers,
-    ...(process.env.CSK_STUDIO_PEERS ?? '').split(',').map((x) => x.trim()).filter(Boolean),
+    ...(process.env.CREW_STUDIO_PEERS ?? '').split(',').map((x) => x.trim()).filter(Boolean),
   ]);
   SELF_NAME = args.name || os.hostname().replace(/\.local$/, '');
 
@@ -831,7 +832,7 @@ async function main() {
     }
     process.stdout.write(TOKEN_GENERATED
       ? '            (loopback only; token generated for this run)\n'
-      : '            (loopback only; token from CSK_STUDIO_TOKEN)\n');
+      : '            (loopback only; token from CREW_STUDIO_TOKEN)\n');
 
     // Recorded only after listen() succeeds, so the file never claims a port this process did not get. Failure
     // to write is not fatal: the panel works, the next session simply cannot find it, which is where we started.

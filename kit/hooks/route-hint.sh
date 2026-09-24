@@ -72,9 +72,9 @@ fi
 # 0, and routing is simply gone while every test stays green because the tests choose the name too. So both are
 # accepted. The fallback costs nothing on the path that already worked — it only runs when the first name found
 # nothing. `prompt_id` cannot be mistaken for `prompt`: the pattern includes the closing quote.
-CSK_PROMPT="$(printf '%s' "$IN" | sed -n 's/.*"prompt"[[:space:]]*:[[:space:]]*"\(.*\)/\1/p' | sed 's/","[a-z_]*":.*$//' | head -c 4000)"
-[ -n "$CSK_PROMPT" ] || CSK_PROMPT="$(printf '%s' "$IN" | sed -n 's/.*"user_input"[[:space:]]*:[[:space:]]*"\(.*\)/\1/p' | sed 's/","[a-z_]*":.*$//' | head -c 4000)"
-[ -n "$CSK_PROMPT" ] || exit 0
+CREW_PROMPT="$(printf '%s' "$IN" | sed -n 's/.*"prompt"[[:space:]]*:[[:space:]]*"\(.*\)/\1/p' | sed 's/","[a-z_]*":.*$//' | head -c 4000)"
+[ -n "$CREW_PROMPT" ] || CREW_PROMPT="$(printf '%s' "$IN" | sed -n 's/.*"user_input"[[:space:]]*:[[:space:]]*"\(.*\)/\1/p' | sed 's/","[a-z_]*":.*$//' | head -c 4000)"
+[ -n "$CREW_PROMPT" ] || exit 0
 
 # NOT EVERY TURN CARRIES A REQUEST. A field session watched this hook inject "Use the <x> subagent for this task"
 # on turns where the user had typed nothing at all: a background subagent finished, its REPORT arrived as the
@@ -86,12 +86,12 @@ CSK_PROMPT="$(printf '%s' "$IN" | sed -n 's/.*"prompt"[[:space:]]*:[[:space:]]*"
 # depend on the answer: text that OPENS with a notification marker is not a user request under any reading, so
 # staying quiet is right either way. Anchored to the start deliberately -- a person may well write the words
 # "system notification" inside a genuine request, and only a notification BEGINS as one.
-case "$CSK_PROMPT" in
+case "$CREW_PROMPT" in
   '<task-notification'*|'<system-reminder'*|'<cross-session-message'*|'<local-command-stdout'*\
   |'[SYSTEM NOTIFICATION'*|'[Task '*|'Another Claude session sent a message'*)
     exit 0 ;;
 esac
-export CSK_PROMPT
+export CREW_PROMPT
 
 # Glob expansion is a shell builtin — no forks. Agents FIRST, then skills: awk reads its arguments in order and
 # the tie-break below is first-wins, so the order is part of the contract, not incidental.
@@ -121,7 +121,7 @@ function norm(s) {
   sub(/^ +/,"",s); sub(/ +$/,"",s)
   return s
 }
-BEGIN { np = " " norm(ENVIRON["CSK_PROMPT"]) " "; bestA=0; bestS=0; nameA=""; nameS="" }
+BEGIN { np = " " norm(ENVIRON["CREW_PROMPT"]) " "; bestA=0; bestS=0; nameA=""; nameS="" }
 seen[FILENAME] { next }                                    # one Trigger-phrases line per component, the first
 {
   if (tolower($0) !~ /trigger phrases:/) next

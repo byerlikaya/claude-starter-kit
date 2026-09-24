@@ -32,13 +32,16 @@
 # this stops being an open question: it is a decision. Should the interaction ever be specified, revisit.
 #
 # The gate log gets one TSV line per logged decision (BLOCK/ASK/ALLOW, section, rule; the command only with
-# CSK_GATE_LOG_CMD=1). On by default since 2.5.0 (see _gatelog_path below); CSK_GATE_LOG=<path> redirects it.
+# CREW_GATE_LOG_CMD=1). On by default since 2.5.0 (see _gatelog_path below); CREW_GATE_LOG=<path> redirects it.
 # Write-only, it never influences a verdict. It exists because a gate that cannot be observed firing cannot be
 # measured: "the model never tried it" and "the gate stopped it" look the same. guard-write.sh logs there too.
 #
 # CLAUDE_GIT_OK=1, exported by the user before the session starts, pre-authorises the session. It exists for
 # headless/CI runs where no one is at the keyboard. It does NOT replace approval: present the message first.
 set -uo pipefail
+# Pre-3.0 CSK_* names still work for the variables a user can set (one helper: eval/lib/crew-env.sh).
+_crew_d="${BASH_SOURCE%/*}"; [ "$_crew_d" = "${BASH_SOURCE}" ] && _crew_d=.
+[ -f "$_crew_d/../eval/lib/crew-env.sh" ] && . "$_crew_d/../eval/lib/crew-env.sh"; unset _crew_d
 INPUT="$(cat)"
 
 # Extract the command + the permission mode: jq > python3 > pure-bash JSON slice.
@@ -450,15 +453,15 @@ fi
 # logs AFTER the verdict is settled.
 #
 # ON BY DEFAULT since 2.5.0, into .claude/gate-log.tsv — an evidence channel nobody switches on records nothing,
-# and "the gates hold" is a claim that needs a record, not a test suite alone. CSK_GATE_LOG overrides the path;
-# CSK_GATE_LOG=/dev/null (or a read-only .claude) turns it off. Only BLOCK, ASK and CLAUDE_GIT_OK's ALLOW reach
+# and "the gates hold" is a claim that needs a record, not a test suite alone. CREW_GATE_LOG overrides the path;
+# CREW_GATE_LOG=/dev/null (or a read-only .claude) turns it off. Only BLOCK, ASK and CLAUDE_GIT_OK's ALLOW reach
 # here: an ordinary command writes nothing, and a git action CLAUDE_GIT_OK allows writes one ALLOW line.
 #
 # The COMMAND TEXT IS NOT RECORDED by default. It is the one field that can carry a path, an argument or a
 # token, and `/gates-crew` never prints it — the report is rule names and counts. Recording it by default would
-# buy nothing and add a place for a secret to sit. `CSK_GATE_LOG_CMD=1` puts it back for debugging a false
+# buy nothing and add a place for a secret to sit. `CREW_GATE_LOG_CMD=1` puts it back for debugging a false
 # positive, which is the only thing it is good for.
-# Where the default log may go. An explicit CSK_GATE_LOG is the operator's call and is used as given. The
+# Where the default log may go. An explicit CREW_GATE_LOG is the operator's call and is used as given. The
 # DEFAULT path is only used when writing there cannot surprise anyone: outside a git repo, or inside one where
 # the path is already ignored. A kit install gitignores .claude/, so this is the normal case — but the plugin
 # edition drops into repos the installer never touched, and this repo proved the failure itself: the suite left
@@ -466,7 +469,7 @@ fi
 # runs only when a decision is logged (a block, an approval prompt or a CLAUDE_GIT_OK allow); ordinary commands
 # never reach it.
 _gatelog_path(){
-  if [ -n "${CSK_GATE_LOG:-}" ]; then printf '%s' "$CSK_GATE_LOG"; return; fi
+  if [ -n "${CREW_GATE_LOG:-}" ]; then printf '%s' "$CREW_GATE_LOG"; return; fi
   [ -d ".claude" ] || return 0
   if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     git check-ignore -q ".claude/gate-log.tsv" 2>/dev/null || return 0
@@ -482,7 +485,7 @@ gatelog(){  # $1 = verdict (BLOCK|ASK|ALLOW)  $2 = section  $3 = rule
   # then §4.4's ASK. On Windows a process is 62-135 ms.
   if [ "${_GL_MEMO_SET:-0}" != 1 ]; then _GL_MEMO="$(_gatelog_path)"; _GL_MEMO_SET=1; fi
   _GL="$_GL_MEMO"; [ -n "$_GL" ] || return 0
-  if [ "${CSK_GATE_LOG_CMD:-0}" = 1 ]; then
+  if [ "${CREW_GATE_LOG_CMD:-0}" = 1 ]; then
     printf '%s\t§%s\t%s\t%s\n' "$1" "$2" "$3" \
       "$(printf '%s' "$CMD" | tr -d '\000-\037' | cut -c1-200)" >> "$_GL" 2>/dev/null || true
   else

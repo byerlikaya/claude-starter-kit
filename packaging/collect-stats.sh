@@ -52,9 +52,9 @@ VERSION="$(cat VERSION 2>/dev/null || echo unknown)"
 # schedule, so a hung request is not a slow run — it is a lost week: the GitHub traffic API only keeps 14 days,
 # and a snapshot that never completes cannot be taken again later. The failure path already exists and is
 # graceful (an empty body becomes `null` in the row below), so bounding the wait turns a silent stall into a
-# recorded gap. Same reasoning and the same knob as board.sh's `_gitnet`: CSK_NET_TIMEOUT, read here rather
+# recorded gap. Same reasoning and the same knob as board.sh's `_gitnet`: CREW_NET_TIMEOUT, read here rather
 # than redefined, because one name for one thing is what keeps the two from drifting to different values.
-CURL_T="${CSK_NET_TIMEOUT:-15}"
+CURL_T="${CREW_NET_TIMEOUT:-15}"
 
 # gh_api <path> -> body on stdout, empty on failure (the caller decides whether that is fatal).
 gh_api() {

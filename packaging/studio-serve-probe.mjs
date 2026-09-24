@@ -95,13 +95,13 @@ await new Promise((r) => blackHole.listen(0, '127.0.0.1', r));
 const feedUrl = `http://127.0.0.1:${blackHole.address().port}/dist-tags`;
 
 const port = await freePort();
-// CSK_PROBE_CLI=<path to bin/cli.js>: start the panel the way `npx crewforth studio` does — through the npm entry,
+// CREW_PROBE_CLI=<path to bin/cli.js>: start the panel the way `npx crewforth studio` does — through the npm entry,
 // with the browser suppressed — so every check below also covers that door. <root> is then only the cwd.
-const viaCli = process.env.CSK_PROBE_CLI;
+const viaCli = process.env.CREW_PROBE_CLI;
 const argvFor = viaCli ? [path.resolve(viaCli), 'studio', '--no-open', '--port', String(port)] : [entry, '--port', String(port)];
 const child = spawn(process.execPath, argvFor, {
   cwd: root,
-  env: { ...process.env, CSK_STUDIO_TOKEN: TOKEN, CSK_UPDATE_URL: feedUrl },
+  env: { ...process.env, CREW_STUDIO_TOKEN: TOKEN, CREW_UPDATE_URL: feedUrl },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
 
@@ -165,7 +165,7 @@ check('projects are read from disk', projects.status === 200 && measured && Arra
 // The list is local data. It used to await the update feed, so a registry that accepts and never
 // answers cost the full 8 s fetch timeout on the first request — measured at 8.37 s. (The work began
 // from a report of a 12-second /api/projects; its reporter withdrew the feed as the cause after
-// re-measuring.) CSK_UPDATE_URL points at a socket that accepts and never answers, which is exactly
+// re-measuring.) CREW_UPDATE_URL points at a socket that accepts and never answers, which is exactly
 // that condition; an unreachable host would NOT reproduce it, because a refused connection returns at once.
 // One measurement, three outcomes — because two independent checks on the same numbers could
 // disagree with each other, and because the first version of this got the naming wrong in a way

@@ -5,6 +5,9 @@
 # set (so the commit trace/secret scan never runs), settings.json missing (so the tool-level gates never fire).
 # Zero-dep, bash-only, Git-Bash safe. Run from the project root (or pass the path):  bash .claude/eval/doctor.sh
 set -uo pipefail
+# Pre-3.0 CSK_* names still work for the variables a user can set (one helper: eval/lib/crew-env.sh).
+_crew_d="${BASH_SOURCE%/*}"; [ "$_crew_d" = "${BASH_SOURCE}" ] && _crew_d=.
+[ -f "$_crew_d/lib/crew-env.sh" ] && . "$_crew_d/lib/crew-env.sh"; unset _crew_d
 ROOT="${1:-.}"
 cd "$ROOT" 2>/dev/null || { echo "doctor: cannot enter '$ROOT'"; exit 2; }
 
@@ -61,11 +64,11 @@ done
 # 2b) Behaviour probe — a hook that is present + executable can still be NEUTERED (its body replaced with `exit 0`).
 #     Drive guard-bash with a command it MUST block; if it does not exit 2, the §4.5 gate is disarmed.
 if [ -x .claude/hooks/guard-bash.sh ]; then
-  # CSK_GATE_LOG=/dev/null: this probe drives the real gate, so without it every `/doctor-crew` writes a
+  # CREW_GATE_LOG=/dev/null: this probe drives the real gate, so without it every `/doctor-crew` writes a
   # synthetic "git push --force blocked" line into the evidence log — and the gate report would then be
   # counting the diagnostics instead of what the model reached for. A measurement tool that contaminates the
   # thing it measures is worse than none.
-  if printf '%s' '{"tool_name":"Bash","permission_mode":"auto","tool_input":{"command":"git push --force"}}' | CSK_GATE_LOG=/dev/null bash .claude/hooks/guard-bash.sh >/dev/null 2>&1; then
+  if printf '%s' '{"tool_name":"Bash","permission_mode":"auto","tool_input":{"command":"git push --force"}}' | CREW_GATE_LOG=/dev/null bash .claude/hooks/guard-bash.sh >/dev/null 2>&1; then
     bad "guard-bash.sh did NOT block a force-push — the §4.5 gate is neutered/disarmed" "restore guard-bash.sh from the kit"
   else ok "guard-bash.sh blocks a force-push (gate live, not neutered)"; fi
 
@@ -77,7 +80,7 @@ if [ -x .claude/hooks/guard-bash.sh ]; then
   #     disarmed gate answers "ask" and exits 0 instead of colliding with §4.4's fail-closed branch. Nothing
   #     runs: this is a PreToolUse payload, not a command.
   PROBE46="$(printf '%s' '{"tool_name":"Bash","permission_mode":"default","tool_input":{"command":"git -C /nonexistent-crew-probe commit -m probe"}}' \
-             | CSK_GATE_LOG=/dev/null bash .claude/hooks/guard-bash.sh 2>&1 >/dev/null)"
+             | CREW_GATE_LOG=/dev/null bash .claude/hooks/guard-bash.sh 2>&1 >/dev/null)"
   case "$PROBE46" in
     *"4.6"*) ok "guard-bash.sh enforces the §4.6 review gate (gate live, not neutered)" ;;
     *)       bad "guard-bash.sh did NOT enforce §4.6 — a commit can land with no review of its diff" \
@@ -216,7 +219,7 @@ if [ -f CLAUDE.md ] && ls .claude/agents/*.md >/dev/null 2>&1; then
   # ~250 process spawns. On Linux/macOS that is invisible; on Windows, where Git Bash pays 62-135 ms per spawn
   # instead of ~1.7ms, doctor stopped dead right here and looked hung to the user who ran it. Same disease the
   # route-hint hook had, same cure: let awk do the looping. Two spawns, whatever the component count.
-  CSK_AGENT_BASES="$(awk '
+  CREW_AGENT_BASES="$(awk '
     FNR==1 { files[++nf]=FILENAME }
     !got[FILENAME] && /^name:[[:space:]]*/ {
       n=$0; sub(/^name:[[:space:]]*/,"",n); gsub(/[^a-zA-Z0-9-]/,"",n)       # same charset tr -cd kept
@@ -229,7 +232,7 @@ if [ -f CLAUDE.md ] && ls .claude/agents/*.md >/dev/null 2>&1; then
         if (n ~ /-crew$/) { b=n; sub(/-crew$/,"",b); print b "\t" n }
       }
     }' .claude/agents/*.md)"
-  export CSK_AGENT_BASES
+  export CREW_AGENT_BASES
   STALE=""; STALE_PULL=""
   while IFS="$(printf '\t')" read -r base name f lines; do
     [ -n "$base" ] || continue
@@ -239,7 +242,7 @@ if [ -f CLAUDE.md ] && ls .claude/agents/*.md >/dev/null 2>&1; then
   done <<EOF
 $(awk '
   BEGIN {
-    n = split(ENVIRON["CSK_AGENT_BASES"], rows, "\n"); k=0
+    n = split(ENVIRON["CREW_AGENT_BASES"], rows, "\n"); k=0
     for (i=1;i<=n;i++) { if (rows[i]=="") continue; split(rows[i], a, "\t"); k++; base[k]=a[1]; full[k]=a[2] }
     nb=k
   }
@@ -426,7 +429,7 @@ else gap "no MCP server configured — the model has no project-specific tool ac
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1 && [ -f CLAUDE.md ]; then
   MT="$(stat -c %Y CLAUDE.md 2>/dev/null || stat -f %m CLAUDE.md 2>/dev/null)"
   MT="$(printf '%s' "${MT:-}" | tr -cd '0-9')"
-  MAXC="${CSK_FRESHNESS_MAX:-40}"
+  MAXC="${CREW_FRESHNESS_MAX:-40}"
   if [ -n "$MT" ]; then
     CH="$(git rev-list --count HEAD --since="@$MT" -- . ':(exclude).claude' 2>/dev/null | tr -cd '0-9')"
     CH="${CH:-0}"

@@ -74,7 +74,7 @@ than zero. The gates tab can still list what the gate log observed: the plugin's
 Bash guard records its blocks, approval prompts and pre-authorised git actions,
 and its gate-file write guard its blocks, in `.claude/gate-log.tsv` when the
 project has a `.claude/` directory, the file is git-ignored or the project is
-not a repo, and `CSK_GATE_LOG` does not send the log elsewhere.
+not a repo, and `CREW_GATE_LOG` does not send the log elsewhere.
 Everything else — the live
 agent graph, owned sessions, the permission bridge — works the same in both
 editions.
@@ -256,7 +256,7 @@ A token is always required for `/api/`. Supply one, or let the server generate
 one and print it with the URL:
 
 ```bash
-CSK_STUDIO_TOKEN=$(uuidgen) node .claude/studio/server/index.js
+CREW_STUDIO_TOKEN=$(uuidgen) node .claude/studio/server/index.js
 ```
 
 Anything that changes state needs, on top of the token, a header no cross-origin

@@ -37,6 +37,6 @@ project, so that project's row in the panel has no kit badge, and for the projec
 inspector's gates, stats and board tabs say "Not measured" with the reason. The gates tab can still list observed
 entries below that. The plugin's Bash guard logs its blocks, approval prompts and `CLAUDE_GIT_OK` pre-authorised
 git actions, and its gate-file write guard logs its blocks, to `.claude/gate-log.tsv` when the project has a
-`.claude/` directory and the file is git-ignored or the project is not a repo. With `CSK_GATE_LOG` set they write
+`.claude/` directory and the file is git-ignored or the project is not a repo. With `CREW_GATE_LOG` set they write
 wherever it points instead, and the panel reads only the project's own `.claude/gate-log.tsv`, so a log sent
 anywhere else does not show. The commit scan and the board gate refuse without writing a line.

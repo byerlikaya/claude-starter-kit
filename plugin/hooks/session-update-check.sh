@@ -27,18 +27,21 @@
 #     wins and the plugin copy stays quiet, so one release is never announced twice.
 #   - Announced once per published version (`.state/update-notified`). A user who declines an update is not asked
 #     again until the next release.
-#   - Opt out entirely with CSK_NO_UPDATE_CHECK=1 — an outbound request nobody asked for is not acceptable in every
+#   - Opt out entirely with CREW_NO_UPDATE_CHECK=1 — an outbound request nobody asked for is not acceptable in every
 #     environment, and the answer to that is a switch, not a justification.
 #
 # The version string is treated as untrusted input: it comes off the network, is filtered to [0-9A-Za-z.-], and must
 # look like a release before it is ever printed into the model's context.
 set -uo pipefail
+# Pre-3.0 CSK_* names still work for the variables a user can set (one helper: eval/lib/crew-env.sh).
+_crew_d="${BASH_SOURCE%/*}"; [ "$_crew_d" = "${BASH_SOURCE}" ] && _crew_d=.
+[ -f "$_crew_d/../eval/lib/crew-env.sh" ] && . "$_crew_d/../eval/lib/crew-env.sh"; unset _crew_d
 
-URL="${CSK_UPDATE_URL:-https://registry.npmjs.org/-/package/@byerlikaya%2fclaude-starter-kit/dist-tags}"
+URL="${CREW_UPDATE_URL:-https://registry.npmjs.org/-/package/@byerlikaya%2fclaude-starter-kit/dist-tags}"
 # plugin-stable, not main: the marketplace installs the plugin from that branch, and only an approved release
 # moves it forward. Reading main would announce a release before the plugin channel can deliver it.
-PLUGIN_URL="${CSK_UPDATE_URL:-https://raw.githubusercontent.com/byerlikaya/claude-starter-kit/plugin-stable/plugin/.claude-plugin/plugin.json}"
-MAX_AGE="${CSK_UPDATE_MAX_AGE:-86400}"      # one day between checks
+PLUGIN_URL="${CREW_UPDATE_URL:-https://raw.githubusercontent.com/byerlikaya/claude-starter-kit/plugin-stable/plugin/.claude-plugin/plugin.json}"
+MAX_AGE="${CREW_UPDATE_MAX_AGE:-86400}"      # one day between checks
 
 # DIGITS AND DOTS, exactly three fields — nothing else survives to be printed. Deliberately stricter than semver:
 # the value arrives off the network and ends up inside a MODEL's context, and `latest` is never a pre-release, so
@@ -76,7 +79,7 @@ if [ "${1:-}" = "--refresh" ]; then
 fi
 
 # ---- foreground half: one file read, then a decision. ---------------------------------------------------------
-[ -n "${CSK_NO_UPDATE_CHECK:-}" ] && exit 0
+[ -n "${CREW_NO_UPDATE_CHECK:-}" ] && exit 0
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SELF="$HERE/$(basename "$0")"
@@ -102,7 +105,7 @@ PJSON="$PR_ROOT/.claude-plugin/plugin.json"
 if [ -f "$CL/VERSION" ]; then
   read -r _cv < "$CL/VERSION" 2>/dev/null || _cv=""; CUR="$(sane_version "$_cv")" || exit 0
   STATE="$CL/.state"                                            # repo-local: the install lives in the repo
-  FEED="${CSK_UPDATE_URL:-$URL}"; KEY=latest
+  FEED="${CREW_UPDATE_URL:-$URL}"; KEY=latest
   HOWTO='`/update-crew` performs the update and reports what changed'
 elif [ -n "$PR_ROOT" ] && [ -f "$PJSON" ]; then
   # The plugin edition has a version too — its own manifest — and the number that will actually reach it is the one
@@ -112,7 +115,7 @@ elif [ -n "$PR_ROOT" ] && [ -f "$PJSON" ]; then
   # No repo to write into (a plugin serves every project), so the cache is user-level. This is the one place the
   # kit's "everything stays inside the repo" rule does not apply, because a plugin install is not inside one.
   STATE="${XDG_CACHE_HOME:-$HOME/.cache}/claude-starter-kit"
-  FEED="${CSK_UPDATE_URL:-$PLUGIN_URL}"; KEY=version
+  FEED="${CREW_UPDATE_URL:-$PLUGIN_URL}"; KEY=version
   HOWTO='`claude plugin update claude-starter-kit` performs the update'
 else
   exit 0                                                        # neither edition -> nothing to compare
@@ -155,5 +158,5 @@ printf '%s\n' "$LATEST" > "$SEEN" 2>/dev/null || true
 printf 'Kit update available: v%s is installed, v%s is published.\n' "$CUR" "$LATEST"
 printf 'Mention this to the user in ONE line in your next reply, then carry on with what they asked.\n'
 printf '%s — run it only if they ask for it.\n' "$HOWTO"
-printf 'This notice is shown once per released version; CSK_NO_UPDATE_CHECK=1 turns the check off.\n'
+printf 'This notice is shown once per released version; CREW_NO_UPDATE_CHECK=1 turns the check off.\n'
 exit 0

@@ -64,7 +64,7 @@ if [ -n "$TP" ] && [ -f "$TP" ]; then
   # exists to emit was failing before it could speak. `wc -c` keeps its fallback: it prints nothing when
   # the file cannot be read, so there the `||` supplies a value rather than appending a second one.
   SZ="$(wc -c < "$TP" 2>/dev/null || echo 0)"; SZ=$(( ${SZ:-0} + 0 ))
-  if [ "$SZ" -le "${CSK_CONTEXT_MAX_BYTES:-209715200}" ]; then
+  if [ "$SZ" -le "${CREW_CONTEXT_MAX_BYTES:-209715200}" ]; then
     COMP="$(grep -c '"subtype": *"compact_boundary"' "$TP" 2>/dev/null)";  COMP=$(( ${COMP:-0} + 0 ))
     AUTOC="$(grep -c '"compact_boundary".*"trigger": *"auto"' "$TP" 2>/dev/null)"; AUTOC=$(( ${AUTOC:-0} + 0 ))
   fi

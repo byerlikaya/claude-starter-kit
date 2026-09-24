@@ -24,7 +24,7 @@ import os from 'node:os';
 // Deliberately the same directory ensure-node.sh uses, and overridden by the same variable: one place under
 // $HOME that the panel owns, that a user can delete wholesale, and that no installer has to know about.
 export function runtimeDir() {
-  return process.env.CSK_STUDIO_RUNTIME || path.join(os.homedir(), '.claude', 'studio-runtime');
+  return process.env.CREW_STUDIO_RUNTIME || path.join(os.homedir(), '.claude', 'studio-runtime');
 }
 
 export function statePath(port) {

@@ -83,15 +83,15 @@ else ok 'a path with no file is refused'; fi
 # ------------------------------------------------------------- resolution ------
 
 shim "$WORK/explicit/node" 20
-got="$(CSK_STUDIO_NODE="$WORK/explicit/node" bash "$SCRIPT" 2>/dev/null)"
-check 'CSK_STUDIO_NODE is used ahead of anything on PATH' \
+got="$(CREW_STUDIO_NODE="$WORK/explicit/node" bash "$SCRIPT" 2>/dev/null)"
+check 'CREW_STUDIO_NODE is used ahead of anything on PATH' \
   "$([ "$got" = "$WORK/explicit/node" ] && echo 1 || echo 0)" "resolved to '$got'"
 
 # A runtime this script fetched earlier must be found on the next run from a shell whose
 # PATH has no node — which is every shell, after an install that edits no PATH.
 RT="$WORK/runtime"
 shim "$RT/node-v99.9.9-linux-x64/bin/node" 99
-got="$(PATH="$NO_NODE_PATH" CSK_STUDIO_RUNTIME="$RT" bash "$SCRIPT" 2>/dev/null)"
+got="$(PATH="$NO_NODE_PATH" CREW_STUDIO_RUNTIME="$RT" bash "$SCRIPT" 2>/dev/null)"
 check 'a previously fetched runtime is found again with no node on PATH' \
   "$([ "$got" = "$RT/node-v99.9.9-linux-x64/bin/node" ] && echo 1 || echo 0)" "resolved to '$got'"
 
@@ -100,7 +100,7 @@ check 'a previously fetched runtime is found again with no node on PATH' \
 # the probe is forced to reject and the search is made to run against nothing.
 f="$(case_file resolve-none 'works() { return 1; }
 main --explain')"
-out="$(CSK_STUDIO_RUNTIME="$WORK/empty-runtime" HOME="$WORK/nohome" bash "$f" 2>&1)"; rc=$?
+out="$(CREW_STUDIO_RUNTIME="$WORK/empty-runtime" HOME="$WORK/nohome" bash "$f" 2>&1)"; rc=$?
 check 'with no usable node anywhere the answer is a refusal, not a guess' \
   "$([ "$rc" != 0 ] && has "$out" 'nothing usable' && echo 1 || echo 0)" "rc=$rc out='$out'"
 
@@ -122,7 +122,7 @@ got="$(bash "$f" 2>/dev/null)"
 check 'the newest LTS is chosen, not the newest release' \
   "$([ "$got" = v98.2.0 ] && echo 1 || echo 0)" "chose '$got'; v99.1.0 is newer but is not an LTS"
 
-got="$(CSK_STUDIO_NODE_VERSION=v42.0.0 bash "$f" 2>/dev/null)"
+got="$(CREW_STUDIO_NODE_VERSION=v42.0.0 bash "$f" 2>/dev/null)"
 check 'a pinned version wins over the feed' "$([ "$got" = v42.0.0 ] && echo 1 || echo 0)" "chose '$got'"
 
 # ------------------------------------------------------------------ plan -------
@@ -173,7 +173,7 @@ get() {
 main --install --yes"
   }
 
-  out="$(CSK_STUDIO_RUNTIME="$WORK/rt-good" bash "$(install_case good "$FIX/SHASUMS256.txt")" 2>&1)"; rc=$?
+  out="$(CREW_STUDIO_RUNTIME="$WORK/rt-good" bash "$(install_case good "$FIX/SHASUMS256.txt")" 2>&1)"; rc=$?
   node_out="$(printf '%s\n' "$out" | tail -1)"
   if [ "$rc" = 0 ] && [ -x "$node_out" ] && [ "$("$node_out" -p x 2>/dev/null)" = 98 ]; then
     ok 'a download whose checksum matches is unpacked and its node runs'
@@ -181,7 +181,7 @@ main --install --yes"
     bad 'a download whose checksum matches is unpacked and its node runs' "rc=$rc out='$out'"
   fi
 
-  out="$(CSK_STUDIO_RUNTIME="$WORK/rt-bad" bash "$(install_case bad "$FIX/SHASUMS256.bad.txt")" 2>&1)"; rc=$?
+  out="$(CREW_STUDIO_RUNTIME="$WORK/rt-bad" bash "$(install_case bad "$FIX/SHASUMS256.bad.txt")" 2>&1)"; rc=$?
   left="$(ls -1 "$WORK/rt-bad" 2>/dev/null | grep -cv '^\.tmp' | tr -d ' ')"
   if [ "$rc" != 0 ] && has "$out" 'checksum mismatch' && [ "${left:-0}" = 0 ]; then
     ok 'a checksum mismatch refuses and leaves nothing installed'
@@ -260,7 +260,7 @@ get() {
   esac
 }
 main --install --yes")"
-  out="$(CSK_STUDIO_RUNTIME="$WORK/rt-zip" bash "$f" 2>&1)"; rc=$?
+  out="$(CREW_STUDIO_RUNTIME="$WORK/rt-zip" bash "$f" 2>&1)"; rc=$?
   node_out="$(printf '%s\n' "$out" | tail -1)"
   if [ "$rc" = 0 ] && [ -f "$node_out" ] && [ "$("$node_out" -p x 2>/dev/null)" = 97 ]; then
     ok 'a Windows zip is unpacked and the node.exe inside it runs'
@@ -307,7 +307,7 @@ get() {
   esac
 }
 main --install --yes")"
-  out="$(PATH="$FB:$PATH" CSK_STUDIO_RUNTIME="$WORK/rt-rc1" bash "$f" 2>&1)"; rc=$?
+  out="$(PATH="$FB:$PATH" CREW_STUDIO_RUNTIME="$WORK/rt-rc1" bash "$f" 2>&1)"; rc=$?
   node_out="$(printf '%s\n' "$out" | tail -1)"
   if [ "$rc" = 0 ] && [ -f "$node_out" ] && [ "$("$node_out" -p x 2>/dev/null)" = 97 ]; then
     ok 'an extractor that succeeds and still reports failure is believed by its result, not its status'
@@ -325,7 +325,7 @@ plat_arch() { printf 'linux x64\n'; }
 remote_size() { printf 'unknown\n'; }
 $OFFLINE_FEED
 main --install")"
-out="$(CSK_STUDIO_RUNTIME="$WORK/rt-tty" bash "$f" </dev/null 2>&1)"; rc=$?
+out="$(CREW_STUDIO_RUNTIME="$WORK/rt-tty" bash "$f" </dev/null 2>&1)"; rc=$?
 check 'with no terminal and no --yes it refuses instead of downloading' \
   "$([ "$rc" != 0 ] && has "$out" '--plan' && echo 1 || echo 0)" "rc=$rc out='$out'"
 
@@ -370,7 +370,7 @@ get() {
   esac
 }
 main --install --yes")"
-  out="$(PATH="$PW:$PATH" CSK_STUDIO_RUNTIME="$WORK/rt-ps" bash "$f" 2>&1)"; rc=$?
+  out="$(PATH="$PW:$PATH" CREW_STUDIO_RUNTIME="$WORK/rt-ps" bash "$f" 2>&1)"; rc=$?
   node_out="$(printf '%s\n' "$out" | tail -1)"
   if [ "$rc" = 0 ] && [ -f "$node_out" ] && [ "$("$node_out" -p x 2>/dev/null)" = 97 ]; then
     ok 'the PowerShell fallback is handed an absolute path, not whatever it was given'
@@ -432,7 +432,7 @@ get() {
 }
 main --install --yes")"
   rm -f "$WORK/downloaded.$2"
-  out="$(PATH="$NOZIP" CSK_STUDIO_RUNTIME="$1" bash "$f" 2>&1)"; rc=$?
+  out="$(PATH="$NOZIP" CREW_STUDIO_RUNTIME="$1" bash "$f" 2>&1)"; rc=$?
   d=no; [ -f "$WORK/downloaded.$2" ] && d=yes
   printf 'rc=%s downloaded=%s %s\n' "$rc" "$d" "$out"
 }
@@ -482,7 +482,7 @@ get() {
 }
 main --install --yes")"
 rm -f "$WORK/downloaded.withunzip"
-out="$(CSK_STUDIO_RUNTIME="$LONGDIR" bash "$f" 2>&1)"
+out="$(CREW_STUDIO_RUNTIME="$LONGDIR" bash "$f" 2>&1)"
 if ! command -v unzip >/dev/null 2>&1; then
   broke 'the length check stays out of the way when unzip is present' \
     'there is no unzip on this machine, so the condition this case is named after cannot be set up'
@@ -519,7 +519,7 @@ plan
 printf 'tail=%s pid=%s\n' \"\$(( \${#probe} - \${#RUNTIME} ))\" \"\$\$\"
 main --install --yes")"
   rm -f "$WORK/dl.$2"
-  o="$(PATH="$NOZIP" CSK_STUDIO_RUNTIME="$d" bash "$f" 2>&1)"
+  o="$(PATH="$NOZIP" CREW_STUDIO_RUNTIME="$d" bash "$f" 2>&1)"
   t="$(printf '%s\n' "$o" | sed -n 's/^tail=\([0-9]*\) .*/\1/p' | head -1)"
   q="$(printf '%s\n' "$o" | sed -n 's/^tail=[0-9]* pid=//p' | head -1)"
   if [ -f "$WORK/dl.$2" ]; then printf '%s %s yes\n' "$t" "$q"; else printf '%s %s no\n' "$t" "$q"; fi
@@ -658,7 +658,7 @@ done
 # The input the four shape cases never asked about. A path can itself be 64 hex characters —
 # a content-addressed cache directory is exactly that — and the tools that echo the path put
 # it where a first-match rule finds it. Not reachable with the default runtime directory, but
-# CSK_STUDIO_RUNTIME is the user's to set, and a verifier comparing the wrong value is the
+# CREW_STUDIO_RUNTIME is the user's to set, and a verifier comparing the wrong value is the
 # class of defect this round exists to catch.
 HEXDIR="$WORK/deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
 mkdir -p "$HEXDIR"; printf 'abc' > "$HEXDIR/f.txt"

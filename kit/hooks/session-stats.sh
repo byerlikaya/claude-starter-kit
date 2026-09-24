@@ -12,7 +12,7 @@
 #   bash session-stats.sh --raw [transcript.jsonl]     # key=value lines instead of the report (tests/scripting)
 #   echo '{"transcript_path":"..."}' | bash session-stats.sh
 #
-# Thresholds (env overrides): CSK_RUNAWAY_TOOLS=15 · CSK_DUP_MIN=2 · CSK_ERR_PCT=15 · CSK_INTERRUPT_MIN=3
+# Thresholds (env overrides): CREW_RUNAWAY_TOOLS=15 · CREW_DUP_MIN=2 · CREW_ERR_PCT=15 · CREW_INTERRUPT_MIN=3
 #
 # ONE awk engine, no jq path — deliberate. context-usage.sh carries two engines because it reads a nested usage
 # object, and they drifted once (the sidechain bug) with a wrong number, not silence, as the result. Every signal
@@ -176,7 +176,7 @@ STATS="$(LC_ALL=C awk '
     printf "cycles=%d\nturns=%d\ntools=%d\nmaxtools=%d\nrunaway=%d\nrunaway_errors=%d\nerrors=%d\ninterrupts=%d\ndup_extra=%d\ndup_distinct=%d\ncompactions=%d\nauto_compactions=%d\npre_tokens=%d\npost_tokens=%d\ndelegations=%d\nrefused=%d\n",
       cycles+0, turns+0, tools+0, maxtools+0, runaway+0, runworst+0, errs+0, ints+0, dupextra+0, dupdistinct+0, comp+0, autocomp+0, pre+0, post+0, deleg+0, refused+0
   }
-' RUNAWAY="${CSK_RUNAWAY_TOOLS:-25}" RUNERR="${CSK_RUNAWAY_ERRORS:-3}" "$TR")"
+' RUNAWAY="${CREW_RUNAWAY_TOOLS:-25}" RUNERR="${CREW_RUNAWAY_ERRORS:-3}" "$TR")"
 
 # An awk that died (locale, a truncated file, a transcript format change) leaves this empty, and `set -u` would
 # then fail deep inside the report with an unbound-variable trace. Say what happened instead.
@@ -187,7 +187,7 @@ case "$STATS" in *"cycles="*) ;; *) echo "session-stats: could not read the tran
 # shellcheck disable=SC2046  # each line is a bare key=value produced above, deliberately word-split into vars
 eval "$(printf '%s\n' "$STATS" | sed 's/^/S_/')"
 
-DUP_MIN="${CSK_DUP_MIN:-2}"; ERR_PCT="${CSK_ERR_PCT:-15}"; INT_MIN="${CSK_INTERRUPT_MIN:-3}"
+DUP_MIN="${CREW_DUP_MIN:-2}"; ERR_PCT="${CREW_ERR_PCT:-15}"; INT_MIN="${CREW_INTERRUPT_MIN:-3}"
 AVG="$(LC_ALL=C awk -v t="$S_tools" -v c="$S_cycles" 'BEGIN{ if(c+0>0) printf "%.1f", t/c; else print "0" }')"
 EPCT="$(LC_ALL=C awk -v e="$S_errors" -v t="$S_tools" 'BEGIN{ if(t+0>0) printf "%.0f", (e/t)*100; else print "0" }')"
 
@@ -205,7 +205,7 @@ fi
 # train the reader to skim past the block — the failure mode of every dashboard that reports all-green.
 FOUND=0
 if [ "${S_runaway:-0}" -gt 0 ]; then
-  echo "   ⚠️  runaway loop: $S_runaway prompt(s) ran ≥${CSK_RUNAWAY_TOOLS:-25} tool calls while failing (worst: $S_runaway_errors errors in one)."
+  echo "   ⚠️  runaway loop: $S_runaway prompt(s) ran ≥${CREW_RUNAWAY_TOOLS:-25} tool calls while failing (worst: $S_runaway_errors errors in one)."
   echo "       → an approach that needed that many failing attempts usually needed a different approach (systematic-debugging)."
   FOUND=1
 fi
@@ -229,7 +229,7 @@ fi
 # This is the only place it becomes visible. Measured across 44 real sessions the rate varies ~9x BETWEEN
 # projects while staying roughly flat within a session, so the number worth reporting is this project's own.
 # Only meaningful where agents are actually installed: in a repo with none, zero is the correct answer.
-if ls .claude/agents/*.md >/dev/null 2>&1 && [ "${S_turns:-0}" -ge "${CSK_DELEG_MIN_TURNS:-30}" ]; then
+if ls .claude/agents/*.md >/dev/null 2>&1 && [ "${S_turns:-0}" -ge "${CREW_DELEG_MIN_TURNS:-30}" ]; then
   DRATE="$(LC_ALL=C awk -v d="$S_delegations" -v t="$S_turns" 'BEGIN{ printf "%.1f", (d/t)*100 }')"
   if [ "${S_delegations:-0}" = 0 ]; then
     echo "   ⚠️  no delegation in $S_turns turns — every task ran on the main thread."

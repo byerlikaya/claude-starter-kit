@@ -631,7 +631,7 @@ function paintKit(body, tab) {
   body.append(node('div', 'ihint',
     `${log.total.toLocaleString()} in the tail of gate-log.tsv${log.truncated ? ' (truncated)' : ''} · `
     + 'no timestamps in this format, so these are what the log holds, not when they ran'
-    + (log.commandsRecorded ? '' : ' · commands not recorded (CSK_GATE_LOG_CMD=1 records them)')));
+    + (log.commandsRecorded ? '' : ' · commands not recorded (CREW_GATE_LOG_CMD=1 records them)')));
 
   const counts = node('div', 'kit-sum');
   for (const [k, v] of Object.entries(log.counts ?? {})) {

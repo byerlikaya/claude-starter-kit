@@ -5,6 +5,9 @@
 #  (3) private-path scanner  — this machine's $HOME + .private-terms.txt (§4.3)
 # Skipping requires an explicit request per §4.5 (git commit --no-verify).
 set -euo pipefail
+# Pre-3.0 CSK_* names still work for the variables a user can set (one helper: eval/lib/crew-env.sh).
+_crew_d="${BASH_SOURCE%/*}"; [ "$_crew_d" = "${BASH_SOURCE}" ] && _crew_d=.
+[ -f "$_crew_d/../eval/lib/crew-env.sh" ] && . "$_crew_d/../eval/lib/crew-env.sh"; unset _crew_d
 HERE="$(cd "$(dirname "$0")" && pwd)"
 BL="$HERE/trace-blocklist.txt"
 SL="$HERE/secret-blocklist.txt"
@@ -60,7 +63,7 @@ git diff --cached --unified=0 -- . ':(top,exclude).claude' \
 # edition's PreToolUse path, which has no core.hooksPath to hook into), it is not: the content about to be
 # committed is still unstaged, and scanning only --cached would wave it through. The caller sets this when it
 # sees -a/--all.
-if [ "${CSK_SCAN_UNSTAGED:-0}" = 1 ]; then
+if [ "${CREW_SCAN_UNSTAGED:-0}" = 1 ]; then
   git diff --unified=0 -- . \
     ':(top,exclude,glob)**/trace-blocklist.txt' ':(top,exclude,glob)**/secret-blocklist.txt' \
     ':(top,exclude)trace-blocklist.txt' ':(top,exclude)secret-blocklist.txt' \
@@ -73,7 +76,7 @@ fi
 HIT=0
 # (0) repo-bloat gate — scans the staged FILE LIST, not added lines: a binary produces no '^+' line, so this
 #     must run BEFORE the added-text early-exit below or it would never fire on the very files it targets.
-MAXBYTES="${CSK_MAX_FILE_BYTES:-5242880}"   # 5 MiB; override per-repo via env
+MAXBYTES="${CREW_MAX_FILE_BYTES:-5242880}"   # 5 MiB; override per-repo via env
 BLOAT_DIRS='(^|/)(node_modules|bower_components|dist|build|out|\.next|\.nuxt|\.svelte-kit|target|bin|obj|vendor|__pycache__|\.venv|venv|coverage|\.gradle)/'
 # COST NOTE, measured on a 373-file merge: the loop below used to spawn ~7 processes per file — three
 # `printf | grep` pairs plus a `git cat-file` — for 2,644 processes in total. On Git Bash a process costs
@@ -240,7 +243,7 @@ while IFS=$'\t' read -r kind f r a; do
        echo "FLOOR-GUARD [assertion-removed]: $f loses $((r - a)) assertion(s) and stays in the tree (removed $r, added $a)"
        HIT=1 ;;
   esac
-done < <({ _floor_diff --cached; [ "${CSK_SCAN_UNSTAGED:-0}" = 1 ] && _floor_diff; } \
+done < <({ _floor_diff --cached; [ "${CREW_SCAN_UNSTAGED:-0}" = 1 ] && _floor_diff; } \
   | LC_ALL=C awk -v F="$FLOOR_F" -v P="$FLOOR_P" '
       /^diff --git / { hdr = 1; old = ""; p = ""; isnew = 0; skip = 1; next }
       hdr && /^--- /     { old = $0; sub(/^--- (a\/)?/, "", old); isnew = (old == "/dev/null"); next }
@@ -568,7 +571,7 @@ if [ "$HIT" -ne 0 ]; then
   echo "A bar-lowering move that is genuinely warranted? record it in .floor-allowlist.txt at the repo root (path:<glob>, rule:<name>, or the exact pattern line) — in the same commit, where review sees it. A path: glob's * also crosses directories: write the narrowest path."
   echo "False positive (trace/secret)? add the EXACT pattern line to .trace-allowlist.txt or .secret-allowlist.txt at the repo root."
   echo "Private path flagged but genuinely public? add that exact term to .private-allowlist.txt at the repo root."
-  echo "Large file is intentional? raise CSK_MAX_FILE_BYTES, use Git LFS, or gitignore the build/vendored path."
+  echo "Large file is intentional? raise CREW_MAX_FILE_BYTES, use Git LFS, or gitignore the build/vendored path."
   echo "Deliberate exception: 'git commit --no-verify' — only on an EXPLICIT request (§4.5)."
   exit 1
 fi

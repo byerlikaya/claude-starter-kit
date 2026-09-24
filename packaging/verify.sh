@@ -20,7 +20,7 @@
 # NOT counted as a pass — the same rule the suites themselves follow, for the same reason: a check that
 # did not run must never read like a check that succeeded.
 #
-# CSK_VERIFY_STRICT=1 turns a skip into a failure. CI sets it, because there a missing tool is a broken
+# CREW_VERIFY_STRICT=1 turns a skip into a failure. CI sets it, because there a missing tool is a broken
 # runner rather than an honest local limitation, and a gate that goes quiet on a broken runner is worse
 # than no gate: it reports success for a check nobody performed.
 set -uo pipefail
@@ -56,10 +56,10 @@ step_e2e(){       bash packaging/e2e.sh; }
 # The gate must reach the same verdict whichever parser decoded the payload. This is a real step rather than a
 # smoke section because it needs a SECOND parser to compare against, and a machine with only one has measured
 # nothing — the script answers 3 for that, which is this file's skip, so the rc passes straight through with no
-# translation: 0 every case agreed, 1 a divergence, 3 nothing compared. Under CSK_VERIFY_STRICT, which CI sets,
+# translation: 0 every case agreed, 1 a divergence, 3 nothing compared. Under CREW_VERIFY_STRICT, which CI sets,
 # that skip turns red, and it should: on a runner a missing parser is a broken runner.
 #
-# It is wired without `CSK_CONFORMANCE_KNOWN_OPEN`, deliberately. That variable exists to let the file land
+# It is wired without `CREW_CONFORMANCE_KNOWN_OPEN`, deliberately. That variable exists to let the file land
 # while its three findings were still open; all three are closed, so setting it here would mean a gate that
 # cannot report the next one. The variable stays in the script and is pinned there to fail if a row it excuses
 # starts passing — a safety valve that cleans itself up, not a permanent dispensation.
@@ -139,10 +139,10 @@ for s in $STEPS; do
     PASSED=$((PASSED + 1)); printf '%s\n\n' "${GR}✅ $s${R}"
   else
     rc=$?
-    if [ "$rc" = 3 ] && [ "${CSK_VERIFY_STRICT:-0}" != "1" ]; then
+    if [ "$rc" = 3 ] && [ "${CREW_VERIFY_STRICT:-0}" != "1" ]; then
       SKIPPED="$SKIPPED $s"; printf '%s\n\n' "${YE}⏭  $s — skipped, NOT a pass${R}"
     elif [ "$rc" = 3 ]; then
-      FAILED="$FAILED $s"; printf '%s\n\n' "${RD}❌ $s — skipped under CSK_VERIFY_STRICT, which means the runner is missing a tool it should have${R}"; break
+      FAILED="$FAILED $s"; printf '%s\n\n' "${RD}❌ $s — skipped under CREW_VERIFY_STRICT, which means the runner is missing a tool it should have${R}"; break
     else FAILED="$FAILED $s"; printf '%s\n\n' "${RD}❌ $s (rc=$rc)${R}"; break
     fi
   fi

@@ -9,6 +9,9 @@
 #
 # Usage: at the target project root (same directory as kit/):  bash adopt.sh
 set -uo pipefail
+# Pre-3.0 CSK_* names still work for the variables a user can set (one helper: eval/lib/crew-env.sh).
+_crew_d="${BASH_SOURCE%/*}"; [ "$_crew_d" = "${BASH_SOURCE}" ] && _crew_d=.
+[ -f "$_crew_d/kit/eval/lib/crew-env.sh" ] && . "$_crew_d/kit/eval/lib/crew-env.sh"; unset _crew_d
 HERE="$(CDPATH= cd "$(dirname "$0")" && pwd)"
 
 # --version (or -v) is answered first, before the payload check below: it reads only VERSION, so it works
@@ -45,7 +48,7 @@ esac; done
 # IS English. Colour never enters a message (the helpers above add it), interpolation goes through %s, and a
 # literal percent must be written %% because the message is the printf format.
 #
-# Language: --lang, then an inherited CSK_LANG, then — on an interactive run without --yes — a one-line menu,
+# Language: --lang, then an inherited CREW_LANG, then — on an interactive run without --yes — a one-line menu,
 # then LC_ALL/LC_MESSAGES/LANG, then English. An interactive run ASKS because detection alone never offered
 # Turkish where it should have: measured, macOS can run with a Turkish system language while the shell exports
 # LANG=C.UTF-8. The locale still picks the menu's default. A piped, CI or --yes run never sees the menu (a
@@ -56,21 +59,21 @@ esac; done
 _loc="${LC_ALL:-}"; [ -n "$_loc" ] || _loc="${LC_MESSAGES:-}"; [ -n "$_loc" ] || _loc="${LANG:-}"
 case "$_loc" in tr*|TR*) _lang_det=tr; _lang_def=2 ;; *) _lang_det=en; _lang_def=1 ;; esac
 if [ -n "$_lang_flag" ]; then
-  CSK_LANG="$_lang_flag"
-elif [ -n "${CSK_LANG:-}" ]; then
+  CREW_LANG="$_lang_flag"
+elif [ -n "${CREW_LANG:-}" ]; then
   :
 elif [ -t 0 ] && [ "$ASSUME_YES" != 1 ]; then
   printf '\n  Language / Dil\n    1) English\n    2) Türkçe\n  -> [1-2, empty/boş=%s]: ' "$_lang_def"
   read -r _lang_ans || _lang_ans=""
   [ -n "$_lang_ans" ] || _lang_ans="$_lang_def"
-  case "$_lang_ans" in 2|tr|TR|t|T) CSK_LANG=tr ;; *) CSK_LANG=en ;; esac
+  case "$_lang_ans" in 2|tr|TR|t|T) CREW_LANG=tr ;; *) CREW_LANG=en ;; esac
 else
-  CSK_LANG="$_lang_det"
+  CREW_LANG="$_lang_det"
 fi
-case "$CSK_LANG" in tr|en) ;; *) CSK_LANG=en ;; esac
+case "$CREW_LANG" in tr|en) ;; *) CREW_LANG=en ;; esac
 # Exported: child scripts (eval/preflight.sh) resolve their own language from the environment, and an
 # unexported choice from --lang or the menu made them print English.
-export CSK_LANG
+export CREW_LANG
 # _mt sets _M instead of printing, so a call site can translate WITHOUT a `$( )` subshell. Each subshell is a
 # fork, and on Git Bash a fork costs 62-135 ms; wrapping ~100 lines in `$(m …)` would have added seconds to
 # every update. The helpers below (say/h1m/subm/warnm/rowm/rowv/propm, ask_yes) all go through _mt.
@@ -79,7 +82,7 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
   # An empty key must still ASSIGN: bash 3.2's `printf -v _M ""` leaves _M holding the previous translation.
   [ -n "${1:-}" ] || { _M=""; return 0; }
   local s="$1"; shift
-  if [ "$CSK_LANG" = tr ]; then
+  if [ "$CREW_LANG" = tr ]; then
     case "$s" in
       "kit adopt · Stage 1 — DETECTION (read-only; nothing changes)") s='kit adopt · Aşama 1 — TESPİT (salt okunur, hiçbir şey değişmez)' ;;
       "Reads the existing project, produces a smart suggestion for the 7 handover decisions. Approval + mutation in the next stage.") s='Projeyi okur ve devralma için 7 karara akıllı bir öneri çıkarır. Onay ve değişiklikler sonraki aşamada.' ;;
@@ -298,9 +301,9 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "git") ;;   # identifier, printed as is
       "husky (.husky/)") ;;   # identifier, printed as is
       "lefthook") ;;   # identifier, printed as is
-      # No row: the line prints in English. CSK_I18N_MISS (set by e2e case 18) collects every such key, so a
+      # No row: the line prints in English. CREW_I18N_MISS (set by e2e case 18) collects every such key, so a
       # missing translation is caught by NAME rather than guessed from which English words it happens to contain.
-      *) [ -n "${CSK_I18N_MISS:-}" ] && printf '%s\n' "$s" >> "$CSK_I18N_MISS" ;;
+      *) [ -n "${CREW_I18N_MISS:-}" ] && printf '%s\n' "$s" >> "$CREW_I18N_MISS" ;;
     esac
   fi
   # shellcheck disable=SC2059
@@ -1183,7 +1186,7 @@ if [ -f CLAUDE.md ] && ls .claude/agents/*-crew.md >/dev/null 2>&1; then
   # loop and was converted to two awk passes in 2.0.1; adopt.sh kept it, which is why an update still crawled on
   # Git Bash. Same conversion, same output (agent order, then file order, comma-joined line numbers).
   STALE=""; STALE_PULL=""
-  CSK_AGENT_BASES="$(awk '
+  CREW_AGENT_BASES="$(awk '
     FNR==1 { files[++nf]=FILENAME }
     !got[FILENAME] && /^name:[[:space:]]*/ {
       n=$0; sub(/^name:[[:space:]]*/,"",n); gsub(/[^a-zA-Z0-9-]/,"",n)
@@ -1196,7 +1199,7 @@ if [ -f CLAUDE.md ] && ls .claude/agents/*-crew.md >/dev/null 2>&1; then
         if (n ~ /-crew$/) { b=n; sub(/-crew$/,"",b); print b "\t" n }
       }
     }' .claude/agents/*-crew.md 2>/dev/null)"
-  export CSK_AGENT_BASES
+  export CREW_AGENT_BASES
   while IFS="$(printf '\t')" read -r base aname f lines; do
     [ -n "$base" ] || continue
     _mt '%s line(s): %s' "$f" "$lines"
@@ -1206,7 +1209,7 @@ if [ -f CLAUDE.md ] && ls .claude/agents/*-crew.md >/dev/null 2>&1; then
   done <<EOF
 $(awk '
   BEGIN {
-    n = split(ENVIRON["CSK_AGENT_BASES"], rows, "\n"); k=0
+    n = split(ENVIRON["CREW_AGENT_BASES"], rows, "\n"); k=0
     for (i=1;i<=n;i++) { if (rows[i]=="") continue; split(rows[i], a, "\t"); k++; base[k]=a[1]; full[k]=a[2] }
     nb=k
   }
@@ -1440,7 +1443,7 @@ warnm 'If Claude Code is running in this project, run /compact (or /clear) — C
 _mt 'on /compact and /clear in the same process, so a session opened before this run stops quoting the old rules (no restart needed).'
 printf '     %s%s%s\n' "$D" "$_M" "$R"
 # The star line, once per kit version: a first adopt, or the first update to a new version. lib/star.sh keeps
-# the marker (shared with doctor.sh) and owns the text, URL and the CSK_NO_STAR / CI silence.
+# the marker (shared with doctor.sh) and owns the text, URL and the CREW_NO_STAR / CI silence.
 if [ -f .claude/eval/lib/star.sh ]; then
   _S="$(bash .claude/eval/lib/star.sh --once . 2>/dev/null || true)"
   if [ -n "$_S" ]; then printf '\n%s\n' "$_S"; fi   # an `&&` here was the script's LAST status: rc=1 on every update

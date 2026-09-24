@@ -36,7 +36,7 @@ sec(){ CURSEC="$1"; echo "$1"; }
 pass(){ PASSN=$((PASSN+1)); _al "P $1"; _sl P; echo "  ✅ $1"; }
 fail(){ FAIL=$((FAIL+1));   _al "F $1"; _sl F; echo "  ❌ $1"; }
 # A VERDICT WITHOUT A DENOMINATOR IS NOT A VERDICT. This suite printed one line — "SMOKE-TEST: PASSED ✅" — and
-# it printed the identical line whether 574 assertions ran or 293 did (CSK_SMOKE_SCOPE=install drops the rest).
+# it printed the identical line whether 574 assertions ran or 293 did (CREW_SMOKE_SCOPE=install drops the rest).
 # Worse, seventeen places reported a test that DID NOT RUN as a green ✅, so "a tool is missing here" and "the
 # gate holds" were the same output. Both are now counted and named, and the reason is classified because the
 # classes mean different things:
@@ -91,7 +91,7 @@ IS_KIT=0; [ -f "$ROOT/CLAUDE.md" ] && IS_KIT=1
 note(){ echo "  ·  $1"; }   # informational; never counts as a failure
 # Scope. Declared HERE rather than beside the block it first guards, because it now gates cases that run
 # EARLIER than that block — see §6h. Reading an env var costs nothing; the note stays where the big skip is.
-UNITS=1; [ "${CSK_SMOKE_SCOPE:-full}" = install ] && UNITS=0
+UNITS=1; [ "${CREW_SMOKE_SCOPE:-full}" = install ] && UNITS=0
 # Trigger-phrases requirement: a GATE in the kit repo, a note in an installed project (your skills, your call).
 need_trigger(){ if kit_owned "${2:-}"; then fail "$1"; else note "$1 (your own skill/agent; not gated in an install)"; fi; }
 
@@ -724,9 +724,9 @@ else
                 || fail "write gate blocked a user who does hold an item"
   wg "$BD/plain" && pass "no board -> the write gate does not exist either" \
                  || fail "the write gate fired in a repo with no board"
-  printf '%s' "$WG" | ( cd "$BD/ayse" && CSK_NO_BOARD=1 bash "$HOOKS/guard-write.sh" ) >/dev/null 2>&1 \
-    && pass "CSK_NO_BOARD=1 is a working escape hatch for item-less work" \
-    || fail "CSK_NO_BOARD=1 did not release the write gate"
+  printf '%s' "$WG" | ( cd "$BD/ayse" && CREW_NO_BOARD=1 bash "$HOOKS/guard-write.sh" ) >/dev/null 2>&1 \
+    && pass "CREW_NO_BOARD=1 is a working escape hatch for item-less work" \
+    || fail "CREW_NO_BOARD=1 did not release the write gate"
   # The gate it was bolted onto must still hold: a claim must never become a way to edit the gate scripts.
   printf '%s' '{"tool_name":"Edit","tool_input":{"file_path":".claude/hooks/guard-bash.sh"}}' \
     | ( cd "$BD/ali" && bash "$HOOKS/guard-write.sh" ) >/dev/null 2>&1 \
@@ -806,10 +806,10 @@ else
                                    || pass "/board-crew on puts every gate back"
     # The env switch has to reach all three too — it is the "just for this session" form of the same decision.
     B0="$(cd "$SW/solo" && git rev-list --count HEAD)"
-    ( cd "$SW/solo" && date -u +%s > g.txt; git add -A; CSK_NO_BOARD=1 git commit -q -m "feat: env switch" ) >/dev/null 2>&1
+    ( cd "$SW/solo" && date -u +%s > g.txt; git add -A; CREW_NO_BOARD=1 git commit -q -m "feat: env switch" ) >/dev/null 2>&1
     [ "$(cd "$SW/solo" && git rev-list --count HEAD)" -gt "$B0" ] \
-      && pass "CSK_NO_BOARD=1 releases the commit gate too (session-scoped opt-out)" \
-      || fail "CSK_NO_BOARD=1 released the edit gate but not the commit gate"
+      && pass "CREW_NO_BOARD=1 releases the commit gate too (session-scoped opt-out)" \
+      || fail "CREW_NO_BOARD=1 released the edit gate but not the commit gate"
   fi
   rm -rf "$SW"
 
@@ -865,9 +865,9 @@ csk_exec_check "eval script" "$HERE"/*.sh
 # once. An index check under that setting is not a strict check, it is a guaranteed false alarm, and it took
 # out the Windows job on a change that had nothing wrong with it. Where the bit is untracked the index holds
 # no information about it, so there is nothing to assert; the POSIX runners are where this gate has teeth.
-CSK_FILEMODE="$(git -C "$ROOT" config --get core.fileMode 2>/dev/null || echo true)"
-case "${CSK_FILEMODE:-true}" in
-  false|0|no) skip platform "the index-mode check (core.fileMode=$CSK_FILEMODE — this platform does not track the executable bit)" 1 ;;
+CREW_FILEMODE="$(git -C "$ROOT" config --get core.fileMode 2>/dev/null || echo true)"
+case "${CREW_FILEMODE:-true}" in
+  false|0|no) skip platform "the index-mode check (core.fileMode=$CREW_FILEMODE — this platform does not track the executable bit)" 1 ;;
   *)
 if command -v git >/dev/null 2>&1 && git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   IDX="$(git -C "$ROOT" ls-files -s -- "$HOOKS" "$HERE" 2>/dev/null \
@@ -898,7 +898,7 @@ printf '%s\n' '{"type":"assistant","isSidechain":false,"message":{"usage":{"inpu
 { printf '{"type":"user","isSidechain":false,"message":{"content":"'; head -c 6000000 /dev/zero | tr '\0' A; printf '"}}\n'; } >> "$BIGFX"
 o3="$(CONTEXT_WINDOW=1000000 bash "$HOOKS/context-usage.sh" "$BIGFX" 2>/dev/null)"
 case "$o3" in *"🔋 Session"*) pass "measures past a huge last-line paste (byte-bounded tail)" ;; *) fail "byte-tail did not measure past a huge paste: $o3" ;; esac
-if CONTEXT_WINDOW=1000000 CSK_CONTEXT_MAX_BYTES=1048576 bash "$HOOKS/context-usage.sh" "$BIGFX" >/dev/null 2>&1; then fail "oversized transcript did not fail open (emitted a line)"; else pass "oversized transcript FAILS OPEN (no timeout risk)"; fi
+if CONTEXT_WINDOW=1000000 CREW_CONTEXT_MAX_BYTES=1048576 bash "$HOOKS/context-usage.sh" "$BIGFX" >/dev/null 2>&1; then fail "oversized transcript did not fail open (emitted a line)"; else pass "oversized transcript FAILS OPEN (no timeout risk)"; fi
 rm -f "$BIGFX"
 rm -f "$FX"
 [ -x "$HOOKS/commit-msg" ]       && pass "commit-msg hook +x"           || fail "commit-msg missing/not executable"
@@ -1060,16 +1060,16 @@ rm -f "$SGFX"; rm -f "${TMPDIR:-/tmp}"/csk-session-guard.${SGPFX}-*.* 2>/dev/nul
 # than on success is the exact bug 2.6.0 fixed, so tier B tests the documented rule head-on.
 #
 # Echoes the PATH to run under (tier A: the dir alone; tier B: the dir plus the real PATH), or nothing.
-# CSK_NOJQ_MODE says which tier; CSK_NOJQ_WHY says why not, when nothing comes back. The caller cleans up
+# CREW_NOJQ_MODE says which tier; CREW_NOJQ_WHY says why not, when nothing comes back. The caller cleans up
 # "${VAR%%:*}" — the sandbox directory is the first PATH element in both tiers.
-CSK_NOJQ_MODE=""; CSK_NOJQ_WHY=""
+CREW_NOJQ_MODE=""; CREW_NOJQ_WHY=""
 csk_nojq_path(){   # $@ = the tools the code under test needs on PATH
-  local d t tp probe; CSK_NOJQ_MODE=""; CSK_NOJQ_WHY=""
+  local d t tp probe; CREW_NOJQ_MODE=""; CREW_NOJQ_WHY=""
   probe="$(command -v bash 2>/dev/null || echo bash)"
-  d="$(mktemp -d)" || { CSK_NOJQ_WHY="mktemp failed"; return 1; }
+  d="$(mktemp -d)" || { CREW_NOJQ_WHY="mktemp failed"; return 1; }
   for t in "$@"; do
     tp="$(command -v "$t" 2>/dev/null)"
-    [ -n "$tp" ] || { CSK_NOJQ_WHY="no PATH binary for '$t'"; rm -rf "$d"; return 1; }
+    [ -n "$tp" ] || { CREW_NOJQ_WHY="no PATH binary for '$t'"; rm -rf "$d"; return 1; }
     ln -s "$tp" "$d/$t" 2>/dev/null || break
   done
   # A real symlink, and the interpreters really gone. Checked in a FRESH shell: a shell caches resolved
@@ -1079,20 +1079,20 @@ csk_nojq_path(){   # $@ = the tools the code under test needs on PATH
      && ! PATH="$d" "$probe" -c 'command -v jq'      >/dev/null 2>&1 \
      && ! PATH="$d" "$probe" -c 'command -v python3' >/dev/null 2>&1; then
     if PATH="$d" "$probe" -c 'printf x | grep -q x' 2>/dev/null; then
-      CSK_NOJQ_MODE="minimal"; printf '%s' "$d"; return 0
+      CREW_NOJQ_MODE="minimal"; printf '%s' "$d"; return 0
     fi
-    CSK_NOJQ_WHY="canary failed: the minimal PATH cannot run grep"; rm -rf "$d"; return 1
+    CREW_NOJQ_WHY="canary failed: the minimal PATH cannot run grep"; rm -rf "$d"; return 1
   fi
-  rm -rf "$d"; d="$(mktemp -d)" || { CSK_NOJQ_WHY="mktemp failed"; return 1; }
+  rm -rf "$d"; d="$(mktemp -d)" || { CREW_NOJQ_WHY="mktemp failed"; return 1; }
   for t in jq python3 python; do
-    printf '#!/usr/bin/env bash\nexit 49\n' > "$d/$t" 2>/dev/null || { CSK_NOJQ_WHY="cannot write the '$t' stub"; rm -rf "$d"; return 1; }
-    chmod +x "$d/$t" 2>/dev/null || { CSK_NOJQ_WHY="cannot mark the '$t' stub executable"; rm -rf "$d"; return 1; }
+    printf '#!/usr/bin/env bash\nexit 49\n' > "$d/$t" 2>/dev/null || { CREW_NOJQ_WHY="cannot write the '$t' stub"; rm -rf "$d"; return 1; }
+    chmod +x "$d/$t" 2>/dev/null || { CREW_NOJQ_WHY="cannot mark the '$t' stub executable"; rm -rf "$d"; return 1; }
   done
   # Both halves, or the tier under test is not the tier that runs: the stub must RESOLVE and must FAIL.
-  PATH="$d:$PATH" "$probe" -c 'command -v jq' >/dev/null 2>&1 || { CSK_NOJQ_WHY="the jq stub does not resolve"; rm -rf "$d"; return 1; }
-  PATH="$d:$PATH" "$probe" -c 'jq --version'  >/dev/null 2>&1 && { CSK_NOJQ_WHY="the jq stub RUNS — it would not force the fallback"; rm -rf "$d"; return 1; }
-  PATH="$d:$PATH" "$probe" -c 'printf x | grep -q x' 2>/dev/null || { CSK_NOJQ_WHY="canary failed: grep unusable behind the stubs"; rm -rf "$d"; return 1; }
-  CSK_NOJQ_MODE="stubbed"; printf '%s' "$d:$PATH"; return 0
+  PATH="$d:$PATH" "$probe" -c 'command -v jq' >/dev/null 2>&1 || { CREW_NOJQ_WHY="the jq stub does not resolve"; rm -rf "$d"; return 1; }
+  PATH="$d:$PATH" "$probe" -c 'jq --version'  >/dev/null 2>&1 && { CREW_NOJQ_WHY="the jq stub RUNS — it would not force the fallback"; rm -rf "$d"; return 1; }
+  PATH="$d:$PATH" "$probe" -c 'printf x | grep -q x' 2>/dev/null || { CREW_NOJQ_WHY="canary failed: grep unusable behind the stubs"; rm -rf "$d"; return 1; }
+  CREW_NOJQ_MODE="stubbed"; printf '%s' "$d:$PATH"; return 0
 }
 # ---- /CSK-NOJQ-PATH --------------------------------------------------------------------------------------
 
@@ -1245,10 +1245,10 @@ sec "== 6i3) transcript directory encoding (the BY-HAND call, no hook payload) =
 # The expression is READ OUT OF THE HOOK, never restated here. A copy in the test asserts what the test author
 # believed, not what ships: the hook could quietly lose the underscore again and every case below would still
 # pass. This is the same failure the no-jq section carried for months, so it does not get repeated.
-CSK_ENC_SED="$(grep -o "s#\[[^]]*\]#-#g" "$HOOKS/context-usage.sh" | head -1)"
-[ -n "$CSK_ENC_SED" ] && pass "the cwd encoder expression was found in context-usage.sh" \
+CREW_ENC_SED="$(grep -o "s#\[[^]]*\]#-#g" "$HOOKS/context-usage.sh" | head -1)"
+[ -n "$CREW_ENC_SED" ] && pass "the cwd encoder expression was found in context-usage.sh" \
                       || fail "no cwd-encoder expression in context-usage.sh (the resolver was rewritten or removed)"
-enc_csk(){ printf '%s' "$1" | sed "${CSK_ENC_SED:-s#x#x#}"; }
+enc_csk(){ printf '%s' "$1" | sed "${CREW_ENC_SED:-s#x#x#}"; }
 [ "$(enc_csk '/Users/x/Projects/claude-starter-kit')" = '-Users-x-Projects-claude-starter-kit' ] \
   && pass "encode: POSIX path" || fail "encode: POSIX path -> $(enc_csk '/Users/x/Projects/claude-starter-kit')"
 [ "$(enc_csk 'C:\Repos\team\report_api')" = 'C--Repos-team-report-api' ] \
@@ -1329,7 +1329,7 @@ cu_hand="$(cd "$ROOT/.." && bash "$HOOKS/context-usage.sh" 2>&1)"
 # the difference was invisible to both counters.
 #
 # `scope`, not `fixture` or `tool`: nothing is broken or absent on a machine that simply has no session
-# transcript for this directory, and the scope/platform classes are the ones that do NOT arm CSK_VERIFY_STRICT.
+# transcript for this directory, and the scope/platform classes are the ones that do NOT arm CREW_VERIFY_STRICT.
 # Calling a runner with no transcript a broken runner would make CI red for an honest condition.
 #
 # And the third arm is now a FAILURE rather than a note. The hook has exactly two legitimate answers — a
@@ -1894,7 +1894,7 @@ if command -v git >/dev/null 2>&1 && ( cd "$PR" && git init -q && git config use
   pcreset; mkdir -p "$PR/node_modules/x"; printf 'module.exports=1\n' > "$PR/node_modules/x/index.js"
   pc && fail "repo-bloat let a node_modules file through" || pass "repo-bloat blocks a vendored/build artifact"
   pcreset; yes a | head -c 4096 | tr -d '\n' > "$PR/big.bin"
-  ( cd "$PR" && git add -A >/dev/null 2>&1 && CSK_MAX_FILE_BYTES=1024 bash "$HOOKS/pre-commit" ) >"$PCLOG" 2>&1 \
+  ( cd "$PR" && git add -A >/dev/null 2>&1 && CREW_MAX_FILE_BYTES=1024 bash "$HOOKS/pre-commit" ) >"$PCLOG" 2>&1 \
     && fail "repo-bloat let an oversized blob through" || pass "repo-bloat blocks an oversized blob"
 
   # The pattern half must judge NEW paths only. A file already in HEAD under such a path is one the project
@@ -1907,7 +1907,7 @@ if command -v git >/dev/null 2>&1 && ( cd "$PR" && git init -q && git config use
   pc && pass "repo-bloat allows editing a TRACKED build-path file" || { fail "repo-bloat blocks an edit to a tracked bin/ file"; sed -n 1,2p "$PCLOG"; }
   # …and the SIZE half still applies to that tracked file, so it cannot quietly grow.
   pcreset; yes a | head -c 4096 | tr -d '\n' > "$PR/bin/cli.js"
-  ( cd "$PR" && git add -A >/dev/null 2>&1 && CSK_MAX_FILE_BYTES=1024 bash "$HOOKS/pre-commit" ) >"$PCLOG" 2>&1 \
+  ( cd "$PR" && git add -A >/dev/null 2>&1 && CREW_MAX_FILE_BYTES=1024 bash "$HOOKS/pre-commit" ) >"$PCLOG" 2>&1 \
     && fail "size check skipped a tracked build-path file" || pass "repo-bloat still sizes a tracked build-path file"
 
   # (F) secret-FILE gate — a file that is a secret by NAME is blocked; a committable .env.example is not
@@ -2281,7 +2281,7 @@ elif [ "$IS_KIT" = 1 ]; then fail "agent(s) with a passive description — auto-
 else pass "some agents lack a proactive cue:$NO_CUE (your project's own agents, not gated)"; fi
 
 
-# ---- gate UNIT cases: skipped under CSK_SMOKE_SCOPE=install ------------------------------------------------
+# ---- gate UNIT cases: skipped under CREW_SMOKE_SCOPE=install ------------------------------------------------
 # These drive the hook binaries against fixture commands, and the installer copies those files unchanged — so
 # running them again inside every e2e install re-verifies identical bytes. Measured while e2e still rehearsed
 # six profiles: one smoke-test run spawns 136 hook processes; e2e ran the suite seven times, and on Windows that
@@ -2868,7 +2868,7 @@ _t1e 'git commit -m c'; [ "$?" = 0 ] \
 # and the third failure is what settles the design:
 #   1. `command -v <interpreter>` anywhere -> red on guard-commit-scan's MESSAGE extractor, which reads an
 #      already-parsed command string and is deliberately in place.
-#   2. excluding that by the `CSK_CMD=` marker on the line -> the same block probes on one line and passes the
+#   2. excluding that by the `CREW_CMD=` marker on the line -> the same block probes on one line and passes the
 #      marker on the next, so a line-based allowance saw half of it.
 #   3. "an interpreter AND `INPUT` on one line" -> misses the temp-file form, which review named:
 #         printf '%s' "$INPUT" > "$tmp"
@@ -2905,7 +2905,7 @@ printf '%s\n' '#!/bin/sh' '_a="${INPUT#*x}"; CMD="$(printf "%s" "$INPUT" | jq -r
 printf '%s\n' '#!/bin/sh' 'printf "%s" "$INPUT" > "$tmp"' 'CMD="$(jq -r .x "$tmp")"'                                > "$_LT/g.sh"
 printf '%s\n' '#!/bin/sh' 'exec 3<<<"$INPUT"' 'CMD="$(jq -r .x <&3)"'                                               > "$_LT/h.sh"
 printf '%s\n' '#!/bin/sh' '# the deleted ladder piped "$INPUT" into jq and then python3 — prose, must NOT count' 'X=1' > "$_LT/e.sh"
-printf '%s\n' '#!/bin/sh' '# CSK-NOT-A-RUNG: reads $CMD, never the payload' 'MSG="$(CSK_CMD="$CMD" python3 -c "pass")"' '# /CSK-NOT-A-RUNG' > "$_LT/f.sh"
+printf '%s\n' '#!/bin/sh' '# CSK-NOT-A-RUNG: reads $CMD, never the payload' 'MSG="$(CREW_CMD="$CMD" python3 -c "pass")"' '# /CSK-NOT-A-RUNG' > "$_LT/f.sh"
 _tw=0; _twf=""
 for _f in a b c d g h; do _ladder "$_LT/$_f.sh" >/dev/null 2>&1 || { _tw=1; _twf="$_f"; }; done
 for _f in e f; do _ladder "$_LT/$_f.sh" >/dev/null 2>&1 && { _tw=2; _twf="$_f"; }; done
@@ -3319,7 +3319,7 @@ GWSL="$(mktemp -d)"
 mkdir -p "$GWSL/.claude/hooks" "$GWSL/.claude/skills/real"; : > "$GWSL/.claude/hooks/guard-bash.sh"; : > "$GWSL/.claude/DISCIPLINE.md"
 if ln -s ../hooks "$GWSL/.claude/skills/link" 2>/dev/null && [ -L "$GWSL/.claude/skills/link" ] \
    && ln -sfn .claude "$GWSL/cfg" 2>/dev/null && ln -sfn .claude/skills "$GWSL/sk" 2>/dev/null; then
-  gws(){ wj Write "$2" | ( cd "$GWSL" && CSK_GATE_LOG=/dev/null bash "$HOOKS/guard-write.sh" ) >/dev/null 2>&1; [ "$?" = "$1" ]; }
+  gws(){ wj Write "$2" | ( cd "$GWSL" && CREW_GATE_LOG=/dev/null bash "$HOOKS/guard-write.sh" ) >/dev/null 2>&1; [ "$?" = "$1" ]; }
   gws 2 '.claude/skills/link/guard-bash.sh' && pass "a link INSIDE .claude/ cannot reach a gate script" || fail "symlinked ancestor reached a gate file (§4.5 hole)"
   gws 2 'cfg/hooks/guard-bash.sh'           && pass "a link whose target IS .claude/ cannot reach a gate script" || fail "a link pointing at .claude/ smuggled a gate write past §4.5"
   gws 2 'cfg/DISCIPLINE.md'                 && pass "the same link cannot reach the discipline document" || fail "a link pointing at .claude/ reached DISCIPLINE.md"
@@ -3334,11 +3334,11 @@ if ln -s ../hooks "$GWSL/.claude/skills/link" 2>/dev/null && [ -L "$GWSL/.claude
   # /var — a negative twin that cannot fail is not a test.
   if ln -s "$GWSL" "$GWSL.link" 2>/dev/null && [ -L "$GWSL.link" ]; then
     for _ok in '.claude/settings.json' '.claude/skills/real/SKILL.md' '.git/info/exclude' 'src/app.ts'; do
-      wj Write "$GWSL.link/$_ok" | CSK_GATE_LOG=/dev/null bash "$HOOKS/guard-write.sh" >/dev/null 2>&1 \
+      wj Write "$GWSL.link/$_ok" | CREW_GATE_LOG=/dev/null bash "$HOOKS/guard-write.sh" >/dev/null 2>&1 \
         && pass "a SYMLINKED project root leaves ordinary work alone: $_ok" \
         || fail "a symlinked project root blocks ordinary work ($_ok) — the probe answers the wrong question"
     done
-    wj Write "$GWSL.link/.claude/hooks/guard-bash.sh" | CSK_GATE_LOG=/dev/null bash "$HOOKS/guard-write.sh" >/dev/null 2>&1
+    wj Write "$GWSL.link/.claude/hooks/guard-bash.sh" | CREW_GATE_LOG=/dev/null bash "$HOOKS/guard-write.sh" >/dev/null 2>&1
     [ "$?" = 2 ] && pass "a gate path under a symlinked project root is still BLOCKED" || fail "a symlinked root smuggled a gate-file write past §4.5"
     rm -f "$GWSL.link"
   fi
@@ -3427,8 +3427,8 @@ gb_sandbox(){   # echoes the PATH to run under, or nothing; $GB_WHYF says why no
   # Thin wrapper over csk_nojq_path: the rule for "a PATH where jq and python3 do not deliver" lives in ONE
   # place, because it was written three times and all three failed on the same platform for the same reason.
   local out; : > "$GB_WHYF"
-  out="$(csk_nojq_path awk sed grep head cat tr git cut)" || { gb_why "${CSK_NOJQ_WHY:-sandbox unbuildable}"; return 1; }
-  [ -n "$out" ] || { gb_why "${CSK_NOJQ_WHY:-sandbox unbuildable}"; return 1; }
+  out="$(csk_nojq_path awk sed grep head cat tr git cut)" || { gb_why "${CREW_NOJQ_WHY:-sandbox unbuildable}"; return 1; }
+  [ -n "$out" ] || { gb_why "${CREW_NOJQ_WHY:-sandbox unbuildable}"; return 1; }
   printf '%s' "$out"
 }
 GBX="$(gb_sandbox)"
@@ -4264,7 +4264,7 @@ UPD="$(mktemp -d)"; mkdir -p "$UPD/.claude/.state"
 printf '2.0.0\n' > "$UPD/.claude/VERSION"
 UH="$HOOKS/session-update-check.sh"
 uc(){ ( printf '{"hook_event_name":"SessionStart","source":"startup","cwd":"%s"}' "$UPD" \
-        | CLAUDE_PROJECT_DIR="$UPD" CSK_UPDATE_URL="${1:-http://10.255.255.1/blackhole}" bash "$UH" 2>/dev/null ); }
+        | CLAUDE_PROJECT_DIR="$UPD" CREW_UPDATE_URL="${1:-http://10.255.255.1/blackhole}" bash "$UH" 2>/dev/null ); }
 ustate(){ rm -f "$UPD/.claude/.state/update-notified"; }
 
 # 1) A cached newer version is announced, and names BOTH versions — a notice that does not say what you are on is
@@ -4312,7 +4312,7 @@ if ! command -v curl >/dev/null 2>&1; then
 elif ! curl -fsS "$FURL" >/dev/null 2>&1; then
   skip tool "--refresh fetch case skipped (this curl cannot read $FURL — file:// support, not the kit)"
 else
-  CSK_UPDATE_URL="$FURL" bash "$UH" --refresh "$UPD/.claude/.state" </dev/null >/dev/null 2>&1
+  CREW_UPDATE_URL="$FURL" bash "$UH" --refresh "$UPD/.claude/.state" </dev/null >/dev/null 2>&1
   case "$(cat "$UPD/.claude/.state/update-check" 2>/dev/null)" in
     9.9.9\ [0-9]*) pass "--refresh parses a dist-tags response and caches version+timestamp" ;;
     *) fail "--refresh did not cache a usable result from $FURL (got: $(cat "$UPD/.claude/.state/update-check" 2>/dev/null || echo '<no file>'))" ;;
@@ -4336,8 +4336,8 @@ printf 'not-a-version 9999999999\n' > "$UPD/.claude/.state/update-check"; ustate
 
 # 7) The opt-out, and the case where there is nothing to compare against at all.
 printf '2.1.0 %s\n' "$(date +%s)" > "$UPD/.claude/.state/update-check"; ustate
-[ -z "$( printf '{"cwd":"%s"}' "$UPD" | CLAUDE_PROJECT_DIR="$UPD" CSK_NO_UPDATE_CHECK=1 bash "$UH" 2>/dev/null )" ] \
-  && pass "CSK_NO_UPDATE_CHECK=1 silences the check completely" || fail "the opt-out switch does not silence the check"
+[ -z "$( printf '{"cwd":"%s"}' "$UPD" | CLAUDE_PROJECT_DIR="$UPD" CREW_NO_UPDATE_CHECK=1 bash "$UH" 2>/dev/null )" ] \
+  && pass "CREW_NO_UPDATE_CHECK=1 silences the check completely" || fail "the opt-out switch does not silence the check"
 mv "$UPD/.claude/VERSION" "$UPD/.claude/VERSION.bak"
 [ -z "$(uc)" ] && pass "neither edition present (no VERSION, no plugin root) -> silent" \
                || fail "announced an update with nothing to compare against"
@@ -4353,7 +4353,7 @@ XDG="$UPD/xdg"; mkdir -p "$XDG/claude-starter-kit"
 printf '2.1.0 %s\n' "$(date +%s)" > "$XDG/claude-starter-kit/update-check"
 pc(){ ( printf '{"hook_event_name":"SessionStart","source":"startup","cwd":"%s"}' "$UPD" \
         | CLAUDE_PROJECT_DIR="$UPD" CLAUDE_PLUGIN_ROOT="$PLG" XDG_CACHE_HOME="$XDG" \
-          CSK_UPDATE_URL="http://10.255.255.1/blackhole" bash "$UH" 2>/dev/null ); }
+          CREW_UPDATE_URL="http://10.255.255.1/blackhole" bash "$UH" 2>/dev/null ); }
 o="$(pc)"
 case "$o" in *2.0.0*2.1.0*) pass "plugin edition: reads its own plugin.json and announces (v2.0.0 -> v2.1.0)" ;;
              *) fail "plugin edition announced nothing — it is idle in the channel it ships to (got: ${o:-<silence>})" ;; esac
@@ -4635,7 +4635,7 @@ else
   fail "guard-commit-scan.sh missing or not executable — the plugin edition has no commit content gate"
 fi
 
-sec "== 7k) gate observability (CSK_GATE_LOG) — the log never changes the verdict =="
+sec "== 7k) gate observability (CREW_GATE_LOG) — the log never changes the verdict =="
 # Why this exists: a gate that cannot be observed firing cannot be measured. "The model never reached for the
 # command" and "the gate stopped it" leave behind exactly the same artifacts, so evals/permission-pressure had
 # to report "guard-bash never fired" as an INFERENCE rather than a reading. This channel makes it a reading.
@@ -4645,45 +4645,45 @@ sec "== 7k) gate observability (CSK_GATE_LOG) — the log never changes the verd
 GLD="$(mktemp -d)"; GLOG="$GLD/gates.log"
 # rc MUST be exactly 2. A hook that DIES — syntax error, missing interpreter, an unbound variable under `set -u`
 # — exits 1, and Claude Code treats a non-2 failure as "this hook had a problem" and RUNS THE TOOL. So a case
-# that only asserts "non-zero" scores a fail-open gate as a pass; removing the CSK_GATE_LOG guard below produced
-# exactly that (`line 51: CSK_GATE_LOG: unbound variable`, rc=1) and the first version of this check went green.
+# that only asserts "non-zero" scores a fail-open gate as a pass; removing the CREW_GATE_LOG guard below produced
+# exactly that (`line 51: CREW_GATE_LOG: unbound variable`, rc=1) and the first version of this check went green.
 # Same class as the M1 fallback hole the 1.4.0 audit found. Blocked means 2, and nothing else does.
 blocks2(){ gj auto "$1" | env "${2:-IGNORE=1}" bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ]; }
 # 1. Unset: no file appears, and the block still happens (rc=2, not merely non-zero).
-( cd "$GLD" && unset CSK_GATE_LOG && blocks2 'git reset --hard' ) \
+( cd "$GLD" && unset CREW_GATE_LOG && blocks2 'git reset --hard' ) \
   && pass "log unset: reset --hard still BLOCKED (rc=2)" || fail "log unset: reset --hard not blocked with rc=2 (fail-open or died)"
 [ ! -e "$GLOG" ] && pass "log unset: nothing is written to that path (no .claude/ here for the default log)" || fail "log unset: a log file appeared anyway"
-# 2. Set: one line, carrying verdict + section + rule. The COMMAND field is empty unless CSK_GATE_LOG_CMD=1
+# 2. Set: one line, carrying verdict + section + rule. The COMMAND field is empty unless CREW_GATE_LOG_CMD=1
 #    (2.5.0): recording became the default, and the command is the one field that can carry a path or a token
 #    while /gates-crew never prints it. Both halves are cased, because "opt-in" that quietly records anyway is
 #    the failure that matters here.
-blocks2 'git reset --hard' "CSK_GATE_LOG=$GLOG" \
+blocks2 'git reset --hard' "CREW_GATE_LOG=$GLOG" \
   && pass "log set: reset --hard still BLOCKED (rc=2, verdict unchanged)" || fail "log set: the gate stopped blocking with rc=2"
 grep -q "^BLOCK	§4.5	git reset --hard	$" "$GLOG" 2>/dev/null \
   && pass "log set: BLOCK line carries verdict, section, rule — and no command" \
   || fail "log set: wrong or missing line ($(tr '\t' '|' < "$GLOG" 2>/dev/null | tr '\n' ' '))"
 rm -f "$GLOG"
-gj auto 'git reset --hard' | env "CSK_GATE_LOG=$GLOG" CSK_GATE_LOG_CMD=1 bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1
+gj auto 'git reset --hard' | env "CREW_GATE_LOG=$GLOG" CREW_GATE_LOG_CMD=1 bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1
 grep -q "^BLOCK	§4.5	git reset --hard	git reset --hard$" "$GLOG" 2>/dev/null \
-  && pass "log set: CSK_GATE_LOG_CMD=1 adds the command back" \
-  || fail "log set: CSK_GATE_LOG_CMD=1 did not record the command ($(tr '\t' '|' < "$GLOG" 2>/dev/null | tr '\n' ' '))"
+  && pass "log set: CREW_GATE_LOG_CMD=1 adds the command back" \
+  || fail "log set: CREW_GATE_LOG_CMD=1 did not record the command ($(tr '\t' '|' < "$GLOG" 2>/dev/null | tr '\n' ' '))"
 # 3. A command the gate ALLOWS writes nothing — the log records gate decisions, not shell history. Without this
 #    a reader could not tell "the gate fired" from "the model ran something".
 : > "$GLOG"
-gj auto 'rm -rf build' | CSK_GATE_LOG="$GLOG" bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1
+gj auto 'rm -rf build' | CREW_GATE_LOG="$GLOG" bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1
 [ ! -s "$GLOG" ] && pass "log set: an allowed command writes nothing" || fail "log set: an allowed command was logged"
 # 4. The §4.4 ask is a gate decision too, and it must be distinguishable from a hard block.
-( cd "$REVIEWED" && gj default 'git commit -m x' | CSK_GATE_LOG="$GLOG" bash "$HOOKS/guard-bash.sh" ) >/dev/null 2>&1
+( cd "$REVIEWED" && gj default 'git commit -m x' | CREW_GATE_LOG="$GLOG" bash "$HOOKS/guard-bash.sh" ) >/dev/null 2>&1
 grep -q '^ASK	§4.4' "$GLOG" 2>/dev/null && pass "log set: §4.4 approval prompt logged as ASK, not BLOCK" \
   || fail "log set: the §4.4 ask was not recorded distinctly"
 # 5. A multi-line command cannot corrupt the TSV — the command text is attacker-adjacent (the model composes it).
 : > "$GLOG"
-gj auto 'git reset --hard\nGUARD fake' | CSK_GATE_LOG="$GLOG" bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1
+gj auto 'git reset --hard\nGUARD fake' | CREW_GATE_LOG="$GLOG" bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1
 [ "$(wc -l < "$GLOG" | tr -d ' ')" = 1 ] && pass "log set: control characters cannot forge a second line" \
   || fail "log set: a crafted command wrote $(wc -l < "$GLOG" | tr -d ' ') lines"
 # 6. guard-write.sh shares the channel, so a gate-file edit is visible in the same place.
 : > "$GLOG"
-wj Edit '/p/.claude/hooks/guard-bash.sh' | CSK_GATE_LOG="$GLOG" bash "$HOOKS/guard-write.sh" >/dev/null 2>&1
+wj Edit '/p/.claude/hooks/guard-bash.sh' | CREW_GATE_LOG="$GLOG" bash "$HOOKS/guard-write.sh" >/dev/null 2>&1
 grep -q '^BLOCK	§4.5	gate-file edit' "$GLOG" 2>/dev/null && pass "log set: guard-write block lands in the same log" \
   || fail "log set: guard-write did not record its block"
 rm -rf "$GLD"
@@ -4712,7 +4712,7 @@ cp "$UKR/start.sh" "$UKR/adopt.sh" "$UKR/VERSION" "$UST/" 2>/dev/null
 cp -R "$UKR/kit" "$UST/" 2>/dev/null
 # --dotnet on purpose: since 3.0 it is accepted, warns, and installs the one stack-agnostic kit. Asserting that
 # here (not only in e2e) keeps an old README command from turning back into an "Unknown parameter" exit.
-( cd "$UPC" && git init -q . && printf 'yes\n' | CSK_LANG=en bash "$UST/start.sh" --dotnet >"$UPC.dotnet.log" 2>&1 ) 2>/dev/null   # English: the check greps the English line
+( cd "$UPC" && git init -q . && printf 'yes\n' | CREW_LANG=en bash "$UST/start.sh" --dotnet >"$UPC.dotnet.log" 2>&1 ) 2>/dev/null   # English: the check greps the English line
 if [ -f "$UPC/.claude/kit.conf" ]; then
   grep -q 'the .NET-specific path was removed in 3.0' "$UPC.dotnet.log" \
     && pass "start.sh --dotnet warns that the .NET path was removed" \
@@ -5073,7 +5073,7 @@ if [ -f "$GR" ]; then
   # (a0) .claude present, no log -> exit 0: recording is on and nothing fired. That IS a measurement of zero,
   #      and calling it "not measured" would understate a healthy install.
   mkdir -p "$GTMP/.claude"
-  GZ="$(cd "$GTMP" && CSK_GATE_LOG= bash "$GR" 2>&1)"; GZRC=$?
+  GZ="$(cd "$GTMP" && CREW_GATE_LOG= bash "$GR" 2>&1)"; GZRC=$?
   [ "$GZRC" = 0 ] && pass "gate-report: recording on, nothing fired -> exit 0 (measured zero)" \
                   || fail "gate-report: an empty log with .claude present returned $GZRC (expected 0)"
   case "$GZ" in *"no gate has fired"*) pass "gate-report: names it as zero firings, not as unmeasured" ;;
@@ -5083,13 +5083,13 @@ if [ -f "$GR" ]; then
   # (a) hooks but NOWHERE to record -> exit 3 and the words NOT MEASURED. Never a zero that reads like a count.
   #     (Order matters and the first version of this case got it wrong: with no hooks the tool exits 4,
   #     "cannot read the rules", which is correct behaviour and a different finding entirely.)
-  GOUT="$(cd "$GTMP" && CSK_GATE_LOG= bash "$GR" 2>&1)"; GRC=$?
+  GOUT="$(cd "$GTMP" && CREW_GATE_LOG= bash "$GR" 2>&1)"; GRC=$?
   [ "$GRC" = 3 ] && pass "gate-report: hooks present, no log -> exit 3" || fail "gate-report: no log returned $GRC (expected 3)"
   case "$GOUT" in *"NOT MEASURED"*) pass "gate-report: says NOT MEASURED rather than reporting zeros" ;;
                   *) fail "gate-report: a missing log must say NOT MEASURED, not print counts" ;; esac
 
   # (a2) no hooks at all is a DIFFERENT answer: 4, cannot read the inventory — not "nothing fired".
-  GEMPTY="$(mktemp -d)"; ( cd "$GEMPTY" && CSK_GATE_LOG= bash "$GR" >/dev/null 2>&1 ); GRC2=$?
+  GEMPTY="$(mktemp -d)"; ( cd "$GEMPTY" && CREW_GATE_LOG= bash "$GR" >/dev/null 2>&1 ); GRC2=$?
   [ "$GRC2" = 4 ] && pass "gate-report: no hooks -> exit 4 (distinct from 'not measured')" \
                   || fail "gate-report: missing hooks returned $GRC2 (expected 4)"
   rm -rf "$GEMPTY"
@@ -5160,11 +5160,11 @@ gjson(){ printf '{"tool_name":"Bash","tool_input":{"command":"%s"},"permission_m
 
 # (b) the COMMAND TEXT is not in it. This is the whole privacy argument for turning it on by default.
 if grep -q 'git reset --hard	git reset --hard' "$GTMP2/.claude/gate-log.tsv" 2>/dev/null; then
-  fail "gate log recorded the command text by default — it must be opt-in (CSK_GATE_LOG_CMD=1)"
+  fail "gate log recorded the command text by default — it must be opt-in (CREW_GATE_LOG_CMD=1)"
 else pass "gate log omits the command text by default"; fi
-( cd "$GTMP2" && gjson 'git reset --hard' | CSK_GATE_LOG_CMD=1 bash "$ROOT/hooks/guard-bash.sh" >/dev/null 2>&1 )
+( cd "$GTMP2" && gjson 'git reset --hard' | CREW_GATE_LOG_CMD=1 bash "$ROOT/hooks/guard-bash.sh" >/dev/null 2>&1 )
 grep -q 'git reset --hard	git reset --hard' "$GTMP2/.claude/gate-log.tsv" 2>/dev/null \
-  && pass "CSK_GATE_LOG_CMD=1 puts the command back" || fail "CSK_GATE_LOG_CMD=1 did not record the command"
+  && pass "CREW_GATE_LOG_CMD=1 puts the command back" || fail "CREW_GATE_LOG_CMD=1 did not record the command"
 
 # (b2) the default path is only used where it cannot surprise anyone. In a git repo where .claude/gate-log.tsv
 #      is NOT ignored, record nothing — this repo demonstrated the failure: the suite left an untracked
@@ -5199,7 +5199,7 @@ rm -rf "$GNOC"
 FF="$GTMP2/fifo"
 if mkfifo "$FF" 2>/dev/null && [ -p "$FF" ]; then
   ( sleep 25 > "$FF" ) & FW=$!
-  ( CSK_STDIN_TIMEOUT=1 bash "$ROOT/hooks/context-usage.sh" < "$FF" >/dev/null 2>&1 ) & FH=$!
+  ( CREW_STDIN_TIMEOUT=1 bash "$ROOT/hooks/context-usage.sh" < "$FF" >/dev/null 2>&1 ) & FH=$!
   # The ceiling is deliberately far above the measured cost, because what this case asserts is that the hook
   # TERMINATES AT ALL — the defect it exists for ran for twenty minutes, twice. It was 8, calibrated on a warm
   # machine, and each iteration costs a `sleep` plus a `kill` fork, so on a machine where a process is expensive
@@ -5216,7 +5216,7 @@ if mkfifo "$FF" 2>/dev/null && [ -p "$FF" ]; then
   kill "$FW" 2>/dev/null; rm -f "$FF"
 else note "stdin-hang case skipped (no working mkfifo)"; fi
 # (e) the diagnostics must not contaminate the evidence. doctor's §2b probe drives the REAL guard to check it
-#     is not neutered, so without CSK_GATE_LOG=/dev/null every `/doctor-crew` writes a synthetic force-push
+#     is not neutered, so without CREW_GATE_LOG=/dev/null every `/doctor-crew` writes a synthetic force-push
 #     block and the report starts counting the diagnostics instead of what the model reached for.
 DCT="$(mktemp -d)"; mkdir -p "$DCT/.claude"
 for d in eval hooks skills commands agents; do [ -d "$ROOT/$d" ] && cp -R "$ROOT/$d" "$DCT/.claude/$d"; done
@@ -5403,36 +5403,36 @@ if [ -n "$SGR" ] && [ -f "$SGR/.gitattributes" ] && [ -d "$SGR/packaging" ] && [
                       || fail "verify.sh defines gates ci.yml never runs: $UNRUN — they hold only when run by hand"
     fi
 
-    # A skipped step must never be counted as a pass, and under CSK_VERIFY_STRICT it must FAIL instead — on a
+    # A skipped step must never be counted as a pass, and under CREW_VERIFY_STRICT it must FAIL instead — on a
     # runner a missing tool is a broken runner. Measured in three states rather than asserted once, because a
     # skip that quietly reads as success is exactly the failure this suite was rebuilt to stop reporting.
     # PATH is stripped to force the absent-tool branch; that proves the ROUTING of rc=3, which is a logic claim
     # and the one thing a stripped PATH legitimately proves.
     #
-    # BOTH states set CSK_VERIFY_STRICT explicitly. The lenient case first only stripped PATH and inherited the
-    # rest, which passed locally and failed on the runner — the workflow sets CSK_VERIFY_STRICT at the JOB level,
+    # BOTH states set CREW_VERIFY_STRICT explicitly. The lenient case first only stripped PATH and inherited the
+    # rest, which passed locally and failed on the runner — the workflow sets CREW_VERIFY_STRICT at the JOB level,
     # so this suite runs with it already exported and "strict off" was never actually tested there. A case that
     # asserts one branch of a variable has to SET that variable; reading whatever the environment happens to
     # hold means the two states are the same state wherever the environment disagrees with the developer.
-    SKOUT="$(env PATH=/usr/bin:/bin NO_COLOR=1 CSK_VERIFY_STRICT=0 bash "$SGR/packaging/verify.sh" manifests 2>&1)"; SKRC=$?
-    STOUT="$(env PATH=/usr/bin:/bin NO_COLOR=1 CSK_VERIFY_STRICT=1 bash "$SGR/packaging/verify.sh" manifests 2>&1)"; STRC=$?
+    SKOUT="$(env PATH=/usr/bin:/bin NO_COLOR=1 CREW_VERIFY_STRICT=0 bash "$SGR/packaging/verify.sh" manifests 2>&1)"; SKRC=$?
+    STOUT="$(env PATH=/usr/bin:/bin NO_COLOR=1 CREW_VERIFY_STRICT=1 bash "$SGR/packaging/verify.sh" manifests 2>&1)"; STRC=$?
     if [ "$SKRC" = 0 ] && printf '%s' "$SKOUT" | grep -q '0 passed'; then
       pass "verify.sh: an absent tool is reported skipped and counted as 0 passed, not as a pass"
     else
       fail "verify.sh counted a skipped step as a pass (rc=$SKRC) — a check that did not run read like one that succeeded: $SKOUT"
     fi
     if [ "$STRC" = 1 ] && printf '%s' "$STOUT" | grep -q 'FAILED'; then
-      pass "verify.sh: the same skip FAILS under CSK_VERIFY_STRICT, which is what CI sets"
+      pass "verify.sh: the same skip FAILS under CREW_VERIFY_STRICT, which is what CI sets"
     else
-      fail "verify.sh let a skip pass under CSK_VERIFY_STRICT (rc=$STRC) — CI would report success for a gate nobody ran: $STOUT"
+      fail "verify.sh let a skip pass under CREW_VERIFY_STRICT (rc=$STRC) — CI would report success for a gate nobody ran: $STOUT"
     fi
     # The ASSIGNMENT, not the word. The first version grepped for the bare name and stayed green when the env
     # block was deleted, because the comment above it still explains what the variable does — prose read as
     # configuration, the same mistake as the invocation pattern above. Two of these in one file is a pattern:
     # when a check reads a config file, anchor it to the syntax that actually takes effect.
-    grep -qE '^[[:space:]]*CSK_VERIFY_STRICT:[[:space:]]*"?1"?[[:space:]]*$' "$SGR/.github/workflows/ci.yml" \
-      && pass "ci.yml sets CSK_VERIFY_STRICT=1, so a broken runner turns the job red" \
-      || fail "ci.yml does not SET CSK_VERIFY_STRICT (mentioning it in a comment is not setting it) — a missing tool on the runner would be reported as a skip and the job would stay green"
+    grep -qE '^[[:space:]]*CREW_VERIFY_STRICT:[[:space:]]*"?1"?[[:space:]]*$' "$SGR/.github/workflows/ci.yml" \
+      && pass "ci.yml sets CREW_VERIFY_STRICT=1, so a broken runner turns the job red" \
+      || fail "ci.yml does not SET CREW_VERIFY_STRICT (mentioning it in a comment is not setting it) — a missing tool on the runner would be reported as a skip and the job would stay green"
 
     # An unknown name must be refused loudly. Without this, a step renamed in verify.sh and left stale in ci.yml
     # would depend on the two checks above being run; this one holds even if the lists are compared wrongly.
@@ -5458,7 +5458,7 @@ if [ -n "$SGR" ] && [ -f "$SGR/.gitattributes" ] && [ -d "$SGR/packaging" ] && [
       mkdir -p "$SGD/$d/packaging" "$SGD/$d/kit"
       cp -R "$SGR/kit/." "$SGD/$d/kit/" 2>/dev/null
     done
-    # CSK_LANG=en IS PART OF THE ASSERTION, not tidiness. These three cases read the installer's PROSE, and the
+    # CREW_LANG=en IS PART OF THE ASSERTION, not tidiness. These three cases read the installer's PROSE, and the
     # installer is bilingual: on a machine whose locale is Turkish it says "Bu ayarlarla kurulayım mı?" and the
     # grep below finds nothing. MEASURED on a `LANG=tr_TR.UTF-8` machine — both cases went red while the
     # installer was behaving correctly (rc=0, install reached the prompt), and the failure text blamed the
@@ -5467,9 +5467,9 @@ if [ -n "$SGR" ] && [ -f "$SGR/.gitattributes" ] && [ -d "$SGR/packaging" ] && [
     # the wrong side. Note the second grep ("own source repository") would hold without this, because that
     # message is deliberately never translated — the pin is on all three so the NEXT assertion of this class is
     # covered too.
-    ( cd "$SGD/src" && CSK_LANG=en bash start.sh --generic </dev/null >"$SGD/o1" 2>&1 ); SG1=$?
-    ( cd "$SGD/src" && CSK_LANG=en CSK_ALLOW_SOURCE_INSTALL=1 bash start.sh --generic </dev/null >"$SGD/o3" 2>&1 ); SG3=$?
-    ( cd "$SGD/plain" && CSK_LANG=en bash start.sh --generic </dev/null >"$SGD/o2" 2>&1 ); SG2=$?
+    ( cd "$SGD/src" && CREW_LANG=en bash start.sh --generic </dev/null >"$SGD/o1" 2>&1 ); SG1=$?
+    ( cd "$SGD/src" && CREW_LANG=en CREW_ALLOW_SOURCE_INSTALL=1 bash start.sh --generic </dev/null >"$SGD/o3" 2>&1 ); SG3=$?
+    ( cd "$SGD/plain" && CREW_LANG=en bash start.sh --generic </dev/null >"$SGD/o2" 2>&1 ); SG2=$?
 
     { [ "$SG1" = 1 ] && grep -q "own source repository" "$SGD/o1"; } \
       && pass "start.sh refuses to install from the kit's own checkout (rc=1, named)" \
@@ -5479,9 +5479,9 @@ if [ -n "$SGR" ] && [ -f "$SGR/.gitattributes" ] && [ -d "$SGR/packaging" ] && [
     { [ "$SG2" = 0 ] && ! grep -q "own source repository" "$SGD/o2" && grep -q "Install with these settings" "$SGD/o2"; } \
       && pass "start.sh is unaffected outside a checkout: it reaches the approval prompt as before" \
       || fail "start.sh refused an ORDINARY unpacked kit (rc=$SG2) — the guard is keyed on something a released tarball also carries"
-    { [ "$SG3" = 0 ] && grep -q "CSK_ALLOW_SOURCE_INSTALL=1" "$SGD/o3" && grep -q "Install with these settings" "$SGD/o3"; } \
-      && pass "start.sh: CSK_ALLOW_SOURCE_INSTALL=1 warns and proceeds, so the gate has a deliberate way through" \
-      || fail "start.sh did not honour CSK_ALLOW_SOURCE_INSTALL (rc=$SG3) — a gate with no override becomes one someone edits out"
+    { [ "$SG3" = 0 ] && grep -q "CREW_ALLOW_SOURCE_INSTALL=1" "$SGD/o3" && grep -q "Install with these settings" "$SGD/o3"; } \
+      && pass "start.sh: CREW_ALLOW_SOURCE_INSTALL=1 warns and proceeds, so the gate has a deliberate way through" \
+      || fail "start.sh did not honour CREW_ALLOW_SOURCE_INSTALL (rc=$SG3) — a gate with no override becomes one someone edits out"
     rm -rf "$SGD"
   fi
   else
@@ -5514,44 +5514,44 @@ fi
 
 sec "== 14b) the star line (once, on a first install) and the front page it points at =="
 # One file owns the line — its URL, both languages, and when it stays quiet — so these checks drive THAT file,
-# with CI and CSK_NO_STAR set or cleared by each case itself: a runner exports CI=true, and a check that read it
+# with CI and CREW_NO_STAR set or cleared by each case itself: a runner exports CI=true, and a check that read it
 # from the environment would pass here and assert the opposite there.
 STAR="$ROOT/eval/lib/star.sh"
 if [ -f "$STAR" ]; then
-  _SURL="$(sed -n 's/^CSK_REPO_URL="\(.*\)"$/\1/p' "$STAR" | head -1)"
-  _so="$(env -u CI -u CSK_NO_STAR CSK_LANG=en bash "$STAR" 2>&1)"
+  _SURL="$(sed -n 's/^CREW_REPO_URL="\(.*\)"$/\1/p' "$STAR" | head -1)"
+  _so="$(env -u CI -u CREW_NO_STAR CREW_LANG=en bash "$STAR" 2>&1)"
   [ -n "$_SURL" ] && [ "$(printf '%s\n' "$_so" | grep -c .)" = 1 ] && case "$_so" in "⭐ "*"$_SURL") true ;; *) false ;; esac \
     && pass "star line: exactly one line, ending in the one URL ($_SURL)" \
     || fail "star line: expected one '⭐ …$_SURL' line, got: '${_so:-<nothing>}'"
-  case "$(env -u CI -u CSK_NO_STAR CSK_LANG=tr bash "$STAR" 2>&1)" in
-    *"yıldız"*"$_SURL") pass "star line speaks Turkish under CSK_LANG=tr" ;;
-    *) fail "star line under CSK_LANG=tr is not the Turkish row" ;; esac
+  case "$(env -u CI -u CREW_NO_STAR CREW_LANG=tr bash "$STAR" 2>&1)" in
+    *"yıldız"*"$_SURL") pass "star line speaks Turkish under CREW_LANG=tr" ;;
+    *) fail "star line under CREW_LANG=tr is not the Turkish row" ;; esac
   _q=""
-  for _env in "CSK_NO_STAR=1" "CSK_NO_STAR=yes" "CI=1" "CI=true" "CI="; do
-    [ -z "$(env -u CI -u CSK_NO_STAR "$_env" bash "$STAR" 2>&1)" ] || _q="$_q $_env"
+  for _env in "CREW_NO_STAR=1" "CREW_NO_STAR=yes" "CI=1" "CI=true" "CI="; do
+    [ -z "$(env -u CI -u CREW_NO_STAR "$_env" bash "$STAR" 2>&1)" ] || _q="$_q $_env"
   done
-  [ -z "$_q" ] && pass "star line is silent under CSK_NO_STAR=1/yes and whenever CI is defined (1, true, empty)" \
+  [ -z "$_q" ] && pass "star line is silent under CREW_NO_STAR=1/yes and whenever CI is defined (1, true, empty)" \
                || fail "star line printed under:$_q"
-  [ -n "$(env -u CI CSK_NO_STAR=0 bash "$STAR" 2>&1)" ] && pass "CSK_NO_STAR=0 does not silence it (0 means no)" \
-    || fail "CSK_NO_STAR=0 silenced the star line"
+  [ -n "$(env -u CI CREW_NO_STAR=0 bash "$STAR" 2>&1)" ] && pass "CREW_NO_STAR=0 does not silence it (0 means no)" \
+    || fail "CREW_NO_STAR=0 silenced the star line"
   # --once: ONCE PER KIT VERSION, via a marker that holds the version it was shown for — written only when the
   # line actually printed. Outside git the marker is .claude/star-shown; inside git it is in the git dir, where no
   # `git add .claude` can commit it (review found the first version landing in a tracked .claude/).
   _SP="$(mktemp -d)"; mkdir -p "$_SP/.claude"; printf '9.9.0\n' > "$_SP/.claude/VERSION"
-  _o1="$(env -u CI -u CSK_NO_STAR bash "$STAR" --once "$_SP" 2>&1)"
-  _o2="$(env -u CI -u CSK_NO_STAR bash "$STAR" --once "$_SP" 2>&1)"
+  _o1="$(env -u CI -u CREW_NO_STAR bash "$STAR" --once "$_SP" 2>&1)"
+  _o2="$(env -u CI -u CREW_NO_STAR bash "$STAR" --once "$_SP" 2>&1)"
   printf '9.9.1\n' > "$_SP/.claude/VERSION"
-  _o3="$(env -u CI -u CSK_NO_STAR bash "$STAR" --once "$_SP" 2>&1)"
+  _o3="$(env -u CI -u CREW_NO_STAR bash "$STAR" --once "$_SP" 2>&1)"
   _mv="$(head -1 "$_SP/.claude/star-shown" 2>/dev/null)"
   printf '9.9.2\n' > "$_SP/.claude/VERSION"
-  _o4="$(env -u CSK_NO_STAR CI=true bash "$STAR" --once "$_SP" 2>&1)"; _mv4="$(head -1 "$_SP/.claude/star-shown" 2>/dev/null)"
+  _o4="$(env -u CREW_NO_STAR CI=true bash "$STAR" --once "$_SP" 2>&1)"; _mv4="$(head -1 "$_SP/.claude/star-shown" 2>/dev/null)"
   [ -n "$_o1" ] && [ -z "$_o2" ] && [ -n "$_o3" ] && [ "$_mv" = 9.9.1 ] && [ -z "$_o4" ] && [ "$_mv4" = 9.9.1 ] \
     && pass "--once: once per version (shown · same version silent · new version shown), marker holds the version; a silenced run writes nothing" \
     || fail "--once broken: v1='${_o1:+shown}' v1-again='${_o2:+shown}' v2='${_o3:+shown}' marker='$_mv' silenced='${_o4:+shown}' marker-after='$_mv4'"
   rm -rf "$_SP"
   if command -v git >/dev/null 2>&1; then
     _SG="$(mktemp -d)"; ( cd "$_SG" && git init -q . ) >/dev/null 2>&1; mkdir -p "$_SG/.claude"; printf '9.9.0\n' > "$_SG/.claude/VERSION"
-    env -u CI -u CSK_NO_STAR bash "$STAR" --once "$_SG" >/dev/null 2>&1
+    env -u CI -u CREW_NO_STAR bash "$STAR" --once "$_SG" >/dev/null 2>&1
     _gm="$(cd "$_SG" && git rev-parse --git-path crewforth-star 2>/dev/null)"
     [ -f "$_SG/$_gm" ] && [ ! -e "$_SG/.claude/star-shown" ] && ! (cd "$_SG" && git status --porcelain --untracked-files=all --ignored 2>/dev/null) | grep -q 'star' \
       && pass "inside git the marker lives in the git dir ($_gm) and git status cannot see it" \

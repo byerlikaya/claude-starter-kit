@@ -49,7 +49,7 @@ function kitPaths(cwd) {
  * The gate decisions recorded on disk.
  *
  * Four tab-separated columns: verdict, section, rule, command. The command is
- * empty unless CSK_GATE_LOG_CMD=1 was set, and there is no timestamp at all —
+ * empty unless CREW_GATE_LOG_CMD=1 was set, and there is no timestamp at all —
  * both facts are returned rather than papered over.
  */
 export function gateLog(cwd, { limit = 200 } = {}) {
@@ -121,7 +121,7 @@ export async function gateReport(cwd) {
   const from = kit.kind === 'installed' ? cwd : path.dirname(kit.hooks);
   const logPath = path.join(cwd, '.claude', 'gate-log.tsv');
   const env = { ...process.env };
-  if (kit.kind !== 'installed' && fs.existsSync(logPath)) env.CSK_GATE_LOG = logPath;
+  if (kit.kind !== 'installed' && fs.existsSync(logPath)) env.CREW_GATE_LOG = logPath;
 
   const r = await run('bash', [script, '--json'], { cwd: from, env });
   // 3 means there is no log to read, which the script calls "not an error"; 4

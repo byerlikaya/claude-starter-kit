@@ -38,7 +38,7 @@ colliding. Creating one, choosing between its three levels and the ref-namespace
 — one person runs it once, and everybody else configures nothing.
 
 Already have a board and want it out of the way? `/board-crew off` (add `--global` for every repo) releases **all
-three** gates and leaves the board itself intact; `/board-crew on` restores it. `CSK_NO_BOARD=1` does the same for
+three** gates and leaves the board itself intact; `/board-crew on` restores it. `CREW_NO_BOARD=1` does the same for
 one session. This half stays here on purpose: someone a gate has just stopped needs the answer without opening a
 second file.
 
@@ -49,7 +49,7 @@ second file.
 2. **Two gates, not one, and the early one is the point.** The first file edit is refused while you hold no item
    (`guard-write.sh`) — unclaimed work is caught at minute one, not at commit time after an afternoon of it. The
    commit then has to carry `[#<id>]` for an item you hold and that is `in_progress`, or `[chore]` for work
-   belonging to no item. In a repo with no board neither gate exists. `CSK_NO_BOARD=1` disables both for a
+   belonging to no item. In a repo with no board neither gate exists. `CREW_NO_BOARD=1` disables both for a
    session; say so out loud if you set it.
 3. **Never release silently.** `drop` REQUIRES a handover note, because the whole cost of a handover is the
    context the next person does not have: where exactly it stands, which files, and *why* the rejected approach

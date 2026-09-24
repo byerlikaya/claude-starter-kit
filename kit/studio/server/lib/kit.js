@@ -11,7 +11,7 @@
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 
-const FEED = process.env.CSK_UPDATE_URL
+const FEED = process.env.CREW_UPDATE_URL
   ?? 'https://registry.npmjs.org/-/package/@byerlikaya%2fclaude-starter-kit/dist-tags';
 const FEED_TTL_MS = 60 * 60 * 1000;   // the hook uses a day; a panel refreshes hourly
 const FETCH_TIMEOUT_MS = 8000;

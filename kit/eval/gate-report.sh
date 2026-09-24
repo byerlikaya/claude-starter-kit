@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# What did the gates actually DO? — reads CSK_GATE_LOG and reports it against the rule inventory.
+# What did the gates actually DO? — reads CREW_GATE_LOG and reports it against the rule inventory.
 #
 # The kit's claim is that rules are enforced at the tool level rather than remembered. That claim is only worth
 # what its evidence is worth, and until now the evidence was a green test suite: proof the gates CAN fire, never
@@ -14,8 +14,11 @@
 # Usage:  gate-report.sh [--log <path>] [--json]
 # Exit:   0 report produced · 3 no log to read (not an error: logging is opt-in) · 4 hooks not found
 set -u
+# Pre-3.0 CSK_* names still work for the variables a user can set (one helper: eval/lib/crew-env.sh).
+_crew_d="${BASH_SOURCE%/*}"; [ "$_crew_d" = "${BASH_SOURCE}" ] && _crew_d=.
+[ -f "$_crew_d/lib/crew-env.sh" ] && . "$_crew_d/lib/crew-env.sh"; unset _crew_d
 
-LOG="${CSK_GATE_LOG:-}"; JSON=0
+LOG="${CREW_GATE_LOG:-}"; JSON=0
 while [ $# -gt 0 ]; do case "$1" in
   --log) LOG="${2:-}"; shift 2 ;;
   --json) JSON=1; shift ;;
@@ -48,11 +51,11 @@ awk '
   }
 ' "$HOOKS/guard-bash.sh" > "$TMP/inv"
 # guard-write.sh emits its one line inline rather than through a helper, so read the label out of the printf
-# arguments the same way — the earlier version skipped the very line it needed (it matched CSK_GATE_LOG first)
+# arguments the same way — the earlier version skipped the very line it needed (it matched CREW_GATE_LOG first)
 # and the rule silently never appeared in the inventory, which reads exactly like a rule that never fires.
 # guard-write.sh emits its one line inline rather than through a helper, so read the label out of the printf
-# arguments. Two traps here, both hit on the way: the line also mentions CSK_GATE_LOG (skipping on that name
-# skipped the rule itself), and the FIRST quoted field on the line is `${CSK_GATE_LOG:-}`, not the label — so
+# arguments. Two traps here, both hit on the way: the line also mentions CREW_GATE_LOG (skipping on that name
+# skipped the rule itself), and the FIRST quoted field on the line is `${CREW_GATE_LOG:-}`, not the label — so
 # take the last quoted field that is not a variable reference.
 [ -f "$HOOKS/guard-write.sh" ] && awk '
   /printf .BLOCK\\t/ {
@@ -75,14 +78,14 @@ if [ -z "$LOG" ] || [ ! -f "$LOG" ]; then
       echo "== gate report =="
       echo "  ✅ no gate has fired in this project yet — $NRULES rules wired, recording on,"
       echo "     nothing has tripped one. (Recording writes .claude/gate-log.tsv, which is gitignored;"
-      echo "     rule names and verdicts only, never the command — CSK_GATE_LOG_CMD=1 adds it for debugging.)"
+      echo "     rule names and verdicts only, never the command — CREW_GATE_LOG_CMD=1 adds it for debugging.)"
     fi
     exit 0
   fi
   if [ "$JSON" = 1 ]; then printf '{"measured":false,"rules":%s,"reason":"nowhere to record"}\n' "$NRULES"; else
     echo "== gate report =="
     echo "  ·  NOT MEASURED — no .claude/ to record into. $NRULES rules are wired; how often they fire is unknown."
-    echo "     ↳ point it somewhere:  export CSK_GATE_LOG=\"\$PWD/gate-log.tsv\""
+    echo "     ↳ point it somewhere:  export CREW_GATE_LOG=\"\$PWD/gate-log.tsv\""
   fi
   exit 3
 fi

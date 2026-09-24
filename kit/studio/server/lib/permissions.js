@@ -54,7 +54,7 @@ export function prepare(sessionId) {
         matcher: '*',
         hooks: [{
           type: 'command',
-          command: `CSK_GATE_WAIT=${HOOK_WAIT_S} bash ${JSON.stringify(HOOK)} ${JSON.stringify(spool)}`,
+          command: `CREW_GATE_WAIT=${HOOK_WAIT_S} bash ${JSON.stringify(HOOK)} ${JSON.stringify(spool)}`,
           timeout: HARNESS_TIMEOUT_S,
         }],
       }],

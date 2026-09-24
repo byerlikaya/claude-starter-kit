@@ -7,6 +7,9 @@
 # not vary either: the stack is decided per project by the backend-architecture skill and recorded in CLAUDE.md.
 # start.sh + kit/ must be in the SAME directory. At the project root:  bash start.sh [flags]
 set -euo pipefail
+# Pre-3.0 CSK_* names still work for the variables a user can set (one helper: eval/lib/crew-env.sh).
+_crew_d="${BASH_SOURCE%/*}"; [ "$_crew_d" = "${BASH_SOURCE}" ] && _crew_d=.
+[ -f "$_crew_d/kit/eval/lib/crew-env.sh" ] && . "$_crew_d/kit/eval/lib/crew-env.sh"; unset _crew_d
 HERE="$(CDPATH= cd "$(dirname "$0")" && pwd)"
 
 # --version (or -v) is answered first, before the source-checkout and payload checks below: it reads only VERSION, so it
@@ -37,15 +40,15 @@ fi
 # The three markers together appear in the source repo and in no install: an installed kit has .claude/ and
 # CLAUDE.md, never packaging/ next to a kit/ it has not yet consumed.
 if [ -d "$HERE/packaging" ] && [ -d "$HERE/.git" ] && [ -f "$HERE/VERSION" ]; then
-  if [ "${CSK_ALLOW_SOURCE_INSTALL:-0}" = 1 ]; then
-    echo "WARNING: CSK_ALLOW_SOURCE_INSTALL=1 — installing from the kit's own source checkout."
+  if [ "${CREW_ALLOW_SOURCE_INSTALL:-0}" = 1 ]; then
+    echo "WARNING: CREW_ALLOW_SOURCE_INSTALL=1 — installing from the kit's own source checkout."
     echo "  $SRC and this script will be deleted when the install finishes."
   else
     echo "ERROR: this is the kit's own source repository, not a project to install into."
     echo "  Running here would delete $SRC and this script at the end — that is what the installer does."
     echo "  To try the installer, copy the kit somewhere else first:"
     echo "      cp -R \"$HERE\" /tmp/kit-trial && cd /tmp/kit-trial && bash start.sh"
-    echo "  Set CSK_ALLOW_SOURCE_INSTALL=1 if you really mean to consume this checkout."
+    echo "  Set CREW_ALLOW_SOURCE_INSTALL=1 if you really mean to consume this checkout."
     exit 1
   fi
 fi
@@ -73,10 +76,10 @@ fi
 # NOT TRANSLATED, deliberately: the source-repo refusal above and --version. Both answer before the flags
 # are parsed, and language selection cannot run ahead of them without putting a locale lookup in front of a
 # gate whose whole job is to refuse. A gate that parses a locale before it can say no is a worse gate.
-# The inherited CSK_LANG is captured before the working variable is cleared — otherwise this very line
+# The inherited CREW_LANG is captured before the working variable is cleared — otherwise this very line
 # would destroy the environment setting it is meant to read.
-CSK_LANG_ENV="${CSK_LANG:-}"
-CSK_LANG=""
+CREW_LANG_ENV="${CREW_LANG:-}"
+CREW_LANG=""
 # `_mt` puts the result in _M with printf -v, so a call site pays no subshell: `$(m …)` is a FORK, and on Git
 # Bash a fork is ~50 ms. Measured on Windows: the $(m …) form added 22 forks and ~1 s to one install; adopt.sh's
 # printf -v twin removed them. `m` stays as a thin wrapper for the rare nested case that needs a value inline.
@@ -85,7 +88,7 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
   # An empty key must still ASSIGN: bash 3.2's `printf -v _M ""` leaves _M holding the previous translation.
   [ -n "${1:-}" ] || { _M=""; return 0; }
   local s="$1"; shift
-  if [ "$CSK_LANG" = tr ]; then
+  if [ "$CREW_LANG" = tr ]; then
     case "$s" in
       "Agentic Working Kit · setup wizard") s='Agentic Working Kit · kurulum' ;;
       "stack-agnostic") s='her yığınla çalışır' ;;
@@ -152,9 +155,9 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "ERROR: the %s sentinel line is missing from %s — refusing to guess the discipline/project split.") s='HATA: %s işaret satırı %s içinde bulunamadı — disiplinin nerede bitip proje bölümünün nerede başladığı tahmin edilmeyecek.' ;;
       "Unknown parameter: %s") s='Bilinmeyen parametre: %s' ;;
       ".gitignore") ;;   # identifier, printed as is
-      # No row: the line prints in English. CSK_I18N_MISS (set by e2e case 18) collects every such key, so a
+      # No row: the line prints in English. CREW_I18N_MISS (set by e2e case 18) collects every such key, so a
       # missing translation is caught by NAME rather than guessed from which English words it happens to contain.
-      *) [ -n "${CSK_I18N_MISS:-}" ] && printf '%s\n' "$s" >> "$CSK_I18N_MISS" ;;
+      *) [ -n "${CREW_I18N_MISS:-}" ] && printf '%s\n' "$s" >> "$CREW_I18N_MISS" ;;
     esac
   fi
   # shellcheck disable=SC2059
@@ -167,7 +170,7 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
 usage() {
   # A heredoc cannot go through m() line by line without breaking its layout, so the Turkish help is its own
   # block. Flags and commands are identical in both; only the prose differs.
-  if [ "${CSK_LANG:-}" = tr ]; then
+  if [ "${CREW_LANG:-}" = tr ]; then
     cat <<'USAGE_TR'
 Kullanım: bash start.sh [SEÇENEKLER]
 Seçenek vermezseniz kurulum sihirbazı her şeyi adım adım sorar.
@@ -370,7 +373,7 @@ kit_claude_md_is_legacy() {
 # A one-line notice is printed after the colour helpers load, so the user learns the flag no longer selects
 # anything instead of quietly getting a different set than the one they typed.
 # Language is resolved BEFORE any other flag, because every message below it goes through m(). Four
-# sources, first answer wins: --lang, then CSK_LANG, then the locale variables, then English.
+# sources, first answer wins: --lang, then CREW_LANG, then the locale variables, then English.
 #
 # English is the default rather than the locale's language on purpose: that is what this installer printed
 # before it could speak anything else, and a default that changes under people is not a default. The locale
@@ -378,12 +381,12 @@ kit_claude_md_is_legacy() {
 #
 # Measured, and recorded here rather than treated as a defect: on stock Windows LANG, LC_ALL and
 # LC_MESSAGES are ALL empty (Git Bash defaults only LC_CTYPE). So auto-detect never fires there, and a
-# Turkish-speaking Windows user lands on English unless they pass --lang tr or export CSK_LANG.
+# Turkish-speaking Windows user lands on English unless they pass --lang tr or export CREW_LANG.
 #
 # AN INTERACTIVE INSTALL ASKS. Detection alone was not enough: on macOS the system language can be Turkish
 # while the shell exports LANG=C.UTF-8 (measured on a Turkish desk), so the locale said English and the user
 # never saw a choice. So when a human is at the terminal and nothing named a language (no --lang, no
-# CSK_LANG), the first thing printed is a two-line menu, and the locale only decides which entry is the
+# CREW_LANG), the first thing printed is a two-line menu, and the locale only decides which entry is the
 # default. It is skipped under --yes and whenever stdin is not a terminal — for the same reason the
 # visibility question is: every piped caller feeds a fixed answer sequence, and one more read would shift it.
 _lang_flag=""; _lang_take=0; _lang_yes=0
@@ -400,25 +403,25 @@ done
 _loc="${LC_ALL:-}"; [ -n "$_loc" ] || _loc="${LC_MESSAGES:-}"; [ -n "$_loc" ] || _loc="${LANG:-}"
 case "$_loc" in tr*|TR*) _lang_detected=tr ;; *) _lang_detected=en ;; esac
 if [ -n "$_lang_flag" ]; then
-  CSK_LANG="$_lang_flag"
-elif [ -n "${CSK_LANG_ENV:-}" ]; then
-  CSK_LANG="$CSK_LANG_ENV"
+  CREW_LANG="$_lang_flag"
+elif [ -n "${CREW_LANG_ENV:-}" ]; then
+  CREW_LANG="$CREW_LANG_ENV"
 elif [ -t 0 ] && [ "$_lang_yes" = 0 ]; then
   if [ "$_lang_detected" = tr ]; then _lang_def=2; else _lang_def=1; fi
   printf '\n  Language / Dil\n    1) English\n    2) Türkçe\n  -> [1-2, empty/boş=%s]: ' "$_lang_def"
   csk_read _lang_ans
   case "${_lang_ans:-$_lang_def}" in
-    2|tr|TR|t|T|[tT]ürkçe|[tT]urkce|[tT]urkish) CSK_LANG=tr ;;
-    *) CSK_LANG=en ;;
+    2|tr|TR|t|T|[tT]ürkçe|[tT]urkce|[tT]urkish) CREW_LANG=tr ;;
+    *) CREW_LANG=en ;;
   esac
 else
-  CSK_LANG="$_lang_detected"
+  CREW_LANG="$_lang_detected"
 fi
 # Anything that is not a language we actually carry falls back to English rather than printing keys.
-case "$CSK_LANG" in tr|en) ;; *) CSK_LANG=en ;; esac
+case "$CREW_LANG" in tr|en) ;; *) CREW_LANG=en ;; esac
 # Exported because eval/preflight.sh runs as a child and resolves its own language from the environment: a
 # choice made by --lang or the menu above stayed in this shell, and the preflight block printed English.
-export CSK_LANG
+export CREW_LANG
 
 STACK="generic"; DOTNET_FLAG=0; LEGACY_FLAGS=""; ASSUME_YES=0; VISIBILITY=""
 for a in "$@"; do
@@ -734,7 +737,7 @@ else
   { _mt 'Every gate still holds meanwhile; the panel is the only part that needs node.'; echo "       ${_M}"; }
 fi
 # The star line, once per kit version (lib/star.sh keeps the marker in the git dir; text, URL and the
-# CSK_NO_STAR / CI silence live there too). `_S` first so the blank line appears only when the line does.
+# CREW_NO_STAR / CI silence live there too). `_S` first so the blank line appears only when the line does.
 if [ -f .claude/eval/lib/star.sh ]; then
   _S="$(bash .claude/eval/lib/star.sh --once . 2>/dev/null || true)"
   if [ -n "$_S" ]; then printf '\n%s\n' "$_S"; fi   # an `&&` here was the script's LAST status: rc=1 on every update

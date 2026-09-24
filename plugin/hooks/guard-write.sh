@@ -30,6 +30,9 @@
 # Normalise first, match second — and normalise with parameter expansion only, because this hook runs before
 # EVERY Write/Edit and a fork per call is a freeze on Windows (Git Bash charges 62-135 ms per process, measured).
 set -uo pipefail
+# Pre-3.0 CSK_* names still work for the variables a user can set (one helper: eval/lib/crew-env.sh).
+_crew_d="${BASH_SOURCE%/*}"; [ "$_crew_d" = "${BASH_SOURCE}" ] && _crew_d=.
+[ -f "$_crew_d/../eval/lib/crew-env.sh" ] && . "$_crew_d/../eval/lib/crew-env.sh"; unset _crew_d
 INPUT="$(cat)"
 
 # The two helpers below are a byte-identical copy of guard-bash.sh's block. A shared file would have to be
@@ -287,17 +290,17 @@ _json_keycount(){  # $1 = payload, $2 = key -> sets _KC to how many times it occ
 
 block(){  # $1 = rule name for the log (must keep the `gate-file edit` prefix — /gates-crew groups on it), $2 = why
   # Same write-only observability channel as guard-bash.sh, on by default into .claude/gate-log.tsv since 2.5.0
-  # and with the same rule about the payload: the path is NOT recorded unless CSK_GATE_LOG_CMD=1, because
+  # and with the same rule about the payload: the path is NOT recorded unless CREW_GATE_LOG_CMD=1, because
   # /gates-crew reports rule names and counts and never the argument. Logged after the verdict; it cannot
-  # change it. CSK_GATE_LOG overrides the path; point it at /dev/null to turn recording off.
-  _GL="${CSK_GATE_LOG:-}"
+  # change it. CREW_GATE_LOG overrides the path; point it at /dev/null to turn recording off.
+  _GL="${CREW_GATE_LOG:-}"
   if [ -z "$_GL" ] && [ -d ".claude" ]; then
     if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1 || git check-ignore -q ".claude/gate-log.tsv" 2>/dev/null; then
       _GL=".claude/gate-log.tsv"
     fi
   fi
   if [ -n "$_GL" ]; then
-    if [ "${CSK_GATE_LOG_CMD:-0}" = 1 ]; then
+    if [ "${CREW_GATE_LOG_CMD:-0}" = 1 ]; then
       printf 'BLOCK\t§4.5\t%s\t%s\n' "$1" \
         "$(printf '%s' "$FP" | tr -d '\000-\037' | cut -c1-200)" >> "$_GL" 2>/dev/null
     else
@@ -490,7 +493,7 @@ done
 #
 # Cost: this runs before EVERY Write/Edit, so it must not shell out. board.sh maintains a one-bit flag file
 # (present == a board exists, it requires a claim, and this user holds none); everything here is a file test.
-[ -n "${CSK_NO_BOARD:-}" ] && exit 0
+[ -n "${CREW_NO_BOARD:-}" ] && exit 0
 GD=".git"
 [ -d "$GD" ] || GD="$(git rev-parse --git-common-dir 2>/dev/null)"   # worktree/submodule: .git is a file
 if [ -n "$GD" ] && [ -f "$GD/csk-board-guard" ]; then
@@ -499,7 +502,7 @@ if [ -n "$GD" ] && [ -f "$GD/csk-board-guard" ]; then
     *)
       echo "BOARD GATE: you hold no work item, so nobody else can see what you are starting." >&2
       echo "Claim one first: /board-crew  (lists what is free, what is blocked, and who holds the rest)." >&2
-      echo "Work that belongs to no item: set CSK_NO_BOARD=1 for this session, and commit it with [chore]." >&2
+      echo "Work that belongs to no item: set CREW_NO_BOARD=1 for this session, and commit it with [chore]." >&2
       echo "Just claimed one elsewhere? The board view is cached — /board-crew sync refreshes it." >&2
       exit 2 ;;
   esac

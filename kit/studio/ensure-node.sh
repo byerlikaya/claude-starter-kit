@@ -16,10 +16,13 @@
 # edit, no shell profile. The runtime lands in one directory under $HOME and is used by
 # its full path. Removing that directory undoes everything this script ever did.
 #
-# Env: CSK_STUDIO_NODE          a node binary to trust ahead of any search
-#      CSK_STUDIO_RUNTIME       where fetched runtimes live (default ~/.claude/studio-runtime)
-#      CSK_STUDIO_NODE_VERSION  pin a version instead of asking nodejs.org for the newest LTS
+# Env: CREW_STUDIO_NODE          a node binary to trust ahead of any search
+#      CREW_STUDIO_RUNTIME       where fetched runtimes live (default ~/.claude/studio-runtime)
+#      CREW_STUDIO_NODE_VERSION  pin a version instead of asking nodejs.org for the newest LTS
 set -u
+# Pre-3.0 CSK_* names still work for the variables a user can set (one helper: eval/lib/crew-env.sh).
+_crew_d="${BASH_SOURCE%/*}"; [ "$_crew_d" = "${BASH_SOURCE}" ] && _crew_d=.
+[ -f "$_crew_d/../eval/lib/crew-env.sh" ] && . "$_crew_d/../eval/lib/crew-env.sh"; unset _crew_d
 
 # The floor is stated here and in eval/preflight.sh. Two copies, because preflight ships
 # in editions that carry no panel — so selfcheck pins them equal instead.
@@ -46,7 +49,7 @@ WIN_DIR_BUDGET=$((WIN_MAX_PATH - NODE_DEEPEST_ENTRY - 2))
 # This is a runtime cache the user says yes to, self-contained, and documented as "delete it and this
 # never happened". A plugin update does not touch it. The alternative is worse: a runtime inside the
 # plugin directory would be thrown away and re-fetched, 36 MB at a time, on every plugin update.
-RUNTIME="${CSK_STUDIO_RUNTIME:-$HOME/.claude/studio-runtime}"
+RUNTIME="${CREW_STUDIO_RUNTIME:-$HOME/.claude/studio-runtime}"
 EXPLAIN=0
 YES=0
 MODE=resolve
@@ -74,7 +77,7 @@ works() {
 # puts its node on PATH from a login shell only, so "nvm is installed" and "this script can
 # find node" are different facts, and the second one is the one that matters here.
 candidates() {
-  [ -n "${CSK_STUDIO_NODE:-}" ] && printf '%s\n' "$CSK_STUDIO_NODE"
+  [ -n "${CREW_STUDIO_NODE:-}" ] && printf '%s\n' "$CREW_STUDIO_NODE"
   printf 'node\n'
   # Guarded, because that pipeline costs three processes whether or not anything is there,
   # and a process is not always cheap: a bare /usr/bin/true measured 880-1483 ms on two machines
@@ -203,7 +206,7 @@ sha256_of() {
 # which matters, because the machine running this is by definition the one without Node.
 # Column 10 is `lts`, and `-` there means the release is not one.
 newest_lts() {
-  [ -n "${CSK_STUDIO_NODE_VERSION:-}" ] && { printf '%s\n' "$CSK_STUDIO_NODE_VERSION"; return 0; }
+  [ -n "${CREW_STUDIO_NODE_VERSION:-}" ] && { printf '%s\n' "$CREW_STUDIO_NODE_VERSION"; return 0; }
   tab="$(get "$DIST/index.tab" - 2>/dev/null)" || return 1
   printf '%s\n' "$tab" | awk -F'\t' 'NR>1 && $10!="-" && $10!="" { print $1; exit }'
 }
@@ -265,8 +268,8 @@ plan() {
   if [ -z "$VERSION" ]; then
     VERSION="$FALLBACK_VERSION"
     VERSION_SOURCE="pinned fallback — nodejs.org could not be reached to ask"
-  elif [ -n "${CSK_STUDIO_NODE_VERSION:-}" ]; then
-    VERSION_SOURCE="pinned by CSK_STUDIO_NODE_VERSION"
+  elif [ -n "${CREW_STUDIO_NODE_VERSION:-}" ]; then
+    VERSION_SOURCE="pinned by CREW_STUDIO_NODE_VERSION"
   else
     VERSION_SOURCE="newest LTS on nodejs.org"
   fi
@@ -380,7 +383,7 @@ case "$MODE" in
       printf '    %s\n' "$TOO_LONG_PATH"
       printf '  %s\n' "which is $TOO_LONG characters. Windows caps a full file path at $WIN_MAX_PATH, Node's deepest"
       printf '  %s\n' "entry inside the zip is $NODE_DEEPEST_ENTRY, and this machine has no unzip — only PowerShell's"
-      printf '  %s\n' "Expand-Archive, which enforces the cap. Point CSK_STUDIO_RUNTIME somewhere shorter, or"
+      printf '  %s\n' "Expand-Archive, which enforces the cap. Point CREW_STUDIO_RUNTIME somewhere shorter, or"
       printf '  %s\n' "install unzip, which is not bound by it."
     fi
     printf '\nNothing outside that directory is touched: no admin rights, no package manager,\n'
@@ -403,7 +406,7 @@ case "$MODE" in
   $TOO_LONG_PATH
 which is $TOO_LONG characters. Windows caps a full file path at $WIN_MAX_PATH, Node's deepest entry inside the zip
 is $NODE_DEEPEST_ENTRY, and this machine has no unzip — only PowerShell's Expand-Archive, which enforces that cap.
-Nothing was downloaded. Point CSK_STUDIO_RUNTIME somewhere shorter, or install unzip."
+Nothing was downloaded. Point CREW_STUDIO_RUNTIME somewhere shorter, or install unzip."
 
     sha256_calibrate ||
       die "ensure-node.sh: no SHA-256 tool here that returns the right answer for a known input (tried sha256sum, shasum, openssl, certutil), so a download could not be verified. Refusing to install one unchecked. Install Node yourself: https://nodejs.org"

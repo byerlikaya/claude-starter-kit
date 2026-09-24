@@ -5,9 +5,9 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"; cd "$ROOT"
 WORK="${RUNNER_TEMP:-$(mktemp -d)}"
-# Several assertions grep the installers' English output. A Turkish locale (or an exported CSK_LANG=tr) turns
+# Several assertions grep the installers' English output. A Turkish locale (or an exported CREW_LANG=tr) turns
 # those into false failures, so the run is pinned to English; case 18 passes --lang explicitly, which wins.
-export CSK_LANG=en
+export CREW_LANG=en
 
 # WHY A LOG AND NOT /dev/null, for every installer and smoke call below.
 #
@@ -47,7 +47,7 @@ combo() {
   # them in every combination re-checks identical bytes. Install scope keeps the install-dependent assertions
   # plus a canary that proves the installed hook actually executes; the exhaustive cases run once, in CI's
   # standalone full-scope smoke-test step.
-  _slog; ( cd "$P" && CSK_SMOKE_SCOPE=install bash .claude/eval/smoke-test.sh ) >"$_L" 2>&1 || _evidence "smoke-test.sh in $P" "$_L" $?
+  _slog; ( cd "$P" && CREW_SMOKE_SCOPE=install bash .claude/eval/smoke-test.sh ) >"$_L" 2>&1 || _evidence "smoke-test.sh in $P" "$_L" $?
   # The install manifest is what separates kit-owned from project-owned downstream (doctor readiness, trust gate).
   [ -s "$P/.claude/kit-manifest.txt" ] || { echo "FAIL [$lbl]: .claude/kit-manifest.txt missing or empty"; exit 1; }
   grep -q '^skills/handoff$' "$P/.claude/kit-manifest.txt" || { echo "FAIL [$lbl]: manifest does not list the shipped skills"; exit 1; }
@@ -179,7 +179,7 @@ case "$DOUT" in *"enforces the §4.6 review gate"*) ;;
 # the regression on macOS would sit below a healthy Windows run and fail the job for being slow. The portable
 # half of the protection is the route-hint gate in smoke-test.sh §7y, where the old code took 34s on macOS too.
 [ "$DEL" -le 20 ] || { echo "FAIL: doctor.sh took ${DEL}s (>20s) — a per-pair fork loop is back; on Git Bash this reads as a hang"; exit 1; }
-_slog; ( cd "$P" && CSK_SMOKE_SCOPE=install bash .claude/eval/smoke-test.sh ) >"$_L" 2>&1 || { tail -n 20 "$_L" | sed 's/^/    | /' >&2; echo "FAIL: the adopted project's own smoke-test did not pass"; exit 1; }
+_slog; ( cd "$P" && CREW_SMOKE_SCOPE=install bash .claude/eval/smoke-test.sh ) >"$_L" 2>&1 || { tail -n 20 "$_L" | sed 's/^/    | /' >&2; echo "FAIL: the adopted project's own smoke-test did not pass"; exit 1; }
 # doctor's elapsed time is printed on SUCCESS too, not only in the failure message. The bound above is loose by
 # design, so a silent pass hides the trend that matters: 2s creeping to 8s is the regression arriving, and it
 # reads as "fine" until the day it trips. The number in the log is what makes that visible in hindsight.
@@ -268,7 +268,7 @@ printf 'feat(api): add the unpaid invoices endpoint\n' > "$CMT"
 ( cd "$TR" && bash .claude/hooks/commit-msg "$CMT" ) >/dev/null 2>&1 \
   || { echo "FAIL: the armed vendor pattern blocked an ordinary commit message"; exit 1; }
 rm -rf "$TR"
-_slog; ( cd "$L" && CSK_SMOKE_SCOPE=install bash .claude/eval/smoke-test.sh ) >"$_L" 2>&1 || _evidence "smoke-test.sh in $L" "$_L" $?
+_slog; ( cd "$L" && CREW_SMOKE_SCOPE=install bash .claude/eval/smoke-test.sh ) >"$_L" 2>&1 || _evidence "smoke-test.sh in $L" "$_L" $?
 # Second update: the record now says generic, so the notice retires — but the skill and the §4.2 line stay.
 cp adopt.sh "$L/"; cp -R kit "$L/"
 run_adopt "$L" --here --yes
@@ -572,24 +572,24 @@ else
 fi
 
 # ---- the star line: once per kit version, through the real installers and doctor ----
-# Every case sets or clears CI and CSK_NO_STAR itself: the runner exports CI=true, and inheriting it would turn
+# Every case sets or clears CI and CREW_NO_STAR itself: the runner exports CI=true, and inheriting it would turn
 # every "prints" below into "silent" there — green locally, red in CI, for a reason that is not the product.
 # The version is changed by editing the STAGED payload's VERSION, which is what a real new release does.
 starn(){ grep -c '⭐' "$1" 2>/dev/null || true; }
 SP="$WORK/star"; rm -rf "$SP"; mkdir -p "$SP"; cp start.sh VERSION "$SP/"; cp -R kit "$SP/"
 _slog; ( cd "$SP" && git init -q && git config user.email t@t.t && git config user.name t && git commit -q --allow-empty -m b \
-    && printf 'yes\n' | env -u CI -u CSK_NO_STAR bash start.sh ) >"$_L" 2>&1 || _evidence "start.sh in $SP" "$_L" $?
+    && printf 'yes\n' | env -u CI -u CREW_NO_STAR bash start.sh ) >"$_L" 2>&1 || _evidence "start.sh in $SP" "$_L" $?
 S1="$(starn "$_L")"
-dstar(){ ( cd "$SP" && env -u CI -u CSK_NO_STAR bash .claude/eval/doctor.sh 2>&1 || true ) > "$WORK/star-doctor.txt"
+dstar(){ ( cd "$SP" && env -u CI -u CREW_NO_STAR bash .claude/eval/doctor.sh 2>&1 || true ) > "$WORK/star-doctor.txt"
          case "$(cat "$WORK/star-doctor.txt")" in *"DOCTOR: healthy"*) ;; *) echo "FAIL: FIXTURE — doctor is not healthy here, so its star checks prove nothing" >&2; echo UNHEALTHY; return ;; esac
          starn "$WORK/star-doctor.txt"; }
 D1="$(dstar)"                                              # same version as the install: silent
 restage(){ cp adopt.sh "$SP/"; cp -R kit "$SP/"; printf '%s\n' "$1" > "$SP/VERSION"; }
 restage "$(head -1 VERSION)"
-_slog; ( cd "$SP" && env -u CI -u CSK_NO_STAR bash adopt.sh --here --yes </dev/null ) >"$_L" 2>&1 || _evidence "adopt.sh same-version update in $SP" "$_L" $?
+_slog; ( cd "$SP" && env -u CI -u CREW_NO_STAR bash adopt.sh --here --yes </dev/null ) >"$_L" 2>&1 || _evidence "adopt.sh same-version update in $SP" "$_L" $?
 S2="$(starn "$_L")"
 restage "9.9.9-e2e"
-_slog; ( cd "$SP" && env -u CI -u CSK_NO_STAR bash adopt.sh --here --yes </dev/null ) >"$_L" 2>&1 || _evidence "adopt.sh new-version update in $SP" "$_L" $?
+_slog; ( cd "$SP" && env -u CI -u CREW_NO_STAR bash adopt.sh --here --yes </dev/null ) >"$_L" 2>&1 || _evidence "adopt.sh new-version update in $SP" "$_L" $?
 S3="$(starn "$_L")"
 D2="$(dstar)"                                              # the doctor /update-crew runs right after: silent
 printf '9.9.10-e2e\n' > "$SP/.claude/VERSION"; D3="$(dstar)"   # a new version reached by doctor first: shown
@@ -598,15 +598,15 @@ D4="$(dstar)"                                              # ...once
   || { echo "FAIL: star line not once per version — install/doctor/same-ver update/new-ver update/doctor/new-ver doctor/doctor = $S1/$D1/$S2/$S3/$D2/$D3/$D4 (want 1/0/0/1/0/1/0)"; exit 1; }
 [ -z "$(cd "$SP" && git status --porcelain -- .claude/star-shown 2>/dev/null)" ] && [ ! -e "$SP/.claude/star-shown" ] \
   || { echo "FAIL: the star marker landed under .claude/ in a git project — a tracked .claude/ would commit it"; exit 1; }
-for _q in "CSK_NO_STAR=1" "CI=true"; do
+for _q in "CREW_NO_STAR=1" "CI=true"; do
   SQ="$WORK/star-quiet"; rm -rf "$SQ"; mkdir -p "$SQ"; cp start.sh VERSION "$SQ/"; cp -R kit "$SQ/"
-  _slog; ( cd "$SQ" && git init -q && printf 'yes\n' | env -u CI -u CSK_NO_STAR "$_q" bash start.sh ) >"$_L" 2>&1 || _evidence "start.sh $_q in $SQ" "$_L" $?
+  _slog; ( cd "$SQ" && git init -q && printf 'yes\n' | env -u CI -u CREW_NO_STAR "$_q" bash start.sh ) >"$_L" 2>&1 || _evidence "start.sh $_q in $SQ" "$_L" $?
   _qm="$(cd "$SQ" && git rev-parse --git-path crewforth-star)"
   [ "$(starn "$_L")" = 0 ] && [ ! -e "$SQ/$_qm" ] || { echo "FAIL: under $_q the install printed the star line or wrote its marker"; exit 1; }
-  DQ="$( cd "$SQ" && env -u CI -u CSK_NO_STAR "$_q" bash .claude/eval/doctor.sh 2>&1 || true )"
+  DQ="$( cd "$SQ" && env -u CI -u CREW_NO_STAR "$_q" bash .claude/eval/doctor.sh 2>&1 || true )"
   [ "$(printf '%s\n' "$DQ" | grep -c '⭐' || true)" = 0 ] || { echo "FAIL: under $_q doctor printed the star line"; exit 1; }
 done
-echo "[star] once per version: install 1 · doctor 0 · same-version update 0 · new-version update 1 · doctor 0 · new version via doctor 1 · again 0 · marker in the git dir · CSK_NO_STAR=1 / CI=true: 0, no marker"
+echo "[star] once per version: install 1 · doctor 0 · same-version update 0 · new-version update 1 · doctor 0 · new version via doctor 1 · again 0 · marker in the git dir · CREW_NO_STAR=1 / CI=true: 0, no marker"
 
 # ---- the two no-install doors: `add` and `studio` (pure Node, no bash) ----
 # Driven through bin/cli.js exactly as `npx crewforth …` runs it. Every tree comparison is a hash over the files'
@@ -665,7 +665,7 @@ if command -v node >/dev/null 2>&1 && node --version >/dev/null 2>&1; then
   node "$CLI" studio --selftest >"$WORK/studio-cli-selftest.txt" 2>&1 && grep -qE '^[0-9]+/[0-9]+ passed' "$WORK/studio-cli-selftest.txt" \
     || { echo "FAIL: crewforth studio --selftest did not run its checks:"; tail -n 20 "$WORK/studio-cli-selftest.txt"; exit 1; }
   SP2="$WORK/studio-cli-cwd"; rm -rf "$SP2"; mkdir -p "$SP2"
-  CSK_PROBE_CLI="$CLI" node packaging/studio-serve-probe.mjs "$SP2" || { echo "FAIL: the panel did not serve through crewforth studio"; exit 1; }
+  CREW_PROBE_CLI="$CLI" node packaging/studio-serve-probe.mjs "$SP2" || { echo "FAIL: the panel did not serve through crewforth studio"; exit 1; }
   echo "[studio-cli] --selftest ok · served through bin/cli.js from an empty dir"
 
   # WITHOUT BASH: PATH is cut down to node's own directory. The twin is what makes this a measurement: in the same
@@ -876,7 +876,7 @@ echo "[wizard] docs/ is private after adopt, and the adoption's own record is st
 #     .claude/ and CLAUDE.md committable so a team can review them; private hides them. Both are asserted,
 #     because a default that silently matched the other choice would make the question decorative.
 W5="$(wiz shared)"
-_slog; ( cd "$W5" && CSK_LANG=en bash start.sh --yes --shared </dev/null ) >"$_L" 2>&1 || _evidence "start.sh in $W5" "$_L" $?
+_slog; ( cd "$W5" && CREW_LANG=en bash start.sh --yes --shared </dev/null ) >"$_L" 2>&1 || _evidence "start.sh in $W5" "$_L" $?
 for e in 'docs/' '.private-terms.txt'; do
   grep -qxF "$e" "$W5/.gitignore" || { echo "FAIL: --shared did not ignore '$e'"; exit 1; }
 done
@@ -894,7 +894,7 @@ W6="$WORK/wiz-dupe"; rm -rf "$W6"; mkdir -p "$W6"
 cp start.sh "$W6/"; cp -R kit "$W6/"
 ( cd "$W6" && git init -q . && git config user.email t@e.com && git config user.name t )
 printf '.claude\n' > "$W6/.gitignore"                  # no trailing slash, and already effective
-_slog; ( cd "$W6" && CSK_LANG=en bash start.sh --yes </dev/null ) >"$_L" 2>&1 || _evidence "start.sh in $W6" "$_L" $?
+_slog; ( cd "$W6" && CREW_LANG=en bash start.sh --yes </dev/null ) >"$_L" 2>&1 || _evidence "start.sh in $W6" "$_L" $?
 [ "$(grep -c '^\.claude' "$W6/.gitignore")" = 1 ] \
   || { echo "FAIL: a repo already ignoring .claude got a second redundant rule ($(grep -c '^\.claude' "$W6/.gitignore"))"; exit 1; }
 echo "[wizard] an already-ignored .claude is not ignored twice (git check-ignore, not string equality)"
@@ -1010,7 +1010,7 @@ echo "[wizard] an existing eol rule is recognised, whatever its spelling, and no
 
 # 18 · A Turkish install prints no English sentence. Two detectors, because each is blind where the other sees:
 #      (a) BY NAME: every string that reaches the translator (`_mt`) with no Turkish row is appended to
-#          CSK_I18N_MISS. The first version of this case grepped English function words only, and review showed
+#          CREW_I18N_MISS. The first version of this case grepped English function words only, and review showed
 #          50 of 114 strings contain none ("Scope", "Installing:", "Security gates armed on every install:") —
 #          four deleted rows printed English and the case still said 0. A miss is now caught whatever its words.
 #      (b) BY WORDS, for a line that never goes through the translator at all (a raw echo). Double-quoted text is
@@ -1021,8 +1021,8 @@ echo "[wizard] an existing eol rule is recognised, whatever its spelling, and no
 #      the word list — otherwise a detector is broken, not the product.
 _en_words(){ sed 's/"[^"]*"//g' "$1" | grep -cwE 'the|and|is|are|to|of|with|will|your|this|not|be|has|was|for' || true; }
 _MISS="$WORK/i18n-miss.txt"; : > "$_MISS"
-_cal="$(CSK_I18N_MISS="$_MISS" bash -c "$(sed -n '/^_mt() {/,/^}/p' start.sh)"'
-  CSK_LANG=tr; _mt "zz-calibration-key-with-no-row"' 2>&1)"
+_cal="$(CREW_I18N_MISS="$_MISS" bash -c "$(sed -n '/^_mt() {/,/^}/p' start.sh)"'
+  CREW_LANG=tr; _mt "zz-calibration-key-with-no-row"' 2>&1)"
 grep -qx 'zz-calibration-key-with-no-row' "$_MISS" \
   || { echo "FAIL: FIXTURE — _mt did not record a key with no row (${_cal:-no output}); the miss detector is dead"; exit 1; }
 : > "$_MISS"
@@ -1030,7 +1030,7 @@ for _shape in "dotnet|evet\n" "generic|evet\n"; do
   _stk="${_shape%%|*}"; _inp="${_shape#*|}"
   for _lg in tr en; do
     W18="$(wiz "lang-$_stk-$_lg")"
-    _slog; ( cd "$W18" && printf "$_inp" | CSK_I18N_MISS="$_MISS" NO_COLOR=1 bash start.sh "--$_stk" --lang "$_lg" ) >"$_L" 2>&1 \
+    _slog; ( cd "$W18" && printf "$_inp" | CREW_I18N_MISS="$_MISS" NO_COLOR=1 bash start.sh "--$_stk" --lang "$_lg" ) >"$_L" 2>&1 \
       || _evidence "start.sh --lang $_lg in $W18" "$_L" $?
     cp "$_L" "$W18/out-$_lg.txt"
   done
@@ -1049,7 +1049,7 @@ for _lg in tr en; do
   : > "$W18a/out.txt"
   for _pass in 1 2; do
     cp adopt.sh VERSION "$W18a/"; cp -R kit "$W18a/"
-    _slog; ( cd "$W18a" && CSK_I18N_MISS="$_MISS" NO_COLOR=1 bash adopt.sh --lang "$_lg" --yes </dev/null ) >"$_L" 2>&1 \
+    _slog; ( cd "$W18a" && CREW_I18N_MISS="$_MISS" NO_COLOR=1 bash adopt.sh --lang "$_lg" --yes </dev/null ) >"$_L" 2>&1 \
       || _evidence "adopt.sh --lang $_lg (pass $_pass) in $W18a" "$_L" $?
     cat "$_L" >> "$W18a/out.txt"
   done

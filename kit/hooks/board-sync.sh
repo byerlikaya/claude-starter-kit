@@ -12,17 +12,20 @@
 #   - Matched on startup|resume|clear|compact. Unlike the handover hook this DOES include `startup`: a stale
 #     handover nags, but "who holds what right now" is exactly what a fresh session is missing.
 #   - NO NETWORK IN THE FOREGROUND. The visible half reads one cache file and exits. When that cache is older
-#     than CSK_BOARD_MAX_AGE the hook starts a DETACHED refresher (fetch + heartbeat) whose result is used by the
+#     than CREW_BOARD_MAX_AGE the hook starts a DETACHED refresher (fetch + heartbeat) whose result is used by the
 #     NEXT session. On an unreachable remote the session-start cost stays at zero.
 #   - Fails OPEN and SILENT: no repo, no board, no cache -> no output, exit 0. It never blocks a session.
 set -uo pipefail
+# Pre-3.0 CSK_* names still work for the variables a user can set (one helper: eval/lib/crew-env.sh).
+_crew_d="${BASH_SOURCE%/*}"; [ "$_crew_d" = "${BASH_SOURCE}" ] && _crew_d=.
+[ -f "$_crew_d/../eval/lib/crew-env.sh" ] && . "$_crew_d/../eval/lib/crew-env.sh"; unset _crew_d
 
 # Two intervals, because two very different repos run this hook. Where a board exists, 15 minutes keeps the view
 # worth acting on. Where none does — every solo project, and every install that upgraded into this feature — the
 # only thing a refresh can do is ask the remote for a ref nobody has created, so it backs off to once a day.
 # Without that split, a repo that will never have a board opened a background fetch at every session start.
-MAX_AGE="${CSK_BOARD_MAX_AGE:-900}"
-MAX_AGE_NOBOARD="${CSK_BOARD_MAX_AGE_NOBOARD:-86400}"
+MAX_AGE="${CREW_BOARD_MAX_AGE:-900}"
+MAX_AGE_NOBOARD="${CREW_BOARD_MAX_AGE_NOBOARD:-86400}"
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SELF="$HERE/$(basename "$0")"
@@ -36,7 +39,7 @@ if [ "${1:-}" = "--refresh" ]; then
 fi
 
 # ---- foreground half: one file read, then a decision -----------------------------------------------------------
-[ -n "${CSK_NO_BOARD:-}" ] && exit 0
+[ -n "${CREW_NO_BOARD:-}" ] && exit 0
 
 IN=""
 [ ! -t 0 ] && IN="$(cat 2>/dev/null || true)"

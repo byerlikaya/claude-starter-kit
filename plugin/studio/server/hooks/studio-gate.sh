@@ -4,7 +4,7 @@
 # The harness kills a hook that outruns its timeout and then lets the tool
 # proceed — measured on this machine: a hook sleeping past a 3s limit produced
 # permission_denials=0 and the command ran. So this never reaches that limit.
-# It decides for itself at CSK_GATE_WAIT seconds, well inside the timeout
+# It decides for itself at CREW_GATE_WAIT seconds, well inside the timeout
 # configured in the settings file, and a hook the harness never has to kill
 # fails CLOSED.
 #
@@ -18,12 +18,12 @@ set -u
 SPOOL="${1:-}"
 [ -n "$SPOOL" ] || exit 0                 # misconfigured: do not stand in the way
 
-WAIT="${CSK_GATE_WAIT:-45}"
+WAIT="${CREW_GATE_WAIT:-45}"
 POLL_MS=150
 
 IN=""
 # Bounded read: an open-but-silent stdin must not hang the session.
-while IFS= read -r -t "${CSK_STDIN_TIMEOUT:-5}" line || [ -n "$line" ]; do
+while IFS= read -r -t "${CREW_STDIN_TIMEOUT:-5}" line || [ -n "$line" ]; do
   IN="$IN$line"
   line=""
 done

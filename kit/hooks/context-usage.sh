@@ -52,7 +52,7 @@ if [ -z "$TR" ] && [ ! -t 0 ]; then
   # whole payload away and every measurement reports "unmeasurable". Measured the wrong way once already: the
   # first version of this fix was timed, not checked for output, so it looked fine and was silently blind.
   _first=""
-  IFS= read -r -t "${CSK_STDIN_TIMEOUT:-2}" _first 2>/dev/null || true
+  IFS= read -r -t "${CREW_STDIN_TIMEOUT:-2}" _first 2>/dev/null || true
   if [ -n "$_first" ]; then
     IN="$_first
 $(cat 2>/dev/null || true)"
@@ -224,7 +224,7 @@ if [ -z "$TOTAL" ]; then
   # it is small enough to finish well inside the timeout (180MB ~= 4.7s under awk, so 200MB is safe under 30s);
   # past the cap, fail OPEN. A missing 🔋 line is recoverable — the model answers "could not measure" — whereas a
   # timed-out hook is just discarded noise.
-  CAP="${CSK_CONTEXT_MAX_BYTES:-209715200}"         # 200 MiB; override per-repo
+  CAP="${CREW_CONTEXT_MAX_BYTES:-209715200}"         # 200 MiB; override per-repo
   [ "${SZ:-0}" -le "$CAP" ] && TOTAL="$(last_line "$(scan < "$TR")")"
 fi
 # Same split as the missing-transcript case above: a hook stays quiet and exits 0, a by-hand call explains

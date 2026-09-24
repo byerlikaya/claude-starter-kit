@@ -11,11 +11,11 @@ on:
 # failed on the one gate that had no local runner. Two copies of a rule drift, and the copy that drifts is
 # the one nobody runs — so there is one copy, and `bash packaging/verify.sh` runs it.
 #
-# CSK_VERIFY_STRICT turns a skipped step into a failure. On a runner a missing tool is a broken runner, not
+# CREW_VERIFY_STRICT turns a skipped step into a failure. On a runner a missing tool is a broken runner, not
 # an honest local limitation, and a gate that goes quiet on a broken runner reports success for a check
 # nobody performed.
 env:
-  CSK_VERIFY_STRICT: "1"
+  CREW_VERIFY_STRICT: "1"
 
 jobs:
   verify:

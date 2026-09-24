@@ -479,7 +479,7 @@ adv(){ # $1 label  $2 expected rc  $3 rule  $4 raw payload  [$5 known-open:<t3>/
   local label="$1" exp="$2" want="$3" a b r known="${5:-}"
   mkraw "${4//@CWD@/$R}"; a="$(t3)"
   if [ "$LADDER" = 1 ]; then b="$(t1)"; else b="$a"; fi
-  if [ -n "$known" ] && [ "${CSK_CONFORMANCE_KNOWN_OPEN:-0}" = 1 ]; then
+  if [ -n "$known" ] && [ "${CREW_CONFORMANCE_KNOWN_OPEN:-0}" = 1 ]; then
     # A known-open row is a divergence this file FOUND that nothing has fixed yet. It is pinned to the exact
     # shape observed so it cannot rot: if the shape moves, or if the row starts passing, this FAILS and says so.
     local want="${known#known-open:}"
@@ -604,7 +604,7 @@ printf 'PARSER-CONFORMANCE: %s geçti · %s başarısız · %s ölçülemedi · 
   "$PASS" "$FAILED" "$UNMEASURED" "$KNOWN_OPEN" \
   "$( [ "$LADDER" = 1 ] && echo 'merdivenli' || echo 'tek okuyucu' )" "$REFKIND"
 if [ "$KNOWN_OPEN" -gt 0 ]; then
-  echo "$KNOWN_OPEN bilinen ayrışma AÇIK ve bu koşuda başarısızlık sayılmadı (CSK_CONFORMANCE_KNOWN_OPEN=1)."
+  echo "$KNOWN_OPEN bilinen ayrışma AÇIK ve bu koşuda başarısızlık sayılmadı (CREW_CONFORMANCE_KNOWN_OPEN=1)."
 fi
 if [ "$FAILED" -gt 0 ]; then echo "Okuyucu referanstan ayrıştı ya da bir hüküm yanlış. Bu kapatılmalı."; exit 1; fi
 if [ "$UNMEASURED" -gt 0 ]; then echo "Bazı satırlar ölçülemedi — bu bir geçiş değildir, fixture'ları düzeltin."; exit 1; fi

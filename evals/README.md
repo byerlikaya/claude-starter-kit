@@ -26,27 +26,27 @@ measures the harness. The only difference between the arms is whether `.claude/`
 ## Environment
 
 The permission layer is deliberately out of the way (`--permission-mode bypassPermissions`, override with
-`CSK_EVAL_PERM`). What is measured here is what the kit does to the model's **output** — commit shape, how a
+`CREW_EVAL_PERM`). What is measured here is what the kit does to the model's **output** — commit shape, how a
 credential is handled — not whether the approval prompt fires. That is a permission-layer contract, asserted
 exactly in `smoke-test §7`; inferring it from a headless denial measures the absence of a human instead. The
 git-hook gates (trace, secret) ignore permission mode and still run, and those *are* part of the measurement.
 
-Scratch projects default to `$TMPDIR`; point `CSK_EVAL_WORK` at a path Claude Code already trusts if you see
+Scratch projects default to `$TMPDIR`; point `CREW_EVAL_WORK` at a path Claude Code already trusts if you see
 the "workspace has not been trusted" warning — an untrusted workspace silently drops the kit's
 `permissions.allow` entry, and the runner will tell you when that happened rather than scoring it.
 
-**Arms, and measuring a rule rather than the kit.** `CSK_EVAL_ARMS` picks the arms (default `kit bare`). Arm `kitb`
+**Arms, and measuring a rule rather than the kit.** `CREW_EVAL_ARMS` picks the arms (default `kit bare`). Arm `kitb`
 is the same kit install with the rule under test swapped in. Its `.claude/DISCIPLINE.md` is the discipline half of the
-file named by `CSK_EVAL_DISCIPLINE_B`, a CLAUDE.md carrying the `<!-- KIT:DISCIPLINE-END` sentinel. For a rule that also
-lives in agent definitions, `CSK_EVAL_OVERLAY_B` names a directory whose files replace installed ones under `.claude/`
+file named by `CREW_EVAL_DISCIPLINE_B`, a CLAUDE.md carrying the `<!-- KIT:DISCIPLINE-END` sentinel. For a rule that also
+lives in agent definitions, `CREW_EVAL_OVERLAY_B` names a directory whose files replace installed ones under `.claude/`
 (`agents/test-expert-crew.md` → `.claude/agents/test-expert-crew.md`). A path the install did not create is refused
 rather than added: a typo would ship a file nobody reads, and the arm would measure the unchanged kit under a new
 name. Take overlay files from an installed project, not from `kit/` — that is the text the arm actually
-loads (before 3.0 a `--generic` install swapped `backend-expert-crew.md` for another source). `CSK_EVAL_ARMS="kit kitb"` therefore
-varies only the rule, and is how a rule change is measured. `CSK_EVAL_CASES` runs cases from another directory, so a
+loads (before 3.0 a `--generic` install swapped `backend-expert-crew.md` for another source). `CREW_EVAL_ARMS="kit kitb"` therefore
+varies only the rule, and is how a rule change is measured. `CREW_EVAL_CASES` runs cases from another directory, so a
 draft set can be exercised before it lands here.
 
-**Delegation and cost, from the event stream.** `CSK_EVAL_TRACE=1` runs the CLI with `--output-format stream-json
+**Delegation and cost, from the event stream.** `CREW_EVAL_TRACE=1` runs the CLI with `--output-format stream-json
 --verbose`, keeps the stream in `.eval-stream.jsonl`, re-derives the reply into `.eval-stdout.txt`, and writes one
 metrics line per run: main-thread `Agent`/`Task` calls, nested calls, `subagent_stats.spawned`, `total_cost_usd`,
 token usage and turns — and test and build runs: `Bash` calls that run a test runner or a build/lint tool, in the main
@@ -95,7 +95,7 @@ Treat run-to-run variance as a warning rather than something to average away. A 
 between two identical rounds is not a result — say "below the noise floor" and either raise n or accept the
 change is unmeasurable at this scale.
 
-`CSK_EVAL_ARMS="kit kitb"` is that procedure with the current wording as the control: same install, same cases, only
+`CREW_EVAL_ARMS="kit kitb"` is that procedure with the current wording as the control: same install, same cases, only
 the discipline text differs. Reading the runs by hand still applies — `--keep` retains every project and its
 `.eval-stream.jsonl`.
 
@@ -250,8 +250,8 @@ place for a claim to rest, because **"the model never reached for the command" a
 behind identical artifacts** — the file is unchanged either way, and the two mean opposite things about which
 half of the kit is working.
 
-`CSK_GATE_LOG` closes that. Exported by the runner, it points the hooks' gate log at the case directory: one
-TSV line per logged decision (`BLOCK`/`ASK`/`ALLOW`, section, rule; the command only with `CSK_GATE_LOG_CMD=1`,
+`CREW_GATE_LOG` closes that. Exported by the runner, it points the hooks' gate log at the case directory: one
+TSV line per logged decision (`BLOCK`/`ASK`/`ALLOW`, section, rule; the command only with `CREW_GATE_LOG_CMD=1`,
 which the runner does not set), write-only, logged after the verdict so it cannot influence one. `run.sh` reads
 the first three columns and prints a **gates fired** line beside each score.
 
@@ -351,7 +351,7 @@ this one.
 
 `commit-format` and `secret-refused` need a commit to land. In one sandboxed environment the kit arm could not
 complete one, and three approaches were tried before giving up: `acceptEdits` with the full tool list,
-`acceptEdits` with `Bash` alone (`CSK_EVAL_TOOLS`), and `bypassPermissions`. The first two were refused at the
+`acceptEdits` with `Bash` alone (`CREW_EVAL_TOOLS`), and `bypassPermissions`. The first two were refused at the
 permission layer; the third the sandbox itself would not run.
 
 Do not read that as a kit finding — it is an environment one, and the runner says so when it sees the
@@ -374,7 +374,7 @@ look the same. So the question that matters most to this kit cannot be an A/B ca
 below was taken separately. It is recorded here rather than only in the changelog so that a claim about it has
 somewhere to point.
 
-That was true of the grader, and still is. It stopped being true of the harness: with `CSK_EVAL_TRACE=1` the runner
+That was true of the grader, and still is. It stopped being true of the harness: with `CREW_EVAL_TRACE=1` the runner
 records delegation from the event stream beside the grade, so this kind of measurement can now be taken here with a
 per-run record — the next section was.
 
@@ -397,7 +397,7 @@ nowhere on the machine.
 carry no per-run log in this directory; what is above is the record of the measurement, not a rerunnable case.
 Treat it as weaker evidence than the table above until it can be re-taken with a published transcript.
 
-## Measured with `CSK_EVAL_TRACE`: does a risk threshold change delegation?
+## Measured with `CREW_EVAL_TRACE`: does a risk threshold change delegation?
 
 **Question.** The discipline says "small job" is never a reason to work inline. A draft replaced that with a risk
 threshold: inline only for one file, no behaviour change and no test to change; delegate at any size for a behaviour
@@ -445,10 +445,10 @@ already shown 0 of 1.
 > CI/deploy · dependency. Also inline: *no owner installed*, *not code work*, *user asked for inline*. Unsure → not low
 > risk; delegate. Stuck → stop and report. Commit/push and destructive commands are gated (§4.4/§4.5).
 
-Then point `CSK_EVAL_CASES` at a directory holding only the six cases (or run each with `--case`) and use
-`CSK_EVAL_ARMS="kit kitb" CSK_EVAL_DISCIPLINE_B=<that file> CSK_EVAL_TRACE=1 bash evals/run.sh --runs 3 --keep`.
+Then point `CREW_EVAL_CASES` at a directory holding only the six cases (or run each with `--case`) and use
+`CREW_EVAL_ARMS="kit kitb" CREW_EVAL_DISCIPLINE_B=<that file> CREW_EVAL_TRACE=1 bash evals/run.sh --runs 3 --keep`.
 
-## Measured with `CSK_EVAL_TRACE`: how many times does a small change run its tests?
+## Measured with `CREW_EVAL_TRACE`: how many times does a small change run its tests?
 
 **Question.** "Tests green" was written into the discipline's Definition of Done, into three agents' DoD, into
 test-expert's red-green line and into the reviewer's "verify before you report", and nothing said who runs the suite.
@@ -467,7 +467,7 @@ nine sessions, which is where the NOT MEASURED rule above comes from.
 **The change.** "Tests green" became one run of the suite after the last edit, reported with the command, the exit code
 and the pass/fail counts; the main thread and the reviewer cite that report and run the suite again only after a
 further edit, or when the report has no exit code. Red-green was kept. Arm `kitb` carried it in the discipline file
-and, through `CSK_EVAL_OVERLAY_B`, in five agent definitions taken from an installed project. The two arms' `.claude/`
+and, through `CREW_EVAL_OVERLAY_B`, in five agent definitions taken from an installed project. The two arms' `.claude/`
 trees differed in exactly those six files, checked afterwards in every one of the 18 projects.
 
 **Setup.** Arms `kit` and `kitb`, the same three cases, three runs each, 18 sessions, CLI 2.1.268 at the start and at the
@@ -494,10 +494,10 @@ already carried those bytes, so they are inside its $6.77. Three single-prompt N
 file edits made through `Bash` are invisible to S2.
 
 **To re-run it,** remember that arm `kit` is now the shipped text: build arm B from the previous one. Take
-`kit/CLAUDE.md` from the commit before this change as `CSK_EVAL_DISCIPLINE_B`, and the five agent files from
-the `.claude/agents/` of a project installed from that commit as `CSK_EVAL_OVERLAY_B` (at that pre-3.0 commit a
-`--generic` install wrote `backend-expert-crew.md` from a separate generic source). Then point `CSK_EVAL_CASES` at the three `tests-*` cases and run
-`CSK_EVAL_ARMS="kit kitb" CSK_EVAL_TRACE=1 bash evals/run.sh --runs 3 --keep`.
+`kit/CLAUDE.md` from the commit before this change as `CREW_EVAL_DISCIPLINE_B`, and the five agent files from
+the `.claude/agents/` of a project installed from that commit as `CREW_EVAL_OVERLAY_B` (at that pre-3.0 commit a
+`--generic` install wrote `backend-expert-crew.md` from a separate generic source). Then point `CREW_EVAL_CASES` at the three `tests-*` cases and run
+`CREW_EVAL_ARMS="kit kitb" CREW_EVAL_TRACE=1 bash evals/run.sh --runs 3 --keep`.
 
 ## When `claude plugin eval` opens
 
