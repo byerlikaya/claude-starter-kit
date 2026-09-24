@@ -442,10 +442,18 @@ if [ -f "$BE" ] && [ -f "$BA" ]; then
   done
   [ -z "$TMISS" ] && pass "backend-architecture keeps all $TSEEN triggers cqrs-aop-module owned" \
                   || fail "backend-architecture lost former cqrs-aop-module triggers:$TMISS — those prompts stop routing"
+  # The question format of step 4, pinned by its two literal labels. Measured 2026-09-24 (stack-greenfield, n=5):
+  # with the rule phrased loosely, "Decide for me" reached the user in 1 run of 5. Looked for in the BODY (after
+  # the frontmatter) — the always-on description has no room for it, and a rule is only a rule where it is read.
+  _BA_BODY="$(awk 'c>=2{print} /^---[[:space:]]*$/{c++}' "$BA")"; _QMISS=""
+  case "$_BA_BODY" in *'`(Recommended)`'*) ;; *) _QMISS="$_QMISS (Recommended)" ;; esac
+  case "$_BA_BODY" in *'`Decide for me`'*) ;; *) _QMISS="$_QMISS 'Decide for me'" ;; esac
+  [ -z "$_QMISS" ] && pass "backend-architecture step 4 names both question labels verbatim: (Recommended) and Decide for me" \
+                   || fail "backend-architecture step 4 lost its question label(s):$_QMISS"
 elif [ "$IS_KIT" = 1 ]; then
   fail "backend-expert-csk.md or skills/backend-architecture is missing from the payload"
 else
-  skip scope "backend stack-agnostic checks skipped (this project removed backend-expert-csk or backend-architecture)" 3
+  skip scope "backend stack-agnostic checks skipped (this project removed backend-expert-csk or backend-architecture)" 4
 fi
 
 sec "== 4) Stub / unfilled skill leftover =="
