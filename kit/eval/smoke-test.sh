@@ -5609,30 +5609,33 @@ sec "== 14c) the 3.0 rename left no old name behind — outside history and the 
 # (CSK_* → CREW_*), its payload directory and its package. An old name that survives anywhere else is a leftover:
 # a message that names a command nobody has, a variable nobody reads. This gate is permanent, not a one-off sweep.
 # ONE allow-list: a place where an old name is the point — history, or the code that reads, moves or tests the old
-# names. Glob TAB lines TAB reason. The line count is PINNED, exactly: an allowed file is not a free pass, so one
+# names. Glob TAB matches TAB reason. The match count is PINNED, exactly: an allowed file is not a free pass, so one
 # more old name in it is red too, and a removed one asks for the pin to come down. An entry that allows nothing is
 # a failure as well, so the list cannot quietly rot. Kept on purpose and NOT matched: the team board's git names
 # (refs/csk/board, the csk-board branch, csk.board*) and the Studio's saved-layout keys — renaming either would
 # split a board shared with a 2.x teammate or reset a layout.
 if [ -n "$SGR" ] && [ -d "$SGR/packaging" ] && [ -f "$SGR/VERSION" ] && [ -d "$SGR/kit" ] && [ -f "$SGR/packaging/build-plugin.sh" ]; then
-  RN_ALLOW='CHANGELOG.md	166	history: every entry before 3.0 keeps the name it shipped under
-README*.md	59	prose outside the generated sections is rewritten in its own change (5R)
-adopt.sh	15	the 2.x → 3.0 migration: moves <x>-csk, sweeps CLAUDE.md, PROOF-5, the CSK_CORRECT_STACK no-op
+  RN_ALLOW='CHANGELOG.md	187	history: every entry before 3.0 keeps the name it shipped under
+README.md	34	prose outside the generated sections is rewritten in its own change (5R)
+README.tr.md	34	the same, Turkish
+README.npm.md	12	the same, npm page
+adopt.sh	21	the 2.x → 3.0 migration: moves <x>-csk, sweeps CLAUDE.md, PROOF-5, the CSK_CORRECT_STACK no-op
 bin/cli.js	4	add accepts a typed <x>-csk and moves an add record written under the old names
 */eval/doctor.sh	1	PROOF-5 reports a 2.x agent name still used in CLAUDE.md
-*/eval/lib/crew-env.sh	8	the bash compat helper: reads CSK_* when CREW_* is unset
+*/eval/lib/crew-env.sh	10	the bash compat helper: reads CSK_* when CREW_* is unset
 */studio/server/lib/crew-env.js	8	the Node compat helper, same list
 */skills/automode-policy/scripts/check.sh	4	a classifier config applied by 2.x keeps its "CSK …" rule names
 evals/run.sh	3	~/.csk-eval-parent is a trusted directory on the machine that runs evals; renaming it drops the trust
-kit/eval/smoke-test.sh	23	this gate'"'"'s own pattern, and the tests that the CSK_* names still work
-packaging/e2e.sh	47	the migration rehearsal on the real v2.13.0 tree, and the 2.x add names
+kit/eval/smoke-test.sh	34	this gate'"'"'s own pattern, and the tests that the CSK_* names still work
+packaging/e2e.sh	72	the migration rehearsal on the real v2.13.0 tree, and the 2.x add names
 packaging/studio-serve-probe.mjs	6	the test that CSK_STUDIO_TOKEN still works and loses to CREW_STUDIO_TOKEN'
   RN_PAT='-csk([^A-Za-z0-9_]|$)|\.csk([^A-Za-z0-9_]|$)|CSK_|(^|[^A-Za-z0-9_])CSK([^A-Za-z0-9_]|$)|Claude Starter Kit|claude-starter-kit|claude-starter/|@byerlikaya/'
   RN_FILES="$(git -C "$SGR" ls-files -co --exclude-standard 2>/dev/null)"
   RN_N="$(printf '%s\n' "$RN_FILES" | grep -c .)"
-  # file<TAB>matching-line count, for every file with an old name in it
+  # file<TAB>match count, for every file with an old name in it. MATCHES, not lines: counting lines let a second
+  # old name ride on a line that already held one (measured in review — all three checks stayed green).
   RN_HITS="$(cd "$SGR" && printf '%s\n' "$RN_FILES" | while IFS= read -r f; do [ -f "$f" ] && printf '%s\0' "$f"; done \
-             | xargs -0 grep -IcE -e "$RN_PAT" 2>/dev/null | sed -n 's/:\([1-9][0-9]*\)$/	\1/p')"
+             | xargs -0 grep -IHoE -e "$RN_PAT" 2>/dev/null | awk '{ sub(/:.*/, ""); n[$0]++ } END { for (f in n) print f "\t" n[f] }')"
   RN_BAD=""; RN_GOT=""
   while IFS="$(printf '\t')" read -r f c; do
     [ -n "$f" ] || continue; hit=""
@@ -5661,8 +5664,8 @@ EOF
     pass "no old name outside the $RN_AN-line allow-list ($RN_N files scanned, $(printf '%s\n' "$RN_HITS" | grep -c .) allowed)"
   fi
   [ "$RN_AN" -le 15 ] && pass "the old-name allow-list has $RN_AN lines (ceiling 15)" || fail "the old-name allow-list grew to $RN_AN lines (ceiling 15) — rename instead"
-  [ -z "$RN_OFF" ] && pass "every allow-list line holds exactly its pinned count of old-name lines (none allows nothing)" \
-    || fail "allowed old-name lines moved off their pin — a new one is a leftover, a removed one lowers the pin:$RN_OFF"
+  [ -z "$RN_OFF" ] && pass "every allow-list line holds exactly its pinned count of old names (none allows nothing)" \
+    || fail "allowed old names moved off their pin — a new one is a leftover, a removed one lowers the pin:$RN_OFF"
 else
   skip scope "old-name residue not checked — not a git checkout of the kit's source" 3
 fi

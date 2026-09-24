@@ -953,12 +953,18 @@ fi
 # the boundary is the takeover sweep's (not glued to a longer name, `@agent-` allowed), so the rest of the file is
 # left as it was. Runs only when a file mentions -csk at all.
 if [ "$KIT_PRESENT" = 1 ] && [ -f CLAUDE.md ] && grep -q -e '-csk' CLAUDE.md $(grep -oE '@?[A-Za-z0-9_./-]+\.md' CLAUDE.md 2>/dev/null | sed 's/^@//' | sort -u) 2>/dev/null; then
-  LSWEEP="CLAUDE.md"
+  LSWEEP="CLAUDE.md"; PROJ_REAL="$(pwd -P)"
   for r in $(grep -oE '@?[A-Za-z0-9_./-]+\.md' CLAUDE.md 2>/dev/null | sed 's/^@//' | sort -u); do
     r="${r#./}"
     case "$r" in .claude/*) continue ;; esac   # kit-owned (DISCIPLINE.md is rewritten on every update anyway)
-    case "/$r/" in */../*) continue ;; esac     # inside the project only: an update does not edit files outside it
-    [ -f "$r" ] && [ "$r" != "CLAUDE.md" ] && LSWEEP="$LSWEEP $r"
+    # Inside the project only: an update does not edit files outside it — not by `..`, not by an absolute path, and
+    # not through a symlinked directory (docs -> ../shared), which is why the directory is resolved, not the spelling.
+    case "/$r/" in */../*) continue ;; esac
+    case "$r" in /*) continue ;; esac
+    [ -f "$r" ] && [ "$r" != "CLAUDE.md" ] || continue
+    case "$r" in */*) rd="$(cd "${r%/*}" 2>/dev/null && pwd -P)" || continue
+                      case "$rd/" in "$PROJ_REAL"/*) ;; *) continue ;; esac ;; esac
+    LSWEEP="$LSWEEP $r"
   done
   set --
   for kf in "$SRC"/agents/crew-*.md "$SRC"/commands/crew-*.md "$SRC"/skills/crew-*/; do

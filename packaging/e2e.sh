@@ -674,6 +674,11 @@ else
   MBLINK=0; [ -L "$MB/CLAUDE.md" ] && MBLINK=1; [ "$MBLINK" = 1 ] || cp "$MB/AGENTS.md" "$MB/CLAUDE.md"
   mkdir -p "$WORK/outside"; printf 'Ask backend-expert-csk.\n' > "$WORK/outside/NOTES.md"; cp "$WORK/outside/NOTES.md" "$WORK/outside.before"
   printf 'See ../outside/NOTES.md\n' >> "$MB/AGENTS.md"
+  # ...and the two other ways out: an absolute path, and a directory that is a symlink to somewhere else.
+  printf 'Ask planner-csk.\n' > "$WORK/outside/ABS.md"; cp "$WORK/outside/ABS.md" "$WORK/outside-abs.before"
+  printf 'See %s/outside/ABS.md\n' "$WORK" >> "$MB/AGENTS.md"
+  mkdir -p "$WORK/shared"; printf 'Ask planner-csk.\n' > "$WORK/shared/NOTE.md"; cp "$WORK/shared/NOTE.md" "$WORK/shared.before"
+  ln -s "$WORK/shared" "$MB/shared" 2>/dev/null && [ -L "$MB/shared" ] && printf 'See shared/NOTE.md\n' >> "$MB/AGENTS.md"
   _slog; ( cd "$MB" && bash adopt.sh --yes ) >"$_L" 2>&1 || _evidence "adopt.sh with both names in $MB" "$_L" $?
   grep -q 'both the old and the new name exist for:.*agents/planner-csk.md' "$_L" || { echo "FAIL: both names existed and the update did not say so"; exit 1; }
   cmp -s "$MB/.claude/agents/planner-csk.md" "$WORK/planner.before" || { echo "FAIL: planner-csk.md changed although both names existed"; exit 1; }
@@ -683,14 +688,16 @@ else
     grep -q '@agent-crew-security-expert' "$MB/AGENTS.md" || { echo "FAIL: the ref-sweep did not write through the CLAUDE.md symlink"; exit 1; }
     MBL="symlinked CLAUDE.md written through"
   else MBL="symlink N/A here (ln -s copies)"; fi
-  cmp -s "$WORK/outside/NOTES.md" "$WORK/outside.before" || { echo "FAIL: the ref-sweep edited a file outside the project"; exit 1; }
+  cmp -s "$WORK/outside/NOTES.md" "$WORK/outside.before" || { echo "FAIL: the ref-sweep edited a file outside the project (../)"; exit 1; }
+  cmp -s "$WORK/outside/ABS.md" "$WORK/outside-abs.before" || { echo "FAIL: the ref-sweep edited a file outside the project (absolute path)"; exit 1; }
+  cmp -s "$WORK/shared/NOTE.md" "$WORK/shared.before" || { echo "FAIL: the ref-sweep edited a file outside the project (through a symlinked directory)"; exit 1; }
   # Never installed, but a user agent that happens to end in -csk: not a kit install, so the user's own skill stays.
   MF="$WORK/migrate-fresh"; rm -rf "$MF"; mkdir -p "$MF/.claude/agents" "$MF/.claude/skills/testing"
   printf -- '---\nname: my-helper-csk\n---\n' > "$MF/.claude/agents/my-helper-csk.md"; printf 'MINE\n' > "$MF/.claude/skills/testing/SKILL.md"
   cp adopt.sh VERSION "$MF/"; cp -R kit "$MF/"
   _slog; ( cd "$MF" && git init -q && bash adopt.sh --yes ) >"$_L" 2>&1 || _evidence "adopt.sh in a never-installed project in $MF" "$_L" $?
   [ "$(cat "$MF/.claude/skills/testing/SKILL.md")" = MINE ] || { echo "FAIL: a user agent ending in -csk made a fresh project look installed and its own skill was overwritten"; exit 1; }
-  echo "[migrate-2.13] real v2.13.0 install → $NREN renamed ($NOLD old agent/command files) · 0 old kit names left · user agent, allow rule untouched · HANDOVER counts 1 project agent · CLAUDE.md: kit names only · 2nd update: same tree, silent · no PROOF-5 after the sweep · doctor flags a planted @agent-planner-csk · both names: warned, nothing moved, user crew- file kept · $MBL · outside file untouched · fresh project with my-helper-csk: own skill kept"
+  echo "[migrate-2.13] real v2.13.0 install → $NREN renamed ($NOLD old agent/command files) · 0 old kit names left · user agent, allow rule untouched · HANDOVER counts 1 project agent · CLAUDE.md: kit names only · 2nd update: same tree, silent · no PROOF-5 after the sweep · doctor flags a planted @agent-planner-csk · both names: warned, nothing moved, user crew- file kept · $MBL · outside files untouched (../, absolute, symlinked dir) · fresh project with my-helper-csk: own skill kept"
 fi
 
 # ---- the two no-install doors: `add` and `studio` (pure Node, no bash) ----

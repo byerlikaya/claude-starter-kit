@@ -29,7 +29,7 @@ One name everywhere: the package, the components, the variables, the payload. **
   to keep one.
 - **`CLAUDE.md` and the docs it references are swept** for the old kit names (`backend-expert-csk`,
   `@agent-planner-csk`, `/review-csk`) and rewritten to the `crew-` form; nothing else in those files changes.
-  A symlinked `CLAUDE.md` is written through, and nothing outside the project is edited. `doctor` (PROOF-5) reports
+  A symlinked `CLAUDE.md` is written through, and nothing outside the project is edited — not through `..`, an absolute path or a symlinked directory. `doctor` (PROOF-5) reports
   an old agent name written into `CLAUDE.md` later.
 - **`npx crewforth add`** accepts `security-expert`, `crew-security-expert` and the 2.x name `security-expert-csk`
   alike; `add --list` shows the `crew-` names.
