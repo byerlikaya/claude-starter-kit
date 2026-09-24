@@ -179,7 +179,7 @@ _conf(){ # _conf <key> <default>
 _blob(){ git hash-object -w --stdin; }
 
 _tree_with(){ # _tree_with <path> <blob>  [<path2> <blob2> ...] -> tree sha, based on the current board tree
-  local idx; idx="$(_git_dir)/csk-index.$$"
+  local idx; idx="$(_git_dir)/crew-index.$$"
   rm -f "$idx"
   local rc=0
   if _have_board; then

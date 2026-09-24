@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Grouped (by-stage sector) agent<->skill network, dark premium — Claude Starter Kit README.
+# Grouped (by-stage sector) agent<->skill network, dark premium — Crewforth README.
 import math, html
 
 CX, CY = 650, 690
@@ -80,7 +80,7 @@ def mark(tx, ty, scale):
 # Wordmark: the icon sits to the LEFT of the title, and the pair is centred as one block. The text width is
 # estimated from the glyph count because there is no font metric available here; a few pixels of asymmetry in a
 # title is invisible, whereas a hard-coded x would break the moment the font size changes.
-TITLE = "Claude Starter Kit"
+TITLE = "Crewforth"
 def wordmark(cx, y, fs, icon=42, gap=16):
     tw = len(TITLE.replace(" ","")) * fs*0.555 + TITLE.count(" ") * fs*0.28 - len(TITLE)*0.6
     dx = (icon+gap)/2.0
@@ -148,7 +148,7 @@ def epath(x1,y1,x2,y2):
 
 def build(subtitle):
     P=[]
-    P.append(f'<svg viewBox="0 0 {W} {H}" xmlns="http://www.w3.org/2000/svg" font-family="\'Segoe UI\',system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="Claude Starter Kit — agent/skill network">')
+    P.append(f'<svg viewBox="0 0 {W} {H}" xmlns="http://www.w3.org/2000/svg" font-family="\'Segoe UI\',system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="Crewforth — agent/skill network">')
     P.append('<defs>')
     P.append('<radialGradient id="bg" cx="50%" cy="48%" r="72%"><stop offset="0" stop-color="#101a34"/><stop offset="1" stop-color="#05070f"/></radialGradient>')
     P.append('<filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="3.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>')
@@ -238,7 +238,7 @@ PW, PH = 900, 424
 def build_pipeline(subtitle, tr=False):
     cols=len(PIPE); m=40; usable=PW-2*m; cw=usable/cols
     P=[]
-    P.append(f'<svg viewBox="0 0 {PW} {PH}" xmlns="http://www.w3.org/2000/svg" font-family="\'Segoe UI\',system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="Claude Starter Kit — five stages">')
+    P.append(f'<svg viewBox="0 0 {PW} {PH}" xmlns="http://www.w3.org/2000/svg" font-family="\'Segoe UI\',system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="Crewforth — five stages">')
     P.append('<defs>')
     P.append('<radialGradient id="bg" cx="50%" cy="42%" r="78%"><stop offset="0" stop-color="#101a34"/><stop offset="1" stop-color="#05070f"/></radialGradient>')
     P.append('<filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="3.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>')
@@ -286,7 +286,7 @@ def build_handover(tr=False):
     n=len(HANDOVER); m=20; gap=12
     bw=(HW-2*m-gap*(n-1))/n
     P=[]
-    P.append(f'<svg viewBox="0 0 {HW} {HH}" xmlns="http://www.w3.org/2000/svg" font-family="\'Segoe UI\',system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="Claude Starter Kit — handover steps">')
+    P.append(f'<svg viewBox="0 0 {HW} {HH}" xmlns="http://www.w3.org/2000/svg" font-family="\'Segoe UI\',system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="Crewforth — handover steps">')
     P.append('<defs>')
     P.append('<linearGradient id="hbg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#101a34"/><stop offset="1" stop-color="#070b18"/></linearGradient>')
     P.append('<filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>')
@@ -318,7 +318,7 @@ def build_handover(tr=False):
 # exists — so it puts both claims in the same second and both answers side by side.
 BW_, BH_ = 1000, 276
 def build_board(tr=False):
-    P=[f'<svg viewBox="0 0 {BW_} {BH_}" xmlns="http://www.w3.org/2000/svg" font-family="\'Segoe UI\',system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="Claude Starter Kit — the board claim race">']
+    P=[f'<svg viewBox="0 0 {BW_} {BH_}" xmlns="http://www.w3.org/2000/svg" font-family="\'Segoe UI\',system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="Crewforth — the board claim race">']
     P.append('<defs>')
     P.append('<linearGradient id="bbg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#101a34"/><stop offset="1" stop-color="#070b18"/></linearGradient>')
     P.append('<filter id="bglow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>')
@@ -398,7 +398,7 @@ FLOW = [
 FW, FH = 960, 232
 def build_flow(tr=False):
     n=len(FLOW); m=26; gap=10; bw=(FW-2*m-gap*(n-1))/n
-    P=[f'<svg viewBox="0 0 {FW} {FH}" xmlns="http://www.w3.org/2000/svg" font-family="\'Segoe UI\',system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="Claude Starter Kit — command flow">']
+    P=[f'<svg viewBox="0 0 {FW} {FH}" xmlns="http://www.w3.org/2000/svg" font-family="\'Segoe UI\',system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="Crewforth — command flow">']
     P.append('<defs><linearGradient id="fbg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#101a34"/><stop offset="1" stop-color="#070b18"/></linearGradient>')
     P.append('<filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>')
     P.append(f'<rect width="{FW}" height="{FH}" fill="url(#fbg)"/>')

@@ -53,7 +53,7 @@ if [ -d "$HERE/packaging" ] && [ -d "$HERE/.git" ] && [ -f "$HERE/VERSION" ]; th
   fi
 fi
 
-# ---- CSK-I18N ------------------------------------------------------------------------------------------
+# ---- CREW-I18N ------------------------------------------------------------------------------------------
 # The installer speaks the user's language; the artefacts it writes do not.
 #
 # THE ENGLISH STRING IS THE KEY. `m 'Cancelled — nothing changed.'` looks that text up and prints the
@@ -90,7 +90,7 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
   local s="$1"; shift
   if [ "$CREW_LANG" = tr ]; then
     case "$s" in
-      "Agentic Working Kit · setup wizard") s='Agentic Working Kit · kurulum' ;;
+      "Crewforth · setup wizard") s='Crewforth · kurulum' ;;
       "stack-agnostic") s='her yığınla çalışır' ;;
       "[1/2] Who is this install for?") s='[1/2] Kurulumu kim kullanacak?' ;;
       "Decides whether your teammates get the kit's configuration — and what goes into .gitignore.") s="Kit ayarlarının ekiple paylaşılıp paylaşılmayacağını ve .gitignore'a nelerin ekleneceğini belirler." ;;
@@ -165,7 +165,7 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
   # and printf exits 2 — measured on bash 3.2 (macOS) and Git Bash 5.3; with it both assign normally.
   printf -v _M -- "$s" "$@"
 }
-# ---- /CSK-I18N -----------------------------------------------------------------------------------------
+# ---- /CREW-I18N -----------------------------------------------------------------------------------------
 
 usage() {
   # A heredoc cannot go through m() line by line without breaking its layout, so the Turkish help is its own
@@ -227,7 +227,7 @@ USAGE
 # 10 seconds rather than 5: the cost of being too short is a declined install, which is visible and
 # recoverable, but a producer that legitimately takes a moment to write the answer should still win. The
 # value is an integer because bash 3.2 rejects a fractional -t ("invalid timeout specification", measured).
-csk_read() {   # $1 = name of the variable to set
+crew_read() {   # $1 = name of the variable to set
   local __v="$1" __a=""
   if [ -t 0 ]; then read -r __a || __a=""
   else read -t 10 -r __a || __a=""
@@ -246,7 +246,7 @@ ask_yes() {  # $1 = question; returns 0 if the user says 'yes'
   # that shape would silently turn every piped install into a cancellation. A pipe reaching EOF already
   # answers "" => no, so the unattended case stays safe without special-casing it.
   _mt '[yes/no]'; printf '%s %s: ' "$1" "$_M"
-  csk_read a
+  crew_read a
   case "$a" in [yY]|[yY][eE][sS]|[eE]|[eE][vV][eE][tT]) return 0 ;; *) return 1 ;; esac
 }
 # Append entries to .gitignore. Three callers had three copies of the same two bugs (start.sh's four-entry
@@ -409,7 +409,7 @@ elif [ -n "${CREW_LANG_ENV:-}" ]; then
 elif [ -t 0 ] && [ "$_lang_yes" = 0 ]; then
   if [ "$_lang_detected" = tr ]; then _lang_def=2; else _lang_def=1; fi
   printf '\n  Language / Dil\n    1) English\n    2) Türkçe\n  -> [1-2, empty/boş=%s]: ' "$_lang_def"
-  csk_read _lang_ans
+  crew_read _lang_ans
   case "${_lang_ans:-$_lang_def}" in
     2|tr|TR|t|T|[tT]ürkçe|[tT]urkce|[tT]urkish) CREW_LANG=tr ;;
     *) CREW_LANG=en ;;
@@ -473,7 +473,7 @@ gate() { _mt "$@"; printf '     %s>%s %s\n'      "$CY" "$R" "$_M"; }            
 row()  { _mt "$1"; padr "$_M" 15; printf '  %s%s%s %s\n' "$B" "$PADDED" "$R" "$2"; }   # summary row; $1 = key
 rule() { printf '  %s------------------------------------------------%s\n' "$D" "$R"; }
 
-h1  'Agentic Working Kit · setup wizard'
+h1  'Crewforth · setup wizard'
 sub '2 steps: who it is for -> summary & confirm.'
 if [ -n "$LEGACY_FLAGS" ]; then
   _mt 'no effect:'; _a="$_M"; _mt 'the kit always installs in full (all agents · all skills).'
@@ -528,7 +528,7 @@ if [ -z "$VISIBILITY" ]; then
   echo
   _mt 'Choice'; _a="$_M"; _mt 'empty=1'
   printf '  %s->%s %s %s[1-2, %s]%s: ' "$CY" "$R" "$_a" "$D" "$_M" "$R"
-  csk_read s                        # empty => default (private = today's behaviour)
+  crew_read s                        # empty => default (private = today's behaviour)
   case "$s" in 2) VISIBILITY="shared" ;; *) VISIBILITY="private" ;; esac
 fi
 # The exact lines this install will append, resolved once so the summary and the writer cannot disagree.

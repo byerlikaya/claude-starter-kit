@@ -26,16 +26,16 @@
 #
 # Usage:
 #   bash packaging/collect-stats.sh                    # token from STATS_TOKEN, else GITHUB_TOKEN, else `gh`
-#   REPO=owner/name bash packaging/collect-stats.sh    # defaults to byerlikaya/claude-starter-kit
+#   REPO=owner/name bash packaging/collect-stats.sh    # defaults to Crewforth/crewforth
 #
 # Exit 0 a row was written (traffic may be absent, and says so) · 1 every source failed — no row, no silent
 # empty entry · 2 a prerequisite is missing (curl / jq).
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"; cd "$ROOT"
 
-REPO="${REPO:-byerlikaya/claude-starter-kit}"
-PKG="@byerlikaya/claude-starter-kit"
-PKG_ENC="%40byerlikaya%2Fclaude-starter-kit"
+REPO="${REPO:-Crewforth/crewforth}"
+PKG="crewforth"
+PKG_ENC="crewforth"
 
 for tool in curl jq; do
   command -v "$tool" >/dev/null 2>&1 || { echo "collect-stats: $tool is required" >&2; exit 2; }

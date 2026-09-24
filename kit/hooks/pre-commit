@@ -35,9 +35,9 @@ TRACE_F="$(mktemp)"; SECRET_F="$(mktemp)"
 # swallows it, git keeps running, and `.git/index.lock` stays behind holding the repository. Every later git
 # command then fails with "Another git process seems to be running", which names nothing about the real cause.
 # 143 = 128 + SIGTERM, the exit status a shell reports for a process the signal actually stopped.
-_csk_cleanup(){ rm -f "$TRACE_F" "$SECRET_F" ${PRIV_F:+"$PRIV_F"} ${PTERM_F:+"$PTERM_F"} ${FLOOR_F:+"$FLOOR_F"} ${FLOOR_P:+"$FLOOR_P"}; }
-trap _csk_cleanup EXIT
-trap '_csk_cleanup; exit 143' INT TERM
+_crew_cleanup(){ rm -f "$TRACE_F" "$SECRET_F" ${PRIV_F:+"$PRIV_F"} ${PTERM_F:+"$PTERM_F"} ${FLOOR_F:+"$FLOOR_F"} ${FLOOR_P:+"$FLOOR_P"}; }
+trap _crew_cleanup EXIT
+trap '_crew_cleanup; exit 143' INT TERM
 
 # Secrets are scanned EVERYWHERE. A token pasted into .claude/settings.json is still a token.
 # The kit's own blocklist files are excluded — they definitionally contain the patterns (circular), and since
@@ -299,7 +299,7 @@ done < <({ _floor_diff --cached; [ "${CREW_SCAN_UNSTAGED:-0}" = 1 ] && _floor_di
 # escapes to top level): 8 mismatches, in BOTH directions — three clean messages newly rejected and two real
 # secrets newly passed. Also checked structurally: no pattern in either shipped blocklist carries a bare
 # top-level `|` (every one is inside a group) and none uses a back-reference, so joining cannot reshape them.
-_csk_any(){   # $1 = pattern list  $2 = corpus  $3 = grep flags  $4 = 1 for newline-joined fixed strings
+_crew_any(){   # $1 = pattern list  $2 = corpus  $3 = grep flags  $4 = 1 for newline-joined fixed strings
   local pat alt="" sep="|"
   [ "$4" = 1 ] && sep="
 "
@@ -312,7 +312,7 @@ _csk_any(){   # $1 = pattern list  $2 = corpus  $3 = grep flags  $4 = 1 for newl
   grep -q$3 -- "$alt" "$2" 2>/dev/null
 }
 # (1) trace scan — case-INsensitive (vendor / AI-authorship strings), project files only
-# `!= 1` AND NOT `= 0`, AND THE DIFFERENCE IS THE WHOLE GATE. _csk_any joins every pattern into ONE
+# `!= 1` AND NOT `= 0`, AND THE DIFFERENCE IS THE WHOLE GATE. _crew_any joins every pattern into ONE
 # alternation and runs a single grep, so one malformed pattern anywhere in the file takes that grep down with
 # it -- exit 2, not 1. Measured, with a list holding `(AKIA|ASIA)[A-Z0-9]{16}` and `[unclosed`:
 #     good   list + matching corpus -> 0     good   list + clean corpus -> 1
@@ -328,7 +328,7 @@ _csk_any(){   # $1 = pattern list  $2 = corpus  $3 = grep flags  $4 = 1 for newl
 # case -- measured above, 0 and 1 both route the same way -- so every test in this repo stays green, including
 # the malformed-pattern case, which only goes red BECAUSE the loop still runs. This comment is the only thing
 # standing between that rewrite and a silently open gate.
-if _csk_any "$BL" "$TRACE_F" iE 0; then _dec=0; else _dec=$?; fi
+if _crew_any "$BL" "$TRACE_F" iE 0; then _dec=0; else _dec=$?; fi
 if [ -f "$BL" ] && [ -s "$TRACE_F" ] && [ "$_dec" != 1 ]; then
   while IFS= read -r pat || [ -n "$pat" ]; do
     pat="${pat%$'\r'}"                       # tolerate a CRLF blocklist (Windows/autocrlf checkout) — a trailing \r
@@ -355,7 +355,7 @@ if [ -f "$BL" ] && [ -s "$TRACE_F" ] && [ "$_dec" != 1 ]; then
   done < "$BL"
 fi
 # (2) secret scan — case-SENSITIVE (token prefixes are case-specific); prints the PATTERN, never the value
-if _csk_any "$SL" "$SECRET_F" E 0; then _dec=0; else _dec=$?; fi
+if _crew_any "$SL" "$SECRET_F" E 0; then _dec=0; else _dec=$?; fi
 if [ -f "$SL" ] && [ -s "$SECRET_F" ] && [ "$_dec" != 1 ]; then
   while IFS= read -r pat || [ -n "$pat" ]; do
     pat="${pat%$'\r'}"                       # tolerate a CRLF blocklist (Windows/autocrlf checkout)
@@ -405,7 +405,7 @@ PAL="";  [ -n "$GITROOT" ] && [ -f "$GITROOT/.private-allowlist.txt" ] && PAL="$
   fi
   [ -n "$PTF" ] && sed -e 's/[[:space:]]*$//' -e '/^#/d' -e '/^$/d' "$PTF"
 } > "$PTERM_F" 2>/dev/null || true
-if _csk_any "$PTERM_F" "$SECRET_F" iF 1; then _dec=0; else _dec=$?; fi
+if _crew_any "$PTERM_F" "$SECRET_F" iF 1; then _dec=0; else _dec=$?; fi
 if [ -s "$PTERM_F" ] && [ -s "$SECRET_F" ] && [ "$_dec" != 1 ]; then
   while IFS= read -r term || [ -n "$term" ]; do
     term="${term%$'\r'}"
@@ -467,7 +467,7 @@ _floor_generated(){ # $1 = repo-relative path; 0 when the file opens with a gene
 # candidate lines are found with one grep, their files checked once each, and the loop runs only when a line that
 # is NOT exempt remains. A malformed pattern takes the combined grep down with exit 2; then the slow path runs over
 # every line, exactly as before, so a broken list still reports itself and still scans.
-if _csk_any "$FL" "$FLOOR_F" E 0; then _dec=0; else _dec=$?; fi
+if _crew_any "$FL" "$FLOOR_F" E 0; then _dec=0; else _dec=$?; fi
 if [ -f "$FL" ] && [ -s "$FLOOR_F" ] && [ "$_dec" != 1 ]; then
   FLOOR_ALT=""
   while IFS= read -r pat || [ -n "$pat" ]; do

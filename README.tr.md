@@ -20,7 +20,7 @@ npx crewforth adopt    # mevcut depo — ayrı bir dalda devralınır, main'iniz
 
 <div align="center">
 
-![Sürüm](https://img.shields.io/badge/version-2.13.0-2563eb?style=flat-square)
+![Sürüm](https://img.shields.io/badge/version-3.0.0-2563eb?style=flat-square)
 ![Lisans](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)
 ![Agent](https://img.shields.io/badge/agents-12-f59e0b?style=flat-square)
 ![Skill](https://img.shields.io/badge/skills-40-f59e0b?style=flat-square)

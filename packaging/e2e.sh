@@ -759,7 +759,7 @@ echo "[wizard] --yes installs unattended, reads nothing, and scaffolds nothing"
 # `secs` iterations of `sleep 1` and then SIGKILLs, so every path is bounded by construction.
 _bounded(){                     # $1 = seconds, rest = command; prints BLOCKED or rc=<n>
   local secs="$1"; shift
-  # THE BUDGET MUST EXCEED THE PRODUCT'S OWN. `csk_read` waits 10 s per prompt and the no-flag path reaches two
+  # THE BUDGET MUST EXCEED THE PRODUCT'S OWN. `crew_read` waits 10 s per prompt and the no-flag path reaches two
   # of them, so a 20 s bound reported BLOCKED for an installer that was about to decline correctly at ~20 s —
   # my harness's budget, not a hang. Measured directly afterwards: rc=0, "Cancelled — nothing changed". 60 s
   # leaves room for three bounded reads plus the work between them.
@@ -797,7 +797,7 @@ if [ "$(cat "$_FC/rc_open")" = BLOCKED ] && [ "$(cat "$_FC/rc_closed")" != BLOCK
   # THE PIPE SHAPE IS CLOSED, and this is a real verdict rather than a recorded state. Without --yes, an
   # open-but-empty stdin used to block forever — measured 142 here and on stock Windows, at the stack chooser
   # with no flags and one prompt later with --generic. All three bare reads are now bounded, so the installer
-  # returns and declines instead. The must-fail twin lives with the fix: removing the timeout from `csk_read`
+  # returns and declines instead. The must-fail twin lives with the fix: removing the timeout from `crew_read`
   # puts 142 back on this same fifo.
   W2C="$(wiz noyes-openempty)"
   ( cd "$W2C" && mkfifo f && exec 3<>f && _bounded 60 bash start.sh <&3 > rc; exec 3>&- ) || true

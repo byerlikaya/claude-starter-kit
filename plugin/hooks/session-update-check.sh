@@ -37,10 +37,10 @@ set -uo pipefail
 _crew_d="${BASH_SOURCE%/*}"; [ "$_crew_d" = "${BASH_SOURCE}" ] && _crew_d=.
 [ -f "$_crew_d/../eval/lib/crew-env.sh" ] && . "$_crew_d/../eval/lib/crew-env.sh"; unset _crew_d
 
-URL="${CREW_UPDATE_URL:-https://registry.npmjs.org/-/package/@byerlikaya%2fclaude-starter-kit/dist-tags}"
+URL="${CREW_UPDATE_URL:-https://registry.npmjs.org/-/package/crewforth/dist-tags}"
 # plugin-stable, not main: the marketplace installs the plugin from that branch, and only an approved release
 # moves it forward. Reading main would announce a release before the plugin channel can deliver it.
-PLUGIN_URL="${CREW_UPDATE_URL:-https://raw.githubusercontent.com/byerlikaya/claude-starter-kit/plugin-stable/plugin/.claude-plugin/plugin.json}"
+PLUGIN_URL="${CREW_UPDATE_URL:-https://raw.githubusercontent.com/Crewforth/crewforth/plugin-stable/plugin/.claude-plugin/plugin.json}"
 MAX_AGE="${CREW_UPDATE_MAX_AGE:-86400}"      # one day between checks
 
 # DIGITS AND DOTS, exactly three fields — nothing else survives to be printed. Deliberately stricter than semver:
@@ -114,9 +114,9 @@ elif [ -n "$PR_ROOT" ] && [ -f "$PJSON" ]; then
   CUR="$(sane_version "$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$PJSON" 2>/dev/null | head -1)")" || exit 0
   # No repo to write into (a plugin serves every project), so the cache is user-level. This is the one place the
   # kit's "everything stays inside the repo" rule does not apply, because a plugin install is not inside one.
-  STATE="${XDG_CACHE_HOME:-$HOME/.cache}/claude-starter-kit"
+  STATE="${XDG_CACHE_HOME:-$HOME/.cache}/crewforth"
   FEED="${CREW_UPDATE_URL:-$PLUGIN_URL}"; KEY=version
-  HOWTO='`claude plugin update claude-starter-kit` performs the update'
+  HOWTO='`claude plugin update crewforth` performs the update'
 else
   exit 0                                                        # neither edition -> nothing to compare
 fi

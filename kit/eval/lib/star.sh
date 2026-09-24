@@ -20,7 +20,7 @@ set -u
 # Pre-3.0 CSK_* names still work for the variables a user can set (one helper: eval/lib/crew-env.sh).
 _crew_d="${BASH_SOURCE%/*}"; [ "$_crew_d" = "${BASH_SOURCE}" ] && _crew_d=.
 [ -f "$_crew_d/./crew-env.sh" ] && . "$_crew_d/./crew-env.sh"; unset _crew_d
-CREW_REPO_URL="https://github.com/byerlikaya/claude-starter-kit"
+CREW_REPO_URL="https://github.com/Crewforth/crewforth"
 
 case "${CREW_NO_STAR:-}" in ''|0) ;; *) exit 0 ;; esac
 [ -n "${CI+set}" ] && exit 0
@@ -42,7 +42,7 @@ if [ "${1:-}" = --once ]; then
   _seen=""; { IFS= read -r _seen < "$MARK"; } 2>/dev/null; [ "${_seen%$'\r'}" = "$VER" ] && exit 0
 fi
 
-# ---- CSK-I18N ------------------------------------------------------------------------------------------
+# ---- CREW-I18N ------------------------------------------------------------------------------------------
 # Same contract as preflight.sh: the installer exports CREW_LANG; run on its own (doctor), the locale decides.
 case "${CREW_LANG:-}" in tr|en) ;; *)
   _loc="${LC_ALL:-}"; [ -n "$_loc" ] || _loc="${LC_MESSAGES:-}"; [ -n "$_loc" ] || _loc="${LANG:-}"
@@ -60,7 +60,7 @@ _mt() {
   # shellcheck disable=SC2059
   printf -v _M -- "$s" "$@"
 }
-# ---- /CSK-I18N -----------------------------------------------------------------------------------------
+# ---- /CREW-I18N -----------------------------------------------------------------------------------------
 
 _mt '⭐ If Crewforth saves you a review round, a star helps others find it: %s' "$CREW_REPO_URL"
 # The marker only after the line actually went out: a closed stdout must not record "shown".

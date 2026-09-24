@@ -69,7 +69,7 @@ if [ -n "$TP" ] && [ -f "$TP" ]; then
     AUTOC="$(grep -c '"compact_boundary".*"trigger": *"auto"' "$TP" 2>/dev/null)"; AUTOC=$(( ${AUTOC:-0} + 0 ))
   fi
 fi
-marker(){ printf '%s/csk-session-guard.%s.c%s.%s' "${TMPDIR:-/tmp}" "$KEY" "$COMP" "$1"; }
+marker(){ printf '%s/crew-session-guard.%s.c%s.%s' "${TMPDIR:-/tmp}" "$KEY" "$COMP" "$1"; }
 
 # An AUTO compaction is not a milestone, it is a loss: state nobody chose to drop is already gone, and the fill
 # reading right after it is reassuringly low precisely because the context was thrown away. Announce it once per
@@ -92,7 +92,7 @@ fi
 # For a warning that never blocks, one turn of lag is worth seconds a turn, and it is not silent: without the
 # file we measure properly below, so the accurate path is always there when the fast one is not.
 PCT=""; TOTAL=""; WINDOW=""; LEVEL=""; LINE=""
-CACHE="${TMPDIR:-/tmp}/csk-context.${KEY}"
+CACHE="${TMPDIR:-/tmp}/crew-context.${KEY}"
 if [ -f "$CACHE" ]; then
   read -r PCT TOTAL WINDOW LEVEL < "$CACHE" 2>/dev/null || true
   case "$PCT" in ''|*[!0-9.]*) PCT="" ;; esac      # anything unexpected -> fall through and measure

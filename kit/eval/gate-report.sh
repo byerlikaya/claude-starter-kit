@@ -31,7 +31,7 @@ HOOKS="./.claude/hooks"; [ -d "$HOOKS" ] || HOOKS="./hooks"
 # Default log location, so `--log` is not required once logging is on.
 [ -z "$LOG" ] && [ -f "./.claude/gate-log.tsv" ] && LOG="./.claude/gate-log.tsv"
 
-TMP="${TMPDIR:-/tmp}/csk-gate-$$"; mkdir -p "$TMP"; trap 'rm -rf "$TMP"' EXIT
+TMP="${TMPDIR:-/tmp}/crew-gate-$$"; mkdir -p "$TMP"; trap 'rm -rf "$TMP"' EXIT
 
 # Match on a KEY, display the full label. A rule label can carry a trailing parenthetical, and one of them
 # interpolates a shell variable ("… that cannot prompt (${PERM_MODE:-unknown})"): the inventory reads the

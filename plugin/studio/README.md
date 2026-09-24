@@ -1,4 +1,4 @@
-# CSK Studio
+# Crewforth Studio
 
 A visual orchestration panel for Claude Code: which agent is running, what it is
 doing right now, what it has spent, and which gates fired.
@@ -64,7 +64,7 @@ replaces that placeholder before the command is read, and only when the command
 came from the plugin. A real absolute path is the plugin's panel; the
 placeholder left standing means a full install. Neither path on disk means an
 install from a kit older than the panel, which `/crew-update` brings up to date.
-In the plugin the command is namespaced: `/claude-starter-kit:crew-studio`.
+In the plugin the command is namespaced: `/crewforth:crew-studio`.
 
 **What the plugin edition cannot show.** A plugin install puts no
 `.claude/VERSION`, `kit.conf` or kit scripts into a project. That project's row

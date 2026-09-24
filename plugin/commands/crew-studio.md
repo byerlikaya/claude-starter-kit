@@ -1,6 +1,6 @@
 ---
 name: crew-studio
-description: Open CSK Studio — the visual panel for what agents are doing, what they spent, and which gates fired.
+description: Open Crewforth Studio — the visual panel for what agents are doing, what they spent, and which gates fired.
 argument-hint: "[--port <n>]"
 ---
 # /crew-studio
@@ -27,7 +27,7 @@ fails, say which one and stop — do not improvise a different launch.
    path to `/studio/server/index.js`.
 
    Neither path is there? Then this is an install from a kit older than the release that added the panel:
-   `npx @byerlikaya/claude-starter-kit@latest update --here --yes` at the project root, or `/crew-update`.
+   `npx crewforth@latest update --here --yes` at the project root, or `/crew-update`.
    Then stop. Do not go hunting for the panel anywhere else on disk.
 
    **What the plugin edition cannot show.** A plugin install puts no `.claude/VERSION`, `kit.conf` or kit
@@ -96,13 +96,13 @@ fails, say which one and stop — do not improvise a different launch.
    shell, or kill the process). Do not hold it in a foreground tool call.
 
 5. **Port already in use.** Start it anyway and read what it says — the panel checks whether the holder is
-   another csk-studio first, and there is nothing for you to decide before it does. Two answers:
+   another crewforth-studio first, and there is nothing for you to decide before it does. Two answers:
 
    - `already running on port <n> (pid …) — reusing it`, followed by a tokenised URL and exit 0. That is a
      panel someone else started, usually another session in this project. **Report that URL**; it is the same
      panel, and the token in it is the running instance's own. Tell the user it belongs to whoever started it,
      so closing this shell does not stop it.
-   - `held by something that is not a csk-studio panel` and exit 1. Then retry once with `--port <n+1>` and
+   - `held by something that is not a crewforth-studio panel` and exit 1. Then retry once with `--port <n+1>` and
      report the new URL. If that port is taken too, stop and say both are taken rather than walking up the
      range — something is listening that the user should look at.
 
@@ -124,5 +124,5 @@ that when you hand over the URL, so nobody reports "it shows other projects" as 
 
 Offline diagnostic, no browser and no tokens: `"$NODE" <panel> --selftest`.
 
-**In the plugin edition this command is namespaced** — `/claude-starter-kit:crew-studio`, not
+**In the plugin edition this command is namespaced** — `/crewforth:crew-studio`, not
 `/crew-studio`. Measured: the bare name does not resolve for a plugin command.

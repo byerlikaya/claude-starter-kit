@@ -20,7 +20,7 @@ npx crewforth adopt    # existing repo — handed over on a branch, your main un
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-2.13.0-2563eb?style=flat-square)
+![Version](https://img.shields.io/badge/version-3.0.0-2563eb?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)
 ![Agents](https://img.shields.io/badge/agents-12-f59e0b?style=flat-square)
 ![Skills](https://img.shields.io/badge/skills-40-f59e0b?style=flat-square)

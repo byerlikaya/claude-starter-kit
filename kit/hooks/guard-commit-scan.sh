@@ -21,7 +21,7 @@
 set -uo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# ---- CSK-JSON-PARSE ------------------------------------------------------------------------------------
+# ---- CREW-JSON-PARSE ------------------------------------------------------------------------------------
 _json_slice(){  # $1 = whole payload, $2 = key -> the raw (still JSON-escaped) string value, "" if absent
   local LC_ALL=C   # FIRST, so every expansion below -- the key search included -- counts and cuts in bytes.
                    # Lengths from ${#x} are used as offsets into ${y:n}; with the locale set before any of
@@ -268,7 +268,7 @@ _json_keycount(){  # $1 = payload, $2 = key -> sets _KC to how many times it occ
     hay="$rest"
   done
 }
-# ---- /CSK-JSON-PARSE -----------------------------------------------------------------------------------
+# ---- /CREW-JSON-PARSE -----------------------------------------------------------------------------------
 
 # Extract the -m/--message VALUES from the command line without an interpreter.
 #
@@ -295,7 +295,7 @@ _json_keycount(){  # $1 = payload, $2 = key -> sets _KC to how many times it occ
 # with the harness itself calibrated by two deliberate mutations.
 # The one tokenizer: shell quoting rules (the subset shlex.split applies), then every value of the named option.
 # $1 = command, $2 = short flag, $3 = long flag, $4 = 1 to stop at the first value.
-csk_opt_values() {
+crew_opt_values() {
   CREW_CMD="$1" CREW_S="$2" CREW_L="$3" CREW_FIRST="${4:-0}" LC_ALL=C awk '
     BEGIN {
       s = ENVIRON["CREW_CMD"]; n = length(s); i = 1
@@ -356,7 +356,7 @@ csk_opt_values() {
       exit 0
     }'
 }
-csk_msg_values() { csk_opt_values "$1" -m --message; }
+crew_msg_values() { crew_opt_values "$1" -m --message; }
 
 INPUT="$(cat)"
 # Same ladder as guard-bash.sh, and for the same reason: the raw-text fallback leaves JSON escapes in place,
@@ -426,7 +426,7 @@ fi
 # what scans it. Reuse it on the -m value when there is one; an editor-composed message is not visible here and
 # stays the git hook's job.
 if [ "$FAILED" = 0 ] && [ -x "$DIR/commit-msg" ]; then
-  # The message is tokenized the way a shell does (csk_opt_values), which matters because a real commit message
+  # The message is tokenized the way a shell does (crew_opt_values), which matters because a real commit message
   # is MULTI-LINE: a line-oriented `sed` extraction found the subject and stopped, so a co-author trailer on line
   # 3 — the single most likely §4.1 violation, and the one the bare arm of the eval actually produced — went
   # unscanned. When the tokenizer cannot parse the command, scan the whole command text instead of guessing
@@ -444,11 +444,11 @@ if [ "$FAILED" = 0 ] && [ -x "$DIR/commit-msg" ]; then
   # Mac and a Windows box took different code through a gate. Measured before it was removed: on 18 `-m`
   # shapes the awk tokenizer returned what shlex returned, 18/18. A command awk cannot tokenize (an unclosed
   # quote, a -m with nothing after it) scans the whole command instead, which can only over-report.
-  if ! MSG="$(csk_msg_values "$CMD")"; then
+  if ! MSG="$(crew_msg_values "$CMD")"; then
     MSG="$CMD"
   fi
   if [ "$HAS_M" = 1 ] && [ -n "$MSG" ]; then
-    MF="$(mktemp "${TMPDIR:-/tmp}/csk-msg.XXXXXX")"
+    MF="$(mktemp "${TMPDIR:-/tmp}/crew-msg.XXXXXX")"
     printf '%s\n' "$MSG" > "$MF"
     OUT="$OUT
 $(bash "$DIR/commit-msg" "$MF" 2>&1)" || FAILED=1
@@ -469,7 +469,7 @@ $(bash "$DIR/commit-msg" "$MF" 2>&1)" || FAILED=1
     # commit the traced one — a §4.1 hole, found in review. And when the tokenizer cannot parse the line (a shape
     # it does not model, e.g. ANSI-C `$'…'` quoting later in the command), a -F is still there: fall back to the
     # greedy extraction (last match), and if even that names no readable file, refuse rather than skip.
-    if MFILE="$(csk_opt_values "$CMD" -F --file)"; then
+    if MFILE="$(crew_opt_values "$CMD" -F --file)"; then
       MFILE="${MFILE##*$'\n'}"
     else
       MFILE="$(printf '%s' "$CMD" \

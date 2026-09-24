@@ -50,9 +50,9 @@ not the policy file, because a policy file that parses is not a policy that appl
 ## What the kit puts in the config (present, not proven to enforce)
 | Rule | Tier | Why the defaults don't cover it |
 |---|---|---|
-| CSK Uncommitted Work Destruction | `hard_deny` | The built-ins treat destructive git as **soft**, which explicit user intent clears. Uncommitted work is the one artifact with no second copy, and this kit has watched a subagent run `git checkout -- .` over live work. Hard tier = intent cannot clear it. |
-| CSK Gate Tampering | `soft_deny` | `--no-verify`, unsetting `core.hooksPath`, editing `.claude/hooks/*`. The defaults block generic bypass, not the removal of *this project's* gates. |
-| CSK Internal Docs Publication | `soft_deny` | §4.3: `docs/` is internal by policy. No built-in can know that. |
+| Crewforth Uncommitted Work Destruction | `hard_deny` | The built-ins treat destructive git as **soft**, which explicit user intent clears. Uncommitted work is the one artifact with no second copy, and this kit has watched a subagent run `git checkout -- .` over live work. Hard tier = intent cannot clear it. |
+| Crewforth Gate Tampering | `soft_deny` | `--no-verify`, unsetting `core.hooksPath`, editing `.claude/hooks/*`. The defaults block generic bypass, not the removal of *this project's* gates. |
+| Crewforth Internal Docs Publication | `soft_deny` | §4.3: `docs/` is internal by policy. No built-in can know that. |
 
 Deliberately **not** set: `environment` (your trusted repos/buckets/domains — guessing them either over-trusts
 or, set without `"$defaults"`, wipes the built-in list) and `allow` (loosening is the user's call, never the

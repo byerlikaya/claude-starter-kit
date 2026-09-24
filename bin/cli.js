@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-// Runner for the Claude Starter Kit. The kit is a set of bash scripts (start.sh / adopt.sh)
+// Runner for the Crewforth. The kit is a set of bash scripts (start.sh / adopt.sh)
 // plus the kit/ payload, all bundled in this npm package. This wrapper stages the
 // payload in a temp dir and runs the requested script with the user's project as the CWD, so
 // the script's self-cleanup only ever removes the temp copies — never the package or the CWD.
@@ -15,16 +15,16 @@ const argv = process.argv.slice(2);
 const sub = argv[0];
 
 if (sub === '--help' || sub === '-h' || sub === 'help') {
-  console.log(`Claude Starter Kit
+  console.log(`Crewforth
 
 Usage:
-  npx @byerlikaya/claude-starter-kit [init] [--private|--shared] [--yes]
+  npx crewforth [init] [--private|--shared] [--yes]
       Set up the kit in a fresh project (start.sh wizard). Every install ships the whole kit and
       is stack-agnostic: the stack is recorded per project in CLAUDE.md ## Stack.
       (--dotnet was removed in 3.0; it is still accepted, warns, and installs the same kit.)
-  npx @byerlikaya/claude-starter-kit adopt
+  npx crewforth adopt
       Hand the kit over onto an existing project (adopt.sh).
-  npx @byerlikaya/claude-starter-kit@latest update
+  npx crewforth@latest update
       Refresh a project that already has the kit. Alias of 'adopt': it reads .claude/kit.conf,
       migrates a pre-3.0 .NET install (its pattern skill stays, as a project skill), and
       restores anything missing. Your CLAUDE.md is never touched.
@@ -35,7 +35,7 @@ Usage:
       Copy one agent or skill (and the skills an agent uses) into ./.claude — not the full install.
       --list shows the catalogue; --force replaces a file that differs; --no-deps adds the agent alone.
 
-  npx @byerlikaya/claude-starter-kit --version
+  npx crewforth --version
       Print the kit version and exit.
 
 Run any of them at the root of your target project.
@@ -387,7 +387,7 @@ if (probe.error) {
 const realpath = (p) => { try { return fs.realpathSync.native(p); } catch (_) { return p; } };
 
 // Stage the bundled payload in a temp dir so the script's self-cleanup is harmless.
-const stage = fs.mkdtempSync(path.join(realpath(os.tmpdir()), 'claude-starter-kit-'));
+const stage = fs.mkdtempSync(path.join(realpath(os.tmpdir()), 'crewforth-'));
 try {
   for (const item of [script, 'kit', 'VERSION']) {
     const src = path.join(pkgDir, item);

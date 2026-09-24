@@ -77,20 +77,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           V="${{ steps.v.outputs.version }}"
-          TGZ="dist/claude-starter-kit-${V}.tgz"
+          TGZ="dist/crewforth-${V}.tgz"
           {
             echo "## Install"
             echo
-            echo "- **npx** — \`npx @byerlikaya/claude-starter-kit\` (fresh) · \`npx @byerlikaya/claude-starter-kit adopt\` (existing)"
-            echo "- **Homebrew** — \`brew install byerlikaya/tap/claude-starter-kit\`"
-            echo "- **Claude Code plugin** — \`/plugin marketplace add byerlikaya/claude-starter-kit\` -> \`/plugin install claude-starter-kit@byerlikaya\`"
+            echo "- **npx** — \`npx crewforth\` (fresh) · \`npx crewforth adopt\` (existing)"
+            echo "- **Homebrew** — \`brew install byerlikaya/tap/crewforth\`"
+            echo "- **Claude Code plugin** — \`/plugin marketplace add Crewforth/crewforth\` -> \`/plugin install crewforth@crewforth\`"
             echo "- **Tarball** — download below, then \`bash start.sh\` (fresh) or \`bash adopt.sh\` (existing)"
             echo
             echo "## What's new"
             echo
             awk -v v="$V" '$0 ~ "^## \\[" v "\\]" {f=1; next} /^## \[/{f=0} f' CHANGELOG.md
             echo
-            echo "Full changelog: [CHANGELOG.md](https://github.com/byerlikaya/claude-starter-kit/blob/main/CHANGELOG.md)"
+            echo "Full changelog: [CHANGELOG.md](https://github.com/Crewforth/crewforth/blob/main/CHANGELOG.md)"
           } > release-notes.md
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release edit "$GITHUB_REF_NAME" --notes-file release-notes.md
@@ -142,20 +142,20 @@ jobs:
           TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
         run: |
           V="${{ steps.v.outputs.version }}"
-          SHA="$(sha256sum "dist/claude-starter-kit-${V}.tgz" | awk '{print $1}')"
+          SHA="$(sha256sum "dist/crewforth-${V}.tgz" | awk '{print $1}')"
           git clone "https://x-access-token:${TAP_TOKEN}@github.com/byerlikaya/homebrew-tap.git" tap
-          F="tap/Formula/claude-starter-kit.rb"
+          F="tap/Formula/crewforth.rb"
           # Publish THIS repo's formula, do not patch the tap's copy. The previous version rewrote only url,
           # sha256 and version, so the tap kept whatever install logic it was created with — and it kept
           # `update.sh` long after that script was renamed to adopt.sh. The tarball has never contained
           # update.sh (make-release.sh restricts it), so `brew install` could not work, and nothing noticed
           # because the formula in this repo was read by nobody. The repo is the source of truth now.
-          cp packaging/homebrew/claude-starter-kit.rb "$F"
-          sed -i -E "s#/releases/download/v[0-9.]+/claude-starter-kit-[0-9.]+\.tgz#/releases/download/v${V}/claude-starter-kit-${V}.tgz#" "$F"
+          cp packaging/homebrew/crewforth.rb "$F"
+          sed -i -E "s#/releases/download/v[0-9.]+/crewforth-[0-9.]+\.tgz#/releases/download/v${V}/crewforth-${V}.tgz#" "$F"
           sed -i -E "s#sha256 \"[0-9a-f]{64}\"#sha256 \"${SHA}\"#" "$F"
           sed -i -E "s#version \"[0-9.]+\"#version \"${V}\"#" "$F"
           cd tap
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -am "claude-starter-kit ${V}"
+          git commit -am "crewforth ${V}"
           git push

@@ -851,13 +851,13 @@ sec "== 5e) executable bit on every shipped script =="
 # again. The only place it is visible is the git index — so that is where it is checked. This gate exists
 # because the very commit that added it dropped 755 to 644 on this file, twice in one session, with nothing
 # noticing: rewriting a file in place creates a NEW file, and a new file does not inherit the old one's mode.
-csk_exec_check(){    # $1 = human label, $2.. = paths that must be executable on disk
+crew_exec_check(){    # $1 = human label, $2.. = paths that must be executable on disk
   local lbl="$1"; shift; local p bad=""
   for p in "$@"; do [ -e "$p" ] || continue; [ -x "$p" ] || bad="$bad $(basename "$p")"; done
   [ -z "$bad" ] && pass "on disk, every $lbl is executable" || fail "not executable ($lbl):$bad"
 }
-csk_exec_check "hook" "$HOOKS"/*.sh "$HOOKS/pre-commit" "$HOOKS/commit-msg"
-csk_exec_check "eval script" "$HERE"/*.sh
+crew_exec_check "hook" "$HOOKS"/*.sh "$HOOKS/pre-commit" "$HOOKS/commit-msg"
+crew_exec_check "eval script" "$HERE"/*.sh
 # The index is the half that actually regresses, and it only exists where these files are tracked — in an
 # installed project .claude/ is usually gitignored, so a miss there is silence, not a failure.
 # ...and only where git TRACKS the bit at all. Windows filesystems carry no exec bit, so git sets
@@ -973,7 +973,7 @@ if [ -n "$JSONQ" ]; then
   # corporate Windows machine (measured: ~290ms per process) is about four seconds a turn. A faster path that
   # reaches a different verdict would be worse than the cost it saves, so both halves are asserted: it must
   # agree with the slow path, and it must survive a cache it cannot trust.
-  SGC="${TMPDIR:-/tmp}/csk-context.${SGPFX}-fast"
+  SGC="${TMPDIR:-/tmp}/crew-context.${SGPFX}-fast"
   fill 800000
   SLOWOUT="$(sg "${SGPFX}-slow")"                       # no cache for this key -> measures for itself
   printf '80.0 800000 1000000 handoff+clear\n' > "$SGC"
@@ -993,12 +993,12 @@ if [ -n "$JSONQ" ]; then
   esac
   rm -f "$SGC"
   # And the shortcut must actually be taken: no nested shell at the end of a turn is the whole point.
-  printf '80.0 800000 1000000 handoff+clear\n' > "${TMPDIR:-/tmp}/csk-context.${SGPFX}-cnt"
+  printf '80.0 800000 1000000 handoff+clear\n' > "${TMPDIR:-/tmp}/crew-context.${SGPFX}-cnt"
   mkjson "${SGPFX}-cnt" "$SGFX" false | CONTEXT_WINDOW=1000000 bash -x "$HOOKS/session-guard.sh" >/dev/null 2>"$SGFX.trace"
   NB="$(grep -cE '^\++ bash ' "$SGFX.trace" 2>/dev/null | tr -cd '0-9')"; NB="${NB:-0}"
   [ "$NB" -eq 0 ] && pass "stop-hook fast path spawns no nested shell (the cost this removes)" \
                   || fail "stop-hook still starts $NB nested shell(s) with a published reading available"
-  rm -f "${TMPDIR:-/tmp}/csk-context.${SGPFX}-cnt" "$SGFX.trace"
+  rm -f "${TMPDIR:-/tmp}/crew-context.${SGPFX}-cnt" "$SGFX.trace"
 else skip tool "stop-hook JSON check skipped (no working JSON parser: jq, python3 and python all absent or non-functional)" 5; fi
 # (7) fail-open: unreadable transcript -> exit 0 and silent (never blocks on measurement failure)
 o="$(mkjson "${SGPFX}-f" "/no/such.jsonl" false | bash "$HOOKS/session-guard.sh" 2>/dev/null)"; r=$?
@@ -1042,9 +1042,9 @@ fillc 772000 manual 1
 sgerr="$(mkjson "${SGPFX}-l" "$SGFX" false | CONTEXT_WINDOW=1000000 bash "$HOOKS/session-guard.sh" 2>&1 >/dev/null)"
 [ -z "$sgerr" ] && pass "stop-hook: writes nothing to stderr when a compaction IS present" \
                 || fail "stop-hook wrote to stderr with a compaction: $(printf '%s' "$sgerr" | tr '\n' ' ' | cut -c1-160)"
-rm -f "$SGFX"; rm -f "${TMPDIR:-/tmp}"/csk-session-guard.${SGPFX}-*.* 2>/dev/null
+rm -f "$SGFX"; rm -f "${TMPDIR:-/tmp}"/crew-session-guard.${SGPFX}-*.* 2>/dev/null
 
-# ---- CSK-NOJQ-PATH ---------------------------------------------------------------------------------------
+# ---- CREW-NOJQ-PATH ---------------------------------------------------------------------------------------
 # ONE builder for "a PATH where the jq and python3 tiers do not deliver". It was written three times — here,
 # for context-usage's two fixtures, and for the guard sandbox — with three tool lists and three copies of the
 # same Windows caveat, and all three bailed on the same platform for the same reason.
@@ -1063,7 +1063,7 @@ rm -f "$SGFX"; rm -f "${TMPDIR:-/tmp}"/csk-session-guard.${SGPFX}-*.* 2>/dev/nul
 # CREW_NOJQ_MODE says which tier; CREW_NOJQ_WHY says why not, when nothing comes back. The caller cleans up
 # "${VAR%%:*}" — the sandbox directory is the first PATH element in both tiers.
 CREW_NOJQ_MODE=""; CREW_NOJQ_WHY=""
-csk_nojq_path(){   # $@ = the tools the code under test needs on PATH
+crew_nojq_path(){   # $@ = the tools the code under test needs on PATH
   local d t tp probe; CREW_NOJQ_MODE=""; CREW_NOJQ_WHY=""
   probe="$(command -v bash 2>/dev/null || echo bash)"
   d="$(mktemp -d)" || { CREW_NOJQ_WHY="mktemp failed"; return 1; }
@@ -1094,11 +1094,11 @@ csk_nojq_path(){   # $@ = the tools the code under test needs on PATH
   PATH="$d:$PATH" "$probe" -c 'printf x | grep -q x' 2>/dev/null || { CREW_NOJQ_WHY="canary failed: grep unusable behind the stubs"; rm -rf "$d"; return 1; }
   CREW_NOJQ_MODE="stubbed"; printf '%s' "$d:$PATH"; return 0
 }
-# ---- /CSK-NOJQ-PATH --------------------------------------------------------------------------------------
+# ---- /CREW-NOJQ-PATH --------------------------------------------------------------------------------------
 
 sec "== 6c) no-jq fallback: sidechain-safe + full token sum =="
 BASHBIN="$(command -v bash 2>/dev/null || echo bash)"   # absolute -> a stripped PATH must not hide bash itself
-JXBIN="$(csk_nojq_path awk sed grep head tail cat ls tr)"
+JXBIN="$(crew_nojq_path awk sed grep head tail cat ls tr)"
 if [ -n "$JXBIN" ]; then
   SX="$(mktemp)"
   printf '%s\n' '{"type":"assistant","isSidechain":false,"message":{"usage":{"input_tokens":20,"cache_read_input_tokens":760000,"cache_creation_input_tokens":11936}}}' >  "$SX"
@@ -1138,7 +1138,7 @@ POISON_REC='{"type":"user","isSidechain":false,"message":{"role":"user","content
 noise(){ awk -v n="$1" -v l="$2" 'BEGIN{for(i=0;i<n;i++) print l}'; }
 # a jq-less PATH, so the awk branch is what actually runs (this is the Windows path)
 CUBASH="$(command -v bash 2>/dev/null || echo bash)"
-CUJX="$(csk_nojq_path awk sed grep head tail cat ls tr dirname)"
+CUJX="$(crew_nojq_path awk sed grep head tail cat ls tr dirname)"
 cu(){    CONTEXT_WINDOW=1000000 bash "$HOOKS/context-usage.sh" --verbose "$1" 2>/dev/null; }
 cu_nojq(){ PATH="$CUJX" CONTEXT_WINDOW=1000000 "$CUBASH" "$HOOKS/context-usage.sh" --verbose "$1" 2>/dev/null; }
 # assert the SAME expected total on both engines — they must never drift apart
@@ -1248,18 +1248,18 @@ sec "== 6i3) transcript directory encoding (the BY-HAND call, no hook payload) =
 CREW_ENC_SED="$(grep -o "s#\[[^]]*\]#-#g" "$HOOKS/context-usage.sh" | head -1)"
 [ -n "$CREW_ENC_SED" ] && pass "the cwd encoder expression was found in context-usage.sh" \
                       || fail "no cwd-encoder expression in context-usage.sh (the resolver was rewritten or removed)"
-enc_csk(){ printf '%s' "$1" | sed "${CREW_ENC_SED:-s#x#x#}"; }
-[ "$(enc_csk '/Users/x/Projects/claude-starter-kit')" = '-Users-x-Projects-claude-starter-kit' ] \
-  && pass "encode: POSIX path" || fail "encode: POSIX path -> $(enc_csk '/Users/x/Projects/claude-starter-kit')"
-[ "$(enc_csk 'C:\Repos\team\report_api')" = 'C--Repos-team-report-api' ] \
+enc_crew(){ printf '%s' "$1" | sed "${CREW_ENC_SED:-s#x#x#}"; }
+[ "$(enc_crew '/Users/x/Projects/crewforth')" = '-Users-x-Projects-crewforth' ] \
+  && pass "encode: POSIX path" || fail "encode: POSIX path -> $(enc_crew '/Users/x/Projects/crewforth')"
+[ "$(enc_crew 'C:\Repos\team\report_api')" = 'C--Repos-team-report-api' ] \
   && pass "encode: Windows native path (drive letter + backslashes)" \
-  || fail "encode: Windows native -> $(enc_csk 'C:\Repos\team\report_api')"
-[ "$(enc_csk '/Users/x/my_app')" = '-Users-x-my-app' ] \
+  || fail "encode: Windows native -> $(enc_crew 'C:\Repos\team\report_api')"
+[ "$(enc_crew '/Users/x/my_app')" = '-Users-x-my-app' ] \
   && pass "encode: underscore folds to '-' (misses every such project otherwise)" \
-  || fail "encode: underscore NOT folded -> $(enc_csk '/Users/x/my_app')"
+  || fail "encode: underscore NOT folded -> $(enc_crew '/Users/x/my_app')"
 # The encoder is written out twice, once per hook, because a shared file would have to be added to
-# Two blocks in this kit are duplicated on purpose: CSK-TRANSCRIPT-DIR (context-usage.sh + session-stats.sh)
-# and CSK-JSON-PARSE (the guards). A shared file would have to be added to build-plugin.sh's explicit copy
+# Two blocks in this kit are duplicated on purpose: CREW-TRANSCRIPT-DIR (context-usage.sh + session-stats.sh)
+# and CREW-JSON-PARSE (the guards). A shared file would have to be added to build-plugin.sh's explicit copy
 # list and a miss there breaks the plugin channel silently, so the copies stay and the equality is enforced
 # here rather than trusted.
 #
@@ -1273,7 +1273,7 @@ enc_csk(){ printf '%s' "$1" | sed "${CREW_ENC_SED:-s#x#x#}"; }
 #   * AT LEAST TWO, and the NAMES printed. Rename the marker and a "compare everything that carries it" gate
 #     compares zero files and passes forever. A count alone is not enough either: it can be right while the
 #     files are wrong.
-#   * ANCHORED matching. `---- CSK-JSON-PARSE` matches `---- CSK-JSON-PARSER` as a substring, so the first
+#   * ANCHORED matching. `---- CREW-JSON-PARSE` matches `---- CREW-JSON-PARSER` as a substring, so the first
 #     version of this gate reported green on three files after the marker had been renamed — the exact hole it
 #     exists to close. The marker must be followed by a space or end of line; both shipped markers are (one is
 #     padded with dashes, the other ends the line).
@@ -1281,7 +1281,7 @@ enc_csk(){ printf '%s' "$1" | sed "${CREW_ENC_SED:-s#x#x#}"; }
 # BSD sed matches nothing with it, every copy read as empty, and the macOS runner said "found 0" while ubuntu and
 # windows (GNU sed both) were green. Measured with the system tools rather than assumed — BSD grep 2.6.0 handles
 # `( |$)` correctly (rc 0 on all five hook files, rc 1 on a `...XR` line); /usr/bin/sed returned 0 lines for all
-# five blocks. A marker counts only when a space follows it or it ends the line: `---- /CSK-TRANSCRIPT-DIR` ends the
+# five blocks. A marker counts only when a space follows it or it ends the line: `---- /CREW-TRANSCRIPT-DIR` ends the
 # line, so a fixed string with a trailing space would miss it on every platform.
 # Exit: 0 start and end found (block printed) · 1 no start marker · 3 start marker without an end marker.
 _blk_read(){   # $1 = marker name, $2 = file
@@ -1318,8 +1318,8 @@ _blk_gate(){   # $1 = marker name, $2 = what the block is, in words
     pass "$what is byte-identical across all $n files that carry it —$names"
   fi
 }
-_blk_gate CSK-TRANSCRIPT-DIR "the duplicated transcript-dir resolver"
-_blk_gate CSK-JSON-PARSE     "the duplicated JSON parser"
+_blk_gate CREW-TRANSCRIPT-DIR "the duplicated transcript-dir resolver"
+_blk_gate CREW-JSON-PARSE     "the duplicated JSON parser"
 # End to end: called by hand from this repo, the hook must produce a reading rather than "transcript not found".
 cu_hand="$(cd "$ROOT/.." && bash "$HOOKS/context-usage.sh" 2>&1)"
 # The three arms used to be pass / note / note, and `note` touches no counter — so on any machine without a
@@ -1556,7 +1556,7 @@ if [ "$IS_KIT" = 1 ]; then
   # The Homebrew formula names the files it installs, and make-release.sh restricts what the tarball may
   # contain. Those two lists drifted apart and stayed apart: the published formula installed `update.sh` for
   # releases after that script became adopt.sh, so `brew install` could not succeed. Nothing compared them.
-  FRM="$KR/packaging/homebrew/claude-starter-kit.rb"
+  FRM="$KR/packaging/homebrew/crewforth.rb"
   if [ -f "$FRM" ] && [ -f "$KR/make-release.sh" ]; then
     BAD=""
     for f in $(sed -n 's/.*libexec\.install \(.*\)/\1/p' "$FRM" | tr -d '"' | tr ',' ' '); do
@@ -1567,7 +1567,7 @@ if [ "$IS_KIT" = 1 ]; then
     else
       pass "Homebrew formula installs only files that ship in the tarball"
     fi
-    grep -q 'cp packaging/homebrew/claude-starter-kit.rb' "$KR/.github/workflows/release.yml" 2>/dev/null \
+    grep -q 'cp packaging/homebrew/crewforth.rb' "$KR/.github/workflows/release.yml" 2>/dev/null \
       && pass "release publishes this repo's formula (not a patch of the tap's copy)" \
       || fail "release.yml patches the tap formula instead of publishing this repo's — install logic cannot reach users"
   fi
@@ -1678,7 +1678,7 @@ if [ "$IS_KIT" = 1 ]; then
       || PSMISS="$PSMISS marketplace.json-does-not-install-from-plugin-stable"
     grep -Fq 'git/refs/heads/plugin-stable" -f sha="${GITHUB_SHA}" -F force=false' "$RY" \
       || PSMISS="$PSMISS release.yml-does-not-advance-plugin-stable-fast-forward-only"
-    grep -Fq 'raw.githubusercontent.com/byerlikaya/claude-starter-kit/plugin-stable/plugin/.claude-plugin/plugin.json' "$UH" \
+    grep -Fq 'raw.githubusercontent.com/Crewforth/crewforth/plugin-stable/plugin/.claude-plugin/plugin.json' "$UH" \
       || PSMISS="$PSMISS update-notice-does-not-read-plugin-stable"
     [ -z "$PSMISS" ] && pass "the plugin channel ships from plugin-stable, advanced only by the approved release job" \
                      || fail "plugin channel gating is incomplete:$PSMISS"
@@ -1954,11 +1954,11 @@ SDFX="$(mktemp)"; printf '%s\n' '{"type":"assistant","isSidechain":false,"messag
 SDSID="smoketest-stale-$$-${RANDOM:-0}"
 ups(){ printf '{"session_id":"%s","hook_event_name":"UserPromptSubmit","transcript_path":"%s"}' "$SDSID" "$SDFX"; }
 run_cu(){ ups | CONTEXT_WINDOW=1000000 bash "$SD/hooks/context-usage.sh" 2>/dev/null; }
-rm -f "${TMPDIR:-/tmp}/csk-kit-version.$SDSID"
+rm -f "${TMPDIR:-/tmp}/crew-kit-version.$SDSID"
 echo "1.0.0" > "$SD/VERSION"
 o="$(run_cu)"
 case "$o" in *"kit updated"*) fail "stale gate warned on the session's first turn" ;; *) pass "stale gate: silent on the first turn" ;; esac
-[ "$(cat "${TMPDIR:-/tmp}/csk-kit-version.$SDSID" 2>/dev/null)" = "1.0.0" ] && pass "stale gate: stamps the version it started with" || fail "stale gate did not stamp the version"
+[ "$(cat "${TMPDIR:-/tmp}/crew-kit-version.$SDSID" 2>/dev/null)" = "1.0.0" ] && pass "stale gate: stamps the version it started with" || fail "stale gate did not stamp the version"
 o="$(run_cu)"
 case "$o" in *"kit updated"*) fail "stale gate warned without an update" ;; *) pass "stale gate: silent while the version is unchanged" ;; esac
 echo "1.0.1" > "$SD/VERSION"                       # the update lands mid-session
@@ -1971,7 +1971,7 @@ o="$(printf '{"session_id":"%s","hook_event_name":"Stop","transcript_path":"%s"}
 case "$o" in *"kit updated"*) fail "stale gate leaked into the Stop payload" ;; *) pass "stale gate: silent on a Stop payload" ;; esac
 # fail open: no VERSION at all
 rm -f "$SD/VERSION"; run_cu >/dev/null 2>&1 && pass "stale gate: fails open when VERSION is absent" || fail "stale gate exited non-zero without VERSION"
-rm -rf "$SD"; rm -f "$SDFX" "${TMPDIR:-/tmp}/csk-kit-version.$SDSID"
+rm -rf "$SD"; rm -f "$SDFX" "${TMPDIR:-/tmp}/crew-kit-version.$SDSID"
 
 sec "== 6g2) stale-WIRING gate: a session resumed across a kit update runs the old hooks =="
 # Measured on Windows: settings.json on disk had already been corrected and `--resume` still produced the error
@@ -1987,14 +1987,14 @@ printf '%s\n' '{"type":"assistant","isSidechain":false,"message":{"usage":{"inpu
 swp(){ printf '{"hook_event_name":"UserPromptSubmit","session_id":"sw-%s","transcript_path":"%s/t.jsonl"}' "$$" "$SWD"; }
 o="$( cd "$SWD" && swp | CONTEXT_WINDOW=1000000 bash .claude/hooks/context-usage.sh 2>/dev/null )"
 case "$o" in *"OLDER hook wiring"*) fail "stale-wiring gate warned on a correctly-launched hook (relative \$0)" ;; *) pass "stale-wiring: silent when \$0 matches the wiring on disk" ;; esac
-rm -f "${TMPDIR:-/tmp}/csk-kit-version.sw-$$"
+rm -f "${TMPDIR:-/tmp}/crew-kit-version.sw-$$"
 o="$( cd "$SWD" && swp | CONTEXT_WINDOW=1000000 bash "$SWD/.claude/hooks/context-usage.sh" 2>/dev/null )"
 case "$o" in *"OLDER hook wiring"*) pass "stale-wiring: warns when the hook was launched some other way (resumed session)" ;; *) fail "stale-wiring gate stayed silent on a hook launched outside the wiring on disk" ;; esac
 # Fails open where the project rewired its hooks by hand — warning every turn about something it chose is noise.
-rm -f "${TMPDIR:-/tmp}/csk-kit-version.sw-$$"; mv "$SWD/.claude/settings.json" "$SWD/.claude/settings.off"
+rm -f "${TMPDIR:-/tmp}/crew-kit-version.sw-$$"; mv "$SWD/.claude/settings.json" "$SWD/.claude/settings.off"
 o="$( cd "$SWD" && swp | CONTEXT_WINDOW=1000000 bash "$SWD/.claude/hooks/context-usage.sh" 2>/dev/null )"
 case "$o" in *"OLDER hook wiring"*) fail "stale-wiring gate fired without a kit settings.json to compare against" ;; *) pass "stale-wiring: silent when settings.json is absent or hand-rewired" ;; esac
-rm -rf "$SWD"; rm -f "${TMPDIR:-/tmp}/csk-kit-version.sw-$$"
+rm -rf "$SWD"; rm -f "${TMPDIR:-/tmp}/crew-kit-version.sw-$$"
 
 sec "== 6f) always-on token budget =="
 # Everything below is loaded into EVERY session's context (and, when Claude spawns one, into a subagent's).
@@ -2876,11 +2876,11 @@ _t1e 'git commit -m c'; [ "$?" = 0 ] \
 #      The reading line never mentions INPUT. Nor does `jq -r .x <&3` after a here-string, nor any rename of
 #      the variable. And that shape is not exotic: it is what someone writes when a payload gets big enough to
 #      worry about argv limits, which is exactly when a rung gets tempting again.
-# So: EVERY interpreter in these three hooks is a rung unless it sits inside a region marked `CSK-NOT-A-RUNG`.
+# So: EVERY interpreter in these three hooks is a rung unless it sits inside a region marked `CREW-NOT-A-RUNG`.
 # Line-agnostic, survives a rename of INPUT, catches the temp-file form, and — the part that matters — adding
 # a rung now requires deleting a comment that states what the exemption is for. The exemption list is short,
 # closed and reviewable; the dangerous thing is everything else.
-_ladder(){ awk '/^[[:space:]]*# CSK-NOT-A-RUNG/{s=1} /^[[:space:]]*# \/CSK-NOT-A-RUNG/{s=0;next} !s' "$1" \
+_ladder(){ awk '/^[[:space:]]*# CREW-NOT-A-RUNG/{s=1} /^[[:space:]]*# \/CREW-NOT-A-RUNG/{s=0;next} !s' "$1" \
              | grep -vE '^[[:space:]]*#' \
              | grep -nE '(^|[^[:alnum:]_/.-])(jq|python3|python|perl|node)([^[:alnum:]_]|$)' ; }
 _lad_bad=""
@@ -2905,7 +2905,7 @@ printf '%s\n' '#!/bin/sh' '_a="${INPUT#*x}"; CMD="$(printf "%s" "$INPUT" | jq -r
 printf '%s\n' '#!/bin/sh' 'printf "%s" "$INPUT" > "$tmp"' 'CMD="$(jq -r .x "$tmp")"'                                > "$_LT/g.sh"
 printf '%s\n' '#!/bin/sh' 'exec 3<<<"$INPUT"' 'CMD="$(jq -r .x <&3)"'                                               > "$_LT/h.sh"
 printf '%s\n' '#!/bin/sh' '# the deleted ladder piped "$INPUT" into jq and then python3 — prose, must NOT count' 'X=1' > "$_LT/e.sh"
-printf '%s\n' '#!/bin/sh' '# CSK-NOT-A-RUNG: reads $CMD, never the payload' 'MSG="$(CREW_CMD="$CMD" python3 -c "pass")"' '# /CSK-NOT-A-RUNG' > "$_LT/f.sh"
+printf '%s\n' '#!/bin/sh' '# CREW-NOT-A-RUNG: reads $CMD, never the payload' 'MSG="$(CREW_CMD="$CMD" python3 -c "pass")"' '# /CREW-NOT-A-RUNG' > "$_LT/f.sh"
 _tw=0; _twf=""
 for _f in a b c d g h; do _ladder "$_LT/$_f.sh" >/dev/null 2>&1 || { _tw=1; _twf="$_f"; }; done
 for _f in e f; do _ladder "$_LT/$_f.sh" >/dev/null 2>&1 && { _tw=2; _twf="$_f"; }; done
@@ -2920,9 +2920,9 @@ esac
 # went when the kit moved to one bash path, so a region there now would be a rung coming back.
 _ex=0
 for _h in guard-bash guard-write guard-commit-scan; do
-  _ex=$((_ex + $(grep -c '^[[:space:]]*# CSK-NOT-A-RUNG' "$HOOKS/$_h.sh")))
-  _exc="$(grep -c '^[[:space:]]*# /CSK-NOT-A-RUNG' "$HOOKS/$_h.sh")"
-  _exo="$(grep -c '^[[:space:]]*# CSK-NOT-A-RUNG' "$HOOKS/$_h.sh")"
+  _ex=$((_ex + $(grep -c '^[[:space:]]*# CREW-NOT-A-RUNG' "$HOOKS/$_h.sh")))
+  _exc="$(grep -c '^[[:space:]]*# /CREW-NOT-A-RUNG' "$HOOKS/$_h.sh")"
+  _exo="$(grep -c '^[[:space:]]*# CREW-NOT-A-RUNG' "$HOOKS/$_h.sh")"
   [ "$_exo" = "$_exc" ] || fail "one reader: $_h has $_exo opening and $_exc closing exemption markers — an unclosed region hides everything after it"
 done
 [ "$_ex" = 2 ] \
@@ -2932,11 +2932,11 @@ rm -rf "$_LT"
 
 # ONE PATH, EVERY SCRIPT. The rule above keeps the three guard hooks on one payload reader; this one widens it to
 # everything the kit ships and runs: no product script may call jq or python, on any line outside a marked
-# CSK-NOT-A-RUNG region. The kit used to pick jq, then python, then bash per machine, so a Mac and a stock Windows
+# CREW-NOT-A-RUNG region. The kit used to pick jq, then python, then bash per machine, so a Mac and a stock Windows
 # box ran different code — and the differences were defects: an unescaped tab made board-sync's JSON unparseable,
 # a spaced -F path got a clean commit refused, adopt's settings merge dropped the project's own rules. Test tools
 # (this file, parser-conformance, routing-eval) may still use jq as an ORACLE, with an honest skip when it is absent.
-_one(){ awk '/^[[:space:]]*# CSK-NOT-A-RUNG/{s=1} /^[[:space:]]*# \/CSK-NOT-A-RUNG/{s=0;next} !s' "$1" \
+_one(){ awk '/^[[:space:]]*# CREW-NOT-A-RUNG/{s=1} /^[[:space:]]*# \/CREW-NOT-A-RUNG/{s=0;next} !s' "$1" \
           | grep -vE '^[[:space:]]*#' \
           | grep -nE '(^|[^[:alnum:]_/.$-])(jq|python3|python|py)([[:space:]]|$|[;|&)`"'"'"'])' ; }
 _one_files(){ for f in "$HOOKS"/*.sh "$HOOKS/pre-commit" "$HOOKS/commit-msg" "$ROOT"/eval/*.sh "$ROOT"/skills/*/scripts/*.sh \
@@ -3000,14 +3000,14 @@ o="$(gj default 'git push' | r46 2>/dev/null)"
 # 9. THE CONTRACT, run rather than read. The recipe crew-review-agent is told to use is EXTRACTED FROM THAT
 #    DOC and executed here; then the real hook is driven against the record it produced. A string comparison
 #    would pass while the two drifted in meaning — this fails the moment the doc stops satisfying the gate.
-RCP="$(awk '/# CSK-REVIEW-PASS/{f=1;next} f&&/^```/{exit} f' "$AGENTS/crew-review-agent.md")"
+RCP="$(awk '/# CREW-REVIEW-PASS/{f=1;next} f&&/^```/{exit} f' "$AGENTS/crew-review-agent.md")"
 if [ -n "$RCP" ]; then
   ( cd "$R46" && rm -f .claude/review-pass.json && printf '%s\n' "$RCP" > .rcp.sh && bash .rcp.sh )
   o="$(gj default 'git commit -m x' | r46 2>/dev/null)"
   [ "$(gdec "$o")" = "ask" ] \
     && pass "§4.6: the recipe in crew-review-agent.md produces a record the hook ACCEPTS (contract pinned)" \
     || fail "§4.6: the documented recipe does not satisfy the gate — the agent and the hook have drifted (out=$o)"
-else fail "§4.6: could not extract the CSK-REVIEW-PASS recipe from crew-review-agent.md (marker moved?)"; fi
+else fail "§4.6: could not extract the CREW-REVIEW-PASS recipe from crew-review-agent.md (marker moved?)"; fi
 # 10. Key order is not a contract, so the reader must not depend on it. (A CRLF record was cased here too and
 #     REMOVED: in the flat shape the recipe writes, the carriage return lands after the final `}`, outside every
 #     value, and `%%"*` already cuts it — no fixture could tell a \r-stripping reader from one that skips it.
@@ -3297,8 +3297,8 @@ wj Write '/p/.claude./hooks/x.sh'     | bash "$HOOKS/guard-write.sh" >/dev/null 
 # THE PLUGIN EDITION ships the same gate scripts at $CLAUDE_PLUGIN_ROOT/hooks/, which is not `.claude/hooks/`:
 # one of the kit's four channels was shipping an unguarded copy of its own gates. Matched by the kit's own
 # filenames, so a project's unrelated `hooks/` directory keeps working.
-wj Write '/Users/dev/.claude/plugins/claude-starter-kit/hooks/guard-write.sh' | bash "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "the plugin edition's own gate script is BLOCKED too" || fail "the plugin edition ships unguarded gate scripts (§4.5 hole)"
-wj Write '/opt/csk/hooks/session-guard.sh' | bash "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "a kit gate script is BLOCKED wherever it sits" || fail "a kit gate script outside .claude/ PASSED"
+wj Write '/Users/dev/.claude/plugins/crewforth/hooks/guard-write.sh' | bash "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "the plugin edition's own gate script is BLOCKED too" || fail "the plugin edition ships unguarded gate scripts (§4.5 hole)"
+wj Write '/opt/crew/hooks/session-guard.sh' | bash "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "a kit gate script is BLOCKED wherever it sits" || fail "a kit gate script outside .claude/ PASSED"
 wj Write '/p/scripts/hooks/deploy.sh'      | bash "$HOOKS/guard-write.sh" >/dev/null 2>&1 && pass "a project's OWN hooks/ directory is not the kit's" || fail "the name-based rule over-blocks an ordinary hooks/ directory"
 # OVERSIZED PATH. The tier-3 unescaper walks the value character by character, and on the tier a stock Windows
 # install runs, every separator is an escape — so cost is quadratic in the number of separators: measured 6s at
@@ -3424,10 +3424,10 @@ GBDIR=""; GB_MODE=""
 # because "present but non-functional" is what a stock Windows desktop already is (the Store python3), so the
 # path being exercised is the real one.
 gb_sandbox(){   # echoes the PATH to run under, or nothing; $GB_WHYF says why not
-  # Thin wrapper over csk_nojq_path: the rule for "a PATH where jq and python3 do not deliver" lives in ONE
+  # Thin wrapper over crew_nojq_path: the rule for "a PATH where jq and python3 do not deliver" lives in ONE
   # place, because it was written three times and all three failed on the same platform for the same reason.
   local out; : > "$GB_WHYF"
-  out="$(csk_nojq_path awk sed grep head cat tr git cut)" || { gb_why "${CREW_NOJQ_WHY:-sandbox unbuildable}"; return 1; }
+  out="$(crew_nojq_path awk sed grep head cat tr git cut)" || { gb_why "${CREW_NOJQ_WHY:-sandbox unbuildable}"; return 1; }
   [ -n "$out" ] || { gb_why "${CREW_NOJQ_WHY:-sandbox unbuildable}"; return 1; }
   printf '%s' "$out"
 }
@@ -3744,15 +3744,15 @@ sec "== 7c) broken interpreters — a tier that EXISTS but does not WORK must no
 # Windows, unlike §7b. jq is shadowed too: a tier is now chosen on its exit status, so a broken jq must fall
 # through the same way.
 STUBD="$(mktemp -d)"
-cat > "$STUBD/python3" <<'CSKPYSTUB'
+cat > "$STUBD/python3" <<'CREWPYSTUB'
 #!/usr/bin/env bash
 echo "Python was not found; run without arguments to install from the Microsoft Store." >&2
 exit 49
-CSKPYSTUB
-cat > "$STUBD/jq" <<'CSKJQSTUB'
+CREWPYSTUB
+cat > "$STUBD/jq" <<'CREWJQSTUB'
 #!/usr/bin/env bash
 exit 127
-CSKJQSTUB
+CREWJQSTUB
 chmod +x "$STUBD/python3" "$STUBD/jq" 2>/dev/null
 SPATH="$STUBD:$PATH"
 # Canary. Without it a PATH that failed to shadow would drop to tier 3, every assertion would pass, and the
@@ -4348,9 +4348,9 @@ mv "$UPD/.claude/VERSION" "$UPD/.claude/VERSION.bak"
 #    has no repo to write into. These cases exist because "the plugin has nothing to compare against" was an
 #    assumption, and it was wrong.
 PLG="$UPD/plugin"; mkdir -p "$PLG/.claude-plugin"
-printf '{"name":"claude-starter-kit","version":"2.0.0"}\n' > "$PLG/.claude-plugin/plugin.json"
-XDG="$UPD/xdg"; mkdir -p "$XDG/claude-starter-kit"
-printf '2.1.0 %s\n' "$(date +%s)" > "$XDG/claude-starter-kit/update-check"
+printf '{"name":"crewforth","version":"2.0.0"}\n' > "$PLG/.claude-plugin/plugin.json"
+XDG="$UPD/xdg"; mkdir -p "$XDG/crewforth"
+printf '2.1.0 %s\n' "$(date +%s)" > "$XDG/crewforth/update-check"
 pc(){ ( printf '{"hook_event_name":"SessionStart","source":"startup","cwd":"%s"}' "$UPD" \
         | CLAUDE_PROJECT_DIR="$UPD" CLAUDE_PLUGIN_ROOT="$PLG" XDG_CACHE_HOME="$XDG" \
           CREW_UPDATE_URL="http://10.255.255.1/blackhole" bash "$UH" 2>/dev/null ); }
@@ -4360,14 +4360,14 @@ case "$o" in *2.0.0*2.1.0*) pass "plugin edition: reads its own plugin.json and 
 case "$o" in *"claude plugin update"*) pass "plugin edition names ITS update path, not /crew-update" ;;
              *) fail "plugin edition points at the wrong update path: $o" ;; esac
 case "$o" in *crew-update*) fail "plugin edition told the user to run /crew-update, which it does not have" ;; esac
-[ -f "$XDG/claude-starter-kit/update-notified" ] && pass "plugin edition remembers the announcement at user level" \
+[ -f "$XDG/crewforth/update-notified" ] && pass "plugin edition remembers the announcement at user level" \
   || fail "plugin edition wrote no once-per-version marker — it will re-announce every session"
 # A project install WINS: with both present the same release must not be announced twice from two directions.
 # BOTH once-per-version markers are cleared first. Leaving the plugin's in place made a broken precedence rule look
 # like silence instead of like the plugin talking over the project — the case failed either way, but it would have
 # named the wrong cause, and a gate that misreports why is a gate you debug twice.
 mv "$UPD/.claude/VERSION.bak" "$UPD/.claude/VERSION"
-rm -f "$XDG/claude-starter-kit/update-notified"
+rm -f "$XDG/crewforth/update-notified"
 printf '2.1.0 %s\n' "$(date +%s)" > "$UPD/.claude/.state/update-check"; ustate
 o="$(pc)"
 case "$o" in *"/crew-update"*) pass "both editions present: the project install owns the notice (one message, not two)" ;;
@@ -4549,7 +4549,7 @@ sec "== 7j) commit CONTENT gate reachable without core.hooksPath (plugin edition
 # stopped it. guard-commit-scan.sh runs the REAL scanners from PreToolUse instead of re-implementing them.
 if [ -x "$HOOKS/guard-commit-scan.sh" ]; then
   pass "guard-commit-scan.sh present +x"
-  CS="$(mktemp -d "${TMPDIR:-/tmp}/csk-cs.XXXXXX")"
+  CS="$(mktemp -d "${TMPDIR:-/tmp}/crew-cs.XXXXXX")"
   ( cd "$CS" && git init -q && git config user.email t@t && git config user.name t
     mkdir -p .claude/hooks
     cp "$HOOKS/guard-commit-scan.sh" "$HOOKS/pre-commit" "$HOOKS/commit-msg" \
@@ -4601,7 +4601,7 @@ $TRFX\""; then pass "multi-line AI trace in the commit message BLOCKED (§4.1)"
   # of the way where the git hook does cover it.
   if csblk 'git commit'; then pass "editor message refused where nothing can scan it (plugin-only)"
   else fail "editor-composed message not refused with rc=2 (plugin-only §4.1 hole or the hook died)"; fi
-  MFX="$(mktemp "${TMPDIR:-/tmp}/csk-mfx.XXXXXX")"; printf 'feat: from a file\n' > "$MFX"
+  MFX="$(mktemp "${TMPDIR:-/tmp}/crew-mfx.XXXXXX")"; printf 'feat: from a file\n' > "$MFX"
   csrun "git commit -F $MFX" && pass "-F <file> message is read and scanned (clean passes)" \
                              || fail "-F <file> with a clean message was blocked"
   printf 'feat: x\n\n%s: Claude\n' "Co-""Authored-By" > "$MFX"
@@ -4611,7 +4611,7 @@ $TRFX\""; then pass "multi-line AI trace in the commit message BLOCKED (§4.1)"
   # A QUOTED -F path with a space. The sed extraction that ran wherever python3 did not stopped at the space, read
   # `-F "my msg.txt"` as `my`, found no such file and refused the commit — a clean one. The awk tokenizer is now
   # the only path; both directions are asserted so an extraction that reads NOTHING cannot pass as "clean".
-  MFD="$(mktemp -d "${TMPDIR:-/tmp}/csk-mfd.XXXXXX")"; printf 'feat: from a spaced path\n' > "$MFD/my msg.txt"
+  MFD="$(mktemp -d "${TMPDIR:-/tmp}/crew-mfd.XXXXXX")"; printf 'feat: from a spaced path\n' > "$MFD/my msg.txt"
   csrun "git commit -F \"$MFD/my msg.txt\"" && pass "-F \"path with space\" is read (clean passes)" \
                                            || fail "-F \"path with space\" with a clean message was blocked — the path was cut at the space"
   printf 'feat: x\n\n%s: Claude\n' "Co-""Authored-By" > "$MFD/my msg.txt"
@@ -4620,7 +4620,7 @@ $TRFX\""; then pass "multi-line AI trace in the commit message BLOCKED (§4.1)"
   rm -rf "$MFD"
   # git reads the LAST -F (measured: `commit -F one -F two` commits two). Scanning the first let a clean file in
   # front hide a traced one behind it — both orders asserted, so "always refuse two -F" cannot pass either.
-  MFD="$(mktemp -d "${TMPDIR:-/tmp}/csk-mfd2.XXXXXX")"; printf 'feat: clean\n' > "$MFD/c.txt"
+  MFD="$(mktemp -d "${TMPDIR:-/tmp}/crew-mfd2.XXXXXX")"; printf 'feat: clean\n' > "$MFD/c.txt"
   printf 'feat: x\n\n%s: Claude\n' "Co-""Authored-By" > "$MFD/d.txt"
   if csblk "git commit -F $MFD/c.txt -F $MFD/d.txt"; then pass "-F clean -F traced: the LAST file (what git commits) is scanned and BLOCKED"
   else fail "-F clean -F traced was not blocked — the gate scanned the first -F, git commits the last (§4.1 hole)"; fi

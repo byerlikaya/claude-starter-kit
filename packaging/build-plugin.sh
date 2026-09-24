@@ -123,13 +123,13 @@ VERSION="$(cat "$ROOT/VERSION")"
 cat > "$OUT/.claude-plugin/plugin.json" <<JSON
 {
   "\$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
-  "name": "claude-starter-kit",
-  "displayName": "Claude Starter Kit",
-  "description": "Agentic Working Kit — disciplined agents, skills, slash commands, and tool-level gate hooks (commit/push approval, destructive-op & write guards, context-fill measurement, session rehydration) for Claude Code. The git-commit trace/secret/bloat scan needs the full install (start.sh / adopt.sh).",
+  "name": "crewforth",
+  "displayName": "Crewforth",
+  "description": "Crewforth — disciplined agents, skills, slash commands, and tool-level gate hooks (commit/push approval, destructive-op & write guards, context-fill measurement, session rehydration) for Claude Code. The git-commit trace/secret/bloat scan needs the full install (start.sh / adopt.sh).",
   "version": "${VERSION}",
   "author": { "name": "Barış Yerlikaya" },
-  "homepage": "https://github.com/byerlikaya/claude-starter-kit",
-  "repository": "https://github.com/byerlikaya/claude-starter-kit",
+  "homepage": "https://github.com/Crewforth/crewforth",
+  "repository": "https://github.com/Crewforth/crewforth",
   "license": "MIT",
   "keywords": ["claude-code", "agents", "skills", "workflow", "hooks"]
 }

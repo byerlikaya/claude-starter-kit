@@ -27,14 +27,14 @@ warn(){ echo "  ⚠️  $1"; }
 # looks. Found by RUNNING doctor against a fixture install; grepping for the call sites said wired.
 skip(){ echo "  ·  $1"; }
 
-echo "== Claude Starter Kit — install doctor =="
+echo "== Crewforth — install doctor =="
 
 # 0) Is the kit even here?
-[ -d .claude ] || { echo "  ❌ no .claude/ in '$PWD' — is the kit installed here?"; echo "     ↳ fix: npx @byerlikaya/claude-starter-kit adopt"; exit 1; }
+[ -d .claude ] || { echo "  ❌ no .claude/ in '$PWD' — is the kit installed here?"; echo "     ↳ fix: npx crewforth adopt"; exit 1; }
 
 # 1) VERSION (marks a full install; also what /crew-update compares)
 if [ -f .claude/VERSION ]; then ok "VERSION present ($(head -1 .claude/VERSION | tr -cd '0-9A-Za-z.-'))"
-else bad "VERSION missing" "reinstall or update the kit (npx @byerlikaya/claude-starter-kit update)"; fi
+else bad "VERSION missing" "reinstall or update the kit (npx crewforth update)"; fi
 
 # 1b) Is that version the current one? Read-only, from the cache session-update-check.sh maintains — doctor makes
 #     no network call of its own, so this stays honest offline (no cache -> nothing said) and instant everywhere.
@@ -135,7 +135,7 @@ if [ -f "$S" ]; then
   # all of them the moment one teammate is on Windows.
   if grep -q '\${CLAUDE_PROJECT_DIR' "$S" 2>/dev/null; then
     bad "settings.json wires hooks through the \${CLAUDE_PROJECT_DIR} placeholder — on Windows its separators are stripped before bash runs, so NO hook launches and every gate is silently absent" \
-        "update the kit (npx @byerlikaya/claude-starter-kit adopt) — hook commands become: cd \"\$CLAUDE_PROJECT_DIR\" 2>/dev/null; bash .claude/hooks/<name>.sh"
+        "update the kit (npx crewforth adopt) — hook commands become: cd \"\$CLAUDE_PROJECT_DIR\" 2>/dev/null; bash .claude/hooks/<name>.sh"
   else
     ok "hook wiring carries no path placeholder (nothing for Windows to mangle)"
   fi
@@ -320,7 +320,7 @@ if [ -f .claude/settings.json ]; then
     ok "shell gates watch both Bash and PowerShell"
   elif grep -q '"matcher"[[:space:]]*:[[:space:]]*"Bash"' .claude/settings.json; then
     bad "shell gates watch only Bash — PowerShell commands bypass every §4.5 rule" \
-        "update the kit (npx @byerlikaya/claude-starter-kit update), or set the PreToolUse matcher to \"Bash|PowerShell\""
+        "update the kit (npx crewforth update), or set the PreToolUse matcher to \"Bash|PowerShell\""
   fi
 fi
 # 9) The auto-mode classifier. Since 2026-08-14 auto mode is the default permission mode on Pro/Max/Team, so a

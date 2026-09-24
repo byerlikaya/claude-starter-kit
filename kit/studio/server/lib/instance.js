@@ -3,7 +3,7 @@
 // WHY THIS EXISTS. The panel printed its tokenised URL once, to the stdout of whoever started it, and kept the
 // token nowhere else. So a second session that wanted the SAME panel had no way in: it could see the port was
 // taken, but not that the holder was our own panel, and not what URL would open it. Measured in the field —
-// port 7777 was held by another session's csk-studio, the user asked for the panel, and the answer was a dead
+// port 7777 was held by another session's crewforth-studio, the user asked for the panel, and the answer was a dead
 // end. The server said "try --port 7778", 7778 was held by something unrelated, and the command's own rule is
 // to retry once. Two ports, no panel, and a running instance nobody could reach.
 //

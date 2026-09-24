@@ -37,14 +37,14 @@ total=0
 for f in "${FILES[@]}"; do
   if [ ! -f "$f" ]; then printf 'MISSING  %s\n' "$f"; fails=$((fails+1)); continue; fi
   # The block is delimited so a `case` elsewhere in the script is never mistaken for a message table.
-  if ! grep -q 'CSK-I18N' "$f"; then printf 'NO TABLE %s\n' "$f"; fails=$((fails+1)); continue; fi
+  if ! grep -q 'CREW-I18N' "$f"; then printf 'NO TABLE %s\n' "$f"; fails=$((fails+1)); continue; fi
 
   # One awk pass per file: it reads the whole file so it can answer the staleness question (property 6)
   # without a second read, and prints one FAIL line per violation plus a COUNT line at the end.
   out="$(LC_ALL=C awk -v FNAME="$f" -v Q="$SQ" '
     { all[NR] = $0 }
-    /---- CSK-I18N/      { inblk = 1 }
-    /---- \/CSK-I18N/    { inblk = 0 }
+    /---- CREW-I18N/      { inblk = 1 }
+    /---- \/CREW-I18N/    { inblk = 0 }
     inblk && /\) *s=/ && !/case / {
       line = $0
       # pattern = text before the first `)` that closes it; value = between `s=` and the trailing `;;`
@@ -85,8 +85,8 @@ for f in "${FILES[@]}"; do
         # Property 6: the pattern has to occur somewhere in the file OUTSIDE the table block.
         seen = 0
         for (k = 1; k <= NR; k++) {
-          if (all[k] ~ /---- CSK-I18N/) { skip = 1 }
-          if (all[k] ~ /---- \/CSK-I18N/) { skip = 0; continue }
+          if (all[k] ~ /---- CREW-I18N/) { skip = 1 }
+          if (all[k] ~ /---- \/CREW-I18N/) { skip = 0; continue }
           if (!skip && index(all[k], P)) { seen = 1; break }
         }
         if (!seen)

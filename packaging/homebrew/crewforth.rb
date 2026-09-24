@@ -1,14 +1,14 @@
-class ClaudeStarterKit < Formula
-  desc "Agentic working kit for Claude Code — disciplined project scaffolding"
-  homepage "https://github.com/byerlikaya/claude-starter-kit"
-  url "https://github.com/byerlikaya/claude-starter-kit/releases/download/v1.0.0/claude-starter-kit-1.0.0.tgz"
+class Crewforth < Formula
+  desc "Your engineering crew for Claude Code — agents, skills and tool-level gates"
+  homepage "https://github.com/Crewforth/crewforth"
+  url "https://github.com/Crewforth/crewforth/releases/download/v1.0.0/crewforth-1.0.0.tgz"
   sha256 "5f0a3612f64784ac0abfee878d362b674fd6d975b0b346153f86ff080a47d48a"
   version "1.0.0"
   license "MIT"
 
   def install
     libexec.install "start.sh", "adopt.sh", "kit", "VERSION"
-    (bin/"claude-starter-kit").write <<~SH
+    (bin/"crewforth").write <<~SH
       #!/bin/bash
       # Stage the bundled payload in a temp dir so start.sh's self-cleanup is harmless.
       stage="$(mktemp -d)"
@@ -25,6 +25,6 @@ class ClaudeStarterKit < Formula
   end
 
   test do
-    assert_match "Usage", shell_output("#{bin}/claude-starter-kit --help 2>&1")
+    assert_match "Usage", shell_output("#{bin}/crewforth --help 2>&1")
   end
 end

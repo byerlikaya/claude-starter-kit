@@ -39,7 +39,7 @@ fi
 mkdir -p "$(dirname "$TARGET")"
 [ -f "$TARGET" ] || printf '{}\n' > "$TARGET"
 
-TMP="$TARGET.csk-new"; BAK="$TARGET.csk-bak-$(date +%Y%m%d-%H%M%S)"
+TMP="$TARGET.crew-new"; BAK="$TARGET.crew-bak-$(date +%Y%m%d-%H%M%S)"
 # autoMode takes every member of the policy's autoMode (the policy wins), the user's other members and every other
 # key untouched. rc 10 = the target is not a JSON object: nothing is written.
 if [ "$STRICT" = 1 ]; then set -- -v setk=classifyAllShell -v setv=true; else set --; fi

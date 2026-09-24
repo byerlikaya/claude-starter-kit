@@ -1,4 +1,4 @@
-# Agentic Working Kit — installed kit
+# Crewforth — installed kit
 
 This project has been equipped with a Claude Code working kit. The kit runs the work with the same discipline at every stage:
 **plan → generate → audit → commit** — and the quality and security at each step rely not on the model remembering,
@@ -68,7 +68,7 @@ same reason — `--verbose` gives the long form on demand.
 
 ## Updating
 
-Run `npx @byerlikaya/claude-starter-kit@latest update` at the project root. `.claude/` is refreshed (including
+Run `npx crewforth@latest update` at the project root. `.claude/` is refreshed (including
 `DISCIPLINE.md`), `./CLAUDE.md` and your own agents/skills are left alone, and everything lands staged on a
 `kit-adopt-<timestamp>` branch for review. `cat .claude/VERSION` tells you which version you are on.
 

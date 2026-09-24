@@ -54,7 +54,7 @@ A clean verdict — no unresolved blocker — ends by recording WHICH diff you c
 refuses a commit without it (§4.6). Use exactly this recipe; the hook hashes the same bytes the same way:
 
 ```bash
-# CSK-REVIEW-PASS (kept identical in guard-bash.sh; smoke-test pins the pair)
+# CREW-REVIEW-PASS (kept identical in guard-bash.sh; smoke-test pins the pair)
 mkdir -p .claude
 D=$(git diff --cached | git hash-object --stdin)
 H=$(git rev-parse --verify --quiet HEAD 2>/dev/null || echo NONE)

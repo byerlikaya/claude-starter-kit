@@ -37,9 +37,9 @@ INPUT="$(cat)"
 
 # The two helpers below are a byte-identical copy of guard-bash.sh's block. A shared file would have to be
 # added to build-plugin.sh's explicit copy list and a miss there breaks the plugin channel silently — the same
-# reasoning as the CSK-TRANSCRIPT-DIR resolver, which is duplicated for the same reason. Two copies are only
+# reasoning as the CREW-TRANSCRIPT-DIR resolver, which is duplicated for the same reason. Two copies are only
 # safe while they cannot drift, so smoke-test pins these markers byte-identical rather than trusting it.
-# ---- CSK-JSON-PARSE ------------------------------------------------------------------------------------
+# ---- CREW-JSON-PARSE ------------------------------------------------------------------------------------
 _json_slice(){  # $1 = whole payload, $2 = key -> the raw (still JSON-escaped) string value, "" if absent
   local LC_ALL=C   # FIRST, so every expansion below -- the key search included -- counts and cuts in bytes.
                    # Lengths from ${#x} are used as offsets into ${y:n}; with the locale set before any of
@@ -286,7 +286,7 @@ _json_keycount(){  # $1 = payload, $2 = key -> sets _KC to how many times it occ
     hay="$rest"
   done
 }
-# ---- /CSK-JSON-PARSE -----------------------------------------------------------------------------------
+# ---- /CREW-JSON-PARSE -----------------------------------------------------------------------------------
 
 block(){  # $1 = rule name for the log (must keep the `gate-file edit` prefix — /crew-gates groups on it), $2 = why
   # Same write-only observability channel as guard-bash.sh, on by default into .claude/gate-log.tsv since 2.5.0

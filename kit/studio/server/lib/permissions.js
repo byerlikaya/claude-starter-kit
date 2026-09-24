@@ -25,7 +25,7 @@ const HOOK_WAIT_S = 45;
 const HARNESS_TIMEOUT_S = 90;
 const POLL_MS = 250;
 
-const ROOT = path.join(os.tmpdir(), 'csk-studio-gate');
+const ROOT = path.join(os.tmpdir(), 'crew-studio-gate');
 
 export function spoolFor(sessionId) {
   if (!/^[A-Za-z0-9_-]+$/.test(sessionId)) throw new Error('bad session id');

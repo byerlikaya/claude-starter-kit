@@ -308,7 +308,7 @@ check('an undeclared agent type falls back to neutral, never a borrowed colour',
 // The resolver against synthetic trees, because the claim is "one rule, every
 // layout" and this checkout can only ever demonstrate one of them. Install and
 // repo differ in depth and in the parent's name; the rule may read neither.
-const palHome = fs.mkdtempSync(path.join(os.tmpdir(), 'csk-studio-palette-'));
+const palHome = fs.mkdtempSync(path.join(os.tmpdir(), 'crew-studio-palette-'));
 try {
   const shapes = {
     install: path.join(palHome, 'install', '.claude'),
@@ -316,7 +316,7 @@ try {
     // The third layout, and the one the comment above claimed in prose while nothing measured it: a
     // plugin root has no `.claude` or `kit` segment at all — agents/ and studio/ sit
     // directly in it. Now that the plugin edition ships the panel, this is a real deployment.
-    plugin: path.join(palHome, 'plugin', 'claude-starter-kit'),
+    plugin: path.join(palHome, 'plugin', 'crewforth'),
   };
   for (const base of Object.values(shapes)) {
     fs.mkdirSync(path.join(base, 'agents'), { recursive: true });
@@ -583,7 +583,7 @@ process.stdout.write('\n== §16 kit telemetry ==\n');
 // Pointed at REPO these four passed here and failed 4/4 on a fresh clone, which
 // is the worst kind of gate: green for the author, red for everyone else, and
 // silent about the difference.
-const logHome = fs.mkdtempSync(path.join(os.tmpdir(), 'csk-studio-gatelog-'));
+const logHome = fs.mkdtempSync(path.join(os.tmpdir(), 'crew-studio-gatelog-'));
 fs.mkdirSync(path.join(logHome, '.claude'), { recursive: true });
 fs.writeFileSync(path.join(logHome, '.claude', 'gate-log.tsv'),
   ['BLOCK\t§4.1\tdestructive\tgit reset --hard',
@@ -885,8 +885,8 @@ check('both widths are remembered', /csk-studio-side-w/.test(appSrc2) && /csk-st
 // usage text. A regressed guard prints nothing and still exits 0.
 {
   const entry = path.join(STUDIO, 'server', 'index.js');
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'csk-studio-link-'));
-  const link = path.join(dir, 'csk-studio');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'crew-studio-link-'));
+  const link = path.join(dir, 'crewforth-studio');
   let viaLink = '';
   let viaReal = '';
   try {
@@ -2017,7 +2017,7 @@ process.stdout.write('\n== §28 the instance record — finding a panel that is 
    happy path is easy and would be green on its own with no checking at all. */
 
 {
-  const rtDir = fs.mkdtempSync(path.join(os.tmpdir(), 'csk-inst-'));
+  const rtDir = fs.mkdtempSync(path.join(os.tmpdir(), 'crew-inst-'));
   const prevRt = process.env.CREW_STUDIO_RUNTIME;
   process.env.CREW_STUDIO_RUNTIME = rtDir;
   const inst = await import('../../kit/studio/server/lib/instance.js');
@@ -2113,7 +2113,7 @@ if (fail) {
 // writes to a workflow agent's transcript produced NO frame at all. Those captures proved the defects; these
 // assertions are what stops them coming back, because a two-minute timing test is one nobody runs twice.
 {
-  const sigHome = fs.mkdtempSync(path.join(os.tmpdir(), 'csk-studio-sig-'));
+  const sigHome = fs.mkdtempSync(path.join(os.tmpdir(), 'crew-studio-sig-'));
   const sess = { file: path.join(sigHome, 's.jsonl'), subagentsDir: path.join(sigHome, 'subagents') };
   fs.writeFileSync(sess.file, '{}\n');
   const wfDir = path.join(sess.subagentsDir, 'workflows', 'wf_1');

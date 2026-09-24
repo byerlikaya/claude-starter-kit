@@ -14,33 +14,33 @@ npm publish --access public
 Users then need nothing but Node:
 
 ```bash
-npx @byerlikaya/claude-starter-kit            # fresh project (start.sh wizard)
-npx @byerlikaya/claude-starter-kit adopt      # existing project (adopt.sh handover)
+npx crewforth            # fresh project (start.sh wizard)
+npx crewforth adopt      # existing project (adopt.sh handover)
 ```
 
 `bin/cli.js` stages the payload in a temp dir and runs it with the user's project as the CWD, so `start.sh`'s self-cleanup never touches the package or the project.
 
-> Published as `@byerlikaya/claude-starter-kit` — scoped under the author, because the unscoped `claude-starter-kit` is taken and npm's name-similarity check blocks close variants. A scoped name sidesteps both. Users run `npx @byerlikaya/claude-starter-kit`.
+> Published as `crewforth` — scoped under the author, because the unscoped `crewforth` is taken and npm's name-similarity check blocks close variants. A scoped name sidesteps both. Users run `npx crewforth`.
 
 ## Homebrew (tap)
 
-`homebrew/claude-starter-kit.rb` is the formula.
+`homebrew/crewforth.rb` is the formula.
 
 1. Create a repo named `homebrew-tap` (e.g. `github.com/byerlikaya/homebrew-tap`).
-2. Add the formula at `Formula/claude-starter-kit.rb`.
+2. Add the formula at `Formula/crewforth.rb`.
 3. Users install:
 
 ```bash
-brew install byerlikaya/tap/claude-starter-kit
-claude-starter-kit            # fresh project    ·    claude-starter-kit adopt    # existing project
+brew install byerlikaya/tap/crewforth
+crewforth            # fresh project    ·    crewforth adopt    # existing project
 ```
 
-The formula's `sha256` is pinned to the **v1.0.0** release tarball. If that tarball ever changes, recompute it (`shasum -a 256 claude-starter-kit-1.0.0.tgz`) and update both the `url`/`version` and the `sha256`. To host the tarball off GitHub, point `url` at your own CDN.
+The formula's `sha256` is pinned to the **v1.0.0** release tarball. If that tarball ever changes, recompute it (`shasum -a 256 crewforth-1.0.0.tgz`) and update both the `url`/`version` and the `sha256`. To host the tarball off GitHub, point `url` at your own CDN.
 
 ## Release tarball / curl — no package manager
 
 ```bash
-gh release download --repo byerlikaya/claude-starter-kit -p '*.tgz' && tar xzf claude-starter-kit-*.tgz
+gh release download --repo Crewforth/crewforth -p '*.tgz' && tar xzf crewforth-*.tgz
 bash start.sh         # fresh    ·    bash adopt.sh    # existing
 ```
 
@@ -68,8 +68,8 @@ On the tag, the workflow builds the tarball, creates the GitHub release, runs `n
 Users can install the kit's agents, skills, and commands directly in Claude Code:
 
 ```
-/plugin marketplace add byerlikaya/claude-starter-kit
-/plugin install claude-starter-kit@byerlikaya
+/plugin marketplace add Crewforth/crewforth
+/plugin install crewforth@crewforth
 ```
 
 This is the **lite** edition — it registers the agents/skills/commands only, *without* the scaffolding (no git-hook gates, no `.gitignore` / `kit.conf` writes). The component set is identical to a `start.sh` install, and `e2e.sh` asserts that parity. For the full kit use `start.sh` / `adopt.sh`.

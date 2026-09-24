@@ -95,7 +95,7 @@ if [ -n "${IN:-}" ] && [ -n "${PSID:-}" ]; then
     PM="${PM#*:}"; PM="${PM#*\"}"; PM="${PM%%\"*}"
     case "$PM" in
       auto|dontAsk|plan|bypassPermissions)
-        PMARK="${TMPDIR:-/tmp}/csk-permmode.${PSID}"
+        PMARK="${TMPDIR:-/tmp}/crew-permmode.${PSID}"
         WASM=""
         [ -f "$PMARK" ] && IFS= read -r WASM < "$PMARK" 2>/dev/null
         if [ "$WASM" != "$PM" ]; then
@@ -110,10 +110,10 @@ fi
 
 [ -n "$TR" ] && TR="$(unjson_path "$TR")"
 # 2) still missing: derive the project dir from pwd.
-# ---- CSK-TRANSCRIPT-DIR (kept byte-identical in context-usage.sh and session-stats.sh; smoke-test §6i3 pins it)
+# ---- CREW-TRANSCRIPT-DIR (kept byte-identical in context-usage.sh and session-stats.sh; smoke-test §6i3 pins it)
 # Claude Code stores a session under $HOME/.claude/projects/<cwd encoded as a directory name>. Reproducing that
 # encoding is the ONLY way a by-hand call (no hook payload on stdin) can find its own transcript.
-csk_project_dirs(){   # candidate directory names for the current cwd, best first, one per line
+crew_project_dirs(){   # candidate directory names for the current cwd, best first, one per line
   local w p
   # Windows first. Claude Code sees the NATIVE cwd (C:\repo\app) while Git Bash's `pwd` reports /c/repo/app, so
   # the drive letter never matched and the by-hand call could not resolve a transcript on Windows AT ALL — the
@@ -134,11 +134,11 @@ if [ -z "$TR" ]; then
     [ -n "$esc" ] || continue
     cand="$(ls -t "$HOME/.claude/projects/$esc"/*.jsonl 2>/dev/null | head -1)"
     [ -n "$cand" ] && { TR="$cand"; break; }
-  done <<CSKEOF
-$(csk_project_dirs)
-CSKEOF
+  done <<CREWEOF
+$(crew_project_dirs)
+CREWEOF
 fi
-# ---- /CSK-TRANSCRIPT-DIR
+# ---- /CREW-TRANSCRIPT-DIR
 # Cannot measure. The two call sites want opposite things here, so they get opposite answers.
 #
 # Called BY HAND (a transcript passed as an argument): complain on stderr and exit non-zero. A person who typed a
@@ -309,7 +309,7 @@ esac
 # measurement would. That is acceptable for an advisory warning and is NOT acceptable silently — session-guard
 # falls back to measuring for itself whenever this file is missing, so the accurate path always exists.
 if [ -n "$SID" ]; then
-  printf '%s %s %s %s\n' "$PCT" "$TOTAL" "$WINDOW" "$LEVEL" > "${TMPDIR:-/tmp}/csk-context.${SID}" 2>/dev/null || true
+  printf '%s %s %s %s\n' "$PCT" "$TOTAL" "$WINDOW" "$LEVEL" > "${TMPDIR:-/tmp}/crew-context.${SID}" 2>/dev/null || true
 fi
 
 # --- Stale-WIRING gate -------------------------------------------------------------------------------
@@ -326,8 +326,8 @@ fi
 #
 # Silent unless settings.json actually carries the kit's current shape — a project that rewired its hooks by
 # hand is not wrong, and warning it every turn would be noise it cannot fix.
-CSKSET="$HERE/../settings.json"
-if [ -f "$CSKSET" ] && grep -q 'bash \.claude/hooks/context-usage\.sh' "$CSKSET" 2>/dev/null; then
+CREWSET="$HERE/../settings.json"
+if [ -f "$CREWSET" ] && grep -q 'bash \.claude/hooks/context-usage\.sh' "$CREWSET" 2>/dev/null; then
   case "$0" in
     .claude/hooks/*) ;;                         # launched exactly as the file on disk wires it
     *) echo "⚠️ this session is running OLDER hook wiring than .claude/settings.json on disk (resumed across a kit update). The gates in force are the previous ones — ask the user to quit the CLI and start a NEW session; --resume will not pick up the change." ;;
@@ -340,7 +340,7 @@ KITVER="$HERE/../VERSION"                       # hooks live in .claude/hooks ->
 NOW="$(head -1 "$KITVER" 2>/dev/null | tr -cd '0-9A-Za-z.-')"
 [ -n "$NOW" ] || exit 0
 [ -n "$SID" ] || exit 0                         # computed once, above
-MARK="${TMPDIR:-/tmp}/csk-kit-version.${SID}"
+MARK="${TMPDIR:-/tmp}/crew-kit-version.${SID}"
 if [ ! -e "$MARK" ]; then
   printf '%s' "$NOW" > "$MARK" 2>/dev/null || true   # first turn: remember the version, say nothing
 else

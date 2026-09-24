@@ -28,10 +28,10 @@ for d in .claude/skills kit/skills; do [ -d "$d" ] && { SKILLS="$d"; break; }; d
 if [ -z "$SKILLS" ]; then echo "utilization: no skills directory here (looked for .claude/skills)"; exit 0; fi
 
 TR=""
-# ---- CSK-TRANSCRIPT-DIR (kept byte-identical in context-usage.sh and session-stats.sh; smoke-test §6i3 pins it)
+# ---- CREW-TRANSCRIPT-DIR (kept byte-identical in context-usage.sh and session-stats.sh; smoke-test §6i3 pins it)
 # Claude Code stores a session under $HOME/.claude/projects/<cwd encoded as a directory name>. Reproducing that
 # encoding is the ONLY way a by-hand call (no hook payload on stdin) can find its own transcript.
-csk_project_dirs(){   # candidate directory names for the current cwd, best first, one per line
+crew_project_dirs(){   # candidate directory names for the current cwd, best first, one per line
   local w p
   # Windows first. Claude Code sees the NATIVE cwd (C:\repo\app) while Git Bash's `pwd` reports /c/repo/app, so
   # the drive letter never matched and the by-hand call could not resolve a transcript on Windows AT ALL — the
@@ -52,11 +52,11 @@ if [ -z "$TR" ]; then
     [ -n "$esc" ] || continue
     cand="$(ls -t "$HOME/.claude/projects/$esc"/*.jsonl 2>/dev/null | head -1)"
     [ -n "$cand" ] && { TR="$cand"; break; }
-  done <<CSKEOF
-$(csk_project_dirs)
-CSKEOF
+  done <<CREWEOF
+$(crew_project_dirs)
+CREWEOF
 fi
-# ---- /CSK-TRANSCRIPT-DIR
+# ---- /CREW-TRANSCRIPT-DIR
 
 # THE TRANSCRIPTS ARE NOT ONE FILE, AND THAT IS THE WHOLE MEASUREMENT. A project directory holds
 # <session>.jsonl at the top AND a <session>/ directory per session whose subagents/ tree carries one transcript

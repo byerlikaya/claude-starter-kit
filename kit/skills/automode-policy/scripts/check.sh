@@ -71,10 +71,13 @@ has_rule 'Data Exfiltration' "$HD" || MISSING="$MISSING hard_deny/Data-Exfiltrat
 has_rule 'Git Destructive'   "$SD" || MISSING="$MISSING soft_deny/Git-Destructive"
 has_rule 'Auto-Mode Bypass'  "$SD" || MISSING="$MISSING soft_deny/Auto-Mode-Bypass"
 
-CSK=0
-has_rule 'CSK Uncommitted Work Destruction' "$HD" && CSK=$((CSK+1))
-has_rule 'CSK Gate Tampering'               "$SD" && CSK=$((CSK+1))
-has_rule 'CSK Internal Docs Publication'    "$SD" && CSK=$((CSK+1))
+# Each kit rule counts under its 3.0 name or its pre-3.0 one ("CSK …"): a config applied by 2.x keeps passing
+# until the user re-applies, which overlays autoMode and so replaces the old names rather than adding beside them.
+KITR=0
+kit_rule(){ has_rule "Crewforth $1" "$2" || has_rule "CSK $1" "$2"; }
+kit_rule 'Uncommitted Work Destruction' "$HD" && KITR=$((KITR+1))
+kit_rule 'Gate Tampering'               "$SD" && KITR=$((KITR+1))
+kit_rule 'Internal Docs Publication'    "$SD" && KITR=$((KITR+1))
 
 if [ -n "$MISSING" ]; then
   echo "  ❌ classifier built-ins DROPPED:$MISSING"
@@ -83,14 +86,14 @@ if [ -n "$MISSING" ]; then
   exit 2
 fi
 
-if [ "$CSK" -eq 0 ]; then
+if [ "$KITR" -eq 0 ]; then
   echo "  ·  kit auto-mode rules not in the classifier config (built-ins only) — not a gate either way"
   echo "     ↳ optional: bash .claude/skills/automode-policy/scripts/apply.sh"
   exit 3
 fi
 
-if [ "$CSK" -lt 3 ]; then
-  echo "  ·  kit auto-mode rules PARTIAL ($CSK/3 present) — built-ins intact"
+if [ "$KITR" -lt 3 ]; then
+  echo "  ·  kit auto-mode rules PARTIAL ($KITR/3 present) — built-ins intact"
   echo "     ↳ re-apply: bash .claude/skills/automode-policy/scripts/apply.sh"
   exit 3
 fi

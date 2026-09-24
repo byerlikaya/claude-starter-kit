@@ -68,11 +68,11 @@ MODEL="$(claude --version 2>/dev/null | head -1)"
 WORKBASE="${CREW_EVAL_WORK:-${TMPDIR:-/tmp}}"
 [ -d "$WORKBASE" ] || { echo "run.sh: work dir '$WORKBASE' does not exist (CREW_EVAL_WORK) — create it or unset the variable" >&2; exit 2; }
 EVWT=""   # scratch worktrees created this run; removed on exit so the parent does not accumulate them
-WORK="$(mktemp -d "$WORKBASE/csk-eval.XXXXXX")" || { echo "run.sh: could not create a scratch dir under '$WORKBASE'" >&2; exit 2; }
+WORK="$(mktemp -d "$WORKBASE/crew-eval.XXXXXX")" || { echo "run.sh: could not create a scratch dir under '$WORKBASE'" >&2; exit 2; }
 [ -n "$WORK" ] && [ -d "$WORK" ] || { echo "run.sh: scratch dir is empty/missing — refusing to run" >&2; exit 2; }
 # The prune matters as much as the rm: a worktree whose directory is gone stays REGISTERED in the parent, and
 # the registrations accumulate one per case per run until `worktree add` starts refusing paths.
-trap '[ "$KEEP" = 1 ] && echo "scratch kept: $WORK" || { rm -rf "$WORK"; _P="${CREW_EVAL_PARENT:-$HOME/.csk-eval-parent}"; git -C "$_P" worktree prune >/dev/null 2>&1; git -C "$_P" for-each-ref --format="%(refname:short)" "refs/heads/csk-eval/${WORK##*/}/" 2>/dev/null | while read -r _b; do git -C "$_P" branch -D "$_b" >/dev/null 2>&1; done; }; true' EXIT
+trap '[ "$KEEP" = 1 ] && echo "scratch kept: $WORK" || { rm -rf "$WORK"; _P="${CREW_EVAL_PARENT:-$HOME/.csk-eval-parent}"; git -C "$_P" worktree prune >/dev/null 2>&1; git -C "$_P" for-each-ref --format="%(refname:short)" "refs/heads/crew-eval/${WORK##*/}/" 2>/dev/null | while read -r _b; do git -C "$_P" branch -D "$_b" >/dev/null 2>&1; done; }; true' EXIT
 
 # build_project <dir> <arm>  — identical seed in both arms; the kit is the only variable.
 build_project() {
@@ -111,7 +111,7 @@ build_project() {
   # An orphan branch has no parent, so the seed is the root exactly as it was under `git init`. Trust is still
   # inherited (re-measured: warning 0) and the branch is deleted on exit with the worktree.
   EVPAR="${CREW_EVAL_PARENT:-$HOME/.csk-eval-parent}"
-  EVBR="csk-eval/${WORK##*/}/${dir##*/}"
+  EVBR="crew-eval/${WORK##*/}/${dir##*/}"
   if [ -d "$EVPAR/.git" ] && git -C "$EVPAR" worktree add -q --orphan -b "$EVBR" "$dir" 2>/dev/null; then
     EVWT="$EVWT $dir"
   else

@@ -187,7 +187,7 @@ sha256_with() { # sha256_with <tool> <file>
 
 sha256_calibrate() {
   [ -n "$SHA_TOOL" ] && return 0
-  probe="$(mktemp 2>/dev/null || printf '%s/csk-sha-%s' "${TMPDIR:-/tmp}" "$$")" || return 1
+  probe="$(mktemp 2>/dev/null || printf '%s/crew-sha-%s' "${TMPDIR:-/tmp}" "$$")" || return 1
   printf abc > "$probe" || { rm -f "$probe"; return 1; }
   for t in sha256sum shasum openssl certutil; do
     command -v "$t" >/dev/null 2>&1 || continue
@@ -373,7 +373,7 @@ case "$MODE" in
 
   plan)
     plan
-    printf 'CSK Studio needs Node %s+. This machine has none that runs.\n\n' "$FLOOR"
+    printf 'Crewforth Studio needs Node %s+. This machine has none that runs.\n\n' "$FLOOR"
     printf '  fetch     %s\n' "$URL"
     printf '  size      %s (%s)\n' "$(human_size "$(remote_size "$URL")")" "$VERSION_SOURCE"
     printf '  verify    %s  (refuses to install if the hash does not match)\n' "$SUMS"

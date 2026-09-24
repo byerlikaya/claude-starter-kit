@@ -127,7 +127,7 @@ if (!up) { stop(); process.exit(1); }
 check('it prints its URL with the token', /http:\/\/127\.0\.0\.1:\d+\/\?token=/.test(out), out.split('\n')[0]);
 
 const shell = await get(port, `/?token=${TOKEN}`);
-check('the panel page is served', shell.status === 200 && /<div id="canvas"|cv-root|CSK Studio/.test(shell.body),
+check('the panel page is served', shell.status === 200 && /<div id="canvas"|cv-root|Crewforth Studio/.test(shell.body),
   `status ${shell.status}, ${shell.body.length} bytes`);
 
 const noTok = await get(port, '/api/health');

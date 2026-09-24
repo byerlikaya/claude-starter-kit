@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CSK Studio — the server half.
+// Crewforth Studio — the server half.
 //
 // It binds to loopback and nothing else. The panel reads a developer's live
 // sessions, transcripts and, later, drives Claude itself; none of that should
@@ -760,13 +760,13 @@ async function main() {
   try {
     args = parseArgs(process.argv.slice(2));
   } catch (e) {
-    process.stderr.write(`csk-studio: ${e.message}\n`);
+    process.stderr.write(`crewforth-studio: ${e.message}\n`);
     process.exit(64);
   }
 
   if (args.help) {
     process.stdout.write(
-      'csk-studio — visual orchestration panel for Claude Code\n\n' +
+      'crewforth-studio — visual orchestration panel for Claude Code\n\n' +
         '  --port <n>   port to listen on (default 7777, loopback only)\n' +
         '  --peer <url> another machine running Studio (repeatable)\n' +
         '  --open, -o   open the panel in a browser once it is listening\n' +
@@ -778,7 +778,7 @@ async function main() {
         'Peers are normally reached over a forwarded port, which keeps every\n' +
         'Studio on loopback:\n' +
         '  ssh -N -L 7778:127.0.0.1:7777 other-machine\n' +
-        '  csk-studio --peer http://127.0.0.1:7778\n',
+        '  crewforth-studio --peer http://127.0.0.1:7778\n',
     );
     return;
   }
@@ -789,7 +789,7 @@ async function main() {
 
   const server = http.createServer((req, res) => {
     handle(req, res).catch((e) => {
-      process.stderr.write(`csk-studio: unhandled: ${e?.stack ?? e}\n`);
+      process.stderr.write(`crewforth-studio: unhandled: ${e?.stack ?? e}\n`);
       if (!res.headersSent) send(res, 500, 'internal error');
     });
   });
@@ -803,13 +803,13 @@ async function main() {
     if (e.code === 'EADDRINUSE') {
       const running = await findRunning(args.port);
       if (running) {
-        process.stdout.write(`csk-studio  ${running.url}\n`);
+        process.stdout.write(`crewforth-studio  ${running.url}\n`);
         process.stdout.write(`            already running on port ${args.port} (pid ${running.pid}${running.name ? `, ${running.name}` : ''}) — reusing it\n`);
         process.stdout.write('            it belongs to whoever started it; stopping this shell does not stop it\n');
         if (args.open) openBrowser(running.url);
         process.exit(0);
       }
-      process.stderr.write(`csk-studio: port ${args.port} is held by something that is not a csk-studio panel — try --port ${args.port + 1}\n`);
+      process.stderr.write(`crewforth-studio: port ${args.port} is held by something that is not a crewforth-studio panel — try --port ${args.port + 1}\n`);
       process.exit(1);
     }
     throw e;
@@ -823,7 +823,7 @@ async function main() {
 
   server.listen(args.port, LOOPBACK, () => {
     const url = `http://${LOOPBACK}:${args.port}/?token=${TOKEN}`;
-    process.stdout.write(`csk-studio  ${url}\n`);
+    process.stdout.write(`crewforth-studio  ${url}\n`);
     process.stdout.write(`            machine: ${SELF_NAME}\n`);
     if (PEERS.length) {
       for (const p of PEERS) {
@@ -837,7 +837,7 @@ async function main() {
     // Recorded only after listen() succeeds, so the file never claims a port this process did not get. Failure
     // to write is not fatal: the panel works, the next session simply cannot find it, which is where we started.
     writeState(args.port, { token: TOKEN, name: SELF_NAME }).catch((e) => {
-      process.stderr.write(`csk-studio: could not record this instance (${e?.message ?? e}); another session will not find it\n`);
+      process.stderr.write(`crewforth-studio: could not record this instance (${e?.message ?? e}); another session will not find it\n`);
     });
     const drop = () => clearStateSync(args.port);
     process.on('exit', drop);
@@ -851,13 +851,17 @@ async function main() {
     // Say this once, to whoever is still typing the long path. Suppressed when
     // the process already came in under its bin name, and never written to
     // anyone's shell profile behind their back.
-    const launchedAsBin = path.basename(process.argv[1] ?? '') === 'csk-studio';
+    const launchedAsBin = path.basename(process.argv[1] ?? '') === 'crewforth-studio';
     if (!launchedAsBin) {
       const dir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-      process.stdout.write(
-        `\n            For a shorter command, once:  npm install -g ${dir}\n`
-        + `            then, from anywhere:          csk-studio --open\n`,
-      );
+      // Under npx the directory is npm's own cache (…/_npx/<hash>/…), which npm may clean at any time: installing
+      // from it leaves a command pointing at nothing. There, name the package instead of the path.
+      const underNpx = /[\\/]_npx[\\/]/.test(dir);
+      process.stdout.write(underNpx
+        ? '\n            For a shorter command, once:  npm install -g crewforth\n'
+          + '            then, from anywhere:          crewforth studio\n'
+        : `\n            For a shorter command, once:  npm install -g ${dir}\n`
+          + `            then, from anywhere:          crewforth-studio --open\n`);
     }
   });
 

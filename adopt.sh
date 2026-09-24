@@ -42,7 +42,7 @@ for _a in "$@"; do
   --lang)       _lang_take=1 ;;
 esac; done
 
-# ---- CSK-I18N (the twin of start.sh's; see the long note there for why the English string is the key) ----
+# ---- CREW-I18N (the twin of start.sh's; see the long note there for why the English string is the key) ----
 # Short version, because the reasoning belongs in one place: `m 'text'` prints the translation of that text
 # or the text itself. A missing translation therefore cannot print a blank line or a bare key — the fallback
 # IS English. Colour never enters a message (the helpers above add it), interpolation goes through %s, and a
@@ -311,7 +311,7 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
   # and printf exits 2 — measured on bash 3.2 (macOS) and Git Bash 5.3; with it both assign normally.
   printf -v _M -- "$s" "$@"
 }
-# ---- /CSK-I18N -----------------------------------------------------------------------------------------
+# ---- /CREW-I18N -----------------------------------------------------------------------------------------
 
 # --- color: only on an interactive TTY (same guard as start.sh) ---
 if [ -t 1 ] && [ "${TERM:-dumb}" != "dumb" ] && [ -z "${NO_COLOR:-}" ]; then

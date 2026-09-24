@@ -10,7 +10,7 @@ set -u
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 SCRIPT="$ROOT/kit/studio/ensure-node.sh"
-WORK="$(mktemp -d 2>/dev/null || mktemp -d -t csk-ensure-node)"
+WORK="$(mktemp -d 2>/dev/null || mktemp -d -t crew-ensure-node)"
 trap 'rm -rf "$WORK"' EXIT INT TERM
 
 pass=0; fail=0; broken=0

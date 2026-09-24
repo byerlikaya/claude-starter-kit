@@ -33,7 +33,7 @@ const TAIL_BYTES = 2 * 1024 * 1024;
 // written, and the peers do not disappear when it does — the panel just stops
 // being able to see the note. The last one found is kept, with the time it was
 // found, so a stale answer stays a stale answer instead of becoming "none".
-const CACHE_FILE = path.join(os.tmpdir(), 'csk-studio-roster.json');
+const CACHE_FILE = path.join(os.tmpdir(), 'crew-studio-roster.json');
 
 /** Parse the block ListAgents prints. */
 export function parseRoster(text) {
