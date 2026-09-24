@@ -1,0 +1,26 @@
+== kit A/B eval ==  2.1.280 (Claude Code) · 5 runs/arm · arms: kit bare
+
+-- stack-recorded-no-ask --
+   A filled ## Stack section and no manifest — is the recorded stack used, and the section left untouched?
+     trace kit   delegated 5/5 · cost $1.578 · in 22 out 6826 cache_read 385488 cache_create 120690 · test runs 0 (nested 0) · turns 11 (nested 10)
+   kit   10/20 checks (over 5 runs)
+         0/5 chi is not used — the recorded framework was ignored
+         0/5 no Go file — the recorded runtime was not used
+         5/5 ## Stack is unchanged
+         5/5 no other runtime's manifest was created
+         gates fired: none — no gated command was attempted in any run
+     trace bare  delegated 0/5 · cost $0.826 · in 42 out 8057 cache_read 668520 cache_create 66327 · test runs 0 (nested 0) · turns 21 (nested 0)
+   bare  20/20 checks (over 5 runs)
+         5/5 ## Stack is unchanged
+         5/5 Go code was written, as recorded
+         5/5 no other runtime's manifest was created
+         5/5 the recorded framework (chi) is used
+
+== summary ==
+   kit  10/20
+   bare 20/20
+   delta kit - bare: -10 checks
+   NOTE: the kit did not come out ahead. Report that as it stands — a harness that only publishes
+         favourable runs measures nothing.
+scratch kept: /var/folders/hf/b0xx3mxj6jd2nr6g45dw96200000gn/T//csk-eval.d2YZdD
+RUNNER_EXIT=0
