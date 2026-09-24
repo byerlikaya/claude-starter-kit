@@ -158,8 +158,12 @@ grep -q '^skills/cqrs-aop-module$' "$P/.claude/kit-manifest.txt"      && { echo 
 grep -q '^skills/backend-expert-local$' "$P/.claude/kit-manifest.txt" && { echo "FAIL: manifest claims a project-imported skill as kit-owned"; exit 1; }
 # Captured, not piped: `grep -q` closes the pipe on its first match, doctor takes a SIGPIPE, and `pipefail`
 # would then report a passing assertion as a failure.
+# Traced, for the cost gate further down: stdout is the report, stderr is the xtrace (doctor writes nothing else
+# there — the untraced run's stderr is empty, and its stdout is byte-identical to this one's). PS4 is pinned
+# because the counter reads the `+` prefix and bash takes PS4 from the environment.
+DTR="$WORK/doctor.trace"
 DT0=$SECONDS
-DOUT="$( cd "$P" && bash .claude/eval/doctor.sh 2>&1 || true )"
+DOUT="$( cd "$P" && PS4='+ ' bash -x .claude/eval/doctor.sh 2>"$DTR" || true )"
 DEL=$((SECONDS - DT0))
 case "$DOUT" in *"project-specific skill(s)"*) ;; *) echo "FAIL: doctor readiness did not detect the project's own skill"; exit 1 ;; esac
 # The §4.6 liveness probe, asserted on a REAL install rather than left as an unasserted side effect. It was
@@ -169,25 +173,73 @@ case "$DOUT" in *"project-specific skill(s)"*) ;; *) echo "FAIL: doctor readines
 # tree start.sh actually produced, on every OS this job runs on.
 case "$DOUT" in *"enforces the §4.6 review gate"*) ;;
   *) echo "FAIL: doctor did not confirm the §4.6 review gate on a real install — the probe or the hook is missing"; exit 1 ;; esac
-# COST GATE, and it belongs here rather than in the smoke-test because this job also runs on windows-latest —
-# the only place in CI where a process spawn costs what it costs a real user of Git Bash (62-135 ms against
-# ~1.7ms on the POSIX runners). Doctor's agent-reference check used to run a `grep|cut|tr|sed` for every
-# (agent x scanned doc) pair, ~250 spawns; on Windows that stopped dead mid-run and a user reported doctor
-# itself as hung. Correctness assertions cannot see this — doctor printed the right answers, eventually.
-# The bound is deliberately loose: a healthy run is ~2-4s on a Windows runner, a spawn-per-pair regression is
-# 10s+, so 20s separates them with room for a slow shared runner and no room for the bug coming back.
+# COST GATE. Doctor's agent-reference check once ran a `grep|cut|tr|sed` for every (agent x scanned doc) pair; on
+# Git Bash, where a spawn costs 62-135 ms idle and ~400 ms under load against ~1.7 ms on POSIX, that stopped dead
+# mid-run and a user reported doctor as hung. Correctness assertions cannot see it: the per-pair loop prints a
+# byte-identical report.
 #
-# Be clear about what this does NOT do: on the POSIX runners both the fixed and the broken version finish in
-# well under a second (measured: 0s either way on an M-series Mac), so this assertion cannot fire there. It is a
-# Windows gate that happens to also run elsewhere, not a portable one — a wall-clock bound low enough to catch
-# the regression on macOS would sit below a healthy Windows run and fail the job for being slow. The portable
-# half of the protection is the route-hint gate in smoke-test.sh §7y, where the old code took 34s on macOS too.
-[ "$DEL" -le 20 ] || { echo "FAIL: doctor.sh took ${DEL}s (>20s) — a per-pair fork loop is back; on Git Bash this reads as a hang"; exit 1; }
+# It COUNTS PROCESSES, because that is what the regression changes and the only quantity that means the same on
+# every machine and under any load. This used to be a 20 s wall-clock bound, and it flipped without a code
+# change: a stock Windows desktop ran doctor in ~10 s idle and 21 s with three suites running at once. Those
+# 10 s were not noise — two loops elsewhere in doctor still forked per SKILL (4 spawns x 41 skills), and a count
+# found them where the clock only said "slow". Measured after removing them (macOS, this fixture: 12 agents,
+# 41 skills, 2 scanned docs): 46 external commands, unchanged with 20 more skills and 5 more agents (the old code
+# went 211 -> 291). The per-pair loop put back on top reads 176, and cannot read less than 46 + 7 x agents
+# (130 here) even when CLAUDE.md is the only doc scanned. Budget 90 sits between the two. On a stock Windows 11
+# desktop (Git Bash 5.3) this case reads 45 in 5 s idle (it read 10 s before the fix) and the mutant 175; on a
+# plain full install there the fix took doctor from 206 to 45 commands and 10.8 s to 4.9 s. The count under load
+# on Windows is not measured — the run was killed for memory — and rests on the count not depending on timing.
+#
+# The counter is the dev-notes recipe: first word of each xtrace line, minus bash's builtins and keywords (from
+# the running bash, not a hand list), minus doctor's own function names (a call is not a fork), minus
+# assignments, with xtrace's quoting stripped (it prints the test builtin as '['). A subshell or pipe is a
+# fork too and is not counted — the number is a floor, which is the right side to err on for a ceiling gate.
+fork_words(){   # $1 = xtrace file, $2 = the traced script (for its function names) -> one line per external command
+  { compgen -b; compgen -k; echo '(('
+    grep -hoE '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*\(\)' "$2" | tr -d ' ()' | sort -u; } > "$1.excl"
+  sed -n 's/^++*[[:space:]]*//p' "$1" | awk '{print $1}' | sed "s/^'//; s/'\$//" \
+    | { grep -vE '^[A-Za-z_][A-Za-z0-9_]*(\[[^]]*\])?\+?=' || true; } \
+    | { grep -vxF -f "$1.excl" || true; }
+}
+fork_count(){ fork_words "$@" | wc -l | tr -d ' '; }
+# The counter is measured before it measures doctor, on a script whose answer is known and which carries every
+# confounder the recipe strips: a quoted '[', `[[`, `((`, an assignment, a function call, builtins, and a
+# builtin inside a command substitution. Exactly three externals: tr, awk, cat. If this bash's xtrace reads
+# differently (a newer quoting rule, a bash without `compgen`), the doctor number could be anything, so the gate
+# says it did not measure rather than passing or failing on a counter nobody checked. Red under strict, like
+# every fixture skip here.
+CALD="$WORK/fork-cal"; mkdir -p "$CALD"
+cat > "$CALD/cal.sh" <<'CAL'
+f(){ :; }
+X=1
+[ "$X" = 1 ] && f
+[[ -n $X ]]
+(( X++ ))
+printf '%s\n' a >/dev/null
+Y="$(echo hi | tr a-z A-Z)"
+awk 'BEGIN{}' </dev/null; cat </dev/null
+CAL
+PS4='+ ' bash -x "$CALD/cal.sh" 2>"$CALD/trace" >/dev/null || true
+CALN="$(fork_count "$CALD/trace" "$CALD/cal.sh")"
+if [ "$CALN" != 3 ]; then
+  [ "${CREW_VERIFY_STRICT:-0}" = 1 ] && { echo "FAIL: FIXTURE — the fork counter read $CALN on a script with exactly 3 external commands; doctor's cost cannot be measured with it"; exit 1; }
+  DCOST="cost SKIPPED (counter read $CALN, not 3, on its calibration script)"
+  echo "[adopt-brownfield] SKIP (fixture): the fork counter read $CALN, not 3, on its calibration script — doctor's process count is unmeasured here"
+else
+  DFORK="$(fork_count "$DTR" "$P/.claude/eval/doctor.sh")"
+  # The counter is proven above, so 0 here means doctor was never traced — a broken measurement, not a cheap doctor.
+  [ "$DFORK" -gt 0 ] || { echo "FAIL: doctor's trace recorded no external commands at all — the measurement is broken, not doctor (trace: $DTR)"; exit 1; }
+  [ "$DFORK" -le 90 ] || { echo "FAIL: doctor.sh ran $DFORK external commands (budget 90) — a per-item fork loop is back; on Git Bash that is ${DFORK} x 62-400 ms and reads as a hang"
+    fork_words "$DTR" "$P/.claude/eval/doctor.sh" | sort | uniq -c | sort -rn | head -8 | sed 's/^/    | /'; exit 1; }
+  DCOST="$DFORK external commands (budget 90)"
+fi
+# Secondary and generous on purpose: it only catches something expensive that is NOT a fork. 60 s is three times
+# the worst doctor ever measured on Windows (21 s under load, with 4.6x today's process count).
+[ "$DEL" -le 60 ] || { echo "FAIL: doctor.sh took ${DEL}s (>60s) with $DCOST — something outside the fork count got expensive"; exit 1; }
 _slog; ( cd "$P" && CREW_SMOKE_SCOPE=install bash .claude/eval/smoke-test.sh ) >"$_L" 2>&1 || { tail -n 20 "$_L" | sed 's/^/    | /' >&2; echo "FAIL: the adopted project's own smoke-test did not pass"; exit 1; }
-# doctor's elapsed time is printed on SUCCESS too, not only in the failure message. The bound above is loose by
-# design, so a silent pass hides the trend that matters: 2s creeping to 8s is the regression arriving, and it
-# reads as "fine" until the day it trips. The number in the log is what makes that visible in hindsight.
-echo "[adopt-brownfield] .NET repo -> stack=generic · no pattern skill · overlap imported to skill + backed up · smoke OK · doctor ${DEL}s"
+# doctor's count and time are printed on SUCCESS too. Both bounds leave room, so a silent pass hides the trend
+# that matters: 46 creeping to 80 is the regression arriving, and the number in the log makes it visible in hindsight.
+echo "[adopt-brownfield] .NET repo -> stack=generic · no pattern skill · overlap imported to skill + backed up · smoke OK · doctor $DCOST · ${DEL}s"
 
 # A Node project: same shape as every other adopt.
 G="$WORK/adopt-generic"; rm -rf "$G"; mkdir -p "$G"
