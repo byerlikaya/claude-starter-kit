@@ -8,9 +8,7 @@ description: |
 
 # Eval Grader
 
-<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
-     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
-     truncated or dropped, which strips the very keywords a match depends on. -->
+<!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
 Trigger phrases: "eval", "grader", "measure output quality", "LLM-as-judge", "score the output"
 
 **Measure every change; don't vibe it.** When you iterate on a prompt, an agent, or any generative output (docs,
@@ -62,7 +60,7 @@ different properties. Test it cheaply first:
    the wording is not doing reliable work — and any delta you measure is smaller than the variance you have not
    controlled.
 
-The failure this prevents, seen in this repo: a case scored 7/9 against 9/9 — the guidance apparently making
+The failure this prevents, observed in the kit's own evals: a case scored 7/9 against 9/9 — the guidance apparently making
 things *worse* — and an identical second round came back 9/9 to 9/9. Two checks of variance inverted the
 finding. Had the first round been reported, a good rule would have been removed on noise.
 

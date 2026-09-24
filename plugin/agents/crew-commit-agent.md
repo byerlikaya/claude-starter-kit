@@ -10,8 +10,7 @@ model: haiku
 
 # Commit Agent
 
-<!-- routing-eval reads this line; it lives in the BODY so the always-on `description` stays
-     focused on WHEN to delegate, which is the field Claude actually reads. -->
+<!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
 Trigger phrases: "commit message", "make a commit", "write a commit", "git commit", "commit the changes", "commit this", "commit what", "working tree"
 
 Read-only + git. The "how" lives in the `commit-message` skill; this agent triggers it at work closure.

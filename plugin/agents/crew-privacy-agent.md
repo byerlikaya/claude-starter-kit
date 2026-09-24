@@ -13,8 +13,7 @@ tools: Read, Grep, Glob, WebFetch
 
 # Privacy Auditor (KVKK / GDPR)
 
-<!-- routing-eval reads this line; it lives in the BODY so the always-on `description` stays
-     focused on WHEN to delegate, which is the field Claude actually reads. -->
+<!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
 Trigger phrases: "kvkk", "gdpr", "ccpa", "lgpd", "privacy audit", "data protection regulation", "data minimization", "consent flow", "data retention", "personal data", "phone number", "ip address", "pii", "is that compliant", "fraud check"
 
 Read-only auditor. The "how" lives in the privacy-compliance skill.

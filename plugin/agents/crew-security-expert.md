@@ -15,8 +15,7 @@ effort: high
 
 # Security Expert
 
-<!-- routing-eval reads this line; it lives in the BODY so the always-on `description` stays
-     focused on WHEN to delegate, which is the field Claude actually reads. -->
+<!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
 Trigger phrases: "security audit", "security scan", "OWASP check", "security review", "secret scan", "auth check", "token security", "tampering", "another user", "another customer", "unauthorized", "idor", "data leak", "who can access", "leak data"
 
 Read-only auditor. The relevant expert (backend/database) makes the fix; this agent produces the findings.

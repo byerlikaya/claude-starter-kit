@@ -8,9 +8,7 @@ description: |
 
 # Database Migration
 
-<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
-     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
-     truncated or dropped, which strips the very keywords a match depends on. -->
+<!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
 Trigger phrases: "migration", "schema change", "update database", "add column", "create table", "alter table", "add a column to", "adding a column to", "drop a column", "rename the table", "change the column type", "backfill"
 
 A migration is very often a **one-way gate**: once applied, going back is expensive or impossible

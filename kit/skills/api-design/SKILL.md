@@ -7,9 +7,7 @@ description: |
 
 # API Design
 
-<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
-     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
-     truncated or dropped, which strips the very keywords a match depends on. -->
+<!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
 Trigger phrases: "api design", "api contract", "api versioning", "openapi", "swagger", "rest contract", "breaking api change", "response shape", "response format", "endpoint returns", "error format"
 
 Goal: a contract the consumer can **predict** and that can **evolve** without breaking. Once published, a

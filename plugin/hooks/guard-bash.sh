@@ -385,8 +385,7 @@ PERM_MODE="$(_json_slice "$INPUT" permission_mode)"
 _json_keycount "$INPUT" command; _n_cmd=$_KC; _cap_cmd=$_KC_CAPPED
 if [ "$_cap_cmd" != 0 ]; then
   echo "GUARD (§4.4/§4.5): this payload contains more than $_cap_cmd occurrences of \"command\", so the" >&2
-  echo "scan for the real key was stopped." >&2
-  echo "real key was stopped. Refusing rather than reading whichever one it had reached." >&2
+  echo "scan for the real key was stopped. Refusing rather than reading whichever one it had reached." >&2
   exit 2
 elif [ "$_n_cmd" -gt 1 ]; then
   echo "GUARD (§4.4/§4.5): this payload carries $_n_cmd \"command\" keys, so the command to judge is" >&2
@@ -404,7 +403,7 @@ fi
 _json_keycount "$INPUT" permission_mode; _n_pm=$_KC
 if [ "$_n_pm" -gt 1 ]; then
   echo "GUARD (§4.4): this payload carries $_n_pm \"permission_mode\" keys, so the mode that decides" >&2
-  echo "ambiguous. Refusing rather than reading whichever comes first." >&2
+  echo "is ambiguous. Refusing rather than reading whichever comes first." >&2
   exit 2
 fi
 # THE REFUSAL BELOW FIRES ONLY WHEN THE KEY IS ABSENT ALTOGETHER, which is what the byte test it replaces

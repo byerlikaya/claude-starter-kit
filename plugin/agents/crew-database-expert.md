@@ -11,8 +11,7 @@ tools: Read, Grep, Glob, Edit, Write, Bash, PowerShell
 
 # Database Expert (stack-agnostic data layer)
 
-<!-- routing-eval reads this line; it lives in the BODY so the always-on `description` stays
-     focused on WHEN to delegate, which is the field Claude actually reads. -->
+<!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
 Trigger phrases: "migration", "schema change", "new table", "index", "ORM config", "entity mapping", "data model", "redis cache"
 
 Not tied to one engine or ORM. The database, the migration tool and any cache come from `CLAUDE.md ## Stack`, or

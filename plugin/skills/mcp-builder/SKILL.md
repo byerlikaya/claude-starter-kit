@@ -7,9 +7,7 @@ description: |
 
 # MCP Builder
 
-<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
-     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
-     truncated or dropped, which strips the very keywords a match depends on. -->
+<!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
 Trigger phrases: "MCP server", "build an MCP", "model context protocol", "expose tools to Claude", "MCP tool"
 
 An MCP server exposes **tools** (actions the model can call), **resources** (data it can read), and **prompts**

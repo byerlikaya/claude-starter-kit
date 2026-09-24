@@ -1,6 +1,6 @@
 ---
 name: crew-update
-description: Check for a newer kit version, update, report what changed, then prompt /compact to reload.
+description: Check for a newer kit version, update, report what changed, then prompt /clear to reload.
 metadata:
   kind: command
 ---
@@ -39,5 +39,5 @@ Bring the installed kit up to the latest published version:
    there the installed package's own CHANGELOG sections between the old and the new version. Do not fetch release
    notes from the network. No file → say no release notes were included.
 10. **Reload (manual — a command can't do it itself):** the discipline in the running session is still the OLD one.
-   Tell the user to run **`/compact`** (or `/clear`) so the updated `.claude/DISCIPLINE.md` is re-read in the same
-   session — no restart needed.
+   Tell the user to run **`/clear`** (or quit and relaunch Claude Code): a new session loads the updated
+   `.claude/DISCIPLINE.md`.

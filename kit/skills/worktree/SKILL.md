@@ -7,9 +7,7 @@ description: |
 
 # Worktree Isolation
 
-<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
-     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
-     truncated or dropped, which strips the very keywords a match depends on. -->
+<!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
 Trigger phrases: "worktree", "git worktree", "isolate the changes", "sandbox this work", "parallel file edits"
 
 One rule: **never let risky or parallel work run on top of uncommitted changes in the shared tree.** A git worktree

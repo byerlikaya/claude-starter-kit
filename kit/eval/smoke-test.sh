@@ -931,6 +931,17 @@ if printf '{"hook_event_name":"UserPromptSubmit","session_id":"pm5"}' | TMPDIR="
 else
   pass "no permission_mode in the payload -> silent, not a guess"
 fi
+# ...and the line is SCOPED. Unscoped ("Say so BEFORE asking for approval"), it fired on turn 1 whatever the prompt
+# said, and a "hello" came back as a commit-policy notice. Read from what the hook emits, not from its source; the
+# twin is the old sentence, which the check must reject or it measures nothing.
+pm_scoped(){ case "$1" in *"Only when a commit or push comes up"*"Otherwise do not mention it"*) return 0 ;; esac; return 1; }
+PMO="$(printf '{"hook_event_name":"UserPromptSubmit","session_id":"pm6","permission_mode":"auto","transcript_path":"/no/such.jsonl"}' \
+  | TMPDIR="$PMD" bash "$HOOKS/context-usage.sh" 2>/dev/null | grep '🔒')"
+if [ -z "$PMO" ]; then fail "FIXTURE: no 🔒 line emitted in auto, so its scope cannot be read"
+elif ! pm_scoped "$PMO"; then fail "the auto-mode line is not scoped to a commit/push — it will be said on turn 1: $PMO"
+elif pm_scoped "🔒 Permission mode: auto — git commit/push FAILS CLOSED here (§4.4). Say so BEFORE asking for approval."; then
+  fail "the scope check accepted the old unscoped sentence — it measures nothing"
+else pass "the auto-mode line is scoped to a commit/push coming up; the old unscoped sentence is rejected"; fi
 rm -rf "$PMD"
 
 [ -x "$HOOKS/context-usage.sh" ] && pass "context-usage.sh +x"          || fail "context-usage.sh missing/not executable"
@@ -2008,7 +2019,8 @@ sec "== 6f) always-on token budget =="
 # for that cost, and a gate rather than a reminder — a verbose new description fails the suite instead of
 # quietly taxing every future session. Budgets sit just above the current sizes: raising one is allowed, but
 # only as a deliberate edit here.
-BUDGET_DISC=13723    # 3.0 rename (suffix → crew- prefix): +23 B (23 occurrences), not content — measured 13696 → 13719.
+BUDGET_DISC=13712    # 5d.2 prompt audit: tightened to the measured size (13719 → 13712: format-to-content style line, one reload
+                     # answer, the orphaned background-warning line removed). Before that: 3.0 rename (suffix → crew- prefix): +23 B (23 occurrences), not content — measured 13696 → 13719.
                      # DISCIPLINE.md (the discipline half of CLAUDE.md); before 3.0 the ceiling was 13700, currently 13601. (2026-09-18, a second
                      # +100 B on top of the raise below, and the whole of it went into ONE sentence of §4.6: a commit
                      # has to take its content from the INDEX. The rule is there because the first version of the gate
@@ -2082,7 +2094,7 @@ BUDGET_DISC=13723    # 3.0 rename (suffix → crew- prefix): +23 B (23 occurrenc
                      # and the wrong one winning silently. The only rule in this file that is about the OTHER
                      # rules, so it cannot live in the README the way the compaction note does. Plus the Audit
                      # row naming crew-performance-expert — an agent nothing routes to is an idle component.)
-BUDGET_AGENTS=5800   # sum of agent frontmatter; currently 5582, measured 2026-09-23 (3.0: the backend and database
+BUDGET_AGENTS=5596   # 5d.2: tightened to the measured sum (was 5800 with 204 B of slack). Before that: sum of agent frontmatter; currently 5582, measured 2026-09-23 (3.0: the backend and database
                      # agents' descriptions rewritten stack-agnostic, +55 B). Before that 5527, measured 2026-09-20 by reading this suite's
                      # own printed line rather than a hand-rolled counter (a hand-rolled one answered 5503 and
                      # was thrown away). Two corrections in one day: the note said 5765 against a measured 5407,
@@ -2104,7 +2116,8 @@ BUDGET_AGENTS=5800   # sum of agent frontmatter; currently 5582, measured 2026-0
                      # +crew-performance-expert (~426B) — security, privacy and tests each had an independent
                      # reviewer and performance was the one quality axis where the author audited their own
                      # work. Bought at ~110 tokens per session; the alternative was leaving that gap open.)
-BUDGET_SKILLS=10265 # 3.0: commands merged into skills — 661 B previously in the listing but uncounted, not new content:
+BUDGET_SKILLS=10259 # 5d.2: tightened to the measured size (10265 → 10259: two descriptions lost a stale word). Before that:
+                    # 3.0: commands merged into skills — 661 B previously in the listing but uncounted, not new content:
                     # the six model-invocable commands (doctor 136 · handoff 91 · plan 151 · review 82 · ship 78 ·
                     # update 123) now live in skills/, where this sum sees them. The five user-only ones
                     # (disable-model-invocation: true) are not in the listing and are not counted. The other skills
@@ -5199,6 +5212,51 @@ $(printf '%s\n' "$UOH" | head -n 5 | sed 's/^/       /')"
 elif [ -z "$(uo_hits "$UOT")" ]; then fail "the hook-message check did not catch a planted 'run /crew-board sync' — it measures nothing"
 else pass "no hook message sends Claude to a user-only command ($(printf '%s' "$UO_NAMES" | tr '|' ' ')); a planted one is caught"; fi
 rm -rf "$UOT"
+
+# NOTHING TELLS CLAUDE TO RUN /context. It is the user's command; Claude cannot run it, and a text that says "read
+# the real /context fill" pushes it to guess a percentage, which the discipline forbids. The measured source is
+# the 🔋 line or context-usage.sh. Naming /context is fine ("the /context figure", "you cannot run /context"); an
+# instruction verb in front of it is not. Calibrated on the texts before this rule: it caught exactly the two lines
+# that said it (crew-handoff "Read the real /context fill", token-budget "Manage with /context") and none else.
+ctx_hits(){ find "$@" -type f \( -name '*.md' -o -name '*.sh' \) 2>/dev/null | while IFS= read -r _cf; do
+  awk -v f="$_cf" '{ l=tolower($0)
+    if (l ~ /(^|[^a-z])(run|use|execute|invoke|type|check|read|manage with)[^.]{0,30}\/context([^a-z0-9-]|$)/ \
+        && l !~ /(can.t|cannot|can not|not|never|no need to) +(run|use|execute|invoke|type)[^.]{0,30}\/context/) print f ":" NR ": " $0 }' "$_cf"
+  done; }
+CXH="$(ctx_hits "$HOOKS" "$SKILLS" "$AGENTS")"
+CXT="$(mktemp -d)"; printf '1. Read the real `/context` fill.\n' > "$CXT/must-fail.md"; printf 'You cannot run `/context`; the hook injects it.\n' > "$CXT/must-pass.md"
+if [ -n "$CXH" ]; then fail "a hook/skill/agent text tells Claude to run /context — point it at the 🔋 line or context-usage.sh:
+$(printf '%s\n' "$CXH" | head -n 5 | sed 's/^/       /')"
+elif [ -z "$(ctx_hits "$CXT/must-fail.md")" ]; then fail "the /context check missed a planted 'Read the real /context fill' — it measures nothing"
+elif [ -n "$(ctx_hits "$CXT/must-pass.md")" ]; then fail "the /context check flagged 'You cannot run /context' — a mention is not an instruction"
+else pass "no hook/skill/agent text tells Claude to run /context; a planted instruction is caught, a mention is not"; fi
+rm -rf "$CXT"
+
+# AFTER THE RULES CHANGE, THE ONE ANSWER IS /clear (OR A RELAUNCH), NEVER /compact. /compact does re-read CLAUDE.md
+# (docs: "What survives compaction"), but it keeps the session id, and the stale-discipline warning in
+# context-usage.sh is keyed by that id — so after a /compact the model is still told its rules are OLD, every turn.
+# /clear starts a new session (new id, measured in a real transcript: parentUuid null), which loads the new rules
+# AND ends the warning. A line that pairs /compact with reloading is the old advice; naming /compact is not
+# ("a /compact keeps the same session id"). Shell/JS comments are skipped. Calibrated on the texts before this
+# rule: 9 lines across the hook, /crew-update, adopt.sh (EN + TR) and both READMEs, and none else.
+compact_hits(){ for _p in "$@"; do [ -e "$_p" ] && find "$_p" -type f \( -name '*.md' -o -name '*.sh' -o -name '*.js' \) 2>/dev/null; done \
+  | while IFS= read -r _cf; do
+    awk -v f="$_cf" '/^[[:space:]]*(#|\/\/)/ { next }
+      { l=tolower($0); if (l ~ /\/compact([^a-z]|$)/ && l ~ /(reload|re-read|reread|discipline|disiplin|old rules|eski kural|restart|yeniden yükle|yeniden başlat)/) print f ":" NR ": " $0 }' "$_cf"
+  done; }
+CPS="$HOOKS $SKILLS $AGENTS $ROOT/CLAUDE.md $ROOT/DISCIPLINE.md $ROOT/README.md $ROOT/eval/doctor.sh"
+[ "$IS_KIT" = 1 ] && { _kr="$(cd "$ROOT/.." && pwd)"; CPS="$CPS $_kr/adopt.sh $_kr/start.sh $_kr/README.md $_kr/README.tr.md $_kr/README.npm.md $_kr/bin"; }
+# shellcheck disable=SC2086 # a list of paths, none with a space in the kit's own layout
+CPH="$(compact_hits $CPS)"
+CPT="$(mktemp -d)"
+printf '%s\n' "warnm 'If Claude Code is running in this project, run /compact (or /clear) — CLAUDE.md and the discipline reload'" > "$CPT/must-fail.sh"
+printf '%s\n' 'A `/compact` keeps the same session id, so the 90% marker is keyed by compaction generation.' > "$CPT/must-pass.md"
+if [ -n "$CPH" ]; then fail "a text still tells the user to /compact after the rules change — it is /clear (or a relaunch):
+$(printf '%s\n' "$CPH" | head -n 5 | sed 's/^/       /')"
+elif [ -z "$(compact_hits "$CPT/must-fail.sh")" ]; then fail "the /compact check missed the planted old adopt.sh line — it measures nothing"
+elif [ -n "$(compact_hits "$CPT/must-pass.md")" ]; then fail "the /compact check flagged a plain mention of /compact — only the reload advice is wrong"
+else pass "nothing tells the user to /compact after the rules change (it is /clear or a relaunch); planted advice is caught, a mention is not"; fi
+rm -rf "$CPT"
 
 # The COUNT beside the command list in both READMEs, gated for the same reason the hook count is: documenting
 # each command does not keep the number honest. This one was ungated and the class has drifted before — the

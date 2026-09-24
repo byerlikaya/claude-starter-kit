@@ -8,9 +8,7 @@ description: |
 
 # Release & CHANGELOG
 
-<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
-     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
-     truncated or dropped, which strips the very keywords a match depends on. -->
+<!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
 Trigger phrases: "release", "cut a release", "changelog", "version bump", "bump the version", "new version", "tag", "semver"
 
 ## SemVer mapping (derive from Conventional Commits)
@@ -35,8 +33,7 @@ Every version is dated; the `Unreleased` section can be auto-populated from comm
       different events. A channel whose consumers pin at install time — an editor extension, a plugin, a vendored
       copy — leaves them on the version they installed until they ask for a new one, so a security fix ships and
       does not arrive. For each channel name the upgrade command in the README, and say plainly where it is not
-      automatic. This was a real gap: three channels documented `npm i -g` / `brew upgrade` / a refresh command
-      while the plugin channel documented only how to install.
+      automatic.
 
 ## Tagging
 ```bash

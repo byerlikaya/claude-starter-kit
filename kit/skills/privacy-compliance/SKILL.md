@@ -7,17 +7,13 @@ description: |
 
 # Privacy Compliance (KVKK / GDPR)
 
-<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
-     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
-     truncated or dropped, which strips the very keywords a match depends on. -->
+<!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
 Trigger phrases: "kvkk", "gdpr", "privacy", "consent", "data retention", "minimization", "personal information", "what we store about", "data we collect", "delete my data", "right to be forgotten"
 
 <!-- Requires-tool: WebFetch -->
 <!-- Machine-readable, and smoke-test enforces it: every agent that applies this skill must carry WebFetch.
      Without it the instruction below is one an agent physically cannot obey — it would either decide from
-     memory, which this skill forbids in the same breath, or quietly skip the check. That is exactly what
-     happened: the skill said "check the official source", crew-privacy-agent shipped with Read/Grep/Glob, and
-     the gap only surfaced during a real regulatory audit when the routing had to work around it by hand. -->
+     memory, which this skill forbids in the same breath, or quietly skip the check. -->
 
 ## Official sources (authority — always defer to these)
 The **primary, official** sources this skill rests on; rules are always interpreted against these:
@@ -45,7 +41,7 @@ CCPA | https://oag.ca.gov/privacy/ccpa  | personal-data
 
 | What you find | What you do |
 |---|---|
-| No file | Audit against KVKK + GDPR, exactly as before |
+| No file | Audit against KVKK + GDPR |
 | A regime **with** a source | Audit it; every finding cites that regime's article, checked against its source |
 | A regime with **no** source | **Do not rule on it.** Report "declared, no source given — cannot audit" and ask for the URL |
 | An axis other than `personal-data` (BDDK, PCI-DSS, HIPAA, SOX…) | **Say so out loud**: sector regulation is outside this skill. Do not audit it, and do not let its presence in the file imply that it was |

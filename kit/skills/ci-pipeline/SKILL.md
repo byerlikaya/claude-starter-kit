@@ -6,9 +6,7 @@ description: |
 
 # CI Pipeline
 
-<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
-     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
-     truncated or dropped, which strips the very keywords a match depends on. -->
+<!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
 Trigger phrases: "ci", "pipeline", "github actions", "jenkins", "build pipeline", "pr gate", "pr check", "build fail", "build broke", "ci is failing", "workflow"
 
 ## Stages (fail-fast — stop if it breaks early)

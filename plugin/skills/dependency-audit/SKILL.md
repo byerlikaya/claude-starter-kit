@@ -7,9 +7,7 @@ description: |
 
 # Dependency Audit
 
-<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
-     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
-     truncated or dropped, which strips the very keywords a match depends on. -->
+<!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
 Trigger phrases: "dependency audit", "npm audit", "package security", "CVE", "license", "deprecated package", "still maintained", "no longer maintained", "unmaintained", "third party library", "supply chain"
 
 **This skill only reports.** It changes no manifest and no lockfile — bringing dependencies current is

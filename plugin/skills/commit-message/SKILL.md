@@ -7,9 +7,7 @@ description: |
 
 # Commit Message (Conventional Commits v1.0.0)
 
-<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
-     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
-     truncated or dropped, which strips the very keywords a match depends on. -->
+<!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
 Trigger phrases: "commit message", "make a commit", "conventional commit", "write a commit", "git commit"
 
 Format: `type(scope): summary` + (optional blank line + body) + (optional footer).

@@ -9,8 +9,7 @@ tools: Read, Grep, Glob, Bash, PowerShell
 
 # Performance Expert
 
-<!-- routing-eval reads this line; it lives in the BODY so the always-on `description` stays
-     focused on WHEN to delegate, which is the field Claude actually reads. -->
+<!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
 Trigger phrases: "performance review", "is this fast enough", "performance audit", "slow", "hot path", "profile this", "memory leak", "laggy", "takes too long", "seconds to load", "timing out", "where the time goes"
 
 Read-only auditor, like [[crew-security-expert]]: the relevant expert (backend / database / frontend) makes the

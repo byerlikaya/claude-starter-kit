@@ -12,8 +12,7 @@ tools: Read, Grep, Glob, Edit, Write, Bash, PowerShell
 
 # DevOps / Ops Expert
 
-<!-- routing-eval reads this line; it lives in the BODY so the always-on `description` stays
-     focused on WHEN to delegate, which is the field Claude actually reads. -->
+<!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
 Trigger phrases: "deploy", "deploy to server", "ship to prod", "cut a release and deploy", "rollback", "set up ci", "ci pipeline", "github actions workflow", "outage", "incident", "production incident", "runbook", "postmortem", "reverse proxy", "set up ssl", "systemd service"
 
 Owner of the ops axis, in this order: **CI/CD pipeline (first) · production incident · deploy to a server

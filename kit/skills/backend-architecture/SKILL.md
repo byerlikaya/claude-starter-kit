@@ -7,9 +7,7 @@ description: |
 
 # Backend Architecture (stack resolution + pattern)
 
-<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
-     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
-     truncated or dropped, which strips the very keywords a match depends on. -->
+<!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
 Trigger phrases: "tech stack", "which framework", "choose a database", "backend pattern", "project structure", "new api", "new handler", "write a command", "add a query", "validator", "which stack should", "set up the project structure", "language or framework", "layered or", "vertical slice", "hexagonal", "clean architecture"
 
 The "how" behind `crew-backend-expert`, and the stack step `crew-planner` and `crew-database-expert` rely on.

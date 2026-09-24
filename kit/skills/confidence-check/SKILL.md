@@ -7,9 +7,7 @@ description: |
 
 # Confidence Check — earn the right to start
 
-<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
-     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
-     truncated or dropped, which strips the very keywords a match depends on. -->
+<!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
 Trigger phrases: "confidence check", "ready to implement", "before I start", "am I sure enough", "readiness"
 
 ## When
@@ -51,8 +49,8 @@ to catch.
 Gates get bypassed, legitimately: the user accepts a known gap, a DoD item is deferred, scope is trimmed under
 time pressure. What must not happen is the bypass being *spoken and forgotten* — three weeks later nobody can
 say whether a rule was weighed and overridden or simply missed, and those two are indistinguishable from the
-code. That gap is the missing half of "rule → gate": the kit enforces the rule at the tool level, and until now
-recorded nothing when a human deliberately stepped past it.
+code. That gap is the missing half of "rule → gate": the kit enforces the rule at the tool level, and this line is
+the record of a human deliberately stepping past it.
 
 So when a gate is knowingly bypassed, write one line where the decision lives — the ADR for anything lasting
 ([[adr]]), otherwise the plan's assumptions section:
@@ -64,7 +62,7 @@ by default, and nobody chose that. Never write this on the model's own authority
 so the line records *their* decision, and its absence means the gate was not bypassed at all.
 
 ## Output
-Five lines, one per check: `✅ <what was run/read>` or `❌ <what is missing>` or `n/a — <why>`. Then either
+Six lines, one per check: `✅ <what was run/read>` or `❌ <what is missing>` or `n/a — <why>`. Then either
 "starting" or the single action that unblocks it. Keep it to the main thread; it is a handful of lines, not a
 document.
 

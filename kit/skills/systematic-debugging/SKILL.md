@@ -7,9 +7,7 @@ description: |
 
 # Systematic Debugging
 
-<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
-     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
-     truncated or dropped, which strips the very keywords a match depends on. -->
+<!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
 Trigger phrases: "debug", "root cause", "why is this failing", "intermittent bug", "can't reproduce", "is broken", "crashes"
 
 One rule holds the whole skill together: **no fix without a confirmed root cause.** A patch that makes the symptom
