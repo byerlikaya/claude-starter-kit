@@ -4277,6 +4277,8 @@ case "$o" in *'"Crewforth v3.1.0 is out (installed: v3.0.0). Update now?"'*'"Upd
 case "$o" in *"--answer later 3.1.0"*"--answer skip 3.1.0"*) pass "the question carries the exact --answer commands for Later and Skip" ;;
              *) fail "the question does not tell Claude how to record Later/Skip: $o" ;; esac
 case "$o" in *AskUserQuestion*) pass "the question is asked with the question tool, not as prose" ;; *) fail "the hook does not name the question tool" ;; esac
+case "$o" in *"if their first message is an error or an urgent fix, answer that first and ask this question at the end of that reply"*) pass "an urgent first message is answered first; the question moves to the end of that reply" ;;
+  *) fail "the hook no longer lets an urgent first message (an error, a fix) be answered before the question" ;; esac
 case "$o" in *'breaking changes'*) fail "a minor release was flagged as a major one" ;; *) pass "a minor release carries no breaking-change line" ;; esac
 
 # 2) Asked = "Later" until answered: a second opening the same day is silent, a closed question included.

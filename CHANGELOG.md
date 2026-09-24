@@ -88,7 +88,8 @@ One name everywhere: the package, the components, the variables, the payload. **
 ### Added — "an update is out, update now?"
 
 - **A newer release is a question, not a footnote.** At session start Claude asks once — **Update · Later · Skip
-  this version** — before answering the first message. Update runs `/crew-update` (a plugin install runs
+  this version** — before answering the first message (an urgent first message, such as an error, is answered first
+  and the question comes at the end of that reply). Update runs `/crew-update` (a plugin install runs
   `claude plugin update crewforth@crewforth`, applied on restart). Later, or closing the question, asks again the
   next day at the earliest; Skip is silent until a newer release. A major version adds a line to read the CHANGELOG
   first. The question speaks the install's language, and nothing is asked in CI, with `CREW_NO_UPDATE_CHECK=1`, or
