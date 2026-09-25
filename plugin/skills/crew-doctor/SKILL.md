@@ -1,6 +1,6 @@
 ---
 name: crew-doctor
-description: Health-check the installed kit — hooks executable, core.hooksPath set, gates wired, discipline loaded.
+description: Health-check the install — hooks executable, core.hooksPath set, gates wired, discipline loaded.
 metadata:
   kind: command
 ---

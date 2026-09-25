@@ -4,9 +4,9 @@ A rule that matters becomes a gate. Enforcement sits at the tool level — a hoo
 
 | Component | Count | What it is |
 |:--|:--:|:--|
-| **Agents** | 12 | Thin triggers — *who* owns a domain and *when* they fire |
-| **Skills** | 40 | The method, written once, applied by whoever needs it |
-| **Slash commands** | 11 | `/crew-brainstorm` · `/crew-plan` · `/crew-review` · `/crew-ship` · `/crew-handoff` · `/crew-update` · `/crew-doctor` · `/crew-board` · `/crew-gates` · `/crew-skill` · `/crew-studio` |
+| **Agents** | {{AGENT_COUNT}} | Thin triggers — *who* owns a domain and *when* they fire |
+| **Skills** | {{SKILL_COUNT}} | The method, written once, applied by whoever needs it |
+| **Slash commands** | {{COMMAND_COUNT}} | `/crew-brainstorm` · `/crew-plan` · `/crew-review` · `/crew-ship` · `/crew-handoff` · `/crew-update` · `/crew-doctor` · `/crew-board` · `/crew-gates` · `/crew-skill` · `/crew-studio` |
 | **Hooks** | 12 | The gates, plus session measurement and routing |
 | **Discipline** | 1 | Principles, workflow, Definition of Done, prohibitions — imported by your `CLAUDE.md` |
 
@@ -19,7 +19,7 @@ A rule that matters becomes a gate. Enforcement sits at the tool level — a hoo
 | `guard-write.sh` | The same protection on the Write/Edit side — a gate you can silently delete is not a gate. It normalises the target path before matching it, so a gate file cannot be reached under a different spelling. |
 | `guard-commit-scan.sh` | Runs the real trace and secret scanners from `PreToolUse`, so the commit gate works where `core.hooksPath` cannot be set |
 | `context-usage.sh` | Reads the real token count from the transcript and injects it every turn |
-| `session-guard.sh` | Warns once at 75% context fill and once at 90% — never blocks a turn |
+| `session-guard.sh` | Warns once at {{FILL_WARN}}% context fill and once at {{FILL_ALERT}}% — never blocks a turn |
 | `session-rehydrate.sh` | Re-surfaces the handover after `/compact` or `/clear` |
 | `skill-trust.sh` | Names any skill or agent Crewforth never shipped and you never accepted |
 | `session-stats.sh` | Reports what the session actually did — failing tool loops, repeated prompts, interrupts. `reflect` and `handoff` read it, so a retrospective rests on the record rather than on recollection |

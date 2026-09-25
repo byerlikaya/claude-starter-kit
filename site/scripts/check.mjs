@@ -1,0 +1,116 @@
+// Text and link gates on the BUILT site (site/dist), because that is what a reader gets — a rule that holds in the
+// sources can still break in the output (a generated table, a rewritten link, a page one language lost).
+//
+//   pairs     every page exists in both languages (Starlight would otherwise show a fallback)
+//   old name  "Claude Starter Kit", csk, … appear 0 times            (the changelog is history: exempt)
+//   kit       "the kit", "bu kit", "kitin" appear 0 times             (changelog exempt)
+//   numbers   a percentage or an "N/10" appears only if evals/README.md carries it, or the site generated it from
+//             source (the context-fill thresholds)                  (changelog exempt)
+//   links     every internal link and image resolves to a built file
+//   3rd party no <script>/<link>/font request to another host while CF_BEACON_TOKEN is unset
+//
+// Code blocks and inline code are not prose and are left out of the text gates. Each gate first runs against planted
+// input it must reject and input it must accept; a gate that cannot tell them apart fails before it reads the site.
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { fillThresholds, read } from './lib.mjs';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = path.resolve(here, '../..');
+const DIST = path.resolve(here, '../dist');
+const HOST = 'crewforth.com';
+
+const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]));
+const isChangelog = (rel) => /^(tr\/)?changelog\//.test(rel);
+
+// Visible prose: the <main> of a page, with scripts, styles, code blocks and inline code removed, tags stripped.
+export function prose(html) {
+  const main = (html.match(/<main[\s\S]*?<\/main>/) || [html])[0];
+  return main.replace(/<(script|style|pre|code)[\s\S]*?<\/\1>/g, ' ').replace(/<[^>]+>/g, ' ')
+    .replace(/&amp;/g, '&').replace(/&#39;|&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/\s+/g, ' ');
+}
+
+export const oldName = (t) => [...t.matchAll(/claude starter kit|claude-starter-kit|claude-starter\/|@byerlikaya\/|(^|[^a-z0-9])csk([^a-z0-9]|$)/gi)].map((m) => m[0].trim());
+export const kitPhrase = (t) => [...t.matchAll(/(^|[^a-zçğıöşü0-9])(the kit|bu kit|kitin)(?![a-zçğıöşü0-9])/gi)].map((m) => m[2]);
+export function numbers(t, allowed) {
+  return [...t.matchAll(/[0-9]+(?:[.,][0-9]+)?%|%[0-9]+(?:[.,][0-9]+)?|[0-9]+\/10(?![0-9])/g)].map((m) => m[0]).filter((n) => !allowed(n));
+}
+export function thirdParty(html, css) {
+  const out = [];
+  for (const m of html.matchAll(/<(script|link|img|iframe)\b[^>]*\b(?:src|href)="(https?:)?\/\/([^/"]+)[^"]*"[^>]*>/gi)) {
+    const tag = m[1].toLowerCase(); const host = m[3];
+    if (host === HOST || host.endsWith('.' + HOST)) continue;
+    if (tag === 'link' && !/rel="(stylesheet|preload|preconnect|dns-prefetch|modulepreload|icon)"/i.test(m[0])) continue;
+    out.push(`${tag} → ${host}`);
+  }
+  for (const m of css.matchAll(/(?:@import\s+|url\()\s*["']?(?:https?:)?\/\/([^/"')]+)/gi)) if (m[1] !== HOST) out.push(`css → ${m[1]}`);
+  return out;
+}
+export function brokenLinks(html, rel, exists) {
+  const out = [];
+  for (const m of html.matchAll(/\b(?:href|src)="([^"#?]+)[^"]*"/g)) {
+    let u = m[1];
+    if (/^(https?:|mailto:|data:|javascript:)/.test(u)) { if (!u.startsWith(`https://${HOST}`)) continue; u = u.slice(`https://${HOST}`.length) || '/'; }
+    const target = u.startsWith('/') ? u.slice(1) : path.posix.join(path.posix.dirname(rel), u);
+    const cands = [target, path.posix.join(target, 'index.html')];
+    if (!cands.some(exists)) out.push(`${rel} → ${m[1]}`);
+  }
+  return out;
+}
+
+function selftest(allowed) {
+  const must = (ok, what) => { if (!ok) throw new Error(`check.mjs twin failed: ${what} — this gate reads nothing`); };
+  must(oldName('Welcome to Claude Starter Kit').length === 1 && oldName('run csk now').length === 1, 'old name not caught');
+  must(oldName('the task is quick, a desk and ask').length === 0, 'old name flagged plain words');
+  must(kitPhrase('Install the kit once. Bu kitin dosyaları.').length === 2, 'kit phrase not caught');
+  must(kitPhrase('a toolkit, kitchen, the kits? kit.conf').length === 0, 'kit phrase flagged other words');
+  must(numbers('bare 7/10 and 93% of runs', allowed).length === 2, 'unbacked numbers not caught');
+  must(numbers('warns at %75 and 90%', allowed).length === 0, 'generated thresholds flagged');
+  must(thirdParty('<script src="https://evil.example/x.js"></script><link rel="stylesheet" href="https://fonts.googleapis.com/css">', '@import url("https://fonts.x.com/a.css");').length === 3, 'third party not caught');
+  must(thirdParty('<script src="/_astro/a.js"></script><a href="https://github.com/x">', '').length === 0, 'first-party flagged');
+  must(brokenLinks('<a href="/nope/"></a><img src="/assets/x.gif">', 'index.html', (p) => p === 'assets/x.gif').length === 1, 'broken link not caught');
+}
+
+function main() {
+  if (!fs.existsSync(DIST)) { console.error('site check: no dist/ — run `npm run build` first'); process.exit(1); }
+  const evals = read(path.join(ROOT, 'evals/README.md'));
+  const fill = fillThresholds(ROOT);
+  const generated = new Set([fill.warn, fill.alert].flatMap((n) => [`${n}%`, `%${n}`]));
+  const allowed = (n) => generated.has(n) || evals.includes(n);
+  selftest(allowed);
+
+  const files = walk(DIST).map((f) => path.relative(DIST, f).split(path.sep).join('/'));
+  const set = new Set(files);
+  const exists = (p) => set.has(p);
+  const pages = files.filter((f) => f.endsWith('.html') && f !== '404.html' && !f.startsWith('tr/404'));
+  const css = files.filter((f) => f.endsWith('.css')).map((f) => read(path.join(DIST, f))).join('\n');
+  const problems = [];
+
+  const en = pages.filter((p) => !p.startsWith('tr/')); const tr = pages.filter((p) => p.startsWith('tr/'));
+  for (const p of en) if (!set.has(`tr/${p}`)) problems.push(`pair: ${p} has no Turkish page`);
+  for (const p of tr) if (!set.has(p.slice(3))) problems.push(`pair: ${p} has no English page`);
+
+  let checked = 0;
+  for (const rel of pages) {
+    const html = read(path.join(DIST, rel)); const text = prose(html); checked++;
+    if (!isChangelog(rel)) {
+      for (const h of oldName(text)) problems.push(`old name: ${rel}: "${h}"`);
+      for (const h of kitPhrase(text)) problems.push(`kit: ${rel}: "${h}"`);
+      for (const h of numbers(text, allowed)) problems.push(`number: ${rel}: ${h} is not in evals/README.md`);
+    }
+    for (const b of brokenLinks(html, rel, exists)) problems.push(`link: ${b}`);
+    if (!process.env.CF_BEACON_TOKEN) for (const t of thirdParty(html, '')) problems.push(`third party: ${rel}: ${t}`);
+  }
+  if (!process.env.CF_BEACON_TOKEN) for (const t of thirdParty('', css)) problems.push(`third party: css: ${t}`);
+
+  if (checked < 20) problems.push(`FIXTURE: only ${checked} page(s) found in dist/ — the build broke, not the text`);
+  if (problems.length) {
+    console.error(`site check: ${problems.length} problem(s)\n  ${problems.slice(0, 40).join('\n  ')}`);
+    process.exit(1);
+  }
+  console.log(`site check: ${checked} pages (${en.length} EN + ${tr.length} TR, paired) · no old name, no "the kit", no unbacked number, no broken link, no third-party request · twins: each gate rejected planted input and accepted clean input`);
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();

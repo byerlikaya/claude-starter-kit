@@ -293,8 +293,8 @@ pass "agent->skill references (applies + Also apply) checked"
 #   1. It read only SKILL.md. THREE pointers already lived inside reference files and none was checked
 #      (db-migration/tool-matrix.md, security-scan/prompting.md, testing/flaky-triage.md → cross-skill).
 #      A reference file is loaded the same way and rots the same way; the depth of the file is not the question.
-#   2. It never asked the INVERSE question. A reference nothing points at is an orphan component — which this
-#      kit refuses for skills and agents two sections below (§3b) and refused nowhere here. That is the failure
+#   2. It never asked the INVERSE question. A reference nothing points at is an orphan component — which
+#      Crewforth refuses for skills and agents two sections below (§3b) and refused nowhere here. That is the failure
 #      a progressive-disclosure refactor produces silently: move the pointer into a reference file, and the
 #      target leaves the gate's sight without anything going red.
 #
@@ -2117,7 +2117,7 @@ BUDGET_AGENTS=5596   # 5d.2: tightened to the measured sum (was 5800 with 204 B 
                      # +crew-performance-expert (~426B) — security, privacy and tests each had an independent
                      # reviewer and performance was the one quality axis where the author audited their own
                      # work. Bought at ~110 tokens per session; the alternative was leaving that gap open.)
-BUDGET_SKILLS=10255 # 5R.4: 10259 → 10255 (crew-update: "a newer version"). 5d.2: tightened to the measured size (10265 → 10259: two descriptions lost a stale word). Before that:
+BUDGET_SKILLS=10249 # 5S: 10255 → 10249 (crew-doctor: "the install"). 5R.4: 10259 → 10255 (crew-update: "a newer version"). 5d.2: tightened to the measured size (10265 → 10259: two descriptions lost a stale word). Before that:
                     # 3.0: commands merged into skills — 661 B previously in the listing but uncounted, not new content:
                     # the six model-invocable commands (doctor 136 · handoff 91 · plan 151 · review 82 · ship 78 ·
                     # update 123) now live in skills/, where this sum sees them. The five user-only ones
@@ -5772,8 +5772,8 @@ if [ -n "$SGR" ] && [ -f "$SGR/.gitattributes" ] && [ -d "$SGR/packaging" ] && [
   # The installer ends by deleting kit/ and itself. That is right when Crewforth has been unpacked
   # into a project; run by absolute path from a developer's checkout it deletes the source. It did: 122 tracked
   # files, recovered only because they were committed. The developer instructions already said "do not run
-  # start.sh in this repo", which is a rule, and a rule that holds only while someone remembers it is what this
-  # kit replaces with a gate. Three states, because two would not tell the refusal apart from a broken script.
+  # start.sh in this repo", which is a rule, and a rule that holds only while someone remembers it is what
+  # Crewforth replaces with a gate. Three states, because two would not tell the refusal apart from a broken script.
   #
   # The fixtures are built rather than pointed at the real checkout: the pass state must actually reach the
   # installer, and running the real thing here is the accident being guarded against. stdin is /dev/null so
@@ -5962,6 +5962,7 @@ evals/results/*	6	history: recorded eval runs stay byte-for-byte
 adopt.sh	48	migration: finds and moves 2.x names (components, CLAUDE.md, board, auto-mode rules, variables)
 bin/cli.js	4	migration: add accepts a typed <x>-csk and moves an add record written under the old names
 evals/run.sh	4	compat: reads the 2.x trusted eval parent when the 3.0 one is absent — removed in 4.0
+site/scripts/check.mjs	7	tests: the old-name pattern of the built-site gate, and its twins
 */eval/doctor.sh	6	migration: PROOF-5 and the variable notice name what is still on the 2.x spelling
 */crew-env.*	18	compat layer (bash + Node): reads CSK_* when CREW_* is unset — removed in 4.0
 */hooks/board.sh	42	compat layer: reads the 2.x board ref and settings and folds them in — removed in 4.0
@@ -6149,10 +6150,15 @@ sec "== 14f) installed text names Crewforth — none of the three old-name phras
 _kw=kit
 kit_phrase(){ # file... -> "file:line: text" for each prose use of the phrases
   awk -v k="$_kw" '
-    FNR == 1 { fence = 0; md = (FILENAME ~ /\.md$/) }
-    md && /^[[:space:]]*```/ { fence = !fence; next }
+    FNR == 1 { fence = 0; tail = 0; md = (FILENAME ~ /\.md$/) }
+    md && /^[[:space:]]*```/ { fence = !fence; tail = 0; next }
     fence { next }
     { l = tolower($0); hit = 0
+      # A phrase wrapped at the line end ("… the" / "kit …") is still the phrase; the first pass read only single
+      # lines and four of them survived 5R.3 that way. Comment and quote markers opening the next line are skipped.
+      h = l; sub(/^[[:space:]#\/*>-]*/, "", h)
+      if (tail && index(h, k) == 1 && substr(h, length(k) + 1, 1) !~ /[a-z0-9_\/]/) hit = 1
+      tail = (l ~ /(^|[^a-z0-9_])(the|this)[[:space:]]*$/)
       n = split("the " k "|this " k "|" k "'\''s", ph, "|")
       for (i = 1; i <= n && !hit; i++) {
         s = l; off = 0
@@ -6175,14 +6181,14 @@ if [ "$IS_KIT" = 1 ]; then
   # shellcheck disable=SC2086 # paths without spaces in this repository
   _kh="$(kit_phrase $_kf | sed "s|$KR/||")"
   _kt="$(mktemp -d)"
-  printf 'Install the %s once.\nThis %s ships twelve agents.\n# a comment: the %s'"'"'s own repo\n' "$_kw" "$_kw" "$_kw" > "$_kt/bad.md"
+  printf 'Install the %s once.\nThis %s ships twelve agents.\n# a comment: the %s'"'"'s own repo\nwrapped at the line end, the\n# %s is still named\n' "$_kw" "$_kw" "$_kw" "$_kw" > "$_kt/bad.md"
   printf 'the %s/ tree, the KIT:DISCIPLINE-END sentinel, a toolkit, drizzle-%s.\n```bash\n# the %s inside a code block\n```\n' "$_kw" "$_kw" "$_kw" > "$_kt/good.md"
   if [ "$_kn" -lt 200 ]; then fail "FIXTURE: only $_kn text file(s) found under kit/ and plugin/ — the file list broke, not the wording"
   elif [ -n "$_kh" ]; then fail "installed text still names the product the old way — say Crewforth:
 $(printf '%s\n' "$_kh" | head -n 6 | sed 's/^/       /')"
-  elif [ "$(kit_phrase "$_kt/bad.md" | grep -c .)" != 3 ]; then fail "the phrase check did not catch all three planted forms (the X / This X / the X's) — it reads nothing"
+  elif [ "$(kit_phrase "$_kt/bad.md" | grep -c .)" != 4 ]; then fail "the phrase check did not catch all four planted forms (the X / This X / the X's / one wrapped across a line end) — it reads nothing"
   elif [ -n "$(kit_phrase "$_kt/good.md")" ]; then fail "the phrase check flagged a path, the sentinel or a code block: $(kit_phrase "$_kt/good.md" | head -n 1)"
-  else pass "none of the three old-name phrases in the prose of $_kn text files under kit/ and plugin/; three planted forms are caught, a path, the sentinel and a code block are not"; fi
+  else pass "none of the three old-name phrases in the prose of $_kn text files under kit/ and plugin/; four planted forms (one wrapped across a line end) are caught, a path, the sentinel and a code block are not"; fi
   # 5R.4: the old name as an ADJECTIVE — <old>-owned, <old> version(s), agent(s), rule(s), hook(s), update(s), file(s),
   # discipline. Scope is what a user reads: Markdown prose (not code blocks or HTML comments), and in scripts and the
   # Studio sources only the quoted strings of non-comment lines, so a label or an aria-label counts and an identifier
@@ -6212,6 +6218,25 @@ $(printf '%s\n' "$_ka" | head -n 6 | sed 's/^/       /')"
   rm -rf "$_kt"
 else
   skip scope "installed-text wording checks skipped (installed project — kit/ and plugin/ live in the source repository)" 2
+fi
+
+sec "== 14g) the documentation site stays out of the npm package =="
+# site/ is the source of crewforth.com (Astro + Starlight, with its own node_modules). It must never ship: the npm
+# package's `files` list is narrow, and this reads what npm would actually pack rather than trusting the list.
+if [ "$IS_KIT" = 1 ] && [ -f "$ROOT/../package.json" ]; then
+  KR="$(cd "$ROOT/.." && pwd)"
+  if ! command -v npm >/dev/null 2>&1; then skip tool "npm is not on PATH — the package contents cannot be read"
+  else
+    _pj="$(cd "$KR" && npm pack --dry-run --json 2>/dev/null)"
+    _ps="$(printf '%s\n' "$_pj" | grep -c '"path": "site/')"; _pk="$(printf '%s\n' "$_pj" | grep -c '"path": "kit/')"
+    _tw="$(printf '[{"files":[{"path": "site/package.json"},{"path": "kit/CLAUDE.md"}]}]\n' | grep -c '"path": "site/')"
+    if [ "$_pk" -lt 50 ]; then fail "FIXTURE: npm pack --dry-run listed $_pk kit/ file(s) — the listing broke, not the package"
+    elif [ "$_tw" != 1 ]; then fail "the site-in-package check missed a planted site/ path — it reads nothing"
+    elif [ "$_ps" != 0 ]; then fail "npm would pack $_ps file(s) from site/ — the documentation site must stay out of the package"
+    else pass "npm pack --dry-run holds 0 site/ files ($_pk kit/ files); a planted site/ path is caught"; fi
+  fi
+else
+  skip scope "package contents not checked (installed project — package.json lives in the source repository)"
 fi
 
 sec "== 15) evals: the parallel-audit metric, because a rule nobody can measure is not a rule =="

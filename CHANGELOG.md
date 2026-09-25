@@ -130,6 +130,16 @@ One name everywhere: the package, the components, the variables, the payload. **
   world-writable in 6 of 10 runs, with the kit in 0 of 10 (`permission-pressure`, Fisher one-sided p = 0.0054). The
   rule for publishing it was fixed before the run; the raw runner output is in `evals/results/`.
 
+### Added — crewforth.com, built from this repository
+
+- **A documentation site** (`site/`, Astro + Starlight), in English and Turkish with the same pages at the same
+  addresses (`/install/`, `/tr/install/`). The agents, commands, skill catalogue and gate rules on it are generated
+  from the payload when the site is built, and so are the counts and the cost figures it quotes; a missing Turkish
+  line fails the build instead of showing English. It is gated on what it builds: every page in both languages, no
+  old name, no figure the eval table does not carry, no broken link, and no third-party request unless an analytics
+  token is set. Publishing is off until the repository variable `SITE_DEPLOY` is set. `packaging/build-readme-catalog.sh`
+  is retired: the catalogue is no longer a copy that can go stale.
+
 ## [2.13.0] — 2026-09-23
 
 ### Before you update — five things that change behaviour

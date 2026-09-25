@@ -47,9 +47,6 @@ jobs:
             exit 1
           fi
 
-      - name: Verify the skill catalogue (site/content) is in sync
-        run: bash packaging/build-readme-catalog.sh --check
-
       # The published site is the one artifact with no source here and no build step, so nothing but this
       # stops it shipping a stale version line — which is exactly what happened through all of 1.7.0.
       # Release-time only: mid-development the payload is legitimately ahead of what is published.
@@ -161,3 +158,38 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -am "crewforth ${V}"
           git push
+
+  # crewforth.com, built from this tag and published through GitHub Pages. OFF by default: it runs only when the
+  # repository variable SITE_DEPLOY is 1. Until the Pages source is set to "GitHub Actions" (a 5b step) the deploy
+  # would fail, and a release must not stop on a site that is not live yet — so the switch, not the tag, turns it on.
+  # CF_BEACON_TOKEN (a repository variable; the beacon token is public by design) adds the cookieless analytics
+  # beacon; without it the site makes no third-party request at all.
+  site:
+    needs: release
+    if: vars.SITE_DEPLOY == '1'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: site/.nvmrc
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - name: Build and gate the site
+        env:
+          CF_BEACON_TOKEN: ${{ vars.CF_BEACON_TOKEN }}
+        run: |
+          npm ci --prefix site --no-audit --no-fund
+          cd site && npm run build && node scripts/check.mjs
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site/dist
+      - id: deploy
+        uses: actions/deploy-pages@v5

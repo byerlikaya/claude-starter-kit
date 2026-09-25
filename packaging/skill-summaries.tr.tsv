@@ -1,7 +1,7 @@
-# Turkish skill summaries for README.tr.md — build-time DATA, NOT part of the always-on payload,
-# so it does not count against the SKILL.md frontmatter byte budget. Single source for the TR table:
-# build-readme-catalog.sh reads this for README.tr.md (English comes from each SKILL.md). Format: name<TAB>summary.
-# --check FAILS if any skill lacks a line here — that is the drift gate. One line per skill, no tabs inside a summary.
+# Turkish skill summaries for the site's skill catalogue — build-time DATA, NOT part of the always-on payload,
+# so it does not count against the SKILL.md frontmatter byte budget. site/scripts/generate.mjs reads it (English
+# comes from each SKILL.md). Format: name<TAB>summary. The site build FAILS if any skill lacks a line here — that
+# is the drift gate. One line per skill, no tabs inside a summary.
 a11y	Frontend erişilebilirlik denetimi (WCAG): anlamsal HTML, klavye erişimi, odak yönetimi, kontrast, ARIA, ekran okuyucular.
 adr	Mimari Karar Kaydı: bağlam-karar-sonuç; geri dönüşü pahalı kararlar için.
 api-design	API sözleşme tasarımı: kaynak adlandırma, hata modeli, sürümleme, sayfalama, geriye dönük uyumluluk, OpenAPI.

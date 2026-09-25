@@ -34,7 +34,7 @@ fi
 
 # The step list is the contract with ci.yml. Adding a gate here is what makes it runnable locally;
 # adding it to ci.yml alone is what put this file here in the first place.
-STEPS="syntax smoke routing catalogue manifests e2e studio parser i18n subshell"
+STEPS="syntax smoke routing site manifests e2e studio parser i18n subshell"
 
 step_syntax(){
   bash -n start.sh || return 1
@@ -50,7 +50,23 @@ step_syntax(){
 
 step_smoke(){     bash kit/eval/smoke-test.sh; }
 step_routing(){   bash kit/eval/routing-eval.sh; }
-step_catalogue(){ bash packaging/build-readme-catalog.sh --check; }
+# The documentation site (site/, Astro + Starlight). Its pages are generated from the repository — the skill
+# catalogue, the agents, the commands, the gate inventory, the counts and the cost figures — so a stale catalogue
+# is no longer something to check for: it cannot be built. What is checked is what gets built: every page in both
+# languages, no old name, no unbacked number, no broken link, no third-party request (scripts/check.mjs), and the
+# generator's own twins (scripts/selftest.mjs). It needs node 22.12+ and site/node_modules; this file never
+# installs anything, so without them the step says SKIP — CI runs `npm ci` first and turns a skip red.
+step_site(){
+  [ -f site/package.json ] || { echo "site/ is MISSING"; return 1; }
+  command -v node >/dev/null 2>&1 || { echo "SKIP: node is not on PATH"; return 3; }
+  node -e 'const [a,b]=process.versions.node.split(".").map(Number); process.exit(a>22||(a===22&&b>=12)?0:1)' 2>/dev/null \
+    || { echo "SKIP: the site needs node 22.12+, this is $(node --version 2>/dev/null)"; return 3; }
+  [ -d site/node_modules ] || { echo "SKIP: site/node_modules is absent — run: (cd site && npm ci)"; return 3; }
+  local log; log="$(mktemp)"
+  ( cd site && npm run --silent build ) >"$log" 2>&1 || { tail -n 30 "$log"; rm -f "$log"; return 1; }
+  grep -E '^site: generated' "$log"; rm -f "$log"
+  ( cd site && node scripts/check.mjs && node scripts/selftest.mjs )
+}
 step_e2e(){       bash packaging/e2e.sh; }
 
 # The gate must reach the same verdict whichever parser decoded the payload. This is a real step rather than a
