@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SessionStart hook — after a context boundary (compact / clear / resume), point the model back at the handover
-# so in-progress work survives the boundary. This closes the kit's handoff loop: `handoff` writes
+# so in-progress work survives the boundary. This closes Crewforth's handoff loop: `handoff` writes
 # docs/SESSION_STATE.md → the user runs /clear (or context auto-compacts) → a fresh context starts → THIS hook
 # re-surfaces the file so the next turn resumes from it instead of from zero.
 #

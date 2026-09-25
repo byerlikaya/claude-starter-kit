@@ -10,7 +10,7 @@ MSG_FILE="${1:-}"
 [ -n "$MSG_FILE" ] && [ -f "$MSG_FILE" ] || exit 0
 
 # (2) Board claim gate. It is a no-op in every repo that never ran `/crew-board init` — board.sh returns 0 when
-# the board ref does not exist, so solo projects and the kit's own repo behave exactly as before. It reads the
+# the board ref does not exist, so solo projects and Crewforth's own repo behave exactly as before. It reads the
 # LOCAL ref only: committing must never require the network.
 if [ -f "$HERE/board.sh" ]; then
   bash "$HERE/board.sh" gate "$MSG_FILE" || exit 1
@@ -32,7 +32,7 @@ while IFS= read -r pat || [ -n "$pat" ]; do
                                             # trailer had exactly one gate and it was blind. Verified
                                             # on two machines: LF blocklist rejects (rc=1), the same
                                             # blocklist saved CRLF accepts (rc=0). Reachable without
-                                            # trying: the kit writes no .gitattributes into a user's
+                                            # trying: Crewforth writes no .gitattributes into a user's
                                             # project, Git for Windows defaults core.autocrlf=true,
                                             # and this file is meant to be edited by hand.
   if [ -n "$AL" ] && grep -qxF -- "$pat" "$AL"; then continue; fi

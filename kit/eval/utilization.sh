@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# What the kit LOADS versus what it actually FIRES.
+# What Crewforth LOADS versus what it actually FIRES.
 #
 # Every installed skill spends its name and description in EVERY session's skill listing, forever, whether or not
 # it is ever used. doctor.sh §4a already measures the loaded half and reports it against the budget. This
@@ -21,7 +21,7 @@ case "${1:-}" in
   ""|--help|-h) [ "${1:-}" != "" ] && { sed -n '2,12p' "$0"; exit 0; } ;;
 esac
 
-# Where the skills live: an installed project, or this repo's payload when run from the kit's own checkout.
+# Where the skills live: an installed project, or this repo's payload when run from Crewforth's own checkout.
 SKILLS=""; OWNREPO=0
 for d in .claude/skills kit/skills; do [ -d "$d" ] && { SKILLS="$d"; break; }; done
 [ "$SKILLS" = "kit/skills" ] && OWNREPO=1
@@ -76,12 +76,12 @@ else
   SCOPE="this project"
 fi
 
-# One grep over the tree, not one per skill: 40 greps × 320 files is the cost pattern this kit keeps removing.
+# One grep over the tree, not one per skill: 40 greps × 320 files is the cost pattern Crewforth keeps removing.
 #
 # TWO SHAPES COUNT AS A FIRING, and only these two:
 #   "file_path":"…/skills/<name>/SKILL.md"   — the skill was READ (how a skill is actually consumed)
 #   "name":"Skill","input":{"skill":"<name>" — the Skill tool was invoked by name
-# THE ANCHOR IS THE POINT. Matching a bare skill name anywhere in the JSON would count the kit measuring itself:
+# THE ANCHOR IS THE POINT. Matching a bare skill name anywhere in the JSON would count Crewforth measuring itself:
 # a single `grep -rn description: skills/` tool result echoes all 40 paths on one line, and every skill would
 # report as used forever. Both patterns above require the name to sit in a position only a real invocation puts
 # it in. Lines carrying "is_error":true are dropped first — a read that failed is not a use. That drop is
@@ -116,9 +116,9 @@ echo "  cold  : $COLD/$TOTAL   (${COLDBYTES} B of always-on listing spent on ski
 [ -n "$FIREDLIST" ] && { echo "  --- fired (times reached) ---"; printf '%s\n' "$FIREDLIST" | tr ' ' '\n' | grep -v '^$' | sort | paste -sd' ' - | fold -s -w 100 | sed 's/^/    /'; }
 [ -n "$COLDLIST" ]  && { echo "  --- cold ---";                  printf '%s\n' "$COLDLIST"  | tr ' ' '\n' | grep -v '^$' | sort | paste -sd' ' - | fold -s -w 100 | sed 's/^/    /'; }
 echo "  ---"
-# The kit's own repository is the one place where this number lies, so it says so rather than being quoted out
+# Crewforth's own repository is the one place where this number lies, so it says so rather than being quoted out
 # of context later. Here a SKILL.md is opened to EDIT it, and an edit is indistinguishable from an invocation at
-# the transcript level — both are a Read of the same path. In a project that USES the kit there is no such
+# the transcript level — both are a Read of the same path. In a project that USES Crewforth there is no such
 # traffic, which is the case the measurement is for.
 [ "$OWNREPO" = 1 ] && {
   echo "  NOTE: read from Crewforth's OWN repository, where a SKILL.md is opened to be EDITED. Those edits are"

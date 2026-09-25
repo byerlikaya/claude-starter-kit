@@ -1,6 +1,6 @@
-// What the kit already measures about itself.
+// What Crewforth already measures about itself.
 //
-// The panel does not recompute any of it. Each of these shells out to the kit's
+// The panel does not recompute any of it. Each of these shells out to Crewforth's
 // own tool and reports what it said, including when it said it could not
 // answer — `gate-report.sh` exits 4 in a checkout that has no installed hooks,
 // and that is a real answer, not an empty one.
@@ -30,7 +30,7 @@ function run(cmd, args, opts = {}) {
   });
 }
 
-/** Where the kit's own scripts live for a given project, if they do. */
+/** Where Crewforth's own scripts live for a given project, if they do. */
 function kitPaths(cwd) {
   const installed = path.join(cwd, '.claude');
   const source = path.join(cwd, 'kit');
@@ -59,7 +59,7 @@ export function gateLog(cwd, { limit = 200 } = {}) {
     return { measured: false, reason: 'no .claude/gate-log.tsv in this project', entries: [] };
   }
 
-  // Only the tail: this file reached 21,730 lines in the kit's own checkout and
+  // Only the tail: this file reached 21,730 lines in Crewforth's own checkout and
   // the panel wants the recent end of it.
   const TAIL = 256 * 1024;
   let text = '';
@@ -105,16 +105,16 @@ export function gateLog(cwd, { limit = 200 } = {}) {
 
 /* ------------------------------------------------------------ gate report */
 
-/** The kit's own inventory of gates, via gate-report.sh --json. */
+/** Crewforth's own inventory of gates, via gate-report.sh --json. */
 export async function gateReport(cwd) {
   const kit = kitPaths(cwd);
-  if (!kit) return { measured: false, reason: 'the kit is not installed in this project' };
+  if (!kit) return { measured: false, reason: 'Crewforth is not installed in this project' };
 
   const script = path.join(kit.evalDir, 'gate-report.sh');
   if (!fs.existsSync(script)) return { measured: false, reason: 'gate-report.sh is not present' };
 
   // The script finds the hooks relative to where it is run: `./.claude/hooks`
-  // in an installed project, `./hooks` otherwise. In this kit's own checkout
+  // in an installed project, `./hooks` otherwise. In Crewforth's own checkout
   // that second shape only resolves from inside kit/, and the log it
   // should read is one level up. Both layouts are given what they expect rather
   // than the script being asked to guess.
@@ -140,7 +140,7 @@ export async function gateReport(cwd) {
 /** session-stats.sh --raw: fifteen key=value metrics about one transcript. */
 export async function sessionStats(cwd, transcriptFile) {
   const kit = kitPaths(cwd);
-  if (!kit) return { measured: false, reason: 'the kit is not installed in this project' };
+  if (!kit) return { measured: false, reason: 'Crewforth is not installed in this project' };
 
   const script = path.join(kit.hooks, 'session-stats.sh');
   if (!fs.existsSync(script)) return { measured: false, reason: 'session-stats.sh is not present' };
@@ -165,7 +165,7 @@ export async function sessionStats(cwd, transcriptFile) {
 /** The team board, if this repo has one. */
 export async function board(cwd) {
   const kit = kitPaths(cwd);
-  if (!kit) return { measured: false, reason: 'the kit is not installed in this project' };
+  if (!kit) return { measured: false, reason: 'Crewforth is not installed in this project' };
 
   const script = path.join(kit.hooks, 'board.sh');
   if (!fs.existsSync(script)) return { measured: false, reason: 'board.sh is not present' };

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Route hint — name the owning agent next to the request itself.
 #
-# WHY THIS EXISTS, measured rather than assumed. The kit's premise is that specialist agents run the work. On a
+# WHY THIS EXISTS, measured rather than assumed. Crewforth's premise is that specialist agents run the work. On a
 # focused, single-domain request that does not happen: 42 measured sessions across the eval suite, two A/B pairs
 # and a twelve-agent domain sweep produced ZERO spontaneous delegations. Two things were tried first and both
 # came back zero — rewriting the agents' `description` into ownership language, and telling the discipline to
@@ -10,12 +10,12 @@
 # owners correctly. So the mechanism is sound; the trigger is the shape of the request.
 #
 # The subagents docs list three inputs to the delegation decision: "the task description in your request, the
-# `description` field in subagent configurations, and current context". The kit had touched the second and the
+# `description` field in subagent configurations, and current context". Crewforth had touched the second and the
 # third. This hook is the first: `UserPromptSubmit` can return `additionalContext`, and for that event the docs
 # place it "alongside the submitted prompt" — the one position we had never used.
 #
 # It states an owner. It never decides FOR the model, never blocks, and stays silent unless a match is clear:
-# a wrong route is worse than none, because it looks like the kit worked.
+# a wrong route is worse than none, because it looks like Crewforth worked.
 #
 # ---------------------------------------------------------------------------------------------------------
 # ONE AWK PASS, NOT A SHELL LOOP — this hook runs on EVERY prompt, so its cost is the session's floor.
@@ -32,8 +32,8 @@
 # busy — forty to eighty times the ~1.7 ms Linux pays, not the "20-50 ms" this comment claimed before anyone
 # ran it here. The same 2000 spawns therefore land at two to four MINUTES, not 40-100 seconds, against a
 # 10s hook timeout. Claude Code blocks on the hook until that timeout expires, on EVERY prompt, and then
-# discards the output — so the kit paid the full stall and got no routing for it. That is the "it hangs and
-# nothing works" report from Windows users, and it is not a Claude Code bug: the kit was spending the budget.
+# discards the output — so Crewforth paid the full stall and got no routing for it. That is the "it hangs and
+# nothing works" report from Windows users, and it is not a Claude Code bug: Crewforth was spending the budget.
 #
 # Everything below is therefore one awk invocation over the component files, with the normalisation and the
 # matching done inside awk. Total external processes: FIVE — cat, sed, sed, head, awk. (The count said four
@@ -65,7 +65,7 @@ fi
 # substring anyway. Everything after `"prompt":"` up to the closing quote that is not escaped. It goes to awk
 # through the ENVIRONMENT, never through `-v`: awk expands escape sequences in a `-v` value, so a prompt
 # containing a literal backslash would be rewritten before the normaliser ever saw it.
-# TWO FIELD NAMES, because the payload has carried both and this hook is the only thing in the kit that reads
+# TWO FIELD NAMES, because the payload has carried both and this hook is the only thing in Crewforth that reads
 # the prompt text at all. The published UserPromptSubmit schema names the field `user_input`; the payload this
 # hook was written against, and the suite that pins it, used `prompt`. Which one a given CLI sends is not a fact
 # this repo can establish from here, and getting it wrong is SILENT: the slice comes back empty, the hook exits
@@ -105,7 +105,7 @@ for f in "$AGENTS"/*.md "$SKILLS"/*/SKILL.md; do [ -e "$f" ] && FILES+=("$f"); d
 # skill is the cheaper, more useful nudge: a subagent re-pays its whole context (measured at 10-16k tokens for a
 # no-op), while a skill just loads its method into the turn already in progress. Measured on a focused request,
 # neither fired on its own — 12 domain tasks produced zero delegations and a skill in only 2 of 12 — so the
-# method the kit exists to carry was simply absent from the work.
+# method Crewforth exists to carry was simply absent from the work.
 RES="$(awk '
 # Same normalisation the routing eval uses: Turkish diacritics folded, lowercased, every run of non-alphanumerics
 # collapsed to one space, and the whole string space-padded so a match is word-bounded. Without the padding a

@@ -17,7 +17,7 @@ protocol is easy; the design of the tools is what makes the server good or usele
 
 > **Kit adaptation (local, .claude/):** Stack-agnostic — TypeScript (`@modelcontextprotocol/sdk`) or Python
 > (`mcp` / FastMCP) are the maintained SDKs; match the project's language. §4 Prohibitions apply (no AI trace in
-> generated code/strings). Secrets (API keys the server needs) go via env, never hardcoded — the kit's secret gates apply.
+> generated code/strings). Secrets (API keys the server needs) go via env, never hardcoded — Crewforth's secret gates apply.
 
 ## Design first (the tools ARE the product)
 - **Few, purposeful tools** — expose *tasks*, not a 1:1 mirror of every API endpoint. "create_invoice" beats "post_v2_billing_documents".

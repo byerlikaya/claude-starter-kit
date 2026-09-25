@@ -27,7 +27,7 @@ case "$MODE" in
       # What git does not track, it cannot call uncommitted: a private install (the default) gitignores .claude/
       # and CLAUDE.md, and then "clean" would be a claim nobody measured. Say which paths are outside git instead.
       UNTR=""; for _p in .claude CLAUDE.md; do [ -e "$_p" ] && git check-ignore -q "$_p" 2>/dev/null && UNTR="$UNTR $_p"; done
-      # The kit's own runtime state is left out: it changes on its own, and a repo that committed it before it
+      # Crewforth's own runtime state is left out: it changes on its own, and a repo that committed it before it
       # was ignored would otherwise warn on every update about a cache nobody edited.
       DIRTY="$(git status --porcelain --untracked-files=all -- .claude CLAUDE.md ':(exclude).claude/.state' 2>/dev/null)"
       if [ -n "$DIRTY" ]; then

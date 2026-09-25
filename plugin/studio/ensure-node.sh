@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # ensure-node.sh — find a Node the panel can run on, and when asked, go and get one.
 #
-# Every gate in this kit is bash and needs nothing installed. The panel is the one
+# Every gate in Crewforth is bash and needs nothing installed. The panel is the one
 # component that needs a runtime, and a machine without Node used to get a dead end:
-# "install Node 18+, then come back". This script is the kit doing that itself.
+# "install Node 18+, then come back". This script is Crewforth doing that itself.
 #
 #   ensure-node.sh                  print a usable node's path on stdout; exit 1 if there is none
 #   ensure-node.sh --explain        the same, narrating every place it looked (on stderr)

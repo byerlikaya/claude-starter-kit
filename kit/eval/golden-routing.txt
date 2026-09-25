@@ -69,7 +69,7 @@ the context is full, check the token budget before we continue|token-budget
 
 # --- Core components that had NO positive case until 1.11.0 ---
 # An audit found 12 skills and one agent that the routing gate never checked — including security-scan,
-# code-review, testing and spec-planning, i.e. most of what the kit advertises. A component with no case is a
+# code-review, testing and spec-planning, i.e. most of what Crewforth advertises. A component with no case is a
 # component whose reachability is assumed, which is exactly how crew-frontend-expert went unreachable for a whole
 # class of request while every gate stayed green.
 i am not sure what we want here yet, help me scope it|brainstorm
@@ -114,7 +114,7 @@ design the database schema|!frontend-design
 read the model context and summarize it|!mcp-builder
 optimize the slow sql query performance|!systematic-debugging
 # `build` contains `ui`, and `UI` used to be a trigger, so a CI failure routed to the frontend expert. A wrong
-# route is worse than none: it looks like the kit worked. Fixed by word-bounded matching AND by retiring the
+# route is worse than none: it looks like Crewforth worked. Fixed by word-bounded matching AND by retiring the
 # bare `UI` trigger for `UI polish`; this line fails if either regresses.
 the build fails on CI|!crew-frontend-expert
 the docker build is broken in the pipeline|!crew-frontend-expert

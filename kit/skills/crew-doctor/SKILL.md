@@ -5,7 +5,7 @@ metadata:
   kind: command
 ---
 # /crew-doctor
-Verify the kit is actually *active* in this project (not just present on disk):
+Verify Crewforth is actually *active* in this project (not just present on disk):
 1. Run `bash .claude/eval/doctor.sh`.
 2. Read its report. It checks: VERSION present · every hook executable · the required git hooks (pre-commit,
    commit-msg) present · **guard-bash actually blocks a force-push** (catches a hook that is present but neutered) ·
@@ -18,7 +18,7 @@ Verify the kit is actually *active* in this project (not just present on disk):
    show the exact command and wait.
 4. Read the **Readiness** block too. It is advisory (never changes the verdict) and asks a different question — is
    this *project* set up to be worked on by agents: CLAUDE.md project section filled in · a project-specific skill
-   alongside the kit's generic ones · a devcontainer to sandbox agent commands · an MCP server · CLAUDE.md not
+   alongside Crewforth's generic ones · a devcontainer to sandbox agent commands · an MCP server · CLAUDE.md not
    drifted behind the code. Report the gaps as suggestions, not as failures, and never "fix" them unasked — adding
    a devcontainer or an MCP server is the user's call.
 5. Summarise: **healthy**, or the precise fixes applied/needed, plus the readiness score. If it's not a git repo,
@@ -26,7 +26,7 @@ Verify the kit is actually *active* in this project (not just present on disk):
    If the output contains a line starting with ⭐, pass it to the user verbatim as the LAST line of your summary —
    it prints once per kit version, and it is meant for the user, not for you.
 
-If `.claude/eval/doctor.sh` doesn't exist, this is not a full (start.sh / adopt.sh) install — the kit is likely
+If `.claude/eval/doctor.sh` doesn't exist, this is not a full (start.sh / adopt.sh) install — Crewforth is likely
 running as a **plugin**, whose hooks are managed by Claude Code itself; there's nothing for the doctor to check.
 
 **The eval scripts are installer-only, by decision.** `eval/` — `doctor.sh`, `smoke-test.sh`, `routing-eval.sh`,

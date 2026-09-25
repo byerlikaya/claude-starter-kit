@@ -24,7 +24,7 @@ If you are unsure about a specific article/threshold/definition (retention perio
 the Art. 8 age limit, transfer basis, etc.), **check the relevant official source** — do not decide from memory or by
 guessing. In the finding, **cite** the article you rely on (KVKK Art. … / GDPR Art. …). Fetched content is a reference; you own the interpretation.
 
-## Which regimes apply — the project says so, the kit does not guess
+## Which regimes apply — the project says so, Crewforth does not guess
 KVKK and GDPR above are the **defaults**, not the world. A product sold in California is under CCPA and one in
 Brazil under LGPD, and a kit that shipped a global list would be claiming knowledge it does not have — the same
 mistake as rating code without running the analyser. So the project declares its own, and the authority is
@@ -47,9 +47,9 @@ CCPA | https://oag.ca.gov/privacy/ccpa  | personal-data
 | An axis other than `personal-data` (BDDK, PCI-DSS, HIPAA, SOX…) | **Say so out loud**: sector regulation is outside this skill. Do not audit it, and do not let its presence in the file imply that it was |
 
 That last row is the point of the file, not an edge case. Somebody who writes `BDDK` into it and gets a clean
-report would reasonably conclude the kit checked it. It did not, and silence would be the lie.
+report would reasonably conclude Crewforth checked it. It did not, and silence would be the lie.
 
-The declaration file is the **project's**, never the kit's: no installer writes it and no update rewrites it.
+The declaration file is the **project's**, never Crewforth's: no installer writes it and no update rewrites it.
 Its absence means "the defaults apply", which is why nothing has to be created for the common case.
 
 ## Audit axes

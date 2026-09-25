@@ -4,7 +4,7 @@
 #   star.sh --once <project>   ONCE PER KIT VERSION per clone. The installers (first install, and every update)
 #                              and doctor.sh on a healthy verdict all call it this way and share one marker, so a
 #                              version shows the line once — whichever of them reaches it first — and never again
-#                              until the kit version changes. The marker holds the version it was shown for.
+#                              until the Crewforth version changes. The marker holds the version it was shown for.
 #   star.sh                    unconditional (tests, and anyone who wants to see it).
 #
 # Nothing else prints it: not a hook, not a session start. Cost: one line (~30 tokens) per version, and only when

@@ -106,7 +106,7 @@ body {
   letter-spacing: 0.01em;
 }
 
-/* The kit's own mark, from assets/mark.svg: three chevrons (›››), drawn as
+/* Crewforth's own mark, from assets/mark.svg: three chevrons (›››), drawn as
    strokes. Two palettes: the light ones from the logo read on the dark panel,
    the darker ones from mark.svg read on the light. Same geometry either way. */
 .brand-mark { width: 19px; height: 19px; flex: none; }

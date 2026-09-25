@@ -521,7 +521,7 @@ gatelog(){  # $1 = verdict (BLOCK|ASK|ALLOW)  $2 = section  $3 = rule
 # added to all seven because it sounds right is the same mistake as one sentence serving all thirty-three.
 #
 # UNMEASURED, said plainly: whether this wording changes what a session does. Its criterion is already
-# written — the kit arm's first row must move off 0/3 while the other two stay at 3/3. A fix that clears the
+# written — Crewforth arm's first row must move off 0/3 while the other two stay at 3/3. A fix that clears the
 # junk and loses the uncommitted notes is worse than the block it replaced.
 #
 # What DID stand on its own is everything above: the single sentence was wrong on inspection, never needed an
@@ -657,7 +657,7 @@ case "$CMD" in *[Dd][Dd]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE '(^|[
 # §4.5 INFRASTRUCTURE TEARDOWN. Same shape as the rules above — one command, no undo — but the blast radius is a
 # cloud account or a cluster rather than a disk. `terraform destroy` and `pulumi destroy` remove every managed
 # resource; `-auto-approve` / `--yes` skip the only confirmation those tools have; `kubectl delete` and
-# `helm uninstall` take a namespace or a release with them. The kit gated `rm -rf` and `git reset --hard` from
+# `helm uninstall` take a namespace or a release with them. Crewforth gated `rm -rf` and `git reset --hard` from
 # the start and never named these.
 #
 # EVERY VERB AND ALIAS BELOW CAME FROM THE TOOL'S OWN SOURCE OR DOCS, not from memory — the first draft of this
@@ -687,7 +687,7 @@ case "$CMD" in *[Dd][Dd]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE '(^|[
 # shape. The wrapper chain above accepted only FLAG tokens after a wrapper, so `env TF_VAR=1 terraform destroy`
 # fell out of the anchor and returned rc=0 — measured on a Windows 11 desktop, along with the bare shell form
 # `TF_VAR=1 terraform destroy`. That is not an exotic spelling: `TF_VAR_*` is how Terraform documents passing
-# variables, so the bypass sits on the path a real operator takes. The kit's older rules already tolerated the
+# variables, so the bypass sits on the path a real operator takes. Crewforth's older rules already tolerated the
 # prefix (`env FOO=1 rm -rf /` and `FOO=1 rm -rf /` both blocked), so this gate was the only one that did not.
 _IAC_ASG="([A-Za-z_][A-Za-z0-9_]*=[^;&|[:space:]]*[[:space:]]+)*"
 _IAC_AT="(^|[;&|(])[[:space:]]*${_IAC_ASG}((sudo|env|time|nice|nohup|xargs)([[:space:]]+-[^;&|[:space:]]+([[:space:]]+[^-;&|[:space:]]+)?)*[[:space:]]+${_IAC_ASG})*"
@@ -750,7 +750,7 @@ case "$CMD" in *[Ii][Cc][Aa][Cc][Ll][Ss]*) : ;; *) false ;; esac && echo "$CMD" 
 # §4.5 gate-tampering -> HARD BLOCK. A gate you can silently remove is not a gate: redirecting core.hooksPath,
 # or deleting/overwriting/patching the hook scripts, would disarm the trace/secret/approval gates in one line.
 # READING the setting is not disarming it. `git config --get core.hooksPath` is how a person (or the doctor)
-# CHECKS that the gate is armed, and blocking it told them the kit was tampering-proof by refusing to let them
+# CHECKS that the gate is armed, and blocking it told them Crewforth was tampering-proof by refusing to let them
 # verify it. Only the write forms disarm: a bare `git config core.hooksPath <value>`, `--unset`, `--replace-all`.
 [ "$HAS_GIT" = 1 ] && echo "$CMD" | grep -qE 'git[[:space:]]+config\b[^|]*core\.hooksPath' \
   && ! echo "$CMD" | grep -qE 'git[[:space:]]+config\b[^|]*(--get(-all|-regexp|-urlmatch)?|--list)([[:space:]]|$)' \
@@ -1073,7 +1073,7 @@ allow_preauthorised(){
 # useless: a matching ask rule prompts even when a hook returns "allow", so the key could never clear it and
 # headless there was nobody to answer. A pre-authorised run could not even STAGE, while §4.4 advertised the
 # key as the way to work with nobody at the keyboard — the flag's only purpose, and it did not achieve it.
-# Measured with the A/B harness (evals/): the kit arm committed 0/3 with the key set and its own gate log
+# Measured with the A/B harness (evals/): Crewforth arm committed 0/3 with the key set and its own gate log
 # reading ALLOW. Those four settings rules are gone now, and an update strips them from existing projects.
 #
 # WHAT THE KEY DOES AND DOES NOT OPEN, because a wrong sentence here is what someone reads before
@@ -1378,7 +1378,7 @@ if git_has "$CMD" 'commit|push'; then
   # the gate log, 14 commits and pushes through, zero human keypresses. The gate fired, logged itself, and
   # stopped nothing, while DISCIPLINE.md promised an approval "only the user can answer".
   #
-  # Those two therefore belong in the fail-closed branch, with bypassPermissions and plan. The rule this kit
+  # Those two therefore belong in the fail-closed branch, with bypassPermissions and plan. The rule Crewforth
   # has carried from the start is that a commit or a push does not happen without the user, and a mode where
   # the answer comes from a classifier is a mode where it cannot be proven that it did. A gate whose prompt is
   # answered by the thing it is gating is not a gate.
@@ -1418,7 +1418,7 @@ fi
 # §4.4 — STAGING AND BRANCHING ARE FREE, IN EVERY MODE. Commit and push are the approval set; `git add` and
 # creating a branch are not, by the user's decision: neither publishes anything, both are undone locally, and
 # asking for them made auto mode stop and demand a mode switch for work that cannot hurt anyone. So this hook
-# returns NO decision for them in any mode, and the kit's settings.json already allows Bash — they simply run.
+# returns NO decision for them in any mode, and Crewforth's settings.json already allows Bash — they simply run.
 #
 # What stays gated around them, unchanged: `git add -f` is §4.5 (it bypasses a .gitignore rule) and blocks above;
 # forced branch operations (-D/-f/-M/-C) block above; commit and push fail closed where nobody can be asked and

@@ -2,7 +2,7 @@
 # PARSER CONFORMANCE — the gate's payload reader must agree with a real JSON parser.
 #
 # WHY THIS FILE EXISTS. guard-bash.sh read its payload through a ladder: jq, then python3, then a pure-bash
-# slice. Three parsers meant three behaviours, and every parser incident this kit has had came from the tiers
+# slice. Three parsers meant three behaviours, and every parser incident Crewforth has had came from the tiers
 # DIVERGING rather than from any one of them being weak:
 #   * tier 3 was once `CMD="$INPUT"`, so every `git push` was hard-blocked as a force-push on any session id
 #     containing `-f8`. CI never saw it, because CI has jq.
@@ -471,9 +471,9 @@ adv(){ # $1 label  $2 expected rc  $3 rule  $4 raw payload  [$5 known-open:<t3>/
   #   $3 = `-`            do not check why it answered
   #        `§4.x`         the hook's own tag must contain this
   #                       An ambiguity refusal is named this way rather than by the destructive rule that used
-  #                       to fire: the kit refuses a payload it cannot read unambiguously instead of picking a
+  #                       to fire: Crewforth refuses a payload it cannot read unambiguously instead of picking a
   #                       winner, so the refusal comes FIRST and no command is judged at all. A row naming the
-  #                       destructive rule would be asserting a last-wins policy this kit does not have.
+  #                       destructive rule would be asserting a last-wins policy Crewforth does not have.
   #        `ladder-split` while a reader ladder exists this payload is EXPECTED to diverge, because the
   #                       divergence IS the ladder's defect; with one reader the row must reach $2 instead.
   local label="$1" exp="$2" want="$3" a b r known="${5:-}"

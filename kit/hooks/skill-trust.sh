@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# SessionStart hook — notice a skill or agent the kit never shipped and the user never vetted, BEFORE the model
+# SessionStart hook — notice a skill or agent Crewforth never shipped and the user never vetted, BEFORE the model
 # starts taking instructions from it.
 #
 # A skill file is executable instruction: whatever it says, the model does. They arrive by routes nobody reviews
 # — copied from a gist, pulled in by a teammate's PR, dropped in by another tool — and once one is on disk it is
-# indistinguishable from a kit skill at the point of use. The kit already ships a scanner (eval/scan-skill.sh);
+# indistinguishable from a kit skill at the point of use. Crewforth already ships a scanner (eval/scan-skill.sh);
 # what was missing is something that RUNS it without being asked.
 #
 # What this is not: it cannot stop the model from reading a file, so it is a notice, not a block. Its value is
 # that an unvetted component can no longer arrive silently — the session opens by naming it.
 #
-# Trust model: `.claude/kit-manifest.txt` says what the kit ships (anything there is the kit's own and is not
+# Trust model: `.claude/kit-manifest.txt` says what Crewforth ships (anything there is Crewforth's own and is not
 # re-litigated here); `.claude/trusted-components.txt` records the digests the user has accepted. Anything in
 # neither is reported once — approving it is a deliberate act:
 #     bash .claude/hooks/skill-trust.sh --trust
@@ -45,7 +45,7 @@ TRUST="$CL/trusted-components.txt"
 # A TIER IS CHOSEN ON WHETHER IT WORKS. Selecting on `command -v` alone hands the whole function to a
 # sha256sum that resolves and fails: the digest comes back EMPTY, the caller reads an empty digest as
 # "nothing to report" and skips the component, and the unvetted-component notice — the only automatic
-# surfacing of a SKILL.md the kit never shipped — goes completely silent with rc=0, while two working
+# surfacing of a SKILL.md Crewforth never shipped — goes completely silent with rc=0, while two working
 # fallbacks are never tried. Measured with a stub sha256sum: 462 bytes of notice became 0.
 # Testing the PIPELINE's status would not save it either — `sha256sum x | cut -d' ' -f1` exits 0 with empty
 # output, because cut succeeds on empty input. The VALUE is what has to be tested, so `cut` moves out of the
@@ -58,7 +58,7 @@ digest(){
   else cksum "$1" 2>/dev/null | tr -s ' ' | cut -d' ' -f1,2 | tr ' ' '-'; fi
 }
 
-# The component list: a skill is its SKILL.md, an agent is its file. Only those the kit does NOT ship —
+# The component list: a skill is its SKILL.md, an agent is its file. Only those Crewforth does NOT ship —
 # without a manifest we cannot tell kit-owned from project-owned, so we stay silent rather than guess.
 [ -f "$MAN" ] || exit 0
 

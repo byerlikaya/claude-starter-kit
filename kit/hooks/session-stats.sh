@@ -84,7 +84,7 @@ STATS="$(LC_ALL=C awk '
   # the approach the model chose may have been perfectly good. Lumping them together made the report accuse the model
   # of thrashing on a machine where refusals are simply more frequent — a field session produced a "runaway
   # loop" warning whose counted errors were mostly denials. A warning that fires on the innocent is worse
-  # than none: the rule in this kit is that an ignored warning teaches nothing.
+  # than none: the rule in Crewforth is that an ignored warning teaches nothing.
   #
   # MEASURED before it was written, over 14 real transcripts, 101 is_error results:
   #   69.3%  a genuine failure — the approach did not work
@@ -99,7 +99,7 @@ STATS="$(LC_ALL=C awk '
     c = line; r += gsub(/<tool_use_error>Blocked:/, "", c)
     c = line; r += gsub(/requested permissions/, "", c)
     # A PreToolUse hook that blocks (exit 2) and one that errors (exit 1) both surface as "hook error" here.
-    # Neither one is a failing approach: the first is the gate doing its job, the second is a defect in the kit
+    # Neither one is a failing approach: the first is the gate doing its job, the second is a defect in Crewforth
     # Both belong outside the error rate, and the second is visible in the gate log instead.
     c = line; r += gsub(/PreToolUse:[^"]*hook error/, "", c)
     return r

@@ -20,7 +20,7 @@
 #     .claude/skills/../hooks/guard-bash.sh      .claude//hooks/…       .claude/./hooks/…
 #     .git/refs/../hooks/pre-commit              C:\…\.claude\hooks\…    (backslashes)
 # The backslash row is a string fact, measured here: the matcher recognised `/` only, while five other hooks in
-# this kit already fold Windows separators and this one did not. What a real Windows install actually puts in
+# Crewforth already fold Windows separators and this one did not. What a real Windows install actually puts in
 # `file_path` is NOT measured on the machine this was written on and must not be assumed — it is verified on
 # Windows. Folding both spellings is correct either way, which is why the fix does not wait for that answer.
 # NotebookEdit was a sixth hole on any machine with neither jq nor python3 — the pre-tier-3 fallback read
@@ -388,7 +388,7 @@ if [ -z "$FP" ]; then
 fi
 
 # ---- normalise -------------------------------------------------------------------------------------------
-# Windows separators first: the kit folds `\\` then `\` in five other hooks and this is the same idiom.
+# Windows separators first: Crewforth folds `\\` then `\` in five other hooks and this is the same idiom.
 RP="${FP//\\\\//}"; RP="${RP//\\//}"; NP="$RP"
 # Lexical resolution of `.`, `..` and repeated slashes. Lexical is the right kind here: it is what makes
 # `.claude/skills/../hooks/x` and `.claude/hooks/x` the same string, it costs zero processes, and it cannot be
@@ -443,8 +443,8 @@ _is_gate(){   # 0 = gate file; sets GATE_RULE and GATE_WHY
     */.[Cc][Ll][Aa][Uu][Dd][Ee]/[Dd][Ii][Ss][Cc][Ii][Pp][Ll][Ii][Nn][Ee].[Mm][Dd]|.[Cc][Ll][Aa][Uu][Dd][Ee]/[Dd][Ii][Ss][Cc][Ii][Pp][Ll][Ii][Nn][Ee].[Mm][Dd])
       GATE_RULE="gate-file edit (discipline document)"; GATE_WHY="$WHY_DISC"; return 0 ;;
     # The plugin edition keeps the SAME gate scripts at $CLAUDE_PLUGIN_ROOT/hooks/, which is not `.claude/hooks/`
-    # and so matched nothing above — one of the kit's four channels shipped an unguarded copy of its own gates.
-    # Matched by the kit's own filenames rather than by guessing a plugin path, so a project's unrelated
+    # and so matched nothing above — one of Crewforth's four channels shipped an unguarded copy of its own gates.
+    # Matched by Crewforth's own filenames rather than by guessing a plugin path, so a project's unrelated
     # `hooks/` directory is untouched.
     */[Hh][Oo][Oo][Kk][Ss]/[Gg][Uu][Aa][Rr][Dd]-*.[Ss][Hh]|*/[Hh][Oo][Oo][Kk][Ss]/[Ss][Ee][Ss][Ss][Ii][Oo][Nn]-[Gg][Uu][Aa][Rr][Dd].[Ss][Hh])
       GATE_RULE="gate-file edit (Crewforth gate script)"; GATE_WHY="$WHY_SCRIPT"; return 0 ;;

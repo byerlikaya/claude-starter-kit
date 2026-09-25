@@ -4,18 +4,18 @@
 # MEASURED, 2026-08-24, Claude Code 2.1.238, interactive session, permissionMode=auto, this policy installed in
 # USER settings and shown as present by `claude auto-mode config`:
 #   `git reset --hard && git clean -fd` ran with no prompt and no block, destroying uncommitted work — the exact
-#   action the kit's hard_deny rule names verbatim and calls unconditional.
+#   action Crewforth's hard_deny rule names verbatim and calls unconditional.
 #   A control run with NO policy and NO explicit user intent behaved identically.
 #   Two headless probes agreed, including an absolute "never write any file" rule, and a protected-path write
 #   (.git/config) that the docs say auto mode routes to the classifier went through untouched.
 # Reading: the classifier did not gate this class of action at all, with or without custom rules. So this script
-# reports CONFIGURATION, never enforcement. The kit's enforcement lives in its PreToolUse hooks and git hooks,
+# reports CONFIGURATION, never enforcement. Crewforth's enforcement lives in its PreToolUse hooks and git hooks,
 # which are measured firing in smoke-test; nothing here replaces them.
 #
 # Auto mode is the default permission mode on Pro/Max/Team since 2026-08-14: a classifier, not the user,
 # answers most permission prompts. It reads its rules from `autoMode` in USER or MANAGED settings only
 # (never from .claude/settings.json — a repo could otherwise ship its own allow rules), so this policy is
-# the one part of the kit that lives outside the project. That is why it is installed explicitly and
+# the one part of Crewforth that lives outside the project. That is why it is installed explicitly and
 # verified here rather than assumed.
 #
 # The failure this guards against is silent: setting an autoMode array WITHOUT the literal "$defaults"

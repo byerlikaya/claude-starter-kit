@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Preflight — name the tools this machine is missing BEFORE they turn into a surprise mid-session.
 #
-# Why this exists. The kit is written to degrade rather than break: sha256sum -> shasum -> cksum for digests,
+# Why this exists. Crewforth is written to degrade rather than break: sha256sum -> shasum -> cksum for digests,
 # and so on. (It no longer needs jq or python at all — every JSON read and write is one bash/awk path on every
 # OS — so neither is reported here: a row for a tool nothing uses would send people to install it.) That is the right design, and it is also
 # why a missing tool never announces itself — the fallback runs, something is quietly worse, and the user finds
@@ -39,7 +39,7 @@ have(){ command -v "$1" >/dev/null 2>&1; }
 # `have` answers "is it on PATH", which is the wrong question for an interpreter on Windows. Windows puts
 # %LOCALAPPDATA%\Microsoft\WindowsApps\python3 on PATH BY DEFAULT: the Microsoft Store redirector stub, which
 # passes `command -v`, writes "Python was not found" to stderr and exits 49. Measured on a stock Windows 11
-# desktop, this preflight printed "✓ jq or python → python3 · Everything the kit wants is here" on a machine
+# desktop, this preflight printed "✓ jq or python → python3 · Everything Crewforth wants is here" on a machine
 # with no Python at all — and the settings merge that line is about cannot run there. So for the interpreters,
 # ask whether they RUN. Everything else is a plain binary where presence is the whole question.
 #
@@ -137,7 +137,7 @@ _mt() {
 
 [ "$QUIET" = 1 ] || { _mt 'Preflight — what this machine has'; printf '\n  %s%s%s\n' "$B" "$_M" "$R"; }
 
-# --- REQUIRED: without these the kit does not work at all -------------------------------------------------
+# --- REQUIRED: without these Crewforth does not work at all -------------------------------------------------
 # Hooks are wired in SHELL form on purpose, and `bash` is resolved by the shell Claude Code already runs them
 # in — not off the Windows PATH. That distinction is not academic. On a Windows box checked during this work,
 # `where bash` answered `C:\Windows\System32\bash.exe`, which is not Git Bash at all: it is the WSL launcher,
@@ -150,7 +150,7 @@ any_of "awk" 'context measurement, routing, doctor' \
   'Windows: ships with Git Bash · macOS: preinstalled · Linux: apt install gawk' awk gawk mawk || MISSING_REQ="$MISSING_REQ awk"
 any_of "git" 'the commit-time trace/secret gates are git hooks' \
   "git-scm.com · macOS: xcode-select --install · Linux: apt install git" git || MISSING_REQ="$MISSING_REQ git"
-  # Node is required for the panel and for nothing else: every gate in this kit is bash, and they all hold on a
+  # Node is required for the panel and for nothing else: every gate in Crewforth is bash, and they all hold on a
   # machine that has never seen node. It sits in REQUIRED anyway, deliberately, because the panel now installs
   # into every project, and a component that silently does not start on some machines is worse than one that
   # says what it needs. The reason string names which half is affected, so the REQUIRED heading stays true.
@@ -158,7 +158,7 @@ any_of "git" 'the commit-time trace/secret gates are git hooks' \
     "nodejs.org · Windows: winget install OpenJS.NodeJS.LTS · macOS: brew install node · Linux: apt install nodejs" \
     node || MISSING_REQ="$MISSING_REQ node"
 
-# --- OPTIONAL: the kit falls back, but the fallback is worse in a way worth knowing about ------------------
+# --- OPTIONAL: Crewforth falls back, but the fallback is worse in a way worth knowing about ------------------
 any_of 'sha256 tool' 'the skill-trust gate falls back to cksum (catches accidental edits, not crafted ones)' \
   'Windows/Linux: coreutils (sha256sum) · macOS: shasum is preinstalled' sha256sum shasum || MISSING_OPT="$MISSING_OPT sha256"
 
@@ -166,10 +166,10 @@ if [ -n "$MISSING_REQ" ]; then
   _mt 'Missing REQUIRED:'; _a="$_M"; _mt '— install these first.'
   printf '\n  %s%s%s%s %s\n' "$YE$B" "$_a" "$R" "$MISSING_REQ" "$_M"
     case "$MISSING_REQ" in
-      # Which half is gone. "The kit will not work" is false when only node is missing: every gate is bash and
+      # Which half is gone. "Crewforth will not work" is false when only node is missing: every gate is bash and
       # still holds; what is lost is the panel.
       *node*) _mt 'is the panel only — every gate still holds without it.'; printf '    %snode%s %s\n' "$B" "$R" "$_M"
-              # And it is not a dead end: the kit fetches a runtime for the panel itself, into one
+              # And it is not a dead end: Crewforth fetches a runtime for the panel itself, into one
               # directory under $HOME, verified against the published checksum. It asks first.
               printf '    %s\n' "$(m 'Or let Crewforth get one: %s' "${B}bash .claude/studio/ensure-node.sh --plan${R}")" ;;
     esac

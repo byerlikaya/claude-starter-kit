@@ -19,7 +19,7 @@ skip(){ echo "  ⏭  $1"; SKIP=$((SKIP+1)); }
 # string is space-padded. That padding is what makes the match word-bounded: a bare substring test routed "the
 # build fails on CI" to the frontend expert, because `build` contains `ui` and `UI` is one of its triggers.
 # Every short trigger has that failure mode (ui · api · e2e), and it points the wrong way — a CI failure sent to
-# the frontend agent is worse than no routing at all, because it looks like the kit worked.
+# the frontend agent is worse than no routing at all, because it looks like Crewforth worked.
 norm() {
   printf '%s' "$1" | sed \
     -e 's/Ç/c/g' -e 's/ç/c/g' -e 's/Ğ/g/g' -e 's/ğ/g/g' -e 's/İ/i/g' -e 's/ı/i/g' \
@@ -44,7 +44,7 @@ echo "== 1) Golden routing (prompt -> expected target) =="
 while IFS='|' read -r prompt expected; do
   case "$prompt" in ''|\#*) continue ;; esac
   # `[:space:]` includes CR, and that is the ONLY thing standing between this suite and a CRLF golden file.
-  # The kit repo pins `*.txt text eol=lf` in .gitattributes, but these files are also INSTALLED into a user's
+  # The Crewforth repo pins `*.txt text eol=lf` in .gitattributes, but these files are also INSTALLED into a user's
   # project, where nothing pins them and Git for Windows sets core.autocrlf=true by default — so a Windows user
   # who commits .claude/ and re-clones gets CRLF here. Measured on Windows with the golden files converted to
   # CRLF byte for byte: 151 passes, 0 failures, identical to the LF run. Without this strip `expected` carries a
@@ -113,13 +113,13 @@ echo "== 1c) Routing WINNER — what the real hook names, not only whether a tri
 # be allowed to win is an open decision recorded in the roadmap, and this is the measurement that decision waits on.
 #
 # Adapted from the Tier-2 routing evals in addyosmani/agent-skills (MIT): rank the target among all rivals, not
-# just check that it could match. Rewritten against this kit's own scorer rather than a TF-IDF approximation.
+# just check that it could match. Rewritten against Crewforth's own scorer rather than a TF-IDF approximation.
 RH="$ROOT/hooks/route-hint.sh"
 KNOWN_MISSES='the app feels laggy after the last release
 is this endpoint fast enough on the hot path'
 if [ -f "$RH" ]; then
-  # CLAUDE_PLUGIN_ROOT points the hook at $ROOT/agents and $ROOT/skills directly, which is the same layout in the
-  # kit's own repo (kit/) and in an installed project (.claude/). No copy, no second tree to drift.
+  # CLAUDE_PLUGIN_ROOT points the hook at $ROOT/agents and $ROOT/skills directly, which is the same layout in
+  # Crewforth's own repo (kit/) and in an installed project (.claude/). No copy, no second tree to drift.
   rh_names(){ printf '{"hook_event_name":"UserPromptSubmit","prompt":"%s"}' "$1" \
       | CLAUDE_PROJECT_DIR=/nonexistent CLAUDE_PLUGIN_ROOT="$ROOT" bash "$RH" 2>/dev/null \
       | sed -n -e 's/.*Use the \([a-z][a-z0-9-]*\) subagent.*/\1/p' -e 's/.*Use the .\([a-z][a-z0-9-]*\). skill.*/\1/p'; }

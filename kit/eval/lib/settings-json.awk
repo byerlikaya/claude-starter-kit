@@ -1,4 +1,4 @@
-# settings-json.awk — the kit's one JSON reader for settings.json, POSIX awk only (no jq, no python3), so the
+# settings-json.awk — Crewforth's one JSON reader for settings.json, POSIX awk only (no jq, no python3), so the
 # same code runs on macOS BSD awk, Linux mawk/gawk and Windows Git-Bash gawk.
 #
 #   awk -v op=validate -f settings-json.awk FILE              rc 0 = FILE is a JSON object, 1 = it is not
@@ -22,11 +22,11 @@
 # array order are preserved. Numbers are checked against the JSON grammar and kept as written.
 #
 # Merge semantics (what the former jq program in adopt.sh did, held to it by the parity fixture in
-# packaging/e2e.sh): objects deep-merge, the PROJECT's scalar wins, arrays concat+dedup with the kit's entries
-# first, and "hooks" is rebuilt per event as the kit's entries followed by the project's entries that do not
+# packaging/e2e.sh): objects deep-merge, the PROJECT's scalar wins, arrays concat+dedup with Crewforth's entries
+# first, and "hooks" is rebuilt per event as Crewforth's entries followed by the project's entries that do not
 # reference .claude/hooks/ (in "command" or "args"). permissions.ask then loses every rule named in -v retired.
-# Output is pretty-printed with two-space indent, the layout jq writes, so merging the kit onto itself gives the
-# kit's bytes back.
+# Output is pretty-printed with two-space indent, the layout jq writes, so merging Crewforth onto itself gives its
+# own bytes back.
 # The text is split into CH[] once. substr(S,P,1) is O(len) per call on BSD awk, which made a 1 MB file take ~20 s;
 # array indexing is O(1), so parsing is linear. split(s, CH, "") splits into characters in onetrue/BSD awk, gawk
 # and mawk alike.

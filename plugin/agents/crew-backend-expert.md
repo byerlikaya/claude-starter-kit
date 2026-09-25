@@ -32,7 +32,7 @@ impose a pattern the repo does not use.
 `backend-architecture`'s resolution order before anything else — it asks once and records the answer. Never
 pick a language, framework or database silently.
 
-Then run the **confidence-check** skill. It is the only check in the kit that comes BEFORE implementation —
+Then run the **confidence-check** skill. It is the only check in Crewforth that comes BEFORE implementation —
 and it is **model discipline, not a gate**: no hook enforces it, so it holds only because you run it.
 review and the DoD catch bad code, none of them catch correct code that duplicates something already here or
 is built on a recalled API shape. Any "no" is a stop, not a caveat.

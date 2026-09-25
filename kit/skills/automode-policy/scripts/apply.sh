@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install the kit's auto-mode classifier policy into USER settings — the one part of the kit that lives
+# Install Crewforth's auto-mode classifier policy into USER settings — the one part of Crewforth that lives
 # outside the project, because the classifier deliberately ignores `autoMode` in .claude/settings.json
 # (a repo could otherwise ship its own allow rules). Writing outside the project is exactly the kind of
 # action §4.4 says needs the user's word, so this script asks, backs up, and verifies — in that order.
@@ -24,7 +24,7 @@ esac; done
 
 [ -f "$POLICY" ] || { echo "❌ policy.json not found next to this script"; exit 1; }
 
-# A JSON merge into the user's own settings file is not a job for sed. It goes through the kit's one JSON reader
+# A JSON merge into the user's own settings file is not a job for sed. It goes through Crewforth's one JSON reader
 # (eval/lib/settings-json.awk, the same file adopt.sh merges with) — the same code on every OS. This used to pick
 # jq, then python3, and on a stock Windows box with neither it printed the fragment and stopped, so the one
 # platform with no JSON tool could not install the policy at all. The reader sits three levels up in both
@@ -63,7 +63,7 @@ echo
 if [ "$YES" != 1 ]; then
   # No terminal means no one can consent. Asking anyway is worse than useless: with a tty present but nobody
   # reading it — a CI runner, a background job, a test harness — `read </dev/tty` blocks forever. Measured:
-  # this hung the kit's own smoke test. No consent possible -> abort, and say how to do it deliberately.
+  # this hung Crewforth's own smoke test. No consent possible -> abort, and say how to do it deliberately.
   if [ ! -t 0 ] && [ ! -t 1 ]; then
     echo "not an interactive session — nothing written. Re-run with --yes if this is a setup you are driving."
     rm -f "$TMP"; exit 0

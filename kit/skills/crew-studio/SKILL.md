@@ -64,7 +64,7 @@ fails, say which one and stop — do not improvise a different launch.
    `node --version` and reading the output — 18+ required — and tell the user `/crew-update` brings the
    fetcher along with everything else.
 
-3. **No runtime? The kit gets one — after the user says so.** Show them what it would do, then ask:
+3. **No runtime? Crewforth gets one — after the user says so.** Show them what it would do, then ask:
 
    ```bash
    bash <the same path as step 2> --plan       # url, size, checksum source, target directory

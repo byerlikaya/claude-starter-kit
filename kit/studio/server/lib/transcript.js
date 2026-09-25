@@ -76,9 +76,9 @@ export async function readAll(file) {
 }
 
 /**
- * Session context fill, measured the way the kit measures it.
+ * Session context fill, measured the way Crewforth measures it.
  *
- * The trap this avoids cost the kit a 92%-full context reported as 0.9%: when
+ * The trap this avoids cost Crewforth a 92%-full context reported as 0.9%: when
  * a subagent returns, its tool_result lands in the MAIN transcript as a
  * `type:"user"` record carrying `toolUseResult.usage`. That is the SUBAGENT's
  * spend, not the session's. Only `.message.usage` on a non-sidechain assistant
