@@ -49,7 +49,7 @@ jobs:
       - name: i18n audit — the bilingual tables hold their invariants
         run: bash packaging/verify.sh i18n
 
-      - name: README skill catalogue in sync with the skills
+      - name: Skill catalogue (site/content) in sync with the skills
         run: bash packaging/verify.sh catalogue
 
       # The panel's own suite. Both statements this comment used to make are now false: the panel IS installed

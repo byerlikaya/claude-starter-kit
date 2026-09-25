@@ -1,53 +1,36 @@
-<p align="center"><img src="https://raw.githubusercontent.com/byerlikaya/claude-starter-kit/main/assets/logo.svg" alt="Crewforth" width="420"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/Crewforth/crewforth/main/assets/logo.svg" alt="Crewforth" width="420"></p>
 
-**Your engineering crew for Claude Code.** 12 specialists plan, build, review and ship your change — in any stack — and the rules that matter are enforced, not remembered.
-
-```bash
-npx crewforth          # new project
-npx crewforth adopt    # existing repo — handed over on a branch, your main untouched
-```
-
-[![npm](https://img.shields.io/npm/v/@byerlikaya/claude-starter-kit?style=flat-square)](https://www.npmjs.com/package/@byerlikaya/claude-starter-kit)
-[![License](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)](https://github.com/byerlikaya/claude-starter-kit/blob/main/LICENSE)
-
-## Install
+**Crewforth is your engineering crew for Claude Code.** It adds subagents, skills, slash commands and hooks to Claude Code: 12 specialist agents that each own a domain, 40 skills that hold the method, 11 slash commands for the everyday flow, and hooks that enforce the rules that matter.
 
 ```bash
-npx crewforth              # new project — setup wizard
-npx crewforth adopt        # existing project — handover on a branch
-npx crewforth update       # refresh an installed kit
-npx crewforth --version    # print the kit version
+npx crewforth init              # set up a new project
+npx crewforth adopt             # hand it over onto an existing repository, on a branch
+npx crewforth add <agent|skill> # copy one agent or skill into ./.claude
+npx crewforth studio            # open the Studio panel; installs nothing
 ```
 
-The previous command, `npx @byerlikaya/claude-starter-kit`, still works and installs the same kit.
+Then open Claude Code and run `/crew-doctor` to confirm the setup. Requires bash and git; on Windows, use Git Bash.
 
-Then open Claude Code and run `/crew-doctor` to confirm the install is wired.
+[![npm](https://img.shields.io/npm/v/crewforth?style=flat-square)](https://www.npmjs.com/package/crewforth)
+[![License](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)](https://github.com/Crewforth/crewforth/blob/main/LICENSE)
 
-Requires **bash** and **git**. On Windows, run it in Git Bash.
+## Why Crewforth
+
+- **Work goes to a specialist.** An unclear request is planned first, server work goes to `crew-backend-expert`, and a risky change is reviewed by `crew-security-expert` before it closes.
+- **The rules that matter are enforced by gates, not remembered.** A destructive command is refused before it runs, a commit waits for your approval, and a leaked key or an AI-authorship trace never reaches history.
+- **Every result is measured and published, including the ones that did not hold.** The method and every result are in the repository's `evals/README.md`.
 
 ## What you get
 
-In Claude Code every job happens in the same place: you ask, the model writes. Claude Starter Kit puts a team and an order in between.
+- **12 specialist agents**, from `crew-planner` to `crew-commit-agent`, each owning one domain.
+- **40 skills** holding the method: testing, migrations, API contracts, observability, accessibility, deployment.
+- **11 slash commands**: `/crew-plan`, `/crew-review`, `/crew-ship`, `/crew-handoff`, `/crew-brainstorm`, `/crew-update`, `/crew-doctor`, `/crew-board`, `/crew-gates`, `/crew-skill`, `/crew-studio`.
+- **Safe adoption.** `adopt` lands everything on a branch, staged and uncommitted; `main` is never touched.
 
-- **12 specialist agents** across five stages — plan, build, audit, close, hand off. An ambiguous request goes to planning first; a security review is mandatory before a risk-critical change can close.
-- **40 skills** holding the method — testing, migrations, API contracts, observability, accessibility, deployment — written once, applied by whoever needs it. You stop re-explaining your standards every session.
-- **11 slash commands** — `/crew-plan`, `/crew-review`, `/crew-ship`, `/crew-handoff`, `/crew-brainstorm`, `/crew-update`, `/crew-doctor`, `/crew-board`, `/crew-gates`, `/crew-skill`, `/crew-studio`.
-- **A team board, when more than one of you shares the repo.** Taking an item is a push to a git ref, and pushing is fast-forward-only — so of two simultaneous claims exactly one lands and the other is refused in under a second, before any code is written. Decisions and handover notes travel with it, so what one session settled reaches the next person's. Off until you ask for it; solo work never sees it.
-- **Guardrails that hold on their own.** Destructive commands are refused before they run, commits wait for your approval, secrets and AI-authorship traces never reach history — enforced at the tool level, not left to the model.
-- **Safe adoption.** `adopt` lands everything on a branch, staged and uncommitted, so you review the whole change before keeping it. `main` is never touched.
+## Updating
 
-## Measured, not asserted
+When a new version is published, Claude asks once at the start of a session whether to update; it never updates on its own. Run `/crew-update` inside a session, or `npx crewforth@latest update`.
 
-The same prompt is run in a Crewforth project and a bare one, graded on what each left on disk. Every measurement is published with its reasoning in the repository's `evals/README.md`, including the ones where the rule fixed before the run did not hold — a harness that only reports its wins measures nothing.
+## Links
 
-The gates stop accidents, not determined attempts. For a real boundary, run Claude Code in a devcontainer or a VM.
-
-## Other channels
-
-Homebrew, a release tarball, and a Claude Code plugin edition are documented in the repository.
-
-**[Full documentation →](https://github.com/byerlikaya/claude-starter-kit)** · [Türkçe](https://github.com/byerlikaya/claude-starter-kit/blob/main/README.tr.md)
-
-## Licence
-
-MIT © Barış Yerlikaya. The `crew-code-review` skill aligns with NIST SP 800-218 (SSDF) PW.7 and the OpenSSF Scorecard `Code-Review` check, writes comments in the [Conventional Comments](https://conventionalcomments.org/) vocabulary (CC BY 3.0), and its review priority order is distilled and restated from [google/eng-practices](https://github.com/google/eng-practices) (CC-BY 3.0).
+Documentation: [crewforth.com](https://crewforth.com) · Source and issues: [github.com/Crewforth/crewforth](https://github.com/Crewforth/crewforth) · Licence: MIT
