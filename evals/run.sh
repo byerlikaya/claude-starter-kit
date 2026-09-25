@@ -39,7 +39,8 @@
 # A case may declare REQUIRES="tool ..." in its case.env; when one is missing the case is skipped before anything is built.
 #
 # Exit 0 the report printed · 1 a case is malformed or the CLI is unusable · 3 INCOMPLETE: a run was not measured (a usage
-# limit, a stream that ended in an error, or a case skipped for a missing tool), so the totals printed are not a result.
+# limit, a stream that ended in an error, or a case skipped for a missing tool), so the totals printed are not a result ·
+# 4 CREW_VERIFY_STRICT=1 and a kit-arm workspace was untrusted: stopped, nothing further is spent or reported.
 set -uo pipefail
 ROOT="${CREW_EVAL_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 CASES="${CREW_EVAL_CASES:-$ROOT/evals/cases}"
@@ -72,7 +73,34 @@ WORK="$(mktemp -d "$WORKBASE/crew-eval.XXXXXX")" || { echo "run.sh: could not cr
 [ -n "$WORK" ] && [ -d "$WORK" ] || { echo "run.sh: scratch dir is empty/missing — refusing to run" >&2; exit 2; }
 # The prune matters as much as the rm: a worktree whose directory is gone stays REGISTERED in the parent, and
 # the registrations accumulate one per case per run until `worktree add` starts refusing paths.
-trap '[ "$KEEP" = 1 ] && echo "scratch kept: $WORK" || { rm -rf "$WORK"; _P="${CREW_EVAL_PARENT:-$HOME/.crew-eval-parent}"; git -C "$_P" worktree prune >/dev/null 2>&1; git -C "$_P" for-each-ref --format="%(refname:short)" "refs/heads/crew-eval/${WORK##*/}/" 2>/dev/null | while read -r _b; do git -C "$_P" branch -D "$_b" >/dev/null 2>&1; done; }; true' EXIT
+# THE TRUSTED PARENT (see build_project for why there is one). 3.0 named it `~/.crew-eval-parent`, and the rename
+# moved nothing on disk: a machine set up under 2.x has only `~/.csk-eval-parent`. Measured on 2026-09-25: that is
+# exactly what happened, every kit run fell back to `git init` and ran untrusted, and the report said so only as a
+# warning. So 3.x reads the 2.x directory as well, the same rule as the CSK_* variables (crew-env.sh) — REMOVED IN
+# 4.0. The 3.0 name wins when both exist; CREW_EVAL_PARENT wins over both.
+eval_parent_path(){
+  if [ -n "${CREW_EVAL_PARENT:-}" ]; then printf '%s\n' "$CREW_EVAL_PARENT"; return 0; fi
+  if [ ! -d "$HOME/.crew-eval-parent/.git" ] && [ -d "$HOME/.csk-eval-parent/.git" ]; then
+    printf '%s\n' "$HOME/.csk-eval-parent"; return 0
+  fi
+  printf '%s\n' "$HOME/.crew-eval-parent"
+}
+# AN UNTRUSTED KIT WORKSPACE, AND WHAT IT MAY COST THE RESULT. It drops the kit's `permissions.allow` and nothing
+# else (measured, see the call site), so outside strict mode it is a warning and the run is still graded. Under
+# CREW_VERIFY_STRICT=1 it is an error: a measurement must never complete quietly in a state it did not choose.
+# $1 = why (text), $2 = the path to trust. Returns 0 to go on, 1 when the caller must stop.
+eval_untrusted(){
+  if [ "${CREW_VERIFY_STRICT:-0}" = 1 ]; then
+    echo "run.sh: ERROR — $1 (CREW_VERIFY_STRICT=1). Trust $2 once interactively, or set CREW_EVAL_PARENT / CREW_EVAL_WORK to a trusted path." >&2
+    return 1
+  fi
+  echo "   ! workspace untrusted: $1 — permissions.allow is dropped for this run (hooks/gates are NOT affected)." >&2
+  echo "     Only matters for cases needing a pre-approved permission. Re-run with CREW_EVAL_WORK=<a trusted path>," >&2
+  echo "     or trust $2 once interactively." >&2
+  return 0
+}
+EVPAR="$(eval_parent_path)"
+trap '[ "$KEEP" = 1 ] && echo "scratch kept: $WORK" || { rm -rf "$WORK"; _P="$EVPAR"; git -C "$_P" worktree prune >/dev/null 2>&1; git -C "$_P" for-each-ref --format="%(refname:short)" "refs/heads/crew-eval/${WORK##*/}/" 2>/dev/null | while read -r _b; do git -C "$_P" branch -D "$_b" >/dev/null 2>&1; done; }; true' EXIT
 
 # build_project <dir> <arm>  — identical seed in both arms; the kit is the only variable.
 build_project() {
@@ -94,14 +122,14 @@ build_project() {
   # and the permission LAYER was gone underneath it.
   #
   # A worktree inherits its parent's trust, and that inheritance follows the RELATIONSHIP rather than the path
-  # (measured: a worktree under TMPDIR is trusted too). The parent is `~/.crew-eval-parent` — created once, no
+  # (measured: a worktree under TMPDIR is trusted too). The parent is `~/.crew-eval-parent` (or its 2.x name, see eval_parent_path) — created once, no
   # remote, one empty root commit — and NOT this repository: a worktree of the kit repo can see `origin`, all
   # its branches and `origin/main`, and these cases deliberately provoke destructive git commands in an arm
   # that has no gates. Measured before rejecting it: origin = the live GitHub remote, 24 branches visible.
   # With the throwaway parent: 0 files, 0 remotes, no origin/main, no trust warning.
   #
-  # Falls back to `git init` when the parent is absent, so the suite still runs; the two permission-dependent
-  # cases then report `! workspace untrusted` exactly as before rather than failing.
+  # Falls back to `git init` when the parent is absent, so the suite still runs; a kit arm then reports
+  # `! workspace untrusted` with the cause — and under CREW_VERIFY_STRICT=1 the run stops there instead (exit 4).
   # ORPHAN, not detached at a base commit — and this is a correction of the first version. That one put every
   # scratch project on an empty root commit, so the seed became the SECOND commit and any grader that counts
   # commits was off by one: `commit-format` checks `rev-list --count HEAD -le 1` for "no commit beyond the
@@ -110,11 +138,18 @@ build_project() {
   # count 2, grader says a commit landed; orphan worktree + seed -> count 1, grader correctly says none did.
   # An orphan branch has no parent, so the seed is the root exactly as it was under `git init`. Trust is still
   # inherited (re-measured: warning 0) and the branch is deleted on exit with the worktree.
-  EVPAR="${CREW_EVAL_PARENT:-$HOME/.crew-eval-parent}"
+  EVFELL=0
   EVBR="crew-eval/${WORK##*/}/${dir##*/}"
   if [ -d "$EVPAR/.git" ] && git -C "$EVPAR" worktree add -q --orphan -b "$EVBR" "$dir" 2>/dev/null; then
     EVWT="$EVWT $dir"
   else
+    # No parent to inherit trust from, so this project will be untrusted. Decided HERE, before any model call:
+    # in strict mode the run stops before it spends anything.
+    # Only a kit arm carries a `permissions.allow` to lose; a bare project untrusted is the same project.
+    if [ "$arm" = kit ] || [ "$arm" = kitb ]; then
+      EVFELL=1
+      eval_untrusted "no trusted parent at $EVPAR (fell back to git init)" "$dir" || exit 4
+    fi
     ( cd "$dir" || exit 1; git init -q )
   fi
   ( cd "$dir" || exit 1
@@ -350,10 +385,9 @@ for cdir in "$CASES"/*/; do
       # still returned exit 2 (the tool did not execute). So the GATES are armed in an untrusted scratch project
       # and a gate result measured there is valid. What is genuinely lost is any case that depends on a
       # pre-approved permission — see evals/README.md on commit-format and secret-refused.
-      if { [ "$arm" = kit ] || [ "$arm" = kitb ]; } && grep -q "has not been trusted" "$P/.eval-stderr.txt" 2>/dev/null; then
-        echo "   ! workspace untrusted: permissions.allow was dropped for this run (hooks/gates are NOT affected)." >&2
-        echo "     Only matters for cases needing a pre-approved permission. Re-run with CREW_EVAL_WORK=<a trusted path>," >&2
-        echo "     or trust $P once interactively." >&2
+      # Said once: a project that already fell back to `git init` was reported, with its cause, when it was built.
+      if [ "$EVFELL" = 0 ] && { [ "$arm" = kit ] || [ "$arm" = kitb ]; } && grep -q "has not been trusted" "$P/.eval-stderr.txt" 2>/dev/null; then
+        eval_untrusted "the CLI reported this project as not trusted" "$P" || exit 4
       fi
       # A run that never happened must not be graded. A usage-limit rejection leaves the seed project untouched, and an
       # untouched project passes every "was not changed" check: measured: the seven rejected runs scored 13 checks between them. So a run is

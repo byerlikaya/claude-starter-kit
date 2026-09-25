@@ -5903,12 +5903,13 @@ README.tr.md	33	the same, Turkish
 README.npm.md	11	the same, npm page
 adopt.sh	48	migration: finds and moves 2.x names (components, CLAUDE.md, board, auto-mode rules, variables)
 bin/cli.js	4	migration: add accepts a typed <x>-csk and moves an add record written under the old names
+evals/run.sh	4	compat: reads the 2.x trusted eval parent when the 3.0 one is absent — removed in 4.0
 */eval/doctor.sh	6	migration: PROOF-5 and the variable notice name what is still on the 2.x spelling
 */crew-env.*	18	compat layer (bash + Node): reads CSK_* when CREW_* is unset — removed in 4.0
 */hooks/board.sh	42	compat layer: reads the 2.x board ref and settings and folds them in — removed in 4.0
 */skills/automode-policy/scripts/check.sh	4	compat layer: counts auto-mode rules still named by 2.x — removed in 4.0
 */studio/web/storage-migrate.js	4	migration: moves the panel'"'"'s saved layout to the new keys — removed in 4.0
-kit/eval/smoke-test.sh	32	tests: this gate'"'"'s own pattern, and that the 2.x names still work
+kit/eval/smoke-test.sh	36	tests: this gate'"'"'s own pattern, and that the 2.x names still work
 packaging/*	124	tests: the migration rehearsal on the real v2.13.0 tree, the legacy token and layout checks'
   # Case-insensitive, and `csk` as a word on its own: -csk, .csk, refs/csk/, csk-board, csk.board, CSK_ — every
   # shape the old name took. The first version listed shapes and missed the lowercase board names entirely.
@@ -6041,6 +6042,80 @@ $_res")"
   rm -rf "$_EVD"
 else
   skip scope "evals/run.sh is not present (installed project, not a source checkout) — metric not calibrated"
+fi
+
+sec "== 15b) evals: the trusted parent — the 2.x one is still read, and strict mode never measures untrusted =="
+# Measured 2026-09-25: 3.0 renamed the eval runner's trusted parent to ~/.crew-eval-parent and moved nothing, so a
+# machine set up under 2.x fell back to `git init` in every kit run and the report said so only as a warning — a
+# paid measurement completed in a state nobody chose. Two fixes, and each is driven end to end here: the REAL
+# run.sh, with a stub `claude` on PATH (free, no model call), a throwaway HOME, a one-line case and an installer
+# that only creates .claude/. Every case sets CREW_VERIFY_STRICT itself: CI exports it for the whole job.
+# Each fix has a must-fail twin — run.sh with that one piece removed — so a row that cannot see its own fix is red.
+if [ -f "$_EVR" ]; then
+  _ET="$(mktemp -d)"
+  mkdir -p "$_ET/bin" "$_ET/root/kit" "$_ET/cases/probe" "$_ET/h0" "$_ET/h1" "$_ET/h2"
+  printf '%s\n' '#!/usr/bin/env bash' '[ "${1:-}" = --version ] && { echo "0.0.0 (stub)"; exit 0; }' ': > "$STUB_MARK"' \
+    '[ "${STUB_UNTRUSTED:-0}" = 1 ] && echo "Warning: this workspace has not been trusted" >&2' 'echo done' > "$_ET/bin/claude"
+  chmod +x "$_ET/bin/claude"
+  printf 'mkdir -p .claude\n' > "$_ET/root/start.sh"
+  printf '%s\n' 'DESC="trust probe"' 'NEEDS_GIT_OK=0' 'seed() { echo x > f.txt; }' "PROMPT='noop'" > "$_ET/cases/probe/case.env"
+  printf '%s\n' '#!/usr/bin/env bash' 'echo "PASS the probe ran"' > "$_ET/cases/probe/grade.sh"
+  _mkpar(){ git init -q "$1" && git -C "$1" -c user.email=e@x.invalid -c user.name=e commit -q --allow-empty -m root; }
+  _mkpar "$_ET/h1/.csk-eval-parent"; _mkpar "$_ET/h2/.crew-eval-parent"
+  # $1 HOME  $2 strict  $3 CLI says untrusted  $4 script -> "rc called(y/n)"; output in $_ET/out.txt
+  _evrun(){ rm -f "$_ET/called"
+    env -u CI HOME="$1" CREW_VERIFY_STRICT="$2" STUB_UNTRUSTED="$3" STUB_MARK="$_ET/called" CREW_EVAL_ROOT="$_ET/root" \
+      CREW_EVAL_CASES="$_ET/cases" CREW_EVAL_ARMS=kit PATH="$_ET/bin:$PATH" bash "$4" --case probe > "$_ET/out.txt" 2>&1
+    printf '%s %s' "$?" "$([ -e "$_ET/called" ] && echo y || echo n)"; }
+  _nwarn(){ grep -c 'workspace untrusted' "$_ET/out.txt"; }
+  sed 's/(fell back to git init)" "$dir" || exit 4/(fell back to git init)" "$dir"/' "$_EVR" > "$_ET/m1.sh"
+  sed 's|\[ -d "\$HOME/\.csk-eval-parent/\.git" \]|false|' "$_EVR" > "$_ET/m2.sh"
+  sed 's/as not trusted" "$P" || exit 4/as not trusted" "$P"/' "$_EVR" > "$_ET/m3.sh"
+  # `git worktree add --orphan` is git 2.42+. Without it every build falls back and the legacy row cannot pass — a
+  # tool boundary, said as one, not a product failure.
+  _gwo=0; _gp="$(mktemp -d)"; _mkpar "$_gp/p" && git -C "$_gp/p" worktree add -q --orphan -b probe "$_gp/w" >/dev/null 2>&1 && _gwo=1; rm -rf "$_gp"
+  _mut=0; for _m in m1 m2 m3; do cmp -s "$_EVR" "$_ET/$_m.sh" || _mut=$((_mut+1)); done
+  if [ "$_mut" != 3 ]; then fail "FIXTURE: only $_mut of 3 mutants differ from run.sh — a twin would test the unmodified file"
+  elif [ "$_gwo" = 0 ]; then skip tool "evals trusted-parent rows (git has no 'worktree add --orphan', needs 2.42+)" 5
+  else
+    # (1) No parent at all, strict: stops at build time, BEFORE any model call. Twin: without that `|| exit 4`.
+    _r="$(_evrun "$_ET/h0" 1 0 "$_EVR")"
+    if [ "$_r" = "4 n" ] && grep -q 'ERROR — no trusted parent' "$_ET/out.txt"; then
+      [ "$(_evrun "$_ET/h0" 1 0 "$_ET/m1.sh")" != "4 n" ] \
+        && pass "evals: no trusted parent under CREW_VERIFY_STRICT=1 stops with exit 4 before any model call; without the stop the mutant runs on" \
+        || fail "evals: the no-parent twin also stopped — this row cannot see its own exit 4"
+    else fail "evals: no trusted parent under CREW_VERIFY_STRICT=1 read [$_r], expected exit 4 with the model never called"; fi
+    # (2) The same outside strict mode: a warning, said ONCE (build time, with the cause), and the run goes on.
+    _r="$(_evrun "$_ET/h0" 0 0 "$_EVR")"
+    [ "$_r" = "0 y" ] && [ "$(_nwarn)" = 1 ] \
+      && pass "evals: outside strict mode a missing parent is one warning with its cause, and the run is graded" \
+      || fail "evals: no parent, not strict, read [$_r] with $(_nwarn) warning(s) — expected 0 y and exactly 1"
+    # (3) Only the 2.x parent exists, strict: it is used, nothing falls back, and cleanup leaves no branch in it.
+    #     Twin: without the 2.x branch of eval_parent_path the same HOME stops with exit 4.
+    _r="$(_evrun "$_ET/h1" 1 0 "$_EVR")"
+    _left="$(git -C "$_ET/h1/.csk-eval-parent" for-each-ref refs/heads/crew-eval | wc -l | tr -d ' ')"
+    if [ "$_r" = "0 y" ] && ! grep -q 'no trusted parent' "$_ET/out.txt" && [ "$_left" = 0 ]; then
+      [ "$(_evrun "$_ET/h1" 1 0 "$_ET/m2.sh")" = "4 n" ] \
+        && pass "evals: a 2.x-only parent (~/.csk-eval-parent) is used in 3.x, strict passes, cleanup leaves 0 branches; without the 2.x read it stops" \
+        || fail "evals: the 2.x-parent twin did not stop — this row cannot see the legacy read"
+    else fail "evals: 2.x-only parent read [$_r], $_left leftover branch(es) — expected 0 y, no fallback, 0 left"; fi
+    # (4) Parent present but the CLI says untrusted, strict: stops (the model was called — that is how it is known).
+    #     Twin: without that `|| exit 4`.
+    _r="$(_evrun "$_ET/h2" 1 1 "$_EVR")"
+    if [ "$_r" = "4 y" ] && grep -q 'ERROR — the CLI reported this project as not trusted' "$_ET/out.txt"; then
+      [ "$(_evrun "$_ET/h2" 1 1 "$_ET/m3.sh")" != "4 y" ] \
+        && pass "evals: a CLI-reported untrusted kit workspace under CREW_VERIFY_STRICT=1 stops with exit 4; without the stop the mutant grades it" \
+        || fail "evals: the CLI-untrusted twin also stopped — this row cannot see its own exit 4"
+    else fail "evals: CLI-untrusted under strict read [$_r], expected exit 4 after the call"; fi
+    # (5) The same outside strict mode stays a warning, as before.
+    _r="$(_evrun "$_ET/h2" 0 1 "$_EVR")"
+    [ "$_r" = "0 y" ] && [ "$(_nwarn)" = 1 ] \
+      && pass "evals: outside strict mode a CLI-reported untrusted workspace stays one warning and is graded" \
+      || fail "evals: CLI-untrusted, not strict, read [$_r] with $(_nwarn) warning(s) — expected 0 y and exactly 1"
+  fi
+  rm -rf "$_ET"
+else
+  skip scope "evals/run.sh is not present (installed project, not a source checkout) — trusted-parent rows not run" 5
 fi
 
 # --- DID EVERY ASSERTION REACH THE COUNTERS? ------------------------------------------------------------
