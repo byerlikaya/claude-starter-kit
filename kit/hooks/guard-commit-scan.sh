@@ -495,7 +495,7 @@ $(bash "$DIR/commit-msg" "$MFILE" 2>&1)" || FAILED=1
         echo "GUARD (§4.1): this commit's message would go unscanned." >&2
         echo "No -m/-F was given, so the message is composed in an editor after this point, and no commit-msg" >&2
         echo "git hook is wired here to read it afterwards (plugin-only install: a plugin cannot set" >&2
-        echo "core.hooksPath). Pass the message with -m so it can be scanned, or install the kit fully." >&2
+        echo "core.hooksPath). Pass the message with -m so it can be scanned, or install Crewforth fully." >&2
         exit 2
       fi
     fi

@@ -106,13 +106,13 @@ _mt() {
       "— install these first.") s='— önce bunları kurun.' ;;
       "All required tools present.") s='Zorunlu araçların hepsi kurulu.' ;;
       "Optional gaps above are safe but worth closing.") s='Yukarıdaki isteğe bağlı eksikler sorun çıkarmaz ama gidermeye değer.' ;;
-      "Everything the kit wants is here.") s='Kitin ihtiyaç duyduğu her şey kurulu.' ;;
+      "Everything Crewforth needs is here.") s="Crewforth'un ihtiyaç duyduğu her şey kurulu." ;;
       "is the panel only — every gate still holds without it.") s='yalnızca panel için gerekli — o olmadan da tüm kapılar çalışır.' ;;
-      "Or let the kit get one: %s") s='İsterseniz kit sizin için indirebilir: %s' ;;
+      "Or let Crewforth get one: %s") s='İsterseniz Crewforth sizin için indirebilir: %s' ;;
       "fix: ") s='çözüm: ' ;;
       "node 18+") s='node 18+' ;;
       "sha256 tool") s='sha256 aracı' ;;
-      "the whole kit is bash") s='kitin tamamı bash ile yazıldı' ;;
+      "all of Crewforth is bash") s="Crewforth'un tamamı bash ile yazıldı" ;;
       "Windows: install Git for Windows (git-scm.com) and run Claude Code from Git Bash") s="Windows: Git for Windows'u kurun (git-scm.com) ve Claude Code'u Git Bash'ten çalıştırın" ;;
       "context measurement, routing, doctor") s='bağlam ölçümü, yönlendirme ve doctor için' ;;
       "Windows: ships with Git Bash · macOS: preinstalled · Linux: apt install gawk") s='Windows: Git Bash ile gelir · macOS: hazır gelir · Linux: apt install gawk' ;;
@@ -144,7 +144,7 @@ _mt() {
 # living in a filesystem namespace where `C:\Repos\app` does not exist (`/mnt/c/Repos/app` does). A wiring that
 # spawns `bash` by PATH name would have run THAT, or failed outright where WSL is not installed — every gate
 # gone, with an error pointing nowhere near the cause. Hence shell form, and hence this note.
-any_of "bash" 'the whole kit is bash' \
+any_of "bash" 'all of Crewforth is bash' \
   'Windows: install Git for Windows (git-scm.com) and run Claude Code from Git Bash' bash || MISSING_REQ="$MISSING_REQ bash"
 any_of "awk" 'context measurement, routing, doctor' \
   'Windows: ships with Git Bash · macOS: preinstalled · Linux: apt install gawk' awk gawk mawk || MISSING_REQ="$MISSING_REQ awk"
@@ -171,13 +171,13 @@ if [ -n "$MISSING_REQ" ]; then
       *node*) _mt 'is the panel only — every gate still holds without it.'; printf '    %snode%s %s\n' "$B" "$R" "$_M"
               # And it is not a dead end: the kit fetches a runtime for the panel itself, into one
               # directory under $HOME, verified against the published checksum. It asks first.
-              printf '    %s\n' "$(m 'Or let the kit get one: %s' "${B}bash .claude/studio/ensure-node.sh --plan${R}")" ;;
+              printf '    %s\n' "$(m 'Or let Crewforth get one: %s' "${B}bash .claude/studio/ensure-node.sh --plan${R}")" ;;
     esac
 elif [ -n "$MISSING_OPT" ]; then
   [ "$QUIET" = 1 ] || { _mt 'All required tools present.'; _a="$_M"; _mt 'Optional gaps above are safe but worth closing.'
                         printf '\n  %s%s%s %s\n' "$GR" "$_a" "$R" "$_M"; }
 else
-  [ "$QUIET" = 1 ] || { _mt 'Everything the kit wants is here.'; printf '\n  %s%s%s\n' "$GR" "$_M" "$R"; }
+  [ "$QUIET" = 1 ] || { _mt 'Everything Crewforth needs is here.'; printf '\n  %s%s%s\n' "$GR" "$_M" "$R"; }
 fi
 
 # Report-only by design: a missing OPTIONAL tool never fails. `--quiet` exits non-zero only for REQUIRED gaps,

@@ -31,7 +31,7 @@ esac; done
 # editions: .claude/skills/<s>/scripts -> .claude/eval/lib, and <plugin>/skills/<s>/scripts -> <plugin>/eval/lib.
 SJ="$HERE/../../../eval/lib/settings-json.awk"
 if [ ! -f "$SJ" ]; then
-  echo "⚠️  the kit's JSON reader is missing ($SJ) — not merging your settings file by hand."
+  echo "⚠️  Crewforth's JSON reader is missing ($SJ) — not merging your settings file by hand."
   echo "   Add this block to $TARGET yourself (keep the \"\$defaults\" entries verbatim):"
   echo; cat "$POLICY"; exit 3
 fi

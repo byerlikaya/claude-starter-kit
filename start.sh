@@ -41,12 +41,12 @@ fi
 # CLAUDE.md, never packaging/ next to a kit/ it has not yet consumed.
 if [ -d "$HERE/packaging" ] && [ -d "$HERE/.git" ] && [ -f "$HERE/VERSION" ]; then
   if [ "${CREW_ALLOW_SOURCE_INSTALL:-0}" = 1 ]; then
-    echo "WARNING: CREW_ALLOW_SOURCE_INSTALL=1 — installing from the kit's own source checkout."
+    echo "WARNING: CREW_ALLOW_SOURCE_INSTALL=1 — installing from Crewforth's own source checkout."
     echo "  $SRC and this script will be deleted when the install finishes."
   else
-    echo "ERROR: this is the kit's own source repository, not a project to install into."
+    echo "ERROR: this is Crewforth's own source repository, not a project to install into."
     echo "  Running here would delete $SRC and this script at the end — that is what the installer does."
-    echo "  To try the installer, copy the kit somewhere else first:"
+    echo "  To try the installer, copy this checkout somewhere else first:"
     echo "      cp -R \"$HERE\" /tmp/kit-trial && cd /tmp/kit-trial && bash start.sh"
     echo "  Set CREW_ALLOW_SOURCE_INSTALL=1 if you really mean to consume this checkout."
     exit 1
@@ -93,7 +93,7 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "Crewforth · setup wizard") s='Crewforth · kurulum' ;;
       "stack-agnostic") s='her yığınla çalışır' ;;
       "[1/2] Who is this install for?") s='[1/2] Kurulumu kim kullanacak?' ;;
-      "Decides whether your teammates get the kit's configuration — and what goes into .gitignore.") s="Kit ayarlarının ekiple paylaşılıp paylaşılmayacağını ve .gitignore'a nelerin ekleneceğini belirler." ;;
+      "Decides whether your teammates get Crewforth's configuration — and what goes into .gitignore.") s="Crewforth ayarlarının ekiple paylaşılıp paylaşılmayacağını ve .gitignore'a nelerin ekleneceğini belirler." ;;
       "Just me") s='Yalnızca ben' ;;
       "private") s='kişisel' ;;
       "The whole team") s='Tüm ekip' ;;
@@ -116,18 +116,18 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "Included") s='Kurulacaklar' ;;
       "Backend pattern") s='Mimari' ;;
       "stack-agnostic — the stack comes from CLAUDE.md ## Stack or the repo (backend-architecture)") s="yığından bağımsız — yığın CLAUDE.md ## Stack bölümünden ya da depodan okunur (backend-architecture)" ;;
-      "The --dotnet flag is ignored: the .NET-specific path was removed in 3.0; installing the stack-agnostic kit.") s="Bayrak yok sayıldı (--dotnet): .NET'e özel kurulum yolu 3.0'da kaldırıldı; yığından bağımsız kit kuruluyor." ;;
+      "The --dotnet flag is ignored: the .NET-specific path was removed in 3.0; installing the stack-agnostic setup.") s="Bayrak yok sayıldı (--dotnet): .NET'e özel kurulum yolu 3.0'da kaldırıldı; yığından bağımsız kurulum yapılıyor." ;;
       "Will write") s='Yazılacaklar' ;;
       "Install visibility:") s='Kurulum türü:' ;;
-      "full kit") s='tam kit' ;;
+      "full install") s='tam kurulum' ;;
       "no effect:") s='etkisi yok:' ;;
       "Installing:") s='Kuruluyor:' ;;
       "Tip:  open Claude Code and run /crew-doctor — it checks the install is wired (hooks executable, core.hooksPath set, discipline imported) and scores the project's readiness. CLAUDE.md loads the discipline every session.") s="İpucu:  Claude Code'u açıp /crew-doctor çalıştırın — kurulumun eksiksiz bağlandığını denetler (hook'lar çalıştırılabilir mi, core.hooksPath ayarlı mı, disiplin import edilmiş mi) ve projenin ne kadar hazır olduğunu puanlar. Disiplin, CLAUDE.md sayesinde her oturumda yüklenir." ;;
       "%s agents, %s skills installed.") s="%s ajan ve %s skill kuruldu." ;;
-      ".claude/DISCIPLINE.md written — kit-owned; an update overwrites it, so keep your own rules out of it.") s='.claude/DISCIPLINE.md yazıldı. Bu dosya kite ait ve her güncellemede yeniden yazılır; kendi kurallarınızı buraya eklemeyin.' ;;
+      ".claude/DISCIPLINE.md written — owned by Crewforth; an update overwrites it, so keep your own rules out of it.") s=".claude/DISCIPLINE.md yazıldı. Bu dosya Crewforth'a ait ve her güncellemede yeniden yazılır; kendi kurallarınızı buraya eklemeyin." ;;
       "./CLAUDE.md created — EDIT the project section.") s='./CLAUDE.md oluşturuldu — proje bölümünü sizin DOLDURMANIZ gerekiyor.' ;;
       "trace scan: core.hooksPath -> .claude/hooks (§4.1/§4.2 commit gate active)") s='iz taraması: core.hooksPath -> .claude/hooks (§4.1/§4.2 commit kapısı açık)' ;;
-      "Done. ./.claude + ./CLAUDE.md ready (full kit); kit/ deleted.") s='Tamamlandı. ./.claude ve ./CLAUDE.md hazır (tam kit); kit/ silindi.' ;;
+      "Done. ./.claude + ./CLAUDE.md ready (full install); kit/ deleted.") s='Tamamlandı. ./.claude ve ./CLAUDE.md hazır (tam kurulum); kit/ silindi.' ;;
       "Next: 1) fill in the CLAUDE.md project section  2) open Claude Code at the repo root") s="Sıradaki adımlar: 1) CLAUDE.md'deki proje bölümünü doldurun  2) Claude Code'u deponun kökünde açın" ;;
       "Note: if Claude Code is ALREADY running here, restart it — CLAUDE.md and the discipline load at session start.") s='Not: Claude Code bu klasörde ZATEN açıksa yeniden başlatın — CLAUDE.md ve disiplin oturum açılırken yüklenir.' ;;
       "Panel: /crew-studio opens the Studio panel from this project (or: node .claude/studio/server/index.js --open).") s='Panel: /crew-studio komutu Studio panelini bu projeden açar (alternatif: node .claude/studio/server/index.js --open).' ;;
@@ -138,7 +138,7 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "no") s='hayır' ;;
       "yes") s='evet' ;;
       "[yes/no]") s='[evet/hayır]' ;;
-      "the kit always installs in full (all agents · all skills).") s="kit her zaman eksiksiz kurulur (tüm ajanlar · tüm skill'ler)." ;;
+      "Crewforth always installs in full (all agents · all skills).") s="Crewforth her zaman eksiksiz kurulur (tüm ajanlar · tüm skill'ler)." ;;
       "2 steps: who it is for -> summary & confirm.") s='2 adım: kim kullanacak -> özet ve onay.' ;;
       "AGENT_TEMPLATE.md missing from the payload — /crew-skill will have nothing to read.") s='AGENT_TEMPLATE.md pakette yok — /crew-skill okuyacak bir şablon bulamayacak.' ;;
       "./CLAUDE.md kept as-is (already imports the discipline) — the refresh landed in DISCIPLINE.md.") s="./CLAUDE.md'ye dokunulmadı (disiplini zaten import ediyor); güncelleme DISCIPLINE.md'ye yazıldı." ;;
@@ -149,7 +149,7 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "%s eol pin(s) so shared hooks stay LF") s="%s eol kuralı eklendi; paylaşılan hook'lar LF olarak kalır" ;;
       "NOTE: no git repository at this level; after %s run:  %s") s='NOT: bu klasörde git deposu yok. %s yaptıktan sonra şunu çalıştırın:  %s' ;;
       "Panel: needs Node 18+, which is not on this machine — but that is no longer a dead end.") s='Panel: Node 18+ gerekiyor ve bu makinede yok — ama bunun da bir çözümü var.' ;;
-      "The kit fetches one for the panel: %s  (asks first;") s='Kit, panel için Node indirebilir: %s  (önce sorar;' ;;
+      "Crewforth fetches one for the panel: %s  (asks first;") s='Crewforth, panel için Node indirebilir: %s  (önce sorar;' ;;
       "verified against the published checksum, into %s, nothing else touched).") s='yayımlanan checksum ile doğrular, yalnızca %s içine kurar, başka hiçbir şeye dokunmaz).' ;;
       "Every gate still holds meanwhile; the panel is the only part that needs node.") s="Bu arada tüm kapılar çalışmaya devam eder; Node'a yalnızca panel ihtiyaç duyar." ;;
       "ERROR: the %s sentinel line is missing from %s — refusing to guess the discipline/project split.") s='HATA: %s işaret satırı %s içinde bulunamadı — disiplinin nerede bitip proje bölümünün nerede başladığı tahmin edilmeyecek.' ;;
@@ -177,15 +177,15 @@ Seçenek vermezseniz kurulum sihirbazı her şeyi adım adım sorar.
 
 Backend her zaman yığından bağımsızdır: yığın projeye göre backend-architecture skill'iyle seçilir ve
 CLAUDE.md'deki ## Stack bölümüne yazılır.
-  --dotnet   3.0'da kaldırıldı; kabul edilir, uyarı basar ve yığından bağımsız kiti kurar
+  --dotnet   3.0'da kaldırıldı; kabul edilir, uyarı basar ve yığından bağımsız kurulumu yapar
   --generic  kabul edilir, etkisi yok (artık tek kurulum biçimi bu)
 
-Kit her zaman eksiksiz kurulur: tüm ajanlar ve skill'ler — backend, web ve mobil (RN/Expo).
+Crewforth her zaman eksiksiz kurulur: tüm ajanlar ve skill'ler — backend, web ve mobil (RN/Expo).
   --backend | --frontend | --mobile | --fullstack   hâlâ kabul edilir ama etkisi yok (eski komutlar bozulmasın diye)
   --private | --shared   kurulum yalnızca sizin mi, yoksa ekiple paylaşılıp commit'lenecek mi? (varsayılan: private)
   --lang tr|en   kurulum dili (verilmezse sihirbaz sorar)
   --yes, -y      tüm sorulara evet de (gözetimsiz kurulum)
-  --version, -v  kit sürümünü yazdırıp çık
+  --version, -v  Crewforth sürümünü yazdırıp çık
 USAGE_TR
     return
   fi
@@ -194,15 +194,15 @@ Usage: bash start.sh [OPTIONS]
 If no flag is given, the script asks interactively (wizard).
 The backend is always stack-agnostic: the stack is chosen per project by the backend-architecture skill and
 recorded in the ## Stack section of CLAUDE.md.
-  --dotnet   removed in 3.0; accepted, prints a warning and installs the stack-agnostic kit
+  --dotnet   removed in 3.0; accepted, prints a warning and installs the stack-agnostic setup
   --generic  accepted, no effect (this is the only install shape now)
 
-Every install ships the whole kit: all agents, all skills — backend, web and mobile (RN/Expo) together.
+Every install ships everything: all agents, all skills — backend, web and mobile (RN/Expo) together.
   --backend | --frontend | --mobile | --fullstack   accepted, no effect (kept so older commands still run)
   --private | --shared   is the install yours alone, or committed for the team? (default: private)
   --lang tr|en   installer language (asked interactively when not given)
   --yes, -y     answer every question with yes (unattended install)
-  --version, -v  print the kit version and exit
+  --version, -v  print the Crewforth version and exit
 USAGE
 }
 
@@ -476,7 +476,7 @@ rule() { printf '  %s------------------------------------------------%s\n' "$D" 
 h1  'Crewforth · setup wizard'
 sub '2 steps: who it is for -> summary & confirm.'
 if [ -n "$LEGACY_FLAGS" ]; then
-  _mt 'no effect:'; _a="$_M"; _mt 'the kit always installs in full (all agents · all skills).'
+  _mt 'no effect:'; _a="$_M"; _mt 'Crewforth always installs in full (all agents · all skills).'
   printf '\n  %s!%s%s %s%s %s\n' "$YE" "$R" "$B$LEGACY_FLAGS" "$_a" "$R" "$_M"
 fi
 
@@ -487,7 +487,7 @@ fi
 if [ "$DOTNET_FLAG" = 1 ]; then
   # This key once started with '--' and `printf -v _M "$s"` read it as an option (rc=2, nothing installed); _mt
   # now passes `--`, so a leading '-' is safe — the wording stays as it is.
-  _mt 'The --dotnet flag is ignored: the .NET-specific path was removed in 3.0; installing the stack-agnostic kit.'
+  _mt 'The --dotnet flag is ignored: the .NET-specific path was removed in 3.0; installing the stack-agnostic setup.'
   printf '\n  %s!%s %s\n' "$YE" "$R" "$_M"
 fi
 
@@ -517,7 +517,7 @@ if [ -z "$VISIBILITY" ] && { [ ! -t 0 ] || [ "$ASSUME_YES" = 1 ]; }; then
 fi
 if [ -z "$VISIBILITY" ]; then
   h1  '[1/2] Who is this install for?'
-  sub "Decides whether your teammates get the kit's configuration — and what goes into .gitignore."
+  sub "Decides whether your teammates get Crewforth's configuration — and what goes into .gitignore."
   echo
   opt 1 'Just me' 1 'private'
   add  ".claude/ and CLAUDE.md stay out of git — nothing appears in your teammates' checkouts"
@@ -552,7 +552,7 @@ N_SK="$(count_installed "$SRC/skills/*/")"
 
 h1 '[2/2] Summary · see what will be installed before you confirm'
 echo
-_mt 'full kit'; _a="$_M"; _mt '— backend + web + mobile (RN/Expo), every agent and skill'
+_mt 'full install'; _a="$_M"; _mt '— backend + web + mobile (RN/Expo), every agent and skill'
 row 'Scope' "${B}${_a}${D} ${_M}${R}"
 _mt '%s agents · %s skills will be installed' "${MG}${B}${N_AG}${R}" "${MG}${B}${N_SK}${R}"
 row 'Included'  "$_M"
@@ -660,7 +660,7 @@ cp "$SRC/README.md"         .claude/ 2>/dev/null || true
 # Discipline (kit-owned, refreshed on every update) vs project section (yours, written once), joined by @import.
 kit_require_sentinel "$SRC/CLAUDE.md"
 kit_discipline_of "$SRC/CLAUDE.md" > .claude/DISCIPLINE.md
-{ _mt '.claude/DISCIPLINE.md written — kit-owned; an update overwrites it, so keep your own rules out of it.'; echo "  ${_M}"; }
+{ _mt '.claude/DISCIPLINE.md written — owned by Crewforth; an update overwrites it, so keep your own rules out of it.'; echo "  ${_M}"; }
 if [ ! -f ./CLAUDE.md ]; then
   { printf '<!-- kit discipline · on conflict the project rules BELOW win -->\n%s\n' "$IMPORT_LINE"
     kit_project_of "$SRC/CLAUDE.md"; } > ./CLAUDE.md
@@ -721,7 +721,7 @@ else
 fi
 rm -rf "$SRC"
 echo
-{ _mt 'Done. ./.claude + ./CLAUDE.md ready (full kit); kit/ deleted.'; echo "== ${_M} =="; }
+{ _mt 'Done. ./.claude + ./CLAUDE.md ready (full install); kit/ deleted.'; echo "== ${_M} =="; }
 { _mt 'Next: 1) fill in the CLAUDE.md project section  2) open Claude Code at the repo root'; echo "${_M}"; }
 { _mt 'Note: if Claude Code is ALREADY running here, restart it — CLAUDE.md and the discipline load at session start.'; echo "${_M}"; }
 { _mt "Tip:  open Claude Code and run /crew-doctor — it checks the install is wired (hooks executable, core.hooksPath set, discipline imported) and scores the project's readiness. CLAUDE.md loads the discipline every session."; echo "${_M}"; }
@@ -735,7 +735,7 @@ if bash .claude/eval/preflight.sh --has node 2>/dev/null; then
   { _mt 'Panel: /crew-studio opens the Studio panel from this project (or: node .claude/studio/server/index.js --open).'; echo "${_M}"; }
 else
   { _mt 'Panel: needs Node 18+, which is not on this machine — but that is no longer a dead end.'; echo "${_M}"; }
-  { _mt 'The kit fetches one for the panel: %s  (asks first;' 'bash .claude/studio/ensure-node.sh --plan'; echo "       ${_M}"; }
+  { _mt 'Crewforth fetches one for the panel: %s  (asks first;' 'bash .claude/studio/ensure-node.sh --plan'; echo "       ${_M}"; }
   { _mt 'verified against the published checksum, into %s, nothing else touched).' '~/.claude/studio-runtime'; echo "       ${_M}"; }
   { _mt 'Every gate still holds meanwhile; the panel is the only part that needs node.'; echo "       ${_M}"; }
 fi

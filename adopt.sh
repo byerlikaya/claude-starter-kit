@@ -87,7 +87,7 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
   local s="$1"; shift
   if [ "$CREW_LANG" = tr ]; then
     case "$s" in
-      "kit adopt · Stage 1 — DETECTION (read-only; nothing changes)") s='kit adopt · Aşama 1 — TESPİT (salt okunur, hiçbir şey değişmez)' ;;
+      "crewforth adopt · Stage 1 — DETECTION (read-only; nothing changes)") s='crewforth adopt · Aşama 1 — TESPİT (salt okunur, hiçbir şey değişmez)' ;;
       "Reads the existing project, produces a smart suggestion for the 7 handover decisions. Approval + mutation in the next stage.") s='Projeyi okur ve devralma için 7 karara akıllı bir öneri çıkarır. Onay ve değişiklikler sonraki aşamada.' ;;
       "[1] Environment") s='[1] Ortam' ;;
       "no git — 'git init' required") s="git yok — önce 'git init' gerekli" ;;
@@ -95,36 +95,36 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "normal repo") s='normal depo' ;;
       "git hook system") s='git hook sistemi' ;;
       "none") s='yok' ;;
-      "kit (already armed)") s='kit (zaten devrede)' ;;
+      "Crewforth (already armed)") s='Crewforth (zaten devrede)' ;;
       "pre-commit framework") s='pre-commit çatısı' ;;
       "unknown") s='bilinmiyor' ;;
       "stack hint") s='yığın ipucu' ;;
       "[2] Existing agentic setup (accumulated work to inherit)") s='[2] Projedeki agentic kurulum (korunacak birikim)' ;;
       "present — %s project agents · %s project skills") s="var — %s proje ajanı · %s proje skill'i" ;;
       "present") s='var' ;;
-      "already adopted%s — this run REFRESHES kit files, project untouched") s='kit zaten kurulu%s — bu çalıştırma yalnız kit dosyalarını YENİLER, projeye dokunmaz' ;;
-      "kit status") s='kit durumu' ;;
+      "already adopted%s — this run REFRESHES Crewforth files, project untouched") s='Crewforth zaten kurulu%s — bu çalıştırma yalnız Crewforth dosyalarını YENİLER, projeye dokunmaz' ;;
+      "Crewforth status") s='Crewforth durumu' ;;
       "(no kit.conf — read back from the installed files)") s='(kit.conf yok — kurulu dosyalardan çıkarıldı)' ;;
       "inferred pattern") s='çıkarılan desen' ;;
       "recorded pattern") s='kayıtlı desen' ;;
       "3.0 rename: %s → %s") s='3.0 ad değişikliği: %s → %s' ;;
       "3.0 rename: both the old and the new name exist for:%s — nothing moved; keep one") s='3.0 ad değişikliği: eski ve yeni ad ikisi de var:%s — hiçbir şey taşınmadı; birini tutun' ;;
-      "3.0 ref-sweep: old kit names → crew- names in %s") s='3.0 referans taraması: %s içindeki eski kit adları crew- adlarına çevrildi' ;;
+      "3.0 ref-sweep: old 2.x names → crew- names in %s") s='3.0 referans taraması: %s içindeki eski 2.x adları crew- adlarına çevrildi' ;;
       "3.0 commands are skills: %s → %s") s="3.0'da komutlar skill oldu: %s → %s" ;;
       "3.0 commands are skills: a skill of that name already exists for:%s — nothing moved; keep one") s="3.0'da komutlar skill oldu: bu adla bir skill zaten var:%s — hiçbir şey taşınmadı; birini tutun" ;;
       "3.0 commands are skills: an older copy of an already-moved command is left in place:%s — remove it") s="3.0'da komutlar skill oldu: taşınmış bir komutun eski kopyası yerinde bırakıldı:%s — silin" ;;
       "3.0 commands are skills: symlinked command file(s) left as they are:%s — the skill of that name now answers /name") s="3.0'da komutlar skill oldu: symlink olan komut dosyaları olduğu gibi bırakıldı:%s — /ad artık aynı adlı skill'e gider" ;;
       "3.0 commands are skills: .claude/commands is a symlink (shared?) — nothing was moved out of it; the skills of those names now answer /name") s="3.0'da komutlar skill oldu: .claude/commands bir symlink (paylaşılan?) — içinden hiçbir şey taşınmadı; /ad artık aynı adlı skill'lere gider" ;;
-      "your own command(s) keep their name — the kit skill of the same name was not installed:%s") s="kendi komutlarınız adını korur — aynı adlı kit skill'i kurulmadı:%s" ;;
+      "your own command(s) keep their name — the Crewforth skill of the same name was not installed:%s") s="kendi komutlarınız adını korur — aynı adlı Crewforth skill'i kurulmadı:%s" ;;
       "3.0 board: moved to the crew names in this clone:%s") s='3.0 pano: bu klonda crew adlarına taşındı:%s' ;;
       "3.0 board: the remote's 2.x board ref is not deleted — while it exists, 3.x writes both, so 2.x teammates still see your claims; ask the team to update, then delete the old ref") s="3.0 pano: uzaktaki 2.x pano ref'i silinmedi — o durdukça 3.x ikisine birden yazar, 2.x kullanan ekip arkadaşları sahiplenmelerinizi görmeye devam eder; ekipten de güncellemesini isteyin, sonra eski ref'i silin" ;;
-      "3.0 auto-mode: the kit rules in %s are renamed CSK … → Crewforth … (backup: %s)") s='3.0 auto-mode: %s içindeki kit kuralları CSK … → Crewforth … olarak yeniden adlandırıldı (yedek: %s)' ;;
+      "3.0 auto-mode: the Crewforth rules in %s are renamed CSK … → Crewforth … (backup: %s)") s='3.0 auto-mode: %s içindeki Crewforth kuralları CSK … → Crewforth … olarak yeniden adlandırıldı (yedek: %s)' ;;
       "%s is set — its 3.0 name is %s (the old name works until 4.0)") s="%s ayarlı — 3.0'daki adı %s (eski ad 4.0'a kadar çalışır)" ;;
       "%s is set but no longer read — set %s instead") s='%s ayarlı ama artık okunmuyor — yerine %s ayarlayın' ;;
       "stack=%s %s") s='stack=%s %s' ;;
       "stack=%s · via %s") s='stack=%s · kuran: %s' ;;
       "stack=dotnet — 3.0 records generic; the pattern skill stays as a project skill") s="stack=dotnet — 3.0 generic kaydeder; desen skill'i proje skill'i olarak kalır" ;;
-      "cqrs-aop-module is now a project skill (the kit no longer ships it); backend-expert applies it as your project's pattern.") s="cqrs-aop-module artık bir proje skill'i (kit onu artık taşımıyor); backend-expert onu projenizin deseni olarak uygular." ;;
+      "cqrs-aop-module is now a project skill (Crewforth no longer ships it); backend-expert applies it as your project's pattern.") s="cqrs-aop-module artık bir proje skill'i (Crewforth onu artık taşımıyor); backend-expert onu projenizin deseni olarak uygular." ;;
       "CSK_CORRECT_STACK has no effect since 3.0 — there is one backend shape; the stack lives in CLAUDE.md ## Stack.") s="CSK_CORRECT_STACK 3.0'dan beri etkisiz — tek bir backend biçimi var; yığın CLAUDE.md ## Stack bölümünde durur." ;;
       "§4.2: DevArchitecture stays armed in the trace blocklist (it was armed before this update)") s="§4.2: DevArchitecture iz engel listesinde devrede kalıyor (güncellemeden önce de devredeydi)" ;;
       "— profile pruning was removed in 2.0; this refresh completes the install") s="— profil budama 2.0'da kalktı; bu güncelleme eksikleri tamamlar" ;;
@@ -139,15 +139,15 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "[3] 7 handover decisions — SMART SUGGESTION") s='[3] Devralma için 7 karar — AKILLI ÖNERİ' ;;
       "format:  decision  ->  SUGGESTED  ->  rationale   (you can review and override all of them in the next stage)") s='biçim:  karar  ->  ÖNERİ  ->  gerekçe   (hepsini sonraki aşamada inceleyip değiştirebilirsiniz)' ;;
       "1 Role overlap") s='1 Rol çakışması' ;;
-      "kit takes over") s='kit üstlenir' ;;
-      "%s project agent(s) cover the SAME job as a kit agent (%s) — routing is ambiguous; kit wins, yours preserved") s='%s proje ajanı bir kit ajanıyla AYNI işi yapıyor (%s) — hangisine gideceği belirsiz; kit öne geçer, sizinkiler saklanır' ;;
+      "Crewforth takes over") s='Crewforth üstlenir' ;;
+      "%s project agent(s) cover the SAME job as a Crewforth agent (%s) — routing is ambiguous; Crewforth wins, yours preserved") s='%s proje ajanı bir Crewforth ajanıyla AYNI işi yapıyor (%s) — hangisine gideceği belirsiz; Crewforth öne geçer, sizinkiler saklanır' ;;
       "1 Role clash") s='1 Rol çakışması' ;;
       "keep (coexist)") s='koru (yan yana)' ;;
-      "%s project agents, none overlap a kit role; thanks to the crew- prefix they live side by side") s='%s proje ajanı var, hiçbiri kit rolleriyle çakışmıyor; crew- öneki sayesinde yan yana çalışırlar' ;;
+      "%s project agents, none overlap a Crewforth role; thanks to the crew- prefix they live side by side") s='%s proje ajanı var, hiçbiri Crewforth rolleriyle çakışmıyor; crew- öneki sayesinde yan yana çalışırlar' ;;
       "no custom agents found in the project") s='projede özel ajan yok' ;;
       "2 Precedence") s='2 Öncelik' ;;
       "project wins (fixed)") s='proje önde (sabit)' ;;
-      "on conflict the project's rules always win; the kit fills gaps (not overridable)") s='çakışmada her zaman projenin kuralı geçerli; kit yalnız boşlukları doldurur (değiştirilemez)' ;;
+      "on conflict the project's rules always win; Crewforth fills gaps (not overridable)") s='çakışmada her zaman projenin kuralı geçerli; Crewforth yalnız boşlukları doldurur (değiştirilemez)' ;;
       "3 Trace gate") s='3 İz kapısı' ;;
       "loosen (.trace-allowlist)") s='gevşet (.trace-allowlist)' ;;
       "co-author/sign-off present in git log — may be a convention") s='git geçmişinde co-author/sign-off var — ekibin alışkanlığı olabilir' ;;
@@ -156,7 +156,7 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "4 Share/hide") s='4 Paylaş/gizle' ;;
       "share") s='paylaş' ;;
       ".claude/CLAUDE.md is tracked — keep sharing with the team") s=".claude/CLAUDE.md git'te izleniyor — ekiple paylaşmaya devam" ;;
-      "untracked; kit files are shared by default — pick hide to keep them local") s='izlenmiyor; kit dosyaları varsayılan olarak paylaşılır — yerelde tutmak için hide seçin' ;;
+      "untracked; Crewforth files are shared by default — pick hide to keep them local") s='izlenmiyor; Crewforth dosyaları varsayılan olarak paylaşılır — yerelde tutmak için hide seçin' ;;
       "5 Git hooks") s="5 Git hook'ları" ;;
       "install directly") s='doğrudan kur' ;;
       "no existing hook system") s='hook sistemi yok' ;;
@@ -182,20 +182,20 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "#7 Off-repo") s='#7 Depo dışı' ;;
       "Final: #3=%s #4=%s #6=%s #7=%s  (#2 project-wins, #5 SHIM — fixed)") s='Sonuç: #3=%s #4=%s #6=%s #7=%s  (#2 proje önde, #5 SHIM — sabit)' ;;
       "(non-interactive: smart defaults accepted)") s='(etkileşimsiz çalışma: akıllı varsayılanlar kabul edildi)' ;;
-      "Role overlap — project & kit both cover: %s") s='Rol çakışması — proje ve kit aynı işi yapıyor: %s' ;;
-      "Two agents for one job = the router picks one, usually your older agent — so the kit's would sit idle.") s='Aynı iş için iki ajan olunca yönlendirici birini seçer, çoğu zaman sizin eski ajanınızı — kitinki boşta kalır.' ;;
-      "kit's crew- agents win; each old agent's domain is imported to a draft skill (skills/<name>-local), original backed up") s="kitin crew- ajanları öne geçer; eski ajanın alan bilgisi taslak bir skill'e (skills/<name>-local) taşınır, orijinali yedeklenir" ;;
-      "your agents win; the kit's overlapping crew- agents are not installed") s='sizin ajanlarınız öne geçer; kitin çakışan crew- ajanları kurulmaz' ;;
+      "Role overlap — project & Crewforth both cover: %s") s='Rol çakışması — proje ve Crewforth aynı işi yapıyor: %s' ;;
+      "Two agents for one job = the router picks one, usually your older agent — so Crewforth's would sit idle.") s="Aynı iş için iki ajan olunca yönlendirici birini seçer, çoğu zaman sizin eski ajanınızı — Crewforth'unki boşta kalır." ;;
+      "Crewforth's crew- agents win; each old agent's domain is imported to a draft skill (skills/<name>-local), original backed up") s="Crewforth'un crew- ajanları öne geçer; eski ajanın alan bilgisi taslak bir skill'e (skills/<name>-local) taşınır, orijinali yedeklenir" ;;
+      "your agents win; Crewforth's overlapping crew- agents are not installed") s="sizin ajanlarınız öne geçer; Crewforth'un çakışan crew- ajanları kurulmaz" ;;
       "keep both (routing stays ambiguous; only documented in HANDOVER)") s="ikisi de kalır (yönlendirme belirsiz kalır; yalnız HANDOVER'a not düşülür)" ;;
       "owner") s='sahip' ;;
       "type takeover, keepmine or coexist") s='takeover, keepmine ya da coexist yazın' ;;
       "overlap -> %s") s='çakışma -> %s' ;;
-      "Stage 2 — apply the kit (coexist)") s='Aşama 2 — kiti uygula (projeyle yan yana)' ;;
+      "Stage 2 — apply Crewforth (coexist)") s="Aşama 2 — Crewforth'u uygula (projeyle yan yana)" ;;
       "no git repo — cannot apply safely. First:  %s  (then run again).") s='git deposu yok — güvenle uygulanamaz. Önce şunu çalıştırın:  %s  (sonra tekrar deneyin).' ;;
       "Apply on a NEW review branch? (no = apply on the current branch '%s')") s="YENİ bir inceleme dalında mı uygulansın? (hayır = mevcut '%s' dalında)" ;;
       "the current branch '%s'") s="mevcut '%s' dalı" ;;
       "a new review branch (off '%s')") s="'%s' üzerinden açılan yeni bir inceleme dalı" ;;
-      "Apply the kit onto %s now? (mutation; staged-not-committed, reversible with git)") s='Kit şimdi uygulansın mı? Hedef: %s (dosyalar değişir; stage edilir, commit edilmez, git ile geri alınabilir)' ;;
+      "Apply Crewforth onto %s now? (mutation; staged-not-committed, reversible with git)") s='Crewforth şimdi uygulansın mı? Hedef: %s (dosyalar değişir; stage edilir, commit edilmez, git ile geri alınabilir)' ;;
       "Stopped") s='Durduruldu' ;;
       "Stayed at Stage 1 — NOTHING CHANGED (read-only).") s="Aşama 1'de kalındı — HİÇBİR ŞEY DEĞİŞMEDİ (salt okunur)." ;;
       "applying on the current branch: %s  (no separate branch; staged, HEAD untouched until you commit)") s='mevcut dala uygulanıyor: %s  (ayrı dal yok; değişiklikler stage edilir, siz commit edene kadar HEAD yerinde kalır)' ;;
@@ -210,22 +210,22 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "discard:  %s") s='vazgeç:   %s' ;;
       ".NET pattern skill renamed: devarch-module -> cqrs-aop-module (content kept)") s=".NET desen skill'inin adı değişti: devarch-module -> cqrs-aop-module (içerik korundu)" ;;
       "⚠️  both devarch-module and cqrs-aop-module are present — nothing moved; remove the old one when ready") s='⚠️  devarch-module ve cqrs-aop-module ikisi birden var — hiçbir şey taşınmadı; hazır olduğunuzda eskisini silin' ;;
-      "AGENT_TEMPLATE.md written (kit-owned; refreshed on every update)") s='AGENT_TEMPLATE.md yazıldı (kitin dosyası; her güncellemede yenilenir)' ;;
+      "AGENT_TEMPLATE.md written (owned by Crewforth; refreshed on every update)") s="AGENT_TEMPLATE.md yazıldı (Crewforth'un dosyası; her güncellemede yenilenir)" ;;
       "pre-2.0 install (profile=%s): profile pruning was removed — completing the install") s='2.0 öncesi kurulum (profile=%s): profil budama kalktı — eksikler tamamlanıyor' ;;
       "pre-2.0 install (profile=%s): nothing was missing — the full set was already present") s='2.0 öncesi kurulum (profile=%s): eksik yok — tam set zaten kuruluydu' ;;
       "overlap: %s -> skill '%s' already present (kept); original re-backed up") s="çakışma: %s -> '%s' skill'i zaten var (korundu); orijinal yeniden yedeklendi" ;;
-      "overlap: %s -> imported to skill '%s' (draft); kit's %s owns routing") s="çakışma: %s -> '%s' skill'ine taşındı (taslak); yönlendirme artık kitin %s ajanında" ;;
+      "overlap: %s -> imported to skill '%s' (draft); Crewforth's %s owns routing") s="çakışma: %s -> '%s' skill'ine taşındı (taslak); yönlendirme artık Crewforth'un %s ajanında" ;;
       "ref-sweep: %s → %s in %s") s='ref-sweep: %s → %s (%s)' ;;
       "Reference sweep: rewrote taken-over agent names to their crew- id across CLAUDE.md + referenced docs") s='Referans taraması: devralınan ajan adları CLAUDE.md ve bağlı belgelerde crew- adlarına çevrildi' ;;
       "ref-sweep: no stale references in CLAUDE.md's chain") s='ref-sweep: CLAUDE.md ve bağlı belgelerde eski ad kalmamış' ;;
-      "⚠️  installed by an older kit and no longer shipped:%s") s='⚠️  eski bir kit sürümünden kalan, artık dağıtılmayan dosyalar:%s' ;;
+      "⚠️  installed by an older Crewforth version and no longer shipped:%s") s='⚠️  eski bir Crewforth sürümünden kalan, artık dağıtılmayan dosyalar:%s' ;;
       "The name is the invocation: a leftover COMMAND still lists in the / picker (/review twice), and a") s='Burada adın kendisi çağrıdır: artakalan bir KOMUT / menüsünde hâlâ görünür (/review iki kez), artakalan' ;;
       "leftover SKILL still matches prompts, so it competes with whatever replaced it.") s='bir SKILL de istemlerle eşleşmeye devam eder ve yerine gelenle yarışır.' ;;
       "Nothing is deleted for you — one of these may be a file you customised. To drop them all:") s='Hiçbiri sizin yerinize silinmez — aralarında özelleştirdiğiniz bir dosya olabilir. Hepsini kaldırmak için:' ;;
       "Coexist summary") s='Kurulum özeti' ;;
       "%s · %s skipped") s='%s · %s atlandı' ;;
       "+%s added") s='+%s eklendi' ;;
-      "kit agents (crew-)") s='kit ajanları (crew-)' ;;
+      "Crewforth agents (crew-)") s='Crewforth ajanları (crew-)' ;;
       "skills") s="skill'ler" ;;
       "commands") s='komutlar' ;;
       "hooks") s="hook'lar" ;;
@@ -234,11 +234,11 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "%s — the rest UNTOUCHED") s='%s — geri kalanına DOKUNULMADI' ;;
       "project agents") s='proje ajanları' ;;
       "overlap") s='çakışma' ;;
-      "keepmine — your agents own: %s (kit's crew- for these NOT installed)") s='keepmine — bu roller sizin ajanlarınızda: %s (kitin karşılık gelen crew- ajanları KURULMADI)' ;;
-      "overlap: %s — BOTH kept; routing between your agent and the kit's crew- stays ambiguous") s='çakışma: %s — İKİSİ de kaldı; sizin ajanınızla kitin crew- ajanı arasında seçim belirsiz' ;;
-      "conflicting files (the project's was PRESERVED, the kit's skipped):") s='çakışan dosyalar (projeninki KORUNDU, kitinki atlandı):' ;;
-      "Stage 3 — activate the kit discipline (without touching the project CLAUDE.md) + settings merge") s="Aşama 3 — kit disiplinini etkinleştir (proje CLAUDE.md'sine dokunmadan) + ayarları birleştir" ;;
-      "DISCIPLINE.md written (kit discipline only; the project template stays out of it)") s='DISCIPLINE.md yazıldı (yalnız kit disiplini; proje şablonu içinde yok)' ;;
+      "keepmine — your agents own: %s (Crewforth's crew- for these NOT installed)") s="keepmine — bu roller sizin ajanlarınızda: %s (Crewforth'un karşılık gelen crew- ajanları KURULMADI)" ;;
+      "overlap: %s — BOTH kept; routing between your agent and Crewforth's crew- stays ambiguous") s="çakışma: %s — İKİSİ de kaldı; sizin ajanınızla Crewforth'un crew- ajanı arasında seçim belirsiz" ;;
+      "conflicting files (the project's was PRESERVED, Crewforth's skipped):") s="çakışan dosyalar (projeninki KORUNDU, Crewforth'unki atlandı):" ;;
+      "Stage 3 — activate the Crewforth discipline (without touching the project CLAUDE.md) + settings merge") s="Aşama 3 — Crewforth disiplinini etkinleştir (proje CLAUDE.md'sine dokunmadan) + ayarları birleştir" ;;
+      "DISCIPLINE.md written (Crewforth discipline only; the project template stays out of it)") s='DISCIPLINE.md yazıldı (yalnız Crewforth disiplini; proje şablonu içinde yok)' ;;
       "CLAUDE.md: @import already present (idempotent)") s='CLAUDE.md: @import zaten var (tekrar eklenmedi)' ;;
       "CLAUDE.md carries the discipline INLINE (pre-1.1 layout) — discipline updates cannot reach it.") s='CLAUDE.md disiplini DOSYANIN İÇİNDE taşıyor (1.1 öncesi düzen) — disiplin güncellemeleri ona ulaşamaz.' ;;
       "the inline block is lines 1-%s; your project section starts at line %s") s='gömülü blok 1-%s. satırlar; proje bölümünüz %s. satırda başlıyor' ;;
@@ -250,15 +250,15 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "CLAUDE.md was missing -> @import + project template created") s='CLAUDE.md yoktu -> @import ve proje şablonuyla oluşturuldu' ;;
       "custom hooks and every other permission PRESERVED") s="özel hook'lar ve diğer tüm izinler KORUNDU" ;;
       "custom hooks/permissions PRESERVED") s="özel hook'lar ve izinler KORUNDU" ;;
-      "settings.json: was missing in the project -> the kit's was installed") s='settings.json: projede yoktu -> kitinki kuruldu' ;;
-      "settings.json: hook-aware MERGE (kit hooks refreshed - %s)") s="settings.json: hook'ları gözeten BİRLEŞTİRME (kit hook'ları yenilendi - %s)" ;;
+      "settings.json: was missing in the project -> Crewforth's was installed") s="settings.json: projede yoktu -> Crewforth'unki kuruldu" ;;
+      "settings.json: hook-aware MERGE (Crewforth hooks refreshed - %s)") s="settings.json: hook'ları gözeten BİRLEŞTİRME (Crewforth hook'ları yenilendi - %s)" ;;
       "settings.json: %s") s='settings.json: %s' ;;
       "merge failed -> project setting PRESERVED (not overwritten)") s='birleştirme başarısız -> proje ayarı KORUNDU (üzerine yazılmadı)' ;;
       "existing file is INVALID JSON -> merge ABORT (no silent overwrite). Fix it by hand first.") s='mevcut dosya GEÇERSİZ JSON -> birleştirme İPTAL (üzerine sessizce yazılmaz). Önce elle düzeltin.' ;;
       "settings.json: retired §4.4 ask rule(s) REMOVED (%s) — guard-bash.sh now asks for these itself; an ask rule would override its CLAUDE_GIT_OK allow. Re-add one only if your project wants that trade.") s='settings.json: emekliye ayrılan §4.4 ask kuralları KALDIRILDI (%s) — bunları artık guard-bash.sh kendisi soruyor; bir ask kuralı onun CLAUDE_GIT_OK iznini ezerdi. Bu bedeli bilerek istiyorsanız geri ekleyin.' ;;
       "Stage 4 — arm the git gates (SHIM via husky) + PROOF") s='Aşama 4 — git kapılarını devreye al (husky üzerinden SHIM) + KANIT' ;;
       "core.hooksPath -> .claude/hooks (no existing hook chain)") s='core.hooksPath -> .claude/hooks (başka hook zinciri yok)' ;;
-      "SHIM installed -> core.hooksPath=.claude/git-shim (kit + %s run together)") s='SHIM kuruldu -> core.hooksPath=.claude/git-shim (kit ve %s birlikte çalışır)' ;;
+      "SHIM installed -> core.hooksPath=.claude/git-shim (Crewforth + %s run together)") s='SHIM kuruldu -> core.hooksPath=.claude/git-shim (Crewforth ve %s birlikte çalışır)' ;;
       "worktree/submodule: core.hooksPath may also affect the main checkout (git design).") s="worktree/submodule: core.hooksPath ana checkout'u da etkileyebilir (git böyle tasarlanmış)." ;;
       "Stage 4b — PROOF") s='Aşama 4b — KANIT' ;;
       "~  PROOF-1: skipped — could not stage the probe file (nothing was measured)") s='~  KANIT-1: atlandı — deneme dosyası stage edilemedi (hiçbir şey ölçülmedi)' ;;
@@ -267,14 +267,14 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "~  PROOF-1: hook blocked (%s)") s='~  KANIT-1: hook engelledi (%s)' ;;
       "PROOF-2 FAILED: guard-bash LET THROUGH the keyless commit") s="KANIT-2 BAŞARISIZ: guard-bash anahtarsız commit'i GEÇİRDİ" ;;
       "OK · PROOF-2: guard-bash BLOCKED the keyless 'git commit' (holds in auto/bypass too)") s="OK · KANIT-2: guard-bash anahtarsız 'git commit'i ENGELLEDİ (auto/bypass modunda da geçerli)" ;;
-      "OK · PROOF-3: %s kit agents (crew-) installed + discoverable") s='OK · KANIT-3: %s kit ajanı (crew-) kurulu ve bulunabiliyor' ;;
-      "PROOF-3: no kit agent") s='KANIT-3: kit ajanı yok' ;;
+      "OK · PROOF-3: %s Crewforth agents (crew-) installed + discoverable") s='OK · KANIT-3: %s Crewforth ajanı (crew-) kurulu ve bulunabiliyor' ;;
+      "PROOF-3: no Crewforth agent") s='KANIT-3: Crewforth ajanı yok' ;;
       "OK · PROOF-4: DISCIPLINE.md loaded + @import-ed from CLAUDE.md") s="OK · KANIT-4: DISCIPLINE.md yerinde ve CLAUDE.md'den @import ediliyor" ;;
       "PROOF-4: discipline not linked") s='KANIT-4: disiplin bağlanmamış' ;;
       "%s line(s): %s") s='%s, satır: %s' ;;
       "PROOF-5: CLAUDE.md (or a doc it references) names auto-delegated agent(s) by an old bare id — rename each to its crew- id, else delegation to them silently fails:%s") s='KANIT-5: CLAUDE.md (ya da bağlı bir belge) otomatik devredilen ajanları eski, eksiz adıyla anıyor — her birini crew- adıyla değiştirin, yoksa onlara devretme sessizce başarısız olur:%s' ;;
       "PROOF-5: CLAUDE.md (or a referenced doc) names pull-only agent(s) by an old bare id (still work; rename for consistency):%s") s='KANIT-5: CLAUDE.md (ya da bağlı bir belge) elle çağrılan ajanları eski, eksiz adıyla anıyor (yine çalışır; tutarlılık için yeniden adlandırın):%s' ;;
-      "PROOF: kit 100%% ACTIVE — gates armed, agents + discipline loaded") s='KANIT: kit %%100 ETKİN — kapılar devrede, ajanlar ve disiplin yüklü' ;;
+      "PROOF: Crewforth 100%% ACTIVE — gates armed, agents + discipline loaded") s='KANIT: Crewforth %%100 ETKİN — kapılar devrede, ajanlar ve disiplin yüklü' ;;
       "PROOF: some gates could not be verified (see above)") s='KANIT: bazı kapılar doğrulanamadı (yukarıya bakın)' ;;
       "Stage B — apply the decisions") s='Aşama B — kararları uygula' ;;
       "#3 loosen -> .trace-allowlist.txt (co-author trailer exempt)") s='#3 loosen -> .trace-allowlist.txt (co-author satırı taramadan muaf)' ;;
@@ -296,7 +296,7 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "staged") s='stage edilen' ;;
       "see it:   open the Source Control / Changes panel (every added + changed file is listed)  ·  or: %s") s='görmek için:  Source Control / Changes panelini açın (eklenen ve değişen her dosya orada)  ·  ya da: %s' ;;
       "panel:    %s opens it from this project (or: %s)") s='panel:    bu projede %s ile açılır (ya da: %s)' ;;
-      "panel:    needs Node 18+, absent here — the kit can fetch one: %s") s='panel:    Node 18+ gerekiyor ve bu makinede yok — kit indirebilir: %s' ;;
+      "panel:    needs Node 18+, absent here — Crewforth can fetch one: %s") s='panel:    Node 18+ gerekiyor ve bu makinede yok — Crewforth indirebilir: %s' ;;
       "(it asks first, verifies the checksum, and touches nothing outside %s)") s='(önce sorar, sağlama toplamını doğrular ve %s dışında hiçbir şeye dokunmaz)' ;;
       "If Claude Code is running in this project, run /clear (or quit and relaunch it) — a new session loads the") s='Claude Code bu projede açıksa /clear çalıştırın (ya da kapatıp yeniden açın) — yeni oturum güncel' ;;
       "updated CLAUDE.md and discipline; a session opened before this run keeps the old rules until then.") s='CLAUDE.md ve disiplini yükler; bu çalıştırmadan önce açılmış oturum o zamana kadar eski kuralları uygular.' ;;
@@ -488,7 +488,7 @@ kit_agent_to_skill() {   # $1 = agent .md file, $2 = base name
   printf '%s\n' "$body"
 }
 
-h1m 'kit adopt · Stage 1 — DETECTION (read-only; nothing changes)'
+h1m 'crewforth adopt · Stage 1 — DETECTION (read-only; nothing changes)'
 subm 'Reads the existing project, produces a smart suggestion for the 7 handover decisions. Approval + mutation in the next stage.'
 
 # ========================= [1] ENVIRONMENT =========================
@@ -506,7 +506,7 @@ HOOKSYS="none"
 CURHP="$(git config --get core.hooksPath 2>/dev/null || true)"
 case "$CURHP" in
   "") : ;;
-  .claude/hooks|.claude/git-shim) HOOKSYS="kit (already armed)"; CURHP="" ;;   # kit's OWN path — not a foreign chain (re-adopt must not shim itself)
+  .claude/hooks|.claude/git-shim) HOOKSYS="Crewforth (already armed)"; CURHP="" ;;   # kit's OWN path — not a foreign chain (re-adopt must not shim itself)
   *) HOOKSYS="core.hooksPath=$CURHP" ;;
 esac
 [ -d .husky ] && HOOKSYS="husky (.husky/)"
@@ -587,8 +587,8 @@ if [ "$HAS_CLAUDE" = 1 ]; then rowm '.claude/' 'present — %s project agents ·
 else rowm '.claude/' 'none'; fi
 if [ "$HAS_MD" = 1 ]; then _v=present; else _v=none; fi;       rowm 'CLAUDE.md' "$_v"
 if [ "$HAS_SETTINGS" = 1 ]; then _v=present; else _v=none; fi; rowm 'settings.json' "$_v"
-[ "$KIT_PRESENT" = 1 ] && { _mt 'already adopted%s — this run REFRESHES kit files, project untouched' "${KIT_VER:+ (v$KIT_VER)}"
-                            rowv 'kit status' "${YE}$_M${R}"; }
+[ "$KIT_PRESENT" = 1 ] && { _mt 'already adopted%s — this run REFRESHES Crewforth files, project untouched' "${KIT_VER:+ (v$KIT_VER)}"
+                            rowv 'Crewforth status' "${YE}$_M${R}"; }
 if [ "$LEGACY_DOTNET" = 1 ]; then
   if [ "$INFERRED" = 1 ]; then _k='inferred pattern'; else _k='recorded pattern'; fi
   rowm "$_k" 'stack=dotnet — 3.0 records generic; the pattern skill stays as a project skill'
@@ -638,13 +638,13 @@ OFFREPO=0; { [ "$HAS_CLAUDE" = 0 ] && [ "$HAS_MD" = 0 ]; } && OFFREPO=1
 h1m '[3] 7 handover decisions — SMART SUGGESTION'
 subm 'format:  decision  ->  SUGGESTED  ->  rationale   (you can review and override all of them in the next stage)'
 if [ "$N_COLLIDE" != 0 ]; then
-  propm '1 Role overlap' 'kit takes over' '%s project agent(s) cover the SAME job as a kit agent (%s) — routing is ambiguous; kit wins, yours preserved' "$N_COLLIDE" "$COLLIDE"
+  propm '1 Role overlap' 'Crewforth takes over' '%s project agent(s) cover the SAME job as a Crewforth agent (%s) — routing is ambiguous; Crewforth wins, yours preserved' "$N_COLLIDE" "$COLLIDE"
 elif [ "$N_PAGENTS" != 0 ]; then
-  propm '1 Role clash' 'keep (coexist)' '%s project agents, none overlap a kit role; thanks to the crew- prefix they live side by side' "$N_PAGENTS"
+  propm '1 Role clash' 'keep (coexist)' '%s project agents, none overlap a Crewforth role; thanks to the crew- prefix they live side by side' "$N_PAGENTS"
 else
   propm '1 Role clash' 'none' 'no custom agents found in the project'
 fi
-propm '2 Precedence' 'project wins (fixed)' "on conflict the project's rules always win; the kit fills gaps (not overridable)"
+propm '2 Precedence' 'project wins (fixed)' "on conflict the project's rules always win; Crewforth fills gaps (not overridable)"
 if [ "$COAUTHOR" = 1 ]; then
   propm '3 Trace gate' 'loosen (.trace-allowlist)' 'co-author/sign-off present in git log — may be a convention'
 else
@@ -653,7 +653,7 @@ fi
 if [ "$TRACKED" = 1 ]; then
   propm '4 Share/hide' 'share' '.claude/CLAUDE.md is tracked — keep sharing with the team'
 else
-  propm '4 Share/hide' 'share' 'untracked; kit files are shared by default — pick hide to keep them local'
+  propm '4 Share/hide' 'share' 'untracked; Crewforth files are shared by default — pick hide to keep them local'
 fi
 if [ "$HOOKSYS" = "none" ]; then
   propm '5 Git hooks' 'install directly' 'no existing hook system'
@@ -725,11 +725,11 @@ KIT_STACK=generic
 # (you ran adopt to get the kit's agents). The chosen mode is APPLIED on the handover branch in Stage 2.
 COLLIDE_MODE=coexist
 if [ "$N_COLLIDE" != 0 ]; then
-  h1m 'Role overlap — project & kit both cover: %s' "$COLLIDE"
-  subm "Two agents for one job = the router picks one, usually your older agent — so the kit's would sit idle."
+  h1m 'Role overlap — project & Crewforth both cover: %s' "$COLLIDE"
+  subm "Two agents for one job = the router picks one, usually your older agent — so Crewforth's would sit idle."
   # the first word of each line is the token the user types, so it stays English and outside the message
-  _mt "kit's crew- agents win; each old agent's domain is imported to a draft skill (skills/<name>-local), original backed up"; sub "  takeover  $_M"
-  _mt "your agents win; the kit's overlapping crew- agents are not installed";                                                 sub "  keepmine  $_M"
+  _mt "Crewforth's crew- agents win; each old agent's domain is imported to a draft skill (skills/<name>-local), original backed up"; sub "  takeover  $_M"
+  _mt "your agents win; Crewforth's overlapping crew- agents are not installed";                                                 sub "  keepmine  $_M"
   _mt 'keep both (routing stays ambiguous; only documented in HANDOVER)';                                                     sub "  coexist   $_M"
   COLLIDE_MODE=takeover
   if [ -t 0 ] && [ "${ASSUME_YES:-0}" != 1 ]; then   # --yes keeps the documented non-interactive default (takeover)
@@ -754,7 +754,7 @@ esac
 if [ ! -t 0 ] && [ "$KIT_PRESENT" = 1 ]; then ASSUME_YES=1; fi
 
 # ================= [STAGE 2] HANDOVER BRANCH + COEXIST =================
-h1m 'Stage 2 — apply the kit (coexist)'
+h1m 'Stage 2 — apply Crewforth (coexist)'
 if [ "$IS_GIT" != 1 ]; then
   warnm 'no git repo — cannot apply safely. First:  %s  (then run again).' 'git init && git add -A && git commit -m init'
   exit 0
@@ -779,7 +779,7 @@ WHERE="$_M"
 # Missing tools named before the mutation prompt, not after, while going ahead is still a choice. The settings
 # merge is not among them: it is awk and runs the same everywhere. Report-only; never blocks.
 [ -f "$SRC/eval/preflight.sh" ] && bash "$SRC/eval/preflight.sh"
-if ! ask_yes 'Apply the kit onto %s now? (mutation; staged-not-committed, reversible with git)' "$WHERE"; then
+if ! ask_yes 'Apply Crewforth onto %s now? (mutation; staged-not-committed, reversible with git)' "$WHERE"; then
   h1m 'Stopped'; subm 'Stayed at Stage 1 — NOTHING CHANGED (read-only).'; exit 0
 fi
 
@@ -792,7 +792,7 @@ if [ "$DEC_BR" = here ]; then
   GEN_WHERE="current branch $BASE"
   ADR_BR_STATUS="accepted (applied on current branch: $BASE — staged, not committed)"
   _mt 'You are on your current branch %s with everything STAGED but NOT committed.' "$BASE"; ONBRANCH_LINE="$_M"
-  _mt 'accept:   %s' "git commit -m 'adopt agentic kit'"; ACCEPT_LINE="$_M"
+  _mt 'accept:   %s' "git commit -m 'adopt Crewforth'"; ACCEPT_LINE="$_M"
   _mt 'discard:  %s   (un-stages everything; nothing was committed)' 'git reset --hard HEAD'; DISCARD_LINE="$_M"
 else
   case "$BASE" in kit-adopt-*) warnm 'HEAD is a prior adopt branch (%s) — the review diff will be vs it, not your main line. Consider %s first.' "$BASE" "'git checkout <main>'" ;; esac
@@ -806,7 +806,7 @@ else
   GEN_WHERE="branch $BR"
   ADR_BR_STATUS="accepted (handover branch: $BR)"
   _mt 'You are on branch %s with everything STAGED but NOT committed.' "$BR"; ONBRANCH_LINE="$_M"
-  _mt 'accept:   %s   then:  %s' "git commit -m 'adopt agentic kit'" "git checkout $BASE && git merge $BR"; ACCEPT_LINE="$_M"
+  _mt 'accept:   %s   then:  %s' "git commit -m 'adopt Crewforth'" "git checkout $BASE && git merge $BR"; ACCEPT_LINE="$_M"
   _mt 'discard:  %s' "git reset --hard $BASE && git checkout $BASE && git branch -D $BR"; DISCARD_LINE="$_M"
 fi
 
@@ -847,7 +847,7 @@ if [ "$KIT_PRESENT" = 1 ] && [ -d .claude/skills/devarch-module ]; then
   fi
 fi
 [ "$LEGACY_DOTNET" = 1 ] && [ -d .claude/skills/cqrs-aop-module ] \
-  && say "cqrs-aop-module is now a project skill (the kit no longer ships it); backend-expert applies it as your project's pattern."
+  && say "cqrs-aop-module is now a project skill (Crewforth no longer ships it); backend-expert applies it as your project's pattern."
 # THE 3.0 NAME MIGRATION: <x>-csk -> crew-<x>, for the KIT'S OWN components only (agents, commands, the code-review
 # skill), and only on a project the kit was installed on. Same principle as the devarch-module rename above: move,
 # never delete. The names come from the payload, so a project file that merely ends in -csk (my-helper-csk.md) is
@@ -906,7 +906,7 @@ done
 [ -n "$CMD_DUP" ]  && warnm '3.0 commands are skills: an older copy of an already-moved command is left in place:%s — remove it' "$CMD_DUP"
 [ -n "$CMD_LINK" ] && warnm '3.0 commands are skills: symlinked command file(s) left as they are:%s — the skill of that name now answers /name' "$CMD_LINK"
 [ "$CMD_DIR_SHARED" = 1 ] && [ "$KIT_PRESENT" = 1 ] && warnm '3.0 commands are skills: .claude/commands is a symlink (shared?) — nothing was moved out of it; the skills of those names now answer /name'
-[ -n "$CMD_MINE" ] && warnm 'your own command(s) keep their name — the kit skill of the same name was not installed:%s' "$CMD_MINE"
+[ -n "$CMD_MINE" ] && warnm 'your own command(s) keep their name — the Crewforth skill of the same name was not installed:%s' "$CMD_MINE"
 [ "$CMD_DIR_SHARED" = 1 ] || rmdir .claude/commands 2>/dev/null || true   # only when nothing of the user's is left in it
 # THE 3.0 BOARD NAMES, in THIS clone only: the board ref, its local settings, its caches, and a `csk-board` remote
 # move to the crew names. The remote's 2.x ref is never deleted: while it exists board.sh writes both refs in one
@@ -951,7 +951,7 @@ if [ "$KIT_PRESENT" = 1 ] && [ -f "$_AMS" ] && grep -qE '"CSK (Uncommitted Work 
   _AMB="$_AMS.crew-bak-$(date +%Y%m%d-%H%M%S)"; _SB0=; sed -b q </dev/null >/dev/null 2>&1 && _SB0=-b
   if cp "$_AMS" "$_AMB" && sed $_SB0 -E 's/"CSK (Uncommitted Work Destruction|Gate Tampering|Internal Docs Publication):/"Crewforth \1:/g' "$_AMB" > "$_AMS.crew-new" \
      && [ -s "$_AMS.crew-new" ] && cat "$_AMS.crew-new" > "$_AMS"; then
-    say '3.0 auto-mode: the kit rules in %s are renamed CSK … → Crewforth … (backup: %s)' "$_AMS" "$_AMB"
+    say '3.0 auto-mode: the Crewforth rules in %s are renamed CSK … → Crewforth … (backup: %s)' "$_AMS" "$_AMB"
   fi
   rm -f "$_AMS.crew-new"
 fi
@@ -993,7 +993,7 @@ chmod +x .claude/studio/server/hooks/*.sh 2>/dev/null || true
 # either — it went stale from the day it landed and nothing ever noticed, because §3b iterates skills and
 # agents and this is neither. Overwriting is right for the same reason DISCIPLINE.md is overwritten: the
 # file states the kit's own contract, a project does not author it, and a stale contract is worse than none.
-cp "$SRC/AGENT_TEMPLATE.md" .claude/ 2>/dev/null && say 'AGENT_TEMPLATE.md written (kit-owned; refreshed on every update)'
+cp "$SRC/AGENT_TEMPLATE.md" .claude/ 2>/dev/null && say 'AGENT_TEMPLATE.md written (owned by Crewforth; refreshed on every update)'
 # Report the migration by what LANDED, not by what was missing: a component the payload lists can still be kept
 # out (EXCL_S), and must not be announced as restored when it was.
 if [ -n "$MIGRATE_MISSING" ]; then
@@ -1020,7 +1020,7 @@ if [ "$COLLIDE_MODE" = takeover ] && [ -n "$COLLIDE" ]; then
     else
       mkdir -p ".claude/skills/$b-local"
       kit_agent_to_skill "$af" "$b" > ".claude/skills/$b-local/SKILL.md"
-      say "overlap: %s -> imported to skill '%s' (draft); kit's %s owns routing" "$b" "$b-local" "crew-$b"
+      say "overlap: %s -> imported to skill '%s' (draft); Crewforth's %s owns routing" "$b" "$b-local" "crew-$b"
     fi
     cp "$af" ".claude/superseded/agents/$b.md"; rm -f "$af"
     N_TAKEN=$((N_TAKEN+1))
@@ -1092,7 +1092,7 @@ if [ "$KIT_PRESENT" = 1 ] && [ -f CLAUDE.md ] && grep -q -e '-csk' CLAUDE.md $(g
       cmp -s "$f" "$f.kit-sweep" && { rm -f "$f.kit-sweep"; break; }
       cat "$f.kit-sweep" > "$f"; rm -f "$f.kit-sweep"; i=$((i+1))
     done
-    cmp -s "$f" "$f.kit-before" || say '3.0 ref-sweep: old kit names → crew- names in %s' "$f"
+    cmp -s "$f" "$f.kit-before" || say '3.0 ref-sweep: old 2.x names → crew- names in %s' "$f"
     rm -f "$f.kit-before"
   done
   set --
@@ -1143,7 +1143,7 @@ if [ -f .claude/kit-manifest.txt ]; then
   done < .claude/kit-manifest.txt
   if [ -n "$STALE" ]; then
     echo
-    say '⚠️  installed by an older kit and no longer shipped:%s' "$STALE"
+    say '⚠️  installed by an older Crewforth version and no longer shipped:%s' "$STALE"
     _mt 'The name is the invocation: a leftover COMMAND still lists in the / picker (/review twice), and a'; printf '     %s\n' "$_M"
     _mt 'leftover SKILL still matches prompts, so it competes with whatever replaced it.';                   printf '     %s\n' "$_M"
     _mt 'Nothing is deleted for you — one of these may be a file you customised. To drop them all:';         printf '     %s\n' "$_M"
@@ -1191,7 +1191,7 @@ fi
 h1m 'Coexist summary'
 # _cnt: "<added>" plus " · N skipped" when something was skipped; result in _v (no subshell, see _mt)
 _cnt(){ _v="$1"; if [ "${2:-0}" != 0 ]; then _mt '%s · %s skipped' "$_v" "$2"; _v="$_M"; fi; }
-_mt '+%s added' "$A_ADD"; _cnt "$_M" "$A_SKIP"; rowv 'kit agents (crew-)' "$_v"
+_mt '+%s added' "$A_ADD"; _cnt "$_M" "$A_SKIP"; rowv 'Crewforth agents (crew-)' "$_v"
 _cnt "+$S_ADD" "$S_SKIP"; rowv 'skills'   "$_v"
 _cnt "+$C_ADD" "$C_SKIP"; rowv 'commands' "$_v"
 _cnt "+$H_ADD" "$H_SKIP"; rowv 'hooks'    "$_v"
@@ -1207,20 +1207,20 @@ _v="$N_PAGENTS"
 [ "${N_TAKEN:-0}" != 0 ] && { _mt '%s (%s imported to skills/<name>-local drafts; originals backed up in superseded/)' "$_v" "$N_TAKEN"; _v="$_M"; }
 _mt '%s — the rest UNTOUCHED' "$_v"; rowv 'project agents' "$_M"
 case "$COLLIDE_MODE" in
-  keepmine) [ "$N_COLLIDE" != 0 ] && rowm 'overlap' "keepmine — your agents own: %s (kit's crew- for these NOT installed)" "$COLLIDE" ;;
-  coexist)  [ "$N_COLLIDE" != 0 ] && warnm "overlap: %s — BOTH kept; routing between your agent and the kit's crew- stays ambiguous" "$COLLIDE" ;;
+  keepmine) [ "$N_COLLIDE" != 0 ] && rowm 'overlap' "keepmine — your agents own: %s (Crewforth's crew- for these NOT installed)" "$COLLIDE" ;;
+  coexist)  [ "$N_COLLIDE" != 0 ] && warnm "overlap: %s — BOTH kept; routing between your agent and Crewforth's crew- stays ambiguous" "$COLLIDE" ;;
 esac
-[ -n "$SKIP_LIST" ] && { warnm "conflicting files (the project's was PRESERVED, the kit's skipped):"; for s in $SKIP_LIST; do printf '     %s- %s%s\n' "$D" "$s" "$R"; done; }
+[ -n "$SKIP_LIST" ] && { warnm "conflicting files (the project's was PRESERVED, Crewforth's skipped):"; for s in $SKIP_LIST; do printf '     %s- %s%s\n' "$D" "$s" "$R"; done; }
 
 # ============ [STAGE 3] DISCIPLINE ACTIVE + SETTINGS MERGE ============
-h1m "Stage 3 — activate the kit discipline (without touching the project CLAUDE.md) + settings merge"
+h1m "Stage 3 — activate the Crewforth discipline (without touching the project CLAUDE.md) + settings merge"
 
 # 3a) DISCIPLINE.md: install the discipline half of the payload CLAUDE.md as a separate, FLAT file —
 #     everything above the sentinel line. Contains NO @import (leaf) -> no 4-hop trap.
 if [ -f "$SRC/CLAUDE.md" ]; then
   kit_require_sentinel "$SRC/CLAUDE.md"
   kit_discipline_of "$SRC/CLAUDE.md" > .claude/DISCIPLINE.md
-  say 'DISCIPLINE.md written (kit discipline only; the project template stays out of it)'
+  say 'DISCIPLINE.md written (Crewforth discipline only; the project template stays out of it)'
 fi
 
 # 3b) single-line @import into the project CLAUDE.md (if present DON'T touch content, only prepend; if absent create).
@@ -1284,14 +1284,14 @@ KEPT="$_M"   # terminal-only (HANDOVER.md words its own line), so translated
 SET_FRESH=0
 if [ ! -f "$PSET" ]; then
   SET_FRESH=1
-  [ -f "$KSET" ] && { cp "$KSET" "$PSET"; say "settings.json: was missing in the project -> the kit's was installed"; }
+  [ -f "$KSET" ] && { cp "$KSET" "$PSET"; say "settings.json: was missing in the project -> Crewforth's was installed"; }
 else
   awk -v op=merge -v retired='Bash(git add:*)|Bash(git commit:*)|Bash(git push:*)|Bash(git checkout -b:*)' -f "$SET_AWK" "$KSET" "$PSET" > "$PSET.tmp" 2>/dev/null
   case "$?" in
     0) if [ -s "$PSET.tmp" ] && awk -v op=validate -f "$SET_AWK" "$PSET.tmp" 2>/dev/null; then
          # Written THROUGH the existing file, not swapped in with mv: a symlinked settings.json (a team's shared
          # file) keeps its link and gets the merge, and a 0600 mode survives.
-         cat "$PSET.tmp" > "$PSET"; say 'settings.json: hook-aware MERGE (kit hooks refreshed - %s)' "$KEPT"
+         cat "$PSET.tmp" > "$PSET"; say 'settings.json: hook-aware MERGE (Crewforth hooks refreshed - %s)' "$KEPT"
        else SET_NOTE="merge failed -> project setting PRESERVED (not overwritten)"; fi ;;
     10) SET_NOTE="existing file is INVALID JSON -> merge ABORT (no silent overwrite). Fix it by hand first." ;;
     *) SET_NOTE="merge failed -> project setting PRESERVED (not overwritten)" ;;
@@ -1341,7 +1341,7 @@ SHIM
     chmod +x ".claude/git-shim/$hk"
   done
   git config core.hooksPath .claude/git-shim
-  say 'SHIM installed -> core.hooksPath=.claude/git-shim (kit + %s run together)' "$ORIG_HOOKS"
+  say 'SHIM installed -> core.hooksPath=.claude/git-shim (Crewforth + %s run together)' "$ORIG_HOOKS"
 fi
 [ "$GITKIND" = "worktree/submodule (.git file)" ] && warnm 'worktree/submodule: core.hooksPath may also affect the main checkout (git design).'
 
@@ -1373,7 +1373,7 @@ if printf '{"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}' | ba
 else say "OK · PROOF-2: guard-bash BLOCKED the keyless 'git commit' (holds in auto/bypass too)"; fi
 # 3) can the kit agents + discipline be loaded
 NCCK="$(ls .claude/agents/crew-*.md 2>/dev/null | wc -l | tr -d ' ')"
-if [ "${NCCK:-0}" -ge 1 ]; then say 'OK · PROOF-3: %s kit agents (crew-) installed + discoverable' "$NCCK"; else warnm 'PROOF-3: no kit agent'; PROOF_OK=0; fi
+if [ "${NCCK:-0}" -ge 1 ]; then say 'OK · PROOF-3: %s Crewforth agents (crew-) installed + discoverable' "$NCCK"; else warnm 'PROOF-3: no Crewforth agent'; PROOF_OK=0; fi
 if [ -s .claude/DISCIPLINE.md ] && grep -qF '@.claude/DISCIPLINE.md' CLAUDE.md; then say 'OK · PROOF-4: DISCIPLINE.md loaded + @import-ed from CLAUDE.md'; else warnm 'PROOF-4: discipline not linked'; PROOF_OK=0; fi
 # PROOF-5: a takeover renamed the project's agents to `crew-`, but CLAUDE.md — or an orchestration doc it points to
 # (e.g. "detail: docs/AGENTS.md") — may still name the OLD bare agent, which now matches no installed agent, so
@@ -1432,7 +1432,7 @@ EOF
   [ -n "$STALE" ] && warnm 'PROOF-5: CLAUDE.md (or a doc it references) names auto-delegated agent(s) by an old bare id — rename each to its crew- id, else delegation to them silently fails:%s' "$STALE"
   [ -n "$STALE_PULL" ] && warnm 'PROOF-5: CLAUDE.md (or a referenced doc) names pull-only agent(s) by an old bare id (still work; rename for consistency):%s' "$STALE_PULL"
 fi
-[ "$PROOF_OK" = 1 ] && h1m 'PROOF: kit 100%% ACTIVE — gates armed, agents + discipline loaded' || warnm 'PROOF: some gates could not be verified (see above)'
+[ "$PROOF_OK" = 1 ] && h1m 'PROOF: Crewforth 100%% ACTIVE — gates armed, agents + discipline loaded' || warnm 'PROOF: some gates could not be verified (see above)'
 
 # ============ [STAGE B] APPLY THE DECISIONS ============
 h1m 'Stage B — apply the decisions'
@@ -1640,7 +1640,7 @@ subm 'see it:   open the Source Control / Changes panel (every added + changed f
 if bash "$SRC/eval/preflight.sh" --has node 2>/dev/null; then
   subm 'panel:    %s opens it from this project (or: %s)' /crew-studio 'node .claude/studio/server/index.js --open'
 else
-  subm 'panel:    needs Node 18+, absent here — the kit can fetch one: %s' 'bash .claude/studio/ensure-node.sh --plan'
+  subm 'panel:    needs Node 18+, absent here — Crewforth can fetch one: %s' 'bash .claude/studio/ensure-node.sh --plan'
   _mt '(it asks first, verifies the checksum, and touches nothing outside %s)' '~/.claude/studio-runtime'; sub "          $_M"
 fi
 sub "$ACCEPT_LINE"

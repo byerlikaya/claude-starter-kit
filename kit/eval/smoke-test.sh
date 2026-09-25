@@ -1975,18 +1975,18 @@ run_cu(){ ups | CONTEXT_WINDOW=1000000 bash "$SD/hooks/context-usage.sh" 2>/dev/
 rm -f "${TMPDIR:-/tmp}/crew-kit-version.$SDSID"
 echo "1.0.0" > "$SD/VERSION"
 o="$(run_cu)"
-case "$o" in *"kit updated"*) fail "stale gate warned on the session's first turn" ;; *) pass "stale gate: silent on the first turn" ;; esac
+case "$o" in *"Crewforth updated"*) fail "stale gate warned on the session's first turn" ;; *) pass "stale gate: silent on the first turn" ;; esac
 [ "$(cat "${TMPDIR:-/tmp}/crew-kit-version.$SDSID" 2>/dev/null)" = "1.0.0" ] && pass "stale gate: stamps the version it started with" || fail "stale gate did not stamp the version"
 o="$(run_cu)"
-case "$o" in *"kit updated"*) fail "stale gate warned without an update" ;; *) pass "stale gate: silent while the version is unchanged" ;; esac
+case "$o" in *"Crewforth updated"*) fail "stale gate warned without an update" ;; *) pass "stale gate: silent while the version is unchanged" ;; esac
 echo "1.0.1" > "$SD/VERSION"                       # the update lands mid-session
 o="$(run_cu)"
-case "$o" in *"kit updated 1.0.0 → 1.0.1"*) pass "stale gate: announces an update that landed mid-session" ;; *) fail "stale gate missed a mid-session update: $o" ;; esac
+case "$o" in *"Crewforth updated 1.0.0 → 1.0.1"*) pass "stale gate: announces an update that landed mid-session" ;; *) fail "stale gate missed a mid-session update: $o" ;; esac
 o="$(run_cu)"
-case "$o" in *"kit updated"*) pass "stale gate: keeps warning (context stays stale until restart)" ;; *) fail "stale gate warned only once" ;; esac
+case "$o" in *"Crewforth updated"*) pass "stale gate: keeps warning (context stays stale until restart)" ;; *) fail "stale gate warned only once" ;; esac
 # session-guard.sh pipes a Stop payload through this same script — it must never emit the notice there
 o="$(printf '{"session_id":"%s","hook_event_name":"Stop","transcript_path":"%s"}' "$SDSID" "$SDFX" | CONTEXT_WINDOW=1000000 bash "$SD/hooks/context-usage.sh" --verbose 2>/dev/null)"
-case "$o" in *"kit updated"*) fail "stale gate leaked into the Stop payload" ;; *) pass "stale gate: silent on a Stop payload" ;; esac
+case "$o" in *"Crewforth updated"*) fail "stale gate leaked into the Stop payload" ;; *) pass "stale gate: silent on a Stop payload" ;; esac
 # fail open: no VERSION at all
 rm -f "$SD/VERSION"; run_cu >/dev/null 2>&1 && pass "stale gate: fails open when VERSION is absent" || fail "stale gate exited non-zero without VERSION"
 rm -rf "$SD"; rm -f "$SDFX" "${TMPDIR:-/tmp}/crew-kit-version.$SDSID"
@@ -6075,6 +6075,69 @@ $(printf '%s\n' "$_lh" | head -n 5 | sed 's/^/       /')"
   rm -rf "$_kd"
 else
   skip scope "front-page name, number and link checks skipped (installed project — the READMEs live in the source repository)" 3
+fi
+
+sec "== 14e) what the tools PRINT says Crewforth, not kit =="
+# 3.0 renamed the product; the installers, doctor, preflight and the hooks kept saying "kit" to the user for a
+# release (5R.2 counted 183 non-comment lines). The rule: a line the user reads in the terminal never uses "kit"
+# as a WORD. Paths and identifiers stay — kit/, kit.conf, kit-manifest.txt, kit-adopt-<ts>, .kit-before, KIT_*,
+# kit_rule(), KIT:DISCIPLINE-END — so the matcher decides word vs path by the characters around it, not by grep.
+# Three parts, because no single grep can tell a printed line from one written into a file (adopt.sh also writes
+# HANDOVER.md, start.sh writes a CLAUDE.md comment; those are files, not terminal output, and out of this rule):
+#   A  scripts that only talk to the terminal — every non-comment line;
+#   B  start.sh / adopt.sh / bin/cli.js — the message tables (key and translation), echo lines, the usage heredocs
+#      and the --help block, which is everything of theirs that reaches the terminal;
+#   C  the real output of start.sh --help and preflight in both languages, and of `node bin/cli.js --help`.
+KW_AWK='function kitword(s,   l, i, pre, rest, suf, nx, nx2, tail) {
+  l = s
+  while ((i = index(tolower(l), "kit")) > 0) {
+    pre = (i > 1) ? substr(l, i-1, 1) : ""; rest = substr(l, i+3); l = rest
+    if (pre ~ /[A-Za-z0-9_.\/-]/) continue
+    suf = ""; if (match(tolower(rest), /^[a-z]+/)) suf = tolower(substr(rest, 1, RLENGTH))
+    if (suf != "" && suf !~ /^(s|i|in|e|le|li|te|ten|inki|ler|leri|lerin)$/) continue
+    tail = substr(rest, length(suf)+1); nx = substr(tail, 1, 1); nx2 = substr(tail, 2, 1)
+    if (nx == "/" || nx == "_" || nx ~ /[0-9]/) continue
+    if (nx == "." && nx2 ~ /[A-Za-z0-9]/) continue
+    if (nx == ":" && nx2 ~ /[A-Z]/) continue
+    if (nx == "-" && tail ~ /^-(manifest|adopt|before|tmp|local)/) continue
+    return 1
+  }
+  return 0
+}'
+kw_lines(){ awk "$KW_AWK"' /^[[:space:]]*(#|\/\/|\*)/{next} kitword($0){print FILENAME":"FNR": "$0}' "$@" 2>/dev/null; }
+# B: only the parts of the three mixed files that reach the terminal.
+kw_printed(){ awk "$KW_AWK"'
+  /^[[:space:]]*(#|\/\/)/ {next}
+  /<<.?USAGE/ {h=1; next}  h && /^USAGE(_TR)?$/ {h=0; next}
+  /console\.log\(`/ {c=1}  c && /`\);/ {c=0}
+  { p = h || c || /^[[:space:]]*"[^"]*"\)[[:space:]]*s=/ || /^[[:space:]]*echo[[:space:]]/ || /console\.(log|error)\(/ || /echo "[a-z]+:/ }
+  p && kitword($0) {print FILENAME":"FNR": "$0}' "$@" 2>/dev/null; }
+if [ "$IS_KIT" = 1 ]; then
+  KR="$(cd "$ROOT/.." && pwd)"
+  KW_A="$ROOT/eval/doctor.sh $ROOT/eval/preflight.sh $ROOT/eval/update-guard.sh $ROOT/eval/utilization.sh $(ls "$ROOT"/hooks/*.sh "$ROOT"/skills/automode-policy/scripts/*.sh 2>/dev/null | tr '\n' ' ')"
+  # shellcheck disable=SC2086 # paths without spaces
+  _ka="$(kw_lines $KW_A)"; _kb="$(kw_printed "$KR/start.sh" "$KR/adopt.sh" "$KR/bin/cli.js")"
+  # C: the real output. start.sh refuses to run from its own checkout, so its help is read from a copy.
+  _kd="$(mktemp -d)"; cp "$KR/start.sh" "$KR/VERSION" "$_kd/" 2>/dev/null
+  { ( cd "$_kd" && CREW_LANG=en bash start.sh --help ) ; ( cd "$_kd" && CREW_LANG=tr bash start.sh --help )
+    CREW_LANG=en bash "$ROOT/eval/preflight.sh"; CREW_LANG=tr bash "$ROOT/eval/preflight.sh"
+    command -v node >/dev/null 2>&1 && node "$KR/bin/cli.js" --help; } > "$_kd/out.txt" 2>&1
+  _kc="$(kw_lines "$_kd/out.txt" | sed "s|^$_kd/||")"; _kn="$(grep -c . "$_kd/out.txt")"
+  # Twins. Must fail: a start.sh whose table says "full kit" again, and output that says "installing the kit.".
+  # Must pass: output that only names paths — .claude/kit.conf, kit/ deleted, kit-manifest.txt, drizzle-kit, KIT_X.
+  sed 's/"full install") s=/"full kit") s=/' "$KR/start.sh" > "$_kd/mut-start.sh"
+  printf 'Done: installing the kit.\nKurulum: kitin dosyaları hazır\n' > "$_kd/bad.txt"
+  printf 'wrote .claude/kit.conf\nkit/ deleted\nsee .claude/kit-manifest.txt and drizzle-kit status\nKIT_X=1\n' > "$_kd/good.txt"
+  if [ -n "$_ka$_kb$_kc" ]; then fail "a printed line still says kit — say Crewforth:
+$(printf '%s\n%s\n%s\n' "$_ka" "$_kb" "$_kc" | grep . | head -n 6 | sed "s|$KR/||; s|^|       |")"
+  elif [ "$_kn" -lt 30 ]; then fail "FIXTURE: the captured help and preflight output is only $_kn line(s) — the run broke, not the wording"
+  elif [ -z "$(kw_printed "$_kd/mut-start.sh")" ]; then fail "the printed-text check missed a start.sh table entry reverted to 'full kit' — it reads nothing"
+  elif [ "$(kw_lines "$_kd/bad.txt" | grep -c .)" != 2 ]; then fail "the kit-word matcher missed 'the kit.' or 'kitin' in planted output"
+  elif [ -n "$(kw_lines "$_kd/good.txt")" ]; then fail "the kit-word matcher flagged a path or identifier: $(kw_lines "$_kd/good.txt" | head -n 2 | tr '\n' ' ')"
+  else pass "no printed line says kit: terminal-only scripts, the installers' tables/echo/usage and cli --help, plus $_kn lines of real help and preflight output (EN+TR); a reverted table entry and planted words are caught, paths are not"; fi
+  rm -rf "$_kd"
+else
+  skip scope "printed-text wording check skipped (installed project — the installers live in the source repository)"
 fi
 
 sec "== 15) evals: the parallel-audit metric, because a rule nobody can measure is not a rule =="

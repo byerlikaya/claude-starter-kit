@@ -309,11 +309,11 @@ block(){  # $1 = rule name for the log (must keep the `gate-file edit` prefix �
   fi
   echo "GUARD (§4.5): editing '$FP' is blocked AT THE TOOL LEVEL." >&2
   echo "$2" >&2
-  echo "Kit updates go through the installer/update script, not the assistant's file tools. If the user explicitly wants it changed, they edit it in their own editor." >&2
+  echo "Crewforth updates go through the installer/update script, not the assistant's file tools. If the user explicitly wants it changed, they edit it in their own editor." >&2
   exit 2
 }
 WHY_SCRIPT="This file is a gate script — rewriting it would disarm the trace/secret/approval gates."
-WHY_DISC="This file is the kit's discipline document — it IS the text of §4.1-§4.5, so editing it empties the rules the gates enforce."
+WHY_DISC="This file is Crewforth's discipline document — it IS the text of §4.1-§4.5, so editing it empties the rules the gates enforce."
 WHY_LINK="A parent directory of this path is a symlink and it resolves into a gate directory, so the write would land on a gate file."
 WHY_LONG="The path in this payload is longer than any filesystem accepts. It is refused rather than parsed, because parsing it is the slow path an attacker would aim at."
 # Sized from the cost curve, not from PATH_MAX. Tier 3 walks the value character by character and bash string
@@ -447,7 +447,7 @@ _is_gate(){   # 0 = gate file; sets GATE_RULE and GATE_WHY
     # Matched by the kit's own filenames rather than by guessing a plugin path, so a project's unrelated
     # `hooks/` directory is untouched.
     */[Hh][Oo][Oo][Kk][Ss]/[Gg][Uu][Aa][Rr][Dd]-*.[Ss][Hh]|*/[Hh][Oo][Oo][Kk][Ss]/[Ss][Ee][Ss][Ss][Ii][Oo][Nn]-[Gg][Uu][Aa][Rr][Dd].[Ss][Hh])
-      GATE_RULE="gate-file edit (kit gate script)"; GATE_WHY="$WHY_SCRIPT"; return 0 ;;
+      GATE_RULE="gate-file edit (Crewforth gate script)"; GATE_WHY="$WHY_SCRIPT"; return 0 ;;
   esac
   return 1
 }

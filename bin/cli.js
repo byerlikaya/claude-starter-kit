@@ -19,13 +19,13 @@ if (sub === '--help' || sub === '-h' || sub === 'help') {
 
 Usage:
   npx crewforth [init] [--private|--shared] [--yes]
-      Set up the kit in a fresh project (start.sh wizard). Every install ships the whole kit and
+      Set up Crewforth in a fresh project (start.sh wizard). Every install ships everything and
       is stack-agnostic: the stack is recorded per project in CLAUDE.md ## Stack.
-      (--dotnet was removed in 3.0; it is still accepted, warns, and installs the same kit.)
+      (--dotnet was removed in 3.0; it is still accepted, warns, and installs the same setup.)
   npx crewforth adopt
-      Hand the kit over onto an existing project (adopt.sh).
+      Hand Crewforth over onto an existing project (adopt.sh).
   npx crewforth@latest update
-      Refresh a project that already has the kit. Alias of 'adopt': it reads .claude/kit.conf,
+      Refresh a project that already has Crewforth. Alias of 'adopt': it reads .claude/kit.conf,
       migrates a pre-3.0 .NET install (its pattern skill stays, as a project skill), and
       restores anything missing. Your CLAUDE.md is never touched.
 
@@ -36,7 +36,7 @@ Usage:
       --list shows the catalogue; --force replaces a file that differs; --no-deps adds the agent alone.
 
   npx crewforth --version
-      Print the kit version and exit.
+      Print the Crewforth version and exit.
 
 Run any of them at the root of your target project.
 On Windows, run inside Git Bash for the smoothest experience (WSL works as a fallback).`);
@@ -431,7 +431,7 @@ const BASH = findBash();
 // bash is required (macOS / Linux have it; on Windows: Git Bash or WSL)
 const probe = spawnSync(BASH, ['-c', 'exit 0']);
 if (probe.error) {
-  console.error('This kit needs bash — macOS/Linux have it; on Windows install Git Bash (git-scm.com) or use WSL.');
+  console.error('Crewforth needs bash — macOS/Linux have it; on Windows install Git Bash (git-scm.com) or use WSL.');
   process.exit(1);
 }
 
@@ -478,12 +478,12 @@ try {
       '  printf %s "$1"',
       '}',
       'S=$(conv "$1"); C=$(conv "$2"); shift 2',
-      '[ -r "$S/' + script + '" ] || { echo "kit: bash cannot read the staged script at $S/' + script +
+      '[ -r "$S/' + script + '" ] || { echo "crewforth: bash cannot read the staged script at $S/' + script +
         ' — run inside Git Bash, or set TEMP to a long (non-8.3, ASCII) path." >&2; exit 127; }',
-      'cd "$C" || { echo "kit: cannot enter the project directory $C" >&2; exit 1; }',
+      'cd "$C" || { echo "crewforth: cannot enter the project directory $C" >&2; exit 1; }',
       'exec bash "$S/' + script + '" "$@"',
     ].join('\n');
-    res = spawnSync(BASH, ['-c', runner, 'kit', stageFwd, projFwd, ...passArgs], {
+    res = spawnSync(BASH, ['-c', runner, 'crewforth', stageFwd, projFwd, ...passArgs], {
       stdio: 'inherit',
     });
   }
