@@ -6,10 +6,6 @@ name: launch-matrix
 # The cell itself is packaging/launch-matrix.sh, so a failing cell can be rerun on a desk.
 on:
   workflow_dispatch:
-  # TEMPORARY: one run on this branch, because workflow_dispatch reaches only workflows on the default branch.
-  # Removed in the same pull request once the 12 cells have reported.
-  push:
-    branches: [chore/launch-prep]
 
 permissions:
   contents: read
