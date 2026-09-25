@@ -1,0 +1,67 @@
+name: launch-matrix
+
+# Run once, by hand, before a launch — not on every push. Every OS the day-one user is on, every Node the package
+# accepts, through the package npm would publish: a fresh init, an update from a real 2.13.0 install, a second
+# update that must change nothing, doctor, `bash -n` on every hook, and no CR in an installed shell file.
+# The cell itself is packaging/launch-matrix.sh, so a failing cell can be rerun on a desk.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cell:
+    name: ${{ matrix.os }} · node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04, macos-latest, windows-latest]
+        node: ['20', '22', '24']
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # Before the checkout, so the clone is made the way Git for Windows makes it by default: every text file the
+      # attributes do not pin arrives CRLF. The cell then proves no installed shell file carries a CR.
+      - name: core.autocrlf=true (Windows)
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf true
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0   # the 2.13.0 install is made from the v2.13.0 tree with git archive
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Launch cell
+        run: bash packaging/launch-matrix.sh
+
+  # The oldest git a day-one user plausibly runs: Ubuntu 22.04's own package, 2.34. The ubuntu-22.04 runner image
+  # carries the git-core PPA and ships a current git (2.55 when this was written), so the image cannot answer the
+  # question; a plain ubuntu:22.04 container with git from the distro can. The cell refuses to run on anything but
+  # 2.34.x, so it cannot quietly turn into a second modern-git cell.
+  old-git:
+    name: ubuntu:22.04 container · distro git 2.34 · node 22
+    runs-on: ubuntu-latest
+    container: ubuntu:22.04
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Git from the distro, and only 2.34
+        run: |
+          apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends git ca-certificates xz-utils >/dev/null
+          v="$(git --version)"; echo "$v"
+          case "$v" in "git version 2.34."*) ;; *) echo "::error::expected Ubuntu 22.04's git 2.34.x, got: $v"; exit 1 ;; esac
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Launch cell
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          bash packaging/launch-matrix.sh

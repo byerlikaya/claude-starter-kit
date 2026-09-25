@@ -64,8 +64,8 @@ def pol(cx,cy,r,deg):
 def pt(p): return f"{p[0]:.1f},{p[1]:.1f}"
 
 # The brand mark — ONE copy in this file, drawn wherever it is needed. assets/icon.svg is the source of truth;
-# packaging/check-gh-pages.sh reads the rect/polyline literals below and compares them against it and the site's
-# inlined favicon. Three hand-kept copies already drift, which is why this is a function and not a second paste:
+# kit/eval/smoke-test.sh reads the rect/polyline literals below and compares them against it (the site's favicon is
+# a build-time copy of icon.svg). Hand-kept copies drift, which is why this is a function and not a second paste:
 # every place the mark appears in a generated diagram renders these exact rects.
 MARK_BOX = 200                                   # the mark's own coordinate system
 def mark(tx, ty, scale):
@@ -195,9 +195,9 @@ def build(subtitle):
         P.append(f'<text x="{x:.1f}" y="{y+4.5:.1f}" text-anchor="middle" font-size="12.5" font-weight="700" fill="#0b1220">{SHORT[nm]}</text>')
         P.append('</g>')
     # center: real logo. SOURCE OF TRUTH IS assets/icon.svg — mark() is a hand-copy of it, and
-    # the gh-pages favicon (an inline data: URI in index.html) is a second hand-copy of the same artwork. None
-    # of the three can see the others, so `packaging/check-gh-pages.sh` compares them; if you change the mark,
-    # change assets/icon.svg first and let that gate tell you what else drifted.
+    # the site's favicon is copied from icon.svg when the site is built. mark() cannot see icon.svg, so
+    # kit/eval/smoke-test.sh compares them; if you change the mark, change assets/icon.svg first and let that
+    # gate tell you what else drifted.
     P.append(f'<circle cx="{CX}" cy="{CY}" r="64" fill="#0B1020" filter="url(#corehalo)"/>')
     P.append(f'<circle cx="{CX}" cy="{CY}" r="64" fill="none" stroke="#7C3AED" stroke-opacity="0.75" stroke-width="2"/>')
     P.append(mark(CX-48, CY-48, 0.48))

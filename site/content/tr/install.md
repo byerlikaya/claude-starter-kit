@@ -2,6 +2,8 @@
 
 İki giriş noktası var: yeni proje için **`start.sh`**, hâlihazırda yürüyen bir proje için **`adopt.sh`**. Hangi kanaldan kurarsanız kurun, çalışan aynı iki komuttur.
 
+**Gereksinimler:** Claude Code 2.1.214 veya sonrası (2.1.282 ile test edildi) ve `npx` için Node.js 20 veya sonrası (22 ya da 24 önerilir).
+
 ```bash
 # npx: kurulum gerektirmez
 npx crewforth init                  # yeni proje

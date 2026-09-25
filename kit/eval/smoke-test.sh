@@ -1704,6 +1704,33 @@ if [ "$IS_KIT" = 1 ]; then
     [ -z "$PSMISS" ] && pass "the plugin channel ships from plugin-stable, advanced only by the approved release job" \
                      || fail "plugin channel gating is incomplete:$PSMISS"
   fi
+  # A tag decides what ships, before anything is built: packaging/release-check.sh. A final tag needs the CHANGELOG's
+  # first heading dated ("## [X.Y.Z] — YYYY-MM-DD"), so a final cannot go out under "[Unreleased]"; an rc may keep
+  # that heading and publishes as npm `next`. Driven on fixture trees, one per case, both directions of each rule.
+  RC_SH="$KR/packaging/release-check.sh"
+  if [ -f "$RC_SH" ] && [ -f "$RY" ]; then
+    _rc_case() { # tag version pkg-version heading -> "rc npm_tag"
+      local d; d="$(mktemp -d)"
+      printf '%s\n' "$2" > "$d/VERSION"; printf '{\n  "name": "x",\n  "version": "%s"\n}\n' "$3" > "$d/package.json"
+      printf '# Changelog\n\n%s\n\n- a change\n\n## [2.13.0] — 2026-09-23\n' "$4" > "$d/CHANGELOG.md"
+      local out rc; out="$(env -u GITHUB_OUTPUT bash "$RC_SH" "$1" "$d" 2>&1)"; rc=$?
+      rm -rf "$d"; printf '%s %s' "$rc" "$(printf '%s\n' "$out" | sed -n 's/^npm_tag=//p')"
+    }
+    _rc_bad=""
+    [ "$(_rc_case v3.0.0 3.0.0 3.0.0 '## [3.0.0] — 2026-10-01')" = "0 latest" ]      || _rc_bad="$_rc_bad final-dated-refused"
+    [ "$(_rc_case v3.0.0 3.0.0 3.0.0 '## [Unreleased] — 3.0.0')" = "1 " ]           || _rc_bad="$_rc_bad final-under-Unreleased-passed"
+    [ "$(_rc_case v3.0.0-rc.1 3.0.0 3.0.0 '## [Unreleased] — 3.0.0')" = "0 next" ]   || _rc_bad="$_rc_bad rc-under-Unreleased-refused"
+    [ "$(_rc_case v3.0.0-rc.1 3.0.0 3.0.0 '## [Unreleased] — 2.14.0')" = "1 " ]      || _rc_bad="$_rc_bad rc-with-another-version-heading-passed"
+    [ "$(_rc_case v3.0.0-rc.1 3.0.0 3.0.0-rc.1 '## [Unreleased] — 3.0.0')" = "1 " ]  || _rc_bad="$_rc_bad rc-suffix-committed-passed"
+    # The workflow uses it, and an rc stays off every channel but npm `next`.
+    grep -Fq 'run: bash packaging/release-check.sh "$GITHUB_REF_NAME"' "$RY" || _rc_bad="$_rc_bad release.yml-does-not-run-it"
+    awk '/- name: Publish the plugin edition/{f=1;next} f&&/^      - /{exit} f' "$RY" | grep -Fq "if: steps.v.outputs.prerelease != 'true'" \
+      || _rc_bad="$_rc_bad rc-advances-plugin-stable"
+    grep -Fq 'npm publish --access public --tag "${{ steps.v.outputs.npm_tag }}"' "$RY" || _rc_bad="$_rc_bad npm-publish-ignores-the-dist-tag"
+    grep -Fq "needs.release.outputs.prerelease != 'true'" "$RY" || _rc_bad="$_rc_bad rc-publishes-the-site"
+    [ -z "$_rc_bad" ] && pass "release tags: a final needs a dated CHANGELOG heading ([Unreleased] is refused), an rc may keep it and goes to npm next only — 5 fixture cases, both directions" \
+                      || fail "release tag rules broken:$_rc_bad"
+  fi
   # The hook TABLE is hand-written and nothing tied it to the directory it describes. session-stats.sh was on
   # disk, wired into two skills, and absent from the README — the same class as the picture that drew eleven of
   # twelve agents and the site that advertised eight commands. Every shipped hook must be documented somewhere
@@ -1820,6 +1847,27 @@ if [ "$IS_KIT" = 1 ]; then
       pass "assets/$svg.svg draws all $TA agents"
     fi
   done
+  # The brand mark: assets/icon.svg is the source, and packaging/gen-network.py hand-copies its rect and polylines
+  # into the diagram core, where nothing else can see them. The gh-pages site check compared them until it was retired
+  # with the hand-written site; the site's favicon is a copy of icon.svg made at build time now,
+  # so the third copy that script also compared cannot drift. Compared on SHAPE: quotes, %23 and whitespace are
+  # normalised and only the 200x200 tile plus the strokes on it are kept.
+  _canon_mark() { sed "s/%23/#/g; s/'/\"/g" | tr -d ' \n\r\t' | grep -oE '<rectwidth="200"height="200"[^>]*/>(<polyline[^>]*/>)+' | head -1; }
+  _gen_mark() { grep -oE "'<(rect|polyline)[^']*'" "$1" 2>/dev/null | tr -d "'" | tr -d '\n' | _canon_mark; }
+  if [ -f "$KR/assets/icon.svg" ] && [ -f "$KR/packaging/gen-network.py" ]; then
+    _src_mark="$(_canon_mark < "$KR/assets/icon.svg")"; _gen="$(_gen_mark "$KR/packaging/gen-network.py")"
+    _mt="$(mktemp)"; sed 's/points="44,58 86,100 44,142"/points="44,58 88,100 44,142"/' "$KR/packaging/gen-network.py" > "$_mt"
+    _twin="$(_gen_mark "$_mt")"; rm -f "$_mt"
+    if [ -z "$_src_mark" ] || [ -z "$_gen" ]; then
+      fail "brand mark: no tile+strokes fragment in $([ -z "$_src_mark" ] && echo assets/icon.svg || echo packaging/gen-network.py) — the markup changed; update this check"
+    elif [ -z "$_twin" ] || [ "$_twin" = "$_src_mark" ]; then
+      fail "brand mark: a gen-network.py copy with one point moved still compared equal — this check reads nothing"
+    elif [ "$_gen" = "$_src_mark" ]; then
+      pass "brand mark in packaging/gen-network.py matches assets/icon.svg; a copy with one point moved is caught"
+    else
+      fail "brand mark in packaging/gen-network.py drifted from assets/icon.svg — redraw mark() from icon.svg"
+    fi
+  fi
   # The READMEs state the full (fullstack) agent count in prose. A stale one there is the first thing a reader sees.
   for r in README.md README.tr.md README.npm.md; do
     [ -f "$KR/$r" ] || continue
@@ -5961,9 +6009,8 @@ sec "== 14c) the 3.0 rename left no old name behind — outside history and the 
 # more old name in it is red too, and a removed one asks for the pin to come down. An entry that allows nothing is
 # a failure as well, so the list cannot quietly rot.
 if [ -n "$SGR" ] && [ -d "$SGR/packaging" ] && [ -f "$SGR/VERSION" ] && [ -d "$SGR/kit" ] && [ -f "$SGR/packaging/build-plugin.sh" ]; then
-  RN_ALLOW='CHANGELOG.md	194	history: every entry before 3.0 keeps the name it shipped under
-README*.md	2	migration: the 2.x plugin note names the plugin to uninstall — one line, EN + TR
-site/content/*/install.md	2	migration: the same 2.x plugin note on the install page — one line, EN + TR
+  RN_ALLOW='CHANGELOG.md	196	history: every entry before 3.0 keeps the name it shipped under
+README*.md site/content/*/install.md	4	migration: the 2.x plugin note names the plugin to uninstall — one line in each README and install page, EN + TR
 evals/results/*	6	history: recorded eval runs stay byte-for-byte
 adopt.sh	48	migration: finds and moves 2.x names (components, CLAUDE.md, board, auto-mode rules, variables)
 bin/cli.js	4	migration: add accepts a typed <x>-csk and moves an add record written under the old names
@@ -5975,7 +6022,20 @@ site/scripts/check.mjs	7	tests: the old-name pattern of the built-site gate, and
 */skills/automode-policy/scripts/check.sh	4	compat layer: counts auto-mode rules still named by 2.x — removed in 4.0
 */studio/web/storage-migrate.js	4	migration: moves the panel'"'"'s saved layout to the new keys — removed in 4.0
 kit/eval/smoke-test.sh	36	tests: this gate'"'"'s own pattern, and that the 2.x names still work
-packaging/*	124	tests: the migration rehearsal on the real v2.13.0 tree, the legacy token and layout checks'
+packaging/legacy-npm/*	10	the 2.x package name'"'"'s 3.0.0: a forwarder to crewforth, published once by hand
+packaging/*	136	tests: the migration rehearsal on the real v2.13.0 tree, the legacy token and layout checks'
+  # A line may name several globs, separated by spaces, when one reason covers them all; its pin is their sum. Split
+  # with `read -a`, never a bare `for g in $globs`, which would expand each pattern against the working directory.
+  _rn_match(){   # $1 = a path -> the allow-list line (its glob field) that covers it, or nothing
+    local g _gs _gg
+    while IFS="$(printf '\t')" read -r g _ _; do
+      IFS=' ' read -r -a _gs <<< "$g"
+      for _gg in "${_gs[@]}"; do case "$1" in $_gg) printf '%s' "$g"; return 0 ;; esac; done
+    done <<EOF
+$RN_ALLOW
+EOF
+    return 1
+  }
   # Case-insensitive, and `csk` as a word on its own: -csk, .csk, refs/csk/, csk-board, csk.board, CSK_ — every
   # shape the old name took. The first version listed shapes and missed the lowercase board names entirely.
   RN_PAT='(^|[^a-z0-9])csk([^a-z0-9]|$)|claude starter kit|claude-starter-kit|claude-starter/|@byerlikaya/'
@@ -5987,10 +6047,7 @@ packaging/*	124	tests: the migration rehearsal on the real v2.13.0 tree, the leg
              | xargs -0 grep -IHoiE -e "$RN_PAT" 2>/dev/null | awk '{ sub(/:.*/, ""); n[$0]++ } END { for (f in n) print f "\t" n[f] }')"
   RN_BAD=""; RN_GOT=""
   while IFS="$(printf '\t')" read -r f c; do
-    [ -n "$f" ] || continue; hit=""
-    while IFS="$(printf '\t')" read -r g _ _; do case "$f" in $g) hit="$g"; break ;; esac; done <<EOF
-$RN_ALLOW
-EOF
+    [ -n "$f" ] || continue; hit="$(_rn_match "$f" || true)"
     if [ -n "$hit" ]; then RN_GOT="$RN_GOT
 $hit	$c"; else RN_BAD="$RN_BAD $f"; fi
   done <<EOF
@@ -6012,6 +6069,13 @@ EOF
   else
     pass "no old name outside the $RN_AN-line allow-list ($RN_N files scanned, $(printf '%s\n' "$RN_HITS" | grep -c .) allowed)"
   fi
+  # Twin for the several-globs form: the merged line must cover both of its globs, and a page it does not name must
+  # stay uncovered — a matcher that read only the first glob would leave the install pages "outside the list".
+  _rn_ml="README*.md site/content/*/install.md"
+  [ "$(_rn_match site/content/tr/install.md || true)" = "$_rn_ml" ] && [ "$(_rn_match README.tr.md || true)" = "$_rn_ml" ] \
+    && [ -z "$(_rn_match site/content/en/gates.md || true)" ] && [ "$(_rn_match packaging/legacy-npm/cli.js || true)" = "packaging/legacy-npm/*" ] \
+    && pass "an allow-list line with several globs covers each of them and nothing else (install page, README, forwarder covered; gates page not)" \
+    || fail "the allow-list matcher does not read a several-globs line — install page: '$(_rn_match site/content/tr/install.md || true)', gates page: '$(_rn_match site/content/en/gates.md || true)'"
   [ "$RN_AN" -le 15 ] && pass "the old-name allow-list has $RN_AN lines (ceiling 15)" || fail "the old-name allow-list grew to $RN_AN lines (ceiling 15) — rename instead"
   [ -z "$RN_OFF" ] && pass "every allow-list line holds exactly its pinned count of old names (none allows nothing)" \
     || fail "allowed old names moved off their pin — a new one is a leftover, a removed one lowers the pin:$RN_OFF"
@@ -6240,6 +6304,13 @@ if [ "$IS_KIT" = 1 ] && [ -f "$ROOT/../package.json" ]; then
     elif [ "$_tw" != 1 ]; then fail "the site-in-package check missed a planted site/ path — it reads nothing"
     elif [ "$_ps" != 0 ]; then fail "npm would pack $_ps file(s) from site/ — the documentation site must stay out of the package"
     else pass "npm pack --dry-run holds 0 site/ files ($_pk kit/ files); a planted site/ path is caught"; fi
+    # The 2.x name's forwarder (packaging/legacy-npm) is its own package, published by hand once; nothing of it, and
+    # nothing else under packaging/, may ride in crewforth's.
+    _pl="$(printf '%s\n' "$_pj" | grep -c '"path": "packaging/')"
+    _tl="$(printf '[{"files":[{"path": "packaging/legacy-npm/cli.js"}]}]\n' | grep -c '"path": "packaging/')"
+    if [ "$_tl" != 1 ]; then fail "the packaging-in-package check missed a planted packaging/ path — it reads nothing"
+    elif [ "$_pl" != 0 ]; then fail "npm would pack $_pl file(s) from packaging/ — the legacy forwarder and the build tooling must stay out"
+    else pass "npm pack --dry-run holds 0 packaging/ files (the legacy forwarder ships on its own); a planted one is caught"; fi
   fi
 else
   skip scope "package contents not checked (installed project — package.json lives in the source repository)"
