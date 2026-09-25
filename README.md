@@ -15,8 +15,8 @@
 
 **Crewforth is your engineering crew for Claude Code.**
 
-It adds subagents, skills, slash commands and hooks to Claude Code: 12 specialist agents that each own a domain,<br>
-40 skills that hold the method, 11 slash commands for the everyday flow, and hooks that enforce the rules that matter.
+It adds subagents, skills, commands and hooks to Claude Code: 12 specialist agents that each own a domain,<br>
+40 skills that hold the method, 11 commands you start with `/crew-…`, and hooks that enforce the rules that matter.
 
 <img src="assets/studio-flow.gif" alt="Studio drawing a delegation as agents spawn, run and report" width="880">
 
@@ -52,7 +52,7 @@ You approve a summary before anything is written, and `add` copies into `./.clau
 | Ship | `/crew-ship` | `crew-review-agent` records a clean review; `crew-commit-agent` proposes the commit and waits for you |
 | Hand off | `/crew-handoff` | `handoff` writes the state down for the next session |
 
-**11 slash commands** in all: `/crew-plan`, `/crew-review`, `/crew-ship`, `/crew-handoff`, `/crew-brainstorm`, `/crew-update`, `/crew-doctor`, `/crew-board`, `/crew-gates`, `/crew-skill`, `/crew-studio`.
+**11 commands** in all, each started with its `/crew-…` name: `/crew-plan`, `/crew-review`, `/crew-ship`, `/crew-handoff`, `/crew-brainstorm`, `/crew-update`, `/crew-doctor`, `/crew-board`, `/crew-gates`, `/crew-skill`, `/crew-studio`.
 
 ## The agents
 

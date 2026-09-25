@@ -115,6 +115,8 @@ One name everywhere: the package, the components, the variables, the payload. **
 - **Forked sessions** (Claude Code 2.1.214+) get the handover reminder, the skill-trust check and the team board
   like a resumed one; the update question stays on a fresh start only.
 - **`MultiEdit` is gone from the file-tool gate's matcher** — it is no longer a Claude Code tool.
+- **Wording:** the 11 command-skills are called commands, not slash commands, matching Claude Code's docs (custom
+  commands were merged into skills, and `/` opens the command menu). You still start each with its `/crew-…` name.
 
 ### Added — "an update is out, update now?"
 

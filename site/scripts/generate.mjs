@@ -29,7 +29,7 @@ const CONTENT = ['install', 'gates', 'skills', 'studio', 'sessions-and-cost', 'v
 const UI = {
   en: {
     agents: { title: 'Agents', lead: 'The {n} specialist agents, each read from its own definition when the site is built, so this list is always the one that installs.', col: ['Agent', 'What it owns'] },
-    commands: { title: 'Commands', lead: 'The {n} slash commands, each read from its own definition when the site is built.', col: ['Command', 'What it does', 'Who runs it'], user: 'you', both: 'you or Claude' },
+    commands: { title: 'Commands', lead: 'The {n} commands you start with `/crew-…`, each read from its own definition when the site is built.', col: ['Command', 'What it does', 'Who runs it'], user: 'you', both: 'you or Claude' },
     catalogue: ['Skill', 'What it does'],
     rules: { heading: 'Enforced rules ({n})', lead: 'Read from the hooks when the site is built — the same inventory `gate-report.sh` derives — so a rule added to a hook appears here without anyone editing this page.', col: 'Rule' },
     measuring: { title: 'How we measure', note: '' },
@@ -38,7 +38,7 @@ const UI = {
   },
   tr: {
     agents: { title: 'Ajanlar', lead: '{n} uzman ajan; her biri site derlenirken kendi tanım dosyasından okunur, yani bu liste her zaman kurulan listedir.', col: ['Ajan', 'Sahip olduğu alan'] },
-    commands: { title: 'Komutlar', lead: '{n} slash komutu; her biri site derlenirken kendi tanım dosyasından okunur.', col: ['Komut', 'Ne yapar', 'Kim çalıştırır'], user: 'siz', both: 'siz ya da Claude' },
+    commands: { title: 'Komutlar', lead: '`/crew-…` ile başlattığınız {n} komut; her biri site derlenirken kendi tanım dosyasından okunur.', col: ['Komut', 'Ne yapar', 'Kim çalıştırır'], user: 'siz', both: 'siz ya da Claude' },
     catalogue: ['Skill', 'Ne yapar'],
     rules: { heading: 'Uygulanan kurallar ({n})', lead: "Site derlenirken hook'lardan okunur (`gate-report.sh`'in türettiği envanterin aynısı); bir hook'a eklenen kural, bu sayfayı kimse düzenlemeden burada görünür.", col: 'Kural' },
     measuring: { title: 'Nasıl ölçüyoruz', note: "> Bu sayfa İngilizce kaynağından, `evals/README.md`'den derlenir. Ölçüm kayıtları tek bir yerde tutulur; ikinci bir kopyası yoktur.\n\n" },
@@ -67,7 +67,7 @@ const inline = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', 
 const HOME = {
   en: {
     title: { before: 'Your engineering ', accent: 'crew', after: ' for Claude Code.' },
-    lead: 'Subagents, skills, slash commands and hooks: specialists that plan, build, review and ship a change in any stack, with the rules that matter enforced by gates.',
+    lead: 'Subagents, skills, commands and hooks: specialists that plan, build, review and ship a change in any stack, with the rules that matter enforced by gates.',
     docs: 'Read the docs', copy: 'Copy', copied: 'Copied',
     adopt: 'Existing repository? `npx crewforth adopt` lands everything on its own branch. `main` is never touched.',
     crewHeading: 'Twelve specialists, one order',
@@ -88,7 +88,7 @@ const HOME = {
   },
   tr: {
     title: { before: 'Claude Code için mühendislik ', accent: 'ekibiniz', after: '.' },
-    lead: "Ajanlar, skill'ler, slash komutları ve hook'lar: her yığında bir değişikliği planlayan, yazan, inceleyen ve teslim eden uzmanlar. Önemli kurallar ise kapılarla korunur.",
+    lead: "Ajanlar, skill'ler, komutlar ve hook'lar: her yığında bir değişikliği planlayan, yazan, inceleyen ve teslim eden uzmanlar. Önemli kurallar ise kapılarla korunur.",
     docs: 'Belgeleri oku', copy: 'Kopyala', copied: 'Kopyalandı',
     adopt: "Mevcut bir repo mu? `npx crewforth adopt` her şeyi ayrı bir dala koyar, `main`'e dokunmaz.",
     crewHeading: 'On iki uzman, tek düzen',
@@ -199,11 +199,11 @@ export function generate(root = ROOT, site = SITE) {
     // Generated pages: agents and commands.
     const agentRows = ag.map((a) => `| \`${a.name}\` | ${cell(summary(loc, 'agents', a))} |`).join('\n');
     const agentLead = u.agents.lead.replace('{n}', ag.length);
-    page(path.join(out, 'agents.md'), { title: u.agents.title, description: agentLead },
+    page(path.join(out, 'agents.md'), { title: u.agents.title, description: agentLead.replace(/`/g, '') },
       `${agentLead}\n\n| ${u.agents.col[0]} | ${u.agents.col[1]} |\n|:--|:--|\n${agentRows}`);
     const cmdRows = commands.map((c) => `| \`/${c.name}\` | ${cell(summary(loc, 'commands', c))} | ${c.userOnly ? u.commands.user : u.commands.both} |`).join('\n');
     const cmdLead = u.commands.lead.replace('{n}', commands.length);
-    page(path.join(out, 'commands.md'), { title: u.commands.title, description: cmdLead },
+    page(path.join(out, 'commands.md'), { title: u.commands.title, description: cmdLead.replace(/`/g, '') },
       `${cmdLead}\n\n| ${u.commands.col[0]} | ${u.commands.col[1]} | ${u.commands.col[2]} |\n|:--|:--|:--|\n${cmdRows}`);
 
     // The measuring page and the changelog, compiled from their one source each.

@@ -18,7 +18,7 @@ channel was a decision; a documented command that cannot work is a defect.
 From any project that has Crewforth:
 
 ```bash
-/crew-studio                                  # the slash command; probes node, starts it, reports the URL
+/crew-studio                                  # the command; probes node, starts it, reports the URL
 node .claude/studio/server/index.js --open   # the same thing without the picker
 ```
 
