@@ -82,6 +82,7 @@ const HOME = {
     measuredParas: ['The same prompt runs in a project with Crewforth and in a bare one, graded on what each left on disk. The rule a result must meet is written down before the run.', 'Every result is published with its reasoning, including the ones where the rule did not hold.'],
     measuredLink: 'Read the evals →',
     installHeading: 'Install your way',
+    archive: 'No Node? Use the release archive →',
     update: 'When a new version is published, Claude asks once at the start of a session. It never updates on its own.',
     licence: 'Crewforth · MIT licence', changelog: 'Changelog',
   },
@@ -102,6 +103,7 @@ const HOME = {
     measuredParas: ['Aynı istem Crewforth kurulu bir projede ve boş bir projede çalıştırılır, her biri diskte bıraktığına göre puanlanır. Bir sonucun sağlaması gereken kural koşudan önce yazılır.', 'Tutmayanlar dahil her sonuç gerekçesiyle yayınlanır.'],
     measuredLink: 'Ölçümleri oku →',
     installHeading: 'İstediğiniz yoldan kurun',
+    archive: 'Node yok mu? Sürüm arşivini kullanın →',
     update: 'Yeni sürüm çıkınca Claude oturum başında bir kez sorar. Kendiliğinden asla güncellemez.',
     licence: 'Crewforth · MIT lisansı', changelog: 'Değişiklik günlüğü',
   },
@@ -223,12 +225,14 @@ export function generate(root = ROOT, site = SITE) {
       gif: { src: '/assets/studio-flow.gif', still: '/assets/studio-graph.png', alt: gifAlt },
       crew: {
         heading: H.crewHeading, lead: H.crewLead,
+        // The longest agent name sizes every chip so it fits its card; read here so a longer name resizes them too.
+        chipChars: Math.max(...ag.map((a) => a.name.length)),
         stages: STAGES.map((s, i) => ({ label: H.stages[i], agents: ag.filter((a) => stageOf.get(a.name) === s).map((a) => a.name), line: inline(H.stageLines[i]) })),
         skills: { text: H.skills.replace('{N}', skills.length), href: `${p}/skills/` },
       },
       gate: { heading: H.gateHeading, lines: H.gateLines, link: { text: H.gateLink, href: `${p}/gates/` } },
       measured: { heading: H.measuredHeading, paras: H.measuredParas, link: { text: H.measuredLink, href: `${p}/measuring/` } },
-      install: { heading: H.installHeading, cards: installRows(root, loc), update: H.update },
+      install: { heading: H.installHeading, cards: installRows(root, loc), archive: { text: H.archive, href: `${p}/install/` }, update: H.update },
       footer: { licence: H.licence, links: [{ text: H.changelog, href: `${p}/changelog/` }, { text: 'GitHub', href: REPO_URL }, { text: 'npm', href: 'https://www.npmjs.com/package/crewforth' }] },
     };
     const depth = loc === 'en' ? '../../' : '../../../';

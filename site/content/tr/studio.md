@@ -27,7 +27,7 @@ npx crewforth studio                              # hiçbir şey kurmadan
 
 | Kanal | Studio |
 |:--|:--|
-| `npx crewforth` · Homebrew · sürüm arşivi · git clone | `.claude/studio/` altına kuruluyor |
+| `npx crewforth` · sürüm arşivi · git clone | `.claude/studio/` altına kuruluyor |
 | Claude Code plugin | plugin'in içinde geliyor; `/crewforth:crew-studio` ile açılıyor (plugin komutları ad alanlı) |
 
 Dört kanal da paneli taşıyor. Tek bir komut dosyası iki edisyona birden hizmet ediyor: Claude Code plugin'in kendi kurulum yolunu o metnin içine yazıyor, dolayısıyla panel gerçekte neredeyse orada bulunuyor. Davranış iki edisyonda aynı; tek dürüst boşluk şu: panelin telemetri sekmeleri açıldığı projeyi okuyor ve plugin kurulumu projeye Crewforth dosyası koymuyor. O yüzden gates, stats ve board sekmeleri yanıltıcı bir sıfır yerine "ölçülmedi" diyor, sebebiyle birlikte. Gates sekmesi yine de plugin'in kapılarının o projenin `.claude/gate-log.tsv` dosyasına kaydettiği kapı kararlarını listeliyor.

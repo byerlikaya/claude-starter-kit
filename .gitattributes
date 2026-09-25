@@ -43,7 +43,7 @@ VERSION text eol=lf
 # Markdown carries no shell parsing, so this is not about correctness — it is about the release tarball
 # being the same bytes wherever it is built. Measured: a Windows-built archive of v2.9.0 came to 509.004
 # bytes against the published 507.410, and the 1.594-byte difference was CRLF in unpinned files, of which
-# kit/CLAUDE.md alone carried 198. The tarball's SHA is what the Homebrew formula pins, and a
+# kit/CLAUDE.md alone carried 198. The tarball's SHA is published with every release, and a
 # SHA that depends on the build machine is the class of defect that took a release down once already.
 # This pin takes the Markdown out of that difference; the rest of it was the Studio's .js, .py, .html and .css,
 # pinned below. Measured by building the archive both ways: the build without autocrlf reproduces the published
@@ -65,13 +65,10 @@ LICENSE text eol=lf
 #   is the documented victim and is NOT measured — the Windows box has no distro installed. grade.sh is already *.sh.
 # - the Turkish summaries are split by awk and written into README.tr.md, which the catalogue step compares byte for
 #   byte: in the CRLF clone `verify.sh catalogue` failed with "README.tr.md skill catalogue is out of sync".
-# - the formula's `libexec.install` line is parsed by smoke-test, and the CRLF copy yielded the path `VERSION\r`,
-#   which does not exist. release.yml also copies the file verbatim into the tap.
 # - smoke-test extracts `run:` blocks from the workflows and runs them with bash, and greps the gates out of ci.yml.
 # Left unpinned on purpose, because nothing here reads their bytes: the packaging/*.mjs (node, which accepts CRLF),
 # the SVGs (check-gh-pages strips \r before it digests icon.svg — same cksum from both clones), .gitignore and
 # .gitattributes (git strips the CR itself). smoke-test §14 fails if a file bash reads loses its pin.
 evals/**/case.env text eol=lf
 packaging/skill-summaries.tr.tsv text eol=lf
-packaging/homebrew/*.rb text eol=lf
 .github/workflows/*.yml text eol=lf

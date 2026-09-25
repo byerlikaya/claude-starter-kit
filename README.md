@@ -95,8 +95,8 @@ Studio is a local panel that draws a delegation as it happens: each agent is a n
 | Channel | Command |
 |:--|:--|
 | npx | `npx crewforth init` for a new project, `npx crewforth adopt` for an existing one |
-| Homebrew | `brew install byerlikaya/tap/crewforth`, then `crewforth init` or `crewforth adopt` |
 | Claude Code plugin | `/plugin marketplace add Crewforth/crewforth`, then `/plugin install crewforth@crewforth` |
+| No Node | The GitHub release archive, see [crewforth.com/install](https://crewforth.com/install) |
 
 When a new version is published, Claude asks once, at the start of a session, whether to update now, later or never for that version; it never updates on its own. `/crew-update` runs the update and reports what changed, and `./CLAUDE.md` is never touched. On Windows, use Git Bash. Every option: [crewforth.com/install](https://crewforth.com/install).
 

@@ -8,12 +8,7 @@ npx crewforth init                  # new project
 npx crewforth adopt                 # existing project
 npx crewforth@latest update         # refresh an existing install
 
-# Homebrew
-brew install byerlikaya/tap/crewforth
-crewforth init              # new project
-crewforth adopt             # existing project
-
-# Release tarball — no package manager
+# Release archive — no Node or npm needed
 gh release download --repo Crewforth/crewforth -p '*.tgz' && tar xzf crewforth-*.tgz
 bash start.sh               # new project
 bash adopt.sh               # existing project (re-run it to update)

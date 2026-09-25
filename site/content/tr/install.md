@@ -8,12 +8,7 @@ npx crewforth init                  # yeni proje
 npx crewforth adopt                 # mevcut proje
 npx crewforth@latest update         # mevcut kurulumu tazele
 
-# Homebrew
-brew install byerlikaya/tap/crewforth
-crewforth init              # yeni proje
-crewforth adopt             # mevcut proje
-
-# Sürüm arşivi: paket yöneticisi olmadan
+# Sürüm arşivi: Node ya da npm gerekmez
 gh release download --repo Crewforth/crewforth -p '*.tgz' && tar xzf crewforth-*.tgz
 bash start.sh               # yeni proje
 bash adopt.sh               # mevcut proje (tazelemek için tekrar çalıştırın)

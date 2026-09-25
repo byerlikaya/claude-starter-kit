@@ -95,8 +95,8 @@ Studio, delegasyonu olurken çizen yerel bir panel: her ajan bir düğüm, düğ
 | Kanal | Komut |
 |:--|:--|
 | npx | yeni proje için `npx crewforth init`, mevcut proje için `npx crewforth adopt` |
-| Homebrew | `brew install byerlikaya/tap/crewforth`, ardından `crewforth init` ya da `crewforth adopt` |
 | Claude Code plugin | `/plugin marketplace add Crewforth/crewforth`, ardından `/plugin install crewforth@crewforth` |
+| Node yoksa | GitHub release arşivi, bkz. [crewforth.com/tr/install](https://crewforth.com/tr/install) |
 
 Yeni bir sürüm yayımlandığında Claude, oturumun başında bir kez şimdi mi, sonra mı güncelleneceğini ya da o sürümün atlanıp atlanmayacağını sorar; kendiliğinden asla güncellemez. `/crew-update` güncellemeyi çalıştırır ve neyin değiştiğini söyler; `./CLAUDE.md` dosyanıza dokunulmaz. Windows'ta Git Bash kullanın. Bütün seçenekler: [crewforth.com/tr/install](https://crewforth.com/tr/install).
 

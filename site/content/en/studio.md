@@ -29,7 +29,7 @@ npx crewforth studio                              # without installing anything
 
 | Channel | Studio |
 |:--|:--|
-| `npx crewforth` · Homebrew · release tarball · git clone | installed to `.claude/studio/` |
+| `npx crewforth` · release tarball · git clone | installed to `.claude/studio/` |
 | Claude Code plugin | shipped inside the plugin, opened with `/crewforth:crew-studio` (plugin commands are namespaced) |
 
 All four channels carry it. One command file serves both editions: Claude Code substitutes the plugin's own install path into it, so the panel is found wherever it actually is. The panel behaves identically in both, with one honest gap — its telemetry tabs read the project you opened it from, and a plugin install puts no Crewforth files into a project, so the gates, stats and board tabs report "not measured" with the reason rather than a misleading zero. The gates tab still lists the gate decisions the plugin's guards logged to that project's `.claude/gate-log.tsv`.

@@ -177,15 +177,20 @@ export function stages(root) {
 }
 
 // The install commands, from the README's own "Install and update" table: every inline-code span of each row, in
-// order. The home page quotes them rather than keeping a second copy (5b renames the tap and marketplace once).
+// order. The home page quotes them rather than keeping a second copy (5b renames the marketplace once).
 export function installRows(root, loc) {
   const text = read(path.join(root, loc === 'en' ? 'README.md' : `README.${loc}.md`));
   const head = loc === 'en' ? '## Install and update' : '## Kurulum ve güncelleme';
   const sec = text.split(head)[1];
   if (!sec) fail(`README${loc === 'en' ? '' : '.' + loc}.md: no "${head}" section`);
   const rows = [...sec.split('\n## ')[0].matchAll(/^\| ([^|]+?) \| (.+) \|$/gm)];
-  const out = rows.map(([, title, cmds]) => ({ title: title.trim(), cmds: [...cmds.matchAll(/`([^`]+)`/g)].map((m) => m[1]) }))
-    .filter((r) => r.cmds.length);
-  if (out.length !== 3) fail(`README${loc === 'en' ? '' : '.' + loc}.md: the install table has ${out.length} channel row(s), expected 3`);
+  const all = rows.map(([, title, cmds]) => ({ title: title.trim(), cmds: [...cmds.matchAll(/`([^`]+)`/g)].map((m) => m[1]), text: cmds }));
+  // Two channels carry commands (npx, the plugin); the release archive is one row with a link and no command, and the
+  // home page points at it with its own line. Both counts are pinned: a row that comes back, or goes, fails the build.
+  const out = all.filter((r) => r.cmds.length).map(({ title, cmds }) => ({ title, cmds }));
+  const archive = all.filter((r) => !r.cmds.length && /\]\(https:\/\/crewforth\.com\/(tr\/)?install\/?\)/.test(r.text));
+  const readme = `README${loc === 'en' ? '' : '.' + loc}.md`;
+  if (out.length !== 2) fail(`${readme}: the install table has ${out.length} channel row(s), expected 2 (npx, Claude Code plugin)`);
+  if (archive.length !== 1) fail(`${readme}: the install table has ${archive.length} release-archive row(s) linking to crewforth.com/install, expected 1`);
   return out;
 }
