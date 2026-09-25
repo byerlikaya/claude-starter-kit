@@ -1,0 +1,135 @@
+---
+// The home page, design B ("the crew and its stages"). Every list and number on it comes from the repository through
+// scripts/generate.mjs (see `home` there): the agents per stage, the skill count, the install commands. The strings
+// that carry inline code arrive already escaped and converted, so they are set as HTML.
+const { d } = Astro.props;
+---
+<div class="cf-home not-content">
+  <section class="cf-open">
+    <img src={d.mark} alt="" width="96" height="96" class="cf-mark" />
+    <h1 class="cf-title">{d.title.before}<span class="cf-accent">{d.title.accent}</span>{d.title.after}</h1>
+    <p class="cf-lead">{d.lead}</p>
+    <div class="cf-start">
+      <div class="cf-cmd">
+        <code class="cf-cmd-text">{d.command}</code>
+        <button type="button" class="cf-copy" data-copy={d.command} data-done={d.copied} hidden>{d.copy}</button>
+        <span class="cf-sr" aria-live="polite"></span>
+      </div>
+      <a class="cf-primary" href={d.docsHref}>{d.docsLabel}</a>
+    </div>
+    <p class="cf-adopt" set:html={d.adopt} />
+  </section>
+
+  <picture class="cf-gif">
+    <source srcset={d.gif.still} media="(prefers-reduced-motion: reduce)" />
+    <img src={d.gif.src} alt={d.gif.alt} loading="lazy" />
+  </picture>
+
+  <section class="cf-crew">
+    <h2>{d.crew.heading}</h2>
+    <p class="cf-dim">{d.crew.lead}</p>
+    <div class="cf-stages">
+      {d.crew.stages.map((s) => (
+        <div class="cf-card">
+          <span class="cf-label">{s.label}</span>
+          <ul class="cf-agents">{s.agents.map((a) => <li><code>{a}</code></li>)}</ul>
+          <p class="cf-dim" set:html={s.line} />
+        </div>
+      ))}
+    </div>
+    <p><a href={d.crew.skills.href}>{d.crew.skills.text}</a></p>
+  </section>
+
+  <section class="cf-pair">
+    <div class="cf-card">
+      <h2>{d.gate.heading}</h2>
+      <ul class="cf-rules">{d.gate.lines.map((l) => <li>{l}</li>)}</ul>
+      <a href={d.gate.link.href}>{d.gate.link.text}</a>
+    </div>
+    <div class="cf-card">
+      <h2>{d.measured.heading}</h2>
+      {d.measured.paras.map((p) => <p class="cf-dim">{p}</p>)}
+      <a href={d.measured.link.href}>{d.measured.link.text}</a>
+    </div>
+  </section>
+
+  <section class="cf-install">
+    <h2>{d.install.heading}</h2>
+    <div class="cf-three">
+      {d.install.cards.map((c) => (
+        <div class="cf-card">
+          <span class="cf-label">{c.title}</span>
+          {c.cmds.map((x) => <code class="cf-block">{x}</code>)}
+        </div>
+      ))}
+    </div>
+    <p class="cf-dim">{d.install.update}</p>
+  </section>
+
+  <footer class="cf-foot">
+    <img src={d.mark} alt="" width="24" height="24" />
+    <span>{d.footer.licence}</span>
+    {d.footer.links.map((l) => <a href={l.href}>{l.text}</a>)}
+  </footer>
+</div>
+
+<script>
+  // Progressive: without JavaScript the command is plain, selectable text and the button stays hidden.
+  for (const btn of document.querySelectorAll<HTMLButtonElement>('.cf-copy')) {
+    btn.hidden = false;
+    const label = btn.textContent ?? '';
+    const live = btn.parentElement?.querySelector<HTMLElement>('.cf-sr');
+    const code = btn.parentElement?.querySelector<HTMLElement>('.cf-cmd-text');
+    // The Clipboard API can be refused (no permission, an embedded view). Then select the command and try the older
+    // copy command; if that fails too the command stays selected, so Ctrl/Cmd+C finishes the job — never a silent no-op.
+    const select = () => { if (!code) return; const r = document.createRange(); r.selectNodeContents(code); const s = getSelection(); s?.removeAllRanges(); s?.addRange(r); };
+    btn.addEventListener('click', async () => {
+      let ok = false;
+      try { await navigator.clipboard.writeText(btn.dataset.copy ?? ''); ok = true; }
+      catch { select(); try { ok = document.execCommand('copy'); } catch { ok = false; } }
+      if (!ok) { select(); return; }
+      btn.textContent = btn.dataset.done ?? label;
+      if (live) live.textContent = btn.dataset.done ?? '';
+      setTimeout(() => { btn.textContent = label; if (live) live.textContent = ''; }, 2000);
+    });
+  }
+</script>
+
+<style>
+  .cf-home { display: flex; flex-direction: column; gap: 64px; }
+  .cf-home h2 { font-size: 24px; line-height: 32px; font-weight: 700; margin: 0 0 12px; color: var(--cf-ink); }
+  .cf-dim { color: var(--cf-ink-dim); }
+  .cf-open { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 16px; padding-top: 32px; }
+  .cf-mark { width: 96px; height: 96px; }
+  .cf-title { font-size: 48px; line-height: 52px; font-weight: 800; margin: 0; color: var(--cf-ink); }
+  .cf-accent { color: var(--cf-accent); }
+  .cf-lead { max-width: 640px; color: var(--cf-ink-dim); font-size: 18px; line-height: 28px; margin: 0; }
+  .cf-start { display: flex; gap: 12px; align-items: stretch; justify-content: center; flex-wrap: wrap; }
+  .cf-cmd { display: flex; align-items: center; gap: 12px; background: var(--cf-surface); border: 1px solid var(--cf-line); border-radius: var(--cf-radius-md); padding: 8px 8px 8px 16px; }
+  .cf-cmd-text { background: none; font-size: 15px; user-select: all; }
+  .cf-copy { font: 600 12px/16px var(--cf-font-sans); text-transform: uppercase; letter-spacing: 0.06em; color: var(--cf-accent); background: var(--cf-surface-raised); border: 1px solid var(--cf-line); border-radius: var(--cf-radius-sm); padding: 6px 10px; cursor: pointer; }
+  .cf-primary { display: inline-flex; align-items: center; padding: 10px 20px; border-radius: var(--cf-radius-md); background: var(--cf-accent); color: var(--cf-on-accent); font-weight: 600; text-decoration: none; }
+  .cf-adopt { color: var(--cf-ink-dim); margin: 0; }
+  .cf-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .cf-gif img { display: block; width: 100%; height: auto; border-radius: var(--cf-radius-lg); border: 1px solid var(--cf-line); }
+  .cf-card { background: var(--cf-surface); border: 1px solid var(--cf-line); border-radius: var(--cf-radius-md); padding: 16px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .cf-card p { margin: 0; }
+  .cf-label { font-size: 12px; line-height: 16px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--cf-accent); }
+  .cf-stages { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
+  .cf-agents, .cf-rules { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+  .cf-agents code { font-size: 13px; white-space: nowrap; }
+  /* not-content drops Starlight's inline-code look with its spacing; the prose here still wants the former. */
+  .cf-home :global(code:not(.cf-cmd-text)) { background: var(--sl-color-bg-inline-code); border: 1px solid var(--sl-color-hairline-light); border-radius: var(--cf-radius-sm); padding: 0.1em 0.35em; font-size: 0.875em; }
+  .cf-rules li { padding-left: 16px; position: relative; }
+  .cf-rules li::before { content: '›'; position: absolute; left: 0; color: var(--cf-accent); }
+  .cf-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .cf-three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
+  .cf-block { display: block; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .cf-foot { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; border-top: 1px solid var(--cf-line); padding-top: 24px; color: var(--cf-ink-dim); }
+  @media (max-width: 1100px) { .cf-stages { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 768px) {
+    .cf-title { font-size: 36px; line-height: 42px; }
+    .cf-start { flex-direction: column; align-items: stretch; }
+    .cf-stages, .cf-pair, .cf-three { grid-template-columns: 1fr; }
+  }
+</style>

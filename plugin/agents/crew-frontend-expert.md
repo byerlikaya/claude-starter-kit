@@ -8,6 +8,8 @@ description: |
   bridges, and all visual work — design systems, token/theme layers, typography, dark mode, "it doesn't look
   premium". Any request about it is yours whatever its size, wording or language.
 tools: Read, Grep, Glob, Edit, Write, Bash, PowerShell
+metadata:
+  stage: produce
 ---
 
 # Frontend Expert (stack-agnostic)

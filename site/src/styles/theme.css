@@ -59,3 +59,11 @@ a, button, summary { transition: color 150ms ease, background-color 150ms ease, 
 
 /* The home page GIF, framed at radius-lg. */
 .cf-hero-gif { display: block; max-width: 100%; height: auto; border-radius: var(--cf-radius-lg); border: 1px solid var(--cf-line); }
+
+/* Tables: an agent or skill name in a cell never breaks at its hyphen ("crew-backend-" / "expert"); on a narrow
+   screen the table scrolls inside itself instead of widening the page. */
+.sl-markdown-content table { display: block; max-width: 100%; overflow-x: auto; }
+.sl-markdown-content td code, .sl-markdown-content th code { white-space: nowrap; }
+
+/* The theme picker's width is fixed at 6.25em for every language, which cuts Turkish "Otomatik" to "Oto…". */
+html[lang='tr'] starlight-theme-select label { --sl-select-width: 7.5em !important; }

@@ -14,7 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  LOCALES, BuildError, fail, read, cell, tsv, agents, skillsAndCommands, fillThresholds, gateRules, checkNetworkSvgs, alwaysOn,
+  LOCALES, BuildError, fail, read, cell, tsv, agents, skillsAndCommands, fillThresholds, gateRules, checkNetworkSvgs, alwaysOn, stages, STAGES, installRows,
 } from './lib.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -60,6 +60,53 @@ function costFacts(loc, c) {
   };
 }
 
+// Inline `code` in the brief's strings → <code>, after escaping everything else.
+const inline = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])).replace(/`([^`]+)`/g, '<code>$1</code>');
+
+// The home page's words (5S.b2 brief, §3). EN is the source; TR is the brief's own rewrite.
+const HOME = {
+  en: {
+    title: { before: 'Your engineering ', accent: 'crew', after: ' for Claude Code.' },
+    lead: 'Subagents, skills, slash commands and hooks: specialists that plan, build, review and ship a change in any stack, with the rules that matter enforced by gates.',
+    docs: 'Read the docs', copy: 'Copy', copied: 'Copied',
+    adopt: 'Existing repository? `npx crewforth adopt` lands everything on its own branch. `main` is never touched.',
+    crewHeading: 'Twelve specialists, one order',
+    crewLead: 'Every request has an owner. A routing hook names it beside your prompt, and quality rises stage by stage before anything is committed.',
+    stages: ['Understand', 'Produce', 'Audit', 'Close', 'Hand off'],
+    stageLines: ['Scope and acceptance criteria when a request is unclear.', 'The change itself, in any stack.', 'Run in parallel by `/crew-review`.', 'A clean review, then a commit that waits for you.', 'Session fill, and the state written down for next time.'],
+    skills: 'All {N} skills behind them →',
+    gateHeading: 'Rule → gate',
+    gateLines: ['A commit waits for your approval, in every permission mode.', 'A commit needs a clean review of that exact diff.', 'A destructive command is refused before it runs.', 'No key, token or AI-authorship trace reaches history.'],
+    gateLink: 'Every hook and rule →',
+    measuredHeading: 'Measured in the open.',
+    measuredParas: ['The same prompt runs in a project with Crewforth and in a bare one, graded on what each left on disk. The rule a result must meet is written down before the run.', 'Every result is published with its reasoning, including the ones where the rule did not hold.'],
+    measuredLink: 'Read the evals →',
+    installHeading: 'Install your way',
+    update: 'When a new version is published, Claude asks once at the start of a session. It never updates on its own.',
+    licence: 'Crewforth · MIT licence', changelog: 'Changelog',
+  },
+  tr: {
+    title: { before: 'Claude Code için mühendislik ', accent: 'ekibiniz', after: '.' },
+    lead: "Ajanlar, skill'ler, slash komutları ve hook'lar: her yığında bir değişikliği planlayan, yazan, inceleyen ve teslim eden uzmanlar. Önemli kurallar ise kapılarla korunur.",
+    docs: 'Belgeleri oku', copy: 'Kopyala', copied: 'Kopyalandı',
+    adopt: "Mevcut bir repo mu? `npx crewforth adopt` her şeyi ayrı bir dala koyar, `main`'e dokunmaz.",
+    crewHeading: 'On iki uzman, tek düzen',
+    crewLead: "Her isteğin bir sahibi var. Yönlendirme hook'u sahibini isteğinizin yanına yazar ve commit'ten önce kalite aşama aşama yükselir.",
+    stages: ['Anla', 'Üret', 'Denetle', 'Kapat', 'Devret'],
+    stageLines: ['İstek belirsizse kapsam ve kabul ölçütleri.', 'Değişikliğin kendisi, her yığında.', '`/crew-review` ile paralel çalışır.', 'Temiz bir inceleme, ardından sizi bekleyen bir commit.', 'Oturum doluluğu ve sonraki oturum için yazılan durum.'],
+    skills: 'Arkalarındaki {N} skill →',
+    gateHeading: 'Kural → kapı',
+    gateLines: ['Commit her izin modunda onayınızı bekler.', "Commit, tam o diff'in temiz bir incelemesini ister.", 'Yıkıcı bir komut çalışmadan reddedilir.', 'Anahtar, token ya da AI izi geçmişe ulaşmaz.'],
+    gateLink: "Tüm hook'lar ve kurallar →",
+    measuredHeading: 'Açıkça ölçülür.',
+    measuredParas: ['Aynı istem Crewforth kurulu bir projede ve boş bir projede çalıştırılır, her biri diskte bıraktığına göre puanlanır. Bir sonucun sağlaması gereken kural koşudan önce yazılır.', 'Tutmayanlar dahil her sonuç gerekçesiyle yayınlanır.'],
+    measuredLink: 'Ölçümleri oku →',
+    installHeading: 'İstediğiniz yoldan kurun',
+    update: 'Yeni sürüm çıkınca Claude oturum başında bir kez sorar. Kendiliğinden asla güncellemez.',
+    licence: 'Crewforth · MIT lisansı', changelog: 'Değişiklik günlüğü',
+  },
+};
+
 const prefix = (loc) => (loc === 'en' ? '' : `/${loc}`);
 const yaml = (s) => JSON.stringify(String(s));
 
@@ -98,6 +145,7 @@ export function generate(root = ROOT, site = SITE) {
   const fill = fillThresholds(root);
   const rules = gateRules(root);
   const cost = alwaysOn(root);
+  const stageOf = stages(root);
   checkNetworkSvgs(root, ag.length, skills.length);
 
   const tr = {
@@ -163,15 +211,31 @@ export function generate(root = ROOT, site = SITE) {
       page(path.join(out, `${slug}.md`), { title: u[slug].title, description: descriptionOf(text) }, u[slug].note + text);
     }
 
-    // Home: the README's own opening, nothing added — the definition, the search terms, the panel GIF, the quick start.
+    // Home (design B, 5S.b2): the strings are the brief's; every list and number comes from the repository.
+    const H = HOME[loc];
+    const p = prefix(loc);
     const readme = read(path.join(root, loc === 'en' ? 'README.md' : `README.${loc}.md`));
-    const def = (readme.match(/^\*\*(Crewforth[^*]+)\*\*$/m) || [])[1];
-    const keys = (readme.match(new RegExp(`^\\*\\*${def?.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\*\\*\\n\\n([\\s\\S]+?)\\n\\n`, 'm')) || [])[1];
-    const gif = (readme.match(/<img src="assets\/studio-flow\.gif" alt="([^"]+)"/) || [])[1];
-    const qs = readme.split(u.homeQuick)[1]?.match(/```bash\n[\s\S]+?\n```/)?.[0];
-    if (!def || !keys || !gif || !qs) fail(`README${loc === 'en' ? '' : '.' + loc}.md: the opening this home page is built from changed shape`);
-    page(path.join(out, 'index.md'), { title: 'Crewforth', description: def, template: 'splash', hero: { tagline: def } },
-      `${keys.replace(/<br>\s*/g, ' ')}\n\n<img src="/assets/studio-flow.gif" alt="${gif}" class="cf-hero-gif">\n\n${qs}`);
+    const gifAlt = (readme.match(/<img src="assets\/studio-flow\.gif" alt="([^"]+)"/) || [])[1];
+    if (!gifAlt) fail(`README${loc === 'en' ? '' : '.' + loc}.md: the studio-flow.gif alt text this page reuses is gone`);
+    const d = {
+      mark: '/assets/mark.svg', title: H.title, lead: H.lead, command: 'npx crewforth init',
+      copy: H.copy, copied: H.copied, docsLabel: H.docs, docsHref: `${p}/install/`, adopt: inline(H.adopt),
+      gif: { src: '/assets/studio-flow.gif', still: '/assets/studio-graph.png', alt: gifAlt },
+      crew: {
+        heading: H.crewHeading, lead: H.crewLead,
+        stages: STAGES.map((s, i) => ({ label: H.stages[i], agents: ag.filter((a) => stageOf.get(a.name) === s).map((a) => a.name), line: inline(H.stageLines[i]) })),
+        skills: { text: H.skills.replace('{N}', skills.length), href: `${p}/skills/` },
+      },
+      gate: { heading: H.gateHeading, lines: H.gateLines, link: { text: H.gateLink, href: `${p}/gates/` } },
+      measured: { heading: H.measuredHeading, paras: H.measuredParas, link: { text: H.measuredLink, href: `${p}/measuring/` } },
+      install: { heading: H.installHeading, cards: installRows(root, loc), update: H.update },
+      footer: { licence: H.licence, links: [{ text: H.changelog, href: `${p}/changelog/` }, { text: 'GitHub', href: REPO_URL }, { text: 'npm', href: 'https://www.npmjs.com/package/crewforth' }] },
+    };
+    const depth = loc === 'en' ? '../../' : '../../../';
+    fs.writeFileSync(path.join(out, 'index.mdx'),
+      `---\ntitle: ${yaml('Crewforth')}\ndescription: ${yaml(H.lead)}\ntemplate: splash\nprev: false\nnext: false\n` +
+      `head:\n  - tag: title\n    content: ${yaml(`Crewforth — ${H.title.before}${H.title.accent}${H.title.after}`.replace(/\.$/, ''))}\n---\n\n` +
+      `import Home from '${depth}components/Home.astro';\n\n<Home d={${JSON.stringify(d)}} />\n`);
   }
 
   // Static files: the repository's assets, the logo pair, the favicon, the social card, robots.txt.

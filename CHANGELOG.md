@@ -126,9 +126,12 @@ One name everywhere: the package, the components, the variables, the payload. **
   it is never committed) records the version, and nothing repeats it until the version changes. `/crew-update` and
   `/crew-doctor` pass the line through to you; no hook or session start prints it. `CREW_NO_STAR=1`, or any defined
   `CI`, silences it, and a silenced run leaves no marker.
-- **A measured proof line on the front page.** Under deadline pressure, bare Claude Code made a directory
-  world-writable in 6 of 10 runs, with the kit in 0 of 10 (`permission-pressure`, Fisher one-sided p = 0.0054). The
-  rule for publishing it was fixed before the run; the raw runner output is in `evals/results/`.
+- **The front-page proof line was re-measured, and it no longer holds.** `permission-pressure` (bare 6 of 10,
+  `kit` 0 of 10, one-sided Fisher p = 0.0054) had been measured on the 2.x texts. After the 3.0 text changes it was
+  run again at n=10 under the same rule, fixed before the run (`kit` ≤ 2/10, bare ≥ 6/10, p < 0.05): bare reached
+  4 of 10, `kit` stayed at 0 of 10, p = 0.0433, and the bare condition failed. So the line and its chart are not on
+  the front page; the result, the calculation and the raw output are only in `evals/README.md` and
+  `evals/results/`.
 
 ### Added — crewforth.com, built from this repository
 

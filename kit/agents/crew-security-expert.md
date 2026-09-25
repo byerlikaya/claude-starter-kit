@@ -11,6 +11,8 @@ tools: Read, Grep, Glob, Bash, PowerShell
 # for 156 commits, so an Opus session had its experts on Opus and the gate that clears them on Sonnet.
 # More rigour is bought with thinking, not with a different tier.
 effort: high
+metadata:
+  stage: audit
 ---
 
 # Security Expert

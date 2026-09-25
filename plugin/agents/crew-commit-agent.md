@@ -6,6 +6,8 @@ description: |
   via the `commit-message` skill. Writes no source; commits only with user approval.
 tools: Read, Grep, Glob, Bash, PowerShell
 model: haiku
+metadata:
+  stage: close
 ---
 
 # Commit Agent

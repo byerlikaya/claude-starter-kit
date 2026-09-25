@@ -34,7 +34,14 @@ function expectFail(name, s, pattern) {
   const s = scratch();
   try {
     const base = generate(s.root, s.site);
-    fs.writeFileSync(path.join(s.root, 'kit/agents/crew-zz-probe.md'), '---\nname: crew-zz-probe\ndescription: |\n  Probe agent added by the site self-test. Owns nothing.\n---\n\nBody.\n');
+    fs.writeFileSync(path.join(s.root, 'kit/agents/crew-zz-probe.md'), '---\nname: crew-zz-probe\ndescription: |\n  Probe agent added by the site self-test. Owns nothing.\nmetadata:\n  stage: audit\n---\n\nBody.\n');
+    // The stage lives in three places that must agree: the frontmatter, the diagram source and both agent tables.
+    const gp = path.join(s.root, 'packaging/gen-network.py');
+    fs.writeFileSync(gp, fs.readFileSync(gp, 'utf8').replace('"crew-performance-expert"],', '"crew-performance-expert","crew-zz-probe"],'));
+    for (const [loc, st] of [['en', 'Audit'], ['tr', 'Denetle']]) {
+      const f = path.join(s.root, 'site/content', loc, 'skills.md');
+      fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace(/(\| `crew-session-manager` \|[^\n]*\n)/, `$1| \`crew-zz-probe\` | ${st} | probe |\n`));
+    }
     fs.mkdirSync(path.join(s.root, 'kit/skills/zz-probe'));
     fs.writeFileSync(path.join(s.root, 'kit/skills/zz-probe/SKILL.md'), '---\nname: zz-probe\ndescription: |\n  Probe skill added by the site self-test. Does nothing.\n---\n\nBody.\n');
     fs.appendFileSync(path.join(s.root, 'packaging/agent-summaries.tr.tsv'), 'crew-zz-probe\tSelf-test ajanı.\n');
@@ -49,8 +56,27 @@ function expectFail(name, s, pattern) {
       after.agents === base.agents + 1 && after.skills === base.skills + 1
         && page(s, 'agents.md').includes('`crew-zz-probe`') && page(s, 'tr/agents.md').includes('Self-test ajanı.')
         && skillsEn.includes('`zz-probe`') && skillsEn.includes(`All ${base.skills + 1} skills`)
-        && skillsEn.includes(`${base.agents + 1} specialist agents`) && gatesTr.includes(`| **Skill** | ${base.skills + 1} |`),
+        && skillsEn.includes(`${base.agents + 1} specialist agents`) && gatesTr.includes(`| **Skill** | ${base.skills + 1} |`)
+        && /"label":"Audit","agents":\[[^\]]*"crew-zz-probe"/.test(page(s, 'index.mdx'))
+        && /"label":"Denetle","agents":\[[^\]]*"crew-zz-probe"/.test(page(s, 'tr/index.mdx')),
       `agents ${base.agents} → ${after.agents}, skills ${base.skills} → ${after.skills}`);
+  } finally { s.done(); }
+}
+// 1b · an agent with no stage, and one whose stage the agents table contradicts.
+{
+  const s = scratch();
+  try {
+    const f = path.join(s.root, 'kit/agents/crew-planner.md');
+    fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace(/metadata:\n  stage: understand\n/, ''));
+    expectFail('an agent with no stage fails the build', s, /crew-planner\.md: metadata\.stage is missing/);
+  } finally { s.done(); }
+}
+{
+  const s = scratch();
+  try {
+    const f = path.join(s.root, 'site/content/en/skills.md');
+    fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace('| `crew-planner` | Understand |', '| `crew-planner` | Produce |'));
+    expectFail('a stage the agents table contradicts fails the build', s, /skills\.md puts crew-planner under "Produce"/);
   } finally { s.done(); }
 }
 // 2 · a skill whose Turkish line is gone.

@@ -5,6 +5,8 @@ description: |
   Planning specialist. Use proactively before implementing a feature whose scope or acceptance criteria are
   unclear: task breakdown + acceptance criteria + dependency order, via the `spec-planning` skill. Plans; does not write code.
 tools: Read, Grep, Glob
+metadata:
+  stage: understand
 ---
 
 # Planning Specialist
