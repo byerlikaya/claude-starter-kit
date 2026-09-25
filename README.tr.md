@@ -98,6 +98,8 @@ Studio, delegasyonu olurken çizen yerel bir panel: her ajan bir düğüm, düğ
 | Claude Code plugin | `/plugin marketplace add Crewforth/crewforth`, ardından `/plugin install crewforth@crewforth` |
 | Node yoksa | GitHub release arşivi, bkz. [crewforth.com/tr/install](https://crewforth.com/tr/install) |
 
+**Gereksinimler:** Claude Code 2.1.214 veya sonrası (2.1.282 ile test edildi) ve `npx` için Node.js 20 veya sonrası (22 ya da 24 önerilir).
+
 **2.x plugin'inden mi geliyorsunuz?** Plugin'in ve marketplace'in adı değişti, bu yüzden 2.x kurulumu 3.0'a kendiliğinden güncellenmez. Bir kez geçin:
 
 ```

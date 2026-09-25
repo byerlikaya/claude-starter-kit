@@ -907,6 +907,61 @@ else
   fi
 fi
 
+# ---- [legacy-forward] the 2.x package name forwards to crewforth ----
+# 2.x installs update through `npx @byerlikaya/claude-starter-kit@latest update`. That name's 3.0.0 is the
+# forwarder in packaging/legacy-npm/, and the claim is that it changes NOTHING: a real 2.13.0 install updated
+# through it must come out byte-for-byte the tree the same install gets from `crewforth update` directly, with the
+# same exit code. Both runs use local tarballs (CREW_FORWARD_SPEC points the forwarder at this tree's package), so
+# the network is never asked (a tarball is passed as file:<path> — npx reads a bare absolute path as a command
+# to run and exits 126). Same project path for both runs, one after the other, so a path the update writes
+# into a file cannot make the trees differ for a reason that is not the forwarder.
+LF_OLD=841eb4e
+if ! command -v npm >/dev/null 2>&1 || ! npm --version >/dev/null 2>&1; then
+  [ "${CREW_VERIFY_STRICT:-0}" = 1 ] && { echo "FAIL: npm is not available; the forwarder cannot be rehearsed"; exit 1; }
+  echo "[legacy-forward] SKIP (tool): npm is not available here"
+elif ! git cat-file -e "$LF_OLD^{commit}" 2>/dev/null; then
+  [ "${CREW_VERIFY_STRICT:-0}" = 1 ] && { echo "FAIL: FIXTURE — commit $LF_OLD (v2.13.0) is not in this clone; the forwarder cannot be rehearsed"; exit 1; }
+  echo "[legacy-forward] SKIP (fixture): commit $LF_OLD (v2.13.0) is not in this clone — a shallow checkout"
+else
+  LFW="$WORK/legacy-forward"; rm -rf "$LFW"; mkdir -p "$LFW/stub"
+  # npm on Windows is a native program: hand it C:/… paths, not the /c/… spelling the shell uses.
+  lf_nat(){ if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi; }
+  lf_tree(){ ( cd "$1" && find . -type f ! -path './.git/*' ! -name gate-log.tsv 2>/dev/null | LC_ALL=C sort | while IFS= read -r f; do printf '%s ' "$f"; cksum < "$f"; done ) | cksum; }
+  export npm_config_cache="$(lf_nat "$LFW/npm-cache")" npm_config_update_notifier=false npm_config_fund=false npm_config_audit=false
+  _slog; { CF_TGZ="$LFW/$(npm pack --silent --pack-destination "$(lf_nat "$LFW")" | tail -n 1)" \
+        && FW_TGZ="$LFW/$(cd packaging/legacy-npm && npm pack --silent --pack-destination "$(lf_nat "$LFW")" | tail -n 1)"; } >"$_L" 2>&1 \
+    || _evidence "npm pack of crewforth and the forwarder" "$_L" $?
+  [ -f "$CF_TGZ" ] && [ -f "$FW_TGZ" ] || { echo "FAIL: FIXTURE — npm pack left no tarball ($CF_TGZ · $FW_TGZ)"; exit 1; }
+  lf_install(){   # $1 = project dir → a fresh 2.13.0 install, made by the released installer itself
+    rm -rf "$1"; mkdir -p "$1"; git archive "$LF_OLD" start.sh VERSION claude-starter | ( cd "$1" && tar -xf - )
+    _slog; ( cd "$1" && git init -q && bash start.sh --generic --yes --lang en ) >"$_L" 2>&1 || _evidence "2.13.0 start.sh in $1" "$_L" $?
+    [ -f "$1/.claude/agents/backend-expert-csk.md" ] || { echo "FAIL: FIXTURE — the 2.13.0 install left no backend-expert-csk.md"; exit 1; }
+  }
+  LP="$LFW/project"
+  lf_install "$LP"
+  _slog; set +e; ( cd "$LP" && env CREW_NO_STAR=1 CREW_FORWARD_SPEC="file:$(lf_nat "$CF_TGZ")" npx --yes "file:$(lf_nat "$FW_TGZ")" update --here --yes ) >"$_L" 2>&1; LF_RC_FW=$?; set -e
+  LF_LOG_FW="$_L"; LF_H_FW="$(lf_tree "$LP")"
+  lf_install "$LP"
+  _slog; set +e; ( cd "$LP" && env CREW_NO_STAR=1 npx --yes "file:$(lf_nat "$CF_TGZ")" update --here --yes ) >"$_L" 2>&1; LF_RC_DIRECT=$?; set -e
+  LF_H_DIRECT="$(lf_tree "$LP")"
+  [ "$LF_RC_DIRECT" = 0 ] || _evidence "crewforth update over 2.13.0 (direct)" "$_L" "$LF_RC_DIRECT"
+  [ "$LF_RC_FW" = "$LF_RC_DIRECT" ] || _evidence "the forwarder exited $LF_RC_FW where crewforth itself exited $LF_RC_DIRECT" "$LF_LOG_FW" "$LF_RC_FW"
+  grep -q '@byerlikaya/claude-starter-kit is now crewforth — forwarding to npx crewforth@3' "$LF_LOG_FW" \
+    || { echo "FAIL: the forwarder did not say where it forwards"; tail -n 5 "$LF_LOG_FW"; exit 1; }
+  [ -f "$LP/.claude/agents/crew-backend-expert.md" ] || { echo "FAIL: FIXTURE — the direct update did not reach 3.0 (no crew-backend-expert.md)"; exit 1; }
+  [ "$LF_H_FW" = "$LF_H_DIRECT" ] || { echo "FAIL: the tree updated through the forwarder differs from the one crewforth update leaves ($LF_H_FW vs $LF_H_DIRECT)"; exit 1; }
+  # Must-fail twin: a child that exits 3 comes back as 3, and an argument with a space arrives as ONE argument —
+  # the reason the forwarder runs npm's own entry point instead of a shell.
+  printf '{"name":"crew-forward-probe","version":"1.0.0","bin":{"crew-forward-probe":"cli.js"}}\n' > "$LFW/stub/package.json"
+  printf '#!/usr/bin/env node\nrequire("fs").writeFileSync(process.env.CREW_PROBE_OUT, JSON.stringify(process.argv.slice(2)));\nprocess.exit(3);\n' > "$LFW/stub/cli.js"
+  _slog; ST_TGZ="$LFW/$(cd "$LFW/stub" && npm pack --silent --pack-destination "$(lf_nat "$LFW")" 2>"$_L" | tail -n 1)"
+  _slog; set +e; ( cd "$LFW" && env CREW_FORWARD_SPEC="file:$(lf_nat "$ST_TGZ")" CREW_PROBE_OUT="$(lf_nat "$LFW/probe.json")" npx --yes "file:$(lf_nat "$FW_TGZ")" "a b" c ) >"$_L" 2>&1; LF_RC3=$?; set -e
+  [ "$LF_RC3" = 3 ] || _evidence "the forwarder turned a child's exit 3 into $LF_RC3" "$_L" "$LF_RC3"
+  [ "$(cat "$LFW/probe.json" 2>/dev/null)" = '["a b","c"]' ] || { echo "FAIL: the forwarder split or joined arguments: $(cat "$LFW/probe.json" 2>/dev/null || echo '<no probe output>')"; exit 1; }
+  unset npm_config_cache npm_config_update_notifier npm_config_fund npm_config_audit
+  echo "[legacy-forward] 2.13.0 updated through the forwarder = crewforth update directly (tree $LF_H_FW, rc $LF_RC_FW) · a child's exit 3 returns 3 · \"a b\" arrives as one argument"
+fi
+
 # ---- the two no-install doors: `add` and `studio` (pure Node, no bash) ----
 # Driven through bin/cli.js exactly as `npx crewforth …` runs it. Every tree comparison is a hash over the files'
 # paths and bytes, so "nothing changed" is measured, not assumed from an exit code.

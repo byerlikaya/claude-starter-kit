@@ -1,0 +1,42 @@
+name: launch-matrix
+
+# Run once, by hand, before a launch — not on every push. Every OS the day-one user is on, every Node the package
+# accepts, through the package npm would publish: a fresh init, an update from a real 2.13.0 install, a second
+# update that must change nothing, doctor, `bash -n` on every hook, and no CR in an installed shell file.
+# The cell itself is packaging/launch-matrix.sh, so a failing cell can be rerun on a desk.
+on:
+  workflow_dispatch:
+  # TEMPORARY: one run on this branch, because workflow_dispatch reaches only workflows on the default branch.
+  # Removed in the same pull request once the 12 cells have reported.
+  push:
+    branches: [chore/launch-prep]
+
+permissions:
+  contents: read
+
+jobs:
+  cell:
+    name: ${{ matrix.os }} · node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04, macos-latest, windows-latest]
+        node: ['20', '22', '24']
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # Before the checkout, so the clone is made the way Git for Windows makes it by default: every text file the
+      # attributes do not pin arrives CRLF. The cell then proves no installed shell file carries a CR.
+      - name: core.autocrlf=true (Windows)
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf true
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0   # the 2.13.0 install is made from the v2.13.0 tree with git archive
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Launch cell
+        run: bash packaging/launch-matrix.sh

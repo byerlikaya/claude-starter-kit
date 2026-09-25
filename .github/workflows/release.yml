@@ -1,9 +1,12 @@
 name: release
 
-# Cut a release by bumping VERSION + package.json, committing, then:
+# Cut a release by bumping VERSION + package.json, dating the CHANGELOG heading, committing, then:
 #   git tag vX.Y.Z && git push origin main --tags
-# This workflow then builds the tarball + GitHub release and publishes to npm,
-# all automatically.
+# This workflow then builds the tarball + GitHub release and publishes to npm, all automatically.
+#
+# A rehearsal is tagged vX.Y.Z-rc.N on the same commit shape (VERSION stays X.Y.Z, the heading may still read
+# "[Unreleased] — X.Y.Z"). It publishes a GitHub pre-release and npm under the `next` dist-tag only: `latest`,
+# the plugin channel (plugin-stable) and the site do not move. packaging/release-check.sh decides which it is.
 
 on:
   push:
@@ -17,21 +20,19 @@ jobs:
   release:
     runs-on: ubuntu-latest
     environment: release   # publish waits for manual approval (see repo → Environments → release)
+    outputs:
+      prerelease: ${{ steps.v.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0   # e2e rehearses the 3.0 migration on the real v2.13.0 tree (git archive)
 
-      - name: Resolve version (VERSION file must match the tag)
+      # VERSION and package.json must match the tag, and the CHANGELOG's first heading must fit it: a final tag needs
+      # "## [X.Y.Z] — YYYY-MM-DD", an rc may still read "## [Unreleased] — X.Y.Z". Outputs version (with any -rc.N),
+      # base, prerelease and npm_tag.
+      - name: Resolve version (VERSION, package.json and the CHANGELOG heading must fit the tag)
         id: v
-        run: |
-          FILE_VERSION="$(cat VERSION)"
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
-          if [ "$FILE_VERSION" != "$TAG_VERSION" ]; then
-            echo "::error::VERSION ($FILE_VERSION) != tag ($TAG_VERSION). Bump VERSION and package.json before tagging."
-            exit 1
-          fi
-          echo "version=$FILE_VERSION" >> "$GITHUB_OUTPUT"
+        run: bash packaging/release-check.sh "$GITHUB_REF_NAME"
 
       - name: Verify the plugin edition is in sync
         run: |
@@ -46,14 +47,6 @@ jobs:
             git --no-pager diff --stat -- plugin
             exit 1
           fi
-
-      # The published site is the one artifact with no source here and no build step, so nothing but this
-      # stops it shipping a stale version line — which is exactly what happened through all of 1.7.0.
-      # Release-time only: mid-development the payload is legitimately ahead of what is published.
-      - name: Verify the published site matches this release
-        run: |
-          git fetch --no-tags --depth=1 origin gh-pages:refs/remotes/origin/gh-pages
-          bash packaging/check-gh-pages.sh
 
       # These gates run BEFORE anything is published, so a release cannot ship on top of a red smoke, routing or
       # e2e run. (This was the gate that was missing: release used to skip smoke/routing/e2e, so a green publish
@@ -76,7 +69,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           V="${{ steps.v.outputs.version }}"
-          TGZ="dist/crewforth-${V}.tgz"
+          TGZ="dist/crewforth-${{ steps.v.outputs.base }}.tgz"
           {
             echo "## Install"
             echo
@@ -86,7 +79,8 @@ jobs:
             echo
             echo "## What's new"
             echo
-            awk -v v="$V" '$0 ~ "^## \\[" v "\\]" {f=1; next} /^## \[/{f=0} f' CHANGELOG.md
+            # The first section: the release's own on a final tag, "[Unreleased] — X.Y.Z" on an rc.
+            awk '/^## \[/{n++; next} n==1' CHANGELOG.md
             echo
             echo "Full changelog: [CHANGELOG.md](https://github.com/Crewforth/crewforth/blob/main/CHANGELOG.md)"
           } > release-notes.md
@@ -94,7 +88,8 @@ jobs:
             gh release edit "$GITHUB_REF_NAME" --notes-file release-notes.md
             gh release upload "$GITHUB_REF_NAME" "$TGZ" --clobber
           else
-            gh release create "$GITHUB_REF_NAME" "$TGZ" --title "$GITHUB_REF_NAME" --notes-file release-notes.md
+            PRE=""; [ "${{ steps.v.outputs.prerelease }}" = true ] && PRE="--prerelease"
+            gh release create "$GITHUB_REF_NAME" "$TGZ" --title "$GITHUB_REF_NAME" --notes-file release-notes.md $PRE
           fi
 
       # The plugin marketplace installs from the plugin-stable branch (.claude-plugin/marketplace.json), so the plugin
@@ -104,6 +99,7 @@ jobs:
       # Before npm on purpose: re-running a release whose npm publish already went through fails at npm, since the
       # version exists, so a step after it would never run.
       - name: Publish the plugin edition (advance plugin-stable)
+        if: steps.v.outputs.prerelease != 'true'   # a rehearsal never reaches installed plugins
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -130,42 +126,28 @@ jobs:
             echo "npm README staged for publish; README.npm.md and README.tr.md left out of the package"
           fi
 
+      # A final publishes as `latest`. An rc takes its version from the tag in THIS checkout only (the repository keeps
+      # X.Y.Z) and publishes as `next`, so `npx crewforth` still resolves the last final and `crewforth@next` the rc.
       - name: Publish to npm
-        run: npm publish --access public
+        run: |
+          if [ "${{ steps.v.outputs.prerelease }}" = true ]; then
+            npm version "${{ steps.v.outputs.version }}" --no-git-tag-version
+          fi
+          npm publish --access public --tag "${{ steps.v.outputs.npm_tag }}"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-  # crewforth.com, built from this tag and published through GitHub Pages. OFF by default: it runs only when the
-  # repository variable SITE_DEPLOY is 1. Until the Pages source is set to "GitHub Actions" (a 5b step) the deploy
-  # would fail, and a release must not stop on a site that is not live yet — so the switch, not the tag, turns it on.
-  # CF_BEACON_TOKEN (a repository variable; the beacon token is public by design) adds the cookieless analytics
-  # beacon; without it the site makes no third-party request at all.
+  # crewforth.com, from this tag: .github/workflows/site.yml, which can also be run by hand for a tag whose release ran
+  # before Pages was ready. OFF by default: it runs only when the repository variable SITE_DEPLOY is 1, because until
+  # the Pages source is set to "GitHub Actions" the deploy would fail, and a release must not stop on a site that is
+  # not live yet — so the switch, not the tag, turns it on. An rc never publishes the site.
   site:
     needs: release
-    if: vars.SITE_DEPLOY == '1'
-    runs-on: ubuntu-latest
+    if: vars.SITE_DEPLOY == '1' && needs.release.outputs.prerelease != 'true'
     permissions:
       contents: read
       pages: write
       id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
-        with:
-          node-version-file: site/.nvmrc
-          cache: npm
-          cache-dependency-path: site/package-lock.json
-      - name: Build and gate the site
-        env:
-          CF_BEACON_TOKEN: ${{ vars.CF_BEACON_TOKEN }}
-        run: |
-          npm ci --prefix site --no-audit --no-fund
-          cd site && npm run build && node scripts/check.mjs
-      - uses: actions/upload-pages-artifact@v5
-        with:
-          path: site/dist
-      - id: deploy
-        uses: actions/deploy-pages@v5
+    uses: ./.github/workflows/site.yml
+    with:
+      ref: ${{ github.ref_name }}

@@ -63,6 +63,15 @@ One name everywhere: the package, the components, the variables, the payload. **
 - Plugin users on 2.x: the plugin and marketplace were renamed; uninstall `claude-starter-kit`, then add
   `Crewforth/crewforth` and install `crewforth@crewforth`.
 
+### Added — 2.x installs reach 3.0 through the old package name
+
+- **`npx @byerlikaya/claude-starter-kit` forwards to `npx crewforth@3`.** 2.x installs check for updates and update
+  through the old name; its 3.0.0 prints one line saying where it forwards and runs crewforth with the same arguments
+  and the same exit code. The old package is deprecated with a pointer to the new name, which warns and does not stop
+  it. Nothing needs to change on your side.
+- **Node.js 20 or later** is what the package now declares (22 or 24 recommended); older versions get npm's engine
+  warning and are not blocked. **Claude Code 2.1.214 or later** is recommended; this release is tested on 2.1.282.
+
 ### Removed — the Homebrew channel
 
 - Removed: the Homebrew channel. Install with `npx crewforth`, the Claude Code plugin, or the release archive. The

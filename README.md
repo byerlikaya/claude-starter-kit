@@ -98,6 +98,8 @@ Studio is a local panel that draws a delegation as it happens: each agent is a n
 | Claude Code plugin | `/plugin marketplace add Crewforth/crewforth`, then `/plugin install crewforth@crewforth` |
 | No Node | The GitHub release archive, see [crewforth.com/install](https://crewforth.com/install) |
 
+**Requirements:** Claude Code 2.1.214 or later (tested on 2.1.282), and Node.js 20 or later for `npx` (22 or 24 recommended).
+
 **Coming from the 2.x plugin?** The plugin and its marketplace were renamed, so a 2.x install does not update to 3.0 on its own. Switch once:
 
 ```
