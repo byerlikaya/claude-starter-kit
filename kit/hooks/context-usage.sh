@@ -234,7 +234,7 @@ if [ -z "${TOTAL:-}" ]; then
   [ -n "$IN" ] && exit 0
   # Name the missing reader rather than blaming the transcript's size: without it nothing was read at all.
   if [ ! -f "$HERE/../eval/lib/settings-json.awk" ]; then
-    echo "context-usage: the kit's JSON reader is missing ($HERE/../eval/lib/settings-json.awk) — update the kit" >&2
+    echo "context-usage: Crewforth's JSON reader is missing ($HERE/../eval/lib/settings-json.awk) — update Crewforth" >&2
     exit 1
   fi
   echo "context-usage: usage not found in the byte-bounded window (transcript too large to scan within the hook timeout)" >&2
@@ -330,7 +330,7 @@ CREWSET="$HERE/../settings.json"
 if [ -f "$CREWSET" ] && grep -q 'bash \.claude/hooks/context-usage\.sh' "$CREWSET" 2>/dev/null; then
   case "$0" in
     .claude/hooks/*) ;;                         # launched exactly as the file on disk wires it
-    *) echo "⚠️ this session is running OLDER hook wiring than .claude/settings.json on disk (resumed across a kit update). The gates in force are the previous ones — ask the user to quit the CLI and start a NEW session; --resume will not pick up the change." ;;
+    *) echo "⚠️ this session is running OLDER hook wiring than .claude/settings.json on disk (resumed across a Crewforth update). The gates in force are the previous ones — ask the user to quit the CLI and start a NEW session; --resume will not pick up the change." ;;
   esac
 fi
 
@@ -348,6 +348,6 @@ else
   # Repeated on every turn on purpose: the loaded context stays stale until a new session starts (/clear or a
   # relaunch). /compact re-reads CLAUDE.md but keeps the session id, so this warning would not stop after it.
   [ -n "$WAS" ] && [ "$WAS" != "$NOW" ] && \
-    echo "⚠️ kit updated $WAS → $NOW mid-session. The discipline in your context is the OLD one — do not act on it; ask the user to run /clear (or quit and relaunch Claude Code): a new session loads the new one."
+    echo "⚠️ Crewforth updated $WAS → $NOW mid-session. The discipline in your context is the OLD one — do not act on it; ask the user to run /clear (or quit and relaunch Claude Code): a new session loads the new one."
 fi
 exit 0

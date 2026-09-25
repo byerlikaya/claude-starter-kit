@@ -34,10 +34,10 @@ case "$MODE" in
         echo "UNCOMMITTED: .claude/ or CLAUDE.md has changes that are not committed:"
         printf '%s\n' "$DIRTY" | sed 's/^/    /' | head -n 20
         [ "$(printf '%s\n' "$DIRTY" | wc -l | tr -d ' ')" -gt 20 ] && echo "    …"
-        echo "The update rewrites kit-owned files under .claude/. Commit or stash first, or go ahead knowingly."
+        echo "The update rewrites Crewforth's files under .claude/. Commit or stash first, or go ahead knowingly."
       elif [ -n "$UNTR" ]; then
-        echo "NOT IN GIT:$UNTR — gitignored here, so uncommitted changes cannot be detected. The update replaces kit-owned"
-        echo "files under .claude/ (CLAUDE.md and project skills are kept); edits made to kit files there are overwritten."
+        echo "NOT IN GIT:$UNTR — gitignored here, so uncommitted changes cannot be detected. The update replaces Crewforth's"
+        echo "files under .claude/ (CLAUDE.md and project skills are kept); edits made to Crewforth files there are overwritten."
       else
         echo "clean: no uncommitted changes in .claude/ or CLAUDE.md"
       fi

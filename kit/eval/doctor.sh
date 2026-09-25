@@ -30,11 +30,11 @@ skip(){ echo "  ·  $1"; }
 echo "== Crewforth — install doctor =="
 
 # 0) Is the kit even here?
-[ -d .claude ] || { echo "  ❌ no .claude/ in '$PWD' — is the kit installed here?"; echo "     ↳ fix: npx crewforth adopt"; exit 1; }
+[ -d .claude ] || { echo "  ❌ no .claude/ in '$PWD' — is Crewforth installed here?"; echo "     ↳ fix: npx crewforth adopt"; exit 1; }
 
 # 1) VERSION (marks a full install; also what /crew-update compares)
 if [ -f .claude/VERSION ]; then ok "VERSION present ($(head -1 .claude/VERSION | tr -cd '0-9A-Za-z.-'))"
-else bad "VERSION missing" "reinstall or update the kit (npx crewforth update)"; fi
+else bad "VERSION missing" "reinstall or update Crewforth (npx crewforth update)"; fi
 
 # 1b) Is that version the current one? Read-only, from the cache session-update-check.sh maintains — doctor makes
 #     no network call of its own, so this stays honest offline (no cache -> nothing said) and instant everywhere.
@@ -45,7 +45,7 @@ if [ -f .claude/VERSION ] && [ -f .claude/.state/update-check ]; then
   DCUR="$(head -1 .claude/VERSION 2>/dev/null | tr -cd '0-9A-Za-z.-')"
   if [ -n "$DLATEST" ] && awk -v a="$DLATEST" -v b="$DCUR" 'BEGIN{split(a,x,".");split(b,y,".");
        for(i=1;i<=3;i++){if(x[i]+0>y[i]+0)exit 0; if(x[i]+0<y[i]+0)exit 1} exit 1}'; then
-    warn "kit v$DCUR installed, v$DLATEST published — update with /crew-update"
+    warn "Crewforth v$DCUR installed, v$DLATEST published — update with /crew-update"
   fi
 fi
 
@@ -57,7 +57,7 @@ for h in .claude/hooks/pre-commit .claude/hooks/commit-msg; do
   if [ ! -e "$h" ]; then GONE="$GONE $(basename "$h")"; elif [ ! -x "$h" ]; then NX="$NX $(basename "$h")"; fi
 done
 [ -z "$GONE" ] && ok "required git hooks present (pre-commit, commit-msg)" \
-              || bad "MISSING git hook(s):$GONE — the commit trace/secret scan is absent" "reinstall or update the kit"
+              || bad "MISSING git hook(s):$GONE — the commit trace/secret scan is absent" "reinstall or update Crewforth"
 [ -z "$NX" ] && ok "all hooks are executable" \
              || bad "not executable:$NX" "chmod +x .claude/hooks/*.sh .claude/hooks/pre-commit .claude/hooks/commit-msg"
 
@@ -69,7 +69,7 @@ if [ -x .claude/hooks/guard-bash.sh ]; then
   # counting the diagnostics instead of what the model reached for. A measurement tool that contaminates the
   # thing it measures is worse than none.
   if printf '%s' '{"tool_name":"Bash","permission_mode":"auto","tool_input":{"command":"git push --force"}}' | CREW_GATE_LOG=/dev/null bash .claude/hooks/guard-bash.sh >/dev/null 2>&1; then
-    bad "guard-bash.sh did NOT block a force-push — the §4.5 gate is neutered/disarmed" "restore guard-bash.sh from the kit"
+    bad "guard-bash.sh did NOT block a force-push — the §4.5 gate is neutered/disarmed" "restore guard-bash.sh from Crewforth (npx crewforth update)"
   else ok "guard-bash.sh blocks a force-push (gate live, not neutered)"; fi
 
   # 2c) The §4.6 review gate, probed the same way — and probed on the ONE case whose verdict cannot depend on
@@ -84,7 +84,7 @@ if [ -x .claude/hooks/guard-bash.sh ]; then
   case "$PROBE46" in
     *"4.6"*) ok "guard-bash.sh enforces the §4.6 review gate (gate live, not neutered)" ;;
     *)       bad "guard-bash.sh did NOT enforce §4.6 — a commit can land with no review of its diff" \
-                 "restore guard-bash.sh from the kit (and check crew-review-agent still writes .claude/review-pass.json)" ;;
+                 "restore guard-bash.sh from Crewforth (and check crew-review-agent still writes .claude/review-pass.json)" ;;
   esac
 fi
 
@@ -94,7 +94,7 @@ if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   case "$HP" in
     */.claude/hooks|.claude/hooks) ok "core.hooksPath -> $HP (commit-time gates active)" ;;
     "") bad "core.hooksPath is unset — commit trace/secret/bloat gates are INACTIVE" "git config core.hooksPath .claude/hooks" ;;
-    *)  bad "core.hooksPath -> $HP (not the kit's hooks)" "git config core.hooksPath .claude/hooks" ;;
+    *)  bad "core.hooksPath -> $HP (not Crewforth's hooks)" "git config core.hooksPath .claude/hooks" ;;
   esac
 else
   warn "not a git repo — commit gates need: git init && git config core.hooksPath .claude/hooks"
@@ -110,7 +110,7 @@ if [ -f "$S" ]; then
   # parse: validity, then each event's array length.
   SJ=.claude/eval/lib/settings-json.awk
   if [ ! -f "$SJ" ]; then
-    bad "the kit's JSON reader is missing ($SJ) — settings.json cannot be checked" "update the kit"
+    bad "Crewforth's JSON reader is missing ($SJ) — settings.json cannot be checked" "update Crewforth"
   elif awk -v op=validate -f "$SJ" "$S" 2>/dev/null; then
     ok "settings.json is valid JSON"
     EMPTY=""
@@ -119,10 +119,10 @@ if [ -f "$S" ]; then
       case "$n" in ''|0) EMPTY="$EMPTY $ev" ;; esac
     done
     [ -z "$EMPTY" ] && ok "settings.json wires PreToolUse / UserPromptSubmit / Stop (non-empty)" \
-                    || bad "settings.json hook events empty or missing:$EMPTY — those gates won't fire" "restore settings.json from the kit"
+                    || bad "settings.json hook events empty or missing:$EMPTY — those gates won't fire" "restore settings.json from Crewforth (npx crewforth update)"
     sn="$(awk -v op=len -v path=hooks.SessionStart -f "$SJ" "$S" 2>/dev/null)"
-    case "$sn" in ''|0) warn "SessionStart not wired — session rehydration after /compact or /clear is inactive (update the kit)" ;; *) ok "SessionStart wired (session rehydration active)" ;; esac
-  else bad "settings.json is invalid JSON" "fix the syntax by hand — restoring the kit's file would drop any hooks you added"; fi
+    case "$sn" in ''|0) warn "SessionStart not wired — session rehydration after /compact or /clear is inactive (update Crewforth)" ;; *) ok "SessionStart wired (session rehydration active)" ;; esac
+  else bad "settings.json is invalid JSON" "fix the syntax by hand — restoring Crewforth's file would drop any hooks you added"; fi
   # `${CLAUDE_PROJECT_DIR}` inside a hook command is the shape that breaks on Windows, and it breaks invisibly.
   # Claude Code substitutes that placeholder into the command STRING before any shell sees it; on Windows the
   # value is `C:\Repos\app` and the separators are gone by the time bash reads it. The reported path was
@@ -135,12 +135,12 @@ if [ -f "$S" ]; then
   # all of them the moment one teammate is on Windows.
   if grep -q '\${CLAUDE_PROJECT_DIR' "$S" 2>/dev/null; then
     bad "settings.json wires hooks through the \${CLAUDE_PROJECT_DIR} placeholder — on Windows its separators are stripped before bash runs, so NO hook launches and every gate is silently absent" \
-        "update the kit (npx crewforth adopt) — hook commands become: cd \"\$CLAUDE_PROJECT_DIR\" 2>/dev/null; bash .claude/hooks/<name>.sh"
+        "update Crewforth (npx crewforth adopt) — hook commands become: cd \"\$CLAUDE_PROJECT_DIR\" 2>/dev/null; bash .claude/hooks/<name>.sh"
   else
     ok "hook wiring carries no path placeholder (nothing for Windows to mangle)"
   fi
 else
-  bad "settings.json missing — the tool-level gates (commit approval, guards, context) are INACTIVE" "reinstall the kit"
+  bad "settings.json missing — the tool-level gates (commit approval, guards, context) are INACTIVE" "reinstall Crewforth"
 fi
 
 # 4a) Skill listing budget. Claude Code loads a listing of every skill's name + description into context each
@@ -193,7 +193,7 @@ for f in .claude/settings.json .claude/settings.local.json "$HOME/.claude/settin
     | grep -qE '^(Agent|Task)([^A-Za-z0-9_]|$)' && DENYSRC="$DENYSRC $f"
 done
 if [ "${NOPY:-0}" = 1 ]; then
-  warn "delegation check could not read:${MAYBEDENY} — not valid JSON (or the kit's reader is missing)."
+  warn "delegation check could not read:${MAYBEDENY} — not valid JSON (or Crewforth's reader is missing)."
   warn "  open it and check that Agent/Task is not under permissions.deny. If it is, no subagent can ever run."
 fi
 # `A && B && ok … || bad …` cannot express three outcomes. With no usable python3 the && chain is false, so the
@@ -291,7 +291,7 @@ if [ -f .claude/DISCIPLINE.md ]; then
   elif grep -qE '^[[:space:]]*@\.claude/DISCIPLINE\.md[[:space:]]*$' CLAUDE.md; then
     ok "CLAUDE.md imports .claude/DISCIPLINE.md (the discipline reaches the model)"
   elif grep -q '^## Four working principles' CLAUDE.md && grep -qE '^### 4\.[45] ' CLAUDE.md; then
-    warn "CLAUDE.md carries the discipline INLINE (pre-1.1 layout) — it loads, but kit updates never reach it; migrate to the '@.claude/DISCIPLINE.md' import line"
+    warn "CLAUDE.md carries the discipline INLINE (pre-1.1 layout) — it loads, but Crewforth updates never reach it; migrate to the '@.claude/DISCIPLINE.md' import line"
   else
     bad "CLAUDE.md does not import .claude/DISCIPLINE.md — the discipline is on disk but never loaded" \
         "add this as its own line at the top of CLAUDE.md: @.claude/DISCIPLINE.md"
@@ -337,7 +337,7 @@ if [ -f .claude/settings.json ]; then
     ok "shell gates watch both Bash and PowerShell"
   elif grep -q '"matcher"[[:space:]]*:[[:space:]]*"Bash"' .claude/settings.json; then
     bad "shell gates watch only Bash — PowerShell commands bypass every §4.5 rule" \
-        "update the kit (npx crewforth update), or set the PreToolUse matcher to \"Bash|PowerShell\""
+        "update Crewforth (npx crewforth update), or set the PreToolUse matcher to \"Bash|PowerShell\""
   fi
 fi
 # 9) The auto-mode classifier. Since 2026-08-14 auto mode is the default permission mode on Pro/Max/Team, so a
@@ -348,10 +348,10 @@ fi
 if [ -x .claude/skills/automode-policy/scripts/check.sh ] || [ -f .claude/skills/automode-policy/scripts/check.sh ]; then
   AMOUT="$(bash .claude/skills/automode-policy/scripts/check.sh 2>&1)"; AMRC=$?
   case "$AMRC" in
-    0) ok "auto-mode classifier config: built-ins intact, kit rules present (config, not a gate)" ;;
+    0) ok "auto-mode classifier config: built-ins intact, Crewforth rules present (config, not a gate)" ;;
     2) bad "auto-mode classifier BUILT-INS DROPPED — an autoMode array lacks \"\$defaults\"" \
            "restore it in ~/.claude/settings.json; see .claude/skills/automode-policy/SKILL.md" ;;
-    3) skip "auto-mode classifier config: kit rules absent (measured not to enforce — see the skill)" ;;
+    3) skip "auto-mode classifier config: Crewforth rules absent (measured not to enforce — see the skill)" ;;
     # Same vocabulary as the other three branches on purpose. It used to read "auto-mode policy check
     # skipped", and the suite's assertion — written on a machine that HAS the claude CLI — never saw this
     # branch. CI has no CLI, so every run took it and the case failed on a wording difference, not a defect.
@@ -424,8 +424,8 @@ if [ -f "$MAN" ]; then
     s="${d%/}"; s="${s##*/}"
     case "$NL$MANTXT$NL" in *"${NL}skills/$s$NL"*) ;; *) OWN=$((OWN+1)) ;; esac
   done
-  [ "$OWN" -gt 0 ] && rdy "$OWN project-specific skill(s) alongside the kit's" \
-                   || gap "no project-specific skill — only the kit's generic ones are installed" \
+  [ "$OWN" -gt 0 ] && rdy "$OWN project-specific skill(s) alongside Crewforth's" \
+                   || gap "no project-specific skill — only Crewforth's generic ones are installed" \
                           "put the domain 'how's in .claude/skills/ (format: .claude/AGENT_TEMPLATE.md)"
 else
   skip "project-skill signal skipped (no .claude/kit-manifest.txt — install predates it; run the updater)"

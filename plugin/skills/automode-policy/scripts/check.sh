@@ -87,16 +87,16 @@ if [ -n "$MISSING" ]; then
 fi
 
 if [ "$KITR" -eq 0 ]; then
-  echo "  ·  kit auto-mode rules not in the classifier config (built-ins only) — not a gate either way"
+  echo "  ·  Crewforth auto-mode rules not in the classifier config (built-ins only) — not a gate either way"
   echo "     ↳ optional: bash .claude/skills/automode-policy/scripts/apply.sh"
   exit 3
 fi
 
 if [ "$KITR" -lt 3 ]; then
-  echo "  ·  kit auto-mode rules PARTIAL ($KITR/3 present) — built-ins intact"
+  echo "  ·  Crewforth auto-mode rules PARTIAL ($KITR/3 present) — built-ins intact"
   echo "     ↳ re-apply: bash .claude/skills/automode-policy/scripts/apply.sh"
   exit 3
 fi
 
-echo "  ✅ classifier config: built-ins intact, 3/3 kit rules present (CONFIGURED, not proven to enforce)"
+echo "  ✅ classifier config: built-ins intact, 3/3 Crewforth rules present (CONFIGURED, not proven to enforce)"
 exit 0

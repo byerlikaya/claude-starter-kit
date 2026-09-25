@@ -121,9 +121,9 @@ echo "  ---"
 # the transcript level — both are a Read of the same path. In a project that USES the kit there is no such
 # traffic, which is the case the measurement is for.
 [ "$OWNREPO" = 1 ] && {
-  echo "  NOTE: read from the kit's OWN repository, where a SKILL.md is opened to be EDITED. Those edits are"
+  echo "  NOTE: read from Crewforth's OWN repository, where a SKILL.md is opened to be EDITED. Those edits are"
   echo "  indistinguishable from invocations here, so 'fired' is inflated. Run this in a project that USES the"
-  echo "  kit for a number that means what it says."
+  echo "  Crewforth for a number that means what it says."
   echo "  ---"; }
 echo "  A cold skill is not a bad skill — a runbook earns its place by existing. This is the evidence for the"
 echo "  skillOverrides \"name-only\" decision doctor.sh §4a asks you to make, not the decision itself."

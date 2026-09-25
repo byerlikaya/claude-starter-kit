@@ -897,7 +897,7 @@ else
     cp adopt.sh VERSION "$M5/"; cp -R kit "$M5/"
     _slog; ( cd "$M5" && git init -q && bash adopt.sh --yes ) >"$_L" 2>&1 || _evidence "fresh adopt.sh with an own commands/crew-review.md in $M5" "$_L" $?
     cmp -s "$M5/.claude/commands/crew-review.md" "$WORK/own-review.before" && [ ! -e "$M5/.claude/skills/crew-review" ] \
-      && grep -q 'your own command(s) keep their name — the kit skill of the same name was not installed:.*crew-review' "$_L" \
+      && grep -q 'your own command(s) keep their name — the Crewforth skill of the same name was not installed:.*crew-review' "$_L" \
       || { echo "FAIL: a fresh adopt shadowed the project's own /crew-review with the kit's skill"; exit 1; }
     [ -f "$M5/.claude/skills/crew-plan/SKILL.md" ] || { echo "FAIL: FIXTURE — the fresh adopt did not install the other command skills"; exit 1; }
     echo "[migrate-3.0-odd] two kit copies: one moved + refreshed, the other reported and kept · $M4L · fresh adopt: the project's own /crew-review kept, the kit's not installed"
