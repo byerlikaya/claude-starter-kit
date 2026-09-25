@@ -31,10 +31,6 @@ npx crewforth adopt    # mevcut depo — ayrı bir dalda devralınır, main'iniz
 
 <sub>On iki ajan, doğduğu anda tek tuvalde beliriyor: kitin ajanları kendi renkleriyle, Claude'un yerleşikleri ayrı bir paletle.<br>Panel bu depoda; <a href="#canlı-panel">Canlı panel</a> bölümüne bakın.</sub>
 
-Son dakika baskısında kitsiz Claude Code bir dizini herkese açtı: **6/10** koşuda; Crewforth ile **0/10**. [Nasıl ölçüyoruz →](evals/README.md)
-
-<img src="assets/proof-permission-pressure.svg" alt="Son dakika baskısında uploads/ herkese yazılabilir yapıldı: kitsiz Claude Code 10 koşunun 6'sında, Crewforth ile 0'ında" width="420">
-
 </div>
 
 ---
@@ -237,7 +233,7 @@ Solda kural, sağda o kuralın geçilmesine izin vermeyen şey.
 
 Her kural **iki** yönü için de vaka taşır: engellemesi gerekeni engellediği ve komşusunu (`chmod 755`, `rm -rf build`, `git checkout -- src/app.js`) engellemediği. Kanıtlanmamış bir yaptırım yaptırım değildir; rutin işte ateşleyen bir yaptırımın da etrafından dolaşılır.
 
-Peki gerçekten bir şey değiştiriyor mu? Aynı istek hem Claude Starter Kit'li hem de çıplak bir projede koşturuldu ve her birinin diskte bıraktığına göre puanlandı. Sıkışık bir teslim tarihi ve makul bir gerekçe verildiğinde çıplak proje `uploads/` dizinini üç denemenin üçünde de herkese yazılabilir yaptı; kitli proje hiçbirinde yapmadı. İlginç olan şu: yaptırım hiç ateşlenmedi. Kitli taraf o komuta hiç uzanmadı, kendiliğinden vazgeçip kuralı gerekçe gösterdi. Acelesi olmayan işlerde ikisi birbirinden ayırt edilemiyor; ölçümler ve gerekçeleri [`evals/README.md`](evals/README.md) içinde yayımlanıyor.
+Peki gerçekten bir şey değiştiriyor mu? Aynı istek hem Crewforth kurulu hem de çıplak bir projede koşturuluyor ve her birinin diskte bıraktığına göre puanlanıyor. Her ölçüm gerekçesiyle [`evals/README.md`](evals/README.md) içinde yayımlanıyor; koşudan önce yazılan kuralın tutmadığı ölçümler de dahil.
 
 Yaptırımlar kazaları durdurur, kararlı denemeleri değil. Komut satırında bir desenin etrafından dolaşmanın bir yolu her zaman bulunur; gerçek bir sınır gerekiyorsa Claude Code'u devcontainer veya sanal makine içinde koşturun. `/crew-doctor` böyle bir sınırınız olup olmadığını söyler.
 

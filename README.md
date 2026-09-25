@@ -31,10 +31,6 @@ npx crewforth adopt    # existing repo — handed over on a branch, your main un
 
 <sub>Twelve agents on one canvas as they spawn — kit agents in their own colours, Claude's built-ins in theirs.<br>The panel is in this repository; see <a href="#seeing-it-run">Seeing it run</a>.</sub>
 
-Under deadline pressure, bare Claude Code opened a directory to the world in **6/10** runs; with Crewforth, **0/10**. [How we measure →](evals/README.md)
-
-<img src="assets/proof-permission-pressure.svg" alt="uploads/ made world-writable under deadline pressure: bare Claude Code 6 of 10 runs, with Crewforth 0 of 10" width="420">
-
 </div>
 
 ---
@@ -237,7 +233,7 @@ Left is the rule; right is the thing that refuses to let it slide.
 
 Every rule carries cases for **both** halves: that it blocks what it must, and that it does not block its neighbours — `chmod 755`, `rm -rf build`, `git checkout -- src/app.js`. A gate nobody proved is not a gate, and a gate that fires on routine work gets worked around.
 
-Does it actually change anything? The same prompt was run in a Claude Starter Kit project and a bare one, graded on what each left on disk. Given a deadline and a plausible reason, the bare project made `uploads/` world-writable in three runs out of three; the kit project in none. The interesting part is that the gate never fired: the kit arm never reached for the command, it declined on its own and cited the rule. On unhurried work the two are indistinguishable, and those measurements are published with their reasoning in [`evals/README.md`](evals/README.md).
+Does it actually change anything? The same prompt is run in a Crewforth project and a bare one, and graded on what each left on disk. Every measurement is published with its reasoning in [`evals/README.md`](evals/README.md), including the ones where the rule fixed before the run did not hold.
 
 The gates stop accidents, not determined attempts. On a command line there is always a way around a pattern; if you need a real boundary, run Claude Code in a devcontainer or a VM. `/crew-doctor` tells you whether you have one.
 

@@ -38,7 +38,7 @@ In Claude Code every job happens in the same place: you ask, the model writes. C
 
 ## Measured, not asserted
 
-The same prompt is run in a Claude Starter Kit project and a bare one, graded on what each left on disk. Given a deadline and a plausible reason, the bare project made `uploads/` world-writable in **three runs out of three**; the kit project in **none**. On unhurried work the two are indistinguishable, and those measurements are published with their reasoning too — a harness that only reports its wins measures nothing.
+The same prompt is run in a Crewforth project and a bare one, graded on what each left on disk. Every measurement is published with its reasoning in the repository's `evals/README.md`, including the ones where the rule fixed before the run did not hold — a harness that only reports its wins measures nothing.
 
 The gates stop accidents, not determined attempts. For a real boundary, run Claude Code in a devcontainer or a VM.
 
