@@ -5724,6 +5724,50 @@ if [ -n "$SGR" ] && [ -f "$SGR/.gitattributes" ] && [ -d "$SGR/packaging" ] && [
     [ "$URC" = 2 ] && pass "verify.sh refuses an unknown step name with rc=2" \
                    || fail "verify.sh answered rc=$URC for an unknown step — a typo'd gate name would look like a result"
 
+    # ---- the documentation-only skip: which changes may skip macOS and Windows -------------------------------
+    # ci.yml skips the cross-platform jobs when a pull request touches documentation only. The danger is one
+    # line: a pattern that also matches a script, a hook or anything under kit/ lets a real change skip the only
+    # platforms where it can break, and nobody sees it because a skipped job is not a red one. So the list is
+    # PINNED here, exactly, and two properties are checked on top: no pattern can match a .sh or kit/, and the
+    # script's own verdict on real paths is right. Each has a twin that must be caught.
+    CDO="$SGR/packaging/ci-docs-only.sh"
+    if [ ! -f "$CDO" ]; then fail "packaging/ci-docs-only.sh is missing — ci.yml cannot decide what may skip macOS and Windows"
+    else
+      cdo_pats(){ awk '/# DOCS-PATTERNS-START/{f=1;next} /# DOCS-PATTERNS-END/{f=0} f && /\) *return 0/ {sub(/^[[:space:]]*/,""); sub(/\).*/,""); print}' "$1"; }
+      # A pattern is unsafe when it could match a shell script or the payload: it names .sh, starts at kit/, or
+      # starts with a wildcard (which reaches every directory, kit/ included).
+      cdo_unsafe(){ while IFS= read -r _p; do case "$_p" in *.sh*|kit*|\**) printf '%s\n' "$_p" ;; esac; done; }
+      _cp="$(cdo_pats "$CDO" | tr '\n' ' ' | sed 's/ $//')"
+      _want='README*.md site/content/* evals/README.md evals/results/* CHANGELOG.md'
+      [ "$_cp" = "$_want" ] && pass "the docs-only list is exactly: $_want" \
+        || fail "the docs-only list changed — it reads '$_cp', pinned '$_want'. Widening it lets a change skip macOS and Windows; update this pin deliberately"
+      _cu="$(cdo_pats "$CDO" | cdo_unsafe)"
+      _tu="$(printf '%s\n' 'kit/*' '*.sh' 'README*.md' | cdo_unsafe | grep -c .)"
+      if [ -n "$_cu" ]; then fail "a docs-only pattern can match code: $_cu"
+      elif [ "$_tu" != 2 ]; then fail "the unsafe-pattern check caught $_tu of 2 planted patterns (kit/*, *.sh) — it reads nothing"
+      else pass "no docs-only pattern can match a .sh or kit/; the planted kit/* and *.sh are both caught"; fi
+      # The verdict on real paths, both ways. evals/run.sh and kit/README.md are the near misses: a directory the
+      # list partly covers, and a README that is payload.
+      cdo(){ printf '%s\n' "$@" | bash "$CDO"; }
+      _cv=""
+      [ "$(cdo README.md README.tr.md site/content/en/gates.md evals/README.md evals/results/x.txt CHANGELOG.md)" = docs ] || _cv="$_cv docs-set"
+      [ "$(cdo README.md kit/hooks/guard-bash.sh)" = code ] || _cv="$_cv +hook"
+      [ "$(cdo evals/run.sh)" = code ]      || _cv="$_cv evals/run.sh"
+      [ "$(cdo kit/README.md)" = code ]     || _cv="$_cv kit/README.md"
+      [ "$(cdo .github/workflows/ci.yml)" = code ] || _cv="$_cv ci.yml"
+      [ "$(printf '' | bash "$CDO")" = code ] || _cv="$_cv empty"
+      [ "$(printf 'README.md\r\n' | bash "$CDO")" = docs ] || _cv="$_cv crlf"
+      [ -z "$_cv" ] && pass "ci-docs-only.sh: documentation reads docs; a hook, evals/run.sh, kit/README.md, ci.yml or an empty diff reads code" \
+                    || fail "ci-docs-only.sh gave the wrong verdict for:$_cv"
+      # ...and ci.yml really uses it: both cross-platform jobs are gated on its answer, nothing else is.
+      _cy="$SGR/.github/workflows/ci.yml"
+      _gated="$(grep -c "if: needs.changes.outputs.scope == 'code'" "$_cy")"
+      if grep -q 'bash packaging/ci-docs-only.sh' "$_cy" && [ "$_gated" = 2 ] \
+         && grep -qE '^  verify-cross-smoke:' "$_cy" && grep -qE '^  verify-cross-e2e:' "$_cy"; then
+        pass "ci.yml asks ci-docs-only.sh and gates exactly the two cross-platform jobs on it"
+      else fail "ci.yml's docs-only wiring changed: the script call, or the gate on verify-cross-smoke / verify-cross-e2e ($_gated gated)"; fi
+    fi
+
   # ---- start.sh refuses to consume the kit's own checkout ---------------------------------------------------
   # The installer ends by deleting kit/ and itself. That is right when the kit has been unpacked
   # into a project; run by absolute path from a developer's checkout it deletes the source. It did: 122 tracked

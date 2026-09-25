@@ -17,7 +17,40 @@ on:
 env:
   CREW_VERIFY_STRICT: "1"
 
+# A new commit on a pull request makes the run for the previous one worthless, and on Windows that run is the
+# longest job we have. Cancel it. Pushes to main and next are NOT cancelled: each one is a state that shipped,
+# and every one of them keeps its own verdict.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  # Is this pull request documentation only? The macOS and Windows jobs measure how bash, git and the installers
+  # behave on another OS; a README or a site page cannot change that, so they are skipped when nothing else
+  # changed. The list lives in packaging/ci-docs-only.sh and is pinned by smoke (no script, no hook, nothing
+  # under kit/). A push to main or next always runs everything, and so does anything the diff cannot be read for.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      scope: ${{ steps.scope.outputs.scope }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Documentation-only pull request?
+        id: scope
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "${{ github.event_name }}" != pull_request ] || [ -z "$BASE" ]; then
+            scope=code
+          else
+            scope="$(git diff --name-only "$BASE" HEAD | bash packaging/ci-docs-only.sh)"
+            git diff --name-only "$BASE" HEAD | sed 's/^/  changed: /'
+          fi
+          echo "scope: $scope"
+          echo "scope=$scope" >> "$GITHUB_OUTPUT"
+
   verify:
     runs-on: ubuntu-latest
     steps:
@@ -54,7 +87,7 @@ jobs:
 
       # The panel's own suite. Both statements this comment used to make are now false: the panel IS installed
       # into every project, and verify-cross does carry node (v24 on macOS, v22 on Windows in the run that
-      # proved it). So it is no longer Linux-only — see the matching step in verify-cross.
+      # proved it). So it is no longer Linux-only — see the matching step in verify-cross-smoke.
       - name: Studio — boundary pins, permission bridge, transcript parsing
         run: bash packaging/verify.sh studio
 
@@ -71,8 +104,15 @@ jobs:
 
   # Cross-platform proof: the installer and the non-interactive settings SELF-HEAL must behave the same on Windows
   # (Git-Bash) and macOS, not only Linux — Windows especially, since that is where the update was failing. Runs the
-  # OS-sensitive checks (syntax · smoke · e2e); the Linux job above owns the manifest/catalogue checks.
-  verify-cross:
+  # OS-sensitive checks (syntax · smoke · studio · parser · subshell · i18n · e2e); the Linux job above owns the
+  # manifest/catalogue checks.
+  #
+  # TWO JOBS PER OS, the same steps as the one job they replace: the suites share nothing, and on Windows each is
+  # long (measured: smoke 18 min, e2e 22 min, 41 min in one job), so running them side by side makes the wall
+  # clock the longer of the two instead of their sum.
+  verify-cross-smoke:
+    needs: changes
+    if: needs.changes.outputs.scope == 'code'
     strategy:
       fail-fast: false
       matrix:
@@ -136,6 +176,22 @@ jobs:
 
       - name: i18n audit — the bilingual tables hold their invariants
         run: bash packaging/verify.sh i18n
+
+  verify-cross-e2e:
+    needs: changes
+    if: needs.changes.outputs.scope == 'code'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0   # e2e rehearses the 3.0 migration on the real v2.13.0 tree (git archive)
 
       - name: e2e rehearsal — installer + non-interactive self-heal (with/without jq·python)
         run: bash packaging/verify.sh e2e
