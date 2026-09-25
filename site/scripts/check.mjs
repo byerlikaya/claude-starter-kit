@@ -3,7 +3,7 @@
 //
 //   pairs     every page exists in both languages (Starlight would otherwise show a fallback)
 //   old name  "Claude Starter Kit", csk, … appear 0 times            (the changelog is history: exempt)
-//   kit       "the kit", "bu kit", "kitin" appear 0 times             (changelog exempt)
+//   kit       "the kit", "bu kit", "kitin" appear 0 times, and "kit" as a word outside code  (changelog exempt)
 //   numbers   a percentage or an "N/10" appears only if evals/README.md carries it, or the site generated it from
 //             source (the context-fill thresholds)                  (changelog exempt)
 //   links     every internal link and image resolves to a built file
@@ -34,6 +34,9 @@ export function prose(html) {
 
 export const oldName = (t) => [...t.matchAll(/claude starter kit|claude-starter-kit|claude-starter\/|@byerlikaya\/|(^|[^a-z0-9])csk([^a-z0-9]|$)/gi)].map((m) => m[0].trim());
 export const kitPhrase = (t) => [...t.matchAll(/(^|[^a-zçğıöşü0-9])(the kit|bu kit|kitin)(?![a-zçğıöşü0-9])/gi)].map((m) => m[2]);
+// "kit" as a word on its own, outside code: the product's old name, or an eval arm written as prose instead of as
+// the `kit` it is in the runner's output. A path or a file name (kit/, kit.conf, kit-manifest) is not a word.
+export const kitWord = (t) => [...t.matchAll(/(^|[^a-zçğıöşü0-9_./-])(kit(?:s|i|in|e|te|ten)?)(?![a-zçğıöşü0-9_\/-]|\.[a-z])/gi)].map((m) => m[2]);
 export function numbers(t, allowed) {
   return [...t.matchAll(/[0-9]+(?:[.,][0-9]+)?%|%[0-9]+(?:[.,][0-9]+)?|[0-9]+\/10(?![0-9])/g)].map((m) => m[0]).filter((n) => !allowed(n));
 }
@@ -66,6 +69,8 @@ function selftest(allowed) {
   must(oldName('the task is quick, a desk and ask').length === 0, 'old name flagged plain words');
   must(kitPhrase('Install the kit once. Bu kitin dosyaları.').length === 2, 'kit phrase not caught');
   must(kitPhrase('a toolkit, kitchen, the kits? kit.conf').length === 0, 'kit phrase flagged other words');
+  must(kitWord('Cost $3.80 kit · $1.52 bare. Kit: no code, nine kit sessions').length === 3, 'a plain kit word not caught');
+  must(kitWord('see kit/hooks and kit.conf, kit-manifest.txt, a toolkit').length === 0, 'kit word flagged a path');
   must(numbers('bare 7/10 and 93% of runs', allowed).length === 2, 'unbacked numbers not caught');
   must(numbers('warns at %75 and 90%', allowed).length === 0, 'generated thresholds flagged');
   must(thirdParty('<script src="https://evil.example/x.js"></script><link rel="stylesheet" href="https://fonts.googleapis.com/css">', '@import url("https://fonts.x.com/a.css");').length === 3, 'third party not caught');
@@ -98,6 +103,7 @@ function main() {
     if (!isChangelog(rel)) {
       for (const h of oldName(text)) problems.push(`old name: ${rel}: "${h}"`);
       for (const h of kitPhrase(text)) problems.push(`kit: ${rel}: "${h}"`);
+      for (const h of kitWord(text)) problems.push(`kit word: ${rel}: "${h}" outside code`);
       for (const h of numbers(text, allowed)) problems.push(`number: ${rel}: ${h} is not in evals/README.md`);
     }
     for (const b of brokenLinks(html, rel, exists)) problems.push(`link: ${b}`);
@@ -110,7 +116,7 @@ function main() {
     console.error(`site check: ${problems.length} problem(s)\n  ${problems.slice(0, 40).join('\n  ')}`);
     process.exit(1);
   }
-  console.log(`site check: ${checked} pages (${en.length} EN + ${tr.length} TR, paired) · no old name, no "the kit", no unbacked number, no broken link, no third-party request · twins: each gate rejected planted input and accepted clean input`);
+  console.log(`site check: ${checked} pages (${en.length} EN + ${tr.length} TR, paired) · no old name, no "the kit" or plain "kit" outside code, no unbacked number, no broken link, no third-party request · twins: each gate rejected planted input and accepted clean input`);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();

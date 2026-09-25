@@ -8,6 +8,8 @@ description: |
   the FALLBACK for a project with no pipeline — and it is DESTRUCTIVE and OUTWARD-FACING, no unapproved release
   to prod (§4.4).
 tools: Read, Grep, Glob, Edit, Write, Bash, PowerShell
+metadata:
+  stage: produce
 ---
 
 # DevOps / Ops Expert

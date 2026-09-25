@@ -144,3 +144,48 @@ export function alwaysOn(root) {
     'kit/skills/frontend-rn-expo/SKILL.md', 'kit/agents/crew-frontend-expert.md'].reduce((n, f) => n + frontmatterBytes(path.join(root, f)), 0);
   return { discipline, agents: agentsB, skills: skillsB, total: discipline + agentsB + skillsB, descriptions: agentsB + skillsB, ui };
 }
+
+// Each agent's stage, from its own frontmatter (`metadata: stage: …`; the metadata block is Crewforth's catalogue
+// data — Claude Code ignores it, and smoke's always-on budget does not count it). Two other places draw the same
+// grouping — the orchestration diagram's source and the hand-written agents table — and all three must agree.
+export const STAGES = ['understand', 'produce', 'audit', 'close', 'handoff'];
+export function stages(root) {
+  const dir = path.join(root, 'kit/agents');
+  const map = new Map();
+  for (const f of fs.readdirSync(dir).filter((x) => /^crew-.*\.md$/.test(x)).sort()) {
+    const fm = frontmatter(path.join(dir, f));
+    const s = (String(fm.metadata || '').match(/(?:^|\s)stage:\s*([a-z]+)/) || [])[1];
+    if (!STAGES.includes(s)) fail(`kit/agents/${f}: metadata.stage is ${s ? `"${s}"` : 'missing'} — one of ${STAGES.join(', ')}`);
+    map.set(fm.name || f.replace(/\.md$/, ''), s);
+  }
+  const drift = [];
+  const byName = { UNDERSTAND: 'understand', PRODUCE: 'produce', AUDIT: 'audit', CLOSE: 'close', 'HAND OFF': 'handoff' };
+  const gen = read(path.join(root, 'packaging/gen-network.py'));
+  const tuples = [...gen.matchAll(/\("\d","([A-Z ]+)","[^"]*",\s*"#[0-9a-fA-F]+",\s*\[([^\]]*)\]/g)];
+  if (tuples.length !== 5) fail(`packaging/gen-network.py: read ${tuples.length} stage row(s), expected 5 — the diagram source changed shape`);
+  for (const [, label, list] of tuples) for (const a of list.match(/crew-[a-z-]+/g) || [])
+    if (map.get(a) !== byName[label]) drift.push(`gen-network.py puts ${a} under ${label}, its frontmatter says ${map.get(a) ?? 'nothing'}`);
+  const tableNames = { en: { Understand: 'understand', Produce: 'produce', Audit: 'audit', Close: 'close', 'Hand off': 'handoff' },
+    tr: { Anla: 'understand', 'Üret': 'produce', Denetle: 'audit', Kapat: 'close', Devret: 'handoff' } };
+  for (const loc of ['en', 'tr']) {
+    const rows = [...read(path.join(root, 'site/content', loc, 'skills.md')).matchAll(/^\| `(crew-[a-z-]+)` \| ([^|]+?) \|/gm)];
+    if (rows.length !== map.size) drift.push(`site/content/${loc}/skills.md lists ${rows.length} agent(s), the payload has ${map.size}`);
+    for (const [, a, st] of rows) if (map.get(a) !== tableNames[loc][st.trim()]) drift.push(`site/content/${loc}/skills.md puts ${a} under "${st.trim()}", its frontmatter says ${map.get(a) ?? 'nothing'}`);
+  }
+  if (drift.length) fail(`the agents' stages disagree:\n  ${drift.join('\n  ')}`);
+  return map;
+}
+
+// The install commands, from the README's own "Install and update" table: every inline-code span of each row, in
+// order. The home page quotes them rather than keeping a second copy (5b renames the tap and marketplace once).
+export function installRows(root, loc) {
+  const text = read(path.join(root, loc === 'en' ? 'README.md' : `README.${loc}.md`));
+  const head = loc === 'en' ? '## Install and update' : '## Kurulum ve güncelleme';
+  const sec = text.split(head)[1];
+  if (!sec) fail(`README${loc === 'en' ? '' : '.' + loc}.md: no "${head}" section`);
+  const rows = [...sec.split('\n## ')[0].matchAll(/^\| ([^|]+?) \| (.+) \|$/gm)];
+  const out = rows.map(([, title, cmds]) => ({ title: title.trim(), cmds: [...cmds.matchAll(/`([^`]+)`/g)].map((m) => m[1]) }))
+    .filter((r) => r.cmds.length);
+  if (out.length !== 3) fail(`README${loc === 'en' ? '' : '.' + loc}.md: the install table has ${out.length} channel row(s), expected 3`);
+  return out;
+}

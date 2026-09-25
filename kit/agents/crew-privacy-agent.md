@@ -9,6 +9,8 @@ description: |
 tools: Read, Grep, Glob, WebFetch
 # No `model` pin — see crew-security-expert. Omitted means inherit; pinning could only run the mandatory
 # privacy audit below the model that wrote the code it is auditing.
+metadata:
+  stage: audit
 ---
 
 # Privacy Auditor (KVKK / GDPR)

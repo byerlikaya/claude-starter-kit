@@ -22,6 +22,8 @@ export default defineConfig({
         tr: { label: 'Türkçe', lang: 'tr' },
       },
       social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/Crewforth/crewforth' }],
+      // The home page draws its own heading; see src/components/PageTitle.astro.
+      components: { PageTitle: './src/components/PageTitle.astro' },
       customCss: [
         '@fontsource/inter/400.css',
         '@fontsource/inter/600.css',

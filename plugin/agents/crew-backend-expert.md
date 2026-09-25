@@ -7,6 +7,8 @@ description: |
   services/handlers, validation, business rules, error contracts, integrations. Any request about it is yours
   whatever its size or wording.
 tools: Read, Grep, Glob, Edit, Write, Bash, PowerShell
+metadata:
+  stage: produce
 ---
 
 # Backend Expert (stack-agnostic)

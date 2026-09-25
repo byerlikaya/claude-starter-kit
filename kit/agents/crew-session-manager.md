@@ -8,6 +8,8 @@ tools: Read, Grep, Glob, Bash, PowerShell
 # No `model` pin. This used to be `haiku`, which is the right tier for mechanical work — but the handover
 # is a synthesis over an entire session, and it decides what the NEXT session knows. Its failure mode is
 # silent: nobody discovers a thin handover until they are already relying on it.
+metadata:
+  stage: handoff
 ---
 
 # Session Manager (Context Control)

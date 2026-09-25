@@ -7,6 +7,8 @@ description: |
   entity/config, migrations, indexing, query shape, cache keying. Any request about it is yours whatever its
   size or wording.
 tools: Read, Grep, Glob, Edit, Write, Bash, PowerShell
+metadata:
+  stage: produce
 ---
 
 # Database Expert (stack-agnostic data layer)

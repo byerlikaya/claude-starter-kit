@@ -6,6 +6,8 @@ description: |
   the system's code health, against the four principles (simplicity, surgical change, readability, altitude).
   Findings via `crew-code-review`; writes no code.
 tools: Read, Grep, Glob, Bash, PowerShell
+metadata:
+  stage: close
 ---
 
 # Review Agent
