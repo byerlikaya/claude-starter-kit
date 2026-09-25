@@ -1,6 +1,6 @@
 ---
 name: crew-update
-description: Check for a newer kit version, update, report what changed, then prompt /clear to reload.
+description: Check for a newer version, update, report what changed, then prompt /clear to reload.
 metadata:
   kind: command
 ---
@@ -17,7 +17,7 @@ Bring the installed kit up to the latest published version:
    else) and prints one of three verdicts:
    - `clean` → nothing to report, go on.
    - `UNCOMMITTED:` with the changed paths in `.claude/` and `CLAUDE.md` → show the user that list and **ask** —
-     with your question tool — whether to go ahead (the update rewrites kit-owned files under `.claude/`), commit
+     with your question tool — whether to go ahead (the update rewrites Crewforth-owned files under `.claude/`), commit
      or stash first, or stop. Continue only on their yes.
    - `NOT IN GIT:` (a private install gitignores `.claude/` and `CLAUDE.md`, so edits there cannot be detected) →
      pass its two lines to the user and go on; there is nothing to commit.
@@ -34,7 +34,7 @@ Bring the installed kit up to the latest published version:
    removed.
 8. **Verify:** run `/crew-doctor` (or `bash .claude/eval/doctor.sh`) so a bad/partial update surfaces immediately.
    If the updater's or doctor's output contains a line starting with ⭐, pass it to the user verbatim as the LAST
-   line of your summary — it prints once per kit version, and it is meant for the user, not for you.
+   line of your summary — it prints once per Crewforth version, and it is meant for the user, not for you.
 9. **Report** old → new + the headline changes. Take them from `.claude/.state/whats-new.md` — the updater writes
    there the installed package's own CHANGELOG sections between the old and the new version. Do not fetch release
    notes from the network. No file → say no release notes were included.

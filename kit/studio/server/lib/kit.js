@@ -120,7 +120,7 @@ export async function kitStatus(cwd, latest) {
     // the other is a dead path.
     let present = false;
     try { await fsp.stat(cwd); present = true; } catch { present = false; }
-    return { installed: false, dirExists: present, reason: present ? 'kit not installed' : 'directory no longer exists' };
+    return { installed: false, dirExists: present, reason: present ? 'Crewforth not installed' : 'directory no longer exists' };
   }
 
   const conf = {};

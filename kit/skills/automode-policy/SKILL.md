@@ -71,7 +71,7 @@ Verifying is read-only for Crewforth but not for Claude Code: `claude auto-mode 
 `settings.json` as it reads (reformatted, model aliases normalised, a `backups/` directory created). Measured,
 not assumed — it matters if you diff that file in CI.
 
-`check.sh` exit codes: `0` config as expected · `2` built-ins dropped · `3` kit rules absent/partial · `4`
+`check.sh` exit codes: `0` config as expected · `2` built-ins dropped · `3` Crewforth rules absent/partial · `4`
 cannot read the config
 (CLI too old, or auto mode unavailable on this account). `/crew-doctor` reports the same check.
 
