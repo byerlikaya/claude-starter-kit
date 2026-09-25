@@ -8,7 +8,7 @@
     "crewforth-studio": "server/index.js"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "license": "MIT"
 }

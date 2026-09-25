@@ -5321,9 +5321,9 @@ if [ "$IS_KIT" = 1 ]; then
   # 8 against 10 shipped — the drift this gate exists for, sitting on the page npm renders.
   for r in README.md README.tr.md README.npm.md; do
     [ -f "$KR/$r" ] || continue
-    grep -qE "(\*\*Slash commands\*\*|\*\*Slash komutu\*\*) \| $TC \||\*\*$TC slash commands\*\*|\*\*$TC slash komutu\*\*" "$KR/$r" \
-      && pass "$r states the real slash-command count ($TC)" \
-      || fail "$r does not state $TC slash commands — the count drifted from the command skills"
+    grep -qE "(\*\*Commands\*\*|\*\*Komut\*\*) \| $TC \||\*\*$TC commands\*\*|\*\*$TC komut\*\*" "$KR/$r" \
+      && pass "$r states the real command count ($TC)" \
+      || fail "$r does not state $TC commands — the count drifted from the command skills"
     # ...and every command must actually be listed beside that number, or the count is right and the list is stale.
     MISSING_CMD=""
     for f in $CMD_FILES; do
@@ -6314,6 +6314,33 @@ if [ "$IS_KIT" = 1 ] && [ -f "$ROOT/../package.json" ]; then
   fi
 else
   skip scope "package contents not checked (installed project — package.json lives in the source repository)"
+fi
+
+sec "== 14h) reader-facing text says commands, not slash commands =="
+# Claude Code merged custom commands into skills and its docs call what `/` opens the command menu; "slash command"
+# survives there only in passing. The 11 skills a user starts with /crew-… are "commands" in every sentence a reader
+# sees. The term stays where it is searched for, not read: npm keywords, the plugin keywords, the site's <meta>
+# description — and in the CHANGELOG, which is history. The built site's page text is gated in site/scripts/check.mjs.
+if [ "$IS_KIT" = 1 ]; then
+  KR="$(cd "$ROOT/.." && pwd)"
+  _sc_re='slash[ -]?(command|komut)'
+  _sc_tw="$(printf '%s\n' "Run the slash command." "11 slash komutu" "a Slash-Command here" | grep -ciE "$_sc_re")"
+  _sc_ok="$(printf '%s\n' "doubled slashes and Windows separators" "start it with /crew-review" "the command menu" | grep -ciE "$_sc_re")"
+  _sc_files="$(cd "$KR" && ls README.md README.tr.md README.npm.md site/content/*/*.md kit/skills/*/SKILL.md kit/agents/*.md \
+               kit/CLAUDE.md kit/AGENT_TEMPLATE.md kit/studio/README.md 2>/dev/null)"
+  _sc_n="$(printf '%s\n' "$_sc_files" | grep -c .)"
+  _sc_hits="$(cd "$KR" && printf '%s\n' "$_sc_files" | while IFS= read -r f; do grep -niE "$_sc_re" "$f" 2>/dev/null | sed "s|^|$f:|"; done)"
+  if [ "$_sc_tw" != 3 ] || [ "$_sc_ok" != 0 ]; then
+    fail "the slash-command check cannot tell its twins apart ($_sc_tw of 3 planted caught, $_sc_ok of 0 clean flagged) — it reads nothing"
+  elif [ "$_sc_n" -lt 60 ]; then
+    fail "FIXTURE: the slash-command check found only $_sc_n reader-facing file(s) — the list broke, not the text"
+  elif [ -n "$_sc_hits" ]; then
+    fail "reader-facing text says slash command — write commands (started with /crew-…): $(printf '%s\n' "$_sc_hits" | head -3 | cut -c1-140 | tr '\n' ' ')"
+  else
+    pass "no reader-facing file says slash command ($_sc_n files: READMEs, site pages, installed skills and agents); twins 3/3 caught, 0/3 flagged"
+  fi
+else
+  skip scope "reader-facing wording not checked (installed project — the READMEs and site live in the Crewforth repo)"
 fi
 
 sec "== 15) evals: the parallel-audit metric, because a rule nobody can measure is not a rule =="

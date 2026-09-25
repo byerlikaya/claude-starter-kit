@@ -244,7 +244,7 @@ function listCommand(pkgDir, log) {
   log(`Skills (${cat.skills.length})`);
   for (const s of cat.skills) log(`  ${s.padEnd(24)} ${firstSentence(path.join(cat.root, 'skills', s, 'SKILL.md'))}`);
   log('');
-  log(`Commands (${cat.commands.length}) — typed as /<name>`);
+  log(`Commands (${cat.commands.length}) — you start them with /<name>`);
   for (const c of cat.commands) log(`  ${('/' + c).padEnd(24)} ${firstSentence(path.join(cat.root, 'skills', c, 'SKILL.md'))}`);
   return 0;
 }

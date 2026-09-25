@@ -15,8 +15,8 @@
 
 **Crewforth, Claude Code için mühendislik ekibinizdir.**
 
-Claude Code'a subagent'lar, skill'ler, slash komutları ve hook'lar ekler: her biri bir alanın sahibi olan 12 uzman ajan,<br>
-yöntemi taşıyan 40 skill, günlük akış için 11 slash komutu ve önemli kuralları uygulayan hook'lar.
+Claude Code'a subagent'lar, skill'ler, komutlar ve hook'lar ekler: her biri bir alanın sahibi olan 12 uzman ajan,<br>
+yöntemi taşıyan 40 skill, `/crew-…` ile başlattığınız 11 komut ve önemli kuralları uygulayan hook'lar.
 
 <img src="assets/studio-flow.gif" alt="Studio, ajanlar doğup çalışıp rapor verirken delegasyonu çiziyor" width="880">
 
@@ -52,7 +52,7 @@ Hiçbir şey yazılmadan önce bir özeti onaylarsınız; `add` tam kurulum yapm
 | Teslim et | `/crew-ship` | `crew-review-agent` temiz incelemeyi kaydeder; `crew-commit-agent` commit'i önerir ve onayınızı bekler |
 | Devret | `/crew-handoff` | `handoff` durumu bir sonraki oturum için yazar |
 
-Toplam **11 slash komutu**: `/crew-plan`, `/crew-review`, `/crew-ship`, `/crew-handoff`, `/crew-brainstorm`, `/crew-update`, `/crew-doctor`, `/crew-board`, `/crew-gates`, `/crew-skill`, `/crew-studio`.
+Toplam **11 komut**, her biri kendi `/crew-…` adıyla başlatılır: `/crew-plan`, `/crew-review`, `/crew-ship`, `/crew-handoff`, `/crew-brainstorm`, `/crew-update`, `/crew-doctor`, `/crew-board`, `/crew-gates`, `/crew-skill`, `/crew-studio`.
 
 ## Ajanlar
 
