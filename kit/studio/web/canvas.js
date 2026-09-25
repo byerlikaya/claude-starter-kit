@@ -70,7 +70,7 @@ const DRAW_MS = 300;
 const MOTION_BUDGET = 60;
 // Marks, so a card says what kind of thing it is before it is read.
 //
-// The kit's own is the ››› mark from assets/icon.svg, redrawn here rather than
+// Crewforth's own is the ››› mark from assets/icon.svg, redrawn here rather than
 // fetched — one <img> per node would be a request per node, and the shape is
 // three strokes.
 //
@@ -79,7 +79,7 @@ const MOTION_BUDGET = 60;
 // claims a relationship this project does not have. The shape reads as "not
 // ours" without borrowing anyone's mark.
 const MARKS = {
-  // The kit's own mark, from assets/icon.svg: three chevrons, the 200-unit
+  // Crewforth's own mark, from assets/icon.svg: three chevrons, the 200-unit
   // artwork scaled by 0.08 into this 16-unit box (points and stroke widths
   // alike). Its own palette, not the node's, so it looks like the mark rather
   // than like the card.
@@ -739,7 +739,7 @@ export class Canvas {
     markEl.classList.toggle('cv-mark-unknown', n.kind === 'agent' && !source);
     markEl.setAttribute('aria-label', source === 'kit' ? 'kit agent' : 'built-in agent');
     el.dataset.source = source ?? 'unknown';
-    // An agent type the kit never declared is marked, not quietly coloured in.
+    // An agent type Crewforth never declared is marked, not quietly coloured in.
     typeEl.classList.toggle('cv-unknown', !known);
 
     // Fold control, shown only where there is something to fold.

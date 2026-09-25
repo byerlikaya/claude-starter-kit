@@ -55,7 +55,7 @@ CREW_NO_STAR=1 bash .claude/eval/doctor.sh               # the live install stil
 ```
 
 In the plugin edition none of the four commands above exist — it ships no `eval/` at all — so there the proof is
-the kit repository's own suite, not a local run.
+the Crewforth repository's own suite, not a local run.
 
 **Do not finish while §3b is red.** "It works when I invoke it by name" is not the claim being tested — the claim
 is that something reaches it without being told to. If the suite skips a case, that is not a pass: chase why.

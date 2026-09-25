@@ -8,7 +8,7 @@
 # configured in the settings file, and a hook the harness never has to kill
 # fails CLOSED.
 #
-# No jq: the kit's hooks run on stock Git Bash, which has none. The fields
+# No jq: Crewforth's hooks run on stock Git Bash, which has none. The fields
 # needed here are flat strings, and parameter expansion reads them without
 # spawning anything.
 #

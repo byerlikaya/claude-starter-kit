@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Install doctor — verify a LIVE kit install in a CONSUMER repo is actually active. This is the counterpart to
-# smoke-test.sh: smoke-test checks the kit's SOURCE (dev-side, in this repo); doctor checks a real install on a
+# smoke-test.sh: smoke-test checks Crewforth's SOURCE (dev-side, in this repo); doctor checks a real install on a
 # user's machine — the things that silently make the gates inert: a hook left non-executable, core.hooksPath not
 # set (so the commit trace/secret scan never runs), settings.json missing (so the tool-level gates never fire).
 # Zero-dep, bash-only, Git-Bash safe. Run from the project root (or pass the path):  bash .claude/eval/doctor.sh
@@ -29,7 +29,7 @@ skip(){ echo "  ·  $1"; }
 
 echo "== Crewforth — install doctor =="
 
-# 0) Is the kit even here?
+# 0) Is Crewforth even here?
 [ -d .claude ] || { echo "  ❌ no .claude/ in '$PWD' — is Crewforth installed here?"; echo "     ↳ fix: npx crewforth adopt"; exit 1; }
 
 # 1) VERSION (marks a full install; also what /crew-update compares)
@@ -104,7 +104,7 @@ fi
 #    nothing). PreToolUse/UserPromptSubmit/Stop are required; SessionStart (rehydration) is a warn if absent.
 S=.claude/settings.json
 if [ -f "$S" ]; then
-  # ONE READER on every machine: the kit's own awk JSON reader, the same file adopt.sh merges with. There were two
+  # ONE READER on every machine: Crewforth's own awk JSON reader, the same file adopt.sh merges with. There were two
   # branches here — jq where jq ran, a name-and-bracket shape check where it did not — and the second could not
   # tell valid JSON from invalid at all, so a stock Windows box got a weaker doctor than a Mac. Now both get the
   # parse: validity, then each event's array length.
@@ -127,7 +127,7 @@ if [ -f "$S" ]; then
   # Claude Code substitutes that placeholder into the command STRING before any shell sees it; on Windows the
   # value is `C:\Repos\app` and the separators are gone by the time bash reads it. The reported path was
   # `C:ReposApp/.claude/hooks/...` — every hook failed to launch and every gate was absent, while settings.json
-  # looked perfectly correct on inspection. The kit now uses a RELATIVE path (hooks run in the project
+  # looked perfectly correct on inspection. Crewforth now uses a RELATIVE path (hooks run in the project
   # directory), with a `cd` off the bare `$CLAUDE_PROJECT_DIR` as a belt for a session started in a subdirectory.
   # Bare `$VAR` is not the placeholder syntax, so Claude Code leaves it for the shell to expand.
   #
@@ -176,14 +176,14 @@ fi
 
 # 4b) Is delegation itself switched off? The documented way to stop Claude using ANY subagent is to deny the `Agent`
 #     tool in permissions.deny. A project that does that keeps twelve agents on disk that can never run, and the only
-#     symptom is that every task quietly happens on the main thread — which reads as "the kit does nothing" rather
+#     symptom is that every task quietly happens on the main thread — which reads as "Crewforth does nothing" rather
 #     than as a setting. Checked at every scope the CLI merges, because one line in ~/.claude/settings.json disables
 #     delegation for every project on the machine. Denying it may be deliberate; this names it, it does not judge.
 DENYSRC=""
 for f in .claude/settings.json .claude/settings.local.json "$HOME/.claude/settings.json"; do
   [ -f "$f" ] || continue
   # A deny entry for the delegation tool, in any of its spellings, with or without an argument pattern. Read
-  # with the kit's JSON reader, so "is Agent/Task in permissions.deny" is answered from the parse on every OS.
+  # with Crewforth's JSON reader, so "is Agent/Task in permissions.deny" is answered from the parse on every OS.
   # It used to need python3: on Windows — a Store stub, or nothing — the check degraded to "both words appear in
   # the file", a prompt instead of a verdict. An unreadable file is still NOT a silent pass (NOPY below).
   if [ ! -f "${SJ:-.claude/eval/lib/settings-json.awk}" ] || ! awk -v op=validate -f "${SJ:-.claude/eval/lib/settings-json.awk}" "$f" 2>/dev/null; then
@@ -279,7 +279,7 @@ EOF
 fi
 
 # 6) Does the discipline actually REACH the model? `.claude/DISCIPLINE.md` sitting on disk is inert unless
-#    `./CLAUDE.md` pulls it in — Claude Code reads CLAUDE.md, not the kit's own files. This is the one failure
+#    `./CLAUDE.md` pulls it in — Claude Code reads CLAUDE.md, not Crewforth's own files. This is the one failure
 #    every check above is blind to: the hooks fire, the gates are live, and yet §1–§3 (routing, DoD, session
 #    management) never enter the context, so the model works without any of the discipline it is measured on.
 #    Two shapes load it: the `@import` line, or the pre-1.1 layout that pasted the discipline inline (stale,
@@ -343,7 +343,7 @@ fi
 # 9) The auto-mode classifier. Since 2026-08-14 auto mode is the default permission mode on Pro/Max/Team, so a
 #     classifier answers permission prompts the user used to answer. Two things can be wrong and neither shows
 #     up in a session. Only ONE of them is a real gate finding: a custom autoMode block that dropped the
-#     built-ins by omitting "$defaults" — 66 soft blocks gone, silently. Whether the kit's own rules are present
+#     built-ins by omitting "$defaults" — 66 soft blocks gone, silently. Whether Crewforth's own rules are present
 #     is reported but NOT treated as a failure: they were measured on 2026-08-24 not to enforce (see the skill).
 if [ -x .claude/skills/automode-policy/scripts/check.sh ] || [ -f .claude/skills/automode-policy/scripts/check.sh ]; then
   AMOUT="$(bash .claude/skills/automode-policy/scripts/check.sh 2>&1)"; AMRC=$?
@@ -374,17 +374,17 @@ if [ -f .claude/eval/gate-report.sh ]; then
   esac
 fi
 # --- Agentic readiness (ADVISORY) -------------------------------------------------------------------------
-# Everything above answers "are the kit's gates live?". This answers a different question the gates cannot see:
+# Everything above answers "are Crewforth's gates live?". This answers a different question the gates cannot see:
 # "is this PROJECT set up so an agent can actually work well in it?" A flawless install still starves its
 # agents when the CLAUDE.md project section is left as the template, there is no sandbox to run in, and no
 # project-specific skill carries the domain. These are project maturity, not install health, so they NEVER
 # change the exit code — doctor's verdict stays a statement about the install.
 echo
 # The toolchain the install actually landed on. It runs here as well as in the installers because the machine
-# changes after install day — a wiped PATH, a new laptop, a corporate image that removed jq — and the kit's
+# changes after install day — a wiped PATH, a new laptop, a corporate image that removed jq — and Crewforth's
 # fallbacks mean none of that announces itself. Advisory: it never changes the verdict above.
 # doctor has already cd'd into the project, so the installed copy is the one to run; fall back to the copy
-# sitting beside this script for the case where doctor is run straight out of the kit source.
+# sitting beside this script for the case where doctor is run straight out of the Crewforth source.
 [ -f "$PREFLIGHT" ] && bash "$PREFLIGHT"
 
 echo "Readiness (advisory — does not affect the verdict above):"
@@ -401,7 +401,7 @@ if [ -f CLAUDE.md ]; then
   else rdy "CLAUDE.md project section is filled in"; fi
 fi
 
-# R2) A project-specific skill — the kit ships the generic 'how's; the domain ones (payment-contract,
+# R2) A project-specific skill — Crewforth ships the generic 'how's; the domain ones (payment-contract,
 #     notification-rules, a backend-pattern skill) are the project's to add. Needs the install manifest to tell
 #     kit-shipped from project-owned; without it (pre-1.8 install) the signal is unknowable, so it is skipped
 #     rather than guessed — a wrong "you have no project skills" is worse than no line at all.
@@ -438,7 +438,7 @@ else gap "no .devcontainer/devcontainer.json — agent commands run directly aga
          "add a devcontainer, or keep approval-mode gates on for anything destructive (§4.5)"; fi
 
 # R4) MCP servers — the project's own tools/data reaching the model. Either the project-level .mcp.json or an
-#     mcpServers block in the kit's settings counts.
+#     mcpServers block in Crewforth's settings counts.
 if [ -f .mcp.json ] || grep -q '"mcpServers"' .claude/settings.json 2>/dev/null; then
   rdy "MCP servers configured (project tools/data reach the model)"
 else gap "no MCP server configured — the model has no project-specific tool access" \

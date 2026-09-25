@@ -20,7 +20,7 @@ The "how" behind `crew-backend-expert`, and the stack step `crew-planner` and `c
 
 ## 1 · Stack resolution — in this order, stop at the first answer
 1. **The request says it.** "Add a Go service…" is an answer. Use it; record it if the section was empty.
-2. **`CLAUDE.md ## Stack` says it.** The project's own section (below the kit's `@.claude/DISCIPLINE.md` import),
+2. **`CLAUDE.md ## Stack` says it.** The project's own section (below Crewforth's `@.claude/DISCIPLINE.md` import),
    not `DISCIPLINE.md`. A filled section is a decision: follow it.
 3. **The repo says it.** Look for manifests at the root and one level down (`backend/`, `server/`, `src/`, `apps/*`):
 

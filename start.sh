@@ -648,7 +648,7 @@ cp "$SRC/README.md"         .claude/ 2>/dev/null || true
 # stack= is always 'generic' since 3.0. The key is KEPT because an older updater reads it, and a file without it
 # would send that updater down its stack-detection branch. No 'profile=' key — adopt.sh treats a leftover one
 # from a pre-2.0 install as a migration signal, not as a shape.
-{ echo "# Written by start.sh. stack= is always generic since 3.0; the key is kept for older updaters."
+{ echo "# Written by the Crewforth installer. stack= is always generic since 3.0; the key is kept for older updaters."
   echo "stack=$STACK"
   echo "installer=start.sh"
   echo "version=$( [ -f "$HERE/VERSION" ] && head -1 "$HERE/VERSION" || echo unknown )"
@@ -662,7 +662,7 @@ kit_require_sentinel "$SRC/CLAUDE.md"
 kit_discipline_of "$SRC/CLAUDE.md" > .claude/DISCIPLINE.md
 { _mt '.claude/DISCIPLINE.md written — owned by Crewforth; an update overwrites it, so keep your own rules out of it.'; echo "  ${_M}"; }
 if [ ! -f ./CLAUDE.md ]; then
-  { printf '<!-- kit discipline · on conflict the project rules BELOW win -->\n%s\n' "$IMPORT_LINE"
+  { printf '<!-- Crewforth discipline · on conflict the project rules BELOW win -->\n%s\n' "$IMPORT_LINE"
     kit_project_of "$SRC/CLAUDE.md"; } > ./CLAUDE.md
   { _mt './CLAUDE.md created — EDIT the project section.'; echo "  ${_M}"; }
 elif kit_has_import ./CLAUDE.md; then
@@ -673,7 +673,7 @@ elif kit_claude_md_is_legacy ./CLAUDE.md; then
   { _mt '%s heading and leave this single line in its place:' "'# CLAUDE.md — <project>'"; echo "    ${_M}"; }
   echo "        $IMPORT_LINE"
 else
-  { printf '<!-- kit discipline · on conflict the project rules BELOW win -->\n%s\n\n' "$IMPORT_LINE"; cat ./CLAUDE.md; } > ./CLAUDE.md.kit-tmp \
+  { printf '<!-- Crewforth discipline · on conflict the project rules BELOW win -->\n%s\n\n' "$IMPORT_LINE"; cat ./CLAUDE.md; } > ./CLAUDE.md.kit-tmp \
     && mv ./CLAUDE.md.kit-tmp ./CLAUDE.md
   { _mt './CLAUDE.md existed — prepended the discipline @import; your content is untouched.'; echo "  ${_M}"; }
 fi

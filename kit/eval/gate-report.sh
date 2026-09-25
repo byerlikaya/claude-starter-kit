@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # What did the gates actually DO? — reads CREW_GATE_LOG and reports it against the rule inventory.
 #
-# The kit's claim is that rules are enforced at the tool level rather than remembered. That claim is only worth
+# Crewforth's claim is that rules are enforced at the tool level rather than remembered. That claim is only worth
 # what its evidence is worth, and until now the evidence was a green test suite: proof the gates CAN fire, never
 # a record that they DID. This reads the other half.
 #

@@ -11,7 +11,7 @@ description: |
 Trigger phrases: "team board", "who is working on", "claim", "take this item", "pick up a task", "sprint item", "release the item", "hand the item over", "is anyone on", "board", "of us are working", "stepping on each other", "who is doing what", "who else is working"
 
 ## The problem this closes
-Every teammate runs the kit **locally**. `docs/PLAN.md` and `docs/SESSION_STATE.md` are gitignored, so the fact
+Every teammate runs Crewforth **locally**. `docs/PLAN.md` and `docs/SESSION_STATE.md` are gitignored, so the fact
 that Ali started item #1 two hours ago exists nowhere the other sessions can see. Two people start the same item;
 a blocked item gets picked up before its dependency lands; whoever inherits half-finished work rebuilds the
 context from scratch. The board makes those three facts shared.
@@ -30,7 +30,7 @@ index, branch or stash** — you can claim mid-feature with dirty files.
 
 ## Off by default; on when a team asks for it
 A repo that never ran `init` **has no board and no gates** — no claim, no commit gate, no edit gate, nothing at
-session start. Solo work is unchanged, and so is every project that installed the kit before this existed. Do not
+session start. Solo work is unchanged, and so is every project that installed Crewforth before this existed. Do not
 create a board because a repo merely has more than one contributor; create one when the user says the team keeps
 colliding. Creating one, choosing between its three levels and the ref-namespace fallback: **`references/setup.md`**
 — one person runs it once, and everybody else configures nothing.
@@ -70,11 +70,11 @@ Items come from either direction, and both end at `add`:
 - **By hand:** the user dictates the items.
 
 ## Tracker link (honest boundary)
-Teams use Jira, Trello, Linear, GitHub Issues or nothing, so the kit **binds to none of them**. An item carries an
+Teams use Jira, Trello, Linear, GitHub Issues or nothing, so Crewforth **binds to none of them**. An item carries an
 optional `external:` field, which is a link and nothing more — no sync, no import, no write-back. A team that
 wants two-way sync writes an executable `.crew/board-adapter.sh` answering two verbs: `import` (emit
 `<id>|<title>|<deps>|<external>` lines to be fed to `add`) and `export <id> <status>` (push the state outward).
-The kit ships no adapter; do not claim integration the kit does not have.
+Crewforth ships no adapter; do not claim integration Crewforth does not have.
 
 ## When the remote is unreachable
 Claims stay local and are labelled `UNSHARED` — meaning **the team cannot see them**, so the lock is not in force.

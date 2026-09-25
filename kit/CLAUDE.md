@@ -1,6 +1,6 @@
 # CLAUDE.md — Working rules
 
-The kit discipline, identical in every project. The installer writes it to `.claude/DISCIPLINE.md`; your `./CLAUDE.md`
+The discipline, identical in every project. The installer writes it to `.claude/DISCIPLINE.md`; your `./CLAUDE.md`
 imports it with one `@.claude/DISCIPLINE.md` line. **Kit-owned** — an update overwrites it, so put your own rules in
 `./CLAUDE.md`, where they win on conflict.
 
@@ -57,7 +57,7 @@ whenever an agent must run, and tell the user they can too.
 **Route trace on every task** — `🔧 <agent> (why)` delegating, `🔧 inline · <skill> · (why)` not. **Inline carries
 the burden of proof:** name the agent you considered and why it does not own the work. "Small job" and "faster
 inline" are not reasons; only *no owner installed*, *not code work*, or *the user asked for inline*. If that
-clause is a strain to write, delegate. **Idle agents are the failure this kit exists to prevent.** Stuck → stop
+clause is a strain to write, delegate. **Idle agents are the failure Crewforth exists to prevent.** Stuck → stop
 and report. Commit/push and destructive commands are gated (§4.4/§4.5).
 
 ## Definition of Done
@@ -164,7 +164,7 @@ commit/MR line disclosing the cleanup; internal decisions live only in the plan/
 ### 4.3 Internal working documents are private
 `docs/` is gitignored and does not go to the repo. Artifacts that do go to the repo never name a file under `docs/` —
 use an abstract phrasing like "internal spec". A fresh install gitignores this file and `.claude/` so they stay local;
-a team that adopted the kit may have chosen to share them instead, and the trace scan skips `.claude/` for that reason.
+a team that adopted Crewforth may have chosen to share them instead, and the trace scan skips `.claude/` for that reason.
 
 ### 4.4 Commit/push only with explicit approval
 No `git commit` / `git push` unless the user says "commit" / "push". `git add` and new branches: no approval, any

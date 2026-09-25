@@ -1,8 +1,8 @@
-// Which projects run the kit, and which of them are behind.
+// Which projects run Crewforth, and which of them are behind.
 //
 // An installed project records its version in `.claude/VERSION` and its
 // install shape in `.claude/kit.conf`. The published version comes from the
-// same npm dist-tags feed the kit's own SessionStart hook reads, so the panel
+// same npm dist-tags feed Crewforth's own SessionStart hook reads, so the panel
 // and the hook can never disagree about what "latest" means.
 //
 // Read-only. Detecting that a project is behind and updating it are different
@@ -102,7 +102,7 @@ export function compareVersions(a, b) {
   return 0;
 }
 
-/** What the kit looks like inside one working directory.
+/** What Crewforth looks like inside one working directory.
  *
  * Async because it runs once per project on the `/api/projects` path, and a
  * synchronous read there blocks the whole panel when one read stalls —

@@ -1388,4 +1388,43 @@ if [ -s "$_MISS" ]; then
 fi
 echo "[wizard] --lang tr: 0 strings without a Turkish row, 0 raw English lines (start.sh plain + --dotnet, adopt fresh+refresh)"
 
+# ---- 5R.3: what adopt WRITES into a project names Crewforth, and ADR-0001 is never written twice ----
+# The installers write four files the user keeps: docs/HANDOVER.md, the ADR, the CLAUDE.md import comment and the
+# kit.conf header. None may use "kit" as the product's name (paths such as kit.conf stay). The matcher is read from
+# smoke-test.sh rather than copied, so the two suites cannot drift apart on what counts as a word.
+# ADR-0001 was renamed with the product; a project adopted before 3.0 already holds it under the old name, and a
+# second record of the same decision beside it is the failure this case exists for. Run twice on a fresh project
+# and once on a pre-3.0 one: one ADR each time, the old file byte-identical.
+eval "$(sed -n "/^KW_AWK='function kitword/,/^}'\$/p" kit/eval/smoke-test.sh)"
+[ -n "${KW_AWK:-}" ] || { echo "FAIL: FIXTURE — the kit-word matcher could not be read from kit/eval/smoke-test.sh"; exit 1; }
+printf -- '- Kit agents: 12 (crew- namespace)\n' | awk "$KW_AWK"' kitword($0){f=1} END{exit !f}' \
+  || { echo "FAIL: FIXTURE — the kit-word matcher missed a planted 'Kit agents' line; it reads nothing"; exit 1; }
+A="$WORK/adopt-wording"; rm -rf "$A"; mkdir -p "$A"
+cp adopt.sh "$A/"; cp -R kit "$A/"; cp VERSION "$A/"
+( cd "$A" && git init -q && git config user.email t@t.t && git config user.name t && echo x > f.txt && git add -A && git commit -qm init )
+run_adopt "$A" --yes
+[ "$ADOPT_RC" = 0 ] || die "adopt exited $ADOPT_RC" adopt-wording "$A"
+AW="docs/HANDOVER.md docs/adr/0001-crewforth-adoption.md CLAUDE.md .claude/kit.conf"
+for f in $AW; do [ -f "$A/$f" ] || die "adopt did not write $f" adopt-wording "$A"; done
+# shellcheck disable=SC2086 # four fixed paths
+_aw="$(cd "$A" && awk "$KW_AWK"' kitword($0){print FILENAME":"FNR": "$0}' $AW)"
+[ -z "$_aw" ] || { echo "FAIL: adopt wrote the old product name into the project:" >&2; printf '%s\n' "$_aw" | sed 's/^/    | /' >&2; exit 1; }
+[ ! -e "$A/docs/adr/0001-agentic-kit-adoption.md" ] || die "a fresh adopt wrote the pre-3.0 ADR name" adopt-wording "$A"
+_adr_sum="$(cksum < "$A/docs/adr/0001-crewforth-adoption.md")"
+cp adopt.sh "$A/"; cp -R kit "$A/"; cp VERSION "$A/"
+run_adopt "$A" --yes
+[ "$(ls "$A/docs/adr" | wc -l | tr -d ' ')" = 1 ] && [ "$(cksum < "$A/docs/adr/0001-crewforth-adoption.md")" = "$_adr_sum" ] \
+  || die "a second adopt touched ADR-0001 or wrote another one ($(ls "$A/docs/adr" | tr '\n' ' '))" adopt-wording "$A"
+B="$WORK/adopt-old-adr"; rm -rf "$B"; mkdir -p "$B/docs/adr"
+cp adopt.sh "$B/"; cp -R kit "$B/"; cp VERSION "$B/"
+printf '# ADR-0001: recorded before 3.0\n\nkept byte for byte\n' > "$B/docs/adr/0001-agentic-kit-adoption.md"
+_old_sum="$(cksum < "$B/docs/adr/0001-agentic-kit-adoption.md")"
+( cd "$B" && git init -q && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm init )
+run_adopt "$B" --yes
+[ "$ADOPT_RC" = 0 ] || die "adopt exited $ADOPT_RC" adopt-old-adr "$B"
+[ "$(ls "$B/docs/adr" | wc -l | tr -d ' ')" = 1 ] && [ ! -e "$B/docs/adr/0001-crewforth-adoption.md" ] \
+  && [ "$(cksum < "$B/docs/adr/0001-agentic-kit-adoption.md")" = "$_old_sum" ] \
+  || die "a project with the pre-3.0 ADR got a second ADR-0001 or a changed one ($(ls "$B/docs/adr" | tr '\n' ' '))" adopt-old-adr "$B"
+echo "[adopt-wording] HANDOVER.md · ADR · CLAUDE.md · kit.conf name Crewforth (0 old-name words) · re-adopt: 1 ADR, unchanged · pre-3.0 ADR kept, no second one"
+
 echo "e2e: all installer rehearsals passed"

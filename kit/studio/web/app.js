@@ -539,8 +539,8 @@ function paintInspector() {
 }
 
 /* ------------------------------------------------------------------ kit
-   What the kit already measures about itself. Nothing here is recomputed —
-   each panel shows what the kit's own tool said, including when it said it
+   What Crewforth already measures about itself. Nothing here is recomputed —
+   each panel shows what Crewforth's own tool said, including when it said it
    could not answer. */
 
 let kitData = null;
@@ -567,7 +567,7 @@ function unmeasured(reason) {
 }
 
 function paintKit(body, tab) {
-  if (!kitData) { body.append(node('div', 'ihint', 'Reading the kit…')); return; }
+  if (!kitData) { body.append(node('div', 'ihint', 'Reading Crewforth…')); return; }
 
   if (tab === 'stats') {
     const s = kitData.stats;

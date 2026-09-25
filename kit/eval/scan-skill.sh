@@ -28,8 +28,8 @@ CRIT='(curl|wget|fetch)[^|]*\|[[:space:]]*(sudo[[:space:]]+)?(bash|sh|zsh|python
 # whose bytes say "fetch your real instructions from this URL". The digest never moves while the behaviour is
 # rewritten by whoever controls the endpoint, and the component stays on the accepted list forever. So fetching
 # an instruction-shaped file (.md/.txt/.yml/.json) and a WebFetch tied to instructions/prompts are HIGH, while
-# an ordinary outbound URL stays LOW: measured against the kit's own payload, this flags 0 of 59 files, and the
-# two places the kit itself names WebFetch (a `tools:` line and a `Requires-tool` marker) are untouched.
+# an ordinary outbound URL stays LOW: measured against Crewforth's own payload, this flags 0 of 59 files, and the
+# two places Crewforth itself names WebFetch (a `tools:` line and a `Requires-tool` marker) are untouched.
 HIGH='ignore[[:space:]]+(all[[:space:]]+)?(the[[:space:]]+)?(previous|prior|above)[[:space:]]+(instruction|prompt)|disregard[[:space:]]+(the[[:space:]]+|all[[:space:]]+)?(previous|above|prior)|ignore[[:space:]]+your[[:space:]]+(system[[:space:]]+)?(prompt|instruction)|(cat|less|more|tail|head|base64|xxd|od|strings|curl|wget|scp|cp|rsync)[^|]*(~/\.ssh|id_rsa|/etc/(passwd|shadow)|\.aws/credentials|\.netrc|\.git-credentials)|(~/\.ssh|id_rsa|/etc/(passwd|shadow)|\.aws/credentials|\.netrc|\.git-credentials)[^|]{0,80}(curl|wget|scp|nc |netcat|base64|exfiltrat)|base64[[:space:]]+-[A-Za-z]*d[^|]*\||(curl|wget)[[:space:]][^|]*https?://[^[:space:]]*\.(md|txt|ya?ml|json)|(WebFetch|web_fetch)[^|]{0,120}(instruction|prompt|then follow|steps to follow)'
 # MED: named cloud/CI secret env vars, process.env secret access, chmod 777, code eval/exec.
 MED='(GITHUB_TOKEN|AWS_SECRET|AWS_ACCESS_KEY|NPM_TOKEN|OPENAI_API_KEY|ANTHROPIC_API_KEY|SLACK_TOKEN)|process\.env\.[A-Za-z_]*(TOKEN|SECRET|KEY|PASSWORD)|chmod[[:space:]]+(-R[[:space:]]+)?0?777|[^a-zA-Z](eval|exec)[[:space:]]*\('
@@ -41,7 +41,7 @@ FAIL=0; N=0
 # so one credential-exfil line or one prompt-injection directive used to pass as safe on arithmetic alone. That
 # is the wrong way round: the score exists to order a review queue, not to let a high-severity hit through it.
 # So severity floors the verdict — any CRIT is DANGER, any HIGH is never SAFE — and the number still ranks what
-# is left. (Measured: the kit's own 59 payload files carry no CRIT or HIGH at all, lowest score 99.)
+# is left. (Measured: Crewforth's own 59 payload files carry no CRIT or HIGH at all, lowest score 99.)
 verdict(){   # $1 = score, $2 = crit count, $3 = high count
   if [ "${2:-0}" -gt 0 ]; then echo DANGER; return; fi
   if [ "${3:-0}" -gt 0 ]; then [ "$1" -ge 70 ] && echo REVIEW || echo DANGER; return; fi
@@ -117,7 +117,7 @@ echo "== skill/agent security scan: $TARGET =="
 if [ -f "$TARGET" ]; then
   scan_file "$TARGET"
 elif [ -d "$TARGET" ]; then
-  # Skill/agent definition files only (markdown). Skip the kit's own crew- agents (trusted, not third-party).
+  # Skill/agent definition files only (markdown). Skip Crewforth's own crew- agents (trusted, not third-party).
   FILES=()
   while IFS= read -r f; do
     case "$f" in agents/crew-*.md|*/agents/crew-*.md) continue ;; esac   # kit agents only — a skill dir named crew-* is still scanned
@@ -128,7 +128,7 @@ elif [ -d "$TARGET" ]; then
   # named as odd. It is also the shape a component takes when it is trying not to look like a component.
   # Globs, not `find`: `-depth 2` means "process contents first" to GNU find and takes no argument, so the
   # BSD spelling that works on macOS is a syntax error on Linux and in Git Bash — i.e. on two of the three
-  # platforms this kit ships to. Globbing is also fork-free, which this scanner cares about (see the cost note).
+  # platforms Crewforth ships to. Globbing is also fork-free, which this scanner cares about (see the cost note).
   for d in "$TARGET"/skills/*/ "$TARGET"/*/skills/*/; do
     [ -d "$d" ] || continue                       # an unmatched glob expands to itself
     [ -f "${d}SKILL.md" ] && continue

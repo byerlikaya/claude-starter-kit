@@ -1,6 +1,6 @@
 // Node colours.
 //
-// The kit's agents already declare a colour in their frontmatter, and
+// Crewforth's agents already declare a colour in their frontmatter, and
 // packaging/gen-network.py already picked hex values for the README diagrams.
 // Reading both means the live panel and the static diagrams are one system
 // rather than two palettes that drift apart.
@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 /**
- * Where the kit's agents sit, relative to this file.
+ * Where Crewforth's agents sit, relative to this file.
  *
  * One rule, no candidate list: the panel lives inside the component tree it
  * reads, so `<studio>/../agents` is the answer in the repo (`kit/`),

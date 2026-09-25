@@ -28,7 +28,7 @@ do not impose your own preferences.
 
 
 ## Before writing any of it
-Run the **confidence-check** skill first. It is the only check in the kit that comes BEFORE implementation —
+Run the **confidence-check** skill first. It is the only check in Crewforth that comes BEFORE implementation —
 and it is **model discipline, not a gate**: no hook enforces it, so it holds only because you run it.
 review and the DoD catch bad code, none of them catch correct code that duplicates something already here or
 is built on a recalled API shape. Any "no" is a stop, not a caveat.
@@ -46,7 +46,7 @@ On UI, component/page, navigation/routing, state, i18n interface, responsive, or
 ## How (applies the `frontend` skill + stack-specific layer)
 1. **Generic discipline:** the **`frontend`** skill applies on every stack — architecture, state, state-complete UI, i18n, a11y, performance.
 2. **Detect the stack:** `package.json` + repo structure → web (React/Next/Vue/Svelte/Angular), mobile (React Native/Flutter), desktop.
-3. **Stack-specific layer:** apply that stack's frontend skill. Ready example in the kit: **`frontend-rn-expo`** for mobile RN+Expo (optional). For a web/desktop project, the project's own frontend skill / CLAUDE.md.
+3. **Stack-specific layer:** apply that stack's frontend skill. Ready example in Crewforth: **`frontend-rn-expo`** for mobile RN+Expo (optional). For a web/desktop project, the project's own frontend skill / CLAUDE.md.
 4. **Also apply:** `frontend-design` (visual/UX quality — hierarchy, spacing, type, states) · `a11y` (accessibility gate) · `i18n-integrity` (translation integrity) · `observability` (client log/error) · `performance` (render/bundle) · `dependency-audit` (packages).
 
 ## DoD

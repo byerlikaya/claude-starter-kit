@@ -8,7 +8,7 @@
 # The rule that shapes every line below: **this hook performs no network I/O in the foreground.** A SessionStart
 # hook blocks the session until it returns, its timeout is 60s, and the version lookup is exactly the kind of call
 # that hangs behind a corporate proxy or an offline machine. That is the same class of failure as the route-hint
-# fork storm (2.0.1): the kit spending the user's session-open budget and getting blamed on the CLI. So:
+# fork storm (2.0.1): Crewforth spending the user's session-open budget and getting blamed on the CLI. So:
 #   - the foreground reads ONE cache file and exits — no curl, no npm, no subshell loop;
 #   - when that cache is older than a day it starts a DETACHED refresher whose result is used by the NEXT session.
 #     A version notice is not urgent; being one session late costs nothing, blocking costs everything.
@@ -22,12 +22,12 @@
 #   - BOTH editions, each on its own channel. A project install compares `.claude/VERSION` against the npm dist-tag
 #     and points at `/crew-update`; a plugin install compares its own `.claude-plugin/plugin.json` against the
 #     marketplace repo's copy — the number that will actually reach it — and points at `claude plugin update`.
-#     The plugin's cache is user-level (`$XDG_CACHE_HOME`), the one case where the kit's "everything inside the
+#     The plugin's cache is user-level (`$XDG_CACHE_HOME`), the one case where Crewforth's "everything inside the
 #     repo" rule cannot apply, because a plugin install is not inside one. With both present the project install
 #     wins and the plugin copy stays quiet, so one release is never announced twice.
 #   - A QUESTION, never an action. Nothing in this file installs anything: no npx, no npm, no updater — the update
 #     runs only when the user picks "Update", through /crew-update (or the plugin command). A silent auto-update is
-#     ruled out on purpose: it rewrites the very gates the kit is made of (hooks, settings.json, the discipline), a
+#     ruled out on purpose: it rewrites the very gates Crewforth is made of (hooks, settings.json, the discipline), a
 #     compromised package would run itself in every project, and a team sharing .claude/ would get a diff nobody
 #     asked for. smoke-test.sh pins that this file runs none of those commands.
 #   - Asked at most once a day per version. Asking is recorded when the question goes out, so a question the user
@@ -148,8 +148,8 @@ elif [ -n "$PR_ROOT" ] && [ -f "$PJSON" ]; then
   # in the marketplace repo, not npm's. They are bumped by the same release commit, but "tends to match" is not a
   # source: a channel should be told about the release by the channel that delivers it.
   CUR="$(sane_version "$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$PJSON" 2>/dev/null | head -1)")" || exit 0
-  # No repo to write into (a plugin serves every project), so the cache is user-level. This is the one place the
-  # kit's "everything stays inside the repo" rule does not apply, because a plugin install is not inside one.
+  # No repo to write into (a plugin serves every project), so the cache is user-level. This is the one place
+  # Crewforth's "everything stays inside the repo" rule does not apply, because a plugin install is not inside one.
   STATE="${XDG_CACHE_HOME:-$HOME/.cache}/crewforth"
   FEED="${CREW_UPDATE_URL:-$PLUGIN_URL}"; KEY=version; EDITION=plugin
   ANSWER="bash \"$PR_ROOT/hooks/session-update-check.sh\" --answer"

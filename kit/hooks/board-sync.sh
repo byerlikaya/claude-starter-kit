@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SessionStart hook — put the TEAM's state into a session that would otherwise only know its own.
 #
-# The problem it closes: every teammate runs the kit locally, so "Ali took item #1 two hours ago" exists
+# The problem it closes: every teammate runs Crewforth locally, so "Ali took item #1 two hours ago" exists
 # nowhere this session can see. This hook injects the board summary at the start of every session, which is the
 # one moment the answer changes what happens next: which item to pick up, which one is blocked, which claim has
 # gone quiet.

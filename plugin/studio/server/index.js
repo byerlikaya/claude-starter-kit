@@ -5,7 +5,7 @@
 // sessions, transcripts and, later, drives Claude itself; none of that should
 // be reachable from the network, so the host is not configurable.
 //
-// Zero dependencies, by design: the kit ships no npm packages and this stays
+// Zero dependencies, by design: Crewforth ships no npm packages and this stays
 // inside that promise. `node server/index.js` is the whole install step.
 
 import './lib/crew-env.js';   // first: resolves the 2.x variable names before anything reads CREW_*
@@ -275,7 +275,7 @@ async function handle(req, res) {
     });
   }
 
-  // What the kit already measures about itself, reported as the kit reports it.
+  // What Crewforth already measures about itself, reported as Crewforth reports it.
   if (url.pathname === '/api/kit') {
     const cwd = url.searchParams.get('cwd') || process.cwd();
     const sid = url.searchParams.get('session');

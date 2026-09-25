@@ -475,7 +475,7 @@ kit_conf_get()         { [ -f .claude/kit.conf ] && sed -n "s/^$1=//p" .claude/k
 kit_agent_to_skill() {   # $1 = agent .md file, $2 = base name
   local f="$1" b="$2" desc trig body
   desc="$(awk '/^---[ \t]*$/{c++; next} c==1 && /^description:/{sub(/^description:[ \t]*\|?[ \t]*/,""); if($0!="")print; exit}' "$f")"
-  [ -n "$desc" ] || desc="Project-specific $b knowledge carried over when the kit took over the role."
+  [ -n "$desc" ] || desc="Project-specific $b knowledge carried over when Crewforth took over the role."
   trig="$(awk '/[Tt]rigger phrases:/{sub(/.*[Tt]rigger phrases:[ \t]*/,""); print; exit}' "$f")"
   [ -n "$trig" ] || trig="\"$b\""
   body="$(awk 'c>=2{print} /^---[ \t]*$/{c++}' "$f")"
@@ -483,8 +483,8 @@ kit_agent_to_skill() {   # $1 = agent .md file, $2 = base name
   printf 'description: |\n  %s\n' "$desc"
   printf '  Carried over from the project'"'"'s own %s agent when crew-%s took over the role — trim to the domain worth keeping.\n' "$b" "$b"
   printf '  Trigger phrases: %s\n---\n\n' "$trig"
-  printf '# %s — project knowledge (carried over on kit adoption)\n\n' "$b"
-  printf '> Draft generated from your original `%s` agent; the kit'"'"'s `crew-%s` applies this skill. Refine it to the domain "how" worth keeping.\n\n' "$b" "$b"
+  printf '# %s — project knowledge (carried over on Crewforth adoption)\n\n' "$b"
+  printf '> Draft generated from your original `%s` agent; Crewforth'"'"'s `crew-%s` applies this skill. Refine it to the domain "how" worth keeping.\n\n' "$b" "$b"
   printf '%s\n' "$body"
 }
 
@@ -1162,7 +1162,7 @@ fi
 # stack= is always generic since 3.0; the key is kept for older updaters. Rewritten WITHOUT the pre-2.0
 # 'profile=' key: dropping it is what retires the migration notice, so a second refresh stays quiet — and
 # writing generic over a former 'dotnet' retires the 3.0 notice the same way.
-{ echo "# Written by the kit installer. stack= is always generic since 3.0; the key is kept for older updaters."
+{ echo "# Written by the Crewforth installer. stack= is always generic since 3.0; the key is kept for older updaters."
   echo "stack=generic"
   echo "installer=${KIT_INSTALLER:-adopt.sh}"
   echo "version=$( [ -f "$HERE/VERSION" ] && head -1 "$HERE/VERSION" || echo unknown )"
@@ -1239,7 +1239,7 @@ if [ -f CLAUDE.md ]; then
       if ask_yes '  Replace that inline block with the single @import line? (a backup is written; this branch is reviewable)'; then
         BK=".claude/CLAUDE.md.pre-kit-$TS"
         cp CLAUDE.md "$BK"
-        { printf '<!-- kit discipline · on conflict the project rules BELOW win -->\n%s\n\n' "$IMPORT_LINE"
+        { printf '<!-- Crewforth discipline · on conflict the project rules BELOW win -->\n%s\n\n' "$IMPORT_LINE"
           tail -n +"$BND" CLAUDE.md; } > CLAUDE.md.kit-tmp && mv CLAUDE.md.kit-tmp CLAUDE.md
         say 'CLAUDE.md migrated -> @import + your project section (backup: %s)' "$BK"
       else
@@ -1251,7 +1251,7 @@ if [ -f CLAUDE.md ]; then
       printf '     %s%s%s\n' "$D" "$_M" "$R"
     fi
   else
-    { printf '<!-- kit discipline · on conflict the project rules BELOW win -->\n%s\n\n' "$IMPORT_LINE"; cat CLAUDE.md; } > CLAUDE.md.kit-tmp && mv CLAUDE.md.kit-tmp CLAUDE.md
+    { printf '<!-- Crewforth discipline · on conflict the project rules BELOW win -->\n%s\n\n' "$IMPORT_LINE"; cat CLAUDE.md; } > CLAUDE.md.kit-tmp && mv CLAUDE.md.kit-tmp CLAUDE.md
     say 'CLAUDE.md: single-line @import prepended (project content untouched)'
   fi
 else
@@ -1306,8 +1306,8 @@ RET_GONE=""; _IFS="$IFS"; IFS='|'; for _r in $RET_HIT; do
 [ -n "$RET_GONE" ] && say 'settings.json: retired §4.4 ask rule(s) REMOVED (%s) — guard-bash.sh now asks for these itself; an ask rule would override its CLAUDE_GIT_OK allow. Re-add one only if your project wants that trade.' "$RET_GONE"
 # A refused or failed merge leaves the file as it was, so HANDOVER must not claim a merge that did not run.
 if [ -n "$SET_NOTE" ]; then HAND_SET="NOT merged — ${SET_NOTE%.}"
-elif [ "$SET_FRESH" = 1 ]; then HAND_SET="the kit's settings.json installed (the project had none, so nothing was merged)"
-else HAND_SET="hook-aware merge (kit hooks REFRESHED to current — new events + timeouts land; your own custom hooks/permissions PRESERVED${RET_GONE:+, except the retired §4.4 ask rule(s) REMOVED: $RET_GONE — guard-bash.sh asks for these itself})"; fi
+elif [ "$SET_FRESH" = 1 ]; then HAND_SET="Crewforth's settings.json installed (the project had none, so nothing was merged)"
+else HAND_SET="hook-aware merge (Crewforth hooks REFRESHED to current — new events + timeouts land; your own custom hooks/permissions PRESERVED${RET_GONE:+, except the retired §4.4 ask rule(s) REMOVED: $RET_GONE — guard-bash.sh asks for these itself})"; fi
 
 # ============ [STAGE 4] GIT-HOOK ARMING (SHIM) + PROOF ============
 h1m 'Stage 4 — arm the git gates (SHIM via husky) + PROOF'
@@ -1450,7 +1450,7 @@ if [ "$DEC4" = hide ]; then
   # the working documents too, or "keep the kit local" leaves the plans, handovers and threat models behind
   # in the shared repository. The two files the adoption force-added are named explicitly, because they are
   # tracked despite the ignore rule and `git rm --cached docs` alone would not reach them.
-  HIDE_NOTE="Keep the kit local after merging:  git rm -r --cached .claude CLAUDE.md docs  &&  printf '.claude/\nCLAUDE.md\ndocs/\n' >> .gitignore  &&  git commit -m 'kit: keep local'"
+  HIDE_NOTE="Keep Crewforth local after merging:  git rm -r --cached .claude CLAUDE.md docs  &&  printf '.claude/\nCLAUDE.md\ndocs/\n' >> .gitignore  &&  git commit -m 'crewforth: keep local'"
   say '#4 hide -> recorded; .claude stays TRACKED on the branch (rollback-safe). Post-merge steps in HANDOVER.'
 else
   # `share` is a NO-OP by design: the installer never stages a user's files, it only declines to add a
@@ -1468,9 +1468,9 @@ else
 fi
 # #1 merge: document (NO automatic risky merge — red-team; merging is a human-approved follow-up)
 case "$DEC1" in
-  takeover) MERGE_NOTE="takeover: the kit's crew- agents own the overlapping roles ($COLLIDE); each old agent's domain was imported to a draft skill (skills/<name>-local) the kit agent applies, and the original backed up under superseded/agents/ — refine the drafts" ;;
-  keepmine) MERGE_NOTE="keepmine: your agents own the overlapping roles ($COLLIDE); the kit's matching crew- agents were not installed" ;;
-  *)        MERGE_NOTE="keep: project + kit agents side by side (no overlaps, or overlaps left to coexist)" ;;
+  takeover) MERGE_NOTE="takeover: Crewforth's crew- agents own the overlapping roles ($COLLIDE); each old agent's domain was imported to a draft skill (skills/<name>-local) the Crewforth agent applies, and the original backed up under superseded/agents/ — refine the drafts" ;;
+  keepmine) MERGE_NOTE="keepmine: your agents own the overlapping roles ($COLLIDE); Crewforth's matching crew- agents were not installed" ;;
+  *)        MERGE_NOTE="keep: project + Crewforth agents side by side (no overlaps, or overlaps left to coexist)" ;;
 esac
 # #7 off-repo transfer: paste from the user (interactive; skipped on non-TTY and under --yes)
 OFFREPO_TEXT=""
@@ -1487,14 +1487,14 @@ h1m 'Stage 5 — HANDOVER.md + ADR (handover persists; decisions are not lost)'
 mkdir -p docs docs/adr
 DATE_H="$(date +%Y-%m-%d)"
 # compute the decision values first (avoid inner-quote/command-sub tangle in the heredoc)
-case "$DEC1" in takeover) D1='takeover (kit crew- owns overlaps; your agents imported to <name>-local skills, originals in superseded/)';; keepmine) D1='keepmine (your agents own overlaps)';; none) D1='none';; *) D1='keep (coexist)';; esac
+case "$DEC1" in takeover) D1='takeover (Crewforth crew- owns overlaps; your agents imported to <name>-local skills, originals in superseded/)';; keepmine) D1='keepmine (your agents own overlaps)';; none) D1='none';; *) D1='keep (coexist)';; esac
 D2='project wins'   # precedence is fixed (DEC2 not overridable) — no false 'kit wins' record
 D3="$([ "$DEC3" = loosen ] && echo 'loosen (.trace-allowlist written)' || echo 'keep (full)')"
 D4="$([ "$DEC4" = hide ] && echo 'hide (gitignore)' || echo 'keep sharing')"
 D5="$([ -n "$ORIG_HOOKS" ] && echo "SHIM ($ORIG_HOOKS)" || echo 'direct')"
 D6="$([ "$DEC6" = absolute ] && echo 'absolute 0/0/0/0' || echo 'baseline+regression')"
 case "$DEC7" in transfer) D7='transferred (below)';; skip) D7='knowingly missing';; *) D7='local + ask';; esac
-HOOKDESC="$([ -n "$ORIG_HOOKS" ] && echo "SHIM (kit + $ORIG_HOOKS together)" || echo '.claude/hooks direct')"
+HOOKDESC="$([ -n "$ORIG_HOOKS" ] && echo "SHIM (Crewforth + $ORIG_HOOKS together)" || echo '.claude/hooks direct')"
 if [ -n "${OFFREPO_TEXT:-}" ]; then OFFSEC="$OFFREPO_TEXT"
 elif [ "$OFFREPO" = 1 ]; then OFFSEC="> WARNING: no local .claude/CLAUDE.md -> decisions may also be in chat/on the web; the tool COULD NOT SEE them.
 <!-- Write off-repo decisions here; move the important ones under docs/adr/. -->"
@@ -1508,7 +1508,7 @@ cat > docs/HANDOVER.md <<HAND
 > sections you need to fill in. The tool does NOT SIGN off anything as "done".
 
 ## What was handed over (mechanical)
-- Kit agents: $NCCK (crew- namespace; no clash with project agents).
+- Crewforth agents: $NCCK (crew- namespace; no clash with project agents).
 - Project agents: $N_PAGENTS — UNTOUCHED, in place + active (recursive discovery).
 - Discipline: .claude/DISCIPLINE.md + @import into the project CLAUDE.md (content untouched).
 - settings.json: $HAND_SET.
@@ -1529,7 +1529,7 @@ cat > docs/HANDOVER.md <<HAND
 
 ## CONFIRM (the tool cannot verify — you check)
 - [ ] Are the inherited project rules/agents UP TO DATE? (stale rule = regression)
-- [ ] Overlapping roles (project + kit same job): which one to use / merge?
+- [ ] Overlapping roles (project + Crewforth same job): which one to use / merge?
 - [ ] Has the staged change set been reviewed (editor's Changes panel / git status) before committing?
 ${HIDE_NOTE:+- [ ] HIDE chosen — after merge run:  $HIDE_NOTE}
 
@@ -1537,26 +1537,30 @@ ${HIDE_NOTE:+- [ ] HIDE chosen — after merge run:  $HIDE_NOTE}
 $OFFSEC
 
 ---
-Generated: kit adopt · $DATE_H · $GEN_WHERE  (apart from this line there is NO tool SIGNATURE)
+Generated: crewforth adopt · $DATE_H · $GEN_WHERE  (apart from this line there is NO tool SIGNATURE)
 HAND
 say '%s written' docs/HANDOVER.md
 
 # 5b) ADR-0001 — the handover itself is a persistent decision (never-overwrite)
-ADR1="docs/adr/0001-agentic-kit-adoption.md"
+# 3.0 renamed the file with the product. A project adopted before that already holds its ADR-0001 under the old
+# name, and a second one next to it would say the same decision twice: the old file, when present, IS the record,
+# and it is left exactly as it is. Either name existing means nothing is written.
+ADR1="docs/adr/0001-crewforth-adoption.md"
+[ -e "docs/adr/0001-agentic-kit-adoption.md" ] && ADR1="docs/adr/0001-agentic-kit-adoption.md"
 if [ ! -e "$ADR1" ]; then
   cat > "$ADR1" <<ADR
-# ADR-0001: The Agentic Kit was handed over to this project
+# ADR-0001: Crewforth was handed over to this project
 
 - Date: $DATE_H
 - Status: $ADR_BR_STATUS
 
 ## Context
-The existing project was equipped for agentic work with the standard kit under a "team-to-team handover" logic.
-Goal: don't break the project, don't lose decisions made, don't leave the kit passive (hybrid).
+The existing project was equipped for agentic work with Crewforth, handed over the way one team hands a project to another.
+Goal: don't break the project, don't lose decisions already made, and don't leave Crewforth passive (hybrid).
 
 ## Decision
-- Kit agents were installed under the crew- namespace; project agents preserved side by side, untouched.
-- Kit discipline active via .claude/DISCIPLINE.md + @import; the project CLAUDE.md untouched.
+- Crewforth's agents were installed under the crew- namespace; the project's agents are preserved side by side, untouched.
+- Crewforth's discipline is active via .claude/DISCIPLINE.md + @import; the project CLAUDE.md is untouched.
 - On rule conflicts the PROJECT wins (axis-by-axis).
 - Git gates: $HOOKDESC.
 - Every change is on a reviewable git branch; rollback = git.

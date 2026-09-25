@@ -12,7 +12,7 @@ Trigger phrases: "confidence check", "ready to implement", "before I start", "am
 
 ## When
 Right before implementation code gets written for anything beyond a one-line change, and *after* the scope is
-clear ([[spec-planning]] / planner). Every other gate in this kit fires at the end — review, DoD, the commit
+clear ([[spec-planning]] / planner). Every other gate in Crewforth fires at the end — review, DoD, the commit
 approval. Those catch bad code. None of them catch **good code that should never have been written**: the
 duplicate of a helper that already exists, the pattern that fights the project's architecture, the call built
 against an API that behaves differently than remembered. That waste is invisible to a reviewer, because what
@@ -49,7 +49,7 @@ to catch.
 Gates get bypassed, legitimately: the user accepts a known gap, a DoD item is deferred, scope is trimmed under
 time pressure. What must not happen is the bypass being *spoken and forgotten* — three weeks later nobody can
 say whether a rule was weighed and overridden or simply missed, and those two are indistinguishable from the
-code. That gap is the missing half of "rule → gate": the kit enforces the rule at the tool level, and this line is
+code. That gap is the missing half of "rule → gate": Crewforth enforces the rule at the tool level, and this line is
 the record of a human deliberately stepping past it.
 
 So when a gate is knowingly bypassed, write one line where the decision lives — the ADR for anything lasting

@@ -5,7 +5,7 @@
 // directories can encode to the same name, so this asks the filesystem rather
 // than trusting the spelling.
 //
-// The kit already solves this in bash (utilization.sh, context-usage.sh,
+// Crewforth already solves this in bash (utilization.sh, context-usage.sh,
 // session-stats.sh share one byte-identical block that smoke-test §6i3 pins).
 // This is a re-implementation in another language on purpose — a fourth bash
 // copy would break that pin.

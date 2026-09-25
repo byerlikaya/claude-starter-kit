@@ -1,8 +1,8 @@
 # Crewforth — installed kit
 
-This project has been equipped with a Claude Code working kit. The kit runs the work with the same discipline at every stage:
+This project has been equipped with a Claude Code working kit. Crewforth runs the work with the same discipline at every stage:
 **plan → generate → audit → commit** — and the quality and security at each step rely not on the model remembering,
-but on gates at the tool level. All of the kit's behavior rules live in the root `CLAUDE.md`; this file
+but on gates at the tool level. All of Crewforth's behavior rules live in the root `CLAUDE.md`; this file
 summarizes what lives under `.claude/` and how it works.
 
 ## Three principles
@@ -15,10 +15,10 @@ summarizes what lives under `.claude/` and how it works.
 
 - **Agents** (`agents/`) — one thin trigger per role: planning, backend, database, security,
   privacy, testing, frontend, devops, review, commit, and session management. Names carry a `crew-`
-  prefix so that this kit's agents do not clash with the project's own agents.
+  prefix so that Crewforth's agents do not clash with the project's own agents.
 - **Skills** (`skills/`) — the single source of the "how" knowledge: code review, security scan,
   migration, deployment, observability, performance, accessibility, translation integrity, versioning,
-  incident response, and more. (Every install carries all of them — the kit is stack-agnostic.)
+  incident response, and more. (Every install carries all of them — Crewforth is stack-agnostic.)
 - **Commands** — `/crew-plan` · `/crew-review` · `/crew-ship` · `/crew-handoff` and the rest. Since 3.0 they are skills (`skills/crew-<name>/`, marked `metadata: kind: command`), as Claude Code merged commands into skills; `/simplify` is Claude Code's own.
 - **Hooks** (`hooks/`) — `guard-bash.sh` (tool-level gate), `pre-commit` + `commit-msg`
   (trace scan), `context-usage.sh` and `session-guard.sh` (session measurement), `trace-blocklist.txt`.
@@ -29,7 +29,7 @@ summarizes what lives under `.claude/` and how it works.
   session id, so without that a session warned at 90% would compact, fill right back up, and never be warned again.
   An **auto**-compaction is reported separately and once, at whatever the fill happens to be — the reading right
   after one is low precisely because context was thrown away.
-  `skill-trust.sh` runs at session start and names any skill or agent the kit never shipped and you never accepted,
+  `skill-trust.sh` runs at session start and names any skill or agent Crewforth never shipped and you never accepted,
   with the supply-chain scanner's verdict on it. A skill file is executable instruction, and they arrive by routes
   nobody reviews — a gist, a teammate's PR, another tool. Accept them deliberately with
   `bash .claude/hooks/skill-trust.sh --trust`; what gets recorded is a digest, so one that is edited afterwards
@@ -40,8 +40,8 @@ summarizes what lives under `.claude/` and how it works.
   single `@.claude/DISCIPLINE.md` line and holds your project rules, which win on conflict.
 - **`kit.conf`** — which installer ran and at what version. `stack=` is always `generic` since 3.0 (kept for older
   updaters); the project's stack itself lives in the `## Stack` section of `./CLAUDE.md`.
-- **`kit-manifest.txt`** — the component names the kit ships, one per line. It is what separates kit-owned from
-  project-owned: `doctor.sh` reads it to find your own skills, and the trust gate reads it to spot a skill the kit
+- **`kit-manifest.txt`** — the component names Crewforth ships, one per line. It is what separates kit-owned from
+  project-owned: `doctor.sh` reads it to find your own skills, and the trust gate reads it to spot a skill Crewforth
   never shipped. Rewritten on every install/update — don't edit it by hand.
 - **AGENT_TEMPLATE.md** — the contract for opening a new agent/skill.
 
@@ -53,7 +53,7 @@ summarizes what lives under `.claude/` and how it works.
 ## Session and token management
 
 An assistant cannot run the `/context` command itself; that is why most setups guess the context fill.
-This kit measures it. `context-usage.sh` reads the real token count of the last turn in the transcript;
+Crewforth measures it. `context-usage.sh` reads the real token count of the last turn in the transcript;
 the `UserPromptSubmit` hook injects this into the context every turn; the `Stop` hook (`session-guard.sh`) surfaces
 the handover suggestion to you the first time the fill **crosses 75%**, and again at **90%** — one warning per
 threshold, and it warns rather than blocks, so it costs no extra model turn. This way the session-health line rests

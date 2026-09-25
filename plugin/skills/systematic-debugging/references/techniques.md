@@ -41,4 +41,4 @@ Root cause: <the confirmed chain>  Fix: <change at cause>  Test: <regression tes
 
 ## When to stop and get a second pair of eyes
 
-After ~3 disproved hypotheses with no new information, or when you've been staring at the same 20 lines — you likely hold a wrong assumption you can't see. Escalate: hand over the hypothesis log (not "it's broken") so the next person starts from what's *already ruled out*, not from zero. In the kit, that handover is the `handoff` skill.
+After ~3 disproved hypotheses with no new information, or when you've been staring at the same 20 lines — you likely hold a wrong assumption you can't see. Escalate: hand over the hypothesis log (not "it's broken") so the next person starts from what's *already ruled out*, not from zero. In Crewforth, that handover is the `handoff` skill.

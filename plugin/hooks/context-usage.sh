@@ -39,7 +39,7 @@ IN=""
 #
 # `cat` on a pipe blocks until EOF, and "not a tty" does not mean "data is coming". Claude Code always writes
 # the event JSON and closes, so this is invisible in normal use — but any wrapper that leaves stdin open and
-# silent (a background shell, a CI runner, the kit's own suite launched as a job) hangs the hook forever, and
+# silent (a background shell, a CI runner, Crewforth's own suite launched as a job) hangs the hook forever, and
 # it is a UserPromptSubmit hook: a hang here is a hang on every turn. Measured 2026-08-24: real JSON stdin 0s,
 # closed stdin 0s, open-and-silent pipe still running after 20 minutes.
 #
@@ -164,7 +164,7 @@ fi
 # was needed. Reachable by interrupting a subagent, which leaves that record last. The same predicate now guards
 # both engines so they cannot drift; if a record ever lacks `.type` both go quiet, and a hook that says nothing
 # is recoverable in a way that a hook confidently reporting 0.9% is not.
-# ONE ENGINE on every machine: the kit's awk JSON reader (eval/lib/settings-json.awk, op=usage). There used to be a
+# ONE ENGINE on every machine: Crewforth's awk JSON reader (eval/lib/settings-json.awk, op=usage). There used to be a
 # jq branch in front of a regex-over-the-line awk scan; the regex matched key names ANYWHERE, so a tool input or
 # result holding an object with "input_tokens" or "type":"assistant" could replace the record's own usage — found in
 # review, 50% read as 0% or 90% on constructed transcripts (0 of 507 real ones differed). The reader parses each
@@ -173,7 +173,7 @@ fi
 # shell, where `| tail -1` was a process on a hook that runs before every prompt.
 last_line() { printf '%s' "${1##*$'\n'}"; }
 scan() {   # reads a JSONL tail on stdin, prints the total of the last qualifying record
-  # The kit's JSON reader, which the plugin also ships at ../eval/lib. Without it there is nothing to read with:
+  # Crewforth's JSON reader, which the plugin also ships at ../eval/lib. Without it there is nothing to read with:
   # print nothing, and the caller reports "usage not found" rather than a number it did not measure.
   [ -f "$HERE/../eval/lib/settings-json.awk" ] || { cat >/dev/null; return 0; }
   awk -v op=usage -f "$HERE/../eval/lib/settings-json.awk" -
@@ -273,7 +273,7 @@ if [ "$PCTI" -ge 75 ]; then
 fi
 
 # --- Stale-discipline gate ---------------------------------------------------------------------------
-# CLAUDE.md and the discipline it imports are read ONCE, when the session starts. Update the kit while a
+# CLAUDE.md and the discipline it imports are read ONCE, when the session starts. Update Crewforth while a
 # session is running and every file on disk changes while the rules already in the model's context stay at
 # the old version — it keeps quoting rules that no longer exist, and nothing says so. This does.
 #
@@ -320,11 +320,11 @@ fi
 #
 # The obvious gate cannot work: a hook cannot report its own absence, and under the old wiring on Windows NO
 # hook launched at all. What this catches is the other half — a session where the hooks DO run, but not the way
-# the file on disk says they should. `$0` is the evidence: the kit wires `bash .claude/hooks/<name>.sh`, so a
+# the file on disk says they should. `$0` is the evidence: Crewforth wires `bash .claude/hooks/<name>.sh`, so a
 # correctly-launched hook sees a relative `$0`. Anything else means this session was launched from a different
 # settings.json than the one now on disk.
 #
-# Silent unless settings.json actually carries the kit's current shape — a project that rewired its hooks by
+# Silent unless settings.json actually carries Crewforth's current shape — a project that rewired its hooks by
 # hand is not wrong, and warning it every turn would be noise it cannot fix.
 CREWSET="$HERE/../settings.json"
 if [ -f "$CREWSET" ] && grep -q 'bash \.claude/hooks/context-usage\.sh' "$CREWSET" 2>/dev/null; then

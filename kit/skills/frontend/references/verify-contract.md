@@ -34,7 +34,7 @@ Verdicts: **`PASS` · `FAIL` · `BLOCKED` · `SKIP`**; checks: `ok / fail / warn
 - Rule: **when in doubt, FAIL** — a false PASS ships a bug; a false FAIL costs one more look.
 - A verifier exception becomes a `fail` check with the stack as evidence — never swallowed.
 
-## 5 · How the kit drives it
+## 5 · How Crewforth drives it
 A frontend change is verified by driving the browser (the `claude-in-chrome` tools) to the isolated target and
 calling `window.__verify.runAll()`, then reading the **structured verdicts** — closing the "did my change actually
 work at runtime" loop without a human eyeballing pixels. This is the frontend counterpart to `iterate`'s external,

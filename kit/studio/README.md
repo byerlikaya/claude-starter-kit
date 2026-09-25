@@ -15,18 +15,18 @@ channel was a decision; a documented command that cannot work is a defect.
 
 ## Run
 
-From any project that has the kit:
+From any project that has Crewforth:
 
 ```bash
 /crew-studio                                  # the slash command; probes node, starts it, reports the URL
 node .claude/studio/server/index.js --open   # the same thing without the picker
 ```
 
-**`node` may not be on your PATH, and that is on purpose.** When this kit fetched the runtime for you
+**`node` may not be on your PATH, and that is on purpose.** When Crewforth fetched the runtime for you
 (`ensure-node.sh --install`), it promised to touch nothing outside `~/.claude/studio-runtime` — no PATH edit,
 no shell profile, no admin rights. Measured on a stock Windows 11 machine: after a successful install
 `node --version` reports v24.21.0 through the full path while `command -v node` finds nothing, which is the
-promise being kept rather than a broken install. So every `node …` line on this page means "the node this kit
+promise being kept rather than a broken install. So every `node …` line on this page means "the node Crewforth
 can find". Ask for it instead of assuming it:
 
 ```bash
@@ -87,10 +87,10 @@ code through all four channels only for the installer to delete it on arrival.
 The installed diagnostic is `--selftest`, which lives in `server/index.js`.
 
 There is no install step. Studio has **zero dependencies** — `node:http` and
-`node:child_process` are the whole stack, matching the kit's own promise. If
+`node:child_process` are the whole stack, matching Crewforth's own promise. If
 `node_modules` ever appears here, something has gone wrong.
 
-Requires Node 18+. In the kit's own repository `bash packaging/verify.sh studio`
+Requires Node 18+. In Crewforth's own repository `bash packaging/verify.sh studio`
 runs the same checks CI runs; a machine without node reports a skip rather than a
 pass, and a missing `kit/studio/` is a failure rather than a skip.
 
@@ -198,10 +198,10 @@ reported as unreachable, never as empty.
 Nothing listens on a network interface in this arrangement: both Studios stay on
 loopback and the tunnel does the crossing.
 
-## What the kit already measured
+## What Crewforth already measured
 
 The panel does not recompute any of it. Selecting the session node opens what
-the kit's own tools say, including when they say they cannot answer:
+Crewforth's own tools say, including when they say they cannot answer:
 
 | Tab | Source |
 |---|---|
@@ -262,5 +262,5 @@ CREW_STUDIO_TOKEN=$(uuidgen) node .claude/studio/server/index.js
 Anything that changes state needs, on top of the token, a header no cross-origin
 page can attach without a preflight this server never answers. Permission modes
 are an allow-list — `plan` (the default), `acceptEdits`, `default` — so a mode
-that skips the kit's gates cannot be requested, and the panel never has to name
+that skips Crewforth's gates cannot be requested, and the panel never has to name
 one to refuse it.

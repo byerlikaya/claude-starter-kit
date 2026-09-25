@@ -13,7 +13,7 @@
 # pattern file.
 #
 # In a FULL install this is harmless duplication: the git hooks still fire afterwards and catch the same
-# content. Belt and braces on the strictest rules in the kit is a fair trade for the plugin edition no longer
+# content. Belt and braces on the strictest rules in Crewforth is a fair trade for the plugin edition no longer
 # being the weak channel.
 #
 # Deliberately NOT covered: `--no-verify`. It is §4.5 and `guard-bash.sh` blocks it outright, so it never
@@ -280,7 +280,7 @@ _json_keycount(){  # $1 = payload, $2 = key -> sets _KC to how many times it occ
 #
 # It is awk, not parameter expansion, and that is deliberate on a hook that already spawns ~49 processes for a
 # commit: a pure-shell character walk was written first and MEASURED QUADRATIC — 146 B 0.006s,
-# 4 KB 0.181s, 16 KB 1.03s, 64 KB 8.08s. That does NOT blow the 60 s timeout the kit sets, and the
+# 4 KB 0.181s, 16 KB 1.03s, 64 KB 8.08s. That does NOT blow the 60 s timeout Crewforth sets, and the
 # largest command payload seen across 6791 real Bash calls was 46.8 KB — so this is a tail-risk
 # trade, not a rescue: awk is 0.049s flat to 64 KB and 0.585s at 1 MB, so the cost stops depending
 # on what someone pasted into a commit message. One fork, on a path that already spawns ~49 and runs only

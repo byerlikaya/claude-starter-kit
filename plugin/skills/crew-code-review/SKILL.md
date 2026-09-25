@@ -15,7 +15,7 @@ Trigger phrases: "code-review", "review the code", "review the PR", "review my c
 > artifact that goes to the repo (§4.2). Comments are severity-ranked; §4 applies.
 >
 > **Sources, by layer** — three different questions, three different authorities:
-> - **Judgement — how to rank what you found:** this kit's own. The two-stage verdict and verifier integrity below
+> - **Judgement — how to rank what you found:** Crewforth's own. The two-stage verdict and verifier integrity below
 >   exist because the code under review is increasingly written by an agent, and a reviewer that accepts its own
 >   say-so is not a reviewer. No external standard covers that yet.
 > - **Governance — that review happens at all, and findings survive it:** NIST SP 800-218 (SSDF) **PW.7** and the

@@ -65,11 +65,11 @@ quality gate. Run the app's real entry path if the change touches runtime, not j
 - Re-run [[dependency-audit]] afterwards: an upgrade can introduce a new transitive CVE.
 
 ## 5 — Continuous, without an autonomous loop
-"Always current" is a **cadence**, not an agent that runs by itself — the kit has no timed or self-triggering
+"Always current" is a **cadence**, not an agent that runs by itself — Crewforth has no timed or self-triggering
 loops, because every mutation here needs an approval a loop cannot give. Continuity comes from somewhere that
 already has a human gate at the end:
 - A scheduled CI job running the step-1 commands and failing on HIGH/CRITICAL ([[ci-pipeline]]).
-- Or a bot (Renovate / Dependabot) opening one PR per group — the kit does not reimplement it; the value added
+- Or a bot (Renovate / Dependabot) opening one PR per group — Crewforth does not reimplement it; the value added
   is the policy above deciding which PRs merge on green and which need a human to read a changelog.
 - Either way the PR passes through the ordinary gates: build, tests, [[security-scan]], review, approval.
 

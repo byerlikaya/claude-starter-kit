@@ -28,8 +28,8 @@
 # it, so `#pragma …` or `# noqa` written plainly is a pattern that looks armed and matches nothing. Write the
 # character as a one-member bracket instead — `[#]pragma` is the same ERE and is read as a pattern.
 #
-# Adapted from the "floor" in addyosmani/agent-skills (constraint-driven-development, MIT). Rewritten for this kit:
-# bash instead of Node, the staged diff instead of a merge base, per-ecosystem patterns for the stacks this kit
+# Adapted from the "floor" in addyosmani/agent-skills (constraint-driven-development, MIT). Rewritten for Crewforth:
+# bash instead of Node, the staged diff instead of a merge base, per-ecosystem patterns for the stacks Crewforth
 # supports, and the generated-file and documentation exemptions that stack needs.
 
 # rule: silenced-checker

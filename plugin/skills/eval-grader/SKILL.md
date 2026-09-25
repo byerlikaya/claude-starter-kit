@@ -60,7 +60,7 @@ different properties. Test it cheaply first:
    the wording is not doing reliable work — and any delta you measure is smaller than the variance you have not
    controlled.
 
-The failure this prevents, observed in the kit's own evals: a case scored 7/9 against 9/9 — the guidance apparently making
+The failure this prevents, observed in Crewforth's own evals: a case scored 7/9 against 9/9 — the guidance apparently making
 things *worse* — and an identical second round came back 9/9 to 9/9. Two checks of variance inverted the
 finding. Had the first round been reported, a good rule would have been removed on noise.
 

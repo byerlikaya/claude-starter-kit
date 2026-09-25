@@ -21,7 +21,7 @@ Principle: **agent = thin trigger** ("who / when"), **skill = "how"**. Knowledge
 2. **Expertise stance — recommended.** 3-5 **role-specific** concrete behaviors that the best in that role does differently (not a generic "be an expert"). It raises the decision/stance; the mechanical "how" stays in the skill.
 3. **How (follow its skill)** — which skill + that skill's exit points specific to this agent. The skill is the **single source of truth**; do not copy the "how" into the agent — at most a quick reminder, and on conflict the skill wins (§2 "no repetition").
 3b. **Before writing any of it — writing experts only.** Two pre-flight checks, both **model discipline**; no hook enforces either:
-    - `confidence-check` — the only check in the kit that comes BEFORE implementation. Any "no" is a stop, not a caveat.
+    - `confidence-check` — the only check in Crewforth that comes BEFORE implementation. Any "no" is a stop, not a caveat.
     - **A design summary, when the change carries architecture** — a new or changed data model/schema, a new or changed API contract, or 2+ domains touched. Three to five lines (which table/endpoint/integration point moves · which pattern · what the alternative was), put to the user with `AskUserQuestion` before the first line of code. Trivial single-domain work skips it: RISK decides, not size.
 4. **Coordination (cross-agent) — recommended for writing experts.** Whom this work is delegated to: security→crew-security-expert, schema→crew-database-expert, tests→crew-test-expert, messages→i18n, personal data→crew-privacy-agent, hot path/query/render/payload→crew-performance-expert, findings at closure→crew-review-agent. It turns the agent into an orchestrator; usually unnecessary for read-only auditors.
     - **The read-only audits go out in parallel** — several `Agent` calls in ONE message. None of them writes product code, so there is nothing to serialise (discipline Workflow §3).
@@ -77,7 +77,7 @@ capped). *Anchor the number, not just the narrative.*
 
 ## Test-first (add the eval before the skill/agent)
 Treat a new skill/agent like code under TDD: write the checkable expectation **first**, watch it fail, then build
-until it passes. The kit's evals ARE those tests.
+until it passes. Crewforth's evals ARE those tests.
 1. **Golden routing** — add a line to `eval/golden-routing.txt` (`<a realistic prompt>|<this target>`) *before* writing
    the skill. Run `routing-eval.sh`: it FAILS (target missing / no trigger). That failure defines the trigger phrases
    you must choose — you're designing the description against a concrete prompt, not guessing.

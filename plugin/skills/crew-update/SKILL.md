@@ -6,7 +6,7 @@ metadata:
 ---
 # /crew-update
 Bring the installed kit up to the latest published version:
-1. **Detect install type.** If `.claude/VERSION` exists → a full install (steps below). If the kit runs as a
+1. **Detect install type.** If `.claude/VERSION` exists → a full install (steps below). If Crewforth runs as a
    **plugin** (no `.claude/VERSION`), it updates through the plugin system: run
    `claude plugin update crewforth@crewforth`, tell the user it applies when they restart Claude Code, and stop here.
 2. **Current version:** read `.claude/VERSION`.
@@ -21,11 +21,11 @@ Bring the installed kit up to the latest published version:
      or stash first, or stop. Continue only on their yes.
    - `NOT IN GIT:` (a private install gitignores `.claude/` and `CLAUDE.md`, so edits there cannot be detected) →
      pass its two lines to the user and go on; there is nothing to commit.
-6. **Update** — this rewrites the kit-owned files under `.claude/` (your `./CLAUDE.md` and project skills are
+6. **Update** — this rewrites Crewforth-owned files under `.claude/` (your `./CLAUDE.md` and project skills are
    preserved). **Show this plan first, then run:** `npx --yes crewforth@latest update --here --yes`.
    Two DIFFERENT `--yes` flags, both required for a non-interactive run: the one **before** the package name is
    **npx's own** — it auto-confirms npx's `Ok to proceed?` install prompt, which reads the real TTY and IGNORES piped
-   input, so without it the command hangs before the kit even starts. The `--here --yes` **after** the package go to
+   input, so without it the command hangs before Crewforth even starts. The `--here --yes` **after** the package go to
    the updater (`--here` = apply on the current branch, `--yes` = accept the smart defaults). Together they let it run
    to completion instead of blocking on a prompt your shell can't answer.
    If you'd rather review each handover decision yourself, tell the user to run `npx crewforth@latest update`
