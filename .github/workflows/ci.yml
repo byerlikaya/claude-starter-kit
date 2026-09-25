@@ -33,6 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       scope: ${{ steps.scope.outputs.scope }}
+      site: ${{ steps.scope.outputs.site }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -43,13 +44,17 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha }}
         run: |
           if [ "${{ github.event_name }}" != pull_request ] || [ -z "$BASE" ]; then
-            scope=code
+            scope=code; site=yes
           else
             scope="$(git diff --name-only "$BASE" HEAD | bash packaging/ci-docs-only.sh)"
             git diff --name-only "$BASE" HEAD | sed 's/^/  changed: /'
+            # The site is built from these, so a change to any of them rebuilds it — documentation-only included.
+            site=no
+            git diff --name-only "$BASE" HEAD | grep -qE '^(site/|kit/agents/|kit/skills/|kit/hooks/|kit/eval/gate-report\.sh$|kit/CLAUDE\.md$|assets/|README(\.tr)?\.md$|evals/README\.md$|CHANGELOG\.md$|packaging/[^/]*\.tsv$|\.github/workflows/ci\.yml$)' && site=yes
           fi
-          echo "scope: $scope"
+          echo "scope: $scope · site: $site"
           echo "scope=$scope" >> "$GITHUB_OUTPUT"
+          echo "site=$site" >> "$GITHUB_OUTPUT"
 
   verify:
     runs-on: ubuntu-latest
@@ -82,9 +87,6 @@ jobs:
       - name: i18n audit — the bilingual tables hold their invariants
         run: bash packaging/verify.sh i18n
 
-      - name: Skill catalogue (site/content) in sync with the skills
-        run: bash packaging/verify.sh catalogue
-
       # The panel's own suite. Both statements this comment used to make are now false: the panel IS installed
       # into every project, and verify-cross does carry node (v24 on macOS, v22 on Windows in the run that
       # proved it). So it is no longer Linux-only — see the matching step in verify-cross-smoke.
@@ -101,6 +103,26 @@ jobs:
 
       - name: e2e rehearsal — start.sh (2 patterns + legacy flags) + adopt.sh (detection · overlap · refresh · migration)
         run: bash packaging/verify.sh e2e
+
+  # The documentation site: generated from the repository and gated on what it builds (packaging/verify.sh site).
+  # Linux only — it measures content, not how an OS runs bash — and in parallel with the rest, so it adds no wall
+  # clock. NOT gated on ci-docs-only.sh: a documentation-only pull request is exactly the one that changes it.
+  site:
+    needs: changes
+    if: needs.changes.outputs.site == 'yes'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: site/.nvmrc
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      # The install is here rather than in verify.sh because verify.sh must never write to a machine.
+      - name: Install the site's dependencies (npm ci, from the lockfile)
+        run: npm ci --prefix site --no-audit --no-fund
+      - name: Site — build, text and link gates, generator twins
+        run: bash packaging/verify.sh site
 
   # Cross-platform proof: the installer and the non-interactive settings SELF-HEAL must behave the same on Windows
   # (Git-Bash) and macOS, not only Linux — Windows especially, since that is where the update was failing. Runs the

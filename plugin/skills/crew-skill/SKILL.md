@@ -1,6 +1,6 @@
 ---
 name: crew-skill
-description: Author or change a kit component (skill / agent / command) against the template and its gates.
+description: Author or change a Crewforth component (skill / agent / command) against the template and its gates.
 disable-model-invocation: true
 metadata:
   kind: command
@@ -38,7 +38,8 @@ Skipping one of these is how a component ships half-installed:
 2. **Golden case.** Add a positive line to `.claude/eval/golden-routing.txt` — and a **negative** one
    (`prompt|!target`) for a neighbour it must NOT steal.
 3. **Catalog + counts** *(kit repository only — `packaging/` is not installed anywhere)*.
-   `bash packaging/build-readme-catalog.sh` (both READMEs), and the network diagram if the component set changed:
+   Add the Turkish summary line (`packaging/skill-summaries.tr.tsv`; agents and commands have their own `.tr.tsv`),
+   which the site build requires (`cd site && npm ci && npm run build`), and the network diagram if the component set changed:
    `python3 packaging/gen-network.py assets` — **the target directory is an argument**; without it the SVGs land in
    the current directory and `assets/` silently stays stale.
 4. **Plugin edition** *(kit repository only)*. `bash packaging/build-plugin.sh` — in the same commit, or the

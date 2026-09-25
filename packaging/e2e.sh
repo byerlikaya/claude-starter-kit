@@ -1410,6 +1410,7 @@ for f in $AW; do [ -f "$A/$f" ] || die "adopt did not write $f" adopt-wording "$
 _aw="$(cd "$A" && awk "$KW_AWK"' kitword($0){print FILENAME":"FNR": "$0}' $AW)"
 [ -z "$_aw" ] || { echo "FAIL: adopt wrote the old product name into the project:" >&2; printf '%s\n' "$_aw" | sed 's/^/    | /' >&2; exit 1; }
 [ ! -e "$A/docs/adr/0001-agentic-kit-adoption.md" ] || die "a fresh adopt wrote the pre-3.0 ADR name" adopt-wording "$A"
+[ ! -e "$A/site" ] || die "adopt installed site/ into the project — the documentation site is not payload" adopt-wording "$A"
 _adr_sum="$(cksum < "$A/docs/adr/0001-crewforth-adoption.md")"
 cp adopt.sh "$A/"; cp -R kit "$A/"; cp VERSION "$A/"
 run_adopt "$A" --yes
@@ -1425,6 +1426,6 @@ run_adopt "$B" --yes
 [ "$(ls "$B/docs/adr" | wc -l | tr -d ' ')" = 1 ] && [ ! -e "$B/docs/adr/0001-crewforth-adoption.md" ] \
   && [ "$(cksum < "$B/docs/adr/0001-agentic-kit-adoption.md")" = "$_old_sum" ] \
   || die "a project with the pre-3.0 ADR got a second ADR-0001 or a changed one ($(ls "$B/docs/adr" | tr '\n' ' '))" adopt-old-adr "$B"
-echo "[adopt-wording] HANDOVER.md · ADR · CLAUDE.md · kit.conf name Crewforth (0 old-name words) · re-adopt: 1 ADR, unchanged · pre-3.0 ADR kept, no second one"
+echo "[adopt-wording] no site/ in the project · HANDOVER.md · ADR · CLAUDE.md · kit.conf name Crewforth (0 old-name words) · re-adopt: 1 ADR, unchanged · pre-3.0 ADR kept, no second one"
 
 echo "e2e: all installer rehearsals passed"

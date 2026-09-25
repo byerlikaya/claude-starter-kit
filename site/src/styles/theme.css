@@ -1,0 +1,61 @@
+/* Crewforth Design System v1 tokens, bound to Starlight's theme variables. Dark first; light works too.
+   Rules carried from the system: accent is the only interactive colour; no shadows — elevation is a surface on
+   the ground plus a line; ink-faint is never used for text a reader has to read (it misses 4.5:1). */
+:root {
+  --cf-font-sans: Inter, ui-sans-serif, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --cf-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --cf-radius-sm: 4px; --cf-radius-md: 10px; --cf-radius-lg: 20px; --cf-radius-pill: 999px;
+
+  --cf-ground: #0B1020; --cf-surface: #141821; --cf-surface-raised: #1b202b; --cf-line: #262c39;
+  --cf-ink: #e6e9f0; --cf-ink-dim: #9aa7cc; --cf-ink-faint: #5c6472;
+  --cf-accent: #A78BFA; --cf-on-accent: #0B1020;
+
+  --sl-font: var(--cf-font-sans);
+  --sl-font-mono: var(--cf-font-mono);
+  --sl-color-white: var(--cf-ink);
+  --sl-color-gray-1: var(--cf-ink);
+  --sl-color-gray-2: var(--cf-ink-dim);
+  --sl-color-gray-3: var(--cf-ink-dim);
+  --sl-color-gray-4: var(--cf-ink-faint);
+  --sl-color-gray-5: var(--cf-line);
+  --sl-color-gray-6: var(--cf-surface-raised);
+  --sl-color-gray-7: var(--cf-surface);
+  --sl-color-black: var(--cf-ground);
+  --sl-color-bg: var(--cf-ground);
+  --sl-color-bg-nav: var(--cf-surface);
+  --sl-color-bg-sidebar: var(--cf-surface);
+  --sl-color-bg-inline-code: var(--cf-surface-raised);
+  --sl-color-hairline: var(--cf-line);
+  --sl-color-hairline-light: var(--cf-line);
+  --sl-color-hairline-shade: var(--cf-ground);
+  --sl-color-text: var(--cf-ink);
+  --sl-color-text-accent: var(--cf-accent);
+  --sl-color-text-invert: var(--cf-on-accent);
+  --sl-color-accent: var(--cf-accent);
+  --sl-color-accent-high: var(--cf-accent);
+  --sl-color-accent-low: var(--cf-surface-raised);
+  --sl-color-bg-accent: var(--cf-accent);
+  --sl-shadow-sm: none; --sl-shadow-md: none; --sl-shadow-lg: none;
+}
+:root[data-theme='light'] {
+  --cf-ground: #f7f8fa; --cf-surface: #ffffff; --cf-surface-raised: #eef0f4; --cf-line: #d9dde5;
+  --cf-ink: #1a1d24; --cf-ink-dim: #5c6472; --cf-ink-faint: #8d95a3;
+  --cf-accent: #6D28D9; --cf-on-accent: #ffffff;
+}
+
+/* Type scale (px): h1 36/42·700 · h2 24/32·700 · h3 18/26·600 · body 16/26 · hero 48/52·800 */
+.sl-markdown-content { font-size: 16px; line-height: 26px; }
+h1#_top { font-size: 36px; line-height: 42px; font-weight: 700; }
+.sl-markdown-content h2 { font-size: 24px; line-height: 32px; font-weight: 700; }
+.sl-markdown-content h3 { font-size: 18px; line-height: 26px; font-weight: 600; }
+.hero h1 { font-size: 48px; line-height: 52px; font-weight: 800; }
+
+/* Interaction: one colour, a 2 px focus ring with 2 px of space, colour changes at most 150 ms. */
+:focus-visible { outline: 2px solid var(--cf-accent); outline-offset: 2px; }
+a, button, summary { transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+}
+
+/* The home page GIF, framed at radius-lg. */
+.cf-hero-gif { display: block; max-width: 100%; height: auto; border-radius: var(--cf-radius-lg); border: 1px solid var(--cf-line); }

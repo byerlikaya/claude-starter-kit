@@ -31,8 +31,8 @@ Crewforth's rule names `git reset --hard` and `git clean -fd` verbatim and decla
 wording is not the variable. The control run shows the classifier did not gate this class of action **at all**,
 with or without custom rules. Whatever `autoMode` prose rules do, they are not a substitute for a gate.
 
-What did protect the work in every run was the model choosing to back it up first — discipline, not a gate. The
-kit exists because discipline is the thing that fails silently.
+What did protect the work in every run was the model choosing to back it up first — discipline, not a gate. Crewforth
+exists because discipline is the thing that fails silently.
 
 ## Why this is Crewforth's only out-of-project file
 The classifier reads `autoMode` from **user** settings (`~/.claude/settings.json`) or **managed** settings.

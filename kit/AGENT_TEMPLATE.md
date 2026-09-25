@@ -84,8 +84,8 @@ until it passes. Crewforth's evals ARE those tests.
 2. **Negative guard** — if a trigger risks over-firing (a generic word like "design", "review", "model"), add a
    `<prompt>|!<target>` line so an over-broad trigger fails the eval. This is how a trim stays trimmed.
 3. **Budget & spec** — `smoke-test.sh` gates name==dir, description ≤1024, and the always-on byte budget; a verbose
-   description fails the suite rather than quietly taxing every session. Register the TR summary + regenerate the
-   catalogue (`build-readme-catalog.sh`) so `--check` stays green.
+   description fails the suite rather than quietly taxing every session. Add the Turkish summary line
+   (`packaging/skill-summaries.tr.tsv`; agents and commands have their own `.tr.tsv`) — the site build fails without it.
 4. **Only then** write `SKILL.md` (+ `references/` for depth) until all three go green. Red → green, never green-by-assertion-weakening (that's the Verifier-integrity anti-pattern the review skill itself flags).
 
 ## Reference example

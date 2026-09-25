@@ -1,0 +1,20 @@
+{
+  "name": "crewforth-site",
+  "private": true,
+  "type": "module",
+  "description": "The crewforth.com documentation site, generated from the repository at build time.",
+  "engines": { "node": ">=22.12.0" },
+  "scripts": {
+    "generate": "node scripts/generate.mjs",
+    "dev": "npm run generate && astro dev",
+    "build": "npm run generate && astro build",
+    "check": "node scripts/check.mjs",
+    "selftest": "node scripts/selftest.mjs",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.42.4",
+    "@fontsource/inter": "^5.3.0",
+    "astro": "^7.3.5"
+  }
+}
