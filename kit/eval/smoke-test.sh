@@ -5961,7 +5961,9 @@ sec "== 14c) the 3.0 rename left no old name behind — outside history and the 
 # more old name in it is red too, and a removed one asks for the pin to come down. An entry that allows nothing is
 # a failure as well, so the list cannot quietly rot.
 if [ -n "$SGR" ] && [ -d "$SGR/packaging" ] && [ -f "$SGR/VERSION" ] && [ -d "$SGR/kit" ] && [ -f "$SGR/packaging/build-plugin.sh" ]; then
-  RN_ALLOW='CHANGELOG.md	193	history: every entry before 3.0 keeps the name it shipped under
+  RN_ALLOW='CHANGELOG.md	194	history: every entry before 3.0 keeps the name it shipped under
+README*.md	2	migration: the 2.x plugin note names the plugin to uninstall — one line, EN + TR
+site/content/*/install.md	2	migration: the same 2.x plugin note on the install page — one line, EN + TR
 evals/results/*	6	history: recorded eval runs stay byte-for-byte
 adopt.sh	48	migration: finds and moves 2.x names (components, CLAUDE.md, board, auto-mode rules, variables)
 bin/cli.js	4	migration: add accepts a typed <x>-csk and moves an add record written under the old names

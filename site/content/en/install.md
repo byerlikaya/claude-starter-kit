@@ -25,6 +25,14 @@ bash adopt.sh               # existing project (re-run it to update)
 
 An installed plugin stays on the version you installed until you ask for a newer one, so run `claude plugin marketplace update crewforth` then `claude plugin update crewforth`, and restart to apply.
 
+**Coming from the 2.x plugin?** The plugin and its marketplace were renamed, so a 2.x install does not update to 3.0 on its own. Switch once:
+
+```
+/plugin uninstall claude-starter-kit
+/plugin marketplace add Crewforth/crewforth
+/plugin install crewforth@crewforth
+```
+
 ## New project
 
 ```bash
