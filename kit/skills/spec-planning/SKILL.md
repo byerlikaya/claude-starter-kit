@@ -8,9 +8,7 @@ description: |
 
 # Spec-First Planning
 
-<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
-     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
-     truncated or dropped, which strips the very keywords a match depends on. -->
+<!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
 Trigger phrases: "plan", "spec", "task breakdown", "acceptance criteria", "roadmap", "how do we split this"
 
 Before writing code: what will be done, how it counts as "done", and in what order to proceed become clear.
@@ -87,8 +85,7 @@ Report it as a table — `AC-n | gap | evidence (file/area) | remaining work` �
 This is model discipline, not a gate: no exit code can judge "partially built". What makes it hold is the table —
 a pass that produced no table did not run.
 
-Adapted from `converge` in github/spec-kit (MIT), trimmed to the part this kit was missing: its plan already had
-acceptance criteria, but nothing ever checked the finished code against them.
+Adapted from `converge` in github/spec-kit (MIT).
 
 ## DoD (this skill's contribution)
 - Every task's "done" is testable; ordering and dependencies are visible; the riskiest work has been brought to the front.

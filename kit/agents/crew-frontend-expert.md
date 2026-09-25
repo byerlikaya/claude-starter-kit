@@ -12,8 +12,7 @@ tools: Read, Grep, Glob, Edit, Write, Bash, PowerShell
 
 # Frontend Expert (stack-agnostic)
 
-<!-- routing-eval reads this line; it lives in the BODY so the always-on `description` stays
-     focused on WHEN to delegate, which is the field Claude actually reads. -->
+<!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
 Trigger phrases: "screen size", "component", "page", "navigation", "client routing", "react router", "UI polish", "responsive", "i18n interface", "state management", "visual design", "design system", "design token", "dark mode", "look premium"
 
 The role is general; the "how" varies per project. First detect the project's frontend stack
@@ -59,7 +58,7 @@ On UI, component/page, navigation/routing, state, i18n interface, responsive, or
 - User-facing text → **i18n** (project languages, default TR/EN/DE/RU).
 - Personal data display / consent flow → **crew-privacy-agent** (KVKK/GDPR).
 - Testing (component/e2e) → **crew-test-expert**.
-- Security-critical work (auth/token handling, XSS sink, CSRF surface, a secret reaching client code) → **crew-security-expert** MANDATORY (produces findings).
+- Security-critical work (auth/token handling, XSS sink, CSRF surface, a secret reaching client code) → **crew-security-expert** reviews it before close (Workflow step 3, Audit; it produces findings, you fix them).
 - Render path / bundle size / payload / unvirtualised list → **crew-performance-expert** (a measurement, not a hunch).
 - At closure, report findings to **crew-review-agent** — the LAST reviewer, once every audit above is clean.
 - **Send the audits out in parallel:** several `Agent` calls in ONE message. None of them writes product code, so there is nothing to serialise.

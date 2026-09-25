@@ -7,13 +7,11 @@ description: |
 
 # Session Handover (Handoff)
 
-<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
-     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
-     truncated or dropped, which strips the very keywords a match depends on. -->
+<!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
 Trigger phrases: "handoff", "hand off", "session summary", "session state", "clear context", "I'll continue", "next session", "where we left off", "run out of room", "continue tomorrow"
 
 ## When
-`/context` > 75% · phase closure · topic change. Goal: the next session should **not start from scratch**.
+Session fill (the `🔋` line) > 75% · phase closure · topic change. Goal: the next session should **not start from scratch**.
 
 ## Output (docs/SESSION_STATE.md, local)
 ```
@@ -57,7 +55,7 @@ Write the board note FIRST, then the local file — an interrupted handover shou
 shared one.
 
 ## Redaction (`<private>` marker)
-`docs/SESSION_STATE.md` is a **shared, often committed** artifact — never persist a secret, token, credential, or
+`docs/SESSION_STATE.md` is local, but its content is copied into board notes and handovers — never persist a secret, token, credential, or
 personal note into it. Any content wrapped in **`<private>…</private>`** is a redaction marker: strip it from the
 written handover and leave a `[redacted]` placeholder in its place. If a resume genuinely needs a sensitive value,
 point to *where it lives* (env var, secret manager, the person to ask) — never the value itself.

@@ -8,9 +8,7 @@ description: |
 
 # Deploy
 
-<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
-     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
-     truncated or dropped, which strips the very keywords a match depends on. -->
+<!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
 Trigger phrases: "deploy", "push to the server", "to the server", "onto the server", "build on the server", "install on the VPS", "ship it to the server", "go to production", "to production", "go live"
 
 A deploy has a single idea, and it does not depend on where you are deploying: **make the new version live in a

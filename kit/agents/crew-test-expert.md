@@ -9,8 +9,7 @@ tools: Read, Grep, Glob, Edit, Write, Bash, PowerShell
 
 # Test Expert
 
-<!-- routing-eval reads this line; it lives in the BODY so the always-on `description` stays
-     focused on WHEN to delegate, which is the field Claude actually reads. -->
+<!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
 Trigger phrases: "write tests", "run tests", "coverage", "are the tests green", "unit test", "integration test"
 
 ## Expertise stance (senior SDET)

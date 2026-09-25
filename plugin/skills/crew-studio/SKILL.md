@@ -55,7 +55,6 @@ fails, say which one and stop — do not improvise a different launch.
    ```
 
    It prints the absolute path of a Node 18+ that actually runs, and exits 1 when there is none. Use that path;
-   do not assume it is `node`. Use that path;
    do not assume it is `node`. It looks in places PATH does not reach — a version manager puts node on
    PATH from a login shell only, so "nvm is installed" and "this shell can see node" are different
    facts. And it runs what it finds rather than trusting the name: the Windows Store ships a stub that
@@ -65,8 +64,7 @@ fails, say which one and stop — do not improvise a different launch.
    `node --version` and reading the output — 18+ required — and tell the user `/crew-update` brings the
    fetcher along with everything else.
 
-3. **No runtime? The kit gets one — after the user says so.** This is the step that used to be a dead
-   end. Show them what it would do, then ask:
+3. **No runtime? The kit gets one — after the user says so.** Show them what it would do, then ask:
 
    ```bash
    bash <the same path as step 2> --plan       # url, size, checksum source, target directory

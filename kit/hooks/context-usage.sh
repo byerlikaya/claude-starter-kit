@@ -100,7 +100,7 @@ if [ -n "${IN:-}" ] && [ -n "${PSID:-}" ]; then
         [ -f "$PMARK" ] && IFS= read -r WASM < "$PMARK" 2>/dev/null
         if [ "$WASM" != "$PM" ]; then
           printf '%s' "$PM" > "$PMARK" 2>/dev/null || true
-          echo "🔒 Permission mode: $PM — git commit/push FAILS CLOSED here (§4.4). Say so BEFORE asking for approval: a real yes still comes first, then the user switches mode (or exports CLAUDE_GIT_OK=1 in headless/CI)."
+          echo "🔒 Permission mode: $PM. git commit/push fail closed in this mode (§4.4). Only when a commit or push comes up: say so before you ask for approval; a real yes still comes first, then the user switches mode (or exports CLAUDE_GIT_OK=1 in headless/CI). Otherwise do not mention it."
         fi
         ;;
     esac
@@ -345,8 +345,9 @@ if [ ! -e "$MARK" ]; then
   printf '%s' "$NOW" > "$MARK" 2>/dev/null || true   # first turn: remember the version, say nothing
 else
   WAS="$(head -1 "$MARK" 2>/dev/null)"
-  # Repeated on every turn on purpose: the loaded context stays stale until the session is restarted.
+  # Repeated on every turn on purpose: the loaded context stays stale until a new session starts (/clear or a
+  # relaunch). /compact re-reads CLAUDE.md but keeps the session id, so this warning would not stop after it.
   [ -n "$WAS" ] && [ "$WAS" != "$NOW" ] && \
-    echo "⚠️ kit updated $WAS → $NOW mid-session. The discipline in your context is the OLD one — do not act on it; ask the user to run /compact (or /clear) to reload it from disk — no restart needed."
+    echo "⚠️ kit updated $WAS → $NOW mid-session. The discipline in your context is the OLD one — do not act on it; ask the user to run /clear (or quit and relaunch Claude Code): a new session loads the new one."
 fi
 exit 0

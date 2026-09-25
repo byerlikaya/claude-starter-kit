@@ -8,9 +8,7 @@ description: |
 
 # Code Review
 
-<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
-     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
-     truncated or dropped, which strips the very keywords a match depends on. -->
+<!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
 Trigger phrases: "code-review", "review the code", "review the PR", "review my changes", "do a review"
 
 > **Kit adaptation (local, .claude/):** applied by `crew-review-agent` (read-only). No source name appears in the
@@ -76,9 +74,8 @@ Decorations are `(blocking)` / `(non-blocking)`; use them whenever the default w
 severity split this skill reports: **blocker** = `issue (blocking)` or an unanswered `question (blocking)`,
 **suggestion** = `suggestion` / `todo`, **nit** = `nitpick`.
 
-## Speed & disagreement
-- **Turn it around fast:** a pending review lowers productivity; look at it at the first opportunity.
-- In a disagreement, **technical fact + data** speak, not personal preference. If no agreement is reached, take it face-to-face / escalate to a higher authority — not passive blocking.
+## Disagreement
+- In a disagreement, technical fact and data decide, not preference; unresolved → surface it to the user rather than blocking silently.
 
 ## Two-stage verdict (verify before you report)
 Finding a problem and confirming it are two acts. A first-pass "this looks wrong" is a **candidate**, not a verdict.

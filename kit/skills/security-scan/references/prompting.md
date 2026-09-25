@@ -20,4 +20,4 @@ apply to `red-team` and any agent you point at a codebase to find bugs:
    saves the reviewer from re-finding a path that is already closed one layer up (a common false positive).
 7. **Prompt-level guardrails are defense-in-depth only.** Real safety is human approval + the tool-level gates
    (§4.4/§4.5), never a sentence in a prompt. Don't rely on "please don't exploit this" — rely on the gate.
-8. **Assume the user can't see your tool calls or reasoning** — give periodic, plain-language progress updates.
+8. **The sub-agent's final report is all the caller reads** — put every finding and its coverage in it.

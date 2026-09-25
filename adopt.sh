@@ -298,8 +298,8 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "panel:    %s opens it from this project (or: %s)") s='panel:    bu projede %s ile açılır (ya da: %s)' ;;
       "panel:    needs Node 18+, absent here — the kit can fetch one: %s") s='panel:    Node 18+ gerekiyor ve bu makinede yok — kit indirebilir: %s' ;;
       "(it asks first, verifies the checksum, and touches nothing outside %s)") s='(önce sorar, sağlama toplamını doğrular ve %s dışında hiçbir şeye dokunmaz)' ;;
-      "If Claude Code is running in this project, run /compact (or /clear) — CLAUDE.md and the discipline reload") s='Claude Code bu projede açıksa /compact (ya da /clear) çalıştırın — CLAUDE.md ve disiplin aynı süreçte' ;;
-      "on /compact and /clear in the same process, so a session opened before this run stops quoting the old rules (no restart needed).") s='/compact ve /clear ile yeniden yüklenir; böylece önceden açılmış oturum eski kuralları uygulamayı bırakır (yeniden başlatmak gerekmez).' ;;
+      "If Claude Code is running in this project, run /clear (or quit and relaunch it) — a new session loads the") s='Claude Code bu projede açıksa /clear çalıştırın (ya da kapatıp yeniden açın) — yeni oturum güncel' ;;
+      "updated CLAUDE.md and discipline; a session opened before this run keeps the old rules until then.") s='CLAUDE.md ve disiplini yükler; bu çalıştırmadan önce açılmış oturum o zamana kadar eski kuralları uygular.' ;;
       "yes") s='evet' ;;
       "no") s='hayır' ;;
       "[yes/no]") s='[evet/hayır]' ;;
@@ -1645,8 +1645,8 @@ else
 fi
 sub "$ACCEPT_LINE"
 sub "$DISCARD_LINE"
-warnm 'If Claude Code is running in this project, run /compact (or /clear) — CLAUDE.md and the discipline reload'
-_mt 'on /compact and /clear in the same process, so a session opened before this run stops quoting the old rules (no restart needed).'
+warnm 'If Claude Code is running in this project, run /clear (or quit and relaunch it) — a new session loads the'
+_mt 'updated CLAUDE.md and discipline; a session opened before this run keeps the old rules until then.'
 printf '     %s%s%s\n' "$D" "$_M" "$R"
 # A 2.x variable name still works until 4.0 (eval/lib/crew-env.sh reads it); say its 3.0 name once, here, so the
 # user can switch. compgen is a builtin — the list of set names costs no process.

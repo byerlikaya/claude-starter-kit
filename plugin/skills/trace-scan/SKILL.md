@@ -7,9 +7,7 @@ description: |
 
 # Trace Scan (trace-scan)
 
-<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
-     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
-     truncated or dropped, which strips the very keywords a match depends on. -->
+<!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
 Trigger phrases: "scan traces", "trace scan", "AI trace", "check vendor name", "pre-commit audit"
 
 Purpose: to bind §4.1/§4.2 to a *gate* rather than to *memory*. If the rule lives only in text,
@@ -40,6 +38,6 @@ chmod +x .claude/hooks/pre-commit .claude/hooks/commit-msg
 ```
 
 ## Rules
-- If there is a finding, the commit STOPS; the phrase is removed and the real rationale is written in human Turkish.
+- If there is a finding, the commit STOPS; the phrase is removed and the real rationale is written in the project's commit language (CLAUDE.md).
 - Skipping with `--no-verify` only on an EXPLICIT request (§4.5); the hook is not skipped silently.
 - On a false positive, narrow/remove the pattern — the list is set up by the project owner.

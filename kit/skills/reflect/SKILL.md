@@ -7,9 +7,7 @@ description: |
 
 # Reflect — step back and audit the work, not just the code
 
-<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
-     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
-     truncated or dropped, which strips the very keywords a match depends on. -->
+<!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
 Trigger phrases: "reflect", "retro", "retrospective", "what did we miss", "step back", "introspect"
 
 ## When

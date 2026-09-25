@@ -8,9 +8,7 @@ description: |
 
 # Performance
 
-<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
-     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
-     truncated or dropped, which strips the very keywords a match depends on. -->
+<!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
 Trigger phrases: "performance", "slow", "optimization", "profiling", "N+1", "latency", "memory leak", "leaked memory", "load test", "seconds to open", "seconds to respond", "anything slower", "make it slower"
 
 Core rule: **measure first, optimize later.** Optimization without measurement is a guess; it usually speeds up the

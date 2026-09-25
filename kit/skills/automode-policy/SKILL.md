@@ -1,14 +1,14 @@
 ---
 name: automode-policy
 description: |
-  Auto-mode classifier config: inspect what the classifier that now answers permission prompts is configured
+  Auto-mode classifier config: inspect what the classifier that answers permission prompts is configured
   with, and catch the silent case where a custom autoMode block drops the built-in block rules.
 allowed-tools: Bash(bash ${CLAUDE_SKILL_DIR}/scripts/*.sh *)
 ---
 
 # Auto-mode policy (automode-policy)
 
-<!-- routing-eval reads this line from the BODY so the always-on skill listing stays inside budget. -->
+<!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
 Trigger phrases: "auto mode", "classifier policy", "permission classifier", "autoMode settings", "policy pack"
 
 Purpose: the kit's gates run at the tool level (`guard-bash.sh`, the git hooks) and that is where its

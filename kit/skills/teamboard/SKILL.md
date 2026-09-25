@@ -7,9 +7,7 @@ description: |
 
 # Team Board (shared claims + shared item memory)
 
-<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
-     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
-     truncated or dropped, which strips the very keywords a match depends on. -->
+<!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
 Trigger phrases: "team board", "who is working on", "claim", "take this item", "pick up a task", "sprint item", "release the item", "hand the item over", "is anyone on", "board", "of us are working", "stepping on each other", "who is doing what", "who else is working"
 
 ## The problem this closes

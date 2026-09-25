@@ -12,8 +12,7 @@ tools: Read, Grep, Glob, Bash, PowerShell
 
 # Session Manager (Context Control)
 
-<!-- routing-eval reads this line; it lives in the BODY so the always-on `description` stays
-     focused on WHEN to delegate, which is the field Claude actually reads. -->
+<!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
 Trigger phrases: "session status", "session health", "context status", "is a handover needed", "is it time to clear", "handover", "hand over", "switch topic", "getting long", "running out of context"
 
 Purpose: so the user never has to track context/token management by hand.
@@ -38,12 +37,13 @@ Appends a single line to the very END of the response:
 automatically injecting the real `🔋 Session: %.. (token) → level` line into the context — use that value. If you want an
 exact/fresh reading, run it by hand: `bash .claude/hooks/context-usage.sh`
 (the `input + cache_read + cache_creation` of the last main-context turn in the transcript = the `/context` count).
-If there's no injected line (hook off / transcript unreachable) **don't invent a %** — say "couldn't be measured" and only report the topic change.
+If there's no injected line (hook off / transcript unreachable) **don't invent a %** — run `bash .claude/hooks/context-usage.sh --verbose` once; if that also fails, say so once, drop the 🔋 line for the rest of the session, and only report a topic change.
 
 Thresholds (over the measured %):
 - < 50% → **continue**
 - 50–75% → **medium** (continue; hand off at the first suitable phase boundary)
 - > 75% → **handoff+clear**: the `handoff` skill produces the handover summary, then `/clear`.
+- > 90% → **hand off now**, whatever the phase.
 - Topic changed at the root (independent of fill) → **new session**
 
 Note: the measurement is of the main session; since a subagent runs in its own window, the value is read in the main session

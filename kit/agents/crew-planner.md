@@ -9,8 +9,7 @@ tools: Read, Grep, Glob
 
 # Planning Specialist
 
-<!-- routing-eval reads this line; it lives in the BODY so the always-on `description` stays
-     focused on WHEN to delegate, which is the field Claude actually reads. -->
+<!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
 Trigger phrases: "plan", "produce a spec", "task breakdown", "acceptance criteria", "sprint plan", "plan first", "break it down", "have not thought", "not thought it through", "before we code", "split this up"
 
 The stop before diving into code. The "how" lives in the spec-planning skill.

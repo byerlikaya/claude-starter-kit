@@ -5,8 +5,14 @@ Principle: **agent = thin trigger** ("who / when"), **skill = "how"**. Knowledge
 
 ## Frontmatter (required fields)
 - `name`: kebab-case, exactly matching the file name.
-- `description`: Claude Code makes its delegation decision **by looking at this**. It must contain three things:
-  (1) what it does, (2) **WHEN** it kicks in, (3) a `Trigger phrases:` line (English key phrases).
+- `description`: Claude Code makes its delegation decision **by looking at this**. It must say two things:
+  (1) what it does, (2) **WHEN** it kicks in.
+- **The `Trigger phrases:` line (English key phrases) sits in the BODY**, right under the frontmatter, marked by a one-line
+  `<!-- routing-eval reads the next line … -->`; routing-eval reads it there. Why not in the description: a skill's
+  description is in the always-on listing, which has a budget (1% of the context window by default), and an
+  overflowing listing loses descriptions and with them the keywords a match depends on; an agent's description
+  stays focused on WHEN to delegate, the field Claude reads. Keep the rationale here, not in every file — the
+  comment is loaded with the body on every invocation.
 - `tools`: least-privilege principle. Read-only auditor → `Read, Grep, Glob (+Bash)`; writing expert → `+ Edit, Write`.
 - `model`: cost routing (table below). If the field is absent, the main session model is inherited (inherit).
 

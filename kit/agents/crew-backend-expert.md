@@ -11,8 +11,7 @@ tools: Read, Grep, Glob, Edit, Write, Bash, PowerShell
 
 # Backend Expert (stack-agnostic)
 
-<!-- routing-eval reads this line; it lives in the BODY so the always-on `description` stays
-     focused on WHEN to delegate, which is the field Claude actually reads. -->
+<!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
 Trigger phrases: "new handler", "write a service", "write a command", "add a query", "endpoint", "API endpoint", "business rule", "backend feature"
 
 Not tied to any framework. The "how" lives in a **skill**, never in this file: the project's own backend-pattern
@@ -56,7 +55,7 @@ When the backend needs a new feature, service/handler, validation, controller, o
 - **Also apply** `api-design` (contract/versioning) · `observability` (log/trace/metric) · `performance` (bottleneck) · `dependency-audit` (add/update package) · `dependency-upgrade` (bringing packages current) · `i18n-integrity` (user-facing text: error/email/notification) · `mcp-builder` (building an MCP server or tool — implementation work, so it belongs to an owner rather than the main thread).
 
 ## Coordination (cross-agent)
-- Security-critical work (auth/secret/IDOR/injection) → **crew-security-expert** MANDATORY (produces findings).
+- Security-critical work (auth/secret/IDOR/injection) → **crew-security-expert** reviews it before close (Workflow step 3, Audit; it produces findings, you fix them).
 - Schema / migration / index → coordinate with **crew-database-expert** (db-migration skill).
 - Tests → **crew-test-expert** (test-first: red-green).
 - User-facing message → **i18n** (the project's languages); no deferral.

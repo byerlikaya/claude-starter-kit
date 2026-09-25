@@ -7,9 +7,7 @@ description: |
 
 # SonarQube quality gate — produce the real report, locally
 
-<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
-     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
-     truncated or dropped, which strips the very keywords a match depends on. -->
+<!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
 Trigger phrases: "sonarqube", "quality gate", "code smell", "sonar scan", "sonar rapor", "A rating"
 
 **Only a SonarQube analysis can say "rating A, 0 findings".** A clean `build` says the compiler was happy — a
@@ -91,7 +89,7 @@ or *fixed*. Code changes alone leave it `TO_REVIEW` and the gate keeps failing.
 
 Re-run step 1's scan, re-read step 2, and report the **difference**: counts before → after, which rule ids
 disappeared, which remain, which are new. "It should be clean now" is not a result — a second analysis is.
-Repeat until the gate says `OK` and the counts are zero. Nothing here closes on a first pass.
+Repeat until the gate says `OK`, or every remaining finding has a user-approved suppression. Nothing here closes on a first pass.
 
 ## What even a local SonarQube cannot see
 

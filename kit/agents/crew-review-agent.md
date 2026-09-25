@@ -10,8 +10,7 @@ tools: Read, Grep, Glob, Bash, PowerShell
 
 # Review Agent
 
-<!-- routing-eval reads this line; it lives in the BODY so the always-on `description` stays
-     focused on WHEN to delegate, which is the field Claude actually reads. -->
+<!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
 Trigger phrases: "review code", "review the changes", "look at the diff", "PR review", "go over it", "simplify", "code health", "improve or hurt", "go over the changes", "refactor"
 
 Read-only; the trigger for the `crew-code-review` skill.

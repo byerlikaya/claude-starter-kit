@@ -8,9 +8,7 @@ description: |
 
 # Threat Model
 
-<!-- routing-eval reads this line; it lives in the BODY so the always-on skill LISTING stays inside
-     Claude Code's budget (1% of the context window) — an overflowing listing gets descriptions
-     truncated or dropped, which strips the very keywords a match depends on. -->
+<!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
 Trigger phrases: "threat model", "attack surface", "scope the audit", "trust boundary"
 
 Scope first, scan second. A security scan with no map produces noise; a threat model tells the scanner (and

@@ -156,7 +156,7 @@ Two git hooks — `pre-commit` and `commit-msg` — run the trace, secret, repo-
 | `a11y` | Frontend accessibility audit (WCAG): semantic HTML, keyboard access, focus management, contrast, ARIA, screen readers. |
 | `adr` | Architecture Decision Record: context-decision-consequences, for decisions that are expensive to reverse. |
 | `api-design` | API contract design: resource naming, error model, versioning, pagination, backward compatibility, OpenAPI. |
-| `automode-policy` | Auto-mode classifier config: inspect what the classifier that now answers permission prompts is configured with, and catch the silent… |
+| `automode-policy` | Auto-mode classifier config: inspect what the classifier that answers permission prompts is configured with, and catch the silent case… |
 | `backend-architecture` | Decide, record and apply the backend stack and architecture pattern. |
 | `brainstorm` | Divergent discovery BEFORE planning: turn a fuzzy ask into 2–4 scoped options + named unknowns, pick a direction, hand to spec-planning. |
 | `ci-pipeline` | CI pipeline discipline: lint→build→test→quality→security, fail-fast, deterministic build, secret handling, PR gates. |
@@ -373,7 +373,7 @@ At install time Claude Starter Kit stamps `.claude/kit.conf` with which installe
 
 Where the change lands is a choice. A first adopt opens a `kit-adopt-<timestamp>` review branch. A routine update whose `.claude/` is gitignored applies on your current branch. An update with a **tracked** `.claude/` asks. Force it with `--here` or `--new-branch`, and skip the prompts with `--yes`. Either way the change is staged and uncommitted. A tracked `.claude/` also gets eol pins in `.gitattributes`, so the hooks stay LF for a teammate whose git has `core.autocrlf=true` — the Git for Windows default. Git Bash runs a CRLF hook anyway (measured); the pin is for a bash that does not, WSL being the documented case, and for keeping the working tree identical to what was committed.
 
-Inside a session, **`/crew-update`** does the version check, runs the updater, verifies with `/crew-doctor`, then prompts `/compact` so the refreshed discipline loads in the same session. **`/crew-doctor`** checks a live install at any time — hooks executable, `core.hooksPath` set, gates wired, the discipline actually imported — and prints an advisory readiness score for the project itself.
+Inside a session, **`/crew-update`** does the version check, runs the updater, verifies with `/crew-doctor`, then prompts `/clear` so a new session loads the refreshed discipline. **`/crew-doctor`** checks a live install at any time — hooks executable, `core.hooksPath` set, gates wired, the discipline actually imported — and prints an advisory readiness score for the project itself.
 
 If a project's `CLAUDE.md` carries the discipline **inline** instead of importing it, updates cannot reach it. The updater detects this, shows the affected lines, and offers to replace them with the single `@.claude/DISCIPLINE.md` import — writing a backup first, on a branch you review. Decline and nothing is touched.
 

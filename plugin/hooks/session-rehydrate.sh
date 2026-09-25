@@ -31,7 +31,7 @@ ROOT="${ROOT//\\\\//}"; ROOT="${ROOT//\\//}"
 STATE="$ROOT/docs/SESSION_STATE.md"
 [ -s "$STATE" ] || exit 0   # no (non-empty) handover → nothing to rehydrate, stay silent
 
-MSG="A session handover from before this context boundary exists at docs/SESSION_STATE.md. Read it before continuing — it holds the in-progress task state, open decisions, and the intended next step. Do not restart the work from scratch."
+MSG="A session handover from before this context boundary exists at docs/SESSION_STATE.md. If the user's request continues that work, read it first — it holds the in-progress task state, open decisions, and the intended next step — and do not restart from scratch. If the request is about something else, do not bring it up."
 
 # hookSpecificOutput.additionalContext is the documented channel that injects text into the model's context.
 # ONE PATH, no jq: MSG is a fixed constant with no quote, backslash, control character or newline, so it needs no
