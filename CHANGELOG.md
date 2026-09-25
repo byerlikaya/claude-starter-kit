@@ -60,6 +60,8 @@ One name everywhere: the package, the components, the variables, the payload. **
 - **Auto-mode rules applied by 2.x** (`CSK …` in your user settings) are renamed `Crewforth …` by the update, after
   a backup; nothing else in that file changes.
 - **Fixed:** an update appended `docs/` to `.gitignore` again on every run when `docs/` held tracked files.
+- Plugin users on 2.x: the plugin and marketplace were renamed; uninstall `claude-starter-kit`, then add
+  `Crewforth/crewforth` and install `crewforth@crewforth`.
 
 ### Removed — the Homebrew channel
 

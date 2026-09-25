@@ -25,6 +25,14 @@ bash adopt.sh               # mevcut proje (tazelemek için tekrar çalıştır�
 
 Kurulu bir plugin, siz yenisini istemedikçe kurduğunuz sürümde kalır; bu yüzden `claude plugin marketplace update crewforth` ardından `claude plugin update crewforth` çalıştırın ve uygulanması için yeniden başlatın.
 
+**2.x plugin'inden mi geliyorsunuz?** Plugin'in ve marketplace'in adı değişti, bu yüzden 2.x kurulumu 3.0'a kendiliğinden güncellenmez. Bir kez geçin:
+
+```
+/plugin uninstall claude-starter-kit
+/plugin marketplace add Crewforth/crewforth
+/plugin install crewforth@crewforth
+```
+
 ## Yeni proje
 
 ```bash

@@ -98,6 +98,14 @@ Studio, delegasyonu olurken çizen yerel bir panel: her ajan bir düğüm, düğ
 | Claude Code plugin | `/plugin marketplace add Crewforth/crewforth`, ardından `/plugin install crewforth@crewforth` |
 | Node yoksa | GitHub release arşivi, bkz. [crewforth.com/tr/install](https://crewforth.com/tr/install) |
 
+**2.x plugin'inden mi geliyorsunuz?** Plugin'in ve marketplace'in adı değişti, bu yüzden 2.x kurulumu 3.0'a kendiliğinden güncellenmez. Bir kez geçin:
+
+```
+/plugin uninstall claude-starter-kit
+/plugin marketplace add Crewforth/crewforth
+/plugin install crewforth@crewforth
+```
+
 Yeni bir sürüm yayımlandığında Claude, oturumun başında bir kez şimdi mi, sonra mı güncelleneceğini ya da o sürümün atlanıp atlanmayacağını sorar; kendiliğinden asla güncellemez. `/crew-update` güncellemeyi çalıştırır ve neyin değiştiğini söyler; `./CLAUDE.md` dosyanıza dokunulmaz. Windows'ta Git Bash kullanın. Bütün seçenekler: [crewforth.com/tr/install](https://crewforth.com/tr/install).
 
 ## Nasıl ölçüyoruz

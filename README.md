@@ -98,6 +98,14 @@ Studio is a local panel that draws a delegation as it happens: each agent is a n
 | Claude Code plugin | `/plugin marketplace add Crewforth/crewforth`, then `/plugin install crewforth@crewforth` |
 | No Node | The GitHub release archive, see [crewforth.com/install](https://crewforth.com/install) |
 
+**Coming from the 2.x plugin?** The plugin and its marketplace were renamed, so a 2.x install does not update to 3.0 on its own. Switch once:
+
+```
+/plugin uninstall claude-starter-kit
+/plugin marketplace add Crewforth/crewforth
+/plugin install crewforth@crewforth
+```
+
 When a new version is published, Claude asks once, at the start of a session, whether to update now, later or never for that version; it never updates on its own. `/crew-update` runs the update and reports what changed, and `./CLAUDE.md` is never touched. On Windows, use Git Bash. Every option: [crewforth.com/install](https://crewforth.com/install).
 
 ## How we measure
