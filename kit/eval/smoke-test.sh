@@ -5898,9 +5898,9 @@ sec "== 14c) the 3.0 rename left no old name behind — outside history and the 
 if [ -n "$SGR" ] && [ -d "$SGR/packaging" ] && [ -f "$SGR/VERSION" ] && [ -d "$SGR/kit" ] && [ -f "$SGR/packaging/build-plugin.sh" ]; then
   RN_ALLOW='CHANGELOG.md	192	history: every entry before 3.0 keeps the name it shipped under
 evals/results/*	6	history: recorded eval runs stay byte-for-byte
-README.md	34	prose outside the generated sections is rewritten in its own change (5R)
-README.tr.md	34	the same, Turkish
-README.npm.md	12	the same, npm page
+README.md	33	prose outside the generated sections is rewritten in its own change (5R)
+README.tr.md	33	the same, Turkish
+README.npm.md	11	the same, npm page
 adopt.sh	48	migration: finds and moves 2.x names (components, CLAUDE.md, board, auto-mode rules, variables)
 bin/cli.js	4	migration: add accepts a typed <x>-csk and moves an add record written under the old names
 */eval/doctor.sh	6	migration: PROOF-5 and the variable notice name what is still on the 2.x spelling
