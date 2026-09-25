@@ -31,12 +31,12 @@ It adds subagents, skills, slash commands and hooks to Claude Code: 12 specialis
 ## Quick start
 
 ```bash
-npx crewforth init              # set up a new project; you approve a summary before anything is written
-npx crewforth add <agent|skill> # copy one agent or skill into ./.claude instead of the full install
-npx crewforth studio            # open the Studio panel on your Claude Code sessions; installs nothing
+npx crewforth init              # set up a new project
+npx crewforth add <agent|skill> # add one agent or skill only
+npx crewforth studio            # open the Studio panel
 ```
 
-For an existing repository, `npx crewforth adopt` lands everything on a separate branch, staged and uncommitted; `main` is never touched. Then run `/crew-doctor` in Claude Code to confirm the setup.
+You approve a summary before anything is written, and `add` copies into `./.claude` without the full install. For an existing repository, `npx crewforth adopt` lands everything on a separate branch, staged and uncommitted; `main` is never touched. Then run `/crew-doctor` in Claude Code to confirm the setup.
 
 ## How a session flows
 

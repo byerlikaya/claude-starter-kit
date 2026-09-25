@@ -31,12 +31,12 @@ yöntemi taşıyan 40 skill, günlük akış için 11 slash komutu ve önemli ku
 ## Hızlı başlangıç
 
 ```bash
-npx crewforth init              # yeni proje kurar; hiçbir şey yazılmadan önce bir özeti onaylarsınız
-npx crewforth add <agent|skill> # tam kurulum yerine ./.claude içine tek bir ajan ya da skill kopyalar
-npx crewforth studio            # Claude Code oturumlarınızda Studio panelini açar; hiçbir şey kurmaz
+npx crewforth init              # yeni proje kurar
+npx crewforth add <agent|skill> # yalnız bir ajan ya da skill ekler
+npx crewforth studio            # Studio panelini açar
 ```
 
-Hâlihazırda çalışılan bir depoda `npx crewforth adopt` her şeyi ayrı bir dala, staged ve commit'lenmemiş olarak getirir; `main` dalına dokunulmaz. Ardından Claude Code'da `/crew-doctor` çalıştırıp kurulumu doğrulayın.
+Hiçbir şey yazılmadan önce bir özeti onaylarsınız; `add` tam kurulum yapmadan `./.claude` içine kopyalar. Hâlihazırda çalışılan bir depoda `npx crewforth adopt` her şeyi ayrı bir dala, staged ve commit'lenmemiş olarak getirir; `main` dalına dokunulmaz. Ardından Claude Code'da `/crew-doctor` çalıştırıp kurulumu doğrulayın.
 
 ## Bir oturum nasıl akar
 
