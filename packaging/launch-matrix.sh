@@ -58,6 +58,13 @@ step "second update" bash -c 'cd "$1" && npx --yes "$2" update --here --yes' _ "
 [ "$(tree "$U")" = "$H1" ] || die "a second update changed the tree"
 [ ! -e "$U/.claude/.state/whats-new.md" ] || die "a same-version update left a what's-new report with nothing new in it"
 
+# The CR counter is `tr`, not `grep -l $'\r'`: Git Bash's grep strips a trailing CR from the PATTERN as well as from
+# each line, so the one-character pattern becomes empty and matches every non-empty file (measured on Windows: 29 of
+# 29 clean files flagged, while tr counted 0). Calibrated here, on this platform, before it is trusted.
+has_cr(){ [ "$(tr -dc '\r' < "$1" | wc -c | tr -d ' ')" -gt 0 ]; }
+printf 'a\r\nb\r\n' > "$W/cal-crlf.sh"; printf 'a\nb\n' > "$W/cal-lf.sh"
+has_cr "$W/cal-crlf.sh" && ! has_cr "$W/cal-lf.sh" || die "the CR counter cannot tell a CRLF file from an LF one on this platform — the check would read nothing"
+
 # doctor, syntax, crlf — in both projects
 SH=0; CR=""
 for d in "$P" "$U"; do
@@ -65,7 +72,7 @@ for d in "$P" "$U"; do
   for f in "$d"/.claude/hooks/*.sh "$d"/.claude/hooks/pre-commit "$d"/.claude/hooks/commit-msg; do
     [ -f "$f" ] || continue; SH=$((SH + 1)); bash -n "$f" 2>"$W/syntax.err" || die "bash -n failed on ${f#"$W"/}: $(cat "$W/syntax.err")"
   done
-  while IFS= read -r f; do CR="$CR ${f#"$W"/}"; done < <(find "$d/.claude" -type f \( -name '*.sh' -o -name pre-commit -o -name commit-msg \) -exec grep -l $'\r' {} + 2>/dev/null || true)
+  while IFS= read -r f; do has_cr "$f" && CR="$CR ${f#"$W"/}"; done < <(find "$d/.claude" -type f \( -name '*.sh' -o -name pre-commit -o -name commit-msg \))
 done
 [ "$SH" -ge 20 ] || die "only $SH hook file(s) found across both installs — the installs broke, not the syntax"
 [ -z "$CR" ] || die "installed shell files carry CR:$CR"
