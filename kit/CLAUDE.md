@@ -1,7 +1,7 @@
 # CLAUDE.md — Working rules
 
 The discipline, identical in every project. The installer writes it to `.claude/DISCIPLINE.md`; your `./CLAUDE.md`
-imports it with one `@.claude/DISCIPLINE.md` line. **Kit-owned** — an update overwrites it, so put your own rules in
+imports it with one `@.claude/DISCIPLINE.md` line. **Crewforth-owned**: updates overwrite it, so put your own rules in
 `./CLAUDE.md`, where they win on conflict.
 
 ## Four working principles
@@ -215,7 +215,7 @@ For the skill format: ./.claude/AGENT_TEMPLATE.md.
 
 ## Conventions
 Commit **language** and message **format** are declared here, not in `.claude/DISCIPLINE.md` — that file is
-kit-owned and identical in every project, so it cannot know either. `commit-message` and `crew-commit-agent`
+Crewforth-owned and identical in every project, so it cannot know either. `commit-message` and `crew-commit-agent`
 read this section and follow it verbatim; with nothing declared they fall back to the skill's own defaults.
 - Commit language: <the project's established language — e.g. English, Turkish>
 - Commit format: <Conventional Commits `type(scope): summary` (default) — or your own, e.g. a ticket-prefixed
@@ -225,5 +225,5 @@ read this section and follow it verbatim; with nothing declared they fall back t
 ## Note
 Behavior · four principles · DoD · Prohibitions (§4) · session management · sources live in
 `.claude/DISCIPLINE.md`, pulled in by the `@.claude/DISCIPLINE.md` line at the top of this file. That file is
-kit-owned: an update overwrites it, so put **nothing** of your own there — this file is where your rules go, and
+Crewforth-owned: an update overwrites it, so put **nothing** of your own there — this file is where your rules go, and
 on conflict the rules here win. No dependency on Home (`~/.claude`) — everything stays inside the repo (handover §3).

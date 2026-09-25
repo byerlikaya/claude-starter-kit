@@ -36,11 +36,11 @@ summarizes what lives under `.claude/` and how it works.
   comes back. Silent when nothing is new, and silent without a `kit-manifest.txt` rather than guessing.
 - **settings.json** — permissions and the hook chain (PreToolUse · UserPromptSubmit · Stop · SessionStart).
 - **`DISCIPLINE.md`** — behavior, four principles, workflow, definition of done, token discipline, and prohibitions.
-  Kit-owned: an update **overwrites** it, so keep nothing of your own here. Your `./CLAUDE.md` pulls it in with a
+  Crewforth-owned: an update **overwrites** it, so keep nothing of your own here. Your `./CLAUDE.md` pulls it in with a
   single `@.claude/DISCIPLINE.md` line and holds your project rules, which win on conflict.
 - **`kit.conf`** — which installer ran and at what version. `stack=` is always `generic` since 3.0 (kept for older
   updaters); the project's stack itself lives in the `## Stack` section of `./CLAUDE.md`.
-- **`kit-manifest.txt`** — the component names Crewforth ships, one per line. It is what separates kit-owned from
+- **`kit-manifest.txt`** — the component names Crewforth ships, one per line. It is what separates Crewforth-owned from
   project-owned: `doctor.sh` reads it to find your own skills, and the trust gate reads it to spot a skill Crewforth
   never shipped. Rewritten on every install/update — don't edit it by hand.
 - **AGENT_TEMPLATE.md** — the contract for opening a new agent/skill.

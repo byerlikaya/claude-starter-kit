@@ -737,7 +737,7 @@ export class Canvas {
     const markEl = el.parts.mark;
     markEl.innerHTML = MARKS[source === 'kit' ? 'kit' : source === 'builtin' ? 'builtin' : source] ?? MARKS.builtin;
     markEl.classList.toggle('cv-mark-unknown', n.kind === 'agent' && !source);
-    markEl.setAttribute('aria-label', source === 'kit' ? 'kit agent' : 'built-in agent');
+    markEl.setAttribute('aria-label', source === 'kit' ? 'Crewforth agent' : 'built-in agent');
     el.dataset.source = source ?? 'unknown';
     // An agent type Crewforth never declared is marked, not quietly coloured in.
     typeEl.classList.toggle('cv-unknown', !known);

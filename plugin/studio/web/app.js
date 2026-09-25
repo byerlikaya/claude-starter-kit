@@ -924,7 +924,7 @@ function renderSessions(data) {
   projectsData = data;
   const t0 = data.totals ?? {};
   if (t0.kitInstalled) {
-    const bits = [`kit in ${t0.kitInstalled}`];
+    const bits = [`Crewforth in ${t0.kitInstalled}`];
     if (t0.kitOutdated) bits.push(`${t0.kitOutdated} behind ${data.latest?.version ?? '?'}`);
     if (t0.kitUncompared) bits.push(`${t0.kitUncompared} not compared`);
     el.kit.textContent = bits.join(' · ');
@@ -994,19 +994,19 @@ function paintProjects() {
       if (p.kit.compared === false) {
         k.classList.add('unknown');
         k.textContent = `${p.kit.version} ?`;
-        k.title = `kit ${p.kit.version} — not compared: ${p.kit.reason}`;
+        k.title = `Crewforth ${p.kit.version} — not compared: ${p.kit.reason}`;
       } else if (p.kit.outdated) {
         k.classList.add('old');
         k.textContent = `${p.kit.version} → ${p.kit.latest}`;
-        k.title = `kit ${p.kit.version} is behind ${p.kit.latest} — run /crew-update in this project`;
+        k.title = `Crewforth ${p.kit.version} is behind ${p.kit.latest} — run /crew-update in this project`;
       } else if (p.kit.ahead) {
         k.classList.add('ahead');
         k.textContent = p.kit.version;
-        k.title = `kit ${p.kit.version} is ahead of the published ${p.kit.latest}`;
+        k.title = `Crewforth ${p.kit.version} is ahead of the published ${p.kit.latest}`;
       } else {
         k.classList.add('ok');
         k.textContent = p.kit.version;
-        k.title = `kit ${p.kit.version} — current`;
+        k.title = `Crewforth ${p.kit.version} — current`;
       }
       counts.prepend(k);
     }

@@ -1991,7 +1991,7 @@ case "$o" in *"Crewforth updated"*) fail "stale gate leaked into the Stop payloa
 rm -f "$SD/VERSION"; run_cu >/dev/null 2>&1 && pass "stale gate: fails open when VERSION is absent" || fail "stale gate exited non-zero without VERSION"
 rm -rf "$SD"; rm -f "$SDFX" "${TMPDIR:-/tmp}/crew-kit-version.$SDSID"
 
-sec "== 6g2) stale-WIRING gate: a session resumed across a kit update runs the old hooks =="
+sec "== 6g2) stale-WIRING gate: a session resumed across a Crewforth update runs the old hooks =="
 # Measured on Windows: settings.json on disk had already been corrected and `--resume` still produced the error
 # naming the OLD, mangled hook path, while the same event in a fresh session was clean. So a resumed session
 # keeps the wiring it started with — and on the release that fixed that path, "the wiring it started with" means
@@ -2117,7 +2117,7 @@ BUDGET_AGENTS=5596   # 5d.2: tightened to the measured sum (was 5800 with 204 B 
                      # +crew-performance-expert (~426B) — security, privacy and tests each had an independent
                      # reviewer and performance was the one quality axis where the author audited their own
                      # work. Bought at ~110 tokens per session; the alternative was leaving that gap open.)
-BUDGET_SKILLS=10259 # 5d.2: tightened to the measured size (10265 → 10259: two descriptions lost a stale word). Before that:
+BUDGET_SKILLS=10255 # 5R.4: 10259 → 10255 (crew-update: "a newer version"). 5d.2: tightened to the measured size (10265 → 10259: two descriptions lost a stale word). Before that:
                     # 3.0: commands merged into skills — 661 B previously in the listing but uncounted, not new content:
                     # the six model-invocable commands (doctor 136 · handoff 91 · plan 151 · review 82 · ship 78 ·
                     # update 123) now live in skills/, where this sum sees them. The five user-only ones
@@ -4167,7 +4167,7 @@ if [ "$IS_KIT" = 1 ]; then
   for s in start.sh adopt.sh; do
     grep -q 'kit-manifest\.txt' "$(cd "$ROOT/.." && pwd)/$s" \
       && pass "$s writes .claude/kit-manifest.txt" \
-      || fail "$s does not write the install manifest — kit-owned vs project-owned becomes unknowable"
+      || fail "$s does not write the install manifest — Crewforth-owned vs project-owned becomes unknowable"
   done
 else
   skip scope "start.sh glob check skipped (installed project — start.sh is removed post-install)"
@@ -4219,7 +4219,7 @@ bash "$ROOT/eval/scan-skill.sh" "$SCX/skills/one/SKILL.md" >/dev/null 2>&1 \
   && fail "scan-skill PASSED the reader-then-path exfil form" || pass "scan-skill: reader-then-path exfil still caught"
 rm -rf "$SCX"
 
-sec "== 7g) adopt.sh settings merge is HOOK-AWARE (updates refresh kit hooks, preserve custom) =="
+sec "== 7g) adopt.sh settings merge is HOOK-AWARE (updates refresh Crewforth hooks, preserve custom) =="
 # Regression guard for the stale-settings bug: on update Crewforth OWNS its hooks, so a new event (SessionStart)
 # must get wired and a stale kit entry (old timeout) refreshed, WITHOUT duplicating hooks or dropping the
 # project's own custom hooks. The merge is ONE awk program that adopt.sh runs and the payload ships
@@ -4235,7 +4235,7 @@ else
   if awk -v op=merge -f "$SJ" "$KSET" "$MTMP/old.json" > "$MTMP/out.json" 2>/dev/null && [ -s "$MTMP/out.json" ]; then
     _g(){ awk -v op="$1" -v path="$2" -f "$SJ" "$3" 2>/dev/null; }
     KSS="$(_g get hooks.SessionStart "$KSET")"; MSS="$(_g get hooks.SessionStart "$MTMP/out.json")"
-    [ -n "$KSS" ] && [ "$KSS" = "$MSS" ] && pass "merge: new event (SessionStart) gets wired on update, with every kit hook on it" || fail "merge: SessionStart wiring differs from Crewforth's — expected $KSS, got $MSS"
+    [ -n "$KSS" ] && [ "$KSS" = "$MSS" ] && pass "merge: new event (SessionStart) gets wired on update, with every Crewforth hook on it" || fail "merge: SessionStart wiring differs from Crewforth's — expected $KSS, got $MSS"
     UPSL="$(_g len hooks.UserPromptSubmit "$MTMP/out.json")"; KTO="$(_g get hooks.UserPromptSubmit.0.hooks.0.timeout "$KSET")"
     MTO="$(_g get hooks.UserPromptSubmit.0.hooks.0.timeout "$MTMP/out.json")"; PTU="$(_g get hooks.PostToolUse.0.hooks.0.command "$MTMP/out.json")"
     [ "$UPSL" = 1 ] && pass "merge: no duplicate hook after update (stale kit entry dropped)" || fail "merge: duplicate UserPromptSubmit hook survived ($UPSL)"
@@ -6183,9 +6183,35 @@ $(printf '%s\n' "$_kh" | head -n 6 | sed 's/^/       /')"
   elif [ "$(kit_phrase "$_kt/bad.md" | grep -c .)" != 3 ]; then fail "the phrase check did not catch all three planted forms (the X / This X / the X's) — it reads nothing"
   elif [ -n "$(kit_phrase "$_kt/good.md")" ]; then fail "the phrase check flagged a path, the sentinel or a code block: $(kit_phrase "$_kt/good.md" | head -n 1)"
   else pass "none of the three old-name phrases in the prose of $_kn text files under kit/ and plugin/; three planted forms are caught, a path, the sentinel and a code block are not"; fi
+  # 5R.4: the old name as an ADJECTIVE — <old>-owned, <old> version(s), agent(s), rule(s), hook(s), update(s), file(s),
+  # discipline. Scope is what a user reads: Markdown prose (not code blocks or HTML comments), and in scripts and the
+  # Studio sources only the quoted strings of non-comment lines, so a label or an aria-label counts and an identifier
+  # (source === '<old>', crew-<old>-version, <old>.conf) or a comment does not.
+  kit_adj(){ awk -v k="$_kw" '
+    FNR == 1 { fence = 0; hc = 0; md = (FILENAME ~ /\.md$/) }
+    md && /^[[:space:]]*```/ { fence = !fence; next }
+    fence { next }
+    md && /<!--/ { hc = 1 }  md && hc { if (/-->/) hc = 0; next }
+    { if (md) txt = $0
+      else { if ($0 ~ /^[[:space:]]*(#|\/\/|\/?\*)/) next
+             s = $0; sub(/[[:space:]]+(#|\/\/)[[:space:]].*$/, "", s); txt = ""
+             while (match(s, /'\''[^'\'']*'\''|"[^"]*"|`[^`]*`/)) { txt = txt " " substr(s, RSTART, RLENGTH); s = substr(s, RSTART + RLENGTH) } }
+      if (tolower(txt) ~ ("(^|[^a-z0-9_./-])" k "[- ](owned|versions?|agents?|rules?|hooks?|updates?|files?|discipline)([^a-z]|$)"))
+        print FILENAME ":" FNR ": " $0 }' "$@" 2>/dev/null; }
+  # shellcheck disable=SC2086 # paths without spaces in this repository
+  _ka="$(kit_adj $_kf | sed "s|$KR/||")"
+  printf '**%s-owned**: updates overwrite it.\nOnce per %s version.\n' "$_kw" "$_kw" > "$_kt/adj-bad.md"
+  printf "el.setAttribute('aria-label', 'x' ? '%s agent' : 'y');\n" "$_kw" > "$_kt/adj-bad.js"
+  printf "case \"\$f\" in x) continue ;; esac   # %s agents only\nif (source === '%s') m = 1;\nf='crew-%s-version'; g='%s.conf'\n" "$_kw" "$_kw" "$_kw" "$_kw" > "$_kt/adj-good.sh"
+  printf '```bash\n# %s hooks in a code block\n```\n<!-- a %s file note in a comment -->\n' "$_kw" "$_kw" > "$_kt/adj-good.md"
+  if [ -n "$_ka" ]; then fail "installed text or a Studio label uses the old name as an adjective — say Crewforth:
+$(printf '%s\n' "$_ka" | head -n 6 | sed 's/^/       /')"
+  elif [ "$(kit_adj "$_kt/adj-bad.md" "$_kt/adj-bad.js" | grep -c .)" != 3 ]; then fail "the adjective check did not catch all three planted uses (Markdown owned + version, a JS aria-label) — it reads nothing"
+  elif [ -n "$(kit_adj "$_kt/adj-good.sh" "$_kt/adj-good.md")" ]; then fail "the adjective check flagged a comment, an identifier or a code block: $(kit_adj "$_kt/adj-good.sh" "$_kt/adj-good.md" | head -n 1)"
+  else pass "no old-name adjective (-owned, version, agent, rules, hooks, update, files, discipline) in the prose and strings of $_kn files under kit/ and plugin/; a planted label and two prose uses are caught, comments, identifiers and code blocks are not"; fi
   rm -rf "$_kt"
 else
-  skip scope "installed-text wording check skipped (installed project — kit/ and plugin/ live in the source repository)"
+  skip scope "installed-text wording checks skipped (installed project — kit/ and plugin/ live in the source repository)" 2
 fi
 
 sec "== 15) evals: the parallel-audit metric, because a rule nobody can measure is not a rule =="
