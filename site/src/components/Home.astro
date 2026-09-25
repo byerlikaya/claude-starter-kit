@@ -28,7 +28,7 @@ const { d } = Astro.props;
   <section class="cf-crew">
     <h2>{d.crew.heading}</h2>
     <p class="cf-dim">{d.crew.lead}</p>
-    <div class="cf-stages">
+    <div class="cf-stages" style={`--cf-chip-chars: ${d.crew.chipChars}`}>
       {d.crew.stages.map((s) => (
         <div class="cf-card">
           <span class="cf-label">{s.label}</span>
@@ -55,7 +55,7 @@ const { d } = Astro.props;
 
   <section class="cf-install">
     <h2>{d.install.heading}</h2>
-    <div class="cf-three">
+    <div class="cf-channels">
       {d.install.cards.map((c) => (
         <div class="cf-card">
           <span class="cf-label">{c.title}</span>
@@ -63,6 +63,7 @@ const { d } = Astro.props;
         </div>
       ))}
     </div>
+    <p><a href={d.install.archive.href}>{d.install.archive.text}</a></p>
     <p class="cf-dim">{d.install.update}</p>
   </section>
 
@@ -117,19 +118,24 @@ const { d } = Astro.props;
   .cf-label { font-size: 12px; line-height: 16px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--cf-accent); }
   .cf-stages { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
   .cf-agents, .cf-rules { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
-  .cf-agents code { font-size: 13px; white-space: nowrap; }
+  /* Chips shrink to fit their card rather than break: the longest name (--cf-chip-chars, from the source) sets the
+     size, capped at 13px. 0.62em is the monospace advance measured here, plus 1em for the chip's padding and border. */
+  .cf-agents { container-type: inline-size; }
+  .cf-home .cf-stages .cf-agents code { font-size: min(13px, calc(100cqi / (var(--cf-chip-chars) * 0.62 + 1))); white-space: nowrap; }
   /* not-content drops Starlight's inline-code look with its spacing; the prose here still wants the former. */
   .cf-home :global(code:not(.cf-cmd-text)) { background: var(--sl-color-bg-inline-code); border: 1px solid var(--sl-color-hairline-light); border-radius: var(--cf-radius-sm); padding: 0.1em 0.35em; font-size: 0.875em; }
   .cf-rules li { padding-left: 16px; position: relative; }
   .cf-rules li::before { content: '›'; position: absolute; left: 0; color: var(--cf-accent); }
   .cf-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  .cf-three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
+  .cf-install p { margin: 0; }
+  .cf-install p + p { margin-top: 8px; }
+  .cf-channels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
   .cf-block { display: block; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .cf-foot { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; border-top: 1px solid var(--cf-line); padding-top: 24px; color: var(--cf-ink-dim); }
   @media (max-width: 1100px) { .cf-stages { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   @media (max-width: 768px) {
     .cf-title { font-size: 36px; line-height: 42px; }
     .cf-start { flex-direction: column; align-items: stretch; }
-    .cf-stages, .cf-pair, .cf-three { grid-template-columns: 1fr; }
+    .cf-stages, .cf-pair, .cf-channels { grid-template-columns: 1fr; }
   }
 </style>

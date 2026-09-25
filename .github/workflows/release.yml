@@ -2,8 +2,8 @@ name: release
 
 # Cut a release by bumping VERSION + package.json, committing, then:
 #   git tag vX.Y.Z && git push origin main --tags
-# This workflow then: builds the tarball + GitHub release, publishes to npm,
-# and bumps the Homebrew formula in byerlikaya/homebrew-tap — all automatically.
+# This workflow then builds the tarball + GitHub release and publishes to npm,
+# all automatically.
 
 on:
   push:
@@ -81,7 +81,6 @@ jobs:
             echo "## Install"
             echo
             echo "- **npx** — \`npx crewforth\` (fresh) · \`npx crewforth adopt\` (existing)"
-            echo "- **Homebrew** — \`brew install byerlikaya/tap/crewforth\`"
             echo "- **Claude Code plugin** — \`/plugin marketplace add Crewforth/crewforth\` -> \`/plugin install crewforth@crewforth\`"
             echo "- **Tarball** — download below, then \`bash start.sh\` (fresh) or \`bash adopt.sh\` (existing)"
             echo
@@ -135,29 +134,6 @@ jobs:
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Bump Homebrew formula
-        env:
-          TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
-        run: |
-          V="${{ steps.v.outputs.version }}"
-          SHA="$(sha256sum "dist/crewforth-${V}.tgz" | awk '{print $1}')"
-          git clone "https://x-access-token:${TAP_TOKEN}@github.com/byerlikaya/homebrew-tap.git" tap
-          F="tap/Formula/crewforth.rb"
-          # Publish THIS repo's formula, do not patch the tap's copy. The previous version rewrote only url,
-          # sha256 and version, so the tap kept whatever install logic it was created with — and it kept
-          # `update.sh` long after that script was renamed to adopt.sh. The tarball has never contained
-          # update.sh (make-release.sh restricts it), so `brew install` could not work, and nothing noticed
-          # because the formula in this repo was read by nobody. The repo is the source of truth now.
-          cp packaging/homebrew/crewforth.rb "$F"
-          sed -i -E "s#/releases/download/v[0-9.]+/crewforth-[0-9.]+\.tgz#/releases/download/v${V}/crewforth-${V}.tgz#" "$F"
-          sed -i -E "s#sha256 \"[0-9a-f]{64}\"#sha256 \"${SHA}\"#" "$F"
-          sed -i -E "s#version \"[0-9.]+\"#version \"${V}\"#" "$F"
-          cd tap
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -am "crewforth ${V}"
-          git push
 
   # crewforth.com, built from this tag and published through GitHub Pages. OFF by default: it runs only when the
   # repository variable SITE_DEPLOY is 1. Until the Pages source is set to "GitHub Actions" (a 5b step) the deploy

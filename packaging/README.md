@@ -22,21 +22,6 @@ npx crewforth adopt      # existing project (adopt.sh handover)
 
 > Published as `crewforth` — scoped under the author, because the unscoped `crewforth` is taken and npm's name-similarity check blocks close variants. A scoped name sidesteps both. Users run `npx crewforth`.
 
-## Homebrew (tap)
-
-`homebrew/crewforth.rb` is the formula.
-
-1. Create a repo named `homebrew-tap` (e.g. `github.com/byerlikaya/homebrew-tap`).
-2. Add the formula at `Formula/crewforth.rb`.
-3. Users install:
-
-```bash
-brew install byerlikaya/tap/crewforth
-crewforth            # fresh project    ·    crewforth adopt    # existing project
-```
-
-The formula's `sha256` is pinned to the **v1.0.0** release tarball. If that tarball ever changes, recompute it (`shasum -a 256 crewforth-1.0.0.tgz`) and update both the `url`/`version` and the `sha256`. To host the tarball off GitHub, point `url` at your own CDN.
-
 ## Release tarball / curl — no package manager
 
 ```bash
@@ -56,12 +41,11 @@ git tag vX.Y.Z
 git push origin main --tags
 ```
 
-On the tag, the workflow builds the tarball, creates the GitHub release, runs `npm publish`, and bumps the Homebrew formula in `byerlikaya/homebrew-tap` — all automatically. It first checks that `VERSION` matches the tag.
+On the tag, the workflow builds the tarball, creates the GitHub release, and runs `npm publish`, all automatically. It first checks that `VERSION` matches the tag.
 
 **One-time secrets** (repo → Settings → Secrets and variables → Actions → New repository secret):
 
 - `NPM_TOKEN` — an npm **Automation** access token (npmjs.com → Access Tokens → Generate New Token → *Automation*). Automation tokens bypass 2FA, which an interactive `--otp` cannot do in CI.
-- `TAP_TOKEN` — a GitHub token with write access to `byerlikaya/homebrew-tap` (a classic PAT with `repo` scope, or a fine-grained token with *Contents: read and write* on that repo). Used to push the formula bump.
 
 ## Claude Code plugin (lite channel)
 

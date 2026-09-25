@@ -17,7 +17,7 @@ One name everywhere: the package, the components, the variables, the payload. **
 | `npx @byerlikaya/claude-starter-kit` | `npx crewforth` |
 | `@byerlikaya/csk-studio` · `csk-studio` | `@crewforth/studio` · `crewforth-studio` |
 | plugin `claude-starter-kit@byerlikaya` | `crewforth@crewforth` — reinstall: `/plugin install crewforth@crewforth` |
-| `brew install byerlikaya/tap/claude-starter-kit` | `brew install byerlikaya/tap/crewforth` |
+| `brew install byerlikaya/tap/claude-starter-kit` | removed — see *Removed — the Homebrew channel* below |
 | agents `<x>-csk` (`backend-expert-csk`) | `crew-<x>` (`crew-backend-expert`) |
 | commands `/<x>-csk` (`/review-csk`, `/ship-csk`) | `/crew-<x>` (`/crew-review`, `/crew-ship`) |
 | skill `code-review-csk` | `crew-code-review` |
@@ -60,6 +60,11 @@ One name everywhere: the package, the components, the variables, the payload. **
 - **Auto-mode rules applied by 2.x** (`CSK …` in your user settings) are renamed `Crewforth …` by the update, after
   a backup; nothing else in that file changes.
 - **Fixed:** an update appended `docs/` to `.gitignore` again on every run when `docs/` held tracked files.
+
+### Removed — the Homebrew channel
+
+- Removed: the Homebrew channel. Install with `npx crewforth`, the Claude Code plugin, or the release archive. The
+  last formula (`claude-starter-kit`, 2.13.0) stays in the old tap and will be marked deprecated.
 
 ### BREAKING — the backend is stack-agnostic; the .NET install path is gone
 

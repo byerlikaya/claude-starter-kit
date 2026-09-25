@@ -1570,23 +1570,27 @@ if [ "$IS_KIT" = 1 ]; then
   grep -q 'N_AG="$(count_installed' "$KR/start.sh" 2>/dev/null \
     && pass "start.sh derives its summary counts from the payload" \
     || fail "start.sh no longer derives its summary counts from the payload"
-  # The Homebrew formula names the files it installs, and make-release.sh restricts what the tarball may
-  # contain. Those two lists drifted apart and stayed apart: the published formula installed `update.sh` for
-  # releases after that script became adopt.sh, so `brew install` could not succeed. Nothing compared them.
-  FRM="$KR/packaging/homebrew/crewforth.rb"
-  if [ -f "$FRM" ] && [ -f "$KR/make-release.sh" ]; then
-    BAD=""
-    for f in $(sed -n 's/.*libexec\.install \(.*\)/\1/p' "$FRM" | tr -d '"' | tr ',' ' '); do
-      [ -e "$KR/$f" ] || BAD="$BAD $f"
-    done
-    if [ -n "$BAD" ]; then
-      fail "Homebrew formula installs file(s) the release tarball cannot contain:$BAD"
+  # Crewforth installs through npx, the Claude Code plugin or the release archive; the Homebrew channel was
+  # removed. A line that tells a reader to `brew install` Crewforth, or names the old tap, points at a formula
+  # nobody maintains. `brew install node` and other tools stay: those install something else. The CHANGELOG is
+  # history and may say the channel existed. The patterns are split so this file does not match itself.
+  _brew_re='brew[[:space:]]+install[^|`]*crew''forth|byerlikaya/ta''p([^a-z]|$)'
+  _brew_twin_hit="$(printf '%s\n' "bre""w install byerlikaya/ta""p/crewforth" "run bre""w install crew""forth" "see byerlikaya/ta""p" | grep -ciE "$_brew_re")"
+  _brew_twin_ok="$(printf '%s\n' "macOS: brew install node" "brew install coreutils gives gtimeout" "byerlikaya/homebrew-tapestry" | grep -ciE "$_brew_re")"
+  if [ "$_brew_twin_hit" != 3 ] || [ "$_brew_twin_ok" != 0 ]; then
+    fail "Homebrew-channel check cannot tell its twins apart (planted: $_brew_twin_hit of 3 caught, clean: $_brew_twin_ok of 0 flagged) — it reads nothing"
+  elif git -C "$KR" rev-parse --git-dir >/dev/null 2>&1; then
+    _brew_n="$(git -C "$KR" ls-files | grep -vc '^CHANGELOG\.md$')"
+    _brew_hits="$(git -C "$KR" grep -niIE "$_brew_re" -- . ':!CHANGELOG.md' 2>/dev/null)"
+    if [ "$_brew_n" -lt 100 ]; then
+      fail "FIXTURE: git listed $_brew_n tracked file(s) — the Homebrew-channel check measured nothing"
+    elif [ -n "$_brew_hits" ]; then
+      fail "Crewforth is offered through Homebrew again (the channel was removed): $(printf '%s\n' "$_brew_hits" | head -3 | tr '\n' ' ')"
     else
-      pass "Homebrew formula installs only files that ship in the tarball"
+      pass "no file offers Crewforth through Homebrew or names the old tap ($_brew_n tracked files, CHANGELOG exempt; twins 3/3 caught, 0/3 flagged)"
     fi
-    grep -q 'cp packaging/homebrew/crewforth.rb' "$KR/.github/workflows/release.yml" 2>/dev/null \
-      && pass "release publishes this repo's formula (not a patch of the tap's copy)" \
-      || fail "release.yml patches the tap formula instead of publishing this repo's — install logic cannot reach users"
+  else
+    skip scope "Homebrew-channel check not run — not a git checkout of Crewforth's source"
   fi
   # The npm wrapper prints its own usage, and it advertised --backend/--frontend/--mobile/--fullstack as the
   # primary form for a release that no longer has profiles. A user reads `--help` before the README.
@@ -5820,11 +5824,11 @@ fi
 # The shipped-path check above covers what a user receives. Crewforth's own tooling has a second set: files that bash
 # sources, runs or splits here, and whose trailing CR changes an answer. A `core.autocrlf=true` clone of the tree
 # checked out 38 files CRLF, among them every evals/cases/*/case.env (sourced by evals/run.sh), the Turkish summaries
-# (the catalogue step then failed: README.tr.md "out of sync"), the Homebrew formula (its install list parsed to the
-# path `VERSION\r`) and the workflows (whose `run:` blocks this suite executes). Asked of the attributes, as above, so
+# (the catalogue step then failed: README.tr.md "out of sync"), the Homebrew formula of the time (its install list
+# parsed to the path `VERSION\r`) and the workflows (whose `run:` blocks this suite executes). Asked of the attributes, as above, so
 # the answer reads the working tree's .gitattributes and does not depend on the platform running the suite.
 if [ -n "$SGR" ] && [ -f "$SGR/.gitattributes" ] && [ -d "$SGR/evals/cases" ] && [ -f "$SGR/VERSION" ] && [ -d "$SGR/kit" ]; then
-  BSPEC="evals .github/workflows packaging/homebrew packaging/skill-summaries.tr.tsv :(glob)**/*.sh"
+  BSPEC="evals .github/workflows packaging/skill-summaries.tr.tsv :(glob)**/*.sh"
   # shellcheck disable=SC2086 # BSPEC is a list of pathspecs, split on purpose
   BLIST="$(git -C "$SGR" ls-files --eol -- $BSPEC 2>/dev/null)"
   BN="$(printf '%s\n' "$BLIST" | grep -c .)"
@@ -5833,11 +5837,11 @@ if [ -n "$SGR" ] && [ -f "$SGR/.gitattributes" ] && [ -d "$SGR/evals/cases" ] &&
     fail "git did not list evals/cases/*/case.env or packaging/skill-summaries.tr.tsv, so the tooling eol check measured nothing ($BN files listed)"
   else
     BUNPIN="$(printf '%s\n' "$BLIST" | awk -F'\t' '{ split($1, f, " "); if (f[1] != "i/-text" && f[1] != "i/none" && f[1] != "i/" && $1 !~ /eol=lf/) print $2 }')"
-    [ -z "$BUNPIN" ] && pass "every file bash reads in Crewforth's tooling is pinned to LF ($BN of $BN: evals, workflows, formula, summaries, *.sh)" \
+    [ -z "$BUNPIN" ] && pass "every file bash reads in Crewforth's tooling is pinned to LF ($BN of $BN: evals, workflows, summaries, *.sh)" \
                      || fail "files bash reads with no eol=lf pin — a core.autocrlf=true checkout gives them CRLF: $(printf '%s\n' "$BUNPIN" | head -5 | tr '\n' ' ')($(printf '%s\n' "$BUNPIN" | wc -l | tr -d ' ') of $BN)"
   fi
 else
-  skip scope "eol pins on Crewforth's tooling (evals, workflows, formula) not checked — not a git checkout of Crewforth's source"
+  skip scope "eol pins on Crewforth's tooling (evals, workflows) not checked — not a git checkout of Crewforth's source"
 fi
 
 sec "== 14b) the star line (once, on a first install) and the front page it points at =="
@@ -5957,7 +5961,7 @@ sec "== 14c) the 3.0 rename left no old name behind — outside history and the 
 # more old name in it is red too, and a removed one asks for the pin to come down. An entry that allows nothing is
 # a failure as well, so the list cannot quietly rot.
 if [ -n "$SGR" ] && [ -d "$SGR/packaging" ] && [ -f "$SGR/VERSION" ] && [ -d "$SGR/kit" ] && [ -f "$SGR/packaging/build-plugin.sh" ]; then
-  RN_ALLOW='CHANGELOG.md	192	history: every entry before 3.0 keeps the name it shipped under
+  RN_ALLOW='CHANGELOG.md	193	history: every entry before 3.0 keeps the name it shipped under
 evals/results/*	6	history: recorded eval runs stay byte-for-byte
 adopt.sh	48	migration: finds and moves 2.x names (components, CLAUDE.md, board, auto-mode rules, variables)
 bin/cli.js	4	migration: add accepts a typed <x>-csk and moves an add record written under the old names
