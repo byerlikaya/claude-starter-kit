@@ -47,7 +47,7 @@ jobs:
             exit 1
           fi
 
-      - name: Verify the README skill catalogue is in sync
+      - name: Verify the skill catalogue (site/content) is in sync
         run: bash packaging/build-readme-catalog.sh --check
 
       # The published site is the one artifact with no source here and no build step, so nothing but this

@@ -1707,18 +1707,19 @@ if [ "$IS_KIT" = 1 ]; then
   for h in "$ROOT"/hooks/*.sh; do
     [ -e "$h" ] || continue
     hn="$(basename "$h")"
-    if grep -q "$hn" "$KR/README.md" && grep -q "$hn" "$KR/README.tr.md"; then
-      pass "hooks/$hn is documented in both READMEs"
+    # The hook list moved from the READMEs to the site's gates pages in the 3.0 rewrite; the rule did not move.
+    if grep -q "$hn" "$KR/site/content/en/gates.md" && grep -q "$hn" "$KR/site/content/tr/gates.md"; then
+      pass "hooks/$hn is documented on both gates pages (site/content/*/gates.md)"
     else
-      fail "hooks/$hn ships but is not documented in both READMEs"
+      fail "hooks/$hn ships but is not documented on both gates pages (site/content/*/gates.md)"
     fi
   done
   # ...and the COUNT beside that table, which is a separate claim and drifted on its own: the READMEs said 8 while
   # the table listed 9 and the directory held 9. Documenting each hook does not keep the number honest — a reader
   # takes "All 8 hooks" as the total without counting rows, exactly like the agent count and the site version.
   TH="$(ls "$ROOT"/hooks/*.sh 2>/dev/null | wc -l | tr -d ' ')"
-  for r in README.md README.tr.md; do
-    [ -f "$KR/$r" ] || continue
+  for r in site/content/en/gates.md site/content/tr/gates.md; do
+    [ -f "$KR/$r" ] || { fail "$r is missing — the hook list and count live there"; continue; }
     # The LABEL is not the claim; the number beside it is. Pinning one spelling made this fail on a Turkish
     # rewrite that corrected `**Hook'lar** | 12 |` to `**Hook** | 12 |` — which is the right Turkish, since a
     # count is not followed by a plural suffix. Accept any of the spellings and keep asserting the count.
@@ -1802,7 +1803,7 @@ if [ "$IS_KIT" = 1 ]; then
   # silently drops one fails here instead of on the front page.
   for svg in network-en network-tr orchestration-en orchestration-tr; do
     F="$KR/assets/$svg.svg"
-    [ -f "$F" ] || { fail "assets/$svg.svg missing — the README embeds it"; continue; }
+    [ -f "$F" ] || { fail "assets/$svg.svg missing — site/content/*/skills.md embeds it"; continue; }
     MISSING=""
     for a in "$AGENTS"/*.md; do
       [ -e "$a" ] || continue
@@ -1818,7 +1819,7 @@ if [ "$IS_KIT" = 1 ]; then
   # The READMEs state the full (fullstack) agent count in prose. A stale one there is the first thing a reader sees.
   for r in README.md README.tr.md README.npm.md; do
     [ -f "$KR/$r" ] || continue
-    if grep -qE "(^|[^0-9])$TA (specialist agents|uzman agent|namespaced agents)" "$KR/$r"; then
+    if grep -qE "(^|[^0-9])$TA (specialist agents|uzman ajan|uzman agent|namespaced agents)" "$KR/$r"; then
       pass "$r states the real agent count ($TA)"
     else
       fail "$r does not state $TA agents — the prose count drifted from the payload"
@@ -5268,7 +5269,7 @@ if [ "$IS_KIT" = 1 ]; then
   # 8 against 10 shipped — the drift this gate exists for, sitting on the page npm renders.
   for r in README.md README.tr.md README.npm.md; do
     [ -f "$KR/$r" ] || continue
-    grep -qE "(\*\*Slash commands\*\*|\*\*Slash komutu\*\*) \| $TC \||\*\*$TC slash commands\*\*" "$KR/$r" \
+    grep -qE "(\*\*Slash commands\*\*|\*\*Slash komutu\*\*) \| $TC \||\*\*$TC slash commands\*\*|\*\*$TC slash komutu\*\*" "$KR/$r" \
       && pass "$r states the real slash-command count ($TC)" \
       || fail "$r does not state $TC slash commands — the count drifted from the command skills"
     # ...and every command must actually be listed beside that number, or the count is right and the list is stale.
@@ -5866,22 +5867,38 @@ fi
 # The front page. Kit repo only: an installed project has no README of ours.
 if [ "$IS_KIT" = 1 ]; then
   KR="$(cd "$ROOT/.." && pwd)"
+  # THE FRONT PAGE'S ORDER, pinned (3.0 rewrite, Barış's decision): the definition sentence, then the panel GIF,
+  # then the quick start with `npx crewforth init` — and the GIF only once, since the Studio section is text.
+  # The npm page has no GIF; its definition still comes before the install line. Order is read by line number, so
+  # a page that has all three pieces in the wrong order is red, not green.
+  fp_order(){ # $1 file  $2 definition sentence  $3 1 = the GIF must sit between the two -> problems, ;-separated
+    awk -v d="$2" -v g="$3" '
+      !dl && index($0,d) {dl=NR}
+      index($0,"studio-flow.gif") {if(!gl) gl=NR; gn++}
+      !ql && index($0,"npx crewforth init") {ql=NR}
+      END { if(!dl) print "no definition sentence"; if(!ql) print "no npx crewforth init"
+            if(dl && ql && ql<dl) print "quick start above the definition"
+            if(g==1) { if(!gl) print "no studio-flow.gif"; else if(gn>1) print "studio-flow.gif shown " gn " times"
+                       else if(dl && ql && (gl<dl || gl>ql)) print "GIF not between the definition and the quick start" } }' "$1" 2>/dev/null | tr '\n' ';'; }
+  FP_EN="Crewforth is your engineering crew for Claude Code."; FP_TR="Crewforth, Claude Code için mühendislik ekibinizdir."
   _fp=""
-  for _rf in README.md README.tr.md; do
-    _top="$(awk '/^---$/{exit} {print}' "$KR/$_rf" 2>/dev/null)"
-    case "$_top" in *"npx crewforth"*) ;; *) _fp="$_fp $_rf(no npx crewforth)" ;; esac
-    case "$_top" in *"studio-flow.gif"*) ;; *) _fp="$_fp $_rf(no studio-flow.gif)" ;; esac
-  done
-  case "$(awk '/^## /{exit} {print}' "$KR/README.npm.md" 2>/dev/null)" in *"npx crewforth"*) ;; *) _fp="$_fp README.npm.md(no npx crewforth)" ;; esac
-  [ -z "$_fp" ] && pass "all three READMEs open with npx crewforth, and both GitHub READMEs show the panel GIF above the first rule" \
-                || fail "front page is missing its install line or GIF:$_fp"
+  _o="$(fp_order "$KR/README.md" "$FP_EN" 1)";     [ -z "$_o" ] || _fp="$_fp README.md($_o)"
+  _o="$(fp_order "$KR/README.tr.md" "$FP_TR" 1)";  [ -z "$_o" ] || _fp="$_fp README.tr.md($_o)"
+  _o="$(fp_order "$KR/README.npm.md" "$FP_EN" 0)"; [ -z "$_o" ] || _fp="$_fp README.npm.md($_o)"
+  # Must-fail twin: the same README with the GIF moved to the end must be read as out of order.
+  _fpt="$(mktemp)"; grep -v 'studio-flow.gif' "$KR/README.md" > "$_fpt"; grep 'studio-flow.gif' "$KR/README.md" >> "$_fpt"
+  if [ -n "$_fp" ]; then fail "front page order is wrong:$_fp"
+  elif [ -z "$(fp_order "$_fpt" "$FP_EN" 1)" ]; then fail "the front-page check passed a README whose GIF was moved below the quick start — it reads nothing"
+  else pass "front page: definition → GIF → npx crewforth init on both GitHub READMEs (GIF once), definition before install on npm; a GIF moved below is caught"; fi
+  rm -f "$_fpt"
   # Every assets/ file a README points at exists — src=, srcset= and the npm README's absolute raw URL alike.
   # The count is printed: "no broken image" means nothing unless it says how many references it looked at.
-  _refs="$(grep -ohE 'assets/[A-Za-z0-9._/-]+\.(svg|png|gif|jpg)' "$KR/README.md" "$KR/README.tr.md" "$KR/README.npm.md" 2>/dev/null | sort -u)"
+  # The site pages count too: the diagrams moved there, and "at least 5" still has to mean something.
+  _refs="$(grep -ohE 'assets/[A-Za-z0-9._/-]+\.(svg|png|gif|jpg)' "$KR/README.md" "$KR/README.tr.md" "$KR/README.npm.md" "$KR"/site/content/*/*.md 2>/dev/null | sort -u)"
   _nref="$(printf '%s\n' "$_refs" | grep -c .)"; _miss=""
   for _a in $_refs; do [ -f "$KR/$_a" ] || _miss="$_miss $_a"; done
-  if [ "$_nref" -lt 5 ]; then fail "README asset scan found only $_nref reference(s) — the extractor is broken, not the READMEs"
-  elif [ -z "$_miss" ]; then pass "every README asset reference resolves ($_nref of $_nref distinct files exist)"
+  if [ "$_nref" -lt 5 ]; then fail "README + site asset scan found only $_nref reference(s) — the extractor is broken, not the pages"
+  elif [ -z "$_miss" ]; then pass "every README and site-page asset reference resolves ($_nref of $_nref distinct files exist)"
   else fail "README points at missing assets:$_miss"; fi
 else
   skip scope "front-page checks skipped (installed project — the READMEs live in the kit repo)" 2
@@ -5898,9 +5915,6 @@ sec "== 14c) the 3.0 rename left no old name behind — outside history and the 
 if [ -n "$SGR" ] && [ -d "$SGR/packaging" ] && [ -f "$SGR/VERSION" ] && [ -d "$SGR/kit" ] && [ -f "$SGR/packaging/build-plugin.sh" ]; then
   RN_ALLOW='CHANGELOG.md	192	history: every entry before 3.0 keeps the name it shipped under
 evals/results/*	6	history: recorded eval runs stay byte-for-byte
-README.md	33	prose outside the generated sections is rewritten in its own change (5R)
-README.tr.md	33	the same, Turkish
-README.npm.md	11	the same, npm page
 adopt.sh	48	migration: finds and moves 2.x names (components, CLAUDE.md, board, auto-mode rules, variables)
 bin/cli.js	4	migration: add accepts a typed <x>-csk and moves an add record written under the old names
 evals/run.sh	4	compat: reads the 2.x trusted eval parent when the 3.0 one is absent — removed in 4.0
@@ -5952,6 +5966,71 @@ EOF
     || fail "allowed old names moved off their pin — a new one is a leftover, a removed one lowers the pin:$RN_OFF"
 else
   skip scope "old-name residue not checked — not a git checkout of the kit's source" 3
+fi
+
+sec "== 14d) the front pages: the product's name, the numbers they quote, the links they carry =="
+# The 3.0 rewrite (5R) made three rules for the READMEs and the site pages, and each is a gate here with a twin
+# on both sides — a check that only proves silence would pass a page with no text at all.
+#   1 NAME   "kit" is not the product's name any more: not in prose, in any language form (the kit, bu kit, kitin,
+#            kiti, kite …). Code blocks and inline code are skipped, so `kit/`, `kit.conf` and `kit-adopt-<ts>` stay.
+#   2 NUMBERS a README quotes a percentage or an N/10 only when evals/README.md carries the same figure, because a
+#            number on the front page is read as measured. Product counts (12 agents, 40 skills) are pinned elsewhere.
+#   3 LINKS  every relative link and image on the READMEs and the site pages resolves, and every crewforth.com page
+#            they point at has its source under site/content/<en|tr>/<page>.md.
+if [ "$IS_KIT" = 1 ]; then
+  KR="$(cd "$ROOT/.." && pwd)"
+  FP_PAGES="$KR/README.md $KR/README.tr.md $KR/README.npm.md $(ls "$KR"/site/content/*/*.md 2>/dev/null | tr '\n' ' ')"
+  fp_prose(){ awk '/^[[:space:]]*```/{c=!c; next} !c' "$1" | sed 's/`[^`]*`//g'; }
+  # 1 NAME
+  kit_hits(){ for _f in "$@"; do fp_prose "$_f" | grep -inE "(^|[^a-z0-9_./-])kit(in|i|e|le|li|ten|te|s)?([^a-z0-9_./-]|\$)" | sed "s|^|${_f#$KR/}:|"; done; }
+  _kd="$(mktemp -d)"; printf 'Install the kit once; bu kit hazır.\n' > "$_kd/bad.md"; printf 'See `kit/AGENT_TEMPLATE.md`, a toolkit, and:\n```bash\nls kit/\n```\n' > "$_kd/good.md"
+  # shellcheck disable=SC2086 # a list of paths, none with a space in this repo
+  _kh="$(kit_hits $FP_PAGES)"
+  if [ -n "$_kh" ]; then fail "the word kit is back on a front page — the product is Crewforth:
+$(printf '%s\n' "$_kh" | head -n 5 | sed 's/^/       /')"
+  elif [ -z "$(kit_hits "$_kd/bad.md")" ]; then fail "the kit-word check missed a planted 'the kit' — it reads nothing"
+  elif [ -n "$(kit_hits "$_kd/good.md")" ]; then fail "the kit-word check flagged code and a file name — only prose counts"
+  else pass "no 'kit' in the prose of the three READMEs and $(ls "$KR"/site/content/*/*.md 2>/dev/null | wc -l | tr -d ' ') site pages; a planted one is caught, code and file names are not"; fi
+  # 2 NUMBERS
+  num_hits(){ for _f in "$@"; do fp_prose "$_f" | grep -oE '[0-9]+([.,][0-9]+)?%|%[0-9]+([.,][0-9]+)?|[0-9]+/10' | while IFS= read -r _n; do
+      grep -qF -- "$_n" "$KR/evals/README.md" || printf '%s: %s\n' "${_f#$KR/}" "$_n"; done; done; }
+  printf 'Bare failed in 7/10 runs, 93%% of the time.\n' > "$_kd/num-bad.md"; printf 'Measured 6/10 against 0/10.\n' > "$_kd/num-good.md"
+  _nh="$(num_hits "$KR/README.md" "$KR/README.tr.md" "$KR/README.npm.md")"
+  if [ ! -f "$KR/evals/README.md" ]; then fail "FIXTURE: evals/README.md is missing, so no README number can be checked"
+  elif [ -n "$_nh" ]; then fail "a README quotes a figure evals/README.md does not carry:
+$(printf '%s\n' "$_nh" | head -n 5 | sed 's/^/       /')"
+  elif [ "$(num_hits "$_kd/num-bad.md" | grep -c .)" != 2 ]; then fail "the number check did not catch both planted figures (7/10, 93%) — it reads nothing"
+  elif [ -n "$(num_hits "$_kd/num-good.md")" ]; then fail "the number check flagged figures evals/README.md does carry (6/10, 0/10)"
+  else pass "every percentage and N/10 on the READMEs is in evals/README.md; two planted figures are caught, two real ones pass"; fi
+  # 3 LINKS
+  link_hits(){ # -> "file: problem" lines; the number of links looked at goes to $_kd/n
+    : > "$_kd/n"
+    for _f in "$@"; do
+      _d="$(dirname "$_f")"
+      { grep -oE '\]\([^)[:space:]]+\)' "$_f" | sed 's/^](//; s/)$//'
+        grep -oE '(src|srcset)="[^"]+"' "$_f" | sed 's/^[a-z]*="//; s/"$//'; } | while IFS= read -r _l; do
+        echo x >> "$_kd/n"
+        case "$_l" in
+          https://crewforth.com|https://crewforth.com/|https://crewforth.com/tr|https://crewforth.com/tr/) ;;
+          https://crewforth.com/tr/*) _pg="${_l#https://crewforth.com/tr/}"; [ -f "$KR/site/content/tr/${_pg%%[#?]*}.md" ] || printf '%s: %s has no site/content/tr page\n' "${_f#$KR/}" "$_l" ;;
+          https://crewforth.com/*)    _pg="${_l#https://crewforth.com/}";    [ -f "$KR/site/content/en/${_pg%%[#?]*}.md" ] || printf '%s: %s has no site/content/en page\n' "${_f#$KR/}" "$_l" ;;
+          http://*|https://*|mailto:*|\#*) ;;
+          *) _p="${_l%%#*}"; [ -e "$_d/$_p" ] || printf '%s: %s does not exist\n' "${_f#$KR/}" "$_l" ;;
+        esac
+      done
+    done; }
+  printf '[a](missing.md) [b](https://crewforth.com/nope) [c](https://crewforth.com/tr/gates)\n' > "$_kd/link-bad.md"
+  mkdir -p "$_kd/site/content/tr"
+  # shellcheck disable=SC2086
+  _lh="$(link_hits $FP_PAGES)"; _ln="$(grep -c . "$_kd/n")"
+  if [ "$_ln" -lt 20 ]; then fail "the link check looked at only $_ln link(s) across the pages — the extractor is broken, not the pages"
+  elif [ -n "$_lh" ]; then fail "a front page links to something that is not there:
+$(printf '%s\n' "$_lh" | head -n 5 | sed 's/^/       /')"
+  elif [ "$(link_hits "$_kd/link-bad.md" | grep -c .)" != 2 ]; then fail "the link check did not catch both planted breaks (a missing file, a crewforth.com page with no source) — it reads nothing"
+  else pass "every relative link and crewforth.com page on the READMEs and site pages resolves ($_ln links); two planted breaks are caught, a real site page is not"; fi
+  rm -rf "$_kd"
+else
+  skip scope "front-page name, number and link checks skipped (installed project — the READMEs live in the source repository)" 3
 fi
 
 sec "== 15) evals: the parallel-audit metric, because a rule nobody can measure is not a rule =="

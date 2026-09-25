@@ -1,26 +1,27 @@
 #!/usr/bin/env bash
-# Generates the skill catalogue that appears in README.md and README.tr.md. The README is a VIEW of the skills,
-# never a hand-maintained copy — that is what let the count drift (27 vs 28) once. A table of 30 rows in two
+# Generates the skill catalogue in site/content/en/skills.md and site/content/tr/skills.md (it lived in the READMEs
+# until the 3.0 rewrite moved the detail to the site; the name stays so CI and release call it unchanged). The
+# catalogue is a VIEW of the skills, never a hand-maintained copy — that is what let the count drift (27 vs 28) once. A table of 30 rows in two
 # languages would drift 30x worse, so both are generated, never edited by hand.
 #
 # Two sources, one row set:
-#   - README.md   (English) summaries come from each SKILL.md frontmatter's first description sentence.
-#   - README.tr.md (Turkish) summaries come from packaging/skill-summaries.tr.tsv (build-time DATA — it is NOT
+#   - en/skills.md (English) summaries come from each SKILL.md frontmatter's first description sentence.
+#   - tr/skills.md (Turkish) summaries come from packaging/skill-summaries.tr.tsv (build-time DATA — it is NOT
 #     loaded into any session, so Turkish text does not spend the SKILL.md frontmatter byte budget).
 # The skill NAME set is the directory listing for both, so the two tables always hold the same rows in the same
 # order. --check FAILS if a skill has no Turkish line (drift gate): a new skill must ship its TR summary too.
 #
-# Each README carries a marked block:
+# Each skills.md carries a marked block:
 #   <!-- SKILLS:START -->  ... generated table ...  <!-- SKILLS:END -->
 # and this script rewrites what is between the markers.
 #
 # Usage:
-#   bash packaging/build-readme-catalog.sh          # rewrite the block in both READMEs
-#   bash packaging/build-readme-catalog.sh --check   # exit 1 if either README's block is stale (smoke-test gate)
+#   bash packaging/build-readme-catalog.sh          # rewrite the block in both skills.md pages
+#   bash packaging/build-readme-catalog.sh --check   # exit 1 if either block is stale (verify.sh catalogue)
 set -euo pipefail
 # Force byte semantics everywhere. macOS ships BWK awk (byte-based length/substr); Ubuntu CI ships gawk, which
 # in a UTF-8 locale counts CHARACTERS — so a summary truncated near a multibyte char (`·`, `→`, `…`) would cut
-# at a different point on the two, and the README generated on one would fail --check on the other. LC_ALL=C
+# at a different point on the two, and the catalogue generated on one would fail --check on the other. LC_ALL=C
 # makes gawk byte-based too, so the output is identical on both. (This is why the first v1.1.6 release failed.)
 export LC_ALL=C
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -35,8 +36,8 @@ TAB="$(printf '\t')"
 raw_rows() {
   for d in "$SKILLS"/*/; do
     f="$d/SKILL.md"; [ -f "$f" ] || continue
-    # A slash command is a skill on disk since 3.0 (metadata kind: command); the README lists the commands in their
-    # own row, so the skill catalogue leaves them out and still counts the 40 skills.
+    # A slash command is a skill on disk since 3.0 (metadata kind: command); the pages list the commands in their
+    # own list, so the skill catalogue leaves them out and still counts the 40 skills.
     grep -q '^  kind: command' "$f" && continue
     awk '
       /^---[ \t]*$/ { fm++; if (fm==2) exit; next }
@@ -89,7 +90,7 @@ TABLE_EN="$(table en)"
 TABLE_TR="$(table tr)"
 
 # --- Write or check the block between the markers in one file. ---
-apply() {  # $1 = README path, $2 = the table for that file's language
+apply() {  # $1 = skills.md path, $2 = the table for that file's language
   local file="$1" tbl="$2" start="<!-- SKILLS:START -->" end="<!-- SKILLS:END -->"
   grep -qF "$start" "$file" && grep -qF "$end" "$file" || { echo "ERROR: markers missing in $(basename "$file")" >&2; return 2; }
   local new; new="$(printf '%s\n\n%s\n\n%s' "$start" "$tbl" "$end")"
@@ -108,24 +109,28 @@ apply() {  # $1 = README path, $2 = the table for that file's language
   after="$(awk -v e="$end" 'f{print} index($0,e){f=1}' "$file" | awk 'NF{f=1} f')"
   # Blank lines around the block: GitHub only renders a markdown table inside <details> when a blank line
   # separates </summary> from the content (command substitution ate the one that was there).
-  printf '%s\n\n%s\n\n%s\n' "$before" "$new" "$after" > "$file.tmp" && mv "$file.tmp" "$file"
+  # A page that ends at the end marker has nothing after it; writing the empty tail anyway left two stray blank lines.
+  if [ -n "$after" ]; then printf '%s\n\n%s\n\n%s\n' "$before" "$new" "$after" > "$file.tmp"
+  else printf '%s\n\n%s\n' "$before" "$new" > "$file.tmp"; fi
+  mv "$file.tmp" "$file"
 }
 
 rc=0
-apply "$ROOT/README.md"    "$TABLE_EN" || rc=$?
-apply "$ROOT/README.tr.md" "$TABLE_TR" || rc=$?
+SITE="$ROOT/site/content"
+apply "$SITE/en/skills.md" "$TABLE_EN" || rc=$?
+apply "$SITE/tr/skills.md" "$TABLE_TR" || rc=$?
 N="$(printf '%s' "$TABLE_EN" | grep -c '^| `')"
 
-# The network diagram embedded in both READMEs states its own counts in a subtitle, and that line drifted: the
+# The network diagram embedded in both skills.md pages states its own counts in a subtitle, and that line drifted: the
 # picture was regenerated with 12 agents and 38 skills while the caption above it still said 11 and 36. It is
 # the one claim a reader accepts without checking, because nobody counts 38 nodes. gen-network.py derives the
 # line from its data now, but a stale SVG on disk is still possible — the generator only runs when someone
 # remembers to run it. So the checked-in file is compared here, in the gate that already exists for exactly
-# this class of drift (the README is a VIEW of the payload, never a hand-maintained copy).
+# this class of drift (the catalogue is a VIEW of the payload, never a hand-maintained copy).
 AG="$(ls "$ROOT/kit/agents"/*.md 2>/dev/null | wc -l | tr -d ' ')"
 for svg in network-en network-tr; do
   f="$ROOT/assets/$svg.svg"
-  [ -f "$f" ] || { echo "ERROR: assets/$svg.svg is missing — the README embeds it." >&2; rc=1; continue; }
+  [ -f "$f" ] || { echo "ERROR: assets/$svg.svg is missing — site/content/*/skills.md embeds it." >&2; rc=1; continue; }
   # Read the digits sitting next to each label, never the separator between them: this file is scanned under
   # LC_ALL=C (see the header), where the subtitle's `×` is two bytes and a one-char wildcard would never match.
   # `|| true` because a no-match grep would otherwise take the whole script down silently under `set -e`.
@@ -137,5 +142,5 @@ for svg in network-en network-tr; do
   fi
 done
 [ "$CHECK" = 1 ] && [ "$rc" = 0 ] && echo "skill catalogue in sync — EN + TR ($N skills)"
-[ "$CHECK" = 0 ] && [ "$rc" = 0 ] && echo "skill catalogue written — EN → README.md, TR → README.tr.md ($N skills)"
+[ "$CHECK" = 0 ] && [ "$rc" = 0 ] && echo "skill catalogue written — EN → site/content/en/skills.md, TR → site/content/tr/skills.md ($N skills)"
 exit $rc
