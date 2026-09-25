@@ -10,6 +10,8 @@
 #   doctor    healthy in both projects (exit 0)
 #   syntax    `bash -n` on every hook either install carries, the git hooks included
 #   crlf      no carriage return in any installed shell file — the case core.autocrlf=true exists to break
+#   board     the installed board engine against a bare remote: init, add, sync, and a claim race exactly one
+#             clone wins — git plumbing and ref pushes, the part of the install an old git is likeliest to break
 #
 # Needs git with v2.13.0 (841eb4e) reachable (fetch-depth 0), node and npm. Exit 0 all held, 1 one did not.
 set -euo pipefail
@@ -77,4 +79,19 @@ done
 [ "$SH" -ge 20 ] || die "only $SH hook file(s) found across both installs — the installs broke, not the syntax"
 [ -z "$CR" ] || die "installed shell files carry CR:$CR"
 
-echo "launch-matrix: init ✓ · 2.13.0 → $(cat VERSION) ✓ · second update changed nothing ✓ · doctor healthy ×2 ✓ · bash -n on $SH hooks ✓ · 0 CR in installed shell files ✓"
+# board — the engine the fresh install carries, on two clones of one bare remote
+B="$W/board"; mkdir -p "$B"; git init -q --bare "$B/origin.git"
+for u in ali ayse; do
+  git clone -q "$B/origin.git" "$B/$u" 2>/dev/null
+  ( cd "$B/$u" && git config user.email "$u@x" && git config user.name "$u" && git commit -q --allow-empty -m seed )
+done
+cp "$P/.claude/hooks/board.sh" "$P/.claude/hooks/commit-msg" "$P/.claude/hooks/trace-blocklist.txt" "$B/"
+step "board init + add" bash -c 'cd "$1/ali" && bash ../board.sh init && bash ../board.sh add 001 First' _ "$B"
+step "board sync" bash -c 'cd "$1/ayse" && bash ../board.sh sync' _ "$B"
+( cd "$B/ali" && bash ../board.sh claim 001 ) >"$W/claim-a.log" 2>&1 && RC_A=0 || RC_A=$?
+( cd "$B/ayse" && bash ../board.sh claim 001 ) >"$W/claim-b.log" 2>&1 && RC_B=0 || RC_B=$?
+[ "$RC_A" = 0 ] && [ "$RC_B" != 0 ] || die "board claim race: rc $RC_A / $RC_B — exactly one clone must win ($(tail -n 2 "$W/claim-a.log" "$W/claim-b.log" | tr '\n' ' '))"
+OWNER="$(cd "$B/ayse" && bash ../board.sh sync >/dev/null 2>&1; bash ../board.sh show 001 2>/dev/null | grep -m1 '^owner: ' | cut -d' ' -f2-)"
+[ "$OWNER" = "ali@x" ] || die "the remote board records owner '$OWNER', not ali@x"
+
+echo "launch-matrix: init ✓ · 2.13.0 → $(cat VERSION) ✓ · second update changed nothing ✓ · doctor healthy ×2 ✓ · bash -n on $SH hooks ✓ · 0 CR in installed shell files ✓ · board race: one winner ✓"

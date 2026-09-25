@@ -40,3 +40,32 @@ jobs:
           node-version: ${{ matrix.node }}
       - name: Launch cell
         run: bash packaging/launch-matrix.sh
+
+  # The oldest git a day-one user plausibly runs: Ubuntu 22.04's own package, 2.34. The ubuntu-22.04 runner image
+  # carries the git-core PPA and ships a current git (2.55 when this was written), so the image cannot answer the
+  # question; a plain ubuntu:22.04 container with git from the distro can. The cell refuses to run on anything but
+  # 2.34.x, so it cannot quietly turn into a second modern-git cell.
+  old-git:
+    name: ubuntu:22.04 container · distro git 2.34 · node 22
+    runs-on: ubuntu-latest
+    container: ubuntu:22.04
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Git from the distro, and only 2.34
+        run: |
+          apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends git ca-certificates xz-utils >/dev/null
+          v="$(git --version)"; echo "$v"
+          case "$v" in "git version 2.34."*) ;; *) echo "::error::expected Ubuntu 22.04's git 2.34.x, got: $v"; exit 1 ;; esac
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Launch cell
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          bash packaging/launch-matrix.sh
