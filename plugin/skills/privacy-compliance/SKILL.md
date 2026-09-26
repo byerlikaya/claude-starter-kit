@@ -26,7 +26,7 @@ guessing. In the finding, **cite** the article you rely on (KVKK Art. … / GDPR
 
 ## Which regimes apply — the project says so, Crewforth does not guess
 KVKK and GDPR above are the **defaults**, not the world. A product sold in California is under CCPA and one in
-Brazil under LGPD, and a kit that shipped a global list would be claiming knowledge it does not have — the same
+Brazil under LGPD, and Crewforth shipping a global list would be claiming knowledge it does not have — the same
 mistake as rating code without running the analyser. So the project declares its own, and the authority is
 whatever source it names.
 

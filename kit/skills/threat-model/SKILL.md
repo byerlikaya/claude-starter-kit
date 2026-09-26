@@ -18,7 +18,7 @@ The one idea to keep — the litmus test: **if patching one line of code makes a
 vulnerability, not a threat.** Threats survive patching (they name *what an attacker wants and the surface they
 arrive through*); a vulnerability is only **evidence** that raises a threat's likelihood.
 
-> **Kit adaptation (local, .claude/):** `crew-security-expert` runs this to scope before `security-scan`. Output
+> **Crewforth adaptation (local, .claude/):** `crew-security-expert` runs this to scope before `security-scan`. Output
 > `docs/THREAT_MODEL.md` is internal (§4.3). Stack-agnostic. §4 Prohibitions apply.
 
 ## When

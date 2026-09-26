@@ -29,12 +29,12 @@ fails, say which one and stop — do not improvise a different launch.
    either; only the braced form is substituted, and the unbraced one reaches bash unset and collapses the
    path to `/studio/server/index.js`.
 
-   Neither path is there? Then this is an install from a kit older than the release that added the panel:
+   Neither path is there? Then this is an install older than the release that added the panel:
    `npx crewforth@latest update --here --yes` at the project root, or `/crew-update`.
    Then stop. Do not go hunting for the panel anywhere else on disk.
 
-   **What the plugin edition cannot show.** A plugin install puts no `.claude/VERSION`, `kit.conf` or kit
-   scripts into a project. So that project's row in the list has no kit badge (each row reads its own
+   **What the plugin edition cannot show.** A plugin install puts no `.claude/VERSION`, `kit.conf` or Crewforth
+   scripts into a project. So that project's row in the list has no version badge (each row reads its own
    project), and for the project you opened the panel from, the inspector's gates, stats and board tabs
    say "Not measured" with the reason, rather than zero. The gates tab can still list observed entries
    below that. The plugin's Bash guard logs its blocks, approval prompts and `CLAUDE_GIT_OK` pre-authorised

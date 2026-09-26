@@ -5,7 +5,7 @@ metadata:
   kind: command
 ---
 # /crew-update
-Bring the installed kit up to the latest published version:
+Bring the Crewforth install up to the latest published version:
 1. **Detect install type.** If `.claude/VERSION` exists → a full install (steps below). If Crewforth runs as a
    **plugin** (no `.claude/VERSION`), it updates through the plugin system: run
    `claude plugin update crewforth@crewforth`, tell the user it applies when they restart Claude Code, and stop here.

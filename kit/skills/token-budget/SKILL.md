@@ -31,7 +31,7 @@ for **isolation / parallelism / a clean window**, or when the isolated work woul
    is the cost of a FRESH agent; a long-running one passes it many times over. Continue it for the context it
    holds — a running verification, a migration it is mid-way through — and open a fresh one, or stay on the main
    thread, for a small correction that does not need any of that history.
-5. **Built-in agents are on this budget too.** `Explore`, `general-purpose` and the rest cost exactly what a kit
+5. **Built-in agents are on this budget too.** `Explore`, `general-purpose` and the rest cost exactly what a Crewforth
    agent costs; one repo-mapping `Explore` measured 520 s and ~150k tokens. Crewforth owns no search agent, so
    reaching for a built-in is correct — just size the request the way rule 3 sizes any other delegation.
 6. **Least tooling.** An agent holds only the tools it needs; extras accidentally pollute the context + burn the limit.

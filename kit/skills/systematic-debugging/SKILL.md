@@ -14,7 +14,7 @@ One rule holds the whole skill together: **no fix without a confirmed root cause
 disappear without a proven cause is not a fix — it's a coin flip that hides the bug until it returns somewhere worse.
 This skill is the discipline that turns "try things until it works" into "understand, then change one thing."
 
-> **Kit adaptation (local, .claude/):** Distinct from `iterate` (a self-correction loop over a *task*) and `reflect`
+> **Crewforth adaptation (local, .claude/):** Distinct from `iterate` (a self-correction loop over a *task*) and `reflect`
 > (meta-review of an approach) — this skill is for a *defect*. §4 Prohibitions apply; a fix still goes through the
 > project's review/test gates. Don't disable a test or a gate to make a symptom pass (that is masking, not fixing).
 

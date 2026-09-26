@@ -14,7 +14,7 @@ Trigger phrases: "visual design", "design system", "make it look good", "UI poli
 whether it looks considered and feels right.** The through-line: **a few consistent decisions, applied everywhere,
 read as "designed" — many one-off decisions read as "assembled".** Design is subtraction and rhythm, not adding flourish.
 
-> **Kit adaptation (local, .claude/):** Stack-agnostic. **Detect and respect the project's existing design system**
+> **Crewforth adaptation (local, .claude/):** Stack-agnostic. **Detect and respect the project's existing design system**
 > (tokens, component library, brand) — never impose a personal aesthetic or a new library. Accessibility is a floor,
 > not a trade-off: apply `a11y` alongside (contrast, focus, motion). §4 Prohibitions apply.
 
@@ -25,6 +25,23 @@ read as "designed" — many one-off decisions read as "assembled".** Design is s
 4. **Color** — a restrained system: 1 brand/accent, a neutral ramp, semantic states (success/warn/error). Accent is for *action and emphasis*, not decoration. Verify contrast (→ `a11y`).
 5. **Layout & composition** — align to a grid; consistent alignment edges. Respect proximity/similarity (Gestalt). Responsive by *intent* (reflow, not just shrink); design the breakpoints, don't inherit them by accident.
 6. **State & polish** — design loading / empty / error / disabled / hover / focus as first-class, not afterthoughts. Motion is restrained and purposeful (~150–250ms, ease), and honors `prefers-reduced-motion`.
+
+## When the project gives no design direction
+Look for the project's own system first: a token file, a theme, the components it already has. If there is one,
+follow it; the list below only fills a gap. With none, do not fall into these defaults on your own (use one when
+the user asks for it):
+- a cream or off-white ground with serif headings and a terracotta accent
+- a purple-to-blue gradient hero on white
+- a black ground with a single neon accent
+- an italic accent word in headings
+- "01 / 02 / 03" section numbers that tell no real sequence
+- monospace labels on everything
+- pill buttons and the same shadow everywhere
+- emoji as section markers
+- cards with a colored stripe along one edge
+
+"Avoid a generic look" alone swaps one default for another; naming the patterns is what works. After the first
+result, look at which default crept in and add it to this list for the project — iterate, don't restart.
 
 ## Checklist
 - [ ] One clear primary action; hierarchy readable at a glance (squint test)

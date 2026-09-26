@@ -95,7 +95,7 @@ The project's recorded choices beat this table. Adding a dependency that is not 
 
 ## 5 · Project override
 A pattern skill the project ships under `.claude/skills/` wins over sections 2-4 — for example a `cqrs-aop-module`
-kept from an older kit install, or one the team wrote (format: `.claude/AGENT_TEMPLATE.md`). Section 1 still applies:
+kept from an older install, or one the team wrote (format: `.claude/AGENT_TEMPLATE.md`). Section 1 still applies:
 the stack is resolved and recorded the same way.
 
 ## Not here — the single source is elsewhere

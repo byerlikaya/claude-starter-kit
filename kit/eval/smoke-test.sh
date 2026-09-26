@@ -6290,6 +6290,34 @@ else
   skip scope "installed-text wording checks skipped (installed project — kit/ and plugin/ live in the source repository)" 2
 fi
 
+# 5U: the old name as a WORD in the installed Markdown, inline code included. The phrase and adjective checks above
+# left nouns through ("a broken kit", "Kit adaptation", "an older kit install"), and DISCIPLINE quoted a hook message
+# the hook no longer prints (`kit updated X → Y`) inside backticks, where 5R.3 and 5R.4 did not look. A path
+# (kit/…), kit.conf and kit-manifest.txt are names, not the word; fenced code and HTML comments, where the
+# DISCIPLINE-END sentinel lives, are skipped. Same rule as the built-site gate's kitWord, written in awk.
+if [ "$IS_KIT" = 1 ]; then
+  KR="$(cd "$ROOT/.." && pwd)"
+  kit_word(){ awk '
+    FNR == 1 { fence = 0; hc = 0 }
+    /^[[:space:]]*```/ { fence = !fence; next }
+    fence { next }
+    /<!--/ { hc = 1 }  hc { if (/-->/) hc = 0; next }
+    { l = tolower($0)
+      if (l ~ /(^|[^a-z0-9_.\/-])'"$_kw"'(s|i|in|e|te|ten)?([^a-z0-9_\/.-]|\.([^a-z]|$)|$)/) print FILENAME ":" FNR ": " $0 }' "$@" </dev/null 2>/dev/null; }
+  _kwf=(); while IFS= read -r _f; do _kwf+=("$KR/$_f"); done < <(cd "$KR" && git ls-files -co --exclude-standard -- kit plugin 2>/dev/null | grep '\.md$')
+  _kwh="$(kit_word "${_kwf[@]}" | sed "s|$KR/||")"
+  _kwt="$(mktemp -d)"
+  printf 'noise that reads as a broken %s.\nIf the hook reports `%s updated X`, stop.\n> **Kit adaptation (local, .claude/):** a note\nthe row has no %s badge\n' "$_kw" "$_kw" "$_kw" > "$_kwt/bad.md"
+  printf 'see `%s/hooks`, `%s.conf`, %s-manifest.txt, a toolkit, the %s/ tree\n```\nthe %s inside code\n```\n<!-- %s:DISCIPLINE-END (%s-owned) -->\n' "$_kw" "$_kw" "$_kw" "$_kw" "$_kw" "KIT" "$_kw" > "$_kwt/good.md"
+  if [ "${#_kwf[@]}" -lt 150 ]; then fail "FIXTURE: only ${#_kwf[@]} Markdown file(s) under kit/ and plugin/ — the file list broke, not the wording"
+  elif [ "$(kit_word "$_kwt/bad.md" | grep -c .)" != 4 ]; then fail "the old-name word check did not catch all four planted forms (sentence end, a quoted hook message, the old adaptation label, a badge) — it reads nothing"
+  elif [ -n "$(kit_word "$_kwt/good.md")" ]; then fail "the old-name word check flagged a path, a file name, code or the sentinel: $(kit_word "$_kwt/good.md" | head -n 1)"
+  elif [ -n "$_kwh" ]; then fail "installed Markdown still uses the old name as a word — say Crewforth, or name the thing:
+$(printf '%s\n' "$_kwh" | head -n 6 | cut -c1-160 | sed 's/^/       /')"
+  else pass "the old name is not a word in the ${#_kwf[@]} installed Markdown files, inline code included; four planted forms are caught, paths, file names, code and the sentinel are not"; fi
+  rm -rf "$_kwt"
+fi
+
 sec "== 14g) the documentation site stays out of the npm package =="
 # site/ is the source of crewforth.com (Astro + Starlight, with its own node_modules). It must never ship: the npm
 # package's `files` list is narrow, and this reads what npm would actually pack rather than trusting the list.

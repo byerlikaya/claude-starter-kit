@@ -17,7 +17,7 @@ the change by risk class before it passes through the gate** — let the safe on
 get approval for the destructive one, and keep a rollback path ready in every case. The skill works with
 all common ORM/migration tools.
 
-> **Kit adaptation (local, .claude/):** Engine and tool come from `CLAUDE.md ## Stack` or repo detection
+> **Crewforth adaptation (local, .claude/):** Engine and tool come from `CLAUDE.md ## Stack` or repo detection
 > (`backend-architecture`). `crew-database-expert` applies it; **a destructive migration requires explicit approval (§4.5)**, commit/push with explicit approval (§4.4). Authorization/IDOR
 > impact → **crew-security-expert**; personal-data retention → **crew-privacy-agent**. §4 Prohibitions apply.
 
