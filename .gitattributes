@@ -59,6 +59,9 @@ LICENSE text eol=lf
 *.py text eol=lf
 *.html text eol=lf
 *.css text eol=lf
+# The diagrams are compared byte for byte with packaging/gen-diagrams.mjs's output, which writes LF. Unpinned, a
+# Windows checkout under core.autocrlf=true turned their newline into CRLF and all 16 read as stale.
+*.svg text eol=lf
 # Files outside the shipped paths that bash reads or runs, and whose CR would change a result. Measured with a
 # `core.autocrlf=true` clone of `next`: 38 tracked files came out w/crlf, and these are the ones whose consumer cares.
 # - case.env is SOURCED by evals/run.sh. Git Bash tolerates the CR (measured on Windows); a non-MSYS bash such as WSL

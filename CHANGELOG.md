@@ -117,6 +117,7 @@ One name everywhere: the package, the components, the variables, the payload. **
 - **`MultiEdit` is gone from the file-tool gate's matcher** — it is no longer a Claude Code tool.
 - **Wording:** the 11 command-skills are called commands, not slash commands, matching Claude Code's docs (custom
   commands were merged into skills, and `/` opens the command menu). You still start each with its `/crew-…` name.
+- The team board (`/crew-board`) ships as experimental and is left out of the command list until it is finished.
 - **`crew-code-review` rewritten:** plan → review → fact-check, every finding carries a severity
   (critical/high/medium/low) and a category; the comment labels are gone.
 - **`frontend-design` names the defaults to avoid** when a project gives no design direction (a cream ground with a

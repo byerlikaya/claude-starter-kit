@@ -1,9 +1,8 @@
 // Node colours.
 //
-// Crewforth's agents already declare a colour in their frontmatter, and
-// packaging/gen-network.py already picked hex values for the README diagrams.
-// Reading both means the live panel and the static diagrams are one system
-// rather than two palettes that drift apart.
+// Crewforth's agents already declare a colour in their frontmatter; the hex
+// values below give each of those names one shade, so an agent keeps the same
+// colour in every session the panel draws.
 //
 // An agent type nobody declared gets a neutral grey and a marked flag. Guessing
 // a colour would make an unknown agent look like a known one, which is the
@@ -35,7 +34,7 @@ function agentsDirFor(here) {
 
 const AGENTS_DIR = agentsDirFor(HERE);
 
-// The names agents declare, mapped onto gen-network.py's hex values.
+// The names agents declare, mapped onto hex values.
 const NAMED = {
   green: '#35c874',
   cyan: '#26c6e6',

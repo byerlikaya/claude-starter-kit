@@ -6,7 +6,7 @@ A rule that matters becomes a gate. Enforcement sits at the tool level — a hoo
 |:--|:--:|:--|
 | **Agents** | {{AGENT_COUNT}} | Thin triggers — *who* owns a domain and *when* they fire |
 | **Skills** | {{SKILL_COUNT}} | The method, written once, applied by whoever needs it |
-| **Commands** | {{COMMAND_COUNT}} | `/crew-brainstorm` · `/crew-plan` · `/crew-review` · `/crew-ship` · `/crew-handoff` · `/crew-update` · `/crew-doctor` · `/crew-board` · `/crew-gates` · `/crew-skill` · `/crew-studio` |
+| **Commands** | {{COMMAND_COUNT}} | `/crew-brainstorm` · `/crew-plan` · `/crew-review` · `/crew-ship` · `/crew-handoff` · `/crew-update` · `/crew-doctor` · `/crew-gates` · `/crew-skill` · `/crew-studio` |
 | **Hooks** | 12 | The gates, plus session measurement and routing |
 | **Discipline** | 1 | Principles, workflow, Definition of Done, prohibitions — imported by your `CLAUDE.md` |
 
@@ -24,8 +24,8 @@ A rule that matters becomes a gate. Enforcement sits at the tool level — a hoo
 | `skill-trust.sh` | Names any skill or agent Crewforth never shipped and you never accepted |
 | `session-stats.sh` | Reports what the session actually did — failing tool loops, repeated prompts, interrupts. `reflect` and `handoff` read it, so a retrospective rests on the record rather than on recollection |
 | `session-update-check.sh` | Asks once, when a session opens, whether to update when a newer version is published — each edition compared against the channel that will deliver it. The lookup runs detached and at most daily, so an offline or proxied machine costs the session opening nothing; `CREW_NO_UPDATE_CHECK=1` turns it off |
-| `board.sh` | The team board engine: claims a work item, hands it over, completes it. Off unless a repo runs `/crew-board init` |
-| `board-sync.sh` | Puts a team's board state into a session. Reads a local cache at session start and refreshes it detached, so an unreachable remote costs the session opening nothing; `CREW_NO_BOARD=1` turns it off |
+
+The other two hooks serve an experimental feature and do nothing until a repository switches it on.
 
 Two git hooks — `pre-commit` and `commit-msg` — run the trace, secret, repo-bloat and private-path scans. The last one exists because a path that only lives on your machine reaches a shared repo by being pasted, not by being typed: it blocks your own `$HOME` automatically, and the internal project, client and host names only you can recognise come from a gitignored `.private-terms.txt` (`.private-allowlist.txt` is the escape). The plugin edition ships all of these except `skill-trust.sh`, which decides what Crewforth owns from the `kit-manifest.txt` an installer writes and the plugin never creates.
 
@@ -56,4 +56,4 @@ The gates stop accidents, not determined attempts. On a command line there is al
 
 ## Watching a gate fire
 
-The Bash guard appends a line to `.claude/gate-log.tsv` for each block, approval prompt and `CLAUDE_GIT_OK` pre-authorisation (`BLOCK` / `ASK` / `ALLOW`), and the gate-file write guard one for each block, with the section and the rule; the command is recorded only with `CREW_GATE_LOG_CMD=1`. It is on by default when the project's `.claude/` directory exists and the file is git-ignored or the project is not a repo; `CREW_GATE_LOG=<path>` sends it elsewhere and `/dev/null` turns it off. The commit scan and the board gate refuse without writing a line. It is write-only and written after the verdict, so it cannot change one. Useful when you need to know whether a gate stopped something or the model simply never went there — those two leave identical traces.
+The Bash guard appends a line to `.claude/gate-log.tsv` for each block, approval prompt and `CLAUDE_GIT_OK` pre-authorisation (`BLOCK` / `ASK` / `ALLOW`), and the gate-file write guard one for each block, with the section and the rule; the command is recorded only with `CREW_GATE_LOG_CMD=1`. It is on by default when the project's `.claude/` directory exists and the file is git-ignored or the project is not a repo; `CREW_GATE_LOG=<path>` sends it elsewhere and `/dev/null` turns it off. The commit scan refuses without writing a line. It is write-only and written after the verdict, so it cannot change one. Useful when you need to know whether a gate stopped something or the model simply never went there — those two leave identical traces.

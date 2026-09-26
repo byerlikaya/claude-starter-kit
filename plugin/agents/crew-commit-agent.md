@@ -8,6 +8,7 @@ tools: Read, Grep, Glob, Bash, PowerShell
 model: haiku
 metadata:
   stage: close
+  skills: [commit-message, release]
 ---
 
 # Commit Agent

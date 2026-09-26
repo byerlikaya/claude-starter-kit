@@ -7,6 +7,7 @@ description: |
 tools: Read, Grep, Glob, Edit, Write, Bash, PowerShell
 metadata:
   stage: audit
+  skills: [testing]
 ---
 
 # Test Expert

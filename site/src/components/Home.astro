@@ -20,10 +20,23 @@ const { d } = Astro.props;
     <p class="cf-adopt" set:html={d.adopt} />
   </section>
 
-  <picture class="cf-gif">
-    <source srcset={d.gif.still} media="(prefers-reduced-motion: reduce)" />
-    <img src={d.gif.src} alt={d.gif.alt} loading="lazy" />
-  </picture>
+  <section class="cf-video" id="overview">
+    <div class="cf-player">
+      <!-- Without JavaScript: the browser's own player, muted, fetching nothing until someone presses play. -->
+      <video class="cf-hero" controls muted playsinline preload="none" poster={d.video.poster} aria-describedby="cf-video-desc">
+        <source src={d.video.src} type="video/mp4" />
+      </video>
+      <button class="cf-play" type="button" aria-label={d.video.play} aria-describedby="cf-video-desc" hidden>
+        <svg viewBox="0 0 24 24" width="34" height="34" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor" /></svg>
+      </button>
+      <button class="cf-sound" type="button" aria-label={d.video.sound} aria-pressed="false" hidden>
+        <svg class="cf-sound-off" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z" fill="currentColor" /><path d="M17 9l4 6M21 9l-4 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
+        <svg class="cf-sound-on" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z" fill="currentColor" /><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
+      </button>
+    </div>
+    <p id="cf-video-desc" class="cf-dim cf-caption">{d.video.desc}</p>
+    {d.video.note && <p class="cf-dim cf-caption">{d.video.note}</p>}
+  </section>
 
   <section class="cf-crew">
     <h2>{d.crew.heading}</h2>
@@ -75,6 +88,24 @@ const { d } = Astro.props;
 </div>
 
 <script>
+  // The overview: nothing plays or downloads on its own. With JavaScript the poster carries a play button; pressing
+  // it starts the video muted with its controls, and a separate button turns the sound on and off.
+  for (const player of document.querySelectorAll<HTMLElement>('.cf-player')) {
+    const video = player.querySelector('video'); const play = player.querySelector<HTMLButtonElement>('.cf-play');
+    const sound = player.querySelector<HTMLButtonElement>('.cf-sound');
+    if (!video || !play || !sound) continue;
+    video.controls = false; play.hidden = false;
+    play.addEventListener('click', () => {
+      video.muted = true; video.controls = true; play.hidden = true; sound.hidden = false;
+      void video.play().catch(() => { play.hidden = false; });
+      video.focus();
+    });
+    sound.addEventListener('click', () => {
+      video.muted = !video.muted; sound.setAttribute('aria-pressed', String(!video.muted));
+    });
+    video.addEventListener('volumechange', () => sound.setAttribute('aria-pressed', String(!video.muted)));
+  }
+
   // Progressive: without JavaScript the command is plain, selectable text and the button stays hidden.
   for (const btn of document.querySelectorAll<HTMLButtonElement>('.cf-copy')) {
     btn.hidden = false;
@@ -112,7 +143,21 @@ const { d } = Astro.props;
   .cf-primary { display: inline-flex; align-items: center; padding: 10px 20px; border-radius: var(--cf-radius-md); background: var(--cf-accent); color: var(--cf-on-accent); font-weight: 600; text-decoration: none; }
   .cf-adopt { color: var(--cf-ink-dim); margin: 0; }
   .cf-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-  .cf-gif img { display: block; width: 100%; height: auto; border-radius: var(--cf-radius-lg); border: 1px solid var(--cf-line); }
+  .cf-video { display: flex; flex-direction: column; gap: 8px; scroll-margin-top: 80px; }
+  .cf-player { position: relative; border-radius: var(--cf-radius-lg); overflow: hidden; border: 1px solid var(--cf-line); background: #000; }
+  .cf-hero { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; }
+  /* Centred on the poster frame, 88px: the one control a first-time reader is looking for. */
+  .cf-play { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 88px; height: 88px; border-radius: 999px; border: 0; cursor: pointer;
+    display: grid; place-items: center; color: #fff; background: #6D28D9; box-shadow: 0 6px 24px rgb(0 0 0 / 0.35); }
+  .cf-play[hidden], .cf-sound[hidden] { display: none; }
+  .cf-play:focus-visible, .cf-sound:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+  .cf-play svg { margin-left: 4px; }
+  .cf-sound { position: absolute; top: 12px; right: 12px; width: 40px; height: 40px; border-radius: 999px; border: 0; cursor: pointer;
+    display: grid; place-items: center; color: #fff; background: rgb(0 0 0 / 0.6); }
+  .cf-sound .cf-sound-on { display: none; }
+  .cf-sound[aria-pressed='true'] .cf-sound-on { display: block; }
+  .cf-sound[aria-pressed='true'] .cf-sound-off { display: none; }
+  .cf-caption { margin: 0; font-size: 14px; }
   .cf-card { background: var(--cf-surface); border: 1px solid var(--cf-line); border-radius: var(--cf-radius-md); padding: 16px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
   .cf-card p { margin: 0; }
   .cf-label { font-size: 12px; line-height: 16px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--cf-accent); }

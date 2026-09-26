@@ -56,7 +56,8 @@ export function agents(root) {
   });
 }
 
-// Skills split in two: a skill whose metadata marks it `kind: command` is a slash command (since 3.0).
+// Skills split in two: a skill whose metadata marks it `kind: command` is a command (since 3.0). One marked
+// `experimental: true` still installs and still answers when typed, but no page counts or lists it.
 export function skillsAndCommands(root) {
   const dir = path.join(root, 'kit/skills');
   const skills = []; const commands = [];
@@ -64,6 +65,7 @@ export function skillsAndCommands(root) {
     const f = path.join(dir, d, 'SKILL.md');
     if (!fs.existsSync(f)) continue;
     const raw = read(f);
+    if (/^\s+experimental:\s*true\s*$/m.test(raw.split('\n---')[0])) continue;
     const fm = frontmatter(f);
     const item = { name: fm.name || d, summary: firstSentence(fm.description) };
     if (/^\s+kind:\s*command\s*$/m.test(raw.split('\n---')[0])) {
@@ -102,15 +104,15 @@ export function gateRules(root) {
   } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 }
 
-// The two counts the network diagrams print in their subtitle ("12 AGENTS … 40 SKILLS"). They are pictures of the
-// payload; a stale one is the claim a reader never checks.
+// The two counts the network diagrams print ("12 agents · 39 skills"), read from each SVG's <title>, which carries
+// the diagram's words as text (the drawing itself is outlines). A stale picture is the claim a reader never checks.
 export function checkNetworkSvgs(root, nAgents, nSkills) {
-  for (const n of ['network-en', 'network-tr']) {
-    const f = path.join(root, 'assets', `${n}.svg`);
+  for (const loc of ['en', 'tr']) for (const theme of ['dark', 'light']) {
+    const n = `network-${loc}-${theme}`, f = path.join(root, 'assets', `${n}.svg`);
     if (!fs.existsSync(f)) fail(`assets/${n}.svg is missing — the skills page embeds it`);
-    const said = [...read(f).matchAll(/(\d+) (?:AGENTS|AJAN|SKILLS?)/g)].map((m) => Number(m[1])).slice(0, 2);
-    if (said.length !== 2) fail(`assets/${n}.svg has no readable count subtitle`);
-    if (said[0] !== nAgents || said[1] !== nSkills) fail(`assets/${n}.svg says ${said.join(' / ')} but the payload is ${nAgents} / ${nSkills} — rerun: python3 packaging/gen-network.py assets`);
+    const m = (read(f).match(/<title[^>]*>[^<]*?(\d+) (?:agents|ajan) · (\d+) skills?/) || []);
+    if (!m[1]) fail(`assets/${n}.svg has no readable count in its <title>`);
+    if (Number(m[1]) !== nAgents || Number(m[2]) !== nSkills) fail(`assets/${n}.svg says ${m[1]} / ${m[2]} but the payload is ${nAgents} / ${nSkills} — rerun: node packaging/gen-diagrams.mjs`);
   }
 }
 
@@ -146,8 +148,8 @@ export function alwaysOn(root) {
 }
 
 // Each agent's stage, from its own frontmatter (`metadata: stage: …`; the metadata block is Crewforth's catalogue
-// data — Claude Code ignores it, and smoke's always-on budget does not count it). Two other places draw the same
-// grouping — the orchestration diagram's source and the hand-written agents table — and all three must agree.
+// data — Claude Code ignores it, and smoke's always-on budget does not count it). The diagrams read it directly
+// (packaging/gen-diagrams.mjs); the hand-written agents table on the skills page must agree with it.
 export const STAGES = ['understand', 'produce', 'audit', 'close', 'handoff'];
 export function stages(root) {
   const dir = path.join(root, 'kit/agents');
@@ -159,12 +161,6 @@ export function stages(root) {
     map.set(fm.name || f.replace(/\.md$/, ''), s);
   }
   const drift = [];
-  const byName = { UNDERSTAND: 'understand', PRODUCE: 'produce', AUDIT: 'audit', CLOSE: 'close', 'HAND OFF': 'handoff' };
-  const gen = read(path.join(root, 'packaging/gen-network.py'));
-  const tuples = [...gen.matchAll(/\("\d","([A-Z ]+)","[^"]*",\s*"#[0-9a-fA-F]+",\s*\[([^\]]*)\]/g)];
-  if (tuples.length !== 5) fail(`packaging/gen-network.py: read ${tuples.length} stage row(s), expected 5 — the diagram source changed shape`);
-  for (const [, label, list] of tuples) for (const a of list.match(/crew-[a-z-]+/g) || [])
-    if (map.get(a) !== byName[label]) drift.push(`gen-network.py puts ${a} under ${label}, its frontmatter says ${map.get(a) ?? 'nothing'}`);
   const tableNames = { en: { Understand: 'understand', Produce: 'produce', Audit: 'audit', Close: 'close', 'Hand off': 'handoff' },
     tr: { Anla: 'understand', 'Üret': 'produce', Denetle: 'audit', Kapat: 'close', Devret: 'handoff' } };
   for (const loc of ['en', 'tr']) {

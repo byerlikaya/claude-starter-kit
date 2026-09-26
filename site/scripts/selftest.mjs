@@ -19,6 +19,7 @@ function scratch() {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'crew-site-selftest-'));
   for (const p of INPUTS) fs.cpSync(path.join(REPO, p), path.join(d, 'repo', p), { recursive: true });
   fs.mkdirSync(path.join(d, 'site'));
+  fs.cpSync(path.join(REPO, 'site/media'), path.join(d, 'site/media'), { recursive: true });   // the overview video the home page serves
   return { root: path.join(d, 'repo'), site: path.join(d, 'site'), done: () => fs.rmSync(d, { recursive: true, force: true }) };
 }
 const page = (s, rel) => fs.readFileSync(path.join(s.site, 'src/content/docs', rel), 'utf8');
@@ -35,9 +36,7 @@ function expectFail(name, s, pattern) {
   try {
     const base = generate(s.root, s.site);
     fs.writeFileSync(path.join(s.root, 'kit/agents/crew-zz-probe.md'), '---\nname: crew-zz-probe\ndescription: |\n  Probe agent added by the site self-test. Owns nothing.\nmetadata:\n  stage: audit\n---\n\nBody.\n');
-    // The stage lives in three places that must agree: the frontmatter, the diagram source and both agent tables.
-    const gp = path.join(s.root, 'packaging/gen-network.py');
-    fs.writeFileSync(gp, fs.readFileSync(gp, 'utf8').replace('"crew-performance-expert"],', '"crew-performance-expert","crew-zz-probe"],'));
+    // The stage lives in two places that must agree: the frontmatter and both agent tables.
     for (const [loc, st] of [['en', 'Audit'], ['tr', 'Denetle']]) {
       const f = path.join(s.root, 'site/content', loc, 'skills.md');
       fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace(/(\| `crew-session-manager` \|[^\n]*\n)/, `$1| \`crew-zz-probe\` | ${st} | probe |\n`));
@@ -46,9 +45,9 @@ function expectFail(name, s, pattern) {
     fs.writeFileSync(path.join(s.root, 'kit/skills/zz-probe/SKILL.md'), '---\nname: zz-probe\ndescription: |\n  Probe skill added by the site self-test. Does nothing.\n---\n\nBody.\n');
     fs.appendFileSync(path.join(s.root, 'packaging/agent-summaries.tr.tsv'), 'crew-zz-probe\tSelf-test ajanı.\n');
     fs.appendFileSync(path.join(s.root, 'packaging/skill-summaries.tr.tsv'), 'zz-probe\tSelf-test skill.\n');
-    for (const n of ['network-en', 'network-tr']) {
+    for (const n of ['network-en-dark', 'network-en-light', 'network-tr-dark', 'network-tr-light']) {
       const f = path.join(s.root, 'assets', `${n}.svg`);
-      fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace(/(\d+)( AGENTS| AJAN)/, (m, a, b) => `${Number(a) + 1}${b}`).replace(/(\d+)( SKILLS?)/, (m, a, b) => `${Number(a) + 1}${b}`));
+      fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace(/(\d+)( agents| ajan)( · )(\d+)( skills?)/, (m, a, b, c, d, e) => `${Number(a) + 1}${b}${c}${Number(d) + 1}${e}`));
     }
     const after = generate(s.root, s.site);
     const skillsEn = page(s, 'skills.md'); const gatesTr = page(s, 'tr/gates.md');

@@ -13,6 +13,7 @@ tools: Read, Grep, Glob, Bash, PowerShell
 effort: high
 metadata:
   stage: audit
+  skills: [red-team, security-scan, sonarqube-check, threat-model]
 ---
 
 # Security Expert

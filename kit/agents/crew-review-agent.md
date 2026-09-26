@@ -8,6 +8,7 @@ description: |
 tools: Read, Grep, Glob, Bash, PowerShell
 metadata:
   stage: close
+  skills: [crew-code-review, docs-writer]
 ---
 
 # Review Agent

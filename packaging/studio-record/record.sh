@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
-# Re-record the three Studio pictures in assets/ from a synthetic fixture:
-#   studio-flow.gif    a delegation assembling (README and the home page)
+# Re-record the two Studio pictures in assets/ from a synthetic fixture:
 #   studio-panels.gif  the panels in use (the Studio page)
-#   studio-graph.png   the finished graph (the Studio page; the home page under reduced motion)
+#   studio-graph.png   the finished graph (the Studio page)
 #
 # No model session and no real transcript: every project, path, session and sentence is invented, and the
 # panel runs with its own projects root, runtime directory and a feed that answers the release version.
 # Chrome is launched headless from a throwaway profile, so no banner or other window reaches a frame.
 # macOS only (the Chrome path and the ~/… shortening of /Users/Shared); needs node, ffmpeg and Chrome.
 #
-#   bash packaging/studio-record/record.sh            # all three, written into assets/
+#   bash packaging/studio-record/record.sh            # both, written into assets/
 #   VERSION_SHOWN=3.1.0 bash packaging/…/record.sh    # a later release
 set -euo pipefail
 
@@ -54,23 +53,18 @@ node "$HERE/shoot.mjs" --url "$URL" --secs 28 --fps 10 --w 1920 --h 1000 --hide-
   --session "$HERO" --out "$FILM" --profile "$T/chrome-flow"
 kill "$GROW" 2>/dev/null || true
 
-# frames-dir first last width out [opening-frame hold]: frames first..last of a take, optionally opened by one
-# frame held for `hold` frames. The encoding the original takes used, unchanged.
+# frames-dir first last width out: frames first..last of a take. The encoding the original takes used, unchanged.
 gif() {
   rm -rf "$T/cut"; mkdir -p "$T/cut"
-  local i=0 f n
-  if [ -n "${6:-}" ]; then for n in $(seq 1 "$7"); do cp "$6" "$(printf '%s/cut/c%04d.png' "$T" "$i")"; i=$((i + 1)); done; fi
+  local i=0 f
   for f in $(ls "$1"/f*.png | sed -n "$(($2 + 1)),$(($3 + 1))p"); do cp "$f" "$(printf '%s/cut/c%04d.png' "$T" "$i")"; i=$((i + 1)); done
   ffmpeg -y -loglevel error -framerate 10 -i "$T/cut/c%04d.png" \
     -vf "fps=10,scale=$4:-1:flags=lanczos,palettegen=max_colors=128:stats_mode=diff" "$T/pal.png"
   ffmpeg -y -loglevel error -framerate 10 -i "$T/cut/c%04d.png" -i "$T/pal.png" \
     -lavfi "fps=10,scale=$4:-1:flags=lanczos [x]; [x][1:v] paletteuse=dither=none:diff_mode=rectangle" -loop 0 "$5"
 }
-# The last full frame is the finished graph — twelve agents and the workflow. It is the still, and it OPENS the
-# flow GIF for 1.5 s: the first frame is what a link preview and a slow first load show, and the take itself begins
-# on an empty canvas (the grower's lead-in, which exists only so the recorder is warm before the first spawn).
+# The last full frame is the finished graph — twelve agents and the workflow — and it is the still.
 LAST="$(ls "$FILM"/f*.png | sed -n 273p)"
-gif "$FILM" "${FLOW_FROM:-55}" 274 1600 "$REPO/assets/studio-flow.gif" "$LAST" 15
 cp "$LAST" "$REPO/assets/studio-graph.png"
 
 # Take 2: the panels, on the finished fixture with its running agents kept live.
@@ -79,7 +73,7 @@ bash "$HERE/refresh-running.sh" "$ROOT" >/dev/null
 node "$HERE/tour.mjs" --url "$URL" --session "Duplicate settlements" --out "$TOUR" --profile "$T/chrome-tour"
 gif "$TOUR" 0 100000 1600 "$REPO/assets/studio-panels.gif"
 
-for f in studio-flow.gif studio-panels.gif studio-graph.png; do
+for f in studio-panels.gif studio-graph.png; do
   printf 'record: assets/%-18s %9s bytes  %s\n' "$f" "$(wc -c < "$REPO/assets/$f" | tr -d ' ')" \
     "$(ffprobe -v error -select_streams v:0 -count_frames -show_entries stream=width,height,nb_read_frames -of csv=p=0 "$REPO/assets/$f")"
 done

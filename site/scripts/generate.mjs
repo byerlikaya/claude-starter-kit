@@ -69,6 +69,8 @@ const HOME = {
     title: { before: 'Your engineering ', accent: 'crew', after: ' for Claude Code.' },
     lead: 'Subagents, skills, commands and hooks: specialists that plan, build, review and ship a change in any stack, with the rules that matter enforced by gates.',
     docs: 'Read the docs', copy: 'Copy', copied: 'Copied',
+    play: 'Play the 1-minute overview', sound: 'Sound',
+    videoDesc: 'A one-minute overview: plain Claude Code, the install, the crew at work, the gates, Studio and the handoff.',
     adopt: 'Existing repository? `npx crewforth adopt` lands everything on its own branch. `main` is never touched.',
     crewHeading: 'Twelve specialists, one order',
     crewLead: 'Every request has an owner. A routing hook names it beside your prompt, and quality rises stage by stage before anything is committed.',
@@ -90,6 +92,8 @@ const HOME = {
     title: { before: 'Claude Code için mühendislik ', accent: 'ekibiniz', after: '.' },
     lead: "Ajanlar, skill'ler, komutlar ve hook'lar: her yığında bir değişikliği planlayan, yazan, inceleyen ve teslim eden uzmanlar. Önemli kurallar ise kapılarla korunur.",
     docs: 'Belgeleri oku', copy: 'Kopyala', copied: 'Kopyalandı',
+    play: 'Bir dakikalık tanıtımı oynat', sound: 'Ses', videoNote: 'Video İngilizce',
+    videoDesc: 'Bir dakikalık tanıtım: sade Claude Code, kurulum, iş başındaki ekip, kapılar, Studio ve devir.',
     adopt: "Mevcut bir repo mu? `npx crewforth adopt` her şeyi ayrı bir dala koyar, `main`'e dokunmaz.",
     crewHeading: 'On iki uzman, tek düzen',
     crewLead: "Her isteğin bir sahibi var. Yönlendirme hook'u sahibini isteğinizin yanına yazar ve commit'ten önce kalite aşama aşama yükselir.",
@@ -216,13 +220,10 @@ export function generate(root = ROOT, site = SITE) {
     // Home (design B, 5S.b2): the strings are the brief's; every list and number comes from the repository.
     const H = HOME[loc];
     const p = prefix(loc);
-    const readme = read(path.join(root, loc === 'en' ? 'README.md' : `README.${loc}.md`));
-    const gifAlt = (readme.match(/<img src="assets\/studio-flow\.gif" alt="([^"]+)"/) || [])[1];
-    if (!gifAlt) fail(`README${loc === 'en' ? '' : '.' + loc}.md: the studio-flow.gif alt text this page reuses is gone`);
     const d = {
       mark: '/assets/mark.svg', title: H.title, lead: H.lead, command: 'npx crewforth init',
       copy: H.copy, copied: H.copied, docsLabel: H.docs, docsHref: `${p}/install/`, adopt: inline(H.adopt),
-      gif: { src: '/assets/studio-flow.gif', still: '/assets/studio-graph.png', alt: gifAlt },
+      video: { src: '/media/crewforth-hero.mp4', poster: '/media/crewforth-hero-poster.jpg', play: H.play, sound: H.sound, desc: H.videoDesc, note: H.videoNote ?? '' },
       crew: {
         heading: H.crewHeading, lead: H.crewLead,
         // The longest agent name sizes every chip so it fits its card; read here so a longer name resizes them too.
@@ -244,6 +245,8 @@ export function generate(root = ROOT, site = SITE) {
 
   // Static files: the repository's assets, the logo pair, the favicon, the social card, robots.txt.
   fs.cpSync(path.join(root, 'assets'), path.join(site, 'public/assets'), { recursive: true });
+  // The home page's overview video and its poster: the site's own files, served from its own origin.
+  fs.cpSync(path.join(site, 'media'), path.join(site, 'public/media'), { recursive: true });
   fs.mkdirSync(path.join(site, 'src/assets'), { recursive: true });
   for (const f of ['logo.svg', 'logo-light.svg']) fs.copyFileSync(path.join(root, 'assets', f), path.join(site, 'src/assets', f));
   fs.copyFileSync(path.join(root, 'assets/icon.svg'), path.join(site, 'public/favicon.svg'));

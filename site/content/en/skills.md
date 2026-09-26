@@ -2,8 +2,9 @@
 
 **{{AGENT_COUNT}} specialist agents** across five stages, so quality escalates before anything is committed.
 
-<div align="center">
-  <img src="../../../assets/orchestration-en.svg" alt="The five stages: Understand, Produce, Audit, Close, Hand off" width="820">
+<div align="center" class="cf-diagram">
+  <img class="cf-only-dark" src="../../../assets/stages-en-dark.svg" alt="How a change moves: Understand, Produce, Audit, Close with your approval, Hand off" width="900">
+  <img class="cf-only-light" src="../../../assets/stages-en-light.svg" alt="How a change moves: Understand, Produce, Audit, Close with your approval, Hand off" width="900">
 </div>
 
 | Agent | Stage | Fires when |
@@ -25,9 +26,9 @@
 
 ## All {{SKILL_COUNT}} skills
 
-<div align="center">
-  <img src="../../../assets/network-en.svg" alt="{{AGENT_COUNT}} agents and {{SKILL_COUNT}} skills, connected by their real applies relationships" width="820">
-  <br><sub>Every agent, every skill, and the real <code>applies</code> relationships — grouped by stage, each agent its own hue; the centre is the main thread that orchestrates them.</sub>
+<div align="center" class="cf-diagram">
+  <img class="cf-only-dark" src="../../../assets/network-en-dark.svg" alt="Who applies which skill: {{AGENT_COUNT}} agents and {{SKILL_COUNT}} skills by stage" width="900">
+  <img class="cf-only-light" src="../../../assets/network-en-light.svg" alt="Who applies which skill: {{AGENT_COUNT}} agents and {{SKILL_COUNT}} skills by stage" width="900">
 </div>
 
 The catalogue below is generated from each skill when the site is built; do not edit it by hand.

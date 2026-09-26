@@ -55,6 +55,15 @@ jobs:
           echo "scope: $scope · site: $site"
           echo "scope=$scope" >> "$GITHUB_OUTPUT"
           echo "site=$site" >> "$GITHUB_OUTPUT"
+      # Nothing in this repository is signed by a tool. The title and body come from the event payload, through env,
+      # so the description is read as data; no request leaves the runner. A description edited after the last push
+      # is read on the next push.
+      - name: No signature line in the pull request
+        if: github.event_name == 'pull_request'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: printf '%s\n%s\n' "$PR_TITLE" "$PR_BODY" | bash packaging/check-attribution.sh
 
   verify:
     runs-on: ubuntu-latest

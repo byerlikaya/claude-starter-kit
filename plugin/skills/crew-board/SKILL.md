@@ -1,10 +1,11 @@
 ---
 name: crew-board
-description: Team board — see who holds which item, claim one, hand it over, complete it.
+description: Experimental: team board — claim an item, hand it over, complete it.
 argument-hint: "[claim <id> | done <id> | drop <id> | add <id> <title> | init | sync]"
 disable-model-invocation: true
 metadata:
   kind: command
+  experimental: true
 ---
 # /crew-board
 Argument: $ARGUMENTS

@@ -43,7 +43,7 @@ bash start.sh [--private|--shared] [--lang tr|en] [--yes] [--version] [-h]
 
 Sihirbaz önce hangi dilde konuşacağını sorar (Türkçe ya da İngilizce), ardından kurulumu kimin kullanacağını; sonunda hiçbir şey yazılmadan önce onaylayacağınız bir özet gösterir. Seçtiğiniz dil tüm sorulara ve mesajlara uygulanır; kurulan dosyalar İngilizce kalır.
 
-**Her kurulum aynı ekibi getiriyor:** 12 ajanın ve 40 skill'in tamamı. Backend, web ve mobil (React Native/Expo) bir arada geliyor. API olarak başlayıp web istemcisi kazanan bir proje, ikisi için de baştan donanımlıdır.
+**Her kurulum aynı ekibi getiriyor:** {{AGENT_COUNT}} ajanın ve {{SKILL_COUNT}} skill'in tamamı. Backend, web ve mobil (React Native/Expo) bir arada geliyor. API olarak başlayıp web istemcisi kazanan bir proje, ikisi için de baştan donanımlıdır.
 
 | Kurulumda sorulan | Seçenekler | Neyi değiştirir |
 |:--|:--|:--|
@@ -58,8 +58,9 @@ Sihirbaz önce hangi dilde konuşacağını sorar (Türkçe ya da İngilizce), a
 bash adopt.sh    # hedef projenin kök dizininde
 ```
 
-<div align="center">
-  <img src="../../../assets/handover-tr.svg" alt="adopt.sh Crewforth'u nasıl devrediyor" width="900">
+<div align="center" class="cf-diagram">
+  <img class="cf-only-dark" src="../../../assets/handover-tr-dark.svg" alt="Mevcut bir projeyi devralmak: tespit, öneri, dal, birlikte, disiplin, kanıt, devir" width="900">
+  <img class="cf-only-light" src="../../../assets/handover-tr-light.svg" alt="Mevcut bir projeyi devralmak: tespit, öneri, dal, birlikte, disiplin, kanıt, devir" width="900">
 </div>
 
 Crewforth, bir ekibin bir projeyi başka bir ekibe devrettiği gibi gelir: hiçbir şey kırılmaz, alınmış kararlar kaybolmaz ve gelen şey öylece durup beklemez.

@@ -9,6 +9,7 @@ description: |
 tools: Read, Grep, Glob, Edit, Write, Bash, PowerShell
 metadata:
   stage: produce
+  skills: [api-design, backend-architecture, confidence-check, dependency-audit, i18n-integrity, observability, performance, sonarqube-check]
 ---
 
 # Backend Expert (stack-agnostic)

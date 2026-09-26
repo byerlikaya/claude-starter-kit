@@ -1,18 +1,17 @@
 # Studio recordings
 
-Re-records the three Studio pictures in `assets/` after a change to the panel:
+Re-records the two Studio pictures in `assets/` after a change to the panel:
 
 | File | Where it is shown | What it shows |
 |:--|:--|:--|
-| `studio-flow.gif` | top of the READMEs and the home page | a delegation assembling: agents spawn, dashes run down the live branches, one fails |
 | `studio-panels.gif` | the Studio page | a session opened from the project list, an agent's report and tool timeline, the jump to the failure, the conversation behind it |
-| `studio-graph.png` | the Studio page, and the home page under reduced motion | the finished graph: twelve agents and a workflow |
+| `studio-graph.png` | the Studio page | the finished graph: twelve agents and a workflow |
 
 ```bash
 bash packaging/studio-record/record.sh
 ```
 
-The file names stay the same, so the READMEs and the site pick up a new recording without an edit.
+The file names stay the same, so the site picks up a new recording without an edit.
 
 ## What it does
 
@@ -26,8 +25,8 @@ The file names stay the same, so the READMEs and the site pick up a new recordin
    Chrome with a throwaway profile over the DevTools protocol (`cdp.mjs`), so no automation banner and no other
    window can reach a frame. The two sidebar sections that describe the machine running the panel stay folded.
 4. `tour.mjs` clicks through the panels on the finished fixture.
-5. ffmpeg encodes both GIFs at 1600 px wide, 10 fps and 128 colours. The flow GIF opens on the finished graph for
-   1.5 s, because its first frame is what a link preview shows.
+5. The last frame of the replay is kept as the graph still, and ffmpeg encodes the panels GIF at 1600 px wide,
+   10 fps and 128 colours.
 
 The version shown on the demo projects and in the header is the repository's `VERSION`. Set `VERSION_SHOWN` to
 record another one.

@@ -6,19 +6,17 @@
   <img src="assets/logo.svg" alt="Crewforth" width="420">
 </picture>
 
-![Sürüm](https://img.shields.io/badge/version-3.0.0-2563eb?style=flat-square)
-![Lisans](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)
-![Ajan](https://img.shields.io/badge/agents-12-f59e0b?style=flat-square)
-![Skill](https://img.shields.io/badge/skills-40-f59e0b?style=flat-square)
+![Sürüm](https://img.shields.io/badge/version-3.0.0-6D28D9?style=flat-square)
+![Lisans](https://img.shields.io/badge/license-MIT-5c6472?style=flat-square)
 
 [🇬🇧 English](README.md) · 🇹🇷 Türkçe
 
 **Crewforth, Claude Code için mühendislik ekibinizdir.**
 
 Claude Code'a subagent'lar, skill'ler, komutlar ve hook'lar ekler: her biri bir alanın sahibi olan 12 uzman ajan,<br>
-yöntemi taşıyan 40 skill, `/crew-…` ile başlattığınız 11 komut ve önemli kuralları uygulayan hook'lar.
+yöntemi taşıyan 39 skill, `/crew-…` ile başlattığınız 10 komut ve önemli kuralları uygulayan hook'lar.
 
-<img src="assets/studio-flow.gif" alt="Studio, ajanlar doğup çalışıp rapor verirken delegasyonu çiziyor" width="880">
+<a href="https://crewforth.com/#overview"><img src="assets/overview-poster.jpg" alt="Bir dakikalık tanıtımı crewforth.com'da izleyin" width="880"></a>
 
 </div>
 
@@ -41,7 +39,11 @@ Hiçbir şey yazılmadan önce bir özeti onaylarsınız; `add` tam kurulum yapm
 ## Bir oturum nasıl akar
 
 <div align="center">
-  <img src="assets/workflow-tr.svg" alt="Komut akışı: /crew-plan, uzman ajanlar, /crew-review, /crew-ship, /crew-handoff" width="820">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/flow-tr-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="assets/flow-tr-light.svg">
+    <img src="assets/flow-tr-light.svg" alt="Komut akışı: /crew-plan, uzmanlar, /crew-review, senin onayınla /crew-ship, /crew-handoff" width="880">
+  </picture>
 </div>
 
 | Adım | Komut | Ne olur |
@@ -52,7 +54,7 @@ Hiçbir şey yazılmadan önce bir özeti onaylarsınız; `add` tam kurulum yapm
 | Teslim et | `/crew-ship` | `crew-review-agent` temiz incelemeyi kaydeder; `crew-commit-agent` commit'i önerir ve onayınızı bekler |
 | Devret | `/crew-handoff` | `handoff` durumu bir sonraki oturum için yazar |
 
-Toplam **11 komut**, her biri kendi `/crew-…` adıyla başlatılır: `/crew-plan`, `/crew-review`, `/crew-ship`, `/crew-handoff`, `/crew-brainstorm`, `/crew-update`, `/crew-doctor`, `/crew-board`, `/crew-gates`, `/crew-skill`, `/crew-studio`.
+Toplam **10 komut**, her biri kendi `/crew-…` adıyla başlatılır: `/crew-plan`, `/crew-review`, `/crew-ship`, `/crew-handoff`, `/crew-brainstorm`, `/crew-update`, `/crew-doctor`, `/crew-gates`, `/crew-skill`, `/crew-studio`.
 
 ## Ajanlar
 
