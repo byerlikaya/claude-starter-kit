@@ -30,9 +30,9 @@ counted three times. So:
 
 **Cost gate, because isolation is not free** — each subagent re-pays for its own context (see `token-budget`), so
 N×findings gets expensive fast. Isolate by stake, not by default:
-- **blocker / high severity, or anything heading for a release** → isolate, N=3 (N=5 for a release audit).
+- **critical / high severity, or anything heading for a release** → isolate, N=3 (N=5 for a release audit).
 - **medium** → isolate, N=1. One genuinely independent pass beats three entangled ones.
-- **low / nit** → single inline pass, labelled as such. Do not spend a subagent proving a nit.
+- **low** → single inline pass, labelled as such. Do not spend a subagent proving a `low`.
 
 ### The verifiers must not be three copies of one method
 Independent is still not uncorrelated. Three verifiers running the same four steps fail in the same place, and

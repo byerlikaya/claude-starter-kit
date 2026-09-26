@@ -175,7 +175,7 @@ fi
 # It sits here, ahead of the early exit below, because neither move adds a line: a commit that only deletes has
 # nothing for the text scans, and that exit used to end the hook before this ever ran — measured, a deleted test
 # file committed cleanly. The line-pattern half of the floor guard is further down with the other text scans.
-# (Adapted from addyosmani/agent-skills, constraint-driven-development, MIT; see floor-blocklist.txt.)
+# (The line patterns and why each exists: floor-blocklist.txt.)
 FAL=""; [ -n "$GITROOT" ] && [ -f "$GITROOT/.floor-allowlist.txt" ] && FAL="$GITROOT/.floor-allowlist.txt"
 # .floor-allowlist.txt: `path:<glob>` exempts a path, `rule:<name>` turns a rule off, any other line exempts that
 # EXACT pattern line. `path:` is matched as a shell `case` pattern: `*` crosses `/` and `**` is not special, so
@@ -429,10 +429,9 @@ rm -f "$PRIV_F"
 # assertions inside one that stays). The patterns and their cases live in floor-blocklist.txt; the two structural
 # checks that a single line cannot show are here.
 #
-# Adapted from the floor in addyosmani/agent-skills (constraint-driven-development, MIT), rewritten for this hook:
-# the STAGED diff rather than a merge base, since at commit time that is exactly what enters history; bash, since
-# every gate here must run with nothing installed; and the two exemptions a real stack needs, documentation and
-# generated code.
+# Built for this hook: the STAGED diff rather than a merge base, since at commit time that is exactly what enters
+# history; bash, since every gate here must run with nothing installed; and the two exemptions a real stack needs,
+# documentation and generated code.
 #
 # It reports the rule, the file, the line and the PATTERN, never the line's text: a suppressed line can carry a
 # secret beside the comment, and the secret scan above is the only place that decides how a value is shown.

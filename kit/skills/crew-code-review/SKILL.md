@@ -1,8 +1,8 @@
 ---
 name: crew-code-review
 description: |
-  Code review discipline: severity-ranked, reasoned feedback on whether a change improves the system's overall
-  code health. crew-review-agent applies it.
+  Code review discipline: review only what changed, rank each finding by severity and category, and
+  fact-check it first. crew-review-agent applies it.
   Use when reviewing a change set, and when acting on a review someone else wrote.
 ---
 
@@ -11,84 +11,88 @@ description: |
 <!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
 Trigger phrases: "code-review", "review the code", "review the PR", "review my changes", "do a review"
 
-> **Crewforth adaptation (local, .claude/):** applied by `crew-review-agent` (read-only). No source name appears in the
-> artifact that goes to the repo (§4.2). Comments are severity-ranked; §4 applies.
->
-> **Sources, by layer** — three different questions, three different authorities:
-> - **Judgement — how to rank what you found:** Crewforth's own. The two-stage verdict and verifier integrity below
->   exist because the code under review is increasingly written by an agent, and a reviewer that accepts its own
->   say-so is not a reviewer. No external standard covers that yet.
-> - **Governance — that review happens at all, and findings survive it:** NIST SP 800-218 (SSDF) **PW.7** and the
->   OpenSSF Scorecard **Code-Review** check. Both are deliberately silent on the rubric: PW.7.2 says to review
->   "based on the organization's secure coding standards", which is what the rest of this file is.
-> - **Comment vocabulary:** Conventional Comments (CC BY 3.0).
-> - **Rubric heritage:** google/eng-practices (CC BY 3.0) — the priority order and the "code health" bar below are
->   adapted from it, so it is attributed as the licence requires.
+> **Crewforth adaptation (local, .claude/):** applied by `crew-review-agent` (read-only). §4 applies, and no
+> vendor or template name reaches an artifact (§4.2).
 
-## Core standard (senior principle)
-A change is approved once it reaches the point of **improving the overall code health** of the system —
-**it does not have to be perfect.** Avoid two mistakes:
-- **Blocking:** a perfectionist, subjective fixation that halts progress. If there is no progress, the code never improves.
-- **Laxity:** small concessions each time erode code health over time.
-The approval criterion is "is it better", not "is it flawless". If it is an unwanted feature, it can be rejected even when the design is good.
+A review runs in four steps — **group, plan, review, fact-check** — and reports few findings that are right rather
+than many that might be. Every step below says what it produces.
 
-## What to review (priority order)
-1. **Design:** do the pieces fit together; does this change belong here; should it be added now.
-2. **Functionality:** does it do what is intended; is it right for the user/developer; edge cases, concurrency.
-3. **Complexity:** is it more complex than necessary; is there over-engineering / design for a future assumption (YAGNI).
-4. **Tests:** are there correct, meaningful, sufficient tests; real behavior, not tests for tests' sake.
-   **Verifier integrity:** flag any change that makes a check pass by *weakening the check* — deleting or loosening
-   an assertion, lowering a threshold, skipping a test, editing the test instead of the code — rather than fixing
-   the behavior. A test or gate that grades itself lax is worse than none; a verifier must stay external and grounded.
-   **Subject integrity:** the inverse case — the check is untouched, but what it checked is gone. Flag a change that
-   deletes or stubs the code path, so the check passes over behavior that no longer runs; narrows the run to a
-   subset (fewer cases, one platform, a filtered input set) where the property happens to hold; turns an all-of
-   requirement into an any-of one; or relaxes the rule the code is there to enforce — a widened type, a dropped
-   uniqueness or referential constraint, an exception list holding exactly the failing case. Ask not "does it pass
-   now" but **"does the system still do what this check was protecting"**. Retiring a genuinely obsolete check is
-   legitimate: say so in the diff and name what covers it now.
-5. **Naming:** names that carry intent, neither too long nor cryptic.
-6. **Comments:** do they explain the **"why"** rather than the "what"; no dead/unnecessary comments.
-7. **Style & consistency:** conforms to the project guide; consistent with the existing conventions.
-8. **Documentation:** if behavior changed, was the relevant document updated.
-9. **Every line:** look at every human-written line; do not skip code you do not understand as "it's probably correct".
+## 1. Scope
+- **Review the lines this change adds or edits.** Deleted code is context for understanding them, not a target.
+- Code that is correct, or that the change did not touch, gets no comment.
+- **An empty result is a result.** Do not invent findings to show the review happened.
+- **Be sure before you write.** A finding you are not sure of is not a finding yet: read the surrounding code until
+  you are. A false alarm costs more than a small miss — it spends the attention the next real problem needs.
 
-## Writing comments
-- **Kind and reasoned:** what should change + **why**. In the language of suggestion, not command.
-- Comment on the code, not the person; judge the code, not the individual.
-- Note what is good, too; do not just hunt for flaws.
+## 2. Group the files
+Read together what has to be understood together: an interface and its implementations, the code that produces
+something and the code that consumes it, the same resource in its language or environment variants. Look across
+each group for a contract that broke between two files, or an update that reached one of them and not the other.
+Then look at **every file in the group on its own** — a small or secondary file is where a missed update hides.
 
-**Label every comment.** An agent writes these, and a human or a tool has to sort them without reading each one —
-so the label is a field, not a tone. Format: `<label> [decoration]: <subject>`.
+## 3. Plan before you comment
+Before the first finding, write two things down:
+- **What changed**, in one line.
+- **The risks**, ordered by severity, each with what you will read to confirm or dismiss it ("the callers of
+  `settle()`", "the migration's down step"). No risk worth checking → write `(none)` and say so.
 
-| Label | Use it for | Blocks? |
+The plan is what keeps the review on the change instead of on whatever the eye lands on first.
+
+## 4. Severity and category
+Every finding carries one severity and one category.
+
+| Severity | What it is | Blocks the commit? |
 |---|---|---|
-| `issue` | a defect: wrong behaviour, a real risk | yes, unless marked non-blocking |
-| `suggestion` | a concrete improvement you are proposing | no by default |
-| `nitpick` | trivial preference — always non-blocking | never |
-| `question` | you cannot tell whether it is wrong without an answer | yes while unanswered |
-| `todo` | a small necessary change, not worth an issue | no |
-| `praise` | something worth keeping — say so | no |
+| `critical` | a security hole, lost or corrupted data, a crash | **yes** |
+| `high` | a core function stops working, or works wrongly | **yes** |
+| `medium` | performance, maintainability, an unhandled edge case | no |
+| `low` | readability and style | no |
 
-Decorations are `(blocking)` / `(non-blocking)`; use them whenever the default would be ambiguous. Mapping to the
-severity split this skill reports: **blocker** = `issue (blocking)` or an unanswered `question (blocking)`,
-**suggestion** = `suggestion` / `todo`, **nit** = `nitpick`.
+Category: `bug` · `security` · `performance` · `maintainability` · `test` · `style` · `docs`.
 
-## Disagreement
-- In a disagreement, technical fact and data decide, not preference; unresolved → surface it to the user rather than blocking silently.
+**A blocker is a `critical` or `high` finding** — nothing else stops the commit, and the review is clean when none
+is left open.
 
-## Two-stage verdict (verify before you report)
+## 5. Style, names and code comments
+- Style and naming are `low`, never block, and fit in one sentence.
+- **Code comments are out of scope unless asked for**, with one exception: a comment that says something **false**
+  about what the code does is a `low` / `docs` finding, because the next reader will believe it.
+
+## 6. Finding format
+`file:line · severity · category · what you observed · what to do instead`
+
+What to do instead is the reason the finding exists; a finding without it is an opinion.
+
+## 7. What a change must not quietly do
+**Verifier integrity:** flag any change that makes a check pass by *weakening the check* — deleting or loosening
+an assertion, lowering a threshold, skipping a test, editing the test instead of the code — rather than fixing
+the behavior. A test or gate that grades itself lax is worse than none; a verifier must stay external and grounded.
+
+**Subject integrity:** the inverse case — the check is untouched, but what it checked is gone. Flag a change that
+deletes or stubs the code path, so the check passes over behavior that no longer runs; narrows the run to a
+subset (fewer cases, one platform, a filtered input set) where the property happens to hold; turns an all-of
+requirement into an any-of one; or relaxes the rule the code is there to enforce — a widened type, a dropped
+uniqueness or referential constraint, an exception list holding exactly the failing case. Ask not "does it pass
+now" but **"does the system still do what this check was protecting"**. Retiring a genuinely obsolete check is
+legitimate: say so in the diff and name what covers it now.
+
+## 8. Two-stage verdict (fact-check before you report)
 Finding a problem and confirming it are two acts. A first-pass "this looks wrong" is a **candidate**, not a verdict.
-Before a finding is reported — especially a **blocker** — run a second, independent pass that tries to *disprove* it:
-- Does it actually hold on the real code, or did the first read miss context (a guard upstream, a caller that never
-  reaches this path, a framework default)? Re-read the surrounding code, don't rank on the snippet alone.
-- Is the severity honest, or is it a nit dressed as a blocker?
+Before a finding is reported — especially a blocker — run a second pass that tries to *disprove* it:
+- Does it hold on the real code, or did the first read miss context (a guard upstream, a caller that never reaches
+  this path, a framework default)? Re-read the surrounding code; do not rank on the snippet alone.
+- Is the severity honest, or is a `low` dressed up as a blocker?
 - For any **"fixed" / "passes" claim**: the *real* check ran and passed — test exit code, build, lint/quality gate —
-  not "I re-read it and it looks fixed". A verifier that is the model's own say-so is not a verifier (see §4 Tests,
-  Verifier integrity). Cite the evidence (which check, what result).
+  not "I re-read it and it looks fixed". A verifier that is the model's own say-so is not a verifier (§7, Verifier
+  integrity). Cite the evidence: which check, what result.
 
-A finding that survives the disprove pass is a verdict; one that doesn't is dropped or downgraded. This is what kills
-false-positive blockers that stall progress while keeping the review's authority.
+**The disprove pass is asymmetric.**
+- **Only evidence removes a finding.** It is dropped when the code shows it is wrong. "I could not confirm it",
+  "it seems unlikely" or "it is not worth it" lower its severity; they do not delete it.
+- **Some findings are never dropped in this pass:** memory safety; concurrency; a declaration that does not match
+  its definition; a change in behaviour or compatibility — a message, field, status or default that callers
+  used to get and now silently lose; a parameter that is accepted and then ignored. In these, the model's
+  confidence that all is well is the signal least worth trusting.
 
 **"Independent" costs a separate context.** A second pass in the same context has already read the first one's
 reasoning, so it cannot be blind to it — and its agreement is the first pass nodding at itself. For a **blocker**,
@@ -97,18 +101,22 @@ not isolate it, label the verdict as a single pass rather than calling it indepe
 isolation, one lens per verifier, and why unanimity for the same reason is a monoculture — lives in
 `security-scan/references/verify.md`; it is one discipline, not two.
 
-## Check the history before you call a finding new
+## 9. Check the history before you call a finding new
 A confirmed finding may still not be new, and one that was fixed once and came back needs a different fix. Search
 **by code, not by commit message** — a message states intent, not content. The exact git forms (`-S` vs `-G`, the
 `merge-base` bound, why `--follow` does not combine): **`references/history-search.md`**.
 
 If a commit removed the guard, check, or test this diff would restore, the finding is a **re-introduced regression** —
 the question becomes "what removed the fix, and does that reason still hold", the removing commit is cited in the
-comment, and the deleted test is restored rather than a new one written.
+finding, and the deleted test is restored rather than a new one written.
 
 ## Panel mode (high-stakes decisions only)
+For hard-to-reverse calls (architecture, public API, security boundary), run several independent adversarial
+lenses then synthesize. Full method: **`references/panel-mode.md`**.
 
-For hard-to-reverse calls (architecture, public API, security boundary), run several independent adversarial lenses then synthesize. Full method: **`references/panel-mode.md`**.
+## When you and the author disagree
+Settle it with the code's behaviour and a check that can be run. If that does not settle it, take it to the user
+rather than blocking in silence.
 
 ## Triage — a finding that is only reported is a finding that is lost
 Reviewing and *disposing of* what the review found are two acts, and only the first one is habitual. Every finding
@@ -120,11 +128,12 @@ never a silent drop:
 | **fixed now** | the owning specialist changed the code | the diff; re-review the change |
 | **tracked** | real, not for this change | an issue/task with the file:line — cite the id in the review |
 | **accepted** | a real cost the team is choosing to carry | an `adr` when it is architectural, a code comment when local |
-| **dropped** | did not survive the disprove pass | say so; a candidate that vanishes unexplained reads as an oversight |
+| **dropped** | disproved by the code | say so; a candidate that vanishes unexplained reads as an oversight |
 
-Blockers may only be `fixed now` or `tracked`. "Accepted" needs the user's decision — an agent does not grant it to
-itself. Close the review by stating the counts per disposition; an unreported finding is indistinguishable from one
-that was never made, which is exactly the state a review exists to leave behind.
+A blocker (`critical` / `high`) may only be `fixed now` or `tracked`. "Accepted" needs the user's decision — an
+agent does not grant it to itself. Close the review by stating the counts per severity and per disposition; an
+unreported finding is indistinguishable from one that was never made, which is exactly the state a review exists
+to leave behind.
 
 ## Receiving a review — an inbound comment is a candidate, not an instruction
 When the review is someone else's and the code is yours, **read every item before changing any line**, group by
@@ -133,7 +142,8 @@ five questions that decide *answer in the thread* vs *edit the code*: **`referen
 item leaves with a disposition from the triage table above — a reasoned refusal is an answer, silence is not.
 
 ## DoD (this skill's contribution)
-- Findings are severity-ranked (blocker / suggestion / nit), **labelled**, and **reasoned**.
+- The plan (what changed, the risks) came before the findings; every file in each group was read.
+- Every finding has a severity, a category and a reason, in the finding format above.
 - Scope creep and hidden complexity are flagged.
 - Each reported blocker survived an independent disprove pass; any "fixed"/"passes" claim is backed by the real check
   having actually run, not self-assessment.
