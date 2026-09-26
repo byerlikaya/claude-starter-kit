@@ -11,6 +11,11 @@ CMD_FILES="$(grep -l '^  kind: command' "$SKILLS"/*/SKILL.md 2>/dev/null | tr '\
 CMD_NAMES=" "; for _cf in $CMD_FILES; do _cn="${_cf%/SKILL.md}"; CMD_NAMES="$CMD_NAMES${_cn##*/} "; done
 is_cmd(){ case "$CMD_NAMES" in *" $1 "*) return 0 ;; esac; return 1; }
 NCMD=0; for _cf in $CMD_FILES; do NCMD=$((NCMD+1)); done
+# `metadata: experimental: true` installs and answers when typed, but no showcase counts or lists it (5W: the team
+# board is not finished). Everything below that counts what a reader is shown asks is_exp.
+EXP_NAMES=" "; for _ef in $(grep -l '^  experimental: true' "$SKILLS"/*/SKILL.md 2>/dev/null); do _en="${_ef%/SKILL.md}"; EXP_NAMES="$EXP_NAMES${_en##*/} "; done
+is_exp(){ case "$EXP_NAMES" in *" $1 "*) return 0 ;; esac; return 1; }
+NCMD_SHOWN=0; for _cf in $CMD_FILES; do _cn="${_cf%/SKILL.md}"; is_exp "${_cn##*/}" || NCMD_SHOWN=$((NCMD_SHOWN+1)); done
 FAIL=0; PASSN=0; SKIPN=0; SKIP_HARD=0; SKIP_LIST=""
 # EVERY ASSERTION APPENDS ITS COUNTER VALUE TO A FILE, and that one redirect is what makes the check below
 # possible: a file survives a subshell, a variable does not. An assertion that runs inside `( … )` increments
@@ -1738,6 +1743,9 @@ if [ "$IS_KIT" = 1 ]; then
   for h in "$ROOT"/hooks/*.sh; do
     [ -e "$h" ] || continue
     hn="$(basename "$h")"
+    # The board's two hooks ship with the board, which is experimental: the gates page says two hooks serve an
+    # experimental feature and does not describe them. When the board graduates, this exemption lapses on its own.
+    case "$hn" in board.sh|board-sync.sh) is_exp teamboard && continue ;; esac
     # The hook list moved from the READMEs to the site's gates pages in the 3.0 rewrite; the rule did not move.
     if grep -q "$hn" "$KR/site/content/en/gates.md" && grep -q "$hn" "$KR/site/content/tr/gates.md"; then
       pass "hooks/$hn is documented on both gates pages (site/content/*/gates.md)"
@@ -1815,59 +1823,60 @@ if [ "$IS_KIT" = 1 ]; then
   # they announced 11 agents and 36 skills, and the answer is the same: derive the number, do not restate it.
   # Only the badge is asserted, deliberately -- it is the one number a reader takes on trust without scrolling,
   # and pinning every prose mention would fail on a sentence that legitimately says "12 agents own one domain".
+  # 5W: the agent and skill badges are gone (the numbers are in the text beside them), so the text is what is held
+  # to the payload. The skill count leaves out commands, counted as commands, and anything experimental.
   NAG="$(ls "$AGENTS"/*.md 2>/dev/null | wc -l | tr -d ' ')"
-  NSK="$(( $(find "$SKILLS" -maxdepth 2 -name SKILL.md 2>/dev/null | wc -l | tr -d ' ') - NCMD ))"   # commands are counted as commands
-  for rf in README.md README.tr.md; do
+  NSK=0; for _sf in "$SKILLS"/*/SKILL.md; do _sn="${_sf%/SKILL.md}"; _sn="${_sn##*/}"; is_cmd "$_sn" || is_exp "$_sn" || NSK=$((NSK+1)); done
+  for rf in README.md README.npm.md README.tr.md; do
     [ -f "$KR/$rf" ] || continue
-    for pair in "agents:$NAG" "skills:$NSK"; do
-      badge="${pair%%:*}"; real="${pair#*:}"
-      got="$(sed -n "s|.*badge/$badge-\([0-9][0-9]*\)-.*|\1|p" "$KR/$rf" | head -1)"
-      [ -n "$got" ] || continue
-      [ "$got" = "$real" ] && pass "$rf $badge badge says $got, and $real are installed" \
-        || fail "$rf $badge badge says $got but $real are installed — the front page is the last place to find this out"
-    done
+    case "$rf" in README.tr.md) _pa="$NAG uzman ajan"; _ps="$NSK skill" ;; *) _pa="$NAG specialist agents"; _ps="$NSK skills" ;; esac
+    grep -q "$_pa" "$KR/$rf" && grep -q "$_ps" "$KR/$rf" && pass "$rf says $NAG agents and $NSK skills, as the payload has" \
+      || fail "$rf does not say \"$_pa\" and \"$_ps\" — the front page drifted from the payload"
   done
-  # The DIAGRAMS make a claim too, and it is the one a reader takes at face value because nobody counts nodes in
-  # a picture. The hand-drawn pipeline shipped with eleven of twelve agents — crew-performance-expert was simply
-  # never drawn — and every gate stayed green because none of them looked at an SVG. Both diagrams are generated
-  # from the payload now; this asserts the generated output actually contains every agent, so a generator that
-  # silently drops one fails here instead of on the front page.
-  for svg in network-en network-tr orchestration-en orchestration-tr; do
-    F="$KR/assets/$svg.svg"
-    [ -f "$F" ] || { fail "assets/$svg.svg missing — site/content/*/skills.md embeds it"; continue; }
-    MISSING=""
-    for a in "$AGENTS"/*.md; do
-      [ -e "$a" ] || continue
-      n="$(basename "$a" .md)"
-      grep -q "$n" "$F" || MISSING="$MISSING $n"
+  # The DIAGRAMS are generated from the payload (packaging/gen-diagrams.mjs): stages and the agent→skill map from
+  # each agent's frontmatter, the counts from the payload. Four gates: the files in assets/ are byte for byte what
+  # the generator writes now (an agent added without regenerating is red); an over-long label stops the generator
+  # (its own twin); a tampered diagram is caught by the same comparison; and every agent is named in the network
+  # diagrams' <title> — the drawing is outlines, the title carries its words.
+  if [ -f "$KR/packaging/gen-diagrams.mjs" ] && ! command -v node >/dev/null 2>&1; then
+    skip tool "diagram freshness not checked — node is not on PATH" 4
+  elif [ -f "$KR/packaging/gen-diagrams.mjs" ]; then
+    _dgo="$(cd "$KR" && node packaging/gen-diagrams.mjs --check 2>&1)" && pass "diagrams: ${_dgo#gen-diagrams: }" \
+      || fail "diagrams are stale or overflow: $_dgo"
+    _dgs="$(cd "$KR" && node packaging/gen-diagrams.mjs --selftest 2>&1)" && pass "diagram overflow gate: an over-long label stops the build" \
+      || fail "diagram overflow twin: $_dgs"
+    _dgt="$(mktemp -d)"; cp "$KR"/assets/stages-*.svg "$KR"/assets/flow-*.svg "$KR"/assets/handover-*.svg "$KR"/assets/network-*.svg "$_dgt/" 2>/dev/null
+    printf ' ' >> "$_dgt/network-en-light.svg"
+    if (cd "$KR" && node packaging/gen-diagrams.mjs --check --out "$_dgt" >/dev/null 2>&1); then
+      fail "the diagram freshness check passed a tampered network-en-light.svg — it compares nothing"
+    else pass "diagram freshness twin: one byte added to a diagram is caught"; fi
+    rm -rf "$_dgt"
+    _dgm=""
+    for _svg in "$KR"/assets/network-*-*.svg; do
+      _tt="$(sed -n 's/.*<title[^>]*>\([^<]*\)<\/title>.*/\1/p' "$_svg" | head -1)"
+      for a in "$AGENTS"/*.md; do n="$(basename "$a" .md)"; case "$_tt" in *"$n"*) ;; *) _dgm="$_dgm ${_svg##*/}:$n" ;; esac; done
     done
-    if [ -n "$MISSING" ]; then
-      fail "assets/$svg.svg does not draw every agent — missing:$MISSING (regenerate: python3 packaging/gen-network.py assets)"
-    else
-      pass "assets/$svg.svg draws all $TA agents"
-    fi
-  done
-  # The brand mark: assets/icon.svg is the source, and packaging/gen-network.py hand-copies its rect and polylines
-  # into the diagram core, where nothing else can see them. The gh-pages site check compared them until it was retired
-  # with the hand-written site; the site's favicon is a copy of icon.svg made at build time now,
-  # so the third copy that script also compared cannot drift. Compared on SHAPE: quotes, %23 and whitespace are
-  # normalised and only the 200x200 tile plus the strokes on it are kept.
-  _canon_mark() { sed "s/%23/#/g; s/'/\"/g" | tr -d ' \n\r\t' | grep -oE '<rectwidth="200"height="200"[^>]*/>(<polyline[^>]*/>)+' | head -1; }
-  _gen_mark() { grep -oE "'<(rect|polyline)[^']*'" "$1" 2>/dev/null | tr -d "'" | tr -d '\n' | _canon_mark; }
-  if [ -f "$KR/assets/icon.svg" ] && [ -f "$KR/packaging/gen-network.py" ]; then
-    _src_mark="$(_canon_mark < "$KR/assets/icon.svg")"; _gen="$(_gen_mark "$KR/packaging/gen-network.py")"
-    _mt="$(mktemp)"; sed 's/points="44,58 86,100 44,142"/points="44,58 88,100 44,142"/' "$KR/packaging/gen-network.py" > "$_mt"
-    _twin="$(_gen_mark "$_mt")"; rm -f "$_mt"
-    if [ -z "$_src_mark" ] || [ -z "$_gen" ]; then
-      fail "brand mark: no tile+strokes fragment in $([ -z "$_src_mark" ] && echo assets/icon.svg || echo packaging/gen-network.py) — the markup changed; update this check"
-    elif [ -z "$_twin" ] || [ "$_twin" = "$_src_mark" ]; then
-      fail "brand mark: a gen-network.py copy with one point moved still compared equal — this check reads nothing"
-    elif [ "$_gen" = "$_src_mark" ]; then
-      pass "brand mark in packaging/gen-network.py matches assets/icon.svg; a copy with one point moved is caught"
-    else
-      fail "brand mark in packaging/gen-network.py drifted from assets/icon.svg — redraw mark() from icon.svg"
-    fi
+    [ -z "$_dgm" ] && pass "every agent is named in each network diagram's <title> ($TA agents × 4 files)" || fail "network diagrams do not name:$_dgm"
   fi
+  # The agent→skill map the network diagram draws is declared in each agent's frontmatter (metadata.skills) and
+  # must stand on the body: an agent that lists a skill its instructions never mention is drawing a claim.
+  agent_skill_gap(){ awk 'NR==1 && /^---/ {fm=1; next} fm && /^---/ {fm=0; next}
+      fm && /^  skills: \[/ { s=$0; sub(/^  skills: \[/, "", s); sub(/\].*/, "", s); n=split(s, k, /, */) }
+      !fm { body = body " " $0 }
+      END { for (i = 1; i <= n; i++) if (k[i] != "" && !match(body, "(^|[^a-z0-9-])" k[i] "([^a-z0-9-]|$)")) print k[i] }' "$1"; }
+  _asg=""; for a in "$AGENTS"/*.md; do _g="$(agent_skill_gap "$a" | tr '\n' ' ')"; [ -z "$_g" ] || _asg="$_asg $(basename "$a" .md):$_g"; done
+  _ast="$(mktemp)"; printf -- '---\nname: x\nmetadata:\n  stage: audit\n  skills: [testing, nowhere-skill]\n---\nApplies `testing` here.\n' > "$_ast"
+  if [ "$(agent_skill_gap "$_ast")" != "nowhere-skill" ]; then fail "the agent→skill check did not catch a listed skill the body never names — it reads nothing"
+  elif [ -n "$_asg" ]; then fail "agents list skills in metadata.skills their bodies never mention:$_asg"
+  else pass "every metadata.skills entry is named in its agent's body ($TA agents); a listed-but-unmentioned skill is caught"; fi
+  rm -f "$_ast"
+  # 5W: the team board is experimental, so no showcase names its command or its ref. The built site is checked by
+  # site/scripts/check.mjs; the sources are checked here. The CHANGELOG is history.
+  _bw="$(grep -n -E 'crew-board|refs/crew/board' "$KR/README.md" "$KR/README.tr.md" "$KR/README.npm.md" "$KR"/site/content/*/*.md 2>/dev/null | sed "s|$KR/||")"
+  _bwt="$(printf '%s\n' 'run /crew-board init' 'push to refs/crew/board' 'crew-review and board.sh' | grep -c -E 'crew-board|refs/crew/board')"
+  if [ "$_bwt" != 2 ]; then fail "the showcase board check cannot tell the command from other words ($_bwt of 2)"
+  elif [ -n "$_bw" ]; then fail "the experimental team board is on a showcase page: $(printf '%s\n' "$_bw" | head -3 | cut -c1-140 | tr '\n' ' ')"
+  else pass "no README or site page names the experimental team board (crew-board, refs/crew/board); a planted mention is caught"; fi
   # The READMEs state the full (fullstack) agent count in prose. A stale one there is the first thing a reader sees.
   for r in README.md README.tr.md README.npm.md; do
     [ -f "$KR/$r" ] || continue
@@ -5316,7 +5325,7 @@ rm -rf "$CPT"
 # site once advertised eight commands over a directory holding more. Any label spelling, the number is the claim.
 if [ "$IS_KIT" = 1 ]; then
   KR="$(cd "$ROOT/.." && pwd)"
-  TC="$NCMD"
+  TC="$NCMD_SHOWN"   # an experimental command is not on the front page
   # README.npm.md carries the same claim in a bullet rather than a table row, and it was ALREADY stale at
   # 8 against 10 shipped — the drift this gate exists for, sitting on the page npm renders.
   for r in README.md README.tr.md README.npm.md; do
@@ -5328,6 +5337,7 @@ if [ "$IS_KIT" = 1 ]; then
     MISSING_CMD=""
     for f in $CMD_FILES; do
       cn="${f%/SKILL.md}"; cn="${cn##*/}"
+      is_exp "$cn" && continue
       grep -q "/$cn" "$KR/$r" || MISSING_CMD="$MISSING_CMD /$cn"
     done
     [ -z "$MISSING_CMD" ] && pass "$r lists every shipped command" \
@@ -5970,22 +5980,22 @@ if [ "$IS_KIT" = 1 ]; then
   fp_order(){ # $1 file  $2 definition sentence  $3 1 = the GIF must sit between the two -> problems, ;-separated
     awk -v d="$2" -v g="$3" '
       !dl && index($0,d) {dl=NR}
-      index($0,"studio-flow.gif") {if(!gl) gl=NR; gn++}
+      index($0,"overview-poster.jpg") {if(!gl) gl=NR; gn++}
       !ql && index($0,"npx crewforth init") {ql=NR}
       END { if(!dl) print "no definition sentence"; if(!ql) print "no npx crewforth init"
             if(dl && ql && ql<dl) print "quick start above the definition"
-            if(g==1) { if(!gl) print "no studio-flow.gif"; else if(gn>1) print "studio-flow.gif shown " gn " times"
-                       else if(dl && ql && (gl<dl || gl>ql)) print "GIF not between the definition and the quick start" } }' "$1" 2>/dev/null | tr '\n' ';'; }
+            if(g==1) { if(!gl) print "no overview-poster.jpg"; else if(gn>1) print "overview-poster.jpg shown " gn " times"
+                       else if(dl && ql && (gl<dl || gl>ql)) print "overview not between the definition and the quick start" } }' "$1" 2>/dev/null | tr '\n' ';'; }
   FP_EN="Crewforth is your engineering crew for Claude Code."; FP_TR="Crewforth, Claude Code için mühendislik ekibinizdir."
   _fp=""
   _o="$(fp_order "$KR/README.md" "$FP_EN" 1)";     [ -z "$_o" ] || _fp="$_fp README.md($_o)"
   _o="$(fp_order "$KR/README.tr.md" "$FP_TR" 1)";  [ -z "$_o" ] || _fp="$_fp README.tr.md($_o)"
   _o="$(fp_order "$KR/README.npm.md" "$FP_EN" 0)"; [ -z "$_o" ] || _fp="$_fp README.npm.md($_o)"
   # Must-fail twin: the same README with the GIF moved to the end must be read as out of order.
-  _fpt="$(mktemp)"; grep -v 'studio-flow.gif' "$KR/README.md" > "$_fpt"; grep 'studio-flow.gif' "$KR/README.md" >> "$_fpt"
+  _fpt="$(mktemp)"; grep -v 'overview-poster.jpg' "$KR/README.md" > "$_fpt"; grep 'overview-poster.jpg' "$KR/README.md" >> "$_fpt"
   if [ -n "$_fp" ]; then fail "front page order is wrong:$_fp"
-  elif [ -z "$(fp_order "$_fpt" "$FP_EN" 1)" ]; then fail "the front-page check passed a README whose GIF was moved below the quick start — it reads nothing"
-  else pass "front page: definition → GIF → npx crewforth init on both GitHub READMEs (GIF once), definition before install on npm; a GIF moved below is caught"; fi
+  elif [ -z "$(fp_order "$_fpt" "$FP_EN" 1)" ]; then fail "the front-page check passed a README whose overview was moved below the quick start — it reads nothing"
+  else pass "front page: definition → overview → npx crewforth init on both GitHub READMEs (overview once), definition before install on npm; an overview moved below is caught"; fi
   rm -f "$_fpt"
   # Every assets/ file a README points at exists — src=, srcset= and the npm README's absolute raw URL alike.
   # The count is printed: "no broken image" means nothing unless it says how many references it looked at.

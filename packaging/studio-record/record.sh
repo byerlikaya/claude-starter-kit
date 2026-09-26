@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Re-record the three Studio pictures in assets/ from a synthetic fixture:
-#   studio-flow.gif    a delegation assembling (README and the home page)
+#   studio-flow.gif    a delegation assembling (not on a page at the moment; kept for the Studio page)
 #   studio-panels.gif  the panels in use (the Studio page)
-#   studio-graph.png   the finished graph (the Studio page; the home page under reduced motion)
+#   studio-graph.png   the finished graph (the Studio page)
 #
 # No model session and no real transcript: every project, path, session and sentence is invented, and the
 # panel runs with its own projects root, runtime directory and a feed that answers the release version.

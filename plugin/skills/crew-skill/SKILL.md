@@ -39,9 +39,8 @@ Skipping one of these is how a component ships half-installed:
    (`prompt|!target`) for a neighbour it must NOT steal.
 3. **Catalog + counts** *(Crewforth repository only — `packaging/` is not installed anywhere)*.
    Add the Turkish summary line (`packaging/skill-summaries.tr.tsv`; agents and commands have their own `.tr.tsv`),
-   which the site build requires (`cd site && npm ci && npm run build`), and the network diagram if the component set changed:
-   `python3 packaging/gen-network.py assets` — **the target directory is an argument**; without it the SVGs land in
-   the current directory and `assets/` silently stays stale.
+   which the site build requires (`cd site && npm ci && npm run build`), and the diagrams if the component set changed:
+   `node packaging/gen-diagrams.mjs` writes `assets/`, and smoke fails while any of them is stale.
 4. **Plugin edition** *(Crewforth repository only)*. `bash packaging/build-plugin.sh` — in the same commit, or the
    release stops at the sync gate.
 5. **Budget.** A new skill moves `BUDGET_SKILLS`; raise it in the same commit with the justification comment the

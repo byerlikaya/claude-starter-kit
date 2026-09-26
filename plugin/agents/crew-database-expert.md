@@ -9,6 +9,7 @@ description: |
 tools: Read, Grep, Glob, Edit, Write, Bash, PowerShell
 metadata:
   stage: produce
+  skills: [backend-architecture, confidence-check, db-migration, sonarqube-check]
 ---
 
 # Database Expert (stack-agnostic data layer)

@@ -1003,9 +1003,11 @@ if command -v node >/dev/null 2>&1 && node --version >/dev/null 2>&1; then
   # 5 · a full install is left alone.
   A5="$WORK/add-5"; rm -rf "$A5"; mkdir -p "$A5/.claude"; printf 'stack=generic\n' > "$A5/.claude/kit.conf"; H5="$(treehash "$A5")"
   ( cd "$A5" && node "$CLI" add testing >/dev/null 2>&1 ) && [ "$(treehash "$A5")" = "$H5" ] || { echo "FAIL: add wrote into a project with the full install"; exit 1; }
-  # 6 · --list covers the catalogue exactly.
-  NL="$(node "$CLI" add --list | grep -c '^  ')"; NC=$(( $(ls kit/agents/*.md | wc -l) + $(ls -d kit/skills/*/ | wc -l) ))
-  [ "$NL" = "$NC" ] || { echo "FAIL: add --list shows $NL entries, the catalogue has $NC"; exit 1; }
+  # 6 · --list covers the catalogue exactly, less what is marked experimental (it installs by name, unlisted).
+  NX="$(grep -l '^  experimental: true' kit/skills/*/SKILL.md 2>/dev/null | wc -l | tr -d ' ')"
+  NL="$(node "$CLI" add --list | grep -c '^  ')"; NC=$(( $(ls kit/agents/*.md | wc -l) + $(ls -d kit/skills/*/ | wc -l) - NX ))
+  [ "$NL" = "$NC" ] || { echo "FAIL: add --list shows $NL entries, the catalogue has $NC (after $NX experimental)"; exit 1; }
+  node "$CLI" add --list | grep -qE '^  (/crew-board|teamboard) ' && { echo "FAIL: add --list shows an experimental entry"; exit 1; }
   NA="$(node "$CLI" add --list | sed -n '/^Agents/,/^$/p' | grep -c '^  crew-')"; NKA="$(ls kit/agents/crew-*.md | wc -l | tr -d ' ')"
   [ "$NA" = "$NKA" ] || { echo "FAIL: add --list names $NA agents by their crew- name, the payload has $NKA"; exit 1; }
   # 7 · with and without the suffix, the same tree.

@@ -58,8 +58,9 @@ The wizard first asks for its language (English or Turkish), then who the instal
 bash adopt.sh    # at the root of the target project
 ```
 
-<div align="center">
-  <img src="../../../assets/handover-en.svg" alt="How adopt.sh hands Crewforth over" width="900">
+<div align="center" class="cf-diagram">
+  <img class="cf-only-dark" src="../../../assets/handover-en-dark.svg" alt="Adopting an existing project: detect, propose, branch, coexist, discipline, proof, handover" width="900">
+  <img class="cf-only-light" src="../../../assets/handover-en-light.svg" alt="Adopting an existing project: detect, propose, branch, coexist, discipline, proof, handover" width="900">
 </div>
 
 Crewforth arrives the way one team hands a project to another: nothing is broken, decisions already made are not lost, and it does not sit there passively.

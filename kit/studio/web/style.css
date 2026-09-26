@@ -1,5 +1,4 @@
-/* Palette is lifted from packaging/gen-network.py so the live panel and the
-   README diagrams read as one system rather than two designs. */
+/* The panel's palette, light and dark. */
 :root {
   --bg: #f7f8fa;
   --surface: #ffffff;
@@ -623,9 +622,8 @@ body.resizing .cv-root { pointer-events: none; }
   border-color: currentColor;
 }
 
-/* The real type line is taken out of the flow and redrawn counter-scaled. The
-   short name is derived the way packaging/gen-network.py derives the names on
-   the README diagram, so the diagram and the panel agree. */
+/* The real type line is taken out of the flow and redrawn counter-scaled, as
+   the short name: the crew- prefix and the -expert / -agent suffix dropped. */
 [data-lod="mid"] .cv-type,
 [data-lod="far"] .cv-type { font-size: 0; letter-spacing: 0; }
 [data-lod="mid"] .cv-type::after,
@@ -725,8 +723,7 @@ body.resizing .cv-root { pointer-events: none; }
   transform: translate(calc(93px + 7px - var(--dots) / 2), calc(33px + 7px - var(--dots) / 2));
   border-radius: 50%;
   background: var(--node-color);
-  /* A screen-constant hairline, exactly as gen-network.py strokes every agent
-     circle on the README diagram. */
+  /* A screen-constant hairline around every agent circle. */
   box-shadow: 0 0 0 calc(1.4px / var(--k)) color-mix(in srgb, var(--ink) 34%, transparent);
 }
 /* An 11-ray burst is mush at 7px. */

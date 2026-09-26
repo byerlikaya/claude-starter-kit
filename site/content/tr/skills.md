@@ -2,8 +2,9 @@
 
 Beş aşamaya yayılmış **{{AGENT_COUNT}} uzman ajan** var. Kalite, hiçbir şey commit edilmeden önce basamak basamak yükseliyor.
 
-<div align="center">
-  <img src="../../../assets/orchestration-tr.svg" alt="Beş aşama: Anla, Üret, Denetle, Kapat, Devret" width="820">
+<div align="center" class="cf-diagram">
+  <img class="cf-only-dark" src="../../../assets/stages-tr-dark.svg" alt="Bir değişiklik nasıl ilerler: Anla, Üret, Denetle, senin onayınla Kapat, Devret" width="900">
+  <img class="cf-only-light" src="../../../assets/stages-tr-light.svg" alt="Bir değişiklik nasıl ilerler: Anla, Üret, Denetle, senin onayınla Kapat, Devret" width="900">
 </div>
 
 | Ajan | Aşama | Ne zaman devreye girer |
@@ -25,9 +26,9 @@ Beş aşamaya yayılmış **{{AGENT_COUNT}} uzman ajan** var. Kalite, hiçbir ş
 
 ## {{SKILL_COUNT}} skill'in tamamı
 
-<div align="center">
-  <img src="../../../assets/network-tr.svg" alt="{{AGENT_COUNT}} ajan ve {{SKILL_COUNT}} skill, gerçek uygular ilişkileriyle" width="820">
-  <br><sub>Her ajan, her skill ve aralarındaki gerçek <code>uygular</code> ilişkileri; aşamaya göre gruplanmış, her ajan kendi renginde. Ortadaki düğüm, hepsini yöneten ana akış.</sub>
+<div align="center" class="cf-diagram">
+  <img class="cf-only-dark" src="../../../assets/network-tr-dark.svg" alt="Hangi ajan hangi skill'i uygular: aşamaya göre {{AGENT_COUNT}} ajan ve {{SKILL_COUNT}} skill" width="900">
+  <img class="cf-only-light" src="../../../assets/network-tr-light.svg" alt="Hangi ajan hangi skill'i uygular: aşamaya göre {{AGENT_COUNT}} ajan ve {{SKILL_COUNT}} skill" width="900">
 </div>
 
 Aşağıdaki katalog, site derlenirken her skill'in kendi dosyasından üretilir; elle düzenlemeyin.

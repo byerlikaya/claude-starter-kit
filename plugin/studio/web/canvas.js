@@ -1119,8 +1119,7 @@ function soloFit(plan, paneW, paneH) {
   );
 }
 
-/** The name gen-network.py prints on the README diagram, derived the same way,
- *  so the diagram and the live panel call an agent by the same short name. */
+/** An agent's short name: the crew- prefix and the -expert / -agent suffix dropped. */
 function shortType(t) {
   return String(t ?? '').replace(/^crew-/, '').replace(/-(expert|agent)$/, '');
 }

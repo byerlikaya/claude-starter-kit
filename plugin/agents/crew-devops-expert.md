@@ -10,6 +10,7 @@ description: |
 tools: Read, Grep, Glob, Edit, Write, Bash, PowerShell
 metadata:
   stage: produce
+  skills: [adr, ci-pipeline, dependency-audit, dependency-upgrade, deploy, docs-writer, incident-runbook, observability, performance, release, trace-scan]
 ---
 
 # DevOps / Ops Expert

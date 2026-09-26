@@ -58,8 +58,9 @@ Sihirbaz önce hangi dilde konuşacağını sorar (Türkçe ya da İngilizce), a
 bash adopt.sh    # hedef projenin kök dizininde
 ```
 
-<div align="center">
-  <img src="../../../assets/handover-tr.svg" alt="adopt.sh Crewforth'u nasıl devrediyor" width="900">
+<div align="center" class="cf-diagram">
+  <img class="cf-only-dark" src="../../../assets/handover-tr-dark.svg" alt="Mevcut bir projeyi devralmak: tespit, öneri, dal, birlikte, disiplin, kanıt, devir" width="900">
+  <img class="cf-only-light" src="../../../assets/handover-tr-light.svg" alt="Mevcut bir projeyi devralmak: tespit, öneri, dal, birlikte, disiplin, kanıt, devir" width="900">
 </div>
 
 Crewforth, bir ekibin bir projeyi başka bir ekibe devrettiği gibi gelir: hiçbir şey kırılmaz, alınmış kararlar kaybolmaz ve gelen şey öylece durup beklemez.

@@ -1,8 +1,10 @@
 ---
 name: teamboard
 description: |
-  Shared team board: claim a work item before starting, hand it over, finish it. The claim is a git-ref lock,
-  so two people cannot take the same item.
+  Experimental: a shared team board. Claim a work item, hand it over, finish it; the claim is a git-ref
+  lock, so two people cannot take the same item.
+metadata:
+  experimental: true
 ---
 
 # Team Board (shared claims + shared item memory)

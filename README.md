@@ -6,19 +6,17 @@
   <img src="assets/logo.svg" alt="Crewforth" width="420">
 </picture>
 
-![Version](https://img.shields.io/badge/version-3.0.0-2563eb?style=flat-square)
-![License](https://img.shields.io/badge/license-MIT-16a34a?style=flat-square)
-![Agents](https://img.shields.io/badge/agents-12-f59e0b?style=flat-square)
-![Skills](https://img.shields.io/badge/skills-40-f59e0b?style=flat-square)
+![Version](https://img.shields.io/badge/version-3.0.0-6D28D9?style=flat-square)
+![License](https://img.shields.io/badge/license-MIT-5c6472?style=flat-square)
 
 🇬🇧 English · [🇹🇷 Türkçe](README.tr.md)
 
 **Crewforth is your engineering crew for Claude Code.**
 
 It adds subagents, skills, commands and hooks to Claude Code: 12 specialist agents that each own a domain,<br>
-40 skills that hold the method, 11 commands you start with `/crew-…`, and hooks that enforce the rules that matter.
+39 skills that hold the method, 10 commands you start with `/crew-…`, and hooks that enforce the rules that matter.
 
-<img src="assets/studio-flow.gif" alt="Studio drawing a delegation as agents spawn, run and report" width="880">
+<a href="https://crewforth.com/#overview"><img src="assets/overview-poster.jpg" alt="Watch the one-minute overview on crewforth.com" width="880"></a>
 
 </div>
 
@@ -41,7 +39,11 @@ You approve a summary before anything is written, and `add` copies into `./.clau
 ## How a session flows
 
 <div align="center">
-  <img src="assets/workflow-en.svg" alt="Command flow: /crew-plan, expert agents, /crew-review, /crew-ship, /crew-handoff" width="820">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/flow-en-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="assets/flow-en-light.svg">
+    <img src="assets/flow-en-light.svg" alt="Command flow: /crew-plan, the specialists, /crew-review, /crew-ship with your approval, /crew-handoff" width="880">
+  </picture>
 </div>
 
 | Step | Command | What happens |
@@ -52,7 +54,7 @@ You approve a summary before anything is written, and `add` copies into `./.clau
 | Ship | `/crew-ship` | `crew-review-agent` records a clean review; `crew-commit-agent` proposes the commit and waits for you |
 | Hand off | `/crew-handoff` | `handoff` writes the state down for the next session |
 
-**11 commands** in all, each started with its `/crew-…` name: `/crew-plan`, `/crew-review`, `/crew-ship`, `/crew-handoff`, `/crew-brainstorm`, `/crew-update`, `/crew-doctor`, `/crew-board`, `/crew-gates`, `/crew-skill`, `/crew-studio`.
+**10 commands** in all, each started with its `/crew-…` name: `/crew-plan`, `/crew-review`, `/crew-ship`, `/crew-handoff`, `/crew-brainstorm`, `/crew-update`, `/crew-doctor`, `/crew-gates`, `/crew-skill`, `/crew-studio`.
 
 ## The agents
 

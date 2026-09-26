@@ -4,15 +4,15 @@ Re-records the three Studio pictures in `assets/` after a change to the panel:
 
 | File | Where it is shown | What it shows |
 |:--|:--|:--|
-| `studio-flow.gif` | top of the READMEs and the home page | a delegation assembling: agents spawn, dashes run down the live branches, one fails |
+| `studio-flow.gif` | not on a page since the README and the home page show the overview video; kept for the Studio page | a delegation assembling: agents spawn, dashes run down the live branches, one fails |
 | `studio-panels.gif` | the Studio page | a session opened from the project list, an agent's report and tool timeline, the jump to the failure, the conversation behind it |
-| `studio-graph.png` | the Studio page, and the home page under reduced motion | the finished graph: twelve agents and a workflow |
+| `studio-graph.png` | the Studio page | the finished graph: twelve agents and a workflow |
 
 ```bash
 bash packaging/studio-record/record.sh
 ```
 
-The file names stay the same, so the READMEs and the site pick up a new recording without an edit.
+The file names stay the same, so the site picks up a new recording without an edit.
 
 ## What it does
 

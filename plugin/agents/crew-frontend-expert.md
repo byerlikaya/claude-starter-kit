@@ -10,6 +10,7 @@ description: |
 tools: Read, Grep, Glob, Edit, Write, Bash, PowerShell
 metadata:
   stage: produce
+  skills: [a11y, confidence-check, dependency-audit, frontend, frontend-design, frontend-rn-expo, i18n-integrity, observability, performance]
 ---
 
 # Frontend Expert (stack-agnostic)

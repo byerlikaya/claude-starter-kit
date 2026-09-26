@@ -67,3 +67,9 @@ a, button, summary { transition: color 150ms ease, background-color 150ms ease, 
 
 /* The theme picker's width is fixed at 6.25em for every language, which cuts Turkish "Otomatik" to "Oto…". */
 html[lang='tr'] starlight-theme-select label { --sl-select-width: 7.5em !important; }
+
+/* Diagrams come in a dark and a light file; show the one that matches Starlight's theme (data-theme on <html>). */
+.cf-only-light { display: none; }
+:root[data-theme='light'] .cf-only-light { display: inline; }
+:root[data-theme='light'] .cf-only-dark { display: none; }
+.cf-diagram img { max-width: 100%; height: auto; }

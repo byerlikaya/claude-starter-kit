@@ -6,7 +6,7 @@
 |:--|:--:|:--|
 | **Ajan** | {{AGENT_COUNT}} | İnce tetikleyiciler: bir alanın *kimin* olduğu ve *ne zaman* devreye gireceği |
 | **Skill** | {{SKILL_COUNT}} | Yöntemin kendisi; bir kez yazılır, ihtiyacı olan uygular |
-| **Komut** | {{COMMAND_COUNT}} | `/crew-brainstorm` · `/crew-plan` · `/crew-review` · `/crew-ship` · `/crew-handoff` · `/crew-update` · `/crew-doctor` · `/crew-board` · `/crew-gates` · `/crew-skill` · `/crew-studio` |
+| **Komut** | {{COMMAND_COUNT}} | `/crew-brainstorm` · `/crew-plan` · `/crew-review` · `/crew-ship` · `/crew-handoff` · `/crew-update` · `/crew-doctor` · `/crew-gates` · `/crew-skill` · `/crew-studio` |
 | **Hook** | 12 | Kapılar, ayrıca oturum ölçümü ve yönlendirme |
 | **Disiplin** | 1 | İlkeler, akış, Definition of Done, yasaklar. `CLAUDE.md`'niz bu dosyayı import ediyor |
 
@@ -24,10 +24,10 @@
 | `skill-trust.sh` | Crewforth'un getirmediği ve sizin de kabul etmediğiniz her skill ya da ajanı adıyla bildirir |
 | `session-stats.sh` | Oturumun gerçekte ne yaptığını raporlar: patlayan araç döngüleri, tekrarlanan istekler, kesintiler. `reflect` ve `handoff` bunu okur, böylece geri dönüş hatırlamaya değil kayda dayanır |
 | `session-update-check.sh` | Yeni bir sürüm yayımlandığında, oturum açılırken bir kez güncellenip güncellenmeyeceğini sorar; her sürüm onu getirecek kanala göre karşılaştırılır. Sorgu ayrık koşar ve en fazla günde bir kez yapılır, dolayısıyla çevrimdışı ya da proxy arkasındaki bir makinede oturum açılışı hiçbir şey ödemez; `CREW_NO_UPDATE_CHECK=1` kapatır |
-| `board.sh` | Ekip panosunun motoru: bir maddeyi üstlenir, devreder, tamamlar. Depoda `/crew-board init` çalıştırılmadıkça kapalıdır |
-| `board-sync.sh` | Ekibin pano durumunu oturuma taşır. Oturum açılışında yerel önbelleği okur, tazelemeyi arka planda yapar; böylece erişilemeyen bir uzak depo açılışa maliyet bindirmez. `CREW_NO_BOARD=1` kapatır |
 
-İki git hook'u (`pre-commit` ve `commit-msg`) iz, sır, depo şişkinliği ve özel yol taramalarını koşturur. Sonuncusu şunun için var: yalnızca sizin makinenizde bulunan bir yol paylaşılan depoya yazılarak değil, yapıştırılarak sızar. Kendi `$HOME`'unuzu kendiliğinden engeller; yalnızca sizin tanıyabileceğiniz iç proje, müşteri ve sunucu adları ise gitignore'lanmış `.private-terms.txt` dosyasından gelir (`.private-allowlist.txt` kaçış kapısıdır). `commit-msg` ayrıca pano üstlenme kapısını tutar: panosu olan bir depoda commit ya elinizdeki bir maddeyi anmalıdır (`[#3]`) ya da maddesiz olduğunu beyan etmelidir (`[chore]`). Plugin sürümü, `skill-trust.sh` dışında bunların hepsini getirir; o hook neyin Crewforth'a ait olduğunu bir kurulum script'inin yazdığı `kit-manifest.txt`'ten okur ve plugin böyle bir dosya oluşturmaz.
+Diğer iki hook deneysel bir özelliğe hizmet eder ve bir depo onu açana kadar hiçbir şey yapmaz.
+
+İki git hook'u (`pre-commit` ve `commit-msg`) iz, sır, depo şişkinliği ve özel yol taramalarını koşturur. Sonuncusu şunun için var: yalnızca sizin makinenizde bulunan bir yol paylaşılan depoya yazılarak değil, yapıştırılarak sızar. Kendi `$HOME`'unuzu kendiliğinden engeller; yalnızca sizin tanıyabileceğiniz iç proje, müşteri ve sunucu adları ise gitignore'lanmış `.private-terms.txt` dosyasından gelir (`.private-allowlist.txt` kaçış kapısıdır). Plugin sürümü, `skill-trust.sh` dışında bunların hepsini getirir; o hook neyin Crewforth'a ait olduğunu bir kurulum script'inin yazdığı `kit-manifest.txt`'ten okur ve plugin böyle bir dosya oluşturmaz.
 
 ## Kural → kapı
 
@@ -56,4 +56,4 @@ Kapılar kazaları durdurur, kararlı denemeleri değil. Komut satırında bir d
 
 ## Bir kapının ateşlendiğini görmek
 
-Bash guard'ı her blok, onay istemi ve `CLAUDE_GIT_OK` ön onayı için (`BLOCK` / `ASK` / `ALLOW`), kapı dosyası yazma guard'ı da her blok için `.claude/gate-log.tsv` dosyasına bölüm ve kuralla birlikte bir satır ekler; komut yalnızca `CREW_GATE_LOG_CMD=1` verilirse yazılır. Projenin `.claude/` dizini varsa ve dosya git'te yok sayılıyorsa ya da proje bir repo değilse varsayılan olarak açıktır; `CREW_GATE_LOG=<yol>` kaydı başka yere gönderir, `/dev/null` kapatır. Commit taraması ve pano kapısı satır yazmadan reddeder. Yalnızca yazar ve karardan **sonra** yazılır, dolayısıyla kararı değiştiremez. Bir şeyi kapının mı durdurduğunu yoksa modelin o yola hiç girmediğini mi bilmeniz gerektiğinde işe yarar, çünkü ikisi geriye tıpatıp aynı izi bırakır.
+Bash guard'ı her blok, onay istemi ve `CLAUDE_GIT_OK` ön onayı için (`BLOCK` / `ASK` / `ALLOW`), kapı dosyası yazma guard'ı da her blok için `.claude/gate-log.tsv` dosyasına bölüm ve kuralla birlikte bir satır ekler; komut yalnızca `CREW_GATE_LOG_CMD=1` verilirse yazılır. Projenin `.claude/` dizini varsa ve dosya git'te yok sayılıyorsa ya da proje bir repo değilse varsayılan olarak açıktır; `CREW_GATE_LOG=<yol>` kaydı başka yere gönderir, `/dev/null` kapatır. Commit taraması satır yazmadan reddeder. Yalnızca yazar ve karardan **sonra** yazılır, dolayısıyla kararı değiştiremez. Bir şeyi kapının mı durdurduğunu yoksa modelin o yola hiç girmediğini mi bilmeniz gerektiğinde işe yarar, çünkü ikisi geriye tıpatıp aynı izi bırakır.

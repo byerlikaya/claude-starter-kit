@@ -86,7 +86,9 @@ function catalogue(pkgDir) {
   const isCommand = (d) => /\n {2}kind: command\r?\n/.test(fs.readFileSync(path.join(skillsDir, d, 'SKILL.md'), 'utf8').split(/\r?\n---\r?\n/)[0] + '\n');   // CRLF too
   const commands = all.filter(isCommand);
   const skills = all.filter((d) => !commands.includes(d));
-  return { root, agents, skills, commands };
+  // `metadata: experimental: true` installs and answers when named, but is not listed or counted until it is done.
+  const experimental = all.filter((d) => /\n {2}experimental: true\r?\n/.test(fs.readFileSync(path.join(skillsDir, d, 'SKILL.md'), 'utf8').split(/\r?\n---\r?\n/)[0] + '\n'));
+  return { root, agents, skills, commands, experimental };
 }
 
 // Resolve what the user typed to a catalogue entry. A typed prefix (`crew-x`) or legacy suffix (`x-csk`) is stripped
@@ -238,14 +240,15 @@ function migrateAdded(projectRoot, cat, log, err) {
 
 function listCommand(pkgDir, log) {
   const cat = catalogue(pkgDir);
+  const shown = (list) => list.filter((x) => !cat.experimental.includes(x));
   log(`Agents (${cat.agents.length}) — npx crewforth add <name>  (the crew- prefix is optional when you type it)`);
   for (const a of cat.agents) log(`  ${a.padEnd(24)} ${firstSentence(path.join(cat.root, 'agents', `${a}.md`))}`);
   log('');
-  log(`Skills (${cat.skills.length})`);
-  for (const s of cat.skills) log(`  ${s.padEnd(24)} ${firstSentence(path.join(cat.root, 'skills', s, 'SKILL.md'))}`);
+  log(`Skills (${shown(cat.skills).length})`);
+  for (const s of shown(cat.skills)) log(`  ${s.padEnd(24)} ${firstSentence(path.join(cat.root, 'skills', s, 'SKILL.md'))}`);
   log('');
-  log(`Commands (${cat.commands.length}) — you start them with /<name>`);
-  for (const c of cat.commands) log(`  ${('/' + c).padEnd(24)} ${firstSentence(path.join(cat.root, 'skills', c, 'SKILL.md'))}`);
+  log(`Commands (${shown(cat.commands).length}) — you start them with /<name>`);
+  for (const c of shown(cat.commands)) log(`  ${('/' + c).padEnd(24)} ${firstSentence(path.join(cat.root, 'skills', c, 'SKILL.md'))}`);
   return 0;
 }
 

@@ -11,6 +11,7 @@ tools: Read, Grep, Glob, WebFetch
 # privacy audit below the model that wrote the code it is auditing.
 metadata:
   stage: audit
+  skills: [privacy-compliance]
 ---
 
 # Privacy Auditor (KVKK / GDPR)

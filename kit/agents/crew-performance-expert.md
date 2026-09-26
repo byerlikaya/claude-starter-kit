@@ -7,6 +7,7 @@ description: |
 tools: Read, Grep, Glob, Bash, PowerShell
 metadata:
   stage: audit
+  skills: [performance]
 ---
 
 # Performance Expert

@@ -10,6 +10,7 @@ tools: Read, Grep, Glob, Bash, PowerShell
 # silent: nobody discovers a thin handover until they are already relying on it.
 metadata:
   stage: handoff
+  skills: [handoff, token-budget]
 ---
 
 # Session Manager (Context Control)
