@@ -118,6 +118,9 @@ We run the same prompt in a project with Crewforth and in a bare one, and grade 
 
 Issues and pull requests are welcome at [github.com/Crewforth/crewforth](https://github.com/Crewforth/crewforth). A new agent or skill follows the contract in `kit/AGENT_TEMPLATE.md`, and `bash packaging/verify.sh` must pass.
 
-MIT, see [LICENSE](LICENSE). `crew-code-review` draws on [google/eng-practices](https://github.com/google/eng-practices) and [Conventional Comments](https://conventionalcomments.org/) (both CC BY 3.0), and on [NIST SP 800-218](https://csrc.nist.gov/pubs/sp/800/218/final) with the [OpenSSF Scorecard](https://github.com/ossf/scorecard) `Code-Review` check.
+MIT, see [LICENSE](LICENSE).
 
-Documentation: [crewforth.com](https://crewforth.com) · Sessions and cost: [crewforth.com/sessions-and-cost](https://crewforth.com/sessions-and-cost) · Verification: [crewforth.com/verification](https://crewforth.com/verification) · Extending: [crewforth.com/extending](https://crewforth.com/extending)
+- **Documentation:** [crewforth.com](https://crewforth.com)
+- **Sessions and cost:** [crewforth.com/sessions-and-cost](https://crewforth.com/sessions-and-cost)
+- **Verification:** [crewforth.com/verification](https://crewforth.com/verification)
+- **Extending:** [crewforth.com/extending](https://crewforth.com/extending)

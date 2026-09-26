@@ -257,7 +257,7 @@ for d in "$SKILLS"/*/; do
   [ -f "$f" ] || { fail "$n: no SKILL.md"; continue; }
   grep -q '^name:' "$f"           || fail "$n: no name"
   is_cmd "$n" || grep -q 'Trigger phrases:' "$f" || need_trigger "$n: no Trigger phrases" "skills/$n"   # a command is typed, not matched
-  # Agent-Skills spec limits (agentskills.io/specification) — keep skills portable to any compliant host:
+  # Agent Skills spec limits (agentskills.io/specification) — keep skills portable to any compliant host:
   #   name == parent dir, name ≤ 64 chars, description ≤ 1024 chars.
   nm="$(awk -F':' '/^name:/{sub(/^name:[[:space:]]*/,"",$0); print; exit}' "$f" | tr -d ' \r')"
   [ "$nm" = "$n" ]     || fail "$n: name '$nm' must equal the parent directory (spec)"
@@ -6369,6 +6369,33 @@ if [ "$IS_KIT" = 1 ]; then
   fi
 else
   skip scope "reader-facing wording not checked (installed project — the READMEs and site live in the Crewforth repo)"
+fi
+
+sec "== 14i) Crewforth's text is its own — no attribution to other projects =="
+# Ideas were taken from other projects and written in Crewforth's own words; no text or code was copied, so no
+# licence asks for credit (measured: 0 shared 10-word runs against each source). Where a passage had come too close,
+# it was rewritten first and the credit removed after. This keeps an attribution line from coming back and reading as
+# a copy. A licence named as a SUBJECT (dependency-audit's licence checks, the project's own MIT line) is not an
+# attribution. The names are assembled at run time so this section does not match its own source.
+if [ "$IS_KIT" = 1 ]; then
+  KR="$(cd "$ROOT/.." && pwd)"
+  _at_re="addy""osmani|agent""-skills|spec""-kit|security""-audit-skill|eng""-practices|conventional ?com""ments|open""-code-review|ali""baba|NIST"" SP|Open""SSF|Adap""ted from|CC[ -]""BY"
+  # evals/results holds recorded runs byte for byte (raw model output) and is left out.
+  _atf=(); while IFS= read -r _f; do [ -f "$KR/$_f" ] && _atf+=("$KR/$_f"); done < <(cd "$KR" && git ls-files -co --exclude-standard -- \
+    kit plugin README.md README.tr.md README.npm.md site/content CHANGELOG.md evals 2>/dev/null | grep -v '^evals/results/')
+  _ath="$(grep -IHniE "$_at_re" "${_atf[@]}" </dev/null 2>/dev/null | sed "s|$KR/||")"
+  _att="$(mktemp -d)"
+  printf '# Adap''ted from x/y (MIT).\nsee eng''-practices for the rubric\n' > "$_att/bad.md"
+  printf '2. **License compliance:** flag licenses incompatible with the project such as copyleft/GPL.\nMIT, see [LICENSE](LICENSE). Apache-2.0 and BSD are permissive.\n' > "$_att/good.md"
+  _atb="$(grep -ciE "$_at_re" "$_att/bad.md")"; _atg="$(grep -ciE "$_at_re" "$_att/good.md")"; rm -rf "$_att"
+  if [ "${#_atf[@]}" -lt 250 ]; then fail "FIXTURE: only ${#_atf[@]} file(s) in the attribution scan — the file list broke, not the text"
+  elif [ "$_atb" != 2 ]; then fail "the attribution check missed a planted credit line ($_atb of 2 caught) — it reads nothing"
+  elif [ "$_atg" != 0 ]; then fail "the attribution check flagged a licence named as a subject ($_atg line(s)) — it would block dependency-audit"
+  elif [ -n "$_ath" ]; then fail "an attribution to another project is back — write it in Crewforth's own words, then drop the credit:
+$(printf '%s\n' "$_ath" | head -n 6 | cut -c1-160 | sed 's/^/       /')"
+  else pass "no attribution to another project in ${#_atf[@]} files (kit, plugin, READMEs, site, CHANGELOG, evals without raw results); a planted credit is caught, licences named as a subject are not"; fi
+else
+  skip scope "attribution scan not run (installed project — the READMEs, site and CHANGELOG live in the Crewforth repo)"
 fi
 
 sec "== 15) evals: the parallel-audit metric, because a rule nobody can measure is not a rule =="

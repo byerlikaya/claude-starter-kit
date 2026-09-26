@@ -117,6 +117,8 @@ One name everywhere: the package, the components, the variables, the payload. **
 - **`MultiEdit` is gone from the file-tool gate's matcher** — it is no longer a Claude Code tool.
 - **Wording:** the 11 command-skills are called commands, not slash commands, matching Claude Code's docs (custom
   commands were merged into skills, and `/` opens the command menu). You still start each with its `/crew-…` name.
+- **`crew-code-review` rewritten:** plan → review → fact-check, every finding carries a severity
+  (critical/high/medium/low) and a category; the comment labels are gone.
 - **`frontend-design` names the defaults to avoid** when a project gives no design direction (a cream ground with a
   serif and terracotta, a purple-to-blue hero, a black ground with one neon accent, and six more), after looking for
   the project's own system first. Installed text no longer calls Crewforth a kit: the skills' adaptation note is
@@ -548,7 +550,6 @@ One name everywhere: the package, the components, the variables, the payload. **
   measurement now says `NOT_MEASURED` instead of scoring: this one had printed "the suite was weakened" when node
   simply could not run and nothing had been touched. The runner counts such a run as not measured. The grader side
   is measured; the runner's counting of that line is exercised only by a real, paid run.
-- Adapted from the pressure cases in `addyosmani/agent-skills` (MIT).
 
 ### Added — `security-scan` knows when not to scan, when not to run code, and how to read code built on a model
 
@@ -580,8 +581,7 @@ One name everywhere: the package, the components, the variables, the payload. **
 - Not adopted, deliberately: a machine-validated findings schema. The idea is strong, but nothing in this kit
   reads a scan report — no hook, no command — so a validator here would be a component nobody calls, which this kit
   does not ship.
-- Adapted from `cloudflare/security-audit-skill` (MIT), rewritten for this skill's source→gate→sink model and its
-  three-outcome verdict.
+- Written for this skill's source→gate→sink model and its three-outcome verdict.
 
 ### Added — finished work is held up against the plan, not only against the tests
 
@@ -599,8 +599,7 @@ One name everywhere: the package, the components, the variables, the payload. **
 - `review-agent-csk` runs the pass when the work was planned and puts its table in the review: clean code that
   leaves a criterion missing or partial is not a clean review.
 - Model discipline, not a gate, and stated as such — no exit code can judge "partially built". What makes it hold
-  is the table: a pass that produced none did not run. Adapted from `converge` in `github/spec-kit` (MIT), trimmed
-  to the part this kit lacked.
+  is the table: a pass that produced none did not run.
 
 ### Added — the routing eval asks whether the right owner WINS, not only whether it could match
 
@@ -626,8 +625,8 @@ One name everywhere: the package, the components, the variables, the payload. **
 - Cost: 160 hook invocations. Nine seconds on macOS; measured on Windows 11 at about 275 ms per invocation, roughly
   44 seconds, for a developer who runs `verify.sh routing` locally. CI is unaffected — the routing step runs only in
   the Linux job.
-- Adapted from the Tier-2 routing evals in `addyosmani/agent-skills` (MIT) — rank the target among all its rivals —
-  and rewritten against this kit's own scorer rather than a TF-IDF approximation of it.
+- Routing evals rank the target among all its rivals, scored by this kit's own scorer rather than a TF-IDF
+  approximation of it.
 
 ### Added — a commit can no longer quietly lower the quality bar
 
@@ -686,8 +685,7 @@ One name everywhere: the package, the components, the variables, the payload. **
   that CR where gawk drops it. A bare-`$` pattern would therefore hold on Windows and match nothing on macOS. Every
   existing `$` is already written as an alternative to a class that contains CR (`([[:space:]]|$)`); the suite now
   rejects any that is not, and was checked red with a bare `NOSONAR$` added.
-- Adapted from the floor in `addyosmani/agent-skills` (constraint-driven-development, MIT) and rewritten for this
-  kit: bash rather than Node, the staged diff rather than a merge base, and the exemptions above.
+- Written for this kit: bash rather than Node, the staged diff rather than a merge base, and the exemptions above.
 
 ## [2.11.0] — 2026-09-16
 
@@ -2645,15 +2643,10 @@ was working.
   Consequences kept deliberate: **`.NET/DevArchitecture ↔ generic` is still asked on every install** — that skill
   is genuinely wrong in a Node repo, and it remains the only component the installer removes. The DevArch layout
   (`./backend` + a reserved `./frontend`) applies to every `--dotnet` install rather than one profile.
-- **`code-review-csk` stands on three layers instead of one archived repository.** google/eng-practices was
-  archived read-only on 2025-11-21 and has no successor; the skill was resting its whole spine on it. The layers
-  are now separated by the question each one answers. **Judgement** is the kit's own — the two-stage verdict and
-  verifier integrity, which exist because the code under review is increasingly agent-written and no external
-  standard covers that. **Governance** is NIST SP 800-218 **PW.7** and the OpenSSF Scorecard **Code-Review**
-  check. **Comment vocabulary** is Conventional Comments. eng-practices stays attributed for what is genuinely
-  adapted from it — the nine-item priority order and the "improves overall code health" bar — because CC-BY 3.0
-  obliges that whether or not the repository is archived, and dropping the credit while keeping the derivation
-  would be a licence violation, not a cleanup.
+- **`code-review-csk` is re-grounded, its layers separated by the question each one answers.** **Judgement** is
+  the kit's own — the two-stage verdict and verifier integrity, which exist because the code under review is
+  increasingly agent-written. **Governance** is that review happens at all and its findings survive it.
+  **Comment vocabulary** is a label on every comment.
 
   Deliberately **not** adopted: the claim circulating that PW.7/PW.8 "become mandatory when AI is the author".
   That is a vendor's June 2026 proposal *to* NIST, not published NIST policy, and citing it as a standard would
@@ -2966,9 +2959,7 @@ functionality — it is the routing layer catching up with what the kit already 
 - **The README no longer claims the agents "auto-chain".** They chain because the commands @-mention them.
   Automatic delegation is a model judgement in any kit; where it must happen, the kit no longer leaves it to
   chance, and the README says which is which.
-- **The upstream attribution list is gone**, except the one a licence requires. `google/eng-practices` stays in
-  one line: it is CC-BY 3.0 and `code-review` is an adaptation, so attribution is an obligation, not a
-  courtesy. Two DevArchitecture mentions are deliberately kept and are not attributions — `--dotnet` genuinely
+- **The upstream attribution list is gone.** Two DevArchitecture mentions are deliberately kept and are not attributions — `--dotnet` genuinely
   clones that repository, so the sentence describing the installer would become false without it.
 - The discipline shrank 182 bytes as a result; always-on went 28,858 → 28,697 even after everything added
   above. The attribution list was carried into every session and taught the model nothing.

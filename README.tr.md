@@ -118,6 +118,9 @@ Aynı isteği Crewforth kurulu bir projede ve çıplak bir projede koşturuyor, 
 
 Issue ve pull request'ler [github.com/Crewforth/crewforth](https://github.com/Crewforth/crewforth) adresinde. Yeni bir ajan ya da skill `kit/AGENT_TEMPLATE.md` sözleşmesine uyar ve `bash packaging/verify.sh` geçmelidir.
 
-MIT, [LICENSE](LICENSE) dosyasına bakın. `crew-code-review`; [google/eng-practices](https://github.com/google/eng-practices) ve [Conventional Comments](https://conventionalcomments.org/) (ikisi de CC BY 3.0) ile [NIST SP 800-218](https://csrc.nist.gov/pubs/sp/800/218/final) ve [OpenSSF Scorecard](https://github.com/ossf/scorecard) `Code-Review` denetimine dayanır.
+MIT, [LICENSE](LICENSE) dosyasına bakın.
 
-Belgeler: [crewforth.com/tr](https://crewforth.com/tr) · Oturum ve maliyet: [crewforth.com/tr/sessions-and-cost](https://crewforth.com/tr/sessions-and-cost) · Doğrulama: [crewforth.com/tr/verification](https://crewforth.com/tr/verification) · Genişletme: [crewforth.com/tr/extending](https://crewforth.com/tr/extending)
+- **Belgeler:** [crewforth.com/tr](https://crewforth.com/tr)
+- **Oturum ve maliyet:** [crewforth.com/tr/sessions-and-cost](https://crewforth.com/tr/sessions-and-cost)
+- **Doğrulama:** [crewforth.com/tr/verification](https://crewforth.com/tr/verification)
+- **Genişletme:** [crewforth.com/tr/extending](https://crewforth.com/tr/extending)

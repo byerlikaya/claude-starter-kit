@@ -9,8 +9,8 @@ Group by cause, then decide.
 
 Each item then earns the same disprove pass as a finding of your own. Any "no" below is a reason to answer in the
 thread, not to edit:
-1. **Defect or preference?** Sort each comment into SKILL.md's label table — inbound prose arrives unlabelled, you
-   assign the label, and only an `issue` or an unanswered `question` blocks.
+1. **Defect or preference?** Give each comment a severity and a category from SKILL.md — inbound prose arrives
+   unranked, you rank it, and only a `critical` or `high` blocks.
 2. **Does it hold where the reviewer did not look?** Check the call sites and callers the comment never opened.
 3. **Does it contradict a decision already recorded?** An `adr` or a documented constraint outranks the comment —
    reopen the decision, do not quietly edit around it.

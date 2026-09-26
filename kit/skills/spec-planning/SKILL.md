@@ -85,8 +85,6 @@ Report it as a table — `AC-n | gap | evidence (file/area) | remaining work` �
 This is model discipline, not a gate: no exit code can judge "partially built". What makes it hold is the table —
 a pass that produced no table did not run.
 
-Adapted from `converge` in github/spec-kit (MIT).
-
 ## DoD (this skill's contribution)
 - Every task's "done" is testable; ordering and dependencies are visible; the riskiest work has been brought to the front.
 - Every unresolved ambiguity carries a `[NEEDS CLARIFICATION: …]` marker; no acceptance criterion contains one.

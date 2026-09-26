@@ -112,8 +112,8 @@ echo "== 1c) Routing WINNER — what the real hook names, not only whether a tri
 # number can only get better. The scorer itself is deliberately untouched: whether a single loud keyword should
 # be allowed to win is an open decision recorded in the roadmap, and this is the measurement that decision waits on.
 #
-# Adapted from the Tier-2 routing evals in addyosmani/agent-skills (MIT): rank the target among all rivals, not
-# just check that it could match. Rewritten against Crewforth's own scorer rather than a TF-IDF approximation.
+# Rank the target among all rivals, not just check that it could match — scored by Crewforth's own scorer, the one
+# the hook runs, rather than a TF-IDF approximation.
 RH="$ROOT/hooks/route-hint.sh"
 KNOWN_MISSES='the app feels laggy after the last release
 is this endpoint fast enough on the hot path'
