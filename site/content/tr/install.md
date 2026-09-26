@@ -43,7 +43,7 @@ bash start.sh [--private|--shared] [--lang tr|en] [--yes] [--version] [-h]
 
 Sihirbaz önce hangi dilde konuşacağını sorar (Türkçe ya da İngilizce), ardından kurulumu kimin kullanacağını; sonunda hiçbir şey yazılmadan önce onaylayacağınız bir özet gösterir. Seçtiğiniz dil tüm sorulara ve mesajlara uygulanır; kurulan dosyalar İngilizce kalır.
 
-**Her kurulum aynı ekibi getiriyor:** 12 ajanın ve 40 skill'in tamamı. Backend, web ve mobil (React Native/Expo) bir arada geliyor. API olarak başlayıp web istemcisi kazanan bir proje, ikisi için de baştan donanımlıdır.
+**Her kurulum aynı ekibi getiriyor:** {{AGENT_COUNT}} ajanın ve {{SKILL_COUNT}} skill'in tamamı. Backend, web ve mobil (React Native/Expo) bir arada geliyor. API olarak başlayıp web istemcisi kazanan bir proje, ikisi için de baştan donanımlıdır.
 
 | Kurulumda sorulan | Seçenekler | Neyi değiştirir |
 |:--|:--|:--|

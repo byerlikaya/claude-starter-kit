@@ -11,6 +11,9 @@
 //   links     every internal link and image resolves to a built file
 //   3rd party no <script>/<link>/font request to another host while CF_BEACON_TOKEN is unset
 //   media     no single image or video file over 4 MB — the page is someone's first download
+//   counts    no agent, skill or command count is typed into site/content — it comes from {{AGENT_COUNT}},
+//             {{SKILL_COUNT}} or {{COMMAND_COUNT}}; a typed one goes stale the day a component is added or hidden
+//             (this gate reads the SOURCES: in dist a typed number and a generated one look the same)
 //   board     the experimental team board (`crew-board`, `refs/crew/board`) is on no page, code included   (changelog exempt)
 //
 // Code blocks and inline code are not prose and are left out of the text gates. Each gate first runs against planted
@@ -44,6 +47,7 @@ export const kitWord = (t) => [...t.matchAll(/(^|[^a-zçğıöşü0-9_./-])(kit(
 export const slashCommand = (t) => [...t.matchAll(/slash[ -]?(command|komut)/gi)].map((m) => m[0]);
 export const MEDIA_MAX = 4 * 1024 * 1024;
 export const bigMedia = (entries) => entries.filter(([f, size]) => /\.(mp4|webm|mov|gif|png|jpe?g|webp|avif|svg)$/i.test(f) && size > MEDIA_MAX).map(([f, size]) => `${f} (${(size / 1048576).toFixed(1)} MB)`);
+export const handCount = (md) => [...md.matchAll(/(?<![\w.{])\d+\s+(?:specialist\s+|uzman\s+)?(?:agents?|skills?|commands?|ajan\p{L}*|skill\p{L}*|komut\p{L}*)/giu)].map((m) => m[0]);
 export const boardWord = (html) => [...html.matchAll(/crew-board|refs\/crew\/board/gi)].map((m) => m[0]);
 export function numbers(t, allowed) {
   return [...t.matchAll(/[0-9]+(?:[.,][0-9]+)?%|%[0-9]+(?:[.,][0-9]+)?|[0-9]+\/10(?![0-9])/g)].map((m) => m[0]).filter((n) => !allowed(n));
@@ -83,6 +87,8 @@ function selftest(allowed) {
   must(slashCommand('doubled slashes, start it with /crew-review, the command menu').length === 0, 'slash command flagged other words');
   must(bigMedia([['media/a.mp4', 5 * 1048576], ['media/b.jpg', 80000], ['assets/c.svg', 3 * 1048576]]).length === 1, 'an over-size video not caught, or a small file flagged');
   must(boardWord('<code>/crew-board</code> and refs/crew/board').length === 2 && boardWord('crew-review, board.sh, a board').length === 0, 'board check cannot tell the command from other words');
+  must(handCount("all 12 agents and 40 skills · 12 ajanın ve 40 skill'in · 10 commands").length === 5, 'a typed count not caught');
+  must(handCount('{{AGENT_COUNT}} agents, {{SKILL_COUNT}} skills, the four UI skills, 12 hooks, v2 commands').length === 0, 'a generated count or another number flagged');
   must(numbers('bare 7/10 and 93% of runs', allowed).length === 2, 'unbacked numbers not caught');
   must(numbers('warns at %75 and 90%', allowed).length === 0, 'generated thresholds flagged');
   must(thirdParty('<script src="https://evil.example/x.js"></script><link rel="stylesheet" href="https://fonts.googleapis.com/css">', '@import url("https://fonts.x.com/a.css");').length === 3, 'third party not caught');
@@ -109,6 +115,11 @@ function main() {
   for (const p of en) if (!set.has(`tr/${p}`)) problems.push(`pair: ${p} has no Turkish page`);
   for (const p of tr) if (!set.has(p.slice(3))) problems.push(`pair: ${p} has no English page`);
 
+  const CONTENT = path.resolve(here, '../content');
+  for (const loc of ['en', 'tr']) for (const f of fs.readdirSync(path.join(CONTENT, loc)).filter((x) => x.endsWith('.md'))) {
+    for (const h of handCount(read(path.join(CONTENT, loc, f)))) problems.push(`count: content/${loc}/${f}: "${h}" is typed — use {{AGENT_COUNT}}, {{SKILL_COUNT}} or {{COMMAND_COUNT}}`);
+  }
+
   let checked = 0;
   for (const rel of pages) {
     const html = read(path.join(DIST, rel)); const text = prose(html); checked++;
@@ -131,7 +142,7 @@ function main() {
     console.error(`site check: ${problems.length} problem(s)\n  ${problems.slice(0, 40).join('\n  ')}`);
     process.exit(1);
   }
-  console.log(`site check: ${checked} pages (${en.length} EN + ${tr.length} TR, paired) · no old name, no "the kit" or plain "kit" outside code, no "slash command", no board, no medium over 4 MB, no unbacked number, no broken link, no third-party request · twins: each gate rejected planted input and accepted clean input`);
+  console.log(`site check: ${checked} pages (${en.length} EN + ${tr.length} TR, paired) · no old name, no "the kit" or plain "kit" outside code, no "slash command", no board, no typed count, no medium over 4 MB, no unbacked number, no broken link, no third-party request · twins: each gate rejected planted input and accepted clean input`);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();

@@ -43,7 +43,7 @@ bash start.sh [--private|--shared] [--lang tr|en] [--yes] [--version] [-h]
 
 The wizard first asks for its language (English or Turkish), then who the install is for, and ends with a summary you approve before anything is written. Every prompt and message follows the language you pick; the files it installs stay English.
 
-**Every install carries the same team** — all 12 agents and all 40 skills. Backend, web and mobile (React Native/Expo) come together. A project that starts as an API and grows a web client is already equipped for both.
+**Every install carries the same team** — all {{AGENT_COUNT}} agents and all {{SKILL_COUNT}} skills. Backend, web and mobile (React Native/Expo) come together. A project that starts as an API and grows a web client is already equipped for both.
 
 | Asked at install | Options | What it changes |
 |:--|:--|:--|

@@ -27,7 +27,7 @@ const { d } = Astro.props;
         <source src={d.video.src} type="video/mp4" />
       </video>
       <button class="cf-play" type="button" aria-label={d.video.play} aria-describedby="cf-video-desc" hidden>
-        <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor" /></svg>
+        <svg viewBox="0 0 24 24" width="34" height="34" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor" /></svg>
       </button>
       <button class="cf-sound" type="button" aria-label={d.video.sound} aria-pressed="false" hidden>
         <svg class="cf-sound-off" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z" fill="currentColor" /><path d="M17 9l4 6M21 9l-4 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
@@ -146,8 +146,8 @@ const { d } = Astro.props;
   .cf-video { display: flex; flex-direction: column; gap: 8px; scroll-margin-top: 80px; }
   .cf-player { position: relative; border-radius: var(--cf-radius-lg); overflow: hidden; border: 1px solid var(--cf-line); background: #000; }
   .cf-hero { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; }
-  /* Bottom-left, not centred: the poster's own headline sits in the middle and a centred button covered it. */
-  .cf-play { position: absolute; left: 24px; bottom: 24px; width: 76px; height: 76px; border-radius: 999px; border: 0; cursor: pointer;
+  /* Centred on the poster frame, 88px: the one control a first-time reader is looking for. */
+  .cf-play { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 88px; height: 88px; border-radius: 999px; border: 0; cursor: pointer;
     display: grid; place-items: center; color: #fff; background: #6D28D9; box-shadow: 0 6px 24px rgb(0 0 0 / 0.35); }
   .cf-play[hidden], .cf-sound[hidden] { display: none; }
   .cf-play:focus-visible, .cf-sound:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
