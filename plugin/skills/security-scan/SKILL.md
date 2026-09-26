@@ -17,7 +17,7 @@ looks for where the input comes from, then where it flows, and what gate should 
 It is stack-agnostic: whatever the language/framework, the same logic applies; when current tooling and
 patterns are needed, it runs a web search.
 
-> **Kit adaptation (local, .claude/):** `crew-security-expert` applies this; findings are carried to
+> **Crewforth adaptation (local, .claude/):** `crew-security-expert` applies this; findings are carried to
 > **crew-review-agent** in severity order, whatever the stack. Automatic
 > fixes only with explicit approval (§4.4); `.claude` does not go to the repo (§4.3). §4 Prohibitions apply.
 

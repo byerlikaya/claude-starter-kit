@@ -18,7 +18,7 @@ number you can trust.
 This is the **external, machine-grounded verifier** the `iterate` skill asks for — a model grading its *own* output
 inflates; a separate grader on a fixed suite does not.
 
-> **Kit adaptation (local, .claude/):** use when tuning a generative task; the scorecard goes to `docs/EVAL.md`
+> **Crewforth adaptation (local, .claude/):** use when tuning a generative task; the scorecard goes to `docs/EVAL.md`
 > (§4.3). Stack-agnostic — graders are ordinary code + judge calls. §4 Prohibitions apply.
 
 ## Two layers

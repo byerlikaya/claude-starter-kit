@@ -37,12 +37,12 @@ Skipping one of these is how a component ships half-installed:
 1. **Route it.** Name it in an agent body, a command, or the trigger map. §3b checks exactly this.
 2. **Golden case.** Add a positive line to `.claude/eval/golden-routing.txt` — and a **negative** one
    (`prompt|!target`) for a neighbour it must NOT steal.
-3. **Catalog + counts** *(kit repository only — `packaging/` is not installed anywhere)*.
+3. **Catalog + counts** *(Crewforth repository only — `packaging/` is not installed anywhere)*.
    Add the Turkish summary line (`packaging/skill-summaries.tr.tsv`; agents and commands have their own `.tr.tsv`),
    which the site build requires (`cd site && npm ci && npm run build`), and the network diagram if the component set changed:
    `python3 packaging/gen-network.py assets` — **the target directory is an argument**; without it the SVGs land in
    the current directory and `assets/` silently stays stale.
-4. **Plugin edition** *(kit repository only)*. `bash packaging/build-plugin.sh` — in the same commit, or the
+4. **Plugin edition** *(Crewforth repository only)*. `bash packaging/build-plugin.sh` — in the same commit, or the
    release stops at the sync gate.
 5. **Budget.** A new skill moves `BUDGET_SKILLS`; raise it in the same commit with the justification comment the
    file's convention requires. Never raise it to make a red gate green without saying why.

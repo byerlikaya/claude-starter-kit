@@ -15,7 +15,7 @@ An MCP server exposes **tools** (actions the model can call), **resources** (dat
 well-described tools, validate their inputs, return useful errors, and prove it works with a real client.** The
 protocol is easy; the design of the tools is what makes the server good or useless.
 
-> **Kit adaptation (local, .claude/):** Stack-agnostic — TypeScript (`@modelcontextprotocol/sdk`) or Python
+> **Crewforth adaptation (local, .claude/):** Stack-agnostic — TypeScript (`@modelcontextprotocol/sdk`) or Python
 > (`mcp` / FastMCP) are the maintained SDKs; match the project's language. §4 Prohibitions apply (no AI trace in
 > generated code/strings). Secrets (API keys the server needs) go via env, never hardcoded — Crewforth's secret gates apply.
 

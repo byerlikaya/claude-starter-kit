@@ -14,7 +14,7 @@ One rule: **never let risky or parallel work run on top of uncommitted changes i
 gives a second working copy of the same repo on its own branch — you experiment or fan out agents there, and the main
 tree (with your in-progress edits) is physically untouched. Throw the worktree away and nothing you cared about is lost.
 
-> **Kit adaptation (local, .claude/):** this exists because verification/fan-out subagents have discarded a session's
+> **Crewforth adaptation (local, .claude/):** this exists because verification/fan-out subagents have discarded a session's
 > **uncommitted** work by running a destructive git command over the shared tree. Those commands (`reset --hard`,
 > `clean -f`, `checkout -- .`, `restore`) are §4.5-gated — but the real fix is to not put them near unsaved work.
 > The Agent tool's `isolation: "worktree"` does this automatically for parallel mutating agents; reach for it there.

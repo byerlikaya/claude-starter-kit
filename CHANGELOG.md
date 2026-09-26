@@ -117,6 +117,10 @@ One name everywhere: the package, the components, the variables, the payload. **
 - **`MultiEdit` is gone from the file-tool gate's matcher** — it is no longer a Claude Code tool.
 - **Wording:** the 11 command-skills are called commands, not slash commands, matching Claude Code's docs (custom
   commands were merged into skills, and `/` opens the command menu). You still start each with its `/crew-…` name.
+- **`frontend-design` names the defaults to avoid** when a project gives no design direction (a cream ground with a
+  serif and terracotta, a purple-to-blue hero, a black ground with one neon accent, and six more), after looking for
+  the project's own system first. Installed text no longer calls Crewforth a kit: the skills' adaptation note is
+  "Crewforth adaptation", and the discipline quotes the update warning the hook actually prints.
 
 ### Added — "an update is out, update now?"
 

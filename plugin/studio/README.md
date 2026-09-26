@@ -63,12 +63,12 @@ by reading `${CLAUDE_PLUGIN_ROOT}/studio/server/index.js` literally: Claude Code
 replaces that placeholder before the command is read, and only when the command
 came from the plugin. A real absolute path is the plugin's panel; the
 placeholder left standing means a full install. Neither path on disk means an
-install from a kit older than the panel, which `/crew-update` brings up to date.
+install older than the panel, which `/crew-update` brings up to date.
 In the plugin the command is namespaced: `/crewforth:crew-studio`.
 
 **What the plugin edition cannot show.** A plugin install puts no
-`.claude/VERSION`, `kit.conf` or kit scripts into a project. That project's row
-in the list has no kit badge, and for the project the panel was opened from, the
+`.claude/VERSION`, `kit.conf` or Crewforth scripts into a project. That project's row
+in the list has no version badge, and for the project the panel was opened from, the
 inspector's gates, stats and board tabs say "Not measured" with the reason rather
 than zero. The gates tab can still list what the gate log observed: the plugin's
 Bash guard records its blocks, approval prompts and pre-authorised git actions,
@@ -133,7 +133,7 @@ another machine's sessions, so a peer is another Studio.
 |---|---|
 | `claude agents --json` | Live sessions on this machine: name, cwd, busy/waiting/idle, what it is waiting for |
 | `<session>.jsonl` and `<session>/subagents/` | The delegation graph, nested workflow runs included |
-| `.claude/VERSION` per project | Which projects run an old kit, against the npm dist-tags feed |
+| `.claude/VERSION` per project | Which projects run an old Crewforth, against the npm dist-tags feed |
 
 That call spawns a process, so it is cached rather than repeated. The browser
 polls every 2 s and the server caches for 1 s, which bounds the cost at one
@@ -219,7 +219,7 @@ the first would be the first untrue thing in this panel.
 `gate-report.sh` finds the hooks relative to where it runs: `./.claude/hooks`
 in an installed project, `./hooks` otherwise. Both layouts are handed what they
 expect rather than the script being asked to guess. Where it still cannot
-answer — a directory with no kit, a project with no log — that is reported as
+answer — a directory with no Crewforth install, a project with no log — that is reported as
 not measured, never as zero.
 
 ## The permission gate

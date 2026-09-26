@@ -11,7 +11,7 @@ description: |
 <!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
 Trigger phrases: "code-review", "review the code", "review the PR", "review my changes", "do a review"
 
-> **Kit adaptation (local, .claude/):** applied by `crew-review-agent` (read-only). No source name appears in the
+> **Crewforth adaptation (local, .claude/):** applied by `crew-review-agent` (read-only). No source name appears in the
 > artifact that goes to the repo (§4.2). Comments are severity-ranked; §4 applies.
 >
 > **Sources, by layer** — three different questions, three different authorities:

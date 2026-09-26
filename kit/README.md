@@ -1,6 +1,6 @@
-# Crewforth — installed kit
+# Crewforth — what is installed here
 
-This project has been equipped with a Claude Code working kit. Crewforth runs the work with the same discipline at every stage:
+This project runs Crewforth in Claude Code. It runs the work with the same discipline at every stage:
 **plan → generate → audit → commit** — and the quality and security at each step rely not on the model remembering,
 but on gates at the tool level. All of Crewforth's behavior rules live in the root `CLAUDE.md`; this file
 summarizes what lives under `.claude/` and how it works.
