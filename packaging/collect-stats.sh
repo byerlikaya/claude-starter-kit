@@ -26,16 +26,16 @@
 #
 # Usage:
 #   bash packaging/collect-stats.sh                    # token from STATS_TOKEN, else GITHUB_TOKEN, else `gh`
-#   REPO=owner/name bash packaging/collect-stats.sh    # defaults to byerlikaya/claude-starter-kit
+#   REPO=owner/name bash packaging/collect-stats.sh    # defaults to Crewforth/crewforth
 #
 # Exit 0 a row was written (traffic may be absent, and says so) · 1 every source failed — no row, no silent
 # empty entry · 2 a prerequisite is missing (curl / jq).
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"; cd "$ROOT"
 
-REPO="${REPO:-byerlikaya/claude-starter-kit}"
-PKG="@byerlikaya/claude-starter-kit"
-PKG_ENC="%40byerlikaya%2Fclaude-starter-kit"
+REPO="${REPO:-Crewforth/crewforth}"
+PKG="crewforth"
+PKG_ENC="crewforth"
 
 for tool in curl jq; do
   command -v "$tool" >/dev/null 2>&1 || { echo "collect-stats: $tool is required" >&2; exit 2; }
@@ -52,9 +52,9 @@ VERSION="$(cat VERSION 2>/dev/null || echo unknown)"
 # schedule, so a hung request is not a slow run — it is a lost week: the GitHub traffic API only keeps 14 days,
 # and a snapshot that never completes cannot be taken again later. The failure path already exists and is
 # graceful (an empty body becomes `null` in the row below), so bounding the wait turns a silent stall into a
-# recorded gap. Same reasoning and the same knob as board.sh's `_gitnet`: CSK_NET_TIMEOUT, read here rather
+# recorded gap. Same reasoning and the same knob as board.sh's `_gitnet`: CREW_NET_TIMEOUT, read here rather
 # than redefined, because one name for one thing is what keeps the two from drifting to different values.
-CURL_T="${CSK_NET_TIMEOUT:-15}"
+CURL_T="${CREW_NET_TIMEOUT:-15}"
 
 # gh_api <path> -> body on stdout, empty on failure (the caller decides whether that is fatal).
 gh_api() {

@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
-# Setup wizard: picks the backend pattern, shows a summary and asks for confirmation; if .NET is selected,
-# includes the DevArchitecture base behind an approval gate; then installs the WHOLE kit (./.claude + ./CLAUDE.md);
-# finally deletes claude-starter/ and itself.
+# Setup wizard: asks who the install is for, shows a summary and asks for confirmation; then installs the WHOLE
+# kit (./.claude + ./CLAUDE.md); finally deletes kit/ and itself.
 # Every install is identical — there is no frontend/backend/mobile split. Measured before it was removed: the
 # widest profile pruning saved ~400 tokens of listing, while the split cost a per-profile e2e matrix, a second
-# prune path in adopt.sh, and shipped a set the plugin channel never matched. The ONE thing that legitimately
-# varies is the backend pattern, because cqrs-aop-module is .NET-specific and wrong in a Node/Go/Python repo.
-# start.sh + claude-starter/ must be in the SAME directory. At the project root:  bash start.sh [flags]
+# prune path in adopt.sh, and shipped a set the plugin channel never matched. Since 3.0 the backend pattern does
+# not vary either: the stack is decided per project by the backend-architecture skill and recorded in CLAUDE.md.
+# start.sh + kit/ must be in the SAME directory. At the project root:  bash start.sh [flags]
 set -euo pipefail
+# The 2.x names of the variables a user can set still work (one helper: eval/lib/crew-env.sh).
+_crew_d="${BASH_SOURCE%/*}"; [ "$_crew_d" = "${BASH_SOURCE}" ] && _crew_d=.
+[ -f "$_crew_d/kit/eval/lib/crew-env.sh" ] && . "$_crew_d/kit/eval/lib/crew-env.sh"; unset _crew_d
 HERE="$(CDPATH= cd "$(dirname "$0")" && pwd)"
 
 # --version (or -v) is answered first, before the source-checkout and payload checks below: it reads only VERSION, so it
@@ -19,17 +21,16 @@ for a in "$@"; do
   fi
 done
 
-SRC="$HERE/claude-starter"
-DEVARCH_URL="https://github.com/DevArchitecture/DevArchitecture"
+SRC="$HERE/kit"
 
 if [ ! -d "$SRC" ]; then
-  echo "ERROR: 'claude-starter/' folder not found."
-  echo "start.sh and claude-starter/ must be in the SAME directory (both come together when you unzip)."
+  echo "ERROR: 'kit/' folder not found."
+  echo "start.sh and kit/ must be in the SAME directory (both come together when you unzip)."
   exit 1
 fi
 
 # Refuse to run inside a checkout of the kit's own source repository. This script ends by deleting
-# claude-starter/ and itself, which is correct when the kit has been unpacked into a project and is being
+# kit/ and itself, which is correct when the kit has been unpacked into a project and is being
 # consumed — and destroys the source when someone invokes it by absolute path from somewhere else while
 # developing the kit. That is not hypothetical: it removed 122 tracked files during this kit's own
 # development, recovered only because they were committed.
@@ -37,22 +38,22 @@ fi
 # The kit's developer instructions already said "do not run start.sh in this repo". A rule that only holds
 # while someone remembers it is the exact thing this kit exists to replace with a gate, so here is the gate.
 # The three markers together appear in the source repo and in no install: an installed kit has .claude/ and
-# CLAUDE.md, never packaging/ next to a claude-starter/ it has not yet consumed.
+# CLAUDE.md, never packaging/ next to a kit/ it has not yet consumed.
 if [ -d "$HERE/packaging" ] && [ -d "$HERE/.git" ] && [ -f "$HERE/VERSION" ]; then
-  if [ "${CSK_ALLOW_SOURCE_INSTALL:-0}" = 1 ]; then
-    echo "WARNING: CSK_ALLOW_SOURCE_INSTALL=1 — installing from the kit's own source checkout."
+  if [ "${CREW_ALLOW_SOURCE_INSTALL:-0}" = 1 ]; then
+    echo "WARNING: CREW_ALLOW_SOURCE_INSTALL=1 — installing from Crewforth's own source checkout."
     echo "  $SRC and this script will be deleted when the install finishes."
   else
-    echo "ERROR: this is the kit's own source repository, not a project to install into."
+    echo "ERROR: this is Crewforth's own source repository, not a project to install into."
     echo "  Running here would delete $SRC and this script at the end — that is what the installer does."
-    echo "  To try the installer, copy the kit somewhere else first:"
+    echo "  To try the installer, copy this checkout somewhere else first:"
     echo "      cp -R \"$HERE\" /tmp/kit-trial && cd /tmp/kit-trial && bash start.sh"
-    echo "  Set CSK_ALLOW_SOURCE_INSTALL=1 if you really mean to consume this checkout."
+    echo "  Set CREW_ALLOW_SOURCE_INSTALL=1 if you really mean to consume this checkout."
     exit 1
   fi
 fi
 
-# ---- CSK-I18N ------------------------------------------------------------------------------------------
+# ---- CREW-I18N ------------------------------------------------------------------------------------------
 # The installer speaks the user's language; the artefacts it writes do not.
 #
 # THE ENGLISH STRING IS THE KEY. `m 'Cancelled — nothing changed.'` looks that text up and prints the
@@ -75,10 +76,10 @@ fi
 # NOT TRANSLATED, deliberately: the source-repo refusal above and --version. Both answer before the flags
 # are parsed, and language selection cannot run ahead of them without putting a locale lookup in front of a
 # gate whose whole job is to refuse. A gate that parses a locale before it can say no is a worse gate.
-# The inherited CSK_LANG is captured before the working variable is cleared — otherwise this very line
+# The inherited CREW_LANG is captured before the working variable is cleared — otherwise this very line
 # would destroy the environment setting it is meant to read.
-CSK_LANG_ENV="${CSK_LANG:-}"
-CSK_LANG=""
+CREW_LANG_ENV="${CREW_LANG:-}"
+CREW_LANG=""
 # `_mt` puts the result in _M with printf -v, so a call site pays no subshell: `$(m …)` is a FORK, and on Git
 # Bash a fork is ~50 ms. Measured on Windows: the $(m …) form added 22 forks and ~1 s to one install; adopt.sh's
 # printf -v twin removed them. `m` stays as a thin wrapper for the rare nested case that needs a value inline.
@@ -87,21 +88,12 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
   # An empty key must still ASSIGN: bash 3.2's `printf -v _M ""` leaves _M holding the previous translation.
   [ -n "${1:-}" ] || { _M=""; return 0; }
   local s="$1"; shift
-  if [ "$CSK_LANG" = tr ]; then
+  if [ "$CREW_LANG" = tr ]; then
     case "$s" in
-      "Agentic Working Kit · setup wizard") s='Agentic Working Kit · kurulum' ;;
-      "[1/3] Backend pattern") s='[1/3] Backend mimarisi' ;;
-      "Determines the backend template and whether the .NET-specific skills are included.") s="Hangi backend şablonunun kullanılacağını ve .NET'e özel skill'lerin kurulup kurulmayacağını seçin." ;;
-      ".NET / DevArchitecture") s='.NET / DevArchitecture' ;;
-      "full support") s='tam destek' ;;
-      "Generic") s='Genel' ;;
+      "Crewforth · setup wizard") s='Crewforth · kurulum' ;;
       "stack-agnostic") s='her yığınla çalışır' ;;
-      "cqrs-aop-module skill (opinionated MediatR CQRS)") s="cqrs-aop-module skill'i (MediatR ile CQRS, kendi kurallarıyla)" ;;
-      "clones the DevArchitecture base project BEHIND AN APPROVAL GATE (greenfield project)") s='sıfırdan projede DevArchitecture tabanını eklemeyi teklif eder (siz onaylamadan klonlanmaz)' ;;
-      "pattern-neutral backend-expert-csk — follows your repo's pattern; declare it as a skill (.claude/skills/)") s='backend-expert-csk belirli bir desene bağlı değil — deponuzdaki deseni izler; deseninizi .claude/skills/ altına skill olarak ekleyin' ;;
-      "cqrs-aop-module and the DevArchitecture base NOT INSTALLED (sonarqube-check still installed)") s='cqrs-aop-module ve DevArchitecture tabanı KURULMAZ (sonarqube-check yine kurulur)' ;;
-      "[2/3] Who is this install for?") s='[2/3] Kurulumu kim kullanacak?' ;;
-      "Decides whether your teammates get the kit's configuration — and what goes into .gitignore.") s="Kit ayarlarının ekiple paylaşılıp paylaşılmayacağını ve .gitignore'a nelerin ekleneceğini belirler." ;;
+      "[1/2] Who is this install for?") s='[1/2] Kurulumu kim kullanacak?' ;;
+      "Decides whether your teammates get Crewforth's configuration — and what goes into .gitignore.") s="Crewforth ayarlarının ekiple paylaşılıp paylaşılmayacağını ve .gitignore'a nelerin ekleneceğini belirler." ;;
       "Just me") s='Yalnızca ben' ;;
       "private") s='kişisel' ;;
       "The whole team") s='Tüm ekip' ;;
@@ -109,7 +101,7 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       ".claude/ and CLAUDE.md stay out of git — nothing appears in your teammates' checkouts") s=".claude/ ve CLAUDE.md git'e girmez — ekip arkadaşlarınız hiçbir şey görmez" ;;
       ".claude/ and CLAUDE.md are committable — everyone gets the same agents, skills and gates") s=".claude/ ve CLAUDE.md commit'lenebilir — herkes aynı ajanlarla, skill'lerle ve kapılarla çalışır" ;;
       "internal working documents (docs/) stay private in BOTH answers") s='iç çalışma belgeleri (docs/) HER İKİ seçenekte de dışarıda kalır' ;;
-      "[3/3] Summary · see what will be installed before you confirm") s='[3/3] Özet · onaylamadan önce neyin kurulacağına bakın' ;;
+      "[2/2] Summary · see what will be installed before you confirm") s='[2/2] Özet · onaylamadan önce neyin kurulacağına bakın' ;;
       "Security gates armed on every install:") s='Her kurulumda devreye giren güvenlik kapıları:' ;;
       "commit/push approval gate — even in auto/bypass mode (guard-bash)") s='commit ve push için onay şartı — auto/bypass modunda bile (guard-bash)' ;;
       "trace scan — a git hook blocks AI traces / vendor names") s="iz taraması — AI izlerini ve sağlayıcı adlarını bir git hook'u yakalar" ;;
@@ -123,72 +115,32 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "Scope") s='Kapsam' ;;
       "Included") s='Kurulacaklar' ;;
       "Backend pattern") s='Mimari' ;;
-      "DevArch base") s='DevArch tabanı' ;;
+      "stack-agnostic — the stack comes from CLAUDE.md ## Stack or the repo (backend-architecture)") s="yığından bağımsız — yığın CLAUDE.md ## Stack bölümünden ya da depodan okunur (backend-architecture)" ;;
+      "The --dotnet flag is ignored: the .NET-specific path was removed in 3.0; installing the stack-agnostic setup.") s="Bayrak yok sayıldı (--dotnet): .NET'e özel kurulum yolu 3.0'da kaldırıldı; yığından bağımsız kurulum yapılıyor." ;;
       "Will write") s='Yazılacaklar' ;;
-      "not installed") s='kurulmayacak' ;;
       "Install visibility:") s='Kurulum türü:' ;;
-      "Backend pattern:") s='Backend mimarisi:' ;;
-      "full kit") s='tam kit' ;;
+      "full install") s='tam kurulum' ;;
       "no effect:") s='etkisi yok:' ;;
       "Installing:") s='Kuruluyor:' ;;
-      "Tip:  open Claude Code and run /doctor-csk — it checks the install is wired (hooks executable, core.hooksPath set, discipline imported) and scores the project's readiness. CLAUDE.md loads the discipline every session.") s="İpucu:  Claude Code'u açıp /doctor-csk çalıştırın — kurulumun eksiksiz bağlandığını denetler (hook'lar çalıştırılabilir mi, core.hooksPath ayarlı mı, disiplin import edilmiş mi) ve projenin ne kadar hazır olduğunu puanlar. Disiplin, CLAUDE.md sayesinde her oturumda yüklenir." ;;
-      "Backend pattern '%s': %s agents, %s skills installed.") s="Backend mimarisi '%s': %s ajan ve %s skill kuruldu." ;;
-      ".claude/DISCIPLINE.md written — kit-owned; an update overwrites it, so keep your own rules out of it.") s='.claude/DISCIPLINE.md yazıldı. Bu dosya kite ait ve her güncellemede yeniden yazılır; kendi kurallarınızı buraya eklemeyin.' ;;
+      "Tip:  open Claude Code and run /crew-doctor — it checks the install is wired (hooks executable, core.hooksPath set, discipline imported) and scores the project's readiness. CLAUDE.md loads the discipline every session.") s="İpucu:  Claude Code'u açıp /crew-doctor çalıştırın — kurulumun eksiksiz bağlandığını denetler (hook'lar çalıştırılabilir mi, core.hooksPath ayarlı mı, disiplin import edilmiş mi) ve projenin ne kadar hazır olduğunu puanlar. Disiplin, CLAUDE.md sayesinde her oturumda yüklenir." ;;
+      "%s agents, %s skills and %s commands installed.") s="%s ajan, %s skill ve %s komut kuruldu." ;;
+      ".claude/DISCIPLINE.md written — owned by Crewforth; an update overwrites it, so keep your own rules out of it.") s=".claude/DISCIPLINE.md yazıldı. Bu dosya Crewforth'a ait ve her güncellemede yeniden yazılır; kendi kurallarınızı buraya eklemeyin." ;;
       "./CLAUDE.md created — EDIT the project section.") s='./CLAUDE.md oluşturuldu — proje bölümünü sizin DOLDURMANIZ gerekiyor.' ;;
       "trace scan: core.hooksPath -> .claude/hooks (§4.1/§4.2 commit gate active)") s='iz taraması: core.hooksPath -> .claude/hooks (§4.1/§4.2 commit kapısı açık)' ;;
-      "Done. ./.claude + ./CLAUDE.md ready (full kit · backend pattern: %s); claude-starter/ deleted.") s='Tamamlandı. ./.claude ve ./CLAUDE.md hazır (tam kit · backend mimarisi: %s); claude-starter/ silindi.' ;;
+      "Done. ./.claude + ./CLAUDE.md ready (full install); the installer files are removed.") s='Tamamlandı. ./.claude ve ./CLAUDE.md hazır (tam kurulum); kurulum dosyaları silindi.' ;;
       "Next: 1) fill in the CLAUDE.md project section  2) open Claude Code at the repo root") s="Sıradaki adımlar: 1) CLAUDE.md'deki proje bölümünü doldurun  2) Claude Code'u deponun kökünde açın" ;;
       "Note: if Claude Code is ALREADY running here, restart it — CLAUDE.md and the discipline load at session start.") s='Not: Claude Code bu klasörde ZATEN açıksa yeniden başlatın — CLAUDE.md ve disiplin oturum açılırken yüklenir.' ;;
-      "Panel: /studio-csk opens the Studio panel from this project (or: node .claude/studio/server/index.js --open).") s='Panel: /studio-csk komutu Studio panelini bu projeden açar (alternatif: node .claude/studio/server/index.js --open).' ;;
+      "Panel: /crew-studio opens the Studio panel from this project (or: node .claude/studio/server/index.js --open).") s='Panel: /crew-studio komutu Studio panelini bu projeden açar (alternatif: node .claude/studio/server/index.js --open).' ;;
       "— backend + web + mobile (RN/Expo), every agent and skill") s="— backend, web ve mobil (RN/Expo); tüm ajanlar ve skill'ler" ;;
-      "%s agents · %s skills will be installed") s='%s ajan · %s skill' ;;
-      "non-.NET — generic") s='.NET dışı — genel' ;;
-      "(cqrs-aop-module not installed; sonarqube-check installed)") s='(cqrs-aop-module kurulmayacak; sonarqube-check kurulacak)' ;;
-      "approval gate -> ./%s") s='onayınızla -> ./%s' ;;
-      "(./frontend reserved next to it)") s='(yanına ./frontend klasörü açılır)' ;;
+      "%s agents · %s skills · %s commands will be installed") s='%s ajan · %s skill · %s komut' ;;
       "(shared: .claude/ and CLAUDE.md stay committable)") s="(paylaşımlı: .claude/ ve CLAUDE.md commit'lenebilir kalır)" ;;
-      "(default — pass --generic for the stack-agnostic one)") s='(varsayılan — her yığına uyan seçenek için --generic verin)' ;;
       "(default — pass --shared to commit .claude/ and CLAUDE.md)") s="(varsayılan — .claude/ ve CLAUDE.md'yi commit'lemek için --shared verin)" ;;
       "no") s='hayır' ;;
-      "(--yes does not approve the DevArchitecture base — run without --yes to add it)") s='(--yes DevArchitecture tabanını onaylamaz — eklemek için --yes olmadan çalıştırın)' ;;
       "yes") s='evet' ;;
       "[yes/no]") s='[evet/hayır]' ;;
-      "!!! WARNING: this project root is %s characters; the .NET base needs it to be 94 or fewer.") s='!!! UYARI: proje kökünün yolu %s karakter; .NET tabanı için en fazla 94 olmalı.' ;;
-      "The copy will SUCCEED and the build will FAIL: the base's deepest file is 156 characters, and") s='Kopyalama SORUNSUZ görünür ama derleme BAŞARISIZ olur. Tabanın en derin dosyası 156 karakter,' ;;
-      "Windows cannot open a path past 259 unless long paths are enabled. Measured here: dotnet build") s='Windows ise uzun yol desteği açık değilse 259 karakteri aşan yolları açamaz. Ölçüldü: dotnet build' ;;
-      "stops with %s.") s='%s hatasıyla duruyor.' ;;
-      "94 is also optimistic — a build writes bin/ and obj/ BELOW the sources, so the real room is less.") s='94 bile iyimser: derleme bin/ ve obj/ klasörlerini kaynakların ALTINA yazar, gerçek pay daha da az.' ;;
-      "Two things fix it: install at a shorter root (%s rather than a deep Documents path),") s='Çözüm iki yoldan biri: projeyi daha kısa bir yola taşıyın (derin bir Documents yolu yerine %s gibi),' ;;
-      "or set LongPathsEnabled=1 under %s (admin).") s='ya da %s altında LongPathsEnabled=1 yapın (yönetici yetkisi gerekir).' ;;
-      "(core.longpaths only affects git, not the build, so it will not help here.)") s="(core.longpaths yalnızca git'i etkiler, derlemeyi değil; burada işe yaramaz.)" ;;
-      "ERROR: git missing; cannot include DevArchitecture.") s='HATA: git bulunamadı, DevArchitecture eklenemiyor.' ;;
-      "Downloading: %s") s='İndiriliyor: %s' ;;
-      "ERROR: clone failed (network/access?). Manually: %s") s='HATA: klonlanamadı (ağ ya da erişim sorunu olabilir). Elle denemek için: %s' ;;
-      "Renamed the solution to %s.") s='Solution dosyası %s olarak yeniden adlandırıldı.' ;;
-      "DevArchitecture base placed in: %s.") s='DevArchitecture tabanı eklendi: %s.' ;;
-      "the project root") s='proje kökü' ;;
-      "NOTE (§4.2): the template name still lives in namespaces / csproj / appsettings — as the FIRST") s='NOT (§4.2): şablonun adı namespace, csproj ve appsettings içinde hâlâ geçiyor.' ;;
-      "task, ask an agent to rename DevArchitecture -> %s throughout.") s='İLK iş olarak bir ajandan DevArchitecture adını her yerde %s ile değiştirmesini isteyin.' ;;
-      "HEADS-UP: the base carries %s vendored front-end files under %s (bootstrap et al).") s='DİKKAT: taban %s dosyalık hazır ön yüz kütüphanesiyle geliyor (%s altında; bootstrap vb.).' ;;
-      "The repo-bloat gate will stop your first commit over them. Decide once: gitignore that path, or") s="Depo şişmesi kapısı ilk commit'inizi bu dosyalar yüzünden durduracak. Baştan karar verin: o yolu .gitignore'a ekleyin" ;;
-      "commit them deliberately with %s (§4.5: an explicit, one-off exception).") s="ya da bilerek %s ile commit'leyin (§4.5: açıkça verilmiş, tek seferlik istisna)." ;;
-      "the kit always installs in full (all agents · all skills).") s="kit her zaman eksiksiz kurulur (tüm ajanlar · tüm skill'ler)." ;;
-      "3 steps: backend pattern -> who it is for -> summary & confirm.") s='3 adım: backend mimarisi -> kim kullanacak -> özet ve onay.' ;;
-      "Backend base (DevArchitecture)") s='Backend tabanı (DevArchitecture)' ;;
-      "Target: %s (the frontend stays separate under ./frontend).") s='Hedef: %s (frontend ayrıca ./frontend altında durur).' ;;
-      "DevArchitecture detected — base already present, skipping copy.") s='DevArchitecture zaten kurulu, kopyalama atlandı.' ;;
-      "!!! WARNING: An existing project is present and the DevArchitecture backend base is MISSING.") s='!!! UYARI: Burada mevcut bir proje var ve DevArchitecture backend tabanı YOK.' ;;
-      "Adding it may cause file/structure conflicts and BREAK the project.") s='Tabanı eklemek dosya ve klasör çakışmalarına yol açıp projeyi BOZABİLİR.' ;;
-      "This kit is meant for setting up a project FROM SCRATCH. Confirm if you still want to add it.") s='Bu kit SIFIRDAN kurulan projeler için tasarlandı. Yine de eklemek istiyorsanız onaylayın.' ;;
-      "Do you want to add DevArchitecture to this EXISTING project (risky)?") s='DevArchitecture bu MEVCUT projeye eklensin mi (riskli)?' ;;
-      "Continuing without the backend base.") s='Backend tabanı olmadan devam ediliyor.' ;;
-      "Skipped. The backend flow assumes DevArchitecture; you will need to adapt it manually.") s="Atlandı. Backend akışı DevArchitecture'a göre kurgulandı; projenize elle uyarlamanız gerekecek." ;;
-      "Greenfield project: this kit can install the DevArchitecture backend base.") s='Sıfırdan bir proje: kit, DevArchitecture backend tabanını da kurabilir.' ;;
-      "Should I include the DevArchitecture backend base in the project now?") s='DevArchitecture backend tabanını şimdi projeye ekleyeyim mi?' ;;
-      "Could not include the backend base; continuing with kit installation.") s='Backend tabanı eklenemedi; kit kurulumu devam ediyor.' ;;
-      "Skipped. You can add it manually later:  %s") s='Atlandı. İsterseniz daha sonra elle ekleyebilirsiniz:  %s' ;;
-      "Reserved ./frontend for your frontend.") s='Frontend için ./frontend klasörü ayrıldı.' ;;
-      "AGENT_TEMPLATE.md missing from the payload — /skill-csk will have nothing to read.") s='AGENT_TEMPLATE.md pakette yok — /skill-csk okuyacak bir şablon bulamayacak.' ;;
+      "Crewforth always installs in full (all agents · all skills).") s="Crewforth her zaman eksiksiz kurulur (tüm ajanlar · tüm skill'ler)." ;;
+      "2 steps: who it is for -> summary & confirm.") s='2 adım: kim kullanacak -> özet ve onay.' ;;
+      "AGENT_TEMPLATE.md missing from the payload — /crew-skill will have nothing to read.") s='AGENT_TEMPLATE.md pakette yok — /crew-skill okuyacak bir şablon bulamayacak.' ;;
       "./CLAUDE.md kept as-is (already imports the discipline) — the refresh landed in DISCIPLINE.md.") s="./CLAUDE.md'ye dokunulmadı (disiplini zaten import ediyor); güncelleme DISCIPLINE.md'ye yazıldı." ;;
       "! ./CLAUDE.md carries the discipline INLINE (pre-1.1 layout) — left untouched.") s='! ./CLAUDE.md disiplini dosyanın İÇİNDE taşıyor (1.1 öncesi düzen) — dokunulmadı.' ;;
       "Discipline updates will NOT reach it. To migrate: delete everything above your") s='Disiplin güncellemeleri bu dosyaya ULAŞMAZ. Geçiş için şu başlığın üstündeki her şeyi silin:' ;;
@@ -197,57 +149,60 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "%s eol pin(s) so shared hooks stay LF") s="%s eol kuralı eklendi; paylaşılan hook'lar LF olarak kalır" ;;
       "NOTE: no git repository at this level; after %s run:  %s") s='NOT: bu klasörde git deposu yok. %s yaptıktan sonra şunu çalıştırın:  %s' ;;
       "Panel: needs Node 18+, which is not on this machine — but that is no longer a dead end.") s='Panel: Node 18+ gerekiyor ve bu makinede yok — ama bunun da bir çözümü var.' ;;
-      "The kit fetches one for the panel: %s  (asks first;") s='Kit, panel için Node indirebilir: %s  (önce sorar;' ;;
+      "Crewforth fetches one for the panel: %s  (asks first;") s='Crewforth, panel için Node indirebilir: %s  (önce sorar;' ;;
       "verified against the published checksum, into %s, nothing else touched).") s='yayımlanan checksum ile doğrular, yalnızca %s içine kurar, başka hiçbir şeye dokunmaz).' ;;
       "Every gate still holds meanwhile; the panel is the only part that needs node.") s="Bu arada tüm kapılar çalışmaya devam eder; Node'a yalnızca panel ihtiyaç duyar." ;;
-      "Layout: backend in ./backend · build your frontend in ./frontend · first agent task: rename DevArchitecture -> %s.") s="Düzen: backend ./backend içinde · frontend'i ./frontend içinde geliştirin · ajanın ilk işi: DevArchitecture adını %s ile değiştirmek." ;;
       "ERROR: the %s sentinel line is missing from %s — refusing to guess the discipline/project split.") s='HATA: %s işaret satırı %s içinde bulunamadı — disiplinin nerede bitip proje bölümünün nerede başladığı tahmin edilmeyecek.' ;;
       "Unknown parameter: %s") s='Bilinmeyen parametre: %s' ;;
       ".gitignore") ;;   # identifier, printed as is
-      # No row: the line prints in English. CSK_I18N_MISS (set by e2e case 18) collects every such key, so a
+      # No row: the line prints in English. CREW_I18N_MISS (set by e2e case 18) collects every such key, so a
       # missing translation is caught by NAME rather than guessed from which English words it happens to contain.
-      *) [ -n "${CSK_I18N_MISS:-}" ] && printf '%s\n' "$s" >> "$CSK_I18N_MISS" ;;
+      *) [ -n "${CREW_I18N_MISS:-}" ] && printf '%s\n' "$s" >> "$CREW_I18N_MISS" ;;
     esac
   fi
   # shellcheck disable=SC2059
-  printf -v _M "$s" "$@"
+  # `--` ends option parsing: without it ANY format starting with '-' ("--dotnet …", "- x") is read as an option
+  # and printf exits 2 — measured on bash 3.2 (macOS) and Git Bash 5.3; with it both assign normally.
+  printf -v _M -- "$s" "$@"
 }
-# ---- /CSK-I18N -----------------------------------------------------------------------------------------
+# ---- /CREW-I18N -----------------------------------------------------------------------------------------
 
 usage() {
   # A heredoc cannot go through m() line by line without breaking its layout, so the Turkish help is its own
   # block. Flags and commands are identical in both; only the prose differs.
-  if [ "${CSK_LANG:-}" = tr ]; then
+  if [ "${CREW_LANG:-}" = tr ]; then
     cat <<'USAGE_TR'
 Kullanım: bash start.sh [SEÇENEKLER]
 Seçenek vermezseniz kurulum sihirbazı her şeyi adım adım sorar.
 
-Backend mimarisi (varsayılan: --dotnet)
-  --dotnet   .NET/DevArchitecture için tam destek (cqrs-aop-module + onaylı DevArchitecture tabanı)
-  --generic  her yığına uyan backend (cqrs-aop-module kurulmaz; sonarqube-check dilden bağımsız, kurulur)
+Backend her zaman yığından bağımsızdır: yığın projeye göre backend-architecture skill'iyle seçilir ve
+CLAUDE.md'deki ## Stack bölümüne yazılır.
+  --dotnet   3.0'da kaldırıldı; kabul edilir, uyarı basar ve yığından bağımsız kurulumu yapar
+  --generic  kabul edilir, etkisi yok (artık tek kurulum biçimi bu)
 
-Kit her zaman eksiksiz kurulur: tüm ajanlar ve skill'ler — backend, web ve mobil (RN/Expo).
+Crewforth her zaman eksiksiz kurulur: tüm ajanlar ve skill'ler — backend, web ve mobil (RN/Expo).
   --backend | --frontend | --mobile | --fullstack   hâlâ kabul edilir ama etkisi yok (eski komutlar bozulmasın diye)
   --private | --shared   kurulum yalnızca sizin mi, yoksa ekiple paylaşılıp commit'lenecek mi? (varsayılan: private)
   --lang tr|en   kurulum dili (verilmezse sihirbaz sorar)
   --yes, -y      tüm sorulara evet de (gözetimsiz kurulum)
-  --version, -v  kit sürümünü yazdırıp çık
+  --version, -v  Crewforth sürümünü yazdırıp çık
 USAGE_TR
     return
   fi
   cat <<'USAGE'
-Usage: bash start.sh [BACKEND-STACK]
-  Stack:  --dotnet | --generic   (default: dotnet)
+Usage: bash start.sh [OPTIONS]
 If no flag is given, the script asks interactively (wizard).
-  --dotnet   .NET/DevArchitecture full support (cqrs-aop-module + DevArch gate)
-  --generic  stack-agnostic backend (NO cqrs-aop-module; sonarqube-check is language-agnostic and stays)
+The backend is always stack-agnostic: the stack is chosen per project by the backend-architecture skill and
+recorded in the ## Stack section of CLAUDE.md.
+  --dotnet   removed in 3.0; accepted, prints a warning and installs the stack-agnostic setup
+  --generic  accepted, no effect (this is the only install shape now)
 
-Every install ships the whole kit: all agents, all skills — backend, web and mobile (RN/Expo) together.
+Every install ships everything: all agents, all skills — backend, web and mobile (RN/Expo) together.
   --backend | --frontend | --mobile | --fullstack   accepted, no effect (kept so older commands still run)
   --private | --shared   is the install yours alone, or committed for the team? (default: private)
   --lang tr|en   installer language (asked interactively when not given)
   --yes, -y     answer every question with yes (unattended install)
-  --version, -v  print the kit version and exit
+  --version, -v  print the Crewforth version and exit
 USAGE
 }
 
@@ -272,7 +227,7 @@ USAGE
 # 10 seconds rather than 5: the cost of being too short is a declined install, which is visible and
 # recoverable, but a producer that legitimately takes a moment to write the answer should still win. The
 # value is an integer because bash 3.2 rejects a fractional -t ("invalid timeout specification", measured).
-csk_read() {   # $1 = name of the variable to set
+crew_read() {   # $1 = name of the variable to set
   local __v="$1" __a=""
   if [ -t 0 ]; then read -r __a || __a=""
   else read -t 10 -r __a || __a=""
@@ -285,22 +240,13 @@ ask_yes() {  # $1 = question; returns 0 if the user says 'yes'
   # under a pty, so stdin IS a terminal there and a bare `read` blocks forever on input nobody will type:
   # testing the terminal first would ignore a --yes that was passed precisely to avoid that. adopt.sh:50
   # carries the same rule for the same reason, and this script was the one place that never learned it.
-  # $2 = "risky": --yes does NOT answer this one. --yes says "install the kit unattended"; it does not say
-  # "clone a third-party base project into my repository over the network". That action writes thousands of
-  # files into the user's tree and the script itself labels it risky, so it stays an explicit, human yes.
-  # Under --yes these decline and say so, which is the reversible direction.
-  if [ "${2:-}" = risky ] && [ "${ASSUME_YES:-0}" = 1 ]; then
-    _mt 'no'; _a="$_M"; _mt '(--yes does not approve the DevArchitecture base — run without --yes to add it)'
-    printf '%s %s %s%s%s\n' "$1" "$_a" "$D" "$_M" "$R"
-    return 1
-  fi
   if [ "${ASSUME_YES:-0}" = 1 ]; then _mt 'yes'; printf '%s %s %s(--yes)%s\n' "$1" "$_M" "$D" "$R"; return 0; fi
   # Deliberately NOT adopt.sh's `[ -t 0 ]` shape. adopt.sh declines outright when stdin is not a terminal;
   # here `printf 'yes\n' | bash start.sh` is the documented CI form (see the note at the confirm prompt) and
   # that shape would silently turn every piped install into a cancellation. A pipe reaching EOF already
   # answers "" => no, so the unattended case stays safe without special-casing it.
   _mt '[yes/no]'; printf '%s %s: ' "$1" "$_M"
-  csk_read a
+  crew_read a
   case "$a" in [yY]|[yY][eE][sS]|[eE]|[eE][vV][eE][tT]) return 0 ;; *) return 1 ;; esac
 }
 # Append entries to .gitignore. Three callers had three copies of the same two bugs (start.sh's four-entry
@@ -318,7 +264,7 @@ gi_add() {   # $@ = entries to ensure in ./.gitignore; prints nothing, sets GI_W
   [ -e .gitignore ] || : > .gitignore
   for e in "$@"; do
     if git rev-parse --git-dir >/dev/null 2>&1; then
-      git check-ignore -q "$e" 2>/dev/null && continue
+      git check-ignore -q --no-index "$e" 2>/dev/null && continue   # --no-index: a dir holding tracked files (docs/HANDOVER.md) still counts as ignored
     else
       grep -qxF "$e" .gitignore 2>/dev/null && continue
     fi
@@ -421,108 +367,13 @@ kit_has_import()       { grep -qE '^[[:space:]]*@\.claude/DISCIPLINE\.md[[:space
 kit_claude_md_is_legacy() {
   grep -q '^## Four working principles' "$1" 2>/dev/null && grep -qE '^### 4\.[45] ' "$1" 2>/dev/null
 }
-has_devarch() {  # $1 = dir to check (default .); does it have the canonical DevArchitecture structure
-  local d="${1:-.}"
-  [ -d "$d/Business" ] && [ -d "$d/Core" ] && { [ -d "$d/DataAccess" ] || [ -d "$d/Entities" ] || [ -d "$d/WebAPI" ]; }
-}
-project_has_source() {  # is there a real source/project file outside the kit
-  ls ./*.sln* ./*.csproj >/dev/null 2>&1 && return 0
-  for m in package.json go.mod pom.xml build.gradle Cargo.toml requirements.txt pyproject.toml src; do
-    [ -e "./$m" ] && return 0
-  done
-  return 1
-}
-# MAX_PATH, and why the check is here rather than after the clone.
-#
-# The install and the BUILD obey different limits, so a long install path produces a tree that copies fine and
-# cannot be compiled. Measured on Windows 11 Pro 26200, LongPathsEnabled=0 (the default):
-#
-#   MSYS `cp -R` to a 275-character path   1286 files, rc=0            <- the installer reports success
-#   PowerShell Test-Path on that file      False
-#   .NET File.ReadAllBytes on it           throws
-#   dotnet build (SDK 10.0.401) at depth   rc=1, "the fully qualified file name must be less than 260"
-#
-# MSYS prefixes its own calls with \\?\ and is not bound by MAX_PATH; MSBuild and the .NET file APIs are. So
-# `cp` is the wrong thing to ask, and asking it after the clone is the wrong time — by then the user has an
-# 8 MB tree that looks installed.
-#
-# The usable limit is 259 characters, not 260: measured file by file at 250/255/258/259 (openable) against
-# 260/261/265 (not). The skeleton's own deepest path is 156 characters, it lands under ./backend/, so the
-# budget for the project root is 259 - 156 - len("/backend/") = 94. Verified at the boundary, with the
-# prediction written down first: root 94 opens, root 95 does not.
-#
-# 94 IS AN UPPER BOUND, NOT A SAFE ONE. A build writes deeper than the sources it compiles —
-# bin/Debug/<tfm>/publish/ and obj/ sit under the project — so the real headroom is smaller by however much
-# the build adds. That figure is NOT measured here (it needs a full restore+build of the base), which is why
-# this warns rather than refuses: a number that is known to be optimistic must not be used to block someone.
-#
-# `git config core.longpaths true` is NOT the remedy and is deliberately not suggested. It lets git write
-# long paths; it does nothing for MSBuild, which is what fails. The two remedies that do work are a shorter
-# install root, or LongPathsEnabled=1 in the registry (admin, machine-wide, and a reboot for some tools).
-csk_native_len(){   # length of $1 in its NATIVE form; 0 where there is no native form (macOS/Linux)
-  local n
-  n="$(cd "$1" 2>/dev/null && pwd -W 2>/dev/null)" || { printf '0'; return; }
-  [ -n "$n" ] || { printf '0'; return; }
-  printf '%s' "${#n}"
-}
-csk_path_budget_warn(){
-  local rl; rl="$(csk_native_len .)"
-  [ "$rl" -gt 94 ] 2>/dev/null || return 0
-  echo
-  { _mt '!!! WARNING: this project root is %s characters; the .NET base needs it to be 94 or fewer.' "$rl"; echo "  ${_M}"; }
-  { _mt "The copy will SUCCEED and the build will FAIL: the base's deepest file is 156 characters, and"; echo "  ${_M}"; }
-  { _mt 'Windows cannot open a path past 259 unless long paths are enabled. Measured here: dotnet build'; echo "  ${_M}"; }
-  { _mt 'stops with %s.' '"the fully qualified file name must be less than 260 characters"'; echo "  ${_M}"; }
-  { _mt '94 is also optimistic — a build writes bin/ and obj/ BELOW the sources, so the real room is less.'; echo "  ${_M}"; }
-  { _mt 'Two things fix it: install at a shorter root (%s rather than a deep Documents path),' 'C:\src\<name>'; echo "  ${_M}"; }
-  { _mt 'or set LongPathsEnabled=1 under %s (admin).' 'HKLM\SYSTEM\CurrentControlSet\Control\FileSystem'; echo "  ${_M}"; }
-  { _mt '(core.longpaths only affects git, not the build, so it will not help here.)'; echo "  ${_M}"; }
-  echo
-}
-clone_devarch() {  # $1 = target dir; clone verbatim, drop nested .git, rename the .sln to the project name
-  local target="${1:-.}"
-  command -v git >/dev/null 2>&1 || { { _mt 'ERROR: git missing; cannot include DevArchitecture.'; echo "  ${_M}"; }; return 1; }
-  local tmp; tmp="$(mktemp -d)"
-  { _mt 'Downloading: %s' "$DEVARCH_URL"; echo "  ${_M}"; }
-  # No timeout on this one, deliberately: a first clone of a real backend base legitimately takes minutes on a
-  # slow link, and cutting it off would break the feature to fix a hang it does not have. What it CAN hit is the
-  # credential prompt — if the URL ever moves behind auth, git asks for a username and the installer stops dead
-  # with no output. Suppressing the prompt turns that into the error message two lines below.
-  if ! GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never git clone --depth 1 "$DEVARCH_URL" "$tmp/da" >/dev/null 2>&1; then
-    { _mt 'ERROR: clone failed (network/access?). Manually: %s' "git clone $DEVARCH_URL"; echo "  ${_M}"; }
-    rm -rf "$tmp"; return 1
-  fi
-  rm -rf "$tmp/da/.git"     # not a separate repo/submodule, included as verbatim files
-  mkdir -p "$target"
-  cp -R "$tmp/da/." "$target/"
-  rm -rf "$tmp"
-  # Rename the solution file to the project name (safe — the .sln name is independent of the projects it references).
-  if [ -f "$target/DevArchitecture.sln" ] && [ "$PROJECT_NAME" != "DevArchitecture" ]; then
-    mv "$target/DevArchitecture.sln" "$target/${PROJECT_NAME}.sln" && { _mt 'Renamed the solution to %s.' "${PROJECT_NAME}.sln"; echo "  ${_M}"; }
-  fi
-  { _mt 'DevArchitecture base placed in: %s.' "$([ "$target" = "." ] && m 'the project root' || echo "$target/")"; echo "  ${_M}"; }
-  { _mt 'NOTE (§4.2): the template name still lives in namespaces / csproj / appsettings — as the FIRST'; echo "  ${_M}"; }
-  { _mt 'task, ask an agent to rename DevArchitecture -> %s throughout.' "${PROJECT_NAME}"; echo "  ${_M}"; }
-  # The base ships ~8 MB of third-party front-end assets under wwwroot/lib/**/dist/, and the repo-bloat gate
-  # stops the first commit over them. That is the gate doing its job — whether to commit vendored assets is a
-  # real decision — but discovering it at `git commit` time, on a project you have not written a line of yet,
-  # reads as the kit being broken. Say it here, while the context is obvious.
-  VLIB="$(find "$target" -type d -path '*wwwroot/lib' 2>/dev/null | head -1)"
-  if [ -n "$VLIB" ]; then
-    VN="$(find "$VLIB" -type f 2>/dev/null | wc -l | tr -d ' ')"
-    { _mt 'HEADS-UP: the base carries %s vendored front-end files under %s (bootstrap et al).' "$VN" "${VLIB#./}/"; echo "  ${_M}"; }
-    { _mt 'The repo-bloat gate will stop your first commit over them. Decide once: gitignore that path, or'; echo "  ${_M}"; }
-    { _mt 'commit them deliberately with %s (§4.5: an explicit, one-off exception).' "'git commit --no-verify'"; echo "  ${_M}"; }
-  fi
-}
-
 # --- Flag parsing (silent/CI mode) ---
 # The profile flags are ACCEPTED and ignored rather than rejected: they appear in older READMEs, CI steps and
 # copy-pasted commands, and erroring out there breaks a pipeline over a flag whose absence changes nothing.
 # A one-line notice is printed after the colour helpers load, so the user learns the flag no longer selects
 # anything instead of quietly getting a different set than the one they typed.
 # Language is resolved BEFORE any other flag, because every message below it goes through m(). Four
-# sources, first answer wins: --lang, then CSK_LANG, then the locale variables, then English.
+# sources, first answer wins: --lang, then CREW_LANG, then the locale variables, then English.
 #
 # English is the default rather than the locale's language on purpose: that is what this installer printed
 # before it could speak anything else, and a default that changes under people is not a default. The locale
@@ -530,12 +381,12 @@ clone_devarch() {  # $1 = target dir; clone verbatim, drop nested .git, rename t
 #
 # Measured, and recorded here rather than treated as a defect: on stock Windows LANG, LC_ALL and
 # LC_MESSAGES are ALL empty (Git Bash defaults only LC_CTYPE). So auto-detect never fires there, and a
-# Turkish-speaking Windows user lands on English unless they pass --lang tr or export CSK_LANG.
+# Turkish-speaking Windows user lands on English unless they pass --lang tr or export CREW_LANG.
 #
 # AN INTERACTIVE INSTALL ASKS. Detection alone was not enough: on macOS the system language can be Turkish
 # while the shell exports LANG=C.UTF-8 (measured on a Turkish desk), so the locale said English and the user
 # never saw a choice. So when a human is at the terminal and nothing named a language (no --lang, no
-# CSK_LANG), the first thing printed is a two-line menu, and the locale only decides which entry is the
+# CREW_LANG), the first thing printed is a two-line menu, and the locale only decides which entry is the
 # default. It is skipped under --yes and whenever stdin is not a terminal — for the same reason the
 # visibility question is: every piped caller feeds a fixed answer sequence, and one more read would shift it.
 _lang_flag=""; _lang_take=0; _lang_yes=0
@@ -552,35 +403,35 @@ done
 _loc="${LC_ALL:-}"; [ -n "$_loc" ] || _loc="${LC_MESSAGES:-}"; [ -n "$_loc" ] || _loc="${LANG:-}"
 case "$_loc" in tr*|TR*) _lang_detected=tr ;; *) _lang_detected=en ;; esac
 if [ -n "$_lang_flag" ]; then
-  CSK_LANG="$_lang_flag"
-elif [ -n "${CSK_LANG_ENV:-}" ]; then
-  CSK_LANG="$CSK_LANG_ENV"
+  CREW_LANG="$_lang_flag"
+elif [ -n "${CREW_LANG_ENV:-}" ]; then
+  CREW_LANG="$CREW_LANG_ENV"
 elif [ -t 0 ] && [ "$_lang_yes" = 0 ]; then
   if [ "$_lang_detected" = tr ]; then _lang_def=2; else _lang_def=1; fi
   printf '\n  Language / Dil\n    1) English\n    2) Türkçe\n  -> [1-2, empty/boş=%s]: ' "$_lang_def"
-  csk_read _lang_ans
+  crew_read _lang_ans
   case "${_lang_ans:-$_lang_def}" in
-    2|tr|TR|t|T|[tT]ürkçe|[tT]urkce|[tT]urkish) CSK_LANG=tr ;;
-    *) CSK_LANG=en ;;
+    2|tr|TR|t|T|[tT]ürkçe|[tT]urkce|[tT]urkish) CREW_LANG=tr ;;
+    *) CREW_LANG=en ;;
   esac
 else
-  CSK_LANG="$_lang_detected"
+  CREW_LANG="$_lang_detected"; _LANG_GUESSED=1
 fi
 # Anything that is not a language we actually carry falls back to English rather than printing keys.
-case "$CSK_LANG" in tr|en) ;; *) CSK_LANG=en ;; esac
+case "$CREW_LANG" in tr|en) ;; *) CREW_LANG=en ;; esac
 # Exported because eval/preflight.sh runs as a child and resolves its own language from the environment: a
 # choice made by --lang or the menu above stayed in this shell, and the preflight block printed English.
-export CSK_LANG
+export CREW_LANG
 
-STACK=""; LEGACY_FLAGS=""; ASSUME_YES=0; VISIBILITY=""
+STACK="generic"; DOTNET_FLAG=0; LEGACY_FLAGS=""; ASSUME_YES=0; VISIBILITY=""
 for a in "$@"; do
   case "$a" in
     --lang) ;;                       # value consumed in the language pass above
     --lang=*) ;;
     tr|en) ;;                        # the value of a separated --lang
     --backend|--frontend|--mobile|--fullstack) LEGACY_FLAGS="$LEGACY_FLAGS $a" ;;
-    --dotnet) STACK="dotnet" ;;
-    --generic) STACK="generic" ;;
+    --dotnet) DOTNET_FLAG=1 ;;       # removed in 3.0 — warned below, never an error (old scripts keep running)
+    --generic) ;;                    # the only shape now; accepted silently
     --yes|-y) ASSUME_YES=1 ;;
     --private) VISIBILITY="private" ;;
     --shared)  VISIBILITY="shared" ;;
@@ -622,49 +473,25 @@ gate() { _mt "$@"; printf '     %s>%s %s\n'      "$CY" "$R" "$_M"; }            
 row()  { _mt "$1"; padr "$_M" 15; printf '  %s%s%s %s\n' "$B" "$PADDED" "$R" "$2"; }   # summary row; $1 = key
 rule() { printf '  %s------------------------------------------------%s\n' "$D" "$R"; }
 
-h1  'Agentic Working Kit · setup wizard'
-sub '3 steps: backend pattern -> who it is for -> summary & confirm.'
+h1  'Crewforth · setup wizard'
+sub '2 steps: who it is for -> summary & confirm.'
 if [ -n "$LEGACY_FLAGS" ]; then
-  _mt 'no effect:'; _a="$_M"; _mt 'the kit always installs in full (all agents · all skills).'
+  _mt 'no effect:'; _a="$_M"; _mt 'Crewforth always installs in full (all agents · all skills).'
   printf '\n  %s!%s%s %s%s %s\n' "$YE" "$R" "$B$LEGACY_FLAGS" "$_a" "$R" "$_M"
 fi
 
-# ===================== STEP 1 · BACKEND PATTERN =====================
-# Asked on EVERY install: the pattern skill is the one thing that is genuinely wrong in the other stack, so it
-# is a real question, not a profile side effect. Skipped only when --dotnet/--generic was given.
-# --yes means UNATTENDED, so it has to answer this one too. Guarding only ask_yes moved the block from the
-# confirm prompt to this read and left the installer hanging just the same — measured on stock Windows with
-# an open-but-empty stdin, where a bare `read` never returns. A flag that does not reach every prompt is a
-# flag that reads as a fix and is not one.
-#
-# Note the deliberate asymmetry with the visibility question below: THAT one is skipped whenever stdin is
-# not a terminal, because it is new and every existing piped caller feeds a fixed sequence it would shift.
-# This one is pre-existing — callers DO pipe an answer to it — so it is skipped only under --yes, where by
-# definition nothing is supposed to be read.
-if [ -z "$STACK" ] && [ "$ASSUME_YES" = 1 ]; then
-  STACK="dotnet"
-  _mt 'Backend pattern:'; _a="$_M"; _mt '(default — pass --generic for the stack-agnostic one)'
-  printf '  %s%s%s .NET / DevArchitecture %s%s%s\n' "$B" "$_a" "$R" "$D" "$_M" "$R"
-fi
-if [ -z "$STACK" ]; then
-  h1  '[1/3] Backend pattern'
-  sub 'Determines the backend template and whether the .NET-specific skills are included.'
-  echo
-  opt 1 '.NET / DevArchitecture' 1 'full support'
-  add  'cqrs-aop-module skill (opinionated MediatR CQRS)'
-  gate 'clones the DevArchitecture base project BEHIND AN APPROVAL GATE (greenfield project)'
-  echo
-  opt 2 'Generic' 0 'stack-agnostic'
-  add  "pattern-neutral backend-expert-csk — follows your repo's pattern; declare it as a skill (.claude/skills/)"
-  skip 'cqrs-aop-module and the DevArchitecture base NOT INSTALLED (sonarqube-check still installed)'
-  echo
-  _mt 'Choice'; _a="$_M"; _mt 'empty=1'
-  printf '  %s->%s %s %s[1-2, %s]%s: ' "$CY" "$R" "$_a" "$D" "$_M" "$R"
-  csk_read s                        # empty => default (dotnet)
-  case "$s" in 2) STACK="generic" ;; *) STACK="dotnet" ;; esac
+# --dotnet used to pick a .NET-only install (a pattern skill, a backend agent variant, and a base project
+# cloned from the network). 3.0 removed that path: every install is the same stack-agnostic kit, and the
+# backend-architecture skill decides the stack per project. The flag stays ACCEPTED so an old script or README
+# command keeps working — but it says what it no longer does, rather than silently meaning something else.
+if [ "$DOTNET_FLAG" = 1 ]; then
+  # This key once started with '--' and `printf -v _M "$s"` read it as an option (rc=2, nothing installed); _mt
+  # now passes `--`, so a leading '-' is safe — the wording stays as it is.
+  _mt 'The --dotnet flag is ignored: the .NET-specific path was removed in 3.0; installing the stack-agnostic setup.'
+  printf '\n  %s!%s %s\n' "$YE" "$R" "$_M"
 fi
 
-# ===================== STEP 2 · WHO IS THIS INSTALL FOR =====================
+# ===================== STEP 1 · WHO IS THIS INSTALL FOR =====================
 # ONE question about intent, not four about paths. Until now the installer wrote four .gitignore entries
 # unconditionally and the summary never mentioned .gitignore at all — so "confirm the install" silently
 # edited a TRACKED file, which is a change nobody agreed to. The answer decides two of the four entries;
@@ -689,8 +516,8 @@ if [ -z "$VISIBILITY" ] && { [ ! -t 0 ] || [ "$ASSUME_YES" = 1 ]; }; then
   printf '  %s%s%s %s %s%s%s\n' "$B" "$_a" "$R" "$_b" "$D" "$_M" "$R"
 fi
 if [ -z "$VISIBILITY" ]; then
-  h1  '[2/3] Who is this install for?'
-  sub "Decides whether your teammates get the kit's configuration — and what goes into .gitignore."
+  h1  '[1/2] Who is this install for?'
+  sub "Decides whether your teammates get Crewforth's configuration — and what goes into .gitignore."
   echo
   opt 1 'Just me' 1 'private'
   add  ".claude/ and CLAUDE.md stay out of git — nothing appears in your teammates' checkouts"
@@ -701,67 +528,51 @@ if [ -z "$VISIBILITY" ]; then
   echo
   _mt 'Choice'; _a="$_M"; _mt 'empty=1'
   printf '  %s->%s %s %s[1-2, %s]%s: ' "$CY" "$R" "$_a" "$D" "$_M" "$R"
-  csk_read s                        # empty => default (private = today's behaviour)
+  crew_read s                        # empty => default (private = today's behaviour)
   case "$s" in 2) VISIBILITY="shared" ;; *) VISIBILITY="private" ;; esac
 fi
 # The exact lines this install will append, resolved once so the summary and the writer cannot disagree.
 if [ "$VISIBILITY" = "shared" ]; then
-  GI_PLAN='docs/ .private-terms.txt'
+  GI_PLAN='docs/ .private-terms.txt .claude/.state/'   # .state is runtime state (update cache, snapshot), never shared
 else
   GI_PLAN='docs/ .claude/ CLAUDE.md .private-terms.txt'
 fi
 
-# Project name (from the directory) + where the backend base lives.
-PROJECT_NAME="$(basename "$PWD")"
-PROJECT_NAME="$(printf '%s' "$PROJECT_NAME" | tr -cs 'A-Za-z0-9._-' '-' | sed 's/^[-._]*//; s/[-._]*$//')"
-[ -n "$PROJECT_NAME" ] || PROJECT_NAME="App"
-# The base goes under ./backend and ./frontend is reserved next to it — the layout the old 'fullstack' profile
-# produced, now the only one. A repo that turns out to be backend-only loses nothing: ./frontend is an empty
-# directory with a README, and a directory is cheaper to delete than a missing one is to discover.
-BACKEND_DIR="backend"
-
-# --- The only remaining prune: cqrs-aop-module is .NET-specific and wrong in a Node/Go/Python repo. ---
-DEVARCH_ON=0
-EXCL_SKILLS=""
-if [ "$STACK" = "dotnet" ]; then
-  DEVARCH_ON=1
-else
-  EXCL_SKILLS="cqrs-aop-module"   # sonarqube-check is language-agnostic and stays
-fi
-
 # ===================== STEP 2 · SUMMARY + CONFIRM =====================
-# This block comes AFTER EXCL_SKILLS/DEVARCH_ON -> the count reflects the one prune that is left.
 # Count the agents/skills to install LIVE FROM SOURCE (not a hardcoded constant; self-corrects if the payload changes).
-count_installed() {   # $1=EXCL list  $2=glob  -> count to install
-  local excl=" $1 " n=0 base
-  for p in $2; do
-    [ -e "$p" ] || continue
-    base="$(basename "$p")"
-    case "$excl" in *" $base "*) ;; *) n=$((n+1)) ;; esac
+count_installed() {   # $1=glob  -> count to install
+  local n=0
+  for p in $1; do
+    [ -e "$p" ] && n=$((n+1))
   done
   printf '%s' "$n"
 }
-N_AG="$(count_installed "" "$SRC/agents/*.md")"
-N_SK="$(count_installed "$EXCL_SKILLS" "$SRC/skills/*/")"
+N_AG="$(count_installed "$SRC/agents/*.md")"
+# Skills and commands the way the README and crewforth.com count them, so the install does not print a third number:
+# a skill whose metadata says `kind: command` is a command, one marked `experimental: true` is neither (it is
+# installed and works when typed, but nothing advertises it). Read from the frontmatter with builtins only.
+count_showcase() {   # $1 = a skills directory -> N_SKL N_CMD
+  N_SKL=0; N_CMD=0; local f l k e d
+  for f in "$1"/*/SKILL.md; do
+    [ -f "$f" ] || continue; k=0; e=0; d=0
+    while IFS= read -r l || [ -n "$l" ]; do
+      l="${l%$'\r'}"
+      case "$l" in ---) d=$((d+1)); [ "$d" -ge 2 ] && break ;; "  kind: command") k=1 ;; "  experimental: true") e=1 ;; esac
+    done < "$f"
+    [ "$e" = 1 ] && continue
+    if [ "$k" = 1 ]; then N_CMD=$((N_CMD+1)); else N_SKL=$((N_SKL+1)); fi
+  done
+}
+count_showcase "$SRC/skills"
 
-h1 '[3/3] Summary · see what will be installed before you confirm'
+h1 '[2/2] Summary · see what will be installed before you confirm'
 echo
-_mt 'full kit'; _a="$_M"; _mt '— backend + web + mobile (RN/Expo), every agent and skill'
+_mt 'full install'; _a="$_M"; _mt '— backend + web + mobile (RN/Expo), every agent and skill'
 row 'Scope' "${B}${_a}${D} ${_M}${R}"
-_mt '%s agents · %s skills will be installed' "${MG}${B}${N_AG}${R}" "${MG}${B}${N_SK}${R}"
+_mt '%s agents · %s skills · %s commands will be installed' "${MG}${B}${N_AG}${R}" "${MG}${B}${N_SKL}${R}" "${MG}${B}${N_CMD}${R}"
 row 'Included'  "$_M"
-if [ "$STACK" = "generic" ]; then
-  _mt 'non-.NET — generic'; _a="$_M"; _mt '(cqrs-aop-module not installed; sonarqube-check installed)'
-  row 'Backend pattern' "$_a ${D}${_M}${R}"
-else
-  _mt 'full support'; row 'Backend pattern' ".NET / DevArchitecture ${D}(${_M})${R}"
-fi
-if [ "$DEVARCH_ON" = 1 ]; then
-  _mt 'approval gate -> ./%s' "$BACKEND_DIR"; _a="$_M"; _mt '(./frontend reserved next to it)'
-  row 'DevArch base' "${YE}${_a} ${D}${_M}${R}"
-else
-  _mt 'not installed'; row 'DevArch base' "${D}${_M}${R}"
-fi
+_mt 'stack-agnostic — the stack comes from CLAUDE.md ## Stack or the repo (backend-architecture)'
+row 'Backend pattern' "$_M"
 echo
 _mt 'Security gates armed on every install:'; printf '  %s%s%s\n' "$B" "$_M" "$R"
 gate 'commit/push approval gate — even in auto/bypass mode (guard-bash)'
@@ -782,7 +593,7 @@ else
 fi
 # What this machine is missing, BEFORE the confirm prompt — not after, when it becomes a symptom pointing
 # somewhere else. Report-only and never blocking: the kit degrades rather than breaks, and that is exactly why
-# a gap is otherwise invisible. See claude-starter/eval/preflight.sh for the reasoning per tool.
+# a gap is otherwise invisible. See kit/eval/preflight.sh for the reasoning per tool.
 [ -f "$SRC/eval/preflight.sh" ] && bash "$SRC/eval/preflight.sh"
 rule
 echo
@@ -794,62 +605,25 @@ if ! ask_yes "  $_M"; then
 fi
 echo
 
-# --- Step 3: Backend base (only .NET/DevArchitecture; APPROVAL GATE) ---
-if [ "$DEVARCH_ON" = 1 ]; then
-  { _mt 'Backend base (DevArchitecture)'; echo "== ${_M} =="; }
-  csk_path_budget_warn
-  { _mt 'Target: %s (the frontend stays separate under ./frontend).' "./$BACKEND_DIR"; echo "  ${_M}"; }
-  if has_devarch "$BACKEND_DIR"; then
-    { _mt 'DevArchitecture detected — base already present, skipping copy.'; echo "  ${_M}"; }
-  elif project_has_source; then
-    { _mt '!!! WARNING: An existing project is present and the DevArchitecture backend base is MISSING.'; echo "  ${_M}"; }
-    { _mt 'Adding it may cause file/structure conflicts and BREAK the project.'; echo "  ${_M}"; }
-    { _mt 'This kit is meant for setting up a project FROM SCRATCH. Confirm if you still want to add it.'; echo "  ${_M}"; }
-    _mt 'Do you want to add DevArchitecture to this EXISTING project (risky)?'
-    if ask_yes "  $_M" risky; then
-      clone_devarch "$BACKEND_DIR" || { _mt 'Continuing without the backend base.'; echo "  ${_M}"; }
-    else
-      { _mt 'Skipped. The backend flow assumes DevArchitecture; you will need to adapt it manually.'; echo "  ${_M}"; }
-    fi
-  else
-    { _mt 'Greenfield project: this kit can install the DevArchitecture backend base.'; echo "  ${_M}"; }
-    _mt 'Should I include the DevArchitecture backend base in the project now?'
-    if ask_yes "  $_M" risky; then
-      clone_devarch "$BACKEND_DIR" || { _mt 'Could not include the backend base; continuing with kit installation.'; echo "  ${_M}"; }
-    else
-      { _mt 'Skipped. You can add it manually later:  %s' "git clone $DEVARCH_URL"; echo "  ${_M}"; }
-    fi
-  fi
-  # Reserve ./frontend so the layout is explicit (build the frontend here; the backend is in ./backend).
-  if [ ! -e ./frontend ]; then
-    mkdir -p frontend
-    printf '# frontend\n\nBuild your frontend here (the `frontend-expert-csk` agent helps). The backend lives in `../backend`.\n' > frontend/README.md
-    { _mt 'Reserved ./frontend for your frontend.'; echo "  ${_M}"; }
-  fi
-  echo
-fi
-
-# --- Step 4: Kit installation (./.claude + ./CLAUDE.md) — everything, minus the .NET-only pattern skill ---
+# --- Kit installation (./.claude + ./CLAUDE.md) — everything, no prune ---
 { _mt 'Installing:'; echo "== ${_M} ./.claude + ./CLAUDE.md =="; }
-mkdir -p .claude/agents .claude/skills .claude/commands .claude/hooks .claude/eval .claude/studio
+mkdir -p .claude/agents .claude/skills .claude/hooks .claude/eval .claude/studio
 cp -R "$SRC/agents/."   .claude/agents/
 cp -R "$SRC/skills/."   .claude/skills/
-cp -R "$SRC/commands/." .claude/commands/
+# The slash commands are skills since 3.0 (Claude Code merged custom commands into skills): they arrive with
+# skills/ above, marked `metadata: kind: command`. There is no commands/ directory any more.
+VENDOR_ARMED=0; grep -qxE $'DevArchitecture\r?' .claude/hooks/trace-blocklist.txt 2>/dev/null && VENDOR_ARMED=1   # before the copy resets it; \r? = a CRLF copy still counts
 cp -R "$SRC/hooks/."    .claude/hooks/ 2>/dev/null || true
 cp -R "$SRC/eval/."     .claude/eval/ 2>/dev/null || true
-# The Studio panel — launched by /studio-csk from this project's root. One `cp -R`
+# The Studio panel — launched by /crew-studio from this project's root. One `cp -R`
 # plus one `rm`, not a selective walk: on Git Bash a per-file copy of 25 files is 25
 # process spawns at 62-135 ms each. test/ is dropped because its assertions read the
 # The panel's own suite is NOT here to delete: it lives in packaging/studio-test/,
-# outside the payload, because claude-starter/ ships whole and 104 KB of test code
+# outside the payload, because kit/ ships whole and 104 KB of test code
 # would travel through all four channels only to be removed on arrival.
 cp -R "$SRC/studio/."   .claude/studio/ 2>/dev/null || true
-for d in $EXCL_SKILLS; do rm -rf ".claude/skills/$d"; done
-# Generic backend: install the stack-agnostic variant instead of the DevArchitecture-bound backend-expert-csk.
-if [ "$STACK" = "generic" ] && [ -f "$SRC/agents-optional/backend-expert-generic.md" ]; then
-  cp "$SRC/agents-optional/backend-expert-generic.md" .claude/agents/backend-expert-csk.md
-fi
-{ _mt "Backend pattern '%s': %s agents, %s skills installed." "$STACK" "$(ls .claude/agents/*.md 2>/dev/null | wc -l | tr -d ' ')" "$(ls -d .claude/skills/*/ 2>/dev/null | wc -l | tr -d ' ')"; echo "  ${_M}"; }
+count_showcase .claude/skills
+{ _mt "%s agents, %s skills and %s commands installed." "$(ls .claude/agents/*.md 2>/dev/null | wc -l | tr -d ' ')" "$N_SKL" "$N_CMD"; echo "  ${_M}"; }
 [ -f "$SRC/settings.json" ] && cp "$SRC/settings.json" .claude/settings.json
 [ -f "$HERE/VERSION" ] && cp "$HERE/VERSION" .claude/VERSION   # make the kit version trackable in the installed project
 # Glob form so every shipped hook/eval is made executable — including ones added later (guard-write.sh,
@@ -858,31 +632,20 @@ fi
 # yet; set it anyway, because a future direct exec would fail silently.
 chmod +x .claude/hooks/*.sh .claude/hooks/pre-commit .claude/hooks/commit-msg .claude/eval/*.sh .claude/studio/server/hooks/*.sh 2>/dev/null || true
 
-# --- §4.2: arm the vendor name the kit itself put on this machine ------------------------------------
-# The blocklist ships this pattern COMMENTED, next to a note telling the reader to add their own vendor or
-# template name. That note is right for a name only the user knows -- and wrong for this one, because on the
-# DevArchitecture path the kit is what brought the vendor here. §4.2 says that name never appears in an
-# artifact; leaving the rule as a comment the user has to find made it advice, and advice is what §4.2 is not.
-#
-# Armed ONLY on this path. A --generic install has no DevArchitecture, so a pattern for it would block a
-# perfectly ordinary commit for no reason -- for instance one that merely discusses the pattern.
-#
-# A project with a legitimate reason to write the name puts the full line in its own .trace-allowlist.txt,
-# which is the same escape every other pattern has. The `#test:` line comes with it because smoke-test drives
-# every ACTIVE pattern through the real hook and fails a pattern that has no case: an untested pattern is how
-# a typo ships as a gate that matches nothing.
-if [ "$DEVARCH_ON" = 1 ] && [ -f .claude/hooks/trace-blocklist.txt ]; then
-  if grep -qx '# DevArchitecture' .claude/hooks/trace-blocklist.txt; then
-    awk '/^# DevArchitecture$/ { print "DevArchitecture"; print "#test: ported the handler from DevArchitecture"; next } { print }' \
-      .claude/hooks/trace-blocklist.txt > .claude/hooks/trace-blocklist.txt.kit-tmp \
-      && mv .claude/hooks/trace-blocklist.txt.kit-tmp .claude/hooks/trace-blocklist.txt
-  fi
+# §4.2: a vendor line that was armed before this run stays armed (the copy above resets it to a comment); nothing
+# else arms it. Rationale, and the measured failure of "arm it whenever the pattern skill exists", in adopt.sh.
+# The `#test:` line comes with it: smoke-test fails any active pattern that has no case.
+if [ "$VENDOR_ARMED" = 1 ] && [ -f .claude/hooks/trace-blocklist.txt ] \
+   && grep -qx '# DevArchitecture' .claude/hooks/trace-blocklist.txt; then
+  awk '/^# DevArchitecture$/ { print "DevArchitecture"; print "#test: ported the handler from DevArchitecture"; next } { print }' \
+    .claude/hooks/trace-blocklist.txt > .claude/hooks/trace-blocklist.txt.kit-tmp \
+    && mv .claude/hooks/trace-blocklist.txt.kit-tmp .claude/hooks/trace-blocklist.txt
 fi
 # `|| true` here used to swallow a missing payload file entirely: the install reported success and
-# /skill-csk opened with `Read .claude/AGENT_TEMPLATE.md` against nothing. A best-effort copy is right —
+# /crew-skill opened with `Read .claude/AGENT_TEMPLATE.md` against nothing. A best-effort copy is right —
 # a missing doc must not abort an otherwise good install — but it has to be AUDIBLE, or the gap is
 # invisible until someone runs the command. adopt.sh copies the same file for the same reason.
-cp "$SRC/AGENT_TEMPLATE.md" .claude/ 2>/dev/null || { _mt 'AGENT_TEMPLATE.md missing from the payload — /skill-csk will have nothing to read.'; printf '  %s!%s %s\n' "$YE" "$R" "$_M"; }
+cp "$SRC/AGENT_TEMPLATE.md" .claude/ 2>/dev/null || { _mt 'AGENT_TEMPLATE.md missing from the payload — /crew-skill will have nothing to read.'; printf '  %s!%s %s\n' "$YE" "$R" "$_M"; }
 cp "$SRC/README.md"         .claude/ 2>/dev/null || true
 
 # Install manifest — the names the KIT ships. It is the only way to tell kit-owned from project-owned later:
@@ -896,24 +659,26 @@ cp "$SRC/README.md"         .claude/ 2>/dev/null || true
 # read by nobody, and adopt.sh's stale sweep only considers commands/, agents/ and skills/ entries anyway.
 { for d in "$SRC"/skills/*/;     do [ -d "$d" ] && echo "skills/$(basename "$d")"; done
   for f in "$SRC"/agents/*.md;   do [ -e "$f" ] && echo "agents/$(basename "$f")"; done
-  for f in "$SRC"/commands/*.md; do [ -e "$f" ] && echo "commands/$(basename "$f")"; done
 } > .claude/kit-manifest.txt 2>/dev/null || true
 
-# Remember the backend pattern, so a later update refreshes the project with the same one instead of
-# grafting cqrs-aop-module onto a Node repo. No 'profile=' key any more — the component set no longer varies,
-# and adopt.sh treats a leftover 'profile=' from a pre-2.0 install as a migration signal, not as a shape.
-{ echo "# Written by start.sh. The updater reads this to keep the project's backend pattern."
+# stack= is always 'generic' since 3.0. The key is KEPT because an older updater reads it, and a file without it
+# would send that updater down its stack-detection branch. No 'profile=' key — adopt.sh treats a leftover one
+# from a pre-2.0 install as a migration signal, not as a shape.
+{ echo "# Written by the Crewforth installer. stack= is always generic since 3.0; the key is kept for older updaters."
   echo "stack=$STACK"
   echo "installer=start.sh"
   echo "version=$( [ -f "$HERE/VERSION" ] && head -1 "$HERE/VERSION" || echo unknown )"
+  # A locale guess (--yes or no terminal, nothing named) is used but not recorded: the next update would reuse it
+  # as if somebody had chosen it. --lang, CREW_LANG and the menu are choices, and are.
+  [ "${_LANG_GUESSED:-0}" = 1 ] || echo "lang=${CREW_LANG:-en}"
 } > .claude/kit.conf
 
 # Discipline (kit-owned, refreshed on every update) vs project section (yours, written once), joined by @import.
 kit_require_sentinel "$SRC/CLAUDE.md"
 kit_discipline_of "$SRC/CLAUDE.md" > .claude/DISCIPLINE.md
-{ _mt '.claude/DISCIPLINE.md written — kit-owned; an update overwrites it, so keep your own rules out of it.'; echo "  ${_M}"; }
+{ _mt '.claude/DISCIPLINE.md written — owned by Crewforth; an update overwrites it, so keep your own rules out of it.'; echo "  ${_M}"; }
 if [ ! -f ./CLAUDE.md ]; then
-  { printf '<!-- kit discipline · on conflict the project rules BELOW win -->\n%s\n' "$IMPORT_LINE"
+  { printf '<!-- Crewforth discipline · on conflict the project rules BELOW win -->\n%s\n' "$IMPORT_LINE"
     kit_project_of "$SRC/CLAUDE.md"; } > ./CLAUDE.md
   { _mt './CLAUDE.md created — EDIT the project section.'; echo "  ${_M}"; }
 elif kit_has_import ./CLAUDE.md; then
@@ -924,7 +689,7 @@ elif kit_claude_md_is_legacy ./CLAUDE.md; then
   { _mt '%s heading and leave this single line in its place:' "'# CLAUDE.md — <project>'"; echo "    ${_M}"; }
   echo "        $IMPORT_LINE"
 else
-  { printf '<!-- kit discipline · on conflict the project rules BELOW win -->\n%s\n\n' "$IMPORT_LINE"; cat ./CLAUDE.md; } > ./CLAUDE.md.kit-tmp \
+  { printf '<!-- Crewforth discipline · on conflict the project rules BELOW win -->\n%s\n\n' "$IMPORT_LINE"; cat ./CLAUDE.md; } > ./CLAUDE.md.kit-tmp \
     && mv ./CLAUDE.md.kit-tmp ./CLAUDE.md
   { _mt './CLAUDE.md existed — prepended the discipline @import; your content is untouched.'; echo "  ${_M}"; }
 fi
@@ -972,10 +737,10 @@ else
 fi
 rm -rf "$SRC"
 echo
-{ _mt 'Done. ./.claude + ./CLAUDE.md ready (full kit · backend pattern: %s); claude-starter/ deleted.' "$STACK"; echo "== ${_M} =="; }
+{ _mt 'Done. ./.claude + ./CLAUDE.md ready (full install); the installer files are removed.'; echo "== ${_M} =="; }
 { _mt 'Next: 1) fill in the CLAUDE.md project section  2) open Claude Code at the repo root'; echo "${_M}"; }
 { _mt 'Note: if Claude Code is ALREADY running here, restart it — CLAUDE.md and the discipline load at session start.'; echo "${_M}"; }
-{ _mt "Tip:  open Claude Code and run /doctor-csk — it checks the install is wired (hooks executable, core.hooksPath set, discipline imported) and scores the project's readiness. CLAUDE.md loads the discipline every session."; echo "${_M}"; }
+{ _mt "Tip:  open Claude Code and run /crew-doctor — it checks the install is wired (hooks executable, core.hooksPath set, discipline imported) and scores the project's readiness. CLAUDE.md loads the discipline every session."; echo "${_M}"; }
 # Say what is true of THIS machine, not what is true in general. The line used to
 # print identically with or without node, so on a machine that cannot start the
 # panel it read as a footnote rather than as the reason nothing will happen. The
@@ -983,12 +748,17 @@ echo
 # it is asked of the INSTALLED copy: $SRC is deleted at line 397, a few lines
 # above this, so asking there answered "no node" on every machine.
 if bash .claude/eval/preflight.sh --has node 2>/dev/null; then
-  { _mt 'Panel: /studio-csk opens the Studio panel from this project (or: node .claude/studio/server/index.js --open).'; echo "${_M}"; }
+  { _mt 'Panel: /crew-studio opens the Studio panel from this project (or: node .claude/studio/server/index.js --open).'; echo "${_M}"; }
 else
   { _mt 'Panel: needs Node 18+, which is not on this machine — but that is no longer a dead end.'; echo "${_M}"; }
-  { _mt 'The kit fetches one for the panel: %s  (asks first;' 'bash .claude/studio/ensure-node.sh --plan'; echo "       ${_M}"; }
+  { _mt 'Crewforth fetches one for the panel: %s  (asks first;' 'bash .claude/studio/ensure-node.sh --plan'; echo "       ${_M}"; }
   { _mt 'verified against the published checksum, into %s, nothing else touched).' '~/.claude/studio-runtime'; echo "       ${_M}"; }
   { _mt 'Every gate still holds meanwhile; the panel is the only part that needs node.'; echo "       ${_M}"; }
 fi
-[ "$STACK" = "dotnet" ] && { _mt 'Layout: backend in ./backend · build your frontend in ./frontend · first agent task: rename DevArchitecture -> %s.' "$PROJECT_NAME"; echo "${_M}"; }
+# The star line, once per kit version (lib/star.sh keeps the marker in the git dir; text, URL and the
+# CREW_NO_STAR / CI silence live there too). `_S` first so the blank line appears only when the line does.
+if [ -f .claude/eval/lib/star.sh ]; then
+  _S="$(bash .claude/eval/lib/star.sh --once . 2>/dev/null || true)"
+  if [ -n "$_S" ]; then printf '\n%s\n' "$_S"; fi   # an `&&` here was the script's LAST status: rc=1 on every update
+fi
 rm -f -- "$0"

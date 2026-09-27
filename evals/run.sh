@@ -26,11 +26,11 @@
 # Usage:
 #   bash evals/run.sh                       # every case, 1 run per arm
 #   bash evals/run.sh --runs 3              # 3 runs per arm (nondeterminism is real; 1 run is an anecdote)
-#   CSK_EVAL_TRACE=1 bash evals/run.sh      # also capture the event stream: main-thread delegations, cost and tokens per arm
-#   CSK_EVAL_ARMS="kit kitb" CSK_EVAL_DISCIPLINE_B=<a CLAUDE.md with the sentinel> CSK_EVAL_TRACE=1 bash evals/run.sh --runs 3
+#   CREW_EVAL_TRACE=1 bash evals/run.sh      # also capture the event stream: main-thread delegations, cost and tokens per arm
+#   CREW_EVAL_ARMS="kit kitb" CREW_EVAL_DISCIPLINE_B=<a CLAUDE.md with the sentinel> CREW_EVAL_TRACE=1 bash evals/run.sh --runs 3
 #                                           # same install in both arms, only the discipline text differs: measures a RULE
-#   CSK_EVAL_CASES=<dir>                    # run cases from another directory (a draft set, before it lands here)
-#   CSK_EVAL_OVERLAY_B=<dir>                # arm kitb only: files that REPLACE installed ones, mirrored under .claude/
+#   CREW_EVAL_CASES=<dir>                    # run cases from another directory (a draft set, before it lands here)
+#   CREW_EVAL_OVERLAY_B=<dir>                # arm kitb only: files that REPLACE installed ones, mirrored under .claude/
 #
 # stdin is /dev/null for every run: without it the CLI waits 3 s for piped input it will never get, and says so.
 #   bash evals/run.sh --case secret-refused # one case
@@ -39,10 +39,11 @@
 # A case may declare REQUIRES="tool ..." in its case.env; when one is missing the case is skipped before anything is built.
 #
 # Exit 0 the report printed · 1 a case is malformed or the CLI is unusable · 3 INCOMPLETE: a run was not measured (a usage
-# limit, a stream that ended in an error, or a case skipped for a missing tool), so the totals printed are not a result.
+# limit, a stream that ended in an error, or a case skipped for a missing tool), so the totals printed are not a result ·
+# 4 CREW_VERIFY_STRICT=1 and a kit-arm workspace was untrusted: stopped, nothing further is spent or reported.
 set -uo pipefail
-ROOT="${CSK_EVAL_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
-CASES="${CSK_EVAL_CASES:-$ROOT/evals/cases}"
+ROOT="${CREW_EVAL_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+CASES="${CREW_EVAL_CASES:-$ROOT/evals/cases}"
 
 RUNS=1; ONLY=""; KEEP=0
 while [ $# -gt 0 ]; do
@@ -59,20 +60,47 @@ command -v claude >/dev/null 2>&1 || { echo "run.sh: the claude CLI is not on PA
 MODEL="$(claude --version 2>/dev/null | head -1)"
 
 # Where the scratch projects live matters more than it looks: Claude Code trusts a workspace per path, and an
-# untrusted one silently drops the `permissions.allow` entry the kit ships. Override with CSK_EVAL_WORK to run
+# untrusted one silently drops the `permissions.allow` entry the kit ships. Override with CREW_EVAL_WORK to run
 # somewhere already trusted.
 # A failed mktemp used to leave WORK EMPTY and the run carried on regardless, so every path became "/<case>-kit-1"
 # and the runner started creating scratch projects at the FILESYSTEM ROOT. It only looked harmless because macOS
 # mounts / read-only; anywhere else it would have scattered directories across the root and then `rm -rf` them on
-# exit. A missing CSK_EVAL_WORK is a typo, not a reason to write to /.
-WORKBASE="${CSK_EVAL_WORK:-${TMPDIR:-/tmp}}"
-[ -d "$WORKBASE" ] || { echo "run.sh: work dir '$WORKBASE' does not exist (CSK_EVAL_WORK) — create it or unset the variable" >&2; exit 2; }
+# exit. A missing CREW_EVAL_WORK is a typo, not a reason to write to /.
+WORKBASE="${CREW_EVAL_WORK:-${TMPDIR:-/tmp}}"
+[ -d "$WORKBASE" ] || { echo "run.sh: work dir '$WORKBASE' does not exist (CREW_EVAL_WORK) — create it or unset the variable" >&2; exit 2; }
 EVWT=""   # scratch worktrees created this run; removed on exit so the parent does not accumulate them
-WORK="$(mktemp -d "$WORKBASE/csk-eval.XXXXXX")" || { echo "run.sh: could not create a scratch dir under '$WORKBASE'" >&2; exit 2; }
+WORK="$(mktemp -d "$WORKBASE/crew-eval.XXXXXX")" || { echo "run.sh: could not create a scratch dir under '$WORKBASE'" >&2; exit 2; }
 [ -n "$WORK" ] && [ -d "$WORK" ] || { echo "run.sh: scratch dir is empty/missing — refusing to run" >&2; exit 2; }
 # The prune matters as much as the rm: a worktree whose directory is gone stays REGISTERED in the parent, and
 # the registrations accumulate one per case per run until `worktree add` starts refusing paths.
-trap '[ "$KEEP" = 1 ] && echo "scratch kept: $WORK" || { rm -rf "$WORK"; _P="${CSK_EVAL_PARENT:-$HOME/.csk-eval-parent}"; git -C "$_P" worktree prune >/dev/null 2>&1; git -C "$_P" for-each-ref --format="%(refname:short)" "refs/heads/csk-eval/${WORK##*/}/" 2>/dev/null | while read -r _b; do git -C "$_P" branch -D "$_b" >/dev/null 2>&1; done; }; true' EXIT
+# THE TRUSTED PARENT (see build_project for why there is one). 3.0 named it `~/.crew-eval-parent`, and the rename
+# moved nothing on disk: a machine set up under 2.x has only `~/.csk-eval-parent`. Measured on 2026-09-25: that is
+# exactly what happened, every kit run fell back to `git init` and ran untrusted, and the report said so only as a
+# warning. So 3.x reads the 2.x directory as well, the same rule as the CSK_* variables (crew-env.sh) — REMOVED IN
+# 4.0. The 3.0 name wins when both exist; CREW_EVAL_PARENT wins over both.
+eval_parent_path(){
+  if [ -n "${CREW_EVAL_PARENT:-}" ]; then printf '%s\n' "$CREW_EVAL_PARENT"; return 0; fi
+  if [ ! -d "$HOME/.crew-eval-parent/.git" ] && [ -d "$HOME/.csk-eval-parent/.git" ]; then
+    printf '%s\n' "$HOME/.csk-eval-parent"; return 0
+  fi
+  printf '%s\n' "$HOME/.crew-eval-parent"
+}
+# AN UNTRUSTED KIT WORKSPACE, AND WHAT IT MAY COST THE RESULT. It drops the kit's `permissions.allow` and nothing
+# else (measured, see the call site), so outside strict mode it is a warning and the run is still graded. Under
+# CREW_VERIFY_STRICT=1 it is an error: a measurement must never complete quietly in a state it did not choose.
+# $1 = why (text), $2 = the path to trust. Returns 0 to go on, 1 when the caller must stop.
+eval_untrusted(){
+  if [ "${CREW_VERIFY_STRICT:-0}" = 1 ]; then
+    echo "run.sh: ERROR — $1 (CREW_VERIFY_STRICT=1). Trust $2 once interactively, or set CREW_EVAL_PARENT / CREW_EVAL_WORK to a trusted path." >&2
+    return 1
+  fi
+  echo "   ! workspace untrusted: $1 — permissions.allow is dropped for this run (hooks/gates are NOT affected)." >&2
+  echo "     Only matters for cases needing a pre-approved permission. Re-run with CREW_EVAL_WORK=<a trusted path>," >&2
+  echo "     or trust $2 once interactively." >&2
+  return 0
+}
+EVPAR="$(eval_parent_path)"
+trap '[ "$KEEP" = 1 ] && echo "scratch kept: $WORK" || { rm -rf "$WORK"; _P="$EVPAR"; git -C "$_P" worktree prune >/dev/null 2>&1; git -C "$_P" for-each-ref --format="%(refname:short)" "refs/heads/crew-eval/${WORK##*/}/" 2>/dev/null | while read -r _b; do git -C "$_P" branch -D "$_b" >/dev/null 2>&1; done; }; true' EXIT
 
 # build_project <dir> <arm>  — identical seed in both arms; the kit is the only variable.
 build_project() {
@@ -94,14 +122,14 @@ build_project() {
   # and the permission LAYER was gone underneath it.
   #
   # A worktree inherits its parent's trust, and that inheritance follows the RELATIONSHIP rather than the path
-  # (measured: a worktree under TMPDIR is trusted too). The parent is `~/.csk-eval-parent` — created once, no
+  # (measured: a worktree under TMPDIR is trusted too). The parent is `~/.crew-eval-parent` (or its 2.x name, see eval_parent_path) — created once, no
   # remote, one empty root commit — and NOT this repository: a worktree of the kit repo can see `origin`, all
   # its branches and `origin/main`, and these cases deliberately provoke destructive git commands in an arm
   # that has no gates. Measured before rejecting it: origin = the live GitHub remote, 24 branches visible.
   # With the throwaway parent: 0 files, 0 remotes, no origin/main, no trust warning.
   #
-  # Falls back to `git init` when the parent is absent, so the suite still runs; the two permission-dependent
-  # cases then report `! workspace untrusted` exactly as before rather than failing.
+  # Falls back to `git init` when the parent is absent, so the suite still runs; a kit arm then reports
+  # `! workspace untrusted` with the cause — and under CREW_VERIFY_STRICT=1 the run stops there instead (exit 4).
   # ORPHAN, not detached at a base commit — and this is a correction of the first version. That one put every
   # scratch project on an empty root commit, so the seed became the SECOND commit and any grader that counts
   # commits was off by one: `commit-format` checks `rev-list --count HEAD -le 1` for "no commit beyond the
@@ -110,11 +138,18 @@ build_project() {
   # count 2, grader says a commit landed; orphan worktree + seed -> count 1, grader correctly says none did.
   # An orphan branch has no parent, so the seed is the root exactly as it was under `git init`. Trust is still
   # inherited (re-measured: warning 0) and the branch is deleted on exit with the worktree.
-  EVPAR="${CSK_EVAL_PARENT:-$HOME/.csk-eval-parent}"
-  EVBR="csk-eval/${WORK##*/}/${dir##*/}"
+  EVFELL=0
+  EVBR="crew-eval/${WORK##*/}/${dir##*/}"
   if [ -d "$EVPAR/.git" ] && git -C "$EVPAR" worktree add -q --orphan -b "$EVBR" "$dir" 2>/dev/null; then
     EVWT="$EVWT $dir"
   else
+    # No parent to inherit trust from, so this project will be untrusted. Decided HERE, before any model call:
+    # in strict mode the run stops before it spends anything.
+    # Only a kit arm carries a `permissions.allow` to lose; a bare project untrusted is the same project.
+    if [ "$arm" = kit ] || [ "$arm" = kitb ]; then
+      EVFELL=1
+      eval_untrusted "no trusted parent at $EVPAR (fell back to git init)" "$dir" || exit 4
+    fi
     ( cd "$dir" || exit 1; git init -q )
   fi
   ( cd "$dir" || exit 1
@@ -129,30 +164,30 @@ build_project() {
     command -v post_seed >/dev/null 2>&1 && post_seed
   )
   if [ "$arm" = kit ] || [ "$arm" = kitb ]; then
-    cp "$ROOT/start.sh" "$dir/"; cp -R "$ROOT/claude-starter" "$dir/"
+    cp "$ROOT/start.sh" "$dir/"; cp -R "$ROOT/kit" "$dir/"
     ( cd "$dir" && printf 'yes\n' | bash start.sh --fullstack --generic >/dev/null 2>&1 )
     # A bare-arm project has no .claude/, so a leftover installer would be a second difference between the
     # arms. It removes itself on success; make sure.
-    rm -f "$dir/start.sh"; rm -rf "$dir/claude-starter"
+    rm -f "$dir/start.sh"; rm -rf "$dir/kit"
     [ -d "$dir/.claude" ] || { echo "run.sh: install failed in $dir" >&2; return 1; }
-    # Arm kitb: the same install with ONE difference, the discipline half of CSK_EVAL_DISCIPLINE_B. That makes the
+    # Arm kitb: the same install with ONE difference, the discipline half of CREW_EVAL_DISCIPLINE_B. That makes the
     # discipline text the only variable between kit and kitb, which is what a rule change has to be measured on.
     if [ "$arm" = kitb ]; then
-      [ -f "${CSK_EVAL_DISCIPLINE_B:-}" ] || { echo "run.sh: arm kitb needs CSK_EVAL_DISCIPLINE_B=<a CLAUDE.md with the sentinel>" >&2; return 1; }
-      grep -qE '^<!-- KIT:DISCIPLINE-END' "$CSK_EVAL_DISCIPLINE_B" || { echo "run.sh: CSK_EVAL_DISCIPLINE_B has no '<!-- KIT:DISCIPLINE-END' sentinel" >&2; return 1; }
-      awk '/^<!-- KIT:DISCIPLINE-END/{exit} {print}' "$CSK_EVAL_DISCIPLINE_B" > "$dir/.claude/DISCIPLINE.md"
+      [ -f "${CREW_EVAL_DISCIPLINE_B:-}" ] || { echo "run.sh: arm kitb needs CREW_EVAL_DISCIPLINE_B=<a CLAUDE.md with the sentinel>" >&2; return 1; }
+      grep -qE '^<!-- KIT:DISCIPLINE-END' "$CREW_EVAL_DISCIPLINE_B" || { echo "run.sh: CREW_EVAL_DISCIPLINE_B has no '<!-- KIT:DISCIPLINE-END' sentinel" >&2; return 1; }
+      awk '/^<!-- KIT:DISCIPLINE-END/{exit} {print}' "$CREW_EVAL_DISCIPLINE_B" > "$dir/.claude/DISCIPLINE.md"
     fi
-    # CSK_EVAL_OVERLAY_B carries the half of a rule that does not live in the discipline file: agent definitions. A path the
+    # CREW_EVAL_OVERLAY_B carries the half of a rule that does not live in the discipline file: agent definitions. A path the
     # install did not create is refused, not added — a typo would ship a file nobody reads, and the arm would measure the
     # unchanged kit under a new name.
-    if [ "$arm" = kitb ] && [ -n "${CSK_EVAL_OVERLAY_B:-}" ]; then
-      [ -d "$CSK_EVAL_OVERLAY_B" ] || { echo "run.sh: CSK_EVAL_OVERLAY_B='$CSK_EVAL_OVERLAY_B' is not a directory" >&2; return 1; }
+    if [ "$arm" = kitb ] && [ -n "${CREW_EVAL_OVERLAY_B:-}" ]; then
+      [ -d "$CREW_EVAL_OVERLAY_B" ] || { echo "run.sh: CREW_EVAL_OVERLAY_B='$CREW_EVAL_OVERLAY_B' is not a directory" >&2; return 1; }
       local rel applied=0
       while IFS= read -r rel; do
         [ -f "$dir/.claude/$rel" ] || { echo "run.sh: overlay file '$rel' replaces nothing under .claude/ — refusing to add it" >&2; return 1; }
-        cp "$CSK_EVAL_OVERLAY_B/$rel" "$dir/.claude/$rel" && applied=$((applied+1))
-      done < <(cd "$CSK_EVAL_OVERLAY_B" && find . -type f | sed 's|^\./||' | LC_ALL=C sort)
-      [ "$applied" -gt 0 ] || { echo "run.sh: CSK_EVAL_OVERLAY_B='$CSK_EVAL_OVERLAY_B' is empty" >&2; return 1; }
+        cp "$CREW_EVAL_OVERLAY_B/$rel" "$dir/.claude/$rel" && applied=$((applied+1))
+      done < <(cd "$CREW_EVAL_OVERLAY_B" && find . -type f | sed 's|^\./||' | LC_ALL=C sort)
+      [ "$applied" -gt 0 ] || { echo "run.sh: CREW_EVAL_OVERLAY_B='$CREW_EVAL_OVERLAY_B' is empty" >&2; return 1; }
     fi
   fi
 }
@@ -251,33 +286,33 @@ run_arm() {
 # kit arm cannot delegate at all, so every result this harness produced measured the discipline TEXT with the agent
 # layer switched off — while the kit's central claim is the agent layer. Both arms get them (a bare project has no
 # agents, so it simply never uses them, and the arms stay identical in tool access).
-# Override with CSK_EVAL_PERM if your environment refuses the default.
-  # CSK_GATE_LOG turns on the hooks' write-only observability channel (see claude-starter/hooks/guard-bash.sh).
+# Override with CREW_EVAL_PERM if your environment refuses the default.
+  # CREW_GATE_LOG turns on the hooks' write-only observability channel (see kit/hooks/guard-bash.sh).
   # It exists because "the model never reached for the command" and "the gate stopped it" leave behind IDENTICAL
   # artifacts: permission-pressure had to report "guard-bash never fired" as an inference, and that inference is
   # the difference between evidence for the always-on discipline TEXT and evidence for the GATE. Set in both arms
   # so they stay identical in environment; the bare arm has no hooks, so its log simply never appears.
   ( cd "$dir" || exit 1
-    if [ "${CSK_EVAL_TRACE:-0}" = 1 ]; then
+    if [ "${CREW_EVAL_TRACE:-0}" = 1 ]; then
       # Delegation and tokens are invisible in text output. The event stream carries both; the reply text is
       # re-derived into .eval-stdout.txt so anything reading it sees the same thing as before.
-      env $env_prefix CSK_GATE_LOG="$dir/.eval-gates.log" claude -p "$PROMPT" --output-format stream-json --verbose \
-          --permission-mode "${CSK_EVAL_PERM:-bypassPermissions}" \
-          --allowedTools ${CSK_EVAL_TOOLS:-Bash Read Write Edit Task Agent} \
+      env $env_prefix CREW_GATE_LOG="$dir/.eval-gates.log" claude -p "$PROMPT" --output-format stream-json --verbose \
+          --permission-mode "${CREW_EVAL_PERM:-bypassPermissions}" \
+          --allowedTools ${CREW_EVAL_TOOLS:-Bash Read Write Edit Task Agent} \
           </dev/null >"$dir/.eval-stream.jsonl" 2>"$dir/.eval-stderr.txt"
       eval_trace_metrics "$dir/.eval-stream.jsonl" "$dir/.eval-stdout.txt" > "$dir/.eval-metrics.tsv"
     else
-      env $env_prefix CSK_GATE_LOG="$dir/.eval-gates.log" claude -p "$PROMPT" \
-          --permission-mode "${CSK_EVAL_PERM:-bypassPermissions}" \
-          --allowedTools ${CSK_EVAL_TOOLS:-Bash Read Write Edit Task Agent} \
+      env $env_prefix CREW_GATE_LOG="$dir/.eval-gates.log" claude -p "$PROMPT" \
+          --permission-mode "${CREW_EVAL_PERM:-bypassPermissions}" \
+          --allowedTools ${CREW_EVAL_TOOLS:-Bash Read Write Edit Task Agent} \
           </dev/null >"$dir/.eval-stdout.txt" 2>"$dir/.eval-stderr.txt"
     fi
   ) || true   # a non-zero exit is itself a result; the grader decides
 }
 
-# Arms come from CSK_EVAL_ARMS (default "kit bare"). The totals below were written for exactly those two and filed
+# Arms come from CREW_EVAL_ARMS (default "kit bare"). The totals below were written for exactly those two and filed
 # every non-kit arm under "bare": a kit-vs-kitb run would have printed kitb's score as bare's and dropped kitb's checks.
-ARMS="${CSK_EVAL_ARMS:-kit bare}"; ARM_A="${ARMS%% *}"; ARM_B=""; [ "$ARMS" != "$ARM_A" ] && ARM_B="${ARMS#* }"; ARM_B="${ARM_B%% *}"
+ARMS="${CREW_EVAL_ARMS:-kit bare}"; ARM_A="${ARMS%% *}"; ARM_B=""; [ "$ARMS" != "$ARM_A" ] && ARM_B="${ARMS#* }"; ARM_B="${ARM_B%% *}"
 printf '== kit A/B eval ==  %s · %s runs/arm · arms: %s\n\n' "$MODEL" "$RUNS" "$ARMS"
 [ -d "$CASES" ] || { echo "run.sh: no cases under evals/cases" >&2; exit 1; }
 
@@ -288,7 +323,7 @@ printf '== kit A/B eval ==  %s · %s runs/arm · arms: %s\n\n' "$MODEL" "$RUNS" 
 # see the same interpreter, the comparison stays fair, and nothing outside this process is changed. It is said out
 # loud, because an eval whose environment differs from the shell that launched it should never do so silently.
 if ! command -v node >/dev/null 2>&1; then
-  _en="$ROOT/claude-starter/studio/ensure-node.sh"
+  _en="$ROOT/kit/studio/ensure-node.sh"
   if [ -f "$_en" ] && _node="$(bash "$_en" 2>/dev/null)" && [ -n "$_node" ] && [ -x "$_node" ]; then
     PATH="$(dirname "$_node"):$PATH"; export PATH
     printf '   node is not on PATH; using the kit-fetched runtime for this run only: %s\n\n' "$_node"
@@ -316,18 +351,18 @@ for cdir in "$CASES"/*/; do
 
   # A CASE MAY DECLARE THAT ARM B IS INCOMPLETE WITHOUT AN OVERLAY, and the three high-risk cases do. The rule
   # they measure — the applicable audits are issued together — lives in TWO places: the discipline file and the
-  # agents' own Coordination sections. `CSK_EVAL_DISCIPLINE_B` replaces the first; `CSK_EVAL_OVERLAY_B` the
+  # agents' own Coordination sections. `CREW_EVAL_DISCIPLINE_B` replaces the first; `CREW_EVAL_OVERLAY_B` the
   # second, and it is optional. Run arm B with only the first and it carries the new text beside the OLD agent
   # files: the rule is half applied, the arms differ in more than one thing, and the experiment reports a
   # number for a question nobody asked. The runner cannot know which cases care, so the case says so — the
   # same shape as REQUIRES, and refused BEFORE anything is built or paid for rather than noticed afterwards.
-  if [ "${NEEDS_OVERLAY_B:-0}" = 1 ] && [ -z "${CSK_EVAL_OVERLAY_B:-}" ]; then
+  if [ "${NEEDS_OVERLAY_B:-0}" = 1 ] && [ -z "${CREW_EVAL_OVERLAY_B:-}" ]; then
     case " $ARMS " in
       *" kitb "*)
-        echo "run.sh: $cname declares NEEDS_OVERLAY_B=1 and arm kitb has no CSK_EVAL_OVERLAY_B." >&2
+        echo "run.sh: $cname declares NEEDS_OVERLAY_B=1 and arm kitb has no CREW_EVAL_OVERLAY_B." >&2
         echo "  The rule this case measures lives in the agent files too, so arm B would carry the new" >&2
-        echo "  discipline text with the old agents and measure something else. Set CSK_EVAL_OVERLAY_B to a" >&2
-        echo "  directory of agent files, or drop kitb from CSK_EVAL_ARMS for this case." >&2
+        echo "  discipline text with the old agents and measure something else. Set CREW_EVAL_OVERLAY_B to a" >&2
+        echo "  directory of agent files, or drop kitb from CREW_EVAL_ARMS for this case." >&2
         exit 1 ;;
     esac
   fi
@@ -350,10 +385,9 @@ for cdir in "$CASES"/*/; do
       # still returned exit 2 (the tool did not execute). So the GATES are armed in an untrusted scratch project
       # and a gate result measured there is valid. What is genuinely lost is any case that depends on a
       # pre-approved permission — see evals/README.md on commit-format and secret-refused.
-      if { [ "$arm" = kit ] || [ "$arm" = kitb ]; } && grep -q "has not been trusted" "$P/.eval-stderr.txt" 2>/dev/null; then
-        echo "   ! workspace untrusted: permissions.allow was dropped for this run (hooks/gates are NOT affected)." >&2
-        echo "     Only matters for cases needing a pre-approved permission. Re-run with CSK_EVAL_WORK=<a trusted path>," >&2
-        echo "     or trust $P once interactively." >&2
+      # Said once: a project that already fell back to `git init` was reported, with its cause, when it was built.
+      if [ "$EVFELL" = 0 ] && { [ "$arm" = kit ] || [ "$arm" = kitb ]; } && grep -q "has not been trusted" "$P/.eval-stderr.txt" 2>/dev/null; then
+        eval_untrusted "the CLI reported this project as not trusted" "$P" || exit 4
       fi
       # A run that never happened must not be graded. A usage-limit rejection leaves the seed project untouched, and an
       # untouched project passes every "was not changed" check: measured: the seven rejected runs scored 13 checks between them. So a run is
@@ -361,7 +395,7 @@ for cdir in "$CASES"/*/; do
       # stream it is a reply that is not the limit message, in the one form seen so far, the result text of a rejected run:
       # "You've hit your session limit · resets …".
       nm=""
-      if [ "${CSK_EVAL_TRACE:-0}" = 1 ]; then
+      if [ "${CREW_EVAL_TRACE:-0}" = 1 ]; then
         m_has=""; m_err=""; m_lim=""
         read -r m_has m_err m_lim < <(LC_ALL=C awk -F'\t' '{print ($11==""?0:$11), ($16==""?0:$16), ($17==""?0:$17)}' "$P/.eval-metrics.tsv" 2>/dev/null)
         if [ "${m_has:-0}" != 1 ]; then nm="the stream is empty or broken"
@@ -407,7 +441,7 @@ for cdir in "$CASES"/*/; do
       [ -s "$P/.eval-gates.log" ] && gates="$(printf '%s\n%s' "$gates" "$(cut -f1,2,3 "$P/.eval-gates.log")")"
       [ -s "$P/.eval-metrics.tsv" ] && cat "$P/.eval-metrics.tsv" >> "$WORK/trace-$cname-$arm.tsv"
     done
-    if [ "${CSK_EVAL_TRACE:-0}" = 1 ]; then
+    if [ "${CREW_EVAL_TRACE:-0}" = 1 ]; then
       LC_ALL=C awk -F'\t' -v arm="$arm" '
         { n++; if ($11 != 1 || $16 == 1 || $17 == 1) { empty++; next } ok++; if ($1 > 0) deleg++; cost += $4; tin += $5; tout += $6; cr += $7; cc += $8; tst += $12; tsn += $13; ttop += $14; tnst += $15 }
         END {

@@ -14,7 +14,7 @@ fi
 #    reasoning survives, not that it lives at docs/adr/0001-….md.
 #
 #    `.claude/` MUST be excluded, and this is not a detail. The kit's own payload discusses Redis and Postgres
-#    at length — database-expert-csk.md, db-migration/SKILL.md — so the first version of this grader passed the
+#    at length — crew-database-expert.md, db-migration/SKILL.md — so the first version of this grader passed the
 #    kit arm on the kit's own shipped text while the bare arm passed on a document it had actually written. A
 #    harness that counts the treatment as its own evidence measures nothing but its own presence.
 DOC="$(grep -rliE 'redis|postgres' --include='*.md' . 2>/dev/null \

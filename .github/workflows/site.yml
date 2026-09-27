@@ -1,0 +1,54 @@
+name: site
+
+# crewforth.com, built from a release tag and published through GitHub Pages. One definition, two doors:
+#   - release.yml calls it after a final release, when the repository variable SITE_DEPLOY is 1;
+#   - run it by hand (Actions → site → Run workflow, or `gh workflow run site.yml -f ref=v3.0.0`) to publish a tag
+#     whose release ran before the Pages source was set to "GitHub Actions" or before SITE_DEPLOY was turned on.
+#     A re-run of the release would not do: it re-runs the publish job too, which stops at npm (the version exists).
+# CF_BEACON_TOKEN (a repository variable; the beacon token is public by design) adds the cookieless analytics beacon;
+# without it the site makes no third-party request at all.
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: The tag to build the site from
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: The tag to build the site from (e.g. v3.0.0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: site/.nvmrc
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - name: Build and gate the site
+        env:
+          CF_BEACON_TOKEN: ${{ vars.CF_BEACON_TOKEN }}
+        run: |
+          npm ci --prefix site --no-audit --no-fund
+          cd site && npm run build && node scripts/check.mjs
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site/dist
+      - id: deploy
+        uses: actions/deploy-pages@v5

@@ -10,32 +10,32 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { _internals } from '../../claude-starter/studio/server/lib/fleet.js';
-import { contextFill } from '../../claude-starter/studio/server/lib/transcript.js';
-import { encodeCwd } from '../../claude-starter/studio/server/lib/projects.js';
-import { _internals as graphInternals } from '../../claude-starter/studio/server/lib/graph.js';
-import { palette, _internals as paletteInternals } from '../../claude-starter/studio/server/lib/palette.js';
-import { renderMarkdown } from '../../claude-starter/studio/web/md.js';
-import { ALLOWED_MODES } from '../../claude-starter/studio/server/lib/session.js';
-import { parsePeers } from '../../claude-starter/studio/server/lib/peers.js';
-import { writeAllowed, signature } from '../../claude-starter/studio/server/index.js';
-import { prepare, decide, pending, cleanup, _internals as permInternals } from '../../claude-starter/studio/server/lib/permissions.js';
+import { _internals } from '../../kit/studio/server/lib/fleet.js';
+import { contextFill } from '../../kit/studio/server/lib/transcript.js';
+import { encodeCwd } from '../../kit/studio/server/lib/projects.js';
+import { _internals as graphInternals } from '../../kit/studio/server/lib/graph.js';
+import { palette, _internals as paletteInternals } from '../../kit/studio/server/lib/palette.js';
+import { renderMarkdown } from '../../kit/studio/web/md.js';
+import { ALLOWED_MODES } from '../../kit/studio/server/lib/session.js';
+import { parsePeers } from '../../kit/studio/server/lib/peers.js';
+import { writeAllowed, signature } from '../../kit/studio/server/index.js';
+import { prepare, decide, pending, cleanup, _internals as permInternals } from '../../kit/studio/server/lib/permissions.js';
 import { execFileSync, spawnSync } from 'node:child_process';
 import os from 'node:os';
-import { quickReplies } from '../../claude-starter/studio/web/chat.js';
+import { quickReplies } from '../../kit/studio/web/chat.js';
 import { installDom } from './dom-stub.mjs';
-import { plan as terminalPlan } from '../../claude-starter/studio/server/lib/terminal.js';
-import { gateLog, gateReport, board, sessionStats, _internals as kitInternals } from '../../claude-starter/studio/server/lib/kit-telemetry.js';
-import { parseRoster, remoteRoster } from '../../claude-starter/studio/server/lib/roster.js';
+import { plan as terminalPlan } from '../../kit/studio/server/lib/terminal.js';
+import { gateLog, gateReport, board, sessionStats, _internals as kitInternals } from '../../kit/studio/server/lib/kit-telemetry.js';
+import { parseRoster, remoteRoster } from '../../kit/studio/server/lib/roster.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // The suite lives beside the other gates rather than inside the panel, because
-// claude-starter/ is shipped whole: a test directory under it would travel to
+// kit/ is shipped whole: a test directory under it would travel to
 // every user through all four channels only to be deleted by the installer.
 // 104 KB of it, measured. So the panel is named from the repo root, not walked
 // up to from here.
 const REPO = path.resolve(HERE, '..', '..');
-const PAYLOAD = path.join(REPO, 'claude-starter');
+const PAYLOAD = path.join(REPO, 'kit');
 const STUDIO = path.join(PAYLOAD, 'studio');
 const WEB_ROOT = path.join(STUDIO, 'web');
 
@@ -59,14 +59,14 @@ function check(name, ok, detail) {
  * A check that could not run, said out loud.
  *
  * `tool` means the machine is missing something the check needs. Under
- * CSK_VERIFY_STRICT — which CI sets — that is a broken runner, not an honest
+ * CREW_VERIFY_STRICT — which CI sets — that is a broken runner, not an honest
  * boundary, so it goes red. Every other class stays a skip.
  */
 /**
  * An assertion that does not apply on this platform, and is measured on another.
  *
  * Distinct from skip() on purpose. `tool` skips mean "this could have been
- * measured and was not", so CSK_VERIFY_STRICT turns them red — a runner missing
+ * measured and was not", so CREW_VERIFY_STRICT turns them red — a runner missing
  * a tool is a broken runner. A capability the platform does not have is a
  * different statement: it stays green here because it is red-or-green somewhere
  * else, and saying so is the only way the strict rule keeps its meaning.
@@ -80,7 +80,7 @@ function notApplicable(name, why, coveredBy) {
 }
 
 function skip(name, kind, why) {
-  const strict = process.env.CSK_VERIFY_STRICT === '1' && kind === 'tool';
+  const strict = process.env.CREW_VERIFY_STRICT === '1' && kind === 'tool';
   if (strict) {
     fail += 1;
     failures.push(`${name} — required ${kind} missing: ${why}`);
@@ -115,12 +115,12 @@ const rootPkg = JSON.parse(read(path.join(REPO, 'package.json')) ?? '{}');
 // Inverted, not deleted. The old pin held the panel OUT of every channel; a
 // real project then updated, ran the documented command and got ENOENT, because
 // nothing had ever installed it. The claim now runs the other way and has to
-// fail the moment the panel stops shipping: `claude-starter/` is the one string
+// fail the moment the panel stops shipping: `kit/` is the one string
 // every channel already carries (npm files[], make-release.sh's whitelist,
 // bin/cli.js's staging list, the Homebrew formula), so living under it is what
 // makes "installed" true rather than a fourth place to remember.
-const shipsPayload = Array.isArray(rootPkg.files) && rootPkg.files.some((f) => String(f).replace(/\/$/, '') === 'claude-starter');
-const insidePayload = path.basename(PAYLOAD) === 'claude-starter';
+const shipsPayload = Array.isArray(rootPkg.files) && rootPkg.files.some((f) => String(f).replace(/\/$/, '') === 'kit');
+const insidePayload = path.basename(PAYLOAD) === 'kit';
 const carried = ['server/index.js', 'web/index.html', 'package.json', 'ensure-node.sh']
   .filter((f) => fs.existsSync(path.join(STUDIO, f)));
 check(
@@ -210,9 +210,9 @@ const { normalise } = _internals;
 
 const real = normalise({
   pid: 71288, cwd: '/tmp/x', kind: 'interactive',
-  startedAt: 1787667229756, sessionId: 'abc-123', name: 'mac-csk', status: 'busy',
+  startedAt: 1787667229756, sessionId: 'abc-123', name: 'mac-session', status: 'busy',
 });
-check('normalise keeps the identifying fields', real?.sessionId === 'abc-123' && real.name === 'mac-csk' && real.status === 'busy');
+check('normalise keeps the identifying fields', real?.sessionId === 'abc-123' && real.name === 'mac-session' && real.status === 'busy');
 check('normalise surfaces waitingFor when present',
   normalise({ sessionId: 'w', status: 'waiting', waitingFor: 'input needed' })?.waitingFor === 'input needed');
 check('normalise keeps waitingFor null when absent', real?.waitingFor === null);
@@ -301,22 +301,22 @@ const agentsOnDisk = fs.readdirSync(path.join(PAYLOAD, 'agents')).filter((f) => 
 check('every kit agent in the payload is in the palette',
   pal.measured === true && pal.kitAgents === agentsOnDisk,
   `${pal.kitAgents} in the palette, ${agentsOnDisk} .md files in ${path.relative(REPO, path.join(PAYLOAD, 'agents'))}`);
-check('a declared colour resolves to a hex value', /^#[0-9a-f]{6}$/i.test(pal.map['security-expert-csk']?.hex ?? ''));
+check('a declared colour resolves to a hex value', /^#[0-9a-f]{6}$/i.test(pal.map['crew-security-expert']?.hex ?? ''));
 check('an undeclared agent type falls back to neutral, never a borrowed colour',
   !pal.map['no-such-agent-type'] && /^#[0-9a-f]{6}$/i.test(pal.unknown));
 
 // The resolver against synthetic trees, because the claim is "one rule, every
 // layout" and this checkout can only ever demonstrate one of them. Install and
 // repo differ in depth and in the parent's name; the rule may read neither.
-const palHome = fs.mkdtempSync(path.join(os.tmpdir(), 'csk-studio-palette-'));
+const palHome = fs.mkdtempSync(path.join(os.tmpdir(), 'crew-studio-palette-'));
 try {
   const shapes = {
     install: path.join(palHome, 'install', '.claude'),
-    repo: path.join(palHome, 'repo', 'claude-starter'),
+    repo: path.join(palHome, 'repo', 'kit'),
     // The third layout, and the one the comment above claimed in prose while nothing measured it: a
-    // plugin root has no `.claude` or `claude-starter` segment at all — agents/ and studio/ sit
+    // plugin root has no `.claude` or `kit` segment at all — agents/ and studio/ sit
     // directly in it. Now that the plugin edition ships the panel, this is a real deployment.
-    plugin: path.join(palHome, 'plugin', 'claude-starter-kit'),
+    plugin: path.join(palHome, 'plugin', 'crewforth'),
   };
   for (const base of Object.values(shapes)) {
     fs.mkdirSync(path.join(base, 'agents'), { recursive: true });
@@ -389,20 +389,20 @@ const req = (headers) => ({ headers });
 check('a request without the header is refused',
   writeAllowed(req({})).ok === false);
 check('a request with the wrong header value is refused',
-  writeAllowed(req({ 'x-csk-studio': '0' })).ok === false);
+  writeAllowed(req({ 'x-crew-studio': '0' })).ok === false);
 check('a same-origin request with the header is allowed',
-  writeAllowed(req({ 'x-csk-studio': '1', origin: 'http://127.0.0.1:7777' })).ok === true);
+  writeAllowed(req({ 'x-crew-studio': '1', origin: 'http://127.0.0.1:7777' })).ok === true);
 check('localhost counts as same-origin',
-  writeAllowed(req({ 'x-csk-studio': '1', origin: 'http://localhost:7777' })).ok === true);
+  writeAllowed(req({ 'x-crew-studio': '1', origin: 'http://localhost:7777' })).ok === true);
 check('a cross-origin request is refused even with the header',
-  writeAllowed(req({ 'x-csk-studio': '1', origin: 'https://evil.example' })).ok === false);
+  writeAllowed(req({ 'x-crew-studio': '1', origin: 'https://evil.example' })).ok === false);
 check('an unparseable Origin is refused rather than ignored',
-  writeAllowed(req({ 'x-csk-studio': '1', origin: 'not a url' })).ok === false);
+  writeAllowed(req({ 'x-crew-studio': '1', origin: 'not a url' })).ok === false);
 check('a request with no Origin at all still needs the header',
-  writeAllowed(req({ 'x-csk-studio': '1' })).ok === true &&
+  writeAllowed(req({ 'x-crew-studio': '1' })).ok === true &&
   writeAllowed(req({ origin: 'http://127.0.0.1:7777' })).ok === false);
 check('a token always exists, generated when none was supplied',
-  /CSK_STUDIO_TOKEN \|\| randomUUID\(\)/.test(idxSrc));
+  /CREW_STUDIO_TOKEN \|\| randomUUID\(\)/.test(idxSrc));
 check('the token gate covers every /api/ path',
   /url\.pathname\.startsWith\('\/api\/'\) && !authorised/.test(idxSrc));
 
@@ -465,7 +465,7 @@ if (gate) {
     try {
       execFileSync('bash', [HOOK, gate.spool], {
         input: payload,
-        env: { ...process.env, CSK_GATE_WAIT: '1', ...env },
+        env: { ...process.env, CREW_GATE_WAIT: '1', ...env },
         stdio: ['pipe', 'pipe', 'pipe'],
       });
       return 0;
@@ -583,7 +583,7 @@ process.stdout.write('\n== §16 kit telemetry ==\n');
 // Pointed at REPO these four passed here and failed 4/4 on a fresh clone, which
 // is the worst kind of gate: green for the author, red for everyone else, and
 // silent about the difference.
-const logHome = fs.mkdtempSync(path.join(os.tmpdir(), 'csk-studio-gatelog-'));
+const logHome = fs.mkdtempSync(path.join(os.tmpdir(), 'crew-studio-gatelog-'));
 fs.mkdirSync(path.join(logHome, '.claude'), { recursive: true });
 fs.writeFileSync(path.join(logHome, '.claude', 'gate-log.tsv'),
   ['BLOCK\t§4.1\tdestructive\tgit reset --hard',
@@ -762,7 +762,7 @@ process.stdout.write('\n== §20 browser modules load ==\n');
     let err = null;
     try {
       // Cache-busted so a module is really evaluated on every run.
-      await import(`../../claude-starter/studio/web/${mod}?t=${Date.now()}`);
+      await import(`../../kit/studio/web/${mod}?t=${Date.now()}`);
     } catch (e) {
       err = e;
     }
@@ -774,7 +774,7 @@ process.stdout.write('\n== §20 browser modules load ==\n');
   {
     let err = null;
     try {
-      const { Canvas } = await import(`../../claude-starter/studio/web/canvas.js?render=${Date.now()}`);
+      const { Canvas } = await import(`../../kit/studio/web/canvas.js?render=${Date.now()}`);
       const host = document.createElement('div');
       const c = new Canvas(host, {});
       c.setPalette({ map: { Explore: { hex: '#26c6e6', source: 'builtin' } }, unknown: '#94a3c8' });
@@ -870,7 +870,28 @@ const appSrc2 = read(path.join(STUDIO, 'web', 'app.js')) ?? '';
 check('the right-hand divider grows its panel when dragged left',
   /edge === 'right' \? -1 : 1/.test(appSrc2),
   'sharing one handler without inverting the delta shrank the panel being opened');
-check('both widths are remembered', /csk-studio-side-w/.test(appSrc2) && /csk-studio-chat-w/.test(appSrc2));
+check('both widths are remembered', /crewforth-studio-side-w/.test(appSrc2) && /crewforth-studio-chat-w/.test(appSrc2));
+
+// 3.0 renamed the saved-layout keys. The move is run against a Map-backed storage, so what is asserted is the
+// behaviour — the layout survives, the old key is gone, a value already under the new name is not overwritten —
+// and not the source text. And the panel must call it before it reads any key.
+{
+  const { migrateStorage } = await import(`../../kit/studio/web/storage-migrate.js?t=${Date.now()}`);
+  const m = new Map([['csk-studio-theme', 'dark'], ['csk-studio-layout:down:s1', '{"a":1}'],
+    ['csk-studio-side-w', '300'], ['crewforth-studio-side-w', '410'], ['unrelated', 'x']]);
+  const ls = { get length() { return m.size; }, key: (i) => [...m.keys()][i] ?? null,
+    getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k) };
+  const moved = migrateStorage(ls);
+  check('a 2.x saved layout survives the key rename (moved, old key removed, newer value kept)',
+    moved === 3 && m.get('crewforth-studio-theme') === 'dark' && m.get('crewforth-studio-layout:down:s1') === '{"a":1}'
+      && m.get('crewforth-studio-side-w') === '410' && m.get('unrelated') === 'x'
+      && ![...m.keys()].some((k) => k.startsWith('csk-studio-')),
+    JSON.stringify([...m.entries()]));
+  check('a second open moves nothing', migrateStorage(ls) === 0);
+  const firstRead = appSrc2.search(/store\.get\(|localStorage\.getItem\(/);
+  check('the panel migrates the keys before it reads any', /migrateStorage\(localStorage\)/.test(appSrc2)
+    && appSrc2.indexOf('migrateStorage(localStorage)') < firstRead, `first read at ${firstRead}`);
+}
 
 
 /* ------------------------------------------- §23 launching from a symlink */
@@ -885,8 +906,8 @@ check('both widths are remembered', /csk-studio-side-w/.test(appSrc2) && /csk-st
 // usage text. A regressed guard prints nothing and still exits 0.
 {
   const entry = path.join(STUDIO, 'server', 'index.js');
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'csk-studio-link-'));
-  const link = path.join(dir, 'csk-studio');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'crew-studio-link-'));
+  const link = path.join(dir, 'crewforth-studio');
   let viaLink = '';
   let viaReal = '';
   try {
@@ -939,9 +960,9 @@ check('both widths are remembered', /csk-studio-side-w/.test(appSrc2) && /csk-st
     'without this the sidebar keeps a tall empty gap where the tree was');
 
   check('the fold choice is remembered per browser',
-    /csk-studio-fold-/.test(app));
+    /crewforth-studio-fold-/.test(app));
   check('a browser that refuses localStorage still folds',
-    /localStorage\.setItem\(`csk-studio-fold-[\s\S]{0,120}?\} catch/.test(app),
+    /localStorage\.setItem\(`crewforth-studio-fold-[\s\S]{0,120}?\} catch/.test(app),
     'private mode throws on setItem; an unguarded write kills the click handler');
 }
 
@@ -1116,7 +1137,7 @@ function computed(rules, el, ancestors, media = []) {
   const rules = cssRules(cssText);
   const REDUCE = ['(prefers-reduced-motion: reduce)'];
 
-  const { Canvas } = await import(`../../claude-starter/studio/web/canvas.js?motion=${Date.now()}`);
+  const { Canvas } = await import(`../../kit/studio/web/canvas.js?motion=${Date.now()}`);
   const PAL = {
     map: {
       Explore: { hex: '#26c6e6', source: 'builtin' },
@@ -1578,7 +1599,7 @@ process.stdout.write('\n== §27 the picture at 250 nodes ==\n');
   const canvasSrc = read(path.join(STUDIO, 'web', 'canvas.js')) ?? '';
   const rules = cssRules(cssText);
   const REDUCE = ['(prefers-reduced-motion: reduce)'];
-  const { Canvas } = await import(`../../claude-starter/studio/web/canvas.js?lod=${Date.now()}`);
+  const { Canvas } = await import(`../../kit/studio/web/canvas.js?lod=${Date.now()}`);
 
   // Thresholds are read out of the module rather than restated here. A
   // threshold written down twice is a threshold that drifts.
@@ -1595,8 +1616,8 @@ process.stdout.write('\n== §27 the picture at 250 nodes ==\n');
     && LOD_NEAR > LOD_FAR,
     `near=${LOD_NEAR} far=${LOD_FAR} hyst=${LOD_HYST} budget=${LABEL_BUDGET}`);
 
-  const TYPES = ['Explore', 'Plan', 'reviewer', 'tester', 'planner-csk',
-    'backend-expert-csk', 'docs-agent', 'security'];
+  const TYPES = ['Explore', 'Plan', 'reviewer', 'tester', 'crew-planner',
+    'crew-backend-expert', 'docs-agent', 'security'];
   const PAL = {
     map: Object.fromEntries(TYPES.map((t, i) => [t, {
       hex: ['#26c6e6', '#a874f5', '#35c874', '#f2a65a'][i % 4],
@@ -1824,7 +1845,7 @@ process.stdout.write('\n== §27 the picture at 250 nodes ==\n');
     // Found by type rather than by index, so the fixture's type cycle can be
     // reordered without turning this into a puzzle.
     const byType = (t) => big.els.get([...big.nodes.values()].find((n) => n.agentType === t).id);
-    const live = byType('backend-expert-csk');
+    const live = byType('crew-backend-expert');
     const done = big.els.get('n100');
     check('the label a running node keeps says what it is doing, not just what it is',
       big.nodes.get(live.dataset.id).status === 'running'
@@ -1836,7 +1857,7 @@ process.stdout.write('\n== §27 the picture at 250 nodes ==\n');
       live.parts.type.dataset.short === 'backend'
       && byType('docs-agent').parts.type.dataset.short === 'docs'
       && byType('Explore').parts.type.dataset.short === 'Explore',
-      `backend-expert-csk -> ${JSON.stringify(live.parts.type.dataset.short)},`
+      `crew-backend-expert -> ${JSON.stringify(live.parts.type.dataset.short)},`
       + ` docs-agent -> ${JSON.stringify(byType('docs-agent').parts.type.dataset.short)},`
       + ` Explore -> ${JSON.stringify(byType('Explore').parts.type.dataset.short)}`);
 
@@ -2017,10 +2038,10 @@ process.stdout.write('\n== §28 the instance record — finding a panel that is 
    happy path is easy and would be green on its own with no checking at all. */
 
 {
-  const rtDir = fs.mkdtempSync(path.join(os.tmpdir(), 'csk-inst-'));
-  const prevRt = process.env.CSK_STUDIO_RUNTIME;
-  process.env.CSK_STUDIO_RUNTIME = rtDir;
-  const inst = await import('../../claude-starter/studio/server/lib/instance.js');
+  const rtDir = fs.mkdtempSync(path.join(os.tmpdir(), 'crew-inst-'));
+  const prevRt = process.env.CREW_STUDIO_RUNTIME;
+  process.env.CREW_STUDIO_RUNTIME = rtDir;
+  const inst = await import('../../kit/studio/server/lib/instance.js');
 
   check('the record lives under the runtime directory the env var names',
     inst.statePath(7777) === path.join(rtDir, 'instance-7777.json'),
@@ -2075,7 +2096,7 @@ process.stdout.write('\n== §28 the instance record — finding a panel that is 
   // pretending to pass.
   await inst.writeState(deadPort, { token: 'tok-mode', name: 'm', pid: 1 });
   if (process.platform === 'win32') {
-    // This said "covered by: windows-csk" before anyone had asked whether it was, and it was not -- that
+    // This said "covered by: the Windows session" before anyone had asked whether it was, and it was not -- that
     // machine had no node and could not start the panel at all. It now names the coverer only for what was
     // actually measured there: icacls on the written record, and two panels handing back the same token. What
     // is STILL uncovered is the third question, whether a gentle stop clears the record: MSYS `kill -TERM`
@@ -2083,7 +2104,7 @@ process.stdout.write('\n== §28 the instance record — finding a panel that is 
     // /F is refused by Windows, so a real console Ctrl-C could not be produced from that harness. A hard
     // `taskkill /F` does leave the record behind, which is expected -- no handler runs -- and the next panel
     // discards the stale pid and starts fresh, which was measured.
-    notApplicable('the record holding the token is written 0600', 'POSIX mode bits are advisory on win32; the file inherits the user profile ACL instead — measured: SYSTEM, Administrators and the owner, no Everyone or Users, so weaker than 0600 and written down as such', 'windows-csk for the ACL and the shared-token path; NOBODY YET for whether a gentle stop clears the record');
+    notApplicable('the record holding the token is written 0600', 'POSIX mode bits are advisory on win32; the file inherits the user profile ACL instead — measured: SYSTEM, Administrators and the owner, no Everyone or Users, so weaker than 0600 and written down as such', 'windows-crew for the ACL and the shared-token path; NOBODY YET for whether a gentle stop clears the record');
   } else {
     const mode = fs.statSync(inst.statePath(deadPort)).mode & 0o777;
     check('the record holding the token is written 0600', mode === 0o600, mode.toString(8));
@@ -2092,8 +2113,8 @@ process.stdout.write('\n== §28 the instance record — finding a panel that is 
   check('clearState removes the record', !fs.existsSync(inst.statePath(deadPort)));
 
   fs.rmSync(rtDir, { recursive: true, force: true });
-  if (prevRt === undefined) delete process.env.CSK_STUDIO_RUNTIME;
-  else process.env.CSK_STUDIO_RUNTIME = prevRt;
+  if (prevRt === undefined) delete process.env.CREW_STUDIO_RUNTIME;
+  else process.env.CREW_STUDIO_RUNTIME = prevRt;
 }
 
 process.stdout.write('\n');
@@ -2113,7 +2134,7 @@ if (fail) {
 // writes to a workflow agent's transcript produced NO frame at all. Those captures proved the defects; these
 // assertions are what stops them coming back, because a two-minute timing test is one nobody runs twice.
 {
-  const sigHome = fs.mkdtempSync(path.join(os.tmpdir(), 'csk-studio-sig-'));
+  const sigHome = fs.mkdtempSync(path.join(os.tmpdir(), 'crew-studio-sig-'));
   const sess = { file: path.join(sigHome, 's.jsonl'), subagentsDir: path.join(sigHome, 'subagents') };
   fs.writeFileSync(sess.file, '{}\n');
   const wfDir = path.join(sess.subagentsDir, 'workflows', 'wf_1');

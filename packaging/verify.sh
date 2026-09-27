@@ -20,7 +20,7 @@
 # NOT counted as a pass — the same rule the suites themselves follow, for the same reason: a check that
 # did not run must never read like a check that succeeded.
 #
-# CSK_VERIFY_STRICT=1 turns a skip into a failure. CI sets it, because there a missing tool is a broken
+# CREW_VERIFY_STRICT=1 turns a skip into a failure. CI sets it, because there a missing tool is a broken
 # runner rather than an honest local limitation, and a gate that goes quiet on a broken runner is worse
 # than no gate: it reports success for a check nobody performed.
 set -uo pipefail
@@ -34,36 +34,52 @@ fi
 
 # The step list is the contract with ci.yml. Adding a gate here is what makes it runnable locally;
 # adding it to ci.yml alone is what put this file here in the first place.
-STEPS="syntax smoke routing catalogue manifests e2e studio parser i18n subshell"
+STEPS="syntax smoke routing site manifests e2e studio parser i18n subshell"
 
 step_syntax(){
   bash -n start.sh || return 1
   bash -n adopt.sh || return 1
   local s
-  for s in claude-starter/hooks/*.sh claude-starter/eval/*.sh packaging/*.sh packaging/studio-test/*.sh \
-           claude-starter/studio/*.sh claude-starter/studio/server/hooks/*.sh; do
+  for s in kit/hooks/*.sh kit/eval/*.sh packaging/*.sh packaging/studio-test/*.sh \
+           kit/studio/*.sh kit/studio/server/hooks/*.sh; do
     [ -f "$s" ] || continue
     bash -n "$s" || return 1
   done
   echo "shell syntax ok"
 }
 
-step_smoke(){     bash claude-starter/eval/smoke-test.sh; }
-step_routing(){   bash claude-starter/eval/routing-eval.sh; }
-step_catalogue(){ bash packaging/build-readme-catalog.sh --check; }
+step_smoke(){     bash kit/eval/smoke-test.sh; }
+step_routing(){   bash kit/eval/routing-eval.sh; }
+# The documentation site (site/, Astro + Starlight). Its pages are generated from the repository — the skill
+# catalogue, the agents, the commands, the gate inventory, the counts and the cost figures — so a stale catalogue
+# is no longer something to check for: it cannot be built. What is checked is what gets built: every page in both
+# languages, no old name, no unbacked number, no broken link, no third-party request (scripts/check.mjs), and the
+# generator's own twins (scripts/selftest.mjs). It needs node 22.12+ and site/node_modules; this file never
+# installs anything, so without them the step says SKIP — CI runs `npm ci` first and turns a skip red.
+step_site(){
+  [ -f site/package.json ] || { echo "site/ is MISSING"; return 1; }
+  command -v node >/dev/null 2>&1 || { echo "SKIP: node is not on PATH"; return 3; }
+  node -e 'const [a,b]=process.versions.node.split(".").map(Number); process.exit(a>22||(a===22&&b>=12)?0:1)' 2>/dev/null \
+    || { echo "SKIP: the site needs node 22.12+, this is $(node --version 2>/dev/null)"; return 3; }
+  [ -d site/node_modules ] || { echo "SKIP: site/node_modules is absent — run: (cd site && npm ci)"; return 3; }
+  local log; log="$(mktemp)"
+  ( cd site && npm run --silent build ) >"$log" 2>&1 || { tail -n 30 "$log"; rm -f "$log"; return 1; }
+  grep -E '^site: generated' "$log"; rm -f "$log"
+  ( cd site && node scripts/check.mjs && node scripts/selftest.mjs )
+}
 step_e2e(){       bash packaging/e2e.sh; }
 
 # The gate must reach the same verdict whichever parser decoded the payload. This is a real step rather than a
 # smoke section because it needs a SECOND parser to compare against, and a machine with only one has measured
 # nothing — the script answers 3 for that, which is this file's skip, so the rc passes straight through with no
-# translation: 0 every case agreed, 1 a divergence, 3 nothing compared. Under CSK_VERIFY_STRICT, which CI sets,
+# translation: 0 every case agreed, 1 a divergence, 3 nothing compared. Under CREW_VERIFY_STRICT, which CI sets,
 # that skip turns red, and it should: on a runner a missing parser is a broken runner.
 #
-# It is wired without `CSK_CONFORMANCE_KNOWN_OPEN`, deliberately. That variable exists to let the file land
+# It is wired without `CREW_CONFORMANCE_KNOWN_OPEN`, deliberately. That variable exists to let the file land
 # while its three findings were still open; all three are closed, so setting it here would mean a gate that
 # cannot report the next one. The variable stays in the script and is pinned there to fail if a row it excuses
 # starts passing — a safety valve that cleans itself up, not a permanent dispensation.
-step_parser(){    bash claude-starter/eval/parser-conformance.sh; }
+step_parser(){    bash kit/eval/parser-conformance.sh; }
 
 # The bilingual installer's message tables, audited statically: patterns quoted (an unquoted one is a GLOB, and
 # a lot of prose ends in `?`), no colour or raw ESC inside a message, no stray backslash or bare `%` in a string
@@ -95,7 +111,7 @@ step_subshell(){  bash packaging/subshell-audit.sh; }
 # was optional; now that every channel ships it, a botched move would show as a
 # yellow "skipped, NOT a pass" that nobody reads as broken.
 step_studio(){
-  [ -d claude-starter/studio ] || { echo "claude-starter/studio is MISSING — the panel ships in the payload"; return 1; }
+  [ -d kit/studio ] || { echo "kit/studio is MISSING — the panel ships in the payload"; return 1; }
   command -v node >/dev/null 2>&1 || { echo "SKIP: node is not on PATH"; return 3; }
   node --version >/dev/null 2>&1 || { echo "SKIP: node is on PATH but does not run"; return 3; }
   node packaging/studio-test/selfcheck.mjs || return 1
@@ -108,9 +124,9 @@ step_studio(){
   # assumed. The release-time sync gate catches drift only at release; this catches it on every run.
   [ -f plugin/studio/server/index.js ] || {
     echo "plugin/studio is MISSING — the plugin edition ships the panel; run packaging/build-plugin.sh"; return 1; }
-  diff -r claude-starter/studio plugin/studio >/dev/null 2>&1 || {
-    echo "plugin/studio has drifted from claude-starter/studio — run packaging/build-plugin.sh and commit the result"
-    diff -rq claude-starter/studio plugin/studio | head -10; return 1; }
+  diff -r kit/studio plugin/studio >/dev/null 2>&1 || {
+    echo "plugin/studio has drifted from kit/studio — run packaging/build-plugin.sh and commit the result"
+    diff -rq kit/studio plugin/studio | head -10; return 1; }
 }
 
 # The only step that needs a tool the repo does not carry. CI installs the CLI; a developer machine
@@ -139,10 +155,10 @@ for s in $STEPS; do
     PASSED=$((PASSED + 1)); printf '%s\n\n' "${GR}✅ $s${R}"
   else
     rc=$?
-    if [ "$rc" = 3 ] && [ "${CSK_VERIFY_STRICT:-0}" != "1" ]; then
+    if [ "$rc" = 3 ] && [ "${CREW_VERIFY_STRICT:-0}" != "1" ]; then
       SKIPPED="$SKIPPED $s"; printf '%s\n\n' "${YE}⏭  $s — skipped, NOT a pass${R}"
     elif [ "$rc" = 3 ]; then
-      FAILED="$FAILED $s"; printf '%s\n\n' "${RD}❌ $s — skipped under CSK_VERIFY_STRICT, which means the runner is missing a tool it should have${R}"; break
+      FAILED="$FAILED $s"; printf '%s\n\n' "${RD}❌ $s — skipped under CREW_VERIFY_STRICT, which means the runner is missing a tool it should have${R}"; break
     else FAILED="$FAILED $s"; printf '%s\n\n' "${RD}❌ $s (rc=$rc)${R}"; break
     fi
   fi

@@ -1,0 +1,24 @@
+== kit A/B eval ==  2.1.280 (Claude Code) · 5 runs/arm · arms: kit bare
+
+-- stack-greenfield --
+   Empty repo, backend request — stack recorded before code, or the work stopped at the question?
+     trace kit   delegated 1/5 · cost $1.462 · in 34 out 8799 cache_read 667975 cache_create 130264 · test runs 0 (nested 0) · turns 17 (nested 2)
+   kit   15/15 checks (over 5 runs)
+         5/5 at most one runtime manifest (0)
+         5/5 either the stack was recorded (none) or the work stopped before any code
+         5/5 no code — nothing to order (stopped at the question)
+         gates fired: none — no gated command was attempted in any run
+     trace bare  delegated 0/5 · cost $1.495 · in 68 out 27944 cache_read 1184361 cache_create 87403 · test runs 11 (nested 0) · turns 34 (nested 0)
+   bare  10/15 checks (over 5 runs)
+         0/1 written before the stack was recorded: ./test/orders.test.js ./src/db.js ./src/index.js ./src/app.js ./package.json
+         0/1 written before the stack was recorded: ./test/orders.test.js ./src/server.js ./src/store.js ./src/app.js ./package.json
+         0/3 written before the stack was recorded: ./test/orders.test.js ./src/server.js ./src/db.js ./src/app.js ./package.json
+         5/5 at most one runtime manifest (1)
+         5/5 either the stack was recorded (./README.md) or the work stopped before any code
+
+== summary ==
+   kit  15/15
+   bare 10/15
+   delta kit - bare: +5 checks
+scratch kept: /var/folders/hf/b0xx3mxj6jd2nr6g45dw96200000gn/T//csk-eval.LQpn2M
+RUNNER_EXIT=0

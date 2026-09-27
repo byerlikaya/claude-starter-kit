@@ -1,0 +1,42 @@
+# Turkish gate rule labels (the inventory gate-report.sh derives from the hooks) for the site (site/scripts/generate.mjs) — build-time DATA, never loaded into a session.
+# Format: English label<TAB>Turkish text. A missing line FAILS the site build: the page is never shown half in English.
+CLAUDE_GIT_OK pre-authorised session	CLAUDE_GIT_OK ile önceden yetkilendirilmiş oturum
+approval key set inside the command	onay anahtarı komutun içinde ayarlanmış
+commit/push approval prompt	commit/push onay istemi
+commit/push under a mode that cannot prompt	soru soramayan bir modda commit/push
+PowerShell disk-level destructive command	PowerShell'de disk seviyesinde yıkıcı komut
+PowerShell download-and-execute (… | iex)	PowerShell'de indir-ve-çalıştır (… | iex)
+PowerShell recursive force delete (Remove-Item -Recurse -Force)	PowerShell'de özyinelemeli zorla silme (Remove-Item -Recurse -Force)
+PowerShell world-writable ACL (icacls /grant Everyone:F)	PowerShell'de herkese yazılabilir ACL (icacls /grant Everyone:F)
+chmod world-writable (777/1777/666/o+w …)	herkese yazılabilir chmod (777/1777/666/o+w …)
+cluster teardown (kubectl delete / helm uninstall)	küme yıkımı (kubectl delete / helm uninstall)
+dd of= (disk overwrite)	dd of= (diskin üzerine yazma)
+destructive rm -rf	yıkıcı rm -rf
+disk-level destructive command	disk seviyesinde yıkıcı komut
+forced git branch (-D / -f / -M / -C)	zorlanmış git branch (-D / -f / -M / -C)
+git -c core.hooksPath (disarms the git hooks)	git -c core.hooksPath (git hook'larını devre dışı bırakır)
+git clean -f	git clean -f
+git commit --amend	git commit --amend
+git config core.hooksPath (disarms the git hooks)	git config core.hooksPath (git hook'larını devre dışı bırakır)
+git filter-branch/filter-repo	git filter-branch/filter-repo
+git rebase	git rebase
+git reset --hard	git reset --hard
+git update-index --add (bypasses .gitignore, same as git add -f)	git update-index --add (.gitignore'u atlar, git add -f ile aynı)
+hook skip (--no-verify)	hook atlama (--no-verify)
+in-place edit of a gate file	bir kapı dosyasının yerinde düzenlenmesi
+indirected write to a gate path (variable + redirect)	bir kapı yoluna dolaylı yazma (değişken + yönlendirme)
+infrastructure destroy (removes every managed resource)	altyapı yıkımı (yönetilen her kaynağı siler)
+lockfile deletion	lockfile silme
+pipe-to-shell (curl|bash RCE)	kabuğa borulama (curl|bash ile uzaktan kod çalıştırma)
+reading a .env secret via the Bash tool	Bash aracıyla bir .env sırrını okuma
+reading a private key / credential file via the Bash tool	Bash aracıyla özel anahtar ya da kimlik dosyası okuma
+redirect over a gate file	bir kapı dosyasının üzerine yönlendirme
+symlink pointing at the config directory (a gate path in two steps)	yapılandırma dizinini gösteren sembolik bağ (iki adımda bir kapı yolu)
+unattended infrastructure apply (skips the tool's only confirmation)	gözetimsiz altyapı uygulaması (aracın tek onayını atlar)
+whole-tree revert (git checkout/restore over everything)	tüm ağacı geri alma (her şeyin üzerine git checkout/restore)
+write/tamper of a gate file (hook/settings/.git-hooks)	bir kapı dosyasına yazma ya da kurcalama (hook/settings/.git-hooks)
+commit redirected at another worktree	başka bir worktree'ye yönlendirilmiş commit
+commit takes content from the working tree	içeriği çalışma ağacından alan commit
+no review-pass record	inceleme kaydı yok
+review-pass does not match this diff	inceleme kaydı bu diff ile eşleşmiyor
+review-pass matches the staged diff	inceleme kaydı staged diff ile eşleşiyor

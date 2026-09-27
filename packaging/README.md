@@ -1,6 +1,6 @@
 # Distribution / publishing
 
-The kit ships through several channels. These files support the ones that do **not** depend on a GitHub clone. Each channel bundles the same payload (`start.sh`, `adopt.sh`, `claude-starter/`, `VERSION`).
+The kit ships through several channels. These files support the ones that do **not** depend on a GitHub clone. Each channel bundles the same payload (`start.sh`, `adopt.sh`, `kit/`, `VERSION`).
 
 ## npm (npx) — primary
 
@@ -14,33 +14,18 @@ npm publish --access public
 Users then need nothing but Node:
 
 ```bash
-npx @byerlikaya/claude-starter-kit            # fresh project (start.sh wizard)
-npx @byerlikaya/claude-starter-kit adopt      # existing project (adopt.sh handover)
+npx crewforth            # fresh project (start.sh wizard)
+npx crewforth adopt      # existing project (adopt.sh handover)
 ```
 
 `bin/cli.js` stages the payload in a temp dir and runs it with the user's project as the CWD, so `start.sh`'s self-cleanup never touches the package or the project.
 
-> Published as `@byerlikaya/claude-starter-kit` — scoped under the author, because the unscoped `claude-starter-kit` is taken and npm's name-similarity check blocks close variants. A scoped name sidesteps both. Users run `npx @byerlikaya/claude-starter-kit`.
-
-## Homebrew (tap)
-
-`homebrew/claude-starter-kit.rb` is the formula.
-
-1. Create a repo named `homebrew-tap` (e.g. `github.com/byerlikaya/homebrew-tap`).
-2. Add the formula at `Formula/claude-starter-kit.rb`.
-3. Users install:
-
-```bash
-brew install byerlikaya/tap/claude-starter-kit
-claude-starter-kit            # fresh project    ·    claude-starter-kit adopt    # existing project
-```
-
-The formula's `sha256` is pinned to the **v1.0.0** release tarball. If that tarball ever changes, recompute it (`shasum -a 256 claude-starter-kit-1.0.0.tgz`) and update both the `url`/`version` and the `sha256`. To host the tarball off GitHub, point `url` at your own CDN.
+> Published as `crewforth` — scoped under the author, because the unscoped `crewforth` is taken and npm's name-similarity check blocks close variants. A scoped name sidesteps both. Users run `npx crewforth`.
 
 ## Release tarball / curl — no package manager
 
 ```bash
-gh release download --repo byerlikaya/claude-starter-kit -p '*.tgz' && tar xzf claude-starter-kit-*.tgz
+gh release download --repo Crewforth/crewforth -p '*.tgz' && tar xzf crewforth-*.tgz
 bash start.sh         # fresh    ·    bash adopt.sh    # existing
 ```
 
@@ -51,27 +36,48 @@ bash start.sh         # fresh    ·    bash adopt.sh    # existing
 **Cut a release:**
 
 ```bash
-# bump VERSION + package.json version (+ CHANGELOG), commit, then:
+# bump VERSION + package.json version, date the CHANGELOG heading "## [X.Y.Z] — YYYY-MM-DD", commit, then:
 git tag vX.Y.Z
 git push origin main --tags
 ```
 
-On the tag, the workflow builds the tarball, creates the GitHub release, runs `npm publish`, and bumps the Homebrew formula in `byerlikaya/homebrew-tap` — all automatically. It first checks that `VERSION` matches the tag.
+On the tag, the workflow builds the tarball, creates the GitHub release, and runs `npm publish`, all automatically.
+`packaging/release-check.sh` runs first: `VERSION` and `package.json` must match the tag, and a final tag needs the
+CHANGELOG's first heading dated — `[Unreleased]` stops it.
+
+**Rehearse a release (rc):** tag `vX.Y.Z-rc.N` on a commit whose `VERSION` and `package.json` still say `X.Y.Z`; the
+CHANGELOG heading may still read `## [Unreleased] — X.Y.Z`. The workflow publishes a GitHub pre-release and npm
+`X.Y.Z-rc.N` under the `next` dist-tag (the version is set in the workflow's checkout only). `latest`, the plugin
+channel and the site do not move. Try it with `npx crewforth@next`.
 
 **One-time secrets** (repo → Settings → Secrets and variables → Actions → New repository secret):
 
 - `NPM_TOKEN` — an npm **Automation** access token (npmjs.com → Access Tokens → Generate New Token → *Automation*). Automation tokens bypass 2FA, which an interactive `--otp` cannot do in CI.
-- `TAP_TOKEN` — a GitHub token with write access to `byerlikaya/homebrew-tap` (a classic PAT with `repo` scope, or a fine-grained token with *Contents: read and write* on that repo). Used to push the formula bump.
+
+## The 2.x package name (launch day, once)
+
+2.x installs update through the old package name. Its 3.0.0 is the forwarder in `legacy-npm/`: it prints one line
+and runs `npx crewforth@^3` with the same arguments and exit code. The release workflow does not publish it; on
+launch day, after crewforth 3.0.0 is on npm:
+
+```bash
+cd packaging/legacy-npm && npm publish --access public
+npm deprecate "@byerlikaya/claude-starter-kit@*" "Renamed to crewforth: use npx crewforth (https://crewforth.com/install)"
+```
+
+The deprecation covers the forwarder too, and does not stop it: npx prints one `npm warn deprecated` line and runs
+it (measured with a deprecated package that has a bin, npm 10.9.7: exit 0). To rehearse before launch, point the
+forwarder at an rc with `CREWFORTH_SPEC=crewforth@next`, since `^3` does not match pre-releases.
 
 ## Claude Code plugin (lite channel)
 
 Users can install the kit's agents, skills, and commands directly in Claude Code:
 
 ```
-/plugin marketplace add byerlikaya/claude-starter-kit
-/plugin install claude-starter-kit@byerlikaya
+/plugin marketplace add Crewforth/crewforth
+/plugin install crewforth@crewforth
 ```
 
-This is the **lite** edition — it registers the agents/skills/commands only, *without* the scaffolding (no backend-pattern choice, no DevArchitecture base, no git-hook gates). The component set is identical to a `start.sh` install, and `e2e.sh` asserts that parity. For the full kit use `start.sh` / `adopt.sh`.
+This is the **lite** edition — it registers the agents/skills/commands only, *without* the scaffolding (no git-hook gates, no `.gitignore` / `kit.conf` writes). The component set is identical to a `start.sh` install, and `e2e.sh` asserts that parity. For the full kit use `start.sh` / `adopt.sh`.
 
-`plugin/` (and its `.claude-plugin/plugin.json`) is generated from `claude-starter/` by **`packaging/build-plugin.sh`** — rerun it after changing agents/skills/commands so the plugin stays in sync. The release workflow verifies this on every tag. The marketplace manifest is `.claude-plugin/marketplace.json` at the repo root.
+`plugin/` (and its `.claude-plugin/plugin.json`) is generated from `kit/` by **`packaging/build-plugin.sh`** — rerun it after changing agents/skills/commands so the plugin stays in sync. The release workflow verifies this on every tag. The marketplace manifest is `.claude-plugin/marketplace.json` at the repo root.

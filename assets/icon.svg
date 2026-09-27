@@ -1,7 +1,3 @@
-<svg width="256" height="256" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" fill="none" role="img" aria-label="Claude Starter Kit">
+<svg width="256" height="256" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" fill="none" role="img" aria-label="Crewforth">
 <rect width="200" height="200" rx="46" fill="#0B1020"/>
-<g transform="rotate(20 100 100)">
-<rect x="58" y="38" width="22" height="124" rx="11" fill="#E5E7FB"/>
-<rect x="88" y="38" width="22" height="124" rx="11" fill="#B9BEF9"/>
-<rect x="118" y="32" width="26" height="136" rx="13" fill="#A78BFA"/>
-</g></svg>
+<polyline points="44,58 86,100 44,142" stroke="#E5E7FB" stroke-width="21" stroke-linecap="round" stroke-linejoin="round" fill="none"/><polyline points="80,58 122,100 80,142" stroke="#B9BEF9" stroke-width="21" stroke-linecap="round" stroke-linejoin="round" fill="none"/><polyline points="116,58 158,100 116,142" stroke="#A78BFA" stroke-width="24" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>

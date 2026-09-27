@@ -1,0 +1,13 @@
+# Turkish command summaries for the site (site/scripts/generate.mjs) — build-time DATA, never loaded into a session.
+# Format: command name<TAB>Turkish text. A missing line FAILS the site build: the page is never shown half in English.
+crew-brainstorm	Planlamadan önce ıraksak keşif: bulanık bir isteği kapsamlı seçeneklere ve seçilmiş bir yöne çevirir.
+crew-board	Ekip panosu: hangi maddenin kimde olduğunu gösterir; madde üstlenir, devreder, tamamlar.
+crew-gates	Kapı raporu: araç seviyesindeki kapıların gerçekte ne yaptığını ve hiç tetiklenmeyen kuralları gösterir.
+crew-doctor	Kurulumun sağlığını denetler: hook'lar çalıştırılabilir mi, core.hooksPath ayarlı mı, kapılar bağlı mı, disiplin yüklü mü.
+crew-ship	Definition of Done kapısı ve commit önerisi; commit onayınızı bekler.
+crew-handoff	Oturum devri: SESSION_STATE.md'yi yazar ve /clear önerir.
+crew-review	İnceleme turu: kod incelemesi, güvenlik ve kalite kapıları.
+crew-skill	Bir Crewforth bileşenini (skill, ajan ya da komut) şablona ve kapılarına göre yazar ya da değiştirir.
+crew-update	Yeni bir sürüm var mı bakar, günceller, neyin değiştiğini söyler ve yeniden yüklemek için /clear önerir.
+crew-plan	Spec öncelikli planlama: kapsamı belirsiz bir işi crew-planner ile böler.
+crew-studio	Crewforth Studio'yu açar: ajanların ne yaptığını, ne harcadığını ve hangi kapıların tetiklendiğini gösteren görsel panel.

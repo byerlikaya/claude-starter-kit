@@ -5,17 +5,17 @@
 # trace/secret/bloat scan) — those are wired by core.hooksPath, which only the full install (start.sh / adopt.sh)
 # can set. So a plugin user gets the Claude Code gates (commit/push approval, destructive-op & write guards,
 # context measurement, session rehydration) but the commit-time trace scan still needs the full install.
-# Single source of truth stays claude-starter/; this regenerates plugin/ from it.
+# Single source of truth stays kit/; this regenerates plugin/ from it.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SRC="$ROOT/claude-starter"
+SRC="$ROOT/kit"
 OUT="$ROOT/plugin"
 
 rm -rf "$OUT"
 mkdir -p "$OUT/.claude-plugin" "$OUT/hooks"
 cp -R "$SRC/agents"   "$OUT/agents"
 cp -R "$SRC/skills"   "$OUT/skills"
-cp -R "$SRC/commands" "$OUT/commands"
+# No commands/: since 3.0 the slash commands are skills (metadata kind: command) and ship with skills/.
 # The kit's one JSON reader. A skill script reaches it at scripts/../../../eval/lib in BOTH editions
 # (automode-policy/scripts/apply.sh merges the user's settings with it), so it ships at the same relative spot
 # here. Only lib/ — the rest of eval/ is install-only tooling the plugin does not carry.
@@ -74,7 +74,7 @@ cat > "$OUT/hooks/hooks.json" <<'HOOKS'
         ]
       },
       {
-        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
+        "matcher": "Write|Edit|NotebookEdit",
         "hooks": [
           { "type": "command", "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/guard-write.sh\"", "timeout": 60 }
         ]
@@ -97,13 +97,13 @@ cat > "$OUT/hooks/hooks.json" <<'HOOKS'
     ],
     "SessionStart": [
       {
-        "matcher": "compact|clear|resume",
+        "matcher": "startup|resume|clear|compact|fork",
         "hooks": [
           { "type": "command", "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/session-rehydrate.sh\"", "timeout": 60 }
         ]
       },
       {
-        "matcher": "startup|resume|clear|compact",
+        "matcher": "startup|resume|clear|compact|fork",
         "hooks": [
           { "type": "command", "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/board-sync.sh\"", "timeout": 60 }
         ]
@@ -123,21 +123,22 @@ VERSION="$(cat "$ROOT/VERSION")"
 cat > "$OUT/.claude-plugin/plugin.json" <<JSON
 {
   "\$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
-  "name": "claude-starter-kit",
-  "displayName": "Claude Starter Kit",
-  "description": "Agentic Working Kit — disciplined agents, skills, slash commands, and tool-level gate hooks (commit/push approval, destructive-op & write guards, context-fill measurement, session rehydration) for Claude Code. The git-commit trace/secret/bloat scan needs the full install (start.sh / adopt.sh).",
+  "name": "crewforth",
+  "displayName": "Crewforth",
+  "description": "Crewforth — disciplined agents, skills, commands, and tool-level gate hooks (commit/push approval, destructive-op & write guards, context-fill measurement, session rehydration) for Claude Code. The git-commit trace/secret/bloat scan needs the full install (start.sh / adopt.sh).",
   "version": "${VERSION}",
   "author": { "name": "Barış Yerlikaya" },
-  "homepage": "https://github.com/byerlikaya/claude-starter-kit",
-  "repository": "https://github.com/byerlikaya/claude-starter-kit",
+  "homepage": "https://github.com/Crewforth/crewforth",
+  "repository": "https://github.com/Crewforth/crewforth",
   "license": "MIT",
-  "keywords": ["claude-code", "agents", "skills", "workflow", "hooks"]
+  "keywords": ["claude-code", "agents", "subagents", "skills", "slash-commands", "workflow", "hooks"]
 }
 JSON
 
 # Asserted, not printed. The counts below are a summary a reader skims; this is the one component whose
-# absence would be invisible — the plugin would install cleanly and /studio-csk would send the user to a
+# absence would be invisible — the plugin would install cleanly and /crew-studio would send the user to a
 # path that is not there.
 [ -f "$OUT/studio/server/index.js" ] || { echo "build-plugin.sh: the panel did not land in $OUT/studio" >&2; exit 1; }
 
-echo "plugin/ generated (v${VERSION}): $(ls "$OUT/agents"/*.md | wc -l | tr -d ' ') agents, $(ls -d "$OUT/skills"/*/ | wc -l | tr -d ' ') skills, $(ls "$OUT/commands"/*.md | wc -l | tr -d ' ') commands, $(ls "$OUT/hooks"/*.sh | wc -l | tr -d ' ') hooks, studio ($(find "$OUT/studio" -type f | wc -l | tr -d ' ') files)"
+NCMD="$(grep -l '^  kind: command' "$OUT"/skills/*/SKILL.md 2>/dev/null | wc -l | tr -d ' ')"
+echo "plugin/ generated (v${VERSION}): $(ls "$OUT/agents"/*.md | wc -l | tr -d ' ') agents, $(( $(ls -d "$OUT/skills"/*/ | wc -l | tr -d ' ') - NCMD )) skills, $NCMD commands (as skills), $(ls "$OUT/hooks"/*.sh | wc -l | tr -d ' ') hooks, studio ($(find "$OUT/studio" -type f | wc -l | tr -d ' ') files)"

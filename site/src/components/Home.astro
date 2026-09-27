@@ -1,0 +1,186 @@
+---
+// The home page, design B ("the crew and its stages"). Every list and number on it comes from the repository through
+// scripts/generate.mjs (see `home` there): the agents per stage, the skill count, the install commands. The strings
+// that carry inline code arrive already escaped and converted, so they are set as HTML.
+const { d } = Astro.props;
+---
+<div class="cf-home not-content">
+  <section class="cf-open">
+    <img src={d.mark} alt="" width="96" height="96" class="cf-mark" />
+    <h1 class="cf-title">{d.title.before}<span class="cf-accent">{d.title.accent}</span>{d.title.after}</h1>
+    <p class="cf-lead">{d.lead}</p>
+    <div class="cf-start">
+      <div class="cf-cmd">
+        <code class="cf-cmd-text">{d.command}</code>
+        <button type="button" class="cf-copy" data-copy={d.command} data-done={d.copied} hidden>{d.copy}</button>
+        <span class="cf-sr" aria-live="polite"></span>
+      </div>
+      <a class="cf-primary" href={d.docsHref}>{d.docsLabel}</a>
+    </div>
+    <p class="cf-adopt" set:html={d.adopt} />
+  </section>
+
+  <section class="cf-video" id="overview">
+    <div class="cf-player">
+      <!-- Without JavaScript: the browser's own player, muted, fetching nothing until someone presses play. -->
+      <video class="cf-hero" controls muted playsinline preload="none" poster={d.video.poster} aria-describedby="cf-video-desc">
+        <source src={d.video.src} type="video/mp4" />
+      </video>
+      <button class="cf-play" type="button" aria-label={d.video.play} aria-describedby="cf-video-desc" hidden>
+        <svg viewBox="0 0 24 24" width="34" height="34" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor" /></svg>
+      </button>
+      <button class="cf-sound" type="button" aria-label={d.video.sound} aria-pressed="false" hidden>
+        <svg class="cf-sound-off" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z" fill="currentColor" /><path d="M17 9l4 6M21 9l-4 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
+        <svg class="cf-sound-on" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z" fill="currentColor" /><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
+      </button>
+    </div>
+    <p id="cf-video-desc" class="cf-dim cf-caption">{d.video.desc}</p>
+    {d.video.note && <p class="cf-dim cf-caption">{d.video.note}</p>}
+  </section>
+
+  <section class="cf-crew">
+    <h2>{d.crew.heading}</h2>
+    <p class="cf-dim">{d.crew.lead}</p>
+    <div class="cf-stages" style={`--cf-chip-chars: ${d.crew.chipChars}`}>
+      {d.crew.stages.map((s) => (
+        <div class="cf-card">
+          <span class="cf-label">{s.label}</span>
+          <ul class="cf-agents">{s.agents.map((a) => <li><code>{a}</code></li>)}</ul>
+          <p class="cf-dim" set:html={s.line} />
+        </div>
+      ))}
+    </div>
+    <p><a href={d.crew.skills.href}>{d.crew.skills.text}</a></p>
+  </section>
+
+  <section class="cf-pair">
+    <div class="cf-card">
+      <h2>{d.gate.heading}</h2>
+      <ul class="cf-rules">{d.gate.lines.map((l) => <li>{l}</li>)}</ul>
+      <a href={d.gate.link.href}>{d.gate.link.text}</a>
+    </div>
+    <div class="cf-card">
+      <h2>{d.measured.heading}</h2>
+      {d.measured.paras.map((p) => <p class="cf-dim">{p}</p>)}
+      <a href={d.measured.link.href}>{d.measured.link.text}</a>
+    </div>
+  </section>
+
+  <section class="cf-install">
+    <h2>{d.install.heading}</h2>
+    <div class="cf-channels">
+      {d.install.cards.map((c) => (
+        <div class="cf-card">
+          <span class="cf-label">{c.title}</span>
+          {c.cmds.map((x) => <code class="cf-block">{x}</code>)}
+        </div>
+      ))}
+    </div>
+    <p><a href={d.install.archive.href}>{d.install.archive.text}</a></p>
+    <p class="cf-dim">{d.install.update}</p>
+  </section>
+
+  <footer class="cf-foot">
+    <img src={d.mark} alt="" width="24" height="24" />
+    <span>{d.footer.licence}</span>
+    {d.footer.links.map((l) => <a href={l.href}>{l.text}</a>)}
+  </footer>
+</div>
+
+<script>
+  // The overview: nothing plays or downloads on its own. With JavaScript the poster carries a play button; pressing
+  // it starts the video muted with its controls, and a separate button turns the sound on and off.
+  for (const player of document.querySelectorAll<HTMLElement>('.cf-player')) {
+    const video = player.querySelector('video'); const play = player.querySelector<HTMLButtonElement>('.cf-play');
+    const sound = player.querySelector<HTMLButtonElement>('.cf-sound');
+    if (!video || !play || !sound) continue;
+    video.controls = false; play.hidden = false;
+    play.addEventListener('click', () => {
+      video.muted = true; video.controls = true; play.hidden = true; sound.hidden = false;
+      void video.play().catch(() => { play.hidden = false; });
+      video.focus();
+    });
+    sound.addEventListener('click', () => {
+      video.muted = !video.muted; sound.setAttribute('aria-pressed', String(!video.muted));
+    });
+    video.addEventListener('volumechange', () => sound.setAttribute('aria-pressed', String(!video.muted)));
+  }
+
+  // Progressive: without JavaScript the command is plain, selectable text and the button stays hidden.
+  for (const btn of document.querySelectorAll<HTMLButtonElement>('.cf-copy')) {
+    btn.hidden = false;
+    const label = btn.textContent ?? '';
+    const live = btn.parentElement?.querySelector<HTMLElement>('.cf-sr');
+    const code = btn.parentElement?.querySelector<HTMLElement>('.cf-cmd-text');
+    // The Clipboard API can be refused (no permission, an embedded view). Then select the command and try the older
+    // copy command; if that fails too the command stays selected, so Ctrl/Cmd+C finishes the job — never a silent no-op.
+    const select = () => { if (!code) return; const r = document.createRange(); r.selectNodeContents(code); const s = getSelection(); s?.removeAllRanges(); s?.addRange(r); };
+    btn.addEventListener('click', async () => {
+      let ok = false;
+      try { await navigator.clipboard.writeText(btn.dataset.copy ?? ''); ok = true; }
+      catch { select(); try { ok = document.execCommand('copy'); } catch { ok = false; } }
+      if (!ok) { select(); return; }
+      btn.textContent = btn.dataset.done ?? label;
+      if (live) live.textContent = btn.dataset.done ?? '';
+      setTimeout(() => { btn.textContent = label; if (live) live.textContent = ''; }, 2000);
+    });
+  }
+</script>
+
+<style>
+  .cf-home { display: flex; flex-direction: column; gap: 64px; }
+  .cf-home h2 { font-size: 24px; line-height: 32px; font-weight: 700; margin: 0 0 12px; color: var(--cf-ink); }
+  .cf-dim { color: var(--cf-ink-dim); }
+  .cf-open { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 16px; padding-top: 32px; }
+  .cf-mark { width: 96px; height: 96px; }
+  .cf-title { font-size: 48px; line-height: 52px; font-weight: 800; margin: 0; color: var(--cf-ink); }
+  .cf-accent { color: var(--cf-accent); }
+  .cf-lead { max-width: 640px; color: var(--cf-ink-dim); font-size: 18px; line-height: 28px; margin: 0; }
+  .cf-start { display: flex; gap: 12px; align-items: stretch; justify-content: center; flex-wrap: wrap; }
+  .cf-cmd { display: flex; align-items: center; gap: 12px; background: var(--cf-surface); border: 1px solid var(--cf-line); border-radius: var(--cf-radius-md); padding: 8px 8px 8px 16px; }
+  .cf-cmd-text { background: none; font-size: 15px; user-select: all; }
+  .cf-copy { font: 600 12px/16px var(--cf-font-sans); text-transform: uppercase; letter-spacing: 0.06em; color: var(--cf-accent); background: var(--cf-surface-raised); border: 1px solid var(--cf-line); border-radius: var(--cf-radius-sm); padding: 6px 10px; cursor: pointer; }
+  .cf-primary { display: inline-flex; align-items: center; padding: 10px 20px; border-radius: var(--cf-radius-md); background: var(--cf-accent); color: var(--cf-on-accent); font-weight: 600; text-decoration: none; }
+  .cf-adopt { color: var(--cf-ink-dim); margin: 0; }
+  .cf-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .cf-video { display: flex; flex-direction: column; gap: 8px; scroll-margin-top: 80px; }
+  .cf-player { position: relative; border-radius: var(--cf-radius-lg); overflow: hidden; border: 1px solid var(--cf-line); background: #000; }
+  .cf-hero { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; }
+  /* Centred on the poster frame, 88px: the one control a first-time reader is looking for. */
+  .cf-play { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 88px; height: 88px; border-radius: 999px; border: 0; cursor: pointer;
+    display: grid; place-items: center; color: #fff; background: #6D28D9; box-shadow: 0 6px 24px rgb(0 0 0 / 0.35); }
+  .cf-play[hidden], .cf-sound[hidden] { display: none; }
+  .cf-play:focus-visible, .cf-sound:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+  .cf-play svg { margin-left: 4px; }
+  .cf-sound { position: absolute; top: 12px; right: 12px; width: 40px; height: 40px; border-radius: 999px; border: 0; cursor: pointer;
+    display: grid; place-items: center; color: #fff; background: rgb(0 0 0 / 0.6); }
+  .cf-sound .cf-sound-on { display: none; }
+  .cf-sound[aria-pressed='true'] .cf-sound-on { display: block; }
+  .cf-sound[aria-pressed='true'] .cf-sound-off { display: none; }
+  .cf-caption { margin: 0; font-size: 14px; }
+  .cf-card { background: var(--cf-surface); border: 1px solid var(--cf-line); border-radius: var(--cf-radius-md); padding: 16px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .cf-card p { margin: 0; }
+  .cf-label { font-size: 12px; line-height: 16px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--cf-accent); }
+  .cf-stages { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
+  .cf-agents, .cf-rules { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+  /* Chips shrink to fit their card rather than break: the longest name (--cf-chip-chars, from the source) sets the
+     size, capped at 13px. 0.62em is the monospace advance measured here, plus 1em for the chip's padding and border. */
+  .cf-agents { container-type: inline-size; }
+  .cf-home .cf-stages .cf-agents code { font-size: min(13px, calc(100cqi / (var(--cf-chip-chars) * 0.62 + 1))); white-space: nowrap; }
+  /* not-content drops Starlight's inline-code look with its spacing; the prose here still wants the former. */
+  .cf-home :global(code:not(.cf-cmd-text)) { background: var(--sl-color-bg-inline-code); border: 1px solid var(--sl-color-hairline-light); border-radius: var(--cf-radius-sm); padding: 0.1em 0.35em; font-size: 0.875em; }
+  .cf-rules li { padding-left: 16px; position: relative; }
+  .cf-rules li::before { content: '›'; position: absolute; left: 0; color: var(--cf-accent); }
+  .cf-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .cf-install p { margin: 0; }
+  .cf-install p + p { margin-top: 8px; }
+  .cf-channels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
+  .cf-block { display: block; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .cf-foot { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; border-top: 1px solid var(--cf-line); padding-top: 24px; color: var(--cf-ink-dim); }
+  @media (max-width: 1100px) { .cf-stages { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 768px) {
+    .cf-title { font-size: 36px; line-height: 42px; }
+    .cf-start { flex-direction: column; align-items: stretch; }
+    .cf-stages, .cf-pair, .cf-channels { grid-template-columns: 1fr; }
+  }
+</style>

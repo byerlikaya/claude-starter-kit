@@ -1,0 +1,17 @@
+{
+  "name": "@byerlikaya/claude-starter-kit",
+  "version": "3.0.0",
+  "description": "Renamed to crewforth. This package only forwards to npx crewforth.",
+  "bin": {
+    "claude-starter-kit": "cli.js"
+  },
+  "files": [
+    "cli.js",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "homepage": "https://crewforth.com",
+  "license": "MIT"
+}

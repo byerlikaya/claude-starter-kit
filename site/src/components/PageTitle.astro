@@ -1,0 +1,6 @@
+---
+// The home page (the only `splash` page) draws its own heading; every other page keeps Starlight's title as is.
+import Default from '@astrojs/starlight/components/PageTitle.astro';
+const splash = Astro.locals.starlightRoute.entry.data.template === 'splash';
+---
+{!splash && <Default />}

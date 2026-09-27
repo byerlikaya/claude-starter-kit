@@ -1,0 +1,26 @@
+== kit A/B eval ==  2.1.280 (Claude Code) · 5 runs/arm · arms: kit bare
+
+-- stack-recorded-no-ask --
+   A Go + chi service with its stack recorded — is /healthz added the recorded way, and the record left alone?
+     trace kit   delegated 5/5 · cost $2.812 · in 40 out 10063 cache_read 848419 cache_create 110552 · test runs 8 (nested 7) · turns 24 (nested 39)
+   kit   20/20 checks (over 5 runs)
+         5/5 ## Stack is unchanged
+         5/5 /healthz is registered on the chi router, in Go
+         5/5 chi is still the only router
+         5/5 no other runtime's files were created
+         gates fired: none — no gated command was attempted in any run
+     trace bare  delegated 0/5 · cost $0.811 · in 50 out 5178 cache_read 815093 cache_create 68062 · test runs 7 (nested 0) · turns 25 (nested 0)
+   bare  20/20 checks (over 5 runs)
+         5/5 ## Stack is unchanged
+         5/5 /healthz is registered on the chi router, in Go
+         5/5 chi is still the only router
+         5/5 no other runtime's files were created
+
+== summary ==
+   kit  20/20
+   bare 20/20
+   delta kit - bare: +0 checks
+   NOTE: the kit did not come out ahead. Report that as it stands — a harness that only publishes
+         favourable runs measures nothing.
+scratch kept: /var/folders/hf/b0xx3mxj6jd2nr6g45dw96200000gn/T//csk-eval.aHFARz
+RUNNER_EXIT=0

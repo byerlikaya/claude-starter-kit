@@ -119,7 +119,7 @@ fi
 FILES=("$@")
 if [ ${#FILES[@]} -eq 0 ]; then
   while IFS= read -r f; do FILES+=("$f"); done < <(
-    { ls claude-starter/eval/*.sh packaging/*.sh evals/run.sh 2>/dev/null; } | LC_ALL=C sort -u )
+    { ls kit/eval/*.sh packaging/*.sh evals/run.sh 2>/dev/null; } | LC_ALL=C sort -u )
 fi
 
 hits=0; files=0

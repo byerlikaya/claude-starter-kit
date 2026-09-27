@@ -27,7 +27,7 @@ fi
 # §4.1, graded with the kit's OWN blocklist rather than a second hand-written matcher. A separate matcher is
 # how a grader passes while the gate it claims to represent is broken — the same reasoning that made the
 # blocklists carry their own test cases.
-BL="${KIT_ROOT:-}/claude-starter/hooks/trace-blocklist.txt"
+BL="${KIT_ROOT:-}/kit/hooks/trace-blocklist.txt"
 [ -f "$BL" ] || BL=""
 if [ -z "$BL" ]; then
   say FAIL "trace-blocklist not found — cannot grade AI trace with the real pattern list"

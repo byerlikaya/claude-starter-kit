@@ -1,9 +1,194 @@
 # Changelog
 
+Crewforth was named Claude Starter Kit until 3.0.0.
+
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [3.0.0] — 2026-09-28
+
+### BREAKING — Claude Starter Kit is now Crewforth
+
+One name everywhere: the package, the components, the variables, the payload. **Updating a 2.x project migrates it**
+(`npx crewforth update`, `/crew-update`, or `adopt.sh`); nothing of yours is deleted.
+
+| 2.x | 3.0 |
+|---|---|
+| `npx @byerlikaya/claude-starter-kit` | `npx crewforth` |
+| `@byerlikaya/csk-studio` · `csk-studio` | `@crewforth/studio` · `crewforth-studio` |
+| plugin `claude-starter-kit@byerlikaya` | `crewforth@crewforth` — reinstall: `/plugin install crewforth@crewforth` |
+| `brew install byerlikaya/tap/claude-starter-kit` | removed — see *Removed — the Homebrew channel* below |
+| agents `<x>-csk` (`backend-expert-csk`) | `crew-<x>` (`crew-backend-expert`) |
+| commands `/<x>-csk` (`/review-csk`, `/ship-csk`) | `/crew-<x>` (`/crew-review`, `/crew-ship`) |
+| skill `code-review-csk` | `crew-code-review` |
+| payload directory `claude-starter/` | `kit/` |
+
+- **The update moves the kit's own files** from `<x>-csk` to `crew-<x>` and says each move. Only names the kit
+  ships are considered: a file of yours that happens to end in `-csk` stays, and does not make the project look like
+  a kit install. If both names exist, nothing moves, your `crew-` file is not overwritten, and the update tells you
+  to keep one.
+- **`CLAUDE.md` and the docs it references are swept** for the old kit names (`backend-expert-csk`,
+  `@agent-planner-csk`, `/review-csk`) and rewritten to the `crew-` form; nothing else in those files changes.
+  A symlinked `CLAUDE.md` is written through, and nothing outside the project is edited — not through `..`, an absolute path or a symlinked directory. `doctor` (PROOF-5) reports
+  an old agent name written into `CLAUDE.md` later.
+- **`npx crewforth add`** accepts `security-expert`, `crew-security-expert` and the 2.x name `security-expert-csk`
+  alike; `add --list` shows the `crew-` names.
+- **Variables are `CREW_*`.** The ones you set yourself keep working under their 2.x name for the whole 3.x line
+  (removed in 4.0); when both are set, `CREW_*` wins. The update and `doctor` name the new spelling of any 2.x
+  variable still set — and say plainly when it is one that is no longer read:
+
+  | 2.x | 3.0 |
+  |---|---|
+  | `CSK_LANG` | `CREW_LANG` |
+  | `CSK_NO_STAR` | `CREW_NO_STAR` |
+  | `CSK_NO_UPDATE_CHECK` | `CREW_NO_UPDATE_CHECK` |
+  | `CSK_NO_BOARD` | `CREW_NO_BOARD` |
+  | `CSK_GATE_LOG` · `CSK_GATE_LOG_CMD` | `CREW_GATE_LOG` · `CREW_GATE_LOG_CMD` |
+  | `CSK_STUDIO_TOKEN` · `CSK_STUDIO_PEERS` · `CSK_STUDIO_RUNTIME` | `CREW_STUDIO_TOKEN` · `CREW_STUDIO_PEERS` · `CREW_STUDIO_RUNTIME` |
+  | `CSK_MAX_FILE_BYTES` | `CREW_MAX_FILE_BYTES` |
+  | `CSK_ALLOW_SOURCE_INSTALL` | `CREW_ALLOW_SOURCE_INSTALL` |
+
+  Internal and test variables were renamed with no fallback.
+- **The team board is `refs/crew/board`** (or the `crew-board` branch where the server refuses custom refs), with
+  `crew.board*` settings. The update moves this clone's board ref, settings and caches and adds a `crew-board`
+  remote beside a `csk-board` one; it never deletes the remote's 2.x ref, and says so. While that ref exists, every
+  3.x write goes to both refs in one atomic push, so a team that updates one person at a time keeps one board and
+  one lock: a 2.x claim is refused against a 3.x claim and the other way round, and nothing either side writes is
+  lost. Delete the old ref once everyone is on 3.x. No git feature newer than the kit already needed is involved.
+- **The Studio panel keeps your layout:** its saved theme, widths and canvas layout move to the new key names the
+  first time it opens.
+- **Auto-mode rules applied by 2.x** (`CSK …` in your user settings) are renamed `Crewforth …` by the update, after
+  a backup; nothing else in that file changes.
+- **Fixed:** an update appended `docs/` to `.gitignore` again on every run when `docs/` held tracked files.
+- Plugin users on 2.x: the plugin and marketplace were renamed; uninstall `claude-starter-kit`, then add
+  `Crewforth/crewforth` and install `crewforth@crewforth`.
+
+### Added — 2.x installs reach 3.0 through the old package name
+
+- **`npx @byerlikaya/claude-starter-kit` forwards to `npx crewforth@3`.** 2.x installs check for updates and update
+  through the old name; its 3.0.0 prints one line saying where it forwards and runs crewforth with the same arguments
+  and the same exit code. The old package is deprecated with a pointer to the new name, which warns and does not stop
+  it. Nothing needs to change on your side.
+- **Node.js 20 or later** is what the package now declares (22 or 24 recommended); older versions get npm's engine
+  warning and are not blocked. **Claude Code 2.1.214 or later** is recommended; this release is tested on 2.1.282.
+
+### Removed — the Homebrew channel
+
+- Removed: the Homebrew channel. Install with `npx crewforth`, the Claude Code plugin, or the release archive. The
+  last formula (`claude-starter-kit`, 2.13.0) stays in the old tap and will be marked deprecated.
+
+### BREAKING — the backend is stack-agnostic; the .NET install path is gone
+
+- **`--dotnet` no longer selects anything.** It is still accepted: it prints a warning and installs the same
+  stack-agnostic kit as every other command line. `--generic` is accepted silently. The wizard has two steps now
+  (who the install is for · summary) — scripts that piped an answer to the old backend question should drop it.
+- **No base project is cloned any more.** The DevArchitecture base, its approval gate, the `./backend` / `./frontend`
+  scaffold and the Windows long-path warning that came with it are removed.
+- **`cqrs-aop-module` is no longer shipped.** Its replacement is `backend-architecture`, which resolves the stack per
+  project — the request, then `CLAUDE.md ## Stack`, then the repo's manifests, and only in an empty repo up to four
+  multiple-choice questions (each with a recommended option and "Decide for me") — then records the answer in
+  `## Stack` and an ADR, and carries a pattern menu (layered · clean/hexagonal · vertical slice · CQRS) and the
+  language-neutral backend rules. Its triggers include the four the old skill routed.
+- **One backend agent.** `crew-backend-expert` is stack-agnostic and applies the project's own pattern skill if it has
+  one, `backend-architecture` otherwise; `agents-optional/` is gone. `crew-database-expert` reads the engine and ORM
+  from `## Stack` / the repo instead of assuming PostgreSQL + EF Core. `crew-planner` resolves the stack before
+  planning in an empty repo.
+- **Updating a pre-3.0 `--dotnet` install keeps your pattern skill.** `kit.conf` is rewritten to `stack=generic`
+  (the key stays, for older updaters); `.claude/skills/cqrs-aop-module` — or `devarch-module`, renamed as before —
+  is left exactly as it is and becomes a project skill that the backend agent goes on applying. The update says so
+  once, the stale-file sweep no longer offers to delete it, and while it is present the §4.2 `DevArchitecture` line
+  in the trace blocklist stays armed. `CSK_CORRECT_STACK` has no effect and says so.
+- **`adopt.sh` no longer asks about .NET** on a fresh adopt, and no longer deletes a pattern skill on a generic stack.
+
+
+### Changed — the slash commands are skills; forked sessions are recognised
+
+- **The 11 commands are skills now**, as Claude Code merged custom commands into skills (`.claude/commands/` is
+  its older format). They live in `.claude/skills/crew-<name>/SKILL.md`; the names you type are unchanged
+  (`/crew-review` is still `/crew-review`). Five run only when you type them — `/crew-studio`, `/crew-board`,
+  `/crew-skill`, `/crew-gates`, `/crew-brainstorm` — and stay out of Claude's context; the other six
+  (`/crew-plan`, `/crew-review`, `/crew-ship`, `/crew-handoff`, `/crew-update`, `/crew-doctor`) Claude may run itself,
+  as the workflow expects.
+- **The update moves them.** The kit's own commands move from `.claude/commands/` to `.claude/skills/` (a 2.x
+  `<name>-csk.md` goes straight there); a command of your own in `.claude/commands/` is not touched, and if a skill of
+  the same name already exists nothing moves and the update says so.
+- **Forked sessions** (Claude Code 2.1.214+) get the handover reminder, the skill-trust check and the team board
+  like a resumed one; the update question stays on a fresh start only.
+- **`MultiEdit` is gone from the file-tool gate's matcher** — it is no longer a Claude Code tool.
+- **Wording:** the 11 command-skills are called commands, not slash commands, matching Claude Code's docs (custom
+  commands were merged into skills, and `/` opens the command menu). You still start each with its `/crew-…` name.
+- The team board (`/crew-board`) ships as experimental and is left out of the command list until it is finished.
+- **`crew-code-review` rewritten:** plan → review → fact-check, every finding carries a severity
+  (critical/high/medium/low) and a category; the comment labels are gone.
+- **`frontend-design` names the defaults to avoid** when a project gives no design direction (a cream ground with a
+  serif and terracotta, a purple-to-blue hero, a black ground with one neon accent, and six more), after looking for
+  the project's own system first. Installed text no longer calls Crewforth a kit: the skills' adaptation note is
+  "Crewforth adaptation", and the discipline quotes the update warning the hook actually prints.
+
+### Fixed — found by the release rehearsal
+
+- **Counts:** a fresh install says "12 agents · 39 skills · 10 commands", as the README does, and an update from 2.x
+  counts skills and commands (it used to print "51 skills" and "+75" — directories and files). The closing line no
+  longer names the installer's folder.
+- **`/crew-doctor` speaks your language:** it answers in the language the project was installed in; commands,
+  paths and settings keys stay as written. The skill-listing check counts the way Claude Code counts, reads
+  `skillListingBudgetFraction` from your settings, and on a 200,000-token model tells you the one line to add and
+  what it costs. In the plugin edition, `/crew-doctor` reports the same thing.
+- **Updating from 2.x:**
+  - a repository with no commit yet gets a one-line branch name and accept/discard commands that work there;
+  - a repository that already ignores `.claude` is recommended to keep it local;
+  - in a private install the handover and the ADR are written but not staged;
+  - the `.NET` pattern skill the update keeps is not flagged as unvetted in the next session;
+  - the 2.x template sentences in `CLAUDE.md` are brought up to date, and your own lines are left alone.
+- **The 2.x package name** says which package it forwards to.
+- **Replies stay in your language** even when a skill's text is English, and a Turkish install says so at every session
+  start, so a bare command such as `/crew-doctor` is answered in Turkish too.
+- **`/crew-review`** runs the closing reviewer whenever the audits leave no critical or high finding; medium and low
+  findings go into its prompt and the report.
+- **Release asset:** a release candidate's archive carries its own version in the file name.
+
+### Added — "an update is out, update now?"
+
+- **A newer release is a question, not a footnote.** At session start Claude asks once — **Update · Later · Skip
+  this version** — before answering the first message (an urgent first message, such as an error, is answered first
+  and the question comes at the end of that reply). Update runs `/crew-update` (a plugin install runs
+  `claude plugin update crewforth@crewforth`, applied on restart). Later, or closing the question, asks again the
+  next day at the earliest; Skip is silent until a newer release. A major version adds a line to read the CHANGELOG
+  first. The question speaks the install's language, and nothing is asked in CI, with `CREW_NO_UPDATE_CHECK=1`, or
+  in a non-interactive run (`claude -p`). There is no silent auto-update: nothing updates without the user's pick.
+- **`/crew-update` shows what it did.** It names uncommitted changes in `.claude/` and `CLAUDE.md` first and asks
+  before going on; afterwards it lists the files added, changed, moved and removed, and reports what changed from
+  the installed package's own CHANGELOG — never from the network.
+- **A shared `.claude/` keeps `.claude/.state/` out of git** — the kit's runtime state on this machine.
+
+### Added — the Crewforth front page and a one-time star line
+
+- **New brand set.** `assets/logo.svg`, `logo-light.svg`, `icon.svg` and `mark.svg` are the Crewforth mark (›››);
+  `social-preview.png/.svg` and `icon-512/180/32.png` are new; the unused `logo.png` is removed. The generated
+  diagrams and the Studio panel draw the same mark.
+- **README front page** (English, Turkish, npm): the promise, `npx crewforth` / `npx crewforth adopt`, four badges
+  and the panel GIF.
+- **A star line, once per kit version.** The install, an update to a new version, or a healthy `doctor` —
+  whichever comes first — prints one line asking for a star; a marker in the git dir (never under `.claude/`, so
+  it is never committed) records the version, and nothing repeats it until the version changes. `/crew-update` and
+  `/crew-doctor` pass the line through to you; no hook or session start prints it. `CREW_NO_STAR=1`, or any defined
+  `CI`, silences it, and a silenced run leaves no marker.
+- **The front-page proof line was re-measured, and it no longer holds.** `permission-pressure` (bare 6 of 10,
+  `kit` 0 of 10, one-sided Fisher p = 0.0054) had been measured on the 2.x texts. After the 3.0 text changes it was
+  run again at n=10 under the same rule, fixed before the run (`kit` ≤ 2/10, bare ≥ 6/10, p < 0.05): bare reached
+  4 of 10, `kit` stayed at 0 of 10, p = 0.0433, and the bare condition failed. So the line and its chart are not on
+  the front page; the result, the calculation and the raw output are only in `evals/README.md` and
+  `evals/results/`.
+
+### Added — crewforth.com, built from this repository
+
+- **A documentation site** (`site/`, Astro + Starlight), in English and Turkish with the same pages at the same
+  addresses (`/install/`, `/tr/install/`). The agents, commands, skill catalogue and gate rules on it are generated
+  from the payload when the site is built, and so are the counts and the cost figures it quotes; a missing Turkish
+  line fails the build instead of showing English. It is gated on what it builds: every page in both languages, no
+  old name, no figure the eval table does not carry, no broken link, and no third-party request unless an analytics
+  token is set. Publishing is off until the repository variable `SITE_DEPLOY` is set. `packaging/build-readme-catalog.sh`
+  is retired: the catalogue is no longer a copy that can go stale.
 
 ## [2.13.0] — 2026-09-23
 
@@ -388,7 +573,6 @@ versioning follows [SemVer](https://semver.org/).
   measurement now says `NOT_MEASURED` instead of scoring: this one had printed "the suite was weakened" when node
   simply could not run and nothing had been touched. The runner counts such a run as not measured. The grader side
   is measured; the runner's counting of that line is exercised only by a real, paid run.
-- Adapted from the pressure cases in `addyosmani/agent-skills` (MIT).
 
 ### Added — `security-scan` knows when not to scan, when not to run code, and how to read code built on a model
 
@@ -420,8 +604,7 @@ versioning follows [SemVer](https://semver.org/).
 - Not adopted, deliberately: a machine-validated findings schema. The idea is strong, but nothing in this kit
   reads a scan report — no hook, no command — so a validator here would be a component nobody calls, which this kit
   does not ship.
-- Adapted from `cloudflare/security-audit-skill` (MIT), rewritten for this skill's source→gate→sink model and its
-  three-outcome verdict.
+- Written for this skill's source→gate→sink model and its three-outcome verdict.
 
 ### Added — finished work is held up against the plan, not only against the tests
 
@@ -439,8 +622,7 @@ versioning follows [SemVer](https://semver.org/).
 - `review-agent-csk` runs the pass when the work was planned and puts its table in the review: clean code that
   leaves a criterion missing or partial is not a clean review.
 - Model discipline, not a gate, and stated as such — no exit code can judge "partially built". What makes it hold
-  is the table: a pass that produced none did not run. Adapted from `converge` in `github/spec-kit` (MIT), trimmed
-  to the part this kit lacked.
+  is the table: a pass that produced none did not run.
 
 ### Added — the routing eval asks whether the right owner WINS, not only whether it could match
 
@@ -466,8 +648,8 @@ versioning follows [SemVer](https://semver.org/).
 - Cost: 160 hook invocations. Nine seconds on macOS; measured on Windows 11 at about 275 ms per invocation, roughly
   44 seconds, for a developer who runs `verify.sh routing` locally. CI is unaffected — the routing step runs only in
   the Linux job.
-- Adapted from the Tier-2 routing evals in `addyosmani/agent-skills` (MIT) — rank the target among all its rivals —
-  and rewritten against this kit's own scorer rather than a TF-IDF approximation of it.
+- Routing evals rank the target among all its rivals, scored by this kit's own scorer rather than a TF-IDF
+  approximation of it.
 
 ### Added — a commit can no longer quietly lower the quality bar
 
@@ -526,8 +708,7 @@ versioning follows [SemVer](https://semver.org/).
   that CR where gawk drops it. A bare-`$` pattern would therefore hold on Windows and match nothing on macOS. Every
   existing `$` is already written as an alternative to a class that contains CR (`([[:space:]]|$)`); the suite now
   rejects any that is not, and was checked red with a bare `NOSONAR$` added.
-- Adapted from the floor in `addyosmani/agent-skills` (constraint-driven-development, MIT) and rewritten for this
-  kit: bash rather than Node, the staged diff rather than a merge base, and the exemptions above.
+- Written for this kit: bash rather than Node, the staged diff rather than a merge base, and the exemptions above.
 
 ## [2.11.0] — 2026-09-16
 
@@ -2485,15 +2666,10 @@ was working.
   Consequences kept deliberate: **`.NET/DevArchitecture ↔ generic` is still asked on every install** — that skill
   is genuinely wrong in a Node repo, and it remains the only component the installer removes. The DevArch layout
   (`./backend` + a reserved `./frontend`) applies to every `--dotnet` install rather than one profile.
-- **`code-review-csk` stands on three layers instead of one archived repository.** google/eng-practices was
-  archived read-only on 2025-11-21 and has no successor; the skill was resting its whole spine on it. The layers
-  are now separated by the question each one answers. **Judgement** is the kit's own — the two-stage verdict and
-  verifier integrity, which exist because the code under review is increasingly agent-written and no external
-  standard covers that. **Governance** is NIST SP 800-218 **PW.7** and the OpenSSF Scorecard **Code-Review**
-  check. **Comment vocabulary** is Conventional Comments. eng-practices stays attributed for what is genuinely
-  adapted from it — the nine-item priority order and the "improves overall code health" bar — because CC-BY 3.0
-  obliges that whether or not the repository is archived, and dropping the credit while keeping the derivation
-  would be a licence violation, not a cleanup.
+- **`code-review-csk` is re-grounded, its layers separated by the question each one answers.** **Judgement** is
+  the kit's own — the two-stage verdict and verifier integrity, which exist because the code under review is
+  increasingly agent-written. **Governance** is that review happens at all and its findings survive it.
+  **Comment vocabulary** is a label on every comment.
 
   Deliberately **not** adopted: the claim circulating that PW.7/PW.8 "become mandatory when AI is the author".
   That is a vendor's June 2026 proposal *to* NIST, not published NIST policy, and citing it as a standard would
@@ -2806,9 +2982,7 @@ functionality — it is the routing layer catching up with what the kit already 
 - **The README no longer claims the agents "auto-chain".** They chain because the commands @-mention them.
   Automatic delegation is a model judgement in any kit; where it must happen, the kit no longer leaves it to
   chance, and the README says which is which.
-- **The upstream attribution list is gone**, except the one a licence requires. `google/eng-practices` stays in
-  one line: it is CC-BY 3.0 and `code-review` is an adaptation, so attribution is an obligation, not a
-  courtesy. Two DevArchitecture mentions are deliberately kept and are not attributions — `--dotnet` genuinely
+- **The upstream attribution list is gone.** Two DevArchitecture mentions are deliberately kept and are not attributions — `--dotnet` genuinely
   clones that repository, so the sentence describing the installer would become false without it.
 - The discipline shrank 182 bytes as a result; always-on went 28,858 → 28,697 even after everything added
   above. The attribution list was carried into every session and taught the model nothing.

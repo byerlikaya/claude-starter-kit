@@ -1,0 +1,14 @@
+# Turkish agent summaries for the site (site/scripts/generate.mjs) — build-time DATA, never loaded into a session.
+# Format: agent name<TAB>Turkish text. A missing line FAILS the site build: the page is never shown half in English.
+crew-backend-expert	Yığından bağımsız backend uzmanı (Node, Go, Python, .NET, JVM ve diğerleri); projenin backend desenini CLAUDE.md ## Stack ve depodan okuyarak uygular.
+crew-commit-agent	Commit mesajı uzmanı: staged diff'i okur ve `commit-message` skill'iyle bir Conventional Commits mesajı önerir; commit yalnız onayınızla atılır.
+crew-database-expert	Yığından bağımsız veri katmanı uzmanı: şema, migration, indeks, sorgu biçimi ve önbellek; `db-migration` skill'ini uygular.
+crew-devops-expert	DevOps uzmanı: CI/CD hattının sahibi; iş akışı dosyasını yazar ya da günceller, koşuları izler, düşen işleri teşhis eder.
+crew-frontend-expert	Yığından bağımsız frontend uzmanı: web, mobil (React Native/Flutter) ve masaüstü; kullanıcının gördüğü her şeyin sahibi.
+crew-performance-expert	Performans denetçisi: sıcak yol, sorgu ya da döngü, render yolu, büyük payload veya yavaşlık bildirimi olduğunda ölçülmüş bulgular üretir; düzeltme yazmaz.
+crew-planner	Planlama uzmanı: kapsamı ya da kabul kriterleri belirsiz bir işi `spec-planning` skill'iyle görevlere, kabul kriterlerine ve bağımlılık sırasına böler; kod yazmaz.
+crew-privacy-agent	Gizlilik denetçisi: projenin beyan ettiği rejimler (varsayılan KVKK/GDPR) altında kişisel veri, hukuki dayanak, saklama ve yurt dışına aktarımı denetler.
+crew-review-agent	Kod inceleme uzmanı: önemsiz olmayan bir diff'in sistemin kod sağlığını iyileştirip iyileştirmediğini dört ilkeye göre denetler; commit'in istediği inceleme kaydını yazar.
+crew-security-expert	Güvenlik inceleme uzmanı: auth, token akışları, sır sızıntısı, injection, zayıf kripto, IDOR ve rate limit gibi yüzeylere dokunulduğunda bulgu ve düzeltme üretir.
+crew-session-manager	Oturum sağlığı denetçisi: aşama sınırında bağlam doluluğunu değerlendirir ve devri önerir; kod yazmaz.
+crew-test-expert	Test uzmanı: yeni davranış eklendikten sonra birim ve entegrasyon testlerini yazar, koşturur ve Definition of Done'daki "testler yeşil" şartını güvenceye alır.

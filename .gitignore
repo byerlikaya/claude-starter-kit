@@ -2,7 +2,7 @@
 .DS_Store
 
 # Kit gelistirme dokumanlari — lokal kalir, yayina gitmez.
-# (Bu iki kural yalniz kitin KENDI deposuna aittir; claude-starter/ payload'i ETKILENMEZ.)
+# (Bu iki kural yalniz kitin KENDI deposuna aittir; kit/ payload'i ETKILENMEZ.)
 /CLAUDE.md
 /docs/
 
@@ -14,15 +14,15 @@
 # Kapi kaydi (runtime artefakti; testler bunu depo kokunde uretebiliyor).
 .claude/gate-log.tsv
 
-# review-agent-csk'nin §4.6 kaydi (runtime artefakti). Kurulu projelerde `.claude/` toptan
+# crew-review-agent'nin §4.6 kaydi (runtime artefakti). Kurulu projelerde `.claude/` toptan
 # ignore'lu, burada degil — testler ve dogfooding bunu depo kokunde uretiyor.
 .claude/review-pass.json
 
 # studio: neither of these should ever exist — the entries are the alarm, not housekeeping.
 # The panel ships with the payload, so a node_modules under it would land in every install.
-claude-starter/studio/node_modules/
-claude-starter/studio/bin/
-claude-starter/studio/lib/
-claude-starter/studio/recordings/
+kit/studio/node_modules/
+kit/studio/bin/
+kit/studio/lib/
+kit/studio/recordings/
 __pycache__/
 *.pyc

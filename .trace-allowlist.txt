@@ -1,6 +1,6 @@
 # Trace-scanner exception list — SPECIFIC to this repo only (the kit's own source).
 # A FULL-line blocklist pattern written here is SKIPPED by the trace scanner.
-# This file is NOT part of the claude-starter/ payload; start.sh does not carry it to the installed
+# This file is NOT part of the kit/ payload; start.sh does not carry it to the installed
 # project, so in consumer projects the blocklist stays fully strict (§4.1).
 # Note: real trace signatures (an authorship trailer, auto-generation footers, a robot emoji,
 # signature tags) do NOT belong here; they are still blocked. Only the product name is exempted.
