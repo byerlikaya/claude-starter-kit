@@ -20,7 +20,7 @@ A rule that matters becomes a gate. Enforcement sits at the tool level — a hoo
 | `guard-commit-scan.sh` | Runs the real trace and secret scanners from `PreToolUse`, so the commit gate works where `core.hooksPath` cannot be set |
 | `context-usage.sh` | Reads the real token count from the transcript and injects it every turn |
 | `session-guard.sh` | Warns once at {{FILL_WARN}}% context fill and once at {{FILL_ALERT}}% — never blocks a turn |
-| `session-rehydrate.sh` | Re-surfaces the handover after `/compact` or `/clear` |
+| `session-rehydrate.sh` | Re-surfaces the handover after `/compact` or `/clear`, and tells a session which language the project was installed in |
 | `skill-trust.sh` | Names any skill or agent Crewforth never shipped and you never accepted |
 | `session-stats.sh` | Reports what the session actually did — failing tool loops, repeated prompts, interrupts. `reflect` and `handoff` read it, so a retrospective rests on the record rather than on recollection |
 | `session-update-check.sh` | Asks once, when a session opens, whether to update when a newer version is published — each edition compared against the channel that will deliver it. The lookup runs detached and at most daily, so an offline or proxied machine costs the session opening nothing; `CREW_NO_UPDATE_CHECK=1` turns it off |

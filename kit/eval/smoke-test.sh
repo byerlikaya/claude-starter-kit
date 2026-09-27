@@ -4028,6 +4028,30 @@ case "$o" in *'"additionalContext"'*SESSION_STATE*) pass "handover present -> in
   *) fail "session-rehydrate did not inject a pointer when SESSION_STATE.md exists" ;; esac
 if [ -n "$JSONQ" ]; then printf '%s' "$o" | json_ok && pass "rehydrate output is valid JSON ($JSONQ)" || fail "rehydrate output is not valid JSON";
     else skip tool "the rehydrate output JSON-validity check (no working jq)"; fi
+# The install language (RC-2 rehearsal: a bare /crew-doctor in a Turkish install came back in English). The hook
+# now runs on startup too and tells the model the install language; the handover is still offered only on a
+# boundary. Six states, each read by what the hook actually printed: a Turkish install gets the language line on
+# startup and on a boundary; an English install gets none; startup never offers the handover, a boundary does.
+# JSON validity is asked of Crewforth's own reader, so it holds on a machine without jq.
+_rh(){ printf '{"hook_event_name":"SessionStart","cwd":"%s","source":"%s"}' "$RHD" "$1" | CLAUDE_PROJECT_DIR= bash "$HOOKS/session-rehydrate.sh" 2>/dev/null; }
+_rk(){ case "$1" in *'handover'*) printf 'H' ;; esac; case "$1" in *'installed in Turkish'*) printf 'L' ;; esac; }
+mkdir -p "$RHD/.claude"
+printf 'lang=tr\n' > "$RHD/.claude/kit.conf"; _o1="$(_rh startup)"; _o2="$(_rh compact)"
+printf 'lang=en\n' > "$RHD/.claude/kit.conf"; _o3="$(_rh startup)"; _o4="$(_rh compact)"
+rm -f "$RHD/docs/SESSION_STATE.md"; _o5="$(_rh startup)"
+printf 'lang=tr\n' > "$RHD/.claude/kit.conf"; _o6="$(_rh clear)"
+_got="$(_rk "$_o1")/$(_rk "$_o2")/$(_rk "$_o3")/$(_rk "$_o4")/$(_rk "$_o5")/$(_rk "$_o6")"
+[ "$_got" = "L/HL//H//L" ] && pass "SessionStart names a Turkish install's language on startup and on a boundary; English adds nothing; startup never offers the handover (6 states)" \
+  || fail "session-rehydrate language/handover states read '$_got', want 'L/HL//H//L' (tr startup · tr compact+handover · en startup · en compact+handover · en startup no handover · tr clear no handover)"
+_rj=0; for _o in "$_o1" "$_o2" "$_o4" "$_o6"; do printf '%s' "$_o" > "$RHD/o.json"; awk -v op=validate -f "$ROOT/eval/lib/settings-json.awk" "$RHD/o.json" 2>/dev/null || _rj=$((_rj+1)); done
+[ "$_rj" = 0 ] && pass "each language/handover output is valid JSON (Crewforth's reader, 4 of 4)" || fail "$_rj session-rehydrate output(s) are not valid JSON"
+# Asked of the entry that carries session-rehydrate, not of the file: skill-trust's entry has the same matcher.
+_rw(){ _n="$(awk -v op=len -v path=hooks.SessionStart -f "$ROOT/eval/lib/settings-json.awk" "$1" 2>/dev/null)"; _i=0
+       while [ "$_i" -lt "${_n:-0}" ]; do _e="$(awk -v op=get -v path="hooks.SessionStart.$_i" -f "$ROOT/eval/lib/settings-json.awk" "$1" 2>/dev/null)"
+         case "$_e" in *session-rehydrate*) case "$_e" in *'"matcher"'*startup*) return 0 ;; esac ;; esac; _i=$((_i+1)); done; return 1; }
+sed 's/"startup|resume|clear|compact|fork"/"compact|clear|resume|fork"/' "$ROOT/settings.json" > "$RHD/s-twin.json"
+if _rw "$ROOT/settings.json" && ! _rw "$RHD/s-twin.json"; then pass "settings.json runs session-rehydrate on startup too; a copy wired as before (no startup) is caught"
+else fail "session-rehydrate is not wired on startup (or the check cannot tell) — a Turkish install's first session would not be told its language"; fi
 rm -rf "$RHD"
 # board-sync builds its JSON with one awk escaper on every machine. The no-jq escaper it replaced handled only the
 # quote, the backslash and the newline, so a TAB in an item title produced JSON the CLI cannot parse and the board
