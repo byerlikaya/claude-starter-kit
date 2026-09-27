@@ -35,7 +35,7 @@ Kurulu bir plugin, siz yenisini istemedikçe kurduğunuz sürümde kalır; bu y�
 /plugin install crewforth@crewforth
 ```
 
-**200 000 token'lık bir modelde mi çalışıyorsunuz?** Claude Code skill listesine bağlam penceresinin yüzde birini ayırır; böyle bir modelde bu 8 000 karakter eder ve plugin bunu değiştiremez. Crewforth'un skill'leri Claude Code'un kendi skill'leriyle birlikte yaklaşık 15 000 karakter tutar. Bu yüzden en az kullandığınız skill'lerin açıklamaları düşer ve o skill'ler seçilmez olur. `~/.claude/settings.json` dosyasına eklenecek tek bir anahtar listeye yer açar:
+**200 000 token'lık bir modelde mi çalışıyorsunuz?** Claude Code skill listesine bağlam penceresinin yüzde birini ayırır; böyle bir modelde bu 8 000 karakter eder ve plugin bunu değiştiremez. Crewforth'un skill'leri Claude Code'un kendi skill'leriyle birlikte yaklaşık 15 000 karakter tutar. Bu yüzden en az kullandığınız skill'lerin açıklamaları düşer ve o skill'lerin kendiliğinden seçilmeleri zorlaşır. `~/.claude/settings.json` dosyasına eklenecek tek bir anahtar listeye yer açar:
 
 ```json
 "skillListingBudgetFraction": 0.04
