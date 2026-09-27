@@ -97,7 +97,7 @@ cat > "$OUT/hooks/hooks.json" <<'HOOKS'
     ],
     "SessionStart": [
       {
-        "matcher": "compact|clear|resume|fork",
+        "matcher": "startup|resume|clear|compact|fork",
         "hooks": [
           { "type": "command", "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/session-rehydrate.sh\"", "timeout": 60 }
         ]

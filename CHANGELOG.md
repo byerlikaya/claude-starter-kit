@@ -141,7 +141,8 @@ One name everywhere: the package, the components, the variables, the payload. **
   - the `.NET` pattern skill the update keeps is not flagged as unvetted in the next session;
   - the 2.x template sentences in `CLAUDE.md` are brought up to date, and your own lines are left alone.
 - **The 2.x package name** says which package it forwards to.
-- **Replies stay in your language** even when a skill's text is English.
+- **Replies stay in your language** even when a skill's text is English, and a Turkish install says so at every session
+  start, so a bare command such as `/crew-doctor` is answered in Turkish too.
 - **`/crew-review`** runs the closing reviewer whenever the audits leave no critical or high finding; medium and low
   findings go into its prompt and the report.
 - **Release asset:** a release candidate's archive carries its own version in the file name.
