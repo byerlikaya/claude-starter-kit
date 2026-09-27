@@ -163,7 +163,7 @@ grep -q '^skills/backend-expert-local$' "$P/.claude/kit-manifest.txt" && { echo 
 # because the counter reads the `+` prefix and bash takes PS4 from the environment.
 DTR="$WORK/doctor.trace"
 DT0=$SECONDS
-DOUT="$( cd "$P" && PS4='+ ' bash -x .claude/eval/doctor.sh 2>"$DTR" || true )"
+DOUT="$( cd "$P" && CREW_LANG=en PS4='+ ' bash -x .claude/eval/doctor.sh 2>"$DTR" || true )"
 DEL=$((SECONDS - DT0))
 case "$DOUT" in *"project-specific skill(s)"*) ;; *) echo "FAIL: doctor readiness did not detect the project's own skill"; exit 1 ;; esac
 # The §4.6 liveness probe, asserted on a REAL install rather than left as an unasserted side effect. It was
@@ -309,6 +309,14 @@ grep -qx 'stack=generic' "$L/.claude/kit.conf"          || die "a 2.13 dotnet in
 grep -qx 'skills/cqrs-aop-module' "$L/.claude/kit-manifest.txt" && die "the pattern skill is still listed as kit-owned" legacy-dotnet-migration "$L"
 case "$ADOPT_OUT" in *"cqrs-aop-module is now a project skill"*) ;; *) die "the migration did not say the pattern skill is now the project's" legacy-dotnet-migration "$L" ;; esac
 case "$ADOPT_OUT" in *"no longer shipped:"*"skills/cqrs-aop-module"*) die "the stale sweep offered to rm -r the kept pattern skill" legacy-dotnet-migration "$L" ;; esac
+# The skill the migration made the project's own is vouched for by the migration: the next session must not open by
+# asking whether to trust it (RC-1 rehearsal). Driven through the real SessionStart hook. The twin plants a skill the
+# user added and never reviewed — it must still be named, or "vouched for one" became "trusted everything".
+mkdir -p "$L/.claude/skills/mine-unreviewed"; printf -- '---\nname: mine-unreviewed\ndescription: x\n---\n' > "$L/.claude/skills/mine-unreviewed/SKILL.md"
+_st="$( cd "$L" && printf '{"cwd":"%s"}' "$L" | CLAUDE_PROJECT_DIR="$L" bash .claude/hooks/skill-trust.sh 2>/dev/null )"
+case "$_st" in *"skills/cqrs-aop-module"*) die "the first session after the migration asks whether to trust cqrs-aop-module, which the migration itself kept" legacy-dotnet-migration "$L" ;; esac
+case "$_st" in *"skills/mine-unreviewed"*) ;; *) die "twin: an unreviewed skill the user added is no longer named — the migration trusted more than its own skill" legacy-dotnet-migration "$L" ;; esac
+rm -rf "$L/.claude/skills/mine-unreviewed"
 grep -qx 'DevArchitecture' "$L/.claude/hooks/trace-blocklist.txt" || die "§4.2: the vendor line was disarmed on a project that keeps the pattern skill" legacy-dotnet-migration "$L"
 # An armed line proves the edit ran, not that anything is enforced — so drive the REAL commit-msg hook, in a
 # throwaway repo (the hook needs one, and this project is read again below), with and without the name.
@@ -635,7 +643,7 @@ SP="$WORK/star"; rm -rf "$SP"; mkdir -p "$SP"; cp start.sh VERSION "$SP/"; cp -R
 _slog; ( cd "$SP" && git init -q && git config user.email t@t.t && git config user.name t && git commit -q --allow-empty -m b \
     && printf 'yes\n' | env -u CI -u CREW_NO_STAR -u CSK_NO_STAR bash start.sh ) >"$_L" 2>&1 || _evidence "start.sh in $SP" "$_L" $?
 S1="$(starn "$_L")"
-dstar(){ ( cd "$SP" && env -u CI -u CREW_NO_STAR -u CSK_NO_STAR bash .claude/eval/doctor.sh 2>&1 || true ) > "$WORK/star-doctor.txt"
+dstar(){ ( cd "$SP" && env -u CI -u CREW_NO_STAR -u CSK_NO_STAR CREW_LANG=en bash .claude/eval/doctor.sh 2>&1 || true ) > "$WORK/star-doctor.txt"
          case "$(cat "$WORK/star-doctor.txt")" in *"DOCTOR: healthy"*) ;; *) echo "FAIL: FIXTURE — doctor is not healthy here, so its star checks prove nothing" >&2; echo UNHEALTHY; return ;; esac
          starn "$WORK/star-doctor.txt"; }
 D1="$(dstar)"                                              # same version as the install: silent
@@ -658,7 +666,7 @@ for _q in "CREW_NO_STAR=1" "CI=true"; do
   _slog; ( cd "$SQ" && git init -q && printf 'yes\n' | env -u CI -u CREW_NO_STAR -u CSK_NO_STAR "$_q" bash start.sh ) >"$_L" 2>&1 || _evidence "start.sh $_q in $SQ" "$_L" $?
   _qm="$(cd "$SQ" && git rev-parse --git-path crewforth-star)"
   [ "$(starn "$_L")" = 0 ] && [ ! -e "$SQ/$_qm" ] || { echo "FAIL: under $_q the install printed the star line or wrote its marker"; exit 1; }
-  DQ="$( cd "$SQ" && env -u CI -u CREW_NO_STAR -u CSK_NO_STAR "$_q" bash .claude/eval/doctor.sh 2>&1 || true )"
+  DQ="$( cd "$SQ" && env -u CI -u CREW_NO_STAR -u CSK_NO_STAR CREW_LANG=en "$_q" bash .claude/eval/doctor.sh 2>&1 || true )"
   [ "$(printf '%s\n' "$DQ" | grep -c '⭐' || true)" = 0 ] || { echo "FAIL: under $_q doctor printed the star line"; exit 1; }
 done
 echo "[star] once per version: install 1 · doctor 0 · same-version update 0 · new-version update 1 · doctor 0 · new version via doctor 1 · again 0 · marker in the git dir · CREW_NO_STAR=1 / CI=true: 0, no marker"
@@ -702,7 +710,7 @@ else
   [ "$(diff "$WORK/automode.before" "$AMS" | grep -c '^>')" = 2 ] || { echo "FAIL: the auto-mode rename changed more than the rule-name lines"; diff "$WORK/automode.before" "$AMS"; exit 1; }
   ls "$AMS".crew-bak-* >/dev/null 2>&1 && cmp -s "$(ls "$AMS".crew-bak-* | head -n 1)" "$WORK/automode.before" \
     || { echo "FAIL: no byte-exact backup of the user's settings before the auto-mode rename"; exit 1; }
-  DENV="$( cd "$MG" && env CSK_NO_STAR=1 bash .claude/eval/doctor.sh 2>&1 || true )"
+  DENV="$( cd "$MG" && env CSK_NO_STAR=1 CREW_LANG=en bash .claude/eval/doctor.sh 2>&1 || true )"
   case "$DENV" in *'CSK_NO_STAR is set — its 3.0 name is CREW_NO_STAR'*) ;; *) echo "FAIL: doctor did not name CREW_NO_STAR for a set CSK_NO_STAR"; exit 1 ;; esac
   NREN="$(grep -c '^.*3\.0 rename: ' "$_L" || true)"
   # commands/ may be gone after the 3.0 commands -> skills move, and under pipefail a find over a missing directory
@@ -730,8 +738,13 @@ else
   # Longest name first, or crew-review would eat the front of crew-review-agent.
   REV="$(for kf in kit/agents/crew-*.md kit/skills/crew-*/; do kn="${kf%/}"; kn="${kn##*/}"; printf '%s\n' "${kn%.md}"; done \
          | awk '{ print length($0) "\t" $0 }' | sort -rn | cut -f2 | while IFS= read -r kn; do printf ' -e s/%s/%s-csk/g' "$kn" "${kn#crew-}"; done)"
-  sed $REV "$MG/CLAUDE.md" | cmp -s - "$MG/CLAUDE.md.before" \
-    || { echo "FAIL: CLAUDE.md changed beyond kit names:"; sed $REV "$MG/CLAUDE.md" | diff "$MG/CLAUDE.md.before" - | head -n 10; exit 1; }
+  # ...and the three 2.x template sentences the update brings up to date (kit discipline / kit-owned x2), mapped back
+  # the same way, so every other difference still fails here.
+  _tpl_back(){ sed -E -e 's/^<!-- Crewforth discipline · on conflict the project rules BELOW win -->$/<!-- kit discipline · on conflict the project rules BELOW win -->/' \
+                      -e 's/^Crewforth-owned (and identical in every project, so it cannot know either\.)/kit-owned \1/' \
+                      -e 's/^Crewforth-owned(: an update overwrites it, so put )/kit-owned\1/'; }
+  sed $REV "$MG/CLAUDE.md" | _tpl_back | cmp -s - "$MG/CLAUDE.md.before" \
+    || { echo "FAIL: CLAUDE.md changed beyond kit names and the 2.x template sentences:"; sed $REV "$MG/CLAUDE.md" | _tpl_back | diff "$MG/CLAUDE.md.before" - | head -n 10; exit 1; }
   grep -q '@agent-crew-security-expert, then run /crew-review; my own my-helper-csk and security-expert-cskx stay' "$MG/CLAUDE.md" \
     || { echo "FAIL: the ref-sweep did not rewrite the user's line as expected:"; tail -n 2 "$MG/CLAUDE.md"; exit 1; }
   # The moved kit agents are the kit's: counting them as the project's once made the next update rewrite HANDOVER.md.
@@ -740,9 +753,9 @@ else
   grep -q 'PROOF-5' "$_L" && { echo "FAIL: the update's ref-sweep left a stale kit name for PROOF-5 to report:"; grep -A3 'PROOF-5' "$_L"; exit 1; }
   # doctor PROOF-5 sees a 2.x name too. Measured on a copy, so the idempotency tree below is not disturbed.
   MD="$WORK/migrate-2.13-doctor"; rm -rf "$MD"; cp -R "$MG" "$MD"
-  DOC0="$( cd "$MD" && bash .claude/eval/doctor.sh 2>&1 || true )"
+  DOC0="$( cd "$MD" && CREW_LANG=en bash .claude/eval/doctor.sh 2>&1 || true )"
   printf 'Hand plans to @agent-planner-csk.\n' >> "$MD/CLAUDE.md"
-  DOC1="$( cd "$MD" && bash .claude/eval/doctor.sh 2>&1 || true )"
+  DOC1="$( cd "$MD" && CREW_LANG=en bash .claude/eval/doctor.sh 2>&1 || true )"
   case "$DOC0" in *'"planner-csk" → "crew-planner"'*) echo "FAIL: doctor reported planner-csk before any line named it"; exit 1 ;; esac
   case "$DOC1" in *'"planner-csk" → "crew-planner"'*) ;; *) echo "FAIL: doctor did not report @agent-planner-csk as a stale 2.x name:"; printf '%s\n' "$DOC1" | grep -i -A3 'agent' | head -n 8; exit 1 ;; esac
   # Idempotency: a second update changes nothing (the gate log is an activity log and is left out).
@@ -845,7 +858,7 @@ else
   own(){ ( cd "$BB" && PATH="$BR/shim:$PATH" bash .claude/hooks/board.sh show "$1" ) 2>/dev/null | grep -m1 '^owner: ' | cut -d' ' -f2-; }
   [ "$(own 001)" = a@x ] && [ "$(own 002)" = b@x ] && [ "$(own 004)" = a@x ] \
     || { echo "FAIL: owners across the versions came out wrong: 001 '$(own 001)' 002 '$(own 002)' 004 '$(own 004)'"; exit 1; }
-  echo "[migrate-2.13] real v2.13.0 install → $NREN renamed ($NOLD old agent/command files) · CSK_NO_STAR=1: named by update + doctor, star still silent · CSK_NET_TIMEOUT: "no longer read" · auto-mode rules renamed (3 of 3, user rule kept, backup byte-exact) · 0 old kit names left · 11 commands moved straight to skills/crew-*/ (commands/ holds only the user's my-cmd.md) · user agent, allow rule untouched · HANDOVER counts 1 project agent · CLAUDE.md: kit names only · 2nd update: same tree, silent · no PROOF-5 after the sweep · doctor flags a planted @agent-planner-csk · both names: warned, nothing moved, user crew- file kept, user skills/crew-review untouched · $MBL · CRLF kept ($MBCR0 → $MBCR1 CRs) · outside files untouched (../, absolute, $MBDL) · fresh project with my-helper-csk: own skill kept · board, 2.x + 3.0 clones, git without merge-tree: 5 items + 3 decisions on both refs, cross-version claims refused both ways"
+  echo "[migrate-2.13] real v2.13.0 install → $NREN renamed ($NOLD old agent/command files) · CSK_NO_STAR=1: named by update + doctor, star still silent · CSK_NET_TIMEOUT: "no longer read" · auto-mode rules renamed (3 of 3, user rule kept, backup byte-exact) · 0 old kit names left · 11 commands moved straight to skills/crew-*/ (commands/ holds only the user's my-cmd.md) · user agent, allow rule untouched · HANDOVER counts 1 project agent · CLAUDE.md: kit names and the 2.x template sentences only · 2nd update: same tree, silent · no PROOF-5 after the sweep · doctor flags a planted @agent-planner-csk · both names: warned, nothing moved, user crew- file kept, user skills/crew-review untouched · $MBL · CRLF kept ($MBCR0 → $MBCR1 CRs) · outside files untouched (../, absolute, $MBDL) · fresh project with my-helper-csk: own skill kept · board, 2.x + 3.0 clones, git without merge-tree: 5 items + 3 decisions on both refs, cross-version claims refused both ways"
   # FROM 3.0 AS IT STOOD BEFORE COMMANDS BECAME SKILLS (next @ 30e727d): .claude/commands/crew-*.md move to
   # skills/crew-*/SKILL.md, the user's own command stays, and a second update changes nothing.
   PRE5E=30e727d
@@ -936,6 +949,7 @@ else
     rm -rf "$1"; mkdir -p "$1"; git archive "$LF_OLD" start.sh VERSION claude-starter | ( cd "$1" && tar -xf - )
     _slog; ( cd "$1" && git init -q && bash start.sh --generic --yes --lang en ) >"$_L" 2>&1 || _evidence "2.13.0 start.sh in $1" "$_L" $?
     [ -f "$1/.claude/agents/backend-expert-csk.md" ] || { echo "FAIL: FIXTURE — the 2.13.0 install left no backend-expert-csk.md"; exit 1; }
+    printf '%s\n' '- my note: the old kit-owned wording is fine here, keep it' >> "$1/CLAUDE.md"   # the user's own line
   }
   LP="$LFW/project"
   lf_install "$LP"
@@ -946,9 +960,16 @@ else
   LF_H_DIRECT="$(lf_tree "$LP")"
   [ "$LF_RC_DIRECT" = 0 ] || _evidence "crewforth update over 2.13.0 (direct)" "$_L" "$LF_RC_DIRECT"
   [ "$LF_RC_FW" = "$LF_RC_DIRECT" ] || _evidence "the forwarder exited $LF_RC_FW where crewforth itself exited $LF_RC_DIRECT" "$LF_LOG_FW" "$LF_RC_FW"
-  grep -q '@byerlikaya/claude-starter-kit is now crewforth — forwarding to npx crewforth@3' "$LF_LOG_FW" \
-    || { echo "FAIL: the forwarder did not say where it forwards"; tail -n 5 "$LF_LOG_FW"; exit 1; }
+  # The line names the spec that actually runs — this run's CREW_FORWARD_SPEC — not a fixed "crewforth@3": the RC-1
+  # rehearsal forwarded to crewforth@next while the line said crewforth@3.
+  grep -qF "@byerlikaya/claude-starter-kit is now crewforth — forwarding to npx file:$(lf_nat "$CF_TGZ")" "$LF_LOG_FW" \
+    || { echo "FAIL: the forwarder did not name the spec it forwards to"; tail -n 5 "$LF_LOG_FW"; exit 1; }
   [ -f "$LP/.claude/agents/crew-backend-expert.md" ] || { echo "FAIL: FIXTURE — the direct update did not reach 3.0 (no crew-backend-expert.md)"; exit 1; }
+  # The 2.x template's three "kit" sentences are swept to Crewforth; a line the user wrote with the same word is not.
+  [ "$(grep -cE '^<!-- kit discipline|^kit-owned' "$LP/CLAUDE.md")" = 0 ] && [ "$(grep -cE '^<!-- Crewforth discipline|^Crewforth-owned' "$LP/CLAUDE.md")" = 3 ] \
+    || { echo "FAIL: the update left the 2.x template's 'kit' sentences in CLAUDE.md"; grep -nE 'kit|Crewforth-owned' "$LP/CLAUDE.md" | head -5; exit 1; }
+  grep -qxF -- '- my note: the old kit-owned wording is fine here, keep it' "$LP/CLAUDE.md" \
+    || { echo "FAIL: the template sweep touched a line the user wrote"; exit 1; }
   [ "$LF_H_FW" = "$LF_H_DIRECT" ] || { echo "FAIL: the tree updated through the forwarder differs from the one crewforth update leaves ($LF_H_FW vs $LF_H_DIRECT)"; exit 1; }
   # Must-fail twin: a child that exits 3 comes back as 3, and an argument with a space arrives as ONE argument —
   # the reason the forwarder runs npm's own entry point instead of a shell.
@@ -1229,28 +1250,48 @@ for e in 'docs/' '.claude/' 'CLAUDE.md'; do
 done
 echo "[wizard] the summary lists every .gitignore line it writes, and writes every line it lists"
 
-# 9,10,11 · docs/ IS THE PRIVACY CASE, and it has two halves that pull against each other: the working
-#     documents must be ignored, and the adoption's OWN record must still reach the review diff. Ignoring
-#     docs/ without forcing those two files back in is the defect CHANGELOG.md:3328 already records.
+# 9,10,11 · docs/ IS THE PRIVACY CASE. The working documents must be ignored — and since the RC-1 rehearsal, so is
+#     the adoption's own record: Crewforth's review flagged the force-added HANDOVER and ADR as a §4.3 leak in a
+#     private install, and the owner decided they are written but not staged when docs/ is ignored. The twin is a
+#     repository that deliberately shares them (a `!` rule re-includes the two paths): there they must be staged,
+#     or the "shared" branch of the change is dead code.
 DP="$WORK/wiz-adopt-docs"; rm -rf "$DP"; mkdir -p "$DP"
 ( cd "$DP" && git init -q . && git config user.email t@e.com && git config user.name t \
   && printf '{"name":"x"}\n' > package.json && git add package.json && git commit -qm base )
 cp adopt.sh "$DP/"; cp -R kit "$DP/kit"; cp VERSION "$DP/"
 _slog; ( cd "$DP" && bash adopt.sh --here --yes </dev/null ) >"$_L" 2>&1 || _evidence "adopt.sh in $DP" "$_L" $?
-( cd "$DP" && git diff --cached --name-only | grep -q '^docs/HANDOVER\.md$' ) \
-  || { echo "FAIL: the adoption's own HANDOVER is not in the review diff"; exit 1; }
-( cd "$DP" && git diff --cached --name-only | grep -q '^docs/adr/' ) \
-  || { echo "FAIL: the adoption's own ADR is not in the review diff"; exit 1; }
+[ -f "$DP/docs/HANDOVER.md" ] && ls "$DP"/docs/adr/*.md >/dev/null 2>&1 \
+  || { echo "FAIL: the adoption did not write its HANDOVER and ADR"; exit 1; }
+[ -z "$( cd "$DP" && git diff --cached --name-only -- docs )" ] \
+  || { echo "FAIL: a private install staged docs/ — $( cd "$DP" && git diff --cached --name-only -- docs | tr '\n' ' ')"; exit 1; }
+grep -q 'written but not staged' "$_L" || { echo "FAIL: the private install did not say where HANDOVER and the ADR are"; exit 1; }
 ( cd "$DP" && : > docs/PLAN.md && git check-ignore -q docs/PLAN.md ) \
   || { echo "FAIL: docs/PLAN.md is NOT ignored after adopt — internal plans would reach a shared repo"; exit 1; }
 ( cd "$DP" && : > docs/SECURITY_FINDINGS.md && git check-ignore -q docs/SECURITY_FINDINGS.md ) \
   || { echo "FAIL: docs/SECURITY_FINDINGS.md is NOT ignored after adopt"; exit 1; }
-# The twin for the half that is easy to lose: with docs/ ignored, a plain `git add docs` stages nothing, so
-# dropping the -f would silently remove the adoption from its own review.
-( cd "$DP" && git rm -q --cached docs/HANDOVER.md docs/adr/*.md >/dev/null 2>&1; git add docs >/dev/null 2>&1; \
-  [ -z "$(git diff --cached --name-only -- docs)" ] ) \
-  || { echo "FAIL: the twin did not reproduce the drop, so the -f above proves nothing"; exit 1; }
-echo "[wizard] docs/ is private after adopt, and the adoption's own record is still in the diff (twin drops it)"
+DS="$WORK/wiz-adopt-docs-shared"; rm -rf "$DS"; mkdir -p "$DS"
+( cd "$DS" && git init -q . && git config user.email t@e.com && git config user.name t \
+  && printf 'docs/*\n!docs/HANDOVER.md\n!docs/adr/\n' > .gitignore && printf '{"name":"x"}\n' > package.json \
+  && git add -A && git commit -qm base )
+cp adopt.sh "$DS/"; cp -R kit "$DS/kit"; cp VERSION "$DS/"
+_slog; ( cd "$DS" && bash adopt.sh --here --yes </dev/null ) >"$_L" 2>&1 || _evidence "adopt.sh in $DS" "$_L" $?
+( cd "$DS" && git diff --cached --name-only | grep -q '^docs/HANDOVER\.md$' && git diff --cached --name-only | grep -q '^docs/adr/' ) \
+  || { echo "FAIL: twin — a repository that shares HANDOVER and the ADR did not get them staged"; exit 1; }
+echo "[wizard] private install: HANDOVER + ADR written, not staged, docs/ ignored · twin: shared by a ! rule -> staged"
+# #4 on a repository that already ignores .claude (RC-1 rehearsal): adopt recommended "share" and then reported
+# "#4 share -> ... NOT shared". The question is asked about a path INSIDE .claude, because a fresh adopt has no
+# .claude yet and a `.claude/` rule does not match a directory git cannot see. Twin: $DP above has no such rule
+# and must still be recommended share.
+DI="$WORK/wiz-adopt-ignored"; rm -rf "$DI"; mkdir -p "$DI"
+( cd "$DI" && git init -q . && git config user.email t@e.com && git config user.name t \
+  && printf '.claude/\nCLAUDE.md\n' > .gitignore && printf '{"name":"x"}\n' > package.json && git add -A && git commit -qm base )
+cp adopt.sh "$DI/"; cp -R kit "$DI/kit"; cp VERSION "$DI/"
+_slog; ( cd "$DI" && bash adopt.sh --here --yes </dev/null ) >"$_L" 2>&1 || _evidence "adopt.sh in $DI" "$_L" $?
+grep -q '#4 hide -> this repo already ignores .claude' "$_L" && grep -qF '| 4 | Share/hide | hide (gitignore) |' "$DI/docs/HANDOVER.md" \
+  || { echo "FAIL: a repository that ignores .claude was not recommended hide (or HANDOVER says otherwise)"; grep '#4 ' "$_L"; exit 1; }
+grep -qF '| 4 | Share/hide | keep sharing |' "$DP/docs/HANDOVER.md" \
+  || { echo "FAIL: twin — a repository with no ignore rule lost the share recommendation"; exit 1; }
+echo "[wizard] #4 on a repo that ignores .claude: hide recommended, HANDOVER agrees · twin without the rule: share"
 
 # 6 · --shared and --private differ in WHAT they ignore, which is the whole point of asking. shared keeps
 #     .claude/ and CLAUDE.md committable so a team can review them; private hides them. Both are asserted,
@@ -1484,5 +1525,32 @@ run_adopt "$B" --yes
   && [ "$(cksum < "$B/docs/adr/0001-agentic-kit-adoption.md")" = "$_old_sum" ] \
   || die "a project with the pre-3.0 ADR got a second ADR-0001 or a changed one ($(ls "$B/docs/adr" | tr '\n' ' '))" adopt-old-adr "$B"
 echo "[adopt-wording] no site/ in the project · HANDOVER.md · ADR · CLAUDE.md · kit.conf name Crewforth (0 old-name words) · re-adopt: 1 ADR, unchanged · pre-3.0 ADR kept, no second one"
+
+# [adopt-unborn] A project with no commit yet (RC-1 rehearsal): adopt named the branch "HEAD<newline>main" and offered
+# `git reset --hard HEAD` as the way back, which fails there. The printed commands are RUN here, not only read: the
+# discard must leave nothing staged and HEAD on the original name. The twin — a project WITH a commit — must keep the
+# reset form, so the unborn branch cannot have swallowed the normal one. The summary's skill and command counts are
+# held to the README's rule on the same run (a `kind: command` skill is a command, an experimental one is neither).
+_uw(){ d="$WORK/$1"; rm -rf "$d"; mkdir -p "$d"; cp adopt.sh "$d/"; cp -R kit "$d/"; cp VERSION "$d/"
+       ( cd "$d" && git init -q && git config user.email t@t.t && git config user.name t && git symbolic-ref HEAD refs/heads/main ); }
+_uw unborn-new; U1="$WORK/unborn-new"; run_adopt "$U1" --yes
+[ "$ADOPT_RC" = 0 ] || die "adopt exited $ADOPT_RC on a repository with no commit" adopt-unborn "$U1"
+printf '%s\n' "$ADOPT_OUT" | grep -qx 'HEAD' && die "adopt printed a bare 'HEAD' line — the branch name broke on an unborn repository" adopt-unborn "$U1"
+_dl="$(printf '%s\n' "$ADOPT_OUT" | grep -o 'git rm -r -q --cached \. && git symbolic-ref HEAD refs/heads/main' | head -1)"
+[ -n "$_dl" ] || die "adopt on an unborn repository did not offer the discard that works there" adopt-unborn "$U1"
+printf '%s\n' "$ADOPT_OUT" | grep -q 'git branch -m main' || die "adopt on an unborn repository did not offer 'git branch -m main' to accept" adopt-unborn "$U1"
+( cd "$U1" && eval "$_dl" ) >/dev/null 2>&1 || die "the printed discard command failed when run" adopt-unborn "$U1"
+[ -z "$(cd "$U1" && git diff --cached --name-only)" ] && [ "$(cd "$U1" && git symbolic-ref --short HEAD)" = main ] \
+  || die "after the printed discard something is still staged, or HEAD is not back on main" adopt-unborn "$U1"
+_xs=0; _xc=0; for _f in kit/skills/*/SKILL.md; do grep -qx '  experimental: true' "$_f" && continue
+  if grep -qx '  kind: command' "$_f"; then _xc=$((_xc+1)); else _xs=$((_xs+1)); fi; done
+_ps="$(printf '%s\n' "$ADOPT_OUT" | sed -n 's/^  skills  *+\([0-9]*\).*/\1/p' | head -1)"; _pc="$(printf '%s\n' "$ADOPT_OUT" | sed -n 's/^  commands  *+\([0-9]*\).*/\1/p' | head -1)"
+[ "$_ps" = "$_xs" ] && [ "$_pc" = "$_xc" ] || die "adopt's summary says skills +$_ps, commands +$_pc; the README's rule counts $_xs and $_xc" adopt-unborn "$U1"
+_uw unborn-here; U2="$WORK/unborn-here"; run_adopt "$U2" --yes --here
+[ "$ADOPT_RC" = 0 ] || die "adopt --here exited $ADOPT_RC on a repository with no commit" adopt-unborn "$U2"
+printf '%s\n' "$ADOPT_OUT" | grep -q 'discard:  git rm -r -q --cached \.  ' || die "adopt --here on an unborn repository still offers a discard that fails there" adopt-unborn "$U2"
+_uw born-here; U3="$WORK/born-here"; ( cd "$U3" && echo x > f.txt && git add f.txt && git commit -qm init ); run_adopt "$U3" --yes --here
+printf '%s\n' "$ADOPT_OUT" | grep -q 'discard:  git reset --hard HEAD' || die "twin: a repository WITH a commit lost the reset discard — the unborn branch swallowed the normal one" adopt-unborn "$U3"
+echo "[adopt-unborn] no-commit repo: one-line branch name · discard 'git rm --cached' RUN: 0 staged, HEAD on main · accept 'git branch -m' · --here discard too · twin with a commit keeps 'reset --hard HEAD' · summary skills +$_ps commands +$_pc = README rule"
 
 echo "e2e: all installer rehearsals passed"

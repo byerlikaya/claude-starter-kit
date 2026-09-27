@@ -35,6 +35,14 @@ An installed plugin stays on the version you installed until you ask for a newer
 /plugin install crewforth@crewforth
 ```
 
+**On a 200,000-token model?** Claude Code gives the list of skills a hundredth of the context window, which is 8,000 characters on such a model, and a plugin cannot change that. Crewforth's skills and Claude Code's own come to about 15,000, so the skills you use least lose their descriptions and stop being picked. One key in `~/.claude/settings.json` makes room:
+
+```json
+"skillListingBudgetFraction": 0.04
+```
+
+What it costs: the list is then sent whole every turn, about 3,700 tokens. On a 1,000,000-token model the default is enough and there is nothing to do. The full install sets this for the project itself. `/crew-doctor` tells you which case you are in.
+
 ## New project
 
 ```bash

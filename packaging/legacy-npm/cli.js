@@ -10,7 +10,8 @@ const { spawnSync } = require('node:child_process');
 const spec = process.env.CREW_FORWARD_SPEC || process.env.CREWFORTH_SPEC || 'crewforth@^3';
 const args = process.argv.slice(2);
 
-process.stderr.write('@byerlikaya/claude-starter-kit is now crewforth — forwarding to npx crewforth@3 …\n');
+// The spec that actually runs, not a fixed one: under CREWFORTH_SPEC=crewforth@next the line used to say crewforth@3.
+process.stderr.write(`@byerlikaya/claude-starter-kit is now crewforth — forwarding to npx ${spec} …\n`);
 
 // Run npm's own entry point with this node: no shell, so every argument arrives as one argv entry on every
 // platform (a shell joins them unescaped, and Node 24 warns about exactly that — DEP0190). npx and npm set

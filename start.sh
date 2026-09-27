@@ -123,16 +123,16 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "no effect:") s='etkisi yok:' ;;
       "Installing:") s='Kuruluyor:' ;;
       "Tip:  open Claude Code and run /crew-doctor — it checks the install is wired (hooks executable, core.hooksPath set, discipline imported) and scores the project's readiness. CLAUDE.md loads the discipline every session.") s="İpucu:  Claude Code'u açıp /crew-doctor çalıştırın — kurulumun eksiksiz bağlandığını denetler (hook'lar çalıştırılabilir mi, core.hooksPath ayarlı mı, disiplin import edilmiş mi) ve projenin ne kadar hazır olduğunu puanlar. Disiplin, CLAUDE.md sayesinde her oturumda yüklenir." ;;
-      "%s agents, %s skills installed.") s="%s ajan ve %s skill kuruldu." ;;
+      "%s agents, %s skills and %s commands installed.") s="%s ajan, %s skill ve %s komut kuruldu." ;;
       ".claude/DISCIPLINE.md written — owned by Crewforth; an update overwrites it, so keep your own rules out of it.") s=".claude/DISCIPLINE.md yazıldı. Bu dosya Crewforth'a ait ve her güncellemede yeniden yazılır; kendi kurallarınızı buraya eklemeyin." ;;
       "./CLAUDE.md created — EDIT the project section.") s='./CLAUDE.md oluşturuldu — proje bölümünü sizin DOLDURMANIZ gerekiyor.' ;;
       "trace scan: core.hooksPath -> .claude/hooks (§4.1/§4.2 commit gate active)") s='iz taraması: core.hooksPath -> .claude/hooks (§4.1/§4.2 commit kapısı açık)' ;;
-      "Done. ./.claude + ./CLAUDE.md ready (full install); kit/ deleted.") s='Tamamlandı. ./.claude ve ./CLAUDE.md hazır (tam kurulum); kit/ silindi.' ;;
+      "Done. ./.claude + ./CLAUDE.md ready (full install); the installer files are removed.") s='Tamamlandı. ./.claude ve ./CLAUDE.md hazır (tam kurulum); kurulum dosyaları silindi.' ;;
       "Next: 1) fill in the CLAUDE.md project section  2) open Claude Code at the repo root") s="Sıradaki adımlar: 1) CLAUDE.md'deki proje bölümünü doldurun  2) Claude Code'u deponun kökünde açın" ;;
       "Note: if Claude Code is ALREADY running here, restart it — CLAUDE.md and the discipline load at session start.") s='Not: Claude Code bu klasörde ZATEN açıksa yeniden başlatın — CLAUDE.md ve disiplin oturum açılırken yüklenir.' ;;
       "Panel: /crew-studio opens the Studio panel from this project (or: node .claude/studio/server/index.js --open).") s='Panel: /crew-studio komutu Studio panelini bu projeden açar (alternatif: node .claude/studio/server/index.js --open).' ;;
       "— backend + web + mobile (RN/Expo), every agent and skill") s="— backend, web ve mobil (RN/Expo); tüm ajanlar ve skill'ler" ;;
-      "%s agents · %s skills will be installed") s='%s ajan · %s skill' ;;
+      "%s agents · %s skills · %s commands will be installed") s='%s ajan · %s skill · %s komut' ;;
       "(shared: .claude/ and CLAUDE.md stay committable)") s="(paylaşımlı: .claude/ ve CLAUDE.md commit'lenebilir kalır)" ;;
       "(default — pass --shared to commit .claude/ and CLAUDE.md)") s="(varsayılan — .claude/ ve CLAUDE.md'yi commit'lemek için --shared verin)" ;;
       "no") s='hayır' ;;
@@ -548,13 +548,28 @@ count_installed() {   # $1=glob  -> count to install
   printf '%s' "$n"
 }
 N_AG="$(count_installed "$SRC/agents/*.md")"
-N_SK="$(count_installed "$SRC/skills/*/")"
+# Skills and commands the way the README and crewforth.com count them, so the install does not print a third number:
+# a skill whose metadata says `kind: command` is a command, one marked `experimental: true` is neither (it is
+# installed and works when typed, but nothing advertises it). Read from the frontmatter with builtins only.
+count_showcase() {   # $1 = a skills directory -> N_SKL N_CMD
+  N_SKL=0; N_CMD=0; local f l k e d
+  for f in "$1"/*/SKILL.md; do
+    [ -f "$f" ] || continue; k=0; e=0; d=0
+    while IFS= read -r l || [ -n "$l" ]; do
+      l="${l%$'\r'}"
+      case "$l" in ---) d=$((d+1)); [ "$d" -ge 2 ] && break ;; "  kind: command") k=1 ;; "  experimental: true") e=1 ;; esac
+    done < "$f"
+    [ "$e" = 1 ] && continue
+    if [ "$k" = 1 ]; then N_CMD=$((N_CMD+1)); else N_SKL=$((N_SKL+1)); fi
+  done
+}
+count_showcase "$SRC/skills"
 
 h1 '[2/2] Summary · see what will be installed before you confirm'
 echo
 _mt 'full install'; _a="$_M"; _mt '— backend + web + mobile (RN/Expo), every agent and skill'
 row 'Scope' "${B}${_a}${D} ${_M}${R}"
-_mt '%s agents · %s skills will be installed' "${MG}${B}${N_AG}${R}" "${MG}${B}${N_SK}${R}"
+_mt '%s agents · %s skills · %s commands will be installed' "${MG}${B}${N_AG}${R}" "${MG}${B}${N_SKL}${R}" "${MG}${B}${N_CMD}${R}"
 row 'Included'  "$_M"
 _mt 'stack-agnostic — the stack comes from CLAUDE.md ## Stack or the repo (backend-architecture)'
 row 'Backend pattern' "$_M"
@@ -607,7 +622,8 @@ cp -R "$SRC/eval/."     .claude/eval/ 2>/dev/null || true
 # outside the payload, because kit/ ships whole and 104 KB of test code
 # would travel through all four channels only to be removed on arrival.
 cp -R "$SRC/studio/."   .claude/studio/ 2>/dev/null || true
-{ _mt "%s agents, %s skills installed." "$(ls .claude/agents/*.md 2>/dev/null | wc -l | tr -d ' ')" "$(ls -d .claude/skills/*/ 2>/dev/null | wc -l | tr -d ' ')"; echo "  ${_M}"; }
+count_showcase .claude/skills
+{ _mt "%s agents, %s skills and %s commands installed." "$(ls .claude/agents/*.md 2>/dev/null | wc -l | tr -d ' ')" "$N_SKL" "$N_CMD"; echo "  ${_M}"; }
 [ -f "$SRC/settings.json" ] && cp "$SRC/settings.json" .claude/settings.json
 [ -f "$HERE/VERSION" ] && cp "$HERE/VERSION" .claude/VERSION   # make the kit version trackable in the installed project
 # Glob form so every shipped hook/eval is made executable — including ones added later (guard-write.sh,
@@ -721,7 +737,7 @@ else
 fi
 rm -rf "$SRC"
 echo
-{ _mt 'Done. ./.claude + ./CLAUDE.md ready (full install); kit/ deleted.'; echo "== ${_M} =="; }
+{ _mt 'Done. ./.claude + ./CLAUDE.md ready (full install); the installer files are removed.'; echo "== ${_M} =="; }
 { _mt 'Next: 1) fill in the CLAUDE.md project section  2) open Claude Code at the repo root'; echo "${_M}"; }
 { _mt 'Note: if Claude Code is ALREADY running here, restart it — CLAUDE.md and the discipline load at session start.'; echo "${_M}"; }
 { _mt "Tip:  open Claude Code and run /crew-doctor — it checks the install is wired (hooks executable, core.hooksPath set, discipline imported) and scores the project's readiness. CLAUDE.md loads the discipline every session."; echo "${_M}"; }

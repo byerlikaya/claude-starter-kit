@@ -24,13 +24,13 @@
 #                          has a high hit rate — it was written nine times across two files before it was
 #                          noticed, with valid syntax and quietly wrong output every time.
 #
-# Usage: bash packaging/i18n-audit.sh [file ...]   (default: the three files that carry a table)
+# Usage: bash packaging/i18n-audit.sh [file ...]   (default: every file that carries a table)
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 
 SQ=$'\047'   # a literal apostrophe, passed into awk rather than quoted inside it
 FILES=("$@")
-[ ${#FILES[@]} -gt 0 ] || FILES=(start.sh adopt.sh kit/eval/preflight.sh kit/eval/lib/star.sh)
+[ ${#FILES[@]} -gt 0 ] || FILES=(start.sh adopt.sh kit/eval/preflight.sh kit/eval/lib/star.sh kit/eval/doctor.sh)
 
 fails=0
 total=0

@@ -22,7 +22,7 @@ lines for a greeting or a quick question. At every
 decision point ask with the **`AskUserQuestion`** tool (selectable single/multi-select) — never prose to type back,
 never skip asking. Correct wrong information gently
 but clearly. When there is a decision, give a clear recommendation and close with the single next step that
-matters most.
+matters most. Reply in the user's language even when a skill's text is English; names stay as written.
 
 ## No deferral
 Nothing is left for later ("we'll do it in v2" is not acceptable). At a blocker: **STOP → inform → present options →

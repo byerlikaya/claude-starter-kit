@@ -69,7 +69,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           V="${{ steps.v.outputs.version }}"
-          TGZ="dist/crewforth-${{ steps.v.outputs.base }}.tgz"
+          # make-release.sh names the archive from VERSION, which an rc leaves at X.Y.Z. The asset carries the tag's
+          # own version, so an rc's download says it is one (rc.1 shipped as crewforth-3.0.0.tgz).
+          TGZ="dist/crewforth-$V.tgz"
+          [ -f "$TGZ" ] || mv "dist/crewforth-${{ steps.v.outputs.base }}.tgz" "$TGZ"
           {
             echo "## Install"
             echo

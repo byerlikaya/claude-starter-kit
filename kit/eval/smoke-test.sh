@@ -1575,6 +1575,25 @@ if [ "$IS_KIT" = 1 ]; then
   grep -q 'N_AG="$(count_installed' "$KR/start.sh" 2>/dev/null \
     && pass "start.sh derives its summary counts from the payload" \
     || fail "start.sh no longer derives its summary counts from the payload"
+  # ...and the skills/commands it prints are the README's, not the directory count: the RC-1 rehearsal printed
+  # "51 skills" beside a README that says 39 skills and 10 commands. count_showcase is lifted out of start.sh and
+  # driven on a three-entry fixture (a skill, a command, an experimental one) and on the real payload, whose answer
+  # must equal the counts the README gates above use.
+  _csf="$(sed -n '/^count_showcase() {/,/^}/p' "$KR/start.sh")"
+  if [ -z "$_csf" ]; then fail "start.sh has no count_showcase — the install prints a directory count again"
+  else
+    _csd="$(mktemp -d)"; mkdir -p "$_csd/a" "$_csd/b" "$_csd/c"
+    printf -- '---\nname: a\ndescription: x\n---\n' > "$_csd/a/SKILL.md"
+    printf -- '---\nname: b\ndescription: x\nmetadata:\n  kind: command\n---\n' > "$_csd/b/SKILL.md"
+    printf -- '---\nname: c\ndescription: x\nmetadata:\n  kind: command\n  experimental: true\n---\n' > "$_csd/c/SKILL.md"
+    _csx="$(bash -c "$_csf"'; count_showcase "$1"; echo "$N_SKL $N_CMD"' _ "$_csd")"
+    _cshown="$(bash -c "$_csf"'; count_showcase "$1"; echo "$N_SKL $N_CMD"' _ "$SKILLS")"
+    rm -rf "$_csd"
+    if [ "$_csx" != "1 1" ]; then fail "count_showcase miscounts its fixture: '$_csx', want '1 1' (the experimental entry counts as neither)"
+    elif _nsk=0; for _sf in "$SKILLS"/*/SKILL.md; do _sn="${_sf%/SKILL.md}"; _sn="${_sn##*/}"; is_cmd "$_sn" || is_exp "$_sn" || _nsk=$((_nsk+1)); done
+         [ "$_cshown" != "$_nsk $NCMD_SHOWN" ]; then fail "start.sh would print '$_cshown' skills/commands; the README gates count $_nsk and $NCMD_SHOWN"
+    else pass "start.sh prints the README's counts ($_cshown skills/commands; fixture 1 1 with the experimental one left out)"; fi
+  fi
   # Crewforth installs through npx, the Claude Code plugin or the release archive; the Homebrew channel was
   # removed. A line that tells a reader to `brew install` Crewforth, or names the old tap, points at a formula
   # nobody maintains. `brew install node` and other tools stay: those install something else. The CHANGELOG is
@@ -2081,7 +2100,7 @@ sec "== 6f) always-on token budget =="
 # for that cost, and a gate rather than a reminder — a verbose new description fails the suite instead of
 # quietly taxing every future session. Budgets sit just above the current sizes: raising one is allowed, but
 # only as a deliberate edit here.
-BUDGET_DISC=13711    # 5R.3: 13712 → 13711 (the old-name phrases rewritten, net −1). 5d.2 prompt audit: tightened to the measured size (13719 → 13712: format-to-content style line, one reload
+BUDGET_DISC=13741    # RC-1: 13711 → 13741 (+30): "Reply in the user's language even when a skill's text is English" — a Turkish session answered /crew-review in English, because every skill body it had just read was English; the rule is stated nowhere else. evals/cases/reply-language measures it. 5R.3: 13712 → 13711 (the old-name phrases rewritten, net −1). 5d.2 prompt audit: tightened to the measured size (13719 → 13712: format-to-content style line, one reload
                      # answer, the orphaned background-warning line removed). Before that: 3.0 rename (suffix → crew- prefix): +23 B (23 occurrences), not content — measured 13696 → 13719.
                      # DISCIPLINE.md (the discipline half of CLAUDE.md); before 3.0 the ceiling was 13700, currently 13601. (2026-09-18, a second
                      # +100 B on top of the raise below, and the whole of it went into ONE sentence of §4.6: a commit
@@ -2178,53 +2197,17 @@ BUDGET_AGENTS=5596   # 5d.2: tightened to the measured sum (was 5800 with 204 B 
                      # +crew-performance-expert (~426B) — security, privacy and tests each had an independent
                      # reviewer and performance was the one quality axis where the author audited their own
                      # work. Bought at ~110 tokens per session; the alternative was leaving that gap open.)
-BUDGET_SKILLS=10249 # 5S: 10255 → 10249 (crew-doctor: "the install"). 5R.4: 10259 → 10255 (crew-update: "a newer version"). 5d.2: tightened to the measured size (10265 → 10259: two descriptions lost a stale word). Before that:
-                    # 3.0: commands merged into skills — 661 B previously in the listing but uncounted, not new content:
-                    # the six model-invocable commands (doctor 136 · handoff 91 · plan 151 · review 82 · ship 78 ·
-                    # update 123) now live in skills/, where this sum sees them. The five user-only ones
-                    # (disable-model-invocation: true) are not in the listing and are not counted. The other skills
-                    # measured 9604 before and after — the ceiling moved by exactly the 661, not a byte for anything new.
-                    # Before that: 9604 — 3.0 rename (suffix → crew- prefix): +7 B (7 occurrences), not content — 9597 → 9604.
-                    # Before 3.0: 9600; sum of skill frontmatter; currently 9597 — **3 bytes of headroom**, measured 2026-09-23 from
-                    # this suite's own line. 3.0 swapped cqrs-aop-module (-202 B) for backend-architecture (+211 B) and
-                    # the ceiling was NOT raised: the new description was cut until it fit. Before that 9588, measured
-                    # 2026-09-20 (the note said 9521 and was 67 B stale). Read that margin before editing any
-                    # description: one added clause trips this gate, and that is the ratchet working, not a bug.
-                    # Raising the ceiling needs the same thing every bump here needed — a written reason for what
-                    # the bytes buy. (2.6.x: +843 B — ten descriptions gained a
-                    # "Use when …" sentence. The field's job is to say WHEN to reach for the skill; a description
-                    # that only says what its author knows is matched by nothing, and inside Crewforth that was
-                    # invisible because route-hint.sh and the trigger map do the routing. Outside the harness —
-                    # a skill copied into another project, another client, a bare session — the routing is gone
-                    # and the description is all there is. STATED HONESTLY: this bump does NOT fix the small-window
-                    # case. The listing budget is 1% of the context window, so a 200k model allows ~2,000 B and
-                    # Crewforth is far past that with or without these ten sentences. What changed is that the
-                    # remedy is now targetable: `eval/utilization.sh` reports which skills nothing in a project
-                    # actually reached, which is the list `skillOverrides: name-only` needs and never had. The
-                    # next skill that wants room takes it from a description, not from another bump.)
-                    # Was 8700 / 8678. (2.5.0: +307 B for `automode-policy` — about
-                    # half of it the allowed-tools grant that lets the skill run its own verifier without a
-                    # prompt, not prose. The listing is what every session pays for; the next skill that wants
-                    # room takes it from a description, not from another bump.) Was 8380 / 8371 — nine bytes
-                    # of headroom, so the ceiling was already the binding constraint, not this skill. (2.3.0: +187 B for `teamboard`. It is the only
-                     # skill whose absence from the LISTING is silently unsafe rather than merely unhelpful: a
-                     # skill that fails to match usually means the model does the work itself, but this one
-                     # failing to match means two people do the SAME work, on separate machines, discovering it
-                     # at merge time. Trimmed to one sentence and the words people actually type — claim, item,
-                     # team board.) RATCHETED DOWN in 1.11.0 from 12,350: the
-                     # `Trigger phrases:` lines moved out of every skill's `description` into the body. This is not
-                     # cosmetic. Claude Code loads a LISTING of skill names+descriptions every session and the
-                     # budget is 1% of the context window; over it, descriptions are truncated or dropped outright,
-                     # "which can strip the keywords Claude needs to match your request" (official skills docs). The
-                     # Crewforth's listing was 11,372 chars against a 10,000 budget on a 1M window — overflowing on every
-                     # model, and 5.7x over on a 200k one. Now 7,208. A kit whose own skills push its descriptions
-                     # out of the listing is a kit that stops matching, which is exactly the symptom users report.
-                     # (1.8.0: +confidence-check (~359B), Crewforth's
-                     # only gate that fires BEFORE implementation — every other one reviews code that already
-                     # exists, and none catch correct code that should never have been written; and
-                     # +dependency-upgrade (~444B), split from dependency-audit because one reports and the
-                     # other rewrites lockfiles: different risk, different DoD, and an audit you can run on any
-                     # branch stops being safe the moment it can also apply things)
+BUDGET_SKILL_LISTING=9063 # the skill listing as Claude Code counts it (eval/lib/skill-listing.awk — the count doctor.sh
+                          # reports too), in CHARACTERS: 46 model-invocable skills, 9063, the figure Claude Code's own
+                          # "Skill listing over budget" warning printed for a fresh install. It replaced a byte sum of
+                          # the frontmatter that no tool used (10249), so doctor and this gate now read one number.
+                          # The ceiling is "does not grow", not a target. 8,000 was weighed and rejected: that is the
+                          # whole listing's budget on a 200k model at the default fraction, and Claude Code's own
+                          # skills take ~5,900 of it (v2.1.282), so no Crewforth-only figure could make the whole list
+                          # fit. The full install raises the fraction to 0.04; the plugin cannot, so doctor and
+                          # /crew-doctor tell a plugin user on a 200k model the one line to add and what it costs.
+                          # Shorter descriptions wait for an eval that measures whether Claude still picks the skill
+                          # from them — trimming blind trades a number for matching nobody measured.
 # A SKILL.md's `metadata:` block is Crewforth's own catalogue data (`kind: command`); Claude Code does not act on it
 # and it never enters the listing, so it is not counted. Nothing else in a frontmatter is skipped.
 fm_bytes(){ awk '/^---$/{c++; next} c==1 { if ($0 ~ /^metadata:/) { m=1; next } if (m && $0 ~ /^[ \t]/) next; m=0; print }' "$1" 2>/dev/null | wc -c | tr -d ' '; }
@@ -2242,15 +2225,33 @@ elif [ -f "$ROOT/DISCIPLINE.md" ]; then
   DB="$(wc -c < "$ROOT/DISCIPLINE.md" | tr -d ' ')"; DBCR="$(tr -dc '\r' < "$ROOT/DISCIPLINE.md" | wc -c | tr -d ' ')"
 else DB=0; DBCR=0; fi
 AB=0; for f in "$AGENTS"/*.md;      do [ -e "$f" ] && AB=$((AB + $(fm_bytes "$f"))); done
-# THE RULE: a skill counts unless its frontmatter says `disable-model-invocation: true`. Per the skills reference,
-# with that flag "the description is not in context" — only the user can invoke it, so it costs the listing nothing.
-# Every other skill's description IS in the listing every session, and that is what this budget is for. (Before
-# 3.0 the six model-invocable commands sat in the same listing from commands/, and this sum never saw them.)
-SB=0; for f in "$SKILLS"/*/SKILL.md; do
-  [ -e "$f" ] || continue
-  grep -q '^disable-model-invocation:[[:space:]]*true' "$f" && continue
-  SB=$((SB + $(fm_bytes "$f")))
-done
+# The skill listing is counted by eval/lib/skill-listing.awk, the file doctor.sh uses: a skill with
+# `disable-model-invocation: true` is not listed, every other one costs its name and description as Claude Code counts
+# them. The counter is pinned first on the fixtures Claude Code itself was measured on, so a drift in the awk (or in an
+# awk: BSD, mawk and Git Bash gawk all run this) reads as a broken meter, not as a budget.
+SLA="$ROOT/eval/lib/skill-listing.awk"; [ -f "$SLA" ] || SLA="$SGR/kit/eval/lib/skill-listing.awk"
+if [ ! -f "$SLA" ]; then fail "eval/lib/skill-listing.awk is missing — the skill listing cannot be counted"; SL=0
+else
+  _slf="$(mktemp -d)"; mkdir -p "$_slf/a" "$_slf/b" "$_slf/c" "$_slf/d"
+  printf -- '---\nname: aa\ndescription: bbb\n---\n' > "$_slf/a/SKILL.md"
+  printf -- '---\nname: cc\ndescription: dddd\n---\n' > "$_slf/b/SKILL.md"
+  printf -- '---\nname: ee\ndescription: |\n  one\n  two\n---\n' > "$_slf/c/SKILL.md"
+  printf -- '---\nname: ff\ndescription: gg\ndisable-model-invocation: true\n---\n' > "$_slf/d/SKILL.md"
+  _c1="$(LC_ALL=C awk -f "$SLA" "$_slf/a/SKILL.md")"; _c2="$(LC_ALL=C awk -f "$SLA" "$_slf/a/SKILL.md" "$_slf/b/SKILL.md")"
+  _c3="$(LC_ALL=C awk -f "$SLA" "$_slf/c/SKILL.md")"; _c4="$(LC_ALL=C awk -f "$SLA" "$_slf/a/SKILL.md" "$_slf/d/SKILL.md")"
+  _c5="$(printf -- '---\nname: hh\ndescription: a\342\200\224b\n---\n' > "$_slf/e.md"; LC_ALL=C awk -f "$SLA" "$_slf/e.md")"
+  rm -rf "$_slf"
+  # 9 and 20 are Claude Code's own readings; ee = 2 + len("onetwo") + 4 (a line break costs nothing, as measured on
+  # 46 shipped skills); ff is not listed; an em dash is one character (hh = 2 + 3 + 4).
+  if [ "$_c1" = "9 1 0" ] && [ "$_c2" = "20 2 0" ] && [ "$_c3" = "12 1 0" ] && [ "$_c4" = "9 1 0" ] && [ "$_c5" = "9 1 0" ]; then
+    pass "skill-listing.awk reproduces Claude Code's counter on its fixtures (9 · 20 · block lines · unlisted · em dash)"
+  else fail "skill-listing.awk drifted from Claude Code's counter: got '$_c1' '$_c2' '$_c3' '$_c4' '$_c5', want '9 1 0' '20 2 0' '12 1 0' '9 1 0' '9 1 0'"; fi
+  read -r SL SLN SLU <<EOF_SL
+$(LC_ALL=C awk -f "$SLA" "$SKILLS"/*/SKILL.md)
+EOF_SL
+  [ "${SLU:-0}" = 0 ] && pass "no skill uses a listing shape the count was not measured on (when_to_use, folded description)" \
+    || fail "$SLU skill(s) use when_to_use or a folded description — measure that shape against Claude Code before trusting the listing count"
+fi
 # The budget GATES Crewforth's payload (kit repo, IS_KIT). In an INSTALLED project the user's own agents/skills —
 # including the ones adopt imports from a taken-over agent — legitimately add to the always-on cost (their choice),
 # so there we REPORT the numbers instead of failing the suite.
@@ -2263,20 +2264,21 @@ done
 #
 # $4 is the number of carriage returns in the same text the budget was measured on, so the two numbers describe
 # the same bytes. A real overrun still says "over budget"; only a CRLF one is renamed.
-bud(){ # $1 name  $2 measured  $3 budget  $4 (optional) carriage returns in the measured text
-       if [ "$2" -le "$3" ]; then pass "$1 within budget ($2 ≤ $3 bytes)"
+bud(){ # $1 name  $2 measured  $3 budget  $4 (optional) carriage returns in the measured text  $5 (optional) unit
+       local u="${5:-bytes}"
+       if [ "$2" -le "$3" ]; then pass "$1 within budget ($2 ≤ $3 $u)"
        elif [ "$IS_KIT" = 1 ]; then
          local cr="${4:-0}"
          if [ "$cr" -gt 0 ] && [ $(( $2 - cr )) -le "$3" ]; then
            fail "$1 over budget ONLY because this checkout is CRLF: $2 > $3 bytes, and $cr of those bytes are carriage returns ($(( $2 - cr )) with LF endings, which is within budget). Re-check out the file rather than editing the budget."
          else
-           fail "$1 over budget: $2 > $3 bytes"
+           fail "$1 over budget: $2 > $3 $u"
          fi
-       else pass "$1 $2 bytes (over Crewforth's $3 baseline — your project's own additions, not gated in an install)"; fi; }
+       else pass "$1 $2 $u (over Crewforth's $3 baseline — your project's own additions, not gated in an install)"; fi; }
 bud "discipline"         "$DB" "$BUDGET_DISC" "$DBCR"
 bud "agent descriptions" "$AB" "$BUDGET_AGENTS"
-bud "skill descriptions" "$SB" "$BUDGET_SKILLS"
-echo "   always-on total: $((DB+AB+SB)) bytes (budget $((BUDGET_DISC+BUDGET_AGENTS+BUDGET_SKILLS)))"
+bud "skill listing" "$SL" "$BUDGET_SKILL_LISTING" 0 chars
+echo "   always-on: discipline + agents $((DB+AB)) bytes (budget $((BUDGET_DISC+BUDGET_AGENTS))) · skill listing $SL chars for ${SLN:-0} skills (budget $BUDGET_SKILL_LISTING)"
 # The diagnosis is pinned, not only written, on CRLF copies of this very file: the carriage-return count must cover
 # exactly the measured lines, a copy whose text is exactly at the budget with LF endings must be named as CRLF with its
 # figures, and one a byte past the budget must still read "over budget". All three failed while the count came from
@@ -4148,7 +4150,7 @@ mkdir -p "$DCR/.claude/skills/only-mine" "$DCR/.claude/hooks"
 cp -R "$SKILLS/handoff" "$DCR/.claude/skills/" 2>/dev/null
 printf '# x\n' > "$DCR/.claude/skills/only-mine/SKILL.md"
 cp "$HOOKS"/*.sh "$DCR/.claude/hooks/" 2>/dev/null; chmod +x "$DCR/.claude/hooks/"*.sh 2>/dev/null
-_own(){ ( cd "$DCR" && bash "$ROOT/eval/doctor.sh" 2>&1 | grep -oE '[0-9]+ project-specific skill' | head -1 | cut -d' ' -f1 ); }
+_own(){ ( cd "$DCR" && CREW_LANG=en bash "$ROOT/eval/doctor.sh" 2>&1 | grep -oE '[0-9]+ project-specific skill' | head -1 | cut -d' ' -f1 ); }
 printf 'skills/handoff\n'   > "$DCR/.claude/kit-manifest.txt"; _lf="$(_own)"
 printf 'skills/handoff\r\n' > "$DCR/.claude/kit-manifest.txt"; _crlf="$(_own)"
 [ -n "$_lf" ] && [ "$_lf" = "$_crlf" ] \
@@ -4191,7 +4193,7 @@ bash "$ROOT/eval/doctor.sh" "$DOC" >/dev/null 2>&1 \
   && pass "doctor: CLAUDE.md with the @import -> exit 0" \
   || fail "doctor flagged a CLAUDE.md that DOES import the discipline"
 # Readiness is ADVISORY: a bare project trips every readiness signal, and the verdict must stay exit 0.
-DOUT="$(bash "$ROOT/eval/doctor.sh" "$DOC" 2>&1)"; DRC=$?
+DOUT="$(CREW_LANG=en bash "$ROOT/eval/doctor.sh" "$DOC" 2>&1)"; DRC=$?
 [ "$DRC" -eq 0 ] && pass "doctor: readiness gaps do NOT change the verdict (advisory)" || fail "readiness gaps changed doctor's exit code — it must stay a statement about the install"
 case "$DOUT" in *"Readiness (advisory"*) pass "doctor prints the readiness block" ;; *) fail "doctor readiness block missing" ;; esac
 case "$DOUT" in *"➖"*) pass "readiness flags gaps on a bare project (devcontainer/MCP/manifest absent)" ;; *) fail "readiness found no gap on a bare project — the signals are not firing" ;; esac
@@ -5468,13 +5470,13 @@ if [ -f "$GR" ]; then
   DTMP="$(mktemp -d)"; mkdir -p "$DTMP/.claude"
   for d in eval hooks skills agents; do [ -d "$ROOT/$d" ] && cp -R "$ROOT/$d" "$DTMP/.claude/$d"; done
   cp "$ROOT/settings.json" "$DTMP/.claude/settings.json" 2>/dev/null
-  DOUT="$(cd "$DTMP" && bash .claude/eval/doctor.sh 2>"$DTMP/err")"
+  DOUT="$(cd "$DTMP" && CREW_LANG=en bash .claude/eval/doctor.sh 2>"$DTMP/err")"
   # An install from before 2.5.0 keeps the old `Bash`-only matcher, and nothing in the session looks wrong
   # while every PowerShell command walks past §4.5. doctor has to SAY so, so this drives the downgrade.
   case "$DOUT" in *"watch both Bash and PowerShell"*) pass "doctor confirms the shell matcher covers PowerShell" ;;
                   *) fail "doctor did not report on the shell matcher" ;; esac
   sed 's/"Bash|PowerShell"/"Bash"/' "$DTMP/.claude/settings.json" > "$DTMP/s.tmp" && mv "$DTMP/s.tmp" "$DTMP/.claude/settings.json"
-  DOUT2="$(cd "$DTMP" && bash .claude/eval/doctor.sh 2>/dev/null)"
+  DOUT2="$(cd "$DTMP" && CREW_LANG=en bash .claude/eval/doctor.sh 2>/dev/null)"
   case "$DOUT2" in *"watch only Bash"*) pass "doctor flags a pre-2.5.0 Bash-only matcher as a failure" ;;
                    *) fail "doctor stayed quiet on a Bash-only matcher — the gap is invisible to an upgrader" ;; esac
   grep -q 'command not found' "$DTMP/err" && fail "doctor.sh calls a helper before it is defined (see stderr)" \
@@ -5487,9 +5489,38 @@ if [ -f "$GR" ]; then
   # that has it, so it only ever exercised one of doctor's four branches; CI has no CLI, took the fourth, and
   # failed on a wording difference. Running it both ways is what makes the assertion about doctor rather than
   # about the machine the suite happens to run on.
-  DOUT3="$(cd "$DTMP" && PATH=/usr/bin:/bin bash .claude/eval/doctor.sh 2>/dev/null)"
+  DOUT3="$(cd "$DTMP" && CREW_LANG=en PATH=/usr/bin:/bin bash .claude/eval/doctor.sh 2>/dev/null)"
   case "$DOUT3" in *"auto-mode classifier"*) pass "doctor reports the auto-mode line with no claude CLI present" ;;
                    *) fail "doctor went silent on auto-mode when the claude CLI is absent" ;; esac
+  # (f) doctor speaks the install's language. A Turkish install ran a Turkish installer and then got an English
+  #     doctor (RC-1 rehearsal); the language now comes from the `lang=` start.sh/adopt.sh record in kit.conf. Four
+  #     claims, driven on this fixture: the record picks the language with no variable set; no line the doctor
+  #     printed fell back to English (CREW_I18N_MISS names each key that had no row); every identifier the English
+  #     run printed — a path, a command, a settings key — is still there, untranslated, in the Turkish run; and an
+  #     English record gets English. The must-fail twin plants a line with no row in a copy of the doctor and
+  #     needs the miss list to name it, so an empty list means "all translated", not "the collector is dead".
+  _dl(){ printf 'lang=%s\n' "$1" > "$DTMP/.claude/kit.conf"; }
+  _dl tr; : > "$DTMP/miss"
+  DTR="$(cd "$DTMP" && env -u CREW_LANG CREW_I18N_MISS="$DTMP/miss" bash .claude/eval/doctor.sh 2>/dev/null)"
+  _dl en; DEN="$(cd "$DTMP" && env -u CREW_LANG bash .claude/eval/doctor.sh 2>/dev/null)"
+  case "$DTR" in *"kurulum denetimi"*) pass "doctor speaks Turkish when the install recorded lang=tr (no variable set)" ;;
+                 *) fail "doctor ignored lang=tr in kit.conf — a Turkish install gets an English doctor" ;; esac
+  case "$DEN" in *"install doctor"*) pass "doctor speaks English when the install recorded lang=en" ;;
+                 *) fail "doctor did not speak English for lang=en" ;; esac
+  [ ! -s "$DTMP/miss" ] && pass "every line the Turkish doctor printed has a translation (miss list empty)" \
+    || fail "the Turkish doctor fell back to English for: $(tr '\n' '|' < "$DTMP/miss")"
+  _idm=""; _idn=0
+  for _id in $(printf '%s\n' "$DEN" | grep -oE '\.claude/[A-Za-z0-9_./*-]+|settings\.json|core\.hooksPath|/crew-[a-z-]+|npx crewforth [a-z]+|skillListingBudgetFraction|PreToolUse|UserPromptSubmit|SessionStart' | sort -u); do
+    _idn=$((_idn + 1)); case "$DTR" in *"$_id"*) ;; *) _idm="$_idm $_id" ;; esac
+  done
+  if [ "$_idn" -lt 5 ]; then fail "identifier check read only $_idn identifier(s) from the English doctor — the extractor is broken, not the doctor"
+  elif [ -z "$_idm" ]; then pass "the Turkish doctor keeps all $_idn identifiers of the English one untranslated (paths, commands, keys)"
+  else fail "the Turkish doctor lost or translated identifier(s):$_idm"; fi
+  sed 's/^_mt "== Crewforth — install doctor =="; echo "$_M"$/&; ok "planted line with no translation"/' "$DTMP/.claude/eval/doctor.sh" > "$DTMP/.claude/eval/doctor-twin.sh"
+  _dl tr; : > "$DTMP/miss2"
+  ( cd "$DTMP" && env -u CREW_LANG CREW_I18N_MISS="$DTMP/miss2" bash .claude/eval/doctor-twin.sh >/dev/null 2>&1 )
+  grep -qx 'planted line with no translation' "$DTMP/miss2" && pass "twin: a planted untranslated line is named by the miss list" \
+    || fail "twin: the miss list did not name a planted untranslated line — the empty list above proves nothing"
   rm -rf "$DTMP" "$GTMP"
 else
   fail "eval/gate-report.sh missing from the payload"
@@ -6237,10 +6268,12 @@ if [ "$IS_KIT" = 1 ]; then
     command -v node >/dev/null 2>&1 && node "$KR/bin/cli.js" --help; } > "$_kd/out.txt" 2>&1
   _kc="$(kw_lines "$_kd/out.txt" | sed "s|^$_kd/||")"; _kn="$(grep -c . "$_kd/out.txt")"
   # Twins. Must fail: a start.sh whose table says "full kit" again, and output that says "installing Crewforth.".
-  # Must pass: output that only names paths — .claude/kit.conf, kit/ deleted, kit-manifest.txt, drizzle-kit, KIT_X.
+  # Must pass: output that only names paths — .claude/kit.conf, the folder in the archive's own error, kit-manifest.txt,
+  # drizzle-kit, KIT_X. ("kit/ deleted" used to sit here as a path; it was the last line of every install, and the
+  # RC-1 rehearsal read it as the old word. The closing lines are held to it separately below.)
   sed 's/"full install") s=/"full kit") s=/' "$KR/start.sh" > "$_kd/mut-start.sh"
   _ok=kit; printf 'Done: installing the %s.\nKurulum: %sin dosyaları hazır\n' "$_ok" "$_ok" > "$_kd/bad.txt"
-  printf 'wrote .claude/kit.conf\nkit/ deleted\nsee .claude/kit-manifest.txt and drizzle-kit status\nKIT_X=1\n' > "$_kd/good.txt"
+  printf 'wrote .claude/kit.conf\nERROR: kit/ not found\nsee .claude/kit-manifest.txt and drizzle-kit status\nKIT_X=1\n' > "$_kd/good.txt"
   if [ -n "$_ka$_kb$_kc" ]; then fail "a printed line still says kit — say Crewforth:
 $(printf '%s\n%s\n%s\n' "$_ka" "$_kb" "$_kc" | grep . | head -n 6 | sed "s|$KR/||; s|^|       |")"
   elif [ "$_kn" -lt 30 ]; then fail "FIXTURE: the captured help and preflight output is only $_kn line(s) — the run broke, not the wording"
@@ -6248,6 +6281,16 @@ $(printf '%s\n%s\n%s\n' "$_ka" "$_kb" "$_kc" | grep . | head -n 6 | sed "s|$KR/|
   elif [ "$(kw_lines "$_kd/bad.txt" | grep -c .)" != 2 ]; then fail "Crewforth-word matcher missed a planted old-name word (English or Turkish) in the output"
   elif [ -n "$(kw_lines "$_kd/good.txt")" ]; then fail "Crewforth-word matcher flagged a path or identifier: $(kw_lines "$_kd/good.txt" | head -n 2 | tr '\n' ' ')"
   else pass "no printed line says kit: terminal-only scripts, the installers' tables/echo/usage and cli --help, plus $_kn lines of real help and preflight output (EN+TR); a reverted table entry and planted words are caught, paths are not"; fi
+  # The closing line of an install is the one line every user reads. It may name no kit at all, not even as a path:
+  # the key and its Turkish value are both read, and a planted "kit/ deleted" in a copy must be caught.
+  _dn(){ grep -hE '"Done\.|'"'"'Done\.' "$@" 2>/dev/null | grep -iE '(^|[^a-z_.-])kit([^a-z_-]|$)'; }
+  if [ ! -f "$SGR/start.sh" ]; then :
+  elif [ -n "$(_dn "$SGR/start.sh" "$SGR/adopt.sh")" ]; then fail "an installer's closing line still names kit: $(_dn "$SGR/start.sh" "$SGR/adopt.sh" | head -n 1 | cut -c1-120)"
+  else
+    sed 's/the installer files are removed\./kit\/ deleted./' "$SGR/start.sh" > "$_kd/done-twin.sh"
+    [ -n "$(_dn "$_kd/done-twin.sh")" ] && pass "the installers' closing lines name no kit (EN key and TR value); a planted 'kit/ deleted' is caught" \
+      || fail "twin: the closing-line check missed a planted 'kit/ deleted' — it reads nothing"
+  fi
   rm -rf "$_kd"
 else
   skip scope "printed-text wording check skipped (installed project — the installers live in the source repository)"

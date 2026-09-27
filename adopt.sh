@@ -110,6 +110,7 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "3.0 rename: %s → %s") s='3.0 ad değişikliği: %s → %s' ;;
       "3.0 rename: both the old and the new name exist for:%s — nothing moved; keep one") s='3.0 ad değişikliği: eski ve yeni ad ikisi de var:%s — hiçbir şey taşınmadı; birini tutun' ;;
       "3.0 ref-sweep: old 2.x names → crew- names in %s") s='3.0 referans taraması: %s içindeki eski 2.x adları crew- adlarına çevrildi' ;;
+      "3.0 ref-sweep: the 2.x template wording in %s now says Crewforth") s="3.0 referans taraması: %s içindeki 2.x şablon ifadeleri artık Crewforth diyor" ;;
       "3.0 commands are skills: %s → %s") s="3.0'da komutlar skill oldu: %s → %s" ;;
       "3.0 commands are skills: a skill of that name already exists for:%s — nothing moved; keep one") s="3.0'da komutlar skill oldu: bu adla bir skill zaten var:%s — hiçbir şey taşınmadı; birini tutun" ;;
       "3.0 commands are skills: an older copy of an already-moved command is left in place:%s — remove it") s="3.0'da komutlar skill oldu: taşınmış bir komutun eski kopyası yerinde bırakıldı:%s — silin" ;;
@@ -157,6 +158,10 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "share") s='paylaş' ;;
       ".claude/CLAUDE.md is tracked — keep sharing with the team") s=".claude/CLAUDE.md git'te izleniyor — ekiple paylaşmaya devam" ;;
       "untracked; Crewforth files are shared by default — pick hide to keep them local") s='izlenmiyor; Crewforth dosyaları varsayılan olarak paylaşılır — yerelde tutmak için hide seçin' ;;
+      "hide") s='gizle' ;;
+      ".claude is already gitignored in this repo — Crewforth stays local (pick share and un-ignore it to share)") s="bu depoda .claude zaten gitignore'da — Crewforth yerelde kalır (paylaşmak için share seçip ignore kuralını kaldırın)" ;;
+      "#4 hide -> this repo already ignores .claude — nothing to add; Crewforth stays local") s="#4 hide -> bu depo .claude'u zaten yok sayıyor — eklenecek bir şey yok; Crewforth yerelde kalır" ;;
+      "docs/ is gitignored here (a private install): %s and %s are written but not staged — they stay on this machine") s="docs/ burada gitignore'da (kişisel kurulum): %s ve %s yazıldı ama stage edilmedi — bu makinede kalır" ;;
       "5 Git hooks") s="5 Git hook'ları" ;;
       "install directly") s='doğrudan kur' ;;
       "no existing hook system") s='hook sistemi yok' ;;
@@ -610,6 +615,12 @@ if [ "$IS_GIT" = 1 ]; then
   { [ "$HAS_CLAUDE" = 1 ] && [ -n "$(git ls-files .claude 2>/dev/null | head -1)" ]; } && TRACKED=1
 fi
 if [ "$TRACKED" = 1 ]; then _v='YES — shared with the team'; else _v='no/untracked'; fi
+# Already ignored? Then "share" is not a real option without the user undoing their own rule, and recommending it
+# ended with "#4 share -> … NOT shared" (RC-1 rehearsal). Asked of git, like the stage step below asks it.
+# The question names a path INSIDE .claude: a fresh adopt has no .claude yet, and a `.claude/` rule only matches a
+# directory git can see — asked about the bare name it answered "not ignored" (measured). An inner path's leading
+# components are directories to git, so both `.claude/` and `.claude` rules answer.
+IGN=0; [ "$IS_GIT" = 1 ] && [ "$TRACKED" != 1 ] && git check-ignore -q .claude/settings.json 2>/dev/null && IGN=1
 rowm '.claude/CLAUDE.md in git' "$_v"
 
 # Supply-chain scan (advisory, read-only): the project's OWN (non-crew) skills/agents may have been pulled from an
@@ -652,6 +663,8 @@ else
 fi
 if [ "$TRACKED" = 1 ]; then
   propm '4 Share/hide' 'share' '.claude/CLAUDE.md is tracked — keep sharing with the team'
+elif [ "$IGN" = 1 ]; then
+  propm '4 Share/hide' 'hide' '.claude is already gitignored in this repo — Crewforth stays local (pick share and un-ignore it to share)'
 else
   propm '4 Share/hide' 'share' 'untracked; Crewforth files are shared by default — pick hide to keep them local'
 fi
@@ -673,7 +686,7 @@ fi
 DEC1="$([ "$N_PAGENTS" != 0 ] && echo keep || echo none)"
 DEC2="project"   # precedence is FIXED to project-wins (not overridable — reflected in the @import comment)
 DEC3="$([ "$COAUTHOR" = 1 ] && echo loosen || echo keep)"
-DEC4="$([ "$TRACKED" = 1 ] && echo share || echo kit-default)"
+DEC4="$([ "$TRACKED" = 1 ] && echo share || { [ "$IGN" = 1 ] && echo hide || echo kit-default; })"
 DEC6="baseline"
 DEC7="$([ "$OFFREPO" = 1 ] && echo transfer || echo local)"
 # normalize display defaults to a real, offered token
@@ -764,7 +777,11 @@ fi
 # A new branch isolates a big first change so the main line stays clean until you review. But on a routine UPDATE
 # of a project whose .claude/ is gitignored, a forced new branch is empty and pointless — the refresh lands on disk
 # with no tracked diff to review, so a branch is pure noise on top of your working branch.
-BASE="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)"
+# symbolic-ref, not `rev-parse --abbrev-ref HEAD || echo main`: on a repository with no commit yet rev-parse PRINTS
+# "HEAD" and then fails, so the fallback was appended and the prompt named the branch "HEAD<newline>main" (RC-1).
+# symbolic-ref names an unborn branch; a detached HEAD falls through to rev-parse and reads "HEAD" as before.
+BASE="$(git symbolic-ref --short -q HEAD 2>/dev/null)" || BASE="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
+[ -n "$BASE" ] || BASE=main
 DEC_BR="$BRANCH_MODE"
 if [ -z "$DEC_BR" ]; then
   if   [ "$KIT_PRESENT" != 1 ]; then DEC_BR=new     # first adopt: isolate the change, keep the main line clean
@@ -785,6 +802,10 @@ fi
 
 # BR_HANDOVER_LINE / GEN_WHERE / ADR_BR_STATUS go into HANDOVER.md and the ADR, so they stay English (artefacts).
 # ONBRANCH/ACCEPT/DISCARD_LINE are only ever printed to the terminal, so they are translated here.
+# A repository with no commit yet has no HEAD to reset to and no branch to delete, so the discard command differs:
+# un-stage with `git rm --cached` (the files stay on disk, nothing was committed) and, on a new branch, point HEAD
+# back at the original name. Measured on an unborn repository: both leave 0 staged files and HEAD on the base name.
+UNBORN=0; git rev-parse --verify -q HEAD >/dev/null 2>&1 || UNBORN=1
 if [ "$DEC_BR" = here ]; then
   BR="$BASE"                                          # $BR is referenced downstream; on 'here' it IS the current branch
   say 'applying on the current branch: %s  (no separate branch; staged, HEAD untouched until you commit)' "${B}$BASE${R}"
@@ -793,7 +814,8 @@ if [ "$DEC_BR" = here ]; then
   ADR_BR_STATUS="accepted (applied on current branch: $BASE — staged, not committed)"
   _mt 'You are on your current branch %s with everything STAGED but NOT committed.' "$BASE"; ONBRANCH_LINE="$_M"
   _mt 'accept:   %s' "git commit -m 'adopt Crewforth'"; ACCEPT_LINE="$_M"
-  _mt 'discard:  %s   (un-stages everything; nothing was committed)' 'git reset --hard HEAD'; DISCARD_LINE="$_M"
+  if [ "$UNBORN" = 1 ]; then _mt 'discard:  %s   (un-stages everything; nothing was committed)' 'git rm -r -q --cached .'
+  else _mt 'discard:  %s   (un-stages everything; nothing was committed)' 'git reset --hard HEAD'; fi; DISCARD_LINE="$_M"
 else
   case "$BASE" in kit-adopt-*) warnm 'HEAD is a prior adopt branch (%s) — the review diff will be vs it, not your main line. Consider %s first.' "$BASE" "'git checkout <main>'" ;; esac
   TS="$(date +%Y%m%d-%H%M%S)"; BR="kit-adopt-$TS"
@@ -806,8 +828,12 @@ else
   GEN_WHERE="branch $BR"
   ADR_BR_STATUS="accepted (handover branch: $BR)"
   _mt 'You are on branch %s with everything STAGED but NOT committed.' "$BR"; ONBRANCH_LINE="$_M"
-  _mt 'accept:   %s   then:  %s' "git commit -m 'adopt Crewforth'" "git checkout $BASE && git merge $BR"; ACCEPT_LINE="$_M"
-  _mt 'discard:  %s' "git reset --hard $BASE && git checkout $BASE && git branch -D $BR"; DISCARD_LINE="$_M"
+  # With no commit yet there is no $BASE to merge into (checkout fails: "pathspec did not match"); the first commit
+  # simply becomes the base branch by renaming this one.
+  if [ "$UNBORN" = 1 ]; then _mt 'accept:   %s   then:  %s' "git commit -m 'adopt Crewforth'" "git branch -m $BASE"
+  else _mt 'accept:   %s   then:  %s' "git commit -m 'adopt Crewforth'" "git checkout $BASE && git merge $BR"; fi; ACCEPT_LINE="$_M"
+  if [ "$UNBORN" = 1 ]; then _mt 'discard:  %s' "git rm -r -q --cached . && git symbolic-ref HEAD refs/heads/$BASE"
+  else _mt 'discard:  %s' "git reset --hard $BASE && git checkout $BASE && git branch -D $BR"; fi; DISCARD_LINE="$_M"
 fi
 
 mkdir -p .claude
@@ -959,17 +985,37 @@ fi
 [ "$COLLIDE_MODE" = keepmine ] && for b in $COLLIDE; do EXCL_A="$EXCL_A crew-$b.md"; done
 # kit-owned trees: FORCE-refresh on a re-adopt (KIT_PRESENT) so kit updates land; never-overwrite on a fresh adopt
 copy_noclobber "$SRC/agents"   .claude/agents   "$KIT_PRESENT" "$EXCL_A"; A_ADD=$ret_add; A_SKIP=$ret_skip
-copy_noclobber "$SRC/skills"   .claude/skills   "$KIT_PRESENT" "$EXCL_S"; S_ADD=$ret_add; S_SKIP=$ret_skip
-# The commands arrived with skills/ (one SKILL.md each), so the summary counts them apart, as the user knows them.
-# Counted from what is on disk: a command skill counts as delivered when the installed SKILL.md is the payload's.
-C_ADD=0; for kf in $CMD_SKILLS; do kn="${kf%/SKILL.md}"; kn="${kn##*/}"; cmp -s "$kf" ".claude/skills/$kn/SKILL.md" && C_ADD=$((C_ADD+1)); done
-C_SKIP=$((NCMD - C_ADD)); S_ADD=$((S_ADD - C_ADD)); S_SKIP=$((S_SKIP - C_SKIP))
-[ "$S_ADD" -ge 0 ] || S_ADD=0; [ "$S_SKIP" -ge 0 ] || S_SKIP=0
+# The summary counts skills and commands the way the README does — one per skill, a `kind: command` skill as a
+# command, an `experimental: true` one as neither. copy_noclobber counts FILES (a skill with references/ is several),
+# which is how an update from 2.13.0 once reported "skills +75" for 39 skills. A skill counts as added when the
+# copy put it there or refreshed it; one that was excluded, or that a fresh adopt found already present and left
+# alone, counts as skipped. The "already present" answer is taken before the copy, with builtins only.
+_pre=" "; for kd in .claude/skills/*/; do [ -d "$kd" ] && { kn="${kd%/}"; _pre="$_pre${kn##*/} "; }; done
+copy_noclobber "$SRC/skills"   .claude/skills   "$KIT_PRESENT" "$EXCL_S"
+S_ADD=0; S_SKIP=0; C_ADD=0; C_SKIP=0
+for kd in "$SRC"/skills/*/; do
+  [ -f "$kd/SKILL.md" ] || continue; kn="${kd%/}"; kn="${kn##*/}"; _k=0; _e=0; _d=0
+  while IFS= read -r _l || [ -n "$_l" ]; do
+    _l="${_l%$'\r'}"
+    case "$_l" in ---) _d=$((_d+1)); [ "$_d" -ge 2 ] && break ;; "  kind: command") _k=1 ;; "  experimental: true") _e=1 ;; esac
+  done < "$kd/SKILL.md"
+  [ "$_e" = 1 ] && continue
+  _got=1
+  case " $EXCL_S " in *" $kn "*) _got=0 ;; esac
+  [ "$_got" = 1 ] && [ "$KIT_PRESENT" != 1 ] && case "$_pre" in *" $kn "*) _got=0 ;; esac
+  if [ "$_k" = 1 ]; then [ "$_got" = 1 ] && C_ADD=$((C_ADD+1)) || C_SKIP=$((C_SKIP+1))
+  else                   [ "$_got" = 1 ] && S_ADD=$((S_ADD+1)) || S_SKIP=$((S_SKIP+1)); fi
+done
 # Read BEFORE the hooks tree is refreshed: whether §4.2's vendor line is armed right now (see the re-arm below).
 # `\r?`: a blocklist that reached this checkout CRLF (autocrlf=true, a Windows editor) still counts as armed —
 # a plain -x match read it as disarmed and the refresh switched §4.2 off without a word (measured in review).
 VENDOR_ARMED=0; grep -qxE $'DevArchitecture\r?' .claude/hooks/trace-blocklist.txt 2>/dev/null && VENDOR_ARMED=1
 copy_noclobber "$SRC/hooks"    .claude/hooks    "$KIT_PRESENT"; H_ADD=$ret_add; H_SKIP=$ret_skip
+# The 3.0 migration made cqrs-aop-module a project skill; it is the one Crewforth shipped until now, so the updater
+# vouches for it rather than having the next session open by asking whether to trust it. Only that component, and
+# only after the refreshed hook (which knows --trust-one) is in place.
+[ "$LEGACY_DOTNET" = 1 ] && [ -f .claude/skills/cqrs-aop-module/SKILL.md ] \
+  && bash .claude/hooks/skill-trust.sh --trust-one skills/cqrs-aop-module >/dev/null 2>&1 || true
 copy_noclobber "$SRC/eval"     .claude/eval     "$KIT_PRESENT"; E_ADD=$ret_add; E_SKIP=$ret_skip
 # The Studio panel. This is the line that answers "I updated and `/crew-studio` says the panel
 # is missing": with KIT_PRESENT=1 it is a force-refresh, so a project that already has the kit
@@ -1096,6 +1142,20 @@ if [ "$KIT_PRESENT" = 1 ] && [ -f CLAUDE.md ] && grep -q -e '-csk' CLAUDE.md $(g
     rm -f "$f.kit-before"
   done
   set --
+  # The 2.x template's own sentences say "kit" (the RC-1 rehearsal found three in an updated CLAUDE.md). Each is
+  # matched as that template wrote it — the whole header line, and two sentences from their first word — so text the
+  # user wrote is never touched; 3.0's template says Crewforth in exactly these places.
+  if grep -qE '^<!-- kit discipline · on conflict the project rules BELOW win -->$|^kit-owned and identical in every project|^kit-owned: an update overwrites it' CLAUDE.md 2>/dev/null; then
+    cp CLAUDE.md CLAUDE.md.kit-before
+    if sed $_SB -E -e 's/^<!-- kit discipline · on conflict the project rules BELOW win -->$/<!-- Crewforth discipline · on conflict the project rules BELOW win -->/' \
+         -e 's/^kit-owned (and identical in every project, so it cannot know either\.)/Crewforth-owned \1/' \
+         -e 's/^kit-owned(: an update overwrites it, so put )/Crewforth-owned\1/' CLAUDE.md > CLAUDE.md.kit-sweep; then
+      cat CLAUDE.md.kit-sweep > CLAUDE.md
+    fi
+    rm -f CLAUDE.md.kit-sweep
+    cmp -s CLAUDE.md CLAUDE.md.kit-before || say '3.0 ref-sweep: the 2.x template wording in %s now says Crewforth' CLAUDE.md
+    rm -f CLAUDE.md.kit-before
+  fi
 fi
 # §4.2: an armed vendor line STAYS armed, and nothing else arms it. The blocklist ships `# DevArchitecture`
 # commented; before 3.0 only `start.sh --dotnet` uncommented it, and the force-refresh above resets it to a
@@ -1445,7 +1505,9 @@ else say '#3 keep -> full trace scan'; fi
 # 'hide' becomes a post-merge follow-up in HANDOVER. (Gitignoring .claude BEFORE the commit would drop it from the
 # review diff and leave it untracked after a rollback -> 'project untouched' would be a lie.)
 HIDE_NOTE=""
-if [ "$DEC4" = hide ]; then
+if [ "$DEC4" = hide ] && [ "$IGN" = 1 ]; then
+  say '#4 hide -> this repo already ignores .claude — nothing to add; Crewforth stays local'
+elif [ "$DEC4" = hide ]; then
   # docs/ belongs in this command for the same reason it belongs in .gitignore: the opt-out has to cover
   # the working documents too, or "keep the kit local" leaves the plans, handovers and threat models behind
   # in the shared repository. The two files the adoption force-added are named explicitly, because they are
@@ -1627,7 +1689,14 @@ fi
 # and they are the only things under docs/ that the adoption itself put there. Everything the skills write
 # later stays private, which is what the guarantee was always about.
 git add .claude CLAUDE.md >/dev/null 2>&1
-git add -f docs/HANDOVER.md "$ADR1" >/dev/null 2>&1
+# ...except in a private install. When docs/ is gitignored the owner has said internal documents stay off the
+# repository, and Crewforth's own review flagged the force-added pair as a §4.3 leak (RC-1 rehearsal). They are
+# written all the same and their place is said out loud; a shared install stages them as before.
+if git check-ignore -q docs/HANDOVER.md 2>/dev/null; then
+  say 'docs/ is gitignored here (a private install): %s and %s are written but not staged — they stay on this machine' docs/HANDOVER.md "$ADR1"
+else
+  git add -f docs/HANDOVER.md "$ADR1" >/dev/null 2>&1
+fi
 [ -e .gitignore ] && git add .gitignore >/dev/null 2>&1
 [ -e .trace-allowlist.txt ] && git add .trace-allowlist.txt >/dev/null 2>&1
 # NO auto-commit: the change set stays STAGED-but-uncommitted on branch $BR, so every added/changed file shows up

@@ -21,11 +21,15 @@
 # never fail to start because of this.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-MODE=""
-case "${1:-}" in --trust) MODE=trust ;; esac
+MODE=""; ONE=""
+# --trust-one <skills/name | agents/name.md>: record ONE component as accepted, and nothing else. The updater uses it
+# for the skill it turned into a project skill itself (cqrs-aop-module, which Crewforth shipped until 3.0): flagging
+# the updater's own move as unvetted was the first thing an updated session said (RC-1 rehearsal). --trust would
+# have accepted every other foreign component too, including ones the user never looked at.
+case "${1:-}" in --trust) MODE=trust ;; --trust-one) MODE=one; ONE="${2:-}" ;; esac
 
 IN=""
-[ ! -t 0 ] && [ "$MODE" != trust ] && IN="$(cat 2>/dev/null || true)"
+[ ! -t 0 ] && [ -z "$MODE" ] && IN="$(cat 2>/dev/null || true)"
 ROOT="${CLAUDE_PROJECT_DIR:-}"
 [ -n "$ROOT" ] || ROOT="$(printf '%s' "$IN" | sed -n 's/.*"cwd"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
 [ -n "$ROOT" ] || ROOT="$PWD"
@@ -57,6 +61,15 @@ digest(){
   elif command -v shasum    >/dev/null 2>&1 && d="$(shasum -a 256 "$1" 2>/dev/null)" && [ -n "$d" ]; then printf '%s\n' "${d%% *}"
   else cksum "$1" 2>/dev/null | tr -s ' ' | cut -d' ' -f1,2 | tr ' ' '-'; fi
 }
+
+if [ "$MODE" = one ]; then
+  case "$ONE" in skills/*/*|agents/*/*) exit 1 ;; skills/?*) p="$CL/$ONE/SKILL.md" ;; agents/?*.md) p="$CL/$ONE" ;; *) exit 1 ;; esac
+  [ -f "$p" ] || exit 1
+  dg="$(digest "$p")"; [ -n "$dg" ] || exit 1
+  [ -f "$TRUST" ] || printf '# Components reviewed and accepted by the user. Regenerate with: bash skill-trust.sh --trust\n' > "$TRUST" 2>/dev/null || exit 1
+  grep -qxF "$dg $ONE" "$TRUST" 2>/dev/null || printf '%s %s\n' "$dg" "$ONE" >> "$TRUST"
+  exit 0
+fi
 
 # The component list: a skill is its SKILL.md, an agent is its file. Only those Crewforth does NOT ship —
 # without a manifest we cannot tell kit-owned from project-owned, so we stay silent rather than guess.
