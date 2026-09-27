@@ -27,10 +27,20 @@ Verify Crewforth is actually *active* in this project (not just present on disk)
    it prints once per Crewforth version, and it is meant for the user, not for you.
 
 If `.claude/eval/doctor.sh` doesn't exist, this is not a full (start.sh / adopt.sh) install — Crewforth is likely
-running as a **plugin**, whose hooks are managed by Claude Code itself; there's nothing for the doctor to check.
+running as a **plugin**, whose hooks are managed by Claude Code itself; there's nothing for the doctor to check,
+with one exception: the skill listing, which a plugin cannot size for itself (its settings cannot set
+`skillListingBudgetFraction`). Count it the way the full install's doctor does:
+`LC_ALL=C awk -f "${CLAUDE_PLUGIN_ROOT}/eval/lib/skill-listing.awk" "${CLAUDE_PLUGIN_ROOT}"/skills/*/SKILL.md`
+(prints characters, then skills). At the default fraction a 200,000-token model has 8,000 characters for the whole
+listing, and Claude Code's own skills take about 5,900 of them (measured on v2.1.282). If Crewforth's number plus
+5,900 is over 8,000, tell the user plainly: on such a model the least-used skills lose their descriptions and stop
+being picked; one line in `~/.claude/settings.json` fixes it — `"skillListingBudgetFraction": 0.04`; the cost is
+that the listing is then sent whole every turn, about (that total ÷ 4) tokens, (tokens ÷ 2,000)% of a 200k window.
+It is their call — show the line and the cost, do not edit their settings. On a 1,000,000-token model the default
+already fits.
 
 **The eval scripts are installer-only, by decision.** `eval/` — `doctor.sh`, `smoke-test.sh`, `routing-eval.sh`,
 `scan-skill.sh`, `utilization.sh` — ships with `start.sh` and `adopt.sh` and NOT with the plugin edition. The eval
 scripts are developer instruments: they inspect an installation from outside it, and the plugin edition has no
-installation to inspect. Say this plainly when someone asks why `/crew-doctor` reports nothing on a plugin install,
+installation to inspect. Say this plainly when someone asks why `/crew-doctor` reports only the listing on a plugin install,
 rather than treating it as a defect. The Studio panel ships in both editions (`/crew-studio`).

@@ -43,7 +43,8 @@ Skipping one of these is how a component ships half-installed:
    `node packaging/gen-diagrams.mjs` writes `assets/`, and smoke fails while any of them is stale.
 4. **Plugin edition** *(Crewforth repository only)*. `bash packaging/build-plugin.sh` — in the same commit, or the
    release stops at the sync gate.
-5. **Budget.** A new skill moves `BUDGET_SKILLS`; raise it in the same commit with the justification comment the
+5. **Budget.** A new skill moves `BUDGET_SKILL_LISTING` (the skill listing in characters, counted like Claude Code
+   counts it; `/crew-doctor` reports the same number). Raise it in the same commit with the justification comment the
    file's convention requires. Never raise it to make a red gate green without saying why.
 
 ## 4. Prove it — run all four, in this order

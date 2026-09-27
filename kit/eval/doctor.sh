@@ -18,22 +18,164 @@ cd "$ROOT" 2>/dev/null || { echo "doctor: cannot enter '$ROOT'"; exit 2; }
 exec </dev/null
 
 FAIL=0
-ok(){  echo "  ✅ $1"; }
-bad(){ echo "  ❌ $1"; echo "     ↳ fix: $2"; FAIL=$((FAIL+1)); }
-warn(){ echo "  ⚠️  $1"; }
+# Every reporter takes a FORMAT and its arguments, and the format is the key of the message table below: a value
+# (a path, a count, a setting's name) goes in as an argument, so the sentence around it can be translated whole.
+ok(){  _mt "$@"; echo "  ✅ $_M"; }
+# bad MESSAGE FIX [arguments for MESSAGE]. The fix is a key of its own and takes no arguments; a fix that ends in
+# something untranslatable (a command, a list of names) puts it in BAD_TAIL, which is printed after it once.
+bad(){ local _m="$1" _x="$2"; shift 2; _mt "$_m" "$@"; echo "  ❌ $_M"; _mt "fix: "; local _f="$_M"; _mt "$_x"
+       echo "     ↳ $_f$_M${BAD_TAIL:-}"; BAD_TAIL=""; FAIL=$((FAIL+1)); }
+warn(){ _mt "$@"; echo "  ⚠️  $_M"; }
 # `skip` lives up here with the other reporters, not down in the readiness block where it used to be
 # defined: the health checks call it too, and a helper defined after its first caller is a silent
 # no-op — the line never prints and the run shows `skip: command not found` on stderr, where nobody
 # looks. Found by RUNNING doctor against a fixture install; grepping for the call sites said wired.
-skip(){ echo "  ·  $1"; }
+skip(){ _mt "$@"; echo "  ·  $_M"; }
 
-echo "== Crewforth — install doctor =="
+# ---- CREW-I18N ------------------------------------------------------------------------------------------
+# The doctor speaks the language the project was installed in: CREW_LANG when it is set, otherwise the `lang=` that
+# start.sh / adopt.sh recorded in .claude/kit.conf, otherwise the locale. Same contract as the installers: the
+# English string is the key, a missing translation prints English, and names are never translated — commands,
+# paths, file names, settings keys and hook events are identifiers, only the prose around them is.
+case "${CREW_LANG:-}" in tr|en) ;; *)
+  CREW_LANG=""
+  if [ -f .claude/kit.conf ]; then
+    while IFS= read -r _l || [ -n "$_l" ]; do case "$_l" in lang=*) CREW_LANG="${_l#lang=}"; CREW_LANG="${CREW_LANG%$'\r'}" ;; esac; done < .claude/kit.conf
+  fi
+  case "$CREW_LANG" in tr|en) ;; *)
+    _loc="${LC_ALL:-}"; [ -n "$_loc" ] || _loc="${LC_MESSAGES:-}"; [ -n "$_loc" ] || _loc="${LANG:-}"
+    case "$_loc" in tr*|TR*) CREW_LANG=tr ;; *) CREW_LANG=en ;; esac ;;
+  esac ;;
+esac
+export CREW_LANG   # preflight.sh, which the doctor runs below, reads it and speaks the same language
+_mt() {
+  # An empty key must still ASSIGN: bash 3.2's `printf -v _M ""` leaves _M holding the previous translation.
+  [ -n "${1:-}" ] || { _M=""; return 0; }
+  local s="$1"; shift
+  if [ "$CREW_LANG" = tr ]; then
+    case "$s" in
+      '== Crewforth — install doctor ==') s='== Crewforth — kurulum denetimi ==' ;;
+      'fix: ') s='çözüm: ' ;;
+      "no .claude/ in '%s' — is Crewforth installed here?") s="'%s' içinde .claude/ yok — Crewforth burada kurulu mu?" ;;
+      'VERSION present (%s)') s='VERSION var (%s)' ;;
+      'VERSION missing') s='VERSION yok' ;;
+      'reinstall or update Crewforth (npx crewforth update)') s="Crewforth'u yeniden kurun ya da güncelleyin (npx crewforth update)" ;;
+      'Crewforth v%s installed, v%s published — update with /crew-update') s='Crewforth v%s kurulu, v%s yayında — /crew-update ile güncelleyin' ;;
+      'required git hooks present (pre-commit, commit-msg)') s="gerekli git hook'ları yerinde (pre-commit, commit-msg)" ;;
+      'MISSING git hook(s):%s — the commit trace/secret scan is absent') s="EKSİK git hook'u:%s — commit iz ve gizli bilgi taraması yok" ;;
+      'reinstall or update Crewforth') s="Crewforth'u yeniden kurun ya da güncelleyin" ;;
+      'all hooks are executable') s="tüm hook'lar çalıştırılabilir" ;;
+      'not executable:%s') s='çalıştırılabilir değil:%s' ;;
+      'guard-bash.sh did NOT block a force-push — the §4.5 gate is neutered/disarmed') s="guard-bash.sh force-push'u ENGELLEMEDİ — §4.5 kapısı etkisiz" ;;
+      'restore guard-bash.sh from Crewforth (npx crewforth update)') s="guard-bash.sh'yi Crewforth'tan geri yükleyin (npx crewforth update)" ;;
+      'guard-bash.sh blocks a force-push (gate live, not neutered)') s="guard-bash.sh force-push'u engelliyor (kapı canlı, etkisiz değil)" ;;
+      'guard-bash.sh enforces the §4.6 review gate (gate live, not neutered)') s='guard-bash.sh §4.6 review kapısını uyguluyor (kapı canlı, etkisiz değil)' ;;
+      'guard-bash.sh did NOT enforce §4.6 — a commit can land with no review of its diff') s="guard-bash.sh §4.6'yı UYGULAMADI — diff'i review edilmemiş bir commit geçebilir" ;;
+      'restore guard-bash.sh from Crewforth (and check crew-review-agent still writes .claude/review-pass.json)') s="guard-bash.sh'yi Crewforth'tan geri yükleyin (ve crew-review-agent'ın .claude/review-pass.json'u hâlâ yazdığını kontrol edin)" ;;
+      'core.hooksPath -> %s (commit-time gates active)') s='core.hooksPath -> %s (commit anındaki kapılar devrede)' ;;
+      'core.hooksPath is unset — commit trace/secret/bloat gates are INACTIVE') s='core.hooksPath ayarlı değil — commit iz, gizli bilgi ve şişkinlik kapıları DEVRE DIŞI' ;;
+      "core.hooksPath -> %s (not Crewforth's hooks)") s="core.hooksPath -> %s (Crewforth'un hook'ları değil)" ;;
+      'not a git repo — commit gates need: git init && git config core.hooksPath .claude/hooks') s='git deposu değil — commit kapıları için: git init && git config core.hooksPath .claude/hooks' ;;
+      "Crewforth's JSON reader is missing (%s) — settings.json cannot be checked") s="Crewforth'un JSON okuyucusu yok (%s) — settings.json denetlenemiyor" ;;
+      'update Crewforth') s="Crewforth'u güncelleyin" ;;
+      'settings.json is valid JSON') s='settings.json geçerli JSON' ;;
+      'settings.json wires PreToolUse / UserPromptSubmit / Stop (non-empty)') s='settings.json PreToolUse / UserPromptSubmit / Stop olaylarını bağlıyor (boş değil)' ;;
+      "settings.json hook events empty or missing:%s — those gates won't fire") s="settings.json'da boş ya da eksik hook olayları:%s — bu kapılar çalışmaz" ;;
+      'restore settings.json from Crewforth (npx crewforth update)') s="settings.json'u Crewforth'tan geri yükleyin (npx crewforth update)" ;;
+      'SessionStart not wired — session rehydration after /compact or /clear is inactive (update Crewforth)') s="SessionStart bağlı değil — /compact ya da /clear sonrasında oturum toparlanmıyor (Crewforth'u güncelleyin)" ;;
+      'SessionStart wired (session rehydration active)') s='SessionStart bağlı (oturum toparlama devrede)' ;;
+      'settings.json is invalid JSON') s='settings.json geçersiz JSON' ;;
+      "fix the syntax by hand — restoring Crewforth's file would drop any hooks you added") s="sözdizimini elle düzeltin — Crewforth'un dosyasını geri yüklemek eklediğiniz hook'ları siler" ;;
+      'settings.json wires hooks through the %s placeholder — on Windows its separators are stripped before bash runs, so NO hook launches and every gate is silently absent') s="settings.json hook'ları %s yer tutucusuyla bağlıyor — Windows'ta ayırıcılar bash çalışmadan silinir, bu yüzden HİÇBİR hook başlamaz ve bütün kapılar sessizce yok olur" ;;
+      'update Crewforth (npx crewforth adopt) — hook commands become:') s="Crewforth'u güncelleyin (npx crewforth adopt) — hook komutları şu olur:" ;;
+      'hook wiring carries no path placeholder (nothing for Windows to mangle)') s="hook bağlantısında yol yer tutucusu yok (Windows'un bozacağı bir şey yok)" ;;
+      'settings.json missing — the tool-level gates (commit approval, guards, context) are INACTIVE') s='settings.json yok — araç düzeyindeki kapılar (commit onayı, korumalar, bağlam) DEVRE DIŞI' ;;
+      'reinstall Crewforth') s="Crewforth'u yeniden kurun" ;;
+      "Claude Code's default") s="Claude Code'un varsayılanı" ;;
+      ' (estimated: only 1M and 200k windows were measured)') s=' (tahmini: yalnız 1M ve 200k pencereler ölçüldü)' ;;
+      'skill listing: %s skill(s) use when_to_use or a folded description — a shape the count was not measured on') s='skill listesi: %s skill when_to_use ya da katlanmış açıklama kullanıyor — sayımın ölçülmediği bir biçim' ;;
+      'skill listing %s chars for %s skills fits the %s-char budget (fraction %s from %s, %s-token window%s)') s="skill listesi %s karakter, %s skill; %s karakterlik bütçeye sığıyor (kesir %s, kaynak %s; %s token'lık pencere%s)" ;;
+      'skill listing %s chars for %s skills EXCEEDS the %s-char budget (fraction %s from %s, %s-token window%s)') s="skill listesi %s karakter, %s skill; %s karakterlik bütçeyi AŞIYOR (kesir %s, kaynak %s; %s token'lık pencere%s)" ;;
+      '  — Claude Code drops the descriptions of the least-used skills, and those stop matching requests.') s="  — Claude Code en az kullanılan skill'lerin açıklamalarını düşürür; o skill'ler isteklerle eşleşmez olur." ;;
+      '  Fixes: raise %s in settings, or set rarely-used skills to %s in %s.') s="  Çözüm: ayarlarda %s değerini yükseltin ya da nadir kullanılan skill'leri %s olarak %s içine yazın." ;;
+      '  Which skills? bash .claude/eval/utilization.sh — it reports the ones nothing in this project reached.') s="  Hangileri? bash .claude/eval/utilization.sh — bu projede hiçbir şeyin ulaşmadığı skill'leri listeler." ;;
+      "on a 200,000-token model the whole listing would be ~%s chars (Crewforth %s + your personal skills %s + Claude Code's own ~%s, measured) against %s at fraction %s — the least-used skills there lose their descriptions.") s="200 000 token'lık bir modelde listenin tamamı ~%s karakter olur (Crewforth %s + kişisel skill'leriniz %s + Claude Code'un kendi ~%s, ölçüldü); bütçe ise %s karakter (kesir %s). Orada en az kullanılan skill'ler açıklamalarını kaybeder." ;;
+      '  If you use such a model, one line in %s/settings.json fixes it: %s') s='  Böyle bir model kullanıyorsanız %s/settings.json dosyasına tek satır yeter: %s' ;;
+      '  What it costs: the listing is sent every turn. At 0.04 it stays whole — ~%s chars, about %s tokens,') s="  Bedeli: liste her turda gönderilir. 0.04'te bütün kalır — ~%s karakter, yaklaşık %s token," ;;
+      '  %s%% of a 200k window — instead of at most %s chars. (4 characters per token is how Claude Code sizes') s='  200k pencerede %%%s yer tutar — en fazla %s karakter yerine. (Claude Code bu bütçeyi 200k pencerede token başına' ;;
+      '  this budget on a 200k window: 0.01 of 200,000 tokens is 8,000 characters.)') s="  4 karakter sayarak hesaplar: 200 000 token'ın 0.01'i 8 000 karakterdir.)" ;;
+      "delegation check could not read:%s — not valid JSON (or Crewforth's reader is missing).") s="delegasyon denetimi okuyamadı:%s — geçerli JSON değil (ya da Crewforth'un okuyucusu yok)." ;;
+      '  open it and check that Agent/Task is not under permissions.deny. If it is, no subagent can ever run.') s="  dosyayı açıp Agent/Task'ın permissions.deny altında olmadığını kontrol edin. Oradaysa hiçbir alt ajan çalışamaz." ;;
+      'the Agent tool is DENIED in:%s — no subagent can ever run, so every agent on disk is dead weight') s='Agent aracı şurada REDDEDİLMİŞ:%s — hiçbir alt ajan çalışamaz, diskteki her ajan ölü yük' ;;
+      'remove the Agent/Task entry from permissions.deny, or accept that this project runs main-thread-only') s='Agent/Task girdisini permissions.deny içinden çıkarın ya da bu projenin yalnız ana oturumda çalışacağını kabul edin' ;;
+      'delegation is enabled (the Agent tool is not denied)') s='delegasyon açık (Agent aracı reddedilmemiş)' ;;
+      'CLAUDE.md (or a doc it references) names auto-delegated agent(s) that no installed agent matches — delegation to them silently fails') s='CLAUDE.md (ya da başvurduğu bir belge) kurulu hiçbir ajanla eşleşmeyen, otomatik devredilen ajan(lar) anıyor — onlara devretmek sessizce başarısız olur' ;;
+      'rename each bare reference to its `crew-` id:') s='her çıplak anmayı `crew-` kimliğiyle değiştirin:' ;;
+      'CLAUDE.md (or a referenced doc) names pull-only agent(s) by their old bare id — invoked explicitly, so delegation still works; rename for consistency:%s') s='CLAUDE.md (ya da başvurduğu bir belge) yalnız açıkça çağrılan ajan(lar)ı eski çıplak kimliğiyle anıyor — açıkça çağrıldıkları için devretme yine çalışır; tutarlılık için yeniden adlandırın:%s' ;;
+      'agent references resolve to installed agents (CLAUDE.md + referenced docs)') s='ajan anmaları kurulu ajanlara çözülüyor (CLAUDE.md ve başvurduğu belgeler)' ;;
+      'CLAUDE.md missing — .claude/DISCIPLINE.md is never loaded (routing / DoD / session rules absent)') s='CLAUDE.md yok — .claude/DISCIPLINE.md hiç yüklenmiyor (yönlendirme / DoD / oturum kuralları yok)' ;;
+      'create CLAUDE.md with this as its own line: @.claude/DISCIPLINE.md') s="CLAUDE.md'yi oluşturun ve şunu ayrı bir satır olarak yazın: @.claude/DISCIPLINE.md" ;;
+      'CLAUDE.md imports .claude/DISCIPLINE.md (the discipline reaches the model)') s="CLAUDE.md .claude/DISCIPLINE.md'yi içe aktarıyor (disiplin modele ulaşıyor)" ;;
+      "CLAUDE.md carries the discipline INLINE (pre-1.1 layout) — it loads, but Crewforth updates never reach it; migrate to the '@.claude/DISCIPLINE.md' import line") s="CLAUDE.md disiplini SATIR İÇİNDE taşıyor (1.1 öncesi düzen) — yükleniyor ama Crewforth güncellemeleri ona ulaşmıyor; '@.claude/DISCIPLINE.md' içe aktarma satırına geçin" ;;
+      'CLAUDE.md does not import .claude/DISCIPLINE.md — the discipline is on disk but never loaded') s="CLAUDE.md .claude/DISCIPLINE.md'yi içe aktarmıyor — disiplin diskte duruyor ama hiç yüklenmiyor" ;;
+      'add this as its own line at the top of CLAUDE.md: @.claude/DISCIPLINE.md') s="CLAUDE.md'nin en üstüne şunu ayrı bir satır olarak ekleyin: @.claude/DISCIPLINE.md" ;;
+      ' · panel needs Node 18+ — .claude/studio/ensure-node.sh --plan fetches one') s=' · panel Node 18+ ister — .claude/studio/ensure-node.sh --plan bir tane indirir' ;;
+      '%s is set — its 3.0 name is CREW_%s (the old name works until 4.0)') s="%s ayarlı — 3.0'daki adı CREW_%s (eski ad 4.0'a kadar çalışır)" ;;
+      '%s is set but no longer read — set CREW_%s instead') s='%s ayarlı ama artık okunmuyor — yerine CREW_%s ayarlayın' ;;
+      'DOCTOR: healthy ✅%s') s='DOCTOR: sağlıklı ✅%s' ;;
+      'DOCTOR: %s issue(s) ❌ — apply the fixes above%s') s='DOCTOR: %s sorun ❌ — yukarıdaki çözümleri uygulayın%s' ;;
+      'shell gates watch both Bash and PowerShell') s="kabuk kapıları hem Bash'i hem PowerShell'i izliyor" ;;
+      'shell gates watch only Bash — PowerShell commands bypass every §4.5 rule') s="kabuk kapıları yalnız Bash'i izliyor — PowerShell komutları her §4.5 kuralını atlıyor" ;;
+      'update Crewforth (npx crewforth update), or set the PreToolUse matcher to') s="Crewforth'u güncelleyin (npx crewforth update) ya da PreToolUse matcher'ını şuna ayarlayın:" ;;
+      'auto-mode classifier config: built-ins intact, Crewforth rules present (config, not a gate)') s='auto-mode sınıflandırıcı ayarı: yerleşik kurallar sağlam, Crewforth kuralları var (ayar, kapı değil)' ;;
+      'auto-mode classifier BUILT-INS DROPPED — an autoMode array lacks %s') s='auto-mode sınıflandırıcının YERLEŞİK KURALLARI DÜŞMÜŞ — bir autoMode dizisinde %s yok' ;;
+      'restore it in ~/.claude/settings.json; see .claude/skills/automode-policy/SKILL.md') s='~/.claude/settings.json içinde geri koyun; bkz. .claude/skills/automode-policy/SKILL.md' ;;
+      'auto-mode classifier config: Crewforth rules absent (measured not to enforce — see the skill)') s="auto-mode sınıflandırıcı ayarı: Crewforth kuralları yok (uygulanmadıkları ölçüldü — skill'e bakın)" ;;
+      'auto-mode classifier config: not checked (no claude CLI, or auto mode unavailable here)') s='auto-mode sınıflandırıcı ayarı: denetlenmedi (claude CLI yok ya da burada auto mode kullanılamıyor)' ;;
+      'auto-mode policy check skipped (install predates the automode-policy skill; run the updater)') s="auto-mode politika denetimi atlandı (kurulum automode-policy skill'inden eski; güncelleyiciyi çalıştırın)" ;;
+      'gate activity: no gate has fired in this project yet — %s rules wired, recording on') s='kapı etkinliği: bu projede henüz hiçbir kapı tetiklenmedi — %s kural bağlı, kayıt açık' ;;
+      'gate activity: %s decision(s) recorded (see /crew-gates)') s='kapı etkinliği: %s karar kaydedildi (bkz. /crew-gates)' ;;
+      'gate activity recorded (see /crew-gates)') s='kapı etkinliği kaydediliyor (bkz. /crew-gates)' ;;
+      'gate activity NOT MEASURED — nowhere to record (see /crew-gates)') s='kapı etkinliği ÖLÇÜLMEDİ — kaydedilecek yer yok (bkz. /crew-gates)' ;;
+      'gate activity unreadable (see /crew-gates)') s='kapı etkinliği okunamadı (bkz. /crew-gates)' ;;
+      'Readiness (advisory — does not affect the verdict above):') s='Hazırlık (tavsiye niteliğinde — yukarıdaki kararı etkilemez):' ;;
+      'CLAUDE.md project section is still the template (placeholders left in)') s='CLAUDE.md proje bölümü hâlâ şablon (yer tutucular duruyor)' ;;
+      'fill in Project / Stack / Project skills — agents read the stack from there') s='Project / Stack / Project skills bölümlerini doldurun — ajanlar yığını oradan okur' ;;
+      'CLAUDE.md project section is filled in') s='CLAUDE.md proje bölümü doldurulmuş' ;;
+      "%s project-specific skill(s) alongside Crewforth's") s="Crewforth'unkilerin yanında %s projeye özel skill" ;;
+      "no project-specific skill — only Crewforth's generic ones are installed") s="projeye özel skill yok — yalnız Crewforth'un genel skill'leri kurulu" ;;
+      "put the domain 'how's in .claude/skills/ (format: .claude/AGENT_TEMPLATE.md)") s="alanınıza özgü 'nasıl'ları .claude/skills/ altına koyun (biçim: .claude/AGENT_TEMPLATE.md)" ;;
+      'project-skill signal skipped (no .claude/kit-manifest.txt — install predates it; run the updater)') s="proje skill'i sinyali atlandı (.claude/kit-manifest.txt yok — kurulum ondan eski; güncelleyiciyi çalıştırın)" ;;
+      'devcontainer present (agentic execution is sandboxed)') s='devcontainer var (ajan komutları yalıtılmış ortamda çalışır)' ;;
+      'no .devcontainer/devcontainer.json — agent commands run directly against your machine') s='.devcontainer/devcontainer.json yok — ajan komutları doğrudan makinenizde çalışır' ;;
+      'add a devcontainer, or keep approval-mode gates on for anything destructive (§4.5)') s='bir devcontainer ekleyin ya da yıkıcı her şey için onay kapılarını açık tutun (§4.5)' ;;
+      'MCP servers configured (project tools/data reach the model)') s='MCP sunucuları ayarlı (projenin araçları ve verisi modele ulaşır)' ;;
+      'no MCP server configured — the model has no project-specific tool access') s='MCP sunucusu ayarlı değil — modelin projeye özel araç erişimi yok' ;;
+      'add .mcp.json when a tool/data source would help (the mcp-builder skill covers writing one)') s="bir araç ya da veri kaynağı işe yarayacaksa .mcp.json ekleyin (nasıl yazılacağını mcp-builder skill'i anlatır)" ;;
+      'CLAUDE.md is current (%s commit(s) of drift since it was last touched)') s="CLAUDE.md güncel (son dokunulduğundan beri %s commit'lik kayma)" ;;
+      'CLAUDE.md is stale — %s commits changed the project since it was last touched (limit %s)') s='CLAUDE.md bayat — son dokunulduğundan beri %s commit projeyi değiştirdi (sınır %s)' ;;
+      're-read it against the code and update Stack / Project skills (the claude-md-improver flow)') s='kodla karşılaştırarak yeniden okuyun ve Stack / Project skills bölümlerini güncelleyin (claude-md-improver akışı)' ;;
+      'freshness signal skipped (cannot read CLAUDE.md mtime on this platform)') s="güncellik sinyali atlandı (bu platformda CLAUDE.md'nin değişme zamanı okunamıyor)" ;;
+      '  → readiness %s/%s') s='  → hazırlık %s/%s' ;;
+      'npx crewforth adopt') ;;   # identifier, printed as is
+      'chmod +x .claude/hooks/*.sh .claude/hooks/pre-commit .claude/hooks/commit-msg') ;;   # identifier, printed as is
+      'git config core.hooksPath .claude/hooks') ;;   # identifier, printed as is
+      # No row: the line prints in English. CREW_I18N_MISS collects every such key, so smoke catches a missing
+      # translation by NAME.
+      *) [ -n "${CREW_I18N_MISS:-}" ] && printf '%s\n' "$s" >> "$CREW_I18N_MISS" ;;
+    esac
+  fi
+  # shellcheck disable=SC2059
+  printf -v _M "$s" "$@"
+}
+# ---- /CREW-I18N -----------------------------------------------------------------------------------------
+_mt "== Crewforth — install doctor =="; echo "$_M"
 
 # 0) Is Crewforth even here?
-[ -d .claude ] || { echo "  ❌ no .claude/ in '$PWD' — is Crewforth installed here?"; echo "     ↳ fix: npx crewforth adopt"; exit 1; }
+[ -d .claude ] || { bad "no .claude/ in '%s' — is Crewforth installed here?" "npx crewforth adopt" "$PWD"; exit 1; }
 
 # 1) VERSION (marks a full install; also what /crew-update compares)
-if [ -f .claude/VERSION ]; then ok "VERSION present ($(head -1 .claude/VERSION | tr -cd '0-9A-Za-z.-'))"
+if [ -f .claude/VERSION ]; then ok "VERSION present (%s)" "$(head -1 .claude/VERSION | tr -cd '0-9A-Za-z.-')"
 else bad "VERSION missing" "reinstall or update Crewforth (npx crewforth update)"; fi
 
 # 1b) Is that version the current one? Read-only, from the cache session-update-check.sh maintains — doctor makes
@@ -45,7 +187,7 @@ if [ -f .claude/VERSION ] && [ -f .claude/.state/update-check ]; then
   DCUR="$(head -1 .claude/VERSION 2>/dev/null | tr -cd '0-9A-Za-z.-')"
   if [ -n "$DLATEST" ] && awk -v a="$DLATEST" -v b="$DCUR" 'BEGIN{split(a,x,".");split(b,y,".");
        for(i=1;i<=3;i++){if(x[i]+0>y[i]+0)exit 0; if(x[i]+0<y[i]+0)exit 1} exit 1}'; then
-    warn "Crewforth v$DCUR installed, v$DLATEST published — update with /crew-update"
+    warn "Crewforth v%s installed, v%s published — update with /crew-update" "$DCUR" "$DLATEST"
   fi
 fi
 
@@ -57,9 +199,9 @@ for h in .claude/hooks/pre-commit .claude/hooks/commit-msg; do
   if [ ! -e "$h" ]; then GONE="$GONE $(basename "$h")"; elif [ ! -x "$h" ]; then NX="$NX $(basename "$h")"; fi
 done
 [ -z "$GONE" ] && ok "required git hooks present (pre-commit, commit-msg)" \
-              || bad "MISSING git hook(s):$GONE — the commit trace/secret scan is absent" "reinstall or update Crewforth"
+              || bad "MISSING git hook(s):%s — the commit trace/secret scan is absent" "reinstall or update Crewforth" "$GONE"
 [ -z "$NX" ] && ok "all hooks are executable" \
-             || bad "not executable:$NX" "chmod +x .claude/hooks/*.sh .claude/hooks/pre-commit .claude/hooks/commit-msg"
+             || bad "not executable:%s" "chmod +x .claude/hooks/*.sh .claude/hooks/pre-commit .claude/hooks/commit-msg" "$NX"
 
 # 2b) Behaviour probe — a hook that is present + executable can still be NEUTERED (its body replaced with `exit 0`).
 #     Drive guard-bash with a command it MUST block; if it does not exit 2, the §4.5 gate is disarmed.
@@ -92,9 +234,9 @@ fi
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   HP="$(git config --get core.hooksPath 2>/dev/null || true)"
   case "$HP" in
-    */.claude/hooks|.claude/hooks) ok "core.hooksPath -> $HP (commit-time gates active)" ;;
+    */.claude/hooks|.claude/hooks) ok "core.hooksPath -> %s (commit-time gates active)" "$HP" ;;
     "") bad "core.hooksPath is unset — commit trace/secret/bloat gates are INACTIVE" "git config core.hooksPath .claude/hooks" ;;
-    *)  bad "core.hooksPath -> $HP (not Crewforth's hooks)" "git config core.hooksPath .claude/hooks" ;;
+    *)  bad "core.hooksPath -> %s (not Crewforth's hooks)" "git config core.hooksPath .claude/hooks" "$HP" ;;
   esac
 else
   warn "not a git repo — commit gates need: git init && git config core.hooksPath .claude/hooks"
@@ -110,7 +252,7 @@ if [ -f "$S" ]; then
   # parse: validity, then each event's array length.
   SJ=.claude/eval/lib/settings-json.awk
   if [ ! -f "$SJ" ]; then
-    bad "Crewforth's JSON reader is missing ($SJ) — settings.json cannot be checked" "update Crewforth"
+    bad "Crewforth's JSON reader is missing (%s) — settings.json cannot be checked" "update Crewforth" "$SJ"
   elif awk -v op=validate -f "$SJ" "$S" 2>/dev/null; then
     ok "settings.json is valid JSON"
     EMPTY=""
@@ -119,7 +261,7 @@ if [ -f "$S" ]; then
       case "$n" in ''|0) EMPTY="$EMPTY $ev" ;; esac
     done
     [ -z "$EMPTY" ] && ok "settings.json wires PreToolUse / UserPromptSubmit / Stop (non-empty)" \
-                    || bad "settings.json hook events empty or missing:$EMPTY — those gates won't fire" "restore settings.json from Crewforth (npx crewforth update)"
+                    || bad "settings.json hook events empty or missing:%s — those gates won't fire" "restore settings.json from Crewforth (npx crewforth update)" "$EMPTY"
     sn="$(awk -v op=len -v path=hooks.SessionStart -f "$SJ" "$S" 2>/dev/null)"
     case "$sn" in ''|0) warn "SessionStart not wired — session rehydration after /compact or /clear is inactive (update Crewforth)" ;; *) ok "SessionStart wired (session rehydration active)" ;; esac
   else bad "settings.json is invalid JSON" "fix the syntax by hand — restoring Crewforth's file would drop any hooks you added"; fi
@@ -134,8 +276,9 @@ if [ -f "$S" ]; then
   # Reported on every platform, not only Windows: a repo is shared across machines, and the wiring is wrong on
   # all of them the moment one teammate is on Windows.
   if grep -q '\${CLAUDE_PROJECT_DIR' "$S" 2>/dev/null; then
-    bad "settings.json wires hooks through the \${CLAUDE_PROJECT_DIR} placeholder — on Windows its separators are stripped before bash runs, so NO hook launches and every gate is silently absent" \
-        "update Crewforth (npx crewforth adopt) — hook commands become: cd \"\$CLAUDE_PROJECT_DIR\" 2>/dev/null; bash .claude/hooks/<name>.sh"
+    BAD_TAIL=' cd "$CLAUDE_PROJECT_DIR" 2>/dev/null; bash .claude/hooks/<name>.sh'
+    bad "settings.json wires hooks through the %s placeholder — on Windows its separators are stripped before bash runs, so NO hook launches and every gate is silently absent" \
+        "update Crewforth (npx crewforth adopt) — hook commands become:" '${CLAUDE_PROJECT_DIR}'
   else
     ok "hook wiring carries no path placeholder (nothing for Windows to mangle)"
   fi
@@ -143,34 +286,57 @@ else
   bad "settings.json missing — the tool-level gates (commit approval, guards, context) are INACTIVE" "reinstall Crewforth"
 fi
 
-# 4a) Skill listing budget. Claude Code loads a listing of every skill's name + description into context each
-#     session; the budget is 1% of the context window, and over it descriptions get truncated or dropped
-#     "which can strip the keywords Claude needs to match your request" (skills docs). The failure is invisible:
-#     the skills are all still installed and still listed BY NAME, they just stop matching. Reported, never
-#     enforced — a project is free to ship many skills, it just needs to know the trade and the two documented
-#     ways out (raise skillListingBudgetFraction, or set low-priority skills to "name-only" in skillOverrides).
+# 4a) Skill listing budget. Claude Code puts a listing of every model-invocable skill's name and description into
+#     context each turn and caps it at skillListingBudgetFraction of the context window (default 0.01); over the
+#     cap it drops the descriptions of the least-used skills, which stops them matching requests. The count is
+#     eval/lib/skill-listing.awk — the method smoke-test.sh gates with, measured against Claude Code's own counter
+#     (see that file). The budget is the fraction as Claude Code resolves it (settings.local.json, then
+#     settings.json, then the user's settings, then 0.01) times the window's characters, and those were MEASURED
+#     from the "Skill listing over budget: … > B budget" debug warning: a 1,000,000-token window gives 3 characters
+#     per token of budget (0.001 -> 3000, 0.005 -> 15000), a 200,000-token window 4 (0.001 -> 800, 0.01 -> 8000).
+#     Another window is not measured; it is estimated at 3 and said to be an estimate. Reported, never enforced.
 if [ -d .claude/skills ]; then
-  # ONE awk over every SKILL.md, not two per skill: 41 skills made this 82 spawns, which on Git Bash is several
-  # seconds on its own. Counts what `awk c==1 | awk '/^(name|description):/,0' | wc -c` counted — the frontmatter
-  # from its first name:/description: line on, in bytes. LC_ALL=C because wc -c counts bytes and gawk's length()
-  # counts characters under a UTF-8 locale: measured on Git Bash (gawk 5.4, LC_ALL=en_US.UTF-8), dropping it read
-  # the shipped set 38 short — its em dashes alone move the number. macOS awk counts bytes either way.
+  SLA=.claude/eval/lib/skill-listing.awk
   SKF=""; for f in .claude/skills/*/SKILL.md; do [ -e "$f" ] && SKF=1 && break; done
-  LISTING=0
-  [ -n "$SKF" ] && LISTING=$(LC_ALL=C awk '
-      FNR==1 { c=0; on=0 }
-      /^---$/ { c++; next }
-      c==1 { if (!on && /^(name|description):/) on=1; if (on) n += length($0) + 1 }
-      END { print n+0 }' .claude/skills/*/SKILL.md)
-  CW="${CONTEXT_WINDOW:-1000000}"; BUDGET=$((CW/100))
-  if [ "$LISTING" -le "$BUDGET" ]; then
-    ok "skill listing fits the budget (${LISTING} <= ${BUDGET} chars at 1% of a ${CW}-token window)"
-  else
-    warn "skill listing ${LISTING} chars EXCEEDS the ~${BUDGET} budget for a ${CW}-token window — Claude Code will"
-    warn "  truncate or drop descriptions, and a skill whose description is gone stops matching requests."
-    warn "  Fixes: raise \"skillListingBudgetFraction\" in settings, or set rarely-used skills to \"name-only\""
-    warn "  in \"skillOverrides\". Re-check with a smaller CONTEXT_WINDOW=200000 to see your real model's budget."
-    warn "  Which skills? bash .claude/eval/utilization.sh — it reports the ones nothing in this project reached."
+  if [ -n "$SKF" ] && [ -f "$SLA" ]; then
+    read -r LISTING NLISTED UNMEAS <<EOF_SLA
+$(LC_ALL=C awk -f "$SLA" .claude/skills/*/SKILL.md)
+EOF_SLA
+    FRAC=""; _mt "Claude Code's default"; FROM="$_M"
+    for sf in .claude/settings.local.json .claude/settings.json "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"; do
+      [ -f "$sf" ] || continue
+      v="$(awk -v op=get -v path=skillListingBudgetFraction -f "${SJ:-.claude/eval/lib/settings-json.awk}" "$sf" 2>/dev/null)" || v=""
+      case "$v" in ''|*[!0-9.]*) ;; *) FRAC="$v"; FROM="$sf"; break ;; esac
+    done
+    [ -n "$FRAC" ] || FRAC=0.01
+    CW="${CONTEXT_WINDOW:-1000000}"
+    case "$CW" in 1000000) CPT=3; EST="" ;; 200000) CPT=4; EST="" ;; *) CPT=3; _mt " (estimated: only 1M and 200k windows were measured)"; EST="$_M" ;; esac
+    BUDGET=$(awk -v f="$FRAC" -v w="$CW" -v c="$CPT" 'BEGIN { printf "%d", f * w * c }')
+    B200=$(awk -v f="$FRAC" 'BEGIN { printf "%d", f * 200000 * 4 }')
+    [ "${UNMEAS:-0}" = 0 ] || warn "skill listing: %s skill(s) use when_to_use or a folded description — a shape the count was not measured on" "$UNMEAS"
+    if [ "$LISTING" -le "$BUDGET" ]; then
+      ok "skill listing %s chars for %s skills fits the %s-char budget (fraction %s from %s, %s-token window%s)" "$LISTING" "$NLISTED" "$BUDGET" "$FRAC" "$FROM" "$CW" "$EST"
+    else
+      warn "skill listing %s chars for %s skills EXCEEDS the %s-char budget (fraction %s from %s, %s-token window%s)" "$LISTING" "$NLISTED" "$BUDGET" "$FRAC" "$FROM" "$CW" "$EST"
+      warn "  — Claude Code drops the descriptions of the least-used skills, and those stop matching requests."
+      warn "  Fixes: raise %s in settings, or set rarely-used skills to %s in %s." '"skillListingBudgetFraction"' '"name-only"' '"skillOverrides"'
+      warn "  Which skills? bash .claude/eval/utilization.sh — it reports the ones nothing in this project reached."
+    fi
+    # The whole listing, not only Crewforth's share: the user's personal skills and Claude Code's own bundled skills
+    # sit in the same budget. The bundled ones were measured once (14 skills, 5898 chars, Claude Code v2.1.282, an
+    # isolated config) — another version may differ, so the figure is labelled as measured, not read. Skills from
+    # other plugins are not counted: the doctor cannot see them.
+    PERS=0; PD="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills"
+    for f in "$PD"/*/SKILL.md; do [ -e "$f" ] && { PERS=$(LC_ALL=C awk -f "$SLA" "$PD"/*/SKILL.md | cut -d' ' -f1); break; }; done
+    BUILTIN=5898; TOTAL=$((LISTING + BUILTIN + 1)); [ "$PERS" -gt 0 ] && TOTAL=$((TOTAL + PERS + 1))   # one joining character per group
+    if [ "$TOTAL" -gt "$B200" ]; then
+      warn "on a 200,000-token model the whole listing would be ~%s chars (Crewforth %s + your personal skills %s + Claude Code's own ~%s, measured) against %s at fraction %s — the least-used skills there lose their descriptions." "$TOTAL" "$LISTING" "$PERS" "$BUILTIN" "$B200" "$FRAC"
+      warn "  If you use such a model, one line in %s/settings.json fixes it: %s" "${CLAUDE_CONFIG_DIR:-~/.claude}" '"skillListingBudgetFraction": 0.04'
+      TK=$((TOTAL / 4)); PCT=$(awk -v t="$TK" 'BEGIN { printf "%.1f", t / 2000 }'); [ "$CREW_LANG" = tr ] && PCT="${PCT/./,}"
+      warn "  What it costs: the listing is sent every turn. At 0.04 it stays whole — ~%s chars, about %s tokens," "$TOTAL" "$TK"
+      warn "  %s%% of a 200k window — instead of at most %s chars. (4 characters per token is how Claude Code sizes" "$PCT" "$B200"
+      warn "  this budget on a 200k window: 0.01 of 200,000 tokens is 8,000 characters.)"
+    fi
   fi
 fi
 
@@ -193,7 +359,7 @@ for f in .claude/settings.json .claude/settings.local.json "$HOME/.claude/settin
     | grep -qE '^(Agent|Task)([^A-Za-z0-9_]|$)' && DENYSRC="$DENYSRC $f"
 done
 if [ "${NOPY:-0}" = 1 ]; then
-  warn "delegation check could not read:${MAYBEDENY} — not valid JSON (or Crewforth's reader is missing)."
+  warn "delegation check could not read:%s — not valid JSON (or Crewforth's reader is missing)." "$MAYBEDENY"
   warn "  open it and check that Agent/Task is not under permissions.deny. If it is, no subagent can ever run."
 fi
 # `A && B && ok … || bad …` cannot express three outcomes. With no usable python3 the && chain is false, so the
@@ -201,8 +367,8 @@ fi
 # and a verdict of ❌ on a healthy install. It stayed invisible while `command -v python3` was the test, because
 # on Windows the Store stub answered yes and NOPY was never set. Three states, three branches.
 if [ -n "$DENYSRC" ]; then
-  bad "the Agent tool is DENIED in:$DENYSRC — no subagent can ever run, so every agent on disk is dead weight" \
-      "remove the Agent/Task entry from permissions.deny, or accept that this project runs main-thread-only"
+  bad "the Agent tool is DENIED in:%s — no subagent can ever run, so every agent on disk is dead weight" \
+      "remove the Agent/Task entry from permissions.deny, or accept that this project runs main-thread-only" "$DENYSRC"
 elif [ "${NOPY:-0}" != 1 ]; then
   ok "delegation is enabled (the Agent tool is not denied)"
 fi
@@ -271,10 +437,11 @@ $(awk '
   }' $SCAN)
 EOF
   if [ -n "$STALE" ]; then
+    BAD_TAIL="$STALE"
     bad "CLAUDE.md (or a doc it references) names auto-delegated agent(s) that no installed agent matches — delegation to them silently fails" \
-        "rename each bare reference to its \`crew-\` id:$STALE"
+        'rename each bare reference to its `crew-` id:'
   fi
-  [ -n "$STALE_PULL" ] && warn "CLAUDE.md (or a referenced doc) names pull-only agent(s) by their old bare id — invoked explicitly, so delegation still works; rename for consistency:$STALE_PULL"
+  [ -n "$STALE_PULL" ] && warn "CLAUDE.md (or a referenced doc) names pull-only agent(s) by their old bare id — invoked explicitly, so delegation still works; rename for consistency:%s" "$STALE_PULL"
   [ -z "$STALE$STALE_PULL" ] && ok "agent references resolve to installed agents (CLAUDE.md + referenced docs)"
 fi
 
@@ -310,22 +477,22 @@ PREFLIGHT=".claude/eval/preflight.sh"
 [ -f "$PREFLIGHT" ] || PREFLIGHT="$(dirname "$0")/preflight.sh"
 PANEL_NOTE=""
 if [ -d .claude/studio ] && ! bash "$PREFLIGHT" --has node 2>/dev/null; then
-  PANEL_NOTE=" · panel needs Node 18+ — .claude/studio/ensure-node.sh --plan fetches one"
+  _mt " · panel needs Node 18+ — .claude/studio/ensure-node.sh --plan fetches one"; PANEL_NOTE="$_M"
 fi
 # A 2.x variable name still works until 4.0 (lib/crew-env.sh reads it); name its 3.0 spelling so the user can switch.
 for _v in $(compgen -e); do
   case "$_v" in CSK_CORRECT_STACK) ;; CSK_*)
     case "${_crew_legacy:-}" in
-      *" ${_v#CSK_} "*) warn "$_v is set — its 3.0 name is CREW_${_v#CSK_} (the old name works until 4.0)" ;;
-      *)                warn "$_v is set but no longer read — set CREW_${_v#CSK_} instead" ;;
+      *" ${_v#CSK_} "*) warn "%s is set — its 3.0 name is CREW_%s (the old name works until 4.0)" "$_v" "${_v#CSK_}" ;;
+      *)                warn "%s is set but no longer read — set CREW_%s instead" "$_v" "${_v#CSK_}" ;;
     esac ;;
   esac
 done
-if [ "$FAIL" -eq 0 ]; then echo "DOCTOR: healthy ✅$PANEL_NOTE"
+if [ "$FAIL" -eq 0 ]; then _mt "DOCTOR: healthy ✅%s" "$PANEL_NOTE"; echo "$_M"
   # Healthy verdict: the star line, once per kit version — the marker is shared with the installers, so the
   # doctor run that /crew-update makes right after an update stays quiet. Text/URL/silence: lib/star.sh.
   [ -f "$(dirname "$0")/lib/star.sh" ] && bash "$(dirname "$0")/lib/star.sh" --once .
-else echo "DOCTOR: $FAIL issue(s) ❌ — apply the fixes above$PANEL_NOTE"; fi
+else _mt "DOCTOR: %s issue(s) ❌ — apply the fixes above%s" "$FAIL" "$PANEL_NOTE"; echo "$_M"; fi
 
 # 8b) The shell matcher. Claude Code's hooks reference is explicit: inspect shell commands with
 #     `Bash|PowerShell`, because wherever the PowerShell tool is enabled it IS the shell — and it is on by
@@ -336,8 +503,9 @@ if [ -f .claude/settings.json ]; then
   if grep -q '"matcher"[[:space:]]*:[[:space:]]*"[^"]*PowerShell' .claude/settings.json; then
     ok "shell gates watch both Bash and PowerShell"
   elif grep -q '"matcher"[[:space:]]*:[[:space:]]*"Bash"' .claude/settings.json; then
+    BAD_TAIL=' "Bash|PowerShell"'
     bad "shell gates watch only Bash — PowerShell commands bypass every §4.5 rule" \
-        "update Crewforth (npx crewforth update), or set the PreToolUse matcher to \"Bash|PowerShell\""
+        "update Crewforth (npx crewforth update), or set the PreToolUse matcher to"
   fi
 fi
 # 9) The auto-mode classifier. Since 2026-08-14 auto mode is the default permission mode on Pro/Max/Team, so a
@@ -349,8 +517,8 @@ if [ -x .claude/skills/automode-policy/scripts/check.sh ] || [ -f .claude/skills
   AMOUT="$(bash .claude/skills/automode-policy/scripts/check.sh 2>&1)"; AMRC=$?
   case "$AMRC" in
     0) ok "auto-mode classifier config: built-ins intact, Crewforth rules present (config, not a gate)" ;;
-    2) bad "auto-mode classifier BUILT-INS DROPPED — an autoMode array lacks \"\$defaults\"" \
-           "restore it in ~/.claude/settings.json; see .claude/skills/automode-policy/SKILL.md" ;;
+    2) bad "auto-mode classifier BUILT-INS DROPPED — an autoMode array lacks %s" \
+           "restore it in ~/.claude/settings.json; see .claude/skills/automode-policy/SKILL.md" '"$defaults"' ;;
     3) skip "auto-mode classifier config: Crewforth rules absent (measured not to enforce — see the skill)" ;;
     # Same vocabulary as the other three branches on purpose. It used to read "auto-mode policy check
     # skipped", and the suite's assertion — written on a machine that HAS the claude CLI — never saw this
@@ -364,11 +532,17 @@ fi
 # 10) Gate activity. The suite proves the gates CAN fire; this reports whether anything actually tripped them.
 #     Recording is on by default (rule names only, never the command), so "no log" here means no gate has
 #     fired yet — a measured zero, not a gap. Never a failure either way.
+#     Read through --json and worded here, so the line speaks the doctor's language (gate-report itself is English
+#     and prints its own sentence; quoting it here used to leave half of that sentence dangling on this line).
 if [ -f .claude/eval/gate-report.sh ]; then
-  GOUT="$(bash .claude/eval/gate-report.sh 2>/dev/null)"; GRC=$?
+  GOUT="$(bash .claude/eval/gate-report.sh --json 2>/dev/null)"; GRC=$?
   case "$GRC" in
-    0) GL="$(printf '%s' "$GOUT" | grep -E 'decision\(s\)|no gate has fired' | head -1 | sed 's/^ *//')"
-       [ -n "$GL" ] && ok "gate activity: $GL" || ok "gate activity recorded (see /crew-gates)" ;;
+    0) GRU="${GOUT#*\"rules\":}"; GRU="${GRU%%[,\}]*}"; GDE="${GOUT#*\"decisions\":}"; GDE="${GDE%%[,\}]*}"
+       case "$GRU$GDE" in
+         *[!0-9]*|'') ok "gate activity recorded (see /crew-gates)" ;;
+         *) if [ "$GDE" = 0 ]; then ok "gate activity: no gate has fired in this project yet — %s rules wired, recording on" "$GRU"
+            else ok "gate activity: %s decision(s) recorded (see /crew-gates)" "$GDE"; fi ;;
+       esac ;;
     3) skip "gate activity NOT MEASURED — nowhere to record (see /crew-gates)" ;;
     *) skip "gate activity unreadable (see /crew-gates)" ;;
   esac
@@ -387,10 +561,10 @@ echo
 # sitting beside this script for the case where doctor is run straight out of the Crewforth source.
 [ -f "$PREFLIGHT" ] && bash "$PREFLIGHT"
 
-echo "Readiness (advisory — does not affect the verdict above):"
+_mt "Readiness (advisory — does not affect the verdict above):"; echo "$_M"
 RDY=0; RTOT=0
-rdy(){ RTOT=$((RTOT+1)); RDY=$((RDY+1)); echo "  ✅ $1"; }
-gap(){ RTOT=$((RTOT+1)); echo "  ➖ $1"; echo "     ↳ $2"; }
+rdy(){ RTOT=$((RTOT+1)); RDY=$((RDY+1)); _mt "$@"; echo "  ✅ $_M"; }
+gap(){ local _m="$1" _x="$2"; shift 2; RTOT=$((RTOT+1)); _mt "$_m" "$@"; echo "  ➖ $_M"; _mt "$_x"; echo "     ↳ $_M"; }
 
 # R1) Is the CLAUDE.md project section filled in, or still the shipped template? An unfilled section means every
 #     agent works stack-blind — it is the single most common way a correct install still underperforms.
@@ -424,7 +598,7 @@ if [ -f "$MAN" ]; then
     s="${d%/}"; s="${s##*/}"
     case "$NL$MANTXT$NL" in *"${NL}skills/$s$NL"*) ;; *) OWN=$((OWN+1)) ;; esac
   done
-  [ "$OWN" -gt 0 ] && rdy "$OWN project-specific skill(s) alongside Crewforth's" \
+  [ "$OWN" -gt 0 ] && rdy "%s project-specific skill(s) alongside Crewforth's" "$OWN" \
                    || gap "no project-specific skill — only Crewforth's generic ones are installed" \
                           "put the domain 'how's in .claude/skills/ (format: .claude/AGENT_TEMPLATE.md)"
 else
@@ -455,11 +629,11 @@ if git rev-parse --is-inside-work-tree >/dev/null 2>&1 && [ -f CLAUDE.md ]; then
   if [ -n "$MT" ]; then
     CH="$(git rev-list --count HEAD --since="@$MT" -- . ':(exclude).claude' 2>/dev/null | tr -cd '0-9')"
     CH="${CH:-0}"
-    [ "$CH" -le "$MAXC" ] && rdy "CLAUDE.md is current ($CH commit(s) of drift since it was last touched)" \
-                          || gap "CLAUDE.md is stale — $CH commits changed the project since it was last touched (limit $MAXC)" \
-                                 "re-read it against the code and update Stack / Project skills (the claude-md-improver flow)"
+    [ "$CH" -le "$MAXC" ] && rdy "CLAUDE.md is current (%s commit(s) of drift since it was last touched)" "$CH" \
+                          || gap "CLAUDE.md is stale — %s commits changed the project since it was last touched (limit %s)" \
+                                 "re-read it against the code and update Stack / Project skills (the claude-md-improver flow)" "$CH" "$MAXC"
   else skip "freshness signal skipped (cannot read CLAUDE.md mtime on this platform)"; fi
 fi
 
-[ "$RTOT" -gt 0 ] && echo "  → readiness $RDY/$RTOT"
+[ "$RTOT" -gt 0 ] && { _mt "  → readiness %s/%s" "$RDY" "$RTOT"; echo "$_M"; }
 [ "$FAIL" -eq 0 ] && exit 0 || exit 1

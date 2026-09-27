@@ -125,6 +125,27 @@ One name everywhere: the package, the components, the variables, the payload. **
   the project's own system first. Installed text no longer calls Crewforth a kit: the skills' adaptation note is
   "Crewforth adaptation", and the discipline quotes the update warning the hook actually prints.
 
+### Fixed — found by the release rehearsal
+
+- **Counts:** a fresh install says "12 agents · 39 skills · 10 commands", as the README does, and an update from 2.x
+  counts skills and commands (it used to print "51 skills" and "+75" — directories and files). The closing line no
+  longer names the installer's folder.
+- **`/crew-doctor` speaks your language:** it answers in the language the project was installed in; commands,
+  paths and settings keys stay as written. The skill-listing check counts the way Claude Code counts, reads
+  `skillListingBudgetFraction` from your settings, and on a 200,000-token model tells you the one line to add and
+  what it costs. In the plugin edition, `/crew-doctor` reports the same thing.
+- **Updating from 2.x:**
+  - a repository with no commit yet gets a one-line branch name and accept/discard commands that work there;
+  - a repository that already ignores `.claude` is recommended to keep it local;
+  - in a private install the handover and the ADR are written but not staged;
+  - the `.NET` pattern skill the update keeps is not flagged as unvetted in the next session;
+  - the 2.x template sentences in `CLAUDE.md` are brought up to date, and your own lines are left alone.
+- **The 2.x package name** says which package it forwards to.
+- **Replies stay in your language** even when a skill's text is English.
+- **`/crew-review`** runs the closing reviewer whenever the audits leave no critical or high finding; medium and low
+  findings go into its prompt and the report.
+- **Release asset:** a release candidate's archive carries its own version in the file name.
+
 ### Added — "an update is out, update now?"
 
 - **A newer release is a question, not a footnote.** At session start Claude asks once — **Update · Later · Skip

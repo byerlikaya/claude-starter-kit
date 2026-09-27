@@ -1390,7 +1390,9 @@ if git_has "$CMD" 'commit|push'; then
       # §4.4 branch guard: committing straight onto main/master is not blocked (a fresh project legitimately
       # lives on main), but it is surfaced in the approval prompt so the user can send it to a branch instead.
       BRANCH_WARN=""
-      case "$(git rev-parse --abbrev-ref HEAD 2>/dev/null)" in
+      # symbolic-ref names the branch even before its first commit, where rev-parse answers "HEAD" and the very
+      # first commit onto main went by without this line. A detached HEAD reads empty: not the default branch.
+      case "$(git symbolic-ref --short -q HEAD 2>/dev/null)" in
         main|master) BRANCH_WARN="⚠️  This commits DIRECTLY to the default branch. Prefer a feature branch unless you meant to.
 
 " ;;
