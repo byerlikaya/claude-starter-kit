@@ -4,8 +4,17 @@ name: launch-matrix
 # accepts, through the package npm would publish: a fresh init, an update from a real 2.13.0 install, a second
 # update that must change nothing, doctor, `bash -n` on every hook, and no CR in an installed shell file.
 # The cell itself is packaging/launch-matrix.sh, so a failing cell can be rerun on a desk.
+#
+# With `spec` empty the package is packed from this checkout. With `spec` set (crewforth@3.0.0-rc.1) every cell takes
+# the package npm published under it instead, and a forwarder cell runs as well: the 2.x name, packed from
+# packaging/legacy-npm, must update a 2.13.0 install to the same tree the direct update produces.
 on:
   workflow_dispatch:
+    inputs:
+      spec:
+        description: 'npm spec to test instead of this checkout (e.g. crewforth@3.0.0-rc.1); empty = pack this checkout'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -35,6 +44,33 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       - name: Launch cell
+        env:
+          CREW_SPEC: ${{ inputs.spec }}
+        run: bash packaging/launch-matrix.sh
+
+  # Only with a spec: the forwarder forwards to a published package, so there is nothing to forward to otherwise.
+  # Windows, because the forwarder starts npm without a shell and that path is the one a platform can break; the
+  # direct path is already in every cell above.
+  forward:
+    name: forwarder · windows-latest · node 22
+    if: inputs.spec != ''
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: core.autocrlf=true
+        run: git config --global core.autocrlf true
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Launch cell, then the forwarder
+        env:
+          CREW_SPEC: ${{ inputs.spec }}
+          CREW_FORWARD: '1'
         run: bash packaging/launch-matrix.sh
 
   # The oldest git a day-one user plausibly runs: Ubuntu 22.04's own package, 2.34. The ubuntu-22.04 runner image
@@ -62,6 +98,8 @@ jobs:
         with:
           node-version: '22'
       - name: Launch cell
+        env:
+          CREW_SPEC: ${{ inputs.spec }}
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           bash packaging/launch-matrix.sh

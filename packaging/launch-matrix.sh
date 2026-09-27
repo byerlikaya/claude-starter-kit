@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # One cell of the launch matrix (.github/workflows/launch-matrix.yml): the paths a user takes on day one, on this
-# OS and this Node, through the package npm would publish (packed here, run with npx from the tarball).
+# OS and this Node, through the package npm would publish (packed here, run with npx from the tarball) — or, with
+# CREW_SPEC set (e.g. crewforth@3.0.0-rc.1), through the package npm already published under that spec.
 #
 #   init      a fresh project: `npx crewforth init`
 #   update    a real 2.13.0 install (the released installer, taken with git archive) → `npx crewforth update`
@@ -12,6 +13,8 @@
 #   crlf      no carriage return in any installed shell file — the case core.autocrlf=true exists to break
 #   board     the installed board engine against a bare remote: init, add, sync, and a claim race exactly one
 #             clone wins — git plumbing and ref pushes, the part of the install an old git is likeliest to break
+#   forward   (CREW_FORWARD=1, needs CREW_SPEC) the 2.x package name, packed from packaging/legacy-npm, updates a
+#             second 2.13.0 install through CREWFORTH_SPEC; the tree must hash the same as the direct update's
 #
 # Needs git with v2.13.0 (841eb4e) reachable (fetch-depth 0), node and npm. Exit 0 all held, 1 one did not.
 set -euo pipefail
@@ -36,8 +39,14 @@ export CREW_NO_STAR=1 CREW_LANG=en CLAUDE_CONFIG_DIR="$W/claude-config"; mkdir -
 git cat-file -e "$OLD^{commit}" 2>/dev/null || die "commit $OLD (v2.13.0) is not in this clone — check out with fetch-depth 0"
 
 echo "cell: $(uname -s) · node $(node --version) · npm $(npm --version) · git $(git --version | awk '{print $3}') · core.autocrlf=$(git config --get core.autocrlf || echo unset)"
-step "npm pack" bash -c 'npm pack --silent --pack-destination "$1" | tail -n 1 > "$2"' _ "$(nat "$W")" "$W/tgz-name"
-TGZ="file:$(nat "$W/$(cat "$W/tgz-name")")"
+SPEC="${CREW_SPEC:-}"
+[ -z "${CREW_FORWARD:-}" ] || [ -n "$SPEC" ] || die "CREW_FORWARD needs CREW_SPEC: the forwarder is compared with a direct update of the same spec"
+if [ -n "$SPEC" ]; then
+  TGZ="$SPEC"; echo "package: $SPEC, from the registry"
+else
+  step "npm pack" bash -c 'npm pack --silent --pack-destination "$1" | tail -n 1 > "$2"' _ "$(nat "$W")" "$W/tgz-name"
+  TGZ="file:$(nat "$W/$(cat "$W/tgz-name")")"; echo "package: $(cat "$W/tgz-name"), packed from this checkout"
+fi
 
 # init — a fresh project
 P="$W/init"; mkdir -p "$P"; ( cd "$P" && git init -q )
@@ -45,9 +54,12 @@ step "init" bash -c 'cd "$1" && npx --yes "$2" init --yes --lang en' _ "$P" "$TG
 [ -f "$P/.claude/agents/crew-backend-expert.md" ] || die "init left no .claude/agents/crew-backend-expert.md"
 
 # update — a real 2.13.0 install
-U="$W/update"; mkdir -p "$U"; git archive "$OLD" start.sh VERSION claude-starter | ( cd "$U" && tar -xf - )
-step "2.13.0 install" bash -c 'cd "$1" && git init -q && bash start.sh --generic --yes --lang en' _ "$U"
-[ -f "$U/.claude/agents/backend-expert-csk.md" ] || die "the 2.13.0 install left no backend-expert-csk.md — the fixture broke"
+old_install(){   # $1 directory: a real 2.13.0 install, made with the released installer
+  mkdir -p "$1"; git archive "$OLD" start.sh VERSION claude-starter | ( cd "$1" && tar -xf - )
+  step "2.13.0 install in ${1##*/}" bash -c 'cd "$1" && git init -q && bash start.sh --generic --yes --lang en' _ "$1"
+  [ -f "$1/.claude/agents/backend-expert-csk.md" ] || die "the 2.13.0 install left no backend-expert-csk.md — the fixture broke"
+}
+U="$W/update"; old_install "$U"
 step "update from 2.13.0" bash -c 'cd "$1" && npx --yes "$2" update --here --yes' _ "$U" "$TGZ"
 [ -f "$U/.claude/agents/crew-backend-expert.md" ] && [ ! -e "$U/.claude/agents/backend-expert-csk.md" ] \
   || die "the update did not move 2.13.0 to 3.0 (crew-backend-expert.md missing or backend-expert-csk.md left)"
@@ -59,6 +71,19 @@ H1="$(tree "$U")"
 step "second update" bash -c 'cd "$1" && npx --yes "$2" update --here --yes' _ "$U" "$TGZ"
 [ "$(tree "$U")" = "$H1" ] || die "a second update changed the tree"
 [ ! -e "$U/.claude/.state/whats-new.md" ] || die "a same-version update left a what's-new report with nothing new in it"
+
+# forward — the 2.x name, as a 2.13.0 install's own update check calls it, reaches the same 3.0 tree
+FWD_NOTE=""
+if [ -n "${CREW_FORWARD:-}" ]; then
+  step "npm pack (forwarder)" bash -c 'npm pack --silent ./packaging/legacy-npm --pack-destination "$1" | tail -n 1 > "$2"' _ "$(nat "$W")" "$W/fwd-name"
+  FWD="file:$(nat "$W/$(cat "$W/fwd-name")")"
+  F="$W/forward"; old_install "$F"
+  step "update through the forwarder" bash -c 'cd "$1" && CREWFORTH_SPEC="$3" npx --yes "$2" update --here --yes' _ "$F" "$FWD" "$SPEC"
+  grep -q 'is now crewforth — forwarding' "$W/step-$N.log" || die "the forwarder printed no forwarding line"
+  [ -f "$F/.claude/agents/crew-backend-expert.md" ] || die "the forwarded update did not move 2.13.0 to 3.0"
+  [ "$(tree "$F")" = "$H1" ] || die "the forwarded update's tree differs from the direct update's ($(tree "$F") vs $H1)"
+  FWD_NOTE=" · forwarder → same tree as the direct update ✓"
+fi
 
 # The CR counter is `tr`, not `grep -l $'\r'`: Git Bash's grep strips a trailing CR from the PATTERN as well as from
 # each line, so the one-character pattern becomes empty and matches every non-empty file (measured on Windows: 29 of
@@ -94,4 +119,4 @@ step "board sync" bash -c 'cd "$1/ayse" && bash ../board.sh sync' _ "$B"
 OWNER="$(cd "$B/ayse" && bash ../board.sh sync >/dev/null 2>&1; bash ../board.sh show 001 2>/dev/null | grep -m1 '^owner: ' | cut -d' ' -f2-)"
 [ "$OWNER" = "ali@x" ] || die "the remote board records owner '$OWNER', not ali@x"
 
-echo "launch-matrix: init ✓ · 2.13.0 → $(cat VERSION) ✓ · second update changed nothing ✓ · doctor healthy ×2 ✓ · bash -n on $SH hooks ✓ · 0 CR in installed shell files ✓ · board race: one winner ✓"
+echo "launch-matrix: init ✓ · 2.13.0 → $(cat VERSION) ✓ · second update changed nothing ✓ · doctor healthy ×2 ✓ · bash -n on $SH hooks ✓ · 0 CR in installed shell files ✓ · board race: one winner ✓$FWD_NOTE"
