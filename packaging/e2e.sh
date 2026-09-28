@@ -1553,4 +1553,64 @@ _uw born-here; U3="$WORK/born-here"; ( cd "$U3" && echo x > f.txt && git add f.t
 printf '%s\n' "$ADOPT_OUT" | grep -q 'discard:  git reset --hard HEAD' || die "twin: a repository WITH a commit lost the reset discard — the unborn branch swallowed the normal one" adopt-unborn "$U3"
 echo "[adopt-unborn] no-commit repo: one-line branch name · discard 'git rm --cached' RUN: 0 staged, HEAD on main · accept 'git branch -m' · --here discard too · twin with a commit keeps 'reset --hard HEAD' · summary skills +$_ps commands +$_pc = README rule"
 
+# ---- kit/legacy-blobs.tsv against what the real old installers wrote ----
+# The updater will move a legacy file aside only when its bytes — or its bytes with CR removed — hash to one of its
+# path's ids in kit/legacy-blobs.tsv. That is safe only if an old installer wrote exactly those bytes. Measured once
+# by hand (seven installs), pinned here on two: v1.0.0 generic (the -cck agents, the generic backend variant) and
+# v2.13.0 --dotnet (cqrs-aop-module). A Crewforth file missing from the list would never be cleaned up. Twins: a user's
+# edit must fall OUT of the list, and a CRLF copy of an untouched file must still match (the Windows case).
+# What is legacy is decided WITHOUT the list — a component the payload no longer ships — so a row missing from the list
+# is a failure here, not a file quietly skipped (the first version counted only paths the list already had: dropping
+# every commands/ row still passed, found in review).
+lb_now(){ { for x in kit/skills/*/; do x="${x%/}"; echo "${x#kit/}"; done; for x in kit/agents/*.md kit/commands/*.md; do [ -e "$x" ] || continue; echo "${x#kit/}"; done; } | sort -u; }
+lb_check(){  # $1 = installed project -> prints "<legacy files> <matched> <first unmatched path>"
+  local d="$1" f rel comp h hl n=0 m=0 miss="-" now
+  now="$(lb_now)"
+  while IFS= read -r f; do
+    rel="${f#"$d"/}"; comp="${rel#.claude/}"
+    case "$comp" in skills/*/*) comp="${comp%%/*}/$(printf '%s' "${comp#skills/}" | cut -d/ -f1)" ;; esac
+    printf '%s\n' "$now" | grep -qxF "$comp" && continue            # shipped today: refreshed, not legacy
+    n=$((n+1)); h="$(git hash-object --no-filters "$f")"; hl="$(tr -d '\r' < "$f" | git hash-object --no-filters --stdin)"
+    if awk -F'\t' -v p="$rel" -v a="$h" -v b="$hl" '$2 == p && ($3 == a || $3 == b) { f = 1 } END { exit !f }' kit/legacy-blobs.tsv
+    then m=$((m+1)); else [ "$miss" = - ] && miss="$rel"; fi
+  done < <(find "$d/.claude" -type f \( -path '*/agents/*' -o -path '*/commands/*' -o -path '*/skills/*' \) | LC_ALL=C sort)
+  printf '%s %s %s' "$n" "$m" "$miss"
+}
+LBV1=v1.0.0; LBV2=v2.13.0
+if ! git rev-parse -q --verify "refs/tags/$LBV1" >/dev/null 2>&1 || ! git rev-parse -q --verify "refs/tags/$LBV2" >/dev/null 2>&1; then
+  [ "${CREW_VERIFY_STRICT:-0}" = 1 ] && { echo "FAIL: FIXTURE — tags $LBV1/$LBV2 are not in this clone; kit/legacy-blobs.tsv cannot be checked against the real installers"; exit 1; }
+  echo "[legacy-blobs] SKIP (fixture): tags $LBV1/$LBV2 are not in this clone (shallow?)"
+else
+  lb_install(){  # $1 = dir, $2 = tag, $3 = answers on stdin, rest = start.sh flags
+    local d="$1" tag="$2" ans="$3" pl; shift 3; rm -rf "$d"; mkdir -p "$d"
+    pl="$(git ls-tree --name-only "$tag" | grep -E '^(claude-starter|kit)$')"
+    # core.autocrlf=false: the archive must be the tag's bytes on every runner, or "the installer wrote exactly these
+    # bytes" would pass on Windows only through the CR-stripped id (v1.0.0 has no .gitattributes).
+    git -c core.autocrlf=false archive "$tag" start.sh VERSION "$pl" | ( cd "$d" && tar -xf - )
+    _slog; ( cd "$d" && git init -q && printf "$ans" | bash start.sh "$@" ) >"$_L" 2>&1 || _evidence "$tag start.sh in $d" "$_L" $?
+    # v1.x cancels with rc 0 when it does not get the answer it wants, so success is the tree, not the status.
+    [ -d "$d/.claude" ] || { echo "FAIL: FIXTURE — the $tag installer left no .claude/ in $d"; tail -n 3 "$_L"; exit 1; }
+  }
+  LB1="$WORK/legacy-v1"; lb_install "$LB1" "$LBV1" 'y\ny\ny\n' --fullstack --generic   # v1.0.0 takes y/e/evet, not "yes"
+  LB2="$WORK/legacy-v2"; lb_install "$LB2" "$LBV2" '' --dotnet --yes --lang en
+  _lbsum=""
+  for d in "$LB1" "$LB2"; do
+    read -r n m miss <<< "$(lb_check "$d")"
+    [ "${n:-0}" -ge 10 ] || { echo "FAIL: FIXTURE — only ${n:-0} legacy file(s) found in $d; the install is not the shape this case assumes"; exit 1; }
+    [ "$n" = "$m" ] || { echo "FAIL: $miss was written by an old installer, but its bytes are not in kit/legacy-blobs.tsv ($m of $n matched) — the updater would treat Crewforth's own file as the user's"; exit 1; }
+    _lbsum="$_lbsum $(basename "$d") $m/$n ·"
+  done
+  # Twin 1: the user edits one installed legacy file — it must stop matching, and it must be the ONLY one that does.
+  f1="$(find "$LB1/.claude/agents" -name '*-cck.md' | LC_ALL=C sort | head -1)"; printf '\n# my own note\n' >> "$f1"
+  read -r n m miss <<< "$(lb_check "$LB1")"
+  [ "$m" = $((n-1)) ] && [ "$miss" = "${f1#"$LB1"/}" ] || { echo "FAIL: twin — an edited legacy file still matched the list, or another one stopped matching ($m of $n; first miss '$miss')"; exit 1; }
+  # Twin 2: an untouched file turned CRLF (a Windows editor, an autocrlf copy) still matches, through the CR-stripped id.
+  f2="$(find "$LB2/.claude/agents" -name '*-csk.md' | LC_ALL=C sort | head -1)"; awk '{ printf "%s\r\n", $0 }' "$f2" > "$f2.crlf" && mv "$f2.crlf" "$f2"
+  _lbcr="$(tr -dc '\r' < "$f2" | wc -c | tr -d ' ')"
+  [ "${_lbcr:-0}" -gt 0 ] || { echo "FAIL: FIXTURE — the CRLF twin has no CR ($f2); the Windows case was not built"; exit 1; }
+  read -r n m miss <<< "$(lb_check "$LB2")"
+  [ "$n" = "$m" ] || { echo "FAIL: a CRLF copy of an untouched legacy file did not match through its CR-stripped id ($m of $n; '$miss')"; exit 1; }
+  echo "[legacy-blobs] real installers vs kit/legacy-blobs.tsv:$_lbsum twin: edited file falls out · CRLF twin ($_lbcr CRs) still matches"
+fi
+
 echo "e2e: all installer rehearsals passed"
