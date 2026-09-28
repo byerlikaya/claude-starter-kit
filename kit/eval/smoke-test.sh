@@ -6060,29 +6060,47 @@ fi
 # The front page. Kit repo only: an installed project has no README of ours.
 if [ "$IS_KIT" = 1 ]; then
   KR="$(cd "$ROOT/.." && pwd)"
-  # THE FRONT PAGE'S ORDER, pinned (3.0 rewrite, Barış's decision): the definition sentence, then the panel GIF,
-  # then the quick start with `npx crewforth init` — and the GIF only once, since the Studio section is text.
-  # The npm page has no GIF; its definition still comes before the install line. Order is read by line number, so
-  # a page that has all three pieces in the wrong order is red, not green.
-  fp_order(){ # $1 file  $2 definition sentence  $3 1 = the GIF must sit between the two -> problems, ;-separated
-    awk -v d="$2" -v g="$3" '
+  # THE FRONT PAGE'S ORDER, pinned (3.0 rewrite, Barış's decision): the definition sentence, then the overview
+  # (the video, and under it the one line linking crewforth.com/#overview), then the quick start with
+  # `npx crewforth init` — the overview link only once. The pin is the #overview link, not the video URL, so
+  # swapping the video does not touch this check.
+  # The npm page has no overview; its definition still comes before the install line. Order is read by line number,
+  # so a page that has all three pieces in the wrong order is red, not green.
+  FP_OV="https://crewforth.com/#overview"
+  fp_order(){ # $1 file  $2 definition sentence  $3 1 = the overview must sit between the two -> problems, ;-separated
+    awk -v d="$2" -v g="$3" -v o="$FP_OV" '
       !dl && index($0,d) {dl=NR}
-      index($0,"overview-poster.jpg") {if(!gl) gl=NR; gn++}
+      index($0,o) {if(!gl) gl=NR; gn++}
       !ql && index($0,"npx crewforth init") {ql=NR}
       END { if(!dl) print "no definition sentence"; if(!ql) print "no npx crewforth init"
             if(dl && ql && ql<dl) print "quick start above the definition"
-            if(g==1) { if(!gl) print "no overview-poster.jpg"; else if(gn>1) print "overview-poster.jpg shown " gn " times"
+            if(g==1) { if(!gl) print "no " o " link"; else if(gn>1) print o " linked " gn " times"
                        else if(dl && ql && (gl<dl || gl>ql)) print "overview not between the definition and the quick start" } }' "$1" 2>/dev/null | tr '\n' ';'; }
   FP_EN="Crewforth is your engineering crew for Claude Code."; FP_TR="Crewforth, Claude Code için mühendislik ekibinizdir."
   _fp=""
   _o="$(fp_order "$KR/README.md" "$FP_EN" 1)";     [ -z "$_o" ] || _fp="$_fp README.md($_o)"
   _o="$(fp_order "$KR/README.tr.md" "$FP_TR" 1)";  [ -z "$_o" ] || _fp="$_fp README.tr.md($_o)"
   _o="$(fp_order "$KR/README.npm.md" "$FP_EN" 0)"; [ -z "$_o" ] || _fp="$_fp README.npm.md($_o)"
-  # Must-fail twin: the same README with the GIF moved to the end must be read as out of order.
-  _fpt="$(mktemp)"; grep -v 'overview-poster.jpg' "$KR/README.md" > "$_fpt"; grep 'overview-poster.jpg' "$KR/README.md" >> "$_fpt"
+  # Must-fail twin: the same README with the overview link moved to the end must be read as out of order.
+  _fpt="$(mktemp)"; grep -vF "$FP_OV" "$KR/README.md" > "$_fpt"; grep -F "$FP_OV" "$KR/README.md" >> "$_fpt"
   if [ -n "$_fp" ]; then fail "front page order is wrong:$_fp"
   elif [ -z "$(fp_order "$_fpt" "$FP_EN" 1)" ]; then fail "the front-page check passed a README whose overview was moved below the quick start — it reads nothing"
   else pass "front page: definition → overview → npx crewforth init on both GitHub READMEs (overview once), definition before install on npm; an overview moved below is caught"; fi
+  # Two strings that must never reach a README: VIDEO_URL, the placeholder the video link is written over, so a
+  # placeholder cannot be merged by accident; and overview-poster.jpg, the image the video replaced — the file
+  # stays in assets/, so nothing else would notice it coming back. Each has a must-fail twin: the real README
+  # with the string planted must be caught, or the check is reading nothing.
+  fp_forbid(){ # $1 fixed string, rest files -> " name(count)" for every file that holds it
+    local n="$1" f c o=""; shift
+    for f in "$@"; do c="$(grep -cF -- "$n" "$f" 2>/dev/null)"; [ "${c:-0}" -gt 0 ] && o="$o ${f##*/}($c)"; done
+    printf '%s' "$o"; }
+  for _fs in VIDEO_URL overview-poster.jpg; do
+    _hit="$(fp_forbid "$_fs" "$KR/README.md" "$KR/README.tr.md" "$KR/README.npm.md")"
+    grep -vF -- "$_fs" "$KR/README.md" > "$_fpt"; printf '%s\n' "$_fs" >> "$_fpt"
+    if [ -n "$_hit" ]; then fail "$_fs is in a README:$_hit — it must not be merged"
+    elif [ -z "$(fp_forbid "$_fs" "$_fpt")" ]; then fail "the $_fs check passed a README with $_fs planted in it — it reads nothing"
+    else pass "$_fs is in none of the 3 READMEs; one planted is caught"; fi
+  done
   rm -f "$_fpt"
   # Every assets/ file a README points at exists — src=, srcset= and the npm README's absolute raw URL alike.
   # The count is printed: "no broken image" means nothing unless it says how many references it looked at.
@@ -6094,7 +6112,7 @@ if [ "$IS_KIT" = 1 ]; then
   elif [ -z "$_miss" ]; then pass "every README and site-page asset reference resolves ($_nref of $_nref distinct files exist)"
   else fail "README points at missing assets:$_miss"; fi
 else
-  skip scope "front-page checks skipped (installed project — the READMEs live in the Crewforth repo)" 2
+  skip scope "front-page checks skipped (installed project — the READMEs live in the Crewforth repo)" 4
 fi
 
 sec "== 14c) the 3.0 rename left no old name behind — outside history and the code that reads the old names =="
@@ -6224,6 +6242,10 @@ $(printf '%s\n' "$_nh" | head -n 5 | sed 's/^/       /')"
         echo x >> "$_kd/n"
         case "$_l" in
           https://crewforth.com|https://crewforth.com/|https://crewforth.com/tr|https://crewforth.com/tr/) ;;
+          # The home page with an anchor: no content page to look for, so the anchor itself must be on it.
+          https://crewforth.com/\#*|https://crewforth.com/tr/\#*)
+            grep -qF "id=\"${_l##*#}\"" "$KR/site/src/components/Home.astro" 2>/dev/null \
+              || printf '%s: %s has no id="%s" on the home page\n' "${_f#$KR/}" "$_l" "${_l##*#}" ;;
           https://crewforth.com/tr/*) _pg="${_l#https://crewforth.com/tr/}"; [ -f "$KR/site/content/tr/${_pg%%[#?]*}.md" ] || printf '%s: %s has no site/content/tr page\n' "${_f#$KR/}" "$_l" ;;
           https://crewforth.com/*)    _pg="${_l#https://crewforth.com/}";    [ -f "$KR/site/content/en/${_pg%%[#?]*}.md" ] || printf '%s: %s has no site/content/en page\n' "${_f#$KR/}" "$_l" ;;
           http://*|https://*|mailto:*|\#*) ;;
@@ -6231,15 +6253,15 @@ $(printf '%s\n' "$_nh" | head -n 5 | sed 's/^/       /')"
         esac
       done
     done; }
-  printf '[a](missing.md) [b](https://crewforth.com/nope) [c](https://crewforth.com/tr/gates)\n' > "$_kd/link-bad.md"
+  printf '[a](missing.md) [b](https://crewforth.com/nope) [c](https://crewforth.com/tr/gates) [d](https://crewforth.com/#nope) [e](https://crewforth.com/#overview)\n' > "$_kd/link-bad.md"
   mkdir -p "$_kd/site/content/tr"
   # shellcheck disable=SC2086
   _lh="$(link_hits $FP_PAGES)"; _ln="$(grep -c . "$_kd/n")"
   if [ "$_ln" -lt 20 ]; then fail "the link check looked at only $_ln link(s) across the pages — the extractor is broken, not the pages"
   elif [ -n "$_lh" ]; then fail "a front page links to something that is not there:
 $(printf '%s\n' "$_lh" | head -n 5 | sed 's/^/       /')"
-  elif [ "$(link_hits "$_kd/link-bad.md" | grep -c .)" != 2 ]; then fail "the link check did not catch both planted breaks (a missing file, a crewforth.com page with no source) — it reads nothing"
-  else pass "every relative link and crewforth.com page on the READMEs and site pages resolves ($_ln links); two planted breaks are caught, a real site page is not"; fi
+  elif [ "$(link_hits "$_kd/link-bad.md" | grep -c .)" != 3 ]; then fail "the link check did not catch exactly the three planted breaks (a missing file, a crewforth.com page with no source, a home-page anchor that is not there) — it reads nothing, or it flagged a real page or anchor"
+  else pass "every relative link, crewforth.com page and home-page anchor on the READMEs and site pages resolves ($_ln links); three planted breaks are caught, a real site page and a real anchor are not"; fi
   rm -rf "$_kd"
 else
   skip scope "front-page name, number and link checks skipped (installed project — the READMEs live in the source repository)" 3
