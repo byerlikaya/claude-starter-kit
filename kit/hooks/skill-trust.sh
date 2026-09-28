@@ -63,11 +63,20 @@ digest(){
 }
 
 if [ "$MODE" = one ]; then
-  case "$ONE" in skills/*/*|agents/*/*) exit 1 ;; skills/?*) p="$CL/$ONE/SKILL.md" ;; agents/?*.md) p="$CL/$ONE" ;; *) exit 1 ;; esac
-  [ -f "$p" ] || exit 1
-  dg="$(digest "$p")"; [ -n "$dg" ] || exit 1
-  [ -f "$TRUST" ] || printf '# Components reviewed and accepted by the user. Regenerate with: bash skill-trust.sh --trust\n' > "$TRUST" 2>/dev/null || exit 1
-  grep -qxF "$dg $ONE" "$TRUST" 2>/dev/null || printf '%s %s\n' "$dg" "$ONE" >> "$TRUST"
+  # Every refusal says why on stderr: the updater shows it. It used to exit 1 silently, and the updater discarded
+  # even that, so a failed vouch surfaced only as the next session asking about the skill — and an append that
+  # failed still returned 0.
+  case "$ONE" in skills/*/*|agents/*/*) echo "skill-trust: --trust-one takes skills/<name> or agents/<name>.md, not '$ONE'" >&2; exit 1 ;;
+    skills/?*) p="$CL/$ONE/SKILL.md" ;; agents/?*.md) p="$CL/$ONE" ;;
+    *) echo "skill-trust: --trust-one takes skills/<name> or agents/<name>.md, not '$ONE'" >&2; exit 1 ;; esac
+  [ -f "$p" ] || { echo "skill-trust: no such component: $p" >&2; exit 1; }
+  dg="$(digest "$p")"; [ -n "$dg" ] || { echo "skill-trust: could not compute a digest of $p" >&2; exit 1; }
+  if [ ! -f "$TRUST" ]; then
+    printf '# Components reviewed and accepted by the user. Regenerate with: bash skill-trust.sh --trust\n' > "$TRUST" 2>/dev/null \
+      || { echo "skill-trust: cannot create $TRUST" >&2; exit 1; }
+  fi
+  grep -qxF "$dg $ONE" "$TRUST" 2>/dev/null && exit 0
+  printf '%s %s\n' "$dg" "$ONE" >> "$TRUST" 2>/dev/null || { echo "skill-trust: cannot write $TRUST" >&2; exit 1; }
   exit 0
 fi
 

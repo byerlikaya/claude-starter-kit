@@ -125,6 +125,9 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "stack=%s %s") s='stack=%s %s' ;;
       "stack=%s · via %s") s='stack=%s · kuran: %s' ;;
       "stack=dotnet — 3.0 records generic; the pattern skill stays as a project skill") s="stack=dotnet — 3.0 generic kaydeder; desen skill'i proje skill'i olarak kalır" ;;
+      '⚠️  cqrs-aop-module could not be recorded as trusted (skill-trust.sh exit %s: %s) — the next session will ask about it') s="⚠️  cqrs-aop-module güvenilir olarak kaydedilemedi (skill-trust.sh çıkış kodu %s: %s) — bir sonraki oturum onu soracak" ;;
+      "cqrs-aop-module could not be checked against the copies Crewforth shipped (git or the shipped list is missing) — not vouched for; the next session will ask whether to trust it.") s="cqrs-aop-module, Crewforth'un gönderdiği kopyalarla karşılaştırılamadı (git ya da gönderilen liste yok) — güvenilir sayılmadı; bir sonraki oturum güvenip güvenmeyeceğinizi soracak." ;;
+      "cqrs-aop-module is 2.x's .NET pattern, changed since Crewforth shipped it — not vouched for; the next session will ask whether to trust it.") s="cqrs-aop-module 2.x'in .NET deseni; Crewforth'un gönderdiği halinden değiştirilmiş — güvenilir sayılmadı; bir sonraki oturum güvenip güvenmeyeceğinizi soracak." ;;
       "cqrs-aop-module is now a project skill (Crewforth no longer ships it); backend-expert applies it as your project's pattern.") s="cqrs-aop-module artık bir proje skill'i (Crewforth onu artık taşımıyor); backend-expert onu projenizin deseni olarak uygular." ;;
       "CSK_CORRECT_STACK has no effect since 3.0 — there is one backend shape; the stack lives in CLAUDE.md ## Stack.") s="CSK_CORRECT_STACK 3.0'dan beri etkisiz — tek bir backend biçimi var; yığın CLAUDE.md ## Stack bölümünde durur." ;;
       "§4.2: DevArchitecture stays armed in the trace blocklist (it was armed before this update)") s="§4.2: DevArchitecture iz engel listesinde devrede kalıyor (güncellemeden önce de devredeydi)" ;;
@@ -872,8 +875,8 @@ if [ "$KIT_PRESENT" = 1 ] && [ -d .claude/skills/devarch-module ]; then
     say '⚠️  both devarch-module and cqrs-aop-module are present — nothing moved; remove the old one when ready'
   fi
 fi
-[ "$LEGACY_DOTNET" = 1 ] && [ -d .claude/skills/cqrs-aop-module ] \
-  && say "cqrs-aop-module is now a project skill (Crewforth no longer ships it); backend-expert applies it as your project's pattern."
+# Whether the updater vouches for cqrs-aop-module is decided AFTER the manifest is written — see "THE PATTERN SKILL'S
+# TRUST" below; the notice is printed there with the verdict.
 # THE 3.0 NAME MIGRATION: <x>-csk -> crew-<x>, for the KIT'S OWN components only (agents, commands, the code-review
 # skill), and only on a project the kit was installed on. Same principle as the devarch-module rename above: move,
 # never delete. The names come from the payload, so a project file that merely ends in -csk (my-helper-csk.md) is
@@ -1011,11 +1014,6 @@ done
 # a plain -x match read it as disarmed and the refresh switched §4.2 off without a word (measured in review).
 VENDOR_ARMED=0; grep -qxE $'DevArchitecture\r?' .claude/hooks/trace-blocklist.txt 2>/dev/null && VENDOR_ARMED=1
 copy_noclobber "$SRC/hooks"    .claude/hooks    "$KIT_PRESENT"; H_ADD=$ret_add; H_SKIP=$ret_skip
-# The 3.0 migration made cqrs-aop-module a project skill; it is the one Crewforth shipped until now, so the updater
-# vouches for it rather than having the next session open by asking whether to trust it. Only that component, and
-# only after the refreshed hook (which knows --trust-one) is in place.
-[ "$LEGACY_DOTNET" = 1 ] && [ -f .claude/skills/cqrs-aop-module/SKILL.md ] \
-  && bash .claude/hooks/skill-trust.sh --trust-one skills/cqrs-aop-module >/dev/null 2>&1 || true
 copy_noclobber "$SRC/eval"     .claude/eval     "$KIT_PRESENT"; E_ADD=$ret_add; E_SKIP=$ret_skip
 # The Studio panel. This is the line that answers "I updated and `/crew-studio` says the panel
 # is missing": with KIT_PRESENT=1 it is a force-refresh, so a project that already has the kit
@@ -1218,6 +1216,57 @@ fi
 { for d in "$SRC"/skills/*/;     do [ -d "$d" ] && echo "skills/$(basename "$d")"; done
   for f in "$SRC"/agents/*.md;   do [ -e "$f" ] && echo "agents/$(basename "$f")"; done
 } > .claude/kit-manifest.txt 2>/dev/null || true
+
+# THE PATTERN SKILL'S TRUST. 3.0 keeps cqrs-aop-module as the project's own; the updater vouches for it only when it is
+# PROVABLY the copy Crewforth shipped — every file in it hashes (raw, or with CR removed) to a blob id listed for its
+# path in legacy-blobs.tsv (cqrs-aop-module 2.12-2.13, and devarch-module 1.0.0-2.11.0 renamed in place), and nothing
+# else is in the directory. An edited copy is the user's work, and a skill is executable instruction: it is named,
+# not vouched for, and the next session asks. The old test was the recorded stack (`stack=dotnet`), which measured
+# the wrong thing: a generic-recorded install carrying the skill got nothing and its first session flagged it
+# (field report, reproduced in e2e). Asked only while the skill is still unvetted — the trust gate's own answer,
+# read after the manifest exists — so an update does not repeat itself once it is settled.
+# Returns 0 shipped · 1 not a shipped copy · 2 cannot tell (no git, no list). Hardened in review:
+#  - a SYMLINK anywhere (the directory itself, SKILL.md, any entry) is refused: `find -type f` does not list one, so a
+#    link to arbitrary text used to be "checked" by checking nothing, and --trust-one then recorded the target's digest;
+#  - zero files hashed is not a match;
+#  - CR is stripped only when every CR ends a line (a CRLF copy), so CRs cannot be added anywhere else;
+#  - paths reach awk through ENVIRON, not -v, which would turn a name like SKIL\114.md into SKILL.md.
+_cqrs_shipped(){
+  local dir=.claude/skills/cqrs-aop-module lst="$SRC/legacy-blobs.tsv" f h hl cr crl n=0
+  [ -f "$lst" ] && command -v git >/dev/null 2>&1 || return 2
+  [ -L "$dir" ] && return 1
+  [ -n "$(find "$dir" ! -type f ! -type d 2>/dev/null | head -1)" ] && return 1
+  while IFS= read -r f; do
+    h="$(git hash-object --no-filters "$f" 2>/dev/null)"; [ -n "$h" ] || return 1
+    hl="$h"; cr="$(tr -dc '\r' < "$f" 2>/dev/null | wc -c | tr -d ' ')"
+    if [ "${cr:-0}" -gt 0 ]; then
+      crl="$(grep -c $'\r$' "$f" 2>/dev/null)"
+      [ "$cr" = "${crl:-x}" ] && hl="$(tr -d '\r' < "$f" 2>/dev/null | git hash-object --no-filters --stdin 2>/dev/null)"
+    fi
+    P="$f" A="$h" B="$hl" awk -F'\t' '$1 == "skills/cqrs-aop-module" && $2 == ENVIRON["P"] && ($3 == ENVIRON["A"] || $3 == ENVIRON["B"]) { k = 1 } END { exit !k }' "$lst" || return 1
+    n=$((n+1))
+  done < <(find "$dir" -type f 2>/dev/null | LC_ALL=C sort)
+  [ "$n" -gt 0 ] && [ -f "$dir/SKILL.md" ] && [ ! -L "$dir/SKILL.md" ]
+}
+# The gate's answer is read from its output, never through `| grep -q`: grep closing early SIGPIPEs the hook and
+# pipefail turns the whole test false — that is how the first version of this block never ran (e2e, C1).
+_ptrust=""; [ "$KIT_PRESENT" = 1 ] && [ -f .claude/skills/cqrs-aop-module/SKILL.md ] \
+  && _ptrust="$(CLAUDE_PROJECT_DIR="$PWD" bash .claude/hooks/skill-trust.sh </dev/null 2>/dev/null || true)"
+if grep -qE '(^|[[:space:]])skills/cqrs-aop-module([[:space:]]|$)' <<< "$_ptrust"; then   # exact name: not skills/cqrs-aop-module-x
+  _cqrs_shipped; _cqs=$?
+  if [ "$_cqs" = 2 ]; then
+    say "cqrs-aop-module could not be checked against the copies Crewforth shipped (git or the shipped list is missing) — not vouched for; the next session will ask whether to trust it."
+  elif [ "$_cqs" = 0 ]; then
+    _tout="$(bash .claude/hooks/skill-trust.sh --trust-one skills/cqrs-aop-module 2>&1)"; _trc=$?
+    if [ "$_trc" = 0 ]; then
+      say "cqrs-aop-module is now a project skill (Crewforth no longer ships it); backend-expert applies it as your project's pattern."
+    else
+      say '⚠️  cqrs-aop-module could not be recorded as trusted (skill-trust.sh exit %s: %s) — the next session will ask about it' "$_trc" "${_tout:-no output}"
+    fi
+  else
+    say "cqrs-aop-module is 2.x's .NET pattern, changed since Crewforth shipped it — not vouched for; the next session will ask whether to trust it."
+  fi
+fi
 
 # stack= is always generic since 3.0; the key is kept for older updaters. Rewritten WITHOUT the pre-2.0
 # 'profile=' key: dropping it is what retires the migration notice, so a second refresh stays quiet — and
