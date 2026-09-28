@@ -16,7 +16,9 @@
 Claude Code'a subagent'lar, skill'ler, komutlar ve hook'lar ekler: her biri bir alanın sahibi olan 12 uzman ajan,<br>
 yöntemi taşıyan 39 skill, `/crew-…` ile başlattığınız 10 komut ve önemli kuralları uygulayan hook'lar.
 
-<a href="https://crewforth.com/#overview"><img src="assets/overview-poster.jpg" alt="Bir dakikalık tanıtımı crewforth.com'da izleyin" width="880"></a>
+VIDEO_URL
+
+[crewforth.com](https://crewforth.com/#overview)'da da izleyebilirsiniz
 
 </div>
 

@@ -16,7 +16,9 @@
 It adds subagents, skills, commands and hooks to Claude Code: 12 specialist agents that each own a domain,<br>
 39 skills that hold the method, 10 commands you start with `/crew-…`, and hooks that enforce the rules that matter.
 
-<a href="https://crewforth.com/#overview"><img src="assets/overview-poster.jpg" alt="Watch the one-minute overview on crewforth.com" width="880"></a>
+VIDEO_URL
+
+Also on [crewforth.com](https://crewforth.com/#overview)
 
 </div>
 
