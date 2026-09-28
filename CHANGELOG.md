@@ -24,6 +24,18 @@ versioning follows [SemVer](https://semver.org/).
 
 - Reading `core.hooksPath` without a value (`git config core.hooksPath`, with or without `--local` / `--global` /
   `--system`) was refused as tampering. It passes now; every write form stays blocked.
+- Updating a project that carried `cqrs-aop-module` but was recorded as `stack=generic` left the skill untrusted,
+  and its first session asked whether to trust the pattern skill Crewforth itself had shipped. The update now
+  vouches for the skill when every file in it is byte-for-byte a copy Crewforth shipped (2.12–2.13, or
+  `devarch-module` renamed in place), whatever the recorded stack. An edited copy is named instead, and the next
+  session asks — an edited skill is the user's work.
+- When recording that trust failed, the update said nothing. It now says so, with the reason.
+
+### Added
+
+- `/crew-doctor` reports when the install is missing what its manifest lists, or has no manifest next to `VERSION`
+  — the last update did not finish, or `.claude/` was copied from another project — and suggests
+  `npx crewforth update --here`. It changes nothing.
 
 ### Changed
 

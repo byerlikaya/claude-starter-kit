@@ -59,6 +59,9 @@ _mt() {
       "no .claude/ in '%s' — is Crewforth installed here?") s="'%s' içinde .claude/ yok — Crewforth burada kurulu mu?" ;;
       'VERSION present (%s)') s='VERSION var (%s)' ;;
       'VERSION missing') s='VERSION yok' ;;
+      "no install trace: VERSION is here but .claude/kit-manifest.txt is not — the last update did not finish, or .claude/ was copied; run: npx crewforth update --here (information only — nothing was changed)") s="kurulum izi yok: VERSION var ama .claude/kit-manifest.txt yok — son güncelleme bitmemiş ya da .claude/ kopyalanmış; çalıştırın: npx crewforth update --here (yalnız bilgi — hiçbir şey değiştirilmedi)" ;;
+      'no install trace: components the install manifest lists are not here (%s) — the last update did not finish, or .claude/ was copied; run: npx crewforth update --here (information only — nothing was changed)') s='kurulum izi yok: kurulum manifestinin listelediği bileşenler burada yok (%s) — son güncelleme bitmemiş ya da .claude/ kopyalanmış; çalıştırın: npx crewforth update --here (yalnız bilgi — hiçbir şey değiştirilmedi)' ;;
+      'install trace: the components on disk match the install manifest') s='kurulum izi: diskteki bileşenler kurulum manifestiyle uyuşuyor' ;;
       'reinstall or update Crewforth (npx crewforth update)') s="Crewforth'u yeniden kurun ya da güncelleyin (npx crewforth update)" ;;
       'Crewforth v%s installed, v%s published — update with /crew-update') s='Crewforth v%s kurulu, v%s yayında — /crew-update ile güncelleyin' ;;
       'required git hooks present (pre-commit, commit-msg)') s="gerekli git hook'ları yerinde (pre-commit, commit-msg)" ;;
@@ -188,6 +191,29 @@ if [ -f .claude/VERSION ] && [ -f .claude/.state/update-check ]; then
   if [ -n "$DLATEST" ] && awk -v a="$DLATEST" -v b="$DCUR" 'BEGIN{split(a,x,".");split(b,y,".");
        for(i=1;i<=3;i++){if(x[i]+0>y[i]+0)exit 0; if(x[i]+0<y[i]+0)exit 1} exit 1}'; then
     warn "Crewforth v%s installed, v%s published — update with /crew-update" "$DCUR" "$DLATEST"
+  fi
+fi
+
+# 1c) Install trace. An update leaves VERSION, the install manifest and the components on disk agreeing; when they do
+#     not, the last update did not finish or .claude/ came from somewhere else (a copy from another project), and the
+#     update's own steps — the legacy sweep, the pattern skill's trust — never ran here. Information only: nothing is
+#     changed, the fix is the update. Measured case: a project whose trust record was missing after a 3.0 update.
+if [ -f .claude/VERSION ]; then
+  if [ ! -f .claude/kit-manifest.txt ]; then
+    warn "no install trace: VERSION is here but .claude/kit-manifest.txt is not — the last update did not finish, or .claude/ was copied; run: npx crewforth update --here (information only — nothing was changed)"
+  else
+    DTMISS=""
+    while IFS= read -r e || [ -n "$e" ]; do
+      e="${e%$'\r'}"; case "$e" in ''|'#'*) continue ;; esac
+      [ -e ".claude/$e" ] || DTMISS="$DTMISS $e"
+    done < .claude/kit-manifest.txt
+    # Only "listed but absent" is a signal. A crew-* component on disk that the manifest does not list may be the user's
+    # own (review: a user's skills/crew-mine read as a broken install), so it is not reported.
+    if [ -n "$DTMISS" ]; then
+      warn "no install trace: components the install manifest lists are not here (%s) — the last update did not finish, or .claude/ was copied; run: npx crewforth update --here (information only — nothing was changed)" "${DTMISS# }"
+    else
+      ok "install trace: the components on disk match the install manifest"
+    fi
   fi
 fi
 
