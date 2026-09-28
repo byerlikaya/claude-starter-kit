@@ -546,6 +546,73 @@ block(){
   exit 2
 }
 
+# `printf '%s' "$2" | grep -q[i]E "$3"` without the process. Measured on a Windows 11 machine under load: one bare
+# `bash` cost 1.3-3.9 s there, and `git status` walked this hook through 14 processes (13 greps + the stdin cat),
+# 37-66 s per call; on macOS the same walk is ~38 ms. The rules below keep their regex TEXT unchanged and only
+# change who runs it: the shell's own ERE matcher, fed one line at a time because grep matches per line — `^`/`$`
+# anchor at each line and no class ever spans a newline, which a whole-string [[ =~ ]] would get wrong. Case
+# folding is nocasematch, restored to what it was, so it cannot leak into a later `case` (see git_has).
+_ere() {  # $1 = i (fold case) | s ; $2 = text ; $3 = ERE ; $4 = glob a matching line must contain (a superset of a literal the ERE requires)
+  local rc=1 nc=0 line n=0 g="${4:-*}"
+  case "$2" in
+    *$'\n'*)
+      # Split once (`read -a`), keep only lines carrying the literal, and let the shell match those. bash compiles the
+      # regex on every =~, so a regex per line is a regcomp per line: a 2,000-line heredoc took 70 s that way (measured).
+      # Past 64 candidate lines one grep — compiled once, one process — is cheaper; fed from a here-string, not a pipe,
+      # so an early `grep -q` exit cannot SIGPIPE the writer and flip the verdict under pipefail.
+      [[ $2 == $g ]] || return 1            # the literal is nowhere in the text: no line can match
+      # git_has alone asks ~10 questions of the same command; the split-and-filter is cached for the last (text, glob).
+      if [ "$2" != "${_ERE_T-}" ] || [ "$g" != "${_ERE_G-}" ]; then
+        local -a _el; _ERE_C=(); _ERE_T="$2"; _ERE_G="$g"
+        IFS=$'\n' read -r -d '' -a _el <<< "$2"
+        for line in ${_el[@]+"${_el[@]}"}; do [[ $line == $g ]] && _ERE_C[${#_ERE_C[@]}]="$line"; done
+      fi
+      n=${#_ERE_C[@]}
+      if [ "$n" -gt 64 ]; then
+        if [ "$1" = i ]; then grep -qiE -- "$3" <<< "$2"; else grep -qE -- "$3" <<< "$2"; fi
+        return $?
+      fi
+      [ "$1" = i ] && { shopt -q nocasematch && nc=1; shopt -s nocasematch; }
+      for line in ${_ERE_C[@]+"${_ERE_C[@]}"}; do [[ $line =~ $3 ]] && { rc=0; break; }; done ;;
+    *)
+      [ "$1" = i ] && { shopt -q nocasematch && nc=1; shopt -s nocasematch; }
+      [[ $2 =~ $3 ]] && rc=0 ;;
+  esac
+  [ "$1" = i ] && [ "$nc" = 0 ] && shopt -u nocasematch
+  return $rc
+}
+
+# An exemption belongs to the command it sits in, not to the whole line. Four rules used to ask "does the SAFE
+# marker appear ANYWHERE?" — so `terraform --help && terraform destroy -auto-approve`, `cat .env.example; cat .env`
+# and `cat ~/.ssh/id_rsa.pub; cat ~/.ssh/id_rsa` went through while each forbidden half alone was blocked (72
+# chained shapes measured open across &&, ;, ||, |, ( ) and $( )). _seg_any asks the rule of each command segment
+# instead, splitting on ; & | ( ) ` and newline — so `cat .env.example $(cat .env)` is two segments too.
+# Each rule keeps its old whole-line test as well and blocks when EITHER fires, so nothing blocked before passes now:
+# a hit that spans a split point (`terraform -chdir=$(pwd) destroy`, a `.*` reaching across a `;`) is still the old
+# test's to find. The segment test only ever adds blocks.
+# Split into segments. bash 3.2's ${var//[set]/x} slows down faster than linearly with size and ~7x more in a UTF-8
+# locale (review: 21 s for an ordinary 200-line heredoc), so a long command is split by one `tr` — a process, but only
+# above 2 KB, where the hook was already paying for the payload's size.
+_split_segs() {  # $1 = text -> array _SPL
+  _SPL=()
+  if [ "${#1}" -gt 2048 ]; then IFS=$'\n' read -r -d '' -a _SPL < <(printf '%s' "$1" | LC_ALL=C tr ';&|()`' '\n\n\n\n\n\n')
+  else IFS=$'\n' read -r -d '' -a _SPL <<< "${1//[;&|()\`]/$'\n'}"; fi
+}
+_seg_any() {  # $1 = forbidden ERE, $2 = exempting ERE, $3 = glob the forbidden segment must match -> 0 when one segment has $1 and not $2
+  local -a _sc; local sg n=0 nc=0 rc=1
+  [[ $CMD == $3 ]] || return 1
+  _split_segs "$CMD"
+  for sg in ${_SPL[@]+"${_SPL[@]}"}; do [[ $sg == $3 ]] && { _sc[n]="$sg"; n=$((n+1)); }; done
+  [ "$n" = 0 ] && return 1
+  if [ "$n" -gt 64 ]; then   # same bound as _ere: one pipeline instead of a regcomp per segment; the output decides, not the status
+    [ -n "$(printf '%s\n' "${_sc[@]}" | grep -aiE -- "$1" | grep -aivE -m1 -- "$2")" ]; return $?
+  fi
+  shopt -q nocasematch && nc=1; shopt -s nocasematch
+  for sg in "${_sc[@]}"; do [[ $sg =~ $1 ]] && ! [[ $sg =~ $2 ]] && { rc=0; break; }; done
+  [ "$nc" = 0 ] && shopt -u nocasematch
+  return $rc
+}
+
 # One matcher for "git invoked with subcommand X", tolerant of the forms that used to slip past the old
 # 'git +subcmd' rules: interposed options (git -C <path> …, git -c k=v …), TAB separators, and a
 # quote/backtick/paren/pipe right before `git` (eval "git …", bash -c 'git …', `git …`, and the raw-JSON
@@ -572,7 +639,7 @@ git_has() {  # $1 = command text, $2 = subcommand alternation (e.g. 'commit|push
   # and it works on the bash 3.2 macOS still ships. Strictly a superset of the regex — anything the grep could
   # match contains `git` case-insensitively — so no verdict can change.
   case "$1" in *[Gg][Ii][Tt]*) ;; *) return 1 ;; esac
-  printf '%s' "$1" | grep -qiE "(^|[^A-Za-z0-9_-])git[[:space:]]+((-[Cc][[:space:]]+[^[:space:];&|]+|--(git-dir|work-tree|namespace|config-env|super-prefix|exec-path)[[:space:]=]+[^[:space:];&|]+|-[^[:space:];&|]+)[[:space:]]+)*($2)([[:space:]]|[;&|\"'\`\\\\]|\$)"
+  _ere i "$1" "(^|[^A-Za-z0-9_-])git[[:space:]]+((-[Cc][[:space:]]+[^[:space:];&|]+|--(git-dir|work-tree|namespace|config-env|super-prefix|exec-path)[[:space:]=]+[^[:space:];&|]+|-[^[:space:];&|]+)[[:space:]]+)*($2)([[:space:]]|[;&|\"'\`\\\\]|\$)" '*[Gg][Ii][Tt]*'
 }
 # Same precondition, hoisted once for the rules that inline the `git …` pattern instead of calling git_has.
 case "$CMD" in *[Gg][Ii][Tt]*) HAS_GIT=1 ;; *) HAS_GIT=0 ;; esac
@@ -642,7 +709,7 @@ case "$CMD" in *[Rr][Mm]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE 'rm +
 # named file is an everyday, recoverable act and gating it would make the rule noise. The option-skipping
 # prefix is git_has's, so `git -C <path>` and `git -c k=v` cannot walk around it and a commit MESSAGE
 # containing the word "checkout" does not trip it; both are pinned as cases.
-[ "$HAS_GIT" = 1 ] && echo "$CMD" | grep -qE '(^|[^A-Za-z0-9_-])git[[:space:]]+((-[Cc][[:space:]]+[^[:space:];&|]+|--(git-dir|work-tree|namespace|config-env|super-prefix|exec-path)[[:space:]=]+[^[:space:];&|]+|-[^[:space:];&|]+)[[:space:]]+)*(checkout|restore)([[:space:]]+[^;&|[:space:]]+)*[[:space:]]+(\.|\*|\./|:/)([[:space:]]|[;&|]|$)' && block "whole-tree revert (git checkout/restore over everything)" "4.5" history
+[ "$HAS_GIT" = 1 ] && _ere s "$CMD" '(^|[^A-Za-z0-9_-])git[[:space:]]+((-[Cc][[:space:]]+[^[:space:];&|]+|--(git-dir|work-tree|namespace|config-env|super-prefix|exec-path)[[:space:]=]+[^[:space:];&|]+|-[^[:space:];&|]+)[[:space:]]+)*(checkout|restore)([[:space:]]+[^;&|[:space:]]+)*[[:space:]]+(\.|\*|\./|:/)([[:space:]]|[;&|]|$)' '*[Gg][Ii][Tt]*' && block "whole-tree revert (git checkout/restore over everything)" "4.5" history
 case "$CMD" in *[Mm][Kk][Ff][Ss]*|*[Dd][Dd]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE '(^|[^a-zA-Z])(mkfs|dd +if=)'       && block "disk-level destructive command" "4.5" loss
 
 # §4.5 remote-code-execution & permission-nuke -> HARD BLOCK. A downloaded script piped straight into a shell
@@ -700,14 +767,19 @@ _IAC_DESTROY="(terraform|tofu|pulumi)([[:space:]]+-[^;&|]*)?[[:space:]]+(destroy
 _IAC_UNATT_TF="(terraform|tofu)[^;&|]*[[:space:]](apply|destroy)([^;&|]*[[:space:]])?-{1,2}auto-approve([^a-zA-Z0-9_=-]|$)"
 _IAC_UNATT_PU="pulumi[^;&|]*[[:space:]]up([^;&|]*[[:space:]])?(-y|--yes|-f|--skip-preview)([^a-zA-Z0-9_-]|$)"
 _IAC_CLUSTER="(kubectl[^;&|]*[[:space:]]delete([^a-zA-Z0-9_-]|$)|helm[^;&|]*[[:space:]](uninstall|delete|del|un)([^a-zA-Z0-9_-]|$))"
+# The SAFE marker (--help, -h, --dry-run, …) exempts only the segment it is in — see _seg_any.
+# A verb at a command position OR behind a shell executor — the two arms of _iac, as one ERE per rule.
+_IAC_P_DESTROY="(${_IAC_AT}${_IAC_DESTROY})|(${_IAC_EXEC}${_IAC_DESTROY})"
+_IAC_P_UNATT="(${_IAC_AT}${_IAC_UNATT_TF})|(${_IAC_EXEC}${_IAC_UNATT_TF})|(${_IAC_AT}${_IAC_UNATT_PU})|(${_IAC_EXEC}${_IAC_UNATT_PU})"
+_IAC_P_CLUSTER="(${_IAC_AT}${_IAC_CLUSTER})|(${_IAC_EXEC}${_IAC_CLUSTER})"
 case "$CMD" in *[Tt][Ee][Rr][Rr][Aa][Ff][Oo][Rr][Mm]*|*[Tt][Oo][Ff][Uu]*|*[Pp][Uu][Ll][Uu][Mm][Ii]*) : ;; *) false ;; esac \
-  && ! echo "$CMD" | grep -qiE "$_IAC_SAFE" && _iac "$_IAC_DESTROY" \
+  && { { ! echo "$CMD" | grep -qiE "$_IAC_SAFE" && _iac "$_IAC_DESTROY"; } || _seg_any "$_IAC_P_DESTROY" "$_IAC_SAFE" '*'; } \
   && block "infrastructure destroy (removes every managed resource)" "4.5" loss
 case "$CMD" in *[Tt][Ee][Rr][Rr][Aa][Ff][Oo][Rr][Mm]*|*[Tt][Oo][Ff][Uu]*|*[Pp][Uu][Ll][Uu][Mm][Ii]*) : ;; *) false ;; esac \
-  && ! echo "$CMD" | grep -qiE "$_IAC_SAFE" && { _iac "$_IAC_UNATT_TF" || _iac "$_IAC_UNATT_PU"; } \
+  && { { ! echo "$CMD" | grep -qiE "$_IAC_SAFE" && { _iac "$_IAC_UNATT_TF" || _iac "$_IAC_UNATT_PU"; }; } || _seg_any "$_IAC_P_UNATT" "$_IAC_SAFE" '*'; } \
   && block "unattended infrastructure apply (skips the tool's only confirmation)" "4.5" loss
 case "$CMD" in *[Kk][Uu][Bb][Ee][Cc][Tt][Ll]*|*[Hh][Ee][Ll][Mm]*) : ;; *) false ;; esac \
-  && ! echo "$CMD" | grep -qiE "$_IAC_SAFE" && _iac "$_IAC_CLUSTER" \
+  && { { ! echo "$CMD" | grep -qiE "$_IAC_SAFE" && _iac "$_IAC_CLUSTER"; } || _seg_any "$_IAC_P_CLUSTER" "$_IAC_SAFE" '*'; } \
   && block "cluster teardown (kubectl delete / helm uninstall)" "4.5" loss
 # The rule is WORLD-WRITABLE, so the pattern matches the resulting permission and not one spelling of it. It
 # used to match `777`, `0777`, `a+rwx` and `+rwx` only, which let `1777`, `2777`, `666` and `o+w` reach exactly
@@ -751,13 +823,60 @@ case "$CMD" in *[Ii][Cc][Aa][Cc][Ll][Ss]*) : ;; *) false ;; esac && echo "$CMD" 
 # or deleting/overwriting/patching the hook scripts, would disarm the trace/secret/approval gates in one line.
 # READING the setting is not disarming it. `git config --get core.hooksPath` is how a person (or the doctor)
 # CHECKS that the gate is armed, and blocking it told them Crewforth was tampering-proof by refusing to let them
-# verify it. Only the write forms disarm: a bare `git config core.hooksPath <value>`, `--unset`, `--replace-all`.
-[ "$HAS_GIT" = 1 ] && echo "$CMD" | grep -qE 'git[[:space:]]+config\b[^|]*core\.hooksPath' \
-  && ! echo "$CMD" | grep -qE 'git[[:space:]]+config\b[^|]*(--get(-all|-regexp|-urlmatch)?|--list)([[:space:]]|$)' \
-  && block "git config core.hooksPath (disarms the git hooks)" "4.5" tamper
+# verify it. Only the write forms disarm: a value, `--unset`, `--unset-all`, `--add`, `--replace-all`, `--edit`, or
+# the `set` / `unset` subcommands of newer git. A read needs no `--get`: `git config core.hooksPath` with no value,
+# scoped or not (`--local` / `--global` / `--system`), prints the setting and changes nothing — it used to be
+# refused as tampering.
+# EACH `git config … core.hooksPath` in the command is judged on its own, and a read has to PROVE it is one: the
+# segment is exactly `git [-C dir] config [scope/format flags] [read verb …] core.hooksPath`, git first, nothing
+# after the key but spaces or tabs. Proven reads are cut out of the command; what is left goes to the old rule —
+# `git … config … core.hooksPath` anywhere is a write — widened, not narrowed. Nothing unproven is ever skipped.
+# Why each piece: the old rule exempted the WHOLE command when `--get`/`--list` appeared anywhere, so `git config
+# --get core.hooksPath && git config core.hooksPath x` disarmed the hooks. Two review rounds then broke the reader
+# itself — a read verb as another flag's value (`--comment get`), a value from xargs or an alias, a CR / form-feed
+# the payload reader drops (`[[:space:]]` calls them blank; the shell does not), and segments the reader could not
+# parse being skipped (`git config"" core.hooksPath x`, `config${IFS}core.hooksPath`, a quoted `;` inside a flag).
+# Quotes and backslashes are removed before the old rule looks (`core.hooks"P"ath` is core.hooksPath to git); the
+# key is case-insensitive to git; a backslash-newline joins; removing the [core] section takes hooksPath with it.
+_HP_B=$' \t'   # blank = space or TAB only; a literal `\t` inside [ ] is a backslash and a t to ERE
+_HP_OPT="(--local|--global|--system|--worktree|--show-origin|--show-scope|--includes|--no-includes|-z|--null|--name-only|--bool|--int|--path|--bool-or-int|--expiry-date|--all|--type=[A-Za-z-]+|--file=[^${_HP_B}]+|--blob=[^${_HP_B}]+|(--file|-f|--blob|--type)[${_HP_B}]+[^${_HP_B}]+)"
+_HP_PRE="^[${_HP_B}]*git([${_HP_B}]+(-C[${_HP_B}]+[^${_HP_B}]+|--git-dir=[^${_HP_B}]+|--work-tree=[^${_HP_B}]+))*[${_HP_B}]+config([${_HP_B}]+${_HP_OPT})*[${_HP_B}]+"
+_hp_blocks() {  # $1 = command -> 0 when it writes core.hooksPath or drops [core]
+  local bsnl=$'\\\n' c="$1" t seg r n=0 nc=0
+  local bare="${_HP_PRE}core\\.hooksPath[${_HP_B}]*\$"
+  local verb="${_HP_PRE}(--get|--get-all|--get-regexp|--get-urlmatch|--list|-l|get|list)([${_HP_B}]|\$)"
+  local wr="[${_HP_B}](--unset|--unset-all|--add|--replace-all|--edit|-e|set|unset|--rename-section|--remove-section|rename-section|remove-section)([${_HP_B}]|\$)"
+  local -a reads=()
+  case "$c" in *"$bsnl"*) c="${c//"$bsnl"/ }" ;; esac   # quoted: in a ${//} pattern a bare backslash escapes the newline
+  t=${c//\"/}; t=${t//\'/}; t=${t//\\/}   # unquoted, one class each: inside "…" a [\"\'\\] class never closes
+  case "$t" in *[Hh][Oo][Oo][Kk][Ss][Pp][Aa][Tt][Hh]*|*[Ss][Ee][Cc][Tt][Ii][Oo][Nn]*) ;; *) return 1 ;; esac   # after unquoting: hooks"P"ath
+  shopt -q nocasematch && nc=1; shopt -s nocasematch
+  # The payload reader decodes JSON escapes lossily — `\r` arrives as nothing, so `git config core.hooksPath <CR>`
+  # would look value-less here while git sets the path to a CR byte (verified in review). With any such escape in
+  # the raw payload the decoded text is not the command that will run, and no read is proven.
+  case "$INPUT" in *'\r'*|*'\f'*|*'\b'*|*'\v'*|*'\u'*) ;; *)
+    _split_segs "$c"
+    for seg in ${_SPL[@]+"${_SPL[@]}"}; do
+      [[ $seg == *[Hh][Oo][Oo][Kk][Ss][Pp][Aa][Tt][Hh]* ]] || continue
+      n=$((n+1)); [ "$n" -gt 64 ] && { reads=(); break; }   # past 64, no read is argued: the old rule judges it all
+      # A write flag anywhere in the segment disproves the read (`--list --unset core.hooksPath`): git 2.54 refuses
+      # those pairs, but the gate does not lean on another tool's option parser.
+      [[ $seg =~ $wr ]] && continue
+      { [[ $seg =~ $bare ]] || [[ $seg =~ $verb ]]; } && reads[${#reads[@]}]="$seg"
+    done ;;
+  esac
+  [ "$nc" = 0 ] && shopt -u nocasematch
+  # Leftover text of a read still matches the rule below, so cutting the wrong copy can only over-block.
+  for r in ${reads[@]+"${reads[@]}"}; do c="${c/"$r"/ }"; done
+  t=${c//\"/}; t=${t//\'/}; t=${t//\\/}   # unquoted, one class each: inside "…" a [\"\'\\] class never closes
+  _ere i "$t" 'git([^|]*[^[:alnum:]_|])?config[^[:alnum:]_|][^|]*core\.hooksPath' '*[Hh][Oo][Oo][Kk][Ss][Pp][Aa][Tt][Hh]*' && return 0
+  _ere i "$t" 'config[^;&|]*[[:space:]](--remove-section|--rename-section|remove-section|rename-section)[[:space:]]+(--[[:space:]]+)?core([^A-Za-z0-9_.-]|$)' '*[Ss][Ee][Cc][Tt][Ii][Oo][Nn]*' && return 0
+  return 1
+}
 # Inline config override: `git -c core.hooksPath=…` / `git --config-env core.hooksPath=…` turns the hooks off for
 # that one command WITHOUT the word `config` (so the rule above misses it) — the exact equivalent of --no-verify.
-[ "$HAS_GIT" = 1 ] && echo "$CMD" | grep -qiE 'git[[:space:]]+([^;&|]*[[:space:]])?(-c|--config-env)[[:space:]=]+core\.hooksPath' && block "git -c core.hooksPath (disarms the git hooks)" "4.5" tamper
+[ "$HAS_GIT" = 1 ] && _ere i "$CMD" 'git[[:space:]]+([^;&|]*[[:space:]])?(-c|--config-env)[[:space:]=]+core\.hooksPath' '*[Hh][Oo][Oo][Kk][Ss][Pp][Aa][Tt][Hh]*' && block "git -c core.hooksPath (disarms the git hooks)" "4.5" tamper
+[ "$HAS_GIT" = 1 ] && _hp_blocks "$CMD" && block "git config core.hooksPath (disarms the git hooks)" "4.5" tamper
 # A write to a gate path (hook script, settings.json, or .git/hooks) via ANY common mechanism — writer verbs, the
 # in-place editors, and the interpreters an evasion reaches for (perl/python/ruby/node/ed) — plus the variable-
 # indirected redirect (VAR=.claude/hooks; … > $VAR). Reading a gate file stays allowed, and `chmod +x` is NOT
@@ -813,12 +932,14 @@ case "$CMD" in *[Ll][Nn][[:space:]]*|*[Mm][Kk][Ll][Ii][Nn][Kk]*) : ;; *) false ;
 # The three patterns live in variables because the SAME rule is applied twice: once to the command below, and
 # once to each line of a script the command runs (the two-step rule further down). Written out twice they drift
 # -- the direct one gains a reader verb, the indirect one silently keeps letting it through.
-ENV_READ_RE='(^|[^A-Za-z0-9_/.-])(cat|less|more|head|tail|tac|nl|xxd|od|strings|hexdump|base64|sort|uniq|cp|scp|rsync|get-content|gc|type|get-item|gi)[[:space:]]+(-[^;&|[:space:]]*[[:space:]]+)*([^;&|[:space:]]*/)?\.env(\.[A-Za-z0-9_-]+)?([[:space:]]|$|[;&|>])'
-ENV_REDIR_RE='<[[:space:]]*([^;&|[:space:]]*/)?\.env(\.[A-Za-z0-9_-]+)?([[:space:]]|$|[;&|])'
+ENV_READ_RE='(^|[^A-Za-z0-9_/.-])(cat|less|more|head|tail|tac|nl|xxd|od|strings|hexdump|base64|sort|uniq|cp|scp|rsync|get-content|gc|type|get-item|gi)[[:space:]]+(-[^;&|[:space:]]*[[:space:]]+)*([^;&|[:space:]]*/)?\.env(\.[A-Za-z0-9_-]+)?([[:space:]]|$|[;&|>)`])'
+ENV_REDIR_RE='<[[:space:]]*([^;&|[:space:]]*/)?\.env(\.[A-Za-z0-9_-]+)?([[:space:]]|$|[;&|)`])'
 ENV_TEMPLATE_RE='\.env\.(example|sample|template|dist)([^A-Za-z0-9_-]|$)'
-{ case "$CMD" in *[Ee][Nn][Vv]*) : ;; *) false ;; esac && { has "$ENV_READ_RE" \
-    || has "$ENV_REDIR_RE"; } \
-    && ! has "$ENV_TEMPLATE_RE"; } \
+# `)` and a backtick end a path too: `(cat .env)`, `$(cat .env)` and `` `cat .env` `` read the file, and all three
+# passed while the bare `cat .env` was blocked (found by the chained-exemption scan).
+# A template name exempts only its own segment: `cat .env.example; cat .env` reads the secret.
+{ case "$CMD" in *[Ee][Nn][Vv]*) : ;; *) false ;; esac \
+    && { { { has "$ENV_READ_RE" || has "$ENV_REDIR_RE"; } && ! has "$ENV_TEMPLATE_RE"; } || _seg_any "($ENV_READ_RE)|($ENV_REDIR_RE)" "$ENV_TEMPLATE_RE" '*[Ee][Nn][Vv]*'; }; } \
     && block "reading a .env secret via the Bash tool" "4.5" secret
 
 # The same reasoning, one scope wider. `.env` was the only credential file either gate covered, which left the
@@ -833,14 +954,18 @@ CRED='(\.ssh/(id_[A-Za-z0-9_]+|identity)|(^|/)id_(rsa|dsa|ecdsa|ed25519)|\.aws/c
 # it mirrors. Add a branch to CRED, add a glob here; §7's own credential cases (id_rsa, .aws/credentials,
 # .netrc, .kube/config, .git-credentials, server.pem, and the .pub/.example must-not-block twins) are what
 # would catch a forgotten one.
+# A .pub/.example name exempts only its own segment: `cat ~/.ssh/id_rsa.pub; cat ~/.ssh/id_rsa` reads the key.
+_CRED_READ="(^|[^A-Za-z0-9_/.-])(cat|less|more|head|tail|tac|nl|xxd|od|strings|hexdump|base64|cp|scp|rsync|curl|wget|get-content|gc|type|get-item|gi)[[:space:]]+(-[^;&|[:space:]]*[[:space:]]+)*[^;&|[:space:]]*$CRED"
+_CRED_REDIR="<[[:space:]]*[^;&|[:space:]]*$CRED"
+_CRED_SAFE='(\.pub|\.example|\.sample|\.template)([^A-Za-z0-9_-]|$)'
 { case "$CMD" in \
     *[Ii][Dd]_*|*[Ii][Dd][Ee][Nn][Tt][Ii][Tt][Yy]*|*[Ss][Ss][Hh]*|*[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]*\
     |*[Nn][Ee][Tt][Rr][Cc]*|*[Dd][Oo][Cc][Kk][Ee][Rr]*|*[Nn][Pp][Mm][Rr][Cc]*|*[Pp][Yy][Pp][Ii][Rr][Cc]*\
     |*[Kk][Uu][Bb][Ee]*|*[Pp][Ee][Mm]*|*[Pp]12*|*[Pp][Ff][Xx]*|*[Kk][Ee][Yy][Ss][Tt][Oo][Rr][Ee]*|*[Jj][Kk][Ss]*\
     |*[Ss][Ee][Rr][Vv][Ii][Cc][Ee]-[Aa][Cc][Cc][Oo][Uu][Nn][Tt]*) : ;; *) false ;; esac \
-  && { has "(^|[^A-Za-z0-9_/.-])(cat|less|more|head|tail|tac|nl|xxd|od|strings|hexdump|base64|cp|scp|rsync|curl|wget|get-content|gc|type|get-item|gi)[[:space:]]+(-[^;&|[:space:]]*[[:space:]]+)*[^;&|[:space:]]*$CRED" \
+  && { { { has "(^|[^A-Za-z0-9_/.-])(cat|less|more|head|tail|tac|nl|xxd|od|strings|hexdump|base64|cp|scp|rsync|curl|wget|get-content|gc|type|get-item|gi)[[:space:]]+(-[^;&|[:space:]]*[[:space:]]+)*[^;&|[:space:]]*$CRED" \
     || has "<[[:space:]]*[^;&|[:space:]]*$CRED"; } \
-    && ! has '(\.pub|\.example|\.sample|\.template)([^A-Za-z0-9_-]|$)'; } \
+    && ! has '(\.pub|\.example|\.sample|\.template)([^A-Za-z0-9_-]|$)'; } || _seg_any "($_CRED_READ)|($_CRED_REDIR)" "$_CRED_SAFE" '*'; }; } \
     && block "reading a private key / credential file via the Bash tool" "4.5" secret
 
 # §4.5-adjacent, THE SECOND STEP. Everything above scans the COMMAND; none of it sees what a script FILE does.
@@ -981,7 +1106,12 @@ if [ "$_looks_exec" = 1 ]; then
     fi
     [ -n "$_path" ] || continue
     _interp=0
-    if grep -iE -- "$ENV_READ_RE|$ENV_REDIR_RE" "$_path" 2>/dev/null | grep -qivE -- "$ENV_TEMPLATE_RE"; then
+    # Per segment, not per line: a script line `cat .env.example; cat .env` reads the secret (see _seg_any).
+    # LC_ALL=C: a UTF-8 `tr` dies on a non-UTF-8 byte and, under pipefail, took the verdict with it (review). The hit
+    # is read from the output, not the pipeline status: `grep -q` closing early SIGPIPEs the stage before it, and a
+    # 3,000-line script passed that way while a 1,000-line one was blocked.
+    _envhit="$(LC_ALL=C tr ';&|' '\n\n\n' < "$_path" 2>/dev/null | grep -aiE -- "$ENV_READ_RE|$ENV_REDIR_RE" | grep -aivE -m1 -- "$ENV_TEMPLATE_RE")"
+    if [ -n "$_envhit" ]; then
       set +f
       block "running a script that reads a .env secret (the two-step read)" "4.5" secret
     fi
@@ -1036,7 +1166,7 @@ fi
   # Windows machine, `git update-index --add --chmod=+x deploy/rolling-update.sh` staged the file with nothing
   # said. (Staging itself is deliberately NOT gated here — only commit and push ask — so this rule is about the
   # gitignore bypass alone, not about stopping people from staging files.)
-  [ "$HAS_GIT" = 1 ] && echo "$CMD" | grep -qE 'git[[:space:]]+([^;&|]*[[:space:]])?update-index\b[^;&|]*(--add|--force-remove)' \
+  [ "$HAS_GIT" = 1 ] && _ere s "$CMD" 'git[[:space:]]+([^;&|]*[[:space:]])?update-index([^[:alnum:]_;&|][^;&|]*)?(--add|--force-remove)' '*[Uu][Pp][Dd][Aa][Tt][Ee]-[Ii][Nn][Dd][Ee][Xx]*' \
     && block "git update-index --add (bypasses .gitignore, same as git add -f)" "4.5" bypass
 case "$CMD" in *[Rr][Mm]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE '(rm|git[[:space:]]+rm)\b[^|]*(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|npm-shrinkwrap\.json|Gemfile\.lock|poetry\.lock|Pipfile\.lock|Cargo\.lock|composer\.lock|go\.sum|packages\.lock\.json)' && block "lockfile deletion" "4.5" loss
 

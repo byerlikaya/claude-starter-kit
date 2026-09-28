@@ -3279,6 +3279,97 @@ done
 gj auto 'chmod +x build.sh'              | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && pass "chmod +x NOT over-blocked" || fail "chmod +x wrongly blocked (gate too strict)"
 # §4.5 gate-tampering (shell side) — disarming the gates is itself gated
 gj auto 'git config core.hooksPath /tmp/x' | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "core.hooksPath redirect BLOCKED (§4.5)" || fail "core.hooksPath redirect PASSED (§4.5 hole)"
+# Reading core.hooksPath is how a person checks the gate is armed; only the write forms disarm it. A value-less
+# `git config [--local|--global|--system] core.hooksPath` prints the setting — it used to be refused as tampering
+# while `--get` passed. Both directions are pinned, and the result must be exactly 0 or 2: a 1 is the hook crashing,
+# and a crashed PreToolUse hook lets the command through (the first version of this rule did exactly that).
+_hp_bad=""; _hp_n=0
+for _c in 'git config core.hooksPath' 'git config --local core.hooksPath' 'git config --global core.hooksPath' \
+          'git config --system core.hooksPath' 'git config --get core.hooksPath' 'git config --get-regexp core.hooksPath x' \
+          'git config --file .git/config core.hooksPath' 'git -C /r config core.hooksPath' 'git config core.hookspath' \
+          'git config core.hooksPath | cat' 'git status; echo core.hooksPath' 'git config --remove-section core.foo' \
+          'git config get --all core.hooksPath'; do
+  gj auto "$_c" | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; _r=$?; _hp_n=$((_hp_n+1)); [ "$_r" = 0 ] || _hp_bad="$_hp_bad [$_c -> $_r, want 0]"
+done
+for _c in 'git config core.hooksPath .githooks' 'git config --local core.hooksPath x' 'git config --global core.hooksPath /tmp/x' \
+          'git config --system core.hooksPath x' 'git config --unset core.hooksPath' 'git config --unset-all core.hooksPath' \
+          'git config --add core.hooksPath x' 'git config --replace-all core.hooksPath x' 'git config set core.hooksPath x' \
+          'git config unset core.hooksPath' 'git config core.hooksPath \"\"' 'git config core.hooksPath; git config core.hooksPath x' \
+          'git config --get core.hooksPath && git config core.hooksPath x' \
+          'git config --comment get core.hooksPath /tmp/x' 'git config --comment -l core.hooksPath /tmp/x' \
+          'echo /tmp/x | xargs git config core.hooksPath' 'git config alias.hp \"config core.hooksPath\" && git hp /tmp/x' \
+          "git config alias.hp '!git config core.hooksPath'" "bash -c 'git config core.hooksPath'" \
+          'git config core.hooksPath \r' 'git config core.hooksPath \f' 'git config core.hookspath /tmp/x' \
+          'git config \\\ncore.hooksPath /tmp/x' 'git config --remove-section core' 'git config --rename-section core x' \
+          'git -C /r config core.hooksPath /tmp/x' 'git config core.hooksPath; git config\"\" core.hooksPath /dev/A' \
+          'git config core.hooksPath && git config${IFS}core.hooksPath${IFS}/dev/B' \
+          'git config core.hooksPath; git config --comment=\"a;\" core.hooksPath /dev/C' 'git config core.hooks\"P\"ath x' \
+          'git config --remove-section core;echo' '(git config --remove-section core)' 'git -C \"a;b\" config core.hooksPath /dev/null' \
+          'git config -l --unset core.hooksPath' 'git config --get core.hooksPath --replace-all x'; do
+  gj auto "$_c" | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; _r=$?; _hp_n=$((_hp_n+1)); [ "$_r" = 2 ] || _hp_bad="$_hp_bad [$_c -> $_r, want 2]"
+done
+# A read has to LOOK like one (the exact `git [-C d] config [flags] [read verb] core.hooksPath` shape): the review of the
+# first reader broke it with a read verb as another flag's value, a value from xargs or an alias, a CR / form-feed the
+# payload reader drops, a backslash-newline, a lower-case key, and removing the [core] section; a second round broke
+# the reader by making segments it could not parse get SKIPPED (`config""`, `config${IFS}`, a quoted `;`). Proven reads
+# are now cut out and the rest goes to the old rule, so nothing unproven is skipped — all pinned above.
+[ -z "$_hp_bad" ] && pass "core.hooksPath: value-less reads pass, every write form stays blocked ($_hp_n of 48 shapes)" \
+                  || fail "core.hooksPath read/write split is wrong:$_hp_bad"
+# An exemption belongs to the command it sits in. The IaC, .env and credential rules exempted the WHOLE line when a
+# safe marker (--help, .env.example, .pub, …) appeared anywhere in it, so a harmless command chained in front of a
+# forbidden one carried it through: 72 such shapes were open (every operator: && ; || | ( ) $( )). Chained -> 2;
+# the same marker in the forbidden command's own segment keeps its exemption -> 0. Exactly 0 or 2: a 1 is a crash.
+_ch_bad=""; _ch_n=0
+for _c in 'terraform --help && terraform destroy -auto-approve' 'terraform plan --dry-run; terraform apply -auto-approve' \
+          'pulumi preview --dry-run || pulumi up --yes' 'kubectl auth can-i delete pods | kubectl delete namespace prod' \
+          '(helm --help); (helm uninstall app)' 'echo $(terraform --help) && terraform destroy' \
+          'cat .env.example && cat .env' 'cat .env.sample; grep x < .env' '(cat .env.example); (cat .env)' \
+          '(cat .env)' 'x=$(cat .env)' 'cat ~/.ssh/id_rsa.pub; cat ~/.ssh/id_rsa' 'cat config.example && cat ~/.aws/credentials' \
+          'cat cert.template || cat server.pem' 'git config --list && git config core.hooksPath /tmp/x' \
+          'cat .env.example $(cat .env)' 'cat .env.example `cat .env`' 'terraform --help $(terraform destroy -auto-approve)'; do
+  gj auto "$_c" | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; _r=$?; _ch_n=$((_ch_n+1)); [ "$_r" = 2 ] || _ch_bad="$_ch_bad [$_c -> $_r, want 2]"
+done
+for _c in 'terraform destroy --help' 'terraform plan -h' 'kubectl auth can-i delete pods' 'helm uninstall --help' \
+          'cat .env.example' 'echo $(cat .env.example)' '(cat .env.example)' 'cat ~/.ssh/id_rsa.pub | ssh-keygen -lf -' \
+          'cp .env.sample .env.local'; do
+  gj auto "$_c" | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; _r=$?; _ch_n=$((_ch_n+1)); [ "$_r" = 0 ] || _ch_bad="$_ch_bad [$_c -> $_r, want 0]"
+done
+[ -z "$_ch_bad" ] && pass "chained exemptions: a safe command in front no longer carries a forbidden one ($_ch_n of 27 shapes; same-segment exemptions still pass)" \
+                  || fail "exemption leaks across a chain, or a legitimate exemption broke:$_ch_bad"
+# The read-only path costs processes, and on Git Bash a process is the price: measured on a loaded Windows 11
+# machine, one bare `bash` took 1.3-3.9 s and `git status` walked this hook through 14 of them (13 greps + the
+# stdin cat) — 37-66 s per tool call. The rules now run their regexes in the shell; what is left is the one `cat`
+# that reads stdin. Counted, not timed (a fork costs ~2 ms on macOS, so a regression is invisible to a clock).
+# The twin plants one `printf | grep` into a copy of the hook: a counter that cannot see it measures nothing.
+_gbfc(){ printf '%s' "$2" | bash -x "$1" >/dev/null 2>"$3"; grep -cE '^\++ (grep|sed|awk|tr|cat|head|tail|cut|sort|find|wc|mktemp|basename|dirname|git|jq|python3?|node|perl)( |$)' "$3" | tr -cd '0-9'; }
+_GBT="$(mktemp -d)"; _gbmax=0; _gbrow=""
+for _c in 'git status --short' 'git log --oneline -2 && git status --short | head; ls; cat CHANGELOG.md' 'ls -la' 'git diff --stat'; do
+  _n="$(_gbfc "$HOOKS/guard-bash.sh" "$(gj default "$_c")" "$_GBT/t")"; _n="${_n:-0}"
+  _gbrow="$_gbrow $_n"; [ "$_n" -gt "$_gbmax" ] && _gbmax="$_n"
+done
+sed '/^INPUT="\$(cat)"/a\
+printf x | grep -q x
+' "$HOOKS/guard-bash.sh" > "$_GBT/twin.sh"
+_tw="$(_gbfc "$_GBT/twin.sh" "$(gj default 'git status --short')" "$_GBT/t2")"; _tw="${_tw:-0}"
+if [ "$_gbmax" = 0 ]; then
+  fail "guard-bash read-path cost: the trace recorded no external command at all — the measurement is broken, not the hook"
+elif [ "$_tw" -le "$_gbmax" ]; then
+  fail "guard-bash read-path cost: the planted grep did not raise the count ($_tw) — the counter measures nothing"
+elif [ "$_gbmax" -le 1 ]; then
+  pass "guard-bash read-only path: at most 1 external process per call (git status · read chain · ls · diff:$_gbrow; twin with one planted grep: $_tw)"
+else
+  fail "guard-bash read-only path spawns $_gbmax processes per call (per command:$_gbrow) — budget 1; Git Bash pays up to seconds for each"
+fi
+# Coarse and SECONDARY: the first version of the in-shell matcher compiled its regex once per line per rule and a
+# 2,000-line heredoc took 70 s (0.2 s before). Nothing forks more in that case, so the count above cannot see it.
+# Measured after the fix: 0.2 s on macOS. The bound is 100x that, so a slow runner does not trip it.
+_hd="$(i=0; printf 'cat > f <<EOF\n'; while [ "$i" -lt 2000 ]; do printf 'const x = 1;\n'; i=$((i+1)); done; printf 'EOF\ngit status')"
+_hdj="$(printf '%s' "$_hd" | awk 'BEGIN{ORS=""} {gsub(/\\/,"\\\\"); gsub(/"/,"\\\""); if (NR>1) print "\\n"; print}')"
+_hs=$SECONDS; printf '{"tool_name":"Bash","permission_mode":"default","tool_input":{"command":"%s"}}' "$_hdj" | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; _hr=$?; _hel=$((SECONDS - _hs))
+if [ "$_hr" != 0 ]; then fail "guard-bash on a 2,000-line heredoc answered $_hr, not 0 — the payload or the hook is broken"
+elif [ "$_hel" -le 20 ]; then pass "guard-bash on a 2,000-line heredoc: ${_hel}s (bound 20s; a regcomp-per-line matcher took 70s)"
+else fail "guard-bash took ${_hel}s on a 2,000-line heredoc (bound 20s) — something in the hook is per line again"; fi
+rm -rf "$_GBT"
 gj auto 'rm .claude/hooks/pre-commit'      | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "rm of a .claude gate file BLOCKED (§4.5)" || fail "rm of a gate file PASSED (§4.5 hole)"
 # The rulebook is a gate file too — measured against 2.6.0, all three of these passed. Reading it must stay free.
 gj auto "sed -i 's/x/y/' .claude/DISCIPLINE.md" | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "in-place edit of DISCIPLINE.md BLOCKED (§4.5)" || fail "sed -i on the discipline document PASSED (§4.5 hole)"

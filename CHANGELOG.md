@@ -5,6 +5,32 @@ Crewforth was named Claude Starter Kit until 3.0.0.
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Security
+
+- A chained command could write `core.hooksPath` through the gate: `git config --get core.hooksPath && git config
+  core.hooksPath <path>` passed, because a `--get` anywhere in the line exempted all of it. Fixed.
+- The same shape let a harmless command carry a gated one in three more rules — infrastructure teardown
+  (`terraform --help && terraform destroy -auto-approve`), `.env` reads (`cat .env.example; cat .env`) and private
+  keys / credentials (`cat ~/.ssh/id_rsa.pub; cat ~/.ssh/id_rsa`). An exemption now covers only the command it is in.
+- `(cat .env)`, `$(cat .env)` and `` `cat .env` `` read the file without being stopped, and
+  `cat .env.example $(cat .env)` hid the read behind the template in the same line. Fixed.
+- `core.hooksPath` could be redirected past the gate by spellings git accepts: a lower-case key
+  (`core.hookspath`), `git -C <dir> config …`, a backslash-newline between `config` and the key, and removing or
+  renaming the whole `[core]` section. All blocked now.
+
+### Fixed
+
+- Reading `core.hooksPath` without a value (`git config core.hooksPath`, with or without `--local` / `--global` /
+  `--system`) was refused as tampering. It passes now; every write form stays blocked.
+
+### Changed
+
+- The Bash guard no longer starts a process per rule on the read-only path: `git status` went from 14 processes per
+  call to 1 (macOS: ~35 ms to ~10 ms per call). On a Windows machine where one process was measured at 1.3–3.9 s,
+  the old path cost 37–66 s per call.
+
 ## [3.0.0] — 2026-09-28
 
 ### BREAKING — Claude Starter Kit is now Crewforth
