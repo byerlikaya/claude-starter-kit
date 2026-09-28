@@ -15,6 +15,9 @@
 //             {{SKILL_COUNT}} or {{COMMAND_COUNT}}; a typed one goes stale the day a component is added or hidden
 //             (this gate reads the SOURCES: in dist a typed number and a generated one look the same)
 //   board     the experimental team board (`crew-board`, `refs/crew/board`) is on no page, code included   (changelog exempt)
+//   sound     the home page's overview video starts with sound: no `muted` or `autoplay` on it, a sound button next to
+//             it, and Home.astro's script never sets `.muted = true` (it plays only when someone presses play, so a
+//             muted start is a second click for nothing)
 //
 // Code blocks and inline code are not prose and are left out of the text gates. Each gate first runs against planted
 // input it must reject and input it must accept; a gate that cannot tell them apart fails before it reads the site.
@@ -49,6 +52,15 @@ export const MEDIA_MAX = 4 * 1024 * 1024;
 export const bigMedia = (entries) => entries.filter(([f, size]) => /\.(mp4|webm|mov|gif|png|jpe?g|webp|avif|svg)$/i.test(f) && size > MEDIA_MAX).map(([f, size]) => `${f} (${(size / 1048576).toFixed(1)} MB)`);
 export const handCount = (md) => [...md.matchAll(/(?<![\w.{])\d+\s+(?:specialist\s+|uzman\s+)?(?:agents?|skills?|commands?|ajan\p{L}*|skill\p{L}*|komut\p{L}*)/giu)].map((m) => m[0]);
 export const boardWord = (html) => [...html.matchAll(/crew-board|refs\/crew\/board/gi)].map((m) => m[0]);
+// The overview <video> on a built home page: a muted or autoplaying start, a missing sound button, or no video at all.
+export function overviewSound(html) {
+  const tag = (html.match(/<video\b[^>]*\bcf-hero\b[^>]*>/i) || [])[0];
+  if (!tag) return ['no overview <video class="cf-hero"> on the page'];
+  const out = [...tag.matchAll(/\s(muted|autoplay)(?=[\s>=\/])/gi)].map((m) => `<video> carries "${m[1]}"`);
+  if (!/<button\b[^>]*\bcf-sound\b/i.test(html)) out.push('no sound button (.cf-sound) next to the video');
+  return out;
+}
+export const mutesOnPlay = (src) => [...src.matchAll(/\.muted\s*=\s*(?:true|!0)\b/g)].map((m) => m[0]);
 export function numbers(t, allowed) {
   return [...t.matchAll(/[0-9]+(?:[.,][0-9]+)?%|%[0-9]+(?:[.,][0-9]+)?|[0-9]+\/10(?![0-9])/g)].map((m) => m[0]).filter((n) => !allowed(n));
 }
@@ -93,6 +105,10 @@ function selftest(allowed) {
   must(numbers('warns at %75 and 90%', allowed).length === 0, 'generated thresholds flagged');
   must(thirdParty('<script src="https://evil.example/x.js"></script><link rel="stylesheet" href="https://fonts.googleapis.com/css">', '@import url("https://fonts.x.com/a.css");').length === 3, 'third party not caught');
   must(thirdParty('<script src="/_astro/a.js"></script><a href="https://github.com/x">', '').length === 0, 'first-party flagged');
+  must(overviewSound('<video class="cf-hero" controls muted playsinline></video>').length === 2 && overviewSound('<p>no video</p>').length === 1
+    && overviewSound('<video autoplay class="cf-hero"><button class="cf-sound">').length === 1, 'a muted or autoplaying overview, or a missing one, not caught');
+  must(overviewSound('<video class="cf-hero" controls playsinline data-muted-note="x"></video><button class="cf-sound">').length === 0, 'a video that starts with sound flagged');
+  must(mutesOnPlay('video.muted = true; v.muted=!0').length === 2 && mutesOnPlay('video.muted = !video.muted; if (v.muted === true)').length === 0, 'a muted start in the script not caught, or the toggle flagged');
   must(brokenLinks('<a href="/nope/"></a><img src="/assets/x.gif">', 'index.html', (p) => p === 'assets/x.gif').length === 1, 'broken link not caught');
 }
 
@@ -135,6 +151,11 @@ function main() {
     if (!process.env.CF_BEACON_TOKEN) for (const t of thirdParty(html, '')) problems.push(`third party: ${rel}: ${t}`);
   }
   if (!process.env.CF_BEACON_TOKEN) for (const t of thirdParty('', css)) problems.push(`third party: css: ${t}`);
+  for (const home of ['index.html', 'tr/index.html']) {
+    if (!set.has(home)) { problems.push(`sound: ${home} is missing`); continue; }
+    for (const h of overviewSound(read(path.join(DIST, home)))) problems.push(`sound: ${home}: ${h}`);
+  }
+  for (const h of mutesOnPlay(read(path.join(here, '../src/components/Home.astro')))) problems.push(`sound: Home.astro sets "${h}" — the overview starts with sound`);
   for (const m of bigMedia(files.map((f) => [f, fs.statSync(path.join(DIST, f)).size]))) problems.push(`media: ${m} is over 4 MB`);
 
   if (checked < 20) problems.push(`FIXTURE: only ${checked} page(s) found in dist/ — the build broke, not the text`);
@@ -142,7 +163,7 @@ function main() {
     console.error(`site check: ${problems.length} problem(s)\n  ${problems.slice(0, 40).join('\n  ')}`);
     process.exit(1);
   }
-  console.log(`site check: ${checked} pages (${en.length} EN + ${tr.length} TR, paired) · no old name, no "the kit" or plain "kit" outside code, no "slash command", no board, no typed count, no medium over 4 MB, no unbacked number, no broken link, no third-party request · twins: each gate rejected planted input and accepted clean input`);
+  console.log(`site check: ${checked} pages (${en.length} EN + ${tr.length} TR, paired) · no old name, no "the kit" or plain "kit" outside code, no "slash command", no board, no typed count, no medium over 4 MB, no unbacked number, no broken link, no third-party request, the overview starts with sound · twins: each gate rejected planted input and accepted clean input`);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();

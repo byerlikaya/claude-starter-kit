@@ -22,14 +22,14 @@ const { d } = Astro.props;
 
   <section class="cf-video" id="overview">
     <div class="cf-player">
-      <!-- Without JavaScript: the browser's own player, muted, fetching nothing until someone presses play. -->
-      <video class="cf-hero" controls muted playsinline preload="none" poster={d.video.poster} aria-describedby="cf-video-desc">
+      <!-- Without JavaScript: the browser's own player, with sound, fetching nothing until someone presses play. -->
+      <video class="cf-hero" controls playsinline preload="none" poster={d.video.poster} aria-describedby="cf-video-desc">
         <source src={d.video.src} type="video/mp4" />
       </video>
       <button class="cf-play" type="button" aria-label={d.video.play} aria-describedby="cf-video-desc" hidden>
         <svg viewBox="0 0 24 24" width="34" height="34" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor" /></svg>
       </button>
-      <button class="cf-sound" type="button" aria-label={d.video.sound} aria-pressed="false" hidden>
+      <button class="cf-sound" type="button" aria-label={d.video.sound} aria-pressed="true" hidden>
         <svg class="cf-sound-off" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z" fill="currentColor" /><path d="M17 9l4 6M21 9l-4 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
         <svg class="cf-sound-on" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z" fill="currentColor" /><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
       </button>
@@ -89,14 +89,16 @@ const { d } = Astro.props;
 
 <script>
   // The overview: nothing plays or downloads on its own. With JavaScript the poster carries a play button; pressing
-  // it starts the video muted with its controls, and a separate button turns the sound on and off.
+  // it starts the video with sound and its controls (the press is the reader asking for it), and a separate button
+  // turns the sound off and on.
   for (const player of document.querySelectorAll<HTMLElement>('.cf-player')) {
     const video = player.querySelector('video'); const play = player.querySelector<HTMLButtonElement>('.cf-play');
     const sound = player.querySelector<HTMLButtonElement>('.cf-sound');
     if (!video || !play || !sound) continue;
     video.controls = false; play.hidden = false;
     play.addEventListener('click', () => {
-      video.muted = true; video.controls = true; play.hidden = true; sound.hidden = false;
+      video.controls = true; play.hidden = true; sound.hidden = false;
+      sound.setAttribute('aria-pressed', String(!video.muted));
       void video.play().catch(() => { play.hidden = false; });
       video.focus();
     });
