@@ -74,4 +74,7 @@ LICENSE text eol=lf
 # .gitattributes (git strips the CR itself). smoke-test §14 fails if a file bash reads loses its pin.
 evals/**/case.env text eol=lf
 packaging/skill-summaries.tr.tsv text eol=lf
+# The legacy blob list ships in the payload and is compared byte for byte with its generator's LF output; under
+# core.autocrlf=true it came out with 207 CRs and the smoke gate read it as stale (measured in review).
+kit/legacy-blobs.tsv text eol=lf
 .github/workflows/*.yml text eol=lf

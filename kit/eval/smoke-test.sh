@@ -1616,6 +1616,38 @@ if [ "$IS_KIT" = 1 ]; then
   else
     skip scope "Homebrew-channel check not run — not a git checkout of Crewforth's source"
   fi
+  # kit/legacy-blobs.tsv is how the updater tells Crewforth's own, untouched old files from a user's: a stale or
+  # hand-edited row would move a user's edit aside, or leave Crewforth's leftovers in place. It is generated from the
+  # release tags, so it must equal what the generator prints now, byte for byte. The twin drops one row from the
+  # shipped copy: a comparison that cannot see that measures nothing. No tags (a shallow clone) is a fixture skip —
+  # red under CREW_VERIFY_STRICT, because CI checks out with its history.
+  if [ -f "$KR/packaging/gen-legacy-blobs.sh" ] && git -C "$KR" rev-parse --git-dir >/dev/null 2>&1; then
+    if ! git -C "$KR" rev-parse -q --verify refs/tags/v2.13.0 >/dev/null 2>&1; then
+      skip fixture "legacy blob list not checked — this clone has no v2.13.0 tag (shallow?), and the list is generated from tags"
+    else
+      # Compared as FILES with cmp: a `$( )` capture drops trailing newlines, and a list missing its last newline or
+      # carrying extra blank lines at the end would compare equal that way (found in review).
+      _LBT="$(mktemp -d)"
+      bash "$KR/packaging/gen-legacy-blobs.sh" --stdout > "$_LBT/gen" 2>/dev/null; _lb_rc=$?
+      sed '4d' "$KR/kit/legacy-blobs.tsv" > "$_LBT/twin" 2>/dev/null
+      _lb_rows="$(grep -v '^#' "$KR/kit/legacy-blobs.tsv" 2>/dev/null | grep -c .)"
+      _lb_comp="$(grep -v '^#' "$KR/kit/legacy-blobs.tsv" 2>/dev/null | cut -f1 | sort -u | grep -c .)"
+      if [ "$_lb_rc" != 0 ]; then
+        fail "packaging/gen-legacy-blobs.sh failed (rc $_lb_rc) — the legacy blob list cannot be checked"
+      elif cmp -s "$_LBT/twin" "$_LBT/gen"; then
+        fail "legacy blob check cannot see a missing row (twin with a data row removed compared equal) — it measures nothing"
+      elif [ "${_lb_rows:-0}" -lt 150 ]; then
+        fail "kit/legacy-blobs.tsv has ${_lb_rows:-0} row(s) — the shipped list is missing or truncated; regenerate it: bash packaging/gen-legacy-blobs.sh"
+      elif cmp -s "$_LBT/gen" "$KR/kit/legacy-blobs.tsv"; then
+        pass "kit/legacy-blobs.tsv equals what the tags generate ($_lb_rows rows, $_lb_comp components; twin with one row removed differs)"
+      else
+        fail "kit/legacy-blobs.tsv is stale — regenerate it: bash packaging/gen-legacy-blobs.sh (and commit the result)"
+      fi
+      rm -rf "$_LBT"
+    fi
+  else
+    skip scope "legacy blob list not checked — not a git checkout of Crewforth's source"
+  fi
   # The npm wrapper prints its own usage, and it advertised --backend/--frontend/--mobile/--fullstack as the
   # primary form for a release that no longer has profiles. A user reads `--help` before the README.
   if [ -f "$KR/bin/cli.js" ]; then
@@ -6218,7 +6250,7 @@ if [ -n "$SGR" ] && [ -d "$SGR/packaging" ] && [ -f "$SGR/VERSION" ] && [ -d "$S
   RN_ALLOW='CHANGELOG.md	196	history: every entry before 3.0 keeps the name it shipped under
 README*.md site/content/*/install.md	4	migration: the 2.x plugin note names the plugin to uninstall — one line in each README and install page, EN + TR
 evals/results/*	6	history: recorded eval runs stay byte-for-byte
-adopt.sh	48	migration: finds and moves 2.x names (components, CLAUDE.md, board, auto-mode rules, variables)
+adopt.sh kit/legacy-blobs.tsv	338	migration: finds and moves 2.x names (components, CLAUDE.md, board, auto-mode rules, variables), and the generated list of the 1.x/2.x files it may move
 bin/cli.js	4	migration: add accepts a typed <x>-csk and moves an add record written under the old names
 evals/run.sh	4	compat: reads the 2.x trusted eval parent when the 3.0 one is absent — removed in 4.0
 site/scripts/check.mjs	7	tests: the old-name pattern of the built-site gate, and its twins
@@ -6229,7 +6261,7 @@ site/scripts/check.mjs	7	tests: the old-name pattern of the built-site gate, and
 */studio/web/storage-migrate.js	4	migration: moves the panel'"'"'s saved layout to the new keys — removed in 4.0
 kit/eval/smoke-test.sh	36	tests: this gate'"'"'s own pattern, and that the 2.x names still work
 packaging/legacy-npm/*	10	the 2.x package name'"'"'s 3.0.0: a forwarder to crewforth, published once by hand
-packaging/*	136	tests: the migration rehearsal on the real v2.13.0 tree, the legacy token and layout checks'
+packaging/*	139	tests: the migration rehearsal on the real v2.13.0 tree, the legacy token and layout checks; the legacy blob list'"'"'s generator and its real-installer check'
   # A line may name several globs, separated by spaces, when one reason covers them all; its pin is their sum. Split
   # with `read -a`, never a bare `for g in $globs`, which would expand each pattern against the working directory.
   _rn_match(){   # $1 = a path -> the allow-list line (its glob field) that covers it, or nothing
