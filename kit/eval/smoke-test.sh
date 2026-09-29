@@ -705,11 +705,16 @@ else
     && pass "a decision recorded by one teammate arrives in another's clone" \
     || fail "the decision never reached the second clone — decisions stay as local as the ADRs they replace"
   rm -f "$BD/ayse/.git/crew-board-seen"
-  ( cd "$BD/ayse" && bash ../board.sh cache 2>/dev/null | grep -q "recorded since you last looked" ) \
+  # Read into a variable first: `board.sh cache | grep -q` under pipefail is a race — grep exits on its match, the
+  # writer takes SIGPIPE, and the pipeline reads false. It failed once on windows-latest (3.0.1, PR 7), where the
+  # slower process start lets the writer still be printing when grep leaves.
+  _bdc="$(cd "$BD/ayse" && bash ../board.sh cache 2>/dev/null)"
+  case "$_bdc" in *"recorded since you last looked"*) true ;; *) false ;; esac \
     && pass "an unread decision announces itself at session start" \
     || fail "an unread decision is silent at session start — it arrives after the work it should have changed"
   ( cd "$BD/ayse" && bash ../board.sh decisions ) >/dev/null 2>&1
-  ( cd "$BD/ayse" && bash ../board.sh cache 2>/dev/null | grep -q "recorded since you last looked" ) \
+  _bdc="$(cd "$BD/ayse" && bash ../board.sh cache 2>/dev/null)"
+  case "$_bdc" in *"recorded since you last looked"*) true ;; *) false ;; esac \
     && fail "the decision keeps announcing itself after being read — a permanent alert is an ignored one" \
     || pass "once read, the decision stops being announced"
   # First read must not leak a shell error: the marker file does not exist yet, and an input redirect from a
