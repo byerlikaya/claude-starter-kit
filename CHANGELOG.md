@@ -30,12 +30,20 @@ versioning follows [SemVer](https://semver.org/).
   `devarch-module` renamed in place), whatever the recorded stack. An edited copy is named instead, and the next
   session asks — an edited skill is the user's work.
 - When recording that trust failed, the update said nothing. It now says so, with the reason.
+- Updating a pre-1.1 install (discipline inline in `CLAUDE.md`) on the current branch stopped with
+  `TS: unbound variable` when it replaced the inline block. Fixed.
 
 ### Added
 
+- An update moves aside what an older version installed and Crewforth no longer ships — the v1 `-cck` agents, the
+  plain v1 commands (`/plan`, `/review`, …), `vps-deploy`, `code-review` — when every file is byte-for-byte a copy
+  Crewforth shipped. They go to `.claude/.legacy-backup/<time>/` and the update prints the one line that puts them
+  back. A component with an edit, an extra file or a symlink stays where it is and is named. Nothing is deleted, and
+  it works without an install manifest. A moved skill is no longer raised as unvetted at the next session start.
 - `/crew-doctor` reports when the install is missing what its manifest lists, or has no manifest next to `VERSION`
   — the last update did not finish, or `.claude/` was copied from another project — and suggests
-  `npx crewforth update --here`. It changes nothing.
+  `npx crewforth update --here`. It changes nothing. A component removed on purpose looks the same on disk, so the
+  line says to ignore it in that case.
 
 ### Changed
 

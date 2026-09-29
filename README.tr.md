@@ -112,7 +112,7 @@ Studio, delegasyonu olurken çizen yerel bir panel: her ajan bir düğüm, düğ
 /plugin install crewforth@crewforth
 ```
 
-Yeni bir sürüm yayımlandığında Claude, oturumun başında bir kez şimdi mi, sonra mı güncelleneceğini ya da o sürümün atlanıp atlanmayacağını sorar; kendiliğinden asla güncellemez. `/crew-update` güncellemeyi çalıştırır ve neyin değiştiğini söyler; `./CLAUDE.md` dosyanıza dokunulmaz. Windows'ta Git Bash kullanın. Bütün seçenekler: [crewforth.com/tr/install](https://crewforth.com/tr/install).
+Yeni bir sürüm yayımlandığında Claude, oturumun başında bir kez şimdi mi, sonra mı güncelleneceğini ya da o sürümün atlanıp atlanmayacağını sorar; kendiliğinden asla güncellemez. `/crew-update` güncellemeyi çalıştırır ve neyin değiştiğini söyler; `./CLAUDE.md` dosyanıza dokunulmaz. Eski bir sürümün kurduğu ve Crewforth'un artık dağıtmadığı bileşenler değişmemişse `.claude/.legacy-backup/` altına taşınır ve tek satırlık bir geri alma komutu basılır; değiştirdikleriniz yerinde kalır ve adıyla bildirilir. Windows'ta Git Bash kullanın. Bütün seçenekler: [crewforth.com/tr/install](https://crewforth.com/tr/install).
 
 ## Nasıl ölçüyoruz
 
