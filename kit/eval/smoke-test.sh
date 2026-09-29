@@ -1657,6 +1657,20 @@ if [ "$IS_KIT" = 1 ]; then
     [ -z "$_ch4_hits" ] && pass "no tracked file gives the old channel count — three ship Crewforth (CHANGELOG exempt; twins 3/3 caught, 0/2 flagged)" \
       || fail "a tracked file still gives the old channel count (there are three): $(printf '%s\n' "$_ch4_hits" | head -3 | tr '\n' ' ')"
   else skip scope "channel-count check not run — not a git checkout of Crewforth's source"; fi
+  # THE CLIENT SIDE IS STACK-NEUTRAL (3.0.1): the install summary, the help and the install page named the scope as
+  # "backend, web and mobile (RN/Expo)", and a user about to pick a non-RN mobile architecture read it as Crewforth
+  # steering them to React Native (field: a new mobile project). A scope line — one that names backend AND web AND
+  # mobile — never names a client stack, and says the stack is read from the project. RN/Expo stays an optional layer.
+  _cs_scope(){ grep -hiE 'backend[^|]*web[^|]*mobi' "$@" 2>/dev/null | grep -vE '^[[:space:]]*#'; }
+  _cs_f="$KR/start.sh $KR/site/content/en/install.md $KR/site/content/tr/install.md"
+  _cs_l="$(_cs_scope $_cs_f)"; _cs_n="$(printf '%s\n' "$_cs_l" | grep -c .)"
+  _cs_bad="$(printf '%s\n' "$_cs_l" | grep -iE 'RN/Expo|React Native|Flutter|SwiftUI|Compose')"
+  _cs_nost="$(printf '%s\n' "$_cs_l" | grep . | grep -viE 'stack|yığın')"
+  _cs_tw="$(printf '%s\n' "backend, web and mobile (R""N/Expo) together" | grep -ciE 'RN/Expo|React Native')"
+  if [ "$_cs_tw" != 1 ]; then fail "client-stack scope check cannot see its twin — it reads nothing"
+  elif [ "${_cs_n:-0}" -lt 5 ]; then fail "FIXTURE: only ${_cs_n:-0} scope line(s) found in start.sh and the install pages (want ≥5: EN/TR table, both usages, the summary, both pages)"
+  elif [ -n "$_cs_bad$_cs_nost" ]; then fail "a scope line names a client stack or does not say the stack is read from the project:$(printf '%s\n%s\n' "$_cs_bad" "$_cs_nost" | grep . | head -n 3 | cut -c1-140 | sed 's/^/\n       /')"
+  else pass "the install summary, help and install pages name backend, web and mobile without a client stack, and say the stack is read from the project ($_cs_n scope lines)"; fi
   # THE LISTING BUDGET, SAID AS MEASURED: a skill whose description Claude Code drops is picked LESS OFTEN on its own,
   # not never (the name stays listed, and a request that names it still reaches it). doctor and /crew-doctor used to
   # say it stops being picked / stops matching requests. Old claims 0, the measured one present in English and Turkish.

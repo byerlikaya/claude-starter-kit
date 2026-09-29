@@ -83,6 +83,12 @@ versioning follows [SemVer](https://semver.org/).
   tighten, never loosen — the one exception is the §4.1 trace allowlist chosen at adoption. The § numbers in the
   discipline refer to the discipline itself. The updater's summary, handover and decision record say the same.
 - Every place that tells the model to run one of Crewforth's scripts now says to use the Bash tool, not PowerShell.
+- The client side is stack-neutral too. The install summary, help and install page named the scope "backend, web and
+  mobile (RN/Expo)"; they now say the stack is read from the project, and React Native/Expo is one optional layer. The
+  first client task resolves the stack the way the backend does — the request, `Client:` in `## Stack`, the repo's
+  manifests (`package.json`, `pubspec.yaml`, `Package.swift`, `build.gradle`, a MAUI `*.csproj`) — and in an empty repo
+  asks once, recommending nothing, then records it. `frontend-rn-expo` applies only to an RN/Expo project; Flutter,
+  SwiftUI and Compose requests go to `crew-frontend-expert`.
 - `/crew-doctor` and the doctor said skills past the listing budget "stop being picked" / "stop matching requests".
   They are picked less often on their own, not never; the warning now says so, in English and Turkish.
 - The Bash guard no longer starts a process per rule on the read-only path: `git status` went from 14 processes per

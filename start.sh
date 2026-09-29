@@ -136,7 +136,7 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "Next: 1) fill in the CLAUDE.md project section  2) open Claude Code at the repo root") s="Sıradaki adımlar: 1) CLAUDE.md'deki proje bölümünü doldurun  2) Claude Code'u deponun kökünde açın" ;;
       "Note: if Claude Code is ALREADY running here, restart it — CLAUDE.md and the discipline load at session start.") s='Not: Claude Code bu klasörde ZATEN açıksa yeniden başlatın — CLAUDE.md ve disiplin oturum açılırken yüklenir.' ;;
       "Panel: /crew-studio opens the Studio panel from this project (or: node .claude/studio/server/index.js --open).") s='Panel: /crew-studio komutu Studio panelini bu projeden açar (alternatif: node .claude/studio/server/index.js --open).' ;;
-      "— backend + web + mobile (RN/Expo), every agent and skill") s="— backend, web ve mobil (RN/Expo); tüm ajanlar ve skill'ler" ;;
+      "— backend + web + mobile, every agent and skill; the stack is read from the project") s="— backend, web ve mobil; tüm ajanlar ve skill'ler; yığın projeden okunur" ;;
       "%s agents · %s skills · %s commands will be installed") s='%s ajan · %s skill · %s komut' ;;
       "(shared: .claude/ and CLAUDE.md stay committable)") s="(paylaşımlı: .claude/ ve CLAUDE.md commit'lenebilir kalır)" ;;
       "(default — pass --shared to commit .claude/ and CLAUDE.md)") s="(varsayılan — .claude/ ve CLAUDE.md'yi commit'lemek için --shared verin)" ;;
@@ -185,7 +185,8 @@ CLAUDE.md'deki ## Stack bölümüne yazılır.
   --dotnet   3.0'da kaldırıldı; kabul edilir, uyarı basar ve yığından bağımsız kurulumu yapar
   --generic  kabul edilir, etkisi yok (artık tek kurulum biçimi bu)
 
-Crewforth her zaman eksiksiz kurulur: tüm ajanlar ve skill'ler — backend, web ve mobil (RN/Expo).
+Crewforth her zaman eksiksiz kurulur: tüm ajanlar ve skill'ler — backend, web ve mobil; yığın projeden okunur
+(CLAUDE.md ## Stack ya da depo). React Native/Expo, hazır isteğe bağlı katmanlardan yalnız biridir.
   --backend | --frontend | --mobile | --fullstack   hâlâ kabul edilir ama etkisi yok (eski komutlar bozulmasın diye)
   --private | --shared   kurulum yalnızca sizin mi, yoksa ekiple paylaşılıp commit'lenecek mi? (varsayılan: private)
   --lang tr|en   kurulum dili (verilmezse sihirbaz sorar)
@@ -202,7 +203,8 @@ recorded in the ## Stack section of CLAUDE.md.
   --dotnet   removed in 3.0; accepted, prints a warning and installs the stack-agnostic setup
   --generic  accepted, no effect (this is the only install shape now)
 
-Every install ships everything: all agents, all skills — backend, web and mobile (RN/Expo) together.
+Every install ships everything: all agents, all skills — backend, web and mobile; the stack is read from the project
+(CLAUDE.md ## Stack, or the repo). React Native/Expo is only one of the optional ready-made layers.
   --backend | --frontend | --mobile | --fullstack   accepted, no effect (kept so older commands still run)
   --private | --shared   is the install yours alone, or committed for the team? (default: private)
   --lang tr|en   installer language (asked interactively when not given)
@@ -572,7 +574,7 @@ count_showcase "$SRC/skills"
 
 h1 '[2/2] Summary · see what will be installed before you confirm'
 echo
-_mt 'full install'; _a="$_M"; _mt '— backend + web + mobile (RN/Expo), every agent and skill'
+_mt 'full install'; _a="$_M"; _mt '— backend + web + mobile, every agent and skill; the stack is read from the project'
 row 'Scope' "${B}${_a}${D} ${_M}${R}"
 _mt '%s agents · %s skills · %s commands will be installed' "${MG}${B}${N_AG}${R}" "${MG}${B}${N_SKL}${R}" "${MG}${B}${N_CMD}${R}"
 row 'Included'  "$_M"
