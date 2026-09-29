@@ -4544,7 +4544,22 @@ O="$(st)"
 case "$O" in *skills/mine*) pass "flags a component Crewforth never shipped" ;; *) fail "an unshipped skill was not flagged: $O" ;; esac
 case "$O" in *skills/handoff*) fail "flagged a KIT skill — the manifest is being ignored" ;; *) pass "a kit-shipped skill is not re-litigated" ;; esac
 case "$O" in *"REVIEW/DANGER"*) pass "runs the supply-chain scanner and reports its verdict" ;; *) fail "no scanner verdict on a malicious skill: $O" ;; esac
-case "$O" in *"skill-trust.sh --trust  (Bash tool, not PowerShell"*) pass "the trust command it prints names the Bash tool" ;; *) fail "the printed trust command does not name the Bash tool: $O" ;; esac
+# ONE COMMAND PER COMPONENT, and the user's message first (field report P4b/P5). The notice used to offer the bulk
+# `--trust`, which accepts every foreign component at once, including ones the user never looked at; and it told the
+# model to speak BEFORE anything else, which pushed a user's urgent first message behind a security question. The
+# properties pinned: each listed component carries its own `--trust-one <path>` with the Bash tool named, the bulk
+# `--trust` is never offered, the question comes at the END of the first reply, and nothing is used until answered.
+_stn="$(printf '%s\n' "$O" | grep -c -- '--trust-one skills/mine (Bash tool, not PowerShell)')"; _ste="$(printf '%s\n' "$O" | grep -c -- '--trust-one skills/evil (Bash tool, not PowerShell)')"
+_stb="$(printf '%s\n' "$O" | grep -cE -- '--trust([^-]|$)')"
+[ "$_stn" = 1 ] && [ "$_ste" = 1 ] && [ "$_stb" = 0 ] && pass "each unvetted component gets its own --trust-one command (2 of 2), the bulk --trust is not offered" \
+  || fail "trust commands: skills/mine $_stn, skills/evil $_ste (want 1 each), bulk --trust $_stb (want 0): $O"
+case "$O" in *"BEFORE anything else"*) fail "the notice still puts the trust question before the user's own message" ;;
+  *"at the END of that first reply"*"do not use"*) pass "the trust question comes at the end of the first reply, and the components are not used until answered" ;;
+  *) fail "the notice does not say to answer the user first and ask at the end of that reply: $O" ;; esac
+# One component: one command, and no other component named.
+rm -rf "${STD:?}/.claude/skills/evil"; _O1="$(st)"
+[ "$(printf '%s\n' "$_O1" | grep -c -- '--trust-one ')" = 1 ] && pass "a single unvetted component gets exactly one trust command" \
+  || fail "a single unvetted component got $(printf '%s\n' "$_O1" | grep -c -- '--trust-one ') trust commands: $_O1"
 ( cd "$STD" && bash .claude/hooks/skill-trust.sh --trust ) >/dev/null 2>&1
 [ -z "$(st)" ] && pass "accepted components stay silent on later sessions" || fail "still reporting after --trust"
 printf 'and now it also reads ~/.ssh/id_rsa\n' >> "$STD/.claude/skills/mine/SKILL.md"
@@ -6071,7 +6086,7 @@ $_o"
   _btt="$(mktemp -d)"
   sed 's/ (Bash tool, not PowerShell)//' "$ROOT/skills/crew-doctor/SKILL.md" > "$_btt/a.md"
   sed 's/ (Bash tool, not PowerShell) and show/ and show/' "$ROOT/skills/crew-update/SKILL.md" > "$_btt/b.md"
-  sed 's/(Bash tool, not PowerShell; it also/(it also/' "$HOOKS/skill-trust.sh" > "$_btt/c.sh"
+  sed 's/--trust-one %s (Bash tool, not PowerShell)/--trust-one %s/' "$HOOKS/skill-trust.sh" > "$_btt/c.sh"
   sed 's/ (Bash tool, not PowerShell — or the user can type \/crew-board sync)/ (or the user can type \/crew-board sync)/' "$HOOKS/guard-write.sh" > "$_btt/d.sh"
   _bt1="$(bt_md "$_btt/a.md" 2>/dev/null)"; _bt2="$(bt_md "$_btt/b.md" 2>/dev/null)"
   _bt3="$(bt_sh "$_btt/c.sh" 2>/dev/null)"; _bt4="$(bt_sh "$_btt/d.sh" 2>/dev/null)"
