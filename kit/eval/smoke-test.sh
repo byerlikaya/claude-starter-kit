@@ -1683,8 +1683,11 @@ if [ "$IS_KIT" = 1 ]; then
     printf '<h2>[3.9.0] — 2026-09-28</h2>' > "$_pgd/old/changelog/index.html"
     touch -t 202001010000 "$_pgd/new/changelog/index.html" "$_pgd/old/changelog/index.html"
     _pgn="$(date +%s)"; _pgr=""
+    # A file:// URL must carry the path curl can open: on Git Bash that is the native one (`pwd -W` → D:/a/…), not the
+    # POSIX /tmp/… — measured on windows-latest, all three fixtures read as "not measured" (rc 3) with the POSIX form.
+    _pgu="$(cd "$_pgd" && { pwd -W 2>/dev/null || pwd; })"; case "$_pgu" in /*) _pgu="file://$_pgu" ;; *) _pgu="file:///$_pgu" ;; esac
     for _c in "new [3.9.1] 0" "old [3.9.1] 1" "old [3.9.0] 0" "missing [3.9.1] 3"; do
-      set -- $_c; PAGES_PATH=changelog/index.html bash "$_pg" "file://$_pgd/$1" "$2" "$_pgn" 2 0 >/dev/null 2>&1; _r=$?
+      set -- $_c; PAGES_PATH=changelog/index.html bash "$_pg" "$_pgu/$1" "$2" "$_pgn" 2 0 >/dev/null 2>&1; _r=$?
       [ "$_r" = "$3" ] || _pgr="$_pgr | $1 want $2: rc $_r (expected $3)"
     done
     rm -rf "$_pgd"
