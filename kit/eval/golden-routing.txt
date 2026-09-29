@@ -14,6 +14,9 @@ add a new handler for the order endpoint|crew-backend-expert
 write a migration for this table|crew-database-expert
 build a responsive component for the login screen|crew-frontend-expert
 # Positive twins of the seven over-broad-word rows below: the replacement phrase must still route.
+add a settings screen in the frontend|frontend
+frontend'de bir ekran ekle|frontend
+the UI component re-renders on every keystroke|frontend
 cut a release and tag it|release
 review the code in this PR|crew-code-review
 the page layout is broken on mobile|frontend-design
@@ -92,6 +95,10 @@ set up the project structure for a new API|backend-architecture
 choose a database for this service|backend-architecture
 
 # --- Negative: prompt must NOT route to target (over-broad-trigger guard) ---
+# Field case (3.0.1, P2 case A): a user handing work over to another team named the area in passing — the bare word
+# "frontend" and a project called <x>_ui each routed it to the frontend skill. Turkish as it was typed, and in English.
+acme_ui için yapılacak iş varsa aktarır mısın? frontend tarafından o sorumlu|!frontend
+if there is work for acme_ui, pass it over — the frontend team owns that|!frontend
 #
 # The seven rows below are the ones that were REPORTED FROM LIVE USE, not invented. Each generic English word
 # was a standalone trigger, and a single trigger of six characters or more clears the score floor on its own —

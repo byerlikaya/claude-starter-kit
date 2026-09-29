@@ -48,6 +48,12 @@ versioning follows [SemVer](https://semver.org/).
   watched only Bash, stayed silent when the guard was not wired at all, and printed its ❌ after "healthy ✅". It now
   reads the guard's own entry with the JSON reader, and its result counts in the verdict.
 - The board printed a path a plugin install cannot run when it was started from its own folder. Fixed.
+- When a subagent handed its report back, the routing hint read the report as a new request and suggested
+  delegating the work that had just been done — "Use the crew-database-expert subagent" right after that agent
+  finished. A hand-back now gets no hint.
+- A message that only named the frontend in passing ("if there is work for acme_ui, pass it over — the frontend
+  team owns that") was routed to the `frontend` skill: the bare word "frontend" and a project called `<x>_ui` each
+  matched. The skill now triggers on phrases that carry the intent ("in the frontend", "the UI", "UI component").
 
 ### Added
 
