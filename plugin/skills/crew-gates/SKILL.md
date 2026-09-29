@@ -7,7 +7,8 @@ metadata:
   kind: command
 ---
 
-Run the report and read it back to the user:
+Run the report with the Bash tool, not PowerShell, and read it back to the user. The report is a file-install tool:
+a plugin install carries no `eval/` commands (only `eval/lib`), by design — there, say so plainly and stop.
 
 ```bash
 bash .claude/eval/gate-report.sh $ARGUMENTS

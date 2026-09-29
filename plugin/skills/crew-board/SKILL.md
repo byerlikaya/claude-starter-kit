@@ -10,7 +10,7 @@ metadata:
 # /crew-board
 Argument: $ARGUMENTS
 
-Apply the `teamboard` skill. The engine is `bash .claude/hooks/board.sh`; never hand-edit the board.
+Apply the `teamboard` skill. The engine is `bash "${CLAUDE_PLUGIN_ROOT}/hooks/board.sh"` (Bash tool, not PowerShell); never hand-edit the board.
 
 **Never make the user learn the syntax.** They should be able to run `/crew-board` and answer questions from
 there; `claim 3` and `done 3` are yours to type, not theirs. Every step below ends in a question with explicit

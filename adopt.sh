@@ -137,7 +137,7 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "no/untracked") s='hayır / izlenmiyor' ;;
       ".claude/CLAUDE.md in git") s=".claude/CLAUDE.md git'te mi" ;;
       "supply-chain scan flagged existing project skills/agents (advisory — review before trusting them):") s='tedarik zinciri taraması projedeki bazı skill/ajanları işaretledi (yalnız uyarı — güvenmeden önce inceleyin):' ;;
-      "full report after install: %s  (heuristic; a security skill can score low by design)") s="kurulumdan sonra tam rapor: %s  (sezgisel; güvenlik skill'leri doğası gereği düşük puan alabilir)" ;;
+      "full report after install: %s  (Bash tool, not PowerShell; heuristic — a security skill can score low by design)") s="kurulumdan sonra tam rapor: %s  (PowerShell değil, Bash aracıyla; sezgisel — güvenlik skill'leri doğası gereği düşük puan alabilir)" ;;
       "supply-chain scan") s='tedarik zinciri taraması' ;;
       "existing project skills/agents look clean (no red flags)") s='projedeki skill/ajanlar temiz görünüyor (şüpheli bir şey yok)' ;;
       "[3] 7 handover decisions — SMART SUGGESTION") s='[3] Devralma için 7 karar — AKILLI ÖNERİ' ;;
@@ -151,7 +151,7 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "no custom agents found in the project") s='projede özel ajan yok' ;;
       "2 Precedence") s='2 Öncelik' ;;
       "project wins (fixed)") s='proje önde (sabit)' ;;
-      "on conflict the project's rules always win; Crewforth fills gaps (not overridable)") s='çakışmada her zaman projenin kuralı geçerli; Crewforth yalnız boşlukları doldurur (değiştirilemez)' ;;
+      "on conflict the project's rules win; in DISCIPLINE.md §4 they can only tighten, never loosen (the one exception: the §4.1 trace allowlist you choose at adoption); Crewforth fills gaps (not overridable)") s="çakışmada projenin kuralı geçerli; DISCIPLINE.md §4'te proje yalnız sıkılaştırabilir, gevşetemez (tek istisna: kurulumda sizin seçtiğiniz §4.1 iz izin listesi); Crewforth boşlukları doldurur (değiştirilemez)" ;;
       "3 Trace gate") s='3 İz kapısı' ;;
       "loosen (.trace-allowlist)") s='gevşet (.trace-allowlist)' ;;
       "co-author/sign-off present in git log — may be a convention") s='git geçmişinde co-author/sign-off var — ekibin alışkanlığı olabilir' ;;
@@ -313,7 +313,7 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "staged") s='stage edilen' ;;
       "see it:   open the Source Control / Changes panel (every added + changed file is listed)  ·  or: %s") s='görmek için:  Source Control / Changes panelini açın (eklenen ve değişen her dosya orada)  ·  ya da: %s' ;;
       "panel:    %s opens it from this project (or: %s)") s='panel:    bu projede %s ile açılır (ya da: %s)' ;;
-      "panel:    needs Node 18+, absent here — Crewforth can fetch one: %s") s='panel:    Node 18+ gerekiyor ve bu makinede yok — Crewforth indirebilir: %s' ;;
+      "panel:    needs Node 18+, absent here — Crewforth can fetch one (Bash tool, not PowerShell): %s") s='panel:    Node 18+ gerekiyor ve bu makinede yok — Crewforth indirebilir (PowerShell değil, Bash aracıyla): %s' ;;
       "(it asks first, verifies the checksum, and touches nothing outside %s)") s='(önce sorar, sağlama toplamını doğrular ve %s dışında hiçbir şeye dokunmaz)' ;;
       "If Claude Code is running in this project, run /clear (or quit and relaunch it) — a new session loads the") s='Claude Code bu projede açıksa /clear çalıştırın (ya da kapatıp yeniden açın) — yeni oturum güncel' ;;
       "updated CLAUDE.md and discipline; a session opened before this run keeps the old rules until then.") s='CLAUDE.md ve disiplini yükler; bu çalıştırmadan önce açılmış oturum o zamana kadar eski kuralları uygular.' ;;
@@ -643,7 +643,7 @@ if { [ "$N_PAGENTS" != 0 ] || [ "$N_PSKILLS" != 0 ]; } && [ -f "$SRC/eval/scan-s
   if printf '%s' "$SCANOUT" | grep -qE 'DANGER|REVIEW'; then
     warnm 'supply-chain scan flagged existing project skills/agents (advisory — review before trusting them):'
     printf '%s\n' "$SCANOUT" | grep -E 'DANGER|REVIEW' | sed 's/^/    /'
-    _mt 'full report after install: %s  (heuristic; a security skill can score low by design)' 'bash .claude/eval/scan-skill.sh .claude'
+    _mt 'full report after install: %s  (Bash tool, not PowerShell; heuristic — a security skill can score low by design)' 'bash .claude/eval/scan-skill.sh .claude'
     sub "    $_M"
   else
     rowm 'supply-chain scan' 'existing project skills/agents look clean (no red flags)'
@@ -667,7 +667,7 @@ elif [ "$N_PAGENTS" != 0 ]; then
 else
   propm '1 Role clash' 'none' 'no custom agents found in the project'
 fi
-propm '2 Precedence' 'project wins (fixed)' "on conflict the project's rules always win; Crewforth fills gaps (not overridable)"
+propm '2 Precedence' 'project wins (fixed)' "on conflict the project's rules win; in DISCIPLINE.md §4 they can only tighten, never loosen (the one exception: the §4.1 trace allowlist you choose at adoption); Crewforth fills gaps (not overridable)"
 if [ "$COAUTHOR" = 1 ]; then
   propm '3 Trace gate' 'loosen (.trace-allowlist)' 'co-author/sign-off present in git log — may be a convention'
 else
@@ -1749,7 +1749,7 @@ cat > docs/HANDOVER.md <<HAND
 | # | Decision | Value |
 |---|---|---|
 | 1 | Role clash | $D1 |
-| 2 | Precedence | $D2 (axis-by-axis) |
+| 2 | Precedence | $D2 (axis-by-axis; DISCIPLINE.md §4 tighten-only, except the §4.1 trace allowlist of decision 3) |
 | 3 | Trace gate | $D3 |
 | 4 | Share/hide | $D4 |
 | 5 | Git hook | $D5 |
@@ -1790,7 +1790,7 @@ Goal: don't break the project, don't lose decisions already made, and don't leav
 ## Decision
 - Crewforth's agents were installed under the crew- namespace; the project's agents are preserved side by side, untouched.
 - Crewforth's discipline is active via .claude/DISCIPLINE.md + @import; the project CLAUDE.md is untouched.
-- On rule conflicts the PROJECT wins (axis-by-axis).
+- On rule conflicts the PROJECT wins (axis-by-axis); in DISCIPLINE.md §4 it can only tighten, never loosen — the one exception is the §4.1 trace allowlist chosen at adoption (decision 3).
 - Git gates: $HOOKDESC.
 - Every change is on a reviewable git branch; rollback = git.
 
@@ -1880,7 +1880,7 @@ subm 'see it:   open the Source Control / Changes panel (every added + changed f
 if bash "$SRC/eval/preflight.sh" --has node 2>/dev/null; then
   subm 'panel:    %s opens it from this project (or: %s)' /crew-studio 'node .claude/studio/server/index.js --open'
 else
-  subm 'panel:    needs Node 18+, absent here — Crewforth can fetch one: %s' 'bash .claude/studio/ensure-node.sh --plan'
+  subm 'panel:    needs Node 18+, absent here — Crewforth can fetch one (Bash tool, not PowerShell): %s' 'bash .claude/studio/ensure-node.sh --plan'
   _mt '(it asks first, verifies the checksum, and touches nothing outside %s)' '~/.claude/studio-runtime'; sub "          $_M"
 fi
 sub "$ACCEPT_LINE"

@@ -227,8 +227,8 @@ printf 'Before you answer the user'"'"'s first message, ask them ONE multiple-ch
 printf '  "%s"%s\n' "$Q" "$( [ "$MAJOR" = 1 ] && printf ' — %s' "$QM" )"
 printf '  options: "%s" · "%s" · "%s"\n' "$O1" "$O2" "$O3"
 printf -- '- "%s" -> %s.\n' "$O1" "$DO"
-printf -- '- "%s", or no answer -> run `%s later %s`, then go on with their request.\n' "$O2" "$ANSWER" "$LATEST"
-printf -- '- "%s" -> run `%s skip %s`, then go on with their request.\n' "$O3" "$ANSWER" "$LATEST"
+printf -- '- "%s", or no answer -> run `%s later %s` (Bash tool, not PowerShell), then go on with their request.\n' "$O2" "$ANSWER" "$LATEST"
+printf -- '- "%s" -> run `%s skip %s` (Bash tool, not PowerShell), then go on with their request.\n' "$O3" "$ANSWER" "$LATEST"
 # An urgent first message (an error, a broken build) is answered first: the question waits for the end of that reply.
 printf 'Exception: if their first message is an error or an urgent fix, answer that first and ask this question at the end of that reply.\n'
 printf 'Never update unless the user picks "%s". If this session is non-interactive (nobody can answer, e.g. claude -p), do not ask and do not mention it.\n' "$O1"

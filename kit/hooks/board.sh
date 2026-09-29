@@ -40,9 +40,10 @@ _git_dir(){ git rev-parse --git-common-dir 2>/dev/null; }
 # Claude reads must give it the command it can run itself — this script — and name the slash form for the user.
 # The plugin edition's copy lives outside the project, so it names its own absolute path. Only called when a message
 # is printed, never on the hot path.
-_selfcmd(){ local d; d="$(cd "${BASH_SOURCE%/*}" 2>/dev/null && pwd)"
-  if [ -f "$d/../.claude-plugin/plugin.json" ]; then printf 'bash "%s/board.sh"' "$d"; else printf 'bash .claude/hooks/board.sh'; fi; }
-_act(){ printf '%s %s (or the user can type /crew-board %s)' "$(_selfcmd)" "$1" "${2:-$1}"; }
+_selfcmd(){ local d="${BASH_SOURCE%/*}"; [ "$d" = "$BASH_SOURCE" ] && d=.   # run by bare name: the name has no slash
+  d="$(cd "$d" 2>/dev/null && pwd)"
+  if [ -f "$d/../.claude-plugin/plugin.json" ]; then _SELF="bash \"$d/board.sh\""; else _SELF='bash .claude/hooks/board.sh'; fi; }
+_act(){ _selfcmd; printf '%s %s (Bash tool, not PowerShell — or the user can type /crew-board %s)' "$_SELF" "$1" "${2:-$1}"; }
 
 # Ref namespace. Default is a custom namespace so the board never shows up in `git branch` and never enters the
 # code history. Some servers refuse refs outside refs/heads|refs/tags; `probe` detects that and records the

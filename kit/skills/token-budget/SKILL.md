@@ -37,14 +37,14 @@ for **isolation / parallelism / a clean window**, or when the isolated work woul
 6. **Least tooling.** An agent holds only the tools it needs; extras accidentally pollute the context + burn the limit.
 7. **Lean SKILL.md.** Skills load into the main context; heavy reference goes to a separate file, only when needed.
 8. **Targeted reading.** Instead of reading a whole file, pinpoint with Grep/Glob.
-9. **Measure fill, don't guess.** `bash .claude/hooks/context-usage.sh` reads it from the transcript; crew-session-manager recommends continue or handoff+clear; the user runs `/clear` at a phase boundary.
+9. **Measure fill, don't guess.** `bash .claude/hooks/context-usage.sh` (Bash tool, not PowerShell) reads it from the transcript; crew-session-manager recommends continue or handoff+clear; the user runs `/clear` at a phase boundary.
 10. **Bound what a command hands back.** All of the rules above govern the context's own footprint; none of them
    govern what a single `Bash` call dumps into it. A `find` over a monorepo, an unfiltered log, a full test run —
    each returns everything to the main thread whether or not any of it is read. Ask for the answer, not the
    corpus: `grep -c` over `grep`, `| tail -20` over the whole file, `--quiet`/`--porcelain` where the tool has
    one, and a redirect to a file plus a pointer when the output is genuinely needed later (rule 2).
 11. **Cut what nothing reaches — with evidence, not a hunch.** Every installed skill spends its name and
-   description in EVERY session, forever. `bash .claude/eval/utilization.sh` reports which skills actually fired
+   description in EVERY session, forever. `bash .claude/eval/utilization.sh` (Bash tool, not PowerShell; a file install only) reports which skills actually fired
    in this project's transcripts and how many bytes the cold ones cost, which is the list `doctor.sh` §4a's
    `skillOverrides: name-only` advice needs and never had. Read it as evidence, not a verdict: a skill that only
    fires during an incident is doing its job by existing. `--all-projects` widens the scope; by default it reads

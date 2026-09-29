@@ -504,9 +504,9 @@ if [ -n "$GD" ] && [ -f "$GD/crew-board-guard" ]; then
       _gwd="${BASH_SOURCE%/*}"; _gwd="$(cd "$_gwd" 2>/dev/null && pwd)"
       if [ -f "$_gwd/../.claude-plugin/plugin.json" ]; then _BB="bash \"$_gwd/board.sh\""; else _BB='bash .claude/hooks/board.sh'; fi
       echo "BOARD GATE: you hold no work item, so nobody else can see what you are starting." >&2
-      echo "Claim one first: $_BB claim <id> — $_BB status lists what is free, what is blocked and who holds the rest (or the user can type /crew-board claim <id>)." >&2
+      echo "Claim one first (Bash tool, not PowerShell): $_BB claim <id> — $_BB status lists what is free, what is blocked and who holds the rest (or the user can type /crew-board claim <id>)." >&2
       echo "Work that belongs to no item: set CREW_NO_BOARD=1 for this session, and commit it with [chore]." >&2
-      echo "Just claimed one elsewhere? The board view is cached — $_BB sync refreshes it (or the user can type /crew-board sync)." >&2
+      echo "Just claimed one elsewhere? The board view is cached — $_BB sync refreshes it (Bash tool, not PowerShell — or the user can type /crew-board sync)." >&2
       exit 2 ;;
   esac
 fi

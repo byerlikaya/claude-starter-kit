@@ -32,9 +32,21 @@ versioning follows [SemVer](https://semver.org/).
 - When recording that trust failed, the update said nothing. It now says so, with the reason.
 - Updating a pre-1.1 install (discipline inline in `CLAUDE.md`) on the current branch stopped with
   `TS: unbound variable` when it replaced the inline block. Fixed.
+- In the plugin edition, skills and agents told the model to run `bash .claude/…`, a path a plugin install does not
+  have: `/crew-handoff`, the fill reading, `reflect`, `handoff`, the board and the auto-mode policy scripts all
+  exited 127. They now name the plugin's own directory, quoted. `/crew-gates` and the skill-usage report say they are
+  file-install tools; `trace-scan` names the plugin's pattern list; the panel's Node lookup is quoted.
+- `/crew-doctor`'s shell-gate check could say "watch both Bash and PowerShell" for an install whose Bash guard
+  watched only Bash, stayed silent when the guard was not wired at all, and printed its ❌ after "healthy ✅". It now
+  reads the guard's own entry with the JSON reader, and its result counts in the verdict.
+- The board printed a path a plugin install cannot run when it was started from its own folder. Fixed.
 
 ### Added
 
+- When the model sends one of Crewforth's own scripts through the PowerShell tool — where `bash` can be WSL's and
+  the script fails — the call is stopped and the model is told to use the Bash tool. "Crewforth's own" is every `.sh`
+  it installs, except a skill of your own. Every other PowerShell command passes as before, including searches and
+  messages that merely mention such a command.
 - An update moves aside what an older version installed and Crewforth no longer ships — the v1 `-cck` agents, the
   plain v1 commands (`/plan`, `/review`, …), `vps-deploy`, `code-review` — when every file is byte-for-byte a copy
   Crewforth shipped. They go to `.claude/.legacy-backup/<time>/` and the update prints the one line that puts them
@@ -47,6 +59,10 @@ versioning follows [SemVer](https://semver.org/).
 
 ### Changed
 
+- The discipline now says where a project's own `CLAUDE.md` stands: it wins on conflict, and in §4 it can only
+  tighten, never loosen — the one exception is the §4.1 trace allowlist chosen at adoption. The § numbers in the
+  discipline refer to the discipline itself. The updater's summary, handover and decision record say the same.
+- Every place that tells the model to run one of Crewforth's scripts now says to use the Bash tool, not PowerShell.
 - The Bash guard no longer starts a process per rule on the read-only path: `git status` went from 14 processes per
   call to 1 (macOS: ~35 ms to ~10 ms per call). On a Windows machine where one process was measured at 1.3–3.9 s,
   the old path cost 37–66 s per call.

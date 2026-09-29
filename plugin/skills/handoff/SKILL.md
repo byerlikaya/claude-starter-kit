@@ -31,10 +31,10 @@ Session fill (the `🔋` line) > 75% · phase closure · topic change. Goal: the
 ```
 
 ## Measure the session before summarising it
-Run **`bash .claude/hooks/session-stats.sh`** first. What it reports belongs in the handover as fact, not
+Run **`bash "${CLAUDE_PLUGIN_ROOT}/hooks/session-stats.sh"`** first, with the Bash tool, not PowerShell. What it reports belongs in the handover as fact, not
 impression — an auto-compaction means state was already dropped before you started writing (say what was lost),
 a runaway loop marks an approach the next session should not walk back into, and repeated prompts mark context
-that never landed and has to be written down explicitly this time. Missing script (plugin install) → say so.
+that never landed and has to be written down explicitly this time. Missing script → say so.
 
 ## Principles
 - **Action-oriented:** focused not on "what was done" but on "exactly where to resume now."

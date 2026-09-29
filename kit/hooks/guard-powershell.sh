@@ -1,44 +1,28 @@
 #!/usr/bin/env bash
-# Claude Code PreToolUse guard for the FILE tools (Write / Edit / NotebookEdit).
-# Companion to guard-bash.sh: that one covers shell tampering, this one covers the model editing the gate
-# scripts directly with its file tools. A gate you can silently rewrite is not a gate.
+# Claude Code PreToolUse (PowerShell) — Crewforth's own scripts run through the Bash tool, never PowerShell.
 #
-# stdin JSON: {"tool_name":"Write|Edit|...","tool_input":{"file_path":"...", ...}}
+# The skills, the agents and the hooks' own messages tell the model to run `bash .claude/hooks/<x>.sh` or
+# `bash .claude/eval/<x>.sh`. On Windows the model sometimes sends that line through the PowerShell tool, and there
+# `bash` can resolve to WSL's bash.exe: the script runs in another filesystem and fails, or runs against nothing.
+# Measured in a field session: six PowerShell attempts at Crewforth's scripts, every one an error from WSL, while the
+# same commands through the Bash tool (Git Bash) exit 0. This hook stops that one call and names the right tool, so
+# the next attempt is the one that works.
 #
-# HARD BLOCK (exit 2, every permission mode) when the target is a gate FILE:
-#   - .claude/hooks/*       (guard-bash.sh, guard-write.sh, pre-commit, commit-msg, session-guard.sh, blocklists)
-#   - .git/hooks/*          (the armed git hooks themselves)
-#   - .claude/DISCIPLINE.md (kit-owned, @imported every session, and the text of §4.1-§4.5 itself — the gates
-#     enforce those rules, so leaving the rules writable means the gates can be emptied without touching a gate)
-# settings.json is deliberately NOT blocked: the update-config skill legitimately edits it, and a hook/permission
-# change there is reviewable — the irreversible, silent move is rewriting the scripts, so that is what we gate.
+# SCOPE, and nothing else: a word-boundary `bash` or `bash.exe` (a quoted full path included), optional flags, then
+# a path whose folder is `.claude/hooks/` or `.claude/eval/` — relative, `./`, quoted or with an absolute prefix,
+# with either slash. In the plugin edition the plugin root stands where `.claude` stands. Every other PowerShell
+# command passes untouched: reading a hook file, `Test-Path` on it, `git config core.hooksPath`, `bash build.sh`.
+# It is a redirect, not a security gate — the §4 rules for PowerShell live in guard-bash.sh, wired on the same tool —
+# so a payload it cannot read is let through rather than refused.
 #
-# THE PATH IS NORMALISED BEFORE IT IS MATCHED, and that is the whole point of this file's second half.
-# Until this version the gate compared the RAW string, so it recognised exactly one spelling of each gate path.
-# Every line below was measured against the shipped hook and reached rc=0 — a SINGLE Write call, no shell
-# access, no symlink, no second step:
-#     .claude/skills/../hooks/guard-bash.sh      .claude//hooks/…       .claude/./hooks/…
-#     .git/refs/../hooks/pre-commit              C:\…\.claude\hooks\…    (backslashes)
-# The backslash row is a string fact, measured here: the matcher recognised `/` only, while five other hooks in
-# Crewforth already fold Windows separators and this one did not. What a real Windows install actually puts in
-# `file_path` is NOT measured on the machine this was written on and must not be assumed — it is verified on
-# Windows. Folding both spellings is correct either way, which is why the fix does not wait for that answer.
-# NotebookEdit was a sixth hole on any machine with neither jq nor python3 — the pre-tier-3 fallback read
-# only `file_path`, and `notebook_path` is a different key.
-# Claude Code passes file_path to the hook VERBATIM (measured: a `..` survives into the payload) while the
-# filesystem resolves it, so the string the model writes and the file it opens are two different things.
-# Normalise first, match second — and normalise with parameter expansion only, because this hook runs before
-# EVERY Write/Edit and a fork per call is a freeze on Windows (Git Bash charges 62-135 ms per process, measured).
+# Wired ONLY on the PowerShell matcher (both editions; smoke pins it). On `Bash` it would block the very commands it
+# points to.
 set -uo pipefail
-# The 2.x names of the variables a user can set still work (one helper: eval/lib/crew-env.sh).
-_crew_d="${BASH_SOURCE%/*}"; [ "$_crew_d" = "${BASH_SOURCE}" ] && _crew_d=.
-[ -f "$_crew_d/../eval/lib/crew-env.sh" ] && . "$_crew_d/../eval/lib/crew-env.sh"; unset _crew_d
 INPUT="$(cat)"
+# Fork-free exit for everything that cannot match: PowerShell calls are frequent, and on Git Bash a process costs
+# 62-135 ms. No `bash` in the payload, nothing to judge.
+case "$INPUT" in *[Bb][Aa][Ss][Hh]*) ;; *) exit 0 ;; esac
 
-# The two helpers below are a byte-identical copy of guard-bash.sh's block. A shared file would have to be
-# added to build-plugin.sh's explicit copy list and a miss there breaks the plugin channel silently — the same
-# reasoning as the CREW-TRANSCRIPT-DIR resolver, which is duplicated for the same reason. Two copies are only
-# safe while they cannot drift, so smoke-test pins these markers byte-identical rather than trusting it.
 # ---- CREW-JSON-PARSE ------------------------------------------------------------------------------------
 _json_slice(){  # $1 = whole payload, $2 = key -> the raw (still JSON-escaped) string value, "" if absent
   local LC_ALL=C   # FIRST, so every expansion below -- the key search included -- counts and cuts in bytes.
@@ -288,226 +272,56 @@ _json_keycount(){  # $1 = payload, $2 = key -> sets _KC to how many times it occ
 }
 # ---- /CREW-JSON-PARSE -----------------------------------------------------------------------------------
 
-block(){  # $1 = rule name for the log (must keep the `gate-file edit` prefix — /crew-gates groups on it), $2 = why
-  # Same write-only observability channel as guard-bash.sh, on by default into .claude/gate-log.tsv since 2.5.0
-  # and with the same rule about the payload: the path is NOT recorded unless CREW_GATE_LOG_CMD=1, because
-  # /crew-gates reports rule names and counts and never the argument. Logged after the verdict; it cannot
-  # change it. CREW_GATE_LOG overrides the path; point it at /dev/null to turn recording off.
-  _GL="${CREW_GATE_LOG:-}"
-  if [ -z "$_GL" ] && [ -d ".claude" ]; then
-    if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1 || git check-ignore -q ".claude/gate-log.tsv" 2>/dev/null; then
-      _GL=".claude/gate-log.tsv"
-    fi
-  fi
-  if [ -n "$_GL" ]; then
-    if [ "${CREW_GATE_LOG_CMD:-0}" = 1 ]; then
-      printf 'BLOCK\t§4.5\t%s\t%s\n' "$1" \
-        "$(printf '%s' "$FP" | tr -d '\000-\037' | cut -c1-200)" >> "$_GL" 2>/dev/null
-    else
-      printf 'BLOCK\t§4.5\t%s\t\n' "$1" >> "$_GL" 2>/dev/null
-    fi
-  fi
-  echo "GUARD (§4.5): editing '$FP' is blocked AT THE TOOL LEVEL." >&2
-  echo "$2" >&2
-  echo "Crewforth updates go through the installer/update script, not the assistant's file tools. If the user explicitly wants it changed, they edit it in their own editor." >&2
-  exit 2
-}
-WHY_SCRIPT="This file is a gate script — rewriting it would disarm the trace/secret/approval gates."
-WHY_DISC="This file is Crewforth's discipline document — it IS the text of §4.1-§4.5, so editing it empties the rules the gates enforce."
-WHY_LINK="A parent directory of this path is a symlink and it resolves into a gate directory, so the write would land on a gate file."
-WHY_LONG="The path in this payload is longer than any filesystem accepts. It is refused rather than parsed, because parsing it is the slow path an attacker would aim at."
-# Sized from the cost curve, not from PATH_MAX. Tier 3 walks the value character by character and bash string
-# append is O(n) each time, so the walk is quadratic: measured 0.09s at 512 raw bytes, 0.52s at 1,024, 3.7s at
-# 2,048, ~30s at 4,096. Real paths are nowhere near: measured on a Windows install, actual `file_path` values
-# average ~60 bytes and Windows itself stops at 260 without the long-path opt-in (macOS PATH_MAX is 1,024).
-# 2,048 therefore keeps every path anyone can really produce and bounds the worst case at a few seconds,
-# well inside this hook's 60s timeout — the number that matters, because a hook killed at its timeout emits
-# no exit 2 and the write proceeds.
-MAXPATH=2048
+# The matcher already routes only PowerShell here; the tool name is read anyway, so a wiring slip onto `Bash` cannot
+# block the very commands this hook points to. `_json_slice` leaves its value in _JS: no fork for the read.
+_json_slice "$INPUT" tool_name >/dev/null; [ "${_JS:-}" = PowerShell ] || exit 0
+_json_keycount "$INPUT" command
+[ "$_KC" = 1 ] && [ "$_KC_CAPPED" = 0 ] || exit 0          # unreadable or ambiguous: guard-bash.sh judges those
+CMD="$(_json_unescape "$(_json_slice "$INPUT" command)")"
+[ -n "$CMD" ] || exit 0
 
-# ---- extract ---------------------------------------------------------------------------------------------
-# Tiers are selected on whether they WORK, not on whether they exist — see the long note in guard-bash.sh.
-# Short version, measured on a stock Windows 11 desktop: Windows ships a Microsoft Store redirector stub named
-# python3 on PATH by default, `command -v` finds it, it exits 49 with an empty stdout, FP came back "" and
-# `[ -z "$FP" ] && exit 0` let the model rewrite .claude/hooks/guard-bash.sh with its Write tool.
-# AN AMBIGUOUS TARGET IS REFUSED, and this hook needed it most: it is the one that stops the model rewriting
-# the other gates with its file tools. The parser takes the FIRST occurrence of the key, so a harmless path
-# placed EARLIER used to decide the verdict. Measured on the shipped hook, tier 3 (the only tier on a stock
-# Windows desktop), against `.claude/hooks/guard-bash.sh` as the real target:
-#   {"meta":{"file_path":"/tmp/ok.txt"},…"tool_input":{"file_path":".claude/hooks/guard-bash.sh"}}   rc=0
-#   {"tool_input":{"file_path":".claude/hooks/guard-bash.sh"}}                                       rc=2
-# The raw-payload net further down only fires when FP is EMPTY, and here FP was a plausible non-gate path, so
-# nothing looked at the real one. Counted on the raw payload rather than per tier, deliberately: refusing on
-# one tier while another reads a different occurrence just moves the divergence instead of closing it.
-# Both counts read `_KC` instead of `$( )`: a command substitution is a fork, and this hook runs before every
-# Write, Edit, MultiEdit and NotebookEdit call. Measured on macOS the substitution form cost 0.79 ms per call
-# and took the whole hook from 13.81 to 15.49 ms; on Git Bash a process is 62-135 ms, so two of them per call
-# would have been a freeze on the platform this change exists to protect.
-_json_keycount "$INPUT" file_path;     _n_fp=$_KC; _cap_p=$_KC_CAPPED
-_json_keycount "$INPUT" notebook_path; _n_nb=$_KC; [ "$_KC_CAPPED" = 0 ] || _cap_p=$_KC_CAPPED
-if [ "$_cap_p" != 0 ]; then
-  echo "GUARD (§4.5): this payload contains more than $_cap_p occurrences of a path key, so the scan for" >&2
-  echo "the real one was stopped. Refusing rather than reading whichever one it had reached." >&2
-  exit 2
-elif [ $((_n_fp + _n_nb)) -gt 1 ]; then
-  echo "GUARD (§4.5): this payload carries $((_n_fp + _n_nb)) path keys (file_path/notebook_path), so the" >&2
-  echo "file to judge is ambiguous. Refusing rather than reading whichever comes first." >&2
-  exit 2
-fi
-# ONE READER, EVERYWHERE — the jq/python3 ladder that stood here is gone; the reasoning and the measurements
-# are in guard-bash.sh next to the same change. What the ladder cost THIS hook specifically: Windows ships a
-# Microsoft Store redirector stub named python3 on PATH by default, `command -v` finds it, it exits 49 with an
-# empty stdout, FP came back "" and `[ -z "$FP" ] && exit 0` let the model rewrite .claude/hooks/guard-bash.sh
-# with its Write tool. Pure parameter expansion cannot fail that way.
-_raw="$(_json_slice "$INPUT" file_path)"
-[ -n "$_raw" ] || _raw="$(_json_slice "$INPUT" notebook_path)"
-# THE CAP GOES BEFORE THE UNESCAPER, and the cost it bounds is one the shared reader INTRODUCED — worth saying
-# plainly rather than dressing up as a pre-existing bug. What it replaced was a single `sed`, which is linear
-# and was never slow; it was replaced because it truncated the value at the first escaped quote and never
-# looked at `notebook_path`. The parser that fixes those walks character by character, which is quadratic in
-# bash, and on Windows every separator is a backslash, i.e. an escape, so the "no escapes" fast path never
-# fires. Uncapped, that is a gate with an off switch: a hook killed at its 60s timeout emits no exit 2 and the
-# write proceeds. Refusing above the cap is safe in the direction that matters, and the cap sits far above any
-# path a filesystem will accept.
-# ONE cap, not two. The second check used to follow the unescaper because the jq tier reached the fold with no
-# unescaper in front of it; with one reader that is gone, and the unescaper only ever SHRINKS its input —
-# measured over 23 escape forms including a surrogate pair and a 4900-byte run of `€` across the chunk
-# edge, with a deliberately-growing stand-in as the calibration, so the check could be seen to fail.
-[ "${#_raw}" -le "$MAXPATH" ] || { FP="(oversized path: ${#_raw} bytes)"; block "gate-file edit (oversized path)" "$WHY_LONG"; }
-FP="$(_json_unescape "$_raw")"
-
-# Nothing extractable. Exiting 0 unconditionally is what a future field rename turns into a silent bypass, so
-# look at the RAW payload instead: refuse only when the text itself names a gate tree. A payload that mentions
-# no gate path still passes, so a rename cannot lock anyone out of ordinary work — it can only cost a false
-# block on a file whose own path says `.claude/…hooks`, which is the trade this gate exists to make.
-if [ -z "$FP" ]; then
-  case "$INPUT" in
-    *.claude*hooks*|*.git*hooks*|*DISCIPLINE.md*) FP="(unparsed payload naming a gate path)"; block "gate-file edit (unparsed payload)" "$WHY_SCRIPT" ;;
-  esac
-  exit 0
-fi
-
-# ---- normalise -------------------------------------------------------------------------------------------
-# Windows separators first: Crewforth folds `\\` then `\` in five other hooks and this is the same idiom.
-RP="${FP//\\\\//}"; RP="${RP//\\//}"; NP="$RP"
-# Lexical resolution of `.`, `..` and repeated slashes. Lexical is the right kind here: it is what makes
-# `.claude/skills/../hooks/x` and `.claude/hooks/x` the same string, it costs zero processes, and it cannot be
-# defeated by a directory that does not exist yet (a `realpath` on an unborn path returns the input unchanged,
-# which is exactly the hole this closes). Symlinks are the one thing lexical resolution gets wrong, and they
-# are handled separately below.
-_norm(){                               # assigns NORM; NOT `NP="$(_norm …)"` — a command substitution is a
-  local p="$1" lead="" seg rest out="" # fork, and a fork per Write/Edit is the cost this whole file avoids
-  case "$p" in /*) lead="/" ;; esac
-  rest="$p"
-  while [ -n "$rest" ]; do
-    seg="${rest%%/*}"
-    if [ "$seg" = "$rest" ]; then rest=""; else rest="${rest#*/}"; fi
-    case "$seg" in
-      ''|'.') continue ;;
-      '..')
-        if [ -n "$out" ] && [ "${out##*/}" != ".." ]; then
-          case "$out" in */*) out="${out%/*}" ;; *) out="" ;; esac
-        elif [ -z "$lead" ]; then
-          out="${out:+$out/}.."          # relative path climbing above the cwd: keep it, it is not a gate path
-        fi
-        continue ;;                      # absolute path at the root: `/..` is `/`, so drop it
-    esac
-    # Trailing dots and spaces are stripped from every component, because Win32 strips them when it OPENS the
-    # file: `.claude./hooks/x` and `DISCIPLINE.md ` reach the same inode as the plain spelling there. The
-    # `DISCIPLINE.md` rule is an exact tail match with no trailing wildcard, so one trailing byte defeated it.
-    # This value is only ever compared, never written through, so a POSIX file genuinely named `foo.` is
-    # unaffected in every way except that it would be matched as `foo`.
-    while :; do case "$seg" in *.|*' ') seg="${seg%?}" ;; *) break ;; esac; done
-    [ -n "$seg" ] || continue
-    out="${out:+$out/}$seg"
-  done
-  NORM="$lead$out"
-}
-_norm "$NP"; NP="$NORM"
-
-# ---- match -----------------------------------------------------------------------------------------------
-# One place where "is this a gate file?" is answered, because it has to be asked twice — once on the path as
-# written, once on the path as it resolves through a symlink.
+# WHAT COUNTS AS CREWFORTH'S SCRIPT — one rule, no folder list: any `.sh` under `.claude/` (or under the plugin root,
+# which stands where `.claude` stands), except inside a skill the install manifest does not list — that skill is the
+# user's own — and except Claude Code's plugin store (`.claude/plugins/`). So a script a later version adds anywhere is
+# covered the day it ships.
 #
-# THE PATTERNS FOLD CASE. APFS and NTFS are case-insensitive by default, so `.CLAUDE/HOOKS/GUARD-BASH.SH` and
-# `.claude/hooks/guard-bash.sh` are the SAME FILE — measured on this machine: identical inode, and a write
-# through the uppercase spelling landed in the real gate script. The shell-side guard already folds case
-# (`grep -i`), so the two guards disagreed on the same path. The bracket form needs no `shopt`, cannot leak
-# into a later `case`, and works on bash 3.2.
-_is_gate(){   # 0 = gate file; sets GATE_RULE and GATE_WHY
-  case "$1" in
-    */.[Cc][Ll][Aa][Uu][Dd][Ee]/[Hh][Oo][Oo][Kk][Ss]/*|.[Cc][Ll][Aa][Uu][Dd][Ee]/[Hh][Oo][Oo][Kk][Ss]/*)
-      GATE_RULE="gate-file edit (Write/Edit tools)"; GATE_WHY="$WHY_SCRIPT"; return 0 ;;
-    */.[Gg][Ii][Tt]/[Hh][Oo][Oo][Kk][Ss]/*|.[Gg][Ii][Tt]/[Hh][Oo][Oo][Kk][Ss]/*)
-      GATE_RULE="gate-file edit (Write/Edit tools)"; GATE_WHY="$WHY_SCRIPT"; return 0 ;;
-    */.[Cc][Ll][Aa][Uu][Dd][Ee]/[Dd][Ii][Ss][Cc][Ii][Pp][Ll][Ii][Nn][Ee].[Mm][Dd]|.[Cc][Ll][Aa][Uu][Dd][Ee]/[Dd][Ii][Ss][Cc][Ii][Pp][Ll][Ii][Nn][Ee].[Mm][Dd])
-      GATE_RULE="gate-file edit (discipline document)"; GATE_WHY="$WHY_DISC"; return 0 ;;
-    # The plugin edition keeps the SAME gate scripts at $CLAUDE_PLUGIN_ROOT/hooks/, which is not `.claude/hooks/`
-    # and so matched nothing above — one of Crewforth's four channels shipped an unguarded copy of its own gates.
-    # Matched by Crewforth's own filenames rather than by guessing a plugin path, so a project's unrelated
-    # `hooks/` directory is untouched.
-    */[Hh][Oo][Oo][Kk][Ss]/[Gg][Uu][Aa][Rr][Dd]-*.[Ss][Hh]|*/[Hh][Oo][Oo][Kk][Ss]/[Ss][Ee][Ss][Ss][Ii][Oo][Nn]-[Gg][Uu][Aa][Rr][Dd].[Ss][Hh])
-      GATE_RULE="gate-file edit (Crewforth gate script)"; GATE_WHY="$WHY_SCRIPT"; return 0 ;;
-  esac
-  return 1
-}
-_is_gate "$NP" && block "$GATE_RULE" "$GATE_WHY"
-
-# The one thing lexical resolution cannot see: a symlinked ancestor. Two directions matter and only the second
-# one is dangerous — a link INTO the config tree (`cfg -> .claude`, then write `cfg/hooks/guard-bash.sh`),
-# which names no gate path at all and so passes every pattern above. Measured before this loop existed: rc=0,
-# and the file really was overwritten. The reverse direction — a symlink ABOVE the project (`~/Projects ->
-# /Volumes/…`, or plain `/tmp -> private/tmp` on macOS) — is routine and must stay allowed.
+# WHERE `bash` COUNTS: only in command position — the start of a statement (`;` `|` `&` `(` `{` or a newline before
+# it), or right after a launcher (`wsl`, `cmd /c`, `Start-Process`, `iex`/`Invoke-Expression`, `pwsh -Command`,
+# `bash -c`), optionally as a path to bash.exe. As a search term (`Select-String -Pattern bash -Path …`, `rg bash …`)
+# or inside message text (`Write-Output "run bash …"`, a commit message) it is not an invocation and passes.
 #
-# So the walk runs for EVERY path (`[ -L ]` is a builtin: no process, and the loop is bounded), and only when
-# an ancestor really is a symlink does it pay ONE fork to resolve it and ask the same question again about the
-# real location. That fork is charged to the rare case instead of to every Write, which is what the hot-path
-# budget requires; an ordinary repo pays nothing at all.
-# The walk runs over RP — the folded path BEFORE `..` was collapsed — and that ordering is the rule, not a
-# detail. Lexical `..` collapsing is only valid when no component before it is a symlink: with `c -> .claude/
-# skills`, the written path `c/../hooks/guard-bash.sh` collapses to `hooks/guard-bash.sh` (no gate) while the
-# filesystem resolves `c/..` through the link to `.claude`, landing on the real gate script. Collapsing first
-# would delete the very component that has to be examined. Resolving from RP and re-normalising afterwards
-# gets both: `<real>/.claude/skills` + `/../hooks/guard-bash.sh` normalises back onto the gate.
-_anc="$RP"; _sfx=""; _depth=0
-while case "$_anc" in */*) true ;; *) false ;; esac; do
-  _depth=$((_depth+1)); [ "$_depth" -gt 64 ] && break
-  _sfx="${_anc##*/}${_sfx:+/$_sfx}"
-  _anc="${_anc%/*}"
-  [ -n "$_anc" ] || break
-  if [ -L "$_anc" ]; then
-    _real="$(cd -P "$_anc" 2>/dev/null && pwd)"
-    if [ -n "$_real" ]; then
-      _norm "$_real/$_sfx"
-      _is_gate "$NORM" && { FP="$FP  (resolves to $NORM)"; block "gate-file edit (symlinked ancestor)" "$WHY_LINK"; }
-    fi
-    break
-  fi
+# NO WHOLE-COMMAND REWRITE: folding every backslash with ${CMD//\\//} is quadratic on bash 3.2 (a 60 KB command took
+# 65 s, past the hook timeout); the pattern takes either slash instead, and only the short plugin root is folded.
+_c="$CMD"
+_pr="${CLAUDE_PLUGIN_ROOT:-}"; _pr="${_pr//\\//}"; _pr="${_pr%/}"
+case "$_pr" in [A-Za-z]:/*) _pr="${_pr:2}" ;; esac                  # drive-less tail: C:\…, C:/…, c:/… and /c/… all fold
+if [ "${#_pr}" -gt 1 ]; then _prb="${_pr//\//\\}"; _c="${_c//"$_pr"//.claude}"; _c="${_c//"$_prb"//.claude}"; fi
+_S='[/\\]'; _Q="[\"']"
+_NL=$'\n'; _PRE="(^|[;|&({${_NL}])[[:space:]]*"
+_LAUNCH="((wsl(\\.exe)?([[:space:]]+(-e|--exec|--))?|cmd(\\.exe)?[[:space:]]+/[ck]|start-process([[:space:]]+-filepath)?|iex|invoke-expression|(pwsh|powershell)(\\.exe)?([[:space:]]+-[a-z]+)*[[:space:]]+-c(ommand)?|(bash|sh)(\\.exe)?([[:space:]]+-[a-z]+)*[[:space:]]+-[a-z]*c[a-z]*)[[:space:]]+${_Q}?)?"
+_EXE="(${_Q}([^\"']*${_S})?bash(\\.exe)?${_Q}|([^[:space:]\"';|&(){}]*${_S})?bash(\\.exe)?)"
+_PATH="(${_Q}([^\"']*${_S})?|([A-Za-z]:)?([^[:space:]\"']*${_S})?)\\.claude${_S}[^[:space:]\"']+\\.sh"
+_re="${_PRE}${_LAUNCH}${_EXE}([[:space:]]+-[^[:space:]]+)*[[:space:]]+${_PATH}"
+_man="${BASH_SOURCE%/*}"; [ "$_man" = "$BASH_SOURCE" ] && _man=.; _man="$_man/../kit-manifest.txt"
+shopt -s nocasematch
+_i=0
+while [ "$_i" -lt 20 ] && [[ $_c =~ $_re ]]; do _i=$((_i+1))
+  _m="${BASH_REMATCH[0]}"
+  _rel="${_m##*.[Cc][Ll][Aa][Uu][Dd][Ee][/\\]}"; _rel="${_rel//\\//}"
+  case "$_rel" in
+    # ~/.claude/plugins/ is Claude Code's plugin store: whatever is there belongs to its plugin. Crewforth's own
+    # plugin copy is recognised through CLAUDE_PLUGIN_ROOT above, which has already turned its path into .claude/.
+    plugins/*) _c="${_c#*"$_m"}"; continue ;;
+    skills/*/*)
+      _n="${_rel#skills/}"; _n="${_n%%/*}"
+      # No manifest (the plugin edition, or an install from before the manifest): every skill here is Crewforth's.
+      if [ -f "$_man" ]; then
+        _mt=$'\n'"$(<"$_man")"$'\n'; _mt="${_mt//$'\r'/}"
+        case "$_mt" in *$'\n'"skills/$_n"$'\n'*) ;; *) _c="${_c#*"$_m"}"; continue ;; esac   # the user's own skill
+      fi ;;
+  esac
+  echo "GUARD: Crewforth's scripts run through Claude Code's Bash tool, not PowerShell — this call was not run." >&2
+  echo "Send the same command with the Bash tool. In PowerShell, 'bash' can resolve to WSL, where these scripts fail." >&2
+  exit 2
 done
-
-# ---- team board: you may not start work nobody knows you started -----------------------------------------------
-# The claim lock already makes it impossible for two people to HOLD the same item — a losing claim is refused in
-# under a second, before any code exists. The hole this closes is the other one: somebody who never claims at all.
-# Caught only at commit time, that is hours of work discovered as duplicated at the end, which is exactly the
-# wasted effort the board exists to prevent. So the first file edit is where it is caught instead.
-#
-# Cost: this runs before EVERY Write/Edit, so it must not shell out. board.sh maintains a one-bit flag file
-# (present == a board exists, it requires a claim, and this user holds none); everything here is a file test.
-[ -n "${CREW_NO_BOARD:-}" ] && exit 0
-GD=".git"
-[ -d "$GD" ] || GD="$(git rev-parse --git-common-dir 2>/dev/null)"   # worktree/submodule: .git is a file
-if [ -n "$GD" ] && [ -f "$GD/crew-board-guard" ]; then
-  case "$FP" in
-    */docs/*|docs/*|*/.claude/*|.claude/*) ;;   # planning notes and kit config are not the work being claimed
-    *)
-      # /crew-board is user-only: name the command Claude can run itself, then the slash form for the user.
-      _gwd="${BASH_SOURCE%/*}"; _gwd="$(cd "$_gwd" 2>/dev/null && pwd)"
-      if [ -f "$_gwd/../.claude-plugin/plugin.json" ]; then _BB="bash \"$_gwd/board.sh\""; else _BB='bash .claude/hooks/board.sh'; fi
-      echo "BOARD GATE: you hold no work item, so nobody else can see what you are starting." >&2
-      echo "Claim one first (Bash tool, not PowerShell): $_BB claim <id> — $_BB status lists what is free, what is blocked and who holds the rest (or the user can type /crew-board claim <id>)." >&2
-      echo "Work that belongs to no item: set CREW_NO_BOARD=1 for this session, and commit it with [chore]." >&2
-      echo "Just claimed one elsewhere? The board view is cached — $_BB sync refreshes it (Bash tool, not PowerShell — or the user can type /crew-board sync)." >&2
-      exit 2 ;;
-  esac
-fi
 exit 0

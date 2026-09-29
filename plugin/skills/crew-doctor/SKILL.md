@@ -6,7 +6,7 @@ metadata:
 ---
 # /crew-doctor
 Verify Crewforth is actually *active* in this project (not just present on disk):
-1. Run `bash .claude/eval/doctor.sh`.
+1. Run `bash .claude/eval/doctor.sh` (Bash tool, not PowerShell).
 2. Read its report. It checks: VERSION present · every hook executable · the required git hooks (pre-commit,
    commit-msg) present · **guard-bash actually blocks a force-push** (catches a hook that is present but neutered) ·
    `core.hooksPath` points at `.claude/hooks` (else the §4.1/§4.2 commit trace + secret/bloat scan never runs) ·

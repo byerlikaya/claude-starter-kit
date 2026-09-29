@@ -1518,6 +1518,36 @@ if [ -f "$ROOT/CLAUDE.md" ]; then
   P_HALF="$(awk 'f{print} /^<!-- KIT:DISCIPLINE-END/{f=1}' "$ROOT/CLAUDE.md")"
   case "$D_HALF" in *'<PROJECT NAME>'*) fail "discipline half swallows the project template" ;; *) pass "discipline half excludes the project template" ;; esac
   case "$D_HALF" in *'Four working principles'*) pass "discipline half carries the four principles" ;; *) fail "discipline half lost the four principles" ;; esac
+  # Where a project's own CLAUDE.md sits against §4 (field: two projects wrote a stricter §4.4 and read the discipline's
+  # as a contradiction), and what a § number points at. Stated on the ladder, and at the top where "project wins" is.
+  case "$D_HALF" in *'A project `CLAUDE.md` can tighten §4, never loosen it (§4.1 names the one exception). The § numbers in this file refer only to this file.'*)
+    pass "the ladder says a project CLAUDE.md can tighten §4, never loosen it, and that § numbers are this file's" ;;
+    *) fail "the ladder lost the project-vs-§4 sentence or the § numbers sentence" ;; esac
+  case "$D_HALF" in *'where they win on conflict; in §4 they can only tighten, never loosen (§4.1 names the one exception).'*) pass "the opening's 'project wins' carries the §4 limit and names where its one exception is" ;;
+    *) fail "the opening says the project wins on conflict without the §4 limit" ;; esac
+  case "$P_HALF" in *'on conflict the rules here win; in DISCIPLINE.md §4 they can only tighten, never loosen (its §4.1 names the one exception).'*)
+    pass "the project template's 'rules here win' carries the §4 limit" ;; *) fail "the project template says its rules win without the §4 limit" ;; esac
+  # The same meaning where the updater and the installed README say it (decided wording: the project wins; in §4 it can
+  # only tighten; the §4.1 trace allowlist chosen at adoption is the one exception). Each is a fixed string, so each
+  # can revert silently — pinned here, with the twin that proves the pin reads the file.
+  _pw_kr="$(cd "$ROOT/.." && pwd)"; _pw_f=""
+  while IFS='|' read -r _pwf _pws; do [ -n "$_pwf" ] || continue
+    grep -qF -- "$_pws" "$_pw_kr/$_pwf" 2>/dev/null || _pw_f="$_pw_f | $_pwf: $_pws"
+  done <<'PWEOF'
+kit/README.md|which win on conflict; in DISCIPLINE.md §4 they can only tighten, never loosen (its §4.1 names the one exception).
+adopt.sh|"on conflict the project's rules win; in DISCIPLINE.md §4 they can only tighten, never loosen (the one exception: the §4.1 trace allowlist you choose at adoption); Crewforth fills gaps (not overridable)"
+adopt.sh|DISCIPLINE.md §4'te proje yalnız sıkılaştırabilir, gevşetemez (tek istisna: kurulumda sizin seçtiğiniz §4.1 iz izin listesi)
+adopt.sh|- On rule conflicts the PROJECT wins (axis-by-axis); in DISCIPLINE.md §4 it can only tighten, never loosen — the one exception is the §4.1 trace allowlist chosen at adoption (decision 3).
+adopt.sh|| 2 | Precedence | $D2 (axis-by-axis; DISCIPLINE.md §4 tighten-only, except the §4.1 trace allowlist of decision 3) |
+PWEOF
+  if [ -f "$_pw_kr/adopt.sh" ]; then
+    [ -z "$_pw_f" ] && pass "the updater (EN, TR, ADR, handover) and the installed README say the project wins, tightens §4 only, and name the §4.1 exception" \
+                    || fail "a 'project wins' statement lost the §4 limit or its exception:$_pw_f"
+    _pwt="$(mktemp)"; sed 's/ (its §4.1 names the one exception)\.$/./' "$ROOT/README.md" > "$_pwt"
+    grep -qF -- 'which win on conflict; in DISCIPLINE.md §4 they can only tighten, never loosen (its §4.1 names the one exception).' "$_pwt" \
+      && fail "the pin twin did not change — the README pin reads nothing" || pass "the pin catches a README that drops the §4.1 exception (twin)"
+    rm -f "$_pwt"
+  else skip scope "the updater's precedence wording is checked in the Crewforth repository (adopt.sh is not installed)"; fi
   case "$P_HALF" in *'<PROJECT NAME>'*) pass "project half carries the project template" ;; *) fail "project half lost the project template" ;; esac
   case "$P_HALF" in *'Four working principles'*) fail "project half duplicates the discipline" ;; *) pass "project half does not duplicate the discipline" ;; esac
 fi
@@ -2132,7 +2162,7 @@ sec "== 6f) always-on token budget =="
 # for that cost, and a gate rather than a reminder — a verbose new description fails the suite instead of
 # quietly taxing every future session. Budgets sit just above the current sizes: raising one is allowed, but
 # only as a deliberate edit here.
-BUDGET_DISC=13741    # RC-1: 13711 → 13741 (+30): "Reply in the user's language even when a skill's text is English" — a Turkish session answered /crew-review in English, because every skill body it had just read was English; the rule is stated nowhere else. evals/cases/reply-language measures it. 5R.3: 13712 → 13711 (the old-name phrases rewritten, net −1). 5d.2 prompt audit: tightened to the measured size (13719 → 13712: format-to-content style line, one reload
+BUDGET_DISC=13986    # 3.0.1: 13741 → 13986 (+245): the ladder states that a project CLAUDE.md can tighten §4, never loosen it — naming §4.1 as the one exception, since adopt may loosen the trace gate — and that § numbers point into this file (two field projects read their stricter §4.4 as a contradiction), the opening's "project wins" carries the same limit, and the context-usage command names the Bash tool (a Windows session ran the scripts in PowerShell). RC-1: 13711 → 13741 (+30): "Reply in the user's language even when a skill's text is English" — a Turkish session answered /crew-review in English, because every skill body it had just read was English; the rule is stated nowhere else. evals/cases/reply-language measures it. 5R.3: 13712 → 13711 (the old-name phrases rewritten, net −1). 5d.2 prompt audit: tightened to the measured size (13719 → 13712: format-to-content style line, one reload
                      # answer, the orphaned background-warning line removed). Before that: 3.0 rename (suffix → crew- prefix): +23 B (23 occurrences), not content — measured 13696 → 13719.
                      # DISCIPLINE.md (the discipline half of CLAUDE.md); before 3.0 the ceiling was 13700, currently 13601. (2026-09-18, a second
                      # +100 B on top of the raise below, and the whole of it went into ONE sentence of §4.6: a commit
@@ -4185,7 +4215,7 @@ if ( cd "$BSD" && git init -q . ) >/dev/null 2>&1; then
   printf '%s\n' $'#1 "Fix\tlogin" C:\\app\r\x01 ok\nsecond' > "$BSD/.git/crew-board-cache"
   date -u +%s > "$BSD/.git/crew-board-cache.at"
   o="$(printf '{}' | CLAUDE_PROJECT_DIR="$BSD" bash "$HOOKS/board-sync.sh" 2>/dev/null)"
-  want='{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"#1 \"Fix\tlogin\" C:\\app\r\u0001 ok\nsecond\nBoard state above is a cached snapshot; bash .claude/hooks/board.sh sync (or the user can type /crew-board sync) refreshes it."}}'
+  want='{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"#1 \"Fix\tlogin\" C:\\app\r\u0001 ok\nsecond\nBoard state above is a cached snapshot; bash .claude/hooks/board.sh sync (Bash tool, not PowerShell — or the user can type /crew-board sync) refreshes it."}}'
   [ "$o" = "$want" ] && pass "board-sync escapes tab, CR, control bytes, quote and backslash exactly as jq does (no jq needed)" \
                      || fail "board-sync JSON differs from jq's for a cache with a tab/CR/control byte — got: ${o:-<silence>}"
   # A CRLF cache: the line-ending CR is dropped on every OS (MSYS gawk drops it on read, BSD awk does not — the
@@ -4254,6 +4284,49 @@ elif [ -f "$PHJ" ]; then
     [ -x "$PLUGIN/hooks/$h" ] && grep -q "$h" "$PHJ" || { fail "plugin hook $h missing or not wired"; break; }
   done
   pass "5 Claude Code hooks shipped + wired in plugin"
+  # The commands the model is told to run, as the plugin edition names them. The file-install path `.claude/hooks/…`
+  # does not exist in a plugin install, so every one exited 127 there (measured: 12 lines in 8 files). build-plugin.sh
+  # rewrites them to the plugin root, which Claude Code substitutes in skill and agent bodies. Three claims: every
+  # rewritten path is a file this edition ships; no shipped script is still named by the file-install path; and one
+  # rewritten command, run the way the Bash tool runs it (root substituted, NOT exported), from an empty project, exits 0.
+  _ppn=0; _ppbad=""
+  while IFS= read -r _pc; do _ppn=$((_ppn+1)); _pf="${_pc#\"\$\{CLAUDE_PLUGIN_ROOT\}/}"; _pf="${_pf%\"}"
+    [ -f "$PLUGIN/$_pf" ] || _ppbad="$_ppbad $_pf"
+  done < <(grep -rhoE '"\$\{CLAUDE_PLUGIN_ROOT\}/(hooks|skills)/[A-Za-z0-9_./-]+\.sh"' "$PLUGIN/agents" "$PLUGIN/skills" --include='*.md' 2>/dev/null | sort -u)
+  _ppleft="$(grep -rhoE 'bash \.claude/(hooks|skills)/[A-Za-z0-9_./-]+\.sh' "$PLUGIN/agents" "$PLUGIN/skills" --include='*.md' 2>/dev/null | sort -u \
+    | while IFS= read -r _pc; do [ -f "$PLUGIN/${_pc#bash .claude/}" ] && printf ' %s' "$_pc"; done)" || true
+  # A shipped script still named by the file-install path is the product defect itself, so it is judged first — an
+  # un-rewritten plugin/ has zero plugin-root commands, and calling that a FIXTURE would blame the test for the bug.
+  # The expected number comes from kit/: every distinct `bash .claude/<x>.sh` there (off a `# full install` line) whose
+  # <x> this edition ships. A fixed floor blamed the build for a legitimate edit that removed a command.
+  _ppw="$(grep -rhE 'bash \.claude/' "$ROOT/agents" "$ROOT/skills" --include='*.md' 2>/dev/null | grep -v '# full install' \
+    | grep -oE 'bash \.claude/[A-Za-z0-9_./-]+\.sh([^A-Za-z0-9_./-]|$)' | sed -E 's/[^A-Za-z0-9_./-]$//' | sort -u \
+    | while IFS= read -r _pc; do [ -f "$PLUGIN/${_pc#bash .claude/}" ] && echo x; done | wc -l | tr -d ' ')"
+  if [ -z "$_ppbad$_ppleft" ] && [ "$_ppn" != "$_ppw" ]; then fail "kit/ names $_ppw script(s) the plugin ships, plugin/ carries $_ppn plugin-root path(s) — run packaging/build-plugin.sh"
+  elif [ -n "$_ppbad$_ppleft" ]; then fail "plugin edition names a script it cannot run —${_ppbad:+ missing:$_ppbad}${_ppleft:+ still the file-install path (127 there):$_ppleft}"
+  else pass "plugin edition: all $_ppn of $_ppw script paths the model is told to run resolve under the plugin root, none left on .claude/"; fi
+  _ppd="$(mktemp -d)"; mkdir -p "$_ppd/proj"
+  printf '%s\n' '{"type":"assistant","isSidechain":false,"message":{"usage":{"input_tokens":1,"cache_read_input_tokens":2000,"cache_creation_input_tokens":1,"output_tokens":1}}}' > "$_ppd/t.jsonl"
+  _ppc="$(grep -rhoE 'bash "\$\{CLAUDE_PLUGIN_ROOT\}/hooks/context-usage\.sh"' "$PLUGIN/skills" --include='*.md' 2>/dev/null | head -1)"
+  if [ -z "$_ppc" ] && [ -n "$_ppleft" ]; then fail "no plugin-root context-usage command to run — plugin/ still names it by the file-install path (127 in a plugin install)"
+  elif [ -z "$_ppc" ]; then fail "FIXTURE: no rewritten context-usage command in plugin/skills to run"
+  else
+    _ppc="${_ppc//\$\{CLAUDE_PLUGIN_ROOT\}/$PLUGIN}"
+    _pprc="$(cd "$_ppd/proj" && env -u CLAUDE_PLUGIN_ROOT bash -c "$_ppc \"$_ppd/t.jsonl\"" >/dev/null 2>&1; echo "$?")"
+    [ "$_pprc" = 0 ] && pass "a rewritten plugin command runs from an empty project with the root substituted (rc 0)" \
+                     || fail "the rewritten plugin command exited $_pprc from an empty project: $_ppc"
+  fi
+  rm -rf "$_ppd"
+  # board.sh names ITSELF in what it prints, and in the plugin edition that must be its absolute path. Run by a bare
+  # name from its own directory (`cd hooks && bash board.sh`), `${BASH_SOURCE%/*}` is the name itself, the `cd` failed,
+  # and it printed the file-install path — 127 in a plugin install (measured). A plugin-shaped copy in an empty repo.
+  _bsd="$(mktemp -d)"; mkdir -p "$_bsd/p/hooks" "$_bsd/p/.claude-plugin"; : > "$_bsd/p/.claude-plugin/plugin.json"
+  cp "$HOOKS/board.sh" "$_bsd/p/hooks/"; ( cd "$_bsd/p" && git init -q . ) >/dev/null 2>&1
+  _bsb="$(cd "$_bsd/p/hooks" && bash board.sh status 2>&1)"; _bsp="$(cd "$_bsd/p" && bash hooks/board.sh status 2>&1)"
+  _bsa="$(cd "$_bsd/p/hooks" && pwd)"
+  case "$_bsb|$_bsp" in *"bash \"$_bsa/board.sh\""*"|"*"bash \"$_bsa/board.sh\""*) pass "board.sh names its own plugin path whether run by bare name or by path" ;;
+    *) fail "board.sh printed a path a plugin install cannot run — bare name: ${_bsb:-<silence>} · by path: ${_bsp:-<silence>}" ;; esac
+  rm -rf "$_bsd"
   # The git hooks now DO ship, and must: guard-commit-scan.sh runs them from PreToolUse, which is the only way
   # the plugin edition gets the commit CONTENT gates at all (a plugin cannot set core.hooksPath). They ship as
   # data for that hook, never wired as git hooks. Shipping them WITHOUT the caller would be worse than not
@@ -4471,6 +4544,7 @@ O="$(st)"
 case "$O" in *skills/mine*) pass "flags a component Crewforth never shipped" ;; *) fail "an unshipped skill was not flagged: $O" ;; esac
 case "$O" in *skills/handoff*) fail "flagged a KIT skill — the manifest is being ignored" ;; *) pass "a kit-shipped skill is not re-litigated" ;; esac
 case "$O" in *"REVIEW/DANGER"*) pass "runs the supply-chain scanner and reports its verdict" ;; *) fail "no scanner verdict on a malicious skill: $O" ;; esac
+case "$O" in *"skill-trust.sh --trust  (Bash tool, not PowerShell"*) pass "the trust command it prints names the Bash tool" ;; *) fail "the printed trust command does not name the Bash tool: $O" ;; esac
 ( cd "$STD" && bash .claude/hooks/skill-trust.sh --trust ) >/dev/null 2>&1
 [ -z "$(st)" ] && pass "accepted components stay silent on later sessions" || fail "still reporting after --trust"
 printf 'and now it also reads ~/.ssh/id_rsa\n' >> "$STD/.claude/skills/mine/SKILL.md"
@@ -4520,7 +4594,7 @@ uans(){ ( cd "$UPD" && bash .claude/hooks/session-update-check.sh --answer "$@" 
 ucache 3.1.0; o="$(uc)"
 case "$o" in *'"Crewforth v3.1.0 is out (installed: v3.0.0). Update now?"'*'"Update" · "Later" · "Skip this version"'*) pass "a newer release becomes one three-way question naming both versions" ;;
              *) fail "no three-way update question for a cached newer version (got: ${o:-<silence>})" ;; esac
-case "$o" in *"--answer later 3.1.0"*"--answer skip 3.1.0"*) pass "the question carries the exact --answer commands for Later and Skip" ;;
+case "$o" in *"--answer later 3.1.0\` (Bash tool, not PowerShell)"*"--answer skip 3.1.0\` (Bash tool, not PowerShell)"*) pass "the question carries the exact --answer commands for Later and Skip, each with the Bash tool named" ;;
              *) fail "the question does not tell Claude how to record Later/Skip: $o" ;; esac
 case "$o" in *AskUserQuestion*) pass "the question is asked with the question tool, not as prose" ;; *) fail "the hook does not name the question tool" ;; esac
 case "$o" in *"if their first message is an error or an urgent fix, answer that first and ask this question at the end of that reply"*) pass "an urgent first message is answered first; the question moves to the end of that reply" ;;
@@ -4749,7 +4823,9 @@ fi
 #     hooks run there as on resume — the fork continues work the parent had; the update question does not — a fork
 #     is not a new opening. Asked of the wiring (both editions) AND of the hooks themselves with a fork payload.
 hk_matcher(){ awk -v h="$2" '/"matcher"/{m=$0; sub(/.*"matcher"[[:space:]]*:[[:space:]]*"/,"",m); sub(/".*/,"",m)} index($0,h){print m; exit}' "$1"; }
-FK_FILES="$ROOT/settings.json"; FKR="$(git -C "$ROOT" rev-parse --show-toplevel 2>/dev/null || true)"
+# The plugin copy is Crewforth's only in this repository: an installed project may have a plugin/ of its own, and
+# reading that one turned the project's smoke red (review of 3.0.1).
+FK_FILES="$ROOT/settings.json"; FKR=""; [ "$IS_KIT" = 1 ] && FKR="$(cd "$ROOT/.." && pwd)"
 [ -n "$FKR" ] && [ -f "$FKR/plugin/hooks/hooks.json" ] && FK_FILES="$FK_FILES $FKR/plugin/hooks/hooks.json"
 for _ff in $FK_FILES; do
   _fl="${_ff##*/}"
@@ -5624,7 +5700,7 @@ if [ -f "$GR" ]; then
                   *) fail "doctor did not report on the shell matcher" ;; esac
   sed 's/"Bash|PowerShell"/"Bash"/' "$DTMP/.claude/settings.json" > "$DTMP/s.tmp" && mv "$DTMP/s.tmp" "$DTMP/.claude/settings.json"
   DOUT2="$(cd "$DTMP" && CREW_LANG=en bash .claude/eval/doctor.sh 2>/dev/null)"
-  case "$DOUT2" in *"watch only Bash"*) pass "doctor flags a pre-2.5.0 Bash-only matcher as a failure" ;;
+  case "$DOUT2" in *"watch only Bash"*"DOCTOR: "*"issue(s)"*) pass "doctor flags a pre-2.5.0 Bash-only matcher as a failure, and the verdict counts it" ;;
                    *) fail "doctor stayed quiet on a Bash-only matcher — the gap is invisible to an upgrader" ;; esac
   grep -q 'command not found' "$DTMP/err" && fail "doctor.sh calls a helper before it is defined (see stderr)" \
                                           || pass "doctor.sh runs with no undefined-helper errors"
@@ -5811,6 +5887,183 @@ $PSOK
 PSEOF2
 [ -z "$PSFP" ] && pass "everyday PowerShell stays allowed ($PSM cases, no false positives)" \
                || fail "PowerShell false positive(s):$PSFP"
+
+sec "== 12b) Crewforth's own scripts sent through PowerShell go back to the Bash tool =="
+# Field session: six PowerShell attempts at `bash .claude/hooks/…`, every one an error from WSL's bash, while the same
+# commands through the Bash tool exit 0. guard-powershell.sh stops that one call (rc 2) and names the Bash tool.
+# Each case is a PAIR on one line, `positive ||| negative`: the negative differs from its positive only where the rule
+# looks, so a JSON escape that went wrong in the fixture shows up as a positive that did not block — a mis-escaped
+# negative alone would pass silently, because an unreadable payload is let through. A negative must also print NOTHING.
+GPS="$HOOKS/guard-powershell.sh"
+gpsj(){ printf '{"tool_name":"%s","tool_input":{"command":"%s"},"permission_mode":"default"}' "$1" "$2"; }
+gpsrc(){ gpsj "$1" "$2" | bash "$GPS" >/dev/null 2>&1; echo "$?"; }
+GPSN=0; GPSF=""
+while IFS= read -r _l; do [ -z "$_l" ] && continue
+  _pos="${_l%% ||| *}"; _neg="${_l#* ||| }"
+  _rp="$(gpsrc PowerShell "$_pos")"; _on="$(gpsj PowerShell "$_neg" | bash "$GPS" 2>&1)"; _rn=$?
+  [ "$_rp" = 2 ] || GPSF="$GPSF | rc $_rp (want 2): $_pos"
+  { [ "$_rn" = 0 ] && [ -z "$_on" ]; } || GPSF="$GPSF | rc $_rn${_on:+ + output} (want 0, silent): $_neg"
+  GPSN=$((GPSN+1))
+done <<'GPSEOF'
+bash .claude/hooks/context-usage.sh --verbose ||| Get-Content .claude/hooks/context-usage.sh
+bash .claude/hooks/context-usage.sh --verbose 2>&1 | Select-Object -Last 5 ||| Select-String -Pattern bash -Path .claude/hooks/context-usage.sh
+& bash .claude/hooks/board.sh status ||| & mybash .claude/hooks/board.sh status
+& bash.exe .claude/hooks/board.sh status ||| & bashful .claude/hooks/board.sh status
+if (Test-Path .\\.claude\\hooks\\x.sh) { bash .claude/hooks/x.sh --verbose } ||| Test-Path .\\.claude\\hooks\\x.sh
+bash .claude/hooks/board.sh 2>&1 | Select-Object -First 15 ||| git config --get core.hooksPath
+& \"C:\\Program Files\\Git\\bin\\bash.exe\" .claude/hooks/x.sh ||| & \"C:\\Program Files\\Git\\bin\\bash.exe\" scripts/build.sh
+bash \"C:\\Users\\John Doe\\repo\\.claude\\hooks\\board.sh\" status ||| bash \"C:\\Users\\John Doe\\repo\\scripts\\board.sh\" status
+bash .claude\\hooks\\x.sh ||| Get-ChildItem .claude\\hooks
+bash ./.claude/hooks/board.sh status ||| bash ./scripts/board.sh status
+bash C:\\repo\\.claude\\hooks\\board.sh ||| bash C:\\repo\\scripts\\board.sh
+bash .claude/eval/doctor.sh ||| rg -n bash .claude/eval/
+wsl bash .claude/hooks/board.sh status ||| Write-Output \"Next: bash .claude/hooks/board.sh status\"
+cmd /c \"bash .claude\\hooks\\board.sh status\" ||| git commit -m \"docs: bash .claude/hooks/board.sh runs in the Bash tool\"
+Start-Process bash -ArgumentList '.claude/hooks/x.sh' ||| Start-Process notepad -ArgumentList '.claude/hooks/x.sh'
+bash .claude/skills/automode-policy/scripts/check.sh ||| bash .claude/skills/automode-policy/README.md
+bash .claude/studio/ensure-node.sh --explain ||| Get-Content .claude/studio/ensure-node.sh
+GPSEOF
+[ "$GPSN" -ge 17 ] || fail "FIXTURE: only $GPSN case pairs were read — the heredoc broke, not the hook"
+[ -z "$GPSF" ] && pass "PowerShell: $GPSN shapes of Crewforth's scripts refused, their $GPSN negative twins untouched and silent" \
+               || fail "guard-powershell.sh:$GPSF"
+_gpe="$(gpsj PowerShell 'bash .claude/hooks/board.sh status' | bash "$GPS" 2>&1 >/dev/null)"
+case "$_gpe" in *"Bash tool"*) pass "the refusal names the Bash tool" ;; *) fail "the refusal does not name the Bash tool: ${_gpe:-<silence>}" ;; esac
+# Plugin edition: scripts named by absolute path under the plugin root, which the harness exports to hooks — in any of
+# the spellings Windows produces (native `C:\`, and Git Bash's `/c/`, which is what board.sh prints from `pwd`).
+_gpr='C:\Users\u\.claude\plugins\cache\crewforth\crewforth\3.0.1'; _gpf=""
+for _gpc in 'bash \"C:\\Users\\u\\.claude\\plugins\\cache\\crewforth\\crewforth\\3.0.1\\hooks\\board.sh\" status' \
+            'bash \"/c/Users/u/.claude/plugins/cache/crewforth/crewforth/3.0.1/hooks/board.sh\" sync'; do
+  _r1="$(gpsj PowerShell "$_gpc" | CLAUDE_PLUGIN_ROOT="$_gpr" bash "$GPS" >/dev/null 2>&1; echo "$?")"
+  _r0="$(gpsj PowerShell "$_gpc" | env -u CLAUDE_PLUGIN_ROOT bash "$GPS" >/dev/null 2>&1; echo "$?")"
+  [ "$_r1" = 2 ] && [ "$_r0" = 0 ] || _gpf="$_gpf | rc $_r1 with the root (want 2), rc $_r0 without (want 0): $_gpc"
+done
+[ -z "$_gpf" ] && pass "plugin edition: a script under the plugin root is refused in both Windows spellings; with no plugin root the same path passes" \
+               || fail "plugin-root case:$_gpf"
+# Scope: a skill the install manifest does not list is the user's own — its scripts are not Crewforth's to redirect.
+_gpd="$(mktemp -d)"; mkdir -p "$_gpd/.claude/hooks"; cp "$GPS" "$_gpd/.claude/hooks/"; printf 'skills/automode-policy\n' > "$_gpd/.claude/kit-manifest.txt"
+_gpk="$(gpsj PowerShell 'bash .claude/skills/automode-policy/scripts/check.sh' | ( cd "$_gpd" && bash .claude/hooks/guard-powershell.sh >/dev/null 2>&1 ); echo "$?")"
+_gpu="$(gpsj PowerShell 'bash .claude/skills/my-own/scripts/run.sh' | ( cd "$_gpd" && bash .claude/hooks/guard-powershell.sh >/dev/null 2>&1 ); echo "$?")"
+rm -rf "$_gpd"
+[ "$_gpk" = 2 ] && [ "$_gpu" = 0 ] && pass "a listed skill's script is refused (rc 2), a skill the manifest does not list is the user's and passes (rc 0)" \
+  || fail "manifest scope: listed skill rc $_gpk (want 2), the user's own skill rc $_gpu (want 0)"
+# Never on the Bash tool: the same command there is exactly what the docs tell the model to run.
+[ "$(gpsrc Bash 'bash .claude/hooks/board.sh status')" = 0 ] && pass "a Bash-tool payload is never refused by guard-powershell.sh" \
+  || fail "guard-powershell.sh refused a Bash-tool payload — it would block the commands the docs point to"
+# Wired once, and only on PowerShell: a second wiring under Bash would cost a process on every Bash call. Every line
+# naming the hook is read, not the first. The plugin copy is Crewforth's only in this repository.
+gps_wired(){ awk -v h=guard-powershell.sh '/"matcher"/{m=$0; sub(/.*"matcher"[[:space:]]*:[[:space:]]*"/,"",m); sub(/".*/,"",m)} index($0,h){print m}' "$1"; }
+_gpw_f="$ROOT/settings.json"; [ "$IS_KIT" = 1 ] && _gpw_f="$_gpw_f $(cd "$ROOT/.." && pwd)/plugin/hooks/hooks.json"
+for _gf in $_gpw_f; do
+  [ -f "$_gf" ] || { fail "${_gf##*/} is missing — nothing wires guard-powershell.sh"; continue; }
+  _gm="$(gps_wired "$_gf" | tr '\n' ' ' | sed 's/ $//')"
+  [ "$_gm" = PowerShell ] && pass "${_gf##*/}: guard-powershell.sh is wired exactly once, under the PowerShell matcher" \
+    || fail "${_gf##*/}: guard-powershell.sh is wired under '${_gm:-<nothing>}' — it must be exactly one PowerShell entry"
+done
+
+sec "== 12c) every command the model is told to run says: the Bash tool, not PowerShell =="
+# SCOPE, one rule (decided): Crewforth's own scripts — every `.sh` the payload ships, read from the payload itself, so a
+# script a later version adds anywhere is covered without editing this list. WHERE: every text the model reads — the
+# discipline, AGENT_TEMPLATE, agents, skills (markdown), and what the scripts and installers print (shell).
+# Markdown unit: the paragraph, ended by a blank line, a frontmatter fence, or the start of a list item; a code fence
+# belongs to the paragraph right above it. Shell unit: the line — a command quoted as TEXT (at its own `$( )` level;
+# executed or piped is code, not text), or the line that expands a variable holding one (`X='bash …'`) — the command
+# is often stored in one place and printed in another. A file that defines pass() and fail() is a test harness: its
+# strings are fixtures for other code, not output, and it is not scanned.
+# Checked in the Crewforth repository, where these texts are written: an install carries the same bytes plus the
+# user's own files, which the rule does not cover.
+if [ "$IS_KIT" != 1 ]; then
+  skip scope "Bash-tool inventory runs in the Crewforth repository — an installed project also holds the user's own skills and scripts"
+else
+  BT_PH='Bash tool, not PowerShell'
+  BT_SET="$(cd "$ROOT" && find . -name '*.sh' -type f | sed 's#^\./##' | LC_ALL=C sort)"
+  BT_CMD='bash[[:space:]]+("?\$\{?(CLAUDE_PROJECT_DIR|CLAUDE_PLUGIN_ROOT)\}?"?/|\./)?\.claude/[A-Za-z0-9_./-]+\.sh'
+  BT_PLG='bash[[:space:]]+"?\$\{CLAUDE_PLUGIN_ROOT\}/[A-Za-z0-9_./-]+\.sh'
+  bt_md(){ # $1 = markdown -> offending "file:line: text"; stderr = number of command lines seen
+    BT_SET="$BT_SET" BT_CMD="$BT_CMD" BT_PLG="$BT_PLG" BT_PH="$BT_PH" awk -v f="$1" '
+      BEGIN { ns = split(ENVIRON["BT_SET"], a, "\n"); for (i = 1; i <= ns; i++) S[a[i]] = 1 }
+      function cmdline(s,   r, m, hit) { hit = 0
+        while (match(s, ENVIRON["BT_CMD"]) || match(s, ENVIRON["BT_PLG"])) {
+          m = substr(s, RSTART, RLENGTH); s = substr(s, RSTART + RLENGTH)
+          r = m; sub(/^.*(\.claude|CLAUDE_PLUGIN_ROOT\})\//, "", r); if (r in S) hit = 1 }
+        return hit }
+      function flush() { if (hit != "" && index(blk, ENVIRON["BT_PH"]) == 0) printf "%s", hit; blk = ""; hit = "" }
+      FNR == 1 && /^---[[:space:]]*$/ { fm = 1; next }
+      fm { if (/^---[[:space:]]*$/) fm = 0; next }
+      /^[[:space:]]*$/ && !fence { pend = 1; next }
+      { isf = ($0 ~ /^[[:space:]]*```/)
+        item = !fence && ($0 ~ /^[[:space:]]{0,3}([0-9]+\.|[-*])[[:space:]]/)
+        if ((pend && !(isf && !fence)) || item) flush(); pend = 0
+        if (isf) fence = !fence
+        blk = blk "\n" $0
+        if (cmdline($0)) { hit = hit f ":" FNR ": " $0 "\n"; n++ } }
+      END { flush(); print n + 0 > "/dev/stderr" }' "$1"; }
+  bt_sh(){ # $1 = shell file -> offending "file:line: text"; stderr = number of lines checked
+    BT_SET="$BT_SET" BT_CMD="$BT_CMD" BT_PH="$BT_PH" awk -v f="$1" '
+      BEGIN { ns = split(ENVIRON["BT_SET"], a, "\n"); for (i = 1; i <= ns; i++) S[a[i]] = 1 }
+      # quoted(p): is position p of line L inside a quote at its own $( ) level?
+      function quoted(L, p,   i, c, d, sq, dq, ss, ds) { d = 0; sq = 0; dq = 0
+        for (i = 1; i < p; i++) { c = substr(L, i, 1)
+          if (sq) { if (c == "\047") sq = 0; continue }
+          if (c == "\\") { i++; continue }
+          if (c == "$" && substr(L, i + 1, 1) == "(") { ss[++d] = sq; ds[d] = dq; sq = 0; dq = 0; i++; continue }
+          if (c == ")" && !dq && d > 0) { sq = ss[d]; dq = ds[d]; d--; continue }
+          if (c == "\"") dq = !dq; else if (c == "\047" && !dq) sq = 1 }
+        return sq || dq }
+      /^[[:space:]]*#/ { next }
+      { L = $0; s = L; off = 0; text = 0; carrier = ""
+        while (match(s, ENVIRON["BT_CMD"])) {
+          m = substr(s, RSTART, RLENGTH); p = off + RSTART; s = substr(s, RSTART + RLENGTH); off = p + RLENGTH - 1
+          r = m; sub(/^.*\.claude\//, "", r); if (!(r in S)) continue
+          if (!quoted(L, p)) continue
+          pre = substr(L, 1, p - 1)
+          if (match(pre, /[A-Za-z_][A-Za-z0-9_]*=["\047]$/)) { v = substr(pre, RSTART, RLENGTH - 2); C[v] = 1; carrier = v }
+          else text = 1 }
+        if (text) { n++; if (index(L, ENVIRON["BT_PH"]) == 0) print f ":" FNR ": " L }
+        else if (carrier == "") { for (v in C) if (index(L, "$" v) || index(L, "${" v "}")) { n++; if (index(L, ENVIRON["BT_PH"]) == 0) print f ":" FNR ": " L; break } } }
+      END { print n + 0 > "/dev/stderr" }' "$1"; }
+  BT_MISS=""; _btn=0; _btf=0; _bte=0; _BTT="$(mktemp)"
+  { for _bf in "$ROOT/CLAUDE.md" "$ROOT/AGENT_TEMPLATE.md" "$ROOT"/agents/*.md; do [ -f "$_bf" ] && printf '%s\n' "$_bf"; done
+    find "$ROOT/skills" -name '*.md' -type f 2>/dev/null | LC_ALL=C sort; } > "$_BTT"
+  while IFS= read -r _bf; do _btf=$((_btf+1))
+    _o="$(bt_md "$_bf" 2>"$_BTT.n")"; _btn=$((_btn + $(cat "$_BTT.n")))
+    [ -n "$_o" ] && BT_MISS="$BT_MISS
+$_o"
+  done < "$_BTT"
+  # The independent count the markdown number must equal: a plain grep of the same files for the same command shape.
+  _bte="$(while IFS= read -r _bf; do grep -hoE "$BT_CMD|$BT_PLG" "$_bf" 2>/dev/null; done < "$_BTT" \
+    | sed -E 's#^.*(\.claude|CLAUDE_PLUGIN_ROOT\})/##' | while IFS= read -r _r; do printf '%s\n' "$BT_SET" | grep -qxF "$_r" && echo x; done | wc -l | tr -d ' ')"
+  _bts=0; _btsf=0; _btr="$(cd "$ROOT/.." && pwd)"
+  for _bf in $(cd "$ROOT" && find . -name '*.sh' -type f | LC_ALL=C sort | sed "s#^\./#$ROOT/#") "$_btr/adopt.sh" "$_btr/start.sh"; do
+    [ -f "$_bf" ] || continue
+    grep -qE '^[[:space:]]*pass\(\)[[:space:]]*\{' "$_bf" && grep -qE '^[[:space:]]*fail\(\)[[:space:]]*\{' "$_bf" && continue   # a test harness
+    _btsf=$((_btsf+1)); _o="$(bt_sh "$_bf" 2>"$_BTT.n")"; _bts=$((_bts + $(cat "$_BTT.n")))
+    [ -n "$_o" ] && BT_MISS="$BT_MISS
+$_o"
+  done
+  rm -f "$_BTT" "$_BTT.n"
+  if [ "$_btf" -lt 50 ] || [ "$_btn" -lt 15 ] || [ "$_bts" -lt 8 ]; then
+    fail "FIXTURE: the Bash-tool inventory read $_btf markdown file(s), $_btn markdown and $_bts shell command line(s) — the scan broke, not the text"
+  elif [ "$_btn" != "$_bte" ]; then
+    fail "the markdown scan saw $_btn command line(s), a plain grep of the same files finds $_bte — the scan is skipping some"
+  elif [ -n "$BT_MISS" ]; then
+    fail "a command the model is told to run does not say '$BT_PH' in its paragraph (markdown) or on its line (shell):$(printf '%s\n' "$BT_MISS" | sed '/^$/d' | head -n 8 | sed 's/^/\n       /')"
+  else
+    pass "every one of Crewforth's $(printf '%s\n' "$BT_SET" | grep -c .) shipped scripts, wherever the model is told to run it, says '$BT_PH': $_btn of $_bte markdown line(s) in $_btf files, $_bts printed line(s) in $_btsf script(s)"
+  fi
+  # Must-fail twins, on copies: the phrase removed from one markdown paragraph, one list item beside a kept one, one
+  # printed hook line, and a variable-carried command printed without it.
+  _btt="$(mktemp -d)"
+  sed 's/ (Bash tool, not PowerShell)//' "$ROOT/skills/crew-doctor/SKILL.md" > "$_btt/a.md"
+  sed 's/ (Bash tool, not PowerShell) and show/ and show/' "$ROOT/skills/crew-update/SKILL.md" > "$_btt/b.md"
+  sed 's/(Bash tool, not PowerShell; it also/(it also/' "$HOOKS/skill-trust.sh" > "$_btt/c.sh"
+  sed 's/ (Bash tool, not PowerShell — or the user can type \/crew-board sync)/ (or the user can type \/crew-board sync)/' "$HOOKS/guard-write.sh" > "$_btt/d.sh"
+  _bt1="$(bt_md "$_btt/a.md" 2>/dev/null)"; _bt2="$(bt_md "$_btt/b.md" 2>/dev/null)"
+  _bt3="$(bt_sh "$_btt/c.sh" 2>/dev/null)"; _bt4="$(bt_sh "$_btt/d.sh" 2>/dev/null)"
+  [ -n "$_bt1" ] && [ -n "$_bt2" ] && [ -n "$_bt3" ] && [ -n "$_bt4" ] \
+    && pass "the inventory catches a removed phrase in a paragraph, in one list item of several, on a printed line, and where a stored command is printed (4 twins)" \
+    || fail "the inventory missed a removed phrase — paragraph:${_bt1:+ caught} list item:${_bt2:+ caught} printed:${_bt3:+ caught} stored:${_bt4:+ caught}"
+  rm -rf "$_btt"
+fi
 sec "== 13) pre-commit cost — the gate people route around is the one that is slow =="
 # Measured on a 373-file merge: the old file loop spawned ~7 processes per file (three `printf | grep` pairs and
 # a `git cat-file`), 2,643 in total. At the 62-135 ms a Git Bash process was measured to cost on a Windows 11
