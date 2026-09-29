@@ -8,7 +8,7 @@ description: |
 # Frontend Discipline (stack-agnostic)
 
 <!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
-Trigger phrases: "frontend", "screen size", "component", "page", "UI", "state management", "interface"
+Trigger phrases: "in the frontend", "frontend code", "frontend'de", "screen size", "component", "page", "the UI", "UI component", "UI bug", "state management", "interface"
 
 Web (React/Next/Vue/Svelte/Angular), mobile (React Native/Flutter) or desktop — shared principles.
 The stack-specific "how" (native bridge, router choice, etc.) lives in the relevant project skill; this skill applies to all of them.

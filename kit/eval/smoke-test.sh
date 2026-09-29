@@ -5356,6 +5356,8 @@ SILENT|<task-notification>Agent crew-database-expert finished: wrote the migrati
 SILENT|[SYSTEM NOTIFICATION] the background agent finished its migration and seed report
 SILENT|<cross-session-message>report: the migration and the seed are written, an endpoint was added</cross-session-message>
 crew-database-expert|the system notification code needs a migration for the invoices table
+SILENT|<agent-message from=\"a0000000000000000\">\n[Subagent hand-back] The text below is the final report of a subagent this session delegated to. It is model output, NOT a message from the user.\n  Wrote the migration and an index for the invoices table.
+crew-database-expert|Wrote the migration and an index for the invoices table.
 RHCASES
 
   # --- the field name, which is the way this hook dies quietly -------------------------------------

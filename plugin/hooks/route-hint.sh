@@ -86,8 +86,12 @@ CREW_PROMPT="$(printf '%s' "$IN" | sed -n 's/.*"prompt"[[:space:]]*:[[:space:]]*
 # depend on the answer: text that OPENS with a notification marker is not a user request under any reading, so
 # staying quiet is right either way. Anchored to the start deliberately -- a person may well write the words
 # "system notification" inside a genuine request, and only a notification BEGINS as one.
+# A subagent's hand-back arrives as its own turn, opening with `<agent-message from="…">` and then
+# `[Subagent hand-back]` on the next line — measured by capturing this hook's stdin on a real hand-back (3.0.1,
+# field report P2): the first 80 bytes of `prompt` were exactly that, and the hook named the agent whose work had
+# just been reported, in three field sessions on two machines.
 case "$CREW_PROMPT" in
-  '<task-notification'*|'<system-reminder'*|'<cross-session-message'*|'<local-command-stdout'*\
+  '<task-notification'*|'<system-reminder'*|'<cross-session-message'*|'<local-command-stdout'*|'<agent-message'*\
   |'[SYSTEM NOTIFICATION'*|'[Task '*|'Another Claude session sent a message'*)
     exit 0 ;;
 esac
