@@ -883,7 +883,49 @@ _hp_blocks() {  # $1 = command -> 0 when it writes core.hooksPath or drops [core
 # blocked so doctor's re-arm fix still works (a chmod -x disable is caught by doctor, not here). Honest scope:
 # the shell is Turing-complete, so this is defence-in-depth — guard-write.sh covers the Write/Edit tools (the
 # model's natural path to a file), and install-time read-only hook files would be the airtight layer.
-GATE='\.(claude/(hooks|settings\.json|DISCIPLINE\.md)|git/hooks)'
+GATE='\.(claude/(hooks|settings\.json|DISCIPLINE\.md|eval/lib/crew-env\.sh)|git/hooks)'
+# eval/lib/crew-env.sh is on the list because the gates SOURCE it on every call (guard-bash, guard-write, the board
+# hooks): a file a gate executes is part of the gate. Measured before it was added: overwrite it with `exit 0` and
+# `rm -rf /` passed guard-bash with rc 0, in both editions (3.0.1 review).
+#
+# THE PLUGIN EDITION'S GATE FILES. There the gate scripts and their wiring live under the plugin root, not under
+# .claude/, and none of the rules below matched them: `rm <plugin>/hooks/guard-bash.sh` returned rc 0 while
+# `rm .claude/hooks/guard-bash.sh` returned rc 2 (measured, 3.0.1 review). Same rule for both: anything under
+# <root>/hooks/ (the scripts, hooks.json, the blocklists, the git hooks) and <root>/.claude-plugin/ (the manifest), and
+# the sourced crew-env.sh. The root comes from CLAUDE_PLUGIN_ROOT, which the harness exports to plugin hooks; the file
+# install has none, and its gates are the .claude/ ones above.
+# MATCHED ON THE PART EVERY SPELLING KEEPS. A first version matched the whole absolute root, and review walked straight
+# past it: `~/…`, `$HOME/…`, `/Users/*/…`, `//`, `/./`, `R/../3.0.1/…` and a quoted version folder all spell the same
+# file without spelling that prefix (each measured: rc 0, file gone). In Claude Code's plugin cache
+# (…/plugins/cache/<marketplace>/<plugin>/<version>) the root is recognised by its <marketplace>/<plugin> tail, with
+# any version after it — so every cached version of this plugin is covered as well. A root outside the cache (a
+# `--plugin-dir` checkout) has no such tail and is matched as a whole path, with either slash and with or without its
+# drive (`C:\…`, `C:/…`, `/c/…`).
+_PGATE=""; _PLNK=""
+if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+  _pgesc(){ local o="$1" m                      # $1 = text -> _PGE: ERE, metacharacters escaped, `/` as either slash
+    for m in '.' '[' ']' '(' ')' '*' '+' '?' '{' '}' '|' '^' '$'; do o="${o//"$m"/\\$m}"; done
+    _PGE="${o//\//[/\\\\]}"; }
+  _pr="${CLAUDE_PLUGIN_ROOT//\\//}"; _pr="${_pr%/}"
+  case "$_pr" in [A-Za-z]:/*) _pr="${_pr:2}" ;; esac
+  _S='[/\\]+'; _Q="[\"']?"; _GF="(hooks|\\.claude-plugin|eval${_S}lib${_S}crew-env\\.sh)"; _END="([/\\\\\"'[:space:];&|)]|\$)"
+  case "$_pr" in
+    */[Pp][Ll][Uu][Gg][Ii][Nn][Ss]/[Cc][Aa][Cc][Hh][Ee]/*/*/*)
+      _pn="${_pr%/*}"; _pmk="${_pn%/*}"; _pmk="${_pmk##*/}"; _pn="${_pn##*/}"
+      _pgesc "$_pmk"; _pmk="$_PGE"; _pgesc "$_pn"; _pn="$_PGE"
+      _PT="${_Q}${_pmk}${_Q}${_S}(\\.${_S})*${_Q}${_pn}${_Q}"                       # <marketplace>/<plugin>
+      _PGATE="(^|[^A-Za-z0-9_.-])${_PT}${_S}[^;&|[:space:]]*[/\\\\]${_Q}${_GF}${_END}"
+      # A link whose target ENDS at the tail, the version or a gate folder puts the rest of the path out of sight.
+      _PLNK="[^;&|[:space:]]*(^|[^A-Za-z0-9_.-])${_Q}${_pmk}${_Q}(${_S}(\\.${_S})*${_Q}${_pn}${_Q}(${_S}[^;&|[:space:]/\\\\]+(${_S}${_Q}${_GF})?)?)?[/\\\\]*${_Q}" ;;
+    *)
+      if [ "${#_pr}" -gt 1 ]; then
+        _pgesc "$_pr"
+        _PGATE="(^|[[:space:]\"'=]|[A-Za-z]:|(^|[[:space:]\"'=])[/\\\\][A-Za-z])${_PGE}[/\\\\]+${_Q}${_GF}${_END}"   # at a token start, after a drive, or after Git Bash's /c
+        _PLNK="[^;&|[:space:]]*${_PGE}([/\\\\]+${_Q}${_GF})?[/\\\\]*${_Q}"
+      fi ;;
+  esac
+  [ -n "$_PGATE" ] && GATE="(${GATE}|${_PGATE})"
+fi
 # DISCIPLINE.md joined the list because it IS the text of §4.1-§4.5: the gates enforce those rules, so a
 # writable rulebook means the rules can be emptied without touching a single gate. It needs no change to
 # the prefilter below — the file only ever lives under `.claude/`, which already carries the word `claude`.
@@ -917,7 +959,9 @@ case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false 
 # argument (`.claude`, `../.claude`, `/p/.git`), so linking to something inside the tree — `ln -s
 # .claude/skills c` — is untouched here and handled at write time instead. `.git` needs its own prefilter:
 # the one above only knows `claude` and `hooks`.
-case "$CMD" in *[Ll][Nn][[:space:]]*|*[Mm][Kk][Ll][Ii][Nn][Kk]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE '(^|[;&|[:space:]])(ln|mklink)[^;&|]*[[:space:]]([^;&|[:space:]]*/)?\.(claude|git)([[:space:]]|$)' && block "symlink pointing at the config directory (a gate path in two steps)" "4.5" tamper
+# The plugin edition's root is the same kind of target: `ln -s <root> cfg`, then `cfg/hooks/guard-bash.sh`.
+_LNT='([^;&|[:space:]]*/)?\.(claude|git)'; [ -n "$_PLNK" ] && _LNT="(${_LNT}|${_PLNK})"
+case "$CMD" in *[Ll][Nn][[:space:]]*|*[Mm][Kk][Ll][Ii][Nn][Kk]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE "(^|[;&|[:space:]])(ln|mklink)[^;&|]*[[:space:]]${_LNT}([[:space:]]|\$)" && block "symlink pointing at the config directory (a gate path in two steps)" "4.5" tamper
 
 # §4.5-adjacent: a .env file holds secrets. The settings.json Read-tool deny does NOT cover the Bash tool, so a
 # `cat .env` would surface them. Block the direct-file readers/copiers and a `< .env` input redirect on a
