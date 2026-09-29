@@ -6250,7 +6250,7 @@ if [ -n "$SGR" ] && [ -d "$SGR/packaging" ] && [ -f "$SGR/VERSION" ] && [ -d "$S
   RN_ALLOW='CHANGELOG.md	196	history: every entry before 3.0 keeps the name it shipped under
 README*.md site/content/*/install.md	4	migration: the 2.x plugin note names the plugin to uninstall — one line in each README and install page, EN + TR
 evals/results/*	6	history: recorded eval runs stay byte-for-byte
-adopt.sh kit/legacy-blobs.tsv	338	migration: finds and moves 2.x names (components, CLAUDE.md, board, auto-mode rules, variables), and the generated list of the 1.x/2.x files it may move
+adopt.sh kit/legacy-blobs.tsv	347	migration: finds and moves 2.x names (components, CLAUDE.md, board, auto-mode rules, variables), and the generated list of the 1.x/2.x files it may move
 bin/cli.js	4	migration: add accepts a typed <x>-csk and moves an add record written under the old names
 evals/run.sh	4	compat: reads the 2.x trusted eval parent when the 3.0 one is absent — removed in 4.0
 site/scripts/check.mjs	7	tests: the old-name pattern of the built-site gate, and its twins
@@ -6261,7 +6261,7 @@ site/scripts/check.mjs	7	tests: the old-name pattern of the built-site gate, and
 */studio/web/storage-migrate.js	4	migration: moves the panel'"'"'s saved layout to the new keys — removed in 4.0
 kit/eval/smoke-test.sh	36	tests: this gate'"'"'s own pattern, and that the 2.x names still work
 packaging/legacy-npm/*	10	the 2.x package name'"'"'s 3.0.0: a forwarder to crewforth, published once by hand
-packaging/*	139	tests: the migration rehearsal on the real v2.13.0 tree, the legacy token and layout checks; the legacy blob list'"'"'s generator and its real-installer check'
+packaging/*	154	tests: the migration rehearsal on the real v2.13.0 tree, the legacy token and layout checks; the legacy blob list'"'"'s generator and its real-installer check'
   # A line may name several globs, separated by spaces, when one reason covers them all; its pin is their sum. Split
   # with `read -a`, never a bare `for g in $globs`, which would expand each pattern against the working directory.
   _rn_match(){   # $1 = a path -> the allow-list line (its glob field) that covers it, or nothing

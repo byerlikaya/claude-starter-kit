@@ -230,6 +230,15 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "The name is the invocation: a leftover COMMAND still lists in the / picker (/review twice), and a") s='Burada adın kendisi çağrıdır: artakalan bir KOMUT / menüsünde hâlâ görünür (/review iki kez), artakalan' ;;
       "leftover SKILL still matches prompts, so it competes with whatever replaced it.") s='bir SKILL de istemlerle eşleşmeye devam eder ve yerine gelenle yarışır.' ;;
       "Nothing is deleted for you — one of these may be a file you customised. To drop them all:") s='Hiçbiri sizin yerinize silinmez — aralarında özelleştirdiğiniz bir dosya olabilir. Hepsini kaldırmak için:' ;;
+      'older Crewforth components could not be checked against what Crewforth shipped (git or the shipped list is missing) — left in place:%s') s="eski Crewforth bileşenleri Crewforth'un dağıttıklarıyla karşılaştırılamadı (git ya da dağıtım listesi yok) — yerinde bırakıldı:%s" ;;
+      'moved aside — each one exactly as an older Crewforth shipped it, and no longer shipped:%s') s="kenara alındı — her biri eski bir Crewforth'un dağıttığıyla birebir aynı ve artık dağıtılmıyor:%s" ;;
+      'to put them back: cp -R %s/. .claude/') s='geri koymak için: cp -R %s/. .claude/' ;;
+      'left in place — installed by an older Crewforth, no longer shipped, and changed since (yours now?):%s') s="yerinde bırakıldı — eski bir Crewforth kurmuştu, artık dağıtılmıyor ve o günden beri değişmiş (artık sizin mi?):%s" ;;
+      'Each still answers its name (a command lists in the / picker, a skill matches prompts). To drop them:') s='Her biri adıyla çağrılmaya devam eder (komut / menüsünde görünür, skill istemlerle eşleşir). Kaldırmak için:' ;;
+      '%s (an unchanged copy Crewforth shipped) moved aside; your %s was not touched') s="%s (Crewforth'un dağıttığı, değişmemiş kopya) yedeğe taşındı; sizin %s dosyanıza dokunulmadı" ;;
+      '%s (a second, unchanged copy Crewforth shipped) moved aside; %s already answers that command') s="%s (Crewforth'un dağıttığı ikinci, değişmemiş kopya) yedeğe taşındı; o komutu zaten %s karşılıyor" ;;
+      'older Crewforth components in a symlinked (shared?) directory are left in place — moving them out would remove them from every project that uses it:%s') s='sembolik bağlantılı (paylaşılan?) bir dizindeki eski Crewforth bileşenleri yerinde bırakıldı — taşımak onları bu dizini kullanan her projeden kaldırırdı:%s' ;;
+      '(an unchanged copy put back is moved aside again by the next update — to keep one, change it)') s='(geri konan değişmemiş bir kopya sonraki güncellemede yine kenara alınır — birini tutmak için onu değiştirin)' ;;
       "Coexist summary") s='Kurulum özeti' ;;
       "%s · %s skipped") s='%s · %s atlandı' ;;
       "+%s added") s='+%s eklendi' ;;
@@ -896,7 +905,6 @@ if [ "$KIT_PRESENT" = 1 ]; then
     else mv "$old" "$new" 2>/dev/null && { LEGACY_MOVED=$((LEGACY_MOVED+1)); say '3.0 rename: %s → %s' "${old#.claude/}" "${new#.claude/}"; }
     fi
   done
-  [ -n "$LEGACY_BOTH" ] && warnm '3.0 rename: both the old and the new name exist for:%s — nothing moved; keep one' "$LEGACY_BOTH"
 fi
 # THE 3.0 COMMANDS -> SKILLS MOVE. Claude Code merged custom commands into skills (`.claude/commands/` is "the
 # older format"), and a skill and a command of the same name are the same `/name` — the skill wins. So the kit's
@@ -931,8 +939,6 @@ for kf in $CMD_SKILLS; do
     fi
   done
 done
-[ -n "$CMD_BOTH" ] && warnm '3.0 commands are skills: a skill of that name already exists for:%s — nothing moved; keep one' "$CMD_BOTH"
-[ -n "$CMD_DUP" ]  && warnm '3.0 commands are skills: an older copy of an already-moved command is left in place:%s — remove it' "$CMD_DUP"
 [ -n "$CMD_LINK" ] && warnm '3.0 commands are skills: symlinked command file(s) left as they are:%s — the skill of that name now answers /name' "$CMD_LINK"
 [ "$CMD_DIR_SHARED" = 1 ] && [ "$KIT_PRESENT" = 1 ] && warnm '3.0 commands are skills: .claude/commands is a symlink (shared?) — nothing was moved out of it; the skills of those names now answer /name'
 [ -n "$CMD_MINE" ] && warnm 'your own command(s) keep their name — the Crewforth skill of the same name was not installed:%s' "$CMD_MINE"
@@ -984,6 +990,130 @@ if [ "$KIT_PRESENT" = 1 ] && [ -f "$_AMS" ] && grep -qE '"CSK (Uncommitted Work 
   fi
   rm -f "$_AMS.crew-new"
 fi
+# THE LEGACY SWEEP. Components Crewforth shipped in 1.x-2.x and no longer ships (kit/legacy-blobs.tsv, generated from the
+# release tags) stay on disk after an update, and for every kind the NAME IS THE INVOCATION: a leftover command lists
+# in the / picker, a leftover skill competes for prompts, and the next session's trust gate asks about each skill as
+# if the user had brought it in. One that is byte-for-byte a copy Crewforth shipped is MOVED ASIDE to
+# .claude/.legacy-backup/<time>/ with a one-line restore; anything else — an edit, an extra file, a symlink — is the
+# user's work and stays where it is, named. Nothing is deleted. The rule is "every file is a blob shipped for ITS path",
+# not "all from one release": a field install carried vps-deploy with SKILL.md from 2.0-2.6 and references from 1.4.
+# cqrs-aop-module / devarch-module are excluded: 3.0 keeps the pattern skill as the project's own (its trust is below).
+# Runs after the rename and commands->skills moves, so what reaches it is what they left: a v1 -cck agent, a plain
+# v1 command, a -csk copy next to its crew- name. Works without an install manifest — the list is the kit's, not the
+# project's.
+#
+# _untouched_copies <component>...: prints each component (skills/<n>, agents/<n>.md, commands/<n>.md) that is an
+# untouched shipped copy. rc 2 = cannot tell (no git, no list). Same hardening as the
+# pattern skill's check, which uses it: a symlink or special file anywhere refuses the component (`find -type f` does
+# not list one, so a link would be "checked" by checking nothing); zero files is not a match; CR is stripped only when
+# every CR ends a line; paths reach awk as data, never through -v. Batched: one find, one git, one awk for all of
+# them — per-file hashing was 5 processes a file, which is seconds on Git Bash.
+_untouched_copies(){
+  local lst="$SRC/legacy-blobs.tsv" NL=$'\n' TB=$'\t' CR=$'\r' c p bad fo f h hl cr crl rows="" i=0
+  local live=() fl=() hs=()
+  [ -f "$lst" ] && command -v git >/dev/null 2>&1 || return 2
+  for c in "$@"; do [ -e ".claude/$c" ] || [ -L ".claude/$c" ] && live+=(".claude/$c"); done   # a link is kept, for find to refuse
+  [ "${#live[@]}" -gt 0 ] || return 0
+  # A newline, tab or CR in a name would split or bend a line below (git's line reader drops a trailing CR), so it
+  # disqualifies its component like a symlink does.
+  bad="$(find "${live[@]}" \( ! -type f ! -type d \) -o -name "*$NL*" -o -name "*$TB*" -o -name "*$CR*" 2>/dev/null)"
+  for p in "${live[@]}"; do
+    case "$NL$bad$NL" in *"$NL$p$NL"*|*"$NL$p/"*) continue ;; esac
+    # find's status is read: a subdirectory it cannot enter hides files, and those would travel with the component.
+    fo="$(find "$p" -type f 2>/dev/null)" || continue
+    while IFS= read -r f; do [ -n "$f" ] && fl+=("$f"); done <<< "$fo"
+  done
+  [ "${#fl[@]}" -gt 0 ] || return 0
+  while IFS= read -r h; do hs+=("$h"); done < <(printf '%s\n' "${fl[@]}" | git hash-object --no-filters --stdin-paths 2>/dev/null)
+  # One file git cannot read stops the batch. Then each file is hashed on its own, and one that fails is simply not a
+  # match — it refuses its own component, not every component.
+  if [ "${#hs[@]}" != "${#fl[@]}" ]; then
+    hs=(); for f in "${fl[@]}"; do h="$(git hash-object --no-filters -- "$f" 2>/dev/null)"; hs+=("${h:--}"); done
+  fi
+  # Only a file that holds a CR pays for the CR-stripped hash (none of the shipped blobs has one).
+  local crf; crf="$NL$(grep -l $'\r' -- "${fl[@]}" 2>/dev/null)$NL"
+  while [ "$i" -lt "${#fl[@]}" ]; do
+    f="${fl[$i]}"; h="${hs[$i]}"; hl="$h"
+    case "$crf" in *"$NL$f$NL"*)
+      cr="$(tr -dc '\r' < "$f" 2>/dev/null | wc -c | tr -d ' ')"; crl="$(grep -c $'\r$' "$f" 2>/dev/null)"
+      [ "$cr" = "${crl:-x}" ] && hl="$(tr -d '\r' < "$f" 2>/dev/null | git hash-object --no-filters --stdin 2>/dev/null)" ;;
+    esac
+    rows="$rows$f$TB$h$TB${hl:-$h}$NL"; i=$((i+1))
+  done
+  printf '%s' "$rows" | awk -F'\t' 'FNR == NR { if ($0 !~ /^#/) ok[$2 SUBSEP $3] = 1; next }
+    { c = substr($1, 9); split(c, a, "/"); if (a[1] == "skills") c = a[1] "/" a[2]
+      n[c]++; if (!((($1 SUBSEP $2) in ok) || (($1 SUBSEP $3) in ok))) bad[c] = 1 }
+    END { for (c in n) if (!(c in bad)) print c }' "$lst" - | LC_ALL=C sort
+}
+LEG_MOVED=""; LEG_KEPT=""; LEG_BK=""; _LNL=$'\n'
+if [ "$KIT_PRESENT" = 1 ] && [ -f "$SRC/legacy-blobs.tsv" ]; then
+  _lon=""; _lsh=""
+  for c in $(awk -F'\t' '!/^#/ && $1 != "skills/cqrs-aop-module" && $1 != "skills/devarch-module" && !s[$1]++ { print $1 }' "$SRC/legacy-blobs.tsv"); do
+    [ -e ".claude/$c" ] || [ -L ".claude/$c" ] || continue
+    # A symlinked .claude/ or .claude/<kind>/ is likely shared by several projects: moving a file OUT of it would take
+    # it from every one of them (the same reason the commands->skills move leaves a linked commands/ alone).
+    if [ -L .claude ] || [ -L ".claude/${c%%/*}" ]; then _lsh="$_lsh $c"; continue; fi
+    # A 2.x command or skill beside a skills/crew-<x>/ of the user's that has no SKILL.md: the kit's skill is not
+    # installed there, so this one is the only thing answering the name — it stays, and "keep one" below says why.
+    case "$c" in commands/*-csk.md) _b="${c#commands/}"; _b="${_b%-csk.md}" ;; skills/*-csk) _b="${c#skills/}"; _b="${_b%-csk}" ;; *) _b="" ;; esac
+    [ -n "$_b" ] && [ -d ".claude/skills/crew-$_b" ] && [ ! -f ".claude/skills/crew-$_b/SKILL.md" ] && continue
+    _lon="$_lon $c"
+  done
+  [ -n "$_lsh" ] && warnm 'older Crewforth components in a symlinked (shared?) directory are left in place — moving them out would remove them from every project that uses it:%s' "$_lsh"
+  if [ -n "$_lon" ]; then
+    _lun="$(_untouched_copies $_lon)"; _lrc=$?
+    if [ "$_lrc" = 2 ]; then
+      LEG_KEPT="$_lon"
+      warnm 'older Crewforth components could not be checked against what Crewforth shipped (git or the shipped list is missing) — left in place:%s' "$_lon"
+    else
+      LEG_BK=".claude/.legacy-backup/$(date +%Y%m%d-%H%M%S)"; _b="$LEG_BK"; i=2
+      while [ -e "$_b" ]; do _b="$LEG_BK-$i"; i=$((i+1)); done; LEG_BK="$_b"
+      for c in $_lon; do
+        case "$_LNL$_lun$_LNL" in *"$_LNL$c$_LNL"*)
+          if mkdir -p "$LEG_BK/${c%/*}" 2>/dev/null && mv ".claude/$c" "$LEG_BK/$c" 2>/dev/null; then
+            LEG_MOVED="$LEG_MOVED $c"
+            # A v1 -cck agent was counted as the project's own (KIT_OLD knows the 2.x names); moved aside, it is neither.
+            case "$c" in agents/*) _la="${c#agents/}"; case "$KIT_OLD" in *" ${_la%.md} "*) ;; *) N_PAGENTS=$((N_PAGENTS-1)) ;; esac ;; esac
+            continue
+          fi ;;
+        esac
+        LEG_KEPT="$LEG_KEPT $c"
+      done
+      if [ -n "$LEG_MOVED" ]; then
+        # A team that shares .claude/ should not commit the backup by accident; the restore reads the files, not git.
+        [ -f .claude/.legacy-backup/.gitignore ] || printf '*\n' > .claude/.legacy-backup/.gitignore 2>/dev/null
+        say 'moved aside — each one exactly as an older Crewforth shipped it, and no longer shipped:%s' "$LEG_MOVED"
+        say 'to put them back: cp -R %s/. .claude/' "$LEG_BK"
+        say '(an unchanged copy put back is moved aside again by the next update — to keep one, change it)'
+      else rmdir "$LEG_BK" .claude/.legacy-backup 2>/dev/null || true
+      fi
+      if [ -n "$LEG_KEPT" ]; then
+        warnm 'left in place — installed by an older Crewforth, no longer shipped, and changed since (yours now?):%s' "$LEG_KEPT"
+        _mt 'Each still answers its name (a command lists in the / picker, a skill matches prompts). To drop them:'; printf '     %s\n' "$_M"
+        printf '       rm -r'; for e in $LEG_KEPT; do printf ' .claude/%s' "$e"; done; echo
+      fi
+    fi
+  fi
+fi
+[ -n "$LEG_MOVED" ] && [ "$CMD_DIR_SHARED" = 0 ] && { rmdir .claude/commands 2>/dev/null || true; }   # emptied by the sweep
+# The "keep one" notices wait for the sweep: a -csk copy it moved aside is no longer one of two. When it moved one,
+# the line names BOTH files, so the user reads from one line what went, why, and that their own file was not touched.
+_lb=""; for o in $LEGACY_BOTH; do
+  if [ -e "$o" ]; then _lb="$_lb $o"; continue; fi
+  _lo="${o#.claude/}"; _lx=""; case "$_lo" in *.md) _lx=.md ;; esac; _ln="${_lo%/*}/crew-$(_b="${_lo##*/}"; _b="${_b%.md}"; printf '%s' "${_b%-csk}")$_lx"
+  say '%s (an unchanged copy Crewforth shipped) moved aside; your %s was not touched' "$_lo" "$_ln"
+done
+[ -n "$_lb" ] && warnm '3.0 rename: both the old and the new name exist for:%s — nothing moved; keep one' "$_lb"
+_lb=""; for o in $CMD_BOTH; do
+  if [ -e ".claude/$o" ]; then _lb="$_lb $o"; continue; fi
+  _b="${o##*/}"; _b="${_b%.md}"; say '%s (an unchanged copy Crewforth shipped) moved aside; your %s was not touched' "$o" "skills/crew-${_b%-csk}/"
+done
+[ -n "$_lb" ] && warnm '3.0 commands are skills: a skill of that name already exists for:%s — nothing moved; keep one' "$_lb"
+_lb=""; for o in $CMD_DUP; do
+  if [ -e ".claude/$o" ]; then _lb="$_lb $o"; continue; fi
+  _b="${o##*/}"; _b="${_b%.md}"; _b="${_b#crew-}"; say '%s (a second, unchanged copy Crewforth shipped) moved aside; %s already answers that command' "$o" "skills/crew-${_b%-csk}/"
+done
+[ -n "$_lb" ]  && warnm '3.0 commands are skills: an older copy of an already-moved command is left in place:%s — remove it' "$_lb"
 # #1 keepmine: your overlapping agents own those roles, so the kit's matching crew- agents are NOT installed.
 [ "$COLLIDE_MODE" = keepmine ] && for b in $COLLIDE; do EXCL_A="$EXCL_A crew-$b.md"; done
 # kit-owned trees: FORCE-refresh on a re-adopt (KIT_PRESENT) so kit updates land; never-overwrite on a fresh adopt
@@ -1197,6 +1327,7 @@ if [ -f .claude/kit-manifest.txt ]; then
     [ -e "$SRC/$entry" ] && continue
     # The 3.0 migration keeps the former .NET pattern skill as the project's own; this sweep's advice is `rm -r`.
     [ "$entry" = skills/cqrs-aop-module ] && continue
+    case " $LEG_KEPT " in *" $entry "*) continue ;; esac   # the legacy sweep above has already named it
     [ -e ".claude/$entry" ] && STALE="$STALE $entry"
   done < .claude/kit-manifest.txt
   if [ -n "$STALE" ]; then
@@ -1225,28 +1356,15 @@ fi
 # the wrong thing: a generic-recorded install carrying the skill got nothing and its first session flagged it
 # (field report, reproduced in e2e). Asked only while the skill is still unvetted — the trust gate's own answer,
 # read after the manifest exists — so an update does not repeat itself once it is settled.
-# Returns 0 shipped · 1 not a shipped copy · 2 cannot tell (no git, no list). Hardened in review:
-#  - a SYMLINK anywhere (the directory itself, SKILL.md, any entry) is refused: `find -type f` does not list one, so a
-#    link to arbitrary text used to be "checked" by checking nothing, and --trust-one then recorded the target's digest;
-#  - zero files hashed is not a match;
-#  - CR is stripped only when every CR ends a line (a CRLF copy), so CRs cannot be added anywhere else;
-#  - paths reach awk through ENVIRON, not -v, which would turn a name like SKIL\114.md into SKILL.md.
+# Returns 0 shipped · 1 not a shipped copy · 2 cannot tell (no git, no list). The check is the legacy sweep's
+# _untouched_copies (hardened in review: a symlink anywhere is refused — a link to arbitrary text used to be "checked"
+# by checking nothing, and --trust-one then recorded the target's digest; zero files is not a match; CR is stripped
+# only for a CRLF copy; paths never reach awk through -v, which would turn SKIL\114.md into SKILL.md).
 _cqrs_shipped(){
-  local dir=.claude/skills/cqrs-aop-module lst="$SRC/legacy-blobs.tsv" f h hl cr crl n=0
-  [ -f "$lst" ] && command -v git >/dev/null 2>&1 || return 2
-  [ -L "$dir" ] && return 1
-  [ -n "$(find "$dir" ! -type f ! -type d 2>/dev/null | head -1)" ] && return 1
-  while IFS= read -r f; do
-    h="$(git hash-object --no-filters "$f" 2>/dev/null)"; [ -n "$h" ] || return 1
-    hl="$h"; cr="$(tr -dc '\r' < "$f" 2>/dev/null | wc -c | tr -d ' ')"
-    if [ "${cr:-0}" -gt 0 ]; then
-      crl="$(grep -c $'\r$' "$f" 2>/dev/null)"
-      [ "$cr" = "${crl:-x}" ] && hl="$(tr -d '\r' < "$f" 2>/dev/null | git hash-object --no-filters --stdin 2>/dev/null)"
-    fi
-    P="$f" A="$h" B="$hl" awk -F'\t' '$1 == "skills/cqrs-aop-module" && $2 == ENVIRON["P"] && ($3 == ENVIRON["A"] || $3 == ENVIRON["B"]) { k = 1 } END { exit !k }' "$lst" || return 1
-    n=$((n+1))
-  done < <(find "$dir" -type f 2>/dev/null | LC_ALL=C sort)
-  [ "$n" -gt 0 ] && [ -f "$dir/SKILL.md" ] && [ ! -L "$dir/SKILL.md" ]
+  local u rc
+  u="$(_untouched_copies skills/cqrs-aop-module)"; rc=$?
+  [ "$rc" = 2 ] && return 2
+  [ "$u" = skills/cqrs-aop-module ] && [ -f .claude/skills/cqrs-aop-module/SKILL.md ] && [ ! -L .claude/skills/cqrs-aop-module/SKILL.md ]
 }
 # The gate's answer is read from its output, never through `| grep -q`: grep closing early SIGPIPEs the hook and
 # pipefail turns the whole test false — that is how the first version of this block never ran (e2e, C1).
@@ -1346,7 +1464,7 @@ if [ -f CLAUDE.md ]; then
       _mt 'the inline block is lines 1-%s; your project section starts at line %s' "$((BND-1))" "$BND"
       printf '     %s%s%s\n' "$D" "$_M" "$R"
       if ask_yes '  Replace that inline block with the single @import line? (a backup is written; this branch is reviewable)'; then
-        BK=".claude/CLAUDE.md.pre-kit-$TS"
+        BK=".claude/CLAUDE.md.pre-kit-${TS:-$(date +%Y%m%d-%H%M%S)}"   # TS is set only when a handover branch was opened
         cp CLAUDE.md "$BK"
         { printf '<!-- Crewforth discipline · on conflict the project rules BELOW win -->\n%s\n\n' "$IMPORT_LINE"
           tail -n +"$BND" CLAUDE.md; } > CLAUDE.md.kit-tmp && mv CLAUDE.md.kit-tmp CLAUDE.md

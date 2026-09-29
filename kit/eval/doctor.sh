@@ -60,7 +60,7 @@ _mt() {
       'VERSION present (%s)') s='VERSION var (%s)' ;;
       'VERSION missing') s='VERSION yok' ;;
       "no install trace: VERSION is here but .claude/kit-manifest.txt is not — the last update did not finish, or .claude/ was copied; run: npx crewforth update --here (information only — nothing was changed)") s="kurulum izi yok: VERSION var ama .claude/kit-manifest.txt yok — son güncelleme bitmemiş ya da .claude/ kopyalanmış; çalıştırın: npx crewforth update --here (yalnız bilgi — hiçbir şey değiştirilmedi)" ;;
-      'no install trace: components the install manifest lists are not here (%s) — the last update did not finish, or .claude/ was copied; run: npx crewforth update --here (information only — nothing was changed)') s='kurulum izi yok: kurulum manifestinin listelediği bileşenler burada yok (%s) — son güncelleme bitmemiş ya da .claude/ kopyalanmış; çalıştırın: npx crewforth update --here (yalnız bilgi — hiçbir şey değiştirilmedi)' ;;
+      'no install trace: components the install manifest lists are not here (%s) — the last update did not finish, or .claude/ was copied; run: npx crewforth update --here (information only — nothing was changed; if you removed a component on purpose, ignore this line)') s='kurulum izi yok: kurulum manifestinin listelediği bileşenler burada yok (%s) — son güncelleme bitmemiş ya da .claude/ kopyalanmış; çalıştırın: npx crewforth update --here (yalnız bilgi — hiçbir şey değiştirilmedi; bir bileşeni bilerek sildiyseniz bu satırı yok sayın)' ;;
       'install trace: the components on disk match the install manifest') s='kurulum izi: diskteki bileşenler kurulum manifestiyle uyuşuyor' ;;
       'reinstall or update Crewforth (npx crewforth update)') s="Crewforth'u yeniden kurun ya da güncelleyin (npx crewforth update)" ;;
       'Crewforth v%s installed, v%s published — update with /crew-update') s='Crewforth v%s kurulu, v%s yayında — /crew-update ile güncelleyin' ;;
@@ -209,8 +209,10 @@ if [ -f .claude/VERSION ]; then
     done < .claude/kit-manifest.txt
     # Only "listed but absent" is a signal. A crew-* component on disk that the manifest does not list may be the user's
     # own (review: a user's skills/crew-mine read as a broken install), so it is not reported.
+    # A component the user deleted on purpose looks exactly like one an interrupted update never wrote: nothing on disk
+    # tells the two apart, and recording deletions would be a new file to keep in step. So the line says it instead.
     if [ -n "$DTMISS" ]; then
-      warn "no install trace: components the install manifest lists are not here (%s) — the last update did not finish, or .claude/ was copied; run: npx crewforth update --here (information only — nothing was changed)" "${DTMISS# }"
+      warn "no install trace: components the install manifest lists are not here (%s) — the last update did not finish, or .claude/ was copied; run: npx crewforth update --here (information only — nothing was changed; if you removed a component on purpose, ignore this line)" "${DTMISS# }"
     else
       ok "install trace: the components on disk match the install manifest"
     fi
