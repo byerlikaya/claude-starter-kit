@@ -6078,6 +6078,93 @@ $_o"
     || fail "the inventory missed a removed phrase — paragraph:${_bt1:+ caught} list item:${_bt2:+ caught} printed:${_bt3:+ caught} stored:${_bt4:+ caught}"
   rm -rf "$_btt"
 fi
+sec "== 12d) the plugin's own gate files are guarded like the project's =="
+# The plugin edition keeps its gate scripts and its hook wiring under the plugin root, not under .claude/, and the
+# project-path rules never matched there: `rm <plugin>/hooks/guard-bash.sh` returned rc 0 while
+# `rm .claude/hooks/guard-bash.sh` returned rc 2 (measured, 3.0.1 review). Same rule now: writing, deleting or renaming
+# anything under <plugin>/hooks/ or <plugin>/.claude-plugin/ is refused — and under the same two folders of every
+# other version of this plugin in Claude Code's cache, since an older copy is one path away. Reading stays free.
+# Pairs, `positive ||| negative`: @R@ is this version's root, @O@ another cached version. The negative reads the same
+# file, so a fixture that broke shows up as a positive that passed.
+PGR='/Users/u/.claude/plugins/cache/crewforth/crewforth/3.0.1'; PGO='/Users/u/.claude/plugins/cache/crewforth/crewforth/3.0.0'
+PGRW='C:\Users\u\.claude\plugins\cache\crewforth\crewforth\3.0.1'
+pgrc(){ # $1 = hook, $2 = plugin root, $3 = payload -> rc
+  printf '%s' "$3" | CLAUDE_PLUGIN_ROOT="$2" bash "$HOOKS/$1" >/dev/null 2>&1; echo "$?"; }
+pgpair(){ # $1 = hook, $2 = root, $3 = payload builder, $4 = pos, $5 = neg -> appends to PGF, counts PGN
+  local p n
+  # An empty payload is the fixture breaking (a helper missing in this scope), never the hook: say so, do not grade.
+  [ -n "$($3 "$4" 2>/dev/null)" ] || { PGF="$PGF | FIXTURE: $3 built no payload"; PGN=$((PGN+1)); return 0; }
+  p="$(pgrc "$1" "$2" "$($3 "$4")")"; n="$(pgrc "$1" "$2" "$($3 "$5")")"
+  [ "$p" = 2 ] || PGF="$PGF | $1 rc $p (want 2): $4"; [ "$n" = 0 ] || PGF="$PGF | $1 rc $n (want 0): $5"; PGN=$((PGN+1)); }
+# Own builders: this section also runs in an installed project's smoke (install scope), where the unit section that
+# defines the shared ones is skipped — `wj` there was "command not found" and every Write pair read as a hook failure.
+pgbash(){ printf '{"tool_name":"Bash","permission_mode":"default","tool_input":{"command":"%s"}}' "$1"; }
+pgps(){ printf '{"tool_name":"PowerShell","tool_input":{"command":"%s"},"permission_mode":"default"}' "$1"; }
+pgwr(){ printf '{"tool_name":"Write","tool_input":{"file_path":"%s"}}' "$1"; }
+PGN=0; PGF=""
+while IFS= read -r _l; do [ -z "$_l" ] && continue
+  _l="${_l//@R@/$PGR}"; _l="${_l//@O@/$PGO}"
+  pgpair guard-bash.sh "$PGR" pgbash "${_l%% ||| *}" "${_l#* ||| }"
+done <<'PGEOF'
+rm @R@/hooks/guard-bash.sh ||| cat @R@/hooks/guard-bash.sh
+echo x > \"@R@/hooks/guard-bash.sh\" ||| grep -n block \"@R@/hooks/guard-bash.sh\"
+mv @R@/hooks/guard-write.sh /tmp/gw ||| ls -la @R@/hooks
+cp /tmp/x @R@/hooks/hooks.json ||| wc -l @R@/hooks/hooks.json
+sed -i.bak s/2/0/ @R@/hooks/guard-bash.sh ||| sed -n 1p @R@/hooks/guard-bash.sh
+rm @R@/.claude-plugin/plugin.json ||| cat @R@/.claude-plugin/plugin.json
+rm @O@/hooks/guard-bash.sh ||| cat @O@/hooks/guard-bash.sh
+truncate -s 0 @O@/hooks/context-usage.sh ||| head -3 @O@/hooks/context-usage.sh
+ln -s @R@ cfg ||| ln -s @R@/skills/teamboard skill-link
+rm \"@R@/hooks/board.sh\" ||| bash \"@R@/hooks/board.sh\" status
+rm ~/.claude/plugins/cache/crewforth/crewforth/3.0.1/hooks/guard-bash.sh ||| cat ~/.claude/plugins/cache/crewforth/crewforth/3.0.1/hooks/guard-bash.sh
+echo 'exit 0' > \"$HOME/.claude/plugins/cache/crewforth/crewforth/3.0.1/hooks/guard-bash.sh\" ||| cat \"$HOME/.claude/plugins/cache/crewforth/crewforth/3.0.1/hooks/guard-bash.sh\"
+rm /Users/*/.claude/plugins/cache/crewforth/crewforth/3.0.1/hooks/guard-bash.sh ||| ls /Users/*/.claude/plugins/cache/crewforth/crewforth/3.0.1/hooks
+rm /Users/u//.claude/plugins/cache/crewforth//./crewforth/3.0.1/hooks/guard-bash.sh ||| cat /Users/u//.claude/plugins/cache/crewforth//./crewforth/3.0.1/hooks/guard-bash.sh
+rm @R@/../3.0.1/hooks/guard-bash.sh ||| cat @R@/../3.0.1/hooks/guard-bash.sh
+rm /Users/u/.claude/plugins/cache/crewforth/crewforth/\"3.0.1\"/hooks/guard-bash.sh ||| cat /Users/u/.claude/plugins/cache/crewforth/crewforth/\"3.0.1\"/hooks/guard-bash.sh
+cd ~/.claude/plugins/cache && rm crewforth/crewforth/3.0.1/hooks/guard-bash.sh ||| cd ~/.claude/plugins/cache && cat crewforth/crewforth/3.0.1/hooks/guard-bash.sh
+ln -s ~/.claude/plugins/cache/crewforth c ||| ln -s ~/.claude/plugins/cache/crewforth/crewforth/3.0.1/skills c
+echo x > p/crewforth/crewforth/3.0.1/hooks/guard-bash.sh ||| cat p/crewforth/crewforth/3.0.1/hooks/guard-bash.sh
+echo 'exit 0' > @R@/eval/lib/crew-env.sh ||| cat @R@/eval/lib/crew-env.sh
+echo 'exit 0' > .claude/eval/lib/crew-env.sh ||| cat .claude/eval/lib/crew-env.sh
+rm /Users/b/Projects/crewforth/crewforth/3.0.1/hooks/x.sh ||| rm /Users/b/Projects/crewforth/plugin/hooks/x.sh
+PGEOF
+# Windows spellings: the root as the harness exports it (native), the command as PowerShell and Git Bash write it.
+while IFS= read -r _l; do [ -z "$_l" ] && continue
+  pgpair guard-bash.sh "$PGRW" pgps "${_l%% ||| *}" "${_l#* ||| }"
+done <<'PGEOF2'
+Remove-Item C:\\Users\\u\\.claude\\plugins\\cache\\crewforth\\crewforth\\3.0.1\\hooks\\guard-bash.sh ||| Get-Content C:\\Users\\u\\.claude\\plugins\\cache\\crewforth\\crewforth\\3.0.1\\hooks\\guard-bash.sh
+Rename-Item C:\\Users\\u\\.claude\\plugins\\cache\\crewforth\\crewforth\\3.0.0\\hooks\\hooks.json x.json ||| Test-Path C:\\Users\\u\\.claude\\plugins\\cache\\crewforth\\crewforth\\3.0.0\\hooks\\hooks.json
+Remove-Item $env:USERPROFILE\\.claude\\plugins\\cache\\crewforth\\crewforth\\3.0.1\\hooks\\guard-bash.sh ||| Get-Content $env:USERPROFILE\\.claude\\plugins\\cache\\crewforth\\crewforth\\3.0.1\\hooks\\guard-bash.sh
+cmd /c mklink /J cfg C:\\Users\\u\\.claude\\plugins\\cache\\crewforth\\crewforth\\3.0.1 ||| cmd /c mklink /J cfg C:\\Users\\u\\.claude\\plugins\\cache\\crewforth\\crewforth\\3.0.1\\skills
+PGEOF2
+pgpair guard-bash.sh "$PGRW" pgbash 'rm /c/Users/u/.claude/plugins/cache/crewforth/crewforth/3.0.1/hooks/guard-bash.sh' 'cat /c/Users/u/.claude/plugins/cache/crewforth/crewforth/3.0.1/hooks/guard-bash.sh'
+pgpair guard-bash.sh "$PGRW" pgbash 'ln -s C:/Users/u/.claude/plugins/cache/crewforth/crewforth/3.0.1 cfg' 'ln -s C:/Users/u/.claude/plugins/cache/crewforth/crewforth/3.0.1/skills cfg'
+pgpair guard-bash.sh "$PGRW" pgbash 'ln -s /c/Users/u/.claude/plugins/cache/crewforth/crewforth/3.0.1 cfg' 'ln -s /c/Users/u/.claude/plugins/cache/crewforth/crewforth/3.0.1/skills cfg'
+# A root outside the cache (a --plugin-dir checkout) is matched as a whole path: at a token start, after a drive or
+# Git Bash's /c — not inside a longer path, and its dots are literal.
+pgpair guard-bash.sh '/opt/cr.w/plugin' pgbash 'rm /opt/cr.w/plugin/hooks/a' 'rm ~/w/opt/cr.w/plugin/hooks/a'
+pgpair guard-bash.sh '/opt/cr.w/plugin' pgbash 'rm /c/opt/cr.w/plugin/hooks/a' 'rm /opt/crXw/plugin/hooks/a'
+# The Write/Edit side: every file under the two folders, not only the gate scripts it knew by name.
+while IFS= read -r _l; do [ -z "$_l" ] && continue
+  _l="${_l//@R@/$PGR}"; _l="${_l//@O@/$PGO}"
+  pgpair guard-write.sh "$PGR" pgwr "${_l%% ||| *}" "${_l#* ||| }"
+done <<'PGEOF3'
+@R@/hooks/hooks.json ||| @R@/skills/teamboard/notes.md
+@R@/.claude-plugin/plugin.json ||| @R@/README.md
+@O@/hooks/context-usage.sh ||| /Users/u/project/hooks/context-usage.sh
+@R@/hooks/trace-blocklist.txt ||| /Users/u/project/.claude-plugin-notes/plugin.json
+@R@/eval/lib/crew-env.sh ||| @R@/eval/lib/skill-listing.awk
+/p/.claude/eval/lib/crew-env.sh ||| /p/.claude/eval/lib/settings-json.awk
+PGEOF3
+[ "$PGN" -ge 37 ] || fail "FIXTURE: only $PGN plugin-gate pair(s) were read — the heredocs broke, not the hooks"
+# Reading and running stay free, and another plugin in the same cache is not Crewforth's to guard.
+_pgok=""
+for _c in "rm /Users/u/.claude/plugins/cache/acme/tool/1.0/hooks/x.sh" "diff $PGO/hooks/guard-bash.sh $PGR/hooks/guard-bash.sh"; do
+  [ "$(pgrc guard-bash.sh "$PGR" "$(pgbash "$_c")")" = 0 ] || _pgok="$_pgok | $_c"
+done
+[ -z "$PGF$_pgok" ] && pass "plugin gate files: $PGN writes, deletes, renames and links refused (this version, another cached version, ~/\$HOME/glob/..//. spellings, Windows spellings, a root outside the cache, the sourced crew-env.sh, Write tool); each negative twin — reading, running board.sh, a source tree, another plugin — stays free" \
+                    || fail "plugin gate files:$PGF${_pgok:+ | wrongly refused:$_pgok}"
 sec "== 13) pre-commit cost — the gate people route around is the one that is slow =="
 # Measured on a 373-file merge: the old file loop spawned ~7 processes per file (three `printf | grep` pairs and
 # a `git cat-file`), 2,643 in total. At the 62-135 ms a Git Bash process was measured to cost on a Windows 11

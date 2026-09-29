@@ -20,6 +20,14 @@ versioning follows [SemVer](https://semver.org/).
   (`core.hookspath`), `git -C <dir> config …`, a backslash-newline between `config` and the key, and removing or
   renaming the whole `[core]` section. All blocked now.
 
+- In the plugin edition, a shell command could delete, overwrite or rename the gate scripts and their wiring
+  (`rm <plugin>/hooks/guard-bash.sh` passed, while the same command on `.claude/hooks/` was refused), and the Write
+  tool guarded only the gate scripts it knew by name. Everything under the plugin's `hooks/` and `.claude-plugin/` —
+  in this version and in every other version of the plugin in Claude Code's cache, however the path is spelled — is
+  now guarded like `.claude/hooks/`. Reading them stays free.
+- The gates read `eval/lib/crew-env.sh` on every call, but the file itself was not guarded: overwritten, it switched
+  every rule off. It is now guarded in both editions.
+
 ### Fixed
 
 - Reading `core.hooksPath` without a value (`git config core.hooksPath`, with or without `--local` / `--global` /
