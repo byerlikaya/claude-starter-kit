@@ -6827,10 +6827,17 @@ if [ "$IS_KIT" = 1 ]; then
   _ka="$(kw_lines $KW_A)"; _kb="$(kw_printed "$KR/start.sh" "$KR/adopt.sh" "$KR/bin/cli.js")"
   # C: the real output. start.sh refuses to run from its own checkout, so its help is read from a copy.
   _kd="$(mktemp -d)"; cp "$KR/start.sh" "$KR/VERSION" "$_kd/" 2>/dev/null
-  { ( cd "$_kd" && CREW_LANG=en bash start.sh --help ) ; ( cd "$_kd" && CREW_LANG=tr bash start.sh --help )
-    CREW_LANG=en bash "$ROOT/eval/preflight.sh"; CREW_LANG=tr bash "$ROOT/eval/preflight.sh"
-    command -v node >/dev/null 2>&1 && node "$KR/bin/cli.js" --help; } > "$_kd/out.txt" 2>&1
+  # Each source is captured and COUNTED on its own. They used to share one file and one threshold (30 lines), and
+  # `start.sh --help` in a copy without kit/ printed only its 2-line "kit/ not found" error — so the check passed on
+  # the cli.js lines where node exists, and failed as a FIXTURE on a machine without node (3.0.1, PR 10): the help
+  # text itself was read nowhere. Now start.sh answers --help without kit/, and each part has its own floor.
+  ( cd "$_kd" && CREW_LANG=en bash start.sh --help; CREW_LANG=tr bash start.sh --help ) > "$_kd/start.txt" 2>&1; _ksr=$?
+  { CREW_LANG=en bash "$ROOT/eval/preflight.sh"; CREW_LANG=tr bash "$ROOT/eval/preflight.sh"; } > "$_kd/pre.txt" 2>&1
+  _kcl=""; if command -v node >/dev/null 2>&1; then node "$KR/bin/cli.js" --help > "$_kd/cli.txt" 2>&1; _kcl="$(grep -c . "$_kd/cli.txt")"
+  else : > "$_kd/cli.txt"; skip tool "node bin/cli.js --help not read — no node on this machine (start.sh --help and preflight still are)"; fi
+  cat "$_kd/start.txt" "$_kd/pre.txt" "$_kd/cli.txt" > "$_kd/out.txt"
   _kc="$(kw_lines "$_kd/out.txt" | sed "s|^$_kd/||")"; _kn="$(grep -c . "$_kd/out.txt")"
+  _ksn="$(grep -c . "$_kd/start.txt")"; _kpn="$(grep -c . "$_kd/pre.txt")"
   # Twins. Must fail: a start.sh whose table says "full kit" again, and output that says "installing Crewforth.".
   # Must pass: output that only names paths — .claude/kit.conf, the folder in the archive's own error, kit-manifest.txt,
   # drizzle-kit, KIT_X. ("kit/ deleted" used to sit here as a path; it was the last line of every install, and the
@@ -6840,11 +6847,13 @@ if [ "$IS_KIT" = 1 ]; then
   printf 'wrote .claude/kit.conf\nERROR: kit/ not found\nsee .claude/kit-manifest.txt and drizzle-kit status\nKIT_X=1\n' > "$_kd/good.txt"
   if [ -n "$_ka$_kb$_kc" ]; then fail "a printed line still says kit — say Crewforth:
 $(printf '%s\n%s\n%s\n' "$_ka" "$_kb" "$_kc" | grep . | head -n 6 | sed "s|$KR/||; s|^|       |")"
-  elif [ "$_kn" -lt 30 ]; then fail "FIXTURE: the captured help and preflight output is only $_kn line(s) — the run broke, not the wording"
+  elif [ "$_ksr" != 0 ] || [ "$_ksn" -lt 20 ]; then fail "start.sh --help, run where kit/ is absent, exited $_ksr with $_ksn line(s) (EN+TR, want rc 0 and ≥20): $(head -n 2 "$_kd/start.txt" | tr '\n' ' ')"
+  elif [ "$_kpn" -lt 6 ]; then fail "FIXTURE: preflight printed only $_kpn line(s) in EN+TR — the run broke, not the wording"
+  elif [ -n "$_kcl" ] && [ "$_kcl" -lt 10 ]; then fail "FIXTURE: cli.js --help printed only $_kcl line(s) — the run broke, not the wording"
   elif [ -z "$(kw_printed "$_kd/mut-start.sh")" ]; then fail "the printed-text check missed a start.sh table entry reverted to 'full kit' — it reads nothing"
   elif [ "$(kw_lines "$_kd/bad.txt" | grep -c .)" != 2 ]; then fail "Crewforth-word matcher missed a planted old-name word (English or Turkish) in the output"
   elif [ -n "$(kw_lines "$_kd/good.txt")" ]; then fail "Crewforth-word matcher flagged a path or identifier: $(kw_lines "$_kd/good.txt" | head -n 2 | tr '\n' ' ')"
-  else pass "no printed line says kit: terminal-only scripts, the installers' tables/echo/usage and cli --help, plus $_kn lines of real help and preflight output (EN+TR); a reverted table entry and planted words are caught, paths are not"; fi
+  else pass "no printed line says kit: terminal-only scripts, the installers' tables/echo/usage and cli --help, plus $_kn lines of real output (start.sh --help $_ksn, preflight $_kpn, cli.js ${_kcl:-not read}; EN+TR); a reverted table entry and planted words are caught, paths are not"; fi
   # The closing line of an install is the one line every user reads. It may name no kit at all, not even as a path:
   # the key and its Turkish value are both read, and a planted "kit/ deleted" in a copy must be caught.
   _dn(){ grep -hE '"Done\.|'"'"'Done\.' "$@" 2>/dev/null | grep -iE '(^|[^a-z_.-])kit([^a-z_-]|$)'; }

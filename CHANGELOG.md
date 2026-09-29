@@ -48,6 +48,8 @@ versioning follows [SemVer](https://semver.org/).
   watched only Bash, stayed silent when the guard was not wired at all, and printed its ❌ after "healthy ✅". It now
   reads the guard's own entry with the JSON reader, and its result counts in the verdict.
 - The board printed a path a plugin install cannot run when it was started from its own folder. Fixed.
+- `bash start.sh --help` answered "kit/ not found" and exited 1 when `kit/` was not beside it. Help now needs nothing
+  but the script.
 - The unvetted-component notice offered one command, `--trust`, that accepted every foreign component at once —
   including ones the user never looked at — and told the model to ask before anything else, so a user's urgent first
   message waited behind it. Each component now carries its own `--trust-one` command, and the model answers the
