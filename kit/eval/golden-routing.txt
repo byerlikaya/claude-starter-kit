@@ -23,6 +23,11 @@ the page layout is broken on mobile|frontend-design
 requests are timing out under load|crew-performance-expert
 add client routing to the app|crew-frontend-expert
 add a new rn screen with expo router|frontend-rn-expo
+# The client side is stack-neutral (3.0.1): a mobile request on another stack goes to the frontend owner, never to
+# the React Native layer. Turkish as typed in the field, and English.
+flutter ekranı ekle|crew-frontend-expert
+add a SwiftUI view for the profile|crew-frontend-expert
+build a Jetpack Compose screen for settings|crew-frontend-expert
 run an OWASP check and a full security scan|crew-security-expert
 we need a kvkk privacy audit|crew-privacy-agent
 commit the changes|crew-commit-agent
@@ -95,6 +100,9 @@ set up the project structure for a new API|backend-architecture
 choose a database for this service|backend-architecture
 
 # --- Negative: prompt must NOT route to target (over-broad-trigger guard) ---
+flutter ekranı ekle|!frontend-rn-expo
+add a SwiftUI view for the profile|!frontend-rn-expo
+build a Jetpack Compose screen for settings|!frontend-rn-expo
 # Field case (3.0.1, P2 case A): a user handing work over to another team named the area in passing — the bare word
 # "frontend" and a project called <x>_ui each routed it to the frontend skill. Turkish as it was typed, and in English.
 acme_ui için yapılacak iş varsa aktarır mısın? frontend tarafından o sorumlu|!frontend

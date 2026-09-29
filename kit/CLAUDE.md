@@ -204,7 +204,7 @@ Runtime: <e.g. Node 22 · Go 1.23 · Python 3.12 · .NET 10 · Java 21>
 Web framework: <e.g. Fastify · chi · FastAPI · ASP.NET Core · Spring Boot>
 Database: <e.g. PostgreSQL 17 (+ Redis cache) · SQLite · MongoDB> · Migrations: <tool>
 Architecture pattern: <layered · clean/hexagonal · vertical slice · CQRS>
-Client: <e.g. web React/Next · mobile React Native/Expo · desktop — depending on the project>
+Client: <e.g. web · native iOS/Android · Flutter · React Native · .NET MAUI · KMP · desktop — the user chooses; empty = ask, recommend none>
 
 ## Project skills
 Domain-specific "how"s live under `.claude/skills/` (e.g. payment-contract, notification-rules).

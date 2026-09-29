@@ -7,6 +7,9 @@ description: |
 
 # React Native + Expo (stack-specific layer)
 
+**Apply only when the project IS React Native / Expo** — its `package.json` depends on `react-native` or `expo`.
+Otherwise do not use this skill: `frontend` and the project's own stack apply (see its Client stack order).
+
 <!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
 Trigger phrases: "expo", "react native", "native bridge", "expo router", "rn screen", "prebuild"
 
