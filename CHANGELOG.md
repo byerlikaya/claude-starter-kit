@@ -48,6 +48,10 @@ versioning follows [SemVer](https://semver.org/).
   watched only Bash, stayed silent when the guard was not wired at all, and printed its ❌ after "healthy ✅". It now
   reads the guard's own entry with the JSON reader, and its result counts in the verdict.
 - The board printed a path a plugin install cannot run when it was started from its own folder. Fixed.
+- The unvetted-component notice offered one command, `--trust`, that accepted every foreign component at once —
+  including ones the user never looked at — and told the model to ask before anything else, so a user's urgent first
+  message waited behind it. Each component now carries its own `--trust-one` command, and the model answers the
+  user first and asks at the end of that first reply; until then the components are not used.
 - When a subagent handed its report back, the routing hint read the report as a new request and suggested
   delegating the work that had just been done — "Use the crew-database-expert subagent" right after that agent
   finished. A hand-back now gets no hint.

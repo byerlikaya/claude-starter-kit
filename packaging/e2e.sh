@@ -1653,7 +1653,7 @@ else
     cp adopt.sh VERSION "$d/"; cp -R kit "$d/"
   }
   pk_rec(){ grep -c ' skills/cqrs-aop-module$' "$1/.claude/trusted-components.txt" 2>/dev/null | tr -cd '0-9'; }
-  pk_asks(){ ( cd "$1" && printf '{"cwd":"%s"}' "$1" | CLAUDE_PROJECT_DIR="$1" bash .claude/hooks/skill-trust.sh 2>/dev/null ) | grep -c 'skills/cqrs-aop-module' | tr -cd '0-9'; }
+  pk_asks(){ ( cd "$1" && printf '{"cwd":"%s"}' "$1" | CLAUDE_PROJECT_DIR="$1" bash .claude/hooks/skill-trust.sh 2>/dev/null ) | grep -c -- '- skills/cqrs-aop-module (' | tr -cd '0-9'; }   # the listed component, not its trust-command line
   # $1 case, $2 dir, $3 vouched|named|failed|silent: runs the update and checks the words, the record and the next session
   pk_case(){
     local c="$1" d="$2" want="$3" rec asks said=silent
