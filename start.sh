@@ -620,7 +620,7 @@ cp -R "$SRC/eval/."     .claude/eval/ 2>/dev/null || true
 # process spawns at 62-135 ms each. test/ is dropped because its assertions read the
 # The panel's own suite is NOT here to delete: it lives in packaging/studio-test/,
 # outside the payload, because kit/ ships whole and 104 KB of test code
-# would travel through all four channels only to be removed on arrival.
+# would travel through all three channels only to be removed on arrival.
 cp -R "$SRC/studio/."   .claude/studio/ 2>/dev/null || true
 count_showcase .claude/skills
 { _mt "%s agents, %s skills and %s commands installed." "$(ls .claude/agents/*.md 2>/dev/null | wc -l | tr -d ' ')" "$N_SKL" "$N_CMD"; echo "  ${_M}"; }

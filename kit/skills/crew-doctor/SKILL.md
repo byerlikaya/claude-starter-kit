@@ -33,8 +33,8 @@ with one exception: the skill listing, which a plugin cannot size for itself (it
 `LC_ALL=C awk -f "${CLAUDE_PLUGIN_ROOT}/eval/lib/skill-listing.awk" "${CLAUDE_PLUGIN_ROOT}"/skills/*/SKILL.md`
 (prints characters, then skills). At the default fraction a 200,000-token model has 8,000 characters for the whole
 listing, and Claude Code's own skills take about 5,900 of them (measured on v2.1.282). If Crewforth's number plus
-5,900 is over 8,000, tell the user plainly: on such a model the least-used skills lose their descriptions and stop
-being picked; one line in `~/.claude/settings.json` fixes it — `"skillListingBudgetFraction": 0.04`; the cost is
+5,900 is over 8,000, tell the user plainly: on such a model the least-used skills lose their descriptions and are
+less likely to be picked on their own; one line in `~/.claude/settings.json` fixes it — `"skillListingBudgetFraction": 0.04`; the cost is
 that the listing is then sent whole every turn, about (that total ÷ 4) tokens, (tokens ÷ 2,000)% of a 200k window.
 It is their call — show the line and the cost, do not edit their settings. On a 1,000,000-token model the default
 already fits.

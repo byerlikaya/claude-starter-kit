@@ -1646,6 +1646,30 @@ if [ "$IS_KIT" = 1 ]; then
   else
     skip scope "Homebrew-channel check not run — not a git checkout of Crewforth's source"
   fi
+  # THE CHANNEL COUNT. Three channels ship Crewforth (the release archive, npm, the Claude Code plugin); comments and
+  # pages still said four after Homebrew went. A number a reader takes as the total is a claim like any other. The
+  # CHANGELOG is history. The pattern is split so this file does not match itself.
+  _ch4_re='fo''ur (distribution )?channels|dö''rt (dağıtım )?kanal'
+  _ch4_t="$(printf '%s\n' "all fo""ur channels carry it" "Dö""rt kanal da taşıyor" "of fo""ur distribution channels" "three channels" "four channel types of RGB" | grep -ciE "$_ch4_re")"
+  if [ "$_ch4_t" != 3 ]; then fail "channel-count check cannot tell its twins apart (caught $_ch4_t of the 3 planted, want 3 and none of the 2 clean)"
+  elif git -C "$KR" rev-parse --git-dir >/dev/null 2>&1; then
+    _ch4_hits="$(git -C "$KR" grep -niIE "$_ch4_re" -- . ':!CHANGELOG.md' ':!site/src/content/docs/changelog.md' ':!site/src/content/docs/tr/changelog.md' 2>/dev/null)"
+    [ -z "$_ch4_hits" ] && pass "no tracked file gives the old channel count — three ship Crewforth (CHANGELOG exempt; twins 3/3 caught, 0/2 flagged)" \
+      || fail "a tracked file still gives the old channel count (there are three): $(printf '%s\n' "$_ch4_hits" | head -3 | tr '\n' ' ')"
+  else skip scope "channel-count check not run — not a git checkout of Crewforth's source"; fi
+  # THE LISTING BUDGET, SAID AS MEASURED: a skill whose description Claude Code drops is picked LESS OFTEN on its own,
+  # not never (the name stays listed, and a request that names it still reaches it). doctor and /crew-doctor used to
+  # say it stops being picked / stops matching requests. Old claims 0, the measured one present in English and Turkish.
+  _lb_old='stop being picked|stop'' matching requests|isteklerle eşleşmez'' olur|stop''[[:space:]]+being[[:space:]]+picked'
+  _lb_f="$ROOT/eval/doctor.sh $ROOT/skills/crew-doctor/SKILL.md"
+  _lb_o="$(cat $_lb_f 2>/dev/null | tr '\n' ' ' | grep -ciE "$_lb_old")"
+  _lb_en="$(cat $_lb_f 2>/dev/null | tr '\n' ' ' | grep -oiE 'less likely to be picked on their own' | wc -l | tr -d ' ')"
+  _lb_tr="$(grep -c 'kendiliğinden seçilmesi zorlaşır' "$ROOT/eval/doctor.sh" 2>/dev/null)" || true
+  _lb_tw="$(printf '%s\n' "and those stop"" matching requests" | grep -ciE "$_lb_old")"
+  if [ "$_lb_tw" != 1 ]; then fail "listing-budget wording check cannot see its twin — it reads nothing"
+  elif [ "${_lb_o:-0}" = 0 ] && [ "${_lb_en:-0}" -ge 3 ] && [ "${_lb_tr:-0}" -ge 1 ]; then
+    pass "the listing-budget warning says 'less likely to be picked on their own' (EN $_lb_en, TR $_lb_tr), never that a skill stops being picked"
+  else fail "listing-budget wording: old claim $_lb_o (want 0), new EN $_lb_en (want ≥3: doctor key, doctor warn, /crew-doctor), TR ${_lb_tr:-0} (want ≥1)"; fi
   # kit/legacy-blobs.tsv is how the updater tells Crewforth's own, untouched old files from a user's: a stale or
   # hand-edited row would move a user's edit aside, or leave Crewforth's leftovers in place. It is generated from the
   # release tags, so it must equal what the generator prints now, byte for byte. The twin drops one row from the
@@ -3547,7 +3571,7 @@ done
 wj Write '/p/.claude/DISCIPLINE.md '  | bash "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "a trailing space does not hide DISCIPLINE.md" || fail "trailing space defeated the DISCIPLINE.md rule"
 wj Write '/p/.claude./hooks/x.sh'     | bash "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "a trailing dot on a component does not hide a gate path" || fail "trailing dot defeated the hooks rule"
 # THE PLUGIN EDITION ships the same gate scripts at $CLAUDE_PLUGIN_ROOT/hooks/, which is not `.claude/hooks/`:
-# one of Crewforth's four channels was shipping an unguarded copy of its own gates. Matched by Crewforth's own
+# one of Crewforth's three channels was shipping an unguarded copy of its own gates. Matched by Crewforth's own
 # filenames, so a project's unrelated `hooks/` directory keeps working.
 wj Write '/Users/dev/.claude/plugins/crewforth/hooks/guard-write.sh' | bash "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "the plugin edition's own gate script is BLOCKED too" || fail "the plugin edition ships unguarded gate scripts (§4.5 hole)"
 wj Write '/opt/crew/hooks/session-guard.sh' | bash "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "a kit gate script is BLOCKED wherever it sits" || fail "a kit gate script outside .claude/ PASSED"
