@@ -54,6 +54,16 @@
         ]
       },
       {
+        "matcher": "PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" 2>/dev/null; bash .claude/hooks/guard-powershell.sh",
+            "timeout": 60
+          }
+        ]
+      },
+      {
         "matcher": "Write|Edit|NotebookEdit",
         "hooks": [
           {

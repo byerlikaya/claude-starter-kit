@@ -47,11 +47,12 @@ fails, say which one and stop — do not improvise a different launch.
    works the same in both editions.
 
 2. **Resolve a runtime — do not ask whether a name resolves.** `ensure-node.sh` sits one level ABOVE the panel
-   — beside the `server/` directory, not inside it. Both spellings, in full, so there is nothing to guess:
+   — beside the `server/` directory, not inside it. Both spellings, in full, so there is nothing to guess (run it
+   with the Bash tool, not PowerShell):
 
    ```bash
    bash .claude/studio/ensure-node.sh --explain               # full install
-   bash ${CLAUDE_PLUGIN_ROOT}/studio/ensure-node.sh --explain  # plugin edition (step 1 decided which)
+   bash "${CLAUDE_PLUGIN_ROOT}/studio/ensure-node.sh" --explain  # plugin edition (step 1 decided which)
    ```
 
    It prints the absolute path of a Node 18+ that actually runs, and exits 1 when there is none. Use that path;

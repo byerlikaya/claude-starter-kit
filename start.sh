@@ -149,7 +149,7 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "%s eol pin(s) so shared hooks stay LF") s="%s eol kuralı eklendi; paylaşılan hook'lar LF olarak kalır" ;;
       "NOTE: no git repository at this level; after %s run:  %s") s='NOT: bu klasörde git deposu yok. %s yaptıktan sonra şunu çalıştırın:  %s' ;;
       "Panel: needs Node 18+, which is not on this machine — but that is no longer a dead end.") s='Panel: Node 18+ gerekiyor ve bu makinede yok — ama bunun da bir çözümü var.' ;;
-      "Crewforth fetches one for the panel: %s  (asks first;") s='Crewforth, panel için Node indirebilir: %s  (önce sorar;' ;;
+      "Crewforth fetches one for the panel (Bash tool, not PowerShell): %s  (asks first;") s='Crewforth, panel için Node indirebilir (PowerShell değil, Bash aracıyla): %s  (önce sorar;' ;;
       "verified against the published checksum, into %s, nothing else touched).") s='yayımlanan checksum ile doğrular, yalnızca %s içine kurar, başka hiçbir şeye dokunmaz).' ;;
       "Every gate still holds meanwhile; the panel is the only part that needs node.") s="Bu arada tüm kapılar çalışmaya devam eder; Node'a yalnızca panel ihtiyaç duyar." ;;
       "ERROR: the %s sentinel line is missing from %s — refusing to guess the discipline/project split.") s='HATA: %s işaret satırı %s içinde bulunamadı — disiplinin nerede bitip proje bölümünün nerede başladığı tahmin edilmeyecek.' ;;
@@ -751,7 +751,7 @@ if bash .claude/eval/preflight.sh --has node 2>/dev/null; then
   { _mt 'Panel: /crew-studio opens the Studio panel from this project (or: node .claude/studio/server/index.js --open).'; echo "${_M}"; }
 else
   { _mt 'Panel: needs Node 18+, which is not on this machine — but that is no longer a dead end.'; echo "${_M}"; }
-  { _mt 'Crewforth fetches one for the panel: %s  (asks first;' 'bash .claude/studio/ensure-node.sh --plan'; echo "       ${_M}"; }
+  { _mt 'Crewforth fetches one for the panel (Bash tool, not PowerShell): %s  (asks first;' 'bash .claude/studio/ensure-node.sh --plan'; echo "       ${_M}"; }
   { _mt 'verified against the published checksum, into %s, nothing else touched).' '~/.claude/studio-runtime'; echo "       ${_M}"; }
   { _mt 'Every gate still holds meanwhile; the panel is the only part that needs node.'; echo "       ${_M}"; }
 fi

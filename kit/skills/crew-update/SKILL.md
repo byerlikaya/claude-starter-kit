@@ -13,7 +13,7 @@ Bring the Crewforth install up to the latest published version:
 3. **Latest version:** `npm view crewforth version` (needs network). If it can't be reached,
    say so and stop — don't guess.
 4. **Compare.** Already on the latest → report "up to date (vX)" and stop. Otherwise show **old → new**.
-5. **Before:** run `bash .claude/eval/update-guard.sh pre`. It records what is on disk (in `.claude/.state/`, nothing
+5. **Before:** run `bash .claude/eval/update-guard.sh pre` (Bash tool, not PowerShell). It records what is on disk (in `.claude/.state/`, nothing
    else) and prints one of three verdicts:
    - `clean` → nothing to report, go on.
    - `UNCOMMITTED:` with the changed paths in `.claude/` and `CLAUDE.md` → show the user that list and **ask** —
@@ -30,9 +30,9 @@ Bring the Crewforth install up to the latest published version:
    to completion instead of blocking on a prompt your shell can't answer.
    If you'd rather review each handover decision yourself, tell the user to run `npx crewforth@latest update`
    (no flags) in **their own terminal**, where both the npx and the interactive prompts work.
-7. **After:** run `bash .claude/eval/update-guard.sh post` and show the user its lists — added, changed, moved,
+7. **After:** run `bash .claude/eval/update-guard.sh post` (Bash tool, not PowerShell) and show the user its lists — added, changed, moved,
    removed.
-8. **Verify:** run `/crew-doctor` (or `bash .claude/eval/doctor.sh`) so a bad/partial update surfaces immediately.
+8. **Verify:** run `/crew-doctor` (or `bash .claude/eval/doctor.sh` — Bash tool, not PowerShell) so a bad/partial update surfaces immediately.
    If the updater's or doctor's output contains a line starting with ⭐, pass it to the user verbatim as the LAST
    line of your summary — it prints once per Crewforth version, and it is meant for the user, not for you.
 9. **Report** old → new + the headline changes. Take them from `.claude/.state/whats-new.md` — the updater writes

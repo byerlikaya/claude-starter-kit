@@ -44,7 +44,7 @@ chmod +x "$OUT/studio/ensure-node.sh" "$OUT/studio/server/hooks/"*.sh 2>/dev/nul
 # would carry the board's session-start awareness and none of its claim gate — the exact one-channel-is-weaker
 # asymmetry the git hooks below were added to close.
 for h in guard-bash.sh guard-write.sh context-usage.sh session-guard.sh session-rehydrate.sh session-stats.sh \
-         guard-commit-scan.sh route-hint.sh session-update-check.sh board.sh board-sync.sh; do
+         guard-commit-scan.sh route-hint.sh session-update-check.sh board.sh board-sync.sh guard-powershell.sh; do
   cp "$SRC/hooks/$h" "$OUT/hooks/$h"
   chmod +x "$OUT/hooks/$h"
 done
@@ -59,6 +59,35 @@ for h in pre-commit commit-msg; do
 done
 cp "$SRC/hooks/trace-blocklist.txt" "$SRC/hooks/secret-blocklist.txt" "$SRC/hooks/floor-blocklist.txt" "$OUT/hooks/"
 
+# The commands the model is told to run name the file install's path, `bash .claude/<path>.sh`. A plugin install has
+# no .claude/, so in this edition every one of them exited 127 (measured from an empty project: 12 lines in 8 files).
+# Claude Code substitutes ${CLAUDE_PLUGIN_ROOT} in a plugin's skill and agent bodies (plugins reference, "Where each
+# variable resolves"), so the copy here names its own root — quoted, because the root can hold a space.
+# ONE RULE: every `.sh` this edition ships is rewritten, wherever it lives (hooks, skills/<name>/scripts, studio, and
+# any place a later version adds). Not a folder list. The name is matched literally (its dots escaped) and must end
+# there, so `board.sh` does not half-rewrite `board.sh.orig` or pull `board-sh` onto board.sh. A line marked
+# `# full install` is the file-install spelling beside its plugin twin, and is left as written. `.claude/eval/*.sh`
+# never matches: the plugin ships no eval scripts, and the text there says so. kit/ keeps the file-install form: a
+# literal ${CLAUDE_PLUGIN_ROOT} would expand to nothing there and give `bash /hooks/x.sh`.
+_RW="$(mktemp)"; trap 'rm -f "$_RW"' EXIT
+while IFS= read -r f; do r="${f#"$OUT"/}"; re="$(printf '%s' "$r" | sed 's/[.[\*^$]/\\&/g')"
+  printf '/# full install/!s#bash \\.claude/%s([^A-Za-z0-9_./-]|$)#bash "${CLAUDE_PLUGIN_ROOT}/%s"\\1#g\n' "$re" "$r"
+done < <(cd "$OUT" && find . -name '*.sh' -type f | sed 's#^\./##' | LC_ALL=C sort | sed "s#^#$OUT/#") > "$_RW"
+while IFS= read -r f; do
+  grep -qE 'bash \.claude/' "$f" || continue
+  sed -E -f "$_RW" "$f" > "$f.rw" && mv "$f.rw" "$f"
+done < <(find "$OUT/agents" "$OUT/skills" -name '*.md' -type f)
+# Asserted: no shipped script is still named by the file-install path (outside a `# full install` line), every
+# rewritten path is a file this edition ships, and no rewrite stopped inside a name (`"…/board.sh".orig`).
+_left="$(grep -rhE 'bash \.claude/' "$OUT/agents" "$OUT/skills" --include='*.md' | grep -v '# full install' \
+  | grep -oE 'bash \.claude/[A-Za-z0-9_./-]+\.sh([^A-Za-z0-9_./-]|$)' | sed -E 's/[^A-Za-z0-9_./-]$//' | sort -u \
+  | while IFS= read -r c; do [ -f "$OUT/${c#bash .claude/}" ] && printf ' %s' "$c"; done)" || true
+[ -z "$_left" ] || { echo "build-plugin.sh: still named by the file-install path:$_left" >&2; exit 1; }
+_miss="$(grep -rhoE '"\$\{CLAUDE_PLUGIN_ROOT\}/[A-Za-z0-9_./-]+"[A-Za-z0-9_.-]?' "$OUT/agents" "$OUT/skills" --include='*.md' | sort -u \
+  | while IFS= read -r c; do case "$c" in (*\"[A-Za-z0-9_.-]) printf ' half-rewritten:%s' "$c"; continue ;; esac
+      c="${c#\"\$\{CLAUDE_PLUGIN_ROOT\}/}"; c="${c%\"}"; [ -f "$OUT/$c" ] || printf ' %s' "$c"; done)" || true
+[ -z "$_miss" ] || { echo "build-plugin.sh: a rewritten path names a file this edition does not ship:$_miss" >&2; exit 1; }
+
 # hooks/hooks.json — auto-discovered by Claude Code when the plugin is enabled (no plugin.json field needed).
 # Same structure as settings.json's "hooks", but paths resolve through ${CLAUDE_PLUGIN_ROOT} (the plugin's install
 # dir) instead of ${CLAUDE_PROJECT_DIR}/.claude. Quoted heredoc: ${CLAUDE_PLUGIN_ROOT} stays literal for Claude Code.
@@ -71,6 +100,12 @@ cat > "$OUT/hooks/hooks.json" <<'HOOKS'
         "hooks": [
           { "type": "command", "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/guard-bash.sh\"", "timeout": 60 },
           { "type": "command", "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/guard-commit-scan.sh\"", "timeout": 60 }
+        ]
+      },
+      {
+        "matcher": "PowerShell",
+        "hooks": [
+          { "type": "command", "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/guard-powershell.sh\"", "timeout": 60 }
         ]
       },
       {

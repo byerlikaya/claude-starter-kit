@@ -60,12 +60,12 @@ Crewforth's). §4.4 needs nothing here: `guard-bash.sh` fails `git commit`/`git 
 not a `permissions.ask` rule — is what asks in the interactive modes. An `ask` rule for those verbs would
 break the `CLAUDE_GIT_OK` pre-authorisation: a matching ask rule prompts even when a hook returns `allow`.
 
-## How
+## How (Bash tool, not PowerShell)
 ```bash
-bash .claude/skills/automode-policy/scripts/check.sh          # inspect the effective config
-bash .claude/skills/automode-policy/scripts/apply.sh          # propose → diff → ask → install → verify
-bash .claude/skills/automode-policy/scripts/apply.sh --strict # also route EVERY shell command to the classifier
-bash .claude/skills/automode-policy/scripts/apply.sh --print  # print the block, paste it yourself
+bash "${CLAUDE_PLUGIN_ROOT}/skills/automode-policy/scripts/check.sh"          # inspect the effective config
+bash "${CLAUDE_PLUGIN_ROOT}/skills/automode-policy/scripts/apply.sh"          # propose → diff → ask → install → verify
+bash "${CLAUDE_PLUGIN_ROOT}/skills/automode-policy/scripts/apply.sh" --strict # also route EVERY shell command to the classifier
+bash "${CLAUDE_PLUGIN_ROOT}/skills/automode-policy/scripts/apply.sh" --print  # print the block, paste it yourself
 ```
 Verifying is read-only for Crewforth but not for Claude Code: `claude auto-mode config` rewrites its own
 `settings.json` as it reads (reformatted, model aliases normalised, a `backups/` directory created). Measured,

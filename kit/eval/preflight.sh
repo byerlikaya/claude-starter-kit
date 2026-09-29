@@ -108,7 +108,7 @@ _mt() {
       "Optional gaps above are safe but worth closing.") s='Yukarıdaki isteğe bağlı eksikler sorun çıkarmaz ama gidermeye değer.' ;;
       "Everything Crewforth needs is here.") s="Crewforth'un ihtiyaç duyduğu her şey kurulu." ;;
       "is the panel only — every gate still holds without it.") s='yalnızca panel için gerekli — o olmadan da tüm kapılar çalışır.' ;;
-      "Or let Crewforth get one: %s") s='İsterseniz Crewforth sizin için indirebilir: %s' ;;
+      "Or let Crewforth get one (Bash tool, not PowerShell): %s") s='İsterseniz Crewforth sizin için indirebilir (PowerShell değil, Bash aracıyla): %s' ;;
       "fix: ") s='çözüm: ' ;;
       "node 18+") s='node 18+' ;;
       "sha256 tool") s='sha256 aracı' ;;
@@ -171,7 +171,7 @@ if [ -n "$MISSING_REQ" ]; then
       *node*) _mt 'is the panel only — every gate still holds without it.'; printf '    %snode%s %s\n' "$B" "$R" "$_M"
               # And it is not a dead end: Crewforth fetches a runtime for the panel itself, into one
               # directory under $HOME, verified against the published checksum. It asks first.
-              printf '    %s\n' "$(m 'Or let Crewforth get one: %s' "${B}bash .claude/studio/ensure-node.sh --plan${R}")" ;;
+              printf '    %s\n' "$(m 'Or let Crewforth get one (Bash tool, not PowerShell): %s' "${B}bash .claude/studio/ensure-node.sh --plan${R}")" ;;
     esac
 elif [ -n "$MISSING_OPT" ]; then
   [ "$QUIET" = 1 ] || { _mt 'All required tools present.'; _a="$_M"; _mt 'Optional gaps above are safe but worth closing.'

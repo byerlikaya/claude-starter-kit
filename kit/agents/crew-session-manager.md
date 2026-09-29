@@ -38,7 +38,7 @@ Appends a single line to the very END of the response:
 
 **Actual fill is MEASURED, guessing is FORBIDDEN.** The `UserPromptSubmit` hook runs `context-usage.sh` each turn,
 automatically injecting the real `🔋 Session: %.. (token) → level` line into the context — use that value. If you want an
-exact/fresh reading, run it by hand: `bash .claude/hooks/context-usage.sh`
+exact/fresh reading, run it by hand with the Bash tool, not PowerShell: `bash .claude/hooks/context-usage.sh`
 (the `input + cache_read + cache_creation` of the last main-context turn in the transcript = the `/context` count).
 If there's no injected line (hook off / transcript unreachable) **don't invent a %** — run `bash .claude/hooks/context-usage.sh --verbose` once; if that also fails, say so once, drop the 🔋 line for the rest of the session, and only report a topic change.
 

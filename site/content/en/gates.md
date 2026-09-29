@@ -7,10 +7,10 @@ A rule that matters becomes a gate. Enforcement sits at the tool level — a hoo
 | **Agents** | {{AGENT_COUNT}} | Thin triggers — *who* owns a domain and *when* they fire |
 | **Skills** | {{SKILL_COUNT}} | The method, written once, applied by whoever needs it |
 | **Commands** | {{COMMAND_COUNT}} | `/crew-brainstorm` · `/crew-plan` · `/crew-review` · `/crew-ship` · `/crew-handoff` · `/crew-update` · `/crew-doctor` · `/crew-gates` · `/crew-skill` · `/crew-studio` |
-| **Hooks** | 12 | The gates, plus session measurement and routing |
+| **Hooks** | 13 | The gates, plus session measurement and routing |
 | **Discipline** | 1 | Principles, workflow, Definition of Done, prohibitions — imported by your `CLAUDE.md` |
 
-## All 12 hooks
+## All 13 hooks
 
 | Hook | Role |
 |:--|:--|
@@ -18,6 +18,7 @@ A rule that matters becomes a gate. Enforcement sits at the tool level — a hoo
 | `guard-bash.sh` | Tool-level command gate: commit/push approval, review-before-commit, destructive ops, remote-code-exec, hook tampering |
 | `guard-write.sh` | The same protection on the Write/Edit side — a gate you can silently delete is not a gate. It normalises the target path before matching it, so a gate file cannot be reached under a different spelling. |
 | `guard-commit-scan.sh` | Runs the real trace and secret scanners from `PreToolUse`, so the commit gate works where `core.hooksPath` cannot be set |
+| `guard-powershell.sh` | Sends Crewforth's own scripts back to the Bash tool when the model tries them in PowerShell, where `bash` can be WSL's and the script fails |
 | `context-usage.sh` | Reads the real token count from the transcript and injects it every turn |
 | `session-guard.sh` | Warns once at {{FILL_WARN}}% context fill and once at {{FILL_ALERT}}% — never blocks a turn |
 | `session-rehydrate.sh` | Re-surfaces the handover after `/compact` or `/clear`, and tells a session which language the project was installed in |

@@ -9,6 +9,12 @@
         ]
       },
       {
+        "matcher": "PowerShell",
+        "hooks": [
+          { "type": "command", "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/guard-powershell.sh\"", "timeout": 60 }
+        ]
+      },
+      {
         "matcher": "Write|Edit|NotebookEdit",
         "hooks": [
           { "type": "command", "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/guard-write.sh\"", "timeout": 60 }

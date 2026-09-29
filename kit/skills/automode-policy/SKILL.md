@@ -60,7 +60,7 @@ Crewforth's). §4.4 needs nothing here: `guard-bash.sh` fails `git commit`/`git 
 not a `permissions.ask` rule — is what asks in the interactive modes. An `ask` rule for those verbs would
 break the `CLAUDE_GIT_OK` pre-authorisation: a matching ask rule prompts even when a hook returns `allow`.
 
-## How
+## How (Bash tool, not PowerShell)
 ```bash
 bash .claude/skills/automode-policy/scripts/check.sh          # inspect the effective config
 bash .claude/skills/automode-policy/scripts/apply.sh          # propose → diff → ask → install → verify
