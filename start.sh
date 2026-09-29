@@ -23,7 +23,12 @@ done
 
 SRC="$HERE/kit"
 
-if [ ! -d "$SRC" ]; then
+# --help (or -h) needs no payload either: it is answered by the argument parser further down, before anything reads
+# kit/. Refusing it here made `start.sh --help` print "kit/ not found" and exit 1 on a copy without kit/ — which is
+# also what smoke 14e reads, so on a machine without node the help text was never checked at all (3.0.1, PR 10).
+_HELP_ONLY=0; for a in "$@"; do case "$a" in -h|--help) _HELP_ONLY=1 ;; esac; done
+
+if [ "$_HELP_ONLY" = 0 ] && [ ! -d "$SRC" ]; then
   echo "ERROR: 'kit/' folder not found."
   echo "start.sh and kit/ must be in the SAME directory (both come together when you unzip)."
   exit 1
