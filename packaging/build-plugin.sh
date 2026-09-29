@@ -52,7 +52,7 @@ done
 # The git hooks and their pattern files now DO ship — not to be wired through core.hooksPath (a plugin cannot
 # set that), but because guard-commit-scan.sh runs them from PreToolUse. Without them the plugin edition had
 # the commit APPROVAL gate and none of the commit CONTENT gates: a credential or an authorship trailer could
-# land, and of four distribution channels one was quietly weaker than the rest.
+# land, and of three distribution channels one was quietly weaker than the rest.
 for h in pre-commit commit-msg; do
   cp "$SRC/hooks/$h" "$OUT/hooks/$h"
   chmod +x "$OUT/hooks/$h"

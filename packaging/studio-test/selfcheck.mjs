@@ -31,7 +31,7 @@ import { parseRoster, remoteRoster } from '../../kit/studio/server/lib/roster.js
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // The suite lives beside the other gates rather than inside the panel, because
 // kit/ is shipped whole: a test directory under it would travel to
-// every user through all four channels only to be deleted by the installer.
+// every user through all three channels only to be deleted by the installer.
 // 104 KB of it, measured. So the panel is named from the repo root, not walked
 // up to from here.
 const REPO = path.resolve(HERE, '..', '..');

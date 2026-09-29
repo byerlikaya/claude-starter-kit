@@ -99,7 +99,7 @@ _mt() {
       'skill listing: %s skill(s) use when_to_use or a folded description — a shape the count was not measured on') s='skill listesi: %s skill when_to_use ya da katlanmış açıklama kullanıyor — sayımın ölçülmediği bir biçim' ;;
       'skill listing %s chars for %s skills fits the %s-char budget (fraction %s from %s, %s-token window%s)') s="skill listesi %s karakter, %s skill; %s karakterlik bütçeye sığıyor (kesir %s, kaynak %s; %s token'lık pencere%s)" ;;
       'skill listing %s chars for %s skills EXCEEDS the %s-char budget (fraction %s from %s, %s-token window%s)') s="skill listesi %s karakter, %s skill; %s karakterlik bütçeyi AŞIYOR (kesir %s, kaynak %s; %s token'lık pencere%s)" ;;
-      '  — Claude Code drops the descriptions of the least-used skills, and those stop matching requests.') s="  — Claude Code en az kullanılan skill'lerin açıklamalarını düşürür; o skill'ler isteklerle eşleşmez olur." ;;
+      '  — Claude Code drops the descriptions of the least-used skills, and those are less likely to be picked on their own.') s="  — Claude Code en az kullanılan skill'lerin açıklamalarını düşürür; o skill'lerin kendiliğinden seçilmesi zorlaşır." ;;
       '  Fixes: raise %s in settings, or set rarely-used skills to %s in %s.') s="  Çözüm: ayarlarda %s değerini yükseltin ya da nadir kullanılan skill'leri %s olarak %s içine yazın." ;;
       '  Which skills? bash .claude/eval/utilization.sh (Bash tool, not PowerShell) — it reports the ones nothing in this project reached.') s="  Hangileri? bash .claude/eval/utilization.sh (PowerShell değil, Bash aracıyla) — bu projede hiçbir şeyin ulaşmadığı skill'leri listeler." ;;
       "on a 200,000-token model the whole listing would be ~%s chars (Crewforth %s + your personal skills %s + Claude Code's own ~%s, measured) against %s at fraction %s — the least-used skills there lose their descriptions.") s="200 000 token'lık bir modelde listenin tamamı ~%s karakter olur (Crewforth %s + kişisel skill'leriniz %s + Claude Code'un kendi ~%s, ölçüldü); bütçe ise %s karakter (kesir %s). Orada en az kullanılan skill'ler açıklamalarını kaybeder." ;;
@@ -349,7 +349,7 @@ EOF_SLA
       ok "skill listing %s chars for %s skills fits the %s-char budget (fraction %s from %s, %s-token window%s)" "$LISTING" "$NLISTED" "$BUDGET" "$FRAC" "$FROM" "$CW" "$EST"
     else
       warn "skill listing %s chars for %s skills EXCEEDS the %s-char budget (fraction %s from %s, %s-token window%s)" "$LISTING" "$NLISTED" "$BUDGET" "$FRAC" "$FROM" "$CW" "$EST"
-      warn "  — Claude Code drops the descriptions of the least-used skills, and those stop matching requests."
+      warn "  — Claude Code drops the descriptions of the least-used skills, and those are less likely to be picked on their own."
       warn "  Fixes: raise %s in settings, or set rarely-used skills to %s in %s." '"skillListingBudgetFraction"' '"name-only"' '"skillOverrides"'
       warn "  Which skills? bash .claude/eval/utilization.sh (Bash tool, not PowerShell) — it reports the ones nothing in this project reached."
     fi

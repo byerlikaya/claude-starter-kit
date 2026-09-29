@@ -81,6 +81,8 @@ versioning follows [SemVer](https://semver.org/).
   tighten, never loosen — the one exception is the §4.1 trace allowlist chosen at adoption. The § numbers in the
   discipline refer to the discipline itself. The updater's summary, handover and decision record say the same.
 - Every place that tells the model to run one of Crewforth's scripts now says to use the Bash tool, not PowerShell.
+- `/crew-doctor` and the doctor said skills past the listing budget "stop being picked" / "stop matching requests".
+  They are picked less often on their own, not never; the warning now says so, in English and Turkish.
 - The Bash guard no longer starts a process per rule on the read-only path: `git status` went from 14 processes per
   call to 1 (macOS: ~35 ms to ~10 ms per call). On a Windows machine where one process was measured at 1.3–3.9 s,
   the old path cost 37–66 s per call.
