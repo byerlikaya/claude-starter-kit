@@ -1671,6 +1671,31 @@ if [ "$IS_KIT" = 1 ]; then
   elif [ "${_cs_n:-0}" -lt 5 ]; then fail "FIXTURE: only ${_cs_n:-0} scope line(s) found in start.sh and the install pages (want ≥5: EN/TR table, both usages, the summary, both pages)"
   elif [ -n "$_cs_bad$_cs_nost" ]; then fail "a scope line names a client stack or does not say the stack is read from the project:$(printf '%s\n%s\n' "$_cs_bad" "$_cs_nost" | grep . | head -n 3 | cut -c1-140 | sed 's/^/\n       /')"
   else pass "the install summary, help and install pages name backend, web and mobile without a client stack, and say the stack is read from the project ($_cs_n scope lines)"; fi
+  # THE SITE DEPLOY IS VERIFIED ON WHAT PAGES SERVES (3.0.1). A second deploy under the same deployment name reported
+  # success while Pages kept the previous artefact (the 3.0.0 launch: the rc.3 changelog for 30 minutes). site.yml now
+  # runs packaging/check-pages-served.sh after the deploy. Its four outcomes, on file:// fixtures (no network needed):
+  # the new heading → 0 · an old page with an old heading, older than the deploy → 1 (stale) · the same content
+  # re-deployed (right heading, old time) → 0 · nothing to fetch → 3 (not measured, never a pass).
+  _pg="$KR/packaging/check-pages-served.sh"
+  if [ -f "$_pg" ]; then
+    _pgd="$(mktemp -d)"; mkdir -p "$_pgd/new/changelog" "$_pgd/old/changelog"
+    printf '<h2>[3.9.1] — 2026-10-01</h2><h2>[3.9.0]</h2>' > "$_pgd/new/changelog/index.html"
+    printf '<h2>[3.9.0] — 2026-09-28</h2>' > "$_pgd/old/changelog/index.html"
+    touch -t 202001010000 "$_pgd/new/changelog/index.html" "$_pgd/old/changelog/index.html"
+    _pgn="$(date +%s)"; _pgr=""
+    for _c in "new [3.9.1] 0" "old [3.9.1] 1" "old [3.9.0] 0" "missing [3.9.1] 3"; do
+      set -- $_c; PAGES_PATH=changelog/index.html bash "$_pg" "file://$_pgd/$1" "$2" "$_pgn" 2 0 >/dev/null 2>&1; _r=$?
+      [ "$_r" = "$3" ] || _pgr="$_pgr | $1 want $2: rc $_r (expected $3)"
+    done
+    rm -rf "$_pgd"
+    [ -z "$_pgr" ] && pass "the Pages check tells served (0), stale (1), re-deployed same content (0) and unreachable (3, not measured) apart" \
+                   || fail "the Pages check misreads its fixtures:$_pgr"
+    _sy="$KR/.github/workflows/site.yml"
+    _dl="$(grep -n 'uses: actions/deploy-pages' "$_sy" | cut -d: -f1 | head -1)"; _vl="$(grep -n 'check-pages-served.sh' "$_sy" | cut -d: -f1 | head -1)"
+    if [ -n "$_dl" ] && [ -n "$_vl" ] && [ "$_vl" -gt "$_dl" ] && grep -q 'bash _verify/packaging/check-pages-served.sh' "$_sy"; then
+      pass "site.yml verifies what Pages serves after the deploy, with the check from its own commit (an old tag lacks it)"
+    else fail "site.yml does not run the Pages check after deploy-pages, from the workflow's own checkout"; fi
+  else fail "packaging/check-pages-served.sh is missing — site.yml has nothing to verify a deploy with"; fi
   # THE LISTING BUDGET, SAID AS MEASURED: a skill whose description Claude Code drops is picked LESS OFTEN on its own,
   # not never (the name stays listed, and a request that names it still reaches it). doctor and /crew-doctor used to
   # say it stops being picked / stops matching requests. Old claims 0, the measured one present in English and Turkish.

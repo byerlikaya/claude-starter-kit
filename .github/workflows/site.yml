@@ -50,5 +50,23 @@ jobs:
       - uses: actions/upload-pages-artifact@v5
         with:
           path: site/dist
+      # What the deploy must make Pages serve: the first release heading of the CHANGELOG this ref built, and the time
+      # the deploy started. Taken before the deploy, so a slow switch cannot move the goalposts.
+      - id: expect
+        run: |
+          echo "heading=$(grep -m1 -oE '^## \[[^]]+\]' CHANGELOG.md | sed 's/^## //')" >> "$GITHUB_OUTPUT"
+          echo "start=$(date -u +%s)" >> "$GITHUB_OUTPUT"
       - id: deploy
         uses: actions/deploy-pages@v5
+      # A green deploy is not evidence the site changed: deploy-pages names a deployment after the commit the workflow
+      # was TRIGGERED from, and a second deploy under the same name reports success while Pages keeps the first
+      # artefact (measured at the 3.0.0 launch). This reads what Pages actually serves, and fails the job if stale.
+      # The check comes from the WORKFLOW's own commit, not from the ref the site was built from: an older tag
+      # (v3.0.0) does not carry the script, and a hand-run site.yml for it must still be verified.
+      - uses: actions/checkout@v5
+        with:
+          path: _verify
+          sparse-checkout: packaging/check-pages-served.sh
+          sparse-checkout-cone-mode: false
+      - name: Verify Pages serves this build
+        run: bash _verify/packaging/check-pages-served.sh "${{ steps.deploy.outputs.page_url }}" "${{ steps.expect.outputs.heading }}" "${{ steps.expect.outputs.start }}"

@@ -50,6 +50,9 @@ versioning follows [SemVer](https://semver.org/).
 - The board printed a path a plugin install cannot run when it was started from its own folder. Fixed.
 - `bash start.sh --help` answered "kit/ not found" and exited 1 when `kit/` was not beside it. Help now needs nothing
   but the script.
+- A site deploy could report success while GitHub Pages kept serving the previous version (at the 3.0.0 launch the
+  site showed the release candidate's changelog for half an hour). The site workflow now reads what Pages serves after
+  each deploy and fails if it is still the old build.
 - The unvetted-component notice offered one command, `--trust`, that accepted every foreign component at once —
   including ones the user never looked at — and told the model to ask before anything else, so a user's urgent first
   message waited behind it. Each component now carries its own `--trust-one` command, and the model answers the
