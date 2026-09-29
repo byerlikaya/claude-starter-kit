@@ -18,9 +18,10 @@
 # Wired ONLY on the PowerShell matcher (both editions; smoke pins it). On `Bash` it would block the very commands it
 # points to.
 set -uo pipefail
-INPUT="$(cat)"
-# Fork-free exit for everything that cannot match: PowerShell calls are frequent, and on Git Bash a process costs
-# 62-135 ms. No `bash` in the payload, nothing to judge.
+# Read with the builtin: `INPUT="$(cat)"` is a subshell plus a process on EVERY PowerShell call, and on Git Bash a
+# process costs 62-135 ms. With this, a command that cannot match (no `bash` in the payload) opens no process at all
+# (measured with the xtrace counter: `cat` 1 -> 0). `read` returns 1 at end of input; the text is read regardless.
+IFS= read -r -d '' INPUT || true
 case "$INPUT" in *[Bb][Aa][Ss][Hh]*) ;; *) exit 0 ;; esac
 
 # ---- CREW-JSON-PARSE ------------------------------------------------------------------------------------

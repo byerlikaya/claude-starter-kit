@@ -5949,6 +5949,20 @@ rm -rf "$_gpd"
 # Never on the Bash tool: the same command there is exactly what the docs tell the model to run.
 [ "$(gpsrc Bash 'bash .claude/hooks/board.sh status')" = 0 ] && pass "a Bash-tool payload is never refused by guard-powershell.sh" \
   || fail "guard-powershell.sh refused a Bash-tool payload — it would block the commands the docs point to"
+# A PowerShell command with no `bash` in it opens NO process: the hook runs on every PowerShell call, and on Git Bash
+# a process costs 62-135 ms. Counted from the xtrace, not timed: an external command, or a subshell (a `++` line).
+# The twin reads stdin the old way (`INPUT="$(cat)"`): a counter that cannot see that one fork measures nothing.
+_gpz(){ printf '%s' "$2" | bash -x "$1" >/dev/null 2>"$3"
+  printf '%s' "$(( $(grep -cE '^\+ (grep|sed|awk|tr|cat|head|tail|cut|sort|find|wc|mktemp|basename|dirname|git)( |$)' "$3") + $(grep -c '^++' "$3") ))"; }
+_GPZ="$(mktemp -d)"; _gpzj="$(gpsj PowerShell 'Get-ChildItem -Recurse src')"
+_gpz0="$(_gpz "$GPS" "$_gpzj" "$_GPZ/t")"
+sed "s/^IFS= read -r -d '' INPUT || true\$/INPUT=\"\$(cat)\"/" "$GPS" > "$_GPZ/twin.sh"
+_gpz1="$(_gpz "$_GPZ/twin.sh" "$_gpzj" "$_GPZ/t2")"
+if ! grep -q 'read -r -d' "$_GPZ/t"; then fail "guard-powershell cost: the trace shows no stdin read — the measurement is broken, not the hook"
+elif [ "${_gpz1:-0}" -lt 1 ]; then fail "guard-powershell cost: the twin that reads with \$(cat) counted $_gpz1 — the counter sees nothing"
+elif [ "$_gpz0" = 0 ]; then pass "a PowerShell command with no 'bash' in it opens no process in guard-powershell.sh (0; the \$(cat) twin: $_gpz1)"
+else fail "guard-powershell.sh opens $_gpz0 process(es) on a PowerShell command with no 'bash' in it — budget 0"; fi
+rm -rf "$_GPZ"
 # Wired once, and only on PowerShell: a second wiring under Bash would cost a process on every Bash call. Every line
 # naming the hook is read, not the first. The plugin copy is Crewforth's only in this repository.
 gps_wired(){ awk -v h=guard-powershell.sh '/"matcher"/{m=$0; sub(/.*"matcher"[[:space:]]*:[[:space:]]*"/,"",m); sub(/".*/,"",m)} index($0,h){print m}' "$1"; }
