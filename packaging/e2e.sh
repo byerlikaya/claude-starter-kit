@@ -249,6 +249,25 @@ run_adopt "$G" --yes
 grep -q '^stack=generic' "$G/.claude/kit.conf"          || die "Node project not recorded as generic" adopt-generic "$G"
 [ ! -d "$G/.claude/skills/cqrs-aop-module" ]             || die "the removed .NET pattern skill was installed" adopt-generic "$G"
 echo "[adopt-generic] stack=generic · no pattern skill"
+# .claude/README.md describes the installed version. start.sh copied it and adopt/update never did (RC-1 field: both
+# projects still described 3.0.0 after updating). Refreshed on every run now; a copy that differs is kept first.
+cmp -s kit/README.md "$G/.claude/README.md" || die "adopt did not write .claude/README.md" adopt-readme "$G"
+( cd "$G" && git add -A && git commit -qm adopt1 ) >/dev/null 2>&1
+printf '# the README an older Crewforth wrote, or the user edited\n' > "$G/.claude/README.md"
+cp adopt.sh "$G/"; cp -R kit "$G/"; run_adopt "$G" --yes
+cmp -s kit/README.md "$G/.claude/README.md" || die "the update left a stale .claude/README.md" adopt-readme "$G"
+_rbk="$(ls -d "$G"/.claude/.legacy-backup/*/ 2>/dev/null | tail -1)"
+[ -n "$_rbk" ] && grep -qx '# the README an older Crewforth wrote, or the user edited' "${_rbk}README.md" 2>/dev/null \
+  || die "the old README was overwritten without a copy" adopt-readme "$G"
+case "$ADOPT_OUT" in *"README.md differed from this version's — the old one is kept in"*) ;; *) die "the update kept the old README without saying where" adopt-readme "$G" ;; esac
+# Twins: the same README (and the same one with CRLF line endings) is refreshed silently, with no backup.
+rm -rf "$G/.claude/.legacy-backup"; cp adopt.sh "$G/"; cp -R kit "$G/"; run_adopt "$G" --yes
+case "$ADOPT_OUT" in *"README.md differed"*) die "an unchanged README was backed up" adopt-readme/same "$G" ;; esac
+awk '{ printf "%s\r\n", $0 }' kit/README.md > "$G/.claude/README.md"
+cp adopt.sh "$G/"; cp -R kit "$G/"; run_adopt "$G" --yes
+case "$ADOPT_OUT" in *"README.md differed"*) die "a CRLF copy of the same README was backed up" adopt-readme/crlf "$G" ;; esac
+[ ! -d "$G/.claude/.legacy-backup" ] || [ -z "$(ls "$G/.claude/.legacy-backup")" ] || die "a backup appeared for an unchanged README" adopt-readme/twins "$G"
+echo "[adopt-readme] written on adopt · a differing one kept in .legacy-backup and named, then refreshed · same / CRLF-same: no backup"
 
 # CSK_CORRECT_STACK used to flip a recorded 'generic' to 'dotnet'. 3.0 has one shape, so the variable does
 # nothing — and says so, rather than being silently ignored by an automation that still sets it.
@@ -959,7 +978,11 @@ else
   LFW="$WORK/legacy-forward"; rm -rf "$LFW"; mkdir -p "$LFW/stub"
   # npm on Windows is a native program: hand it C:/… paths, not the /c/… spelling the shell uses.
   lf_nat(){ if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi; }
-  lf_tree(){ ( cd "$1" && find . -type f ! -path './.git/*' ! -name gate-log.tsv 2>/dev/null | LC_ALL=C sort | while IFS= read -r f; do printf '%s ' "$f"; cksum < "$f"; done ) | cksum; }
+  # A backup folder is named after the second it was made, so two runs never share it: the name is folded to T, the
+  # contents are still compared.
+  lf_tree(){ ( cd "$1" && find . -type f ! -path './.git/*' ! -name gate-log.tsv 2>/dev/null | LC_ALL=C sort | while IFS= read -r f; do
+      n="$f"; case "$f" in ./.claude/.legacy-backup/*/*) n="${f#./.claude/.legacy-backup/}"; n="./.claude/.legacy-backup/T/${n#*/}" ;; esac
+      printf '%s ' "$n"; cksum < "$f"; done ) | cksum; }
   export npm_config_cache="$(lf_nat "$LFW/npm-cache")" npm_config_update_notifier=false npm_config_fund=false npm_config_audit=false
   _slog; { CF_TGZ="$LFW/$(npm pack --silent --pack-destination "$(lf_nat "$LFW")" | tail -n 1)" \
         && FW_TGZ="$LFW/$(cd packaging/legacy-npm && npm pack --silent --pack-destination "$(lf_nat "$LFW")" | tail -n 1)"; } >"$_L" 2>&1 \
