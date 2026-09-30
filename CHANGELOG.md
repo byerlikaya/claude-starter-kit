@@ -27,6 +27,11 @@ versioning follows [SemVer](https://semver.org/).
   now guarded like `.claude/hooks/`. Reading them stays free.
 - The gates read `eval/lib/crew-env.sh` on every call, but the file itself was not guarded: overwritten, it switched
   every rule off. It is now guarded in both editions.
+- On Windows, when Claude Code does not detect Git Bash, it runs a hook through PowerShell. The hook still starts,
+  but its bash redirections become PowerShell ones (`2>/dev/null` writes to a path), it exits 0, and no gate runs: a
+  `git push --force` went through. Every hook Crewforth writes — both editions and the Studio panel's gate — now
+  names its shell (`"shell": "bash"`). Claude Code reads the field from 2.1.81; earlier versions ignore it and load
+  the file as before.
 
 ### Fixed
 

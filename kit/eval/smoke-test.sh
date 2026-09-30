@@ -6062,6 +6062,31 @@ for _gf in $_gpw_f; do
     || fail "${_gf##*/}: guard-powershell.sh is wired under '${_gm:-<nothing>}' — it must be exactly one PowerShell entry"
 done
 
+# Every Crewforth hook names its shell. Left to the default, Claude Code runs a hook through PowerShell on Windows when
+# it does not detect Git Bash: `bash …` still starts, but the line's bash redirections become PowerShell ones, the hook
+# exits 0 and no gate runs (measured in the field on 3.0.1-rc.1). Paired per entry: each command object whose command
+# runs a Crewforth hook must carry "shell": "bash" itself. A user's own hook or a command statusLine in the same file is
+# theirs, not counted. Prints "<crewforth hooks> <with shell bash>".
+hook_shells(){ awk '{ buf = buf $0 "\n" } END {
+  while (match(buf, /\{[^{}]*\}/)) { o = substr(buf, RSTART, RLENGTH); buf = substr(buf, RSTART + RLENGTH)
+    if (o !~ /"type"[[:space:]]*:[[:space:]]*"command"/) continue
+    if (!index(o, ".claude/hooks/") && !(index(o, "CLAUDE_PLUGIN_ROOT") && index(o, "/hooks/"))) continue
+    c++; if (o ~ /"shell"[[:space:]]*:[[:space:]]*"bash"/) b++ }
+  printf "%d %d", c, b }' "$1"; }
+_hsd="$(mktemp -d)"
+printf '%s\n' '{"statusLine":{"type":"command","command":"my-status"},"hooks":{"Stop":[{"hooks":[' \
+  '{"type":"command","shell":"bash","command":"bash .claude/hooks/a.sh"},{"type":"command","command":"bash .claude/hooks/b.sh"},' \
+  '{"type":"command","command":"my-own-hook"}]}]}}' > "$_hsd/t.json"
+if [ "$(hook_shells "$_hsd/t.json")" != "2 1" ]; then fail "hook shell pin: the counter read '$(hook_shells "$_hsd/t.json")' on a fixture with 2 Crewforth hooks (1 with shell) beside a user hook and a statusLine — want '2 1'; the measurement is broken, not the settings"
+else for _gf in $_gpw_f; do
+  [ -f "$_gf" ] || continue
+  set -- $(hook_shells "$_gf")
+  if [ "${1:-0}" -lt 1 ]; then fail "${_gf##*/}: no Crewforth command hook counted — the pin read nothing"
+  elif [ "$1" = "$2" ]; then pass "${_gf##*/}: all $1 Crewforth command hooks run under \"shell\": \"bash\""
+  else fail "${_gf##*/}: $2 of $1 Crewforth command hooks say \"shell\": \"bash\" — the rest run under PowerShell when Claude Code finds no Git Bash, and fail open"; fi
+done; fi
+rm -rf "$_hsd"
+
 sec "== 12c) every command the model is told to run says: the Bash tool, not PowerShell =="
 # SCOPE, one rule (decided): Crewforth's own scripts — every `.sh` the payload ships, read from the payload itself, so a
 # script a later version adds anywhere is covered without editing this list. WHERE: every text the model reads — the
