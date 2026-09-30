@@ -54,6 +54,9 @@ export function prepare(sessionId) {
         matcher: '*',
         hooks: [{
           type: 'command',
+          // Named, not left to the default: on Windows without a detected Git Bash, Claude Code runs a hook through
+          // PowerShell, which cannot read the VAR=… prefix — the gate would fail open.
+          shell: 'bash',
           command: `CREW_GATE_WAIT=${HOOK_WAIT_S} bash ${JSON.stringify(HOOK)} ${JSON.stringify(spool)}`,
           timeout: HARNESS_TIMEOUT_S,
         }],

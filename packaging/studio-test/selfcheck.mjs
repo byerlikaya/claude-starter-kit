@@ -455,6 +455,10 @@ if (gate) {
     gate.settingsPath.startsWith(os.tmpdir()), gate.settingsPath);
   check('the configured timeout leaves the hook room to answer',
     entry?.hooks?.[0]?.timeout > HOOK_WAIT_S);
+  // Left to the default, Claude Code runs the hook through PowerShell on Windows when it does not detect Git Bash; the
+  // VAR=… prefix is not PowerShell and the gate fails open.
+  check('the gate names its shell (bash), so PowerShell never runs it',
+    entry?.hooks?.[0]?.shell === 'bash', `shell ${entry?.hooks?.[0]?.shell}`);
 
   // Behaviour, not text. Each case runs the real hook.
   const payload = JSON.stringify({
