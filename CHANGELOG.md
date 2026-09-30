@@ -32,6 +32,11 @@ versioning follows [SemVer](https://semver.org/).
   `git push --force` went through. Every hook Crewforth writes — both editions and the Studio panel's gate — now
   names its shell (`"shell": "bash"`). Claude Code reads the field from 2.1.81; earlier versions ignore it and load
   the file as before.
+- On Windows, doctor now says when Claude Code cannot find Git Bash, looking where Claude Code itself looks
+  (`CLAUDE_CODE_GIT_BASH_PATH`, the default Git folders, then git on PATH). With none found, it reports that the
+  hooks run under PowerShell and the gates do not run, and counts it in the verdict. A per-user Git install
+  (`%LOCALAPPDATA%\Programs\Git`), which Claude Code does not look in, is reported the same way with the exact path
+  to set in `CLAUDE_CODE_GIT_BASH_PATH`. A Git Bash reachable only through PATH is a warning.
 
 ### Fixed
 
