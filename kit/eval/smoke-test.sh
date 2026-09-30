@@ -5850,6 +5850,35 @@ GBCP
        _gb6="$(cd "$DTMP" && PATH="$GBF/nocp:$PATH" CREW_LANG=en bash .claude/eval/doctor.sh 2>/dev/null)"
        case "$_gb6" in *"Git Bash lookup not checked (no cygpath"*) pass "doctor: Windows without cygpath → says the Git Bash lookup was not checked" ;;
          *) fail "doctor: Windows without cygpath did not say the lookup went unchecked" ;; esac ;; esac
+  # ONE copy: the plugin edition's /crew-doctor runs eval/lib/git-bash.sh directly (doctor.sh does not ship there), so
+  # the script alone must give doctor's answer and exit code, doctor must hold no second copy, and the plugin must
+  # carry these bytes.
+  _gbs="$DTMP/.claude/eval/lib/git-bash.sh"
+  _gbd="$(cd "$DTMP" && env -u CLAUDE_CODE_GIT_BASH_PATH -u LOCALAPPDATA GBC="$GBF/empty" PATH="$GBF/bin:$PATH" CREW_LANG=en bash "$_gbs" 2>/dev/null; echo "rc=$?")"
+  _gbd0="$(printf '%s\n' "$_gb0" | grep -F 'cannot find Git Bash')"
+  case "$_gbd" in *"$_gbd0"*"rc=1") [ -n "$_gbd0" ] && pass "git-bash.sh alone gives doctor's line and exits 1 — the plugin's /crew-doctor gets the same answer" \
+                                   || fail "git-bash.sh: doctor's reference line is empty — the comparison proves nothing" ;;
+    *) fail "git-bash.sh alone did not give doctor's line with exit 1: $(printf '%s' "$_gbd" | tr '\n' ' ')" ;; esac
+  grep -q 'finds Git Bash' "$ROOT/eval/doctor.sh" && fail "doctor.sh holds its own copy of the Git Bash check — the plugin's would drift" \
+    || pass "the Git Bash check lives only in eval/lib/git-bash.sh"
+  if [ "$IS_KIT" = 1 ]; then
+    cmp -s "$ROOT/eval/lib/git-bash.sh" "$(cd "$ROOT/.." && pwd)/plugin/eval/lib/git-bash.sh" \
+      && pass "the plugin edition ships the same git-bash.sh" || fail "plugin/eval/lib/git-bash.sh is missing or differs — run packaging/build-plugin.sh"
+  fi
+  # Every branch, in Turkish, on a drive of its own (the one above has a default-folder Git by now, which would
+  # answer "found" for all of them and leave the other keys untested).
+  _gbt="$GBF/tr"; mkdir -p "$_gbt/c/Tools/Git/cmd" "$_gbt/c/Tools/Git/bin" "$_gbt/c/Users/u/AppData/Local/Programs/Git/bin"
+  : > "$_gbt/c/Tools/Git/bin/bash.exe"; : > "$_gbt/c/Users/u/AppData/Local/Programs/Git/bin/bash.exe"
+  printf '#!/bin/sh\n' > "$_gbt/c/Tools/Git/cmd/git"; chmod +x "$_gbt/c/Tools/Git/cmd/git"
+  : > "$DTMP/gbmiss"; _gbtn=""
+  for _gbe in "X=1" "CLAUDE_CODE_GIT_BASH_PATH=C:\\Tools\\Git\\bin\\bash.exe" "CLAUDE_CODE_GIT_BASH_PATH=C:\\nope\\git.exe" \
+              "LOCALAPPDATA=C:\\Users\\u\\AppData\\Local" "PATH=$_gbt/c/Tools/Git/cmd:$GBF/bin:$PATH"; do
+    ( cd "$DTMP" && env -u CLAUDE_CODE_GIT_BASH_PATH -u LOCALAPPDATA GBC="$_gbt" PATH="$GBF/bin:$PATH" CREW_LANG=tr CREW_I18N_MISS="$DTMP/gbmiss" "$_gbe" bash "$_gbs" >/dev/null 2>&1 )
+    _gbtn="$_gbtn$?"
+  done
+  [ -s "$DTMP/gbmiss" ] && fail "git-bash.sh prints English under CREW_LANG=tr: $(sort -u "$DTMP/gbmiss" | tr '\n' '|')" \
+    || { [ "$_gbtn" = 10113 ] && pass "git-bash.sh speaks Turkish on all five branches (no missing key; exits $_gbtn)" \
+         || fail "git-bash.sh Turkish sweep exited '$_gbtn', want 10113 (none · found · wrong variable · per-user · PATH only) — it did not reach every branch"; }
   # A bash named without .exe: MSYS says `[ -f …/bash ]` when only bash.exe exists; Claude Code does not.
   _gb7="$(gbdoc env CLAUDE_CODE_GIT_BASH_PATH='C:\Tools\Git\bin\bash')"
   case "$_gb7" in *"CLAUDE_CODE_GIT_BASH_PATH (C:\\Tools\\Git\\bin\\bash) is not a bash"*) pass "doctor: CLAUDE_CODE_GIT_BASH_PATH naming bash without .exe, where only bash.exe exists → ignored, as Claude Code does" ;;

@@ -39,8 +39,16 @@ that the listing is then sent whole every turn, about (that total ÷ 4) tokens, 
 It is their call — show the line and the cost, do not edit their settings. On a 1,000,000-token model the default
 already fits.
 
+**On Windows, check Git Bash too.** Without a Git Bash where Claude Code looks, it runs every hook through
+PowerShell and Crewforth's gates do not run. The full install's doctor runs the same script:
+`bash "${CLAUDE_PLUGIN_ROOT}/eval/lib/git-bash.sh"` (Bash tool, not PowerShell). Pass its lines to the user verbatim;
+a ❌ is a failure with its fix. If this session has **no Bash tool at all**, that is the finding itself — Claude Code
+found no Git Bash: tell the user the gates do not run and that the fix is Git for Windows in its default folder, or
+`CLAUDE_CODE_GIT_BASH_PATH` set to its `bin\bash.exe`. Do not run the script through PowerShell.
+
 **The eval scripts are installer-only, by decision.** `eval/` — `doctor.sh`, `smoke-test.sh`, `routing-eval.sh`,
-`scan-skill.sh`, `utilization.sh` — ships with `start.sh` and `adopt.sh` and NOT with the plugin edition. The eval
+`scan-skill.sh`, `utilization.sh` — ships with `start.sh` and `adopt.sh` and NOT with the plugin edition; `eval/lib/`
+(the JSON reader, the listing counter, the Git Bash check) ships with both. The eval
 scripts are developer instruments: they inspect an installation from outside it, and the plugin edition has no
-installation to inspect. Say this plainly when someone asks why `/crew-doctor` reports only the listing on a plugin install,
+installation to inspect. Say this plainly when someone asks why `/crew-doctor` reports only the listing (and, on Windows, Git Bash) on a plugin install,
 rather than treating it as a defect. The Studio panel ships in both editions (`/crew-studio`).
