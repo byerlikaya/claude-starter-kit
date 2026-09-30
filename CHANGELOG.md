@@ -37,6 +37,7 @@ versioning follows [SemVer](https://semver.org/).
   hooks run under PowerShell and the gates do not run, and counts it in the verdict. A per-user Git install
   (`%LOCALAPPDATA%\Programs\Git`), which Claude Code does not look in, is reported the same way with the exact path
   to set in `CLAUDE_CODE_GIT_BASH_PATH`. A Git Bash reachable only through PATH is a warning.
+  The plugin edition's `/crew-doctor` runs the same check (one script in both editions).
 
 ### Fixed
 
