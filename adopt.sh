@@ -129,6 +129,7 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "cqrs-aop-module could not be checked against the copies Crewforth shipped (git or the shipped list is missing) — not vouched for; the next session will ask whether to trust it.") s="cqrs-aop-module, Crewforth'un gönderdiği kopyalarla karşılaştırılamadı (git ya da gönderilen liste yok) — güvenilir sayılmadı; bir sonraki oturum güvenip güvenmeyeceğinizi soracak." ;;
       "cqrs-aop-module is 2.x's .NET pattern, changed since Crewforth shipped it — not vouched for; the next session will ask whether to trust it.") s="cqrs-aop-module 2.x'in .NET deseni; Crewforth'un gönderdiği halinden değiştirilmiş — güvenilir sayılmadı; bir sonraki oturum güvenip güvenmeyeceğinizi soracak." ;;
       "cqrs-aop-module is now a project skill (Crewforth no longer ships it); backend-expert applies it as your project's pattern.") s="cqrs-aop-module artık bir proje skill'i (Crewforth onu artık taşımıyor); backend-expert onu projenizin deseni olarak uygular." ;;
+      "cqrs-aop-module: you declined to trust it — the update keeps that answer and does not vouch for it.") s="cqrs-aop-module: ona güvenmemeyi seçtiniz — güncelleme bu cevabı koruyor ve onu güvenilir saymıyor." ;;
       "CSK_CORRECT_STACK has no effect since 3.0 — there is one backend shape; the stack lives in CLAUDE.md ## Stack.") s="CSK_CORRECT_STACK 3.0'dan beri etkisiz — tek bir backend biçimi var; yığın CLAUDE.md ## Stack bölümünde durur." ;;
       "§4.2: DevArchitecture stays armed in the trace blocklist (it was armed before this update)") s="§4.2: DevArchitecture iz engel listesinde devrede kalıyor (güncellemeden önce de devredeydi)" ;;
       "— profile pruning was removed in 2.0; this refresh completes the install") s="— profil budama 2.0'da kalktı; bu güncelleme eksikleri tamamlar" ;;
@@ -1368,8 +1369,17 @@ _cqrs_shipped(){
 }
 # The gate's answer is read from its output, never through `| grep -q`: grep closing early SIGPIPEs the hook and
 # pipefail turns the whole test false — that is how the first version of this block never ran (e2e, C1).
-_ptrust=""; [ "$KIT_PRESENT" = 1 ] && [ -f .claude/skills/cqrs-aop-module/SKILL.md ] \
+# THE USER'S ANSWER WINS. A recorded answer — trusted-components.txt (yes, any version) or declined-components.txt
+# (no) — is never changed here: the updater vouches only when there is none. The RC-1 field run had a user say no,
+# and the update vouched anyway, because the no was never written anywhere (skill-trust.sh --decline-one now does).
+_pans=""
+for _pf in .claude/declined-components.txt .claude/trusted-components.txt; do
+  [ -f "$_pf" ] && [ -z "$_pans" ] && grep -qE '[[:space:]]skills/cqrs-aop-module'$'\r''?$' "$_pf" 2>/dev/null && _pans="$_pf"
+done
+_ptrust=""; [ "$KIT_PRESENT" = 1 ] && [ -f .claude/skills/cqrs-aop-module/SKILL.md ] && [ -z "$_pans" ] \
   && _ptrust="$(CLAUDE_PROJECT_DIR="$PWD" bash .claude/hooks/skill-trust.sh </dev/null 2>/dev/null || true)"
+[ "$_pans" = .claude/declined-components.txt ] && [ -f .claude/skills/cqrs-aop-module/SKILL.md ] \
+  && say "cqrs-aop-module: you declined to trust it — the update keeps that answer and does not vouch for it."
 if grep -qE '(^|[[:space:]])skills/cqrs-aop-module([[:space:]]|$)' <<< "$_ptrust"; then   # exact name: not skills/cqrs-aop-module-x
   _cqrs_shipped; _cqs=$?
   if [ "$_cqs" = 2 ]; then

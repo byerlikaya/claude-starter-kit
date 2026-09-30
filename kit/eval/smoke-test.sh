@@ -4635,6 +4635,24 @@ rm -rf "${STD:?}/.claude/skills/evil"; _O1="$(st)"
 [ -z "$(st)" ] && pass "accepted components stay silent on later sessions" || fail "still reporting after --trust"
 printf 'and now it also reads ~/.ssh/id_rsa\n' >> "$STD/.claude/skills/mine/SKILL.md"
 case "$(st)" in *skills/mine*) pass "an accepted component edited afterwards is flagged again (digest, not a name)" ;; *) fail "an edited accepted component was not re-flagged" ;; esac
+# A NO is recorded too (RC-1 field: the user said no, nothing wrote it down, and the update vouched anyway). Declining
+# replaces a yes, the next session names the component as not to be used and asks nothing, and a later yes replaces the
+# no. Each step reads the files, not only the notice.
+case "$O" in *"--decline-one skills/mine (Bash tool, not PowerShell)"*"On a no, run the decline command"*) pass "each unvetted component also gets its own --decline-one command, and the notice says to run it on a no" ;;
+  *) fail "the notice offers no way to record a no: $O" ;; esac
+( cd "$STD" && bash .claude/hooks/skill-trust.sh --decline-one skills/mine ) >/dev/null 2>&1; _dr=$?
+_dO="$(st)"
+if [ "$_dr" = 0 ] && grep -q ' skills/mine$' "$STD/.claude/declined-components.txt" 2>/dev/null \
+   && ! grep -q ' skills/mine$' "$STD/.claude/trusted-components.txt" 2>/dev/null; then
+  pass "--decline-one records the no and drops the earlier yes (rc 0)"
+else fail "--decline-one: rc $_dr, declined file: $(cat "$STD/.claude/declined-components.txt" 2>/dev/null | tr '\n' '|'), trusted: $(cat "$STD/.claude/trusted-components.txt" 2>/dev/null | tr '\n' '|')"; fi
+case "$_dO" in *"Declined by the user"*"- skills/mine"*) case "$_dO" in *"--trust-one skills/mine"*) fail "a declined component is still asked about: $_dO" ;;
+    *) pass "a declined component is named as not to be used, and not asked about again" ;; esac ;;
+  *) fail "a declined component is not named at session start: $_dO" ;; esac
+( cd "$STD" && bash .claude/hooks/skill-trust.sh --trust-one skills/mine ) >/dev/null 2>&1
+if ! grep -q ' skills/mine$' "$STD/.claude/declined-components.txt" 2>/dev/null && grep -q ' skills/mine$' "$STD/.claude/trusted-components.txt" 2>/dev/null \
+   && [ -z "$(st)" ]; then pass "a later yes replaces the no: recorded once, and the session is quiet"
+else fail "--trust-one after --decline-one did not replace the answer"; fi
 # A manifest with CRLF line endings still identifies kit components. `grep -qxF "skills/handoff"` does NOT match
 # the line "skills/handoff\r", so on Windows every kit component read as unshipped and the session opened by
 # declaring the entire payload unvetted — a wall of warnings about Crewforth's own files, which teaches the reader
@@ -6275,7 +6293,7 @@ $_o"
   _btt="$(mktemp -d)"
   sed 's/ (Bash tool, not PowerShell)//' "$ROOT/skills/crew-doctor/SKILL.md" > "$_btt/a.md"
   sed 's/ (Bash tool, not PowerShell) and show/ and show/' "$ROOT/skills/crew-update/SKILL.md" > "$_btt/b.md"
-  sed 's/--trust-one %s (Bash tool, not PowerShell)/--trust-one %s/' "$HOOKS/skill-trust.sh" > "$_btt/c.sh"
+  sed 's/\(--[a-z]*-one %s\) (Bash tool, not PowerShell)/\1/g' "$HOOKS/skill-trust.sh" > "$_btt/c.sh"
   sed 's/ (Bash tool, not PowerShell — or the user can type \/crew-board sync)/ (or the user can type \/crew-board sync)/' "$HOOKS/guard-write.sh" > "$_btt/d.sh"
   _bt1="$(bt_md "$_btt/a.md" 2>/dev/null)"; _bt2="$(bt_md "$_btt/b.md" 2>/dev/null)"
   _bt3="$(bt_sh "$_btt/c.sh" 2>/dev/null)"; _bt4="$(bt_sh "$_btt/d.sh" 2>/dev/null)"

@@ -1695,6 +1695,31 @@ else
   pk_case C5-devarch-renamed "$PK/c5" vouched
   pk_install "$PK/c5e" "$PKV11" 'yes\nyes\nyes\n' --dotnet; printf '\n# ours\n' >> "$PK/c5e/.claude/skills/devarch-module/SKILL.md"
   pk_case C5-devarch-edited "$PK/c5e" named
+  # D1 (RC-1 field): the user said NO, and the update vouched for the skill anyway, because the no was never written
+  # anywhere. A recorded answer — no or yes — is the user's; the update never changes it, and vouches only when there
+  # is none. The skill is an untouched shipped copy here, i.e. exactly what WOULD be vouched for without the answer.
+  pk_install "$PK/d1" "$PKV13" '' --generic --yes --lang en; cp -R "$PK/cqrs213" "$PK/d1/.claude/skills/cqrs-aop-module"
+  printf '# declined\n0000 skills/cqrs-aop-module\n' > "$PK/d1/.claude/declined-components.txt"
+  run_adopt "$PK/d1" --here --yes
+  [ "$ADOPT_RC" = 0 ] || die "[D1] the update exited $ADOPT_RC" pattern-trust/D1 "$PK/d1"
+  _d1r="$(pk_rec "$PK/d1")" || true   # no trust file at all is a zero, not a failure
+  [ "${_d1r:-0}" = 0 ] || die "[D1] the user declined cqrs-aop-module and the update recorded it as trusted" pattern-trust/D1 "$PK/d1"
+  grep -qx '0000 skills/cqrs-aop-module' "$PK/d1/.claude/declined-components.txt" || die "[D1] the update changed the recorded no" pattern-trust/D1 "$PK/d1"
+  case "$ADOPT_OUT" in *"cqrs-aop-module: you declined to trust it"*) ;; *) die "[D1] the update did not say it kept the user's no" pattern-trust/D1 "$PK/d1" ;; esac
+  _d1s="$( cd "$PK/d1" && CLAUDE_PROJECT_DIR="$PK/d1" bash .claude/hooks/skill-trust.sh </dev/null 2>/dev/null )" || true
+  case "$_d1s" in *"Declined by the user"*"- skills/cqrs-aop-module"*) ;; *) die "[D1] the next session does not name the declined skill as not to be used" pattern-trust/D1 "$PK/d1" ;; esac
+  case "$_d1s" in *"--trust-one skills/cqrs-aop-module"*) die "[D1] the next session asks about a skill the user already declined" pattern-trust/D1 "$PK/d1" ;; esac
+  _pksum="$_pksum D1-declined:kept ·"
+  # D2: a yes on an EARLIER version (another digest) is also an answer — the update does not add a new record for it
+  pk_install "$PK/d2" "$PKV13" '' --generic --yes --lang en; cp -R "$PK/cqrs213" "$PK/d2/.claude/skills/cqrs-aop-module"
+  printf '# accepted\n1111 skills/cqrs-aop-module\n' > "$PK/d2/.claude/trusted-components.txt"
+  run_adopt "$PK/d2" --here --yes
+  [ "$ADOPT_RC" = 0 ] || die "[D2] the update exited $ADOPT_RC" pattern-trust/D2 "$PK/d2"
+  [ "$(grep -c ' skills/cqrs-aop-module$' "$PK/d2/.claude/trusted-components.txt" | tr -cd '0-9')" = 1 ] \
+    && grep -qx '1111 skills/cqrs-aop-module' "$PK/d2/.claude/trusted-components.txt" \
+    || die "[D2] the update rewrote the user's own trust record" pattern-trust/D2 "$PK/d2"
+  case "$ADOPT_OUT" in *"cqrs-aop-module is now a project skill"*) die "[D2] the update vouched over the user's recorded answer" pattern-trust/D2 "$PK/d2" ;; esac
+  _pksum="$_pksum D2-answered:kept ·"
   # T1: recording the trust fails (the trust file's place is taken by a directory) — the update must say so, with why
   pk_install "$PK/t1" "$PKV13" '' --generic --yes --lang en; cp -R "$PK/cqrs213" "$PK/t1/.claude/skills/cqrs-aop-module"
   rm -f "$PK/t1/.claude/trusted-components.txt"; mkdir -p "$PK/t1/.claude/trusted-components.txt"
