@@ -5790,6 +5790,70 @@ if [ -f "$GR" ]; then
   DOUT2="$(cd "$DTMP" && CREW_LANG=en bash .claude/eval/doctor.sh 2>/dev/null)"
   case "$DOUT2" in *"watch only Bash"*"DOCTOR: "*"issue(s)"*) pass "doctor flags a pre-2.5.0 Bash-only matcher as a failure, and the verdict counts it" ;;
                    *) fail "doctor stayed quiet on a Bash-only matcher — the gap is invisible to an upgrader" ;; esac
+  # Windows: doctor must say when Claude Code cannot find Git Bash — its hooks then run under PowerShell and no gate
+  # runs. Driven on any OS through shims: `uname` says MINGW, `cygpath` maps C:\ into a fixture drive, so the four
+  # answers (default folder · CLAUDE_CODE_GIT_BASH_PATH · only git on PATH · nothing) come from real doctor code, and
+  # the machine's own Git never leaks in (the fixture drive holds only what the case puts there).
+  GBF="$DTMP/gbfix"; mkdir -p "$GBF/bin" "$GBF/c"
+  printf '#!/bin/sh\necho MINGW64_NT-10.0-26200\n' > "$GBF/bin/uname"
+  cat > "$GBF/bin/cygpath" <<'GBCP'
+#!/bin/bash
+# fixture cygpath: C:\x\y <-> $GBC/c/x/y; anything else is not on the fixture drive
+case "$1" in
+  -u) p="$2"; case "$p" in [Cc]:\\*) p="${p:3}"; printf '%s/c/%s\n' "$GBC" "${p//\\//}" ;; *) exit 1 ;; esac ;;
+  -w) p="$2"; case "$p" in "$GBC"/c/*) p="${p#"$GBC"/c/}"; printf 'C:\\%s\n' "${p//\//\\}" ;; *) exit 1 ;; esac ;;
+esac
+GBCP
+  chmod +x "$GBF/bin/uname" "$GBF/bin/cygpath"
+  gbdoc(){ ( cd "$DTMP" && env -u CLAUDE_CODE_GIT_BASH_PATH -u LOCALAPPDATA GBC="$GBF" PATH="$GBF/bin:$PATH" CREW_LANG=en "$@" bash .claude/eval/doctor.sh 2>/dev/null ); }
+  _gb0="$(gbdoc)"
+  case "$_gb0" in *"cannot find Git Bash"*"<Git>\\bin\\bash.exe"*) pass "doctor: no Git Bash where Claude Code looks → a failure that names the fix" ;;
+    *) fail "doctor stayed quiet with no Git Bash on Windows — the gates are dead and nothing says so" ;; esac
+  mkdir -p "$GBF/c/Tools/Git/cmd" "$GBF/c/Tools/Git/bin"; : > "$GBF/c/Tools/Git/bin/bash.exe"
+  printf '#!/bin/sh\n' > "$GBF/c/Tools/Git/cmd/git"; chmod +x "$GBF/c/Tools/Git/cmd/git"
+  _gb1="$(gbdoc env PATH="$GBF/c/Tools/Git/cmd:$GBF/bin:$PATH")"
+  case "$_gb1" in *"only through git on PATH (C:\\Tools\\Git\\bin\\bash.exe)"*) pass "doctor: Git Bash found only through git on PATH → a warning naming it" ;;
+    *) fail "doctor did not report a Git Bash reachable only through PATH" ;; esac
+  _gb2="$(gbdoc env CLAUDE_CODE_GIT_BASH_PATH='C:\Tools\Git\bin\bash.exe')"
+  case "$_gb2" in *"finds Git Bash (C:\\Tools\\Git\\bin\\bash.exe)"*) pass "doctor: CLAUDE_CODE_GIT_BASH_PATH to an existing bash → found" ;;
+    *) fail "doctor did not honour CLAUDE_CODE_GIT_BASH_PATH" ;; esac
+  _gb3="$(gbdoc env CLAUDE_CODE_GIT_BASH_PATH='C:\Tools\Git\bin\git.exe')"
+  case "$_gb3" in *"CLAUDE_CODE_GIT_BASH_PATH (C:\\Tools\\Git\\bin\\git.exe) is not a bash"*"cannot find Git Bash"*) pass "doctor: a CLAUDE_CODE_GIT_BASH_PATH that is not bash is named as ignored" ;;
+    *) fail "doctor accepted a CLAUDE_CODE_GIT_BASH_PATH that Claude Code ignores" ;; esac
+  mkdir -p "$GBF/c/Users/u/AppData/Local/Programs/Git/bin"; : > "$GBF/c/Users/u/AppData/Local/Programs/Git/bin/bash.exe"
+  _gbu="$(gbdoc env LOCALAPPDATA='C:\Users\u\AppData\Local')"
+  case "$_gbu" in *"installed for this user only (C:\\Users\\u\\AppData\\Local\\Programs\\Git\\bin\\bash.exe)"*"CLAUDE_CODE_GIT_BASH_PATH to \"C:\\Users\\u\\AppData\\Local\\Programs\\Git\\bin\\bash.exe\""*)
+      pass "doctor: a per-user Git install Claude Code does not look in → a failure naming the measured path to set" ;;
+    *) fail "doctor did not name the per-user Git Bash for CLAUDE_CODE_GIT_BASH_PATH" ;; esac
+  _gbx="$(gbdoc env LOCALAPPDATA='C:\Users\nobody\AppData\Local')"
+  case "$_gbx" in *"installed for this user only"*) fail "doctor named a per-user Git Bash that does not exist — the path must be measured" ;;
+    *"cannot find Git Bash"*) pass "doctor: no per-user Git either → names no path it did not find" ;;
+    *) fail "doctor: an absent per-user Git gave neither answer" ;; esac
+  mkdir -p "$GBF/c/Program Files/Git/bin"; : > "$GBF/c/Program Files/Git/bin/bash.exe"
+  _gb4="$(gbdoc)"
+  case "$_gb4" in *"finds Git Bash (C:\\Program Files\\Git\\bin\\bash.exe)"*) pass "doctor: Git Bash in its default folder → found" ;;
+    *) fail "doctor did not find Git Bash in C:\\Program Files\\Git" ;; esac
+  # The fixture has issues of its own; what counts is that the missing Git Bash adds exactly one.
+  gbn(){ printf '%s\n' "$1" | sed -n 's/^DOCTOR: \([0-9][0-9]*\) issue.*/\1/p'; }
+  [ "$(gbn "$_gb0")" = "$(( $(gbn "$_gb4" | grep . || echo 0) + 1 ))" ] \
+    && pass "doctor: the missing Git Bash is one more issue in the verdict ($(gbn "$_gb4" | grep . || echo 0) → $(gbn "$_gb0"))" \
+    || fail "doctor: the verdict did not count the missing Git Bash (with: '$(gbn "$_gb4")', without: '$(gbn "$_gb0")')"
+  _gb5="$(cd "$DTMP" && env PATH="$GBF/c/Tools/Git/cmd:$PATH" CREW_LANG=en bash .claude/eval/doctor.sh 2>/dev/null)"
+  case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) skip platform "doctor off Windows says nothing about Git Bash — this runner IS Windows" ;;
+    *) case "$_gb5" in *"Git Bash"*) fail "doctor spoke about Git Bash on a non-Windows machine" ;;
+                       *"DOCTOR: "*) pass "doctor says nothing about Git Bash off Windows" ;;
+                       *) fail "doctor printed no verdict in the off-Windows case — the silence proves nothing" ;; esac ;; esac
+  # Third state: a Windows shell without cygpath is said to be unchecked, not passed. Only reachable where the
+  # machine itself has no cygpath (a Windows runner has it in /usr/bin, next to everything else).
+  case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) skip platform "doctor's no-cygpath branch — this Windows runner has cygpath" ;;
+    *) mkdir -p "$GBF/nocp"; cp "$GBF/bin/uname" "$GBF/nocp/uname"
+       _gb6="$(cd "$DTMP" && PATH="$GBF/nocp:$PATH" CREW_LANG=en bash .claude/eval/doctor.sh 2>/dev/null)"
+       case "$_gb6" in *"Git Bash lookup not checked (no cygpath"*) pass "doctor: Windows without cygpath → says the Git Bash lookup was not checked" ;;
+         *) fail "doctor: Windows without cygpath did not say the lookup went unchecked" ;; esac ;; esac
+  # A bash named without .exe: MSYS says `[ -f …/bash ]` when only bash.exe exists; Claude Code does not.
+  _gb7="$(gbdoc env CLAUDE_CODE_GIT_BASH_PATH='C:\Tools\Git\bin\bash')"
+  case "$_gb7" in *"CLAUDE_CODE_GIT_BASH_PATH (C:\\Tools\\Git\\bin\\bash) is not a bash"*) pass "doctor: CLAUDE_CODE_GIT_BASH_PATH naming bash without .exe, where only bash.exe exists → ignored, as Claude Code does" ;;
+    *) fail "doctor accepted a CLAUDE_CODE_GIT_BASH_PATH that exists only through the .exe suffix" ;; esac
   grep -q 'command not found' "$DTMP/err" && fail "doctor.sh calls a helper before it is defined (see stderr)" \
                                           || pass "doctor.sh runs with no undefined-helper errors"
   case "$DOUT" in *"gate activity"*) pass "doctor actually prints a gate-activity line" ;;
