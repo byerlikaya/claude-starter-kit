@@ -47,7 +47,12 @@ versioning follows [SemVer](https://semver.org/).
   and its first session asked whether to trust the pattern skill Crewforth itself had shipped. The update now
   vouches for the skill when every file in it is byte-for-byte a copy Crewforth shipped (2.12–2.13, or
   `devarch-module` renamed in place), whatever the recorded stack. An edited copy is named instead, and the next
-  session asks — an edited skill is the user's work.
+  session asks — an edited skill is the user's work. It vouches only when the user has given no answer: a recorded yes
+  or no is never changed.
+- A "no" to trusting a component was not recorded anywhere, so an update could vouch for a skill the user had
+  declined. The session-start notice now gives each component a decline command next to its trust command; the no
+  is kept in `.claude/declined-components.txt`, the component is named as not to be used, and nobody asks about it
+  again.
 - When recording that trust failed, the update said nothing. It now says so, with the reason.
 - Updating a pre-1.1 install (discipline inline in `CLAUDE.md`) on the current branch stopped with
   `TS: unbound variable` when it replaced the inline block. Fixed.
