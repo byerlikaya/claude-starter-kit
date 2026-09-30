@@ -5847,6 +5847,23 @@ GBCP
   case "$_gbx" in *"installed for this user only"*) fail "doctor named a per-user Git Bash that does not exist — the path must be measured" ;;
     *"cannot find Git Bash"*) pass "doctor: no per-user Git either → names no path it did not find" ;;
     *) fail "doctor: an absent per-user Git gave neither answer" ;; esac
+  # The field case (RC-2, c1): the variable named git-bash.exe, the LAUNCHER. Doctor names it as such, with the bash
+  # next to it that exists; a launcher with no bash beside it gets the plain line, never a guessed path.
+  : > "$GBF/c/Users/u/AppData/Local/Programs/Git/git-bash.exe"
+  _gbl1="$(gbdoc env LOCALAPPDATA='C:\Users\u\AppData\Local' CLAUDE_CODE_GIT_BASH_PATH='C:\Users\u\AppData\Local\Programs\Git\git-bash.exe')"
+  case "$_gbl1" in *"is Git Bash's launcher, not bash"*"point it to C:\\Users\\u\\AppData\\Local\\Programs\\Git\\bin\\bash.exe"*"installed for this user only"*)
+      pass "doctor: CLAUDE_CODE_GIT_BASH_PATH naming git-bash.exe → called the launcher, with the bash beside it that exists" ;;
+    *) fail "doctor did not name git-bash.exe as the launcher with its bin\\bash.exe: $(printf '%s' "$_gbl1" | grep -i 'git bash' | tr '\n' '|')" ;; esac
+  mkdir -p "$GBF/c/Other/Git"; : > "$GBF/c/Other/Git/git-bash.exe"
+  _gbl2="$(gbdoc env CLAUDE_CODE_GIT_BASH_PATH='C:\Other\Git\git-bash.exe')"
+  case "$_gbl2" in *"launcher"*) fail "doctor suggested a bin\\bash.exe that does not exist next to the launcher" ;;
+    *"CLAUDE_CODE_GIT_BASH_PATH (C:\\Other\\Git\\git-bash.exe) is not a bash that exists"*) pass "doctor: a launcher with no bash beside it → the plain line, no guessed path" ;;
+    *) fail "doctor: a lone launcher gave neither line" ;; esac
+  : > "$DTMP/gbmissl"
+  ( cd "$DTMP" && env -u CLAUDE_CODE_GIT_BASH_PATH -u LOCALAPPDATA GBC="$GBF" PATH="$GBF/bin:$PATH" CREW_LANG=tr CREW_I18N_MISS="$DTMP/gbmissl" \
+      CLAUDE_CODE_GIT_BASH_PATH='C:\Users\u\AppData\Local\Programs\Git\git-bash.exe' bash .claude/eval/lib/git-bash.sh >/dev/null 2>&1 )
+  [ -s "$DTMP/gbmissl" ] && fail "the launcher line prints English under CREW_LANG=tr: $(tr '\n' '|' < "$DTMP/gbmissl")" \
+    || pass "the launcher line speaks Turkish"
   mkdir -p "$GBF/c/Program Files/Git/bin"; : > "$GBF/c/Program Files/Git/bin/bash.exe"
   _gb4="$(gbdoc)"
   case "$_gb4" in *"finds Git Bash (C:\\Program Files\\Git\\bin\\bash.exe)"*) pass "doctor: Git Bash in its default folder → found" ;;

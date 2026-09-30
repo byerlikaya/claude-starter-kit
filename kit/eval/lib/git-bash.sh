@@ -32,6 +32,7 @@ _mt(){ local s="$1"; shift
     case "$s" in
       'fix: ') s='çözüm: ' ;;
       'Git Bash lookup not checked (no cygpath in this shell)') s='Git Bash araması denetlenmedi (bu kabukta cygpath yok)' ;;
+      "CLAUDE_CODE_GIT_BASH_PATH (%s) is Git Bash's launcher, not bash — Claude Code ignores it; point it to %s") s="CLAUDE_CODE_GIT_BASH_PATH (%s) Git Bash'in başlatıcısı, bash değil — Claude Code onu yok sayıyor; %s yolunu gösterecek şekilde ayarlayın" ;;
       'CLAUDE_CODE_GIT_BASH_PATH (%s) is not a bash that exists — Claude Code ignores it') s='CLAUDE_CODE_GIT_BASH_PATH (%s) var olan bir bash değil — Claude Code onu yok sayıyor' ;;
       'Claude Code finds Git Bash (%s) — hooks run under bash') s="Claude Code Git Bash'i buluyor (%s) — hook'lar bash altında koşuyor" ;;
       'Claude Code finds Git Bash only through git on PATH (%s) — started without it on PATH, its hooks run under PowerShell and the gates do not run; set CLAUDE_CODE_GIT_BASH_PATH to that path') s="Claude Code Git Bash'i yalnız PATH'teki git üzerinden buluyor (%s) — PATH'te o yokken başlarsa hook'lar PowerShell altında koşar ve kapılar çalışmaz; CLAUDE_CODE_GIT_BASH_PATH'i bu yola ayarlayın" ;;
@@ -64,7 +65,17 @@ case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*)
     if [ -n "$_gbv" ]; then
       _gbn="${_gbv##*[\\/]}"; _gbn="$(printf '%s' "$_gbn" | tr '[:upper:]' '[:lower:]')"
       case "$_gbn" in bash.exe|sh.exe|bash|sh) _gbx "$_gbv" && _gbf="$_gbv" ;; esac
-      [ -n "$_gbf" ] || warn "CLAUDE_CODE_GIT_BASH_PATH (%s) is not a bash that exists — Claude Code ignores it" "$_gbv"
+      # The field case (RC-2, c1): the variable named git-bash.exe, Git Bash's LAUNCHER (a window, not a shell), and
+      # Claude Code refused it. Its bash sits in bin\ next to it; that path is checked here before it is suggested.
+      _gbq=""
+      if [ -z "$_gbf" ] && [ "$_gbn" = git-bash.exe ]; then
+        _gbq="${_gbv%[\\/]*}"'\bin\bash.exe'; _gbx "$_gbq" || _gbq=""
+      fi
+      if [ -n "$_gbq" ]; then
+        warn "CLAUDE_CODE_GIT_BASH_PATH (%s) is Git Bash's launcher, not bash — Claude Code ignores it; point it to %s" "$_gbv" "$_gbq"
+      elif [ -z "$_gbf" ]; then
+        warn "CLAUDE_CODE_GIT_BASH_PATH (%s) is not a bash that exists — Claude Code ignores it" "$_gbv"
+      fi
     fi
     if [ -z "$_gbf" ]; then
       for _gbc in 'C:\Program Files\Git\bin\bash.exe' 'C:\Program Files (x86)\Git\bin\bash.exe'; do

@@ -31,13 +31,17 @@ versioning follows [SemVer](https://semver.org/).
   but its bash redirections become PowerShell ones (`2>/dev/null` writes to a path), it exits 0, and no gate runs: a
   `git push --force` went through. Every hook Crewforth writes — both editions and the Studio panel's gate — now
   names its shell (`"shell": "bash"`). Claude Code reads the field from 2.1.81; earlier versions ignore it and load
-  the file as before.
+  the file as before. **What this does not fix:** when Claude Code finds no Git Bash at all, each hook now fails with a
+  visible error ("requires bash but Git Bash was not found") instead of silently, but the gates still do not run.
+  Doctor names the cause and the exact `CLAUDE_CODE_GIT_BASH_PATH` to set; with it set, the hooks run under bash again.
 - On Windows, doctor now says when Claude Code cannot find Git Bash, looking where Claude Code itself looks
   (`CLAUDE_CODE_GIT_BASH_PATH`, the default Git folders, then git on PATH). With none found, it reports that the
   hooks run under PowerShell and the gates do not run, and counts it in the verdict. A per-user Git install
   (`%LOCALAPPDATA%\Programs\Git`), which Claude Code does not look in, is reported the same way with the exact path
   to set in `CLAUDE_CODE_GIT_BASH_PATH`. A Git Bash reachable only through PATH is a warning.
   The plugin edition's `/crew-doctor` runs the same check (one script in both editions).
+  A `CLAUDE_CODE_GIT_BASH_PATH` that names `git-bash.exe` — Git Bash's launcher, which Claude Code refuses — is called
+  that, with the `bin\bash.exe` beside it to use instead, when one exists there.
 
 ### Fixed
 
