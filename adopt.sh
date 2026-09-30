@@ -220,6 +220,9 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       ".NET pattern skill renamed: devarch-module -> cqrs-aop-module (content kept)") s=".NET desen skill'inin adı değişti: devarch-module -> cqrs-aop-module (içerik korundu)" ;;
       "⚠️  both devarch-module and cqrs-aop-module are present — nothing moved; remove the old one when ready") s='⚠️  devarch-module ve cqrs-aop-module ikisi birden var — hiçbir şey taşınmadı; hazır olduğunuzda eskisini silin' ;;
       "AGENT_TEMPLATE.md written (owned by Crewforth; refreshed on every update)") s="AGENT_TEMPLATE.md yazıldı (Crewforth'un dosyası; her güncellemede yenilenir)" ;;
+      "README.md differed from this version's — the old one is kept in %s/README.md") s="README.md bu sürümünkinden farklıydı — eskisi %s/README.md içinde saklandı" ;;
+      'README.md refreshed (describes this version of Crewforth)') s="README.md yenilendi (Crewforth'un bu sürümünü anlatıyor)" ;;
+      "README.md differs from this version's and could not be backed up — left as it is") s='README.md bu sürümünkinden farklı ve yedeklenemedi — olduğu gibi bırakıldı' ;;
       "pre-2.0 install (profile=%s): profile pruning was removed — completing the install") s='2.0 öncesi kurulum (profile=%s): profil budama kalktı — eksikler tamamlanıyor' ;;
       "pre-2.0 install (profile=%s): nothing was missing — the full set was already present") s='2.0 öncesi kurulum (profile=%s): eksik yok — tam set zaten kuruluydu' ;;
       "overlap: %s -> skill '%s' already present (kept); original re-backed up") s="çakışma: %s -> '%s' skill'i zaten var (korundu); orijinal yeniden yedeklendi" ;;
@@ -1169,6 +1172,29 @@ chmod +x .claude/studio/server/hooks/*.sh 2>/dev/null || true
 # agents and this is neither. Overwriting is right for the same reason DISCIPLINE.md is overwritten: the
 # file states the kit's own contract, a project does not author it, and a stale contract is worse than none.
 cp "$SRC/AGENT_TEMPLATE.md" .claude/ 2>/dev/null && say 'AGENT_TEMPLATE.md written (owned by Crewforth; refreshed on every update)'
+# README.md — Crewforth's description of what lives under .claude/. start.sh copied it; this script never did, so an
+# updated project kept the README of the version it was first installed with (RC-1 field: both projects still
+# described 3.0.0). It is refreshed on every run now, and never at the cost of an edit: a copy that differs from this
+# version's (line endings aside) is kept first in .claude/.legacy-backup/<time>/README.md and named.
+if [ -f "$SRC/README.md" ]; then
+  if [ -f .claude/README.md ] && ! cmp -s "$SRC/README.md" .claude/README.md \
+     && ! tr -d '\r' < .claude/README.md 2>/dev/null | cmp -s "$SRC/README.md" -; then
+    _rbk="$LEG_BK"
+    if [ -z "$_rbk" ] || [ ! -d "$_rbk" ]; then
+      _rbk=".claude/.legacy-backup/$(date +%Y%m%d-%H%M%S)"; _b="$_rbk"; i=2
+      while [ -e "$_b" ]; do _b="$_rbk-$i"; i=$((i+1)); done; _rbk="$_b"
+    fi
+    if mkdir -p "$_rbk" 2>/dev/null && cp .claude/README.md "$_rbk/README.md" 2>/dev/null; then
+      [ -f .claude/.legacy-backup/.gitignore ] || printf '*\n' > .claude/.legacy-backup/.gitignore 2>/dev/null
+      say "README.md differed from this version's — the old one is kept in %s/README.md" "$_rbk"
+      cp "$SRC/README.md" .claude/ 2>/dev/null && say 'README.md refreshed (describes this version of Crewforth)'
+    else
+      warnm "README.md differs from this version's and could not be backed up — left as it is"
+    fi
+  else
+    cp "$SRC/README.md" .claude/ 2>/dev/null
+  fi
+fi
 # Report the migration by what LANDED, not by what was missing: a component the payload lists can still be kept
 # out (EXCL_S), and must not be announced as restored when it was.
 if [ -n "$MIGRATE_MISSING" ]; then

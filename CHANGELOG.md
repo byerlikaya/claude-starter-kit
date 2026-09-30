@@ -54,6 +54,9 @@ versioning follows [SemVer](https://semver.org/).
   is kept in `.claude/declined-components.txt`, the component is named as not to be used, and nobody asks about it
   again.
 - When recording that trust failed, the update said nothing. It now says so, with the reason.
+- `.claude/README.md` was written by a fresh install only; `adopt` and `update` never touched it, so an updated project
+  kept describing the version it was first installed with. It is refreshed on every run now. A copy that differs
+  from this version's (line endings aside) is kept first in `.claude/.legacy-backup/<time>/README.md` and named.
 - Updating a pre-1.1 install (discipline inline in `CLAUDE.md`) on the current branch stopped with
   `TS: unbound variable` when it replaced the inline block. Fixed.
 - In the plugin edition, skills and agents told the model to run `bash .claude/…`, a path a plugin install does not
