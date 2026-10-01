@@ -15,6 +15,11 @@ versioning follows [SemVer](https://semver.org/).
 - In PowerShell a path was a target only when it began with a drive letter, a UNC prefix or `$HOME`:
   `Remove-Item -Recurse -Force src\app` and `"$env:TEMP\x"` passed, while `rm -rf src/app` was stopped. A target
   with a path separator is stopped now, and so is a recursive forced removal fed by a pipeline.
+- **With no Git Bash, nothing guarded the session.** On Windows, when Claude Code finds no Git Bash, every Crewforth
+  gate fails to start (they are bash scripts; the failure does not block), and PowerShell is the only shell. One hook
+  now names no shell: Claude Code runs it through bash where there is one — it leaves at once, starting no process —
+  and through PowerShell where there is none, and there it stops every call of the Bash, PowerShell, Write, Edit and
+  NotebookEdit tools, with the `CLAUDE_CODE_GIT_BASH_PATH` to set. Reading and searching keep working.
 - Two spellings of `-Recurse` and `-Force` walked past the PowerShell delete rule, which wanted a hyphen and then
   whitespace: a value after a colon (`-Recurse:$true -Force:$true`, `-Rec:1 -Fo:1`), and an en dash, an em dash or a
   horizontal bar in place of the hyphen. PowerShell 5.1 deletes the tree with each of them (measured). They are

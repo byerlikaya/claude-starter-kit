@@ -3,6 +3,9 @@
 *.sh text eol=lf
 # The awk JSON reader ships in the payload, and a CRLF build would change its bytes (smoke checks every shipped pin).
 *.awk text eol=lf
+# The one PowerShell file: read with Get-Content and run with Invoke-Expression, which takes LF. Pinned so the
+# bytes that ship are the bytes in the repository on every platform.
+*.ps1 text eol=lf
 kit/hooks/pre-commit text eol=lf
 kit/hooks/commit-msg text eol=lf
 # The plugin edition ships the same two hooks under a different root, and being extensionless they are not

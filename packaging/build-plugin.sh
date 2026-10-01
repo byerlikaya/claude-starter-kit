@@ -58,6 +58,9 @@ for h in pre-commit commit-msg; do
   chmod +x "$OUT/hooks/$h"
 done
 cp "$SRC/hooks/trace-blocklist.txt" "$SRC/hooks/secret-blocklist.txt" "$SRC/hooks/floor-blocklist.txt" "$OUT/hooks/"
+# The one gate that is not a bash script: what the hook with no "shell" loads when Claude Code finds no Git Bash and
+# runs it through PowerShell. Read with Get-Content and run with Invoke-Expression — never executed as a file.
+cp "$SRC/hooks/no-bash-guard.ps1" "$OUT/hooks/"
 
 # The commands the model is told to run name the file install's path, `bash .claude/<path>.sh`. A plugin install has
 # no .claude/, so in this edition every one of them exited 127 (measured from an empty project: 12 lines in 8 files).
@@ -95,6 +98,12 @@ cat > "$OUT/hooks/hooks.json" <<'HOOKS'
 {
   "hooks": {
     "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell|Write|Edit|NotebookEdit",
+        "hooks": [
+          { "type": "command", "command": "echo --% >/dev/null;: ' | out-null\n<#'\nexit 0\n#> try { Invoke-Expression (Get-Content -Raw -LiteralPath (Join-Path $env:CLAUDE_PLUGIN_ROOT 'hooks/no-bash-guard.ps1') -ErrorAction Stop) } catch { [Console]::Error.WriteLine(\"GUARD: Crewforth's gate for a machine without Git Bash could not be loaded, so this tool call is stopped: $_\"); exit 2 }", "timeout": 600 }
+        ]
+      },
       {
         "matcher": "Bash|PowerShell",
         "hooks": [

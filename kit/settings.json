@@ -39,6 +39,16 @@
   "hooks": {
     "PreToolUse": [
       {
+        "matcher": "Bash|PowerShell|Write|Edit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo --% >/dev/null;: ' | out-null\n<#'\nexit 0\n#> try { Invoke-Expression (Get-Content -Raw -LiteralPath (Join-Path $env:CLAUDE_PROJECT_DIR '.claude/hooks/no-bash-guard.ps1') -ErrorAction Stop) } catch { [Console]::Error.WriteLine(\"GUARD: Crewforth's gate for a machine without Git Bash could not be loaded, so this tool call is stopped: $_\"); exit 2 }",
+            "timeout": 600
+          }
+        ]
+      },
+      {
         "matcher": "Bash|PowerShell",
         "hooks": [
           {
