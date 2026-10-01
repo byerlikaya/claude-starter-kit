@@ -1668,7 +1668,7 @@ process.stdout.write('\n== §27 where everything on the graph goes ==\n');
     return c;
   };
 
-  // The design's own first screen: twelve agents, one of them a run of four, two grandchildren.
+  // The design's own first screen: seven agents, a run of four, and two grandchildren.
   const screenOne = () => {
     const n = [S(), A('e1', 'Explore', { startedAt: 1 }), A('e2', 'Explore', { startedAt: 2, status: 'starting' }),
       A('b', 'crew-backend-expert', { startedAt: 3 }), A('d', 'crew-database-expert', { startedAt: 4, status: 'running' }),
@@ -1802,7 +1802,7 @@ process.stdout.write('\n== §27 where everything on the graph goes ==\n');
   {
     const many = (n, type = (i) => `type-${i}`) => [S(), ...Array.from({ length: n }, (_, i) => A(`a${i}`, type(i), { startedAt: i }))];
     const s1 = gp.plan(screenOne(), {});
-    check('the design\'s own first screen stays cards: twelve agents, nothing folded, nothing shrunk',
+    check('the design\'s own first screen stays cards: thirteen agents, nothing folded, nothing shrunk',
       s1.density === 'comfortable' && s1.stacked === false && s1.drawn === agentsOf(screenOne()) - 0
       && s1.height <= gp.AUTO.tallest, `${s1.density}, ${s1.drawn} drawn, ${s1.height}px tall (limit ${gp.AUTO.tallest})`);
     // The limit is not a number someone liked. It is the reference canvas, less the fit margin, at the smallest
