@@ -77,6 +77,8 @@ export function installDom() {
     removeItem: (k) => store.delete(k),
   };
   g.getComputedStyle = () => ({ getPropertyValue: () => '260px' });
+  // A wide, dark-preferring window: no query matches, and none ever changes.
+  g.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
   g.CSS = { escape: (s) => String(s) };
   // Nothing may reach the network or keep the process alive.
   g.fetch = () => Promise.resolve({ ok: true, json: () => Promise.resolve({}) });

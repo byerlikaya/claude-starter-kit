@@ -6,6 +6,7 @@
 // the kind of lie this panel exists to stop telling.
 
 import { migrateStorage } from './storage-migrate.js';
+import { initTheme } from './theme.js';
 import { Canvas } from './canvas.js';
 import { renderMarkdown } from './md.js';
 import { Chat } from './chat.js';
@@ -55,14 +56,14 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, v); } catch { /* blocked storage */ } },
 };
 
-const savedTheme = store.get('crewforth-studio-theme');
-if (savedTheme === 'light' || savedTheme === 'dark') document.documentElement.dataset.theme = savedTheme;
-
-el.theme.addEventListener('click', () => {
-  const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
-  document.documentElement.dataset.theme = next;
-  store.set('crewforth-studio-theme', next);
-});
+// Handed the raw storage and not `store`: theme.js guards its own reads and
+// writes, and a storage that cannot even be named is replaced by one that
+// remembers nothing.
+const systemLight = window.matchMedia('(prefers-color-scheme: light)');
+let themeStorage = { getItem: () => null, setItem: () => {} };
+try { themeStorage = localStorage; } catch { /* blocked storage */ }
+const relabelTheme = initTheme(document.documentElement, el.theme, themeStorage, () => systemLight.matches);
+systemLight.addEventListener('change', relabelTheme);
 
 /* --------------------------------------------------------------- panels
    Three columns and two dividers. Each width is the user's, remembered, and
@@ -71,7 +72,7 @@ el.theme.addEventListener('click', () => {
    control. */
 
 const PANEL = {
-  side: { min: 170, max: 620, def: 260, wide: 460, varName: '--side-w', key: 'crewforth-studio-side-w' },
+  side: { min: 170, max: 620, def: 272, wide: 460, varName: '--side-w', key: 'crewforth-studio-side-w' },
   chat: { min: 280, max: 900, def: 420, wide: 720, varName: '--chat-w', key: 'crewforth-studio-chat-w' },
 };
 
@@ -93,13 +94,24 @@ const shell = document.querySelector('.shell');
 // the canvas exists. `typeof canvas` is not a guard here: a const in its
 // temporal dead zone throws on typeof too, which is what took the whole page
 // down rather than skipping one re-fit.
-function setSideHidden(hidden, refit = true) {
+//
+// Below 1024px the navigator is its rail and opens over the canvas. That is the
+// window's doing, not the viewer's choice, so nothing done in that band is
+// remembered: widening the window brings back whatever was chosen at a width
+// where there was a choice to make.
+const railBand = window.matchMedia('(max-width: 1023px)');
+
+function setSideHidden(hidden, refit = true, persist = !railBand.matches) {
   shell.classList.toggle('no-side', hidden);
   el.sideShow.hidden = !hidden;
-  store.set('crewforth-studio-side-hidden', hidden ? '1' : '0');
+  if (persist) store.set('crewforth-studio-side-hidden', hidden ? '1' : '0');
   if (refit) canvas.fitIfUntouched();
 }
-setSideHidden(store.get('crewforth-studio-side-hidden') === '1', false);
+const applyRailBand = (refit) => setSideHidden(
+  railBand.matches || store.get('crewforth-studio-side-hidden') === '1', refit, false,
+);
+applyRailBand(false);
+railBand.addEventListener('change', () => applyRailBand(true));
 
 function dragPanel(handle, which, edge) {
   let drag = null;
