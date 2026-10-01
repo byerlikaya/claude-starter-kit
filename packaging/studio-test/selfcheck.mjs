@@ -1762,6 +1762,31 @@ process.stdout.write('\n== §27 where everything on the graph goes ==\n');
       `floor ${low}, ceiling ${c.view.k}`);
     c.fit();
     check('fitting never enlarges past 100%', c.view.k <= 1 && gp.fitZoom(100, 100, 2000, 2000) === 1);
+
+    // A zoom redraws the whole graph at a new size on every frame, and whatever is animating is redrawn with
+    // it. So motion is held while the scale is changing and let go the moment it settles.
+    await new Promise((r) => { setTimeout(r, 300); });
+    const before = c.root.dataset.zooming;
+    c.view.x += 40;
+    c.applyView();
+    const afterPan = c.root.dataset.zooming;
+    c.zoomTo(0.6);
+    const during = c.root.dataset.zooming;
+    await new Promise((r) => { setTimeout(r, 300); });
+    check('while the zoom is changing the canvas says so, and stops saying so when it settles; a pan never does',
+      before === undefined && afterPan === undefined && during === 'true' && c.root.dataset.zooming === undefined,
+      `before ${before}, after a pan ${afterPan}, during a zoom ${during}, 300 ms later ${c.root.dataset.zooming}`);
+    const zr = cssRules(read(path.join(STUDIO, 'web', 'style.css')) ?? '');
+    const zooming = [{ tag: 'div', classes: new Set(['cv-root']), attrs: { 'data-zooming': 'true', 'data-motion': 'flow' }, pseudo: null }];
+    const wire = computed(zr, { tag: 'path', classes: new Set(['cv-edge']), attrs: { 'data-state': 'live' }, pseudo: null }, zooming);
+    const ring = computed(zr, { tag: 'div', classes: new Set(['cv-node']), attrs: { 'data-kind': 'agent', 'data-state': 'live' }, pseudo: '::after' }, zooming);
+    check('during a zoom the travelling wire and the breathing ring are paused, not removed',
+      wire.get('animation-play-state') === 'paused' && /cv-flow/.test(wire.get('animation') ?? '')
+      && ring.get('animation-play-state') === 'paused' && /cv-pulse/.test(ring.get('animation') ?? ''),
+      `wire ${wire.get('animation-play-state')}, ring ${ring.get('animation-play-state')}`);
+    const calm = [{ tag: 'div', classes: new Set(['cv-root']), attrs: { 'data-motion': 'flow' }, pseudo: null }];
+    check('twin: with no zoom under way nothing is paused',
+      computed(zr, { tag: 'path', classes: new Set(['cv-edge']), attrs: { 'data-state': 'live' }, pseudo: null }, calm).get('animation-play-state') === undefined);
   }
 
   /* -- 4. grouping ------------------------------------------------------- */

@@ -32,6 +32,9 @@ const DRAW_MS = 300;
 // painting.
 const MOTION_BUDGET = 60;
 
+// How long after the last change of scale the canvas counts the zoom as over.
+const ZOOM_SETTLE_MS = 160;
+
 // How long the pointer rests on a card before its details are shown.
 const TIP_MS = 400;
 
@@ -290,6 +293,16 @@ export class Canvas {
   applyView() {
     const { x, y, k } = this.view;
     this.viewport.style.transform = `translate(${x}px, ${y}px) scale(${k})`;
+    // While the scale is changing, what moves stands still. Every frame of a zoom redraws the whole graph at a
+    // new size, and a travelling dash or a breathing ring is redrawn with it: with 250 cards and the motion
+    // budget full, a mid-range Windows laptop lost 55 frames of 245 that way while its main thread sat two
+    // thirds idle. The motion is paused, not removed, so it picks up where it was the moment the zoom settles.
+    if (this.lastK !== undefined && k !== this.lastK) {
+      this.root.dataset.zooming = 'true';
+      clearTimeout(this.zoomTimer);
+      this.zoomTimer = setTimeout(() => { delete this.root.dataset.zooming; }, ZOOM_SETTLE_MS);
+    }
+    this.lastK = k;
     this.#mapView();
     this.onChange(this.state());
   }
