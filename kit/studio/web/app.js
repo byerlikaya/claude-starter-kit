@@ -15,6 +15,7 @@ import {
   liveSessions, machines, seenAgo,
 } from './nav.js';
 import { liveness } from './liveness.js';
+import { attention, AUTO } from './graph-plan.js';
 
 const FLEET_POLL_MS = 2000;
 const SESSION_POLL_MS = 5000;
@@ -44,6 +45,16 @@ const el = {
   theme: document.getElementById('theme'),
   inspector: document.getElementById('inspector'),
   toast: document.getElementById('toast'),
+  attention: document.getElementById('attention'),
+  tbGroup: document.getElementById('tb-group'),
+  tbDensity: document.getElementById('tb-density'),
+  tbShow: document.getElementById('tb-show'),
+  tbExpand: document.getElementById('tb-expand'),
+  tbFold: document.getElementById('tb-fold'),
+  tbZoomOut: document.getElementById('tb-zoom-out'),
+  tbZoom: document.getElementById('tb-zoom'),
+  tbZoomIn: document.getElementById('tb-zoom-in'),
+  tbFit: document.getElementById('tb-fit'),
   menu: document.getElementById('menu'),
 };
 
@@ -316,20 +327,92 @@ el.newSession.addEventListener('click', async () => {
 
 /* --------------------------------------------------------------- canvas */
 
-const canvas = new Canvas(document.getElementById('canvas'), { onSelect: showInspector });
+/* The toolbar says what the canvas is doing. It is painted from the canvas's own
+   state, so a choice restored from storage shows without being re-made. */
+const GROUP_WORD = { run: 'Workflow run', type: 'Agent type', parent: 'Parent', none: 'None' };
+const DENSITY_WORD = { auto: 'Auto', comfortable: 'Comfortable', compact: 'Compact' };
+const SHOW = {
+  all: { word: 'All', statuses: null },
+  attention: { word: 'Needs attention', statuses: ['failed', 'killed', 'stopped'], waiting: true },
+  running: { word: 'Running', statuses: ['running', 'starting'] },
+  failed: { word: 'Failed', statuses: ['failed', 'killed', 'stopped'] },
+};
+let show = 'all';
+const tbValue = {
+  group: el.tbGroup.querySelector('span'),
+  density: el.tbDensity.querySelector('span'),
+  show: el.tbShow.querySelector('span'),
+};
+
+function paintToolbar(st) {
+  tbValue.group.textContent = GROUP_WORD[st.group] ?? st.group;
+  tbValue.density.textContent = DENSITY_WORD[st.density] ?? st.density;
+  // Auto is a choice the canvas makes; say which one it made, and why.
+  el.tbDensity.title = st.density === 'auto' && st.drawnAs
+    ? `Auto: ${st.drawnAs}${st.stacked ? ', agents of one type folded together' : ''}. `
+      + `Cards stay cards while the picture is no taller than ${AUTO.tallest}px.`
+    : '';
+  const pct = `${Math.round(st.zoom * 100)}%`;
+  el.tbZoom.textContent = pct;
+  el.tbZoom.setAttribute('aria-label', `Zoom ${pct}. Back to 100%`);
+  el.tbExpand.disabled = st.groups === 0;
+  el.tbFold.disabled = st.groups === 0;
+}
+
+const canvas = new Canvas(document.getElementById('canvas'), {
+  onSelect: showInspector,
+  onChange: paintToolbar,
+  onMenu: (n, at) => {
+    if (!n) return;
+    const st = canvas.state();
+    const items = [];
+    if (n.kind === 'agent') {
+      items.push(st.focus
+        ? { label: 'Show the whole graph', run: () => canvas.setFocus(null) }
+        : { label: 'Focus on this branch', run: () => canvas.setFocus(n.id) });
+      items.push({ label: 'Copy agent id', run: () => copyText(n.id, 'Copied the agent id') });
+    }
+    if (at.pinned) items.push({ label: 'Reset layout', run: () => canvas.resetLayout() });
+    if (!items.length) return;
+    openMenu({ getBoundingClientRect: () => ({ left: at.x, bottom: at.y }) }, items);
+  },
+});
+
+// The mark for every agent that is not Crewforth's is one file, so that changing
+// it is changing that file.
+fetch('/icons/builtin.svg')
+  .then((r) => (r.ok ? r.text() : Promise.reject(new Error(`HTTP ${r.status}`))))
+  .then((svg) => canvas.setIcons({ builtin: svg }))
+  .catch(() => { /* the tile stays empty; its title still says whose agent it is */ });
+
+const pickFrom = (button, words, current, set) => button.addEventListener('click', (e) => {
+  e.stopPropagation();
+  openMenu(button, Object.entries(words).map(([key, w]) => ({
+    label: typeof w === 'string' ? w : w.word, checked: current() === key, run: () => set(key),
+  })));
+});
+pickFrom(el.tbGroup, GROUP_WORD, () => canvas.state().group, (g) => canvas.setGroup(g));
+pickFrom(el.tbDensity, DENSITY_WORD, () => canvas.state().density, (d) => canvas.setDensity(d));
+pickFrom(el.tbShow, SHOW, () => show, (key) => setShow(key));
+el.tbExpand.addEventListener('click', () => canvas.expandAll());
+el.tbFold.addEventListener('click', () => canvas.foldAll());
+el.tbZoomOut.addEventListener('click', () => canvas.zoomBy(1 / 1.2));
+el.tbZoomIn.addEventListener('click', () => canvas.zoomBy(1.2));
+el.tbZoom.addEventListener('click', () => canvas.zoomTo(1));
+el.tbFit.addEventListener('click', () => canvas.fit());
 
 getJson('/api/palette')
   .then((p) => {
     canvas.setPalette(p);
-    // Twelve unrecognised agents and zero agents read as the same grey. Which
-    // one it is has to be said out loud, or the panel is drawing "not measured"
-    // as a fact about the agents.
+    // An unread palette makes every agent "unrecognised", and twelve of those
+    // read like twelve strangers. Which one it is has to be said out loud, or
+    // the panel is drawing "not measured" as a fact about the agents.
     if (p && p.measured === false) {
       document.body.dataset.paletteMeasured = 'false';
-      el.foot.textContent = `agent colours Not measured — ${p.reason}`;
+      el.foot.textContent = `agent identity Not measured — ${p.reason}`;
     }
   })
-  .catch(() => { /* neutral colours; the canvas already defaults safely */ });
+  .catch(() => { /* every agent is drawn as unrecognised, which is what is known */ });
 
 let inspectorTab = 'report';
 let inspectorNode = null;
@@ -341,8 +424,15 @@ function showInspector(node) {
   // and nothing else, which asked the reader to go and find the talking
   // elsewhere.
   if (node?.kind === 'session' && current) openConversation(current);
-  if (!node) { el.inspector.hidden = true; el.inspector.classList.remove('wide'); return; }
+  const wasHidden = el.inspector.hidden;
+  if (!node) {
+    el.inspector.hidden = true; el.inspector.classList.remove('wide');
+    if (!wasHidden) canvas.fitIfUntouched();
+    return;
+  }
   el.inspector.hidden = false;
+  // Docked, the inspector takes its width from the canvas.
+  if (wasHidden) canvas.fitIfUntouched();
   inspectorTab = node.kind === 'session' ? 'meta' : 'report';
   paintInspector();
   if (node.kind === 'agent') loadDetail(node.id, node.status);
@@ -1057,8 +1147,10 @@ function renderFleet(data) {
   fleetData = data;
   paintLive();
   paintMachines();
-  // A session's dot comes from this answer, so the project list follows it.
+  // A session's dot comes from this answer, so the project list follows it, and
+  // so does the pill on the session's own card.
   paintProjects();
+  if (current) canvas.setSessionState(sessionStatus(current, fleetData));
 }
 
 function paintLive() {
@@ -1287,8 +1379,59 @@ window.addEventListener('resize', fitBar);
 
 function setStatusFilter(status, repaint = true) {
   statusFilter = status;
-  canvas.setFilter(status);
+  show = 'all';
+  tbValue.show.textContent = status ? 'One status' : SHOW.all.word;
+  canvas.setFilter(status ? [status] : null);
   if (repaint) paintSummary(lastStats, lastStats?.malformed ? [`${lastStats.malformed} malformed`] : []);
+}
+
+/** The Show menu: the same filter the chips are, by what the viewer is looking for rather than by one status. */
+function setShow(key) {
+  show = key in SHOW ? key : 'all';
+  statusFilter = null;
+  tbValue.show.textContent = SHOW[show].word;
+  canvas.setFilter(SHOW[show].statuses, { keepWaiting: Boolean(SHOW[show].waiting) });
+  paintSummary(lastStats, lastStats?.malformed ? [`${lastStats.malformed} malformed`] : []);
+}
+
+/* ------------------------------------------------------ needs attention */
+
+let attentionIds = [];
+let attentionAt = -1;
+
+/** The strip above the canvas: who is waiting on the viewer, then who failed. Absent when nobody is. */
+function paintAttention(nodes) {
+  const list = attention(nodes ?? [], canvas.waiting);
+  attentionIds = list.map((a) => a.id);
+  // The strip takes 44px from the canvas when it appears and gives them back when it goes.
+  const was = el.attention.hidden;
+  el.attention.hidden = list.length === 0;
+  if (was !== el.attention.hidden) canvas.fitIfUntouched();
+  if (!list.length) { el.attention.replaceChildren(); attentionAt = -1; return; }
+  const MAX = 5;
+  const chips = list.slice(0, MAX).map((a) => {
+    const b = node('button', 'att');
+    b.type = 'button';
+    b.append(dot(a.tone), node('span', 'att-name', a.name), node('span', 'att-says', a.says));
+    b.addEventListener('click', () => { attentionAt = attentionIds.indexOf(a.id); canvas.focus(a.id); });
+    return b;
+  });
+  if (list.length > MAX) {
+    const more = node('button', 'att', `+${list.length - MAX} more`);
+    more.type = 'button';
+    more.addEventListener('click', () => setShow('attention'));
+    chips.push(more);
+  }
+  el.attention.replaceChildren(
+    node('span', 'attention-label', 'Needs attention'), ...chips,
+    node('span', 'row-fill'), node('span', 'sub attention-hint', 'Click one to focus it on the canvas'),
+  );
+}
+
+function stepAttention(by) {
+  if (!attentionIds.length) return;
+  attentionAt = (attentionAt + by + attentionIds.length) % attentionIds.length;
+  canvas.focus(attentionIds[attentionAt]);
 }
 
 // Selecting a session points the graph at it. It does NOT open the
@@ -1301,7 +1444,11 @@ function selectSession(sessionId) {
   current = sessionId;
   canvas.setSession(sessionId);
   statusFilter = null;
+  show = 'all';
+  tbValue.show.textContent = SHOW.all.word;
   canvas.setFilter(null);
+  canvas.setSessionState(sessionStatus(sessionId, fleetData));
+  paintAttention(null);
   showInspector(null);
 
   // The session being looked at is never inside a folded project: the row that
@@ -1332,6 +1479,7 @@ function selectSession(sessionId) {
     heardNow();
     const g = JSON.parse(e.data);
     canvas.render(g);
+    paintAttention(g.nodes);
     // The inspector holds a node object from an earlier frame; refresh it so
     // status, tokens and tool counts keep moving while it is open.
     if (inspectorNode) {
@@ -1359,6 +1507,7 @@ function selectSession(sessionId) {
     let reason = '';
     try { reason = JSON.parse(e.data).reason ?? ''; } catch { /* keep default */ }
     paintSummary(null);
+    paintAttention(null);
     el.foot.textContent = reason;
     canvas.render({ nodes: [], edges: [] });
   });
@@ -1419,9 +1568,12 @@ el.home.addEventListener('click', (e) => {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     if (!el.menu.hidden) { closeMenu(); return; }
-    if (document.activeElement === el.filter && el.filter.value) {
-      el.filter.value = ''; filterText = ''; paintProjects(); paintLive();
+    if (document.activeElement === el.filter) {
+      if (el.filter.value) { el.filter.value = ''; filterText = ''; paintProjects(); paintLive(); }
+      return;
     }
+    // Close the inspector and let go of the selection.
+    if (!el.inspector.hidden) { canvas.clearSelection(); showInspector(null); }
     return;
   }
   if (e.metaKey || e.ctrlKey) return;
@@ -1435,6 +1587,12 @@ document.addEventListener('keydown', (e) => {
     setSideHidden(true);
   } else if (e.key === ']') {
     setSideHidden(false);
+  } else if (e.key === 'j') {
+    stepAttention(1);
+  } else if (e.key === 'k') {
+    stepAttention(-1);
+  } else if (e.key === '?') {
+    canvas.showLegend(true);
   }
 });
 

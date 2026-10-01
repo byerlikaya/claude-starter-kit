@@ -625,10 +625,27 @@ check('the kit is found in an installed layout and in this source checkout',
 const rep = await gateReport(os.tmpdir());
 check('a directory without the kit is told so', rep.measured === false, rep.reason);
 
-const brd = await board(REPO);
-check('a repo with no board reports a state, not a failure',
-  brd.measured === true && brd.present === false,
-  brd.text ?? brd.reason);
+// On a repository of its own. Asked of this checkout, board.sh also asks `origin` whether a board exists there,
+// so the answer depended on the network and on whatever else was using the same .git: it came back empty in one
+// run of two, and red in a copy of the tree that had no .git at all.
+{
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'crew-studio-board-'));
+  try {
+    const made = spawnSync('git', ['init', '-q', home], { encoding: 'utf8' });
+    if (made.status !== 0) {
+      skip('a repo with no board reports a state, not a failure', 'tool', 'git is not available to make the fixture repository');
+    } else {
+      fs.mkdirSync(path.join(home, '.claude'), { recursive: true });
+      fs.cpSync(path.join(PAYLOAD, 'hooks'), path.join(home, '.claude', 'hooks'), { recursive: true });
+      const brd = await board(home);
+      check('a repo with no board reports a state, not a failure',
+        brd.measured === true && brd.present === false,
+        brd.text ?? brd.reason);
+    }
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+}
 
 const st = await sessionStats(REPO, path.join(os.tmpdir(), 'definitely-not-a-transcript.jsonl'));
 check('missing transcript is reported rather than guessed at', st.measured === false, st.reason);
@@ -638,14 +655,7 @@ check('missing transcript is reported rather than guessed at', st.measured === f
 
 process.stdout.write('\n== §17 opening and continuing ==\n');
 
-const canvasSrc = read(path.join(STUDIO, 'web', 'canvas.js')) ?? '';
-check('a node that hides others opens when the card is clicked, not only its 20px control',
-  /hiddenCount\(n\.id\) > 0/.test(canvasSrc) && /cv-container/.test(canvasSrc));
-check('the card says what a click will do', /Click to show/.test(canvasSrc));
-// The session node has children too, so treating every parent as a container
-// made a click on it fold the entire graph instead of opening its conversation.
-check('the session node opens rather than folds when its card is clicked',
-  /node\.kind !== 'session' && this\.hiddenCount/.test(canvasSrc));
+// What a click on a card does is asserted where the canvas is run: §27, "a click does what the card says".
 
 const sessSrc2 = read(path.join(STUDIO, 'server', 'lib', 'session.js')) ?? '';
 check('an existing conversation can be continued rather than started over',
@@ -1117,28 +1127,34 @@ function computed(rules, el, ancestors, media = []) {
   const REDUCE = ['(prefers-reduced-motion: reduce)'];
 
   const { Canvas } = await import(`../../kit/studio/web/canvas.js?motion=${Date.now()}`);
+  // The palette says whose an agent is. Its colours are no longer read here: colour is status.
   const PAL = {
+    measured: true,
     map: {
-      Explore: { hex: '#26c6e6', source: 'builtin' },
-      Plan: { hex: '#a874f5', source: 'builtin' },
-      reviewer: { hex: '#35c874', source: 'kit' },
-      tester: { hex: '#f2a65a', source: 'kit' },
+      Explore: { source: 'builtin' },
+      Plan: { source: 'builtin' },
+      reviewer: { source: 'kit' },
+      tester: { source: 'kit' },
     },
-    unknown: '#94a3c8',
   };
 
   const kid = (id, status, type = 'Explore', parentId = 'session') =>
     ({ id, kind: 'agent', agentType: type, status, spawnDepth: 1, parentId, tools: {}, toolCount: 0 });
   const root = (turns = 1) => ({ id: 'session', kind: 'session', status: 'session', turns, cwd: '/x' });
+  // A canvas that draws every node as its own card, so a claim about one wire is about that wire.
+  const plain = (name) => {
+    const c = new Canvas(document.createElement('div'), {});
+    c.setPalette(PAL);
+    c.setSession(name);
+    c.setDensity('comfortable');
+    return c;
+  };
 
   const FIXTURE = {
     nodes: [
       root(3),
-      // One status each, and all of one type on purpose: the distinguishability
-      // check below reads the whole painted signature, and if these carried
-      // different agent colours they would come out "different" on identity
-      // rather than on status. `alt` is the one that varies, for the identity
-      // check that does want two colours.
+      // One status each, and all of one type: nothing about an agent's type
+      // reaches a wire any more, and this fixture would show it if it did.
       kid('live', 'running'),
       kid('wake', 'starting'),
       kid('fin', 'done'),
@@ -1146,31 +1162,22 @@ function computed(rules, el, ancestors, media = []) {
       kid('over', 'ended'),
       kid('old', 'stale'),
       kid('alt', 'done', 'reviewer'),
-      { id: 'w1', kind: 'workflow', status: 'running', members: 3, byStatus: { running: 3 }, spawnDepth: 1, parentId: 'session' },
+      { id: 'w1', kind: 'workflow', workflowId: 'wf-fixture', status: 'running', members: 3, byStatus: { running: 3 }, spawnDepth: 1, parentId: 'session' },
       kid('m1', 'running', 'Explore', 'w1'),
       kid('m2', 'running', 'reviewer', 'w1'),
-      kid('m3', 'running', 'tester', 'w1'),
+      kid('m3', 'failed', 'tester', 'w1'),
     ],
-    edges: [
-      { source: 'session', target: 'live' }, { source: 'session', target: 'wake' },
-      { source: 'session', target: 'fin' }, { source: 'session', target: 'bad' },
-      { source: 'session', target: 'over' }, { source: 'session', target: 'old' },
-      { source: 'session', target: 'alt' },
-      { source: 'session', target: 'w1' },
-      { source: 'w1', target: 'm1' }, { source: 'w1', target: 'm2' }, { source: 'w1', target: 'm3' },
-    ],
+    edges: [],
   };
 
-  const canvas = new Canvas(document.createElement('div'), {});
-  canvas.setPalette(PAL);
-  canvas.setSession('motion-fixture');
+  const canvas = plain('motion-fixture');
   canvas.render(FIXTURE);
-  // Every edge in a first render is an arrival, so all of them are drawing
+  // Every wire in a first render is an arrival, so all of them are drawing
   // themselves right now. Wait the arrival out before reading steady state —
   // and the wait is itself the assertion below that the class comes off again.
   await new Promise((r) => { setTimeout(r, 500); });
 
-  // The canvas keys an edge by its endpoints joined on NUL, the one character
+  // The canvas keys a wire by its endpoints joined on NUL, the one character
   // a node id cannot contain. Built here rather than pasted, so a literal
   // control byte stays out of this file.
   const SEP = String.fromCharCode(0);
@@ -1212,12 +1219,12 @@ function computed(rules, el, ancestors, media = []) {
   check('the cascade probe resolves a rule that is known to exist',
     styleOf(edge('session', 'live')).get('fill') === 'none',
     'the selector matcher found no .cv-edge rule at all — every result below would be empty');
-  // An arrival that never ends is a graph where every edge animates the
-  // draw-in forever and no edge ever shows its status.
+  // An arrival that never ends is a graph where every wire animates the
+  // draw-in forever and no wire ever shows its status.
   check('the draw-in takes itself off again',
     [...canvas.edgeEls.values()].every((p) => !p.classList.contains('cv-drawing')),
     `${[...canvas.edgeEls.values()].filter((p) => p.classList.contains('cv-drawing')).length}`
-    + ' edges were still drawing half a second after they arrived');
+    + ' wires were still drawing half a second after they arrived');
 
   /* -- 1. motion, and which way it points ------------------------------- */
 
@@ -1233,9 +1240,12 @@ function computed(rules, el, ancestors, media = []) {
   // the far end. Either one alone says nothing about which way work flows.
   const start = /^M\s*([-\d.]+)\s+([-\d.]+)/.exec(edge('session', 'live').getAttribute('d') ?? '');
   const parentPos = canvas.pos.get('session');
-  check('the curve starts at the parent, so "along the path" means "toward the child"',
-    Boolean(start) && Number(start[2]) > parentPos.y && Number(start[2]) <= parentPos.y + 105,
-    `d starts at ${start ? `${start[1]},${start[2]}` : '?'} and the parent sits at ${parentPos.x},${parentPos.y}`);
+  const childPos = canvas.pos.get('live');
+  check('the curve starts at the parent\'s right edge, so "along the path" means "toward the child"',
+    Boolean(start) && Number(start[1]) === parentPos.x + 200
+    && Number(start[2]) > parentPos.y && Number(start[2]) < parentPos.y + 84
+    && childPos.x > Number(start[1]),
+    `d starts at ${start ? `${start[1]},${start[2]}` : '?'}; the session sits at ${parentPos.x},${parentPos.y} and the child at x ${childPos.x}`);
   check('the dash travels parent to child rather than back up the wire',
     /stroke-dashoffset:\s*calc\(\s*-1\s*\*/.test(atRule(cssText, '@keyframes cv-flow')),
     `a positive offset runs the dashes the wrong way. keyframe: ${JSON.stringify(atRule(cssText, '@keyframes cv-flow').trim())}`);
@@ -1252,95 +1262,84 @@ function computed(rules, el, ancestors, media = []) {
       `dasharray ${m.get('stroke-dasharray')} sums to ${sum}, period is ${period}`);
   }
 
-  /* -- 2. the edge carries the child's identity ------------------------- */
+  /* -- 2. a wire says the state of what it leads to --------------------- */
 
-  check('an edge is stroked with the colour of the card it feeds',
-    edge('session', 'live').style.stroke === PAL.map.Explore.hex
-    && edge('session', 'alt').style.stroke === PAL.map.reviewer.hex,
-    `got ${edge('session', 'live').style.stroke} and ${edge('session', 'alt').style.stroke}`);
-  check('the edge colour comes from the same call the card colour does',
-    edge('session', 'fin').style.stroke === canvas.nodeColor(canvas.nodes.get('fin')));
-  // The old edge code read the agent palette only, so an edge into a container
-  // fell through to the unknown grey while the card itself was purple — the
-  // one branch a viewer most needs to follow was the one that did not match.
-  check('an edge into a workflow container is not painted as an unknown agent',
-    edge('session', 'w1').style.stroke === canvas.nodeColor(canvas.nodes.get('w1'))
-    && edge('session', 'w1').style.stroke !== PAL.unknown,
-    `got ${edge('session', 'w1').style.stroke}, unknown is ${PAL.unknown}`);
+  const strokeOf = (id) => styleOf(edge('session', id)).get('stroke');
+  check('a wire is drawn in the colour its state has everywhere else',
+    strokeOf('live') === 'var(--status-busy)' && strokeOf('fin') === 'var(--edge-rest)' && strokeOf('bad') === 'var(--cv-fail)',
+    `running ${strokeOf('live')}, done ${strokeOf('fin')}, failed ${strokeOf('bad')}`);
+  check('two agents of different types in the same state are wired alike: type is not a colour',
+    strokeOf('fin') === strokeOf('alt') && edge('session', 'fin').dataset.state === edge('session', 'alt').dataset.state);
+  check('the canvas sets no colour of its own on a wire or a card',
+    [...canvas.edgeEls.values()].every((p) => !p.style.stroke)
+    && [...canvas.els.values()].every((n) => !n.style.borderColor && !n.style.background && !n.style.color),
+    'every colour comes from the stylesheet, by state');
+  check('a wire into a workflow run speaks for the run: it is still working',
+    edge('session', 'w1').dataset.state === 'live' && strokeOf('w1') === 'var(--status-busy)',
+    `state ${edge('session', 'w1').dataset.state}`);
 
-  /* -- 3. a workflow's members read as one system ----------------------- */
+  /* -- 3. a run's members are inside it ----------------------------------- */
 
-  const chan = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
-  const apart = (a, b) => Math.hypot(...chan(a).map((v, i) => v - chan(b)[i]));
-  const wf = canvas.nodeColor(canvas.nodes.get('w1'));
-  const members = ['m1', 'm2', 'm3'].map((id) => ({
-    id,
-    stroke: edge('w1', id).style.stroke,
-    own: canvas.nodeColor(canvas.nodes.get(id)),
-    group: edge('w1', id).dataset.group,
-  }));
-  check('every member edge is pulled toward the container it belongs to',
-    members.every((m) => apart(m.stroke, wf) < apart(m.own, wf)),
-    members.map((m) => `${m.id} ${m.own}->${m.stroke} (${apart(m.own, wf).toFixed(0)} -> ${apart(m.stroke, wf).toFixed(0)} from ${wf})`).join('; '));
-  check('a member is still traceable back to its own card',
-    new Set(members.map((m) => m.stroke)).size === 3,
-    'blending all the way to the container would turn twelve members into one line');
-  check('member edges are marked as members and spawn edges are not',
-    members.every((m) => m.group === 'member') && edge('session', 'w1').dataset.group === 'spawn');
-  check('the member bundle is drawn at one weight',
-    new Set(members.map((m) => styleOf(edge('w1', m.id)).get('stroke-width'))).size === 1);
+  check('a run\'s members sit inside the run; no wire is drawn to them',
+    ['m1', 'm2', 'm3'].every((id) => canvas.cellEls.has(id) && !canvas.els.has(id) && !edgeIn(canvas, 'w1', id)),
+    `${canvas.cellEls.size} members drawn inside; ${[...canvas.edgeEls.keys()].filter((k) => k.startsWith('w1')).length} wires leave the run`);
+  check('every member carries its own state and its word',
+    canvas.cellEls.get('m3').dataset.state === 'failed' && canvas.cellEls.get('m3').parts.word.textContent === 'Failed'
+    && canvas.cellEls.get('m1').dataset.state === 'live' && canvas.cellEls.get('m1').parts.word.textContent === 'Running');
+  {
+    const c5 = plain('quiet-run');
+    c5.render({ nodes: [root(1),
+      { id: 'w', kind: 'workflow', workflowId: 'wf-q', status: 'done', spawnDepth: 1, parentId: 'session' },
+      kid('q1', 'done', 'Explore', 'w'), kid('q2', 'failed', 'Plan', 'w'), kid('q3', 'done', 'tester', 'w')], edges: [] });
+    const wire = edgeIn(c5, 'session', 'w');
+    const runEl = c5.els.get('w');
+    check('one failed member does not redden the wire into eleven others; the run\'s bar and the member say it',
+      wire.dataset.state === 'done' && runEl.dataset.status === 'failed'
+      && runEl.parts.bar.children.some((seg) => seg.dataset.tone === 'fail')
+      && c5.cellEls.get('q2').dataset.state === 'failed',
+      `wire ${wire.dataset.state}; bar ${runEl.parts.bar.children.map((x) => x.dataset.tone).join('+')}`);
+  }
 
   /* -- 4. arrival ------------------------------------------------------- */
 
   {
-    const c2 = new Canvas(document.createElement('div'), {});
-    c2.setPalette(PAL);
-    c2.setSession('arrival');
-    c2.render({ nodes: [root(1), kid('a1', 'running')], edges: [{ source: 'session', target: 'a1' }] });
+    const c2 = plain('arrival');
+    c2.render({ nodes: [root(1), kid('a1', 'running')], edges: [] });
     const first = edgeIn(c2, 'session', 'a1');
     check('an edge to a node that just arrived draws itself',
       first.classList.contains('cv-drawing'));
 
-    c2.render({
-      nodes: [root(2), kid('a1', 'running'), kid('a2', 'starting', 'Plan')],
-      edges: [{ source: 'session', target: 'a1' }, { source: 'session', target: 'a2' }],
-    });
+    c2.render({ nodes: [root(2), kid('a1', 'running'), kid('a2', 'starting', 'Plan')], edges: [] });
     check('only the new arrival draws; the edge that was already there does not',
       edgeIn(c2, 'session', 'a2').classList.contains('cv-drawing')
       && edgeIn(c2, 'session', 'a1') === first,
       'replaying a settled edge would perform the whole graph on every poll');
 
-    // Unfolding is not arriving. An edge revealed by opening a group is new to
+    // Opening is not arriving. A wire revealed by opening a group is new to
     // the DOM but its node is not new to the session, and treating the two the
-    // same makes opening a 105-agent workflow perform itself.
+    // same makes opening a 105-agent run perform itself.
     {
-      const c4 = new Canvas(document.createElement('div'), {});
-      c4.setPalette(PAL);
-      c4.setSession('unfold');
+      const c4 = plain('unfold');
       const grouped = {
         nodes: [
           root(1),
-          { id: 'w', kind: 'workflow', status: 'running', members: 3, byStatus: { running: 3 }, spawnDepth: 1, parentId: 'session' },
+          { id: 'w', kind: 'workflow', workflowId: 'wf-u', status: 'running', spawnDepth: 1, parentId: 'session' },
           kid('u1', 'running', 'Explore', 'w'), kid('u2', 'running', 'Plan', 'w'), kid('u3', 'done', 'tester', 'w'),
+          kid('g1', 'done', 'Explore', 'u1'), kid('g2', 'done', 'Plan', 'u2'), kid('g3', 'done', 'tester', 'u3'),
         ],
-        edges: [
-          { source: 'session', target: 'w' },
-          { source: 'w', target: 'u1' }, { source: 'w', target: 'u2' }, { source: 'w', target: 'u3' },
-        ],
+        edges: [],
       };
       c4.render(grouped);
-      c4.collapsed.add('w');
-      c4.render(grouped);
-      const hidden = ['u1', 'u2', 'u3'].every((id) => !edgeIn(c4, 'w', id));
-      c4.collapsed.delete('w');
-      c4.render(grouped);
+      c4.toggle('w');
+      const pairs = [['u1', 'g1'], ['u2', 'g2'], ['u3', 'g3']];
+      const hidden = pairs.every(([a, b]) => !edgeIn(c4, a, b));
+      c4.toggle('w');
       check('unfolding a group reveals its edges rather than performing them',
-        hidden && ['u1', 'u2', 'u3'].every((id) => edgeIn(c4, 'w', id)
-          && !edgeIn(c4, 'w', id).classList.contains('cv-drawing')),
+        hidden && pairs.every(([a, b]) => edgeIn(c4, a, b) && !edgeIn(c4, a, b).classList.contains('cv-drawing')),
         hidden
-          ? `${['u1', 'u2', 'u3'].filter((id) => edgeIn(c4, 'w', id)?.classList.contains('cv-drawing')).length}`
+          ? `${pairs.filter(([a, b]) => edgeIn(c4, a, b)?.classList.contains('cv-drawing')).length}`
             + ' of 3 revealed edges started drawing themselves'
-          : 'folding did not take the member edges out of the layer, so the test proves nothing');
+          : 'folding did not take the wires behind the run out of the layer, so the test proves nothing');
     }
 
     // The draw and the flow both drive stroke-dashoffset, so if the draw did
@@ -1394,22 +1393,24 @@ function computed(rules, el, ancestors, media = []) {
   check('reduced motion stops the arriving edge',
     asDrawing('live', REDUCE).get('animation') === 'none');
   check('reduced motion stops the card pulse', !moving(cardRing('live', REDUCE)));
+  check('past the motion budget the card pulse stands still as well',
+    !moving(computed(rules, { tag: 'div', classes: new Set(['cv-node']), attrs: { 'data-kind': 'agent', 'data-state': 'live' }, pseudo: '::after' },
+      [{ tag: 'div', classes: new Set(['cv-root']), attrs: { 'data-motion': 'still' }, pseudo: null }])),
+    'the rule that stops it has to out-rank the rule that starts it');
   check('a card born under reduced motion arrives placed rather than invisible',
     computed(rules, {
       tag: 'div', classes: new Set(['cv-node', 'cv-born']), attrs: { 'data-state': 'live' }, pseudo: null,
     }, [], REDUCE).get('opacity') === '1',
     'with the transition gone, opacity:0 is a card that never appears');
 
-  // The point of the whole section. With every animation off, the states the
-  // brief names have to remain five different pictures. Ended and stale are
-  // deliberately one of those five — both mean "still and quiet" — and that is
-  // asserted rather than assumed.
+  // The point of the whole section. With every animation off, the states have
+  // to remain five different pictures. Ended and stale are deliberately one of
+  // those five — both mean "still and quiet" — and that is asserted rather
+  // than assumed.
   const IDS = ['live', 'wake', 'fin', 'bad', 'over'];
   const signature = (id) => {
     const m = still(id);
-    return JSON.stringify([
-      m.get('stroke-width'), m.get('stroke-dasharray'), m.get('opacity'), edge('session', id).style.stroke,
-    ]);
+    return JSON.stringify([m.get('stroke-width'), m.get('stroke-dasharray'), m.get('opacity'), m.get('stroke')]);
   };
   const sigs = new Map(IDS.map((id) => [id, signature(id)]));
   const clashes = [];
@@ -1423,20 +1424,26 @@ function computed(rules, el, ancestors, media = []) {
     clashes.length
       ? `indistinguishable: ${clashes.join(', ')} — motion was the only channel carrying them`
       : [...sigs].map(([k, v]) => `${k} ${v}`).join(' | '));
+  // Colour is never the only channel either: take it away and they still differ.
+  const colourless = new Map(IDS.map((id) => {
+    const m = still(id);
+    return [id, JSON.stringify([m.get('stroke-width'), m.get('stroke-dasharray'), m.get('opacity')])];
+  }));
+  check('and with colour taken away as well, working, waking, finished and quiet still differ',
+    new Set(['live', 'wake', 'fin', 'over'].map((id) => colourless.get(id))).size === 4,
+    [...colourless].map(([k, v]) => `${k} ${v}`).join(' | '));
   check('ended and stale are one quiet state on purpose',
     edge('session', 'over').dataset.state === 'quiet' && edge('session', 'old').dataset.state === 'quiet');
 
   check('a failed branch is wrong in colour, not only in a word',
-    edge('session', 'bad').style.stroke === 'var(--cv-fail)'
-    && Object.values(PAL.map).every((p) => p.hex !== 'var(--cv-fail)'),
-    `got ${edge('session', 'bad').style.stroke}`);
+    strokeOf('bad') === 'var(--cv-fail)'
+    && ['live', 'wake', 'fin', 'over'].every((id) => strokeOf(id) !== 'var(--cv-fail)'),
+    `got ${strokeOf('bad')}`);
   check('killed and stopped read as the failure they are',
     ['failed', 'killed', 'stopped'].every((s) => {
-      const c3 = new Canvas(document.createElement('div'), {});
-      c3.setPalette(PAL);
-      c3.setSession(`s-${s}`);
-      c3.render({ nodes: [root(1), kid('x', s)], edges: [{ source: 'session', target: 'x' }] });
-      return edgeIn(c3, 'session', 'x').dataset.state === 'failed';
+      const c3 = plain(`s-${s}`);
+      c3.render({ nodes: [root(1), kid('x', s)], edges: [] });
+      return edgeIn(c3, 'session', 'x').dataset.state === 'failed' && c3.els.get('x').dataset.state === 'failed';
     }),
     'they come off the transcript verbatim and mean the same thing to a reader');
 
@@ -1452,7 +1459,7 @@ function computed(rules, el, ancestors, media = []) {
   const lightChosen = rules.filter((r) => r.sel === ':root[data-theme="light"]' && r.media.length === 0);
   const used = new Set();
   const collect = (v) => { for (const m of String(v).matchAll(/var\((--[\w-]+)\)/g)) used.add(m[1]); };
-  for (const id of IDS) { for (const v of still(id).values()) collect(v); collect(edge('session', id).style.stroke); }
+  for (const id of IDS) for (const v of still(id).values()) collect(v);
   for (const v of cardRing('live').values()) collect(v);
   // --cv-fail is an alias of the status-fail token, which tokens.css themes; the
   // weights are the ones this file has to theme itself.
@@ -1461,7 +1468,8 @@ function computed(rules, el, ancestors, media = []) {
     bareRoot.some((r) => r.decls.get('--cv-fail') === 'var(--status-fail)') && used.has('--cv-fail'),
     'an alias with a literal behind it would not follow the theme');
   check('the edge states are expressed as tokens rather than literals',
-    themed.length >= 4, `tokens in play: ${themed.join(', ') || 'none'}`);
+    themed.length >= 2 && used.has('--status-busy') && used.has('--edge-rest'),
+    `tokens in play: ${[...used].join(', ') || 'none'}`);
   const orphan = themed.filter((t) => !bareRoot.some((r) => r.decls.has(t))
     || !lightSystem.some((r) => r.decls.has(t))
     || !lightChosen.some((r) => r.decls.has(t)));
@@ -1472,24 +1480,22 @@ function computed(rules, el, ancestors, media = []) {
   /* -- 8. the cost, measured -------------------------------------------- */
 
   // 250 nodes is a session size this project has reached. Two numbers decide
-  // whether motion is affordable there: how much of the edge layer the canvas
-  // rebuilds per poll, and how many strokes are moving at once.
+  // whether motion is affordable there: how much of the wire layer the canvas
+  // rebuilds per poll, and how many strokes are moving at once. Every agent is
+  // drawn as its own card here (no grouping, cards not chips), which is the
+  // most the canvas can be asked to draw.
   {
     const N = 250;
     const TYPES = ['Explore', 'Plan', 'reviewer', 'tester'];
     const big = { nodes: [root(1)], edges: [] };
-    for (let i = 0; i < N; i += 1) {
-      big.nodes.push(kid(`n${i}`, 'running', TYPES[i % TYPES.length]));
-      big.edges.push({ source: 'session', target: `n${i}` });
-    }
+    for (let i = 0; i < N; i += 1) big.nodes.push(kid(`n${i}`, 'running', TYPES[i % TYPES.length]));
 
     let made = 0;
     const realNS = document.createElementNS;
-    document.createElementNS = (...a) => { made += 1; return realNS(...a); };
+    document.createElementNS = (ns, tag) => { if (tag === 'path') made += 1; return realNS(ns, tag); };
 
-    const cBig = new Canvas(document.createElement('div'), {});
-    cBig.setPalette(PAL);
-    cBig.setSession('big');
+    const cBig = plain('big');
+    cBig.setGroup('none');
     cBig.render(big);
     const firstPass = made;
 
@@ -1502,7 +1508,7 @@ function computed(rules, el, ancestors, media = []) {
     document.createElementNS = realNS;
 
     // This is the fix that made CSS-only motion possible at all. An element
-    // that leaves the document restarts its animations, so rebuilding the edge
+    // that leaves the document restarts its animations, so rebuilding the wire
     // layer each poll reset every travelling dash twice a second — and every
     // frame of a drag, which calls the same code.
     check(`re-polling ${N} nodes rebuilds no edge elements`,
@@ -1510,6 +1516,8 @@ function computed(rules, el, ancestors, media = []) {
       `first pass built ${firstPass} paths (expected ${N}); ${POLLS} further polls built ${churn} more`);
     check(`the edge layer stays at ${N} elements across polls`,
       cBig.edgeEls.size === N, `${cBig.edgeEls.size} paths held`);
+    check('the minimap keeps its boxes across polls too',
+      cBig.mapRects.size === N + 1, `${cBig.mapRects.size} boxes for ${N + 1} drawn items`);
 
     // A dash travelling along a stroke is paint work, not compositor work, so
     // the honest limit is on how many strokes travel at once rather than on
@@ -1534,13 +1542,9 @@ function computed(rules, el, ancestors, media = []) {
     // rather than by naming the constant a second time — a threshold written
     // down twice is a threshold that drifts.
     const motionAt = (n) => {
-      const c = new Canvas(document.createElement('div'), {});
-      c.setPalette(PAL);
-      c.setSession(`edge-${n}`);
-      c.render({
-        nodes: [root(1), ...Array.from({ length: n }, (_, i) => kid(`k${i}`, 'running'))],
-        edges: Array.from({ length: n }, (_, i) => ({ source: 'session', target: `k${i}` })),
-      });
+      const c = plain(`edge-${n}`);
+      c.setGroup('none');
+      c.render({ nodes: [root(1), ...Array.from({ length: n }, (_, i) => kid(`k${i}`, 'running'))], edges: [] });
       return c.root.dataset.motion;
     };
     let last = 0;
@@ -1549,15 +1553,15 @@ function computed(rules, el, ancestors, media = []) {
       last >= 20 && last <= 160 && motionAt(last) === 'flow' && motionAt(last + 1) === 'still',
       `motion holds up to ${last} flowing edges and stops at ${last + 1}`);
 
-    process.stdout.write(`     ${N} nodes: ${cBig.edgeEls.size} paths held, ${churn} rebuilt`
+    process.stdout.write(`     ${N} nodes, every one a card: ${cBig.edgeEls.size} paths held, ${churn} rebuilt`
       + ` over ${POLLS} polls, ${perPoll.toFixed(1)} ms of JS per poll\n`);
   }
 
   /* -- 9. the method six call sites depend on --------------------------- */
 
   // Deleted by accident in an earlier layout change while app.js kept calling
-  // it in six places and #redraw in a seventh, so every fold and every panel
-  // resize threw. Call it rather than grep for it.
+  // it in six places, so every fold and every panel resize threw. Call it
+  // rather than grep for it.
   {
     let err = null;
     try { canvas.fitIfUntouched(); } catch (e) { err = e; }
@@ -1632,439 +1636,428 @@ function computed(rules, el, ancestors, media = []) {
     'private mode throws on setItem; every write in app.js goes through the one guarded wrapper');
 }
 
-process.stdout.write('\n== §27 the picture at 250 nodes ==\n');
+process.stdout.write('\n== §27 where everything on the graph goes ==\n');
 
-/* The owner's complaint was that a big graph "looks low quality and
-   meaningless". Two things answer it and both are measured here rather than
-   grepped for: a depth level now wraps into bands, so fit() stops being
-   width-bound against a ribbon; and what survives a zoom-out is redrawn at a
-   constant SCREEN size instead of shrinking into grey.
-
-   Every assertion below renders a real fixture through the DOM stub and reads
-   what came out, or resolves the stylesheet the way a browser would and reads
-   the value. Nothing here asks whether a class name appears in a file. */
+/* The graph is a tree that reads left to right. Where each thing sits is
+   decided by web/graph-plan.js, which touches no page, so most of this section
+   calls it directly. The rest runs the canvas against the DOM stub and reads
+   what it drew. What used to be here — three "readings" that redrew a card's
+   words at a constant screen size as the canvas zoomed out — is gone: a crowd
+   is now answered by grouping and density, and a zoomed-out canvas by the
+   minimap and the attention list. The claims that guarded honesty were
+   rewritten for the new picture, not dropped. */
 
 {
   const dom = installDom();
-  const cssText = read(path.join(STUDIO, 'web', 'style.css')) ?? '';
+  const gp = await import(`../../kit/studio/web/graph-plan.js?t=${Date.now()}`);
+  const { Canvas } = await import(`../../kit/studio/web/canvas.js?plan=${Date.now()}`);
   const canvasSrc = read(path.join(STUDIO, 'web', 'canvas.js')) ?? '';
-  const rules = cssRules(cssText);
-  const REDUCE = ['(prefers-reduced-motion: reduce)'];
-  const { Canvas } = await import(`../../kit/studio/web/canvas.js?lod=${Date.now()}`);
+  const PAL = { measured: true, map: { Explore: { source: 'builtin' }, 'general-purpose': { source: 'builtin' }, 'crew-backend-expert': { source: 'kit' }, 'crew-test-expert': { source: 'kit' } } };
 
-  // Thresholds are read out of the module rather than restated here. A
-  // threshold written down twice is a threshold that drifts.
-  const constOf = (name) => Number(new RegExp(`^const ${name} = ([\\d.]+);`, 'm').exec(canvasSrc)?.[1]);
-  const LOD_NEAR = constOf('LOD_NEAR');
-  const LOD_FAR = constOf('LOD_FAR');
-  const LOD_HYST = constOf('LOD_HYST');
-  const LABEL_BUDGET = constOf('LABEL_BUDGET');
-
-  // If the constants did not parse, every threshold assertion below would be
-  // comparing against NaN and quietly passing or quietly failing.
-  check('the reading thresholds are read from canvas.js rather than restated here',
-    [LOD_NEAR, LOD_FAR, LOD_HYST, LABEL_BUDGET].every((v) => Number.isFinite(v) && v > 0)
-    && LOD_NEAR > LOD_FAR,
-    `near=${LOD_NEAR} far=${LOD_FAR} hyst=${LOD_HYST} budget=${LABEL_BUDGET}`);
-
-  const TYPES = ['Explore', 'Plan', 'reviewer', 'tester', 'crew-planner',
-    'crew-backend-expert', 'docs-agent', 'security'];
-  const PAL = {
-    map: Object.fromEntries(TYPES.map((t, i) => [t, {
-      hex: ['#26c6e6', '#a874f5', '#35c874', '#f2a65a'][i % 4],
-      source: i % 2 ? 'kit' : 'builtin',
-    }])),
-    unknown: '#94a3c8',
-  };
-
-  /** A root whose pane is a real size. The stub answers 800x600 for every
-   *  element, and the whole point of the band wrap is that it is chosen
-   *  against the pane it will be drawn in. */
-  const pane = (w, h) => {
-    const el = document.createElement('div');
-    el.getBoundingClientRect = () => ({ x: 0, y: 0, top: 0, left: 0, right: w, bottom: h, width: w, height: h });
-    return el;
-  };
-
-  // Three failures and a handful of running agents, the rest finished — the
-  // shape of a real session late in a run.
-  const statusOf = (i) => (i < 3 ? 'failed' : i < 9 ? 'running' : 'done');
-  const graph = (n) => {
-    const nodes = [{ id: 'session', kind: 'session', status: 'session', turns: 4, cwd: '/x/y' }];
-    const edges = [];
-    for (let i = 0; i < n; i += 1) {
-      nodes.push({
-        id: `n${i}`,
-        kind: 'agent',
-        agentType: TYPES[i % TYPES.length],
-        status: statusOf(i),
-        description: 'a sentence of description that fills the lower half of the card',
-        lastTool: statusOf(i) === 'running' ? 'Grep' : null,
-        spawnDepth: 1,
-        parentId: 'session',
-        tools: {},
-        toolCount: 3,
-      });
-      edges.push({ source: 'session', target: `n${i}` });
-    }
-    return { nodes, edges };
-  };
-  const made = (n, w = 1280, h = 800) => {
-    const c = new Canvas(pane(w, h), {});
+  const S = () => ({ id: 'session', kind: 'session', status: 'session', turns: 3, cwd: '/x', gitBranch: 'feat/x' });
+  const A = (id, type, extra = {}) => ({ id, kind: 'agent', agentType: type, status: 'done', parentId: 'session', description: `task of ${id}`, ...extra });
+  const RUN = (id, extra = {}) => ({ id, kind: 'workflow', workflowId: id.replace('wf:', ''), status: 'done', parentId: 'session', ...extra });
+  const agentsOf = (nodes) => nodes.filter((n) => n.kind === 'agent').length;
+  const at = (p, id) => p.items.find((it) => it.id === id);
+  const boxes = (p) => new Map(p.items.map((it) => [it.id, `${it.x},${it.y}`]));
+  const made = (nodes, name = 'plan') => {
+    const c = new Canvas(document.createElement('div'), {});
     c.setPalette(PAL);
-    c.setSession(`lod-${n}-${w}x${h}`);
-    c.render(graph(n));
+    c.setSession(`${name}-${Math.random().toString(36).slice(2)}`);
+    c.render({ nodes, edges: [] });
     return c;
   };
 
-  const span = (c) => {
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const p of c.pos.values()) {
-      minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
-      maxX = Math.max(maxX, p.x + 236); maxY = Math.max(maxY, p.y + 104);
+  // The design's own first screen: seven agents, a run of four, and two grandchildren.
+  const screenOne = () => {
+    const n = [S(), A('e1', 'Explore', { startedAt: 1 }), A('e2', 'Explore', { startedAt: 2, status: 'starting' }),
+      A('b', 'crew-backend-expert', { startedAt: 3 }), A('d', 'crew-database-expert', { startedAt: 4, status: 'running' }),
+      A('f', 'crew-frontend-expert', { startedAt: 5, status: 'running' }), A('p', 'crew-performance-expert', { startedAt: 6, status: 'running' }),
+      A('g', 'general-purpose', { startedAt: 7, status: 'ended' }), RUN('wf:audit', { startedAt: 8 })];
+    for (const [i, t] of ['claude-code-guide', 'crew-review-agent', 'crew-security-expert', 'crew-test-expert'].entries()) {
+      n.push(A(`w${i}`, t, { parentId: 'wf:audit', workflow: 'audit', startedAt: 10 + i, status: i === 0 ? 'failed' : 'done', errors: i === 0 ? 3 : 0 }));
     }
-    return { w: maxX - minX, h: maxY - minY };
+    n.push(A('k1', 'general-purpose', { parentId: 'b', startedAt: 20 }), A('k2', 'general-purpose', { parentId: 'w3', startedAt: 21 }));
+    return n;
   };
 
-  const small = made(6);
-  const dozen = made(12);
-  const mid = made(60);
-  const big = made(250);
+  /* -- 1. a tree that reads left to right ------------------------------- */
 
-  for (const [label, c] of [['6', small], ['60', mid], ['250', big]]) {
-    const s = span(c);
-    process.stdout.write(`     ${label.padStart(3)} nodes @1280x800: world ${Math.round(s.w)}x${Math.round(s.h)}`
-      + ` (${(s.w / s.h).toFixed(2)}:1), fit ${(c.view.k * 100).toFixed(1)}%,`
-      + ` reading ${c.root.dataset.lod}, 11px type draws at ${(11 * c.view.k).toFixed(2)}px\n`);
+  const one = gp.plan(screenOne(), {});
+  const col = (p, d) => p.items.filter((it) => it.depth === d);
+  check('the session is on the left, what it spawned in the next column, what those spawned in the one after',
+    at(one, 'session').x < at(one, 'b').x && at(one, 'b').x < at(one, 'k1').x
+    && new Set(col(one, 1).map((it) => it.x)).size === 1 && new Set(col(one, 2).map((it) => it.x)).size === 1,
+    `columns at x ${[...new Set(one.items.map((it) => it.x))].sort((a, b) => a - b).join(', ')}`);
+  const overlap = (p) => p.items.filter((a) => p.items.some((b) => a !== b && a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h));
+  check('siblings stack downward and nothing overlaps',
+    overlap(one).length === 0 && col(one, 1).every((it, i, a) => i === 0 || it.y >= a[i - 1].y + a[i - 1].h),
+    overlap(one).length ? `overlapping: ${overlap(one).map((it) => it.id).join(', ')}` : `${one.items.length} boxes`);
+  check('a child starts level with what spawned it',
+    Math.abs((at(one, 'k1').y + at(one, 'k1').h / 2) - (at(one, 'b').y + at(one, 'b').h / 2)) < 1,
+    `parent centre ${at(one, 'b').y + at(one, 'b').h / 2}, child centre ${at(one, 'k1').y + at(one, 'k1').h / 2}`);
+  check('every wire leaves a right edge and enters a left edge',
+    one.edges.length === one.items.length - 1 && one.edges.every((e) => e.to.x > e.from.x),
+    `${one.edges.length} wires for ${one.items.length} boxes`);
+  {
+    const e = one.edges.find((x) => x.target === 'k2');
+    const run = at(one, 'wf:audit');
+    const cell = run.cells.find((c) => c.id === 'w3');
+    check('a wire out of a run\'s member leaves from that member\'s row',
+      Math.abs(e.from.y - (run.y + cell.y + cell.h / 2)) < 1 && e.source === 'w3',
+      `wire leaves at y ${e.from.y}; the row's centre is ${run.y + cell.y + cell.h / 2}`);
   }
+  check('the measures are the design\'s: session 200x84, card 248x64, 56 between columns, 12 between siblings',
+    at(one, 'session').w === 200 && at(one, 'session').h === 84 && at(one, 'b').w === 248 && at(one, 'b').h === 64
+    && at(one, 'b').x - (at(one, 'session').x + 200) === 56 && col(one, 1)[1].y - (col(one, 1)[0].y + col(one, 1)[0].h) === 12);
 
-  /* -- 1. the wrap is real --------------------------------------------- */
+  /* -- 2. arrival appends ------------------------------------------------ */
 
   {
-    const s = span(big);
-    check('a 250-node depth level wraps into bands instead of one row',
-      s.w / s.h < 4 && big.view.k >= LOD_FAR,
-      `world ${Math.round(s.w)}x${Math.round(s.h)} (${(s.w / s.h).toFixed(2)}:1) fits at`
-      + ` ${(big.view.k * 100).toFixed(1)}% — one unbounded row was 8624x1246 (6.92:1) at 7.9%`);
+    const nodes = screenOne();
+    const seq = gp.sequence(nodes);
+    // Cards throughout: Auto turning cards into chips is its own reflow, asserted in its own section.
+    const before = gp.plan(nodes, { seq, density: 'comfortable' });
+    // A new agent whose clock says it started BEFORE the others: arrival is what counts, not the timestamp.
+    const more = [...nodes, A('late', 'crew-docs-agent', { startedAt: 0 })];
+    gp.sequence(more, seq);
+    const after = gp.plan(more, { seq, density: 'comfortable', sessionY: before.sessionY });
+    const was = boxes(before);
+    const moved = [...was].filter(([id, xy]) => boxes(after).get(id) !== xy).map(([id]) => id);
+    check('a new agent lands at the end of its column and nothing already drawn moves',
+      moved.length === 0 && col(after, 1).at(-1).id === 'late',
+      moved.length ? `moved: ${moved.join(', ')}` : `${was.size} boxes held; the new one is last of ${col(after, 1).length}`);
+
+    const grown = [...more, A('w9', 'crew-docs-agent', { parentId: 'wf:audit', workflow: 'audit', startedAt: 99 })];
+    gp.sequence(grown, seq);
+    const after2 = gp.plan(grown, { seq, density: 'comfortable', sessionY: before.sessionY });
+    const runY = at(after2, 'wf:audit').y;
+    const above = col(after, 1).filter((it) => it.y < at(after, 'wf:audit').y).map((it) => it.id);
+    check('a run that gains a member grows; what sits above it stays, what sits below it is pushed down',
+      at(after2, 'wf:audit').h > at(after, 'wf:audit').h && runY === at(after, 'wf:audit').y
+      && above.every((id) => boxes(after2).get(id) === boxes(after).get(id))
+      && at(after2, 'late').y > at(after, 'late').y,
+      `run ${at(after, 'wf:audit').h} -> ${at(after2, 'wf:audit').h} tall; ${above.length} boxes above it held`);
+    check('twin: without the remembered order, the same arrival would have been sorted in by its timestamp',
+      gp.plan(more, { seq: gp.sequence(more), density: 'comfortable' }).items.filter((it) => it.depth === 1)[0].id === 'late',
+      'so it is the sequence, not luck, that kept the column still');
   }
 
-  /* -- 2. the small case did not pay for it ---------------------------- */
-
-  check('a six-agent session still gets full cards, at full size',
-    small.view.k >= 1 && small.root.dataset.lod === 'near',
-    `fits at ${(small.view.k * 100).toFixed(1)}% reading ${small.root.dataset.lod}`
-    + ' — one row put the same six at 66.8%');
-  check('twelve agents get full cards too, which is the complaint that started this',
-    dozen.view.k >= LOD_NEAR && dozen.root.dataset.lod === 'near',
-    `fits at ${(dozen.view.k * 100).toFixed(1)}% reading ${dozen.root.dataset.lod}`
-    + ` — needs >= ${LOD_NEAR * 100}% to keep the description`);
-
-  /* -- 3. zoom never moves a node -------------------------------------- */
+  /* -- 3. zoom moves nothing -------------------------------------------- */
 
   {
-    const before = JSON.stringify([...dozen.pos].sort());
-    let relaid = 0;
-    dozen.layout = () => { relaid += 1; };          // shadows the prototype
-    const startK = dozen.view.k;
-    for (const k of [1.2, 0.9, LOD_NEAR + 0.05, LOD_NEAR - 0.05, 0.4,
-      LOD_FAR + 0.05, LOD_FAR - 0.05, 0.08, 0.5, 1.0]) {
-      dozen.view.k = k;
-      dozen.applyView();
+    const c = made(screenOne(), 'zoom');
+    const snap = () => JSON.stringify([...c.pos]) + [...c.els.values()].map((el) => el.box).join('|');
+    const first = snap();
+    for (const k of [0.25, 0.4, 0.75, 1, 1.6, 2, 0.5]) c.zoomTo(k);
+    check('zooming across the whole range moves no card and resizes none',
+      snap() === first, 'positions are a function of the nodes and the viewer\'s choices, never of the view');
+    check('a zoom is one transform on the viewport and nothing per card',
+      /scale\(0\.5\)/.test(c.viewport.style.transform) && !canvasSrc.includes("setProperty('--k'"),
+      `transform: ${c.viewport.style.transform}`);
+    c.zoomTo(0.01);
+    const low = c.view.k;
+    c.zoomTo(9);
+    check('the zoom runs from 25% to 200% and no further', low === 0.25 && c.view.k === 2 && gp.ZOOM.min === 0.25 && gp.ZOOM.max === 2,
+      `floor ${low}, ceiling ${c.view.k}`);
+    c.fit();
+    check('fitting never enlarges past 100%', c.view.k <= 1 && gp.fitZoom(100, 100, 2000, 2000) === 1);
+  }
+
+  /* -- 4. grouping ------------------------------------------------------- */
+
+  {
+    const nodes = screenOne();
+    const kinds = (p) => p.items.filter((it) => it.kind === 'group').map((it) => `${it.type}:${it.label}`).join(' | ');
+    const run = gp.plan(nodes, { group: 'run', density: 'comfortable' });
+    const type = gp.plan(nodes, { group: 'type', density: 'comfortable' });
+    const parent = gp.plan([...nodes, A('k3', 'Explore', { parentId: 'b', startedAt: 30 })], { group: 'parent', density: 'comfortable' });
+    const none = gp.plan(nodes, { group: 'none', density: 'comfortable' });
+    check('by workflow run: a run is one group holding its agents',
+      kinds(run) === 'run:audit' && at(run, 'wf:audit').members.length === 4 && at(run, 'wf:audit').open === true, kinds(run));
+    check('by agent type: siblings of one type are a group too, folded until asked for',
+      kinds(type) === 'type:Explore × 2 | run:audit' && at(type, 'type:session:Explore').open === false, kinds(type));
+    check('by parent: an agent\'s children are a group',
+      kinds(parent).includes('parent:crew-backend-expert → 2'), kinds(parent));
+    check('with no grouping a run is an ordinary card and its agents come after it',
+      kinds(none) === '' && at(none, 'wf:audit').kind === 'run-card' && at(none, 'w0').x > at(none, 'wf:audit').x, kinds(none) || 'no groups');
+    check('a folded group is one card; open, it holds its members where the card was',
+      at(type, 'type:session:Explore').h === 64 && at(run, 'wf:audit').cells.length === 4
+      && at(run, 'wf:audit').x === at(run, 'b').x);
+    const folded = gp.plan(nodes, { group: 'run', density: 'comfortable', open: new Map([['wf:audit', false]]) });
+    check('folding a group takes what its members spawned with it',
+      !at(folded, 'k2') && at(run, 'k2') && folded.edges.every((e) => e.target !== 'k2'));
+    check('a group\'s wire is alive or at rest, never red: what failed inside it is said inside it',
+      run.edges.find((e) => e.target === 'wf:audit').state === 'done' && at(run, 'wf:audit').status === 'failed'
+      && at(run, 'wf:audit').counts.failed === 1);
+    const big = [S(), RUN('wf:big'), ...Array.from({ length: 40 }, (_, i) => A(`m${i}`, 'Explore', { parentId: 'wf:big', workflow: 'big', startedAt: i }))];
+    const grid = at(gp.plan(big, { density: 'comfortable' }), 'wf:big');
+    check('a large open group lays its members out as a grid, four across at most',
+      grid.grid === true && grid.cols === 4 && grid.w > 248 && grid.cells.length === 40
+      && new Set(grid.cells.map((c) => c.x)).size === 4, `${grid.cols} columns, ${grid.w}px wide`);
+  }
+
+  /* -- 5. Auto density, and where its thresholds come from --------------- */
+
+  {
+    const many = (n, type = (i) => `type-${i}`) => [S(), ...Array.from({ length: n }, (_, i) => A(`a${i}`, type(i), { startedAt: i }))];
+    const s1 = gp.plan(screenOne(), {});
+    check('the design\'s own first screen stays cards: thirteen agents, nothing folded, nothing shrunk',
+      s1.density === 'comfortable' && s1.stacked === false && s1.drawn === agentsOf(screenOne()) - 0
+      && s1.height <= gp.AUTO.tallest, `${s1.density}, ${s1.drawn} drawn, ${s1.height}px tall (limit ${gp.AUTO.tallest})`);
+    // The limit is not a number someone liked. It is the reference canvas, less the fit margin, at the smallest
+    // zoom a card's 12px name still reads at.
+    const derived = (724 - 2 * gp.ZOOM.pad) / 0.75;
+    check('the height limit is the reference canvas at the smallest readable zoom',
+      Math.abs(gp.AUTO.tallest - derived) < 2 && gp.fitZoom(900, gp.AUTO.tallest, 2000, 724) >= 0.75
+      && gp.fitZoom(900, gp.AUTO.tallest + 40, 2000, 724) < 0.75,
+      `(724 - ${2 * gp.ZOOM.pad}) / 0.75 = ${derived.toFixed(0)}; limit ${gp.AUTO.tallest}`);
+    let last = 1;
+    while (gp.plan(many(last + 1), {}).density === 'comfortable') last += 1;
+    check('cards stay cards up to the limit and become chips one agent past it',
+      gp.plan(many(last), {}).height <= gp.AUTO.tallest && gp.plan(many(last + 1), { density: 'comfortable' }).height > gp.AUTO.tallest
+      && gp.plan(many(last + 1), {}).density === 'compact' && last >= 9 && last <= 13,
+      `${last} distinct agents are cards (${gp.plan(many(last), {}).height}px); ${last + 1} are chips`);
+    // Nine agents of ONE type fit as cards, so they are shown as nine cards: folding them would hide the tasks
+    // of a session that had room for every one.
+    const nineAlike = gp.plan(many(9, () => 'Explore'), {});
+    check('nothing is folded away while the open picture is short enough to read',
+      nineAlike.stacked === false && nineAlike.drawn === 9 && nineAlike.items.every((it) => it.kind !== 'group'),
+      `9 Explore agents: ${nineAlike.drawn} drawn, stacked ${nineAlike.stacked}`);
+    const crowd = many(24, (i) => (i < 20 ? ['Explore', 'general-purpose'][i % 2] : `solo-${i}`));
+    const stacked = gp.plan(crowd, {});
+    check('too tall, and agents of one type fold together first: cards survive if that is enough',
+      stacked.stacked === true && stacked.density === 'comfortable'
+      && stacked.items.filter((it) => it.kind === 'group' && it.type === 'type').length === 2 && stacked.height <= gp.AUTO.tallest,
+      `${stacked.drawn} drawn in ${stacked.items.length - 1} boxes, ${stacked.height}px, ${stacked.density}`);
+    check(`a pair is not a crowd: folding starts at ${gp.AUTO.stackAt} of a type`,
+      gp.AUTO.stackAt === 3 && !gp.plan(many(30, (i) => (i < 2 ? 'Explore' : `solo-${i}`)), {}).items.some((it) => it.kind === 'group'));
+    check('still too tall, and cards become chips', gp.plan(many(16), {}).density === 'compact'
+      && gp.plan(many(16), {}).items.find((it) => it.id === 'a0').h === 36);
+    check('Comfortable and Compact are the viewer\'s word and are never overridden',
+      gp.plan(many(60), { density: 'comfortable' }).density === 'comfortable'
+      && gp.plan(many(60), { density: 'comfortable' }).stacked === false
+      && gp.plan(many(2), { density: 'compact' }).density === 'compact');
+    check('None means none: nothing is folded together under it, at any size',
+      gp.plan(many(40, () => 'Explore'), { group: 'none' }).items.every((it) => it.kind !== 'group'));
+    // A session that opens too tall even as chips starts with its largest groups folded.
+    const huge = [S()];
+    for (let r = 0; r < 3; r += 1) {
+      huge.push(RUN(`wf:r${r}`, { startedAt: r }));
+      for (let i = 0; i < [60, 30, 4][r]; i += 1) huge.push(A(`r${r}-${i}`, 'Explore', { parentId: `wf:r${r}`, workflow: `r${r}`, startedAt: 100 * r + i }));
     }
-    const after = JSON.stringify([...dozen.pos].sort());
-    delete dozen.layout;
-    dozen.view.k = startK;
-    dozen.applyView();
-    check('crossing every reading boundary moves nothing and re-lays out nothing',
-      after === before && relaid === 0,
-      `${dozen.pos.size} positions, ${after === before ? 'byte-identical' : 'CHANGED'} across ten`
-      + ` zoom steps spanning both boundaries; layout() ran ${relaid} times`);
+    const folds = gp.crowdFolds(huge, {});
+    const opened = gp.plan(huge, { open: new Map(folds.map((id) => [id, false])) });
+    check('a session that opens too tall even as chips starts with its largest groups folded, largest first',
+      folds[0] === 'wf:r0' && !folds.includes('wf:r2') && opened.height <= gp.AUTO.tallest,
+      `folded ${folds.join(', ')}; ${opened.height}px`);
+    check('a session that fits folds nothing', gp.crowdFolds(screenOne(), {}).length === 0
+      && gp.crowdFolds(huge, { density: 'comfortable' }).length === 0);
   }
 
-  /* -- 4. the band is hysteretic --------------------------------------- */
+  /* -- 6. 250 nodes ------------------------------------------------------- */
 
   {
-    const sweep = (from, to, step) => {
-      const seen = [];
-      for (let i = 0; i <= Math.round(Math.abs(to - from) / Math.abs(step)); i += 1) {
-        dozen.view.k = Number((from + i * step).toFixed(4));
-        dozen.applyView();
-        const b = dozen.root.dataset.lod;
-        if (seen[seen.length - 1] !== b) seen.push(b);
-      }
-      return seen;
-    };
-    // A tremor is the case the hysteresis exists for: a finger resting on a
-    // trackpad at a boundary must not reband 250 cards twice a second.
-    const tremor = (at) => {
-      dozen.view.k = at - 0.01;
-      dozen.applyView();
-      const settled = dozen.root.dataset.lod;
-      let flips = 0;
-      for (let i = 0; i < 40; i += 1) {
-        dozen.view.k = at + (i % 2 ? 0.001 : -0.001);
-        dozen.applyView();
-        if (dozen.root.dataset.lod !== settled) flips += 1;
-      }
-      return flips;
-    };
-
-    for (const [name, at] of [['detail', LOD_NEAR], ['marks', LOD_FAR]]) {
-      const up = sweep(at - 0.06, at + 0.06, 0.001);
-      const down = sweep(at + 0.06, at - 0.06, -0.001);
-      const flips = tremor(at);
-      check(`the ${name} boundary changes the reading once per direction and never on a tremor`,
-        up.length === 2 && down.length === 2 && flips === 0,
-        `up ${up.join('->')}, down ${down.join('->')}, ${flips} flips over 40 jitters of`
-        + ` +-0.001 at k=${at} (hysteresis ${LOD_HYST})`);
+    const TYPES = ['Explore', 'general-purpose', 'crew-backend-expert', 'crew-test-expert', 'reviewer', 'Plan'];
+    const big = [S()];
+    for (let r = 0; r < 5; r += 1) {
+      big.push(RUN(`wf:run-${r}`, { startedAt: r }));
+      for (let i = 0; i < 20; i += 1) big.push(A(`w${r}-${i}`, TYPES[i % 6], { parentId: `wf:run-${r}`, workflow: `run-${r}`, startedAt: 10 + r * 20 + i, status: i % 4 === 0 ? 'running' : 'done' }));
     }
-    dozen.view.k = 1;
-    dozen.applyView();
-  }
-
-  /* -- 5. the crowd forces the far reading, not only the zoom ---------- */
-
-  {
-    big.view.k = 0.5;
-    big.applyView();
-    dozen.view.k = 0.5;
-    dozen.applyView();
-    check('too many cards is the same complaint as cards too small, and gets the same remedy',
-      big.root.dataset.lod === 'far' && dozen.root.dataset.lod === 'mid',
-      `at k=0.5, ${big.drawn} nodes read as ${big.root.dataset.lod} and ${dozen.drawn} read as`
-      + ` ${dozen.root.dataset.lod} (budget ${LABEL_BUDGET}) — equal here means the rule is zoom-only`);
-    big.view.k = 0.27;
-    big.applyView();
-  }
-
-  /* -- 6. a running node is never anonymous ---------------------------- */
-
-  const classesOf = (el) => new Set([
-    ...String(el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean),
-    ...el.classList._s,
-  ]);
-  const dataAttrs = (el) => Object.fromEntries(
-    Object.entries(el.dataset).map(([k, v]) => [`data-${k.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)}`, v]),
-  );
-  const rootOf = (c) => ({ tag: 'div', classes: new Set(['cv-root']), attrs: dataAttrs(c.root), pseudo: null });
-  const cardOf = (c, id) => ({
-    tag: 'div', classes: classesOf(c.els.get(id)), attrs: dataAttrs(c.els.get(id)), pseudo: null,
-  });
-  const partStyle = (c, id, cls, pseudo, media) => computed(
-    rules, { tag: 'span', classes: new Set([cls]), attrs: {}, pseudo: pseudo ?? null },
-    [rootOf(c), cardOf(c, id)], media,
-  );
-
-  {
-    check('the canvas really is in the far reading for the assertions below',
-      big.root.dataset.lod === 'far',
-      `250 nodes at ${(big.view.k * 100).toFixed(0)}% read as ${big.root.dataset.lod}`);
-
-    const promoted = [...big.nodes.values()]
-      .filter((n) => ['failed', 'running'].includes(n.status) || n.kind === 'session');
-    const mute = promoted.filter((n) => {
-      const c = partStyle(big, n.id, 'cv-type', '::before').get('content');
-      return !c || c === 'none';
-    });
-    check('every running, failed and session node keeps a label at the far reading',
-      promoted.length >= 10 && mute.length === 0,
-      mute.length
-        ? `${mute.length} of ${promoted.length} resolved no content: ${mute.slice(0, 4).map((n) => `${n.id}/${n.status}`).join(', ')}`
-        : `${promoted.length} promoted nodes, all labelled`);
-
-    // The control. If the four promotion selectors had been written with
-    // :not(), the matcher would treat them as non-matches and the assertion
-    // above would go green on a rule the browser is running and this test
-    // never saw — so a node that must NOT be labelled is checked too.
-    const quiet = partStyle(big, 'n100', 'cv-type', '::before').get('content');
-    check('an ordinary finished node gets no label out there, which is what makes the labels mean something',
-      big.nodes.get('n100').status === 'done' && (!quiet || quiet === 'none'),
-      `a done node resolved content ${JSON.stringify(quiet ?? null)} — every card labelled is the grey wall again`);
-
-    const midType = computed(rules,
-      { tag: 'span', classes: new Set(['cv-type']), attrs: {}, pseudo: '::before' },
-      [{ tag: 'div', classes: new Set(['cv-root']), attrs: { 'data-lod': 'mid' }, pseudo: null },
-        { tag: 'div', classes: new Set(['cv-node']), attrs: { 'data-kind': 'agent', 'data-state': 'done' }, pseudo: null }]);
-    check('the middle reading draws a short type at a constant screen size',
-      midType.get('content') === 'attr(data-short)'
-      && /calc\(\s*11px\s*\/\s*var\(--k\)\s*\)/.test(String(midType.get('font-size') ?? '')),
-      `content ${JSON.stringify(midType.get('content') ?? null)},`
-      + ` font-size ${JSON.stringify(midType.get('font-size') ?? null)}`);
-
-    // The attribute the pseudo-element reads has to actually carry something,
-    // and for a running agent it has to carry what the agent is doing.
-    // Found by type rather than by index, so the fixture's type cycle can be
-    // reordered without turning this into a puzzle.
-    const byType = (t) => big.els.get([...big.nodes.values()].find((n) => n.agentType === t).id);
-    const live = byType('crew-backend-expert');
-    const done = big.els.get('n100');
-    check('the label a running node keeps says what it is doing, not just what it is',
-      big.nodes.get(live.dataset.id).status === 'running'
-      && live.parts.type.dataset.far === 'backend ▸ Grep'
-      && done.parts.type.dataset.far === done.parts.type.dataset.short,
-      `running: ${JSON.stringify(live.parts.type.dataset.far)},`
-      + ` done: ${JSON.stringify(done.parts.type.dataset.far)}`);
-    check('short names are derived the way the README diagram derives them',
-      live.parts.type.dataset.short === 'backend'
-      && byType('docs-agent').parts.type.dataset.short === 'docs'
-      && byType('Explore').parts.type.dataset.short === 'Explore',
-      `crew-backend-expert -> ${JSON.stringify(live.parts.type.dataset.short)},`
-      + ` docs-agent -> ${JSON.stringify(byType('docs-agent').parts.type.dataset.short)},`
-      + ` Explore -> ${JSON.stringify(byType('Explore').parts.type.dataset.short)}`);
-
-    // font-size:0 removes the accessible name and a pseudo-element's content
-    // is not reliably exposed, so the card has to carry it as an attribute at
-    // every reading or this ships as an accessibility regression.
-    const named = [...big.els.entries()].filter(([, el]) => {
-      const a = String(el.getAttribute('aria-label') ?? '');
-      return a.includes(',') && a.length > 6;
-    });
-    check('every card names itself for a screen reader at every reading',
-      named.length === big.els.size,
-      `${named.length} of ${big.els.size} cards carried an aria-label;`
-      + ` n3 reads ${JSON.stringify(big.els.get('n3').getAttribute('aria-label'))}`);
-  }
-
-  /* -- 7. what the middle reading gives up ----------------------------- */
-
-  {
-    const at = (lod, cls) => computed(rules,
-      { tag: 'div', classes: new Set([cls]), attrs: {}, pseudo: null },
-      [{ tag: 'div', classes: new Set(['cv-root']), attrs: { 'data-lod': lod }, pseudo: null },
-        { tag: 'div', classes: new Set(['cv-node']), attrs: { 'data-kind': 'agent', 'data-state': 'done' }, pseudo: null }]);
-    check('the middle reading drops the grey half of the card and keeps the chip',
-      at('mid', 'cv-desc').get('opacity') === '0' && at('mid', 'cv-foot').get('opacity') === '0'
-      && at('mid', 'cv-chip').get('opacity') !== '0'
-      && at('near', 'cv-desc').get('opacity') !== '0',
-      `mid desc ${at('mid', 'cv-desc').get('opacity')}, mid foot ${at('mid', 'cv-foot').get('opacity')},`
-      + ` mid chip ${at('mid', 'cv-chip').get('opacity')}, near desc ${at('near', 'cv-desc').get('opacity')}`);
-    check('the far reading stops drawing the rectangle that is the wall',
-      at('far', 'cv-node').get('background') === 'transparent'
-      && at('far', 'cv-node').get('box-shadow') === 'none'
-      && at('near', 'cv-node').get('background') !== 'transparent',
-      `far background ${at('far', 'cv-node').get('background')},`
-      + ` near background ${at('near', 'cv-node').get('background')}`);
-  }
-
-  /* -- 8. stillness reaches the substitution --------------------------- */
-
-  {
-    const under = (motion, media) => computed(rules,
-      { tag: 'svg', classes: new Set(['cv-mark']), attrs: {}, pseudo: null },
-      [{ tag: 'div', classes: new Set(['cv-root']), attrs: { 'data-lod': 'far', 'data-motion': motion }, pseudo: null },
-        { tag: 'div', classes: new Set(['cv-node']), attrs: { 'data-state': 'live' }, pseudo: null }], media);
-    const label = (motion, media) => computed(rules,
-      { tag: 'span', classes: new Set(['cv-type']), attrs: {}, pseudo: '::before' },
-      [{ tag: 'div', classes: new Set(['cv-root']), attrs: { 'data-lod': 'mid', 'data-motion': motion }, pseudo: null },
-        { tag: 'div', classes: new Set(['cv-node']), attrs: { 'data-state': 'live' }, pseudo: null }], media);
-
-    // The control: there has to be a transition here for switching it off to
-    // mean anything.
-    check('the mark travels to its new place rather than jumping there',
-      /transform/.test(String(under('flow').get('transition') ?? '')),
-      `resolved transition: ${JSON.stringify(under('flow').get('transition') ?? null)}`);
-    check('a reader who asked for stillness gets it on the new motion too',
-      under('flow', REDUCE).get('transition') === 'none'
-      && label('flow', REDUCE).get('transition') === 'none',
-      `mark ${JSON.stringify(under('flow', REDUCE).get('transition') ?? null)},`
-      + ` label ${JSON.stringify(label('flow', REDUCE).get('transition') ?? null)}`);
-    check('past the motion budget the substitution stands still as well',
-      under('still').get('transition') === 'none' && label('still').get('transition') === 'none',
-      `mark ${JSON.stringify(under('still').get('transition') ?? null)},`
-      + ` label ${JSON.stringify(label('still').get('transition') ?? null)}`);
-  }
-
-  /* -- 9. the disc survives the tightest pitch ------------------------- */
-
-  {
-    const farRoot = computed(rules,
-      { tag: 'div', classes: new Set(['cv-root']), attrs: { 'data-lod': 'far' }, pseudo: null }, []);
-    const decl = String(farRoot.get('--dot-screen') ?? '');
-    const m = /clamp\(\s*([\d.]+)px\s*,\s*calc\(\s*([\d.]+)\s*\*\s*var\(--k\)[^)]*\)\s*,\s*([\d.]+)px\s*\)/.exec(decl);
-    if (!m) {
-      skip('the disc never collides with its neighbour', 'fixture',
-        `--dot-screen did not parse as a clamp: ${JSON.stringify(decl || null)}`);
-    } else {
-      const k = big.view.k;
-      const dot = Math.min(Math.max(Number(m[1]), Number(m[2]) * k), Number(m[3]));
-      // Measured against the pitch the layout actually produced, so a later
-      // change to SIBLING_GAP or the per-group column count turns this red
-      // instead of quietly overlapping 250 dots.
-      const centres = [...big.pos.values()].map((p) => [(p.x + 118) * k, (p.y + 52) * k]);
-      let pitch = Infinity;
-      for (let i = 0; i < centres.length; i += 1) {
-        for (let j = i + 1; j < centres.length; j += 1) {
-          pitch = Math.min(pitch, Math.hypot(centres[i][0] - centres[j][0], centres[i][1] - centres[j][1]));
-        }
-      }
-      // Both bounds are expressed against the measured pitch rather than
-      // against the constants in the clamp: `dot >= floor` would be true of
-      // any clamp, since the clamp puts it there. A disc has to fill enough of
-      // its cell to read as a mark and not enough to touch the next one.
-      check('the disc fills its cell at the tightest pitch without touching its neighbour',
-        dot <= pitch && dot >= pitch * 0.2,
-        `disc is ${dot.toFixed(1)} screen px at k=${k.toFixed(3)}, closest two nodes are`
-        + ` ${pitch.toFixed(1)} px apart (floor ${m[1]}px, cap ${m[3]}px)`);
+    for (let i = 0; i < 150; i += 1) big.push(A(`a${i}`, TYPES[i % 6], { startedAt: 500 + i, status: i % 31 === 0 ? 'failed' : 'done' }));
+    const t0 = process.hrtime.bigint();
+    const folds = gp.crowdFolds(big, {});
+    const p = gp.plan(big, { open: new Map(folds.map((id) => [id, false])) });
+    const planMs = Number(process.hrtime.bigint() - t0) / 1e6;
+    check('250 agents open as a picture short enough to read, with every agent accounted for',
+      agentsOf(big) === 250 && p.height <= gp.AUTO.tallest && p.items.length < 40
+      && p.items.filter((it) => it.kind === 'group').reduce((n, it) => n + it.members.length, 0) === 250,
+      `${p.items.length} boxes, ${p.height}px tall, ${p.density}; planned in ${planMs.toFixed(1)} ms`);
+    const c = made(big, 'big');
+    const t1 = process.hrtime.bigint();
+    for (let i = 0; i < 20; i += 1) c.render({ nodes: big, edges: [] });
+    const pollMs = Number(process.hrtime.bigint() - t1) / 1e6 / 20;
+    c.expandAll();
+    const openEls = c.els.size + c.cellEls.size;
+    check('with everything expanded all 250 are drawn, each one a member of its group',
+      c.cellEls.size === 250 && c.drawn === 250, `${c.els.size} boxes and ${c.cellEls.size} members`);
+    // A poll that changed nothing must write nothing: each element remembers what it last drew.
+    const writes = [];
+    for (const el of [...c.els.values(), ...c.cellEls.values()]) {
+      const real = el.setAttribute.bind(el);
+      el.setAttribute = (k, v) => { writes.push(k); real(k, v); };
     }
-  }
+    c.render({ nodes: big, edges: [] });
+    check('a poll that changed nothing writes nothing to any card', writes.length === 0,
+      `${writes.length} attribute writes across ${openEls} elements`);
+    const changed = big.map((n) => (n.id === 'a3' ? { ...n, status: 'failed' } : n));
+    c.render({ nodes: changed, edges: [] });
+    check('a poll that changed one agent writes to that agent and its group only',
+      writes.length > 0 && writes.length <= 4, `${writes.length} attribute writes`);
+    process.stdout.write(`     250 agents: ${p.items.length} boxes as opened, ${planMs.toFixed(1)} ms to plan, ${pollMs.toFixed(1)} ms of JS per unchanged poll\n`);
 
-  /* -- 10. the failed branches are reachable --------------------------- */
+    /* -- 7. every card says what it is, to everyone ---------------------- */
+
+    const all = [...c.els.values(), ...c.cellEls.values()];
+    const unnamed = all.filter((el) => !el.getAttribute('aria-label'));
+    check('every card names itself for a screen reader, whatever it is drawn as',
+      unnamed.length === 0 && all.length > 250
+      && /^Explore, (Running|Done), task of w0-0 \(Claude Code built-in agent\)$/.test(c.cellEls.get('w0-0').getAttribute('aria-label')),
+      `${all.length - unnamed.length} of ${all.length} carried an aria-label; one reads ${JSON.stringify(c.cellEls.get('w0-0').getAttribute('aria-label'))}`);
+    check('status is never colour alone: every member carries its word beside its dot',
+      [...c.cellEls.values()].every((el) => el.parts.word.textContent.length > 2 && el.parts.dot.dataset.tone));
+  }
 
   {
-    const clean = made(12);
-    // n0..n2 are the failures, so a twelve-node fixture has them too; a graph
-    // with none is built here to prove the button hides itself.
-    const none = new Canvas(pane(1280, 800), {});
-    none.setPalette(PAL);
-    none.setSession('lod-nofail');
-    none.render({
-      nodes: [{ id: 'session', kind: 'session', status: 'session', turns: 1, cwd: '/x' },
-        { id: 'ok', kind: 'agent', agentType: 'Explore', status: 'done', spawnDepth: 1, parentId: 'session' }],
-      edges: [{ source: 'session', target: 'ok' }],
-    });
-    check('the alarm is absent when nothing went wrong and counts what did',
-      none.alarmBtn.hidden === true && clean.alarmBtn.hidden === false
-      && clean.alarmBtn.textContent === '⚠ 3',
-      `no-failure canvas: hidden=${none.alarmBtn.hidden};`
-      + ` three-failure canvas: hidden=${clean.alarmBtn.hidden} label ${JSON.stringify(clean.alarmBtn.textContent)}`);
+    const c = made([S(), A('k', 'crew-backend-expert', { status: 'running' }), A('b', 'Explore'), A('u', 'someone-elses-agent'),
+      A('z', 'Explore', { status: 'hibernating' })], 'identity');
+    c.setIcons({ builtin: '<svg data-file="builtin"></svg>' });
+    const tile = (id) => c.els.get(id).parts.tile;
+    check('whose agent it is, is said by its mark: Crewforth\'s chevrons, or the one file for everyone else',
+      tile('k').dataset.source === 'kit' && /chevron-3/.test(tile('k').innerHTML)
+      && tile('b').dataset.source === 'builtin' && tile('b').innerHTML === '<svg data-file="builtin"></svg>');
+    check('an agent type nobody declared is marked as unrecognised, never quietly drawn as built-in',
+      tile('u').dataset.source === 'unknown' && /does not recognise/.test(tile('u').title)
+      && /does not recognise/.test(c.els.get('u').getAttribute('aria-label'))
+      && cssRules(read(path.join(STUDIO, 'web', 'style.css')) ?? '').some((r) => r.sel === '.cv-tile[data-source="unknown"]::after' && r.decls.get('content') === "'?'"),
+      `source ${tile('u').dataset.source}; title ${JSON.stringify(tile('u').title)}`);
+    check('a status nobody recognises keeps its own word and gets no colour',
+      c.els.get('z').parts.pill.word.textContent === 'hibernating' && c.els.get('z').parts.pill.dot.dataset.tone === 'none'
+      && c.els.get('z').dataset.state === 'unknown' && c.els.get('z').parts.pill.el.classList.contains('cv-unknown'));
+    check('the mark for other agents lives in one file and nowhere in the canvas',
+      fs.existsSync(path.join(WEB_ROOT, 'icons', 'builtin.svg'))
+      && /currentColor/.test(read(path.join(WEB_ROOT, 'icons', 'builtin.svg')) ?? '')
+      && !/builtin:\s*'<(svg|g)/.test(canvasSrc) && /setIcons\(\{ builtin: svg \}\)/.test(read(path.join(WEB_ROOT, 'app.js')) ?? ''),
+      'replacing it is replacing web/icons/builtin.svg');
 
-    const k0 = big.view.k;
-    const visited = [];
-    for (let i = 0; i < 4; i += 1) { big.gotoFailed(); visited.push(big.selected); }
-    const r = big.root.getBoundingClientRect();
-    const p = big.pos.get(big.selected);
-    const cx = big.view.x + (p.x + 118) * big.view.k;
-    const cy = big.view.y + (p.y + 52) * big.view.k;
-    check('the alarm walks the failures in order, wraps, and does not zoom to do it',
-      visited.join(',') === 'n0,n1,n2,n0'
-      && visited.every((id) => big.nodes.get(id).status === 'failed')
-      && big.view.k === k0
-      && Math.abs(cx - r.width / 2) < 0.5 && Math.abs(cy - r.height / 2) < 0.5,
-      `visited ${visited.join(' -> ')}; k ${k0.toFixed(3)} -> ${big.view.k.toFixed(3)};`
-      + ` last node centred at ${cx.toFixed(1)},${cy.toFixed(1)} in a ${r.width}x${r.height} pane`);
+    const unread = new Canvas(document.createElement('div'), {});
+    unread.setPalette({ measured: false, reason: 'no agents directory beside the panel', map: {} });
+    unread.setSession('unread');
+    unread.render({ nodes: [S(), A('k', 'crew-backend-expert'), A('b', 'Explore')], edges: [] });
+    check('a palette that could not be read makes every agent unrecognised, and says why',
+      ['k', 'b'].every((id) => unread.els.get(id).parts.tile.dataset.source === 'unknown'
+        && /not measured — no agents directory beside the panel/.test(unread.els.get(id).parts.tile.title)),
+      unread.els.get('k').parts.tile.title);
   }
 
-  /* -- 11. the HUD says which reading you are in ----------------------- */
+  /* -- 8. what needs someone stays in view ------------------------------- */
 
   {
-    const label = (c) => String(c.zoomLabel.textContent ?? '');
-    dozen.view.k = 1;
-    dozen.applyView();
-    const near = label(dozen);
-    dozen.view.k = 0.5;
-    dozen.applyView();
-    const midL = label(dozen);
-    dozen.view.k = 0.1;
-    dozen.applyView();
-    const farL = label(dozen);
-    check('the HUD names the reading beside the percentage, so detail reads as traded not lost',
-      /^100% . detail$/.test(near) && /^50% . titles$/.test(midL) && /^10% . marks$/.test(farL),
-      `${JSON.stringify(near)} / ${JSON.stringify(midL)} / ${JSON.stringify(farL)}`);
-    check('and says when it was the crowd rather than the zoom that traded them',
-      new RegExp(`^\\d+% . marks \\(${big.drawn}\\)$`).test(label(big))
-      && !/\(/.test(farL),
-      `250-node canvas reads ${JSON.stringify(label(big))}, zoomed-out small one reads ${JSON.stringify(farL)}`);
+    const nodes = screenOne().map((n) => (n.id === 'd' ? { ...n, status: 'killed', endedAt: 50 } : n.id === 'w0' ? { ...n, endedAt: 90 } : n));
+    const list = gp.attention(nodes, new Set(['f']));
+    check('the attention list is who is waiting on the viewer, then who failed, newest first',
+      list.map((a) => `${a.id}:${a.tone}`).join() === 'f:waiting,w0:fail,d:fail', list.map((a) => `${a.id}:${a.tone}`).join());
+    check('each entry says what happened, in words',
+      list[0].says === 'waiting for you' && list[1].says === 'failed · 3 errors · in audit' && list[2].says === 'killed');
+    check('nobody failing and nobody waiting is an empty list, and the strip takes no room',
+      gp.attention(screenOne().map((n) => ({ ...n, status: n.kind === 'agent' ? 'done' : n.status })), new Set()).length === 0
+      && /el\.attention\.hidden = list\.length === 0/.test(read(path.join(WEB_ROOT, 'app.js')) ?? ''));
+
+    const c = made(nodes, 'attention');
+    c.toggle('wf:audit');
+    const picked = [];
+    c.onSelect = (n) => picked.push(n?.id ?? null);
+    const hiddenBefore = !c.cellEls.has('w0');
+    c.zoomTo(0.25);
+    const ok = c.focus('w0');
+    check('going to a failed agent opens the group it is folded into, selects it, and comes close enough to read',
+      hiddenBefore && ok && c.cellEls.has('w0') && c.selected === 'w0' && picked.at(-1) === 'w0' && c.view.k >= 1,
+      `was hidden ${hiddenBefore}; zoom ${c.view.k}`);
+
+    // Zoomed out to the floor a card's words cannot be read. What has to stay findable is where things are and
+    // which of them need someone, and neither depends on the zoom.
+    c.setWaiting(['f']);
+    c.zoomTo(0.25);
+    const tones = [...c.mapRects].map(([id, r]) => `${id}:${r.dataset.tone}`);
+    check('at the smallest zoom the minimap still shows every box, and which ones need someone',
+      c.mapRects.size === c.els.size && c.mapRects.get('f').dataset.tone === 'waiting'
+      && c.mapRects.get('d').dataset.tone === 'fail' && c.mapRects.get('wf:audit').dataset.tone === 'fail'
+      && c.mapRects.get('b').dataset.tone === 'none' && c.mapEl.hidden === false,
+      tones.filter((t) => !t.endsWith(':none')).join(', '));
+    check('an agent waiting on the viewer says so on its card, its wire and the map',
+      c.els.get('f').dataset.state === 'waiting' && c.els.get('f').parts.pill.word.textContent === 'Needs you'
+      && c.edgeEls.get(['session', 'f'].join(String.fromCharCode(0))).dataset.state === 'waiting');
+    const frame = () => ['x', 'y', 'width', 'height'].map((k) => c.mapFrame.getAttribute(k)).join(',');
+    const f1 = frame();
+    c.view.x -= 300;
+    c.applyView();
+    check('the minimap\'s frame follows the pane', frame() !== f1, `${f1} -> ${frame()}`);
   }
+
+  /* -- 9. a click does what the card says -------------------------------- */
+
+  {
+    const nodes = [...screenOne(), A('e3', 'Explore', { startedAt: 40 })];
+    const c = new Canvas(document.createElement('div'), {});
+    c.setPalette(PAL);
+    c.setSession('clicks');
+    c.setGroup('type');
+    const picked = [];
+    c.onSelect = (n) => picked.push(n?.id ?? null);
+    c.render({ nodes, edges: [] });
+    const stack = c.els.get('type:session:Explore');
+    check('a folded group says what a click will do', /Click to show 3 agents/.test(stack.title)
+      && stack.parts.fold.getAttribute('aria-label') === 'Open Explore × 3');
+    stack.emit('click');
+    check('a group opens when its card is clicked, not only its small control',
+      c.cellEls.has('e1') && c.cellEls.has('e3') && picked.length === 0,
+      `${c.cellEls.size} members drawn after the click`);
+    c.els.get('session').emit('click');
+    check('the session selects rather than folds when its card is clicked: it is the conversation',
+      picked.at(-1) === 'session' && c.els.size > 3 && c.els.has('b'), `selected ${picked.at(-1)}; ${c.els.size} boxes still drawn`);
+    c.cellEls.get('e2').emit('click');
+    const key = ['session', 'type:session:Explore'].join(String.fromCharCode(0));
+    check('a member selects itself, and the way to it from the session is marked',
+      picked.at(-1) === 'e2' && c.cellEls.get('e2').classList.contains('cv-selected')
+      && c.edgeEls.get(key).classList.contains('cv-path'));
+    const menus = [];
+    c.onMenu = (n, where) => menus.push([n?.id, where.x]);
+    c.els.get('b').emit('contextmenu', { clientX: 40, clientY: 50 });
+    check('a right click on an agent asks the page for its menu', menus.length === 1 && menus[0][0] === 'b' && menus[0][1] === 40);
+    c.setFocus('b');
+    check('focusing a branch shows what led to it and what it spawned, and nothing else',
+      [...c.els.keys()].sort().join() === 'b,k1,session' && c.state().focus === 'crew-backend-expert',
+      [...c.els.keys()].join(', '));
+    c.setFocus(null);
+    check('and letting go of the focus brings the rest back', c.els.has('wf:audit') && c.state().focus === null);
+  }
+
+  /* -- 10. the viewer's own arrangement is kept --------------------------- */
+
+  {
+    const sessionId = `keep-${Date.now()}`;
+    const c = new Canvas(document.createElement('div'), {});
+    c.setPalette(PAL);
+    c.setSession(sessionId);
+    c.render({ nodes: screenOne(), edges: [] });
+    c.setGroup('type');
+    c.toggle('wf:audit');
+    const again = new Canvas(document.createElement('div'), {});
+    again.setPalette(PAL);
+    again.setSession(sessionId);
+    again.render({ nodes: screenOne(), edges: [] });
+    check('the grouping and the folds are remembered per session',
+      again.state().group === 'type' && again.lastPlan.items.find((it) => it.id === 'wf:audit').open === false
+      && new Canvas(document.createElement('div'), {}).state().group === 'run');
+    c.pinned.set('b', { x: 900, y: 40 });
+    c.resetLayout();
+    check('Reset layout forgets every hand-placed card', c.pinned.size === 0 && c.pos.get('b').x < 900);
+    c.showLegend(false);
+    check('the legend is shown until it is closed, and then stays closed',
+      new Canvas(document.createElement('div'), {}).legendEl.hidden === true);
+    c.showLegend(true);
+    check('and comes back when asked for', new Canvas(document.createElement('div'), {}).legendEl.hidden === false
+      && /e\.key === '\?'/.test(read(path.join(WEB_ROOT, 'app.js')) ?? ''));
+  }
+
+  /* -- 11. what is gone --------------------------------------------------- */
+
+  check('the canvas has one direction and no on-canvas controls: they are in the toolbar',
+    !/setFlow|cv-hud|data-act=/.test(canvasSrc) && !/crewforth-studio-flow/.test(canvasSrc)
+    && ['tb-group', 'tb-density', 'tb-show', 'tb-expand', 'tb-fold', 'tb-zoom-out', 'tb-zoom', 'tb-zoom-in', 'tb-fit']
+      .every((id) => (read(path.join(WEB_ROOT, 'index.html')) ?? '').includes(`id="${id}"`)));
+  check('the three readings are gone: nothing in the canvas or the stylesheet depends on the zoom',
+    !/data-lod|LABEL_BUDGET|LOD_/.test(canvasSrc) && !/var\(--k\)|data-lod/.test(read(path.join(STUDIO, 'web', 'style.css')) ?? ''));
 
   dom();
 }
@@ -2331,30 +2324,22 @@ process.stdout.write('\n== §29 design tokens and the frame ==\n');
     return out;
   };
 
-  // The exceptions, by name. Each is an agent-IDENTITY colour, which the graph
-  // step of the redesign removes: colour will say status only, and identity moves
-  // to an icon. Until then canvas.js blends these as hex (mixHex), which var()
-  // cannot feed. A fifth literal in that file is not covered by this list.
-  const ALLOWED = {
-    'canvas.js': {
-      '#5b8cff': 'KIND_COLOR.session — the session node\'s identity colour',
-      '#a874f5': 'KIND_COLOR.workflow — the workflow node\'s identity colour',
-      '#D97757': 'MARKS.builtin — the built-in agent mark, replaced by web/icons/builtin.svg',
-      '#94a3c8': 'the palette\'s unknown colour before the server sends one',
-    },
-  };
+  // There are no exceptions. There were four, all agent-identity colours in canvas.js; they went when colour
+  // stopped carrying identity. The mechanism stays, for the twins below and for whoever needs one next: an
+  // exception is one literal, in one file, once.
+  const ALLOWED = {};
 
   const webFiles = walk(WEB_ROOT).map((f) => path.relative(WEB_ROOT, f).split(path.sep).join('/')).sort();
   const scanned = webFiles.filter((f) => f !== 'tokens.css');
   /** entries: [name, text]. An excepted literal is excepted once per file, not per occurrence. */
-  const scan = (entries) => {
+  const scan = (entries, allowed = ALLOWED) => {
     const found = [];
     const allowedSeen = [];
     for (const [f, text] of entries) {
       const seen = new Map();
       for (const lit of literals(f, text)) seen.set(lit, (seen.get(lit) ?? 0) + 1);
       for (const [lit, n] of seen) {
-        if (ALLOWED[f]?.[lit] && n === 1) allowedSeen.push(`${f} ${lit}`);
+        if (allowed[f]?.[lit] && n === 1) allowedSeen.push(`${f} ${lit}`);
         else found.push(`${f} ${lit}${n > 1 ? ` ×${n}` : ''}`);
       }
     }
@@ -2364,7 +2349,7 @@ process.stdout.write('\n== §29 design tokens and the frame ==\n');
   // The scanned set against the set that has to be scanned: every file the panel
   // serves except the generated one. "N files, 0 findings" says nothing if the
   // file that carries the colours is not among the N.
-  const mustScan = ['app.js', 'canvas.js', 'chat.js', 'index.html', 'liveness.js', 'md.js', 'nav.js', 'style.css', 'theme.js'];
+  const mustScan = ['app.js', 'canvas.js', 'chat.js', 'graph-plan.js', 'icons/builtin.svg', 'index.html', 'liveness.js', 'md.js', 'nav.js', 'style.css', 'theme.js'];
   const unscanned = mustScan.filter((f) => !scanned.includes(f));
   check('the colour scan reads every file the panel serves except tokens.css',
     unscanned.length === 0 && webFiles.includes('tokens.css') && scanned.length === webFiles.length - 1,
@@ -2373,9 +2358,10 @@ process.stdout.write('\n== §29 design tokens and the frame ==\n');
     found.length === 0,
     found.length ? found.join(' · ') : `0 literals in ${scanned.length} files; ${allowedSeen.length} named exceptions`);
   const allowedCount = Object.values(ALLOWED).reduce((n, o) => n + Object.keys(o).length, 0);
-  check('every named exception is still there to be excepted',
-    allowedSeen.length === allowedCount,
-    `${allowedSeen.length} of ${allowedCount} seen — an exception for a literal that is gone is a hole left open`);
+  check('no exception is left open: the four identity colours are gone from canvas.js',
+    allowedCount === 0 && allowedSeen.length === 0
+    && literals('canvas.js', read(path.join(WEB_ROOT, 'canvas.js')) ?? '').length === 0,
+    `${allowedCount} exceptions listed; ${literals('canvas.js', read(path.join(WEB_ROOT, 'canvas.js')) ?? '').length} literals in canvas.js`);
 
   // Calibration, on inputs whose answer is known before the scan runs.
   const count = (name, text) => literals(name, text).length;
@@ -2387,12 +2373,14 @@ process.stdout.write('\n== §29 design tokens and the frame ==\n');
   check('twin: a hex in a script is caught',
     count('app.js', `${appJs}\nel.style.color = '#1a2b3c';\n`) === count('app.js', appJs) + 1);
   {
-    const canvasJs = read(path.join(WEB_ROOT, 'canvas.js')) ?? '';
-    const twice = scan([['canvas.js', `${canvasJs}\nconst again = '#5b8cff';\n`]]);
+    // The twins run on a table of their own, since the real one is empty.
+    const table = { 'canvas.js': { '#5b8cff': 'a fixture exception' } };
+    const once = scan([['canvas.js', "const a = '#5b8cff';"]], table);
+    const twice = scan([['canvas.js', "const a = '#5b8cff';\nconst again = '#5b8cff';\n"]], table);
     check('twin: a second copy of an excepted literal is not excepted',
-      twice.found.join() === 'canvas.js #5b8cff ×2' && twice.allowedSeen.length === 3,
+      once.found.length === 0 && once.allowedSeen.length === 1 && twice.found.join() === 'canvas.js #5b8cff ×2',
       `reported: ${twice.found.join(', ') || 'nothing'}`);
-    const elsewhere = scan([['app.js', "const c = '#5b8cff';"]]);
+    const elsewhere = scan([['app.js', "const c = '#5b8cff';"]], table);
     check('twin: an excepted literal in another file is not excepted', elsewhere.found.join() === 'app.js #5b8cff');
   }
   check('calibration: what only looks like a colour is not counted',
@@ -2409,9 +2397,8 @@ process.stdout.write('\n== §29 design tokens and the frame ==\n');
   for (const css of [tokensCss ?? '', styleCss]) {
     for (const m of noComments(css).matchAll(/(?:^|[{;\s])(--[\w-]+)\s*:/g)) defined.add(m[1]);
   }
-  // Set from script, per element or on the root, never in a stylesheet. --k is
-  // also registered with @property, which is an at-rule and not a declaration.
-  const FROM_SCRIPT = ['--side-w', '--chat-w', '--node-color', '--edge-len', '--k'];
+  // Set from script, per element or on the root, never in a stylesheet.
+  const FROM_SCRIPT = ['--side-w', '--chat-w', '--edge-len'];
   const scriptText = scanned.filter((f) => f.endsWith('.js')).map((f) => read(path.join(WEB_ROOT, f)) ?? '').join('\n');
   const notSet = FROM_SCRIPT.filter((v) => !scriptText.includes(`'${v}'`));
   check('every property expected from script is set by one', notSet.length === 0,
