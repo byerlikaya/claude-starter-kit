@@ -476,6 +476,24 @@ export async function agentDetail(session, agentId) {
 }
 
 
+// How much of a tool's output travels to the page. The END is kept: a test run says how it went in its last
+// lines, and a build says what broke there.
+const RESULT_TAIL_BYTES = 4096;
+
+/** One tool result, cut to its tail, with the cut said. */
+export function toolResult(c) {
+  const raw = typeof c.content === 'string'
+    ? c.content
+    : Array.isArray(c.content) ? c.content.filter((x) => x?.type === 'text').map((x) => x.text).join('\n') : '';
+  const truncated = raw.length > RESULT_TAIL_BYTES;
+  return {
+    error: c.is_error === true,
+    text: truncated ? raw.slice(-RESULT_TAIL_BYTES) : raw,
+    truncated,
+    length: raw.length,
+  };
+}
+
 /**
  * The conversation a transcript holds, as the panel renders conversations.
  *
@@ -489,6 +507,16 @@ export async function agentDetail(session, agentId) {
 export async function conversation(session, { limit = 400 } = {}) {
   const { records } = await readAll(session.file);
   const out = [];
+
+  // What each tool call came back with, by the call's id. A call with no entry here has not returned, or its
+  // result is not in this transcript; the block then carries `result: null`, which is not "it returned nothing".
+  const results = new Map();
+  for (const r of records) {
+    if (r?.isSidechain === true || r?.type !== 'user' || !Array.isArray(r.message?.content)) continue;
+    for (const c of r.message.content) {
+      if (c?.type === 'tool_result' && typeof c.tool_use_id === 'string') results.set(c.tool_use_id, toolResult(c));
+    }
+  }
 
   for (const r of records) {
     if (r?.isSidechain === true) continue;
@@ -517,6 +545,11 @@ export async function conversation(session, { limit = 400 } = {}) {
             kind: 'tool',
             name: c.name ?? 'tool',
             label: i.description ?? i.file_path ?? i.command ?? i.pattern ?? i.query ?? null,
+            // The call's own id: what a result, and an agent on the graph, are matched to it by.
+            id: typeof c.id === 'string' ? c.id : null,
+            // Only a delegation has one. The agent's type is what the card in the conversation is named after.
+            subagentType: typeof i.subagent_type === 'string' ? i.subagent_type : null,
+            result: (typeof c.id === 'string' ? results.get(c.id) : null) ?? null,
           });
         }
       }

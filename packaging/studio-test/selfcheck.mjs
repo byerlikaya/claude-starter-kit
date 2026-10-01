@@ -506,6 +506,120 @@ if (gate) {
   check('a tool use id that is not an identifier is refused',
     decide(probeId, '../escape', 'allow').ok === false);
 
+  // What an allowance says to Claude Code. Exit 0 with nothing on stdout is "no decision": the harness then
+  // runs its own permission flow, and a headless session has nobody to ask. Measured in real sessions: Edit,
+  // Write and a writing Bash were refused after being allowed in the dock. So outside plan mode the hook says
+  // "allow" in the documented JSON — and in plan mode, or with no mode, it must say nothing at all.
+  const runHookOut = (env = {}, extra = {}) => {
+    const input = JSON.stringify({ ...JSON.parse(payload), ...extra });
+    try {
+      const out = execFileSync('bash', [HOOK, gate.spool], {
+        input, env: { ...process.env, CREW_GATE_WAIT: '1', ...env }, stdio: ['pipe', 'pipe', 'pipe'],
+      });
+      return { status: 0, stdout: String(out).trim() };
+    } catch (e) {
+      return { status: e.status ?? -1, stdout: String(e.stdout ?? '').trim() };
+    }
+  };
+  const answered = (verdict, env, extra) => {
+    fs.writeFileSync(path.join(gate.spool, 'ans', 'toolu_probe'), `${verdict}\n`);
+    return runHookOut(env, extra);
+  };
+  const decisionOf = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput ?? null; } catch { return null; } };
+  for (const mode of ['default', 'acceptEdits']) {
+    const r = answered('allow', { CREW_GATE_MODE: mode });
+    const d = decisionOf(r);
+    check(`in ${mode} mode an allowance is an approval the harness can read`,
+      r.status === 0 && d?.hookEventName === 'PreToolUse' && d?.permissionDecision === 'allow'
+      && r.stdout.startsWith('{') && r.stdout.endsWith('}'),
+      r.stdout.slice(0, 120) || 'nothing on stdout');
+  }
+  const inPlan = answered('allow', { CREW_GATE_MODE: 'plan' });
+  check('in plan mode an allowance approves nothing: the hook exits 0 and says nothing',
+    inPlan.status === 0 && inPlan.stdout === '', `stdout "${inPlan.stdout.slice(0, 80)}"`);
+  const noMode = answered('allow', { CREW_GATE_MODE: '' });
+  check('with no mode configured the hook approves nothing', noMode.status === 0 && noMode.stdout === '');
+  const odd = answered('allow', { CREW_GATE_MODE: 'bypassPermissions' });
+  check('a mode the hook does not name gets no approval: the list is the two it knows',
+    odd.status === 0 && odd.stdout === '', 'an allow-list; a mode added to the server later is silent until it is added here');
+  const sessionInPlan = answered('allow', { CREW_GATE_MODE: 'default' }, { permission_mode: 'plan' });
+  check('a session the harness reports as plan gets no approval, whatever the hook was configured with',
+    sessionInPlan.status === 0 && sessionInPlan.stdout === '');
+  const sessionAgrees = answered('allow', { CREW_GATE_MODE: 'default' }, { permission_mode: 'default' });
+  check('the control: the same call with the harness reporting default is approved',
+    decisionOf(sessionAgrees)?.permissionDecision === 'allow');
+  fs.writeFileSync(path.join(gate.spool, 'always', 'Bash'), '');
+  const alwaysOn = runHookOut({ CREW_GATE_MODE: 'default' });
+  const alwaysPlan = runHookOut({ CREW_GATE_MODE: 'plan' });
+  fs.rmSync(path.join(gate.spool, 'always', 'Bash'));
+  // A session allowance is not an approval. Nobody saw the calls that come after it, so the hook lets them
+  // through without a word and the harness decides as it would have with no panel: what it would have asked a
+  // person about is refused, not run unseen. The click that GAVE the allowance was seen, and is approved.
+  check('a tool allowed for the session passes the hook in silence, in every mode: nobody saw that call',
+    alwaysOn.status === 0 && alwaysOn.stdout === '' && alwaysPlan.status === 0 && alwaysPlan.stdout === '',
+    `default: "${alwaysOn.stdout.slice(0, 60)}"`);
+  check('twin: the call on which the allowance was given was seen, and is approved',
+    decisionOf(answered('always', { CREW_GATE_MODE: 'default' }))?.permissionDecision === 'allow');
+  const denied = answered('deny', { CREW_GATE_MODE: 'default' });
+  const silent = runHookOut({ CREW_GATE_MODE: 'default' });
+  check('a denial and a timeout are exit 2 with nothing on stdout, in a mode that may write too',
+    denied.status === 2 && denied.stdout === '' && silent.status === 2 && silent.stdout === '');
+
+  // The mode reaches the hook from the server, and only as a plain word.
+  const modeOf = (id, mode) => {
+    const g = prepare(id, mode);
+    const cmd = JSON.parse(fs.readFileSync(g.settingsPath, 'utf8')).hooks.PreToolUse[0].hooks[0].command;
+    cleanup(id);
+    return cmd;
+  };
+  check('the server tells the hook which mode the session was started in',
+    / CREW_GATE_MODE=acceptEdits bash /.test(modeOf(`${probeId}-m1`, 'acceptEdits'))
+    && / CREW_GATE_MODE=plan bash /.test(modeOf(`${probeId}-m2`, 'plan')));
+  check('a mode that is not a plain word never reaches the command line',
+    !/CREW_GATE_MODE/.test(modeOf(`${probeId}-m3`, 'default; rm -rf x')) && !/CREW_GATE_MODE/.test(modeOf(`${probeId}-m4`, null)));
+
+  // What the allowance cannot do. Studio's settings file carries one hook and nothing else: no permission
+  // rule of its own, nothing that turns other hooks off. A deny rule in the project's settings and a gate of
+  // Crewforth's own are therefore untouched by it — whether Claude Code lets them win over this hook's
+  // "allow" is a fact about Claude Code, measured in a real session and not here.
+  const loosens = (settings) => [
+    ...Object.keys(settings).filter((k) => k !== 'hooks'),
+    ...Object.keys(settings.hooks ?? {}).filter((k) => k !== 'PreToolUse'),
+    ...((settings.hooks?.PreToolUse ?? []).length === 1 && settings.hooks.PreToolUse[0].hooks?.length === 1 ? [] : ['more than one hook']),
+  ];
+  check('Studio\'s settings file carries its one hook and nothing that loosens the session',
+    loosens(cfg).length === 0, loosens(cfg).join(', ') || 'keys: hooks.PreToolUse[0].hooks[0]');
+  check('twin: a settings file with a permission rule or a hook switch in it is caught',
+    loosens({ ...cfg, permissions: { allow: ['Bash(rm:*)'] } }).join() === 'permissions'
+    && loosens({ ...cfg, disableAllHooks: true }).join() === 'disableAllHooks');
+
+  // Crewforth's own gate decides from the command alone. It is run here on the same call Studio's hook has
+  // just approved: the approval is not something it can see, so it cannot be talked out of a block by it.
+  const guard = path.join(PAYLOAD, 'hooks', 'guard-bash.sh');
+  if (!fs.existsSync(guard)) {
+    skip('Crewforth\'s own gate still blocks a call Studio allowed', 'scope', 'kit/hooks/guard-bash.sh is not in this tree');
+  } else {
+    const runGuard = (command) => {
+      try {
+        execFileSync('bash', [guard], {
+          input: JSON.stringify({ session_id: probeId, hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_use_id: 'toolu_probe', tool_input: { command } }),
+          stdio: ['pipe', 'pipe', 'pipe'],
+        });
+        return 0;
+      } catch (e) { return e.status ?? -1; }
+    };
+    const force = { tool_input: { command: 'git push --force origin main' } };
+    const studioSays = answered('allow', { CREW_GATE_MODE: 'default' }, force);
+    const guardSays = runGuard('git push --force origin main');
+    check('Crewforth\'s own gate still blocks a call Studio allowed',
+      decisionOf(studioSays)?.permissionDecision === 'allow' && guardSays === 2,
+      `Studio's hook: allow · guard-bash.sh: exit ${guardSays}`);
+    check('twin: the same gate lets a harmless command through, so the 2 was about the command',
+      runGuard('git status') === 0);
+    check('Crewforth\'s gate does not read Studio\'s spool: an allowance cannot reach it',
+      !/crew-studio-gate|CREW_GATE_MODE|studio-gate/.test(read(guard) ?? ''));
+  }
+
   // Who asked. Claude Code names the subagent in the hook's input only when the call came from inside one.
   const asks = (extra) => {
     fs.writeFileSync(path.join(gate.spool, 'req', 'toolu_who.json'), JSON.stringify({
@@ -759,7 +873,8 @@ check('the seam between history and this run is drawn, not implied',
 check('an observed session is shown but not writable',
   /openReadOnly/.test(chatSrc2) && /readOnly/.test(chatSrc2));
 check('the read-only pane says why it cannot be written to, and what to do instead',
-  /has no way in/.test(chatSrc2) && /fork &amp; continue/.test(chatSrc2));
+  /This session was not started here\./.test(chatSrc2) && /cannot write to it or answer its approvals/.test(chatSrc2)
+  && /'Continue here'/.test(chatSrc2) && /'Open in terminal'/.test(chatSrc2));
 // A fork reads as "I am now typing into that session" unless the UI says
 // otherwise, and the user then wonders why their terminal stays silent. Both
 // the seam and the read-only notice must say the two are separate.
@@ -906,7 +1021,9 @@ check('the conversation is a column beside the graph, not a drawer under it',
   /\.shell\s*\{[^}]*grid-template-columns:\s*var\(--side-w,\s*var\(--nav-w\)\)\s+5px\s+minmax\(0,\s*1fr\)\s+auto\s+5px\s+var\(--chat-w/.test(cssSrc.replace(/\/\*[\s\S]*?\*\//g, '')));
 check('who spoke is read from which side it sits on',
   /\.msg-user\s*\{\s*align-items:\s*flex-end/.test(cssSrc)
-  && /\.msg-assistant\s*\{\s*align-items:\s*flex-start/.test(cssSrc));
+  && /\.msg-assistant\s*\{\s*align-items:\s*stretch/.test(cssSrc)
+  && /el\('div', 'msg-role', 'Session'\)/.test(chatSrc2),
+  'what the viewer wrote is a bubble on the right; what the session said runs the width under its name');
 check('either panel can be collapsed without leaving a gap where it was',
   /\.shell\.no-side/.test(cssSrc) && /\.shell\.no-chat/.test(cssSrc));
 // A hidden grid child occupies no cell, so auto-flow slides everything after it
@@ -914,7 +1031,7 @@ check('either panel can be collapsed without leaving a gap where it was',
 // the conversation the rest of the window.
 check('every column is placed explicitly rather than by auto-flow',
   /\.shell > \.stage\s*\{\s*grid-column:\s*3/.test(cssSrc)
-  && /\.shell > \.chat\s*\{\s*grid-column:\s*6/.test(cssSrc)
+  && /\.shell > \.chat,\s*\.shell > \.newpanel\s*\{\s*grid-column:\s*6/.test(cssSrc)
   && /\.shell\.no-chat > \.inspector\s*\{[^}]*grid-column:\s*4/.test(cssSrc),
   'stage 3, docked inspector 4, conversation 6');
 check('the control that reopens the sidebar is on the edge it acts on',
@@ -3109,6 +3226,277 @@ process.stdout.write('\n== §31 the approval dock and the inspector ==\n');
     /copy\.disabled = !file/.test(appJs) && /transcriptPath: file/.test(read(path.join(STUDIO, 'server', 'lib', 'graph.js')) ?? ''),
     'a path is not assembled from parts in the page');
   check('a skill chip copies the skill\'s name', /copyText\(s, `Copied \$\{s\}`\)/.test(appJs));
+}
+
+/** Every piece of text under a stub element, for claims about what a built panel says. */
+function* walkText(node) {
+  if (!node) return;
+  if (typeof node.textContent === 'string' && node.textContent) yield node.textContent;
+  for (const c of node.children ?? []) yield* walkText(c);
+}
+
+/* ------------------------- §32 the conversation panel and New session ---
+   What a conversation is made of is decided without a page: a delegation is a card,
+   a tool call is one line whose summary is the tool's own last line, and a result
+   nobody read is not drawn as an empty one. Starting a session is a panel with the
+   server's choices in it, and two clicks start one session. */
+
+process.stdout.write('\n== §32 the conversation panel and New session ==\n');
+
+{
+  const cv = await import(`../../kit/studio/web/convo.js?t=${Date.now()}`);
+  const ns = await import(`../../kit/studio/web/newsession.js?t=${Date.now()}`);
+  const { conversation: readConversation } = await import(`../../kit/studio/server/lib/graph.js?c=${Date.now()}`);
+  const { headBranch } = await import(`../../kit/studio/server/lib/projects.js?c=${Date.now()}`);
+  const web = (f) => read(path.join(WEB_ROOT, f)) ?? '';
+  const appJs = web('app.js');
+  const chatJs = web('chat.js');
+  const indexHtml = web('index.html');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'crew-studio-convo-'));
+
+  try {
+    /* -- 1. tool rows ---------------------------------------------------------- */
+
+    const call = cv.toolBlock({ type: 'tool_use', id: 'toolu_1', name: 'Bash', input: { command: 'npm test -- capture' } });
+    check('a tool call that has not come back has no summary, and is not drawn as one that returned nothing',
+      call.result === null && cv.summaryOf(call).state === 'pending' && cv.summaryOf(call).text === null && cv.outputOf(call) === null);
+    call.result = cv.resultFrom({ content: 'running\n\n Tests  42 passed (42)\n\n' });
+    check('the summary is the tool\'s own last line, and nothing made from it',
+      cv.summaryOf(call).state === 'ok' && cv.summaryOf(call).text === 'Tests  42 passed (42)', cv.summaryOf(call).text);
+    const failed = { ...call, result: cv.resultFrom({ is_error: true, content: [{ type: 'text', text: 'boom\nexit 1' }] }) };
+    check('a call that ended in an error says so in its state, and keeps its last line',
+      cv.summaryOf(failed).state === 'error' && cv.summaryOf(failed).text === 'exit 1');
+    check('a call that returned nothing says "no output"', cv.summaryOf({ result: cv.resultFrom({ content: '' }) }).text === 'no output');
+    const big = cv.resultFrom({ content: `${'x'.repeat(5000)}\nlast line` });
+    check('a long output keeps its end, and what was left out is said when it is opened',
+      big.truncated && big.text.endsWith('last line') && big.text.length === 4096 && big.length === 5010
+      && /^… 914 earlier characters not shown\n/.test(cv.outputOf({ result: big })), `${big.text.length} of ${big.length}`);
+    check('the results in a user record are matched to their calls by id',
+      JSON.stringify(cv.resultsIn([{ type: 'text', text: 'hi' }, { type: 'tool_result', tool_use_id: 'toolu_1', content: 'ok' }]).map((r) => [r[0], r[1].text])) === '[["toolu_1","ok"]]'
+      && cv.resultsIn('just text').length === 0);
+    check('a tool result is put on its row and is not shown as something the viewer said',
+      /for \(const \[id, result\] of resultsIn\(c\)\) this\.setResult\(id, result\)/.test(chatJs)
+      && /c\.filter\(\(x\) => x\?\.type === 'text'\)/.test(chatJs));
+
+    /* -- 2. delegation cards ---------------------------------------------------- */
+
+    const deleg = cv.toolBlock({ type: 'tool_use', id: 'toolu_a', name: 'Agent', input: { subagent_type: 'crew-test-expert', description: 'Prove both keys verify' } });
+    const nodes = [{ id: 'a1', kind: 'agent', agentType: 'crew-test-expert', toolUseId: 'toolu_a', status: 'running' }];
+    check('handing work to an agent is a card, an ordinary tool call is a row',
+      cv.isDelegation(deleg) && cv.isDelegation({ kind: 'tool', name: 'Task' }) && !cv.isDelegation(call));
+    const card = cv.delegationCard(deleg, nodes);
+    check('a card is tied to the agent that call became, by the call\'s id',
+      card.agentId === 'a1' && card.status === 'running' && card.type === 'crew-test-expert' && card.task === 'Prove both keys verify');
+    const loose = cv.delegationCard(deleg, []);
+    check('a card whose agent the graph has not seen has no status and goes nowhere: none is guessed',
+      loose.agentId === null && loose.status === null && loose.type === 'crew-test-expert'
+      && /node\.disabled = !card\.agentId/.test(chatJs));
+    check('clicking a card selects that agent on the graph',
+      /onAgent: \(pane, agentId\) => \{\s*if \(pane\.id !== current\) selectSession\(pane\.id\);\s*canvas\.focus\(agentId\);/.test(appJs));
+
+    /* -- 3. the strip, the reminder, the refusals -------------------------------- */
+
+    const head = cv.headerOf({ permissionMode: 'plan', turns: 14, gated: true }, { contextTokens: 102_000 });
+    check('a session started here says so, with its mode, its turns and its context',
+      head.badge === 'Started here' && head.parts.join(' | ') === 'mode: plan | 14 turns · 102k ctx' && head.ungated === false);
+    check('context nobody read is left out of the strip, not written as 0',
+      cv.headerOf({ permissionMode: 'plan', turns: 1, gated: true }).parts.join(' | ') === 'mode: plan | 1 turn');
+    check('a session Studio only reads is "Read only" and claims nothing else',
+      cv.headerOf({ permissionMode: 'read-only' }, { readOnly: true }).badge === 'Read only'
+      && cv.headerOf({}, { readOnly: true }).parts.length === 0);
+    check('a session started here without the gate says it has none', cv.headerOf({ gated: false }).ungated === true
+      && /No approval gate/.test(chatJs));
+    check('a waiting request is said in the conversation, and Review leads to the dock',
+      cv.reminderOf([{ agentType: 'crew-frontend-expert' }]) === 'crew-frontend-expert is waiting for approval'
+      && cv.reminderOf([{ agentType: null }, {}, {}]) === 'This session is waiting for approval, and 2 more requests are'
+      && cv.reminderOf([]) === null
+      && /onReview: \(\) => el\.dock\.focus\(\)/.test(appJs) && /chat\.setWaiting\(next\)/.test(appJs));
+
+    const denials = [
+      { tool_name: 'Bash', tool_use_id: 'allowed-1', tool_input: { command: 'node write.js' } },
+      { tool_name: 'Write', tool_use_id: 'denied-here', tool_input: { file_path: 'x.txt' } },
+    ];
+    const allowedHere = (id) => id === 'allowed-1';
+    const said = cv.refusals(denials, allowedHere, () => ({ text: 'This command requires approval\nmore' }));
+    check('a call allowed in the dock and refused by Claude Code is said, with the harness\'s own reason',
+      said.length === 1 && said[0].id === 'allowed-1'
+      && said[0].text === 'Allowed here, but Claude Code refused it: Bash · node write.js — This command requires approval', said[0]?.text);
+    check('a call the viewer denied is not called a refusal by Claude Code', !said.some((r) => r.id === 'denied-here'));
+    check('a tool that ran and failed is not a refusal: only what the result record lists is',
+      cv.refusals([], () => true).length === 0 && cv.refusals(undefined, () => true).length === 0);
+    check('the page knows what it allowed from its own record of the answers',
+      /wasAllowed: \(sessionId, toolUseId, toolName\) =>\s*\(outcomes\.get\(sessionId\) \?\? \[\]\)\.some\(\(o\) => o\.toolUseId === toolUseId && o\.outcome\.startsWith\('allowed'\)\)/.test(appJs)
+      && /this\.noteRefusals\(rec\.permission_denials\)/.test(chatJs) && /this\.refused\.add\(r\.id\)/.test(chatJs));
+
+    /* -- 4. the read-only foot --------------------------------------------------- */
+
+    check('Continue here says both things it can turn out to be: the session itself, or a copy',
+      /Continues it in Studio\. If it is still open somewhere else, Studio starts a copy instead/.test(chatJs)
+      && /the original does not see this, and messages here never reach your terminal/.test(chatJs),
+      'the design\'s sentence promised a copy every time; a session nothing else holds is continued itself');
+    check('the terminal command at the foot is the server\'s, read before anything runs',
+      /\/api\/session\/\$\{encodeURIComponent\(this\.id\)\}\/terminal/.test(chatJs) && /r\?\.plan\?\.line \?\? 'not measured/.test(chatJs));
+    check('options are offered on the reply waiting for an answer, not on the history',
+      /this\.renderMessage\(m, \{ quick: false \}\)/.test(chatJs) && /if \(quick && !this\.readOnly\)/.test(chatJs)
+      && /Clicking an option sends it as your reply\./.test(chatJs));
+
+    /* -- 5. one right-hand panel -------------------------------------------------- */
+
+    check('the right-hand panel is one thing at a time: inspector, conversation or New session',
+      /el\.chat\.hidden = which !== 'conversation';\s*el\.newPanel\.hidden = which !== 'new';/.test(appJs)
+      && /el\.inspector\.hidden = which !== 'inspector';/.test(appJs)
+      && /shell\.classList\.toggle\('no-chat', !column\)/.test(appJs));
+    check('selecting a node inspects it; the conversation is one click away and comes back when the inspector closes',
+      /setRight\('inspector'\);/.test(appJs) && /if \(right === 'inspector'\) setRight\(restRight\(\)\);/.test(appJs)
+      && !/kind === 'session' && current\) openConversation\(current\)/.test(appJs),
+      'a session node used to open the conversation and the inspector at once');
+    check('the conversation and New session share a column, and both are in the page',
+      /<section id="chat" class="chat" hidden><\/section>\s*<section id="new-panel" class="newpanel" aria-label="New session" hidden><\/section>/.test(indexHtml));
+
+    /* -- 6. New session: the server's choices -------------------------------------- */
+
+    const modes = ns.modeChoices(['plan', 'acceptEdits', 'default']);
+    check('the modes offered are exactly the server\'s, in its order, opening on plan',
+      modes.map((m) => m.mode + (m.initial ? '*' : '')).join(' ') === 'plan* acceptEdits default'
+      && modes.every((m) => typeof m.says === 'string' && m.says.length > 10));
+    check('the panel cannot add a mode: one the server does not offer is not shown',
+      ns.modeChoices(['plan']).length === 1 && ns.modeChoices([]).length === 0 && ns.modeChoices(undefined).length === 0
+      && !Object.keys(ns.MODE_TEXT).some((m) => /bypass|dontAsk|auto/i.test(m)),
+      'and the file has no words ready for a mode that skips the gates');
+    const strange = ns.modeChoices(['review', 'plan']);
+    check('a mode the server offers and this file has no words for is shown under its own name, not dropped',
+      strange.map((m) => `${m.word}:${m.says === null}`).join(' ') === 'review:true Plan:false' && strange[1].initial);
+    check('without plan on offer the panel opens on the server\'s first mode, not on one it prefers',
+      ns.modeChoices(['acceptEdits', 'default'])[0].initial === true);
+
+    const projects = [
+      { key: 'a', cwd: '/w/a', label: 'a', exists: true, branch: 'feat/x', kit: { installed: true, version: '3.0.1' } },
+      { key: 'gone', cwd: '/w/gone', label: 'gone', exists: false },
+      { key: 'far', cwd: '/w/far', label: 'far', exists: true, local: false },
+      { key: 'b', cwd: '/w/b', label: 'b', exists: true, current: true, branch: null },
+    ];
+    const pc = ns.projectChoices(projects, null);
+    check('a session can be started only where its directory still is, on this machine',
+      pc.map((p) => p.key + (p.initial ? '*' : '')).join(' ') === 'a b*');
+    check('the panel opens on the project of the session being looked at',
+      ns.projectChoices(projects, 'a').find((p) => p.initial).key === 'a');
+    check('the branch is named only when the server read one',
+      ns.runsIn(pc[0]).branch === 'feat/x' && ns.runsIn(pc[1]).branch === null && ns.runsIn(null) === null
+      && /if \(r\.branch\) parts\.push\(' on branch '/.test(web('newsession.js')));
+
+    /* -- 7. two clicks, one session ------------------------------------------------ */
+
+    let starts = 0;
+    const once = cv.oneShot(async () => { starts += 1; return { ok: true, id: starts }; });
+    const [r1, r2] = await Promise.all([once(), once()]);
+    check('two clicks while the first is in flight start one session', starts === 1 && r1.id === 1 && r2.id === 1);
+    const r3 = await once();
+    check('a click after the first start has finished still starts nothing: it gets the first one\'s answer',
+      starts === 1 && r3.id === 1);
+    // The control. A guard that only refuses while a request is in flight is what the bar's button had, and it
+    // lets the same second click through: this is the case the line above has to tell apart.
+    let naive = 0;
+    let busy = false;
+    const inFlightOnly = async () => { if (busy) return null; busy = true; naive += 1; await null; busy = false; return { ok: true }; };
+    await inFlightOnly();
+    await inFlightOnly();
+    check('twin: a guard that only watches the request in flight starts two', naive === 2,
+      'so the second click in the case above really did come after the first had finished');
+    once.arm();
+    await once();
+    check('opening the panel again arms one more start', starts === 2);
+    let refusals = 0;
+    const picky = cv.oneShot(async () => { refusals += 1; return refusals === 1 ? { ok: false, reason: 'no such directory' } : { ok: true }; });
+    const first = await picky();
+    const second = await picky();
+    check('a start that was refused can be tried again without reopening the panel',
+      first.ok === false && second.ok === true && refusals === 2 && picky.spent());
+
+    const dom32 = installDom();
+    try {
+      const { NewSession } = await import(`../../kit/studio/web/newsession.js?dom=${Date.now()}`);
+      const posted = [];
+      const root = document.createElement('section');
+      root.hidden = true;
+      let closed = 0;
+      const panel = new NewSession(root, {
+        onClose: () => { closed += 1; },
+        onStart: async (a) => { posted.push(a); return { ok: true }; },
+      });
+      const opened = panel.open({ projects, modes: ['plan', 'acceptEdits', 'default'], preferKey: 'a' });
+      check('the bar\'s button opens the panel once: a second click on it is not a second panel',
+        opened === true && panel.open({ projects, modes: ['plan'] }) === false && root.hidden === false
+        && /if \(opened\) setRight\('new'\);/.test(appJs));
+      check('the bar\'s button starts nothing by itself',
+        !/el\.newSession\.addEventListener\('click', async/.test(appJs) && !/newSessionLabel/.test(appJs));
+      panel.firstEl.value = '  Rotate the key.  ';
+      const a = panel.submit();
+      const b = panel.submit();
+      await Promise.all([a, b]);
+      await panel.submit();
+      check('three clicks on Start session start one session, with what the panel showed',
+        posted.length === 1 && posted[0].cwd === '/w/a' && posted[0].permissionMode === 'plan' && posted[0].first === 'Rotate the key.',
+        JSON.stringify(posted));
+      check('a started session closes the panel', root.hidden === true && closed === 1);
+      const note = [...walkText(root)].join(' ');
+      check('the panel says what starting here means before the button',
+        /Every tool call in this session waits for your approval here in Studio\. If Studio is closed, the request is denied\./.test(note)
+        && /Modes that skip Crewforth\\?'s gates are not offered\./.test(web('newsession.js')));
+    } finally {
+      dom32();
+    }
+
+    /* -- 8. the server's two additions --------------------------------------------- */
+
+    const repo = path.join(tmp, 'repo');
+    fs.mkdirSync(path.join(repo, '.git'), { recursive: true });
+    fs.writeFileSync(path.join(repo, '.git', 'HEAD'), 'ref: refs/heads/feat/payment-retries\n');
+    check('a project\'s branch is read from its .git/HEAD', await headBranch(repo) === 'feat/payment-retries');
+    const wt = path.join(tmp, 'worktree');
+    const wtGit = path.join(tmp, 'repo', '.git', 'worktrees', 'wt');
+    fs.mkdirSync(wt);
+    fs.mkdirSync(wtGit, { recursive: true });
+    fs.writeFileSync(path.join(wt, '.git'), `gitdir: ${wtGit}\n`);
+    fs.writeFileSync(path.join(wtGit, 'HEAD'), 'ref: refs/heads/fix/flaky-test\n');
+    check('a worktree\'s branch is read through the pointer its .git file holds', await headBranch(wt) === 'fix/flaky-test');
+    fs.writeFileSync(path.join(repo, '.git', 'HEAD'), '4b825dc642cb6eb9a060e54bf8d69288fbee4904\n');
+    const plain = path.join(tmp, 'plain');
+    fs.mkdirSync(plain);
+    check('a detached HEAD, a directory that is not a repository and no directory at all name no branch',
+      await headBranch(repo) === null && await headBranch(plain) === null && await headBranch(null) === null
+      && await headBranch(path.join(tmp, 'missing')) === null);
+    check('reading the branch starts no process',
+      !/spawn|execFile|exec\(/.test((read(path.join(STUDIO, 'server', 'lib', 'projects.js')) ?? '').split('export async function headBranch')[1].split('\n}\n')[0]));
+
+    const transcript = path.join(tmp, 'session.jsonl');
+    const rec = (o) => `${JSON.stringify({ timestamp: '2026-09-30T10:00:00.000Z', ...o })}\n`;
+    fs.writeFileSync(transcript,
+      rec({ type: 'user', message: { role: 'user', content: 'Add retries.' } })
+      + rec({ type: 'assistant', message: { role: 'assistant', content: [
+        { type: 'text', text: 'On it.' },
+        { type: 'tool_use', id: 'toolu_run', name: 'Bash', input: { command: 'npm test' } },
+        { type: 'tool_use', id: 'toolu_del', name: 'Agent', input: { subagent_type: 'Explore', description: 'Find callers', prompt: 'x' } },
+        { type: 'tool_use', id: 'toolu_open', name: 'Read', input: { file_path: 'a.ts' } },
+      ] } })
+      + rec({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_run', content: `${'y'.repeat(6000)}\n42 passed` }] } })
+      + rec({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_del', is_error: true, content: [{ type: 'text', text: 'agent failed' }] }] } }));
+    const conv = await readConversation({ file: transcript });
+    const blocks = conv.messages.find((m) => m.role === 'assistant')?.blocks ?? [];
+    const by = Object.fromEntries(blocks.filter((b) => b.kind === 'tool').map((b) => [b.id, b]));
+    check('history carries each tool call\'s result with it, cut to its tail with the cut said',
+      by.toolu_run?.result?.truncated === true && by.toolu_run.result.text.endsWith('42 passed')
+      && by.toolu_run.result.text.length === 4096 && by.toolu_run.result.length === 6010 && by.toolu_run.result.error === false);
+    check('history says which call was a delegation and to whom, and that its result was an error',
+      by.toolu_del?.subagentType === 'Explore' && by.toolu_del.result?.error === true && by.toolu_del.result.text === 'agent failed');
+    check('a call with no result in the transcript has `result: null`, not an empty one',
+      by.toolu_open && by.toolu_open.result === null && by.toolu_open.subagentType === null);
+    check('a tool result is still not shown as something the viewer said',
+      conv.messages.filter((m) => m.role === 'user').map((m) => m.text).join('|') === 'Add retries.');
+    check('the page and the server cut a result the same way',
+      cv.resultFrom({ content: `${'y'.repeat(6000)}\n42 passed` }).text === by.toolu_run.result.text);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 }
 
 process.stdout.write(`${pass}/${pass + fail} assertions passed`

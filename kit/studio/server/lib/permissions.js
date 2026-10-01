@@ -39,7 +39,7 @@ export function spoolFor(sessionId) {
  * are never read, written, or merged. Returns null when the hook is missing, so
  * the caller can say "no gate" instead of quietly running without one.
  */
-export function prepare(sessionId) {
+export function prepare(sessionId, mode = null) {
   if (!fs.existsSync(HOOK)) return null;
 
   const spool = spoolFor(sessionId);
@@ -57,7 +57,10 @@ export function prepare(sessionId) {
           // Named, not left to the default: on Windows without a detected Git Bash, Claude Code runs a hook through
           // PowerShell, which cannot read the VAR=… prefix — the gate would fail open.
           shell: 'bash',
-          command: `CREW_GATE_WAIT=${HOOK_WAIT_S} bash ${JSON.stringify(HOOK)} ${JSON.stringify(spool)}`,
+          // The mode goes to the hook so that an allowance given in the panel can be an approval the harness
+          // honours — in the modes that may write, and never in plan. A mode that is not a plain word is not
+          // passed at all, and the hook then approves nothing.
+          command: `CREW_GATE_WAIT=${HOOK_WAIT_S} ${gateMode(mode)}bash ${JSON.stringify(HOOK)} ${JSON.stringify(spool)}`,
           timeout: HARNESS_TIMEOUT_S,
         }],
       }],
@@ -65,6 +68,10 @@ export function prepare(sessionId) {
   };
   fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
   return { settingsPath, spool, waitSeconds: HOOK_WAIT_S };
+}
+
+function gateMode(mode) {
+  return typeof mode === 'string' && /^[A-Za-z]+$/.test(mode) ? `CREW_GATE_MODE=${mode} ` : '';
 }
 
 /** One pending request, as the panel needs to show it. */

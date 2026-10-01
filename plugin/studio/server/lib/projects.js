@@ -245,6 +245,34 @@ export async function agentMetaFiles(subagentsDir, depth = 0) {
 }
 
 /**
+ * The branch a directory is on NOW, read from its `.git/HEAD` and nowhere else.
+ *
+ * No process is started: a `git` per project per poll is the cost this file exists to avoid. A worktree's `.git`
+ * is a file that points at its real git directory, and that pointer is followed once. A detached HEAD, a
+ * directory that is not a repository's root, and a file that cannot be read all answer null: the caller then
+ * names no branch, which is different from naming the one a session recorded last week.
+ */
+export async function headBranch(cwd) {
+  if (!cwd) return null;
+  const dot = path.join(cwd, '.git');
+  let head;
+  try {
+    const st = await fsp.stat(dot);
+    if (st.isDirectory()) {
+      head = await fsp.readFile(path.join(dot, 'HEAD'), 'utf8');
+    } else {
+      const m = (await fsp.readFile(dot, 'utf8')).match(/^gitdir:\s*(.+?)\s*$/m);
+      if (!m) return null;
+      head = await fsp.readFile(path.join(path.resolve(cwd, m[1]), 'HEAD'), 'utf8');
+    }
+  } catch {
+    return null;
+  }
+  const ref = head.match(/^ref:\s*refs\/heads\/(\S+)\s*$/m);
+  return ref ? ref[1] : null;
+}
+
+/**
  * Every session on this machine, grouped by the project it ran in.
  *
  * Grouping is by the recorded `cwd` rather than by transcript folder: a folder
@@ -279,6 +307,9 @@ export async function listProjects({ currentCwd = null, limitPerProject = 60, ki
       // not deleted: the panel says how many it is holding back rather than
       // quietly shortening the list.
       exists: kit?.dirExists ?? (g.cwd ? await existsCached(g.cwd) : false),
+      // Where a session started here now would be working. Not the branch a session recorded: that one is on
+      // each session row, and may be weeks old.
+      branch: await headBranch(g.cwd),
       total: g.sessions.length,
       agentTotal: g.sessions.reduce((n, s) => n + s.agentCount, 0),
       modifiedAt: g.sessions[0]?.modifiedAt ?? 0,
