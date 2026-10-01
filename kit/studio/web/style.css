@@ -70,21 +70,24 @@ body {
    that draws its own focus state says so next to its rule. */
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-/* ---- top bar ---- */
+/* ---- top bar ----
+   Left to right: the mark, where you are, what the session's agents are doing,
+   whether the panel is being fed, and the controls. */
 .bar {
   flex: none;
   height: var(--bar-h);
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-4);
   padding: 0 var(--space-4);
   border-bottom: 1px solid var(--line);
   background: var(--ground);
+  min-width: 0;
 }
+.bar-sep { flex: none; width: 1px; height: 24px; background: var(--line); }
+.bar-fill { flex: 1; min-width: 0; }
 
-.brand { display: flex; align-items: center; gap: 10px; flex: none; }
-
+.brand { display: flex; align-items: center; gap: 10px; flex: none; color: inherit; text-decoration: none; border-radius: var(--radius-sm); }
 .brand h1 {
   margin: 0;
   font-size: 15px;
@@ -104,18 +107,102 @@ body {
 /* The product name carries the weight; "Studio" steps back beside it. */
 .brand-accent { color: var(--ink-dim); font-weight: 600; }
 
-.bar-right { display: flex; align-items: center; gap: var(--space-2); flex: none; }
-
-.pulse {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--ink-faint);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+/* Project, then session. The project is a control (it opens that project's
+   list); the session is where you already are, so it is only a name. */
+/* It gives way first, down to a floor; past that the summary folds (app.js, fitBar). */
+.crumb { display: flex; align-items: center; gap: 6px; flex: 0 1 auto; min-width: 120px; overflow: hidden; font-size: 13px; }
+.crumb-project {
+  flex: 0 1 auto; min-width: 0; max-width: 220px;
+  background: none; border: 0; padding: 2px 4px; margin: 0 -4px; border-radius: var(--radius-sm);
+  font: inherit; color: var(--ink-dim); cursor: pointer;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.pulse.on { color: var(--status-good); }
-.pulse.off { color: var(--status-bad); }
+.crumb-project:hover { color: var(--ink); }
+.crumb-sep { width: 12px; height: 12px; flex: none; color: var(--ink-faint); }
+.crumb-session { flex: 0 1 auto; min-width: 40px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* ---- shared small parts ---- */
+
+/* One-colour stroke icons, in the colour of the text beside them. */
+.ic {
+  width: 16px; height: 16px; flex: none;
+  fill: none; stroke: currentColor; stroke-width: 1.6;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+
+/* A status dot. The tone is one of the status tokens; with none it is a hollow
+   ring — something that is over, or a state nobody gave a colour to. It never
+   stands alone: the word is always beside it. */
+.dot { width: 8px; height: 8px; border-radius: var(--radius-pill); flex: none; display: inline-block; }
+.dot[data-tone="busy"] { background: var(--status-busy); }
+.dot[data-tone="waiting"] { background: var(--status-waiting); }
+.dot[data-tone="idle"] { background: var(--status-idle); }
+.dot[data-tone="good"] { background: var(--status-good); }
+.dot[data-tone="bad"] { background: var(--status-bad); }
+.dot[data-tone="fail"] { background: var(--status-fail); }
+.dot[data-tone="none"] { background: transparent; box-shadow: inset 0 0 0 1.5px var(--ink-dim); }
+
+.pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 24px; padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  border: 1px solid transparent;
+  font-family: inherit; font-size: 12px; font-weight: 600; color: var(--ink);
+  white-space: nowrap; flex: none;
+}
+
+.badge {
+  display: inline-flex; align-items: center; flex: none;
+  height: 20px; padding: 0 6px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line);
+  background: none;
+  font-family: var(--font-mono); font-size: 11px; color: var(--ink-dim);
+  white-space: nowrap;
+}
+.badge[hidden] { display: none; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2);
+  height: 36px; padding: 0 14px; flex: none;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: inherit; font-size: 13px; font-weight: 600;
+  white-space: nowrap; cursor: pointer;
+}
+.btn:hover { background: var(--surface-raised); }
+.btn:disabled { opacity: 0.6; cursor: default; }
+.btn[hidden] { display: none; }
+.btn.ghost { background: transparent; }
+.btn.ghost:hover { background: var(--surface-raised); }
+.btn.icon { width: 36px; padding: 0; color: var(--ink-dim); }
+.btn.icon:hover { color: var(--ink); }
+.btn.sm { height: 30px; padding: 0 10px; font-size: 12px; }
+.btn.icon.sm { width: 30px; padding: 0; }
+/* The one filled control on the page. */
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn.primary:hover { background: color-mix(in srgb, var(--accent) 88%, var(--ink)); }
+.btn.on { color: var(--studio-accent); border-color: color-mix(in srgb, var(--studio-accent) 45%, transparent); }
+
+.seg {
+  display: flex; flex: none; padding: 3px; gap: 2px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md);
+}
+.seg-btn {
+  flex: 1; height: 28px; padding: 0 var(--space-2);
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  border: 0; border-radius: 7px; background: none;
+  font-family: inherit; font-size: 13px; font-weight: 600; color: var(--ink-dim);
+  cursor: pointer; white-space: nowrap;
+}
+.seg-btn:hover { color: var(--ink); }
+.seg-btn[aria-selected="true"] { background: var(--surface-raised); color: var(--ink); }
+.seg-btn .badge { height: 18px; }
+
+/* The small bordered button the inspector still uses for copy and widen. */
 .ghost {
   background: transparent;
   border: 1px solid var(--line);
@@ -128,95 +215,44 @@ body {
 }
 .ghost:hover { color: var(--ink); border-color: var(--ink-faint); }
 
-/* The bar's own controls sit on the 36px line the design draws them on. */
-.bar .ghost {
-  height: 36px;
-  padding: 0 14px;
-  border-radius: var(--radius-md);
-  font-weight: 600;
-  white-space: nowrap;
-}
-.bar #fullscreen, .bar #theme { width: 36px; padding: 0; }
+/* ---- summary chips ----
+   Each chip is a count and a filter. Pressed, its frame is the selection
+   colour and the canvas steps every other agent back. */
+.chips { display: flex; align-items: center; gap: 6px; flex: none; }
+.chip { cursor: pointer; }
+.chip:hover { border-color: var(--line); }
+.chip[aria-pressed="true"] { border-color: var(--studio-accent); box-shadow: 0 0 0 1px var(--studio-accent); }
+.chip-compact { display: none; gap: 5px; }
+.chip-compact .ic { width: 12px; height: 12px; color: var(--ink-dim); }
+.bar[data-compact] .chip, .bar[data-compact] .note-pill { display: none; }
+.bar[data-compact] .chip-compact { display: inline-flex; }
+/* Not a status and not a filter: a number that has to stay in view. */
+.note-pill { color: var(--status-waiting); background: color-mix(in srgb, var(--status-waiting) 12%, transparent); }
+
+/* ---- live indicator ---- */
+.live { display: inline-flex; align-items: center; gap: 6px; flex: none; font-size: 12px; color: var(--ink-dim); white-space: nowrap; }
+.live strong { color: var(--ink); font-weight: 600; }
+.live[data-state="stale"] strong { color: var(--status-waiting); }
+.live[data-state="offline"] strong { color: var(--status-fail); }
 
 /* ---- layout ---- */
 .meta { font-family: var(--font-mono); font-size: 11px; color: var(--ink-faint); }
-
-/* ---- fleet ---- */
-.fleet { display: grid; gap: 1px; background: var(--line); }
-
-.session {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: 14px;
-  align-items: center;
-  padding: 14px 16px;
-  background: var(--surface);
-}
-
-.ring {
-  width: 12px; height: 12px;
-  border-radius: 50%;
-  border: 2px solid var(--status-idle);
-  flex: none;
-}
-.ring[data-status="busy"] {
-  border-color: var(--status-busy);
-  background: color-mix(in srgb, var(--status-busy) 30%, transparent);
-  animation: breathe 1.6s ease-in-out infinite;
-}
-.ring[data-status="waiting"] {
-  border-color: var(--status-waiting);
-  border-style: dashed;
-}
-.ring[data-status="idle"] { border-color: var(--status-idle); }
 
 @keyframes breathe {
   0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--status-busy) 45%, transparent); }
   50%      { box-shadow: 0 0 0 5px color-mix(in srgb, var(--status-busy) 0%, transparent); }
 }
-@media (prefers-reduced-motion: reduce) {
-  .ring[data-status="busy"] { animation: none; }
-}
-
-.who { min-width: 0; }
-.who .name { font-weight: 600; font-size: 14px; }
-.who .path {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--ink-dim);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.who .waiting-for {
-  font-size: 12px;
-  color: var(--status-waiting);
-  margin-top: 3px;
-}
-
-.stat { text-align: right; font-family: var(--font-mono); font-size: 11px; color: var(--ink-faint); white-space: nowrap; }
-.stat .status { display: block; font-size: 12px; color: var(--ink-dim); text-transform: uppercase; letter-spacing: 0.05em; }
 
 /* ---- honest empty / unmeasured states ---- */
 .note {
-  padding: 28px 20px;
+  padding: var(--space-6) var(--space-3);
   text-align: center;
+  font-size: 13px;
   color: var(--ink-dim);
-  background: var(--surface);
 }
 .note strong { display: block; color: var(--ink); margin-bottom: 4px; font-weight: 600; }
 .note .why { font-family: var(--font-mono); font-size: 12px; color: var(--ink-faint); margin-top: 6px; }
 .note.unmeasured strong { color: var(--status-waiting); }
-
-.foot {
-  flex: none;
-  padding: 6px var(--space-4);
-  border-top: 1px solid var(--line);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--ink-faint);
-  background: var(--ground);
-}
 
 /* ============================================================== shell === */
 
@@ -261,50 +297,145 @@ body {
 body.resizing { cursor: col-resize; user-select: none; }
 body.resizing .cv-root { pointer-events: none; }
 
+/* ---- navigator ---- */
 .side {
   border-right: 1px solid var(--line);
   background: var(--surface);
   display: flex;
   flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-3) var(--space-3);
   min-height: 0;
+  min-width: 0;
   overflow: hidden;
 }
-.side-block { border-bottom: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
-.side-block.grow { flex: 1; border-bottom: none; }
-.side-head {
-  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
-  padding: 10px 14px; flex: none;
+.nav-top { display: flex; align-items: center; gap: 6px; flex: none; }
+/* The input is the field, so the focus ring it gets is the field's; the icon
+   sits inside its left padding. */
+.nav-search { position: relative; flex: 1; min-width: 0; display: block; color: var(--ink-dim); }
+.nav-search .ic { position: absolute; left: 10px; top: 10px; pointer-events: none; }
+.nav-search input {
+  width: 100%; height: 36px; padding: 0 10px 0 34px;
+  border: 1px solid var(--line); border-radius: var(--radius-md);
+  background: var(--ground);
+  color: var(--ink); font-family: inherit; font-size: 13px;
 }
-.side-head h2 {
-  margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
-  text-transform: uppercase; color: var(--ink-faint);
-}
-.fleet, .sessions { overflow-y: auto; min-height: 0; }
-.fleet { max-height: 30vh; }
+.nav-search input::placeholder { color: var(--ink-faint); }
 
-.session, .srow {
-  display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center;
-  padding: 8px 14px; border-top: 1px solid var(--line); background: var(--surface);
+.nav-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; margin: 0 -4px; padding: 0 4px; }
+.nav-list[hidden] { display: none; }
+
+.proj { display: flex; flex-direction: column; gap: var(--space-1); flex: none; }
+.proj-head {
+  display: flex; align-items: center; gap: 6px; min-width: 0;
+  padding: 2px var(--space-1); border-radius: var(--radius-sm); cursor: pointer;
 }
-.srow { cursor: pointer; }
+.proj-head:hover .proj-name { color: var(--ink); }
+.proj-caret { width: 12px; height: 12px; color: var(--ink-faint); transition: transform 0.12s; }
+.proj-head[aria-expanded="true"] .proj-caret { transform: rotate(90deg); }
+.proj-name { min-width: 0; font-size: 13px; font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proj-head.gone .proj-name { color: var(--ink-faint); text-decoration: line-through; }
+.row-fill { flex: 1; min-width: 4px; }
+
+/* The version badge. Grey when there is nothing to do; orange, and a button,
+   when the project is behind and a click copies the way to fix that. */
+.badge-old {
+  color: var(--status-waiting);
+  border-color: color-mix(in srgb, var(--status-waiting) 32%, var(--line));
+  cursor: pointer;
+}
+.badge-old:hover { background: color-mix(in srgb, var(--status-waiting) 12%, transparent); }
+.badge-ahead { color: var(--studio-accent); border-color: color-mix(in srgb, var(--studio-accent) 35%, transparent); }
+.badge-unknown, .badge-none { color: var(--ink-faint); }
+
+.srow {
+  display: flex; flex-direction: column; gap: 2px; flex: none; min-width: 0;
+  padding: var(--space-2) 6px var(--space-2) var(--space-3);
+  border-radius: var(--radius-md); border: 1px solid transparent;
+  cursor: pointer;
+}
 .srow:hover { background: var(--surface-raised); }
-.srow[aria-current="true"] { background: var(--surface-raised); box-shadow: inset 3px 0 0 var(--studio-accent); }
-.srow .sid { font-family: var(--font-mono); font-size: 12px; }
-.srow .sagents { font-family: var(--font-mono); font-size: 11px; color: var(--ink-faint); }
-.srow .sbadge {
-  font-family: var(--font-mono); font-size: 10px; color: var(--studio-accent);
-  border: 1px solid color-mix(in srgb, var(--studio-accent) 40%, transparent);
-  border-radius: 4px; padding: 0 5px;
+.srow[aria-current="true"] { background: var(--surface-raised); border-color: var(--studio-accent); }
+.srow.remote { cursor: default; }
+.srow-top { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.nm {
+  min-width: 0; font-size: 13px; line-height: 18px; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.who .name { font-size: 13px; }
-.who .path { font-size: 11px; }
-.stat { font-size: 10px; }
-.stat .status { font-size: 10px; }
+.srow[aria-current="true"] .nm { font-weight: 600; }
+.mname { min-width: 0; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sub { font-size: 12px; line-height: 16px; color: var(--ink-dim); white-space: nowrap; flex: none; }
+.srow-sub { padding-left: var(--space-4); flex: initial; overflow: hidden; text-overflow: ellipsis; }
+.srow.remote .srow-sub { padding-left: var(--space-6); }
+.sub.bad, .nav-line.bad { color: var(--status-bad); }
+mark { background: color-mix(in srgb, var(--studio-accent) 30%, transparent); color: inherit; border-radius: 2px; }
 
-/* One line each, cut with an ellipsis: the bar is 56px at every width and a
-   summary that wraps would be drawn outside it. */
-.bar-mid { flex: 1; min-width: 0; text-align: center; }
-.bar-mid > * { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row-more {
+  flex: none; width: 22px; height: 22px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0; border-radius: var(--radius-sm); background: none; color: var(--ink-faint); cursor: pointer;
+}
+.row-more .ic { stroke-width: 2.4; }
+.row-more:hover { background: var(--ground); color: var(--ink); }
+.srow-rename {
+  flex: 1; min-width: 0; height: 22px; padding: 0 6px;
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: var(--ground); color: var(--ink); font-family: inherit; font-size: 13px;
+}
+
+.nav-line {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex: none;
+  padding: 0 var(--space-1) 0 var(--space-3);
+  font-size: 12px; color: var(--ink-faint);
+}
+.link { background: none; border: 0; padding: 0; font: inherit; color: var(--accent); cursor: pointer; }
+.link:hover { text-decoration: underline; }
+
+.nav-foot {
+  flex: none; display: flex; flex-direction: column; gap: var(--space-1);
+  border-top: 1px solid var(--line); padding-top: var(--space-3);
+}
+.nav-foot[hidden] { display: none; }
+.nav-foot-label {
+  align-self: flex-start; background: none; border: 0; padding: 0 var(--space-1); cursor: pointer;
+  font-family: inherit;
+  font-size: 11px; line-height: var(--type-label-line); font-weight: var(--type-label-weight);
+  letter-spacing: var(--type-label-tracking); text-transform: uppercase; color: var(--ink-dim);
+}
+.nav-foot-label:hover { color: var(--ink); }
+
+/* ---- menu and toast ---- */
+.menu {
+  position: fixed; z-index: 60; min-width: 190px; max-width: 272px;
+  display: flex; flex-direction: column; gap: 2px; padding: var(--space-1);
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md);
+  box-shadow: 0 12px 30px -12px var(--shade);
+}
+.menu[hidden] { display: none; }
+.menu-item {
+  display: flex; align-items: center; gap: var(--space-2);
+  height: 30px; padding: 0 10px; text-align: left;
+  border: 0; border-radius: 7px; background: none;
+  font-family: inherit; font-size: 13px; color: var(--ink); cursor: pointer;
+}
+.menu-item:hover, .menu-item:focus-visible { background: var(--surface-raised); }
+.menu-item.primary { color: var(--accent); font-weight: 600; }
+.menu-item[aria-checked="true"] { background: var(--surface-raised); box-shadow: inset 0 0 0 1px var(--studio-accent); }
+.menu-note {
+  padding: var(--space-1) 10px; font-size: 12px; line-height: 18px; color: var(--ink-dim);
+  overflow-wrap: anywhere;
+}
+.menu-note + .menu-note { font-family: var(--font-mono); color: var(--ink); }
+
+.toast {
+  position: fixed; z-index: 70; left: 50%; bottom: var(--space-6); transform: translateX(-50%);
+  max-width: min(560px, calc(100vw - 2 * var(--space-4)));
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-raised); border: 1px solid var(--line); border-radius: var(--radius-md);
+  box-shadow: 0 12px 30px -12px var(--shade);
+  font-size: 13px; color: var(--ink); overflow-wrap: anywhere;
+}
+.toast[hidden] { display: none; }
 
 /* ============================================================== stage === */
 
@@ -332,6 +463,13 @@ body.resizing .cv-root { pointer-events: none; }
   width: 16px; height: 16px; flex: none;
   fill: none; stroke: currentColor; stroke-width: 1.6;
   stroke-linecap: round; stroke-linejoin: round;
+}
+.toolbar-fill { flex: 1; }
+/* What the panel has to say about the stream or the last action: a reason, in
+   words, where the eye already is. Empty most of the time. */
+.toolbar-note {
+  min-width: 0; font-family: var(--font-mono); font-size: 11px; color: var(--ink-faint);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
 .canvas { flex: 1; min-height: 0; position: relative; overflow: hidden; background: var(--ground); }
@@ -933,78 +1071,6 @@ h5.md-h, h6.md-h { font-size: 12px; color: var(--ink-dim); text-transform: upper
 .md-table th, .md-table td { overflow-wrap: normal; min-width: 76px; }
 .md-table td { hyphens: none; }
 
-/* ================================================= project sidebar === */
-
-.side-filter { padding: 0 12px 8px; flex: none; }
-.side-filter input {
-  width: 100%; box-sizing: border-box;
-  background: var(--ground); border: 1px solid var(--line); border-radius: 7px;
-  color: var(--ink); font-family: var(--font-mono); font-size: 11px; padding: 5px 8px;
-}
-.side-filter input::placeholder { color: var(--ink-faint); }
-
-.pgroup {
-  display: grid; grid-template-columns: 14px 1fr auto; gap: 7px; align-items: center;
-  padding: 7px 14px; cursor: pointer; border-top: 1px solid var(--line);
-  background: var(--surface-raised);
-}
-.pgroup:hover { background: color-mix(in srgb, var(--studio-accent) 8%, var(--surface-raised)); }
-.pgroup.current { box-shadow: inset 3px 0 0 var(--studio-accent); }
-.pcaret { font-size: 9px; color: var(--ink-faint); }
-.plabel {
-  font-size: 12px; font-weight: 600;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.pcount { display: flex; gap: 5px; align-items: center; font-family: var(--font-mono); font-size: 10px; color: var(--ink-faint); }
-
-.srow {
-  display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center;
-  padding: 6px 14px 6px 28px; border-top: 1px solid var(--line);
-  background: var(--surface); cursor: pointer;
-}
-.srow:hover { background: var(--surface-raised); }
-.srow[aria-current="true"] { background: var(--surface-raised); box-shadow: inset 3px 0 0 var(--status-good); }
-.sname {
-  font-size: 12px; color: var(--ink);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.srow[aria-current="true"] .sname { font-weight: 600; }
-.sright { display: flex; gap: 5px; align-items: center; }
-.sagents { font-family: var(--font-mono); font-size: 10px; color: var(--ink-faint); }
-.sbadge {
-  font-family: var(--font-mono); font-size: 9px; color: var(--studio-accent);
-  border: 1px solid color-mix(in srgb, var(--studio-accent) 35%, transparent);
-  border-radius: 4px; padding: 0 4px;
-}
-.ptrunc {
-  padding: 5px 14px 5px 28px; font-family: var(--font-mono); font-size: 10px;
-  color: var(--ink-faint); background: var(--surface); border-top: 1px solid var(--line);
-}
-
-/* ------------------------------------------------------- kit version --- */
-
-.kitbadge {
-  font-family: var(--font-mono); font-size: 9px; padding: 0 4px;
-  border-radius: 4px; border: 1px solid var(--line); color: var(--ink-faint);
-  white-space: nowrap;
-}
-.kitbadge.ok      { color: var(--status-good);    border-color: color-mix(in srgb, var(--status-good) 35%, transparent); }
-.kitbadge.old     { color: var(--status-waiting); border-color: color-mix(in srgb, var(--status-waiting) 50%, transparent);
-                    background: color-mix(in srgb, var(--status-waiting) 12%, transparent); }
-.kitbadge.ahead   { color: var(--studio-accent);  border-color: color-mix(in srgb, var(--studio-accent) 35%, transparent); }
-.kitbadge.unknown { color: var(--ink-faint); }
-
-.pgroup.gone .plabel { color: var(--ink-faint); text-decoration: line-through; }
-
-.kitline {
-  display: block; font-family: var(--font-mono); font-size: 10px;
-  color: var(--ink-faint); letter-spacing: 0.03em; margin-top: 1px;
-}
-.kitline.warn { color: var(--status-waiting); }
-
-.ptrunc.pmissing { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.ptrunc.pmissing .ghost { font-family: var(--font-mono); font-size: 10px; padding: 1px 6px; }
-
 /* ------------------------------------------------------- fold control --- */
 
 .cv-fold {
@@ -1041,7 +1107,6 @@ h5.md-h, h6.md-h { font-size: 12px; color: var(--ink-dim); text-transform: upper
   vertical-align: 1px;
 }
 .meta.warn { color: var(--status-waiting); }
-.ptrunc.pdown { color: var(--status-bad); }
 
 /* ================================================== conversation ====== */
 
@@ -1146,18 +1211,6 @@ body.vresizing { cursor: row-resize; user-select: none; }
 }
 .chat-send:hover { filter: brightness(1.1); }
 
-.ghost.primary {
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
-  font-size: 12px;
-}
-.ghost.primary:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); }
-
-.srow.owned .sname::after {
-  content: 'owned'; margin-left: 6px; padding: 0 4px; border-radius: 4px;
-  font-family: var(--font-mono); font-size: 9px; color: var(--status-good);
-  border: 1px solid color-mix(in srgb, var(--status-good) 35%, transparent);
-}
 
 /* `display: grid` outranks the UA's `[hidden] { display: none }`, so the empty
    note kept painting over a graph that had nodes. Same trap as .inspector. */
@@ -1278,15 +1331,6 @@ body.vresizing { cursor: row-resize; user-select: none; }
   font-size: 11px;
 }
 
-/* --------------------------------------------------- reachable elsewhere --- */
-
-.reach-head { border-top: 1px solid var(--line); padding-top: 10px; }
-.reach-head[hidden] { display: none; }
-#reach { max-height: 24vh; }
-/* Listed, not openable: the transcript is on the other machine. */
-.reach-row { cursor: default; opacity: 0.92; }
-.reach-row .name { font-size: 13px; }
-
 /* ------------------------------------------------ history and read-only --- */
 
 /* The seam between what was said before a fork and what is being said now. */
@@ -1309,22 +1353,11 @@ body.vresizing { cursor: row-resize; user-select: none; }
 
 .chat-state[data-state="observed"] { color: var(--ink-dim); }
 
-/* --------------------------------------------------- panel controls --- */
-
-.ghost.pin { padding: 1px 6px; font-size: 11px; line-height: 1.4; }
-.side-head { position: relative; }
-.side-head h2 { flex: 1; }
-
 /* The chat divider only exists while there is a conversation beside it. */
 #chat-split[hidden] { display: none; }
 
 .chat-wide { position: relative; }
 .chat-head .chat-grow { margin-left: 2px; }
-
-/* A live session is opened from the fleet the same way it is from the list. */
-.fleet-row.clickable { cursor: pointer; }
-.fleet-row.clickable:hover { background: var(--surface-raised); }
-.fleet-row[aria-current="true"] { background: var(--surface-raised); box-shadow: inset 3px 0 0 var(--status-good); }
 
 /* ============================================================ scrollbars === */
 
@@ -1352,47 +1385,43 @@ body.vresizing { cursor: row-resize; user-select: none; }
 /* Where two scrollable panes meet, the bar should not read as a third border. */
 .side *::-webkit-scrollbar, .chat *::-webkit-scrollbar, .inspector *::-webkit-scrollbar { width: 8px; }
 
-/* ------------------------------------------------------- sidebar rail --- */
+/* ------------------------------------------------------- navigator rail --- */
 
-/* The control that brings the sidebar back sits where the sidebar was. It
-   started in the header beside the theme toggle — the far corner from the edge
-   it acts on — and was, fairly, hard to find. */
+/* What the navigator leaves behind when it is collapsed: its three tabs as
+   icons, and at the foot the control that opens it again. It sits where the
+   navigator was, on the edge it acts on. */
 .side-rail {
   position: absolute; left: 0; top: 0; bottom: 0; z-index: 25;
   width: var(--rail-w);
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 10px;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: var(--space-3) 0;
   background: var(--surface);
-  border: none; border-right: 1px solid var(--line);
-  color: var(--ink-faint);
-  cursor: pointer;
-  padding: 0;
+  border-right: 1px solid var(--line);
 }
 .side-rail[hidden] { display: none; }
-.side-rail:hover { background: var(--surface-raised); color: var(--ink); border-right-color: var(--studio-accent); }
-.side-rail:focus-visible { outline-offset: -2px; color: var(--ink); }
-
-.side-rail-arrow { font-size: 15px; line-height: 1; }
-/* Turned along the rail, so the strip says what it opens rather than being an
-   unlabelled sliver. */
-.side-rail-label {
-  writing-mode: vertical-rl;
-  font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.14em;
-  text-transform: uppercase;
+.rail-btn {
+  width: 40px; height: 40px; padding: 0; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  border: 0; border-radius: var(--radius-md); background: none;
+  color: var(--ink-dim); cursor: pointer;
 }
-
+.rail-btn:hover, .rail-btn.on { background: var(--surface-raised); color: var(--ink); }
+.rail-fill { flex: 1; }
 
 /* --------------------------------------------------------- full screen --- */
 
-#fullscreen.on {
-  color: var(--studio-accent);
-  border-color: color-mix(in srgb, var(--studio-accent) 45%, transparent);
-}
+/* Full screen is the canvas and nothing beside it: the navigator, its rail,
+   the inspector and the conversation step out until Esc. */
+:root:fullscreen .shell { grid-template-columns: 0 0 minmax(0, 1fr) 0 0 0; }
+:root:fullscreen .shell > .side,
+:root:fullscreen .shell > .side-rail,
+:root:fullscreen .shell > .resizer,
+:root:fullscreen .shell > .inspector,
+:root:fullscreen .shell > .chat { display: none; }
 
-/* In full screen the window chrome is gone, so the panel's own top edge is the
-   only frame left; it should not look like a floating bar. */
-:fullscreen .bar { border-top: none; }
-
+/* A status the summary chips did not ask for, stepped back. */
+.cv-node.cv-dim { opacity: 0.22; }
+.cv-edge.cv-dim { opacity: 0.08; }
 
 /* ---------------------------------------------------------- node mark --- */
 
@@ -1422,29 +1451,6 @@ body.vresizing { cursor: row-resize; user-select: none; }
 .chat-cost { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
 
-/* ------------------------------------------------ foldable side sections */
-
-.twisty {
-  flex: none; width: 16px; height: 16px; padding: 0; margin-right: -2px;
-  display: grid; place-items: center;
-  background: none; border: 0; cursor: pointer; border-radius: 4px;
-  font-size: 10px; line-height: 1; color: var(--ink-faint);
-  transition: background 0.12s, color 0.12s;
-}
-.twisty:hover { background: var(--surface-raised); color: var(--ink); }
-
-.side-head [data-fold-for] { cursor: pointer; user-select: none; }
-.side-head [data-fold-for]:hover { color: var(--ink); }
-
-/* Two selector classes, so this outranks the `display` these bodies get from
-   .fleet / .sessions / .side-filter. A single .is-folded would tie and lose. */
-[data-fold-body].is-folded { display: none; }
-
-/* A folded section stops competing for the leftover height: without this the
-   sidebar keeps a tall blank gap where the project tree used to be. */
-.side-block.folded { flex: none; }
-.side-block.grow.folded { border-bottom: 1px solid var(--line); }
-
 /* ======================================================== breakpoints ===
    Four widths, one frame. Each query names only what changes at that width;
    everything it does not name is the frame as drawn above.
@@ -1466,9 +1472,18 @@ body.vresizing { cursor: row-resize; user-select: none; }
 @media (max-width: 1279px) {
   /* Below this the status text is what has to go, not the way out of a tab. */
   .chat-head .chat-cost { display: none; }
+  /* The mark stays and the word beside it goes: the room is the breadcrumb's. */
+  .brand h1, .brand + .bar-sep { display: none; }
 }
 
 @media (max-width: 1023px) {
+  /* The bar keeps the mark and drops the word beside it; the session keeps its
+     name and drops its project; New session keeps its plus. */
+  .bar { gap: var(--space-3); }
+  .bar-sep, .crumb-project, .crumb-sep, .live-detail { display: none; }
+  .btn.primary > span { display: none; }
+  .btn.primary { width: 36px; padding: 0; }
+
   .shell,
   .shell.no-side { grid-template-columns: var(--rail-w) 0 minmax(0, 1fr) auto 5px min(var(--chat-w, 420px), 50vw); }
   .shell.no-chat,
@@ -1489,9 +1504,9 @@ body.vresizing { cursor: row-resize; user-select: none; }
   /* The bar keeps the mark, the word "Studio" and the controls that act on a
      session. Full screen is the one that goes: a phone has no window to leave. */
   .bar { gap: var(--space-2); padding: 0 var(--space-3); }
-  .bar-mid, .pulse, .bar #fullscreen { display: none; }
-  .bar .ghost { padding: 0 10px; }
-  .brand h1 { font-size: 0; }
+  .crumb, .chips, .bar #fullscreen, .bar #continue-session { display: none; }
+  /* "Studio" comes back beside the mark, as the phone design has it. */
+  .brand h1 { display: block; font-size: 0; }
   .brand-accent { font-size: 15px; font-weight: 700; color: var(--ink); }
 
   .shell,

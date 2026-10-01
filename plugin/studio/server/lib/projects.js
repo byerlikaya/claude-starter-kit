@@ -68,15 +68,25 @@ export async function allProjectDirs() {
 // Reading them means scanning the transcript, and the sidebar refreshes on a
 // timer over every session in the project — so only the tail is read (the
 // latest record wins anyway) and the result is cached against size+mtime.
+//
+// The branch comes out of the same read. Every record carries `gitBranch`, and the last one in the tail is the
+// branch the session is on now — a session can change branch, and the navigator names where it is, not where it
+// began. A transcript with no such field, or an empty one (not a repository), yields null: the caller shows
+// nothing rather than a branch nobody read.
 const TITLE_TAIL_BYTES = 131072;
-const titleCache = new Map(); // file -> { sig, title }
+const titleCache = new Map(); // file -> { sig, title, branch }
 
 export async function sessionTitle(file, size, mtimeMs) {
+  return (await sessionTail(file, size, mtimeMs)).title;
+}
+
+export async function sessionTail(file, size, mtimeMs) {
   const sig = `${size}:${mtimeMs}`;
   const hit = titleCache.get(file);
-  if (hit && hit.sig === sig) return hit.title;
+  if (hit && hit.sig === sig) return { title: hit.title, branch: hit.branch };
 
   let title = null;
+  let branch = null;
   let fh;
   try {
     fh = await fsp.open(file, 'r');
@@ -100,15 +110,24 @@ export async function sessionTitle(file, size, mtimeMs) {
       }
     }
     title = found.custom ?? found.agent ?? found.ai ?? null;
+
+    // In a record the key is followed by a bare quote; inside a quoted message every quote is escaped, so text
+    // that merely mentions the field cannot match.
+    let last = null;
+    for (const m of text.matchAll(/"gitBranch"\s*:\s*"((?:[^"\\]|\\.)*)"/g)) last = m[1];
+    if (last) {
+      try { branch = JSON.parse(`"${last}"`) || null; } catch { branch = null; }
+    }
   } catch {
     title = null;
+    branch = null;
   } finally {
     if (fh !== undefined) try { await fh.close(); } catch { /* already gone */ }
   }
 
   if (titleCache.size > 500) titleCache.clear();
-  titleCache.set(file, { sig, title });
-  return title;
+  titleCache.set(file, { sig, title, branch });
+  return { title, branch };
 }
 
 // The working directory a session ran in. The encoded folder name cannot be
@@ -162,13 +181,16 @@ export async function listSessions(dir) {
     try { st = await fsp.stat(file); } catch { return null; }
 
     const subagentsDir = path.join(dir, sessionId, 'subagents');
-    const [agentCount, title, cwd] = await Promise.all([
+    const [agentCount, tail, cwd] = await Promise.all([
       countAgentMetas(subagentsDir),
-      sessionTitle(file, st.size, st.mtimeMs),
+      sessionTail(file, st.size, st.mtimeMs),
       sessionCwd(file, st.size),
     ]);
 
-    return { sessionId, file, subagentsDir, bytes: st.size, modifiedAt: st.mtimeMs, agentCount, title, cwd };
+    return {
+      sessionId, file, subagentsDir, bytes: st.size, modifiedAt: st.mtimeMs, agentCount,
+      title: tail.title, branch: tail.branch, cwd,
+    };
   }));
 
   const out = settled.filter(Boolean);

@@ -946,40 +946,6 @@ check('both widths are remembered', /crewforth-studio-side-w/.test(appSrc2) && /
 }
 
 
-/* ------------------------------------------- §24 foldable side sections */
-
-// The kit has been bitten twice by a hide rule losing to a display rule:
-// `[hidden]` lost to `display: grid`, and a `display: none` grid child stopped
-// occupying its cell. So assert the cascade, not the intent.
-{
-  const html = read(path.join(STUDIO, 'web', 'index.html')) ?? '';
-  const css = read(path.join(STUDIO, 'web', 'style.css')) ?? '';
-  const app = read(path.join(STUDIO, 'web', 'app.js')) ?? '';
-
-  for (const key of ['fleet', 'reach', 'sessions']) {
-    check(`the ${key} section has a fold control and a body to fold`,
-      html.includes(`data-fold="${key}"`) && html.includes(`data-fold-body="${key}"`),
-      'a twisty with nothing wired to it folds nothing');
-  }
-  check('every project-list body folds, filter box included',
-    (html.match(/data-fold-body="sessions"/g) ?? []).length === 2,
-    'folding the tree while leaving the search box behind looks like a rendering bug');
-
-  check('the fold rule outranks the display it has to beat',
-    /\[data-fold-body\]\.is-folded\s*\{\s*display:\s*none/.test(css),
-    'a bare .is-folded ties with .fleet/.sessions and loses on source order');
-  check('a folded section stops claiming leftover height',
-    /\.side-block\.folded\s*\{\s*flex:\s*none/.test(css),
-    'without this the sidebar keeps a tall empty gap where the tree was');
-
-  check('the fold choice is remembered per browser',
-    /crewforth-studio-fold-/.test(app));
-  check('a browser that refuses localStorage still folds',
-    /localStorage\.setItem\(`crewforth-studio-fold-[\s\S]{0,120}?\} catch/.test(app),
-    'private mode throws on setItem; an unguarded write kills the click handler');
-}
-
-
 /* --------------------------------- §26 delegation reads as motion ------
    The graph was correct and inert. A viewer could see that two cards were
    connected and could not see which way the work went or which branch was
@@ -1603,6 +1569,68 @@ function computed(rules, el, ancestors, media = []) {
   dom();
 }
 
+
+/* ------------------------------------------------- §24 navigator tabs ---
+   The three folding blocks became three tabs. What this section guards is the
+   same class of defect it always did: a rule that hides something losing to a
+   rule that displays it, and a choice that is lost because storage refused.
+   It sits after §26 because it resolves the cascade with §26's resolver. */
+
+// The kit has been bitten twice by a hide rule losing to a display rule:
+// `[hidden]` lost to `display: grid`, and a `display: none` grid child stopped
+// occupying its cell. So assert the cascade, not the intent.
+{
+  const html = read(path.join(STUDIO, 'web', 'index.html')) ?? '';
+  const css = read(path.join(STUDIO, 'web', 'style.css')) ?? '';
+  const app = read(path.join(STUDIO, 'web', 'app.js')) ?? '';
+
+  for (const [tab, panel] of [['projects', 'sessions'], ['live', 'fleet'], ['machines', 'reach']]) {
+    check(`the ${tab} tab has a control and the panel it shows`,
+      new RegExp(`role="tab"[^>]*data-tab="${tab}"[^>]*aria-controls="${panel}"`).test(html)
+      && new RegExp(`<div id="${panel}" class="nav-list" role="tabpanel"`).test(html)
+      && new RegExp(`data-rail-tab="${tab}"`).test(html),
+      'a tab with no panel wired to it switches nothing; the collapsed rail carries the same three');
+  }
+  check('the search box sits above the tabs and searches whichever one is showing',
+    (html.match(/id="filter"/g) ?? []).length === 1
+    && html.indexOf('id="filter"') < html.indexOf('role="tablist"')
+    && /el\.filter\.addEventListener\('input', \(\) => \{[^}]*paintProjects\(\);[^}]*paintLive\(\);/.test(app),
+    'a search that only reaches the first tab looks like a broken search on the second');
+
+  // Every element the page ships hidden has to resolve to display:none against
+  // the class that gives it a display.
+  const tabRules = cssRules(css);
+  // `hidden` the attribute, not the tail of `aria-hidden`.
+  const hiddenOnes = [...html.matchAll(/<(\w+)\b([^>]*\s)hidden(?=[\s>])([^>]*)>/g)].map(([m, tag, pre, post]) => [m, tag, pre + post]).map(([, tag, attrs]) => ({
+    tag,
+    id: /\bid="([^"]+)"/.exec(attrs)?.[1] ?? tag,
+    classes: (/\bclass="([^"]+)"/.exec(attrs)?.[1] ?? '').split(/\s+/).filter(Boolean),
+  }));
+  const stillShown = hiddenOnes.filter((h) => {
+    const shown = computed(tabRules, { tag: h.tag, classes: new Set(h.classes), attrs: {}, pseudo: null }, []).get('display');
+    const hidden = computed(tabRules, { tag: h.tag, classes: new Set(h.classes), attrs: { hidden: '' }, pseudo: null }, []).get('display');
+    return shown !== undefined && hidden !== 'none';
+  });
+  const mustBeAmong = ['side-rail', 'fleet', 'reach', 'other-machines', 'inspector', 'chat', 'toast', 'menu', 'live-count'];
+  const notSeen = mustBeAmong.filter((id) => !hiddenOnes.some((h) => h.id === id));
+  check('a hidden panel stays hidden against the rule that lays it out',
+    notSeen.length === 0 && !hiddenOnes.some((h) => h.tag === 'svg') && stillShown.length === 0,
+    notSeen.length ? `the scan did not see: ${notSeen.join(', ')}`
+      : stillShown.length ? `still displayed: ${stillShown.map((h) => h.id).join(', ')}`
+      : `${hiddenOnes.length} elements ship hidden: ${hiddenOnes.map((h) => h.id).join(', ')}`);
+  check('twin: a class that sets display with no [hidden] rule is caught', (() => {
+    const rules = cssRules('.nav-list { display: flex; }');
+    return computed(rules, { tag: 'div', classes: new Set(['nav-list']), attrs: { hidden: '' }, pseudo: null }, []).get('display') === 'flex';
+  })(), 'this is the defect: the attribute alone does not win');
+
+  check('the tab choice is remembered per browser',
+    /store\.set\('crewforth-studio-nav-tab', navTab\)/.test(app)
+    && /setTab\(store\.get\('crewforth-studio-nav-tab'\)/.test(app));
+  check('a browser that refuses localStorage still switches tabs',
+    /set\(k, v\) \{ try \{ localStorage\.setItem\(k, v\); \} catch/.test(app)
+    && !/localStorage\.setItem\(/.test(app.replace(/set\(k, v\) \{ try \{ localStorage\.setItem\(k, v\); \} catch/, '')),
+    'private mode throws on setItem; every write in app.js goes through the one guarded wrapper');
+}
 
 process.stdout.write('\n== §27 the picture at 250 nodes ==\n');
 
@@ -2336,7 +2364,7 @@ process.stdout.write('\n== §29 design tokens and the frame ==\n');
   // The scanned set against the set that has to be scanned: every file the panel
   // serves except the generated one. "N files, 0 findings" says nothing if the
   // file that carries the colours is not among the N.
-  const mustScan = ['app.js', 'canvas.js', 'chat.js', 'index.html', 'md.js', 'style.css', 'theme.js'];
+  const mustScan = ['app.js', 'canvas.js', 'chat.js', 'index.html', 'liveness.js', 'md.js', 'nav.js', 'style.css', 'theme.js'];
   const unscanned = mustScan.filter((f) => !scanned.includes(f));
   check('the colour scan reads every file the panel serves except tokens.css',
     unscanned.length === 0 && webFiles.includes('tokens.css') && scanned.length === webFiles.length - 1,
@@ -2550,6 +2578,282 @@ process.stdout.write('\n== §29 design tokens and the frame ==\n');
       && r.decls.get('outline') === '2px solid var(--accent)' && r.decls.get('outline-offset') === '2px')
     && !/outline:\s*(none|0)\b/.test(noComments(styleCss)),
     'and nothing in the stylesheet switches an outline off');
+}
+
+/* ------------------------------------- §30 the top bar and the navigator ---
+   What the bar and the navigator SAY is in web/nav.js and web/liveness.js as
+   functions of the server's data, so it is asserted here by calling them. What
+   the server adds for them — a session's branch, a project's update command —
+   is asserted against real files in a temp directory. */
+
+process.stdout.write('\n== §30 the top bar and the navigator ==\n');
+
+{
+  const nav = await import(`../../kit/studio/web/nav.js?t=${Date.now()}`);
+  const live = await import(`../../kit/studio/web/liveness.js?t=${Date.now()}`);
+  const { kitStatus, _internals: kitInt } = await import(`../../kit/studio/server/lib/kit.js?t=${Date.now()}`);
+  const { sessionTail, listSessions } = await import(`../../kit/studio/server/lib/projects.js?t=${Date.now()}`);
+  const appJs = read(path.join(WEB_ROOT, 'app.js')) ?? '';
+  const indexHtml = read(path.join(WEB_ROOT, 'index.html')) ?? '';
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'crew-studio-nav-'));
+
+  try {
+    /* -- 1. the update command comes from the server, per install type ------ */
+
+    const fileInstall = path.join(tmp, 'file-install');
+    fs.mkdirSync(path.join(fileInstall, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(fileInstall, '.claude', 'VERSION'), '2.12.0\n');
+    // What a plugin install looks like from a project: a directory with no Crewforth file in it.
+    const pluginShape = path.join(tmp, 'plugin-shape');
+    fs.mkdirSync(path.join(pluginShape, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(pluginShape, '.claude', 'settings.json'), '{}\n');
+    const latest = { measured: true, version: '3.0.1' };
+
+    const behind = await kitStatus(fileInstall, latest);
+    check('a file install that is behind is told how to update, by the server',
+      behind.installed && behind.outdated && behind.updateCommand === kitInt.FILE_INSTALL_UPDATE
+      && behind.updateCommand === 'npx crewforth@latest update --here',
+      `updateCommand: ${JSON.stringify(behind.updateCommand)}`);
+    const badgeBehind = nav.badgeFor(behind);
+    check('its badge copies exactly that command and says so',
+      badgeBehind.copy === behind.updateCommand && badgeBehind.text === '2.12.0 · update'
+      && badgeBehind.title.includes(behind.updateCommand), JSON.stringify(badgeBehind));
+
+    const plugin = await kitStatus(pluginShape, latest);
+    check('a project with no Crewforth files gets no command: a plugin install cannot be told apart from here',
+      plugin.installed === false && plugin.updateCommand === null,
+      `updateCommand: ${JSON.stringify(plugin.updateCommand)}`);
+    const badgePlugin = nav.badgeFor(plugin);
+    check('its badge copies nothing and points at /crew-update instead of inventing a command',
+      badgePlugin.copy === null && /\/crew-update/.test(badgePlugin.title) && badgePlugin.text === 'no Crewforth'
+      && !/npx/.test(JSON.stringify(badgePlugin)), JSON.stringify(badgePlugin));
+
+    const current = nav.badgeFor(await kitStatus(fileInstall, { measured: true, version: '2.12.0' }));
+    const uncompared = nav.badgeFor(await kitStatus(fileInstall, { measured: false, reason: 'offline' }));
+    check('a current project and an uncompared one offer nothing to copy',
+      current.copy === null && current.tone === 'current'
+      && uncompared.copy === null && uncompared.tone === 'unknown' && /not compared: offline/.test(uncompared.title),
+      'not compared is not "current", and neither is a reason to run an update');
+    check('a badge never copies a command the server did not send',
+      nav.badgeFor({ installed: true, version: '2.0.0', compared: true, outdated: true, latest: '3.0.1' }).copy === null
+      && /\/crew-update/.test(nav.badgeFor({ installed: true, version: '2.0.0', compared: true, outdated: true, latest: '3.0.1' }).title),
+      'an older server sends no updateCommand; the badge falls back to the hint');
+
+    // The command text has one home. Nothing the browser loads may carry a copy of it.
+    const typed = (text) => /npx\s+(--yes\s+)?crewforth|crewforth@latest/.test(text);
+    const webFiles = walk(WEB_ROOT);
+    const carriers = webFiles.filter((f) => typed(read(f) ?? '')).map((f) => path.basename(f));
+    check('no file under web/ types the update command itself',
+      webFiles.length >= 9 && carriers.length === 0,
+      carriers.length ? `typed in: ${carriers.join(', ')}` : `${webFiles.length} files read`);
+    check('twin: a command typed into a script is caught',
+      typed("copyText('npx crewforth@latest update --here')") && typed('npx --yes crewforth@latest update')
+      && !typed('run /crew-update in this project'));
+
+    /* -- 2. a session's branch, read from its transcript --------------------- */
+
+    const tDir = path.join(tmp, 'transcripts');
+    fs.mkdirSync(tDir);
+    const writeT = (name, lines) => {
+      const f = path.join(tDir, name);
+      fs.writeFileSync(f, lines.map((l) => (typeof l === 'string' ? l : JSON.stringify(l))).join('\n') + '\n');
+      const st = fs.statSync(f);
+      return [f, st.size, st.mtimeMs];
+    };
+    const moved = await sessionTail(...writeT('moved.jsonl', [
+      { type: 'user', cwd: '/x', gitBranch: 'main', message: { content: 'start' } },
+      { type: 'ai-title', aiTitle: 'Refund rounding' },
+      { type: 'user', cwd: '/x', gitBranch: 'fix/refund-rounding', message: { content: 'go on' } },
+    ]));
+    check('the branch is the one the session is on now, and the title still comes from the same read',
+      moved.branch === 'fix/refund-rounding' && moved.title === 'Refund rounding', JSON.stringify(moved));
+    const none = await sessionTail(...writeT('none.jsonl', [{ type: 'user', cwd: '/x', message: { content: 'hi' } }]));
+    const empty = await sessionTail(...writeT('empty.jsonl', [{ type: 'user', cwd: '/x', gitBranch: '', message: { content: 'hi' } }]));
+    check('a transcript with no branch, or an empty one, yields null and not a guess',
+      none.branch === null && empty.branch === null, `${JSON.stringify(none.branch)} / ${JSON.stringify(empty.branch)}`);
+    const quoted = await sessionTail(...writeT('quoted.jsonl', [
+      { type: 'user', cwd: '/x', gitBranch: 'real', message: { content: 'the record says "gitBranch":"fake" somewhere' } },
+    ]));
+    check('text that merely mentions the field is not read as the branch', quoted.branch === 'real', JSON.stringify(quoted.branch));
+    const odd = await sessionTail(...writeT('odd.jsonl', [{ type: 'user', cwd: '/x', gitBranch: 'feat/"q"\\ü' }]));
+    check('a branch with escaped characters comes back as it was written', odd.branch === 'feat/"q"\\ü', JSON.stringify(odd.branch));
+    const listed = (await listSessions(tDir)).find((s) => s.sessionId === 'moved');
+    check('the session list carries the branch beside the title', listed?.branch === 'fix/refund-rounding' && listed?.title === 'Refund rounding');
+
+    /* -- 3. what a row is called, and what is under it ----------------------- */
+
+    const sn = { sessionId: '7f3c1d20-9a4e', title: 'Refund rounding', branch: 'fix/refund-rounding', agentCount: 3 };
+    check('a row is called by its label, then its title, then its id — never by a branch',
+      nav.sessionName(sn, { '7f3c1d20-9a4e': 'mine' }) === 'mine'
+      && nav.sessionName(sn, {}) === 'Refund rounding'
+      && nav.sessionName({ ...sn, title: null }, {}) === '7f3c1d20'
+      && nav.sessionName({ ...sn, title: null }, { '7f3c1d20-9a4e': '   ' }) === '7f3c1d20');
+    const running = { key: 'busy', word: 'Running', tone: 'busy', known: true };
+    check('the line under it is branch, state and agents',
+      nav.sessionSub(sn, running) === 'fix/refund-rounding · Running · 3 agents'
+      && nav.sessionSub({ ...sn, agentCount: 1 }, running) === 'fix/refund-rounding · Running · 1 agent');
+    const bare = nav.sessionSub({ sessionId: 'x', title: null, branch: null, agentCount: 0 }, { key: 'unmeasured', word: null, tone: null });
+    const noBranch = nav.sessionSub({ ...sn, branch: null }, running);
+    check('a part that was not read is left out, not filled in',
+      bare === '' && noBranch === 'Running · 3 agents' && !/null|undefined|—|unknown/.test(bare + noBranch),
+      `${JSON.stringify(bare)} / ${JSON.stringify(noBranch)}`);
+
+    /* -- 4. status: a word with every colour, and no colour for the unknown -- */
+
+    const fleet = { measured: true, sessions: [
+      { sessionId: 'a', status: 'busy' }, { sessionId: 'b', status: 'waiting', waitingFor: 'approve Bash' },
+      { sessionId: 'c', status: 'idle' }, { sessionId: 'd', status: 'hibernating' },
+      { sessionId: 'e', status: 'busy', local: false },
+    ] };
+    const st = (id, f = fleet) => nav.sessionStatus(id, f);
+    check('every session state the machine reports has a word beside its colour',
+      st('a').word === 'Running' && st('a').tone === 'busy'
+      && st('b').word === 'Needs you' && st('b').tone === 'waiting' && st('b').waitingFor === 'approve Bash'
+      && st('c').word === 'Idle' && st('c').tone === 'idle');
+    check('a session the machine does not list has ended', st('zz').key === 'ended' && st('zz').word === 'Ended' && st('zz').tone === null);
+    check('a state nobody recognises keeps its own word and gets no colour',
+      st('d').word === 'hibernating' && st('d').tone === null && st('d').known === false);
+    check('a fleet that was not read is "unmeasured", never "ended"',
+      st('a', { measured: false, reason: 'no CLI' }).key === 'unmeasured' && st('a', null).key === 'unmeasured'
+      && st('a', { measured: false }).word === null,
+      'an unread list would otherwise draw every session as finished');
+    check('a session on another machine does not lend its state to a local row', st('e').key === 'ended');
+
+    const chips = nav.summaryChips({ done: 6, running: 3, failed: 1, zombie: 2, ended: 0, starting: 1 });
+    check('the summary has one chip per status in play, and they add up',
+      chips.map((c) => c.text).join(' | ') === '3 running | 1 starting | 6 done | 1 failed | 2 zombie'
+      && chips.reduce((n, c) => n + c.count, 0) === 13, chips.map((c) => c.text).join(' | '));
+    check('every chip carries a word, and an unknown status its own with no colour',
+      chips.every((c) => /^\d+ \S+/.test(c.text))
+      && chips.find((c) => c.status === 'zombie').tone === null && chips.find((c) => c.status === 'zombie').known === false
+      && chips.find((c) => c.status === 'failed').tone === 'fail' && chips.find((c) => c.status === 'done').tone === 'good');
+    check('no agents is no chips, not a row of zeros', nav.summaryChips({}).length === 0 && nav.summaryChips(null).length === 0
+      && nav.summaryChips({ done: 0 }).length === 0);
+
+    /* -- 5. search ------------------------------------------------------------ */
+
+    const proj = { label: 'acme-payments-api' };
+    check('search reaches the project name, the branch, the session id and the row\'s name',
+      nav.matchesSession('PAYMENTS', proj, sn, {}) && nav.matchesSession('refund-round', proj, sn, {})
+      && nav.matchesSession('7f3c', proj, sn, {}) && nav.matchesSession('rounding', proj, sn, {})
+      && nav.matchesSession('mine', proj, sn, { '7f3c1d20-9a4e': 'mine' })
+      && !nav.matchesSession('ledger', proj, sn, {}) && nav.matchesSession('  ', proj, sn, {}));
+    const parts = nav.highlight('feat/Payment-retries · payments', 'payment');
+    check('the match is marked where it is, in the case it was written in',
+      parts.filter((p) => p.hit).map((p) => p.text).join('|') === 'Payment|payment'
+      && parts.map((p) => p.text).join('') === 'feat/Payment-retries · payments'
+      && nav.highlight('abc', '').length === 1 && nav.highlight('abc', 'zz')[0].hit === false);
+
+    /* -- 6. live and machines ------------------------------------------------- */
+
+    const liveRows = nav.liveSessions({ measured: true, sessions: [
+      { sessionId: 'i', status: 'idle' }, { sessionId: 'r', status: 'busy', startedAt: 5 },
+      { sessionId: 'w', status: 'waiting', startedAt: 1 }, { sessionId: 'r2', status: 'busy', startedAt: 9 },
+    ] });
+    check('Live is what is working or waiting, the waiting ones first',
+      liveRows.map((s) => s.sessionId).join() === 'w,r2,r');
+    check('an unread fleet has no live list to show', nav.liveSessions({ measured: false }).length === 0 && nav.liveSessions(null).length === 0);
+    check('and the panel says so instead of "none running"',
+      /Not measured/.test(appJs) && /not the same as "nothing is running"/.test(appJs) && /No sessions running/.test(appJs));
+
+    const mach = nav.machines({
+      origins: [{ name: 'here', local: true, ok: true }, { name: 'mini', ok: true, sessions: 2 }, { name: 'box', ok: false, reason: 'ECONNREFUSED' }],
+      roster: { measured: true, seenAt: 1000, peers: [{ name: 'laptop', remote: true, status: 'idle' }, { name: 'self', remote: false }] },
+    });
+    check('a peer asked just now and a session recorded earlier are different kinds of row',
+      mach.peers.map((p) => `${p.name}:${p.kind}:${p.ok}`).join() === 'mini:peer:true,box:peer:false'
+      && mach.peers[1].reason === 'ECONNREFUSED'
+      && mach.remote.length === 1 && mach.remote[0].kind === 'snapshot' && mach.remote[0].seenAt === 1000);
+    check('a roster nobody recorded is not "no other machines"',
+      nav.machines({ origins: [], roster: { measured: false, reason: 'never recorded' } }).rosterMeasured === false
+      && nav.machines({ origins: [], roster: { measured: false, reason: 'never recorded' } }).rosterReason === 'never recorded'
+      && nav.machines(null).rosterMeasured === false);
+    check('a snapshot says how old it is', nav.seenAgo(0, 185000) === 'seen 3 min ago' && nav.seenAgo(0, 20000) === 'seen just now'
+      && nav.seenAgo(null, 5) === 'seen at an unrecorded time' && nav.ago(0, 7200000) === '2h' && nav.ago(0, 30000) === 'now');
+
+    /* -- 7. Live, Stale, Offline ---------------------------------------------- */
+
+    const T = 1_000_000;
+    check('heard from a moment ago is Live, with how long ago',
+      live.liveness(T, T - 2000, false).state === 'live' && live.liveness(T, T - 2000, false).detail === '2s ago');
+    check('the threshold is where Live becomes Stale, and not a millisecond before',
+      live.liveness(T, T - live.STALE_AFTER_MS, false).state === 'live'
+      && live.liveness(T, T - live.STALE_AFTER_MS - 1, false).state === 'stale');
+    check('a failed request is Offline whatever the clock says, and keeps the time of the last answer',
+      live.liveness(T, T - 500, true).state === 'offline' && /^last update \d\d:\d\d$/.test(live.liveness(T, T - 500, true).detail)
+      && live.liveness(T, null, true).detail === 'the server has not answered');
+    check('before the first answer it is Connecting, not Live', live.liveness(T, null, false).state === 'connecting');
+    check('every state has a word, so none of them is told by colour alone',
+      [[T - 1, false], [T - 99999, false], [T, true], [null, false]].every(([ok, failed]) => live.liveness(T, ok, failed).word.length > 3));
+
+    // The threshold was chosen against the slowest healthy silence, which is one
+    // project poll (the fleet poll can be slower than that, and then it is the
+    // project poll that keeps the panel fed). Slowing that poll without moving
+    // the threshold would make a healthy panel read Stale.
+    const pollMs = (name) => Number(new RegExp(`const ${name} = (\\d+);`).exec(appJs)?.[1]);
+    const roomFor = (staleMs, slowestPollMs) => staleMs >= 2 * slowestPollMs;
+    check('the Stale threshold leaves room for two project polls',
+      pollMs('SESSION_POLL_MS') > 0 && pollMs('FLEET_POLL_MS') > 0
+      && roomFor(live.STALE_AFTER_MS, Math.max(pollMs('SESSION_POLL_MS'), 0)),
+      `stale after ${live.STALE_AFTER_MS} ms; polls every ${pollMs('FLEET_POLL_MS')} and ${pollMs('SESSION_POLL_MS')} ms`);
+    check('twin: a slower project poll with the same threshold is caught', !roomFor(live.STALE_AFTER_MS, 6000));
+    check('any answer on any channel counts as heard from',
+      (appJs.match(/heardNow\(\)|heardNow\)/g) ?? []).length >= 4
+      && /addEventListener\('graph', \(e\) => \{\s*heardNow\(\);/.test(appJs)
+      && /addEventListener\('idle', heardNow\)/.test(appJs),
+      'the fleet poll alone waits on a CLI spawn; the project poll and the stream do not');
+    check('only a request that did not complete is Offline; an error status is still an answer',
+      /catch \(e\) \{\s*heard\.failed = true;\s*throw e;\s*\}\s*if \(!r\.ok\) throw/.test(appJs));
+
+    /* -- 8. the summary chips filter the canvas ------------------------------- */
+
+    const dom = installDom();
+    try {
+      const { Canvas } = await import(`../../kit/studio/web/canvas.js?filter=${Date.now()}`);
+      const c = new Canvas(document.createElement('div'), {});
+      c.setPalette({ map: { Explore: { hex: '#26c6e6', source: 'builtin' } }, unknown: '#94a3c8' });
+      c.setSession('s-filter');
+      const agent = (id, status) => ({ id, kind: 'agent', agentType: 'Explore', status, spawnDepth: 1, parentId: 'session', tools: {}, toolCount: 0 });
+      c.render({
+        nodes: [{ id: 'session', kind: 'session', status: 'session', turns: 1, cwd: '/x' }, agent('r', 'running'), agent('d', 'done'), agent('f', 'failed')],
+        edges: [{ source: 'session', target: 'r' }, { source: 'session', target: 'd' }, { source: 'session', target: 'f' }],
+      });
+      const dim = (id) => c.els.get(id).classList.contains('cv-dim');
+      check('with no filter nothing is stepped back', !dim('r') && !dim('d') && !dim('f') && !dim('session'));
+      c.setFilter('running');
+      check('a status filter steps back the agents in every other status and leaves the session lit',
+        !dim('r') && dim('d') && dim('f') && !dim('session'));
+      check('the cards stay where they were: a filter is not a new layout',
+        c.els.size === 4 && c.nodes.size === 4);
+      c.setFilter(null);
+      check('taking the filter off brings everything back', !dim('r') && !dim('d') && !dim('f'));
+    } finally {
+      dom();
+    }
+    check('the chip that is filtering says so, and clicking it again undoes it',
+      /setAttribute\('aria-pressed', String\(statusFilter === c\.status\)\)/.test(appJs)
+      && /setStatusFilter\(statusFilter === c\.status \? null : c\.status\)/.test(appJs));
+    check('a filter cannot outlive the status it filters on',
+      /if \(statusFilter && !chips\.some\(\(c\) => c\.status === statusFilter\)\) setStatusFilter\(null, false\)/.test(appJs),
+      'when the last running agent finishes, a "running" filter would hide every card with no chip left to undo it');
+
+    /* -- 9. the page ----------------------------------------------------------- */
+
+    check('the bar has the breadcrumb, the summary, the Live indicator and one primary button',
+      /id="crumb"[^>]*aria-label="Breadcrumb"/.test(indexHtml) && /id="graph-summary"[^>]*aria-label="Session summary"/.test(indexHtml)
+      && /id="pulse"[^>]*role="status"/.test(indexHtml) && (indexHtml.match(/class="btn primary"/g) ?? []).length === 1);
+    check('the old three folding blocks are gone', !/data-fold/.test(indexHtml) && !/side-block/.test(indexHtml));
+    check('the footer line is gone; its reasons moved into the toolbar',
+      !/<footer/.test(indexHtml) && /<span id="foot-note" class="toolbar-note" role="status">/.test(indexHtml));
+    check('the navigator answers to / [ and ]',
+      /e\.key === '\/'/.test(appJs) && /e\.key === '\['/.test(appJs) && /e\.key === '\]'/.test(appJs)
+      && /tagName === 'INPUT'/.test(appJs), 'and not while something is being typed into');
+    check('a terminal is only opened after its command has been shown',
+      /note: plan\.line/.test(appJs) && appJs.indexOf('note: plan.line') < appJs.indexOf("method: 'POST'"),
+      'the command is in the menu before the button that runs it');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 }
 
 process.stdout.write(`${pass}/${pass + fail} assertions passed`

@@ -162,6 +162,8 @@ export class Canvas {
     // not set 105 animations running at once.
     this.newborn = new Set();
     this.palette = { map: {}, unknown: '#94a3c8' };
+    this.filter = null;          // a status the summary chips asked to isolate
+    this.lastGraph = null;
     this.sessionKey = null;
     this.selected = null;
     this.firstRender = true;
@@ -560,6 +562,21 @@ export class Canvas {
     this.#syncHud();
   }
 
+  /** Show one status and step the rest back. `null` shows everything.
+   *
+   *  Stepped back, not removed: the graph keeps its shape, so a card the viewer
+   *  was looking at is where it was when the filter comes off. Only agents have
+   *  the statuses the summary counts, so the session and the workflows stay lit
+   *  as the frame the agents hang from. */
+  setFilter(status) {
+    this.filter = status ?? null;
+    if (this.lastGraph) this.render(this.lastGraph);
+  }
+
+  dimmed(n) {
+    return Boolean(this.filter) && n?.kind === 'agent' && n.status !== this.filter;
+  }
+
   setSession(sessionId) {
     if (this.sessionKey === sessionId) return;
     this.sessionKey = sessionId;
@@ -567,11 +584,13 @@ export class Canvas {
     this.els.clear(); this.nodeLayer.replaceChildren(); this.edgeG.replaceChildren();
     this.edgeEls.clear(); this.newborn.clear();
     this.selected = null;
+    this.lastGraph = null;
     this.firstRender = true;
     this.#restore();
   }
 
   render(graph) {
+    this.lastGraph = graph;
     if (!graph?.nodes?.length) {
       this.emptyEl.hidden = false;
       this.emptyEl.innerHTML =
@@ -708,6 +727,7 @@ export class Canvas {
     el.dataset.kind = n.kind;
     el.dataset.status = n.status ?? 'unknown';
     el.classList.toggle('cv-selected', this.selected === n.id);
+    el.classList.toggle('cv-dim', this.dimmed(n));
 
     const known = n.kind !== 'agent' || Boolean(this.palette.map[n.agentType]);
     el.style.setProperty('--node-color', this.nodeColor(n));
@@ -877,6 +897,7 @@ export class Canvas {
       const state = FLOW_STATE[target?.status] ?? 'unknown';
       path.dataset.status = target?.status ?? 'unknown';
       path.dataset.state = state;
+      path.classList.toggle('cv-dim', this.dimmed(target));
 
       // A workflow's twelve members are one dispatch, not twelve unrelated
       // decisions. Blending each member's own colour toward the container's

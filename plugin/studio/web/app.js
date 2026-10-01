@@ -10,42 +10,63 @@ import { initTheme } from './theme.js';
 import { Canvas } from './canvas.js';
 import { renderMarkdown } from './md.js';
 import { Chat } from './chat.js';
+import {
+  summaryChips, sessionStatus, sessionName, sessionSub, ago, matchesSession, highlight, badgeFor,
+  liveSessions, machines, seenAgo,
+} from './nav.js';
+import { liveness } from './liveness.js';
 
 const FLEET_POLL_MS = 2000;
 const SESSION_POLL_MS = 5000;
 
 const el = {
   fleet: document.getElementById('fleet'),
-  fleetMeta: document.getElementById('fleet-meta'),
   sessions: document.getElementById('sessions'),
-  filter: document.getElementById('filter'),
-  kit: document.getElementById('kitline'),
   reach: document.getElementById('reach'),
-  reachHead: document.getElementById('reach-head'),
-  reachMeta: document.getElementById('reach-meta'),
+  otherMachines: document.getElementById('other-machines'),
+  liveCount: document.getElementById('live-count'),
+  filter: document.getElementById('filter'),
   chat: document.getElementById('chat'),
   chatSplit: document.getElementById('chat-split'),
   resizer: document.getElementById('resizer'),
-  sideWide: document.getElementById('side-wide'),
   sideHide: document.getElementById('side-hide'),
   sideShow: document.getElementById('side-show'),
+  rail: document.getElementById('side-rail'),
+  home: document.getElementById('home'),
+  bar: document.querySelector('.bar'),
+  crumb: document.getElementById('crumb'),
   fullscreen: document.getElementById('fullscreen'),
   newSession: document.getElementById('new-session'),
   continueSession: document.getElementById('continue-session'),
-  sessionsMeta: document.getElementById('sessions-meta'),
   summary: document.getElementById('graph-summary'),
   pulse: document.getElementById('pulse'),
   foot: document.getElementById('foot-note'),
   theme: document.getElementById('theme'),
   inspector: document.getElementById('inspector'),
+  toast: document.getElementById('toast'),
+  menu: document.getElementById('menu'),
 };
 
 const token = new URLSearchParams(location.search).get('token');
 const api = (p) => (token ? `${p}${p.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}` : p);
+
+// When the server was last heard from, for the Live indicator. A request that does not complete is the
+// connection failing; one that completes with an error status is the server answering, and is neither.
+const heard = { okAt: null, failed: false };
+const heardNow = () => { heard.okAt = Date.now(); heard.failed = false; };
+
 const getJson = async (p) => {
-  const r = await fetch(api(p), { cache: 'no-store' });
+  let r;
+  try {
+    r = await fetch(api(p), { cache: 'no-store' });
+  } catch (e) {
+    heard.failed = true;
+    throw e;
+  }
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  return r.json();
+  const body = await r.json();
+  heardNow();
+  return body;
 };
 
 /* ---------------------------------------------------------------- theme */
@@ -103,7 +124,7 @@ const railBand = window.matchMedia('(max-width: 1023px)');
 
 function setSideHidden(hidden, refit = true, persist = !railBand.matches) {
   shell.classList.toggle('no-side', hidden);
-  el.sideShow.hidden = !hidden;
+  el.rail.hidden = !hidden;
   if (persist) store.set('crewforth-studio-side-hidden', hidden ? '1' : '0');
   if (refit) canvas.fitIfUntouched();
 }
@@ -151,22 +172,11 @@ function dragPanel(handle, which, edge) {
 dragPanel(el.resizer, 'side', 'left');
 dragPanel(el.chatSplit, 'chat', 'right');
 
-// Widen toggles between the default and a roomier width rather than growing
-// without end: a panel you have to drag back is not a convenience.
-function wideToggle(btn, which) {
-  btn.addEventListener('click', () => {
-    const cur = parseInt(getComputedStyle(document.documentElement).getPropertyValue(PANEL[which].varName), 10) || PANEL[which].def;
-    setPanel(which, Math.abs(cur - PANEL[which].wide) < 24 ? PANEL[which].def : PANEL[which].wide);
-    canvas.fitIfUntouched();
-  });
-}
-wideToggle(el.sideWide, 'side');
-
 /* ------------------------------------------------------------ full screen
    The browser's own, so it hides the browser too — a panel meant to be watched
-   while work runs should be able to take the whole display. Collapsing the side
-   panels is a separate control on purpose: the two compose, and folding one
-   into the other would make each less predictable. */
+   while work runs should be able to take the whole display. The stylesheet
+   takes the navigator, the inspector and the conversation off with it, so what
+   is left is the canvas; Esc brings everything back. */
 
 async function toggleFullscreen() {
   try {
@@ -182,9 +192,9 @@ el.fullscreen.addEventListener('click', toggleFullscreen);
 
 document.addEventListener('fullscreenchange', () => {
   const on = Boolean(document.fullscreenElement);
-  el.fullscreen.textContent = on ? '⛶' : '⛶';
   el.fullscreen.classList.toggle('on', on);
   el.fullscreen.title = on ? 'Leave full screen (f or Esc)' : 'Full screen (f)';
+  el.fullscreen.setAttribute('aria-label', on ? 'Leave full screen' : 'Full screen');
   canvas.fitIfUntouched();
 });
 
@@ -199,57 +209,6 @@ document.addEventListener('keydown', (e) => {
 
 el.sideHide.addEventListener('click', () => setSideHidden(true));
 el.sideShow.addEventListener('click', () => setSideHidden(false));
-
-/* ------------------------------------------------------ sidebar sections
-   Fleet, peers and Projects each fold independently, so a machine with many
-   projects can hide the fleet and vice versa. The choice is per-browser and
-   survives a reload; nothing about it reaches the server. */
-
-function setFold(key, folded) {
-  for (const body of document.querySelectorAll(`[data-fold-body="${key}"]`)) {
-    body.classList.toggle('is-folded', folded);
-  }
-  for (const t of document.querySelectorAll(`[data-fold="${key}"]`)) {
-    t.setAttribute('aria-expanded', String(!folded));
-    t.textContent = folded ? '▸' : '▾';
-    const name = t.getAttribute('aria-label')?.replace(/^(Collapse|Expand) /, '') ?? key;
-    t.setAttribute('aria-label', `${folded ? 'Expand' : 'Collapse'} ${name}`);
-  }
-  // A folded Projects list must stop claiming the leftover height, or the
-  // sidebar keeps a tall empty gap where the tree used to be.
-  const sect = document.querySelector(`.side-block[data-sect="${key}"]`);
-  if (sect) sect.classList.toggle('folded', folded);
-  try {
-    localStorage.setItem(`crewforth-studio-fold-${key}`, folded ? '1' : '0');
-  } catch { /* private mode: the fold still works, it just is not remembered */ }
-}
-
-function foldState(key) {
-  try {
-    return localStorage.getItem(`crewforth-studio-fold-${key}`) === '1';
-  } catch {
-    return false;
-  }
-}
-
-for (const t of document.querySelectorAll('[data-fold]')) {
-  const key = t.getAttribute('data-fold');
-  t.addEventListener('click', (e) => {
-    e.stopPropagation();
-    setFold(key, t.getAttribute('aria-expanded') !== 'false');
-  });
-  setFold(key, foldState(key));
-}
-
-// The heading is the bigger target, so it toggles too — but only the heading:
-// the meta count and the pin buttons beside it keep their own behaviour.
-for (const h of document.querySelectorAll('[data-fold-for]')) {
-  h.addEventListener('click', () => {
-    const key = h.getAttribute('data-fold-for');
-    const t = document.querySelector(`[data-fold="${key}"]`);
-    setFold(key, t?.getAttribute('aria-expanded') !== 'false');
-  });
-}
 
 /* ----------------------------------------------------------------- chat
    Write endpoints need the token and a header that a cross-origin page cannot
@@ -288,8 +247,8 @@ function openConversation(sessionId) {
 }
 
 function openReadOnlyPane(sessionId) {
-  const row = el.sessions.querySelector(`.srow[data-id="${CSS.escape(sessionId)}"] .sname`);
-  chat.openReadOnly(sessionId, row?.textContent ?? null);
+  const known = findSessionRow(sessionId);
+  chat.openReadOnly(sessionId, known ? sessionName(known.session, labels.all()) : null);
   el.chat.hidden = false;
   el.chatSplit.hidden = false;
   shell.classList.remove('no-chat');
@@ -318,7 +277,7 @@ el.continueSession.addEventListener('click', async () => {
   const from = current;
   if (!from) return;
   el.continueSession.disabled = true;
-  el.continueSession.textContent = 'continuing…';
+  el.continueSession.textContent = 'Continuing…';
   try {
     const r = await chat.start({ cwd: projectsData?.cwd ?? null, permissionMode: 'plan', resume: from });
     if (!r.ok) {
@@ -334,14 +293,15 @@ el.continueSession.addEventListener('click', async () => {
     }
   } finally {
     el.continueSession.disabled = false;
-    el.continueSession.textContent = '⑂ fork & continue';
+    el.continueSession.textContent = 'Continue here';
   }
 });
 
+const newSessionLabel = el.newSession.querySelector('span');
 el.newSession.addEventListener('click', async () => {
   const cwd = projectsData?.cwd ?? null;
   el.newSession.disabled = true;
-  el.newSession.textContent = 'starting…';
+  newSessionLabel.textContent = 'Starting…';
   try {
     // `plan` by default: a panel that can start a session must not also be the
     // reason one got write access nobody asked for.
@@ -350,7 +310,7 @@ el.newSession.addEventListener('click', async () => {
     else ownedIds.add(r.session.sessionId);
   } finally {
     el.newSession.disabled = false;
-    el.newSession.textContent = '+ session';
+    newSessionLabel.textContent = 'New session';
   }
 });
 
@@ -666,7 +626,11 @@ function paintKit(body, tab) {
   }
 }
 
-/* ---------------------------------------------------------------- fleet */
+/* ------------------------------------------------------------ navigator
+   One search box, three tabs. Projects is everything on this machine; Live is
+   what is working or waiting right now, whichever project it is in; Machines
+   is what is known about the others. The words and the rules are in nav.js —
+   this is where they are drawn. */
 
 function node(tag, cls, text) {
   const n = document.createElement(tag);
@@ -692,62 +656,419 @@ function shortPath(p, max = 34) {
   return `${s.slice(0, keep)}…${s.slice(-keep)}`;
 }
 
-// Sessions on other machines. The panel cannot reach them and does not pretend
-// to: their transcripts are on those machines' disks, so there is nothing to
-// draw but the roster itself, and even that is a snapshot rather than a feed.
-function renderReach(roster) {
-  if (!roster) { el.reachHead.hidden = true; el.reach.replaceChildren(); return; }
+const SVG_NS = 'http://www.w3.org/2000/svg';
+function icon(d) {
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('class', 'ic');
+  svg.setAttribute('viewBox', '0 0 16 16');
+  svg.setAttribute('aria-hidden', 'true');
+  const path = document.createElementNS(SVG_NS, 'path');
+  path.setAttribute('d', d);
+  svg.append(path);
+  return svg;
+}
+const ICON = {
+  chevron: 'M6 4l4 4-4 4',
+  more: 'M3.5 8h.01M8 8h.01M12.5 8h.01',
+  machine: 'M3.5 3h9A1.5 1.5 0 0 1 14 4.5v5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 9.5v-5A1.5 1.5 0 0 1 3.5 3zM6 14h4M8 11v3',
+};
 
-  const remote = (roster.peers ?? []).filter((p) => p.remote);
-  if (!roster.measured || !remote.length) {
-    // A roster nobody has recorded is not "no peers". Say which it is.
-    el.reachHead.hidden = false;
-    el.reachMeta.textContent = roster.measured ? '0' : 'not measured';
-    el.reachMeta.className = 'meta warn';
-    renderNote(el.reach, {
-      kind: roster.measured ? '' : 'unmeasured',
-      title: roster.measured ? 'None reachable' : 'Not measured',
-      body: roster.measured
-        ? 'A connected session looked and found no machines besides this one.'
-        : 'No session here has recorded a peer list yet.',
-      why: roster.measured ? null : roster.reason,
+/** A status dot. No tone is the hollow ring: something over, or something nobody has a colour for. */
+function dot(tone) {
+  const d = node('span', 'dot');
+  d.dataset.tone = tone ?? 'none';
+  return d;
+}
+
+/** `text` with the part that matches the search marked. */
+function marked(text, cls) {
+  const span = node('span', cls);
+  for (const part of highlight(text, filterText)) {
+    span.append(part.hit ? node('mark', null, part.text) : document.createTextNode(part.text));
+  }
+  return span;
+}
+
+/* A short line that says something happened and goes away. Not a dialog: it
+   takes no focus and needs no answer. */
+let toastTimer = null;
+function toast(text) {
+  el.toast.textContent = text;
+  el.toast.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.toast.hidden = true; }, 3200);
+}
+
+async function copyText(text, said) {
+  try {
+    await navigator.clipboard.writeText(text);
+    toast(said);
+  } catch {
+    // A page without clipboard access still has to hand the text over.
+    toast(`Could not copy — ${text}`);
+  }
+}
+
+/* What the viewer changed about the list, kept in this browser. A label is a
+   name for a row here; the transcript is not touched. */
+function stored(key, fallback) {
+  try { return JSON.parse(store.get(key) ?? 'null') ?? fallback; } catch { return fallback; }
+}
+const labels = {
+  map: stored('crewforth-studio-labels', {}),
+  all() { return this.map; },
+  set(id, text) {
+    if (text) this.map[id] = text; else delete this.map[id];
+    store.set('crewforth-studio-labels', JSON.stringify(this.map));
+  },
+};
+const hiddenIds = new Set(stored('crewforth-studio-hidden', []));
+function setHidden(id, hidden) {
+  if (hidden) hiddenIds.add(id); else hiddenIds.delete(id);
+  store.set('crewforth-studio-hidden', JSON.stringify([...hiddenIds]));
+}
+
+/* ----------------------------------------------------------------- tabs */
+
+const TABS = { projects: el.sessions, live: el.fleet, machines: el.reach };
+let navTab = 'projects';
+
+function setTab(tab) {
+  navTab = tab in TABS ? tab : 'projects';
+  for (const [name, panel] of Object.entries(TABS)) panel.hidden = name !== navTab;
+  for (const b of document.querySelectorAll('[data-tab]')) {
+    b.setAttribute('aria-selected', String(b.dataset.tab === navTab));
+  }
+  for (const b of document.querySelectorAll('[data-rail-tab]')) {
+    b.classList.toggle('on', b.dataset.railTab === navTab);
+  }
+  // The short list of other machines belongs under the projects; on its own
+  // tab it would be saying the same thing twice.
+  paintOtherMachines();
+  store.set('crewforth-studio-nav-tab', navTab);
+}
+
+for (const b of document.querySelectorAll('[data-tab]')) b.addEventListener('click', () => setTab(b.dataset.tab));
+// On the rail a tab is also the way back in: it opens the navigator on that tab.
+for (const b of document.querySelectorAll('[data-rail-tab]')) {
+  b.addEventListener('click', () => { setTab(b.dataset.railTab); setSideHidden(false); });
+}
+
+/* ----------------------------------------------------------------- menu
+   The few things a session row can do besides being opened. A menu, not a
+   dialog: it closes on the next click anywhere and on Esc. */
+
+function closeMenu() { el.menu.hidden = true; el.menu.replaceChildren(); }
+
+function openMenu(anchor, items) {
+  el.menu.replaceChildren(...items.map((it) => {
+    if (it.note) return node('div', 'menu-note', it.note);
+    const b = node('button', `menu-item${it.primary ? ' primary' : ''}`);
+    b.type = 'button';
+    if ('tone' in it) b.append(dot(it.tone));
+    b.append(document.createTextNode(it.label));
+    if (it.checked !== undefined) {
+      b.setAttribute('role', 'menuitemcheckbox');
+      b.setAttribute('aria-checked', String(it.checked));
+    } else {
+      b.setAttribute('role', 'menuitem');
+    }
+    b.addEventListener('click', (e) => { e.stopPropagation(); closeMenu(); it.run(); });
+    return b;
+  }));
+  const r = anchor.getBoundingClientRect();
+  el.menu.hidden = false;
+  el.menu.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - 280))}px`;
+  el.menu.style.top = `${Math.min(r.bottom + 4, window.innerHeight - 8 - el.menu.offsetHeight)}px`;
+  el.menu.querySelector('button')?.focus();
+}
+
+document.addEventListener('click', (e) => { if (!el.menu.hidden && !el.menu.contains(e.target)) closeMenu(); });
+
+/** Hand a session to a real terminal. The command is shown first and runs only on the second click. */
+async function offerTerminal(anchor, sessionId) {
+  let plan = null;
+  try {
+    plan = (await getJson(`/api/session/${encodeURIComponent(sessionId)}/terminal`)).plan;
+  } catch (e) {
+    toast(`Could not read the terminal command — ${e.message}`);
+    return;
+  }
+  if (!plan) { toast('Not measured — this session recorded no working directory to open a terminal in.'); return; }
+  openMenu(anchor, [
+    { note: `This will run in ${plan.via ?? 'a terminal'}:` },
+    { note: plan.line },
+    {
+      label: 'Open terminal',
+      primary: true,
+      run: async () => {
+        try {
+          const r = await fetch(api(`/api/session/${encodeURIComponent(sessionId)}/terminal`), {
+            method: 'POST', headers: { ...writeHeaders, 'content-type': 'application/json' }, body: '{}',
+          });
+          const out = await r.json();
+          toast(out.ok ? `Opened in ${plan.via ?? 'a terminal'}` : `Could not open a terminal — ${out.reason ?? 'no reason given'}`);
+        } catch (e) {
+          toast(`Could not open a terminal — ${e.message}`);
+        }
+      },
+    },
+    { label: 'Cancel', run: () => {} },
+  ]);
+}
+
+/* ------------------------------------------------------------- projects */
+
+let projectsData = null;
+let fleetData = null;
+let expanded = new Set();
+let filterText = '';
+let showMissing = false;
+let showHidden = false;
+let renaming = null;          // the session whose name is being typed
+
+el.filter.addEventListener('input', () => {
+  filterText = el.filter.value.trim().toLowerCase();
+  paintProjects();
+  paintLive();
+});
+
+function findSessionRow(sessionId) {
+  for (const project of projectsData?.projects ?? []) {
+    const session = project.sessions.find((x) => x.sessionId === sessionId);
+    if (session) return { project, session };
+  }
+  return null;
+}
+
+function renderSessions(data) {
+  if (!data.measured) {
+    renderNote(el.sessions, {
+      kind: 'unmeasured',
+      title: 'No transcripts here',
+      body: 'Nothing was read.',
+      why: data.reason,
     });
     return;
   }
-
-  el.reachHead.hidden = false;
-  const when = new Date(roster.seenAt).toLocaleTimeString();
-  el.reachMeta.textContent = `${remote.length} · seen ${when}`;
-  el.reachMeta.className = 'meta';
-  el.reachMeta.title =
-    `Recorded by session ${String(roster.seenBy).slice(0, 8)} at ${when}. `
-    + 'Only a session connected to Remote Control can see these, so this is what one last reported — not a live feed.';
-
-  el.reach.replaceChildren(...remote.map((p) => {
-    const row = node('div', 'session reach-row');
-    const ring = node('span', 'ring');
-    ring.dataset.status = p.status === 'running' ? 'busy' : (p.status === 'offline' ? 'unknown' : 'idle');
-    ring.title = p.status ?? '';
-
-    const who = node('div', 'who');
-    const nm = node('div', 'name');
-    nm.append(document.createTextNode(p.name));
-    nm.append(node('span', 'origin', 'remote'));
-    who.append(nm);
-    who.append(node('div', 'path', p.note || p.kind || ''));
-
-    const stat = node('div', 'stat');
-    stat.append(node('span', 'status', p.status ?? '?'));
-    row.append(ring, who, stat);
-    // There is nothing to open: the transcript is on that machine.
-    row.title = `${p.name} [${p.ref}] — on another machine. Its transcript lives there, so the panel can list it but not draw it.`;
-    return row;
-  }));
+  projectsData = data;
+  // The project you are standing in starts open; the rest stay folded, or a
+  // machine with 175 projects buries the one you are working in.
+  if (!expanded.size) {
+    const cur = data.projects.find((p) => p.current) ?? data.projects[0];
+    if (cur) expanded.add(cur.key);
+  }
+  paintProjects();
+  paintCrumb();
 }
 
+function versionBadge(kit) {
+  const b = badgeFor(kit);
+  const tag = node(b.copy ? 'button' : 'span', `badge badge-${b.tone}`, b.text);
+  tag.title = b.title;
+  if (b.copy) {
+    tag.type = 'button';
+    tag.addEventListener('click', (e) => { e.stopPropagation(); copyText(b.copy, `Copied: ${b.copy}`); });
+  }
+  return tag;
+}
+
+function sessionRow(project, sn) {
+  const status = sessionStatus(sn.sessionId, fleetData);
+  const name = sessionName(sn, labels.all());
+  const row = node('div', 'srow');
+  row.dataset.id = sn.sessionId;
+  row.tabIndex = 0;
+  row.setAttribute('role', 'treeitem');
+  row.setAttribute('aria-current', String(sn.sessionId === current));
+  if (ownedIds.has(sn.sessionId)) row.classList.add('owned');
+
+  const top = node('span', 'srow-top');
+  const d = dot(status.tone);
+  // The word travels with the colour; where there is no status to give, say why.
+  d.title = status.key === 'unmeasured' ? 'Status not measured — the session list could not be read' : (status.word ?? '');
+  top.append(d);
+
+  if (renaming === sn.sessionId) {
+    const input = node('input', 'srow-rename');
+    input.value = name;
+    input.setAttribute('aria-label', `Rename ${name}`);
+    const done = (save) => {
+      if (renaming !== sn.sessionId) return;
+      renaming = null;
+      if (save) labels.set(sn.sessionId, input.value.trim() === (sn.title ?? '') ? '' : input.value.trim());
+      paintProjects();
+      paintCrumb();
+    };
+    input.addEventListener('click', (e) => e.stopPropagation());
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') done(true);
+      if (e.key === 'Escape') done(false);
+    });
+    input.addEventListener('blur', () => done(true));
+    top.append(input);
+    queueMicrotask(() => { input.focus(); input.select(); });
+  } else {
+    top.append(marked(name, 'nm'));
+  }
+  top.append(node('span', 'row-fill'));
+  top.append(node('span', 'sub', ago(sn.modifiedAt, Date.now())));
+
+  const more = node('button', 'row-more');
+  more.type = 'button';
+  more.setAttribute('aria-label', `More for ${name}`);
+  more.setAttribute('aria-haspopup', 'menu');
+  more.append(icon(ICON.more));
+  more.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openMenu(more, [
+      { label: 'Rename', run: () => { renaming = sn.sessionId; paintProjects(); } },
+      { label: 'Copy session id', run: () => copyText(sn.sessionId, 'Copied the session id') },
+      { label: 'Open in terminal', run: () => offerTerminal(more, sn.sessionId) },
+      hiddenIds.has(sn.sessionId)
+        ? { label: 'Show in list', run: () => { setHidden(sn.sessionId, false); paintProjects(); } }
+        : { label: 'Hide from list', run: () => { setHidden(sn.sessionId, true); paintProjects(); } },
+    ]);
+  });
+  top.append(more);
+  row.append(top);
+  // The same menu from a right click, where a menu for a row is expected to be.
+  row.addEventListener('contextmenu', (e) => { e.preventDefault(); more.click(); });
+
+  const subText = sessionSub(sn, status) + (ownedIds.has(sn.sessionId) ? ' · started here' : '');
+  if (subText) row.append(marked(subText, 'sub srow-sub'));
+
+  row.title = `${sn.sessionId}${sn.title ? `\n${sn.title}` : ''}`;
+  const open = () => selectSession(sn.sessionId);
+  row.addEventListener('click', open);
+  row.addEventListener('keydown', (e) => {
+    if (e.target !== row) return;
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+  });
+  return row;
+}
+
+function paintProjects() {
+  const data = projectsData;
+  if (!data || renaming && document.activeElement?.classList?.contains('srow-rename')) return;
+
+  // Typing a search is an explicit request, so it looks everywhere — including
+  // the projects whose directories are gone. Hiding a result someone asked for
+  // by name is worse than showing a dead path.
+  const pool = (showMissing || filterText) ? data.projects : data.projects.filter((p) => p.exists);
+  const missing = data.projects.length - pool.length;
+
+  const frag = document.createDocumentFragment();
+  let shown = 0;
+  let hiddenCount = 0;
+
+  for (const p of pool) {
+    const projectHit = filterText && p.label.toLowerCase().includes(filterText);
+    const sessions = p.sessions.filter((sn) => {
+      if (hiddenIds.has(sn.sessionId) && !showHidden) { hiddenCount += 1; return false; }
+      return !filterText || projectHit || matchesSession(filterText, p, sn, labels.all());
+    });
+    if (filterText && !projectHit && !sessions.length) continue;
+    shown += 1;
+
+    const open = expanded.has(p.key) || Boolean(filterText);
+    const group = node('div', 'proj');
+    const head = node('div', `proj-head${p.current ? ' current' : ''}${p.exists ? '' : ' gone'}`);
+    head.tabIndex = 0;
+    head.setAttribute('role', 'treeitem');
+    head.setAttribute('aria-expanded', String(open));
+    head.dataset.project = p.key;
+    const caret = icon(ICON.chevron);
+    caret.classList.add('proj-caret');
+    head.append(caret, marked(p.label, 'proj-name'));
+    // Where a project lives is part of its identity once more than one machine
+    // is in view.
+    if (p.origin && p.local === false) head.append(node('span', 'origin', p.origin));
+    head.append(node('span', 'row-fill'), versionBadge(p.kit));
+    head.title = (p.cwd ?? p.dir) + (p.exists ? '' : ' — directory no longer exists');
+    const toggle = () => {
+      if (expanded.has(p.key)) expanded.delete(p.key); else expanded.add(p.key);
+      paintProjects();
+    };
+    head.addEventListener('click', toggle);
+    head.addEventListener('keydown', (e) => {
+      if (e.target !== head) return;
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+    });
+    group.append(head);
+
+    if (open) {
+      for (const sn of sessions) group.append(sessionRow(p, sn));
+      if (p.total > p.sessions.length) {
+        group.append(node('div', 'nav-line', `${p.total - p.sessions.length} older session(s) not listed`));
+      }
+    }
+    frag.append(group);
+  }
+
+  if (!shown) {
+    renderNote(el.sessions, filterText
+      ? { title: 'No match', body: `Nothing here is called “${filterText}”.` }
+      : { title: 'No projects', body: 'Measured — no transcript was found on this machine.' });
+    return;
+  }
+
+  for (const o of (data.origins ?? []).filter((x) => x.ok === false)) {
+    frag.append(node('div', 'nav-line bad', `${o.name} unreachable — ${o.reason}`));
+  }
+  const lineWith = (text, label, run) => {
+    const line = node('div', 'nav-line');
+    line.append(node('span', null, text));
+    const b = node('button', 'link', label);
+    b.type = 'button';
+    b.addEventListener('click', run);
+    line.append(b);
+    return line;
+  };
+  if (hiddenIds.size && !filterText) {
+    frag.append(lineWith(
+      showHidden ? `${hiddenIds.size} hidden session(s) shown` : `${hiddenCount} session(s) hidden from this list`,
+      showHidden ? 'hide' : 'show',
+      () => { showHidden = !showHidden; paintProjects(); },
+    ));
+  }
+  if (missing > 0 && !filterText) {
+    frag.append(lineWith(
+      `${missing} project(s) hidden — their directories no longer exist`, 'show',
+      () => { showMissing = true; paintProjects(); },
+    ));
+  } else if (showMissing && !filterText) {
+    frag.append(lineWith('Showing projects whose directories no longer exist', 'hide',
+      () => { showMissing = false; paintProjects(); }));
+  }
+  el.sessions.replaceChildren(frag);
+
+  if (!current) {
+    const cur = data.projects.find((x) => x.current) ?? data.projects[0];
+    const best = cur?.sessions.find((x) => x.agentCount > 0) ?? cur?.sessions[0];
+    if (best) selectSession(best.sessionId);
+  }
+}
+
+/* ------------------------------------------------------- live and machines */
+
 function renderFleet(data) {
+  fleetData = data;
+  paintLive();
+  paintMachines();
+  // A session's dot comes from this answer, so the project list follows it.
+  paintProjects();
+}
+
+function paintLive() {
+  const data = fleetData;
+  if (!data) return;
+
   if (!data.measured) {
-    el.fleetMeta.textContent = 'not measured';
+    el.liveCount.hidden = false;
+    el.liveCount.textContent = '?';
+    el.liveCount.title = 'Not measured';
     renderNote(el.fleet, {
       kind: 'unmeasured',
       title: 'Not measured',
@@ -757,65 +1078,221 @@ function renderFleet(data) {
     return;
   }
 
-  const sessions = data.sessions ?? [];
-  const origins = data.origins ?? [];
-  const down = origins.filter((o) => o.ok === false);
-  el.fleetMeta.textContent = origins.length > 1
-    ? `${sessions.length} · ${origins.length - down.length}/${origins.length} machines`
-    : `${sessions.length}`;
-  el.fleetMeta.className = down.length ? 'meta warn' : 'meta';
-  el.fleetMeta.title = origins
-    .map((o) => `${o.name}${o.local ? ' (this machine)' : ''}: ${o.ok === false ? `unreachable — ${o.reason}` : 'ok'}`)
-    .join('\n');
+  const live = liveSessions(data);
+  el.liveCount.hidden = live.length === 0;
+  el.liveCount.textContent = String(live.length);
+  el.liveCount.title = `${live.length} working or waiting`;
 
-  if (!sessions.length) {
-    renderNote(el.fleet, { title: 'No sessions running', body: 'Measured — the machine has none open.' });
+  const rows = live.filter((s) => !filterText
+    || [s.name, s.cwd, s.sessionId, s.origin].some((v) => typeof v === 'string' && v.toLowerCase().includes(filterText)));
+
+  if (!live.length) {
+    const open = (data.sessions ?? []).length;
+    renderNote(el.fleet, {
+      title: 'No sessions running',
+      body: open
+        ? `Measured — ${open} open on this machine, none of them working or waiting.`
+        : 'Measured — the machine has none open.',
+    });
+    return;
+  }
+  if (!rows.length) {
+    renderNote(el.fleet, { title: 'No match', body: `No live session is called “${filterText}”.` });
     return;
   }
 
-  const order = { busy: 0, waiting: 1, idle: 2 };
-  sessions.sort((a, b) => (order[a.status] ?? 3) - (order[b.status] ?? 3));
+  el.fleet.replaceChildren(...rows.map((s) => {
+    const status = sessionStatus(s.sessionId, { measured: true, sessions: [{ ...s, local: true }] });
+    const known = findSessionRow(s.sessionId);
+    const name = known ? sessionName(known.session, labels.all()) : (s.name || s.sessionId.slice(0, 8));
+    const row = node('div', 'srow');
+    const top = node('span', 'srow-top');
+    top.append(dot(status.tone), marked(name, 'nm'));
+    if (s.origin && s.local === false) top.append(node('span', 'origin', s.origin));
+    top.append(node('span', 'row-fill'), node('span', 'sub', ago(s.startedAt, Date.now())));
+    row.append(top);
+    const where = known?.project.label ?? shortPath(s.cwd);
+    const said = status.key === 'waiting' && s.waitingFor ? `Needs you · ${s.waitingFor}` : (status.word ?? s.status);
+    row.append(marked([where, said].filter(Boolean).join(' · '), 'sub srow-sub'));
 
-  el.fleet.replaceChildren(...sessions.map((s) => {
-    const row = node('div', 'session fleet-row');
-    const ring = node('span', 'ring');
-    ring.dataset.status = ['busy', 'waiting', 'idle'].includes(s.status) ? s.status : 'unknown';
-    ring.title = s.status;
-
-    const who = node('div', 'who');
-    const nm = node('div', 'name');
-    nm.append(document.createTextNode(s.name || s.sessionId.slice(0, 8)));
-    if (s.origin && s.local === false) nm.append(node('span', 'origin', s.origin));
-    who.append(nm);
-    who.append(node('div', 'path', shortPath(s.cwd) || '—'));
-    if (s.waitingFor) who.append(node('div', 'waiting-for', `⏸ ${s.waitingFor}`));
-
-    const stat = node('div', 'stat');
-    stat.append(node('span', 'status', s.status));
-    row.append(ring, who, stat);
-
-    // A live session in the fleet is the one most likely to be wanted, so
-    // clicking it does what clicking it anywhere else does: opens it.
     if (s.local !== false && s.sessionId) {
-      row.classList.add('clickable');
+      row.tabIndex = 0;
+      row.dataset.id = s.sessionId;
       row.setAttribute('aria-current', String(s.sessionId === current));
-      row.title = `Open ${s.name ?? s.sessionId.slice(0, 8)}`;
-      row.addEventListener('click', () => selectSession(s.sessionId));
+      row.title = `Open ${name}`;
+      const open = () => selectSession(s.sessionId);
+      row.addEventListener('click', open);
+      row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
     } else {
       // A session on another machine has no transcript here to open.
-      row.title = `${s.name ?? ''} — on ${s.origin}. Its transcript is on that machine.`;
+      row.classList.add('remote');
+      row.title = `${name} — on ${s.origin}. Its transcript is on that machine.`;
     }
     return row;
   }));
+}
+
+function machineRow(m) {
+  const row = node('div', 'srow remote');
+  const top = node('span', 'srow-top');
+  top.append(icon(ICON.machine), node('span', 'mname', m.name), node('span', 'row-fill'));
+  if (m.kind === 'snapshot') {
+    // Recorded by a session, not asked just now: the label says which.
+    top.append(node('span', 'badge', 'snapshot'));
+    row.append(top);
+    const seen = seenAgo(m.seenAt, Date.now());
+    row.append(node('div', 'sub srow-sub', [m.status, m.note, seen].filter(Boolean).join(' · ')));
+    row.title = `${m.name} — on another machine. Its transcript lives there, so the panel can list it but not draw it.`;
+  } else {
+    top.append(node('span', 'badge', 'peer'));
+    row.append(top);
+    const sub = node('div', `sub srow-sub${m.ok ? '' : ' bad'}`,
+      m.ok ? `${m.sessions ?? 0} session(s) · asked just now` : `unreachable — ${m.reason ?? 'no reason given'}`);
+    row.append(sub);
+  }
+  return row;
+}
+
+function paintMachines() {
+  const m = machines(fleetData);
+  const self = (fleetData?.origins ?? []).find((o) => o.local);
+  const frag = document.createDocumentFragment();
+
+  if (self) {
+    const row = node('div', 'srow remote');
+    const top = node('span', 'srow-top');
+    top.append(icon(ICON.machine), node('span', 'mname', self.name), node('span', 'row-fill'), node('span', 'badge', 'this machine'));
+    row.append(top);
+    frag.append(row);
+  }
+  for (const p of m.peers) frag.append(machineRow(p));
+  for (const r of m.remote) frag.append(machineRow(r));
+
+  if (!m.remote.length) {
+    // A roster nobody has recorded is not "no other machines". Say which it is.
+    const note = node('div', 'nav-note');
+    renderNote(note, {
+      kind: m.rosterMeasured ? '' : 'unmeasured',
+      title: m.rosterMeasured ? 'None reachable' : 'Not measured',
+      body: m.rosterMeasured
+        ? 'A connected session looked and found no machines besides this one.'
+        : 'No session here has recorded a list of other machines yet.',
+      why: m.rosterMeasured ? null : m.rosterReason,
+    });
+    frag.append(note);
+  }
+  el.reach.replaceChildren(frag);
+  paintOtherMachines();
+}
+
+/** The short form under the project list: the first two, and the way to the rest. */
+function paintOtherMachines() {
+  const m = machines(fleetData);
+  const others = [...m.peers, ...m.remote];
+  el.otherMachines.hidden = navTab !== 'projects' || others.length === 0;
+  if (el.otherMachines.hidden) return;
+  const label = node('button', 'nav-foot-label', 'Other machines');
+  label.type = 'button';
+  label.addEventListener('click', () => setTab('machines'));
+  const rows = others.slice(0, 2).map(machineRow);
+  const more = others.length > 2 ? [node('div', 'nav-line', `${others.length - 2} more in Machines`)] : [];
+  el.otherMachines.replaceChildren(label, ...rows, ...more);
 }
 
 /* ------------------------------------------------------------- sessions */
 
 let current = null;
 let source = null;
+let statusFilter = null;
+let lastStats = null;
+
+/** The breadcrumb: which project, which session. The project is the way back to its list. */
+function paintCrumb() {
+  const found = current ? findSessionRow(current) : null;
+  if (!found) { el.crumb.replaceChildren(); return; }
+  const proj = node('button', 'crumb-project', found.project.label);
+  proj.type = 'button';
+  proj.title = `Show ${found.project.label} in the navigator`;
+  proj.addEventListener('click', () => showProject(found.project.key));
+  const sep = icon(ICON.chevron);
+  sep.classList.add('crumb-sep');
+  const name = node('span', 'crumb-session', sessionName(found.session, labels.all()));
+  // The branch is on the session's row and on its card; here it is one hover away.
+  name.title = found.session.branch ? `on ${found.session.branch}` : '';
+  el.crumb.replaceChildren(proj, sep, name);
+  fitBar();
+}
+
+function showProject(key) {
+  el.filter.value = '';
+  filterText = '';
+  expanded.add(key);
+  setTab('projects');
+  setSideHidden(false);
+  paintProjects();
+  el.sessions.querySelector(`[data-project="${CSS.escape(key)}"]`)?.scrollIntoView({ block: 'nearest' });
+}
+
+/** The summary: one chip per status, each a filter on the canvas. Clicking the lit one puts everything back. */
+function paintSummary(stats, extra = []) {
+  lastStats = stats;
+  const chips = summaryChips(stats?.byStatus);
+  // A filter on a status nothing has any more would hide every agent with no chip left to undo it.
+  if (statusFilter && !chips.some((c) => c.status === statusFilter)) setStatusFilter(null, false);
+  const toggle = (c) => setStatusFilter(statusFilter === c.status ? null : c.status);
+  const full = chips.map((c) => {
+    const b = node('button', 'pill chip');
+    b.type = 'button';
+    b.setAttribute('aria-pressed', String(statusFilter === c.status));
+    b.title = statusFilter === c.status ? 'Show every agent' : `Show only ${c.text.replace(/^\d+ /, '')}`;
+    b.append(dot(c.tone), document.createTextNode(c.text));
+    b.addEventListener('click', () => toggle(c));
+    return b;
+  });
+
+  // The same chips as one: dots and counts, for a bar too narrow to spell them
+  // out. The words are in its label and in the menu it opens, where each line
+  // is the same filter the full chip is.
+  const compact = [];
+  if (chips.length) {
+    const words = [...chips.map((c) => c.text), ...extra].join(', ');
+    const b = node('button', 'pill chip chip-compact');
+    b.type = 'button';
+    b.setAttribute('aria-label', `Session summary: ${words}. Open details`);
+    b.setAttribute('aria-haspopup', 'menu');
+    b.setAttribute('aria-pressed', String(Boolean(statusFilter)));
+    b.title = words;
+    for (const c of chips) b.append(dot(c.tone), document.createTextNode(String(c.count)));
+    b.append(icon('M4 6l4 4 4-4'));
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openMenu(b, [
+        ...chips.map((c) => ({ label: c.text, tone: c.tone, checked: statusFilter === c.status, run: () => toggle(c) })),
+        ...extra.map((t) => ({ note: t })),
+      ]);
+    });
+    compact.push(b);
+  }
+  el.summary.replaceChildren(...full, ...extra.map((t) => node('span', 'pill note-pill', t)), ...compact);
+  fitBar();
+}
+
+/** Spell the summary out while it fits; fold it into one chip the moment the bar would overflow. Measured, not
+ *  guessed from the window's width: how much room the chips need depends on how many statuses are in play. */
+function fitBar() {
+  delete el.bar.dataset.compact;
+  if (el.bar.scrollWidth > el.bar.clientWidth) el.bar.dataset.compact = 'true';
+}
+window.addEventListener('resize', fitBar);
+
+function setStatusFilter(status, repaint = true) {
+  statusFilter = status;
+  canvas.setFilter(status);
+  if (repaint) paintSummary(lastStats, lastStats?.malformed ? [`${lastStats.malformed} malformed`] : []);
+}
 
 // Selecting a session points the graph at it. It does NOT open the
-// conversation: the sidebar is for choosing what to look at, and having a
+// conversation: the navigator is for choosing what to look at, and having a
 // reading panel appear on every click there made choosing expensive. The
 // conversation is opened from the session node on the canvas, which is the
 // thing that represents it.
@@ -823,11 +1300,19 @@ function selectSession(sessionId) {
   if (current === sessionId) return;
   current = sessionId;
   canvas.setSession(sessionId);
+  statusFilter = null;
+  canvas.setFilter(null);
   showInspector(null);
 
-  for (const r of el.sessions.querySelectorAll('.srow')) {
+  // The session being looked at is never inside a folded project: the row that
+  // says "you are here" has to be on screen.
+  const home = findSessionRow(sessionId);
+  if (home && !expanded.has(home.project.key)) { expanded.add(home.project.key); paintProjects(); }
+  for (const r of document.querySelectorAll('.srow[data-id]')) {
     r.setAttribute('aria-current', String(r.dataset.id === sessionId));
   }
+  paintCrumb();
+  paintSummary(null);
   // A new session means the cached agent reports belong to someone else.
   detailCache.clear();
 
@@ -844,6 +1329,7 @@ function selectSession(sessionId) {
   source = new EventSource(api(`/api/stream?session=${encodeURIComponent(sessionId)}`));
 
   source.addEventListener('graph', (e) => {
+    heardNow();
     const g = JSON.parse(e.data);
     canvas.render(g);
     // The inspector holds a node object from an earlier frame; refresh it so
@@ -857,27 +1343,22 @@ function selectSession(sessionId) {
         if (changed && fresh.kind === 'agent') loadDetail(fresh.id, fresh.status);
       }
     }
-    const s = g.stats ?? {};
-    // Every status is named, so the parts add up to the total. A summary that
+    // Every status is named, so the chips add up to the total. A summary that
     // reports "250 agents · 7 done" and stops invites the reader to assume the
-    // other 243 failed.
-    const parts = [`${s.agents ?? 0} agents`];
-    if (s.workflows) parts.push(`${s.workflows} workflows`);
-    for (const [k, v] of Object.entries(s.byStatus ?? {})) if (v) parts.push(`${v} ${k}`);
-    if (g.contextTokens != null) parts.push(`${(g.contextTokens / 1000).toFixed(0)}k ctx`);
-    if (s.malformed) parts.push(`${s.malformed} malformed`);
-    el.summary.textContent = parts.join(' · ');
-    setPulse('on', 'live');
-    el.foot.textContent = `graph updated ${new Date().toLocaleTimeString()}`;
+    // other 243 failed. A count of records that could not be read stays beside
+    // them: it is not a status, and it is not nothing.
+    const s = g.stats ?? {};
+    paintSummary(s, s.malformed ? [`${s.malformed} malformed`] : []);
+    el.foot.textContent = '';
   });
 
-  source.addEventListener('idle', () => setPulse('on', 'live'));
+  source.addEventListener('idle', heardNow);
 
   source.addEventListener('waiting', (e) => {
+    heardNow();
     let reason = '';
     try { reason = JSON.parse(e.data).reason ?? ''; } catch { /* keep default */ }
-    setPulse('on', 'waiting');
-    el.summary.textContent = 'no agents yet';
+    paintSummary(null);
     el.foot.textContent = reason;
     canvas.render({ nodes: [], edges: [] });
   });
@@ -888,206 +1369,81 @@ function selectSession(sessionId) {
   source.addEventListener('fault', (e) => {
     let reason = 'unknown';
     try { reason = JSON.parse(e.data).reason ?? reason; } catch { /* keep default */ }
-    setPulse('off', 'fault');
     el.foot.textContent = `stream fault: ${reason}`;
     source.close();
     source = null;
   });
 
+  // A dropped stream reconnects by itself, and the two polls say within two
+  // seconds whether the server is gone. So this only names what happened; it
+  // does not decide Offline.
   source.onerror = () => {
     if (!source) return;               // already closed by a fault
-    setPulse('off', 'reconnecting');
     el.foot.textContent = 'stream dropped — reconnecting';
   };
 }
 
-function setPulse(cls, text) {
-  el.pulse.className = `pulse ${cls}`;
-  el.pulse.textContent = text;
+/* ------------------------------------------------------- live indicator */
+
+const pulse = {
+  dot: el.pulse.querySelector('.dot'),
+  word: el.pulse.querySelector('strong'),
+  detail: el.pulse.querySelector('.live-detail'),
+};
+function paintPulse() {
+  const l = liveness(Date.now(), heard.okAt, heard.failed);
+  el.pulse.dataset.state = l.state;
+  pulse.dot.dataset.tone = l.tone ?? 'none';
+  pulse.word.textContent = l.word;
+  pulse.detail.textContent = l.detail ? `· ${l.detail}` : '';
 }
+paintPulse();
+setInterval(paintPulse, 1000);
 
-let projectsData = null;
-let expanded = new Set();
-let filterText = '';
-let showMissing = false;
+/* -------------------------------------------------------------- home, keys */
 
-el.filter.addEventListener('input', () => {
-  filterText = el.filter.value.trim().toLowerCase();
+// The mark goes back to where the panel opens: the session that moved last.
+el.home.addEventListener('click', (e) => {
+  e.preventDefault();
+  let latest = null;
+  for (const p of projectsData?.projects ?? []) {
+    for (const sn of p.sessions) if (!latest || sn.modifiedAt > latest.sn.modifiedAt) latest = { p, sn };
+  }
+  setTab('projects');
+  if (!latest) return;
+  expanded.add(latest.p.key);
   paintProjects();
+  selectSession(latest.sn.sessionId);
 });
 
-function fmtSize(bytes) {
-  if (bytes < 1024) return `${bytes}B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
-}
-
-function renderSessions(data) {
-  if (!data.measured) {
-    el.sessionsMeta.textContent = 'not measured';
-    renderNote(el.sessions, {
-      kind: 'unmeasured',
-      title: 'No transcripts here',
-      body: 'Nothing was read.',
-      why: data.reason,
-    });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (!el.menu.hidden) { closeMenu(); return; }
+    if (document.activeElement === el.filter && el.filter.value) {
+      el.filter.value = ''; filterText = ''; paintProjects(); paintLive();
+    }
     return;
   }
-  projectsData = data;
-  const t0 = data.totals ?? {};
-  if (t0.kitInstalled) {
-    const bits = [`Crewforth in ${t0.kitInstalled}`];
-    if (t0.kitOutdated) bits.push(`${t0.kitOutdated} behind ${data.latest?.version ?? '?'}`);
-    if (t0.kitUncompared) bits.push(`${t0.kitUncompared} not compared`);
-    el.kit.textContent = bits.join(' · ');
-    el.kit.className = `kitline${t0.kitOutdated ? ' warn' : ''}`;
-  } else {
-    el.kit.textContent = '';
+  if (e.metaKey || e.ctrlKey) return;
+  const t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+  if (e.key === '/') {
+    e.preventDefault();
+    setSideHidden(false);
+    el.filter.focus();
+  } else if (e.key === '[') {
+    setSideHidden(true);
+  } else if (e.key === ']') {
+    setSideHidden(false);
   }
-  // The project you are standing in starts open; the rest stay folded, or a
-  // machine with 175 projects buries the one you are working in.
-  if (!expanded.size) {
-    const cur = data.projects.find((p) => p.current) ?? data.projects[0];
-    if (cur) expanded.add(cur.key);
-  }
-  paintProjects();
-}
-
-function paintProjects() {
-  const data = projectsData;
-  if (!data) return;
-
-  // Typing a filter is an explicit request, so it searches everything —
-  // including the projects whose directories are gone. Hiding a result someone
-  // asked for by name is worse than showing a dead path.
-  let projects = (showMissing || filterText) ? data.projects : data.projects.filter((p) => p.exists);
-  const hidden = data.projects.length - projects.length;
-
-  if (filterText) {
-    projects = projects.filter((p) =>
-      p.label.toLowerCase().includes(filterText) ||
-      (p.cwd ?? '').toLowerCase().includes(filterText) ||
-      (p.origin ?? '').toLowerCase().includes(filterText) ||
-      p.sessions.some((x) => (x.title ?? '').toLowerCase().includes(filterText)));
-  }
-
-  const t = data.totals ?? {};
-  el.sessionsMeta.textContent = filterText
-    ? `${projects.length}/${t.live ?? 0}`
-    : `${t.live ?? 0} · ${t.sessions ?? 0} sessions`;
-
-  if (!projects.length) {
-    renderNote(el.sessions, { title: 'Nothing matches', body: `No project matches “${filterText}”.` });
-    return;
-  }
-
-  const frag = document.createDocumentFragment();
-  for (const p of projects) {
-    const open = expanded.has(p.key) || Boolean(filterText);
-
-    const head = node('div', `pgroup${p.current ? ' current' : ''}`);
-    head.setAttribute('role', 'treeitem');
-    head.setAttribute('aria-expanded', String(open));
-    head.append(node('span', 'pcaret', open ? '▾' : '▸'));
-    const lbl = node('span', 'plabel');
-    lbl.append(document.createTextNode(p.label));
-    // Where a project lives is part of its identity once more than one machine
-    // is in view.
-    if (p.origin && p.local === false) lbl.append(node('span', 'origin', p.origin));
-    head.append(lbl);
-    const counts = node('span', 'pcount');
-    counts.append(node('span', null, String(p.total)));
-    if (p.agentTotal) counts.append(node('span', 'sbadge', `${p.agentTotal} ▸`));
-    head.append(counts);
-    // Kit version sits with the project, because that is the thing that is or
-    // is not up to date.
-    if (p.kit?.installed) {
-      const k = node('span', 'kitbadge');
-      if (p.kit.compared === false) {
-        k.classList.add('unknown');
-        k.textContent = `${p.kit.version} ?`;
-        k.title = `Crewforth ${p.kit.version} — not compared: ${p.kit.reason}`;
-      } else if (p.kit.outdated) {
-        k.classList.add('old');
-        k.textContent = `${p.kit.version} → ${p.kit.latest}`;
-        k.title = `Crewforth ${p.kit.version} is behind ${p.kit.latest} — run /crew-update in this project`;
-      } else if (p.kit.ahead) {
-        k.classList.add('ahead');
-        k.textContent = p.kit.version;
-        k.title = `Crewforth ${p.kit.version} is ahead of the published ${p.kit.latest}`;
-      } else {
-        k.classList.add('ok');
-        k.textContent = p.kit.version;
-        k.title = `Crewforth ${p.kit.version} — current`;
-      }
-      counts.prepend(k);
-    }
-    if (!p.exists) head.classList.add('gone');
-    head.title = (p.cwd ?? p.dir) + (p.exists ? '' : ' — directory no longer exists');
-    head.addEventListener('click', () => {
-      if (expanded.has(p.key)) expanded.delete(p.key); else expanded.add(p.key);
-      paintProjects();
-    });
-    frag.append(head);
-
-    if (!open) continue;
-
-    for (const sn of p.sessions) {
-      const row = node('div', 'srow');
-      row.dataset.id = sn.sessionId;
-      row.setAttribute('role', 'treeitem');
-      row.setAttribute('aria-current', String(sn.sessionId === current));
-      // The name people actually gave the session, with the id as the fallback
-      // it always was.
-      row.append(node('span', 'sname', sn.title || sn.sessionId.slice(0, 8)));
-      const right = node('span', 'sright');
-      if (sn.agentCount) right.append(node('span', 'sbadge', `${sn.agentCount} ▸`));
-      right.append(node('span', 'sagents', fmtSize(sn.bytes)));
-      row.append(right);
-      if (ownedIds.has(sn.sessionId)) row.classList.add('owned');
-      row.title = `${sn.sessionId}\n${sn.title ?? ''}`;
-      row.addEventListener('click', () => selectSession(sn.sessionId));
-      frag.append(row);
-    }
-
-    if (p.total > p.sessions.length) {
-      frag.append(node('div', 'ptrunc', `${p.total - p.sessions.length} older session(s) not listed`));
-    }
-  }
-  for (const o of (data.origins ?? []).filter((x) => x.ok === false)) {
-    const w = node('div', 'ptrunc pdown');
-    w.textContent = `${o.name} unreachable — ${o.reason}`;
-    frag.append(w);
-  }
-
-  if (hidden > 0 && !filterText) {
-    const t2 = node('div', 'ptrunc pmissing');
-    t2.textContent = showMissing
-      ? `hiding nothing — ${hidden} directory(ies) no longer exist`
-      : `${hidden} project(s) hidden — their directories no longer exist`;
-    const b = node('button', 'ghost', showMissing ? 'hide' : 'show');
-    b.addEventListener('click', () => { showMissing = !showMissing; paintProjects(); });
-    t2.append(b);
-    frag.append(t2);
-  }
-  el.sessions.replaceChildren(frag);
-
-  if (!current) {
-    const cur = data.projects.find((x) => x.current) ?? data.projects[0];
-    const best = cur?.sessions.find((x) => x.agentCount > 0) ?? cur?.sessions[0];
-    if (best) selectSession(best.sessionId);
-  }
-}
+});
 
 /* --------------------------------------------------------------- polling */
 
 async function pollFleet() {
   try {
-    const fleet = await getJson('/api/fleet');
-    renderFleet(fleet);
-    renderReach(fleet.roster);
+    renderFleet(await getJson('/api/fleet'));
   } catch (e) {
-    el.fleetMeta.textContent = 'offline';
     renderNote(el.fleet, { kind: 'unmeasured', title: 'Server unreachable', why: e.message });
   }
 }
@@ -1095,9 +1451,7 @@ async function pollFleet() {
 async function pollSessions() {
   try {
     renderSessions(await getJson('/api/projects'));
-  } catch (e) {
-    el.sessionsMeta.textContent = 'offline';
-  }
+  } catch { /* the Live indicator says so; the list keeps what it last showed */ }
 }
 
 // Sessions this panel owns survive a page reload as long as the server does.
@@ -1105,6 +1459,7 @@ getJson('/api/owned')
   .then((r) => { for (const sn of r.sessions ?? []) ownedIds.add(sn.sessionId); })
   .catch(() => { /* none yet */ });
 
+setTab(store.get('crewforth-studio-nav-tab') ?? 'projects');
 pollFleet(); pollSessions();
 setInterval(pollFleet, FLEET_POLL_MS);
 setInterval(pollSessions, SESSION_POLL_MS);
