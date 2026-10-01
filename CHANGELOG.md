@@ -5,6 +5,17 @@ Crewforth was named Claude Starter Kit until 3.0.0.
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Security
+
+- A recursive forced delete of `.` or `..` passed in both shells (`rm -rf .`, `rm -rf ..`,
+  `Remove-Item -Recurse -Force .`): the rule looked for `/`, `*` or `~` in the target, and these carry none. They are
+  stopped now, in any flag spelling, with `sudo`, and across a backslash line break.
+- In PowerShell a path was a target only when it began with a drive letter, a UNC prefix or `$HOME`:
+  `Remove-Item -Recurse -Force src\app` and `"$env:TEMP\x"` passed, while `rm -rf src/app` was stopped. A target
+  with a path separator is stopped now, and so is a recursive forced removal fed by a pipeline.
+
 ## [3.0.1] — 2026-10-01
 
 ### Security

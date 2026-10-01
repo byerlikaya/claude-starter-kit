@@ -702,6 +702,18 @@ case "$CMD" in *branch*) _HAS_BRANCH=1 ;; *) _HAS_BRANCH=0 ;; esac
 # `rm -rf /` was blocked. Same class as the chmod hole found in evals/permission-pressure: one spelling gated,
 # another reaching the identical state. Case, flag order and the long form are all the same command.
 case "$CMD" in *[Rr][Mm]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE 'rm +(-[A-Za-z]* +|--[a-z-]+ +)*(-[A-Za-z]*[rR][A-Za-z]*|--recursive)( +(-[A-Za-z]+|--[a-z-]+))* +.*(/|\*|~)' && block "destructive rm -rf" "4.5" loss
+# ADDED (3.1.0): `.` and `..` as a target carry none of those three characters and are the widest targets there are —
+# `rm -rf .` at a project root takes the whole tree, `..` its parent (both passed). Narrower than the test above on
+# purpose, so that it adds no noise: `rm` must stand at a command position, `sudo` or not (`git rm -r --cached .`, `npm rm`,
+# `docker run --rm` and a quoted "rm -r ." are not it), the dot must be an argument of its own in that rm's segment
+# (`.git`, `./x`, `a.` are not), and a `#` ends the look (a comment is not a target), and so does a line break (`rm -rf dist⏎npx tsc -p .`). A builtin match: no process.
+_RMNL=$'\n'
+_RMDOT='(^|[;&|({'"$_RMNL"'])[[:blank:]]*(sudo[[:blank:]]+)?rm[[:space:]]+(-[A-Za-z]*[[:space:]]+|--[a-z-]*[[:space:]]+)*(-[A-Za-z]*[rR][A-Za-z]*|--recursive)([[:space:]]+(-[A-Za-z]+|--[a-z-]*))*[[:blank:]]+([^;&|#'"$_RMNL"']*[[:blank:]])?["'"'"']?\.\.?["'"'"']?([[:space:];&|)}]|$)'
+case "$CMD" in *[Rr][Mm]*)
+  _rmc="$CMD"
+  # a backslash-newline continues the line (`rm -rf \⏎.`); folded only when one is there and the command is short
+  case "$CMD" in *\\"$_RMNL"*) [ "${#CMD}" -le 4096 ] && _rmc="${CMD//\\$_RMNL/ }" ;; esac
+  [[ $_rmc =~ $_RMDOT ]] && block "destructive rm -rf" "4.5" loss ;; esac
 # A whole-tree `git checkout -- .` / `git restore .` destroys every uncommitted change with no reflog and no
 # undo — the same loss as `reset --hard`, which has been gated since the beginning, by a command that was not.
 # Not hypothetical: a verification subagent ran exactly this over uncommitted work in this repo and took the
@@ -806,8 +818,43 @@ PS_RM='(remove-item|ri|rm|rmdir|rd|del|erase)'
 PS_RECURSE='-r(e(c(u(r(s(e)?)?)?)?)?)?([[:space:]]|$)'
 PS_FORCE='-f(o(r(c(e)?)?)?)?([[:space:]]|$)'
 # Recursive+forced removal aimed at a glob, a drive root, a UNC path, or $HOME — the shapes that take a tree out.
+# This line-wide test is the FLOOR and is kept exactly as it was: the markers are looked for anywhere on the line.
+# That over-blocks (one field command was stopped by an unrelated `Set-Location C:\…` AFTER the delete), and reading
+# the target from the removal's own statement instead was tried and measured: it opened 29 shapes this test stops —
+# a backtick or trailing-pipe line break, a `cd` through a variable, a splat, a function called with the path later.
+# A hook cannot tell "unrelated" from "arrives another way", so the floor stays and the refusal says how to go on.
 { case "$CMD" in *-[Rr]*) : ;; *) false ;; esac && has "(^|[^A-Za-z0-9_-])$PS_RM[[:space:]]" && has "$PS_RECURSE" && has "$PS_FORCE" \
   && has '(\*|[A-Za-z]:\\|\\\\|\$HOME|\$env:USERPROFILE|~)'; } \
+  && block "PowerShell recursive force delete (Remove-Item -Recurse -Force)" "4.5" loss
+# ADDED on top of the floor (3.1.0, field) — these can only stop more. Read from the removal's OWN statement, so an
+# everyday command elsewhere on the line does not trigger them:
+#   * a target with a path separator: `Remove-Item -Recurse -Force src\app` and `"$env:TEMP\x"` passed while POSIX
+#     `rm -rf src/app` was stopped;
+#   * `.` or `..` standing as an argument — the widest targets there are, and they carry no marker at all
+#     (`Remove-Item -Recurse -Force .` passed; it is the form this rule was first written for);
+#   * a removal fed by a pipeline: what the pipe delivers is its target.
+# A single bare name (`Remove-Item -Recurse -Force build`) and a variable stay a routine local delete, as with POSIX
+# `rm -rf build`. Statements are split on `;` and newline with `read` — linear, and no process: this runs on every
+# command that carries `-r`. A split that is wrong for some exotic line costs a miss here, never an opening: the
+# floor above has already had its say.
+PS_RM_RE='(^|[^A-Za-z0-9_-])(remove-item|ri|rm|rmdir|rd|del|erase)([[:space:]]|$)'
+PS_TGT_RE='([\\/]|(^|[[:space:]"'"'"'(,:])\.\.?(["'"'"'),]|[[:space:]]|$))'
+_ps_rm_tree(){  # $1 = command -> 0 when a recursive forced removal in it is aimed at a path, at . / .., or fed by a pipe
+  local ln st nc=0 rc=1
+  shopt -q nocasematch && nc=1; shopt -s nocasematch
+  if [[ $1 =~ $PS_RM_RE ]] && [[ $1 =~ $PS_RECURSE ]] && [[ $1 =~ $PS_FORCE ]]; then
+    while IFS= read -r ln || [ -n "$ln" ]; do
+      while IFS= read -r -d ';' st || [ -n "$st" ]; do
+        case "$st" in *-[Rr]*) ;; *) continue ;; esac
+        [[ $st =~ $PS_RM_RE ]] && [[ $st =~ $PS_RECURSE ]] && [[ $st =~ $PS_FORCE ]] || continue
+        if [[ $st =~ $PS_TGT_RE ]] || [[ $st =~ \|.*$PS_RM_RE ]]; then rc=0; break 2; fi
+      done <<< "$ln"
+    done <<< "$1"
+  fi
+  [ "$nc" = 0 ] && shopt -u nocasematch
+  return $rc
+}
+{ case "$CMD" in *-[Rr]*) : ;; *) false ;; esac && _ps_rm_tree "$CMD"; } \
   && block "PowerShell recursive force delete (Remove-Item -Recurse -Force)" "4.5" loss
 # Download-and-execute, the PowerShell shape of curl|bash: any fetcher piped into Invoke-Expression.
 case "$CMD" in *[Ii][Ee][Xx]*|*[Ii][Nn][Vv][Oo][Kk][Ee]-[Ee][Xx][Pp][Rr][Ee][Ss][Ss][Ii][Oo][Nn]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE '(invoke-webrequest|iwr|invoke-restmethod|irm|curl|wget)[^|]*\|[[:space:]]*(invoke-expression|iex)([[:space:]]|$)' \
