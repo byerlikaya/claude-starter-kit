@@ -218,6 +218,9 @@ _json_unescape(){  # left-to-right, a chunk at a time; a two-pass sed would corr
          # `?`, which is only ever a display concern because this value is used for MATCHING, never to write.
          case "$h" in
            00[2-7][0-9a-fA-F]) printf -v c "\\x${h#00}"; acc+=("$c") ;;
+           # The three dashes PowerShell accepts in front of a parameter name, as themselves: as `?` they hid
+           # `\u2013Recurse \u2013Force` from the delete rule, while the same bytes sent raw were caught.
+           2013) acc+=("–") ;; 2014) acc+=("—") ;; 2015) acc+=("―") ;;
            *)                  acc+=("?") ;;
          esac ;;
       *) acc+=("$c") ;;

@@ -15,6 +15,10 @@ versioning follows [SemVer](https://semver.org/).
 - In PowerShell a path was a target only when it began with a drive letter, a UNC prefix or `$HOME`:
   `Remove-Item -Recurse -Force src\app` and `"$env:TEMP\x"` passed, while `rm -rf src/app` was stopped. A target
   with a path separator is stopped now, and so is a recursive forced removal fed by a pipeline.
+- Two spellings of `-Recurse` and `-Force` walked past the PowerShell delete rule, which wanted a hyphen and then
+  whitespace: a value after a colon (`-Recurse:$true -Force:$true`, `-Rec:1 -Fo:1`), and an en dash, an em dash or a
+  horizontal bar in place of the hyphen. PowerShell 5.1 deletes the tree with each of them (measured). They are
+  recognised now, whether the dash arrives as itself or as a JSON `\u` escape.
 
 ## [3.0.1] — 2026-10-01
 

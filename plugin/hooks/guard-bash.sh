@@ -262,6 +262,9 @@ _json_unescape(){  # left-to-right, a chunk at a time; a two-pass sed would corr
          # `?`, which is only ever a display concern because this value is used for MATCHING, never to write.
          case "$h" in
            00[2-7][0-9a-fA-F]) printf -v c "\\x${h#00}"; acc+=("$c") ;;
+           # The three dashes PowerShell accepts in front of a parameter name, as themselves: as `?` they hid
+           # `\u2013Recurse \u2013Force` from the delete rule, while the same bytes sent raw were caught.
+           2013) acc+=("–") ;; 2014) acc+=("—") ;; 2015) acc+=("―") ;;
            *)                  acc+=("?") ;;
          esac ;;
       *) acc+=("$c") ;;
@@ -815,15 +818,22 @@ case "$CMD" in *[Cc][Hh][Mm][Oo][Dd]*) : ;; *) false ;; esac && echo "$CMD" | gr
 #   * the destructive verbs have short aliases (rm/del/erase/rd/ri for Remove-Item), and `rm` there is
 #     Remove-Item, not POSIX rm — the same word with different flags, which is why the POSIX rule misses it.
 PS_RM='(remove-item|ri|rm|rmdir|rd|del|erase)'
-PS_RECURSE='-r(e(c(u(r(s(e)?)?)?)?)?)?([[:space:]]|$)'
-PS_FORCE='-f(o(r(c(e)?)?)?)?([[:space:]]|$)'
+# A parameter is not only `-Name<space>`. PowerShell takes a value after a colon (`-Recurse:$true`), and it takes an
+# en dash, an em dash or a horizontal bar where the hyphen stands — what a word processor or a chat window turns `-`
+# into. Both spellings were measured on PowerShell 5.1 to delete the tree, and both walked past these two patterns,
+# which wanted a hyphen and then whitespace (3.1.0, field). The dashes are an alternation, not a bracket: a bracket
+# of multi-byte characters is read byte by byte in a C locale.
+PS_DASH='(-|–|—|―)'
+PS_RECURSE="${PS_DASH}"'r(e(c(u(r(s(e)?)?)?)?)?)?([[:space:]:]|$)'
+PS_FORCE="${PS_DASH}"'f(o(r(c(e)?)?)?)?([[:space:]:]|$)'
+_ps_has_r(){ case "$1" in *-[Rr]*|*–[Rr]*|*—[Rr]*|*―[Rr]*) return 0 ;; esac; return 1; }   # the cheap precondition, same dashes
 # Recursive+forced removal aimed at a glob, a drive root, a UNC path, or $HOME — the shapes that take a tree out.
 # This line-wide test is the FLOOR and is kept exactly as it was: the markers are looked for anywhere on the line.
 # That over-blocks (one field command was stopped by an unrelated `Set-Location C:\…` AFTER the delete), and reading
 # the target from the removal's own statement instead was tried and measured: it opened 29 shapes this test stops —
 # a backtick or trailing-pipe line break, a `cd` through a variable, a splat, a function called with the path later.
 # A hook cannot tell "unrelated" from "arrives another way", so the floor stays and the refusal says how to go on.
-{ case "$CMD" in *-[Rr]*) : ;; *) false ;; esac && has "(^|[^A-Za-z0-9_-])$PS_RM[[:space:]]" && has "$PS_RECURSE" && has "$PS_FORCE" \
+{ _ps_has_r "$CMD" && has "(^|[^A-Za-z0-9_-])$PS_RM[[:space:]]" && has "$PS_RECURSE" && has "$PS_FORCE" \
   && has '(\*|[A-Za-z]:\\|\\\\|\$HOME|\$env:USERPROFILE|~)'; } \
   && block "PowerShell recursive force delete (Remove-Item -Recurse -Force)" "4.5" loss
 # ADDED on top of the floor (3.1.0, field) — these can only stop more. Read from the removal's OWN statement, so an
@@ -845,7 +855,7 @@ _ps_rm_tree(){  # $1 = command -> 0 when a recursive forced removal in it is aim
   if [[ $1 =~ $PS_RM_RE ]] && [[ $1 =~ $PS_RECURSE ]] && [[ $1 =~ $PS_FORCE ]]; then
     while IFS= read -r ln || [ -n "$ln" ]; do
       while IFS= read -r -d ';' st || [ -n "$st" ]; do
-        case "$st" in *-[Rr]*) ;; *) continue ;; esac
+        _ps_has_r "$st" || continue
         [[ $st =~ $PS_RM_RE ]] && [[ $st =~ $PS_RECURSE ]] && [[ $st =~ $PS_FORCE ]] || continue
         if [[ $st =~ $PS_TGT_RE ]] || [[ $st =~ \|.*$PS_RM_RE ]]; then rc=0; break 2; fi
       done <<< "$ln"
@@ -854,7 +864,7 @@ _ps_rm_tree(){  # $1 = command -> 0 when a recursive forced removal in it is aim
   [ "$nc" = 0 ] && shopt -u nocasematch
   return $rc
 }
-{ case "$CMD" in *-[Rr]*) : ;; *) false ;; esac && _ps_rm_tree "$CMD"; } \
+{ _ps_has_r "$CMD" && _ps_rm_tree "$CMD"; } \
   && block "PowerShell recursive force delete (Remove-Item -Recurse -Force)" "4.5" loss
 # Download-and-execute, the PowerShell shape of curl|bash: any fetcher piped into Invoke-Expression.
 case "$CMD" in *[Ii][Ee][Xx]*|*[Ii][Nn][Vv][Oo][Kk][Ee]-[Ee][Xx][Pp][Rr][Ee][Ss][Ss][Ii][Oo][Nn]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE '(invoke-webrequest|iwr|invoke-restmethod|irm|curl|wget)[^|]*\|[[:space:]]*(invoke-expression|iex)([[:space:]]|$)' \
