@@ -853,8 +853,11 @@ for (const mod of ['app.js', 'chat.js', 'canvas.js']) {
 process.stdout.write('\n== §22 layout ==\n');
 
 const cssSrc = read(path.join(STUDIO, 'web', 'style.css')) ?? '';
+// Six columns since the redesign: the inspector has one of its own between the
+// stage and the conversation. The claim is unchanged — the conversation is the
+// last column of the same row as the stage.
 check('the conversation is a column beside the graph, not a drawer under it',
-  /grid-template-columns:\s*var\(--side-w[^)]*\)\s+5px\s+1fr\s+5px\s+var\(--chat-w/.test(cssSrc));
+  /\.shell\s*\{[^}]*grid-template-columns:\s*var\(--side-w,\s*var\(--nav-w\)\)\s+5px\s+minmax\(0,\s*1fr\)\s+auto\s+5px\s+var\(--chat-w/.test(cssSrc.replace(/\/\*[\s\S]*?\*\//g, '')));
 check('who spoke is read from which side it sits on',
   /\.msg-user\s*\{\s*align-items:\s*flex-end/.test(cssSrc)
   && /\.msg-assistant\s*\{\s*align-items:\s*flex-start/.test(cssSrc));
@@ -865,7 +868,9 @@ check('either panel can be collapsed without leaving a gap where it was',
 // the conversation the rest of the window.
 check('every column is placed explicitly rather than by auto-flow',
   /\.shell > \.stage\s*\{\s*grid-column:\s*3/.test(cssSrc)
-  && /\.shell > \.chat\s*\{\s*grid-column:\s*5/.test(cssSrc));
+  && /\.shell > \.chat\s*\{\s*grid-column:\s*6/.test(cssSrc)
+  && /\.shell\.no-chat > \.inspector\s*\{[^}]*grid-column:\s*4/.test(cssSrc),
+  'stage 3, docked inspector 4, conversation 6');
 check('the control that reopens the sidebar is on the edge it acts on',
   /\.side-rail\s*\{[^}]*left:\s*0/.test(cssSrc),
   'it started in the header, in the opposite corner from the panel it opens');
@@ -893,8 +898,12 @@ check('both widths are remembered', /crewforth-studio-side-w/.test(appSrc2) && /
     JSON.stringify([...m.entries()]));
   check('a second open moves nothing', migrateStorage(ls) === 0);
   const firstRead = appSrc2.search(/store\.get\(|localStorage\.getItem\(/);
+  // The theme is read inside theme.js now, so the call that starts it is a read too.
+  const themeRead = appSrc2.indexOf('initTheme(');
   check('the panel migrates the keys before it reads any', /migrateStorage\(localStorage\)/.test(appSrc2)
-    && appSrc2.indexOf('migrateStorage(localStorage)') < firstRead, `first read at ${firstRead}`);
+    && appSrc2.indexOf('migrateStorage(localStorage)') < firstRead
+    && themeRead !== -1 && appSrc2.indexOf('migrateStorage(localStorage)') < themeRead,
+  `first read at ${firstRead}, theme read at ${themeRead}`);
 }
 
 
@@ -1467,20 +1476,30 @@ function computed(rules, el, ancestors, media = []) {
 
   /* -- 7. both themes --------------------------------------------------- */
 
+  // The three blocks are the ones tokens.css is generated with: dark on a bare
+  // :root, light when the system asks and the viewer has not chosen dark, light
+  // when the viewer chose it. A token defined in two of them is a stroke that
+  // keeps its dark weight on a light ground for one of the two ways to get there.
   const bareRoot = rules.filter((r) => r.sel === ':root' && r.media.length === 0);
-  const darkRoot = rules.filter((r) => r.sel === ':root:not([data-theme="light"])' && r.media.length === 0);
-  const lightBack = rules.filter((r) => r.sel === ':root:not([data-theme="dark"])' && r.media.length === 1);
+  const lightSystem = rules.filter((r) => r.sel === ':root:not([data-theme="dark"])'
+    && r.media.length === 1 && r.media[0] === '(prefers-color-scheme: light)');
+  const lightChosen = rules.filter((r) => r.sel === ':root[data-theme="light"]' && r.media.length === 0);
   const used = new Set();
   const collect = (v) => { for (const m of String(v).matchAll(/var\((--[\w-]+)\)/g)) used.add(m[1]); };
   for (const id of IDS) { for (const v of still(id).values()) collect(v); collect(edge('session', id).style.stroke); }
   for (const v of cardRing('live').values()) collect(v);
-  const themed = [...used].filter((t) => t.startsWith('--cv-'));
+  // --cv-fail is an alias of the status-fail token, which tokens.css themes; the
+  // weights are the ones this file has to theme itself.
+  const themed = [...used].filter((t) => t.startsWith('--cv-edge-'));
+  check('a failed edge takes its colour from the status token',
+    bareRoot.some((r) => r.decls.get('--cv-fail') === 'var(--status-fail)') && used.has('--cv-fail'),
+    'an alias with a literal behind it would not follow the theme');
   check('the edge states are expressed as tokens rather than literals',
-    themed.length >= 5, `tokens in play: ${themed.join(', ') || 'none'}`);
+    themed.length >= 4, `tokens in play: ${themed.join(', ') || 'none'}`);
   const orphan = themed.filter((t) => !bareRoot.some((r) => r.decls.has(t))
-    || !darkRoot.some((r) => r.decls.has(t))
-    || !lightBack.some((r) => r.decls.has(t)));
-  check('every edge token is defined on bare :root and redefined in both theme blocks',
+    || !lightSystem.some((r) => r.decls.has(t))
+    || !lightChosen.some((r) => r.decls.has(t)));
+  check('every edge token is defined on bare :root and redefined in both light blocks',
     orphan.length === 0,
     orphan.length ? `only partly defined: ${orphan.join(', ')}` : `${themed.length} tokens, three blocks each`);
 
@@ -2176,6 +2195,361 @@ if (fail) {
   const b = await signature(sess);
   check('two calls inside one bucket agree', a === b, `${a} vs ${b}`);
   fs.rmSync(sigHome, { recursive: true, force: true });
+}
+
+/* --------------------------------------- §29 design tokens and the frame ---
+   The redesign's first step. Every claim below is about one of three things:
+   the colours come from the design system and from nowhere else, the frame has
+   the spec's measures, and the theme the viewer picked is the one drawn.
+
+   Each gate is run three ways where three ways exist. The real tree must pass.
+   A twin with the defect planted must fail, and it is planted in memory, never
+   in the checkout — a gate that edits the tree it guards is green for whoever
+   ran it last. And on a machine without node this whole file does not run:
+   verify.sh reports the step as SKIPPED, which CREW_VERIFY_STRICT turns red. */
+
+process.stdout.write('\n== §29 design tokens and the frame ==\n');
+
+{
+  const gen = await import(`../gen-studio-tokens.mjs?t=${Date.now()}`);
+  const tokenSrc = read(gen.SOURCE);
+  const tokensCss = read(path.join(WEB_ROOT, 'tokens.css'));
+  const styleCss = read(path.join(WEB_ROOT, 'style.css')) ?? '';
+  const indexHtml = read(path.join(WEB_ROOT, 'index.html')) ?? '';
+  const appJs = read(path.join(WEB_ROOT, 'app.js')) ?? '';
+  const tokens = JSON.parse(tokenSrc ?? '{}');
+  const clone = () => JSON.parse(tokenSrc);
+  const noComments = (css) => css.replace(/\/\*[\s\S]*?\*\//g, '');
+
+  /* -- 1. freshness ------------------------------------------------------ */
+
+  const rendered = gen.render(tokens);
+  check('tokens.css is byte for byte what the generator writes',
+    tokensCss !== null && tokensCss === rendered,
+    tokensCss === null ? 'kit/studio/web/tokens.css is missing'
+      : `${Buffer.byteLength(tokensCss)} bytes on disk, ${Buffer.byteLength(rendered)} generated`
+        + (tokensCss === rendered ? '' : ' — run: node packaging/gen-studio-tokens.mjs'));
+  {
+    // The twin: one colour changed in the source and nothing regenerated.
+    const stale = clone();
+    stale.color.tokens.find((t) => t.name === 'line').value.dark = '#262c3a';
+    check('a token changed in the JSON and not regenerated is caught',
+      gen.render(stale) !== tokensCss, 'the comparison would pass on anything if this were equal');
+  }
+  check('the generated file ends every line with LF and carries no CR',
+    !/\r/.test(rendered) && rendered.endsWith('}\n'),
+    'a CRLF checkout would otherwise differ from the generator on Windows alone');
+
+  // A token the generator cannot place must stop the build, not be written as it came.
+  const refuses = (mutate) => { const t = clone(); mutate(t); try { gen.render(t); return false; } catch { return true; } };
+  check('a colour with no light value stops the generator',
+    refuses((t) => { delete t.color.tokens.find((x) => x.name === 'ink').value.light; }));
+  check('a reference to a colour that does not exist stops the generator',
+    refuses((t) => { t.color.tokens.find((x) => x.name === 'chevron-3').value.dark = '{acent}'; }));
+  check('a value that is neither #rrggbb nor a reference stops the generator',
+    refuses((t) => { t.color.tokens.find((x) => x.name === 'ink').value.dark = 'red; } body { display: none'; }));
+  check('the source as it stands does not', !refuses(() => {}));
+
+  /* -- 2. both ways to light carry every colour -------------------------- */
+
+  const themeGaps = (css) => {
+    const rules = cssRules(css);
+    const pick = (sel, media) => rules.find((r) => r.sel === sel
+      && r.media.length === (media ? 1 : 0) && (!media || r.media[0] === media));
+    const dark = pick(gen.DARK);
+    const sys = pick(gen.LIGHT_SYSTEM, gen.LIGHT_SYSTEM_MEDIA);
+    const chosen = pick(gen.LIGHT_CHOSEN);
+    if (!dark || !sys || !chosen) return { colours: 0, gaps: ['a theme block is missing'] };
+    const colours = tokens.color.tokens.map((t) => `--${t.name}`);
+    const gaps = colours.filter((c) => !dark.decls.has(c) || !sys.decls.has(c) || !chosen.decls.has(c));
+    const differ = colours.filter((c) => sys.decls.get(c) !== chosen.decls.get(c));
+    return { colours: colours.length, gaps: gaps.concat(differ.map((c) => `${c} differs between the two light blocks`)) };
+  };
+  const real = themeGaps(tokensCss ?? '');
+  check('every colour token is defined for dark and for both ways to light',
+    real.colours === tokens.color.tokens.length && real.colours > 0 && real.gaps.length === 0,
+    real.gaps.length ? real.gaps.join(', ') : `${real.colours} colours, three blocks each`);
+  {
+    // The twin: one colour dropped from the block the theme button selects.
+    const cut = (tokensCss ?? '').replace(/(:root\[data-theme="light"\] \{[\s\S]*?)\n {2}--ink: [^;]+;/, '$1');
+    const holed = themeGaps(cut);
+    check('a colour missing from one light block is caught',
+      cut !== tokensCss && holed.gaps.includes('--ink'), `reported: ${holed.gaps.join(', ') || 'nothing'}`);
+  }
+
+  /* -- 3. no colour literal outside tokens.css --------------------------- */
+
+  // What counts as a colour literal: a hex of a colour's length, or a functional
+  // notation with a number in it. In a stylesheet only declarations are read —
+  // comments are prose, and `#fade` in a selector is an id. NOT seen: a named
+  // colour (`white`), which no rule here can tell from a word.
+  const HEX_RE = /(?<![&\w])#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})(?![\w-])/g;
+  const FN_RE = /\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch)\(\s*[\d.]/g;
+  const literals = (name, text) => {
+    const out = [];
+    if (name.endsWith('.css')) {
+      const css = noComments(text);
+      for (const m of css.matchAll(HEX_RE)) {
+        // A value sits after the `:` of its declaration; a selector sits after `}` or `{`'s end.
+        const before = css.slice(0, m.index);
+        const at = Math.max(before.lastIndexOf('{'), before.lastIndexOf('}'), before.lastIndexOf(';'));
+        if (before.slice(at + 1).includes(':') && before.lastIndexOf('{') > before.lastIndexOf('}')) out.push(m[0]);
+      }
+      for (const m of css.matchAll(FN_RE)) out.push(m[0]);
+    } else {
+      for (const m of text.matchAll(HEX_RE)) out.push(m[0]);
+      for (const m of text.matchAll(FN_RE)) out.push(m[0]);
+    }
+    return out;
+  };
+
+  // The exceptions, by name. Each is an agent-IDENTITY colour, which the graph
+  // step of the redesign removes: colour will say status only, and identity moves
+  // to an icon. Until then canvas.js blends these as hex (mixHex), which var()
+  // cannot feed. A fifth literal in that file is not covered by this list.
+  const ALLOWED = {
+    'canvas.js': {
+      '#5b8cff': 'KIND_COLOR.session — the session node\'s identity colour',
+      '#a874f5': 'KIND_COLOR.workflow — the workflow node\'s identity colour',
+      '#D97757': 'MARKS.builtin — the built-in agent mark, replaced by web/icons/builtin.svg',
+      '#94a3c8': 'the palette\'s unknown colour before the server sends one',
+    },
+  };
+
+  const webFiles = walk(WEB_ROOT).map((f) => path.relative(WEB_ROOT, f).split(path.sep).join('/')).sort();
+  const scanned = webFiles.filter((f) => f !== 'tokens.css');
+  /** entries: [name, text]. An excepted literal is excepted once per file, not per occurrence. */
+  const scan = (entries) => {
+    const found = [];
+    const allowedSeen = [];
+    for (const [f, text] of entries) {
+      const seen = new Map();
+      for (const lit of literals(f, text)) seen.set(lit, (seen.get(lit) ?? 0) + 1);
+      for (const [lit, n] of seen) {
+        if (ALLOWED[f]?.[lit] && n === 1) allowedSeen.push(`${f} ${lit}`);
+        else found.push(`${f} ${lit}${n > 1 ? ` ×${n}` : ''}`);
+      }
+    }
+    return { found, allowedSeen };
+  };
+  const { found, allowedSeen } = scan(scanned.map((f) => [f, read(path.join(WEB_ROOT, f)) ?? '']));
+  // The scanned set against the set that has to be scanned: every file the panel
+  // serves except the generated one. "N files, 0 findings" says nothing if the
+  // file that carries the colours is not among the N.
+  const mustScan = ['app.js', 'canvas.js', 'chat.js', 'index.html', 'md.js', 'style.css', 'theme.js'];
+  const unscanned = mustScan.filter((f) => !scanned.includes(f));
+  check('the colour scan reads every file the panel serves except tokens.css',
+    unscanned.length === 0 && webFiles.includes('tokens.css') && scanned.length === webFiles.length - 1,
+    unscanned.length ? `not scanned: ${unscanned.join(', ')}` : `${scanned.length} of ${webFiles.length} files: ${scanned.join(', ')}`);
+  check('no colour literal in web/ outside tokens.css',
+    found.length === 0,
+    found.length ? found.join(' · ') : `0 literals in ${scanned.length} files; ${allowedSeen.length} named exceptions`);
+  const allowedCount = Object.values(ALLOWED).reduce((n, o) => n + Object.keys(o).length, 0);
+  check('every named exception is still there to be excepted',
+    allowedSeen.length === allowedCount,
+    `${allowedSeen.length} of ${allowedCount} seen — an exception for a literal that is gone is a hole left open`);
+
+  // Calibration, on inputs whose answer is known before the scan runs.
+  const count = (name, text) => literals(name, text).length;
+  check('twin: a hex added to style.css is caught',
+    count('style.css', `${styleCss}\n.x { color: #ff00aa; }\n`) === count('style.css', styleCss) + 1
+    && count('style.css', styleCss) === 0);
+  check('twin: a short hex and an rgb() literal are caught too',
+    count('style.css', '.x { border: 1px solid #abc; background: rgb(91 140 255 / 0.4); }') === 2);
+  check('twin: a hex in a script is caught',
+    count('app.js', `${appJs}\nel.style.color = '#1a2b3c';\n`) === count('app.js', appJs) + 1);
+  {
+    const canvasJs = read(path.join(WEB_ROOT, 'canvas.js')) ?? '';
+    const twice = scan([['canvas.js', `${canvasJs}\nconst again = '#5b8cff';\n`]]);
+    check('twin: a second copy of an excepted literal is not excepted',
+      twice.found.join() === 'canvas.js #5b8cff ×2' && twice.allowedSeen.length === 3,
+      `reported: ${twice.found.join(', ') || 'nothing'}`);
+    const elsewhere = scan([['app.js', "const c = '#5b8cff';"]]);
+    check('twin: an excepted literal in another file is not excepted', elsewhere.found.join() === 'app.js #5b8cff');
+  }
+  check('calibration: what only looks like a colour is not counted',
+    count('style.css', '/* was #0d1017 */ #fade { color: var(--ink); } #add:hover { top: 0; } .a { background: url(#abc123-grad); }') === 0
+    && count('index.html', '<a href="#">x</a> &#9662; <use href="#icon-add"/>') === 0
+    && count('app.js', 'const rgb = (h) => h; rgb(a); location.hash = "#top";') === 0,
+    'a comment, an id selector, a url fragment, an entity, a function called rgb');
+
+  /* -- 4. every var() resolves ------------------------------------------- */
+
+  // A renamed token leaves `var(--old-name)` behind, which is not an error: the
+  // declaration is dropped and the element is drawn with whatever it inherits.
+  const defined = new Set();
+  for (const css of [tokensCss ?? '', styleCss]) {
+    for (const m of noComments(css).matchAll(/(?:^|[{;\s])(--[\w-]+)\s*:/g)) defined.add(m[1]);
+  }
+  // Set from script, per element or on the root, never in a stylesheet. --k is
+  // also registered with @property, which is an at-rule and not a declaration.
+  const FROM_SCRIPT = ['--side-w', '--chat-w', '--node-color', '--edge-len', '--k'];
+  const scriptText = scanned.filter((f) => f.endsWith('.js')).map((f) => read(path.join(WEB_ROOT, f)) ?? '').join('\n');
+  const notSet = FROM_SCRIPT.filter((v) => !scriptText.includes(`'${v}'`));
+  check('every property expected from script is set by one', notSet.length === 0,
+    notSet.length ? `never set: ${notSet.join(', ')}` : `${FROM_SCRIPT.join(', ')}`);
+  const unresolved = (css) => [...new Set([...noComments(css).matchAll(/var\(\s*(--[\w-]+)/g)].map((m) => m[1]))]
+    .filter((v) => !defined.has(v) && !FROM_SCRIPT.includes(v));
+  const dangling = unresolved(styleCss);
+  const usedVars = new Set([...noComments(styleCss).matchAll(/var\(\s*(--[\w-]+)/g)].map((m) => m[1]));
+  check('every var() in style.css names a property that exists',
+    dangling.length === 0 && usedVars.size > 20,
+    dangling.length ? `undefined: ${dangling.join(', ')}` : `${usedVars.size} distinct properties`);
+  check('twin: a var() left behind by a rename is caught',
+    unresolved(`${styleCss}\n.x { color: var(--surface-2); }`).join() === '--surface-2');
+  check('index.html loads the tokens before the stylesheet that reads them',
+    indexHtml.indexOf('href="/tokens.css"') !== -1
+    && indexHtml.indexOf('href="/tokens.css"') < indexHtml.indexOf('href="/style.css"'));
+
+  /* -- 5. the frame's measures ------------------------------------------- */
+
+  const frameOf = (css) => {
+    const rules = cssRules(css);
+    const root = rules.filter((r) => r.sel === ':root' && r.media.length === 0);
+    const prop = (name) => root.map((r) => r.decls.get(name)).find(Boolean) ?? null;
+    const decl = (sel, name) => rules.filter((r) => r.sel === sel && r.media.length === 0)
+      .map((r) => r.decls.get(name)).find(Boolean) ?? null;
+    return {
+      bar: [prop('--bar-h'), decl('.bar', 'height')],
+      navigator: [prop('--nav-w'), decl('.shell', 'grid-template-columns')],
+      toolbar: [prop('--toolbar-h'), decl('.toolbar', 'height')],
+      inspector: [prop('--inspector-w'), decl('.inspector', 'width')],
+      rail: [prop('--rail-w'), decl('.side-rail', 'width')],
+    };
+  };
+  const WANT = {
+    bar: ['56px', 'var(--bar-h)'],
+    navigator: ['272px', /^var\(--side-w, var\(--nav-w\)\) /],
+    toolbar: ['48px', 'var(--toolbar-h)'],
+    inspector: ['344px', 'var(--inspector-w)'],
+    rail: ['56px', 'var(--rail-w)'],
+  };
+  const frameMisses = (css) => {
+    const got = frameOf(css);
+    return Object.keys(WANT).filter((k) => got[k][0] !== WANT[k][0]
+      || !(WANT[k][1] instanceof RegExp ? WANT[k][1].test(got[k][1] ?? '') : got[k][1] === WANT[k][1]));
+  };
+  const misses = frameMisses(styleCss);
+  check('the frame has the spec\'s measures: bar 56, navigator 272, toolbar 48, inspector 344, rail 56',
+    misses.length === 0,
+    misses.length ? `off: ${misses.map((k) => `${k} ${JSON.stringify(frameOf(styleCss)[k])}`).join(', ')}`
+      : 'each is a property on :root AND the declaration that uses it');
+  check('twin: a measure that exists only in a comment is not the frame',
+    frameMisses(styleCss.replace(/--toolbar-h: 48px;/, '/* --toolbar-h: 48px; */ --toolbar-h: 52px;')).join() === 'toolbar');
+  check('twin: a measure nothing uses is not the frame',
+    frameMisses(styleCss.replace(/height: var\(--toolbar-h\);/, 'height: 40px;')).join() === 'toolbar');
+  check('the navigator opens at the same width without a remembered one',
+    /side:\s*\{[^}]*\bdef:\s*272\b/.test(appJs), 'app.js sets --side-w from this before the stylesheet\'s fallback is ever used');
+  check('the toolbar and the inspector are in the page', /class="toolbar"/.test(indexHtml)
+    && /<main class="stage">\s*<div class="toolbar"[\s\S]*?<div id="canvas"/.test(indexHtml)
+    && /<\/main>\s*<aside id="inspector"/.test(indexHtml),
+  'toolbar above the canvas inside the stage; inspector a column of the shell, not a child of the stage');
+
+  /* -- 6. four widths ----------------------------------------------------- */
+
+  const widthQueries = (css) => [...new Set([...noComments(css).matchAll(/@media\s*([^{]+)\{/g)]
+    .map((m) => m[1].trim()).filter((q) => /width/.test(q)))].sort();
+  const BANDS = ['(max-width: 1023px)', '(max-width: 1279px)', '(max-width: 639px)', '(min-width: 1280px)'];
+  check('the stylesheet breaks at the spec\'s widths and at no other',
+    widthQueries(styleCss).join() === BANDS.join(), `queries: ${widthQueries(styleCss).join(' ')}`);
+  check('twin: a query at any other width is caught',
+    widthQueries(`${styleCss}\n@media (max-width: 900px) { .side { display: none; } }`).join() !== BANDS.join());
+
+  // What each band does, resolved through the cascade rather than read off the text.
+  const rules = cssRules(styleCss);
+  const node = (classes, attrs = {}) => ({ tag: 'div', classes: new Set(classes), attrs, pseudo: null });
+  const WIDE = ['(min-width: 1280px)'];
+  const MID = ['(max-width: 1279px)'];
+  const NARROW = ['(max-width: 1279px)', '(max-width: 1023px)'];
+  const PHONE = ['(max-width: 1279px)', '(max-width: 1023px)', '(max-width: 639px)'];
+  const inspectorIn = (shell, media) => computed(rules, node(['inspector']), [node(shell)], media);
+  check('at 1280 and up the inspector is docked in its own column',
+    inspectorIn(['shell', 'no-chat'], WIDE).get('position') === 'static'
+    && inspectorIn(['shell', 'no-chat'], WIDE).get('grid-column') === '4');
+  check('with a conversation open it floats instead, at any width',
+    inspectorIn(['shell'], WIDE).get('position') === 'absolute'
+    && inspectorIn(['shell'], WIDE).get('grid-column') === undefined,
+    'navigator, inspector and conversation side by side leave no graph');
+  check('between 1024 and 1279 the inspector floats and the canvas keeps its width',
+    inspectorIn(['shell', 'no-chat'], MID).get('position') === 'absolute'
+    && inspectorIn(['shell', 'no-chat'], MID).get('top') === 'var(--toolbar-h)');
+  const shellIn = (classes, media) => computed(rules, node(classes), [], media).get('grid-template-columns') ?? '';
+  check('at 1024 and up an open navigator is a column of its own width',
+    shellIn(['shell', 'no-chat'], MID).startsWith('var(--side-w, var(--nav-w)) 5px '));
+  check('below 1024 the navigator\'s column is the rail whether it is open or not',
+    shellIn(['shell', 'no-chat'], NARROW).startsWith('var(--rail-w) 0 ')
+    && shellIn(['shell', 'no-side', 'no-chat'], NARROW).startsWith('var(--rail-w) 0 ')
+    && computed(rules, node(['side']), [node(['shell'])], NARROW).get('position') === 'absolute',
+    'opened there, it floats over the canvas');
+  check('below 640 the stage is the only column',
+    ['shell', 'no-chat', 'no-side'].every((c) => shellIn(['shell', c], PHONE).startsWith('0 0 minmax(0, 1fr) '))
+    && computed(rules, node(['side-rail']), [node(['shell'])], PHONE).get('display') === 'none');
+  check('the narrow band collapses the navigator without overwriting the viewer\'s choice',
+    /matchMedia\('\(max-width: 1023px\)'\)/.test(appJs)
+    && /persist = !railBand\.matches/.test(appJs)
+    && /if \(persist\) store\.set\('crewforth-studio-side-hidden'/.test(appJs));
+
+  /* -- 7. the theme button ------------------------------------------------ */
+
+  const { initTheme, effectiveTheme, THEME_KEY } = await import(`../../kit/studio/web/theme.js?t=${Date.now()}`);
+  const rig = (saved, systemLight, broken = false) => {
+    const m = new Map(saved ? [[THEME_KEY, saved]] : []);
+    const ls = broken
+      ? { getItem() { throw new Error('blocked'); }, setItem() { throw new Error('blocked'); } }
+      : { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)) };
+    const root = { dataset: {} };
+    const button = { attrs: {}, setAttribute(k, v) { this.attrs[k] = v; }, addEventListener(_e, fn) { this.click = fn; } };
+    initTheme(root, button, ls, () => systemLight);
+    return { root, button, m };
+  };
+  check('with nothing chosen the theme is the system\'s, and dark unless it asks for light',
+    effectiveTheme(undefined, false) === 'dark' && effectiveTheme(undefined, true) === 'light'
+    && effectiveTheme('dark', true) === 'dark' && effectiveTheme('light', false) === 'light'
+    && effectiveTheme('sepia', false) === 'dark');
+  {
+    const t = rig('light', false);
+    check('a remembered theme is applied before anything is drawn', t.root.dataset.theme === 'light'
+      && t.button.attrs['aria-label'] === 'Switch to dark theme');
+    t.button.click();
+    check('the button switches the theme and remembers it',
+      t.root.dataset.theme === 'dark' && t.m.get(THEME_KEY) === 'dark'
+      && t.button.attrs['aria-label'] === 'Switch to light theme');
+  }
+  {
+    // The case the old button got wrong: no choice yet, and the system is light.
+    const t = rig(null, true);
+    const before = t.root.dataset.theme;
+    t.button.click();
+    check('on a light system the first click goes to dark, not to the theme already showing',
+      before === undefined && t.root.dataset.theme === 'dark',
+      `first click set ${t.root.dataset.theme}`);
+  }
+  {
+    const t = rig(null, false, true);
+    t.button.click();
+    check('a browser that refuses storage still switches the theme', t.root.dataset.theme === 'light');
+  }
+  check('a remembered value that is not a theme is ignored', rig('sepia', false).root.dataset.theme === undefined);
+
+  /* -- 8. controls that are only an icon say what they are ---------------- */
+
+  // The static page only. A control app.js builds at run time is not in this
+  // file and is not seen here.
+  const unlabelled = (html) => [...html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)]
+    .filter(([, attrs, body]) => !/[A-Za-z]{2}/.test(body.replace(/<[^>]+>/g, '').replace(/&\w+;/g, ''))
+      && !/\baria-label="[^"]+"/.test(attrs))
+    .map(([, attrs]) => (/\bid="([^"]+)"/.exec(attrs)?.[1] ?? attrs.trim()));
+  const buttons = [...indexHtml.matchAll(/<button\b/g)].length;
+  check('every icon-only button in index.html has an aria-label',
+    buttons > 0 && unlabelled(indexHtml).length === 0,
+    unlabelled(indexHtml).length ? `no label: ${unlabelled(indexHtml).join(', ')}` : `${buttons} buttons read`);
+  check('twin: an icon-only button with a title and no aria-label is caught',
+    unlabelled('<button id="x" title="Widen">⇥</button><button id="y">+ session</button>').join() === 'x');
+  check('the focus ring is 2px of the accent, 2px off the control',
+    cssRules(styleCss).some((r) => r.sel === ':focus-visible' && r.media.length === 0
+      && r.decls.get('outline') === '2px solid var(--accent)' && r.decls.get('outline-offset') === '2px')
+    && !/outline:\s*(none|0)\b/.test(noComments(styleCss)),
+    'and nothing in the stylesheet switches an outline off');
 }
 
 process.stdout.write(`${pass}/${pass + fail} assertions passed`

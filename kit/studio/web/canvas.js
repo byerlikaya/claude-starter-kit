@@ -82,11 +82,12 @@ const MARKS = {
   // Crewforth's own mark, from assets/icon.svg: three chevrons, the 200-unit
   // artwork scaled by 0.08 into this 16-unit box (points and stroke widths
   // alike). Its own palette, not the node's, so it looks like the mark rather
-  // than like the card.
+  // than like the card: the three chevron tokens, rear to lead. They are set as
+  // style and not as stroke="" because a presentation attribute cannot hold var().
   kit: '<g fill="none" stroke-linecap="round" stroke-linejoin="round">'
-    + '<polyline points="3.52,4.64 6.88,8 3.52,11.36" stroke="#E5E7FB" stroke-width="1.68"/>'
-    + '<polyline points="6.4,4.64 9.76,8 6.4,11.36" stroke="#B9BEF9" stroke-width="1.68"/>'
-    + '<polyline points="9.28,4.64 12.64,8 9.28,11.36" stroke="#A78BFA" stroke-width="1.92"/></g>',
+    + '<polyline points="3.52,4.64 6.88,8 3.52,11.36" style="stroke:var(--chevron-1)" stroke-width="1.68"/>'
+    + '<polyline points="6.4,4.64 9.76,8 6.4,11.36" style="stroke:var(--chevron-2)" stroke-width="1.68"/>'
+    + '<polyline points="9.28,4.64 12.64,8 9.28,11.36" style="stroke:var(--chevron-3)" stroke-width="1.92"/></g>',
   // Claude's mark, in Claude's colour. Rays of uneven length and spacing —
   // the irregularity is what makes it read as the mark rather than as a star.
   builtin: '<g stroke="#D97757" stroke-width="1.45" stroke-linecap="round" fill="none"><path d="M8.00 6.50L8.00 1.10"/><path d="M7.21 6.73L5.03 3.25"/><path d="M6.65 7.34L2.07 5.11"/><path d="M6.51 8.16L2.83 8.54"/><path d="M6.82 8.92L2.56 12.25"/><path d="M7.49 9.41L6.15 13.07"/><path d="M8.31 9.47L9.37 14.46"/><path d="M9.04 9.08L11.61 11.74"/><path d="M9.46 8.36L14.70 9.67"/><path d="M9.43 7.54L13.33 6.27"/><path d="M8.88 6.79L11.76 2.82"/></g>',

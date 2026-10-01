@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Crewforth Studio</title>
+<link rel="stylesheet" href="/tokens.css">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -26,7 +27,7 @@
     <button id="new-session" class="ghost primary" type="button">+ session</button>
     <span id="pulse" class="pulse">connecting</span>
       <button id="fullscreen" class="ghost" type="button" title="Full screen (f)" aria-label="Full screen">⛶</button>
-    <button id="theme" class="ghost" type="button" aria-label="Toggle theme">◐</button>
+    <button id="theme" class="ghost" type="button" aria-label="Switch theme">◐</button>
   </div>
 </header>
 
@@ -36,14 +37,14 @@
     <span class="side-rail-arrow">›</span>
     <span class="side-rail-label">sessions</span>
   </button>
-  <aside class="side">
+  <aside class="side" aria-label="Projects and sessions">
     <section class="side-block" data-sect="fleet">
       <div class="side-head">
         <button class="twisty" type="button" data-fold="fleet" aria-expanded="true"
                 aria-label="Collapse Fleet">▾</button>
         <h2 data-fold-for="fleet">Fleet</h2><span id="fleet-meta" class="meta"></span>
-        <button id="side-wide" class="ghost pin" type="button" title="Widen the sidebar">⇥</button>
-        <button id="side-hide" class="ghost pin" type="button" title="Collapse the sidebar">‹</button>
+        <button id="side-wide" class="ghost pin" type="button" title="Widen the sidebar" aria-label="Widen the sidebar">⇥</button>
+        <button id="side-hide" class="ghost pin" type="button" title="Collapse the sidebar" aria-label="Collapse the sidebar">‹</button>
       </div>
       <div id="fleet" class="fleet" role="list" data-fold-body="fleet"></div>
       <div class="side-head reach-head" hidden id="reach-head">
@@ -70,9 +71,16 @@
        aria-label="Resize sidebar" tabindex="0"></div>
 
   <main class="stage">
+    <div class="toolbar" role="toolbar" aria-label="Canvas">
+      <span class="toolbar-view">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.8"/><circle cx="12.5" cy="4" r="1.8"/><circle cx="12.5" cy="12" r="1.8"/><path d="M5.2 7.3L10.8 4.7M5.2 8.7l5.6 2.6"/></svg>
+        Graph
+      </span>
+    </div>
     <div id="canvas" class="canvas"></div>
-    <aside id="inspector" class="inspector" hidden></aside>
   </main>
+
+  <aside id="inspector" class="inspector" aria-label="Selected node" hidden></aside>
 
   <div class="resizer" id="chat-split" role="separator" aria-orientation="vertical"
        aria-label="Resize conversation" tabindex="0" hidden></div>
