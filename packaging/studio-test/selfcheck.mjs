@@ -19,7 +19,7 @@ import { renderMarkdown } from '../../kit/studio/web/md.js';
 import { ALLOWED_MODES } from '../../kit/studio/server/lib/session.js';
 import { parsePeers } from '../../kit/studio/server/lib/peers.js';
 import { writeAllowed, signature } from '../../kit/studio/server/index.js';
-import { prepare, decide, pending, cleanup, _internals as permInternals } from '../../kit/studio/server/lib/permissions.js';
+import { prepare, decide, pending, cleanup, revoke, alwaysList, _internals as permInternals } from '../../kit/studio/server/lib/permissions.js';
 import { execFileSync, spawnSync } from 'node:child_process';
 import os from 'node:os';
 import { quickReplies } from '../../kit/studio/web/chat.js';
@@ -505,6 +505,42 @@ if (gate) {
   check('an unknown verdict is refused', decide(probeId, 'toolu_probe', 'maybe').ok === false);
   check('a tool use id that is not an identifier is refused',
     decide(probeId, '../escape', 'allow').ok === false);
+
+  // Who asked. Claude Code names the subagent in the hook's input only when the call came from inside one.
+  const asks = (extra) => {
+    fs.writeFileSync(path.join(gate.spool, 'req', 'toolu_who.json'), JSON.stringify({
+      session_id: probeId, tool_name: 'Bash', tool_use_id: 'toolu_who', tool_input: { command: 'echo who' }, ...extra,
+    }));
+    const r = pending(probeId).find((x) => x.toolUseId === 'toolu_who');
+    fs.rmSync(path.join(gate.spool, 'req', 'toolu_who.json'));
+    return r;
+  };
+  const fromAgent = asks({ agent_id: 'a1b2c3d4', agent_type: 'crew-test-expert' });
+  check('a request from inside a subagent says which one asked',
+    fromAgent?.agentId === 'a1b2c3d4' && fromAgent?.agentType === 'crew-test-expert',
+    `${fromAgent?.agentId} / ${fromAgent?.agentType}`);
+  const fromSession = asks({});
+  check('a request with no agent in it is the session asking, not an unknown agent',
+    fromSession && fromSession.agentId === null && fromSession.agentType === null);
+  check('an agent id that is not an identifier is not passed on',
+    asks({ agent_id: '../../etc', agent_type: 'x' })?.agentId === null,
+    'the page uses it to find a card; it never becomes a path, and it is still refused');
+
+  // Taking back "allow for this session". Behaviour: after the revoke the real hook asks again.
+  fs.writeFileSync(path.join(gate.spool, 'always', 'Bash'), '');
+  const before = alwaysList(probeId);
+  const took = revoke(probeId, 'Bash');
+  check('a tool allowed for the session is listed, and revoking it takes it off the list',
+    before.includes('Bash') && took.ok && took.revoked === true && !alwaysList(probeId).includes('Bash'),
+    `before [${before}] after [${alwaysList(probeId)}]`);
+  check('after a revoke the hook asks again', runHook() === 2,
+    'with nobody answering, asking again ends in a denial; exit 0 here would mean the allowance survived');
+  const again = revoke(probeId, 'Bash');
+  check('revoking what is not allowed is said, not counted as a revoke', again.ok && again.revoked === false);
+  fs.writeFileSync(path.join(gate.spool, 'ans', 'keep'), 'x');
+  check('a tool name that is not an identifier is refused, and nothing outside always/ is removed',
+    revoke(probeId, '../ans/keep').ok === false && fs.existsSync(path.join(gate.spool, 'ans', 'keep')));
+  fs.rmSync(path.join(gate.spool, 'ans', 'keep'));
 
   cleanup(probeId);
   check('cleanup removes the spool', !fs.existsSync(gate.spool));
@@ -2398,7 +2434,7 @@ process.stdout.write('\n== §29 design tokens and the frame ==\n');
     for (const m of noComments(css).matchAll(/(?:^|[{;\s])(--[\w-]+)\s*:/g)) defined.add(m[1]);
   }
   // Set from script, per element or on the root, never in a stylesheet.
-  const FROM_SCRIPT = ['--side-w', '--chat-w', '--edge-len'];
+  const FROM_SCRIPT = ['--side-w', '--chat-w', '--edge-len', '--dock-h'];
   const scriptText = scanned.filter((f) => f.endsWith('.js')).map((f) => read(path.join(WEB_ROOT, f)) ?? '').join('\n');
   const notSet = FROM_SCRIPT.filter((v) => !scriptText.includes(`'${v}'`));
   check('every property expected from script is set by one', notSet.length === 0,
@@ -2841,6 +2877,238 @@ process.stdout.write('\n== §30 the top bar and the navigator ==\n');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
+}
+
+/* ------------------------------ §31 the approval dock and the inspector ---
+   A request waiting on the viewer is drawn in one place, counts down on the server's
+   clock, and is answered with one of three buttons. What the inspector says about a
+   node is said the way the rest of the panel says things: a figure nobody read is
+   "Not measured", never 0. */
+
+process.stdout.write('\n== §31 the approval dock and the inspector ==\n');
+
+{
+  const ap = await import(`../../kit/studio/web/approvals.js?t=${Date.now()}`);
+  const insp = await import(`../../kit/studio/web/inspect.js?t=${Date.now()}`);
+  const web = (f) => read(path.join(WEB_ROOT, f)) ?? '';
+  const appJs = web('app.js');
+  const dockJs = web('dock.js');
+  const chatJs = web('chat.js');
+  const indexHtml = web('index.html');
+  const cssSrc31 = web('style.css');
+  const serverJs = read(path.join(STUDIO, 'server', 'index.js')) ?? '';
+  const sessionJs = read(path.join(STUDIO, 'server', 'lib', 'session.js')) ?? '';
+
+  /* -- 1. the queue ---------------------------------------------------------- */
+
+  const T = 1_800_000_000_000;
+  const req = (id, askedAt, extra = {}) => ({ toolUseId: id, toolName: 'Bash', detail: `echo ${id}`, askedAt, ...extra });
+  const sessions = [
+    { sessionId: 's-b', gated: true, gateWaitSeconds: 45, pendingPermissions: [req('late', T + 3000)] },
+    { sessionId: 's-a', gated: true, gateWaitSeconds: 45, pendingPermissions: [req('early', T), req('mid', T + 1000, { agentId: 'ag1', agentType: 'Explore' })] },
+    { sessionId: 's-open', gated: false, gateWaitSeconds: 45, pendingPermissions: [req('never', T - 5000)] },
+  ];
+  const q = ap.queue(sessions, (id) => (id === 's-a' ? 'Ledger index' : null));
+  check('the queue is every gated session\'s requests, oldest first: the order they time out in',
+    q.map((r) => r.toolUseId).join(',') === 'early,mid,late', q.map((r) => r.toolUseId).join(','));
+  check('a session without the gate contributes nothing: there is no hook there to answer',
+    !q.some((r) => r.toolUseId === 'never'));
+  check('a request says who asked — the agent, or the session itself',
+    ap.asker(q[1]) === 'Explore' && ap.asker(q[0]) === 'Session');
+
+  /* -- 2. the countdown is the server's -------------------------------------- */
+
+  const r38 = ap.remaining(q[0], T + 7200);
+  check('the countdown is asked-at plus the server\'s wait, minus the server\'s now',
+    r38.known && r38.left === 38 && Math.abs(r38.fraction - 37.8 / 45) < 1e-9, `${r38.left}s, ring ${r38.fraction?.toFixed(3)}`);
+  const shorter = ap.remaining({ ...q[0], waitSeconds: 20 }, T + 7200);
+  check('a different wait on the server is a different countdown on the page', shorter.left === 13, `${shorter.left}s`);
+  const noWait = ap.queue([{ sessionId: 's-x', gated: true, pendingPermissions: [req('x', T)] }])[0];
+  const unknown = ap.remaining(noWait, T + 1000);
+  check('a wait the server did not send is not replaced by a number the page made up',
+    noWait.waitSeconds === null && unknown.known === false && unknown.left === null,
+    'the dock then shows no clock; a default here is exactly a hand-written 45');
+
+  // The viewer's clock is not the hook's. A browser five minutes fast would show every request as expired.
+  const clock = new ap.ServerClock();
+  const localNow = T + 7200 + 300_000;
+  clock.sync(T + 7200, localNow);
+  check('a viewer whose clock is five minutes off still counts down to the hook\'s deadline',
+    ap.remaining(q[0], clock.now(localNow)).left === 38);
+  check('the same request on the viewer\'s own clock would read as already over — the control for the line above',
+    ap.remaining(q[0], localNow).expired === true);
+  const unsynced = new ap.ServerClock();
+  unsynced.sync(undefined, localNow);
+  check('a response with no server time in it does not move the clock', unsynced.synced === false && unsynced.offset === 0);
+
+  // Nothing under web/ carries the wait as a literal.
+  const waitLiterals = (src) => src.match(/(?<![\d.])\b45(?:_?000)?\b(?!\s*%|\.\d)/g) ?? [];
+  const webFiles = fs.readdirSync(WEB_ROOT).filter((f) => /\.(js|html)$/.test(f));
+  const carrying = webFiles.filter((f) => waitLiterals(web(f)).length);
+  check('no file under web/ writes the gate\'s wait by hand', webFiles.length >= 10 && carrying.length === 0,
+    `${webFiles.length} files scanned${carrying.length ? `; found in ${carrying.join(', ')}` : ''}`);
+  check('the scan that says so does find one when it is there',
+    waitLiterals('const WAIT = 45;').length === 1 && waitLiterals('setTimeout(deny, 45000)').length === 1
+    && waitLiterals('opacity: 45%; x = 1.45; y = 145').length === 0,
+    'calibrated on a planted literal and on three things that are not one');
+  check('the server puts its wait and its clock in what it sends',
+    /gateWaitSeconds: this\.gate\?\.waitSeconds \?\? null/.test(sessionJs) && /now: Date\.now\(\),\s*gateEvents/.test(sessionJs)
+    && /sessions: listSessionsOwned\(\), now: Date\.now\(\)/.test(serverJs));
+
+  /* -- 3. what became of a request ------------------------------------------- */
+
+  const decided = new Map([['s-a/early', 'deny'], ['s-b/late', 'always']]);
+  const gone = ap.settled(q, [], decided, T + 10_000);
+  const how = Object.fromEntries(gone.map((g) => [g.toolUseId, g.outcome]));
+  check('a request this page answered is recorded with the answer it gave',
+    how.early === 'denied' && how.late === 'allowed-session', JSON.stringify(how));
+  check('a request that vanished early with no answer from here was answered somewhere else, not timed out',
+    how.mid === 'answered-elsewhere');
+  const atDeadline = ap.settled([q[1]], [], new Map(), T + 1000 + 45_000);
+  check('a request that vanished at the hook\'s deadline with no answer is a timeout', atDeadline[0]?.outcome === 'timed-out');
+  check('a request still waiting has no outcome', ap.settled(q, q, decided, T + 99_000).length === 0);
+  check('a timeout is said as a denial, because that is what the hook did',
+    ap.OUTCOME_WORD['timed-out'] === 'Timed out — denied' && ap.OUTCOME_WORD.denied === 'Denied');
+
+  /* -- 4. the dock ------------------------------------------------------------ */
+
+  const dom31 = installDom();
+  try {
+    const { Dock } = await import(`../../kit/studio/web/dock.js?t=${Date.now()}`);
+    const sent = [];
+    let now = T + 7200;
+    const root = document.createElement('div');
+    root.hidden = true;
+    const dock = new Dock(root, { now: () => now, onDecide: (item, verdict) => sent.push(`${item.toolUseId}:${verdict}`) });
+    const p = dock.parts;
+    dock.render([]);
+    check('with nothing waiting the dock is not on the page', root.hidden === true);
+    dock.render(q);
+    const buttons = [p.deny, p.always, p.allow].map((b) => b.textContent);
+    check('with a request waiting the dock shows who, which tool, the whole command and the time left',
+      root.hidden === false && p.who.textContent === 'Session' && p.tool.textContent === 'Bash'
+      && p.cmd.textContent === 'echo early' && p.secs.textContent === '38s' && /Auto-deny in 38s/.test(p.note.textContent),
+      `${p.who.textContent} · ${p.tool.textContent} · ${p.cmd.textContent} · ${p.secs.textContent}`);
+    check('three answers and no fourth: Deny, Allow <tool> this session, Allow once',
+      buttons.join(' | ') === 'Deny | Allow Bash this session | Allow once' && !/undo/i.test(dockJs),
+      `${buttons.join(' | ')} — a denial has reached the agent by the time it is shown; there is nothing to undo`);
+    check('the clock is a timer to a screen reader, with the seconds in words',
+      p.timer.getAttribute('role') === 'timer' && p.timer.getAttribute('aria-label') === 'Auto-deny in 38 seconds');
+    check('several requests are counted, and the arrows walk them',
+      p.nav.hidden === false && p.count.textContent === '1 of 3'
+      && (dock.step(1), p.count.textContent === '2 of 3' && p.who.textContent === 'Explore')
+      && (dock.step(-1), p.count.textContent === '1 of 3'));
+    dock.render([q[0]]);
+    check('one request has no counter', p.nav.hidden === true);
+    dock.render(q);
+
+    now += 1000;
+    dock.tick();
+    check('the clock moves without anything else changing', p.secs.textContent === '37s');
+
+    dock.render([noWait]);
+    check('a request whose wait the server did not send shows no seconds, and says it was not measured',
+      p.secs.textContent === '?' && /not measured/i.test(p.note.textContent) && !/\d/.test(p.note.textContent),
+      p.note.textContent);
+    dock.render(q);
+
+    root.emit('keydown', { key: 'a' });
+    check('with the dock focused, a answers Allow once', sent.join() === 'early:allow', sent.join());
+    root.emit('keydown', { key: 'd' });
+    check('a request already answered cannot be answered twice',
+      sent.length === 1 && p.deny.disabled && p.allow.disabled && p.always.disabled);
+    dock.release('s-a/early');
+    check('an answer that did not reach the server gives the buttons back', !p.deny.disabled && !p.allow.disabled);
+    root.emit('keydown', { key: 's', ctrlKey: true });
+    check('a shortcut with a modifier is the browser\'s, not an answer', sent.length === 1);
+    check('the keys are the dock\'s own: nothing listens for them on the page',
+      !/document\.addEventListener|window\.addEventListener/.test(dockJs)
+      && !/e\.key === 'a'|e\.key === 'd'|e\.key === 's'/.test(appJs),
+      'a letter typed anywhere else is a letter');
+
+    dock.say('timed-out', false);
+    check('a timeout is said in the dock, and the buttons are gone while it is',
+      root.hidden === false && p.word.textContent === 'Timed out — denied' && p.acts.hidden && p.timer.hidden
+      && root.dataset.state === 'timed-out');
+    root.emit('keydown', { key: 'a' });
+    check('a key pressed while the outcome is on screen answers nothing', sent.length === 1,
+      'the next request is not on screen yet; nobody has read it');
+    clearTimeout(dock.flashTimer);
+    dock.flash = null;
+    dock.render([]);
+    check('when the last request is gone the dock goes with it', root.hidden === true);
+  } finally {
+    dom31();
+  }
+
+  check('the dock is not a dialog and takes no focus',
+    !/showModal|role="dialog"|aria-modal|\.focus\(/.test(dockJs)
+    && /<div id="canvas" class="canvas"><\/div>\s*<div id="dock" role="region"[^>]*hidden><\/div>\s*<\/main>/.test(indexHtml),
+    'a region under the canvas, inside the stage: the graph stays usable above it');
+  check('the dock is the one place requests are drawn: the conversation pane no longer draws its own',
+    !/perm-queue|paintPermissions/.test(chatJs) && !/\.perm-/.test(cssSrc31) && /this\.onPermissions\(this, rec\)/.test(chatJs));
+  check('a pane\'s stream is a reason to ask the server, not the answer',
+    /chat\.onPermissions = \(\) => pollOwned\(\)/.test(appJs),
+    'the stream replays what it already said on reconnect; a replayed queue would announce outcomes that never happened');
+  check('who is waiting reaches the canvas, so the card, its wire, the map and the strip all say it',
+    /canvas\.setWaiting\(here\.filter\(\(r\) => r\.agentId\)\.map\(\(r\) => r\.agentId\)\)/.test(appJs));
+  check('a floating inspector stops above the dock, and a hidden dock takes no room',
+    /\.shell > \.inspector \{[^}]*bottom: var\(--dock-h, 0px\)/.test(cssSrc31)
+    && /\.dock\[hidden\], \.dock \[hidden\] \{ display: none; \}/.test(cssSrc31));
+
+  check('only the bar\'s primary button drops its words in a narrow window: Allow once keeps them',
+    /\.bar \.btn\.primary \{ width: 36px; padding: 0; \}/.test(cssSrc31) && !/^\s*\.btn\.primary \{ width: 36px/m.test(cssSrc31),
+    'the rule was written for New session and squeezed every primary button to an icon\'s width');
+
+  /* -- 5. the inspector -------------------------------------------------------- */
+
+  check('the inspector has four tabs, in the design\'s order',
+    insp.TABS.join(',') === 'overview,conversation,gates,stats'
+    && Object.values(insp.TAB_WORD).join(' · ') === 'Overview · Conversation · Gates · Stats');
+
+  const agent = { id: 'a1', kind: 'agent', status: 'running', toolCount: 0, errors: 0, tokens: null, startedAt: T, durationMs: null, parentId: 'session' };
+  const tl = Object.fromEntries(insp.tiles(agent, T + 500_000).map((t) => [t.label, t]));
+  check('tokens nobody read are Not measured, with why — never 0',
+    tl.Tokens.value === 'Not measured' && tl.Tokens.measured === false && Boolean(tl.Tokens.why));
+  check('a count the transcript gave is a count, zero included',
+    tl['Tool calls'].value === '0' && tl['Tool calls'].measured === true && tl.Errors.value === '0');
+  check('a running agent\'s elapsed time is the clock since it started', tl.Elapsed.value === '8m 20s', tl.Elapsed.value);
+  const noStart = Object.fromEntries(insp.tiles({ ...agent, startedAt: null }, T).map((t) => [t.label, t]));
+  check('with no start recorded the elapsed time is Not measured, not 0s',
+    noStart.Elapsed.value === 'Not measured' && noStart.Elapsed.measured === false);
+
+  const detail = { timeline: [{ name: 'Skill', label: 'testing' }, { name: 'Read', label: 'src/a.ts' }, { name: 'Skill', label: 'testing' }, { name: 'Skill', label: 'db-migration' }, { name: 'Bash', label: 'npm test' }], report: null };
+  check('what it is doing is "Right now" while it runs and "Last tool" once it has stopped',
+    insp.rightNow(agent, detail).heading === 'Right now' && insp.rightNow(agent, detail).text === 'npm test'
+    && insp.rightNow({ ...agent, status: 'done' }, detail).heading === 'Last tool');
+  check('the skills an agent applied are listed once each, in the order it first used them',
+    insp.skillsOf(detail).join(',') === 'testing,db-migration');
+  check('an agent that has not finished has not reported, and the inspector says that rather than showing narration',
+    insp.reportOf(agent, detail).present === false && /Not reported yet/.test(insp.reportOf(agent, detail).text)
+    && insp.reportOf({ ...agent, status: 'done' }, { report: 'All green.' }).text === 'All green.');
+  check('"Delegated by" is the node the agent hangs from',
+    insp.delegatedBy(agent, [{ id: 'session', kind: 'session', gitBranch: 'main' }]).id === 'session'
+    && insp.delegatedBy({ ...agent, parentId: 'p9' }, [{ id: 'p9', kind: 'agent', agentType: 'Plan' }]).text === 'Plan'
+    && insp.delegatedBy({ ...agent, parentId: 'nobody' }, []) === null);
+
+  check('a session Studio did not start says so, where the missing controls would be',
+    /This session was not started here, so Studio can read it but not write to it\./.test(appJs)
+    && /cont\.addEventListener\('click', \(\) => continueHere\(cont\)\)/.test(appJs)
+    && /offerTerminal\(term, current\)/.test(appJs));
+  check('Continue here lives on the session, not in the bar',
+    !/continue-session/.test(indexHtml) && !/continueSession/.test(appJs));
+  check('an allowance is listed in Gates with a way to take it back, and the take-back is a DELETE',
+    /revokeAllowance\(tool, revoke\)/.test(appJs) && /method: 'DELETE', headers: writeHeaders/.test(appJs)
+    && /alwaysAllowed: this\.gate \? alwaysList\(this\.id\) : \[\]/.test(sessionJs));
+  const delAt = serverJs.indexOf("req.method === 'DELETE'");
+  const gateAt = serverJs.lastIndexOf('writeAllowed(req)', delAt);
+  check('the revoke endpoint is behind the same write guard as every other write',
+    delAt > 0 && gateAt > 0 && delAt - gateAt < 1500 && /revoke\(s\.id, /.test(serverJs),
+    `guard ${delAt - gateAt} characters before the DELETE branch`);
+  check('the copy button copies a path the server handed over, and is disabled when there is none',
+    /copy\.disabled = !file/.test(appJs) && /transcriptPath: file/.test(read(path.join(STUDIO, 'server', 'lib', 'graph.js')) ?? ''),
+    'a path is not assembled from parts in the page');
+  check('a skill chip copies the skill\'s name', /copyText\(s, `Copied \$\{s\}`\)/.test(appJs));
 }
 
 process.stdout.write(`${pass}/${pass + fail} assertions passed`

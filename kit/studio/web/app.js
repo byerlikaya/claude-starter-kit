@@ -16,6 +16,9 @@ import {
 } from './nav.js';
 import { liveness } from './liveness.js';
 import { attention, AUTO } from './graph-plan.js';
+import { ServerClock, queue, settled, OUTCOME_WORD } from './approvals.js';
+import { Dock } from './dock.js';
+import { tiles, timeLine, rightNow, skillsOf, delegatedBy, reportOf, TABS as INSPECTOR_TABS, TAB_WORD } from './inspect.js';
 
 const FLEET_POLL_MS = 2000;
 const SESSION_POLL_MS = 5000;
@@ -38,7 +41,6 @@ const el = {
   crumb: document.getElementById('crumb'),
   fullscreen: document.getElementById('fullscreen'),
   newSession: document.getElementById('new-session'),
-  continueSession: document.getElementById('continue-session'),
   summary: document.getElementById('graph-summary'),
   pulse: document.getElementById('pulse'),
   foot: document.getElementById('foot-note'),
@@ -46,6 +48,7 @@ const el = {
   inspector: document.getElementById('inspector'),
   toast: document.getElementById('toast'),
   attention: document.getElementById('attention'),
+  dock: document.getElementById('dock'),
   tbGroup: document.getElementById('tb-group'),
   tbDensity: document.getElementById('tb-density'),
   tbShow: document.getElementById('tb-show'),
@@ -283,12 +286,13 @@ async function openOwned(sessionId) {
 
 // Continuing a conversation the panel did not start. It forks rather than
 // writing into the original transcript, so a session still open in a terminal
-// somewhere is not being written to by two things at once.
-el.continueSession.addEventListener('click', async () => {
+// somewhere is not being written to by two things at once. Offered in the
+// inspector, on the session itself, beside the sentence that says why it is needed.
+async function continueHere(button) {
   const from = current;
   if (!from) return;
-  el.continueSession.disabled = true;
-  el.continueSession.textContent = 'Continuing…';
+  button.disabled = true;
+  button.textContent = 'Continuing…';
   try {
     const r = await chat.start({ cwd: projectsData?.cwd ?? null, permissionMode: 'plan', resume: from });
     if (!r.ok) {
@@ -301,12 +305,13 @@ el.continueSession.addEventListener('click', async () => {
         ? `${from.slice(0, 8)} is open in another process, so this is a copy — `
           + `messages here do not reach it.`
         : `continued ${from.slice(0, 8)} itself — same session, same transcript.`;
+      pollOwned();
     }
   } finally {
-    el.continueSession.disabled = false;
-    el.continueSession.textContent = 'Continue here';
+    button.disabled = false;
+    button.textContent = 'Continue here';
   }
-});
+}
 
 const newSessionLabel = el.newSession.querySelector('span');
 el.newSession.addEventListener('click', async () => {
@@ -318,7 +323,7 @@ el.newSession.addEventListener('click', async () => {
     // reason one got write access nobody asked for.
     const r = await chat.start({ cwd, permissionMode: 'plan' });
     if (!r.ok) el.foot.textContent = `could not start a session: ${r.reason}`;
-    else ownedIds.add(r.session.sessionId);
+    else { ownedIds.add(r.session.sessionId); pollOwned(); }
   } finally {
     el.newSession.disabled = false;
     newSessionLabel.textContent = 'New session';
@@ -414,11 +419,12 @@ getJson('/api/palette')
   })
   .catch(() => { /* every agent is drawn as unrecognised, which is what is known */ });
 
-let inspectorTab = 'report';
+let inspectorTab = 'overview';
 let inspectorNode = null;
 let detailCache = new Map();
 
 function showInspector(node) {
+  const before = inspectorNode;
   inspectorNode = node;
   // The session node IS the conversation. Clicking it opened a details panel
   // and nothing else, which asked the reader to go and find the talking
@@ -426,17 +432,19 @@ function showInspector(node) {
   if (node?.kind === 'session' && current) openConversation(current);
   const wasHidden = el.inspector.hidden;
   if (!node) {
-    el.inspector.hidden = true; el.inspector.classList.remove('wide');
+    el.inspector.hidden = true;
     if (!wasHidden) canvas.fitIfUntouched();
     return;
   }
   el.inspector.hidden = false;
   // Docked, the inspector takes its width from the canvas.
   if (wasHidden) canvas.fitIfUntouched();
-  inspectorTab = node.kind === 'session' ? 'meta' : 'report';
+  // A tab is a question being asked of the node. Another node of the same kind is asked the same question.
+  if (before?.kind !== node.kind) inspectorTab = 'overview';
   paintInspector();
   if (node.kind === 'agent') loadDetail(node.id, node.status);
-  if (node.kind === 'session' && current) loadKit(current);
+  // Gates and Stats are the session's, whichever node is selected in it.
+  if (current) loadKit(current);
 }
 
 // Keyed by status as well as id: a report fetched while the agent was still
@@ -468,10 +476,7 @@ function metaRows(n) {
   } else {
     row('type', n.agentType ?? 'unknown'); row('status', n.status);
     row('depth', n.spawnDepth); row('model', n.model);
-    row('turns', n.turns); row('tool calls', n.toolCount); row('last tool', n.lastTool);
-    row('tokens', n.tokens?.toLocaleString());
-    row('duration', n.durationMs != null ? fmtDur(n.durationMs) : null);
-    row('errors', n.errors || null);
+    row('turns', n.turns); row('last tool', n.lastTool);
     row('agent id', n.id);
   }
   const dl = document.createElement('dl');
@@ -483,121 +488,229 @@ function metaRows(n) {
   return dl;
 }
 
-function fmtDur(ms) {
-  const sec = Math.round(ms / 1000);
-  return sec < 60 ? `${sec}s` : `${Math.floor(sec / 60)}m ${sec % 60}s`;
+/** A titled block of the inspector. */
+function isection(title, ...children) {
+  const s = node('section', 'isec');
+  s.append(node('h4', 'isec-h', title), ...children);
+  return s;
+}
+
+/** The agent transcript, as far as it has been read: null when it is there to use. */
+function detailGap(n, detail) {
+  if (!detail || detail.loading) return node('div', 'ihint', 'Reading the agent transcript…');
+  if (detail.measured !== false) return null;
+  const hint = node('div', 'ihint');
+  hint.append(node('strong', null, 'Not measured'), node('div', null, detail.reason || 'no reason given'));
+  if (detail.transient) {
+    const retry = node('button', 'btn sm', 'Retry');
+    retry.type = 'button';
+    retry.addEventListener('click', () => {
+      detailCache.delete(`${n.id}:${n.status ?? '?'}`);
+      loadDetail(n.id, n.status);
+    });
+    hint.append(retry);
+  }
+  return hint;
+}
+
+/** Where a node's transcript is on disk, when this page was told. */
+function transcriptPathOf(n, detail) {
+  if (n.kind === 'session') return findSessionRow(current)?.session?.file ?? null;
+  return detail?.transcriptPath ?? null;
 }
 
 function paintInspector() {
   const n = inspectorNode;
   if (!n) return;
+  const isSession = n.kind === 'session';
   const detail = n.kind === 'agent' ? detailCache.get(`${n.id}:${n.status ?? '?'}`) : null;
+  const st = canvas.statusOf(n);
 
-  const head = document.createElement('div');
-  head.className = 'ihead';
-  const h3 = document.createElement('h3');
-  h3.textContent = n.kind === 'session' ? 'Session' : (n.agentType ?? 'Agent');
-  const chip = node('span', 'cv-chip', n.kind === 'session' ? `${n.turns ?? 0} turns` : (n.status ?? '?'));
-  chip.dataset.status = n.status ?? 'unknown';
-  const wide = node('button', 'ghost iwide', el.inspector.classList.contains('wide') ? '›' : '‹');
-  wide.title = 'Widen';
-  wide.addEventListener('click', () => { el.inspector.classList.toggle('wide'); paintInspector(); });
-  // The inspector floats over the graph, so it needs a way out that is not
-  // "click the node again and hope you hit it".
-  const close = node('button', 'ghost iwide', '×');
-  close.title = 'Close';
+  const head = node('div', 'ihead');
+  const close = node('button', 'btn icon sm ghost');
+  close.type = 'button';
+  close.setAttribute('aria-label', 'Close');
+  close.title = 'Close (Esc)';
+  close.append(icon(ICON.close));
   close.addEventListener('click', () => { canvas.clearSelection(); showInspector(null); });
-  head.append(h3, chip, wide, close);
+  const name = isSession ? 'Session' : n.kind === 'workflow' ? (n.workflowId ?? 'Workflow run') : (n.agentType ?? 'unknown agent');
+  head.append(canvas.tileFor(n), node('h3', 'iname', name), close);
 
-  const sub = node('div', 'isub', n.description ?? n.cwd ?? '');
+  const meta = node('div', 'imeta');
+  const pill = node('span', 'pill');
+  // A state nobody read is said, not left as a blank pill.
+  pill.append(dot(st.tone), node('span', null, st.word ?? 'State not measured'));
+  meta.append(pill, node('span', 'sub', timeLine(n, serverNow())));
 
-  const tabs = document.createElement('div');
-  tabs.className = 'itabs';
-  const available = n.kind === 'session'
-    ? ['meta', 'gates', 'stats', 'board']
-    : ['report', 'activity', 'prompt', 'meta'];
-  for (const t of available) {
-    const b = node('button', `itab${inspectorTab === t ? ' on' : ''}`, t);
+  const task = node('div', 'itask', isSession
+    ? (sessionLabel(current) ?? n.sessionId ?? '')
+    : n.kind === 'workflow' ? `${n.members ?? 0} agents` : (n.description ?? ''));
+
+  const tabs = node('div', 'itabs');
+  tabs.setAttribute('role', 'tablist');
+  for (const t of INSPECTOR_TABS) {
+    const b = node('button', 'itab', TAB_WORD[t]);
+    b.type = 'button';
+    b.setAttribute('role', 'tab');
+    b.setAttribute('aria-selected', String(inspectorTab === t));
     b.addEventListener('click', () => { inspectorTab = t; paintInspector(); });
     tabs.append(b);
   }
 
-  const body = document.createElement('div');
-  body.className = 'ibody';
+  const body = node('div', 'ibody');
+  body.setAttribute('role', 'tabpanel');
+  if (inspectorTab === 'gates') paintGates(body);
+  else if (inspectorTab === 'stats') paintStats(body);
+  else if (inspectorTab === 'conversation') paintTranscript(body, n, detail);
+  else if (isSession) paintSessionOverview(body, n);
+  else paintAgentOverview(body, n, detail);
 
-  if (['gates', 'stats', 'board'].includes(inspectorTab)) {
-    paintKit(body, inspectorTab);
-  } else if (inspectorTab === 'meta') {
-    body.append(metaRows(n));
-    const tools = Object.entries(n.tools ?? {});
-    if (tools.length) {
-      const wrap = node('div', 'tools');
-      for (const [name, c] of tools.sort((a, b) => b[1] - a[1])) wrap.append(node('span', 'cv-bit', `${name} ×${c}`));
-      body.append(wrap);
-    }
-  } else if (!detail) {
-    body.append(node('div', 'ihint', 'Loading…'));
-  } else if (detail.loading) {
-    body.append(node('div', 'ihint', 'Reading the agent transcript…'));
-  } else if (detail.measured === false) {
-    const hint = node('div', 'ihint', `Not measured — ${detail.reason}`);
-    if (detail.transient) {
-      const retry = node('button', 'ghost', 'retry');
-      retry.addEventListener('click', () => {
-        detailCache.delete(`${n.id}:${n.status ?? '?'}`);
-        loadDetail(n.id, n.status);
-      });
-      hint.append(' ', retry);
-    }
-    body.append(hint);
-  } else if (inspectorTab === 'report') {
-    if (detail.report) {
-      const bar = node('div', 'ibar');
-      bar.append(node('span', 'meta', `${detail.report.length.toLocaleString()} chars`));
-      const copy = node('button', 'ghost', 'copy');
-      copy.addEventListener('click', async () => {
-        try { await navigator.clipboard.writeText(detail.report); copy.textContent = 'copied'; }
-        catch { copy.textContent = 'blocked'; }
-        setTimeout(() => { copy.textContent = 'copy'; }, 1400);
-      });
-      bar.append(copy);
-      const md = node('div', 'md');
-      md.innerHTML = renderMarkdown(detail.report);
-      body.append(bar, md);
-    } else {
-      // An agent still working has narration but no conclusion. Showing the
-      // narration as a report would be inventing a result it never gave.
-      body.append(node('div', 'ihint',
-        n.status === 'running'
-          ? 'Still working — no report yet. What it has said so far is under Activity.'
-          : 'This agent produced no closing report.'));
-    }
-  } else if (inspectorTab === 'activity') {
-    const list = node('div', 'itimeline');
-    if (!detail.timeline?.length) list.append(node('div', 'ihint', 'No tool calls recorded.'));
-    for (const [i, step] of (detail.timeline ?? []).entries()) {
-      const r = node('div', 'istep');
-      r.append(node('span', 'istep-n', String(i + 1)));
-      r.append(node('span', 'istep-tool', step.name));
-      r.append(node('span', 'istep-label', step.label ?? ''));
-      list.append(r);
-    }
-    if (detail.narration?.length) {
-      list.append(node('div', 'ihint', `${detail.narration.length} progress note(s)`));
-      for (const t of detail.narration) {
-        const md = node('div', 'md md-narration');
-        md.innerHTML = renderMarkdown(t);
-        list.append(md);
-      }
-    }
-    body.append(list);
-  } else if (inspectorTab === 'prompt') {
-    const md = node('div', 'md');
-    md.innerHTML = renderMarkdown(detail.prompt ?? '');
-    body.append(detail.prompt ? md : node('div', 'ihint', 'No prompt recorded.'));
+  const foot = node('div', 'ifoot');
+  const open = node('button', 'btn', 'Open conversation');
+  open.type = 'button';
+  open.addEventListener('click', () => { if (current) openConversation(current); });
+  const file = transcriptPathOf(n, detail);
+  const copy = node('button', 'btn icon');
+  copy.type = 'button';
+  copy.append(icon(ICON.copy));
+  copy.setAttribute('aria-label', 'Copy the transcript path');
+  // A path nobody handed over is not built from parts here: the button says it has none.
+  copy.disabled = !file;
+  copy.title = file ? `Copy the transcript path\n${file}` : 'Transcript path not read yet';
+  copy.addEventListener('click', () => copyText(file, 'Copied'));
+  foot.append(open, copy);
+
+  el.inspector.replaceChildren(head, meta, task, tabs, body, foot);
+}
+
+function paintAgentOverview(body, n, detail) {
+  const grid = node('div', 'itiles');
+  for (const t of tiles(n, serverNow())) {
+    const tile = node('div', 'itile');
+    const value = node('strong', null, t.value);
+    if (!t.measured) { tile.classList.add('unmeasured'); tile.title = `Not measured — ${t.why}`; }
+    if (t.bad) value.classList.add('bad');
+    tile.append(node('span', 'itile-k', t.label), value);
+    grid.append(tile);
+  }
+  body.append(grid);
+
+  const gap = n.kind === 'agent' ? detailGap(n, detail) : null;
+  const read = n.kind === 'agent' && !gap ? detail : null;
+
+  const now = rightNow(n, read);
+  const box = node('div', 'inow');
+  if (now.tool) box.append(node('span', 'inow-tool', now.tool));
+  box.append(node('span', 'inow-text', now.text || (gap ? '' : '—')));
+  body.append(isection(now.heading, box));
+
+  if (n.kind !== 'agent') { body.append(metaRows(n)); return; }
+
+  const skills = read ? skillsOf(read) : [];
+  const chips = node('div', 'ichips');
+  for (const s of skills) {
+    const chip = node('button', 'ichip', s);
+    chip.type = 'button';
+    chip.title = 'Copy the skill name';
+    chip.addEventListener('click', () => copyText(s, `Copied ${s}`));
+    chips.append(chip);
+  }
+  body.append(isection('Skills applied',
+    gap ?? (skills.length ? chips : node('div', 'ihint', 'None — this agent invoked no skill.'))));
+
+  const by = delegatedBy(n, [...canvas.nodes.values()]);
+  if (by) {
+    const link = node('button', 'ilink', by.text);
+    link.type = 'button';
+    link.addEventListener('click', () => canvas.focus(by.id));
+    body.append(isection('Delegated by', link));
   }
 
-  el.inspector.replaceChildren(head, sub, tabs, body);
+  if (gap) { body.append(isection('Report', node('div', 'ihint', 'Reading the agent transcript…'))); return; }
+  const rep = reportOf(n, read);
+  if (!rep.present) { body.append(isection('Report', node('div', 'ihint', rep.text))); return; }
+  const md = node('div', 'md');
+  md.innerHTML = renderMarkdown(rep.text);
+  const copy = node('button', 'btn sm ghost', 'Copy');
+  copy.type = 'button';
+  copy.addEventListener('click', () => copyText(rep.text, 'Copied the report'));
+  const sec = isection('Report', md);
+  sec.querySelector('.isec-h').append(copy);
+  body.append(sec);
+}
+
+function paintSessionOverview(body, n) {
+  if (current && !ownedIds.has(current)) {
+    // Said in the place the missing controls would have been: there is no approval dock for this session, and
+    // no way to write to it, and this is why.
+    const banner = node('div', 'ibanner');
+    banner.append(node('p', null, 'This session was not started here, so Studio can read it but not write to it.'));
+    const acts = node('div', 'ibanner-acts');
+    const cont = node('button', 'btn sm primary', 'Continue here');
+    cont.type = 'button';
+    cont.title = 'Start a new session holding a copy of this conversation. It does not write into the original.';
+    cont.addEventListener('click', () => continueHere(cont));
+    const term = node('button', 'btn sm', 'Open in terminal');
+    term.type = 'button';
+    term.addEventListener('click', (e) => { e.stopPropagation(); offerTerminal(term, current); });
+    acts.append(cont, term);
+    banner.append(acts);
+    body.append(banner);
+  }
+  body.append(metaRows(n));
+
+  const b = kitData?.board;
+  let board;
+  if (!kitData) board = node('div', 'ihint', 'Reading Crewforth…');
+  else if (!b?.measured) board = unmeasured(b?.reason);
+  else if (!b.present) board = node('div', 'ihint', b.text);
+  else board = node('pre', 'md-code', b.text);
+  body.append(isection('Board', board));
+}
+
+/** The agent's own transcript, read-only: what it was asked, what it did, what it said. */
+function paintTranscript(body, n, detail) {
+  const full = node('button', 'btn sm', 'Open full conversation');
+  full.type = 'button';
+  full.addEventListener('click', () => { if (current) openConversation(current); });
+
+  if (n.kind !== 'agent') {
+    body.append(node('div', 'ihint', n.kind === 'session'
+      ? 'The session\'s conversation is in the conversation panel.'
+      : 'A workflow run has no transcript of its own; its agents do.'), full);
+    return;
+  }
+  const gap = detailGap(n, detail);
+  if (gap) { body.append(gap, full); return; }
+
+  const prompt = node('div', 'md');
+  prompt.innerHTML = renderMarkdown(detail.prompt ?? '');
+  body.append(isection('Asked', detail.prompt ? prompt : node('div', 'ihint', 'No prompt recorded.')));
+
+  const list = node('div', 'itimeline');
+  if (!detail.timeline?.length) list.append(node('div', 'ihint', 'No tool calls recorded.'));
+  for (const [i, step] of (detail.timeline ?? []).entries()) {
+    const r = node('div', 'istep');
+    r.append(node('span', 'istep-n', String(i + 1)), node('span', 'istep-tool', step.name), node('span', 'istep-label', step.label ?? ''));
+    list.append(r);
+  }
+  body.append(isection('Did', list));
+
+  const said = node('div', 'isaid');
+  for (const t of detail.narration ?? []) {
+    const md = node('div', 'md md-narration');
+    md.innerHTML = renderMarkdown(t);
+    said.append(md);
+  }
+  const rep = reportOf(n, detail);
+  if (rep.present) {
+    const md = node('div', 'md');
+    md.innerHTML = renderMarkdown(rep.text);
+    said.append(md);
+  } else {
+    said.append(node('div', 'ihint', rep.text));
+  }
+  body.append(isection('Said', said), full);
 }
 
 /* ------------------------------------------------------------------ kit
@@ -617,7 +730,7 @@ async function loadKit(sessionId) {
   } catch (e) {
     kitData = { measured: false, reason: e.message };
   }
-  if (inspectorNode?.kind === 'session') paintInspector();
+  if (inspectorNode) paintInspector();
 }
 
 function unmeasured(reason) {
@@ -628,71 +741,122 @@ function unmeasured(reason) {
   return d;
 }
 
-function paintKit(body, tab) {
+function paintStats(body) {
   if (!kitData) { body.append(node('div', 'ihint', 'Reading Crewforth…')); return; }
+  const s = kitData.stats;
+  if (!s?.measured) { body.append(unmeasured(s?.reason ?? kitData.reason)); return; }
+  const dl = document.createElement('dl');
+  for (const [k, v] of Object.entries(s.metrics)) {
+    const dt = node('dt', null, k.replace(/_/g, ' '));
+    const dd = node('dd', null, v.toLocaleString());
+    if (v > 0 && /runaway|errors|interrupts/.test(k)) dd.classList.add('bad');
+    dl.append(dt, dd);
+  }
+  body.append(dl);
+  body.append(node('div', 'ihint', 'session-stats.sh --raw, over this transcript.'));
+}
 
-  if (tab === 'stats') {
-    const s = kitData.stats;
-    if (!s?.measured) { body.append(unmeasured(s?.reason)); return; }
-    const dl = document.createElement('dl');
-    for (const [k, v] of Object.entries(s.metrics)) {
-      const dt = node('dt', null, k.replace(/_/g, ' '));
-      const dd = node('dd', null, v.toLocaleString());
-      if (v > 0 && /runaway|errors|interrupts/.test(k)) dd.classList.add('bad');
-      dl.append(dt, dd);
-    }
-    body.append(dl);
-    body.append(node('div', 'ihint', 'session-stats.sh --raw, over this transcript.'));
+async function revokeAllowance(tool, button) {
+  const sessionId = current;
+  button.disabled = true;
+  let res;
+  try {
+    const r = await fetch(api(`/api/owned/${encodeURIComponent(sessionId)}/permissions/${encodeURIComponent(tool)}`), {
+      method: 'DELETE', headers: writeHeaders,
+    });
+    res = await r.json();
+  } catch (e) {
+    res = { ok: false, reason: e.message };
+  }
+  if (!res.ok) {
+    toast(`Not revoked — ${res.reason ?? 'no reason given'}`);
+    button.disabled = false;
     return;
   }
+  const sn = owned.get(sessionId);
+  if (sn) owned.set(sessionId, { ...sn, alwaysAllowed: res.always ?? [] });
+  toast(res.revoked ? `${tool} asks again from the next call` : `${tool} was already asking`);
+  if (inspectorNode) paintInspector();
+}
 
-  if (tab === 'board') {
-    const b = kitData.board;
-    if (!b?.measured) { body.append(unmeasured(b?.reason)); return; }
-    if (!b.present) {
-      body.append(node('div', 'ihint', b.text));
-      return;
+function paintGates(body) {
+  const mine = current ? owned.get(current) : null;
+
+  // What the viewer widened, first: it is the one thing on this tab that can be taken back.
+  if (mine?.gated) {
+    const allowed = mine.alwaysAllowed ?? [];
+    const list = node('div', 'iallow');
+    for (const tool of allowed) {
+      const row = node('div', 'iallow-row');
+      const revoke = node('button', 'btn sm', 'Revoke');
+      revoke.type = 'button';
+      revoke.setAttribute('aria-label', `Revoke ${tool}`);
+      revoke.addEventListener('click', () => revokeAllowance(tool, revoke));
+      row.append(node('span', 'iallow-tool', tool), node('span', 'sub', 'runs without asking'), node('span', 'row-fill'), revoke);
+      list.append(row);
     }
-    body.append(node('pre', 'md-code', b.text));
-    return;
-  }
-
-  // gates
-  const log = kitData.log;
-  const rep = kitData.report;
-
-  if (rep?.measured) {
-    const head = node('div', 'kit-sum');
-    head.append(node('span', 'cv-bit', `${rep.rules} rules`));
-    head.append(node('span', 'cv-bit', `${(rep.decisions ?? 0).toLocaleString()} decisions`));
-    body.append(head);
+    body.append(isection('Allowed for this session',
+      allowed.length ? list : node('div', 'ihint', 'Nothing — every tool call asks first.')));
+  } else if (mine) {
+    body.append(isection('Allowed for this session',
+      node('div', 'ihint', 'This session runs without the approval gate, so nothing asks and nothing was allowed here.')));
   } else {
-    body.append(unmeasured(rep?.reason));
+    body.append(isection('Allowed for this session',
+      node('div', 'ihint', 'This session was not started here, so its tool calls do not wait for an answer in Studio.')));
   }
 
-  // Owned sessions carry the moment each gate ran; the log does not.
-  const owned = chat.panes.get(current);
-  const live = owned?.session?.gateEvents ?? [];
-  if (live.length) {
-    body.append(node('h4', 'md-h', 'Happened'));
-    for (const e of live.slice(-12).reverse()) {
+  // Happened: what was seen with a time on it. The answers given to requests come from this page; the hook
+  // runs come from the session's own stream.
+  const answers = (current ? outcomes.get(current) : null) ?? [];
+  const live = mine?.gateEvents ?? chat.panes.get(current)?.session?.gateEvents ?? [];
+  if (answers.length || live.length) {
+    const rows = [];
+    for (const a of answers.slice(-12)) {
       const row = node('div', 'gate-row');
-      row.append(node('span', 'gate-when', new Date(e.at).toLocaleTimeString()));
+      row.append(node('span', 'gate-when', new Date(a.at - clock.offset).toLocaleTimeString()));
+      row.append(node('span', 'gate-name', `${a.toolName}${a.agentType ? ` · ${a.agentType}` : ''}`));
+      const v = node('span', 'gate-verdict', OUTCOME_WORD[a.outcome]);
+      v.dataset.verdict = a.outcome.startsWith('allowed') ? 'ALLOW' : a.outcome === 'answered-elsewhere' ? 'ASK' : 'BLOCK';
+      row.append(v);
+      rows.push({ at: a.at, row });
+    }
+    for (const e of live.slice(-12)) {
+      const row = node('div', 'gate-row');
+      row.append(node('span', 'gate-when', new Date(e.at - clock.offset).toLocaleTimeString()));
       row.append(node('span', 'gate-name', e.name ?? e.event ?? 'hook'));
       const v = node('span', 'gate-verdict', e.phase === 'started' ? 'ran' : (e.exitCode === 2 ? 'blocked' : e.outcome ?? 'done'));
       v.dataset.verdict = e.exitCode === 2 ? 'BLOCK' : 'ALLOW';
       row.append(v);
-      body.append(row);
+      rows.push({ at: e.at, row });
     }
+    // One list, newest first: both kinds carry the server's time.
+    rows.sort((x, y) => y.at - x.at);
+    body.append(isection('Happened', ...rows.map((r) => r.row)));
   }
 
-  if (!log?.measured) { body.append(unmeasured(log?.reason)); return; }
+  if (!kitData) { body.append(node('div', 'ihint', 'Reading Crewforth…')); return; }
+  const log = kitData.log;
+  const rep = kitData.report;
 
-  const h = node('h4', 'md-h', 'Observed');
-  body.append(h);
+  const observed = [];
+  if (rep?.measured) {
+    const head = node('div', 'kit-sum');
+    head.append(node('span', 'cv-bit', `${rep.rules} rules`));
+    head.append(node('span', 'cv-bit', `${(rep.decisions ?? 0).toLocaleString()} decisions`));
+    observed.push(head);
+  } else {
+    observed.push(unmeasured(rep?.reason ?? kitData.reason));
+  }
+
+  if (!log?.measured) {
+    observed.push(unmeasured(log?.reason ?? kitData.reason));
+    body.append(isection('Observed', ...observed));
+    return;
+  }
+
   // The distinction is the point: this file has no timestamp column, so these
   // are decisions found in the log, not decisions seen happening.
-  body.append(node('div', 'ihint',
+  observed.push(node('div', 'ihint',
     `${log.total.toLocaleString()} in the tail of gate-log.tsv${log.truncated ? ' (truncated)' : ''} · `
     + 'no timestamps in this format, so these are what the log holds, not when they ran'
     + (log.commandsRecorded ? '' : ' · commands not recorded (CREW_GATE_LOG_CMD=1 records them)')));
@@ -703,7 +867,7 @@ function paintKit(body, tab) {
     b.dataset.verdict = k;
     counts.append(b);
   }
-  body.append(counts);
+  observed.push(counts);
 
   for (const e of (log.entries ?? []).slice(0, 40)) {
     const row = node('div', 'gate-row');
@@ -712,8 +876,9 @@ function paintKit(body, tab) {
     row.append(v);
     row.append(node('span', 'gate-name', e.rule ?? '—'));
     if (e.section) row.append(node('span', 'gate-sec', e.section));
-    body.append(row);
+    observed.push(row);
   }
+  body.append(isection('Observed', ...observed));
 }
 
 /* ------------------------------------------------------------ navigator
@@ -758,6 +923,8 @@ function icon(d) {
   return svg;
 }
 const ICON = {
+  close: 'M4 4l8 8M12 4l-8 8',
+  copy: 'M5.5 5.5v-2A1.5 1.5 0 0 1 7 2h5.5A1.5 1.5 0 0 1 14 3.5V9a1.5 1.5 0 0 1-1.5 1.5h-2M3.5 5.5H9A1.5 1.5 0 0 1 10.5 7v5.5A1.5 1.5 0 0 1 9 14H3.5A1.5 1.5 0 0 1 2 12.5V7a1.5 1.5 0 0 1 1.5-1.5z',
   chevron: 'M6 4l4 4-4 4',
   more: 'M3.5 8h.01M8 8h.01M12.5 8h.01',
   machine: 'M3.5 3h9A1.5 1.5 0 0 1 14 4.5v5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 9.5v-5A1.5 1.5 0 0 1 3.5 3zM6 14h4M8 11v3',
@@ -1150,7 +1317,7 @@ function renderFleet(data) {
   // A session's dot comes from this answer, so the project list follows it, and
   // so does the pill on the session's own card.
   paintProjects();
-  if (current) canvas.setSessionState(sessionStatus(current, fleetData));
+  if (current) canvas.setSessionState(sessionStateNow());
 }
 
 function paintLive() {
@@ -1447,9 +1614,10 @@ function selectSession(sessionId) {
   show = 'all';
   tbValue.show.textContent = SHOW.all.word;
   canvas.setFilter(null);
-  canvas.setSessionState(sessionStatus(sessionId, fleetData));
+  canvas.setSessionState(sessionStateNow());
   paintAttention(null);
   showInspector(null);
+  paintWaiting(true);
 
   // The session being looked at is never inside a folded project: the row that
   // says "you are here" has to be on screen.
@@ -1467,10 +1635,6 @@ function selectSession(sessionId) {
   el.chat.hidden = !any;
   el.chatSplit.hidden = !any;
   shell.classList.toggle('no-chat', !any);
-  // Offered only where it means something: a session the panel already owns is
-  // already here, and there is nothing to continue.
-  el.continueSession.hidden = ownedIds.has(sessionId);
-  el.continueSession.title = `Continue ${sessionId.slice(0, 8)} in the panel — forks it, so the original transcript is not written to`;
 
   if (source) source.close();
   source = new EventSource(api(`/api/stream?session=${encodeURIComponent(sessionId)}`));
@@ -1479,6 +1643,7 @@ function selectSession(sessionId) {
     heardNow();
     const g = JSON.parse(e.data);
     canvas.render(g);
+    lastNodes = g.nodes;
     paintAttention(g.nodes);
     // The inspector holds a node object from an earlier frame; refresh it so
     // status, tokens and tool counts keep moving while it is open.
@@ -1547,7 +1712,7 @@ function paintPulse() {
   pulse.detail.textContent = l.detail ? `· ${l.detail}` : '';
 }
 paintPulse();
-setInterval(paintPulse, 1000);
+setInterval(() => { paintPulse(); dock.tick(); }, 1000);
 
 /* -------------------------------------------------------------- home, keys */
 
@@ -1596,6 +1761,143 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+/* ------------------------------------------------------------ approvals
+   A session started here asks before every tool call. What is waiting, in every
+   such session, is one queue, drawn in one place: the dock under the canvas. The
+   rules are in approvals.js; this is where they meet the server and the page. */
+
+const clock = new ServerClock();
+const serverNow = () => clock.now(Date.now());
+const owned = new Map();        // sessionId -> its summary, as /api/owned last gave it
+const decided = new Map();      // request key -> the verdict this page sent
+const answered = new Set();     // request keys the server has taken an answer for; the hook picks it up within a poll
+const outcomes = new Map();     // sessionId -> what became of its requests, as far as this page saw
+let waitingNow = [];
+let waitingSig = '';
+let lastNodes = null;
+
+function sessionLabel(id) {
+  const known = findSessionRow(id);
+  return known ? sessionName(known.session, labels.all()) : null;
+}
+
+const dock = new Dock(el.dock, {
+  now: serverNow,
+  onDecide: decideRequest,
+  onLocate: (item) => {
+    if (item.sessionId !== current) selectSession(item.sessionId);
+    if (item.agentId) canvas.focus(item.agentId);
+  },
+  where: (item) => (item.sessionId === current ? null : item.sessionName),
+});
+
+/** The session card's state: waiting on the viewer outranks what the fleet says, as it does for an agent. */
+function sessionStateNow() {
+  const own = waitingNow.some((r) => r.sessionId === current && !r.agentId);
+  if (own) return { key: 'waiting', word: 'Needs you', tone: 'waiting', known: true };
+  return sessionStatus(current, fleetData);
+}
+
+/** Tell the canvas who is parked on an approval, so the card, its wire, the map and the strip all say it. */
+function paintWaiting(force = false) {
+  const here = waitingNow.filter((r) => r.sessionId === current);
+  const sig = `${current}|${here.map((r) => r.agentId ?? 'session').sort().join(',')}`;
+  if (!force && sig === waitingSig) return;
+  waitingSig = sig;
+  canvas.setWaiting(here.filter((r) => r.agentId).map((r) => r.agentId));
+  if (current) canvas.setSessionState(sessionStateNow());
+  if (lastNodes) paintAttention(lastNodes);
+  if (inspectorNode) paintInspector();
+}
+
+function paintApprovals() {
+  // A request the server has recorded an answer for is over, as far as the viewer is concerned: the hook reads
+  // the answer on its next poll, and until it does the request would sit here with nothing left to press.
+  const listed = queue([...owned.values()], sessionLabel);
+  for (const key of [...answered]) if (!listed.some((r) => r.key === key)) answered.delete(key);
+  const next = listed.filter((r) => !answered.has(r.key));
+  for (const s of settled(waitingNow, next, decided, serverNow())) {
+    decided.delete(s.key);
+    const log = outcomes.get(s.sessionId) ?? [];
+    log.push(s);
+    if (log.length > 40) log.shift();
+    outcomes.set(s.sessionId, log);
+    // An allowed call simply goes ahead; a refused one is said, because the agent has already been told.
+    if (s.outcome === 'denied' || s.outcome === 'timed-out') dock.say(s.outcome, next.length > 0);
+  }
+  waitingNow = next;
+  // The dock takes its height from the canvas when it appears and gives it back when it goes.
+  const was = el.dock.hidden;
+  dock.render(next);
+  measureDock();
+  if (was !== el.dock.hidden) canvas.fitIfUntouched();
+  paintWaiting();
+  if (inspectorNode && inspectorTab === 'gates') paintInspector();
+}
+
+async function decideRequest(item, verdict) {
+  decided.set(item.key, verdict);
+  let res;
+  try {
+    const r = await fetch(
+      api(`/api/owned/${encodeURIComponent(item.sessionId)}/permissions/${encodeURIComponent(item.toolUseId)}`),
+      { method: 'POST', headers: { 'content-type': 'application/json', ...writeHeaders }, body: JSON.stringify({ verdict }) },
+    );
+    res = await r.json();
+  } catch (e) {
+    res = { ok: false, reason: e.message };
+  }
+  if (!res.ok) {
+    // Nothing reached the hook, so nothing was decided: the buttons come back and the clock is still running.
+    decided.delete(item.key);
+    dock.release(item.key);
+    toast(`Decision not recorded — ${res.reason ?? 'no reason given'}`);
+    return;
+  }
+  answered.add(item.key);
+  paintApprovals();
+  pollOwned();
+}
+
+// The dock's height and form follow its own size. A floating inspector stops above it, so the three answers are
+// never under a panel; and a dock too narrow for one row goes to two, whatever the window's width.
+const DOCK_ONE_ROW_PX = 760;
+let dockSize = '';
+function measureDock() {
+  const h = el.dock.hidden ? 0 : el.dock.offsetHeight;
+  const form = el.dock.hidden ? '' : (el.dock.offsetWidth < DOCK_ONE_ROW_PX ? 'stacked' : 'row');
+  // Written only when it changed: this runs from a resize observer, and a write that changes nothing would
+  // still ask for another layout.
+  const size = `${h}|${form}`;
+  if (size === dockSize) return;
+  dockSize = size;
+  shell.style.setProperty('--dock-h', `${h}px`);
+  if (form) el.dock.dataset.form = form;
+}
+// A frame later, so the write is not made inside the observer's own delivery.
+if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => requestAnimationFrame(measureDock)).observe(el.dock);
+
+// The sessions this panel owns: which ones, what each is waiting for, and what time the server makes it.
+// They survive a page reload as long as the server does.
+let ownedBusy = false;
+async function pollOwned() {
+  if (ownedBusy) return;
+  ownedBusy = true;
+  try {
+    const r = await getJson('/api/owned');
+    clock.sync(r.now, Date.now());
+    const seen = new Set();
+    for (const sn of r.sessions ?? []) { ownedIds.add(sn.sessionId); owned.set(sn.sessionId, sn); seen.add(sn.sessionId); }
+    for (const id of [...owned.keys()]) if (!seen.has(id)) owned.delete(id);
+    paintApprovals();
+  } catch { /* the Live indicator says so; the dock keeps what it last showed, clock included */ }
+  finally { ownedBusy = false; }
+}
+
+// A pane's stream says the moment a session's queue changes. It replays what it has already said when it
+// reconnects, so it is taken as a reason to ask, not as the answer.
+chat.onPermissions = () => pollOwned();
+
 /* --------------------------------------------------------------- polling */
 
 async function pollFleet() {
@@ -1612,12 +1914,8 @@ async function pollSessions() {
   } catch { /* the Live indicator says so; the list keeps what it last showed */ }
 }
 
-// Sessions this panel owns survive a page reload as long as the server does.
-getJson('/api/owned')
-  .then((r) => { for (const sn of r.sessions ?? []) ownedIds.add(sn.sessionId); })
-  .catch(() => { /* none yet */ });
-
 setTab(store.get('crewforth-studio-nav-tab') ?? 'projects');
-pollFleet(); pollSessions();
+pollFleet(); pollSessions(); pollOwned();
 setInterval(pollFleet, FLEET_POLL_MS);
+setInterval(pollOwned, FLEET_POLL_MS);
 setInterval(pollSessions, SESSION_POLL_MS);

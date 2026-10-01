@@ -85,6 +85,10 @@ function readRequest(spool, file) {
     detail: input.command ?? input.file_path ?? input.pattern ?? input.query ?? input.description ?? null,
     input,
     cwd: payload.cwd ?? null,
+    // Who asked. Claude Code puts these in the hook's input only when the call comes from inside a subagent, so
+    // their absence means the session itself asked — it is not a missing answer.
+    agentId: typeof payload.agent_id === 'string' && /^[A-Za-z0-9_-]+$/.test(payload.agent_id) ? payload.agent_id : null,
+    agentType: typeof payload.agent_type === 'string' ? payload.agent_type.slice(0, 120) : null,
     askedAt: (() => {
       try { return fs.statSync(path.join(spool, 'req', file)).mtimeMs; } catch { return Date.now(); }
     })(),
@@ -131,6 +135,22 @@ export function decide(sessionId, toolUseId, verdict) {
     return { ok: false, reason: String(e?.message ?? e) };
   }
   return { ok: true, verdict, toolName: req?.toolName ?? null };
+}
+
+/**
+ * Take back an "allow this tool for the session". The hook looks for the tool's file on every call, so the next
+ * call of that tool is asked about again. Returns whether there was anything to take back.
+ */
+export function revoke(sessionId, tool) {
+  if (typeof tool !== 'string' || !/^[A-Za-z0-9_-]+$/.test(tool)) return { ok: false, reason: 'bad tool name' };
+  const file = path.join(spoolFor(sessionId), 'always', tool);
+  try {
+    fs.rmSync(file);
+    return { ok: true, tool, revoked: true };
+  } catch (e) {
+    if (e?.code === 'ENOENT') return { ok: true, tool, revoked: false };
+    return { ok: false, reason: String(e?.message ?? e) };
+  }
 }
 
 /** Watch a session's spool and call back whenever the pending set changes. */

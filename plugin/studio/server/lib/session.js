@@ -15,7 +15,7 @@ import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 
-import { prepare, pending, watch, cleanup } from './permissions.js';
+import { prepare, pending, watch, cleanup, alwaysList } from './permissions.js';
 import { getFleet } from './fleet.js';
 
 export const ALLOWED_MODES = ['plan', 'acceptEdits', 'default'];
@@ -235,6 +235,11 @@ class OwnedSession {
       gated: Boolean(this.gate),
       gateWaitSeconds: this.gate?.waitSeconds ?? null,
       pendingPermissions: this.pendingPermissions,
+      // Tools the viewer allowed for the rest of this session, so they can be listed and taken back.
+      alwaysAllowed: this.gate ? alwaysList(this.id) : [],
+      // This machine's clock. A countdown is `askedAt + wait - now`, and all three have to come from one clock:
+      // a viewer on another machine has a different one.
+      now: Date.now(),
       gateEvents: this.gateEvents.slice(-40),
     };
   }

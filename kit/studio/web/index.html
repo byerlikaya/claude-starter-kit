@@ -29,8 +29,6 @@
   <button id="fullscreen" class="btn icon ghost" type="button" title="Full screen (f)" aria-label="Full screen">
     <svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 6V3h3M10 3h3v3M13 10v3h-3M6 13H3v-3"/></svg>
   </button>
-  <button id="continue-session" class="btn" type="button" hidden
-          title="Start a new session holding a copy of this conversation. It does not write into the original.">Continue here</button>
   <button id="new-session" class="btn primary" type="button">
     <svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg><span>New session</span>
   </button>
@@ -108,6 +106,7 @@
     </div>
     <div id="attention" class="attention" role="region" aria-label="Needs attention" hidden></div>
     <div id="canvas" class="canvas"></div>
+    <div id="dock" role="region" aria-label="Waiting for approval" hidden></div>
   </main>
 
   <aside id="inspector" class="inspector" aria-label="Selected node" hidden></aside>
