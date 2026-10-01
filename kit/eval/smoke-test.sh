@@ -6112,6 +6112,9 @@ done <<< "$PSOK"
 # pass found 29 shapes it opened (a backtick or trailing-pipe line break, `cd` through a variable, a splat, a
 # function called later). The new checks are additions only: no row here may go from 2 to 0 against 3.0.1.
 # The last rows are the noise the dot rule must NOT make: `rm` away from a command position, a comment, a line break.
+# The PowerShell rows after them are spellings of the two flags, each measured on PowerShell 5.1 to delete the tree: a
+# value after a colon (`-Recurse:$true`, `-Rec:1`, a space after the colon), and an en dash, an em dash or a horizontal
+# bar in place of the hyphen — sent raw and sent as a JSON `\u` escape. `/Recurse` is not a parameter and stays allowed.
 RMT='2 @@ PowerShell @@ Remove-Item -Recurse -Force C:\\proj\\*
 2 @@ PowerShell @@ Set-Location C:\\; Remove-Item -Recurse -Force .
 2 @@ PowerShell @@ Set-Location C:\\proj; Remove-Item -Recurse -Force build
@@ -6164,7 +6167,19 @@ RMT='2 @@ PowerShell @@ Remove-Item -Recurse -Force C:\\proj\\*
 0 @@ Bash @@ rm -r dir # see . above
 0 @@ Bash @@ grep -rn \"rm -rf node_modules\" .
 0 @@ Bash @@ npm rm -r lodash .
-0 @@ Bash @@ docker run --rm -r x .'
+0 @@ Bash @@ docker run --rm -r x .
+2 @@ PowerShell @@ Remove-Item -Recurse:$true -Force:$true C:\\proj
+2 @@ PowerShell @@ Remove-Item -Rec:1 -Fo:1 .\\a
+2 @@ PowerShell @@ Remove-Item -Recurse: $true -Force: $true .\\a
+2 @@ PowerShell @@ Remove-Item –Recurse –Force C:\\proj
+2 @@ PowerShell @@ Remove-Item \u2013Recurse \u2013Force C:\\proj
+2 @@ PowerShell @@ Remove-Item \u2014Recurse \u2014Force C:\\proj
+2 @@ PowerShell @@ Remove-Item \u2015Recurse \u2015Force C:\\proj
+2 @@ PowerShell @@ Get-ChildItem C:\\proj | Remove-Item –Recurse –Force
+0 @@ PowerShell @@ Remove-Item –Recurse –Force build
+0 @@ PowerShell @@ Remove-Item -Recurse:$true -Force:$true build
+0 @@ PowerShell @@ Remove-Item /Recurse /Force .\\a
+0 @@ PowerShell @@ Write-Host \"a – b\"; Remove-Item -Recurse -Force build'
 RMN=0; RMF=""; RM0=0; RM2=0
 while IFS= read -r _rl; do [ -z "$_rl" ] && continue
   _rw="${_rl%% @@ *}"; _rr="${_rl#* @@ }"; _rt="${_rr%% @@ *}"; _rc="${_rr#* @@ }"
@@ -6172,8 +6187,8 @@ while IFS= read -r _rl; do [ -z "$_rl" ] && continue
   RMN=$((RMN+1)); [ "$_rw" = 0 ] && RM0=$((RM0+1)); [ "$_rw" = 2 ] && RM2=$((RM2+1))
   [ "$_rg" = "$_rw" ] || RMF="$RMF | want $_rw got $_rg: [$_rt] $_rc"
 done <<< "$RMT"
-if [ "$RMN" != 53 ] || [ "$RM2" != 35 ] || [ "$RM0" != 18 ]; then fail "recursive-delete table: read $RMN rows ($RM2 stop, $RM0 pass), want 53 (35, 18) — the table was not read as written"
-elif [ -z "$RMF" ]; then pass "recursive forced removal: $RM2 forms stopped ('.' / '..', paths, piped, chained, and the line-wide floor), $RM0 everyday forms passed ($RMN rows)"
+if [ "$RMN" != 65 ] || [ "$RM2" != 43 ] || [ "$RM0" != 22 ]; then fail "recursive-delete table: read $RMN rows ($RM2 stop, $RM0 pass), want 65 (43, 22) — the table was not read as written"
+elif [ -z "$RMF" ]; then pass "recursive forced removal: $RM2 forms stopped ('.' / '..', paths, piped, chained, colon and long-dash flags, and the line-wide floor), $RM0 everyday forms passed ($RMN rows)"
 else fail "recursive-delete table:$RMF"; fi
 
 sec "== 12b) Crewforth's own scripts sent through PowerShell go back to the Bash tool =="
