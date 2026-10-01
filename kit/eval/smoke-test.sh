@@ -6053,6 +6053,9 @@ sec "== 12) PowerShell is a shell too =="
 # sends the same payload shape, so the git rules carried over untouched — every POSIX-shaped rule did not.
 # Measured before these rules existed: Remove-Item -Recurse -Force, rm -Recurse -Force, irm|iex and
 # Get-Content .env all returned rc=0 through the guard.
+# The lists below are read with a here-string, NOT an unquoted here-document: that one turns `\\` into `\`, so every
+# row with a backslash reached the guard as invalid JSON (`C:\proj` holds the escape `\p`) and was judged by the
+# fallback reader instead — a test of the wrong thing that happened to pass (found while writing the delete table).
 psj(){ printf '{"tool_name":"PowerShell","tool_input":{"command":"%s"},"permission_mode":"default"}' "$1"; }
 psblocks(){ psj "$1" | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ]; }
 psallows(){ psj "$1" | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 0 ]; }
@@ -6075,9 +6078,7 @@ git reset --hard'
 PSN=0; PSF=""
 while IFS= read -r c; do [ -z "$c" ] && continue
   if psblocks "$c"; then PSN=$((PSN+1)); else PSF="$PSF | $c"; fi
-done <<PSEOF
-$PSBAD
-PSEOF
+done <<< "$PSBAD"
 [ -z "$PSF" ] && pass "PowerShell destructive forms all blocked ($PSN cases, rc=2)" \
               || fail "PowerShell form(s) NOT blocked:$PSF"
 
@@ -6098,11 +6099,82 @@ sls pass .env'
 PSM=0; PSFP=""
 while IFS= read -r c; do [ -z "$c" ] && continue
   if psallows "$c"; then PSM=$((PSM+1)); else PSFP="$PSFP | $c"; fi
-done <<PSEOF2
-$PSOK
-PSEOF2
+done <<< "$PSOK"
 [ -z "$PSFP" ] && pass "everyday PowerShell stays allowed ($PSM cases, no false positives)" \
                || fail "PowerShell false positive(s):$PSFP"
+
+# Recursive forced removal (3.1.0, field). Two things were measured open: `.` and `..` — the widest targets there
+# are — passed in both shells, and in PowerShell a path was a target only with a drive letter, a UNC prefix or $HOME
+# (`src\app` and "$env:TEMP\x" passed while POSIX `rm -rf src/app` was stopped). Both are stopped now.
+# The table is the decision, row by row: `want @@ tool @@ command` (the command JSON-escaped).
+# THE LINE-WIDE TEST IS A FLOOR, and three rows pin that: a marker in an UNRELATED statement still stops the line
+# (rows marked FLOOR). Reading the target from the removal's own statement instead was tried, and an adversarial
+# pass found 29 shapes it opened (a backtick or trailing-pipe line break, `cd` through a variable, a splat, a
+# function called later). The new checks are additions only: no row here may go from 2 to 0 against 3.0.1.
+# The last rows are the noise the dot rule must NOT make: `rm` away from a command position, a comment, a line break.
+RMT='2 @@ PowerShell @@ Remove-Item -Recurse -Force C:\\proj\\*
+2 @@ PowerShell @@ Set-Location C:\\; Remove-Item -Recurse -Force .
+2 @@ PowerShell @@ Set-Location C:\\proj; Remove-Item -Recurse -Force build
+2 @@ PowerShell @@ Push-Location C:\\proj; Remove-Item -Recurse -Force build; Pop-Location
+2 @@ PowerShell @@ & { cd C:\\proj; ri -r -fo build }
+2 @@ PowerShell @@ $T = \"C:\\proj\"; Remove-Item -Recurse -Force $T
+2 @@ PowerShell @@ $root = \"C:\\proj\"; Remove-Item -Recurse -Force (Join-Path $root build)
+2 @@ PowerShell @@ Get-ChildItem C:\\proj | Remove-Item -Recurse -Force
+2 @@ PowerShell @@ Get-ChildItem C:\\proj | ForEach-Object { Remove-Item $_ -Recurse -Force }
+2 @@ PowerShell @@ Get-ChildItem x | Remove-Item -Recurse -Force
+2 @@ PowerShell @@ Remove-Item -Recurse -Force build; Remove-Item -Recurse -Force ..
+2 @@ PowerShell @@ Remove-Item -Recurse -Force src\\app
+2 @@ PowerShell @@ Remove-Item -Recurse -Force \"$env:TEMP\\x\"
+2 @@ PowerShell @@ Remove-Item -Recurse -Force .
+2 @@ PowerShell @@ Remove-Item -Recurse -Force ..
+2 @@ PowerShell @@ Remove-Item -Path . -Recurse -Force
+2 @@ PowerShell @@ if ($x) { Remove-Item -Recurse -Force C:\\proj\\* }
+0 @@ PowerShell @@ Remove-Item -Recurse -Force build
+0 @@ PowerShell @@ Remove-Item -Recurse -Force build, dist
+0 @@ PowerShell @@ Remove-Item -LiteralPath $T -Recurse -Force
+0 @@ PowerShell @@ $p = Get-Location; Remove-Item -Recurse -Force $p
+0 @@ PowerShell @@ Remove-Item -Recurse -Force .gitignore
+0 @@ PowerShell @@ Remove-Item -Recurse -Force build | Out-Null
+2 @@ PowerShell @@ Get-ChildItem C:\\proj; Remove-Item -Recurse -Force build
+2 @@ PowerShell @@ Remove-Item -Recurse -Force build && Set-Location C:\\proj
+2 @@ PowerShell @@ $T = \"$env:LOCALAPPDATA\\Temp\\x\\rc2\"; try { Remove-Item -LiteralPath $T -Recurse -Force -Confirm:$false -ErrorAction Stop; \"gone\" } catch { \"kept: $_\" }; Test-Path $T; Set-Location C:\\work\\proj
+2 @@ Bash @@ cd /; rm -rf *
+2 @@ Bash @@ rm -rf .
+2 @@ Bash @@ rm -rf ..
+2 @@ Bash @@ rm -r -f ..
+2 @@ Bash @@ rm -fr .
+2 @@ Bash @@ rm --recursive --force .
+2 @@ Bash @@ rm -rf -- .
+2 @@ Bash @@ rm -rf build .
+2 @@ Bash @@ rm -rf build && rm -rf ..
+2 @@ Bash @@ rm -rf src/app
+2 @@ Bash @@ rm -rf ./build
+0 @@ Bash @@ rm -rf build
+0 @@ Bash @@ rm -rf node_modules dist
+0 @@ Bash @@ rm -rf \"$T\"
+0 @@ Bash @@ rm -rf .cache
+0 @@ Bash @@ rm -f notes.txt
+0 @@ Bash @@ rm .
+2 @@ Bash @@ sudo rm -rf .
+2 @@ Bash @@ cd /tmp && rm -rf .
+2 @@ Bash @@ rm -rf dist\nrm -rf .
+2 @@ Bash @@ rm -rf \\\n.
+0 @@ Bash @@ rm -rf dist\nnpx tsc -p .
+0 @@ Bash @@ git rm -r --cached .
+0 @@ Bash @@ rm -r dir # see . above
+0 @@ Bash @@ grep -rn \"rm -rf node_modules\" .
+0 @@ Bash @@ npm rm -r lodash .
+0 @@ Bash @@ docker run --rm -r x .'
+RMN=0; RMF=""; RM0=0; RM2=0
+while IFS= read -r _rl; do [ -z "$_rl" ] && continue
+  _rw="${_rl%% @@ *}"; _rr="${_rl#* @@ }"; _rt="${_rr%% @@ *}"; _rc="${_rr#* @@ }"
+  printf '{"tool_name":"%s","tool_input":{"command":"%s"},"permission_mode":"default"}' "$_rt" "$_rc" | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; _rg=$?
+  RMN=$((RMN+1)); [ "$_rw" = 0 ] && RM0=$((RM0+1)); [ "$_rw" = 2 ] && RM2=$((RM2+1))
+  [ "$_rg" = "$_rw" ] || RMF="$RMF | want $_rw got $_rg: [$_rt] $_rc"
+done <<< "$RMT"
+if [ "$RMN" != 53 ] || [ "$RM2" != 35 ] || [ "$RM0" != 18 ]; then fail "recursive-delete table: read $RMN rows ($RM2 stop, $RM0 pass), want 53 (35, 18) — the table was not read as written"
+elif [ -z "$RMF" ]; then pass "recursive forced removal: $RM2 forms stopped ('.' / '..', paths, piped, chained, and the line-wide floor), $RM0 everyday forms passed ($RMN rows)"
+else fail "recursive-delete table:$RMF"; fi
 
 sec "== 12b) Crewforth's own scripts sent through PowerShell go back to the Bash tool =="
 # Field session: six PowerShell attempts at `bash .claude/hooks/…`, every one an error from WSL's bash, while the same
