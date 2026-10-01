@@ -293,10 +293,13 @@ export class Canvas {
   applyView() {
     const { x, y, k } = this.view;
     this.viewport.style.transform = `translate(${x}px, ${y}px) scale(${k})`;
-    // While the scale is changing, what moves stands still. Every frame of a zoom redraws the whole graph at a
-    // new size, and a travelling dash or a breathing ring is redrawn with it: with 250 cards and the motion
-    // budget full, a mid-range Windows laptop lost 55 frames of 245 that way while its main thread sat two
-    // thirds idle. The motion is paused, not removed, so it picks up where it was the moment the zoom settles.
+    // While the scale is changing, what moves stands still: the stylesheet pauses the wire flow and the card
+    // pulse for as long as the root carries this mark. Paused, not removed, so they resume where they stood.
+    //
+    // What that buys, measured on a mid-range Windows laptop with 250 cards and the motion budget full: style
+    // work during a zoom fell from 46 to 7 ms a second. What it does NOT buy: that zoom still loses frames
+    // (45-49 fps, with and without the pause). The cost that remains is drawing 256 cards at a new scale on
+    // every frame, and nothing on this thread reaches it.
     if (this.lastK !== undefined && k !== this.lastK) {
       this.root.dataset.zooming = 'true';
       clearTimeout(this.zoomTimer);
