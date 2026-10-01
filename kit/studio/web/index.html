@@ -84,9 +84,29 @@
         <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.8"/><circle cx="12.5" cy="4" r="1.8"/><circle cx="12.5" cy="12" r="1.8"/><path d="M5.2 7.3L10.8 4.7M5.2 8.7l5.6 2.6"/></svg>
         Graph
       </span>
-      <span class="toolbar-fill"></span>
+      <button id="tb-group" class="btn sm ghost tb-menu" type="button" aria-haspopup="menu">Group <span>Workflow run</span><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg></button>
+      <button id="tb-density" class="btn sm ghost tb-menu" type="button" aria-haspopup="menu">Density <span>Auto</span><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg></button>
+      <button id="tb-show" class="btn sm ghost tb-menu" type="button" aria-haspopup="menu">Show <span>All</span><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg></button>
       <span id="foot-note" class="toolbar-note" role="status"></span>
+      <span class="toolbar-fill"></span>
+      <button id="tb-expand" class="btn sm" type="button" aria-label="Expand all groups">
+        <svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 6l5 5 5-5"/></svg><span class="tb-words">Expand all</span>
+      </button>
+      <button id="tb-fold" class="btn sm" type="button" aria-label="Fold all groups">
+        <svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3l5 5-5 5"/></svg><span class="tb-words">Fold all</span>
+      </button>
+      <button id="tb-zoom-out" class="btn icon sm ghost" type="button" aria-label="Zoom out">
+        <svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10"/></svg>
+      </button>
+      <button id="tb-zoom" class="tb-zoom" type="button" title="Back to 100%" aria-label="Zoom 100%. Back to 100%">100%</button>
+      <button id="tb-zoom-in" class="btn icon sm ghost" type="button" aria-label="Zoom in">
+        <svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg>
+      </button>
+      <button id="tb-fit" class="btn sm" type="button" aria-label="Fit the graph to the view">
+        <svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 5.5v-3h3M10.5 2.5h3v3M13.5 10.5v3h-3M5.5 13.5h-3v-3"/></svg><span class="tb-words">Fit</span>
+      </button>
     </div>
+    <div id="attention" class="attention" role="region" aria-label="Needs attention" hidden></div>
     <div id="canvas" class="canvas"></div>
   </main>
 

@@ -20,8 +20,6 @@
      the light one. The three blocks mirror the three in tokens.css. */
   --cv-edge-live: 0.95;
   --cv-edge-wake: 0.44;
-  --cv-edge-done: 0.3;
-  --cv-edge-quiet: 0.16;
 
   /* The frame, in the spec's measures. */
   --bar-h: 56px;
@@ -35,16 +33,12 @@
   :root:not([data-theme="dark"]) {
     --cv-edge-live: 1;
     --cv-edge-wake: 0.52;
-    --cv-edge-done: 0.42;
-    --cv-edge-quiet: 0.24;
   }
 }
 
 :root[data-theme="light"] {
   --cv-edge-live: 1;
   --cv-edge-wake: 0.52;
-  --cv-edge-done: 0.42;
-  --cv-edge-quiet: 0.24;
 }
 
 * { box-sizing: border-box; }
@@ -464,7 +458,30 @@ mark { background: color-mix(in srgb, var(--studio-accent) 30%, transparent); co
   fill: none; stroke: currentColor; stroke-width: 1.6;
   stroke-linecap: round; stroke-linejoin: round;
 }
-.toolbar-fill { flex: 1; }
+.toolbar { container-type: inline-size; }
+.toolbar-fill { flex: 1; min-width: 0; }
+/* Group, Density, Show: the name of the choice in the quiet colour, the choice itself in the text colour. */
+.tb-menu { color: var(--ink-dim); gap: 6px; }
+.tb-menu > span { color: var(--ink); }
+.tb-menu .ic { width: 12px; height: 12px; }
+.tb-zoom {
+  width: 44px; height: 30px; padding: 0; flex: none;
+  background: none; border: 0; border-radius: var(--radius-sm); cursor: pointer;
+  font-family: var(--font-mono); font-size: 12px; color: var(--ink-dim); text-align: center;
+}
+.tb-zoom:hover { color: var(--ink); }
+/* A narrow toolbar keeps every control and drops the words of the two that have an icon to stand on. */
+@container (max-width: 880px) {
+  .tb-words { display: none; }
+  .toolbar-note { display: none; }
+}
+@container (max-width: 760px) {
+  #tb-show, #tb-expand, #tb-fold { display: none; }
+}
+@container (max-width: 520px) {
+  #tb-density, #tb-zoom { display: none; }
+  .toolbar-view { padding: 0 var(--space-2); font-size: 0; gap: 0; }
+}
 /* What the panel has to say about the stream or the last action: a reason, in
    words, where the eye already is. Empty most of the time. */
 .toolbar-note {
@@ -474,7 +491,38 @@ mark { background: color-mix(in srgb, var(--studio-accent) 30%, transparent); co
 
 .canvas { flex: 1; min-height: 0; position: relative; overflow: hidden; background: var(--ground); }
 
-/* A dot grid reads as a workspace rather than a void, and it makes panning
+/* ---- needs attention ----
+   A strip that exists only while something needs someone. Each chip goes to its
+   agent on the canvas. */
+.attention {
+  flex: none; height: 44px;
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: 0 var(--space-4);
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  overflow: hidden;
+}
+.attention[hidden] { display: none; }
+.cv-label, .attention-label {
+  flex: none;
+  font-size: 11px; line-height: var(--type-label-line); font-weight: var(--type-label-weight);
+  letter-spacing: var(--type-label-tracking); text-transform: uppercase; color: var(--ink-dim);
+}
+.attention-label { margin-right: var(--space-1); }
+.att {
+  display: inline-flex; align-items: center; gap: var(--space-2); flex: none;
+  height: 30px; padding: 0 10px;
+  border-radius: var(--radius-pill); border: 1px solid var(--line);
+  background: var(--surface); color: var(--ink);
+  font-family: inherit; font-size: 12px; white-space: nowrap; cursor: pointer;
+}
+.att:hover { background: var(--surface-raised); }
+.att-name { font-family: var(--font-mono); }
+.att-says { color: var(--ink-dim); }
+.attention-hint { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* ============================================================== graph ===
+   A dot grid reads as a workspace rather than a void, and it makes panning
    legible — without it the canvas looks frozen while it moves. */
 .cv-root {
   background-image: radial-gradient(var(--grid-dot) 1px, transparent 1.2px);
@@ -482,85 +530,98 @@ mark { background: color-mix(in srgb, var(--studio-accent) 30%, transparent); co
   cursor: grab;
   touch-action: none;
   user-select: none;
+
+  /* Two tones the design draws between tokens. A wire at rest is a hairline
+     that still reads on the ground; a group's well is the ground showing
+     through a card. */
+  --edge-rest: color-mix(in srgb, var(--line) 80%, var(--ink-dim));
+  --well: color-mix(in srgb, var(--surface) 55%, var(--ground));
 }
 .cv-root.cv-panning { cursor: grabbing; }
 
 .cv-viewport { position: absolute; inset: 0; transform-origin: 0 0; }
-.cv-edges { position: absolute; overflow: visible; pointer-events: none; }
+.cv-edges { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
 .cv-nodes { position: absolute; inset: 0; }
 
 /* ------------------------------------------------------------- edge ---
-   Delegation drawn as motion. The dash travels out of the parent's port and
-   into the child's, because the question a glance has to answer is "where did
-   the work go", not "these two are related".
-
-   Every state is carried by at least two channels — weight, dash pattern,
-   tone — and motion is only ever the third. That is what makes the
-   reduced-motion path below a removal of speed rather than of information. */
+   A wire says the state of what it leads to, in the same colour that state has
+   everywhere else, and never in colour alone: weight and dash change with it.
+   Motion is only ever the third channel, and only a working wire has it. That
+   is what makes the reduced-motion path below a removal of speed rather than
+   of information. */
 
 .cv-edge {
   fill: none;
-  stroke-width: 1.6;
+  stroke: var(--edge-rest);
+  stroke-width: 1.5;
   stroke-linecap: round;
   stroke-dasharray: none;
   stroke-dashoffset: 0;
-  opacity: var(--cv-edge-done);
   /* One dash period. The flow animation travels exactly this far per
      iteration, so a state can change its dash pattern without putting a seam
      in the loop. */
   --dash-period: 13px;
 }
 
-/* Working. The brightest, heaviest, fastest line on the canvas. */
+/* Working. The brightest and the only one that travels. */
 .cv-edge[data-state="live"] {
+  stroke: var(--status-busy);
   opacity: var(--cv-edge-live);
-  stroke-width: 2.2;
+  stroke-width: 1.8;
   stroke-dasharray: 6px 7px;
   --dash-period: 13px;
   animation: cv-flow 0.9s linear infinite;
 }
 
-/* Spawned, nothing back yet. Same direction, half lit, and moving slowly:
+/* Spawned, nothing back yet. Same colour, shorter dash, moving slowly:
    something is on this wire, and it has not produced anything. */
 .cv-edge[data-state="waking"] {
+  stroke: var(--status-busy);
   opacity: var(--cv-edge-wake);
-  stroke-width: 1.6;
+  stroke-width: 1.5;
   stroke-dasharray: 2px 7px;
   --dash-period: 9px;
   animation: cv-flow 1.9s linear infinite;
 }
 
+/* Waiting on the viewer. Dashed like work, still like a question. */
+.cv-edge[data-state="waiting"] {
+  stroke: var(--status-waiting);
+  opacity: 1;
+  stroke-width: 1.8;
+  stroke-dasharray: 5px 4px;
+}
+
 /* Finished. Solid and pulled back, so live work stands out against it. */
 .cv-edge[data-state="done"] {
-  opacity: var(--cv-edge-done);
-  stroke-width: 1.6;
+  stroke: var(--edge-rest);
+  opacity: 1;
+  stroke-width: 1.5;
   stroke-dasharray: none;
 }
 
 /* Ended, stale. Still there, saying nothing. */
 .cv-edge[data-state="quiet"] {
-  opacity: var(--cv-edge-quiet);
-  stroke-width: 1.4;
+  stroke: var(--edge-rest);
+  opacity: var(--cv-edge-wake);
+  stroke-width: 1.5;
   stroke-dasharray: 2px 6px;
 }
 
-/* Wrong, and said in colour rather than in a label somewhere else. The stroke
-   itself is set to var(--cv-fail) rather than the child's palette colour. */
+/* Wrong, and said in the colour failure has everywhere. */
 .cv-edge[data-state="failed"] {
+  stroke: var(--cv-fail);
   opacity: 1;
-  stroke-width: 2.4;
-  stroke-dasharray: 1px 5px;
+  stroke-width: 2;
+  stroke-dasharray: none;
 }
 
-/* A workflow's members are one dispatch. They share a weight here and a hue
-   family in canvas.js, so twelve of them read as a bundle rather than as
-   twelve independent decisions. */
-.cv-edge[data-group="member"] { stroke-width: 1.4; }
-.cv-edge[data-group="member"][data-state="live"] { stroke-width: 1.8; }
+/* The way from the session to what is selected. */
+.cv-edge.cv-path { stroke: var(--studio-accent); stroke-width: 2.4; opacity: 1; }
 
-/* Arrival. The edge draws itself from the parent toward the node that just
+/* Arrival. The wire draws itself from the parent toward the card that just
    appeared. Both the pattern and the offset live in the keyframes, so with
-   the animation switched off the edge simply renders in its final state
+   the animation switched off the wire simply renders in its final state
    wearing its own status dash. */
 .cv-edge.cv-drawing { animation: cv-draw 0.3s ease-out; }
 
@@ -570,138 +631,205 @@ mark { background: color-mix(in srgb, var(--studio-accent) 30%, transparent); co
   to   { stroke-dasharray: var(--edge-len) var(--edge-len); stroke-dashoffset: 0; }
 }
 
-/* ------------------------------------------------------------- node --- */
+/* ------------------------------------------------------------- card ---
+   One frame for every kind of thing on the canvas. Its colour is the
+   surface's; what changes with status is the dot, its word, and — for the two
+   states that need someone — the frame. */
 
 .cv-node {
-  position: absolute;
-  width: 236px;
-  min-height: 104px;
+  position: absolute; left: 0; top: 0;
   box-sizing: border-box;
+  display: flex; flex-direction: column; gap: var(--space-1);
+  padding: 9px var(--space-3);
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 12px 14px 12px 18px;
-  cursor: grab;
-  transition: box-shadow 0.15s, border-color 0.15s, opacity 0.25s, scale 0.25s;
-  box-shadow: 0 1px 2px var(--shade-soft), 0 8px 20px -12px var(--shade);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color 0.15s, opacity 0.25s, scale 0.25s;
 }
-.cv-node:hover { border-color: color-mix(in srgb, var(--node-color) 55%, var(--line)); }
-.cv-node.cv-dragging { cursor: grabbing; z-index: 10; box-shadow: 0 12px 34px -10px var(--shade); }
-.cv-node.cv-selected {
-  border-color: var(--node-color);
-  box-shadow: 0 0 0 1px var(--node-color), 0 12px 30px -14px var(--node-color);
-}
-.cv-node.cv-born { opacity: 0; scale: 0.9; }
-
-.cv-accent {
-  position: absolute; left: 0; top: 12px; bottom: 12px; width: 3px;
-  border-radius: 0 3px 3px 0; background: var(--node-color);
-}
+.cv-node:hover { border-color: var(--ink-faint); }
+.cv-node.cv-dragging { cursor: grabbing; z-index: 10; box-shadow: 0 12px 30px -12px var(--shade); }
+.cv-node.cv-selected { border-color: var(--studio-accent); box-shadow: 0 0 0 1px var(--studio-accent); }
+.cv-node.cv-born { opacity: 0; scale: 0.94; }
+/* Only a card that IS one agent takes the frame of its state. A group's frame stays plain: one failed member is
+   said by its bar and by the member, not by reddening eleven others. */
+.cv-node[data-kind="agent"][data-state="failed"] { border-color: color-mix(in srgb, var(--cv-fail) 45%, var(--line)); }
+.cv-node[data-kind="agent"][data-state="waiting"] { border-color: color-mix(in srgb, var(--status-waiting) 50%, var(--line)); }
+.cv-node[data-kind="agent"][data-state="quiet"] > * { opacity: 0.72; }
 
 /* A running card, legibly alive when nothing else on the canvas is moving.
-   One pulse per card and no more: the accent bar used to breathe as well, and
-   two rhythms on one card is the wall of throbbing this is trying to avoid.
-
    The ring is drawn whether or not it breathes, so "running" survives with
    motion off; breathing is the only part the animation adds. Only opacity is
    animated — the shadow itself never changes, so nothing re-rasterises. */
-.cv-node[data-state="live"]::after {
+.cv-node[data-kind="agent"][data-state="live"]::after {
   content: '';
   position: absolute; inset: -2px;
-  border-radius: 14px;
+  border-radius: 12px;
   pointer-events: none;
-  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--node-color) 55%, transparent);
+  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--status-busy) 55%, transparent);
   animation: cv-pulse 2.4s ease-in-out infinite;
 }
 @keyframes cv-pulse { 0%, 100% { opacity: 0.9; } 50% { opacity: 0.28; } }
 
-/* Failed, killed, stopped — one look, and not the look of a colour some agent
-   might legitimately own. */
-.cv-node[data-state="failed"] { border-color: var(--cv-fail); }
-.cv-node[data-state="failed"] .cv-accent { background: var(--cv-fail); }
-.cv-node[data-state="failed"] .cv-chip {
-  color: var(--cv-fail);
-  border-color: color-mix(in srgb, var(--cv-fail) 50%, transparent);
+.cv-row { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.cv-fill { flex: 1; min-width: 0; }
+.cv-indent { padding-left: 32px; }
+.cv-title { font-size: 13px; font-weight: 600; }
+.cv-name {
+  min-width: 0; font-family: var(--font-mono); font-size: 12px; line-height: 16px; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-
-.cv-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.cv-type {
-  font-family: var(--font-mono); font-size: 11px; font-weight: 600;
-  letter-spacing: 0.06em; text-transform: uppercase; color: var(--node-color);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+.cv-task {
+  min-width: 0; font-size: 13px; line-height: 18px; color: var(--ink-dim);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.cv-type.cv-unknown::after {
-  content: '?'; margin-left: 5px; color: var(--ink-faint);
-  border: 1px solid var(--line); border-radius: 3px; padding: 0 3px; font-size: 9px;
+.cv-sub { font-size: 12px; line-height: 16px; color: var(--ink-dim); white-space: nowrap; flex: none; }
+.cv-word { font-size: 11px; color: var(--ink-dim); white-space: nowrap; flex: none; }
+
+/* The tile says whose agent it is. Crewforth's mark keeps its own colours; the
+   mark for everything else is drawn in the quiet text colour. */
+.cv-tile {
+  width: 24px; height: 24px; flex: none; position: relative;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-sm); border: 1px solid var(--line);
+  background: var(--surface-raised); color: var(--ink-dim);
 }
-
-.cv-chip {
-  font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.05em;
-  text-transform: uppercase; padding: 1px 6px; border-radius: 999px;
-  border: 1px solid var(--line); color: var(--ink-faint); white-space: nowrap; flex: none;
-}
-.cv-chip[data-status="running"] { color: var(--status-busy); border-color: color-mix(in srgb, var(--status-busy) 45%, transparent); }
-.cv-chip[data-status="done"]    { color: var(--status-good); border-color: color-mix(in srgb, var(--status-good) 40%, transparent); }
-.cv-chip[data-status="stale"]   { color: var(--status-waiting); border-color: color-mix(in srgb, var(--status-waiting) 40%, transparent); }
-.cv-chip[data-status="starting"]{ color: var(--studio-accent); border-color: color-mix(in srgb, var(--studio-accent) 40%, transparent); }
-
-.cv-desc {
-  margin-top: 7px; font-size: 13px; line-height: 1.35; color: var(--ink);
-  display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2;
-  -webkit-box-orient: vertical; overflow: hidden;
-}
-.cv-node[data-kind="session"] .cv-desc { font-family: var(--font-mono); font-size: 12px; color: var(--ink-dim); }
-
-.cv-foot { margin-top: 9px; display: flex; flex-wrap: wrap; gap: 5px; }
-.cv-bit {
-  font-family: var(--font-mono); font-size: 10px; color: var(--ink-faint);
-  background: var(--surface-raised); border-radius: 4px; padding: 1px 6px;
-}
-.cv-bit.cv-live { color: var(--status-busy); background: color-mix(in srgb, var(--status-busy) 14%, transparent); }
-.cv-bit.cv-err  { color: var(--status-bad);  background: color-mix(in srgb, var(--status-bad) 14%, transparent); }
-.cv-bit.cv-branch { color: var(--ink-dim); }
-
-/* Ports sit on whichever axis the flow runs along. */
-.cv-port {
-  position: absolute; width: 9px; height: 9px; border-radius: 50%;
-  background: var(--surface); border: 2px solid var(--node-color);
-}
-[data-flow="down"] .cv-port { left: 50%; transform: translateX(-50%); }
-[data-flow="down"] .cv-in   { top: -5px; }
-[data-flow="down"] .cv-out  { bottom: -5px; }
-
-[data-flow="right"] .cv-port { top: 50%; transform: translateY(-50%); }
-[data-flow="right"] .cv-in   { left: -5px; }
-[data-flow="right"] .cv-out  { right: -5px; }
-.cv-node[data-kind="session"] .cv-in { display: none; }
-
-/* --------------------------------------------------------------- hud --- */
-
-.cv-hud {
-  position: absolute; right: 14px; bottom: 14px; z-index: 20;
-  display: flex; align-items: center; gap: 6px;
+.cv-tile svg { width: 64%; height: 64%; display: block; }
+.cv-tile-sm { width: 18px; height: 18px; }
+/* A type nobody declared is marked as one. It is not quietly drawn as built-in. */
+.cv-tile[data-source="unknown"]::after {
+  content: '?';
+  position: absolute; right: -5px; top: -5px;
+  width: 12px; height: 12px; border-radius: var(--radius-pill);
+  display: flex; align-items: center; justify-content: center;
   background: var(--surface); border: 1px solid var(--line);
-  border-radius: 9px; padding: 4px 8px;
+  font-family: var(--font-mono); font-size: 9px; line-height: 1; color: var(--ink-dim);
 }
-.cv-btn {
-  background: transparent; border: none; color: var(--ink-dim);
-  cursor: pointer; font-size: 14px; line-height: 1; padding: 3px 5px; border-radius: 5px;
+
+.cv-pill {
+  display: inline-flex; align-items: center; gap: 5px; flex: none;
+  height: 20px; padding: 0 6px;
+  border-radius: var(--radius-sm); background: var(--surface-raised);
+  font-size: 11px; font-weight: 600; color: var(--ink); white-space: nowrap;
 }
-.cv-btn:hover { color: var(--ink); background: var(--surface-raised); }
-.cv-zoom {
-  font-family: var(--font-mono); font-size: 10px; color: var(--ink-faint);
-  min-width: 96px; text-align: right; white-space: nowrap;
+.cv-pill[hidden] { display: none; }
+.cv-node[data-kind="agent"][data-state="failed"] .cv-pill { color: var(--cv-fail); }
+
+/* An agent at compact density: one line. */
+.cv-node.cv-chip { flex-direction: row; align-items: center; gap: var(--space-2); padding: 0 10px; border-radius: 8px; }
+.cv-chip .cv-name { flex: 0 1 auto; }
+.cv-chip .cv-task { flex: 1 1 0; font-size: 12px; }
+
+/* The session: where everything starts. */
+.cv-session { cursor: pointer; }
+
+/* A folded group is one card standing for several: a second card shows behind
+   it. Open, it is a well holding its members. */
+.cv-group { gap: var(--space-2); padding: 10px var(--space-3); }
+.cv-group:not(.cv-open) { box-shadow: 6px -6px 0 -1px var(--well), 6px -6px 0 0 var(--line); }
+.cv-group.cv-selected:not(.cv-open) { box-shadow: 0 0 0 1px var(--studio-accent), 6px -6px 0 -1px var(--well), 6px -6px 0 0 var(--line); }
+.cv-group.cv-open { background: var(--well); padding: 10px var(--space-2) var(--space-2); gap: 6px; cursor: default; }
+.cv-group-head { height: 20px; cursor: pointer; }
+.cv-group.cv-open .cv-group-head { padding: 0 var(--space-1); }
+.cv-fold {
+  width: 20px; height: 20px; padding: 0; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: none; border: 0; border-radius: var(--radius-sm); color: var(--ink-dim); cursor: pointer;
 }
-/* Loud on purpose: it only appears when something went wrong. */
-.cv-btn.cv-alarm { color: var(--cv-fail); font-family: var(--font-mono); font-size: 11px; }
-.cv-btn.cv-alarm:hover { color: var(--cv-fail); background: color-mix(in srgb, var(--cv-fail) 16%, transparent); }
-.cv-btn[hidden] { display: none; }
+.cv-fold .ic { width: 12px; height: 12px; }
+.cv-fold:hover { color: var(--ink); background: var(--surface-raised); }
+
+/* How the group went: one segment per status, as wide as its share. The words
+   are beside it when the group is folded and in its title when it is open. */
+.cv-bar { display: flex; gap: 2px; height: 6px; flex: 1; min-width: 48px; }
+.cv-group.cv-open > .cv-bar { height: 4px; flex: none; margin: 0 var(--space-1); }
+.cv-bar span { display: block; border-radius: 2px; min-width: 2px; background: var(--ink-faint); }
+.cv-bar span[data-tone="good"] { background: var(--status-good); }
+.cv-bar span[data-tone="busy"] { background: var(--status-busy); }
+.cv-bar span[data-tone="waiting"] { background: var(--status-waiting); }
+.cv-bar span[data-tone="fail"] { background: var(--status-fail); }
+.cv-bar span[data-tone="idle"] { background: var(--status-idle); }
+
+/* A member inside an open group: a row with its mark, or a chip in a grid. */
+.cv-member {
+  position: absolute; left: 0; top: 0; box-sizing: border-box;
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: 0 10px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+  cursor: pointer;
+}
+.cv-member:hover { border-color: var(--ink-faint); }
+.cv-member.cv-selected { border-color: var(--studio-accent); box-shadow: 0 0 0 1px var(--studio-accent); }
+.cv-member[data-state="failed"] .cv-word { color: var(--cv-fail); }
+.cv-member-chip .cv-name { font-family: var(--font-sans); color: var(--ink-dim); flex: 1 1 0; }
+
+/* A status the filter did not ask for, stepped back. */
+.cv-node.cv-dim, .cv-member.cv-dim { opacity: 0.22; }
+.cv-edge.cv-dim { opacity: 0.08; }
 
 .cv-empty {
   position: absolute; inset: 0; display: grid; place-content: center;
   text-align: center; color: var(--ink-dim); padding: 24px; pointer-events: none;
 }
 .cv-empty strong { display: block; color: var(--ink); margin-bottom: 6px; font-size: 15px; }
+/* `display: grid` outranks the UA's `[hidden] { display: none }`. */
+.cv-empty[hidden] { display: none; }
+
+/* ---------------------------------------------------- map and legend ---
+   Zoomed out, a card's words stop being readable. What still has to be found
+   is where things are and which of them need someone, and the map keeps both:
+   every box, and the two colours that mean "look here". */
+.cv-minimap {
+  position: absolute; left: var(--space-6); bottom: var(--space-6); z-index: 20;
+  width: 200px; height: 88px; overflow: hidden;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md);
+  cursor: pointer;
+}
+.cv-minimap[hidden] { display: none; }
+.cv-map-box { fill: var(--line); }
+.cv-map-box[data-tone="waiting"] { fill: var(--status-waiting); }
+.cv-map-box[data-tone="fail"] { fill: var(--status-fail); }
+.cv-map-box[data-tone="selected"] { fill: var(--studio-accent); }
+.cv-map-frame { fill: none; stroke: var(--studio-accent); stroke-width: 1.2; }
+
+.cv-legend {
+  position: absolute; right: var(--space-6); bottom: var(--space-6); z-index: 20;
+  width: 260px; box-sizing: border-box; padding: var(--space-3);
+  display: flex; flex-direction: column; gap: var(--space-2);
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md);
+  cursor: default;
+}
+.cv-legend[hidden] { display: none; }
+.cv-legend-head { display: flex; align-items: center; justify-content: space-between; }
+.cv-legend-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-1) var(--space-2); }
+.cv-legend-item { display: flex; align-items: center; gap: var(--space-2); font-size: 12px; color: var(--ink-dim); white-space: nowrap; }
+.cv-legend-line { width: 28px; height: 0; flex: none; border-top: 1.5px solid var(--edge-rest); }
+.cv-legend-line[data-state="live"] { border-top: 1.5px dashed var(--status-busy); }
+.cv-legend-line[data-state="waiting"] { border-top: 1.5px dashed var(--status-waiting); }
+.cv-legend-line[data-state="failed"] { border-top-color: var(--cv-fail); }
+.cv-x {
+  width: 20px; height: 20px; padding: 0; display: inline-flex; align-items: center; justify-content: center;
+  background: none; border: 0; border-radius: var(--radius-sm); color: var(--ink-dim); cursor: pointer;
+}
+.cv-x .ic { width: 12px; height: 12px; }
+.cv-x:hover { color: var(--ink); background: var(--surface-raised); }
+
+.cv-tip {
+  position: absolute; z-index: 30; max-width: 300px; pointer-events: none;
+  display: flex; flex-direction: column; gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-raised); border: 1px solid var(--line); border-radius: var(--radius-md);
+  box-shadow: 0 12px 30px -12px var(--shade);
+  font-size: 12px; line-height: 18px; color: var(--ink);
+}
+.cv-tip[hidden] { display: none; }
+.cv-tip strong { font-family: var(--font-mono); font-weight: 600; }
+
+/* The small chip the inspector's gate summary is made of. */
+.cv-bit {
+  font-family: var(--font-mono); font-size: 10px; color: var(--ink-faint);
+  background: var(--surface-raised); border-radius: 4px; padding: 1px 6px;
+}
 
 /* --------------------------------------------------------- inspector --- */
 
@@ -742,217 +870,6 @@ mark { background: color-mix(in srgb, var(--studio-accent) 30%, transparent); co
 .inspector dd { margin: 0; font-family: var(--font-mono); font-size: 12px; word-break: break-word; }
 .inspector .tools { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 5px; }
 
-/* =================================================== three readings ===
-   One picture, read three ways, chosen by how much of a card would actually
-   survive on screen. Nothing moves between them: the layout metrics are
-   identical in all three, so the shape of the graph is the constant and only
-   what is written inside a card changes.
-
-   The idea is not "hide things at low zoom" — hiding alone still leaves an
-   unreadable title. What survives is drawn at a constant SCREEN size: a world
-   font-size of 11px/k is 11px after the canvas transform, whatever k is.
-   canvas.js publishes k as --k and the reading as data-lod on the root, and
-   every card responds through the cascade, so a band change costs nothing per
-   node and cannot move the world that decided the band.
-
-   Registered so that a malformed write falls back to 1 rather than blanking
-   250 cards. k is clamped to MIN_K = 0.06 in canvas.js, so no divisor here is
-   ever zero. (The selfcheck's CSS parser drops at-rules, so this registration
-   is invisible to the gate — it is verified in a browser.) */
-@property --k { syntax: '<number>'; initial-value: 1; inherits: true; }
-
-/* NEAR — k >= 0.70. The card exactly as it has always been drawn, so it has
-   no rules of its own here. */
-
-/* Blocks a smaller reading gives up fade rather than vanish, so the eye reads
-   a substitution instead of a loss. */
-.cv-desc, .cv-foot, .cv-chip { transition: opacity 120ms; }
-/* The same element is the 14px source glyph up close and the hue disc far
-   out; it travels there rather than being swapped. */
-.cv-mark { transition: transform 160ms ease, width 160ms ease, height 160ms ease; }
-
-/* MID — 0.20 <= k < 0.70, under the label budget. Short type, status chip,
-   mark, fold caret. The description and the foot bits are dropped not because
-   they are small but because they are DARK: the description fills the lower
-   half of the card in unreadable grey, and forty of those lower halves is the
-   noise floor that stops the type line reading. Removing them is what creates
-   the contrast the type needs. */
-[data-lod="mid"] .cv-desc,
-[data-lod="mid"] .cv-foot { opacity: 0; }
-
-/* The chip keeps its channel and loses its words. Its text is a 10px absolute
-   glyph, so at the bottom of this band it is 2px on screen — unreadable, and
-   measured in a browser it was eating the width the type line needed: SESSION
-   was clipping to SESSI and REVIEWER to REVIEWE. As a dot it still says the
-   status in colour and gives 45 world px back to the name. */
-[data-lod="mid"] .cv-chip {
-  font-size: 0;
-  padding: 0;
-  width: calc(7px / var(--k));           /* 7 SCREEN px at any k */
-  height: calc(7px / var(--k));
-  border-radius: 50%;
-  background: currentColor;
-  border-color: currentColor;
-}
-
-/* The real type line is taken out of the flow and redrawn counter-scaled, as
-   the short name: the crew- prefix and the -expert / -agent suffix dropped. */
-[data-lod="mid"] .cv-type,
-[data-lod="far"] .cv-type { font-size: 0; letter-spacing: 0; }
-[data-lod="mid"] .cv-type::after,
-[data-lod="far"] .cv-type::after { content: none; }
-[data-lod="mid"] .cv-type::before {
-  content: attr(data-short);
-  font-size: calc(11px / var(--k));      /* 11 SCREEN px at any k */
-  letter-spacing: 0.04em;
-  transition: font-size 120ms ease;
-}
-
-/* MID, THE LIVE EXEMPTION. `far` below already establishes this principle —
-   "with 250 strokes on screen the only bright ones must be the branches that
-   are alive" — and gives the live card its name, its mark and a z-index. It
-   was never applied to THIS band, which is the one a viewer actually sits in:
-   measured at 60% with fourteen agents, and there the running card is
-   distinguishable from thirteen finished ones only by the hue of a 7px disc.
-   The panel's own README promises "which agent is running, what it is doing
-   right now"; at mid it was keeping neither.
-   The description is dropped at mid because forty dark lower halves are a
-   noise floor that stops the type line reading. ONE is not a floor — it is
-   the signal, and it is the only field that says WHICH agent. It is drawn
-   counter-scaled like every other survivor in this block, so it clears the
-   same 9px screen floor that set the band rather than undercutting it, and
-   clamped to one line so it cannot reclaim the whole lower half. */
-[data-lod="mid"] .cv-node[data-state="live"] .cv-desc {
-  opacity: 1;
-  font-size: calc(11px / var(--k));      /* 11 SCREEN px at any k */
-  -webkit-line-clamp: 1; line-clamp: 1;
-}
-/* The chip keeps its WORD here instead of collapsing to a disc. The disc
-   exists because 10px of chip text is 2px on screen at the bottom of this
-   band and was clipping the type line; the running card is the one place that
-   trade is wrong, so its chip is counter-scaled instead of silenced. Every
-   property the disc rule set has to be undone explicitly, or the word renders
-   inside a 7px circle. */
-[data-lod="mid"] .cv-node[data-state="live"] .cv-chip {
-  font-size: calc(9px / var(--k));
-  padding: 0 calc(5px / var(--k));
-  width: auto; height: auto;
-  border-radius: calc(999px / var(--k));
-  background: transparent;
-  border-color: color-mix(in srgb, var(--status-busy) 45%, transparent);
-}
-/* Rides above its neighbours for the same reason it does at `far`: the words
-   it just kept must not sit under the next card. */
-[data-lod="mid"] .cv-node[data-state="live"] { z-index: 5; }
-
-/* FAR — k < 0.20, or more drawn nodes than the label budget. No text is
-   attempted for an ordinary node, because none would survive. Three things
-   still resolve at this size and each gets a channel: POSITION (which type
-   group, which depth — the layout already encodes it), HUE (--node-color, the
-   one place colour is decided) and a RING (status). */
-[data-lod="far"] {
-  /* Screen diameter of the disc: floored so it survives the tightest node
-     pitch, capped so it never outgrows its cell. Divided back out of k to get
-     the world size that draws it. */
-  --dot-screen: clamp(5px, calc(88 * var(--k) * 1px), 16px);
-  --dots: calc(var(--dot-screen) / var(--k));
-}
-
-/* The card body stops being a rectangle, because the rectangle is the wall. */
-[data-lod="far"] .cv-node {
-  background: transparent;
-  border-color: transparent;
-  box-shadow: none;
-  /* Pinned rather than left to min-height. A long description pushes the box
-     past 104px, and since the disc is centred on the box rather than on the
-     cell, cards with more text put their disc a few world px lower than their
-     neighbours — a lattice of dots that does not quite line up. Nothing
-     visible is clipped: what overflows here is already at opacity 0. */
-  height: 104px;
-}
-/* Except the one the user picked, which still has to be findable. */
-[data-lod="far"] .cv-node.cv-selected {
-  box-shadow: 0 0 0 calc(1.5px / var(--k)) var(--node-color);
-}
-[data-lod="far"] .cv-desc,
-[data-lod="far"] .cv-foot,
-[data-lod="far"] .cv-chip { opacity: 0; }
-[data-lod="far"] .cv-accent,
-[data-lod="far"] .cv-port,
-[data-lod="far"] .cv-fold { display: none; }
-/* The card ring is a 236x104 rectangle; the disc carries "running" instead. */
-[data-lod="far"] .cv-node[data-state="live"]::after { display: none; }
-
-/* .cv-mark becomes the disc, in place. */
-[data-lod="far"] .cv-mark {
-  position: absolute;
-  left: 18px;                            /* the padding it already sat behind */
-  top: 12px;
-  width: var(--dots);
-  height: var(--dots);
-  /* 93 and 33 carry a 14px mark from the head to the card's visual centre —
-     (236-14)/2 - 18 and (104-14)/2 - 12 — and the half-diameter term holds the
-     disc on that centre as it grows. */
-  transform: translate(calc(93px + 7px - var(--dots) / 2), calc(33px + 7px - var(--dots) / 2));
-  border-radius: 50%;
-  background: var(--node-color);
-  /* A screen-constant hairline around every agent circle. */
-  box-shadow: 0 0 0 calc(1.4px / var(--k)) color-mix(in srgb, var(--ink) 34%, transparent);
-}
-/* An 11-ray burst is mush at 7px. */
-[data-lod="far"] .cv-mark > * { display: none; }
-/* Source survives as SHAPE, which reads at 7px where a glyph does not. */
-[data-lod="far"] .cv-node[data-source="kit"] .cv-mark { border-radius: 3px; }
-/* Status survives as the ring — the chip's colour, moved. */
-[data-lod="far"] .cv-node[data-state="live"] .cv-mark {
-  box-shadow: 0 0 0 calc(2px / var(--k)) var(--status-busy);
-}
-[data-lod="far"] .cv-node[data-state="failed"] .cv-mark {
-  box-shadow: 0 0 0 calc(2px / var(--k)) var(--cv-fail);
-}
-
-/* Who keeps a label out here. This is what makes the far band a picture
-   rather than a field of anonymous dots, and it answers the question the panel
-   exists for — which agent is running, and what is it doing — without a click.
-   Running and failed branches keep their words whatever the budget says; the
-   session and the workflows keep theirs because they are few and they anchor
-   the picture.
-
-   POSITIVE SELECTORS ONLY. The selfcheck's matcher treats a pseudo-class it
-   does not model as a non-match, so a :not() rule here would resolve to "no
-   match" in the gate and pass green for a rule the browser is running and the
-   test never saw. */
-[data-lod="far"] .cv-node[data-state="live"] .cv-type::before,
-[data-lod="far"] .cv-node[data-state="failed"] .cv-type::before,
-[data-lod="far"] .cv-node[data-kind="session"] .cv-type::before,
-[data-lod="far"] .cv-node[data-kind="workflow"] .cv-type::before {
-  content: attr(data-far);
-  font-size: calc(11px / var(--k));
-  letter-spacing: 0.04em;
-  transition: font-size 120ms ease;
-}
-/* Centred under its own disc and allowed out of the card, because at this size
-   the card is no longer a box — the disc is the node. */
-[data-lod="far"] .cv-node[data-state="live"] .cv-type,
-[data-lod="far"] .cv-node[data-state="failed"] .cv-type,
-[data-lod="far"] .cv-node[data-kind="session"] .cv-type,
-[data-lod="far"] .cv-node[data-kind="workflow"] .cv-type {
-  position: absolute;
-  left: 50%;                             /* = 118px, the disc's centre */
-  top: calc(52px + var(--dots) * 0.62);
-  transform: translateX(-50%);
-  overflow: visible;
-  text-overflow: clip;
-}
-/* Their words ride above the field rather than under the next card. */
-[data-lod="far"] .cv-node[data-state="live"],
-[data-lod="far"] .cv-node[data-state="failed"] { z-index: 5; }
-
-/* With 250 strokes on screen the only bright ones must be the branches that
-   are alive and the branches that went wrong. */
-[data-lod="far"] .cv-edge[data-state="done"],
-[data-lod="far"] .cv-edge[data-state="quiet"] { opacity: var(--cv-edge-quiet); }
-
 /* ------------------------------------------------------- stillness ---
    Two ways the canvas stops moving, and one set of rules for both.
 
@@ -968,17 +885,8 @@ mark { background: color-mix(in srgb, var(--studio-accent) 30%, transparent); co
 
 [data-motion="still"] .cv-edge,
 [data-motion="still"] .cv-edge.cv-drawing,
-[data-motion="still"] .cv-node::after { animation: none; }
+[data-motion="still"] .cv-node[data-kind][data-state]::after { animation: none; }
 [data-motion="still"] .cv-node.cv-born { opacity: 1; scale: 1; }
-/* A reading change is motion too — the mark travels to the card's centre and
-   the label resizes. `.cv-node { transition: none }` does not reach a child;
-   that is specificity, not the media query, so each of these carries at least
-   the weight of the rule it cancels. */
-[data-motion="still"] .cv-mark,
-[data-motion="still"] .cv-type::before,
-[data-motion="still"] .cv-desc,
-[data-motion="still"] .cv-foot,
-[data-motion="still"] .cv-chip { transition: none; }
 
 /* A media query adds no specificity. `.cv-edge` alone loses to
    `.cv-edge[data-state="live"]` and the flow keeps running, so each selector
@@ -986,13 +894,8 @@ mark { background: color-mix(in srgb, var(--studio-accent) 30%, transparent); co
 @media (prefers-reduced-motion: reduce) {
   .cv-edge[data-state],
   .cv-edge.cv-drawing,
-  .cv-node[data-state]::after { animation: none; }
+  .cv-node[data-kind][data-state]::after { animation: none; }
   .cv-node { transition: none; }
-  .cv-node .cv-mark,
-  .cv-node .cv-type::before,
-  .cv-node .cv-desc,
-  .cv-node .cv-foot,
-  .cv-node .cv-chip { transition: none; }
   /* The birth class comes off a frame later, which with no transition left is
      a blink from invisible to placed. Land it in its final state instead. */
   .cv-node.cv-born { opacity: 1; scale: 1; }
@@ -1070,31 +973,6 @@ h5.md-h, h6.md-h { font-size: 12px; color: var(--ink-dim); text-transform: upper
    width back and scroll sideways instead. */
 .md-table th, .md-table td { overflow-wrap: normal; min-width: 76px; }
 .md-table td { hyphens: none; }
-
-/* ------------------------------------------------------- fold control --- */
-
-.cv-fold {
-  background: transparent; border: 1px solid var(--line); border-radius: 5px;
-  color: var(--ink-dim); cursor: pointer; flex: none;
-  font-family: var(--font-mono); font-size: 9px; line-height: 1; padding: 2px 5px;
-}
-.cv-fold:hover { color: var(--ink); border-color: var(--node-color); }
-.cv-fold[hidden] { display: none; }
-
-/* A folded node is a container, so it reads as one: stacked edges behind the
-   card stand in for the children it is holding. */
-.cv-node.cv-folded { box-shadow: 0 1px 2px var(--shade-soft), 6px 6px 0 -2px var(--surface-raised), 6px 6px 0 -1px var(--line); }
-.cv-node[data-kind="workflow"] { border-style: dashed; }
-.cv-node[data-kind="workflow"] .cv-desc { font-family: var(--font-mono); font-size: 11px; color: var(--ink-dim); }
-
-/* The fold control is an affordance, not decoration: when a node is holding
-   children back it says how many, in the node's own colour. */
-.cv-node.cv-folded .cv-fold {
-  color: var(--node-color);
-  border-color: color-mix(in srgb, var(--node-color) 45%, transparent);
-  background: color-mix(in srgb, var(--node-color) 12%, transparent);
-  font-weight: 600;
-}
 
 /* ---------------------------------------------------------- origins --- */
 
@@ -1212,10 +1090,6 @@ body.vresizing { cursor: row-resize; user-select: none; }
 .chat-send:hover { filter: brightness(1.1); }
 
 
-/* `display: grid` outranks the UA's `[hidden] { display: none }`, so the empty
-   note kept painting over a graph that had nodes. Same trap as .inspector. */
-.cv-empty[hidden] { display: none; }
-
 /* ------------------------------------------------------- permissions --- */
 
 .perm-queue { flex: none; border-top: 1px solid var(--line); padding: 10px 14px; max-height: 46vh; overflow-y: auto; }
@@ -1322,14 +1196,6 @@ body.vresizing { cursor: row-resize; user-select: none; }
 .inspector dd.bad { color: var(--status-bad); }
 .ihint strong { display: block; color: var(--status-waiting); margin-bottom: 3px; }
 
-/* A node that holds others opens on click, so it says so before you try. */
-.cv-node.cv-container { cursor: zoom-in; }
-.cv-node.cv-container:not(.cv-folded) { cursor: zoom-out; }
-.cv-node.cv-container.cv-folded .cv-desc::after {
-  content: ' — click to open';
-  color: var(--ink-faint);
-  font-size: 11px;
-}
 
 /* ------------------------------------------------ history and read-only --- */
 
@@ -1419,21 +1285,6 @@ body.vresizing { cursor: row-resize; user-select: none; }
 :root:fullscreen .shell > .inspector,
 :root:fullscreen .shell > .chat { display: none; }
 
-/* A status the summary chips did not ask for, stepped back. */
-.cv-node.cv-dim { opacity: 0.22; }
-.cv-edge.cv-dim { opacity: 0.08; }
-
-/* ---------------------------------------------------------- node mark --- */
-
-.cv-mark { width: 14px; height: 14px; flex: none; color: var(--node-color); }
-/* Both logos carry their own colours; only the generic glyphs take the node's. */
-.cv-node[data-source="kit"] .cv-mark,
-.cv-node[data-source="builtin"] .cv-mark { color: inherit; }
-/* A type the palette does not know keeps a neutral mark, like its colour. */
-.cv-mark.cv-mark-unknown { color: var(--ink-faint); opacity: 0.7; }
-.cv-node[data-source="kit"] .cv-mark { opacity: 1; }
-.cv-node[data-source="builtin"] .cv-mark { opacity: 0.85; }
-
 /* ------------------------------------------------- tab bar that fits --- */
 
 /* A tab has to give way before the close control does. Without min-width:0 a
@@ -1505,6 +1356,8 @@ body.vresizing { cursor: row-resize; user-select: none; }
      session. Full screen is the one that goes: a phone has no window to leave. */
   .bar { gap: var(--space-2); padding: 0 var(--space-3); }
   .crumb, .chips, .bar #fullscreen, .bar #continue-session { display: none; }
+  /* The map and the legend are for a canvas with room around the graph; here they would cover it. */
+  .cv-minimap, .cv-legend { display: none; }
   /* "Studio" comes back beside the mark, as the phone design has it. */
   .brand h1 { display: block; font-size: 0; }
   .brand-accent { font-size: 15px; font-weight: 700; color: var(--ink); }

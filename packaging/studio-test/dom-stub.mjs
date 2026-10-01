@@ -38,8 +38,13 @@ class El {
   prepend(...n) { this.children.unshift(...n); }
   remove() {}
   replaceChildren(...n) { this.children = n; }
-  addEventListener() {}
+  // Listeners are kept, so a test can do what a pointer does and read what happened.
+  addEventListener(type, fn) { (this._on ??= {})[type] ??= []; this._on[type].push(fn); }
   removeEventListener() {}
+  emit(type, ev = {}) {
+    const e = { target: this, button: 0, stopPropagation() {}, preventDefault() {}, ...ev };
+    for (const fn of this._on?.[type] ?? []) fn(e);
+  }
   setAttribute(k, v) { this[`attr_${k}`] = v; }
   getAttribute(k) { return this[`attr_${k}`] ?? null; }
   setPointerCapture() {}

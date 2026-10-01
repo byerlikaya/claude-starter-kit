@@ -16,7 +16,8 @@
 //      So every run first repaints 400 blurred, shadowed boxes on every frame and compares that with an idle
 //      page. If the frame time does not rise, nothing is being painted and the run says INVALID.
 //   2. The legal worst case. The motion budget allows 60 strokes in motion; a fixture with 9 moving measures
-//      something else. The synthetic graph fills the budget exactly, and reports how many animations ran.
+//      something else. The "every card" scenario draws every agent as its own card, which puts 60 wires in
+//      motion, and each scenario reports how many animations were actually running.
 //
 // The synthetic mode takes over the panel's own canvas element with a second Canvas instance fed a generated
 // graph, so the stylesheet, the tokens and the page around it are the real ones. `--real` touches nothing: it
@@ -34,7 +35,8 @@ const arg = (name, fallback) => { const i = process.argv.indexOf(`--${name}`); r
 const flag = (name) => process.argv.includes(`--${name}`);
 
 const NODES = Number(arg('nodes', 250));
-const RUNNING = Number(arg('running', 60));
+// 55 agents and the 5 runs they are in: 60 wires in motion, which is the motion budget exactly.
+const RUNNING = Number(arg('running', 55));
 const SECS = Number(arg('secs', 8));
 const REAL = arg('real', null);
 const HEADED = flag('headed');
@@ -170,6 +172,14 @@ window.__pp = {
     if (typeof c.expandAll === 'function') c.expandAll(); else this.root.querySelector('[data-act="expand"]')?.click();
     return this.describe();
   },
+  // The most the canvas can be asked to draw: every agent a card of its own, nothing grouped, nothing shrunk.
+  // On a canvas without those choices, expanding everything is the same picture.
+  everyCard() {
+    const c = this.canvas;
+    if (typeof c.setGroup === 'function') { c.setGroup('none'); c.setDensity('comfortable'); c.fit(); }
+    else this.root.querySelector('[data-act="expand"]')?.click();
+    return this.describe();
+  },
   async pan(ms) {
     const c = this.canvas; const x0 = c.view.x; const y0 = c.view.y; const t0 = performance.now();
     const move = (now) => { const t = (now - t0) / 1000; c.view.x = x0 + Math.sin(t * 2.2) * 260; c.view.y = y0 + Math.cos(t * 1.7) * 160; c.applyView(); if (now - t0 < ms) requestAnimationFrame(move); else { c.view.x = x0; c.view.y = y0; c.applyView(); } };
@@ -280,6 +290,13 @@ if (REAL) {
   result.expandedSteady = await measure(`window.__pp.frames(${ms})`);
   result.expandedPan = await measure(`window.__pp.pan(${Math.min(ms, 5000)})`);
   result.expandedPoll = await ev(`window.__pp.polls(20)`);
+  await ev(`window.__pp.everyCard()`);
+  await sleep(900);
+  result.everyCard = await ev(`window.__pp.describe()`);
+  result.everyCardSteady = await measure(`window.__pp.frames(${ms})`);
+  result.everyCardPan = await measure(`window.__pp.pan(${Math.min(ms, 5000)})`);
+  result.everyCardZoom = await measure(`window.__pp.zoom(${Math.min(ms, 5000)})`);
+  result.everyCardPoll = await ev(`window.__pp.polls(20)`);
 }
 
 /* ------------------------------------------------------------------ print */
@@ -302,6 +319,11 @@ if (REAL) {
   row('steady, expanded', result.expandedSteady);
   row('panning, expanded', result.expandedPan);
   console.log(`poll, expanded: render() ${result.expandedPoll.median} ms median, ${result.expandedPoll.max} ms max over ${result.expandedPoll.polls}`);
+  console.log(`every agent its own card: ${JSON.stringify(result.everyCard)}`);
+  row('steady, every card', result.everyCardSteady);
+  row('panning, every card', result.everyCardPan);
+  row('zooming, every card', result.everyCardZoom);
+  console.log(`poll, every card: render() ${result.everyCardPoll.median} ms median, ${result.everyCardPoll.max} ms max over ${result.everyCardPoll.polls}`);
 }
 if (JSON_OUT) fs.writeFileSync(JSON_OUT, `${JSON.stringify(result, null, 1)}\n`);
 try { chrome.kill(); } catch { /* gone */ }

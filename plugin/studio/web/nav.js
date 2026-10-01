@@ -24,6 +24,14 @@ const AGENT_STATUS = {
 };
 const CHIP_ORDER = ['running', 'starting', 'stale', 'done', 'failed', 'killed', 'stopped', 'ended'];
 
+/** The word and the tone one agent status is drawn in. A status this table does not know keeps its own word. */
+export function agentStatus(status) {
+  const known = AGENT_STATUS[status];
+  return known
+    ? { word: known.word, tone: known.tone, known: true }
+    : { word: String(status ?? 'unknown'), tone: null, known: false };
+}
+
 /**
  * One chip per status that has at least one agent, so the chips add up to the total. A status this table does
  * not know is still a chip: its own word, no colour, `known: false`.
