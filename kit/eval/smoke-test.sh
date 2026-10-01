@@ -3486,7 +3486,10 @@ done
 # answered the rc the row expects: a crashed hook costs nothing, and would pass.
 _gcost(){  # $1 = script, $2 = payload file, $3 = scratch, $4 = an argument for the script (optional) -> sets _GCR (rc), _GCN (cost) and _GCE (external commands alone)
   PS4='+@$BASH_SUBSHELL@ ' bash -x "$1" ${4:+"$4"} < "$2" >/dev/null 2>"$3"; _GCR=$?
-  _GCN="$(awk '/^\++@[0-9]+@ / { s = $0; sub(/^\++@/, "", s); l = s + 0; sub(/^[0-9]+@ /, "", s)
+  # LC_ALL=C: the scanners' traces carry the blocklists' own patterns — an emoji among them, split by xtrace's
+  # quoting — and a UTF-8 awk stops on that ("towc: multibyte conversion failure", macOS runner) and prints nothing.
+  # Nothing here needs characters: `+`, `@`, digits and command names are bytes.
+  _GCN="$(LC_ALL=C awk '/^\++@[0-9]+@ / { s = $0; sub(/^\++@/, "", s); l = s + 0; sub(/^[0-9]+@ /, "", s)
       if (l > p) n += (l - p); p = l; split(s, a, " "); w = a[1]; gsub(/^\047|\047$/, "", w)
       if (w ~ /^(grep|sed|awk|tr|cat|head|tail|cut|sort|find|wc|mktemp|basename|dirname|git|jq|python3?|node|perl|date|uname|sha256sum|shasum|cksum|stat|ls|rm|cp|mv|mkdir|cygpath|bash|sh|file|xargs|comm|uniq|od)$/) { n++; e++ } }
     END { print n + 0, e + 0 }' "$3")"; _GCE="${_GCN#* }"; _GCN="${_GCN%% *}"; }
@@ -3496,7 +3499,9 @@ _GCT="$(mktemp -d)"; _GCT="$(cd -P "$_GCT" && pwd)"; _gcp="$_GCT/proj"; mkdir -p
 cp -R "$HOOKS" "$_gcp/.claude/hooks"; mkdir -p "$_gcp/.claude/eval"; cp -R "$ROOT/eval/lib" "$_gcp/.claude/eval/lib"
 ( cd "$_gcp" && git init -q && git config user.email t@t.t && git config user.name t && echo a > a.txt && git add a.txt \
   && git -c core.hooksPath=/dev/null commit -qm base && echo b >> a.txt && git add a.txt ) >/dev/null 2>&1
-printf '%s\n' 'f(){ :; }' 'X="$(echo hi)"' 'Y="$(echo hi | tr a-z A-Z)"' 'cat </dev/null' 'printf x | grep -q x' '[ -n "$X" ] && f' '. ./inc.sh; eval "W=1"' > "$_GCT/cal.sh"
+# The last calibration line puts a CUT multi-byte character into the trace (three of an emoji's four bytes): that is
+# what a scanner's trace carries, and a counter that stops on it printed nothing on the macOS runner.
+printf '%s\n' 'f(){ :; }' 'X="$(echo hi)"' 'Y="$(echo hi | tr a-z A-Z)"' 'cat </dev/null' 'printf x | grep -q x' '[ -n "$X" ] && f' '. ./inc.sh; eval "W=1"' "N=\$'\\360\\237\\244'; : \"\$N\"" > "$_GCT/cal.sh"
 echo 'V=2' > "$_GCT/inc.sh"; { cat "$_GCT/cal.sh"; echo 'Z="$(printf a)"; printf x | grep -q x'; } > "$_GCT/cal2.sh"; : > "$_GCT/empty"
 ( cd "$_GCT" && _gcost cal.sh empty t0 && printf '%s' "$_GCN" > c1 && _gcost cal2.sh empty t0 && printf '%s' "$_GCN" > c2 )
 _gc1="$(cat "$_GCT/c1" 2>/dev/null)"; _gc2="$(cat "$_GCT/c2" 2>/dev/null)"
@@ -3541,7 +3546,8 @@ commit-msg @@ 0 @@ 15 @@ Script @@ msg'
     # 5.3 (measured on macOS and on Git Bash), while its 22 external commands were the same 22 on both.
     ( cd "$_gcp" && HOME=/c/Users/crewtester CLAUDE_PROJECT_DIR="$_gcp" CREW_GATE_LOG=/dev/null _gcost "$_gs" "$_GCT/p.json" "$_GCT/t" "$_ga" && { [ "$_gt" = Script ] && _GCN="$_GCE"; printf '%s %s' "$_GCR" "$_GCN" > "$_GCT/r"; } )
     read -r _grc _gn < "$_GCT/r" || true; _gcn=$((_gcn+1)); _gcrow="$_gcrow $_gn"
-    if [ "$_grc" != "$_gr" ]; then _gcbad="$_gcbad | $_gh [$_gc]: answered rc $_grc, want $_gr — its cost ($_gn) means nothing"
+    if [ -z "${_gn:-}" ]; then _gcbad="$_gcbad | $_gh [$_gc]: the counter printed nothing for this row — the measurement is broken, not the hook"
+    elif [ "$_grc" != "$_gr" ]; then _gcbad="$_gcbad | $_gh [$_gc]: answered rc $_grc, want $_gr — its cost ($_gn) means nothing"
     elif [ "${_gn:-99}" -gt "$_gb" ]; then _gcbad="$_gcbad | $_gh [$_gc]: $_gn processes, ceiling $_gb"; fi
   done <<< "$GCT"
   # Per hook: one `$( )` + one grep planted right after the stdin read must raise a 0-cost row by at least 2.
