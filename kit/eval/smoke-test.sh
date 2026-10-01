@@ -6365,12 +6365,32 @@ done
 # exits 0 and no gate runs (measured in the field on 3.0.1-rc.1). Paired per entry: each command object whose command
 # runs a Crewforth hook must carry "shell": "bash" itself. A user's own hook or a command statusLine in the same file is
 # theirs, not counted. Prints "<crewforth hooks> <with shell bash>".
-hook_shells(){ awk '{ buf = buf $0 "\n" } END {
-  while (match(buf, /\{[^{}]*\}/)) { o = substr(buf, RSTART, RLENGTH); buf = substr(buf, RSTART + RLENGTH)
-    if (o !~ /"type"[[:space:]]*:[[:space:]]*"command"/) continue
-    if (!index(o, ".claude/hooks/") && !(index(o, "CLAUDE_PLUGIN_ROOT") && index(o, "/hooks/"))) continue
-    c++; if (o ~ /"shell"[[:space:]]*:[[:space:]]*"bash"/) b++ }
-  printf "%d %d", c, b }' "$1"; }
+# One reader for the three pins below that look at hook entries (shell, timeout, the no-bash gate). It walks the JSON
+# character by character and knows when it is inside a string: the no-bash gate's command holds `{` and `}` of its
+# own, and a brace-matching regex stopped seeing that hook at all (it read "4 hooks" where there were 5).
+# One line per command hook: <event> TAB <matcher or -> TAB <the hook object, newlines folded>.
+json_hooks(){ LC_ALL=C awk '{ buf = buf $0 "\n" } END {
+  n = length(buf); ins = 0; esc = 0; depth = 0; str = ""; ev = "-"; mt = "-"; lastkey = ""
+  for (i = 1; i <= n; i++) { c = substr(buf, i, 1)
+    if (ins) { if (depth_obj) cur = cur c
+      if (esc) { esc = 0; str = str c; continue }
+      if (c == "\\") { esc = 1; str = str c; continue }
+      if (c == "\"") { ins = 0; last = str
+        if (wantval == "matcher") { mt = last; wantval = "" } }
+      else str = str c
+      continue }
+    if (c == "\"") { ins = 1; str = ""; if (depth_obj) cur = cur c; continue }
+    if (c == ":") { if (last == "PreToolUse" || last == "PostToolUse" || last == "UserPromptSubmit" || last == "Stop" || last == "SessionStart" || last == "SubagentStop" || last == "Notification" || last == "PreCompact" || last == "SessionEnd") { ev = last; mt = "-" }
+                    if (last == "matcher") wantval = "matcher" }
+    if (c == "{") { depth++; start[depth] = 1; cur = ""; depth_obj = depth }
+    if (depth_obj) cur = cur c
+    if (c == "}") { if (depth == depth_obj && cur ~ /"type"[ \t\n]*:[ \t\n]*"command"/) { o = cur; gsub(/\n/, " ", o); print ev "\t" mt "\t" o }
+                    depth--; depth_obj = 0; cur = "" } } }' "$1"; }
+hook_shells(){ json_hooks "$1" | LC_ALL=C awk -F'\t' '{ o = $3
+    if (!index(o, ".claude/hooks/") && !(index(o, "CLAUDE_PLUGIN_ROOT") && index(o, "/hooks/"))) next
+    if (index(o, "no-bash-guard.ps1")) next   # the one hook that must NOT name a shell: the gate for a machine without bash (12e)
+    c++; if (o ~ /"shell"[ \t]*:[ \t]*"bash"/) b++ }
+  END { printf "%d %d", c, b }'; }
 _hsd="$(mktemp -d)"
 printf '%s\n' '{"statusLine":{"type":"command","command":"my-status"},"hooks":{"Stop":[{"hooks":[' \
   '{"type":"command","shell":"bash","command":"bash .claude/hooks/a.sh"},{"type":"command","command":"bash .claude/hooks/b.sh"},' \
@@ -6388,25 +6408,23 @@ rm -rf "$_hsd"
 # A gate's timeout is not a comfort setting: a PreToolUse hook that reaches it does not block (Claude Code's hooks
 # reference: "doesn't block the tool call … don't count on a stalled hook to act as a gate"), and a field session on
 # 3.0.0 showed nine of them in one day — the commands ran with no gate. Crewforth had set 60 s where Claude Code's
-# own default is 600, and the slowest machine measured needed 32-134 s for one guard-bash call. The four PreToolUse
-# gates carry 600 now; every other hook keeps 60 — when one of those times out, nothing is left unguarded.
+# own default is 600, and the slowest machine measured needed 32-134 s for one guard-bash call. The five PreToolUse
+# gates (the four bash gates and the no-bash gate of 12e) carry 600 now; every other hook keeps 60 — when one of those times out, nothing is left unguarded.
 # Read per entry, in both editions; the twin lowers one gate back to 60 and must be seen.
-gate_timeouts(){ awk '{ buf = buf $0 "\n" } END { pre = index(buf, "\"PreToolUse\""); if (!pre) { print "none"; exit }
-    rest = substr(buf, pre); e = index(rest, "\"UserPromptSubmit\""); if (e) rest = substr(rest, 1, e)
-    while (match(rest, /\{[^{}]*"type"[[:space:]]*:[[:space:]]*"command"[^{}]*\}/)) { o = substr(rest, RSTART, RLENGTH); rest = substr(rest, RSTART + RLENGTH)
-      n++; t = 0; if (match(o, /"timeout"[[:space:]]*:[[:space:]]*[0-9]+/)) { t = substr(o, RSTART, RLENGTH); sub(/.*:[[:space:]]*/, "", t) }
+gate_timeouts(){ json_hooks "$1" | LC_ALL=C awk -F'\t' '$1 == "PreToolUse" { n++; t = 0
+      if (match($3, /"timeout"[ \t]*:[ \t]*[0-9]+/)) { t = substr($3, RSTART, RLENGTH); sub(/.*:[ \t]*/, "", t) }
       if (t + 0 < 600) low++ }
-    printf "%d %d", n, low }' "$1"; }
+    END { printf "%d %d", n, low }'; }
 _gtd="$(mktemp -d)"
 tr -d '\n' < "$ROOT/settings.json" | sed 's/guard-bash\.sh\([^}]*\)"timeout": 600/guard-bash.sh\1"timeout": 60/' > "$_gtd/twin.json"
 _gtw="$(gate_timeouts "$_gtd/twin.json")"
-if [ "$_gtw" != "4 1" ]; then fail "gate timeout pin: the twin with guard-bash.sh back at 60 s read '$_gtw', want '4 1' — the pin sees nothing"
+if [ "$_gtw" != "5 1" ]; then fail "gate timeout pin: the twin with guard-bash.sh back at 60 s read '$_gtw', want '5 1' — the pin sees nothing"
 else for _gf in $_gpw_f; do
   [ -f "$_gf" ] || continue
   set -- $(gate_timeouts "$_gf")
-  if [ "${1:-0}" != 4 ]; then fail "${_gf##*/}: $1 PreToolUse gate hooks read, want 4 — the pin did not read the file as written"
-  elif [ "${2:-9}" = 0 ]; then pass "${_gf##*/}: all 4 PreToolUse gates have a 600 s timeout (a gate that times out does not block)"
-  else fail "${_gf##*/}: $2 of 4 PreToolUse gates time out before 600 s — a timed-out gate does not block"; fi
+  if [ "${1:-0}" != 5 ]; then fail "${_gf##*/}: $1 PreToolUse gate hooks read, want 5 — the pin did not read the file as written"
+  elif [ "${2:-9}" = 0 ]; then pass "${_gf##*/}: all 5 PreToolUse gates have a 600 s timeout (a gate that times out does not block)"
+  else fail "${_gf##*/}: $2 of 5 PreToolUse gates time out before 600 s — a timed-out gate does not block"; fi
 done; fi
 rm -rf "$_gtd"
 
@@ -6514,6 +6532,99 @@ $_o"
     || fail "the inventory missed a removed phrase — paragraph:${_bt1:+ caught} list item:${_bt2:+ caught} printed:${_bt3:+ caught} stored:${_bt4:+ caught}"
   rm -rf "$_btt"
 fi
+sec "== 12e) with no Git Bash the writing tools are stopped: the one gate that does not need bash =="
+# Crewforth's gates are bash scripts. On Windows, when Claude Code finds no Git Bash, a hook that names bash fails with
+# "requires bash but Git Bash was not found" and exit 1 — which does not block — and there is no Bash tool: PowerShell
+# is the shell and nothing guards it (field, 3.0.1-rc.2). One PreToolUse hook therefore names NO shell. Claude Code
+# runs such a hook through bash where it finds one and through PowerShell where it finds none, and the command is
+# valid in both: bash leaves at `exit 0` without starting a process, PowerShell loads hooks/no-bash-guard.ps1, which
+# stops the call (exit 2) unless a bash is where Claude Code looks.
+# Read from the wiring itself, in both editions: the command a test types by hand is not the command that ships.
+nbg_cmd(){  # $1 = settings.json | hooks.json -> the decoded command of the PreToolUse hook that has no "shell", on stdout;
+            # stderr: "<hooks without shell> <matcher> <timeout>"
+  json_hooks "$1" | LC_ALL=C awk -F'\t' '$1 == "PreToolUse" && $3 !~ /"shell"[ \t]*:/ { n++; m = $2; o = $3; t = 0
+      if (match(o, /"timeout"[ \t]*:[ \t]*[0-9]+}?[ \t]*}?$/) || match(o, /"timeout"[ \t]*:[ \t]*[0-9]+/)) { t = substr(o, RSTART, RLENGTH); sub(/^"timeout"[ \t]*:[ \t]*/, "", t); t = t + 0 }
+      if (match(o, /"command"[ \t]*:[ \t]*"/)) { c = substr(o, RSTART + RLENGTH); out = ""
+        while (length(c)) { ch = substr(c, 1, 1)
+          if (ch == "\\") { nx = substr(c, 2, 1); c = substr(c, 3)
+            if (nx == "n") out = out "\n"; else if (nx == "t") out = out "\t"; else out = out nx; continue }
+          if (ch == "\"") break
+          out = out ch; c = substr(c, 2) }
+        cmd = out } }
+    END { printf "%s", cmd; printf "%d %s %d", n, (m == "" ? "-" : m), t > "/dev/stderr" }'; }
+_NBT="$(mktemp -d)"; _NBT="$(cd -P "$_NBT" && pwd)"
+_nbf="$ROOT/settings.json"; [ "$IS_KIT" = 1 ] && _nbf="$_nbf $(cd "$ROOT/.." && pwd)/plugin/hooks/hooks.json"
+_nbi=0
+for _nf in $_nbf; do
+  _nbi=$((_nbi+1)); _nn="${_nf##*/}"
+  [ -f "$_nf" ] || { fail "$_nn is missing — nothing to read the no-bash gate from"; continue; }
+  nbg_cmd "$_nf" > "$_NBT/cmd$_nbi" 2> "$_NBT/meta$_nbi"; read -r _nbn _nbm _nbto < "$_NBT/meta$_nbi" || true
+  # (1) wired: exactly one hook without a shell, on every tool that writes or runs, with a gate's timeout
+  _nbok=1
+  for _nt in Bash PowerShell Write Edit NotebookEdit; do case "|$_nbm|" in *"|$_nt|"*) ;; *) _nbok=0 ;; esac; done
+  if [ "${_nbn:-0}" = 1 ] && [ "$_nbok" = 1 ] && [ "${_nbto:-0}" -ge 600 ] && grep -q 'no-bash-guard.ps1' "$_NBT/cmd$_nbi"; then
+    pass "$_nn: one PreToolUse hook names no shell, covers Bash, PowerShell, Write, Edit and NotebookEdit, and loads no-bash-guard.ps1"
+  else
+    fail "$_nn: the no-bash gate is not wired — hooks without a shell: ${_nbn:-0} (want 1), matcher '${_nbm:--}', timeout ${_nbto:-0}s (want ≥600), loads no-bash-guard.ps1: $(grep -c 'no-bash-guard.ps1' "$_NBT/cmd$_nbi" 2>/dev/null | tr -cd '0-9')"
+    continue
+  fi
+  # (2) the bash branch: every shell Claude Code may hand it to leaves with 0, says nothing and starts nothing
+  _nbsh=""; _nbbad=""
+  for _ns in sh bash dash zsh; do
+    command -v "$_ns" >/dev/null 2>&1 || continue
+    _no="$("$_ns" -c "$(cat "$_NBT/cmd$_nbi")" 2>&1)"; _nr=$?
+    _nbsh="$_nbsh $_ns"; { [ "$_nr" = 0 ] && [ -z "$_no" ]; } || _nbbad="$_nbbad $_ns(rc $_nr: $_no)"
+  done
+  PS4='+@$BASH_SUBSHELL@ ' bash -x -c "$(cat "$_NBT/cmd$_nbi")" >/dev/null 2>"$_NBT/tr"
+  _nbc="$(LC_ALL=C awk '/^\++@[0-9]+@ / { s = $0; sub(/^\++@/, "", s); l = s + 0; sub(/^[0-9]+@ /, "", s); if (l > p) n += (l - p); p = l
+      split(s, a, " "); if (a[1] !~ /^(echo|:|exit)$/) n++; seen++ } END { print (seen ? n + 0 : "none") }' "$_NBT/tr")"
+  if [ -n "$_nbbad" ]; then fail "$_nn: the no-bash gate's command is not silent under:$_nbbad — with a bash present it must leave at once"
+  elif [ "$_nbc" = none ]; then fail "$_nn: the no-bash gate's bash branch left no trace — the measurement is broken, not the hook"
+  elif [ "$_nbc" = 0 ]; then pass "$_nn: with a bash present the no-bash gate exits 0, prints nothing and starts no process (${_nbsh# })"
+  else fail "$_nn: the no-bash gate's bash branch costs $_nbc process(es) on every call — budget 0"; fi
+done
+# (3) the PowerShell branch, run by a real PowerShell. The lookup is Claude Code's: its variable, the two default Git
+#     folders, git on PATH. On a Windows runner Git IS in its default folder, so "not found" cannot be produced there.
+# Run by whichever PowerShell is here: pwsh, or Windows PowerShell 5.1 — the one Claude Code itself starts
+# (`powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "<hook text>"`, measured on 2.1.284).
+_nbx="$(command -v pwsh 2>/dev/null || command -v powershell 2>/dev/null || true)"
+_nbw(){ case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) cygpath -w "$1" 2>/dev/null || printf '%s' "$1" ;; *) printf '%s' "$1" ;; esac; }
+if [ -z "$_nbx" ]; then
+  skip tool "the no-bash gate's PowerShell branch — no pwsh and no powershell here (the bash branch and the wiring are checked above)" 6
+elif [ ! -s "$_NBT/cmd1" ]; then
+  fail "the no-bash gate's PowerShell branch: there is no wired command to run"
+else
+  _nbp="$_NBT/proj"; mkdir -p "$_nbp/.claude/hooks" "$_NBT/g/bin" "$_NBT/G2/bin" "$_NBT/la/Programs/Git/bin"
+  cp "$HOOKS/no-bash-guard.ps1" "$_nbp/.claude/hooks/" 2>/dev/null
+  : > "$_NBT/g/bin/bash"; : > "$_NBT/G2/git-bash.exe"; : > "$_NBT/G2/bin/bash.exe"; : > "$_NBT/la/Programs/Git/bin/bash.exe"
+  nbps(){ ( cd "$_nbp" && env -u CLAUDE_CODE_GIT_BASH_PATH -u LOCALAPPDATA CLAUDE_PROJECT_DIR="$(_nbw "$_nbp")" "$@" "$_nbx" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$(cat "$_NBT/cmd1")" 2>"$_NBT/err" >/dev/null </dev/null ); _NBR=$?; _NBE="$(cat "$_NBT/err")"; }
+  nbps env CLAUDE_CODE_GIT_BASH_PATH="$(_nbw "$_NBT/g/bin/bash")"
+  [ "$_NBR" = 0 ] && pass "PowerShell branch: a bash where CLAUDE_CODE_GIT_BASH_PATH points → exit 0, the bash gates are the ones that work" \
+    || fail "PowerShell branch: with CLAUDE_CODE_GIT_BASH_PATH on an existing bash it answered $_NBR, want 0: $_NBE"
+  rm -f "$_nbp/.claude/hooks/no-bash-guard.ps1"; nbps env X=1
+  case "$_NBR:$_NBE" in 2:*"could not be loaded"*) pass "PowerShell branch: the guard file missing → the call is stopped all the same (exit 2)" ;;
+    *) fail "PowerShell branch: with no-bash-guard.ps1 missing it answered $_NBR — a gate that fails open: $_NBE" ;; esac
+  cp "$HOOKS/no-bash-guard.ps1" "$_nbp/.claude/hooks/"
+  case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*)
+    skip platform "the no-bash gate's 'no Git Bash' cases — this Windows runner has Git in its default folder, which is where the gate (like Claude Code) looks" 4 ;;
+  *)
+    nbps env X=1
+    case "$_NBR:$_NBE" in 2:*"found no Git Bash"*"CLAUDE_CODE_GIT_BASH_PATH"*"close the terminal"*) pass "PowerShell branch: no Git Bash where Claude Code looks → exit 2, with the variable to set and 'close the terminal'" ;;
+      *) fail "PowerShell branch: with no Git Bash it answered $_NBR, want 2 and the fix: $_NBE" ;; esac
+    nbps env CLAUDE_CODE_GIT_BASH_PATH="$(_nbw "$_NBT/G2/git-bash.exe")"
+    case "$_NBR:$_NBE" in 2:*"does not accept"*"G2"*"bash.exe"*) pass "PowerShell branch: the variable names the launcher → exit 2, naming the bash.exe beside it that exists" ;;
+      *) fail "PowerShell branch: a launcher in CLAUDE_CODE_GIT_BASH_PATH answered $_NBR: $_NBE" ;; esac
+    nbps env LOCALAPPDATA="$(_nbw "$_NBT/la")"
+    case "$_NBR:$_NBE" in 2:*"Programs"*"Git"*"bash.exe"*) pass "PowerShell branch: a per-user Git install → exit 2, naming its bash.exe as the path to set" ;;
+      *) fail "PowerShell branch: with a per-user Git it answered $_NBR: $_NBE" ;; esac
+    nbps env CLAUDE_CODE_GIT_BASH_PATH="$_NBT/nowhere/bash.exe" LOCALAPPDATA="$_NBT/empty"
+    case "$_NBR:$_NBE" in 2:*"Programs"*) fail "PowerShell branch: named a per-user bash that does not exist — the path must be measured" ;;
+      2:*"<Git>"*) pass "PowerShell branch: nothing to suggest → exit 2 with the generic fix, no invented path" ;;
+      *) fail "PowerShell branch: with nothing to suggest it answered $_NBR: $_NBE" ;; esac ;;
+  esac
+fi
+rm -rf "$_NBT"
+
 sec "== 12d) the plugin's own gate files are guarded like the project's =="
 # The plugin edition keeps its gate scripts and its hook wiring under the plugin root, not under .claude/, and the
 # project-path rules never matched there: `rm <plugin>/hooks/guard-bash.sh` returned rc 0 while
