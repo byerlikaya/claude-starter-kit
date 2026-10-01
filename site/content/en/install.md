@@ -51,7 +51,9 @@ bash start.sh [--private|--shared] [--lang tr|en] [--yes] [--version] [-h]
 
 The wizard first asks for its language (English or Turkish), then who the install is for, and ends with a summary you approve before anything is written. Every prompt and message follows the language you pick; the files it installs stay English.
 
-**Every install carries the same team** — all {{AGENT_COUNT}} agents and all {{SKILL_COUNT}} skills. Backend, web and mobile (React Native/Expo) come together. A project that starts as an API and grows a web client is already equipped for both.
+**Every install carries the same team** — all {{AGENT_COUNT}} agents and all {{SKILL_COUNT}} skills. Backend, web and mobile come together, and the stack is read from the project (`## Stack` in `CLAUDE.md`, or the repo). A project that starts as an API and grows a web client is already equipped for both.
+
+No client stack is a default either: the first client task reads `Client:` in `## Stack`, then the repo's manifests (`package.json`, `pubspec.yaml`, `Package.swift`, `build.gradle`, a MAUI `*.csproj`), and only in an empty repo asks, once — with no option recommended — and records the answer. React Native/Expo is only one of the optional ready-made layers.
 
 | Asked at install | Options | What it changes |
 |:--|:--|:--|

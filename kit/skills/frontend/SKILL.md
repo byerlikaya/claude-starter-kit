@@ -8,10 +8,34 @@ description: |
 # Frontend Discipline (stack-agnostic)
 
 <!-- routing-eval reads the next line; why it sits in the body: AGENT_TEMPLATE.md -->
-Trigger phrases: "frontend", "screen size", "component", "page", "UI", "state management", "interface"
+Trigger phrases: "in the frontend", "frontend code", "frontend'de", "screen size", "component", "page", "the UI", "UI component", "UI bug", "state management", "interface"
 
-Web (React/Next/Vue/Svelte/Angular), mobile (React Native/Flutter) or desktop — shared principles.
+Web, mobile (native iOS/Android, Flutter, React Native, .NET MAUI, KMP) or desktop — shared principles.
 The stack-specific "how" (native bridge, router choice, etc.) lives in the relevant project skill; this skill applies to all of them.
+
+## Client stack — resolve it before the first line, in this order; stop at the first answer
+There is no default client stack, and none is suggested: the user chooses. **Model discipline, not a gate.**
+1. **The request says it.** "Add a Flutter screen" is an answer. Use it; record it if `## Stack` was empty.
+2. **`CLAUDE.md ## Stack` → `Client:` says it.** A filled line is a decision: follow it.
+3. **The repo says it** — manifests at the root and one level down (`app/`, `mobile/`, `web/`, `client/`, `apps/*`):
+
+   | Manifest | Client |
+   |:--|:--|
+   | `package.json` | web (framework from its dependencies); React Native/Expo if it depends on `react-native` or `expo` |
+   | `pubspec.yaml` | Flutter |
+   | `*.xcodeproj` / `Package.swift` | native iOS (Swift / SwiftUI) |
+   | `build.gradle(.kts)` with the Android plugin | native Android (Kotlin / Compose); KMP if it applies `kotlin("multiplatform")` |
+   | `*.csproj` with `<UseMaui>` | .NET MAUI |
+4. **Still open (a new project) → ask, once.** A few questions at most (which platforms · which client stack), the
+   options listed plainly — **no option marked recommended and no "Decide for me"**: the stack is the user's call.
+   This is the one decision where the discipline's "give a clear recommendation" does NOT apply: state each option's
+   trade-off and stop there. That Crewforth ships a layer for one stack (`frontend-rn-expo`) is not a reason to
+   favour it (measured: the first version of this step still got "React Native + Expo (recommended)", because of it).
+   No one to ask (headless) → write the questions as text and stop; do not start client code on a guessed stack.
+
+**Record it** in the `Client:` line of `CLAUDE.md ## Stack`, plus an ADR (`adr` skill). **Never ask twice** — a
+recorded client stack changes only when the user asks. Then apply this skill on that stack; an RN/Expo project
+also applies `frontend-rn-expo`.
 
 ## Architecture
 - **Presentation / logic separation:** component/view is pure and thin; business logic lives in the hook/composable/service layer.

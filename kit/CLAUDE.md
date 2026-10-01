@@ -2,7 +2,7 @@
 
 The discipline, identical in every project. The installer writes it to `.claude/DISCIPLINE.md`; your `./CLAUDE.md`
 imports it with one `@.claude/DISCIPLINE.md` line. **Crewforth-owned**: updates overwrite it, so put your own rules in
-`./CLAUDE.md`, where they win on conflict.
+`./CLAUDE.md`, where they win on conflict; in §4 they can only tighten, never loosen (§4.1 names the one exception).
 
 ## Four working principles
 1. Think, then write. State assumptions explicitly; if unsure, **STOP and ask**.
@@ -13,6 +13,7 @@ imports it with one `@.claude/DISCIPLINE.md` line. **Crewforth-owned**: updates 
 **When two rules collide** (they do, and improvising an order is how the wrong one wins): §4 prohibitions and
 safety first, then the user's explicit in-session instruction, then scope-as-asked, then quality, then speed. A
 lower one never overrides a higher one. Say which you applied and why — a silent trade-off is an unreviewable one.
+A project `CLAUDE.md` can tighten §4, never loosen it (§4.1 names the one exception). The § numbers in this file refer only to this file.
 **A skill's output format is not on this ladder**: it shapes what you write, not whether the work continues.
 "Final reply = the report" ends that skill's step, not the task.
 
@@ -118,7 +119,7 @@ Last line of a reply, after the next step: `🔋 Session: [low/medium/high fill]
 
 **Never guess the fill.** You cannot run `/context`; the `UserPromptSubmit` hook injects the measured line
 `🔋 Session %NN.N → level` every turn (`input + cache_read + cache_creation` = the `/context` figure). Use it. Exact
-reading: `bash .claude/hooks/context-usage.sh --verbose`. Never invent a number. **No line → run that command
+reading: `bash .claude/hooks/context-usage.sh --verbose` (Bash tool, not PowerShell). Never invent a number. **No line → run that command
 once; if it also fails, say so ONCE and drop the 🔋 line for the rest of the session.** Repeating "could not
 measure" every turn is noise that reads as a fault.
 
@@ -203,7 +204,7 @@ Runtime: <e.g. Node 22 · Go 1.23 · Python 3.12 · .NET 10 · Java 21>
 Web framework: <e.g. Fastify · chi · FastAPI · ASP.NET Core · Spring Boot>
 Database: <e.g. PostgreSQL 17 (+ Redis cache) · SQLite · MongoDB> · Migrations: <tool>
 Architecture pattern: <layered · clean/hexagonal · vertical slice · CQRS>
-Client: <e.g. web React/Next · mobile React Native/Expo · desktop — depending on the project>
+Client: <e.g. web · native iOS/Android · Flutter · React Native · .NET MAUI · KMP · desktop — the user chooses; empty = ask, recommend none>
 
 ## Project skills
 Domain-specific "how"s live under `.claude/skills/` (e.g. payment-contract, notification-rules).
@@ -225,4 +226,4 @@ read this section and follow it verbatim; with nothing declared they fall back t
 Behavior · four principles · DoD · Prohibitions (§4) · session management · sources live in
 `.claude/DISCIPLINE.md`, pulled in by the `@.claude/DISCIPLINE.md` line at the top of this file. That file is
 Crewforth-owned: an update overwrites it, so put **nothing** of your own there — this file is where your rules go, and
-on conflict the rules here win. No dependency on Home (`~/.claude`) — everything stays inside the repo (handover §3).
+on conflict the rules here win; in DISCIPLINE.md §4 they can only tighten, never loosen (its §4.1 names the one exception). No dependency on Home (`~/.claude`) — everything stays inside the repo (handover §3).

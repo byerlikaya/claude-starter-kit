@@ -47,7 +47,7 @@ Skipping one of these is how a component ships half-installed:
    counts it; `/crew-doctor` reports the same number). Raise it in the same commit with the justification comment the
    file's convention requires. Never raise it to make a red gate green without saying why.
 
-## 4. Prove it — run all four, in this order
+## 4. Prove it — run all four, in this order, with the Bash tool, not PowerShell
 ```
 bash .claude/eval/scan-skill.sh .claude/skills/<name>    # supply-chain: SAFE, and rc=3 means NOT scanned
 bash .claude/eval/routing-eval.sh                        # the golden case, positive and negative
@@ -55,7 +55,7 @@ bash .claude/eval/smoke-test.sh                          # structure, budget, §
 CREW_NO_STAR=1 bash .claude/eval/doctor.sh               # the live install still healthy (star line off here)
 ```
 
-In the plugin edition none of the four commands above exist — it ships no `eval/` at all — so there the proof is
+In the plugin edition none of the four commands above exist — it ships no `eval/` scripts — so there the proof is
 the Crewforth repository's own suite, not a local run.
 
 **Do not finish while §3b is red.** "It works when I invoke it by name" is not the claim being tested — the claim

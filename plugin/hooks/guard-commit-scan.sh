@@ -4,8 +4,8 @@
 # §4.1/§4.2 (no AI trace, no vendor name) and the secret scan are enforced by `pre-commit` and `commit-msg`,
 # which git runs via `core.hooksPath`. The PLUGIN edition cannot set that — a plugin ships Claude Code hooks,
 # not git hooks — so a plugin-only install had the approval gate but none of the CONTENT gates: the model could
-# commit a credential or an authorship trailer and nothing would look at it. Four distribution channels, one of
-# them quietly weaker than the other three.
+# commit a credential or an authorship trailer and nothing would look at it. Three distribution channels, one of
+# them quietly weaker than the other two.
 #
 # This closes that by running the REAL scanners from PreToolUse, before the commit command executes. It does
 # not re-implement them. A second matcher is how a gate passes while the thing it guards is broken — the same

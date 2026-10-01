@@ -59,6 +59,9 @@ _mt() {
       "no .claude/ in '%s' — is Crewforth installed here?") s="'%s' içinde .claude/ yok — Crewforth burada kurulu mu?" ;;
       'VERSION present (%s)') s='VERSION var (%s)' ;;
       'VERSION missing') s='VERSION yok' ;;
+      "no install trace: VERSION is here but .claude/kit-manifest.txt is not — the last update did not finish, or .claude/ was copied; run: npx crewforth update --here (information only — nothing was changed)") s="kurulum izi yok: VERSION var ama .claude/kit-manifest.txt yok — son güncelleme bitmemiş ya da .claude/ kopyalanmış; çalıştırın: npx crewforth update --here (yalnız bilgi — hiçbir şey değiştirilmedi)" ;;
+      'no install trace: components the install manifest lists are not here (%s) — the last update did not finish, or .claude/ was copied; run: npx crewforth update --here (information only — nothing was changed; if you removed a component on purpose, ignore this line)') s='kurulum izi yok: kurulum manifestinin listelediği bileşenler burada yok (%s) — son güncelleme bitmemiş ya da .claude/ kopyalanmış; çalıştırın: npx crewforth update --here (yalnız bilgi — hiçbir şey değiştirilmedi; bir bileşeni bilerek sildiyseniz bu satırı yok sayın)' ;;
+      'install trace: the components on disk match the install manifest') s='kurulum izi: diskteki bileşenler kurulum manifestiyle uyuşuyor' ;;
       'reinstall or update Crewforth (npx crewforth update)') s="Crewforth'u yeniden kurun ya da güncelleyin (npx crewforth update)" ;;
       'Crewforth v%s installed, v%s published — update with /crew-update') s='Crewforth v%s kurulu, v%s yayında — /crew-update ile güncelleyin' ;;
       'required git hooks present (pre-commit, commit-msg)') s="gerekli git hook'ları yerinde (pre-commit, commit-msg)" ;;
@@ -96,9 +99,9 @@ _mt() {
       'skill listing: %s skill(s) use when_to_use or a folded description — a shape the count was not measured on') s='skill listesi: %s skill when_to_use ya da katlanmış açıklama kullanıyor — sayımın ölçülmediği bir biçim' ;;
       'skill listing %s chars for %s skills fits the %s-char budget (fraction %s from %s, %s-token window%s)') s="skill listesi %s karakter, %s skill; %s karakterlik bütçeye sığıyor (kesir %s, kaynak %s; %s token'lık pencere%s)" ;;
       'skill listing %s chars for %s skills EXCEEDS the %s-char budget (fraction %s from %s, %s-token window%s)') s="skill listesi %s karakter, %s skill; %s karakterlik bütçeyi AŞIYOR (kesir %s, kaynak %s; %s token'lık pencere%s)" ;;
-      '  — Claude Code drops the descriptions of the least-used skills, and those stop matching requests.') s="  — Claude Code en az kullanılan skill'lerin açıklamalarını düşürür; o skill'ler isteklerle eşleşmez olur." ;;
+      '  — Claude Code drops the descriptions of the least-used skills, and those are less likely to be picked on their own.') s="  — Claude Code en az kullanılan skill'lerin açıklamalarını düşürür; o skill'lerin kendiliğinden seçilmesi zorlaşır." ;;
       '  Fixes: raise %s in settings, or set rarely-used skills to %s in %s.') s="  Çözüm: ayarlarda %s değerini yükseltin ya da nadir kullanılan skill'leri %s olarak %s içine yazın." ;;
-      '  Which skills? bash .claude/eval/utilization.sh — it reports the ones nothing in this project reached.') s="  Hangileri? bash .claude/eval/utilization.sh — bu projede hiçbir şeyin ulaşmadığı skill'leri listeler." ;;
+      '  Which skills? bash .claude/eval/utilization.sh (Bash tool, not PowerShell) — it reports the ones nothing in this project reached.') s="  Hangileri? bash .claude/eval/utilization.sh (PowerShell değil, Bash aracıyla) — bu projede hiçbir şeyin ulaşmadığı skill'leri listeler." ;;
       "on a 200,000-token model the whole listing would be ~%s chars (Crewforth %s + your personal skills %s + Claude Code's own ~%s, measured) against %s at fraction %s — the least-used skills there lose their descriptions.") s="200 000 token'lık bir modelde listenin tamamı ~%s karakter olur (Crewforth %s + kişisel skill'leriniz %s + Claude Code'un kendi ~%s, ölçüldü); bütçe ise %s karakter (kesir %s). Orada en az kullanılan skill'ler açıklamalarını kaybeder." ;;
       '  If you use such a model, one line in %s/settings.json fixes it: %s') s='  Böyle bir model kullanıyorsanız %s/settings.json dosyasına tek satır yeter: %s' ;;
       '  What it costs: the listing is sent every turn. At 0.04 it stays whole — ~%s chars, about %s tokens,') s="  Bedeli: liste her turda gönderilir. 0.04'te bütün kalır — ~%s karakter, yaklaşık %s token," ;;
@@ -126,6 +129,9 @@ _mt() {
       'DOCTOR: %s issue(s) ❌ — apply the fixes above%s') s='DOCTOR: %s sorun ❌ — yukarıdaki çözümleri uygulayın%s' ;;
       'shell gates watch both Bash and PowerShell') s="kabuk kapıları hem Bash'i hem PowerShell'i izliyor" ;;
       'shell gates watch only Bash — PowerShell commands bypass every §4.5 rule') s="kabuk kapıları yalnız Bash'i izliyor — PowerShell komutları her §4.5 kuralını atlıyor" ;;
+      'shell gates watch only PowerShell — Bash commands bypass every §4.5 rule') s="kabuk kapıları yalnız PowerShell'i izliyor — Bash komutları her §4.5 kuralını atlıyor" ;;
+      'guard-bash.sh is not wired in PreToolUse — every shell command bypasses §4.4/§4.5') s="guard-bash.sh PreToolUse'a bağlı değil — her kabuk komutu §4.4/§4.5'i atlıyor" ;;
+      'update Crewforth (npx crewforth update), which rewires it') s="Crewforth'u güncelleyin (npx crewforth update); bağlantıyı yeniden kurar" ;;
       'update Crewforth (npx crewforth update), or set the PreToolUse matcher to') s="Crewforth'u güncelleyin (npx crewforth update) ya da PreToolUse matcher'ını şuna ayarlayın:" ;;
       'auto-mode classifier config: built-ins intact, Crewforth rules present (config, not a gate)') s='auto-mode sınıflandırıcı ayarı: yerleşik kurallar sağlam, Crewforth kuralları var (ayar, kapı değil)' ;;
       'auto-mode classifier BUILT-INS DROPPED — an autoMode array lacks %s') s='auto-mode sınıflandırıcının YERLEŞİK KURALLARI DÜŞMÜŞ — bir autoMode dizisinde %s yok' ;;
@@ -188,6 +194,31 @@ if [ -f .claude/VERSION ] && [ -f .claude/.state/update-check ]; then
   if [ -n "$DLATEST" ] && awk -v a="$DLATEST" -v b="$DCUR" 'BEGIN{split(a,x,".");split(b,y,".");
        for(i=1;i<=3;i++){if(x[i]+0>y[i]+0)exit 0; if(x[i]+0<y[i]+0)exit 1} exit 1}'; then
     warn "Crewforth v%s installed, v%s published — update with /crew-update" "$DCUR" "$DLATEST"
+  fi
+fi
+
+# 1c) Install trace. An update leaves VERSION, the install manifest and the components on disk agreeing; when they do
+#     not, the last update did not finish or .claude/ came from somewhere else (a copy from another project), and the
+#     update's own steps — the legacy sweep, the pattern skill's trust — never ran here. Information only: nothing is
+#     changed, the fix is the update. Measured case: a project whose trust record was missing after a 3.0 update.
+if [ -f .claude/VERSION ]; then
+  if [ ! -f .claude/kit-manifest.txt ]; then
+    warn "no install trace: VERSION is here but .claude/kit-manifest.txt is not — the last update did not finish, or .claude/ was copied; run: npx crewforth update --here (information only — nothing was changed)"
+  else
+    DTMISS=""
+    while IFS= read -r e || [ -n "$e" ]; do
+      e="${e%$'\r'}"; case "$e" in ''|'#'*) continue ;; esac
+      [ -e ".claude/$e" ] || DTMISS="$DTMISS $e"
+    done < .claude/kit-manifest.txt
+    # Only "listed but absent" is a signal. A crew-* component on disk that the manifest does not list may be the user's
+    # own (review: a user's skills/crew-mine read as a broken install), so it is not reported.
+    # A component the user deleted on purpose looks exactly like one an interrupted update never wrote: nothing on disk
+    # tells the two apart, and recording deletions would be a new file to keep in step. So the line says it instead.
+    if [ -n "$DTMISS" ]; then
+      warn "no install trace: components the install manifest lists are not here (%s) — the last update did not finish, or .claude/ was copied; run: npx crewforth update --here (information only — nothing was changed; if you removed a component on purpose, ignore this line)" "${DTMISS# }"
+    else
+      ok "install trace: the components on disk match the install manifest"
+    fi
   fi
 fi
 
@@ -318,9 +349,9 @@ EOF_SLA
       ok "skill listing %s chars for %s skills fits the %s-char budget (fraction %s from %s, %s-token window%s)" "$LISTING" "$NLISTED" "$BUDGET" "$FRAC" "$FROM" "$CW" "$EST"
     else
       warn "skill listing %s chars for %s skills EXCEEDS the %s-char budget (fraction %s from %s, %s-token window%s)" "$LISTING" "$NLISTED" "$BUDGET" "$FRAC" "$FROM" "$CW" "$EST"
-      warn "  — Claude Code drops the descriptions of the least-used skills, and those stop matching requests."
+      warn "  — Claude Code drops the descriptions of the least-used skills, and those are less likely to be picked on their own."
       warn "  Fixes: raise %s in settings, or set rarely-used skills to %s in %s." '"skillListingBudgetFraction"' '"name-only"' '"skillOverrides"'
-      warn "  Which skills? bash .claude/eval/utilization.sh — it reports the ones nothing in this project reached."
+      warn "  Which skills? bash .claude/eval/utilization.sh (Bash tool, not PowerShell) — it reports the ones nothing in this project reached."
     fi
     # The whole listing, not only Crewforth's share: the user's personal skills and Claude Code's own bundled skills
     # sit in the same budget. The bundled ones were measured once (14 skills, 5898 chars, Claude Code v2.1.282, an
@@ -465,6 +496,48 @@ if [ -f .claude/DISCIPLINE.md ]; then
   fi
 fi
 
+# 8b) The shell matcher. Claude Code's hooks reference is explicit: inspect shell commands with
+#     `Bash|PowerShell`, because wherever the PowerShell tool is enabled it IS the shell — and it is on by
+#     default for claude.ai and Console accounts on Windows. An install from before 2.5.0 watches only `Bash`,
+#     so every PowerShell command walks past the §4.5 rules with nothing firing. Nothing about the session
+#     looks wrong, which is why this is a check and not a release note.
+#     The matcher read is the one of the PreToolUse entry that runs guard-bash.sh, through the one JSON reader.
+#     Any matcher naming PowerShell used to pass — and 3.0.1 wires guard-powershell.sh on a PowerShell-only entry, so
+#     an install whose guard-bash watched only Bash read as healthy (measured). A line-by-line read also answered
+#     wrong on another key order or on one-line JSON. Placed BEFORE the verdict, so a failure here counts in it.
+#     An entry with no matcher applies to every tool.
+SJ8="${SJ:-.claude/eval/lib/settings-json.awk}"
+if [ -f .claude/settings.json ] && [ -f "$SJ8" ] && awk -v op=validate -f "$SJ8" .claude/settings.json 2>/dev/null; then
+  _n8="$(awk -v op=len -v path=hooks.PreToolUse -f "$SJ8" .claude/settings.json 2>/dev/null)" || _n8=0
+  _gbm="none"; _i8=0
+  while [ "$_i8" -lt "${_n8:-0}" ] 2>/dev/null; do
+    case "$(awk -v op=get -v path="hooks.PreToolUse.$_i8.hooks" -f "$SJ8" .claude/settings.json 2>/dev/null)" in
+      *guard-bash.sh*) _gbm="$(awk -v op=get -v path="hooks.PreToolUse.$_i8.matcher" -f "$SJ8" .claude/settings.json 2>/dev/null)" || _gbm='"*"'
+                       _gbm="${_gbm#\"}"; _gbm="${_gbm%\"}"; break ;;
+    esac
+    _i8=$((_i8+1))
+  done
+  case "|$_gbm|" in
+    "|none|") BAD_TAIL=''
+              bad "guard-bash.sh is not wired in PreToolUse — every shell command bypasses §4.4/§4.5" \
+                  "update Crewforth (npx crewforth update), which rewires it" ;;
+    "|*|"|"||"|*"|PowerShell|"*) case "|$_gbm|" in *"|Bash|"*|"|*|"|"||") ok "shell gates watch both Bash and PowerShell" ;;
+                                   *) BAD_TAIL=' "Bash|PowerShell"'
+                                      bad "shell gates watch only PowerShell — Bash commands bypass every §4.5 rule" \
+                                          "update Crewforth (npx crewforth update), or set the PreToolUse matcher to" ;; esac ;;
+    *"|Bash|"*) BAD_TAIL=' "Bash|PowerShell"'
+                bad "shell gates watch only Bash — PowerShell commands bypass every §4.5 rule" \
+                    "update Crewforth (npx crewforth update), or set the PreToolUse matcher to" ;;
+    *) BAD_TAIL=''
+       bad "guard-bash.sh is not wired in PreToolUse — every shell command bypasses §4.4/§4.5" \
+           "update Crewforth (npx crewforth update), which rewires it" ;;
+  esac
+fi
+# 8c) Windows: can Claude Code find Git Bash? Without one it runs every hook through PowerShell and no gate runs.
+#     The check lives in ONE script, eval/lib/git-bash.sh, which the plugin edition's /crew-doctor runs as well. It
+#     prints nothing off Windows, and its exit 1 (not found) counts in this verdict.
+_gbs="$(dirname "$0")/lib/git-bash.sh"
+if [ -f "$_gbs" ]; then bash "$_gbs"; [ "$?" = 1 ] && FAIL=$((FAIL+1)); fi
 echo "---"
 # The verdict is the line people read, and some read only it. The preflight block
 # below reports a missing node, but it prints AFTER this — so on a machine that
@@ -494,20 +567,6 @@ if [ "$FAIL" -eq 0 ]; then _mt "DOCTOR: healthy ✅%s" "$PANEL_NOTE"; echo "$_M"
   [ -f "$(dirname "$0")/lib/star.sh" ] && bash "$(dirname "$0")/lib/star.sh" --once .
 else _mt "DOCTOR: %s issue(s) ❌ — apply the fixes above%s" "$FAIL" "$PANEL_NOTE"; echo "$_M"; fi
 
-# 8b) The shell matcher. Claude Code's hooks reference is explicit: inspect shell commands with
-#     `Bash|PowerShell`, because wherever the PowerShell tool is enabled it IS the shell — and it is on by
-#     default for claude.ai and Console accounts on Windows. An install from before 2.5.0 watches only `Bash`,
-#     so every PowerShell command walks past the §4.5 rules with nothing firing. Nothing about the session
-#     looks wrong, which is why this is a check and not a release note.
-if [ -f .claude/settings.json ]; then
-  if grep -q '"matcher"[[:space:]]*:[[:space:]]*"[^"]*PowerShell' .claude/settings.json; then
-    ok "shell gates watch both Bash and PowerShell"
-  elif grep -q '"matcher"[[:space:]]*:[[:space:]]*"Bash"' .claude/settings.json; then
-    BAD_TAIL=' "Bash|PowerShell"'
-    bad "shell gates watch only Bash — PowerShell commands bypass every §4.5 rule" \
-        "update Crewforth (npx crewforth update), or set the PreToolUse matcher to"
-  fi
-fi
 # 9) The auto-mode classifier. Since 2026-08-14 auto mode is the default permission mode on Pro/Max/Team, so a
 #     classifier answers permission prompts the user used to answer. Two things can be wrong and neither shows
 #     up in a session. Only ONE of them is a real gate finding: a custom autoMode block that dropped the

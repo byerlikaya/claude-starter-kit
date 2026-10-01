@@ -705,11 +705,16 @@ else
     && pass "a decision recorded by one teammate arrives in another's clone" \
     || fail "the decision never reached the second clone — decisions stay as local as the ADRs they replace"
   rm -f "$BD/ayse/.git/crew-board-seen"
-  ( cd "$BD/ayse" && bash ../board.sh cache 2>/dev/null | grep -q "recorded since you last looked" ) \
+  # Read into a variable first: `board.sh cache | grep -q` under pipefail is a race — grep exits on its match, the
+  # writer takes SIGPIPE, and the pipeline reads false. It failed once on windows-latest (3.0.1, PR 7), where the
+  # slower process start lets the writer still be printing when grep leaves.
+  _bdc="$(cd "$BD/ayse" && bash ../board.sh cache 2>/dev/null)"
+  case "$_bdc" in *"recorded since you last looked"*) true ;; *) false ;; esac \
     && pass "an unread decision announces itself at session start" \
     || fail "an unread decision is silent at session start — it arrives after the work it should have changed"
   ( cd "$BD/ayse" && bash ../board.sh decisions ) >/dev/null 2>&1
-  ( cd "$BD/ayse" && bash ../board.sh cache 2>/dev/null | grep -q "recorded since you last looked" ) \
+  _bdc="$(cd "$BD/ayse" && bash ../board.sh cache 2>/dev/null)"
+  case "$_bdc" in *"recorded since you last looked"*) true ;; *) false ;; esac \
     && fail "the decision keeps announcing itself after being read — a permanent alert is an ignored one" \
     || pass "once read, the decision stops being announced"
   # First read must not leak a shell error: the marker file does not exist yet, and an input redirect from a
@@ -1518,6 +1523,36 @@ if [ -f "$ROOT/CLAUDE.md" ]; then
   P_HALF="$(awk 'f{print} /^<!-- KIT:DISCIPLINE-END/{f=1}' "$ROOT/CLAUDE.md")"
   case "$D_HALF" in *'<PROJECT NAME>'*) fail "discipline half swallows the project template" ;; *) pass "discipline half excludes the project template" ;; esac
   case "$D_HALF" in *'Four working principles'*) pass "discipline half carries the four principles" ;; *) fail "discipline half lost the four principles" ;; esac
+  # Where a project's own CLAUDE.md sits against §4 (field: two projects wrote a stricter §4.4 and read the discipline's
+  # as a contradiction), and what a § number points at. Stated on the ladder, and at the top where "project wins" is.
+  case "$D_HALF" in *'A project `CLAUDE.md` can tighten §4, never loosen it (§4.1 names the one exception). The § numbers in this file refer only to this file.'*)
+    pass "the ladder says a project CLAUDE.md can tighten §4, never loosen it, and that § numbers are this file's" ;;
+    *) fail "the ladder lost the project-vs-§4 sentence or the § numbers sentence" ;; esac
+  case "$D_HALF" in *'where they win on conflict; in §4 they can only tighten, never loosen (§4.1 names the one exception).'*) pass "the opening's 'project wins' carries the §4 limit and names where its one exception is" ;;
+    *) fail "the opening says the project wins on conflict without the §4 limit" ;; esac
+  case "$P_HALF" in *'on conflict the rules here win; in DISCIPLINE.md §4 they can only tighten, never loosen (its §4.1 names the one exception).'*)
+    pass "the project template's 'rules here win' carries the §4 limit" ;; *) fail "the project template says its rules win without the §4 limit" ;; esac
+  # The same meaning where the updater and the installed README say it (decided wording: the project wins; in §4 it can
+  # only tighten; the §4.1 trace allowlist chosen at adoption is the one exception). Each is a fixed string, so each
+  # can revert silently — pinned here, with the twin that proves the pin reads the file.
+  _pw_kr="$(cd "$ROOT/.." && pwd)"; _pw_f=""
+  while IFS='|' read -r _pwf _pws; do [ -n "$_pwf" ] || continue
+    grep -qF -- "$_pws" "$_pw_kr/$_pwf" 2>/dev/null || _pw_f="$_pw_f | $_pwf: $_pws"
+  done <<'PWEOF'
+kit/README.md|which win on conflict; in DISCIPLINE.md §4 they can only tighten, never loosen (its §4.1 names the one exception).
+adopt.sh|"on conflict the project's rules win; in DISCIPLINE.md §4 they can only tighten, never loosen (the one exception: the §4.1 trace allowlist you choose at adoption); Crewforth fills gaps (not overridable)"
+adopt.sh|DISCIPLINE.md §4'te proje yalnız sıkılaştırabilir, gevşetemez (tek istisna: kurulumda sizin seçtiğiniz §4.1 iz izin listesi)
+adopt.sh|- On rule conflicts the PROJECT wins (axis-by-axis); in DISCIPLINE.md §4 it can only tighten, never loosen — the one exception is the §4.1 trace allowlist chosen at adoption (decision 3).
+adopt.sh|| 2 | Precedence | $D2 (axis-by-axis; DISCIPLINE.md §4 tighten-only, except the §4.1 trace allowlist of decision 3) |
+PWEOF
+  if [ -f "$_pw_kr/adopt.sh" ]; then
+    [ -z "$_pw_f" ] && pass "the updater (EN, TR, ADR, handover) and the installed README say the project wins, tightens §4 only, and name the §4.1 exception" \
+                    || fail "a 'project wins' statement lost the §4 limit or its exception:$_pw_f"
+    _pwt="$(mktemp)"; sed 's/ (its §4.1 names the one exception)\.$/./' "$ROOT/README.md" > "$_pwt"
+    grep -qF -- 'which win on conflict; in DISCIPLINE.md §4 they can only tighten, never loosen (its §4.1 names the one exception).' "$_pwt" \
+      && fail "the pin twin did not change — the README pin reads nothing" || pass "the pin catches a README that drops the §4.1 exception (twin)"
+    rm -f "$_pwt"
+  else skip scope "the updater's precedence wording is checked in the Crewforth repository (adopt.sh is not installed)"; fi
   case "$P_HALF" in *'<PROJECT NAME>'*) pass "project half carries the project template" ;; *) fail "project half lost the project template" ;; esac
   case "$P_HALF" in *'Four working principles'*) fail "project half duplicates the discipline" ;; *) pass "project half does not duplicate the discipline" ;; esac
 fi
@@ -1615,6 +1650,104 @@ if [ "$IS_KIT" = 1 ]; then
     fi
   else
     skip scope "Homebrew-channel check not run — not a git checkout of Crewforth's source"
+  fi
+  # THE CHANNEL COUNT. Three channels ship Crewforth (the release archive, npm, the Claude Code plugin); comments and
+  # pages still said four after Homebrew went. A number a reader takes as the total is a claim like any other. The
+  # CHANGELOG is history. The pattern is split so this file does not match itself.
+  _ch4_re='fo''ur (distribution )?channels|dö''rt (dağıtım )?kanal'
+  _ch4_t="$(printf '%s\n' "all fo""ur channels carry it" "Dö""rt kanal da taşıyor" "of fo""ur distribution channels" "three channels" "four channel types of RGB" | grep -ciE "$_ch4_re")"
+  if [ "$_ch4_t" != 3 ]; then fail "channel-count check cannot tell its twins apart (caught $_ch4_t of the 3 planted, want 3 and none of the 2 clean)"
+  elif git -C "$KR" rev-parse --git-dir >/dev/null 2>&1; then
+    _ch4_hits="$(git -C "$KR" grep -niIE "$_ch4_re" -- . ':!CHANGELOG.md' ':!site/src/content/docs/changelog.md' ':!site/src/content/docs/tr/changelog.md' 2>/dev/null)"
+    [ -z "$_ch4_hits" ] && pass "no tracked file gives the old channel count — three ship Crewforth (CHANGELOG exempt; twins 3/3 caught, 0/2 flagged)" \
+      || fail "a tracked file still gives the old channel count (there are three): $(printf '%s\n' "$_ch4_hits" | head -3 | tr '\n' ' ')"
+  else skip scope "channel-count check not run — not a git checkout of Crewforth's source"; fi
+  # THE CLIENT SIDE IS STACK-NEUTRAL (3.0.1): the install summary, the help and the install page named the scope as
+  # "backend, web and mobile (RN/Expo)", and a user about to pick a non-RN mobile architecture read it as Crewforth
+  # steering them to React Native (field: a new mobile project). A scope line — one that names backend AND web AND
+  # mobile — never names a client stack, and says the stack is read from the project. RN/Expo stays an optional layer.
+  _cs_scope(){ grep -hiE 'backend[^|]*web[^|]*mobi' "$@" 2>/dev/null | grep -vE '^[[:space:]]*#'; }
+  _cs_f="$KR/start.sh $KR/site/content/en/install.md $KR/site/content/tr/install.md"
+  _cs_l="$(_cs_scope $_cs_f)"; _cs_n="$(printf '%s\n' "$_cs_l" | grep -c .)"
+  _cs_bad="$(printf '%s\n' "$_cs_l" | grep -iE 'RN/Expo|React Native|Flutter|SwiftUI|Compose')"
+  _cs_nost="$(printf '%s\n' "$_cs_l" | grep . | grep -viE 'stack|yığın')"
+  _cs_tw="$(printf '%s\n' "backend, web and mobile (R""N/Expo) together" | grep -ciE 'RN/Expo|React Native')"
+  if [ "$_cs_tw" != 1 ]; then fail "client-stack scope check cannot see its twin — it reads nothing"
+  elif [ "${_cs_n:-0}" -lt 5 ]; then fail "FIXTURE: only ${_cs_n:-0} scope line(s) found in start.sh and the install pages (want ≥5: EN/TR table, both usages, the summary, both pages)"
+  elif [ -n "$_cs_bad$_cs_nost" ]; then fail "a scope line names a client stack or does not say the stack is read from the project:$(printf '%s\n%s\n' "$_cs_bad" "$_cs_nost" | grep . | head -n 3 | cut -c1-140 | sed 's/^/\n       /')"
+  else pass "the install summary, help and install pages name backend, web and mobile without a client stack, and say the stack is read from the project ($_cs_n scope lines)"; fi
+  # THE SITE DEPLOY IS VERIFIED ON WHAT PAGES SERVES (3.0.1). A second deploy under the same deployment name reported
+  # success while Pages kept the previous artefact (the 3.0.0 launch: the rc.3 changelog for 30 minutes). site.yml now
+  # runs packaging/check-pages-served.sh after the deploy. Its four outcomes, on file:// fixtures (no network needed):
+  # the new heading → 0 · an old page with an old heading, older than the deploy → 1 (stale) · the same content
+  # re-deployed (right heading, old time) → 0 · nothing to fetch → 3 (not measured, never a pass).
+  _pg="$KR/packaging/check-pages-served.sh"
+  if [ -f "$_pg" ]; then
+    _pgd="$(mktemp -d)"; mkdir -p "$_pgd/new/changelog" "$_pgd/old/changelog"
+    printf '<h2>[3.9.1] — 2026-10-01</h2><h2>[3.9.0]</h2>' > "$_pgd/new/changelog/index.html"
+    printf '<h2>[3.9.0] — 2026-09-28</h2>' > "$_pgd/old/changelog/index.html"
+    touch -t 202001010000 "$_pgd/new/changelog/index.html" "$_pgd/old/changelog/index.html"
+    _pgn="$(date +%s)"; _pgr=""
+    # A file:// URL must carry the path curl can open: on Git Bash that is the native one (`pwd -W` → D:/a/…), not the
+    # POSIX /tmp/… — measured on windows-latest, all three fixtures read as "not measured" (rc 3) with the POSIX form.
+    _pgu="$(cd "$_pgd" && { pwd -W 2>/dev/null || pwd; })"; case "$_pgu" in /*) _pgu="file://$_pgu" ;; *) _pgu="file:///$_pgu" ;; esac
+    for _c in "new [3.9.1] 0" "old [3.9.1] 1" "old [3.9.0] 0" "missing [3.9.1] 3"; do
+      set -- $_c; PAGES_PATH=changelog/index.html bash "$_pg" "$_pgu/$1" "$2" "$_pgn" 2 0 >/dev/null 2>&1; _r=$?
+      [ "$_r" = "$3" ] || _pgr="$_pgr | $1 want $2: rc $_r (expected $3)"
+    done
+    rm -rf "$_pgd"
+    [ -z "$_pgr" ] && pass "the Pages check tells served (0), stale (1), re-deployed same content (0) and unreachable (3, not measured) apart" \
+                   || fail "the Pages check misreads its fixtures:$_pgr"
+    _sy="$KR/.github/workflows/site.yml"
+    _dl="$(grep -n 'uses: actions/deploy-pages' "$_sy" | cut -d: -f1 | head -1)"; _vl="$(grep -n 'check-pages-served.sh' "$_sy" | cut -d: -f1 | head -1)"
+    if [ -n "$_dl" ] && [ -n "$_vl" ] && [ "$_vl" -gt "$_dl" ] && grep -q 'bash _verify/packaging/check-pages-served.sh' "$_sy"; then
+      pass "site.yml verifies what Pages serves after the deploy, with the check from its own commit (an old tag lacks it)"
+    else fail "site.yml does not run the Pages check after deploy-pages, from the workflow's own checkout"; fi
+  else fail "packaging/check-pages-served.sh is missing — site.yml has nothing to verify a deploy with"; fi
+  # THE LISTING BUDGET, SAID AS MEASURED: a skill whose description Claude Code drops is picked LESS OFTEN on its own,
+  # not never (the name stays listed, and a request that names it still reaches it). doctor and /crew-doctor used to
+  # say it stops being picked / stops matching requests. Old claims 0, the measured one present in English and Turkish.
+  _lb_old='stop being picked|stop'' matching requests|isteklerle eşleşmez'' olur|stop''[[:space:]]+being[[:space:]]+picked'
+  _lb_f="$ROOT/eval/doctor.sh $ROOT/skills/crew-doctor/SKILL.md"
+  _lb_o="$(cat $_lb_f 2>/dev/null | tr '\n' ' ' | grep -ciE "$_lb_old")"
+  _lb_en="$(cat $_lb_f 2>/dev/null | tr '\n' ' ' | grep -oiE 'less likely to be picked on their own' | wc -l | tr -d ' ')"
+  _lb_tr="$(grep -c 'kendiliğinden seçilmesi zorlaşır' "$ROOT/eval/doctor.sh" 2>/dev/null)" || true
+  _lb_tw="$(printf '%s\n' "and those stop"" matching requests" | grep -ciE "$_lb_old")"
+  if [ "$_lb_tw" != 1 ]; then fail "listing-budget wording check cannot see its twin — it reads nothing"
+  elif [ "${_lb_o:-0}" = 0 ] && [ "${_lb_en:-0}" -ge 3 ] && [ "${_lb_tr:-0}" -ge 1 ]; then
+    pass "the listing-budget warning says 'less likely to be picked on their own' (EN $_lb_en, TR $_lb_tr), never that a skill stops being picked"
+  else fail "listing-budget wording: old claim $_lb_o (want 0), new EN $_lb_en (want ≥3: doctor key, doctor warn, /crew-doctor), TR ${_lb_tr:-0} (want ≥1)"; fi
+  # kit/legacy-blobs.tsv is how the updater tells Crewforth's own, untouched old files from a user's: a stale or
+  # hand-edited row would move a user's edit aside, or leave Crewforth's leftovers in place. It is generated from the
+  # release tags, so it must equal what the generator prints now, byte for byte. The twin drops one row from the
+  # shipped copy: a comparison that cannot see that measures nothing. No tags (a shallow clone) is a fixture skip —
+  # red under CREW_VERIFY_STRICT, because CI checks out with its history.
+  if [ -f "$KR/packaging/gen-legacy-blobs.sh" ] && git -C "$KR" rev-parse --git-dir >/dev/null 2>&1; then
+    if ! git -C "$KR" rev-parse -q --verify refs/tags/v2.13.0 >/dev/null 2>&1; then
+      skip fixture "legacy blob list not checked — this clone has no v2.13.0 tag (shallow?), and the list is generated from tags"
+    else
+      # Compared as FILES with cmp: a `$( )` capture drops trailing newlines, and a list missing its last newline or
+      # carrying extra blank lines at the end would compare equal that way (found in review).
+      _LBT="$(mktemp -d)"
+      bash "$KR/packaging/gen-legacy-blobs.sh" --stdout > "$_LBT/gen" 2>/dev/null; _lb_rc=$?
+      sed '4d' "$KR/kit/legacy-blobs.tsv" > "$_LBT/twin" 2>/dev/null
+      _lb_rows="$(grep -v '^#' "$KR/kit/legacy-blobs.tsv" 2>/dev/null | grep -c .)"
+      _lb_comp="$(grep -v '^#' "$KR/kit/legacy-blobs.tsv" 2>/dev/null | cut -f1 | sort -u | grep -c .)"
+      if [ "$_lb_rc" != 0 ]; then
+        fail "packaging/gen-legacy-blobs.sh failed (rc $_lb_rc) — the legacy blob list cannot be checked"
+      elif cmp -s "$_LBT/twin" "$_LBT/gen"; then
+        fail "legacy blob check cannot see a missing row (twin with a data row removed compared equal) — it measures nothing"
+      elif [ "${_lb_rows:-0}" -lt 150 ]; then
+        fail "kit/legacy-blobs.tsv has ${_lb_rows:-0} row(s) — the shipped list is missing or truncated; regenerate it: bash packaging/gen-legacy-blobs.sh"
+      elif cmp -s "$_LBT/gen" "$KR/kit/legacy-blobs.tsv"; then
+        pass "kit/legacy-blobs.tsv equals what the tags generate ($_lb_rows rows, $_lb_comp components; twin with one row removed differs)"
+      else
+        fail "kit/legacy-blobs.tsv is stale — regenerate it: bash packaging/gen-legacy-blobs.sh (and commit the result)"
+      fi
+      rm -rf "$_LBT"
+    fi
+  else
+    skip scope "legacy blob list not checked — not a git checkout of Crewforth's source"
   fi
   # The npm wrapper prints its own usage, and it advertised --backend/--frontend/--mobile/--fullstack as the
   # primary form for a release that no longer has profiles. A user reads `--help` before the README.
@@ -2100,7 +2233,7 @@ sec "== 6f) always-on token budget =="
 # for that cost, and a gate rather than a reminder — a verbose new description fails the suite instead of
 # quietly taxing every future session. Budgets sit just above the current sizes: raising one is allowed, but
 # only as a deliberate edit here.
-BUDGET_DISC=13741    # RC-1: 13711 → 13741 (+30): "Reply in the user's language even when a skill's text is English" — a Turkish session answered /crew-review in English, because every skill body it had just read was English; the rule is stated nowhere else. evals/cases/reply-language measures it. 5R.3: 13712 → 13711 (the old-name phrases rewritten, net −1). 5d.2 prompt audit: tightened to the measured size (13719 → 13712: format-to-content style line, one reload
+BUDGET_DISC=13986    # 3.0.1: 13741 → 13986 (+245): the ladder states that a project CLAUDE.md can tighten §4, never loosen it — naming §4.1 as the one exception, since adopt may loosen the trace gate — and that § numbers point into this file (two field projects read their stricter §4.4 as a contradiction), the opening's "project wins" carries the same limit, and the context-usage command names the Bash tool (a Windows session ran the scripts in PowerShell). RC-1: 13711 → 13741 (+30): "Reply in the user's language even when a skill's text is English" — a Turkish session answered /crew-review in English, because every skill body it had just read was English; the rule is stated nowhere else. evals/cases/reply-language measures it. 5R.3: 13712 → 13711 (the old-name phrases rewritten, net −1). 5d.2 prompt audit: tightened to the measured size (13719 → 13712: format-to-content style line, one reload
                      # answer, the orphaned background-warning line removed). Before that: 3.0 rename (suffix → crew- prefix): +23 B (23 occurrences), not content — measured 13696 → 13719.
                      # DISCIPLINE.md (the discipline half of CLAUDE.md); before 3.0 the ceiling was 13700, currently 13601. (2026-09-18, a second
                      # +100 B on top of the raise below, and the whole of it went into ONE sentence of §4.6: a commit
@@ -3279,6 +3412,97 @@ done
 gj auto 'chmod +x build.sh'              | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1 && pass "chmod +x NOT over-blocked" || fail "chmod +x wrongly blocked (gate too strict)"
 # §4.5 gate-tampering (shell side) — disarming the gates is itself gated
 gj auto 'git config core.hooksPath /tmp/x' | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "core.hooksPath redirect BLOCKED (§4.5)" || fail "core.hooksPath redirect PASSED (§4.5 hole)"
+# Reading core.hooksPath is how a person checks the gate is armed; only the write forms disarm it. A value-less
+# `git config [--local|--global|--system] core.hooksPath` prints the setting — it used to be refused as tampering
+# while `--get` passed. Both directions are pinned, and the result must be exactly 0 or 2: a 1 is the hook crashing,
+# and a crashed PreToolUse hook lets the command through (the first version of this rule did exactly that).
+_hp_bad=""; _hp_n=0
+for _c in 'git config core.hooksPath' 'git config --local core.hooksPath' 'git config --global core.hooksPath' \
+          'git config --system core.hooksPath' 'git config --get core.hooksPath' 'git config --get-regexp core.hooksPath x' \
+          'git config --file .git/config core.hooksPath' 'git -C /r config core.hooksPath' 'git config core.hookspath' \
+          'git config core.hooksPath | cat' 'git status; echo core.hooksPath' 'git config --remove-section core.foo' \
+          'git config get --all core.hooksPath'; do
+  gj auto "$_c" | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; _r=$?; _hp_n=$((_hp_n+1)); [ "$_r" = 0 ] || _hp_bad="$_hp_bad [$_c -> $_r, want 0]"
+done
+for _c in 'git config core.hooksPath .githooks' 'git config --local core.hooksPath x' 'git config --global core.hooksPath /tmp/x' \
+          'git config --system core.hooksPath x' 'git config --unset core.hooksPath' 'git config --unset-all core.hooksPath' \
+          'git config --add core.hooksPath x' 'git config --replace-all core.hooksPath x' 'git config set core.hooksPath x' \
+          'git config unset core.hooksPath' 'git config core.hooksPath \"\"' 'git config core.hooksPath; git config core.hooksPath x' \
+          'git config --get core.hooksPath && git config core.hooksPath x' \
+          'git config --comment get core.hooksPath /tmp/x' 'git config --comment -l core.hooksPath /tmp/x' \
+          'echo /tmp/x | xargs git config core.hooksPath' 'git config alias.hp \"config core.hooksPath\" && git hp /tmp/x' \
+          "git config alias.hp '!git config core.hooksPath'" "bash -c 'git config core.hooksPath'" \
+          'git config core.hooksPath \r' 'git config core.hooksPath \f' 'git config core.hookspath /tmp/x' \
+          'git config \\\ncore.hooksPath /tmp/x' 'git config --remove-section core' 'git config --rename-section core x' \
+          'git -C /r config core.hooksPath /tmp/x' 'git config core.hooksPath; git config\"\" core.hooksPath /dev/A' \
+          'git config core.hooksPath && git config${IFS}core.hooksPath${IFS}/dev/B' \
+          'git config core.hooksPath; git config --comment=\"a;\" core.hooksPath /dev/C' 'git config core.hooks\"P\"ath x' \
+          'git config --remove-section core;echo' '(git config --remove-section core)' 'git -C \"a;b\" config core.hooksPath /dev/null' \
+          'git config -l --unset core.hooksPath' 'git config --get core.hooksPath --replace-all x'; do
+  gj auto "$_c" | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; _r=$?; _hp_n=$((_hp_n+1)); [ "$_r" = 2 ] || _hp_bad="$_hp_bad [$_c -> $_r, want 2]"
+done
+# A read has to LOOK like one (the exact `git [-C d] config [flags] [read verb] core.hooksPath` shape): the review of the
+# first reader broke it with a read verb as another flag's value, a value from xargs or an alias, a CR / form-feed the
+# payload reader drops, a backslash-newline, a lower-case key, and removing the [core] section; a second round broke
+# the reader by making segments it could not parse get SKIPPED (`config""`, `config${IFS}`, a quoted `;`). Proven reads
+# are now cut out and the rest goes to the old rule, so nothing unproven is skipped — all pinned above.
+[ -z "$_hp_bad" ] && pass "core.hooksPath: value-less reads pass, every write form stays blocked ($_hp_n of 48 shapes)" \
+                  || fail "core.hooksPath read/write split is wrong:$_hp_bad"
+# An exemption belongs to the command it sits in. The IaC, .env and credential rules exempted the WHOLE line when a
+# safe marker (--help, .env.example, .pub, …) appeared anywhere in it, so a harmless command chained in front of a
+# forbidden one carried it through: 72 such shapes were open (every operator: && ; || | ( ) $( )). Chained -> 2;
+# the same marker in the forbidden command's own segment keeps its exemption -> 0. Exactly 0 or 2: a 1 is a crash.
+_ch_bad=""; _ch_n=0
+for _c in 'terraform --help && terraform destroy -auto-approve' 'terraform plan --dry-run; terraform apply -auto-approve' \
+          'pulumi preview --dry-run || pulumi up --yes' 'kubectl auth can-i delete pods | kubectl delete namespace prod' \
+          '(helm --help); (helm uninstall app)' 'echo $(terraform --help) && terraform destroy' \
+          'cat .env.example && cat .env' 'cat .env.sample; grep x < .env' '(cat .env.example); (cat .env)' \
+          '(cat .env)' 'x=$(cat .env)' 'cat ~/.ssh/id_rsa.pub; cat ~/.ssh/id_rsa' 'cat config.example && cat ~/.aws/credentials' \
+          'cat cert.template || cat server.pem' 'git config --list && git config core.hooksPath /tmp/x' \
+          'cat .env.example $(cat .env)' 'cat .env.example `cat .env`' 'terraform --help $(terraform destroy -auto-approve)'; do
+  gj auto "$_c" | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; _r=$?; _ch_n=$((_ch_n+1)); [ "$_r" = 2 ] || _ch_bad="$_ch_bad [$_c -> $_r, want 2]"
+done
+for _c in 'terraform destroy --help' 'terraform plan -h' 'kubectl auth can-i delete pods' 'helm uninstall --help' \
+          'cat .env.example' 'echo $(cat .env.example)' '(cat .env.example)' 'cat ~/.ssh/id_rsa.pub | ssh-keygen -lf -' \
+          'cp .env.sample .env.local'; do
+  gj auto "$_c" | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; _r=$?; _ch_n=$((_ch_n+1)); [ "$_r" = 0 ] || _ch_bad="$_ch_bad [$_c -> $_r, want 0]"
+done
+[ -z "$_ch_bad" ] && pass "chained exemptions: a safe command in front no longer carries a forbidden one ($_ch_n of 27 shapes; same-segment exemptions still pass)" \
+                  || fail "exemption leaks across a chain, or a legitimate exemption broke:$_ch_bad"
+# The read-only path costs processes, and on Git Bash a process is the price: measured on a loaded Windows 11
+# machine, one bare `bash` took 1.3-3.9 s and `git status` walked this hook through 14 of them (13 greps + the
+# stdin cat) — 37-66 s per tool call. The rules now run their regexes in the shell; what is left is the one `cat`
+# that reads stdin. Counted, not timed (a fork costs ~2 ms on macOS, so a regression is invisible to a clock).
+# The twin plants one `printf | grep` into a copy of the hook: a counter that cannot see it measures nothing.
+_gbfc(){ printf '%s' "$2" | bash -x "$1" >/dev/null 2>"$3"; grep -cE '^\++ (grep|sed|awk|tr|cat|head|tail|cut|sort|find|wc|mktemp|basename|dirname|git|jq|python3?|node|perl)( |$)' "$3" | tr -cd '0-9'; }
+_GBT="$(mktemp -d)"; _gbmax=0; _gbrow=""
+for _c in 'git status --short' 'git log --oneline -2 && git status --short | head; ls; cat CHANGELOG.md' 'ls -la' 'git diff --stat'; do
+  _n="$(_gbfc "$HOOKS/guard-bash.sh" "$(gj default "$_c")" "$_GBT/t")"; _n="${_n:-0}"
+  _gbrow="$_gbrow $_n"; [ "$_n" -gt "$_gbmax" ] && _gbmax="$_n"
+done
+sed '/^INPUT="\$(cat)"/a\
+printf x | grep -q x
+' "$HOOKS/guard-bash.sh" > "$_GBT/twin.sh"
+_tw="$(_gbfc "$_GBT/twin.sh" "$(gj default 'git status --short')" "$_GBT/t2")"; _tw="${_tw:-0}"
+if [ "$_gbmax" = 0 ]; then
+  fail "guard-bash read-path cost: the trace recorded no external command at all — the measurement is broken, not the hook"
+elif [ "$_tw" -le "$_gbmax" ]; then
+  fail "guard-bash read-path cost: the planted grep did not raise the count ($_tw) — the counter measures nothing"
+elif [ "$_gbmax" -le 1 ]; then
+  pass "guard-bash read-only path: at most 1 external process per call (git status · read chain · ls · diff:$_gbrow; twin with one planted grep: $_tw)"
+else
+  fail "guard-bash read-only path spawns $_gbmax processes per call (per command:$_gbrow) — budget 1; Git Bash pays up to seconds for each"
+fi
+# Coarse and SECONDARY: the first version of the in-shell matcher compiled its regex once per line per rule and a
+# 2,000-line heredoc took 70 s (0.2 s before). Nothing forks more in that case, so the count above cannot see it.
+# Measured after the fix: 0.2 s on macOS. The bound is 100x that, so a slow runner does not trip it.
+_hd="$(i=0; printf 'cat > f <<EOF\n'; while [ "$i" -lt 2000 ]; do printf 'const x = 1;\n'; i=$((i+1)); done; printf 'EOF\ngit status')"
+_hdj="$(printf '%s' "$_hd" | awk 'BEGIN{ORS=""} {gsub(/\\/,"\\\\"); gsub(/"/,"\\\""); if (NR>1) print "\\n"; print}')"
+_hs=$SECONDS; printf '{"tool_name":"Bash","permission_mode":"default","tool_input":{"command":"%s"}}' "$_hdj" | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; _hr=$?; _hel=$((SECONDS - _hs))
+if [ "$_hr" != 0 ]; then fail "guard-bash on a 2,000-line heredoc answered $_hr, not 0 — the payload or the hook is broken"
+elif [ "$_hel" -le 20 ]; then pass "guard-bash on a 2,000-line heredoc: ${_hel}s (bound 20s; a regcomp-per-line matcher took 70s)"
+else fail "guard-bash took ${_hel}s on a 2,000-line heredoc (bound 20s) — something in the hook is per line again"; fi
+rm -rf "$_GBT"
 gj auto 'rm .claude/hooks/pre-commit'      | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "rm of a .claude gate file BLOCKED (§4.5)" || fail "rm of a gate file PASSED (§4.5 hole)"
 # The rulebook is a gate file too — measured against 2.6.0, all three of these passed. Reading it must stay free.
 gj auto "sed -i 's/x/y/' .claude/DISCIPLINE.md" | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "in-place edit of DISCIPLINE.md BLOCKED (§4.5)" || fail "sed -i on the discipline document PASSED (§4.5 hole)"
@@ -3394,7 +3618,7 @@ done
 wj Write '/p/.claude/DISCIPLINE.md '  | bash "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "a trailing space does not hide DISCIPLINE.md" || fail "trailing space defeated the DISCIPLINE.md rule"
 wj Write '/p/.claude./hooks/x.sh'     | bash "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "a trailing dot on a component does not hide a gate path" || fail "trailing dot defeated the hooks rule"
 # THE PLUGIN EDITION ships the same gate scripts at $CLAUDE_PLUGIN_ROOT/hooks/, which is not `.claude/hooks/`:
-# one of Crewforth's four channels was shipping an unguarded copy of its own gates. Matched by Crewforth's own
+# one of Crewforth's three channels was shipping an unguarded copy of its own gates. Matched by Crewforth's own
 # filenames, so a project's unrelated `hooks/` directory keeps working.
 wj Write '/Users/dev/.claude/plugins/crewforth/hooks/guard-write.sh' | bash "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "the plugin edition's own gate script is BLOCKED too" || fail "the plugin edition ships unguarded gate scripts (§4.5 hole)"
 wj Write '/opt/crew/hooks/session-guard.sh' | bash "$HOOKS/guard-write.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "a kit gate script is BLOCKED wherever it sits" || fail "a kit gate script outside .claude/ PASSED"
@@ -4062,7 +4286,7 @@ if ( cd "$BSD" && git init -q . ) >/dev/null 2>&1; then
   printf '%s\n' $'#1 "Fix\tlogin" C:\\app\r\x01 ok\nsecond' > "$BSD/.git/crew-board-cache"
   date -u +%s > "$BSD/.git/crew-board-cache.at"
   o="$(printf '{}' | CLAUDE_PROJECT_DIR="$BSD" bash "$HOOKS/board-sync.sh" 2>/dev/null)"
-  want='{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"#1 \"Fix\tlogin\" C:\\app\r\u0001 ok\nsecond\nBoard state above is a cached snapshot; bash .claude/hooks/board.sh sync (or the user can type /crew-board sync) refreshes it."}}'
+  want='{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"#1 \"Fix\tlogin\" C:\\app\r\u0001 ok\nsecond\nBoard state above is a cached snapshot; bash .claude/hooks/board.sh sync (Bash tool, not PowerShell — or the user can type /crew-board sync) refreshes it."}}'
   [ "$o" = "$want" ] && pass "board-sync escapes tab, CR, control bytes, quote and backslash exactly as jq does (no jq needed)" \
                      || fail "board-sync JSON differs from jq's for a cache with a tab/CR/control byte — got: ${o:-<silence>}"
   # A CRLF cache: the line-ending CR is dropped on every OS (MSYS gawk drops it on read, BSD awk does not — the
@@ -4131,6 +4355,49 @@ elif [ -f "$PHJ" ]; then
     [ -x "$PLUGIN/hooks/$h" ] && grep -q "$h" "$PHJ" || { fail "plugin hook $h missing or not wired"; break; }
   done
   pass "5 Claude Code hooks shipped + wired in plugin"
+  # The commands the model is told to run, as the plugin edition names them. The file-install path `.claude/hooks/…`
+  # does not exist in a plugin install, so every one exited 127 there (measured: 12 lines in 8 files). build-plugin.sh
+  # rewrites them to the plugin root, which Claude Code substitutes in skill and agent bodies. Three claims: every
+  # rewritten path is a file this edition ships; no shipped script is still named by the file-install path; and one
+  # rewritten command, run the way the Bash tool runs it (root substituted, NOT exported), from an empty project, exits 0.
+  _ppn=0; _ppbad=""
+  while IFS= read -r _pc; do _ppn=$((_ppn+1)); _pf="${_pc#\"\$\{CLAUDE_PLUGIN_ROOT\}/}"; _pf="${_pf%\"}"
+    [ -f "$PLUGIN/$_pf" ] || _ppbad="$_ppbad $_pf"
+  done < <(grep -rhoE '"\$\{CLAUDE_PLUGIN_ROOT\}/(hooks|skills)/[A-Za-z0-9_./-]+\.sh"' "$PLUGIN/agents" "$PLUGIN/skills" --include='*.md' 2>/dev/null | sort -u)
+  _ppleft="$(grep -rhoE 'bash \.claude/(hooks|skills)/[A-Za-z0-9_./-]+\.sh' "$PLUGIN/agents" "$PLUGIN/skills" --include='*.md' 2>/dev/null | sort -u \
+    | while IFS= read -r _pc; do [ -f "$PLUGIN/${_pc#bash .claude/}" ] && printf ' %s' "$_pc"; done)" || true
+  # A shipped script still named by the file-install path is the product defect itself, so it is judged first — an
+  # un-rewritten plugin/ has zero plugin-root commands, and calling that a FIXTURE would blame the test for the bug.
+  # The expected number comes from kit/: every distinct `bash .claude/<x>.sh` there (off a `# full install` line) whose
+  # <x> this edition ships. A fixed floor blamed the build for a legitimate edit that removed a command.
+  _ppw="$(grep -rhE 'bash \.claude/' "$ROOT/agents" "$ROOT/skills" --include='*.md' 2>/dev/null | grep -v '# full install' \
+    | grep -oE 'bash \.claude/[A-Za-z0-9_./-]+\.sh([^A-Za-z0-9_./-]|$)' | sed -E 's/[^A-Za-z0-9_./-]$//' | sort -u \
+    | while IFS= read -r _pc; do [ -f "$PLUGIN/${_pc#bash .claude/}" ] && echo x; done | wc -l | tr -d ' ')"
+  if [ -z "$_ppbad$_ppleft" ] && [ "$_ppn" != "$_ppw" ]; then fail "kit/ names $_ppw script(s) the plugin ships, plugin/ carries $_ppn plugin-root path(s) — run packaging/build-plugin.sh"
+  elif [ -n "$_ppbad$_ppleft" ]; then fail "plugin edition names a script it cannot run —${_ppbad:+ missing:$_ppbad}${_ppleft:+ still the file-install path (127 there):$_ppleft}"
+  else pass "plugin edition: all $_ppn of $_ppw script paths the model is told to run resolve under the plugin root, none left on .claude/"; fi
+  _ppd="$(mktemp -d)"; mkdir -p "$_ppd/proj"
+  printf '%s\n' '{"type":"assistant","isSidechain":false,"message":{"usage":{"input_tokens":1,"cache_read_input_tokens":2000,"cache_creation_input_tokens":1,"output_tokens":1}}}' > "$_ppd/t.jsonl"
+  _ppc="$(grep -rhoE 'bash "\$\{CLAUDE_PLUGIN_ROOT\}/hooks/context-usage\.sh"' "$PLUGIN/skills" --include='*.md' 2>/dev/null | head -1)"
+  if [ -z "$_ppc" ] && [ -n "$_ppleft" ]; then fail "no plugin-root context-usage command to run — plugin/ still names it by the file-install path (127 in a plugin install)"
+  elif [ -z "$_ppc" ]; then fail "FIXTURE: no rewritten context-usage command in plugin/skills to run"
+  else
+    _ppc="${_ppc//\$\{CLAUDE_PLUGIN_ROOT\}/$PLUGIN}"
+    _pprc="$(cd "$_ppd/proj" && env -u CLAUDE_PLUGIN_ROOT bash -c "$_ppc \"$_ppd/t.jsonl\"" >/dev/null 2>&1; echo "$?")"
+    [ "$_pprc" = 0 ] && pass "a rewritten plugin command runs from an empty project with the root substituted (rc 0)" \
+                     || fail "the rewritten plugin command exited $_pprc from an empty project: $_ppc"
+  fi
+  rm -rf "$_ppd"
+  # board.sh names ITSELF in what it prints, and in the plugin edition that must be its absolute path. Run by a bare
+  # name from its own directory (`cd hooks && bash board.sh`), `${BASH_SOURCE%/*}` is the name itself, the `cd` failed,
+  # and it printed the file-install path — 127 in a plugin install (measured). A plugin-shaped copy in an empty repo.
+  _bsd="$(mktemp -d)"; mkdir -p "$_bsd/p/hooks" "$_bsd/p/.claude-plugin"; : > "$_bsd/p/.claude-plugin/plugin.json"
+  cp "$HOOKS/board.sh" "$_bsd/p/hooks/"; ( cd "$_bsd/p" && git init -q . ) >/dev/null 2>&1
+  _bsb="$(cd "$_bsd/p/hooks" && bash board.sh status 2>&1)"; _bsp="$(cd "$_bsd/p" && bash hooks/board.sh status 2>&1)"
+  _bsa="$(cd "$_bsd/p/hooks" && pwd)"
+  case "$_bsb|$_bsp" in *"bash \"$_bsa/board.sh\""*"|"*"bash \"$_bsa/board.sh\""*) pass "board.sh names its own plugin path whether run by bare name or by path" ;;
+    *) fail "board.sh printed a path a plugin install cannot run — bare name: ${_bsb:-<silence>} · by path: ${_bsp:-<silence>}" ;; esac
+  rm -rf "$_bsd"
   # The git hooks now DO ship, and must: guard-commit-scan.sh runs them from PreToolUse, which is the only way
   # the plugin edition gets the commit CONTENT gates at all (a plugin cannot set core.hooksPath). They ship as
   # data for that hook, never wired as git hooks. Shipping them WITHOUT the caller would be worse than not
@@ -4348,10 +4615,44 @@ O="$(st)"
 case "$O" in *skills/mine*) pass "flags a component Crewforth never shipped" ;; *) fail "an unshipped skill was not flagged: $O" ;; esac
 case "$O" in *skills/handoff*) fail "flagged a KIT skill — the manifest is being ignored" ;; *) pass "a kit-shipped skill is not re-litigated" ;; esac
 case "$O" in *"REVIEW/DANGER"*) pass "runs the supply-chain scanner and reports its verdict" ;; *) fail "no scanner verdict on a malicious skill: $O" ;; esac
+# ONE COMMAND PER COMPONENT, and the user's message first (field report P4b/P5). The notice used to offer the bulk
+# `--trust`, which accepts every foreign component at once, including ones the user never looked at; and it told the
+# model to speak BEFORE anything else, which pushed a user's urgent first message behind a security question. The
+# properties pinned: each listed component carries its own `--trust-one <path>` with the Bash tool named, the bulk
+# `--trust` is never offered, the question comes at the END of the first reply, and nothing is used until answered.
+_stn="$(printf '%s\n' "$O" | grep -c -- '--trust-one skills/mine (Bash tool, not PowerShell)')"; _ste="$(printf '%s\n' "$O" | grep -c -- '--trust-one skills/evil (Bash tool, not PowerShell)')"
+_stb="$(printf '%s\n' "$O" | grep -cE -- '--trust([^-]|$)')"
+[ "$_stn" = 1 ] && [ "$_ste" = 1 ] && [ "$_stb" = 0 ] && pass "each unvetted component gets its own --trust-one command (2 of 2), the bulk --trust is not offered" \
+  || fail "trust commands: skills/mine $_stn, skills/evil $_ste (want 1 each), bulk --trust $_stb (want 0): $O"
+case "$O" in *"BEFORE anything else"*) fail "the notice still puts the trust question before the user's own message" ;;
+  *"at the END of that first reply"*"do not use"*) pass "the trust question comes at the end of the first reply, and the components are not used until answered" ;;
+  *) fail "the notice does not say to answer the user first and ask at the end of that reply: $O" ;; esac
+# One component: one command, and no other component named.
+rm -rf "${STD:?}/.claude/skills/evil"; _O1="$(st)"
+[ "$(printf '%s\n' "$_O1" | grep -c -- '--trust-one ')" = 1 ] && pass "a single unvetted component gets exactly one trust command" \
+  || fail "a single unvetted component got $(printf '%s\n' "$_O1" | grep -c -- '--trust-one ') trust commands: $_O1"
 ( cd "$STD" && bash .claude/hooks/skill-trust.sh --trust ) >/dev/null 2>&1
 [ -z "$(st)" ] && pass "accepted components stay silent on later sessions" || fail "still reporting after --trust"
 printf 'and now it also reads ~/.ssh/id_rsa\n' >> "$STD/.claude/skills/mine/SKILL.md"
 case "$(st)" in *skills/mine*) pass "an accepted component edited afterwards is flagged again (digest, not a name)" ;; *) fail "an edited accepted component was not re-flagged" ;; esac
+# A NO is recorded too (RC-1 field: the user said no, nothing wrote it down, and the update vouched anyway). Declining
+# replaces a yes, the next session names the component as not to be used and asks nothing, and a later yes replaces the
+# no. Each step reads the files, not only the notice.
+case "$O" in *"--decline-one skills/mine (Bash tool, not PowerShell)"*"On a no, run the decline command"*) pass "each unvetted component also gets its own --decline-one command, and the notice says to run it on a no" ;;
+  *) fail "the notice offers no way to record a no: $O" ;; esac
+( cd "$STD" && bash .claude/hooks/skill-trust.sh --decline-one skills/mine ) >/dev/null 2>&1; _dr=$?
+_dO="$(st)"
+if [ "$_dr" = 0 ] && grep -q ' skills/mine$' "$STD/.claude/declined-components.txt" 2>/dev/null \
+   && ! grep -q ' skills/mine$' "$STD/.claude/trusted-components.txt" 2>/dev/null; then
+  pass "--decline-one records the no and drops the earlier yes (rc 0)"
+else fail "--decline-one: rc $_dr, declined file: $(cat "$STD/.claude/declined-components.txt" 2>/dev/null | tr '\n' '|'), trusted: $(cat "$STD/.claude/trusted-components.txt" 2>/dev/null | tr '\n' '|')"; fi
+case "$_dO" in *"Declined by the user"*"- skills/mine"*) case "$_dO" in *"--trust-one skills/mine"*) fail "a declined component is still asked about: $_dO" ;;
+    *) pass "a declined component is named as not to be used, and not asked about again" ;; esac ;;
+  *) fail "a declined component is not named at session start: $_dO" ;; esac
+( cd "$STD" && bash .claude/hooks/skill-trust.sh --trust-one skills/mine ) >/dev/null 2>&1
+if ! grep -q ' skills/mine$' "$STD/.claude/declined-components.txt" 2>/dev/null && grep -q ' skills/mine$' "$STD/.claude/trusted-components.txt" 2>/dev/null \
+   && [ -z "$(st)" ]; then pass "a later yes replaces the no: recorded once, and the session is quiet"
+else fail "--trust-one after --decline-one did not replace the answer"; fi
 # A manifest with CRLF line endings still identifies kit components. `grep -qxF "skills/handoff"` does NOT match
 # the line "skills/handoff\r", so on Windows every kit component read as unshipped and the session opened by
 # declaring the entire payload unvetted — a wall of warnings about Crewforth's own files, which teaches the reader
@@ -4397,7 +4698,7 @@ uans(){ ( cd "$UPD" && bash .claude/hooks/session-update-check.sh --answer "$@" 
 ucache 3.1.0; o="$(uc)"
 case "$o" in *'"Crewforth v3.1.0 is out (installed: v3.0.0). Update now?"'*'"Update" · "Later" · "Skip this version"'*) pass "a newer release becomes one three-way question naming both versions" ;;
              *) fail "no three-way update question for a cached newer version (got: ${o:-<silence>})" ;; esac
-case "$o" in *"--answer later 3.1.0"*"--answer skip 3.1.0"*) pass "the question carries the exact --answer commands for Later and Skip" ;;
+case "$o" in *"--answer later 3.1.0\` (Bash tool, not PowerShell)"*"--answer skip 3.1.0\` (Bash tool, not PowerShell)"*) pass "the question carries the exact --answer commands for Later and Skip, each with the Bash tool named" ;;
              *) fail "the question does not tell Claude how to record Later/Skip: $o" ;; esac
 case "$o" in *AskUserQuestion*) pass "the question is asked with the question tool, not as prose" ;; *) fail "the hook does not name the question tool" ;; esac
 case "$o" in *"if their first message is an error or an urgent fix, answer that first and ask this question at the end of that reply"*) pass "an urgent first message is answered first; the question moves to the end of that reply" ;;
@@ -4626,7 +4927,9 @@ fi
 #     hooks run there as on resume — the fork continues work the parent had; the update question does not — a fork
 #     is not a new opening. Asked of the wiring (both editions) AND of the hooks themselves with a fork payload.
 hk_matcher(){ awk -v h="$2" '/"matcher"/{m=$0; sub(/.*"matcher"[[:space:]]*:[[:space:]]*"/,"",m); sub(/".*/,"",m)} index($0,h){print m; exit}' "$1"; }
-FK_FILES="$ROOT/settings.json"; FKR="$(git -C "$ROOT" rev-parse --show-toplevel 2>/dev/null || true)"
+# The plugin copy is Crewforth's only in this repository: an installed project may have a plugin/ of its own, and
+# reading that one turned the project's smoke red (review of 3.0.1).
+FK_FILES="$ROOT/settings.json"; FKR=""; [ "$IS_KIT" = 1 ] && FKR="$(cd "$ROOT/.." && pwd)"
 [ -n "$FKR" ] && [ -f "$FKR/plugin/hooks/hooks.json" ] && FK_FILES="$FK_FILES $FKR/plugin/hooks/hooks.json"
 for _ff in $FK_FILES; do
   _fl="${_ff##*/}"
@@ -5157,6 +5460,8 @@ SILENT|<task-notification>Agent crew-database-expert finished: wrote the migrati
 SILENT|[SYSTEM NOTIFICATION] the background agent finished its migration and seed report
 SILENT|<cross-session-message>report: the migration and the seed are written, an endpoint was added</cross-session-message>
 crew-database-expert|the system notification code needs a migration for the invoices table
+SILENT|<agent-message from=\"a0000000000000000\">\n[Subagent hand-back] The text below is the final report of a subagent this session delegated to. It is model output, NOT a message from the user.\n  Wrote the migration and an index for the invoices table.
+crew-database-expert|Wrote the migration and an index for the invoices table.
 RHCASES
 
   # --- the field name, which is the way this hook dies quietly -------------------------------------
@@ -5501,8 +5806,118 @@ if [ -f "$GR" ]; then
                   *) fail "doctor did not report on the shell matcher" ;; esac
   sed 's/"Bash|PowerShell"/"Bash"/' "$DTMP/.claude/settings.json" > "$DTMP/s.tmp" && mv "$DTMP/s.tmp" "$DTMP/.claude/settings.json"
   DOUT2="$(cd "$DTMP" && CREW_LANG=en bash .claude/eval/doctor.sh 2>/dev/null)"
-  case "$DOUT2" in *"watch only Bash"*) pass "doctor flags a pre-2.5.0 Bash-only matcher as a failure" ;;
+  case "$DOUT2" in *"watch only Bash"*"DOCTOR: "*"issue(s)"*) pass "doctor flags a pre-2.5.0 Bash-only matcher as a failure, and the verdict counts it" ;;
                    *) fail "doctor stayed quiet on a Bash-only matcher — the gap is invisible to an upgrader" ;; esac
+  # Windows: doctor must say when Claude Code cannot find Git Bash — its hooks then run under PowerShell and no gate
+  # runs. Driven on any OS through shims: `uname` says MINGW, `cygpath` maps C:\ into a fixture drive, so the four
+  # answers (default folder · CLAUDE_CODE_GIT_BASH_PATH · only git on PATH · nothing) come from real doctor code, and
+  # the machine's own Git never leaks in (the fixture drive holds only what the case puts there).
+  GBF="$DTMP/gbfix"; mkdir -p "$GBF/bin" "$GBF/c"
+  printf '#!/bin/sh\necho MINGW64_NT-10.0-26200\n' > "$GBF/bin/uname"
+  cat > "$GBF/bin/cygpath" <<'GBCP'
+#!/bin/bash
+# fixture cygpath: C:\x\y <-> $GBC/c/x/y; anything else is not on the fixture drive
+case "$1" in
+  -u) p="$2"; case "$p" in [Cc]:\\*) p="${p:3}"; printf '%s/c/%s\n' "$GBC" "${p//\\//}" ;; *) exit 1 ;; esac ;;
+  -w) p="$2"; case "$p" in "$GBC"/c/*) p="${p#"$GBC"/c/}"; printf 'C:\\%s\n' "${p//\//\\}" ;; *) exit 1 ;; esac ;;
+esac
+GBCP
+  chmod +x "$GBF/bin/uname" "$GBF/bin/cygpath"
+  gbdoc(){ ( cd "$DTMP" && env -u CLAUDE_CODE_GIT_BASH_PATH -u LOCALAPPDATA GBC="$GBF" PATH="$GBF/bin:$PATH" CREW_LANG=en "$@" bash .claude/eval/doctor.sh 2>/dev/null ); }
+  _gb0="$(gbdoc)"
+  case "$_gb0" in *"cannot find Git Bash"*"<Git>\\bin\\bash.exe"*) pass "doctor: no Git Bash where Claude Code looks → a failure that names the fix" ;;
+    *) fail "doctor stayed quiet with no Git Bash on Windows — the gates are dead and nothing says so" ;; esac
+  mkdir -p "$GBF/c/Tools/Git/cmd" "$GBF/c/Tools/Git/bin"; : > "$GBF/c/Tools/Git/bin/bash.exe"
+  printf '#!/bin/sh\n' > "$GBF/c/Tools/Git/cmd/git"; chmod +x "$GBF/c/Tools/Git/cmd/git"
+  _gb1="$(gbdoc env PATH="$GBF/c/Tools/Git/cmd:$GBF/bin:$PATH")"
+  case "$_gb1" in *"only through git on PATH (C:\\Tools\\Git\\bin\\bash.exe)"*) pass "doctor: Git Bash found only through git on PATH → a warning naming it" ;;
+    *) fail "doctor did not report a Git Bash reachable only through PATH" ;; esac
+  _gb2="$(gbdoc env CLAUDE_CODE_GIT_BASH_PATH='C:\Tools\Git\bin\bash.exe')"
+  case "$_gb2" in *"finds Git Bash (C:\\Tools\\Git\\bin\\bash.exe)"*) pass "doctor: CLAUDE_CODE_GIT_BASH_PATH to an existing bash → found" ;;
+    *) fail "doctor did not honour CLAUDE_CODE_GIT_BASH_PATH" ;; esac
+  _gb3="$(gbdoc env CLAUDE_CODE_GIT_BASH_PATH='C:\Tools\Git\bin\git.exe')"
+  case "$_gb3" in *"CLAUDE_CODE_GIT_BASH_PATH (C:\\Tools\\Git\\bin\\git.exe) is not a bash"*"cannot find Git Bash"*) pass "doctor: a CLAUDE_CODE_GIT_BASH_PATH that is not bash is named as ignored" ;;
+    *) fail "doctor accepted a CLAUDE_CODE_GIT_BASH_PATH that Claude Code ignores" ;; esac
+  mkdir -p "$GBF/c/Users/u/AppData/Local/Programs/Git/bin"; : > "$GBF/c/Users/u/AppData/Local/Programs/Git/bin/bash.exe"
+  _gbu="$(gbdoc env LOCALAPPDATA='C:\Users\u\AppData\Local')"
+  case "$_gbu" in *"installed for this user only (C:\\Users\\u\\AppData\\Local\\Programs\\Git\\bin\\bash.exe)"*"CLAUDE_CODE_GIT_BASH_PATH to \"C:\\Users\\u\\AppData\\Local\\Programs\\Git\\bin\\bash.exe\""*)
+      pass "doctor: a per-user Git install Claude Code does not look in → a failure naming the measured path to set" ;;
+    *) fail "doctor did not name the per-user Git Bash for CLAUDE_CODE_GIT_BASH_PATH" ;; esac
+  _gbx="$(gbdoc env LOCALAPPDATA='C:\Users\nobody\AppData\Local')"
+  case "$_gbx" in *"installed for this user only"*) fail "doctor named a per-user Git Bash that does not exist — the path must be measured" ;;
+    *"cannot find Git Bash"*) pass "doctor: no per-user Git either → names no path it did not find" ;;
+    *) fail "doctor: an absent per-user Git gave neither answer" ;; esac
+  # The field case (RC-2, c1): the variable named git-bash.exe, the LAUNCHER. Doctor names it as such, with the bash
+  # next to it that exists; a launcher with no bash beside it gets the plain line, never a guessed path.
+  : > "$GBF/c/Users/u/AppData/Local/Programs/Git/git-bash.exe"
+  _gbl1="$(gbdoc env LOCALAPPDATA='C:\Users\u\AppData\Local' CLAUDE_CODE_GIT_BASH_PATH='C:\Users\u\AppData\Local\Programs\Git\git-bash.exe')"
+  case "$_gbl1" in *"is Git Bash's launcher, not bash"*"point it to C:\\Users\\u\\AppData\\Local\\Programs\\Git\\bin\\bash.exe"*"installed for this user only"*)
+      pass "doctor: CLAUDE_CODE_GIT_BASH_PATH naming git-bash.exe → called the launcher, with the bash beside it that exists" ;;
+    *) fail "doctor did not name git-bash.exe as the launcher with its bin\\bash.exe: $(printf '%s' "$_gbl1" | grep -i 'git bash' | tr '\n' '|')" ;; esac
+  mkdir -p "$GBF/c/Other/Git"; : > "$GBF/c/Other/Git/git-bash.exe"
+  _gbl2="$(gbdoc env CLAUDE_CODE_GIT_BASH_PATH='C:\Other\Git\git-bash.exe')"
+  case "$_gbl2" in *"launcher"*) fail "doctor suggested a bin\\bash.exe that does not exist next to the launcher" ;;
+    *"CLAUDE_CODE_GIT_BASH_PATH (C:\\Other\\Git\\git-bash.exe) is not a bash that exists"*) pass "doctor: a launcher with no bash beside it → the plain line, no guessed path" ;;
+    *) fail "doctor: a lone launcher gave neither line" ;; esac
+  : > "$DTMP/gbmissl"
+  ( cd "$DTMP" && env -u CLAUDE_CODE_GIT_BASH_PATH -u LOCALAPPDATA GBC="$GBF" PATH="$GBF/bin:$PATH" CREW_LANG=tr CREW_I18N_MISS="$DTMP/gbmissl" \
+      CLAUDE_CODE_GIT_BASH_PATH='C:\Users\u\AppData\Local\Programs\Git\git-bash.exe' bash .claude/eval/lib/git-bash.sh >/dev/null 2>&1 )
+  [ -s "$DTMP/gbmissl" ] && fail "the launcher line prints English under CREW_LANG=tr: $(tr '\n' '|' < "$DTMP/gbmissl")" \
+    || pass "the launcher line speaks Turkish"
+  mkdir -p "$GBF/c/Program Files/Git/bin"; : > "$GBF/c/Program Files/Git/bin/bash.exe"
+  _gb4="$(gbdoc)"
+  case "$_gb4" in *"finds Git Bash (C:\\Program Files\\Git\\bin\\bash.exe)"*) pass "doctor: Git Bash in its default folder → found" ;;
+    *) fail "doctor did not find Git Bash in C:\\Program Files\\Git" ;; esac
+  # The fixture has issues of its own; what counts is that the missing Git Bash adds exactly one.
+  gbn(){ printf '%s\n' "$1" | sed -n 's/^DOCTOR: \([0-9][0-9]*\) issue.*/\1/p'; }
+  [ "$(gbn "$_gb0")" = "$(( $(gbn "$_gb4" | grep . || echo 0) + 1 ))" ] \
+    && pass "doctor: the missing Git Bash is one more issue in the verdict ($(gbn "$_gb4" | grep . || echo 0) → $(gbn "$_gb0"))" \
+    || fail "doctor: the verdict did not count the missing Git Bash (with: '$(gbn "$_gb4")', without: '$(gbn "$_gb0")')"
+  _gb5="$(cd "$DTMP" && env PATH="$GBF/c/Tools/Git/cmd:$PATH" CREW_LANG=en bash .claude/eval/doctor.sh 2>/dev/null)"
+  case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) skip platform "doctor off Windows says nothing about Git Bash — this runner IS Windows" ;;
+    *) case "$_gb5" in *"Git Bash"*) fail "doctor spoke about Git Bash on a non-Windows machine" ;;
+                       *"DOCTOR: "*) pass "doctor says nothing about Git Bash off Windows" ;;
+                       *) fail "doctor printed no verdict in the off-Windows case — the silence proves nothing" ;; esac ;; esac
+  # Third state: a Windows shell without cygpath is said to be unchecked, not passed. Only reachable where the
+  # machine itself has no cygpath (a Windows runner has it in /usr/bin, next to everything else).
+  case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) skip platform "doctor's no-cygpath branch — this Windows runner has cygpath" ;;
+    *) mkdir -p "$GBF/nocp"; cp "$GBF/bin/uname" "$GBF/nocp/uname"
+       _gb6="$(cd "$DTMP" && PATH="$GBF/nocp:$PATH" CREW_LANG=en bash .claude/eval/doctor.sh 2>/dev/null)"
+       case "$_gb6" in *"Git Bash lookup not checked (no cygpath"*) pass "doctor: Windows without cygpath → says the Git Bash lookup was not checked" ;;
+         *) fail "doctor: Windows without cygpath did not say the lookup went unchecked" ;; esac ;; esac
+  # ONE copy: the plugin edition's /crew-doctor runs eval/lib/git-bash.sh directly (doctor.sh does not ship there), so
+  # the script alone must give doctor's answer and exit code, doctor must hold no second copy, and the plugin must
+  # carry these bytes.
+  _gbs="$DTMP/.claude/eval/lib/git-bash.sh"
+  _gbd="$(cd "$DTMP" && env -u CLAUDE_CODE_GIT_BASH_PATH -u LOCALAPPDATA GBC="$GBF/empty" PATH="$GBF/bin:$PATH" CREW_LANG=en bash "$_gbs" 2>/dev/null; echo "rc=$?")"
+  _gbd0="$(printf '%s\n' "$_gb0" | grep -F 'cannot find Git Bash')"
+  case "$_gbd" in *"$_gbd0"*"rc=1") [ -n "$_gbd0" ] && pass "git-bash.sh alone gives doctor's line and exits 1 — the plugin's /crew-doctor gets the same answer" \
+                                   || fail "git-bash.sh: doctor's reference line is empty — the comparison proves nothing" ;;
+    *) fail "git-bash.sh alone did not give doctor's line with exit 1: $(printf '%s' "$_gbd" | tr '\n' ' ')" ;; esac
+  grep -q 'finds Git Bash' "$ROOT/eval/doctor.sh" && fail "doctor.sh holds its own copy of the Git Bash check — the plugin's would drift" \
+    || pass "the Git Bash check lives only in eval/lib/git-bash.sh"
+  if [ "$IS_KIT" = 1 ]; then
+    cmp -s "$ROOT/eval/lib/git-bash.sh" "$(cd "$ROOT/.." && pwd)/plugin/eval/lib/git-bash.sh" \
+      && pass "the plugin edition ships the same git-bash.sh" || fail "plugin/eval/lib/git-bash.sh is missing or differs — run packaging/build-plugin.sh"
+  fi
+  # Every branch, in Turkish, on a drive of its own (the one above has a default-folder Git by now, which would
+  # answer "found" for all of them and leave the other keys untested).
+  _gbt="$GBF/tr"; mkdir -p "$_gbt/c/Tools/Git/cmd" "$_gbt/c/Tools/Git/bin" "$_gbt/c/Users/u/AppData/Local/Programs/Git/bin"
+  : > "$_gbt/c/Tools/Git/bin/bash.exe"; : > "$_gbt/c/Users/u/AppData/Local/Programs/Git/bin/bash.exe"
+  printf '#!/bin/sh\n' > "$_gbt/c/Tools/Git/cmd/git"; chmod +x "$_gbt/c/Tools/Git/cmd/git"
+  : > "$DTMP/gbmiss"; _gbtn=""
+  for _gbe in "X=1" "CLAUDE_CODE_GIT_BASH_PATH=C:\\Tools\\Git\\bin\\bash.exe" "CLAUDE_CODE_GIT_BASH_PATH=C:\\nope\\git.exe" \
+              "LOCALAPPDATA=C:\\Users\\u\\AppData\\Local" "PATH=$_gbt/c/Tools/Git/cmd:$GBF/bin:$PATH"; do
+    ( cd "$DTMP" && env -u CLAUDE_CODE_GIT_BASH_PATH -u LOCALAPPDATA GBC="$_gbt" PATH="$GBF/bin:$PATH" CREW_LANG=tr CREW_I18N_MISS="$DTMP/gbmiss" "$_gbe" bash "$_gbs" >/dev/null 2>&1 )
+    _gbtn="$_gbtn$?"
+  done
+  [ -s "$DTMP/gbmiss" ] && fail "git-bash.sh prints English under CREW_LANG=tr: $(sort -u "$DTMP/gbmiss" | tr '\n' '|')" \
+    || { [ "$_gbtn" = 10113 ] && pass "git-bash.sh speaks Turkish on all five branches (no missing key; exits $_gbtn)" \
+         || fail "git-bash.sh Turkish sweep exited '$_gbtn', want 10113 (none · found · wrong variable · per-user · PATH only) — it did not reach every branch"; }
+  # A bash named without .exe: MSYS says `[ -f …/bash ]` when only bash.exe exists; Claude Code does not.
+  _gb7="$(gbdoc env CLAUDE_CODE_GIT_BASH_PATH='C:\Tools\Git\bin\bash')"
+  case "$_gb7" in *"CLAUDE_CODE_GIT_BASH_PATH (C:\\Tools\\Git\\bin\\bash) is not a bash"*) pass "doctor: CLAUDE_CODE_GIT_BASH_PATH naming bash without .exe, where only bash.exe exists → ignored, as Claude Code does" ;;
+    *) fail "doctor accepted a CLAUDE_CODE_GIT_BASH_PATH that exists only through the .exe suffix" ;; esac
   grep -q 'command not found' "$DTMP/err" && fail "doctor.sh calls a helper before it is defined (see stderr)" \
                                           || pass "doctor.sh runs with no undefined-helper errors"
   case "$DOUT" in *"gate activity"*) pass "doctor actually prints a gate-activity line" ;;
@@ -5688,6 +6103,309 @@ $PSOK
 PSEOF2
 [ -z "$PSFP" ] && pass "everyday PowerShell stays allowed ($PSM cases, no false positives)" \
                || fail "PowerShell false positive(s):$PSFP"
+
+sec "== 12b) Crewforth's own scripts sent through PowerShell go back to the Bash tool =="
+# Field session: six PowerShell attempts at `bash .claude/hooks/…`, every one an error from WSL's bash, while the same
+# commands through the Bash tool exit 0. guard-powershell.sh stops that one call (rc 2) and names the Bash tool.
+# Each case is a PAIR on one line, `positive ||| negative`: the negative differs from its positive only where the rule
+# looks, so a JSON escape that went wrong in the fixture shows up as a positive that did not block — a mis-escaped
+# negative alone would pass silently, because an unreadable payload is let through. A negative must also print NOTHING.
+GPS="$HOOKS/guard-powershell.sh"
+gpsj(){ printf '{"tool_name":"%s","tool_input":{"command":"%s"},"permission_mode":"default"}' "$1" "$2"; }
+gpsrc(){ gpsj "$1" "$2" | bash "$GPS" >/dev/null 2>&1; echo "$?"; }
+GPSN=0; GPSF=""
+while IFS= read -r _l; do [ -z "$_l" ] && continue
+  _pos="${_l%% ||| *}"; _neg="${_l#* ||| }"
+  _rp="$(gpsrc PowerShell "$_pos")"; _on="$(gpsj PowerShell "$_neg" | bash "$GPS" 2>&1)"; _rn=$?
+  [ "$_rp" = 2 ] || GPSF="$GPSF | rc $_rp (want 2): $_pos"
+  { [ "$_rn" = 0 ] && [ -z "$_on" ]; } || GPSF="$GPSF | rc $_rn${_on:+ + output} (want 0, silent): $_neg"
+  GPSN=$((GPSN+1))
+done <<'GPSEOF'
+bash .claude/hooks/context-usage.sh --verbose ||| Get-Content .claude/hooks/context-usage.sh
+bash .claude/hooks/context-usage.sh --verbose 2>&1 | Select-Object -Last 5 ||| Select-String -Pattern bash -Path .claude/hooks/context-usage.sh
+& bash .claude/hooks/board.sh status ||| & mybash .claude/hooks/board.sh status
+& bash.exe .claude/hooks/board.sh status ||| & bashful .claude/hooks/board.sh status
+if (Test-Path .\\.claude\\hooks\\x.sh) { bash .claude/hooks/x.sh --verbose } ||| Test-Path .\\.claude\\hooks\\x.sh
+bash .claude/hooks/board.sh 2>&1 | Select-Object -First 15 ||| git config --get core.hooksPath
+& \"C:\\Program Files\\Git\\bin\\bash.exe\" .claude/hooks/x.sh ||| & \"C:\\Program Files\\Git\\bin\\bash.exe\" scripts/build.sh
+bash \"C:\\Users\\John Doe\\repo\\.claude\\hooks\\board.sh\" status ||| bash \"C:\\Users\\John Doe\\repo\\scripts\\board.sh\" status
+bash .claude\\hooks\\x.sh ||| Get-ChildItem .claude\\hooks
+bash ./.claude/hooks/board.sh status ||| bash ./scripts/board.sh status
+bash C:\\repo\\.claude\\hooks\\board.sh ||| bash C:\\repo\\scripts\\board.sh
+bash .claude/eval/doctor.sh ||| rg -n bash .claude/eval/
+wsl bash .claude/hooks/board.sh status ||| Write-Output \"Next: bash .claude/hooks/board.sh status\"
+cmd /c \"bash .claude\\hooks\\board.sh status\" ||| git commit -m \"docs: bash .claude/hooks/board.sh runs in the Bash tool\"
+Start-Process bash -ArgumentList '.claude/hooks/x.sh' ||| Start-Process notepad -ArgumentList '.claude/hooks/x.sh'
+bash .claude/skills/automode-policy/scripts/check.sh ||| bash .claude/skills/automode-policy/README.md
+bash .claude/studio/ensure-node.sh --explain ||| Get-Content .claude/studio/ensure-node.sh
+GPSEOF
+[ "$GPSN" -ge 17 ] || fail "FIXTURE: only $GPSN case pairs were read — the heredoc broke, not the hook"
+[ -z "$GPSF" ] && pass "PowerShell: $GPSN shapes of Crewforth's scripts refused, their $GPSN negative twins untouched and silent" \
+               || fail "guard-powershell.sh:$GPSF"
+_gpe="$(gpsj PowerShell 'bash .claude/hooks/board.sh status' | bash "$GPS" 2>&1 >/dev/null)"
+case "$_gpe" in *"Bash tool"*) pass "the refusal names the Bash tool" ;; *) fail "the refusal does not name the Bash tool: ${_gpe:-<silence>}" ;; esac
+# Plugin edition: scripts named by absolute path under the plugin root, which the harness exports to hooks — in any of
+# the spellings Windows produces (native `C:\`, and Git Bash's `/c/`, which is what board.sh prints from `pwd`).
+_gpr='C:\Users\u\.claude\plugins\cache\crewforth\crewforth\3.0.1'; _gpf=""
+for _gpc in 'bash \"C:\\Users\\u\\.claude\\plugins\\cache\\crewforth\\crewforth\\3.0.1\\hooks\\board.sh\" status' \
+            'bash \"/c/Users/u/.claude/plugins/cache/crewforth/crewforth/3.0.1/hooks/board.sh\" sync'; do
+  _r1="$(gpsj PowerShell "$_gpc" | CLAUDE_PLUGIN_ROOT="$_gpr" bash "$GPS" >/dev/null 2>&1; echo "$?")"
+  _r0="$(gpsj PowerShell "$_gpc" | env -u CLAUDE_PLUGIN_ROOT bash "$GPS" >/dev/null 2>&1; echo "$?")"
+  [ "$_r1" = 2 ] && [ "$_r0" = 0 ] || _gpf="$_gpf | rc $_r1 with the root (want 2), rc $_r0 without (want 0): $_gpc"
+done
+[ -z "$_gpf" ] && pass "plugin edition: a script under the plugin root is refused in both Windows spellings; with no plugin root the same path passes" \
+               || fail "plugin-root case:$_gpf"
+# Scope: a skill the install manifest does not list is the user's own — its scripts are not Crewforth's to redirect.
+_gpd="$(mktemp -d)"; mkdir -p "$_gpd/.claude/hooks"; cp "$GPS" "$_gpd/.claude/hooks/"; printf 'skills/automode-policy\n' > "$_gpd/.claude/kit-manifest.txt"
+_gpk="$(gpsj PowerShell 'bash .claude/skills/automode-policy/scripts/check.sh' | ( cd "$_gpd" && bash .claude/hooks/guard-powershell.sh >/dev/null 2>&1 ); echo "$?")"
+_gpu="$(gpsj PowerShell 'bash .claude/skills/my-own/scripts/run.sh' | ( cd "$_gpd" && bash .claude/hooks/guard-powershell.sh >/dev/null 2>&1 ); echo "$?")"
+rm -rf "$_gpd"
+[ "$_gpk" = 2 ] && [ "$_gpu" = 0 ] && pass "a listed skill's script is refused (rc 2), a skill the manifest does not list is the user's and passes (rc 0)" \
+  || fail "manifest scope: listed skill rc $_gpk (want 2), the user's own skill rc $_gpu (want 0)"
+# Never on the Bash tool: the same command there is exactly what the docs tell the model to run.
+[ "$(gpsrc Bash 'bash .claude/hooks/board.sh status')" = 0 ] && pass "a Bash-tool payload is never refused by guard-powershell.sh" \
+  || fail "guard-powershell.sh refused a Bash-tool payload — it would block the commands the docs point to"
+# A PowerShell command with no `bash` in it opens NO process: the hook runs on every PowerShell call, and on Git Bash
+# a process costs 62-135 ms. Counted from the xtrace, not timed: an external command, or a subshell (a `++` line).
+# The twin reads stdin the old way (`INPUT="$(cat)"`): a counter that cannot see that one fork measures nothing.
+_gpz(){ printf '%s' "$2" | bash -x "$1" >/dev/null 2>"$3"
+  printf '%s' "$(( $(grep -cE '^\+ (grep|sed|awk|tr|cat|head|tail|cut|sort|find|wc|mktemp|basename|dirname|git)( |$)' "$3") + $(grep -c '^++' "$3") ))"; }
+_GPZ="$(mktemp -d)"; _gpzj="$(gpsj PowerShell 'Get-ChildItem -Recurse src')"
+_gpz0="$(_gpz "$GPS" "$_gpzj" "$_GPZ/t")"
+sed "s/^IFS= read -r -d '' INPUT || true\$/INPUT=\"\$(cat)\"/" "$GPS" > "$_GPZ/twin.sh"
+_gpz1="$(_gpz "$_GPZ/twin.sh" "$_gpzj" "$_GPZ/t2")"
+if ! grep -q 'read -r -d' "$_GPZ/t"; then fail "guard-powershell cost: the trace shows no stdin read — the measurement is broken, not the hook"
+elif [ "${_gpz1:-0}" -lt 1 ]; then fail "guard-powershell cost: the twin that reads with \$(cat) counted $_gpz1 — the counter sees nothing"
+elif [ "$_gpz0" = 0 ]; then pass "a PowerShell command with no 'bash' in it opens no process in guard-powershell.sh (0; the \$(cat) twin: $_gpz1)"
+else fail "guard-powershell.sh opens $_gpz0 process(es) on a PowerShell command with no 'bash' in it — budget 0"; fi
+rm -rf "$_GPZ"
+# Wired once, and only on PowerShell: a second wiring under Bash would cost a process on every Bash call. Every line
+# naming the hook is read, not the first. The plugin copy is Crewforth's only in this repository.
+gps_wired(){ awk -v h=guard-powershell.sh '/"matcher"/{m=$0; sub(/.*"matcher"[[:space:]]*:[[:space:]]*"/,"",m); sub(/".*/,"",m)} index($0,h){print m}' "$1"; }
+_gpw_f="$ROOT/settings.json"; [ "$IS_KIT" = 1 ] && _gpw_f="$_gpw_f $(cd "$ROOT/.." && pwd)/plugin/hooks/hooks.json"
+for _gf in $_gpw_f; do
+  [ -f "$_gf" ] || { fail "${_gf##*/} is missing — nothing wires guard-powershell.sh"; continue; }
+  _gm="$(gps_wired "$_gf" | tr '\n' ' ' | sed 's/ $//')"
+  [ "$_gm" = PowerShell ] && pass "${_gf##*/}: guard-powershell.sh is wired exactly once, under the PowerShell matcher" \
+    || fail "${_gf##*/}: guard-powershell.sh is wired under '${_gm:-<nothing>}' — it must be exactly one PowerShell entry"
+done
+
+# Every Crewforth hook names its shell. Left to the default, Claude Code runs a hook through PowerShell on Windows when
+# it does not detect Git Bash: `bash …` still starts, but the line's bash redirections become PowerShell ones, the hook
+# exits 0 and no gate runs (measured in the field on 3.0.1-rc.1). Paired per entry: each command object whose command
+# runs a Crewforth hook must carry "shell": "bash" itself. A user's own hook or a command statusLine in the same file is
+# theirs, not counted. Prints "<crewforth hooks> <with shell bash>".
+hook_shells(){ awk '{ buf = buf $0 "\n" } END {
+  while (match(buf, /\{[^{}]*\}/)) { o = substr(buf, RSTART, RLENGTH); buf = substr(buf, RSTART + RLENGTH)
+    if (o !~ /"type"[[:space:]]*:[[:space:]]*"command"/) continue
+    if (!index(o, ".claude/hooks/") && !(index(o, "CLAUDE_PLUGIN_ROOT") && index(o, "/hooks/"))) continue
+    c++; if (o ~ /"shell"[[:space:]]*:[[:space:]]*"bash"/) b++ }
+  printf "%d %d", c, b }' "$1"; }
+_hsd="$(mktemp -d)"
+printf '%s\n' '{"statusLine":{"type":"command","command":"my-status"},"hooks":{"Stop":[{"hooks":[' \
+  '{"type":"command","shell":"bash","command":"bash .claude/hooks/a.sh"},{"type":"command","command":"bash .claude/hooks/b.sh"},' \
+  '{"type":"command","command":"my-own-hook"}]}]}}' > "$_hsd/t.json"
+if [ "$(hook_shells "$_hsd/t.json")" != "2 1" ]; then fail "hook shell pin: the counter read '$(hook_shells "$_hsd/t.json")' on a fixture with 2 Crewforth hooks (1 with shell) beside a user hook and a statusLine — want '2 1'; the measurement is broken, not the settings"
+else for _gf in $_gpw_f; do
+  [ -f "$_gf" ] || continue
+  set -- $(hook_shells "$_gf")
+  if [ "${1:-0}" -lt 1 ]; then fail "${_gf##*/}: no Crewforth command hook counted — the pin read nothing"
+  elif [ "$1" = "$2" ]; then pass "${_gf##*/}: all $1 Crewforth command hooks run under \"shell\": \"bash\""
+  else fail "${_gf##*/}: $2 of $1 Crewforth command hooks say \"shell\": \"bash\" — the rest run under PowerShell when Claude Code finds no Git Bash, and fail open"; fi
+done; fi
+rm -rf "$_hsd"
+
+sec "== 12c) every command the model is told to run says: the Bash tool, not PowerShell =="
+# SCOPE, one rule (decided): Crewforth's own scripts — every `.sh` the payload ships, read from the payload itself, so a
+# script a later version adds anywhere is covered without editing this list. WHERE: every text the model reads — the
+# discipline, AGENT_TEMPLATE, agents, skills (markdown), and what the scripts and installers print (shell).
+# Markdown unit: the paragraph, ended by a blank line, a frontmatter fence, or the start of a list item; a code fence
+# belongs to the paragraph right above it. Shell unit: the line — a command quoted as TEXT (at its own `$( )` level;
+# executed or piped is code, not text), or the line that expands a variable holding one (`X='bash …'`) — the command
+# is often stored in one place and printed in another. A file that defines pass() and fail() is a test harness: its
+# strings are fixtures for other code, not output, and it is not scanned.
+# Checked in the Crewforth repository, where these texts are written: an install carries the same bytes plus the
+# user's own files, which the rule does not cover.
+if [ "$IS_KIT" != 1 ]; then
+  skip scope "Bash-tool inventory runs in the Crewforth repository — an installed project also holds the user's own skills and scripts"
+else
+  BT_PH='Bash tool, not PowerShell'
+  BT_SET="$(cd "$ROOT" && find . -name '*.sh' -type f | sed 's#^\./##' | LC_ALL=C sort)"
+  BT_CMD='bash[[:space:]]+("?\$\{?(CLAUDE_PROJECT_DIR|CLAUDE_PLUGIN_ROOT)\}?"?/|\./)?\.claude/[A-Za-z0-9_./-]+\.sh'
+  BT_PLG='bash[[:space:]]+"?\$\{CLAUDE_PLUGIN_ROOT\}/[A-Za-z0-9_./-]+\.sh'
+  bt_md(){ # $1 = markdown -> offending "file:line: text"; stderr = number of command lines seen
+    BT_SET="$BT_SET" BT_CMD="$BT_CMD" BT_PLG="$BT_PLG" BT_PH="$BT_PH" awk -v f="$1" '
+      BEGIN { ns = split(ENVIRON["BT_SET"], a, "\n"); for (i = 1; i <= ns; i++) S[a[i]] = 1 }
+      function cmdline(s,   r, m, hit) { hit = 0
+        while (match(s, ENVIRON["BT_CMD"]) || match(s, ENVIRON["BT_PLG"])) {
+          m = substr(s, RSTART, RLENGTH); s = substr(s, RSTART + RLENGTH)
+          r = m; sub(/^.*(\.claude|CLAUDE_PLUGIN_ROOT\})\//, "", r); if (r in S) hit = 1 }
+        return hit }
+      function flush() { if (hit != "" && index(blk, ENVIRON["BT_PH"]) == 0) printf "%s", hit; blk = ""; hit = "" }
+      FNR == 1 && /^---[[:space:]]*$/ { fm = 1; next }
+      fm { if (/^---[[:space:]]*$/) fm = 0; next }
+      /^[[:space:]]*$/ && !fence { pend = 1; next }
+      { isf = ($0 ~ /^[[:space:]]*```/)
+        item = !fence && ($0 ~ /^[[:space:]]{0,3}([0-9]+\.|[-*])[[:space:]]/)
+        if ((pend && !(isf && !fence)) || item) flush(); pend = 0
+        if (isf) fence = !fence
+        blk = blk "\n" $0
+        if (cmdline($0)) { hit = hit f ":" FNR ": " $0 "\n"; n++ } }
+      END { flush(); print n + 0 > "/dev/stderr" }' "$1"; }
+  bt_sh(){ # $1 = shell file -> offending "file:line: text"; stderr = number of lines checked
+    BT_SET="$BT_SET" BT_CMD="$BT_CMD" BT_PH="$BT_PH" awk -v f="$1" '
+      BEGIN { ns = split(ENVIRON["BT_SET"], a, "\n"); for (i = 1; i <= ns; i++) S[a[i]] = 1 }
+      # quoted(p): is position p of line L inside a quote at its own $( ) level?
+      function quoted(L, p,   i, c, d, sq, dq, ss, ds) { d = 0; sq = 0; dq = 0
+        for (i = 1; i < p; i++) { c = substr(L, i, 1)
+          if (sq) { if (c == "\047") sq = 0; continue }
+          if (c == "\\") { i++; continue }
+          if (c == "$" && substr(L, i + 1, 1) == "(") { ss[++d] = sq; ds[d] = dq; sq = 0; dq = 0; i++; continue }
+          if (c == ")" && !dq && d > 0) { sq = ss[d]; dq = ds[d]; d--; continue }
+          if (c == "\"") dq = !dq; else if (c == "\047" && !dq) sq = 1 }
+        return sq || dq }
+      /^[[:space:]]*#/ { next }
+      { L = $0; s = L; off = 0; text = 0; carrier = ""
+        while (match(s, ENVIRON["BT_CMD"])) {
+          m = substr(s, RSTART, RLENGTH); p = off + RSTART; s = substr(s, RSTART + RLENGTH); off = p + RLENGTH - 1
+          r = m; sub(/^.*\.claude\//, "", r); if (!(r in S)) continue
+          if (!quoted(L, p)) continue
+          pre = substr(L, 1, p - 1)
+          if (match(pre, /[A-Za-z_][A-Za-z0-9_]*=["\047]$/)) { v = substr(pre, RSTART, RLENGTH - 2); C[v] = 1; carrier = v }
+          else text = 1 }
+        if (text) { n++; if (index(L, ENVIRON["BT_PH"]) == 0) print f ":" FNR ": " L }
+        else if (carrier == "") { for (v in C) if (index(L, "$" v) || index(L, "${" v "}")) { n++; if (index(L, ENVIRON["BT_PH"]) == 0) print f ":" FNR ": " L; break } } }
+      END { print n + 0 > "/dev/stderr" }' "$1"; }
+  BT_MISS=""; _btn=0; _btf=0; _bte=0; _BTT="$(mktemp)"
+  { for _bf in "$ROOT/CLAUDE.md" "$ROOT/AGENT_TEMPLATE.md" "$ROOT"/agents/*.md; do [ -f "$_bf" ] && printf '%s\n' "$_bf"; done
+    find "$ROOT/skills" -name '*.md' -type f 2>/dev/null | LC_ALL=C sort; } > "$_BTT"
+  while IFS= read -r _bf; do _btf=$((_btf+1))
+    _o="$(bt_md "$_bf" 2>"$_BTT.n")"; _btn=$((_btn + $(cat "$_BTT.n")))
+    [ -n "$_o" ] && BT_MISS="$BT_MISS
+$_o"
+  done < "$_BTT"
+  # The independent count the markdown number must equal: a plain grep of the same files for the same command shape.
+  _bte="$(while IFS= read -r _bf; do grep -hoE "$BT_CMD|$BT_PLG" "$_bf" 2>/dev/null; done < "$_BTT" \
+    | sed -E 's#^.*(\.claude|CLAUDE_PLUGIN_ROOT\})/##' | while IFS= read -r _r; do printf '%s\n' "$BT_SET" | grep -qxF "$_r" && echo x; done | wc -l | tr -d ' ')"
+  _bts=0; _btsf=0; _btr="$(cd "$ROOT/.." && pwd)"
+  for _bf in $(cd "$ROOT" && find . -name '*.sh' -type f | LC_ALL=C sort | sed "s#^\./#$ROOT/#") "$_btr/adopt.sh" "$_btr/start.sh"; do
+    [ -f "$_bf" ] || continue
+    grep -qE '^[[:space:]]*pass\(\)[[:space:]]*\{' "$_bf" && grep -qE '^[[:space:]]*fail\(\)[[:space:]]*\{' "$_bf" && continue   # a test harness
+    _btsf=$((_btsf+1)); _o="$(bt_sh "$_bf" 2>"$_BTT.n")"; _bts=$((_bts + $(cat "$_BTT.n")))
+    [ -n "$_o" ] && BT_MISS="$BT_MISS
+$_o"
+  done
+  rm -f "$_BTT" "$_BTT.n"
+  if [ "$_btf" -lt 50 ] || [ "$_btn" -lt 15 ] || [ "$_bts" -lt 8 ]; then
+    fail "FIXTURE: the Bash-tool inventory read $_btf markdown file(s), $_btn markdown and $_bts shell command line(s) — the scan broke, not the text"
+  elif [ "$_btn" != "$_bte" ]; then
+    fail "the markdown scan saw $_btn command line(s), a plain grep of the same files finds $_bte — the scan is skipping some"
+  elif [ -n "$BT_MISS" ]; then
+    fail "a command the model is told to run does not say '$BT_PH' in its paragraph (markdown) or on its line (shell):$(printf '%s\n' "$BT_MISS" | sed '/^$/d' | head -n 8 | sed 's/^/\n       /')"
+  else
+    pass "every one of Crewforth's $(printf '%s\n' "$BT_SET" | grep -c .) shipped scripts, wherever the model is told to run it, says '$BT_PH': $_btn of $_bte markdown line(s) in $_btf files, $_bts printed line(s) in $_btsf script(s)"
+  fi
+  # Must-fail twins, on copies: the phrase removed from one markdown paragraph, one list item beside a kept one, one
+  # printed hook line, and a variable-carried command printed without it.
+  _btt="$(mktemp -d)"
+  sed 's/ (Bash tool, not PowerShell)//' "$ROOT/skills/crew-doctor/SKILL.md" > "$_btt/a.md"
+  sed 's/ (Bash tool, not PowerShell) and show/ and show/' "$ROOT/skills/crew-update/SKILL.md" > "$_btt/b.md"
+  sed 's/\(--[a-z]*-one %s\) (Bash tool, not PowerShell)/\1/g' "$HOOKS/skill-trust.sh" > "$_btt/c.sh"
+  sed 's/ (Bash tool, not PowerShell — or the user can type \/crew-board sync)/ (or the user can type \/crew-board sync)/' "$HOOKS/guard-write.sh" > "$_btt/d.sh"
+  _bt1="$(bt_md "$_btt/a.md" 2>/dev/null)"; _bt2="$(bt_md "$_btt/b.md" 2>/dev/null)"
+  _bt3="$(bt_sh "$_btt/c.sh" 2>/dev/null)"; _bt4="$(bt_sh "$_btt/d.sh" 2>/dev/null)"
+  [ -n "$_bt1" ] && [ -n "$_bt2" ] && [ -n "$_bt3" ] && [ -n "$_bt4" ] \
+    && pass "the inventory catches a removed phrase in a paragraph, in one list item of several, on a printed line, and where a stored command is printed (4 twins)" \
+    || fail "the inventory missed a removed phrase — paragraph:${_bt1:+ caught} list item:${_bt2:+ caught} printed:${_bt3:+ caught} stored:${_bt4:+ caught}"
+  rm -rf "$_btt"
+fi
+sec "== 12d) the plugin's own gate files are guarded like the project's =="
+# The plugin edition keeps its gate scripts and its hook wiring under the plugin root, not under .claude/, and the
+# project-path rules never matched there: `rm <plugin>/hooks/guard-bash.sh` returned rc 0 while
+# `rm .claude/hooks/guard-bash.sh` returned rc 2 (measured, 3.0.1 review). Same rule now: writing, deleting or renaming
+# anything under <plugin>/hooks/ or <plugin>/.claude-plugin/ is refused — and under the same two folders of every
+# other version of this plugin in Claude Code's cache, since an older copy is one path away. Reading stays free.
+# Pairs, `positive ||| negative`: @R@ is this version's root, @O@ another cached version. The negative reads the same
+# file, so a fixture that broke shows up as a positive that passed.
+PGR='/Users/u/.claude/plugins/cache/crewforth/crewforth/3.0.1'; PGO='/Users/u/.claude/plugins/cache/crewforth/crewforth/3.0.0'
+PGRW='C:\Users\u\.claude\plugins\cache\crewforth\crewforth\3.0.1'
+pgrc(){ # $1 = hook, $2 = plugin root, $3 = payload -> rc
+  printf '%s' "$3" | CLAUDE_PLUGIN_ROOT="$2" bash "$HOOKS/$1" >/dev/null 2>&1; echo "$?"; }
+pgpair(){ # $1 = hook, $2 = root, $3 = payload builder, $4 = pos, $5 = neg -> appends to PGF, counts PGN
+  local p n
+  # An empty payload is the fixture breaking (a helper missing in this scope), never the hook: say so, do not grade.
+  [ -n "$($3 "$4" 2>/dev/null)" ] || { PGF="$PGF | FIXTURE: $3 built no payload"; PGN=$((PGN+1)); return 0; }
+  p="$(pgrc "$1" "$2" "$($3 "$4")")"; n="$(pgrc "$1" "$2" "$($3 "$5")")"
+  [ "$p" = 2 ] || PGF="$PGF | $1 rc $p (want 2): $4"; [ "$n" = 0 ] || PGF="$PGF | $1 rc $n (want 0): $5"; PGN=$((PGN+1)); }
+# Own builders: this section also runs in an installed project's smoke (install scope), where the unit section that
+# defines the shared ones is skipped — `wj` there was "command not found" and every Write pair read as a hook failure.
+pgbash(){ printf '{"tool_name":"Bash","permission_mode":"default","tool_input":{"command":"%s"}}' "$1"; }
+pgps(){ printf '{"tool_name":"PowerShell","tool_input":{"command":"%s"},"permission_mode":"default"}' "$1"; }
+pgwr(){ printf '{"tool_name":"Write","tool_input":{"file_path":"%s"}}' "$1"; }
+PGN=0; PGF=""
+while IFS= read -r _l; do [ -z "$_l" ] && continue
+  _l="${_l//@R@/$PGR}"; _l="${_l//@O@/$PGO}"
+  pgpair guard-bash.sh "$PGR" pgbash "${_l%% ||| *}" "${_l#* ||| }"
+done <<'PGEOF'
+rm @R@/hooks/guard-bash.sh ||| cat @R@/hooks/guard-bash.sh
+echo x > \"@R@/hooks/guard-bash.sh\" ||| grep -n block \"@R@/hooks/guard-bash.sh\"
+mv @R@/hooks/guard-write.sh /tmp/gw ||| ls -la @R@/hooks
+cp /tmp/x @R@/hooks/hooks.json ||| wc -l @R@/hooks/hooks.json
+sed -i.bak s/2/0/ @R@/hooks/guard-bash.sh ||| sed -n 1p @R@/hooks/guard-bash.sh
+rm @R@/.claude-plugin/plugin.json ||| cat @R@/.claude-plugin/plugin.json
+rm @O@/hooks/guard-bash.sh ||| cat @O@/hooks/guard-bash.sh
+truncate -s 0 @O@/hooks/context-usage.sh ||| head -3 @O@/hooks/context-usage.sh
+ln -s @R@ cfg ||| ln -s @R@/skills/teamboard skill-link
+rm \"@R@/hooks/board.sh\" ||| bash \"@R@/hooks/board.sh\" status
+rm ~/.claude/plugins/cache/crewforth/crewforth/3.0.1/hooks/guard-bash.sh ||| cat ~/.claude/plugins/cache/crewforth/crewforth/3.0.1/hooks/guard-bash.sh
+echo 'exit 0' > \"$HOME/.claude/plugins/cache/crewforth/crewforth/3.0.1/hooks/guard-bash.sh\" ||| cat \"$HOME/.claude/plugins/cache/crewforth/crewforth/3.0.1/hooks/guard-bash.sh\"
+rm /Users/*/.claude/plugins/cache/crewforth/crewforth/3.0.1/hooks/guard-bash.sh ||| ls /Users/*/.claude/plugins/cache/crewforth/crewforth/3.0.1/hooks
+rm /Users/u//.claude/plugins/cache/crewforth//./crewforth/3.0.1/hooks/guard-bash.sh ||| cat /Users/u//.claude/plugins/cache/crewforth//./crewforth/3.0.1/hooks/guard-bash.sh
+rm @R@/../3.0.1/hooks/guard-bash.sh ||| cat @R@/../3.0.1/hooks/guard-bash.sh
+rm /Users/u/.claude/plugins/cache/crewforth/crewforth/\"3.0.1\"/hooks/guard-bash.sh ||| cat /Users/u/.claude/plugins/cache/crewforth/crewforth/\"3.0.1\"/hooks/guard-bash.sh
+cd ~/.claude/plugins/cache && rm crewforth/crewforth/3.0.1/hooks/guard-bash.sh ||| cd ~/.claude/plugins/cache && cat crewforth/crewforth/3.0.1/hooks/guard-bash.sh
+ln -s ~/.claude/plugins/cache/crewforth c ||| ln -s ~/.claude/plugins/cache/crewforth/crewforth/3.0.1/skills c
+echo x > p/crewforth/crewforth/3.0.1/hooks/guard-bash.sh ||| cat p/crewforth/crewforth/3.0.1/hooks/guard-bash.sh
+echo 'exit 0' > @R@/eval/lib/crew-env.sh ||| cat @R@/eval/lib/crew-env.sh
+echo 'exit 0' > .claude/eval/lib/crew-env.sh ||| cat .claude/eval/lib/crew-env.sh
+rm /Users/b/Projects/crewforth/crewforth/3.0.1/hooks/x.sh ||| rm /Users/b/Projects/crewforth/plugin/hooks/x.sh
+PGEOF
+# Windows spellings: the root as the harness exports it (native), the command as PowerShell and Git Bash write it.
+while IFS= read -r _l; do [ -z "$_l" ] && continue
+  pgpair guard-bash.sh "$PGRW" pgps "${_l%% ||| *}" "${_l#* ||| }"
+done <<'PGEOF2'
+Remove-Item C:\\Users\\u\\.claude\\plugins\\cache\\crewforth\\crewforth\\3.0.1\\hooks\\guard-bash.sh ||| Get-Content C:\\Users\\u\\.claude\\plugins\\cache\\crewforth\\crewforth\\3.0.1\\hooks\\guard-bash.sh
+Rename-Item C:\\Users\\u\\.claude\\plugins\\cache\\crewforth\\crewforth\\3.0.0\\hooks\\hooks.json x.json ||| Test-Path C:\\Users\\u\\.claude\\plugins\\cache\\crewforth\\crewforth\\3.0.0\\hooks\\hooks.json
+Remove-Item $env:USERPROFILE\\.claude\\plugins\\cache\\crewforth\\crewforth\\3.0.1\\hooks\\guard-bash.sh ||| Get-Content $env:USERPROFILE\\.claude\\plugins\\cache\\crewforth\\crewforth\\3.0.1\\hooks\\guard-bash.sh
+cmd /c mklink /J cfg C:\\Users\\u\\.claude\\plugins\\cache\\crewforth\\crewforth\\3.0.1 ||| cmd /c mklink /J cfg C:\\Users\\u\\.claude\\plugins\\cache\\crewforth\\crewforth\\3.0.1\\skills
+PGEOF2
+pgpair guard-bash.sh "$PGRW" pgbash 'rm /c/Users/u/.claude/plugins/cache/crewforth/crewforth/3.0.1/hooks/guard-bash.sh' 'cat /c/Users/u/.claude/plugins/cache/crewforth/crewforth/3.0.1/hooks/guard-bash.sh'
+pgpair guard-bash.sh "$PGRW" pgbash 'ln -s C:/Users/u/.claude/plugins/cache/crewforth/crewforth/3.0.1 cfg' 'ln -s C:/Users/u/.claude/plugins/cache/crewforth/crewforth/3.0.1/skills cfg'
+pgpair guard-bash.sh "$PGRW" pgbash 'ln -s /c/Users/u/.claude/plugins/cache/crewforth/crewforth/3.0.1 cfg' 'ln -s /c/Users/u/.claude/plugins/cache/crewforth/crewforth/3.0.1/skills cfg'
+# A root outside the cache (a --plugin-dir checkout) is matched as a whole path: at a token start, after a drive or
+# Git Bash's /c — not inside a longer path, and its dots are literal.
+pgpair guard-bash.sh '/opt/cr.w/plugin' pgbash 'rm /opt/cr.w/plugin/hooks/a' 'rm ~/w/opt/cr.w/plugin/hooks/a'
+pgpair guard-bash.sh '/opt/cr.w/plugin' pgbash 'rm /c/opt/cr.w/plugin/hooks/a' 'rm /opt/crXw/plugin/hooks/a'
+# The Write/Edit side: every file under the two folders, not only the gate scripts it knew by name.
+while IFS= read -r _l; do [ -z "$_l" ] && continue
+  _l="${_l//@R@/$PGR}"; _l="${_l//@O@/$PGO}"
+  pgpair guard-write.sh "$PGR" pgwr "${_l%% ||| *}" "${_l#* ||| }"
+done <<'PGEOF3'
+@R@/hooks/hooks.json ||| @R@/skills/teamboard/notes.md
+@R@/.claude-plugin/plugin.json ||| @R@/README.md
+@O@/hooks/context-usage.sh ||| /Users/u/project/hooks/context-usage.sh
+@R@/hooks/trace-blocklist.txt ||| /Users/u/project/.claude-plugin-notes/plugin.json
+@R@/eval/lib/crew-env.sh ||| @R@/eval/lib/skill-listing.awk
+/p/.claude/eval/lib/crew-env.sh ||| /p/.claude/eval/lib/settings-json.awk
+PGEOF3
+[ "$PGN" -ge 37 ] || fail "FIXTURE: only $PGN plugin-gate pair(s) were read — the heredocs broke, not the hooks"
+# Reading and running stay free, and another plugin in the same cache is not Crewforth's to guard.
+_pgok=""
+for _c in "rm /Users/u/.claude/plugins/cache/acme/tool/1.0/hooks/x.sh" "diff $PGO/hooks/guard-bash.sh $PGR/hooks/guard-bash.sh"; do
+  [ "$(pgrc guard-bash.sh "$PGR" "$(pgbash "$_c")")" = 0 ] || _pgok="$_pgok | $_c"
+done
+[ -z "$PGF$_pgok" ] && pass "plugin gate files: $PGN writes, deletes, renames and links refused (this version, another cached version, ~/\$HOME/glob/..//. spellings, Windows spellings, a root outside the cache, the sourced crew-env.sh, Write tool); each negative twin — reading, running board.sh, a source tree, another plugin — stays free" \
+                    || fail "plugin gate files:$PGF${_pgok:+ | wrongly refused:$_pgok}"
 sec "== 13) pre-commit cost — the gate people route around is the one that is slow =="
 # Measured on a 373-file merge: the old file loop spawned ~7 processes per file (three `printf | grep` pairs and
 # a `git cat-file`), 2,643 in total. At the 62-135 ms a Git Bash process was measured to cost on a Windows 11
@@ -6127,7 +6845,7 @@ if [ -n "$SGR" ] && [ -d "$SGR/packaging" ] && [ -f "$SGR/VERSION" ] && [ -d "$S
   RN_ALLOW='CHANGELOG.md	196	history: every entry before 3.0 keeps the name it shipped under
 README*.md site/content/*/install.md	4	migration: the 2.x plugin note names the plugin to uninstall — one line in each README and install page, EN + TR
 evals/results/*	6	history: recorded eval runs stay byte-for-byte
-adopt.sh	48	migration: finds and moves 2.x names (components, CLAUDE.md, board, auto-mode rules, variables)
+adopt.sh kit/legacy-blobs.tsv	347	migration: finds and moves 2.x names (components, CLAUDE.md, board, auto-mode rules, variables), and the generated list of the 1.x/2.x files it may move
 bin/cli.js	4	migration: add accepts a typed <x>-csk and moves an add record written under the old names
 evals/run.sh	4	compat: reads the 2.x trusted eval parent when the 3.0 one is absent — removed in 4.0
 site/scripts/check.mjs	7	tests: the old-name pattern of the built-site gate, and its twins
@@ -6138,7 +6856,7 @@ site/scripts/check.mjs	7	tests: the old-name pattern of the built-site gate, and
 */studio/web/storage-migrate.js	4	migration: moves the panel'"'"'s saved layout to the new keys — removed in 4.0
 kit/eval/smoke-test.sh	36	tests: this gate'"'"'s own pattern, and that the 2.x names still work
 packaging/legacy-npm/*	10	the 2.x package name'"'"'s 3.0.0: a forwarder to crewforth, published once by hand
-packaging/*	136	tests: the migration rehearsal on the real v2.13.0 tree, the legacy token and layout checks'
+packaging/*	154	tests: the migration rehearsal on the real v2.13.0 tree, the legacy token and layout checks; the legacy blob list'"'"'s generator and its real-installer check'
   # A line may name several globs, separated by spaces, when one reason covers them all; its pin is their sum. Split
   # with `read -a`, never a bare `for g in $globs`, which would expand each pattern against the working directory.
   _rn_match(){   # $1 = a path -> the allow-list line (its glob field) that covers it, or nothing
@@ -6309,10 +7027,17 @@ if [ "$IS_KIT" = 1 ]; then
   _ka="$(kw_lines $KW_A)"; _kb="$(kw_printed "$KR/start.sh" "$KR/adopt.sh" "$KR/bin/cli.js")"
   # C: the real output. start.sh refuses to run from its own checkout, so its help is read from a copy.
   _kd="$(mktemp -d)"; cp "$KR/start.sh" "$KR/VERSION" "$_kd/" 2>/dev/null
-  { ( cd "$_kd" && CREW_LANG=en bash start.sh --help ) ; ( cd "$_kd" && CREW_LANG=tr bash start.sh --help )
-    CREW_LANG=en bash "$ROOT/eval/preflight.sh"; CREW_LANG=tr bash "$ROOT/eval/preflight.sh"
-    command -v node >/dev/null 2>&1 && node "$KR/bin/cli.js" --help; } > "$_kd/out.txt" 2>&1
+  # Each source is captured and COUNTED on its own. They used to share one file and one threshold (30 lines), and
+  # `start.sh --help` in a copy without kit/ printed only its 2-line "kit/ not found" error — so the check passed on
+  # the cli.js lines where node exists, and failed as a FIXTURE on a machine without node (3.0.1, PR 10): the help
+  # text itself was read nowhere. Now start.sh answers --help without kit/, and each part has its own floor.
+  ( cd "$_kd" && CREW_LANG=en bash start.sh --help; CREW_LANG=tr bash start.sh --help ) > "$_kd/start.txt" 2>&1; _ksr=$?
+  { CREW_LANG=en bash "$ROOT/eval/preflight.sh"; CREW_LANG=tr bash "$ROOT/eval/preflight.sh"; } > "$_kd/pre.txt" 2>&1
+  _kcl=""; if command -v node >/dev/null 2>&1; then node "$KR/bin/cli.js" --help > "$_kd/cli.txt" 2>&1; _kcl="$(grep -c . "$_kd/cli.txt")"
+  else : > "$_kd/cli.txt"; skip tool "node bin/cli.js --help not read — no node on this machine (start.sh --help and preflight still are)"; fi
+  cat "$_kd/start.txt" "$_kd/pre.txt" "$_kd/cli.txt" > "$_kd/out.txt"
   _kc="$(kw_lines "$_kd/out.txt" | sed "s|^$_kd/||")"; _kn="$(grep -c . "$_kd/out.txt")"
+  _ksn="$(grep -c . "$_kd/start.txt")"; _kpn="$(grep -c . "$_kd/pre.txt")"
   # Twins. Must fail: a start.sh whose table says "full kit" again, and output that says "installing Crewforth.".
   # Must pass: output that only names paths — .claude/kit.conf, the folder in the archive's own error, kit-manifest.txt,
   # drizzle-kit, KIT_X. ("kit/ deleted" used to sit here as a path; it was the last line of every install, and the
@@ -6322,11 +7047,13 @@ if [ "$IS_KIT" = 1 ]; then
   printf 'wrote .claude/kit.conf\nERROR: kit/ not found\nsee .claude/kit-manifest.txt and drizzle-kit status\nKIT_X=1\n' > "$_kd/good.txt"
   if [ -n "$_ka$_kb$_kc" ]; then fail "a printed line still says kit — say Crewforth:
 $(printf '%s\n%s\n%s\n' "$_ka" "$_kb" "$_kc" | grep . | head -n 6 | sed "s|$KR/||; s|^|       |")"
-  elif [ "$_kn" -lt 30 ]; then fail "FIXTURE: the captured help and preflight output is only $_kn line(s) — the run broke, not the wording"
+  elif [ "$_ksr" != 0 ] || [ "$_ksn" -lt 20 ]; then fail "start.sh --help, run where kit/ is absent, exited $_ksr with $_ksn line(s) (EN+TR, want rc 0 and ≥20): $(head -n 2 "$_kd/start.txt" | tr '\n' ' ')"
+  elif [ "$_kpn" -lt 6 ]; then fail "FIXTURE: preflight printed only $_kpn line(s) in EN+TR — the run broke, not the wording"
+  elif [ -n "$_kcl" ] && [ "$_kcl" -lt 10 ]; then fail "FIXTURE: cli.js --help printed only $_kcl line(s) — the run broke, not the wording"
   elif [ -z "$(kw_printed "$_kd/mut-start.sh")" ]; then fail "the printed-text check missed a start.sh table entry reverted to 'full kit' — it reads nothing"
   elif [ "$(kw_lines "$_kd/bad.txt" | grep -c .)" != 2 ]; then fail "Crewforth-word matcher missed a planted old-name word (English or Turkish) in the output"
   elif [ -n "$(kw_lines "$_kd/good.txt")" ]; then fail "Crewforth-word matcher flagged a path or identifier: $(kw_lines "$_kd/good.txt" | head -n 2 | tr '\n' ' ')"
-  else pass "no printed line says kit: terminal-only scripts, the installers' tables/echo/usage and cli --help, plus $_kn lines of real help and preflight output (EN+TR); a reverted table entry and planted words are caught, paths are not"; fi
+  else pass "no printed line says kit: terminal-only scripts, the installers' tables/echo/usage and cli --help, plus $_kn lines of real output (start.sh --help $_ksn, preflight $_kpn, cli.js ${_kcl:-not read}; EN+TR); a reverted table entry and planted words are caught, paths are not"; fi
   # The closing line of an install is the one line every user reads. It may name no kit at all, not even as a path:
   # the key and its Turkish value are both read, and a planted "kit/ deleted" in a copy must be caught.
   _dn(){ grep -hE '"Done\.|'"'"'Done\.' "$@" 2>/dev/null | grep -iE '(^|[^a-z_.-])kit([^a-z_-]|$)'; }

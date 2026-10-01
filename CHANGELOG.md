@@ -5,6 +5,122 @@ Crewforth was named Claude Starter Kit until 3.0.0.
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [3.0.1] — 2026-10-01
+
+### Security
+
+- A chained command could write `core.hooksPath` through the gate: `git config --get core.hooksPath && git config
+  core.hooksPath <path>` passed, because a `--get` anywhere in the line exempted all of it. Fixed.
+- The same shape let a harmless command carry a gated one in three more rules — infrastructure teardown
+  (`terraform --help && terraform destroy -auto-approve`), `.env` reads (`cat .env.example; cat .env`) and private
+  keys / credentials (`cat ~/.ssh/id_rsa.pub; cat ~/.ssh/id_rsa`). An exemption now covers only the command it is in.
+- `(cat .env)`, `$(cat .env)` and `` `cat .env` `` read the file without being stopped, and
+  `cat .env.example $(cat .env)` hid the read behind the template in the same line. Fixed.
+- `core.hooksPath` could be redirected past the gate by spellings git accepts: a lower-case key
+  (`core.hookspath`), `git -C <dir> config …`, a backslash-newline between `config` and the key, and removing or
+  renaming the whole `[core]` section. All blocked now.
+
+- In the plugin edition, a shell command could delete, overwrite or rename the gate scripts and their wiring
+  (`rm <plugin>/hooks/guard-bash.sh` passed, while the same command on `.claude/hooks/` was refused), and the Write
+  tool guarded only the gate scripts it knew by name. Everything under the plugin's `hooks/` and `.claude-plugin/` —
+  in this version and in every other version of the plugin in Claude Code's cache, however the path is spelled — is
+  now guarded like `.claude/hooks/`. Reading them stays free.
+- The gates read `eval/lib/crew-env.sh` on every call, but the file itself was not guarded: overwritten, it switched
+  every rule off. It is now guarded in both editions.
+- On Windows, when Claude Code does not detect Git Bash, it runs a hook through PowerShell. The hook still starts,
+  but its bash redirections become PowerShell ones (`2>/dev/null` writes to a path), it exits 0, and no gate runs: a
+  `git push --force` went through. Every hook Crewforth writes — both editions and the Studio panel's gate — now
+  names its shell (`"shell": "bash"`). Claude Code reads the field from 2.1.81; earlier versions ignore it and load
+  the file as before. **What this does not fix:** when Claude Code finds no Git Bash at all, each hook now fails with a
+  visible error ("requires bash but Git Bash was not found") instead of silently, but the gates still do not run.
+  Doctor names the cause and the exact `CLAUDE_CODE_GIT_BASH_PATH` to set; with it set, the hooks run under bash again.
+- On Windows, doctor now says when Claude Code cannot find Git Bash, looking where Claude Code itself looks
+  (`CLAUDE_CODE_GIT_BASH_PATH`, the default Git folders, then git on PATH). With none found, it reports that the
+  hooks run under PowerShell and the gates do not run, and counts it in the verdict. A per-user Git install
+  (`%LOCALAPPDATA%\Programs\Git`), which Claude Code does not look in, is reported the same way with the exact path
+  to set in `CLAUDE_CODE_GIT_BASH_PATH`. A Git Bash reachable only through PATH is a warning.
+  The plugin edition's `/crew-doctor` runs the same check (one script in both editions).
+  A `CLAUDE_CODE_GIT_BASH_PATH` that names `git-bash.exe` — Git Bash's launcher, which Claude Code refuses — is called
+  that, with the `bin\bash.exe` beside it to use instead, when one exists there.
+
+### Fixed
+
+- Reading `core.hooksPath` without a value (`git config core.hooksPath`, with or without `--local` / `--global` /
+  `--system`) was refused as tampering. It passes now; every write form stays blocked.
+- Updating a project that carried `cqrs-aop-module` but was recorded as `stack=generic` left the skill untrusted,
+  and its first session asked whether to trust the pattern skill Crewforth itself had shipped. The update now
+  vouches for the skill when every file in it is byte-for-byte a copy Crewforth shipped (2.12–2.13, or
+  `devarch-module` renamed in place), whatever the recorded stack. An edited copy is named instead, and the next
+  session asks — an edited skill is the user's work. It vouches only when the user has given no answer: a recorded yes
+  or no is never changed.
+- A "no" to trusting a component was not recorded anywhere, so an update could vouch for a skill the user had
+  declined. The session-start notice now gives each component a decline command next to its trust command; the no
+  is kept in `.claude/declined-components.txt`, the component is named as not to be used, and nobody asks about it
+  again.
+- When recording that trust failed, the update said nothing. It now says so, with the reason.
+- `.claude/README.md` was written by a fresh install only; `adopt` and `update` never touched it, so an updated project
+  kept describing the version it was first installed with. It is refreshed on every run now. A copy that differs
+  from this version's (line endings aside) is kept first in `.claude/.legacy-backup/<time>/README.md` and named.
+- Updating a pre-1.1 install (discipline inline in `CLAUDE.md`) on the current branch stopped with
+  `TS: unbound variable` when it replaced the inline block. Fixed.
+- In the plugin edition, skills and agents told the model to run `bash .claude/…`, a path a plugin install does not
+  have: `/crew-handoff`, the fill reading, `reflect`, `handoff`, the board and the auto-mode policy scripts all
+  exited 127. They now name the plugin's own directory, quoted. `/crew-gates` and the skill-usage report say they are
+  file-install tools; `trace-scan` names the plugin's pattern list; the panel's Node lookup is quoted.
+- `/crew-doctor`'s shell-gate check could say "watch both Bash and PowerShell" for an install whose Bash guard
+  watched only Bash, stayed silent when the guard was not wired at all, and printed its ❌ after "healthy ✅". It now
+  reads the guard's own entry with the JSON reader, and its result counts in the verdict.
+- The board printed a path a plugin install cannot run when it was started from its own folder. Fixed.
+- `bash start.sh --help` answered "kit/ not found" and exited 1 when `kit/` was not beside it. Help now needs nothing
+  but the script.
+- A site deploy could report success while GitHub Pages kept serving the previous version (at the 3.0.0 launch the
+  site showed the release candidate's changelog for half an hour). The site workflow now reads what Pages serves after
+  each deploy and fails if it is still the old build.
+- The unvetted-component notice offered one command, `--trust`, that accepted every foreign component at once —
+  including ones the user never looked at — and told the model to ask before anything else, so a user's urgent first
+  message waited behind it. Each component now carries its own `--trust-one` command, and the model answers the
+  user first and asks at the end of that first reply; until then the components are not used.
+- When a subagent handed its report back, the routing hint read the report as a new request and suggested
+  delegating the work that had just been done — "Use the crew-database-expert subagent" right after that agent
+  finished. A hand-back now gets no hint.
+- A message that only named the frontend in passing ("if there is work for acme_ui, pass it over — the frontend
+  team owns that") was routed to the `frontend` skill: the bare word "frontend" and a project called `<x>_ui` each
+  matched. The skill now triggers on phrases that carry the intent ("in the frontend", "the UI", "UI component").
+
+### Added
+
+- When the model sends one of Crewforth's own scripts through the PowerShell tool — where `bash` can be WSL's and
+  the script fails — the call is stopped and the model is told to use the Bash tool. "Crewforth's own" is every `.sh`
+  it installs, except a skill of your own. Every other PowerShell command passes as before, including searches and
+  messages that merely mention such a command.
+- An update moves aside what an older version installed and Crewforth no longer ships — the v1 `-cck` agents, the
+  plain v1 commands (`/plan`, `/review`, …), `vps-deploy`, `code-review` — when every file is byte-for-byte a copy
+  Crewforth shipped. They go to `.claude/.legacy-backup/<time>/` and the update prints the one line that puts them
+  back. A component with an edit, an extra file or a symlink stays where it is and is named. Nothing is deleted, and
+  it works without an install manifest. A moved skill is no longer raised as unvetted at the next session start.
+- `/crew-doctor` reports when the install is missing what its manifest lists, or has no manifest next to `VERSION`
+  — the last update did not finish, or `.claude/` was copied from another project — and suggests
+  `npx crewforth update --here`. It changes nothing. A component removed on purpose looks the same on disk, so the
+  line says to ignore it in that case.
+
+### Changed
+
+- The discipline now says where a project's own `CLAUDE.md` stands: it wins on conflict, and in §4 it can only
+  tighten, never loosen — the one exception is the §4.1 trace allowlist chosen at adoption. The § numbers in the
+  discipline refer to the discipline itself. The updater's summary, handover and decision record say the same.
+- Every place that tells the model to run one of Crewforth's scripts now says to use the Bash tool, not PowerShell.
+- The client side is stack-neutral too. The install summary, help and install page named the scope "backend, web and
+  mobile (RN/Expo)"; they now say the stack is read from the project, and React Native/Expo is one optional layer. The
+  first client task resolves the stack the way the backend does — the request, `Client:` in `## Stack`, the repo's
+  manifests (`package.json`, `pubspec.yaml`, `Package.swift`, `build.gradle`, a MAUI `*.csproj`) — and in an empty repo
+  asks once, recommending nothing, then records it. `frontend-rn-expo` applies only to an RN/Expo project; Flutter,
+  SwiftUI and Compose requests go to `crew-frontend-expert`.
+- `/crew-doctor` and the doctor said skills past the listing budget "stop being picked" / "stop matching requests".
+  They are picked less often on their own, not never; the warning now says so, in English and Turkish.
+- The Bash guard no longer starts a process per rule on the read-only path: `git status` went from 14 processes per
+  call to 1 (macOS: ~35 ms to ~10 ms per call). On a Windows machine where one process was measured at 1.3–3.9 s,
+  the old path cost 37–66 s per call.
+
 ## [3.0.0] — 2026-09-28
 
 ### BREAKING — Claude Starter Kit is now Crewforth

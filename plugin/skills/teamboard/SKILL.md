@@ -18,8 +18,8 @@ that Ali started item #1 two hours ago exists nowhere the other sessions can see
 a blocked item gets picked up before its dependency lands; whoever inherits half-finished work rebuilds the
 context from scratch. The board makes those three facts shared.
 
-## The engine (all commands go through it)
-`bash .claude/hooks/board.sh <cmd>` — `status` · `show <id>` · `claim <id>` · `done <id> [note]` ·
+## The engine (all commands go through it, with the Bash tool, not PowerShell)
+`bash "${CLAUDE_PLUGIN_ROOT}/hooks/board.sh" <cmd>` — `status` · `show <id>` · `claim <id>` · `done <id> [note]` ·
 `drop <id> <note>` · `note <id> <text>` · `add <id> <title> [deps] [external]` · `init` · `sync`.
 Never hand-edit the board; every write must go through the engine or it loses its atomicity.
 

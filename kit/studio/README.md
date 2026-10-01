@@ -83,7 +83,7 @@ editions.
 repo's other gates, and asserts things about this *repository* — the root
 `package.json`, the payload beside it — which an installed project does not
 have. Keeping it under `kit/` would also have shipped 104 KB of test
-code through all four channels only for the installer to delete it on arrival.
+code through all three channels only for the installer to delete it on arrival.
 The installed diagnostic is `--selftest`, which lives in `server/index.js`.
 
 There is no install step. Studio has **zero dependencies** — `node:http` and

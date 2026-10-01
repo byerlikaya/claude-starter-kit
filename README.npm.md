@@ -9,7 +9,7 @@ npx crewforth add <agent|skill> # copy one agent or skill into ./.claude
 npx crewforth studio            # open the Studio panel; installs nothing
 ```
 
-Then open Claude Code and run `/crew-doctor` to confirm the setup. Requires bash and git; on Windows, use Git Bash.
+Then open Claude Code and run `/crew-doctor` to confirm the setup. Requires bash and git; on Windows, use Git Bash (the gates run only when Claude Code finds it; `/crew-doctor` says when it does not).
 
 [![npm](https://img.shields.io/npm/v/crewforth?style=flat-square&color=6D28D9)](https://www.npmjs.com/package/crewforth)
 [![License](https://img.shields.io/badge/license-MIT-5c6472?style=flat-square)](https://github.com/Crewforth/crewforth/blob/main/LICENSE)

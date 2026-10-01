@@ -23,7 +23,12 @@ done
 
 SRC="$HERE/kit"
 
-if [ ! -d "$SRC" ]; then
+# --help (or -h) needs no payload either: it is answered by the argument parser further down, before anything reads
+# kit/. Refusing it here made `start.sh --help` print "kit/ not found" and exit 1 on a copy without kit/ — which is
+# also what smoke 14e reads, so on a machine without node the help text was never checked at all (3.0.1, PR 10).
+_HELP_ONLY=0; for a in "$@"; do case "$a" in -h|--help) _HELP_ONLY=1 ;; esac; done
+
+if [ "$_HELP_ONLY" = 0 ] && [ ! -d "$SRC" ]; then
   echo "ERROR: 'kit/' folder not found."
   echo "start.sh and kit/ must be in the SAME directory (both come together when you unzip)."
   exit 1
@@ -131,7 +136,7 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "Next: 1) fill in the CLAUDE.md project section  2) open Claude Code at the repo root") s="Sıradaki adımlar: 1) CLAUDE.md'deki proje bölümünü doldurun  2) Claude Code'u deponun kökünde açın" ;;
       "Note: if Claude Code is ALREADY running here, restart it — CLAUDE.md and the discipline load at session start.") s='Not: Claude Code bu klasörde ZATEN açıksa yeniden başlatın — CLAUDE.md ve disiplin oturum açılırken yüklenir.' ;;
       "Panel: /crew-studio opens the Studio panel from this project (or: node .claude/studio/server/index.js --open).") s='Panel: /crew-studio komutu Studio panelini bu projeden açar (alternatif: node .claude/studio/server/index.js --open).' ;;
-      "— backend + web + mobile (RN/Expo), every agent and skill") s="— backend, web ve mobil (RN/Expo); tüm ajanlar ve skill'ler" ;;
+      "— backend + web + mobile, every agent and skill; the stack is read from the project") s="— backend, web ve mobil; tüm ajanlar ve skill'ler; yığın projeden okunur" ;;
       "%s agents · %s skills · %s commands will be installed") s='%s ajan · %s skill · %s komut' ;;
       "(shared: .claude/ and CLAUDE.md stay committable)") s="(paylaşımlı: .claude/ ve CLAUDE.md commit'lenebilir kalır)" ;;
       "(default — pass --shared to commit .claude/ and CLAUDE.md)") s="(varsayılan — .claude/ ve CLAUDE.md'yi commit'lemek için --shared verin)" ;;
@@ -149,7 +154,7 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "%s eol pin(s) so shared hooks stay LF") s="%s eol kuralı eklendi; paylaşılan hook'lar LF olarak kalır" ;;
       "NOTE: no git repository at this level; after %s run:  %s") s='NOT: bu klasörde git deposu yok. %s yaptıktan sonra şunu çalıştırın:  %s' ;;
       "Panel: needs Node 18+, which is not on this machine — but that is no longer a dead end.") s='Panel: Node 18+ gerekiyor ve bu makinede yok — ama bunun da bir çözümü var.' ;;
-      "Crewforth fetches one for the panel: %s  (asks first;") s='Crewforth, panel için Node indirebilir: %s  (önce sorar;' ;;
+      "Crewforth fetches one for the panel (Bash tool, not PowerShell): %s  (asks first;") s='Crewforth, panel için Node indirebilir (PowerShell değil, Bash aracıyla): %s  (önce sorar;' ;;
       "verified against the published checksum, into %s, nothing else touched).") s='yayımlanan checksum ile doğrular, yalnızca %s içine kurar, başka hiçbir şeye dokunmaz).' ;;
       "Every gate still holds meanwhile; the panel is the only part that needs node.") s="Bu arada tüm kapılar çalışmaya devam eder; Node'a yalnızca panel ihtiyaç duyar." ;;
       "ERROR: the %s sentinel line is missing from %s — refusing to guess the discipline/project split.") s='HATA: %s işaret satırı %s içinde bulunamadı — disiplinin nerede bitip proje bölümünün nerede başladığı tahmin edilmeyecek.' ;;
@@ -180,7 +185,8 @@ CLAUDE.md'deki ## Stack bölümüne yazılır.
   --dotnet   3.0'da kaldırıldı; kabul edilir, uyarı basar ve yığından bağımsız kurulumu yapar
   --generic  kabul edilir, etkisi yok (artık tek kurulum biçimi bu)
 
-Crewforth her zaman eksiksiz kurulur: tüm ajanlar ve skill'ler — backend, web ve mobil (RN/Expo).
+Crewforth her zaman eksiksiz kurulur: tüm ajanlar ve skill'ler — backend, web ve mobil; yığın projeden okunur
+(CLAUDE.md ## Stack ya da depo). React Native/Expo, hazır isteğe bağlı katmanlardan yalnız biridir.
   --backend | --frontend | --mobile | --fullstack   hâlâ kabul edilir ama etkisi yok (eski komutlar bozulmasın diye)
   --private | --shared   kurulum yalnızca sizin mi, yoksa ekiple paylaşılıp commit'lenecek mi? (varsayılan: private)
   --lang tr|en   kurulum dili (verilmezse sihirbaz sorar)
@@ -197,7 +203,8 @@ recorded in the ## Stack section of CLAUDE.md.
   --dotnet   removed in 3.0; accepted, prints a warning and installs the stack-agnostic setup
   --generic  accepted, no effect (this is the only install shape now)
 
-Every install ships everything: all agents, all skills — backend, web and mobile (RN/Expo) together.
+Every install ships everything: all agents, all skills — backend, web and mobile; the stack is read from the project
+(CLAUDE.md ## Stack, or the repo). React Native/Expo is only one of the optional ready-made layers.
   --backend | --frontend | --mobile | --fullstack   accepted, no effect (kept so older commands still run)
   --private | --shared   is the install yours alone, or committed for the team? (default: private)
   --lang tr|en   installer language (asked interactively when not given)
@@ -567,7 +574,7 @@ count_showcase "$SRC/skills"
 
 h1 '[2/2] Summary · see what will be installed before you confirm'
 echo
-_mt 'full install'; _a="$_M"; _mt '— backend + web + mobile (RN/Expo), every agent and skill'
+_mt 'full install'; _a="$_M"; _mt '— backend + web + mobile, every agent and skill; the stack is read from the project'
 row 'Scope' "${B}${_a}${D} ${_M}${R}"
 _mt '%s agents · %s skills · %s commands will be installed' "${MG}${B}${N_AG}${R}" "${MG}${B}${N_SKL}${R}" "${MG}${B}${N_CMD}${R}"
 row 'Included'  "$_M"
@@ -620,7 +627,7 @@ cp -R "$SRC/eval/."     .claude/eval/ 2>/dev/null || true
 # process spawns at 62-135 ms each. test/ is dropped because its assertions read the
 # The panel's own suite is NOT here to delete: it lives in packaging/studio-test/,
 # outside the payload, because kit/ ships whole and 104 KB of test code
-# would travel through all four channels only to be removed on arrival.
+# would travel through all three channels only to be removed on arrival.
 cp -R "$SRC/studio/."   .claude/studio/ 2>/dev/null || true
 count_showcase .claude/skills
 { _mt "%s agents, %s skills and %s commands installed." "$(ls .claude/agents/*.md 2>/dev/null | wc -l | tr -d ' ')" "$N_SKL" "$N_CMD"; echo "  ${_M}"; }
@@ -751,7 +758,7 @@ if bash .claude/eval/preflight.sh --has node 2>/dev/null; then
   { _mt 'Panel: /crew-studio opens the Studio panel from this project (or: node .claude/studio/server/index.js --open).'; echo "${_M}"; }
 else
   { _mt 'Panel: needs Node 18+, which is not on this machine — but that is no longer a dead end.'; echo "${_M}"; }
-  { _mt 'Crewforth fetches one for the panel: %s  (asks first;' 'bash .claude/studio/ensure-node.sh --plan'; echo "       ${_M}"; }
+  { _mt 'Crewforth fetches one for the panel (Bash tool, not PowerShell): %s  (asks first;' 'bash .claude/studio/ensure-node.sh --plan'; echo "       ${_M}"; }
   { _mt 'verified against the published checksum, into %s, nothing else touched).' '~/.claude/studio-runtime'; echo "       ${_M}"; }
   { _mt 'Every gate still holds meanwhile; the panel is the only part that needs node.'; echo "       ${_M}"; }
 fi

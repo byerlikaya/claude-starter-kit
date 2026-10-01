@@ -6,7 +6,7 @@
   <img src="assets/logo.svg" alt="Crewforth" width="420">
 </picture>
 
-![Sürüm](https://img.shields.io/badge/version-3.0.0-6D28D9?style=flat-square)
+![Sürüm](https://img.shields.io/badge/version-3.0.1-6D28D9?style=flat-square)
 ![Lisans](https://img.shields.io/badge/license-MIT-5c6472?style=flat-square)
 
 [🇬🇧 English](README.md) · 🇹🇷 Türkçe
@@ -112,7 +112,7 @@ Studio, delegasyonu olurken çizen yerel bir panel: her ajan bir düğüm, düğ
 /plugin install crewforth@crewforth
 ```
 
-Yeni bir sürüm yayımlandığında Claude, oturumun başında bir kez şimdi mi, sonra mı güncelleneceğini ya da o sürümün atlanıp atlanmayacağını sorar; kendiliğinden asla güncellemez. `/crew-update` güncellemeyi çalıştırır ve neyin değiştiğini söyler; `./CLAUDE.md` dosyanıza dokunulmaz. Windows'ta Git Bash kullanın. Bütün seçenekler: [crewforth.com/tr/install](https://crewforth.com/tr/install).
+Yeni bir sürüm yayımlandığında Claude, oturumun başında bir kez şimdi mi, sonra mı güncelleneceğini ya da o sürümün atlanıp atlanmayacağını sorar; kendiliğinden asla güncellemez. `/crew-update` güncellemeyi çalıştırır ve neyin değiştiğini söyler; `./CLAUDE.md` dosyanıza dokunulmaz. Eski bir sürümün kurduğu ve Crewforth'un artık dağıtmadığı bileşenler değişmemişse `.claude/.legacy-backup/` altına taşınır ve tek satırlık bir geri alma komutu basılır; değiştirdikleriniz yerinde kalır ve adıyla bildirilir. Windows'ta Git Bash kullanın; kapılar yalnız Claude Code onu bulduğunda çalışır ve bulamadığında `/crew-doctor` bunu söyler. Bütün seçenekler: [crewforth.com/tr/install](https://crewforth.com/tr/install).
 
 ## Nasıl ölçüyoruz
 

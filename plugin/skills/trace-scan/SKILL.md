@@ -18,7 +18,8 @@ a trace leaks sooner or later; this skill + the hooks stop the leak at commit ti
 - Before crew-commit-agent proposes a message (manual verification).
 
 ## How
-Pattern list: `./.claude/hooks/trace-blocklist.txt` (grep -iE, one pattern per line).
+Pattern list: `./.claude/hooks/trace-blocklist.txt` (grep -iE, one pattern per line); in the plugin edition
+`${CLAUDE_PLUGIN_ROOT}/hooks/trace-blocklist.txt`.
 - **Defaults are high-hit:** co-author trailers, auto-generation footers, robot emoji, and AI-assistant/tool
   brand names. Standalone words that occur too often (model/assistant) are DELIBERATELY excluded. See trace-blocklist.txt for the exact list.
 - **Vendor name is project-specific:** ADD the name of the third-party template in use to the list (§4.2).
@@ -26,10 +27,10 @@ Pattern list: `./.claude/hooks/trace-blocklist.txt` (grep -iE, one pattern per l
 Manual scan (a quick look without the hook):
 ```bash
 git diff --cached --unified=0 | grep -E '^\+' | grep -Ev '^\+\+\+' \
-  | grep -iEf .claude/hooks/trace-blocklist.txt
+  | grep -iEf .claude/hooks/trace-blocklist.txt    # full install; plugin edition: "${CLAUDE_PLUGIN_ROOT}/hooks/trace-blocklist.txt"
 ```
 
-## Hook setup
+## Hook setup (full install only — a plugin cannot set `core.hooksPath`)
 `start.sh` sets `git config core.hooksPath .claude/hooks` (if there is a git repo). The hooks live
 under `.claude` → they are in gitignore and stay local (§4.3). To do it later for a repo:
 ```bash

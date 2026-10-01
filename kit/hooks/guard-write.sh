@@ -424,6 +424,15 @@ _norm(){                               # assigns NORM; NOT `NP="$(_norm …)"` �
   NORM="$lead$out"
 }
 _norm "$NP"; NP="$NORM"
+# The plugin root (plugin edition only: the harness exports CLAUDE_PLUGIN_ROOT to plugin hooks), folded like the path.
+# In the plugin cache the version folder is a wildcard, so an older cached copy is guarded as well. Read by _is_gate.
+_PWB=""; _PWV=""
+if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+  _PWB="${CLAUDE_PLUGIN_ROOT//\\//}"; _PWB="${_PWB%/}"
+  case "$_PWB" in [A-Za-z]:/*) _PWB="${_PWB:2}" ;; esac
+  case "$_PWB" in */[Pp][Ll][Uu][Gg][Ii][Nn][Ss]/[Cc][Aa][Cc][Hh][Ee]/*/*/*) _PWB="${_PWB%/*}"; _PWB="/${_PWB#"${_PWB%/*/*}"/}"; _PWV='/*' ;; esac
+  [ "${#_PWB}" -gt 1 ] || _PWB=""
+fi
 
 # ---- match -----------------------------------------------------------------------------------------------
 # One place where "is this a gate file?" is answered, because it has to be asked twice — once on the path as
@@ -440,15 +449,31 @@ _is_gate(){   # 0 = gate file; sets GATE_RULE and GATE_WHY
       GATE_RULE="gate-file edit (Write/Edit tools)"; GATE_WHY="$WHY_SCRIPT"; return 0 ;;
     */.[Gg][Ii][Tt]/[Hh][Oo][Oo][Kk][Ss]/*|.[Gg][Ii][Tt]/[Hh][Oo][Oo][Kk][Ss]/*)
       GATE_RULE="gate-file edit (Write/Edit tools)"; GATE_WHY="$WHY_SCRIPT"; return 0 ;;
+    # The gates SOURCE eval/lib/crew-env.sh on every call, so it is part of them: overwritten with `exit 0`, every
+    # rule stopped firing (3.0.1 review). Same file in the plugin edition, below.
+    */.[Cc][Ll][Aa][Uu][Dd][Ee]/[Ee][Vv][Aa][Ll]/[Ll][Ii][Bb]/[Cc][Rr][Ee][Ww]-[Ee][Nn][Vv].[Ss][Hh]|.[Cc][Ll][Aa][Uu][Dd][Ee]/[Ee][Vv][Aa][Ll]/[Ll][Ii][Bb]/[Cc][Rr][Ee][Ww]-[Ee][Nn][Vv].[Ss][Hh])
+      GATE_RULE="gate-file edit (Crewforth gate script)"; GATE_WHY="$WHY_SCRIPT"; return 0 ;;
     */.[Cc][Ll][Aa][Uu][Dd][Ee]/[Dd][Ii][Ss][Cc][Ii][Pp][Ll][Ii][Nn][Ee].[Mm][Dd]|.[Cc][Ll][Aa][Uu][Dd][Ee]/[Dd][Ii][Ss][Cc][Ii][Pp][Ll][Ii][Nn][Ee].[Mm][Dd])
       GATE_RULE="gate-file edit (discipline document)"; GATE_WHY="$WHY_DISC"; return 0 ;;
     # The plugin edition keeps the SAME gate scripts at $CLAUDE_PLUGIN_ROOT/hooks/, which is not `.claude/hooks/`
-    # and so matched nothing above — one of Crewforth's four channels shipped an unguarded copy of its own gates.
+    # and so matched nothing above — one of Crewforth's three channels shipped an unguarded copy of its own gates.
     # Matched by Crewforth's own filenames rather than by guessing a plugin path, so a project's unrelated
     # `hooks/` directory is untouched.
     */[Hh][Oo][Oo][Kk][Ss]/[Gg][Uu][Aa][Rr][Dd]-*.[Ss][Hh]|*/[Hh][Oo][Oo][Kk][Ss]/[Ss][Ee][Ss][Ss][Ii][Oo][Nn]-[Gg][Uu][Aa][Rr][Dd].[Ss][Hh])
       GATE_RULE="gate-file edit (Crewforth gate script)"; GATE_WHY="$WHY_SCRIPT"; return 0 ;;
   esac
+  # ...and not only the gate scripts it knew by name: everything under the plugin root's hooks/ (hooks.json, the
+  # blocklists, the git hooks, every hook), .claude-plugin/ and the sourced crew-env.sh is the plugin's equivalent of
+  # .claude/hooks and settings.json. In Claude Code's plugin cache the root is recognised by its <marketplace>/<plugin>
+  # tail with any version after it, so every cached version is covered and the drive spelling does not matter; outside
+  # the cache, by the whole path without its drive. Case folded.
+  if [ -n "$_PWB" ]; then
+    local r=1; shopt -q nocasematch && r=0; shopt -s nocasematch
+    case "$1" in *"$_PWB"$_PWV/hooks/*|*"$_PWB"$_PWV/hooks|*"$_PWB"$_PWV/.claude-plugin/*|*"$_PWB"$_PWV/.claude-plugin|*"$_PWB"$_PWV/eval/lib/crew-env.sh)
+      [ "$r" = 0 ] || shopt -u nocasematch
+      GATE_RULE="gate-file edit (Crewforth gate script)"; GATE_WHY="$WHY_SCRIPT"; return 0 ;; esac
+    [ "$r" = 0 ] || shopt -u nocasematch
+  fi
   return 1
 }
 _is_gate "$NP" && block "$GATE_RULE" "$GATE_WHY"
@@ -504,9 +529,9 @@ if [ -n "$GD" ] && [ -f "$GD/crew-board-guard" ]; then
       _gwd="${BASH_SOURCE%/*}"; _gwd="$(cd "$_gwd" 2>/dev/null && pwd)"
       if [ -f "$_gwd/../.claude-plugin/plugin.json" ]; then _BB="bash \"$_gwd/board.sh\""; else _BB='bash .claude/hooks/board.sh'; fi
       echo "BOARD GATE: you hold no work item, so nobody else can see what you are starting." >&2
-      echo "Claim one first: $_BB claim <id> — $_BB status lists what is free, what is blocked and who holds the rest (or the user can type /crew-board claim <id>)." >&2
+      echo "Claim one first (Bash tool, not PowerShell): $_BB claim <id> — $_BB status lists what is free, what is blocked and who holds the rest (or the user can type /crew-board claim <id>)." >&2
       echo "Work that belongs to no item: set CREW_NO_BOARD=1 for this session, and commit it with [chore]." >&2
-      echo "Just claimed one elsewhere? The board view is cached — $_BB sync refreshes it (or the user can type /crew-board sync)." >&2
+      echo "Just claimed one elsewhere? The board view is cached — $_BB sync refreshes it (Bash tool, not PowerShell — or the user can type /crew-board sync)." >&2
       exit 2 ;;
   esac
 fi

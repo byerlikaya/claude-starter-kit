@@ -125,7 +125,11 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "stack=%s %s") s='stack=%s %s' ;;
       "stack=%s · via %s") s='stack=%s · kuran: %s' ;;
       "stack=dotnet — 3.0 records generic; the pattern skill stays as a project skill") s="stack=dotnet — 3.0 generic kaydeder; desen skill'i proje skill'i olarak kalır" ;;
+      '⚠️  cqrs-aop-module could not be recorded as trusted (skill-trust.sh exit %s: %s) — the next session will ask about it') s="⚠️  cqrs-aop-module güvenilir olarak kaydedilemedi (skill-trust.sh çıkış kodu %s: %s) — bir sonraki oturum onu soracak" ;;
+      "cqrs-aop-module could not be checked against the copies Crewforth shipped (git or the shipped list is missing) — not vouched for; the next session will ask whether to trust it.") s="cqrs-aop-module, Crewforth'un gönderdiği kopyalarla karşılaştırılamadı (git ya da gönderilen liste yok) — güvenilir sayılmadı; bir sonraki oturum güvenip güvenmeyeceğinizi soracak." ;;
+      "cqrs-aop-module is 2.x's .NET pattern, changed since Crewforth shipped it — not vouched for; the next session will ask whether to trust it.") s="cqrs-aop-module 2.x'in .NET deseni; Crewforth'un gönderdiği halinden değiştirilmiş — güvenilir sayılmadı; bir sonraki oturum güvenip güvenmeyeceğinizi soracak." ;;
       "cqrs-aop-module is now a project skill (Crewforth no longer ships it); backend-expert applies it as your project's pattern.") s="cqrs-aop-module artık bir proje skill'i (Crewforth onu artık taşımıyor); backend-expert onu projenizin deseni olarak uygular." ;;
+      "cqrs-aop-module: you declined to trust it — the update keeps that answer and does not vouch for it.") s="cqrs-aop-module: ona güvenmemeyi seçtiniz — güncelleme bu cevabı koruyor ve onu güvenilir saymıyor." ;;
       "CSK_CORRECT_STACK has no effect since 3.0 — there is one backend shape; the stack lives in CLAUDE.md ## Stack.") s="CSK_CORRECT_STACK 3.0'dan beri etkisiz — tek bir backend biçimi var; yığın CLAUDE.md ## Stack bölümünde durur." ;;
       "§4.2: DevArchitecture stays armed in the trace blocklist (it was armed before this update)") s="§4.2: DevArchitecture iz engel listesinde devrede kalıyor (güncellemeden önce de devredeydi)" ;;
       "— profile pruning was removed in 2.0; this refresh completes the install") s="— profil budama 2.0'da kalktı; bu güncelleme eksikleri tamamlar" ;;
@@ -134,7 +138,7 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "no/untracked") s='hayır / izlenmiyor' ;;
       ".claude/CLAUDE.md in git") s=".claude/CLAUDE.md git'te mi" ;;
       "supply-chain scan flagged existing project skills/agents (advisory — review before trusting them):") s='tedarik zinciri taraması projedeki bazı skill/ajanları işaretledi (yalnız uyarı — güvenmeden önce inceleyin):' ;;
-      "full report after install: %s  (heuristic; a security skill can score low by design)") s="kurulumdan sonra tam rapor: %s  (sezgisel; güvenlik skill'leri doğası gereği düşük puan alabilir)" ;;
+      "full report after install: %s  (Bash tool, not PowerShell; heuristic — a security skill can score low by design)") s="kurulumdan sonra tam rapor: %s  (PowerShell değil, Bash aracıyla; sezgisel — güvenlik skill'leri doğası gereği düşük puan alabilir)" ;;
       "supply-chain scan") s='tedarik zinciri taraması' ;;
       "existing project skills/agents look clean (no red flags)") s='projedeki skill/ajanlar temiz görünüyor (şüpheli bir şey yok)' ;;
       "[3] 7 handover decisions — SMART SUGGESTION") s='[3] Devralma için 7 karar — AKILLI ÖNERİ' ;;
@@ -148,7 +152,7 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "no custom agents found in the project") s='projede özel ajan yok' ;;
       "2 Precedence") s='2 Öncelik' ;;
       "project wins (fixed)") s='proje önde (sabit)' ;;
-      "on conflict the project's rules always win; Crewforth fills gaps (not overridable)") s='çakışmada her zaman projenin kuralı geçerli; Crewforth yalnız boşlukları doldurur (değiştirilemez)' ;;
+      "on conflict the project's rules win; in DISCIPLINE.md §4 they can only tighten, never loosen (the one exception: the §4.1 trace allowlist you choose at adoption); Crewforth fills gaps (not overridable)") s="çakışmada projenin kuralı geçerli; DISCIPLINE.md §4'te proje yalnız sıkılaştırabilir, gevşetemez (tek istisna: kurulumda sizin seçtiğiniz §4.1 iz izin listesi); Crewforth boşlukları doldurur (değiştirilemez)" ;;
       "3 Trace gate") s='3 İz kapısı' ;;
       "loosen (.trace-allowlist)") s='gevşet (.trace-allowlist)' ;;
       "co-author/sign-off present in git log — may be a convention") s='git geçmişinde co-author/sign-off var — ekibin alışkanlığı olabilir' ;;
@@ -216,6 +220,9 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       ".NET pattern skill renamed: devarch-module -> cqrs-aop-module (content kept)") s=".NET desen skill'inin adı değişti: devarch-module -> cqrs-aop-module (içerik korundu)" ;;
       "⚠️  both devarch-module and cqrs-aop-module are present — nothing moved; remove the old one when ready") s='⚠️  devarch-module ve cqrs-aop-module ikisi birden var — hiçbir şey taşınmadı; hazır olduğunuzda eskisini silin' ;;
       "AGENT_TEMPLATE.md written (owned by Crewforth; refreshed on every update)") s="AGENT_TEMPLATE.md yazıldı (Crewforth'un dosyası; her güncellemede yenilenir)" ;;
+      "README.md differed from this version's — the old one is kept in %s/README.md") s="README.md bu sürümünkinden farklıydı — eskisi %s/README.md içinde saklandı" ;;
+      'README.md refreshed (describes this version of Crewforth)') s="README.md yenilendi (Crewforth'un bu sürümünü anlatıyor)" ;;
+      "README.md differs from this version's and could not be backed up — left as it is") s='README.md bu sürümünkinden farklı ve yedeklenemedi — olduğu gibi bırakıldı' ;;
       "pre-2.0 install (profile=%s): profile pruning was removed — completing the install") s='2.0 öncesi kurulum (profile=%s): profil budama kalktı — eksikler tamamlanıyor' ;;
       "pre-2.0 install (profile=%s): nothing was missing — the full set was already present") s='2.0 öncesi kurulum (profile=%s): eksik yok — tam set zaten kuruluydu' ;;
       "overlap: %s -> skill '%s' already present (kept); original re-backed up") s="çakışma: %s -> '%s' skill'i zaten var (korundu); orijinal yeniden yedeklendi" ;;
@@ -227,6 +234,15 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "The name is the invocation: a leftover COMMAND still lists in the / picker (/review twice), and a") s='Burada adın kendisi çağrıdır: artakalan bir KOMUT / menüsünde hâlâ görünür (/review iki kez), artakalan' ;;
       "leftover SKILL still matches prompts, so it competes with whatever replaced it.") s='bir SKILL de istemlerle eşleşmeye devam eder ve yerine gelenle yarışır.' ;;
       "Nothing is deleted for you — one of these may be a file you customised. To drop them all:") s='Hiçbiri sizin yerinize silinmez — aralarında özelleştirdiğiniz bir dosya olabilir. Hepsini kaldırmak için:' ;;
+      'older Crewforth components could not be checked against what Crewforth shipped (git or the shipped list is missing) — left in place:%s') s="eski Crewforth bileşenleri Crewforth'un dağıttıklarıyla karşılaştırılamadı (git ya da dağıtım listesi yok) — yerinde bırakıldı:%s" ;;
+      'moved aside — each one exactly as an older Crewforth shipped it, and no longer shipped:%s') s="kenara alındı — her biri eski bir Crewforth'un dağıttığıyla birebir aynı ve artık dağıtılmıyor:%s" ;;
+      'to put them back: cp -R %s/. .claude/') s='geri koymak için: cp -R %s/. .claude/' ;;
+      'left in place — installed by an older Crewforth, no longer shipped, and changed since (yours now?):%s') s="yerinde bırakıldı — eski bir Crewforth kurmuştu, artık dağıtılmıyor ve o günden beri değişmiş (artık sizin mi?):%s" ;;
+      'Each still answers its name (a command lists in the / picker, a skill matches prompts). To drop them:') s='Her biri adıyla çağrılmaya devam eder (komut / menüsünde görünür, skill istemlerle eşleşir). Kaldırmak için:' ;;
+      '%s (an unchanged copy Crewforth shipped) moved aside; your %s was not touched') s="%s (Crewforth'un dağıttığı, değişmemiş kopya) yedeğe taşındı; sizin %s dosyanıza dokunulmadı" ;;
+      '%s (a second, unchanged copy Crewforth shipped) moved aside; %s already answers that command') s="%s (Crewforth'un dağıttığı ikinci, değişmemiş kopya) yedeğe taşındı; o komutu zaten %s karşılıyor" ;;
+      'older Crewforth components in a symlinked (shared?) directory are left in place — moving them out would remove them from every project that uses it:%s') s='sembolik bağlantılı (paylaşılan?) bir dizindeki eski Crewforth bileşenleri yerinde bırakıldı — taşımak onları bu dizini kullanan her projeden kaldırırdı:%s' ;;
+      '(an unchanged copy put back is moved aside again by the next update — to keep one, change it)') s='(geri konan değişmemiş bir kopya sonraki güncellemede yine kenara alınır — birini tutmak için onu değiştirin)' ;;
       "Coexist summary") s='Kurulum özeti' ;;
       "%s · %s skipped") s='%s · %s atlandı' ;;
       "+%s added") s='+%s eklendi' ;;
@@ -301,7 +317,7 @@ _mt() {   # $1 = English text (the key); further args fill %s; result in _M
       "staged") s='stage edilen' ;;
       "see it:   open the Source Control / Changes panel (every added + changed file is listed)  ·  or: %s") s='görmek için:  Source Control / Changes panelini açın (eklenen ve değişen her dosya orada)  ·  ya da: %s' ;;
       "panel:    %s opens it from this project (or: %s)") s='panel:    bu projede %s ile açılır (ya da: %s)' ;;
-      "panel:    needs Node 18+, absent here — Crewforth can fetch one: %s") s='panel:    Node 18+ gerekiyor ve bu makinede yok — Crewforth indirebilir: %s' ;;
+      "panel:    needs Node 18+, absent here — Crewforth can fetch one (Bash tool, not PowerShell): %s") s='panel:    Node 18+ gerekiyor ve bu makinede yok — Crewforth indirebilir (PowerShell değil, Bash aracıyla): %s' ;;
       "(it asks first, verifies the checksum, and touches nothing outside %s)") s='(önce sorar, sağlama toplamını doğrular ve %s dışında hiçbir şeye dokunmaz)' ;;
       "If Claude Code is running in this project, run /clear (or quit and relaunch it) — a new session loads the") s='Claude Code bu projede açıksa /clear çalıştırın (ya da kapatıp yeniden açın) — yeni oturum güncel' ;;
       "updated CLAUDE.md and discipline; a session opened before this run keeps the old rules until then.") s='CLAUDE.md ve disiplini yükler; bu çalıştırmadan önce açılmış oturum o zamana kadar eski kuralları uygular.' ;;
@@ -631,7 +647,7 @@ if { [ "$N_PAGENTS" != 0 ] || [ "$N_PSKILLS" != 0 ]; } && [ -f "$SRC/eval/scan-s
   if printf '%s' "$SCANOUT" | grep -qE 'DANGER|REVIEW'; then
     warnm 'supply-chain scan flagged existing project skills/agents (advisory — review before trusting them):'
     printf '%s\n' "$SCANOUT" | grep -E 'DANGER|REVIEW' | sed 's/^/    /'
-    _mt 'full report after install: %s  (heuristic; a security skill can score low by design)' 'bash .claude/eval/scan-skill.sh .claude'
+    _mt 'full report after install: %s  (Bash tool, not PowerShell; heuristic — a security skill can score low by design)' 'bash .claude/eval/scan-skill.sh .claude'
     sub "    $_M"
   else
     rowm 'supply-chain scan' 'existing project skills/agents look clean (no red flags)'
@@ -655,7 +671,7 @@ elif [ "$N_PAGENTS" != 0 ]; then
 else
   propm '1 Role clash' 'none' 'no custom agents found in the project'
 fi
-propm '2 Precedence' 'project wins (fixed)' "on conflict the project's rules always win; Crewforth fills gaps (not overridable)"
+propm '2 Precedence' 'project wins (fixed)' "on conflict the project's rules win; in DISCIPLINE.md §4 they can only tighten, never loosen (the one exception: the §4.1 trace allowlist you choose at adoption); Crewforth fills gaps (not overridable)"
 if [ "$COAUTHOR" = 1 ]; then
   propm '3 Trace gate' 'loosen (.trace-allowlist)' 'co-author/sign-off present in git log — may be a convention'
 else
@@ -872,8 +888,8 @@ if [ "$KIT_PRESENT" = 1 ] && [ -d .claude/skills/devarch-module ]; then
     say '⚠️  both devarch-module and cqrs-aop-module are present — nothing moved; remove the old one when ready'
   fi
 fi
-[ "$LEGACY_DOTNET" = 1 ] && [ -d .claude/skills/cqrs-aop-module ] \
-  && say "cqrs-aop-module is now a project skill (Crewforth no longer ships it); backend-expert applies it as your project's pattern."
+# Whether the updater vouches for cqrs-aop-module is decided AFTER the manifest is written — see "THE PATTERN SKILL'S
+# TRUST" below; the notice is printed there with the verdict.
 # THE 3.0 NAME MIGRATION: <x>-csk -> crew-<x>, for the KIT'S OWN components only (agents, commands, the code-review
 # skill), and only on a project the kit was installed on. Same principle as the devarch-module rename above: move,
 # never delete. The names come from the payload, so a project file that merely ends in -csk (my-helper-csk.md) is
@@ -893,7 +909,6 @@ if [ "$KIT_PRESENT" = 1 ]; then
     else mv "$old" "$new" 2>/dev/null && { LEGACY_MOVED=$((LEGACY_MOVED+1)); say '3.0 rename: %s → %s' "${old#.claude/}" "${new#.claude/}"; }
     fi
   done
-  [ -n "$LEGACY_BOTH" ] && warnm '3.0 rename: both the old and the new name exist for:%s — nothing moved; keep one' "$LEGACY_BOTH"
 fi
 # THE 3.0 COMMANDS -> SKILLS MOVE. Claude Code merged custom commands into skills (`.claude/commands/` is "the
 # older format"), and a skill and a command of the same name are the same `/name` — the skill wins. So the kit's
@@ -928,8 +943,6 @@ for kf in $CMD_SKILLS; do
     fi
   done
 done
-[ -n "$CMD_BOTH" ] && warnm '3.0 commands are skills: a skill of that name already exists for:%s — nothing moved; keep one' "$CMD_BOTH"
-[ -n "$CMD_DUP" ]  && warnm '3.0 commands are skills: an older copy of an already-moved command is left in place:%s — remove it' "$CMD_DUP"
 [ -n "$CMD_LINK" ] && warnm '3.0 commands are skills: symlinked command file(s) left as they are:%s — the skill of that name now answers /name' "$CMD_LINK"
 [ "$CMD_DIR_SHARED" = 1 ] && [ "$KIT_PRESENT" = 1 ] && warnm '3.0 commands are skills: .claude/commands is a symlink (shared?) — nothing was moved out of it; the skills of those names now answer /name'
 [ -n "$CMD_MINE" ] && warnm 'your own command(s) keep their name — the Crewforth skill of the same name was not installed:%s' "$CMD_MINE"
@@ -981,6 +994,130 @@ if [ "$KIT_PRESENT" = 1 ] && [ -f "$_AMS" ] && grep -qE '"CSK (Uncommitted Work 
   fi
   rm -f "$_AMS.crew-new"
 fi
+# THE LEGACY SWEEP. Components Crewforth shipped in 1.x-2.x and no longer ships (kit/legacy-blobs.tsv, generated from the
+# release tags) stay on disk after an update, and for every kind the NAME IS THE INVOCATION: a leftover command lists
+# in the / picker, a leftover skill competes for prompts, and the next session's trust gate asks about each skill as
+# if the user had brought it in. One that is byte-for-byte a copy Crewforth shipped is MOVED ASIDE to
+# .claude/.legacy-backup/<time>/ with a one-line restore; anything else — an edit, an extra file, a symlink — is the
+# user's work and stays where it is, named. Nothing is deleted. The rule is "every file is a blob shipped for ITS path",
+# not "all from one release": a field install carried vps-deploy with SKILL.md from 2.0-2.6 and references from 1.4.
+# cqrs-aop-module / devarch-module are excluded: 3.0 keeps the pattern skill as the project's own (its trust is below).
+# Runs after the rename and commands->skills moves, so what reaches it is what they left: a v1 -cck agent, a plain
+# v1 command, a -csk copy next to its crew- name. Works without an install manifest — the list is the kit's, not the
+# project's.
+#
+# _untouched_copies <component>...: prints each component (skills/<n>, agents/<n>.md, commands/<n>.md) that is an
+# untouched shipped copy. rc 2 = cannot tell (no git, no list). Same hardening as the
+# pattern skill's check, which uses it: a symlink or special file anywhere refuses the component (`find -type f` does
+# not list one, so a link would be "checked" by checking nothing); zero files is not a match; CR is stripped only when
+# every CR ends a line; paths reach awk as data, never through -v. Batched: one find, one git, one awk for all of
+# them — per-file hashing was 5 processes a file, which is seconds on Git Bash.
+_untouched_copies(){
+  local lst="$SRC/legacy-blobs.tsv" NL=$'\n' TB=$'\t' CR=$'\r' c p bad fo f h hl cr crl rows="" i=0
+  local live=() fl=() hs=()
+  [ -f "$lst" ] && command -v git >/dev/null 2>&1 || return 2
+  for c in "$@"; do [ -e ".claude/$c" ] || [ -L ".claude/$c" ] && live+=(".claude/$c"); done   # a link is kept, for find to refuse
+  [ "${#live[@]}" -gt 0 ] || return 0
+  # A newline, tab or CR in a name would split or bend a line below (git's line reader drops a trailing CR), so it
+  # disqualifies its component like a symlink does.
+  bad="$(find "${live[@]}" \( ! -type f ! -type d \) -o -name "*$NL*" -o -name "*$TB*" -o -name "*$CR*" 2>/dev/null)"
+  for p in "${live[@]}"; do
+    case "$NL$bad$NL" in *"$NL$p$NL"*|*"$NL$p/"*) continue ;; esac
+    # find's status is read: a subdirectory it cannot enter hides files, and those would travel with the component.
+    fo="$(find "$p" -type f 2>/dev/null)" || continue
+    while IFS= read -r f; do [ -n "$f" ] && fl+=("$f"); done <<< "$fo"
+  done
+  [ "${#fl[@]}" -gt 0 ] || return 0
+  while IFS= read -r h; do hs+=("$h"); done < <(printf '%s\n' "${fl[@]}" | git hash-object --no-filters --stdin-paths 2>/dev/null)
+  # One file git cannot read stops the batch. Then each file is hashed on its own, and one that fails is simply not a
+  # match — it refuses its own component, not every component.
+  if [ "${#hs[@]}" != "${#fl[@]}" ]; then
+    hs=(); for f in "${fl[@]}"; do h="$(git hash-object --no-filters -- "$f" 2>/dev/null)"; hs+=("${h:--}"); done
+  fi
+  # Only a file that holds a CR pays for the CR-stripped hash (none of the shipped blobs has one).
+  local crf; crf="$NL$(grep -l $'\r' -- "${fl[@]}" 2>/dev/null)$NL"
+  while [ "$i" -lt "${#fl[@]}" ]; do
+    f="${fl[$i]}"; h="${hs[$i]}"; hl="$h"
+    case "$crf" in *"$NL$f$NL"*)
+      cr="$(tr -dc '\r' < "$f" 2>/dev/null | wc -c | tr -d ' ')"; crl="$(grep -c $'\r$' "$f" 2>/dev/null)"
+      [ "$cr" = "${crl:-x}" ] && hl="$(tr -d '\r' < "$f" 2>/dev/null | git hash-object --no-filters --stdin 2>/dev/null)" ;;
+    esac
+    rows="$rows$f$TB$h$TB${hl:-$h}$NL"; i=$((i+1))
+  done
+  printf '%s' "$rows" | awk -F'\t' 'FNR == NR { if ($0 !~ /^#/) ok[$2 SUBSEP $3] = 1; next }
+    { c = substr($1, 9); split(c, a, "/"); if (a[1] == "skills") c = a[1] "/" a[2]
+      n[c]++; if (!((($1 SUBSEP $2) in ok) || (($1 SUBSEP $3) in ok))) bad[c] = 1 }
+    END { for (c in n) if (!(c in bad)) print c }' "$lst" - | LC_ALL=C sort
+}
+LEG_MOVED=""; LEG_KEPT=""; LEG_BK=""; _LNL=$'\n'
+if [ "$KIT_PRESENT" = 1 ] && [ -f "$SRC/legacy-blobs.tsv" ]; then
+  _lon=""; _lsh=""
+  for c in $(awk -F'\t' '!/^#/ && $1 != "skills/cqrs-aop-module" && $1 != "skills/devarch-module" && !s[$1]++ { print $1 }' "$SRC/legacy-blobs.tsv"); do
+    [ -e ".claude/$c" ] || [ -L ".claude/$c" ] || continue
+    # A symlinked .claude/ or .claude/<kind>/ is likely shared by several projects: moving a file OUT of it would take
+    # it from every one of them (the same reason the commands->skills move leaves a linked commands/ alone).
+    if [ -L .claude ] || [ -L ".claude/${c%%/*}" ]; then _lsh="$_lsh $c"; continue; fi
+    # A 2.x command or skill beside a skills/crew-<x>/ of the user's that has no SKILL.md: the kit's skill is not
+    # installed there, so this one is the only thing answering the name — it stays, and "keep one" below says why.
+    case "$c" in commands/*-csk.md) _b="${c#commands/}"; _b="${_b%-csk.md}" ;; skills/*-csk) _b="${c#skills/}"; _b="${_b%-csk}" ;; *) _b="" ;; esac
+    [ -n "$_b" ] && [ -d ".claude/skills/crew-$_b" ] && [ ! -f ".claude/skills/crew-$_b/SKILL.md" ] && continue
+    _lon="$_lon $c"
+  done
+  [ -n "$_lsh" ] && warnm 'older Crewforth components in a symlinked (shared?) directory are left in place — moving them out would remove them from every project that uses it:%s' "$_lsh"
+  if [ -n "$_lon" ]; then
+    _lun="$(_untouched_copies $_lon)"; _lrc=$?
+    if [ "$_lrc" = 2 ]; then
+      LEG_KEPT="$_lon"
+      warnm 'older Crewforth components could not be checked against what Crewforth shipped (git or the shipped list is missing) — left in place:%s' "$_lon"
+    else
+      LEG_BK=".claude/.legacy-backup/$(date +%Y%m%d-%H%M%S)"; _b="$LEG_BK"; i=2
+      while [ -e "$_b" ]; do _b="$LEG_BK-$i"; i=$((i+1)); done; LEG_BK="$_b"
+      for c in $_lon; do
+        case "$_LNL$_lun$_LNL" in *"$_LNL$c$_LNL"*)
+          if mkdir -p "$LEG_BK/${c%/*}" 2>/dev/null && mv ".claude/$c" "$LEG_BK/$c" 2>/dev/null; then
+            LEG_MOVED="$LEG_MOVED $c"
+            # A v1 -cck agent was counted as the project's own (KIT_OLD knows the 2.x names); moved aside, it is neither.
+            case "$c" in agents/*) _la="${c#agents/}"; case "$KIT_OLD" in *" ${_la%.md} "*) ;; *) N_PAGENTS=$((N_PAGENTS-1)) ;; esac ;; esac
+            continue
+          fi ;;
+        esac
+        LEG_KEPT="$LEG_KEPT $c"
+      done
+      if [ -n "$LEG_MOVED" ]; then
+        # A team that shares .claude/ should not commit the backup by accident; the restore reads the files, not git.
+        [ -f .claude/.legacy-backup/.gitignore ] || printf '*\n' > .claude/.legacy-backup/.gitignore 2>/dev/null
+        say 'moved aside — each one exactly as an older Crewforth shipped it, and no longer shipped:%s' "$LEG_MOVED"
+        say 'to put them back: cp -R %s/. .claude/' "$LEG_BK"
+        say '(an unchanged copy put back is moved aside again by the next update — to keep one, change it)'
+      else rmdir "$LEG_BK" .claude/.legacy-backup 2>/dev/null || true
+      fi
+      if [ -n "$LEG_KEPT" ]; then
+        warnm 'left in place — installed by an older Crewforth, no longer shipped, and changed since (yours now?):%s' "$LEG_KEPT"
+        _mt 'Each still answers its name (a command lists in the / picker, a skill matches prompts). To drop them:'; printf '     %s\n' "$_M"
+        printf '       rm -r'; for e in $LEG_KEPT; do printf ' .claude/%s' "$e"; done; echo
+      fi
+    fi
+  fi
+fi
+[ -n "$LEG_MOVED" ] && [ "$CMD_DIR_SHARED" = 0 ] && { rmdir .claude/commands 2>/dev/null || true; }   # emptied by the sweep
+# The "keep one" notices wait for the sweep: a -csk copy it moved aside is no longer one of two. When it moved one,
+# the line names BOTH files, so the user reads from one line what went, why, and that their own file was not touched.
+_lb=""; for o in $LEGACY_BOTH; do
+  if [ -e "$o" ]; then _lb="$_lb $o"; continue; fi
+  _lo="${o#.claude/}"; _lx=""; case "$_lo" in *.md) _lx=.md ;; esac; _ln="${_lo%/*}/crew-$(_b="${_lo##*/}"; _b="${_b%.md}"; printf '%s' "${_b%-csk}")$_lx"
+  say '%s (an unchanged copy Crewforth shipped) moved aside; your %s was not touched' "$_lo" "$_ln"
+done
+[ -n "$_lb" ] && warnm '3.0 rename: both the old and the new name exist for:%s — nothing moved; keep one' "$_lb"
+_lb=""; for o in $CMD_BOTH; do
+  if [ -e ".claude/$o" ]; then _lb="$_lb $o"; continue; fi
+  _b="${o##*/}"; _b="${_b%.md}"; say '%s (an unchanged copy Crewforth shipped) moved aside; your %s was not touched' "$o" "skills/crew-${_b%-csk}/"
+done
+[ -n "$_lb" ] && warnm '3.0 commands are skills: a skill of that name already exists for:%s — nothing moved; keep one' "$_lb"
+_lb=""; for o in $CMD_DUP; do
+  if [ -e ".claude/$o" ]; then _lb="$_lb $o"; continue; fi
+  _b="${o##*/}"; _b="${_b%.md}"; _b="${_b#crew-}"; say '%s (a second, unchanged copy Crewforth shipped) moved aside; %s already answers that command' "$o" "skills/crew-${_b%-csk}/"
+done
+[ -n "$_lb" ]  && warnm '3.0 commands are skills: an older copy of an already-moved command is left in place:%s — remove it' "$_lb"
 # #1 keepmine: your overlapping agents own those roles, so the kit's matching crew- agents are NOT installed.
 [ "$COLLIDE_MODE" = keepmine ] && for b in $COLLIDE; do EXCL_A="$EXCL_A crew-$b.md"; done
 # kit-owned trees: FORCE-refresh on a re-adopt (KIT_PRESENT) so kit updates land; never-overwrite on a fresh adopt
@@ -1011,11 +1148,6 @@ done
 # a plain -x match read it as disarmed and the refresh switched §4.2 off without a word (measured in review).
 VENDOR_ARMED=0; grep -qxE $'DevArchitecture\r?' .claude/hooks/trace-blocklist.txt 2>/dev/null && VENDOR_ARMED=1
 copy_noclobber "$SRC/hooks"    .claude/hooks    "$KIT_PRESENT"; H_ADD=$ret_add; H_SKIP=$ret_skip
-# The 3.0 migration made cqrs-aop-module a project skill; it is the one Crewforth shipped until now, so the updater
-# vouches for it rather than having the next session open by asking whether to trust it. Only that component, and
-# only after the refreshed hook (which knows --trust-one) is in place.
-[ "$LEGACY_DOTNET" = 1 ] && [ -f .claude/skills/cqrs-aop-module/SKILL.md ] \
-  && bash .claude/hooks/skill-trust.sh --trust-one skills/cqrs-aop-module >/dev/null 2>&1 || true
 copy_noclobber "$SRC/eval"     .claude/eval     "$KIT_PRESENT"; E_ADD=$ret_add; E_SKIP=$ret_skip
 # The Studio panel. This is the line that answers "I updated and `/crew-studio` says the panel
 # is missing": with KIT_PRESENT=1 it is a force-refresh, so a project that already has the kit
@@ -1040,6 +1172,29 @@ chmod +x .claude/studio/server/hooks/*.sh 2>/dev/null || true
 # agents and this is neither. Overwriting is right for the same reason DISCIPLINE.md is overwritten: the
 # file states the kit's own contract, a project does not author it, and a stale contract is worse than none.
 cp "$SRC/AGENT_TEMPLATE.md" .claude/ 2>/dev/null && say 'AGENT_TEMPLATE.md written (owned by Crewforth; refreshed on every update)'
+# README.md — Crewforth's description of what lives under .claude/. start.sh copied it; this script never did, so an
+# updated project kept the README of the version it was first installed with (RC-1 field: both projects still
+# described 3.0.0). It is refreshed on every run now, and never at the cost of an edit: a copy that differs from this
+# version's (line endings aside) is kept first in .claude/.legacy-backup/<time>/README.md and named.
+if [ -f "$SRC/README.md" ]; then
+  if [ -f .claude/README.md ] && ! cmp -s "$SRC/README.md" .claude/README.md \
+     && ! tr -d '\r' < .claude/README.md 2>/dev/null | cmp -s "$SRC/README.md" -; then
+    _rbk="$LEG_BK"
+    if [ -z "$_rbk" ] || [ ! -d "$_rbk" ]; then
+      _rbk=".claude/.legacy-backup/$(date +%Y%m%d-%H%M%S)"; _b="$_rbk"; i=2
+      while [ -e "$_b" ]; do _b="$_rbk-$i"; i=$((i+1)); done; _rbk="$_b"
+    fi
+    if mkdir -p "$_rbk" 2>/dev/null && cp .claude/README.md "$_rbk/README.md" 2>/dev/null; then
+      [ -f .claude/.legacy-backup/.gitignore ] || printf '*\n' > .claude/.legacy-backup/.gitignore 2>/dev/null
+      say "README.md differed from this version's — the old one is kept in %s/README.md" "$_rbk"
+      cp "$SRC/README.md" .claude/ 2>/dev/null && say 'README.md refreshed (describes this version of Crewforth)'
+    else
+      warnm "README.md differs from this version's and could not be backed up — left as it is"
+    fi
+  else
+    cp "$SRC/README.md" .claude/ 2>/dev/null
+  fi
+fi
 # Report the migration by what LANDED, not by what was missing: a component the payload lists can still be kept
 # out (EXCL_S), and must not be announced as restored when it was.
 if [ -n "$MIGRATE_MISSING" ]; then
@@ -1199,6 +1354,7 @@ if [ -f .claude/kit-manifest.txt ]; then
     [ -e "$SRC/$entry" ] && continue
     # The 3.0 migration keeps the former .NET pattern skill as the project's own; this sweep's advice is `rm -r`.
     [ "$entry" = skills/cqrs-aop-module ] && continue
+    case " $LEG_KEPT " in *" $entry "*) continue ;; esac   # the legacy sweep above has already named it
     [ -e ".claude/$entry" ] && STALE="$STALE $entry"
   done < .claude/kit-manifest.txt
   if [ -n "$STALE" ]; then
@@ -1218,6 +1374,53 @@ fi
 { for d in "$SRC"/skills/*/;     do [ -d "$d" ] && echo "skills/$(basename "$d")"; done
   for f in "$SRC"/agents/*.md;   do [ -e "$f" ] && echo "agents/$(basename "$f")"; done
 } > .claude/kit-manifest.txt 2>/dev/null || true
+
+# THE PATTERN SKILL'S TRUST. 3.0 keeps cqrs-aop-module as the project's own; the updater vouches for it only when it is
+# PROVABLY the copy Crewforth shipped — every file in it hashes (raw, or with CR removed) to a blob id listed for its
+# path in legacy-blobs.tsv (cqrs-aop-module 2.12-2.13, and devarch-module 1.0.0-2.11.0 renamed in place), and nothing
+# else is in the directory. An edited copy is the user's work, and a skill is executable instruction: it is named,
+# not vouched for, and the next session asks. The old test was the recorded stack (`stack=dotnet`), which measured
+# the wrong thing: a generic-recorded install carrying the skill got nothing and its first session flagged it
+# (field report, reproduced in e2e). Asked only while the skill is still unvetted — the trust gate's own answer,
+# read after the manifest exists — so an update does not repeat itself once it is settled.
+# Returns 0 shipped · 1 not a shipped copy · 2 cannot tell (no git, no list). The check is the legacy sweep's
+# _untouched_copies (hardened in review: a symlink anywhere is refused — a link to arbitrary text used to be "checked"
+# by checking nothing, and --trust-one then recorded the target's digest; zero files is not a match; CR is stripped
+# only for a CRLF copy; paths never reach awk through -v, which would turn SKIL\114.md into SKILL.md).
+_cqrs_shipped(){
+  local u rc
+  u="$(_untouched_copies skills/cqrs-aop-module)"; rc=$?
+  [ "$rc" = 2 ] && return 2
+  [ "$u" = skills/cqrs-aop-module ] && [ -f .claude/skills/cqrs-aop-module/SKILL.md ] && [ ! -L .claude/skills/cqrs-aop-module/SKILL.md ]
+}
+# The gate's answer is read from its output, never through `| grep -q`: grep closing early SIGPIPEs the hook and
+# pipefail turns the whole test false — that is how the first version of this block never ran (e2e, C1).
+# THE USER'S ANSWER WINS. A recorded answer — trusted-components.txt (yes, any version) or declined-components.txt
+# (no) — is never changed here: the updater vouches only when there is none. The RC-1 field run had a user say no,
+# and the update vouched anyway, because the no was never written anywhere (skill-trust.sh --decline-one now does).
+_pans=""
+for _pf in .claude/declined-components.txt .claude/trusted-components.txt; do
+  [ -f "$_pf" ] && [ -z "$_pans" ] && grep -qE '[[:space:]]skills/cqrs-aop-module'$'\r''?$' "$_pf" 2>/dev/null && _pans="$_pf"
+done
+_ptrust=""; [ "$KIT_PRESENT" = 1 ] && [ -f .claude/skills/cqrs-aop-module/SKILL.md ] && [ -z "$_pans" ] \
+  && _ptrust="$(CLAUDE_PROJECT_DIR="$PWD" bash .claude/hooks/skill-trust.sh </dev/null 2>/dev/null || true)"
+[ "$_pans" = .claude/declined-components.txt ] && [ -f .claude/skills/cqrs-aop-module/SKILL.md ] \
+  && say "cqrs-aop-module: you declined to trust it — the update keeps that answer and does not vouch for it."
+if grep -qE '(^|[[:space:]])skills/cqrs-aop-module([[:space:]]|$)' <<< "$_ptrust"; then   # exact name: not skills/cqrs-aop-module-x
+  _cqrs_shipped; _cqs=$?
+  if [ "$_cqs" = 2 ]; then
+    say "cqrs-aop-module could not be checked against the copies Crewforth shipped (git or the shipped list is missing) — not vouched for; the next session will ask whether to trust it."
+  elif [ "$_cqs" = 0 ]; then
+    _tout="$(bash .claude/hooks/skill-trust.sh --trust-one skills/cqrs-aop-module 2>&1)"; _trc=$?
+    if [ "$_trc" = 0 ]; then
+      say "cqrs-aop-module is now a project skill (Crewforth no longer ships it); backend-expert applies it as your project's pattern."
+    else
+      say '⚠️  cqrs-aop-module could not be recorded as trusted (skill-trust.sh exit %s: %s) — the next session will ask about it' "$_trc" "${_tout:-no output}"
+    fi
+  else
+    say "cqrs-aop-module is 2.x's .NET pattern, changed since Crewforth shipped it — not vouched for; the next session will ask whether to trust it."
+  fi
+fi
 
 # stack= is always generic since 3.0; the key is kept for older updaters. Rewritten WITHOUT the pre-2.0
 # 'profile=' key: dropping it is what retires the migration notice, so a second refresh stays quiet — and
@@ -1297,7 +1500,7 @@ if [ -f CLAUDE.md ]; then
       _mt 'the inline block is lines 1-%s; your project section starts at line %s' "$((BND-1))" "$BND"
       printf '     %s%s%s\n' "$D" "$_M" "$R"
       if ask_yes '  Replace that inline block with the single @import line? (a backup is written; this branch is reviewable)'; then
-        BK=".claude/CLAUDE.md.pre-kit-$TS"
+        BK=".claude/CLAUDE.md.pre-kit-${TS:-$(date +%Y%m%d-%H%M%S)}"   # TS is set only when a handover branch was opened
         cp CLAUDE.md "$BK"
         { printf '<!-- Crewforth discipline · on conflict the project rules BELOW win -->\n%s\n\n' "$IMPORT_LINE"
           tail -n +"$BND" CLAUDE.md; } > CLAUDE.md.kit-tmp && mv CLAUDE.md.kit-tmp CLAUDE.md
@@ -1582,7 +1785,7 @@ cat > docs/HANDOVER.md <<HAND
 | # | Decision | Value |
 |---|---|---|
 | 1 | Role clash | $D1 |
-| 2 | Precedence | $D2 (axis-by-axis) |
+| 2 | Precedence | $D2 (axis-by-axis; DISCIPLINE.md §4 tighten-only, except the §4.1 trace allowlist of decision 3) |
 | 3 | Trace gate | $D3 |
 | 4 | Share/hide | $D4 |
 | 5 | Git hook | $D5 |
@@ -1623,7 +1826,7 @@ Goal: don't break the project, don't lose decisions already made, and don't leav
 ## Decision
 - Crewforth's agents were installed under the crew- namespace; the project's agents are preserved side by side, untouched.
 - Crewforth's discipline is active via .claude/DISCIPLINE.md + @import; the project CLAUDE.md is untouched.
-- On rule conflicts the PROJECT wins (axis-by-axis).
+- On rule conflicts the PROJECT wins (axis-by-axis); in DISCIPLINE.md §4 it can only tighten, never loosen — the one exception is the §4.1 trace allowlist chosen at adoption (decision 3).
 - Git gates: $HOOKDESC.
 - Every change is on a reviewable git branch; rollback = git.
 
@@ -1713,7 +1916,7 @@ subm 'see it:   open the Source Control / Changes panel (every added + changed f
 if bash "$SRC/eval/preflight.sh" --has node 2>/dev/null; then
   subm 'panel:    %s opens it from this project (or: %s)' /crew-studio 'node .claude/studio/server/index.js --open'
 else
-  subm 'panel:    needs Node 18+, absent here — Crewforth can fetch one: %s' 'bash .claude/studio/ensure-node.sh --plan'
+  subm 'panel:    needs Node 18+, absent here — Crewforth can fetch one (Bash tool, not PowerShell): %s' 'bash .claude/studio/ensure-node.sh --plan'
   _mt '(it asks first, verifies the checksum, and touches nothing outside %s)' '~/.claude/studio-runtime'; sub "          $_M"
 fi
 sub "$ACCEPT_LINE"

@@ -6,7 +6,7 @@
   <img src="assets/logo.svg" alt="Crewforth" width="420">
 </picture>
 
-![Version](https://img.shields.io/badge/version-3.0.0-6D28D9?style=flat-square)
+![Version](https://img.shields.io/badge/version-3.0.1-6D28D9?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-5c6472?style=flat-square)
 
 🇬🇧 English · [🇹🇷 Türkçe](README.tr.md)
@@ -112,7 +112,7 @@ Studio is a local panel that draws a delegation as it happens: each agent is a n
 /plugin install crewforth@crewforth
 ```
 
-When a new version is published, Claude asks once, at the start of a session, whether to update now, later or never for that version; it never updates on its own. `/crew-update` runs the update and reports what changed, and `./CLAUDE.md` is never touched. On Windows, use Git Bash. Every option: [crewforth.com/install](https://crewforth.com/install).
+When a new version is published, Claude asks once, at the start of a session, whether to update now, later or never for that version; it never updates on its own. `/crew-update` runs the update and reports what changed, and `./CLAUDE.md` is never touched. What an older version installed and Crewforth no longer ships is moved to `.claude/.legacy-backup/` if it is unchanged, with a one-line restore; anything you edited stays where it is and is named. On Windows, use Git Bash; the gates run only when Claude Code finds it, and `/crew-doctor` says when it does not. Every option: [crewforth.com/install](https://crewforth.com/install).
 
 ## How we measure
 

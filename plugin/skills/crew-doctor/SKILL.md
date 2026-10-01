@@ -6,7 +6,7 @@ metadata:
 ---
 # /crew-doctor
 Verify Crewforth is actually *active* in this project (not just present on disk):
-1. Run `bash .claude/eval/doctor.sh`.
+1. Run `bash .claude/eval/doctor.sh` (Bash tool, not PowerShell).
 2. Read its report. It checks: VERSION present · every hook executable · the required git hooks (pre-commit,
    commit-msg) present · **guard-bash actually blocks a force-push** (catches a hook that is present but neutered) ·
    `core.hooksPath` points at `.claude/hooks` (else the §4.1/§4.2 commit trace + secret/bloat scan never runs) ·
@@ -33,14 +33,22 @@ with one exception: the skill listing, which a plugin cannot size for itself (it
 `LC_ALL=C awk -f "${CLAUDE_PLUGIN_ROOT}/eval/lib/skill-listing.awk" "${CLAUDE_PLUGIN_ROOT}"/skills/*/SKILL.md`
 (prints characters, then skills). At the default fraction a 200,000-token model has 8,000 characters for the whole
 listing, and Claude Code's own skills take about 5,900 of them (measured on v2.1.282). If Crewforth's number plus
-5,900 is over 8,000, tell the user plainly: on such a model the least-used skills lose their descriptions and stop
-being picked; one line in `~/.claude/settings.json` fixes it — `"skillListingBudgetFraction": 0.04`; the cost is
+5,900 is over 8,000, tell the user plainly: on such a model the least-used skills lose their descriptions and are
+less likely to be picked on their own; one line in `~/.claude/settings.json` fixes it — `"skillListingBudgetFraction": 0.04`; the cost is
 that the listing is then sent whole every turn, about (that total ÷ 4) tokens, (tokens ÷ 2,000)% of a 200k window.
 It is their call — show the line and the cost, do not edit their settings. On a 1,000,000-token model the default
 already fits.
 
+**On Windows, check Git Bash too.** Without a Git Bash where Claude Code looks, it runs every hook through
+PowerShell and Crewforth's gates do not run. The full install's doctor runs the same script:
+`bash "${CLAUDE_PLUGIN_ROOT}/eval/lib/git-bash.sh"` (Bash tool, not PowerShell). Pass its lines to the user verbatim;
+a ❌ is a failure with its fix. If this session has **no Bash tool at all**, that is the finding itself — Claude Code
+found no Git Bash: tell the user the gates do not run and that the fix is Git for Windows in its default folder, or
+`CLAUDE_CODE_GIT_BASH_PATH` set to its `bin\bash.exe`. Do not run the script through PowerShell.
+
 **The eval scripts are installer-only, by decision.** `eval/` — `doctor.sh`, `smoke-test.sh`, `routing-eval.sh`,
-`scan-skill.sh`, `utilization.sh` — ships with `start.sh` and `adopt.sh` and NOT with the plugin edition. The eval
+`scan-skill.sh`, `utilization.sh` — ships with `start.sh` and `adopt.sh` and NOT with the plugin edition; `eval/lib/`
+(the JSON reader, the listing counter, the Git Bash check) ships with both. The eval
 scripts are developer instruments: they inspect an installation from outside it, and the plugin edition has no
-installation to inspect. Say this plainly when someone asks why `/crew-doctor` reports only the listing on a plugin install,
+installation to inspect. Say this plainly when someone asks why `/crew-doctor` reports only the listing (and, on Windows, Git Bash) on a plugin install,
 rather than treating it as a defect. The Studio panel ships in both editions (`/crew-studio`).

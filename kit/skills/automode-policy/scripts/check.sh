@@ -88,13 +88,13 @@ fi
 
 if [ "$KITR" -eq 0 ]; then
   echo "  ·  Crewforth auto-mode rules not in the classifier config (built-ins only) — not a gate either way"
-  echo "     ↳ optional: bash .claude/skills/automode-policy/scripts/apply.sh"
+  echo "     ↳ optional: bash .claude/skills/automode-policy/scripts/apply.sh (Bash tool, not PowerShell)"
   exit 3
 fi
 
 if [ "$KITR" -lt 3 ]; then
   echo "  ·  Crewforth auto-mode rules PARTIAL ($KITR/3 present) — built-ins intact"
-  echo "     ↳ re-apply: bash .claude/skills/automode-policy/scripts/apply.sh"
+  echo "     ↳ re-apply: bash .claude/skills/automode-policy/scripts/apply.sh (Bash tool, not PowerShell)"
   exit 3
 fi
 

@@ -51,7 +51,9 @@ bash start.sh [--private|--shared] [--lang tr|en] [--yes] [--version] [-h]
 
 Sihirbaz önce hangi dilde konuşacağını sorar (Türkçe ya da İngilizce), ardından kurulumu kimin kullanacağını; sonunda hiçbir şey yazılmadan önce onaylayacağınız bir özet gösterir. Seçtiğiniz dil tüm sorulara ve mesajlara uygulanır; kurulan dosyalar İngilizce kalır.
 
-**Her kurulum aynı ekibi getiriyor:** {{AGENT_COUNT}} ajanın ve {{SKILL_COUNT}} skill'in tamamı. Backend, web ve mobil (React Native/Expo) bir arada geliyor. API olarak başlayıp web istemcisi kazanan bir proje, ikisi için de baştan donanımlıdır.
+**Her kurulum aynı ekibi getiriyor:** {{AGENT_COUNT}} ajanın ve {{SKILL_COUNT}} skill'in tamamı. Backend, web ve mobil bir arada geliyor; yığın projeden okunur (`CLAUDE.md`'deki `## Stack` ya da depo). API olarak başlayıp web istemcisi kazanan bir proje, ikisi için de baştan donanımlıdır.
+
+İstemci tarafında da varsayılan yığın yok: ilk istemci işi önce `## Stack`'teki `Client:` satırını, sonra deponun manifestlerini (`package.json`, `pubspec.yaml`, `Package.swift`, `build.gradle`, MAUI `*.csproj`) okur; yalnız boş bir depoda, hiçbir seçeneği önermeden bir kez sorar ve cevabı kaydeder. React Native/Expo, hazır isteğe bağlı katmanlardan yalnız biridir.
 
 | Kurulumda sorulan | Seçenekler | Neyi değiştirir |
 |:--|:--|:--|
