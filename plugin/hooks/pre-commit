@@ -399,7 +399,10 @@ PAL="";  [ -n "$GITROOT" ] && [ -f "$GITROOT/.private-allowlist.txt" ] && PAL="$
     # Git Bash reports /c/Users/x for what Windows itself calls C:\Users\x — both spellings reach a file.
     case "$HOME" in
       /[a-zA-Z]/?*)
-        d="$(printf '%s' "${HOME:1:1}" | tr 'a-z' 'A-Z')"; r="${HOME:3}"
+        # The drive letter, upper-cased with a builtin: `$(printf … | tr a-z A-Z)` was a subshell and a process on
+        # every commit, on the platform where a process costs most (bash 3.2 has no ${x^^}).
+        d="${HOME:1:1}"; r="${HOME:3}"
+        case "$d" in [a-z]) _lc=abcdefghijklmnopqrstuvwxyz; _uc=ABCDEFGHIJKLMNOPQRSTUVWXYZ; _i="${_lc%%"$d"*}"; d="${_uc:${#_i}:1}" ;; esac
         printf '%s\n' "$d:/$r" "$d:\\${r//\//\\}" ;;
     esac
   fi

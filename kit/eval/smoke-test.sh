@@ -3469,30 +3469,107 @@ for _c in 'terraform destroy --help' 'terraform plan -h' 'kubectl auth can-i del
 done
 [ -z "$_ch_bad" ] && pass "chained exemptions: a safe command in front no longer carries a forbidden one ($_ch_n of 27 shapes; same-segment exemptions still pass)" \
                   || fail "exemption leaks across a chain, or a legitimate exemption broke:$_ch_bad"
-# The read-only path costs processes, and on Git Bash a process is the price: measured on a loaded Windows 11
-# machine, one bare `bash` took 1.3-3.9 s and `git status` walked this hook through 14 of them (13 greps + the
-# stdin cat) — 37-66 s per tool call. The rules now run their regexes in the shell; what is left is the one `cat`
-# that reads stdin. Counted, not timed (a fork costs ~2 ms on macOS, so a regression is invisible to a clock).
-# The twin plants one `printf | grep` into a copy of the hook: a counter that cannot see it measures nothing.
-_gbfc(){ printf '%s' "$2" | bash -x "$1" >/dev/null 2>"$3"; grep -cE '^\++ (grep|sed|awk|tr|cat|head|tail|cut|sort|find|wc|mktemp|basename|dirname|git|jq|python3?|node|perl)( |$)' "$3" | tr -cd '0-9'; }
-_GBT="$(mktemp -d)"; _gbmax=0; _gbrow=""
-for _c in 'git status --short' 'git log --oneline -2 && git status --short | head; ls; cat CHANGELOG.md' 'ls -la' 'git diff --stat'; do
-  _n="$(_gbfc "$HOOKS/guard-bash.sh" "$(gj default "$_c")" "$_GBT/t")"; _n="${_n:-0}"
-  _gbrow="$_gbrow $_n"; [ "$_n" -gt "$_gbmax" ] && _gbmax="$_n"
-done
-sed '/^INPUT="\$(cat)"/a\
-printf x | grep -q x
-' "$HOOKS/guard-bash.sh" > "$_GBT/twin.sh"
-_tw="$(_gbfc "$_GBT/twin.sh" "$(gj default 'git status --short')" "$_GBT/t2")"; _tw="${_tw:-0}"
-if [ "$_gbmax" = 0 ]; then
-  fail "guard-bash read-path cost: the trace recorded no external command at all — the measurement is broken, not the hook"
-elif [ "$_tw" -le "$_gbmax" ]; then
-  fail "guard-bash read-path cost: the planted grep did not raise the count ($_tw) — the counter measures nothing"
-elif [ "$_gbmax" -le 1 ]; then
-  pass "guard-bash read-only path: at most 1 external process per call (git status · read chain · ls · diff:$_gbrow; twin with one planted grep: $_tw)"
+# THE COST OF A GATE IS COUNTED IN PROCESSES, hook by hook and call by call (3.1.0). A PreToolUse hook that reaches its
+# timeout does not block — Claude Code's reference says so, and a field session showed it nine times: the command ran
+# with no gate. On Git Bash a process costs 62-135 ms, and on a loaded machine 1.3-3.9 s, so a slow gate is an absent
+# gate, and what makes it slow is forks.
+# The 3.0.1 pin counted external commands only and read "1 per call". It could not see a `$( )`, which is a fork too:
+# counted with them, a `git status` cost guard-bash.sh 5 and guard-commit-scan.sh 7, and a Write cost guard-write.sh 4.
+# All three are 0 now, and this table pins every row: hook @@ expected rc @@ ceiling @@ tool @@ payload. The last two
+# rows are the commit scanners themselves: measured in the field at 32-94 s for one `git commit` on a machine where a
+# process costs half a second, they are the most expensive thing a gate does, and the ceiling keeps them from growing.
+# cost = subshells entered + external commands run, read from an xtrace that prints $BASH_SUBSHELL on every line
+# (bash 3.2 has it; $BASHPID is 4.0+). `source` and `eval` deepen xtrace's `+` prefix but not $BASH_SUBSHELL, which is
+# why the prefix is not what is counted. A floor: a pipeline element that is a builtin is a fork it does not see.
+# The counter is proven before it is believed: a script with a known answer, the same script with one `$( )` and one
+# grep added, and — per hook — a copy with a fork planted after the stdin read. A row is read only when the hook
+# answered the rc the row expects: a crashed hook costs nothing, and would pass.
+_gcost(){  # $1 = script, $2 = payload file, $3 = scratch, $4 = an argument for the script (optional) -> sets _GCR (rc), _GCN (cost) and _GCE (external commands alone)
+  PS4='+@$BASH_SUBSHELL@ ' bash -x "$1" ${4:+"$4"} < "$2" >/dev/null 2>"$3"; _GCR=$?
+  _GCN="$(awk '/^\++@[0-9]+@ / { s = $0; sub(/^\++@/, "", s); l = s + 0; sub(/^[0-9]+@ /, "", s)
+      if (l > p) n += (l - p); p = l; split(s, a, " "); w = a[1]; gsub(/^\047|\047$/, "", w)
+      if (w ~ /^(grep|sed|awk|tr|cat|head|tail|cut|sort|find|wc|mktemp|basename|dirname|git|jq|python3?|node|perl|date|uname|sha256sum|shasum|cksum|stat|ls|rm|cp|mv|mkdir|cygpath|bash|sh|file|xargs|comm|uniq|od)$/) { n++; e++ } }
+    END { print n + 0, e + 0 }' "$3")"; _GCE="${_GCN#* }"; _GCN="${_GCN%% *}"; }
+# The fixture lives at its PHYSICAL path: guard-write.sh pays one fork, on purpose, to resolve a symlinked ancestor,
+# and macOS's temp directory is one (/var -> private/var) — the ordinary repository the table speaks for has none.
+_GCT="$(mktemp -d)"; _GCT="$(cd -P "$_GCT" && pwd)"; _gcp="$_GCT/proj"; mkdir -p "$_gcp/.claude"
+cp -R "$HOOKS" "$_gcp/.claude/hooks"; mkdir -p "$_gcp/.claude/eval"; cp -R "$ROOT/eval/lib" "$_gcp/.claude/eval/lib"
+( cd "$_gcp" && git init -q && git config user.email t@t.t && git config user.name t && echo a > a.txt && git add a.txt \
+  && git -c core.hooksPath=/dev/null commit -qm base && echo b >> a.txt && git add a.txt ) >/dev/null 2>&1
+printf '%s\n' 'f(){ :; }' 'X="$(echo hi)"' 'Y="$(echo hi | tr a-z A-Z)"' 'cat </dev/null' 'printf x | grep -q x' '[ -n "$X" ] && f' '. ./inc.sh; eval "W=1"' > "$_GCT/cal.sh"
+echo 'V=2' > "$_GCT/inc.sh"; { cat "$_GCT/cal.sh"; echo 'Z="$(printf a)"; printf x | grep -q x'; } > "$_GCT/cal2.sh"; : > "$_GCT/empty"
+( cd "$_GCT" && _gcost cal.sh empty t0 && printf '%s' "$_GCN" > c1 && _gcost cal2.sh empty t0 && printf '%s' "$_GCN" > c2 )
+_gc1="$(cat "$_GCT/c1" 2>/dev/null)"; _gc2="$(cat "$_GCT/c2" 2>/dev/null)"
+if [ "$_gc1" != 5 ] || [ "$_gc2" != 7 ]; then
+  skip fixture "gate cost table: the counter read ${_gc1:-nothing} and ${_gc2:-nothing} on its calibration scripts, want 5 and 7 — this bash's xtrace reads differently, so no cost is claimed here"
 else
-  fail "guard-bash read-only path spawns $_gbmax processes per call (per command:$_gbrow) — budget 1; Git Bash pays up to seconds for each"
+  gcj(){ printf '{"tool_name":"%s","permission_mode":"default","tool_input":{"command":"%s"},"cwd":"%s"}' "$1" "$2" "$_gcp"; }
+  gwj(){ printf '{"tool_name":"Write","permission_mode":"default","tool_input":{"file_path":"%s/%s","content":"x"},"cwd":"%s"}' "$_gcp" "$1" "$_gcp"; }
+  GCT='guard-bash @@ 0 @@ 0 @@ Bash @@ git status --short
+guard-bash @@ 0 @@ 0 @@ Bash @@ ls -la
+guard-bash @@ 0 @@ 0 @@ Bash @@ git log --oneline -2 && git status --short | head; ls; cat CHANGELOG.md
+guard-bash @@ 0 @@ 0 @@ Bash @@ git diff --stat
+guard-bash @@ 0 @@ 0 @@ Bash @@ npm test -- --watch=false
+guard-bash @@ 0 @@ 4 @@ Bash @@ rm -rf build
+guard-bash @@ 0 @@ 5 @@ Bash @@ git add -A
+guard-bash @@ 2 @@ 3 @@ Bash @@ git commit -m x
+guard-bash @@ 0 @@ 11 @@ Bash @@ git push origin feat/x
+guard-bash @@ 0 @@ 1 @@ PowerShell @@ Get-ChildItem -Recurse src
+guard-bash @@ 0 @@ 4 @@ PowerShell @@ Remove-Item -Recurse -Force build
+guard-commit-scan @@ 0 @@ 0 @@ Bash @@ git status --short
+guard-commit-scan @@ 0 @@ 0 @@ Bash @@ ls -la
+guard-commit-scan @@ 0 @@ 0 @@ Bash @@ git push origin feat/x
+guard-commit-scan @@ 0 @@ 0 @@ Bash @@ rm -rf build
+guard-commit-scan @@ 0 @@ 15 @@ Bash @@ git commit -m x
+guard-write @@ 0 @@ 0 @@ Write @@ src/app.ts
+guard-write @@ 0 @@ 0 @@ Write @@ .env
+guard-write @@ 2 @@ 0 @@ Write @@ .claude/hooks/guard-bash.sh
+guard-powershell @@ 0 @@ 0 @@ PowerShell @@ Get-ChildItem -Recurse src
+pre-commit @@ 0 @@ 22 @@ Script @@ -
+commit-msg @@ 0 @@ 15 @@ Script @@ msg'
+  _gcn=0; _gcbad=""; _gcrow=""
+  while IFS= read -r _gl; do [ -z "$_gl" ] && continue
+    _gh="${_gl%% @@ *}"; _gl="${_gl#* @@ }"; _gr="${_gl%% @@ *}"; _gl="${_gl#* @@ }"; _gb="${_gl%% @@ *}"; _gl="${_gl#* @@ }"; _gt="${_gl%% @@ *}"; _gc="${_gl#* @@ }"
+    # The two scanners a commit runs (through guard-commit-scan.sh, and again as git hooks) are scripts, not hooks:
+    # no payload, and commit-msg takes the message file. They are where a commit's seconds go on a slow machine.
+    if [ "$_gt" = Script ]; then _gs=".claude/hooks/$_gh"; : > "$_GCT/p.json"; _ga=""; [ "$_gc" = msg ] && { printf 'feat: x\n' > "$_GCT/m.txt"; _ga="$_GCT/m.txt"; }
+    else _gs=".claude/hooks/$_gh.sh"; _ga=""; if [ "$_gt" = Write ]; then gwj "$_gc" > "$_GCT/p.json"; else gcj "$_gt" "$_gc" > "$_GCT/p.json"; fi; fi
+    # HOME is the fixture's, not the machine's: pre-commit derives its private-path terms from it, in one spelling
+    # on POSIX and three on Git Bash, so the machine's own HOME made this row a different measurement per platform.
+    # The two scanner rows count EXTERNAL COMMANDS ONLY. They are built of pipelines and process substitution, and how
+    # deep xtrace reports those is not the same in every bash: the same pre-commit read 9 subshells on bash 3.2 and 13 on
+    # 5.3 (measured on macOS and on Git Bash), while its 22 external commands were the same 22 on both.
+    ( cd "$_gcp" && HOME=/c/Users/crewtester CLAUDE_PROJECT_DIR="$_gcp" CREW_GATE_LOG=/dev/null _gcost "$_gs" "$_GCT/p.json" "$_GCT/t" "$_ga" && { [ "$_gt" = Script ] && _GCN="$_GCE"; printf '%s %s' "$_GCR" "$_GCN" > "$_GCT/r"; } )
+    read -r _grc _gn < "$_GCT/r" || true; _gcn=$((_gcn+1)); _gcrow="$_gcrow $_gn"
+    if [ "$_grc" != "$_gr" ]; then _gcbad="$_gcbad | $_gh [$_gc]: answered rc $_grc, want $_gr — its cost ($_gn) means nothing"
+    elif [ "${_gn:-99}" -gt "$_gb" ]; then _gcbad="$_gcbad | $_gh [$_gc]: $_gn processes, ceiling $_gb"; fi
+  done <<< "$GCT"
+  # Per hook: one `$( )` + one grep planted right after the stdin read must raise a 0-cost row by at least 2.
+  _gctw=""
+  for _gh in guard-bash guard-commit-scan guard-write guard-powershell; do
+    sed '/^IFS= read -r -d .. INPUT || true$/a\
+_PLANT="$(printf x | grep -c x)"
+' "$_gcp/.claude/hooks/$_gh.sh" > "$_gcp/.claude/hooks/twin-$_gh.sh"
+    case "$_gh" in guard-write) gwj src/app.ts > "$_GCT/p.json" ;; guard-powershell) gcj PowerShell 'Get-ChildItem -Recurse src' > "$_GCT/p.json" ;; *) gcj Bash 'git status --short' > "$_GCT/p.json" ;; esac
+    ( cd "$_gcp" && CLAUDE_PROJECT_DIR="$_gcp" CREW_GATE_LOG=/dev/null _gcost ".claude/hooks/twin-$_gh.sh" "$_GCT/p.json" "$_GCT/t" && printf '%s' "$_GCN" > "$_GCT/r" )
+    _gn="$(cat "$_GCT/r")"; [ "${_gn:-0}" -ge 2 ] || _gctw="$_gctw $_gh($_gn)"
+  done
+  if [ "$_gcn" != 22 ]; then fail "gate cost table: read $_gcn rows, want 22 — the table was not read as written"
+  elif [ -n "$_gctw" ]; then fail "gate cost table: a planted \$( ) + grep did not show in:$_gctw — the counter sees nothing there, so its zeros prove nothing"
+  elif [ -z "$_gcbad" ]; then pass "gate cost, in processes per call: every read-only Bash call, Write and PowerShell call costs 0 in all four gates ($_gcn rows:$_gcrow; counter calibrated 5/7, a planted fork shows in each hook)"
+  else fail "gate cost over its ceiling (on Git Bash each process is 62-135 ms, and a gate that times out does not block):$_gcbad"; fi
 fi
+# Wall clock, SECONDARY and generous: ten read-only calls of each always-on gate. Measured 0.2 s for the ten on macOS
+# and about 1.6 s on a stock Windows laptop; the bound is far above both, so only a real regression trips it. The
+# twin sleeps: a clock that cannot see three seconds measures nothing.
+gcj Bash 'git status --short' > "$_GCT/p.json" 2>/dev/null || printf '{"tool_name":"Bash","permission_mode":"default","tool_input":{"command":"git status --short"}}' > "$_GCT/p.json"
+_gws=$SECONDS; _i=0; while [ "$_i" -lt 10 ]; do for _gh in guard-bash guard-commit-scan; do ( cd "$_gcp" && CLAUDE_PROJECT_DIR="$_gcp" CREW_GATE_LOG=/dev/null bash ".claude/hooks/$_gh.sh" < "$_GCT/p.json" >/dev/null 2>&1 ); done; _i=$((_i+1)); done; _gwe=$((SECONDS-_gws))
+printf '%s\n' 'sleep 3' > "$_GCT/slow.sh"; _gws=$SECONDS; bash "$_GCT/slow.sh"; _gwt=$((SECONDS-_gws))
+if [ "$_gwt" -lt 2 ]; then fail "gate wall clock: a 3-second sleep read as ${_gwt}s — the clock measures nothing"
+elif [ "$_gwe" -le 30 ]; then pass "gate wall clock: 10 read-only Bash calls through guard-bash + guard-commit-scan took ${_gwe}s (bound 30s; the sleeping twin read ${_gwt}s)"
+else fail "gate wall clock: 10 read-only Bash calls took ${_gwe}s through guard-bash + guard-commit-scan (bound 30s) — at this rate a call nears the hook timeout on a loaded machine"; fi
+rm -rf "$_GCT"
+_GBT="$(mktemp -d)"
 # Coarse and SECONDARY: the first version of the in-shell matcher compiled its regex once per line per rule and a
 # 2,000-line heredoc took 70 s (0.2 s before). Nothing forks more in that case, so the count above cannot see it.
 # Measured after the fix: 0.2 s on macOS. The bound is 100x that, so a slow runner does not trip it.
@@ -3961,7 +4038,7 @@ if [ -n "$GBX" ]; then
     && pass "one-token: a decoy flood is refused as over-cap, and said so (${#_flood} bytes)" \
     || fail "one-token FAIL-OPEN: a decoy flood produced rc=$_frc — ${_fo:-<silence>}"
   [ $((_t1-_t0)) -le 10 ] \
-    && pass "one-token: the pass cap bounds that refusal ($((_t1-_t0))s, the hook's timeout is 60s)" \
+    && pass "one-token: the pass cap bounds that refusal ($((_t1-_t0))s, far inside the hook's timeout)" \
     || fail "one-token: the decoy flood took $((_t1-_t0))s — the cap is not bounding the work"
   # THE TWIN THAT KEEPS THE CAP HONEST, and it is the one to write first: an ORDINARY command whose own TEXT
   # contains the key name many times — writing a JSON schema, a settings file, an OpenAPI doc — must be
@@ -6301,6 +6378,31 @@ else for _gf in $_gpw_f; do
   else fail "${_gf##*/}: $2 of $1 Crewforth command hooks say \"shell\": \"bash\" — the rest run under PowerShell when Claude Code finds no Git Bash, and fail open"; fi
 done; fi
 rm -rf "$_hsd"
+
+# A gate's timeout is not a comfort setting: a PreToolUse hook that reaches it does not block (Claude Code's hooks
+# reference: "doesn't block the tool call … don't count on a stalled hook to act as a gate"), and a field session on
+# 3.0.0 showed nine of them in one day — the commands ran with no gate. Crewforth had set 60 s where Claude Code's
+# own default is 600, and the slowest machine measured needed 32-134 s for one guard-bash call. The four PreToolUse
+# gates carry 600 now; every other hook keeps 60 — when one of those times out, nothing is left unguarded.
+# Read per entry, in both editions; the twin lowers one gate back to 60 and must be seen.
+gate_timeouts(){ awk '{ buf = buf $0 "\n" } END { pre = index(buf, "\"PreToolUse\""); if (!pre) { print "none"; exit }
+    rest = substr(buf, pre); e = index(rest, "\"UserPromptSubmit\""); if (e) rest = substr(rest, 1, e)
+    while (match(rest, /\{[^{}]*"type"[[:space:]]*:[[:space:]]*"command"[^{}]*\}/)) { o = substr(rest, RSTART, RLENGTH); rest = substr(rest, RSTART + RLENGTH)
+      n++; t = 0; if (match(o, /"timeout"[[:space:]]*:[[:space:]]*[0-9]+/)) { t = substr(o, RSTART, RLENGTH); sub(/.*:[[:space:]]*/, "", t) }
+      if (t + 0 < 600) low++ }
+    printf "%d %d", n, low }' "$1"; }
+_gtd="$(mktemp -d)"
+tr -d '\n' < "$ROOT/settings.json" | sed 's/guard-bash\.sh\([^}]*\)"timeout": 600/guard-bash.sh\1"timeout": 60/' > "$_gtd/twin.json"
+_gtw="$(gate_timeouts "$_gtd/twin.json")"
+if [ "$_gtw" != "4 1" ]; then fail "gate timeout pin: the twin with guard-bash.sh back at 60 s read '$_gtw', want '4 1' — the pin sees nothing"
+else for _gf in $_gpw_f; do
+  [ -f "$_gf" ] || continue
+  set -- $(gate_timeouts "$_gf")
+  if [ "${1:-0}" != 4 ]; then fail "${_gf##*/}: $1 PreToolUse gate hooks read, want 4 — the pin did not read the file as written"
+  elif [ "${2:-9}" = 0 ]; then pass "${_gf##*/}: all 4 PreToolUse gates have a 600 s timeout (a gate that times out does not block)"
+  else fail "${_gf##*/}: $2 of 4 PreToolUse gates time out before 600 s — a timed-out gate does not block"; fi
+done; fi
+rm -rf "$_gtd"
 
 sec "== 12c) every command the model is told to run says: the Bash tool, not PowerShell =="
 # SCOPE, one rule (decided): Crewforth's own scripts — every `.sh` the payload ships, read from the payload itself, so a
