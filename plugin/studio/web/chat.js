@@ -45,10 +45,11 @@ export function quickReplies(text) {
 /* ========================================================== one session === */
 
 class Pane {
-  constructor(session, { api, headers, onChange, readOnly = false }) {
+  constructor(session, { api, headers, onChange, onPermissions, readOnly = false }) {
     this.api = api;
     this.headers = headers;
     this.onChange = onChange;
+    this.onPermissions = onPermissions ?? (() => {});
     this.readOnly = readOnly;
     this.session = session;
     this.id = session.sessionId;
@@ -61,7 +62,6 @@ class Pane {
     this.root = el('div', 'pane');
     this.root.innerHTML = `
       <div class="chat-log"></div>
-      <div class="perm-queue" hidden></div>
       <form class="chat-form">
         <textarea class="chat-input" rows="2"
           placeholder="Message this session…  (Enter to send, Shift+Enter for a newline)"></textarea>
@@ -75,7 +75,6 @@ class Pane {
       </div>`;
 
     this.logEl = this.root.querySelector('.chat-log');
-    this.permEl = this.root.querySelector('.perm-queue');
     this.formEl = this.root.querySelector('.chat-form');
     this.inputEl = this.root.querySelector('.chat-input');
     this.roEl = this.root.querySelector('.chat-ro');
@@ -179,8 +178,10 @@ class Pane {
     if (rec.parent_tool_use_id) return;
 
     if (rec.type === 'permissions') {
+      // The requests themselves are drawn by the approval dock, under the canvas: one place for every session,
+      // whichever conversation is in front. This pane keeps the count for its tab.
       this.permissions = rec.pending ?? [];
-      this.paintPermissions();
+      this.onPermissions(this, rec);
       this.onChange(this);
       return;
     }
@@ -287,42 +288,6 @@ class Pane {
     this.scroll();
   }
 
-  paintPermissions() {
-    const list = this.permissions ?? [];
-    this.permEl.hidden = list.length === 0;
-    if (!list.length) { this.permEl.replaceChildren(); return; }
-
-    const wait = this.session?.gateWaitSeconds ?? null;
-    const frag = document.createDocumentFragment();
-    for (const r of list) {
-      const card = el('div', 'perm');
-      const head = el('div', 'perm-head');
-      head.append(el('span', 'perm-tool', r.toolName));
-      // The clock is part of the decision: silence becomes a denial, and the
-      // reader should see that coming rather than discover it.
-      if (wait) {
-        const left = Math.max(0, wait - Math.round((Date.now() - r.askedAt) / 1000));
-        head.append(el('span', 'perm-clock', `${left}s → deny`));
-      }
-      card.append(head);
-      if (r.detail) card.append(el('pre', 'perm-detail', String(r.detail).slice(0, 600)));
-
-      const acts = el('div', 'perm-acts');
-      for (const [verdict, label, cls] of [
-        ['allow', 'allow once', 'ok'],
-        ['always', `always allow ${r.toolName}`, ''],
-        ['deny', 'deny', 'bad'],
-      ]) {
-        const b = el('button', `perm-btn ${cls}`, label);
-        b.addEventListener('click', () => this.decide(r.toolUseId, verdict, card));
-        acts.append(b);
-      }
-      card.append(acts);
-      frag.append(card);
-    }
-    this.permEl.replaceChildren(frag);
-  }
-
   paintState() {
     const s = this.session;
     const dead = s.state === 'exited' || s.state === 'failed';
@@ -371,18 +336,6 @@ class Pane {
     else { this.session = res.session; this.paintState(); this.onChange(this); }
   }
 
-  async decide(toolUseId, verdict, card) {
-    for (const b of card.querySelectorAll('button')) b.disabled = true;
-    const res = await fetch(
-      this.api(`/api/owned/${encodeURIComponent(this.id)}/permissions/${encodeURIComponent(toolUseId)}`),
-      { method: 'POST', headers: { 'content-type': 'application/json', ...this.headers }, body: JSON.stringify({ verdict }) },
-    ).then((r) => r.json()).catch((e) => ({ ok: false, reason: e.message }));
-    if (!res.ok) {
-      this.note(`Decision not recorded: ${res.reason}`, 'bad');
-      for (const b of card.querySelectorAll('button')) b.disabled = false;
-    }
-  }
-
   async stop() {
     await fetch(this.api(`/api/owned/${encodeURIComponent(this.id)}/stop`), {
       method: 'POST', headers: this.headers,
@@ -400,6 +353,8 @@ export class Chat {
     this.panes = new Map();
     this.activeId = null;
     this.onActivate = () => {};
+    // (pane, { pending, now }) — a session's waiting requests changed.
+    this.onPermissions = () => {};
 
     this.root.innerHTML = `
       <div class="chat-head">
@@ -420,9 +375,6 @@ export class Chat {
     this.growEl = this.root.querySelector('.chat-grow');
     this.onGrow = () => {};
     this.growEl.addEventListener('click', () => this.onGrow());
-
-    // Countdowns have to move on their own; nothing else re-renders them.
-    setInterval(() => { if (this.active?.permissions?.length) this.active.paintPermissions(); }, 1000);
   }
 
   get active() { return this.activeId ? this.panes.get(this.activeId) : null; }
@@ -457,8 +409,19 @@ export class Chat {
 
   open(session) {
     let pane = this.panes.get(session.sessionId);
+    // Continuing a session in place keeps its id. The pane that was only reading it has no stream and no way
+    // to send, so it is replaced: left as it was, the session would be owned and still say "read-only".
+    if (pane?.readOnly) {
+      pane.disconnect();
+      pane.root.remove();
+      this.panes.delete(session.sessionId);
+      pane = null;
+    }
     if (!pane) {
-      pane = new Pane(session, { api: this.api, headers: this.headers, onChange: () => this.paintTabs() });
+      pane = new Pane(session, {
+        api: this.api, headers: this.headers, onChange: () => this.paintTabs(),
+        onPermissions: (p, rec) => this.onPermissions(p, rec),
+      });
       this.panesEl.append(pane.root);
       this.panes.set(session.sessionId, pane);
     }

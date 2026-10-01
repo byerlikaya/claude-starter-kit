@@ -369,6 +369,20 @@ export class Canvas {
     this.#redraw();
   }
 
+  /** The same mark a card carries, for a surface outside the canvas: one answer to "whose agent is this". */
+  tileFor(n) {
+    const tile = mk('span', 'cv-tile');
+    if (n?.kind === 'agent') this.#fillTile(tile, n);
+    else tile.innerHTML = MARK.session;
+    return tile;
+  }
+
+  /** The word and tone a node's status is drawn in on its card. */
+  statusOf(n) {
+    if (n?.kind === 'session') return this.sessionState ?? { word: null, tone: null, known: false };
+    return this.#statusOf(n);
+  }
+
   expandAll() {
     for (const it of this.lastPlan?.items ?? []) if (it.kind === 'group') this.open.set(it.id, true);
     // Opening one level can reveal groups inside it; open those too.

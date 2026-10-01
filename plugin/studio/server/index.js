@@ -25,7 +25,7 @@ import { parsePeers, askAll, ask } from './lib/peers.js';
 import {
   createSession, getSession, listSessionsOwned, reap, stopAll, ALLOWED_MODES,
 } from './lib/session.js';
-import { decide, pending, alwaysList } from './lib/permissions.js';
+import { decide, pending, alwaysList, revoke } from './lib/permissions.js';
 import { open as openTerminal, plan as terminalPlan } from './lib/terminal.js';
 import { gateLog, gateReport, sessionStats, board } from './lib/kit-telemetry.js';
 import { writeState, clearStateSync, findRunning } from './lib/instance.js';
@@ -387,7 +387,7 @@ async function handle(req, res) {
 
   if (url.pathname === '/api/owned' && req.method === 'GET') {
     reap();
-    return sendJson(res, 200, { measured: true, modes: ALLOWED_MODES, sessions: listSessionsOwned() });
+    return sendJson(res, 200, { measured: true, modes: ALLOWED_MODES, sessions: listSessionsOwned(), now: Date.now() });
   }
 
   if (url.pathname === '/api/owned' && req.method === 'POST') {
@@ -418,13 +418,21 @@ async function handle(req, res) {
         waitSeconds: s.gate?.waitSeconds ?? null,
         pending: s.gate ? pending(s.id) : [],
         always: s.gate ? alwaysList(s.id) : [],
+        now: Date.now(),
       });
     }
 
     const gate = writeAllowed(req);
     if (!gate.ok) return sendJson(res, 403, { ok: false, reason: gate.reason });
-    if (req.method !== 'POST' || !permMatch[2]) return sendJson(res, 405, { ok: false, reason: 'POST to a request id' });
     if (!s.gate) return sendJson(res, 409, { ok: false, reason: 'this session has no gate to answer' });
+    // DELETE /permissions/<tool> takes back an "allow this tool for the session".
+    if (req.method === 'DELETE' && permMatch[2]) {
+      const out = revoke(s.id, decodeURIComponent(permMatch[2]));
+      return sendJson(res, out.ok ? 200 : 400, { ...out, always: alwaysList(s.id) });
+    }
+    if (req.method !== 'POST' || !permMatch[2]) {
+      return sendJson(res, 405, { ok: false, reason: 'POST to a request id, or DELETE a tool name' });
+    }
 
     const body = await readBody(req);
     if (!body) return sendJson(res, 400, { ok: false, reason: 'body was not JSON' });

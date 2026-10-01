@@ -458,6 +458,8 @@ export async function agentDetail(session, agentId) {
 
   return {
     agentId,
+    // Where this agent's transcript is, for whoever wants to open it themselves.
+    transcriptPath: file,
     agentType: meta.agentType ?? null,
     description: meta.description ?? null,
     spawnDepth: meta.spawnDepth ?? null,

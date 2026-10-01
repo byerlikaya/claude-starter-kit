@@ -521,6 +521,57 @@ mark { background: color-mix(in srgb, var(--studio-accent) 30%, transparent); co
 .att-says { color: var(--ink-dim); }
 .attention-hint { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
+/* -------------------------------------------------------------- dock ---
+   The approval dock: a row under the canvas, there only while a tool call is
+   waiting. It is part of the stage's column, so the canvas above it stays
+   whole and usable; nothing is covered and nothing is modal. */
+.dock {
+  flex: none; display: grid; align-items: center;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  gap: var(--space-2) var(--space-4);
+  min-height: 72px; padding: var(--space-2) var(--space-4);
+  border-top: 1px solid color-mix(in srgb, var(--status-waiting) 45%, var(--line));
+  background: color-mix(in srgb, var(--status-waiting) 8%, var(--surface));
+}
+/* `display: grid` outranks the UA's `[hidden]`; without these the dock and its parts would stay. */
+.dock[hidden], .dock [hidden] { display: none; }
+.dock:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.dock-timer { position: relative; width: 36px; height: 36px; flex: none; }
+.dock-timer svg { width: 36px; height: 36px; rotate: -90deg; }
+.dock-ring-track, .dock-ring { fill: none; stroke-width: 3; }
+.dock-ring-track { stroke: var(--line); }
+.dock-ring { stroke: var(--status-waiting); stroke-linecap: round; }
+.dock-secs {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  font-family: var(--font-mono); font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.dock-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.dock-head { display: flex; align-items: baseline; gap: var(--space-2); font-size: 13px; min-width: 0; }
+.dock-word { font-weight: 600; color: var(--status-waiting); flex: none; }
+.dock[data-state="denied"] .dock-word, .dock[data-state="timed-out"] .dock-word { color: var(--status-bad); }
+.dock-who {
+  background: none; border: none; padding: 0; cursor: pointer; font: inherit; font-weight: 600; color: var(--ink);
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.dock-who:hover { text-decoration: underline; }
+.dock-tool { font-family: var(--font-mono); font-size: 12px; color: var(--ink-dim); flex: none; }
+.dock-where { font-size: 12px; color: var(--ink-faint); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The command: one line until it is asked for, then all of it. */
+.dock-cmd {
+  background: none; border: none; padding: 0; cursor: pointer; text-align: left;
+  font-family: var(--font-mono); font-size: 12px; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; max-width: 100%;
+}
+.dock-cmd.open { white-space: pre-wrap; overflow-wrap: anywhere; overflow-y: auto; max-height: 30vh; }
+.dock-note { font-size: 12px; color: var(--ink-dim); }
+.dock-nav { display: flex; align-items: center; gap: 2px; flex: none; }
+.dock-count { font-size: 12px; color: var(--ink-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dock-acts { display: flex; gap: var(--space-2); flex: none; }
+/* Two rows: what is asked, then the answers under it. app.js sets the form from the dock's own width, so a
+   dock squeezed between two open panels gets it too. */
+.dock[data-form="stacked"] { grid-template-columns: auto minmax(0, 1fr) auto; }
+.dock[data-form="stacked"] .dock-acts { grid-column: 1 / -1; justify-content: flex-end; flex-wrap: wrap; }
+
 /* ============================================================== graph ===
    A dot grid reads as a workspace rather than a void, and it makes panning
    legible — without it the canvas looks frozen while it moves. */
@@ -844,31 +895,24 @@ mark { background: color-mix(in srgb, var(--studio-accent) 30%, transparent); co
   display: flex; flex-direction: column;
   border-left: 1px solid var(--line);
   background: var(--surface);
-  transition: width 0.18s;
 }
 /* No grid-column while it floats: an absolutely placed grid child that names a
    column is positioned inside that column, and column 4 is empty then. */
 .shell > .inspector {
   position: absolute; z-index: 30;
-  top: var(--toolbar-h); bottom: 0;
+  /* It stops above the approval dock: the answers are never under a panel. */
+  top: var(--toolbar-h); bottom: var(--dock-h, 0px);
   right: calc(var(--chat-w, 420px) + 5px);
   box-shadow: -12px 0 24px -18px var(--shade);
 }
 .shell.no-chat > .inspector { right: 0; }
-.inspector.wide { width: min(760px, 55vw); }
 /* `display: flex` outranks the UA's `[hidden] { display: none }`, so the hidden
    panel kept its width. Restate it explicitly. */
 .inspector[hidden] { display: none; }
 
-.inspector h3 {
-  margin: 0 0 2px; font-family: var(--font-mono); font-size: 12px;
-  letter-spacing: 0.06em; text-transform: uppercase;
-}
-.inspector .isub { color: var(--ink-dim); font-size: 13px; margin-bottom: 14px; }
 .inspector dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; }
 .inspector dt { font-size: 11px; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.05em; }
 .inspector dd { margin: 0; font-family: var(--font-mono); font-size: 12px; word-break: break-word; }
-.inspector .tools { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 5px; }
 
 /* ------------------------------------------------------- stillness ---
    Two ways the canvas stops moving, and one set of rules for both.
@@ -904,24 +948,70 @@ mark { background: color-mix(in srgb, var(--studio-accent) 30%, transparent); co
 /* ==================================================== inspector detail === */
 
 
-.ihead { display: flex; align-items: center; gap: 8px; padding: 14px 16px 0; }
-.ihead h3 { flex: 1; margin: 0; }
-.iwide { padding: 2px 8px; font-size: 12px; line-height: 1.2; }
-.inspector .isub { padding: 4px 16px 12px; margin: 0; }
+.ihead { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-3) 0 var(--space-4); flex: none; }
+.ihead .cv-tile { flex: none; }
+.iname { flex: 1; min-width: 0; margin: 0; font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.imeta { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-4) 0; flex: none; }
+.imeta .sub { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* The task in full: it is the one place the whole sentence is shown. */
+.itask { padding: var(--space-3) var(--space-4); font-size: 16px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; flex: none; max-height: 30%; overflow-y: auto; }
+.itask:empty { padding-bottom: 0; }
 
-.itabs { display: flex; gap: 2px; padding: 0 12px; border-bottom: 1px solid var(--line); flex: none; }
+.itabs { display: flex; gap: var(--space-1); padding: 0 var(--space-3); border-bottom: 1px solid var(--line); flex: none; }
 .itab {
   background: none; border: none; cursor: pointer;
-  font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase;
-  color: var(--ink-faint); padding: 8px 10px; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  font-family: inherit; font-size: 13px; font-weight: 500;
+  color: var(--ink-dim); padding: var(--space-2) 6px; border-bottom: 2px solid transparent; margin-bottom: -1px;
 }
-.itab:hover { color: var(--ink-dim); }
-.itab.on { color: var(--ink); border-bottom-color: var(--accent); }
+.itab:hover { color: var(--ink); }
+.itab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
 
-.ibody { flex: 1; overflow-y: auto; padding: 14px 16px 24px; min-height: 0; }
+.ibody { flex: 1; overflow-y: auto; padding: var(--space-4); min-height: 0; }
+.ifoot { display: flex; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-top: 1px solid var(--line); flex: none; }
+.ifoot .btn:first-child { flex: 1; justify-content: center; }
+
+.isec { margin-top: var(--space-4); }
+.isec:first-child { margin-top: 0; }
+.isec-h {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-2);
+  margin: 0 0 var(--space-2); font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.itiles { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+.itile { display: flex; flex-direction: column; gap: 2px; padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); background: var(--surface-raised); min-width: 0; }
+.itile-k { font-size: 11px; color: var(--ink-dim); }
+.itile strong { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.itile strong.bad { color: var(--status-bad); }
+/* Not measured is a sentence, not a number: it is set smaller and in the waiting tone, so it cannot pass for one. */
+.itile.unmeasured strong { font-size: 13px; color: var(--status-waiting); }
+.inow {
+  display: flex; flex-direction: column; gap: 2px; padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md); background: var(--surface-raised);
+  font-family: var(--font-mono); font-size: 12px; overflow-wrap: anywhere;
+}
+.inow-tool { color: var(--studio-accent); }
+.inow-text { color: var(--ink-dim); }
+.ichips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ichip {
+  height: 24px; padding: 0 var(--space-2); border-radius: var(--radius-sm); cursor: pointer;
+  border: 1px solid var(--line); background: none; color: var(--ink);
+  font-family: var(--font-mono); font-size: 12px;
+}
+.ichip:hover { background: var(--surface-raised); }
+.ilink { background: none; border: none; padding: 0; cursor: pointer; color: var(--accent); font: inherit; font-size: 13px; text-align: left; }
+.ilink:hover { text-decoration: underline; }
+.ibanner {
+  padding: var(--space-3); margin-bottom: var(--space-4); border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--status-waiting) 45%, var(--line));
+  background: color-mix(in srgb, var(--status-waiting) 8%, transparent);
+  font-size: 13px; line-height: 1.45;
+}
+.ibanner p { margin: 0 0 var(--space-3); }
+.ibanner-acts { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.iallow-row { display: flex; align-items: center; gap: var(--space-2); padding: 6px 0; border-bottom: 1px solid var(--line); }
+.iallow-tool { font-family: var(--font-mono); font-size: 12px; font-weight: 600; }
+.ihint .btn { margin-top: var(--space-2); }
 .ihint { color: var(--ink-faint); font-size: 13px; line-height: 1.5; padding: 6px 0; }
-.ibar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
-.ibar .ghost { font-family: var(--font-mono); font-size: 11px; padding: 2px 8px; }
 
 /* ------------------------------------------------------- activity list --- */
 
@@ -1089,38 +1179,6 @@ body.vresizing { cursor: row-resize; user-select: none; }
 }
 .chat-send:hover { filter: brightness(1.1); }
 
-
-/* ------------------------------------------------------- permissions --- */
-
-.perm-queue { flex: none; border-top: 1px solid var(--line); padding: 10px 14px; max-height: 46vh; overflow-y: auto; }
-.perm-queue[hidden] { display: none; }
-
-.perm {
-  border: 1px solid color-mix(in srgb, var(--status-waiting) 45%, var(--line));
-  background: color-mix(in srgb, var(--status-waiting) 7%, transparent);
-  border-radius: 9px; padding: 9px 11px; margin-bottom: 8px;
-}
-.perm-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.perm-tool {
-  font-family: var(--font-mono); font-size: 11px; font-weight: 600;
-  letter-spacing: 0.05em; text-transform: uppercase; color: var(--status-waiting);
-}
-.perm-clock { font-family: var(--font-mono); font-size: 10px; color: var(--ink-faint); }
-.perm-detail {
-  margin: 7px 0 0; padding: 7px 9px; border-radius: 6px;
-  background: var(--surface-raised); font-family: var(--font-mono); font-size: 11.5px;
-  line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere;
-  max-height: 140px; overflow-y: auto;
-}
-.perm-acts { display: flex; gap: 7px; margin-top: 9px; flex-wrap: wrap; }
-.perm-btn {
-  background: transparent; border: 1px solid var(--line); border-radius: 7px;
-  color: var(--ink-dim); cursor: pointer; font-size: 12px; padding: 4px 11px;
-}
-.perm-btn:hover:not(:disabled) { color: var(--ink); border-color: var(--ink-faint); }
-.perm-btn:disabled { opacity: 0.4; cursor: default; }
-.perm-btn.ok  { color: var(--status-good); border-color: color-mix(in srgb, var(--status-good) 40%, transparent); }
-.perm-btn.bad { color: var(--status-bad);  border-color: color-mix(in srgb, var(--status-bad) 40%, transparent); }
 
 .chat-state.ungated { color: var(--status-bad); border-color: color-mix(in srgb, var(--status-bad) 50%, transparent); }
 
@@ -1321,6 +1379,9 @@ body.vresizing { cursor: row-resize; user-select: none; }
 }
 
 @media (max-width: 1279px) {
+  /* The dock goes to two rows: what is asked, then the answers under it. */
+  .dock { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .dock-acts { grid-column: 1 / -1; justify-content: flex-end; flex-wrap: wrap; }
   /* Below this the status text is what has to go, not the way out of a tab. */
   .chat-head .chat-cost { display: none; }
   /* The mark stays and the word beside it goes: the room is the breadcrumb's. */
@@ -1332,8 +1393,8 @@ body.vresizing { cursor: row-resize; user-select: none; }
      name and drops its project; New session keeps its plus. */
   .bar { gap: var(--space-3); }
   .bar-sep, .crumb-project, .crumb-sep, .live-detail { display: none; }
-  .btn.primary > span { display: none; }
-  .btn.primary { width: 36px; padding: 0; }
+  .bar .btn.primary > span { display: none; }
+  .bar .btn.primary { width: 36px; padding: 0; }
 
   .shell,
   .shell.no-side { grid-template-columns: var(--rail-w) 0 minmax(0, 1fr) auto 5px min(var(--chat-w, 420px), 50vw); }
@@ -1355,7 +1416,7 @@ body.vresizing { cursor: row-resize; user-select: none; }
   /* The bar keeps the mark, the word "Studio" and the controls that act on a
      session. Full screen is the one that goes: a phone has no window to leave. */
   .bar { gap: var(--space-2); padding: 0 var(--space-3); }
-  .crumb, .chips, .bar #fullscreen, .bar #continue-session { display: none; }
+  .crumb, .chips, .bar #fullscreen { display: none; }
   /* The map and the legend are for a canvas with room around the graph; here they would cover it. */
   .cv-minimap, .cv-legend { display: none; }
   /* "Studio" comes back beside the mark, as the phone design has it. */
