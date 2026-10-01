@@ -889,8 +889,7 @@ mark { background: color-mix(in srgb, var(--studio-accent) 30%, transparent); co
 [data-motion="still"] .cv-node.cv-born { opacity: 1; scale: 1; }
 
 /* A third, brief one: while the zoom is changing. Paused rather than switched
-   off, so a dash resumes from where it stood instead of jumping to its start.
-   It spares the style work of a zoom; it does not make a crowded zoom smooth. */
+   off, so a dash resumes from where it stood instead of jumping to its start. */
 [data-zooming] .cv-edge[data-state],
 [data-zooming] .cv-node[data-kind][data-state]::after { animation-play-state: paused; }
 
