@@ -40,3 +40,8 @@ commit takes content from the working tree	içeriği çalışma ağacından alan
 no review-pass record	inceleme kaydı yok
 review-pass does not match this diff	inceleme kaydı bu diff ile eşleşmiyor
 review-pass matches the staged diff	inceleme kaydı staged diff ile eşleşiyor
+commit/push with no matching approval from the user	kullanıcının eşleşen bir onayı olmadan commit/push
+the approval record named in a command (only the user's own message writes it)	bir komutta onay kaydının adı geçiyor (kaydı yalnız kullanıcının kendi mesajı yazar)
+the user's own approval message covers this command	kullanıcının kendi onay mesajı bu komutu kapsıyor
+the approval hook fed by a command (only Claude Code runs it, with the user's message)	onay hook'u bir komutla besleniyor (onu yalnız Claude Code, kullanıcının mesajıyla çalıştırır)
+a Claude Code session started from a command to continue this one (it could approve for it)	bu oturumu sürdürmek için komutla başlatılan bir Claude Code oturumu (bu oturum adına onay verebilirdi)

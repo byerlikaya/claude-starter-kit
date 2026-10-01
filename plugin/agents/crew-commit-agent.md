@@ -86,9 +86,13 @@ On a mixed/non-atomic diff, **propose a split**; do not commit before approval (
   proceed" is not approval (§4.4).
   The tool-level gate `guard-bash.sh` intercepts commit/push in **every** permission mode: in normal modes it raises an
   approval prompt only the user can answer — so present the message FIRST, then run the commit yourself and let the user
-  approve it at the prompt. Never hand the user a command to paste into their own terminal. Under `bypassPermissions`
-  the gate fails closed; there the user must switch modes or pre-authorise with `CLAUDE_GIT_OK=1` (which never
-  substitutes for approval).
+  approve it at the prompt. Never hand the user a command to paste into their own terminal. In `auto` and `dontAsk`
+  the prompt reaches nobody: stage, present the message, and the user approves by sending a message that is only
+  `approve: commit` (`approve: push`, `approve: commit+push`; `onay:` too). It covers what is staged on that HEAD.
+  Then run `git commit -m '…'` alone in its call (single-quoted, or from a here-document with a quoted delimiter),
+  and a push as `git push <remote> <branch>`. Never write that message yourself. Under `plan` and
+  `bypassPermissions` the gate fails closed; there the user must switch modes or pre-authorise with
+  `CLAUDE_GIT_OK=1` (which never substitutes for approval).
 - **No AI trace:** the message contains no co-author trailer, auto-generation footer, robot emoji, AI-assistant/tool name,
   or the `.claude` name; the message is human, technical prose (§4.1).
 - **No vendor name:** the third-party template name and any "cleanup/vendor copy" disclosure are not written into the message (§4.2).

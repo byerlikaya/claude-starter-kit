@@ -30,6 +30,7 @@
     "UserPromptSubmit": [
       {
         "hooks": [
+          { "type": "command", "shell": "bash", "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/prompt-approval.sh\"", "timeout": 60 },
           { "type": "command", "shell": "bash", "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/context-usage.sh\"", "timeout": 60 },
           { "type": "command", "shell": "bash", "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/route-hint.sh\"", "timeout": 60 }
         ]

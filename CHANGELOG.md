@@ -25,6 +25,23 @@ versioning follows [SemVer](https://semver.org/).
   horizontal bar in place of the hyphen. PowerShell 5.1 deletes the tree with each of them (measured). They are
   recognised now, whether the dash arrives as itself or as a JSON `\u` escape.
 
+### Added
+
+- **In `auto` and `dontAsk`, your own message approves a commit or a push.** Those modes answer a permission prompt
+  with software, so the commit gate fails closed there and the only way through was to switch mode for every commit.
+  Now a message that is nothing but `approve: commit`, `approve: push` or `approve: commit+push` (`onay:` works too)
+  is recorded by a new hook, `prompt-approval.sh`, with what git reports at that moment: the tree of what is staged
+  and `HEAD` for a commit; `HEAD`, the branch, its remote and the address that remote pushes to for a push; and the
+  session you wrote in. The confirmation you see names that address. `guard-bash.sh` then allows one call and no other: `git commit -m …` alone (a single-quoted
+  message, or one read from a here-document with a quoted delimiter; `-q`, `-s`, `-v`), or
+  `git push <remote> <branch>` alone. A changed index, a moved `HEAD`, a second commit, another branch, remote or
+  address, a refspec, another option, a `cd`, a pipe or a second command is refused, with the reason. The record
+  lasts 30 minutes and your next message ends it. It opens neither the review-before-commit rule nor any destructive
+  command, and `plan` and `bypassPermissions` stay closed.
+  A session cannot produce the approval it would use: the file tools and any shell command that names the record
+  are refused, and so are a command that feeds the hook a payload of its own and, in those two modes, one that
+  starts a Claude Code session continuing this one. Those rules match names, as the rules for the gate files do.
+
 ### Changed
 
 - **A gate that times out does not block, so the gates got faster and their timeout longer.** Claude Code runs the
