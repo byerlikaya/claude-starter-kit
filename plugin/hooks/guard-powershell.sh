@@ -73,7 +73,7 @@ _json_slice(){  # $1 = whole payload, $2 = key -> the raw (still JSON-escaped) s
   # empty input). Broken twins -- the run not carried across a window, a byte skipped after a quote -- prove
   # the battery sees both.
   # THE NUMBER OF PASSES IS CAPPED, for the same reason guard-write caps the path length: an unbounded cost on
-  # a PreToolUse hook is a gate with an off switch, because a hook killed at its 60s timeout emits no exit 2.
+  # a PreToolUse hook is a gate with an off switch, because a hook killed at its timeout emits no exit 2.
   # Each decoy costs one more `%%` scan over the remainder, so the work is quadratic in the number of decoys.
   # Measured on macOS/bash, single call, `"k<i>":"command"` decoys in front of the real key:
   #      50 decoys    844 B    12 ms        800 decoys   13544 B    126 ms
@@ -89,7 +89,7 @@ _json_slice(){  # $1 = whole payload, $2 = key -> the raw (still JSON-escaped) s
   # raising or removing it later is not a tidy-up.
   # The bound is on the LOOP, not on the payload, so an ordinary command pays nothing: the same 56572 B flood
   # is refused in 93-94 ms with jq/python3 present and 168-169 ms on the slice path this paragraph is about,
-  # both far inside the 60s timeout, while a 46 KB legitimate command is 325 ms on macOS -- a figure that
+  # both far inside the 60s timeout these hooks had when this was measured, while a 46 KB legitimate command is 325 ms on macOS -- a figure that
   # predates this change and belongs to the walk, not to the cap.
   local _cap=64 _seen=0
   while :; do
@@ -136,7 +136,7 @@ _json_unescape(){  # left-to-right, a chunk at a time; a two-pass sed would corr
   # CHARACTER at a time, which is O(n^2) twice over: `${s%"${s#?}"}` matches a pattern the length of the
   # entire remainder just to read one character, and `out="$out$c"` recopies the output for each one.
   #
-  # That was not a comfort question. This hook's timeout is 60s -- set in settings.json, NOT Claude Code's
+  # That was not a comfort question. This hook's timeout was 60s then -- set in settings.json (600s since 3.1.0), NOT Claude Code's
   # default, and reading the default instead is how a first pass at this got the consequence wrong. A
   # PreToolUse hook KILLED at its timeout emits no exit 2, so every rule below is simply skipped. Measured on
   # the tier-3 path with jq and python3 both shadowed, the old shape crossed 60s at ~4.3 KB. And 4.3 KB is
@@ -188,7 +188,7 @@ _json_unescape(){  # left-to-right, a chunk at a time; a two-pass sed would corr
   # the gate cases.
   local LC_ALL=C
   local s="$1" pre w c h n base=0 j=0 cl lim chunk C=4096 W=256; local -a acc=("")
-  case "$s" in *\\*) ;; *) printf '%s' "$s"; return 0 ;; esac   # no escapes: the common case pays nothing
+  case "$s" in *\\*) ;; *) _JU="$s"; printf '%s' "$s"; return 0 ;; esac   # no escapes: the common case pays nothing
   n=${#s}; chunk="${s:0:C}"; cl=${#chunk}
   while :; do
     lim=$((cl - j))
@@ -226,7 +226,9 @@ _json_unescape(){  # left-to-right, a chunk at a time; a two-pass sed would corr
       *) acc+=("$c") ;;
     esac
   done
-  local IFS=''; printf '%s' "${acc[*]}"
+  # ALSO sets `_JU`, for the same reason `_json_slice` sets `_JS`: a caller on the hot path reads the value from it
+  # and sends this printf to /dev/null, instead of paying a `$( )` — a fork — on every tool call.
+  local IFS=''; _JU="${acc[*]}"; printf '%s' "$_JU"
 }
 _json_keycount(){  # $1 = payload, $2 = key -> sets _KC to how many times it occurs AS A KEY
   # IT SETS A VARIABLE INSTEAD OF PRINTING, and that is not a style choice. Written as `n="$(_json_keycount

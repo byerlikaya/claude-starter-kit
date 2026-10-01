@@ -33,7 +33,9 @@ set -uo pipefail
 # The 2.x names of the variables a user can set still work (one helper: eval/lib/crew-env.sh).
 _crew_d="${BASH_SOURCE%/*}"; [ "$_crew_d" = "${BASH_SOURCE}" ] && _crew_d=.
 [ -f "$_crew_d/../eval/lib/crew-env.sh" ] && . "$_crew_d/../eval/lib/crew-env.sh"; unset _crew_d
-INPUT="$(cat)"
+# Read with the builtin, as guard-powershell.sh does: `INPUT="$(cat)"` is a subshell plus a process on EVERY call
+# of this hook. `read` returns 1 at end of input; the text is read regardless.
+IFS= read -r -d '' INPUT || true
 
 # The two helpers below are a byte-identical copy of guard-bash.sh's block. A shared file would have to be
 # added to build-plugin.sh's explicit copy list and a miss there breaks the plugin channel silently — the same
@@ -88,7 +90,7 @@ _json_slice(){  # $1 = whole payload, $2 = key -> the raw (still JSON-escaped) s
   # empty input). Broken twins -- the run not carried across a window, a byte skipped after a quote -- prove
   # the battery sees both.
   # THE NUMBER OF PASSES IS CAPPED, for the same reason guard-write caps the path length: an unbounded cost on
-  # a PreToolUse hook is a gate with an off switch, because a hook killed at its 60s timeout emits no exit 2.
+  # a PreToolUse hook is a gate with an off switch, because a hook killed at its timeout emits no exit 2.
   # Each decoy costs one more `%%` scan over the remainder, so the work is quadratic in the number of decoys.
   # Measured on macOS/bash, single call, `"k<i>":"command"` decoys in front of the real key:
   #      50 decoys    844 B    12 ms        800 decoys   13544 B    126 ms
@@ -104,7 +106,7 @@ _json_slice(){  # $1 = whole payload, $2 = key -> the raw (still JSON-escaped) s
   # raising or removing it later is not a tidy-up.
   # The bound is on the LOOP, not on the payload, so an ordinary command pays nothing: the same 56572 B flood
   # is refused in 93-94 ms with jq/python3 present and 168-169 ms on the slice path this paragraph is about,
-  # both far inside the 60s timeout, while a 46 KB legitimate command is 325 ms on macOS -- a figure that
+  # both far inside the 60s timeout these hooks had when this was measured, while a 46 KB legitimate command is 325 ms on macOS -- a figure that
   # predates this change and belongs to the walk, not to the cap.
   local _cap=64 _seen=0
   while :; do
@@ -151,7 +153,7 @@ _json_unescape(){  # left-to-right, a chunk at a time; a two-pass sed would corr
   # CHARACTER at a time, which is O(n^2) twice over: `${s%"${s#?}"}` matches a pattern the length of the
   # entire remainder just to read one character, and `out="$out$c"` recopies the output for each one.
   #
-  # That was not a comfort question. This hook's timeout is 60s -- set in settings.json, NOT Claude Code's
+  # That was not a comfort question. This hook's timeout was 60s then -- set in settings.json (600s since 3.1.0), NOT Claude Code's
   # default, and reading the default instead is how a first pass at this got the consequence wrong. A
   # PreToolUse hook KILLED at its timeout emits no exit 2, so every rule below is simply skipped. Measured on
   # the tier-3 path with jq and python3 both shadowed, the old shape crossed 60s at ~4.3 KB. And 4.3 KB is
@@ -203,7 +205,7 @@ _json_unescape(){  # left-to-right, a chunk at a time; a two-pass sed would corr
   # the gate cases.
   local LC_ALL=C
   local s="$1" pre w c h n base=0 j=0 cl lim chunk C=4096 W=256; local -a acc=("")
-  case "$s" in *\\*) ;; *) printf '%s' "$s"; return 0 ;; esac   # no escapes: the common case pays nothing
+  case "$s" in *\\*) ;; *) _JU="$s"; printf '%s' "$s"; return 0 ;; esac   # no escapes: the common case pays nothing
   n=${#s}; chunk="${s:0:C}"; cl=${#chunk}
   while :; do
     lim=$((cl - j))
@@ -241,7 +243,9 @@ _json_unescape(){  # left-to-right, a chunk at a time; a two-pass sed would corr
       *) acc+=("$c") ;;
     esac
   done
-  local IFS=''; printf '%s' "${acc[*]}"
+  # ALSO sets `_JU`, for the same reason `_json_slice` sets `_JS`: a caller on the hot path reads the value from it
+  # and sends this printf to /dev/null, instead of paying a `$( )` — a fork — on every tool call.
+  local IFS=''; _JU="${acc[*]}"; printf '%s' "$_JU"
 }
 _json_keycount(){  # $1 = payload, $2 = key -> sets _KC to how many times it occurs AS A KEY
   # IT SETS A VARIABLE INSTEAD OF PRINTING, and that is not a style choice. Written as `n="$(_json_keycount
@@ -324,7 +328,7 @@ WHY_LONG="The path in this payload is longer than any filesystem accepts. It is 
 # 2,048, ~30s at 4,096. Real paths are nowhere near: measured on a Windows install, actual `file_path` values
 # average ~60 bytes and Windows itself stops at 260 without the long-path opt-in (macOS PATH_MAX is 1,024).
 # 2,048 therefore keeps every path anyone can really produce and bounds the worst case at a few seconds,
-# well inside this hook's 60s timeout — the number that matters, because a hook killed at its timeout emits
+# well inside the 60s timeout this hook had then — the number that mattered, because a hook killed at its timeout emits
 # no exit 2 and the write proceeds.
 MAXPATH=2048
 
@@ -362,14 +366,15 @@ fi
 # Microsoft Store redirector stub named python3 on PATH by default, `command -v` finds it, it exits 49 with an
 # empty stdout, FP came back "" and `[ -z "$FP" ] && exit 0` let the model rewrite .claude/hooks/guard-bash.sh
 # with its Write tool. Pure parameter expansion cannot fail that way.
-_raw="$(_json_slice "$INPUT" file_path)"
-[ -n "$_raw" ] || _raw="$(_json_slice "$INPUT" notebook_path)"
+# Through `_JS` / `_JU`, not `$( )`: no fork on the path every Write and Edit takes (3.1.0).
+_json_slice "$INPUT" file_path >/dev/null; _raw="$_JS"
+[ -n "$_raw" ] || { _json_slice "$INPUT" notebook_path >/dev/null; _raw="$_JS"; }
 # THE CAP GOES BEFORE THE UNESCAPER, and the cost it bounds is one the shared reader INTRODUCED — worth saying
 # plainly rather than dressing up as a pre-existing bug. What it replaced was a single `sed`, which is linear
 # and was never slow; it was replaced because it truncated the value at the first escaped quote and never
 # looked at `notebook_path`. The parser that fixes those walks character by character, which is quadratic in
 # bash, and on Windows every separator is a backslash, i.e. an escape, so the "no escapes" fast path never
-# fires. Uncapped, that is a gate with an off switch: a hook killed at its 60s timeout emits no exit 2 and the
+# fires. Uncapped, that is a gate with an off switch: a hook killed at its timeout emits no exit 2 and the
 # write proceeds. Refusing above the cap is safe in the direction that matters, and the cap sits far above any
 # path a filesystem will accept.
 # ONE cap, not two. The second check used to follow the unescaper because the jq tier reached the fold with no
@@ -377,7 +382,7 @@ _raw="$(_json_slice "$INPUT" file_path)"
 # measured over 23 escape forms including a surrogate pair and a 4900-byte run of `€` across the chunk
 # edge, with a deliberately-growing stand-in as the calibration, so the check could be seen to fail.
 [ "${#_raw}" -le "$MAXPATH" ] || { FP="(oversized path: ${#_raw} bytes)"; block "gate-file edit (oversized path)" "$WHY_LONG"; }
-FP="$(_json_unescape "$_raw")"
+_json_unescape "$_raw" >/dev/null; FP="$_JU"
 
 # Nothing extractable. Exiting 0 unconditionally is what a future field rename turns into a silent bypass, so
 # look at the RAW payload instead: refuse only when the text itself names a gate tree. A payload that mentions

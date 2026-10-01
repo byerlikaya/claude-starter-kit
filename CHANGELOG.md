@@ -20,6 +20,16 @@ versioning follows [SemVer](https://semver.org/).
   horizontal bar in place of the hyphen. PowerShell 5.1 deletes the tree with each of them (measured). They are
   recognised now, whether the dash arrives as itself or as a JSON `\u` escape.
 
+### Changed
+
+- **A gate that times out does not block, so the gates got faster and their timeout longer.** Claude Code runs the
+  tool call when a `PreToolUse` hook reaches its timeout; one field session on 3.0.0 showed nine such calls in a day.
+  - Every read-only Bash call, every Write and Edit, and every PowerShell call now costs **no process at all** in the
+    four gates (it was 5 in `guard-bash.sh`, 7 in `guard-commit-scan.sh` and 4 in `guard-write.sh`, counting the
+    `$( )` subshells the 3.0.1 count did not see). On Git Bash a process costs 62–135 ms, and seconds on a loaded
+    machine.
+  - The four gates' timeout is 600 s, Claude Code's own default; Crewforth had set 60. The other hooks keep 60.
+
 ## [3.0.1] — 2026-10-01
 
 ### Security

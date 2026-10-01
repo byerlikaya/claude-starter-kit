@@ -45,13 +45,13 @@
             "type": "command",
             "shell": "bash",
             "command": "cd \"$CLAUDE_PROJECT_DIR\" 2>/dev/null; bash .claude/hooks/guard-bash.sh",
-            "timeout": 60
+            "timeout": 600
           },
           {
             "type": "command",
             "shell": "bash",
             "command": "cd \"$CLAUDE_PROJECT_DIR\" 2>/dev/null; bash .claude/hooks/guard-commit-scan.sh",
-            "timeout": 60
+            "timeout": 600
           }
         ]
       },
@@ -62,7 +62,7 @@
             "type": "command",
             "shell": "bash",
             "command": "cd \"$CLAUDE_PROJECT_DIR\" 2>/dev/null; bash .claude/hooks/guard-powershell.sh",
-            "timeout": 60
+            "timeout": 600
           }
         ]
       },
@@ -73,7 +73,7 @@
             "type": "command",
             "shell": "bash",
             "command": "cd \"$CLAUDE_PROJECT_DIR\" 2>/dev/null; bash .claude/hooks/guard-write.sh",
-            "timeout": 60
+            "timeout": 600
           }
         ]
       }
