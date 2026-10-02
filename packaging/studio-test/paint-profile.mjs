@@ -4,6 +4,7 @@
 //   node packaging/studio-test/paint-profile.mjs                 250 synthetic nodes, this checkout's panel
 //   node packaging/studio-test/paint-profile.mjs --headed        the same, in a window you can see
 //   node packaging/studio-test/paint-profile.mjs --real URL      a panel that is already running, as it is
+//   node packaging/studio-test/paint-profile.mjs --timeline      the Timeline: 250 agents, Group None, following now
 //   ... --nodes N --running N --secs N --chrome PATH --json FILE
 //
 // Not a gate, and not wired into verify.sh: it needs a Chrome and a display, and its numbers belong to the
@@ -40,6 +41,7 @@ const RUNNING = Number(arg('running', 55));
 const SECS = Number(arg('secs', 8));
 const REAL = arg('real', null);
 const HEADED = flag('headed');
+const TIMELINE = flag('timeline');
 const JSON_OUT = arg('json', null);
 const W = Number(arg('width', 1440));
 const H = Number(arg('height', 900));
@@ -145,9 +147,29 @@ window.__pp = {
     }
     return { nodes: out, edges, stats: {} };
   },
+  // The profiler's panel has no sessions, so the page is in its first-run state, and it says so again on every
+  // poll: the views are taken off the screen. A view that is not displayed costs nothing to "draw", and every
+  // number from it would be a lie — the first run of the Timeline scenario read 1.3 ms a redraw and 0.2 ms/s of
+  // layout for exactly this reason. So the view being measured is pinned on screen with inline styles, which the
+  // page's own rules do not override, and whether it is still there is asked again when the measuring is over.
+  onStage(id) {
+    const pin = (sel, display) => { const e = document.querySelector(sel); if (e) e.style.display = display; };
+    pin('#first-run', 'none');
+    pin('.toolbar', 'flex');
+    for (const other of ['canvas', 'timeline', 'list']) { const e = document.getElementById(other); if (e) { e.hidden = other !== id; e.style.display = other === id ? (id === 'canvas' ? 'block' : 'flex') : 'none'; } }
+    this.stageId = id;
+    return { root: document.getElementById(id), ...this.onScreen() };
+  },
+  onScreen() {
+    const root = document.getElementById(this.stageId);
+    const r = root.getBoundingClientRect();
+    return { shown: getComputedStyle(root).display !== 'none' && r.width > 0 && r.height > 0, width: Math.round(r.width), height: Math.round(r.height) };
+  },
   async takeOver(nodes, running, token) {
     const { Canvas } = await import('/canvas.js');
-    const root = document.getElementById('canvas');
+    const stage = this.onStage('canvas');
+    this.shown = stage;
+    const root = stage.root;
     const c = new Canvas(root, {});
     try { const p = await (await fetch('/api/palette?token=' + token)).json(); c.setPalette?.(p); } catch { /* neutral */ }
     c.setSession('paint-profile-' + nodes);
@@ -159,6 +181,7 @@ window.__pp = {
   describe() {
     const root = this.root ?? document.getElementById('canvas');
     return {
+      shown: this.shown?.shown ?? null,
       domNodes: root.querySelectorAll('*').length,
       cards: root.querySelectorAll('.cv-node').length,
       edges: root.querySelectorAll('.cv-edge').length,
@@ -191,6 +214,58 @@ window.__pp = {
     const move = (now) => { const t = (now - t0) / 1000; c.view.k = k0 * (1 + 0.45 * Math.sin(t * 2.4)); c.applyView(); if (now - t0 < ms) requestAnimationFrame(move); else { c.view.k = k0; c.applyView(); } };
     requestAnimationFrame(move);
     return this.frames(ms);
+  },
+  // The Timeline, fed the same generated session with times a timeline can be drawn from: one start every eleven
+  // seconds over the last fifty minutes, four to six minutes each, and the running ones still going.
+  async takeOverTimeline(nodes, running) {
+    const { Timeline } = await import('/timeline.js');
+    const stage = this.onStage('timeline');
+    this.shown = stage;
+    const root = stage.root;
+    root.replaceChildren();
+    const g = this.graph(nodes, running);
+    const now = Date.now(); let i = 0;
+    for (const n of g.nodes) {
+      if (n.kind !== 'agent') { n.startedAt = now - 50 * 60000; continue; }
+      n.startedAt = now - 50 * 60000 + i * 11000;
+      n.endedAt = n.status === 'running' ? null : n.startedAt + 240000 + (i % 7) * 20000;
+      n.updatedAt = n.endedAt ?? now;
+      i += 1;
+    }
+    const tl = new Timeline(root, { fmt: { duration: (ms) => Math.round(ms / 1000) + 's', tokens: (t) => String(t) } });
+    tl.setSession('paint-profile-timeline'); tl.setLive(true); tl.setGroup('none'); tl.setNodes(g.nodes);
+    this.tl = tl; this.tlRoot = root;
+    return this.describeTimeline();
+  },
+  describeTimeline() {
+    const r = this.tlRoot;
+    const box = r.getBoundingClientRect();
+    return { shown: getComputedStyle(r).display !== 'none' && box.width > 0, size: Math.round(box.width) + 'x' + Math.round(box.height), track: Math.round(this.tl.trackWidth()),
+      domNodes: r.querySelectorAll('*').length, rows: r.querySelectorAll('.tl-row').length, bars: r.querySelectorAll('.tl-bar').length,
+      range: this.tl.range, follow: this.tl.follow, group: this.tl.group };
+  },
+  redraws(n) {
+    const t = [];
+    for (let i = 0; i < n; i += 1) { const t0 = performance.now(); this.tl.render(); this.tlRoot.offsetHeight; t.push(performance.now() - t0); }
+    const s = [...t].sort((x, y) => x - y);
+    return { redraws: n, median: +s[Math.floor(n / 2)].toFixed(2), max: +s[n - 1].toFixed(2) };
+  },
+  // As the page does it: one redraw a second while now is followed.
+  async followFrames(ms) {
+    const id = setInterval(() => this.tl.tick(), 1000);
+    const f = await this.frames(ms);
+    clearInterval(id);
+    return f;
+  },
+  // NOT what the page does: a redraw on every frame. It is here so the rows above can be believed — if a redraw
+  // sixty times a second moved nothing, the profiler would not be seeing the redraw at all.
+  async redrawEveryFrame(ms) {
+    let on = true;
+    const spin = () => { if (!on) return; this.tl.render(); requestAnimationFrame(spin); };
+    requestAnimationFrame(spin);
+    const f = await this.frames(ms);
+    on = false;
+    return f;
   },
   polls(n) {
     const c = this.canvas; const t = [];
@@ -273,7 +348,18 @@ await sleep(300);
 result.twinRatio = +(result.twin.median / result.idle.median).toFixed(2);
 result.valid = result.twinRatio >= 1.5;
 
-if (REAL) {
+if (TIMELINE) {
+  result.mode = 'timeline';
+  result.timeline = await ev(`window.__pp.takeOverTimeline(${NODES}, ${RUNNING})`);
+  await sleep(600);
+  result.redraw = await ev(`window.__pp.redraws(30)`);
+  result.follow = await measure(`window.__pp.followFrames(${ms})`);
+  result.everyFrame = await measure(`window.__pp.redrawEveryFrame(${Math.min(ms, 5000)})`);
+  await ev(`(window.__pp.tl.range = 'all', window.__pp.tl.render(), 1)`);
+  result.timelineAll = await ev(`window.__pp.describeTimeline()`);
+  result.redrawAll = await ev(`window.__pp.redraws(30)`);
+  result.followAll = await measure(`window.__pp.followFrames(${ms})`);
+} else if (REAL) {
   result.page = await ev(`window.__pp.describe()`);
   result.steady = await measure(`window.__pp.frames(${ms})`);
 } else {
@@ -299,14 +385,30 @@ if (REAL) {
   result.everyCardPoll = await ev(`window.__pp.polls(20)`);
 }
 
+// The second validity test: the view that was measured was on the screen, with a size.
+const measured = TIMELINE ? result.timeline : REAL ? { shown: true } : result.asOpened;
+result.onScreenAfter = REAL ? { shown: true } : await ev(`window.__pp.onScreen()`);
+result.onScreen = measured?.shown === true && result.onScreenAfter.shown === true;
+result.valid = result.valid && result.onScreen;
+
 /* ------------------------------------------------------------------ print */
 
 const row = (name, s) => console.log(`${name.padEnd(30)} ${String(s.fps).padStart(4)} fps  median ${String(s.median).padStart(6)} ms  p95 ${String(s.p95).padStart(6)}  max ${String(s.max).padStart(7)}  late ${String(s.late).padStart(3)}/${String(s.frames).padEnd(4)}  main ${String(s.mainMsPerSec).padStart(6)} ms/s (script ${s.scriptMsPerSec}, style ${s.styleMsPerSec}, layout ${s.layoutMsPerSec})`);
 console.log(`paint-profile · ${result.mode} · ${result.platform}/${result.arch} · ${result.cpu} · ${result.browser} · ${result.headed ? 'headed' : 'headless'} · ${result.viewport.w}x${result.viewport.h}@${result.viewport.dpr} · ${result.viewport.visible}`);
 row('idle page', result.idle);
 row('calibration twin (400 boxes)', result.twin);
-console.log(`twin / idle median = ${result.twinRatio}  →  ${result.valid ? 'VALID: the page is being painted' : 'INVALID: frames tick but nothing is painted; do not quote the rows below'}`);
-if (REAL) {
+console.log(`twin / idle median = ${result.twinRatio}  →  ${result.twinRatio >= 1.5 ? 'VALID: the page is being painted' : 'INVALID: frames tick but nothing is painted; do not quote the rows below'}`);
+if (!result.onScreen) console.log(`INVALID: the view that was measured was not on screen for the whole run (start ${measured?.shown}, end ${result.onScreenAfter.shown}); do not quote the rows below`);
+else console.log(`on screen at the start and at the end: ${result.onScreenAfter.width}x${result.onScreenAfter.height}`);
+if (TIMELINE) {
+  console.log(`timeline (${NODES} agents, ${RUNNING} running): ${JSON.stringify(result.timeline)}`);
+  console.log(`redraw: render() ${result.redraw.median} ms median, ${result.redraw.max} ms worst over ${result.redraw.redraws}`);
+  row('following now (1 redraw/s)', result.follow);
+  row('twin: redraw every frame', result.everyFrame);
+  console.log(`the whole session: ${JSON.stringify(result.timelineAll)}`);
+  console.log(`redraw, whole session: render() ${result.redrawAll.median} ms median, ${result.redrawAll.max} ms worst over ${result.redrawAll.redraws}`);
+  row('following now, whole session', result.followAll);
+} else if (REAL) {
   console.log(`page: ${JSON.stringify(result.page)}`);
   row('steady, as the viewer has it', result.steady);
 } else {

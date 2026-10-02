@@ -2609,7 +2609,7 @@ process.stdout.write('\n== §29 design tokens and the frame ==\n');
   check('the navigator opens at the same width without a remembered one',
     /side:\s*\{[^}]*\bdef:\s*272\b/.test(appJs), 'app.js sets --side-w from this before the stylesheet\'s fallback is ever used');
   check('the toolbar and the inspector are in the page', /class="toolbar"/.test(indexHtml)
-    && /<main class="stage">\s*<div class="toolbar"[\s\S]*?<div id="canvas"/.test(indexHtml)
+    && /<main class="stage">\s*<div id="phone-head"[^>]*><\/div>\s*<div class="toolbar"[\s\S]*?<div id="canvas"/.test(indexHtml)
     && /<\/main>\s*<aside id="inspector"/.test(indexHtml),
   'toolbar above the canvas inside the stage; inspector a column of the shell, not a child of the stage');
 
@@ -3160,7 +3160,7 @@ process.stdout.write('\n== §31 the approval dock and the inspector ==\n');
 
   check('the dock is not a dialog and takes no focus',
     !/showModal|role="dialog"|aria-modal|\.focus\(/.test(dockJs)
-    && /<div id="canvas" class="canvas"><\/div>\s*<div id="timeline"[^>]*hidden><\/div>\s*<div id="dock" role="region"[^>]*hidden><\/div>\s*<\/main>/.test(indexHtml),
+    && /<div id="canvas" class="canvas"><\/div>\s*<div id="timeline"[^>]*hidden><\/div>\s*<div id="list"[^>]*hidden><\/div>\s*<div id="first-run"[^>]*hidden><\/div>\s*<div id="dock" role="region"[^>]*hidden><\/div>\s*<\/main>/.test(indexHtml),
     'a region under the canvas, inside the stage: the graph stays usable above it');
   check('the dock is the one place requests are drawn: the conversation pane no longer draws its own',
     !/perm-queue|paintPermissions/.test(chatJs) && !/\.perm-/.test(cssSrc31) && /this\.onPermissions\(this, rec\)/.test(chatJs));
@@ -3293,8 +3293,8 @@ process.stdout.write('\n== §32 the conversation panel and New session ==\n');
       && /node\.disabled = !card\.agentId/.test(chatJs));
     check('clicking a card selects that agent on the graph',
       /onAgent: \(pane, agentId\) => \{\s*if \(pane\.id !== current\) selectSession\(pane\.id\);\s*goTo\(agentId\);/.test(appJs)
-      && /if \(view !== 'timeline'\) \{ canvas\.focus\(agentId\); return; \}/.test(appJs),
-      'or on the Timeline, when that is the view that is open');
+      && /if \(view === 'graph'\) \{ canvas\.focus\(agentId\); return; \}/.test(appJs),
+      'or on the Timeline or the List, when that is the view that is open');
 
     /* -- 3. the strip, the reminder, the refusals -------------------------------- */
 
@@ -3756,17 +3756,17 @@ process.stdout.write('\n== §33 the Timeline ==\n');
 
     check('the toolbar switches between the graph and the Timeline, and each view shows only its own controls',
       /id="view-graph"[^>]*role="tab"[^>]*aria-selected="true"/.test(indexHtml) && /id="view-timeline"[^>]*role="tab"/.test(indexHtml)
-      && /for \(const c of document\.querySelectorAll\('\.toolbar \[data-view\]'\)\) c\.hidden = c\.dataset\.view !== view;/.test(appJs)
+      && /for \(const c of document\.querySelectorAll\('\.toolbar \[data-view\]'\)\) c\.hidden = !c\.dataset\.view\.split\(' '\)\.includes\(view\);/.test(appJs)
       && ['tb-density', 'tb-expand', 'tb-fold', 'tb-zoom-out', 'tb-zoom', 'tb-zoom-in', 'tb-fit'].every((i) => new RegExp(`id="${i}" data-view="graph"`).test(indexHtml))
       && (indexHtml.match(/data-view="timeline"/g) ?? []).length === 4);
     check('what is selected stays selected across the switch, in both directions',
-      /const carried = select \?\? \(was === 'timeline' \? timeline\.selected : canvas\.selected\) \?\? null;/.test(appJs)
+      /const carried = select \?\? \(was === 'timeline' \? timeline\.selected : was === 'list' \? list\.selected : canvas\.selected\) \?\? null;/.test(appJs)
       && /if \(carried && canvas\.nodes\.has\(carried\)\) canvas\.focus\(carried\);/.test(appJs)
       && /onShowOnGraph: \(n\) => \{ setView\('graph', n\.id\); \}/.test(appJs));
     check('Group and Show are one choice for both views',
       /timeline\.setGroup\(st\.group\);/.test(appJs) && (appJs.match(/timeline\.setFilter\(/g) ?? []).length >= 3);
     check('the attention strip, the dock and a conversation card go to the agent in whichever view is open',
-      /function goTo\(agentId\) \{\s*if \(view !== 'timeline'\) \{ canvas\.focus\(agentId\); return; \}\s*timeline\.select\(agentId\);/.test(appJs)
+      /function goTo\(agentId\) \{\s*if \(view === 'graph'\) \{ canvas\.focus\(agentId\); return; \}\s*if \(view === 'list'\) \{ list\.select\(agentId\); canvas\.select\(agentId\); return; \}\s*timeline\.select\(agentId\);/.test(appJs)
       && (appJs.match(/goTo\(/g) ?? []).length >= 5);
     check('the waits drawn are the server\'s record for this session, and none for a session Studio did not start',
       /timeline\.setOwned\(current \? owned\.get\(current\) \?\? null : null\);/.test(appJs));
@@ -3781,6 +3781,193 @@ process.stdout.write('\n== §33 the Timeline ==\n');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
+}
+
+/* ------------------------------- §34 the List, the phone, and the states ---
+   The List is the session by what needs the reader, in an order that does not move.
+   A phone opens on it. A server that has gone quiet leaves the last picture up and
+   says it is old; a machine with no sessions says what Studio is waiting for. */
+
+process.stdout.write('\n== §34 the List, the phone, and the states ==\n');
+
+{
+  const lp = await import(`../../kit/studio/web/list-plan.js?t=${Date.now()}`);
+  const lv = await import(`../../kit/studio/web/liveness.js?o=${Date.now()}`);
+  const nv = await import(`../../kit/studio/web/nav.js?f=${Date.now()}`);
+  const web = (f) => read(path.join(WEB_ROOT, f)) ?? '';
+  const appJs = web('app.js');
+  const indexHtml = web('index.html');
+  const css34 = web('style.css');
+
+  const T = 1_800_000_000_000;
+  const M = 60_000;
+  const now = T + 30 * M;
+  const agent = (id, status, extra = {}) => ({ id, kind: 'agent', agentType: `type-${id}`, status, startedAt: T, endedAt: T + 5 * M, description: `task ${id}`, ...extra });
+  const nodes = [
+    { id: 'session', kind: 'session' },
+    agent('d1', 'done'), agent('r1', 'running', { startedAt: T + 22 * M, endedAt: null }), agent('f1', 'failed', { workflow: 'wf-audit', errors: 3 }),
+    agent('s1', 'starting', { startedAt: null, endedAt: null }), agent('e1', 'ended'), agent('z1', 'zombie'), agent('k1', 'killed', { endedAt: T + 9 * M }),
+    agent('d2', 'done', { endedAt: T + 8 * M }),
+  ];
+  const req = (key, sessionId, askedAt, extra = {}) => ({ key, sessionId, sessionName: `name-${sessionId}`, toolUseId: key, toolName: 'Bash', detail: 'npm run build', askedAt, waitSeconds: 45, agentId: null, agentType: null, ...extra });
+  const queue = [req('other', 's-other', T), req('mine', 's-here', T + 1000, { agentId: 'r1', agentType: 'crew-frontend-expert' })];
+
+  /* -- 1. the order ----------------------------------------------------------- */
+
+  const list = lp.sections(nodes, { queue, current: 's-here', now });
+  check('the List\'s order is fixed: Needs you, Failed, Running, Done, then what is left under its own name',
+    list.map((s) => s.key).join(' ') === 'needs failed running done status:ended status:zombie', list.map((s) => `${s.title} · ${s.count}`).join(' | '));
+  check('Needs you is every request waiting, this session\'s first',
+    list[0].cards.map((c) => c.key).join() === 'mine,other' && list[0].foldable === false && list[0].rows.length === 0);
+  check('killed and stopped are listed with the failures, newest first, and say which they were',
+    list[1].rows.map((r) => r.id).join() === 'k1,f1' && list[1].rows[0].line === 'killed' && list[1].rows[1].line === 'in wf-audit · 3 errors');
+  check('a running agent shows how long it has been going; one with no start recorded shows no time',
+    list[2].rows.map((r) => `${r.id}:${r.aside}`).join() === 'r1:8m,s1:starting'
+    && lp.sections([agent('q', 'running', { startedAt: null })], { now })[0].rows[0].aside === null,
+    list[2].rows.map((r) => `${r.id}:${r.aside}`).join());
+  check('Done is folded until asked for; Failed and Running are open',
+    list[3].folded === true && list[1].folded === false && list[2].folded === false
+    && lp.sections(nodes, { now, folded: new Map([['done', false]]) }).find((s) => s.key === 'done').folded === false);
+  check('a status the panel has no word for gets a section under its own name, not a place in one of the four',
+    list[5].title === 'zombie' && list[5].rows[0].id === 'z1' && list[4].title === 'Ended'
+    && !['failed', 'running', 'done'].some((k) => list.find((s) => s.key === k).rows.some((r) => r.id === 'z1')));
+  check('a section with nothing in it is left out, and a session with nothing at all has no sections',
+    lp.sections([agent('a', 'done')], { now }).map((s) => s.key).join() === 'done' && lp.sections([], { now }).length === 0);
+  check('a request card says who wants what', lp.wants(queue[1]) === 'wants to run Bash');
+
+  /* -- 2. the phone ----------------------------------------------------------- */
+
+  check('a window opens on the view the viewer chose; with no choice, the List on a phone and the graph elsewhere',
+    lp.defaultView('timeline', true) === 'timeline' && lp.defaultView(null, true) === 'list' && lp.defaultView(null, false) === 'graph'
+    && lp.defaultView('nonsense', false) === 'graph');
+  check('a default is not remembered as a choice',
+    /setView\(defaultView\(stored, phoneBand\.matches\), null, Boolean\(stored\)\);/.test(appJs)
+    && /if \(remember\) store\.set\('crewforth-studio-view', view\);/.test(appJs),
+    'otherwise a phone visit would open the List on the desktop forever after');
+  check('the graph and the Timeline still open on a phone, and say they are meant for more room',
+    lp.narrowWarning('graph', true) === 'Best on a wider screen' && lp.narrowWarning('timeline', true) !== null
+    && lp.narrowWarning('list', true) === null && lp.narrowWarning('graph', false) === null);
+  const phone = css34.slice(css34.indexOf('@media (max-width: 639px) {'));
+  check('on a phone a request\'s three answers are 44px tall, one under the other',
+    /\.ls-acts \{ flex-direction: column; \}/.test(phone) && /\.ls-acts \.btn \{ height: 44px; \}/.test(phone));
+  check('on a phone the inspector is a page with a way back, and the navigator is a drawer the menu opens',
+    /\.ihead-back \{ display: inline-flex; \}/.test(phone) && /\.ihead-close \{ display: none; \}/.test(phone)
+    && /#menu-btn \{ display: inline-flex; \}/.test(phone) && /\.shell\.side-open > \.side \{/.test(phone)
+    && /id="menu-btn"[^>]*aria-label="Open the navigator"[^>]*aria-expanded="false"/.test(indexHtml)
+    && /setDrawer\(!shell\.classList\.contains\('side-open'\)\)/.test(appJs));
+  check('the session\'s name and its summary move under the bar on a phone, and back when the window widens',
+    /el\.phoneHead\.append\(el\.crumb, el\.summary\);/.test(appJs) && /el\.bar\.insertBefore\(el\.summary, afterSummary\);/.test(appJs)
+    && /\.bar \.crumb, \.bar \.chips, \.bar #fullscreen \{ display: none; \}/.test(phone));
+
+  /* -- 3. the view switch ----------------------------------------------------- */
+
+  check('there are three views, and g, t and l go to them',
+    /id="view-list"[^>]*role="tab"[^>]*aria-label="List view"/.test(indexHtml)
+    && /e\.key === 'g'\) \{\s*setView\('graph'\);/.test(appJs) && /e\.key === 't'\) \{\s*setView\('timeline'\);/.test(appJs)
+    && /e\.key === 'l'\) \{\s*setView\('list'\);/.test(appJs));
+  check('in the List the requests are cards with their answers, so the dock stands down and the strip is not repeated',
+    /dock\.setSuppressed\(view === 'list'\);/.test(appJs) && /list\.setQueue\(next\);/.test(appJs)
+    && /\.stage\[data-view="list"\] \.attention \{ display: none; \}/.test(css34));
+  check('a control belongs to the views it names, and Group is not offered where nothing is grouped',
+    /id="tb-group" data-view="graph timeline"/.test(indexHtml)
+    && /c\.hidden = !c\.dataset\.view\.split\(' '\)\.includes\(view\);/.test(appJs));
+  const optBase = css34.indexOf('#tb-options { display: none; }');
+  const optShown = css34.indexOf('#tb-options { display: inline-flex; }');
+  check('a narrow toolbar drops Group, Density, Show, Expand and Fold only together with a menu that holds them',
+    optBase > 0 && optShown > optBase
+    && /#tb-group, #tb-density, #tb-show, #tb-expand, #tb-fold \{ display: none; \}\s*#tb-options \{ display: inline-flex; \}/.test(css34)
+    && /el\.tbOptions\.addEventListener\('click'/.test(appJs) && /\{ label: 'Expand all', run: \(\) => canvas\.expandAll\(\) \}/.test(appJs),
+    'the rule that hides the menu comes before the one that shows it: the other way round it never appeared');
+
+  /* -- 4. the List on a page ---------------------------------------------------- */
+
+  const dom34 = installDom();
+  try {
+    const { List } = await import(`../../kit/studio/web/list.js?t=${Date.now()}`);
+    const { Dock } = await import(`../../kit/studio/web/dock.js?s=${Date.now()}`);
+    const root = document.createElement('div');
+    const sent = [];
+    const picked = [];
+    const view = new List(root, { onDecide: (item, verdict) => sent.push(`${item.key}:${verdict}`), onSelect: (n) => picked.push(n.id) });
+    view.now = () => T + 8200;
+    view.setSession('s-here');
+    view.setNodes(nodes);
+    view.setQueue(queue);
+    const needs = root.children[0];
+    const card = needs.children.find((c) => c.classList.contains('ls-card'));
+    const buttons = card.children[card.children.length - 1].children;
+    check('a request card carries the same three answers the dock does',
+      buttons.map((b) => b.textContent).join(' | ') === 'Allow once | Allow Bash this session | Deny');
+    const clock = card.children[0].children[2];
+    check('its countdown is the server\'s, and a timer to a screen reader',
+      clock.textContent === '38s' && clock.getAttribute('role') === 'timer' && clock.getAttribute('aria-label') === 'Auto-deny in 38 seconds',
+      clock.textContent);
+    buttons[2].emit('click');
+    const again = root.children[0].children.find((c) => c.classList.contains('ls-card'));
+    again.children[again.children.length - 1].children[0].emit('click');
+    check('a card answers once: its buttons are off until the request is gone',
+      sent.join() === 'mine:deny' && again.children[again.children.length - 1].children.every((b) => b.disabled));
+    view.release('mine');
+    const back = root.children[0].children.find((c) => c.classList.contains('ls-card'));
+    check('an answer that did not reach the server gives the buttons back', back.children[back.children.length - 1].children.every((b) => !b.disabled));
+    const failedRow = root.children[1].children.find((c) => c.classList.contains('ls-row'));
+    failedRow.emit('click');
+    check('a row leads to its agent', picked.join() === 'k1');
+    view.setQueue([req('nowait', 's-here', T, { waitSeconds: null })]);
+    const unknown = root.children[0].children.find((c) => c.classList.contains('ls-card')).children[0].children[2];
+    check('a card whose wait the server did not send shows no seconds', unknown.textContent === '?' && /not measured/.test(unknown.getAttribute('aria-label')));
+
+    const dockRoot = document.createElement('div');
+    const dock = new Dock(dockRoot, { now: () => T + 8200 });
+    dock.render(queue.map((q) => ({ ...q })));
+    const shownBefore = dockRoot.hidden;
+    dock.setSuppressed(true);
+    dock.tick();
+    check('the dock stands down while another surface carries the answers, and its own clock does not bring it back',
+      shownBefore === false && dockRoot.hidden === true);
+    dock.setSuppressed(false);
+    check('and comes back with the requests still in it', dockRoot.hidden === false && dock.items.length === 2);
+  } finally {
+    dom34();
+  }
+
+  /* -- 5. the states ------------------------------------------------------------ */
+
+  const off = lv.offlineNote('offline', T, T + 30 * M + 1800, T + 30 * M);
+  check('offline, the stage says which picture is on screen and when the next try is',
+    /^Showing the last update from \d\d:\d\d\.$/.test(off.text) && off.retry === 'Reconnecting in 2s' && off.stale === true, `${off.text} ${off.retry}`);
+  check('the countdown is to a request the page will really make, and ends in "now"',
+    lv.offlineNote('offline', T, T, T + 5).retry === 'Reconnecting now' && lv.offlineNote('offline', T, null, T).retry === 'Reconnecting'
+    && /setInterval\(\(\) => \{ nextPollAt = Date\.now\(\) \+ FLEET_POLL_MS; pollFleet\(\); \}, FLEET_POLL_MS\);/.test(appJs)
+    && /function retryNow\(\) \{\s*nextPollAt = Date\.now\(\) \+ FLEET_POLL_MS;\s*pollFleet\(\); pollSessions\(\); pollOwned\(\);/.test(appJs));
+  check('a server that never answered has no last picture, and the note does not claim one',
+    lv.offlineNote('offline', null, null, T).stale === false && !/last update/.test(lv.offlineNote('offline', null, null, T).text));
+  check('live and stale are not offline: the note is for a request that failed', lv.offlineNote('live', T, T, T) === null && lv.offlineNote('stale', T, T, T) === null);
+  check('the last picture stays up while the server is away, and is drawn as old',
+    /\.stage\[data-offline="true"\] \.canvas,\s*\.stage\[data-offline="true"\] \.tl,\s*\.stage\[data-offline="true"\] \.ls,\s*\.stage\[data-offline="true"\] \.attention \{ opacity: 0\.45; \}/.test(css34)
+    && /el\.stage\.dataset\.offline = String\(Boolean\(off\)\);/.test(appJs));
+
+  check('a first run is transcripts read and none found; an answer that could not be read is not one',
+    nv.isFirstRun({ measured: true, projects: [] }) === true && nv.isFirstRun({ measured: false, projects: [] }) === false
+    && nv.isFirstRun({ measured: true, projects: [{}] }) === false && nv.isFirstRun(null) === false);
+  check('the first run says what Studio is waiting for, and offers no button that could start nothing',
+    /No Claude Code sessions yet/.test(appJs) && /<div id="first-run" class="first-run" hidden><\/div>/.test(indexHtml)
+    && !/el\.firstRun\.append\([^;]*button/s.test(appJs),
+    'the design has "New session" there; with no project on the machine there is nowhere to start one');
+  check('the navigator shows rows that are not there yet while the list is being read, and says it is busy',
+    /id="sessions"[^>]*aria-busy="true"><div class="skel" aria-hidden="true">/.test(indexHtml)
+    && /el\.sessions\.removeAttribute\('aria-busy'\);/.test(appJs));
+  check('Stats that could not be read say so, say it is not a zero, and type no command of their own',
+    /This is not a zero: there is nothing to read here\./.test(appJs) && /A full install of Crewforth in this project adds it\./.test(appJs)
+    && !/npx crewforth init/.test(appJs));
+
+  /* -- 6. the profiler tells a displayed view from one that is not ---------------- */
+
+  const prof = read(path.join(HERE, 'paint-profile.mjs')) ?? '';
+  check('the paint profiler refuses to quote a view that was not on screen for the whole run',
+    /result\.onScreen = measured\?\.shown === true && result\.onScreenAfter\.shown === true;/.test(prof)
+    && /result\.valid = result\.valid && result\.onScreen;/.test(prof) && /process\.exit\(result\.valid \? 0 : 1\)/.test(prof),
+    'measured: with the view off screen it read 1.3 ms a redraw; on screen, 5.6 ms');
 }
 
 process.stdout.write(`${pass}/${pass + fail} assertions passed`

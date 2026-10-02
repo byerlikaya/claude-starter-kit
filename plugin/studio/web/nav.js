@@ -73,6 +73,14 @@ export function sessionStatus(sessionId, fleet) {
   return { key: row.status, word: known.word, tone: known.tone, known: true, waitingFor: row.waitingFor ?? null };
 }
 
+/**
+ * Is this the first run: the transcripts were read, and there are none?
+ * An answer that could not be read is not a first run — it is not measured, and the navigator says that.
+ */
+export function isFirstRun(data) {
+  return Boolean(data) && data.measured !== false && Array.isArray(data.projects) && data.projects.length === 0;
+}
+
 /* --------------------------------------------------------------- rows --- */
 
 /** What a session is called: the label given here, the title it carries, and only then its id. */

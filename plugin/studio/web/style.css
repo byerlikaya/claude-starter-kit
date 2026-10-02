@@ -465,6 +465,8 @@ mark { background: color-mix(in srgb, var(--studio-accent) 30%, transparent); co
 .switch[aria-checked="true"] > span { left: 16px; background: var(--on-accent); }
 .switch:disabled { opacity: 0.5; cursor: default; }
 .toolbar { container-type: inline-size; }
+/* Shown only by the container rule below, when the toolbar has dropped what it holds. */
+#tb-options { display: none; }
 .toolbar-fill { flex: 1; min-width: 0; }
 /* Group, Density, Show: the name of the choice in the quiet colour, the choice itself in the text colour. */
 .tb-menu { color: var(--ink-dim); gap: 6px; }
@@ -482,10 +484,12 @@ mark { background: color-mix(in srgb, var(--studio-accent) 30%, transparent); co
   .toolbar-note { display: none; }
 }
 @container (max-width: 760px) {
-  #tb-show, #tb-expand, #tb-fold { display: none; }
+  /* Nothing is dropped without a way to reach it: "View options" holds what these three did. */
+  #tb-group, #tb-density, #tb-show, #tb-expand, #tb-fold { display: none; }
+  #tb-options { display: inline-flex; }
 }
 @container (max-width: 520px) {
-  #tb-density, #tb-zoom { display: none; }
+  #tb-zoom { display: none; }
   .tb-follow .sub { display: none; }
   /* The − and + stay; the name of the range between them goes. It is still on their labels. */
   .tb-range { display: none; }
@@ -499,6 +503,94 @@ mark { background: color-mix(in srgb, var(--studio-accent) 30%, transparent); co
 
 .canvas { flex: 1; min-height: 0; position: relative; overflow: hidden; background: var(--ground); }
 .canvas[hidden] { display: none; }
+
+/* ---------------------------------------------------------- the stage ---
+   One line for what is true of the whole stage, a first-run state, and the look of a picture that is old. */
+.phone-head { display: none; }
+.stage-note {
+  display: flex; align-items: center; gap: var(--space-3); flex: none; min-width: 0;
+  padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--line); font-size: 13px;
+  background: var(--surface); color: var(--ink-dim);
+}
+.stage-note[hidden], .stage-note [hidden] { display: none; }
+.stage-note[data-kind="offline"] {
+  color: var(--ink); background: color-mix(in srgb, var(--status-fail) 10%, var(--surface));
+  border-bottom-color: color-mix(in srgb, var(--status-fail) 45%, var(--line));
+}
+.stage-note-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The last picture stays while the server is away, and is drawn as what it is: old. */
+.stage[data-offline="true"] .canvas,
+.stage[data-offline="true"] .tl,
+.stage[data-offline="true"] .ls,
+.stage[data-offline="true"] .attention { opacity: 0.45; }
+.first-run {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-3);
+  padding: var(--space-6); text-align: center; color: var(--ink-dim);
+}
+.first-run[hidden] { display: none; }
+.first-run strong { font-size: 18px; color: var(--ink); }
+.first-run p { margin: 0; max-width: 46ch; line-height: 1.5; }
+.stage[data-first-run="true"] .canvas,
+.stage[data-first-run="true"] .tl,
+.stage[data-first-run="true"] .ls,
+.stage[data-first-run="true"] .toolbar { display: none; }
+/* Rows that are not there yet: the list is being read. */
+.skel { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); }
+.skel span { height: 44px; border-radius: var(--radius-md); background: var(--surface-raised); opacity: 0.6; }
+
+/* ------------------------------------------------------------ the list ---
+   One column, in the order of what needs the reader. */
+.ls { flex: 1; min-height: 0; min-width: 0; overflow-y: auto; background: var(--ground); padding: var(--space-3) var(--space-4) var(--space-6); }
+.ls[hidden] { display: none; }
+.ls-sec { max-width: 760px; margin: 0 auto var(--space-4); }
+.ls-head {
+  display: flex; align-items: center; gap: var(--space-2); width: 100%; height: 36px; padding: 0 var(--space-1);
+  background: none; border: 0; color: var(--ink); font: inherit; text-align: left;
+}
+button.ls-head { cursor: pointer; }
+.ls-title { font-size: 12px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-dim); }
+.ls-sec[data-tone="waiting"] .ls-title { color: var(--status-waiting); }
+.ls-sec[data-tone="fail"] .ls-title { color: var(--status-fail); }
+.ls-row {
+  display: flex; align-items: center; gap: var(--space-3); width: 100%; min-height: 56px; box-sizing: border-box;
+  padding: var(--space-2) var(--space-3); margin-bottom: var(--space-2);
+  border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface);
+  color: var(--ink); font: inherit; text-align: left; cursor: pointer;
+}
+.ls-row:hover { border-color: var(--studio-accent); }
+.ls-row.on { border-color: var(--studio-accent); box-shadow: 0 0 0 1px var(--studio-accent); }
+.ls-row.dim { opacity: 0.35; }
+.ls-row .cv-tile { flex: none; }
+.ls-text { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; }
+.ls-name { font-family: var(--font-mono); font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ls-line { font-size: 12px; color: var(--ink-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ls-aside { font-family: var(--font-mono); }
+.ls-chev { display: inline-flex; color: var(--ink-faint); flex: none; }
+.ls-chev .ic { width: 14px; height: 14px; }
+/* A request: who wants what, the time left, and the three answers. */
+.ls-card {
+  display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); margin-bottom: var(--space-2);
+  border-radius: var(--radius-md); border: 1px solid color-mix(in srgb, var(--status-waiting) 45%, var(--line));
+  background: color-mix(in srgb, var(--status-waiting) 8%, var(--surface));
+}
+.ls-card-head { display: flex; align-items: flex-start; gap: var(--space-2); min-width: 0; }
+.ls-card-who { display: flex; flex-direction: column; min-width: 0; }
+.ls-clock { font-family: var(--font-mono); font-size: 13px; font-weight: 600; color: var(--status-waiting); flex: none; font-variant-numeric: tabular-nums; }
+.ls-cmd {
+  margin: 0; padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: var(--ground);
+  font-family: var(--font-mono); font-size: 12px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere;
+  max-height: 120px; overflow-y: auto;
+}
+.ls-where { align-self: flex-start; background: none; border: 0; padding: 0; cursor: pointer; font: inherit; font-size: 12px; color: var(--accent); }
+.ls-acts { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.ls-acts .btn { flex: 1 1 auto; justify-content: center; }
+.ls-empty { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-2); color: var(--ink-dim); text-align: center; }
+.ls-empty strong { color: var(--ink); font-size: 15px; }
+/* The inspector's two ways out: a cross beside a panel, an arrow back from a page. */
+.ihead-back { display: none; }
+#menu-btn { display: none; }
+/* The List's first two sections are what the strip says; in that view it would say it twice. */
+.stage[data-view="list"] .attention { display: none; }
 
 /* ---------------------------------------------------------- timeline ---
    A label column and a track. Rows scroll; the axis above them and the drawer below them stay. */
@@ -1581,7 +1673,25 @@ body.vresizing { cursor: row-resize; user-select: none; }
   /* The bar keeps the mark, the word "Studio" and the controls that act on a
      session. Full screen is the one that goes: a phone has no window to leave. */
   .bar { gap: var(--space-2); padding: 0 var(--space-3); }
-  .crumb, .chips, .bar #fullscreen { display: none; }
+  .bar .crumb, .bar .chips, .bar #fullscreen { display: none; }
+  /* The session's name and its summary sit under the bar, above the view. */
+  .phone-head { display: flex; flex-direction: column; gap: var(--space-2); flex: none; padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--line); min-width: 0; }
+  .phone-head:empty { display: none; }
+  .phone-head .crumb { min-width: 0; }
+  .phone-head .chips { flex-wrap: wrap; }
+  /* The menu button opens the navigator as a drawer over the stage. */
+  #menu-btn { display: inline-flex; }
+  .shell.side-open > .side {
+    display: flex; grid-column: auto; position: absolute; z-index: 45; left: 0; top: 0; bottom: 0;
+    width: min(86vw, 320px); box-shadow: 12px 0 24px -18px var(--shade);
+  }
+  /* A request's three answers are thumb-sized, one under the other. */
+  .ls { padding: var(--space-3); }
+  .ls-acts { flex-direction: column; }
+  .ls-acts .btn { height: 44px; }
+  /* The inspector is a page here: back, not a cross. */
+  .ihead-back { display: inline-flex; }
+  .ihead-close { display: none; }
   /* The map and the legend are for a canvas with room around the graph; here they would cover it. */
   .cv-minimap, .cv-legend { display: none; }
   /* "Studio" comes back beside the mark, as the phone design has it. */

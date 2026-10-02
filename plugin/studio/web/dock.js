@@ -38,6 +38,7 @@ export class Dock {
     this.busy = new Set();    // requests an answer has been sent for
     this.flash = null;        // { word, outcome, until }
     this.flashTimer = null;
+    this.suppressed = false;  // another surface is showing the requests with their answers
     this.#build();
   }
 
@@ -158,6 +159,9 @@ export class Dock {
 
   get flashing() { return Boolean(this.flash) && Date.now() < this.flash.until; }
 
+  /** The List view shows each request as a card with its own answers; the dock stands down while it does. */
+  setSuppressed(on) { this.suppressed = Boolean(on); this.paint(); }
+
   /** Called once a second by the page, so the clock moves on its own. */
   tick() { if (this.items.length || this.flash) this.paint(); }
 
@@ -165,7 +169,7 @@ export class Dock {
     const p = this.parts;
     const item = this.current;
     const flashing = this.flashing;
-    this.root.hidden = !item && !flashing;
+    this.root.hidden = this.suppressed || (!item && !flashing);
     if (this.root.hidden) return;
 
     // What became of the last request is said in the place it was, before the next one takes it.

@@ -12,14 +12,16 @@ import { renderMarkdown } from './md.js';
 import { Chat } from './chat.js';
 import {
   summaryChips, sessionStatus, sessionName, sessionSub, ago, matchesSession, highlight, badgeFor,
-  liveSessions, machines, seenAgo,
+  liveSessions, machines, seenAgo, isFirstRun,
 } from './nav.js';
-import { liveness } from './liveness.js';
+import { liveness, offlineNote } from './liveness.js';
 import { attention, AUTO } from './graph-plan.js';
 import { ServerClock, queue, settled, OUTCOME_WORD } from './approvals.js';
 import { Dock } from './dock.js';
 import { NewSession } from './newsession.js';
 import { Timeline } from './timeline.js';
+import { List } from './list.js';
+import { defaultView, narrowWarning } from './list-plan.js';
 import { fmtDuration, fmtTokens, tiles, timeLine, rightNow, skillsOf, delegatedBy, reportOf, TABS as INSPECTOR_TABS, TAB_WORD } from './inspect.js';
 
 const FLEET_POLL_MS = 2000;
@@ -65,6 +67,14 @@ const el = {
   timeline: document.getElementById('timeline'),
   viewGraph: document.getElementById('view-graph'),
   viewTimeline: document.getElementById('view-timeline'),
+  viewList: document.getElementById('view-list'),
+  list: document.getElementById('list'),
+  firstRun: document.getElementById('first-run'),
+  stageNote: document.getElementById('stage-note'),
+  stage: document.querySelector('.stage'),
+  phoneHead: document.getElementById('phone-head'),
+  menuBtn: document.getElementById('menu-btn'),
+  tbOptions: document.getElementById('tb-options'),
   tbFollow: document.getElementById('tb-follow'),
   tbRangeOut: document.getElementById('tb-range-out'),
   tbRange: document.getElementById('tb-range'),
@@ -476,6 +486,21 @@ const pickFrom = (button, words, current, set) => button.addEventListener('click
 pickFrom(el.tbGroup, GROUP_WORD, () => canvas.state().group, (g) => canvas.setGroup(g));
 pickFrom(el.tbDensity, DENSITY_WORD, () => canvas.state().density, (d) => canvas.setDensity(d));
 pickFrom(el.tbShow, SHOW, () => show, (key) => setShow(key));
+// A narrow toolbar drops Group, Density, Show, Expand and Fold. They are not gone: this one menu holds them.
+el.tbOptions.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const st = canvas.state();
+  const pick = (words, now, set) => Object.entries(words).map(([key, w]) => ({
+    label: typeof w === 'string' ? w : w.word, checked: now === key, run: () => set(key),
+  }));
+  const items = view === 'list' ? [] : [{ note: 'Group' }, ...pick(GROUP_WORD, st.group, (g) => canvas.setGroup(g))];
+  if (view === 'graph') items.push({ note: 'Density' }, ...pick(DENSITY_WORD, st.density, (d) => canvas.setDensity(d)));
+  items.push({ note: 'Show' }, ...pick(SHOW, show, (key) => setShow(key)));
+  if (view === 'graph' && st.groups > 0) {
+    items.push({ note: 'Groups' }, { label: 'Expand all', run: () => canvas.expandAll() }, { label: 'Fold all', run: () => canvas.foldAll() });
+  }
+  openMenu(el.tbOptions, items);
+});
 el.tbExpand.addEventListener('click', () => canvas.expandAll());
 el.tbFold.addEventListener('click', () => canvas.foldAll());
 el.tbZoomOut.addEventListener('click', () => canvas.zoomBy(1 / 1.2));
@@ -488,6 +513,21 @@ el.tbFit.addEventListener('click', () => canvas.fit());
    grouped and what is shown is one choice, kept across the switch. */
 
 let view = 'graph';
+
+// The List: the same agents by what they need from the reader. A waiting request is a card with its own three
+// answers there, so the dock stands down while the List is the view.
+const list = new List(el.list, {
+  tileOf: (n) => canvas.tileFor(n),
+  dimmed: (n) => canvas.dimmed(n),
+  // A row leads to the agent's detail: the inspector, which on a phone is a page of its own.
+  onSelect: (n) => { list.select(n.id); canvas.select(n.id); },
+  onDecide: (item, verdict) => decideRequest(item, verdict),
+  onLocate: (item) => { if (item.sessionId !== current) selectSession(item.sessionId); },
+});
+list.now = () => serverNow();
+
+// Under 640px there is no room for the graph beside anything: the List is what a phone opens on.
+const phoneBand = window.matchMedia('(max-width: 639px)');
 
 function paintTimelineBar(st) {
   el.tbRange.textContent = st.range;
@@ -506,16 +546,25 @@ function paintTimelineBar(st) {
 /**
  * @param select an agent to select in the view being opened; without one, what was selected stays selected
  */
-function setView(next, select = null) {
+function setView(next, select = null, remember = true) {
   const was = view;
-  view = next === 'timeline' ? 'timeline' : 'graph';
-  store.set('crewforth-studio-view', view);
-  const carried = select ?? (was === 'timeline' ? timeline.selected : canvas.selected) ?? null;
+  view = ['graph', 'timeline', 'list'].includes(next) ? next : 'graph';
+  // A view the window opened on by default is not a choice, and is not remembered as one.
+  if (remember) store.set('crewforth-studio-view', view);
+  const carried = select ?? (was === 'timeline' ? timeline.selected : was === 'list' ? list.selected : canvas.selected) ?? null;
   el.canvasEl.hidden = view !== 'graph';
   el.timeline.hidden = view !== 'timeline';
+  el.list.hidden = view !== 'list';
   el.viewGraph.setAttribute('aria-selected', String(view === 'graph'));
   el.viewTimeline.setAttribute('aria-selected', String(view === 'timeline'));
-  for (const c of document.querySelectorAll('.toolbar [data-view]')) c.hidden = c.dataset.view !== view;
+  el.viewList.setAttribute('aria-selected', String(view === 'list'));
+  // Each control names the views it belongs to; the List has no grouping, so Group is not offered there.
+  for (const c of document.querySelectorAll('.toolbar [data-view]')) c.hidden = !c.dataset.view.split(' ').includes(view);
+  el.stage.dataset.view = view;
+  // The List's cards carry the answers; the dock would be the same requests a second time.
+  dock.setSuppressed(view === 'list');
+  measureDock();
+  paintStageNote();
 
   if (view === 'timeline') {
     // The drawer shows the selection here; the inspector gives the panel back.
@@ -524,6 +573,9 @@ function setView(next, select = null) {
     paintTimelineBar(timeline.state());
     const n = timeline.selected ? canvas.nodes.get(timeline.selected) : null;
     if (n) loadDetail(n.id, n.status);
+  } else if (view === 'list') {
+    list.select(carried && canvas.nodes.get(carried)?.kind === 'agent' ? carried : null);
+    list.render();
   } else {
     canvas.fitIfUntouched();
     if (carried && canvas.nodes.has(carried)) canvas.focus(carried);
@@ -531,13 +583,15 @@ function setView(next, select = null) {
 }
 /** Bring an agent forward in whichever view is open: its card on the graph, or its row on the Timeline. */
 function goTo(agentId) {
-  if (view !== 'timeline') { canvas.focus(agentId); return; }
+  if (view === 'graph') { canvas.focus(agentId); return; }
+  if (view === 'list') { list.select(agentId); canvas.select(agentId); return; }
   timeline.select(agentId);
   const n = canvas.nodes.get(agentId);
   if (n?.kind === 'agent') loadDetail(n.id, n.status);
 }
 el.viewGraph.addEventListener('click', () => setView('graph'));
 el.viewTimeline.addEventListener('click', () => setView('timeline'));
+el.viewList.addEventListener('click', () => setView('list'));
 el.tbFollow.addEventListener('click', () => timeline.setFollow(el.tbFollow.getAttribute('aria-checked') !== 'true'));
 // "Out" is more time on screen, "in" is less: the same way round as the graph's zoom.
 el.tbRangeOut.addEventListener('click', () => timeline.zoom(1));
@@ -565,6 +619,7 @@ function showInspector(node) {
   const before = inspectorNode;
   inspectorNode = node;
   if (!node) {
+    list.select(null);
     // Closing the inspector gives the panel back to the conversation, when one is open.
     if (right === 'inspector') setRight(restRight());
     return;
@@ -665,8 +720,15 @@ function paintInspector() {
   close.title = 'Close (Esc)';
   close.append(icon(ICON.close));
   close.addEventListener('click', () => { canvas.clearSelection(); showInspector(null); });
+  // On a phone the inspector is a page of its own, and the way out of a page is back.
+  const back = node('button', 'btn icon sm ghost ihead-back');
+  back.type = 'button';
+  back.setAttribute('aria-label', 'Back to the list');
+  back.append(icon(ICON.back));
+  back.addEventListener('click', () => { canvas.clearSelection(); showInspector(null); });
+  close.classList.add('ihead-close');
   const name = isSession ? 'Session' : n.kind === 'workflow' ? (n.workflowId ?? 'Workflow run') : (n.agentType ?? 'unknown agent');
-  head.append(canvas.tileFor(n), node('h3', 'iname', name), close);
+  head.append(back, canvas.tileFor(n), node('h3', 'iname', name), close);
 
   const meta = node('div', 'imeta');
   const pill = node('span', 'pill');
@@ -876,7 +938,19 @@ function unmeasured(reason) {
 function paintStats(body) {
   if (!kitData) { body.append(node('div', 'ihint', 'Reading Crewforth…')); return; }
   const s = kitData.stats;
-  if (!s?.measured) { body.append(unmeasured(s?.reason ?? kitData.reason)); return; }
+  if (!s?.measured) {
+    const reason = s?.reason ?? kitData.reason ?? '';
+    const box = node('div', 'ihint');
+    box.append(node('strong', null, 'Not measured'), node('div', null, reason || 'no reason given'),
+      node('div', 'why', 'This is not a zero: there is nothing to read here.'));
+    // The script that measures this comes with a full install. That is said only when its absence is the
+    // reason, and no command is typed here: the page offers commands the server gave it, and it gave none.
+    if (/session-stats\.sh is not present|not installed/.test(reason)) {
+      box.append(node('div', 'why', 'A full install of Crewforth in this project adds it.'));
+    }
+    body.append(box);
+    return;
+  }
   const dl = document.createElement('dl');
   for (const [k, v] of Object.entries(s.metrics)) {
     const dt = node('dt', null, k.replace(/_/g, ' '));
@@ -1059,6 +1133,7 @@ function icon(d) {
 }
 const ICON = {
   close: 'M4 4l8 8M12 4l-8 8',
+  back: 'M10 4l-4 4 4 4',
   copy: 'M5.5 5.5v-2A1.5 1.5 0 0 1 7 2h5.5A1.5 1.5 0 0 1 14 3.5V9a1.5 1.5 0 0 1-1.5 1.5h-2M3.5 5.5H9A1.5 1.5 0 0 1 10.5 7v5.5A1.5 1.5 0 0 1 9 14H3.5A1.5 1.5 0 0 1 2 12.5V7a1.5 1.5 0 0 1 1.5-1.5z',
   chevron: 'M6 4l4 4-4 4',
   more: 'M3.5 8h.01M8 8h.01M12.5 8h.01',
@@ -1252,6 +1327,24 @@ function renderSessions(data) {
   }
   paintProjects();
   paintCrumb();
+  paintFirstRun();
+}
+
+/* The first run: the transcripts were read and there are none. The stage says what Studio is waiting for and
+   offers the one thing that can be done about it here. */
+function paintFirstRun() {
+  const first = isFirstRun(projectsData);
+  el.sessions.removeAttribute('aria-busy');
+  el.stage.dataset.firstRun = String(first);
+  // No "New session" here, although the design has one: a session is started in a project, and on a machine
+  // with no transcripts this panel knows of no project to start it in.
+  if (first && !el.firstRun.firstChild) {
+    el.firstRun.append(
+      node('strong', null, 'No Claude Code sessions yet'),
+      node('p', null, 'Studio reads the sessions Claude Code saves on this machine. Start one in a terminal in any project and it shows up here within a few seconds.'),
+    );
+  }
+  el.firstRun.hidden = !first;
 }
 
 function versionBadge(kit) {
@@ -1749,6 +1842,7 @@ function selectSession(sessionId) {
   current = sessionId;
   canvas.setSession(sessionId);
   timeline.setSession(sessionId);
+  list.setSession(sessionId);
   timeline.setFilter(null);
   timeline.setOwned(owned.get(sessionId) ?? null);
   statusFilter = null;
@@ -1781,6 +1875,7 @@ function selectSession(sessionId) {
     canvas.render(g);
     lastNodes = g.nodes;
     timeline.setNodes(g.nodes);
+    list.setNodes(g.nodes);
     paintAttention(g.nodes);
     // The conversation's delegation cards and its context figure are the graph's.
     chat.refresh(sessionId, { contextTokens: g.nodes.find((n) => n.kind === 'session')?.tokens ?? null });
@@ -1813,6 +1908,7 @@ function selectSession(sessionId) {
     paintSummary(null);
     paintAttention(null);
     timeline.setNodes([]);
+    list.setNodes([]);
     el.foot.textContent = reason;
     canvas.render({ nodes: [], edges: [] });
   });
@@ -1852,7 +1948,7 @@ function paintPulse() {
   pulse.detail.textContent = l.detail ? `· ${l.detail}` : '';
 }
 paintPulse();
-setInterval(() => { paintPulse(); dock.tick(); timeline.tick(); }, 1000);
+setInterval(() => { paintPulse(); dock.tick(); timeline.tick(); list.tick(); paintStageNote(); }, 1000);
 
 /* -------------------------------------------------------------- home, keys */
 
@@ -1877,6 +1973,7 @@ document.addEventListener('keydown', (e) => {
       if (el.filter.value) { el.filter.value = ''; filterText = ''; paintProjects(); paintLive(); }
       return;
     }
+    if (shell.classList.contains('side-open')) { setDrawer(false); return; }
     if (newPanel.isOpen) { newPanel.close(); return; }
     if (view === 'timeline' && timeline.selected) { timeline.select(null); return; }
     // Close the inspector and let go of the selection.
@@ -1894,6 +1991,12 @@ document.addEventListener('keydown', (e) => {
     setSideHidden(true);
   } else if (e.key === ']') {
     setSideHidden(false);
+  } else if (e.key === 'g') {
+    setView('graph');
+  } else if (e.key === 't') {
+    setView('timeline');
+  } else if (e.key === 'l') {
+    setView('list');
   } else if (e.key === 'j') {
     stepAttention(1);
   } else if (e.key === 'k') {
@@ -1981,6 +2084,7 @@ function paintApprovals() {
   // The dock takes its height from the canvas when it appears and gives it back when it goes.
   const was = el.dock.hidden;
   dock.render(next);
+  list.setQueue(next);
   chat.setWaiting(next);
   // The Timeline's waiting periods are the server's record of this session's approvals; a session Studio did
   // not start has none, and the Timeline says so.
@@ -2008,6 +2112,7 @@ async function decideRequest(item, verdict) {
     // Nothing reached the hook, so nothing was decided: the buttons come back and the clock is still running.
     decided.delete(item.key);
     dock.release(item.key);
+    list.release(item.key);
     toast(`Decision not recorded — ${res.reason ?? 'no reason given'}`);
     return;
   }
@@ -2056,6 +2161,72 @@ async function pollOwned() {
 // reconnects, so it is taken as a reason to ask, not as the answer.
 chat.onPermissions = () => pollOwned();
 
+/* ------------------------------------------------------- the stage's note
+   One line above the view, for two things that are about the whole stage: the server is not answering, or this
+   view is being shown in a window too narrow for it. Offline is said first. */
+
+let nextPollAt = null;
+const stageNote = { text: node('span', 'stage-note-text'), retry: node('span', 'sub'), button: node('button', 'btn sm', 'Retry now') };
+stageNote.button.type = 'button';
+stageNote.button.addEventListener('click', () => retryNow());
+el.stageNote.append(stageNote.text, stageNote.retry, node('span', 'row-fill'), stageNote.button);
+
+function paintStageNote() {
+  const l = liveness(Date.now(), heard.okAt, heard.failed);
+  const off = offlineNote(l.state, heard.okAt, nextPollAt, Date.now());
+  const warn = narrowWarning(view, phoneBand.matches);
+  // The last picture stays on screen while the server is away, and is drawn as old.
+  el.stage.dataset.offline = String(Boolean(off));
+  el.stageNote.hidden = !off && !warn;
+  el.stageNote.dataset.kind = off ? 'offline' : 'narrow';
+  stageNote.text.textContent = off ? off.text : (warn ?? '');
+  stageNote.retry.textContent = off ? off.retry : '';
+  stageNote.retry.hidden = !off;
+  stageNote.button.hidden = !off;
+}
+
+function retryNow() {
+  nextPollAt = Date.now() + FLEET_POLL_MS;
+  pollFleet(); pollSessions(); pollOwned();
+}
+
+/* ---------------------------------------------------------------- phone
+   Under 640px the bar has room for the mark and three controls. The session's name and its summary move under
+   it, above the view; the navigator is a drawer the menu button opens. */
+
+const barFill = el.bar.querySelector('.bar-fill');
+const afterSummary = el.summary.nextElementSibling;
+
+function setDrawer(open) {
+  shell.classList.toggle('side-open', open);
+  el.menuBtn.setAttribute('aria-expanded', String(open));
+  el.menuBtn.setAttribute('aria-label', open ? 'Close the navigator' : 'Open the navigator');
+}
+el.menuBtn.addEventListener('click', () => setDrawer(!shell.classList.contains('side-open')));
+// Choosing a session in the drawer is why it was opened; it closes behind the choice.
+el.sessions.addEventListener('click', (e) => { if (phoneBand.matches && e.target.closest?.('.srow')) setDrawer(false); });
+el.fleet.addEventListener('click', (e) => { if (phoneBand.matches && e.target.closest?.('.srow, .live-row')) setDrawer(false); });
+el.sideHide.addEventListener('click', () => { if (phoneBand.matches) setDrawer(false); });
+
+let headOnPhone = false;
+function applyPhoneBand(initial = false) {
+  // Moved only when the band changes: the bar is where they are written in the page.
+  if (phoneBand.matches && !headOnPhone) {
+    el.phoneHead.append(el.crumb, el.summary);
+    headOnPhone = true;
+  } else if (!phoneBand.matches && headOnPhone) {
+    el.bar.insertBefore(el.crumb, barFill);
+    el.bar.insertBefore(el.summary, afterSummary);
+    headOnPhone = false;
+    setDrawer(false);
+  }
+  // A window that crosses the line takes that width's default view, unless the viewer has chosen one.
+  if (!initial && !store.get('crewforth-studio-view')) setView(defaultView(null, phoneBand.matches), null, false);
+  paintStageNote();
+  fitBar();
+}
+phoneBand.addEventListener('change', () => applyPhoneBand());
+
 /* --------------------------------------------------------------- polling */
 
 async function pollFleet() {
@@ -2073,8 +2244,14 @@ async function pollSessions() {
 }
 
 setTab(store.get('crewforth-studio-nav-tab') ?? 'projects');
-setView(store.get('crewforth-studio-view') ?? 'graph');
+// The view the viewer chose, or the one this window opens on: the List on a phone, the graph elsewhere.
+applyPhoneBand(true);
+{
+  const stored = store.get('crewforth-studio-view');
+  setView(defaultView(stored, phoneBand.matches), null, Boolean(stored));
+}
 pollFleet(); pollSessions(); pollOwned();
-setInterval(pollFleet, FLEET_POLL_MS);
+setInterval(() => { nextPollAt = Date.now() + FLEET_POLL_MS; pollFleet(); }, FLEET_POLL_MS);
+nextPollAt = Date.now() + FLEET_POLL_MS;
 setInterval(pollOwned, FLEET_POLL_MS);
 setInterval(pollSessions, SESSION_POLL_MS);
