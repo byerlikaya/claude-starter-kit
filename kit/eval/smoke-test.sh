@@ -7478,6 +7478,7 @@ else fail "commit forms that should be refused:$_cfbad"; fi
 CPT='0/ask 0/allow @@ git commit -m x
 0/ask 0/allow @@ git add a.txt && git commit -m x
 0/ask 0/allow @@ ls -la && git commit -m x
+0/ask 0/allow @@ printenv HOME && git commit -m x
 0/ask 0/allow @@ git commit -q -m \"docs: add the -a flag; keep (the) b.txt | tail note\"
 0/ask 0/allow @@ git commit -m \x27it\x27\\\x27\x27s done\x27
 0/ask 0/allow @@ git commit -m \"fix the \\\"quoted\\\" thing\"
@@ -7522,8 +7523,8 @@ CPT='0/ask 0/allow @@ git commit -m x
 0/ask 0/allow @@ bash build.sh && git commit -m x
 0/ask 0/allow @@ cat > notes.md <<\x27EOF\x27\nrun: bash -c \x27git commit -am x\x27 and it\x27s gone\nEOF\ngit commit -m x'
 _cf_table "$CPT"
-if [ "$_cfn" != 46 ]; then fail "FIXTURE: the everyday-commit table has $_cfn rows, not 46"
-elif [ -z "$_cfbad" ]; then pass "46 everyday calls are judged as before (asked in default, allowed when pre-authorised): chained after git add, a message that holds flags and separators, a here-document message, -F, -S, -uno, redirections, a pipe, a comment, a cd into this same repository, GIT_AUTHOR_*, a script beside the commit"
+if [ "$_cfn" != 47 ]; then fail "FIXTURE: the everyday-commit table has $_cfn rows, not 47"
+elif [ -z "$_cfbad" ]; then pass "47 everyday calls are judged as before (asked in default, allowed when pre-authorised): chained after git add, a message that holds flags and separators, a here-document message, -F, -S, -uno, redirections, a pipe, a comment, a cd into this same repository, GIT_AUTHOR_*, a script beside the commit"
 else fail "everyday commit calls that changed verdict:$_cfbad"; fi
 
 # Three everyday calls the OLDER scan refuses, and still does: it reads any a/o/i/p in a short token as a flag
