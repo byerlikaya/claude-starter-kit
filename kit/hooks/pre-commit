@@ -5,6 +5,59 @@
 #  (3) private-path scanner  — this machine's $HOME + .private-terms.txt (§4.3)
 # Skipping requires an explicit request per §4.5 (git commit --no-verify).
 set -euo pipefail
+# ---- CREW-LOCALE -----------------------------------------------------------------------------------------
+# Everything this gate matches with runs in the C locale, whatever the session's own is. Under a Turkish locale
+# the letters i and I are not each other's other case (their partners are İ and ı), and every case-insensitive
+# match here is written in ASCII. Measured under tr_TR.UTF-8 with the locale left as it came:
+#   GNU grep 3.11 / bash 5.2 on Linux: `grep -i init` does not find INIT (-F, -E and plain alike);
+#     bash's nocasematch does not match GIT against git; `[A-Za-z]` in a regex does not hold I; awk's tolower
+#     turns GIT into gıt. The suite, run whole under that locale, went from 4 failures to 30: a recursive
+#     Remove-Item, a write to a gate file, `git config --remove-section core`, a read of a nested .env and a
+#     staged key all passed.
+#   GNU grep 3.0 in Git Bash on Windows: `grep -iF` with an ASCII pattern aborts (exit 134), and the pre-commit
+#     scan for private strings read that as "no match".
+#   macOS (BSD grep, bash 3.2): none of it; tr_TR.UTF-8 folds i and I the ASCII way there.
+# The cost: a letter outside ASCII has no other case in the C locale. The two git hooks that scan a user's own
+# words look a second time under the session's locale for a pattern that holds such a letter (_CREW_LOCALE).
+# Byte-identical in every gate; the suite pins it.
+_CREW_LOCALE="${LC_ALL:-${LC_CTYPE:-${LANG:-}}}"
+case "$_CREW_LOCALE" in C|POSIX) _CREW_LOCALE="" ;; esac
+export LC_ALL=C
+# ---- /CREW-LOCALE
+# ---- CREW-SCAN -------------------------------------------------------------------------------------------
+# One scan of one file for one pattern, with "could not look" kept apart from "nothing there". grep exits 1 for
+# no match and 2 or more when it could not answer: a pattern that does not compile, a file it could not read, or
+# grep itself dying (exit 134 for `grep -iF` under a Turkish locale in Git Bash, measured). Read as "no match",
+# that is a scan that passes whatever it was shown.
+#   0  a match          1  no match
+#   2  the pattern does not compile (grep says exactly 2, and says it again for empty input) - the caller warns:
+#      a typo in a hand-edited list must not lock every commit, and the other patterns still ran
+#   3  could not look   - the caller stops the commit
+# A pattern that holds a letter outside ASCII is looked for a second time under the session's own locale when
+# the first look finds nothing and the match ignores case: in the C locale such a letter has no other case.
+_crew_scan(){  # $1 = grep's flags after -q (iE, E, iF) · $2 = pattern · $3 = file
+  local r=0
+  grep -q"$1" -- "$2" "$3" 2>/dev/null || r=$?
+  if [ "$r" = 1 ] && [ -n "$_CREW_LOCALE" ]; then
+    case "$1" in *i*) case "$2" in *[!$'\t'\ -~]*) r=0; LC_ALL="$_CREW_LOCALE" grep -q"$1" -- "$2" "$3" 2>/dev/null || r=$? ;; esac ;; esac
+  fi
+  [ "$r" -ge 2 ] || return "$r"
+  case "$1" in *F*) return 3 ;; esac
+  r=0; grep -q"$1" -- "$2" /dev/null 2>/dev/null || r=$?
+  [ "$r" != 2 ] || return 2
+  return 3
+}
+# ---- /CREW-SCAN
+_crew_looked(){  # $1 = what a pipeline collects for the scans · the rest = the exit status of each of its commands
+  # Every status, not the pipeline's own: with pipefail that is the LAST command that failed, and the last grep
+  # exits 1 whenever nothing reaches it - which is exactly what an abort further up leaves behind.
+  local what="$1" r; shift
+  for r in "$@"; do
+    [ "$r" -lt 2 ] && continue
+    echo "PRE-COMMIT: $what could not be read (exit $r), so nothing was scanned and the commit is stopped."
+    exit 1
+  done
+}
 # The 2.x names of the variables a user can set still work (one helper: eval/lib/crew-env.sh).
 _crew_d="${BASH_SOURCE%/*}"; [ "$_crew_d" = "${BASH_SOURCE}" ] && _crew_d=.
 [ -f "$_crew_d/../eval/lib/crew-env.sh" ] && . "$_crew_d/../eval/lib/crew-env.sh"; unset _crew_d
@@ -47,7 +100,7 @@ trap '_crew_cleanup; exit 143' INT TERM
 git diff --cached --unified=0 -- . \
   ':(top,exclude,glob)**/trace-blocklist.txt' ':(top,exclude,glob)**/secret-blocklist.txt' \
   ':(top,exclude)trace-blocklist.txt' ':(top,exclude)secret-blocklist.txt' \
-  | grep -E '^\+' | grep -Ev '^\+\+\+' > "$SECRET_F" || true
+  | grep -E '^\+' | grep -Ev '^\+\+\+' > "$SECRET_F" || _crew_looked "the staged diff" "${PIPESTATUS[@]}"
 
 # Traces (§4.1/§4.2) are scanned in the PROJECT's own files only. `.claude/` is Crewforth's tree: it configures the
 # assistant, it legitimately names the tool it configures, and an update overwrites it — it is not an artifact the
@@ -56,7 +109,7 @@ git diff --cached --unified=0 -- . \
 # falls under .claude/, but in Crewforth's own repo it sits at kit/hooks/ where that exclusion misses it.
 git diff --cached --unified=0 -- . ':(top,exclude).claude' \
   ':(top,exclude,glob)**/trace-blocklist.txt' ':(top,exclude)trace-blocklist.txt' \
-  | grep -E '^\+' | grep -Ev '^\+\+\+' > "$TRACE_F" || true
+  | grep -E '^\+' | grep -Ev '^\+\+\+' > "$TRACE_F" || _crew_looked "the staged diff" "${PIPESTATUS[@]}"
 
 # `git commit -a` stages tracked changes as part of the commit. As a git hook that is invisible — git stages
 # first, so --cached already contains them by the time this runs. Called AHEAD of the commit (the plugin
@@ -67,10 +120,10 @@ if [ "${CREW_SCAN_UNSTAGED:-0}" = 1 ]; then
   git diff --unified=0 -- . \
     ':(top,exclude,glob)**/trace-blocklist.txt' ':(top,exclude,glob)**/secret-blocklist.txt' \
     ':(top,exclude)trace-blocklist.txt' ':(top,exclude)secret-blocklist.txt' \
-    | grep -E '^\+' | grep -Ev '^\+\+\+' >> "$SECRET_F" || true
+    | grep -E '^\+' | grep -Ev '^\+\+\+' >> "$SECRET_F" || _crew_looked "the unstaged diff" "${PIPESTATUS[@]}"
   git diff --unified=0 -- . ':(top,exclude).claude' \
     ':(top,exclude,glob)**/trace-blocklist.txt' ':(top,exclude)trace-blocklist.txt' \
-    | grep -E '^\+' | grep -Ev '^\+\+\+' >> "$TRACE_F" || true
+    | grep -E '^\+' | grep -Ev '^\+\+\+' >> "$TRACE_F" || _crew_looked "the unstaged diff" "${PIPESTATUS[@]}"
 fi
 
 HIT=0
@@ -300,16 +353,21 @@ done < <({ _floor_diff --cached; [ "${CREW_SCAN_UNSTAGED:-0}" = 1 ] && _floor_di
 # secrets newly passed. Also checked structurally: no pattern in either shipped blocklist carries a bare
 # top-level `|` (every one is inside a group) and none uses a back-reference, so joining cannot reshape them.
 _crew_any(){   # $1 = pattern list  $2 = corpus  $3 = grep flags  $4 = 1 for newline-joined fixed strings
-  local pat alt="" sep="|"
+  local pat alt="" sep="|" na=0 r=0
   [ "$4" = 1 ] && sep="
 "
   while IFS= read -r pat || [ -n "$pat" ]; do
     pat="${pat%$'\r'}"
     case "$pat" in ''|\#*) continue;; esac
     alt="${alt:+$alt$sep}$pat"
+    case "$pat" in *[!$'\t'\ -~]*) na=1 ;; esac
   done < "$1"
   [ -n "$alt" ] || return 1
-  grep -q$3 -- "$alt" "$2" 2>/dev/null
+  grep -q$3 -- "$alt" "$2" 2>/dev/null || r=$?
+  # Nothing found, but a pattern holds a letter outside ASCII and the match ignores case: the per-pattern loop looks
+  # again under the session's own locale (_crew_scan), so send the caller there.
+  if [ "$r" = 1 ] && [ "$na" = 1 ] && [ -n "$_CREW_LOCALE" ]; then case "$3" in *i*) return 4 ;; esac; fi
+  return "$r"
 }
 # (1) trace scan — case-INsensitive (vendor / AI-authorship strings), project files only
 # `!= 1` AND NOT `= 0`, AND THE DIFFERENCE IS THE WHOLE GATE. _crew_any joins every pattern into ONE
@@ -345,12 +403,15 @@ if [ -f "$BL" ] && [ -s "$TRACE_F" ] && [ "$_dec" != 1 ]; then
     # `|| _gr=$?` and not a bare call: `set -e` is in force at the top of this file, and a grep that simply
     # does not match exits 1, which would kill the hook on the first clean pattern. Measured the wrong way once
     # already -- the bare form made every commit exit 1 with no output at all.
-    _gr=0; grep -iqE -- "$pat" "$TRACE_F" 2>/dev/null || _gr=$?
+    _gr=0; _crew_scan iE "$pat" "$TRACE_F" || _gr=$?
     if [ "$_gr" = 0 ]; then
       echo "TRACE-SCANNER: forbidden expression in added code -> '$pat' (§4.1/§4.2)"
       HIT=1
-    elif [ "$_gr" -ge 2 ]; then
+    elif [ "$_gr" = 2 ]; then
       echo "TRACE-SCANNER: /$pat/ in $BL is not a valid regular expression, so it matches NOTHING. Every other pattern still ran; fix or remove this line."
+    elif [ "$_gr" -ge 3 ]; then
+      echo "TRACE-SCANNER: the look for '$pat' could not run, so the added lines are not known to be clean and the commit is stopped (§4.1/§4.2)."
+      HIT=1
     fi
   done < "$BL"
 fi
@@ -361,11 +422,14 @@ if [ -f "$SL" ] && [ -s "$SECRET_F" ] && [ "$_dec" != 1 ]; then
     pat="${pat%$'\r'}"                       # tolerate a CRLF blocklist (Windows/autocrlf checkout)
     case "$pat" in ''|\#*) continue;; esac
     if [ -n "$SAL" ] && grep -qxF -- "$pat" "$SAL"; then continue; fi
-    _gr=0; grep -qE -- "$pat" "$SECRET_F" 2>/dev/null || _gr=$?
+    _gr=0; _crew_scan E "$pat" "$SECRET_F" || _gr=$?
     if [ "$_gr" = 0 ]; then
       echo "SECRET-SCANNER: a staged line matches a secret pattern -> /$pat/"
       HIT=1
-    elif [ "$_gr" -ge 2 ]; then
+    elif [ "$_gr" -ge 3 ]; then
+      echo "SECRET-SCANNER: the look for /$pat/ could not run, so the staged lines are not known to be clean and the commit is stopped."
+      HIT=1
+    elif [ "$_gr" = 2 ]; then
       # Same reasoning as the trace loop above; the comment there is the long form.
       echo "SECRET-SCANNER: /$pat/ in $SL is not a valid regular expression, so it matches NOTHING. Every other pattern still ran; fix or remove this line."
     fi
@@ -414,10 +478,16 @@ if [ -s "$PTERM_F" ] && [ -s "$SECRET_F" ] && [ "$_dec" != 1 ]; then
     term="${term%$'\r'}"
     [ -n "$term" ] || continue
     if [ -n "$PAL" ] && grep -qxF -- "$term" "$PAL"; then continue; fi
-    if grep -qiF -- "$term" "$SECRET_F"; then
+    _gr=0; _crew_scan iF "$term" "$SECRET_F" || _gr=$?
+    if [ "$_gr" = 0 ]; then
       # The term is echoed back deliberately: unlike a secret, the author has to see WHICH private string to
       # replace, and it is already sitting in their own working tree.
       echo "PRIVATE-PATH SCANNER: a staged line contains a machine-private string -> '$term' (§4.3)"
+      HIT=1
+    elif [ "$_gr" -ge 2 ]; then
+      # This loop used to read every exit status but 0 as "no match": under a Turkish locale in Git Bash grep -iF
+      # aborted (134) for each term and the commit went through with both private strings in it (measured).
+      echo "PRIVATE-PATH SCANNER: the look for a machine-private string could not run, so the staged lines are not known to be clean and the commit is stopped (§4.3)."
       HIT=1
     fi
   done < "$PTERM_F"
@@ -538,7 +608,14 @@ EOF_FLOOR_CAND2
       esac
       _gr=0; hits="$(grep -nE -- "$pat" "$FLOOR_F" 2>/dev/null)" || _gr=$?
       if [ "$_gr" -ge 2 ]; then
-        echo "FLOOR-GUARD: /$pat/ in $FL is not a valid regular expression, so it matches NOTHING. Every other pattern still ran; fix or remove this line."
+        # Does the pattern compile? Tried against empty input: 1 = it does, so it was the look that failed.
+        _gv=0; grep -qE -- "$pat" /dev/null 2>/dev/null || _gv=$?
+        if [ "$_gv" = 2 ]; then
+          echo "FLOOR-GUARD: /$pat/ in $FL is not a valid regular expression, so it matches NOTHING. Every other pattern still ran; fix or remove this line."
+        else
+          echo "FLOOR-GUARD: the look for /$pat/ could not run, so the staged lines are not known to be clean and the commit is stopped."
+          HIT=1
+        fi
         continue
       fi
       [ -n "$hits" ] || continue
