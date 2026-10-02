@@ -464,13 +464,13 @@ mark { background: color-mix(in srgb, var(--studio-accent) 30%, transparent); co
 .switch[aria-checked="true"] { background: var(--accent); }
 .switch[aria-checked="true"] > span { left: 16px; background: var(--on-accent); }
 .switch:disabled { opacity: 0.5; cursor: default; }
-.toolbar { container-type: inline-size; }
-/* Shown only by the container rule below, when the toolbar has dropped what it holds. */
+/* Shown only at the step below at which the toolbar has dropped what it holds. */
 #tb-options { display: none; }
 .toolbar-fill { flex: 1; min-width: 0; }
 /* Group, Density, Show: the name of the choice in the quiet colour, the choice itself in the text colour. */
 .tb-menu { color: var(--ink-dim); gap: 6px; }
 .tb-menu > span { color: var(--ink); }
+.tb-menu > .tb-more { color: inherit; }
 .tb-menu .ic { width: 12px; height: 12px; }
 .tb-zoom {
   width: 44px; height: 30px; padding: 0; flex: none;
@@ -478,22 +478,23 @@ mark { background: color-mix(in srgb, var(--studio-accent) 30%, transparent); co
   font-family: var(--font-mono); font-size: 12px; color: var(--ink-dim); text-align: center;
 }
 .tb-zoom:hover { color: var(--ink); }
-/* A narrow toolbar keeps every control and drops the words of the two that have an icon to stand on. */
-@container (max-width: 880px) {
-  .tb-words { display: none; }
-  .toolbar-note { display: none; }
-}
-@container (max-width: 760px) {
-  /* Nothing is dropped without a way to reach it: "View options" holds what these three did. */
-  #tb-group, #tb-density, #tb-show, #tb-expand, #tb-fold { display: none; }
-  #tb-options { display: inline-flex; }
-}
-@container (max-width: 520px) {
-  #tb-zoom { display: none; }
-  .tb-follow .sub { display: none; }
-  /* The − and + stay; the name of the range between them goes. It is still on their labels. */
-  .tb-range { display: none; }
-}
+/* What a toolbar that does not hold everything gives up, a step at a time. The step is measured by the page
+   (toolbar-fit.js) and written to data-fit; no width is assumed here, because how wide the words are depends on
+   the font and on the choices the menus are showing.
+   1: it keeps every control and drops the words of the ones that have an icon to stand on. */
+.toolbar:is([data-fit="1"], [data-fit="2"], [data-fit="3"]) .tb-words,
+.toolbar:is([data-fit="1"], [data-fit="2"], [data-fit="3"]) .toolbar-note { display: none; }
+/* 2: nothing is dropped without a way to reach it: "View options" holds what these did. */
+.toolbar:is([data-fit="2"], [data-fit="3"]) :is(#tb-group, #tb-density, #tb-show, #tb-expand, #tb-fold) { display: none; }
+.toolbar:is([data-fit="2"], [data-fit="3"]) #tb-options { display: inline-flex; }
+/* 3: the − and + stay; the figure between them goes. It is still on their labels. And "View options" is "View":
+   measured at 360 px, the width of a small phone, the full name ran 24 px over. */
+.toolbar[data-fit="3"] #tb-zoom,
+.toolbar[data-fit="3"] .tb-range,
+.toolbar[data-fit="3"] .tb-follow .sub,
+.toolbar[data-fit="3"] .tb-more { display: none; }
+/* …and the row closes up. At 320 px it was still 17 px over with its usual gaps. */
+.toolbar[data-fit="3"] { gap: var(--space-1); padding: 0 var(--space-2); }
 /* What the panel has to say about the stream or the last action: a reason, in
    words, where the eye already is. Empty most of the time. */
 .toolbar-note {

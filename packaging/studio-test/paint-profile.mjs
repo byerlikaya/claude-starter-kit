@@ -29,6 +29,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { CDP, httpJson } from '../studio-record/cdp.mjs';
+import { findChrome } from './chrome.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..', '..');
@@ -48,19 +49,6 @@ const H = Number(arg('height', 900));
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const die = (m) => { console.error(`paint-profile: ${m}`); process.exit(2); };
-
-function findChrome() {
-  const given = arg('chrome', process.env.CHROME_PATH ?? null);
-  const candidates = given ? [given] : [
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-    'C:/Program Files/Google/Chrome/Application/chrome.exe',
-    'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
-    'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
-    'C:/Program Files/Microsoft/Edge/Application/msedge.exe',
-    '/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser',
-  ];
-  return candidates.find((c) => fs.existsSync(c)) ?? null;
-}
 
 /* ---------------------------------------------------------------- server */
 
@@ -278,7 +266,7 @@ window.__pp = {
 
 /* -------------------------------------------------------------------- run */
 
-const chromePath = findChrome();
+const chromePath = findChrome(arg('chrome', process.env.CHROME_PATH ?? null));
 if (!chromePath) die('no Chrome or Edge found — pass --chrome PATH');
 
 const url = REAL ?? await startPanel();

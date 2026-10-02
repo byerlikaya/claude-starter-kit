@@ -22,6 +22,7 @@ import { NewSession } from './newsession.js';
 import { Timeline } from './timeline.js';
 import { List } from './list.js';
 import { defaultView, narrowWarning } from './list-plan.js';
+import { fitLevel, runsOver } from './toolbar-fit.js';
 import { fmtDuration, fmtTokens, tiles, timeLine, rightNow, skillsOf, delegatedBy, reportOf, TABS as INSPECTOR_TABS, TAB_WORD } from './inspect.js';
 
 const FLEET_POLL_MS = 2000;
@@ -75,6 +76,7 @@ const el = {
   phoneHead: document.getElementById('phone-head'),
   menuBtn: document.getElementById('menu-btn'),
   tbOptions: document.getElementById('tb-options'),
+  toolbar: document.querySelector('.toolbar'),
   tbFollow: document.getElementById('tb-follow'),
   tbRangeOut: document.getElementById('tb-range-out'),
   tbRange: document.getElementById('tb-range'),
@@ -486,6 +488,36 @@ const pickFrom = (button, words, current, set) => button.addEventListener('click
 pickFrom(el.tbGroup, GROUP_WORD, () => canvas.state().group, (g) => canvas.setGroup(g));
 pickFrom(el.tbDensity, DENSITY_WORD, () => canvas.state().density, (d) => canvas.setDensity(d));
 pickFrom(el.tbShow, SHOW, () => show, (key) => setShow(key));
+// The toolbar is measured, not assumed: it gives up a step at a time until what it shows fits (toolbar-fit.js).
+// Every step is tried from the first, so a toolbar that has room again takes its words back.
+function fitToolbar() {
+  const bar = el.toolbar;
+  const step = fitLevel((n) => {
+    bar.dataset.fit = String(n);
+    const box = bar.getBoundingClientRect();
+    if (!box.width) return false;                       // not on screen: nothing to fit
+    const shown = [...bar.children].filter((c) => !c.classList.contains('toolbar-fill') && !c.classList.contains('toolbar-note') && c.getClientRects().length);
+    return runsOver({ right: box.right, padRight: parseFloat(getComputedStyle(bar).paddingRight) || 0 }, shown.map((c) => c.getBoundingClientRect().right));
+  });
+  bar.dataset.fit = String(step);
+}
+let fitQueued = false;
+function queueFit() {
+  if (fitQueued) return;
+  fitQueued = true;
+  // A frame later, so the write is not made inside an observer's own delivery.
+  requestAnimationFrame(() => { fitQueued = false; fitToolbar(); });
+}
+// Its width changes with the window and with the panels beside it; what it holds changes with the view (setView
+// asks) and with the words of its menus. Those words are written on every report from the canvas, a zoom frame
+// included, so a write is not a change: the toolbar is measured again only when the words are different ones.
+if (typeof ResizeObserver !== 'undefined') new ResizeObserver(queueFit).observe(el.toolbar);
+if (typeof MutationObserver !== 'undefined') {
+  const wordsNow = () => Object.values(tbValue).map((v) => v.textContent).join('|');
+  let fitWords = wordsNow();
+  const words = new MutationObserver(() => { const now = wordsNow(); if (now !== fitWords) { fitWords = now; queueFit(); } });
+  for (const v of Object.values(tbValue)) words.observe(v, { childList: true, characterData: true, subtree: true });
+}
 // A narrow toolbar drops Group, Density, Show, Expand and Fold. They are not gone: this one menu holds them.
 el.tbOptions.addEventListener('click', (e) => {
   e.stopPropagation();
@@ -560,6 +592,7 @@ function setView(next, select = null, remember = true) {
   el.viewList.setAttribute('aria-selected', String(view === 'list'));
   // Each control names the views it belongs to; the List has no grouping, so Group is not offered there.
   for (const c of document.querySelectorAll('.toolbar [data-view]')) c.hidden = !c.dataset.view.split(' ').includes(view);
+  queueFit();
   el.stage.dataset.view = view;
   // The List's cards carry the answers; the dock would be the same requests a second time.
   dock.setSuppressed(view === 'list');
