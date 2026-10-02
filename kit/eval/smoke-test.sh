@@ -3004,7 +3004,8 @@ done
 # unescaper (deliberate CRLF normalisation, documented in the hook), so a CR cannot reach the §4.6 scanner at
 # all and the tier-1 class is unreachable. If a future unescaper stops dropping it, this row goes red and says
 # so — which is the only reason the rows after it are allowed to stop worrying about CR.
-_u46(){ ( eval "$(sed -n '/^_json_slice()/,/^}/p' "$HOOKS/guard-bash.sh")"
+_u46(){ ( eval "$(sed -n '/^_json_find()/,/^}/p' "$HOOKS/guard-bash.sh")"
+          eval "$(sed -n '/^_json_slice()/,/^}/p' "$HOOKS/guard-bash.sh")"
           eval "$(sed -n '/^_json_unescape()/,/^}/p' "$HOOKS/guard-bash.sh")"
           _json_unescape "$(_json_slice "$1" command)" ); }
 # COUNTING CR WITHOUT LEAVING THE SHELL. `od -c | grep -c '\r'` counts the letter `r`, which is the trap this
@@ -4091,7 +4092,7 @@ if [ -n "$GBX" ]; then
   # the old shape handed to the matchers as `:123}}`. Review mutation-proved this was unasserted anywhere in
   # the suite or in parser-conformance.sh: reverting it changed no row. Asserted on the PARSER, because the
   # hook's verdict is rc=0 either way (a single unreadable key is not the gated-tool case).
-  _u2(){ ( eval "$(sed -n '/^_json_slice()/,/^}/p' "$HOOKS/guard-bash.sh")"; _json_slice "$1" command ); }
+  _u2(){ ( eval "$(sed -n '/^_json_find()/,/^}/p' "$HOOKS/guard-bash.sh")"; eval "$(sed -n '/^_json_slice()/,/^}/p' "$HOOKS/guard-bash.sh")"; _json_slice "$1" command ); }
   for _ns in '{"tool_input":{"command":123}}' '{"tool_input":{"command":null}}' '{"tool_input":{"command":{"x":1}}}' ; do
     [ -z "$(_u2 "$_ns")" ] \
       && pass "one-token: a non-string value yields NOTHING, not punctuation — $_ns" \
@@ -7791,6 +7792,62 @@ else
   [ -z "$_cfbad" ] && pass "a Bash or PowerShell call above $_cfpm bytes is refused before it is parsed, by each of the three hooks that read one (guard-bash.sh, guard-commit-scan.sh, guard-powershell.sh): exactly the limit is read, one byte more is refused with the size and the way forward and logged, counted in bytes; a Write of the same size is not limited" \
                    || fail "the size limit on a Bash or PowerShell call:$_cfbad"
 fi
+
+# ---- a large Write or Edit is judged, not timed out -------------------------------------------------------------
+# The file tools are not limited in size, so their gate must stay cheap at any size. It was not: the look for a
+# second path key ran `${text%%"key"*}` over the content, which costs the square of the size when nothing matches
+# (macOS: 1 MB 24 s, 6 MB 600-656 s; a 6 MB Write to a gate file was refused after 636 s, past the 600 s timeout).
+# _json_find walks the payload a piece at a time. Pinned three ways: it gives the offset the plain expansion gives,
+# the plain expansion is not applied to the whole payload any more, and a 5 MB Write is judged in time.
+_cff="$_CF/find.sh"; LC_ALL=C awk '/^_json_find\(\)\{/{on=1} on{print} on && /^}/{exit}' "$HOOKS/guard-write.sh" > "$_cff"
+_cf_findcal(){  # $1 = a file defining _json_find -> prints "<cases> <differ>": against ${t%%"$k"*}, at three pairs of piece sizes
+  ( n=0; bad=0; k='"file_path"'; pad="$(printf '%*s' 300 '' | tr ' ' x)"
+    for sizes in "262144 4096" "29 7" "3 1"; do
+      eval "$(sed "s/B=262144 C=4096/B=${sizes% *} C=${sizes#* }/" "$1")"
+      for t in '' "$k" "x$k" "$k$k" "$pad" "$pad$k" "$pad$k$pad$k" "${pad:0:17}$k" "${pad:0:18}$k" "${pad:0:19}$k" "${pad:0:20}$k" \
+               "${pad:0:6}$k" "${pad:0:7}$k" "${pad:0:28}$k" "${pad:0:29}$k" "${pad:0:30}$k" "${pad:0:57}\"file_pat${pad:0:5}$k" "\"file_path" "file_path\"" "é$k" "$pad\"file_pathx$k"; do
+        pre="${t%%"$k"*}"; if [ "$pre" = "$t" ]; then want=-1; else want="$(LC_ALL=C; printf %s "${#pre}")"; fi
+        _json_find "$t" "$k"; n=$((n+1)); [ "$_JF" = "$want" ] || bad=$((bad+1))
+      done
+    done
+    printf '%s %s' "$n" "$bad" )
+}
+if [ ! -s "$_cff" ]; then fail "guard-write.sh has no _json_find — the key search is back on the whole payload"
+else
+  _cfr1="$(_cf_findcal "$_cff")"
+  sed 's/:C+kl-1}/:C}/' "$_cff" > "$_CF/find-twin.sh"; _cfr2="$(_cf_findcal "$_CF/find-twin.sh")"
+  if [ "$_cfr1" = "63 0" ] && [ "${_cfr2% *}" = 63 ] && [ "${_cfr2#* }" != 0 ]; then
+    pass "_json_find gives the offset \${text%%\"key\"*} gives: 63 cases (21 texts, pieces of 262144/4096, 29/7 and 3/1 bytes), 0 differ; a twin whose pieces do not overlap differs in ${_cfr2#* }"
+  else fail "_json_find against the plain expansion: '$_cfr1' (want '63 0'); the twin whose pieces do not overlap: '$_cfr2' (want 63 and not 0)"; fi
+fi
+_cfraw=""; _cfhn=0; for _h in "$HOOKS"/*.sh; do
+  grep -q '^_json_keycount()' "$_h" || continue; _cfhn=$((_cfhn+1))
+  _n="$(LC_ALL=C awk '/^[[:space:]]*#/{next} /\$\{hay(%%|#)/{n++} END{print n+0}' "$_h")"; [ "$_n" = 0 ] || _cfraw="$_cfraw ${_h##*/}:$_n"
+done
+[ -z "$_cfraw" ] && [ "$_cfhn" -ge 5 ] && pass "no hook strips a pattern from the whole payload to find a key (0 code lines in the $_cfhn hooks that carry the JSON reader)" \
+                 || fail "a pattern stripped from the whole payload to find a key — the square of the size when nothing matches:${_cfraw:- none}, in $_cfhn hooks that carry the JSON reader (want at least 5)"
+# $1 = file_path, $2 = megabytes of content, $3 = 1 to put the content before the path, $4 = a second path key to add
+_cf_wpay(){ local fp='"file_path":"'"$1"'"' ct
+  { printf '{"session_id":"s","cwd":"%s","permission_mode":"default","tool_name":"Write","tool_input":{' "$_cfw"
+    [ "${3:-0}" = 1 ] || printf '%s,' "$fp"
+    printf '"content":"'; printf '%*s' "$(( $2 * 1048576 ))" '' | tr ' ' a; printf '"'
+    [ "${3:-0}" = 1 ] && printf ',%s' "$fp"
+    [ -n "${4:-}" ] && printf ',"file_path":"%s"' "$4"
+    printf '}}'; } > "$_CF/cap.json"
+  _cfsz="$(wc -c < "$_CF/cap.json" | tr -d ' ')"; }
+_cfbad=""; _cfsaw=""
+_cf_wpay "$_cfw/.claude/hooks/guard-bash.sh" 5; _cf_cap guard-write.sh
+{ [ "$_cfr" = 2 ] && [ "$_cft" -le 120 ] && [ "$_cfsz" -gt 5242880 ]; } || _cfbad="$_cfbad [a $_cfsz-byte Write to a gate file: rc=$_cfr in ${_cft} s, want rc 2 within 120 s]"
+_cfsaw="a $_cfsz-byte Write to a gate file is refused in ${_cft} s"
+_cf_wpay "$_cfw/.claude/hooks/guard-bash.sh" 5 1; _cf_cap guard-write.sh
+{ [ "$_cfr" = 2 ] && [ "$_cft" -le 120 ]; } || _cfbad="$_cfbad [the same with the content before the path: rc=$_cfr in ${_cft} s, want rc 2 within 120 s]"
+_cf_wpay "$_cfw/src/big.txt" 5; _cf_cap guard-write.sh
+{ [ "$_cfr" = 0 ] && [ "$_cft" -le 120 ]; } || _cfbad="$_cfbad [a $_cfsz-byte Write of an ordinary file: rc=$_cfr in ${_cft} s, want rc 0 within 120 s — $(sed -n 1p "$_CF/err" | cut -c1-100)]"
+_cfsaw="$_cfsaw, one to an ordinary file passes in ${_cft} s"
+_cf_wpay "$_cfw/src/big.txt" 5 0 "$_cfw/.claude/hooks/guard-bash.sh"; _cf_cap guard-write.sh
+{ [ "$_cfr" = 2 ] && [ "$_cft" -le 120 ] && grep -q 'path keys' "$_CF/err"; } || _cfbad="$_cfbad [a second path key behind 5 MB of content: rc=$_cfr in ${_cft} s, want rc 2 (ambiguous) within 120 s]"
+[ -z "$_cfbad" ] && pass "a large Write is judged, not timed out: $_cfsaw; the path is found behind the content as well, and a second path key behind 5 MB is still seen (before _json_find the first took 636 s on macOS, past the 600 s timeout)" \
+                 || fail "a large Write through guard-write.sh:$_cfbad"
 
 if [ -n "$JSONQ" ]; then
   [ -z "$_cf_badjson" ] && pass "every row of the commit-form tables reached the hook as valid JSON (oracle: $JSONQ)" \

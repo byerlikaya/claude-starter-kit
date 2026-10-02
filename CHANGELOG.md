@@ -36,6 +36,11 @@ versioning follows [SemVer](https://semver.org/).
   its size (256 KB of an escape-dense command: 49 s, 512 KB: 200 s), in `guard-bash.sh` and `guard-commit-scan.sh` alike,
   so a Bash or PowerShell call above 262144 bytes is refused before it is parsed, by size alone, with the advice to put
   the long content in a file. The largest of 12387 real commands is 31639 bytes. Write and Edit are not limited.
+- **A Write or Edit of a few megabytes ran `guard-write.sh` past its timeout, a gate file included.** The look for a
+  second path key walked the content with an expansion that costs the square of the size when nothing matches: 1 MB
+  took 24 s on macOS, and a 6 MB Write to `.claude/hooks/guard-bash.sh` was refused after 636 s, which is after the
+  600 s timeout, so it was not refused. The key search walks the payload a piece at a time now: the same Write is
+  refused in 2.6 s, and an ordinary 6 MB file passes in the same time. The file tools stay unlimited in size.
 - A review record could vouch for any staged diff once `git config diff.external true` was set: the staged diff then
   prints nothing, and every change got the same id. The id is computed with `--no-ext-diff --no-textconv`.
 - A recursive forced delete of `.` or `..` passed in both shells (`rm -rf .`, `rm -rf ..`,
