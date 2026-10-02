@@ -40,6 +40,25 @@ export function liveness(nowMs, lastOkMs, lastFailed) {
   return { state: 'live', word: 'Live', tone: 'good', detail: said };
 }
 
+/**
+ * What the stage says while the server is not answering: which picture is on screen, and when the next try is.
+ *
+ * The picture stays — it is the last thing known — and it is named as old. The countdown is to a request this
+ * page is really going to make; "Retry now" makes it at once.
+ *
+ * @param state      liveness().state
+ * @param nextTryMs  when the next poll is due, or null when none is scheduled
+ */
+export function offlineNote(state, lastOkMs, nextTryMs, nowMs) {
+  if (state !== 'offline') return null;
+  const left = nextTryMs == null ? null : Math.max(0, Math.ceil((nextTryMs - nowMs) / 1000));
+  return {
+    text: lastOkMs === null ? 'The server has not answered yet, so there is nothing to show.' : `Showing the last update from ${clock(lastOkMs)}.`,
+    retry: left == null ? 'Reconnecting' : left === 0 ? 'Reconnecting now' : `Reconnecting in ${left}s`,
+    stale: lastOkMs !== null,
+  };
+}
+
 function clock(ms) {
   const d = new Date(ms);
   const two = (n) => String(n).padStart(2, '0');

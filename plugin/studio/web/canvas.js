@@ -1043,6 +1043,15 @@ export class Canvas {
     return true;
   }
 
+  /** Select a node without moving the view: for a choice made where the canvas is not on screen. */
+  select(id) {
+    if (!this.nodes.has(id)) return false;
+    this.selected = id;
+    this.#redraw();
+    this.onSelect(this.nodes.get(id) ?? null);
+    return true;
+  }
+
   /* ------------------------------------------------------ interaction */
 
   #interact(el, id) {

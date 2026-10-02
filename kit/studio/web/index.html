@@ -9,6 +9,9 @@
 </head>
 <body>
 <header class="bar">
+  <button id="menu-btn" class="btn icon ghost" type="button" aria-label="Open the navigator" aria-expanded="false">
+    <svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg>
+  </button>
   <a id="home" class="brand" href="/" title="Back to the latest session">
     <svg class="brand-mark" viewBox="0 0 200 200" aria-hidden="true">
       <polyline points="44,58 86,100 44,142" stroke-width="21" class="bar-1"/>
@@ -67,7 +70,7 @@
       <button class="seg-btn" type="button" role="tab" id="tab-live" data-tab="live" aria-controls="fleet" aria-selected="false">Live <span id="live-count" class="badge" hidden></span></button>
       <button class="seg-btn" type="button" role="tab" id="tab-machines" data-tab="machines" aria-controls="reach" aria-selected="false">Machines</button>
     </div>
-    <div id="sessions" class="nav-list" role="tabpanel" aria-labelledby="tab-projects"></div>
+    <div id="sessions" class="nav-list" role="tabpanel" aria-labelledby="tab-projects" aria-busy="true"><div class="skel" aria-hidden="true"><span></span><span></span><span></span><span></span></div></div>
     <div id="fleet" class="nav-list" role="tabpanel" aria-labelledby="tab-live" hidden></div>
     <div id="reach" class="nav-list" role="tabpanel" aria-labelledby="tab-machines" hidden></div>
     <div id="other-machines" class="nav-foot" hidden></div>
@@ -77,6 +80,7 @@
        aria-label="Resize sidebar" tabindex="0"></div>
 
   <main class="stage">
+    <div id="phone-head" class="phone-head"></div>
     <div class="toolbar" role="toolbar" aria-label="Canvas">
       <div class="seg tb-views" role="tablist" aria-label="View">
         <button id="view-graph" class="seg-btn" type="button" role="tab" aria-label="Graph view" aria-selected="true" aria-controls="canvas">
@@ -85,10 +89,14 @@
         <button id="view-timeline" class="seg-btn" type="button" role="tab" aria-label="Timeline view" aria-selected="false" aria-controls="timeline">
           <svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h7M5 8h9M3 12h6"/></svg><span class="tb-words">Timeline</span>
         </button>
+        <button id="view-list" class="seg-btn" type="button" role="tab" aria-label="List view" aria-selected="false" aria-controls="list">
+          <svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 4h9M5 8h9M5 12h9M2 4h.01M2 8h.01M2 12h.01"/></svg><span class="tb-words">List</span>
+        </button>
       </div>
-      <button id="tb-group" class="btn sm ghost tb-menu" type="button" aria-haspopup="menu">Group <span>Workflow run</span><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg></button>
+      <button id="tb-group" data-view="graph timeline" class="btn sm ghost tb-menu" type="button" aria-haspopup="menu">Group <span>Workflow run</span><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg></button>
       <button id="tb-density" data-view="graph" class="btn sm ghost tb-menu" type="button" aria-haspopup="menu">Density <span>Auto</span><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg></button>
       <button id="tb-show" class="btn sm ghost tb-menu" type="button" aria-haspopup="menu">Show <span>All</span><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg></button>
+      <button id="tb-options" class="btn sm ghost tb-menu" type="button" aria-haspopup="menu">View options<svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg></button>
       <span id="foot-note" class="toolbar-note" role="status"></span>
       <span class="toolbar-fill"></span>
       <span class="tb-follow" data-view="timeline" hidden>
@@ -119,9 +127,12 @@
         <svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 5.5v-3h3M10.5 2.5h3v3M13.5 10.5v3h-3M5.5 13.5h-3v-3"/></svg><span class="tb-words">Fit</span>
       </button>
     </div>
+    <div id="stage-note" class="stage-note" role="status" hidden></div>
     <div id="attention" class="attention" role="region" aria-label="Needs attention" hidden></div>
     <div id="canvas" class="canvas"></div>
     <div id="timeline" role="tabpanel" aria-labelledby="view-timeline" hidden></div>
+    <div id="list" role="tabpanel" aria-labelledby="view-list" hidden></div>
+    <div id="first-run" class="first-run" hidden></div>
     <div id="dock" role="region" aria-label="Waiting for approval" hidden></div>
   </main>
 
