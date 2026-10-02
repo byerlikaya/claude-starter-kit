@@ -18,6 +18,7 @@ import { liveness } from './liveness.js';
 import { attention, AUTO } from './graph-plan.js';
 import { ServerClock, queue, settled, OUTCOME_WORD } from './approvals.js';
 import { Dock } from './dock.js';
+import { NewSession } from './newsession.js';
 import { tiles, timeLine, rightNow, skillsOf, delegatedBy, reportOf, TABS as INSPECTOR_TABS, TAB_WORD } from './inspect.js';
 
 const FLEET_POLL_MS = 2000;
@@ -49,6 +50,7 @@ const el = {
   toast: document.getElementById('toast'),
   attention: document.getElementById('attention'),
   dock: document.getElementById('dock'),
+  newPanel: document.getElementById('new-panel'),
   tbGroup: document.getElementById('tb-group'),
   tbDensity: document.getElementById('tb-density'),
   tbShow: document.getElementById('tb-show'),
@@ -108,7 +110,7 @@ systemLight.addEventListener('change', relabelTheme);
 
 const PANEL = {
   side: { min: 170, max: 620, def: 272, wide: 460, varName: '--side-w', key: 'crewforth-studio-side-w' },
-  chat: { min: 280, max: 900, def: 420, wide: 720, varName: '--chat-w', key: 'crewforth-studio-chat-w' },
+  chat: { min: 280, max: 900, def: 480, wide: 720, varName: '--chat-w', key: 'crewforth-studio-chat-w' },
 };
 
 function setPanel(which, px, persist = true) {
@@ -229,12 +231,52 @@ el.sideShow.addEventListener('click', () => setSideHidden(false));
    attach without a preflight this server never answers. */
 
 const writeHeaders = { 'x-crew-studio': '1', ...(token ? { authorization: `Bearer ${token}` } : {}) };
-const chat = new Chat(el.chat, { api, headers: writeHeaders });
+// What the conversation is lent from the rest of the page: the navigator's names, the graph's agents, and the
+// two ways out of a conversation Studio only reads. It knows none of those places itself.
+const nodeOf = (sessionId, agentId) => (sessionId === current ? canvas.nodes.get(agentId) ?? null : null);
+const chat = new Chat(el.chat, {
+  api,
+  headers: writeHeaders,
+  hooks: {
+    nameOf: (id) => sessionLabel(id),
+    agentsOf: (id) => (id === current ? lastNodes : null),
+    tileOf: (id, agentId) => { const n = nodeOf(id, agentId); return n ? canvas.tileFor(n) : null; },
+    statusOf: (id, agentId) => { const n = nodeOf(id, agentId); return n ? canvas.statusOf(n) : null; },
+    // A delegation card goes to its agent: the graph selects it, and the inspector takes the panel.
+    onAgent: (pane, agentId) => {
+      if (pane.id !== current) selectSession(pane.id);
+      canvas.focus(agentId);
+    },
+    // The reminder in the conversation leads to the dock, where the answer is given.
+    onReview: () => el.dock.focus(),
+    // Did this page allow that call? Asked when Claude Code reports having refused it anyway.
+    wasAllowed: (sessionId, toolUseId, toolName) =>
+      (outcomes.get(sessionId) ?? []).some((o) => o.toolUseId === toolUseId && o.outcome.startsWith('allowed'))
+      || (owned.get(sessionId)?.alwaysAllowed ?? []).includes(toolName),
+    onContinue: (pane, button) => continueHere(button, pane.id),
+    onTerminal: (pane, button) => offerTerminal(button, pane.id),
+  },
+});
 
 const ownedIds = new Set();
 
-// Switching tabs points the canvas at that session too: the graph and the
-// conversation are two views of one thing.
+/* The right-hand panel is one thing at a time: the inspector, a conversation, or New session. Side by side with
+   the navigator they left the graph a third of the window; one at a time, the canvas keeps its width and the
+   way back is always one click — "Open conversation" from the inspector, a card or a node from the conversation.
+   Conversations that are not in front keep streaming. */
+let right = 'none';
+const restRight = () => (chat.ids.length ? 'conversation' : 'none');
+function setRight(which) {
+  right = which;
+  const column = which === 'conversation' || which === 'new';
+  el.chat.hidden = which !== 'conversation';
+  el.newPanel.hidden = which !== 'new';
+  el.chatSplit.hidden = !column;
+  shell.classList.toggle('no-chat', !column);
+  el.inspector.hidden = which !== 'inspector';
+  canvas.fitIfUntouched();
+}
+
 // The conversation's own widen control lives in its header, beside the tabs.
 chat.onGrow = () => {
   const cur = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--chat-w'), 10) || PANEL.chat.def;
@@ -242,10 +284,12 @@ chat.onGrow = () => {
   canvas.fitIfUntouched();
 };
 
+// Switching tabs points the canvas at that session too: the graph and the
+// conversation are two views of one thing.
 chat.onActivate = (sessionId) => {
-  const any = chat.ids.length > 0;
-  el.chat.hidden = !any;
-  el.chatSplit.hidden = !any; shell.classList.toggle('no-chat', !any);
+  // The last tab closing gives the panel back; a tab coming forward takes it.
+  if (sessionId) setRight('conversation');
+  else if (right === 'conversation') setRight('none');
   // Activating a tab is not a claim of ownership. It used to add the id here,
   // which meant opening a read-only conversation marked that session as one the
   // panel had started — and every later attempt to open it went down the owned
@@ -255,7 +299,7 @@ chat.onActivate = (sessionId) => {
 
 /** Bring a session's conversation forward, however the panel can reach it. */
 function openConversation(sessionId) {
-  if (chat.activeId === sessionId) return;
+  if (chat.activeId === sessionId) { setRight('conversation'); return; }
   if (ownedIds.has(sessionId)) { openOwned(sessionId); return; }
   openReadOnlyPane(sessionId);
 }
@@ -263,9 +307,6 @@ function openConversation(sessionId) {
 function openReadOnlyPane(sessionId) {
   const known = findSessionRow(sessionId);
   chat.openReadOnly(sessionId, known ? sessionName(known.session, labels.all()) : null);
-  el.chat.hidden = false;
-  el.chatSplit.hidden = false;
-  shell.classList.remove('no-chat');
 }
 
 async function openOwned(sessionId) {
@@ -284,12 +325,10 @@ async function openOwned(sessionId) {
   }
 }
 
-// Continuing a conversation the panel did not start. It forks rather than
-// writing into the original transcript, so a session still open in a terminal
-// somewhere is not being written to by two things at once. Offered in the
-// inspector, on the session itself, beside the sentence that says why it is needed.
-async function continueHere(button) {
-  const from = current;
+// Continuing a conversation the panel did not start. A session nothing else holds is continued itself; one
+// still open in a terminal somewhere is copied instead, so it is never written to by two things at once.
+// Offered on the session in the inspector and at the foot of its read-only conversation.
+async function continueHere(button, from = current) {
   if (!from) return;
   button.disabled = true;
   button.textContent = 'Continuing…';
@@ -313,21 +352,32 @@ async function continueHere(button) {
   }
 }
 
-const newSessionLabel = el.newSession.querySelector('span');
-el.newSession.addEventListener('click', async () => {
-  const cwd = projectsData?.cwd ?? null;
-  el.newSession.disabled = true;
-  newSessionLabel.textContent = 'Starting…';
-  try {
-    // `plan` by default: a panel that can start a session must not also be the
-    // reason one got write access nobody asked for.
-    const r = await chat.start({ cwd, permissionMode: 'plan' });
-    if (!r.ok) el.foot.textContent = `could not start a session: ${r.reason}`;
-    else { ownedIds.add(r.session.sessionId); pollOwned(); }
-  } finally {
-    el.newSession.disabled = false;
-    newSessionLabel.textContent = 'New session';
-  }
+/* New session: a panel, not a button that starts one. Where it runs, how much it may do and what it is asked
+   first are chosen before anything starts — and `plan` is what it opens on: a panel that can start a session
+   must not also be the reason one got write access nobody asked for. */
+let offeredModes = [];
+const newPanel = new NewSession(el.newPanel, {
+  shorten: (p) => shortPath(p, 44),
+  onClose: () => setRight(inspectorNode ? 'inspector' : restRight()),
+  onStart: async ({ cwd, permissionMode, first }) => {
+    const r = await chat.start({ cwd, permissionMode });
+    if (!r.ok) return r;
+    ownedIds.add(r.session.sessionId);
+    pollOwned();
+    // The first message goes the way every later one does, and shows the same way: as what the session
+    // says it received.
+    if (first) chat.panes.get(r.session.sessionId)?.sendText(first);
+    return r;
+  },
+});
+el.newSession.addEventListener('click', () => {
+  // Already open: a second click is not a second panel, and not a second session.
+  const opened = newPanel.open({
+    projects: projectsData?.projects ?? [],
+    modes: offeredModes,
+    preferKey: (current ? findSessionRow(current)?.project.key : null) ?? null,
+  });
+  if (opened) setRight('new');
 });
 
 /* --------------------------------------------------------------- canvas */
@@ -426,19 +476,12 @@ let detailCache = new Map();
 function showInspector(node) {
   const before = inspectorNode;
   inspectorNode = node;
-  // The session node IS the conversation. Clicking it opened a details panel
-  // and nothing else, which asked the reader to go and find the talking
-  // elsewhere.
-  if (node?.kind === 'session' && current) openConversation(current);
-  const wasHidden = el.inspector.hidden;
   if (!node) {
-    el.inspector.hidden = true;
-    if (!wasHidden) canvas.fitIfUntouched();
+    // Closing the inspector gives the panel back to the conversation, when one is open.
+    if (right === 'inspector') setRight(restRight());
     return;
   }
-  el.inspector.hidden = false;
-  // Docked, the inspector takes its width from the canvas.
-  if (wasHidden) canvas.fitIfUntouched();
+  setRight('inspector');
   // A tab is a question being asked of the node. Another node of the same kind is asked the same question.
   if (before?.kind !== node.kind) inspectorTab = 'overview';
   paintInspector();
@@ -792,9 +835,12 @@ function paintGates(body) {
       revoke.type = 'button';
       revoke.setAttribute('aria-label', `Revoke ${tool}`);
       revoke.addEventListener('click', () => revokeAllowance(tool, revoke));
-      row.append(node('span', 'iallow-tool', tool), node('span', 'sub', 'runs without asking'), node('span', 'row-fill'), revoke);
+      row.append(node('span', 'iallow-tool', tool), node('span', 'sub', 'not asked about here'), node('span', 'row-fill'), revoke);
       list.append(row);
     }
+    // What a session allowance is and is not: the dock stops asking, and nothing more. A call Claude Code
+    // would itself have asked a person about is still refused, because nobody saw it.
+    if (allowed.length) list.append(node('div', 'ihint', 'Studio does not ask about these again. Claude Code\'s own checks still apply to each call.'));
     body.append(isection('Allowed for this session',
       allowed.length ? list : node('div', 'ihint', 'Nothing — every tool call asks first.')));
   } else if (mine) {
@@ -1631,11 +1677,6 @@ function selectSession(sessionId) {
   // A new session means the cached agent reports belong to someone else.
   detailCache.clear();
 
-  const any = chat.ids.length > 0;
-  el.chat.hidden = !any;
-  el.chatSplit.hidden = !any;
-  shell.classList.toggle('no-chat', !any);
-
   if (source) source.close();
   source = new EventSource(api(`/api/stream?session=${encodeURIComponent(sessionId)}`));
 
@@ -1645,6 +1686,8 @@ function selectSession(sessionId) {
     canvas.render(g);
     lastNodes = g.nodes;
     paintAttention(g.nodes);
+    // The conversation's delegation cards and its context figure are the graph's.
+    chat.refresh(sessionId, { contextTokens: g.nodes.find((n) => n.kind === 'session')?.tokens ?? null });
     // The inspector holds a node object from an earlier frame; refresh it so
     // status, tokens and tool counts keep moving while it is open.
     if (inspectorNode) {
@@ -1737,6 +1780,7 @@ document.addEventListener('keydown', (e) => {
       if (el.filter.value) { el.filter.value = ''; filterText = ''; paintProjects(); paintLive(); }
       return;
     }
+    if (newPanel.isOpen) { newPanel.close(); return; }
     // Close the inspector and let go of the selection.
     if (!el.inspector.hidden) { canvas.clearSelection(); showInspector(null); }
     return;
@@ -1829,6 +1873,7 @@ function paintApprovals() {
   // The dock takes its height from the canvas when it appears and gives it back when it goes.
   const was = el.dock.hidden;
   dock.render(next);
+  chat.setWaiting(next);
   measureDock();
   if (was !== el.dock.hidden) canvas.fitIfUntouched();
   paintWaiting();
@@ -1886,6 +1931,7 @@ async function pollOwned() {
   try {
     const r = await getJson('/api/owned');
     clock.sync(r.now, Date.now());
+    if (Array.isArray(r.modes)) offeredModes = r.modes;
     const seen = new Set();
     for (const sn of r.sessions ?? []) { ownedIds.add(sn.sessionId); owned.set(sn.sessionId, sn); seen.add(sn.sessionId); }
     for (const id of [...owned.keys()]) if (!seen.has(id)) owned.delete(id);

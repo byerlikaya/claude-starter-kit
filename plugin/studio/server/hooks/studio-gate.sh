@@ -35,6 +35,35 @@ _field() {                                 # _field <key>  -> value on stdout
   printf '%s' "${r%%\"*}"
 }
 
+# ---- what "allowed" says to Claude Code --------------------------------------
+# Exit 0 with nothing on stdout is not an approval: the harness reads it as "no
+# decision" and sends the call through its own permission flow, and a headless
+# session has nobody to ask. Measured in real sessions (Claude Code 2.1.284): in
+# `default` mode Edit, Write and a writing Bash were all refused AFTER the viewer
+# allowed them here, and in `acceptEdits` the Bash was. So an allowance given in
+# the panel is said out loud, as the JSON decision the harness documents.
+#
+# Never in plan mode. The mode is an allow-list of two, and it has to agree with
+# what the harness itself reports for the session: a hook configured for
+# `default` that finds the session in `plan` stays silent, and so does one with
+# no mode, or with a mode this file does not name. Silence leaves plan's own
+# blocks, and every other check the harness makes, exactly where they were.
+#
+# This approves the call the viewer was shown. It does not unblock anything:
+# another hook that exits 2 still blocks, and this hook's own denials are exit 2.
+_grant() {
+  case "${CREW_GATE_MODE:-}" in
+    acceptEdits|default) ;;
+    *) exit 0 ;;
+  esac
+  case "$(_field permission_mode || true)" in
+    ''|acceptEdits|default) ;;
+    *) exit 0 ;;
+  esac
+  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","permissionDecisionReason":"allowed in Crewforth Studio"}}'
+  exit 0
+}
+
 TOOL="$(_field tool_name || true)"
 TUID="$(_field tool_use_id || true)"
 SID="$(_field session_id || true)"
@@ -50,6 +79,11 @@ REQ="$SPOOL/req"; ANS="$SPOOL/ans"; ALWAYS="$SPOOL/always"
 mkdir -p "$REQ" "$ANS" "$ALWAYS" 2>/dev/null || exit 0
 
 # A tool the panel already blanket-approved for this session skips the round trip.
+# It is NOT approved out loud: nobody saw this call. The hook stays silent and the
+# harness decides as it would have without a panel, so a call it wants a person
+# for — a commit, anything a project's settings mark `ask` — is still refused in
+# a headless session instead of running unseen. _grant is for a call a person
+# answered, and only for that one.
 case "$TOOL" in
   *[!A-Za-z0-9_-]*) ;;                     # odd tool name: never treated as approved
   *) [ -f "$ALWAYS/$TOOL" ] && exit 0 ;;
@@ -156,7 +190,7 @@ while :; do
     read -r VERDICT < "$ANS/$TUID" 2>/dev/null || VERDICT=deny
     rm -f "$ANS/$TUID" "$REQ/$TUID.json" 2>/dev/null
     case "$VERDICT" in
-      allow|always) exit 0 ;;
+      allow|always) _grant ;;
       *) printf 'studio: denied in the panel\n' >&2; exit 2 ;;
     esac
   fi

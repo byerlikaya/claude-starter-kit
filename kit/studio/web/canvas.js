@@ -713,7 +713,7 @@ export class Canvas {
     const bits = [`${n.turns ?? 0} ${n.turns === 1 ? 'turn' : 'turns'}`];
     if (n.tokens != null) bits.push(`${fmtTokens(n.tokens)} ctx`);
     p.sub.textContent = bits.join(' · ');
-    el.title = 'Click to open this conversation';
+    el.title = 'Click to inspect this session';
     el.setAttribute('aria-label', `Session, ${st?.word ?? 'state not measured'}, ${p.name.textContent}, ${p.sub.textContent}`);
   }
 

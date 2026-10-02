@@ -210,6 +210,7 @@ export class Dock {
 
     const sent = this.busy.has(item.key);
     p.always.textContent = allowSessionLabel(item.toolName);
+    p.always.title = `Allow this call, and stop asking here about ${item.toolName} for the rest of the session. Later calls are not approved for Claude Code: it still applies its own checks to them.`;
     for (const b of [p.deny, p.always, p.allow]) b.disabled = sent;
     this.root.setAttribute('aria-label', `Waiting for approval: ${asker(item)} wants to run ${item.toolName}`);
   }

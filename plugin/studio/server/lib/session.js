@@ -49,7 +49,7 @@ class OwnedSession {
     // The gate is prepared before the child exists, so its very first tool call
     // is already covered. A missing hook is reported, never worked around: a
     // panel that silently ran ungated would be worse than one that cannot run.
-    this.gate = prepare(this.id);
+    this.gate = prepare(this.id, this.permissionMode);
     this.pendingPermissions = [];
     this.gateEvents = [];      // hook lifecycle, newest last
     this.unwatch = this.gate
