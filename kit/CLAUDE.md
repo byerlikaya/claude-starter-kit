@@ -170,7 +170,7 @@ a team that adopted Crewforth may have chosen to share them instead, and the tra
 No `git commit` / `git push` unless the user says "commit" / "push". `git add` and new branches: no approval, any
 mode (`add -f` is §4.5). "Done / we can proceed" is **not** approval. **Present the message FIRST** — even in
 auto/fast mode. `guard-bash.sh` asks in `default`/`acceptEdits`; in `auto`, `dontAsk`, `plan`, `bypassPermissions`
-nobody sees a prompt, so commit/push FAIL CLOSED — get a real yes, then switch mode. Never hand the user a command
+nobody sees a prompt, so commit/push FAIL CLOSED: get a real yes; the guard says how. Never hand the user a command
 to paste. **Headless/CI:** if `printenv CLAUDE_GIT_OK` is set AND this request itself says "commit"/"push", that IS
 the approval — commit (a review blocker still stops you) and show the message in your report.
 

@@ -7,13 +7,14 @@ A rule that matters becomes a gate. Enforcement sits at the tool level — a hoo
 | **Agents** | {{AGENT_COUNT}} | Thin triggers — *who* owns a domain and *when* they fire |
 | **Skills** | {{SKILL_COUNT}} | The method, written once, applied by whoever needs it |
 | **Commands** | {{COMMAND_COUNT}} | `/crew-brainstorm` · `/crew-plan` · `/crew-review` · `/crew-ship` · `/crew-handoff` · `/crew-update` · `/crew-doctor` · `/crew-gates` · `/crew-skill` · `/crew-studio` |
-| **Hooks** | 13 | The gates, plus session measurement and routing |
+| **Hooks** | 14 | The gates, plus session measurement and routing |
 | **Discipline** | 1 | Principles, workflow, Definition of Done, prohibitions — imported by your `CLAUDE.md` |
 
-## All 13 hooks
+## All 14 hooks
 
 | Hook | Role |
 |:--|:--|
+| `prompt-approval.sh` | In `auto` and `dontAsk`, records your own message `approve: commit` (or `push`, `commit+push`) as the approval, tied to what is staged, to `HEAD` and to the session |
 | `route-hint.sh` | Names the owning agent alongside every prompt, so specialists run without you asking |
 | `guard-bash.sh` | Tool-level command gate: commit/push approval, review-before-commit, destructive ops, remote-code-exec, hook tampering |
 | `guard-write.sh` | The same protection on the Write/Edit side — a gate you can silently delete is not a gate. It normalises the target path before matching it, so a gate file cannot be reached under a different spelling. |
@@ -36,7 +37,7 @@ Left is the rule; right is the thing that refuses to let it slide.
 
 | Rule | Enforced by |
 |:--|:--|
-| Commit and push need your approval, in every permission mode; staging and creating a branch are free | `guard-bash.sh` raises a prompt only you can answer. Fails closed under `bypassPermissions` |
+| Commit and push need your approval, in every permission mode; staging and creating a branch are free | `guard-bash.sh` raises a prompt only you can answer. In `auto` and `dontAsk`, where a prompt is answered by software, it accepts one thing: a message from you that is only `approve: commit`, `approve: push` or `approve: commit+push` (`onay:` works too). `prompt-approval.sh` records it with the tree of what is staged, `HEAD`, the branch, the address its remote pushes to and the session; the call has to be that one `git commit -m …` or `git push <remote> <branch>` and nothing else, the record lasts 30 minutes and your next message ends it. Fails closed under `plan` and `bypassPermissions` |
 | A commit needs a clean review **of the diff it is actually about** | `guard-bash.sh` compares git's object id of the staged diff, and the `HEAD` it was reviewed against, with what `crew-review-agent` recorded when it cleared the change. A review of another diff — or of this one on another base — does not count, and there is no size exemption |
 | Destructive ops: `reset --hard`, `checkout -- .`, force push, `rm -rf`, `clean -f`, `--no-verify`, amend | `guard-bash.sh`, blocked at the tool level |
 | Remote code execution and permission nukes: `curl…\|bash`, world-writable `chmod`, `dd of=` | `guard-bash.sh`, hard-blocked in every mode |

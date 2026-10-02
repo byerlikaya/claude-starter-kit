@@ -1025,6 +1025,47 @@ case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false 
 _LNT='([^;&|[:space:]]*/)?\.(claude|git)'; [ -n "$_PLNK" ] && _LNT="(${_LNT}|${_PLNK})"
 case "$CMD" in *[Ll][Nn][[:space:]]*|*[Mm][Kk][Ll][Ii][Nn][Kk]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE "(^|[;&|[:space:]])(ln|mklink)[^;&|]*[[:space:]]${_LNT}([[:space:]]|\$)" && block "symlink pointing at the config directory (a gate path in two steps)" "4.5" tamper
 
+# §4.4: THE APPROVAL RECORD IS WRITTEN BY ONE THING, the UserPromptSubmit hook, from the user's own message
+# (hooks/prompt-approval.sh). A session that could produce that record itself would be approving its own commit,
+# and review found three ways it could, each closed here:
+#   1. write the file            -> a shell command that NAMES `crewforth-approval` is refused, reading included:
+#                                   nothing a session does needs it. guard-write.sh has the same rule for the file tools.
+#   2. run the hook itself       -> `printf '{…"prompt":"approve: commit"}' | bash .claude/hooks/prompt-approval.sh`
+#                                   wrote a record nobody typed. A command that names the hook AND feeds it (a pipe or
+#                                   an input redirection: the hook reads its payload from stdin) is refused.
+#   3. start a session that continues this one, with the approval as its prompt (`claude -p --continue "approve: …"`).
+#                                   The record carries the session it was given in, so a NEW session's approval is
+#                                   worth nothing here; one that continues or names this session is refused in the two
+#                                   modes where a record counts.
+# Quotes and backslashes are removed first (`crewforth-appr"oval"` is the same file to the shell), and case is
+# folded because the two filesystems people use most fold it. Builtins only: this is on every Bash call.
+# HONEST SCOPE, as for the gate files above: these rules match NAMES. A command that reaches the same thing without
+# spelling it (a glob, a concatenation, a script written first) is past them.
+_appr_named(){  # sets _APN: 1 = the record is named, 2 = the hook is fed, 3 = a session that continues this one, 0 = none
+  local t="${CMD//\"/}" nc=0
+  t=${t//\'/}; t=${t//\\/}; _APN=0
+  shopt -q nocasematch && nc=1; shopt -s nocasematch
+  case "$t" in
+    *crewforth-appr*) _APN=1 ;;
+  esac
+  [ "$nc" = 0 ] && shopt -u nocasematch
+  # FED means the hook is what the input goes INTO: it stands after a pipe, or shares its command with an input
+  # redirection. `cat …/prompt-approval.sh | grep -n x` and `grep -rn prompt-approval . | head` only read it, and a
+  # first version that looked for a pipe anywhere on the line refused both (review).
+  if [ "$_APN" = 0 ]; then case "$t" in *[Pp][Rr][Oo][Mm][Pp][Tt]-[Aa][Pp][Pp][Rr][Oo][Vv][Aa][Ll]*)
+    { _ere i "$t" '\|[^|;&]*prompt-approval' '*[Pp][Rr][Oo][Mm][Pp][Tt]-*' \
+      || _ere i "$t" '(prompt-approval[^|;&]*<|<[^|;&]*prompt-approval)' '*[Pp][Rr][Oo][Mm][Pp][Tt]-*'; } && _APN=2 ;;
+  esac; fi
+  if [ "$_APN" = 0 ]; then case "$PERM_MODE" in auto|dontAsk)
+    _ere i "$t" '(^|[^A-Za-z0-9_./-])claude(\.exe|\.cmd)?[[:space:]]+([^;&|]*[[:space:]])?(--continue|--resume|--session-id|--fork-session|-c|-r)([[:space:]=]|$)' '*[Cc][Ll][Aa][Uu][Dd][Ee]*' \
+      && _APN=3 ;;
+  esac; fi
+}
+_appr_named
+[ "$_APN" = 1 ] && block "the approval record named in a command (only the user's own message writes it)" "4.4" tamper
+[ "$_APN" = 2 ] && block "the approval hook fed by a command (only Claude Code runs it, with the user's message)" "4.4" tamper
+[ "$_APN" = 3 ] && block "a Claude Code session started from a command to continue this one (it could approve for it)" "4.4" tamper
+
 # §4.5-adjacent: a .env file holds secrets. The settings.json Read-tool deny does NOT cover the Bash tool, so a
 # `cat .env` would surface them. Block the direct-file readers/copiers and a `< .env` input redirect on a
 # .env / .env.<env> file; the templates (.env.example/.sample/.template/.dist) stay readable. Arg-taking readers
@@ -1289,6 +1330,231 @@ json_escape(){
     | tr '\011' ' ' \
     | sed 's/\\/\\\\/g; s/"/\\"/g' \
     | awk 'NR>1{printf "\\n"} {printf "%s", $0}'
+}
+# ---- CREW-APPROVAL-PATH (one definition, carried by prompt-approval.sh and guard-bash.sh; smoke-test pins it) ----
+_crew_appr_path(){  # $1 = a directory -> _AP: the record's path in that worktree's git directory, "" outside one
+  local d="${1//\\//}" l g
+  _AP=""; d="${d%/}"
+  while :; do
+    if [ -f "$d/.git/HEAD" ]; then _AP="$d/.git/crewforth-approval"; return 0; fi   # a git directory, not a folder named .git
+    if [ -f "$d/.git" ]; then                    # a linked worktree or a submodule: `.git` is a one-line pointer
+      l=""; IFS= read -r l < "$d/.git" || true; l="${l%$'\r'}"
+      case "$l" in "gitdir: "*)
+        g="${l#gitdir: }"; g="${g//\\//}"
+        case "$g" in /*|[A-Za-z]:*) ;; *) g="$d/$g" ;; esac
+        [ -f "$g/HEAD" ] && _AP="$g/crewforth-approval" ;;
+      esac
+      return 0
+    fi
+    case "$d" in */*) d="${d%/*}" ;; *) return 0 ;; esac
+  done
+}
+# ---- /CREW-APPROVAL-PATH ---------------------------------------------------------------------------------
+# §4.4 IN `auto` AND `dontAsk`: THE USER'S OWN MESSAGE IS THE APPROVAL. hooks/prompt-approval.sh records it when the
+# whole message is `approve: commit` / `push` / `commit+push` (or `onay: …`), with what git reported at that moment.
+# This reads the record back and answers one question: does it cover THIS call, and nothing else?
+#   commit       the index writes the recorded tree and HEAD is the recorded one. A commit moves HEAD, so the same
+#                record cannot allow a second one; a commit that FAILED (a hook refused it) moved nothing and may be retried.
+#   push         `git push <remote> <branch>`: the recorded remote, still pushing to the recorded URL, the recorded
+#                branch, HEAD on it. Pushing one commit to one branch twice changes nothing, so this needs no counter.
+#   commit+push  the push is checked against the commit the approved index BECAME: its parent is the recorded HEAD
+#                and its tree is the recorded tree.
+# and in every case the session is the one the user wrote in. The record is never written here. It ends 30 minutes
+# after the message, or at the user's next message (the other hook empties it). §4.5 ran above and §4.6 runs before
+# this, so neither is opened by an approval.
+#
+# THE TREE, NOT THE DIFF. §4.6 hashes the text of `git diff --cached`, and what that prints is configurable:
+# `git config diff.external true` makes every staged diff print nothing, so every diff gets one id (measured in
+# review). The id of the tree the index writes depends on the content alone.
+#
+# THE CALL HAS TO BE THE GIT COMMAND AND NOTHING ELSE. Where a person sees the prompt they also see the command; here
+# nobody does. Each of these was allowed by a matching record in a first version, and each does something the user
+# did not approve (the rows are in smoke-test):
+#     cd ../other && git commit -m x                         commits what is staged in another repository
+#     GIT_INDEX_FILE=/tmp/i git commit -m x                  commits another index than the one that was read
+#     git commit -m "$(git add -A; echo msg)"                stages everything, then commits it
+#     git commit -m 'a"' ; touch x ; echo 'b"'               two more commands, hidden by pairing the wrong quotes
+#     git commit -m x 2>&1 -a      git commit -mxm b.txt     the working tree, past §4.6's scan
+#     git commit -n -m x           git commit --amen -m x    --no-verify and --amend, as git abbreviates them
+# So the text is read the way the shell reads it, left to right, and anything that cannot be judged is refused:
+# a single-quoted span is literal; a double-quoted one may hold no `$`, backtick, backslash or `!`; the one
+# substitution let through is a message read from a here-document whose delimiter is quoted,
+# `-m "$(cat <<'EOF' … EOF)"`, because its body is literal too. What is left must hold no separator, substitution,
+# redirection, comment, glob or second line, must begin with `git commit` / `git push`, and its arguments are a
+# short list: a wrong option is refused here whatever §4.5 and §4.6 make of it.
+# The PowerShell tool reads quotes by other rules (a backslash escapes nothing there, a backtick does), so for it
+# only single quotes are accepted.
+_a44_collapse(){  # $1 = command, $2 = commit|push, $3 = tool -> 0 and _A44_S (quoted spans as Q); otherwise _A44_WHY
+  local s="$1" out="" pre c rest w body
+  _A44_WHY=""; _A44_S=""
+  if [ "$3" != Bash ]; then
+    case "$s" in *[\"\`\\\$@]*) _A44_WHY="outside the Bash tool an approved call uses single quotes only (no double quote, backtick, backslash, \$ or @)"; return 1 ;; esac
+    # ...and plain ASCII on one line. PowerShell reads the typographic quotes (U+2018, U+2019 and their kin) as
+    # single quotes, so `'a ’ ; cmd ; ‘ b'` is one quoted text here and three commands there; and a `\u` escape in the
+    # payload reaches this code as `?`. Neither can be told apart from text inside a quoted span, so both are refused.
+    local LC_ALL=C
+    case "$s" in *[!\ -~]*|*\?*) _A44_WHY="outside the Bash tool an approved call is plain ASCII on one line (PowerShell reads typographic quotes as quotes); use the Bash tool for any other message"; return 1 ;; esac
+  fi
+  s="${s//$'\r'/}"
+  while :; do
+    pre="${s%%[\"\'\\]*}"; out="$out$pre"
+    [ "$pre" = "$s" ] && break
+    c="${s:${#pre}:1}"; s="${s:${#pre}+1}"
+    case "$c" in
+      \\) case "$s" in
+            $'\n'*) out="$out "; s="${s:1}" ;;                       # a backslash-newline joins two lines
+            *) _A44_WHY="a backslash outside quotes"; return 1 ;;
+          esac ;;
+      \') case "$s" in *\'*) ;; *) _A44_WHY="an unpaired quote"; return 1 ;; esac
+          s="${s#*\'}"; out="${out}Q" ;;
+      *)  case "$s" in
+            '$(cat <<'\'*)
+              rest="${s:9}"; w="${rest%%\'*}"
+              case "$w" in ''|*[!A-Za-z0-9_]*) _A44_WHY="a here-document whose delimiter is not a plain quoted word"; return 1 ;; esac
+              rest="${rest:${#w}+1}"
+              case "$rest" in $'\n'*) rest="${rest:1}" ;; *) _A44_WHY="text on the line that opens the here-document"; return 1 ;; esac
+              # The body ends at the FIRST line that is the delimiter, as it does for the shell.
+              case "$rest" in
+                "$w"$'\n'*)       rest="${rest:${#w}+1}" ;;
+                *$'\n'"$w"$'\n'*) rest="${rest#*$'\n'"$w"$'\n'}" ;;
+                *) _A44_WHY="a here-document that is not closed on its own line"; return 1 ;;
+              esac
+              while :; do case "$rest" in [$' \t']*) rest="${rest:1}" ;; *) break ;; esac; done
+              case "$rest" in
+                ')"'*) s="${rest:2}"; out="${out}Q" ;;
+                *) _A44_WHY="something follows the here-document inside the substitution"; return 1 ;;
+              esac ;;
+            *\"*)
+              body="${s%%\"*}"
+              case "$body" in *[\$\`\\\!]*) _A44_WHY="a double-quoted text that holds \$, a backtick, a backslash or ! (single-quote it, or read the message from a here-document with a quoted delimiter)"; return 1 ;; esac
+              s="${s#*\"}"; out="${out}Q" ;;
+            *) _A44_WHY="an unpaired quote"; return 1 ;;
+          esac ;;
+    esac
+  done
+  out="${out//$'\t'/ }"; out="${out// 2>&1/ }"
+  while :; do case "$out" in [$' \n']*) out="${out:1}" ;; *) break ;; esac; done
+  while :; do case "$out" in *[$' \n']) out="${out%?}" ;; *) break ;; esac; done
+  case "$out" in *[$'\n'\;\&\|\`\$\(\)\{\}\<\>\#\*\?\[\]\~\!\%\^]*)
+    _A44_WHY="the call is more than one plain command (a separator, a substitution, a redirection, a comment, a glob or a second line)"; return 1 ;; esac
+  case "$out" in "git $2"|"git $2 "*|"git.exe $2"|"git.exe $2 "*) ;;
+    *) _A44_WHY="the call does not begin with 'git $2' (a cd, a variable or an option comes first)"; return 1 ;; esac
+  _A44_S="$out"; return 0
+}
+_c44_scan(){  # $1 = the collapsed `git commit …` -> 0 when every argument is a message or one of -q -s -v; else _C44_WHY
+  local tok body pre unglob=0
+  _C44_WHY=""
+  case "$-" in *f*) ;; *) unglob=1; set -f ;; esac
+  set -- $1
+  [ "$unglob" = 1 ] && set +f
+  shift 2
+  while [ $# -gt 0 ]; do
+    tok="$1"; shift
+    case "$tok" in
+      --message) [ $# -gt 0 ] || { _C44_WHY="--message with no text"; return 1; }; shift ;;
+      --message=?*|--quiet|--signoff|--verbose) ;;
+      --*) _C44_WHY="the option $tok"; return 1 ;;
+      -?*) # a cluster: -q -s -v in any order, then at most one -m, whose text is the rest of the token or the next one
+           body="${tok#-}"; pre="${body%%m*}"
+           case "$pre" in *[!qsv]*) _C44_WHY="the option $tok"; return 1 ;; esac
+           if [ "$pre" != "$body" ] && [ -z "${body#*m}" ]; then
+             [ $# -gt 0 ] || { _C44_WHY="-m with no text"; return 1; }; shift
+           fi ;;
+      *) _C44_WHY="a path or an argument that is not a message ($tok)"; return 1 ;;
+    esac
+  done
+  return 0
+}
+_p44_scan(){  # $1 = the collapsed `git push …` -> 0 when it is `git push [-u] <remote> <ref>`; sets _P44_REMOTE _P44_REF, or _P44_WHY
+  local tok npos=0 unglob=0
+  _P44_REMOTE=""; _P44_REF=""; _P44_WHY=""
+  case "$-" in *f*) ;; *) unglob=1; set -f ;; esac
+  set -- $1
+  [ "$unglob" = 1 ] && set +f
+  shift 2
+  while [ $# -gt 0 ]; do
+    tok="$1"; shift
+    case "$tok" in
+      -u|--set-upstream|-q|--quiet|-v|--verbose|--progress|--no-progress) ;;
+      -*) _P44_WHY="the option $tok"; return 1 ;;
+      *) npos=$((npos+1))
+         case "$npos" in 1) _P44_REMOTE="$tok" ;; 2) _P44_REF="$tok" ;; *) _P44_WHY="more than one refspec"; return 1 ;; esac ;;
+    esac
+  done
+  [ "$npos" = 2 ] || { _P44_WHY="the remote and the branch are not both written out"; return 1; }
+  return 0
+}
+_approval_ok(){  # 0 = the user's recorded approval covers THIS call. Otherwise _APW says why not, for the message.
+  local k v op="" tr="" h="" b="" r="" u="" sid="" ts="" now age dir="${_CWD:-.}" hc=1 hp=1 cur tool
+  _APW="no approval from the user is on record"
+  git_has "$CMD" 'commit' && hc=0; git_has "$CMD" 'push' && hp=0
+  if [ "$hc" = 0 ] && [ "$hp" = 0 ]; then
+    _APW="this call holds a commit and a push; each is checked against the approval on its own, so run them as two calls"; return 1
+  fi
+  _crew_appr_path "$dir"
+  [ -n "$_AP" ] && [ -s "$_AP" ] || return 1
+  while IFS='=' read -r k v || [ -n "$k" ]; do
+    v="${v%$'\r'}"
+    case "$k" in op) op="$v" ;; tree) tr="$v" ;; head) h="$v" ;; branch) b="$v" ;; remote) r="$v" ;; url) u="$v" ;; sid) sid="$v" ;; ts) ts="$v" ;; esac
+  done < "$_AP"
+  case "$ts" in ''|*[!0-9]*) _APW="the approval record could not be read"; return 1 ;; esac
+  if [ "${BASH_VERSINFO[0]}" -ge 5 ] || { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -ge 2 ]; }; then
+    printf -v now '%(%s)T' -1
+  else now="$(date +%s)"; fi
+  case "$now" in ''|*[!0-9]*) _APW="the clock could not be read"; return 1 ;; esac
+  age=$((now - ts))
+  if [ "$age" -lt 0 ] || [ "$age" -gt 1800 ]; then _APW="the user's approval is more than 30 minutes old"; return 1; fi
+  # The session the user wrote in. A session started from a command here is another one, whatever it is told.
+  _json_slice "$INPUT" session_id >/dev/null
+  if [ -z "$sid" ] || [ "$sid" != "$_JS" ]; then _APW="the approval on record was given in another session"; return 1; fi
+  _json_slice "$INPUT" tool_name >/dev/null; tool="$_JS"
+  if [ "$hc" = 0 ]; then
+    case "$op" in commit|commit+push) ;; *) _APW="the approval on record is for a push, not for a commit"; return 1 ;; esac
+    _a44_collapse "$CMD" commit "$tool" || { _APW="$_A44_WHY. Run the commit alone: git commit -m '…'"; return 1; }
+    _c44_scan "$_A44_S" || { _APW="an approved commit takes its message and -q, -s or -v, nothing else ($_C44_WHY)"; return 1; }
+    cur="$(git -C "$dir" write-tree 2>/dev/null)"
+    # HAVE_H is §4.6's own reading of HEAD, taken a few lines above for this call.
+    if [ -z "$tr" ] || [ "$tr" != "$cur" ] || [ "$h" != "${HAVE_H:-}" ]; then
+      _APW="what is staged, or HEAD, is not what the user approved (approved tree ${tr:0:7} on ${h:0:7}; now ${cur:0:7} on ${HAVE_H:0:7})"; return 1
+    fi
+    return 0
+  fi
+  case "$op" in push|commit+push) ;; *) _APW="the approval on record is for a commit, not for a push"; return 1 ;; esac
+  # No quoted argument in a push: a quoted span is compared as a placeholder, and a branch may be named like one.
+  case "$CMD" in *[\"\']*) _APW="a quote in the push command. Run the push alone and unquoted: git push <remote> <branch>"; return 1 ;; esac
+  _a44_collapse "$CMD" push "$tool" || { _APW="$_A44_WHY. Run the push alone: git push <remote> <branch>"; return 1; }
+  _p44_scan "$_A44_S" || { _APW="the push is not in the one form an approval covers, git push <remote> <branch> ($_P44_WHY)"; return 1; }
+  [ -n "$b" ] && [ -n "$r" ] && [ -n "$u" ] || { _APW="the approval record could not be read"; return 1; }
+  if [ "$_P44_REMOTE" != "$r" ]; then _APW="the user approved a push to $r, not to $_P44_REMOTE"; return 1; fi
+  case "$_P44_REF" in "$b"|HEAD) ;; *) _APW="the user approved a push of $b, not of $_P44_REF"; return 1 ;; esac
+  cur="$(git -C "$dir" symbolic-ref --short -q HEAD 2>/dev/null || true)"
+  [ "$cur" = "$b" ] || { _APW="the user approved a push of $b, and the branch checked out now is ${cur:-<detached>}"; return 1; }
+  # Where the remote pushes TO, with pushurl and pushInsteadOf applied: the name alone can be pointed elsewhere.
+  cur="$(git -C "$dir" remote get-url --push "$r" 2>/dev/null)"
+  [ "$cur" = "$u" ] || { _APW="the remote $r does not push to the address it pushed to when the user approved"; return 1; }
+  # ...and to the branch of the same NAME. `git push origin feat/x` names no destination, and with a
+  # `remote.origin.push` mapping git picks it from there: measured in review, `feat/x -> main`.
+  cur="$(git -C "$dir" config --get-all "remote.$r.push" 2>/dev/null || true)"
+  [ -z "$cur" ] || { _APW="the remote $r has a push mapping (remote.$r.push), so the branch this push lands on is not the one named"; return 1; }
+  cur="$(git -C "$dir" rev-parse --verify --quiet HEAD 2>/dev/null || echo NONE)"
+  if [ "$op" = push ]; then
+    [ "$cur" = "$h" ] || { _APW="HEAD moved after the user approved the push (approved ${h:0:7}, now ${cur:0:7})"; return 1; }
+    return 0
+  fi
+  # commit+push: HEAD has to be the commit the approved index became.
+  cur="$(git -C "$dir" rev-parse --verify --quiet 'HEAD^' 2>/dev/null || echo NONE)"
+  if [ "$h" = NONE ] || [ "$cur" != "$h" ]; then
+    _APW="HEAD is not the commit the user approved (its parent is ${cur:0:7}, the approval was given on ${h:0:7})"; return 1
+  fi
+  cur="$(git -C "$dir" rev-parse --verify --quiet 'HEAD^{tree}' 2>/dev/null)"
+  [ -n "$tr" ] && [ "$cur" = "$tr" ] || { _APW="the commit on HEAD does not carry what the user approved"; return 1; }
+  return 0
+}
+allow_approved(){
+  gatelog ALLOW 4.4 "the user's own approval message covers this command"
+  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","permissionDecisionReason":"%s"}}\n' \
+    "$(json_escape "§4.4: the user approved this in their own message, and what was approved is what this command does")"
+  exit 0
 }
 # Escalate to a permission prompt only the user can answer, then let Claude run the command itself.
 ask_user(){
@@ -1639,6 +1905,19 @@ $SHORT
 
 ${BRANCH_WARN}Approve only if the commit message above was shown to you and you agree with it. Approving lets Claude run the command itself."
       ;;
+    auto|dontAsk)
+      # No prompt reaches a person here, but their own message does: see _approval_ok above.
+      _approval_ok && allow_approved
+      gatelog BLOCK 4.4 "commit/push with no matching approval from the user"
+      echo "GUARD (§4.4): 'git commit/push' needs the user's approval, and in '$PERM_MODE' a permission prompt is answered by software, not by a person." >&2
+      echo "Not allowed now: $_APW." >&2
+      echo "Present the commit MESSAGE to the user (stage first: the approval covers what is staged at that moment). Then one of:" >&2
+      echo "  (a) the user sends a message that is ONLY the approval: 'approve: commit', 'approve: push' or 'approve: commit+push' ('onay: …' works too)." >&2
+      echo "      It is tied to the staged diff and HEAD at that moment, lasts 30 minutes and ends at the user's next message. The command then runs ALONE in its call (no cd, no pipe, nothing chained): git commit -m …, or git push <remote> <branch>. OR" >&2
+      echo "  (b) the user presses Shift+Tab to switch to default/acceptEdits — in this session, no restart — and this gate asks them directly, OR" >&2
+      echo "  (c) the user runs the command in their own terminal." >&2
+      echo "Only the user can write that message. Do not write it for them, and do not create an approval any other way." >&2
+      exit 2 ;;
     *)
       # bypassPermissions, plan, or an unrecognised/absent mode: we cannot prove the prompt would reach a
       # human, so we fail closed rather than let the gate silently evaporate.

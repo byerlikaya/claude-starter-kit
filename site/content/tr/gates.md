@@ -7,13 +7,14 @@
 | **Ajan** | {{AGENT_COUNT}} | İnce tetikleyiciler: bir alanın *kimin* olduğu ve *ne zaman* devreye gireceği |
 | **Skill** | {{SKILL_COUNT}} | Yöntemin kendisi; bir kez yazılır, ihtiyacı olan uygular |
 | **Komut** | {{COMMAND_COUNT}} | `/crew-brainstorm` · `/crew-plan` · `/crew-review` · `/crew-ship` · `/crew-handoff` · `/crew-update` · `/crew-doctor` · `/crew-gates` · `/crew-skill` · `/crew-studio` |
-| **Hook** | 13 | Kapılar, ayrıca oturum ölçümü ve yönlendirme |
+| **Hook** | 14 | Kapılar, ayrıca oturum ölçümü ve yönlendirme |
 | **Disiplin** | 1 | İlkeler, akış, Definition of Done, yasaklar. `CLAUDE.md`'niz bu dosyayı import ediyor |
 
-## 13 hook'un tamamı
+## 14 hook'un tamamı
 
 | Hook | Görevi |
 |:--|:--|
+| `prompt-approval.sh` | `auto` ve `dontAsk` modunda kendi yazdığınız `onay: commit` (ya da `push`, `commit+push`) mesajını onay olarak kaydeder; kayıt stage edilene, `HEAD`'e ve oturuma bağlıdır |
 | `route-hint.sh` | Her isteğin yanına o işin sahibi ajanı yazar; uzmanlar siz istemeden devreye girer |
 | `guard-bash.sh` | Araç seviyesinde komut kapısı: commit/push onayı, commit öncesi inceleme, yıkıcı işlemler, uzaktan kod çalıştırma, hook kurcalama |
 | `guard-write.sh` | Aynı korumanın Write/Edit tarafı. Sessizce silinebilen bir kapı, kapı değildir. Hedef yolu eşleştirmeden önce sadeleştirir, böylece bir kapı dosyasına farklı bir yazımla ulaşılamaz. |
@@ -36,7 +37,7 @@ Solda kural, sağda o kuralın geçilmesine izin vermeyen şey.
 
 | Kural | Neyle uygulanıyor |
 |:--|:--|
-| Commit ve push her izin modunda onayınızı gerektirir; stage etmek ve dal açmak serbesttir | `guard-bash.sh`, yalnızca sizin cevaplayabileceğiniz bir istem açar. `bypassPermissions` altında kapalı düşer |
+| Commit ve push her izin modunda onayınızı gerektirir; stage etmek ve dal açmak serbesttir | `guard-bash.sh`, yalnızca sizin cevaplayabileceğiniz bir istem açar. İstemi yazılımın cevapladığı `auto` ve `dontAsk` modunda tek bir şeyi kabul eder: yalnızca `onay: commit`, `onay: push` ya da `onay: commit+push` (`approve:` de olur) yazan kendi mesajınız. `prompt-approval.sh` bunu stage edilenin ağacı, `HEAD`, dal, remote'un push ettiği adres ve oturumla kaydeder; çağrı yalnızca o tek `git commit -m …` ya da `git push <remote> <dal>` olmalıdır, kayıt 30 dakika geçerlidir ve bir sonraki mesajınızla biter. `plan` ve `bypassPermissions` altında kapalı düşer |
 | Bir commit, **tam olarak kendi diff'i** için temiz bir inceleme gerektirir | `guard-bash.sh`, `crew-review-agent` değişikliği temize çıkarırken kaydettiği değerlerle staged diff'in git nesne kimliğini ve incelemenin yapıldığı `HEAD`'i karşılaştırır. Başka bir diff'in — ya da aynı diff'in başka bir taban üzerindeki — incelemesi sayılmaz; boyut istisnası yoktur |
 | Yıkıcı işlemler: `reset --hard`, `checkout -- .`, force push, `rm -rf`, `clean -f`, `--no-verify`, amend | `guard-bash.sh`, araç seviyesinde engeller |
 | Uzaktan kod çalıştırma ve izin patlatma: `curl…\|bash`, herkese yazılabilir `chmod`, `dd of=` | `guard-bash.sh`, her modda sert engel |
