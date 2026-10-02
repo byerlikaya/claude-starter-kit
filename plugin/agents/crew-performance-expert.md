@@ -47,7 +47,7 @@ Static reading is legitimate for finding *where to point the measurement*:
 - **Allocation**: per-item allocation in a loop, a large buffer copied instead of streamed, string building in a loop.
 - **Payload/cache**: an oversized response, no caching where the input is stable, a cache keyed so it never hits.
 - **Client/render**: a re-render loop, work in a render path, an effect that re-triggers itself, an unbounded list
-  without virtualisation, a heavy import on the startup path ([[frontend]], [[frontend-rn-expo]]).
+  without virtualisation, a heavy import on the startup path ([[frontend]], [[frontend-rn-expo]], [[frontend-flutter]]).
 - **Startup**: work at module load that belongs behind first use.
 
 ## How
