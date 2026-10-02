@@ -23,6 +23,32 @@ set -uo pipefail
 # subshells and a process, and this hook runs before EVERY Bash call.
 
 # ---- CREW-JSON-PARSE ------------------------------------------------------------------------------------
+_json_find(){  # $1 = text, $2 = a literal -> _JF = the offset of its first occurrence, -1 when there is none
+  # `${text%%"$literal"*}` gives the same offset and costs the DISTANCE to the occurrence times the length of the
+  # text (bash measures the remaining string at every position it tries), so with no occurrence at all it is the
+  # square of the size. That was the whole cost of a large Write: the path key is found near the front, and the
+  # look for a SECOND one then ran over the content -- measured on macOS, 1 MB: 9.6 s for each of the two key
+  # counts, against 0.02 s for one `case`; a 6 MB Write to a gate file was refused after 636 s, past the 600 s
+  # timeout, which means not refused. Here the text is walked a piece at a time, each piece long enough to hold an
+  # occurrence that starts in it, and the expansion only ever runs inside a piece that `case` says holds one.
+  # Two sizes of piece, because taking a piece out of the text costs the length of the text as well: a block is
+  # taken from the whole text, and the small pieces from the block.
+  local LC_ALL=C
+  local i=0 j n=${#1} kl=${#2} B=262144 C=4096 b bn c pre
+  _JF=-1
+  while [ "$i" -lt "$n" ]; do
+    b="${1:i:B+kl-1}"
+    case "$b" in *"$2"*)
+      j=0; bn=${#b}
+      while [ "$j" -lt "$bn" ]; do
+        c="${b:j:C+kl-1}"
+        case "$c" in *"$2"*) pre="${c%%"$2"*}"; _JF=$((i+j+${#pre})); return 0 ;; esac
+        j=$((j+C))
+      done ;;
+    esac
+    i=$((i+B))
+  done
+}
 _json_slice(){  # $1 = whole payload, $2 = key -> the raw (still JSON-escaped) string value, "" if absent
   local LC_ALL=C   # FIRST, so every expansion below -- the key search included -- counts and cuts in bytes.
                    # Lengths from ${#x} are used as offsets into ${y:n}; with the locale set before any of
@@ -46,8 +72,7 @@ _json_slice(){  # $1 = whole payload, $2 = key -> the raw (still JSON-escaped) s
   #     payload is still moving (`effort` is absent from the field list recorded on 2.1.246).
   #   * `${tail#"$seg"\"}` stepped past each escaped quote: 16.8s for a single 100 KB step on Git Bash,
   #     against 0.002s for `${tail:${#seg}+1}` doing exactly the same thing.
-  # `${hay%%"$k"*}` finds the FIRST occurrence -- the longest suffix that starts with the key starts at the
-  # earliest one. THAT ALONE IS NOT ENOUGH, and the sentence that used to stand here said it was: it claimed a
+  # _json_find gives the FIRST occurrence. THAT ALONE IS NOT ENOUGH, and the sentence that used to stand here said it was: it claimed a
   # command "containing the literal text `\"command\":\"` still cannot relocate the parse", which is true of
   # that byte sequence and irrelevant, because this search is for `"command"` WITHOUT the colon. A JSON VALUE
   # equal to the key name is exactly those bytes between two unescaped quotes. Measured on the shipped hook:
@@ -91,10 +116,10 @@ _json_slice(){  # $1 = whole payload, $2 = key -> the raw (still JSON-escaped) s
   # predates this change and belongs to the walk, not to the cap.
   local _cap=64 _seen=0
   while :; do
-    pre="${hay%%"$k"*}"                        # everything before the next `"key"`
-    [ "$pre" != "$hay" ] || return 0           # no further occurrence: emit nothing
+    _json_find "$hay" "$k"                     # where the next `"key"` starts
+    [ "$_JF" -ge 0 ] || return 0               # no further occurrence: emit nothing
     _seen=$((_seen+1)); [ "$_seen" -le "$_cap" ] || return 0
-    rest="${hay:${#pre}+${#k}}"                # past `"key"`
+    rest="${hay:_JF+${#k}}"                    # past `"key"`
     while [ -n "$rest" ] && [[ "${rest:0:1}" == [$' \t\n\r'] ]]; do rest="${rest:1}"; done
     case "$rest" in
       :*) rest="${rest:1}"; break ;;           # whitespace then `:` -- this occurrence IS the key
@@ -259,16 +284,16 @@ _json_keycount(){  # $1 = payload, $2 = key -> sets _KC to how many times it occ
   # over settings.json, a commit message quoting the word, commands ending in `"command` -- every count <= 1.
   # Same pass cap as the slice, and over-cap reports AMBIGUOUS rather than a true count: the callers refuse on
   # `> 1`, so a payload built to outrun the loop is refused instead of being timed out past the gate.
-  local LC_ALL=C hay="$1" k="\"$2\"" pre rest c=0 _cap=64 _seen=0
+  local LC_ALL=C hay="$1" k="\"$2\"" rest c=0 _cap=64 _seen=0
   _KC=0; _KC_CAPPED=0
   while :; do
-    pre="${hay%%"$k"*}"
-    [ "$pre" != "$hay" ] || { _KC=$c; return 0; }
+    _json_find "$hay" "$k"
+    [ "$_JF" -ge 0 ] || { _KC=$c; return 0; }
     # OVER-CAP IS ITS OWN ANSWER, not a large count. `_KC_CAPPED` lets the caller say what actually happened:
     # the occurrences it stopped at are candidate positions, key-form or not, so calling them "65 keys" was a
     # sentinel dressed up as a measurement and the remedy it offered ("send one key") was already satisfied.
     _seen=$((_seen+1)); [ "$_seen" -le "$_cap" ] || { _KC=$((_cap+1)); _KC_CAPPED=$_cap; return 0; }
-    rest="${hay:${#pre}+${#k}}"
+    rest="${hay:_JF+${#k}}"
     while [ -n "$rest" ] && [[ "${rest:0:1}" == [$' \t\n\r'] ]]; do rest="${rest:1}"; done
     case "$rest" in :*) c=$((c+1)) ;; esac
     hay="$rest"
@@ -367,6 +392,26 @@ crew_msg_values() { crew_opt_values "$1" -m --message; }
 # Read with the builtin, as guard-powershell.sh does: `INPUT="$(cat)"` is a subshell plus a process on EVERY call
 # of this hook. `read` returns 1 at end of input; the text is read regardless.
 IFS= read -r -d '' INPUT || true
+# ---- CREW-PAYLOAD-MAX ------------------------------------------------------------------------------------
+# A Bash or PowerShell call above this size is refused before anything reads it. A PreToolUse hook that reaches
+# its timeout (600 s) stops nothing, and taking the command out of the JSON costs the square of its size — measured
+# on macOS for an escape-dense command: 256 KB 49 s, 512 KB 200 s, so about 900 KB is where the timeout is, and at
+# that size no rule would run at all. The limit is 8 times the largest of 12387 real commands (31639 bytes).
+# The size is ${#INPUT} under the C locale: bytes, with no process. The Write and Edit tools are not limited — a
+# large file is ordinary there — which is why the refusal points at them.
+# Byte-identical in every hook that reads a Bash or PowerShell payload; the suite pins it.
+_PAYLOAD_MAX=262144
+_payload_over(){  # -> 0, with the refusal on stderr, when the payload in $INPUT is above the limit
+  local LC_ALL=C
+  [ "${#INPUT}" -gt "$_PAYLOAD_MAX" ] || return 1
+  echo "GUARD (§4.5): this tool call is ${#INPUT} bytes long; the gates read a Bash or PowerShell call of up to $_PAYLOAD_MAX bytes." >&2
+  echo "A larger one could take longer to read than a hook is given, and a hook that runs out of time stops nothing," >&2
+  echo "so it is refused unread. Put the long content in a file (the Write tool takes any size) and give the command" >&2
+  echo "the path of that file." >&2
+  return 0
+}
+# ---- /CREW-PAYLOAD-MAX
+_payload_over && exit 2
 # Same ladder as guard-bash.sh, and for the same reason: the raw-text fallback leaves JSON escapes in place,
 # so `-m \"…\"` never matches a quote-based extraction and the message silently goes unscanned. That is
 # precisely how the first version of this hook passed a commit carrying a co-author trailer.

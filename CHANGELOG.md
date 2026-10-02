@@ -9,6 +9,40 @@ versioning follows [SemVer](https://semver.org/).
 
 ### Security
 
+- **A `git commit` is read the way the shell and git read it.** The rules for `--no-verify`, `--amend` and a commit
+  that takes its content from the working tree looked for those words and walked the command token by token. Each of
+  these reached the approval prompt with no rule firing (and with `CLAUDE_GIT_OK` ran with nobody asked), measured by
+  running them: `git commit -n` and `--no-verif` skip the hooks; `--amen` amends; `-m x 2>&1 -a`, `-mxm b.txt`,
+  `-m 'a"' -a ; echo 'b"'` and `-F - <<END -a` commit the working tree; `cd ../other && git commit` and
+  `GIT_INDEX_FILE=… git commit` commit something the review record does not describe; `bash -c 'git commit -am x'`
+  hides the whole command. The command is now read left to right — quotes as the shell pairs them, here-document
+  bodies as data, redirections as redirections — and every `git commit` in it against git's own option table,
+  wherever it sits (braces, `if`, a wrapper, a quoted command word). Refused with the reason: an abbreviated or
+  unknown option, an argument the shell would expand into something else, a `-c` setting or a `GIT_` / `HOME`
+  variable that changes what git reads, and a commit after a `cd` into another repository. Nothing that was refused
+  before is let through.
+- **`core.hooksPath` could be switched off without `git config`.** `printf '[core]\n\thooksPath = /dev/null\n' >> .git/config`
+  passed, and after it a commit from your own terminal skipped the trace and secret scans. `.git/config` (a worktree's
+  and a submodule's too), your own `~/.gitconfig` and `~/.config/git/config`, and `.claude/git-shim` are gate files now: a shell write and the file tools are refused,
+  reading is not. `git config include.path`, `includeIf` and `GIT_CONFIG_` variables that carry `hooksPath` are
+  refused as well, and so is an abbreviated `--no-verify` on any git command.
+- **A large commit command could run past the gate's timeout, and a hook that times out does not block.** `guard-bash.sh`
+  stripped and padded the whole command with `${text//x/y}`, ten times over, and bash rebuilds the string for every
+  match: a 46 KB commit whose message is a quote-dense here-document took 335 s on macOS and 14 s at 18 KB on Windows,
+  against a 600 s timeout. The substitutions are done a piece at a time now; a 30 KB commit of that shape is judged in
+  about a second. Other shapes still cost the square of their size (a 64 KB commit took 154 s to read), so a command
+  that holds a `git commit` is read up to 32768 bytes and refused unread above, with the advice to put the message in
+  a file and use `git commit -F <file>`. And whatever the command, taking it out of the hook's JSON costs the square of
+  its size (256 KB of an escape-dense command: 49 s, 512 KB: 200 s), in `guard-bash.sh` and `guard-commit-scan.sh` alike,
+  so a Bash or PowerShell call above 262144 bytes is refused before it is parsed, by size alone, with the advice to put
+  the long content in a file. The largest of 12387 real commands is 31639 bytes. Write and Edit are not limited.
+- **A Write or Edit of a few megabytes ran `guard-write.sh` past its timeout, a gate file included.** The look for a
+  second path key walked the content with an expansion that costs the square of the size when nothing matches: 1 MB
+  took 24 s on macOS, and a 6 MB Write to `.claude/hooks/guard-bash.sh` was refused after 636 s, which is after the
+  600 s timeout, so it was not refused. The key search walks the payload a piece at a time now: the same Write is
+  refused in 2.6 s, and an ordinary 6 MB file passes in the same time. The file tools stay unlimited in size.
+- A review record could vouch for any staged diff once `git config diff.external true` was set: the staged diff then
+  prints nothing, and every change got the same id. The id is computed with `--no-ext-diff --no-textconv`.
 - A recursive forced delete of `.` or `..` passed in both shells (`rm -rf .`, `rm -rf ..`,
   `Remove-Item -Recurse -Force .`): the rule looked for `/`, `*` or `~` in the target, and these carry none. They are
   stopped now, in any flag spelling, with `sudo`, and across a backslash line break.
