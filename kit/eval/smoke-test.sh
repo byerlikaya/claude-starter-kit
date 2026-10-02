@@ -7963,7 +7963,9 @@ if [ -z "$_th" ]; then
 else
   # What plain matching does under it here: this is what says whether the rows below can fail on this platform.
   _thc="$(LC_ALL=$_th bash -c 'shopt -s nocasematch; [[ GIT == git ]] && printf folds || printf "does not fold"' 2>/dev/null)"
-  _thq=0; printf 'INIT\n' | LC_ALL=$_th grep -qiF init >/dev/null 2>&1 || _thq=$?
+  # in a subshell: where grep aborts, the shell that waits for it reports the job ("Aborted"), and that line is
+  # not grep's stderr, so a redirection on the pipeline does not silence it
+  _thq=0; ( printf 'INIT\n' | LC_ALL=$_th grep -qiF init ) >/dev/null 2>&1 || _thq=$?
   _thkind="here plain bash $_thc I to i and grep -iF exits $_thq for INIT/init"
   case "$_thc/$_thq" in folds/0) _thkind="$_thkind, so these rows cannot fail on this platform" ;; esac
   # (1) guard-bash and guard-write: every table of 12g again, under the locale
@@ -8006,7 +8008,7 @@ else
   ( cd "$_TH/n" && printf 'see ŞİRKET-GİZLİ\n' > n.md && git add n.md ) >/dev/null 2>&1
   _th_hook "$_TH/n" pre-commit "$_th"; _thna="$_thr"
   # required where this platform's grep folds such a letter under the locale at all (GNU grep does, BSD grep does not)
-  if printf 'ŞİRKET\n' | LC_ALL=$_th grep -qiF 'şirket' >/dev/null 2>&1; then
+  if ( printf 'ŞİRKET\n' | LC_ALL=$_th grep -qiF 'şirket' ) >/dev/null 2>&1; then
     [ "$_thna" = 1 ] || _thbad="$_thbad [pre-commit, a private string of non-ASCII letters in another case: rc=$_thna, want 1 (this grep folds them under $_th)]"
   fi
   [ -z "$_thbad" ] && pass "under $_th the git hooks stop what they stop under C: a vendor name in another case in an added line and in the message, a staged key that holds an I, a private string in another case; an ordinary line and message pass (a private string of non-ASCII letters in another case: exit $_thna, 1 = caught by the second look)" \
