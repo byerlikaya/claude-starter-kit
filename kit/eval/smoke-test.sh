@@ -2339,8 +2339,12 @@ BUDGET_AGENTS=5596   # 5d.2: tightened to the measured sum (was 5800 with 204 B 
                      # +crew-performance-expert (~426B) — security, privacy and tests each had an independent
                      # reviewer and performance was the one quality axis where the author audited their own
                      # work. Bought at ~110 tokens per session; the alternative was leaving that gap open.)
-BUDGET_SKILL_LISTING=9063 # the skill listing as Claude Code counts it (eval/lib/skill-listing.awk — the count doctor.sh
-                          # reports too), in CHARACTERS: 46 model-invocable skills, 9063, the figure Claude Code's own
+BUDGET_SKILL_LISTING=9194 # the skill listing as Claude Code counts it (eval/lib/skill-listing.awk — the count doctor.sh
+                          # reports too), in CHARACTERS. 3.1.0: 9063 → 9194 (+131) for one new skill, frontend-flutter
+                          # (47 model-invocable skills): a second stack layer beside frontend-rn-expo, asked for by a
+                          # project that carried it as its own skill and was told "unvetted component" every session.
+                          # Its listing entry is 130 characters, against 154 for its React Native twin. Before that:
+                          # 46 model-invocable skills, 9063, the figure Claude Code's own
                           # "Skill listing over budget" warning printed for a fresh install. It replaced a byte sum of
                           # the frontmatter that no tool used (10249), so doctor and this gate now read one number.
                           # The ceiling is "does not grow", not a target. 8,000 was weighed and rejected: that is the

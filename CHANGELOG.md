@@ -81,6 +81,14 @@ versioning follows [SemVer](https://semver.org/).
 
 ### Added
 
+- **`frontend-flutter`: a stack layer for Flutter**, beside `frontend-rn-expo`. It applies only in a project whose
+  `pubspec.yaml` depends on the Flutter SDK, and `crew-frontend-expert` adds it on top of `frontend` there. It leaves
+  state management, routing and the lint set to the project, and holds what Flutter itself asks for: the layers and
+  rules of its architecture guide, the rebuild cost model, layout by window size and never by device type, isolates,
+  platform channels, generated localisations, the mix of unit, widget, integration and golden tests, measuring in
+  profile mode on a real device, and a release without a secret in it. Its done-definition is `dart format
+  --set-exit-if-changed .`, `flutter analyze`, `flutter test` and the accessibility guideline test. Every rule was
+  checked against Flutter's and Dart's own documentation; the sources are in the skill's `references/`. 40 skills now.
 - **In `auto` and `dontAsk`, your own message approves a commit or a push.** Those modes answer a permission prompt
   with software, so the commit gate fails closed there and the only way through was to switch mode for every commit.
   Now a message that is nothing but `approve: commit`, `approve: push` or `approve: commit+push` (`onay:` works too)
