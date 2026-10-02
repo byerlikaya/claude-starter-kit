@@ -15,7 +15,7 @@ import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 
-import { prepare, pending, watch, cleanup, alwaysList } from './permissions.js';
+import { prepare, pending, watch, cleanup, alwaysList, logApprovals } from './permissions.js';
 import { getFleet } from './fleet.js';
 
 export const ALLOWED_MODES = ['plan', 'acceptEdits', 'default'];
@@ -52,9 +52,14 @@ class OwnedSession {
     this.gate = prepare(this.id, this.permissionMode);
     this.pendingPermissions = [];
     this.gateEvents = [];      // hook lifecycle, newest last
+    // What was asked of the viewer in this session, when, and what became of it. Kept from the moment Studio
+    // started the session, in memory: it is what the Timeline's waiting periods are drawn from.
+    this.approvals = [];
+    this.decisions = new Map();
     this.unwatch = this.gate
       ? watch(this.id, (reqs) => {
         this.pendingPermissions = reqs;
+        logApprovals(this.approvals, reqs, this.decisions, Date.now(), this.gate.waitSeconds);
         this.#emit({ type: 'permissions', pending: reqs });
       })
       : null;
@@ -181,6 +186,9 @@ class OwnedSession {
     }
   }
 
+  /** The panel recorded an answer to a request. Remembered until the request is seen to have gone. */
+  noteDecision(toolUseId, verdict) { this.decisions.set(toolUseId, verdict); }
+
   /** Replay from `after`, then follow. Returns an unsubscribe function. */
   subscribe(fn, after = 0) {
     for (const ev of this.events) if (ev.seq > after) fn(ev);
@@ -237,6 +245,7 @@ class OwnedSession {
       pendingPermissions: this.pendingPermissions,
       // Tools the viewer allowed for the rest of this session, so they can be listed and taken back.
       alwaysAllowed: this.gate ? alwaysList(this.id) : [],
+      approvals: this.approvals,
       // This machine's clock. A countdown is `askedAt + wait - now`, and all three have to come from one clock:
       // a viewer on another machine has a different one.
       now: Date.now(),

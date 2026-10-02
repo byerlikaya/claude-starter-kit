@@ -405,23 +405,46 @@ export const _internals = { scanMain, harvestCompletions, SESSION_NODE };
 export async function agentDetail(session, agentId) {
   if (!/^[A-Za-z0-9_-]+$/.test(agentId)) return null;
 
-  const file = path.join(session.subagentsDir, `agent-${agentId}.jsonl`);
-  try { await fsp.stat(file); } catch { return null; }
+  // An agent a workflow started lives one directory down (subagents/workflows/<run>/). The graph finds those;
+  // looking only at the top level answered "no such agent" for every one of them.
+  let file = path.join(session.subagentsDir, `agent-${agentId}.jsonl`);
+  try {
+    await fsp.stat(file);
+  } catch {
+    const nested = (await agentMetaFiles(session.subagentsDir)).find((m) => path.basename(m) === `agent-${agentId}.meta.json`);
+    if (!nested) return null;
+    file = nested.replace(/\.meta\.json$/, '.jsonl');
+    try { await fsp.stat(file); } catch { return null; }
+  }
 
   const { records, malformed } = await readAll(file);
 
   let meta = {};
   try {
-    meta = JSON.parse(await fsp.readFile(path.join(session.subagentsDir, `agent-${agentId}.meta.json`), 'utf8'));
+    meta = JSON.parse(await fsp.readFile(file.replace(/\.jsonl$/, '.meta.json'), 'utf8'));
   } catch { /* the transcript is still the source of truth */ }
 
   const timeline = [];
   const texts = [];       // every text block, in order
   let prompt = null;
   let lastThinking = null;
+  // The last tool call that came back as an error: which tool, when, and the end of what it said. Null when
+  // none did — which is a finding about this transcript, and not the same as the transcript being unread.
+  const toolNames = new Map();
+  let lastError = null;
+  let errors = 0;
 
   for (const r of records) {
     const at = r?.timestamp ? Date.parse(r.timestamp) : null;
+
+    if (r?.type === 'user' && Array.isArray(r.message?.content)) {
+      for (const c of r.message.content) {
+        if (c?.type !== 'tool_result' || c.is_error !== true) continue;
+        errors += 1;
+        const res = toolResult(c);
+        lastError = { tool: toolNames.get(c.tool_use_id) ?? null, at, text: res.text, truncated: res.truncated, length: res.length };
+      }
+    }
 
     if (r?.type === 'user' && prompt === null) {
       const c = r.message?.content;
@@ -443,6 +466,7 @@ export async function agentDetail(session, agentId) {
         // through their most identifying input.
         const i = c.input ?? {};
         const label = i.description ?? i.file_path ?? i.pattern ?? i.query ?? i.command ?? i.skill ?? null;
+        if (typeof c.id === 'string') toolNames.set(c.id, c.name ?? 'unknown');
         timeline.push({
           at,
           name: c.name ?? 'unknown',
@@ -470,6 +494,8 @@ export async function agentDetail(session, agentId) {
     narration: texts.slice(0, -1).map((t) => t.text),
     thinking: lastThinking,
     timeline,
+    lastError,
+    errors,
     records: records.length,
     malformed,
   };
