@@ -39,6 +39,25 @@
 # CLAUDE_GIT_OK=1, exported by the user before the session starts, pre-authorises the session. It exists for
 # headless/CI runs where no one is at the keyboard. It does NOT replace approval: present the message first.
 set -uo pipefail
+# ---- CREW-LOCALE -----------------------------------------------------------------------------------------
+# Everything this gate matches with runs in the C locale, whatever the session's own is. Under a Turkish locale
+# the letters i and I are not each other's other case (their partners are İ and ı), and every case-insensitive
+# match here is written in ASCII. Measured under tr_TR.UTF-8 with the locale left as it came:
+#   GNU grep 3.11 / bash 5.2 on Linux: `grep -i init` does not find INIT (-F, -E and plain alike);
+#     bash's nocasematch does not match GIT against git; `[A-Za-z]` in a regex does not hold I; awk's tolower
+#     turns GIT into gıt. The suite, run whole under that locale, went from 4 failures to 30: a recursive
+#     Remove-Item, a write to a gate file, `git config --remove-section core`, a read of a nested .env and a
+#     staged key all passed.
+#   GNU grep 3.0 in Git Bash on Windows: `grep -iF` with an ASCII pattern aborts (exit 134), and the pre-commit
+#     scan for private strings read that as "no match".
+#   macOS (BSD grep, bash 3.2): none of it; tr_TR.UTF-8 folds i and I the ASCII way there.
+# The cost: a letter outside ASCII has no other case in the C locale. The two git hooks that scan a user's own
+# words look a second time under the session's locale for a pattern that holds such a letter (_CREW_LOCALE).
+# Byte-identical in every gate; the suite pins it.
+_CREW_LOCALE="${LC_ALL:-${LC_CTYPE:-${LANG:-}}}"
+case "$_CREW_LOCALE" in C|POSIX) _CREW_LOCALE="" ;; esac
+export LC_ALL=C
+# ---- /CREW-LOCALE
 # The 2.x names of the variables a user can set still work (one helper: eval/lib/crew-env.sh).
 _crew_d="${BASH_SOURCE%/*}"; [ "$_crew_d" = "${BASH_SOURCE}" ] && _crew_d=.
 [ -f "$_crew_d/../eval/lib/crew-env.sh" ] && . "$_crew_d/../eval/lib/crew-env.sh"; unset _crew_d
@@ -1431,6 +1450,25 @@ case "$CMD" in *[Rr][Mm]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE '(rm|
 #   - fold a surviving tab to a space (display-only text; the command Claude runs is untouched);
 #   - escape backslash and double quote;
 #   - fold newlines to the two-character \n escape.
+# Each line of a text cut to at most N bytes, never inside a letter. This is the command as the approval prompt
+# shows it, and it goes into JSON. `cut -c1-300` did this job: GNU cut counts BYTES whatever the locale (measured on
+# Linux under en_US.UTF-8: a two-byte letter across byte 300 left the prompt's JSON invalid UTF-8), and BSD cut
+# counts characters only while the session's locale says so. Here the cut is by bytes and then steps back over an
+# unfinished letter: a UTF-8 letter is one lead byte (0xC0 and up) followed by continuation bytes (0x80-0xBF).
+_utf8_cut(){  # $1 = text, $2 = bytes per line -> _UC
+  local LC_ALL=C
+  local l out="" nl=""
+  while IFS= read -r l || [ -n "$l" ]; do
+    if [ "${#l}" -gt "$2" ]; then
+      l="${l:0:$2}"
+      while :; do case "$l" in *[$'\x80'-$'\xbf']) l="${l%?}" ;; *) break ;; esac; done
+      case "$l" in *[$'\xc0'-$'\xff']) l="${l%?}" ;; esac
+    fi
+    out="$out$nl$l"; nl=$'\n'
+  done <<< "$1"
+  while :; do case "$out" in *$'\n') out="${out%?}" ;; *) break ;; esac; done
+  _UC="$out"
+}
 json_escape(){
   printf '%s' "$1" \
     | tr -d '\000-\010\013-\037\177' \
@@ -2445,7 +2483,7 @@ if git_has "$CMD" 'commit|push'; then
     default|acceptEdits)
       # A prompt provably reaches the user in these modes: ask, and let them approve in one keypress.
       SHORT="$CMD"
-      [ "${#SHORT}" -gt 300 ] && SHORT="$(printf '%s' "$SHORT" | cut -c1-300)…"
+      [ "${#SHORT}" -gt 300 ] && { _utf8_cut "$SHORT" 300; SHORT="$_UC…"; }
       # §4.4 branch guard: committing straight onto main/master is not blocked (a fresh project legitimately
       # lives on main), but it is surfaced in the approval prompt so the user can send it to a branch instead.
       BRANCH_WARN=""

@@ -32,6 +32,25 @@
 # COST. This runs on every prompt, so the ordinary one is builtins only: no process is started unless the
 # message is an approval (then git is asked what is staged). eval/smoke-test.sh pins both.
 set -uo pipefail
+# ---- CREW-LOCALE -----------------------------------------------------------------------------------------
+# Everything this gate matches with runs in the C locale, whatever the session's own is. Under a Turkish locale
+# the letters i and I are not each other's other case (their partners are İ and ı), and every case-insensitive
+# match here is written in ASCII. Measured under tr_TR.UTF-8 with the locale left as it came:
+#   GNU grep 3.11 / bash 5.2 on Linux: `grep -i init` does not find INIT (-F, -E and plain alike);
+#     bash's nocasematch does not match GIT against git; `[A-Za-z]` in a regex does not hold I; awk's tolower
+#     turns GIT into gıt. The suite, run whole under that locale, went from 4 failures to 30: a recursive
+#     Remove-Item, a write to a gate file, `git config --remove-section core`, a read of a nested .env and a
+#     staged key all passed.
+#   GNU grep 3.0 in Git Bash on Windows: `grep -iF` with an ASCII pattern aborts (exit 134), and the pre-commit
+#     scan for private strings read that as "no match".
+#   macOS (BSD grep, bash 3.2): none of it; tr_TR.UTF-8 folds i and I the ASCII way there.
+# The cost: a letter outside ASCII has no other case in the C locale. The two git hooks that scan a user's own
+# words look a second time under the session's locale for a pattern that holds such a letter (_CREW_LOCALE).
+# Byte-identical in every gate; the suite pins it.
+_CREW_LOCALE="${LC_ALL:-${LC_CTYPE:-${LANG:-}}}"
+case "$_CREW_LOCALE" in C|POSIX) _CREW_LOCALE="" ;; esac
+export LC_ALL=C
+# ---- /CREW-LOCALE
 IFS= read -r -d '' INPUT || true
 case "$INPUT" in *'"hook_event_name"'*UserPromptSubmit*) ;; *) exit 0 ;; esac
 # ---- CREW-JSON-PARSE ------------------------------------------------------------------------------------

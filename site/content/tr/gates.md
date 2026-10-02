@@ -29,7 +29,7 @@
 
 Diğer iki hook deneysel bir özelliğe hizmet eder ve bir depo onu açana kadar hiçbir şey yapmaz.
 
-İki git hook'u (`pre-commit` ve `commit-msg`) iz, sır, depo şişkinliği ve özel yol taramalarını koşturur. Sonuncusu şunun için var: yalnızca sizin makinenizde bulunan bir yol paylaşılan depoya yazılarak değil, yapıştırılarak sızar. Kendi `$HOME`'unuzu kendiliğinden engeller; yalnızca sizin tanıyabileceğiniz iç proje, müşteri ve sunucu adları ise gitignore'lanmış `.private-terms.txt` dosyasından gelir (`.private-allowlist.txt` kaçış kapısıdır). Plugin sürümü, `skill-trust.sh` dışında bunların hepsini getirir; o hook neyin Crewforth'a ait olduğunu bir kurulum script'inin yazdığı `kit-manifest.txt`'ten okur ve plugin böyle bir dosya oluşturmaz.
+İki git hook'u (`pre-commit` ve `commit-msg`) iz, sır, depo şişkinliği ve özel yol taramalarını koşturur. Sonuncusu şunun için var: yalnızca sizin makinenizde bulunan bir yol paylaşılan depoya yazılarak değil, yapıştırılarak sızar. Kendi `$HOME`'unuzu kendiliğinden engeller; yalnızca sizin tanıyabileceğiniz iç proje, müşteri ve sunucu adları ise gitignore'lanmış `.private-terms.txt` dosyasından gelir (`.private-allowlist.txt` kaçış kapısıdır). Her kapı eşleştirmeyi C yerel ayarında yapar; `i` ile `I`'nın birbirinin büyük/küçük hâli olmadığı Türkçe gibi bir sistem yerel ayarı yakalananı değiştirmez. Koşamayan bir tarama da commit'i geçirmez, durdurur. Plugin sürümü, `skill-trust.sh` dışında bunların hepsini getirir; o hook neyin Crewforth'a ait olduğunu bir kurulum script'inin yazdığı `kit-manifest.txt`'ten okur ve plugin böyle bir dosya oluşturmaz.
 
 ## Kural → kapı
 
