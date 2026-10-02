@@ -323,6 +323,7 @@ WHY_SCRIPT="This file is a gate script — rewriting it would disarm the trace/s
 WHY_DISC="This file is Crewforth's discipline document — it IS the text of §4.1-§4.5, so editing it empties the rules the gates enforce."
 WHY_LINK="A parent directory of this path is a symlink and it resolves into a gate directory, so the write would land on a gate file."
 WHY_APPR="This file records the user's own approval for a commit or a push (§4.4). Only the user's message writes it, so a session cannot approve its own commit."
+WHY_GITCFG="This file holds core.hooksPath: writing it can switch the git hooks off without touching one of them. Settings go through git config, which the Bash guard reads."
 WHY_LONG="The path in this payload is longer than any filesystem accepts. It is refused rather than parsed, because parsing it is the slow path an attacker would aim at."
 # Sized from the cost curve, not from PATH_MAX. Tier 3 walks the value character by character and bash string
 # append is O(n) each time, so the walk is quadratic: measured 0.09s at 512 raw bytes, 0.52s at 1,024, 3.7s at
@@ -391,7 +392,7 @@ _json_unescape "$_raw" >/dev/null; FP="$_JU"
 # block on a file whose own path says `.claude/…hooks`, which is the trade this gate exists to make.
 if [ -z "$FP" ]; then
   case "$INPUT" in
-    *.claude*hooks*|*.git*hooks*|*DISCIPLINE.md*|*crewforth-approval*) FP="(unparsed payload naming a gate path)"; block "gate-file edit (unparsed payload)" "$WHY_SCRIPT" ;;
+    *.claude*hooks*|*.git*hooks*|*DISCIPLINE.md*|*crewforth-approval*|*.git/config*|*.git\\config*|*git-shim*) FP="(unparsed payload naming a gate path)"; block "gate-file edit (unparsed payload)" "$WHY_SCRIPT" ;;
   esac
   exit 0
 fi
@@ -457,6 +458,13 @@ _is_gate(){   # 0 = gate file; sets GATE_RULE and GATE_WHY
     */.[Cc][Ll][Aa][Uu][Dd][Ee]/[Hh][Oo][Oo][Kk][Ss]/*|.[Cc][Ll][Aa][Uu][Dd][Ee]/[Hh][Oo][Oo][Kk][Ss]/*)
       GATE_RULE="gate-file edit (Write/Edit tools)"; GATE_WHY="$WHY_SCRIPT"; return 0 ;;
     */.[Gg][Ii][Tt]/[Hh][Oo][Oo][Kk][Ss]/*|.[Gg][Ii][Tt]/[Hh][Oo][Oo][Kk][Ss]/*)
+      GATE_RULE="gate-file edit (Write/Edit tools)"; GATE_WHY="$WHY_SCRIPT"; return 0 ;;
+    # core.hooksPath lives in .git/config (a linked worktree's and a submodule's config with it): writing it switches the
+    # git hooks off without touching one of them. And .claude/git-shim is where core.hooksPath points when Crewforth shares
+    # the hooks with a project's own chain. guard-bash.sh carries the same two for the shell.
+    */.[Gg][Ii][Tt]/[Cc][Oo][Nn][Ff][Ii][Gg]|.[Gg][Ii][Tt]/[Cc][Oo][Nn][Ff][Ii][Gg]|*/.[Gg][Ii][Tt]/[Cc][Oo][Nn][Ff][Ii][Gg].[Ww][Oo][Rr][Kk][Tt][Rr][Ee][Ee]|.[Gg][Ii][Tt]/[Cc][Oo][Nn][Ff][Ii][Gg].[Ww][Oo][Rr][Kk][Tt][Rr][Ee][Ee]|*/.[Gg][Ii][Tt]/[Ww][Oo][Rr][Kk][Tt][Rr][Ee][Ee][Ss]/*/[Cc][Oo][Nn][Ff][Ii][Gg].[Ww][Oo][Rr][Kk][Tt][Rr][Ee][Ee]|*/.[Gg][Ii][Tt]/[Mm][Oo][Dd][Uu][Ll][Ee][Ss]/*/[Cc][Oo][Nn][Ff][Ii][Gg])
+      GATE_RULE="git-config edit (Write/Edit tools)"; GATE_WHY="$WHY_GITCFG"; return 0 ;;
+    */.[Cc][Ll][Aa][Uu][Dd][Ee]/[Gg][Ii][Tt]-[Ss][Hh][Ii][Mm]/*|.[Cc][Ll][Aa][Uu][Dd][Ee]/[Gg][Ii][Tt]-[Ss][Hh][Ii][Mm]/*)
       GATE_RULE="gate-file edit (Write/Edit tools)"; GATE_WHY="$WHY_SCRIPT"; return 0 ;;
     # The gates SOURCE eval/lib/crew-env.sh on every call, so it is part of them: overwritten with `exit 0`, every
     # rule stopped firing (3.0.1 review). Same file in the plugin edition, below.

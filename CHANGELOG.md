@@ -9,6 +9,25 @@ versioning follows [SemVer](https://semver.org/).
 
 ### Security
 
+- **A `git commit` is read the way the shell and git read it.** The rules for `--no-verify`, `--amend` and a commit
+  that takes its content from the working tree looked for those words and walked the command token by token. Each of
+  these reached the approval prompt with no rule firing (and with `CLAUDE_GIT_OK` ran with nobody asked), measured by
+  running them: `git commit -n` and `--no-verif` skip the hooks; `--amen` amends; `-m x 2>&1 -a`, `-mxm b.txt`,
+  `-m 'a"' -a ; echo 'b"'` and `-F - <<END -a` commit the working tree; `cd ../other && git commit` and
+  `GIT_INDEX_FILE=… git commit` commit something the review record does not describe; `bash -c 'git commit -am x'`
+  hides the whole command. The command is now read left to right — quotes as the shell pairs them, here-document
+  bodies as data, redirections as redirections — and every `git commit` in it against git's own option table,
+  wherever it sits (braces, `if`, a wrapper, a quoted command word). Refused with the reason: an abbreviated or
+  unknown option, an argument the shell would expand into something else, a `-c` setting or a `GIT_` / `HOME`
+  variable that changes what git reads, and a commit after a `cd` into another repository. Nothing that was refused
+  before is let through.
+- **`core.hooksPath` could be switched off without `git config`.** `printf '[core]\n\thooksPath = /dev/null\n' >> .git/config`
+  passed, and after it a commit from your own terminal skipped the trace and secret scans. `.git/config` (a worktree's
+  and a submodule's too) and `.claude/git-shim` are gate files now: a shell write and the file tools are refused,
+  reading is not. `git config include.path`, `includeIf` and `GIT_CONFIG_` variables that carry `hooksPath` are
+  refused as well, and so is an abbreviated `--no-verify` on any git command.
+- A review record could vouch for any staged diff once `git config diff.external true` was set: the staged diff then
+  prints nothing, and every change got the same id. The id is computed with `--no-ext-diff --no-textconv`.
 - A recursive forced delete of `.` or `..` passed in both shells (`rm -rf .`, `rm -rf ..`,
   `Remove-Item -Recurse -Force .`): the rule looked for `/`, `*` or `~` in the target, and these carry none. They are
   stopped now, in any flag spelling, with `sudo`, and across a backslash line break.

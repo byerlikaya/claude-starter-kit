@@ -45,3 +45,16 @@ the approval record named in a command (only the user's own message writes it)	b
 the user's own approval message covers this command	kullanıcının kendi onay mesajı bu komutu kapsıyor
 the approval hook fed by a command (only Claude Code runs it, with the user's message)	onay hook'u bir komutla besleniyor (onu yalnız Claude Code, kullanıcının mesajıyla çalıştırır)
 a Claude Code session started from a command to continue this one (it could approve for it)	bu oturumu sürdürmek için komutla başlatılan bir Claude Code oturumu (bu oturum adına onay verebilirdi)
+hook skip by -n or an abbreviated --no-verify	hook atlama (-n ya da kısaltılmış --no-verify)
+abbreviated git commit --amend	git commit --amend (kısaltılmış)
+git commit under a GIT_ variable set in the command	komutta ayarlanmış bir GIT_ değişkeni altında git commit
+git commit option the gate cannot read	kapının okuyamadığı bir git commit seçeneği
+git commit inside a nested shell	iç içe kabukta git commit
+commit after a change of directory	dizin değiştirdikten sonra commit
+git config include.path (another file read as configuration)	git config include.path (başka bir dosya yapılandırma olarak okunur)
+core.hooksPath through GIT_CONFIG_ variables (disarms the git hooks)	GIT_CONFIG_ değişkenleriyle core.hooksPath (git hook'larını devre dışı bırakır)
+git-config edit (Write/Edit tools)	git yapılandırma dosyasını düzenleme (Write/Edit araçları)
+git commit under a setting given in the command	komutta verilen bir ayar altında git commit
+git commit written so that it is not recognised	tanınmayacak biçimde yazılmış git commit
+git commit argument the shell expands	kabuğun genişlettiği bir git commit argümanı
+git config --edit (the configuration file opened for writing)	git config --edit (yapılandırma dosyası yazmak için açılır)

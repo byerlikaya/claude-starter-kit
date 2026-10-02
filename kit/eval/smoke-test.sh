@@ -2748,6 +2748,7 @@ sec "== 4f) §4.6 review gate — a commit cannot land on a diff nothing reviewe
 R46="$(mktemp -d)"
 ( cd "$R46" && git init -q . && git config user.email t@example.com && git config user.name t \
   && echo one > a.txt && git add a.txt && git commit -qm init && echo two >> a.txt && git add a.txt )
+mkdir -p "$R46/sub"      # `(cd sub && git commit …)` below: the directory the call names has to be there, as in a real one
 r46(){ ( cd "$R46" && bash "$HOOKS/guard-bash.sh" ); }
 r46rec(){ ( cd "$R46" && mkdir -p .claude && printf '{"diff_oid":"%s","head":"%s","ts":"t"}\n' "$1" "$2" > .claude/review-pass.json ); }
 # A payload that CARRIES a cwd, in the real key order (cwd arrives before permission_mode). `gj` has no cwd at
@@ -2826,11 +2827,13 @@ for _c in 'git commit -m x' 'ls -la && git commit -m x' 'git commit -m \"add -a 
           'git commit -m x --inter-hunk-context 3' 'echo \"git commit -a\" > notes.txt' \
           'git commit -m x --' 'git commit -S -m x' 'git commit -u -m x' \
           'git commit --message=x' 'git commit -m x -U 3' 'git commit -q -m x' \
-          'git commit -qm x' 'git commit -sm x' 'git commit -qnm x' 'git commit -qF msg.txt'; do
+          'git commit -qm x' 'git commit -sm x' 'git commit -qsm x' 'git commit -qF msg.txt'; do
   o="$(gj default "$_c" | r46 2>/dev/null)"
   [ "$(gdec "$o")" = "ask" ] && pass "§4.6: '$_c' is NOT over-blocked" \
     || fail "§4.6: '$_c' wrongly blocked as a working-tree commit (out=$o)"
 done
+# `-qsm x` above was `-qnm x` until 3.1.0, and that assertion pinned a hole: the `n` in the cluster is --no-verify
+# (run against git: the hook does not run). It is refused now, in 12g, with the premise measured there.
 # `-qm x` is in the negatives because it was a REAL false positive, and the way it hid is the lesson: a cluster
 # ending in a value-taking letter (`-qm`, `-sm`, `-qF`) is followed by its VALUE, not a path, and the walk was
 # reading that value as a pathspec. `git commit -qm x` was refused while `git commit -qm "x"` was allowed — the
@@ -3767,13 +3770,17 @@ gj auto 'rm package-lock.json'      | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&
 
 sec "== 7b) guard-bash matcher — audit bypass regressions (unified git_has) =="
 # An adversarial audit found these git-invocation forms slipped the old 'git +subcmd' rules. Each must now be caught.
+TMPDIR_H1="$(mktemp)"
 gj auto 'git -C . reset --hard' | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "git -C reset --hard BLOCKED (H2)" || fail "git -C reset --hard PASSED (H2)"
 gj auto 'git\treset --hard'     | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "TAB-separated reset --hard BLOCKED (H2)" || fail "TAB-separated reset --hard PASSED (H2)"
 gj auto 'git -C . push --force' | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "git -C push --force BLOCKED (H2)" || fail "git -C push --force PASSED (H2)"
 gj auto 'git push --force-with-lease' | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "push --force-with-lease BLOCKED (H3)" || fail "--force-with-lease PASSED (H3)"
 gj auto 'git -c core.hooksPath=/dev/null commit -m x' | CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; [ "$?" = 2 ] && pass "git -c core.hooksPath BLOCKED (C1)" || fail "-c core.hooksPath PASSED (C1)"
-# H1: a quote/backtick-wrapped commit must still reach the §4.4 approval gate (not slip through unprompted).
-o="$(gj default 'eval \"git commit -m x\"' | gbr 2>/dev/null)"; echo "$o" | grep -q '"permissionDecision":"ask"' && pass "eval-wrapped commit still ASKs (H1)" || fail "eval-wrapped commit slipped §4.4 (H1): $o"
+# H1: a quote/backtick-wrapped commit must not slip through unprompted. Until 3.1.0 it reached the §4.4 ask; a commit
+# inside a quoted script cannot be READ (`eval "git commit -a -m x"` asked too, and committed the working tree), so it
+# is refused outright now.
+gj default 'eval \"git commit -m x\"' | gbr >/dev/null 2>"$TMPDIR_H1"; _h1=$?
+{ [ "$_h1" = 2 ] && grep -q 'where its arguments cannot be read' "$TMPDIR_H1"; } && pass "eval-wrapped commit is REFUSED: its arguments cannot be read (H1)" || fail "eval-wrapped commit slipped (H1): rc=$_h1"
 # Precision: a commit whose MESSAGE contains 'reset --hard' (no git-before-reset) ASKs as a commit, is not blocked.
 o="$(gj default 'git commit -m \"reset --hard bug\"' | gbr 2>/dev/null)"; echo "$o" | grep -q '"permissionDecision":"ask"' && pass "commit msg with 'reset --hard' NOT over-blocked" || fail "commit msg 'reset --hard' wrongly blocked: $o"
 # Fallback (no jq AND no python3 — stock Git Bash on Windows): the matchers must still fire on the raw JSON blob (M1).
@@ -7303,6 +7310,296 @@ for _pf in $_pawf; do
                      || fail "${_pf##*/}: prompt-approval.sh is not wired exactly once on UserPromptSubmit with shell bash (found/with-bash: $_pn)"
 done
 rm -rf "$_PA"
+
+sec "== 12g) a git commit is read the way the shell and git read it: the forms that walked past §4.5 and §4.6 =="
+# A review of the approval route (12f) measured commit forms that reached the §4.4 prompt — or, with CLAUDE_GIT_OK,
+# ran with nobody asked — although each one skips the hooks, rewrites a commit, commits the working tree, or commits
+# somewhere else than the review record describes. guard-bash.sh now reads the call left to right (_c47_scan) and
+# refuses them. Left column: the verdict in `default`. Second: the verdict of a pre-authorised session, where §4.6 is
+# skipped by design, so only the §4.5 rows are refused there. `\x27` is a single quote, `\n` JSON's newline, @O@
+# another repository, @W@ this one.
+if [ "$UNITS" != 1 ]; then
+  skip scope "commit forms: the unit cases run in the source checkout (scope=install)" 7
+else
+_CF="$(mktemp -d)"; _CF="$(cd -P "$_CF" && pwd)"; _cfw="$_CF/w"; _cfo="$_CF/o"; _cfq="'"; _cf_badjson=""
+_cf_new(){ rm -rf "$_CF/w" "$_CF/o"
+  ( git init -q "$_cfo" && cd "$_cfo" && git config user.email t@example.com && git config user.name t && echo o > o.txt && git add o.txt \
+    && git -c core.hooksPath=/dev/null commit -qm init && echo o2 >> o.txt && git add o.txt
+    git init -q "$_cfw" && cd "$_cfw" && git config user.email t@example.com && git config user.name t && mkdir -p sub .claude \
+    && echo one > a.txt && echo b1 > b.txt && git add a.txt b.txt && git -c core.hooksPath=/dev/null commit -qm init \
+    && echo two >> a.txt && git add a.txt && echo unreviewed >> b.txt ) >/dev/null 2>&1
+  _cf_review; }
+# The record is written by the recipe crew-review-agent is given, read from that file: the contract, not a copy of it.
+_cf_review(){ ( cd "$_cfw" && awk '/# CREW-REVIEW-PASS/{f=1;next} f&&/^```/{exit} f' "$AGENTS/crew-review-agent.md" > "$_CF/rcp.sh" && bash "$_CF/rcp.sh" ) >/dev/null 2>&1; }
+# $1 = mode, $2 = command as JSON text, $3 = 1 for a pre-authorised session, $4 = tool -> _cfr (rc), _cfd (decision), stderr in $_CF/err
+_cf_run(){ printf '{"session_id":"s","cwd":"%s","permission_mode":"%s","tool_name":"%s","tool_input":{"command":"%s"}}' "$_cfw" "$1" "${4:-Bash}" "$2" > "$_CF/pl.json"
+  if [ -n "$JSONQ" ]; then json_ok < "$_CF/pl.json" || _cf_badjson="$_cf_badjson [$2]"; fi
+  if [ "${3:-0}" = 1 ]; then _cfo_out="$( cd "$_cfw" && CREW_GATE_LOG=/dev/null CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" < "$_CF/pl.json" 2>"$_CF/err" )"; _cfr=$?
+  else _cfo_out="$( cd "$_cfw" && CREW_GATE_LOG=/dev/null env -u CLAUDE_GIT_OK bash "$HOOKS/guard-bash.sh" < "$_CF/pl.json" 2>"$_CF/err" )"; _cfr=$?; fi
+  _cfd="$(gdec "$_cfo_out")"; }
+_cf_table(){  # $1 = the table, $2 = its name -> runs every row in default and pre-authorised; sets _cfn, _cfbad
+  local l w c d g
+  _cfn=0; _cfbad=""
+  while IFS= read -r l; do [ -z "$l" ] && continue
+    w="${l%% @@ *}"; c="${l#* @@ }"; c="${c//\\x27/$_cfq}"; c="${c//@O@/$_cfo}"; c="${c//@W@/$_cfw}"; _cfn=$((_cfn+1))
+    _cf_run default "$c"; d="$_cfr${_cfd:+/$_cfd}"; _cf_run default "$c" 1; g="$_cfr${_cfd:+/$_cfd}"
+    [ "$d $g" = "$w" ] || _cfbad="$_cfbad [$c → $d $g, want $w]"
+  done <<< "$1"
+}
+_cf_new
+
+# ---- what git itself does with them, measured: the reason each row is in the table ----------------------------
+_cfp=""
+( cd "$_cfw" && mkdir -p hk && printf '#!/bin/sh\nexit 1\n' > hk/pre-commit && chmod +x hk/pre-commit && git config core.hooksPath hk ) >/dev/null 2>&1
+( cd "$_cfw" && git commit -qm x ) >/dev/null 2>&1 && _cfp="$_cfp FIXTURE:the-failing-hook-did-not-stop-a-plain-commit"
+( cd "$_cfw" && git commit -q -n -m x ) >/dev/null 2>&1 || _cfp="$_cfp -n-did-not-skip-the-hook"
+_cf_new; ( cd "$_cfw" && mkdir -p hk && printf '#!/bin/sh\nexit 1\n' > hk/pre-commit && chmod +x hk/pre-commit && git config core.hooksPath hk ) >/dev/null 2>&1
+( cd "$_cfw" && git commit -q --no-veri -m x ) >/dev/null 2>&1 || _cfp="$_cfp --no-veri-did-not-skip-the-hook"
+_cf_new; _cfh="$( cd "$_cfw" && git rev-list --count HEAD )"
+( cd "$_cfw" && git commit -q --amen -m x ) >/dev/null 2>&1; [ "$( cd "$_cfw" && git rev-list --count HEAD )" = "$_cfh" ] || _cfp="$_cfp --amen-did-not-amend"
+_cf_new; ( cd "$_cfw" && git commit -q -mxm b.txt ) >/dev/null 2>&1
+{ [ "$( cd "$_cfw" && git log -1 --format=%s )" = xm ] && ( cd "$_cfw" && git show HEAD:b.txt | grep -q unreviewed ); } || _cfp="$_cfp -mxm-b.txt-did-not-commit-b.txt-under-the-message-xm"
+_cf_new; ( cd "$_cfw" && git commit -q -m x 2>&1 -a ) >/dev/null 2>&1
+( cd "$_cfw" && git show HEAD:b.txt | grep -q unreviewed ) || _cfp="$_cfp a-trailing--a-after-2>&1-did-not-commit-the-working-tree"
+[ -z "$_cfp" ] && pass "commit-form premises, run against git: -n and --no-veri skip a failing hook, --amen amends, -mxm b.txt commits b.txt under the message 'xm', and -a after 2>&1 commits the working tree" \
+               || fail "commit-form premises changed, re-derive the rows that rest on them:$_cfp"
+
+# ---- the forms that are refused ---------------------------------------------------------------------------------
+_cf_new
+CFT='2 2 @@ git commit -n -m x
+2 2 @@ git commit -qnm x
+2 2 @@ git commit --no-verif -m x
+2 2 @@ git commit --no-veri -m x
+2 2 @@ git commit --amen -m x
+2 2 @@ git commit --am -m x
+2 0/allow @@ git commit -m x 2>&1 -a
+2 0/allow @@ git commit -m x 2>&1 b.txt
+2 0/allow @@ git commit -m x &> log.txt -a
+2 0/allow @@ git commit -m x >& log.txt -a
+2 0/allow @@ git commit -mxm b.txt
+2 0/allow @@ git commit -m \x27a\"\x27 -a ; echo \x27b\"\x27
+2 0/allow @@ git commit -F - <<END -a\nmsg\nEND
+2 0/allow @@ git commit -m a\\;b -a
+2 0/allow @@ git commit -q -F - <<END\nfirst\nEND\ngit commit -q -m second -- b.txt
+2 0/allow @@ git commit -m x -uno b.txt
+2 2 @@ bash -c \x27git commit -am x\x27
+2 2 @@ eval \"git commit -a -m x\"
+2 2 @@ sh -c \"cd @O@ && git commit -m x\"
+2 0/allow @@ cd @O@ && git commit -m x
+2 0/allow @@ cd \"@O@\" && git commit -m x
+2 0/allow @@ pushd @O@ >/dev/null; git commit -m x
+2 0/allow @@ cd $TARGET && git commit -m x
+2 0/allow @@ cd sub && cd .. && git commit -m x
+2 0/allow @@ cd @O@ && cd . && git commit -m x
+2 0/allow @@ env -C @O@ git commit -m x
+2 2 @@ GIT_INDEX_FILE=.git/other-index git commit -m x
+2 2 @@ export GIT_INDEX_FILE=.git/other-index; git commit -m x
+2 2 @@ GIT_DIR=@O@/.git GIT_WORK_TREE=@O@ git commit -m x
+2 2 @@ env GIT_DIR=@O@/.git git commit -m x
+2 2 @@ GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null git commit -m x
+2 2 @@ git commit --al -m x
+2 2 @@ git commit --inc b.txt -m x
+2 2 @@ git commit --mess=x
+2 2 @@ git commit -m x -Z
+2 2 @@ { git commit -n -m x; }
+2 2 @@ ! git commit -n -m x
+2 2 @@ if true; then git commit -n -m x; fi
+2 2 @@ >/dev/null git commit -n -m x
+2 2 @@ X+=1 git commit -n -m x
+2 2 @@ command -p git commit -n -m x
+2 2 @@ timeout 10 git commit -n -m x
+2 2 @@ { git commit --amen -m x; }
+2 2 @@ git commit -m x -n>/dev/null
+2 2 @@ git commit -m x \\-n
+2 2 @@ git commit -m x -q\\\nn
+2 2 @@ : ${x:= #}; git commit -n -m x
+2 2 @@ echo $((1<<2))\ngit commit -n -m x
+2 2 @@ cat <<E\\OF\nhi\nEOF\ngit commit -n -m x
+2 2 @@ \x27git\x27 commit -n -m x
+2 2 @@ git \x27commit\x27 -n -m x
+2 2 @@ g\\it commit -n -m x
+2 2 @@ git com\\\nmit -n -m x
+2 0/allow @@ git commit -m x -a>/dev/null
+2 0/allow @@ git commit -m x b.txt>/dev/null
+2 2 @@ o=\x27 -a\x27; git commit -m x$o
+2 2 @@ git commit -m {x,-a}
+2 2 @@ git commit -m ?.txt
+2 2 @@ git commit -F $UNSET_MSG_FILE
+2 0/allow @@ cd @O@ && { git commit -m x; }
+2 0/allow @@ { cd @O@; }; git commit -m x
+2 0/allow @@ if cd @O@; then git commit -m x; fi
+2 0/allow @@ f(){ cd @O@; }; f; git commit -m x
+2 0/allow @@ \\cd @O@ && git commit -m x
+2 0/allow @@ \x27cd\x27 @O@ && git commit -m x
+2 2 @@ GIT_DIR=@O@/.git; GIT_WORK_TREE=@O@; export GIT_DIR GIT_WORK_TREE; git commit -m x
+2 2 @@ export \x27GIT_DIR=@O@/.git\x27 \"GIT_WORK_TREE=@O@\"; git commit -m x
+2 2 @@ set -a; GIT_DIR=@O@/.git; git commit -m x
+2 2 @@ env \"GIT_DIR=@O@/.git\" git commit -m x
+2 2 @@ git -c \x27core.hooksPath=/dev/null\x27 commit -m x
+2 2 @@ git -c core.hooks\x27\x27Path=/dev/null commit -m x
+2 2 @@ k=core.hooksPath; git -c $k=/dev/null commit -m x
+2 2 @@ git -c include.path=/tmp/inc commit -m x
+2 2 @@ git(){ command git \"$@\" -a; }; git commit -m x
+2 2 @@ git -c alias.ci=\x27commit -a\x27 ci -m x
+2 2 @@ git -c alias.ci=commit ci -n -m x
+2 2 @@ trap \x27git commit -n -m x\x27 EXIT
+2 0/allow @@ git commit -m x >|f -a
+2 2 @@ HOME=@O@ git commit -m x
+2 2 @@ M=x; M+=\x27 -a\x27; git commit -m $M
+2 2 @@ IFS=y; M=xy-a; git commit -m $M
+2 2 @@ M=x; read M; git commit -m $M
+2 2 @@ set -- -n; git commit -m x \"$@\"
+2 2 @@ A=(-n); git commit -m x \"${A[@]}\"
+2 2 @@ set -- x -n; git commit -m \"$@\"
+2 2 @@ case x in x) git commit -n -m x;; esac
+2 2 @@ ( git commit -n -m x )
+2 2 @@ nice -n 5 git commit -n -m x
+2 2 @@ cat <<NOPE\ngit commit -n -m x
+2 2 @@ echo $((1<<2))\ngit commit -n -m x\n2
+2 2 @@ \x27git\x27 commit -m x
+2 2 @@ git \x27commit\x27 -m x'
+_cf_table "$CFT"
+# The reason is part of the verdict: an abbreviated --amend or --no-verify is named as what git reads it as.
+_cf_run default 'git commit --amen -m x'; grep -q 'rewrites the last one' "$_CF/err" || _cfbad="$_cfbad [--amen is not reported as an amend]"
+_cf_run default 'git commit -qnm x'; grep -q 'skips its hooks: -n in -qnm' "$_CF/err" || _cfbad="$_cfbad [-n inside a cluster is not reported as a hook skip]"
+if [ "$_cfn" != 92 ]; then fail "FIXTURE: the refused-commit-forms table has $_cfn rows, not 92"
+elif [ -z "$_cfbad" ]; then pass "92 commit forms that reached the prompt are refused. In every session: -n and abbreviated --no-verify / --amend, wherever the commit sits (braces, if, a wrapper, a redirection in front) and however the word is quoted or escaped; a GIT_ variable that moves the repository, the index or the config, set or exported anywhere in the call; a -c setting or a redefinition of git that changes what a commit does; a commit inside a quoted shell script; an unknown option; an argument the shell expands. Wherever a review record is required: the working tree past a redirection, a here-document, a cluster or mis-paired quotes, and a commit after a change of directory"
+else fail "commit forms that should be refused:$_cfbad"; fi
+
+# ---- ...and what everyday work looks like, which must not change -----------------------------------------------
+CPT='0/ask 0/allow @@ git commit -m x
+0/ask 0/allow @@ git add a.txt && git commit -m x
+0/ask 0/allow @@ ls -la && git commit -m x
+0/ask 0/allow @@ git commit -q -m \"docs: add the -a flag; keep (the) b.txt | tail note\"
+0/ask 0/allow @@ git commit -m \x27it\x27\\\x27\x27s done\x27
+0/ask 0/allow @@ git commit -m \"fix the \\\"quoted\\\" thing\"
+0/ask 0/allow @@ git commit -m \"$(cat <<\x27EOF\x27\nfeat: retry\n\nA body with -a, b.txt and an it\x27s.\nEOF\n)\"
+0/ask 0/allow @@ git commit -F - <<\x27MSG\x27\nfeat: x\n\nbody: -a b.txt; git commit -n\nMSG
+0/ask 0/allow @@ git commit -F msg.txt
+0/ask 0/allow @@ git commit -S -m x
+0/ask 0/allow @@ git commit -Sk3y -qm x
+0/ask 0/allow @@ git commit -sm x --signoff --allow-empty --no-edit
+0/ask 0/allow @@ git commit --author=\x27A <a@example.com>\x27 --date=now -m x
+0/ask 0/allow @@ git commit --cleanup strip --trailer \x27Reviewed-by: x\x27 -m x
+0/ask 0/allow @@ git commit -m x 2>&1
+0/ask 0/allow @@ git commit -m x > log.txt
+0/ask 0/allow @@ git commit -m x &> log.txt
+0/ask 0/allow @@ git commit -m x 2>&1 | tail -3
+0/ask 0/allow @@ git commit -m x && echo done; git log -1 --oneline
+0/ask 0/allow @@ # stage and commit\ngit add a.txt\ngit commit -m x
+0/ask 0/allow @@ cd . && git commit -m x
+0/ask 0/allow @@ cd @W@ && git commit -m x
+0/ask 0/allow @@ cd \"@W@/sub\" && git commit -m x
+0/ask 0/allow @@ GIT_AUTHOR_NAME=x GIT_COMMITTER_DATE=now git commit -m x
+0/ask 0/allow @@ time git commit -m x
+0/ask 0/allow @@ git commit --help
+0/ask 0/allow @@ git commit -h
+0/ask 0/allow @@ git commit -m x --no-quiet --no-status
+0/ask 0/allow @@ git commit -m x -U 3 --inter-hunk-context 3 --unified=5
+0/ask 0/allow @@ cd -- . && git commit -m x
+0/ask 0/allow @@ M=/tmp/msgdir; git commit -q -F $M/msg.txt
+0/ask 0/allow @@ git commit -F ~/msg.txt
+0/ask 0/allow @@ git commit -m \"costs $5, see `notes` and $(date)\"
+0/ask 0/allow @@ set -e; M=/tmp/msgdir; git commit -q -F $M/msg.txt
+0/ask 0/allow @@ MSG=\x27two words\x27; git commit -m \"$MSG\"
+0/ask 0/allow @@ git commit -m -a
+0/ask 0/allow @@ cd sub && git commit -m x
+0/ask 0/allow @@ cat > notes.md <<E\\OF\nGIT_DIR=/tmp/x is how git is pointed elsewhere\nEOF\ngit commit -m x
+0 0 @@ GIT_DIR=.git git log --oneline | grep commit
+0 0 @@ git log --oneline | grep commit
+0 0 @@ bash -c \x27git log --grep=commit\x27
+0/ask 0/allow @@ grep -rn \"git commit -n\" docs/
+0/ask 0/allow @@ bash build.sh && git commit -m x
+0/ask 0/allow @@ cat > notes.md <<\x27EOF\x27\nrun: bash -c \x27git commit -am x\x27 and it\x27s gone\nEOF\ngit commit -m x'
+_cf_table "$CPT"
+if [ "$_cfn" != 44 ]; then fail "FIXTURE: the everyday-commit table has $_cfn rows, not 44"
+elif [ -z "$_cfbad" ]; then pass "44 everyday calls are judged as before (asked in default, allowed when pre-authorised): chained after git add, a message that holds flags and separators, a here-document message, -F, -S, -uno, redirections, a pipe, a comment, a cd into this same repository, GIT_AUTHOR_*, a script beside the commit"
+else fail "everyday commit calls that changed verdict:$_cfbad"; fi
+
+# Three everyday calls the OLDER scan refuses, and still does: it reads any a/o/i/p in a short token as a flag
+# (`-uno`, a key id after -S) and reads past a comment sign. The new reading parses all three correctly; they are
+# kept refused because this change only adds refusals — letting them through is a loosening, to be decided on its own.
+CKT='2 0/allow @@ git commit -Skeyid -qm x
+2 0/allow @@ git commit -uno -m x
+2 0/allow @@ git commit -m x # trailing words -a'
+_cf_table "$CKT"
+if [ "$_cfn" != 3 ]; then fail "FIXTURE: the kept-over-blocks table has $_cfn rows, not 3"
+elif [ -z "$_cfbad" ]; then pass "3 known over-blocks of the older scan are unchanged (-Skeyid, -uno, a flag after a comment sign): nothing was loosened"
+else fail "the older scan's verdict changed on:$_cfbad"; fi
+
+# ---- a diff that prints nothing is still a different diff -------------------------------------------------------
+_cf_new; _cfbad=""
+( cd "$_cfw" && git config diff.external true ) >/dev/null 2>&1; _cf_review
+_cf_run default 'git commit -m x'; [ "$_cfd" = ask ] || _cfbad="$_cfbad FIXTURE:the-reviewed-diff-was-refused-under-diff.external:$_cfr"
+( cd "$_cfw" && git add b.txt ) >/dev/null 2>&1
+[ "$( cd "$_cfw" && git diff --cached | git hash-object --stdin )" = "$(printf '' | git hash-object --stdin)" ] || _cfbad="$_cfbad FIXTURE:diff.external-did-not-empty-the-plain-diff"
+_cf_run default 'git commit -m x'; { [ "$_cfr" = 2 ] && grep -q 'does not describe what is staged' "$_CF/err"; } || _cfbad="$_cfbad more-staged-after-the-review-still-passed:rc=$_cfr"
+[ -z "$_cfbad" ] && pass "§4.6 under 'git config diff.external true': the plain staged diff prints nothing, and a change staged after the review is still refused (the recipe passes --no-ext-diff --no-textconv)" \
+                 || fail "§4.6 and a configured diff:$_cfbad"
+
+# ---- core.hooksPath by the side doors: the file it lives in, an included file, the environment -----------------
+_cf_new
+CGT='2 @@ Bash @@ printf \x27[core]\\n\\thooksPath = /dev/null\\n\x27 >> .git/config
+2 @@ Bash @@ echo hooksPath=/dev/null | tee -a .git/config
+2 @@ Bash @@ sed -i.bak s/bare/hooksPath/ .git/config
+2 @@ Bash @@ cp /tmp/c .git/config
+2 @@ Bash @@ python3 -c \"open(\x27.git/config\x27,\x27a\x27).write(\x27x\x27)\"
+2 @@ Bash @@ printf x >> @W@/.git/config
+2 @@ Bash @@ printf x >> .git/worktrees/wt/config.worktree
+2 @@ Bash @@ printf x >> .git/modules/sub/config
+2 @@ Bash @@ printf x >> .git//config
+2 @@ Bash @@ dd if=/tmp/c of=.git/config
+2 @@ Bash @@ ln -sf /tmp/c .git/config
+2 @@ Bash @@ git config --edit
+2 @@ Bash @@ git config --local -e
+2 @@ Bash @@ git -c include.path=/tmp/x.cfg merge topic
+2 @@ Bash @@ git -c \x27core.hooksPath=/dev/null\x27 merge topic
+2 @@ PowerShell @@ Add-Content -Path .git\\config -Value x
+2 @@ PowerShell @@ Set-Content .git/config x
+2 @@ Bash @@ printf x > .claude/git-shim/pre-commit
+2 @@ Bash @@ rm .claude/git-shim/commit-msg
+2 @@ Bash @@ git config include.path /tmp/x.cfg
+2 @@ Bash @@ git config --local includeIf.gitdir:/x/.path /tmp/y.cfg
+2 @@ Bash @@ git config --global include.path ~/.x.cfg
+2 @@ Bash @@ git -C . config --add \"include.path\" x
+2 @@ Bash @@ GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null git merge topic
+2 @@ Bash @@ git push --no-verif origin feat/x
+2 @@ Bash @@ git merge --no-veri topic
+0 @@ Bash @@ cat .git/config
+0 @@ Bash @@ grep -n hooksPath .git/config
+0 @@ Bash @@ git config user.name x
+0 @@ Bash @@ git config --get core.hooksPath
+0 @@ Bash @@ git config --list --show-origin
+0 @@ Bash @@ git config core.autocrlf input
+0 @@ Bash @@ git remote set-url origin https://example.com/x.git
+0 @@ Bash @@ git log -e --oneline; git config -l
+0 @@ Bash @@ git config --global init.defaultBranch main
+0 @@ Bash @@ cat src/config.ts && ls config/
+0 @@ Bash @@ ls -la .claude/git-shim
+0 @@ Bash @@ printf x > .github/config.yml
+0 @@ Bash @@ grep -rn include src/'
+_cfn=0; _cfbad=""
+while IFS= read -r _cl; do [ -z "$_cl" ] && continue
+  _cw="${_cl%% @@ *}"; _cc="${_cl#* @@ }"; _ct="${_cc%% @@ *}"; _cc="${_cc#* @@ }"; _cc="${_cc//\\x27/$_cfq}"; _cc="${_cc//@W@/$_cfw}"; _cfn=$((_cfn+1))
+  _cf_run auto "$_cc" 0 "$_ct"; [ "$_cfr" = "$_cw" ] || _cfbad="$_cfbad [$_ct: $_cc → $_cfr, want $_cw]"
+done <<< "$CGT"
+_cfwr(){ printf '{"cwd":"%s","permission_mode":"auto","tool_name":"%s","tool_input":{"file_path":"%s","content":"x"}}' "$_cfw" "$1" "$2" \
+  | ( cd "$_cfw" && CREW_GATE_LOG=/dev/null bash "$HOOKS/guard-write.sh" >/dev/null 2>"$_CF/err" ); _cfr=$?; }
+for _cf in "$_cfw/.git/config" ".git/config" "$_cfw/.git/config.worktree" "$_cfw/.git/worktrees/wt/config.worktree" "$_cfw/.git/modules/sub/config" "$_cfw/.GIT/Config" "$_cfw/.claude/git-shim/pre-commit"; do
+  _cfn=$((_cfn+1)); _cfwr Write "$_cf"; [ "$_cfr" = 2 ] || _cfbad="$_cfbad [Write $_cf → $_cfr, want 2]"
+done
+for _cf in "$_cfw/.github/config.yml" "$_cfw/config/app.json" "$_cfw/src/git/config.ts" "$_cfw/.gitconfig.sample"; do
+  _cfn=$((_cfn+1)); _cfwr Write "$_cf"; [ "$_cfr" = 0 ] || _cfbad="$_cfbad [Write $_cf → $_cfr, want 0]"
+done
+if [ "$_cfn" != 50 ]; then fail "FIXTURE: the git-config table ran $_cfn cases, not 50"
+elif [ -z "$_cfbad" ]; then pass "core.hooksPath cannot be reached by the side doors: 26 shell commands (a write to .git/config, a worktree's or a submodule's config and the git shim, in both shells; git config --edit, include.path / includeIf, also as -c; a quoted -c core.hooksPath; GIT_CONFIG_ variables; an abbreviated --no-verify on push and merge) and 7 Write calls are refused, 13 reads and ordinary settings and 4 look-alike files pass (50 cases)"
+else fail "git config side doors:$_cfbad"; fi
+if [ -n "$JSONQ" ]; then
+  [ -z "$_cf_badjson" ] && pass "every row of the commit-form tables reached the hook as valid JSON (oracle: $JSONQ)" \
+                        || fail "FIXTURE: commit-form table rows that are not valid JSON, so they tested the reader and not the rule:$_cf_badjson"
+else skip tool "commit-form table rows as valid JSON (no working JSON parser)"; fi
+rm -rf "$_CF"
+fi   # UNITS
 
 sec "== 13) pre-commit cost — the gate people route around is the one that is slow =="
 # Measured on a 373-file merge: the old file loop spawned ~7 processes per file (three `printf | grep` pairs and

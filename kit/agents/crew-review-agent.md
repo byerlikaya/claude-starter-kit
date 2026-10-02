@@ -58,7 +58,7 @@ refuses a commit without it (§4.6). Use exactly this recipe; the hook hashes th
 ```bash
 # CREW-REVIEW-PASS (kept identical in guard-bash.sh; smoke-test pins the pair)
 mkdir -p .claude
-D=$(git diff --cached | git hash-object --stdin)
+D=$(git diff --cached --no-ext-diff --no-textconv | git hash-object --stdin)
 H=$(git rev-parse --verify --quiet HEAD 2>/dev/null || echo NONE)
 printf '{"diff_oid":"%s","head":"%s","ts":"%s"}\n' "$D" "$H" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > .claude/review-pass.json
 ```

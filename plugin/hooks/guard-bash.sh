@@ -685,7 +685,9 @@ if [ "$HAS_GIT" = 1 ] && git_has "$CMD" 'push'; then
   done <<< "$_PUSHSEG"
 fi
 { git_has "$CMD" 'clean'  && has '-[A-Za-z]*f'; }                                           && block "git clean -f" "4.5" loss
-case "$CMD" in *[Nn][Oo]-[Vv][Ee][Rr][Ii][Ff][Yy]*) : ;; *) false ;; esac                                          && block "hook skip (--no-verify)" "4.5" tamper
+# `no-veri`, not `no-verify`: git takes any unambiguous abbreviation, and `git push --no-verif` / `git merge --no-veri`
+# passed the rule that looked for the whole word (3.1.0 review; `--no-ver` and shorter are ambiguous to git itself).
+case "$CMD" in *[Nn][Oo]-[Vv][Ee][Rr][Ii]*) : ;; *) false ;; esac                                                  && block "hook skip (--no-verify)" "4.5" tamper
 git_has "$CMD" 'rebase'                                    && block "git rebase" "4.5" history
 git_has "$CMD" 'filter-branch|filter-repo'                && block "git filter-branch/filter-repo" "4.5" history
 { git_has "$CMD" 'commit' && has '--amend'; }                                              && block "git commit --amend" "4.5" history
@@ -939,13 +941,42 @@ _hp_blocks() {  # $1 = command -> 0 when it writes core.hooksPath or drops [core
 # that one command WITHOUT the word `config` (so the rule above misses it) — the exact equivalent of --no-verify.
 [ "$HAS_GIT" = 1 ] && _ere i "$CMD" 'git[[:space:]]+([^;&|]*[[:space:]])?(-c|--config-env)[[:space:]=]+core\.hooksPath' '*[Hh][Oo][Oo][Kk][Ss][Pp][Aa][Tt][Hh]*' && block "git -c core.hooksPath (disarms the git hooks)" "4.5" tamper
 [ "$HAS_GIT" = 1 ] && _hp_blocks "$CMD" && block "git config core.hooksPath (disarms the git hooks)" "4.5" tamper
+# The same setting by two side doors. `git config include.path f` (or includeIf.<cond>.path) makes git read ANOTHER
+# file as configuration, and that file can carry hooksPath; GIT_CONFIG_COUNT / GIT_CONFIG_KEY_n / GIT_CONFIG_VALUE_n
+# hand git a setting through the environment (measured: with them a commit skipped its hooks). Both are refused by
+# name, reads included: a rule that argued which `git config include.path` is a read would be the reader that
+# _hp_blocks needed three review rounds to get right, for a key nobody reads in ordinary work.
+if [ "$HAS_GIT" = 1 ]; then
+  _t="${CMD//\"/}"; _t="${_t//\'/}"; _t="${_t//\\/}"
+  # ...and the inline form of both, with the quoting taken off first: `git -c 'core.hooksPath=/dev/null' commit`,
+  # `-c core.hooks''Path=…` and `-c include.path=f` all skipped the hooks, because the rule above wants the bare
+  # key right after `-c` (measured, 3.1.0 review).
+  _ere i "$_t" 'git[[:space:]]+([^;&|]*[[:space:]])?(-c|--config-env)[[:space:]=]+core\.hooksPath' '*[Hh][Oo][Oo][Kk][Ss][Pp][Aa][Tt][Hh]*' \
+    && block "git -c core.hooksPath (disarms the git hooks)" "4.5" tamper
+  _ere i "$_t" 'git[[:space:]]+([^;&|]*[[:space:]])?(-c|--config-env)[[:space:]=]+include(if)?\.' '*[Ii][Nn][Cc][Ll][Uu][Dd][Ee]*' \
+    && block "git config include.path (another file read as configuration)" "4.5" tamper
+  _ere i "$_t" 'git([^|;&]*[^[:alnum:]_|;&])?config[^[:alnum:]_|;&][^|;&]*(include\.path|includeif\.)' '*[Ii][Nn][Cc][Ll][Uu][Dd][Ee]*' \
+    && block "git config include.path (another file read as configuration)" "4.5" tamper
+  # `git config --edit` opens the file itself in an editor, and the editor is whatever GIT_EDITOR says: no key is named.
+  _ere i "$_t" 'git([^|;&]*[^[:alnum:]_|;&])?config[^[:alnum:]_|;&]([^|;&]*[[:space:]])?(--edit|-e)([[:space:]]|$)' '*[Cc][Oo][Nn][Ff][Ii][Gg]*' \
+    && block "git config --edit (the configuration file opened for writing)" "4.5" tamper
+  case "$_t" in *GIT_CONFIG_*[Hh][Oo][Oo][Kk][Ss][Pp][Aa][Tt][Hh]*) block "core.hooksPath through GIT_CONFIG_ variables (disarms the git hooks)" "4.5" tamper ;; esac
+fi
 # A write to a gate path (hook script, settings.json, or .git/hooks) via ANY common mechanism — writer verbs, the
 # in-place editors, and the interpreters an evasion reaches for (perl/python/ruby/node/ed) — plus the variable-
 # indirected redirect (VAR=.claude/hooks; … > $VAR). Reading a gate file stays allowed, and `chmod +x` is NOT
 # blocked so doctor's re-arm fix still works (a chmod -x disable is caught by doctor, not here). Honest scope:
 # the shell is Turing-complete, so this is defence-in-depth — guard-write.sh covers the Write/Edit tools (the
 # model's natural path to a file), and install-time read-only hook files would be the airtight layer.
-GATE='\.(claude/(hooks|settings\.json|DISCIPLINE\.md|eval/lib/crew-env\.sh)|git/hooks)'
+GATE='\.(claude/(hooks|git-shim|settings\.json|DISCIPLINE\.md|eval/lib/crew-env\.sh)|git/hooks|git[/\\]+(config|worktrees[/\\]+[^/\\[:space:]]+[/\\]+config|modules[/\\]+[^[:space:]]+[/\\]+config))'
+# .git/config (with a worktree's and a submodule's own) is on the list because core.hooksPath LIVES there: the rules
+# above stop `git config core.hooksPath …`, and a plain `printf '[core]\n\thooksPath = /dev/null\n' >> .git/config`
+# walked past them — after it a commit from the user's own terminal skips the trace and secret scans (measured, 3.1.0
+# review; inside a session guard-commit-scan.sh still scans). Reading it stays allowed. Measured before choosing this
+# over checking the setting at commit time: 12,422 real commands in 671 transcripts name .git/config 9 times, all 9 in
+# Crewforth's own development; and a check at commit time would refuse every commit of an install whose hooks were never
+# wired. .claude/git-shim is the same thing one step removed: it is where core.hooksPath points when Crewforth shares
+# the hooks with a project's own chain.
 # eval/lib/crew-env.sh is on the list because the gates SOURCE it on every call (guard-bash, guard-write, the board
 # hooks): a file a gate executes is part of the gate. Measured before it was added: overwrite it with `exit 0` and
 # `rm -rf /` passed guard-bash with rc 0, in both editions (3.0.1 review).
@@ -1004,15 +1035,17 @@ fi
 # to route around. A verb in one command and a path in another was never evidence of anything: the two forms
 # that matter — `rm .claude/hooks/x` and `x > .claude/hooks/y` — both put them in the SAME segment, and both
 # are still blocked (asserted in smoke-test, in both directions).
+# The four rules below cost a grep each, so they run only for a command that could name a gate file at all. Builtin.
+_gate_named(){ case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*|*[Gg][Ii][Tt][/\\]*[Cc][Oo][Nn][Ff][Ii][Gg]*|*[Gg][Ii][Tt]-[Ss][Hh][Ii][Mm]*) return 0 ;; esac; return 1; }
 # CREW-NOT-A-RUNG: same — `perl`, `python3`, `ruby`, `node` here are names the gate REFUSES when they are
 # pointed at a gate file, not readers this hook uses.
-case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE "(^|[^A-Za-z0-9_-])(rm|mv|cp|truncate|tee|install|ln|perl|python[0-9.]*|ruby|node|ex|ed|set-content|add-content|clear-content|out-file|new-item|rename-item|copy-item|move-item|remove-item)\b[^;&|]*$GATE" && block "write/tamper of a gate file (hook/settings/.git-hooks)" "4.5" tamper
-case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE "(sed|perl|awk|ruby)[[:space:]]+(-[^[:space:]]+[[:space:]]+)*-i[^;&|]*$GATE"          && block "in-place edit of a gate file" "4.5" tamper
+_gate_named && echo "$CMD" | grep -qiE "(^|[^A-Za-z0-9_-])(rm|mv|cp|truncate|tee|install|ln|perl|python[0-9.]*|ruby|node|ex|ed|set-content|add-content|clear-content|out-file|new-item|rename-item|copy-item|move-item|remove-item)\b[^;&|]*$GATE" && block "write/tamper of a gate file (hook/settings/.git-hooks)" "4.5" tamper
+_gate_named && echo "$CMD" | grep -qiE "(sed|perl|awk|ruby)[[:space:]]+(-[^[:space:]]+[[:space:]]+)*-i[^;&|]*$GATE"          && block "in-place edit of a gate file" "4.5" tamper
 # /CREW-NOT-A-RUNG
 # The redirect TARGET must be the gate path, not merely something later on the line: a target is one token, so
 # it cannot contain whitespace or a command separator.
-case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE ">[[:space:]]*['\"]?[^[:space:];&|<>]*$GATE"                                          && block "redirect over a gate file" "4.5" tamper
-{ case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false ;; esac && has "=[^;&|]*$GATE" && has '>>?[[:space:]]*\$'; }                                                          && block "indirected write to a gate path (variable + redirect)" "4.5" tamper
+_gate_named && echo "$CMD" | grep -qiE ">[[:space:]]*['\"]?[^[:space:];&|<>]*$GATE"                                          && block "redirect over a gate file" "4.5" tamper
+{ _gate_named && has "=[^;&|]*$GATE" && has '>>?[[:space:]]*\$'; }                                                          && block "indirected write to a gate path (variable + redirect)" "4.5" tamper
 # A symlink whose TARGET is the config directory itself is the two-step form of editing a hook, and step one
 # names no gate path at all: `ln -sfn .claude cfg` passed every rule above, and then `cfg/hooks/guard-bash.sh`
 # is an ordinary-looking path that lands on the real gate script — measured, both steps rc=0, file overwritten.
@@ -1364,8 +1397,9 @@ _crew_appr_path(){  # $1 = a directory -> _AP: the record's path in that worktre
 # this, so neither is opened by an approval.
 #
 # THE TREE, NOT THE DIFF. §4.6 hashes the text of `git diff --cached`, and what that prints is configurable:
-# `git config diff.external true` makes every staged diff print nothing, so every diff gets one id (measured in
-# review). The id of the tree the index writes depends on the content alone.
+# `git config diff.external true` made every staged diff print nothing, so every diff got one id (measured in
+# review; §4.6 now passes --no-ext-diff --no-textconv). The id of the tree the index writes depends on the content
+# alone, whatever else is configured.
 #
 # THE CALL HAS TO BE THE GIT COMMAND AND NOTHING ELSE. Where a person sees the prompt they also see the command; here
 # nobody does. Each of these was allowed by a matching record in a first version, and each does something the user
@@ -1586,6 +1620,380 @@ allow_preauthorised(){
 #     one and never runs when the key is set. A pre-authorised session commits WITHOUT a review record. The
 #     payload CLAUDE.md §4.6 states it ("Deliberate skip: … CLAUDE_GIT_OK (headless/CI) bypasses this too")
 #     and it is written here as well, because the person reading the hook is not reading that file.
+# §4.5 / §4.6 — WHAT A `git commit` REALLY CARRIES, READ THE WAY THE SHELL AND GIT READ IT.
+# The rules above and the scan of §4.6 below judge the command as text: a literal `--no-verify`, a literal `--amend`,
+# a token walk that pairs every double quote before any single one and stops at the first `&`. A review of the
+# approval route (3.1.0) measured what that lets through in the modes where the gate ASKS, and with CLAUDE_GIT_OK
+# where nobody is asked at all — each line below reached the prompt with no rule firing, and each was run for real:
+#     git commit -n -m x          --no-verif / --no-veri        hooks skipped (-n IS --no-verify; git takes abbreviations)
+#     git commit --amen -m x      --am                          the last commit rewritten
+#     git commit -m x 2>&1 -a     &> log -a     >& log -a       the working tree committed (the walk stopped at `&`)
+#     git commit -mxm b.txt                                     b.txt committed (-m took `xm`; the walk swallowed b.txt)
+#     git commit -m 'a"' -a ; echo 'b"'                         -a hidden inside quotes paired the wrong way
+#     git commit -F - <<END -a                                  -a after a here-document operator
+#     git commit -m a\;b -a                                     an escaped `;` read as a separator
+#     bash -c 'git commit -am x'      eval "git commit -a …"    a commit this gate cannot read at all
+#     cd ../other && git commit …     pushd …     env -C …      another repository than the one the record is for
+#     GIT_INDEX_FILE=… git commit     GIT_DIR=…   export GIT_…  another index, another repository
+#     GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath …      the hooks switched off through the environment
+# So the command is read left to right: quotes as the shell pairs them, an escaped character as a character, a
+# here-document's body as data, `2>&1` / `&>` / `>&` as redirections and not as separators. Then every `git commit`
+# in the call is read with git's own option table: a cluster letter by letter, a value where git takes one, a long
+# option only when it is written out in full.
+# THIS ONLY EVER ADDS A REFUSAL. The older rules and `_c46_scan` still run and still decide; nothing they refuse is
+# let through here. An option this table does not know is refused, with the reason: an abbreviation is how the nine
+# lines above got in, and guessing which option it stands for is the same mistake again.
+_c47_read(){  # $1 = command -> _C47_T: separators as ` ; `; every quoted span and every escaped character as one marker
+              # (\001 n \001, its text in _C47_Q[n]); redirections set apart from the words they touch; heredoc bodies gone
+  local s="$1" out="" pre c w hd="" c2 nl=$'\n' n=0 body t
+  _C47_M=$'\001'; _C47_Q=(); _C47_QX=""
+  s="${s//$'\r'/}"; s="${s//$_C47_M/}"
+  while :; do
+    pre="${s%%[\"\'\\\;\&\|\<\>\#\(\)\`\$$nl]*}"; out="$out$pre"
+    [ "$pre" = "$s" ] && break
+    c="${s:${#pre}:1}"; s="${s:${#pre}+1}"
+    case "$c" in
+      \\) case "$s" in
+            "$nl"*) s="${s:1}" ;;                                  # a backslash-newline joins: both characters go
+            '') ;;
+            *) _C47_Q[n]="${s:0:1}"; out="$out$_C47_M$n$_C47_M"; n=$((n+1)); s="${s:1}" ;;   # an escaped character is itself, quoted
+          esac ;;
+      \') case "$s" in *\'*) body="${s%%\'*}"; s="${s#*\'}" ;; *) body="$s"; s="" ;; esac
+          _C47_Q[n]="$body"; out="$out$_C47_M$n$_C47_M"; n=$((n+1)) ;;
+      \") body=""
+          case "$s" in
+            '$(cat <<'*)   # a message read from a here-document: its body is skipped as a whole, quotes and all
+              w="${s:8}"; w="${w#-}"; w="${w#[\'\"]}"; w="${w%%[!A-Za-z0-9_]*}"
+              case "$s" in *"$nl$w$nl"*) [ -n "$w" ] && { s="${s#*"$nl$w$nl"}"; body='(a here-document)'; } ;; esac ;;
+          esac
+          while :; do                                              # to the closing quote that is not escaped
+            pre="${s%%[\"\\]*}"
+            [ "$pre" = "$s" ] && { body="$body$s"; s=""; break; }
+            c2="${s:${#pre}:1}"; body="$body$pre"; s="${s:${#pre}+1}"
+            [ "$c2" = '"' ] && break
+            body="$body${s:0:1}"; s="${s:1}"
+          done
+          # "$@" and "${A[@]}" stay quoted and still become SEVERAL words: `set -- -n; git commit -m x "$@"`.
+          case "$body" in *'$@'*|*'[@]'*) _C47_QX="$_C47_QX $n " ;; esac
+          _C47_Q[n]="$body"; out="$out$_C47_M$n$_C47_M"; n=$((n+1)) ;;
+      \$) case "$s" in
+            \'*) # $'…' : a quoted text in which a backslash escapes, so a quote after one does not close it
+                 s="${s:1}"; body=""
+                 while :; do
+                   pre="${s%%[\'\\]*}"
+                   [ "$pre" = "$s" ] && { body="$body$s"; s=""; break; }
+                   c2="${s:${#pre}:1}"; body="$body$pre"; s="${s:${#pre}+1}"
+                   [ "$c2" = "'" ] && break
+                   body="$body\\${s:0:1}"; s="${s:1}"
+                 done
+                 _C47_Q[n]="$body"; out="$out$_C47_M$n$_C47_M"; n=$((n+1)) ;;
+            '(('*) case "$s" in *'))'*) s="${s#*'))'}" ;; *) s="" ;; esac; out="$out\$" ;;   # $(( … )): arithmetic, `<<` in it is a shift
+            '{'*)  case "$s" in *'}'*) s="${s#*'}'}" ;; *) s="" ;; esac; out="$out\$" ;;     # ${ … }: one expansion, `#` in it is no comment
+            *) out="$out\$" ;;
+          esac ;;
+      "$nl") if [ -n "$hd" ]; then                                 # the lines up to the delimiter are the here-document
+               case "$s" in
+                 "$hd")            s="" ;;
+                 "$hd$nl"*)        s="${s:${#hd}+1}" ;;
+                 *"$nl$hd$nl"*)    s="${s#*"$nl$hd$nl"}" ;;
+                 *"$nl$hd")        s="" ;;
+               esac                                                # no such line: it was no here-document, read on
+               hd=""
+             fi
+             out="$out ; " ;;
+      \|) case "$out" in *\>) out="$out|" ;; *) out="$out ; " ;; esac ;;       # >| is a redirection, not a pipe
+      \;|\(|\)|\`) out="$out ; " ;;
+      \&) case "$out" in
+            *\>) out="$out&" ;;                                     # 2>&1, >&
+            *) case "$s" in
+                 \>*) out="$out &>"; s="${s:1}" ;;                  # &>
+                 *) out="$out ; " ;;
+               esac ;;
+          esac ;;
+      \<|\>)
+          if [ "$c" = '<' ]; then
+            case "$s" in
+              \<\<*) out="$out <<< "; s="${s:2}"; continue ;;       # a here-string: one word follows, on this line
+              \<*) s="${s:1}"; s="${s#-}"
+                   while :; do case "$s" in [$' \t']*) s="${s:1}" ;; *) break ;; esac; done
+                   t="${s%%[$' \t'\;\&\|\<\>\(\)$nl]*}"; s="${s:${#t}}"   # the delimiter word, then without its quoting
+                   hd="${t//\"/}"; hd="${hd//\'/}"; hd="${hd//\\/}"
+                   out="$out <<H "; continue ;;
+            esac
+          fi
+          # A redirection is its own word: `-a>/dev/null` is `-a` and `>/dev/null`. Only a number directly in front
+          # of it belongs to it (2>…), and a `>` or `&` already there (>>, &>, >&).
+          case "$out" in
+            *[\<\>\&]) ;;
+            *[0-9]) t="${out##*[!0-9]}"; pre="${out%"$t"}"; case "$pre" in ''|*[$' \t']) ;; *) out="$out " ;; esac ;;
+            *) out="$out " ;;
+          esac
+          out="$out$c" ;;
+      \#) case "$out" in
+            ''|*[$' \t']) case "$s" in *"$nl"*) s="$nl${s#*"$nl"}" ;; *) s="" ;; esac ;;   # a comment, to the end of its line
+            *) out="$out#" ;;
+          esac ;;
+    esac
+  done
+  _C47_T="$out"
+}
+_c47_w(){  # $1 = one token of _C47_T -> _W: the word as the command receives it (expansions left as written);
+           # _WQ = 1 when part of it was quoted; _WX = 1 when an UNQUOTED part holds $ * ? [ or {, i.e. the shell
+           # will make something else of it — possibly more than one word
+  local t="$1" m="$_C47_M" pre i
+  _W=""; _WQ=0; _WX=0; _WAT=0
+  while :; do
+    case "$t" in *"$m"*) ;; *) break ;; esac
+    pre="${t%%"$m"*}"; t="${t#*"$m"}"; i="${t%%"$m"*}"; t="${t#*"$m"}"
+    case "$pre" in *[\$\*\?\[\{]*) _WX=1 ;; esac
+    case "$i" in ''|*[!0-9]*) ;; *) _W="$_W$pre${_C47_Q[i]:-}"; _WQ=1; case "$_C47_QX" in *" $i "*) _WX=1; _WAT=1 ;; esac; continue ;; esac
+    _W="$_W$pre"
+  done
+  case "$t" in *[\$\*\?\[\{]*) _WX=1 ;; esac
+  _W="$_W$t"
+}
+_c47_exp(){  # $1 = a raw token of a commit, $2 = the word it reads as -> sets _C47_EXP when the shell would change it
+  # What the shell will make of an argument has to be readable. An unquoted `$NAME` is, when NAME was given one
+  # literal word earlier in the call; a glob, a brace list, or any other expansion is not: measured,
+  # `o=' -a'; git commit -m x$o`, `git commit -m {x,-a}` and `git commit -m ?.txt` all committed the working tree.
+  local v="$1" m="$_C47_M" bad="${_WAT:-0}" c
+  while :; do case "$v" in *"$m"*) v="${v%%"$m"*}${v#*"$m"*"$m"}" ;; *) break ;; esac; done     # the unquoted part
+  case "$v" in *[\*\?\[\{]*) bad=1 ;; esac
+  while [ "$bad" = 0 ]; do
+    case "$v" in *\$*) ;; *) break ;; esac
+    v="${v#*\$}"; c="${v%%[!A-Za-z0-9_]*}"
+    case "$_C47_VARS" in *" $c "*) [ -n "$c" ] || bad=1 ;; *) bad=1 ;; esac
+  done
+  [ "$bad" = 1 ] && _C47_EXP="${2:0:60}"
+  return 0
+}
+_c47_val(){  # $1 = the raw token an option takes as its value: the same question
+  case "$1" in *[\$\*\?\[\{]*|*"$_C47_M"*) _c47_w "$1"; [ "$_WX" = 1 ] && _c47_exp "$1" "$_W" ;; esac
+  return 0
+}
+_c47_scan(){  # $1 = command. Sets: _C47_N (commits read) _C47_WT _C47_NV _C47_AM _C47_UNK _C47_EXP _C47_ENV _C47_SH _C47_CFG
+              #                   _C47_CD (0 none · 1 one plain target, in _C47_CDT · 2 a target that cannot be read)
+  local tok ph=cmd unglob=0 body c v m i raw rcd=0 rcdt="" envf=0 wrapped=0 novars=0
+  _C47_VARS=" "
+  _C47_SHRE='(^|[^A-Za-z0-9_-])git[[:space:]]+(-[^[:space:]]+[[:space:]]+)*commit([[:space:]]|$)'
+  _C47_N=0; _C47_WT=""; _C47_NV=""; _C47_AM=""; _C47_UNK=""; _C47_EXP=""; _C47_ENV=""; _C47_SH=""; _C47_CFG=""; _C47_CD=0; _C47_CDT=""
+  _c47_read "$1"; m="$_C47_M"
+  case "$-" in *f*) ;; *) unglob=1; set -f ;; esac
+  set -- $_C47_T
+  [ "$unglob" = 1 ] && set +f
+  while [ $# -gt 0 ]; do
+    raw="$1"; shift
+    [ "$raw" = ";" ] && { ph=cmd; wrapped=0; continue; }
+    _WAT=0
+    case "$raw" in "$m"*|*"$m"*) _c47_w "$raw" ;; *) _W="$raw"; _WQ=0; case "$raw" in *[\$\*\?\[\{]*) _WX=1 ;; *) _WX=0 ;; esac ;; esac
+    tok="$_W"
+    # THE VARIABLES THAT CHANGE WHAT GIT READS — the repository, the index, the object store, the configuration —
+    # wherever in the call they are set or exported: in front of the commit, in an earlier command, as an argument
+    # of export or env, quoted or not. HOME and XDG_CONFIG_HOME are among them: they decide which global
+    # configuration git reads. GIT_AUTHOR_* / GIT_COMMITTER_* only describe the commit and are let through.
+    case "$tok" in
+      GIT_DIR|GIT_WORK_TREE|GIT_INDEX_FILE|GIT_COMMON_DIR|GIT_OBJECT_DIRECTORY|GIT_ALTERNATE_OBJECT_DIRECTORIES|GIT_NAMESPACE|GIT_EXEC_PATH|GIT_CONFIG*|\
+      HOME=*|XDG_CONFIG_HOME=*|\
+      GIT_DIR=*|GIT_WORK_TREE=*|GIT_INDEX_FILE=*|GIT_COMMON_DIR=*|GIT_OBJECT_DIRECTORY=*|GIT_ALTERNATE_OBJECT_DIRECTORIES=*|GIT_NAMESPACE=*|GIT_EXEC_PATH=*|GIT_CONFIG*=*)
+        [ "$ph" = commit ] || envf=1 ;;
+    esac
+    case "$ph" in
+      skip) # Not a command this table knows. A bare `git` further along the same command is still git (timeout 10 git …,
+            # xargs git …, nice git …), so the reading goes on from there.
+            case "$tok" in git|git.exe|*/git|*/git.exe) [ "$_WX" = 0 ] && ph=git ;; esac
+            continue ;;
+      cmd)
+        case "$tok" in
+          [A-Za-z_]*=*|[A-Za-z_]*+=*)
+            v="${tok%%=*}"; v="${v%+}"
+            case "$v" in *[!A-Za-z0-9_]*) ph=skip ;; *)
+              # A plain assignment. Its name is remembered when the value is one literal word: only then may a later
+              # `$NAME` stand inside a commit argument (the shell cannot split or expand it into something else).
+              # IFS changes how every one of them is split, and after `read`, `unset`, `export` and
+              # their kin (below) a name no longer holds what it was given: all of those forget instead of remember.
+              c="${tok#*=}"
+              [ "$v" = IFS ] && novars=1
+              case "$novars$_WX$c" in 1*|01*|*[$' \t\n']*|*[\*\?\[\{\$\`]*|00) _C47_VARS="${_C47_VARS/ $v / }" ;; *) _C47_VARS="$_C47_VARS$v " ;; esac
+              [ "$novars" = 1 ] && _C47_VARS=" " ;;
+            esac ;;
+          '{'|'}'|'!'|if|then|else|elif|fi|do|done|while|until|time|sudo|command|builtin|exec|nohup|nice) wrapped=1 ;;   # the command follows
+          -*) [ "$wrapped" = 1 ] || ph=skip ;;                                           # an option of that wrapper
+          export|declare|typeset|readonly|local|read|unset|let|source|.|for|select|getopts|mapfile|readarray) novars=1; _C47_VARS=" "; ph=skip ;;
+          set|shift) ph=skip ;;
+          printf) case " $* " in *" -v "*) novars=1; _C47_VARS=" " ;; esac; ph=skip ;;
+          env) ph=env ;;
+          cd|pushd|chdir|Set-Location|sl|Push-Location)
+            # Where the commit will run. One plain target can be resolved and compared; anything else cannot.
+            while :; do case "${1:-}" in -[!-]*|--) shift ;; *) break ;; esac; done
+            v="${1:-}"
+            case "$v" in ''|\;) v="" ;; *) _c47_w "$v"; v="$_W"; [ "$_WX" = 1 ] && v=""; [ "$v" = - ] && v="" ;; esac
+            if [ -n "$v" ] && [ "$rcd" = 0 ]; then rcd=1; rcdt="$v"; else rcd=2; fi
+            ph=skip ;;
+          bash|sh|zsh|dash|ksh|eval|xargs|trap|pwsh|powershell|powershell.exe|pwsh.exe|cmd|cmd.exe|Invoke-Expression|iex|*/bash|*/sh|*/zsh)
+            # A shell handed a QUOTED script that holds a commit: `bash -c 'git commit -am x'`, `eval "git commit -a"`.
+            # Its arguments cannot be read from here. `bash build.sh` beside a here-document that merely mentions
+            # git commit is not that, and a first version that looked only at the word `bash` refused 40 such calls.
+            for v in "$@"; do
+              [ "$v" = ";" ] && break
+              case "$v" in *"$m"*) _c47_w "$v"; [[ $_W =~ $_C47_SHRE ]] && _C47_SH="$tok" ;; esac
+            done
+            case "$tok" in eval|xargs) wrapped=1 ;; *) ph=skip ;; esac ;;                # after eval / xargs the command is read on
+          git|git.exe|*/git|*/git.exe) ph=git ;;
+          *) ph=skip ;;
+        esac ;;
+      env)
+        case "$tok" in
+          -C|--chdir) rcd=2; shift ;;
+          --chdir=*|-C?*) rcd=2 ;;
+          -u|--unset|-S|--split-string) shift ;;
+          -*|[A-Za-z_]*=*) ;;
+          git|git.exe|*/git|*/git.exe) ph=git ;;
+          *) ph=skip ;;
+        esac ;;
+      git)
+        case "$tok" in
+          -c|--config-env)
+            # A setting for this one command. The ones that change what a commit does are refused whatever the
+            # quoting: `-c 'core.hooksPath=/dev/null'`, `-c include.path=f`, `-c alias.ci='commit -a'`.
+            v="${1:-}"; [ $# -gt 0 ] && shift
+            _c47_w "$v"
+            if [ "$_WX" = 1 ]; then _C47_CFG="a -c setting the shell expands first"
+            else
+              shopt -q nocasematch && i=1 || i=0; shopt -s nocasematch
+              case "$_W" in *hookspath*|include.*|includeif.*|alias.*|core.worktree*|core.fsmonitor*) _C47_CFG="-c ${_W%%=*}" ;; esac
+              [ "$i" = 0 ] && shopt -u nocasematch
+            fi ;;
+          -C|--git-dir|--work-tree|--namespace|--exec-path|--super-prefix) shift ;;
+          -*) ;;
+          commit) ph=commit; _C47_N=$((_C47_N+1))
+                  if [ "$rcd" != 0 ] && [ "$_C47_CD" = 0 ]; then _C47_CD=$rcd; _C47_CDT="$rcdt"; fi ;;
+          *) ph=skip ;;
+        esac ;;
+      commit)
+        case "$raw" in
+          '<<H') continue ;;                                                           # a here-document; arguments may follow it
+          '<<<') shift; continue ;;
+          [\<\>]*|[0-9][\<\>]*|[0-9][0-9][\<\>]*|'&>'*) case "$raw" in *[\<\>\&]) case "${1:-}" in ''|\;) ;; *) shift ;; esac ;; esac; continue ;;
+        esac
+        [ "$_WX" = 1 ] && _c47_exp "$raw" "$tok"
+        case "$tok" in
+          --) case "${1:-}" in ''|\;) ;; *) _C47_WT="a pathspec after --" ;; esac; ph=skip ;;
+          --message|--file|--author|--date|--reedit-message|--reuse-message|--fixup|--squash|--cleanup|--template|--trailer|--unified|--inter-hunk-context)
+            case "${1:-}" in ''|\;) ;; *) _c47_val "$1"; shift ;; esac ;;
+          --message=*|--file=*|--author=*|--date=*|--reedit-message=*|--reuse-message=*|--fixup=*|--squash=*|--cleanup=*|--template=*|--trailer=*|--unified=*|--inter-hunk-context=*|--gpg-sign|--gpg-sign=*|--untracked-files|--untracked-files=*) ;;
+          --signoff|--quiet|--verbose|--dry-run|--short|--branch|--porcelain|--long|--null|--edit|--allow-empty|--allow-empty-message|--post-rewrite|--status|--reset-author|--ahead-behind|--verify|--pathspec-file-nul|--help) ;;
+          --no-signoff|--no-quiet|--no-verbose|--no-dry-run|--no-short|--no-branch|--no-porcelain|--no-long|--no-null|--no-edit|--no-allow-empty|--no-allow-empty-message|--no-post-rewrite|--no-status|--no-reset-author|--no-ahead-behind|--no-all|--no-only|--no-include|--no-interactive|--no-patch|--no-amend|--no-untracked-files) ;;
+          --all) _C47_WT="--all" ;;
+          --only) _C47_WT="--only" ;;
+          --include) _C47_WT="--include" ;;
+          --interactive|--patch) _C47_WT="$tok" ;;
+          --pathspec-from-file|--pathspec-from-file=*) _C47_WT="--pathspec-from-file" ;;
+          --no-verify) _C47_NV="--no-verify" ;;
+          --amend) _C47_AM="--amend" ;;
+          --no-gpg-sign) ;;                                                             # §4.5 above refuses it by name
+          --*) # Not an option git commit has under that exact name: an abbreviation, or something newer than this table.
+               case "--no-verify" in "$tok"*) _C47_NV="$tok (git reads it as --no-verify)" ;; esac
+               case "--amend" in "$tok"*) _C47_AM="$tok (git reads it as --amend)" ;; esac
+               _C47_UNK="$tok" ;;
+          -?*) # A cluster. Letter by letter, as git does: a flag, or a letter that takes a value — the rest of the
+               # token when there is a rest, the next token when there is none (-m -F -t -C -c -U), never the next one
+               # for -S and -u, whose value is optional and attached.
+               body="${tok#-}"
+               while [ -n "$body" ]; do
+                 c="${body:0:1}"; body="${body:1}"
+                 case "$c" in
+                   q|v|s|e|z|h) ;;
+                   n) _C47_NV="-n in ${tok:0:40} (git reads it as --no-verify)" ;;
+                   a) _C47_WT="-a in ${tok:0:40}" ;;
+                   o) _C47_WT="-o in ${tok:0:40}" ;;
+                   i) _C47_WT="-i in ${tok:0:40}" ;;
+                   p) _C47_WT="-p in ${tok:0:40}" ;;
+                   m|F|t|C|c|U) [ -z "$body" ] && case "${1:-}" in ''|\;) ;; *) _c47_val "$1"; shift ;; esac; body="" ;;
+                   S|u) body="" ;;
+                   *) _C47_UNK="${tok:0:40}"; body="" ;;
+                 esac
+               done ;;
+          *) _C47_WT="a pathspec" ;;
+        esac ;;
+    esac
+  done
+  [ "$envf" = 1 ] && [ "$_C47_N" != 0 ] && _C47_ENV="a variable that changes what git reads"
+  return 0
+}
+
+# The §4.5 half of what that reading finds is judged HERE, before the pre-authorised branch below: with CLAUDE_GIT_OK
+# nobody is asked, so a commit that skips its hooks or rewrites the last commit must not reach that allow. (§4.6 is
+# not judged for such a session, by design: it commits without a review record.)
+# The reading runs for a commit this hook recognises — and for a call that merely holds the words `git` and `commit`,
+# because `'git' commit -n`, `git 'commit' -n` and `git -c alias.ci=commit ci -n` are commits the recognition above
+# (a pattern on the text) does not see at all: measured, each ran with every commit gate silent.
+_C47_N=0; _C47_WT=""; _C47_CD=0; _c47_seen=0
+if git_has "$CMD" 'commit'; then _c47_seen=1; fi
+_c47_try=0
+case "$CMD" in *[Mm][Ii][Tt]*)   # with quotes, backslashes and joined lines taken out: `g\it`, `com\<newline>mit`
+  _t="${CMD//\\$'\n'/}"; _t="${_t//\\/}"; _t="${_t//\"/}"; _t="${_t//\'/}"
+  case "$_t" in *[Gg][Ii][Tt]*[Cc][Oo][Mm][Mm][Ii][Tt]*) _c47_try=1 ;; esac ;;
+esac
+if [ "$_c47_seen" = 1 ] || [ "$_c47_try" = 1 ]; then
+  _c47_scan "$CMD"
+  # git itself redefined for this call: `git(){ command git "$@" -a; }; git commit -m x` committed the working tree.
+  _ere s "$CMD" '(^|[;&|[:space:]])(function[[:space:]]+)?git[[:space:]]*\([[:space:]]*\)|alias[[:space:]]+git=' '*git*' \
+    && _C47_CFG="git redefined as a function or an alias"
+  _c47_no(){  # the lines for the session; the rule is logged by the caller, by its literal name
+    echo "GUARD (§4.5): $1" >&2; shift
+    while [ $# -gt 0 ]; do echo "$1" >&2; shift; done
+    exit 2
+  }
+  if [ -n "$_C47_NV" ]; then
+    gatelog BLOCK 4.5 "hook skip by -n or an abbreviated --no-verify"
+    _c47_no \
+    "this commit skips its hooks: $_C47_NV." \
+    "Turning a gate off is not a step in any task. If a hook is wrong, fix the hook and say so."
+  fi
+  if [ -n "$_C47_AM" ]; then
+    gatelog BLOCK 4.5 "abbreviated git commit --amend"
+    _c47_no \
+    "this commit rewrites the last one: $_C47_AM." \
+    "A new commit usually reaches the same end without rewriting; an amend is run only on an explicit request, by the user."
+  fi
+  if [ -n "$_C47_ENV" ]; then
+    gatelog BLOCK 4.5 "git commit under a GIT_ variable set in the command"
+    _c47_no \
+    "this commit runs with $_C47_ENV (GIT_DIR, GIT_INDEX_FILE, GIT_CONFIG_…, HOME and their kin), so git may read another" \
+    "repository, another index or another configuration" \
+    "than the one this gate reads. Run 'git commit' with no GIT_ variable in front of it."
+  fi
+  if [ -n "$_C47_CFG" ]; then
+    gatelog BLOCK 4.5 "git commit under a setting given in the command"
+    _c47_no \
+    "this call runs git with $_C47_CFG, which changes what a commit does (the hooks it runs, the files it reads, or" \
+    "what the word 'commit' means). Run 'git commit' without it."
+  fi
+  if [ "$_c47_seen" = 0 ] && [ "$_C47_N" != 0 ]; then
+    gatelog BLOCK 4.5 "git commit written so that it is not recognised"
+    _c47_no \
+    "this call runs a git commit spelled so that it does not read as one (a quoted or escaped command word)." \
+    "Write it plainly: git commit -m '…'"
+  fi
+  if [ -n "$_C47_EXP" ]; then
+    gatelog BLOCK 4.5 "git commit argument the shell expands"
+    _c47_no \
+    "the argument '$_C47_EXP' is changed by the shell before git reads it (a variable that is not one plain word, a" \
+    "glob or a brace list), so it may become more arguments than it looks like. Quote it."
+  fi
+  if [ -n "$_C47_UNK" ]; then
+    gatelog BLOCK 4.5 "git commit option the gate cannot read"
+    _c47_no \
+    "'$_C47_UNK' is not an option of git commit under that exact name. git accepts abbreviations, which is how" \
+    "--no-verify and --amend get past a rule that looks for their names. Write the option out in full."
+  fi
+  if [ -n "$_C47_SH" ]; then
+    gatelog BLOCK 4.5 "git commit inside a nested shell"
+    _c47_no \
+    "this call hands a git commit to '$_C47_SH', where its arguments cannot be read (a quoted script, eval, xargs)." \
+    "Run 'git commit' directly."
+  fi
+fi
 if git_has "$CMD" 'add|commit|push|checkout|switch'; then
   # The key is granted by the user's environment, never by the command line the model composes.
   if printf '%s' "$CMD" | grep -q 'CLAUDE_GIT_OK'; then
@@ -1796,6 +2204,8 @@ if git_has "$CMD" 'commit|push'; then
       done
     }
     _c46_scan "$CMD"
+    # ...and the same question asked of the reading above (_c47_scan, already run for this call). Either answer refuses.
+    [ -z "$_C46_WT" ] && [ -n "$_C47_WT" ] && _C46_WT="$_C47_WT"
     # The record describes THIS worktree. A command that points git at another one would have us hash the wrong
     # repository and pass it off as verified, so the ambiguous form fails closed instead.
     if [ "$_C46_REDIR" = 1 ]; then
@@ -1812,6 +2222,27 @@ if git_has "$CMD" 'commit|push'; then
       echo "Those are different things, and that is how unreviewed lines get in." >&2
       echo "Stage exactly what you mean with 'git add <paths>', then commit with no paths and no -a." >&2
       exit 2
+    fi
+
+    # THE COMMIT RUNS WHERE THE CALL TAKES IT. `cd ../other && git commit -m x` commits what is staged THERE, while
+    # the record below is read and compared HERE (measured: the other repository got the commit). One plain target is
+    # resolved and has to be this same repository — git is asked for both git directories, so no path is compared by
+    # its spelling; a target that cannot be read (a variable, `cd -`, two of them, `env -C`) is refused.
+    if [ "$_C47_CD" != 0 ]; then
+      _cdok=0
+      if [ "$_C47_CD" = 1 ]; then
+        case "$_C47_CDT" in /*|[A-Za-z]:*) _cdt="$_C47_CDT" ;; *) _cdt="${_CWD:-.}/$_C47_CDT" ;; esac
+        _g1="$(git -C "${_CWD:-.}" rev-parse --absolute-git-dir 2>/dev/null)"
+        _g2="$(git -C "$_cdt" rev-parse --absolute-git-dir 2>/dev/null)"
+        [ -n "$_g1" ] && [ "$_g1" = "$_g2" ] && _cdok=1
+      fi
+      if [ "$_cdok" != 1 ]; then
+        gatelog BLOCK 4.6 "commit after a change of directory"
+        echo "GUARD (§4.6): this call changes directory before it commits, and the commit would not run in the repository" >&2
+        echo "this session is in — or the target cannot be read (a variable, 'cd -', more than one). The review record" >&2
+        echo "describes what is staged HERE. Run the commit from this directory, or run it yourself in your terminal." >&2
+        exit 2
+      fi
     fi
 
     # CREW-REVIEW-PASS (this recipe is kept identical in agents/crew-review-agent.md; smoke-test pins the pair)
@@ -1854,7 +2285,11 @@ if git_has "$CMD" 'commit|push'; then
     RPJ=""; while IFS= read -r _l || [ -n "$_l" ]; do RPJ="$RPJ${_l%$'\r'}"; done < "$RP"
     _rpf(){ _r="${RPJ#*\"$1\":\"}"; [ "$_r" = "$RPJ" ] && return 1; printf '%s' "${_r%%\"*}"; }
     WANT_D="$(_rpf diff_oid || true)"; WANT_H="$(_rpf head || true)"
-    HAVE_D="$(git -C "$_RPD" diff --cached 2>/dev/null | git hash-object --stdin 2>/dev/null)"
+    # --no-ext-diff --no-textconv: what `git diff` prints is configurable, and `git config diff.external true` made
+    # every staged change print NOTHING — one id for all of them, so one review record vouched for any diff (measured,
+    # 3.1.0 review). With neither configured the two flags change no byte, so a record written by the older recipe
+    # still matches.
+    HAVE_D="$(git -C "$_RPD" diff --cached --no-ext-diff --no-textconv 2>/dev/null | git hash-object --stdin 2>/dev/null)"
     # --verify --quiet, not a bare `git rev-parse HEAD`: on an UNBORN head the bare form prints the literal
     # string "HEAD" on stdout and still fails, so `|| echo NONE` appended to it and the value became two
     # lines ("HEAD" then "NONE") — which never matches any record. Measured on a fresh `git init`.
