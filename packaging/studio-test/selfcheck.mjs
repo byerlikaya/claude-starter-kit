@@ -3160,7 +3160,7 @@ process.stdout.write('\n== §31 the approval dock and the inspector ==\n');
 
   check('the dock is not a dialog and takes no focus',
     !/showModal|role="dialog"|aria-modal|\.focus\(/.test(dockJs)
-    && /<div id="canvas" class="canvas"><\/div>\s*<div id="dock" role="region"[^>]*hidden><\/div>\s*<\/main>/.test(indexHtml),
+    && /<div id="canvas" class="canvas"><\/div>\s*<div id="timeline"[^>]*hidden><\/div>\s*<div id="dock" role="region"[^>]*hidden><\/div>\s*<\/main>/.test(indexHtml),
     'a region under the canvas, inside the stage: the graph stays usable above it');
   check('the dock is the one place requests are drawn: the conversation pane no longer draws its own',
     !/perm-queue|paintPermissions/.test(chatJs) && !/\.perm-/.test(cssSrc31) && /this\.onPermissions\(this, rec\)/.test(chatJs));
@@ -3292,7 +3292,9 @@ process.stdout.write('\n== §32 the conversation panel and New session ==\n');
       loose.agentId === null && loose.status === null && loose.type === 'crew-test-expert'
       && /node\.disabled = !card\.agentId/.test(chatJs));
     check('clicking a card selects that agent on the graph',
-      /onAgent: \(pane, agentId\) => \{\s*if \(pane\.id !== current\) selectSession\(pane\.id\);\s*canvas\.focus\(agentId\);/.test(appJs));
+      /onAgent: \(pane, agentId\) => \{\s*if \(pane\.id !== current\) selectSession\(pane\.id\);\s*goTo\(agentId\);/.test(appJs)
+      && /if \(view !== 'timeline'\) \{ canvas\.focus\(agentId\); return; \}/.test(appJs),
+      'or on the Timeline, when that is the view that is open');
 
     /* -- 3. the strip, the reminder, the refusals -------------------------------- */
 
@@ -3511,6 +3513,271 @@ process.stdout.write('\n== §32 the conversation panel and New session ==\n');
       conv.messages.filter((m) => m.role === 'user').map((m) => m.text).join('|') === 'Add retries.');
     check('the page and the server cut a result the same way',
       cv.resultFrom({ content: `${'y'.repeat(6000)}\n42 passed` }).text === by.toolu_run.result.text);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+/* ------------------------------------------------------ §33 the Timeline ---
+   The same session against time. A bar is where an agent was and what it was doing;
+   what the data does not hold is not drawn — no start, no bar — and the one change of
+   state a bar can show is a wait on the viewer, from the server's own record. */
+
+process.stdout.write('\n== §33 the Timeline ==\n');
+
+{
+  const tp = await import(`../../kit/studio/web/timeline-plan.js?t=${Date.now()}`);
+  const { logApprovals, APPROVAL_LOG_MAX } = await import(`../../kit/studio/server/lib/permissions.js?l=${Date.now()}`);
+  const { agentDetail: readAgent } = await import(`../../kit/studio/server/lib/graph.js?d=${Date.now()}`);
+  const web = (f) => read(path.join(WEB_ROOT, f)) ?? '';
+  const appJs = web('app.js');
+  const indexHtml = web('index.html');
+  const css33 = web('style.css');
+  const sessionJs = read(path.join(STUDIO, 'server', 'lib', 'session.js')) ?? '';
+  const serverJs = read(path.join(STUDIO, 'server', 'index.js')) ?? '';
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'crew-studio-tl-'));
+
+  try {
+    const T = 1_800_000_000_000;
+    const M = 60_000;
+    const agent = (id, status, startMin, endMin, extra = {}) => ({
+      id, kind: 'agent', agentType: 'Explore', status, parentId: 'session', workflow: null,
+      startedAt: startMin == null ? null : T + startMin * M, endedAt: endMin == null ? null : T + endMin * M, ...extra,
+    });
+    const now = T + 30 * M;
+
+    /* -- 1. bars ------------------------------------------------------------------ */
+
+    const tones = (n, approvals) => tp.segments(n, approvals, now).map((s) => `${s.tone}:${(s.from - T) / M}-${(s.to - T) / M}`).join(' ');
+    check('an agent with no recorded start has no bar: there is nowhere to put one',
+      tp.segments(agent('a', 'running', null, null), null, now).length === 0);
+    check('a running agent\'s bar runs to now; a finished one ends where it ended',
+      tones(agent('a', 'running', 10, null)) === 'busy:10-30' && tones(agent('b', 'done', 5, 12)) === 'done:5-12');
+    const failed = tp.segments(agent('f', 'failed', 5, 14), null, now);
+    check('a failed agent\'s bar is failed, and where it stopped is marked',
+      failed.length === 1 && failed[0].tone === 'fail' && failed[0].failedAt === T + 14 * M
+      && tp.segments(agent('k', 'killed', 5, 14), null, now)[0].tone === 'fail');
+    check('a status the panel has no word for is drawn quiet, not as done',
+      tp.segments(agent('z', 'zombie', 5, 14), null, now)[0].tone === 'quiet');
+    const waits = [
+      { agentId: 'w', askedAt: T + 12 * M, endedAt: T + 14 * M, outcome: 'allowed' },
+      { agentId: 'someone-else', askedAt: T + 15 * M, endedAt: T + 16 * M, outcome: 'denied' },
+      { agentId: 'w', askedAt: T + 26 * M, endedAt: null, outcome: null },
+    ];
+    check('a bar is split where the agent waited on the viewer, and a wait still open runs to now',
+      tones(agent('w', 'running', 10, null), waits) === 'busy:10-12 wait:12-14 busy:14-26 wait:26-30');
+    check('another agent\'s waits are not drawn on this one', tones(agent('x', 'running', 10, null), waits) === 'busy:10-30');
+    check('with no record of approvals the bar is one piece: a wait is not guessed',
+      tp.segments(agent('w', 'running', 10, null), null, now).length === 1);
+
+    /* -- 2. rows ------------------------------------------------------------------ */
+
+    const session = { id: 'session', kind: 'session', startedAt: T };
+    const nodes = [
+      session,
+      agent('e1', 'done', 1, 3), agent('e2', 'done', 2, 4), agent('e3', 'running', 20, null),
+      agent('b1', 'running', 2, null, { agentType: 'crew-backend-expert' }),
+      ...[1, 2, 3, 4, 5, 6, 7, 8].map((i) => agent(`w${i}`, i === 2 ? 'failed' : 'done', 5 + i, 7 + i, { agentType: `kind-${i}`, workflow: 'wf-audit' })),
+    ];
+    const list = tp.rows(nodes, { group: 'run', now });
+    const shape = list.map((r) => `${r.kind}:${r.label ?? r.count}`);
+    check('what the session started itself comes first, then each workflow run',
+      shape[0] === 'group:Session · direct' && shape.includes('group:wf-audit')
+      && shape.indexOf('group:wf-audit') > shape.indexOf('group:Session · direct'), shape.join(' | '));
+    check('several agents of one type in a group are one row, and a single one is its own',
+      shape[1] === 'merged:Explore × 3' && shape[2] === 'agent:crew-backend-expert');
+    const merged = list[1];
+    check('a merged row puts overlapping bars on two thin lanes, never more',
+      merged.lanes.length === 2 && merged.lanes[0].length + merged.lanes[1].length === 3
+      && tp.lanes([{ from: 0, to: 5 }, { from: 6, to: 9 }]).length === 1
+      && tp.lanes([{ from: 0, to: 9 }, { from: 1, to: 9 }, { from: 2, to: 9 }, { from: 3, to: 9 }]).length === 2);
+    check('a group longer than six rows shows four and a link to the rest',
+      shape.filter((x) => x.startsWith('agent:kind-')).length === 4 && shape[shape.length - 1] === 'more:4', shape.slice(-6).join(' | '));
+    check('the link shows the rest',
+      tp.rows(nodes, { group: 'run', now, expanded: new Set(['run:wf-audit']) }).filter((r) => r.group === 'run:wf-audit' && r.kind === 'agent').length === 8);
+    const folded = tp.rows(nodes, { group: 'run', now, folded: new Set(['run:wf-audit']) });
+    const head = folded.find((r) => r.id === 'run:wf-audit');
+    check('a folded group keeps its members\' bars on its own row: out of sight is not out of time',
+      head.folded && head.lanes.flat().length === 8 && !folded.some((r) => r.group === 'run:wf-audit'));
+    check('a group\'s row counts its members by status, failures first',
+      head.sub === '8 agents · 1 failed · 7 done', head.sub);
+    check('under Agent type the group is the type, so its agents are not merged again; under None nothing is grouped',
+      tp.rows(nodes, { group: 'type', now }).filter((r) => r.kind === 'merged').length === 0
+      && tp.rows(nodes, { group: 'none', now }).every((r) => r.kind === 'agent')
+      && tp.rows(nodes, { group: 'none', now }).length === 12);
+    check('an agent waiting on the viewer says so on its row, ahead of what the transcript says',
+      tp.agentSub(agent('q', 'running', 1, null), new Set(['q'])).text === 'needs you'
+      && tp.agentSub(agent('q', 'zombie', 1, null), new Set()).text === 'zombie'
+      && tp.countsSub([agent('q', 'running', 1, null), agent('r', 'done', 1, 2)], new Set(['q'])) === '1 need you · 1 done');
+
+    /* -- 3. time ------------------------------------------------------------------- */
+
+    const ext = tp.extent(nodes, now, true);
+    check('the session\'s time runs from its first start to now while it is live', ext.from === T && ext.to === now);
+    check('a session that has ended stops at its last activity, not at now',
+      tp.extent([session, agent('a', 'done', 1, 9)], now, false).to === T + 9 * M);
+    const following = tp.windowOf(ext, '15m', { follow: true });
+    check('following, the view ends at now', following.to === now && following.span === 15 * M);
+    const held = tp.windowOf(ext, '5m', { follow: false, end: T + 12 * M });
+    check('not following, the view stays where the viewer left it', held.to === T + 12 * M && held.from === T + 7 * M);
+    check('the view cannot be dragged past either end of the session',
+      tp.windowOf(ext, '5m', { follow: false, end: T + 999 * M }).to === now
+      && tp.windowOf(ext, '5m', { follow: false, end: T - 999 * M }).from === T);
+    check('a range longer than the session shows the session, not empty time before it',
+      tp.windowOf(ext, '1h', { follow: true }).from === T && tp.windowOf(ext, 'all').span === 30 * M);
+    check('the four ranges are the spec\'s, and the steps stop at both ends',
+      tp.RANGES.map((r) => r.key).join(' ') === '5m 15m 1h all' && tp.stepRange('5m', -1) === null
+      && tp.stepRange('all', 1) === null && tp.stepRange('15m', 1) === '1h');
+    const win = { from: T + 10 * M, to: T + 20 * M, span: 10 * M };
+    const inside = tp.place({ from: T + 12 * M, to: T + 15 * M }, win, 1000);
+    const cut = tp.place({ from: T + 5 * M, to: T + 25 * M }, win, 1000);
+    check('a bar is placed by its times, and cut square where it runs off the view',
+      inside.left === 200 && inside.width === 300 && !inside.cutLeft && cut.left === 0 && cut.width === 1000 && cut.cutLeft && cut.cutRight);
+    check('a bar wholly outside the view is not drawn', tp.place({ from: T, to: T + 5 * M }, win, 1000) === null);
+    check('a very short bar is still wide enough to see and to click', tp.place({ from: T + 12 * M, to: T + 12 * M + 50 }, win, 1000).width === 2);
+    const marks = tp.ticks(win, 1000);
+    check('the axis is marked at round moments, a handful of them',
+      marks.length >= 2 && marks.length <= 11 && marks.every((m) => m.at % 60_000 === 0), `${marks.length} marks`);
+
+    /* -- 4. what is said about the waits, and about the agent ----------------------- */
+
+    check('a session Studio did not start says its waits are not measured, in the user\'s words',
+      tp.waitNote(null).measured === false && tp.waitNote(null).text === 'Not measured: this session\'s approvals are not seen by Studio.');
+    const noted = tp.waitNote({ gated: true, startedAt: T + 3 * M });
+    check('a session started here says from when its waits are recorded',
+      noted.measured === true && /^Waiting periods since Studio started this session at \d\d:\d\d\.$/.test(noted.text), noted.text);
+    check('a session started here without the gate has no waits to record, and says that',
+      tp.waitNote({ gated: false, startedAt: T }).measured === false);
+    const fmt = { duration: (ms) => `${Math.round(ms / M)}m`, tokens: (t) => `${t / 1000}k` };
+    check('the drawer\'s line carries only what was read: unread tokens are left out, not written as 0',
+      /^\d\d:\d\d → \d\d:\d\d · 7m · 31 tool calls$/.test(tp.factsOf(agent('a', 'done', 5, 12, { toolCount: 31, tokens: null }), now, fmt))
+      && / · 57k tokens$/.test(tp.factsOf(agent('a', 'done', 5, 12, { toolCount: 31, tokens: 57_000 }), now, fmt))
+      && / → now · /.test(tp.factsOf(agent('a', 'running', 5, null, { toolCount: 1 }), now, fmt)));
+
+    /* -- 5. the server's record of approvals --------------------------------------- */
+
+    const log = [];
+    const pend = (id, askedAt, extra = {}) => ({ toolUseId: id, toolName: 'Bash', askedAt, agentId: null, agentType: null, ...extra });
+    const decisions = new Map();
+    logApprovals(log, [pend('a', T, { agentId: 'ag1', agentType: 'Explore' }), pend('b', T + 1000)], decisions, T + 1500, 45);
+    check('a request is recorded when it is first seen waiting, with who asked',
+      log.length === 2 && log[0].endedAt === null && log[0].agentId === 'ag1' && log[0].askedAt === T);
+    decisions.set('a', 'deny');
+    logApprovals(log, [pend('b', T + 1000)], decisions, T + 4000, 45);
+    check('a request that is gone is closed with the answer the panel recorded',
+      log[0].endedAt === T + 4000 && log[0].outcome === 'denied' && log[1].endedAt === null && decisions.size === 0);
+    logApprovals(log, [], decisions, T + 1000 + 45_000, 45);
+    check('one that is gone at the hook\'s deadline with no answer timed out', log[1].outcome === 'timed-out');
+    const early = [];
+    logApprovals(early, [pend('c', T)], new Map(), T, 45);
+    logApprovals(early, [], new Map(), T + 5000, 45);
+    check('one that is gone early with no answer is "unanswered": no verdict is made up for it',
+      early[0].outcome === 'unanswered');
+    const many = [];
+    logApprovals(many, [pend('open', T)], new Map(), T, 45);
+    // The same entry, not one like it: a dropped request that is still pending would be written again on the
+    // next change, and a check that only looked for its id would not see that it had been lost in between.
+    const stillWaiting = many[0];
+    for (let i = 0; i < APPROVAL_LOG_MAX + 20; i += 1) {
+      logApprovals(many, [pend('open', T), pend(`r${i}`, T + i)], new Map(), T + i, 45);
+      logApprovals(many, [pend('open', T)], new Map(), T + i + 1, 45);
+    }
+    check('the record keeps the last 200 and never drops a request that is still waiting',
+      APPROVAL_LOG_MAX === 200 && many.length === 200 && many.includes(stillWaiting) && stillWaiting.endedAt === null
+      && many.filter((e) => e.toolUseId === 'open').length === 1 && !many.some((e) => e.toolUseId === 'r0'));
+    check('the record is the session\'s, travels in its summary, and learns each answer the panel records',
+      /logApprovals\(this\.approvals, reqs, this\.decisions, Date\.now\(\), this\.gate\.waitSeconds\)/.test(sessionJs)
+      && /approvals: this\.approvals,/.test(sessionJs) && /if \(out\.ok\) s\.noteDecision\(toolUseId, body\.verdict\)/.test(serverJs));
+
+    /* -- 6. the last error ----------------------------------------------------------- */
+
+    const sub = path.join(tmp, 'subagents');
+    const nested = path.join(sub, 'workflows', 'wf-1');
+    fs.mkdirSync(nested, { recursive: true });
+    const rec = (at, o) => `${JSON.stringify({ timestamp: new Date(T + at * 1000).toISOString(), ...o })}\n`;
+    const transcript = rec(0, { type: 'user', message: { role: 'user', content: 'Backfill the column.' } })
+      + rec(1, { type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 't1', name: 'Read', input: { file_path: 'a.sql' } }, { type: 'tool_use', id: 't2', name: 'Bash', input: { command: 'migrate' } }] } })
+      + rec(2, { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', is_error: true, content: 'no such file' }] } })
+      + rec(3, { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't2', is_error: true, content: `${'n'.repeat(5000)}\nmigration 0042 failed` }] } })
+      + rec(4, { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'It failed.' }] } });
+    fs.writeFileSync(path.join(sub, 'agent-top1.jsonl'), transcript);
+    fs.writeFileSync(path.join(sub, 'agent-top1.meta.json'), '{"agentType":"crew-database-expert"}');
+    fs.writeFileSync(path.join(nested, 'agent-deep1.jsonl'), rec(0, { type: 'user', message: { role: 'user', content: 'Check.' } }) + rec(1, { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'Fine.' }] } }));
+    fs.writeFileSync(path.join(nested, 'agent-deep1.meta.json'), '{"agentType":"Explore"}');
+    const top = await readAgent({ subagentsDir: sub }, 'top1');
+    check('the agent\'s detail carries its last error: the tool, the moment, and the end of what it said',
+      top.errors === 2 && top.lastError?.tool === 'Bash' && top.lastError.at === T + 3000
+      && top.lastError.text.endsWith('migration 0042 failed') && top.lastError.truncated === true && top.lastError.length === 5022,
+      `${top.errors} errors, last from ${top.lastError?.tool}`);
+    const deep = await readAgent({ subagentsDir: sub }, 'deep1');
+    check('an agent a workflow started is found one directory down, and one with no error has `lastError: null`',
+      deep !== null && deep.report === 'Fine.' && deep.lastError === null && deep.errors === 0 && deep.agentType === 'Explore',
+      'the detail used to answer "no such agent" for every agent in a workflow run');
+    check('an agent that is in neither place is still "no such agent"', await readAgent({ subagentsDir: sub }, 'nobody') === null);
+
+    /* -- 7. the view ------------------------------------------------------------------ */
+
+    const dom33 = installDom();
+    try {
+      const { Timeline } = await import(`../../kit/studio/web/timeline.js?t=${Date.now()}`);
+      const root = document.createElement('div');
+      const changes = [];
+      const chosen = [];
+      const tl = new Timeline(root, { onChange: (s) => changes.push(s), onSelect: (n) => chosen.push(n?.id ?? null), fmt });
+      tl.now = () => now;
+      tl.trackWidth = () => 1000;
+      tl.labelWidth = () => 280;
+      tl.setSession('s1');
+      tl.setLive(true);
+      tl.setNodes(nodes);
+      const agentRow = () => tl.rowsEl.children.find((r) => r.classList.contains('tl-agent'));
+      const row = agentRow();
+      check('a row answers one click once: the label inside it has no listener of its own',
+        (row._on?.click ?? []).length === 1 && !row.children[0]._on?.click,
+        'two listeners chose the agent and un-chose it in the same click');
+      row.emit('click');
+      check('clicking a row chooses its agent and opens the drawer', tl.selected === 'b1' && tl.drawer.hidden === false && chosen.join() === 'b1');
+      agentRow().emit('click');
+      check('clicking it again lets go', tl.selected === null && tl.drawer.hidden === true);
+      tl.folded.add('run:wf-audit');
+      tl.select('w7');
+      check('choosing an agent from outside opens the group it is folded into and shows every row of it',
+        !tl.folded.has('run:wf-audit') && tl.expanded.has('run:wf-audit') && tl.selected === 'w7');
+      check('the Timeline opens following now, on fifteen minutes', changes.length > 0 && tl.state().follow === true && tl.state().range === '15m');
+      tl.pan(-200);
+      check('moving the view by hand stops following', tl.follow === false && tl.state().follow === false && tl.end !== null);
+      tl.setFollow(true);
+      check('Follow now takes the view back to now', tl.follow === true && tl.end === null && tl.win.to === now);
+      tl.setLive(false);
+      check('a session that has ended has no now to follow', tl.state().follow === false && tl.state().live === false);
+    } finally {
+      dom33();
+    }
+
+    check('the toolbar switches between the graph and the Timeline, and each view shows only its own controls',
+      /id="view-graph"[^>]*role="tab"[^>]*aria-selected="true"/.test(indexHtml) && /id="view-timeline"[^>]*role="tab"/.test(indexHtml)
+      && /for \(const c of document\.querySelectorAll\('\.toolbar \[data-view\]'\)\) c\.hidden = c\.dataset\.view !== view;/.test(appJs)
+      && ['tb-density', 'tb-expand', 'tb-fold', 'tb-zoom-out', 'tb-zoom', 'tb-zoom-in', 'tb-fit'].every((i) => new RegExp(`id="${i}" data-view="graph"`).test(indexHtml))
+      && (indexHtml.match(/data-view="timeline"/g) ?? []).length === 4);
+    check('what is selected stays selected across the switch, in both directions',
+      /const carried = select \?\? \(was === 'timeline' \? timeline\.selected : canvas\.selected\) \?\? null;/.test(appJs)
+      && /if \(carried && canvas\.nodes\.has\(carried\)\) canvas\.focus\(carried\);/.test(appJs)
+      && /onShowOnGraph: \(n\) => \{ setView\('graph', n\.id\); \}/.test(appJs));
+    check('Group and Show are one choice for both views',
+      /timeline\.setGroup\(st\.group\);/.test(appJs) && (appJs.match(/timeline\.setFilter\(/g) ?? []).length >= 3);
+    check('the attention strip, the dock and a conversation card go to the agent in whichever view is open',
+      /function goTo\(agentId\) \{\s*if \(view !== 'timeline'\) \{ canvas\.focus\(agentId\); return; \}\s*timeline\.select\(agentId\);/.test(appJs)
+      && (appJs.match(/goTo\(/g) ?? []).length >= 5);
+    check('the waits drawn are the server\'s record for this session, and none for a session Studio did not start',
+      /timeline\.setOwned\(current \? owned\.get\(current\) \?\? null : null\);/.test(appJs));
+    check('a bar\'s colour is its status and nothing else',
+      /\.tl-bar\[data-tone="busy"\] \{ background: var\(--status-busy\); \}/.test(css33)
+      && /\.tl-bar\[data-tone="fail"\] \{ background: var\(--status-fail\); \}/.test(css33)
+      && /\.tl-bar\[data-tone="wait"\] \{ background: var\(--status-waiting\); \}/.test(css33)
+      && /\.tl-bar\[data-tone="done"\] \{ background: color-mix\(in srgb, var\(--status-good\)/.test(css33));
+    check('the page opens with no right-hand column reserved',
+      /<div class="shell no-chat">/.test(indexHtml),
+      'measured: the stage was 678px wide in a 1440px window until the first panel was opened');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

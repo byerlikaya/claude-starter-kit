@@ -446,19 +446,24 @@ mark { background: color-mix(in srgb, var(--studio-accent) 30%, transparent); co
   border-bottom: 1px solid var(--line);
   background: var(--ground);
 }
-/* Which view this is. One view exists, so it is a name and not a switch. */
-.toolbar-view {
-  display: inline-flex; align-items: center; gap: 6px;
-  height: 28px; padding: 0 var(--space-3);
-  border-radius: 7px;
-  background: var(--surface-raised);
-  font-size: 13px; font-weight: 600; color: var(--ink);
+/* Which view this is: the graph, or the same session against time. */
+.tb-views { flex: none; }
+.tb-views .seg-btn { display: inline-flex; align-items: center; gap: 6px; }
+.tb-follow { display: inline-flex; align-items: center; gap: var(--space-2); flex: none; }
+.tb-follow[hidden], .tb-range[hidden] { display: none; }
+.tb-range { cursor: default; display: inline-flex; align-items: center; justify-content: center; }
+/* An on/off control that reads as one. */
+.switch {
+  width: 32px; height: 18px; padding: 0; flex: none; position: relative; cursor: pointer;
+  border: 0; border-radius: var(--radius-pill); background: var(--line);
 }
-.toolbar-view svg {
-  width: 16px; height: 16px; flex: none;
-  fill: none; stroke: currentColor; stroke-width: 1.6;
-  stroke-linecap: round; stroke-linejoin: round;
+.switch > span {
+  position: absolute; top: 2px; left: 2px; width: 14px; height: 14px;
+  border-radius: var(--radius-pill); background: var(--ink-dim);
 }
+.switch[aria-checked="true"] { background: var(--accent); }
+.switch[aria-checked="true"] > span { left: 16px; background: var(--on-accent); }
+.switch:disabled { opacity: 0.5; cursor: default; }
 .toolbar { container-type: inline-size; }
 .toolbar-fill { flex: 1; min-width: 0; }
 /* Group, Density, Show: the name of the choice in the quiet colour, the choice itself in the text colour. */
@@ -481,7 +486,9 @@ mark { background: color-mix(in srgb, var(--studio-accent) 30%, transparent); co
 }
 @container (max-width: 520px) {
   #tb-density, #tb-zoom { display: none; }
-  .toolbar-view { padding: 0 var(--space-2); font-size: 0; gap: 0; }
+  .tb-follow .sub { display: none; }
+  /* The − and + stay; the name of the range between them goes. It is still on their labels. */
+  .tb-range { display: none; }
 }
 /* What the panel has to say about the stream or the last action: a reason, in
    words, where the eye already is. Empty most of the time. */
@@ -491,6 +498,103 @@ mark { background: color-mix(in srgb, var(--studio-accent) 30%, transparent); co
 }
 
 .canvas { flex: 1; min-height: 0; position: relative; overflow: hidden; background: var(--ground); }
+.canvas[hidden] { display: none; }
+
+/* ---------------------------------------------------------- timeline ---
+   A label column and a track. Rows scroll; the axis above them and the drawer below them stay. */
+.tl { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; background: var(--ground); --tl-label-w: 280px; }
+.tl[hidden] { display: none; }
+.tl-axis { display: flex; height: 32px; flex: none; border-bottom: 1px solid var(--line); }
+.tl-axis[hidden], .tl-body[hidden], .tl-empty[hidden], .tl-note[hidden], .tl-drawer[hidden], .tl-now[hidden] { display: none; }
+.tl-axis-label {
+  width: var(--tl-label-w); flex: none; box-sizing: border-box; padding: 0 var(--space-3);
+  display: flex; align-items: center; background: var(--surface); border-right: 1px solid var(--line);
+  font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-faint);
+}
+.tl-axis-track { flex: 1; min-width: 0; position: relative; overflow: hidden; }
+.tl-tick {
+  position: absolute; top: 0; bottom: 0; padding-left: 6px; display: flex; align-items: center;
+  border-left: 1px solid var(--line); font-family: var(--font-mono); font-size: 11px; color: var(--ink-faint); white-space: nowrap;
+}
+.tl-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; position: relative; }
+.tl-rows { min-height: 100%; background: linear-gradient(to right, var(--surface) var(--tl-label-w), transparent var(--tl-label-w)); }
+.tl-row { display: flex; height: 34px; border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent); }
+.tl-row.tl-group { height: 30px; background: color-mix(in srgb, var(--surface) 60%, var(--ground)); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.tl-row.tl-agent { cursor: pointer; }
+.tl-row.tl-agent:hover, .tl-row.on { background: color-mix(in srgb, var(--studio-accent) 9%, transparent); }
+.tl-row.on { box-shadow: inset 2px 0 0 var(--studio-accent); }
+.tl-row.dim .tl-lab, .tl-bar.dim { opacity: 0.3; }
+.tl-row.tl-more { height: 30px; }
+.tl-lab {
+  width: var(--tl-label-w); flex: none; box-sizing: border-box; min-width: 0;
+  display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-3);
+  background: none; border: 0; border-right: 1px solid var(--line); color: var(--ink); font: inherit; text-align: left;
+}
+button.tl-lab { cursor: pointer; }
+.tl-lab.indent { padding-left: var(--space-6); }
+.tl-lab .cv-tile { flex: none; }
+.tl-lab .sub { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.tl-lab .sub[data-tone="fail"] { color: var(--status-fail); }
+.tl-lab .sub[data-tone="wait"] { color: var(--status-waiting); }
+.tl-name { flex: 0 1 auto; min-width: 0; font-family: var(--font-mono); font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-group .tl-name { flex-shrink: 0; max-width: 62%; }
+.tl-chev { display: inline-flex; color: var(--ink-dim); }
+.tl-chev .ic { width: 12px; height: 12px; }
+.tl-lab[aria-expanded="true"] .tl-chev { rotate: 90deg; }
+.tl-more-btn { background: none; border: 0; padding: 0; cursor: pointer; font: inherit; font-size: 12px; font-weight: 600; color: var(--accent); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-more-btn:hover { text-decoration: underline; }
+.tl-track { flex: 1; min-width: 0; position: relative; overflow: hidden; }
+/* A bar: where an agent was in time. Its colour is its status and nothing else. */
+.tl-bar {
+  position: absolute; top: 11px; height: 12px; padding: 0; border: 0; border-radius: 3px; cursor: pointer;
+  background: var(--ink-faint);
+}
+.tl-group .tl-bar { top: 9px; }
+.tl-bar.thin { height: 6px; border-radius: 2px; top: 9px; }
+.tl-bar.thin[data-lane="1"] { top: 19px; }
+.tl-group .tl-bar.thin { top: 7px; }
+.tl-group .tl-bar.thin[data-lane="1"] { top: 17px; }
+.tl-bar[data-tone="busy"] { background: var(--status-busy); }
+.tl-bar[data-tone="done"] { background: color-mix(in srgb, var(--status-good) 55%, var(--ground)); }
+.tl-bar[data-tone="fail"] { background: var(--status-fail); }
+.tl-bar[data-tone="wait"] { background: var(--status-waiting); }
+.tl-bar[data-tone="quiet"] { background: color-mix(in srgb, var(--ink-dim) 45%, var(--ground)); }
+/* A bar that runs off the edge of what is shown is cut square there. */
+.tl-bar[data-cut-left] { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.tl-bar[data-cut-right] { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.tl-bar.on { outline: 2px solid var(--studio-accent); outline-offset: 1px; }
+.tl-x { position: absolute; top: 7px; margin-left: 3px; font-size: 14px; line-height: 20px; font-weight: 700; color: var(--status-fail); pointer-events: none; }
+.tl-untimed { position: absolute; left: var(--space-3); top: 0; bottom: 0; display: flex; align-items: center; font-size: 12px; color: var(--ink-faint); }
+.tl-now { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--studio-accent); pointer-events: none; z-index: 2; }
+.tl-now::before {
+  content: attr(data-label); position: sticky; top: 2px; display: block; width: max-content; translate: calc(-100% + 2px) 0;
+  padding: 0 6px; height: 20px; line-height: 20px; border-radius: var(--radius-sm);
+  background: var(--studio-accent); color: var(--ground); font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+}
+.tl-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-2); color: var(--ink-dim); text-align: center; padding: var(--space-6); }
+.tl-empty strong { color: var(--ink); font-size: 15px; }
+.tl-away { flex: none; display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3); border-top: 1px solid var(--line); font-size: 13px; color: var(--ink-dim); background: var(--surface); }
+.tl-away[hidden] { display: none; }
+.tl-note { flex: none; padding: 6px var(--space-3); border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-faint); background: var(--surface); }
+.tl-note[data-measured="false"] { color: var(--status-waiting); }
+/* The drawer: the chosen agent, under the rows. */
+.tl-drawer {
+  flex: none; display: flex; gap: var(--space-8); align-items: flex-start; max-height: 40%; overflow-y: auto;
+  padding: var(--space-4); border-top: 1px solid var(--line); background: var(--surface);
+}
+.tl-d-main { flex: 0 1 360px; min-width: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.tl-d-head { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.tl-d-name { font-family: var(--font-mono); font-size: 14px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-d-task { font-size: 15px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
+.tl-d-facts { white-space: normal; }
+.tl-d-error { flex: 1 1 0; min-width: 0; }
+.tl-d-errtext {
+  margin: 0 0 var(--space-1); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm);
+  background: var(--ground); border: 1px solid var(--line); max-height: 96px; overflow-y: auto;
+  font-family: var(--font-mono); font-size: 12px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere;
+  color: var(--status-fail);
+}
+.tl-d-acts { flex: none; display: flex; align-items: center; gap: var(--space-2); }
 
 /* ---- needs attention ----
    A strip that exists only while something needs someone. Each chip goes to its
@@ -1469,6 +1573,11 @@ body.vresizing { cursor: row-resize; user-select: none; }
 }
 
 @media (max-width: 639px) {
+  /* The Timeline keeps its track: the label column gives up its width, and the drawer stacks. */
+  .tl { --tl-label-w: 148px; }
+  .tl-lab .sub { display: none; }
+  .tl-drawer { flex-direction: column; gap: var(--space-3); max-height: 55%; }
+  .tl-d-main, .tl-d-error { flex: none; width: 100%; }
   /* The bar keeps the mark, the word "Studio" and the controls that act on a
      session. Full screen is the one that goes: a phone has no window to leave. */
   .bar { gap: var(--space-2); padding: 0 var(--space-3); }

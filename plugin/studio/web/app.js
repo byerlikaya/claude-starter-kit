@@ -19,7 +19,8 @@ import { attention, AUTO } from './graph-plan.js';
 import { ServerClock, queue, settled, OUTCOME_WORD } from './approvals.js';
 import { Dock } from './dock.js';
 import { NewSession } from './newsession.js';
-import { tiles, timeLine, rightNow, skillsOf, delegatedBy, reportOf, TABS as INSPECTOR_TABS, TAB_WORD } from './inspect.js';
+import { Timeline } from './timeline.js';
+import { fmtDuration, fmtTokens, tiles, timeLine, rightNow, skillsOf, delegatedBy, reportOf, TABS as INSPECTOR_TABS, TAB_WORD } from './inspect.js';
 
 const FLEET_POLL_MS = 2000;
 const SESSION_POLL_MS = 5000;
@@ -60,6 +61,14 @@ const el = {
   tbZoom: document.getElementById('tb-zoom'),
   tbZoomIn: document.getElementById('tb-zoom-in'),
   tbFit: document.getElementById('tb-fit'),
+  canvasEl: document.getElementById('canvas'),
+  timeline: document.getElementById('timeline'),
+  viewGraph: document.getElementById('view-graph'),
+  viewTimeline: document.getElementById('view-timeline'),
+  tbFollow: document.getElementById('tb-follow'),
+  tbRangeOut: document.getElementById('tb-range-out'),
+  tbRange: document.getElementById('tb-range'),
+  tbRangeIn: document.getElementById('tb-range-in'),
   menu: document.getElementById('menu'),
 };
 
@@ -245,7 +254,7 @@ const chat = new Chat(el.chat, {
     // A delegation card goes to its agent: the graph selects it, and the inspector takes the panel.
     onAgent: (pane, agentId) => {
       if (pane.id !== current) selectSession(pane.id);
-      canvas.focus(agentId);
+      goTo(agentId);
     },
     // The reminder in the conversation leads to the dock, where the answer is given.
     onReview: () => el.dock.focus(),
@@ -401,6 +410,8 @@ const tbValue = {
 
 function paintToolbar(st) {
   tbValue.group.textContent = GROUP_WORD[st.group] ?? st.group;
+  // The grouping is one choice for both views: the Timeline's rows follow the graph's.
+  timeline.setGroup(st.group);
   tbValue.density.textContent = DENSITY_WORD[st.density] ?? st.density;
   // Auto is a choice the canvas makes; say which one it made, and why.
   el.tbDensity.title = st.density === 'auto' && st.drawnAs
@@ -413,6 +424,22 @@ function paintToolbar(st) {
   el.tbExpand.disabled = st.groups === 0;
   el.tbFold.disabled = st.groups === 0;
 }
+
+// Made before the canvas: the canvas reports its state while it is being built, and the toolbar passes the
+// grouping on to the Timeline.
+const timeline = new Timeline(el.timeline, {
+  tileOf: (n) => canvas.tileFor(n),
+  statusOf: (n) => canvas.statusOf(n),
+  detailOf: (n) => detailCache.get(`${n.id}:${n.status ?? '?'}`) ?? null,
+  // The drawer's "last error" is read from the agent's transcript, the same reading the inspector uses.
+  onSelect: (n) => { if (n?.kind === 'agent') loadDetail(n.id, n.status); },
+  onShowOnGraph: (n) => { setView('graph', n.id); },
+  onOpenConversation: () => { if (current) openConversation(current); },
+  onChange: paintTimelineBar,
+  fmt: { duration: fmtDuration, tokens: fmtTokens },
+});
+// Bars are placed on the server's clock: the timestamps they are drawn from are that machine's.
+timeline.now = () => serverNow();
 
 const canvas = new Canvas(document.getElementById('canvas'), {
   onSelect: showInspector,
@@ -455,6 +482,67 @@ el.tbZoomOut.addEventListener('click', () => canvas.zoomBy(1 / 1.2));
 el.tbZoomIn.addEventListener('click', () => canvas.zoomBy(1.2));
 el.tbZoom.addEventListener('click', () => canvas.zoomTo(1));
 el.tbFit.addEventListener('click', () => canvas.fit());
+
+/* --------------------------------------------------------------- views
+   The same session two ways: where its agents are, and when they were. The choice of what is selected, how it is
+   grouped and what is shown is one choice, kept across the switch. */
+
+let view = 'graph';
+
+function paintTimelineBar(st) {
+  el.tbRange.textContent = st.range;
+  el.tbRange.setAttribute('aria-label', `Time shown: ${st.range === 'all' ? 'the whole session' : st.range}`);
+  el.tbRangeIn.disabled = !st.canZoomIn;
+  el.tbRangeOut.disabled = !st.canZoomOut;
+  // The range is in the buttons' own names too: on a narrow toolbar the label between them is not shown.
+  el.tbRangeIn.setAttribute('aria-label', `Show less time (now ${st.range})`);
+  el.tbRangeOut.setAttribute('aria-label', `Show more time (now ${st.range})`);
+  el.tbFollow.setAttribute('aria-checked', String(st.follow));
+  // There is no "now" to follow in a session that has ended.
+  el.tbFollow.disabled = !st.live;
+  el.tbFollow.title = st.live ? 'Keep the view at now' : 'This session has ended: there is no now to follow';
+}
+
+/**
+ * @param select an agent to select in the view being opened; without one, what was selected stays selected
+ */
+function setView(next, select = null) {
+  const was = view;
+  view = next === 'timeline' ? 'timeline' : 'graph';
+  store.set('crewforth-studio-view', view);
+  const carried = select ?? (was === 'timeline' ? timeline.selected : canvas.selected) ?? null;
+  el.canvasEl.hidden = view !== 'graph';
+  el.timeline.hidden = view !== 'timeline';
+  el.viewGraph.setAttribute('aria-selected', String(view === 'graph'));
+  el.viewTimeline.setAttribute('aria-selected', String(view === 'timeline'));
+  for (const c of document.querySelectorAll('.toolbar [data-view]')) c.hidden = c.dataset.view !== view;
+
+  if (view === 'timeline') {
+    // The drawer shows the selection here; the inspector gives the panel back.
+    if (right === 'inspector') setRight(restRight());
+    timeline.select(carried && canvas.nodes.get(carried)?.kind === 'agent' ? carried : null);
+    paintTimelineBar(timeline.state());
+    const n = timeline.selected ? canvas.nodes.get(timeline.selected) : null;
+    if (n) loadDetail(n.id, n.status);
+  } else {
+    canvas.fitIfUntouched();
+    if (carried && canvas.nodes.has(carried)) canvas.focus(carried);
+  }
+}
+/** Bring an agent forward in whichever view is open: its card on the graph, or its row on the Timeline. */
+function goTo(agentId) {
+  if (view !== 'timeline') { canvas.focus(agentId); return; }
+  timeline.select(agentId);
+  const n = canvas.nodes.get(agentId);
+  if (n?.kind === 'agent') loadDetail(n.id, n.status);
+}
+el.viewGraph.addEventListener('click', () => setView('graph'));
+el.viewTimeline.addEventListener('click', () => setView('timeline'));
+el.tbFollow.addEventListener('click', () => timeline.setFollow(el.tbFollow.getAttribute('aria-checked') !== 'true'));
+// "Out" is more time on screen, "in" is less: the same way round as the graph's zoom.
+el.tbRangeOut.addEventListener('click', () => timeline.zoom(1));
+el.tbRangeIn.addEventListener('click', () => timeline.zoom(-1));
+if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => requestAnimationFrame(() => timeline.render())).observe(el.timeline);
 
 getJson('/api/palette')
   .then((p) => {
@@ -507,6 +595,7 @@ async function loadDetail(agentId, status) {
     detailCache.set(key, { measured: false, reason: e.message, transient: true });
   }
   if (inspectorNode?.id === agentId) paintInspector();
+  if (timeline.selected === agentId) timeline.paintDrawer();
 }
 
 function metaRows(n) {
@@ -1364,6 +1453,7 @@ function renderFleet(data) {
   // so does the pill on the session's own card.
   paintProjects();
   if (current) canvas.setSessionState(sessionStateNow());
+  timeline.setLive(sessionIsLive());
 }
 
 function paintLive() {
@@ -1595,6 +1685,7 @@ function setStatusFilter(status, repaint = true) {
   show = 'all';
   tbValue.show.textContent = status ? 'One status' : SHOW.all.word;
   canvas.setFilter(status ? [status] : null);
+  timeline.setFilter(status ? [status] : null);
   if (repaint) paintSummary(lastStats, lastStats?.malformed ? [`${lastStats.malformed} malformed`] : []);
 }
 
@@ -1604,6 +1695,7 @@ function setShow(key) {
   statusFilter = null;
   tbValue.show.textContent = SHOW[show].word;
   canvas.setFilter(SHOW[show].statuses, { keepWaiting: Boolean(SHOW[show].waiting) });
+  timeline.setFilter(SHOW[show].statuses, { keepWaiting: Boolean(SHOW[show].waiting) });
   paintSummary(lastStats, lastStats?.malformed ? [`${lastStats.malformed} malformed`] : []);
 }
 
@@ -1626,7 +1718,7 @@ function paintAttention(nodes) {
     const b = node('button', 'att');
     b.type = 'button';
     b.append(dot(a.tone), node('span', 'att-name', a.name), node('span', 'att-says', a.says));
-    b.addEventListener('click', () => { attentionAt = attentionIds.indexOf(a.id); canvas.focus(a.id); });
+    b.addEventListener('click', () => { attentionAt = attentionIds.indexOf(a.id); goTo(a.id); });
     return b;
   });
   if (list.length > MAX) {
@@ -1637,14 +1729,14 @@ function paintAttention(nodes) {
   }
   el.attention.replaceChildren(
     node('span', 'attention-label', 'Needs attention'), ...chips,
-    node('span', 'row-fill'), node('span', 'sub attention-hint', 'Click one to focus it on the canvas'),
+    node('span', 'row-fill'), node('span', 'sub attention-hint', 'Click one to go to it'),
   );
 }
 
 function stepAttention(by) {
   if (!attentionIds.length) return;
   attentionAt = (attentionAt + by + attentionIds.length) % attentionIds.length;
-  canvas.focus(attentionIds[attentionAt]);
+  goTo(attentionIds[attentionAt]);
 }
 
 // Selecting a session points the graph at it. It does NOT open the
@@ -1656,6 +1748,9 @@ function selectSession(sessionId) {
   if (current === sessionId) return;
   current = sessionId;
   canvas.setSession(sessionId);
+  timeline.setSession(sessionId);
+  timeline.setFilter(null);
+  timeline.setOwned(owned.get(sessionId) ?? null);
   statusFilter = null;
   show = 'all';
   tbValue.show.textContent = SHOW.all.word;
@@ -1685,6 +1780,7 @@ function selectSession(sessionId) {
     const g = JSON.parse(e.data);
     canvas.render(g);
     lastNodes = g.nodes;
+    timeline.setNodes(g.nodes);
     paintAttention(g.nodes);
     // The conversation's delegation cards and its context figure are the graph's.
     chat.refresh(sessionId, { contextTokens: g.nodes.find((n) => n.kind === 'session')?.tokens ?? null });
@@ -1716,6 +1812,7 @@ function selectSession(sessionId) {
     try { reason = JSON.parse(e.data).reason ?? ''; } catch { /* keep default */ }
     paintSummary(null);
     paintAttention(null);
+    timeline.setNodes([]);
     el.foot.textContent = reason;
     canvas.render({ nodes: [], edges: [] });
   });
@@ -1755,7 +1852,7 @@ function paintPulse() {
   pulse.detail.textContent = l.detail ? `· ${l.detail}` : '';
 }
 paintPulse();
-setInterval(() => { paintPulse(); dock.tick(); }, 1000);
+setInterval(() => { paintPulse(); dock.tick(); timeline.tick(); }, 1000);
 
 /* -------------------------------------------------------------- home, keys */
 
@@ -1781,6 +1878,7 @@ document.addEventListener('keydown', (e) => {
       return;
     }
     if (newPanel.isOpen) { newPanel.close(); return; }
+    if (view === 'timeline' && timeline.selected) { timeline.select(null); return; }
     // Close the inspector and let go of the selection.
     if (!el.inspector.hidden) { canvas.clearSelection(); showInspector(null); }
     return;
@@ -1830,10 +1928,19 @@ const dock = new Dock(el.dock, {
   onDecide: decideRequest,
   onLocate: (item) => {
     if (item.sessionId !== current) selectSession(item.sessionId);
-    if (item.agentId) canvas.focus(item.agentId);
+    if (item.agentId) goTo(item.agentId);
   },
   where: (item) => (item.sessionId === current ? null : item.sessionName),
 });
+
+/** Is the session being looked at still going? The fleet says so, and so does a session started here. */
+function sessionIsLive() {
+  if (!current) return false;
+  const mine = owned.get(current);
+  if (mine && ['starting', 'idle', 'working'].includes(mine.state)) return true;
+  const st = sessionStatus(current, fleetData);
+  return st.known && st.key !== 'ended';
+}
 
 /** The session card's state: waiting on the viewer outranks what the fleet says, as it does for an agent. */
 function sessionStateNow() {
@@ -1849,6 +1956,7 @@ function paintWaiting(force = false) {
   if (!force && sig === waitingSig) return;
   waitingSig = sig;
   canvas.setWaiting(here.filter((r) => r.agentId).map((r) => r.agentId));
+  timeline.setWaiting(here.filter((r) => r.agentId).map((r) => r.agentId));
   if (current) canvas.setSessionState(sessionStateNow());
   if (lastNodes) paintAttention(lastNodes);
   if (inspectorNode) paintInspector();
@@ -1874,6 +1982,10 @@ function paintApprovals() {
   const was = el.dock.hidden;
   dock.render(next);
   chat.setWaiting(next);
+  // The Timeline's waiting periods are the server's record of this session's approvals; a session Studio did
+  // not start has none, and the Timeline says so.
+  timeline.setOwned(current ? owned.get(current) ?? null : null);
+  timeline.setLive(sessionIsLive());
   measureDock();
   if (was !== el.dock.hidden) canvas.fitIfUntouched();
   paintWaiting();
@@ -1961,6 +2073,7 @@ async function pollSessions() {
 }
 
 setTab(store.get('crewforth-studio-nav-tab') ?? 'projects');
+setView(store.get('crewforth-studio-view') ?? 'graph');
 pollFleet(); pollSessions(); pollOwned();
 setInterval(pollFleet, FLEET_POLL_MS);
 setInterval(pollOwned, FLEET_POLL_MS);

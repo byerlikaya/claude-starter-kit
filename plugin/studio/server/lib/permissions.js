@@ -160,6 +160,54 @@ export function revoke(sessionId, tool) {
   }
 }
 
+// How many answered requests a session remembers. In memory only: a server that restarts starts the record
+// again, and the page says from when the record runs.
+export const APPROVAL_LOG_MAX = 200;
+// A request that vanished this close to the hook's own deadline, with no answer recorded, timed out. The hook
+// polls and so does the watcher; this is their combined slack.
+const TIMEOUT_SLACK_MS = 2500;
+const VERDICT_OUTCOME = { allow: 'allowed', always: 'allowed-session', deny: 'denied' };
+
+/**
+ * Fold the requests waiting now into a session's record of approvals.
+ *
+ * A request not seen before is opened with the moment it was asked. One that was open and is no longer waiting
+ * is closed with the moment that was noticed and with what became of it: the answer the panel recorded, a
+ * timeout if nobody answered and the hook's deadline had come, and otherwise "unanswered" — the hook went away
+ * without one, as it does when the session is stopped. Nothing is guessed into an answer.
+ *
+ * @param log        the record so far, oldest first; changed in place and returned
+ * @param pending    what `pending()` returns now
+ * @param decisions  Map toolUseId -> verdict the panel recorded
+ */
+export function logApprovals(log, pending, decisions, now, waitSeconds) {
+  const waiting = new Set(pending.map((r) => r.toolUseId));
+  const open = new Set(log.filter((e) => e.endedAt === null).map((e) => e.toolUseId));
+  for (const e of log) {
+    if (e.endedAt !== null || waiting.has(e.toolUseId)) continue;
+    e.endedAt = now;
+    const verdict = decisions?.get(e.toolUseId);
+    if (verdict && VERDICT_OUTCOME[verdict]) e.outcome = VERDICT_OUTCOME[verdict];
+    else if (typeof waitSeconds === 'number' && now >= e.askedAt + waitSeconds * 1000 - TIMEOUT_SLACK_MS) e.outcome = 'timed-out';
+    else e.outcome = 'unanswered';
+    decisions?.delete(e.toolUseId);
+  }
+  for (const r of pending) {
+    if (open.has(r.toolUseId)) continue;
+    log.push({
+      toolUseId: r.toolUseId, toolName: r.toolName, agentId: r.agentId ?? null, agentType: r.agentType ?? null,
+      askedAt: r.askedAt, endedAt: null, outcome: null,
+    });
+  }
+  // The oldest closed entries go first; a request still waiting is never dropped.
+  while (log.length > APPROVAL_LOG_MAX) {
+    const i = log.findIndex((e) => e.endedAt !== null);
+    if (i === -1) break;
+    log.splice(i, 1);
+  }
+  return log;
+}
+
 /** Watch a session's spool and call back whenever the pending set changes. */
 export function watch(sessionId, onChange) {
   let last = '';

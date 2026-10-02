@@ -436,7 +436,9 @@ async function handle(req, res) {
 
     const body = await readBody(req);
     if (!body) return sendJson(res, 400, { ok: false, reason: 'body was not JSON' });
-    const out = decide(s.id, decodeURIComponent(permMatch[2]), body.verdict);
+    const toolUseId = decodeURIComponent(permMatch[2]);
+    const out = decide(s.id, toolUseId, body.verdict);
+    if (out.ok) s.noteDecision(toolUseId, body.verdict);
     return sendJson(res, out.ok ? 200 : 400, out);
   }
 
