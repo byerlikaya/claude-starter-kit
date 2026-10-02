@@ -7319,7 +7319,7 @@ sec "== 12g) a git commit is read the way the shell and git read it: the forms t
 # skipped by design, so only the §4.5 rows are refused there. `\x27` is a single quote, `\n` JSON's newline, @O@
 # another repository, @W@ this one.
 if [ "$UNITS" != 1 ]; then
-  skip scope "commit forms: the unit cases run in the source checkout (scope=install)" 7
+  skip scope "commit forms: the unit cases run in the source checkout (scope=install)" 8
 else
 _CF="$(mktemp -d)"; _CF="$(cd -P "$_CF" && pwd)"; _cfw="$_CF/w"; _cfo="$_CF/o"; _cfq="'"; _cf_badjson=""
 _cf_new(){ rm -rf "$_CF/w" "$_CF/o"
@@ -7527,6 +7527,37 @@ if [ "$_cfn" != 3 ]; then fail "FIXTURE: the kept-over-blocks table has $_cfn ro
 elif [ -z "$_cfbad" ]; then pass "3 known over-blocks of the older scan are unchanged (-Skeyid, -uno, a flag after a comment sign): nothing was loosened"
 else fail "the older scan's verdict changed on:$_cfbad"; fi
 
+# ---- the same commit, written for PowerShell --------------------------------------------------------------------
+# Measured on PowerShell 5.1 (Windows 11, 3.1.0 field run): each of the first seven committed with the hooks skipped,
+# or in another repository, while this gate saw no commit at all or only asked. A splat, a command or a subcommand
+# held in a variable, Start-Process and a built-up Invoke-Expression put the words `git` and `commit` apart; $env:
+# is how that shell sets GIT_DIR.
+CWT='2 2 @@ $a = @(\x27commit\x27,\x27-n\x27,\x27-m\x27,\x27x\x27); git @a
+2 2 @@ Start-Process git -ArgumentList \x27commit\x27,\x27-n\x27,\x27-m\x27,\x27x\x27 -NoNewWindow -Wait
+2 2 @@ $g = \x27git\x27; & $g commit -n -m \x27x\x27
+2 2 @@ $c = \x27commit\x27; git $c -n -m \x27x\x27
+2 2 @@ Invoke-Expression (\x27git commit -\x27 + \x27n -m x\x27)
+2 2 @@ $env:GIT_DIR=\x27..\\other\\.git\x27; git commit -m \x27x\x27
+2 2 @@ $env:GIT_INDEX_FILE=\x27.git\\i2\x27; git commit -m \x27x\x27
+2 2 @@ & git commit -n -m \x27x\x27
+2 2 @@ git.exe commit -n -m \x27x\x27
+2 2 @@ iex \"git commit -n -m \x27x\x27\"
+2 2 @@ cmd /c \"git commit -n -m x\"
+2 0/allow @@ Set-Location ..\\other; git commit -m \x27x\x27
+0/ask 0/allow @@ git commit -m \x27x\x27
+0/ask 0/allow @@ git add a.txt; git commit -m \x27feat: x\x27
+0 0 @@ $a = @(\x27status\x27,\x27--short\x27); git @a
+0 0 @@ Start-Process git -ArgumentList \x27log\x27,\x27--oneline\x27 -NoNewWindow -Wait'
+_cfn=0; _cfbad=""
+while IFS= read -r _cl; do [ -z "$_cl" ] && continue
+  _cw="${_cl%% @@ *}"; _cc="${_cl#* @@ }"; _cc="${_cc//\\x27/$_cfq}"; _cfn=$((_cfn+1))
+  _cf_run default "$_cc" 0 PowerShell; _cd="$_cfr${_cfd:+/$_cfd}"; _cf_run default "$_cc" 1 PowerShell; _cg="$_cfr${_cfd:+/$_cfd}"
+  [ "$_cd $_cg" = "$_cw" ] || _cfbad="$_cfbad [$_cc → $_cd $_cg, want $_cw]"
+done <<< "$CWT"
+if [ "$_cfn" != 16 ]; then fail "FIXTURE: the PowerShell commit-forms table has $_cfn rows, not 16"
+elif [ -z "$_cfbad" ]; then pass "through the PowerShell tool: 12 commit forms are refused (a splat, a command or subcommand in a variable, Start-Process, a built-up Invoke-Expression, \$env:GIT_DIR, -n however git is called, a commit after Set-Location), 4 everyday calls are judged as before (16 rows)"
+else fail "PowerShell commit forms:$_cfbad"; fi
+
 # ---- a diff that prints nothing is still a different diff -------------------------------------------------------
 _cf_new; _cfbad=""
 ( cd "$_cfw" && git config diff.external true ) >/dev/null 2>&1; _cf_review
@@ -7585,14 +7616,14 @@ while IFS= read -r _cl; do [ -z "$_cl" ] && continue
 done <<< "$CGT"
 _cfwr(){ printf '{"cwd":"%s","permission_mode":"auto","tool_name":"%s","tool_input":{"file_path":"%s","content":"x"}}' "$_cfw" "$1" "$2" \
   | ( cd "$_cfw" && CREW_GATE_LOG=/dev/null bash "$HOOKS/guard-write.sh" >/dev/null 2>"$_CF/err" ); _cfr=$?; }
-for _cf in "$_cfw/.git/config" ".git/config" "$_cfw/.git/config.worktree" "$_cfw/.git/worktrees/wt/config.worktree" "$_cfw/.git/modules/sub/config" "$_cfw/.GIT/Config" "$_cfw/.claude/git-shim/pre-commit"; do
+for _cf in "$_cfw/.git/config" ".git/config" "$_cfw/.git/config.worktree" "$_cfw/.git/worktrees/wt/config.worktree" "$_cfw/.git/modules/sub/config" "$_cfw/.GIT/Config" "$_cfw/.claude/git-shim/pre-commit" "$_cfw/.claude/git-shim"; do
   _cfn=$((_cfn+1)); _cfwr Write "$_cf"; [ "$_cfr" = 2 ] || _cfbad="$_cfbad [Write $_cf → $_cfr, want 2]"
 done
 for _cf in "$_cfw/.github/config.yml" "$_cfw/config/app.json" "$_cfw/src/git/config.ts" "$_cfw/.gitconfig.sample"; do
   _cfn=$((_cfn+1)); _cfwr Write "$_cf"; [ "$_cfr" = 0 ] || _cfbad="$_cfbad [Write $_cf → $_cfr, want 0]"
 done
-if [ "$_cfn" != 50 ]; then fail "FIXTURE: the git-config table ran $_cfn cases, not 50"
-elif [ -z "$_cfbad" ]; then pass "core.hooksPath cannot be reached by the side doors: 26 shell commands (a write to .git/config, a worktree's or a submodule's config and the git shim, in both shells; git config --edit, include.path / includeIf, also as -c; a quoted -c core.hooksPath; GIT_CONFIG_ variables; an abbreviated --no-verify on push and merge) and 7 Write calls are refused, 13 reads and ordinary settings and 4 look-alike files pass (50 cases)"
+if [ "$_cfn" != 51 ]; then fail "FIXTURE: the git-config table ran $_cfn cases, not 51"
+elif [ -z "$_cfbad" ]; then pass "core.hooksPath cannot be reached by the side doors: 26 shell commands (a write to .git/config, a worktree's or a submodule's config and the git shim, in both shells; git config --edit, include.path / includeIf, also as -c; a quoted -c core.hooksPath; GIT_CONFIG_ variables; an abbreviated --no-verify on push and merge) and 8 Write calls are refused, 13 reads and ordinary settings and 4 look-alike files pass (51 cases)"
 else fail "git config side doors:$_cfbad"; fi
 if [ -n "$JSONQ" ]; then
   [ -z "$_cf_badjson" ] && pass "every row of the commit-form tables reached the hook as valid JSON (oracle: $JSONQ)" \

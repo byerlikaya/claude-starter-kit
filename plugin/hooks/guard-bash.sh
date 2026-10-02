@@ -1773,17 +1773,17 @@ _c47_val(){  # $1 = the raw token an option takes as its value: the same questio
 }
 _c47_scan(){  # $1 = command. Sets: _C47_N (commits read) _C47_WT _C47_NV _C47_AM _C47_UNK _C47_EXP _C47_ENV _C47_SH _C47_CFG
               #                   _C47_CD (0 none · 1 one plain target, in _C47_CDT · 2 a target that cannot be read)
-  local tok ph=cmd unglob=0 body c v m i raw rcd=0 rcdt="" envf=0 wrapped=0 novars=0
+  local tok ph=cmd unglob=0 body c v m i raw rcd=0 rcdt="" envf=0 wrapped=0 novars=0 vc=0
   _C47_VARS=" "
   _C47_SHRE='(^|[^A-Za-z0-9_-])git[[:space:]]+(-[^[:space:]]+[[:space:]]+)*commit([[:space:]]|$)'
-  _C47_N=0; _C47_WT=""; _C47_NV=""; _C47_AM=""; _C47_UNK=""; _C47_EXP=""; _C47_ENV=""; _C47_SH=""; _C47_CFG=""; _C47_CD=0; _C47_CDT=""
+  _C47_N=0; _C47_WT=""; _C47_NV=""; _C47_AM=""; _C47_UNK=""; _C47_EXP=""; _C47_ENV=""; _C47_SH=""; _C47_CFG=""; _C47_UNR=""; _C47_CD=0; _C47_CDT=""
   _c47_read "$1"; m="$_C47_M"
   case "$-" in *f*) ;; *) unglob=1; set -f ;; esac
   set -- $_C47_T
   [ "$unglob" = 1 ] && set +f
   while [ $# -gt 0 ]; do
     raw="$1"; shift
-    [ "$raw" = ";" ] && { ph=cmd; wrapped=0; continue; }
+    [ "$raw" = ";" ] && { ph=cmd; wrapped=0; vc=0; continue; }
     _WAT=0
     case "$raw" in "$m"*|*"$m"*) _c47_w "$raw" ;; *) _W="$raw"; _WQ=0; case "$raw" in *[\$\*\?\[\{]*) _WX=1 ;; *) _WX=0 ;; esac ;; esac
     tok="$_W"
@@ -1791,7 +1791,8 @@ _c47_scan(){  # $1 = command. Sets: _C47_N (commits read) _C47_WT _C47_NV _C47_A
     # wherever in the call they are set or exported: in front of the commit, in an earlier command, as an argument
     # of export or env, quoted or not. HOME and XDG_CONFIG_HOME are among them: they decide which global
     # configuration git reads. GIT_AUTHOR_* / GIT_COMMITTER_* only describe the commit and are let through.
-    case "$tok" in
+    v="$tok"; case "$v" in '$'[Ee][Nn][Vv]:*) v="${v:5}" ;; esac                     # PowerShell: $env:GIT_DIR='…'
+    case "$v" in
       GIT_DIR|GIT_WORK_TREE|GIT_INDEX_FILE|GIT_COMMON_DIR|GIT_OBJECT_DIRECTORY|GIT_ALTERNATE_OBJECT_DIRECTORIES|GIT_NAMESPACE|GIT_EXEC_PATH|GIT_CONFIG*|\
       HOME=*|XDG_CONFIG_HOME=*|\
       GIT_DIR=*|GIT_WORK_TREE=*|GIT_INDEX_FILE=*|GIT_COMMON_DIR=*|GIT_OBJECT_DIRECTORY=*|GIT_ALTERNATE_OBJECT_DIRECTORIES=*|GIT_NAMESPACE=*|GIT_EXEC_PATH=*|GIT_CONFIG*=*)
@@ -1801,6 +1802,8 @@ _c47_scan(){  # $1 = command. Sets: _C47_N (commits read) _C47_WT _C47_NV _C47_A
       skip) # Not a command this table knows. A bare `git` further along the same command is still git (timeout 10 git …,
             # xargs git …, nice git …), so the reading goes on from there.
             case "$tok" in git|git.exe|*/git|*/git.exe) [ "$_WX" = 0 ] && ph=git ;; esac
+            # The command word was a variable (`$g commit -n`, PowerShell's `& $g commit -n`): what runs cannot be read.
+            [ "$vc" = 1 ] && [ "$tok" = commit ] && _C47_UNR="a command held in a variable, followed by commit"
             continue ;;
       cmd)
         case "$tok" in
@@ -1829,17 +1832,27 @@ _c47_scan(){  # $1 = command. Sets: _C47_N (commits read) _C47_WT _C47_NV _C47_A
             case "$v" in ''|\;) v="" ;; *) _c47_w "$v"; v="$_W"; [ "$_WX" = 1 ] && v=""; [ "$v" = - ] && v="" ;; esac
             if [ -n "$v" ] && [ "$rcd" = 0 ]; then rcd=1; rcdt="$v"; else rcd=2; fi
             ph=skip ;;
+          Start-Process|saps|start)
+            # PowerShell: `Start-Process git -ArgumentList 'commit','-n','-m','x'` (measured: committed, hooks skipped).
+            c=0
+            for v in "$@"; do
+              [ "$v" = ";" ] && break
+              _c47_w "$v"; case "$_W" in git|git.exe) c=1 ;; *commit*) [ "$c" = 1 ] && _C47_SH="$tok" ;; esac
+            done
+            ph=skip ;;
           bash|sh|zsh|dash|ksh|eval|xargs|trap|pwsh|powershell|powershell.exe|pwsh.exe|cmd|cmd.exe|Invoke-Expression|iex|*/bash|*/sh|*/zsh)
             # A shell handed a QUOTED script that holds a commit: `bash -c 'git commit -am x'`, `eval "git commit -a"`.
             # Its arguments cannot be read from here. `bash build.sh` beside a here-document that merely mentions
             # git commit is not that, and a first version that looked only at the word `bash` refused 40 such calls.
             for v in "$@"; do
-              [ "$v" = ";" ] && break
+              # Invoke-Expression takes an expression: `Invoke-Expression ('git commit -' + 'n -m x')` puts the script
+              # behind a parenthesis, which reads as a separator here, so for it the look goes on to the end of the call.
+              [ "$v" = ";" ] && { case "$tok" in Invoke-Expression|iex) continue ;; esac; break; }
               case "$v" in *"$m"*) _c47_w "$v"; [[ $_W =~ $_C47_SHRE ]] && _C47_SH="$tok" ;; esac
             done
             case "$tok" in eval|xargs) wrapped=1 ;; *) ph=skip ;; esac ;;                # after eval / xargs the command is read on
           git|git.exe|*/git|*/git.exe) ph=git ;;
-          *) ph=skip ;;
+          *) [ "$_WX" = 1 ] && vc=1; ph=skip ;;
         esac ;;
       env)
         case "$tok" in
@@ -1865,6 +1878,9 @@ _c47_scan(){  # $1 = command. Sets: _C47_N (commits read) _C47_WT _C47_NV _C47_A
             fi ;;
           -C|--git-dir|--work-tree|--namespace|--exec-path|--super-prefix) shift ;;
           -*) ;;
+          @*|*\$*) # `git $c -n` after c=commit, PowerShell's splat `git @a` after $a = @('commit','-n'): the subcommand
+                    # is filled in by the shell. Measured on PowerShell 5.1: both committed with the hooks skipped.
+                    [ "$_WQ" = 0 ] && _C47_UNR="a git subcommand the shell fills in ($raw)"; ph=skip ;;
           commit) ph=commit; _C47_N=$((_C47_N+1))
                   if [ "$rcd" != 0 ] && [ "$_C47_CD" = 0 ]; then _C47_CD=$rcd; _C47_CDT="$rcdt"; fi ;;
           *) ph=skip ;;
@@ -1932,7 +1948,8 @@ if git_has "$CMD" 'commit'; then _c47_seen=1; fi
 _c47_try=0
 case "$CMD" in *[Mm][Ii][Tt]*)   # with quotes, backslashes and joined lines taken out: `g\it`, `com\<newline>mit`
   _t="${CMD//\\$'\n'/}"; _t="${_t//\\/}"; _t="${_t//\"/}"; _t="${_t//\'/}"
-  case "$_t" in *[Gg][Ii][Tt]*[Cc][Oo][Mm][Mm][Ii][Tt]*) _c47_try=1 ;; esac ;;
+  # Both words, in either order: `$a = @('commit','-n'); git @a` names commit first.
+  case "$_t" in *[Gg][Ii][Tt]*) case "$_t" in *[Cc][Oo][Mm][Mm][Ii][Tt]*) _c47_try=1 ;; esac ;; esac ;;
 esac
 if [ "$_c47_seen" = 1 ] || [ "$_c47_try" = 1 ]; then
   _c47_scan "$CMD"
@@ -1974,6 +1991,12 @@ if [ "$_c47_seen" = 1 ] || [ "$_c47_try" = 1 ]; then
     _c47_no \
     "this call runs a git commit spelled so that it does not read as one (a quoted or escaped command word)." \
     "Write it plainly: git commit -m '…'"
+  fi
+  if [ -n "$_C47_UNR" ]; then
+    gatelog BLOCK 4.5 "git commit through a command the shell fills in"
+    _c47_no \
+    "this call holds the word commit and runs $_C47_UNR, so what git is asked to do cannot be read." \
+    "Write the command out: git commit -m '…'"
   fi
   if [ -n "$_C47_EXP" ]; then
     gatelog BLOCK 4.5 "git commit argument the shell expands"

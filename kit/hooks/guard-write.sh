@@ -464,7 +464,7 @@ _is_gate(){   # 0 = gate file; sets GATE_RULE and GATE_WHY
     # the hooks with a project's own chain. guard-bash.sh carries the same two for the shell.
     */.[Gg][Ii][Tt]/[Cc][Oo][Nn][Ff][Ii][Gg]|.[Gg][Ii][Tt]/[Cc][Oo][Nn][Ff][Ii][Gg]|*/.[Gg][Ii][Tt]/[Cc][Oo][Nn][Ff][Ii][Gg].[Ww][Oo][Rr][Kk][Tt][Rr][Ee][Ee]|.[Gg][Ii][Tt]/[Cc][Oo][Nn][Ff][Ii][Gg].[Ww][Oo][Rr][Kk][Tt][Rr][Ee][Ee]|*/.[Gg][Ii][Tt]/[Ww][Oo][Rr][Kk][Tt][Rr][Ee][Ee][Ss]/*/[Cc][Oo][Nn][Ff][Ii][Gg].[Ww][Oo][Rr][Kk][Tt][Rr][Ee][Ee]|*/.[Gg][Ii][Tt]/[Mm][Oo][Dd][Uu][Ll][Ee][Ss]/*/[Cc][Oo][Nn][Ff][Ii][Gg])
       GATE_RULE="git-config edit (Write/Edit tools)"; GATE_WHY="$WHY_GITCFG"; return 0 ;;
-    */.[Cc][Ll][Aa][Uu][Dd][Ee]/[Gg][Ii][Tt]-[Ss][Hh][Ii][Mm]/*|.[Cc][Ll][Aa][Uu][Dd][Ee]/[Gg][Ii][Tt]-[Ss][Hh][Ii][Mm]/*)
+    */.[Cc][Ll][Aa][Uu][Dd][Ee]/[Gg][Ii][Tt]-[Ss][Hh][Ii][Mm]/*|.[Cc][Ll][Aa][Uu][Dd][Ee]/[Gg][Ii][Tt]-[Ss][Hh][Ii][Mm]/*|*/.[Cc][Ll][Aa][Uu][Dd][Ee]/[Gg][Ii][Tt]-[Ss][Hh][Ii][Mm]|.[Cc][Ll][Aa][Uu][Dd][Ee]/[Gg][Ii][Tt]-[Ss][Hh][Ii][Mm])
       GATE_RULE="gate-file edit (Write/Edit tools)"; GATE_WHY="$WHY_SCRIPT"; return 0 ;;
     # The gates SOURCE eval/lib/crew-env.sh on every call, so it is part of them: overwritten with `exit 0`, every
     # rule stopped firing (3.0.1 review). Same file in the plugin edition, below.

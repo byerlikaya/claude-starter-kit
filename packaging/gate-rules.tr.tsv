@@ -58,3 +58,4 @@ git commit under a setting given in the command	komutta verilen bir ayar altınd
 git commit written so that it is not recognised	tanınmayacak biçimde yazılmış git commit
 git commit argument the shell expands	kabuğun genişlettiği bir git commit argümanı
 git config --edit (the configuration file opened for writing)	git config --edit (yapılandırma dosyası yazmak için açılır)
+git commit through a command the shell fills in	kabuğun doldurduğu bir komutla git commit
