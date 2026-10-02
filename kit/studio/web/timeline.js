@@ -5,6 +5,7 @@
 import {
   rows, groupsOf, extent, windowOf, place, ticks, clock, stepRange, waitNote, factsOf, xOf, RANGES, DEFAULT_RANGE,
 } from './timeline-plan.js';
+import { Press } from './press.js';
 
 
 function mk(tag, cls, text) {
@@ -28,6 +29,9 @@ export class Timeline {
   constructor(root, hooks = {}) {
     this.root = root;
     this.hooks = hooks;
+    // A redraw waits while a button is down on the view: the element under a press has to live to the release.
+    this.press = new Press(() => this.render());
+    if (typeof window !== 'undefined' && root.addEventListener) this.press.watch(root, window);
     this.nodes = [];
     this.session = null;
     this.group = 'run';
@@ -172,6 +176,7 @@ export class Timeline {
 
   render() {
     if (this.root.hidden) return;
+    if (this.press.defer()) return;
     const now = this.now();
     const agents = this.nodes.filter((n) => n.kind === 'agent');
     const ext = extent(this.nodes, now, this.live);
