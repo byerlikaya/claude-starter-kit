@@ -470,7 +470,8 @@ mark { background: color-mix(in srgb, var(--studio-accent) 30%, transparent); co
 /* Group, Density, Show: the name of the choice in the quiet colour, the choice itself in the text colour. */
 .tb-menu { color: var(--ink-dim); gap: 6px; }
 .tb-menu > span { color: var(--ink); }
-.tb-menu > .tb-more { color: inherit; }
+/* The menu's own name is one run of text: split into two flex items, the gap was added to the space between its words. */
+.tb-menu > .tb-name { color: inherit; }
 .tb-menu .ic { width: 12px; height: 12px; }
 .tb-zoom {
   width: 44px; height: 30px; padding: 0; flex: none;
@@ -672,7 +673,7 @@ button.tl-lab { cursor: pointer; }
 .tl-note[data-measured="false"] { color: var(--status-waiting); }
 /* The drawer: the chosen agent, under the rows. */
 .tl-drawer {
-  flex: none; display: flex; gap: var(--space-8); align-items: flex-start; max-height: 40%; overflow-y: auto;
+  flex: none; display: flex; flex-wrap: wrap; gap: var(--space-3) var(--space-8); align-items: flex-start; max-height: 40%; overflow-y: auto;
   padding: var(--space-4); border-top: 1px solid var(--line); background: var(--surface);
 }
 .tl-d-main { flex: 0 1 360px; min-width: 0; display: flex; flex-direction: column; gap: var(--space-2); }
@@ -680,14 +681,16 @@ button.tl-lab { cursor: pointer; }
 .tl-d-name { font-family: var(--font-mono); font-size: 14px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tl-d-task { font-size: 15px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
 .tl-d-facts { white-space: normal; }
-.tl-d-error { flex: 1 1 0; min-width: 0; }
+/* The error is text to be read: it takes a line of its own before it is squeezed. With `flex: 1 1 0` and no wrap
+   it was the one thing that gave way, and in a 720 px window it was 26 px wide: a letter to a line. */
+.tl-d-error { flex: 1 1 320px; min-width: 0; }
 .tl-d-errtext {
   margin: 0 0 var(--space-1); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm);
   background: var(--ground); border: 1px solid var(--line); max-height: 96px; overflow-y: auto;
   font-family: var(--font-mono); font-size: 12px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere;
   color: var(--status-fail);
 }
-.tl-d-acts { flex: none; display: flex; align-items: center; gap: var(--space-2); }
+.tl-d-acts { flex: none; display: flex; align-items: center; gap: var(--space-2); margin-left: auto; }
 
 /* ---- needs attention ----
    A strip that exists only while something needs someone. Each chip goes to its
