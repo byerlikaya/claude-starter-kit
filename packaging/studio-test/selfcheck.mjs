@@ -3905,8 +3905,13 @@ process.stdout.write('\n== §34 the List, the phone, and the states ==\n');
     /if \(now !== fitWords\) \{ fitWords = now; queueFit\(\); \}/.test(appJs),
     'the canvas reports on every frame of a zoom; four forced layouts a frame would be paid by the one thing that is already slow');
   check('the last step shortens "View options" to "View" on the button and keeps its name for a reader',
-    /id="tb-options"[^>]*aria-label="View options">View<span class="tb-more">&nbsp;options<\/span>/.test(indexHtml)
+    /id="tb-options"[^>]*aria-label="View options"><span class="tb-name">View<span class="tb-more"> options<\/span><\/span>/.test(indexHtml)
+    && /\.tb-menu > \.tb-name \{ color: inherit; \}/.test(css34)
     && /\.toolbar\[data-fit="3"\] \.tb-more \{ display: none; \}/.test(css34));
+
+  check('the drawer\'s last error takes a line of its own before it is squeezed to a letter a line',
+    /\.tl-drawer \{\s*flex: none; display: flex; flex-wrap: wrap;/.test(css34) && /\.tl-d-error \{ flex: 1 1 320px; min-width: 0; \}/.test(css34),
+    'measured in a 720 px window: the error text was 26 px wide beside the agent, and under 240 px in every window from 640 to 1240');
 
   /* -- 4. the List on a page ---------------------------------------------------- */
 

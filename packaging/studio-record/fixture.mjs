@@ -22,6 +22,7 @@ const MIN = 60_000;
 const iso = (ms) => new Date(ms).toISOString();
 const enc = (cwd) => cwd.replace(/[:\\/._]/g, '-');
 
+const FAILED = 'cat: plugin/.claude-plugin/plugin.json: No such file or directory';
 let uidN = 0;
 const uid = () => {
   uidN += 1;
@@ -83,7 +84,8 @@ function agentRecords({ cwd, sessionId, branch, prompt, calls, startMs, endMs, e
       message: { role: 'user', content: batch.map((c, k) => ({
         type: 'tool_result',
         tool_use_id: c.id,
-        content: c.result ?? 'ok',
+        // A call that failed says what failed: "ok" under "Last error" reads as a mistake in the picture.
+        content: errorsAt.includes(i + k) ? (c.error ?? FAILED) : (c.result ?? 'ok'),
         ...(errorsAt.includes(i + k) ? { is_error: true } : {}),
       })) } });
 

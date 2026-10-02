@@ -4,6 +4,49 @@
 #  (2) team board claim gate — a commit that names an item must be backed by a live claim held by YOU.
 # Skipping either requires an explicit request per §4.5 (git commit --no-verify).
 set -euo pipefail
+# ---- CREW-LOCALE -----------------------------------------------------------------------------------------
+# Everything this gate matches with runs in the C locale, whatever the session's own is. Under a Turkish locale
+# the letters i and I are not each other's other case (their partners are İ and ı), and every case-insensitive
+# match here is written in ASCII. Measured under tr_TR.UTF-8 with the locale left as it came:
+#   GNU grep 3.11 / bash 5.2 on Linux: `grep -i init` does not find INIT (-F, -E and plain alike);
+#     bash's nocasematch does not match GIT against git; `[A-Za-z]` in a regex does not hold I; awk's tolower
+#     turns GIT into gıt. The suite, run whole under that locale, went from 4 failures to 30: a recursive
+#     Remove-Item, a write to a gate file, `git config --remove-section core`, a read of a nested .env and a
+#     staged key all passed.
+#   GNU grep 3.0 in Git Bash on Windows: `grep -iF` with an ASCII pattern aborts (exit 134), and the pre-commit
+#     scan for private strings read that as "no match".
+#   macOS (BSD grep, bash 3.2): none of it; tr_TR.UTF-8 folds i and I the ASCII way there.
+# The cost: a letter outside ASCII has no other case in the C locale. The two git hooks that scan a user's own
+# words look a second time under the session's locale for a pattern that holds such a letter (_CREW_LOCALE).
+# Byte-identical in every gate; the suite pins it.
+_CREW_LOCALE="${LC_ALL:-${LC_CTYPE:-${LANG:-}}}"
+case "$_CREW_LOCALE" in C|POSIX) _CREW_LOCALE="" ;; esac
+export LC_ALL=C
+# ---- /CREW-LOCALE
+# ---- CREW-SCAN -------------------------------------------------------------------------------------------
+# One scan of one file for one pattern, with "could not look" kept apart from "nothing there". grep exits 1 for
+# no match and 2 or more when it could not answer: a pattern that does not compile, a file it could not read, or
+# grep itself dying (exit 134 for `grep -iF` under a Turkish locale in Git Bash, measured). Read as "no match",
+# that is a scan that passes whatever it was shown.
+#   0  a match          1  no match
+#   2  the pattern does not compile (grep says exactly 2, and says it again for empty input) - the caller warns:
+#      a typo in a hand-edited list must not lock every commit, and the other patterns still ran
+#   3  could not look   - the caller stops the commit
+# A pattern that holds a letter outside ASCII is looked for a second time under the session's own locale when
+# the first look finds nothing and the match ignores case: in the C locale such a letter has no other case.
+_crew_scan(){  # $1 = grep's flags after -q (iE, E, iF) · $2 = pattern · $3 = file
+  local r=0
+  grep -q"$1" -- "$2" "$3" 2>/dev/null || r=$?
+  if [ "$r" = 1 ] && [ -n "$_CREW_LOCALE" ]; then
+    case "$1" in *i*) case "$2" in *[!$'\t'\ -~]*) r=0; LC_ALL="$_CREW_LOCALE" grep -q"$1" -- "$2" "$3" 2>/dev/null || r=$? ;; esac ;; esac
+  fi
+  [ "$r" -ge 2 ] || return "$r"
+  case "$1" in *F*) return 3 ;; esac
+  r=0; grep -q"$1" -- "$2" /dev/null 2>/dev/null || r=$?
+  [ "$r" != 2 ] || return 2
+  return 3
+}
+# ---- /CREW-SCAN
 HERE="$(cd "$(dirname "$0")" && pwd)"
 BL="$HERE/trace-blocklist.txt"
 MSG_FILE="${1:-}"
@@ -36,8 +79,14 @@ while IFS= read -r pat || [ -n "$pat" ]; do
                                             # project, Git for Windows defaults core.autocrlf=true,
                                             # and this file is meant to be edited by hand.
   if [ -n "$AL" ] && grep -qxF -- "$pat" "$AL"; then continue; fi
-  if grep -iqE -- "$pat" "$MSG_FILE"; then
+  _gr=0; _crew_scan iE "$pat" "$MSG_FILE" || _gr=$?
+  if [ "$_gr" = 0 ]; then
     echo "TRACE-SCANNER (message): forbidden expression -> '$pat' (§4.1)"
+    HIT=1
+  elif [ "$_gr" = 2 ]; then
+    echo "TRACE-SCANNER (message): /$pat/ in $BL is not a valid regular expression, so it matches NOTHING. Every other pattern still ran; fix or remove this line."
+  elif [ "$_gr" -ge 3 ]; then
+    echo "TRACE-SCANNER (message): the look for '$pat' could not run, so the message is not known to be clean and the commit is stopped (§4.1)."
     HIT=1
   fi
 done < "$BL"
