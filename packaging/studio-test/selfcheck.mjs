@@ -3873,11 +3873,40 @@ process.stdout.write('\n== §34 the List, the phone, and the states ==\n');
     && /c\.hidden = !c\.dataset\.view\.split\(' '\)\.includes\(view\);/.test(appJs));
   const optBase = css34.indexOf('#tb-options { display: none; }');
   const optShown = css34.indexOf('#tb-options { display: inline-flex; }');
-  check('a narrow toolbar drops Group, Density, Show, Expand and Fold only together with a menu that holds them',
+  check('a toolbar that gives up Group, Density, Show, Expand and Fold gives them up only together with a menu that holds them',
     optBase > 0 && optShown > optBase
-    && /#tb-group, #tb-density, #tb-show, #tb-expand, #tb-fold \{ display: none; \}\s*#tb-options \{ display: inline-flex; \}/.test(css34)
+    && /\.toolbar:is\(\[data-fit="2"\], \[data-fit="3"\]\) :is\(#tb-group, #tb-density, #tb-show, #tb-expand, #tb-fold\) \{ display: none; \}\s*\.toolbar:is\(\[data-fit="2"\], \[data-fit="3"\]\) #tb-options \{ display: inline-flex; \}/.test(css34)
     && /el\.tbOptions\.addEventListener\('click'/.test(appJs) && /\{ label: 'Expand all', run: \(\) => canvas\.expandAll\(\) \}/.test(appJs),
     'the rule that hides the menu comes before the one that shows it: the other way round it never appeared');
+
+  // The steps were widths in the stylesheet (880, 760, 520 px), and the first was a guess that was 200 px low:
+  // with its words on, the Graph's toolbar ran out of its box and over the panel beside it. No width is assumed now.
+  const tf = await import(`../../kit/studio/web/toolbar-fit.js?t=${Date.now()}`);
+  const tried = [];
+  const upTo = (n) => (step) => { tried.push(step); return step < n; };
+  const fits0 = tf.fitLevel(upTo(0));
+  const fits2 = tf.fitLevel(upTo(2));
+  const order = tried.join(',');
+  const never = tf.fitLevel(() => true);
+  check('the toolbar takes the first step at which it fits, trying each from the first, and stops at the last when nothing fits',
+    fits0 === 0 && fits2 === 2 && order === '0,0,1,2' && never === tf.FIT_MAX && tf.FIT_MAX === 3,
+    `fits at once ${fits0} · fits at the third ${fits2} · tried ${order} · never fits ${never}`);
+  const box = { right: 1000, padRight: 12 };
+  check('running over is asked of the boxes and counts the row\'s own end padding, which scrollWidth may leave out',
+    tf.runsOver(box, [400, 988]) === false && tf.runsOver(box, [988.4]) === false
+    && tf.runsOver(box, [989]) === true && tf.runsOver(box, [995]) === true && tf.runsOver(box, []) === false,
+    'a button ending inside the padding is over: at 995 of 1000 scrollWidth would still call it a fit');
+  check('the toolbar is measured where it is: no width in the stylesheet decides a step, and the page fits it on a resize and on a change of view',
+    !/@container/.test(css34) && !/container-type/.test(css34)
+    && /const step = fitLevel\(\(n\) => \{\s*bar\.dataset\.fit = String\(n\);/.test(appJs) && /return runsOver\(/.test(appJs)
+    && /new ResizeObserver\(queueFit\)\.observe\(el\.toolbar\)/.test(appJs)
+    && /c\.hidden = !c\.dataset\.view\.split\(' '\)\.includes\(view\);\s*queueFit\(\);/.test(appJs));
+  check('a zoom frame rewrites the toolbar\'s words without changing them, and that is not a reason to measure again',
+    /if \(now !== fitWords\) \{ fitWords = now; queueFit\(\); \}/.test(appJs),
+    'the canvas reports on every frame of a zoom; four forced layouts a frame would be paid by the one thing that is already slow');
+  check('the last step shortens "View options" to "View" on the button and keeps its name for a reader',
+    /id="tb-options"[^>]*aria-label="View options">View<span class="tb-more">&nbsp;options<\/span>/.test(indexHtml)
+    && /\.toolbar\[data-fit="3"\] \.tb-more \{ display: none; \}/.test(css34));
 
   /* -- 4. the List on a page ---------------------------------------------------- */
 
