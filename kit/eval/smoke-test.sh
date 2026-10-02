@@ -6725,6 +6725,9 @@ _pa_new(){  # a fresh repository on branch feat/x with one remote, a staged chan
     && git config user.name t && git config core.hooksPath /dev/null && git checkout -q -b feat/x && echo one > a.txt && git add a.txt \
     && git commit -qm init && git remote add origin "$_PA/remote.git" && echo two >> a.txt && git add a.txt ) >/dev/null 2>&1
   _pa_review; }
+# The remote's address AS GIT SPELLS IT. On Git Bash git answers `C:/…` where the shell says `/c/…`, so an address is
+# never compared against a path this script built: it is asked back from git (_pa_url), and "elsewhere" is derived from it.
+_pa_url(){ ( cd "$_paw" && git remote get-url --push "${1:-origin}" 2>/dev/null ); }
 _pa_review(){ ( cd "$_paw" && mkdir -p .claude && printf '{"diff_oid":"%s","head":"%s"}\n' "$(git diff --cached | git hash-object --stdin)" "$(git rev-parse --verify --quiet HEAD)" > .claude/review-pass.json ); }
 _pa_rec="$_paw/.git/crewforth-approval"
 # $1 = mode, $2 = the prompt AS JSON TEXT (already escaped), $3 = cwd (default: the repository)
@@ -6828,11 +6831,11 @@ _pd="$( cd "$_paw" && git write-tree )"; _ph="$( cd "$_paw" && git rev-parse HEA
 _pts="$(sed -n 's/^ts=//p' "$_pa_rec" 2>/dev/null)"; _pnow="$(date +%s)"
 if [ "$(sed -n 's/^tree=//p' "$_pa_rec")" = "$_pd" ] && [ "$(sed -n 's/^head=//p' "$_pa_rec")" = "$_ph" ] \
    && [ "$(sed -n 's/^branch=//p' "$_pa_rec")" = feat/x ] && [ "$(sed -n 's/^remote=//p' "$_pa_rec")" = origin ] \
-   && [ "$(sed -n 's/^url=//p' "$_pa_rec")" = "$_PA/remote.git" ] && [ "$(sed -n 's/^sid=//p' "$_pa_rec")" = s ] \
+   && [ -n "$(_pa_url)" ] && [ "$(sed -n 's/^url=//p' "$_pa_rec")" = "$(_pa_url)" ] && [ "$(sed -n 's/^sid=//p' "$_pa_rec")" = s ] \
    && [ -n "$_pts" ] && [ $((_pnow - _pts)) -ge 0 ] && [ $((_pnow - _pts)) -le 60 ]; then
   pass "the record holds what git reports, not what the message says: the tree of what is staged, HEAD, the branch, its remote and the address it pushes to, the session and the time"
-else fail "the approval record does not hold git's own readings: $(tr '\n' ' ' < "$_pa_rec" 2>/dev/null) (want tree $_pd head $_ph feat/x origin $_PA/remote.git sid s, ts near $_pnow)"; fi
-case "$_pao1" in *'"systemMessage":"Crewforth: approval recorded - commit of what is staged now (tree '"${_pd:0:7}"') on HEAD '"${_ph:0:7}"', then push of that commit on feat/x to origin (origin pushes to '"$_PA"'/remote.git).'*'"additionalContext":"'*'git push origin feat/x'*)
+else fail "the approval record does not hold git's own readings: $(tr '\n' ' ' < "$_pa_rec" 2>/dev/null) (want tree $_pd head $_ph feat/x origin $(_pa_url) sid s, ts near $_pnow)"; fi
+case "$_pao1" in *'"systemMessage":"Crewforth: approval recorded - commit of what is staged now (tree '"${_pd:0:7}"') on HEAD '"${_ph:0:7}"', then push of that commit on feat/x to origin (origin pushes to '"$(_pa_url)"').'*'"additionalContext":"'*'git push origin feat/x'*)
     pass "the user is shown what was recorded (the tree, HEAD, the branch, the remote and the address it pushes to) and the model is told the exact push to run" ;;
   *) fail "the approval hook does not say what it recorded: $_pao1" ;; esac
 if [ -n "$JSONQ" ]; then
@@ -7146,12 +7149,17 @@ _pa_run auto 'git commit -m x' Bash s;     [ "$_par" = 0 ] || _pabad="$_pabad th
 [ -z "$_pabad" ] && pass "the approval belongs to the session it was given in: another session's commit is refused with that reason, and a prompt with no session id records nothing" \
                  || fail "approval and session:$_pabad"
 _pabad=""
-for _pcfg in "git config remote.origin.pushurl $_PA/elsewhere.git" "git remote set-url --push origin $_PA/elsewhere.git" "git config url.$_PA/elsewhere.git.pushInsteadOf $_PA/remote.git"; do
+for _pcfg in pushurl set-url pushInsteadOf; do
   _pa_new; ( cd "$_paw" && git commit -qm second ) >/dev/null 2>&1; _pa_say auto 'approve: push' >/dev/null
   _pa_run auto 'git push origin feat/x'; [ "$_par" = 0 ] || _pabad="$_pabad FIXTURE:refused-before-the-config-change"
-  ( cd "$_paw" && $_pcfg ) >/dev/null 2>&1
-  [ "$( cd "$_paw" && git remote get-url --push origin )" = "$_PA/elsewhere.git" ] || _pabad="$_pabad FIXTURE:[$_pcfg]-did-not-move-the-push-address"
-  _pa_run auto 'git push origin feat/x'; { [ "$_par" = 2 ] && grep -q 'does not push to the address' "$_PA/err"; } || _pabad="$_pabad [${_pcfg%% /*} → rc=$_par]"
+  _pu0="$(_pa_url)"; _pu1="${_pu0%remote.git}elsewhere.git"
+  case "$_pcfg" in
+    pushurl)       ( cd "$_paw" && git config remote.origin.pushurl "$_pu1" ) >/dev/null 2>&1 ;;
+    set-url)       ( cd "$_paw" && git remote set-url --push origin "$_pu1" ) >/dev/null 2>&1 ;;
+    pushInsteadOf) ( cd "$_paw" && git config "url.$_pu1.pushInsteadOf" "$_pu0" ) >/dev/null 2>&1 ;;
+  esac
+  { [ -n "$_pu0" ] && [ "$(_pa_url)" != "$_pu0" ]; } || _pabad="$_pabad FIXTURE:[$_pcfg]-did-not-move-the-push-address($_pu0)"
+  _pa_run auto 'git push origin feat/x'; { [ "$_par" = 2 ] && grep -q 'does not push to the address' "$_PA/err"; } || _pabad="$_pabad [$_pcfg → rc=$_par]"
 done
 # A push mapping sends `git push origin feat/x` to another branch of the SAME address (measured in review: feat/x -> main).
 _pa_new; ( cd "$_paw" && git commit -qm second ) >/dev/null 2>&1; _pa_say auto 'approve: push' >/dev/null
@@ -7161,9 +7169,12 @@ _pa_run auto 'git push origin feat/x'; { [ "$_par" = 2 ] && grep -q 'has a push 
                  || fail "push address binding:$_pabad"
 # A rewrite set BEFORE the approval is in what git reports, so the record and the push agree; what protects the user
 # is that the address is in front of them. And a secret in the URL stays out of the line, and out of the model's text.
-_pa_new; ( cd "$_paw" && git commit -qm second && git config "url.$_PA/elsewhere.git.insteadOf" "$_PA/remote.git" ) >/dev/null 2>&1
+_pabad=""
+_pa_new; ( cd "$_paw" && git commit -qm second ) >/dev/null 2>&1; _pu0="$(_pa_url)"; _pu1="${_pu0%remote.git}elsewhere.git"
+( cd "$_paw" && git config "url.$_pu1.insteadOf" "$_pu0" ) >/dev/null 2>&1
+{ [ -n "$_pu0" ] && [ "$(_pa_url)" != "$_pu0" ]; } || _pabad="$_pabad FIXTURE:insteadOf-did-not-move-the-push-address($_pu0)"
 _po="$(_pa_say auto 'approve: push')"
-case "$_po" in *'"systemMessage":"'*"(origin pushes to $_PA/elsewhere.git)"*) ;; *) _pabad="$_pabad rewritten-address-not-shown" ;; esac
+case "$_po" in *'"systemMessage":"'*"(origin pushes to $(_pa_url))"*) ;; *) _pabad="$_pabad rewritten-address-not-shown" ;; esac
 _pa_new; ( cd "$_paw" && git commit -qm second && git remote set-url origin 'https://bot:s3cr3t-token@example.com/team/repo.git' ) >/dev/null 2>&1
 _po="$(_pa_say auto 'approve: push')"
 case "$_po" in *s3cr3t*|*bot:*) _pabad="$_pabad the-URL's-secret-was-printed" ;; esac
