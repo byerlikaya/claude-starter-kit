@@ -1389,6 +1389,11 @@ _a44_collapse(){  # $1 = command, $2 = commit|push, $3 = tool -> 0 and _A44_S (q
   _A44_WHY=""; _A44_S=""
   if [ "$3" != Bash ]; then
     case "$s" in *[\"\`\\\$@]*) _A44_WHY="outside the Bash tool an approved call uses single quotes only (no double quote, backtick, backslash, \$ or @)"; return 1 ;; esac
+    # ...and plain ASCII on one line. PowerShell reads the typographic quotes (U+2018, U+2019 and their kin) as
+    # single quotes, so `'a ’ ; cmd ; ‘ b'` is one quoted text here and three commands there; and a `\u` escape in the
+    # payload reaches this code as `?`. Neither can be told apart from text inside a quoted span, so both are refused.
+    local LC_ALL=C
+    case "$s" in *[!\ -~]*|*\?*) _A44_WHY="outside the Bash tool an approved call is plain ASCII on one line (PowerShell reads typographic quotes as quotes); use the Bash tool for any other message"; return 1 ;; esac
   fi
   s="${s//$'\r'/}"
   while :; do

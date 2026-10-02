@@ -7194,15 +7194,20 @@ PST='0 @@ git commit -m \x27feat: retry; keep (the) tests | green\x27
 2 @@ git commit -m \x27a\x27 ; New-Item y
 2 @@ git commit -m $msg
 2 @@ git commit -m @\x27\nmsg\n\x27@
-2 @@ git commit -m \x27a\x27 # x'
+2 @@ git commit -m \x27a\x27 # x
+2 @@ git commit -m \x27a ’ ; New-Item y ; ‘ b\x27
+2 @@ git commit -m \x27a \u2019 ; New-Item y ; \u2018 b\x27
+2 @@ git commit -m \x27düzeltme\x27
+2 @@ git commit -m \x27a\x27\n-m \x27b\x27'
 _pan=0; _pabad=""
 while IFS= read -r _pl; do [ -z "$_pl" ] && continue
   _pw="${_pl%% @@ *}"; _pc="${_pl#* @@ }"; _pc="${_pc//\\x27/$_pq}"; _pan=$((_pan+1))
   _pa_run auto "$_pc" PowerShell; [ "$_par" = "$_pw" ] || _pabad="$_pabad [$_pc → $_par, want $_pw]"
 done <<< "$PST"
 _pa_run auto 'git commit -m \"a\\\" ; touch y ; echo \\\"b\"' Bash; [ "$_par" = 2 ] || _pabad="$_pabad [the same escaped-quote text through the Bash tool → $_par]"
-if [ "$_pan" != 9 ]; then fail "FIXTURE: the PowerShell approved-commit table has $_pan rows, not 9"
-elif [ -z "$_pabad" ]; then pass "through the PowerShell tool an approved commit is single-quoted or refused: 2 allowed, 7 refused — double quotes, a backslash-escaped quote that PowerShell ends the text at, a backtick, a variable, a here-string (9 rows)"
+_pa_run auto "git commit -m ${_pq}düzeltme: ’tırnak’ ve é${_pq}" Bash; [ "$_par" = 0 ] || _pabad="$_pabad [a non-ASCII message through the Bash tool → $_par, want 0]"
+if [ "$_pan" != 13 ]; then fail "FIXTURE: the PowerShell approved-commit table has $_pan rows, not 13"
+elif [ -z "$_pabad" ]; then pass "through the PowerShell tool an approved commit is single-quoted plain ASCII or refused: 2 allowed, 11 refused — double quotes, a backslash-escaped quote that PowerShell ends the text at, a backtick, a variable, a here-string, a typographic quote as itself and as a \\u escape; the same non-ASCII message passes through the Bash tool (13 rows)"
 else fail "approved commit through PowerShell:$_pabad"; fi
 
 # ---- a folder named .git is not a git directory; upper case under a Turkish locale is still an approval -------
