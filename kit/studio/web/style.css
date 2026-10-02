@@ -1103,7 +1103,9 @@ body.vresizing { cursor: row-resize; user-select: none; }
 /* The strip above a conversation: what kind of session it is, how far it has gone, and Stop. */
 .pane-head {
   display: flex; align-items: center; gap: var(--space-2);
-  min-height: 44px; padding: 0 var(--space-3); border-bottom: 1px solid var(--line); flex: none; min-width: 0;
+  min-height: 44px; padding: 6px var(--space-3); border-bottom: 1px solid var(--line); flex: none; min-width: 0;
+  /* On a narrow panel the strip takes a second line instead of pushing Stop out of reach. */
+  flex-wrap: wrap;
 }
 .pane-head .sub { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .pane-head .pane-cost { font-family: var(--font-mono); }
@@ -1207,8 +1209,10 @@ body.vresizing { cursor: row-resize; user-select: none; }
 
 /* --------------------------------------------------------- session tabs --- */
 
-.panes { flex: 1; min-height: 0; display: flex; }
-.pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/* `min-width: 0` on both: a flex item is as wide as its longest unbreakable line unless told otherwise, and a
+   conversation is full of them — a path, a command. Without it one long line widened the panel past the window. */
+.panes { flex: 1; min-height: 0; min-width: 0; display: flex; }
+.pane { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
 .pane[hidden] { display: none; }
 
 .tabs { display: flex; gap: 3px; flex: 1; overflow-x: auto; align-items: center; }
@@ -1427,6 +1431,10 @@ body.vresizing { cursor: row-resize; user-select: none; }
 }
 
 @media (max-width: 1279px) {
+  /* Beside the navigator the conversation takes two fifths of the window at most. At 1024 the design's 480px
+     left the graph 262px (measured); this leaves it 332. */
+  .shell { grid-template-columns: var(--side-w, var(--nav-w)) 5px minmax(0, 1fr) auto 5px min(var(--chat-w, 480px), 40vw); }
+  .shell.no-side { grid-template-columns: var(--rail-w) 0 minmax(0, 1fr) auto 5px min(var(--chat-w, 480px), 40vw); }
   /* The dock goes to two rows: what is asked, then the answers under it. */
   .dock { grid-template-columns: auto minmax(0, 1fr) auto; }
   .dock-acts { grid-column: 1 / -1; justify-content: flex-end; flex-wrap: wrap; }
@@ -1480,8 +1488,10 @@ body.vresizing { cursor: row-resize; user-select: none; }
   .shell > #chat-split { display: none; }
   /* The conversation and the inspector each take the whole stage: there is no
      second column to put them in. */
+  /* They stop above the approval dock, as the inspector does: a request can be answered while a conversation
+     covers the rest of the stage. */
   .shell > .chat,
-  .shell > .newpanel { grid-column: auto; position: absolute; z-index: 35; inset: 0; border-left: none; }
+  .shell > .newpanel { grid-column: auto; position: absolute; z-index: 35; inset: 0 0 var(--dock-h, 0px) 0; border-left: none; }
   .shell > .inspector,
   .shell.no-chat > .inspector { left: 0; right: 0; top: 0; width: auto; border-left: none; }
 }

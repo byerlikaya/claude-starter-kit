@@ -103,9 +103,14 @@ export function refusals(denials, wasAllowed, resultOf = () => null) {
     const i = d.tool_input ?? {};
     const what = i.command ?? i.file_path ?? i.description ?? null;
     const reason = resultOf(d.tool_use_id)?.text?.split('\n').map((l) => l.trim()).filter(Boolean)[0] ?? null;
+    // Who refused is in the result's own words. Another PreToolUse hook that blocked the call is reported by
+    // the harness as a hook error; anything else is the harness's own check. With no result on screen the line
+    // says only what is known: it was allowed here and did not run.
+    const by = reason == null ? 'it did not run'
+      : /^PreToolUse:\S* hook error/.test(reason) ? 'another gate blocked it' : 'Claude Code refused it';
     out.push({
       id: d.tool_use_id,
-      text: `Allowed here, but Claude Code refused it: ${d.tool_name ?? 'tool'}${what ? ` · ${String(what).slice(0, 120)}` : ''}`
+      text: `Allowed here, but ${by}: ${d.tool_name ?? 'tool'}${what ? ` · ${String(what).slice(0, 120)}` : ''}`
         + (reason ? ` — ${reason.slice(0, 200)}` : ''),
     });
   }

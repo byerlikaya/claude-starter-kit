@@ -3322,6 +3322,13 @@ process.stdout.write('\n== §32 the conversation panel and New session ==\n');
       said.length === 1 && said[0].id === 'allowed-1'
       && said[0].text === 'Allowed here, but Claude Code refused it: Bash · node write.js — This command requires approval', said[0]?.text);
     check('a call the viewer denied is not called a refusal by Claude Code', !said.some((r) => r.id === 'denied-here'));
+    // Measured in a real session: Crewforth's own gate blocked a force push the viewer had allowed, and the
+    // harness reported it as a hook error. Blaming Claude Code for that would name the wrong refuser.
+    const byGate = cv.refusals([denials[0]], allowedHere, () => ({ text: 'PreToolUse:Bash hook error: [bash .claude/hooks/guard-bash.sh]: GUARD (§4.5): stopped' }));
+    check('a call another gate blocked is said to have been blocked by a gate, not refused by Claude Code',
+      /^Allowed here, but another gate blocked it: Bash · node write\.js — PreToolUse:Bash hook error/.test(byGate[0]?.text), byGate[0]?.text?.slice(0, 80));
+    check('with no result on screen the line says only that it did not run',
+      cv.refusals([denials[0]], allowedHere)[0]?.text === 'Allowed here, but it did not run: Bash · node write.js');
     check('a tool that ran and failed is not a refusal: only what the result record lists is',
       cv.refusals([], () => true).length === 0 && cv.refusals(undefined, () => true).length === 0);
     check('the page knows what it allowed from its own record of the answers',
@@ -3339,6 +3346,16 @@ process.stdout.write('\n== §32 the conversation panel and New session ==\n');
     check('options are offered on the reply waiting for an answer, not on the history',
       /this\.renderMessage\(m, \{ quick: false \}\)/.test(chatJs) && /if \(quick && !this\.readOnly\)/.test(chatJs)
       && /Clicking an option sends it as your reply\./.test(chatJs));
+
+    const css32 = web('style.css');
+    check('a long line in a conversation cannot widen the panel',
+      /\.panes \{[^}]*min-width: 0/.test(css32) && /\.pane \{[^}]*min-width: 0/.test(css32)
+      && /\.chat-ro-cmd \{[^}]*overflow-wrap: anywhere/.test(css32),
+      'measured: a 190-character terminal command made the pane 1236px wide in a 480px column');
+
+    check('on a phone the conversation stops above the approval dock: Review leads somewhere that can be seen',
+      /\.shell > \.chat,\s*\.shell > \.newpanel \{ grid-column: auto; position: absolute; z-index: 35; inset: 0 0 var\(--dock-h, 0px\) 0;/.test(css32),
+      'it covered the whole stage, dock included, so a waiting request could not be answered from the conversation');
 
     /* -- 5. one right-hand panel -------------------------------------------------- */
 
