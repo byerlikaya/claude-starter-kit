@@ -1347,6 +1347,7 @@ _blk_gate(){   # $1 = marker name, $2 = what the block is, in words
 }
 _blk_gate CREW-TRANSCRIPT-DIR "the duplicated transcript-dir resolver"
 _blk_gate CREW-JSON-PARSE     "the duplicated JSON parser"
+_blk_gate CREW-PAYLOAD-MAX    "the duplicated payload size limit"
 # End to end: called by hand from this repo, the hook must produce a reading rather than "transcript not found".
 cu_hand="$(cd "$ROOT/.." && bash "$HOOKS/context-usage.sh" 2>&1)"
 # The three arms used to be pass / note / note, and `note` touches no counter — so on any machine without a
@@ -7556,10 +7557,11 @@ CWT='2 2 @@ $a = @(\x27commit\x27,\x27-n\x27,\x27-m\x27,\x27x\x27); git @a
 0/ask 0/allow @@ git commit -m \x27x\x27
 0/ask 0/allow @@ git add a.txt; git commit -m \x27feat: x\x27
 0 0 @@ $a = @(\x27status\x27,\x27--short\x27); git @a
-0 0 @@ Start-Process git -ArgumentList \x27log\x27,\x27--oneline\x27 -NoNewWindow -Wait'
+0 0 @@ Start-Process git -ArgumentList \x27log\x27,\x27--oneline\x27 -NoNewWindow -Wait
+0/ask 0/allow @@ Start-Process git -ArgumentList \x27log\x27,\x27--oneline\x27 -NoNewWindow -Wait; git commit -m \x27x\x27'
 _cf_table "$CWT" PowerShell
-if [ "$_cfn" != 16 ]; then fail "FIXTURE: the PowerShell commit-forms table has $_cfn rows, not 16"
-elif [ -z "$_cfbad" ]; then pass "through the PowerShell tool: 12 commit forms are refused (a splat, a command or subcommand in a variable, Start-Process, a built-up Invoke-Expression, \$env:GIT_DIR, -n however git is called, a commit after Set-Location), 4 everyday calls are judged as before (16 rows)"
+if [ "$_cfn" != 17 ]; then fail "FIXTURE: the PowerShell commit-forms table has $_cfn rows, not 17"
+elif [ -z "$_cfbad" ]; then pass "through the PowerShell tool: 12 commit forms are refused (a splat, a command or subcommand in a variable, Start-Process, a built-up Invoke-Expression, \$env:GIT_DIR, -n however git is called, a commit after Set-Location), 5 everyday calls are judged as before (17 rows)"
 else fail "PowerShell commit forms:$_cfbad"; fi
 
 # ---- a diff that prints nothing is still a different diff -------------------------------------------------------
@@ -7681,17 +7683,113 @@ fi
 _cfraw="$(LC_ALL=C awk '/^_gsub\(\)\{/{skip=1} skip && /^}/{skip=0; next} skip{next} /^[[:space:]]*#/{next} /-le 4096/{next} /\$\{(CMD|s|c|_t|_GS)\/\//{n++} END{print n+0}' "$HOOKS/guard-bash.sh")"
 [ "$_cfraw" = 0 ] && pass "guard-bash.sh does no global substitution on the command outside _gsub (0 in code lines)" \
                   || fail "guard-bash.sh has $_cfraw global substitution(s) on a command-sized string outside _gsub — each costs matches x length"
+# ---- and above a size it is refused unread ----------------------------------------------------------------------
+# _gsub took the cost out of ONE shape (a here-document message). The reading still costs the square of the size for
+# others — measured on macOS, a commit followed by `2>&1` repeated: 16 KB 10 s, 32 KB 39 s, 64 KB 154 s — so about
+# 128 KB is where the 600 s timeout is, and a hook that times out stops nothing. A command that holds a commit is
+# therefore read up to 32768 bytes and refused above. A command with no commit is not read that way and not limited.
+_cfmax="$(sed -n 's/^_C47_MAX=\([0-9][0-9]*\)$/\1/p' "$HOOKS/guard-bash.sh")"
 _cfl='line with '"$_cfq"'quotes'"$_cfq"', \"double\", $(sub) `tick` ; && | # and -a b.txt\n'
-_cfbody=""; _ci=0; while [ "$_ci" -lt 700 ]; do _cfbody="$_cfbody$_cfl"; _ci=$((_ci+1)); done
-_cf_new
-printf '{"session_id":"s","cwd":"%s","permission_mode":"default","tool_name":"Bash","tool_input":{"command":"git commit -q -F - <<%sMSG%s\\nfeat: x\\n\\n%sMSG"}}' "$_cfw" "$_cfq" "$_cfq" "$_cfbody" > "$_CF/big.json"
-_cfsz="$(wc -c < "$_CF/big.json" | tr -d ' ')"
-_cfj=ok; if [ -n "$JSONQ" ]; then json_ok < "$_CF/big.json" || _cfj=bad; fi
-_cft0=$SECONDS; _cfo_out="$( cd "$_cfw" && CREW_GATE_LOG=/dev/null env -u CLAUDE_GIT_OK bash "$HOOKS/guard-bash.sh" < "$_CF/big.json" 2>"$_CF/err" )"; _cfr=$?; _cft=$((SECONDS - _cft0))
-if [ "$_cfj" = bad ] || [ "$_cfsz" -lt 45000 ]; then fail "FIXTURE: the large commit payload is not valid JSON or not large ($_cfsz bytes)"
-elif [ "$_cfr" = 0 ] && [ "$(gdec "$_cfo_out")" = ask ] && [ "$_cft" -le 120 ]; then
-  pass "a $_cfsz-byte commit command (a here-document message of 700 quote-dense lines) is judged in ${_cft} s and reaches the prompt; the timeout is 600 s, and before _gsub this took 335 s on macOS"
-else fail "the large commit command: rc=$_cfr decision=$(gdec "$_cfo_out") in ${_cft} s for $_cfsz bytes (want rc 0, ask, within 120 s) — $(sed -n 1p "$_CF/err" | cut -c1-160)"; fi
+_cf_rep(){ local i=0; _cfbody=""; while [ "$i" -lt "$2" ]; do _cfbody="$_cfbody$1"; i=$((i+1)); done; }   # $1 = text, $2 = times -> _cfbody
+# $1 = the command as JSON text -> _cfr (rc), _cfd (decision), _cft (seconds), _cfsz (bytes of the command the hook reads)
+_cf_big(){ printf '{"session_id":"s","cwd":"%s","permission_mode":"default","tool_name":"Bash","tool_input":{"command":"%s"}}' "$_cfw" "$1" > "$_CF/big.json"
+  if [ -n "$JSONQ" ]; then json_ok < "$_CF/big.json" || _cf_badjson="$_cf_badjson [a large command, ${#1} characters]"; fi
+  _cfsz="$(printf "$(printf '%s' "$1" | sed 's/%/%%/g')" | wc -c | tr -d ' ')"
+  _cft=$SECONDS; _cfo_out="$( cd "$_cfw" && CREW_GATE_LOG=/dev/null env -u CLAUDE_GIT_OK ${_cfloc:+LC_ALL=$_cfloc} bash "$HOOKS/guard-bash.sh" < "$_CF/big.json" 2>"$_CF/err" )"; _cfr=$?
+  _cft=$((SECONDS - _cft)); _cfd="$(gdec "$_cfo_out")"; }
+_cf_new; _cfbad=""; _cfsaw=""; _cfloc=""
+# A locale in which this bash counts a two-byte letter as ONE character: the rows that pin "bytes, not characters"
+# run under it (in the C locale the two counts are the same and such a row would pin nothing).
+_cfutf=""; for _l in en_US.UTF-8 C.UTF-8 C.utf8; do
+  [ "$(LC_ALL=$_l bash -c 'x=ş; printf %s "${#x}"' 2>/dev/null)" = 1 ] && { _cfutf="$_l"; break; }
+done
+# 1) under the limit, the shape that took minutes: judged, in time
+_cf_rep "$_cfl" 450; _cf_big 'git commit -q -F - <<'"$_cfq"'MSG'"$_cfq"'\nfeat: x\n\n'"$_cfbody"'MSG'
+{ [ "$_cfr" = 0 ] && [ "$_cfd" = ask ] && [ "$_cft" -le 120 ] && [ "$_cfsz" -gt 28000 ] && [ "$_cfsz" -le "${_cfmax:-0}" ]; } \
+  || _cfbad="$_cfbad [a $_cfsz-byte here-document commit: rc=$_cfr decision=$_cfd in ${_cft} s, want rc 0, ask, within 120 s]"
+_cfsaw="$_cfsaw a $_cfsz-byte here-document commit is judged in ${_cft} s and reaches the prompt;"
+# 2) above it: refused, quickly, and told what to do instead
+_cf_rep "$_cfl" 700; _cf_big 'git commit -q -F - <<'"$_cfq"'MSG'"$_cfq"'\nfeat: x\n\n'"$_cfbody"'MSG'
+{ [ "$_cfr" = 2 ] && [ "$_cft" -le 60 ] && [ "$_cfsz" -gt 45000 ] && grep -q 'bytes long' "$_CF/err" && grep -q 'git commit -F <file>' "$_CF/err"; } \
+  || _cfbad="$_cfbad [a $_cfsz-byte here-document commit: rc=$_cfr decision=$_cfd in ${_cft} s, want rc 2 within 60 s and the -F advice — $(sed -n 1p "$_CF/err" | cut -c1-120)]"
+_cfsaw="$_cfsaw one of $_cfsz bytes is refused in ${_cft} s and told to use -F;"
+# 3) the same size with no commit in it is not limited
+_cf_big 'cat <<'"$_cfq"'MSG'"$_cfq"'\n'"$_cfbody"'MSG'
+{ [ "$_cfr" = 0 ] && [ -z "$_cfd" ] && [ "$_cfsz" -gt 45000 ]; } \
+  || _cfbad="$_cfbad [a $_cfsz-byte command with no commit: rc=$_cfr decision=$_cfd, want rc 0 and no decision — $(sed -n 1p "$_CF/err" | cut -c1-120)]"
+# 4) the edge, to the byte: `git commit -q -m '` + a's + `'` is 19 bytes around the a's
+if [ -n "$_cfmax" ]; then
+  _cfa="$(printf '%*s' "$((_cfmax - 19))" '' | tr ' ' a)"
+  _cf_big "git commit -q -m ${_cfq}${_cfa}${_cfq}";  [ "$_cfr" = 0 ] && [ "$_cfd" = ask ] && [ "$_cfsz" = "$_cfmax" ] \
+    || _cfbad="$_cfbad [exactly the limit ($_cfsz bytes): rc=$_cfr decision=$_cfd, want ask]"
+  _cf_big "git commit -q -m ${_cfq}a${_cfa}${_cfq}"; [ "$_cfr" = 2 ] && [ "$_cfsz" = "$((_cfmax + 1))" ] \
+    || _cfbad="$_cfbad [one byte above the limit ($_cfsz bytes): rc=$_cfr decision=$_cfd, want rc 2]"
+  # 5) bytes, not characters: two-byte letters, fewer characters than the limit and more bytes — in a locale where
+  # this bash counts a two-byte letter as ONE (in the C locale the two counts are the same and the row would pin nothing)
+  if [ -n "$_cfutf" ]; then _cfloc="$_cfutf"
+    _cfa="$(printf '%*s' "$((_cfmax / 2))" '' | sed 's/ /ş/g')"
+    _cf_big "git commit -q -m ${_cfq}${_cfa}${_cfq}";  [ "$_cfr" = 2 ] && [ "$_cfsz" = "$((_cfmax + 19))" ] \
+      || _cfbad="$_cfbad [$((_cfmax / 2)) two-byte letters ($_cfsz bytes) under LC_ALL=$_cfloc: rc=$_cfr decision=$_cfd, want rc 2]"
+    _cfsaw="$_cfsaw counted in bytes under $_cfloc;"; _cfloc=""
+  else skip tool "the size limit counted in bytes and not in characters (no UTF-8 locale this bash honours)"; fi
+fi
+if [ -z "$_cfmax" ]; then fail "guard-bash.sh sets no _C47_MAX — a commit command of any size is read, and the reading can outlast the hook's timeout"
+elif [ -z "$_cfbad" ]; then pass "a commit command is read up to $_cfmax bytes and refused unread above:$_cfsaw the same size with no commit passes; the edge holds to the byte (the timeout is 600 s; a 64 KB commit took 154 s to read on macOS)"
+else fail "the size limit on a commit command:$_cfbad"; fi
+
+# ---- a Bash or PowerShell call above a size is refused before anything reads it ---------------------------------
+# Taking the command out of the JSON costs the square of its size (macOS, escape-dense: 256 KB 49 s, 512 KB 200 s),
+# in guard-bash.sh and in guard-commit-scan.sh alike, so about 900 KB is where the 600 s timeout is — and a hook
+# that times out stops nothing, whatever the command. Every hook that reads such a payload refuses it above
+# _PAYLOAD_MAX bytes, by ${#INPUT}, before the first parse. Write and Edit are not limited: a large file is ordinary.
+_cfpm="$(sed -n 's/^_PAYLOAD_MAX=\([0-9][0-9]*\)$/\1/p' "$HOOKS/guard-bash.sh")"
+# $1 = tool, $2 = bytes the whole payload must have, $3 = filler (one character), $4 = how many of it (default: what makes $2)
+_cf_pay(){ local head n
+  head='{"session_id":"s","cwd":"'"$_cfw"'","permission_mode":"default","tool_name":"'"$1"'","tool_input":{'
+  case "$1" in Write) head="$head"'"file_path":"'"$_cfw"'/src/big.txt","content":"' ;; *) head="$head"'"command":"echo ' ;; esac
+  n="${4:-$(( $2 - ${#head} - 3 ))}"
+  { printf '%s' "$head"; printf '%*s' "$n" '' | sed "s/ /$3/g"; printf '"}}'; } > "$_CF/cap.json"
+  _cfsz="$(wc -c < "$_CF/cap.json" | tr -d ' ')"; }
+# $1 = hook, $2 = locale or empty -> _cfr (rc), _cft (seconds), stderr in $_CF/err, the gate log in $_CF/cap.log
+_cf_cap(){ _cft=$SECONDS; : > "$_CF/cap.log"
+  ( cd "$_cfw" && CREW_GATE_LOG="$_CF/cap.log" env -u CLAUDE_GIT_OK ${2:+LC_ALL=$2} bash "$HOOKS/$1" < "$_CF/cap.json" >/dev/null 2>"$_CF/err" ); _cfr=$?
+  _cft=$((SECONDS - _cft)); }
+_cfbad=""; _cfcarry=""
+for _h in "$HOOKS"/*.sh; do grep -qE '^(_payload_over && exit 2$|if _payload_over; then )' "$_h" && _cfcarry="$_cfcarry ${_h##*/}"; done
+if [ -z "$_cfpm" ]; then fail "guard-bash.sh sets no _PAYLOAD_MAX — a Bash or PowerShell call of any size is parsed, and the parse can outlast the hook's timeout"
+else
+  [ "$_cfcarry" = " guard-bash.sh guard-commit-scan.sh guard-powershell.sh" ] \
+    || _cfbad="$_cfbad [the hooks that apply the limit are:${_cfcarry:- none}; want the three that read a Bash or PowerShell payload]"
+  # exactly the limit: read as before
+  _cf_pay Bash "$_cfpm" a
+  [ "$_cfsz" = "$_cfpm" ] || _cfbad="$_cfbad [FIXTURE: the payload at the limit is $_cfsz bytes, not $_cfpm]"
+  for _h in guard-bash.sh guard-commit-scan.sh guard-powershell.sh; do
+    _cf_cap "$_h"; [ "$_cfr" = 0 ] || _cfbad="$_cfbad [$_h, a $_cfsz-byte Bash call (the limit): rc=$_cfr, want 0 — $(sed -n 1p "$_CF/err" | cut -c1-100)]"
+  done
+  # one byte above: refused by each of them, quickly, with the way forward; guard-bash.sh logs it
+  for _t in Bash PowerShell; do
+    _cf_pay "$_t" "$((_cfpm + 1))" a
+    for _h in guard-bash.sh guard-commit-scan.sh guard-powershell.sh; do
+      _cf_cap "$_h"
+      { [ "$_cfr" = 2 ] && [ "$_cft" -le 30 ] && grep -q "$_cfsz bytes long" "$_CF/err" && grep -q 'the path of that file' "$_CF/err"; } \
+        || _cfbad="$_cfbad [$_h, a $_cfsz-byte $_t call: rc=$_cfr in ${_cft} s, want rc 2 within 30 s, the size and the advice — $(sed -n 1p "$_CF/err" | cut -c1-100)]"
+      [ "$_h" != guard-bash.sh ] || grep -q 'tool call too large to read' "$_CF/cap.log" \
+        || _cfbad="$_cfbad [guard-bash.sh did not log the refusal of a $_cfsz-byte $_t call]"
+    done
+  done
+  # the file tools are not limited
+  _cf_pay Write "$((_cfpm + 1))" a; _cf_cap guard-write.sh
+  [ "$_cfr" = 0 ] || _cfbad="$_cfbad [guard-write.sh, a $_cfsz-byte Write of an ordinary file: rc=$_cfr, want 0 — $(sed -n 1p "$_CF/err" | cut -c1-100)]"
+  # bytes, not characters
+  if [ -n "$_cfutf" ]; then
+    _cf_pay Bash 0 ş "$((_cfpm / 2))"
+    for _h in guard-bash.sh guard-commit-scan.sh guard-powershell.sh; do
+      _cf_cap "$_h" "$_cfutf"; [ "$_cfr" = 2 ] || _cfbad="$_cfbad [$_h under LC_ALL=$_cfutf, $((_cfpm / 2)) two-byte letters ($_cfsz bytes): rc=$_cfr, want 2]"
+    done
+  else skip tool "the payload limit counted in bytes and not in characters (no UTF-8 locale this bash honours)"; fi
+  [ -z "$_cfbad" ] && pass "a Bash or PowerShell call above $_cfpm bytes is refused before it is parsed, by each of the three hooks that read one (guard-bash.sh, guard-commit-scan.sh, guard-powershell.sh): exactly the limit is read, one byte more is refused with the size and the way forward and logged, counted in bytes; a Write of the same size is not limited" \
+                   || fail "the size limit on a Bash or PowerShell call:$_cfbad"
+fi
 
 if [ -n "$JSONQ" ]; then
   [ -z "$_cf_badjson" ] && pass "every row of the commit-form tables reached the hook as valid JSON (oracle: $JSONQ)" \

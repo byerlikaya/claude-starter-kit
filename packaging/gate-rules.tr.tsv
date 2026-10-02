@@ -50,6 +50,8 @@ abbreviated git commit --amend	git commit --amend (kısaltılmış)
 git commit under a GIT_ variable set in the command	komutta ayarlanmış bir GIT_ değişkeni altında git commit
 git commit option the gate cannot read	kapının okuyamadığı bir git commit seçeneği
 git commit inside a nested shell	iç içe kabukta git commit
+git commit in a command too large to read	okunamayacak kadar büyük bir komutta git commit
+tool call too large to read	okunamayacak kadar büyük bir araç çağrısı
 commit after a change of directory	dizin değiştirdikten sonra commit
 git config include.path (another file read as configuration)	git config include.path (başka bir dosya yapılandırma olarak okunur)
 core.hooksPath through GIT_CONFIG_ variables (disarms the git hooks)	GIT_CONFIG_ değişkenleriyle core.hooksPath (git hook'larını devre dışı bırakır)

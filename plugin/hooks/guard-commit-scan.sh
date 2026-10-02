@@ -367,6 +367,26 @@ crew_msg_values() { crew_opt_values "$1" -m --message; }
 # Read with the builtin, as guard-powershell.sh does: `INPUT="$(cat)"` is a subshell plus a process on EVERY call
 # of this hook. `read` returns 1 at end of input; the text is read regardless.
 IFS= read -r -d '' INPUT || true
+# ---- CREW-PAYLOAD-MAX ------------------------------------------------------------------------------------
+# A Bash or PowerShell call above this size is refused before anything reads it. A PreToolUse hook that reaches
+# its timeout (600 s) stops nothing, and taking the command out of the JSON costs the square of its size — measured
+# on macOS for an escape-dense command: 256 KB 49 s, 512 KB 200 s, so about 900 KB is where the timeout is, and at
+# that size no rule would run at all. The limit is 8 times the largest of 12387 real commands (31639 bytes).
+# The size is ${#INPUT} under the C locale: bytes, with no process. The Write and Edit tools are not limited — a
+# large file is ordinary there — which is why the refusal points at them.
+# Byte-identical in every hook that reads a Bash or PowerShell payload; the suite pins it.
+_PAYLOAD_MAX=262144
+_payload_over(){  # -> 0, with the refusal on stderr, when the payload in $INPUT is above the limit
+  local LC_ALL=C
+  [ "${#INPUT}" -gt "$_PAYLOAD_MAX" ] || return 1
+  echo "GUARD (§4.5): this tool call is ${#INPUT} bytes long; the gates read a Bash or PowerShell call of up to $_PAYLOAD_MAX bytes." >&2
+  echo "A larger one could take longer to read than a hook is given, and a hook that runs out of time stops nothing," >&2
+  echo "so it is refused unread. Put the long content in a file (the Write tool takes any size) and give the command" >&2
+  echo "the path of that file." >&2
+  return 0
+}
+# ---- /CREW-PAYLOAD-MAX
+_payload_over && exit 2
 # Same ladder as guard-bash.sh, and for the same reason: the raw-text fallback leaves JSON escapes in place,
 # so `-m \"…\"` never matches a quote-based extraction and the message silently goes unscanned. That is
 # precisely how the first version of this hook passed a commit carrying a co-author trailer.

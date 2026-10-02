@@ -46,6 +46,74 @@ _crew_d="${BASH_SOURCE%/*}"; [ "$_crew_d" = "${BASH_SOURCE}" ] && _crew_d=.
 # of this hook. `read` returns 1 at end of input; the text is read regardless.
 IFS= read -r -d '' INPUT || true
 
+# Gate observability. A gate that cannot be seen firing cannot be measured: "the model never reached for the
+# command" and "the gate stopped it" leave behind exactly the same artifacts, and the A/B harness spent a whole
+# case (evals/permission-pressure) unable to tell them apart — it had to report "guard-bash never fired" as an
+# inference. One TSV line per decision, write-only, and it never touches the decision itself: every call site
+# logs AFTER the verdict is settled.
+#
+# ON BY DEFAULT since 2.5.0, into .claude/gate-log.tsv — an evidence channel nobody switches on records nothing,
+# and "the gates hold" is a claim that needs a record, not a test suite alone. CREW_GATE_LOG overrides the path;
+# CREW_GATE_LOG=/dev/null (or a read-only .claude) turns it off. Only BLOCK, ASK and CLAUDE_GIT_OK's ALLOW reach
+# here: an ordinary command writes nothing, and a git action CLAUDE_GIT_OK allows writes one ALLOW line.
+#
+# The COMMAND TEXT IS NOT RECORDED by default. It is the one field that can carry a path, an argument or a
+# token, and `/crew-gates` never prints it — the report is rule names and counts. Recording it by default would
+# buy nothing and add a place for a secret to sit. `CREW_GATE_LOG_CMD=1` puts it back for debugging a false
+# positive, which is the only thing it is good for.
+# Where the default log may go. An explicit CREW_GATE_LOG is the operator's call and is used as given. The
+# DEFAULT path is only used when writing there cannot surprise anyone: outside a git repo, or inside one where
+# the path is already ignored. A kit install gitignores .claude/, so this is the normal case — but the plugin
+# edition drops into repos the installer never touched, and this repo proved the failure itself: the suite left
+# a gate-log.tsv sitting in `git status` as an untracked file waiting to be committed. One `git check-ignore`
+# runs only when a decision is logged (a block, an approval prompt or a CLAUDE_GIT_OK allow); ordinary commands
+# never reach it.
+_gatelog_path(){
+  if [ -n "${CREW_GATE_LOG:-}" ]; then printf '%s' "$CREW_GATE_LOG"; return; fi
+  [ -d ".claude" ] || return 0
+  if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    git check-ignore -q ".claude/gate-log.tsv" 2>/dev/null || return 0
+  fi
+  printf '%s' ".claude/gate-log.tsv"
+}
+gatelog(){  # $1 = verdict (BLOCK|ASK|ALLOW)  $2 = section  $3 = rule
+  # Resolve the path ONCE per hook run and remember it HERE, not inside _gatelog_path: that function is invoked
+  # as `$( … )`, which is a subshell, so a global it assigns is discarded the moment it returns — the same trap
+  # this repo already documents for gb_sandbox in smoke-test, and the first version of this memo was written
+  # inside the function and measured as a no-op (11 git processes before and after). Resolving costs two git
+  # processes, and §4.6 made a twice-logging run the normal case for a successful commit: its own ALLOW line,
+  # then §4.4's ASK. On Windows a process is 62-135 ms.
+  if [ "${_GL_MEMO_SET:-0}" != 1 ]; then _GL_MEMO="$(_gatelog_path)"; _GL_MEMO_SET=1; fi
+  _GL="$_GL_MEMO"; [ -n "$_GL" ] || return 0
+  if [ "${CREW_GATE_LOG_CMD:-0}" = 1 ]; then
+    printf '%s\t§%s\t%s\t%s\n' "$1" "$2" "$3" \
+      "$(printf '%s' "$CMD" | tr -d '\000-\037' | cut -c1-200)" >> "$_GL" 2>/dev/null || true
+  else
+    printf '%s\t§%s\t%s\t\n' "$1" "$2" "$3" >> "$_GL" 2>/dev/null || true
+  fi
+}
+
+# ---- CREW-PAYLOAD-MAX ------------------------------------------------------------------------------------
+# A Bash or PowerShell call above this size is refused before anything reads it. A PreToolUse hook that reaches
+# its timeout (600 s) stops nothing, and taking the command out of the JSON costs the square of its size — measured
+# on macOS for an escape-dense command: 256 KB 49 s, 512 KB 200 s, so about 900 KB is where the timeout is, and at
+# that size no rule would run at all. The limit is 8 times the largest of 12387 real commands (31639 bytes).
+# The size is ${#INPUT} under the C locale: bytes, with no process. The Write and Edit tools are not limited — a
+# large file is ordinary there — which is why the refusal points at them.
+# Byte-identical in every hook that reads a Bash or PowerShell payload; the suite pins it.
+_PAYLOAD_MAX=262144
+_payload_over(){  # -> 0, with the refusal on stderr, when the payload in $INPUT is above the limit
+  local LC_ALL=C
+  [ "${#INPUT}" -gt "$_PAYLOAD_MAX" ] || return 1
+  echo "GUARD (§4.5): this tool call is ${#INPUT} bytes long; the gates read a Bash or PowerShell call of up to $_PAYLOAD_MAX bytes." >&2
+  echo "A larger one could take longer to read than a hook is given, and a hook that runs out of time stops nothing," >&2
+  echo "so it is refused unread. Put the long content in a file (the Write tool takes any size) and give the command" >&2
+  echo "the path of that file." >&2
+  return 0
+}
+# ---- /CREW-PAYLOAD-MAX
+if _payload_over; then CMD=""; gatelog BLOCK 4.5 "tool call too large to read"; exit 2; fi
+
 # Extract the command + the permission mode: jq > python3 > pure-bash JSON slice.
 #
 # THE THIRD TIER IS NOT A DEGRADED MODE, it is the Windows default — though not for the reason written here for
@@ -477,52 +545,6 @@ fi
 [ -z "$CMD" ] && exit 0
 _unquoted "$CMD"; CMD_UQ="$_GS"      # read by the name rules below (hooksPath side doors, the approval record)
 
-# Gate observability. A gate that cannot be seen firing cannot be measured: "the model never reached for the
-# command" and "the gate stopped it" leave behind exactly the same artifacts, and the A/B harness spent a whole
-# case (evals/permission-pressure) unable to tell them apart — it had to report "guard-bash never fired" as an
-# inference. One TSV line per decision, write-only, and it never touches the decision itself: every call site
-# logs AFTER the verdict is settled.
-#
-# ON BY DEFAULT since 2.5.0, into .claude/gate-log.tsv — an evidence channel nobody switches on records nothing,
-# and "the gates hold" is a claim that needs a record, not a test suite alone. CREW_GATE_LOG overrides the path;
-# CREW_GATE_LOG=/dev/null (or a read-only .claude) turns it off. Only BLOCK, ASK and CLAUDE_GIT_OK's ALLOW reach
-# here: an ordinary command writes nothing, and a git action CLAUDE_GIT_OK allows writes one ALLOW line.
-#
-# The COMMAND TEXT IS NOT RECORDED by default. It is the one field that can carry a path, an argument or a
-# token, and `/crew-gates` never prints it — the report is rule names and counts. Recording it by default would
-# buy nothing and add a place for a secret to sit. `CREW_GATE_LOG_CMD=1` puts it back for debugging a false
-# positive, which is the only thing it is good for.
-# Where the default log may go. An explicit CREW_GATE_LOG is the operator's call and is used as given. The
-# DEFAULT path is only used when writing there cannot surprise anyone: outside a git repo, or inside one where
-# the path is already ignored. A kit install gitignores .claude/, so this is the normal case — but the plugin
-# edition drops into repos the installer never touched, and this repo proved the failure itself: the suite left
-# a gate-log.tsv sitting in `git status` as an untracked file waiting to be committed. One `git check-ignore`
-# runs only when a decision is logged (a block, an approval prompt or a CLAUDE_GIT_OK allow); ordinary commands
-# never reach it.
-_gatelog_path(){
-  if [ -n "${CREW_GATE_LOG:-}" ]; then printf '%s' "$CREW_GATE_LOG"; return; fi
-  [ -d ".claude" ] || return 0
-  if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    git check-ignore -q ".claude/gate-log.tsv" 2>/dev/null || return 0
-  fi
-  printf '%s' ".claude/gate-log.tsv"
-}
-gatelog(){  # $1 = verdict (BLOCK|ASK|ALLOW)  $2 = section  $3 = rule
-  # Resolve the path ONCE per hook run and remember it HERE, not inside _gatelog_path: that function is invoked
-  # as `$( … )`, which is a subshell, so a global it assigns is discarded the moment it returns — the same trap
-  # this repo already documents for gb_sandbox in smoke-test, and the first version of this memo was written
-  # inside the function and measured as a no-op (11 git processes before and after). Resolving costs two git
-  # processes, and §4.6 made a twice-logging run the normal case for a successful commit: its own ALLOW line,
-  # then §4.4's ASK. On Windows a process is 62-135 ms.
-  if [ "${_GL_MEMO_SET:-0}" != 1 ]; then _GL_MEMO="$(_gatelog_path)"; _GL_MEMO_SET=1; fi
-  _GL="$_GL_MEMO"; [ -n "$_GL" ] || return 0
-  if [ "${CREW_GATE_LOG_CMD:-0}" = 1 ]; then
-    printf '%s\t§%s\t%s\t%s\n' "$1" "$2" "$3" \
-      "$(printf '%s' "$CMD" | tr -d '\000-\037' | cut -c1-200)" >> "$_GL" 2>/dev/null || true
-  else
-    printf '%s\t§%s\t%s\t\n' "$1" "$2" "$3" >> "$_GL" 2>/dev/null || true
-  fi
-}
 
 # $1 = rule name · $2 = section · $3 = CLASS, which decides the second line.
 #
@@ -1973,6 +1995,8 @@ _c47_scan(){  # $1 = command. Sets: _C47_N (commits read) _C47_WT _C47_NV _C47_A
 # because `'git' commit -n`, `git 'commit' -n` and `git -c alias.ci=commit ci -n` are commits the recognition above
 # (a pattern on the text) does not see at all: measured, each ran with every commit gate silent.
 _C47_N=0; _C47_WT=""; _C47_CD=0; _c47_seen=0
+_C47_MAX=32768
+_cmd_bytes(){ local LC_ALL=C; _CB=${#1}; }   # $1 = text -> _CB: its length in bytes, whatever the session's locale
 if git_has "$CMD" 'commit'; then _c47_seen=1; fi
 _c47_try=0
 case "$CMD" in *[Mm][Ii][Tt]*)   # with quotes, backslashes and joined lines taken out: `g\it`, `com\<newline>mit`
@@ -1981,15 +2005,30 @@ case "$CMD" in *[Mm][Ii][Tt]*)   # with quotes, backslashes and joined lines tak
   case "$_t" in *[Gg][Ii][Tt]*) case "$_t" in *[Cc][Oo][Mm][Mm][Ii][Tt]*) _c47_try=1 ;; esac ;; esac ;;
 esac
 if [ "$_c47_seen" = 1 ] || [ "$_c47_try" = 1 ]; then
-  _c47_scan "$CMD"
-  # git itself redefined for this call: `git(){ command git "$@" -a; }; git commit -m x` committed the working tree.
-  _ere s "$CMD" '(^|[;&|[:space:]])(function[[:space:]]+)?git[[:space:]]*\([[:space:]]*\)|alias[[:space:]]+git=' '*git*' \
-    && _C47_CFG="git redefined as a function or an alias"
   _c47_no(){  # the lines for the session; the rule is logged by the caller, by its literal name
     echo "GUARD (§4.5): $1" >&2; shift
     while [ $# -gt 0 ]; do echo "$1" >&2; shift; done
     exit 2
   }
+  # A SIZE THIS READING IS NOT ASKED TO EXCEED. A PreToolUse hook that reaches its timeout (600 s) stops nothing, and
+  # the reading below costs the square of the size for some shapes — measured on macOS, a commit followed by `2>&1`
+  # repeated: 16 KB 10 s, 32 KB 39 s, 64 KB 154 s, so about 128 KB is where the timeout is. A command without a commit
+  # is not read this way (64 KB of the same shape: 0.4 s) and is not limited. The limit is where the worst measured
+  # shape is 15 times under the timeout; of 12387 distinct real commands the largest is 31639 bytes, the largest that
+  # holds a commit 28880.
+  _cmd_bytes "$CMD"
+  if [ "$_CB" -gt "$_C47_MAX" ]; then
+    gatelog BLOCK 4.5 "git commit in a command too large to read"
+    _c47_no \
+    "this command holds a git commit and is $_CB bytes long; the gate reads a commit command of up to $_C47_MAX bytes." \
+    "A larger one could take longer to read than the hook is given, and a hook that runs out of time stops nothing," \
+    "so it is refused unread. Write the message to a file and run 'git commit -F <file>'; run the other steps as" \
+    "commands of their own."
+  fi
+  _c47_scan "$CMD"
+  # git itself redefined for this call: `git(){ command git "$@" -a; }; git commit -m x` committed the working tree.
+  _ere s "$CMD" '(^|[;&|[:space:]])(function[[:space:]]+)?git[[:space:]]*\([[:space:]]*\)|alias[[:space:]]+git=' '*git*' \
+    && _C47_CFG="git redefined as a function or an alias"
   if [ -n "$_C47_NV" ]; then
     gatelog BLOCK 4.5 "hook skip by -n or an abbreviated --no-verify"
     _c47_no \

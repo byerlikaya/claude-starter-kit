@@ -29,7 +29,13 @@ versioning follows [SemVer](https://semver.org/).
 - **A large commit command could run past the gate's timeout, and a hook that times out does not block.** `guard-bash.sh`
   stripped and padded the whole command with `${text//x/y}`, ten times over, and bash rebuilds the string for every
   match: a 46 KB commit whose message is a quote-dense here-document took 335 s on macOS and 14 s at 18 KB on Windows,
-  against a 600 s timeout. The substitutions are done a piece at a time now; the same command is judged in about 2 s.
+  against a 600 s timeout. The substitutions are done a piece at a time now; a 30 KB commit of that shape is judged in
+  about a second. Other shapes still cost the square of their size (a 64 KB commit took 154 s to read), so a command
+  that holds a `git commit` is read up to 32768 bytes and refused unread above, with the advice to put the message in
+  a file and use `git commit -F <file>`. And whatever the command, taking it out of the hook's JSON costs the square of
+  its size (256 KB of an escape-dense command: 49 s, 512 KB: 200 s), in `guard-bash.sh` and `guard-commit-scan.sh` alike,
+  so a Bash or PowerShell call above 262144 bytes is refused before it is parsed, by size alone, with the advice to put
+  the long content in a file. The largest of 12387 real commands is 31639 bytes. Write and Edit are not limited.
 - A review record could vouch for any staged diff once `git config diff.external true` was set: the staged diff then
   prints nothing, and every change got the same id. The id is computed with `--no-ext-diff --no-textconv`.
 - A recursive forced delete of `.` or `..` passed in both shells (`rm -rf .`, `rm -rf ..`,
