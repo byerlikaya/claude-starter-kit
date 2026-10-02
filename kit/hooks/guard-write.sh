@@ -392,7 +392,7 @@ _json_unescape "$_raw" >/dev/null; FP="$_JU"
 # block on a file whose own path says `.claude/…hooks`, which is the trade this gate exists to make.
 if [ -z "$FP" ]; then
   case "$INPUT" in
-    *.claude*hooks*|*.git*hooks*|*DISCIPLINE.md*|*crewforth-approval*|*.git/config*|*.git\\config*|*git-shim*) FP="(unparsed payload naming a gate path)"; block "gate-file edit (unparsed payload)" "$WHY_SCRIPT" ;;
+    *.claude*hooks*|*.git*hooks*|*DISCIPLINE.md*|*crewforth-approval*|*.git/config*|*.git\\config*|*git-shim*|*.gitconfig*|*.config/git/config*) FP="(unparsed payload naming a gate path)"; block "gate-file edit (unparsed payload)" "$WHY_SCRIPT" ;;
   esac
   exit 0
 fi
@@ -459,11 +459,7 @@ _is_gate(){   # 0 = gate file; sets GATE_RULE and GATE_WHY
       GATE_RULE="gate-file edit (Write/Edit tools)"; GATE_WHY="$WHY_SCRIPT"; return 0 ;;
     */.[Gg][Ii][Tt]/[Hh][Oo][Oo][Kk][Ss]/*|.[Gg][Ii][Tt]/[Hh][Oo][Oo][Kk][Ss]/*)
       GATE_RULE="gate-file edit (Write/Edit tools)"; GATE_WHY="$WHY_SCRIPT"; return 0 ;;
-    # core.hooksPath lives in .git/config (a linked worktree's and a submodule's config with it): writing it switches the
-    # git hooks off without touching one of them. And .claude/git-shim is where core.hooksPath points when Crewforth shares
-    # the hooks with a project's own chain. guard-bash.sh carries the same two for the shell.
-    */.[Gg][Ii][Tt]/[Cc][Oo][Nn][Ff][Ii][Gg]|.[Gg][Ii][Tt]/[Cc][Oo][Nn][Ff][Ii][Gg]|*/.[Gg][Ii][Tt]/[Cc][Oo][Nn][Ff][Ii][Gg].[Ww][Oo][Rr][Kk][Tt][Rr][Ee][Ee]|.[Gg][Ii][Tt]/[Cc][Oo][Nn][Ff][Ii][Gg].[Ww][Oo][Rr][Kk][Tt][Rr][Ee][Ee]|*/.[Gg][Ii][Tt]/[Ww][Oo][Rr][Kk][Tt][Rr][Ee][Ee][Ss]/*/[Cc][Oo][Nn][Ff][Ii][Gg].[Ww][Oo][Rr][Kk][Tt][Rr][Ee][Ee]|*/.[Gg][Ii][Tt]/[Mm][Oo][Dd][Uu][Ll][Ee][Ss]/*/[Cc][Oo][Nn][Ff][Ii][Gg])
-      GATE_RULE="git-config edit (Write/Edit tools)"; GATE_WHY="$WHY_GITCFG"; return 0 ;;
+    # .claude/git-shim is where core.hooksPath points when Crewforth shares the hooks with a project's own chain.
     */.[Cc][Ll][Aa][Uu][Dd][Ee]/[Gg][Ii][Tt]-[Ss][Hh][Ii][Mm]/*|.[Cc][Ll][Aa][Uu][Dd][Ee]/[Gg][Ii][Tt]-[Ss][Hh][Ii][Mm]/*|*/.[Cc][Ll][Aa][Uu][Dd][Ee]/[Gg][Ii][Tt]-[Ss][Hh][Ii][Mm]|.[Cc][Ll][Aa][Uu][Dd][Ee]/[Gg][Ii][Tt]-[Ss][Hh][Ii][Mm])
       GATE_RULE="gate-file edit (Write/Edit tools)"; GATE_WHY="$WHY_SCRIPT"; return 0 ;;
     # The gates SOURCE eval/lib/crew-env.sh on every call, so it is part of them: overwritten with `exit 0`, every
@@ -483,6 +479,15 @@ _is_gate(){   # 0 = gate file; sets GATE_RULE and GATE_WHY
     # Matched by name wherever it is: a linked worktree keeps its git directory elsewhere.
     */[Cc][Rr][Ee][Ww][Ff][Oo][Rr][Tt][Hh]-[Aa][Pp][Pp][Rr][Oo][Vv][Aa][Ll]|[Cc][Rr][Ee][Ww][Ff][Oo][Rr][Tt][Hh]-[Aa][Pp][Pp][Rr][Oo][Vv][Aa][Ll])
       GATE_RULE="approval-record edit (Write/Edit tools)"; GATE_WHY="$WHY_APPR"; return 0 ;;
+  esac
+  # core.hooksPath lives in git's configuration files: the repository's (.git/config, with a linked worktree's and a
+  # submodule's own) and the user's (~/.gitconfig, ~/.config/git/config). Writing one switches the git hooks off without
+  # touching a hook. guard-bash.sh carries the same list for the shell. The path gets a slash in front, so one pattern
+  # serves both `<dir>/.git/config` and a bare `.git/config`; matched by name, not against $HOME — on Windows the
+  # payload says C:\Users\… where the shell says /c/Users/…, and two spellings of one path never compare equal.
+  case "/$1" in
+    */.[Gg][Ii][Tt]/[Cc][Oo][Nn][Ff][Ii][Gg]|*/.[Gg][Ii][Tt]/[Cc][Oo][Nn][Ff][Ii][Gg].[Ww][Oo][Rr][Kk][Tt][Rr][Ee][Ee]|*/.[Gg][Ii][Tt]/[Ww][Oo][Rr][Kk][Tt][Rr][Ee][Ee][Ss]/*/[Cc][Oo][Nn][Ff][Ii][Gg]|*/.[Gg][Ii][Tt]/[Ww][Oo][Rr][Kk][Tt][Rr][Ee][Ee][Ss]/*/[Cc][Oo][Nn][Ff][Ii][Gg].[Ww][Oo][Rr][Kk][Tt][Rr][Ee][Ee]|*/.[Gg][Ii][Tt]/[Mm][Oo][Dd][Uu][Ll][Ee][Ss]/*/[Cc][Oo][Nn][Ff][Ii][Gg]|*/.[Gg][Ii][Tt][Cc][Oo][Nn][Ff][Ii][Gg]|*/.[Cc][Oo][Nn][Ff][Ii][Gg]/[Gg][Ii][Tt]/[Cc][Oo][Nn][Ff][Ii][Gg])
+      GATE_RULE="git-config edit (Write/Edit tools)"; GATE_WHY="$WHY_GITCFG"; return 0 ;;
   esac
   # ...and not only the gate scripts it knew by name: everything under the plugin root's hooks/ (hooks.json, the
   # blocklists, the git hooks, every hook), .claude-plugin/ and the sourced crew-env.sh is the plugin's equivalent of

@@ -7319,7 +7319,7 @@ sec "== 12g) a git commit is read the way the shell and git read it: the forms t
 # skipped by design, so only the §4.5 rows are refused there. `\x27` is a single quote, `\n` JSON's newline, @O@
 # another repository, @W@ this one.
 if [ "$UNITS" != 1 ]; then
-  skip scope "commit forms: the unit cases run in the source checkout (scope=install)" 8
+  skip scope "commit forms: the unit cases run in the source checkout (scope=install)" 11
 else
 _CF="$(mktemp -d)"; _CF="$(cd -P "$_CF" && pwd)"; _cfw="$_CF/w"; _cfo="$_CF/o"; _cfq="'"; _cf_badjson=""
 _cf_new(){ rm -rf "$_CF/w" "$_CF/o"
@@ -7337,12 +7337,12 @@ _cf_run(){ printf '{"session_id":"s","cwd":"%s","permission_mode":"%s","tool_nam
   if [ "${3:-0}" = 1 ]; then _cfo_out="$( cd "$_cfw" && CREW_GATE_LOG=/dev/null CLAUDE_GIT_OK=1 bash "$HOOKS/guard-bash.sh" < "$_CF/pl.json" 2>"$_CF/err" )"; _cfr=$?
   else _cfo_out="$( cd "$_cfw" && CREW_GATE_LOG=/dev/null env -u CLAUDE_GIT_OK bash "$HOOKS/guard-bash.sh" < "$_CF/pl.json" 2>"$_CF/err" )"; _cfr=$?; fi
   _cfd="$(gdec "$_cfo_out")"; }
-_cf_table(){  # $1 = the table, $2 = its name -> runs every row in default and pre-authorised; sets _cfn, _cfbad
-  local l w c d g
+_cf_table(){  # $1 = the table, $2 = the tool (default Bash) -> runs every row in default and pre-authorised; sets _cfn, _cfbad
+  local l w c d g tool="${2:-Bash}"
   _cfn=0; _cfbad=""
   while IFS= read -r l; do [ -z "$l" ] && continue
     w="${l%% @@ *}"; c="${l#* @@ }"; c="${c//\\x27/$_cfq}"; c="${c//@O@/$_cfo}"; c="${c//@W@/$_cfw}"; _cfn=$((_cfn+1))
-    _cf_run default "$c"; d="$_cfr${_cfd:+/$_cfd}"; _cf_run default "$c" 1; g="$_cfr${_cfd:+/$_cfd}"
+    _cf_run default "$c" 0 "$tool"; d="$_cfr${_cfd:+/$_cfd}"; _cf_run default "$c" 1 "$tool"; g="$_cfr${_cfd:+/$_cfd}"
     [ "$d $g" = "$w" ] || _cfbad="$_cfbad [$c → $d $g, want $w]"
   done <<< "$1"
 }
@@ -7454,6 +7454,13 @@ CFT='2 2 @@ git commit -n -m x
 2 2 @@ case x in x) git commit -n -m x;; esac
 2 2 @@ ( git commit -n -m x )
 2 2 @@ nice -n 5 git commit -n -m x
+2 2 @@ git commit -m x 0<&- -n
+2 2 @@ git commit -m x <&2 -n
+2 0/allow @@ git commit -m x 0<&- -a
+2 0/allow @@ git commit -m x 3<&- -a
+2 0/allow @@ git commit -m x 10<&- -a
+2 0/allow @@ git commit -m x 0<& - b.txt
+2 0/allow @@ git commit -m x 0<&- 2>&1 -a
 2 2 @@ cat <<NOPE\ngit commit -n -m x
 2 2 @@ echo $((1<<2))\ngit commit -n -m x\n2
 2 2 @@ \x27git\x27 commit -m x
@@ -7462,8 +7469,8 @@ _cf_table "$CFT"
 # The reason is part of the verdict: an abbreviated --amend or --no-verify is named as what git reads it as.
 _cf_run default 'git commit --amen -m x'; grep -q 'rewrites the last one' "$_CF/err" || _cfbad="$_cfbad [--amen is not reported as an amend]"
 _cf_run default 'git commit -qnm x'; grep -q 'skips its hooks: -n in -qnm' "$_CF/err" || _cfbad="$_cfbad [-n inside a cluster is not reported as a hook skip]"
-if [ "$_cfn" != 92 ]; then fail "FIXTURE: the refused-commit-forms table has $_cfn rows, not 92"
-elif [ -z "$_cfbad" ]; then pass "92 commit forms that reached the prompt are refused. In every session: -n and abbreviated --no-verify / --amend, wherever the commit sits (braces, if, a wrapper, a redirection in front) and however the word is quoted or escaped; a GIT_ variable that moves the repository, the index or the config, set or exported anywhere in the call; a -c setting or a redefinition of git that changes what a commit does; a commit inside a quoted shell script; an unknown option; an argument the shell expands. Wherever a review record is required: the working tree past a redirection, a here-document, a cluster or mis-paired quotes, and a commit after a change of directory"
+if [ "$_cfn" != 99 ]; then fail "FIXTURE: the refused-commit-forms table has $_cfn rows, not 99"
+elif [ -z "$_cfbad" ]; then pass "99 commit forms that reached the prompt are refused. In every session: -n and abbreviated --no-verify / --amend, wherever the commit sits (braces, if, a wrapper, a redirection in front) and however the word is quoted or escaped; a GIT_ variable that moves the repository, the index or the config, set or exported anywhere in the call; a -c setting or a redefinition of git that changes what a commit does; a commit inside a quoted shell script; an unknown option; an argument the shell expands. Wherever a review record is required: the working tree past a redirection, a here-document, a cluster or mis-paired quotes, and a commit after a change of directory"
 else fail "commit forms that should be refused:$_cfbad"; fi
 
 # ---- ...and what everyday work looks like, which must not change -----------------------------------------------
@@ -7504,6 +7511,8 @@ CPT='0/ask 0/allow @@ git commit -m x
 0/ask 0/allow @@ MSG=\x27two words\x27; git commit -m \"$MSG\"
 0/ask 0/allow @@ git commit -m -a
 0/ask 0/allow @@ cd sub && git commit -m x
+0/ask 0/allow @@ cd \"$(git rev-parse --show-toplevel)\" && git commit -m x
+0/ask 0/allow @@ git commit -m x 2>&1 0<&-
 0/ask 0/allow @@ cat > notes.md <<E\\OF\nGIT_DIR=/tmp/x is how git is pointed elsewhere\nEOF\ngit commit -m x
 0 0 @@ GIT_DIR=.git git log --oneline | grep commit
 0 0 @@ git log --oneline | grep commit
@@ -7512,8 +7521,8 @@ CPT='0/ask 0/allow @@ git commit -m x
 0/ask 0/allow @@ bash build.sh && git commit -m x
 0/ask 0/allow @@ cat > notes.md <<\x27EOF\x27\nrun: bash -c \x27git commit -am x\x27 and it\x27s gone\nEOF\ngit commit -m x'
 _cf_table "$CPT"
-if [ "$_cfn" != 44 ]; then fail "FIXTURE: the everyday-commit table has $_cfn rows, not 44"
-elif [ -z "$_cfbad" ]; then pass "44 everyday calls are judged as before (asked in default, allowed when pre-authorised): chained after git add, a message that holds flags and separators, a here-document message, -F, -S, -uno, redirections, a pipe, a comment, a cd into this same repository, GIT_AUTHOR_*, a script beside the commit"
+if [ "$_cfn" != 46 ]; then fail "FIXTURE: the everyday-commit table has $_cfn rows, not 46"
+elif [ -z "$_cfbad" ]; then pass "46 everyday calls are judged as before (asked in default, allowed when pre-authorised): chained after git add, a message that holds flags and separators, a here-document message, -F, -S, -uno, redirections, a pipe, a comment, a cd into this same repository, GIT_AUTHOR_*, a script beside the commit"
 else fail "everyday commit calls that changed verdict:$_cfbad"; fi
 
 # Three everyday calls the OLDER scan refuses, and still does: it reads any a/o/i/p in a short token as a flag
@@ -7548,12 +7557,7 @@ CWT='2 2 @@ $a = @(\x27commit\x27,\x27-n\x27,\x27-m\x27,\x27x\x27); git @a
 0/ask 0/allow @@ git add a.txt; git commit -m \x27feat: x\x27
 0 0 @@ $a = @(\x27status\x27,\x27--short\x27); git @a
 0 0 @@ Start-Process git -ArgumentList \x27log\x27,\x27--oneline\x27 -NoNewWindow -Wait'
-_cfn=0; _cfbad=""
-while IFS= read -r _cl; do [ -z "$_cl" ] && continue
-  _cw="${_cl%% @@ *}"; _cc="${_cl#* @@ }"; _cc="${_cc//\\x27/$_cfq}"; _cfn=$((_cfn+1))
-  _cf_run default "$_cc" 0 PowerShell; _cd="$_cfr${_cfd:+/$_cfd}"; _cf_run default "$_cc" 1 PowerShell; _cg="$_cfr${_cfd:+/$_cfd}"
-  [ "$_cd $_cg" = "$_cw" ] || _cfbad="$_cfbad [$_cc → $_cd $_cg, want $_cw]"
-done <<< "$CWT"
+_cf_table "$CWT" PowerShell
 if [ "$_cfn" != 16 ]; then fail "FIXTURE: the PowerShell commit-forms table has $_cfn rows, not 16"
 elif [ -z "$_cfbad" ]; then pass "through the PowerShell tool: 12 commit forms are refused (a splat, a command or subcommand in a variable, Start-Process, a built-up Invoke-Expression, \$env:GIT_DIR, -n however git is called, a commit after Set-Location), 4 everyday calls are judged as before (16 rows)"
 else fail "PowerShell commit forms:$_cfbad"; fi
@@ -7579,6 +7583,18 @@ CGT='2 @@ Bash @@ printf \x27[core]\\n\\thooksPath = /dev/null\\n\x27 >> .git/co
 2 @@ Bash @@ printf x >> .git/worktrees/wt/config.worktree
 2 @@ Bash @@ printf x >> .git/modules/sub/config
 2 @@ Bash @@ printf x >> .git//config
+2 @@ Bash @@ echo x >| .git/config
+2 @@ Bash @@ echo x 1>| ~/.gitconfig
+2 @@ Bash @@ echo x > ./.git/./config
+2 @@ Bash @@ rsync /tmp/c .git/config
+2 @@ Bash @@ sponge .git/config < /tmp/c
+2 @@ Bash @@ git config --rename-section x core
+2 @@ Bash @@ git config -f .git/config --rename-section tmp core
+2 @@ Bash @@ printf \x27[core]\\n\\thooksPath = /dev/null\\n\x27 >> ~/.gitconfig
+2 @@ Bash @@ tee -a \"$HOME/.gitconfig\" < /tmp/c
+2 @@ Bash @@ cp /tmp/c ~/.config/git/config
+2 @@ Bash @@ sed -i.bak s/a/b/ /home/dev/.gitconfig
+2 @@ PowerShell @@ Add-Content -Path $HOME\\.gitconfig -Value x
 2 @@ Bash @@ dd if=/tmp/c of=.git/config
 2 @@ Bash @@ ln -sf /tmp/c .git/config
 2 @@ Bash @@ git config --edit
@@ -7602,6 +7618,11 @@ CGT='2 @@ Bash @@ printf \x27[core]\\n\\thooksPath = /dev/null\\n\x27 >> .git/co
 0 @@ Bash @@ git config --get core.hooksPath
 0 @@ Bash @@ git config --list --show-origin
 0 @@ Bash @@ git config core.autocrlf input
+0 @@ Bash @@ cat ~/.gitconfig
+0 @@ Bash @@ git config --rename-section branch.old branch.new
+0 @@ Bash @@ rsync -a src/ dest/
+0 @@ Bash @@ git config --global user.email a@example.com
+0 @@ Bash @@ cp .gitconfig.example notes/gitconfig.txt
 0 @@ Bash @@ git remote set-url origin https://example.com/x.git
 0 @@ Bash @@ git log -e --oneline; git config -l
 0 @@ Bash @@ git config --global init.defaultBranch main
@@ -7616,15 +7637,62 @@ while IFS= read -r _cl; do [ -z "$_cl" ] && continue
 done <<< "$CGT"
 _cfwr(){ printf '{"cwd":"%s","permission_mode":"auto","tool_name":"%s","tool_input":{"file_path":"%s","content":"x"}}' "$_cfw" "$1" "$2" \
   | ( cd "$_cfw" && CREW_GATE_LOG=/dev/null bash "$HOOKS/guard-write.sh" >/dev/null 2>"$_CF/err" ); _cfr=$?; }
-for _cf in "$_cfw/.git/config" ".git/config" "$_cfw/.git/config.worktree" "$_cfw/.git/worktrees/wt/config.worktree" "$_cfw/.git/modules/sub/config" "$_cfw/.GIT/Config" "$_cfw/.claude/git-shim/pre-commit" "$_cfw/.claude/git-shim"; do
+for _cf in "$_cfw/.git/config" ".git/config" "$_cfw/.git/config.worktree" "$_cfw/.git/worktrees/wt/config.worktree" "$_cfw/.git/modules/sub/config" "$_cfw/.GIT/Config" "$_cfw/.claude/git-shim/pre-commit" "$_cfw/.claude/git-shim" "/home/dev/.gitconfig" "C:\\\\Users\\\\dev\\\\.gitconfig" "/home/dev/.config/git/config" ".git/worktrees/w/config.worktree" ".git/modules/m/config" ".git/modules/sub/sub2/config" ".gitconfig"; do
   _cfn=$((_cfn+1)); _cfwr Write "$_cf"; [ "$_cfr" = 2 ] || _cfbad="$_cfbad [Write $_cf → $_cfr, want 2]"
 done
-for _cf in "$_cfw/.github/config.yml" "$_cfw/config/app.json" "$_cfw/src/git/config.ts" "$_cfw/.gitconfig.sample"; do
+for _cf in "$_cfw/.github/config.yml" "$_cfw/config/app.json" "$_cfw/src/git/config.ts" "$_cfw/.gitconfig.sample" "$_cfw/config/git/config.json"; do
   _cfn=$((_cfn+1)); _cfwr Write "$_cf"; [ "$_cfr" = 0 ] || _cfbad="$_cfbad [Write $_cf → $_cfr, want 0]"
 done
-if [ "$_cfn" != 51 ]; then fail "FIXTURE: the git-config table ran $_cfn cases, not 51"
-elif [ -z "$_cfbad" ]; then pass "core.hooksPath cannot be reached by the side doors: 26 shell commands (a write to .git/config, a worktree's or a submodule's config and the git shim, in both shells; git config --edit, include.path / includeIf, also as -c; a quoted -c core.hooksPath; GIT_CONFIG_ variables; an abbreviated --no-verify on push and merge) and 8 Write calls are refused, 13 reads and ordinary settings and 4 look-alike files pass (51 cases)"
+if [ "$_cfn" != 76 ]; then fail "FIXTURE: the git-config table ran $_cfn cases, not 76"
+elif [ -z "$_cfbad" ]; then pass "core.hooksPath cannot be reached by the side doors: 38 shell commands (a write to .git/config, a worktree's or a submodule's config, the user's own ~/.gitconfig and ~/.config/git/config, and the git shim, in both shells; git config --edit, include.path / includeIf, also as -c; a quoted -c core.hooksPath; GIT_CONFIG_ variables; an abbreviated --no-verify on push and merge) and 15 Write calls (absolute and relative) are refused, 18 reads and ordinary settings and 5 look-alike files pass (76 cases)"
 else fail "git config side doors:$_cfbad"; fi
+# ---- a large commit command is judged, not timed out ------------------------------------------------------------
+# A PreToolUse hook that reaches its timeout does not block. guard-bash.sh used `${text//x/y}` on the whole command
+# ten times over, and bash rebuilds the string for every match: a 46 KB commit with a quote-dense here-document message
+# took 335 s on macOS (bash 3.2), 14 s at 18 KB on Windows, against a 600 s timeout — in 3.0.1 too. The substitutions
+# now go through _gsub, a piece at a time. Two things are pinned: that _gsub gives what the plain expansion gives, and
+# that the 46 KB command is judged well inside the timeout.
+_cfg="$_CF/gsub.sh"; LC_ALL=C awk '/^_gsub\(\)\{/{on=1} on{print} on && /^}/{exit}' "$HOOKS/guard-bash.sh" > "$_cfg"
+_cfbig=""; _ci=0; while [ "$_ci" -lt 120 ]; do _cfbig="$_cfbig"'a"b'"$_cfq"'c\d\'$'\n''e\nf\r;g&h|i\"j\'"$_cfq"'k'$'\r\n'; _ci=$((_ci+1)); done
+_cf_gsubcal(){  # $1 = a file defining _gsub -> prints "<cases> <differ>": _gsub against ${t//p/r}, at three piece sizes
+  ( n=0; bad=0
+    for t in "$_cfbig" 'x' '' '\' '\\' 'a\' "$_cfbig"'\'; do
+      for spec in '\"@@@@' "\\'@@@@" '\\@@@@' $'\r''@@@@' $'\n''@@;@@' ';@@ ; @@' '&@@ & @@' '|@@ | @@' '[\\]r@@@@bs' '[\\]n@@N@@bs' '[\\]'"\\'"'@@Q@@bs' '[\\]\"@@Q@@bs' '[\\]'$'\n''@@ @@bs'; do
+        pat="${spec%%@@*}"; r="${spec#*@@}"; rp="${r%%@@*}"; md="${r#*@@}"
+        want="${t//$pat/$rp}"
+        for C in 2048 7 1; do
+          eval "$(sed "s/C=2048/C=$C/" "$1")"
+          _gsub "$t" "$pat" "$rp" $md; n=$((n+1)); [ "$_GS" = "$want" ] || bad=$((bad+1))
+        done
+      done
+    done
+    printf '%s %s' "$n" "$bad" )
+}
+if [ ! -s "$_cfg" ]; then fail "guard-bash.sh has no _gsub — the global substitutions are back on the whole command"
+else
+  _cfr1="$(_cf_gsubcal "$_cfg")"
+  grep -vF '= bs ]; then while' "$_cfg" > "$_CF/gsub-twin.sh"; _cfr2="$(_cf_gsubcal "$_CF/gsub-twin.sh")"
+  if [ "$_cfr1" = "273 0" ] && [ "${_cfr2% *}" = 273 ] && [ "${_cfr2#* }" != 0 ]; then
+    pass "_gsub gives exactly what \${text//pattern/replacement} gives: 273 cases (13 patterns, 7 texts, pieces of 2048, 7 and 1 byte), 0 differ; a twin that lets a piece end on a backslash differs in ${_cfr2#* }"
+  else fail "_gsub against the plain expansion: '$_cfr1' (want '273 0'); the twin that mishandles a backslash at a piece's end: '$_cfr2' (want 273 and not 0)"; fi
+fi
+# No `${CMD//…}` and no `${s//…}` on a command-sized string outside _gsub: the pin on the mechanism, for a machine
+# where the clock below would not show it.
+_cfraw="$(LC_ALL=C awk '/^_gsub\(\)\{/{skip=1} skip && /^}/{skip=0; next} skip{next} /^[[:space:]]*#/{next} /-le 4096/{next} /\$\{(CMD|s|c|_t|_GS)\/\//{n++} END{print n+0}' "$HOOKS/guard-bash.sh")"
+[ "$_cfraw" = 0 ] && pass "guard-bash.sh does no global substitution on the command outside _gsub (0 in code lines)" \
+                  || fail "guard-bash.sh has $_cfraw global substitution(s) on a command-sized string outside _gsub — each costs matches x length"
+_cfl='line with '"$_cfq"'quotes'"$_cfq"', \"double\", $(sub) `tick` ; && | # and -a b.txt\n'
+_cfbody=""; _ci=0; while [ "$_ci" -lt 700 ]; do _cfbody="$_cfbody$_cfl"; _ci=$((_ci+1)); done
+_cf_new
+printf '{"session_id":"s","cwd":"%s","permission_mode":"default","tool_name":"Bash","tool_input":{"command":"git commit -q -F - <<%sMSG%s\\nfeat: x\\n\\n%sMSG"}}' "$_cfw" "$_cfq" "$_cfq" "$_cfbody" > "$_CF/big.json"
+_cfsz="$(wc -c < "$_CF/big.json" | tr -d ' ')"
+_cfj=ok; if [ -n "$JSONQ" ]; then json_ok < "$_CF/big.json" || _cfj=bad; fi
+_cft0=$SECONDS; _cfo_out="$( cd "$_cfw" && CREW_GATE_LOG=/dev/null env -u CLAUDE_GIT_OK bash "$HOOKS/guard-bash.sh" < "$_CF/big.json" 2>"$_CF/err" )"; _cfr=$?; _cft=$((SECONDS - _cft0))
+if [ "$_cfj" = bad ] || [ "$_cfsz" -lt 45000 ]; then fail "FIXTURE: the large commit payload is not valid JSON or not large ($_cfsz bytes)"
+elif [ "$_cfr" = 0 ] && [ "$(gdec "$_cfo_out")" = ask ] && [ "$_cft" -le 120 ]; then
+  pass "a $_cfsz-byte commit command (a here-document message of 700 quote-dense lines) is judged in ${_cft} s and reaches the prompt; the timeout is 600 s, and before _gsub this took 335 s on macOS"
+else fail "the large commit command: rc=$_cfr decision=$(gdec "$_cfo_out") in ${_cft} s for $_cfsz bytes (want rc 0, ask, within 120 s) — $(sed -n 1p "$_CF/err" | cut -c1-160)"; fi
+
 if [ -n "$JSONQ" ]; then
   [ -z "$_cf_badjson" ] && pass "every row of the commit-form tables reached the hook as valid JSON (oracle: $JSONQ)" \
                         || fail "FIXTURE: commit-form table rows that are not valid JSON, so they tested the reader and not the rule:$_cf_badjson"

@@ -323,6 +323,29 @@ _json_keycount(){  # $1 = payload, $2 = key -> sets _KC to how many times it occ
   done
 }
 # ---- /CREW-JSON-PARSE -----------------------------------------------------------------------------------
+# ---- _gsub: `${text//pattern/replacement}` that stays LINEAR ----------------------------------------------
+# bash rebuilds the whole string for every match of a global substitution, so its cost is matches x length. On a
+# quote-dense 46 KB command each `${CMD//\"/}` took about 9 s (bash 3.2, measured with a DEBUG trap), and this hook
+# did ten of them: 335 s for one commit, against a 600 s timeout that does not block when it is reached. The same
+# substitution done 2048 bytes at a time costs matches x 2048. Safe for a pattern of ONE character anywhere; for the
+# two-character patterns that begin with a backslash, pass `bs` and a piece never ends on a backslash.
+_gsub(){  # $1 = text, $2 = pattern (a glob, as it would stand in ${x//HERE/}), $3 = replacement, $4 = bs -> _GS
+  local LC_ALL=C
+  local t="$1" n i=0 C=2048 c; local -a acc=("")
+  n=${#t}
+  if [ "$n" -le "$C" ]; then _GS="${t//$2/$3}"; return 0; fi
+  while [ "$i" -lt "$n" ]; do
+    c="${t:i:C}"; i=$((i+C))
+    if [ "${4:-}" = bs ]; then while [ "$i" -lt "$n" ] && [ "${c: -1}" = '\' ]; do c="$c${t:i:1}"; i=$((i+1)); done; fi
+    acc+=("${c//$2/$3}")
+  done
+  local IFS=''; _GS="${acc[*]}"
+}
+# The text as the shell hands it on once the quoting is gone: `core.hooks"P"ath`, `crewforth-appr\oval` and
+# `'git' commit` are core.hooksPath, crewforth-approval and git commit. Every rule that matches a NAME matches on this.
+_unquoted(){  # $1 = text -> _GS: no double quote, no single quote, no backslash
+  _gsub "$1" '\"' ''; _gsub "$_GS" "\\'" ''; _gsub "$_GS" '\\' ''
+}
 # ONE READER, EVERYWHERE. This hook used to try jq, then python3, then the slice above, choosing a tier on
 # whether its extraction WORKED rather than on whether the binary existed. That was already the second fix to
 # the selection logic, and the ladder stayed the root cause of four separate incidents. It is gone.
@@ -452,6 +475,7 @@ if [ "$_n_cmd" = 0 ] && [ -z "$CMD" ]; then
   fi
 fi
 [ -z "$CMD" ] && exit 0
+_unquoted "$CMD"; CMD_UQ="$_GS"      # read by the name rules below (hooksPath side doors, the approval record)
 
 # Gate observability. A gate that cannot be seen firing cannot be measured: "the model never reached for the
 # command" and "the gate stopped it" leave behind exactly the same artifacts, and the A/B harness spent a whole
@@ -911,8 +935,8 @@ _hp_blocks() {  # $1 = command -> 0 when it writes core.hooksPath or drops [core
   local verb="${_HP_PRE}(--get|--get-all|--get-regexp|--get-urlmatch|--list|-l|get|list)([${_HP_B}]|\$)"
   local wr="[${_HP_B}](--unset|--unset-all|--add|--replace-all|--edit|-e|set|unset|--rename-section|--remove-section|rename-section|remove-section)([${_HP_B}]|\$)"
   local -a reads=()
-  case "$c" in *"$bsnl"*) c="${c//"$bsnl"/ }" ;; esac   # quoted: in a ${//} pattern a bare backslash escapes the newline
-  t=${c//\"/}; t=${t//\'/}; t=${t//\\/}   # unquoted, one class each: inside "…" a [\"\'\\] class never closes
+  case "$c" in *"$bsnl"*) _gsub "$c" '\\'$'\n' ' ' bs; c="$_GS" ;; esac   # backslash-newline -> a space
+  _unquoted "$c"; t="$_GS"
   case "$t" in *[Hh][Oo][Oo][Kk][Ss][Pp][Aa][Tt][Hh]*|*[Ss][Ee][Cc][Tt][Ii][Oo][Nn]*) ;; *) return 1 ;; esac   # after unquoting: hooks"P"ath
   shopt -q nocasematch && nc=1; shopt -s nocasematch
   # The payload reader decodes JSON escapes lossily — `\r` arrives as nothing, so `git config core.hooksPath <CR>`
@@ -932,9 +956,9 @@ _hp_blocks() {  # $1 = command -> 0 when it writes core.hooksPath or drops [core
   [ "$nc" = 0 ] && shopt -u nocasematch
   # Leftover text of a read still matches the rule below, so cutting the wrong copy can only over-block.
   for r in ${reads[@]+"${reads[@]}"}; do c="${c/"$r"/ }"; done
-  t=${c//\"/}; t=${t//\'/}; t=${t//\\/}   # unquoted, one class each: inside "…" a [\"\'\\] class never closes
+  _unquoted "$c"; t="$_GS"
   _ere i "$t" 'git([^|]*[^[:alnum:]_|])?config[^[:alnum:]_|][^|]*core\.hooksPath' '*[Hh][Oo][Oo][Kk][Ss][Pp][Aa][Tt][Hh]*' && return 0
-  _ere i "$t" 'config[^;&|]*[[:space:]](--remove-section|--rename-section|remove-section|rename-section)[[:space:]]+(--[[:space:]]+)?core([^A-Za-z0-9_.-]|$)' '*[Ss][Ee][Cc][Tt][Ii][Oo][Nn]*' && return 0
+  _ere i "$t" 'config[^;&|]*[[:space:]](--remove-section|--rename-section|remove-section|rename-section)[[:space:]]+(--[[:space:]]+)?([^;&|[:space:]]+[[:space:]]+)?core([^A-Za-z0-9_.-]|$)' '*[Ss][Ee][Cc][Tt][Ii][Oo][Nn]*' && return 0   # [core] as the old name OR the new one
   return 1
 }
 # Inline config override: `git -c core.hooksPath=…` / `git --config-env core.hooksPath=…` turns the hooks off for
@@ -947,7 +971,7 @@ _hp_blocks() {  # $1 = command -> 0 when it writes core.hooksPath or drops [core
 # name, reads included: a rule that argued which `git config include.path` is a read would be the reader that
 # _hp_blocks needed three review rounds to get right, for a key nobody reads in ordinary work.
 if [ "$HAS_GIT" = 1 ]; then
-  _t="${CMD//\"/}"; _t="${_t//\'/}"; _t="${_t//\\/}"
+  _t="$CMD_UQ"
   # ...and the inline form of both, with the quoting taken off first: `git -c 'core.hooksPath=/dev/null' commit`,
   # `-c core.hooks''Path=…` and `-c include.path=f` all skipped the hooks, because the rule above wants the bare
   # key right after `-c` (measured, 3.1.0 review).
@@ -968,14 +992,17 @@ fi
 # blocked so doctor's re-arm fix still works (a chmod -x disable is caught by doctor, not here). Honest scope:
 # the shell is Turing-complete, so this is defence-in-depth — guard-write.sh covers the Write/Edit tools (the
 # model's natural path to a file), and install-time read-only hook files would be the airtight layer.
-GATE='\.(claude/(hooks|git-shim|settings\.json|DISCIPLINE\.md|eval/lib/crew-env\.sh)|git/hooks|git[/\\]+(config|worktrees[/\\]+[^/\\[:space:]]+[/\\]+config|modules[/\\]+[^[:space:]]+[/\\]+config))'
+_GP='[/\\]+(\.[/\\]+)*'      # a path separator as the shell and the filesystem take it: `/`, `\`, doubled, with `/./` between
+GATE='(\.(claude/(hooks|git-shim|settings\.json|DISCIPLINE\.md|eval/lib/crew-env\.sh)|git/hooks|git'"$_GP"'(config|worktrees'"$_GP"'[^/\\[:space:]]+'"$_GP"'config|modules'"$_GP"'[^[:space:]]+'"$_GP"'config))|\.gitconfig([^A-Za-z0-9_.-]|$)|\.config'"$_GP"'git'"$_GP"'config([^A-Za-z0-9_.-]|$))'
 # .git/config (with a worktree's and a submodule's own) is on the list because core.hooksPath LIVES there: the rules
 # above stop `git config core.hooksPath …`, and a plain `printf '[core]\n\thooksPath = /dev/null\n' >> .git/config`
 # walked past them — after it a commit from the user's own terminal skips the trace and secret scans (measured, 3.1.0
 # review; inside a session guard-commit-scan.sh still scans). Reading it stays allowed. Measured before choosing this
 # over checking the setting at commit time: 12,422 real commands in 671 transcripts name .git/config 9 times, all 9 in
 # Crewforth's own development; and a check at commit time would refuse every commit of an install whose hooks were never
-# wired. .claude/git-shim is the same thing one step removed: it is where core.hooksPath points when Crewforth shares
+# wired. The user's own files hold the same key for every repository at once: ~/.gitconfig and
+# $XDG_CONFIG_HOME/git/config (~/.config/git/config) are on the list by their names, wherever HOME is.
+# .claude/git-shim is the same thing one step removed: it is where core.hooksPath points when Crewforth shares
 # the hooks with a project's own chain.
 # eval/lib/crew-env.sh is on the list because the gates SOURCE it on every call (guard-bash, guard-write, the board
 # hooks): a file a gate executes is part of the gate. Measured before it was added: overwrite it with `exit 0` and
@@ -1036,15 +1063,15 @@ fi
 # that matter — `rm .claude/hooks/x` and `x > .claude/hooks/y` — both put them in the SAME segment, and both
 # are still blocked (asserted in smoke-test, in both directions).
 # The four rules below cost a grep each, so they run only for a command that could name a gate file at all. Builtin.
-_gate_named(){ case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*|*[Gg][Ii][Tt][/\\]*[Cc][Oo][Nn][Ff][Ii][Gg]*|*[Gg][Ii][Tt]-[Ss][Hh][Ii][Mm]*) return 0 ;; esac; return 1; }
+_gate_named(){ case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*|*[Gg][Ii][Tt][/\\]*[Cc][Oo][Nn][Ff][Ii][Gg]*|*[Gg][Ii][Tt]-[Ss][Hh][Ii][Mm]*|*.[Gg][Ii][Tt][Cc][Oo][Nn][Ff][Ii][Gg]*) return 0 ;; esac; return 1; }
 # CREW-NOT-A-RUNG: same — `perl`, `python3`, `ruby`, `node` here are names the gate REFUSES when they are
 # pointed at a gate file, not readers this hook uses.
-_gate_named && echo "$CMD" | grep -qiE "(^|[^A-Za-z0-9_-])(rm|mv|cp|truncate|tee|install|ln|perl|python[0-9.]*|ruby|node|ex|ed|set-content|add-content|clear-content|out-file|new-item|rename-item|copy-item|move-item|remove-item)\b[^;&|]*$GATE" && block "write/tamper of a gate file (hook/settings/.git-hooks)" "4.5" tamper
+_gate_named && echo "$CMD" | grep -qiE "(^|[^A-Za-z0-9_-])(rm|mv|cp|rsync|sponge|truncate|tee|install|ln|perl|python[0-9.]*|ruby|node|ex|ed|set-content|add-content|clear-content|out-file|new-item|rename-item|copy-item|move-item|remove-item)\b[^;&|]*$GATE" && block "write/tamper of a gate file (hook/settings/.git-hooks)" "4.5" tamper
 _gate_named && echo "$CMD" | grep -qiE "(sed|perl|awk|ruby)[[:space:]]+(-[^[:space:]]+[[:space:]]+)*-i[^;&|]*$GATE"          && block "in-place edit of a gate file" "4.5" tamper
 # /CREW-NOT-A-RUNG
 # The redirect TARGET must be the gate path, not merely something later on the line: a target is one token, so
 # it cannot contain whitespace or a command separator.
-_gate_named && echo "$CMD" | grep -qiE ">[[:space:]]*['\"]?[^[:space:];&|<>]*$GATE"                                          && block "redirect over a gate file" "4.5" tamper
+_gate_named && echo "$CMD" | grep -qiE ">[|]?[[:space:]]*['\"]?[^[:space:];&|<>]*$GATE"                                          && block "redirect over a gate file" "4.5" tamper
 { _gate_named && has "=[^;&|]*$GATE" && has '>>?[[:space:]]*\$'; }                                                          && block "indirected write to a gate path (variable + redirect)" "4.5" tamper
 # A symlink whose TARGET is the config directory itself is the two-step form of editing a hook, and step one
 # names no gate path at all: `ln -sfn .claude cfg` passed every rule above, and then `cfg/hooks/guard-bash.sh`
@@ -1075,8 +1102,8 @@ case "$CMD" in *[Ll][Nn][[:space:]]*|*[Mm][Kk][Ll][Ii][Nn][Kk]*) : ;; *) false ;
 # HONEST SCOPE, as for the gate files above: these rules match NAMES. A command that reaches the same thing without
 # spelling it (a glob, a concatenation, a script written first) is past them.
 _appr_named(){  # sets _APN: 1 = the record is named, 2 = the hook is fed, 3 = a session that continues this one, 0 = none
-  local t="${CMD//\"/}" nc=0
-  t=${t//\'/}; t=${t//\\/}; _APN=0
+  local t nc=0
+  t="$CMD_UQ"; _APN=0
   shopt -q nocasematch && nc=1; shopt -s nocasematch
   case "$t" in
     *crewforth-appr*) _APN=1 ;;
@@ -1429,7 +1456,7 @@ _a44_collapse(){  # $1 = command, $2 = commit|push, $3 = tool -> 0 and _A44_S (q
     local LC_ALL=C
     case "$s" in *[!\ -~]*|*\?*) _A44_WHY="outside the Bash tool an approved call is plain ASCII on one line (PowerShell reads typographic quotes as quotes); use the Bash tool for any other message"; return 1 ;; esac
   fi
-  s="${s//$'\r'/}"
+  _gsub "$s" $'\r' ''; s="$_GS"
   while :; do
     pre="${s%%[\"\'\\]*}"; out="$out$pre"
     [ "$pre" = "$s" ] && break
@@ -1440,7 +1467,7 @@ _a44_collapse(){  # $1 = command, $2 = commit|push, $3 = tool -> 0 and _A44_S (q
             *) _A44_WHY="a backslash outside quotes"; return 1 ;;
           esac ;;
       \') case "$s" in *\'*) ;; *) _A44_WHY="an unpaired quote"; return 1 ;; esac
-          s="${s#*\'}"; out="${out}Q" ;;
+          body="${s%%\'*}"; s="${s:${#body}+1}"; out="${out}Q" ;;
       *)  case "$s" in
             '$(cat <<'\'*)
               rest="${s:9}"; w="${rest%%\'*}"
@@ -1450,7 +1477,7 @@ _a44_collapse(){  # $1 = command, $2 = commit|push, $3 = tool -> 0 and _A44_S (q
               # The body ends at the FIRST line that is the delimiter, as it does for the shell.
               case "$rest" in
                 "$w"$'\n'*)       rest="${rest:${#w}+1}" ;;
-                *$'\n'"$w"$'\n'*) rest="${rest#*$'\n'"$w"$'\n'}" ;;
+                *$'\n'"$w"$'\n'*) body="${rest%%$'\n'"$w"$'\n'*}"; rest="${rest:${#body}+${#w}+2}" ;;
                 *) _A44_WHY="a here-document that is not closed on its own line"; return 1 ;;
               esac
               while :; do case "$rest" in [$' \t']*) rest="${rest:1}" ;; *) break ;; esac; done
@@ -1461,7 +1488,7 @@ _a44_collapse(){  # $1 = command, $2 = commit|push, $3 = tool -> 0 and _A44_S (q
             *\"*)
               body="${s%%\"*}"
               case "$body" in *[\$\`\\\!]*) _A44_WHY="a double-quoted text that holds \$, a backtick, a backslash or ! (single-quote it, or read the message from a here-document with a quoted delimiter)"; return 1 ;; esac
-              s="${s#*\"}"; out="${out}Q" ;;
+              s="${s:${#body}+1}"; out="${out}Q" ;;
             *) _A44_WHY="an unpaired quote"; return 1 ;;
           esac ;;
     esac
@@ -1647,7 +1674,7 @@ _c47_read(){  # $1 = command -> _C47_T: separators as ` ; `; every quoted span a
               # (\001 n \001, its text in _C47_Q[n]); redirections set apart from the words they touch; heredoc bodies gone
   local s="$1" out="" pre c w hd="" c2 nl=$'\n' n=0 body t
   _C47_M=$'\001'; _C47_Q=(); _C47_QX=""
-  s="${s//$'\r'/}"; s="${s//$_C47_M/}"
+  _gsub "$s" $'\r' ''; _gsub "$_GS" "$_C47_M" ''; s="$_GS"
   while :; do
     pre="${s%%[\"\'\\\;\&\|\<\>\#\(\)\`\$$nl]*}"; out="$out$pre"
     [ "$pre" = "$s" ] && break
@@ -1658,13 +1685,13 @@ _c47_read(){  # $1 = command -> _C47_T: separators as ` ; `; every quoted span a
             '') ;;
             *) _C47_Q[n]="${s:0:1}"; out="$out$_C47_M$n$_C47_M"; n=$((n+1)); s="${s:1}" ;;   # an escaped character is itself, quoted
           esac ;;
-      \') case "$s" in *\'*) body="${s%%\'*}"; s="${s#*\'}" ;; *) body="$s"; s="" ;; esac
+      \') case "$s" in *\'*) body="${s%%\'*}"; s="${s:${#body}+1}" ;; *) body="$s"; s="" ;; esac
           _C47_Q[n]="$body"; out="$out$_C47_M$n$_C47_M"; n=$((n+1)) ;;
       \") body=""
           case "$s" in
             '$(cat <<'*)   # a message read from a here-document: its body is skipped as a whole, quotes and all
               w="${s:8}"; w="${w#-}"; w="${w#[\'\"]}"; w="${w%%[!A-Za-z0-9_]*}"
-              case "$s" in *"$nl$w$nl"*) [ -n "$w" ] && { s="${s#*"$nl$w$nl"}"; body='(a here-document)'; } ;; esac ;;
+              case "$s" in *"$nl$w$nl"*) [ -n "$w" ] && { pre="${s%%"$nl$w$nl"*}"; s="${s:${#pre}+${#w}+2}"; body='(a here-document)'; } ;; esac ;;
           esac
           while :; do                                              # to the closing quote that is not escaped
             pre="${s%%[\"\\]*}"
@@ -1687,15 +1714,15 @@ _c47_read(){  # $1 = command -> _C47_T: separators as ` ; `; every quoted span a
                    body="$body\\${s:0:1}"; s="${s:1}"
                  done
                  _C47_Q[n]="$body"; out="$out$_C47_M$n$_C47_M"; n=$((n+1)) ;;
-            '(('*) case "$s" in *'))'*) s="${s#*'))'}" ;; *) s="" ;; esac; out="$out\$" ;;   # $(( … )): arithmetic, `<<` in it is a shift
-            '{'*)  case "$s" in *'}'*) s="${s#*'}'}" ;; *) s="" ;; esac; out="$out\$" ;;     # ${ … }: one expansion, `#` in it is no comment
+            '(('*) case "$s" in *'))'*) pre="${s%%'))'*}"; s="${s:${#pre}+2}" ;; *) s="" ;; esac; out="$out\$" ;;   # $(( … )): arithmetic, `<<` in it is a shift
+            '{'*)  case "$s" in *'}'*) pre="${s%%'}'*}"; s="${s:${#pre}+1}" ;; *) s="" ;; esac; out="$out\$" ;;     # ${ … }: one expansion, `#` in it is no comment
             *) out="$out\$" ;;
           esac ;;
       "$nl") if [ -n "$hd" ]; then                                 # the lines up to the delimiter are the here-document
                case "$s" in
                  "$hd")            s="" ;;
                  "$hd$nl"*)        s="${s:${#hd}+1}" ;;
-                 *"$nl$hd$nl"*)    s="${s#*"$nl$hd$nl"}" ;;
+                 *"$nl$hd$nl"*)    pre="${s%%"$nl$hd$nl"*}"; s="${s:${#pre}+${#hd}+2}" ;;
                  *"$nl$hd")        s="" ;;
                esac                                                # no such line: it was no here-document, read on
                hd=""
@@ -1704,7 +1731,7 @@ _c47_read(){  # $1 = command -> _C47_T: separators as ` ; `; every quoted span a
       \|) case "$out" in *\>) out="$out|" ;; *) out="$out ; " ;; esac ;;       # >| is a redirection, not a pipe
       \;|\(|\)|\`) out="$out ; " ;;
       \&) case "$out" in
-            *\>) out="$out&" ;;                                     # 2>&1, >&
+            *[\<\>]) out="$out&" ;;                                 # 2>&1, >&, and the input forms 0<&-, <&2
             *) case "$s" in
                  \>*) out="$out &>"; s="${s:1}" ;;                  # &>
                  *) out="$out ; " ;;
@@ -1730,7 +1757,7 @@ _c47_read(){  # $1 = command -> _C47_T: separators as ` ; `; every quoted span a
           esac
           out="$out$c" ;;
       \#) case "$out" in
-            ''|*[$' \t']) case "$s" in *"$nl"*) s="$nl${s#*"$nl"}" ;; *) s="" ;; esac ;;   # a comment, to the end of its line
+            ''|*[$' \t']) case "$s" in *"$nl"*) pre="${s%%"$nl"*}"; s="${s:${#pre}}" ;; *) s="" ;; esac ;;   # a comment, to the end of its line
             *) out="$out#" ;;
           esac ;;
     esac
@@ -1792,11 +1819,11 @@ _c47_scan(){  # $1 = command. Sets: _C47_N (commits read) _C47_WT _C47_NV _C47_A
     # of export or env, quoted or not. HOME and XDG_CONFIG_HOME are among them: they decide which global
     # configuration git reads. GIT_AUTHOR_* / GIT_COMMITTER_* only describe the commit and are let through.
     v="$tok"; case "$v" in '$'[Ee][Nn][Vv]:*) v="${v:5}" ;; esac                     # PowerShell: $env:GIT_DIR='…'
-    case "$v" in
-      GIT_DIR|GIT_WORK_TREE|GIT_INDEX_FILE|GIT_COMMON_DIR|GIT_OBJECT_DIRECTORY|GIT_ALTERNATE_OBJECT_DIRECTORIES|GIT_NAMESPACE|GIT_EXEC_PATH|GIT_CONFIG*|\
-      HOME=*|XDG_CONFIG_HOME=*|\
-      GIT_DIR=*|GIT_WORK_TREE=*|GIT_INDEX_FILE=*|GIT_COMMON_DIR=*|GIT_OBJECT_DIRECTORY=*|GIT_ALTERNATE_OBJECT_DIRECTORIES=*|GIT_NAMESPACE=*|GIT_EXEC_PATH=*|GIT_CONFIG*=*)
-        [ "$ph" = commit ] || envf=1 ;;
+    case "${v%%=*}" in
+      GIT_DIR|GIT_WORK_TREE|GIT_INDEX_FILE|GIT_COMMON_DIR|GIT_OBJECT_DIRECTORY|GIT_ALTERNATE_OBJECT_DIRECTORIES|GIT_NAMESPACE|GIT_EXEC_PATH|GIT_CONFIG*)
+        [ "$ph" = commit ] || envf=1 ;;                                               # named (export GIT_DIR) or assigned
+      HOME|XDG_CONFIG_HOME)
+        [ "$ph" = commit ] || case "$v" in *=*) envf=1 ;; esac ;;                     # only when assigned
     esac
     case "$ph" in
       skip) # Not a command this table knows. A bare `git` further along the same command is still git (timeout 10 git …,
@@ -1830,6 +1857,8 @@ _c47_scan(){  # $1 = command. Sets: _C47_N (commits read) _C47_WT _C47_NV _C47_A
             while :; do case "${1:-}" in -[!-]*|--) shift ;; *) break ;; esac; done
             v="${1:-}"
             case "$v" in ''|\;) v="" ;; *) _c47_w "$v"; v="$_W"; [ "$_WX" = 1 ] && v=""; [ "$v" = - ] && v="" ;; esac
+            # `cd "$(git rev-parse --show-toplevel)" && git commit …` goes to the top of THIS repository: no change.
+            [ "$_W" = '$(git rev-parse --show-toplevel)' ] && { ph=skip; continue; }
             if [ -n "$v" ] && [ "$rcd" = 0 ]; then rcd=1; rcdt="$v"; else rcd=2; fi
             ph=skip ;;
           Start-Process|saps|start)
@@ -1947,7 +1976,7 @@ _C47_N=0; _C47_WT=""; _C47_CD=0; _c47_seen=0
 if git_has "$CMD" 'commit'; then _c47_seen=1; fi
 _c47_try=0
 case "$CMD" in *[Mm][Ii][Tt]*)   # with quotes, backslashes and joined lines taken out: `g\it`, `com\<newline>mit`
-  _t="${CMD//\\$'\n'/}"; _t="${_t//\\/}"; _t="${_t//\"/}"; _t="${_t//\'/}"
+  _gsub "$CMD" '\\'$'\n' '' bs; _unquoted "$_GS"; _t="$_GS"
   # Both words, in either order: `$a = @('commit','-n'); git @a` names commit first.
   case "$_t" in *[Gg][Ii][Tt]*) case "$_t" in *[Cc][Oo][Mm][Mm][Ii][Tt]*) _c47_try=1 ;; esac ;; esac ;;
 esac
@@ -2102,11 +2131,9 @@ if git_has "$CMD" 'commit|push'; then
       # MEASURED FALSE on bash 5.3.15 — both spellings behave alike there. It stays only because a bracket
       # expression cannot be misread by anyone (calibrated here: `[\\]n` matches a backslash before an `n` and
       # leaves a bare `n` alone) and because it keeps replacements free of backslashes. No correctness claim.
-      s="${s//[\\]r/}"
-      s="${s//$'\r'/}"
-      s="${s//[\\]n/$'\n'}"
-      s="${s//[\\]\'/Q}"
-      s="${s//[\\]\"/Q}"
+      # Through _gsub (see there): the same substitutions, a piece at a time.
+      _gsub "$s" '[\\]r' '' bs; _gsub "$_GS" $'\r' ''; _gsub "$_GS" '[\\]n' $'\n' bs
+      _gsub "$_GS" '[\\]'"\\'" Q bs; _gsub "$_GS" '[\\]\"' Q bs; s="$_GS"
       # A quoted span collapses to the single placeholder `Q`, and this is the whole design: the CONTENT of a
       # quote must not be read as an option or a path, but the TOKEN has to survive. The first version DELETED
       # the span, and that was a measured fail-open on Windows — `git commit -m c "a.txt"` and
@@ -2116,32 +2143,40 @@ if git_has "$CMD" 'commit|push'; then
       # keeps adjacency too, so `-m"msg"` becomes `-mQ` (an attached value, correct) and not `-m Q`.
       # Double quotes go FIRST: an apostrophe inside a double-quoted message (`-m "don't"`) is ordinary, whereas
       # a double quote inside a single-quoted one is rare, so this order mangles the rarer shape.
+      # THE WALK IS BY LENGTH, and only over what is left. It used to be `rest="${s#*\"}"` on the whole string, and
+      # that one expansion costs the SQUARE of the distance to the quote in bash (measured, bash 3.2, one call: 13 ms at
+      # 5 KB, 108 ms at 10 KB, 317 ms at 21 KB) — once per pair, on a string whose collapsed front keeps growing. A
+      # quote-dense commit message therefore took 6 s at 10 KB, 14 s at 16 KB and 335 s at 46 KB (macOS; 14.2 s at
+      # 18 KB on Windows), in 3.0.1 too, and a hook that reaches its 600 s timeout does not block. The result is the
+      # same string: the text before a pair holds no quote and neither does the `Q` that replaces it, so the next pair
+      # is the first one in the remainder (pinned in smoke-test against the old loop, on the same inputs).
+      local acc="" p2
       while :; do
         case "$s" in *\"*\"*) ;; *) break ;; esac
-        pre="${s%%\"*}"; rest="${s#*\"}"; rest="${rest#*\"}"; s="${pre}Q${rest}"
+        pre="${s%%\"*}"; rest="${s:${#pre}+1}"; p2="${rest%%\"*}"; acc="$acc${pre}Q"; s="${rest:${#p2}+1}"
       done
+      s="$acc$s"; acc=""
       while :; do
         case "$s" in *\'*\'*) ;; *) break ;; esac
-        pre="${s%%\'*}"; rest="${s#*\'}"; rest="${rest#*\'}"; s="${pre}Q${rest}"
+        pre="${s%%\'*}"; rest="${s:${#pre}+1}"; p2="${rest%%\'*}"; acc="$acc${pre}Q"; s="${rest:${#p2}+1}"
       done
+      s="$acc$s"
       # A backslash-newline is a LINE CONTINUATION, the opposite of a separator: it JOINS. Measured, before this,
       # `git commit \` + newline + `  -m c` refused the commit, because the lone `\` became a token and read as a
       # pathspec. It has to run before the conversion below, or the newline is gone when we look for it.
-      s="${s//[\\]$'\n'/ }"
+      _gsub "$s" '[\\]'$'\n' ' ' bs; s="$_GS"
       # A NEWLINE IS A COMMAND SEPARATOR and has to become one, or a multi-line Bash call is misread: measured,
       # `git commit -m c` followed by a line `echo done` refused the commit, because `done` was read as a
       # pathspec. Splitting alone cannot save it — the default IFS eats newlines, so the boundary is gone by the
       # time the walk sees tokens.
-      s="${s//$'\n'/;}"
+      _gsub "$s" $'\n' ';'; s="$_GS"
       # SEPARATORS BECOME THEIR OWN TOKENS. Without this, `git commit -m c; echo done` refused the commit: the
       # token was `c;`, `-m` swallowed it whole, the separator inside it was never seen, and `echo` read as a
       # pathspec. The fail-open twin is worse and was measured too — in
       # `if true; then git commit -m c -- a.txt; fi` the pathspec token was `a.txt;`, which the `--` lookahead
       # dismissed as a separator, so the commit was ALLOWED. Padding fixes both at once, and `&&`/`||` simply
       # become two tokens, which the walk already treats as one boundary.
-      s="${s//;/ ; }"
-      s="${s//&/ & }"
-      s="${s//|/ | }"
+      _gsub "$s" ';' ' ; '; _gsub "$_GS" '&' ' & '; _gsub "$_GS" '|' ' | '; s="$_GS"
       # Splitting has to happen with globbing OFF, or a pathspec like `*.ts` would expand against the cwd and a
       # commit could be judged on whatever files happen to sit there.
       local unglob=0

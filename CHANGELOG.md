@@ -23,9 +23,13 @@ versioning follows [SemVer](https://semver.org/).
   before is let through.
 - **`core.hooksPath` could be switched off without `git config`.** `printf '[core]\n\thooksPath = /dev/null\n' >> .git/config`
   passed, and after it a commit from your own terminal skipped the trace and secret scans. `.git/config` (a worktree's
-  and a submodule's too) and `.claude/git-shim` are gate files now: a shell write and the file tools are refused,
+  and a submodule's too), your own `~/.gitconfig` and `~/.config/git/config`, and `.claude/git-shim` are gate files now: a shell write and the file tools are refused,
   reading is not. `git config include.path`, `includeIf` and `GIT_CONFIG_` variables that carry `hooksPath` are
   refused as well, and so is an abbreviated `--no-verify` on any git command.
+- **A large commit command could run past the gate's timeout, and a hook that times out does not block.** `guard-bash.sh`
+  stripped and padded the whole command with `${text//x/y}`, ten times over, and bash rebuilds the string for every
+  match: a 46 KB commit whose message is a quote-dense here-document took 335 s on macOS and 14 s at 18 KB on Windows,
+  against a 600 s timeout. The substitutions are done a piece at a time now; the same command is judged in about 2 s.
 - A review record could vouch for any staged diff once `git config diff.external true` was set: the staged diff then
   prints nothing, and every change got the same id. The id is computed with `--no-ext-diff --no-textconv`.
 - A recursive forced delete of `.` or `..` passed in both shells (`rm -rf .`, `rm -rf ..`,
