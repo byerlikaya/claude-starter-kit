@@ -51,6 +51,9 @@ git commit under a GIT_ variable set in the command	komutta ayarlanmış bir GIT
 git commit option the gate cannot read	kapının okuyamadığı bir git commit seçeneği
 git commit inside a nested shell	iç içe kabukta git commit
 git commit in a command too large to read	okunamayacak kadar büyük bir komutta git commit
+git subcommand the shell fills in	alt komutunu kabuğun doldurduğu git çağrısı
+git call with an expansion in a command too large to read	okunamayacak kadar büyük bir komutta genişletme içeren git çağrısı
+git started through System.Diagnostics.Process	System.Diagnostics.Process üzerinden başlatılan git
 tool call too large to read	okunamayacak kadar büyük bir araç çağrısı
 commit after a change of directory	dizin değiştirdikten sonra commit
 git config include.path (another file read as configuration)	git config include.path (başka bir dosya yapılandırma olarak okunur)

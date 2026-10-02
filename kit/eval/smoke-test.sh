@@ -7456,6 +7456,7 @@ CFT='2 2 @@ git commit -n -m x
 2 2 @@ k=core.hooksPath; git -c $k=/dev/null commit -m x
 2 2 @@ git -c include.path=/tmp/inc commit -m x
 2 2 @@ git(){ command git \"$@\" -a; }; git commit -m x
+2 2 @@ git(){ :; }; git commit -m x
 2 2 @@ git -c alias.ci=\x27commit -a\x27 ci -m x
 2 2 @@ git -c alias.ci=commit ci -n -m x
 2 2 @@ trap \x27git commit -n -m x\x27 EXIT
@@ -7485,8 +7486,8 @@ _cf_table "$CFT"
 # The reason is part of the verdict: an abbreviated --amend or --no-verify is named as what git reads it as.
 _cf_run default 'git commit --amen -m x'; grep -q 'rewrites the last one' "$_CF/err" || _cfbad="$_cfbad [--amen is not reported as an amend]"
 _cf_run default 'git commit -qnm x'; grep -q 'skips its hooks: -n in -qnm' "$_CF/err" || _cfbad="$_cfbad [-n inside a cluster is not reported as a hook skip]"
-if [ "$_cfn" != 99 ]; then fail "FIXTURE: the refused-commit-forms table has $_cfn rows, not 99"
-elif [ -z "$_cfbad" ]; then pass "99 commit forms that reached the prompt are refused. In every session: -n and abbreviated --no-verify / --amend, wherever the commit sits (braces, if, a wrapper, a redirection in front) and however the word is quoted or escaped; a GIT_ variable that moves the repository, the index or the config, set or exported anywhere in the call; a -c setting or a redefinition of git that changes what a commit does; a commit inside a quoted shell script; an unknown option; an argument the shell expands. Wherever a review record is required: the working tree past a redirection, a here-document, a cluster or mis-paired quotes, and a commit after a change of directory"
+if [ "$_cfn" != 100 ]; then fail "FIXTURE: the refused-commit-forms table has $_cfn rows, not 100"
+elif [ -z "$_cfbad" ]; then pass "100 commit forms that reached the prompt are refused. In every session: -n and abbreviated --no-verify / --amend, wherever the commit sits (braces, if, a wrapper, a redirection in front) and however the word is quoted or escaped; a GIT_ variable that moves the repository, the index or the config, set or exported anywhere in the call; a -c setting or a redefinition of git that changes what a commit does; a commit inside a quoted shell script; an unknown option; an argument the shell expands. Wherever a review record is required: the working tree past a redirection, a here-document, a cluster or mis-paired quotes, and a commit after a change of directory"
 else fail "commit forms that should be refused:$_cfbad"; fi
 
 # ---- ...and what everyday work looks like, which must not change -----------------------------------------------
@@ -7579,6 +7580,66 @@ _cf_table "$CWT" PowerShell
 if [ "$_cfn" != 17 ]; then fail "FIXTURE: the PowerShell commit-forms table has $_cfn rows, not 17"
 elif [ -z "$_cfbad" ]; then pass "through the PowerShell tool: 12 commit forms are refused (a splat, a command or subcommand in a variable, Start-Process, a built-up Invoke-Expression, \$env:GIT_DIR, -n however git is called, a commit after Set-Location), 5 everyday calls are judged as before (17 rows)"
 else fail "PowerShell commit forms:$_cfbad"; fi
+
+# ---- a git subcommand the shell fills in ------------------------------------------------------------------------
+# Every rule about a git command finds it by its name. With an expansion inside the subcommand the name is not in the
+# text: `git com${z}mit`, `git "$c"`, `git $(printf com)mit`, a backtick, `git pu${z}sh --force`. Measured: each of
+# these passed every gate, and git ran the command (the premise below runs two of them). PowerShell can also start
+# git without writing it as a command, through System.Diagnostics.Process. An expansion anywhere ELSE in a git call
+# is everyday work and must stay untouched: on 4986 real commands that hold git, 2850 have one, none in the subcommand.
+_cf_new; _cfp=""
+( cd "$_cfw" && z= && git com${z}mit -q -m premise-1 ) >/dev/null 2>&1 || _cfp="$_cfp git-com\${z}mit-did-not-commit"
+( cd "$_cfw" && echo three >> a.txt && git add a.txt && c=commit && git "$c" -q -m premise-2 ) >/dev/null 2>&1 || _cfp="$_cfp git-\"\$c\"-did-not-commit"
+[ "$(cd "$_cfw" && git log --format=%s -2 2>/dev/null | tr '\n' ' ')" = "premise-2 premise-1 " ] || _cfp="$_cfp the-two-commits-are-not-in-the-log"
+[ -z "$_cfp" ] && pass "premise, run against git: 'git com\${z}mit' and 'git \"\$c\"' (c=commit) each make a commit" \
+               || fail "FIXTURE: the subcommand premise does not hold:$_cfp"
+_cf_new
+CST='2 2 @@ git com${z}mit -m x
+2 2 @@ g=mit; git com$g -m x
+2 2 @@ git $(printf com)mit -m x
+2 2 @@ git `printf commit` -m x
+2 2 @@ git \"$(printf commit)\" -m x
+2 2 @@ c=commit; git \"$c\" -n -m x
+2 2 @@ git ${c:-commit} -m x
+2 2 @@ git c$(:)ommit -n -m x
+2 2 @@ git -C . com${z}mit -m x
+2 2 @@ git --no-pager $(echo commit) -m x
+2 2 @@ git pu${z}sh --force origin main
+2 2 @@ git re$(:)set --hard HEAD~1
+2 2 @@ git $(echo push) --force origin main
+2 2 @@ git cl${z}ean -fdx
+2 2 @@ git co${z}nfig core.hooksPath /dev/null
+0 0 @@ git status
+0 0 @@ git -C \"$PWD\" status
+0 0 @@ git -C $HOME/project status --short
+0 0 @@ git log --format=$\x27%h %s\x27 -3
+0 0 @@ git diff \"$BASE\"..HEAD --stat
+0 0 @@ git show \"$sha\":kit/hooks/guard-bash.sh
+0 0/allow @@ git checkout -b \"feature/$name\"
+0 0/allow @@ git add \"$f\" && git status
+0 0 @@ git --git-dir=\"$R/.git\" log -1
+0 0 @@ git -c user.name=\"$N\" log -1
+0 0 @@ git -c core.autocrlf=$ac archive --format=tar HEAD a.txt
+0 0 @@ for b in a b; do git branch \"$b\"; done
+0 0 @@ git rev-parse --short \"$(git rev-parse HEAD)\"
+0 0 @@ echo \"$(git rev-parse --show-toplevel)\"
+0 0 @@ git log -1 --format=%H \"$@\"
+0 0 @@ cat > notes.md <<\x27EOF\x27\n[Diagnostics.Process]::Start(\x27git\x27,\x27status\x27)\nEOF'
+_cf_table "$CST"; _cfsb="$_cfbad"; _cfsn="$_cfn"
+CSW='2 2 @@ [Diagnostics.Process]::Start(\x27git\x27,\x27commit -n -m x\x27)
+2 2 @@ [System.Diagnostics.Process]::Start(\"git.exe\", \"push --force origin main\")
+2 2 @@ $p = New-Object System.Diagnostics.ProcessStartInfo; $p.FileName = \x27git\x27; $p.Arguments = \x27commit -n -m x\x27; [System.Diagnostics.Process]::Start($p)
+2 2 @@ $psi = [System.Diagnostics.ProcessStartInfo]::new(\x27git\x27, \x27reset --hard HEAD~1\x27); [Diagnostics.Process]::Start($psi) | Out-Null
+2 2 @@ git com$($null)mit -n -m x
+2 2 @@ git $(\x27com\x27 + \x27mit\x27) -n -m x
+0 0 @@ [System.Diagnostics.Process]::Start(\x27notepad.exe\x27)
+0 0 @@ [Diagnostics.Process]::GetCurrentProcess().Id
+0 0 @@ git -C $PWD status
+0 0 @@ git log --oneline -5'
+_cf_table "$CSW" PowerShell
+if [ "$_cfsn $_cfn" != "31 10" ]; then fail "FIXTURE: the subcommand tables have $_cfsn and $_cfn rows, not 31 and 10"
+elif [ -z "$_cfsb$_cfbad" ]; then pass "a git subcommand the shell fills in is refused in every session: 15 Bash forms (an expansion inside the word, a quoted variable, \$( ) and a backtick, for commit, push --force, reset --hard, clean and config) and 6 through the PowerShell tool (System.Diagnostics.Process with git, an expansion in the word); 20 everyday calls with an expansion elsewhere, or that class without git, are judged as before (41 rows)"
+else fail "a git subcommand the shell fills in:$_cfsb$_cfbad"; fi
 
 # ---- a diff that prints nothing is still a different diff -------------------------------------------------------
 _cf_new; _cfbad=""
@@ -7736,6 +7797,15 @@ _cfsaw="$_cfsaw one of $_cfsz bytes is refused in ${_cft} s and told to use -F;"
 _cf_big 'cat <<'"$_cfq"'MSG'"$_cfq"'\n'"$_cfbody"'MSG'
 { [ "$_cfr" = 0 ] && [ -z "$_cfd" ] && [ "$_cfsz" -gt 45000 ]; } \
   || _cfbad="$_cfbad [a $_cfsz-byte command with no commit: rc=$_cfr decision=$_cfd, want rc 0 and no decision — $(sed -n 1p "$_CF/err" | cut -c1-120)]"
+# 3b) a git call with an expansion in it is read by the same reader, so it has the same limit; git with no expansion,
+#     at the same size, is not read that way and passes
+_cfa="$(printf '%*s' 33000 '' | tr ' ' a)"
+_cf_big 'git -C \"$PWD\" status; echo '"$_cfa"
+{ [ "$_cfr" = 2 ] && [ "$_cft" -le 60 ] && grep -q 'words the shell fills in' "$_CF/err" && grep -q 'bytes long' "$_CF/err"; } \
+  || _cfbad="$_cfbad [a $_cfsz-byte call of git with an expansion: rc=$_cfr decision=$_cfd in ${_cft} s, want rc 2 and the size — $(sed -n 1p "$_CF/err" | cut -c1-120)]"
+_cf_big 'git status; echo '"$_cfa"
+{ [ "$_cfr" = 0 ] && [ -z "$_cfd" ]; } \
+  || _cfbad="$_cfbad [a $_cfsz-byte call of git with no expansion: rc=$_cfr decision=$_cfd, want rc 0 and no decision — $(sed -n 1p "$_CF/err" | cut -c1-120)]"
 # 4) the edge, to the byte: `git commit -q -m '` + a's + `'` is 19 bytes around the a's
 if [ -n "$_cfmax" ]; then
   _cfa="$(printf '%*s' "$((_cfmax - 19))" '' | tr ' ' a)"
@@ -7753,7 +7823,7 @@ if [ -n "$_cfmax" ]; then
   else skip tool "the size limit counted in bytes and not in characters (no UTF-8 locale this bash honours)"; fi
 fi
 if [ -z "$_cfmax" ]; then fail "guard-bash.sh sets no _C47_MAX — a commit command of any size is read, and the reading can outlast the hook's timeout"
-elif [ -z "$_cfbad" ]; then pass "a commit command is read up to $_cfmax bytes and refused unread above:$_cfsaw the same size with no commit passes; the edge holds to the byte (the timeout is 600 s; a 64 KB commit took 154 s to read on macOS)"
+elif [ -z "$_cfbad" ]; then pass "a commit command is read up to $_cfmax bytes and refused unread above:$_cfsaw the same size with no commit passes; a git call with an expansion has the same limit and one without it has none; the edge holds to the byte (the timeout is 600 s; a 64 KB commit took 154 s to read on macOS)"
 else fail "the size limit on a commit command:$_cfbad"; fi
 
 # ---- a Bash or PowerShell call above a size is refused before anything reads it ---------------------------------
@@ -7991,8 +8061,8 @@ else
     _cf_run auto "$_cc" 0 "$_ct"; [ "$_cfr" = "$_cw" ] || _thbad="$_thbad [$_ct: $_cc → $_cfr, want $_cw]"
   done <<< "$THT"
   _cfloc=""
-  if [ "$_thn" != 248 ]; then fail "FIXTURE: the gate tables under $_th ran $_thn rows, not 248"
-  elif [ -z "$_thbad" ]; then pass "under $_th guard-bash and guard-write give the verdicts they give under C: 248 rows (the commit forms, the everyday calls, the PowerShell forms, the side doors and Write calls, a recursive Remove-Item, a nested .env, ID_RSA by case) — $_thkind"
+  if [ "$_thn" != 249 ]; then fail "FIXTURE: the gate tables under $_th ran $_thn rows, not 249"
+  elif [ -z "$_thbad" ]; then pass "under $_th guard-bash and guard-write give the verdicts they give under C: 249 rows (the commit forms, the everyday calls, the PowerShell forms, the side doors and Write calls, a recursive Remove-Item, a nested .env, ID_RSA by case) — $_thkind"
   else fail "verdicts that change under $_th:$_thbad"; fi
   # (2) the two git hooks, and the scan guard-commit-scan runs ahead of a commit
   _thbad=""
