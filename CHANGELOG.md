@@ -41,6 +41,20 @@ versioning follows [SemVer](https://semver.org/).
   A session cannot produce the approval it would use: the file tools and any shell command that names the record
   are refused, and so are a command that feeds the hook a payload of its own and, in those two modes, one that
   starts a Claude Code session continuing this one. Those rules match names, as the rules for the gate files do.
+- **Studio: two more views of a session.** The **Timeline** draws the same agents against the clock, one row each,
+  with a drawer for an agent's last error; the **List** sorts them by what needs someone, and is the view a narrow
+  window opens on. `g`, `t` and `l` switch between Graph, Timeline and List. The time an agent waited for you is drawn
+  only for a session Studio started, and only since the panel started; for any other session the Timeline says
+  `Not measured: this session's approvals are not seen by Studio`.
+- **Studio: an approval dock.** A tool call in a session Studio started waits along the bottom of the panel,
+  whichever session and view are on screen, with the agent that asked, the tool and its input: Allow once, Allow the
+  tool for this session, or Deny (`a`, `s`, `d`); denied at 45 s when nobody answers. A session allowance is listed
+  in the inspector's Gates tab and can be revoked there.
+- **Studio: a New session panel.** The project, the permission mode and an optional first message. Plan is the
+  default; Accept edits and Default are the other two, and modes that skip Crewforth's gates are not offered.
+- **Studio: a layout for a narrow window.** Below 640 px the panel is one column: the navigator is a drawer, the
+  inspector and the conversation take the whole stage and stop above the dock. Checked in a narrow desktop browser
+  window; not measured on a phone.
 
 ### Changed
 
@@ -51,6 +65,15 @@ versioning follows [SemVer](https://semver.org/).
     `$( )` subshells the 3.0.1 count did not see). On Git Bash a process costs 62–135 ms, and seconds on a loaded
     machine.
   - The four gates' timeout is 600 s, Claude Code's own default; Crewforth had set 60. The other hooks keep 60.
+- **Studio has a new interface.** The graph is a left-to-right tree: the session on the left, its agents to the right,
+  a workflow run as one group, and a strip above the canvas naming what needs attention. Selecting an agent opens an
+  inspector with four tabs (Overview, Conversation, Gates, Stats), and the inspector, the conversation and the New
+  session panel share one place on the right.
+- **Allow in Studio is an explicit answer to Claude Code.** In the Accept edits and Default modes the approval hook
+  returns `permissionDecision: allow`; before, it only stayed silent, and Claude Code then refused a write in Default
+  mode (measured on Windows). In Plan it still says nothing. A Crewforth gate or a `deny` rule refuses the call all
+  the same (measured on Windows, in a real session), and the conversation says who refused it. Known limit: the dock
+  can ask about a call that another gate refuses anyway.
 
 ## [3.0.1] — 2026-10-01
 
