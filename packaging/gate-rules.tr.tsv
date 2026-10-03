@@ -54,6 +54,7 @@ git commit in a command too large to read	okunamayacak kadar büyük bir komutta
 git subcommand the shell fills in	alt komutunu kabuğun doldurduğu git çağrısı
 git call with an expansion in a command too large to read	okunamayacak kadar büyük bir komutta genişletme içeren git çağrısı
 PowerShell call too large to read	okunamayacak kadar büyük bir PowerShell çağrısı
+a match that could not run	koşamayan bir eşleştirme (komut değerlendirilmedi)
 git started through System.Diagnostics.Process	System.Diagnostics.Process üzerinden başlatılan git
 tool call too large to read	okunamayacak kadar büyük bir araç çağrısı
 commit after a change of directory	dizin değiştirdikten sonra commit

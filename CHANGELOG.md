@@ -9,6 +9,13 @@ versioning follows [SemVer](https://semver.org/).
 
 ### Security
 
+- **In a large command, a destructive line near the top was not seen.** The rules that grep the command fed it
+  through a pipe, and `grep -q` leaves at its first match: with a command larger than the pipe holds, the writer was
+  killed by SIGPIPE and the rule read the pipeline's status (141) as "no match". Measured on macOS, in 3.0.2 too: a
+  command of 72 KB or more whose first line was `rm -rf /tmp/x/*` passed, and so did `dd of=`, `curl | sh`, `chmod
+  777`, `mkfs` and a lockfile delete; with that line last each was refused. `guard-bash.sh` and
+  `guard-commit-scan.sh` no longer pipe into grep, and a grep that could not run (any status but found or not found)
+  stops the call and says the command was not judged.
 - **A git subcommand the shell fills in walked past every gate.** Each rule about a git command finds it by its name,
   and with an expansion inside the word the name is not in the text: `git com${z}mit`, `c=commit; git "$c"`, `git
   $(printf com)mit`, a backtick, and the same for `git pu${z}sh --force`, `git re$(:)set --hard`, `git cl${z}ean -fdx`
