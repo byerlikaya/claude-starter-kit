@@ -5,6 +5,19 @@ Crewforth was named Claude Starter Kit until 3.0.0.
 Notable changes to this project are recorded here. Format follows [Keep a Changelog](https://keepachangelog.com/en/),
 versioning follows [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Security
+
+- **In a large command, a destructive line near the top was not seen.** The rules that grep the command fed it
+  through a pipe, and `grep -q` leaves at its first match: with a command larger than the pipe holds, the writer was
+  killed by SIGPIPE and the rule read the pipeline's status (141) as "no match". Measured on 3.0.2: on macOS and
+  Windows a command of 72 KB or more whose first line was `rm -rf /tmp/x/*` passed (on Linux at 128 KB), and so did
+  `dd of=`, `curl | sh`, `chmod 777`, `mkfs` and a lockfile delete; with that line last each was refused. `guard-commit-scan.sh` looked
+  for the commit the same way, so above that size it left without scanning and a staged key went through it (git's
+  own `pre-commit` hook still scanned). `guard-bash.sh` and `guard-commit-scan.sh` no longer pipe into grep, and a
+  grep that could not run (any status but found or not found) stops the call and says the command was not judged.
+
 ## [3.0.2] — 2026-10-03
 
 ### Security

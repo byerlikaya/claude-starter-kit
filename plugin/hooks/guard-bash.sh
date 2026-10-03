@@ -58,6 +58,35 @@ _CREW_LOCALE="${LC_ALL:-${LC_CTYPE:-${LANG:-}}}"
 case "$_CREW_LOCALE" in C|POSIX) _CREW_LOCALE="" ;; esac
 export LC_ALL=C
 # ---- /CREW-LOCALE
+# ---- CREW-MATCH -------------------------------------------------------------------------------------------
+# grep on the command, without a pipe and with its status read. Both halves were measured failing open:
+#   * `echo "$CMD" | grep -q …` under pipefail. grep -q leaves at its first match; when the command is larger than
+#     the pipe holds, the writer is killed by SIGPIPE and the pipeline's status is 141, which the rule read as
+#     "no match". On macOS, a command of 72 KB or more whose FIRST line was `rm -rf /tmp/x/*` (or dd of=, curl | sh,
+#     chmod 777, mkfs, a lockfile delete) passed with exit 0; with that line last it was refused. A here-string
+#     has no writer to kill.
+#   * A grep that could not run (killed, out of memory, exit 2 or more) answered like one that found nothing.
+# So: _grep answers 0 (found) or 1 (not found), and anything else stops the call. It must be called in the hook's
+# own shell, never inside $( ) or a pipeline, or the stop would only leave that child.
+_grep_stop(){  # $1 = grep's status
+  declare -F gatelog >/dev/null 2>&1 && gatelog BLOCK 4.5 "a match that could not run"
+  echo "GUARD: a check of this command could not run (grep exited $1), so the command was not judged and is refused." >&2
+  echo "Nothing about the command itself was found. Run it again; if it is refused the same way, the fault is in the machine's grep, not in the command." >&2
+  exit 2
+}
+_grep(){  # $1 = text, $2… = grep's arguments -> 0 found · 1 not found
+  local t="$1" rc; shift
+  grep "$@" <<< "$t"; rc=$?
+  [ "$rc" -le 1 ] && return "$rc"
+  _grep_stop "$rc"
+}
+_grep_out(){  # the same for a caller that wants what grep printed -> _GO (empty when nothing matched)
+  local t="$1" rc; shift
+  _GO="$(grep "$@" <<< "$t")"; rc=$?
+  [ "$rc" -le 1 ] && return 0
+  _grep_stop "$rc"
+}
+# ---- /CREW-MATCH
 # The 2.x names of the variables a user can set still work (one helper: eval/lib/crew-env.sh).
 _crew_d="${BASH_SOURCE%/*}"; [ "$_crew_d" = "${BASH_SOURCE}" ] && _crew_d=.
 [ -f "$_crew_d/../eval/lib/crew-env.sh" ] && . "$_crew_d/../eval/lib/crew-env.sh"; unset _crew_d
@@ -588,7 +617,7 @@ _ere() {  # $1 = i (fold case) | s ; $2 = text ; $3 = ERE ; $4 = glob a matching
       fi
       n=${#_ERE_C[@]}
       if [ "$n" -gt 64 ]; then
-        if [ "$1" = i ]; then grep -qiE -- "$3" <<< "$2"; else grep -qE -- "$3" <<< "$2"; fi
+        if [ "$1" = i ]; then _grep "$2" -qiE -- "$3"; else _grep "$2" -qE -- "$3"; fi
         return $?
       fi
       [ "$1" = i ] && { shopt -q nocasematch && nc=1; shopt -s nocasematch; }
@@ -624,7 +653,10 @@ _seg_any() {  # $1 = forbidden ERE, $2 = exempting ERE, $3 = glob the forbidden 
   for sg in ${_SPL[@]+"${_SPL[@]}"}; do [[ $sg == $3 ]] && { _sc[n]="$sg"; n=$((n+1)); }; done
   [ "$n" = 0 ] && return 1
   if [ "$n" -gt 64 ]; then   # same bound as _ere: one pipeline instead of a regcomp per segment; the output decides, not the status
-    [ -n "$(printf '%s\n' "${_sc[@]}" | grep -aiE -- "$1" | grep -aivE -m1 -- "$2")" ]; return $?
+    local IFS=$'\n'; local all="${_sc[*]}"; IFS=$' \t\n'
+    _grep_out "$all" -aiE -- "$1"
+    [ -n "$_GO" ] || return 1
+    _grep_out "$_GO" -aivE -m1 -- "$2"; [ -n "$_GO" ]; return $?
   fi
   shopt -q nocasematch && nc=1; shopt -s nocasematch
   for sg in "${_sc[@]}"; do [[ $sg =~ $1 ]] && ! [[ $sg =~ $2 ]] && { rc=0; break; }; done
@@ -662,7 +694,7 @@ git_has() {  # $1 = command text, $2 = subcommand alternation (e.g. 'commit|push
 }
 # Same precondition, hoisted once for the rules that inline the `git …` pattern instead of calling git_has.
 case "$CMD" in *[Gg][Ii][Tt]*) HAS_GIT=1 ;; *) HAS_GIT=0 ;; esac
-has() { printf '%s' "$CMD" | grep -qiE -- "$1"; }   # flag/substring test on the command (-- so a -flag pattern is safe)
+has() { _grep "$CMD" -qiE -- "$1"; }   # flag/substring test on the command (-- so a -flag pattern is safe)
 
 { git_has "$CMD" 'reset'  && has '--hard'; }                                                && block "git reset --hard" "4.5" history
 # §4.5 force-push. Same two defects the `git add -f` rule had, and the same repair: the flag has to be one of
@@ -689,7 +721,7 @@ _push_forces(){   # $1 = one captured `git push …` span -> 0 when a force flag
   [ "$og" = 0 ] && set +f; return 1
 }
 if [ "$HAS_GIT" = 1 ] && git_has "$CMD" 'push'; then
-  _PUSHSEG="$(printf '%s' "$CMD" | grep -oE 'git[[:space:]]+([^;&|]*[[:space:]])?push([^;&|]*)' 2>/dev/null || true)"
+  _grep_out "$CMD" -oE 'git[[:space:]]+([^;&|]*[[:space:]])?push([^;&|]*)'; _PUSHSEG="$_GO"
   while IFS= read -r _seg; do
     [ -n "$_seg" ] || continue
     _push_forces "$_seg" && { block "git push --force" "4.5" history; break; }
@@ -713,14 +745,14 @@ git_has "$CMD" 'filter-branch|filter-repo'                && block "git filter-b
 # Known over-block, accepted: `--force` with a harmless verb (`--force --list`) is refused too; nobody needs it.
 # The `case` is a fork-free precondition: without it every git command paid this grep's process.
 case "$CMD" in *branch*) _HAS_BRANCH=1 ;; *) _HAS_BRANCH=0 ;; esac
-[ "$_HAS_BRANCH" = 1 ] && printf '%s' "$CMD" | grep -qE '(^|[^A-Za-z0-9_-])git[[:space:]]+((-[Cc][[:space:]]+[^[:space:];&|]+|--(git-dir|work-tree|namespace|config-env|super-prefix|exec-path)[[:space:]=]+[^[:space:];&|]+|-[^[:space:];&|]+)[[:space:]]+)*branch([[:space:]]+[^[:space:];&|]+)*[[:space:]]+(-[a-zA-Z]*[DMCf][a-zA-Z]*|--force)([[:space:]=]|$)' \
+[ "$_HAS_BRANCH" = 1 ] && _grep "$CMD" -qE '(^|[^A-Za-z0-9_-])git[[:space:]]+((-[Cc][[:space:]]+[^[:space:];&|]+|--(git-dir|work-tree|namespace|config-env|super-prefix|exec-path)[[:space:]=]+[^[:space:];&|]+|-[^[:space:];&|]+)[[:space:]]+)*branch([[:space:]]+[^[:space:];&|]+)*[[:space:]]+(-[a-zA-Z]*[DMCf][a-zA-Z]*|--force)([[:space:]=]|$)' \
   && block "forced git branch (-D / -f / -M / -C)" "4.5" history
 # Scoped to targets carrying `/`, `*` or `~` ON PURPOSE — `rm -rf build` is a routine local delete and blocking
 # it would make the gate noise. What was NOT on purpose: the recursive flag was matched as lowercase `r` in one
 # short cluster, so `rm -Rf /`, `rm -fR /`, `rm -f -r /` and `rm --recursive --force /` all walked past while
 # `rm -rf /` was blocked. Same class as the chmod hole found in evals/permission-pressure: one spelling gated,
 # another reaching the identical state. Case, flag order and the long form are all the same command.
-case "$CMD" in *[Rr][Mm]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE 'rm +(-[A-Za-z]* +|--[a-z-]+ +)*(-[A-Za-z]*[rR][A-Za-z]*|--recursive)( +(-[A-Za-z]+|--[a-z-]+))* +.*(/|\*|~)' && block "destructive rm -rf" "4.5" loss
+case "$CMD" in *[Rr][Mm]*) : ;; *) false ;; esac && _grep "$CMD" -qE 'rm +(-[A-Za-z]* +|--[a-z-]+ +)*(-[A-Za-z]*[rR][A-Za-z]*|--recursive)( +(-[A-Za-z]+|--[a-z-]+))* +.*(/|\*|~)' && block "destructive rm -rf" "4.5" loss
 # A whole-tree `git checkout -- .` / `git restore .` destroys every uncommitted change with no reflog and no
 # undo — the same loss as `reset --hard`, which has been gated since the beginning, by a command that was not.
 # Not hypothetical: a verification subagent ran exactly this over uncommitted work in this repo and took the
@@ -729,16 +761,16 @@ case "$CMD" in *[Rr][Mm]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE 'rm +
 # prefix is git_has's, so `git -C <path>` and `git -c k=v` cannot walk around it and a commit MESSAGE
 # containing the word "checkout" does not trip it; both are pinned as cases.
 [ "$HAS_GIT" = 1 ] && _ere s "$CMD" '(^|[^A-Za-z0-9_-])git[[:space:]]+((-[Cc][[:space:]]+[^[:space:];&|]+|--(git-dir|work-tree|namespace|config-env|super-prefix|exec-path)[[:space:]=]+[^[:space:];&|]+|-[^[:space:];&|]+)[[:space:]]+)*(checkout|restore)([[:space:]]+[^;&|[:space:]]+)*[[:space:]]+(\.|\*|\./|:/)([[:space:]]|[;&|]|$)' '*[Gg][Ii][Tt]*' && block "whole-tree revert (git checkout/restore over everything)" "4.5" history
-case "$CMD" in *[Mm][Kk][Ff][Ss]*|*[Dd][Dd]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE '(^|[^a-zA-Z])(mkfs|dd +if=)'       && block "disk-level destructive command" "4.5" loss
+case "$CMD" in *[Mm][Kk][Ff][Ss]*|*[Dd][Dd]*) : ;; *) false ;; esac && _grep "$CMD" -qE '(^|[^a-zA-Z])(mkfs|dd +if=)'       && block "disk-level destructive command" "4.5" loss
 
 # §4.5 remote-code-execution & permission-nuke -> HARD BLOCK. A downloaded script piped straight into a shell
 # runs code no one has read; a world-writable chmod or a disk-overwriting dd is irreversible.
 # CREW-NOT-A-RUNG: the interpreter names below are PATTERNS naming things to BLOCK, not invocations. The
 # check in smoke-test treats any interpreter outside a marked region as a reader ladder, so a rule that
 # matches `curl | python3` has to say that it is a rule.
-case "$CMD" in *[Cc][Uu][Rr][Ll]*|*[Ww][Gg][Ee][Tt]*|*[Ff][Ee][Tt][Cc][Hh]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE '(curl|wget|fetch)([^|]|\|\|)*\|[[:space:]]*(sudo[[:space:]]+)?(bash|sh|zsh|python[0-9.]*|node|perl|ruby)([[:space:]]|$)' && block "pipe-to-shell (curl|bash RCE)" "4.5" exec
+case "$CMD" in *[Cc][Uu][Rr][Ll]*|*[Ww][Gg][Ee][Tt]*|*[Ff][Ee][Tt][Cc][Hh]*) : ;; *) false ;; esac && _grep "$CMD" -qE '(curl|wget|fetch)([^|]|\|\|)*\|[[:space:]]*(sudo[[:space:]]+)?(bash|sh|zsh|python[0-9.]*|node|perl|ruby)([[:space:]]|$)' && block "pipe-to-shell (curl|bash RCE)" "4.5" exec
 # /CREW-NOT-A-RUNG
-case "$CMD" in *[Dd][Dd]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE '(^|[^a-zA-Z])dd[[:space:]]+([^|]*[[:space:]])?of='  && block "dd of= (disk overwrite)" "4.5" loss
+case "$CMD" in *[Dd][Dd]*) : ;; *) false ;; esac && _grep "$CMD" -qE '(^|[^a-zA-Z])dd[[:space:]]+([^|]*[[:space:]])?of='  && block "dd of= (disk overwrite)" "4.5" loss
 
 # §4.5 INFRASTRUCTURE TEARDOWN. Same shape as the rules above — one command, no undo — but the blast radius is a
 # cloud account or a cluster rather than a disk. `terraform destroy` and `pulumi destroy` remove every managed
@@ -780,7 +812,7 @@ _IAC_AT="(^|[;&|(])[[:space:]]*${_IAC_ASG}((sudo|env|time|nice|nohup|xargs)([[:s
 _IAC_EXEC="(^|[;&|(])[[:space:]]*(sudo[[:space:]]+)?(eval|bash|sh|zsh|dash)([[:space:]]+-[a-zA-Z]+)*[[:space:]]+[\"']?"
 _IAC_SAFE="(--help|[[:space:]]-h([[:space:]]|$)|--dry-run|-auto-approve=false|-auto-approve[[:space:]]+false|auth[[:space:]]+can-i)"
 _iac(){ # $1 = the verb pattern; true when it sits at a command position OR behind a shell executor
-  echo "$CMD" | grep -qiE "${_IAC_AT}$1" || echo "$CMD" | grep -qiE "${_IAC_EXEC}$1"
+  _grep "$CMD" -qiE "${_IAC_AT}$1" || _grep "$CMD" -qiE "${_IAC_EXEC}$1"
 }
 _IAC_DESTROY="(terraform|tofu|pulumi)([[:space:]]+-[^;&|]*)?[[:space:]]+(destroy|down|dn)([^a-zA-Z0-9_-]|$)"
 _IAC_UNATT_TF="(terraform|tofu)[^;&|]*[[:space:]](apply|destroy)([^;&|]*[[:space:]])?-{1,2}auto-approve([^a-zA-Z0-9_=-]|$)"
@@ -792,13 +824,13 @@ _IAC_P_DESTROY="(${_IAC_AT}${_IAC_DESTROY})|(${_IAC_EXEC}${_IAC_DESTROY})"
 _IAC_P_UNATT="(${_IAC_AT}${_IAC_UNATT_TF})|(${_IAC_EXEC}${_IAC_UNATT_TF})|(${_IAC_AT}${_IAC_UNATT_PU})|(${_IAC_EXEC}${_IAC_UNATT_PU})"
 _IAC_P_CLUSTER="(${_IAC_AT}${_IAC_CLUSTER})|(${_IAC_EXEC}${_IAC_CLUSTER})"
 case "$CMD" in *[Tt][Ee][Rr][Rr][Aa][Ff][Oo][Rr][Mm]*|*[Tt][Oo][Ff][Uu]*|*[Pp][Uu][Ll][Uu][Mm][Ii]*) : ;; *) false ;; esac \
-  && { { ! echo "$CMD" | grep -qiE "$_IAC_SAFE" && _iac "$_IAC_DESTROY"; } || _seg_any "$_IAC_P_DESTROY" "$_IAC_SAFE" '*'; } \
+  && { { ! _grep "$CMD" -qiE "$_IAC_SAFE" && _iac "$_IAC_DESTROY"; } || _seg_any "$_IAC_P_DESTROY" "$_IAC_SAFE" '*'; } \
   && block "infrastructure destroy (removes every managed resource)" "4.5" loss
 case "$CMD" in *[Tt][Ee][Rr][Rr][Aa][Ff][Oo][Rr][Mm]*|*[Tt][Oo][Ff][Uu]*|*[Pp][Uu][Ll][Uu][Mm][Ii]*) : ;; *) false ;; esac \
-  && { { ! echo "$CMD" | grep -qiE "$_IAC_SAFE" && { _iac "$_IAC_UNATT_TF" || _iac "$_IAC_UNATT_PU"; }; } || _seg_any "$_IAC_P_UNATT" "$_IAC_SAFE" '*'; } \
+  && { { ! _grep "$CMD" -qiE "$_IAC_SAFE" && { _iac "$_IAC_UNATT_TF" || _iac "$_IAC_UNATT_PU"; }; } || _seg_any "$_IAC_P_UNATT" "$_IAC_SAFE" '*'; } \
   && block "unattended infrastructure apply (skips the tool's only confirmation)" "4.5" loss
 case "$CMD" in *[Kk][Uu][Bb][Ee][Cc][Tt][Ll]*|*[Hh][Ee][Ll][Mm]*) : ;; *) false ;; esac \
-  && { { ! echo "$CMD" | grep -qiE "$_IAC_SAFE" && _iac "$_IAC_CLUSTER"; } || _seg_any "$_IAC_P_CLUSTER" "$_IAC_SAFE" '*'; } \
+  && { { ! _grep "$CMD" -qiE "$_IAC_SAFE" && _iac "$_IAC_CLUSTER"; } || _seg_any "$_IAC_P_CLUSTER" "$_IAC_SAFE" '*'; } \
   && block "cluster teardown (kubectl delete / helm uninstall)" "4.5" loss
 # The rule is WORLD-WRITABLE, so the pattern matches the resulting permission and not one spelling of it. It
 # used to match `777`, `0777`, `a+rwx` and `+rwx` only, which let `1777`, `2777`, `666` and `o+w` reach exactly
@@ -808,7 +840,7 @@ case "$CMD" in *[Kk][Uu][Bb][Ee][Cc][Tt][Ll]*|*[Hh][Ee][Ll][Mm]*) : ;; *) false 
 # Numeric: 3 or 4 octal digits whose LAST digit carries the write bit for other (2·3·6·7). Symbolic: any subject
 # list containing `o` or `a`, with `+` or `=`, granting `w`. `755`, `644`, `u+w` and `chmod +x` stay untouched —
 # each of those carries its own case in smoke-test §7, because a gate this repo cannot prove is not a gate.
-case "$CMD" in *[Cc][Hh][Mm][Oo][Dd]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE '(^|[^a-zA-Z])chmod[[:space:]]+(-[A-Za-z]*[[:space:]]+)*([0-7]?[0-7][0-7][2367]|[ugoa]*[oa][ugoa]*[+=][rwxXst]*w[rwxXst]*|a=?\+?rwx|\+rwx)([[:space:]]|$)' && block "chmod world-writable (777/1777/666/o+w …)" "4.5" exposure
+case "$CMD" in *[Cc][Hh][Mm][Oo][Dd]*) : ;; *) false ;; esac && _grep "$CMD" -qE '(^|[^a-zA-Z])chmod[[:space:]]+(-[A-Za-z]*[[:space:]]+)*([0-7]?[0-7][0-7][2367]|[ugoa]*[oa][ugoa]*[+=][rwxXst]*w[rwxXst]*|a=?\+?rwx|\+rwx)([[:space:]]|$)' && block "chmod world-writable (777/1777/666/o+w …)" "4.5" exposure
 
 # §4.5 PowerShell equivalents -> HARD BLOCK. The PowerShell tool sends the SAME payload shape (tool_input.command)
 # and Claude Code's own hooks reference says to match `Bash|PowerShell`, because on Windows wherever that tool is
@@ -829,13 +861,13 @@ PS_FORCE='-f(o(r(c(e)?)?)?)?([[:space:]]|$)'
   && has '(\*|[A-Za-z]:\\|\\\\|\$HOME|\$env:USERPROFILE|~)'; } \
   && block "PowerShell recursive force delete (Remove-Item -Recurse -Force)" "4.5" loss
 # Download-and-execute, the PowerShell shape of curl|bash: any fetcher piped into Invoke-Expression.
-case "$CMD" in *[Ii][Ee][Xx]*|*[Ii][Nn][Vv][Oo][Kk][Ee]-[Ee][Xx][Pp][Rr][Ee][Ss][Ss][Ii][Oo][Nn]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE '(invoke-webrequest|iwr|invoke-restmethod|irm|curl|wget)[^|]*\|[[:space:]]*(invoke-expression|iex)([[:space:]]|$)' \
+case "$CMD" in *[Ii][Ee][Xx]*|*[Ii][Nn][Vv][Oo][Kk][Ee]-[Ee][Xx][Pp][Rr][Ee][Ss][Ss][Ii][Oo][Nn]*) : ;; *) false ;; esac && _grep "$CMD" -qiE '(invoke-webrequest|iwr|invoke-restmethod|irm|curl|wget)[^|]*\|[[:space:]]*(invoke-expression|iex)([[:space:]]|$)' \
   && block "PowerShell download-and-execute (… | iex)" "4.5" exec
 # Disk-level destruction. No POSIX equivalent of these names, so the mkfs/dd rule never saw them.
-case "$CMD" in *[Ff][Oo][Rr][Mm][Aa][Tt]-*|*[Cc][Ll][Ee][Aa][Rr]-*|*-[Pp][Aa][Rr][Tt][Ii][Tt][Ii][Oo][Nn]*|*[Ii][Nn][Ii][Tt][Ii][Aa][Ll][Ii][Zz][Ee]-*|*[Ss][Ee][Tt]-[Dd][Ii][Ss][Kk]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE '(^|[^A-Za-z0-9_-])(format-volume|clear-disk|remove-partition|initialize-disk|set-disk)([[:space:]]|$)' \
+case "$CMD" in *[Ff][Oo][Rr][Mm][Aa][Tt]-*|*[Cc][Ll][Ee][Aa][Rr]-*|*-[Pp][Aa][Rr][Tt][Ii][Tt][Ii][Oo][Nn]*|*[Ii][Nn][Ii][Tt][Ii][Aa][Ll][Ii][Zz][Ee]-*|*[Ss][Ee][Tt]-[Dd][Ii][Ss][Kk]*) : ;; *) false ;; esac && _grep "$CMD" -qiE '(^|[^A-Za-z0-9_-])(format-volume|clear-disk|remove-partition|initialize-disk|set-disk)([[:space:]]|$)' \
   && block "PowerShell disk-level destructive command" "4.5" loss
 # World-writable ACL: icacls is what chmod 777 looks like on Windows.
-case "$CMD" in *[Ii][Cc][Aa][Cc][Ll][Ss]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE '(^|[^A-Za-z0-9_-])icacls\b[^;&|]*/grant[^;&|]*(everyone|users|authenticated users)[^;&|]*:\(?[^)]*[FM]' \
+case "$CMD" in *[Ii][Cc][Aa][Cc][Ll][Ss]*) : ;; *) false ;; esac && _grep "$CMD" -qiE '(^|[^A-Za-z0-9_-])icacls\b[^;&|]*/grant[^;&|]*(everyone|users|authenticated users)[^;&|]*:\(?[^)]*[FM]' \
   && block "PowerShell world-writable ACL (icacls /grant Everyone:F)" "4.5" exposure
 
 # §4.5 gate-tampering -> HARD BLOCK. A gate you can silently remove is not a gate: redirecting core.hooksPath,
@@ -963,12 +995,12 @@ fi
 # are still blocked (asserted in smoke-test, in both directions).
 # CREW-NOT-A-RUNG: same — `perl`, `python3`, `ruby`, `node` here are names the gate REFUSES when they are
 # pointed at a gate file, not readers this hook uses.
-case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE "(^|[^A-Za-z0-9_-])(rm|mv|cp|truncate|tee|install|ln|perl|python[0-9.]*|ruby|node|ex|ed|set-content|add-content|clear-content|out-file|new-item|rename-item|copy-item|move-item|remove-item)\b[^;&|]*$GATE" && block "write/tamper of a gate file (hook/settings/.git-hooks)" "4.5" tamper
-case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE "(sed|perl|awk|ruby)[[:space:]]+(-[^[:space:]]+[[:space:]]+)*-i[^;&|]*$GATE"          && block "in-place edit of a gate file" "4.5" tamper
+case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false ;; esac && _grep "$CMD" -qiE "(^|[^A-Za-z0-9_-])(rm|mv|cp|truncate|tee|install|ln|perl|python[0-9.]*|ruby|node|ex|ed|set-content|add-content|clear-content|out-file|new-item|rename-item|copy-item|move-item|remove-item)\b[^;&|]*$GATE" && block "write/tamper of a gate file (hook/settings/.git-hooks)" "4.5" tamper
+case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false ;; esac && _grep "$CMD" -qiE "(sed|perl|awk|ruby)[[:space:]]+(-[^[:space:]]+[[:space:]]+)*-i[^;&|]*$GATE"          && block "in-place edit of a gate file" "4.5" tamper
 # /CREW-NOT-A-RUNG
 # The redirect TARGET must be the gate path, not merely something later on the line: a target is one token, so
 # it cannot contain whitespace or a command separator.
-case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE ">[[:space:]]*['\"]?[^[:space:];&|<>]*$GATE"                                          && block "redirect over a gate file" "4.5" tamper
+case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false ;; esac && _grep "$CMD" -qiE ">[[:space:]]*['\"]?[^[:space:];&|<>]*$GATE"                                          && block "redirect over a gate file" "4.5" tamper
 { case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false ;; esac && has "=[^;&|]*$GATE" && has '>>?[[:space:]]*\$'; }                                                          && block "indirected write to a gate path (variable + redirect)" "4.5" tamper
 # A symlink whose TARGET is the config directory itself is the two-step form of editing a hook, and step one
 # names no gate path at all: `ln -sfn .claude cfg` passed every rule above, and then `cfg/hooks/guard-bash.sh`
@@ -980,7 +1012,7 @@ case "$CMD" in *[Cc][Ll][Aa][Uu][Dd][Ee]*|*[Hh][Oo][Oo][Kk][Ss]*) : ;; *) false 
 # the one above only knows `claude` and `hooks`.
 # The plugin edition's root is the same kind of target: `ln -s <root> cfg`, then `cfg/hooks/guard-bash.sh`.
 _LNT='([^;&|[:space:]]*/)?\.(claude|git)'; [ -n "$_PLNK" ] && _LNT="(${_LNT}|${_PLNK})"
-case "$CMD" in *[Ll][Nn][[:space:]]*|*[Mm][Kk][Ll][Ii][Nn][Kk]*) : ;; *) false ;; esac && echo "$CMD" | grep -qiE "(^|[;&|[:space:]])(ln|mklink)[^;&|]*[[:space:]]${_LNT}([[:space:]]|\$)" && block "symlink pointing at the config directory (a gate path in two steps)" "4.5" tamper
+case "$CMD" in *[Ll][Nn][[:space:]]*|*[Mm][Kk][Ll][Ii][Nn][Kk]*) : ;; *) false ;; esac && _grep "$CMD" -qiE "(^|[;&|[:space:]])(ln|mklink)[^;&|]*[[:space:]]${_LNT}([[:space:]]|\$)" && block "symlink pointing at the config directory (a gate path in two steps)" "4.5" tamper
 
 # §4.5-adjacent: a .env file holds secrets. The settings.json Read-tool deny does NOT cover the Bash tool, so a
 # `cat .env` would surface them. Block the direct-file readers/copiers and a `< .env` input redirect on a
@@ -1173,7 +1205,9 @@ if [ "$_looks_exec" = 1 ]; then
     # LC_ALL=C: a UTF-8 `tr` dies on a non-UTF-8 byte and, under pipefail, took the verdict with it (review). The hit
     # is read from the output, not the pipeline status: `grep -q` closing early SIGPIPEs the stage before it, and a
     # 3,000-line script passed that way while a 1,000-line one was blocked.
-    _envhit="$(LC_ALL=C tr ';&|' '\n\n\n' < "$_path" 2>/dev/null | grep -aiE -- "$ENV_READ_RE|$ENV_REDIR_RE" | grep -aivE -m1 -- "$ENV_TEMPLATE_RE")"
+    _envhit="$(LC_ALL=C tr ';&|' '\n\n\n' < "$_path" 2>/dev/null)"
+    _grep_out "$_envhit" -aiE -- "$ENV_READ_RE|$ENV_REDIR_RE"; _envhit=""
+    [ -n "$_GO" ] && { _grep_out "$_GO" -aivE -m1 -- "$ENV_TEMPLATE_RE"; _envhit="$_GO"; }
     if [ -n "$_envhit" ]; then
       set +f
       block "running a script that reads a .env secret (the two-step read)" "4.5" secret
@@ -1218,7 +1252,7 @@ _addf_owns(){   # $1 = one captured `git add …` span -> 0 when a -f/--force in
   [ "$og" = 0 ] && set +f; return 1
 }
 if [ "$HAS_GIT" = 1 ] && git_has "$CMD" 'add'; then
-  _ADDSEG="$(printf '%s' "$CMD" | grep -oE 'git[[:space:]]+([^;&|]*[[:space:]])?add([^;&|]*)' 2>/dev/null || true)"
+  _grep_out "$CMD" -oE 'git[[:space:]]+([^;&|]*[[:space:]])?add([^;&|]*)'; _ADDSEG="$_GO"
   while IFS= read -r _seg; do
     [ -n "$_seg" ] || continue
     _addf_owns "$_seg" && { block "git add -f (bypasses .gitignore)" "4.5" bypass; break; }
@@ -1231,7 +1265,7 @@ fi
   # gitignore bypass alone, not about stopping people from staging files.)
   [ "$HAS_GIT" = 1 ] && _ere s "$CMD" 'git[[:space:]]+([^;&|]*[[:space:]])?update-index([^[:alnum:]_;&|][^;&|]*)?(--add|--force-remove)' '*[Uu][Pp][Dd][Aa][Tt][Ee]-[Ii][Nn][Dd][Ee][Xx]*' \
     && block "git update-index --add (bypasses .gitignore, same as git add -f)" "4.5" bypass
-case "$CMD" in *[Rr][Mm]*) : ;; *) false ;; esac && echo "$CMD" | grep -qE '(rm|git[[:space:]]+rm)\b[^|]*(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|npm-shrinkwrap\.json|Gemfile\.lock|poetry\.lock|Pipfile\.lock|Cargo\.lock|composer\.lock|go\.sum|packages\.lock\.json)' && block "lockfile deletion" "4.5" loss
+case "$CMD" in *[Rr][Mm]*) : ;; *) false ;; esac && _grep "$CMD" -qE '(rm|git[[:space:]]+rm)\b[^|]*(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|npm-shrinkwrap\.json|Gemfile\.lock|poetry\.lock|Pipfile\.lock|Cargo\.lock|composer\.lock|go\.sum|packages\.lock\.json)' && block "lockfile deletion" "4.5" loss
 
 # --- §4.4 commit/push approval gate ---
 # Escape a shell string into a JSON string body. A raw control character inside a JSON string is a parse
@@ -1298,7 +1332,7 @@ allow_preauthorised(){
 #     and it is written here as well, because the person reading the hook is not reading that file.
 if git_has "$CMD" 'add|commit|push|checkout|switch'; then
   # The key is granted by the user's environment, never by the command line the model composes.
-  if printf '%s' "$CMD" | grep -q 'CLAUDE_GIT_OK'; then
+  if _grep "$CMD" -q 'CLAUDE_GIT_OK'; then
     gatelog BLOCK 4.4 "approval key set inside the command"
     echo "GUARD (§4.4): the attempt to set the approval key (CLAUDE_GIT_OK) inside the command was rejected." >&2
     echo "The key is set only by the user, before the session starts." >&2
