@@ -2,6 +2,12 @@
 # Kit smoke-test: structural validation (without running Claude Code).
 # Usage: bash .claude/eval/smoke-test.sh   (from the repo root or from inside .claude/eval)
 set -uo pipefail
+# The suite measures in the C locale, whatever the session's is. Its own patterns are ASCII, and under a Turkish
+# locale a range like [a-z] does not hold `i`: run whole under tr_TR.UTF-8 on Linux, assertions failed for that
+# reason alone (`skill-trust.sh` read as `ll-trust.sh`), and one more because start.sh answers in Turkish there,
+# which is its design. A measurement that depends on who runs it is not one. The gates are handed a Turkish locale
+# on purpose in section 12e.
+export LC_ALL=C
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"       # .claude/
 AGENTS="$ROOT/agents"; SKILLS="$ROOT/skills"; HOOKS="$ROOT/hooks"
@@ -1347,6 +1353,8 @@ _blk_gate(){   # $1 = marker name, $2 = what the block is, in words
 }
 _blk_gate CREW-TRANSCRIPT-DIR "the duplicated transcript-dir resolver"
 _blk_gate CREW-JSON-PARSE     "the duplicated JSON parser"
+_blk_gate CREW-LOCALE         "the locale block every gate matches under"
+_blk_gate CREW-SCAN           "the scan that tells 'could not look' from 'nothing there'"
 # End to end: called by hand from this repo, the hook must produce a reading rather than "transcript not found".
 cu_hand="$(cd "$ROOT/.." && bash "$HOOKS/context-usage.sh" 2>&1)"
 # The three arms used to be pass / note / note, and `note` touches no counter — so on any machine without a
@@ -6406,6 +6414,159 @@ for _c in "rm /Users/u/.claude/plugins/cache/acme/tool/1.0/hooks/x.sh" "diff $PG
 done
 [ -z "$PGF$_pgok" ] && pass "plugin gate files: $PGN writes, deletes, renames and links refused (this version, another cached version, ~/\$HOME/glob/..//. spellings, Windows spellings, a root outside the cache, the sourced crew-env.sh, Write tool); each negative twin — reading, running board.sh, a source tree, another plugin — stays free" \
                     || fail "plugin gate files:$PGF${_pgok:+ | wrongly refused:$_pgok}"
+if [ "$UNITS" = 1 ]; then
+sec "== 12e) the gates answer the same under a Turkish locale: there i and I are not each other's other case =="
+# Under tr_TR.UTF-8 the partners are i/İ and ı/I. Every case-insensitive match in the gates is written in ASCII, so
+# with the locale left as the session had it: GNU grep -i did not find INIT with `init`, bash's nocasematch did not
+# match GIT against git, [A-Za-z] did not hold I, and in Git Bash `grep -iF` aborted (exit 134) and the
+# private-string scan read that as "no match". macOS folds i and I the ASCII way under tr_TR, so there the locale
+# rows below cannot fail whatever the gates do — the line says which kind of platform it ran on.
+# Every gate now sets LC_ALL=C before it matches anything (the CREW-LOCALE block).
+_thq="'"; _thbad=""; _thn=0
+for _h in pre-commit commit-msg guard-commit-scan.sh guard-bash.sh guard-write.sh guard-powershell.sh; do
+  _thn=$((_thn+1))
+  # the first line of code after `set -…` is the block: nothing matches before the locale is set
+  _n="$(LC_ALL=C awk '/^[[:space:]]*(#|$)/{next} /^set -/{next} {print; exit}' "$HOOKS/$_h")"
+  [ "$_n" = '_CREW_LOCALE="${LC_ALL:-${LC_CTYPE:-${LANG:-}}}"' ] && grep -q '^export LC_ALL=C$' "$HOOKS/$_h" || _thbad="$_thbad $_h"
+done
+[ -z "$_thbad" ] && pass "all $_thn gates set the C locale before their first line of matching (pre-commit, commit-msg, guard-commit-scan, guard-bash, guard-write, guard-powershell)" \
+                 || fail "a gate matches before it sets the C locale, or does not set it:$_thbad"
+
+# A scan that could not run is not a clean scan. grep is shadowed by one that aborts for -iF (what Git Bash's grep does
+# under a Turkish locale), for -iE, and for the grep that collects the added lines. Runs on every platform.
+_TH="$(mktemp -d)"; _TH="$(cd -P "$_TH" && pwd)"
+_th_repo(){  # $1 = directory -> a repository with the two git hooks beside their lists, nothing staged
+  rm -rf "$1"; mkdir -p "$1"
+  ( cd "$1" && git init -q && git config user.email t@example.com && git config user.name t \
+    && cp "$HOOKS/pre-commit" "$HOOKS/commit-msg" "$HOOKS/trace-blocklist.txt" "$HOOKS/secret-blocklist.txt" "$HOOKS/floor-blocklist.txt" . ) >/dev/null 2>&1; }
+# $1 = repository, $2 = hook, $3 = locale or empty, $4 = a directory to put first on PATH or empty, $5 = the hook's argument -> _thr, output in $_TH/out
+_th_hook(){ ( cd "$1" && env ${3:+LC_ALL=$3} ${4:+PATH="$4:$PATH"} bash "./$2" ${5:+"$5"} ) > "$_TH/out" 2>&1; _thr=$?; }
+_thg="$(command -v grep)"
+mkdir -p "$_TH/bin" "$_TH/bin2" "$_TH/bin3"
+printf '#!/bin/sh\ncase " $* " in *" -qiF "*) kill -ABRT $$ ;; esac\nexec "%s" "$@"\n' "$_thg" > "$_TH/bin/grep"
+printf '#!/bin/sh\ncase " $* " in *" -qiE "*) kill -ABRT $$ ;; esac\nexec "%s" "$@"\n' "$_thg" > "$_TH/bin2/grep"
+printf '#!/bin/sh\n[ "$1" = -E ] && [ "$2" = "^\\+" ] && kill -ABRT $$\nexec "%s" "$@"\n' "$_thg" > "$_TH/bin3/grep"
+chmod +x "$_TH/bin/grep" "$_TH/bin2/grep" "$_TH/bin3/grep"
+_th_repo "$_TH/r"
+printf 'acme-internal-host\n' > "$_TH/r/.private-terms.txt"
+( cd "$_TH/r" && printf 'see ACME-INTERNAL-HOST for the dump\n' > notes.md && git add notes.md ) >/dev/null 2>&1
+_thbad=""
+_th_hook "$_TH/r" pre-commit ""; { [ "$_thr" = 1 ] && grep -q 'PRIVATE-PATH SCANNER: a staged line contains' "$_TH/out"; } \
+  || _thbad="$_thbad [FIXTURE: with a working grep the private string is not reported: rc=$_thr]"
+_th_hook "$_TH/r" pre-commit "" "$_TH/bin"; { [ "$_thr" = 1 ] && grep -q 'could not run' "$_TH/out"; } \
+  || _thbad="$_thbad [grep aborting for -iF: rc=$_thr, want 1 and 'could not run' — $(sed -n 1p "$_TH/out" | cut -c1-120)]"
+_th_repo "$_TH/e"; ( cd "$_TH/e" && printf 'an ordinary line\n' > a.txt && git add a.txt && printf 'docs: an ordinary message\n' > msg.txt ) >/dev/null 2>&1
+_th_hook "$_TH/e" pre-commit "" "$_TH/bin2"; { [ "$_thr" = 1 ] && grep -q 'TRACE-SCANNER: the look for .* could not run' "$_TH/out"; } \
+  || _thbad="$_thbad [pre-commit, grep aborting for -iE: rc=$_thr, want 1 and 'could not run' — $(sed -n 1p "$_TH/out" | cut -c1-120)]"
+_th_hook "$_TH/e" commit-msg "" "$_TH/bin2" msg.txt; { [ "$_thr" = 1 ] && grep -q 'could not run' "$_TH/out"; } \
+  || _thbad="$_thbad [commit-msg, grep aborting for -iE: rc=$_thr, want 1 and 'could not run' — $(sed -n 1p "$_TH/out" | cut -c1-120)]"
+_th_hook "$_TH/r" pre-commit "" "$_TH/bin3"; { [ "$_thr" = 1 ] && grep -q 'the staged diff could not be read' "$_TH/out"; } \
+  || _thbad="$_thbad [pre-commit, the grep that collects the added lines aborting: rc=$_thr, want 1 and 'could not be read' — $(sed -n 1p "$_TH/out" | cut -c1-120)]"
+# a pattern that does not compile is a typo, not a failed look: it warns, in both git hooks, and the commit goes on
+_th_repo "$_TH/b"; printf 'unclosed[\n' >> "$_TH/b/trace-blocklist.txt"
+( cd "$_TH/b" && printf 'an ordinary line\n' > a.txt && git add a.txt && printf 'docs: an ordinary message\n' > msg.txt ) >/dev/null 2>&1
+_th_hook "$_TH/b" pre-commit ""; { [ "$_thr" = 0 ] && grep -q 'is not a valid regular expression' "$_TH/out"; } \
+  || _thbad="$_thbad [pre-commit with a pattern that does not compile: rc=$_thr, want 0 and the warning]"
+_th_hook "$_TH/b" commit-msg "" "" msg.txt; { [ "$_thr" = 0 ] && grep -q 'is not a valid regular expression' "$_TH/out"; } \
+  || _thbad="$_thbad [commit-msg with a pattern that does not compile: rc=$_thr, want 0 and the warning]"
+[ -z "$_thbad" ] && pass "a scan that could not run stops the commit: with grep aborting for -iF (what Git Bash's grep does under a Turkish locale) or for -iE, or while the added lines are collected, pre-commit and commit-msg exit 1 and say so; a pattern that does not compile still only warns, in both" \
+                 || fail "a scan that could not run:$_thbad"
+
+# guard-bash under a locale: $1 = locale or empty, $2 = tool, $3 = command as JSON text, $4 = mode -> _thr, stdout in $_TH/gb.out
+_th_gb(){ printf '{"tool_name":"%s","permission_mode":"%s","cwd":"%s","tool_input":{"command":"%s"}}' "$2" "${4:-auto}" "$_TH/w" "$3" > "$_TH/pl.json"
+  ( cd "$_TH/w" && CREW_GATE_LOG=/dev/null env -u CLAUDE_GIT_OK ${1:+LC_ALL=$1} bash "$HOOKS/guard-bash.sh" < "$_TH/pl.json" > "$_TH/gb.out" 2>"$_TH/gb.err" ); _thr=$?; }
+# a repository with one change staged and a review record that matches it, so a plain commit reaches the prompt
+rm -rf "$_TH/w"; mkdir -p "$_TH/w"
+( cd "$_TH/w" && git init -q && git config user.email t@example.com && git config user.name t && mkdir -p .claude \
+  && echo one > a.txt && git add a.txt && git -c core.hooksPath=/dev/null commit -qm init && echo two >> a.txt && git add a.txt \
+  && printf '{"diff_oid":"%s","head":"%s"}\n' "$(git diff --cached | git hash-object --stdin)" "$(git rev-parse HEAD)" > .claude/review-pass.json ) >/dev/null 2>&1
+
+# The command shown in the approval prompt is cut to 300 bytes a line and goes into JSON. `cut -c` did it: GNU cut
+# counts bytes in every locale, so a two-byte letter across byte 300 left the JSON invalid UTF-8 (measured on Linux
+# under en_US.UTF-8). The cut steps back over an unfinished letter now, in any locale.
+_thutf=""; for _l in en_US.UTF-8 C.UTF-8 C.utf8; do
+  [ "$(LC_ALL=$_l bash -c 'x=ş; printf %s "${#x}"' 2>/dev/null)" = 1 ] && { _thutf="$_l"; break; }
+done
+if ! command -v iconv >/dev/null 2>&1; then skip tool "the approval prompt's text is never cut inside a letter (no iconv to check UTF-8 with)"
+else
+  _thbad=""
+  for _l in "" ${_thutf:+"$_thutf"}; do
+    # `git commit -m '` is 15 bytes; 284 a's bring it to 299, so byte 300 is the first half of the first ş
+    _tha="$(printf '%*s' 284 '' | tr ' ' a)"; _th_gb "$_l" Bash "git commit -m ${_thq}${_tha}şşşşşşşşşş${_thq}" default
+    { [ "$(gdec "$(cat "$_TH/gb.out")")" = ask ] && iconv -f UTF-8 -t UTF-8 < "$_TH/gb.out" >/dev/null 2>&1 && grep -q 'a…' "$_TH/gb.out"; } \
+      || _thbad="$_thbad [locale '${_l:-C}', a cut that falls inside a letter: rc=$_thr, valid UTF-8: $(iconv -f UTF-8 -t UTF-8 < "$_TH/gb.out" >/dev/null 2>&1 && echo yes || echo NO)]"
+    # a three-byte letter with two of its bytes before the cut: 283 a's, then € across bytes 299-301
+    _tha="$(printf '%*s' 283 '' | tr ' ' a)"; _th_gb "$_l" Bash "git commit -m ${_thq}${_tha}€€€€${_thq}" default
+    { [ "$(gdec "$(cat "$_TH/gb.out")")" = ask ] && iconv -f UTF-8 -t UTF-8 < "$_TH/gb.out" >/dev/null 2>&1 && grep -q 'a…' "$_TH/gb.out"; } \
+      || _thbad="$_thbad [locale '${_l:-C}', a cut two bytes into a three-byte letter: rc=$_thr, valid UTF-8: $(iconv -f UTF-8 -t UTF-8 < "$_TH/gb.out" >/dev/null 2>&1 && echo yes || echo NO)]"
+    # exactly 300 bytes: shown whole, no ellipsis
+    _tha="$(printf '%*s' 264 '' | tr ' ' a)"; _th_gb "$_l" Bash "git commit -m ${_thq}şşşşşşşşşş${_tha}${_thq}" default
+    { [ "$(gdec "$(cat "$_TH/gb.out")")" = ask ] && ! grep -q "a${_thq}…" "$_TH/gb.out" && grep -q "şa" "$_TH/gb.out"; } \
+      || _thbad="$_thbad [locale '${_l:-C}', a command of exactly 300 bytes: rc=$_thr, want it whole and no ellipsis]"
+  done
+  [ -z "$_thbad" ] && pass "the command in the approval prompt is cut at 300 bytes a line and never inside a letter, under C${_thutf:+ and $_thutf}: the JSON stays UTF-8, and 300 bytes exactly are shown whole" \
+                   || fail "the approval prompt's text:$_thbad"
+fi
+
+# The locale itself, where this machine has one.
+_th=""; for _l in tr_TR.UTF-8 tr_TR.utf8 az_AZ.UTF-8 az_AZ.utf8; do
+  [ "$(LC_ALL=$_l bash -c 'x=ş; printf %s "${#x}"' 2>/dev/null)" = 1 ] && { _th="$_l"; break; }
+done
+if [ -z "$_th" ]; then
+  skip platform "the gates under a Turkish locale (this machine has no tr_TR.UTF-8 or az_AZ.UTF-8)" 2
+else
+  # What plain matching does under it here: this is what says whether the rows below can fail on this platform.
+  _thc="$(LC_ALL=$_th bash -c 'shopt -s nocasematch; [[ GIT == git ]] && printf folds || printf "does not fold"' 2>/dev/null)"
+  # in a subshell: where grep aborts, the shell that waits for it reports the job ("Aborted"), and that line is
+  # not grep's stderr, so a redirection on the pipeline does not silence it
+  _thx=0; ( printf 'INIT\n' | LC_ALL=$_th grep -qiF init ) >/dev/null 2>&1 || _thx=$?
+  _thkind="here plain bash $_thc I to i and grep -iF exits $_thx for INIT/init"
+  case "$_thc/$_thx" in folds/0) _thkind="$_thkind, so these rows cannot fail on this platform" ;; esac
+  # (1) guard-bash: each of these gave another verdict under the locale before the block
+  THT='2 @@ PowerShell @@ Remove-Item -Recurse -Force C:\\\\proj\\\\*
+2 @@ Bash @@ git config --remove-section core
+2 @@ Bash @@ git config --rename-section core x
+2 @@ Bash @@ cat config/.env.production
+2 @@ Bash @@ cat ~/.ssh/ID_RSA
+0 @@ Bash @@ cat ~/.ssh/id_rsa.pub
+0 @@ Bash @@ cat ~/.ssh/id_rsa.pub | ssh-keygen -lf -
+0 @@ Bash @@ ls -la'
+  _thbad=""; _thn=0
+  while IFS= read -r _cl; do [ -z "$_cl" ] && continue
+    _cw="${_cl%% @@ *}"; _cc="${_cl#* @@ }"; _ct="${_cc%% @@ *}"; _cc="${_cc#* @@ }"; _thn=$((_thn+1))
+    _th_gb "$_th" "$_ct" "$_cc"; _thl="$_thr"; _th_gb "" "$_ct" "$_cc"
+    { [ "$_thl" = "$_cw" ] && [ "$_thr" = "$_cw" ]; } || _thbad="$_thbad [$_ct: $_cc → $_thl under $_th, $_thr under C, want $_cw]"
+  done <<< "$THT"
+  if [ "$_thn" != 8 ]; then fail "FIXTURE: the gate table under $_th ran $_thn rows, not 8"
+  elif [ -z "$_thbad" ]; then pass "under $_th guard-bash gives the verdicts it gives under C: 8 rows (a recursive Remove-Item, core.hooksPath removed or renamed away, a nested .env, ID_RSA by case refused; id_rsa.pub, alone and piped, and ls allowed) — $_thkind"
+  else fail "verdicts that change under $_th:$_thbad"; fi
+  # (2) the two git hooks
+  _thbad=""
+  _th_repo "$_TH/t"
+  ( cd "$_TH/t" && printf 'notes generated by %s\n' 'COPI''LOT' > t.md && git add t.md ) >/dev/null 2>&1
+  _th_hook "$_TH/t" pre-commit "$_th"; { [ "$_thr" = 1 ] && grep -q 'TRACE-SCANNER' "$_TH/out"; } || _thbad="$_thbad [pre-commit, a vendor name in capitals in an added line: rc=$_thr, want 1]"
+  _th_repo "$_TH/s"
+  ( cd "$_TH/s" && printf 'aws_key = AKIA%s\n' 'IOSFODNN7EXAMPLE' > leak.txt && git add leak.txt ) >/dev/null 2>&1
+  _th_hook "$_TH/s" pre-commit "$_th"; { [ "$_thr" = 1 ] && grep -q 'SECRET-SCANNER' "$_TH/out"; } || _thbad="$_thbad [pre-commit, a staged key that holds an I: rc=$_thr, want 1]"
+  _th_hook "$_TH/r" pre-commit "$_th"; { [ "$_thr" = 1 ] && grep -q 'PRIVATE-PATH SCANNER: a staged line contains' "$_TH/out"; } || _thbad="$_thbad [pre-commit, a private string in another case: rc=$_thr, want 1 — $(sed -n 1p "$_TH/out" | cut -c1-100)]"
+  _th_hook "$_TH/e" pre-commit "$_th"; [ "$_thr" = 0 ] || _thbad="$_thbad [pre-commit, an ordinary line: rc=$_thr, want 0]"
+  ( cd "$_TH/t" && printf 'docs: notes\n\nWritten with %s\n' 'COPI''LOT' > msg.txt ) >/dev/null 2>&1
+  _th_hook "$_TH/t" commit-msg "$_th" "" msg.txt; [ "$_thr" = 1 ] || _thbad="$_thbad [commit-msg, a vendor name in capitals in the message: rc=$_thr, want 1]"
+  _th_hook "$_TH/e" commit-msg "$_th" "" msg.txt;  [ "$_thr" = 0 ] || _thbad="$_thbad [commit-msg, an ordinary message: rc=$_thr, want 0]"
+  # a letter outside ASCII keeps its other case: the second look, under the session's locale
+  _th_repo "$_TH/n"; printf 'şirket-gizli\n' > "$_TH/n/.private-terms.txt"
+  ( cd "$_TH/n" && printf 'see ŞİRKET-GİZLİ\n' > n.md && git add n.md ) >/dev/null 2>&1
+  _th_hook "$_TH/n" pre-commit "$_th"; _thna="$_thr"
+  # required where this platform's grep folds such a letter under the locale at all (GNU grep does, BSD grep does not)
+  if ( printf 'ŞİRKET\n' | LC_ALL=$_th grep -qiF 'şirket' ) >/dev/null 2>&1; then
+    [ "$_thna" = 1 ] || _thbad="$_thbad [pre-commit, a private string of non-ASCII letters in another case: rc=$_thna, want 1 (this grep folds them under $_th)]"
+  fi
+  [ -z "$_thbad" ] && pass "under $_th the git hooks stop what they stop under C: a vendor name in another case in an added line and in the message, a staged key that holds an I, a private string in another case; an ordinary line and message pass (a private string of non-ASCII letters in another case: exit $_thna, 1 = caught by the second look)" \
+                   || fail "the git hooks under $_th:$_thbad"
+fi
+rm -rf "$_TH"
+fi   # UNITS
+
 sec "== 13) pre-commit cost — the gate people route around is the one that is slow =="
 # Measured on a 373-file merge: the old file loop spawned ~7 processes per file (three `printf | grep` pairs and
 # a `git cat-file`), 2,643 in total. At the 62-135 ms a Git Bash process was measured to cost on a Windows 11

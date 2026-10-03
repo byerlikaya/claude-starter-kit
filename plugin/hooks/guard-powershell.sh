@@ -18,6 +18,25 @@
 # Wired ONLY on the PowerShell matcher (both editions; smoke pins it). On `Bash` it would block the very commands it
 # points to.
 set -uo pipefail
+# ---- CREW-LOCALE -----------------------------------------------------------------------------------------
+# Everything this gate matches with runs in the C locale, whatever the session's own is. Under a Turkish locale
+# the letters i and I are not each other's other case (their partners are İ and ı), and every case-insensitive
+# match here is written in ASCII. Measured under tr_TR.UTF-8 with the locale left as it came:
+#   GNU grep 3.11 / bash 5.2 on Linux: `grep -i init` does not find INIT (-F, -E and plain alike);
+#     bash's nocasematch does not match GIT against git; `[A-Za-z]` in a regex does not hold I; awk's tolower
+#     turns GIT into gıt. The suite, run whole under that locale, went from 2 failures to 23: a recursive
+#     Remove-Item, a write to a gate file, `git config --remove-section core`, a read of a nested .env and a
+#     staged key all passed.
+#   GNU grep 3.0 in Git Bash on Windows: `grep -iF` with an ASCII pattern aborts (exit 134), and the pre-commit
+#     scan for private strings read that as "no match".
+#   macOS (BSD grep, bash 3.2): none of it; tr_TR.UTF-8 folds i and I the ASCII way there.
+# The cost: a letter outside ASCII has no other case in the C locale. The two git hooks that scan a user's own
+# words look a second time under the session's locale for a pattern that holds such a letter (_CREW_LOCALE).
+# Byte-identical in every gate; the suite pins it.
+_CREW_LOCALE="${LC_ALL:-${LC_CTYPE:-${LANG:-}}}"
+case "$_CREW_LOCALE" in C|POSIX) _CREW_LOCALE="" ;; esac
+export LC_ALL=C
+# ---- /CREW-LOCALE
 # Read with the builtin: `INPUT="$(cat)"` is a subshell plus a process on EVERY PowerShell call, and on Git Bash a
 # process costs 62-135 ms. With this, a command that cannot match (no `bash` in the payload) opens no process at all
 # (measured with the xtrace counter: `cat` 1 -> 0). `read` returns 1 at end of input; the text is read regardless.
