@@ -1727,37 +1727,45 @@ if [ "$IS_KIT" = 1 ]; then
   elif [ "${_lb_o:-0}" = 0 ] && [ "${_lb_en:-0}" -ge 3 ] && [ "${_lb_tr:-0}" -ge 1 ]; then
     pass "the listing-budget warning says 'less likely to be picked on their own' (EN $_lb_en, TR $_lb_tr), never that a skill stops being picked"
   else fail "listing-budget wording: old claim $_lb_o (want 0), new EN $_lb_en (want ≥3: doctor key, doctor warn, /crew-doctor), TR ${_lb_tr:-0} (want ≥1)"; fi
-  # kit/legacy-blobs.tsv is how the updater tells Crewforth's own, untouched old files from a user's: a stale or
-  # hand-edited row would move a user's edit aside, or leave Crewforth's leftovers in place. It is generated from the
-  # release tags, so it must equal what the generator prints now, byte for byte. The twin drops one row from the
-  # shipped copy: a comparison that cannot see that measures nothing. No tags (a shallow clone) is a fixture skip —
-  # red under CREW_VERIFY_STRICT, because CI checks out with its history.
+  # kit/legacy-blobs.tsv and kit/owned-blobs.tsv are how the updater tells Crewforth's own, untouched old files from a
+  # user's: a stale or hand-edited row would move a user's edit aside, leave Crewforth's leftovers in place, or keep
+  # an untouched file as if it were edited. Both are generated from the release tags, so each must equal what the
+  # generator prints now, byte for byte. The twin drops one row from the shipped copy: a comparison that cannot see
+  # that measures nothing. No tags (a shallow clone) is a fixture skip — red under CREW_VERIFY_STRICT, because CI
+  # checks out with its history. The owned list is generated from the releases BELOW the VERSION file, so it goes
+  # stale exactly when VERSION moves: the commit that moves it regenerates the list.
+  # $1 = file under kit/, $2 = the generator's flag, $3 = fewest rows a whole list has, $4 = what it is, in words
+  _lb_check(){
+    local f="$KR/kit/$1" d rc rows comp
+    d="$(mktemp -d)"
+    # Compared as FILES with cmp: a `$( )` capture drops trailing newlines, and a list missing its last newline or
+    # carrying extra blank lines at the end would compare equal that way (found in review).
+    bash "$KR/packaging/gen-legacy-blobs.sh" "$2" > "$d/gen" 2>/dev/null; rc=$?
+    sed '4d' "$f" > "$d/twin" 2>/dev/null
+    rows="$(grep -v '^#' "$f" 2>/dev/null | grep -c .)"
+    comp="$(grep -v '^#' "$f" 2>/dev/null | cut -f1 | sort -u | grep -c .)"
+    if [ "$rc" != 0 ]; then
+      fail "packaging/gen-legacy-blobs.sh $2 failed (rc $rc) — $4 cannot be checked"
+    elif cmp -s "$d/twin" "$d/gen"; then
+      fail "the check of kit/$1 cannot see a missing row (twin with a data row removed compared equal) — it measures nothing"
+    elif [ "${rows:-0}" -lt "$3" ]; then
+      fail "kit/$1 has ${rows:-0} row(s) — the shipped list is missing or truncated; regenerate it: bash packaging/gen-legacy-blobs.sh"
+    elif cmp -s "$d/gen" "$f"; then
+      pass "kit/$1 equals what the tags generate ($rows rows, $comp paths or components; twin with one row removed differs)"
+    else
+      fail "kit/$1 is stale — regenerate it: bash packaging/gen-legacy-blobs.sh (and commit the result)"
+    fi
+    rm -rf "$d"
+  }
   if [ -f "$KR/packaging/gen-legacy-blobs.sh" ] && git -C "$KR" rev-parse --git-dir >/dev/null 2>&1; then
     if ! git -C "$KR" rev-parse -q --verify refs/tags/v2.13.0 >/dev/null 2>&1; then
-      skip fixture "legacy blob list not checked — this clone has no v2.13.0 tag (shallow?), and the list is generated from tags"
+      skip fixture "blob lists not checked — this clone has no v2.13.0 tag (shallow?), and the lists are generated from tags" 2
     else
-      # Compared as FILES with cmp: a `$( )` capture drops trailing newlines, and a list missing its last newline or
-      # carrying extra blank lines at the end would compare equal that way (found in review).
-      _LBT="$(mktemp -d)"
-      bash "$KR/packaging/gen-legacy-blobs.sh" --stdout > "$_LBT/gen" 2>/dev/null; _lb_rc=$?
-      sed '4d' "$KR/kit/legacy-blobs.tsv" > "$_LBT/twin" 2>/dev/null
-      _lb_rows="$(grep -v '^#' "$KR/kit/legacy-blobs.tsv" 2>/dev/null | grep -c .)"
-      _lb_comp="$(grep -v '^#' "$KR/kit/legacy-blobs.tsv" 2>/dev/null | cut -f1 | sort -u | grep -c .)"
-      if [ "$_lb_rc" != 0 ]; then
-        fail "packaging/gen-legacy-blobs.sh failed (rc $_lb_rc) — the legacy blob list cannot be checked"
-      elif cmp -s "$_LBT/twin" "$_LBT/gen"; then
-        fail "legacy blob check cannot see a missing row (twin with a data row removed compared equal) — it measures nothing"
-      elif [ "${_lb_rows:-0}" -lt 150 ]; then
-        fail "kit/legacy-blobs.tsv has ${_lb_rows:-0} row(s) — the shipped list is missing or truncated; regenerate it: bash packaging/gen-legacy-blobs.sh"
-      elif cmp -s "$_LBT/gen" "$KR/kit/legacy-blobs.tsv"; then
-        pass "kit/legacy-blobs.tsv equals what the tags generate ($_lb_rows rows, $_lb_comp components; twin with one row removed differs)"
-      else
-        fail "kit/legacy-blobs.tsv is stale — regenerate it: bash packaging/gen-legacy-blobs.sh (and commit the result)"
-      fi
-      rm -rf "$_LBT"
+      _lb_check legacy-blobs.tsv --stdout 150 "the legacy blob list"
+      _lb_check owned-blobs.tsv --stdout-owned 30 "the list of the flat files Crewforth owns"
     fi
   else
-    skip scope "legacy blob list not checked — not a git checkout of Crewforth's source"
+    skip scope "blob lists not checked — not a git checkout of Crewforth's source" 2
   fi
   # The npm wrapper prints its own usage, and it advertised --backend/--frontend/--mobile/--fullstack as the
   # primary form for a release that no longer has profiles. A user reads `--help` before the README.

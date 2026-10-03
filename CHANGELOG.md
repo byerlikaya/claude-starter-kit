@@ -140,6 +140,14 @@ versioning follows [SemVer](https://semver.org/).
 
 ### Changed
 
+- **An update no longer loses an edit of the three files Crewforth owns.** `adopt` and `update` rewrote
+  `.claude/AGENT_TEMPLATE.md` and `.claude/DISCIPLINE.md` on every run with no look at what was there, so a copy the
+  user had edited was gone without a word (`README.md` was already kept when it differed). One rule for the three now:
+  a copy that is this version's, or exactly what an earlier release shipped (line endings aside), is refreshed and
+  nothing is kept; anything else goes to `.claude/.legacy-backup/<time>/` first, and the update names it. What "an
+  earlier release shipped" is comes from `kit/owned-blobs.tsv`, generated from the release tags: 6 versions of
+  AGENT_TEMPLATE.md, 8 of README.md and 24 of DISCIPLINE.md, so an untouched copy from any of them does not pile up
+  in the backup directory on each update. A copy that cannot be backed up is left as it is.
 - **A gate that times out does not block, so the gates got faster and their timeout longer.** Claude Code runs the
   tool call when a `PreToolUse` hook reaches its timeout; one field session on 3.0.0 showed nine such calls in a day.
   - Every read-only Bash call, every Write and Edit, and every PowerShell call now costs **no process at all** in the

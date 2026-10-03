@@ -249,25 +249,45 @@ run_adopt "$G" --yes
 grep -q '^stack=generic' "$G/.claude/kit.conf"          || die "Node project not recorded as generic" adopt-generic "$G"
 [ ! -d "$G/.claude/skills/cqrs-aop-module" ]             || die "the removed .NET pattern skill was installed" adopt-generic "$G"
 echo "[adopt-generic] stack=generic · no pattern skill"
-# .claude/README.md describes the installed version. start.sh copied it and adopt/update never did (RC-1 field: both
-# projects still described 3.0.0 after updating). Refreshed on every run now; a copy that differs is kept first.
-cmp -s kit/README.md "$G/.claude/README.md" || die "adopt did not write .claude/README.md" adopt-readme "$G"
+# THE FLAT FILES CREWFORTH OWNS: .claude/README.md, AGENT_TEMPLATE.md and DISCIPLINE.md are rewritten on every run.
+# README was not written at all by adopt/update before 3.0.1 (RC-1 field: both projects still described 3.0.0), and
+# the other two were rewritten with no look at what was there: an edit was lost without a word. One rule for the
+# three: a copy that is not this version's and not one an earlier release shipped is kept first and named.
+of_want(){  # $1 = name -> the file holding this version's content, in $WORK/of-want
+  if [ "$1" = DISCIPLINE.md ]; then awk '/^<!-- KIT:DISCIPLINE-END/{exit} {print}' kit/CLAUDE.md > "$WORK/of-want"; else cp "kit/$1" "$WORK/of-want"; fi; }
+for _of in README.md AGENT_TEMPLATE.md DISCIPLINE.md; do
+  of_want "$_of"; cmp -s "$WORK/of-want" "$G/.claude/$_of" || die "adopt did not write .claude/$_of" owned-files "$G"
+done
 ( cd "$G" && git add -A && git commit -qm adopt1 ) >/dev/null 2>&1
-printf '# the README an older Crewforth wrote, or the user edited\n' > "$G/.claude/README.md"
+for _of in README.md AGENT_TEMPLATE.md DISCIPLINE.md; do printf '# %s as the user edited it\n' "$_of" >> "$G/.claude/$_of"; cp "$G/.claude/$_of" "$WORK/of-edited-$_of"; done
 cp adopt.sh "$G/"; cp -R kit "$G/"; run_adopt "$G" --yes
-cmp -s kit/README.md "$G/.claude/README.md" || die "the update left a stale .claude/README.md" adopt-readme "$G"
 _rbk="$(ls -d "$G"/.claude/.legacy-backup/*/ 2>/dev/null | tail -1)"
-[ -n "$_rbk" ] && grep -qx '# the README an older Crewforth wrote, or the user edited' "${_rbk}README.md" 2>/dev/null \
-  || die "the old README was overwritten without a copy" adopt-readme "$G"
-case "$ADOPT_OUT" in *"README.md differed from this version's — the old one is kept in"*) ;; *) die "the update kept the old README without saying where" adopt-readme "$G" ;; esac
-# Twins: the same README (and the same one with CRLF line endings) is refreshed silently, with no backup.
+[ "$(ls -d "$G"/.claude/.legacy-backup/*/ 2>/dev/null | grep -c .)" = 1 ] || die "the three edited files were not kept in ONE backup directory" owned-files "$G"
+for _of in README.md AGENT_TEMPLATE.md DISCIPLINE.md; do
+  of_want "$_of"; cmp -s "$WORK/of-want" "$G/.claude/$_of" || die "the update left a stale .claude/$_of" owned-files "$G"
+  [ -n "$_rbk" ] && cmp -s "$WORK/of-edited-$_of" "${_rbk}$_of" 2>/dev/null || die "the edited $_of was overwritten without a copy of its bytes" owned-files "$G"
+  case "$ADOPT_OUT" in *"$_of is not a copy Crewforth shipped before this version — it is kept in ${_rbk#"$G"/}$_of"*) ;;
+    *) die "the update kept the edited $_of without saying where" owned-files "$G" ;; esac
+done
+# Twins: this version's own content (and the same with CRLF line endings) is refreshed silently, with no backup.
 rm -rf "$G/.claude/.legacy-backup"; cp adopt.sh "$G/"; cp -R kit "$G/"; run_adopt "$G" --yes
-case "$ADOPT_OUT" in *"README.md differed"*) die "an unchanged README was backed up" adopt-readme/same "$G" ;; esac
-awk '{ printf "%s\r\n", $0 }' kit/README.md > "$G/.claude/README.md"
+case "$ADOPT_OUT" in *"is not a copy Crewforth shipped"*) die "an unchanged owned file was backed up" owned-files/same "$G" ;; esac
+for _of in README.md AGENT_TEMPLATE.md DISCIPLINE.md; do of_want "$_of"; awk '{ printf "%s\r\n", $0 }' "$WORK/of-want" > "$G/.claude/$_of"; done
+[ "$(tr -dc '\r' < "$G/.claude/DISCIPLINE.md" | wc -c | tr -d ' ')" -gt 0 ] || die "FIXTURE: the CRLF twin has no CR" owned-files/crlf "$G"
 cp adopt.sh "$G/"; cp -R kit "$G/"; run_adopt "$G" --yes
-case "$ADOPT_OUT" in *"README.md differed"*) die "a CRLF copy of the same README was backed up" adopt-readme/crlf "$G" ;; esac
-[ ! -d "$G/.claude/.legacy-backup" ] || [ -z "$(ls "$G/.claude/.legacy-backup")" ] || die "a backup appeared for an unchanged README" adopt-readme/twins "$G"
-echo "[adopt-readme] written on adopt · a differing one kept in .legacy-backup and named, then refreshed · same / CRLF-same: no backup"
+case "$ADOPT_OUT" in *"is not a copy Crewforth shipped"*) die "a CRLF copy of this version's file was backed up" owned-files/crlf "$G" ;; esac
+[ ! -d "$G/.claude/.legacy-backup" ] || [ -z "$(ls "$G/.claude/.legacy-backup")" ] || die "a backup appeared for an unchanged owned file" owned-files/twins "$G"
+for _of in README.md AGENT_TEMPLATE.md DISCIPLINE.md; do of_want "$_of"; cmp -s "$WORK/of-want" "$G/.claude/$_of" || die "a CRLF copy of $_of was not refreshed to this version's bytes" owned-files/crlf "$G"; done
+# No copy can be backed up: the file stays as it is, and the run says so. (A FILE in the backup directory's place.)
+printf '# mine\n' >> "$G/.claude/AGENT_TEMPLATE.md"; cp "$G/.claude/AGENT_TEMPLATE.md" "$WORK/of-mine"
+rm -rf "$G/.claude/.legacy-backup"; : > "$G/.claude/.legacy-backup"
+cp adopt.sh "$G/"; cp -R kit "$G/"; run_adopt "$G" --yes
+cmp -s "$WORK/of-mine" "$G/.claude/AGENT_TEMPLATE.md" || die "an edited file that could not be backed up was overwritten" owned-files/no-backup "$G"
+case "$ADOPT_OUT" in *"AGENT_TEMPLATE.md is not a copy Crewforth shipped before this version and could not be backed up — left as it is"*) ;;
+  *) die "an edited file that could not be backed up was left without a word" owned-files/no-backup "$G" ;; esac
+case "$ADOPT_OUT" in *"AGENT_TEMPLATE.md written"*) die "the run says it wrote a file it left as it was" owned-files/no-backup "$G" ;; esac
+rm -f "$G/.claude/.legacy-backup"; cp kit/AGENT_TEMPLATE.md "$G/.claude/"
+echo "[owned-files] README, AGENT_TEMPLATE, DISCIPLINE written on adopt · each edited one kept byte for byte in one .legacy-backup and named, then refreshed · this version's content and its CRLF copy: no backup · no place for a backup: left as it is, and said"
 
 # CSK_CORRECT_STACK used to flip a recorded 'generic' to 'dotnet'. 3.0 has one shape, so the variable does
 # nothing — and says so, rather than being silently ignored by an automation that still sets it.
@@ -1654,6 +1674,56 @@ else
   read -r n m miss <<< "$(lb_check "$LB2")"
   [ "$n" = "$m" ] || { echo "FAIL: a CRLF copy of an untouched legacy file did not match through its CR-stripped id ($m of $n; '$miss')"; exit 1; }
   echo "[legacy-blobs] real installers vs kit/legacy-blobs.tsv:$_lbsum twin: edited file falls out · CRLF twin ($_lbcr CRs) still matches"
+
+  # ---- kit/owned-blobs.tsv against what the real old installers wrote, and the update of such an install ----
+  # The updater refreshes AGENT_TEMPLATE.md, README.md and DISCIPLINE.md without keeping the old copy only when its
+  # bytes are an id the list holds for that file. That is right only if an old installer wrote exactly those bytes —
+  # and DISCIPLINE.md is not a file of the payload but the top of CLAUDE.md, so nothing but an install shows it.
+  ob_in(){  # $1 = project, $2 = name -> 0 when the installed file's bytes are in the list for it
+    local h; h="$(git hash-object --no-filters "$1/.claude/$2")"
+    awk -F'\t' -v p=".claude/$2" -v a="$h" '!/^#/ && $1 == p && $2 == a { f = 1 } END { exit !f }' kit/owned-blobs.tsv; }
+  _obn=0
+  for _ob in "$LB1 AGENT_TEMPLATE.md" "$LB1 README.md" "$LB2 AGENT_TEMPLATE.md" "$LB2 README.md" "$LB2 DISCIPLINE.md"; do
+    _obd="${_ob% *}"; _obf="${_ob##* }"
+    [ -f "$_obd/.claude/$_obf" ] || { echo "FAIL: FIXTURE — the old installer left no .claude/$_obf in $_obd"; exit 1; }
+    ob_in "$_obd" "$_obf" || { echo "FAIL: .claude/$_obf as $(basename "$_obd")'s installer wrote it is not in kit/owned-blobs.tsv — the updater would keep Crewforth's own untouched file as if it were the user's"; exit 1; }
+    _obn=$((_obn+1))
+  done
+  [ ! -e "$LB1/.claude/DISCIPLINE.md" ] || { echo "FAIL: FIXTURE — $LBV1 wrote a DISCIPLINE.md; the list assumes releases before v1.1.0 wrote none"; exit 1; }
+  # Twin: an edit falls out of the list.
+  cp "$LB2/.claude/DISCIPLINE.md" "$WORK/ob-keep"; printf '\n# my own rule\n' >> "$LB2/.claude/DISCIPLINE.md"
+  ob_in "$LB2" DISCIPLINE.md && { echo "FAIL: twin — an edited DISCIPLINE.md still matched kit/owned-blobs.tsv"; exit 1; }
+  cp "$WORK/ob-keep" "$LB2/.claude/DISCIPLINE.md"
+  # The update of the real v2.13.0 install: three untouched old files, refreshed, nothing kept, nothing said about them.
+  OB="$WORK/owned-v2"; rm -rf "$OB"; cp -R "$LB2" "$OB"
+  ( cd "$OB" && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm install ) >/dev/null 2>&1
+  for _obf in AGENT_TEMPLATE.md README.md DISCIPLINE.md; do of_want "$_obf"; cmp -s "$WORK/of-want" "$OB/.claude/$_obf" && { echo "FAIL: FIXTURE — $LBV2's $_obf equals this version's; the case would prove nothing"; exit 1; }; done
+  cp adopt.sh "$OB/"; cp -R kit "$OB/"; cp VERSION "$OB/"; run_adopt "$OB" --yes --here
+  case "$ADOPT_OUT" in *"is not a copy Crewforth shipped"*|*"could not be checked against what Crewforth shipped (git or the shipped list"*) die "an untouched $LBV2 file was kept as if it were edited" owned-blobs/untouched "$OB" ;; esac
+  for _obf in AGENT_TEMPLATE.md README.md DISCIPLINE.md; do
+    of_want "$_obf"; cmp -s "$WORK/of-want" "$OB/.claude/$_obf" || die "the untouched $LBV2 $_obf was not refreshed" owned-blobs/untouched "$OB"
+    [ -z "$(find "$OB/.claude/.legacy-backup" -name "$_obf" 2>/dev/null)" ] || die "the untouched $LBV2 $_obf was copied to the backup" owned-blobs/untouched "$OB"
+  done
+  # Twin, same install: one edited, one turned CRLF, one untouched. Only the edited one is kept.
+  OB="$WORK/owned-v2-mixed"; rm -rf "$OB"; cp -R "$LB2" "$OB"
+  ( cd "$OB" && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm install ) >/dev/null 2>&1
+  printf '\n# my own rule\n' >> "$OB/.claude/DISCIPLINE.md"; cp "$OB/.claude/DISCIPLINE.md" "$WORK/ob-edited"
+  awk '{ printf "%s\r\n", $0 }' "$LB2/.claude/AGENT_TEMPLATE.md" > "$OB/.claude/AGENT_TEMPLATE.md"
+  cp adopt.sh "$OB/"; cp -R kit "$OB/"; cp VERSION "$OB/"; run_adopt "$OB" --yes --here
+  _obk="$(find "$OB/.claude/.legacy-backup" -type f \( -name AGENT_TEMPLATE.md -o -name README.md -o -name DISCIPLINE.md \) 2>/dev/null | LC_ALL=C sort | tr '\n' ' ')"
+  case "$_obk" in *"/DISCIPLINE.md ") case "$_obk" in *AGENT_TEMPLATE*|*README*) die "more than the edited file was kept: $_obk" owned-blobs/mixed "$OB" ;; esac ;;
+    *) die "the edited DISCIPLINE.md was not the one file kept (kept: ${_obk:-none})" owned-blobs/mixed "$OB" ;; esac
+  cmp -s "$WORK/ob-edited" ${_obk% } || die "the kept DISCIPLINE.md is not the edited bytes" owned-blobs/mixed "$OB"
+  case "$ADOPT_OUT" in *"DISCIPLINE.md is not a copy Crewforth shipped before this version — it is kept in"*) ;; *) die "the edited DISCIPLINE.md was kept without a word" owned-blobs/mixed "$OB" ;; esac
+  case "$ADOPT_OUT" in *"AGENT_TEMPLATE.md is not a copy"*|*"README.md is not a copy"*) die "an untouched file (one of them CRLF) was reported as not shipped" owned-blobs/mixed "$OB" ;; esac
+  # Twin: the list is missing from the payload. Nothing can be told, so the old copy is kept and the line says why.
+  OB="$WORK/owned-v2-nolist"; rm -rf "$OB"; cp -R "$LB2" "$OB"
+  ( cd "$OB" && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm install ) >/dev/null 2>&1
+  cp adopt.sh "$OB/"; cp -R kit "$OB/"; cp VERSION "$OB/"; rm -f "$OB/kit/owned-blobs.tsv"; run_adopt "$OB" --yes --here
+  case "$ADOPT_OUT" in *"DISCIPLINE.md could not be checked against what Crewforth shipped (git or the shipped list is missing) — the old copy is kept in"*) ;;
+    *) die "with no list the untouched old DISCIPLINE.md was refreshed without a copy, or without the reason" owned-blobs/nolist "$OB" ;; esac
+  cmp -s "$LB2/.claude/DISCIPLINE.md" "$(find "$OB/.claude/.legacy-backup" -name DISCIPLINE.md | head -1)" || die "with no list the kept DISCIPLINE.md is not the old bytes" owned-blobs/nolist "$OB"
+  echo "[owned-blobs] real installers vs kit/owned-blobs.tsv: $_obn of $_obn files in the list ($LBV1: 2, no DISCIPLINE.md · $LBV2: 3) · edit falls out · update of the real $LBV2 install: 3 untouched files refreshed, none kept, nothing said · mixed: only the edited one kept, the CRLF one not · no list: kept, with the reason"
 fi
 
 # ---- the pattern skill's trust: vouched for only when it is a copy Crewforth shipped ----
