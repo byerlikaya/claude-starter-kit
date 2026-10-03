@@ -140,6 +140,31 @@ versioning follows [SemVer](https://semver.org/).
 
 ### Changed
 
+- **Reading `core.hooksPath` is no longer refused on Windows.** `git config --get core.hooksPath` is how a person
+  checks that the gate is armed, and a read is let through only when the payload holds no escape the reader drops.
+  That was asked of the whole payload, and a Windows `cwd` is full of them once JSON-encoded (`C:\\repos\\app` holds
+  a backslash and an r), so in such a directory every read was refused as tampering. It is asked of the command
+  now, with every escaped backslash taken out first. Of 250 measured cells (7 reads, 18 writes, a POSIX `cwd` and
+  four Windows ones, Bash and PowerShell) 40 reads changed from refused to passed; every write, a real CR, form
+  feed or backspace escape in the command among them, is refused as before.
+- **A project's own hook chain survives the second update.** The first run puts `.claude/git-shim` in front of it
+  and points git there; the second read that as "no chain" and pointed git at `.claude/hooks`, so the project's own
+  `pre-commit` never ran again, with nothing said (a project with `.husky` was found again, as `.husky` and not the
+  `.husky/_` it had). The chain is read back from the shim.
+- **The doctor knows `.claude/git-shim`.** On a project with hooks of its own it answered "not Crewforth's hooks" and
+  advised `git config core.hooksPath .claude/hooks`, the command that disconnects the project's hooks. A shim that
+  runs Crewforth's hook is healthy; where a chain of the project's own exists the advice is the update, which
+  keeps it.
+- **The session is told when the git hooks are not connected.** An install made before `git init`, and every clone
+  of a repository that shares `.claude/`, starts with `core.hooksPath` unset: a commit typed in a terminal is then
+  scanned by nothing. Crewforth does not change git's configuration by itself; the session start says so, and the
+  fix stays the user's.
+- **The doctor's Git Bash advice ends with "close the terminal and Claude Code and open them again".** An open
+  terminal keeps the old value of `CLAUDE_CODE_GIT_BASH_PATH`; in the field the fix was right and the proof came two
+  rounds late.
+- **The doctor reads §4.2's list.** `trace-blocklist.txt` ships the vendor section as a commented placeholder, and
+  until a name stands there that rule looks for nothing: the doctor says so, as information. The placeholder made
+  active as it shipped is a warning.
 - **An update no longer loses an edit of the three files Crewforth owns.** `adopt` and `update` rewrote
   `.claude/AGENT_TEMPLATE.md` and `.claude/DISCIPLINE.md` on every run with no look at what was there, so a copy the
   user had edited was gone without a word (`README.md` was already kept when it differed). One rule for the three now:

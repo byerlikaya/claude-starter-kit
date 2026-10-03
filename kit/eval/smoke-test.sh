@@ -3474,6 +3474,36 @@ done
 # are now cut out and the rest goes to the old rule, so nothing unproven is skipped — all pinned above.
 [ -z "$_hp_bad" ] && pass "core.hooksPath: value-less reads pass, every write form stays blocked ($_hp_n of 48 shapes)" \
                   || fail "core.hooksPath read/write split is wrong:$_hp_bad"
+# THE SAME SPLIT UNDER A WINDOWS PAYLOAD. A read is not proven when the payload holds an escape the reader drops
+# (`\r`, `\f`, `\b`, `\v`, `\u`). That was asked of the WHOLE payload, and a Windows `cwd` is full of them once
+# JSON-encoded: `C:\\repos\\app` holds a backslash and an r. So in such a directory `git config --get core.hooksPath`
+# — how a person checks the gate is armed — was refused as tampering (measured on Windows). It is asked of the
+# command now, with every escaped backslash taken out first. This LOOSENS a gate, so both directions are pinned
+# under each cwd: every read passes, and every write, a real CR/FF/BS escape in the command among them, is refused.
+# cwd and command are JSON text here: `\\` is one backslash, `\r` is the CR escape.
+_hpw(){ printf '{"tool_name":"%s","permission_mode":"default","cwd":"%s","tool_input":{"command":"%s"}}' "$1" "$2" "$3" | bash "$HOOKS/guard-bash.sh" >/dev/null 2>&1; _r=$?; }
+_hp_bad=""; _hp_n=0
+for _cwd in '/home/dev/app' 'C:\\repos\\app' 'C:\\Users\\dev\\files\\bin\\var' 'C:\\users\\dev'; do
+  for _tl in Bash PowerShell; do
+    for _c in 'git config --get core.hooksPath' 'git config core.hooksPath' 'git config --local --get core.hooksPath' \
+              'git config get core.hooksPath' 'git -C C:\\repos\\app config --get core.hooksPath' 'git config --get core.hooksPath | cat'; do
+      _hpw "$_tl" "$_cwd" "$_c"; _hp_n=$((_hp_n+1)); [ "$_r" = 0 ] || _hp_bad="$_hp_bad [read, $_tl, cwd $_cwd: $_c -> $_r, want 0]"
+    done
+    for _c in 'git config core.hooksPath x' 'git config core.hooksPath C:\\repos\\hooks' 'git config --unset core.hooksPath' \
+              'git config --add core.hooksPath x' 'git config set core.hooksPath x' \
+              'git config --get core.hooksPath && git config core.hooksPath x' \
+              'git config core.hooksPath \r' 'git config core.hooksPath \f' 'git config core.hooksPath \b' \
+              'git config core.hooksPath \u000b' 'git config core.hooksPath C:\\\r' \
+              'git config --get core.hooksPath \r&& git config core.hooksPath x' \
+              'git -c core.hooksPath=C:\\repos\\x status' 'git config --remove-section core' \
+              'git -C C:\\repos\\app config core.hooksPath C:\\repos\\hooks' 'git config core.hooksPath \\r' 'git config core.hooksPath \v'; do
+      _hpw "$_tl" "$_cwd" "$_c"; _hp_n=$((_hp_n+1)); [ "$_r" = 2 ] || _hp_bad="$_hp_bad [write, $_tl, cwd $_cwd: $_c -> $_r, want 2]"
+    done
+  done
+done
+if [ "$_hp_n" != 184 ]; then fail "FIXTURE: the core.hooksPath Windows table ran $_hp_n rows, not 184"
+elif [ -z "$_hp_bad" ]; then pass "core.hooksPath under a Windows payload: 6 reads pass and 17 writes are refused, through Bash and PowerShell, under a POSIX cwd and three JSON-encoded Windows ones that hold \\r, \\f, \\b, \\v and \\u as plain characters; a real CR, FF, BS, VT or \\u escape in the command still proves no read ($_hp_n rows)"
+else fail "core.hooksPath under a Windows payload:$_hp_bad"; fi
 # An exemption belongs to the command it sits in. The IaC, .env and credential rules exempted the WHOLE line when a
 # safe marker (--help, .env.example, .pub, …) appeared anywhere in it, so a harmless command chained in front of a
 # forbidden one carried it through: 72 such shapes were open (every operator: && ; || | ( ) $( )). Chained -> 2;
@@ -4380,6 +4410,27 @@ printf 'lang=tr\n' > "$RHD/.claude/kit.conf"; _o6="$(_rh clear)"
 _got="$(_rk "$_o1")/$(_rk "$_o2")/$(_rk "$_o3")/$(_rk "$_o4")/$(_rk "$_o5")/$(_rk "$_o6")"
 [ "$_got" = "L/HL//H//L" ] && pass "SessionStart names a Turkish install's language on startup and on a boundary; English adds nothing; startup never offers the handover (6 states)" \
   || fail "session-rehydrate language/handover states read '$_got', want 'L/HL//H//L' (tr startup · tr compact+handover · en startup · en compact+handover · en startup no handover · tr clear no handover)"
+# THE GIT HOOKS LINE. pre-commit and commit-msg run only when core.hooksPath points at them, or at .claude/git-shim.
+# An install made before `git init`, and every clone of a repository that shares .claude/, starts without it, and a
+# commit typed in a terminal is then scanned by nothing. Crewforth does not change git's configuration by itself:
+# the session is told at its start. Seven states, each read from what the hook printed: no hooks installed · not a
+# repository · unset · another directory · .claude/hooks · .claude/git-shim · an absolute path that ends in .claude/hooks.
+_rg(){ case "$1" in *"git hooks are not connected"*"core.hooksPath is not set"*) printf 'U' ;; *"git hooks are not connected"*"points at another hook directory"*) printf 'O' ;; *"git hooks"*) printf '?' ;; *) printf -- '-' ;; esac; }
+RHG="$(mktemp -d)"; RHG="$(cd -P "$RHG" && pwd)"; _rgj=1
+_rhg(){ local o; o="$(printf '{"hook_event_name":"SessionStart","cwd":"%s","source":"startup"}' "$RHG" | CLAUDE_PROJECT_DIR= bash "$HOOKS/session-rehydrate.sh" 2>/dev/null)"
+  if [ -n "$o" ] && [ -n "$JSONQ" ]; then printf '%s' "$o" | json_ok || _rgj=0; fi; _rg "$o"; }
+( cd "$RHG" && git init -q ) >/dev/null 2>&1; _g1="$(_rhg)"                                   # a repository, no Crewforth hooks in it
+mkdir -p "$RHG/.claude/hooks"; : > "$RHG/.claude/hooks/pre-commit"
+mv "$RHG/.git" "$RHG/.git-away"; _g2="$(_rhg)"; mv "$RHG/.git-away" "$RHG/.git"               # hooks installed, not a repository
+_g3="$(_rhg)"                                                                                  # unset
+( cd "$RHG" && git config core.hooksPath .husky/_ ); _g4="$(_rhg)"
+( cd "$RHG" && git config core.hooksPath .claude/hooks ); _g5="$(_rhg)"
+( cd "$RHG" && git config core.hooksPath .claude/git-shim ); _g6="$(_rhg)"
+( cd "$RHG" && git config core.hooksPath "$RHG/.claude/hooks" ); _g7="$(_rhg)"
+_got="$_g1$_g2$_g3$_g4$_g5$_g6$_g7"
+if [ "$_got" = "--UO---" ] && [ "$_rgj" = 1 ]; then pass "SessionStart says when Crewforth's git hooks are not connected: core.hooksPath unset, or pointing at another directory, each with its own line and valid JSON; silent with no hooks installed, outside a repository, and when it points at .claude/hooks, at .claude/git-shim or at an absolute path to the hooks (7 states)"
+else fail "session-rehydrate git-hooks states read '$_got' (want '--UO---': no hooks · no repository · unset · another directory · .claude/hooks · .claude/git-shim · absolute), valid JSON: $_rgj"; fi
+rm -rf "$RHG"
 _rj=0; for _o in "$_o1" "$_o2" "$_o4" "$_o6"; do printf '%s' "$_o" > "$RHD/o.json"; awk -v op=validate -f "$ROOT/eval/lib/settings-json.awk" "$RHD/o.json" 2>/dev/null || _rj=$((_rj+1)); done
 [ "$_rj" = 0 ] && pass "each language/handover output is valid JSON (Crewforth's reader, 4 of 4)" || fail "$_rj session-rehydrate output(s) are not valid JSON"
 # Asked of the entry that carries session-rehydrate, not of the file: skill-trust's entry has the same matcher.
@@ -5981,6 +6032,18 @@ GBCP
   _gb4="$(gbdoc)"
   case "$_gb4" in *"finds Git Bash (C:\\Program Files\\Git\\bin\\bash.exe)"*) pass "doctor: Git Bash in its default folder → found" ;;
     *) fail "doctor did not find Git Bash in C:\\Program Files\\Git" ;; esac
+  # THE FIX IS NOT DONE UNTIL THE TERMINAL IS REOPENED. A process keeps the environment it started with: in the field
+  # the variable was set correctly, Claude Code was restarted inside the terminal that was already open, and the
+  # proof came two rounds late. Every answer that advises a change says so, once; "found" says nothing.
+  _gbro="close the terminal and Claude Code and open them again"; _gbrb=""
+  for _gbv in "none:$_gb0" "PATH-only:$_gb1" "not-a-bash:$_gb3" "per-user:$_gbu" "launcher:$_gbl1" "lone-launcher:$_gbl2"; do
+    [ "$(printf '%s\n' "${_gbv#*:}" | grep -cF "$_gbro")" = 1 ] || _gbrb="$_gbrb ${_gbv%%:*}($(printf '%s\n' "${_gbv#*:}" | grep -cF "$_gbro"))"
+  done
+  for _gbv in "found-by-variable:$_gb2" "found-in-default-folder:$_gb4"; do
+    [ "$(printf '%s\n' "${_gbv#*:}" | grep -cF "$_gbro")" = 0 ] || _gbrb="$_gbrb ${_gbv%%:*}(said it with nothing to fix)"
+  done
+  [ -z "$_gbrb" ] && pass "doctor: every Git Bash answer that advises a change ends with 'close the terminal and Claude Code and open them again', once (6 answers); the two that find it say nothing of it" \
+                  || fail "doctor's Git Bash advice and the reopen line:$_gbrb"
   # The fixture has issues of its own; what counts is that the missing Git Bash adds exactly one.
   gbn(){ printf '%s\n' "$1" | sed -n 's/^DOCTOR: \([0-9][0-9]*\) issue.*/\1/p'; }
   [ "$(gbn "$_gb0")" = "$(( $(gbn "$_gb4" | grep . || echo 0) + 1 ))" ] \
@@ -6073,6 +6136,48 @@ GBCP
   ( cd "$DTMP" && env -u CREW_LANG CREW_I18N_MISS="$DTMP/miss2" bash .claude/eval/doctor-twin.sh >/dev/null 2>&1 )
   grep -qx 'planted line with no translation' "$DTMP/miss2" && pass "twin: a planted untranslated line is named by the miss list" \
     || fail "twin: the miss list did not name a planted untranslated line — the empty list above proves nothing"
+  # WHAT git IS POINTED AT. .claude/git-shim is Crewforth's too: the updater points git there when the project has a
+  # hook chain of its own, and each shim runs Crewforth's hook and then the project's. Doctor did not know it: on such a
+  # project it answered "not Crewforth's hooks" and advised `git config core.hooksPath .claude/hooks`, the command that
+  # disconnects the project's own hooks. Six states, read from doctor's own lines, in a repository of its own.
+  HPT="$(mktemp -d)"; mkdir -p "$HPT/.claude"
+  for d in eval hooks skills agents; do [ -d "$ROOT/$d" ] && cp -R "$ROOT/$d" "$HPT/.claude/$d"; done
+  cp "$ROOT/settings.json" "$HPT/.claude/settings.json" 2>/dev/null
+  ( cd "$HPT" && git init -q ) >/dev/null 2>&1
+  hpdoc(){ ( cd "$HPT" && CREW_LANG=en bash .claude/eval/doctor.sh 2>/dev/null ) | grep -A1 -E 'core\.hooksPath' | tr '\n' ' '; }
+  _hpb=""
+  _o="$(hpdoc)"; case "$_o" in *"core.hooksPath is unset"*"fix: git config core.hooksPath .claude/hooks"*) ;; *) _hpb="$_hpb [unset, no chain of its own: $_o]" ;; esac
+  mkdir -p "$HPT/.husky"; _o="$(hpdoc)"
+  case "$_o" in *"core.hooksPath is unset"*"npx crewforth update"*"hooks of its own"*) case "$_o" in *"fix: git config core.hooksPath"*) _hpb="$_hpb [unset with .husky: advised the command that drops the project's hooks]" ;; esac ;;
+    *) _hpb="$_hpb [unset with .husky: $_o]" ;; esac
+  ( cd "$HPT" && git config core.hooksPath .husky/_ ); _o="$(hpdoc)"
+  case "$_o" in *"core.hooksPath -> .husky/_ (not Crewforth's hooks)"*"npx crewforth update"*"keeps that chain"*) case "$_o" in *"fix: git config core.hooksPath"*) _hpb="$_hpb [another directory: advised the command that drops it]" ;; esac ;;
+    *) _hpb="$_hpb [another directory: $_o]" ;; esac
+  mkdir -p "$HPT/.claude/git-shim"
+  for _h in pre-commit commit-msg; do printf '#!/usr/bin/env bash\nH="$(basename "$0")"\nROOT="$(git rev-parse --show-toplevel)"\nK="$ROOT/.claude/hooks/$H"; [ -x "$K" ] && "$K" "$@"\nP="$ROOT/.husky/_/$H"\n[ -x "$P" ] && "$P" "$@"\nexit 0\n' > "$HPT/.claude/git-shim/$_h"; chmod +x "$HPT/.claude/git-shim/$_h"; done
+  ( cd "$HPT" && git config core.hooksPath .claude/git-shim ); _o="$(hpdoc)"
+  case "$_o" in *"✅ core.hooksPath -> .claude/git-shim (Crewforth's hooks run first, then the project's own"*) ;; *) _hpb="$_hpb [the shim: $_o]" ;; esac
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$HPT/.claude/git-shim/commit-msg"; _o="$(hpdoc)"
+  case "$_o" in *"❌ core.hooksPath -> .claude/git-shim, but the shim there does not run Crewforth's hook: commit-msg"*"writes the shim again"*) ;; *) _hpb="$_hpb [a shim without Crewforth's line: $_o]" ;; esac
+  ( cd "$HPT" && git config core.hooksPath .claude/hooks ); _o="$(hpdoc)"
+  case "$_o" in *"✅ core.hooksPath -> .claude/hooks (commit-time gates active)"*) ;; *) _hpb="$_hpb [.claude/hooks: $_o]" ;; esac
+  [ -z "$_hpb" ] && pass "doctor knows what git is pointed at: .claude/hooks and a .claude/git-shim that runs Crewforth's hook are ✅; a shim that does not is ❌; unset is ❌ with 'git config core.hooksPath .claude/hooks' only when the project has no hooks of its own; unset beside .husky, and another directory, are ❌ with the update, which keeps the project's chain (6 states)" \
+                 || fail "doctor and core.hooksPath:$_hpb"
+  # §4.2's list: the placeholder as shipped (information, not counted) · made active as it shipped (a warning) · a name.
+  _tbd(){ ( cd "$HPT" && CREW_LANG=en bash .claude/eval/doctor.sh 2>/dev/null ) | grep -E '4\.2 names|placeholder' | tr '\n' ' '; }
+  _hpb=""; _tbf="$HPT/.claude/hooks/trace-blocklist.txt"
+  # The installed list may be filled already (a project that keeps the former .NET pattern skill has its template's
+  # name armed), so the fixture starts from the list with every active line of the §4.2 section taken out.
+  awk '/^# --- /{ on = ($0 ~ /4\.2/) } on && !/^#/ && !/^[[:space:]]*$/ { next } { print }' "$_tbf" > "$_tbf.x" && mv "$_tbf.x" "$_tbf"
+  grep -qx '# <vendor-template-name>' "$_tbf" || _hpb="$_hpb [FIXTURE: the shipped list has no '# <vendor-template-name>' line]"
+  _o="$(_tbd)"; case "$_o" in *"·  §4.2 names no vendor template"*"looks for nothing"*) ;; *) _hpb="$_hpb [as shipped: $_o]" ;; esac
+  sed 's/^# <vendor-template-name>$/<vendor-template-name>/' "$_tbf" > "$_tbf.x" && mv "$_tbf.x" "$_tbf"
+  _o="$(_tbd)"; case "$_o" in *"⚠️  trace-blocklist.txt: the placeholder <vendor-template-name> is active as it shipped"*) ;; *) _hpb="$_hpb [placeholder active: $_o]" ;; esac
+  awk '{ sub(/^<vendor-template-name>$/, "AcmeStarter"); printf "%s\r\n", $0 }' "$_tbf" > "$_tbf.x" && mv "$_tbf.x" "$_tbf"
+  _o="$(_tbd)"; case "$_o" in *"✅ §4.2 names 1 vendor template pattern(s)"*) ;; *) _hpb="$_hpb [a name, in a CRLF file: $_o]" ;; esac
+  [ -z "$_hpb" ] && pass "doctor reads §4.2's list: only the shipped placeholder → one line of information that the rule looks for nothing; the placeholder made active as it shipped → a warning that names it; a template name (in a CRLF copy) → counted (3 states)" \
+                 || fail "doctor and the §4.2 list:$_hpb"
+  rm -rf "$HPT"
   rm -rf "$DTMP" "$GTMP"
 else
   fail "eval/gate-report.sh missing from the payload"

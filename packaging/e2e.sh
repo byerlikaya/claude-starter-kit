@@ -289,6 +289,38 @@ case "$ADOPT_OUT" in *"AGENT_TEMPLATE.md written"*) die "the run says it wrote a
 rm -f "$G/.claude/.legacy-backup"; cp kit/AGENT_TEMPLATE.md "$G/.claude/"
 echo "[owned-files] README, AGENT_TEMPLATE, DISCIPLINE written on adopt · each edited one kept byte for byte in one .legacy-backup and named, then refreshed · this version's content and its CRLF copy: no backup · no place for a backup: left as it is, and said"
 
+# ---- a project with a hook chain of its own keeps it through every update ----
+# The first run puts .claude/git-shim in front of the project's chain and points git at it. The SECOND run then read
+# core.hooksPath=.claude/git-shim as "Crewforth's own, no chain", and pointed git straight at .claude/hooks: the
+# project's own pre-commit never ran again, and nothing was said (measured with core.hooksPath=myhooks; a project
+# with .husky was found again by its directory, but as `.husky`, not the `.husky/_` it had). The chain is read back
+# from the shim now. Checked by what git RUNS: a commit after each update must run the project's hook, and a staged
+# key must be stopped by Crewforth's.
+sh_commit(){  # $1 = project, $2 = file to add -> rc of the commit; the project's hook appends a line to own.log
+  ( cd "$1" && git add "$2" && git commit -qm "feat: $2" ) >/dev/null 2>&1; }
+for _shc in myhooks .husky/_; do
+  SH="$WORK/shim-$(printf '%s' "$_shc" | tr -c 'A-Za-z0-9\n' '-')"; rm -rf "$SH"; mkdir -p "$SH/$_shc"
+  cp adopt.sh "$SH/"; cp -R kit "$SH/"; cp VERSION "$SH/"; printf '{"name":"x"}' > "$SH/package.json"
+  printf '#!/bin/sh\necho ran >> "$(git rev-parse --show-toplevel)/own.log"\n' > "$SH/$_shc/pre-commit"; chmod +x "$SH/$_shc/pre-commit"
+  ( cd "$SH" && git init -q && git config user.email t@t.t && git config user.name t && git add -A \
+    && git commit -qm init && git config core.hooksPath "$_shc" ) >/dev/null 2>&1
+  : > "$SH/own.log"
+  for _shn in 1 2 3; do
+    cp adopt.sh "$SH/"; cp -R kit "$SH/"; run_adopt "$SH" --yes --here
+    [ "$(cd "$SH" && git config --get core.hooksPath)" = .claude/git-shim ] || die "run $_shn: core.hooksPath is '$(cd "$SH" && git config --get core.hooksPath)', not the shim — the project's chain ($_shc) was dropped" shim-kept "$SH"
+    grep -qF "P=\"\$ROOT/$_shc/\$H\"" "$SH/.claude/git-shim/pre-commit" || die "run $_shn: the shim does not name the project's chain $_shc any more" shim-kept "$SH"
+    _shb="$(grep -c ran "$SH/own.log" || true)"; echo "$_shn" > "$SH/f$_shn.txt"; sh_commit "$SH" "f$_shn.txt" || die "run $_shn: an ordinary commit was refused" shim-kept "$SH"
+    [ "$(grep -c ran "$SH/own.log")" = $((_shb+1)) ] || die "run $_shn: the project's own pre-commit ($_shc) did not run on a commit" shim-kept "$SH"
+  done
+  printf 'aws_key = "%s%s"\n' AKIA IOSFODNN7EXAMPLQ > "$SH/k.py"
+  sh_commit "$SH" k.py && die "with the shim a staged key was committed — Crewforth's pre-commit is not running" shim-kept "$SH"
+  # Read from a capture, not through `| grep -q`: under pipefail a grep that leaves early kills the writer and the
+  # pipeline answers 141 (this case failed that way when it was written).
+  _shd="$( cd "$SH" && CREW_LANG=en bash .claude/eval/doctor.sh 2>/dev/null || true )"
+  case "$_shd" in *"✅ core.hooksPath -> .claude/git-shim (Crewforth's hooks run first"*) ;; *) die "doctor does not report the shim as Crewforth's" shim-kept "$SH" ;; esac
+done
+echo "[shim-kept] core.hooksPath=myhooks and =.husky/_: three runs each, git stays on .claude/git-shim, the shim keeps naming that chain, the project's pre-commit runs on every commit, a staged key is stopped by Crewforth's, doctor reports the shim ✅"
+
 # CSK_CORRECT_STACK used to flip a recorded 'generic' to 'dotnet'. 3.0 has one shape, so the variable does
 # nothing — and says so, rather than being silently ignored by an automation that still sets it.
 R="$WORK/adopt-refresh"; rm -rf "$R"; mkdir -p "$R/backend"
