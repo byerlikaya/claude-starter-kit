@@ -523,7 +523,7 @@ _unquoted(){  # $1 = text -> _GS: no double quote, no single quote, no backslash
 # 376 ms -> 169 ms with no overlap between the two columns, because the Store stub was being spawned and
 # failing on every call.
 # Through `_JS` / `_JU`, not `$( )`: these three reads were three forks on every Bash and PowerShell call (3.1.0).
-_json_slice "$INPUT" command >/dev/null; _json_unescape "$_JS" >/dev/null; CMD="$_JU"
+_json_slice "$INPUT" command >/dev/null; CMD_RAW="$_JS"; _json_unescape "$_JS" >/dev/null; CMD="$_JU"   # CMD_RAW: the command as the payload spells it
 _json_slice "$INPUT" permission_mode >/dev/null; PERM_MODE="$_JS"
 
 # AN UNREADABLE PAYLOAD IS REFUSED, NOT WAVED THROUGH. Both shapes below were found by the parser-conformance
@@ -1049,7 +1049,15 @@ _hp_blocks() {  # $1 = command -> 0 when it writes core.hooksPath or drops [core
   # The payload reader decodes JSON escapes lossily — `\r` arrives as nothing, so `git config core.hooksPath <CR>`
   # would look value-less here while git sets the path to a CR byte (verified in review). With any such escape in
   # the raw payload the decoded text is not the command that will run, and no read is proven.
-  case "$INPUT" in *'\r'*|*'\f'*|*'\b'*|*'\v'*|*'\u'*) ;; *)
+  # It is asked of the COMMAND as the payload spells it, with every escaped backslash (`\\`) taken out first. It
+  # used to be asked of the whole payload: on Windows `"cwd":"C:\\repos\\app"` holds a backslash and an r, a `\\Users`
+  # a backslash and a u in lower case, and so on, so in such a directory NO read was ever proven and `git config
+  # --get core.hooksPath` — how a person checks that the gate is armed — was refused as tampering (measured on
+  # Windows). An escaped backslash is a backslash, not the start of an escape: `\\r` is those two characters, and
+  # only an odd one in front of the letter (`\r`, `\\\r`) is the escape the reader drops.
+  local raw="${CMD_RAW-}"
+  if [ -n "$raw" ]; then raw="${raw//\\\\/}"; else raw="$INPUT"; fi
+  case "$raw" in *'\r'*|*'\f'*|*'\b'*|*'\v'*|*'\u'*) ;; *)
     _split_segs "$c"
     for seg in ${_SPL[@]+"${_SPL[@]}"}; do
       [[ $seg == *[Hh][Oo][Oo][Kk][Ss][Pp][Aa][Tt][Hh]* ]] || continue

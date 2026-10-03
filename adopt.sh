@@ -524,11 +524,29 @@ fi
 rowm 'git' "$GITKIND"   # every GITKIND value is a literal with its own table row
 
 # existing hook system (decision #5 — single-hooksPath clash with husky/lefthook)
-HOOKSYS="none"
+HOOKSYS="none"; SHIM_CHAIN=""
 CURHP="$(git config --get core.hooksPath 2>/dev/null || true)"
 case "$CURHP" in
   "") : ;;
-  .claude/hooks|.claude/git-shim) HOOKSYS="Crewforth (already armed)"; CURHP="" ;;   # kit's OWN path — not a foreign chain (re-adopt must not shim itself)
+  .claude/hooks) HOOKSYS="Crewforth (already armed)"; CURHP="" ;;   # kit's OWN path — not a foreign chain (re-adopt must not shim itself)
+  .claude/git-shim)
+    # Crewforth's shim, from an earlier run: git is pointed at it, and IT holds the project's own chain. That chain
+    # is read back from the shim, or the next lines would see "no chain" and point git straight at .claude/hooks:
+    # measured, the second update of a project with core.hooksPath=myhooks left its own pre-commit never running
+    # again, with nothing said. (A project with .husky was found again by its directory; one with any other
+    # directory was not.)
+    HOOKSYS="Crewforth (already armed)"; CURHP=""
+    for _sf in .claude/git-shim/pre-commit .claude/git-shim/commit-msg; do
+      [ -f "$_sf" ] || continue
+      while IFS= read -r _sl || [ -n "$_sl" ]; do
+        _sl="${_sl%$'\r'}"
+        case "$_sl" in 'P="'*'/$H"') _sl="${_sl#P=\"}"; _sl="${_sl%/\$H\"}"; _sl="${_sl#\$ROOT/}"
+          case "$_sl" in ''|.claude/hooks|.claude/git-shim) ;; *) SHIM_CHAIN="$_sl" ;; esac ;;
+        esac
+      done < "$_sf"
+      [ -n "$SHIM_CHAIN" ] && break
+    done
+    [ -n "$SHIM_CHAIN" ] && HOOKSYS="core.hooksPath=$SHIM_CHAIN" ;;
   *) HOOKSYS="core.hooksPath=$CURHP" ;;
 esac
 [ -d .husky ] && HOOKSYS="husky (.husky/)"
@@ -1611,6 +1629,7 @@ h1m 'Stage 4 — arm the git gates (SHIM via husky) + PROOF'
 # 4a) location of the existing hook chain (the shim calls this too)
 ORIG_HOOKS=""
 if [ -n "$CURHP" ]; then ORIG_HOOKS="$CURHP"
+elif [ -n "$SHIM_CHAIN" ]; then ORIG_HOOKS="$SHIM_CHAIN"   # the chain the shim of an earlier run already runs
 elif [ -d .husky ]; then ORIG_HOOKS=".husky"
 elif [ -x .git/hooks/pre-commit ] || [ -x .git/hooks/commit-msg ]; then ORIG_HOOKS=".git/hooks"; fi
 # never shim the kit onto its OWN hooks (re-adopt) — the shim would exec itself and recurse on every commit
