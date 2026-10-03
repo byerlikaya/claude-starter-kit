@@ -9,6 +9,19 @@ versioning follows [SemVer](https://semver.org/).
 
 ### Security
 
+- **A git subcommand the shell fills in walked past every gate.** Each rule about a git command finds it by its name,
+  and with an expansion inside the word the name is not in the text: `git com${z}mit`, `c=commit; git "$c"`, `git
+  $(printf com)mit`, a backtick, and the same for `git pu${z}sh --force`, `git re$(:)set --hard`, `git cl${z}ean -fdx`
+  and `git co${z}nfig core.hooksPath …`. Measured: 20 of 22 such calls passed silently, and git ran them. A git call
+  whose subcommand holds an expansion is refused now, in every session. In PowerShell, git started through
+  `System.Diagnostics.Process` (`[Diagnostics.Process]::Start('git','commit -n …')`, a `ProcessStartInfo`) is refused
+  as well: its arguments are one string no rule reads. An expansion anywhere else in a git call is untouched: of 4986
+  real commands that hold git, 2850 have one, none in the subcommand, and none changed its verdict.
+- **In PowerShell, a force push handed to git as arguments was not read.** `Start-Process git -ArgumentList
+  'push','--force',…` and `& $g push --force …` run the same git command as the plain form; of 23 such forms of
+  `push --force` (`-f`, `+ref`, `--force-with-lease`), `reset --hard`, `clean -f` and `core.hooksPath`, 21 passed. The
+  arguments are judged now as the git command they make, by the same rules that judge the plain form, and the refusal
+  says what was read.
 - **Under a Turkish system locale the gates missed what they are written to catch.** There `i` and `I` are not each
   other's other case, and every case-insensitive match in the gates is written in ASCII. Measured under `tr_TR.UTF-8`
   with GNU grep and bash 5 on Linux: `grep -i` did not find `INIT` with `init`, bash's `nocasematch` did not

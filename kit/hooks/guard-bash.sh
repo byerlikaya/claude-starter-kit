@@ -743,7 +743,6 @@ git_has() {  # $1 = command text, $2 = subcommand alternation (e.g. 'commit|push
 case "$CMD" in *[Gg][Ii][Tt]*) HAS_GIT=1 ;; *) HAS_GIT=0 ;; esac
 has() { printf '%s' "$CMD" | grep -qiE -- "$1"; }   # flag/substring test on the command (-- so a -flag pattern is safe)
 
-{ git_has "$CMD" 'reset'  && has '--hard'; }                                                && block "git reset --hard" "4.5" history
 # §4.5 force-push. Same two defects the `git add -f` rule had, and the same repair: the flag has to be one of
 # THIS `git push`'s own arguments, at its own quoting level, and the test is case-SENSITIVE. `has()` greps the
 # whole command with `-i`, so `-F` matched the `-f` alternative — and `git commit -F msg.txt; git push` is the
@@ -767,14 +766,24 @@ _push_forces(){   # $1 = one captured `git push …` span -> 0 when a force flag
   done
   [ "$og" = 0 ] && set +f; return 1
 }
-if [ "$HAS_GIT" = 1 ] && git_has "$CMD" 'push'; then
-  _PUSHSEG="$(printf '%s' "$CMD" | grep -oE 'git[[:space:]]+([^;&|]*[[:space:]])?push([^;&|]*)' 2>/dev/null || true)"
-  while IFS= read -r _seg; do
-    [ -n "$_seg" ] || continue
-    _push_forces "$_seg" && { block "git push --force" "4.5" history; break; }
-  done <<< "$_PUSHSEG"
-fi
-{ git_has "$CMD" 'clean'  && has '-[A-Za-z]*f'; }                                           && block "git clean -f" "4.5" loss
+# The three §4.5 rules that read a git command by its words, as ONE function of the text: the command itself goes
+# through it here, and so does a git command put together from arguments further down (PowerShell's Start-Process git
+# -ArgumentList …, a command word held in a variable), which is the same command written another way.
+_git_d45(){  # $1 = command text; block() exits on the first rule it breaks
+  local CMD="$1" HAS_GIT=0 _PUSHSEG _seg                                         # has() reads CMD: this one
+  case "$CMD" in *[Gg][Ii][Tt]*) HAS_GIT=1 ;; esac
+  { git_has "$CMD" 'reset'  && has '--hard'; }                                                && block "git reset --hard" "4.5" history
+  if [ "$HAS_GIT" = 1 ] && git_has "$CMD" 'push'; then
+    _PUSHSEG="$(printf '%s' "$CMD" | grep -oE 'git[[:space:]]+([^;&|]*[[:space:]])?push([^;&|]*)' 2>/dev/null || true)"
+    while IFS= read -r _seg; do
+      [ -n "$_seg" ] || continue
+      _push_forces "$_seg" && { block "git push --force" "4.5" history; break; }
+    done <<< "$_PUSHSEG"
+  fi
+  { git_has "$CMD" 'clean'  && has '-[A-Za-z]*f'; }                                           && block "git clean -f" "4.5" loss
+  return 0
+}
+_git_d45 "$CMD"
 # `no-veri`, not `no-verify`: git takes any unambiguous abbreviation, and `git push --no-verif` / `git merge --no-veri`
 # passed the rule that looked for the whole word (3.1.0 review; `--no-ver` and shorter are ambiguous to git itself).
 case "$CMD" in *[Nn][Oo]-[Vv][Ee][Rr][Ii]*) : ;; *) false ;; esac                                                  && block "hook skip (--no-verify)" "4.5" tamper
@@ -1757,7 +1766,7 @@ allow_preauthorised(){
 # lines above got in, and guessing which option it stands for is the same mistake again.
 _c47_read(){  # $1 = command -> _C47_T: separators as ` ; `; every quoted span and every escaped character as one marker
               # (\001 n \001, its text in _C47_Q[n]); redirections set apart from the words they touch; heredoc bodies gone
-  local s="$1" out="" pre c w hd="" c2 nl=$'\n' n=0 body t
+  local s="$1" out="" pre c w hd="" c2 nl=$'\n' n=0 body t bt=0
   _C47_M=$'\001'; _C47_Q=(); _C47_QX=""
   _gsub "$s" $'\r' ''; _gsub "$_GS" "$_C47_M" ''; s="$_GS"
   while :; do
@@ -1814,7 +1823,10 @@ _c47_read(){  # $1 = command -> _C47_T: separators as ` ; `; every quoted span a
              fi
              out="$out ; " ;;
       \|) case "$out" in *\>) out="$out|" ;; *) out="$out ; " ;; esac ;;       # >| is a redirection, not a pipe
-      \;|\(|\)|\`) out="$out ; " ;;
+      \;|\(|\)) out="$out ; " ;;
+      # A backtick opens a command substitution as `$(` does, so the word it starts reads as an expansion too:
+      # `git \`printf commit\` -m x` is a git call whose subcommand the shell fills in. The closing one only separates.
+      \`) if [ "$bt" = 0 ]; then bt=1; out="$out\$ ; "; else bt=0; out="$out ; "; fi ;;
       \&) case "$out" in
             *[\<\>]) out="$out&" ;;                                 # 2>&1, >&, and the input forms 0<&-, <&2
             *) case "$s" in
@@ -1883,12 +1895,34 @@ _c47_val(){  # $1 = the raw token an option takes as its value: the same questio
   case "$1" in *[\$\*\?\[\{]*|*"$_C47_M"*) _c47_w "$1"; [ "$_WX" = 1 ] && _c47_exp "$1" "$_W" ;; esac
   return 0
 }
+_c47_args(){  # $1 = 1: the words after `git` (Start-Process git …) | 0: all of them (a command word held in a variable)
+              # $2… = the tokens up to the next separator. Appends one line to _C47_ARGS: those words written as the
+              # git command they are, `git push --force origin main`, so the rules that judge a git command can read it.
+              # PowerShell hands the arguments over as a list ('push','--force') or as one string ("push --force"):
+              # both come out as the same words. Start-Process's own parameters are left out; they are not git's.
+  local v w out="" on=1 nc=0
+  [ "$1" = 1 ] && on=0
+  shift
+  shopt -q nocasematch && nc=1; shopt -s nocasematch
+  for v in "$@"; do
+    [ "$v" = ";" ] && break
+    _c47_w "$v"; w="${_W//,/ }"
+    if [ "$on" = 0 ]; then case "$w" in git|git.exe) on=1 ;; esac; continue; fi
+    [ "$_WQ" = 0 ] && case "$w" in
+      -FilePath|-ArgumentList|-Args|-Credential|-WorkingDirectory|-LoadUserProfile|-NoNewWindow|-PassThru|-RedirectStandardError|-RedirectStandardInput|-RedirectStandardOutput|-WindowStyle|-Wait|-UseNewEnvironment|-Verb|-Confirm*|-WhatIf) continue ;;
+    esac
+    out="$out $w"
+  done
+  [ "$nc" = 0 ] && shopt -u nocasematch
+  [ "$on" = 1 ] && [ -n "$out" ] && _C47_ARGS="$_C47_ARGS${_C47_ARGS:+$'\n'}git$out"
+  return 0
+}
 _c47_scan(){  # $1 = command. Sets: _C47_N (commits read) _C47_WT _C47_NV _C47_AM _C47_UNK _C47_EXP _C47_ENV _C47_SH _C47_CFG
               #                   _C47_CD (0 none · 1 one plain target, in _C47_CDT · 2 a target that cannot be read)
   local tok ph=cmd unglob=0 body c v m i raw rcd=0 rcdt="" envf=0 wrapped=0 novars=0 vc=0
   _C47_VARS=" "
   _C47_SHRE='(^|[^A-Za-z0-9_-])git[[:space:]]+(-[^[:space:]]+[[:space:]]+)*commit([[:space:]]|$)'
-  _C47_N=0; _C47_WT=""; _C47_NV=""; _C47_AM=""; _C47_UNK=""; _C47_EXP=""; _C47_ENV=""; _C47_SH=""; _C47_CFG=""; _C47_UNR=""; _C47_CD=0; _C47_CDT=""
+  _C47_N=0; _C47_WT=""; _C47_NV=""; _C47_AM=""; _C47_UNK=""; _C47_EXP=""; _C47_ENV=""; _C47_SH=""; _C47_CFG=""; _C47_UNR=""; _C47_SUB=""; _C47_ARGS=""; _C47_CD=0; _C47_CDT=""
   _c47_read "$1"; m="$_C47_M"
   case "$-" in *f*) ;; *) unglob=1; set -f ;; esac
   set -- $_C47_T
@@ -1953,6 +1987,7 @@ _c47_scan(){  # $1 = command. Sets: _C47_N (commits read) _C47_WT _C47_NV _C47_A
               [ "$v" = ";" ] && break
               _c47_w "$v"; case "$_W" in git|git.exe) c=1 ;; *commit*) [ "$c" = 1 ] && _C47_SH="$tok" ;; esac
             done
+            _c47_args 1 "$@"
             ph=skip ;;
           bash|sh|zsh|dash|ksh|eval|xargs|trap|pwsh|powershell|powershell.exe|pwsh.exe|cmd|cmd.exe|Invoke-Expression|iex|*/bash|*/sh|*/zsh)
             # A shell handed a QUOTED script that holds a commit: `bash -c 'git commit -am x'`, `eval "git commit -a"`.
@@ -1966,7 +2001,7 @@ _c47_scan(){  # $1 = command. Sets: _C47_N (commits read) _C47_WT _C47_NV _C47_A
             done
             case "$tok" in eval|xargs) wrapped=1 ;; *) ph=skip ;; esac ;;                # after eval / xargs the command is read on
           git|git.exe|*/git|*/git.exe) ph=git ;;
-          *) [ "$_WX" = 1 ] && vc=1; ph=skip ;;
+          *) [ "$_WX" = 1 ] && { vc=1; _c47_args 0 "$@"; }; ph=skip ;;
         esac ;;
       env)
         case "$tok" in
@@ -1992,9 +2027,13 @@ _c47_scan(){  # $1 = command. Sets: _C47_N (commits read) _C47_WT _C47_NV _C47_A
             fi ;;
           -C|--git-dir|--work-tree|--namespace|--exec-path|--super-prefix) shift ;;
           -*) ;;
-          @*|*\$*) # `git $c -n` after c=commit, PowerShell's splat `git @a` after $a = @('commit','-n'): the subcommand
-                    # is filled in by the shell. Measured on PowerShell 5.1: both committed with the hooks skipped.
-                    [ "$_WQ" = 0 ] && _C47_UNR="a git subcommand the shell fills in ($raw)"; ph=skip ;;
+          @*|*\$*)   # (a backtick arrives here as `$`: the reader writes one for the substitution it opens)
+                    # The subcommand is filled in by the shell: `git $c -n` after c=commit, PowerShell's splat `git @a`
+                    # after $a = @('commit','-n') (measured on PowerShell 5.1: both committed with the hooks skipped) —
+                    # and a subcommand with an expansion INSIDE it, quoted or not: `git com${z}mit`, `git "$c"`,
+                    # `git $(printf com)mit`, `git pu${z}sh --force`. No rule that looks for a git command by its
+                    # name sees these (measured: each passed every gate, and git ran the command).
+                    _C47_SUB="${tok:0:40}"; ph=skip ;;
           commit) ph=commit; _C47_N=$((_C47_N+1))
                   if [ "$rcd" != 0 ] && [ "$_C47_CD" = 0 ]; then _C47_CD=$rcd; _C47_CDT="$rcdt"; fi ;;
           *) ph=skip ;;
@@ -2057,7 +2096,7 @@ _c47_scan(){  # $1 = command. Sets: _C47_N (commits read) _C47_WT _C47_NV _C47_A
 # The reading runs for a commit this hook recognises — and for a call that merely holds the words `git` and `commit`,
 # because `'git' commit -n`, `git 'commit' -n` and `git -c alias.ci=commit ci -n` are commits the recognition above
 # (a pattern on the text) does not see at all: measured, each ran with every commit gate silent.
-_C47_N=0; _C47_WT=""; _C47_CD=0; _c47_seen=0
+_C47_N=0; _C47_WT=""; _C47_CD=0; _C47_SUB=""; _c47_seen=0
 _C47_MAX=32768
 _cmd_bytes(){ local LC_ALL=C; _CB=${#1}; }   # $1 = text -> _CB: its length in bytes, whatever the session's locale
 if git_has "$CMD" 'commit'; then _c47_seen=1; fi
@@ -2067,12 +2106,38 @@ case "$CMD" in *[Mm][Ii][Tt]*)   # with quotes, backslashes and joined lines tak
   # Both words, in either order: `$a = @('commit','-n'); git @a` names commit first.
   case "$_t" in *[Gg][Ii][Tt]*) case "$_t" in *[Cc][Oo][Mm][Mm][Ii][Tt]*) _c47_try=1 ;; esac ;; esac ;;
 esac
-if [ "$_c47_seen" = 1 ] || [ "$_c47_try" = 1 ]; then
-  _c47_no(){  # the lines for the session; the rule is logged by the caller, by its literal name
-    echo "GUARD (§4.5): $1" >&2; shift
-    while [ $# -gt 0 ]; do echo "$1" >&2; shift; done
-    exit 2
-  }
+# The same reading for a git call whose words the shell fills in: a `git` with a `$` or a backtick after it. Which
+# word that is — the subcommand, or an ordinary argument such as `-C "$dir"` — only the reading can tell.
+_c47_sub=0
+case "$CMD" in *[Gg][Ii][Tt]*[\$\`]*) _c47_sub=1 ;; esac
+_c47_no(){  # the lines for the session; the rule is logged by the caller, by its literal name
+  echo "GUARD (§4.5): $1" >&2; shift
+  while [ $# -gt 0 ]; do echo "$1" >&2; shift; done
+  exit 2
+}
+# PowerShell can start a program without writing it as a command: [Diagnostics.Process]::Start('git','commit -n -m x'),
+# or a ProcessStartInfo handed to it. The arguments are one string that no rule here reads as a git command
+# (measured on Windows: the gate was silent). So git and that class in one PowerShell call are refused; the class with
+# any other program, and git as a command, are not touched. Through the PowerShell tool only: in a Bash call the two
+# words together were, on 4986 real commands, a here-document that mentions them (2 of 2).
+case "$INPUT" in *'"tool_name":"PowerShell"'*|*'"tool_name": "PowerShell"'*) _c47_ps=1 ;; *) _c47_ps=0 ;; esac
+[ "$_c47_ps" = 1 ] && case "$CMD_UQ" in *[Pp][Rr][Oo][Cc][Ee][Ss][Ss]*)
+  if _ere i "$CMD_UQ" '(diagnostics\.process|\[process(startinfo)?\])' '*' \
+     && _ere i "$CMD_UQ" '(^|[^A-Za-z0-9_-])git(\.exe)?([^A-Za-z0-9_-]|$)' '*[Gg][Ii][Tt]*'; then
+    gatelog BLOCK 4.5 "git started through System.Diagnostics.Process"
+    _c47_no \
+    "this call starts git through System.Diagnostics.Process, where its arguments are a string no rule reads." \
+    "Run git as a command, so the gate can see which one it is: git commit …, git push …"
+  fi ;;
+esac
+# PowerShell can also hand git its arguments instead of writing them after it: Start-Process git -ArgumentList
+# 'push','--force', or a command word held in a variable (`& $g push --force`). A commit written that way is refused
+# below; push --force, reset --hard and clean -f were not read at all (measured: 21 of 23 such forms passed; the two
+# that did not hold core.hooksPath, which its own rule finds as one word wherever it stands). So a PowerShell call
+# that holds one of those three words is read too, and its arguments are judged as the git command they make.
+_c47_psd=0
+[ "$_c47_ps" = 1 ] && case "$CMD_UQ" in *[Pp][Uu][Ss][Hh]*|*[Rr][Ee][Ss][Ee][Tt]*|*[Cc][Ll][Ee][Aa][Nn]*) _c47_psd=1 ;; esac
+if [ "$_c47_seen" = 1 ] || [ "$_c47_try" = 1 ] || [ "$_c47_sub" = 1 ] || [ "$_c47_psd" = 1 ]; then
   # A SIZE THIS READING IS NOT ASKED TO EXCEED. A PreToolUse hook that reaches its timeout (600 s) stops nothing, and
   # the reading below costs the square of the size for some shapes — measured on macOS, a commit followed by `2>&1`
   # repeated: 16 KB 10 s, 32 KB 39 s, 64 KB 154 s, so about 128 KB is where the timeout is. A command without a commit
@@ -2080,7 +2145,7 @@ if [ "$_c47_seen" = 1 ] || [ "$_c47_try" = 1 ]; then
   # shape is 15 times under the timeout; of 12387 distinct real commands the largest is 31639 bytes, the largest that
   # holds a commit 28880.
   _cmd_bytes "$CMD"
-  if [ "$_CB" -gt "$_C47_MAX" ]; then
+  if [ "$_CB" -gt "$_C47_MAX" ] && { [ "$_c47_seen" = 1 ] || [ "$_c47_try" = 1 ]; }; then
     gatelog BLOCK 4.5 "git commit in a command too large to read"
     _c47_no \
     "this command holds a git commit and is $_CB bytes long; the gate reads a commit command of up to $_C47_MAX bytes." \
@@ -2088,10 +2153,44 @@ if [ "$_c47_seen" = 1 ] || [ "$_c47_try" = 1 ]; then
     "so it is refused unread. Write the message to a file and run 'git commit -F <file>'; run the other steps as" \
     "commands of their own."
   fi
+  if [ "$_CB" -gt "$_C47_MAX" ] && [ "$_c47_sub" = 0 ]; then
+    gatelog BLOCK 4.5 "PowerShell call too large to read"
+    _c47_no \
+    "this PowerShell call names a git command the gate judges by its arguments (push, reset, clean) and is $_CB bytes long; the gate reads such a call of up to $_C47_MAX bytes." \
+    "A larger one could take longer to read than the hook is given, and a hook that runs out of time stops nothing," \
+    "so it is refused unread. Put the long content in a file with the Write tool and run the command on its own."
+  fi
+  if [ "$_CB" -gt "$_C47_MAX" ]; then
+    gatelog BLOCK 4.5 "git call with an expansion in a command too large to read"
+    _c47_no \
+    "this command runs git with words the shell fills in and is $_CB bytes long; the gate reads such a command of up to $_C47_MAX bytes." \
+    "A larger one could take longer to read than the hook is given, and a hook that runs out of time stops nothing," \
+    "so it is refused unread. Put the long content in a file with the Write tool and run the git command on its own."
+  fi
   _c47_scan "$CMD"
   # git itself redefined for this call: `git(){ command git "$@" -a; }; git commit -m x` committed the working tree.
   _ere s "$CMD" '(^|[;&|[:space:]])(function[[:space:]]+)?git[[:space:]]*\([[:space:]]*\)|alias[[:space:]]+git=' '*git*' \
     && _C47_CFG="git redefined as a function or an alias"
+  if [ -n "$_C47_SUB" ]; then
+    gatelog BLOCK 4.5 "git subcommand the shell fills in"
+    _c47_no \
+    "this call runs git with a subcommand the shell fills in ($_C47_SUB), so which git command it is cannot be read." \
+    "Every rule about a git command looks for it by name. Write the subcommand out: git commit …, git push …"
+  fi
+  if [ "$_c47_ps" = 1 ] && [ -n "$_C47_ARGS" ]; then
+    while IFS= read -r _t; do
+      # What block() prints names the rule; this line says where the command was read from.
+      ( _git_d45 "$_t"; exit 0 ) \
+        || { echo "GUARD: read from the arguments this PowerShell call hands to git, or to a command held in a variable: ${_t:0:120}" >&2; exit 2; }
+    done <<< "$_C47_ARGS"
+  fi
+  # Everything below judges a COMMIT. A call that was read only because git is followed by an expansion, and holds
+  # no commit, is finished here: measured on 4986 real commands, letting the commit rules run on it refused
+  # `git -c core.autocrlf=$ac archive …` twice for "a -c setting the shell expands first".
+  if [ "$_c47_seen" = 0 ] && [ "$_c47_try" = 0 ]; then
+    _C47_NV=""; _C47_AM=""; _C47_ENV=""; _C47_CFG=""; _C47_UNR=""; _C47_EXP=""; _C47_UNK=""; _C47_SH=""
+    _C47_N=0; _C47_WT=""; _C47_CD=0
+  fi
   if [ -n "$_C47_NV" ]; then
     gatelog BLOCK 4.5 "hook skip by -n or an abbreviated --no-verify"
     _c47_no \
