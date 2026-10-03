@@ -4833,9 +4833,18 @@ _tC2="$( cd "$STD" && bash .claude/hooks/skill-trust.sh --trust-one skills/mine 
 mv "$STD/.claude/declined-components.txt" "$STD/.claude/declined.keep"; mkdir "$STD/.claude/declined-components.txt"
 _dC3="$( cd "$STD" && bash .claude/hooks/skill-trust.sh --decline-one skills/mine 2>"$STD/dec.err" )"; _dr3=$?
 { [ "$_dr3" = 1 ] && [ -z "$_dC3" ] && [ -s "$STD/dec.err" ]; } || _stb="$_stb [a decline that cannot be written: rc $_dr3, stdout '$_dC3', stderr '$(head -1 "$STD/dec.err" 2>/dev/null)' — want rc 1, no confirmation, a reason]"
-rmdir "$STD/.claude/declined-components.txt"; mv "$STD/.claude/declined.keep" "$STD/.claude/declined-components.txt"
+rmdir "$STD/.claude/declined-components.txt"
+# A write that "succeeds" and leaves nothing: the record file is a link to /dev/null. Every write returns 0, and the
+# line is not there to read back, so the answer must be reported as NOT recorded. (Where `ln -s` makes a copy and
+# not a link, Git Bash, the row cannot be built.)
+ln -s /dev/null "$STD/.claude/declined-components.txt" 2>/dev/null
+if [ -L "$STD/.claude/declined-components.txt" ]; then
+  _dC4="$( cd "$STD" && bash .claude/hooks/skill-trust.sh --decline-one skills/mine 2>"$STD/dec.err" )"; _dr4=$?
+  { [ "$_dr4" = 1 ] && [ -z "$_dC4" ] && grep -q 'was NOT recorded' "$STD/dec.err"; } || _stb="$_stb [a decline whose write lands nowhere: rc $_dr4, stdout '$_dC4', stderr '$(head -1 "$STD/dec.err" 2>/dev/null)' — want rc 1, no confirmation, 'was NOT recorded']"
+else skip platform "a decline whose write lands nowhere (this platform's ln -s does not make a link)"; fi
+rm -f "$STD/.claude/declined-components.txt"; mv "$STD/.claude/declined.keep" "$STD/.claude/declined-components.txt"
 case "$O" in *'prints one line that starts with "skill-trust: trusted" or "skill-trust: declined"'*"NOT recorded"*) ;; *) _stb="$_stb [the notice does not tell the session to expect the line]" ;; esac
-[ -z "$_stb" ] && pass "--trust-one and --decline-one each confirm with one line read back from the file (the component, the file, the digest it holds); the same answer again confirms without a second record; a decline that cannot be written exits 1 with a reason and no confirmation; the notice says to pass the line on" \
+[ -z "$_stb" ] && pass "--trust-one and --decline-one each confirm with one line read back from the file (the component, the file, the digest it holds); the same answer again confirms without a second record; a decline that cannot be written, or whose write lands nowhere, exits 1 with a reason and no confirmation; the notice says to pass the line on" \
                || fail "the confirmation line of --trust-one / --decline-one:$_stb"
 # A manifest with CRLF line endings still identifies kit components. `grep -qxF "skills/handoff"` does NOT match
 # the line "skills/handoff\r", so on Windows every kit component read as unshipped and the session opened by
