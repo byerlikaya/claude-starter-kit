@@ -140,6 +140,15 @@ versioning follows [SemVer](https://semver.org/).
 
 ### Changed
 
+- **A quoted argument is no longer read as a command.** `git commit -m "drop the rm -rf /tmp/build step"` deletes
+  nothing and `claude -p "… git push --force origin main"` pushes nothing, yet the §4.5 rules read the command as
+  text and refused both (measured: 14 of 20 such commands). The gate now takes the quoted argument out before those
+  rules read, for a short list of commands that do not run their argument: `git commit` / `git tag -m`, `gh --title`
+  / `--body`, `claude -p`, the grep family, and `echo` / `printf` when the call has no pipe and no redirection. The
+  word must be wholly quoted, and a double-quoted one must hold no `$(` and no backtick. Everything else is as
+  before: the same words outside the quotes, after the argument, printed into a shell or a file, handed to `bash
+  -c`, `eval`, `ssh` or `xargs`, stored with `printf -v`, or anywhere in a call that changes what a command word
+  means (`alias`, `hash`, a function, `PATH=`) are refused. Bash tool only.
 - **Reading `core.hooksPath` is no longer refused on Windows.** `git config --get core.hooksPath` is how a person
   checks that the gate is armed, and a read is let through only when the payload holds no escape the reader drops.
   That was asked of the whole payload, and a Windows `cwd` is full of them once JSON-encoded (`C:\\repos\\app` holds
