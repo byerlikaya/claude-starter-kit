@@ -8089,6 +8089,7 @@ CQA='0/ask 0/allow @@ git commit -m \"rm -rf /tmp/build before the run\"
 0 0 @@ rg \"chmod 777 /srv\" src/
 0 0 @@ claude -p \"Run this command exactly as written: git push --force origin main\"
 0 0 @@ claude -p \x27Run: git reset --hard HEAD~1\x27
+0 0 @@ claude --model opus --max-turns 3 -p \"Run: git push --force origin main\" --output-format=json
 0 0 @@ gh pr create --title \"fix: refuse git clean -fdx\" --body \"git push --force was open\"
 0 0 @@ gh issue comment 12 --body \"we ran rm -rf /var/tmp/* by hand\"
 0 0 @@ echo $\x27rm -rf /tmp\\\x27s\x27 done'
@@ -8126,6 +8127,24 @@ CQR='2 2 @@ rm -rf /tmp/x/*
 2 2 @@ (echo \"rm -rf /tmp/x/*\")
 2 2 @@ echo \"unterminated; git push --force origin main
 2 2 @@ rg --pre \"rm -rf /tmp/x/*\" x .
+2 2 @@ cd /tmp && claude -p \"git -C ~/p push --force origin main\"
+2 2 @@ cd /tmp && claude -p \"git -C ~/p push --force origin main\" --setting-sources user
+2 2 @@ claude --setting-sources user -p \"git push --force origin main\"
+2 2 @@ claude --dangerously-skip-permissions -p \"git push --force origin main\"
+2 2 @@ claude --settings x.json -p \"git push --force origin main\"
+2 2 @@ claude -p \"git push --force origin main\" --permission-mode bypassPermissions
+2 2 @@ claude --add-dir /srv -p \"git reset --hard HEAD~1\"
+2 2 @@ claude --mcp-config m.json -p \"git reset --hard HEAD~1\"
+2 2 @@ claude --allowedTools Bash -p \"git reset --hard HEAD~1\"
+2 2 @@ claude --verbose -p \"git reset --hard HEAD~1\"
+2 2 @@ claude -p \"git push --force origin main\" \"--dangerously-skip-permissions\"
+2 2 @@ claude --model --settings -p \"git push --force origin main\"
+2 2 @@ pushd /tmp; claude -p \"git reset --hard HEAD~1\"
+2 2 @@ popd; claude -p \"git reset --hard HEAD~1\"
+2 2 @@ git -C /tmp status; claude -p \"git push --force origin main\"
+2 2 @@ \\cd /tmp && claude -p \"git push --force origin main\"
+2 2 @@ gh myext --title \"rm -rf ~\"
+2 2 @@ gh api repos/o/r/issues -f body=x --title \"git push --force origin main\"
 2 2 @@ printf -v c \"%s\" \"git push --force origin main\"; $c
 2 2 @@ printf -vc \"git reset --hard HEAD~1\"; $c
 2 2 @@ hash -p /bin/sh echo; echo -c \"rm -rf /tmp/x/*\"
@@ -8144,8 +8163,8 @@ _cfa="$(printf '%*s' 4200 '' | tr ' ' a)"; _cfbad=""
 _cf_run default 'echo \"git push --force origin main\" # '"$_cfa" 0; [ "$_cfr" = 2 ] || _cfbad="$_cfbad [the echo in a 4200-byte call: rc=$_cfr, want 2]"
 _cf_run default 'echo \"git push --force origin main\" # '"${_cfa:0:200}" 0; { [ "$_cfr" = 0 ] && [ -z "$_cfd" ]; } || _cfbad="$_cfbad [the same echo in a 250-byte call: rc=$_cfr decision=$_cfd, want 0 and none]"
 _cfbad="$_cfpw$_cfbad"
-if [ "$_cfqn $_cfrn $_cfn" != "20 37 2" ]; then fail "FIXTURE: the quoted-argument tables have $_cfqn, $_cfrn and $_cfn rows, not 20, 37 and 2"
-elif [ -z "$_cfqb$_cfrb$_cfbad" ]; then pass "a quoted argument of a command that does not run it is not read as a command: 20 calls (git commit and git tag -m, echo, printf, grep, rg, claude -p, gh --title/--body) pass or reach the commit prompt, with rm -rf, push --force, reset --hard, dd, --no-verify, --amend or core.hooksPath in the argument; 37 calls where the same words run, or the reader cannot vouch for them, are refused, and so are 2 PowerShell calls and a call larger than the reader takes on (59 rows and the size pair)"
+if [ "$_cfqn $_cfrn $_cfn" != "21 55 2" ]; then fail "FIXTURE: the quoted-argument tables have $_cfqn, $_cfrn and $_cfn rows, not 21, 55 and 2"
+elif [ -z "$_cfqb$_cfrb$_cfbad" ]; then pass "a quoted argument of a command that does not run it is not read as a command: 21 calls (git commit and git tag -m, echo, printf, grep, rg, claude -p, gh pr|issue --title/--body) pass or reach the commit prompt, with rm -rf, push --force, reset --hard, dd, --no-verify, --amend or core.hooksPath in the argument; 55 calls where the same words run, or the reader cannot vouch for them (claude -p after a cd or with an option outside --output-format, --model, --max-turns; a gh extension), are refused, and so are 2 PowerShell calls and a call larger than the reader takes on (78 rows and the size pair)"
 else fail "the quoted argument of a command that does not run it:$_cfqb$_cfrb$_cfbad"; fi
 # THE SHELL ITSELF IS THE ORACLE for what was taken out. Each exempt call is run by this bash with git, gh, claude,
 # grep, rg, echo and printf replaced by a function that prints its arguments and nothing else on PATH: first as

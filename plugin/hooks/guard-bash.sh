@@ -823,8 +823,10 @@ _git_d45(){  # $1 = command text; block() exits on the first rule it breaks
 # _inert_args takes those arguments out of the text the rules read, and nothing else. It is a NARROW LIST, by
 # decision, not "whatever is quoted":
 #     git commit | git tag     the word after -m / --message (or a short cluster that ends in m: -am, -qm)
-#     gh …                     the word after --title / -t / --body / -b
-#     claude                   the word after -p / --print
+#     gh pr|issue|release …    the word after --title / -t / --body / -b (not an extension: it may run its argument)
+#     claude                   the word after -p / --print, when nothing in the call changes the directory (cd,
+#                              pushd, popd, git -C) and claude's other options are --output-format, --model,
+#                              --max-turns only
 #     grep egrep fgrep rg      every quoted word (none is run), unless --pre is among the options (rg runs it)
 #     echo printf              every quoted word, and only when the whole command has no pipe and no redirection:
 #                              what is printed can be run by what reads it (`echo "…" | sh`, `echo "…" > s.sh`);
@@ -914,7 +916,17 @@ _inert_args(){  # $1 = command -> 0 and _IX = the command with those arguments r
   done
   _iw_end
   # Each simple command: who is its first word, and which of its words are that command's inert arguments.
-  local -a B; local first cmdw sub nb=0 pre="" grep_pre
+  local -a B; local first cmdw sub nb=0 pre="" grep_pre chdir=0
+  # Does anything in the call change the directory? (cd, pushd, popd as a command word; a git that carries -C)
+  i=0; k=1
+  while [ "$i" -lt "$n" ]; do
+    if [ "${I[i]}" = 2 ]; then k=1
+    elif [ "$k" = 1 ]; then k=0; cmdw="${T[i]}"
+      case "$cmdw" in cd|pushd|popd|'') chdir=1 ;; esac      # '': a command word that is not written plainly may be one
+    elif [ "$cmdw" = git ]; then case "${T[i]}" in -C*) chdir=1 ;; esac
+    fi
+    i=$((i+1))
+  done
   i=0
   while [ "$i" -lt "$n" ]; do
     [ "${I[i]}" = 2 ] && { i=$((i+1)); continue; }
@@ -949,7 +961,9 @@ _inert_args(){  # $1 = command -> 0 and _IX = the command with those arguments r
           done ;;
         esac ;;
       gh)
-        k=$((first+1))
+        # Only gh's own pr / issue / release: an extension (`gh myext …`) is a program of its own and may run its argument.
+        k=$((first+1)); sub=""; [ "$k" -lt "$j" ] && [ "${P[k]}" = 1 ] && sub="${T[k]}"
+        case "$sub" in pr|issue|release) ;; *) k=$j ;; esac
         while [ "$k" -lt "$j" ]; do
           if [ "${P[k]}" = 1 ]; then case "${T[k]}" in
             --title|-t|--body|-b) [ $((k+1)) -lt "$j" ] && [ "${I[k+1]}" = 1 ] && { B[nb]=$((k+1)); nb=$((nb+1)); }; k=$((k+1)) ;;
@@ -957,13 +971,25 @@ _inert_args(){  # $1 = command -> 0 and _IX = the command with those arguments r
           k=$((k+1))
         done ;;
       claude)
-        k=$((first+1))
-        while [ "$k" -lt "$j" ]; do
+        # The session `claude -p` starts is judged by the gates of the directory it starts in, with the settings it
+        # is given. So the prompt is taken out only when (a) nothing in the call changes the directory, and (b) every
+        # other word of this claude is an option from a short harmless list, or its value. --settings,
+        # --setting-sources, --dangerously-skip-permissions, --permission-mode, --add-dir, --mcp-config,
+        # --allowedTools, any option not listed, and any other quoted word leave the prompt where it is.
+        k=$((first+1)); sub=ok; pre=-1
+        [ "$chdir" = 0 ] || sub=""
+        while [ "$k" -lt "$j" ] && [ -n "$sub" ]; do
           if [ "${P[k]}" = 1 ]; then case "${T[k]}" in
-            -p|--print) [ $((k+1)) -lt "$j" ] && [ "${I[k+1]}" = 1 ] && { B[nb]=$((k+1)); nb=$((nb+1)); }; k=$((k+1)) ;;
-          esac; fi
+            -p|--print)
+              if [ "$pre" = -1 ] && [ $((k+1)) -lt "$j" ] && [ "${I[k+1]}" = 1 ]; then pre=$((k+1)); k=$((k+1)); else sub=""; fi ;;
+            --output-format|--model|--max-turns)
+              if [ $((k+1)) -lt "$j" ] && [ "${P[k+1]}" = 1 ]; then case "${T[k+1]}" in -*) sub="" ;; *) k=$((k+1)) ;; esac; else sub=""; fi ;;
+            --output-format=*|--model=*|--max-turns=*) ;;
+            *) sub="" ;;                                   # another option, or a word that is not one
+          esac; else sub=""; fi
           k=$((k+1))
-        done ;;
+        done
+        [ -n "$sub" ] && [ "$pre" != -1 ] && { B[nb]=$pre; nb=$((nb+1)); } ;;
       grep|egrep|fgrep|rg)
         grep_pre=0; k=$((first+1))
         while [ "$k" -lt "$j" ]; do case "${T[k]}" in --pre|--pre=*) grep_pre=1 ;; esac; k=$((k+1)); done
