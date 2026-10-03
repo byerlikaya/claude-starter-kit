@@ -3913,6 +3913,70 @@ process.stdout.write('\n== §34 the List, the phone, and the states ==\n');
     /\.tl-drawer \{\s*flex: none; display: flex; flex-wrap: wrap;/.test(css34) && /\.tl-d-error \{ flex: 1 1 320px; min-width: 0; \}/.test(css34),
     'measured in a 720 px window: the error text was 26 px wide beside the agent, and under 240 px in every window from 640 to 1240');
 
+  /* -- 3b. a press outlives a redraw --------------------------------------------- */
+
+  // A redraw between a press and its release takes the pressed element out of the page, and the browser sends no
+  // click. Measured in Chrome (click-probe.mjs): with the button held across a redraw, 0 of 20 presses chose an
+  // agent in the Timeline and 0 of 20 in the List.
+  const pr = await import(`../../kit/studio/web/press.js?t=${Date.now()}`);
+  const fakeTimers = () => { const q = []; return { q, set: (fn, ms) => { q.push({ fn, ms }); return q.length; }, clear: (id) => { if (id) q[id - 1] = null; }, run: (ms) => { for (const [i, t] of q.entries()) if (t && t.ms === ms) { q[i] = null; t.fn(); } } }; };
+  {
+    const tm = fakeTimers(); let drawn = 0;
+    const press = new pr.Press(() => { drawn += 1; }, tm);
+    const free = press.defer();
+    press.press();
+    const held = [press.defer(), press.defer()];
+    const during = drawn;
+    press.release();
+    const beforeTimer = drawn;
+    tm.run(0);
+    check('while a button is down a redraw waits, and it is drawn once when the press is over',
+      free === false && held.join() === 'true,true' && during === 0 && beforeTimer === 0 && drawn === 1 && press.defer() === false,
+      `free ${free} · held ${held} · drawn during ${during}, at the release ${beforeTimer}, after it ${drawn}`);
+  }
+  {
+    const tm = fakeTimers(); let drawn = 0;
+    const press = new pr.Press(() => { drawn += 1; }, tm);
+    press.press(); press.release(); tm.run(0);
+    const nothingOwed = drawn;
+    // The click itself redraws (choosing an agent does): that draw settles what was put off.
+    press.press(); press.defer(); press.release(); press.defer(); tm.run(0);
+    check('a press that put nothing off draws nothing, and a redraw made by the click itself is not made again',
+      nothingOwed === 0 && drawn === 0, `nothing owed ${nothingOwed} · after the click's own redraw ${drawn}`);
+  }
+  {
+    const tm = fakeTimers(); let drawn = 0;
+    const press = new pr.Press(() => { drawn += 1; }, tm);
+    press.press(); press.defer(); press.release();
+    press.press();                                  // a double click: the second press lands before the redraw
+    tm.run(0);
+    const underSecond = drawn;
+    press.release(); tm.run(0);
+    check('a second press that lands before the put-off redraw is not drawn under either',
+      underSecond === 0 && drawn === 1, `drawn under the second press ${underSecond} · after it ${drawn}`);
+  }
+  {
+    const tm = fakeTimers(); let drawn = 0;
+    const press = new pr.Press(() => { drawn += 1; }, tm);
+    press.press(); press.defer();
+    tm.run(pr.HOLD_MS);
+    const let_go = press.defer();
+    tm.run(0);
+    check('a button held and held is not a click: the view stops waiting for it',
+      pr.HOLD_MS === 3000 && let_go === false && press.down === false, `after ${pr.HOLD_MS} ms: still waiting ${let_go}`);
+  }
+  {
+    const seen = { root: [], win: [] };
+    const fake = (list) => ({ addEventListener: (type, fn, capture) => list.push(`${type}${capture ? ':capture' : ''}`) });
+    new pr.Press(() => {}).watch(fake(seen.root), fake(seen.win));
+    const tlJs = web('timeline.js'); const lsJs = web('list.js');
+    const wired = (src) => /this\.press = new Press\(\(\) => this\.render\(\)\);/.test(src) && /this\.press\.watch\(root, window\)/.test(src)
+      && /render\(\) \{\s*if \(this\.root\.hidden\) return;\s*if \(this\.press\.defer\(\)\) return;/.test(src);
+    check('the press is seen on the view and the release on the window, in the two views that redraw themselves',
+      seen.root.join() === 'pointerdown:capture,keydown:capture' && seen.win.join() === 'pointerup:capture,pointercancel:capture,keyup:capture,blur'
+      && wired(tlJs) && wired(lsJs), `view ${seen.root} · window ${seen.win} · Timeline ${wired(tlJs)} · List ${wired(lsJs)}`);
+  }
+
   /* -- 4. the List on a page ---------------------------------------------------- */
 
   const dom34 = installDom();
@@ -3932,6 +3996,16 @@ process.stdout.write('\n== §34 the List, the phone, and the states ==\n');
     const buttons = card.children[card.children.length - 1].children;
     check('a request card carries the same three answers the dock does',
       buttons.map((b) => b.textContent).join(' | ') === 'Allow once | Allow Bash this session | Deny');
+    {
+      const before = root.children[0];
+      view.press.press();
+      view.setQueue(queue);                       // a redraw is asked for while a button is down
+      const held = root.children[0] === before;
+      view.press.release();
+      await new Promise((r) => setTimeout(r, 5));
+      check('the List under a press keeps its elements, and is drawn again when the press is over',
+        held && root.children[0] !== before, `kept while down ${held} · drawn after ${root.children[0] !== before}`);
+    }
     const clock = card.children[0].children[2];
     check('its countdown is the server\'s, and a timer to a screen reader',
       clock.textContent === '38s' && clock.getAttribute('role') === 'timer' && clock.getAttribute('aria-label') === 'Auto-deny in 38 seconds',
