@@ -17,6 +17,11 @@ versioning follows [SemVer](https://semver.org/).
   `System.Diagnostics.Process` (`[Diagnostics.Process]::Start('git','commit -n …')`, a `ProcessStartInfo`) is refused
   as well: its arguments are one string no rule reads. An expansion anywhere else in a git call is untouched: of 4986
   real commands that hold git, 2850 have one, none in the subcommand, and none changed its verdict.
+- **In PowerShell, a force push handed to git as arguments was not read.** `Start-Process git -ArgumentList
+  'push','--force',…` and `& $g push --force …` run the same git command as the plain form; of 23 such forms of
+  `push --force` (`-f`, `+ref`, `--force-with-lease`), `reset --hard`, `clean -f` and `core.hooksPath`, 21 passed. The
+  arguments are judged now as the git command they make, by the same rules that judge the plain form, and the refusal
+  says what was read.
 - **Under a Turkish system locale the gates missed what they are written to catch.** There `i` and `I` are not each
   other's other case, and every case-insensitive match in the gates is written in ASCII. Measured under `tr_TR.UTF-8`
   with GNU grep and bash 5 on Linux: `grep -i` did not find `INIT` with `init`, bash's `nocasematch` did not

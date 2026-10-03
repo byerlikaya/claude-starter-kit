@@ -7334,7 +7334,7 @@ sec "== 12g) a git commit is read the way the shell and git read it: the forms t
 # skipped by design, so only the §4.5 rows are refused there. `\x27` is a single quote, `\n` JSON's newline, @O@
 # another repository, @W@ this one.
 if [ "$UNITS" != 1 ]; then
-  skip scope "commit forms: the unit cases run in the source checkout (scope=install)" 11
+  skip scope "commit forms: the unit cases run in the source checkout (scope=install)" 23
 else
 _CF="$(mktemp -d)"; _CF="$(cd -P "$_CF" && pwd)"; _cfw="$_CF/w"; _cfo="$_CF/o"; _cfq="'"; _cf_badjson=""
 _cf_new(){ rm -rf "$_CF/w" "$_CF/o"
@@ -7641,6 +7641,62 @@ if [ "$_cfsn $_cfn" != "31 10" ]; then fail "FIXTURE: the subcommand tables have
 elif [ -z "$_cfsb$_cfbad" ]; then pass "a git subcommand the shell fills in is refused in every session: 15 Bash forms (an expansion inside the word, a quoted variable, \$( ) and a backtick, for commit, push --force, reset --hard, clean and config) and 6 through the PowerShell tool (System.Diagnostics.Process with git, an expansion in the word); 20 everyday calls with an expansion elsewhere, or that class without git, are judged as before (41 rows)"
 else fail "a git subcommand the shell fills in:$_cfsb$_cfbad"; fi
 
+# ---- PowerShell: git's arguments handed over instead of written after it ---------------------------------------
+# `Start-Process git -ArgumentList 'push','--force'` and `& $g push --force` run the same git command as the plain
+# form, and the rules that read a git command by its words saw neither (measured: 21 of 23 such forms passed; the two
+# that did not hold core.hooksPath, which its own rule finds as one word). The arguments are judged as the git command they make, by the same
+# function that judges the plain form. What is not in §4.5 stays as it was, and so does a Bash call: the rule is for
+# the PowerShell tool.
+CSA='2 2 @@ Start-Process git -ArgumentList \x27push\x27,\x27--force\x27,\x27origin\x27,\x27main\x27 -NoNewWindow -Wait
+2 2 @@ Start-Process git -ArgumentList \x27push\x27,\x27-f\x27,\x27origin\x27,\x27main\x27
+2 2 @@ Start-Process git -ArgumentList \x27push\x27,\x27origin\x27,\x27+main\x27 -Wait
+2 2 @@ Start-Process git -ArgumentList \"push --force origin main\" -Wait
+2 2 @@ Start-Process -FilePath git -ArgumentList \x27push\x27,\x27--force-with-lease\x27,\x27origin\x27,\x27main\x27
+2 2 @@ Start-Process git.exe -ArgumentList \x27reset\x27,\x27--hard\x27,\x27HEAD~1\x27 -NoNewWindow -Wait
+2 2 @@ Start-Process git -ArgumentList \x27reset --hard HEAD~1\x27
+2 2 @@ Start-Process git -ArgumentList \x27clean\x27,\x27-fdx\x27 -Wait
+2 2 @@ Start-Process git -ArgumentList \x27clean\x27,\x27--force\x27
+2 2 @@ Start-Process git -ArgumentList \x27config\x27,\x27core.hooksPath\x27,\x27/dev/null\x27
+2 2 @@ Start-Process git -ArgumentList \x27-C\x27,\x27.\x27,\x27push\x27,\x27--force\x27,\x27origin\x27,\x27main\x27
+2 2 @@ saps git push,--force,origin,main
+2 2 @@ start git -ArgumentList \x27push\x27,\x27--force\x27,\x27origin\x27,\x27main\x27
+2 2 @@ $g = \x27git\x27; & $g push --force origin main
+2 2 @@ $g = \x27git\x27; & $g push -f origin main
+2 2 @@ $g = \x27git\x27; & $g push origin +main
+2 2 @@ $g = \x27git\x27; & $g reset --hard HEAD~1
+2 2 @@ $g = \x27git\x27; & $g clean -fdx
+2 2 @@ $g = \x27git\x27; & $g config core.hooksPath /dev/null
+2 2 @@ & $g push --force origin main
+2 2 @@ $g = \x27git\x27; & $g \x27push\x27 \x27--force\x27 \x27origin\x27 \x27main\x27
+2 2 @@ $g = \x27git\x27; & $g -C . push --force origin main
+0 0 @@ Start-Process git -ArgumentList \x27push\x27,\x27origin\x27,\x27main\x27 -Wait
+0 0 @@ Start-Process git -ArgumentList \x27status\x27 -NoNewWindow -Wait
+0 0 @@ Start-Process git -ArgumentList \x27reset\x27,\x27--soft\x27,\x27HEAD~1\x27
+0 0 @@ Start-Process git -ArgumentList \x27clean\x27,\x27-n\x27
+0 0 @@ Start-Process git -ArgumentList \x27config\x27,\x27user.name\x27,\x27x\x27
+0 0 @@ Start-Process -FilePath git -ArgumentList \x27push\x27,\x27origin\x27,\x27main\x27 -Confirm:$false -LoadUserProfile
+0 0 @@ Start-Process git -ArgumentList \x27log\x27,\x27--oneline\x27 -RedirectStandardOutput out.txt -Wait
+0 0 @@ Start-Process notepad.exe -ArgumentList \x27push --force.txt\x27
+0 0 @@ Start-Process code -ArgumentList \x27.\x27,\x27--force\x27
+0 0 @@ $g = \x27git\x27; & $g push origin main
+0 0 @@ $g = \x27git\x27; & $g status --short
+0 0 @@ $g = \x27git\x27; & $g reset --soft HEAD~1
+0 0 @@ & $exe build --configuration Release
+0 0 @@ $npm = \x27npm\x27; & $npm run clean
+0 0 @@ & $docker push registry.local/app:1.0
+0 0 @@ Write-Output \"push --force is refused\"'
+_cf_new; _cf_table "$CSA" PowerShell; _cfsb="$_cfbad"; _cfsn="$_cfn"
+# where the command was read from is said, with the command as the gate read it
+_cf_run default 'Start-Process git -ArgumentList '"$_cfq"'push'"$_cfq"','"$_cfq"'--force'"$_cfq"','"$_cfq"'origin'"$_cfq"' -Wait' 0 PowerShell
+{ [ "$_cfr" = 2 ] && grep -q "'git push --force' stopped" "$_CF/err" && grep -q 'read from the arguments.*: git push --force origin$' "$_CF/err"; } \
+  || _cfsb="$_cfsb [the refusal does not say what was read: rc=$_cfr — $(tr '\n' '|' < "$_CF/err" | cut -c1-200)]"
+# the same two shapes through the Bash tool are not this rule's
+_cf_table '0 0 @@ g=git; $g push --force origin main
+0 0 @@ git --version; \"$BIN\" clean -f'
+if [ "$_cfsn $_cfn" != "38 2" ]; then fail "FIXTURE: the PowerShell argument tables have $_cfsn and $_cfn rows, not 38 and 2"
+elif [ -z "$_cfsb$_cfbad" ]; then pass "through the PowerShell tool, git's arguments handed to Start-Process or to a command held in a variable are judged as the git command they make: 22 forms of push --force (-f, +ref, --force-with-lease, one string or a list), reset --hard, clean -f and core.hooksPath are refused in every session and the refusal says what was read; 16 calls outside §4.5, or of another program, are judged as before; the Bash tool is not touched (40 rows)"
+else fail "PowerShell, git's arguments handed over:$_cfsb$_cfbad"; fi
+
 # ---- a diff that prints nothing is still a different diff -------------------------------------------------------
 _cf_new; _cfbad=""
 ( cd "$_cfw" && git config diff.external true ) >/dev/null 2>&1; _cf_review
@@ -7772,7 +7828,7 @@ _cfmax="$(sed -n 's/^_C47_MAX=\([0-9][0-9]*\)$/\1/p' "$HOOKS/guard-bash.sh")"
 _cfl='line with '"$_cfq"'quotes'"$_cfq"', \"double\", $(sub) `tick` ; && | # and -a b.txt\n'
 _cf_rep(){ local i=0; _cfbody=""; while [ "$i" -lt "$2" ]; do _cfbody="$_cfbody$1"; i=$((i+1)); done; }   # $1 = text, $2 = times -> _cfbody
 # $1 = the command as JSON text -> _cfr (rc), _cfd (decision), _cft (seconds), _cfsz (bytes of the command the hook reads)
-_cf_big(){ printf '{"session_id":"s","cwd":"%s","permission_mode":"default","tool_name":"Bash","tool_input":{"command":"%s"}}' "$_cfw" "$1" > "$_CF/big.json"
+_cf_big(){ printf '{"session_id":"s","cwd":"%s","permission_mode":"default","tool_name":"%s","tool_input":{"command":"%s"}}' "$_cfw" "${2:-Bash}" "$1" > "$_CF/big.json"   # $2 = the tool (default Bash)
   if [ -n "$JSONQ" ]; then json_ok < "$_CF/big.json" || _cf_badjson="$_cf_badjson [a large command, ${#1} characters]"; fi
   _cfsz="$(printf "$(printf '%s' "$1" | sed 's/%/%%/g')" | wc -c | tr -d ' ')"
   _cft=$SECONDS; _cfo_out="$( cd "$_cfw" && CREW_GATE_LOG=/dev/null env -u CLAUDE_GIT_OK ${_cfloc:+LC_ALL=$_cfloc} bash "$HOOKS/guard-bash.sh" < "$_CF/big.json" 2>"$_CF/err" )"; _cfr=$?
@@ -7806,6 +7862,14 @@ _cf_big 'git -C \"$PWD\" status; echo '"$_cfa"
 _cf_big 'git status; echo '"$_cfa"
 { [ "$_cfr" = 0 ] && [ -z "$_cfd" ]; } \
   || _cfbad="$_cfbad [a $_cfsz-byte call of git with no expansion: rc=$_cfr decision=$_cfd, want rc 0 and no decision — $(sed -n 1p "$_CF/err" | cut -c1-120)]"
+# 3c) a PowerShell call that names one of the git commands judged by their arguments is read by that reader too:
+#     the same limit, its own message; the same size without such a word is not read and passes
+_cf_big 'Write-Output push; Write-Output '"$_cfa" PowerShell
+{ [ "$_cfr" = 2 ] && [ "$_cft" -le 60 ] && grep -q 'this PowerShell call names a git command' "$_CF/err" && grep -q 'bytes long' "$_CF/err"; } \
+  || _cfbad="$_cfbad [a $_cfsz-byte PowerShell call that holds the word push: rc=$_cfr in ${_cft} s, want rc 2 and the size — $(sed -n 1p "$_CF/err" | cut -c1-120)]"
+_cf_big 'Write-Output '"$_cfa" PowerShell
+{ [ "$_cfr" = 0 ] && [ -z "$_cfd" ]; } \
+  || _cfbad="$_cfbad [a $_cfsz-byte PowerShell call with no such word: rc=$_cfr decision=$_cfd, want rc 0 and no decision — $(sed -n 1p "$_CF/err" | cut -c1-120)]"
 # 4) the edge, to the byte: `git commit -q -m '` + a's + `'` is 19 bytes around the a's
 if [ -n "$_cfmax" ]; then
   _cfa="$(printf '%*s' "$((_cfmax - 19))" '' | tr ' ' a)"
