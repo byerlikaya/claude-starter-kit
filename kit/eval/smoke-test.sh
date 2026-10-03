@@ -4804,7 +4804,7 @@ case "$(st)" in *skills/mine*) pass "an accepted component edited afterwards is 
 # no. Each step reads the files, not only the notice.
 case "$O" in *"--decline-one skills/mine (Bash tool, not PowerShell)"*"On a no, run the decline command"*) pass "each unvetted component also gets its own --decline-one command, and the notice says to run it on a no" ;;
   *) fail "the notice offers no way to record a no: $O" ;; esac
-( cd "$STD" && bash .claude/hooks/skill-trust.sh --decline-one skills/mine ) >/dev/null 2>&1; _dr=$?
+_dC="$( cd "$STD" && bash .claude/hooks/skill-trust.sh --decline-one skills/mine 2>/dev/null )"; _dr=$?
 _dO="$(st)"
 if [ "$_dr" = 0 ] && grep -q ' skills/mine$' "$STD/.claude/declined-components.txt" 2>/dev/null \
    && ! grep -q ' skills/mine$' "$STD/.claude/trusted-components.txt" 2>/dev/null; then
@@ -4813,10 +4813,39 @@ else fail "--decline-one: rc $_dr, declined file: $(cat "$STD/.claude/declined-c
 case "$_dO" in *"Declined by the user"*"- skills/mine"*) case "$_dO" in *"--trust-one skills/mine"*) fail "a declined component is still asked about: $_dO" ;;
     *) pass "a declined component is named as not to be used, and not asked about again" ;; esac ;;
   *) fail "a declined component is not named at session start: $_dO" ;; esac
-( cd "$STD" && bash .claude/hooks/skill-trust.sh --trust-one skills/mine ) >/dev/null 2>&1
+_tC="$( cd "$STD" && bash .claude/hooks/skill-trust.sh --trust-one skills/mine 2>/dev/null )"
 if ! grep -q ' skills/mine$' "$STD/.claude/declined-components.txt" 2>/dev/null && grep -q ' skills/mine$' "$STD/.claude/trusted-components.txt" 2>/dev/null \
    && [ -z "$(st)" ]; then pass "a later yes replaces the no: recorded once, and the session is quiet"
 else fail "--trust-one after --decline-one did not replace the answer"; fi
+# THE ANSWER IS CONFIRMED, FROM THE FILE. Both commands printed nothing on success, and in the field a session that
+# had just run the decline command said it had not checked the record. Each prints one line now, with the digest's
+# first 12 characters as the file holds them, and only when the line is read back from the file: with the file
+# unwritable (a directory in its place) the command exits 1, prints no confirmation and says the answer was not
+# recorded. A second run of the same answer confirms again and does not add a second line.
+_stb=""
+_std="$(sed -n 's/ skills\/mine$//p' "$STD/.claude/trusted-components.txt" | cut -c1-12)"
+case "$_dC" in "skill-trust: declined skills/mine — recorded in .claude/declined-components.txt (digest "????????????"). It will not be used"*"--trust-one skills/mine (Bash tool, not PowerShell)") ;; *) _stb="$_stb [decline printed: '$_dC']" ;; esac
+[ "$(printf '%s\n' "$_dC" | grep -c .)" = 1 ] || _stb="$_stb [decline printed $(printf '%s\n' "$_dC" | grep -c .) lines, want 1]"
+case "$_tC" in "skill-trust: trusted skills/mine — recorded in .claude/trusted-components.txt (digest $_std). A later change to it is reported again.") ;; *) _stb="$_stb [trust printed: '$_tC', want the digest $_std]" ;; esac
+[ "${#_std}" = 12 ] || _stb="$_stb [FIXTURE: the trusted file holds no 12-character digest start for skills/mine: '$_std']"
+_tC2="$( cd "$STD" && bash .claude/hooks/skill-trust.sh --trust-one skills/mine 2>/dev/null )"
+{ [ "$_tC2" = "$_tC" ] && [ "$(grep -c ' skills/mine$' "$STD/.claude/trusted-components.txt")" = 1 ]; } || _stb="$_stb [the same yes again: '$_tC2', $(grep -c ' skills/mine$' "$STD/.claude/trusted-components.txt") line(s) in the file]"
+mv "$STD/.claude/declined-components.txt" "$STD/.claude/declined.keep"; mkdir "$STD/.claude/declined-components.txt"
+_dC3="$( cd "$STD" && bash .claude/hooks/skill-trust.sh --decline-one skills/mine 2>"$STD/dec.err" )"; _dr3=$?
+{ [ "$_dr3" = 1 ] && [ -z "$_dC3" ] && [ -s "$STD/dec.err" ]; } || _stb="$_stb [a decline that cannot be written: rc $_dr3, stdout '$_dC3', stderr '$(head -1 "$STD/dec.err" 2>/dev/null)' — want rc 1, no confirmation, a reason]"
+rmdir "$STD/.claude/declined-components.txt"
+# A write that "succeeds" and leaves nothing: the record file is a link to /dev/null. Every write returns 0, and the
+# line is not there to read back, so the answer must be reported as NOT recorded. (Where `ln -s` makes a copy and
+# not a link, Git Bash, the row cannot be built.)
+ln -s /dev/null "$STD/.claude/declined-components.txt" 2>/dev/null
+if [ -L "$STD/.claude/declined-components.txt" ]; then
+  _dC4="$( cd "$STD" && bash .claude/hooks/skill-trust.sh --decline-one skills/mine 2>"$STD/dec.err" )"; _dr4=$?
+  { [ "$_dr4" = 1 ] && [ -z "$_dC4" ] && grep -q 'was NOT recorded' "$STD/dec.err"; } || _stb="$_stb [a decline whose write lands nowhere: rc $_dr4, stdout '$_dC4', stderr '$(head -1 "$STD/dec.err" 2>/dev/null)' — want rc 1, no confirmation, 'was NOT recorded']"
+else skip platform "a decline whose write lands nowhere (this platform's ln -s does not make a link)"; fi
+rm -f "$STD/.claude/declined-components.txt"; mv "$STD/.claude/declined.keep" "$STD/.claude/declined-components.txt"
+case "$O" in *'prints one line that starts with "skill-trust: trusted" or "skill-trust: declined"'*"NOT recorded"*) ;; *) _stb="$_stb [the notice does not tell the session to expect the line]" ;; esac
+[ -z "$_stb" ] && pass "--trust-one and --decline-one each confirm with one line read back from the file (the component, the file, the digest it holds); the same answer again confirms without a second record; a decline that cannot be written, or whose write lands nowhere, exits 1 with a reason and no confirmation; the notice says to pass the line on" \
+               || fail "the confirmation line of --trust-one / --decline-one:$_stb"
 # A manifest with CRLF line endings still identifies kit components. `grep -qxF "skills/handoff"` does NOT match
 # the line "skills/handoff\r", so on Windows every kit component read as unshipped and the session opened by
 # declaring the entire payload unvetted — a wall of warnings about Crewforth's own files, which teaches the reader

@@ -140,6 +140,10 @@ versioning follows [SemVer](https://semver.org/).
 
 ### Changed
 
+- **Trusting or declining a component is confirmed.** `skill-trust.sh --trust-one` and `--decline-one` printed nothing
+  on success, and in the field a session that had just declined a skill said it had not checked the record. Each
+  prints one line now (the component, the file, the first characters of the digest it holds), and only after the
+  line is read back from the file; when the answer could not be written the command exits 1 and says so.
 - **Reading `core.hooksPath` is no longer refused on Windows.** `git config --get core.hooksPath` is how a person
   checks that the gate is armed, and a read is let through only when the payload holds no escape the reader drops.
   That was asked of the whole payload, and a Windows `cwd` is full of them once JSON-encoded (`C:\\repos\\app` holds
