@@ -6161,7 +6161,7 @@ GBCP
   case "$_o" in *"❌ core.hooksPath -> .claude/git-shim, but the shim there does not run Crewforth's hook: commit-msg"*"writes the shim again"*) ;; *) _hpb="$_hpb [a shim without Crewforth's line: $_o]" ;; esac
   ( cd "$HPT" && git config core.hooksPath .claude/hooks ); _o="$(hpdoc)"
   case "$_o" in *"✅ core.hooksPath -> .claude/hooks (commit-time gates active)"*) ;; *) _hpb="$_hpb [.claude/hooks: $_o]" ;; esac
-  [ -z "$_hpb" ] && pass "doctor knows what git is pointed at: .claude/hooks and a .claude/git-shim that runs Crewforth's hook are ✅; a shim that does not is ❌; unset is ❌ with 'git config core.hooksPath .claude/hooks' only when the project has no hooks of its own; unset beside .husky, and another directory, are ❌ with the update, which keeps the project's chain (6 states)" \
+  [ -z "$_hpb" ] && pass "doctor knows what git is pointed at: .claude/hooks and a .claude/git-shim that runs Crewforth's hook are healthy; a shim that does not is a failure; unset is a failure with 'git config core.hooksPath .claude/hooks' only when the project has no hooks of its own; unset beside .husky, and another directory, are failures whose fix is the update, which keeps the project's chain (6 states)" \
                  || fail "doctor and core.hooksPath:$_hpb"
   # §4.2's list: the placeholder as shipped (information, not counted) · made active as it shipped (a warning) · a name.
   _tbd(){ ( cd "$HPT" && CREW_LANG=en bash .claude/eval/doctor.sh 2>/dev/null ) | grep -E '4\.2 names|placeholder' | tr '\n' ' '; }
