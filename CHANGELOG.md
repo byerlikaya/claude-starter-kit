@@ -150,6 +150,29 @@ versioning follows [SemVer](https://semver.org/).
   the same (measured on Windows, in a real session), and the conversation says who refused it. Known limit: the dock
   can ask about a call that another gate refuses anyway.
 
+## [3.0.2] — 2026-10-03
+
+### Security
+
+- **Under a Turkish system locale the gates missed what they are written to catch.** There `i` and `I` are not each
+  other's other case, and every case-insensitive match in the gates is written in ASCII. Measured under `tr_TR.UTF-8`
+  with GNU grep and bash 5 on Linux: `grep -i` did not find `INIT` with `init`, bash's `nocasematch` did not match
+  `GIT` against `git`, and a range like `[A-Za-z]` did not hold `i` or `I`, so a recursive `Remove-Item`, `git config
+  --remove-section core`, a read of a nested `.env`, a staged key and a vendor name in capitals all passed;
+  Crewforth's own suite, run whole under that locale, went from 2 failures to 23. In Git Bash on Windows `grep -iF`
+  aborted (exit 134) and the pre-commit scan for private strings read that as "no match". macOS folds the two letters
+  the ASCII way and was not affected. Every gate (`pre-commit`, `commit-msg`, `guard-commit-scan.sh`, `guard-bash.sh`,
+  `guard-write.sh`, `guard-powershell.sh`) now sets the C locale before it matches anything. A private string or a
+  pattern that holds a letter outside ASCII is still looked for under the session's own locale as well.
+- **A scan that could not run is no longer a clean scan.** In `pre-commit` and `commit-msg`, grep failing for any
+  reason but a pattern that does not compile stops the commit and says so; the private-string scan used to read every
+  failure as "no match", `commit-msg` read a broken pattern as one too, silently, and a staged diff that could not be
+  collected was scanned as an empty one. A pattern that does not compile still only warns, now in `commit-msg` as well.
+- **The approval prompt could carry invalid UTF-8.** The command it shows is cut to 300 a line with `cut -c`, and GNU
+  cut counts bytes in every locale: a two-byte letter across byte 300 left the prompt's JSON invalid (measured on
+  Linux under `en_US.UTF-8`, and on macOS under the C locale; Git Bash ships GNU cut too, not measured there). The cut
+  steps back over an unfinished letter now.
+
 ## [3.0.1] — 2026-10-01
 
 ### Security
