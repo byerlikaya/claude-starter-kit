@@ -80,4 +80,5 @@ packaging/skill-summaries.tr.tsv text eol=lf
 # The legacy blob list ships in the payload and is compared byte for byte with its generator's LF output; under
 # core.autocrlf=true it came out with 207 CRs and the smoke gate read it as stale (measured in review).
 kit/legacy-blobs.tsv text eol=lf
+kit/owned-blobs.tsv text eol=lf
 .github/workflows/*.yml text eol=lf
