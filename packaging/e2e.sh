@@ -1716,6 +1716,21 @@ else
   cmp -s "$WORK/ob-edited" ${_obk% } || die "the kept DISCIPLINE.md is not the edited bytes" owned-blobs/mixed "$OB"
   case "$ADOPT_OUT" in *"DISCIPLINE.md is not a copy Crewforth shipped before this version — it is kept in"*) ;; *) die "the edited DISCIPLINE.md was kept without a word" owned-blobs/mixed "$OB" ;; esac
   case "$ADOPT_OUT" in *"AGENT_TEMPLATE.md is not a copy"*|*"README.md is not a copy"*) die "an untouched file (one of them CRLF) was reported as not shipped" owned-blobs/mixed "$OB" ;; esac
+  # Twin: Git for Windows' grep 3.0. It answers "no" to `grep -q $'\r'` on a CRLF file (measured there: rc 1 on a file
+  # where `grep -c` counts 107 — only -q is blind), and the first version asked exactly that before it looked up the
+  # CR-stripped id: an untouched copy checked out with core.autocrlf=true was kept as if edited. A grep that behaves
+  # that way is put first on PATH, so the case can fail on every platform and not only there.
+  mkdir -p "$WORK/wgrep"; _obg="$(command -v grep)"
+  printf '#!/bin/sh\ncr=$(printf "\\r")\n[ "$1" = -q ] && [ "$2" = "$cr" ] && exit 1\nexec "%s" "$@"\n' "$_obg" > "$WORK/wgrep/grep"; chmod +x "$WORK/wgrep/grep"
+  printf 'a\r\n' > "$WORK/ob-crlf"
+  ( PATH="$WORK/wgrep:$PATH"; grep -q $'\r' "$WORK/ob-crlf" ) && { echo "FAIL: FIXTURE — the grep that is blind to a CR with -q found one"; exit 1; }
+  [ "$(PATH="$WORK/wgrep:$PATH" grep -c $'\r$' "$WORK/ob-crlf")" = 1 ] || { echo "FAIL: FIXTURE — the shadow grep does not count the CR with -c"; exit 1; }
+  OB="$WORK/owned-v2-wgrep"; rm -rf "$OB"; cp -R "$LB2" "$OB"
+  ( cd "$OB" && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm install ) >/dev/null 2>&1
+  for _obf in AGENT_TEMPLATE.md README.md DISCIPLINE.md; do awk '{ printf "%s\r\n", $0 }' "$LB2/.claude/$_obf" > "$OB/.claude/$_obf"; done
+  cp adopt.sh "$OB/"; cp -R kit "$OB/"; cp VERSION "$OB/"; PATH="$WORK/wgrep:$PATH" run_adopt "$OB" --yes --here
+  case "$ADOPT_OUT" in *"is not a copy Crewforth shipped"*) die "with a grep that does not see a line-end CR under -q, an untouched CRLF copy was kept as if edited" owned-blobs/wgrep "$OB" ;; esac
+  [ -z "$(find "$OB/.claude/.legacy-backup" -type f \( -name AGENT_TEMPLATE.md -o -name README.md -o -name DISCIPLINE.md \) 2>/dev/null)" ] || die "with that grep an untouched CRLF copy went to the backup" owned-blobs/wgrep "$OB"
   # Twin: the list is missing from the payload. Nothing can be told, so the old copy is kept and the line says why.
   OB="$WORK/owned-v2-nolist"; rm -rf "$OB"; cp -R "$LB2" "$OB"
   ( cd "$OB" && git config user.email t@t.t && git config user.name t && git add -A && git commit -qm install ) >/dev/null 2>&1
@@ -1723,7 +1738,7 @@ else
   case "$ADOPT_OUT" in *"DISCIPLINE.md could not be checked against what Crewforth shipped (git or the shipped list is missing) — the old copy is kept in"*) ;;
     *) die "with no list the untouched old DISCIPLINE.md was refreshed without a copy, or without the reason" owned-blobs/nolist "$OB" ;; esac
   cmp -s "$LB2/.claude/DISCIPLINE.md" "$(find "$OB/.claude/.legacy-backup" -name DISCIPLINE.md | head -1)" || die "with no list the kept DISCIPLINE.md is not the old bytes" owned-blobs/nolist "$OB"
-  echo "[owned-blobs] real installers vs kit/owned-blobs.tsv: $_obn of $_obn files in the list ($LBV1: 2, no DISCIPLINE.md · $LBV2: 3) · edit falls out · update of the real $LBV2 install: 3 untouched files refreshed, none kept, nothing said · mixed: only the edited one kept, the CRLF one not · no list: kept, with the reason"
+  echo "[owned-blobs] real installers vs kit/owned-blobs.tsv: $_obn of $_obn files in the list ($LBV1: 2, no DISCIPLINE.md · $LBV2: 3) · edit falls out · update of the real $LBV2 install: 3 untouched files refreshed, none kept, nothing said · mixed: only the edited one kept, the CRLF one not · three CRLF copies under a grep blind to CR with -q (Git for Windows): none kept · no list: kept, with the reason"
 fi
 
 # ---- the pattern skill's trust: vouched for only when it is a copy Crewforth shipped ----

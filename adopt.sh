@@ -1196,8 +1196,12 @@ _owned_shipped(){  # $1 = name -> 0 when .claude/<name> is a copy an earlier rel
   [ -n "$h" ] || return 2
   hl="$h"
   # CR is stripped only when every CR ends a line (a Windows editor, an autocrlf copy); no shipped copy holds one.
-  if grep -q $'\r' "$f" 2>/dev/null; then
-    cr="$(tr -dc '\r' < "$f" 2>/dev/null | wc -c | tr -d ' ')"; crl="$(grep -c $'\r$' "$f" 2>/dev/null)"
+  # Whether there is a CR at all is asked with tr, not `grep -q`: Git for Windows' grep 3.0 answers "no" to
+  # `grep -q $'\r'` on a CRLF file (measured there: rc 1 on a file where `grep -c` counts 107), and an untouched copy
+  # checked out with core.autocrlf=true was then kept as if it had been edited.
+  cr="$(tr -dc '\r' < "$f" 2>/dev/null | wc -c | tr -d ' ')"
+  if [ "${cr:-0}" != 0 ]; then
+    crl="$(grep -c $'\r$' "$f" 2>/dev/null)"
     [ "$cr" = "${crl:-x}" ] && hl="$(tr -d '\r' < "$f" 2>/dev/null | git hash-object --no-filters --stdin 2>/dev/null)"
   fi
   awk -F'\t' -v p="$f" -v a="$h" -v b="${hl:-$h}" '!/^#/ && $1 == p && ($2 == a || $2 == b) { f = 1 } END { exit !f }' "$lst"
