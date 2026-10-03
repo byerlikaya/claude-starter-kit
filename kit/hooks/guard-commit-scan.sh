@@ -38,6 +38,35 @@ _CREW_LOCALE="${LC_ALL:-${LC_CTYPE:-${LANG:-}}}"
 case "$_CREW_LOCALE" in C|POSIX) _CREW_LOCALE="" ;; esac
 export LC_ALL=C
 # ---- /CREW-LOCALE
+# ---- CREW-MATCH -------------------------------------------------------------------------------------------
+# grep on the command, without a pipe and with its status read. Both halves were measured failing open:
+#   * `echo "$CMD" | grep -q …` under pipefail. grep -q leaves at its first match; when the command is larger than
+#     the pipe holds, the writer is killed by SIGPIPE and the pipeline's status is 141, which the rule read as
+#     "no match". On macOS, a command of 72 KB or more whose FIRST line was `rm -rf /tmp/x/*` (or dd of=, curl | sh,
+#     chmod 777, mkfs, a lockfile delete) passed with exit 0; with that line last it was refused. A here-string
+#     has no writer to kill.
+#   * A grep that could not run (killed, out of memory, exit 2 or more) answered like one that found nothing.
+# So: _grep answers 0 (found) or 1 (not found), and anything else stops the call. It must be called in the hook's
+# own shell, never inside $( ) or a pipeline, or the stop would only leave that child.
+_grep_stop(){  # $1 = grep's status
+  declare -F gatelog >/dev/null 2>&1 && gatelog BLOCK 4.5 "a match that could not run"
+  echo "GUARD: a check of this command could not run (grep exited $1), so the command was not judged and is refused." >&2
+  echo "Nothing about the command itself was found. Run it again; if it is refused the same way, the fault is in the machine's grep, not in the command." >&2
+  exit 2
+}
+_grep(){  # $1 = text, $2… = grep's arguments -> 0 found · 1 not found
+  local t="$1" rc; shift
+  grep "$@" <<< "$t"; rc=$?
+  [ "$rc" -le 1 ] && return "$rc"
+  _grep_stop "$rc"
+}
+_grep_out(){  # the same for a caller that wants what grep printed -> _GO (empty when nothing matched)
+  local t="$1" rc; shift
+  _GO="$(grep "$@" <<< "$t")"; rc=$?
+  [ "$rc" -le 1 ] && return 0
+  _grep_stop "$rc"
+}
+# ---- /CREW-MATCH
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # ---- CREW-JSON-PARSE ------------------------------------------------------------------------------------
@@ -426,14 +455,14 @@ case "$CMD" in *[Gg][Ii][Tt]*) ;; *) exit 0 ;; esac
 
 # Only git commit. Matching mirrors guard-bash.sh's tolerance for `git -C dir commit`, TAB separators and a
 # quoted binary, because a gate that a whitespace change walks past is not a gate.
-printf '%s' "$CMD" | grep -qE '(^|[;&|[:space:]])["'"'"'`]?git["'"'"'`]?([[:space:]]+-[^[:space:]]+)*[[:space:]]+commit([[:space:]]|$)' || exit 0
+_grep "$CMD" -qE '(^|[;&|[:space:]])["'"'"'`]?git["'"'"'`]?([[:space:]]+-[^[:space:]]+)*[[:space:]]+commit([[:space:]]|$)' || exit 0
 
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 
 # `git commit -a` has not staged anything yet at this point; tell the scanner to look at tracked-but-unstaged
 # changes too. Matches -a, --all and clusters like -am.
 UNSTAGED=0
-printf '%s' "$CMD" | grep -qE '(^|[[:space:]])(--all|-[A-Za-z]*a[A-Za-z]*)([[:space:]]|$)' && UNSTAGED=1
+_grep "$CMD" -qE '(^|[[:space:]])(--all|-[A-Za-z]*a[A-Za-z]*)([[:space:]]|$)' && UNSTAGED=1
 
 FAILED=0
 OUT=""
@@ -458,7 +487,7 @@ if [ "$FAILED" = 0 ] && [ -x "$DIR/commit-msg" ]; then
   # on exactly the Windows machines it was written for. So ask the question directly, with a test that needs
   # no interpreter. Cheap: nothing below runs unless the command is already known to be a `git commit`.
   HAS_M=0
-  printf '%s' "$CMD" | grep -qE '(^|[[:space:]])(-[A-Za-z]*m|--message)([[:space:]]|=|$)' && HAS_M=1
+  _grep "$CMD" -qE '(^|[[:space:]])(-[A-Za-z]*m|--message)([[:space:]]|=|$)' && HAS_M=1
   # ONE tokenizer, awk, on every machine. A python3 `shlex` branch used to run first where python worked, so a
   # Mac and a Windows box took different code through a gate. Measured before it was removed: on 18 `-m`
   # shapes the awk tokenizer returned what shlex returned, 18/18. A command awk cannot tokenize (an unclosed
@@ -494,7 +523,7 @@ $(bash "$DIR/commit-msg" "$MF" 2>&1)" || FAILED=1
       MFILE="$(printf '%s' "$CMD" \
         | sed -n 's/.*[[:space:]]--\{0,1\}[Ff]\(ile\)\{0,1\}[[:space:]=]\{1,\}\([^[:space:];&|]\{1,\}\).*/\2/p' | head -1)"
       MFILE="${MFILE%\"}"; MFILE="${MFILE#\"}"; MFILE="${MFILE%\'}"; MFILE="${MFILE#\'}"
-      if printf '%s' "$CMD" | grep -qE '(^|[[:space:]])(-F|--file)([[:space:]=]|$)' && { [ -z "$MFILE" ] || [ ! -f "$MFILE" ]; }; then
+      if _grep "$CMD" -qE '(^|[[:space:]])(-F|--file)([[:space:]=]|$)' && { [ -z "$MFILE" ] || [ ! -f "$MFILE" ]; }; then
         echo "GUARD (§4.1): this commit reads its message from a file (-F), and the command could not be parsed" >&2
         echo "well enough to know which file. Scan cannot run, so the commit is refused. Commit with a plain" >&2
         echo "-F <path> (or -m) in a command of its own." >&2

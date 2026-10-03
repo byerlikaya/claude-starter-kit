@@ -40,3 +40,4 @@ commit takes content from the working tree	içeriği çalışma ağacından alan
 no review-pass record	inceleme kaydı yok
 review-pass does not match this diff	inceleme kaydı bu diff ile eşleşmiyor
 review-pass matches the staged diff	inceleme kaydı staged diff ile eşleşiyor
+a match that could not run	koşamayan bir eşleştirme (komut değerlendirilmedi)
