@@ -6171,11 +6171,17 @@ GBCP
   awk '/^# --- /{ on = ($0 ~ /4\.2/) } on && !/^#/ && !/^[[:space:]]*$/ { next } { print }' "$_tbf" > "$_tbf.x" && mv "$_tbf.x" "$_tbf"
   grep -qx '# <vendor-template-name>' "$_tbf" || _hpb="$_hpb [FIXTURE: the shipped list has no '# <vendor-template-name>' line]"
   _o="$(_tbd)"; case "$_o" in *"·  §4.2 names no vendor template"*"looks for nothing"*) ;; *) _hpb="$_hpb [as shipped: $_o]" ;; esac
+  # The same, with what must not count as a name: a pattern of ANOTHER section after it, and (in a CRLF copy) a blank
+  # line inside the section, which is a lone CR.
+  cp "$_tbf" "$_tbf.keep"
+  { awk '{ printf "%s\r\n", $0 }' "$_tbf.keep"; printf '\r\n# --- §9.9 a later section ---\r\nSomeOtherPattern\r\n'; } > "$_tbf"
+  _o="$(_tbd)"; case "$_o" in *"·  §4.2 names no vendor template"*) ;; *) _hpb="$_hpb [a CRLF copy with a blank line in the section and a pattern in a later section: $_o]" ;; esac
+  cp "$_tbf.keep" "$_tbf"; rm -f "$_tbf.keep"
   sed 's/^# <vendor-template-name>$/<vendor-template-name>/' "$_tbf" > "$_tbf.x" && mv "$_tbf.x" "$_tbf"
   _o="$(_tbd)"; case "$_o" in *"⚠️  trace-blocklist.txt: the placeholder <vendor-template-name> is active as it shipped"*) ;; *) _hpb="$_hpb [placeholder active: $_o]" ;; esac
   awk '{ sub(/^<vendor-template-name>$/, "AcmeStarter"); printf "%s\r\n", $0 }' "$_tbf" > "$_tbf.x" && mv "$_tbf.x" "$_tbf"
   _o="$(_tbd)"; case "$_o" in *"✅ §4.2 names 1 vendor template pattern(s)"*) ;; *) _hpb="$_hpb [a name, in a CRLF file: $_o]" ;; esac
-  [ -z "$_hpb" ] && pass "doctor reads §4.2's list: only the shipped placeholder → one line of information that the rule looks for nothing; the placeholder made active as it shipped → a warning that names it; a template name (in a CRLF copy) → counted (3 states)" \
+  [ -z "$_hpb" ] && pass "doctor reads §4.2's list: only the shipped placeholder → one line of information that the rule looks for nothing; the placeholder made active as it shipped → a warning that names it; a template name (in a CRLF copy) → counted; a blank line in a CRLF copy and a pattern of a later section are not names (4 states)" \
                  || fail "doctor and the §4.2 list:$_hpb"
   rm -rf "$HPT"
   rm -rf "$DTMP" "$GTMP"

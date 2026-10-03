@@ -197,9 +197,13 @@ case "$DOUT" in *"enforces the §4.6 review gate"*) ;;
 fork_words(){   # $1 = xtrace file, $2 = the traced script (for its function names) -> one line per external command
   { compgen -b; compgen -k; echo '(('
     grep -hoE '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*\(\)' "$2" | tr -d ' ()' | sort -u; } > "$1.excl"
-  sed -n 's/^++*[[:space:]]*//p' "$1" | awk '{print $1}' | sed "s/^'//; s/'\$//" \
-    | { grep -vE '^[A-Za-z_][A-Za-z0-9_]*(\[[^]]*\])?\+?=' || true; } \
-    | { grep -vxF -f "$1.excl" || true; }
+  # Read as BYTES (LC_ALL=C). An xtrace is not always valid text: bash 3.2 prints a four-byte character it assigns
+  # half escaped (`_l=$'\xf0\237\xa4\226'` for the robot emoji of the trace blocklist, which doctor now reads line by
+  # line), and BSD sed under a UTF-8 locale stops on it with "RE error: illegal byte sequence". Measured: this e2e
+  # failed that way on the macOS runner and passed where LANG was unset. A command word is ASCII either way.
+  LC_ALL=C sed -n 's/^++*[[:space:]]*//p' "$1" | LC_ALL=C awk '{print $1}' | LC_ALL=C sed "s/^'//; s/'\$//" \
+    | { LC_ALL=C grep -vE '^[A-Za-z_][A-Za-z0-9_]*(\[[^]]*\])?\+?=' || true; } \
+    | { LC_ALL=C grep -vxF -f "$1.excl" || true; }
 }
 fork_count(){ fork_words "$@" | wc -l | tr -d ' '; }
 # The counter is measured before it measures doctor, on a script whose answer is known and which carries every
